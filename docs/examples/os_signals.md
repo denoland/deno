@@ -1,5 +1,8 @@
 ## Handle OS Signals
 
+> This program makes use of an unstable Deno feature. Learn more about
+> [unstable features](../../runtime/unstable).
+
 [API Reference](https://deno.land/typedoc/index.html#signal)
 
 You can use `Deno.signal()` function for handling OS signals.

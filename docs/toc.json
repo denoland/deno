@@ -7,6 +7,7 @@
     "children": {
       "installation": "Installation",
       "first_steps": "First Steps",
+      "permissions": "Permissions",
       "typescript": "Using TypeScript",
       "webassembly": "Using WebAssembly"
     }
@@ -19,10 +20,9 @@
       "unstable": "Unstable APIs"
     }
   },
-  "linking-to-external-code": {
+  "linking_to_external_code": {
     "name": "Linking to external code",
     "children": {
-      "best_practices": "Best practices",
       "integrity_checking": "Integrity checking",
       "proxies": "Proxies"
     }
