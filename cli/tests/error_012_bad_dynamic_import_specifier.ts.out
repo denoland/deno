@@ -3,7 +3,7 @@
     at Object.sendSync ($deno$/ops/dispatch_json.ts:[WILDCARD])
     at resolveModules ($deno$/compiler.ts:[WILDCARD])
     at processImports ($deno$/compiler.ts:[WILDCARD])
-    at Object.processImports ($deno$/compiler.ts:[WILDCARD])
+    at processImports ($deno$/compiler.ts:[WILDCARD])
     at async compile ($deno$/compiler.ts:[WILDCARD])
     at async tsCompilerOnMessage ($deno$/compiler.ts:[WILDCARD])
     at async workerMessageRecvCallback ([WILDCARD]runtime_worker.ts:[WILDCARD])
