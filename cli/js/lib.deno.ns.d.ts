@@ -4,6 +4,28 @@
 /// <reference lib="esnext" />
 
 declare namespace Deno {
+  /** A set of error constructors that are raised by Deno APIs. */
+  export const errors: {
+    NotFound: ErrorConstructor;
+    PermissionDenied: ErrorConstructor;
+    ConnectionRefused: ErrorConstructor;
+    ConnectionReset: ErrorConstructor;
+    ConnectionAborted: ErrorConstructor;
+    NotConnected: ErrorConstructor;
+    AddrInUse: ErrorConstructor;
+    AddrNotAvailable: ErrorConstructor;
+    BrokenPipe: ErrorConstructor;
+    AlreadyExists: ErrorConstructor;
+    InvalidData: ErrorConstructor;
+    TimedOut: ErrorConstructor;
+    Interrupted: ErrorConstructor;
+    WriteZero: ErrorConstructor;
+    UnexpectedEof: ErrorConstructor;
+    BadResource: ErrorConstructor;
+    Http: ErrorConstructor;
+    Busy: ErrorConstructor;
+  };
+
   /** The current process id of the runtime. */
   export let pid: number;
 
@@ -1310,28 +1332,6 @@ declare namespace Deno {
    * Requires `allow-write` permission, and `allow-read` if `options.create` is `false`.
    */
   export function writeTextFile(path: string, data: string): Promise<void>;
-
-  /** A set of error constructors that are raised by Deno APIs. */
-  export const errors: {
-    NotFound: ErrorConstructor;
-    PermissionDenied: ErrorConstructor;
-    ConnectionRefused: ErrorConstructor;
-    ConnectionReset: ErrorConstructor;
-    ConnectionAborted: ErrorConstructor;
-    NotConnected: ErrorConstructor;
-    AddrInUse: ErrorConstructor;
-    AddrNotAvailable: ErrorConstructor;
-    BrokenPipe: ErrorConstructor;
-    AlreadyExists: ErrorConstructor;
-    InvalidData: ErrorConstructor;
-    TimedOut: ErrorConstructor;
-    Interrupted: ErrorConstructor;
-    WriteZero: ErrorConstructor;
-    UnexpectedEof: ErrorConstructor;
-    BadResource: ErrorConstructor;
-    Http: ErrorConstructor;
-    Busy: ErrorConstructor;
-  };
 
   /** Synchronously truncates or extends the specified file, to reach the
    * specified `len`.  If `len` is not specified then the entire file contents
