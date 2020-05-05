@@ -156,7 +156,7 @@ executable bit on macOS and Linux.
 Once it's installed and in your `$PATH`, try it:
 
 ```shell
-deno https://deno.land/std/examples/welcome.ts
+deno run https://deno.land/std/examples/welcome.ts
 ```
 
 ### Build from Source
@@ -213,7 +213,7 @@ I/O streams in Deno.
 Try the program:
 
 ```shell
-$ deno --allow-read https://deno.land/std/examples/cat.ts /etc/passwd
+$ deno run --allow-read https://deno.land/std/examples/cat.ts /etc/passwd
 ```
 
 ### TCP echo server
@@ -232,7 +232,7 @@ for await (const conn of listener) {
 When this program is started, it throws PermissionDenied error.
 
 ```shell
-$ deno https://deno.land/std/examples/echo_server.ts
+$ deno run https://deno.land/std/examples/echo_server.ts
 error: Uncaught PermissionDenied: network access to "0.0.0.0:8080", run again with the --allow-net flag
 ► $deno$/dispatch_json.ts:40:11
     at DenoError ($deno$/errors.ts:20:5)
@@ -243,7 +243,7 @@ For security reasons, Deno does not allow programs to access the network without
 explicit permission. To allow accessing the network, use a command-line flag:
 
 ```shell
-$ deno --allow-net https://deno.land/std/examples/echo_server.ts
+$ deno run --allow-net https://deno.land/std/examples/echo_server.ts
 ```
 
 To test it, try sending data to it with netcat:
@@ -332,7 +332,7 @@ Deno also provides permissions whitelist.
 This is an example to restrict file system access by whitelist.
 
 ```shell
-$ deno --allow-read=/usr https://deno.land/std/examples/cat.ts /etc/passwd
+$ deno run --allow-read=/usr https://deno.land/std/examples/cat.ts /etc/passwd
 error: Uncaught PermissionDenied: read access to "/etc/passwd", run again with the --allow-read flag
 ► $deno$/dispatch_json.ts:40:11
     at DenoError ($deno$/errors.ts:20:5)
@@ -342,7 +342,7 @@ error: Uncaught PermissionDenied: read access to "/etc/passwd", run again with t
 You can grant read permission under `/etc` dir
 
 ```shell
-$ deno --allow-read=/etc https://deno.land/std/examples/cat.ts /etc/passwd
+$ deno run --allow-read=/etc https://deno.land/std/examples/cat.ts /etc/passwd
 ```
 
 `--allow-write` works same as `--allow-read`.
@@ -354,7 +354,7 @@ const result = await fetch("https://deno.land/");
 ```
 
 ```shell
-$ deno --allow-net=deno.land https://deno.land/std/examples/curl.ts https://deno.land/
+$ deno run --allow-net=deno.land https://deno.land/std/examples/curl.ts https://deno.land/
 ```
 
 ### Run subprocess
@@ -376,7 +376,7 @@ await p.status();
 Run it:
 
 ```shell
-$ deno --allow-run ./subprocess_simple.ts
+$ deno run --allow-run ./subprocess_simple.ts
 hello
 ```
 
@@ -838,7 +838,7 @@ If you omit the out file, the bundle will be sent to `stdout`.
 The bundle can just be run as any other module in Deno would:
 
 ```
-deno colors.bundle.js
+deno run colors.bundle.js
 ```
 
 The output is a self contained ES Module, where any exports from the main module
@@ -1056,7 +1056,7 @@ compile it, but not run it. It takes up to three arguments, the `rootName`,
 optionally `sources`, and optionally `options`. The `rootName` is the root
 module which will be used to generate the resulting program. This is like the
 module name you would pass on the command line in
-`deno --reload run example.ts`. The `sources` is a hash where the key is the
+`deno run --reload example.ts`. The `sources` is a hash where the key is the
 fully qualified module name, and the value is the text source of the module. If
 `sources` is passed, Deno will resolve all the modules from within that hash and
 not attempt to resolve them outside of Deno. If `sources` are not provided, Deno
@@ -1180,7 +1180,7 @@ You need to explicitly tell Deno where to look for this configuration by setting
 the `-c` argument when executing your application.
 
 ```bash
-deno -c tsconfig.json mod.ts
+deno run -c tsconfig.json mod.ts
 ```
 
 Following are the currently allowed settings and their default values in Deno:
@@ -1283,7 +1283,7 @@ Note that you can use both `window.addEventListener` and
 major difference between them, let's run example:
 
 ```shell
-$ deno main.ts
+$ deno run main.ts
 log from imported script
 log from main script
 got load event in onload function (main)
@@ -1393,7 +1393,7 @@ To start profiling,
 ninja -C target/release d8
 
 # Start the program we want to benchmark with --prof
-./target/release/deno tests/http_bench.ts --allow-net --v8-flags=--prof &
+./target/release/deno run --allow-net --v8-flags=--prof tests/http_bench.ts &
 
 # Exercise it.
 third_party/wrk/linux/wrk http://localhost:4500/
