@@ -3,6 +3,7 @@ use super::compiler_worker::CompilerWorker;
 use crate::colors;
 use crate::compilers::CompiledModule;
 use crate::diagnostics::Diagnostic;
+use crate::diagnostics::DiagnosticItem;
 use crate::disk_cache::DiskCache;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
@@ -22,6 +23,7 @@ use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
 use log::info;
 use regex::Regex;
+use serde::Deserialize;
 use serde_json::json;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -233,6 +235,43 @@ impl Deref for TsCompiler {
   }
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct EmittedSource {
+  filename: String,
+  contents: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BundleResponse {
+  diagnostics: Diagnostic,
+  bundle_output: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CompileResponse {
+  diagnostics: Diagnostic,
+  emit_map: HashMap<String, EmittedSource>,
+}
+
+// TODO(bartlomieju): possible deduplicate once TS refactor is stabilized
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[allow(unused)]
+struct RuntimeBundleResponse {
+  diagnostics: Vec<DiagnosticItem>,
+  output: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeCompileResponse {
+  diagnostics: Vec<DiagnosticItem>,
+  emit_map: HashMap<String, EmittedSource>,
+}
+
 impl TsCompiler {
   pub fn new(
     file_fetcher: SourceFileFetcher,
@@ -298,31 +337,23 @@ impl TsCompiler {
     let json_str = std::str::from_utf8(&msg).unwrap();
     debug!("Message: {}", json_str);
 
-    // TODO(bartlomieju): refactor into deserialize
-    if let Some(diagnostics) = Diagnostic::from_emit_result(json_str) {
-      return Err(ErrBox::from(diagnostics));
-    }
+    let bundle_response: BundleResponse = serde_json::from_str(json_str)?;
 
-    let v = serde_json::from_str::<serde_json::Value>(json_str)
-      .expect("Error decoding JSON string.");
-    let bundle_output = v
-      .get("bundleOutput")
-      .expect("Missing bundle output")
-      .as_str()
-      .expect("Bundle output is not a string");
-    // TODO(bartlomieju): end of refactor into deserialize
+    if !bundle_response.diagnostics.items.is_empty() {
+      return Err(ErrBox::from(bundle_response.diagnostics));
+    }
 
     if let Some(out_file_) = out_file.as_ref() {
       eprintln!("Emitting bundle to {:?}", out_file_);
 
-      let output_bytes = bundle_output.as_bytes();
+      let output_bytes = bundle_response.bundle_output.as_bytes();
       let output_len = output_bytes.len();
 
       deno_fs::write_file(out_file_, output_bytes, 0o666)?;
       // TODO(bartlomieju): add "humanFileSize" method
       eprintln!("{} bytes emmited.", output_len);
     } else {
-      println!("{}", bundle_output);
+      println!("{}", bundle_response.bundle_output);
     }
 
     Ok(())
@@ -410,34 +441,14 @@ impl TsCompiler {
 
     let msg = execute_in_thread(global_state.clone(), req_msg).await?;
     let json_str = std::str::from_utf8(&msg).unwrap();
-    if let Some(diagnostics) = Diagnostic::from_emit_result(json_str) {
-      return Err(ErrBox::from(diagnostics));
+
+    let compile_response: CompileResponse = serde_json::from_str(json_str)?;
+
+    if !compile_response.diagnostics.items.is_empty() {
+      return Err(ErrBox::from(compile_response.diagnostics));
     }
 
-    let v = serde_json::from_str::<serde_json::Value>(json_str)
-      .expect("Error decoding JSON string.");
-    let emit_map = v.get("emitMap").expect("Missing emitMap");
-
-    let emit_hash_map: HashMap<String, HashMap<String, String>> =
-      serde_json::from_value(emit_map.clone())
-        .expect("emitMap is not a hash map");
-
-    // Cache compiled modules
-    for (emmited_name, emmited_source) in emit_hash_map.iter() {
-      let specifier_str =
-        emmited_source.get("filename").expect("Missing filename");
-      let contents = emmited_source.get("contents").expect("Missing contents");
-      let specifier = ModuleSpecifier::resolve_url(specifier_str)
-        .expect("Should be a valid module specifier");
-
-      if emmited_name.ends_with(".map") {
-        self.cache_source_map(&specifier, contents)?;
-      } else if emmited_name.ends_with(".js") {
-        self.cache_compiled_file(&specifier, contents)?;
-      } else {
-        panic!("Trying to cache unknown file type {}", emmited_name);
-      }
-    }
+    self.cache_emitted_files(compile_response.emit_map)?;
     ts_compiler.get_compiled_module(&source_file_.url)
   }
 
@@ -459,6 +470,26 @@ impl TsCompiler {
     }
 
     None
+  }
+
+  fn cache_emitted_files(
+    &self,
+    emit_map: HashMap<String, EmittedSource>,
+  ) -> std::io::Result<()> {
+    for (emitted_name, source) in emit_map.iter() {
+      let specifier = ModuleSpecifier::resolve_url(&source.filename)
+        .expect("Should be a valid module specifier");
+
+      if emitted_name.ends_with(".map") {
+        self.cache_source_map(&specifier, &source.contents)?;
+      } else if emitted_name.ends_with(".js") {
+        self.cache_compiled_file(&specifier, &source.contents)?;
+      } else {
+        panic!("Trying to cache unknown file type {}", emitted_name);
+      }
+    }
+
+    Ok(())
   }
 
   pub fn get_compiled_module(
@@ -687,6 +718,7 @@ async fn execute_in_thread(
   Ok(buf)
 }
 
+/// This function is used by `Deno.compile()` and `Deno.bundle()` APIs.
 pub async fn runtime_compile<S: BuildHasher>(
   global_state: GlobalState,
   root_name: &str,
@@ -711,49 +743,26 @@ pub async fn runtime_compile<S: BuildHasher>(
 
   let msg = execute_in_thread(global_state, req_msg).await?;
   let json_str = std::str::from_utf8(&msg).unwrap();
-  let v = serde_json::from_str::<serde_json::Value>(json_str)
-    .expect("Error decoding JSON string.");
-  let diagnostics_array = v
-    .get("diagnostics")
-    .expect("Missing diagnostics field")
-    .as_array()
-    .unwrap();
-  if !diagnostics_array.is_empty() {
-    return Ok(v);
-  }
 
+  // TODO(bartlomieju): factor `bundle` path into separate function `runtime_bundle`
   if bundle {
-    return Ok(v);
+    let _response: RuntimeBundleResponse = serde_json::from_str(json_str)?;
+    return Ok(serde_json::from_str::<Value>(json_str).unwrap());
   }
 
-  let emit_map = v.get("emitMap").expect("Missing emitMap");
+  let response: RuntimeCompileResponse = serde_json::from_str(json_str)?;
 
-  let emit_hash_map: HashMap<String, HashMap<String, String>> =
-    serde_json::from_value(emit_map.clone())
-      .expect("emitMap is not a hash map");
-
-  if sources.is_none() {
-    // Cache compiled modules
-    for (emmited_name, emmited_source) in emit_hash_map.iter() {
-      let specifier_str =
-        emmited_source.get("filename").expect("Missing filename");
-      let contents = emmited_source.get("contents").expect("Missing contents");
-      let specifier = ModuleSpecifier::resolve_url(specifier_str)
-        .expect("Should be a valid module specifier");
-
-      if emmited_name.ends_with(".map") {
-        compiler.cache_source_map(&specifier, contents)?;
-      } else if emmited_name.ends_with(".js") {
-        compiler.cache_compiled_file(&specifier, contents)?;
-      } else {
-        panic!("Trying to cache unknown file type {}", emmited_name);
-      }
-    }
+  if response.diagnostics.is_empty() && sources.is_none() {
+    compiler.cache_emitted_files(response.emit_map)?;
   }
 
-  Ok(v)
+  // We're returning `Ok()` instead of `Err()` because it's not runtime
+  // error if there were diagnostics produces; we want to let user handle
+  // diagnostics in the runtime.
+  Ok(serde_json::from_str::<Value>(json_str).unwrap())
 }
 
+/// This function is used by `Deno.transpileOnly()` API.
 pub async fn runtime_transpile<S: BuildHasher>(
   global_state: GlobalState,
   sources: &HashMap<String, String, S>,

@@ -83,7 +83,7 @@ type CompilerRequest =
 interface CompileResult {
   emitMap?: Record<string, EmmitedSource>;
   bundleOutput?: string;
-  diagnostics?: Diagnostic;
+  diagnostics: Diagnostic;
 }
 
 interface RuntimeCompileResult {
@@ -136,12 +136,12 @@ async function compile(
     writeFile,
     unstable,
   }));
-  let diagnostics: readonly ts.Diagnostic[] | undefined;
+  let diagnostics: readonly ts.Diagnostic[] = [];
 
   // if there is a configuration supplied, we need to parse that
   if (config && config.length && configPath) {
     const configResult = host.configure(cwd, configPath, config);
-    diagnostics = processConfigureResponse(configResult, configPath);
+    diagnostics = processConfigureResponse(configResult, configPath) || [];
   }
 
   // This will recursively analyse all the code for other imports,
@@ -155,7 +155,7 @@ async function compile(
 
   // if there was a configuration and no diagnostics with it, we will continue
   // to generate the program and possibly emit it.
-  if (!diagnostics || (diagnostics && diagnostics.length === 0)) {
+  if (diagnostics.length === 0) {
     const options = host.getCompilationSettings();
     const program = ts.createProgram({
       rootNames,
@@ -194,9 +194,7 @@ async function compile(
   const result: CompileResult = {
     emitMap: state.emitMap,
     bundleOutput,
-    diagnostics: diagnostics.length
-      ? fromTypeScriptDiagnostic(diagnostics)
-      : undefined,
+    diagnostics: fromTypeScriptDiagnostic(diagnostics),
   };
 
   util.log("<<< compile end", {
