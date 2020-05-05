@@ -4,6 +4,28 @@
 /// <reference lib="esnext" />
 
 declare namespace Deno {
+  /** A set of error constructors that are raised by Deno APIs. */
+  export const errors: {
+    NotFound: ErrorConstructor;
+    PermissionDenied: ErrorConstructor;
+    ConnectionRefused: ErrorConstructor;
+    ConnectionReset: ErrorConstructor;
+    ConnectionAborted: ErrorConstructor;
+    NotConnected: ErrorConstructor;
+    AddrInUse: ErrorConstructor;
+    AddrNotAvailable: ErrorConstructor;
+    BrokenPipe: ErrorConstructor;
+    AlreadyExists: ErrorConstructor;
+    InvalidData: ErrorConstructor;
+    TimedOut: ErrorConstructor;
+    Interrupted: ErrorConstructor;
+    WriteZero: ErrorConstructor;
+    UnexpectedEof: ErrorConstructor;
+    BadResource: ErrorConstructor;
+    Http: ErrorConstructor;
+    Busy: ErrorConstructor;
+  };
+
   /** The current process id of the runtime. */
   export let pid: number;
 
@@ -1311,28 +1333,6 @@ declare namespace Deno {
    */
   export function writeTextFile(path: string, data: string): Promise<void>;
 
-  /** A set of error constructors that are raised by Deno APIs. */
-  export const errors: {
-    NotFound: ErrorConstructor;
-    PermissionDenied: ErrorConstructor;
-    ConnectionRefused: ErrorConstructor;
-    ConnectionReset: ErrorConstructor;
-    ConnectionAborted: ErrorConstructor;
-    NotConnected: ErrorConstructor;
-    AddrInUse: ErrorConstructor;
-    AddrNotAvailable: ErrorConstructor;
-    BrokenPipe: ErrorConstructor;
-    AlreadyExists: ErrorConstructor;
-    InvalidData: ErrorConstructor;
-    TimedOut: ErrorConstructor;
-    Interrupted: ErrorConstructor;
-    WriteZero: ErrorConstructor;
-    UnexpectedEof: ErrorConstructor;
-    BadResource: ErrorConstructor;
-    Http: ErrorConstructor;
-    Busy: ErrorConstructor;
-  };
-
   /** Synchronously truncates or extends the specified file, to reach the
    * specified `len`.  If `len` is not specified then the entire file contents
    * are truncated.
@@ -1571,18 +1571,6 @@ declare namespace Deno {
     options?: { recursive: boolean }
   ): AsyncIterableIterator<FsEvent>;
 
-  /** How to handle subprocess stdio.
-   *
-   * `"inherit"` The default if unspecified. The child inherits from the
-   * corresponding parent descriptor.
-   *
-   * `"piped"` A new pipe should be arranged to connect the parent and child
-   * sub-processes.
-   *
-   * `"null"` This stream will be ignored. This is the equivalent of attaching
-   * the stream to `/dev/null`. */
-  type ProcessStdio = "inherit" | "piped" | "null";
-
   export class Process {
     readonly rid: number;
     readonly pid: number;
@@ -1634,13 +1622,17 @@ declare namespace Deno {
     env?: {
       [key: string]: string;
     };
-    stdout?: ProcessStdio | number;
-    stderr?: ProcessStdio | number;
-    stdin?: ProcessStdio | number;
+    stdout?: "inherit" | "piped" | "null" | number;
+    stderr?: "inherit" | "piped" | "null" | number;
+    stdin?: "inherit" | "piped" | "null" | number;
   }
 
   /** Spawns new subprocess.  RunOptions must contain at a minimum the `opt.cmd`,
    * an array of program arguments, the first of which is the binary.
+   *
+   *       const p = Deno.run({
+   *         cmd: ["echo", "hello"],
+   *       });
    *
    * Subprocess uses same working directory as parent process unless `opt.cwd`
    * is specified.
@@ -1650,13 +1642,19 @@ declare namespace Deno {
    *
    * By default subprocess inherits stdio of parent process. To change that
    * `opt.stdout`, `opt.stderr` and `opt.stdin` can be specified independently -
-   * they can be set to either `ProcessStdio` or `rid` of open file.
+   * they can be set to either an rid of open file or set to "inherit" "piped"
+   * or "null":
+   *
+   * `"inherit"` The default if unspecified. The child inherits from the
+   * corresponding parent descriptor.
+   *
+   * `"piped"` A new pipe should be arranged to connect the parent and child
+   * sub-processes.
+   *
+   * `"null"` This stream will be ignored. This is the equivalent of attaching
+   * the stream to `/dev/null`.
    *
    * Details of the spawned process are returned.
-   *
-   *       const p = Deno.run({
-   *         cmd: ["echo", "hello"],
-   *       });
    *
    * Requires `allow-run` permission. */
   export function run(opt: RunOptions): Process;
