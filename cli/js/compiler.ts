@@ -31,9 +31,7 @@ import {
 import {
   EmmitedSource,
   WriteFileCallback,
-  createRuntimeWriteFile,
-  createRuntimeBundleWriteFile,
-  createWriteFile,
+  createCompileWriteFile,
   createBundleWriteFile,
   CompilerRequestType,
   convertCompilerOptions,
@@ -58,7 +56,6 @@ interface CompilerRequestCompile {
   config?: string;
   unstable: boolean;
   bundle: boolean;
-  outFile?: string;
   cwd: string;
 }
 
@@ -85,7 +82,6 @@ type CompilerRequest =
 
 interface CompileResult {
   emitMap?: Record<string, EmmitedSource>;
-  emitSkipped: boolean;
   bundleOutput?: string;
   diagnostics?: Diagnostic;
 }
@@ -107,7 +103,6 @@ async function compile(
     bundle,
     config,
     configPath,
-    outFile,
     rootNames,
     target,
     unstable,
@@ -127,17 +122,16 @@ async function compile(
   // out the bundle or log it to the console.
   const state: WriteFileState = {
     type: request.type,
-    compiledMap: {},
+    emitMap: {},
     bundle,
     host: undefined,
-    outFile,
     rootNames,
   };
   let writeFile: WriteFileCallback;
   if (bundle) {
     writeFile = createBundleWriteFile(state);
   } else {
-    writeFile = createWriteFile(state);
+    writeFile = createCompileWriteFile(state);
   }
   const host = (state.host = new Host({
     bundle,
@@ -162,7 +156,6 @@ async function compile(
     bundle || host.getCompilationSettings().checkJs
   );
 
-  let emitSkipped = true;
   // if there was a configuration and no diagnostics with it, we will continue
   // to generate the program and possibly emit it.
   if (!diagnostics || (diagnostics && diagnostics.length === 0)) {
@@ -188,7 +181,7 @@ async function compile(
         setRootExports(program, resolvedRootModules[0]);
       }
       const emitResult = program.emit();
-      emitSkipped = emitResult.emitSkipped;
+      assert(emitResult.emitSkipped === false, "Unexpected skip of the emit.");
       // emitResult.diagnostics is `readonly` in TS3.5+ and can't be assigned
       // without casting.
       diagnostics = emitResult.diagnostics;
@@ -202,9 +195,9 @@ async function compile(
     bundleOutput = state.bundleOutput;
   }
 
+  assert(state.emitMap);
   const result: CompileResult = {
-    emitSkipped,
-    emitMap: state.compiledMap,
+    emitMap: state.emitMap,
     bundleOutput,
     diagnostics: diagnostics.length
       ? fromTypeScriptDiagnostic(diagnostics)
@@ -283,14 +276,13 @@ async function runtimeCompile(
     rootNames,
     sources,
     emitMap: {},
-    compiledMap: {},
     bundleOutput: undefined,
   };
   let writeFile: WriteFileCallback;
   if (bundle) {
-    writeFile = createRuntimeBundleWriteFile(state);
+    writeFile = createBundleWriteFile(state);
   } else {
-    writeFile = createRuntimeWriteFile(state);
+    writeFile = createCompileWriteFile(state);
   }
 
   const host = (state.host = new Host({
@@ -354,7 +346,7 @@ async function runtimeCompile(
   } else {
     return {
       diagnostics: maybeDiagnostics,
-      emitMap: state.compiledMap,
+      emitMap: state.emitMap,
     } as RuntimeCompileResult;
   }
 }

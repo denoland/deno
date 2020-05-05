@@ -26,10 +26,8 @@ export interface WriteFileState {
   bundle?: boolean;
   bundleOutput?: string;
   host?: Host;
-  outFile?: string;
   rootNames: string[];
-  emitMap?: Record<string, string>;
-  compiledMap?: Record<string, EmmitedSource>;
+  emitMap?: Record<string, EmmitedSource>;
   sources?: Record<string, string>;
 }
 
@@ -47,7 +45,8 @@ export function getAsset(name: string): string {
   return compilerOps.getAsset(name);
 }
 
-export function createRuntimeBundleWriteFile(
+// TODO(bartlomieju): probably could be defined inline?
+export function createBundleWriteFile(
   state: WriteFileState
 ): WriteFileCallback {
   return function writeFile(
@@ -65,7 +64,8 @@ export function createRuntimeBundleWriteFile(
   };
 }
 
-export function createRuntimeWriteFile(
+// TODO(bartlomieju): probably could be defined inline?
+export function createCompileWriteFile(
   state: WriteFileState
 ): WriteFileCallback {
   return function writeFile(
@@ -76,57 +76,9 @@ export function createRuntimeWriteFile(
     assert(sourceFiles != null);
     assert(state.host);
     assert(state.emitMap);
-    assert(state.compiledMap);
     assert(!state.bundle);
     assert(sourceFiles.length === 1);
-    state.compiledMap[fileName] = {
-      filename: sourceFiles[0].fileName,
-      contents: data,
-    };
-  };
-}
-
-export function createBundleWriteFile(
-  state: WriteFileState
-): WriteFileCallback {
-  return function writeFile(
-    fileName: string,
-    data: string,
-    sourceFiles?: readonly ts.SourceFile[]
-  ): void {
-    assert(
-      sourceFiles != null,
-      `Unexpected emit of "${fileName}" which isn't part of a program.`
-    );
-    assert(state.host);
-    assert(state.bundle);
-    // we only support single root names for bundles
-    assert(
-      state.rootNames.length === 1,
-      `Only one root name supported.  Got "${JSON.stringify(state.rootNames)}"`
-    );
-    // this enriches the string with the loader and re-exports the
-    // exports of the root module
-    const content = buildBundle(state.rootNames[0], data, sourceFiles);
-    state.bundleOutput = content;
-  };
-}
-
-export function createWriteFile(state: WriteFileState): WriteFileCallback {
-  return function writeFile(
-    fileName: string,
-    data: string,
-    sourceFiles?: readonly ts.SourceFile[]
-  ): void {
-    assert(
-      sourceFiles != null,
-      `Unexpected emit of "${fileName}" which isn't part of a program.`
-    );
-    assert(state.host);
-    assert(!state.bundle);
-    assert(state.compiledMap);
-    assert(sourceFiles.length === 1);
-    state.compiledMap[fileName] = {
+    state.emitMap[fileName] = {
       filename: sourceFiles[0].fileName,
       contents: data,
     };
