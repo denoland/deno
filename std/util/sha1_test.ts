@@ -22,3 +22,10 @@ test("[util/sha] testSha1WithBuffer", () => {
   sha1.update(data.buffer);
   assertEquals(sha1.toString(), "03de6c570bfe24bfc328ccd7ca46b76eadaf4334");
 });
+
+test("[util/sha] test Uint8Array from Reader", async () => {
+  const data = await Deno.readFile("testdata/hashtest");
+
+  const hash = new Sha1().update(data).hex();
+  assertEquals(hash, "a94a8fe5ccb19ba61c4c0873d391e987982fbbd3");
+});

@@ -46,13 +46,15 @@ export class Sha1 {
     this.#finalized = this.#hashed = false;
   }
 
-  update(data: string | ArrayBuffer | ArrayBufferView): Sha1 {
+  update(data: string | ArrayBuffer | ArrayBufferView | Uint8Array): Sha1 {
     if (this.#finalized) {
       return this;
     }
     let notString = true;
     let message;
-    if (data instanceof ArrayBuffer) {
+    if (data instanceof Uint8Array) {
+      message = data;
+    } else if (data instanceof ArrayBuffer) {
       message = new Uint8Array(data);
     } else if (ArrayBuffer.isView(data)) {
       message = new Uint8Array(data.buffer);
