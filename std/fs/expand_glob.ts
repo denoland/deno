@@ -4,7 +4,6 @@ import {
   globToRegExp,
   isAbsolute,
   isGlob,
-  isWindows,
   joinGlobs,
   normalize,
 } from "../path/mod.ts";
@@ -18,6 +17,8 @@ import {
 import { assert } from "../testing/asserts.ts";
 const { cwd } = Deno;
 type FileInfo = Deno.FileInfo;
+
+const isWindows = Deno.build.os == "windows";
 
 export interface ExpandGlobOptions extends GlobOptions {
   root?: string;

@@ -4,7 +4,7 @@
 
 const { test } = Deno;
 import { assertEquals } from "../testing/asserts.ts";
-import { GlobrexOptions, globrex } from "./globrex.ts";
+import { GlobrexOptions, globrex } from "./_globrex.ts";
 
 const isWin = Deno.build.os === "windows";
 const t = { equal: assertEquals, is: assertEquals };

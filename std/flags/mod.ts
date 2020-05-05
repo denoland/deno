@@ -14,16 +14,13 @@ export interface ArgParsingOptions {
   /** When `true`, populate the result `_` with everything before the `--` and
    * the result `['--']` with everything after the `--`. Here's an example:
    *
+   *      // $ deno run example.ts -- a arg1
    *      const { args } = Deno;
    *      import { parse } from "https://deno.land/std/flags/mod.ts";
-   *      // options['--'] is now set to false
    *      console.dir(parse(args, { "--": false }));
-   *      // $ deno run example.ts -- a arg1
-   *      // output: { _: [ "example.ts", "a", "arg1" ] }
-   *      // options['--'] is now set to true
+   *      // output: { _: [ "a", "arg1" ] }
    *      console.dir(parse(args, { "--": true }));
-   *      // $ deno run example.ts -- a arg1
-   *      // output: { _: [ "example.ts" ], --: [ "a", "arg1" ] }
+   *      // output: { _: [], --: [ "a", "arg1" ] }
    *
    * Defaults to `false`.
    */

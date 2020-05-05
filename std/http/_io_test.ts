@@ -7,18 +7,18 @@ import {
 } from "../testing/asserts.ts";
 import {
   bodyReader,
+  chunkedBodyReader,
   writeTrailers,
   readTrailers,
   parseHTTPVersion,
   readRequest,
   writeResponse,
-} from "./io.ts";
+} from "./_io.ts";
 import { encode, decode } from "../encoding/utf8.ts";
 import { BufReader, ReadLineResult } from "../io/bufio.ts";
-import { chunkedBodyReader } from "./io.ts";
 import { ServerRequest, Response } from "./server.ts";
 import { StringReader } from "../io/readers.ts";
-import { mockConn } from "./mock.ts";
+import { mockConn } from "./_mock_conn.ts";
 const { Buffer, test, readAll } = Deno;
 
 test("bodyReader", async () => {
