@@ -93,12 +93,14 @@ fn op_open(
   }
 
   let options = args.options;
+
+  let path_canonical = std::fs::canonicalize(&path)?;
   if options.read {
-    state.check_read(&path)?;
+    state.check_read(&path_canonical)?;
   }
 
   if options.write || options.append {
-    state.check_write(&path)?;
+    state.check_write(&path_canonical)?;
   }
 
   open_options
