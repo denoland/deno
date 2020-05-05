@@ -148,8 +148,9 @@ impl Permissions {
   }
 
   pub fn check_read(&self, path: &Path) -> Result<(), OpError> {
-    self.get_state_read(&Some(path)).check(
-      &format!("read access to \"{}\"", path.display()),
+    let desymlinked = desymlink(&path)?;
+    self.get_state_read(&Some(&desymlinked)).check(
+      &format!("read access to \"{}\"", desymlinked.display()),
       "--allow-read",
     )
   }
@@ -162,8 +163,9 @@ impl Permissions {
   }
 
   pub fn check_write(&self, path: &Path) -> Result<(), OpError> {
-    self.get_state_write(&Some(path)).check(
-      &format!("write access to \"{}\"", path.display()),
+    let desymlinked = desymlink(&path)?;
+    self.get_state_write(&Some(&desymlinked)).check(
+      &format!("write access to \"{}\"", desymlinked.display()),
       "--allow-write",
     )
   }
@@ -293,6 +295,21 @@ impl Permissions {
       "plugin" => Ok(self.allow_plugin),
       "hrtime" => Ok(self.allow_hrtime),
       n => Err(OpError::other(format!("No such permission name: {}", n))),
+    }
+  }
+}
+
+/// This is security feature to make sure people don't escape the sandbox. See
+/// test sandbox_symlink_open.
+fn desymlink(path: &Path) -> Result<PathBuf, OpError> {
+  match std::fs::canonicalize(&path) {
+    Ok(p) => Ok(p),
+    Err(err) => {
+      if err.kind() == std::io::ErrorKind::NotFound {
+        Ok(path.to_path_buf())
+      } else {
+        Err(err.into())
+      }
     }
   }
 }
