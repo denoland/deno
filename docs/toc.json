@@ -62,6 +62,15 @@
   },
   "examples": {
     "name": "Examples",
-    "children": {}
+    "children": {
+      "unix-cat": "Unix cat program",
+      "fileserver": "File server",
+      "tcp-echo": "TCP echo server",
+      "subprocess": "Creating a subprocess",
+      "permissions": "Inspecting and revoking permissions",
+      "os-signals": "OS Signals",
+      "file-system-events": "File system events",
+      "testing-if-main": "Checking if file is main"
+    }
   }
 }

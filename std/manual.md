@@ -41,121 +41,7 @@ The Deno crate is hosted on [crates.io](https://crates.io/crates/deno).
 
 ## Examples
 
-### An implementation of the unix "cat" program
-
-In this program each command-line argument is assumed to be a filename, the file
-is opened, and printed to stdout.
-
-```ts
-for (let i = 0; i < Deno.args.length; i++) {
-  let filename = Deno.args[i];
-  let file = await Deno.open(filename);
-  await Deno.copy(file, Deno.stdout);
-  file.close();
-}
-```
-
-The `copy()` function here actually makes no more than the necessary kernel ->
-userspace -> kernel copies. That is, the same memory from which data is read
-from the file, is written to stdout. This illustrates a general design goal for
-I/O streams in Deno.
-
-Try the program:
-
-```shell
-$ deno --allow-read https://deno.land/std/examples/cat.ts /etc/passwd
-```
-
-### TCP echo server
-
-This is an example of a simple server which accepts connections on port 8080,
-and returns to the client anything it sends.
-
-```ts
-const listener = Deno.listen({ port: 8080 });
-console.log("listening on 0.0.0.0:8080");
-for await (const conn of listener) {
-  Deno.copy(conn, conn);
-}
-```
-
-When this program is started, it throws PermissionDenied error.
-
-```shell
-$ deno https://deno.land/std/examples/echo_server.ts
-error: Uncaught PermissionDenied: network access to "0.0.0.0:8080", run again with the --allow-net flag
-► $deno$/dispatch_json.ts:40:11
-    at DenoError ($deno$/errors.ts:20:5)
-    ...
-```
-
-For security reasons, Deno does not allow programs to access the network without
-explicit permission. To allow accessing the network, use a command-line flag:
-
-```shell
-$ deno --allow-net https://deno.land/std/examples/echo_server.ts
-```
-
-To test it, try sending data to it with netcat:
-
-```shell
-$ nc localhost 8080
-hello world
-hello world
-```
-
-Like the `cat.ts` example, the `copy()` function here also does not make
-unnecessary memory copies. It receives a packet from the kernel and sends back,
-without further complexity.
-
-### Inspecting and revoking permissions
-
-Sometimes a program may want to revoke previously granted permissions. When a
-program, at a later stage, needs those permissions, it will fail.
-
-```ts
-// lookup a permission
-const status = await Deno.permissions.query({ name: "write" });
-if (status.state !== "granted") {
-  throw new Error("need write permission");
-}
-
-const log = await Deno.open("request.log", "a+");
-
-// revoke some permissions
-await Deno.permissions.revoke({ name: "read" });
-await Deno.permissions.revoke({ name: "write" });
-
-// use the log file
-const encoder = new TextEncoder();
-await log.write(encoder.encode("hello\n"));
-
-// this will fail.
-await Deno.remove("request.log");
-```
-
-### File server
-
-This one serves a local directory in HTTP.
-
-```bash
-deno install --allow-net --allow-read file_server https://deno.land/std/http/file_server.ts
-```
-
-Run it:
-
-```shell
-$ file_server .
-Downloading https://deno.land/std/http/file_server.ts...
-[...]
-HTTP server listening on http://0.0.0.0:4500/
-```
-
-And if you ever want to upgrade to the latest published version:
-
-```shell
-$ file_server --reload
-```
+<!-- Should this be part of examples? Probably fits better into 'Linking to external code' -->
 
 ### Reload specific modules
 
@@ -174,6 +60,8 @@ To reload specific modules (in this example - colors and file system utils) use
 a comma to separate URLs
 
 `--reload=https://deno.land/std/fs/utils.ts,https://deno.land/std/fmt/colors.ts`
+
+<!-- Should this be part of examples? -->
 
 ### Permissions whitelist
 
@@ -207,130 +95,7 @@ const result = await fetch("https://deno.land/");
 $ deno --allow-net=deno.land https://deno.land/std/examples/curl.ts https://deno.land/
 ```
 
-### Run subprocess
-
-[API Reference](https://deno.land/typedoc/index.html#run)
-
-Example:
-
-```ts
-// create subprocess
-const p = Deno.run({
-  cmd: ["echo", "hello"],
-});
-
-// await its completion
-await p.status();
-```
-
-Run it:
-
-```shell
-$ deno --allow-run ./subprocess_simple.ts
-hello
-```
-
-Here a function is assigned to `window.onload`. This function is called after
-the main script is loaded. This is the same as
-[onload](https://developer.mozilla.org/en-US/docs/Web/API/GlobalEventHandlers/onload)
-of the browsers, and it can be used as the main entrypoint.
-
-By default when you use `Deno.run()` subprocess inherits `stdin`, `stdout` and
-`stderr` of parent process. If you want to communicate with started subprocess
-you can use `"piped"` option.
-
-```ts
-const fileNames = Deno.args;
-
-const p = Deno.run({
-  cmd: [
-    "deno",
-    "run",
-    "--allow-read",
-    "https://deno.land/std/examples/cat.ts",
-    ...fileNames,
-  ],
-  stdout: "piped",
-  stderr: "piped",
-});
-
-const { code } = await p.status();
-
-if (code === 0) {
-  const rawOutput = await p.output();
-  await Deno.stdout.write(rawOutput);
-} else {
-  const rawError = await p.stderrOutput();
-  const errorString = new TextDecoder().decode(rawError);
-  console.log(errorString);
-}
-
-Deno.exit(code);
-```
-
-When you run it:
-
-```shell
-$ deno run --allow-run ./subprocess.ts <somefile>
-[file content]
-
-$ deno run --allow-run ./subprocess.ts non_existent_file.md
-
-Uncaught NotFound: No such file or directory (os error 2)
-    at DenoError (deno/js/errors.ts:22:5)
-    at maybeError (deno/js/errors.ts:41:12)
-    at handleAsyncMsgFromRust (deno/js/dispatch.ts:27:17)
-```
-
-### Handle OS Signals
-
-[API Reference](https://deno.land/typedoc/index.html#signal)
-
-You can use `Deno.signal()` function for handling OS signals.
-
-```
-for await (const _ of Deno.signal(Deno.Signal.SIGINT)) {
-  console.log("interrupted!");
-}
-```
-
-`Deno.signal()` also works as a promise.
-
-```
-await Deno.signal(Deno.Singal.SIGINT);
-console.log("interrupted!");
-```
-
-If you want to stop watching the signal, you can use `dispose()` method of the
-signal object.
-
-```
-const sig = Deno.signal(Deno.Signal.SIGINT);
-setTimeout(() => { sig.dispose(); }, 5000);
-
-for await (const _ of sig) {
-  console.log("interrupted");
-}
-```
-
-The above for-await loop exits after 5 seconds when sig.dispose() is called.
-
-### File system events
-
-To poll for file system events:
-
-```ts
-const watcher = Deno.watchFs("/");
-for await (const event of watcher) {
-  console.log(">>>> event", event);
-  // { kind: "create", paths: [ "/foo.txt" ] }
-}
-```
-
-Note that the exact ordering of the events can vary between operating systems.
-This feature uses different syscalls depending on the platform:
-
-Linux: inotify macOS: FSEvents Windows: ReadDirectoryChangesW
+<!-- Part of linking to third party code. -->
 
 ### Linking to third party code
 
@@ -421,6 +186,8 @@ import { assertEquals, runTests, test } from "./deps.ts";
 This design circumvents a plethora of complexity spawned by package management
 software, centralized code repositories, and superfluous file formats.
 
+<!-- Part of Using Typescript -->
+
 ### Using external type definitions
 
 Deno supports both JavaScript and TypeScript as first class languages at
@@ -508,6 +275,8 @@ The TypeScript compiler supports triple-slash directives, including a type
 reference directive. If Deno used this, it would interfere with the behavior of
 the TypeScript compiler. Deno only looks for the directive in JavaScript (and
 JSX) files.
+
+<!-- Not really part of examples right? -->
 
 ### Referencing TypeScript library files
 
@@ -602,17 +371,6 @@ const [errors, emitted] = await Deno.compile("./main.ts", undefined, {
 **Note** that the `dom` library conflicts with some of the default globals that
 are defined in the default type library for Deno. To avoid this, you need to
 specify a `lib` option in the compiler options to the runtime compiler APIs.
-
-### Testing if current file is the main program
-
-To test if the current script has been executed as the main input to the program
-check `import.meta.main`.
-
-```ts
-if (import.meta.main) {
-  console.log("main");
-}
-```
 
 ## Command line interface
 
@@ -1135,7 +893,6 @@ All listeners added using `window.addEventListener` were run, but
 defined in `imported.ts`.
 
 ## Internal details
-
 
 ### Profiling
 
