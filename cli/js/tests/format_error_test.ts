@@ -26,7 +26,7 @@ unitTest(function formatDiagnosticError() {
   try {
     Deno.formatDiagnostics(bad);
   } catch (e) {
-    assert(e instanceof TypeError);
+    assert(e instanceof Deno.errors.InvalidData);
     thrown = true;
   }
   assert(thrown);
