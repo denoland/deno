@@ -116,10 +116,7 @@ async function compile(
   // When a programme is emitted, TypeScript will call `writeFile` with
   // each file that needs to be emitted.  The Deno compiler host delegates
   // this, to make it easier to perform the right actions, which vary
-  // based a lot on the request.  For a `Compile` request, we need to
-  // cache all the files in the privileged side if we aren't bundling,
-  // and if we are bundling we need to enrich the bundle and either write
-  // out the bundle or log it to the console.
+  // based a lot on the request.
   const state: WriteFileState = {
     type: request.type,
     emitMap: {},
@@ -176,8 +173,6 @@ async function compile(
       if (bundle) {
         // we only support a single root module when bundling
         assert(resolvedRootModules.length === 1);
-        // warning so it goes to stderr instead of stdout
-        console.warn(`Bundling "${resolvedRootModules[0]}"`);
         setRootExports(program, resolvedRootModules[0]);
       }
       const emitResult = program.emit();

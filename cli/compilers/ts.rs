@@ -282,6 +282,7 @@ impl TsCompiler {
       "Invoking the compiler to bundle. module_name: {}",
       module_name
     );
+    eprintln!("Bundling {}", module_name);
 
     let root_names = vec![module_name];
     let req_msg = req(
