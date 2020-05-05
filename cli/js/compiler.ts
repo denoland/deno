@@ -18,11 +18,50 @@ import { CompilerOptions } from "./compiler_options.ts";
 import { Diagnostic, DiagnosticItem } from "./diagnostics.ts";
 import { fromTypeScriptDiagnostic } from "./diagnostics_util.ts";
 import { TranspileOnlyResult } from "./ops/runtime_compiler.ts";
-import * as compilerOps from "./ops/compiler.ts";
+import { sendAsync, sendSync } from "./ops/dispatch_json.ts";
 import { bootstrapWorkerRuntime } from "./runtime_worker.ts";
 import { assert, log } from "./util.ts";
 import * as util from "./util.ts";
 import { atob } from "./web/text_encoding.ts";
+import { TextDecoder, TextEncoder } from "./web/text_encoding.ts";
+import { core } from "./core.ts";
+
+export function resolveModules(
+  specifiers: string[],
+  referrer?: string
+): string[] {
+  util.log("compiler::resolveModules", { specifiers, referrer });
+  return sendSync("op_resolve_modules", { specifiers, referrer });
+}
+
+export function fetchSourceFiles(
+  specifiers: string[],
+  referrer?: string
+): Promise<
+  Array<{
+    url: string;
+    filename: string;
+    mediaType: number;
+    sourceCode: string;
+  }>
+> {
+  util.log("compiler::fetchSourceFiles", { specifiers, referrer });
+  return sendAsync("op_fetch_source_files", {
+    specifiers,
+    referrer,
+  });
+}
+
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
+
+function getAsset(name: string): string {
+  const opId = core.ops()["op_fetch_asset"];
+  // We really don't want to depend on JSON dispatch during snapshotting, so
+  // this op exchanges strings with Rust as raw byte arrays.
+  const sourceCodeBytes = core.dispatch(opId, encoder.encode(name));
+  return decoder.decode(sourceCodeBytes!);
+}
 
 // Constants used by `normalizeString` and `resolvePath`
 const CHAR_DOT = 46; /* . */
@@ -582,12 +621,6 @@ function resolveSpecifier(specifier: string, referrer: string): string {
   return r;
 }
 
-// TODO(ry) Remove. Unnecessary redirection to compilerOps.resolveModules.
-function resolveModules(specifiers: string[], referrer?: string): string[] {
-  util.log("compiler_imports::resolveModules", { specifiers, referrer });
-  return compilerOps.resolveModules(specifiers, referrer);
-}
-
 function getMediaType(filename: string): MediaType {
   const maybeExtension = /\.([a-zA-Z]+)$/.exec(filename);
   if (!maybeExtension) {
@@ -660,11 +693,7 @@ async function processImports(
   }
   const sources = specifiers.map(([, moduleSpecifier]) => moduleSpecifier);
   const resolvedSources = resolveModules(sources, referrer);
-  util.log("compiler_imports::fetchSourceFiles", { specifiers, referrer });
-  const sourceFiles = await compilerOps.fetchSourceFiles(
-    resolvedSources,
-    referrer
-  );
+  const sourceFiles = await fetchSourceFiles(resolvedSources, referrer);
   assert(sourceFiles.length === specifiers.length);
   for (let i = 0; i < sourceFiles.length; i++) {
     const sourceFileJson = sourceFiles[i];
@@ -778,10 +807,6 @@ enum CompilerRequestType {
   Compile = 0,
   RuntimeCompile = 1,
   RuntimeTranspile = 2,
-}
-
-function getAsset(name: string): string {
-  return compilerOps.getAsset(name);
 }
 
 // TODO(bartlomieju): probably could be defined inline?
