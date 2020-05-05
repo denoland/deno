@@ -4,12 +4,16 @@ import { bold, cyan, yellow } from "../colors.ts";
 import { CompilerOptions } from "./api.ts";
 import { buildBundle } from "./bundler.ts";
 import { ConfigureResponse, Host } from "./host.ts";
-import { MediaType, SourceFile } from "./sourcefile.ts";
-import { atob, TextEncoder } from "../web/text_encoding.ts";
+import { atob } from "../web/text_encoding.ts";
 import * as compilerOps from "../ops/compiler.ts";
-import * as util from "../util.ts";
 import { assert } from "../util.ts";
-import { writeFileSync } from "../write_file.ts";
+
+export interface EmmitedSource {
+  // original filename
+  filename: string;
+  // compiled contents
+  contents: string;
+}
 
 export type WriteFileCallback = (
   fileName: string,
@@ -20,11 +24,10 @@ export type WriteFileCallback = (
 export interface WriteFileState {
   type: CompilerRequestType;
   bundle?: boolean;
+  bundleOutput?: string;
   host?: Host;
-  outFile?: string;
   rootNames: string[];
-  emitMap?: Record<string, string>;
-  emitBundle?: string;
+  emitMap?: Record<string, EmmitedSource>;
   sources?: Record<string, string>;
 }
 
@@ -38,87 +41,33 @@ export enum CompilerRequestType {
 
 export const OUT_DIR = "$deno$";
 
-function cache(
-  moduleId: string,
-  emittedFileName: string,
-  contents: string,
-  checkJs = false
-): void {
-  util.log("compiler::cache", { moduleId, emittedFileName, checkJs });
-  const sf = SourceFile.get(moduleId);
-
-  if (sf) {
-    // NOTE: JavaScript files are only cached to disk if `checkJs`
-    // option in on
-    if (sf.mediaType === MediaType.JavaScript && !checkJs) {
-      return;
-    }
-  }
-
-  if (emittedFileName.endsWith(".map")) {
-    // Source Map
-    compilerOps.cache(".map", moduleId, contents);
-  } else if (emittedFileName.endsWith(".js")) {
-    // Compiled JavaScript
-    compilerOps.cache(".js", moduleId, contents);
-  } else {
-    assert(false, `Trying to cache unhandled file type "${emittedFileName}"`);
-  }
-}
-
 export function getAsset(name: string): string {
   return compilerOps.getAsset(name);
 }
 
-export function createWriteFile(state: WriteFileState): WriteFileCallback {
-  const encoder = new TextEncoder();
-  if (state.type === CompilerRequestType.Compile) {
-    return function writeFile(
-      fileName: string,
-      data: string,
-      sourceFiles?: readonly ts.SourceFile[]
-    ): void {
-      assert(
-        sourceFiles != null,
-        `Unexpected emit of "${fileName}" which isn't part of a program.`
-      );
-      assert(state.host);
-      if (!state.bundle) {
-        assert(sourceFiles.length === 1);
-        cache(
-          sourceFiles[0].fileName,
-          fileName,
-          data,
-          state.host.getCompilationSettings().checkJs
-        );
-      } else {
-        // if the fileName is set to an internal value, just noop, this is
-        // used in the Rust unit tests.
-        if (state.outFile && state.outFile.startsWith(OUT_DIR)) {
-          return;
-        }
-        // we only support single root names for bundles
-        assert(
-          state.rootNames.length === 1,
-          `Only one root name supported.  Got "${JSON.stringify(
-            state.rootNames
-          )}"`
-        );
-        // this enriches the string with the loader and re-exports the
-        // exports of the root module
-        const content = buildBundle(state.rootNames[0], data, sourceFiles);
-        if (state.outFile) {
-          const encodedData = encoder.encode(content);
-          console.warn(`Emitting bundle to "${state.outFile}"`);
-          writeFileSync(state.outFile, encodedData);
-          console.warn(`${humanFileSize(encodedData.length)} emitted.`);
-        } else {
-          console.log(content);
-        }
-      }
-    };
-  }
+// TODO(bartlomieju): probably could be defined inline?
+export function createBundleWriteFile(
+  state: WriteFileState
+): WriteFileCallback {
+  return function writeFile(
+    _fileName: string,
+    data: string,
+    sourceFiles?: readonly ts.SourceFile[]
+  ): void {
+    assert(sourceFiles != null);
+    assert(state.host);
+    assert(state.emitMap);
+    assert(state.bundle);
+    // we only support single root names for bundles
+    assert(state.rootNames.length === 1);
+    state.bundleOutput = buildBundle(state.rootNames[0], data, sourceFiles);
+  };
+}
 
+// TODO(bartlomieju): probably could be defined inline?
+export function createCompileWriteFile(
+  state: WriteFileState
+): WriteFileCallback {
   return function writeFile(
     fileName: string,
     data: string,
@@ -127,24 +76,12 @@ export function createWriteFile(state: WriteFileState): WriteFileCallback {
     assert(sourceFiles != null);
     assert(state.host);
     assert(state.emitMap);
-    if (!state.bundle) {
-      assert(sourceFiles.length === 1);
-      state.emitMap[fileName] = data;
-      // we only want to cache the compiler output if we are resolving
-      // modules externally
-      if (!state.sources) {
-        cache(
-          sourceFiles[0].fileName,
-          fileName,
-          data,
-          state.host.getCompilationSettings().checkJs
-        );
-      }
-    } else {
-      // we only support single root names for bundles
-      assert(state.rootNames.length === 1);
-      state.emitBundle = buildBundle(state.rootNames[0], data, sourceFiles);
-    }
+    assert(!state.bundle);
+    assert(sourceFiles.length === 1);
+    state.emitMap[fileName] = {
+      filename: sourceFiles[0].fileName,
+      contents: data,
+    };
   };
 }
 
@@ -378,20 +315,6 @@ export function commonPath(paths: string[], sep = "/"): string {
   }
   const prefix = parts.slice(0, endOfPrefix).join(sep);
   return prefix.endsWith(sep) ? prefix : `${prefix}${sep}`;
-}
-
-function humanFileSize(bytes: number): string {
-  const thresh = 1000;
-  if (Math.abs(bytes) < thresh) {
-    return bytes + " B";
-  }
-  const units = ["kB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
-  let u = -1;
-  do {
-    bytes /= thresh;
-    ++u;
-  } while (Math.abs(bytes) >= thresh && u < units.length - 1);
-  return `${bytes.toFixed(1)} ${units[u]}`;
 }
 
 // @internal

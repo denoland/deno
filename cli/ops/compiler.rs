@@ -13,7 +13,6 @@ use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
 
 pub fn init(i: &mut CoreIsolate, s: &State) {
-  i.register_op("op_cache", s.stateful_json_op(op_cache));
   i.register_op("op_resolve_modules", s.stateful_json_op(op_resolve_modules));
   i.register_op(
     "op_fetch_source_files",
@@ -24,35 +23,6 @@ pub fn init(i: &mut CoreIsolate, s: &State) {
     "op_fetch_asset",
     deno_typescript::op_fetch_asset(custom_assets),
   );
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct CacheArgs {
-  module_id: String,
-  contents: String,
-  extension: String,
-}
-
-fn op_cache(
-  state: &State,
-  args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, OpError> {
-  let args: CacheArgs = serde_json::from_value(args)?;
-
-  let module_specifier = ModuleSpecifier::resolve_url(&args.module_id)
-    .expect("Should be valid module specifier");
-
-  let state_ = &state.borrow().global_state;
-  let ts_compiler = state_.ts_compiler.clone();
-  ts_compiler.cache_compiler_output(
-    &module_specifier,
-    &args.extension,
-    &args.contents,
-  )?;
-
-  Ok(JsonOp::Sync(json!({})))
 }
 
 #[derive(Deserialize, Debug)]

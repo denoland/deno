@@ -255,16 +255,12 @@ export class Host implements ts.CompilerHost {
       assert(sourceFile != null);
       if (!sourceFile.tsSourceFile) {
         assert(sourceFile.sourceCode != null);
-        // even though we assert the extension for JSON modules to the compiler
-        // is TypeScript, TypeScript internally analyses the filename for its
-        // extension and tries to parse it as JSON instead of TS.  We have to
-        // change the filename to the TypeScript file.
+        const tsSourceFileName = fileName.startsWith(ASSETS)
+          ? sourceFile.filename
+          : fileName;
+
         sourceFile.tsSourceFile = ts.createSourceFile(
-          fileName.startsWith(ASSETS)
-            ? sourceFile.filename
-            : fileName.toLowerCase().endsWith(".json")
-            ? `${fileName}.ts`
-            : fileName,
+          tsSourceFileName,
           sourceFile.sourceCode,
           languageVersion
         );
@@ -294,15 +290,20 @@ export class Host implements ts.CompilerHost {
       containingFile,
     });
     return moduleNames.map((specifier) => {
-      const url = SourceFile.getUrl(specifier, containingFile);
-      const sourceFile = specifier.startsWith(ASSETS)
-        ? getAssetInternal(specifier)
-        : url
-        ? SourceFile.get(url)
-        : undefined;
+      const maybeUrl = SourceFile.getUrl(specifier, containingFile);
+
+      let sourceFile: SourceFile | undefined = undefined;
+
+      if (specifier.startsWith(ASSETS)) {
+        sourceFile = getAssetInternal(specifier);
+      } else if (typeof maybeUrl !== "undefined") {
+        sourceFile = SourceFile.get(maybeUrl);
+      }
+
       if (!sourceFile) {
         return undefined;
       }
+
       return {
         resolvedFileName: sourceFile.url,
         isExternalLibraryImport: specifier.startsWith(ASSETS),

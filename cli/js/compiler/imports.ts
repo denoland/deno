@@ -122,11 +122,8 @@ export async function processImports(
       SourceFile.get(sourceFileJson.url) || new SourceFile(sourceFileJson);
     sourceFile.cache(specifiers[i][0], referrer);
     if (!sourceFile.processed) {
-      await processImports(
-        sourceFile.imports(processJsImports),
-        sourceFile.url,
-        processJsImports
-      );
+      const sourceFileImports = sourceFile.imports(processJsImports);
+      await processImports(sourceFileImports, sourceFile.url, processJsImports);
     }
   }
   return resolvedSources;

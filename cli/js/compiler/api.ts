@@ -6,6 +6,8 @@
 import { DiagnosticItem } from "../diagnostics.ts";
 import * as util from "../util.ts";
 import * as runtimeCompilerOps from "../ops/runtime_compiler.ts";
+import { TranspileOnlyResult } from "../ops/runtime_compiler.ts";
+export { TranspileOnlyResult } from "../ops/runtime_compiler.ts";
 
 export interface CompilerOptions {
   allowJs?: boolean;
@@ -145,12 +147,8 @@ function checkRelative(specifier: string): string {
     : `./${specifier}`;
 }
 
-export interface TranspileOnlyResult {
-  source: string;
-  map?: string;
-}
-
-export async function transpileOnly(
+// TODO(bartlomieju): change return type to interface?
+export function transpileOnly(
   sources: Record<string, string>,
   options: CompilerOptions = {}
 ): Promise<Record<string, TranspileOnlyResult>> {
@@ -159,10 +157,10 @@ export async function transpileOnly(
     sources,
     options: JSON.stringify(options),
   };
-  const result = await runtimeCompilerOps.transpile(payload);
-  return JSON.parse(result);
+  return runtimeCompilerOps.transpile(payload);
 }
 
+// TODO(bartlomieju): change return type to interface?
 export async function compile(
   rootName: string,
   sources?: Record<string, string>,
@@ -180,9 +178,20 @@ export async function compile(
     options,
   });
   const result = await runtimeCompilerOps.compile(payload);
-  return JSON.parse(result);
+  util.assert(result.emitMap);
+  const maybeDiagnostics =
+    result.diagnostics.length === 0 ? undefined : result.diagnostics;
+
+  const emitMap: Record<string, string> = {};
+
+  for (const [key, emmitedSource] of Object.entries(result.emitMap)) {
+    emitMap[key] = emmitedSource.contents;
+  }
+
+  return [maybeDiagnostics, emitMap];
 }
 
+// TODO(bartlomieju): change return type to interface?
 export async function bundle(
   rootName: string,
   sources?: Record<string, string>,
@@ -200,5 +209,8 @@ export async function bundle(
     options,
   });
   const result = await runtimeCompilerOps.compile(payload);
-  return JSON.parse(result);
+  util.assert(result.output);
+  const maybeDiagnostics =
+    result.diagnostics.length === 0 ? undefined : result.diagnostics;
+  return [maybeDiagnostics, result.output];
 }

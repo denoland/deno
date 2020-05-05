@@ -29,7 +29,10 @@ import {
   resolveModules,
 } from "./compiler/imports.ts";
 import {
-  createWriteFile,
+  EmmitedSource,
+  WriteFileCallback,
+  createCompileWriteFile,
+  createBundleWriteFile,
   CompilerRequestType,
   convertCompilerOptions,
   ignoredDiagnostics,
@@ -53,7 +56,6 @@ interface CompilerRequestCompile {
   config?: string;
   unstable: boolean;
   bundle: boolean;
-  outFile?: string;
   cwd: string;
 }
 
@@ -79,16 +81,20 @@ type CompilerRequest =
   | CompilerRequestRuntimeTranspile;
 
 interface CompileResult {
-  emitSkipped: boolean;
-  diagnostics?: Diagnostic;
+  emitMap?: Record<string, EmmitedSource>;
+  bundleOutput?: string;
+  diagnostics: Diagnostic;
 }
 
-type RuntimeCompileResult = [
-  undefined | DiagnosticItem[],
-  Record<string, string>
-];
+interface RuntimeCompileResult {
+  emitMap: Record<string, EmmitedSource>;
+  diagnostics: DiagnosticItem[];
+}
 
-type RuntimeBundleResult = [undefined | DiagnosticItem[], string];
+interface RuntimeBundleResult {
+  output: string;
+  diagnostics: DiagnosticItem[];
+}
 
 async function compile(
   request: CompilerRequestCompile
@@ -97,7 +103,6 @@ async function compile(
     bundle,
     config,
     configPath,
-    outFile,
     rootNames,
     target,
     unstable,
@@ -111,31 +116,32 @@ async function compile(
   // When a programme is emitted, TypeScript will call `writeFile` with
   // each file that needs to be emitted.  The Deno compiler host delegates
   // this, to make it easier to perform the right actions, which vary
-  // based a lot on the request.  For a `Compile` request, we need to
-  // cache all the files in the privileged side if we aren't bundling,
-  // and if we are bundling we need to enrich the bundle and either write
-  // out the bundle or log it to the console.
+  // based a lot on the request.
   const state: WriteFileState = {
     type: request.type,
+    emitMap: {},
     bundle,
     host: undefined,
-    outFile,
     rootNames,
   };
-  const writeFile = createWriteFile(state);
-
+  let writeFile: WriteFileCallback;
+  if (bundle) {
+    writeFile = createBundleWriteFile(state);
+  } else {
+    writeFile = createCompileWriteFile(state);
+  }
   const host = (state.host = new Host({
     bundle,
     target,
     writeFile,
     unstable,
   }));
-  let diagnostics: readonly ts.Diagnostic[] | undefined;
+  let diagnostics: readonly ts.Diagnostic[] = [];
 
   // if there is a configuration supplied, we need to parse that
   if (config && config.length && configPath) {
     const configResult = host.configure(cwd, configPath, config);
-    diagnostics = processConfigureResponse(configResult, configPath);
+    diagnostics = processConfigureResponse(configResult, configPath) || [];
   }
 
   // This will recursively analyse all the code for other imports,
@@ -147,10 +153,9 @@ async function compile(
     bundle || host.getCompilationSettings().checkJs
   );
 
-  let emitSkipped = true;
   // if there was a configuration and no diagnostics with it, we will continue
   // to generate the program and possibly emit it.
-  if (!diagnostics || (diagnostics && diagnostics.length === 0)) {
+  if (diagnostics.length === 0) {
     const options = host.getCompilationSettings();
     const program = ts.createProgram({
       rootNames,
@@ -168,23 +173,28 @@ async function compile(
       if (bundle) {
         // we only support a single root module when bundling
         assert(resolvedRootModules.length === 1);
-        // warning so it goes to stderr instead of stdout
-        console.warn(`Bundling "${resolvedRootModules[0]}"`);
         setRootExports(program, resolvedRootModules[0]);
       }
       const emitResult = program.emit();
-      emitSkipped = emitResult.emitSkipped;
+      assert(emitResult.emitSkipped === false, "Unexpected skip of the emit.");
       // emitResult.diagnostics is `readonly` in TS3.5+ and can't be assigned
       // without casting.
       diagnostics = emitResult.diagnostics;
     }
   }
 
+  let bundleOutput = undefined;
+
+  if (bundle) {
+    assert(state.bundleOutput);
+    bundleOutput = state.bundleOutput;
+  }
+
+  assert(state.emitMap);
   const result: CompileResult = {
-    emitSkipped,
-    diagnostics: diagnostics.length
-      ? fromTypeScriptDiagnostic(diagnostics)
-      : undefined,
+    emitMap: state.emitMap,
+    bundleOutput,
+    diagnostics: fromTypeScriptDiagnostic(diagnostics),
   };
 
   util.log("<<< compile end", {
@@ -259,9 +269,14 @@ async function runtimeCompile(
     rootNames,
     sources,
     emitMap: {},
-    emitBundle: undefined,
+    bundleOutput: undefined,
   };
-  const writeFile = createWriteFile(state);
+  let writeFile: WriteFileCallback;
+  if (bundle) {
+    writeFile = createBundleWriteFile(state);
+  } else {
+    writeFile = createCompileWriteFile(state);
+  }
 
   const host = (state.host = new Host({
     bundle,
@@ -314,12 +329,18 @@ async function runtimeCompile(
 
   const maybeDiagnostics = diagnostics.length
     ? fromTypeScriptDiagnostic(diagnostics).items
-    : undefined;
+    : [];
 
   if (bundle) {
-    return [maybeDiagnostics, state.emitBundle] as RuntimeBundleResult;
+    return {
+      diagnostics: maybeDiagnostics,
+      output: state.bundleOutput,
+    } as RuntimeBundleResult;
   } else {
-    return [maybeDiagnostics, state.emitMap] as RuntimeCompileResult;
+    return {
+      diagnostics: maybeDiagnostics,
+      emitMap: state.emitMap,
+    } as RuntimeCompileResult;
   }
 }
 

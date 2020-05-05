@@ -54,8 +54,6 @@ export class SourceFile {
   extension!: ts.Extension;
   filename!: string;
 
-  importedFiles?: Array<[string, string]>;
-
   mediaType!: MediaType;
   processed = false;
   sourceCode?: string;
@@ -93,14 +91,18 @@ export class SourceFile {
       return [];
     }
 
+    const readImportFiles = true;
+    const detectJsImports =
+      this.mediaType === MediaType.JavaScript ||
+      this.mediaType === MediaType.JSX;
+
     const preProcessedFileInfo = ts.preProcessFile(
       this.sourceCode,
-      true,
-      this.mediaType === MediaType.JavaScript ||
-        this.mediaType === MediaType.JSX
+      readImportFiles,
+      detectJsImports
     );
     this.processed = true;
-    const files = (this.importedFiles = [] as Array<[string, string]>);
+    const files: Array<[string, string]> = [];
 
     function process(references: Array<{ fileName: string }>): void {
       for (const { fileName } of references) {
@@ -159,9 +161,5 @@ export class SourceFile {
 
   static get(url: string): SourceFile | undefined {
     return moduleCache.get(url);
-  }
-
-  static has(url: string): boolean {
-    return moduleCache.has(url);
   }
 }
