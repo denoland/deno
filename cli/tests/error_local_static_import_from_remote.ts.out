@@ -4,6 +4,6 @@ error: Uncaught PermissionDenied: Remote module are not allowed to statically im
     at Object.sendAsync ($deno$/ops/dispatch_json.ts:[WILDCARD])
     at async processImports ($deno$/compiler/imports.ts:[WILDCARD])
     at async Object.processImports ($deno$/compiler/imports.ts:[WILDCARD])
-    at async compile ([WILDCARD]compiler.ts:[WILDCARD])
-    at async tsCompilerOnMessage ([WILDCARD]compiler.ts:[WILDCARD])
+    at async compile ($deno$/compiler.ts:[WILDCARD])
+    at async tsCompilerOnMessage ($deno$/compiler.ts:[WILDCARD])
     at async workerMessageRecvCallback ($deno$/runtime_worker.ts:[WILDCARD])
