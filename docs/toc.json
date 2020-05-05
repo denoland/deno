@@ -2,11 +2,11 @@
   "introduction": {
     "name": "Introduction"
   },
-  "getting-started": {
+  "getting_started": {
     "name": "Getting Started",
     "children": {
       "installation": "Installation",
-      "first-steps": "First Steps",
+      "first_steps": "First Steps",
       "typescript": "Using TypeScript",
       "webassembly": "Using WebAssembly"
     }
@@ -14,16 +14,16 @@
   "runtime": {
     "name": "The Runtime",
     "children": {
-      "web-apis": "Web APIs",
-      "deno-global": "The Deno Global",
+      "web_apis": "Web APIs",
+      "deno_global": "The Deno Global",
       "unstable": "Unstable APIs"
     }
   },
   "linking-to-external-code": {
     "name": "Linking to external code",
     "children": {
-      "best-practices": "Best practices",
-      "integrity-checking": "Integrity checking",
+      "best_practices": "Best practices",
+      "integrity_checking": "Integrity checking",
       "proxies": "Proxies"
     }
   },
@@ -37,9 +37,9 @@
   "plugins": {
     "name": "Plugins",
     "children": {
-      "how-do-they-work": "How do plugins work?",
-      "creating-plugins": "Creating plugins",
-      "using-plugins": "Using plugins"
+      "how_do_plugins_work": "How do plugins work?",
+      "creating_plugins": "Creating plugins",
+      "using_plugins": "Using plugins"
     }
   },
   "tools": {
@@ -56,21 +56,21 @@
   "contributing": {
     "name": "Contributing",
     "children": {
-      "building-from-source": "Building from source",
-      "internal-details": "Internal details"
+      "building_from_source": "Building from source",
+      "internal_details": "Internal details"
     }
   },
   "examples": {
     "name": "Examples",
     "children": {
-      "unix-cat": "Unix cat program",
+      "unix_cat": "Unix cat program",
       "fileserver": "File server",
-      "tcp-echo": "TCP echo server",
+      "tcp_echo": "TCP echo server",
       "subprocess": "Creating a subprocess",
       "permissions": "Inspecting and revoking permissions",
-      "os-signals": "OS Signals",
-      "file-system-events": "File system events",
-      "testing-if-main": "Checking if file is main"
+      "os_signals": "OS Signals",
+      "file_system_events": "File system events",
+      "testing_if_main": "Checking if file is main"
     }
   }
 }
