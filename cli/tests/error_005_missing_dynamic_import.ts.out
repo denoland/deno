@@ -1,8 +1,8 @@
 [WILDCARD]error: Uncaught NotFound: Cannot resolve module "[WILDCARD]/bad-module.ts" from "[WILDCARD]/error_005_missing_dynamic_import.ts"
     at unwrapResponse ([WILDCARD]dispatch_json.ts:[WILDCARD])
     at Object.sendAsync ([WILDCARD]dispatch_json.ts:[WILDCARD])
-    at async processImports ([WILDCARD]compiler/imports.ts:[WILDCARD])
-    at async Object.processImports ([WILDCARD]compiler/imports.ts:[WILDCARD])
-    at async compile ([WILDCARD]compiler.ts:[WILDCARD])
-    at async tsCompilerOnMessage ([WILDCARD]compiler.ts:[WILDCARD])
+    at async processImports ($deno$/compiler/imports.ts:[WILDCARD])
+    at async Object.processImports ($deno$/compiler/imports.ts:[WILDCARD])
+    at async compile ($deno$/compiler.ts:[WILDCARD])
+    at async tsCompilerOnMessage ($deno$/compiler.ts:[WILDCARD])
     at async workerMessageRecvCallback ([WILDCARD]runtime_worker.ts:[WILDCARD])
