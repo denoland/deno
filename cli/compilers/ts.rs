@@ -596,20 +596,6 @@ impl TsCompiler {
       .get_cache_filename_with_extension(module_specifier.as_url(), "js.map");
     self.disk_cache.set(&source_map_key, contents.as_bytes())
   }
-
-  /// This method is called by TS compiler via an "op".
-  pub fn cache_compiler_output(
-    &self,
-    module_specifier: &ModuleSpecifier,
-    extension: &str,
-    contents: &str,
-  ) -> std::io::Result<()> {
-    match extension {
-      ".map" => self.cache_source_map(module_specifier, contents),
-      ".js" => self.cache_compiled_file(module_specifier, contents),
-      _ => unreachable!(),
-    }
-  }
 }
 
 impl SourceMapGetter for TsCompiler {
