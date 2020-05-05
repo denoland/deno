@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 const { test } = Deno;
-import { assert, assertEquals, assertStrictEq } from "../testing/asserts.ts";
-import { collectUint8Arrays, deferred, MuxAsyncIterator } from "./async.ts";
+import { assertEquals } from "../testing/asserts.ts";
+import { deferred, MuxAsyncIterator } from "./async.ts";
 
 test("asyncDeferred", function (): Promise<void> {
   const d = deferred<number>();
@@ -32,45 +32,4 @@ test("asyncMuxAsyncIterator", async function (): Promise<void> {
     results.add(value);
   }
   assertEquals(results.size, 6);
-});
-
-test("collectUint8Arrays0", async function (): Promise<void> {
-  async function* gen(): AsyncIterableIterator<Uint8Array> {}
-  const result = await collectUint8Arrays(gen());
-  assert(result instanceof Uint8Array);
-  assertEquals(result.length, 0);
-});
-
-test("collectUint8Arrays0", async function (): Promise<void> {
-  async function* gen(): AsyncIterableIterator<Uint8Array> {}
-  const result = await collectUint8Arrays(gen());
-  assert(result instanceof Uint8Array);
-  assertStrictEq(result.length, 0);
-});
-
-test("collectUint8Arrays1", async function (): Promise<void> {
-  const buf = new Uint8Array([1, 2, 3]);
-  // eslint-disable-next-line require-await
-  async function* gen(): AsyncIterableIterator<Uint8Array> {
-    yield buf;
-  }
-  const result = await collectUint8Arrays(gen());
-  assertStrictEq(result, buf);
-  assertStrictEq(result.length, 3);
-});
-
-test("collectUint8Arrays4", async function (): Promise<void> {
-  // eslint-disable-next-line require-await
-  async function* gen(): AsyncIterableIterator<Uint8Array> {
-    yield new Uint8Array([1, 2, 3]);
-    yield new Uint8Array([]);
-    yield new Uint8Array([4, 5]);
-    yield new Uint8Array([6]);
-  }
-  const result = await collectUint8Arrays(gen());
-  assert(result instanceof Uint8Array);
-  assertStrictEq(result.length, 6);
-  for (let i = 0; i < 6; i++) {
-    assertStrictEq(result[i], i + 1);
-  }
 });
