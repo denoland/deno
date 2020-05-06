@@ -224,9 +224,14 @@ function getExtension(fileName: string, mediaType: MediaType): ts.Extension {
 }
 
 /** A global cache of module source files that have been loaded. */
-const moduleCache: Map<string, SourceFile> = new Map();
-/** A map of maps which cache source files for quicker modules resolution. */
-const specifierCache: Map<string, Map<string, SourceFile>> = new Map();
+const SOURCE_FILE_CACHE: Map<string, SourceFile> = new Map();
+/** A map of maps which cache resolved specifier for each import in a file
+ *
+ * First map's key is "referrer" URL ("file://a/b/c/mod.ts")
+ * Second map's key is "raw" import specifier ("./foo.ts")
+ * Second map's value is resolved import URL ("file:///a/b/c/foo.ts")
+ */
+const RESOLVED_SPECIFIER_CACHE: Map<string, Map<string, string>> = new Map();
 
 class SourceFile {
   extension!: ts.Extension;
@@ -239,22 +244,12 @@ class SourceFile {
   url!: string;
 
   constructor(json: SourceFileJson) {
-    if (moduleCache.has(json.url)) {
+    if (SOURCE_FILE_CACHE.has(json.url)) {
       throw new TypeError("SourceFile already exists");
     }
     Object.assign(this, json);
     this.extension = getExtension(this.url, this.mediaType);
-    moduleCache.set(this.url, this);
-  }
-
-  cache(moduleSpecifier: string, containingFile?: string): void {
-    containingFile = containingFile || "";
-    let innerCache = specifierCache.get(containingFile);
-    if (!innerCache) {
-      innerCache = new Map();
-      specifierCache.set(containingFile, innerCache);
-    }
-    innerCache.set(moduleSpecifier, this);
+    SOURCE_FILE_CACHE.set(this.url, this);
   }
 
   imports(
@@ -321,20 +316,34 @@ class SourceFile {
     return files;
   }
 
-  static getUrl(
+  static getCached(url: string): SourceFile | undefined {
+    return SOURCE_FILE_CACHE.get(url);
+  }
+
+  static cacheResolvedUrl(
+    resolvedUrl: string,
+    rawModuleSpecifier: string,
+    containingFile?: string
+  ): void {
+    containingFile = containingFile || "";
+    let innerCache = RESOLVED_SPECIFIER_CACHE.get(containingFile);
+    if (!innerCache) {
+      innerCache = new Map();
+      RESOLVED_SPECIFIER_CACHE.set(containingFile, innerCache);
+    }
+    innerCache.set(rawModuleSpecifier, resolvedUrl);
+  }
+
+  static getResolvedUrl(
     moduleSpecifier: string,
     containingFile: string
   ): string | undefined {
-    const containingCache = specifierCache.get(containingFile);
+    const containingCache = RESOLVED_SPECIFIER_CACHE.get(containingFile);
     if (containingCache) {
-      const sourceFile = containingCache.get(moduleSpecifier);
-      return sourceFile && sourceFile.url;
+      const resolvedUrl = containingCache.get(moduleSpecifier);
+      return resolvedUrl;
     }
     return undefined;
-  }
-
-  static get(url: string): SourceFile | undefined {
-    return moduleCache.get(url);
   }
 }
 
@@ -343,7 +352,7 @@ function getAssetInternal(filename: string): SourceFile {
   const url = ts.libMap.has(lastSegment)
     ? ts.libMap.get(lastSegment)!
     : lastSegment;
-  const sourceFile = SourceFile.get(url);
+  const sourceFile = SourceFile.getCached(url);
   if (sourceFile) {
     return sourceFile;
   }
@@ -471,7 +480,7 @@ class Host implements ts.CompilerHost {
       assert(!shouldCreateNewSourceFile);
       const sourceFile = fileName.startsWith(ASSETS)
         ? getAssetInternal(fileName)
-        : SourceFile.get(fileName);
+        : SourceFile.getCached(fileName);
       assert(sourceFile != null);
       if (!sourceFile.tsSourceFile) {
         assert(sourceFile.sourceCode != null);
@@ -510,14 +519,14 @@ class Host implements ts.CompilerHost {
       containingFile,
     });
     return moduleNames.map((specifier) => {
-      const maybeUrl = SourceFile.getUrl(specifier, containingFile);
+      const maybeUrl = SourceFile.getResolvedUrl(specifier, containingFile);
 
       let sourceFile: SourceFile | undefined = undefined;
 
       if (specifier.startsWith(ASSETS)) {
         sourceFile = getAssetInternal(specifier);
       } else if (typeof maybeUrl !== "undefined") {
-        sourceFile = SourceFile.get(maybeUrl);
+        sourceFile = SourceFile.getCached(maybeUrl);
       }
 
       if (!sourceFile) {
@@ -663,14 +672,18 @@ function processLocalImports(
     const specifierMap = specifiers[i];
     assert(moduleName in sources, `Missing module in sources: "${moduleName}"`);
     const sourceFile =
-      SourceFile.get(moduleName) ||
+      SourceFile.getCached(moduleName) ||
       new SourceFile({
         url: moduleName,
         filename: moduleName,
         sourceCode: sources[moduleName],
         mediaType: getMediaType(moduleName),
       });
-    sourceFile.cache(specifierMap.original, referrer);
+    SourceFile.cacheResolvedUrl(
+      sourceFile.url,
+      specifierMap.original,
+      referrer
+    );
     if (!sourceFile.processed) {
       processLocalImports(
         sources,
@@ -699,8 +712,13 @@ async function processImports(
     const specifierMap = specifiers[i];
     const sourceFileJson = sourceFiles[i];
     const sourceFile =
-      SourceFile.get(sourceFileJson.url) || new SourceFile(sourceFileJson);
-    sourceFile.cache(specifierMap.original, referrer);
+      SourceFile.getCached(sourceFileJson.url) ||
+      new SourceFile(sourceFileJson);
+    SourceFile.cacheResolvedUrl(
+      sourceFile.url,
+      specifierMap.original,
+      referrer
+    );
     if (!sourceFile.processed) {
       const sourceFileImports = sourceFile.imports(processJsImports);
       await processImports(sourceFileImports, sourceFile.url, processJsImports);
