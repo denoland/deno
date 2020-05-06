@@ -423,7 +423,7 @@ impl DenoInspector {
     // Tell the inspector about the global context.
     let context = global_context.get(scope).unwrap();
     let context_name = v8::inspector::StringView::from(&b"global context"[..]);
-    self_.context_created(context, Self::CONTEXT_GROUP_ID, &context_name);
+    self_.context_created(context, Self::CONTEXT_GROUP_ID, context_name);
 
     // Register this inspector with the server thread.
     // Note: poll_sessions() might block if we need to wait for a
@@ -700,14 +700,12 @@ impl DenoInspectorSession {
   ) -> Box<Self> {
     new_box_with(move |self_ptr| {
       let v8_channel = v8::inspector::ChannelBase::new::<Self>();
-
-      let empty_view = v8::inspector::StringView::empty();
       let v8_session = unsafe { &mut *inspector_ptr }.connect(
         Self::CONTEXT_GROUP_ID,
         // Todo(piscisaureus): V8Inspector::connect() should require that
         // the 'v8_channel' argument cannot move.
         unsafe { &mut *self_ptr },
-        &empty_view,
+        v8::inspector::StringView::empty(),
       );
 
       let (websocket_tx, websocket_rx) = websocket.split();
@@ -736,7 +734,7 @@ impl DenoInspectorSession {
         .map_ok(move |msg| {
           let msg = msg.as_bytes();
           let msg = v8::inspector::StringView::from(msg);
-          unsafe { &mut *self_ptr }.dispatch_protocol_message(&msg);
+          unsafe { &mut *self_ptr }.dispatch_protocol_message(msg);
         })
         .try_collect::<()>()
         .await;
@@ -758,7 +756,7 @@ impl DenoInspectorSession {
   pub fn break_on_first_statement(&mut self) {
     let reason = v8::inspector::StringView::from(&b"debugCommand"[..]);
     let detail = v8::inspector::StringView::empty();
-    self.schedule_pause_on_next_statement(&reason, &detail);
+    self.schedule_pause_on_next_statement(reason, detail);
   }
 }
 

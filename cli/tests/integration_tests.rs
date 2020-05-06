@@ -12,6 +12,36 @@ use std::io::BufRead;
 use std::process::Command;
 use tempfile::TempDir;
 
+#[test]
+fn no_color() {
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("cli/tests/no_color.js")
+    .env("NO_COLOR", "1")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  let stdout_str = std::str::from_utf8(&output.stdout).unwrap().trim();
+  assert_eq!("noColor true", stdout_str);
+
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("cli/tests/no_color.js")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  let stdout_str = std::str::from_utf8(&output.stdout).unwrap().trim();
+  assert_eq!("noColor false", stdout_str);
+}
+
 // TODO re-enable. This hangs on macOS
 // https://github.com/denoland/deno/issues/4262
 #[cfg(unix)]
@@ -778,11 +808,6 @@ fn repl_test_assign_underscore_error() {
     "Last thrown error is no longer saved to _error.\n1\n1\n"
   );
   assert_eq!(err, "Thrown: 2\n");
-}
-
-#[test]
-fn target_test() {
-  util::run_python_script("tools/target_test.py")
 }
 
 #[test]
@@ -2419,6 +2444,27 @@ async fn inspector_does_not_hang() {
 
   assert_eq!(&stdout_lines.next().unwrap(), "done");
   assert!(child.wait().unwrap().success());
+}
+
+#[test]
+fn exec_path() {
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("--allow-read")
+    .arg("cli/tests/exec_path.ts")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  let stdout_str = std::str::from_utf8(&output.stdout).unwrap().trim();
+  let actual =
+    std::fs::canonicalize(&std::path::Path::new(stdout_str)).unwrap();
+  let expected =
+    std::fs::canonicalize(deno::test_util::deno_exe_path()).unwrap();
+  assert_eq!(expected, actual);
 }
 
 mod util {
