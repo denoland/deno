@@ -355,7 +355,7 @@ test("[ws] WebSocket should throw `Deno.errors.ConnectionReset` when peer closed
   await assertThrowsAsync(() => sock.close(0), Deno.errors.ConnectionReset);
 });
 
-test("[ws] WebSocket shouldn't throw `Deno.errors.UnexpectedEof` on recive()", async () => {
+test("[ws] WebSocket shouldn't throw `Deno.errors.UnexpectedEof`", async () => {
   const buf = new Buffer();
   const eofReader: Deno.Reader = {
     read(_: Uint8Array): Promise<number | null> {
@@ -364,7 +364,7 @@ test("[ws] WebSocket shouldn't throw `Deno.errors.UnexpectedEof` on recive()", a
   };
   const conn = dummyConn(eofReader, buf);
   const sock = createWebSocket({ conn });
-  const it = sock.receive();
+  const it = sock[Symbol.asyncIterator]();
   const { value, done } = await it.next();
   assertEquals(value, undefined);
   assertEquals(done, true);
@@ -456,7 +456,7 @@ test("[ws] WebSocket Reader should ignore non-message frames", async () => {
   ]);
   const pingHello = new Uint8Array([0x89, 0x05, 0x48, 0x65, 0x6c, 0x6c, 0x6f]);
   const hello = new Uint8Array([0x81, 0x05, 0x48, 0x65, 0x6c, 0x6c, 0x6f]);
-  const close = new Uint8Array([0x88]);
+  const close = new Uint8Array([0x88, 0x02, 0x03, 0xe8]);
 
   const dataPayloadLength = 0x100;
   const dataArr = [0x82, 0x7e, 0x01, 0x00];
@@ -522,4 +522,56 @@ test("[ws] WebSocket Reader should ignore non-message frames", async () => {
   assertEquals(p.byteLength, helloLength + dataPayloadLength);
   assertEquals(decode(new Buffer(p.subarray(0, helloLength)).bytes()), "Hello");
   assertEquals(p.subarray(helloLength), data.subarray(4));
+});
+
+test("[ws] WebSocket should act as asyncIterator", async () => {
+  const pingHello = new Uint8Array([0x89, 0x05, 0x48, 0x65, 0x6c, 0x6c, 0x6f]);
+  const hello = new Uint8Array([0x81, 0x05, 0x48, 0x65, 0x6c, 0x6c, 0x6f]);
+  const close = new Uint8Array([0x88, 0x04, 0x03, 0xf3, 0x34, 0x32]);
+
+  enum Frames {
+    ping,
+    hello,
+    close,
+    end,
+  }
+
+  let frame = Frames.ping;
+
+  const reader: Reader = {
+    read(p: Uint8Array): Promise<number | null> {
+      if (frame === Frames.ping) {
+        frame = Frames.hello;
+        p.set(pingHello);
+        return Promise.resolve(pingHello.byteLength);
+      }
+
+      if (frame === Frames.hello) {
+        frame = Frames.close;
+        p.set(hello);
+        return Promise.resolve(hello.byteLength);
+      }
+
+      if (frame === Frames.close) {
+        frame = Frames.end;
+        p.set(close);
+        return Promise.resolve(close.byteLength);
+      }
+
+      return Promise.resolve(null);
+    },
+  };
+
+  const conn = dummyConn(reader, new Buffer());
+  const sock = createWebSocket({ conn });
+
+  const events = [];
+  for await (const wsEvent of sock) {
+    events.push(wsEvent);
+  }
+
+  assertEquals(events.length, 3);
+  assertEquals(events[0], ["ping", encode("Hello")]);
+  assertEquals(events[1], "Hello");
+  assertEquals(events[2], { code: 1011, reason: "42" });
 });

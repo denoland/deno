@@ -85,15 +85,15 @@ fn prop_name_to_string(
   }
 }
 
-pub fn get_doc_for_class_decl(
+pub fn class_to_class_def(
   doc_parser: &DocParser,
-  class_decl: &swc_ecma_ast::ClassDecl,
-) -> (String, ClassDef) {
+  class: &swc_ecma_ast::Class,
+) -> ClassDef {
   let mut constructors = vec![];
   let mut methods = vec![];
   let mut properties = vec![];
 
-  let extends: Option<String> = match &class_decl.class.super_class {
+  let extends: Option<String> = match &class.super_class {
     Some(boxed) => {
       use crate::swc_ecma_ast::Expr;
       let expr: &Expr = &**boxed;
@@ -105,14 +105,13 @@ pub fn get_doc_for_class_decl(
     None => None,
   };
 
-  let implements: Vec<String> = class_decl
-    .class
+  let implements: Vec<String> = class
     .implements
     .iter()
     .map(|expr| ts_entity_name_to_name(&expr.expr))
     .collect();
 
-  for member in &class_decl.class.body {
+  for member in &class.body {
     use crate::swc_ecma_ast::ClassMember::*;
 
     match member {
@@ -207,19 +206,26 @@ pub fn get_doc_for_class_decl(
     }
   }
 
-  let type_params = maybe_type_param_decl_to_type_param_defs(
-    class_decl.class.type_params.as_ref(),
-  );
-  let class_name = class_decl.ident.sym.to_string();
-  let class_def = ClassDef {
-    is_abstract: class_decl.class.is_abstract,
+  let type_params =
+    maybe_type_param_decl_to_type_param_defs(class.type_params.as_ref());
+
+  ClassDef {
+    is_abstract: class.is_abstract,
     extends,
     implements,
     constructors,
     properties,
     methods,
     type_params,
-  };
+  }
+}
+
+pub fn get_doc_for_class_decl(
+  doc_parser: &DocParser,
+  class_decl: &swc_ecma_ast::ClassDecl,
+) -> (String, ClassDef) {
+  let class_name = class_decl.ident.sym.to_string();
+  let class_def = class_to_class_def(doc_parser, &class_decl.class);
 
   (class_name, class_def)
 }

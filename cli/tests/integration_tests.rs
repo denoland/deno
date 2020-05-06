@@ -952,16 +952,37 @@ itest!(deno_test {
   output: "deno_test.out",
 });
 
-itest!(workers {
-  args: "test --reload --allow-net workers_test.ts",
-  http_server: true,
-  output: "workers_test.out",
-});
+#[test]
+fn workers() {
+  let g = util::http_server();
+  let status = util::deno_cmd()
+    .current_dir(util::tests_path())
+    .arg("test")
+    .arg("--reload")
+    .arg("--allow-net")
+    .arg("workers_test.ts")
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(status.success());
+  drop(g);
+}
 
-itest!(compiler_api {
-  args: "test --unstable --reload compiler_api_test.ts",
-  output: "compiler_api_test.out",
-});
+#[test]
+fn compiler_api() {
+  let status = util::deno_cmd()
+    .current_dir(util::tests_path())
+    .arg("test")
+    .arg("--unstable")
+    .arg("--reload")
+    .arg("compiler_api_test.ts")
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(status.success());
+}
 
 itest!(_027_redirect_typescript {
   args: "run --reload 027_redirect_typescript.ts",
@@ -1125,10 +1146,9 @@ itest!(_055_import_wasm_via_network {
   http_server: true,
 });
 
-// TODO(lucacasonato): remove --unstable when cwd goes stable
 itest!(_056_make_temp_file_write_perm {
   args:
-    "run --allow-write=./subdir/ --unstable 056_make_temp_file_write_perm.ts",
+    "run --allow-read --allow-write=./subdir/ 056_make_temp_file_write_perm.ts",
   output: "056_make_temp_file_write_perm.out",
 });
 
@@ -1322,7 +1342,7 @@ itest!(error_014_catch_dynamic_import_error {
 });
 
 itest!(error_015_dynamic_import_permissions {
-  args: "--reload error_015_dynamic_import_permissions.js",
+  args: "run --reload error_015_dynamic_import_permissions.js",
   output: "error_015_dynamic_import_permissions.out",
   check_stderr: true,
   exit_code: 1,
@@ -1331,7 +1351,7 @@ itest!(error_015_dynamic_import_permissions {
 
 // We have an allow-net flag but not allow-read, it should still result in error.
 itest!(error_016_dynamic_import_permissions2 {
-  args: "--reload --allow-net error_016_dynamic_import_permissions2.js",
+  args: "run --reload --allow-net error_016_dynamic_import_permissions2.js",
   output: "error_016_dynamic_import_permissions2.out",
   check_stderr: true,
   exit_code: 1,
@@ -1339,63 +1359,63 @@ itest!(error_016_dynamic_import_permissions2 {
 });
 
 itest!(error_017_hide_long_source_ts {
-  args: "--reload error_017_hide_long_source_ts.ts",
+  args: "run --reload error_017_hide_long_source_ts.ts",
   output: "error_017_hide_long_source_ts.ts.out",
   check_stderr: true,
   exit_code: 1,
 });
 
 itest!(error_018_hide_long_source_js {
-  args: "error_018_hide_long_source_js.js",
+  args: "run error_018_hide_long_source_js.js",
   output: "error_018_hide_long_source_js.js.out",
   check_stderr: true,
   exit_code: 1,
 });
 
 itest!(error_019_stack_function {
-  args: "error_019_stack_function.ts",
+  args: "run error_019_stack_function.ts",
   output: "error_019_stack_function.ts.out",
   check_stderr: true,
   exit_code: 1,
 });
 
 itest!(error_020_stack_constructor {
-  args: "error_020_stack_constructor.ts",
+  args: "run error_020_stack_constructor.ts",
   output: "error_020_stack_constructor.ts.out",
   check_stderr: true,
   exit_code: 1,
 });
 
 itest!(error_021_stack_method {
-  args: "error_021_stack_method.ts",
+  args: "run error_021_stack_method.ts",
   output: "error_021_stack_method.ts.out",
   check_stderr: true,
   exit_code: 1,
 });
 
 itest!(error_022_stack_custom_error {
-  args: "error_022_stack_custom_error.ts",
+  args: "run error_022_stack_custom_error.ts",
   output: "error_022_stack_custom_error.ts.out",
   check_stderr: true,
   exit_code: 1,
 });
 
 itest!(error_023_stack_async {
-  args: "error_023_stack_async.ts",
+  args: "run error_023_stack_async.ts",
   output: "error_023_stack_async.ts.out",
   check_stderr: true,
   exit_code: 1,
 });
 
 itest!(error_024_stack_promise_all {
-  args: "error_024_stack_promise_all.ts",
+  args: "run error_024_stack_promise_all.ts",
   output: "error_024_stack_promise_all.ts.out",
   check_stderr: true,
   exit_code: 1,
 });
 
 itest!(error_025_tab_indent {
-  args: "error_025_tab_indent",
+  args: "run error_025_tab_indent",
   output: "error_025_tab_indent.out",
   check_stderr: true,
   exit_code: 1,
@@ -1534,7 +1554,7 @@ itest!(run_v8_flags {
 });
 
 itest!(run_v8_help {
-  args: "--v8-flags=--help",
+  args: "repl --v8-flags=--help",
   output: "v8_help.out",
 });
 
@@ -1544,27 +1564,27 @@ itest!(wasm {
 });
 
 itest!(wasm_async {
-  args: "wasm_async.js",
+  args: "run wasm_async.js",
   output: "wasm_async.out",
 });
 
 itest!(top_level_await {
-  args: "--allow-read top_level_await.js",
+  args: "run --allow-read top_level_await.js",
   output: "top_level_await.out",
 });
 
 itest!(top_level_await_ts {
-  args: "--allow-read top_level_await.ts",
+  args: "run --allow-read top_level_await.ts",
   output: "top_level_await.out",
 });
 
 itest!(top_level_for_await {
-  args: "top_level_for_await.js",
+  args: "run top_level_for_await.js",
   output: "top_level_for_await.out",
 });
 
 itest!(top_level_for_await_ts {
-  args: "top_level_for_await.ts",
+  args: "run top_level_for_await.ts",
   output: "top_level_for_await.out",
 });
 
@@ -2132,10 +2152,7 @@ fn extract_ws_url_from_stderr(
 
 #[tokio::test]
 async fn inspector_connect() {
-  let script = deno::test_util::root_path()
-    .join("cli")
-    .join("tests")
-    .join("inspector1.js");
+  let script = util::tests_path().join("inspector1.js");
   let mut child = util::deno_cmd()
     .arg("run")
     // Warning: each inspector test should be on its own port to avoid
@@ -2154,6 +2171,7 @@ async fn inspector_connect() {
     .expect("Can't connect");
   assert_eq!("101 Switching Protocols", response.status().to_string());
   child.kill().unwrap();
+  child.wait().unwrap();
 }
 
 enum TestStep {
@@ -2164,10 +2182,7 @@ enum TestStep {
 
 #[tokio::test]
 async fn inspector_break_on_first_line() {
-  let script = deno::test_util::root_path()
-    .join("cli")
-    .join("tests")
-    .join("inspector2.js");
+  let script = util::tests_path().join("inspector2.js");
   let mut child = util::deno_cmd()
     .arg("run")
     // Warning: each inspector test should be on its own port to avoid
@@ -2186,10 +2201,16 @@ async fn inspector_break_on_first_line() {
     .expect("Can't connect");
   assert_eq!(response.status(), 101); // Switching protocols.
 
-  let (mut socket_tx, mut socket_rx) = socket.split();
+  let (mut socket_tx, socket_rx) = socket.split();
+  let mut socket_rx =
+    socket_rx.map(|msg| msg.unwrap().to_string()).filter(|msg| {
+      let pass = !msg.starts_with(r#"{"method":"Debugger.scriptParsed","#);
+      futures::future::ready(pass)
+    });
 
   let stdout = child.stdout.as_mut().unwrap();
-  let mut stdout_lines = std::io::BufReader::new(stdout).lines();
+  let mut stdout_lines =
+    std::io::BufReader::new(stdout).lines().map(|r| r.unwrap());
 
   use TestStep::*;
   let test_steps = vec![
@@ -2204,44 +2225,30 @@ async fn inspector_break_on_first_line() {
     WsRecv(r#"{"id":3,"result":{}}"#),
     WsRecv(r#"{"method":"Debugger.paused","#),
     WsSend(
-      r#"{"id":5,"method":"Runtime.evaluate","params":{"expression":"Deno.core.print(\"hello from the inspector\\n\")","contextId":1,"includeCommandLineAPI":true,"silent":false,"returnByValue":true}}"#,
+      r#"{"id":4,"method":"Runtime.evaluate","params":{"expression":"Deno.core.print(\"hello from the inspector\\n\")","contextId":1,"includeCommandLineAPI":true,"silent":false,"returnByValue":true}}"#,
     ),
-    WsRecv(r#"{"id":5,"result":{"result":{"type":"undefined"}}}"#),
+    WsRecv(r#"{"id":4,"result":{"result":{"type":"undefined"}}}"#),
     StdOut("hello from the inspector"),
-    WsSend(r#"{"id":6,"method":"Debugger.resume"}"#),
-    WsRecv(r#"{"id":6,"result":{}}"#),
+    WsSend(r#"{"id":5,"method":"Debugger.resume"}"#),
+    WsRecv(r#"{"id":5,"result":{}}"#),
     StdOut("hello from the script"),
   ];
 
   for step in test_steps {
     match step {
-      StdOut(s) => match stdout_lines.next() {
-        Some(Ok(line)) => assert_eq!(line, s),
-        other => panic!(other),
-      },
-      WsRecv(s) => loop {
-        let msg = match socket_rx.next().await {
-          Some(Ok(msg)) => msg.to_string(),
-          other => panic!(other),
-        };
-        if !msg.starts_with(r#"{"method":"Debugger.scriptParsed","#) {
-          assert!(msg.starts_with(s));
-          break;
-        }
-      },
+      StdOut(s) => assert_eq!(&stdout_lines.next().unwrap(), s),
+      WsRecv(s) => assert!(socket_rx.next().await.unwrap().starts_with(s)),
       WsSend(s) => socket_tx.send(s.into()).await.unwrap(),
     }
   }
 
   child.kill().unwrap();
+  child.wait().unwrap();
 }
 
 #[tokio::test]
 async fn inspector_pause() {
-  let script = deno::test_util::root_path()
-    .join("cli")
-    .join("tests")
-    .join("inspector1.js");
+  let script = util::tests_path().join("inspector1.js");
   let mut child = util::deno_cmd()
     .arg("run")
     // Warning: each inspector test should be on its own port to avoid
@@ -2297,10 +2304,7 @@ async fn inspector_pause() {
 
 #[tokio::test]
 async fn inspector_port_collision() {
-  let script = deno::test_util::root_path()
-    .join("cli")
-    .join("tests")
-    .join("inspector1.js");
+  let script = util::tests_path().join("inspector1.js");
   let mut child1 = util::deno_cmd()
     .arg("run")
     .arg("--inspect=127.0.0.1:9231")
@@ -2328,8 +2332,93 @@ async fn inspector_port_collision() {
     .read_to_string(&mut stderr_str_2)
     .unwrap();
   assert!(stderr_str_2.contains("Cannot start inspector server"));
+
   child1.kill().unwrap();
-  let _ = child2.kill();
+  child1.wait().unwrap();
+  child2.wait().unwrap();
+}
+
+#[tokio::test]
+async fn inspector_does_not_hang() {
+  let script = util::tests_path().join("inspector3.js");
+  let mut child = util::deno_cmd()
+    .arg("run")
+    // Warning: each inspector test should be on its own port to avoid
+    // conflicting with another inspector test.
+    .arg("--inspect-brk=127.0.0.1:9232")
+    .arg(script)
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+
+  let stderr = child.stderr.as_mut().unwrap();
+  let ws_url = extract_ws_url_from_stderr(stderr);
+  let (socket, response) = tokio_tungstenite::connect_async(ws_url)
+    .await
+    .expect("Can't connect");
+  assert_eq!(response.status(), 101); // Switching protocols.
+
+  let (mut socket_tx, socket_rx) = socket.split();
+  let mut socket_rx =
+    socket_rx.map(|msg| msg.unwrap().to_string()).filter(|msg| {
+      let pass = !msg.starts_with(r#"{"method":"Debugger.scriptParsed","#);
+      futures::future::ready(pass)
+    });
+
+  let stdout = child.stdout.as_mut().unwrap();
+  let mut stdout_lines =
+    std::io::BufReader::new(stdout).lines().map(|r| r.unwrap());
+
+  use TestStep::*;
+  let test_steps = vec![
+    WsSend(r#"{"id":1,"method":"Runtime.enable"}"#),
+    WsSend(r#"{"id":2,"method":"Debugger.enable"}"#),
+    WsRecv(
+      r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
+    ),
+    WsRecv(r#"{"id":1,"result":{}}"#),
+    WsRecv(r#"{"id":2,"result":{"debuggerId":"#),
+    WsSend(r#"{"id":3,"method":"Runtime.runIfWaitingForDebugger"}"#),
+    WsRecv(r#"{"id":3,"result":{}}"#),
+    WsRecv(r#"{"method":"Debugger.paused","#),
+    WsSend(r#"{"id":4,"method":"Debugger.resume"}"#),
+    WsRecv(r#"{"id":4,"result":{}}"#),
+    WsRecv(r#"{"method":"Debugger.resumed","params":{}}"#),
+  ];
+
+  for step in test_steps {
+    match step {
+      WsRecv(s) => assert!(socket_rx.next().await.unwrap().starts_with(s)),
+      WsSend(s) => socket_tx.send(s.into()).await.unwrap(),
+      _ => unreachable!(),
+    }
+  }
+
+  for i in 0..128u32 {
+    let request_id = i + 10;
+    // Expect the number {i} on stdout.
+    let s = format!("{}", i);
+    assert_eq!(stdout_lines.next().unwrap(), s);
+    // Expect hitting the `debugger` statement.
+    let s = r#"{"method":"Debugger.paused","#;
+    assert!(socket_rx.next().await.unwrap().starts_with(s));
+    // Send the 'Debugger.resume' request.
+    let s = format!(r#"{{"id":{},"method":"Debugger.resume"}}"#, request_id);
+    socket_tx.send(s.into()).await.unwrap();
+    // Expect confirmation of the 'Debugger.resume' request.
+    let s = format!(r#"{{"id":{},"result":{{}}}}"#, request_id);
+    assert_eq!(socket_rx.next().await.unwrap(), s);
+    let s = r#"{"method":"Debugger.resumed","params":{}}"#;
+    assert_eq!(socket_rx.next().await.unwrap(), s);
+  }
+
+  // Check that we can gracefully close the websocket connection.
+  socket_tx.close().await.unwrap();
+  socket_rx.for_each(|_| async {}).await;
+
+  assert_eq!(&stdout_lines.next().unwrap(), "done");
+  assert!(child.wait().unwrap().success());
 }
 
 mod util {

@@ -909,6 +909,6 @@ export function parse(path: string): ParsedPath {
  */
 export function fromFileUrl(url: string | URL): string {
   return new URL(url).pathname
-    .replace(/^\/(?=[A-Za-z]:\/)/, "")
+    .replace(/^\/*([A-Za-z]:)(\/|$)/, "$1/")
     .replace(/\//g, "\\");
 }
