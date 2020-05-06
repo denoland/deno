@@ -15,14 +15,14 @@
   "runtime": {
     "name": "The Runtime",
     "children": {
-      "web_apis": "Web APIs",
-      "deno_global": "The Deno Global",
+      "compiler_apis": "Compiler APIs",
       "unstable": "Unstable APIs"
     }
   },
   "linking_to_external_code": {
     "name": "Linking to external code",
     "children": {
+      "reloading_modules": "Reloading modules",
       "integrity_checking": "Integrity checking",
       "proxies": "Proxies",
       "import_maps": "Import maps"
