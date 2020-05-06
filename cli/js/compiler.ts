@@ -223,10 +223,32 @@ function getExtension(fileName: string, mediaType: MediaType): ts.Extension {
   }
 }
 
-/** A global cache of module source files that have been loaded. */
-const moduleCache: Map<string, SourceFile> = new Map();
-/** A map of maps which cache source files for quicker modules resolution. */
-const specifierCache: Map<string, Map<string, SourceFile>> = new Map();
+/** Because we support providing types for JS files as well as X-TypeScript-Types
+ * header we might be feeding TS compiler with different files than import specifiers
+ * suggest. To accomplish that we keep track of two different specifiers:
+ *  - original - the one in import statement (import "./foo.js")
+ *  - mapped - if there's no type directive it's the same as original, otherwise
+ *             it's unresolved specifier for type directive (/// @deno-types="./foo.d.ts")
+ */
+interface SourceFileSpecifierMap {
+  original: string;
+  mapped: string;
+}
+
+/** A global cache of module source files that have been loaded.
+ * This cache will be rewritten to be populated on compiler startup
+ * with files provided from Rust in request message.
+ */
+const SOURCE_FILE_CACHE: Map<string, SourceFile> = new Map();
+/** A map of maps which cache resolved specifier for each import in a file.
+ * This cache is used so `resolveModuleNames` ops is called as few times
+ * as possible.
+ *
+ * First map's key is "referrer" URL ("file://a/b/c/mod.ts")
+ * Second map's key is "raw" import specifier ("./foo.ts")
+ * Second map's value is resolved import URL ("file:///a/b/c/foo.ts")
+ */
+const RESOLVED_SPECIFIER_CACHE: Map<string, Map<string, string>> = new Map();
 
 class SourceFile {
   extension!: ts.Extension;
@@ -239,25 +261,11 @@ class SourceFile {
   url!: string;
 
   constructor(json: SourceFileJson) {
-    if (moduleCache.has(json.url)) {
-      throw new TypeError("SourceFile already exists");
-    }
     Object.assign(this, json);
     this.extension = getExtension(this.url, this.mediaType);
-    moduleCache.set(this.url, this);
   }
 
-  cache(moduleSpecifier: string, containingFile?: string): void {
-    containingFile = containingFile || "";
-    let innerCache = specifierCache.get(containingFile);
-    if (!innerCache) {
-      innerCache = new Map();
-      specifierCache.set(containingFile, innerCache);
-    }
-    innerCache.set(moduleSpecifier, this);
-  }
-
-  imports(processJsImports: boolean): Array<[string, string]> {
+  imports(processJsImports: boolean): SourceFileSpecifierMap[] {
     if (this.processed) {
       throw new Error("SourceFile has already been processed.");
     }
@@ -270,9 +278,10 @@ class SourceFile {
     }
 
     const readImportFiles = true;
-    const detectJsImports =
+    const isJsOrJsx =
       this.mediaType === MediaType.JavaScript ||
       this.mediaType === MediaType.JSX;
+    const detectJsImports = isJsOrJsx;
 
     const preProcessedFileInfo = ts.preProcessFile(
       this.sourceCode,
@@ -280,11 +289,11 @@ class SourceFile {
       detectJsImports
     );
     this.processed = true;
-    const files: Array<[string, string]> = [];
+    const files: SourceFileSpecifierMap[] = [];
 
     function process(references: Array<{ fileName: string }>): void {
       for (const { fileName } of references) {
-        files.push([fileName, fileName]);
+        files.push({ original: fileName, mapped: fileName });
       }
     }
 
@@ -295,20 +304,21 @@ class SourceFile {
       typeReferenceDirectives,
     } = preProcessedFileInfo;
     const typeDirectives = parseTypeDirectives(this.sourceCode);
+
     if (typeDirectives) {
       for (const importedFile of importedFiles) {
-        files.push([
-          importedFile.fileName,
-          getMappedModuleName(importedFile, typeDirectives),
-        ]);
+        // If there's a type directive for current processed file; then we provide
+        // different `mapped` specifier.
+        const mappedModuleName = getMappedModuleName(
+          importedFile,
+          typeDirectives
+        );
+        files.push({
+          original: importedFile.fileName,
+          mapped: mappedModuleName ?? importedFile.fileName,
+        });
       }
-    } else if (
-      !(
-        !processJsImports &&
-        (this.mediaType === MediaType.JavaScript ||
-          this.mediaType === MediaType.JSX)
-      )
-    ) {
+    } else if (processJsImports || !isJsOrJsx) {
       process(importedFiles);
     }
     process(referencedFiles);
@@ -316,29 +326,51 @@ class SourceFile {
     // out during pre-processing as they are either already cached or they will
     // be lazily fetched by the compiler host.  Ones that contain full files are
     // not filtered out and will be fetched as normal.
-    process(
-      libReferenceDirectives.filter(
-        ({ fileName }) => !ts.libMap.has(fileName.toLowerCase())
-      )
+    const filteredLibs = libReferenceDirectives.filter(
+      ({ fileName }) => !ts.libMap.has(fileName.toLowerCase())
     );
+    process(filteredLibs);
     process(typeReferenceDirectives);
     return files;
   }
 
-  static getUrl(
+  static addToCache(json: SourceFileJson): SourceFile {
+    if (SOURCE_FILE_CACHE.has(json.url)) {
+      throw new TypeError("SourceFile already exists");
+    }
+    const sf = new SourceFile(json);
+    SOURCE_FILE_CACHE.set(sf.url, sf);
+    return sf;
+  }
+
+  static getCached(url: string): SourceFile | undefined {
+    return SOURCE_FILE_CACHE.get(url);
+  }
+
+  static cacheResolvedUrl(
+    resolvedUrl: string,
+    rawModuleSpecifier: string,
+    containingFile?: string
+  ): void {
+    containingFile = containingFile || "";
+    let innerCache = RESOLVED_SPECIFIER_CACHE.get(containingFile);
+    if (!innerCache) {
+      innerCache = new Map();
+      RESOLVED_SPECIFIER_CACHE.set(containingFile, innerCache);
+    }
+    innerCache.set(rawModuleSpecifier, resolvedUrl);
+  }
+
+  static getResolvedUrl(
     moduleSpecifier: string,
     containingFile: string
   ): string | undefined {
-    const containingCache = specifierCache.get(containingFile);
+    const containingCache = RESOLVED_SPECIFIER_CACHE.get(containingFile);
     if (containingCache) {
-      const sourceFile = containingCache.get(moduleSpecifier);
-      return sourceFile && sourceFile.url;
+      const resolvedUrl = containingCache.get(moduleSpecifier);
+      return resolvedUrl;
     }
     return undefined;
-  }
-
-  static get(url: string): SourceFile | undefined {
-    return moduleCache.get(url);
   }
 }
 
@@ -347,13 +379,13 @@ function getAssetInternal(filename: string): SourceFile {
   const url = ts.libMap.has(lastSegment)
     ? ts.libMap.get(lastSegment)!
     : lastSegment;
-  const sourceFile = SourceFile.get(url);
+  const sourceFile = SourceFile.getCached(url);
   if (sourceFile) {
     return sourceFile;
   }
   const name = url.includes(".") ? url : `${url}.d.ts`;
   const sourceCode = getAsset(name);
-  return new SourceFile({
+  return SourceFile.addToCache({
     url,
     filename: `${ASSETS}/${name}`,
     mediaType: MediaType.TypeScript,
@@ -475,7 +507,7 @@ class Host implements ts.CompilerHost {
       assert(!shouldCreateNewSourceFile);
       const sourceFile = fileName.startsWith(ASSETS)
         ? getAssetInternal(fileName)
-        : SourceFile.get(fileName);
+        : SourceFile.getCached(fileName);
       assert(sourceFile != null);
       if (!sourceFile.tsSourceFile) {
         assert(sourceFile.sourceCode != null);
@@ -514,14 +546,14 @@ class Host implements ts.CompilerHost {
       containingFile,
     });
     return moduleNames.map((specifier) => {
-      const maybeUrl = SourceFile.getUrl(specifier, containingFile);
+      const maybeUrl = SourceFile.getResolvedUrl(specifier, containingFile);
 
       let sourceFile: SourceFile | undefined = undefined;
 
       if (specifier.startsWith(ASSETS)) {
         sourceFile = getAssetInternal(specifier);
       } else if (typeof maybeUrl !== "undefined") {
-        sourceFile = SourceFile.get(maybeUrl);
+        sourceFile = SourceFile.getCached(maybeUrl);
       }
 
       if (!sourceFile) {
@@ -647,30 +679,40 @@ function getMediaType(filename: string): MediaType {
 
 function processLocalImports(
   sources: Record<string, string>,
-  specifiers: Array<[string, string]>,
+  specifiers: SourceFileSpecifierMap[],
   referrer?: string,
   processJsImports = false
 ): string[] {
   if (!specifiers.length) {
     return [];
   }
-  const moduleNames = specifiers.map(
-    referrer
-      ? ([, specifier]): string => resolveSpecifier(specifier, referrer)
-      : ([, specifier]): string => specifier
-  );
+  const moduleNames = specifiers.map((specifierMap) => {
+    if (referrer) {
+      return resolveSpecifier(specifierMap.mapped, referrer);
+    } else {
+      return specifierMap.mapped;
+    }
+  });
+
   for (let i = 0; i < moduleNames.length; i++) {
     const moduleName = moduleNames[i];
+    const specifierMap = specifiers[i];
     assert(moduleName in sources, `Missing module in sources: "${moduleName}"`);
-    const sourceFile =
-      SourceFile.get(moduleName) ||
-      new SourceFile({
+    let sourceFile = SourceFile.getCached(moduleName);
+    if (typeof sourceFile === "undefined") {
+      sourceFile = SourceFile.addToCache({
         url: moduleName,
         filename: moduleName,
         sourceCode: sources[moduleName],
         mediaType: getMediaType(moduleName),
       });
-    sourceFile.cache(specifiers[i][0], referrer);
+    }
+    assert(sourceFile);
+    SourceFile.cacheResolvedUrl(
+      sourceFile.url,
+      specifierMap.original,
+      referrer
+    );
     if (!sourceFile.processed) {
       processLocalImports(
         sources,
@@ -684,22 +726,30 @@ function processLocalImports(
 }
 
 async function processImports(
-  specifiers: Array<[string, string]>,
+  specifiers: SourceFileSpecifierMap[],
   referrer?: string,
   processJsImports = false
 ): Promise<string[]> {
   if (!specifiers.length) {
     return [];
   }
-  const sources = specifiers.map(([, moduleSpecifier]) => moduleSpecifier);
+  const sources = specifiers.map(({ mapped }) => mapped);
   const resolvedSources = resolveModules(sources, referrer);
   const sourceFiles = await fetchSourceFiles(resolvedSources, referrer);
   assert(sourceFiles.length === specifiers.length);
   for (let i = 0; i < sourceFiles.length; i++) {
+    const specifierMap = specifiers[i];
     const sourceFileJson = sourceFiles[i];
-    const sourceFile =
-      SourceFile.get(sourceFileJson.url) || new SourceFile(sourceFileJson);
-    sourceFile.cache(specifiers[i][0], referrer);
+    let sourceFile = SourceFile.getCached(sourceFileJson.url);
+    if (typeof sourceFile === "undefined") {
+      sourceFile = SourceFile.addToCache(sourceFileJson);
+    }
+    assert(sourceFile);
+    SourceFile.cacheResolvedUrl(
+      sourceFile.url,
+      specifierMap.original,
+      referrer
+    );
     if (!sourceFile.processed) {
       const sourceFileImports = sourceFile.imports(processJsImports);
       await processImports(sourceFileImports, sourceFile.url, processJsImports);
@@ -717,14 +767,14 @@ interface FileReference {
 function getMappedModuleName(
   source: FileReference,
   typeDirectives: Map<FileReference, string>
-): string {
+): string | undefined {
   const { fileName: sourceFileName, pos: sourcePos } = source;
   for (const [{ fileName, pos }, value] of typeDirectives.entries()) {
     if (sourceFileName === fileName && sourcePos === pos) {
       return value;
     }
   }
-  return source.fileName;
+  return undefined;
 }
 
 const typeDirectiveRegEx = /@deno-types\s*=\s*(["'])((?:(?=(\\?))\3.)*?)\1/gi;
@@ -1272,8 +1322,11 @@ async function compile(
   // This will recursively analyse all the code for other imports,
   // requesting those from the privileged side, populating the in memory
   // cache which will be used by the host, before resolving.
+  const specifiers = rootNames.map((rootName) => {
+    return { original: rootName, mapped: rootName };
+  });
   const resolvedRootModules = await processImports(
-    rootNames.map((rootName) => [rootName, rootName]),
+    specifiers,
     undefined,
     bundle || host.getCompilationSettings().checkJs
   );
@@ -1361,30 +1414,32 @@ async function runtimeCompile(
   // recursively process imports, loading each file into memory.  If there
   // are sources, these files are pulled out of the there, otherwise the
   // files are retrieved from the privileged side
+  const specifiers = [
+    {
+      original: resolvedRootName,
+      mapped: resolvedRootName,
+    },
+  ];
   const rootNames = sources
-    ? processLocalImports(
-        sources,
-        [[resolvedRootName, resolvedRootName]],
-        undefined,
-        checkJsImports
-      )
-    : await processImports(
-        [[resolvedRootName, resolvedRootName]],
-        undefined,
-        checkJsImports
-      );
+    ? processLocalImports(sources, specifiers, undefined, checkJsImports)
+    : await processImports(specifiers, undefined, checkJsImports);
 
   if (additionalFiles) {
     // any files supplied in the configuration are resolved externally,
     // even if sources are provided
     const resolvedNames = resolveModules(additionalFiles);
-    rootNames.push(
-      ...(await processImports(
-        resolvedNames.map((rn) => [rn, rn]),
-        undefined,
-        checkJsImports
-      ))
+    const resolvedSpecifiers = resolvedNames.map((rn) => {
+      return {
+        original: rn,
+        mapped: rn,
+      };
+    });
+    const additionalImports = await processImports(
+      resolvedSpecifiers,
+      undefined,
+      checkJsImports
     );
+    rootNames.push(...additionalImports);
   }
 
   const state: WriteFileState = {
