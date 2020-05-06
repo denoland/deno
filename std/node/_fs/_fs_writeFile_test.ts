@@ -5,7 +5,7 @@ import {
   assert,
   assertEquals,
   assertNotEquals,
-  assertThrows
+  assertThrows,
 } from "../../testing/asserts.ts";
 import { writeFile } from "./_fs_writeFile.ts";
 
