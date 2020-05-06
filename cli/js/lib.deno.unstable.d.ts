@@ -1174,4 +1174,12 @@ declare namespace Deno {
     state: PermissionState;
     constructor(state: PermissionState);
   }
+
+  /** Get the `hostname` of the machine the Deno process is running on.
+   *
+   *       console.log(Deno.hostname());
+   *
+   *  Requires `allow-env` permission.
+   */
+  export function hostname(): string;
 }
