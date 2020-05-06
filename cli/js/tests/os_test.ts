@@ -48,7 +48,10 @@ unitTest(function envPermissionDenied2(): void {
 // case-insensitive. Case normalization needs be done using the collation
 // that Windows uses, rather than naively using String.toLowerCase().
 unitTest(
-  { ignore: Deno.build.os !== "windows", perms: { env: true, run: true } },
+  {
+    ignore: Deno.build.os !== "windows",
+    perms: { read: true, env: true, run: true },
+  },
   async function envCaseInsensitive() {
     // Utility function that runs a Deno subprocess with the environment
     // specified in `inputEnv`. The subprocess reads the environment variables
@@ -269,11 +272,11 @@ unitTest(function getDirWithoutPermission(): void {
   );
 });
 
-unitTest({ perms: { env: true } }, function execPath(): void {
+unitTest({ perms: { read: true } }, function execPath(): void {
   assertNotEquals(Deno.execPath(), "");
 });
 
-unitTest({ perms: { env: false } }, function execPathPerm(): void {
+unitTest({ perms: { read: false } }, function execPathPerm(): void {
   let caughtError = false;
   try {
     Deno.execPath();
