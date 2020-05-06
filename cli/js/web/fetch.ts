@@ -29,13 +29,13 @@ function hasHeaderValueOf(s: string, value: string): boolean {
 }
 
 class Body
-  implements domTypes.Body, domTypes.ReadableStream<Uint8Array>, io.ReadCloser {
+  implements domTypes.Body, ReadableStream<Uint8Array>, io.Reader, io.Closer {
   #bodyUsed = false;
   #bodyPromise: Promise<ArrayBuffer> | null = null;
   #data: ArrayBuffer | null = null;
   #rid: number;
   readonly locked: boolean = false; // TODO
-  readonly body: domTypes.ReadableStream<Uint8Array>;
+  readonly body: ReadableStream<Uint8Array>;
 
   constructor(rid: number, readonly contentType: string) {
     this.#rid = rid;
@@ -220,7 +220,7 @@ class Body
     return decoder.decode(ab);
   }
 
-  read(p: Uint8Array): Promise<number | io.EOF> {
+  read(p: Uint8Array): Promise<number | null> {
     this.#bodyUsed = true;
     return read(this.#rid, p);
   }
@@ -234,20 +234,22 @@ class Body
     return notImplemented();
   }
 
-  getReader(options: { mode: "byob" }): domTypes.ReadableStreamBYOBReader;
-  getReader(): domTypes.ReadableStreamDefaultReader<Uint8Array>;
-  getReader():
-    | domTypes.ReadableStreamBYOBReader
-    | domTypes.ReadableStreamDefaultReader<Uint8Array> {
+  getIterator(_options?: {
+    preventCancel?: boolean;
+  }): AsyncIterableIterator<Uint8Array> {
     return notImplemented();
   }
 
-  tee(): [domTypes.ReadableStream, domTypes.ReadableStream] {
+  getReader(): ReadableStreamDefaultReader<Uint8Array> {
+    return notImplemented();
+  }
+
+  tee(): [ReadableStream, ReadableStream] {
     return notImplemented();
   }
 
   [Symbol.asyncIterator](): AsyncIterableIterator<Uint8Array> {
-    return io.toAsyncIterator(this);
+    return io.iter(this);
   }
 
   get bodyUsed(): boolean {
@@ -256,17 +258,17 @@ class Body
 
   pipeThrough<T>(
     _: {
-      writable: domTypes.WritableStream<Uint8Array>;
-      readable: domTypes.ReadableStream<T>;
+      writable: WritableStream<Uint8Array>;
+      readable: ReadableStream<T>;
     },
-    _options?: domTypes.PipeOptions
-  ): domTypes.ReadableStream<T> {
+    _options?: PipeOptions
+  ): ReadableStream<T> {
     return notImplemented();
   }
 
   pipeTo(
-    _dest: domTypes.WritableStream<Uint8Array>,
-    _options?: domTypes.PipeOptions
+    _dest: WritableStream<Uint8Array>,
+    _options?: PipeOptions
   ): Promise<void> {
     return notImplemented();
   }

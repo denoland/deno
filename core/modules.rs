@@ -3,8 +3,8 @@
 use rusty_v8 as v8;
 
 use crate::any_error::ErrBox;
-use crate::es_isolate::DynImportId;
 use crate::es_isolate::ModuleId;
+use crate::es_isolate::ModuleLoadId;
 use crate::module_specifier::ModuleSpecifier;
 use futures::future::FutureExt;
 use futures::stream::FuturesUnordered;
@@ -16,8 +16,14 @@ use std::fmt;
 use std::future::Future;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::sync::atomic::AtomicI32;
+use std::sync::atomic::Ordering;
 use std::task::Context;
 use std::task::Poll;
+
+lazy_static! {
+  pub static ref NEXT_LOAD_ID: AtomicI32 = AtomicI32::new(0);
+}
 
 /// EsModule source code that will be loaded into V8.
 ///
@@ -41,6 +47,8 @@ pub struct ModuleSource {
   pub module_url_found: String,
 }
 
+pub type PrepareLoadFuture =
+  dyn Future<Output = (ModuleLoadId, Result<RecursiveModuleLoad, ErrBox>)>;
 pub type ModuleSourceFuture = dyn Future<Output = Result<ModuleSource, ErrBox>>;
 
 pub trait ModuleLoader {
@@ -68,6 +76,24 @@ pub trait ModuleLoader {
     maybe_referrer: Option<ModuleSpecifier>,
     is_dyn_import: bool,
   ) -> Pin<Box<ModuleSourceFuture>>;
+
+  /// This hook can be used by implementors to do some preparation
+  /// work before starting loading of modules.
+  ///
+  /// For example implementor might download multiple modules in
+  /// parallel and transpile them to final JS sources before
+  /// yielding control back to Isolate.
+  ///
+  /// It's not required to implement this method.
+  fn prepare_load(
+    &self,
+    _load_id: ModuleLoadId,
+    _module_specifier: &ModuleSpecifier,
+    _maybe_referrer: Option<String>,
+    _is_dyn_import: bool,
+  ) -> Pin<Box<dyn Future<Output = Result<(), ErrBox>>>> {
+    async { Ok(()) }.boxed_local()
+  }
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -89,10 +115,10 @@ pub enum LoadState {
 /// that is consumed by the isolate.
 pub struct RecursiveModuleLoad {
   kind: Kind,
-  // Kind::Main
+  // TODO(bartlomieju): in future this value should
+  // be randomized
+  pub id: ModuleLoadId,
   pub root_module_id: Option<ModuleId>,
-  // Kind::Main
-  pub dyn_import_id: Option<DynImportId>,
   pub state: LoadState,
   pub loader: Rc<dyn ModuleLoader>,
   pub pending: FuturesUnordered<Pin<Box<ModuleSourceFuture>>>,
@@ -108,11 +134,10 @@ impl RecursiveModuleLoad {
   ) -> Self {
     let kind = Kind::Main;
     let state = LoadState::ResolveMain(specifier.to_owned(), code);
-    Self::new(kind, state, loader, None)
+    Self::new(kind, state, loader)
   }
 
   pub fn dynamic_import(
-    id: DynImportId,
     specifier: &str,
     referrer: &str,
     loader: Rc<dyn ModuleLoader>,
@@ -120,27 +145,57 @@ impl RecursiveModuleLoad {
     let kind = Kind::DynamicImport;
     let state =
       LoadState::ResolveImport(specifier.to_owned(), referrer.to_owned());
-    Self::new(kind, state, loader, Some(id))
+    Self::new(kind, state, loader)
   }
 
   pub fn is_dynamic_import(&self) -> bool {
     self.kind != Kind::Main
   }
 
-  fn new(
-    kind: Kind,
-    state: LoadState,
-    loader: Rc<dyn ModuleLoader>,
-    dyn_import_id: Option<DynImportId>,
-  ) -> Self {
+  fn new(kind: Kind, state: LoadState, loader: Rc<dyn ModuleLoader>) -> Self {
     Self {
+      id: NEXT_LOAD_ID.fetch_add(1, Ordering::SeqCst),
       root_module_id: None,
-      dyn_import_id,
       kind,
       state,
       loader,
       pending: FuturesUnordered::new(),
       is_pending: HashSet::new(),
+    }
+  }
+
+  pub async fn prepare(self) -> (ModuleLoadId, Result<Self, ErrBox>) {
+    let (module_specifier, maybe_referrer) = match self.state {
+      LoadState::ResolveMain(ref specifier, _) => {
+        let spec = match self.loader.resolve(specifier, ".", true) {
+          Ok(spec) => spec,
+          Err(e) => return (self.id, Err(e)),
+        };
+        (spec, None)
+      }
+      LoadState::ResolveImport(ref specifier, ref referrer) => {
+        let spec = match self.loader.resolve(specifier, referrer, false) {
+          Ok(spec) => spec,
+          Err(e) => return (self.id, Err(e)),
+        };
+        (spec, Some(referrer.to_string()))
+      }
+      _ => unreachable!(),
+    };
+
+    let prepare_result = self
+      .loader
+      .prepare_load(
+        self.id,
+        &module_specifier,
+        maybe_referrer,
+        self.is_dynamic_import(),
+      )
+      .await;
+
+    match prepare_result {
+      Ok(()) => (self.id, Ok(self)),
+      Err(e) => (self.id, Err(e)),
     }
   }
 

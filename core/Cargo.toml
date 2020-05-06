@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_core"
-version = "0.41.0"
+version = "0.42.1"
 edition = "2018"
 description = "A secure JavaScript/TypeScript runtime built with V8, Rust, and Tokio"
 authors = ["the Deno authors"]
@@ -19,7 +19,7 @@ futures = { version = "0.3.4", features = ["thread-pool", "compat"] }
 lazy_static = "1.4.0"
 libc = "0.2.68"
 log = "0.4.8"
-rusty_v8 = "0.3.10"
+rusty_v8 = "0.4.0"
 serde_json = "1.0.51"
 url = "2.1.1"
 

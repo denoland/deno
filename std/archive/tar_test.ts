@@ -15,7 +15,7 @@ import { Tar, Untar } from "./tar.ts";
 
 const filePath = resolve("archive", "testdata", "example.txt");
 
-Deno.test(async function createTarArchive(): Promise<void> {
+Deno.test("createTarArchive", async function (): Promise<void> {
   // initialize
   const tar = new Tar();
 
@@ -30,8 +30,8 @@ Deno.test(async function createTarArchive(): Promise<void> {
   await tar.append("dir/tar.ts", { filePath });
 
   // write tar data to a buffer
-  const writer = new Deno.Buffer(),
-    wrote = await Deno.copy(writer, tar.getReader());
+  const writer = new Deno.Buffer();
+  const wrote = await Deno.copy(tar.getReader(), writer);
 
   /**
    * 3072 = 512 (header) + 512 (content) + 512 (header) + 512 (content)
@@ -40,7 +40,7 @@ Deno.test(async function createTarArchive(): Promise<void> {
   assertEquals(wrote, 3072);
 });
 
-Deno.test(async function deflateTarArchive(): Promise<void> {
+Deno.test("deflateTarArchive", async function (): Promise<void> {
   const fileName = "output.txt";
   const text = "hello tar world!";
 
@@ -63,7 +63,9 @@ Deno.test(async function deflateTarArchive(): Promise<void> {
   assertEquals(untarText, text);
 });
 
-Deno.test(async function appendFileWithLongNameToTarArchive(): Promise<void> {
+Deno.test("appendFileWithLongNameToTarArchive", async function (): Promise<
+  void
+> {
   // 9 * 15 + 13 = 148 bytes
   const fileName = new Array(10).join("long-file-name/") + "file-name.txt";
   const text = "hello tar world!";

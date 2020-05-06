@@ -4,8 +4,9 @@ import {
   MaybeEmpty,
   notImplemented,
 } from "../_utils.ts";
+import { fromFileUrl } from "../path.ts";
 
-const { readlink: denoReadlink, readlinkSync: denoReadlinkSync } = Deno;
+const { readLink: denoReadlink, readLinkSync: denoReadlinkSync } = Deno;
 
 type ReadlinkCallback = (
   err: MaybeEmpty<Error>,
@@ -49,10 +50,12 @@ function getEncoding(
 }
 
 export function readlink(
-  path: string,
+  path: string | URL,
   optOrCallback: ReadlinkCallback | ReadlinkOptions,
   callback?: ReadlinkCallback
 ): void {
+  path = path instanceof URL ? fromFileUrl(path) : path;
+
   let cb: ReadlinkCallback | undefined;
   if (typeof optOrCallback === "function") {
     cb = optOrCallback;
@@ -71,8 +74,10 @@ export function readlink(
 }
 
 export function readlinkSync(
-  path: string,
+  path: string | URL,
   opt?: ReadlinkOptions
 ): string | Uint8Array {
+  path = path instanceof URL ? fromFileUrl(path) : path;
+
   return maybeEncode(denoReadlinkSync(path), getEncoding(opt));
 }

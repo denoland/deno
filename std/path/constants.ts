@@ -48,7 +48,7 @@ export const CHAR_EQUAL = 61; /* = */
 export const CHAR_0 = 48; /* 0 */
 export const CHAR_9 = 57; /* 9 */
 
-export const isWindows = build.os === "win";
+export const isWindows = build.os === "windows";
 export const EOL = isWindows ? "\r\n" : "\n";
 export const SEP = isWindows ? "\\" : "/";
 export const SEP_PATTERN = isWindows ? /[\\/]+/ : /\/+/;

@@ -55,16 +55,8 @@ import {
   ensureSymlinkSync,
 } from "https://deno.land/std/fs/mod.ts";
 
-ensureSymlink(
-  "./folder/targetFile.dat",
-  "./folder/targetFile.link.dat",
-  "file"
-); // returns promise
-ensureSymlinkSync(
-  "./folder/targetFile.dat",
-  "./folder/targetFile.link.dat",
-  "file"
-); // void
+ensureSymlink("./folder/targetFile.dat", "./folder/targetFile.link.dat"); // returns promise
+ensureSymlinkSync("./folder/targetFile.dat", "./folder/targetFile.link.dat"); // void
 ```
 
 ### eol
@@ -151,27 +143,6 @@ const f = await readJson("./foo.json");
 const foo = readJsonSync("./foo.json");
 ```
 
-### walk
-
-Iterate all files in a directory recursively.
-
-```ts
-import { walk, walkSync } from "https://deno.land/std/fs/mod.ts";
-
-for (const fileInfo of walkSync(".")) {
-  console.log(fileInfo.filename);
-}
-
-// Async
-async function printFilesNames() {
-  for await (const fileInfo of walk()) {
-    console.log(fileInfo.filename);
-  }
-}
-
-printFilesNames().then(() => console.log("Done!"));
-```
-
 ### writeJson
 
 Writes an object to a JSON file.
@@ -190,6 +161,27 @@ writeJson("./target.dat", { foo: "bar" }, { spaces: 2 }); // returns a promise
 writeJsonSync("./target.dat", { foo: "bar" }, { replacer: ["foo"] }); // void
 ```
 
+### walk
+
+Iterate all files in a directory recursively.
+
+```ts
+import { walk, walkSync } from "https://deno.land/std/fs/mod.ts";
+
+for (const fileInfo of walkSync(".")) {
+  console.log(fileInfo.filename);
+}
+
+// Async
+async function printFilesNames() {
+  for await (const entry of walk()) {
+    console.log(entry.path);
+  }
+}
+
+printFilesNames().then(() => console.log("Done!"));
+```
+
 ### readFileStr
 
 Read file and output it as a string.
@@ -202,7 +194,7 @@ Read file and output it as a string.
 import { readFileStr, readFileStrSync } from "https://deno.land/std/fs/mod.ts";
 
 readFileStr("./target.dat", { encoding: "utf8" }); // returns a promise
-readFileStrSync("./target.dat", { encoding: "utf8" }); // void
+readFileStrSync("./target.dat", { encoding: "utf8" }); // string
 ```
 
 ### writeFileStr

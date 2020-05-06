@@ -156,7 +156,7 @@ executable bit on macOS and Linux.
 Once it's installed and in your `$PATH`, try it:
 
 ```shell
-deno https://deno.land/std/examples/welcome.ts
+deno run https://deno.land/std/examples/welcome.ts
 ```
 
 ### Build from Source
@@ -200,7 +200,7 @@ is opened, and printed to stdout.
 for (let i = 0; i < Deno.args.length; i++) {
   let filename = Deno.args[i];
   let file = await Deno.open(filename);
-  await Deno.copy(Deno.stdout, file);
+  await Deno.copy(file, Deno.stdout);
   file.close();
 }
 ```
@@ -213,7 +213,7 @@ I/O streams in Deno.
 Try the program:
 
 ```shell
-$ deno --allow-read https://deno.land/std/examples/cat.ts /etc/passwd
+$ deno run --allow-read https://deno.land/std/examples/cat.ts /etc/passwd
 ```
 
 ### TCP echo server
@@ -232,7 +232,7 @@ for await (const conn of listener) {
 When this program is started, it throws PermissionDenied error.
 
 ```shell
-$ deno https://deno.land/std/examples/echo_server.ts
+$ deno run https://deno.land/std/examples/echo_server.ts
 error: Uncaught PermissionDenied: network access to "0.0.0.0:8080", run again with the --allow-net flag
 ► $deno$/dispatch_json.ts:40:11
     at DenoError ($deno$/errors.ts:20:5)
@@ -243,7 +243,7 @@ For security reasons, Deno does not allow programs to access the network without
 explicit permission. To allow accessing the network, use a command-line flag:
 
 ```shell
-$ deno --allow-net https://deno.land/std/examples/echo_server.ts
+$ deno run --allow-net https://deno.land/std/examples/echo_server.ts
 ```
 
 To test it, try sending data to it with netcat:
@@ -289,7 +289,7 @@ await Deno.remove("request.log");
 This one serves a local directory in HTTP.
 
 ```bash
-deno install --allow-net --allow-read file_server https://deno.land/std/http/file_server.ts
+deno install --allow-net --allow-read https://deno.land/std/http/file_server.ts
 ```
 
 Run it:
@@ -332,7 +332,7 @@ Deno also provides permissions whitelist.
 This is an example to restrict file system access by whitelist.
 
 ```shell
-$ deno --allow-read=/usr https://deno.land/std/examples/cat.ts /etc/passwd
+$ deno run --allow-read=/usr https://deno.land/std/examples/cat.ts /etc/passwd
 error: Uncaught PermissionDenied: read access to "/etc/passwd", run again with the --allow-read flag
 ► $deno$/dispatch_json.ts:40:11
     at DenoError ($deno$/errors.ts:20:5)
@@ -342,7 +342,7 @@ error: Uncaught PermissionDenied: read access to "/etc/passwd", run again with t
 You can grant read permission under `/etc` dir
 
 ```shell
-$ deno --allow-read=/etc https://deno.land/std/examples/cat.ts /etc/passwd
+$ deno run --allow-read=/etc https://deno.land/std/examples/cat.ts /etc/passwd
 ```
 
 `--allow-write` works same as `--allow-read`.
@@ -354,7 +354,7 @@ const result = await fetch("https://deno.land/");
 ```
 
 ```shell
-$ deno --allow-net=deno.land https://deno.land/std/examples/curl.ts https://deno.land/
+$ deno run --allow-net=deno.land https://deno.land/std/examples/curl.ts https://deno.land/
 ```
 
 ### Run subprocess
@@ -376,7 +376,7 @@ await p.status();
 Run it:
 
 ```shell
-$ deno --allow-run ./subprocess_simple.ts
+$ deno run --allow-run ./subprocess_simple.ts
 hello
 ```
 
@@ -470,8 +470,8 @@ The above for-await loop exits after 5 seconds when sig.dispose() is called.
 To poll for file system events:
 
 ```ts
-const iter = Deno.fsEvents("/");
-for await (const event of iter) {
+const watcher = Deno.watchFs("/");
+for await (const event of watcher) {
   console.log(">>>> event", event);
   // { kind: "create", paths: [ "/foo.txt" ] }
 }
@@ -491,11 +491,11 @@ uses a URL to import an assertion library:
 ```ts
 import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
 
-Deno.test(function t1() {
+Deno.test("t1", function () {
   assertEquals("hello", "hello");
 });
 
-Deno.test(function t2() {
+Deno.test("t2", function () {
   assertEquals("world", "world");
 });
 ```
@@ -838,7 +838,7 @@ If you omit the out file, the bundle will be sent to `stdout`.
 The bundle can just be run as any other module in Deno would:
 
 ```
-deno colors.bundle.js
+deno run colors.bundle.js
 ```
 
 The output is a self contained ES Module, where any exports from the main module
@@ -876,8 +876,8 @@ Or you could import it into another ES module to consume:
 
 Deno provides `deno install` to easily install and distribute executable code.
 
-`deno install [FLAGS...] [EXE_NAME] [URL] [SCRIPT_ARGS...]` will install the
-script available at `URL` under the name `EXE_NAME`.
+`deno install [OPTIONS...] [URL] [SCRIPT_ARGS...]` will install the script
+available at `URL` under the name `EXE_NAME`.
 
 This command creates a thin, executable shell script which invokes `deno` using
 the specified CLI flags and main module. It is place in the installation root's
@@ -886,17 +886,31 @@ the specified CLI flags and main module. It is place in the installation root's
 Example:
 
 ```shell
-$ deno install --allow-net --allow-read file_server https://deno.land/std/http/file_server.ts
+$ deno install --allow-net --allow-read https://deno.land/std/http/file_server.ts
 [1/1] Compiling https://deno.land/std/http/file_server.ts
 
 ✅ Successfully installed file_server.
 /Users/deno/.deno/bin/file_server
 ```
 
+To change the executable name, use `-n`/`--name`:
+
+```shell
+  deno install --allow-net --allow-read -n serve https://deno.land/std/http/file_server.ts
+```
+
+The executable name is inferred by default:
+
+- Attempt to take the file stem of the URL path. The above example would become
+  'file_server'.
+- If the file stem is something generic like 'main', 'mod', 'index' or 'cli',
+  and the path has no parent, take the file name of the parent path. Otherwise
+  settle with the generic name.
+
 To change the installation root, use `--root`:
 
 ```shell
-$ deno install --allow-net --allow-read --root /usr/local file_server https://deno.land/std/http/file_server.ts
+$ deno install --allow-net --allow-read --root /usr/local https://deno.land/std/http/file_server.ts
 ```
 
 The installation root is determined, in order of precedence:
@@ -915,7 +929,7 @@ You must specify permissions that will be used to run the script at installation
 time.
 
 ```shell
-$ deno install --allow-net --allow-read file_server https://deno.land/std/http/file_server.ts 8080
+$ deno install --allow-net --allow-read https://deno.land/std/http/file_server.ts 8080
 ```
 
 The above command creates an executable called `file_server` that runs with
@@ -944,7 +958,7 @@ example installation command to your repository:
 ```shell
 # Install using deno install
 
-$ deno install awesome_cli https://example.com/awesome/cli.ts
+$ deno install -n awesome_cli https://example.com/awesome/cli.ts
 ```
 
 ## Proxies
@@ -1042,7 +1056,7 @@ compile it, but not run it. It takes up to three arguments, the `rootName`,
 optionally `sources`, and optionally `options`. The `rootName` is the root
 module which will be used to generate the resulting program. This is like the
 module name you would pass on the command line in
-`deno --reload run example.ts`. The `sources` is a hash where the key is the
+`deno run --reload example.ts`. The `sources` is a hash where the key is the
 fully qualified module name, and the value is the text source of the module. If
 `sources` is passed, Deno will resolve all the modules from within that hash and
 not attempt to resolve them outside of Deno. If `sources` are not provided, Deno
@@ -1166,7 +1180,7 @@ You need to explicitly tell Deno where to look for this configuration by setting
 the `-c` argument when executing your application.
 
 ```bash
-deno -c tsconfig.json mod.ts
+deno run -c tsconfig.json mod.ts
 ```
 
 Following are the currently allowed settings and their default values in Deno:
@@ -1269,7 +1283,7 @@ Note that you can use both `window.addEventListener` and
 major difference between them, let's run example:
 
 ```shell
-$ deno main.ts
+$ deno run main.ts
 log from imported script
 log from main script
 got load event in onload function (main)
@@ -1283,6 +1297,40 @@ got unload event in event handler (main)
 All listeners added using `window.addEventListener` were run, but
 `window.onload` and `window.onunload` defined in `main.ts` overridden handlers
 defined in `imported.ts`.
+
+## `deno fmt`
+
+Deno ships with a built in code formatter that auto-formats TypeScript and
+JavaScript code.
+
+```shell
+# format all JS/TS files in the current directory and subdirectories
+deno fmt
+# format specific files
+deno fmt myfile1.ts myfile2.ts
+# check if all the JS/TS files in the current directory and subdirectories are formatted
+deno fmt --check
+# format stdin and write to stdout
+cat file.ts | deno fmt -
+```
+
+Ignore formatting code by preceding it with a `// deno-fmt-ignore` comment:
+
+<!-- prettier-ignore-start -->
+
+```ts
+// deno-fmt-ignore
+export const identity = [
+    1, 0, 0,
+    0, 1, 0,
+    0, 0, 1,
+];
+```
+
+<!-- prettier-ignore-end -->
+
+Or ignore an entire file by adding a `// deno-fmt-ignore-file` comment at the
+top of the file.
 
 ## Internal details
 
@@ -1345,7 +1393,7 @@ To start profiling,
 ninja -C target/release d8
 
 # Start the program we want to benchmark with --prof
-./target/release/deno tests/http_bench.ts --allow-net --v8-flags=--prof &
+./target/release/deno run --allow-net --v8-flags=--prof tests/http_bench.ts &
 
 # Exercise it.
 third_party/wrk/linux/wrk http://localhost:4500/

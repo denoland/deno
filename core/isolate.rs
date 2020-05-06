@@ -66,15 +66,25 @@ impl ZeroCopyBuf {
 impl Deref for ZeroCopyBuf {
   type Target = [u8];
   fn deref(&self) -> &[u8] {
-    let buf = unsafe { &**self.backing_store.get() };
-    &buf[self.byte_offset..self.byte_offset + self.byte_length]
+    unsafe {
+      bindings::get_backing_store_slice(
+        &self.backing_store,
+        self.byte_offset,
+        self.byte_length,
+      )
+    }
   }
 }
 
 impl DerefMut for ZeroCopyBuf {
   fn deref_mut(&mut self) -> &mut [u8] {
-    let buf = unsafe { &mut **self.backing_store.get() };
-    &mut buf[self.byte_offset..self.byte_offset + self.byte_length]
+    unsafe {
+      bindings::get_backing_store_slice_mut(
+        &self.backing_store,
+        self.byte_offset,
+        self.byte_length,
+      )
+    }
   }
 }
 
@@ -87,33 +97,6 @@ impl AsRef<[u8]> for ZeroCopyBuf {
 impl AsMut<[u8]> for ZeroCopyBuf {
   fn as_mut(&mut self) -> &mut [u8] {
     &mut *self
-  }
-}
-
-pub enum SnapshotConfig {
-  Borrowed(v8::StartupData<'static>),
-  Owned(v8::OwnedStartupData),
-}
-
-impl From<&'static [u8]> for SnapshotConfig {
-  fn from(sd: &'static [u8]) -> Self {
-    Self::Borrowed(v8::StartupData::new(sd))
-  }
-}
-
-impl From<v8::OwnedStartupData> for SnapshotConfig {
-  fn from(sd: v8::OwnedStartupData) -> Self {
-    Self::Owned(sd)
-  }
-}
-
-impl Deref for SnapshotConfig {
-  type Target = v8::StartupData<'static>;
-  fn deref(&self) -> &Self::Target {
-    match self {
-      Self::Borrowed(sd) => sd,
-      Self::Owned(sd) => &*sd,
-    }
   }
 }
 
@@ -139,13 +122,17 @@ impl From<Script<'_>> for OwnedScript {
   }
 }
 
+pub enum Snapshot {
+  Static(&'static [u8]),
+  JustCreated(v8::StartupData),
+}
+
 /// Represents data used to initialize isolate at startup
 /// either a binary snapshot or a javascript source file
 /// in the form of the StartupScript struct.
 pub enum StartupData<'a> {
   Script(Script<'a>),
-  Snapshot(&'static [u8]),
-  OwnedSnapshot(v8::OwnedStartupData),
+  Snapshot(Snapshot),
   None,
 }
 
@@ -153,19 +140,18 @@ type JSErrorCreateFn = dyn Fn(JSError) -> ErrBox;
 type IsolateErrorHandleFn = dyn FnMut(ErrBox) -> Result<(), ErrBox>;
 
 /// A single execution context of JavaScript. Corresponds roughly to the "Web
-/// Worker" concept in the DOM. An Isolate is a Future that can be used with
-/// Tokio.  The Isolate future complete when there is an error or when all
+/// Worker" concept in the DOM. An CoreIsolate is a Future that can be used with
+/// Tokio.  The CoreIsolate future complete when there is an error or when all
 /// pending ops have completed.
 ///
 /// Ops are created in JavaScript by calling Deno.core.dispatch(), and in Rust
 /// by implementing dispatcher function that takes control buffer and optional zero copy buffer
 /// as arguments. An async Op corresponds exactly to a Promise in JavaScript.
 #[allow(unused)]
-pub struct Isolate {
+pub struct CoreIsolate {
   pub v8_isolate: Option<v8::OwnedIsolate>,
   snapshot_creator: Option<v8::SnapshotCreator>,
   has_snapshotted: bool,
-  snapshot: Option<SnapshotConfig>,
   pub resource_table: Rc<RefCell<ResourceTable>>,
   pub global_context: v8::Global<v8::Context>,
   pub(crate) shared_ab: v8::Global<v8::SharedArrayBuffer>,
@@ -185,7 +171,7 @@ pub struct Isolate {
   error_handler: Option<Box<IsolateErrorHandleFn>>,
 }
 
-impl Drop for Isolate {
+impl Drop for CoreIsolate {
   fn drop(&mut self) {
     if let Some(creator) = self.snapshot_creator.take() {
       // TODO(ry): in rusty_v8, `SnapShotCreator::get_owned_isolate()` returns
@@ -211,7 +197,7 @@ static DENO_INIT: Once = Once::new();
 
 #[allow(clippy::missing_safety_doc)]
 pub unsafe fn v8_init() {
-  let platform = v8::new_default_platform();
+  let platform = v8::new_default_platform().unwrap();
   v8::V8::initialize_platform(platform);
   v8::V8::initialize();
   // TODO(ry) This makes WASM compile synchronously. Eventually we should
@@ -226,7 +212,7 @@ pub unsafe fn v8_init() {
   v8::V8::set_flags_from_command_line(argv);
 }
 
-impl Isolate {
+impl CoreIsolate {
   /// startup_data defines the snapshot or script used at startup to initialize
   /// the isolate.
   pub fn new(startup_data: StartupData, will_snapshot: bool) -> Box<Self> {
@@ -234,31 +220,20 @@ impl Isolate {
       unsafe { v8_init() };
     });
 
-    let mut load_snapshot: Option<SnapshotConfig> = None;
-    let mut startup_script: Option<OwnedScript> = None;
-
-    // Separate into Option values for each startup type
-    match startup_data {
-      StartupData::Script(d) => {
-        startup_script = Some(d.into());
-      }
-      StartupData::Snapshot(d) => {
-        load_snapshot = Some(d.into());
-      }
-      StartupData::OwnedSnapshot(d) => {
-        load_snapshot = Some(d.into());
-      }
-      StartupData::None => {}
+    let (startup_script, startup_snapshot) = match startup_data {
+      StartupData::Script(script) => (Some(script.into()), None),
+      StartupData::Snapshot(snapshot) => (None, Some(snapshot)),
+      StartupData::None => (None, None),
     };
 
     let mut global_context = v8::Global::<v8::Context>::new();
     let (mut isolate, maybe_snapshot_creator) = if will_snapshot {
       // TODO(ry) Support loading snapshots before snapshotting.
-      assert!(load_snapshot.is_none());
+      assert!(startup_snapshot.is_none());
       let mut creator =
         v8::SnapshotCreator::new(Some(&bindings::EXTERNAL_REFERENCES));
       let isolate = unsafe { creator.get_owned_isolate() };
-      let mut isolate = Isolate::setup_isolate(isolate);
+      let mut isolate = CoreIsolate::setup_isolate(isolate);
 
       let mut hs = v8::HandleScope::new(&mut isolate);
       let scope = hs.enter();
@@ -269,26 +244,30 @@ impl Isolate {
 
       (isolate, Some(creator))
     } else {
-      let mut params = v8::Isolate::create_params();
-      params.set_array_buffer_allocator(v8::new_default_allocator());
-      params.set_external_references(&bindings::EXTERNAL_REFERENCES);
-      if let Some(ref mut snapshot) = load_snapshot {
-        params.set_snapshot_blob(snapshot);
-      }
+      let mut params = v8::Isolate::create_params()
+        .external_references(&**bindings::EXTERNAL_REFERENCES);
+      let snapshot_loaded = if let Some(snapshot) = startup_snapshot {
+        params = match snapshot {
+          Snapshot::Static(data) => params.snapshot_blob(data),
+          Snapshot::JustCreated(data) => params.snapshot_blob(data),
+        };
+        true
+      } else {
+        false
+      };
 
       let isolate = v8::Isolate::new(params);
-      let mut isolate = Isolate::setup_isolate(isolate);
+      let mut isolate = CoreIsolate::setup_isolate(isolate);
 
       let mut hs = v8::HandleScope::new(&mut isolate);
       let scope = hs.enter();
 
-      let context = match load_snapshot {
-        Some(_) => v8::Context::new(scope),
-        None => {
-          // If no snapshot is provided, we initialize the context with empty
-          // main source code and source maps.
-          bindings::initialize_context(scope)
-        }
+      let context = if snapshot_loaded {
+        v8::Context::new(scope)
+      } else {
+        // If no snapshot is provided, we initialize the context with empty
+        // main source code and source maps.
+        bindings::initialize_context(scope)
       };
       global_context.set(scope, context);
 
@@ -307,7 +286,6 @@ impl Isolate {
       js_recv_cb: v8::Global::<v8::Function>::new(),
       js_macrotask_cb: v8::Global::<v8::Function>::new(),
       snapshot_creator: maybe_snapshot_creator,
-      snapshot: load_snapshot,
       has_snapshotted: false,
       shared_isolate_handle: Arc::new(Mutex::new(None)),
       js_error_create_fn: Box::new(JSError::create),
@@ -336,7 +314,7 @@ impl Isolate {
     boxed_isolate
   }
 
-  pub fn setup_isolate(mut isolate: v8::OwnedIsolate) -> v8::OwnedIsolate {
+  fn setup_isolate(mut isolate: v8::OwnedIsolate) -> v8::OwnedIsolate {
     isolate.set_capture_stack_trace_for_uncaught_exceptions(true, 10);
     isolate.set_promise_reject_callback(bindings::promise_reject_callback);
     isolate
@@ -349,7 +327,7 @@ impl Isolate {
   /// Requires runtime to explicitly ask for op ids before using any of the ops.
   pub fn register_op<F>(&mut self, name: &str, op: F) -> OpId
   where
-    F: Fn(&mut Isolate, &[u8], Option<ZeroCopyBuf>) -> Op + 'static,
+    F: Fn(&mut CoreIsolate, &[u8], Option<ZeroCopyBuf>) -> Op + 'static,
   {
     self.op_registry.register(name, op)
   }
@@ -422,7 +400,7 @@ impl Isolate {
   ///
   /// ErrBox can be downcast to a type that exposes additional information about
   /// the V8 exception. By default this type is JSError, however it may be a
-  /// different type if Isolate::set_js_error_create_fn() has been used.
+  /// different type if CoreIsolate::set_js_error_create_fn() has been used.
   pub fn execute(
     &mut self,
     js_filename: &str,
@@ -471,8 +449,8 @@ impl Isolate {
   ///
   /// ErrBox can be downcast to a type that exposes additional information about
   /// the V8 exception. By default this type is JSError, however it may be a
-  /// different type if Isolate::set_js_error_create_fn() has been used.
-  pub fn snapshot(&mut self) -> v8::OwnedStartupData {
+  /// different type if CoreIsolate::set_js_error_create_fn() has been used.
+  pub fn snapshot(&mut self) -> v8::StartupData {
     assert!(self.snapshot_creator.is_some());
 
     // Note: create_blob() method must not be called from within a HandleScope.
@@ -495,7 +473,7 @@ impl Isolate {
   }
 }
 
-impl Future for Isolate {
+impl Future for CoreIsolate {
   type Output = Result<(), ErrBox>;
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
@@ -749,7 +727,7 @@ pub mod tests {
       }
     }
     panic!(
-      "Isolate still not ready after polling {} times.",
+      "CoreIsolate still not ready after polling {} times.",
       max_poll_count
     )
   }
@@ -763,13 +741,13 @@ pub mod tests {
     OverflowResAsync,
   }
 
-  pub fn setup(mode: Mode) -> (Box<Isolate>, Arc<AtomicUsize>) {
+  pub fn setup(mode: Mode) -> (Box<CoreIsolate>, Arc<AtomicUsize>) {
     let dispatch_count = Arc::new(AtomicUsize::new(0));
     let dispatch_count_ = dispatch_count.clone();
 
-    let mut isolate = Isolate::new(StartupData::None, false);
+    let mut isolate = CoreIsolate::new(StartupData::None, false);
 
-    let dispatcher = move |_isolate: &mut Isolate,
+    let dispatcher = move |_isolate: &mut CoreIsolate,
                            control: &[u8],
                            _zero_copy: Option<ZeroCopyBuf>|
           -> Op {
@@ -1163,7 +1141,7 @@ pub mod tests {
 
   #[test]
   fn syntax_error() {
-    let mut isolate = Isolate::new(StartupData::None, false);
+    let mut isolate = CoreIsolate::new(StartupData::None, false);
     let src = "hocuspocus(";
     let r = isolate.execute("i.js", src);
     let e = r.unwrap_err();
@@ -1188,13 +1166,13 @@ pub mod tests {
   #[test]
   fn will_snapshot() {
     let snapshot = {
-      let mut isolate = Isolate::new(StartupData::None, true);
+      let mut isolate = CoreIsolate::new(StartupData::None, true);
       js_check(isolate.execute("a.js", "a = 1 + 2"));
       isolate.snapshot()
     };
 
-    let startup_data = StartupData::OwnedSnapshot(snapshot);
-    let mut isolate2 = Isolate::new(startup_data, false);
+    let startup_data = StartupData::Snapshot(Snapshot::JustCreated(snapshot));
+    let mut isolate2 = CoreIsolate::new(startup_data, false);
     js_check(isolate2.execute("check.js", "if (a != 3) throw Error('x')"));
   }
 }

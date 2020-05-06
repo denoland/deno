@@ -1,14 +1,13 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
-  EOF,
   Reader,
   Writer,
   Seeker,
   Closer,
   SeekMode,
-  SyncReader,
-  SyncWriter,
-  SyncSeeker,
+  ReaderSync,
+  WriterSync,
+  SeekerSync,
 } from "./io.ts";
 import { close } from "./ops/resources.ts";
 import { read, readSync, write, writeSync } from "./ops/io.ts";
@@ -18,70 +17,53 @@ import {
   open as opOpen,
   openSync as opOpenSync,
   OpenOptions,
-  OpenMode,
 } from "./ops/fs/open.ts";
-export { OpenOptions, OpenMode } from "./ops/fs/open.ts";
+export { OpenOptions } from "./ops/fs/open.ts";
 
-export function openSync(path: string, options?: OpenOptions): File;
-export function openSync(path: string, openMode?: OpenMode): File;
-
-/**@internal*/
 export function openSync(
   path: string,
-  modeOrOptions: OpenOptions | OpenMode = "r"
+  options: OpenOptions = { read: true }
 ): File {
-  let openMode = undefined;
-  let options = undefined;
-
-  if (typeof modeOrOptions === "string") {
-    openMode = modeOrOptions;
-  } else {
-    checkOpenOptions(modeOrOptions);
-    options = modeOrOptions as OpenOptions;
-  }
-
-  const rid = opOpenSync(path, openMode as OpenMode, options);
+  checkOpenOptions(options);
+  const rid = opOpenSync(path, options);
   return new File(rid);
 }
 
-export async function open(path: string, options?: OpenOptions): Promise<File>;
-export async function open(path: string, openMode?: OpenMode): Promise<File>;
-
-/**@internal*/
 export async function open(
   path: string,
-  modeOrOptions: OpenOptions | OpenMode = "r"
+  options: OpenOptions = { read: true }
 ): Promise<File> {
-  let openMode = undefined;
-  let options = undefined;
-
-  if (typeof modeOrOptions === "string") {
-    openMode = modeOrOptions;
-  } else {
-    checkOpenOptions(modeOrOptions);
-    options = modeOrOptions as OpenOptions;
-  }
-
-  const rid = await opOpen(path, openMode as OpenMode, options);
+  checkOpenOptions(options);
+  const rid = await opOpen(path, options);
   return new File(rid);
 }
 
 export function createSync(path: string): File {
-  return openSync(path, "w+");
+  return openSync(path, {
+    read: true,
+    write: true,
+    truncate: true,
+    create: true,
+  });
 }
 
 export function create(path: string): Promise<File> {
-  return open(path, "w+");
+  return open(path, {
+    read: true,
+    write: true,
+    truncate: true,
+    create: true,
+  });
 }
 
 export class File
   implements
     Reader,
-    SyncReader,
+    ReaderSync,
     Writer,
-    SyncWriter,
+    WriterSync,
     Seeker,
-    SyncSeeker,
+    SeekerSync,
     Closer {
   constructor(readonly rid: number) {}
 
@@ -93,11 +75,11 @@ export class File
     return writeSync(this.rid, p);
   }
 
-  read(p: Uint8Array): Promise<number | EOF> {
+  read(p: Uint8Array): Promise<number | null> {
     return read(this.rid, p);
   }
 
-  readSync(p: Uint8Array): number | EOF {
+  readSync(p: Uint8Array): number | null {
     return readSync(this.rid, p);
   }
 
@@ -114,9 +96,66 @@ export class File
   }
 }
 
-export const stdin = new File(0);
-export const stdout = new File(1);
-export const stderr = new File(2);
+class Stdin implements Reader, ReaderSync, Closer {
+  readonly rid: number;
+  constructor() {
+    this.rid = 0;
+  }
+
+  read(p: Uint8Array): Promise<number | null> {
+    return read(this.rid, p);
+  }
+
+  readSync(p: Uint8Array): number | null {
+    return readSync(this.rid, p);
+  }
+
+  close(): void {
+    close(this.rid);
+  }
+}
+
+class Stdout implements Writer, WriterSync, Closer {
+  readonly rid: number;
+  constructor() {
+    this.rid = 1;
+  }
+
+  write(p: Uint8Array): Promise<number> {
+    return write(this.rid, p);
+  }
+
+  writeSync(p: Uint8Array): number {
+    return writeSync(this.rid, p);
+  }
+
+  close(): void {
+    close(this.rid);
+  }
+}
+
+export class Stderr implements Writer, WriterSync, Closer {
+  readonly rid: number;
+  constructor() {
+    this.rid = 2;
+  }
+
+  write(p: Uint8Array): Promise<number> {
+    return write(this.rid, p);
+  }
+
+  writeSync(p: Uint8Array): number {
+    return writeSync(this.rid, p);
+  }
+
+  close(): void {
+    close(this.rid);
+  }
+}
+
+export const stdin = new Stdin();
+export const stdout = new Stdout();
+export const stderr = new Stderr();
 
 function checkOpenOptions(options: OpenOptions): void {
   if (Object.values(options).filter((val) => val === true).length === 0) {

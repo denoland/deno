@@ -1,7 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+import { build } from "../build.ts";
+import { getRandomValues } from "../ops/get_random_values.ts";
 import { customInspect } from "./console.ts";
 import { urls } from "./url_search_params.ts";
-import { getRandomValues } from "../ops/get_random_values.ts";
 
 interface URLParts {
   protocol: string;
@@ -14,53 +15,88 @@ interface URLParts {
   hash: string;
 }
 
-const patterns = {
-  protocol: "(?:([a-z]+):)",
-  authority: "(?://([^/?#]*))",
-  path: "([^?#]*)",
-  query: "(\\?[^#]*)",
-  hash: "(#.*)",
-
-  authentication: "(?:([^:]*)(?::([^@]*))?@)",
-  hostname: "([^:]+)",
-  port: "(?::(\\d+))",
-};
-
-const urlRegExp = new RegExp(
-  `^${patterns.protocol}?${patterns.authority}?${patterns.path}${patterns.query}?${patterns.hash}?`
-);
-
-const authorityRegExp = new RegExp(
-  `^${patterns.authentication}?${patterns.hostname}${patterns.port}?$`
-);
-
 const searchParamsMethods: Array<keyof URLSearchParams> = [
   "append",
   "delete",
   "set",
 ];
 
-function parse(url: string): URLParts | undefined {
-  const urlMatch = urlRegExp.exec(url);
-  if (urlMatch) {
-    const [, , authority] = urlMatch;
-    const authorityMatch = authority
-      ? authorityRegExp.exec(authority)
-      : [null, null, null, null, null];
-    if (authorityMatch) {
-      return {
-        protocol: urlMatch[1] || "",
-        username: authorityMatch[1] || "",
-        password: authorityMatch[2] || "",
-        hostname: authorityMatch[3] || "",
-        port: authorityMatch[4] || "",
-        path: urlMatch[3] || "",
-        query: urlMatch[4] || "",
-        hash: urlMatch[5] || "",
-      };
-    }
+const specialSchemes = ["ftp", "file", "http", "https", "ws", "wss"];
+
+// https://url.spec.whatwg.org/#special-scheme
+const schemePorts: { [key: string]: string } = {
+  ftp: "21",
+  file: "",
+  http: "80",
+  https: "443",
+  ws: "80",
+  wss: "443",
+};
+const MAX_PORT = 2 ** 16 - 1;
+
+// Remove the part of the string that matches the pattern and return the
+// remainder (RHS) as well as the first captured group of the matched substring
+// (LHS). e.g.
+//      takePattern("https://deno.land:80", /^([a-z]+):[/]{2}/)
+//        = ["http", "deno.land:80"]
+//      takePattern("deno.land:80", /^([^:]+):)
+//        = ["deno.land", "80"]
+function takePattern(string: string, pattern: RegExp): [string, string] {
+  let capture = "";
+  const rest = string.replace(pattern, (_, capture_) => {
+    capture = capture_;
+    return "";
+  });
+  return [capture, rest];
+}
+
+function parse(url: string, isBase = true): URLParts | undefined {
+  const parts: Partial<URLParts> = {};
+  let restUrl;
+  [parts.protocol, restUrl] = takePattern(url, /^([a-z]+):/);
+  if (isBase && parts.protocol == "") {
+    return undefined;
   }
-  return undefined;
+  if (parts.protocol == "file") {
+    parts.username = "";
+    parts.password = "";
+    [parts.hostname, restUrl] = takePattern(restUrl, /^[/\\]{2}([^/\\?#]*)/);
+    if (parts.hostname.includes(":")) {
+      return undefined;
+    }
+    parts.port = "";
+  } else if (specialSchemes.includes(parts.protocol)) {
+    let restAuthority;
+    [restAuthority, restUrl] = takePattern(
+      restUrl,
+      /^[/\\]{2}[/\\]*([^/\\?#]+)/
+    );
+    if (isBase && restAuthority == "") {
+      return undefined;
+    }
+    let restAuthentication;
+    [restAuthentication, restAuthority] = takePattern(restAuthority, /^(.*)@/);
+    [parts.username, restAuthentication] = takePattern(
+      restAuthentication,
+      /^([^:]*)/
+    );
+    [parts.password] = takePattern(restAuthentication, /^:(.*)/);
+    [parts.hostname, restAuthority] = takePattern(restAuthority, /^([^:]+)/);
+    [parts.port] = takePattern(restAuthority, /^:(.*)/);
+    if (!isValidPort(parts.port)) {
+      return undefined;
+    }
+  } else {
+    parts.username = "";
+    parts.password = "";
+    parts.hostname = "";
+    parts.port = "";
+  }
+  [parts.path, restUrl] = takePattern(restUrl, /^([^?#]*)/);
+  parts.path = parts.path.replace(/\\/g, "/");
+  [parts.query, restUrl] = takePattern(restUrl, /^(\?[^#]*)/);
+  [parts.hash] = takePattern(restUrl, /^(#.*)/);
+  return parts as URLParts;
 }
 
 // Based on https://github.com/kelektiv/node-uuid
@@ -81,7 +117,12 @@ function isAbsolutePath(path: string): boolean {
 
 // Resolves `.`s and `..`s where possible.
 // Preserves repeating and trailing `/`s by design.
-function normalizePath(path: string): string {
+// On Windows, drive letter paths will be given a leading slash, and also a
+// trailing slash if there are no other components e.g. "C:" -> "/C:/".
+function normalizePath(path: string, isFilePath = false): string {
+  if (build.os == "windows" && isFilePath) {
+    path = path.replace(/^\/*([A-Za-z]:)(\/|$)/, "/$1/");
+  }
   const isAbsolute = isAbsolutePath(path);
   path = path.replace(/^\//, "");
   const pathSegments = path.split("/");
@@ -112,27 +153,54 @@ function normalizePath(path: string): string {
 }
 
 // Standard URL basing logic, applied to paths.
-function resolvePathFromBase(path: string, basePath: string): string {
-  const normalizedPath = normalizePath(path);
-  if (isAbsolutePath(normalizedPath)) {
-    return normalizedPath;
+function resolvePathFromBase(
+  path: string,
+  basePath: string,
+  isFilePath = false
+): string {
+  let normalizedPath = normalizePath(path, isFilePath);
+  let normalizedBasePath = normalizePath(basePath, isFilePath);
+
+  let driveLetterPrefix = "";
+  if (build.os == "windows" && isFilePath) {
+    let driveLetter = "";
+    let baseDriveLetter = "";
+    [driveLetter, normalizedPath] = takePattern(
+      normalizedPath,
+      /^(\/[A-Za-z]:)(?=\/)/
+    );
+    [baseDriveLetter, normalizedBasePath] = takePattern(
+      normalizedBasePath,
+      /^(\/[A-Za-z]:)(?=\/)/
+    );
+    driveLetterPrefix = driveLetter || baseDriveLetter;
   }
-  const normalizedBasePath = normalizePath(basePath);
+
+  if (isAbsolutePath(normalizedPath)) {
+    return `${driveLetterPrefix}${normalizedPath}`;
+  }
   if (!isAbsolutePath(normalizedBasePath)) {
     throw new TypeError("Base path must be absolute.");
   }
 
   // Special case.
   if (path == "") {
-    return normalizedBasePath;
+    return `${driveLetterPrefix}${normalizedBasePath}`;
   }
 
   // Remove everything after the last `/` in `normalizedBasePath`.
   const prefix = normalizedBasePath.replace(/[^\/]*$/, "");
-  // If `normalizedPath` ends with `.` or `..`, add a trailing space.
+  // If `normalizedPath` ends with `.` or `..`, add a trailing slash.
   const suffix = normalizedPath.replace(/(?<=(^|\/)(\.|\.\.))$/, "/");
 
-  return normalizePath(prefix + suffix);
+  return `${driveLetterPrefix}${normalizePath(prefix + suffix)}`;
+}
+
+function isValidPort(value: string): boolean {
+  // https://url.spec.whatwg.org/#port-state
+  if (value === "") true;
+  const port = Number(value);
+  return Number.isInteger(port) && port >= 0 && port <= MAX_PORT;
 }
 
 /** @internal */
@@ -268,14 +336,19 @@ export class URLImpl implements URL {
   }
 
   get port(): string {
-    return parts.get(this)!.port;
+    const port = parts.get(this)!.port;
+    if (schemePorts[parts.get(this)!.protocol] === port) {
+      return "";
+    }
+
+    return port;
   }
 
   set port(value: string) {
-    const port = parseInt(String(value), 10);
-    parts.get(this)!.port = isNaN(port)
-      ? ""
-      : Math.max(0, port % 2 ** 16).toString();
+    if (!isValidPort(value)) {
+      return;
+    }
+    parts.get(this)!.port = value.toString();
   }
 
   get protocol(): string {
@@ -330,21 +403,23 @@ export class URLImpl implements URL {
     return this.#searchParams;
   }
 
-  constructor(url: string, base?: string | URL) {
+  constructor(url: string | URL, base?: string | URL) {
     let baseParts: URLParts | undefined;
     if (base) {
       baseParts = typeof base === "string" ? parse(base) : parts.get(base);
-      if (!baseParts || baseParts.protocol == "") {
+      if (baseParts == undefined) {
         throw new TypeError("Invalid base URL.");
       }
     }
 
-    const urlParts = parse(url);
-    if (!urlParts) {
+    const urlParts =
+      typeof url === "string" ? parse(url, !baseParts) : parts.get(url);
+    if (urlParts == undefined) {
       throw new TypeError("Invalid URL.");
     }
 
     if (urlParts.protocol) {
+      urlParts.path = normalizePath(urlParts.path, urlParts.protocol == "file");
       parts.set(this, urlParts);
     } else if (baseParts) {
       parts.set(this, {
@@ -353,13 +428,18 @@ export class URLImpl implements URL {
         password: baseParts.password,
         hostname: baseParts.hostname,
         port: baseParts.port,
-        path: resolvePathFromBase(urlParts.path, baseParts.path || "/"),
+        path: resolvePathFromBase(
+          urlParts.path,
+          baseParts.path || "/",
+          baseParts.protocol == "file"
+        ),
         query: urlParts.query,
         hash: urlParts.hash,
       });
     } else {
-      throw new TypeError("URL requires a base URL.");
+      throw new TypeError("Invalid URL.");
     }
+
     this.#updateSearchParams();
   }
 
@@ -373,7 +453,7 @@ export class URLImpl implements URL {
 
   // TODO(kevinkassimo): implement MediaSource version in the future.
   static createObjectURL(b: Blob): string {
-    const origin = globalThis.location.origin || "http://deno-opaque-origin";
+    const origin = "http://deno-opaque-origin";
     const key = `blob:${origin}/${generateUUID()}`;
     blobURLMap.set(key, b);
     return key;

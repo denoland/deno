@@ -10,7 +10,6 @@ import {
   assert,
   assertEquals,
   assertMatch,
-  assertNotEOF,
   assertStrContains,
   assertThrowsAsync,
 } from "../testing/asserts.ts";
@@ -54,7 +53,7 @@ const responseTests: ResponseTest[] = [
   },
 ];
 
-test(async function responseWrite(): Promise<void> {
+test("responseWrite", async function (): Promise<void> {
   for (const testCase of responseTests) {
     const buf = new Buffer();
     const bufw = new BufWriter(buf);
@@ -64,12 +63,12 @@ test(async function responseWrite(): Promise<void> {
     request.conn = mockConn();
 
     await request.respond(testCase.response);
-    assertEquals(buf.toString(), testCase.raw);
+    assertEquals(new TextDecoder().decode(buf.bytes()), testCase.raw);
     await request.done;
   }
 });
 
-test(function requestContentLength(): void {
+test("requestContentLength", function (): void {
   // Has content length
   {
     const req = new ServerRequest();
@@ -108,7 +107,7 @@ interface TotalReader extends Deno.Reader {
 }
 function totalReader(r: Deno.Reader): TotalReader {
   let _total = 0;
-  async function read(p: Uint8Array): Promise<number | Deno.EOF> {
+  async function read(p: Uint8Array): Promise<number | null> {
     const result = await r.read(p);
     if (typeof result === "number") {
       _total += result;
@@ -122,7 +121,7 @@ function totalReader(r: Deno.Reader): TotalReader {
     },
   };
 }
-test(async function requestBodyWithContentLength(): Promise<void> {
+test("requestBodyWithContentLength", async function (): Promise<void> {
   {
     const req = new ServerRequest();
     req.headers = new Headers();
@@ -191,7 +190,7 @@ test("ServerRequest.finalize() should consume unread body / chunked, trailers", 
   assertEquals(req.headers.get("deno"), "land");
   assertEquals(req.headers.get("node"), "js");
 });
-test(async function requestBodyWithTransferEncoding(): Promise<void> {
+test("requestBodyWithTransferEncoding", async function (): Promise<void> {
   {
     const shortText = "Hello";
     const req = new ServerRequest();
@@ -240,7 +239,7 @@ test(async function requestBodyWithTransferEncoding(): Promise<void> {
   }
 });
 
-test(async function requestBodyReaderWithContentLength(): Promise<void> {
+test("requestBodyReaderWithContentLength", async function (): Promise<void> {
   {
     const shortText = "Hello";
     const req = new ServerRequest();
@@ -252,13 +251,13 @@ test(async function requestBodyReaderWithContentLength(): Promise<void> {
     let offset = 0;
     while (offset < shortText.length) {
       const nread = await req.body.read(readBuf);
-      assertNotEOF(nread);
+      assert(nread !== null);
       const s = decode(readBuf.subarray(0, nread as number));
       assertEquals(shortText.substr(offset, nread as number), s);
       offset += nread as number;
     }
     const nread = await req.body.read(readBuf);
-    assertEquals(nread, Deno.EOF);
+    assertEquals(nread, null);
   }
 
   // Larger than given buf
@@ -273,17 +272,17 @@ test(async function requestBodyReaderWithContentLength(): Promise<void> {
     let offset = 0;
     while (offset < longText.length) {
       const nread = await req.body.read(readBuf);
-      assertNotEOF(nread);
+      assert(nread !== null);
       const s = decode(readBuf.subarray(0, nread as number));
       assertEquals(longText.substr(offset, nread as number), s);
       offset += nread as number;
     }
     const nread = await req.body.read(readBuf);
-    assertEquals(nread, Deno.EOF);
+    assertEquals(nread, null);
   }
 });
 
-test(async function requestBodyReaderWithTransferEncoding(): Promise<void> {
+test("requestBodyReaderWithTransferEncoding", async function (): Promise<void> {
   {
     const shortText = "Hello";
     const req = new ServerRequest();
@@ -307,13 +306,13 @@ test(async function requestBodyReaderWithTransferEncoding(): Promise<void> {
     let offset = 0;
     while (offset < shortText.length) {
       const nread = await req.body.read(readBuf);
-      assertNotEOF(nread);
+      assert(nread !== null);
       const s = decode(readBuf.subarray(0, nread as number));
       assertEquals(shortText.substr(offset, nread as number), s);
       offset += nread as number;
     }
     const nread = await req.body.read(readBuf);
-    assertEquals(nread, Deno.EOF);
+    assertEquals(nread, null);
   }
 
   // Larger than internal buf
@@ -340,13 +339,13 @@ test(async function requestBodyReaderWithTransferEncoding(): Promise<void> {
     let offset = 0;
     while (offset < longText.length) {
       const nread = await req.body.read(readBuf);
-      assertNotEOF(nread);
+      assert(nread !== null);
       const s = decode(readBuf.subarray(0, nread as number));
       assertEquals(longText.substr(offset, nread as number), s);
       offset += nread as number;
     }
     const nread = await req.body.read(readBuf);
-    assertEquals(nread, Deno.EOF);
+    assertEquals(nread, null);
   }
 });
 
@@ -372,7 +371,7 @@ test({
     try {
       const r = new TextProtoReader(new BufReader(p.stdout!));
       const s = await r.readLine();
-      assert(s !== Deno.EOF && s.includes("server listening"));
+      assert(s !== null && s.includes("server listening"));
       await delay(100);
       // Reqeusts to the server and immediately closes the connection
       const conn = await Deno.connect({ port: 4502 });
@@ -419,11 +418,11 @@ test({
       const r = new TextProtoReader(new BufReader(p.stdout!));
       const s = await r.readLine();
       assert(
-        s !== Deno.EOF && s.includes("server listening"),
+        s !== null && s.includes("server listening"),
         "server must be started"
       );
       // Requests to the server and immediately closes the connection
-      const conn = await Deno.connectTLS({
+      const conn = await Deno.connectTls({
         hostname: "localhost",
         port: 4503,
         certFile: "http/testdata/tls/RootCA.pem",
@@ -433,7 +432,8 @@ test({
         new TextEncoder().encode("GET / HTTP/1.0\r\n\r\n")
       );
       const res = new Uint8Array(100);
-      const nread = assertNotEOF(await conn.read(res));
+      const nread = await conn.read(res);
+      assert(nread !== null);
       conn.close();
       const resStr = new TextDecoder().decode(res.subarray(0, nread));
       assert(resStr.includes("Hello HTTPS"));
@@ -476,7 +476,7 @@ test({
     );
     const res = new Uint8Array(100);
     const nread = await conn.read(res);
-    assert(nread !== Deno.EOF);
+    assert(nread !== null);
     const resStr = new TextDecoder().decode(res.subarray(0, nread));
     assertStrContains(resStr, "/hello");
     server.close();

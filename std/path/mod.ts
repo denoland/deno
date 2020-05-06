@@ -11,19 +11,20 @@ const path = isWindows ? _win32 : _posix;
 export const win32 = _win32;
 export const posix = _posix;
 export const {
-  resolve,
-  normalize,
-  isAbsolute,
-  join,
-  relative,
-  toNamespacedPath,
-  dirname,
   basename,
+  delimiter,
+  dirname,
   extname,
   format,
+  fromFileUrl,
+  isAbsolute,
+  join,
+  normalize,
   parse,
+  relative,
+  resolve,
   sep,
-  delimiter,
+  toNamespacedPath,
 } = path;
 
 export { common } from "./common.ts";

@@ -13,7 +13,7 @@ import {
 import Listener = Deno.Listener;
 import Conn = Deno.Conn;
 import Reader = Deno.Reader;
-const { listen, listenTLS } = Deno;
+const { listen, listenTls } = Deno;
 
 export class ServerRequest {
   url!: string;
@@ -60,7 +60,7 @@ export class ServerRequest {
    *     let totRead = 0;
    *     while (true) {
    *       const nread = await req.body.read(bufSlice);
-   *       if (nread === Deno.EOF) break;
+   *       if (nread === null) break;
    *       totRead += nread;
    *       if (totRead >= req.contentLength) break;
    *       bufSlice = bufSlice.subarray(nread);
@@ -117,7 +117,7 @@ export class ServerRequest {
     // Consume unread body
     const body = this.body;
     const buf = new Uint8Array(1024);
-    while ((await body.read(buf)) !== Deno.EOF) {}
+    while ((await body.read(buf)) !== null) {}
     this.finalized = true;
   }
 }
@@ -151,7 +151,7 @@ export class Server implements AsyncIterable<ServerRequest> {
     const writer = new BufWriter(conn);
 
     while (!this.closing) {
-      let request: ServerRequest | Deno.EOF;
+      let request: ServerRequest | null;
       try {
         request = await readRequest(conn, reader);
       } catch (error) {
@@ -167,7 +167,7 @@ export class Server implements AsyncIterable<ServerRequest> {
         }
         break;
       }
-      if (request == Deno.EOF) {
+      if (request === null) {
         break;
       }
 
@@ -267,7 +267,7 @@ export function serve(addr: string | HTTPOptions): Server {
  *
  *     const body = "Hello World\n";
  *     const options = { port: 8000 };
- *     listenAndServeTLS(options, (req) => {
+ *     listenAndServe(options, (req) => {
  *       req.respond({ body });
  *     });
  *
@@ -286,7 +286,7 @@ export async function listenAndServe(
 }
 
 /** Options for creating an HTTPS server. */
-export type HTTPSOptions = Omit<Deno.ListenTLSOptions, "transport">;
+export type HTTPSOptions = Omit<Deno.ListenTlsOptions, "transport">;
 
 /**
  * Create an HTTPS server with given options
@@ -306,11 +306,11 @@ export type HTTPSOptions = Omit<Deno.ListenTLSOptions, "transport">;
  * @return Async iterable server instance for incoming requests
  */
 export function serveTLS(options: HTTPSOptions): Server {
-  const tlsOptions: Deno.ListenTLSOptions = {
+  const tlsOptions: Deno.ListenTlsOptions = {
     ...options,
     transport: "tcp",
   };
-  const listener = listenTLS(tlsOptions);
+  const listener = listenTls(tlsOptions);
   return new Server(listener);
 }
 

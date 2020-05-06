@@ -6,12 +6,13 @@ use crate::futures::future::try_join_all;
 use crate::msg;
 use crate::op_error::OpError;
 use crate::state::State;
+use deno_core::CoreIsolate;
 use deno_core::ModuleLoader;
-use deno_core::*;
+use deno_core::ModuleSpecifier;
+use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
 
-pub fn init(i: &mut Isolate, s: &State) {
-  i.register_op("op_cache", s.stateful_json_op(op_cache));
+pub fn init(i: &mut CoreIsolate, s: &State) {
   i.register_op("op_resolve_modules", s.stateful_json_op(op_resolve_modules));
   i.register_op(
     "op_fetch_source_files",
@@ -22,35 +23,6 @@ pub fn init(i: &mut Isolate, s: &State) {
     "op_fetch_asset",
     deno_typescript::op_fetch_asset(custom_assets),
   );
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct CacheArgs {
-  module_id: String,
-  contents: String,
-  extension: String,
-}
-
-fn op_cache(
-  state: &State,
-  args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, OpError> {
-  let args: CacheArgs = serde_json::from_value(args)?;
-
-  let module_specifier = ModuleSpecifier::resolve_url(&args.module_id)
-    .expect("Should be valid module specifier");
-
-  let state_ = &state.borrow().global_state;
-  let ts_compiler = state_.ts_compiler.clone();
-  ts_compiler.cache_compiler_output(
-    &module_specifier,
-    &args.extension,
-    &args.contents,
-  )?;
-
-  Ok(JsonOp::Sync(json!({})))
 }
 
 #[derive(Deserialize, Debug)]
@@ -110,6 +82,24 @@ fn op_fetch_source_files(
         async move {
           let resolved_specifier = ModuleSpecifier::resolve_url(&specifier)
             .expect("Invalid specifier");
+          // TODO(bartlomieju): duplicated from `state.rs::ModuleLoader::load` - deduplicate
+          // Verify that remote file doesn't try to statically import local file.
+          if let Some(referrer) = ref_specifier_.as_ref() {
+            let referrer_url = referrer.as_url();
+            match referrer_url.scheme() {
+              "http" | "https" => {
+                let specifier_url = resolved_specifier.as_url();
+                match specifier_url.scheme() {
+                  "http" | "https" => {},
+                  _ => {
+                    let e = OpError::permission_denied("Remote module are not allowed to statically import local modules. Use dynamic import instead.".to_string());
+                    return Err(e.into());
+                  }
+                }
+              },
+              _ => {}
+            }
+          }
           file_fetcher_
             .fetch_source_file(&resolved_specifier, ref_specifier_)
             .await
@@ -143,14 +133,6 @@ fn op_fetch_source_files(
             global_state
               .wasm_compiler
               .compile(global_state.clone(), &file)
-              .await
-              .map_err(|e| OpError::other(e.to_string()))?
-              .code
-          }
-          msg::MediaType::Json => {
-            global_state
-              .json_compiler
-              .compile(&file)
               .await
               .map_err(|e| OpError::other(e.to_string()))?
               .code

@@ -22,7 +22,10 @@ import * as urlSearchParams from "./web/url_search_params.ts";
 import * as workers from "./web/workers.ts";
 import * as performanceUtil from "./web/performance.ts";
 import * as request from "./web/request.ts";
-import * as streams from "./web/streams/mod.ts";
+import * as readableStream from "./web/streams/readable_stream.ts";
+import * as transformStream from "./web/streams/transform_stream.ts";
+import * as queuingStrategy from "./web/streams/queuing_strategy.ts";
+import * as writableStream from "./web/streams/writable_stream.ts";
 
 // These imports are not exposed and therefore are fine to just import the
 // symbols required.
@@ -134,12 +137,19 @@ declare global {
   };
   var onload: ((e: Event) => void) | undefined;
   var onunload: ((e: Event) => void) | undefined;
-  var bootstrapMainRuntime: (() => void) | undefined;
 
-  // Assigned to `self` global - worker runtime and compiler
-  var bootstrapWorkerRuntime:
-    | ((name: string) => Promise<void> | void)
-    | undefined;
+  // These methods are used to prepare different runtime
+  // environments. After bootrapping, this namespace
+  // should be removed from global scope.
+  var bootstrap: {
+    mainRuntime: (() => void) | undefined;
+    // Assigned to `self` global - worker runtime and compiler
+    workerRuntime: ((name: string) => Promise<void> | void) | undefined;
+    // Assigned to `self` global - compiler
+    tsCompilerRuntime: (() => void) | undefined;
+    wasmCompilerRuntime: (() => void) | undefined;
+  };
+
   var onerror:
     | ((
         msg: string,
@@ -156,9 +166,6 @@ declare global {
   var close: () => void;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   var postMessage: (msg: any) => void;
-  // Assigned to `self` global - compiler
-  var bootstrapTsCompilerRuntime: (() => void) | undefined;
-  var bootstrapWasmCompilerRuntime: (() => void) | undefined;
   /* eslint-enable */
 }
 
@@ -212,6 +219,10 @@ export const windowOrWorkerGlobalScopeProperties = {
   AbortController: nonEnumerable(abortController.AbortControllerImpl),
   AbortSignal: nonEnumerable(abortSignal.AbortSignalImpl),
   Blob: nonEnumerable(blob.DenoBlob),
+  ByteLengthQueuingStrategy: nonEnumerable(
+    queuingStrategy.ByteLengthQueuingStrategyImpl
+  ),
+  CountQueuingStrategy: nonEnumerable(queuingStrategy.CountQueuingStrategyImpl),
   File: nonEnumerable(domFile.DomFileImpl),
   CustomEvent: nonEnumerable(customEvent.CustomEventImpl),
   DOMException: nonEnumerable(domException.DOMExceptionImpl),
@@ -223,11 +234,13 @@ export const windowOrWorkerGlobalScopeProperties = {
   FormData: nonEnumerable(formData.FormDataImpl),
   TextEncoder: nonEnumerable(textEncoding.TextEncoder),
   TextDecoder: nonEnumerable(textEncoding.TextDecoder),
-  ReadableStream: nonEnumerable(streams.ReadableStream),
+  ReadableStream: nonEnumerable(readableStream.ReadableStreamImpl),
+  TransformStream: nonEnumerable(transformStream.TransformStreamImpl),
   Request: nonEnumerable(request.Request),
   Response: nonEnumerable(fetchTypes.Response),
   performance: writable(new performanceUtil.Performance()),
   Worker: nonEnumerable(workers.WorkerImpl),
+  WritableStream: nonEnumerable(writableStream.WritableStreamImpl),
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
