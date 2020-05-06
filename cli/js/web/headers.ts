@@ -14,7 +14,7 @@ function isHeaders(value: any): value is Headers {
   return value instanceof Headers;
 }
 
-const headerMap = Symbol("header map");
+const headersData = Symbol("headers data");
 
 // TODO: headerGuard? Investigate if it is needed
 // node-fetch did not implement this but it is in the spec
@@ -39,9 +39,84 @@ function validateValue(value: string): void {
   }
 }
 
+function dataAppend(
+  data: Array<[string, string]>,
+  key: string,
+  value: string
+): void {
+  if (key === "set-cookie") {
+    data.push([key, value]);
+    return;
+  }
+  for (let i = 0; i < data.length; i++) {
+    const [dataKey] = data[i];
+    if (dataKey === key) {
+      data[i][1] += `, ${value}`;
+      return;
+    }
+  }
+  data.push([key, value]);
+}
+
+function dataGet(
+  data: Array<[string, string]>,
+  key: string
+): string | undefined {
+  for (const [dataKey, value] of data) {
+    if (dataKey === key) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function dataSet(
+  data: Array<[string, string]>,
+  key: string,
+  value: string
+): void {
+  let found = false;
+  for (let i = 0; i < data.length; i++) {
+    const [dataKey] = data[i];
+    if (dataKey === key) {
+      data[i][1] = value;
+      // there could be multiple set-cookie headers, but all others are unique
+      if (key !== "set-cookie") {
+        return;
+      } else {
+        found = true;
+      }
+    }
+  }
+  if (!found) {
+    data.push([key, value]);
+  }
+}
+
+function dataDelete(data: Array<[string, string]>, key: string): void {
+  let i = 0;
+  while (i < data.length) {
+    const [dataKey] = data[i];
+    if (dataKey === key) {
+      data.splice(i, 1);
+    } else {
+      i++;
+    }
+  }
+}
+
+function dataHas(data: Array<[string, string]>, key: string): boolean {
+  for (const [dataKey] of data) {
+    if (dataKey === key) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // ref: https://fetch.spec.whatwg.org/#dom-headers
 class HeadersBase {
-  [headerMap]: Map<string, string>;
+  [headersData]: Array<[string, string]>;
 
   constructor(init?: HeadersInit) {
     if (init === null) {
@@ -49,9 +124,9 @@ class HeadersBase {
         "Failed to construct 'Headers'; The provided value was not valid"
       );
     } else if (isHeaders(init)) {
-      this[headerMap] = new Map(init);
+      this[headersData] = [...init];
     } else {
-      this[headerMap] = new Map();
+      this[headersData] = [];
       if (Array.isArray(init)) {
         for (const tuple of init) {
           // If header does not contain exactly two items,
@@ -63,37 +138,25 @@ class HeadersBase {
             2
           );
 
-          const [name, value] = normalizeParams(tuple[0], tuple[1]);
-          validateName(name);
-          validateValue(value);
-          const existingValue = this[headerMap].get(name);
-          this[headerMap].set(
-            name,
-            existingValue ? `${existingValue}, ${value}` : value
-          );
+          this.append(tuple[0], tuple[1]);
         }
       } else if (init) {
-        const names = Object.keys(init);
-        for (const rawName of names) {
-          const rawValue = init[rawName];
-          const [name, value] = normalizeParams(rawName, rawValue);
-          validateName(name);
-          validateValue(value);
-          this[headerMap].set(name, value);
+        for (const [rawName, rawValue] of Object.entries(init)) {
+          this.append(rawName, rawValue);
         }
       }
     }
   }
 
   [customInspect](): string {
-    let headerSize = this[headerMap].size;
+    let length = this[headersData].length;
     let output = "";
-    this[headerMap].forEach((value, key) => {
-      const prefix = headerSize === this[headerMap].size ? " " : "";
-      const postfix = headerSize === 1 ? " " : ", ";
+    for (const [key, value] of this[headersData]) {
+      const prefix = length === this[headersData].length ? " " : "";
+      const postfix = length === 1 ? " " : ", ";
       output = output + `${prefix}${key}: ${value}${postfix}`;
-      headerSize--;
-    });
+      length--;
+    }
     return `Headers {${output}}`;
   }
 
@@ -103,31 +166,28 @@ class HeadersBase {
     const [newname, newvalue] = normalizeParams(name, value);
     validateName(newname);
     validateValue(newvalue);
-    const v = this[headerMap].get(newname);
-    const str = v ? `${v}, ${newvalue}` : newvalue;
-    this[headerMap].set(newname, str);
+    dataAppend(this[headersData], newname, newvalue);
   }
 
   delete(name: string): void {
     requiredArguments("Headers.delete", arguments.length, 1);
     const [newname] = normalizeParams(name);
     validateName(newname);
-    this[headerMap].delete(newname);
+    dataDelete(this[headersData], newname);
   }
 
   get(name: string): string | null {
     requiredArguments("Headers.get", arguments.length, 1);
     const [newname] = normalizeParams(name);
     validateName(newname);
-    const value = this[headerMap].get(newname);
-    return value || null;
+    return dataGet(this[headersData], newname) ?? null;
   }
 
   has(name: string): boolean {
     requiredArguments("Headers.has", arguments.length, 1);
     const [newname] = normalizeParams(name);
     validateName(newname);
-    return this[headerMap].has(newname);
+    return dataHas(this[headersData], newname);
   }
 
   set(name: string, value: string): void {
@@ -135,7 +195,7 @@ class HeadersBase {
     const [newname, newvalue] = normalizeParams(name, value);
     validateName(newname);
     validateValue(newvalue);
-    this[headerMap].set(newname, newvalue);
+    dataSet(this[headersData], newname, newvalue);
   }
 
   get [Symbol.toStringTag](): string {
@@ -148,4 +208,4 @@ export class HeadersImpl extends DomIterableMixin<
   string,
   string,
   typeof HeadersBase
->(HeadersBase, headerMap) {}
+>(HeadersBase, headersData) {}
