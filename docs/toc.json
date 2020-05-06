@@ -1,0 +1,83 @@
+{
+  "introduction": {
+    "name": "Introduction"
+  },
+  "getting_started": {
+    "name": "Getting Started",
+    "children": {
+      "installation": "Installation",
+      "setup_your_environment": "Setup your environment",
+      "first_steps": "First steps",
+      "permissions": "Permissions",
+      "typescript": "Using TypeScript",
+      "webassembly": "Using WebAssembly"
+    }
+  },
+  "runtime": {
+    "name": "The Runtime",
+    "children": {
+      "program_lifecycle": "Program Lifecycle",
+      "compiler_apis": "Compiler APIs",
+      "unstable": "Unstable APIs"
+    }
+  },
+  "linking_to_external_code": {
+    "name": "Linking to external code",
+    "children": {
+      "reloading_modules": "Reloading modules",
+      "integrity_checking": "Integrity checking",
+      "proxies": "Proxies",
+      "import_maps": "Import maps"
+    }
+  },
+  "testing": {
+    "name": "Testing",
+    "children": {
+      "writing": "Writing tests",
+      "running": "Running tests"
+    }
+  },
+  "plugins": {
+    "name": "Plugins",
+    "children": {
+      "how_do_plugins_work": "How do plugins work?",
+      "creating_plugins": "Creating plugins",
+      "using_plugins": "Using plugins"
+    }
+  },
+  "tools": {
+    "name": "Tools",
+    "children": {
+      "debugger": "Debugger",
+      "script_installer": "Script installer",
+      "formatter": "Formatter",
+      "bundler": "Bundler",
+      "documentation_generator": "Documentation generator",
+      "dependency_inspector": "Dependency inspector"
+    }
+  },
+  "embedding_deno": {
+    "name": "Embedding Deno"
+  },
+  "contributing": {
+    "name": "Contributing",
+    "children": {
+      "building_from_source": "Building from source",
+      "development_tools": "Development tools",
+      "architecture": "Architecture"
+    }
+  },
+  "examples": {
+    "name": "Examples",
+    "children": {
+      "unix_cat": "Unix cat program",
+      "fileserver": "File server",
+      "tcp_echo": "TCP echo server",
+      "subprocess": "Creating a subprocess",
+      "permissions": "Inspecting and revoking permissions",
+      "os_signals": "OS Signals",
+      "file_system_events": "File system events",
+      "testing_if_main": "Checking if file is main"
+    }
+  }
+}
