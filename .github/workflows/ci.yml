@@ -96,7 +96,7 @@ jobs:
         run: echo "::set-env name=CARGO_HOME::$(pwd)/.cargo_home"
 
       - name: Cache
-        uses: actions/cache@master
+        uses: denoland/github-actions-cache@stable-prerelease
         with:
           # Note: crates from the denoland/deno git repo always get rebuilt,
           # and their outputs ('deno', 'libdeno.rlib' etc.) are quite big,
