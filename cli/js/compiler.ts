@@ -223,9 +223,26 @@ function getExtension(fileName: string, mediaType: MediaType): ts.Extension {
   }
 }
 
-/** A global cache of module source files that have been loaded. */
+/** Because we support providing types for JS files as well as X-TypeScript-Types
+ * header we might be feeding TS compiler with different files than import specifiers
+ * suggest. To accomplish that we keep track of two different specifiers:
+ *  - original - the one in import statement (import "./foo.js")
+ *  - mapped - if there's no type directive it's the same as original, otherwise
+ *             it's unresolved specifier for type directive (/// @deno-types="./foo.d.ts")
+ */
+interface SourceFileSpecifierMap {
+  original: string;
+  mapped: string;
+}
+
+/** A global cache of module source files that have been loaded.
+ * This cache will be rewritten to be populated on compiler startup
+ * with files provided from Rust in request message.
+ */
 const SOURCE_FILE_CACHE: Map<string, SourceFile> = new Map();
-/** A map of maps which cache resolved specifier for each import in a file
+/** A map of maps which cache resolved specifier for each import in a file.
+ * This cache is used so `resolveModuleNames` ops is called as few times
+ * as possible.
  *
  * First map's key is "referrer" URL ("file://a/b/c/mod.ts")
  * Second map's key is "raw" import specifier ("./foo.ts")
@@ -252,9 +269,7 @@ class SourceFile {
     SOURCE_FILE_CACHE.set(this.url, this);
   }
 
-  imports(
-    processJsImports: boolean
-  ): Array<{ original: string; mapped: string }> {
+  imports(processJsImports: boolean): SourceFileSpecifierMap[] {
     if (this.processed) {
       throw new Error("SourceFile has already been processed.");
     }
@@ -278,7 +293,7 @@ class SourceFile {
       detectJsImports
     );
     this.processed = true;
-    const files: Array<{ original: string; mapped: string }> = [];
+    const files: SourceFileSpecifierMap[] = [];
 
     function process(references: Array<{ fileName: string }>): void {
       for (const { fileName } of references) {
@@ -293,11 +308,18 @@ class SourceFile {
       typeReferenceDirectives,
     } = preProcessedFileInfo;
     const typeDirectives = parseTypeDirectives(this.sourceCode);
+
     if (typeDirectives) {
       for (const importedFile of importedFiles) {
+        // If there's a type directive for current processed file; then we provide
+        // different `mapped` specifier.
+        const mappedModuleName = getMappedModuleName(
+          importedFile,
+          typeDirectives
+        );
         files.push({
           original: importedFile.fileName,
-          mapped: getMappedModuleName(importedFile, typeDirectives),
+          mapped: mappedModuleName ?? importedFile.fileName,
         });
       }
     } else if (processJsImports || !isJsOrJsx) {
@@ -652,7 +674,7 @@ function getMediaType(filename: string): MediaType {
 
 function processLocalImports(
   sources: Record<string, string>,
-  specifiers: Array<{ original: string; mapped: string }>,
+  specifiers: SourceFileSpecifierMap[],
   referrer?: string,
   processJsImports = false
 ): string[] {
@@ -697,7 +719,7 @@ function processLocalImports(
 }
 
 async function processImports(
-  specifiers: Array<{ original: string; mapped: string }>,
+  specifiers: SourceFileSpecifierMap[],
   referrer?: string,
   processJsImports = false
 ): Promise<string[]> {
@@ -736,14 +758,14 @@ interface FileReference {
 function getMappedModuleName(
   source: FileReference,
   typeDirectives: Map<FileReference, string>
-): string {
+): string | undefined {
   const { fileName: sourceFileName, pos: sourcePos } = source;
   for (const [{ fileName, pos }, value] of typeDirectives.entries()) {
     if (sourceFileName === fileName && sourcePos === pos) {
       return value;
     }
   }
-  return source.fileName;
+  return undefined;
 }
 
 const typeDirectiveRegEx = /@deno-types\s*=\s*(["'])((?:(?=(\\?))\3.)*?)\1/gi;
