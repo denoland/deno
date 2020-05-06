@@ -1014,7 +1014,7 @@ for await (const req of serve(":8000")) {
 ```
 
 ```shell
-$ deno run --importmap=import_map.json hello_server.ts
+$ deno run --importmap=import_map.json --unstable hello_server.ts
 ```
 
 ## WASM support
