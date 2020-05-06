@@ -2,36 +2,72 @@
 #![allow(unused)]
 
 use crate::file_fetcher::SourceFileFetcher;
-use crate::swc_util::analyze_dependencies;
+use crate::msg::MediaType;
+use crate::swc_util::analyze_dependencies_and_references;
+use crate::swc_util::TsReferenceKind;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
 use serde::Serialize;
+use serde::Serializer;
 use std::collections::HashMap;
+
+fn serialize_module_specifier<S>(
+  spec: &ModuleSpecifier,
+  s: S,
+) -> Result<S::Ok, S::Error>
+where
+  S: Serializer,
+{
+  s.serialize_str(&spec.to_string())
+}
+
+fn serialize_option_module_specifier<S>(
+  maybe_spec: &Option<ModuleSpecifier>,
+  s: S,
+) -> Result<S::Ok, S::Error>
+where
+  S: Serializer,
+{
+  if let Some(spec) = maybe_spec {
+    serialize_module_specifier(spec, s)
+  } else {
+    s.serialize_none()
+  }
+}
 
 #[derive(Debug, Serialize)]
 struct ModuleGraph(HashMap<String, ModuleGraphFile>);
 
-// #[derive(Debug, Serialize)]
-// #[serde(rename_all = "camelCase")]
-// struct ImportDescriptor {
-//   specifier: String,
-//   resolved_specifier: ModuleSpecifier,
-//   // These two fields are for support of @deno-types directive
-//   // directly prepending import statement
-//   #[serde(skip_serializing_if = "Option::is_none")]
-//   type_directive: Option<String>,
-//   #[serde(skip_serializing_if = "Option::is_none")]
-//   resolved_type_directive: Option<ModuleSpecifier>,
-// }
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ImportDescriptor {
+  specifier: String,
+  #[serde(serialize_with = "serialize_module_specifier")]
+  resolved_specifier: ModuleSpecifier,
+  // These two fields are for support of @deno-types directive
+  // directly prepending import statement
+  type_directive: Option<String>,
+  #[serde(serialize_with = "serialize_option_module_specifier")]
+  resolved_type_directive: Option<ModuleSpecifier>,
+}
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ReferenceDescriptor {
+  specifier: String,
+  #[serde(serialize_with = "serialize_module_specifier")]
+  resolved_specifier: ModuleSpecifier,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct ModuleGraphFile {
   pub specifier: String,
-  pub deps: Vec<String>,
-  // pub imports: Vec<ImportDescriptor>,
-  // pub referenced_files: Vec<ReferenceDescriptor>,
-  // pub lib_directives: Vec<LibDirective>,
-  // pub types_directives: Vec<TypeDirective>,
+  pub imports: Vec<ImportDescriptor>,
+  pub referenced_files: Vec<ReferenceDescriptor>,
+  pub lib_directives: Vec<ReferenceDescriptor>,
+  pub types_directives: Vec<ReferenceDescriptor>,
+  pub type_headers: Vec<ReferenceDescriptor>,
 }
 
 struct ModuleGraphLoader {
@@ -56,48 +92,139 @@ impl ModuleGraphLoader {
     self.to_visit.push(specifier.to_owned());
     while let Some(spec) = self.to_visit.pop() {
       self.visit_module(&spec).await?;
-      let file = self.graph.0.get(&spec.to_string()).unwrap();
-      for dep in &file.deps {
-        if let Some(_exists) = self.graph.0.get(dep) {
-          continue;
-        } else {
-          self
-            .to_visit
-            .push(ModuleSpecifier::resolve_url_or_path(dep).unwrap());
-        }
-      }
     }
     Ok(self.graph.0)
   }
 
   async fn visit_module(
     &mut self,
-    specifier: &ModuleSpecifier,
+    module_specifier: &ModuleSpecifier,
   ) -> Result<(), ErrBox> {
-    if self.graph.0.contains_key(&specifier.to_string()) {
+    if self.graph.0.contains_key(&module_specifier.to_string()) {
       return Ok(());
     }
 
-    let source_file =
-      self.file_fetcher.fetch_source_file(specifier, None).await?;
+    let source_file = self
+      .file_fetcher
+      .fetch_source_file(module_specifier, None)
+      .await?;
 
-    let raw_deps =
-      analyze_dependencies(&String::from_utf8(source_file.source_code)?, true)?;
+    let mut imports = vec![];
+    let mut referenced_files = vec![];
+    let mut lib_directives = vec![];
+    let mut types_directives = vec![];
+    let mut type_headers = vec![];
 
-    // TODO(bartlomieju): apply import map, using State
-    //    or should it be passed explicitly
-    let mut deps = vec![];
-    for raw_dep in raw_deps {
-      let specifier =
-        ModuleSpecifier::resolve_import(&raw_dep, &specifier.to_string())?;
-      deps.push(specifier.to_string());
+    if source_file.media_type == MediaType::JavaScript
+      || source_file.media_type == MediaType::TypeScript
+    {
+      if let Some(types_specifier) = source_file.types_header {
+        let type_header = ReferenceDescriptor {
+          specifier: types_specifier.to_string(),
+          resolved_specifier: ModuleSpecifier::resolve_import(
+            &types_specifier,
+            &module_specifier.to_string(),
+          )?,
+        };
+        type_headers.push(type_header);
+      }
+
+      let (import_descs, ref_descs) = analyze_dependencies_and_references(
+        &String::from_utf8(source_file.source_code)?,
+        true,
+      )?;
+
+      // TODO(bartlomieju): apply import map, using State
+      //    or should it be passed explicitly
+      for import_desc in import_descs {
+        let resolved_specifier = ModuleSpecifier::resolve_import(
+          &import_desc.specifier,
+          &module_specifier.to_string(),
+        )?;
+
+        let resolved_type_directive =
+          if let Some(types_specifier) = import_desc.deno_types.as_ref() {
+            Some(ModuleSpecifier::resolve_import(
+              &types_specifier,
+              &module_specifier.to_string(),
+            )?)
+          } else {
+            None
+          };
+
+        let import_descriptor = ImportDescriptor {
+          specifier: import_desc.specifier.to_string(),
+          resolved_specifier,
+          type_directive: import_desc.deno_types,
+          resolved_type_directive,
+        };
+
+        if self
+          .graph
+          .0
+          .get(&import_descriptor.resolved_specifier.to_string())
+          .is_none()
+        {
+          self
+            .to_visit
+            .push(import_descriptor.resolved_specifier.clone());
+        }
+
+        if let Some(type_dir_url) =
+          import_descriptor.resolved_type_directive.as_ref()
+        {
+          if self.graph.0.get(&type_dir_url.to_string()).is_none() {
+            self.to_visit.push(type_dir_url.clone());
+          }
+        }
+
+        imports.push(import_descriptor);
+      }
+
+      for ref_desc in ref_descs {
+        let resolved_specifier = ModuleSpecifier::resolve_import(
+          &ref_desc.specifier,
+          &module_specifier.to_string(),
+        )?;
+        let reference_descriptor = ReferenceDescriptor {
+          specifier: ref_desc.specifier.to_string(),
+          resolved_specifier,
+        };
+
+        if self
+          .graph
+          .0
+          .get(&reference_descriptor.resolved_specifier.to_string())
+          .is_none()
+        {
+          self
+            .to_visit
+            .push(reference_descriptor.resolved_specifier.clone());
+        }
+
+        match ref_desc.kind {
+          TsReferenceKind::Lib => {
+            lib_directives.push(reference_descriptor);
+          }
+          TsReferenceKind::Types => {
+            types_directives.push(reference_descriptor);
+          }
+          TsReferenceKind::Path => {
+            referenced_files.push(reference_descriptor);
+          }
+        }
+      }
     }
 
     self.graph.0.insert(
-      specifier.to_string(),
+      module_specifier.to_string(),
       ModuleGraphFile {
-        specifier: specifier.to_string(),
-        deps,
+        specifier: module_specifier.to_string(),
+        imports,
+        referenced_files,
+        lib_directives,
+        types_directives,
+        type_headers,
       },
     );
     Ok(())
@@ -232,43 +359,77 @@ mod tests {
       ModuleGraphLoader::new(global_state.file_fetcher.clone());
     let graph = graph_loader.build_graph(&module_specifier).await.unwrap();
 
+    eprintln!("json {:#?}", serde_json::to_value(&graph).unwrap());
+
     assert_eq!(
       serde_json::to_value(&graph).unwrap(),
       json!({
         "http://localhost:4545/cli/tests/type_definitions.ts": {
+          "specifier": "http://localhost:4545/cli/tests/type_definitions.ts",
           "imports": [
             {
               "specifier": "./type_definitions/foo.js",
-              "resolvedUrl": "http://localhost:4545/cli/tests/type_definitions/foo.js",
+              "resolvedSpecifier": "http://localhost:4545/cli/tests/type_definitions/foo.js",
               "typeDirective": "./type_definitions/foo.d.ts",
               "resolvedTypeDirective": "http://localhost:4545/cli/tests/type_definitions/foo.d.ts"
             },
             {
               "specifier": "./type_definitions/fizz.js",
-              "resolvedUrl": "http://localhost:4545/cli/tests/type_definitions/fizz.js",
+              "resolvedSpecifier": "http://localhost:4545/cli/tests/type_definitions/fizz.js",
               "typeDirective": "./type_definitions/fizz.d.ts",
               "resolvedTypeDirective": "http://localhost:4545/cli/tests/type_definitions/fizz.d.ts"
             },
             {
-              "specifier": "./type_definitions/qat.js",
-              "resolvedUrl": "http://localhost:4545/cli/tests/type_definitions/qat.js"
+              "specifier": "./type_definitions/qat.ts",
+              "resolvedSpecifier": "http://localhost:4545/cli/tests/type_definitions/qat.ts",
+              "typeDirective": null,
+              "resolvedTypeDirective": null,
             },
-          ]
+          ],
+          "typesDirectives": [],
+          "referencedFiles": [],
+          "libDirectives": [],
+          "typeHeaders": [],
         },
         "http://localhost:4545/cli/tests/type_definitions/foo.js": {
+          "specifier": "http://localhost:4545/cli/tests/type_definitions/foo.js",
           "imports": [],
+          "referencedFiles": [],
+          "libDirectives": [],
+          "typesDirectives": [],
+          "typeHeaders": [],
         },
         "http://localhost:4545/cli/tests/type_definitions/foo.d.ts": {
+          "specifier": "http://localhost:4545/cli/tests/type_definitions/foo.d.ts",
           "imports": [],
+          "referencedFiles": [],
+          "libDirectives": [],
+          "typesDirectives": [],
+          "typeHeaders": [],
         },
         "http://localhost:4545/cli/tests/type_definitions/fizz.js": {
+          "specifier": "http://localhost:4545/cli/tests/type_definitions/fizz.js",
           "imports": [],
+          "referencedFiles": [],
+          "libDirectives": [],
+          "typesDirectives": [],
+          "typeHeaders": [],
         },
         "http://localhost:4545/cli/tests/type_definitions/fizz.d.ts": {
+          "specifier": "http://localhost:4545/cli/tests/type_definitions/fizz.d.ts",
           "imports": [],
+          "referencedFiles": [],
+          "libDirectives": [],
+          "typesDirectives": [],
+          "typeHeaders": [],
         },
-        "http://localhost:4545/cli/tests/type_definitions/qat.js": {
+        "http://localhost:4545/cli/tests/type_definitions/qat.ts": {
+          "specifier": "http://localhost:4545/cli/tests/type_definitions/qat.ts",
           "imports": [],
+          "referencedFiles": [],
+          "libDirectives": [],
+          "typesDirectives": [],
+          "typeHeaders": [],
         }
       })
     );
@@ -289,24 +450,46 @@ mod tests {
       ModuleGraphLoader::new(global_state.file_fetcher.clone());
     let graph = graph_loader.build_graph(&module_specifier).await.unwrap();
 
+    eprintln!("{:#?}", serde_json::to_value(&graph).unwrap());
+
     assert_eq!(
       serde_json::to_value(&graph).unwrap(),
       json!({
         "http://localhost:4545/cli/tests/type_directives_02.ts": {
+          "specifier": "http://localhost:4545/cli/tests/type_directives_02.ts",
           "imports": [
             {
               "specifier": "./subdir/type_reference.js",
-              "resolvedUrl": "http://localhost:4545/cli/tests/subdir/type_reference.js"
-            }
-          ]
-        },
-        "http://localhost:4545/cli/tests/subdir/type_reference.js": {
-          "typeReferences": [
-            {
-              "specifier": "./type_reference.d.ts",
-              "resolvedUrl": "http://localhost:4545/cli/tests/subdir/type_reference.d.ts"
+              "resolvedSpecifier": "http://localhost:4545/cli/tests/subdir/type_reference.js",
+              "typeDirective": null,
+              "resolvedTypeDirective": null,
             }
           ],
+          "typesDirectives": [],
+          "referencedFiles": [],
+          "libDirectives": [],
+          "typeHeaders": [],
+        },
+        "http://localhost:4545/cli/tests/subdir/type_reference.d.ts": {
+          "specifier": "http://localhost:4545/cli/tests/subdir/type_reference.d.ts",
+          "imports": [],
+          "referencedFiles": [],
+          "libDirectives": [],
+          "typesDirectives": [],
+          "typeHeaders": [],
+        },
+        "http://localhost:4545/cli/tests/subdir/type_reference.js": {
+          "specifier": "http://localhost:4545/cli/tests/subdir/type_reference.js",
+          "imports": [],
+          "referencedFiles": [],
+          "libDirectives": [],
+          "typesDirectives": [
+            {
+              "specifier": "./type_reference.d.ts",
+              "resolvedSpecifier": "http://localhost:4545/cli/tests/subdir/type_reference.d.ts",
+            }
+          ],
+          "typeHeaders": [],
         }
       })
     );
@@ -331,20 +514,32 @@ mod tests {
       serde_json::to_value(&graph).unwrap(),
       json!({
         "http://localhost:4545/cli/tests/type_directives_01.ts": {
+          "specifier": "http://localhost:4545/cli/tests/type_directives_01.ts",
           "imports": [
             {
-              "specifier": "./xTypeScriptTypes.js",
-              "resolvedUrl": "http://localhost:4545/cli/tests/xTypeScriptTypes.js"
+              "specifier": "http://127.0.0.1:4545/xTypeScriptTypes.js",
+              "resolvedSpecifier": "http://127.0.0.1:4545/xTypeScriptTypes.js",
+              "typeDirective": null,
+              "resolvedTypeDirective": null,
             }
-          ]
+          ],
+          "referencedFiles": [],
+          "libDirectives": [],
+          "typesDirectives": [],
+          "typeHeaders": [],
         },
-        "http://localhost:4545/cli/tests/xTypeScriptTypes.js": {
+        "http://127.0.0.1:4545/xTypeScriptTypes.js": {
+          "specifier": "http://127.0.0.1:4545/xTypeScriptTypes.js",
           "typeHeaders": [
             {
               "specifier": "./xTypeScriptTypes.d.ts",
-              "resolvedUrl": "http://localhost:4545/cli/tests/xTypeScriptTypes.d.ts"
+              "resolvedSpecifier": "http://127.0.0.1:4545/xTypeScriptTypes.d.ts"
             }
           ],
+          "imports": [],
+          "referencedFiles": [],
+          "libDirectives": [],
+          "typesDirectives": [],
         }
       })
     );

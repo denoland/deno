@@ -418,26 +418,26 @@ fn get_deno_types(parser: &AstParser, span: Span) -> Option<String> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-struct ImportDescriptor {
-  specifier: String,
-  deno_types: Option<String>,
+pub struct ImportDescriptor {
+  pub specifier: String,
+  pub deno_types: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-enum TsReferenceKind {
+pub enum TsReferenceKind {
   Lib,
   Types,
   Path,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-struct TsReferenceDescriptor {
-  kind: TsReferenceKind,
-  specifier: String,
+pub struct TsReferenceDescriptor {
+  pub kind: TsReferenceKind,
+  pub specifier: String,
 }
 
 #[allow(unused)]
-fn analyze_dependencies_and_references(
+pub fn analyze_dependencies_and_references(
   source_code: &str,
   analyze_dynamic_imports: bool,
 ) -> Result<
@@ -487,6 +487,7 @@ fn analyze_dependencies_and_references(
         continue;
       }
 
+      // TODO(bartlomieju): you can do better than that...
       let text = comment.text.to_string();
       let (kind, specifier_in_quotes) =
         if text.starts_with("/ <reference path=") {

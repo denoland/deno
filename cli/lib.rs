@@ -356,6 +356,7 @@ async fn eval_command(
     filename: main_module_url.to_file_path().unwrap(),
     url: main_module_url,
     types_url: None,
+    types_header: None,
     media_type: if as_typescript {
       MediaType::TypeScript
     } else {
@@ -532,6 +533,7 @@ async fn test_command(
     filename: test_file_url.to_file_path().unwrap(),
     url: test_file_url,
     types_url: None,
+    types_header: None,
     media_type: MediaType::TypeScript,
     source_code: test_file.clone().into_bytes(),
   };
