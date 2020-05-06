@@ -11,11 +11,23 @@ use std::collections::HashMap;
 #[derive(Debug, Serialize)]
 struct ModuleGraph(HashMap<String, ModuleGraphFile>);
 
+// #[derive(Debug, Serialize)]
+// #[serde(rename_all = "camelCase")]
+// struct ImportDescriptor {
+//   specifier: String,
+//   resolved_specifier: ModuleSpecifier,
+//   // These two fields are for support of @deno-types directive
+//   // directly prepending import statement
+//   #[serde(skip_serializing_if = "Option::is_none")]
+//   type_directive: Option<String>,
+//   #[serde(skip_serializing_if = "Option::is_none")]
+//   resolved_type_directive: Option<ModuleSpecifier>,
+// }
+
 #[derive(Debug, Serialize)]
 struct ModuleGraphFile {
   pub specifier: String,
   pub deps: Vec<String>,
-
   // pub imports: Vec<ImportDescriptor>,
   // pub referenced_files: Vec<ReferenceDescriptor>,
   // pub lib_directives: Vec<LibDirective>,
@@ -227,13 +239,13 @@ mod tests {
           "imports": [
             {
               "specifier": "./type_definitions/foo.js",
-              "resolvedUrl": "http://localhost:4545/cli/tests/type_definitions/foo.js"
+              "resolvedUrl": "http://localhost:4545/cli/tests/type_definitions/foo.js",
               "typeDirective": "./type_definitions/foo.d.ts",
               "resolvedTypeDirective": "http://localhost:4545/cli/tests/type_definitions/foo.d.ts"
             },
             {
               "specifier": "./type_definitions/fizz.js",
-              "resolvedUrl": "http://localhost:4545/cli/tests/type_definitions/fizz.js"
+              "resolvedUrl": "http://localhost:4545/cli/tests/type_definitions/fizz.js",
               "typeDirective": "./type_definitions/fizz.d.ts",
               "resolvedTypeDirective": "http://localhost:4545/cli/tests/type_definitions/fizz.d.ts"
             },

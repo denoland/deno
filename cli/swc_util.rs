@@ -1,11 +1,16 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
+#![allow(unused)]
+
 use crate::swc_common;
+use crate::swc_common::comments::CommentKind;
 use crate::swc_common::comments::Comments;
 use crate::swc_common::errors::Diagnostic;
 use crate::swc_common::errors::DiagnosticBuilder;
 use crate::swc_common::errors::Emitter;
 use crate::swc_common::errors::Handler;
 use crate::swc_common::errors::HandlerFlags;
+use crate::swc_common::BytePos;
 use crate::swc_common::FileName;
 use crate::swc_common::Globals;
 use crate::swc_common::SourceMap;
@@ -158,10 +163,16 @@ impl AstParser {
     &self,
     span: Span,
   ) -> Vec<swc_common::comments::Comment> {
-    self
-      .comments
-      .take_leading_comments(span.lo())
-      .unwrap_or_else(|| vec![])
+    let maybe_comments = self.comments.take_leading_comments(span.lo());
+
+    if let Some(comments) = maybe_comments {
+      // clone the comments and put them back in map
+      let to_return = comments.clone();
+      self.comments.add_leading(span.lo(), comments);
+      to_return
+    } else {
+      vec![]
+    }
   }
 }
 
@@ -314,6 +325,265 @@ const a = await import("./" + "buzz.ts");
       "./foo.ts".to_string(),
       "./bar.ts".to_string(),
       "./fizz.ts".to_string(),
+    ]
+  );
+}
+
+#[derive(Clone, Debug, PartialEq)]
+enum DependencyKind {
+  Import,
+  Export,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct DependencyDescriptor {
+  span: Span,
+  specifier: String,
+  kind: DependencyKind,
+}
+
+struct NewDependencyVisitor {
+  dependencies: Vec<DependencyDescriptor>,
+}
+
+impl Visit for NewDependencyVisitor {
+  fn visit_import_decl(
+    &mut self,
+    import_decl: &swc_ecma_ast::ImportDecl,
+    _parent: &dyn Node,
+  ) {
+    let src_str = import_decl.src.value.to_string();
+    self.dependencies.push(DependencyDescriptor {
+      specifier: src_str,
+      kind: DependencyKind::Import,
+      span: import_decl.span,
+    });
+  }
+
+  fn visit_named_export(
+    &mut self,
+    named_export: &swc_ecma_ast::NamedExport,
+    _parent: &dyn Node,
+  ) {
+    if let Some(src) = &named_export.src {
+      let src_str = src.value.to_string();
+      self.dependencies.push(DependencyDescriptor {
+        specifier: src_str,
+        kind: DependencyKind::Export,
+        span: named_export.span,
+      });
+    }
+  }
+
+  fn visit_export_all(
+    &mut self,
+    export_all: &swc_ecma_ast::ExportAll,
+    _parent: &dyn Node,
+  ) {
+    let src_str = export_all.src.value.to_string();
+    self.dependencies.push(DependencyDescriptor {
+      specifier: src_str,
+      kind: DependencyKind::Export,
+      span: export_all.span,
+    });
+  }
+}
+
+fn get_deno_types(parser: &AstParser, span: Span) -> Option<String> {
+  let comments = parser.get_span_comments(span);
+
+  if comments.is_empty() {
+    return None;
+  }
+
+  // @deno-types must directly prepend import statement - hence
+  // checking last comment for span
+  let last = comments.last().unwrap();
+  let comment = last.text.trim_start();
+
+  if comment.starts_with("@deno-types") {
+    let split: Vec<&str> = comment.split("=").collect();
+    assert_eq!(split.len(), 2);
+    let specifier_in_quotes = split.get(1).unwrap().to_string();
+    let specifier = specifier_in_quotes
+      .trim_start_matches("\"")
+      .trim_start_matches("\'")
+      .trim_end_matches("\"")
+      .trim_end_matches("\'")
+      .to_string();
+    return Some(specifier);
+  }
+
+  None
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct ImportDescriptor {
+  specifier: String,
+  deno_types: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+enum TsReferenceKind {
+  Lib,
+  Types,
+  Path,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct TsReferenceDescriptor {
+  kind: TsReferenceKind,
+  specifier: String,
+}
+
+#[allow(unused)]
+fn analyze_dependencies_and_references(
+  source_code: &str,
+  analyze_dynamic_imports: bool,
+) -> Result<
+  (Vec<ImportDescriptor>, Vec<TsReferenceDescriptor>),
+  SwcDiagnosticBuffer,
+> {
+  let parser = AstParser::new();
+  parser.parse_module("root.ts", source_code, |parse_result| {
+    let module = parse_result?;
+    let mut collector = NewDependencyVisitor {
+      dependencies: vec![],
+    };
+    let module_span = module.span;
+    collector.visit_module(&module, &module);
+
+    let dependency_descriptors = collector.dependencies;
+
+    // for each import check if there's relevant @deno-types directive
+    let imports = dependency_descriptors
+      .iter()
+      .map(|mut desc| {
+        if desc.kind == DependencyKind::Import {
+          let deno_types = get_deno_types(&parser, desc.span);
+          ImportDescriptor {
+            specifier: desc.specifier.to_string(),
+            deno_types,
+          }
+        } else {
+          ImportDescriptor {
+            specifier: desc.specifier.to_string(),
+            deno_types: None,
+          }
+        }
+      })
+      .collect();
+
+    // analyze comment from beginning of the file and find TS directives
+    eprintln!("module span {:?}", module_span);
+    let comments = parser
+      .comments
+      .take_leading_comments(module_span.lo())
+      .unwrap_or_else(|| vec![]);
+
+    let mut references = vec![];
+    for comment in comments {
+      if comment.kind != CommentKind::Line {
+        continue;
+      }
+
+      let text = comment.text.to_string();
+      let (kind, specifier_in_quotes) =
+        if text.starts_with("/ <reference path=") {
+          (
+            TsReferenceKind::Path,
+            text.trim_start_matches("/ <reference path="),
+          )
+        } else if text.starts_with("/ <reference lib=") {
+          (
+            TsReferenceKind::Lib,
+            text.trim_start_matches("/ <reference lib="),
+          )
+        } else if text.starts_with("/ <reference types=") {
+          (
+            TsReferenceKind::Types,
+            text.trim_start_matches("/ <reference types="),
+          )
+        } else {
+          continue;
+        };
+      let specifier = specifier_in_quotes
+        .trim_end_matches("/>")
+        .trim_end()
+        .trim_start_matches("\"")
+        .trim_start_matches("\'")
+        .trim_end_matches("\"")
+        .trim_end_matches("\'")
+        .to_string();
+
+      references.push(TsReferenceDescriptor { kind, specifier });
+    }
+    Ok((imports, references))
+  })
+}
+
+#[test]
+fn test_analyze_dependencies_and_directives() {
+  let source = r#"
+// This comment is placed to make sure that directives are parsed
+// even when they start on non-first line
+  
+/// <reference lib="dom" />
+/// <reference types="./type_reference.d.ts" />
+/// <reference path="./type_reference/dep.ts" />
+// @deno-types="./type_definitions/foo.d.ts"
+import { foo } from "./type_definitions/foo.js";
+// @deno-types="./type_definitions/fizz.d.ts"
+import "./type_definitions/fizz.js";
+
+/// <reference path="./type_reference/dep2.ts" />
+
+import * as qat from "./type_definitions/qat.ts";
+
+console.log(foo);
+console.log(fizz);
+console.log(qat.qat);  
+"#;
+
+  let (imports, references) =
+    analyze_dependencies_and_references(source, true).expect("Failed to parse");
+
+  assert_eq!(
+    imports,
+    vec![
+      ImportDescriptor {
+        specifier: "./type_definitions/foo.js".to_string(),
+        deno_types: Some("./type_definitions/foo.d.ts".to_string())
+      },
+      ImportDescriptor {
+        specifier: "./type_definitions/fizz.js".to_string(),
+        deno_types: Some("./type_definitions/fizz.d.ts".to_string())
+      },
+      ImportDescriptor {
+        specifier: "./type_definitions/qat.ts".to_string(),
+        deno_types: None
+      },
+    ]
+  );
+
+  // According to TS docs (https://www.typescriptlang.org/docs/handbook/triple-slash-directives.html)
+  // directives that are not at the top of the file are ignored, so only
+  // 3 references should be captured instead of 4.
+  assert_eq!(
+    references,
+    vec![
+      TsReferenceDescriptor {
+        specifier: "dom".to_string(),
+        kind: TsReferenceKind::Lib,
+      },
+      TsReferenceDescriptor {
+        specifier: "./type_reference.d.ts".to_string(),
+        kind: TsReferenceKind::Types,
+      },
+      TsReferenceDescriptor {
+        specifier: "./type_reference/dep.ts".to_string(),
+        kind: TsReferenceKind::Path,
+      },
     ]
   );
 }
