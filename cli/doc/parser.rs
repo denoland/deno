@@ -4,6 +4,7 @@ use crate::swc_common::comments::CommentKind;
 use crate::swc_common::Span;
 use crate::swc_ecma_ast;
 use crate::swc_ecma_ast::Decl;
+use crate::swc_ecma_ast::DefaultDecl;
 use crate::swc_ecma_ast::ModuleDecl;
 use crate::swc_ecma_ast::Stmt;
 use crate::swc_util::AstParser;
@@ -200,6 +201,74 @@ impl DocParser {
           export_decl,
         )]
       }
+      ModuleDecl::ExportDefaultDecl(export_default_decl) => {
+        let (js_doc, location) =
+          self.details_for_span(export_default_decl.span);
+        let name = "default".to_string();
+
+        let doc_node = match &export_default_decl.decl {
+          DefaultDecl::Class(class_expr) => {
+            let class_def =
+              crate::doc::class::class_to_class_def(self, &class_expr.class);
+            DocNode {
+              kind: DocNodeKind::Class,
+              name,
+              location,
+              js_doc,
+              class_def: Some(class_def),
+              function_def: None,
+              variable_def: None,
+              enum_def: None,
+              type_alias_def: None,
+              namespace_def: None,
+              interface_def: None,
+            }
+          }
+          DefaultDecl::Fn(fn_expr) => {
+            let function_def =
+              crate::doc::function::function_to_function_def(&fn_expr.function);
+            DocNode {
+              kind: DocNodeKind::Function,
+              name,
+              location,
+              js_doc,
+              class_def: None,
+              function_def: Some(function_def),
+              variable_def: None,
+              enum_def: None,
+              type_alias_def: None,
+              namespace_def: None,
+              interface_def: None,
+            }
+          }
+          DefaultDecl::TsInterfaceDecl(interface_decl) => {
+            let (_, interface_def) =
+              crate::doc::interface::get_doc_for_ts_interface_decl(
+                self,
+                interface_decl,
+              );
+            DocNode {
+              kind: DocNodeKind::Interface,
+              name,
+              location,
+              js_doc,
+              class_def: None,
+              function_def: None,
+              variable_def: None,
+              enum_def: None,
+              type_alias_def: None,
+              namespace_def: None,
+              interface_def: Some(interface_def),
+            }
+          }
+        };
+
+        vec![doc_node]
+      }
+      ModuleDecl::ExportDefaultExpr(export_default_expr) => {
+        eprintln!("export default expr {:#?}", export_default_expr);
+        vec![]
+      }
       _ => vec![],
     }
   }
@@ -386,6 +455,7 @@ impl DocParser {
       if let swc_ecma_ast::ModuleItem::ModuleDecl(module_decl) = node {
         let r = match module_decl {
           ModuleDecl::ExportNamed(named_export) => {
+            eprintln!("export named {:#?}", named_export);
             if let Some(src) = &named_export.src {
               let src_str = src.value.to_string();
               named_export
