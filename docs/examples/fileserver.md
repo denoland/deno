@@ -3,7 +3,7 @@
 This one serves a local directory in HTTP.
 
 ```bash
-deno install --allow-net --allow-read file_server https://deno.land/std/http/file_server.ts
+deno install --allow-net --allow-read https://deno.land/std/http/file_server.ts
 ```
 
 Run it:
