@@ -86,10 +86,10 @@ export function repeat(b: Uint8Array, count: number): Uint8Array {
 
   const nb = new Uint8Array(b.length * count);
 
-  let bp = copyBytes(nb, b);
+  let bp = copyBytes(b, nb);
 
   for (; bp < nb.length; bp *= 2) {
-    copyBytes(nb, nb.slice(0, bp), bp);
+    copyBytes(nb.slice(0, bp), nb, bp);
   }
 
   return nb;

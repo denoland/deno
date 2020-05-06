@@ -274,11 +274,14 @@ impl fmt::Display for JSError {
         write!(f, "{}", source_loc)?;
       }
       if self.source_line.is_some() {
-        write!(f, "\n{}\n", self.source_line.as_ref().unwrap())?;
+        let source_line = self.source_line.as_ref().unwrap();
+        write!(f, "\n{}\n", source_line)?;
         let mut s = String::new();
         for i in 0..self.end_column.unwrap() {
           if i >= self.start_column.unwrap() {
             s.push('^');
+          } else if source_line.chars().nth(i as usize).unwrap() == '\t' {
+            s.push('\t');
           } else {
             s.push(' ');
           }

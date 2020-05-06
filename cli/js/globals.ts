@@ -23,6 +23,7 @@ import * as workers from "./web/workers.ts";
 import * as performanceUtil from "./web/performance.ts";
 import * as request from "./web/request.ts";
 import * as readableStream from "./web/streams/readable_stream.ts";
+import * as transformStream from "./web/streams/transform_stream.ts";
 import * as queuingStrategy from "./web/streams/queuing_strategy.ts";
 import * as writableStream from "./web/streams/writable_stream.ts";
 
@@ -234,6 +235,7 @@ export const windowOrWorkerGlobalScopeProperties = {
   TextEncoder: nonEnumerable(textEncoding.TextEncoder),
   TextDecoder: nonEnumerable(textEncoding.TextDecoder),
   ReadableStream: nonEnumerable(readableStream.ReadableStreamImpl),
+  TransformStream: nonEnumerable(transformStream.TransformStreamImpl),
   Request: nonEnumerable(request.Request),
   Response: nonEnumerable(fetchTypes.Response),
   performance: writable(new performanceUtil.Performance()),

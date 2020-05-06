@@ -338,11 +338,11 @@ class WebSocketImpl implements WebSocket {
   async read(p: Uint8Array): Promise<number | null> {
     for await (const ev of this.receive()) {
       if (ev instanceof Uint8Array) {
-        return copyBytes(p, ev);
+        return copyBytes(ev, p);
       }
 
       if (typeof ev === "string") {
-        return copyBytes(p, encode(ev));
+        return copyBytes(encode(ev), p);
       }
     }
 

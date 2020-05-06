@@ -28,7 +28,6 @@ fn op_start(
     "cwd": &env::current_dir().unwrap(),
     "debugFlag": gs.flags.log_level.map_or(false, |l| l == log::Level::Debug),
     "denoVersion": version::DENO,
-    "location": state.main_module.to_string(),
     "noColor": !colors::use_color(),
     "pid": std::process::id(),
     "repl": gs.flags.subcommand == DenoSubcommand::Repl,

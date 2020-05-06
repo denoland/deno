@@ -11,7 +11,6 @@ import { posix, extname } from "../path/mod.ts";
 import { listenAndServe, ServerRequest, Response } from "./server.ts";
 import { parse } from "../flags/mod.ts";
 import { assert } from "../testing/asserts.ts";
-import { setContentLength } from "./io.ts";
 
 interface EntryInfo {
   mode: string;
@@ -64,7 +63,7 @@ if (serverArgs.h ?? serverArgs.help) {
   Serves a local directory in HTTP.
 
 INSTALL:
-  deno install --allow-net --allow-read file_server https://deno.land/std/http/file_server.ts
+  deno install --allow-net --allow-read https://deno.land/std/http/file_server.ts
 
 USAGE:
   file_server [path] [options]
@@ -173,7 +172,6 @@ async function serveDir(
     body: page,
     headers,
   };
-  setContentLength(res);
   return res;
 }
 

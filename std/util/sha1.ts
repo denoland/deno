@@ -6,7 +6,6 @@
  * @copyright Chen, Yi-Cyuan 2014-2017
  * @license MIT
  */
-/*jslint bitwise: true */
 
 const HEX_CHARS = "0123456789abcdef".split("");
 const EXTRA = Uint32Array.of(-2147483648, 8388608, 32768, 128);
@@ -15,40 +14,40 @@ const SHIFT = Uint32Array.of(24, 16, 8, 0);
 const blocks = new Uint32Array(80);
 
 export class Sha1 {
-  private _blocks: Uint32Array;
-  private _block: number;
-  private _start: number;
-  private _bytes: number;
-  private _hBytes: number;
-  private _finalized: boolean;
-  private _hashed: boolean;
+  #blocks: Uint32Array;
+  #block: number;
+  #start: number;
+  #bytes: number;
+  #hBytes: number;
+  #finalized: boolean;
+  #hashed: boolean;
 
-  private _h0 = 0x67452301;
-  private _h1 = 0xefcdab89;
-  private _h2 = 0x98badcfe;
-  private _h3 = 0x10325476;
-  private _h4 = 0xc3d2e1f0;
-  private _lastByteIndex = 0;
+  #h0 = 0x67452301;
+  #h1 = 0xefcdab89;
+  #h2 = 0x98badcfe;
+  #h3 = 0x10325476;
+  #h4 = 0xc3d2e1f0;
+  #lastByteIndex = 0;
 
   constructor(sharedMemory = false) {
     if (sharedMemory) {
-      this._blocks = blocks.fill(0, 0, 17);
+      this.#blocks = blocks.fill(0, 0, 17);
     } else {
-      this._blocks = new Uint32Array(80);
+      this.#blocks = new Uint32Array(80);
     }
 
-    this._h0 = 0x67452301;
-    this._h1 = 0xefcdab89;
-    this._h2 = 0x98badcfe;
-    this._h3 = 0x10325476;
-    this._h4 = 0xc3d2e1f0;
+    this.#h0 = 0x67452301;
+    this.#h1 = 0xefcdab89;
+    this.#h2 = 0x98badcfe;
+    this.#h3 = 0x10325476;
+    this.#h4 = 0xc3d2e1f0;
 
-    this._block = this._start = this._bytes = this._hBytes = 0;
-    this._finalized = this._hashed = false;
+    this.#block = this.#start = this.#bytes = this.#hBytes = 0;
+    this.#finalized = this.#hashed = false;
   }
 
   update(data: string | ArrayBuffer | ArrayBufferView): Sha1 {
-    if (this._finalized) {
+    if (this.#finalized) {
       return this;
     }
     let notString = true;
@@ -64,14 +63,14 @@ export class Sha1 {
     let code;
     let index = 0;
     let i;
-    const start = this._start;
+    const start = this.#start;
     const length = message.length || 0;
-    const blocks = this._blocks;
+    const blocks = this.#blocks;
 
     while (index < length) {
-      if (this._hashed) {
-        this._hashed = false;
-        blocks[0] = this._block;
+      if (this.#hashed) {
+        this.#hashed = false;
+        blocks[0] = this.#block;
         blocks.fill(0, 1, 17);
       }
 
@@ -104,54 +103,54 @@ export class Sha1 {
         }
       }
 
-      this._lastByteIndex = i;
-      this._bytes += i - start;
+      this.#lastByteIndex = i;
+      this.#bytes += i - start;
       if (i >= 64) {
-        this._block = blocks[16];
-        this._start = i - 64;
+        this.#block = blocks[16];
+        this.#start = i - 64;
         this.hash();
-        this._hashed = true;
+        this.#hashed = true;
       } else {
-        this._start = i;
+        this.#start = i;
       }
     }
-    if (this._bytes > 4294967295) {
-      this._hBytes += (this._bytes / 4294967296) >>> 0;
-      this._bytes = this._bytes >>> 0;
+    if (this.#bytes > 4294967295) {
+      this.#hBytes += (this.#bytes / 4294967296) >>> 0;
+      this.#bytes = this.#bytes >>> 0;
     }
     return this;
   }
 
   finalize(): void {
-    if (this._finalized) {
+    if (this.#finalized) {
       return;
     }
-    this._finalized = true;
-    const blocks = this._blocks;
-    const i = this._lastByteIndex;
-    blocks[16] = this._block;
+    this.#finalized = true;
+    const blocks = this.#blocks;
+    const i = this.#lastByteIndex;
+    blocks[16] = this.#block;
     blocks[i >> 2] |= EXTRA[i & 3];
-    this._block = blocks[16];
+    this.#block = blocks[16];
     if (i >= 56) {
-      if (!this._hashed) {
+      if (!this.#hashed) {
         this.hash();
       }
-      blocks[0] = this._block;
+      blocks[0] = this.#block;
       blocks.fill(0, 1, 17);
     }
-    blocks[14] = (this._hBytes << 3) | (this._bytes >>> 29);
-    blocks[15] = this._bytes << 3;
+    blocks[14] = (this.#hBytes << 3) | (this.#bytes >>> 29);
+    blocks[15] = this.#bytes << 3;
     this.hash();
   }
 
   hash(): void {
-    let a = this._h0;
-    let b = this._h1;
-    let c = this._h2;
-    let d = this._h3;
-    let e = this._h4;
+    let a = this.#h0;
+    let b = this.#h1;
+    let c = this.#h2;
+    let d = this.#h3;
+    let e = this.#h4;
     let f, j, t;
-    const blocks = this._blocks;
+    const blocks = this.#blocks;
 
     for (j = 16; j < 80; ++j) {
       t = blocks[j - 3] ^ blocks[j - 8] ^ blocks[j - 14] ^ blocks[j - 16];
@@ -266,21 +265,21 @@ export class Sha1 {
       c = (c << 30) | (c >>> 2);
     }
 
-    this._h0 = (this._h0 + a) >>> 0;
-    this._h1 = (this._h1 + b) >>> 0;
-    this._h2 = (this._h2 + c) >>> 0;
-    this._h3 = (this._h3 + d) >>> 0;
-    this._h4 = (this._h4 + e) >>> 0;
+    this.#h0 = (this.#h0 + a) >>> 0;
+    this.#h1 = (this.#h1 + b) >>> 0;
+    this.#h2 = (this.#h2 + c) >>> 0;
+    this.#h3 = (this.#h3 + d) >>> 0;
+    this.#h4 = (this.#h4 + e) >>> 0;
   }
 
   hex(): string {
     this.finalize();
 
-    const h0 = this._h0;
-    const h1 = this._h1;
-    const h2 = this._h2;
-    const h3 = this._h3;
-    const h4 = this._h4;
+    const h0 = this.#h0;
+    const h1 = this.#h1;
+    const h2 = this.#h2;
+    const h3 = this.#h3;
+    const h4 = this.#h4;
 
     return (
       HEX_CHARS[(h0 >> 28) & 0x0f] +
@@ -333,11 +332,11 @@ export class Sha1 {
   digest(): number[] {
     this.finalize();
 
-    const h0 = this._h0;
-    const h1 = this._h1;
-    const h2 = this._h2;
-    const h3 = this._h3;
-    const h4 = this._h4;
+    const h0 = this.#h0;
+    const h1 = this.#h1;
+    const h2 = this.#h2;
+    const h3 = this.#h3;
+    const h4 = this.#h4;
 
     return [
       (h0 >> 24) & 0xff,
@@ -369,7 +368,7 @@ export class Sha1 {
 
   arrayBuffer(): ArrayBuffer {
     this.finalize();
-    return Uint32Array.of(this._h0, this._h1, this._h2, this._h3, this._h4)
+    return Uint32Array.of(this.#h0, this.#h1, this.#h2, this.#h3, this.#h4)
       .buffer;
   }
 }

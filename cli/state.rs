@@ -287,6 +287,24 @@ impl ModuleLoader for State {
       if let Err(e) = self.check_dyn_import(&module_specifier) {
         return async move { Err(e.into()) }.boxed_local();
       }
+    } else {
+      // Verify that remote file doesn't try to statically import local file.
+      if let Some(referrer) = maybe_referrer.as_ref() {
+        let referrer_url = referrer.as_url();
+        match referrer_url.scheme() {
+          "http" | "https" => {
+            let specifier_url = module_specifier.as_url();
+            match specifier_url.scheme() {
+              "http" | "https" => {}
+              _ => {
+                let e = OpError::permission_denied("Remote module are not allowed to statically import local modules. Use dynamic import instead.".to_string());
+                return async move { Err(e.into()) }.boxed_local();
+              }
+            }
+          }
+          _ => {}
+        }
+      }
     }
 
     let mut state = self.borrow_mut();

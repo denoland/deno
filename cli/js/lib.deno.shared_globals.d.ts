@@ -192,7 +192,6 @@ declare function clearInterval(id?: number): void;
 declare function queueMicrotask(func: Function): void;
 
 declare var console: Console;
-declare var location: Location;
 
 declare function addEventListener(
   type: string,
@@ -424,6 +423,42 @@ interface WritableStreamDefaultWriter<W = any> {
   write(chunk: W): Promise<void>;
 }
 
+declare class TransformStream<I = any, O = any> {
+  constructor(
+    transformer?: Transformer<I, O>,
+    writableStrategy?: QueuingStrategy<I>,
+    readableStrategy?: QueuingStrategy<O>
+  );
+  readonly readable: ReadableStream<O>;
+  readonly writable: WritableStream<I>;
+}
+
+interface TransformStreamDefaultController<O = any> {
+  readonly desiredSize: number | null;
+  enqueue(chunk: O): void;
+  error(reason?: any): void;
+  terminate(): void;
+}
+
+interface Transformer<I = any, O = any> {
+  flush?: TransformStreamDefaultControllerCallback<O>;
+  readableType?: undefined;
+  start?: TransformStreamDefaultControllerCallback<O>;
+  transform?: TransformStreamDefaultControllerTransformCallback<I, O>;
+  writableType?: undefined;
+}
+
+interface TransformStreamDefaultControllerCallback<O> {
+  (controller: TransformStreamDefaultController<O>): void | PromiseLike<void>;
+}
+
+interface TransformStreamDefaultControllerTransformCallback<I, O> {
+  (
+    chunk: I,
+    controller: TransformStreamDefaultController<O>
+  ): void | PromiseLike<void>;
+}
+
 interface DOMStringList {
   /** Returns the number of strings in strings. */
   readonly length: number;
@@ -438,68 +473,6 @@ declare class DOMException extends Error {
   constructor(message?: string, name?: string);
   readonly name: string;
   readonly message: string;
-}
-
-/** The location (URL) of the object it is linked to. Changes done on it are
- * reflected on the object it relates to. Both the Document and Window
- * interface have such a linked Location, accessible via Document.location and
- * Window.location respectively. */
-declare interface Location {
-  /** Returns a DOMStringList object listing the origins of the ancestor
-   * browsing contexts, from the parent browsing context to the top-level
-   * browsing context. */
-  readonly ancestorOrigins: DOMStringList;
-  /** Returns the Location object's URL's fragment (includes leading "#" if
-   * non-empty).
-   *
-   * Can be set, to navigate to the same URL with a changed fragment (ignores
-   * leading "#"). */
-  hash: string;
-  /** Returns the Location object's URL's host and port (if different from the
-   * default port for the scheme).
-   *
-   * Can be set, to navigate to the same URL with a changed host and port. */
-  host: string;
-  /** Returns the Location object's URL's host.
-   *
-   * Can be set, to navigate to the same URL with a changed host. */
-  hostname: string;
-  /** Returns the Location object's URL.
-   *
-   * Can be set, to navigate to the given URL. */
-  href: string;
-  toString(): string;
-  /** Returns the Location object's URL's origin. */
-  readonly origin: string;
-  /** Returns the Location object's URL's path.
-   *
-   * Can be set, to navigate to the same URL with a changed path. */
-  pathname: string;
-  /** Returns the Location object's URL's port.
-   *
-   * Can be set, to navigate to the same URL with a changed port. */
-  port: string;
-  /** Returns the Location object's URL's scheme.
-   *
-   * Can be set, to navigate to the same URL with a changed scheme. */
-  protocol: string;
-  /** Returns the Location object's URL's query (includes leading "?" if
-   * non-empty).
-   *
-   * Can be set, to navigate to the same URL with a changed query (ignores
-   * leading "?"). */
-  search: string;
-  /**
-   * Navigates to the given URL.
-   */
-  assign(url: string): void;
-  /**
-   * Reloads the current page.
-   */
-  reload(): void;
-  /** Removes the current page from the session history and navigates to the
-   * given URL. */
-  replace(url: string): void;
 }
 
 type BufferSource = ArrayBufferView | ArrayBuffer;

@@ -48,13 +48,6 @@ function cache(
   const sf = SourceFile.get(moduleId);
 
   if (sf) {
-    // NOTE: If it's a `.json` file we don't want to write it to disk.
-    // JSON files are loaded and used by TS compiler to check types, but we don't want
-    // to emit them to disk because output file is the same as input file.
-    if (sf.mediaType === MediaType.Json) {
-      return;
-    }
-
     // NOTE: JavaScript files are only cached to disk if `checkJs`
     // option in on
     if (sf.mediaType === MediaType.JavaScript && !checkJs) {
@@ -65,10 +58,7 @@ function cache(
   if (emittedFileName.endsWith(".map")) {
     // Source Map
     compilerOps.cache(".map", moduleId, contents);
-  } else if (
-    emittedFileName.endsWith(".js") ||
-    emittedFileName.endsWith(".json")
-  ) {
+  } else if (emittedFileName.endsWith(".js")) {
     // Compiled JavaScript
     compilerOps.cache(".js", moduleId, contents);
   } else {

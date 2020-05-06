@@ -214,24 +214,6 @@ export async function writeTrailers(
   await writer.flush();
 }
 
-export function setContentLength(r: Response): void {
-  if (!r.headers) {
-    r.headers = new Headers();
-  }
-
-  if (r.body) {
-    if (!r.headers.has("content-length")) {
-      // typeof r.body === "string" handled in writeResponse.
-      if (r.body instanceof Uint8Array) {
-        const bodyLength = r.body.byteLength;
-        r.headers.set("content-length", bodyLength.toString());
-      } else {
-        r.headers.set("transfer-encoding", "chunked");
-      }
-    }
-  }
-}
-
 export async function writeResponse(
   w: Deno.Writer,
   r: Response
@@ -253,14 +235,21 @@ export async function writeResponse(
 
   let out = `HTTP/${protoMajor}.${protoMinor} ${statusCode} ${statusText}\r\n`;
 
-  setContentLength(r);
-  assert(r.headers != null);
-  const headers = r.headers;
+  const headers = r.headers ?? new Headers();
+
+  if (r.body && !headers.get("content-length")) {
+    if (r.body instanceof Uint8Array) {
+      out += `content-length: ${r.body.byteLength}\r\n`;
+    } else if (!headers.get("transfer-encoding")) {
+      out += "transfer-encoding: chunked\r\n";
+    }
+  }
 
   for (const [key, value] of headers) {
     out += `${key}: ${value}\r\n`;
   }
-  out += "\r\n";
+
+  out += `\r\n`;
 
   const header = encoder.encode(out);
   const n = await writer.write(header);

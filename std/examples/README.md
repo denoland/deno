@@ -16,13 +16,13 @@ deno  --allow-net https://deno.land/std/examples/echo_server.ts
 Or
 
 ```shell
-deno install --allow-net echo_server https://deno.land/std/examples/echo_server.ts
+deno install --allow-net https://deno.land/std/examples/echo_server.ts
 ```
 
 ### cat - print file to standard output
 
 ```shell
-deno install --allow-read deno_cat https://deno.land/std/examples/cat.ts
+deno install --allow-read -n deno_cat https://deno.land/std/examples/cat.ts
 deno_cat file.txt
 ```
 
@@ -31,7 +31,7 @@ deno_cat file.txt
 A very useful command by Soheil Rashidi ported to Deno.
 
 ```shell
-deno install --allow-read catj https://deno.land/std/examples/catj.ts
+deno install --allow-read https://deno.land/std/examples/catj.ts
 catj example.json
 catj file1.json file2.json
 echo example.json | catj -
@@ -47,7 +47,7 @@ deno --allow-net=deno.land https://deno.land/std/examples/curl.ts https://deno.l
 
 ```
 export GIST_TOKEN=ABC # Generate at https://github.com/settings/tokens
-deno install --allow-net --allow-env gist https://deno.land/std/examples/gist.ts
+deno install --allow-net --allow-env https://deno.land/std/examples/gist.ts
 gist --title "Example gist 1" script.ts
 gist --t "Example gist 2" script2.ts
 ```

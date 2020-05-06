@@ -38,6 +38,13 @@ export const process = {
   },
 };
 
+Object.defineProperty(process, Symbol.toStringTag, {
+  enumerable: false,
+  writable: true,
+  configurable: false,
+  value: "process",
+});
+
 Object.defineProperty(globalThis, "process", {
   value: process,
   enumerable: false,

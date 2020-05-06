@@ -143,6 +143,24 @@ const f = await readJson("./foo.json");
 const foo = readJsonSync("./foo.json");
 ```
 
+### writeJson
+
+Writes an object to a JSON file.
+
+**WriteJsonOptions**
+
+- replacer : An array of strings and numbers that acts as a approved list for
+  selecting the object properties that will be stringified.
+- space : Adds indentation, white space, and line break characters to the
+  return-value JSON text to make it easier to read.
+
+```ts
+import { writeJson, writeJsonSync } from "https://deno.land/std/fs/mod.ts";
+
+writeJson("./target.dat", { foo: "bar" }, { spaces: 2 }); // returns a promise
+writeJsonSync("./target.dat", { foo: "bar" }, { replacer: ["foo"] }); // void
+```
+
 ### walk
 
 Iterate all files in a directory recursively.
@@ -164,24 +182,6 @@ async function printFilesNames() {
 printFilesNames().then(() => console.log("Done!"));
 ```
 
-### writeJson
-
-Writes an object to a JSON file.
-
-**WriteJsonOptions**
-
-- replacer : An array of strings and numbers that acts as a approved list for
-  selecting the object properties that will be stringified.
-- space : Adds indentation, white space, and line break characters to the
-  return-value JSON text to make it easier to read.
-
-```ts
-import { writeJson, writeJsonSync } from "https://deno.land/std/fs/mod.ts";
-
-writeJson("./target.dat", { foo: "bar" }, { spaces: 2 }); // returns a promise
-writeJsonSync("./target.dat", { foo: "bar" }, { replacer: ["foo"] }); // void
-```
-
 ### readFileStr
 
 Read file and output it as a string.
@@ -194,7 +194,7 @@ Read file and output it as a string.
 import { readFileStr, readFileStrSync } from "https://deno.land/std/fs/mod.ts";
 
 readFileStr("./target.dat", { encoding: "utf8" }); // returns a promise
-readFileStrSync("./target.dat", { encoding: "utf8" }); // void
+readFileStrSync("./target.dat", { encoding: "utf8" }); // string
 ```
 
 ### writeFileStr

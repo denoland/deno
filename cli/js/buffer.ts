@@ -17,7 +17,7 @@ const MAX_SIZE = 2 ** 32 - 2;
 // `off` is the offset into `dst` where it will at which to begin writing values
 // from `src`.
 // Returns the number of bytes copied.
-function copyBytes(dst: Uint8Array, src: Uint8Array, off = 0): number {
+function copyBytes(src: Uint8Array, dst: Uint8Array, off = 0): number {
   const r = dst.byteLength - off;
   if (src.byteLength > r) {
     src = src.subarray(0, r);
@@ -95,7 +95,7 @@ export class Buffer implements Reader, ReaderSync, Writer, WriterSync {
       }
       return null;
     }
-    const nread = copyBytes(p, this.#buf.subarray(this.#off));
+    const nread = copyBytes(this.#buf.subarray(this.#off), p);
     this.#off += nread;
     return nread;
   }
@@ -107,7 +107,7 @@ export class Buffer implements Reader, ReaderSync, Writer, WriterSync {
 
   writeSync(p: Uint8Array): number {
     const m = this.#grow(p.byteLength);
-    return copyBytes(this.#buf, p, m);
+    return copyBytes(p, this.#buf, m);
   }
 
   write(p: Uint8Array): Promise<number> {
@@ -132,13 +132,13 @@ export class Buffer implements Reader, ReaderSync, Writer, WriterSync {
       // ArrayBuffer. We only need m+n <= c to slide, but
       // we instead let capacity get twice as large so we
       // don't spend all our time copying.
-      copyBytes(this.#buf, this.#buf.subarray(this.#off));
+      copyBytes(this.#buf.subarray(this.#off), this.#buf);
     } else if (c > MAX_SIZE - c - n) {
       throw new Error("The buffer cannot be grown beyond the maximum size.");
     } else {
       // Not enough space anywhere, we need to allocate.
       const buf = new Uint8Array(2 * c + n);
-      copyBytes(buf, this.#buf.subarray(this.#off));
+      copyBytes(this.#buf.subarray(this.#off), buf);
       this.#buf = buf;
     }
     // Restore this.#off and len(this.#buf).
