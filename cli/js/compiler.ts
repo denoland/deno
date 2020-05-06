@@ -261,12 +261,8 @@ class SourceFile {
   url!: string;
 
   constructor(json: SourceFileJson) {
-    if (SOURCE_FILE_CACHE.has(json.url)) {
-      throw new TypeError("SourceFile already exists");
-    }
     Object.assign(this, json);
     this.extension = getExtension(this.url, this.mediaType);
-    SOURCE_FILE_CACHE.set(this.url, this);
   }
 
   imports(processJsImports: boolean): SourceFileSpecifierMap[] {
@@ -338,6 +334,15 @@ class SourceFile {
     return files;
   }
 
+  static addToCache(json: SourceFileJson): SourceFile {
+    if (SOURCE_FILE_CACHE.has(json.url)) {
+      throw new TypeError("SourceFile already exists");
+    }
+    const sf = new SourceFile(json);
+    SOURCE_FILE_CACHE.set(sf.url, sf);
+    return sf;
+  }
+
   static getCached(url: string): SourceFile | undefined {
     return SOURCE_FILE_CACHE.get(url);
   }
@@ -380,7 +385,7 @@ function getAssetInternal(filename: string): SourceFile {
   }
   const name = url.includes(".") ? url : `${url}.d.ts`;
   const sourceCode = getAsset(name);
-  return new SourceFile({
+  return SourceFile.addToCache({
     url,
     filename: `${ASSETS}/${name}`,
     mediaType: MediaType.TypeScript,
@@ -693,14 +698,16 @@ function processLocalImports(
     const moduleName = moduleNames[i];
     const specifierMap = specifiers[i];
     assert(moduleName in sources, `Missing module in sources: "${moduleName}"`);
-    const sourceFile =
-      SourceFile.getCached(moduleName) ||
-      new SourceFile({
+    let sourceFile = SourceFile.getCached(moduleName);
+    if (typeof sourceFile === "undefined") {
+      sourceFile = SourceFile.addToCache({
         url: moduleName,
         filename: moduleName,
         sourceCode: sources[moduleName],
         mediaType: getMediaType(moduleName),
       });
+    }
+    assert(sourceFile);
     SourceFile.cacheResolvedUrl(
       sourceFile.url,
       specifierMap.original,
@@ -733,9 +740,11 @@ async function processImports(
   for (let i = 0; i < sourceFiles.length; i++) {
     const specifierMap = specifiers[i];
     const sourceFileJson = sourceFiles[i];
-    const sourceFile =
-      SourceFile.getCached(sourceFileJson.url) ||
-      new SourceFile(sourceFileJson);
+    let sourceFile = SourceFile.getCached(sourceFileJson.url);
+    if (typeof sourceFile === "undefined") {
+      sourceFile = SourceFile.addToCache(sourceFileJson);
+    }
+    assert(sourceFile);
     SourceFile.cacheResolvedUrl(
       sourceFile.url,
       specifierMap.original,
