@@ -2201,10 +2201,16 @@ async fn inspector_break_on_first_line() {
     .expect("Can't connect");
   assert_eq!(response.status(), 101); // Switching protocols.
 
-  let (mut socket_tx, mut socket_rx) = socket.split();
+  let (mut socket_tx, socket_rx) = socket.split();
+  let mut socket_rx =
+    socket_rx.map(|msg| msg.unwrap().to_string()).filter(|msg| {
+      let pass = !msg.starts_with(r#"{"method":"Debugger.scriptParsed","#);
+      futures::future::ready(pass)
+    });
 
   let stdout = child.stdout.as_mut().unwrap();
-  let mut stdout_lines = std::io::BufReader::new(stdout).lines();
+  let mut stdout_lines =
+    std::io::BufReader::new(stdout).lines().map(|r| r.unwrap());
 
   use TestStep::*;
   let test_steps = vec![
@@ -2230,20 +2236,8 @@ async fn inspector_break_on_first_line() {
 
   for step in test_steps {
     match step {
-      StdOut(s) => match stdout_lines.next() {
-        Some(Ok(line)) => assert_eq!(line, s),
-        other => panic!(other),
-      },
-      WsRecv(s) => loop {
-        let msg = match socket_rx.next().await {
-          Some(Ok(msg)) => msg.to_string(),
-          other => panic!(other),
-        };
-        if !msg.starts_with(r#"{"method":"Debugger.scriptParsed","#) {
-          assert!(msg.starts_with(s));
-          break;
-        }
-      },
+      StdOut(s) => assert_eq!(&stdout_lines.next().unwrap(), s),
+      WsRecv(s) => assert!(socket_rx.next().await.unwrap().starts_with(s)),
       WsSend(s) => socket_tx.send(s.into()).await.unwrap(),
     }
   }
