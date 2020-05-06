@@ -15,6 +15,11 @@ struct ModuleGraph(HashMap<String, ModuleGraphFile>);
 struct ModuleGraphFile {
   pub specifier: String,
   pub deps: Vec<String>,
+
+  // pub imports: Vec<ImportDescriptor>,
+  // pub referenced_files: Vec<ReferenceDescriptor>,
+  // pub lib_directives: Vec<LibDirective>,
+  // pub types_directives: Vec<TypeDirective>,
 }
 
 struct ModuleGraphLoader {
@@ -195,6 +200,139 @@ mod tests {
           "deps": [
             "http://localhost:4545/cli/tests/circular2.js"
           ]
+        }
+      })
+    );
+    drop(http_server_guard);
+  }
+
+  #[tokio::test]
+  async fn source_graph_type_references() {
+    let http_server_guard = crate::test_util::http_server();
+
+    let global_state = GlobalState::new(Default::default()).unwrap();
+    let module_specifier = ModuleSpecifier::resolve_url_or_path(
+      "http://localhost:4545/cli/tests/type_definitions.ts",
+    )
+    .unwrap();
+
+    let graph_loader =
+      ModuleGraphLoader::new(global_state.file_fetcher.clone());
+    let graph = graph_loader.build_graph(&module_specifier).await.unwrap();
+
+    assert_eq!(
+      serde_json::to_value(&graph).unwrap(),
+      json!({
+        "http://localhost:4545/cli/tests/type_definitions.ts": {
+          "imports": [
+            {
+              "specifier": "./type_definitions/foo.js",
+              "resolvedUrl": "http://localhost:4545/cli/tests/type_definitions/foo.js"
+              "typeDirective": "./type_definitions/foo.d.ts",
+              "resolvedTypeDirective": "http://localhost:4545/cli/tests/type_definitions/foo.d.ts"
+            },
+            {
+              "specifier": "./type_definitions/fizz.js",
+              "resolvedUrl": "http://localhost:4545/cli/tests/type_definitions/fizz.js"
+              "typeDirective": "./type_definitions/fizz.d.ts",
+              "resolvedTypeDirective": "http://localhost:4545/cli/tests/type_definitions/fizz.d.ts"
+            },
+            {
+              "specifier": "./type_definitions/qat.js",
+              "resolvedUrl": "http://localhost:4545/cli/tests/type_definitions/qat.js"
+            },
+          ]
+        },
+        "http://localhost:4545/cli/tests/type_definitions/foo.js": {
+          "imports": [],
+        },
+        "http://localhost:4545/cli/tests/type_definitions/foo.d.ts": {
+          "imports": [],
+        },
+        "http://localhost:4545/cli/tests/type_definitions/fizz.js": {
+          "imports": [],
+        },
+        "http://localhost:4545/cli/tests/type_definitions/fizz.d.ts": {
+          "imports": [],
+        },
+        "http://localhost:4545/cli/tests/type_definitions/qat.js": {
+          "imports": [],
+        }
+      })
+    );
+    drop(http_server_guard);
+  }
+
+  #[tokio::test]
+  async fn source_graph_type_references2() {
+    let http_server_guard = crate::test_util::http_server();
+
+    let global_state = GlobalState::new(Default::default()).unwrap();
+    let module_specifier = ModuleSpecifier::resolve_url_or_path(
+      "http://localhost:4545/cli/tests/type_directives_02.ts",
+    )
+    .unwrap();
+
+    let graph_loader =
+      ModuleGraphLoader::new(global_state.file_fetcher.clone());
+    let graph = graph_loader.build_graph(&module_specifier).await.unwrap();
+
+    assert_eq!(
+      serde_json::to_value(&graph).unwrap(),
+      json!({
+        "http://localhost:4545/cli/tests/type_directives_02.ts": {
+          "imports": [
+            {
+              "specifier": "./subdir/type_reference.js",
+              "resolvedUrl": "http://localhost:4545/cli/tests/subdir/type_reference.js"
+            }
+          ]
+        },
+        "http://localhost:4545/cli/tests/subdir/type_reference.js": {
+          "typeReferences": [
+            {
+              "specifier": "./type_reference.d.ts",
+              "resolvedUrl": "http://localhost:4545/cli/tests/subdir/type_reference.d.ts"
+            }
+          ],
+        }
+      })
+    );
+    drop(http_server_guard);
+  }
+
+  #[tokio::test]
+  async fn source_graph_type_references3() {
+    let http_server_guard = crate::test_util::http_server();
+
+    let global_state = GlobalState::new(Default::default()).unwrap();
+    let module_specifier = ModuleSpecifier::resolve_url_or_path(
+      "http://localhost:4545/cli/tests/type_directives_01.ts",
+    )
+    .unwrap();
+
+    let graph_loader =
+      ModuleGraphLoader::new(global_state.file_fetcher.clone());
+    let graph = graph_loader.build_graph(&module_specifier).await.unwrap();
+
+    assert_eq!(
+      serde_json::to_value(&graph).unwrap(),
+      json!({
+        "http://localhost:4545/cli/tests/type_directives_01.ts": {
+          "imports": [
+            {
+              "specifier": "./xTypeScriptTypes.js",
+              "resolvedUrl": "http://localhost:4545/cli/tests/xTypeScriptTypes.js"
+            }
+          ]
+        },
+        "http://localhost:4545/cli/tests/xTypeScriptTypes.js": {
+          "typeHeaders": [
+            {
+              "specifier": "./xTypeScriptTypes.d.ts",
+              "resolvedUrl": "http://localhost:4545/cli/tests/xTypeScriptTypes.d.ts"
+            }
+          ],
         }
       })
     );
