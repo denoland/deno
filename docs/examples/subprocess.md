@@ -17,7 +17,7 @@ await p.status();
 Run it:
 
 ```shell
-$ deno --allow-run ./subprocess_simple.ts
+$ deno run --allow-run ./subprocess_simple.ts
 hello
 ```
 

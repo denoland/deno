@@ -10,7 +10,7 @@ compile it, but not run it. It takes up to three arguments, the `rootName`,
 optionally `sources`, and optionally `options`. The `rootName` is the root
 module which will be used to generate the resulting program. This is like the
 module name you would pass on the command line in
-`deno --reload run example.ts`. The `sources` is a hash where the key is the
+`deno run --reload example.ts`. The `sources` is a hash where the key is the
 fully qualified module name, and the value is the text source of the module. If
 `sources` is passed, Deno will resolve all the modules from within that hash and
 not attempt to resolve them outside of Deno. If `sources` are not provided, Deno

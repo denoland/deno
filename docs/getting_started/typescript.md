@@ -101,7 +101,7 @@ You need to explicitly tell Deno where to look for this configuration by setting
 the `-c` argument when executing your application.
 
 ```bash
-deno -c tsconfig.json mod.ts
+deno run -c tsconfig.json mod.ts
 ```
 
 Following are the currently allowed settings and their default values in Deno:

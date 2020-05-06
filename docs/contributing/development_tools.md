@@ -42,7 +42,7 @@ To start profiling,
 ninja -C target/release d8
 
 # Start the program we want to benchmark with --prof
-./target/release/deno tests/http_bench.ts --allow-net --v8-flags=--prof &
+./target/release/deno run tests/http_bench.ts --allow-net --v8-flags=--prof &
 
 # Exercise it.
 third_party/wrk/linux/wrk http://localhost:4500/

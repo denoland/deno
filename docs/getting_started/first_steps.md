@@ -24,7 +24,7 @@ console.log("Welcome to Deno 🦕");
 Try the program:
 
 ```bash
-deno https://deno.land/std/examples/welcome.ts
+deno run https://deno.land/std/examples/welcome.ts
 ```
 
 ### Making an HTTP request
@@ -61,7 +61,7 @@ Lets walk through what this application does:
 Try it out:
 
 ```bash
-deno https://deno.land/std/examples/curl.ts https://example.com
+deno run https://deno.land/std/examples/curl.ts https://example.com
 ```
 
 You will see that this program returns an error regarding network access, so
@@ -72,7 +72,7 @@ programs the permission to do certain 'privledged' actions like network access.
 Try it out again with the correct permission flag:
 
 ```bash
-deno --allow-net=example.com https://deno.land/std/examples/curl.ts https://example.com
+deno run --allow-net=example.com https://deno.land/std/examples/curl.ts https://example.com
 ```
 
 ### Reading a file
@@ -104,7 +104,7 @@ I/O streams in Deno.
 Try the program:
 
 ```bash
-deno --allow-read https://deno.land/std/examples/cat.ts /etc/passwd
+deno run --allow-read https://deno.land/std/examples/cat.ts /etc/passwd
 ```
 
 ### A simple TCP server
@@ -124,7 +124,7 @@ For security reasons, Deno does not allow programs to access the network without
 explicit permission. To allow accessing the network, use a command-line flag:
 
 ```shell
-$ deno --allow-net https://deno.land/std/examples/echo_server.ts
+$ deno run --allow-net https://deno.land/std/examples/echo_server.ts
 ```
 
 To test it, try sending data to it with netcat:

@@ -52,7 +52,7 @@ Note that you can use both `window.addEventListener` and
 major difference between them, let's run example:
 
 ```shell
-$ deno main.ts
+$ deno run main.ts
 log from imported script
 log from main script
 got load event in onload function (main)
