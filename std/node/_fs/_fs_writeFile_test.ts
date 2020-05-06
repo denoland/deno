@@ -161,20 +161,3 @@ test("Mode is not set when rid is passed", async function testCorrectFileModeRid
   assert(fileInfo.mode);
   assertNotEquals(fileInfo.mode & 0o777, 0o777);
 });
-
-test("Mode is not implemented on windows", function testModeNotImplementedWindows(): void {
-  if (Deno.build.os !== "windows") return;
-
-  assertThrowsAsync(
-    () => {
-      return new Promise((resolve, reject) => {
-        writeFile("fail.txt", "some data", { mode: 0o777 }, (err) => {
-          if (err) return reject(err);
-          resolve();
-        });
-      });
-    },
-    Error,
-    `Not implemented: "mode" on Windows`
-  );
-});
