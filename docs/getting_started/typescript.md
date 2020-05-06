@@ -1,6 +1,6 @@
 ## Using TypeScript
 
-> TODO(lucacasonato): importing
+<!-- TODO(lucacasonato): text on 'just import .ts' -->
 
 ### Using external type definitions
 

@@ -87,33 +87,3 @@ cargo clean && cargo build -vv
 # Run:
 ./target/debug/deno cli/tests/002_hello.ts
 ```
-
-### Testing and Tools
-
-Test `deno`:
-
-```bash
-# Run the whole suite:
-cargo test
-
-# Only test cli/js/:
-cargo test js_unit_tests
-```
-
-Test `std/`:
-
-```bash
-cargo test std_tests
-```
-
-Lint the code:
-
-```bash
-./tools/lint.py
-```
-
-Format the code:
-
-```bash
-./tools/format.py
-```

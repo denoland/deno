@@ -6,7 +6,8 @@
     "name": "Getting Started",
     "children": {
       "installation": "Installation",
-      "first_steps": "First Steps",
+      "setup_your_environment": "Setup your environment",
+      "first_steps": "First steps",
       "permissions": "Permissions",
       "typescript": "Using TypeScript",
       "webassembly": "Using WebAssembly"
@@ -15,6 +16,7 @@
   "runtime": {
     "name": "The Runtime",
     "children": {
+      "program_lifecycle": "Program Lifecycle",
       "compiler_apis": "Compiler APIs",
       "unstable": "Unstable APIs"
     }
@@ -54,11 +56,15 @@
       "dependency_inspector": "Dependency inspector"
     }
   },
+  "embedding_deno": {
+    "name": "Embedding Deno"
+  },
   "contributing": {
     "name": "Contributing",
     "children": {
       "building_from_source": "Building from source",
-      "internal_details": "Internal details"
+      "development_tools": "Development tools",
+      "architecture": "Architecture"
     }
   },
   "examples": {
