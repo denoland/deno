@@ -21,7 +21,6 @@ import { sendAsync, sendSync } from "./ops/dispatch_json.ts";
 import { bootstrapWorkerRuntime } from "./runtime_worker.ts";
 import { assert, log } from "./util.ts";
 import * as util from "./util.ts";
-import { atob } from "./web/text_encoding.ts";
 import { TextDecoder, TextEncoder } from "./web/text_encoding.ts";
 import { core } from "./core.ts";
 
@@ -1120,16 +1119,6 @@ function commonPath(paths: string[], sep = "/"): string {
   }
   const prefix = parts.slice(0, endOfPrefix).join(sep);
   return prefix.endsWith(sep) ? prefix : `${prefix}${sep}`;
-}
-
-function base64ToUint8Array(data: string): Uint8Array {
-  const binString = atob(data);
-  const size = binString.length;
-  const bytes = new Uint8Array(size);
-  for (let i = 0; i < size; i++) {
-    bytes[i] = binString.charCodeAt(i);
-  }
-  return bytes;
 }
 
 let rootExports: string[] | undefined;
