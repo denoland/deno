@@ -93,7 +93,7 @@ impl SourceFileFetcher {
     Ok(file_fetcher)
   }
 
-  fn check_if_supported_scheme(url: &Url) -> Result<(), ErrBox> {
+  pub fn check_if_supported_scheme(url: &Url) -> Result<(), ErrBox> {
     if !SUPPORTED_URL_SCHEMES.contains(&url.scheme()) {
       return Err(
         OpError::other(

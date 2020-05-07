@@ -1583,6 +1583,13 @@ itest!(run_v8_help {
   output: "v8_help.out",
 });
 
+itest!(unsupported_dynamic_import_scheme {
+  args: "eval import('xxx:')",
+  output: "unsupported_dynamic_import_scheme.out",
+  check_stderr: true,
+  exit_code: 1,
+});
+
 itest!(wasm {
   args: "run wasm.ts",
   output: "wasm.ts.out",
