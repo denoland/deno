@@ -302,6 +302,7 @@ Deno.test({
       assertEquals(e.data, true);
       promise.resolve();
     };
+    w.postMessage(null);
     await promise;
   },
 });
