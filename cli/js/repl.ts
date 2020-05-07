@@ -14,22 +14,22 @@ function replError(...args: unknown[]): void {
 }
 
 const helpMsg = [
+  "",
   "_       Get last evaluation result",
   "_error  Get last thrown error",
-  "exit    Exit the REPL",
-  "help    Print this help message",
+  ".exit   Exit the REPL",
+  ".help   Print this help message",
+  "",
 ].join("\n");
 
+// These are called by `evaluate` when the code line starts with `.`, this means
+// that there are no REPL commands that exist as global variables.
 const replCommands = {
-  exit: {
-    get(): void {
-      exit(0);
-    },
+  exit(): void {
+    exit(0);
   },
-  help: {
-    get(): string {
-      return helpMsg;
-    },
+  help(): void {
+    replLog(helpMsg);
   },
 };
 
@@ -61,20 +61,29 @@ let lastThrownError: Value = undefined;
 // Returns true if code is consumed (no error/irrecoverable error).
 // Returns false if error is recoverable
 function evaluate(code: string): boolean {
-  const [result, errInfo] = core.evalContext(code);
-  if (!errInfo) {
-    lastEvalResult = result;
-    replLog(result);
-  } else if (errInfo.isCompileError && isRecoverableError(errInfo.thrown)) {
-    // Recoverable compiler error
-    return false; // don't consume code.
-  } else {
-    lastThrownError = errInfo.thrown;
-    if (errInfo.isNativeError) {
-      const formattedError = core.formatError(errInfo.thrown as Error);
-      replError(formattedError);
+  if (code[0] === ".") {
+    code = code.slice(1);
+    if (code in replCommands) {
+      replCommands[code as keyof typeof replCommands]();
     } else {
-      replError("Thrown:", errInfo.thrown);
+      replLog("Invalid REPL command");
+    }
+  } else {
+    const [result, errInfo] = core.evalContext(code);
+    if (!errInfo) {
+      lastEvalResult = result;
+      replLog(result);
+    } else if (errInfo.isCompileError && isRecoverableError(errInfo.thrown)) {
+      // Recoverable compiler error
+      return false; // don't consume code.
+    } else {
+      lastThrownError = errInfo.thrown;
+      if (errInfo.isNativeError) {
+        const formattedError = core.formatError(errInfo.thrown as Error);
+        replError(formattedError);
+      } else {
+        replError("Thrown:", errInfo.thrown);
+      }
     }
   }
   return true;
@@ -83,7 +92,6 @@ function evaluate(code: string): boolean {
 // @internal
 export async function replLoop(): Promise<void> {
   const { console } = globalThis;
-  Object.defineProperties(globalThis, replCommands);
 
   const historyFile = "deno_history.txt";
   const rid = startRepl(historyFile);

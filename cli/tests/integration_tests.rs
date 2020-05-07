@@ -573,7 +573,7 @@ fn repl_test_exit_command() {
   let (out, err) = util::run_and_collect_output(
     true,
     "repl",
-    Some(vec!["exit", "'ignored'"]),
+    Some(vec![".exit"]),
     None,
     false,
   );
@@ -583,19 +583,34 @@ fn repl_test_exit_command() {
 
 #[test]
 fn repl_test_help_command() {
-  let (out, err) =
-    util::run_and_collect_output(true, "repl", Some(vec!["help"]), None, false);
+  let (out, err) = util::run_and_collect_output(
+    true,
+    "repl",
+    Some(vec![".help"]),
+    None,
+    false,
+  );
   assert_eq!(
     out,
     vec![
+      "",
       "_       Get last evaluation result",
       "_error  Get last thrown error",
-      "exit    Exit the REPL",
-      "help    Print this help message",
+      ".exit   Exit the REPL",
+      ".help   Print this help message",
+      "",
       "",
     ]
     .join("\n")
   );
+  assert!(err.is_empty());
+}
+
+#[test]
+fn repl_test_invalid_command() {
+  let (out, err) =
+    util::run_and_collect_output(true, "repl", Some(vec![".bad"]), None, false);
+  assert_eq!(out, "Invalid REPL command\n");
   assert!(err.is_empty());
 }
 
@@ -2437,7 +2452,7 @@ mod util {
   pub const PERMISSION_DENIED_PATTERN: &str = "PermissionDenied";
 
   lazy_static! {
-    static ref DENO_DIR: TempDir = { TempDir::new().expect("tempdir fail") };
+    static ref DENO_DIR: TempDir = TempDir::new().expect("tempdir fail");
   }
 
   pub fn run_and_collect_output(
