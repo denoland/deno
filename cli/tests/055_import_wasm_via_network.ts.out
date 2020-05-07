@@ -1,5 +1,0 @@
-Module {
- add_one: [Function: 0],
- memory: WebAssembly.Memory {},
- Symbol(Symbol.toStringTag): "Module"
-}

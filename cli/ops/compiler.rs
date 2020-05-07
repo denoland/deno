@@ -3,7 +3,6 @@ use super::dispatch_json::Deserialize;
 use super::dispatch_json::JsonOp;
 use super::dispatch_json::Value;
 use crate::futures::future::try_join_all;
-use crate::msg;
 use crate::op_error::OpError;
 use crate::state::State;
 use deno_core::CoreIsolate;
@@ -125,21 +124,7 @@ fn op_fetch_source_files(
           }
           _ => f,
         };
-        // Special handling of WASM and JSON files:
-        // compile them into JS first!
-        // This allows TS to do correct export types as well as bundles.
-        let source_code = match file.media_type {
-          msg::MediaType::Wasm => {
-            global_state
-              .wasm_compiler
-              .compile(global_state.clone(), &file)
-              .await
-              .map_err(|e| OpError::other(e.to_string()))?
-              .code
-          }
-          _ => String::from_utf8(file.source_code)
-            .map_err(|_| OpError::invalid_utf8())?,
-        };
+        let source_code = String::from_utf8(file.source_code).map_err(|_| OpError::invalid_utf8())?;
         Ok::<_, OpError>(json!({
           "url": file.url.to_string(),
           "filename": file.filename.to_str().unwrap(),
