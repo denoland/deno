@@ -1,4 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+use crate::compilers::CompiledModule;
+use crate::compilers::TargetLib;
+use crate::compilers::TsCompiler;
 use crate::deno_dir;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::flags;
@@ -144,10 +147,12 @@ impl GlobalState {
           })
         }
       }
-      _ => Ok(CompiledModule {
-        code: String::from_utf8(out.source_code)?,
-        name: out.url.to_string(),
-      }),
+      _ => {
+        Ok(CompiledModule {
+          code: String::from_utf8(out.source_code)?,
+          name: out.url.to_string(),
+        })
+      },
     }?;
     drop(compile_lock);
 
