@@ -1143,12 +1143,6 @@ itest_ignore!(_049_info_flag_script_jsx {
   http_server: true,
 });
 
-itest!(_051_wasm_import {
-  args: "run --reload --allow-net --allow-read 051_wasm_import.ts",
-  output: "051_wasm_import.ts.out",
-  http_server: true,
-});
-
 // TODO(ry) Re-enable flaky test https://github.com/denoland/deno/issues/4049
 itest_ignore!(_052_no_remote_flag {
   args:
@@ -1163,12 +1157,6 @@ itest!(_054_info_local_imports {
   args: "info 005_more_imports.ts",
   output: "054_info_local_imports.out",
   exit_code: 0,
-});
-
-itest!(_055_import_wasm_via_network {
-  args: "run --reload http://127.0.0.1:4545/cli/tests/055_import_wasm_via_network.ts",
-  output: "055_import_wasm_via_network.ts.out",
-  http_server: true,
 });
 
 itest!(_056_make_temp_file_write_perm {

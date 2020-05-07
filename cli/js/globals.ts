@@ -147,7 +147,6 @@ declare global {
     workerRuntime: ((name: string) => Promise<void> | void) | undefined;
     // Assigned to `self` global - compiler
     tsCompilerRuntime: (() => void) | undefined;
-    wasmCompilerRuntime: (() => void) | undefined;
   };
 
   var onerror:

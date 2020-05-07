@@ -6,14 +6,12 @@ use futures::Future;
 mod compiler_worker;
 mod js;
 mod ts;
-mod wasm;
 
 pub use js::JsCompiler;
 pub use ts::runtime_compile;
 pub use ts::runtime_transpile;
 pub use ts::TargetLib;
 pub use ts::TsCompiler;
-pub use wasm::WasmCompiler;
 
 pub type CompilationResultFuture = dyn Future<Output = JsonResult>;
 

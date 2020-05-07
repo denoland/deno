@@ -691,8 +691,6 @@ impl TsCompiler {
   }
 }
 
-// TODO(bartlomieju): exactly same function is in `wasm.rs` - only difference
-// it created WasmCompiler instead of TsCompiler - deduplicate
 async fn execute_in_thread(
   global_state: GlobalState,
   req: Buf,

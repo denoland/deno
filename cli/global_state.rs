@@ -3,7 +3,6 @@ use crate::compilers::CompiledModule;
 use crate::compilers::JsCompiler;
 use crate::compilers::TargetLib;
 use crate::compilers::TsCompiler;
-use crate::compilers::WasmCompiler;
 use crate::deno_dir;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::flags;
@@ -36,7 +35,6 @@ pub struct GlobalStateInner {
   pub file_fetcher: SourceFileFetcher,
   pub js_compiler: JsCompiler,
   pub ts_compiler: TsCompiler,
-  pub wasm_compiler: WasmCompiler,
   pub lockfile: Option<Mutex<Lockfile>>,
   pub compiler_starts: AtomicUsize,
   compile_lock: AsyncMutex<()>,
@@ -87,7 +85,6 @@ impl GlobalState {
       file_fetcher,
       ts_compiler,
       js_compiler: JsCompiler {},
-      wasm_compiler: WasmCompiler::default(),
       lockfile,
       compiler_starts: AtomicUsize::new(0),
       compile_lock: AsyncMutex::new(()),
@@ -116,12 +113,6 @@ impl GlobalState {
     let compile_lock = self.compile_lock.lock().await;
 
     let compiled_module = match out.media_type {
-      msg::MediaType::Json | msg::MediaType::Unknown => {
-        state1.js_compiler.compile(out).await
-      }
-      msg::MediaType::Wasm => {
-        state1.wasm_compiler.compile(state1.clone(), &out).await
-      }
       msg::MediaType::TypeScript
       | msg::MediaType::TSX
       | msg::MediaType::JSX => {
@@ -152,6 +143,7 @@ impl GlobalState {
           state1.js_compiler.compile(out).await
         }
       }
+      _ => state1.js_compiler.compile(out).await,
     }?;
     drop(compile_lock);
 
