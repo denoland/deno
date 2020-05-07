@@ -39,37 +39,81 @@ function validateValue(value: string): void {
   }
 }
 
+/** Appends a key and value to the header list.
+ *
+ * The spec indicates that when a key already exists, the append adds the new
+ * value onto the end of the existing value.  The behaviour of this though
+ * varies when the key is `set-cookie`.  In this case, if the key of the cookie
+ * already exists, the value is replaced, but if the key of the cookie does not
+ * exist, and additional `set-cookie` header is added.
+ *
+ * The browser specification of `Headers` is written for clients, and not
+ * servers, and Deno is a server, meaning that it needs to follow the patterns
+ * expected for servers, of which a `set-cookie` header is expected for each
+ * unique cookie key, but duplicate cookie keys should not exist. */
 function dataAppend(
   data: Array<[string, string]>,
   key: string,
   value: string
 ): void {
-  if (key === "set-cookie") {
-    data.push([key, value]);
-    return;
-  }
   for (let i = 0; i < data.length; i++) {
     const [dataKey] = data[i];
-    if (dataKey === key) {
-      data[i][1] += `, ${value}`;
-      return;
+    if (key === "set-cookie" && dataKey === "set-cookie") {
+      const [, dataValue] = data[i];
+      const [dataCookieKey] = dataValue.split("=");
+      const [cookieKey] = value.split("=");
+      if (dataCookieKey === cookieKey) {
+        data[i][1] = value;
+        return;
+      }
+    } else {
+      if (dataKey === key) {
+        data[i][1] += `, ${value}`;
+        return;
+      }
     }
   }
   data.push([key, value]);
 }
 
+/** Gets a value of a key in the headers list.
+ *
+ * This varies slightly from spec behaviour in that when the key is `set-cookie`
+ * the value returned will look like a concatenated value, when in fact, if the
+ * headers were iterated over, each individual `set-cookie` value is a unique
+ * entry in the headers list. */
 function dataGet(
   data: Array<[string, string]>,
   key: string
 ): string | undefined {
+  const setCookieValues = [];
   for (const [dataKey, value] of data) {
     if (dataKey === key) {
-      return value;
+      if (key === "set-cookie") {
+        setCookieValues.push(value);
+      } else {
+        return value;
+      }
     }
+  }
+  if (setCookieValues.length) {
+    return setCookieValues.join(", ");
   }
   return undefined;
 }
 
+/** Sets a value of a key in the headers list.
+ *
+ * The spec indicates that the value should be replaced if the key already
+ * exists.  The behaviour here varies, where if the key is `set-cookie` the key
+ * of the cookie is inspected, and if the key of the cookie already exists,
+ * then the value is replaced.  If the key of the cookie is not found, then
+ * the value of the `set-cookie` is added to the list of headers.
+ *
+ * The browser specification of `Headers` is written for clients, and not
+ * servers, and Deno is a server, meaning that it needs to follow the patterns
+ * expected for servers, of which a `set-cookie` header is expected for each
+ * unique cookie key, but duplicate cookie keys should not exist. */
 function dataSet(
   data: Array<[string, string]>,
   key: string,
@@ -79,11 +123,17 @@ function dataSet(
   for (let i = 0; i < data.length; i++) {
     const [dataKey] = data[i];
     if (dataKey === key) {
-      data[i][1] = value;
       // there could be multiple set-cookie headers, but all others are unique
-      if (key !== "set-cookie") {
-        return;
+      if (key === "set-cookie") {
+        const [, dataValue] = data[i];
+        const [dataCookieKey] = dataValue.split("=");
+        const [cookieKey] = value.split("=");
+        if (cookieKey === dataCookieKey) {
+          data[i][1] = value;
+          return;
+        }
       } else {
+        data[i][1] = value;
         found = true;
       }
     }

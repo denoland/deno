@@ -362,6 +362,36 @@ unitTest(function headersAppendMultiple(): void {
   ]);
 });
 
+unitTest(function headersAppendDuplicateSetCookieKey(): void {
+  const headers = new Headers([["Set-Cookie", "foo=bar"]]);
+  headers.append("set-Cookie", "foo=baz");
+  headers.append("Set-cookie", "baz=bar");
+  const actual = [...headers];
+  assertEquals(actual, [
+    ["set-cookie", "foo=baz"],
+    ["set-cookie", "baz=bar"],
+  ]);
+});
+
+unitTest(function headersSetDuplicateCookieKey(): void {
+  const headers = new Headers([["Set-Cookie", "foo=bar"]]);
+  headers.set("set-Cookie", "foo=baz");
+  headers.set("set-cookie", "bar=qat");
+  const actual = [...headers];
+  assertEquals(actual, [
+    ["set-cookie", "foo=baz"],
+    ["set-cookie", "bar=qat"],
+  ]);
+});
+
+unitTest(function headersGetSetCookie(): void {
+  const headers = new Headers([
+    ["Set-Cookie", "foo=bar"],
+    ["set-Cookie", "bar=qat"],
+  ]);
+  assertEquals(headers.get("SET-COOKIE"), "foo=bar, bar=qat");
+});
+
 unitTest(function toStringShouldBeWebCompatibility(): void {
   const headers = new Headers();
   assertEquals(headers.toString(), "[object Headers]");
