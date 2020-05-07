@@ -119,7 +119,6 @@ function dataSet(
   key: string,
   value: string
 ): void {
-  let found = false;
   for (let i = 0; i < data.length; i++) {
     const [dataKey] = data[i];
     if (dataKey === key) {
@@ -134,13 +133,11 @@ function dataSet(
         }
       } else {
         data[i][1] = value;
-        found = true;
+        return;
       }
     }
   }
-  if (!found) {
-    data.push([key, value]);
-  }
+  data.push([key, value]);
 }
 
 function dataDelete(data: Array<[string, string]>, key: string): void {
