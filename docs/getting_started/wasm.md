@@ -17,15 +17,3 @@ const wasmInstance = new WebAssembly.Instance(wasmModule);
 console.log(wasmInstance.exports.main().toString());
 ```
 <!-- prettier-ignore-end -->
-
-### ES Module style imports
-
-> This is an unstable feature. Learn more about
-> [unstable features](../../runtime/unstable).
-
-WASM files can also be loaded using imports:
-
-```ts
-import { fib } from "./fib.wasm";
-console.log(fib(20));
-```
