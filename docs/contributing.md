@@ -1,6 +1,6 @@
 # Contributing
 
-- Read the [style guide](https://github.com/denoland/deno/blob/master/std/style_guide.md).
+- Read the [style guide](../std/style_guide.md).
 - Progress towards future releases is tracked
   [here](https://github.com/denoland/deno/milestones).
 - Please don't make [the benchmarks](https://deno.land/benchmarks.html) worse.
