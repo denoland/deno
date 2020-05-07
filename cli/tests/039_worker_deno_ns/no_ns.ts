@@ -1,6 +1,6 @@
 onmessage = (msg): void => {
   if (msg.data === "START") {
-    postMessage("no_ns.ts: is window.Deno available: " + !!window.Deno);
+    postMessage("no_ns.ts: is self.Deno available: " + !!self.Deno);
   } else {
     const worker = new Worker("./maybe_ns.ts", { type: "module" });
     worker.onmessage = (msg): void => {
