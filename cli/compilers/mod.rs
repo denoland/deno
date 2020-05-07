@@ -4,10 +4,8 @@ use deno_core::ErrBox;
 use futures::Future;
 
 mod compiler_worker;
-mod js;
 mod ts;
 
-pub use js::JsCompiler;
 pub use ts::runtime_compile;
 pub use ts::runtime_transpile;
 pub use ts::TargetLib;
