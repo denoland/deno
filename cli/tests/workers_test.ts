@@ -304,5 +304,6 @@ Deno.test({
     };
     w.postMessage(null);
     await promise;
+    w.terminate();
   },
 });
