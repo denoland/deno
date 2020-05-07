@@ -12,12 +12,12 @@ console.dir(parse(args));
 ```
 
 ```
-$ deno example.ts -a beep -b boop
+$ deno run example.ts -a beep -b boop
 { _: [], a: 'beep', b: 'boop' }
 ```
 
 ```
-$ deno example.ts -x 3 -y 4 -n5 -abc --beep=boop foo bar baz
+$ deno run example.ts -x 3 -y 4 -n5 -abc --beep=boop foo bar baz
 { _: [ 'foo', 'bar', 'baz' ],
   x: 3,
   y: 4,
@@ -60,11 +60,11 @@ options can be:
   import { parse } from "https://deno.land/std/flags/mod.ts";
   // options['--'] is now set to false
   console.dir(parse(args, { "--": false }));
-  // $ deno example.ts -- a arg1
+  // $ deno run example.ts -- a arg1
   // output: { _: [ "example.ts", "a", "arg1" ] }
   // options['--'] is now set to true
   console.dir(parse(args, { "--": true }));
-  // $ deno example.ts -- a arg1
+  // $ deno run example.ts -- a arg1
   // output: { _: [ "example.ts" ], --: [ "a", "arg1" ] }
   ```
 - `options.unknown` - a function which is invoked with a command line parameter

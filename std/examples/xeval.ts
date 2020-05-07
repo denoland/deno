@@ -14,16 +14,16 @@ const HELP_MSG = `xeval
 Run a script for each new-line or otherwise delimited chunk of standard input.
 
 Print all the usernames in /etc/passwd:
-  cat /etc/passwd | deno -A https://deno.land/std/examples/xeval.ts "a = $.split(':'); if (a) console.log(a[0])"
+  cat /etc/passwd | deno run -A https://deno.land/std/examples/xeval.ts "a = $.split(':'); if (a) console.log(a[0])"
 
 A complicated way to print the current git branch:
-  git branch | deno -A https://deno.land/std/examples/xeval.ts -I 'line' "if (line.startsWith('*')) console.log(line.slice(2))"
+  git branch | deno run -A https://deno.land/std/examples/xeval.ts -I 'line' "if (line.startsWith('*')) console.log(line.slice(2))"
 
 Demonstrates breaking the input up by space delimiter instead of by lines:
-  cat LICENSE | deno -A https://deno.land/std/examples/xeval.ts -d " " "if ($ === 'MIT') console.log('MIT licensed')",
+  cat LICENSE | deno run -A https://deno.land/std/examples/xeval.ts -d " " "if ($ === 'MIT') console.log('MIT licensed')",
 
 USAGE:
-  deno -A https://deno.land/std/examples/xeval.ts [OPTIONS] <code>
+  deno run -A https://deno.land/std/examples/xeval.ts [OPTIONS] <code>
 OPTIONS:
   -d, --delim <delim>       Set delimiter, defaults to newline
   -I, --replvar <replvar>   Set variable name to be used in eval, defaults to $
