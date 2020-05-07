@@ -1,1 +1,1 @@
-postMessage("maybe_ns.ts: is self.Deno available: " + !!self.Deno);
+postMessage("maybe_ns.ts: is window.Deno available: " + !!window.Deno);
