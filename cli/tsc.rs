@@ -8,6 +8,7 @@ use crate::file_fetcher::SourceFileFetcher;
 use crate::fmt;
 use crate::fs as deno_fs;
 use crate::global_state::GlobalState;
+use crate::module_graph::ModuleGraphLoader;
 use crate::msg;
 use crate::op_error::OpError;
 use crate::ops;
@@ -370,6 +371,83 @@ impl TsCompiler {
     worker
   }
 
+  pub async fn new_bundle(
+    &self,
+    global_state: GlobalState,
+    module_specifier: ModuleSpecifier,
+    out_file: Option<PathBuf>,
+  ) -> Result<(), ErrBox> {
+    debug!(
+      "Invoking the compiler to bundle. module_name: {}",
+      module_specifier.to_string()
+    );
+    eprintln!("Bundling {}", module_specifier.to_string());
+
+    let module_graph_loader =
+      ModuleGraphLoader::new(global_state.file_fetcher.clone());
+    let module_graph =
+      module_graph_loader.build_graph(&module_specifier).await?;
+    let module_graph_json =
+      serde_json::to_value(module_graph).expect("Failed to serialize data");
+
+    let root_names = vec![module_specifier.to_string()];
+    let bundle = true;
+    let target = "main";
+    let unstable = global_state.flags.unstable;
+    let compiler_config = self.config.clone();
+    let cwd = std::env::current_dir().unwrap();
+    let j = match (compiler_config.path, compiler_config.content) {
+      (Some(config_path), Some(config_data)) => json!({
+        "type": msg::CompilerRequestType::Compile as i32,
+        "target": target,
+        "rootNames": root_names,
+        "bundle": bundle,
+        "unstable": unstable,
+        "configPath": config_path,
+        "config": str::from_utf8(&config_data).unwrap(),
+        "cwd": cwd,
+        "sourceFileMap": module_graph_json,
+      }),
+      _ => json!({
+        "type": msg::CompilerRequestType::Compile as i32,
+        "target": target,
+        "rootNames": root_names,
+        "bundle": bundle,
+        "unstable": unstable,
+        "cwd": cwd,
+        "sourceFileMap": module_graph_json,
+      }),
+    };
+
+    let req_msg = j.to_string().into_boxed_str().into_boxed_bytes();
+
+    let msg = execute_in_thread(global_state.clone(), req_msg).await?;
+    let json_str = std::str::from_utf8(&msg).unwrap();
+    debug!("Message: {}", json_str);
+
+    let bundle_response: BundleResponse = serde_json::from_str(json_str)?;
+
+    if !bundle_response.diagnostics.items.is_empty() {
+      return Err(ErrBox::from(bundle_response.diagnostics));
+    }
+
+    if let Some(out_file_) = out_file.as_ref() {
+      eprintln!("Emitting bundle to {:?}", out_file_);
+
+      let output_bytes = bundle_response.bundle_output.as_bytes();
+      let output_len = output_bytes.len();
+
+      deno_fs::write_file(out_file_, output_bytes, 0o666)?;
+      // TODO(bartlomieju): add "humanFileSize" method
+      eprintln!("{} bytes emmited.", output_len);
+    } else {
+      println!("{}", bundle_response.bundle_output);
+    }
+
+    Ok(())
+  }
+
+  #[allow(unused)]
   pub async fn bundle(
     &self,
     global_state: GlobalState,
@@ -535,6 +613,105 @@ impl TsCompiler {
     }
 
     None
+  }
+
+  #[allow(unused)]
+  pub async fn new_compile(
+    &self,
+    global_state: GlobalState,
+    source_file: &SourceFile,
+    target: TargetLib,
+  ) -> Result<CompiledModule, ErrBox> {
+    if self.has_compiled(&source_file.url) {
+      return self.get_compiled_module(&source_file.url);
+    }
+
+    if self.use_disk_cache {
+      // Try to load cached version:
+      // 1. check if there's 'meta' file
+      if let Some(metadata) = self.get_metadata(&source_file.url) {
+        // 2. compare version hashes
+        // TODO: it would probably be good idea to make it method implemented on SourceFile
+        let version_hash_to_validate = source_code_version_hash(
+          &source_file.source_code,
+          version::DENO,
+          &self.config.hash,
+        );
+
+        if metadata.version_hash == version_hash_to_validate {
+          debug!("load_cache metadata version hash match");
+          if let Ok(compiled_module) =
+            self.get_compiled_module(&source_file.url)
+          {
+            self.mark_compiled(&source_file.url);
+            return Ok(compiled_module);
+          }
+        }
+      }
+    }
+    let source_file_ = source_file.clone();
+    let module_url = source_file.url.clone();
+    let module_specifier = ModuleSpecifier::from(source_file.url.clone());
+    let module_graph_loader =
+      ModuleGraphLoader::new(global_state.file_fetcher.clone());
+    let module_graph =
+      module_graph_loader.build_graph(&module_specifier).await?;
+    let module_graph_json =
+      serde_json::to_value(module_graph).expect("Failed to serialize data");
+
+    let target = match target {
+      TargetLib::Main => "main",
+      TargetLib::Worker => "worker",
+    };
+    let root_names = vec![module_url.to_string()];
+    let bundle = false;
+    let unstable = global_state.flags.unstable;
+    let compiler_config = self.config.clone();
+    let cwd = std::env::current_dir().unwrap();
+    let j = match (compiler_config.path, compiler_config.content) {
+      (Some(config_path), Some(config_data)) => json!({
+        "type": msg::CompilerRequestType::Compile as i32,
+        "target": target,
+        "rootNames": root_names,
+        "bundle": bundle,
+        "unstable": unstable,
+        "configPath": config_path,
+        "config": str::from_utf8(&config_data).unwrap(),
+        "cwd": cwd,
+        "sourceFileMap": module_graph_json,
+      }),
+      _ => json!({
+        "type": msg::CompilerRequestType::Compile as i32,
+        "target": target,
+        "rootNames": root_names,
+        "bundle": bundle,
+        "unstable": unstable,
+        "cwd": cwd,
+        "sourceFileMap": module_graph_json,
+      }),
+    };
+
+    let req_msg = j.to_string().into_boxed_str().into_boxed_bytes();
+
+    let ts_compiler = self.clone();
+
+    info!(
+      "{} {}",
+      colors::green("Compile".to_string()),
+      module_url.to_string()
+    );
+
+    let msg = execute_in_thread(global_state.clone(), req_msg).await?;
+    let json_str = std::str::from_utf8(&msg).unwrap();
+
+    let compile_response: CompileResponse = serde_json::from_str(json_str)?;
+
+    if !compile_response.diagnostics.items.is_empty() {
+      return Err(ErrBox::from(compile_response.diagnostics));
+    }
+
+    self.cache_emitted_files(compile_response.emit_map)?;
+    ts_compiler.get_compiled_module(&source_file_.url)
   }
 
   fn cache_emitted_files(
@@ -906,9 +1083,8 @@ mod tests {
       .unwrap()
       .join("cli/tests/002_hello.ts");
     use deno_core::ModuleSpecifier;
-    let module_name = ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap())
-      .unwrap()
-      .to_string();
+    let module_name =
+      ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
 
     let state = GlobalState::mock(vec![
       String::from("deno"),
@@ -918,7 +1094,7 @@ mod tests {
 
     let result = state
       .ts_compiler
-      .bundle(state.clone(), module_name, None)
+      .new_bundle(state.clone(), module_name, None)
       .await;
     assert!(result.is_ok());
   }

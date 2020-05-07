@@ -390,7 +390,7 @@ async fn bundle_command(
   debug!(">>>>> bundle START");
   let bundle_result = global_state
     .ts_compiler
-    .bundle(global_state.clone(), module_name.to_string(), out_file)
+    .new_bundle(global_state.clone(), module_name, out_file)
     .await;
   debug!(">>>>> bundle END");
   bundle_result

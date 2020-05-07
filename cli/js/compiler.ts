@@ -756,6 +756,59 @@ async function processImports(
   return resolvedSources;
 }
 
+function buildSourceFileCache(sourceFileMap: Record<string, SourceFileMapEntry>): void {
+  for (const entry of Object.values(sourceFileMap)) {
+    assert(entry.sourceCode.length > 0);
+    SourceFile.addToCache({
+      url: entry.url,
+      filename: entry.url,
+      mediaType: entry.mediaType,
+      sourceCode: entry.sourceCode,
+    });
+
+    for (const importDesc of entry.imports) {
+      let mappedUrl = importDesc.resolvedSpecifier;
+      const importedFile = sourceFileMap[importDesc.resolvedSpecifier];
+      assert(importedFile);
+      const isJsOrJsx =
+        importedFile.mediaType === MediaType.JavaScript ||
+        importedFile.mediaType === MediaType.JSX;
+      // If JS or JSX perform substitution for types if available
+      if (isJsOrJsx) {
+        if (importedFile.typeHeaders.length > 0) {
+          const typeHeaders = importedFile.typeHeaders[0];
+          mappedUrl = typeHeaders.resolvedSpecifier;
+        } else if (importDesc.resolvedTypeDirective) {
+          mappedUrl = importDesc.resolvedTypeDirective;
+        } else if (importedFile.typesDirectives.length > 0) {
+          const typeDirective = importedFile.typesDirectives[0];
+          mappedUrl = typeDirective.resolvedSpecifier;
+        }
+      }
+
+      SourceFile.cacheResolvedUrl(
+        mappedUrl,
+        importDesc.specifier,
+        entry.url,
+      );
+    }
+    for (const fileRef of entry.referencedFiles) {
+      SourceFile.cacheResolvedUrl(
+        fileRef.resolvedSpecifier,
+        fileRef.specifier,
+        entry.url,
+      );
+    }
+    for (const fileRef of entry.libDirectives) {
+      SourceFile.cacheResolvedUrl(
+        fileRef.resolvedSpecifier,
+        fileRef.specifier,
+        entry.url,
+      );
+    }
+  }
+}
+
 interface FileReference {
   fileName: string;
   pos: number;
@@ -855,6 +908,7 @@ enum CompilerRequestType {
   Compile = 0,
   RuntimeCompile = 1,
   RuntimeTranspile = 2,
+  CompileNew = 3,
 }
 
 // TODO(bartlomieju): probably could be defined inline?
@@ -1222,6 +1276,43 @@ interface CompilerRequestCompile {
   cwd: string;
 }
 
+interface ImportDescriptor {
+  specifier: string;
+  resolvedSpecifier: string;
+  typeDirective?: string;
+  resolvedTypeDirective?: string;
+}
+
+interface ReferenceDescriptor {
+  specifier: string;
+  resolvedSpecifier: string;
+}
+
+interface SourceFileMapEntry {
+  // fully resolved URL
+  url: string;
+  sourceCode: string;
+  mediaType: MediaType;
+  imports: ImportDescriptor[],
+  referencedFiles: ReferenceDescriptor[],
+  libDirectives: ReferenceDescriptor[],
+  typesDirectives: ReferenceDescriptor[],
+  typeHeaders: ReferenceDescriptor[],
+}
+
+interface CompilerRequestCompileNew {
+  type: CompilerRequestType.CompileNew;
+  target: CompilerHostTarget;
+  rootNames: string[];
+  configPath?: string;
+  config?: string;
+  unstable: boolean;
+  bundle: boolean;
+  cwd: string;
+  // key value is fully resolved URL
+  sourceFileMap: Record<string, SourceFileMapEntry>;
+}
+
 interface CompilerRequestRuntimeCompile {
   type: CompilerRequestType.RuntimeCompile;
   target: CompilerHostTarget;
@@ -1239,6 +1330,7 @@ interface CompilerRequestRuntimeTranspile {
 }
 
 type CompilerRequest =
+  | CompilerRequestCompileNew
   | CompilerRequestCompile
   | CompilerRequestRuntimeCompile
   | CompilerRequestRuntimeTranspile;
@@ -1258,6 +1350,109 @@ interface RuntimeBundleResult {
   output: string;
   diagnostics: DiagnosticItem[];
 }
+
+async function compileNew(
+  request: CompilerRequestCompileNew
+): Promise<CompileResult> {
+  const {
+    bundle,
+    config,
+    configPath,
+    rootNames,
+    target,
+    unstable,
+    cwd,
+    sourceFileMap,
+  } = request;
+  util.log(">>> compile start", {
+    rootNames,
+    type: CompilerRequestType[request.type],
+  });
+
+  // When a programme is emitted, TypeScript will call `writeFile` with
+  // each file that needs to be emitted.  The Deno compiler host delegates
+  // this, to make it easier to perform the right actions, which vary
+  // based a lot on the request.
+  const state: WriteFileState = {
+    type: request.type,
+    emitMap: {},
+    bundle,
+    host: undefined,
+    rootNames,
+  };
+  let writeFile: WriteFileCallback;
+  if (bundle) {
+    writeFile = createBundleWriteFile(state);
+  } else {
+    writeFile = createCompileWriteFile(state);
+  }
+  const host = (state.host = new Host({
+    bundle,
+    target,
+    writeFile,
+    unstable,
+  }));
+  let diagnostics: readonly ts.Diagnostic[] = [];
+
+  // if there is a configuration supplied, we need to parse that
+  if (config && config.length && configPath) {
+    const configResult = host.configure(cwd, configPath, config);
+    diagnostics = processConfigureResponse(configResult, configPath) || [];
+  }
+
+  buildSourceFileCache(sourceFileMap);
+  // if there was a configuration and no diagnostics with it, we will continue
+  // to generate the program and possibly emit it.
+  if (diagnostics.length === 0) {
+    const options = host.getCompilationSettings();
+    const program = ts.createProgram({
+      rootNames,
+      options,
+      host,
+      oldProgram: TS_SNAPSHOT_PROGRAM,
+    });
+
+    diagnostics = ts
+      .getPreEmitDiagnostics(program)
+      .filter(({ code }) => !ignoredDiagnostics.includes(code));
+
+    // We will only proceed with the emit if there are no diagnostics.
+    if (diagnostics && diagnostics.length === 0) {
+      if (bundle) {
+        // we only support a single root module when bundling
+        assert(rootNames.length === 1);
+        setRootExports(program, rootNames[0]);
+      }
+      const emitResult = program.emit();
+      assert(emitResult.emitSkipped === false, "Unexpected skip of the emit.");
+      // emitResult.diagnostics is `readonly` in TS3.5+ and can't be assigned
+      // without casting.
+      diagnostics = emitResult.diagnostics;
+    }
+  }
+
+  let bundleOutput = undefined;
+
+  if (bundle) {
+    assert(state.bundleOutput);
+    bundleOutput = state.bundleOutput;
+  }
+
+  assert(state.emitMap);
+  const result: CompileResult = {
+    emitMap: state.emitMap,
+    bundleOutput,
+    diagnostics: fromTypeScriptDiagnostic(diagnostics),
+  };
+
+  util.log("<<< compile end", {
+    rootNames,
+    type: CompilerRequestType[request.type],
+  });
+
+  return result;
+}
+
 
 async function compile(
   request: CompilerRequestCompile
@@ -1546,6 +1741,11 @@ async function tsCompilerOnMessage({
   switch (request.type) {
     case CompilerRequestType.Compile: {
       const result = await compile(request as CompilerRequestCompile);
+      globalThis.postMessage(result);
+      break;
+    }
+    case CompilerRequestType.CompileNew: {
+      const result = await compileNew(request as CompilerRequestCompileNew);
       globalThis.postMessage(result);
       break;
     }

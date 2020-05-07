@@ -36,11 +36,11 @@ where
 }
 
 #[derive(Debug, Serialize)]
-struct ModuleGraph(HashMap<String, ModuleGraphFile>);
+pub struct ModuleGraph(HashMap<String, ModuleGraphFile>);
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct ImportDescriptor {
+pub struct ImportDescriptor {
   specifier: String,
   #[serde(serialize_with = "serialize_module_specifier")]
   resolved_specifier: ModuleSpecifier,
@@ -53,7 +53,7 @@ struct ImportDescriptor {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct ReferenceDescriptor {
+pub struct ReferenceDescriptor {
   specifier: String,
   #[serde(serialize_with = "serialize_module_specifier")]
   resolved_specifier: ModuleSpecifier,
@@ -61,16 +61,18 @@ struct ReferenceDescriptor {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct ModuleGraphFile {
+pub struct ModuleGraphFile {
   pub specifier: String,
   pub imports: Vec<ImportDescriptor>,
   pub referenced_files: Vec<ReferenceDescriptor>,
   pub lib_directives: Vec<ReferenceDescriptor>,
   pub types_directives: Vec<ReferenceDescriptor>,
   pub type_headers: Vec<ReferenceDescriptor>,
+  pub media_type: MediaType,
+  pub source_code: String,
 }
 
-struct ModuleGraphLoader {
+pub struct ModuleGraphLoader {
   file_fetcher: SourceFileFetcher,
   to_visit: Vec<ModuleSpecifier>,
   pub graph: ModuleGraph,
@@ -115,6 +117,8 @@ impl ModuleGraphLoader {
     let mut types_directives = vec![];
     let mut type_headers = vec![];
 
+    let source_code = String::from_utf8(source_file.source_code)?;
+
     if source_file.media_type == MediaType::JavaScript
       || source_file.media_type == MediaType::TypeScript
     {
@@ -129,10 +133,8 @@ impl ModuleGraphLoader {
         type_headers.push(type_header);
       }
 
-      let (import_descs, ref_descs) = analyze_dependencies_and_references(
-        &String::from_utf8(source_file.source_code)?,
-        true,
-      )?;
+      let (import_descs, ref_descs) =
+        analyze_dependencies_and_references(&source_code, true)?;
 
       // TODO(bartlomieju): apply import map, using State
       //    or should it be passed explicitly
@@ -220,6 +222,8 @@ impl ModuleGraphLoader {
       module_specifier.to_string(),
       ModuleGraphFile {
         specifier: module_specifier.to_string(),
+        media_type: source_file.media_type,
+        source_code,
         imports,
         referenced_files,
         lib_directives,
