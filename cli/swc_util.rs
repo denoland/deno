@@ -476,7 +476,6 @@ pub fn analyze_dependencies_and_references(
       .collect();
 
     // analyze comment from beginning of the file and find TS directives
-    eprintln!("module span {:?}", module_span);
     let comments = parser
       .comments
       .take_leading_comments(module_span.lo())

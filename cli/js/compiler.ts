@@ -1349,9 +1349,7 @@ interface RuntimeBundleResult {
   diagnostics: DiagnosticItem[];
 }
 
-function compileNew(
-  request: CompilerRequestCompileNew
-): Promise<CompileResult> {
+function compileNew(request: CompilerRequestCompileNew): CompileResult {
   const {
     bundle,
     config,
