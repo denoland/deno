@@ -294,11 +294,14 @@ Deno.test({
 Deno.test({
   name: "worker with crypto in scope",
   fn: async function (): Promise<void> {
+    const promise = createResolvable();
     const w = new Worker("../tests/subdir/worker_crypto.js", {
       type: "module",
     });
     w.onmessage = (e): void => {
       assertEquals(e.data, true);
+      promise.resolve();
     };
+    await promise;
   },
 });

@@ -1,3 +1,3 @@
-onmessage = function (e) {
+onmessage = function () {
   postMessage(!!self.crypto);
 };
