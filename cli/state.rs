@@ -478,7 +478,7 @@ impl State {
     // TODO(bartlomieju): temporary fix to prevent hitting `unreachable`
     // statement that is actually reachable...
     SourceFileFetcher::check_if_supported_scheme(u)?;
-    
+
     match u.scheme() {
       "http" | "https" => {
         self.check_net_url(u)?;
