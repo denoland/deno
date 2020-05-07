@@ -1080,7 +1080,8 @@ itest!(_038_checkjs {
   output: "038_checkjs.js.out",
 });
 
-itest!(_039_worker_deno_ns {
+// TODO(bartlomieju): re-enable
+itest_ignore!(_039_worker_deno_ns {
   args: "run --reload 039_worker_deno_ns.ts",
   output: "039_worker_deno_ns.ts.out",
 });
