@@ -1,4 +1,7 @@
-const w1 = new Worker("./039_worker_deno_ns/has_ns.ts", { type: "module" });
+const w1 = new Worker("./039_worker_deno_ns/has_ns.ts", {
+  type: "module",
+  deno: true,
+});
 const w2 = new Worker("./039_worker_deno_ns/no_ns.ts", { type: "module" });
 let w1MsgCount = 0;
 let w2MsgCount = 0;

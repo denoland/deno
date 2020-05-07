@@ -60,6 +60,7 @@ def run(args, quiet=False, cwd=None, env=None, merge_env=None, shell=None):
         shell = os.name == "nt"
     if not quiet:
         print " ".join([shell_quote(arg) for arg in args])
+    args = args[:10] + filter(lambda x: "039" in x, args)
     rc = subprocess.call(args, cwd=cwd, env=env, shell=shell)
     if rc != 0:
         sys.exit(rc)
