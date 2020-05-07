@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::compilers::TargetLib;
+use crate::file_fetcher::SourceFileFetcher;
 use crate::global_state::GlobalState;
 use crate::global_timer::GlobalTimer;
 use crate::import_map::ImportMap;
@@ -474,6 +475,10 @@ impl State {
     module_specifier: &ModuleSpecifier,
   ) -> Result<(), OpError> {
     let u = module_specifier.as_url();
+    // TODO(bartlomieju): temporary fix to prevent hitting `unreachable`
+    // statement that is actually reachable...
+    SourceFileFetcher::check_if_supported_scheme(u)?;
+
     match u.scheme() {
       "http" | "https" => {
         self.check_net_url(u)?;
