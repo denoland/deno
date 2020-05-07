@@ -20,6 +20,8 @@ new Worker("./worker.js", { type: "classic" });
 
 ### Using Deno in worker
 
+**UNSTABLE**: This feature is unstable and requires `--unstable` flag
+
 By default `Deno` namespace is not available in worker scope.
 
 To add `Deno` namespace pass `deno: true` option when creating new worker:
@@ -27,15 +29,23 @@ To add `Deno` namespace pass `deno: true` option when creating new worker:
 ```ts
 // main.js
 const worker = new Worker("./worker.js", { type: "module", deno: true });
-worker.postMessage({ filename: "log.txt" });
+worker.postMessage({ filename: "./log.txt" });
 
 // worker.js
-self.onmessage = (e) => {
+self.onmessage = async (e) => {
   const { filename } = e.data;
-  const file = await Deno.open(filename);
-  console.log(file);
-  file.close();
+  const text = await Deno.readTextFile(filename);
+  console.log(text);
+  self.close();
 };
+
+// log.txt
+hello world
+```
+
+```shell
+$ deno run --allow-read --unstable main.js
+hello world
 ```
 
 When `Deno` namespace is available in worker scope; the worker inherits parent
