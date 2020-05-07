@@ -756,7 +756,9 @@ async function processImports(
   return resolvedSources;
 }
 
-function buildSourceFileCache(sourceFileMap: Record<string, SourceFileMapEntry>): void {
+function buildSourceFileCache(
+  sourceFileMap: Record<string, SourceFileMapEntry>
+): void {
   for (const entry of Object.values(sourceFileMap)) {
     assert(entry.sourceCode.length > 0);
     SourceFile.addToCache({
@@ -786,24 +788,20 @@ function buildSourceFileCache(sourceFileMap: Record<string, SourceFileMapEntry>)
         }
       }
 
-      SourceFile.cacheResolvedUrl(
-        mappedUrl,
-        importDesc.specifier,
-        entry.url,
-      );
+      SourceFile.cacheResolvedUrl(mappedUrl, importDesc.specifier, entry.url);
     }
     for (const fileRef of entry.referencedFiles) {
       SourceFile.cacheResolvedUrl(
         fileRef.resolvedSpecifier,
         fileRef.specifier,
-        entry.url,
+        entry.url
       );
     }
     for (const fileRef of entry.libDirectives) {
       SourceFile.cacheResolvedUrl(
         fileRef.resolvedSpecifier,
         fileRef.specifier,
-        entry.url,
+        entry.url
       );
     }
   }
@@ -1293,11 +1291,11 @@ interface SourceFileMapEntry {
   url: string;
   sourceCode: string;
   mediaType: MediaType;
-  imports: ImportDescriptor[],
-  referencedFiles: ReferenceDescriptor[],
-  libDirectives: ReferenceDescriptor[],
-  typesDirectives: ReferenceDescriptor[],
-  typeHeaders: ReferenceDescriptor[],
+  imports: ImportDescriptor[];
+  referencedFiles: ReferenceDescriptor[];
+  libDirectives: ReferenceDescriptor[];
+  typesDirectives: ReferenceDescriptor[];
+  typeHeaders: ReferenceDescriptor[];
 }
 
 interface CompilerRequestCompileNew {
@@ -1351,7 +1349,7 @@ interface RuntimeBundleResult {
   diagnostics: DiagnosticItem[];
 }
 
-async function compileNew(
+function compileNew(
   request: CompilerRequestCompileNew
 ): Promise<CompileResult> {
   const {
@@ -1452,7 +1450,6 @@ async function compileNew(
 
   return result;
 }
-
 
 async function compile(
   request: CompilerRequestCompile
@@ -1745,7 +1742,7 @@ async function tsCompilerOnMessage({
       break;
     }
     case CompilerRequestType.CompileNew: {
-      const result = await compileNew(request as CompilerRequestCompileNew);
+      const result = compileNew(request as CompilerRequestCompileNew);
       globalThis.postMessage(result);
       break;
     }
