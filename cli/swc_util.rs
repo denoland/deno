@@ -402,14 +402,15 @@ fn get_deno_types(parser: &AstParser, span: Span) -> Option<String> {
   let comment = last.text.trim_start();
 
   if comment.starts_with("@deno-types") {
-    let split: Vec<&str> = comment.split("=").collect();
+    let split: Vec<String> =
+      comment.split('=').map(|s| s.to_string()).collect();
     assert_eq!(split.len(), 2);
     let specifier_in_quotes = split.get(1).unwrap().to_string();
     let specifier = specifier_in_quotes
-      .trim_start_matches("\"")
-      .trim_start_matches("\'")
-      .trim_end_matches("\"")
-      .trim_end_matches("\'")
+      .trim_start_matches('\"')
+      .trim_start_matches('\'')
+      .trim_end_matches('\"')
+      .trim_end_matches('\'')
       .to_string();
     return Some(specifier);
   }
@@ -511,10 +512,10 @@ pub fn analyze_dependencies_and_references(
       let specifier = specifier_in_quotes
         .trim_end_matches("/>")
         .trim_end()
-        .trim_start_matches("\"")
-        .trim_start_matches("\'")
-        .trim_end_matches("\"")
-        .trim_end_matches("\'")
+        .trim_start_matches('\"')
+        .trim_start_matches('\'')
+        .trim_end_matches('\"')
+        .trim_end_matches('\'')
         .to_string();
 
       references.push(TsReferenceDescriptor { kind, specifier });
