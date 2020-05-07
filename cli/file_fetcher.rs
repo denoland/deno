@@ -661,7 +661,7 @@ mod tests {
 
   fn setup_file_fetcher(dir_path: &Path) -> SourceFileFetcher {
     SourceFileFetcher::new(
-      HttpCache::new(&dir_path.to_path_buf().join("deps")).unwrap(),
+      HttpCache::new(&dir_path.to_path_buf().join("deps")),
       true,
       vec![],
       false,
