@@ -184,6 +184,9 @@ fn op_create_worker(
   };
   let args_name = args.name;
   let use_deno_namespace = args.use_deno_namespace;
+  if use_deno_namespace {
+    state.check_unstable("Worker.deno");
+  }
   let parent_state = state.clone();
   let mut state = state.borrow_mut();
   let global_state = state.global_state.clone();

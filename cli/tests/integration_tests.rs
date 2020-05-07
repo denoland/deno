@@ -985,6 +985,7 @@ fn workers() {
     .arg("test")
     .arg("--reload")
     .arg("--allow-net")
+    .arg("--unstable")
     .arg("workers_test.ts")
     .spawn()
     .unwrap()
@@ -1078,17 +1079,6 @@ itest!(_038_checkjs {
   check_stderr: true,
   exit_code: 1,
   output: "038_checkjs.js.out",
-});
-
-// TODO(bartlomieju): re-enable
-itest_ignore!(_039_worker_deno_ns {
-  args: "run --reload 039_worker_deno_ns.ts",
-  output: "039_worker_deno_ns.ts.out",
-});
-
-itest_ignore!(_040_worker_blob {
-  args: "run --reload 040_worker_blob.ts",
-  output: "040_worker_blob.ts.out",
 });
 
 itest!(_041_dyn_import_eval {
@@ -1469,14 +1459,6 @@ itest!(error_local_static_import_from_remote_js {
   exit_code: 1,
   http_server: true,
   output: "error_local_static_import_from_remote.js.out",
-});
-
-// TODO(bartlomieju) Re-enable
-itest_ignore!(error_worker_dynamic {
-  args: "run --reload error_worker_dynamic.ts",
-  check_stderr: true,
-  exit_code: 1,
-  output: "error_worker_dynamic.ts.out",
 });
 
 itest!(exit_error42 {
