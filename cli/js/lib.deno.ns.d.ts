@@ -1718,7 +1718,7 @@ declare namespace Deno {
   /** Returns the script arguments to the program. If for example we run a
    * program:
    *
-   *      deno --allow-read https://deno.land/std/examples/cat.ts /etc/passwd
+   *      deno run --allow-read https://deno.land/std/examples/cat.ts /etc/passwd
    *
    * Then `Deno.args` will contain:
    *

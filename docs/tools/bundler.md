@@ -15,7 +15,7 @@ If you omit the out file, the bundle will be sent to `stdout`.
 The bundle can just be run as any other module in Deno would:
 
 ```
-deno colors.bundle.js
+deno run colors.bundle.js
 ```
 
 The output is a self contained ES Module, where any exports from the main module
