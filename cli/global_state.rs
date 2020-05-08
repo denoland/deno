@@ -1,8 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use crate::compilers::CompiledModule;
-use crate::compilers::JsCompiler;
-use crate::compilers::TargetLib;
-use crate::compilers::TsCompiler;
 use crate::deno_dir;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::flags;
@@ -10,6 +6,9 @@ use crate::http_cache;
 use crate::lockfile::Lockfile;
 use crate::msg;
 use crate::permissions::Permissions;
+use crate::tsc::CompiledModule;
+use crate::tsc::TargetLib;
+use crate::tsc::TsCompiler;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
 use std::env;
@@ -33,7 +32,6 @@ pub struct GlobalStateInner {
   pub permissions: Permissions,
   pub dir: deno_dir::DenoDir,
   pub file_fetcher: SourceFileFetcher,
-  pub js_compiler: JsCompiler,
   pub ts_compiler: TsCompiler,
   pub lockfile: Option<Mutex<Lockfile>>,
   pub compiler_starts: AtomicUsize,
@@ -84,7 +82,6 @@ impl GlobalState {
       flags,
       file_fetcher,
       ts_compiler,
-      js_compiler: JsCompiler {},
       lockfile,
       compiler_starts: AtomicUsize::new(0),
       compile_lock: AsyncMutex::new(()),
@@ -140,10 +137,16 @@ impl GlobalState {
               .ok();
           };
 
-          state1.js_compiler.compile(out).await
+          Ok(CompiledModule {
+            code: String::from_utf8(out.source_code)?,
+            name: out.url.to_string(),
+          })
         }
       }
-      _ => state1.js_compiler.compile(out).await,
+      _ => Ok(CompiledModule {
+        code: String::from_utf8(out.source_code)?,
+        name: out.url.to_string(),
+      }),
     }?;
     drop(compile_lock);
 

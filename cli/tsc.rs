@@ -1,7 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use super::compiler_worker::CompilerWorker;
 use crate::colors;
-use crate::compilers::CompiledModule;
 use crate::diagnostics::Diagnostic;
 use crate::diagnostics::DiagnosticItem;
 use crate::disk_cache::DiskCache;
@@ -12,16 +10,23 @@ use crate::fs as deno_fs;
 use crate::global_state::GlobalState;
 use crate::msg;
 use crate::op_error::OpError;
+use crate::ops;
 use crate::source_maps::SourceMapGetter;
 use crate::startup_data;
+use crate::state::State;
 use crate::state::*;
 use crate::tokio_util;
 use crate::version;
+use crate::web_worker::WebWorker;
 use crate::web_worker::WebWorkerHandle;
 use crate::worker::WorkerEvent;
+use core::task::Context;
 use deno_core::Buf;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
+use deno_core::StartupData;
+use futures::future::Future;
+use futures::future::FutureExt;
 use log::info;
 use regex::Regex;
 use serde::Deserialize;
@@ -33,12 +38,57 @@ use std::fs;
 use std::hash::BuildHasher;
 use std::io;
 use std::ops::Deref;
+use std::ops::DerefMut;
 use std::path::PathBuf;
+use std::pin::Pin;
 use std::str;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::task::Poll;
 use url::Url;
+
+#[derive(Debug, Clone)]
+pub struct CompiledModule {
+  pub code: String,
+  pub name: String,
+}
+
+pub struct CompilerWorker(WebWorker);
+
+impl CompilerWorker {
+  pub fn new(name: String, startup_data: StartupData, state: State) -> Self {
+    let state_ = state.clone();
+    let mut worker = WebWorker::new(name, startup_data, state_, false);
+    {
+      let isolate = &mut worker.isolate;
+      ops::compiler::init(isolate, &state);
+    }
+    Self(worker)
+  }
+}
+
+impl Deref for CompilerWorker {
+  type Target = WebWorker;
+  fn deref(&self) -> &Self::Target {
+    &self.0
+  }
+}
+
+impl DerefMut for CompilerWorker {
+  fn deref_mut(&mut self) -> &mut Self::Target {
+    &mut self.0
+  }
+}
+
+impl Future for CompilerWorker {
+  type Output = Result<(), ErrBox>;
+
+  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+    let inner = self.get_mut();
+    inner.0.poll_unpin(cx)
+  }
+}
 
 lazy_static! {
   static ref CHECK_JS_RE: Regex =
@@ -805,7 +855,7 @@ mod tests {
       url: specifier.as_url().clone(),
       filename: PathBuf::from(p.to_str().unwrap().to_string()),
       media_type: msg::MediaType::TypeScript,
-      source_code: include_bytes!("../tests/002_hello.ts").to_vec(),
+      source_code: include_bytes!("./tests/002_hello.ts").to_vec(),
       types_url: None,
     };
     let mock_state =
