@@ -6,6 +6,7 @@ import * as abortController from "./web/abort_controller.ts";
 import * as abortSignal from "./web/abort_signal.ts";
 import * as blob from "./web/blob.ts";
 import * as consoleTypes from "./web/console.ts";
+import * as csprng from "./ops/get_random_values.ts";
 import * as promiseTypes from "./web/promise.ts";
 import * as customEvent from "./web/custom_event.ts";
 import * as domException from "./web/dom_exception.ts";
@@ -222,6 +223,7 @@ export const windowOrWorkerGlobalScopeProperties = {
     queuingStrategy.ByteLengthQueuingStrategyImpl
   ),
   CountQueuingStrategy: nonEnumerable(queuingStrategy.CountQueuingStrategyImpl),
+  crypto: readOnly(csprng),
   File: nonEnumerable(domFile.DomFileImpl),
   CustomEvent: nonEnumerable(customEvent.CustomEventImpl),
   DOMException: nonEnumerable(domException.DOMExceptionImpl),
