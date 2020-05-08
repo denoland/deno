@@ -7,7 +7,7 @@ const testData = path.resolve(
   path.join("node", "_fs", "testdata", "hello.txt")
 );
 
-test(async function readFileSuccess() {
+test("readFileSuccess", async function () {
   const data = await new Promise((res, rej) => {
     readFile(testData, (err, data) => {
       if (err) {
@@ -21,7 +21,7 @@ test(async function readFileSuccess() {
   assertEquals(new TextDecoder().decode(data as Uint8Array), "hello world");
 });
 
-test(async function readFileEncodeUtf8Success() {
+test("readFileEncodeUtf8Success", async function () {
   const data = await new Promise((res, rej) => {
     readFile(testData, { encoding: "utf8" }, (err, data) => {
       if (err) {
@@ -35,13 +35,13 @@ test(async function readFileEncodeUtf8Success() {
   assertEquals(data as string, "hello world");
 });
 
-test(function readFileSyncSuccess() {
+test("readFileSyncSuccess", function () {
   const data = readFileSync(testData);
   assert(data instanceof Uint8Array);
   assertEquals(new TextDecoder().decode(data as Uint8Array), "hello world");
 });
 
-test(function readFileEncodeUtf8Success() {
+test("readFileEncodeUtf8Success", function () {
   const data = readFileSync(testData, { encoding: "utf8" });
   assertEquals(typeof data, "string");
   assertEquals(data as string, "hello world");

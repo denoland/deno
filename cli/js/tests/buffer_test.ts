@@ -35,7 +35,6 @@ function check(buf: Deno.Buffer, s: string): void {
   const decoder = new TextDecoder();
   const bytesStr = decoder.decode(bytes);
   assertEquals(bytesStr, s);
-  assertEquals(buf.length, buf.toString().length);
   assertEquals(buf.length, s.length);
 }
 
@@ -65,7 +64,7 @@ async function empty(buf: Buffer, s: string, fub: Uint8Array): Promise<void> {
   check(buf, s);
   while (true) {
     const r = await buf.read(fub);
-    if (r === Deno.EOF) {
+    if (r === null) {
       break;
     }
     s = s.slice(r);
@@ -231,8 +230,7 @@ unitTest(async function bufferTestGrow(): Promise<void> {
     for (const growLen of [0, 100, 1000, 10000, 100000]) {
       const buf = new Buffer(xBytes.buffer as ArrayBuffer);
       // If we read, this affects buf.off, which is good to test.
-      const result = await buf.read(tmp);
-      const nread = result === Deno.EOF ? 0 : result;
+      const nread = (await buf.read(tmp)) ?? 0;
       buf.grow(growLen);
       const yBytes = repeat("y", growLen);
       await buf.write(yBytes);

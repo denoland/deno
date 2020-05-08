@@ -22,7 +22,7 @@ function assertFile(path: string): void {
 function assertDirectory(path: string, mode?: number): void {
   const info = Deno.lstatSync(path);
   assert(info.isDirectory);
-  if (Deno.build.os !== "win" && mode !== undefined) {
+  if (Deno.build.os !== "windows" && mode !== undefined) {
     assertEquals(info.mode! & 0o777, mode & ~Deno.umask());
   }
 }
@@ -98,7 +98,7 @@ function writeFileString(filename: string, s: string): void {
 }
 
 unitTest(
-  { ignore: Deno.build.os === "win", perms: { read: true, write: true } },
+  { ignore: Deno.build.os === "windows", perms: { read: true, write: true } },
   function renameSyncErrorsUnix(): void {
     const testDir = Deno.makeTempDirSync();
     const oldfile = testDir + "/oldfile";
@@ -173,7 +173,7 @@ unitTest(
 );
 
 unitTest(
-  { ignore: Deno.build.os !== "win", perms: { read: true, write: true } },
+  { ignore: Deno.build.os !== "windows", perms: { read: true, write: true } },
   function renameSyncErrorsWin(): void {
     const testDir = Deno.makeTempDirSync();
     const oldfile = testDir + "/oldfile";

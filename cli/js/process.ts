@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { File } from "./files.ts";
 import { close } from "./ops/resources.ts";
-import { ReadCloser, WriteCloser } from "./io.ts";
+import { Closer, Reader, Writer } from "./io.ts";
 import { readAll } from "./buffer.ts";
 import { kill, runStatus as runStatusOp, run as runOp } from "./ops/process.ts";
 
@@ -33,9 +33,9 @@ async function runStatus(rid: number): Promise<ProcessStatus> {
 export class Process {
   readonly rid: number;
   readonly pid: number;
-  readonly stdin?: WriteCloser;
-  readonly stdout?: ReadCloser;
-  readonly stderr?: ReadCloser;
+  readonly stdin?: Writer & Closer;
+  readonly stdout?: Reader & Closer;
+  readonly stderr?: Reader & Closer;
 
   // @internal
   constructor(res: RunResponse) {

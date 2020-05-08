@@ -112,7 +112,8 @@ for (const s of scenes) {
   let title = `test ${s.async ? "exists" : "existsSync"}("testdata/${s.file}")`;
   title += ` ${s.read ? "with" : "without"} --allow-read`;
   Deno.test(`[fs] existsPermission ${title}`, async function (): Promise<void> {
-    const args = [Deno.execPath(), "run"];
+    // TODO(lucacasonato): remove unstable when stabilized
+    const args = [Deno.execPath(), "run", "--unstable"];
 
     if (s.read) {
       args.push("--allow-read");

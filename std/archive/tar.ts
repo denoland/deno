@@ -39,15 +39,15 @@ const ustar = "ustar\u000000";
 class FileReader implements Deno.Reader {
   private file?: Deno.File;
 
-  constructor(private filePath: string, private mode: Deno.OpenMode = "r") {}
+  constructor(private filePath: string) {}
 
-  public async read(p: Uint8Array): Promise<number | Deno.EOF> {
+  public async read(p: Uint8Array): Promise<number | null> {
     if (!this.file) {
-      this.file = await Deno.open(this.filePath, this.mode);
+      this.file = await Deno.open(this.filePath, { read: true });
     }
     const res = await Deno.read(this.file.rid, p);
-    if (res === Deno.EOF) {
-      await Deno.close(this.file.rid);
+    if (res === null) {
+      Deno.close(this.file.rid);
       this.file = undefined;
     }
     return res;
@@ -317,10 +317,9 @@ export class Tar {
 
     const mode =
         opts.fileMode || (info && info.mode) || parseInt("777", 8) & 0xfff,
-      mtime =
-        opts.mtime ||
-        (info && info.modified) ||
-        Math.floor(new Date().getTime() / 1000),
+      mtime = Math.floor(
+        opts.mtime ?? (info?.mtime ?? new Date()).valueOf() / 1000
+      ),
       uid = opts.uid || 0,
       gid = opts.gid || 0;
     if (typeof opts.owner === "string" && opts.owner.length >= 32) {
@@ -470,7 +469,7 @@ export class Untar {
     while (rest > 0) {
       await this.reader.readFull(this.block);
       const arr = rest < recordSize ? this.block.subarray(0, rest) : this.block;
-      await Deno.copy(writer, new Deno.Buffer(arr));
+      await Deno.copy(new Deno.Buffer(arr), writer);
       rest -= recordSize;
     }
 

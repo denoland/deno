@@ -4,14 +4,15 @@ use super::io::{StreamResource, StreamResourceHolder};
 use crate::http_util::{create_http_client, HttpBody};
 use crate::op_error::OpError;
 use crate::state::State;
-use deno_core::*;
+use deno_core::CoreIsolate;
+use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
 use http::header::HeaderName;
 use http::header::HeaderValue;
 use http::Method;
 use std::convert::From;
 
-pub fn init(i: &mut Isolate, s: &State) {
+pub fn init(i: &mut CoreIsolate, s: &State) {
   i.register_op("op_fetch", s.stateful_json_op2(op_fetch));
 }
 
@@ -23,7 +24,7 @@ struct FetchArgs {
 }
 
 pub fn op_fetch(
-  isolate: &mut deno_core::Isolate,
+  isolate: &mut CoreIsolate,
   state: &State,
   args: Value,
   data: Option<ZeroCopyBuf>,

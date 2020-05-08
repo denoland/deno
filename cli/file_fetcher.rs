@@ -93,7 +93,7 @@ impl SourceFileFetcher {
     Ok(file_fetcher)
   }
 
-  fn check_if_supported_scheme(url: &Url) -> Result<(), ErrBox> {
+  pub fn check_if_supported_scheme(url: &Url) -> Result<(), ErrBox> {
     if !SUPPORTED_URL_SCHEMES.contains(&url.scheme()) {
       return Err(
         OpError::other(
@@ -661,7 +661,7 @@ mod tests {
 
   fn setup_file_fetcher(dir_path: &Path) -> SourceFileFetcher {
     SourceFileFetcher::new(
-      HttpCache::new(&dir_path.to_path_buf().join("deps")).unwrap(),
+      HttpCache::new(&dir_path.to_path_buf().join("deps")),
       true,
       vec![],
       false,

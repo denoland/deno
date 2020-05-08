@@ -6,6 +6,7 @@ use serde::Serialize;
 
 use super::function::function_to_function_def;
 use super::function::FunctionDef;
+use super::interface::expr_to_name;
 use super::params::assign_pat_to_param_def;
 use super::params::ident_to_param_def;
 use super::params::pat_to_param_def;
@@ -84,15 +85,15 @@ fn prop_name_to_string(
   }
 }
 
-pub fn get_doc_for_class_decl(
+pub fn class_to_class_def(
   doc_parser: &DocParser,
-  class_decl: &swc_ecma_ast::ClassDecl,
-) -> (String, ClassDef) {
+  class: &swc_ecma_ast::Class,
+) -> ClassDef {
   let mut constructors = vec![];
   let mut methods = vec![];
   let mut properties = vec![];
 
-  let extends: Option<String> = match &class_decl.class.super_class {
+  let extends: Option<String> = match &class.super_class {
     Some(boxed) => {
       use crate::swc_ecma_ast::Expr;
       let expr: &Expr = &**boxed;
@@ -104,21 +105,20 @@ pub fn get_doc_for_class_decl(
     None => None,
   };
 
-  let implements: Vec<String> = class_decl
-    .class
+  let implements: Vec<String> = class
     .implements
     .iter()
     .map(|expr| ts_entity_name_to_name(&expr.expr))
     .collect();
 
-  for member in &class_decl.class.body {
+  for member in &class.body {
     use crate::swc_ecma_ast::ClassMember::*;
 
     match member {
       Constructor(ctor) => {
         let ctor_js_doc = doc_parser.js_doc_for_span(ctor.span());
         let constructor_name =
-          prop_name_to_string(&doc_parser.source_map, &ctor.key);
+          prop_name_to_string(&doc_parser.ast_parser.source_map, &ctor.key);
 
         let mut params = vec![];
 
@@ -146,17 +146,16 @@ pub fn get_doc_for_class_decl(
           accessibility: ctor.accessibility,
           name: constructor_name,
           params,
-          location: doc_parser
-            .source_map
-            .lookup_char_pos(ctor.span.lo())
-            .into(),
+          location: doc_parser.ast_parser.get_span_location(ctor.span).into(),
         };
         constructors.push(constructor_def);
       }
       Method(class_method) => {
         let method_js_doc = doc_parser.js_doc_for_span(class_method.span());
-        let method_name =
-          prop_name_to_string(&doc_parser.source_map, &class_method.key);
+        let method_name = prop_name_to_string(
+          &doc_parser.ast_parser.source_map,
+          &class_method.key,
+        );
         let fn_def = function_to_function_def(&class_method.function);
         let method_def = ClassMethodDef {
           js_doc: method_js_doc,
@@ -168,8 +167,8 @@ pub fn get_doc_for_class_decl(
           kind: class_method.kind,
           function_def: fn_def,
           location: doc_parser
-            .source_map
-            .lookup_char_pos(class_method.span.lo())
+            .ast_parser
+            .get_span_location(class_method.span)
             .into(),
         };
         methods.push(method_def);
@@ -182,11 +181,7 @@ pub fn get_doc_for_class_decl(
           .as_ref()
           .map(|rt| ts_type_ann_to_def(rt));
 
-        use crate::swc_ecma_ast::Expr;
-        let prop_name = match &*class_prop.key {
-          Expr::Ident(ident) => ident.sym.to_string(),
-          _ => "<TODO>".to_string(),
-        };
+        let prop_name = expr_to_name(&*class_prop.key);
 
         let prop_def = ClassPropertyDef {
           js_doc: prop_js_doc,
@@ -198,8 +193,8 @@ pub fn get_doc_for_class_decl(
           accessibility: class_prop.accessibility,
           name: prop_name,
           location: doc_parser
-            .source_map
-            .lookup_char_pos(class_prop.span.lo())
+            .ast_parser
+            .get_span_location(class_prop.span)
             .into(),
         };
         properties.push(prop_def);
@@ -211,19 +206,26 @@ pub fn get_doc_for_class_decl(
     }
   }
 
-  let type_params = maybe_type_param_decl_to_type_param_defs(
-    class_decl.class.type_params.as_ref(),
-  );
-  let class_name = class_decl.ident.sym.to_string();
-  let class_def = ClassDef {
-    is_abstract: class_decl.class.is_abstract,
+  let type_params =
+    maybe_type_param_decl_to_type_param_defs(class.type_params.as_ref());
+
+  ClassDef {
+    is_abstract: class.is_abstract,
     extends,
     implements,
     constructors,
     properties,
     methods,
     type_params,
-  };
+  }
+}
+
+pub fn get_doc_for_class_decl(
+  doc_parser: &DocParser,
+  class_decl: &swc_ecma_ast::ClassDecl,
+) -> (String, ClassDef) {
+  let class_name = class_decl.ident.sym.to_string();
+  let class_def = class_to_class_def(doc_parser, &class_decl.class);
 
   (class_name, class_def)
 }

@@ -10,7 +10,7 @@ type Reader = Deno.Reader;
 export class OneByteReader implements Reader {
   constructor(readonly r: Reader) {}
 
-  read(p: Uint8Array): Promise<number | Deno.EOF> {
+  read(p: Uint8Array): Promise<number | null> {
     if (p.byteLength === 0) {
       return Promise.resolve(0);
     }
@@ -27,7 +27,7 @@ export class OneByteReader implements Reader {
 export class HalfReader implements Reader {
   constructor(readonly r: Reader) {}
 
-  read(p: Uint8Array): Promise<number | Deno.EOF> {
+  read(p: Uint8Array): Promise<number | null> {
     if (!(p instanceof Uint8Array)) {
       throw Error("expected Uint8Array");
     }
@@ -43,7 +43,7 @@ export class TimeoutReader implements Reader {
   count = 0;
   constructor(readonly r: Reader) {}
 
-  read(p: Uint8Array): Promise<number | Deno.EOF> {
+  read(p: Uint8Array): Promise<number | null> {
     this.count++;
     if (this.count === 2) {
       throw new Deno.errors.TimedOut();

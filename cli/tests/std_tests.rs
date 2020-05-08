@@ -18,6 +18,7 @@ mod tests {
     let mut deno = deno_cmd
       .current_dir(cwd) // note: std tests expect to run from "std" dir
       .arg("test")
+      .arg("--unstable")
       .arg("--seed=86") // Some tests rely on specific random numbers.
       .arg("-A")
       // .arg("-Ldebug")

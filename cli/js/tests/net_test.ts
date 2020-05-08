@@ -18,10 +18,10 @@ unitTest(
   {
     perms: { net: true },
     // TODO:
-    ignore: Deno.build.os === "win",
+    ignore: Deno.build.os === "windows",
   },
   function netUdpListenClose(): void {
-    const socket = Deno.listen({
+    const socket = Deno.listenDatagram({
       hostname: "127.0.0.1",
       port: 4500,
       transport: "udp",
@@ -34,29 +34,29 @@ unitTest(
 );
 
 unitTest(
-  { ignore: Deno.build.os === "win", perms: { read: true, write: true } },
+  { ignore: Deno.build.os === "windows", perms: { read: true, write: true } },
   function netUnixListenClose(): void {
     const filePath = Deno.makeTempFileSync();
     const socket = Deno.listen({
-      address: filePath,
+      path: filePath,
       transport: "unix",
     });
     assert(socket.addr.transport === "unix");
-    assertEquals(socket.addr.address, filePath);
+    assertEquals(socket.addr.path, filePath);
     socket.close();
   }
 );
 
 unitTest(
-  { ignore: Deno.build.os === "win", perms: { read: true, write: true } },
+  { ignore: Deno.build.os === "windows", perms: { read: true, write: true } },
   function netUnixPacketListenClose(): void {
     const filePath = Deno.makeTempFileSync();
-    const socket = Deno.listen({
-      address: filePath,
+    const socket = Deno.listenDatagram({
+      path: filePath,
       transport: "unixpacket",
     });
     assert(socket.addr.transport === "unixpacket");
-    assertEquals(socket.addr.address, filePath);
+    assertEquals(socket.addr.path, filePath);
     socket.close();
   }
 );
@@ -82,11 +82,11 @@ unitTest(
 );
 
 unitTest(
-  { ignore: Deno.build.os === "win", perms: { read: true, write: true } },
+  { ignore: Deno.build.os === "windows", perms: { read: true, write: true } },
   async function netUnixCloseWhileAccept(): Promise<void> {
     const filePath = await Deno.makeTempFile();
     const listener = Deno.listen({
-      address: filePath,
+      path: filePath,
       transport: "unix",
     });
     const p = listener.accept();
@@ -131,7 +131,7 @@ unitTest(
   { ignore: true, perms: { read: true, write: true } },
   async function netUnixConcurrentAccept(): Promise<void> {
     const filePath = await Deno.makeTempFile();
-    const listener = Deno.listen({ transport: "unix", address: filePath });
+    const listener = Deno.listen({ transport: "unix", path: filePath });
     let acceptErrCount = 0;
     const checkErr = (e: Error): void => {
       if (e.message === "Listener has been closed") {
@@ -179,32 +179,32 @@ unitTest({ perms: { net: true } }, async function netTcpDialListen(): Promise<
   assertEquals(3, buf[2]);
   assert(conn.rid > 0);
 
-  assert(readResult !== Deno.EOF);
+  assert(readResult !== null);
 
   const readResult2 = await conn.read(buf);
-  assertEquals(Deno.EOF, readResult2);
+  assertEquals(readResult2, null);
 
   listener.close();
   conn.close();
 });
 
 unitTest(
-  { ignore: Deno.build.os === "win", perms: { read: true, write: true } },
+  { ignore: Deno.build.os === "windows", perms: { read: true, write: true } },
   async function netUnixDialListen(): Promise<void> {
     const filePath = await Deno.makeTempFile();
-    const listener = Deno.listen({ address: filePath, transport: "unix" });
+    const listener = Deno.listen({ path: filePath, transport: "unix" });
     listener.accept().then(
       async (conn): Promise<void> => {
         assert(conn.remoteAddr != null);
         assert(conn.localAddr.transport === "unix");
-        assertEquals(conn.localAddr.address, filePath);
+        assertEquals(conn.localAddr.path, filePath);
         await conn.write(new Uint8Array([1, 2, 3]));
         conn.close();
       }
     );
-    const conn = await Deno.connect({ address: filePath, transport: "unix" });
+    const conn = await Deno.connect({ path: filePath, transport: "unix" });
     assert(conn.remoteAddr.transport === "unix");
-    assertEquals(conn.remoteAddr.address, filePath);
+    assertEquals(conn.remoteAddr.path, filePath);
     assert(conn.remoteAddr != null);
     const buf = new Uint8Array(1024);
     const readResult = await conn.read(buf);
@@ -214,10 +214,10 @@ unitTest(
     assertEquals(3, buf[2]);
     assert(conn.rid > 0);
 
-    assert(readResult !== Deno.EOF);
+    assert(readResult !== null);
 
     const readResult2 = await conn.read(buf);
-    assertEquals(Deno.EOF, readResult2);
+    assertEquals(readResult2, null);
 
     listener.close();
     conn.close();
@@ -225,14 +225,14 @@ unitTest(
 );
 
 unitTest(
-  { ignore: Deno.build.os === "win", perms: { net: true } },
+  { ignore: Deno.build.os === "windows", perms: { net: true } },
   async function netUdpSendReceive(): Promise<void> {
-    const alice = Deno.listen({ port: 4500, transport: "udp" });
+    const alice = Deno.listenDatagram({ port: 4500, transport: "udp" });
     assert(alice.addr.transport === "udp");
     assertEquals(alice.addr.port, 4500);
     assertEquals(alice.addr.hostname, "127.0.0.1");
 
-    const bob = Deno.listen({ port: 4501, transport: "udp" });
+    const bob = Deno.listenDatagram({ port: 4501, transport: "udp" });
     assert(bob.addr.transport === "udp");
     assertEquals(bob.addr.port, 4501);
     assertEquals(bob.addr.hostname, "127.0.0.1");
@@ -253,29 +253,71 @@ unitTest(
 );
 
 unitTest(
-  { ignore: Deno.build.os === "win", perms: { read: true, write: true } },
+  { ignore: Deno.build.os === "windows", perms: { read: true, write: true } },
   async function netUnixPacketSendReceive(): Promise<void> {
     const filePath = await Deno.makeTempFile();
-    const alice = Deno.listen({ address: filePath, transport: "unixpacket" });
+    const alice = Deno.listenDatagram({
+      path: filePath,
+      transport: "unixpacket",
+    });
     assert(alice.addr.transport === "unixpacket");
-    assertEquals(alice.addr.address, filePath);
+    assertEquals(alice.addr.path, filePath);
 
-    const bob = Deno.listen({ address: filePath, transport: "unixpacket" });
+    const bob = Deno.listenDatagram({
+      path: filePath,
+      transport: "unixpacket",
+    });
     assert(bob.addr.transport === "unixpacket");
-    assertEquals(bob.addr.address, filePath);
+    assertEquals(bob.addr.path, filePath);
 
     const sent = new Uint8Array([1, 2, 3]);
     await alice.send(sent, bob.addr);
 
     const [recvd, remote] = await bob.receive();
     assert(remote.transport === "unixpacket");
-    assertEquals(remote.address, filePath);
+    assertEquals(remote.path, filePath);
     assertEquals(recvd.length, 3);
     assertEquals(1, recvd[0]);
     assertEquals(2, recvd[1]);
     assertEquals(3, recvd[2]);
     alice.close();
     bob.close();
+  }
+);
+
+unitTest(
+  { perms: { net: true } },
+  async function netTcpListenIteratorBreakClosesResource(): Promise<void> {
+    const promise = createResolvable();
+
+    async function iterate(listener: Deno.Listener): Promise<void> {
+      let i = 0;
+
+      for await (const conn of listener) {
+        conn.close();
+        i++;
+
+        if (i > 1) {
+          break;
+        }
+      }
+
+      promise.resolve();
+    }
+
+    const addr = { hostname: "127.0.0.1", port: 8888 };
+    const listener = Deno.listen(addr);
+    iterate(listener);
+
+    await new Promise((resolve: () => void, _) => {
+      setTimeout(resolve, 100);
+    });
+    const conn1 = await Deno.connect(addr);
+    conn1.close();
+    const conn2 = await Deno.connect(addr);
+    conn2.close();
+
+    await promise;
   }
 );
 
@@ -293,9 +335,9 @@ unitTest(
 );
 
 unitTest(
-  { ignore: Deno.build.os === "win", perms: { net: true } },
+  { ignore: Deno.build.os === "windows", perms: { net: true } },
   async function netUdpListenCloseWhileIterating(): Promise<void> {
-    const socket = Deno.listen({ port: 8000, transport: "udp" });
+    const socket = Deno.listenDatagram({ port: 8000, transport: "udp" });
     const nextWhileClosing = socket[Symbol.asyncIterator]().next();
     socket.close();
     assertEquals(await nextWhileClosing, { value: undefined, done: true });
@@ -306,10 +348,10 @@ unitTest(
 );
 
 unitTest(
-  { ignore: Deno.build.os === "win", perms: { read: true, write: true } },
+  { ignore: Deno.build.os === "windows", perms: { read: true, write: true } },
   async function netUnixListenCloseWhileIterating(): Promise<void> {
     const filePath = Deno.makeTempFileSync();
-    const socket = Deno.listen({ address: filePath, transport: "unix" });
+    const socket = Deno.listen({ path: filePath, transport: "unix" });
     const nextWhileClosing = socket[Symbol.asyncIterator]().next();
     socket.close();
     assertEquals(await nextWhileClosing, { value: undefined, done: true });
@@ -320,10 +362,13 @@ unitTest(
 );
 
 unitTest(
-  { ignore: Deno.build.os === "win", perms: { read: true, write: true } },
+  { ignore: Deno.build.os === "windows", perms: { read: true, write: true } },
   async function netUnixPacketListenCloseWhileIterating(): Promise<void> {
     const filePath = Deno.makeTempFileSync();
-    const socket = Deno.listen({ address: filePath, transport: "unixpacket" });
+    const socket = Deno.listenDatagram({
+      path: filePath,
+      transport: "unixpacket",
+    });
     const nextWhileClosing = socket[Symbol.asyncIterator]().next();
     socket.close();
     assertEquals(await nextWhileClosing, { value: undefined, done: true });
@@ -358,80 +403,11 @@ unitTest(
     assertEquals(3, buf[2]);
     assert(conn.rid > 0);
 
-    assert(readResult !== Deno.EOF);
+    assert(readResult !== null);
 
     const readResult2 = await conn.read(buf);
-    assertEquals(Deno.EOF, readResult2);
+    assertEquals(readResult2, null);
 
-    listener.close();
-    conn.close();
-  }
-);
-
-unitTest(
-  {
-    // FIXME(bartlomieju)
-    ignore: true,
-    perms: { net: true },
-  },
-  async function netCloseReadSuccess() {
-    const addr = { hostname: "127.0.0.1", port: 4500 };
-    const listener = Deno.listen(addr);
-    const closeDeferred = createResolvable();
-    const closeReadDeferred = createResolvable();
-    listener.accept().then(async (conn) => {
-      await closeReadDeferred;
-      await conn.write(new Uint8Array([1, 2, 3]));
-      const buf = new Uint8Array(1024);
-      const readResult = await conn.read(buf);
-      assertEquals(3, readResult);
-      assertEquals(4, buf[0]);
-      assertEquals(5, buf[1]);
-      assertEquals(6, buf[2]);
-      conn.close();
-      closeDeferred.resolve();
-    });
-    const conn = await Deno.connect(addr);
-    conn.closeRead(); // closing read
-    closeReadDeferred.resolve();
-    const buf = new Uint8Array(1024);
-    const readResult = await conn.read(buf);
-    assertEquals(Deno.EOF, readResult); // with immediate EOF
-    // Ensure closeRead does not impact write
-    await conn.write(new Uint8Array([4, 5, 6]));
-    await closeDeferred;
-    listener.close();
-    conn.close();
-  }
-);
-
-unitTest(
-  {
-    // FIXME(bartlomieju)
-    ignore: true,
-    perms: { net: true },
-  },
-  async function netDoubleCloseRead() {
-    const addr = { hostname: "127.0.0.1", port: 4500 };
-    const listener = Deno.listen(addr);
-    const closeDeferred = createResolvable();
-    listener.accept().then(async (conn) => {
-      await conn.write(new Uint8Array([1, 2, 3]));
-      await closeDeferred;
-      conn.close();
-    });
-    const conn = await Deno.connect(addr);
-    conn.closeRead(); // closing read
-    let err;
-    try {
-      // Duplicated close should throw error
-      conn.closeRead();
-    } catch (e) {
-      err = e;
-    }
-    assert(!!err);
-    assert(err instanceof Deno.errors.NotConnected);
-    closeDeferred.resolve();
     listener.close();
     conn.close();
   }
@@ -523,7 +499,7 @@ unitTest(
       try {
         while (true) {
           const nread = await conn.read(p);
-          if (nread === Deno.EOF) {
+          if (nread === null) {
             break;
           }
           await conn.write(new Uint8Array([1, 2, 3]));

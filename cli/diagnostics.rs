@@ -7,46 +7,15 @@
 
 use crate::colors;
 use crate::fmt_errors::format_stack;
-use serde_json::value::Value;
+use serde::Deserialize;
+use serde::Deserializer;
 use std::error::Error;
 use std::fmt;
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct Diagnostic {
   pub items: Vec<DiagnosticItem>,
-}
-
-impl Diagnostic {
-  /// Take a JSON value and attempt to map it to a
-  pub fn from_json_value(v: &serde_json::Value) -> Option<Self> {
-    if !v.is_object() {
-      return None;
-    }
-    let obj = v.as_object().unwrap();
-
-    let mut items = Vec::<DiagnosticItem>::new();
-    let items_v = &obj["items"];
-    if items_v.is_array() {
-      let items_values = items_v.as_array().unwrap();
-
-      for item_v in items_values {
-        items.push(DiagnosticItem::from_json_value(item_v)?);
-      }
-    }
-
-    Some(Self { items })
-  }
-
-  pub fn from_emit_result(json_str: &str) -> Option<Self> {
-    let v = serde_json::from_str::<serde_json::Value>(json_str)
-      .expect("Error decoding JSON string.");
-    let diagnostics_o = v.get("diagnostics");
-    if let Some(diagnostics_v) = diagnostics_o {
-      return Self::from_json_value(diagnostics_v);
-    }
-
-    None
-  }
 }
 
 impl fmt::Display for Diagnostic {
@@ -74,7 +43,8 @@ impl Error for Diagnostic {
   }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct DiagnosticItem {
   /// The top level message relating to the diagnostic item.
   pub message: String,
@@ -112,71 +82,6 @@ pub struct DiagnosticItem {
 
   /// Zero-based index to the end column on `line_number`.
   pub end_column: Option<i64>,
-}
-
-impl DiagnosticItem {
-  pub fn from_json_value(v: &serde_json::Value) -> Option<Self> {
-    let obj = v.as_object().unwrap();
-
-    // required attributes
-    let message = obj
-      .get("message")
-      .and_then(|v| v.as_str().map(String::from))?;
-    let category = DiagnosticCategory::from(
-      obj.get("category").and_then(Value::as_i64).unwrap(),
-    );
-    let code = obj.get("code").and_then(Value::as_i64).unwrap();
-
-    // optional attributes
-    let source_line = obj
-      .get("sourceLine")
-      .and_then(|v| v.as_str().map(String::from));
-    let script_resource_name = obj
-      .get("scriptResourceName")
-      .and_then(|v| v.as_str().map(String::from));
-    let line_number = obj.get("lineNumber").and_then(Value::as_i64);
-    let start_position = obj.get("startPosition").and_then(Value::as_i64);
-    let end_position = obj.get("endPosition").and_then(Value::as_i64);
-    let start_column = obj.get("startColumn").and_then(Value::as_i64);
-    let end_column = obj.get("endColumn").and_then(Value::as_i64);
-
-    let message_chain_v = obj.get("messageChain");
-    let message_chain = match message_chain_v {
-      Some(v) => DiagnosticMessageChain::from_json_value(v),
-      _ => None,
-    };
-
-    let related_information_v = obj.get("relatedInformation");
-    let related_information = match related_information_v {
-      Some(r) => {
-        let mut related_information = Vec::<DiagnosticItem>::new();
-        let related_info_values = r.as_array().unwrap();
-
-        for related_info_v in related_info_values {
-          related_information
-            .push(DiagnosticItem::from_json_value(related_info_v)?);
-        }
-
-        Some(related_information)
-      }
-      _ => None,
-    };
-
-    Some(Self {
-      message,
-      message_chain,
-      related_information,
-      code,
-      source_line,
-      script_resource_name,
-      line_number,
-      start_position,
-      end_position,
-      category,
-      start_column,
-      end_column,
-    })
-  }
 }
 
 fn format_category_and_code(
@@ -303,7 +208,8 @@ impl fmt::Display for DiagnosticItem {
   }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct DiagnosticMessageChain {
   pub message: String,
   pub code: i64,
@@ -312,54 +218,6 @@ pub struct DiagnosticMessageChain {
 }
 
 impl DiagnosticMessageChain {
-  fn from_value(v: &serde_json::Value) -> Self {
-    let obj = v.as_object().unwrap();
-    let message = obj
-      .get("message")
-      .and_then(|v| v.as_str().map(String::from))
-      .unwrap();
-    let code = obj.get("code").and_then(Value::as_i64).unwrap();
-    let category = DiagnosticCategory::from(
-      obj.get("category").and_then(Value::as_i64).unwrap(),
-    );
-
-    let next_v = obj.get("next");
-    let next = match next_v {
-      Some(n) => DiagnosticMessageChain::from_next_array(n),
-      _ => None,
-    };
-
-    Self {
-      message,
-      code,
-      category,
-      next,
-    }
-  }
-
-  fn from_next_array(v: &serde_json::Value) -> Option<Vec<Self>> {
-    if !v.is_array() {
-      return None;
-    }
-
-    let vec = v
-      .as_array()
-      .unwrap()
-      .iter()
-      .map(|item| Self::from_value(&item))
-      .collect::<Vec<Self>>();
-
-    Some(vec)
-  }
-
-  pub fn from_json_value(v: &serde_json::Value) -> Option<Self> {
-    if !v.is_object() {
-      return None;
-    }
-
-    Some(Self::from_value(v))
-  }
-
   pub fn format_message(&self, level: usize) -> String {
     let mut s = String::new();
 
@@ -377,7 +235,7 @@ impl DiagnosticMessageChain {
   }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum DiagnosticCategory {
   Log,        // 0
   Debug,      // 1
@@ -385,6 +243,16 @@ pub enum DiagnosticCategory {
   Error,      // 3
   Warning,    // 4
   Suggestion, // 5
+}
+
+impl<'de> Deserialize<'de> for DiagnosticCategory {
+  fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+  where
+    D: Deserializer<'de>,
+  {
+    let s: i64 = Deserialize::deserialize(deserializer)?;
+    Ok(DiagnosticCategory::from(s))
+  }
 }
 
 impl From<i64> for DiagnosticCategory {
@@ -496,7 +364,7 @@ mod tests {
 
   #[test]
   fn from_json() {
-    let v = serde_json::from_str::<serde_json::Value>(
+    let r = serde_json::from_str::<Diagnostic>(
       &r#"{
         "items": [
           {
@@ -526,8 +394,7 @@ mod tests {
         ]
       }"#,
     ).unwrap();
-    let r = Diagnostic::from_json_value(&v);
-    let expected = Some(
+    let expected =
       Diagnostic {
         items: vec![
           DiagnosticItem {
@@ -559,50 +426,8 @@ mod tests {
             end_column: Some(1)
           }
         ]
-      }
-    );
+      };
     assert_eq!(expected, r);
-  }
-
-  #[test]
-  fn from_emit_result() {
-    let r = Diagnostic::from_emit_result(
-      &r#"{
-      "emitSkipped": false,
-      "diagnostics": {
-        "items": [
-          {
-            "message": "foo bar",
-            "code": 9999,
-            "category": 3
-          }
-        ]
-      }
-    }"#,
-    );
-    let expected = Some(Diagnostic {
-      items: vec![DiagnosticItem {
-        message: "foo bar".to_string(),
-        message_chain: None,
-        related_information: None,
-        source_line: None,
-        line_number: None,
-        script_resource_name: None,
-        start_position: None,
-        end_position: None,
-        category: DiagnosticCategory::Error,
-        code: 9999,
-        start_column: None,
-        end_column: None,
-      }],
-    });
-    assert_eq!(expected, r);
-  }
-
-  #[test]
-  fn from_emit_result_none() {
-    let r = &r#"{"emitSkipped":false}"#;
-    assert!(Diagnostic::from_emit_result(r).is_none());
   }
 
   #[test]

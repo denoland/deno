@@ -5,11 +5,19 @@ import { BufReader } from "../../io/bufio.ts";
 import { connectWebSocket, WebSocket } from "../../ws/mod.ts";
 import { delay } from "../../util/async.ts";
 
-const { test, build } = Deno;
+const { test } = Deno;
 
 async function startServer(): Promise<Deno.Process> {
   const server = Deno.run({
-    cmd: [Deno.execPath(), "--allow-net", "--allow-read", "server.ts"],
+    // TODO(lucacasonato): remove unstable once possible
+    cmd: [
+      Deno.execPath(),
+      "run",
+      "--allow-net",
+      "--allow-read",
+      "--unstable",
+      "server.ts",
+    ],
     cwd: "examples/chat",
     stdout: "piped",
   });
@@ -17,7 +25,7 @@ async function startServer(): Promise<Deno.Process> {
     assert(server.stdout != null);
     const r = new TextProtoReader(new BufReader(server.stdout));
     const s = await r.readLine();
-    assert(s !== Deno.EOF && s.includes("chat server starting"));
+    assert(s !== null && s.includes("chat server starting"));
   } catch (err) {
     server.stdout!.close();
     server.close();
@@ -26,12 +34,8 @@ async function startServer(): Promise<Deno.Process> {
   return server;
 }
 
-// TODO: https://github.com/denoland/deno/issues/4108
-const ignore = build.os == "win";
-
 test({
-  ignore,
-  name: "GET / should serve html",
+  name: "[examples/chat] GET / should serve html",
   async fn() {
     const server = await startServer();
     try {
@@ -49,14 +53,14 @@ test({
 });
 
 test({
-  ignore,
-  name: "GET /ws should upgrade conn to ws",
+  name: "[examples/chat] GET /ws should upgrade conn to ws",
   async fn() {
     const server = await startServer();
     let ws: WebSocket | undefined;
     try {
       ws = await connectWebSocket("http://127.0.0.1:8080/ws");
-      const it = ws.receive();
+      const it = ws[Symbol.asyncIterator]();
+
       assertEquals((await it.next()).value, "Connected: [1]");
       ws.send("Hello");
       assertEquals((await it.next()).value, "[1]: Hello");

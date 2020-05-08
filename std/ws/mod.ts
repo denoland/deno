@@ -4,14 +4,16 @@ import { decode, encode } from "../encoding/utf8.ts";
 import { hasOwnProperty } from "../util/has_own_property.ts";
 import { BufReader, BufWriter } from "../io/bufio.ts";
 import { readLong, readShort, sliceLongToBytes } from "../io/ioutil.ts";
-import { Sha1 } from "./sha1.ts";
+import { Sha1 } from "../util/sha1.ts";
 import { writeResponse } from "../http/io.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 import { Deferred, deferred } from "../util/async.ts";
-import { assertNotEOF } from "../testing/asserts.ts";
+import { assert } from "../testing/asserts.ts";
 import { concat } from "../bytes/mod.ts";
+import { copyBytes } from "../io/util.ts";
 import Conn = Deno.Conn;
 import Writer = Deno.Writer;
+import Reader = Deno.Reader;
 
 export enum OpCode {
   Continue = 0x0,
@@ -65,11 +67,14 @@ export interface WebSocketFrame {
   payload: Uint8Array;
 }
 
-export interface WebSocket {
+export interface WebSocket
+  extends Reader,
+    Writer,
+    AsyncIterable<WebSocketEvent> {
   readonly conn: Conn;
   readonly isClosed: boolean;
 
-  receive(): AsyncIterableIterator<WebSocketEvent>;
+  [Symbol.asyncIterator](): AsyncIterableIterator<WebSocketEvent>;
 
   /**
    * @throws `Deno.errors.ConnectionReset`
@@ -149,7 +154,8 @@ export async function writeFrame(
  * @throws `Error` Frame is invalid
  */
 export async function readFrame(buf: BufReader): Promise<WebSocketFrame> {
-  let b = assertNotEOF(await buf.readByte());
+  let b = await buf.readByte();
+  assert(b !== null);
   let isLastFrame = false;
   switch (b >>> 4) {
     case 0b1000:
@@ -163,25 +169,28 @@ export async function readFrame(buf: BufReader): Promise<WebSocketFrame> {
   }
   const opcode = b & 0x0f;
   // has_mask & payload
-  b = assertNotEOF(await buf.readByte());
+  b = await buf.readByte();
+  assert(b !== null);
   const hasMask = b >>> 7;
   let payloadLength = b & 0b01111111;
   if (payloadLength === 126) {
-    const l = assertNotEOF(await readShort(buf));
+    const l = await readShort(buf);
+    assert(l !== null);
     payloadLength = l;
   } else if (payloadLength === 127) {
-    const l = assertNotEOF(await readLong(buf));
+    const l = await readLong(buf);
+    assert(l !== null);
     payloadLength = Number(l);
   }
   // mask
   let mask: Uint8Array | undefined;
   if (hasMask) {
     mask = new Uint8Array(4);
-    assertNotEOF(await buf.readFull(mask));
+    assert((await buf.readFull(mask)) !== null);
   }
   // payload
   const payload = new Uint8Array(payloadLength);
-  assertNotEOF(await buf.readFull(payload));
+  assert((await buf.readFull(payload)) !== null);
   return {
     isLastFrame,
     opcode,
@@ -222,7 +231,7 @@ class WebSocketImpl implements WebSocket {
     this.bufWriter = bufWriter || new BufWriter(conn);
   }
 
-  async *receive(): AsyncIterableIterator<WebSocketEvent> {
+  async *[Symbol.asyncIterator](): AsyncIterableIterator<WebSocketEvent> {
     let frames: WebSocketFrame[] = [];
     let payloadsLength = 0;
     while (!this._isClosed) {
@@ -321,6 +330,26 @@ class WebSocketImpl implements WebSocket {
       mask: this.mask,
     };
     return this.enqueue(frame);
+  }
+
+  async write(p: Uint8Array): Promise<number> {
+    await this.send(p);
+
+    return p.byteLength;
+  }
+
+  async read(p: Uint8Array): Promise<number | null> {
+    for await (const ev of this) {
+      if (ev instanceof Uint8Array) {
+        return copyBytes(ev, p);
+      }
+
+      if (typeof ev === "string") {
+        return copyBytes(encode(ev), p);
+      }
+    }
+
+    return null;
   }
 
   ping(data: WebSocketMessage = ""): Promise<void> {
@@ -479,7 +508,7 @@ export async function handshake(
 
   const tpReader = new TextProtoReader(bufReader);
   const statusLine = await tpReader.readLine();
-  if (statusLine === Deno.EOF) {
+  if (statusLine === null) {
     throw new Deno.errors.UnexpectedEof();
   }
   const m = statusLine.match(/^(?<version>\S+) (?<statusCode>\S+) /);
@@ -497,7 +526,7 @@ export async function handshake(
   }
 
   const responseHeaders = await tpReader.readMIMEHeader();
-  if (responseHeaders === Deno.EOF) {
+  if (responseHeaders === null) {
     throw new Deno.errors.UnexpectedEof();
   }
 
@@ -527,7 +556,7 @@ export async function connectWebSocket(
     conn = await Deno.connect({ hostname, port });
   } else if (url.protocol === "https:" || url.protocol === "wss:") {
     const port = parseInt(url.port || "443");
-    conn = await Deno.connectTLS({ hostname, port });
+    conn = await Deno.connectTls({ hostname, port });
   } else {
     throw new Error("ws: unsupported protocol: " + url.protocol);
   }

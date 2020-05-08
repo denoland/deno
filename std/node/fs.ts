@@ -11,6 +11,8 @@ import { readlink, readlinkSync } from "./_fs/_fs_readlink.ts";
 import { exists, existsSync } from "./_fs/_fs_exists.ts";
 import { mkdir, mkdirSync } from "./_fs/_fs_mkdir.ts";
 import { copyFile, copyFileSync } from "./_fs/_fs_copy.ts";
+import { writeFile } from "./_fs/_fs_writeFile.ts";
+import * as promises from "./_fs/promises/mod.ts";
 
 export {
   access,
@@ -34,4 +36,6 @@ export {
   readlinkSync,
   mkdir,
   mkdirSync,
+  writeFile,
+  promises,
 };
