@@ -67,7 +67,7 @@ deno run https://deno.land/std/examples/curl.ts https://example.com
 You will see that this program returns an error regarding network access, so
 what did we do wrong? You might remember from the introduction that Deno is a
 runtime that is secure by default. This means that you need to explicitly give
-programs the permission to do certain 'privledged' actions like network access.
+programs the permission to do certain 'privileged' actions like network access.
 
 Try it out again with the correct permission flag:
 
