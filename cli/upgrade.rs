@@ -52,29 +52,41 @@ async fn get_latest_version(client: &Client) -> Result<Version, ErrBox> {
 
 /// Asynchronously updates deno executable to greatest version
 /// if greatest version is available.
-pub async fn upgrade_command(dry_run: bool, force: bool) -> Result<(), ErrBox> {
+pub async fn upgrade_command(dry_run: bool, force: bool, version: Option<String>) -> Result<(), ErrBox> {
   let client = Client::builder().redirect(Policy::none()).build()?;
   let latest_version = get_latest_version(&client).await?;
   let current_version = semver_parse(crate::version::DENO).unwrap();
 
-  if !force && current_version >= latest_version {
+  if !force && current_version >= latest_version && version.is_none() {
     println!(
       "Local deno version {} is the most recent release",
       &crate::version::DENO
     );
   } else {
+    let wanted_version = match version {
+      Some(passed_version) => match semver_parse(&passed_version) {
+        Ok(ver) => ver,
+        Err(_) => {
+          eprintln!("Invalid semver passed");
+          std::process::exit(1)
+        }
+      },
+      None => latest_version
+    };
+
     println!(
-      "New version has been found\nDeno is upgrading to version {}",
-      &latest_version
+      "Version has been found\nDeno is upgrading to version {}",
+      &wanted_version
     );
+
     let archive_data =
-      download_package(&compose_url_to_exec(&latest_version)?, client).await?;
+      download_package(&compose_url_to_exec(&wanted_version)?, client).await?;
 
     let old_exe_path = std::env::current_exe()?;
     let new_exe_path = unpack(archive_data)?;
     let permissions = fs::metadata(&old_exe_path)?.permissions();
     fs::set_permissions(&new_exe_path, permissions)?;
-    check_exe(&new_exe_path, &latest_version)?;
+    check_exe(&new_exe_path, &wanted_version)?;
 
     if !dry_run {
       replace_exe(&new_exe_path, &old_exe_path)?;
