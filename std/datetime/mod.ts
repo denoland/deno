@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { assert } from "../testing/asserts.ts";
-import { SECONDS, MINUTES, HOURS, DAYS, WEEKS } from "./_constants.ts";
+import { SECOND, MINUTE, HOUR, DAY, WEEK } from "./_constants.ts";
 export type DateFormat = "mm-dd-yyyy" | "dd-mm-yyyy" | "yyyy-mm-dd";
 
 function execForce(reg: RegExp, pat: string): RegExpExecArray {
@@ -101,7 +101,7 @@ export function dayOfYear(date: Date): number {
     date.getTime() -
     yearStart.getTime() +
     (yearStart.getTimezoneOffset() - date.getTimezoneOffset()) * 60 * 1000;
-  return Math.floor(diff / DAYS);
+  return Math.floor(diff / DAY);
 }
 
 /**
@@ -170,7 +170,7 @@ export type Unit =
   | "quarters"
   | "years";
 
-export type DifferenceFormat = {
+export interface DifferenceFormat {
   miliseconds?: number;
   seconds?: number;
   minutes?: number;
@@ -180,7 +180,7 @@ export type DifferenceFormat = {
   months?: number;
   quarters?: number;
   years?: number;
-};
+}
 
 export type DifferenceOptions = {
   units?: Unit[];
@@ -221,52 +221,42 @@ export function difference(
   const smaller = from > to ? to : from;
   const differenceInMs = bigger.getTime() - smaller.getTime();
 
-  function calculateMonthDifference(biger: Date, smaller: Date): number {
-    const yearDiff = biger.getFullYear() - smaller.getFullYear();
-    const monthsDiff = biger.getMonth() - smaller.getMonth();
-    const calendarDiffrences = Math.abs(yearDiff * 12 + monthsDiff);
-    const compareResult = biger > smaller ? 1 : -1;
-    biger.setMonth(biger.getMonth() - compareResult * calendarDiffrences);
-    const isLastMonthNotFull =
-      biger > smaller ? 1 : -1 === -compareResult ? 1 : 0;
-    const months = compareResult * (calendarDiffrences - isLastMonthNotFull);
-    return months === 0 ? 0 : months;
-  }
-
   const differences: DifferenceFormat = {};
 
-  for (let i = 0; i < uniqueUnits.length; i++) {
-    switch (uniqueUnits[i]) {
+  for (const uniqeUnit of uniqueUnits) {
+    switch (uniqeUnit) {
       case "miliseconds":
         differences.miliseconds = differenceInMs;
         break;
       case "seconds":
-        differences.seconds = Math.floor(differenceInMs / SECONDS);
+        differences.seconds = Math.floor(differenceInMs / SECOND);
         break;
       case "minutes":
-        differences.minutes = Math.floor(differenceInMs / MINUTES);
+        differences.minutes = Math.floor(differenceInMs / MINUTE);
         break;
       case "hours":
-        differences.hours = Math.floor(differenceInMs / HOURS);
+        differences.hours = Math.floor(differenceInMs / HOUR);
         break;
       case "days":
-        differences.days = Math.floor(differenceInMs / DAYS);
+        differences.days = Math.floor(differenceInMs / DAY);
         break;
       case "weeks":
-        differences.weeks = Math.floor(differenceInMs / WEEKS);
+        differences.weeks = Math.floor(differenceInMs / WEEK);
         break;
       case "months":
         differences.months = calculateMonthDifference(bigger, smaller);
         break;
       case "quarters":
         const quarters =
-          (differences.months != undefined && differences.months / 4) ||
+          (typeof differences.months !== "undefined" &&
+            differences.months / 4) ||
           calculateMonthDifference(bigger, smaller) / 4;
         differences.quarters = Math.floor(quarters);
         break;
       case "years":
         const years =
-          (differences.months != undefined && differences.months / 12) ||
+          (typeof differences.months !== "undefined" &&
+            differences.months / 12) ||
           calculateMonthDifference(bigger, smaller) / 12;
         differences.years = Math.floor(years);
         break;
@@ -274,4 +264,16 @@ export function difference(
   }
 
   return differences;
+}
+
+function calculateMonthDifference(bigger: Date, smaller: Date): number {
+  const yearsDiff = bigger.getFullYear() - smaller.getFullYear();
+  const monthsDiff = bigger.getMonth() - smaller.getMonth();
+  const calendarDiffrences = Math.abs(yearsDiff * 12 + monthsDiff);
+  const compareResult = bigger > smaller ? 1 : -1;
+  bigger.setMonth(bigger.getMonth() - compareResult * calendarDiffrences);
+  const isLastMonthNotFull =
+    bigger > smaller ? 1 : -1 === -compareResult ? 1 : 0;
+  const months = compareResult * (calendarDiffrences - isLastMonthNotFull);
+  return months === 0 ? 0 : months;
 }
