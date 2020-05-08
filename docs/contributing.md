@@ -1,6 +1,6 @@
 # Contributing
 
-- Read the [style guide](style_guide.md).
+- Read the [style guide](../std/style_guide.md).
 - Progress towards future releases is tracked
   [here](https://github.com/denoland/deno/milestones).
 - Please don't make [the benchmarks](https://deno.land/benchmarks.html) worse.
@@ -11,7 +11,7 @@
 ## Development
 
 Instructions on how to build from source can be found
-[here](./building-from-source).
+[here](./contributing/building_from_source.md).
 
 ## Submitting a Pull Request
 
