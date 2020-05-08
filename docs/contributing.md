@@ -1,12 +1,17 @@
 # Contributing
 
 - Read the [style guide](style_guide.md).
-- Progress towards future releases is tracked
-  [here](https://github.com/denoland/deno/milestones).
+
 - Please don't make [the benchmarks](https://deno.land/benchmarks.html) worse.
+
 - Ask for help in the [community chat room](https://discord.gg/TGMHGv6).
+
 - If you are going to work on an issue, mention so in the issue comments
   _before_ you start working on the issue.
+
+- Please be professional in the forums. Don't know what professional means?
+  [Read Rust's code of conduct](https://www.rust-lang.org/policies/code-of-conduct).
+  Have a problem? Email ry@tinyclouds.org.
 
 ## Development
 
