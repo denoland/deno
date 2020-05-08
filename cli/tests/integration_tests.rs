@@ -581,7 +581,7 @@ fn repl_test_console_log() {
     None,
     false,
   );
-  assert_eq!(out, "hello\nundefined\nworld\n");
+  assert!(out.ends_with("hello\nundefined\nworld\n"));
   assert!(err.is_empty());
 }
 
@@ -594,37 +594,20 @@ fn repl_test_eof() {
     None,
     false,
   );
-  assert_eq!(out, "3\n");
+  assert!(out.ends_with("3\n"));
   assert!(err.is_empty());
 }
 
+const REPL_MSG: &str = "exit using ctrl+d or close()\n";
+
 #[test]
-fn repl_test_exit_command() {
-  let (out, err) = util::run_and_collect_output(
+fn repl_test_close_command() {
+  let (_out, err) = util::run_and_collect_output(
     true,
     "repl",
-    Some(vec!["exit", "'ignored'"]),
+    Some(vec!["close()", "'ignored'"]),
     None,
     false,
-  );
-  assert!(out.is_empty());
-  assert!(err.is_empty());
-}
-
-#[test]
-fn repl_test_help_command() {
-  let (out, err) =
-    util::run_and_collect_output(true, "repl", Some(vec!["help"]), None, false);
-  assert_eq!(
-    out,
-    vec![
-      "_       Get last evaluation result",
-      "_error  Get last thrown error",
-      "exit    Exit the REPL",
-      "help    Print this help message",
-      "",
-    ]
-    .join("\n")
   );
   assert!(err.is_empty());
 }
@@ -638,7 +621,7 @@ fn repl_test_function() {
     None,
     false,
   );
-  assert_eq!(out, "[Function: writeFileSync]\n");
+  assert!(out.ends_with("[Function: writeFileSync]\n"));
   assert!(err.is_empty());
 }
 
@@ -651,7 +634,7 @@ fn repl_test_multiline() {
     None,
     false,
   );
-  assert_eq!(out, "3\n");
+  assert!(out.ends_with("3\n"));
   assert!(err.is_empty());
 }
 
@@ -664,7 +647,7 @@ fn repl_test_eval_unterminated() {
     None,
     false,
   );
-  assert!(out.is_empty());
+  assert!(out.ends_with(REPL_MSG));
   assert!(err.contains("Unexpected end of input"));
 }
 
@@ -677,7 +660,7 @@ fn repl_test_reference_error() {
     None,
     false,
   );
-  assert!(out.is_empty());
+  assert!(out.ends_with(REPL_MSG));
   assert!(err.contains("not_a_variable is not defined"));
 }
 
@@ -690,7 +673,7 @@ fn repl_test_syntax_error() {
     None,
     false,
   );
-  assert!(out.is_empty());
+  assert!(out.ends_with(REPL_MSG));
   assert!(err.contains("Unexpected identifier"));
 }
 
@@ -703,7 +686,7 @@ fn repl_test_type_error() {
     None,
     false,
   );
-  assert!(out.is_empty());
+  assert!(out.ends_with(REPL_MSG));
   assert!(err.contains("console is not a function"));
 }
 
@@ -716,7 +699,7 @@ fn repl_test_variable() {
     None,
     false,
   );
-  assert_eq!(out, "undefined\n123\n");
+  assert!(out.ends_with("undefined\n123\n"));
   assert!(err.is_empty());
 }
 
@@ -729,7 +712,7 @@ fn repl_test_lexical_scoped_variable() {
     None,
     false,
   );
-  assert_eq!(out, "undefined\n123\n");
+  assert!(out.ends_with("undefined\n123\n"));
   assert!(err.is_empty());
 }
 
@@ -748,7 +731,7 @@ fn repl_test_missing_deno_dir() {
   );
   assert!(read_dir(&test_deno_dir).is_ok());
   remove_dir_all(&test_deno_dir).unwrap();
-  assert_eq!(out, "1\n");
+  assert!(out.ends_with("1\n"));
   assert!(err.is_empty());
 }
 
@@ -761,7 +744,7 @@ fn repl_test_save_last_eval() {
     None,
     false,
   );
-  assert_eq!(out, "1\n1\n");
+  assert!(out.ends_with("1\n1\n"));
   assert!(err.is_empty());
 }
 
@@ -774,7 +757,7 @@ fn repl_test_save_last_thrown() {
     None,
     false,
   );
-  assert_eq!(out, "1\n");
+  assert!(out.ends_with("1\n"));
   assert_eq!(err, "Thrown: 1\n");
 }
 
@@ -787,9 +770,8 @@ fn repl_test_assign_underscore() {
     None,
     false,
   );
-  assert_eq!(
-    out,
-    "Last evaluation result is no longer saved to _.\n1\n2\n1\n"
+  assert!(
+    out.ends_with("Last evaluation result is no longer saved to _.\n1\n2\n1\n")
   );
   assert!(err.is_empty());
 }
@@ -803,9 +785,8 @@ fn repl_test_assign_underscore_error() {
     None,
     false,
   );
-  assert_eq!(
-    out,
-    "Last thrown error is no longer saved to _error.\n1\n1\n"
+  assert!(
+    out.ends_with("Last thrown error is no longer saved to _error.\n1\n1\n")
   );
   assert_eq!(err, "Thrown: 2\n");
 }
@@ -2470,12 +2451,10 @@ mod util {
     envs: Option<Vec<(String, String)>>,
     need_http_server: bool,
   ) -> (String, String) {
-    let root = root_path();
-    let tests_dir = root.join("cli").join("tests");
     let mut deno_process_builder = deno_cmd();
-    deno_process_builder.args(args.split_whitespace());
     deno_process_builder
-      .current_dir(&tests_dir)
+      .args(args.split_whitespace())
+      .current_dir(&deno::test_util::tests_path())
       .stdin(Stdio::piped())
       .stdout(Stdio::piped())
       .stderr(Stdio::piped());
