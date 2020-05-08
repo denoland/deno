@@ -50,7 +50,12 @@ jobs:
           submodules: true
 
       - name: Create source tarballs (release, linux)
-        if: startsWith(matrix.config.os, 'ubuntu') && matrix.config.kind == 'test_release' && startsWith(github.ref, 'refs/tags/') && github.repository == 'denoland/deno'
+        if: |
+          startsWith(matrix.config.os, 'ubuntu') &&
+          matrix.config.kind == 'test_release' &&
+          github.repository == 'denoland/deno' &&
+          startsWith(github.ref, 'refs/tags/') &&
+          !startsWith(github.ref, 'refs/tags/std/')
         run: |
           mkdir -p target/release
           tar --exclude=.cargo_home --exclude=".git*" --exclude=target --exclude=deno_typescript/typescript/tests --exclude=third_party/cpplint --exclude=third_party/node_modules --exclude=third_party/python_packages --exclude=third_party/prebuilt -czvf target/release/deno_src.tar.gz -C .. deno
@@ -121,7 +126,9 @@ jobs:
         run: python ./tools/test_format.py
 
       - name: Build release
-        if: matrix.config.kind == 'test_release' || matrix.config.kind == 'bench'
+        if: |
+          matrix.config.kind == 'test_release' ||
+          matrix.config.kind == 'bench'
         run: cargo build --release --locked --all-targets
 
       - name: Build debug
@@ -141,7 +148,10 @@ jobs:
         run: python ./tools/benchmark.py --release
 
       - name: Post Benchmarks
-        if: matrix.config.kind == 'bench' && github.ref == 'refs/heads/master' && github.repository == 'denoland/deno'
+        if: |
+          matrix.config.kind == 'bench' &&
+          github.repository == 'denoland/deno' &&
+          github.ref == 'refs/heads/master'
         env:
           DENOBOT_PAT: ${{ secrets.DENOBOT_PAT }}
         run: |
@@ -161,26 +171,36 @@ jobs:
           cat /proc/meminfo
 
       - name: Pre-release (linux)
-        if: startsWith(matrix.config.os, 'ubuntu') && matrix.config.kind == 'test_release'
+        if: |
+          startsWith(matrix.config.os, 'ubuntu') &&
+          matrix.config.kind == 'test_release'
         run: |
           cd target/release
           zip -r deno-x86_64-unknown-linux-gnu.zip deno
           ./deno types > lib.deno.d.ts
 
       - name: Pre-release (mac)
-        if: startsWith(matrix.config.os, 'macOS') && matrix.config.kind == 'test_release'
+        if: |
+          startsWith(matrix.config.os, 'macOS') &&
+          matrix.config.kind == 'test_release'
         run: |
           cd target/release
           zip -r deno-x86_64-apple-darwin.zip deno
 
       - name: Pre-release (windows)
-        if: startsWith(matrix.config.os, 'windows') && matrix.config.kind == 'test_release'
+        if: |
+          startsWith(matrix.config.os, 'windows') &&
+          matrix.config.kind == 'test_release'
         run: |
           Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno-x86_64-pc-windows-msvc.zip
 
       - name: Release
         uses: softprops/action-gh-release@v1
-        if: matrix.config.kind == 'test_release' && startsWith(github.ref, 'refs/tags/') && github.repository == 'denoland/deno'
+        if: |
+          matrix.config.kind == 'test_release' &&
+          github.repository == 'denoland/deno' &&
+          startsWith(github.ref, 'refs/tags/') &&
+          !startsWith(github.ref, 'refs/tags/std/')
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -193,11 +213,12 @@ jobs:
           draft: true
 
       - name: Publish
-        if: >
-          startsWith(github.ref, 'refs/tags/') &&
-          github.repository == 'denoland/deno' &&
+        if: |
+          startsWith(matrix.config.os, 'ubuntu') &&
           matrix.config.kind == 'test_release' &&
-          startsWith(matrix.config.os, 'ubuntu')
+          github.repository == 'denoland/deno' &&
+          startsWith(github.ref, 'refs/tags/') &&
+          !startsWith(github.ref, 'refs/tags/std/')
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         run: |
