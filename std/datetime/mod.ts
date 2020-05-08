@@ -155,8 +155,10 @@ export function toIMF(date: Date): string {
  * @param year year in number or Date format
  */
 export function isLeap(year: Date | number): boolean {
-  year = year instanceof Date ? year.getFullYear() : year;
-  return !(year % 400) || (year % 4 === 0 && year % 100 !== 0);
+  const yearNumber = year instanceof Date ? year.getFullYear() : year;
+  return (
+    !(yearNumber % 400) || (yearNumber % 4 === 0 && yearNumber % 100 !== 0)
+  );
 }
 
 export type Unit =
