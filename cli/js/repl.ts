@@ -106,8 +106,8 @@ export async function replLoop(): Promise<void> {
     },
   });
 
-  console.log("Deno", version.deno);
-  console.log("exit using ctrl+d or close()");
+  replLog(`Deno ${version.deno}`);
+  replLog("exit using ctrl+d or close()");
 
   while (true) {
     let code = "";
