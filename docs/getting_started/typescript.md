@@ -45,7 +45,7 @@ the program.
 #### Triple-slash reference directive in JavaScript files
 
 If you are hosting modules which you want to be consumed by Deno, and you want
-to inform Deno about the location of the type definitions, you can utilise a
+to inform Deno about the location of the type definitions, you can utilize a
 triple-slash directive in the actual code. For example, if you have a JavaScript
 module and you would like to provide Deno with the location of the type
 definitions which happen to be alongside that file, your JavaScript module named

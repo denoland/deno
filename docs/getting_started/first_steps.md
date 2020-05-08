@@ -5,14 +5,14 @@ fundamentals of Deno.
 
 This document assumes that you have some prior knowledge of JavaScript,
 especially about `async`/`await`. If you have no prior knowledge of JavaScript,
-you might want to folow a guide
+you might want to follow a guide
 [on the basics of JavaScript](https://developer.mozilla.org/en-US/docs/Learn/JavaScript)
 before attempting to start with Deno.
 
 ### Hello World
 
 Deno is a runtime for JavaScript and TypeScript and tries to be web compatible
-and use modern features whereever possible.
+and use modern features wherever possible.
 
 Because of this browser compatibility a simple `Hello World` program is actually
 no different to one you can run in the browser:
