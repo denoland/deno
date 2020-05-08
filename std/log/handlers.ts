@@ -2,7 +2,8 @@
 const { open, openSync, close, renameSync, statSync } = Deno;
 type File = Deno.File;
 type Writer = Deno.Writer;
-import { getLevelByName, LogLevel } from "./levels.ts";
+type OpenOptions = Deno.OpenOptions;
+import { getLevelByName, LevelName, LogLevels } from "./levels.ts";
 import { LogRecord } from "./logger.ts";
 import { red, yellow, blue, bold } from "../fmt/colors.ts";
 import { existsSync, exists } from "../fs/exists.ts";
@@ -17,10 +18,10 @@ interface HandlerOptions {
 
 export class BaseHandler {
   level: number;
-  levelName: string;
+  levelName: LevelName;
   formatter: string | FormatterFunction;
 
-  constructor(levelName: string, options: HandlerOptions = {}) {
+  constructor(levelName: LevelName, options: HandlerOptions = {}) {
     this.level = getLevelByName(levelName);
     this.levelName = levelName;
 
@@ -61,16 +62,16 @@ export class ConsoleHandler extends BaseHandler {
     let msg = super.format(logRecord);
 
     switch (logRecord.level) {
-      case LogLevel.INFO:
+      case LogLevels.INFO:
         msg = blue(msg);
         break;
-      case LogLevel.WARNING:
+      case LogLevels.WARNING:
         msg = yellow(msg);
         break;
-      case LogLevel.ERROR:
+      case LogLevels.ERROR:
         msg = red(msg);
         break;
-      case LogLevel.CRITICAL:
+      case LogLevels.CRITICAL:
         msg = bold(red(msg));
         break;
       default:
@@ -101,17 +102,25 @@ export class FileHandler extends WriterHandler {
   protected _file!: File;
   protected _filename: string;
   protected _mode: LogMode;
+  protected _openOptions: OpenOptions;
   #encoder = new TextEncoder();
 
-  constructor(levelName: string, options: FileHandlerOptions) {
+  constructor(levelName: LevelName, options: FileHandlerOptions) {
     super(levelName, options);
     this._filename = options.filename;
     // default to append mode, write only
     this._mode = options.mode ? options.mode : "a";
+    this._openOptions = {
+      createNew: this._mode === "x",
+      create: this._mode !== "x",
+      append: this._mode === "a",
+      truncate: this._mode !== "a",
+      write: true,
+    };
   }
 
   async setup(): Promise<void> {
-    this._file = await open(this._filename, this._mode);
+    this._file = await open(this._filename, this._openOptions);
     this._writer = this._file;
   }
 
@@ -119,8 +128,9 @@ export class FileHandler extends WriterHandler {
     Deno.writeSync(this._file.rid, this.#encoder.encode(msg + "\n"));
   }
 
-  async destroy(): Promise<void> {
-    await this._file.close();
+  destroy(): Promise<void> {
+    this._file.close();
+    return Promise.resolve();
   }
 }
 
@@ -133,7 +143,7 @@ export class RotatingFileHandler extends FileHandler {
   #maxBytes: number;
   #maxBackupCount: number;
 
-  constructor(levelName: string, options: RotatingFileHandlerOptions) {
+  constructor(levelName: LevelName, options: RotatingFileHandlerOptions) {
     super(levelName, options);
     this.#maxBytes = options.maxBytes;
     this.#maxBackupCount = options.maxBackupCount;
@@ -193,7 +203,7 @@ export class RotatingFileHandler extends FileHandler {
       }
     }
 
-    this._file = openSync(this._filename, this._mode);
+    this._file = openSync(this._filename, this._openOptions);
     this._writer = this._file;
   }
 }

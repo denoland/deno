@@ -1,10 +1,14 @@
 class CustomError extends Error {
-  constructor(message: string) {
-    super(message);
+  constructor() {
+    super();
     this.name = "CustomError";
+  }
+
+  get message(): string {
+    return "custom error";
   }
 }
 
-const error = new CustomError("custom error");
+const error = new CustomError();
 console.log(error.stack);
 throw error;

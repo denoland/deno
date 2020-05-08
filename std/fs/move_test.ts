@@ -12,7 +12,7 @@ import { exists, existsSync } from "./exists.ts";
 
 const testdataDir = path.resolve("fs", "testdata");
 
-Deno.test(async function moveDirectoryIfSrcNotExists(): Promise<void> {
+Deno.test("moveDirectoryIfSrcNotExists", async function (): Promise<void> {
   const srcDir = path.join(testdataDir, "move_test_src_1");
   const destDir = path.join(testdataDir, "move_test_dest_1");
   // if src directory not exist
@@ -23,7 +23,7 @@ Deno.test(async function moveDirectoryIfSrcNotExists(): Promise<void> {
   );
 });
 
-Deno.test(async function moveDirectoryIfDestNotExists(): Promise<void> {
+Deno.test("moveDirectoryIfDestNotExists", async function (): Promise<void> {
   const srcDir = path.join(testdataDir, "move_test_src_2");
   const destDir = path.join(testdataDir, "move_test_dest_2");
 
@@ -42,7 +42,29 @@ Deno.test(async function moveDirectoryIfDestNotExists(): Promise<void> {
   await Deno.remove(destDir);
 });
 
-Deno.test(async function moveFileIfSrcNotExists(): Promise<void> {
+Deno.test(
+  "moveDirectoryIfDestNotExistsAndOverwrite",
+  async function (): Promise<void> {
+    const srcDir = path.join(testdataDir, "move_test_src_2");
+    const destDir = path.join(testdataDir, "move_test_dest_2");
+
+    await Deno.mkdir(srcDir, { recursive: true });
+
+    // if dest directory not exist
+    await assertThrowsAsync(
+      async (): Promise<void> => {
+        await move(srcDir, destDir, { overwrite: true });
+        throw new Error("should not throw error");
+      },
+      Error,
+      "should not throw error"
+    );
+
+    await Deno.remove(destDir);
+  }
+);
+
+Deno.test("moveFileIfSrcNotExists", async function (): Promise<void> {
   const srcFile = path.join(testdataDir, "move_test_src_3", "test.txt");
   const destFile = path.join(testdataDir, "move_test_dest_3", "test.txt");
 
@@ -54,7 +76,7 @@ Deno.test(async function moveFileIfSrcNotExists(): Promise<void> {
   );
 });
 
-Deno.test(async function moveFileIfDestExists(): Promise<void> {
+Deno.test("moveFileIfDestExists", async function (): Promise<void> {
   const srcDir = path.join(testdataDir, "move_test_src_4");
   const destDir = path.join(testdataDir, "move_test_dest_4");
   const srcFile = path.join(srcDir, "test.txt");
@@ -104,7 +126,7 @@ Deno.test(async function moveFileIfDestExists(): Promise<void> {
   ]);
 });
 
-Deno.test(async function moveDirectory(): Promise<void> {
+Deno.test("moveDirectory", async function (): Promise<void> {
   const srcDir = path.join(testdataDir, "move_test_src_5");
   const destDir = path.join(testdataDir, "move_test_dest_5");
   const srcFile = path.join(srcDir, "test.txt");
@@ -129,42 +151,43 @@ Deno.test(async function moveDirectory(): Promise<void> {
   await Deno.remove(destDir, { recursive: true });
 });
 
-Deno.test(async function moveIfSrcAndDestDirectoryExistsAndOverwrite(): Promise<
-  void
-> {
-  const srcDir = path.join(testdataDir, "move_test_src_6");
-  const destDir = path.join(testdataDir, "move_test_dest_6");
-  const srcFile = path.join(srcDir, "test.txt");
-  const destFile = path.join(destDir, "test.txt");
-  const srcContent = new TextEncoder().encode("src");
-  const destContent = new TextEncoder().encode("dest");
+Deno.test(
+  "moveIfSrcAndDestDirectoryExistsAndOverwrite",
+  async function (): Promise<void> {
+    const srcDir = path.join(testdataDir, "move_test_src_6");
+    const destDir = path.join(testdataDir, "move_test_dest_6");
+    const srcFile = path.join(srcDir, "test.txt");
+    const destFile = path.join(destDir, "test.txt");
+    const srcContent = new TextEncoder().encode("src");
+    const destContent = new TextEncoder().encode("dest");
 
-  await Promise.all([
-    Deno.mkdir(srcDir, { recursive: true }),
-    Deno.mkdir(destDir, { recursive: true }),
-  ]);
-  assertEquals(await exists(srcDir), true);
-  assertEquals(await exists(destDir), true);
-  await Promise.all([
-    Deno.writeFile(srcFile, srcContent),
-    Deno.writeFile(destFile, destContent),
-  ]);
+    await Promise.all([
+      Deno.mkdir(srcDir, { recursive: true }),
+      Deno.mkdir(destDir, { recursive: true }),
+    ]);
+    assertEquals(await exists(srcDir), true);
+    assertEquals(await exists(destDir), true);
+    await Promise.all([
+      Deno.writeFile(srcFile, srcContent),
+      Deno.writeFile(destFile, destContent),
+    ]);
 
-  await move(srcDir, destDir, { overwrite: true });
+    await move(srcDir, destDir, { overwrite: true });
 
-  assertEquals(await exists(srcDir), false);
-  assertEquals(await exists(destDir), true);
-  assertEquals(await exists(destFile), true);
+    assertEquals(await exists(srcDir), false);
+    assertEquals(await exists(destDir), true);
+    assertEquals(await exists(destFile), true);
 
-  const destFileContent = new TextDecoder().decode(
-    await Deno.readFile(destFile)
-  );
-  assertEquals(destFileContent, "src");
+    const destFileContent = new TextDecoder().decode(
+      await Deno.readFile(destFile)
+    );
+    assertEquals(destFileContent, "src");
 
-  await Deno.remove(destDir, { recursive: true });
-});
+    await Deno.remove(destDir, { recursive: true });
+  }
+);
 
-Deno.test(async function moveIntoSubDir(): Promise<void> {
+Deno.test("moveIntoSubDir", async function (): Promise<void> {
   const srcDir = path.join(testdataDir, "move_test_src_7");
   const destDir = path.join(srcDir, "nest");
 
@@ -180,7 +203,7 @@ Deno.test(async function moveIntoSubDir(): Promise<void> {
   await Deno.remove(srcDir, { recursive: true });
 });
 
-Deno.test(function moveSyncDirectoryIfSrcNotExists(): void {
+Deno.test("moveSyncDirectoryIfSrcNotExists", function (): void {
   const srcDir = path.join(testdataDir, "move_sync_test_src_1");
   const destDir = path.join(testdataDir, "move_sync_test_dest_1");
   // if src directory not exist
@@ -189,7 +212,7 @@ Deno.test(function moveSyncDirectoryIfSrcNotExists(): void {
   });
 });
 
-Deno.test(function moveSyncDirectoryIfDestNotExists(): void {
+Deno.test("moveSyncDirectoryIfDestNotExists", function (): void {
   const srcDir = path.join(testdataDir, "move_sync_test_src_2");
   const destDir = path.join(testdataDir, "move_sync_test_dest_2");
 
@@ -208,7 +231,26 @@ Deno.test(function moveSyncDirectoryIfDestNotExists(): void {
   Deno.removeSync(destDir);
 });
 
-Deno.test(function moveSyncFileIfSrcNotExists(): void {
+Deno.test("moveSyncDirectoryIfDestNotExistsAndOverwrite", function (): void {
+  const srcDir = path.join(testdataDir, "move_sync_test_src_2");
+  const destDir = path.join(testdataDir, "move_sync_test_dest_2");
+
+  Deno.mkdirSync(srcDir, { recursive: true });
+
+  // if dest directory not exist width overwrite
+  assertThrows(
+    (): void => {
+      moveSync(srcDir, destDir, { overwrite: true });
+      throw new Error("should not throw error");
+    },
+    Error,
+    "should not throw error"
+  );
+
+  Deno.removeSync(destDir);
+});
+
+Deno.test("moveSyncFileIfSrcNotExists", function (): void {
   const srcFile = path.join(testdataDir, "move_sync_test_src_3", "test.txt");
   const destFile = path.join(testdataDir, "move_sync_test_dest_3", "test.txt");
 
@@ -218,7 +260,7 @@ Deno.test(function moveSyncFileIfSrcNotExists(): void {
   });
 });
 
-Deno.test(function moveSyncFileIfDestExists(): void {
+Deno.test("moveSyncFileIfDestExists", function (): void {
   const srcDir = path.join(testdataDir, "move_sync_test_src_4");
   const destDir = path.join(testdataDir, "move_sync_test_dest_4");
   const srcFile = path.join(srcDir, "test.txt");
@@ -265,7 +307,7 @@ Deno.test(function moveSyncFileIfDestExists(): void {
   Deno.removeSync(destDir, { recursive: true });
 });
 
-Deno.test(function moveSyncDirectory(): void {
+Deno.test("moveSyncDirectory", function (): void {
   const srcDir = path.join(testdataDir, "move_sync_test_src_5");
   const destDir = path.join(testdataDir, "move_sync_test_dest_5");
   const srcFile = path.join(srcDir, "test.txt");
@@ -288,7 +330,7 @@ Deno.test(function moveSyncDirectory(): void {
   Deno.removeSync(destDir, { recursive: true });
 });
 
-Deno.test(function moveSyncIfSrcAndDestDirectoryExistsAndOverwrite(): void {
+Deno.test("moveSyncIfSrcAndDestDirectoryExistsAndOverwrite", function (): void {
   const srcDir = path.join(testdataDir, "move_sync_test_src_6");
   const destDir = path.join(testdataDir, "move_sync_test_dest_6");
   const srcFile = path.join(srcDir, "test.txt");
@@ -315,7 +357,7 @@ Deno.test(function moveSyncIfSrcAndDestDirectoryExistsAndOverwrite(): void {
   Deno.removeSync(destDir, { recursive: true });
 });
 
-Deno.test(function moveSyncIntoSubDir(): void {
+Deno.test("moveSyncIntoSubDir", function (): void {
   const srcDir = path.join(testdataDir, "move_sync_test_src_7");
   const destDir = path.join(srcDir, "nest");
 

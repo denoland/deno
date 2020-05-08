@@ -8,10 +8,10 @@ extern crate serde_json;
 mod ops;
 use deno_core::js_check;
 pub use deno_core::v8_set_flags;
-use deno_core::CoreOp;
+use deno_core::CoreIsolate;
 use deno_core::ErrBox;
-use deno_core::Isolate;
 use deno_core::ModuleSpecifier;
+use deno_core::Op;
 use deno_core::StartupData;
 use deno_core::ZeroCopyBuf;
 pub use ops::EmitResult;
@@ -49,11 +49,14 @@ pub struct TSState {
 fn compiler_op<D>(
   ts_state: Arc<Mutex<TSState>>,
   dispatcher: D,
-) -> impl Fn(&[u8], Option<ZeroCopyBuf>) -> CoreOp
+) -> impl Fn(&mut CoreIsolate, &[u8], Option<ZeroCopyBuf>) -> Op
 where
-  D: Fn(&mut TSState, &[u8]) -> CoreOp,
+  D: Fn(&mut TSState, &[u8]) -> Op,
 {
-  move |control: &[u8], zero_copy_buf: Option<ZeroCopyBuf>| -> CoreOp {
+  move |_isolate: &mut CoreIsolate,
+        control: &[u8],
+        zero_copy_buf: Option<ZeroCopyBuf>|
+        -> Op {
     assert!(zero_copy_buf.is_none()); // zero_copy_buf unused in compiler.
     let mut s = ts_state.lock().unwrap();
     dispatcher(&mut s, control)
@@ -61,7 +64,7 @@ where
 }
 
 pub struct TSIsolate {
-  isolate: Box<Isolate>,
+  isolate: Box<CoreIsolate>,
   state: Arc<Mutex<TSState>>,
 }
 
@@ -70,7 +73,7 @@ impl TSIsolate {
     bundle: bool,
     maybe_extern_crate_modules: Option<ExternCrateModules>,
   ) -> TSIsolate {
-    let mut isolate = Isolate::new(StartupData::None, false);
+    let mut isolate = CoreIsolate::new(StartupData::None, false);
     js_check(isolate.execute("assets/typescript.js", TYPESCRIPT_CODE));
     js_check(isolate.execute("compiler_main.js", COMPILER_CODE));
 
@@ -193,7 +196,7 @@ fn print_source_code(code: &str) {
 
 /// Create a V8 snapshot.
 pub fn mksnapshot_bundle(
-  isolate: &mut Isolate,
+  isolate: &mut CoreIsolate,
   snapshot_filename: &Path,
   bundle_filename: &Path,
   main_module_name: &str,
@@ -213,7 +216,7 @@ pub fn mksnapshot_bundle(
 /// Create a V8 snapshot. This differs from mksnapshot_bundle in that is also
 /// runs typescript.js
 pub fn mksnapshot_bundle_ts(
-  isolate: &mut Isolate,
+  isolate: &mut CoreIsolate,
   snapshot_filename: &Path,
   bundle_filename: &Path,
   main_module_name: &str,
@@ -228,7 +231,7 @@ pub fn mksnapshot_bundle_ts(
 }
 
 fn write_snapshot(
-  runtime_isolate: &mut Isolate,
+  runtime_isolate: &mut CoreIsolate,
   snapshot_filename: &Path,
 ) -> Result<(), ErrBox> {
   println!("Creating snapshot...");
@@ -323,14 +326,17 @@ pub fn trace_serializer() {
 }
 
 /// Warning: Returns a non-JSON op dispatcher. Must be manually attached to
-/// Isolate.
+/// CoreIsolate.
 pub fn op_fetch_asset<S: ::std::hash::BuildHasher>(
   custom_assets: HashMap<String, PathBuf, S>,
-) -> impl Fn(&[u8], Option<ZeroCopyBuf>) -> CoreOp {
+) -> impl Fn(&mut CoreIsolate, &[u8], Option<ZeroCopyBuf>) -> Op {
   for (_, path) in custom_assets.iter() {
     println!("cargo:rerun-if-changed={}", path.display());
   }
-  move |control: &[u8], zero_copy_buf: Option<ZeroCopyBuf>| -> CoreOp {
+  move |_isolate: &mut CoreIsolate,
+        control: &[u8],
+        zero_copy_buf: Option<ZeroCopyBuf>|
+        -> Op {
     assert!(zero_copy_buf.is_none()); // zero_copy_buf unused in this op.
     let name = std::str::from_utf8(control).unwrap();
 

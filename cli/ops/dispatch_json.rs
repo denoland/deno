@@ -1,6 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::op_error::OpError;
-use deno_core::*;
+use deno_core::Buf;
+use deno_core::CoreIsolate;
+use deno_core::Op;
+use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
 pub use serde_derive::Deserialize;
 use serde_json::json;
@@ -41,16 +44,21 @@ struct AsyncArgs {
   promise_id: Option<u64>,
 }
 
-pub fn json_op<D>(d: D) -> impl Fn(&[u8], Option<ZeroCopyBuf>) -> CoreOp
+pub fn json_op<D>(
+  d: D,
+) -> impl Fn(&mut CoreIsolate, &[u8], Option<ZeroCopyBuf>) -> Op
 where
-  D: Fn(Value, Option<ZeroCopyBuf>) -> Result<JsonOp, OpError>,
+  D:
+    Fn(&mut CoreIsolate, Value, Option<ZeroCopyBuf>) -> Result<JsonOp, OpError>,
 {
-  move |control: &[u8], zero_copy: Option<ZeroCopyBuf>| {
+  move |isolate: &mut CoreIsolate,
+        control: &[u8],
+        zero_copy: Option<ZeroCopyBuf>| {
     let async_args: AsyncArgs = match serde_json::from_slice(control) {
       Ok(args) => args,
       Err(e) => {
         let buf = serialize_result(None, Err(OpError::from(e)));
-        return CoreOp::Sync(buf);
+        return Op::Sync(buf);
       }
     };
     let promise_id = async_args.promise_id;
@@ -58,34 +66,34 @@ where
 
     let result = serde_json::from_slice(control)
       .map_err(OpError::from)
-      .and_then(|args| d(args, zero_copy));
+      .and_then(|args| d(isolate, args, zero_copy));
 
-    // Convert to CoreOp
+    // Convert to Op
     match result {
       Ok(JsonOp::Sync(sync_value)) => {
         assert!(promise_id.is_none());
-        CoreOp::Sync(serialize_result(promise_id, Ok(sync_value)))
+        Op::Sync(serialize_result(promise_id, Ok(sync_value)))
       }
       Ok(JsonOp::Async(fut)) => {
         assert!(promise_id.is_some());
         let fut2 = fut.then(move |result| {
-          futures::future::ok(serialize_result(promise_id, result))
+          futures::future::ready(serialize_result(promise_id, result))
         });
-        CoreOp::Async(fut2.boxed_local())
+        Op::Async(fut2.boxed_local())
       }
       Ok(JsonOp::AsyncUnref(fut)) => {
         assert!(promise_id.is_some());
         let fut2 = fut.then(move |result| {
-          futures::future::ok(serialize_result(promise_id, result))
+          futures::future::ready(serialize_result(promise_id, result))
         });
-        CoreOp::AsyncUnref(fut2.boxed_local())
+        Op::AsyncUnref(fut2.boxed_local())
       }
       Err(sync_err) => {
         let buf = serialize_result(promise_id, Err(sync_err));
         if is_sync {
-          CoreOp::Sync(buf)
+          Op::Sync(buf)
         } else {
-          CoreOp::Async(futures::future::ok(buf).boxed_local())
+          Op::Async(futures::future::ready(buf).boxed_local())
         }
       }
     }

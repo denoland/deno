@@ -14,14 +14,16 @@ export async function move(
 ): Promise<void> {
   const srcStat = await Deno.stat(src);
 
-  if (srcStat.isDirectory() && isSubdir(src, dest)) {
+  if (srcStat.isDirectory && isSubdir(src, dest)) {
     throw new Error(
       `Cannot move '${src}' to a subdirectory of itself, '${dest}'.`
     );
   }
 
   if (overwrite) {
-    await Deno.remove(dest, { recursive: true });
+    if (await exists(dest)) {
+      await Deno.remove(dest, { recursive: true });
+    }
     await Deno.rename(src, dest);
   } else {
     if (await exists(dest)) {
@@ -41,14 +43,16 @@ export function moveSync(
 ): void {
   const srcStat = Deno.statSync(src);
 
-  if (srcStat.isDirectory() && isSubdir(src, dest)) {
+  if (srcStat.isDirectory && isSubdir(src, dest)) {
     throw new Error(
       `Cannot move '${src}' to a subdirectory of itself, '${dest}'.`
     );
   }
 
   if (overwrite) {
-    Deno.removeSync(dest, { recursive: true });
+    if (existsSync(dest)) {
+      Deno.removeSync(dest, { recursive: true });
+    }
     Deno.renameSync(src, dest);
   } else {
     if (existsSync(dest)) {

@@ -16,13 +16,13 @@ unitTest(
       errOnWindows = e;
     }
     if (errOnWindows) {
-      assertEquals(Deno.build.os, "win");
+      assertEquals(Deno.build.os, "windows");
       assertEquals(errOnWindows.message, "not implemented");
     } else {
       const newNameInfoLStat = Deno.lstatSync(newname);
       const newNameInfoStat = Deno.statSync(newname);
-      assert(newNameInfoLStat.isSymlink());
-      assert(newNameInfoStat.isDirectory());
+      assert(newNameInfoLStat.isSymlink);
+      assert(newNameInfoStat.isDirectory);
     }
   }
 );
@@ -53,7 +53,7 @@ unitTest(
       err = e;
     }
     if (err) {
-      assertEquals(Deno.build.os, "win");
+      assertEquals(Deno.build.os, "windows");
       // from cli/js/util.ts:notImplemented
       assertEquals(err.message, "not implemented");
     }
@@ -79,8 +79,8 @@ unitTest(
     } else {
       const newNameInfoLStat = Deno.lstatSync(newname);
       const newNameInfoStat = Deno.statSync(newname);
-      assert(newNameInfoLStat.isSymlink());
-      assert(newNameInfoStat.isDirectory());
+      assert(newNameInfoLStat.isSymlink);
+      assert(newNameInfoStat.isDirectory);
     }
   }
 );

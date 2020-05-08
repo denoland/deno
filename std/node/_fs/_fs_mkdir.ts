@@ -1,22 +1,28 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { CallbackWithError } from "./_fs_common.ts";
+import { fromFileUrl } from "../path.ts";
 
-type Path = string; // TODO path can also be a Buffer or URL.
+/**
+ * TODO: Also accept 'path' parameter as a Node polyfill Buffer type once these
+ * are implemented. See https://github.com/denoland/deno/issues/3403
+ */
 type MkdirOptions =
   | { recursive?: boolean; mode?: number | undefined }
   | number
   | boolean;
 
 export function mkdir(
-  path: Path,
+  path: string | URL,
   options?: MkdirOptions | CallbackWithError,
   callback?: CallbackWithError
 ): void {
+  path = path instanceof URL ? fromFileUrl(path) : path;
+
   let mode = 0o777;
   let recursive = false;
 
   if (typeof options == "function") {
-    callback == options;
+    callback = options;
   } else if (typeof options === "number") {
     mode = options;
   } else if (typeof options === "boolean") {
@@ -29,27 +35,21 @@ export function mkdir(
     throw new Deno.errors.InvalidData(
       "invalid recursive option , must be a boolean"
     );
-  new Promise(async (resolve, reject) => {
-    try {
-      await Deno.mkdir(path, { recursive, mode });
-      resolve();
-    } catch (err) {
-      reject(err);
-    }
-  })
+  Deno.mkdir(path, { recursive, mode })
     .then(() => {
-      if (callback && typeof callback == "function") {
+      if (typeof callback === "function") {
         callback();
       }
     })
     .catch((err) => {
-      if (callback && typeof callback == "function") {
+      if (typeof callback === "function") {
         callback(err);
       }
     });
 }
 
-export function mkdirSync(path: Path, options?: MkdirOptions): void {
+export function mkdirSync(path: string | URL, options?: MkdirOptions): void {
+  path = path instanceof URL ? fromFileUrl(path) : path;
   let mode = 0o777;
   let recursive = false;
 
@@ -65,9 +65,6 @@ export function mkdirSync(path: Path, options?: MkdirOptions): void {
     throw new Deno.errors.InvalidData(
       "invalid recursive option , must be a boolean"
     );
-  try {
-    Deno.mkdirSync(path, { recursive, mode });
-  } catch (err) {
-    throw err;
-  }
+
+  Deno.mkdirSync(path, { recursive, mode });
 }

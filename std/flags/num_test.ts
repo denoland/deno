@@ -2,7 +2,7 @@
 import { assertEquals } from "../testing/asserts.ts";
 import { parse } from "./mod.ts";
 
-Deno.test(function nums(): void {
+Deno.test("nums", function (): void {
   const argv = parse([
     "-x",
     "1234",
@@ -32,7 +32,7 @@ Deno.test(function nums(): void {
   assertEquals(typeof argv._[0], "number");
 });
 
-Deno.test(function alreadyNumber(): void {
+Deno.test("alreadyNumber", function (): void {
   const argv = parse(["-x", "1234", "789"]);
   assertEquals(argv, { x: 1234, _: [789] });
   assertEquals(typeof argv.x, "number");

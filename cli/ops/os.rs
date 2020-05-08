@@ -2,13 +2,14 @@
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::op_error::OpError;
 use crate::state::State;
-use deno_core::*;
+use deno_core::CoreIsolate;
+use deno_core::ZeroCopyBuf;
 use std::collections::HashMap;
 use std::env;
 use std::io::{Error, ErrorKind};
 use url::Url;
 
-pub fn init(i: &mut Isolate, s: &State) {
+pub fn init(i: &mut CoreIsolate, s: &State) {
   i.register_op("op_exit", s.stateful_json_op(op_exit));
   i.register_op("op_env", s.stateful_json_op(op_env));
   i.register_op("op_exec_path", s.stateful_json_op(op_exec_path));
@@ -30,6 +31,7 @@ fn op_get_dir(
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
+  state.check_unstable("Deno.dir");
   state.check_env()?;
   let args: GetDirArgs = serde_json::from_value(args)?;
 
@@ -80,8 +82,8 @@ fn op_exec_path(
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
-  state.check_env()?;
   let current_exe = env::current_exe().unwrap();
+  state.check_read(&current_exe)?;
   // Now apply URL parser to current exe to get fully resolved path, otherwise
   // we might get `./` and `../` bits in `exec_path`
   let exe_url = Url::from_file_path(current_exe).unwrap();
@@ -154,6 +156,7 @@ fn op_loadavg(
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
+  state.check_unstable("Deno.loadavg");
   state.check_env()?;
   match sys_info::loadavg() {
     Ok(loadavg) => Ok(JsonOp::Sync(json!([
@@ -180,6 +183,7 @@ fn op_os_release(
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
+  state.check_unstable("Deno.osRelease");
   state.check_env()?;
   let release = sys_info::os_release().unwrap_or_else(|_| "".to_string());
   Ok(JsonOp::Sync(json!(release)))

@@ -19,14 +19,25 @@ function main(configText, rootNames) {
 
   const host = new Host();
 
-  assert(rootNames.length > 0);
-
+  assert(rootNames.length === 1);
+  // If root file is external file, ie. URL with "file://"
+  // then create an internal name - in case of bundling
+  // cli runtime this is always true.
+  const rootFile = rootNames[0];
+  const result = externalSpecifierRegEx.exec(rootFile);
+  let rootSpecifier = rootFile;
+  if (result) {
+    const [, specifier] = result;
+    const internalSpecifier = `$deno$${specifier}`;
+    moduleMap.set(internalSpecifier, rootFile);
+    rootSpecifier = internalSpecifier;
+  }
   const { options, diagnostics } = configure(configText);
   handleDiagnostics(host, diagnostics);
 
   println(`>>> TS config: ${JSON.stringify(options)}`);
 
-  const program = ts.createProgram(rootNames, options, host);
+  const program = ts.createProgram([rootSpecifier], options, host);
 
   handleDiagnostics(
     host,

@@ -2,11 +2,12 @@
 use super::dispatch_json::{JsonOp, Value};
 use crate::op_error::OpError;
 use crate::state::State;
-use deno_core::*;
+use deno_core::CoreIsolate;
+use deno_core::ZeroCopyBuf;
 use rand::thread_rng;
 use rand::Rng;
 
-pub fn init(i: &mut Isolate, s: &State) {
+pub fn init(i: &mut CoreIsolate, s: &State) {
   i.register_op(
     "op_get_random_values",
     s.stateful_json_op(op_get_random_values),

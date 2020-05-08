@@ -9,9 +9,9 @@ import * as path from "../path/mod.ts";
 import { ensureSymlink, ensureSymlinkSync } from "./ensure_symlink.ts";
 
 const testdataDir = path.resolve("fs", "testdata");
-const isWindows = Deno.build.os === "win";
+const isWindows = Deno.build.os === "windows";
 
-Deno.test(async function ensureSymlinkIfItNotExist(): Promise<void> {
+Deno.test("ensureSymlinkIfItNotExist", async function (): Promise<void> {
   const testDir = path.join(testdataDir, "link_file_1");
   const testFile = path.join(testDir, "test.txt");
 
@@ -30,7 +30,7 @@ Deno.test(async function ensureSymlinkIfItNotExist(): Promise<void> {
   );
 });
 
-Deno.test(function ensureSymlinkSyncIfItNotExist(): void {
+Deno.test("ensureSymlinkSyncIfItNotExist", function (): void {
   const testDir = path.join(testdataDir, "link_file_2");
   const testFile = path.join(testDir, "test.txt");
 
@@ -44,7 +44,7 @@ Deno.test(function ensureSymlinkSyncIfItNotExist(): void {
   });
 });
 
-Deno.test(async function ensureSymlinkIfItExist(): Promise<void> {
+Deno.test("ensureSymlinkIfItExist", async function (): Promise<void> {
   const testDir = path.join(testdataDir, "link_file_3");
   const testFile = path.join(testDir, "test.txt");
   const linkFile = path.join(testDir, "link.txt");
@@ -67,13 +67,13 @@ Deno.test(async function ensureSymlinkIfItExist(): Promise<void> {
   const srcStat = await Deno.lstat(testFile);
   const linkStat = await Deno.lstat(linkFile);
 
-  assertEquals(srcStat.isFile(), true);
-  assertEquals(linkStat.isSymlink(), true);
+  assertEquals(srcStat.isFile, true);
+  assertEquals(linkStat.isSymlink, true);
 
   await Deno.remove(testDir, { recursive: true });
 });
 
-Deno.test(function ensureSymlinkSyncIfItExist(): void {
+Deno.test("ensureSymlinkSyncIfItExist", function (): void {
   const testDir = path.join(testdataDir, "link_file_4");
   const testFile = path.join(testDir, "test.txt");
   const linkFile = path.join(testDir, "link.txt");
@@ -97,13 +97,13 @@ Deno.test(function ensureSymlinkSyncIfItExist(): void {
 
   const linkStat = Deno.lstatSync(linkFile);
 
-  assertEquals(srcStat.isFile(), true);
-  assertEquals(linkStat.isSymlink(), true);
+  assertEquals(srcStat.isFile, true);
+  assertEquals(linkStat.isSymlink, true);
 
   Deno.removeSync(testDir, { recursive: true });
 });
 
-Deno.test(async function ensureSymlinkDirectoryIfItExist(): Promise<void> {
+Deno.test("ensureSymlinkDirectoryIfItExist", async function (): Promise<void> {
   const testDir = path.join(testdataDir, "link_file_origin_3");
   const linkDir = path.join(testdataDir, "link_file_link_3");
   const testFile = path.join(testDir, "test.txt");
@@ -127,15 +127,15 @@ Deno.test(async function ensureSymlinkDirectoryIfItExist(): Promise<void> {
   const linkDirStat = await Deno.lstat(linkDir);
   const testFileStat = await Deno.lstat(testFile);
 
-  assertEquals(testFileStat.isFile(), true);
-  assertEquals(testDirStat.isDirectory(), true);
-  assertEquals(linkDirStat.isSymlink(), true);
+  assertEquals(testFileStat.isFile, true);
+  assertEquals(testDirStat.isDirectory, true);
+  assertEquals(linkDirStat.isSymlink, true);
 
   await Deno.remove(linkDir, { recursive: true });
   await Deno.remove(testDir, { recursive: true });
 });
 
-Deno.test(function ensureSymlinkSyncDirectoryIfItExist(): void {
+Deno.test("ensureSymlinkSyncDirectoryIfItExist", function (): void {
   const testDir = path.join(testdataDir, "link_file_origin_3");
   const linkDir = path.join(testdataDir, "link_file_link_3");
   const testFile = path.join(testDir, "test.txt");
@@ -159,9 +159,9 @@ Deno.test(function ensureSymlinkSyncDirectoryIfItExist(): void {
   const linkDirStat = Deno.lstatSync(linkDir);
   const testFileStat = Deno.lstatSync(testFile);
 
-  assertEquals(testFileStat.isFile(), true);
-  assertEquals(testDirStat.isDirectory(), true);
-  assertEquals(linkDirStat.isSymlink(), true);
+  assertEquals(testFileStat.isFile, true);
+  assertEquals(testDirStat.isDirectory, true);
+  assertEquals(linkDirStat.isSymlink, true);
 
   Deno.removeSync(linkDir, { recursive: true });
   Deno.removeSync(testDir, { recursive: true });

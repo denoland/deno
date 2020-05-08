@@ -2,12 +2,13 @@
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::op_error::OpError;
 use crate::state::State;
-use deno_core::*;
+use deno_core::CoreIsolate;
+use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
 use std::time::Duration;
 use std::time::Instant;
 
-pub fn init(i: &mut Isolate, s: &State) {
+pub fn init(i: &mut CoreIsolate, s: &State) {
   i.register_op(
     "op_global_timer_stop",
     s.stateful_json_op(op_global_timer_stop),

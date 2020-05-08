@@ -69,16 +69,16 @@ they are stable:
 ## CommonJS Module Loading
 
 `createRequire(...)` is provided to create a `require` function for loading CJS
-modules.
+modules. It also sets supported globals.
 
 ```ts
 import { createRequire } from "https://deno.land/std/node/module.ts";
 
-const require_ = createRequire(import.meta.url);
+const require = createRequire(import.meta.url);
 // Loads native module polyfill.
-const path = require_("path");
+const path = require("path");
 // Loads extensionless module.
-const cjsModule = require_("./my_mod");
+const cjsModule = require("./my_mod");
 // Visits node_modules.
-const leftPad = require_("left-pad");
+const leftPad = require("left-pad");
 ```

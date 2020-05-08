@@ -16,6 +16,7 @@ SharedQueue Binary Layout
 +---------------------------------------------------------------+
  */
 
+use crate::bindings;
 use crate::ops::OpId;
 use rusty_v8 as v8;
 
@@ -56,11 +57,19 @@ impl SharedQueue {
   }
 
   pub fn bytes(&self) -> &[u8] {
-    unsafe { &*self.buf.get() }
+    unsafe {
+      bindings::get_backing_store_slice(&self.buf, 0, self.buf.byte_length())
+    }
   }
 
   pub fn bytes_mut(&mut self) -> &mut [u8] {
-    unsafe { &mut *self.buf.get() }
+    unsafe {
+      bindings::get_backing_store_slice_mut(
+        &self.buf,
+        0,
+        self.buf.byte_length(),
+      )
+    }
   }
 
   fn reset(&mut self) {

@@ -11,7 +11,7 @@ const test: { [key: string]: Function } = {
     makeTempDirSync();
   },
   envRequired(): void {
-    env().home;
+    env.get("home");
   },
   netRequired(): void {
     listen({ transport: "tcp", port: 4541 });

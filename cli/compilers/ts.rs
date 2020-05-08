@@ -1,16 +1,17 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::compiler_worker::CompilerWorker;
 use crate::colors;
-use crate::compilers::CompilationResultFuture;
 use crate::compilers::CompiledModule;
 use crate::diagnostics::Diagnostic;
+use crate::diagnostics::DiagnosticItem;
 use crate::disk_cache::DiskCache;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
+use crate::fmt;
+use crate::fs as deno_fs;
 use crate::global_state::GlobalState;
 use crate::msg;
 use crate::op_error::OpError;
-use crate::ops::JsonResult;
 use crate::source_maps::SourceMapGetter;
 use crate::startup_data;
 use crate::state::*;
@@ -21,10 +22,11 @@ use crate::worker::WorkerEvent;
 use deno_core::Buf;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
-use futures::future::FutureExt;
 use log::info;
 use regex::Regex;
+use serde::Deserialize;
 use serde_json::json;
+use serde_json::Value;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs;
@@ -32,7 +34,6 @@ use std::hash::BuildHasher;
 use std::io;
 use std::ops::Deref;
 use std::path::PathBuf;
-use std::pin::Pin;
 use std::str;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -172,26 +173,29 @@ fn req(
   request_type: msg::CompilerRequestType,
   root_names: Vec<String>,
   compiler_config: CompilerConfig,
-  out_file: Option<PathBuf>,
   target: &str,
   bundle: bool,
+  unstable: bool,
 ) -> Buf {
+  let cwd = std::env::current_dir().unwrap();
   let j = match (compiler_config.path, compiler_config.content) {
     (Some(config_path), Some(config_data)) => json!({
       "type": request_type as i32,
       "target": target,
       "rootNames": root_names,
-      "outFile": out_file,
       "bundle": bundle,
+      "unstable": unstable,
       "configPath": config_path,
       "config": str::from_utf8(&config_data).unwrap(),
+      "cwd": cwd,
     }),
     _ => json!({
       "type": request_type as i32,
       "target": target,
       "rootNames": root_names,
-      "outFile": out_file,
       "bundle": bundle,
+      "unstable": unstable,
+      "cwd": cwd,
     }),
   };
 
@@ -232,6 +236,43 @@ impl Deref for TsCompiler {
   }
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct EmittedSource {
+  filename: String,
+  contents: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BundleResponse {
+  diagnostics: Diagnostic,
+  bundle_output: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CompileResponse {
+  diagnostics: Diagnostic,
+  emit_map: HashMap<String, EmittedSource>,
+}
+
+// TODO(bartlomieju): possible deduplicate once TS refactor is stabilized
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[allow(unused)]
+struct RuntimeBundleResponse {
+  diagnostics: Vec<DiagnosticItem>,
+  output: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeCompileResponse {
+  diagnostics: Vec<DiagnosticItem>,
+  emit_map: HashMap<String, EmittedSource>,
+}
+
 impl TsCompiler {
   pub fn new(
     file_fetcher: SourceFileFetcher,
@@ -267,7 +308,7 @@ impl TsCompiler {
       startup_data::compiler_isolate_init(),
       worker_state,
     );
-    worker.execute("bootstrapTsCompilerRuntime()").unwrap();
+    worker.execute("bootstrap.tsCompilerRuntime()").unwrap();
     worker
   }
 
@@ -281,23 +322,43 @@ impl TsCompiler {
       "Invoking the compiler to bundle. module_name: {}",
       module_name
     );
+    eprintln!("Bundling {}", module_name);
 
     let root_names = vec![module_name];
     let req_msg = req(
       msg::CompilerRequestType::Compile,
       root_names,
       self.config.clone(),
-      out_file,
       "main",
       true,
+      global_state.flags.unstable,
     );
 
     let msg = execute_in_thread(global_state.clone(), req_msg).await?;
     let json_str = std::str::from_utf8(&msg).unwrap();
     debug!("Message: {}", json_str);
-    if let Some(diagnostics) = Diagnostic::from_emit_result(json_str) {
-      return Err(ErrBox::from(diagnostics));
+
+    let bundle_response: BundleResponse = serde_json::from_str(json_str)?;
+
+    if !bundle_response.diagnostics.items.is_empty() {
+      return Err(ErrBox::from(bundle_response.diagnostics));
     }
+
+    let output_string = fmt::format_text(&bundle_response.bundle_output)?;
+
+    if let Some(out_file_) = out_file.as_ref() {
+      eprintln!("Emitting bundle to {:?}", out_file_);
+
+      let output_bytes = output_string.as_bytes();
+      let output_len = output_bytes.len();
+
+      deno_fs::write_file(out_file_, output_bytes, 0o666)?;
+      // TODO(bartlomieju): add "humanFileSize" method
+      eprintln!("{} bytes emmited.", output_len);
+    } else {
+      println!("{}", output_string);
+    }
+
     Ok(())
   }
 
@@ -368,9 +429,9 @@ impl TsCompiler {
       msg::CompilerRequestType::Compile,
       root_names,
       self.config.clone(),
-      None,
       target,
       false,
+      global_state.flags.unstable,
     );
 
     let ts_compiler = self.clone();
@@ -382,11 +443,15 @@ impl TsCompiler {
     );
 
     let msg = execute_in_thread(global_state.clone(), req_msg).await?;
-
     let json_str = std::str::from_utf8(&msg).unwrap();
-    if let Some(diagnostics) = Diagnostic::from_emit_result(json_str) {
-      return Err(ErrBox::from(diagnostics));
+
+    let compile_response: CompileResponse = serde_json::from_str(json_str)?;
+
+    if !compile_response.diagnostics.items.is_empty() {
+      return Err(ErrBox::from(compile_response.diagnostics));
     }
+
+    self.cache_emitted_files(compile_response.emit_map)?;
     ts_compiler.get_compiled_module(&source_file_.url)
   }
 
@@ -408,6 +473,26 @@ impl TsCompiler {
     }
 
     None
+  }
+
+  fn cache_emitted_files(
+    &self,
+    emit_map: HashMap<String, EmittedSource>,
+  ) -> std::io::Result<()> {
+    for (emitted_name, source) in emit_map.iter() {
+      let specifier = ModuleSpecifier::resolve_url(&source.filename)
+        .expect("Should be a valid module specifier");
+
+      if emitted_name.ends_with(".map") {
+        self.cache_source_map(&specifier, &source.contents)?;
+      } else if emitted_name.ends_with(".js") {
+        self.cache_compiled_file(&specifier, &source.contents)?;
+      } else {
+        panic!("Trying to cache unknown file type {}", emitted_name);
+      }
+    }
+
+    Ok(())
   }
 
   pub fn get_compiled_module(
@@ -455,21 +540,28 @@ impl TsCompiler {
   ///
   /// Along compiled file a special metadata file is saved as well containing
   /// hash that can be validated to avoid unnecessary recompilation.
-  async fn cache_compiled_file(
+  fn cache_compiled_file(
     &self,
     module_specifier: &ModuleSpecifier,
     contents: &str,
   ) -> std::io::Result<()> {
+    let source_file = self
+      .file_fetcher
+      .fetch_cached_source_file(&module_specifier)
+      .expect("Source file not found");
+
+    // NOTE: JavaScript files are only cached to disk if `checkJs`
+    // option in on
+    if source_file.media_type == msg::MediaType::JavaScript && !self.compile_js
+    {
+      return Ok(());
+    }
+
     let js_key = self
       .disk_cache
       .get_cache_filename_with_extension(module_specifier.as_url(), "js");
     self.disk_cache.set(&js_key, contents.as_bytes())?;
     self.mark_compiled(module_specifier.as_url());
-    let source_file = self
-      .file_fetcher
-      .fetch_cached_source_file(&module_specifier)
-      .await
-      .expect("Source file not found");
 
     let version_hash = source_code_version_hash(
       &source_file.source_code,
@@ -521,24 +613,22 @@ impl TsCompiler {
     module_specifier: &ModuleSpecifier,
     contents: &str,
   ) -> std::io::Result<()> {
+    let source_file = self
+      .file_fetcher
+      .fetch_cached_source_file(&module_specifier)
+      .expect("Source file not found");
+
+    // NOTE: JavaScript files are only cached to disk if `checkJs`
+    // option in on
+    if source_file.media_type == msg::MediaType::JavaScript && !self.compile_js
+    {
+      return Ok(());
+    }
+
     let source_map_key = self
       .disk_cache
       .get_cache_filename_with_extension(module_specifier.as_url(), "js.map");
     self.disk_cache.set(&source_map_key, contents.as_bytes())
-  }
-
-  /// This method is called by TS compiler via an "op".
-  pub async fn cache_compiler_output(
-    &self,
-    module_specifier: &ModuleSpecifier,
-    extension: &str,
-    contents: &str,
-  ) -> std::io::Result<()> {
-    match extension {
-      ".map" => self.cache_source_map(module_specifier, contents),
-      ".js" => self.cache_compiled_file(module_specifier, contents).await,
-      _ => unreachable!(),
-    }
   }
 }
 
@@ -578,10 +668,9 @@ impl TsCompiler {
     script_name: &str,
   ) -> Option<SourceFile> {
     if let Some(module_specifier) = self.try_to_resolve(script_name) {
-      let fut = self
+      return self
         .file_fetcher
         .fetch_cached_source_file(&module_specifier);
-      return futures::executor::block_on(fut);
     }
 
     None
@@ -602,8 +691,6 @@ impl TsCompiler {
   }
 }
 
-// TODO(bartlomieju): exactly same function is in `wasm.rs` - only difference
-// it created WasmCompiler instead of TsCompiler - deduplicate
 async fn execute_in_thread(
   global_state: GlobalState,
   req: Buf,
@@ -632,24 +719,14 @@ async fn execute_in_thread(
   Ok(buf)
 }
 
-async fn execute_in_thread_json(
-  req_msg: Buf,
-  global_state: GlobalState,
-) -> JsonResult {
-  let msg = execute_in_thread(global_state, req_msg)
-    .await
-    .map_err(|e| OpError::other(e.to_string()))?;
-  let json_str = std::str::from_utf8(&msg).unwrap();
-  Ok(json!(json_str))
-}
-
-pub fn runtime_compile<S: BuildHasher>(
+/// This function is used by `Deno.compile()` and `Deno.bundle()` APIs.
+pub async fn runtime_compile<S: BuildHasher>(
   global_state: GlobalState,
   root_name: &str,
   sources: &Option<HashMap<String, String, S>>,
   bundle: bool,
   options: &Option<String>,
-) -> Pin<Box<CompilationResultFuture>> {
+) -> Result<Value, OpError> {
   let req_msg = json!({
     "type": msg::CompilerRequestType::RuntimeCompile as i32,
     "target": "runtime",
@@ -657,19 +734,41 @@ pub fn runtime_compile<S: BuildHasher>(
     "sources": sources,
     "options": options,
     "bundle": bundle,
+    "unstable": global_state.flags.unstable,
   })
   .to_string()
   .into_boxed_str()
   .into_boxed_bytes();
 
-  execute_in_thread_json(req_msg, global_state).boxed_local()
+  let compiler = global_state.ts_compiler.clone();
+
+  let msg = execute_in_thread(global_state, req_msg).await?;
+  let json_str = std::str::from_utf8(&msg).unwrap();
+
+  // TODO(bartlomieju): factor `bundle` path into separate function `runtime_bundle`
+  if bundle {
+    let _response: RuntimeBundleResponse = serde_json::from_str(json_str)?;
+    return Ok(serde_json::from_str::<Value>(json_str).unwrap());
+  }
+
+  let response: RuntimeCompileResponse = serde_json::from_str(json_str)?;
+
+  if response.diagnostics.is_empty() && sources.is_none() {
+    compiler.cache_emitted_files(response.emit_map)?;
+  }
+
+  // We're returning `Ok()` instead of `Err()` because it's not runtime
+  // error if there were diagnostics produces; we want to let user handle
+  // diagnostics in the runtime.
+  Ok(serde_json::from_str::<Value>(json_str).unwrap())
 }
 
-pub fn runtime_transpile<S: BuildHasher>(
+/// This function is used by `Deno.transpileOnly()` API.
+pub async fn runtime_transpile<S: BuildHasher>(
   global_state: GlobalState,
   sources: &HashMap<String, String, S>,
   options: &Option<String>,
-) -> Pin<Box<CompilationResultFuture>> {
+) -> Result<Value, OpError> {
   let req_msg = json!({
     "type": msg::CompilerRequestType::RuntimeTranspile as i32,
     "sources": sources,
@@ -679,7 +778,11 @@ pub fn runtime_transpile<S: BuildHasher>(
   .into_boxed_str()
   .into_boxed_bytes();
 
-  execute_in_thread_json(req_msg, global_state).boxed_local()
+  let msg = execute_in_thread(global_state, req_msg).await?;
+  let json_str = std::str::from_utf8(&msg).unwrap();
+  let v = serde_json::from_str::<serde_json::Value>(json_str)
+    .expect("Error decoding JSON string.");
+  Ok(v)
 }
 
 #[cfg(test)]
@@ -738,11 +841,7 @@ mod tests {
 
     let result = state
       .ts_compiler
-      .bundle(
-        state.clone(),
-        module_name,
-        Some(PathBuf::from("$deno$/bundle.js")),
-      )
+      .bundle(state.clone(), module_name, None)
       .await;
     assert!(result.is_ok());
   }

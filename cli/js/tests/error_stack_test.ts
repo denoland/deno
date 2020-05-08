@@ -2,7 +2,7 @@
 import { unitTest, assert } from "./test_util.ts";
 
 // @ts-ignore TypeScript (as of 3.7) does not support indexing namespaces by symbol
-const { setPrepareStackTrace } = Deno[Deno.symbols.internal];
+const { setPrepareStackTrace } = Deno[Deno.internal];
 
 interface CallSite {
   getThis(): unknown;

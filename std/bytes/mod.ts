@@ -113,7 +113,7 @@ export function repeat(origin: Uint8Array, count: number): Uint8Array {
   let bp = copyBytes(origin, nb);
 
   for (; bp < nb.length; bp *= 2) {
-    copyBytes(nb, nb.slice(0, bp), bp);
+    copyBytes(nb.slice(0, bp), nb, bp);
   }
 
   return nb;

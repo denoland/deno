@@ -4,7 +4,8 @@ use super::io::{StreamResource, StreamResourceHolder};
 use crate::op_error::OpError;
 use crate::resolve_addr::resolve_addr;
 use crate::state::State;
-use deno_core::*;
+use deno_core::CoreIsolate;
+use deno_core::ZeroCopyBuf;
 use futures::future::poll_fn;
 use futures::future::FutureExt;
 use std::convert::From;
@@ -27,10 +28,11 @@ use tokio_rustls::{
 };
 use webpki::DNSNameRef;
 
-pub fn init(i: &mut Isolate, s: &State) {
-  i.register_op("op_connect_tls", s.stateful_json_op(op_connect_tls));
-  i.register_op("op_listen_tls", s.stateful_json_op(op_listen_tls));
-  i.register_op("op_accept_tls", s.stateful_json_op(op_accept_tls));
+pub fn init(i: &mut CoreIsolate, s: &State) {
+  i.register_op("op_start_tls", s.stateful_json_op2(op_start_tls));
+  i.register_op("op_connect_tls", s.stateful_json_op2(op_connect_tls));
+  i.register_op("op_listen_tls", s.stateful_json_op2(op_listen_tls));
+  i.register_op("op_accept_tls", s.stateful_json_op2(op_accept_tls));
 }
 
 #[derive(Deserialize)]
@@ -42,14 +44,102 @@ struct ConnectTLSArgs {
   cert_file: Option<String>,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct StartTLSArgs {
+  rid: u32,
+  cert_file: Option<String>,
+  hostname: String,
+}
+
+pub fn op_start_tls(
+  isolate: &mut CoreIsolate,
+  state: &State,
+  args: Value,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<JsonOp, OpError> {
+  state.check_unstable("Deno.startTls");
+  let args: StartTLSArgs = serde_json::from_value(args)?;
+  let rid = args.rid as u32;
+  let cert_file = args.cert_file.clone();
+  let resource_table = isolate.resource_table.clone();
+
+  let mut domain = args.hostname;
+  if domain.is_empty() {
+    domain.push_str("localhost");
+  }
+
+  state.check_net(&domain, 0)?;
+  if let Some(path) = cert_file.clone() {
+    state.check_read(Path::new(&path))?;
+  }
+
+  let op = async move {
+    let mut resource_holder = {
+      let mut resource_table_ = resource_table.borrow_mut();
+      match resource_table_.remove::<StreamResourceHolder>(rid) {
+        Some(resource) => *resource,
+        None => return Err(OpError::bad_resource_id()),
+      }
+    };
+
+    if let StreamResource::TcpStream(ref mut tcp_stream) =
+      resource_holder.resource
+    {
+      let tcp_stream = tcp_stream.take().unwrap();
+      let local_addr = tcp_stream.local_addr()?;
+      let remote_addr = tcp_stream.peer_addr()?;
+      let mut config = ClientConfig::new();
+      config
+        .root_store
+        .add_server_trust_anchors(&webpki_roots::TLS_SERVER_ROOTS);
+      if let Some(path) = cert_file {
+        let key_file = File::open(path)?;
+        let reader = &mut BufReader::new(key_file);
+        config.root_store.add_pem_file(reader).unwrap();
+      }
+
+      let tls_connector = TlsConnector::from(Arc::new(config));
+      let dnsname =
+        DNSNameRef::try_from_ascii_str(&domain).expect("Invalid DNS lookup");
+      let tls_stream = tls_connector.connect(dnsname, tcp_stream).await?;
+
+      let mut resource_table_ = resource_table.borrow_mut();
+      let rid = resource_table_.add(
+        "clientTlsStream",
+        Box::new(StreamResourceHolder::new(StreamResource::ClientTlsStream(
+          Box::new(tls_stream),
+        ))),
+      );
+      Ok(json!({
+          "rid": rid,
+          "localAddr": {
+            "hostname": local_addr.ip().to_string(),
+            "port": local_addr.port(),
+            "transport": "tcp",
+          },
+          "remoteAddr": {
+            "hostname": remote_addr.ip().to_string(),
+            "port": remote_addr.port(),
+            "transport": "tcp",
+          }
+      }))
+    } else {
+      Err(OpError::bad_resource_id())
+    }
+  };
+  Ok(JsonOp::Async(op.boxed_local()))
+}
+
 pub fn op_connect_tls(
+  isolate: &mut CoreIsolate,
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   let args: ConnectTLSArgs = serde_json::from_value(args)?;
   let cert_file = args.cert_file.clone();
-  let state_ = state.clone();
+  let resource_table = isolate.resource_table.clone();
   state.check_net(&args.hostname, args.port)?;
   if let Some(path) = cert_file.clone() {
     state.check_read(Path::new(&path))?;
@@ -61,7 +151,7 @@ pub fn op_connect_tls(
   }
 
   let op = async move {
-    let addr = resolve_addr(&args.hostname, args.port).await?;
+    let addr = resolve_addr(&args.hostname, args.port)?;
     let tcp_stream = TcpStream::connect(&addr).await?;
     let local_addr = tcp_stream.local_addr()?;
     let remote_addr = tcp_stream.peer_addr()?;
@@ -78,8 +168,8 @@ pub fn op_connect_tls(
     let dnsname =
       DNSNameRef::try_from_ascii_str(&domain).expect("Invalid DNS lookup");
     let tls_stream = tls_connector.connect(dnsname, tcp_stream).await?;
-    let mut state = state_.borrow_mut();
-    let rid = state.resource_table.add(
+    let mut resource_table_ = resource_table.borrow_mut();
+    let rid = resource_table_.add(
       "clientTlsStream",
       Box::new(StreamResourceHolder::new(StreamResource::ClientTlsStream(
         Box::new(tls_stream),
@@ -218,6 +308,7 @@ struct ListenTlsArgs {
 }
 
 fn op_listen_tls(
+  isolate: &mut CoreIsolate,
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
@@ -237,9 +328,9 @@ fn op_listen_tls(
     .set_single_cert(load_certs(&cert_file)?, load_keys(&key_file)?.remove(0))
     .expect("invalid key or certificate");
   let tls_acceptor = TlsAcceptor::from(Arc::new(config));
-  let addr =
-    futures::executor::block_on(resolve_addr(&args.hostname, args.port))?;
-  let listener = futures::executor::block_on(TcpListener::bind(&addr))?;
+  let addr = resolve_addr(&args.hostname, args.port)?;
+  let std_listener = std::net::TcpListener::bind(&addr)?;
+  let listener = TcpListener::from_std(std_listener)?;
   let local_addr = listener.local_addr()?;
   let tls_listener_resource = TlsListenerResource {
     listener,
@@ -247,10 +338,9 @@ fn op_listen_tls(
     waker: None,
     local_addr,
   };
-  let mut state = state.borrow_mut();
-  let rid = state
-    .resource_table
-    .add("tlsListener", Box::new(tls_listener_resource));
+
+  let mut resource_table = isolate.resource_table.borrow_mut();
+  let rid = resource_table.add("tlsListener", Box::new(tls_listener_resource));
 
   Ok(JsonOp::Sync(json!({
     "rid": rid,
@@ -268,16 +358,17 @@ struct AcceptTlsArgs {
 }
 
 fn op_accept_tls(
-  state: &State,
+  isolate: &mut CoreIsolate,
+  _state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   let args: AcceptTlsArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
-  let state = state.clone();
+  let resource_table = isolate.resource_table.clone();
   let op = async move {
     let accept_fut = poll_fn(|cx| {
-      let resource_table = &mut state.borrow_mut().resource_table;
+      let mut resource_table = resource_table.borrow_mut();
       let listener_resource = resource_table
         .get_mut::<TlsListenerResource>(rid)
         .ok_or_else(|| {
@@ -303,9 +394,8 @@ fn op_accept_tls(
     let local_addr = tcp_stream.local_addr()?;
     let remote_addr = tcp_stream.peer_addr()?;
     let tls_acceptor = {
-      let state = state.borrow();
-      let resource = state
-        .resource_table
+      let resource_table = resource_table.borrow();
+      let resource = resource_table
         .get::<TlsListenerResource>(rid)
         .ok_or_else(OpError::bad_resource_id)
         .expect("Can't find tls listener");
@@ -313,8 +403,8 @@ fn op_accept_tls(
     };
     let tls_stream = tls_acceptor.accept(tcp_stream).await?;
     let rid = {
-      let mut state = state.borrow_mut();
-      state.resource_table.add(
+      let mut resource_table = resource_table.borrow_mut();
+      resource_table.add(
         "serverTlsStream",
         Box::new(StreamResourceHolder::new(StreamResource::ServerTlsStream(
           Box::new(tls_stream),

@@ -3,19 +3,23 @@ use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::fmt_errors::JSError;
 use crate::global_state::GlobalState;
 use crate::op_error::OpError;
-use crate::permissions::DenoPermissions;
+use crate::ops::io::get_stdio;
+use crate::permissions::Permissions;
 use crate::startup_data;
 use crate::state::State;
 use crate::tokio_util::create_basic_runtime;
 use crate::web_worker::WebWorker;
 use crate::web_worker::WebWorkerHandle;
 use crate::worker::WorkerEvent;
-use deno_core::*;
+use deno_core::CoreIsolate;
+use deno_core::ErrBox;
+use deno_core::ModuleSpecifier;
+use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
 use std::convert::From;
 use std::thread::JoinHandle;
 
-pub fn init(i: &mut Isolate, s: &State) {
+pub fn init(i: &mut CoreIsolate, s: &State) {
   i.register_op("op_create_worker", s.stateful_json_op(op_create_worker));
   i.register_op(
     "op_host_terminate_worker",
@@ -35,19 +39,33 @@ fn create_web_worker(
   worker_id: u32,
   name: String,
   global_state: GlobalState,
-  permissions: DenoPermissions,
+  permissions: Permissions,
   specifier: ModuleSpecifier,
+  has_deno_namespace: bool,
 ) -> Result<WebWorker, ErrBox> {
   let state =
     State::new_for_worker(global_state, Some(permissions), specifier)?;
 
-  let mut worker =
-    WebWorker::new(name.to_string(), startup_data::deno_isolate_init(), state);
+  let mut worker = WebWorker::new(
+    name.clone(),
+    startup_data::deno_isolate_init(),
+    state,
+    has_deno_namespace,
+  );
+
+  if has_deno_namespace {
+    let mut resource_table = worker.resource_table.borrow_mut();
+    let (stdin, stdout, stderr) = get_stdio();
+    resource_table.add("stdin", Box::new(stdin));
+    resource_table.add("stdout", Box::new(stdout));
+    resource_table.add("stderr", Box::new(stderr));
+  }
+
   // Instead of using name for log we use `worker-${id}` because
   // WebWorkers can have empty string as name.
   let script = format!(
-    "bootstrapWorkerRuntime(\"{}\", \"worker-{}\")",
-    name, worker_id
+    "bootstrap.workerRuntime(\"{}\", {}, \"worker-{}\")",
+    name, worker.has_deno_namespace, worker_id
   );
   worker.execute(&script)?;
 
@@ -59,10 +77,10 @@ fn run_worker_thread(
   worker_id: u32,
   name: String,
   global_state: GlobalState,
-  permissions: DenoPermissions,
+  permissions: Permissions,
   specifier: ModuleSpecifier,
-  has_source_code: bool,
-  source_code: String,
+  has_deno_namespace: bool,
+  maybe_source_code: Option<String>,
 ) -> Result<(JoinHandle<()>, WebWorkerHandle), ErrBox> {
   let (handle_sender, handle_receiver) =
     std::sync::mpsc::sync_channel::<Result<WebWorkerHandle, ErrBox>>(1);
@@ -80,6 +98,7 @@ fn run_worker_thread(
       global_state,
       permissions,
       specifier.clone(),
+      has_deno_namespace,
     );
 
     if let Err(err) = result {
@@ -108,7 +127,7 @@ fn run_worker_thread(
     // TODO: run with using select with terminate
 
     // Execute provided source code immediately
-    let result = if has_source_code {
+    let result = if let Some(source_code) = maybe_source_code {
       worker.execute(&source_code)
     } else {
       // TODO(bartlomieju): add "type": "classic", ie. ability to load
@@ -146,6 +165,7 @@ struct CreateWorkerArgs {
   specifier: String,
   has_source_code: bool,
   source_code: String,
+  use_deno_namespace: bool,
 }
 
 /// Create worker as the host
@@ -157,9 +177,16 @@ fn op_create_worker(
   let args: CreateWorkerArgs = serde_json::from_value(args)?;
 
   let specifier = args.specifier.clone();
-  let has_source_code = args.has_source_code;
-  let source_code = args.source_code.clone();
+  let maybe_source_code = if args.has_source_code {
+    Some(args.source_code.clone())
+  } else {
+    None
+  };
   let args_name = args.name;
+  let use_deno_namespace = args.use_deno_namespace;
+  if use_deno_namespace {
+    state.check_unstable("Worker.deno");
+  }
   let parent_state = state.clone();
   let mut state = state.borrow_mut();
   let global_state = state.global_state.clone();
@@ -179,8 +206,8 @@ fn op_create_worker(
     global_state,
     permissions,
     module_specifier,
-    has_source_code,
-    source_code,
+    use_deno_namespace,
+    maybe_source_code,
   )
   .map_err(|e| OpError::other(e.to_string()))?;
   // At this point all interactions with worker happen using thread

@@ -50,6 +50,7 @@ pub enum ErrorKind {
   /// if no better context is available.
   /// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Error
   Other = 22,
+  Busy = 23,
 }
 
 #[derive(Debug)]
@@ -102,6 +103,13 @@ impl OpError {
 
   pub fn invalid_utf8() -> OpError {
     Self::new(ErrorKind::InvalidData, "invalid utf8".to_string())
+  }
+
+  pub fn resource_unavailable() -> OpError {
+    Self::new(
+      ErrorKind::Busy,
+      "resource is unavailable because it is in use by a promise".to_string(),
+    )
   }
 }
 

@@ -17,7 +17,6 @@ mod js_errors;
 mod module_specifier;
 mod modules;
 mod ops;
-mod plugins;
 mod resources;
 mod shared_queue;
 
@@ -31,7 +30,6 @@ pub use crate::js_errors::*;
 pub use crate::module_specifier::*;
 pub use crate::modules::*;
 pub use crate::ops::*;
-pub use crate::plugins::*;
 pub use crate::resources::*;
 
 pub fn v8_version() -> &'static str {

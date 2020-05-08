@@ -17,7 +17,7 @@ import {
 import { red, green, gray, bold } from "../fmt/colors.ts";
 const { test } = Deno;
 
-test(function testingEqual(): void {
+test("testingEqual", function (): void {
   assert(equal("world", "world"));
   assert(!equal("hello", "world"));
   assert(equal(5, 5));
@@ -114,7 +114,7 @@ test(function testingEqual(): void {
   assert(!equal(new Uint8Array([1, 2, 3, 4]), new Uint8Array([2, 1, 4, 3])));
 });
 
-test(function testingNotEquals(): void {
+test("testingNotEquals", function (): void {
   const a = { foo: "bar" };
   const b = { bar: "foo" };
   assertNotEquals(a, b);
@@ -130,7 +130,7 @@ test(function testingNotEquals(): void {
   assertEquals(didThrow, true);
 });
 
-test(function testingAssertStringContains(): void {
+test("testingAssertStringContains", function (): void {
   assertStrContains("Denosaurus", "saur");
   assertStrContains("Denosaurus", "Deno");
   assertStrContains("Denosaurus", "rus");
@@ -145,7 +145,7 @@ test(function testingAssertStringContains(): void {
   assertEquals(didThrow, true);
 });
 
-test(function testingArrayContains(): void {
+test("testingArrayContains", function (): void {
   const fixture = ["deno", "iz", "luv"];
   const fixtureObject = [{ deno: "luv" }, { deno: "Js" }];
   assertArrayContains(fixture, ["deno"]);
@@ -161,7 +161,7 @@ test(function testingArrayContains(): void {
   assertEquals(didThrow, true);
 });
 
-test(function testingAssertStringContainsThrow(): void {
+test("testingAssertStringContainsThrow", function (): void {
   let didThrow = false;
   try {
     assertStrContains("Denosaurus from Jurassic", "Raptor");
@@ -176,11 +176,11 @@ test(function testingAssertStringContainsThrow(): void {
   assert(didThrow);
 });
 
-test(function testingAssertStringMatching(): void {
+test("testingAssertStringMatching", function (): void {
   assertMatch("foobar@deno.com", RegExp(/[a-zA-Z]+@[a-zA-Z]+.com/));
 });
 
-test(function testingAssertStringMatchingThrows(): void {
+test("testingAssertStringMatchingThrows", function (): void {
   let didThrow = false;
   try {
     assertMatch("Denosaurus from Jurassic", RegExp(/Raptor/));
@@ -195,7 +195,7 @@ test(function testingAssertStringMatchingThrows(): void {
   assert(didThrow);
 });
 
-test(function testingAssertsUnimplemented(): void {
+test("testingAssertsUnimplemented", function (): void {
   let didThrow = false;
   try {
     unimplemented();
@@ -207,7 +207,7 @@ test(function testingAssertsUnimplemented(): void {
   assert(didThrow);
 });
 
-test(function testingAssertsUnreachable(): void {
+test("testingAssertsUnreachable", function (): void {
   let didThrow = false;
   try {
     unreachable();
@@ -219,7 +219,7 @@ test(function testingAssertsUnreachable(): void {
   assert(didThrow);
 });
 
-test(function testingAssertFail(): void {
+test("testingAssertFail", function (): void {
   assertThrows(fail, AssertionError, "Failed assertion.");
   assertThrows(
     (): void => {
@@ -230,7 +230,7 @@ test(function testingAssertFail(): void {
   );
 });
 
-test(function testingAssertFailWithWrongErrorClass(): void {
+test("testingAssertFailWithWrongErrorClass", function (): void {
   assertThrows(
     (): void => {
       //This next assertThrows will throw an AssertionError due to the wrong
