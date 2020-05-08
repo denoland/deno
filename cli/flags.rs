@@ -565,7 +565,11 @@ fn upgrade_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let dry_run = matches.is_present("dry-run");
   let force = matches.is_present("force");
   let version = matches.value_of("version").map(|s| s.to_string());
-  flags.subcommand = DenoSubcommand::Upgrade { dry_run, force, version };
+  flags.subcommand = DenoSubcommand::Upgrade {
+    dry_run,
+    force,
+    version,
+  };
 }
 
 fn doc_parse(flags: &mut Flags, matches: &clap::ArgMatches) {

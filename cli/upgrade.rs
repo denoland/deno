@@ -52,30 +52,29 @@ async fn get_latest_version(client: &Client) -> Result<Version, ErrBox> {
 
 /// Asynchronously updates deno executable to greatest version
 /// if greatest version is available.
-pub async fn upgrade_command(dry_run: bool, force: bool, version: Option<String>) -> Result<(), ErrBox> {
+pub async fn upgrade_command(
+  dry_run: bool,
+  force: bool,
+  version: Option<String>,
+) -> Result<(), ErrBox> {
   let client = Client::builder().redirect(Policy::none()).build()?;
   let current_version = semver_parse(crate::version::DENO).unwrap();
 
   let install_version = match version {
-    Some(passed_version) => {
-      match semver_parse(&passed_version) {
-        Ok(ver) => {
-          if !force && current_version == ver {
-            println!(
-              "Version {} is already installed",
-              &ver
-            );
-            std::process::exit(1)
-          } else {
-            ver
-          }
-        },
-        Err(_) => {
-          eprintln!("Invalid semver passed");
+    Some(passed_version) => match semver_parse(&passed_version) {
+      Ok(ver) => {
+        if !force && current_version == ver {
+          println!("Version {} is already installed", &ver);
           std::process::exit(1)
+        } else {
+          ver
         }
       }
-    }
+      Err(_) => {
+        eprintln!("Invalid semver passed");
+        std::process::exit(1)
+      }
+    },
     None => {
       let latest_version = get_latest_version(&client).await?;
 
@@ -110,7 +109,6 @@ pub async fn upgrade_command(dry_run: bool, force: bool, version: Option<String>
   }
 
   println!("Upgrade done successfully");
-
 
   Ok(())
 }
