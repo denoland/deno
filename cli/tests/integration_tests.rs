@@ -598,7 +598,7 @@ fn repl_test_eof() {
   assert!(err.is_empty());
 }
 
-const REPL_MSG: &'static str = "exit using ctrl+d or close()\n";
+const REPL_MSG: &str = "exit using ctrl+d or close()\n";
 
 #[test]
 fn repl_test_close_command() {
