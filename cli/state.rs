@@ -494,6 +494,7 @@ impl State {
         self.check_read(Path::new(&path))?;
         Ok(())
       }
+      "data" => Ok(()),
       _ => unreachable!(),
     }
   }

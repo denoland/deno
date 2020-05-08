@@ -573,6 +573,21 @@ fn bundle_import_map() {
 }
 
 #[test]
+fn data_import() {
+  let status = util::deno_cmd()
+    .current_dir(util::tests_path())
+    .arg("test")
+    .arg("--unstable")
+    .arg("--reload")
+    .arg("data_import_test.js")
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(status.success());
+}
+
+#[test]
 fn repl_test_console_log() {
   let (out, err) = util::run_and_collect_output(
     true,
