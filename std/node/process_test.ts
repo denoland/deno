@@ -96,6 +96,6 @@ test({
 test({
   name: "process.env",
   fn() {
-    assertEquals(Deno.env.toObject()["Path"], Deno.env.get("PATH"));
+    assertEquals(typeof process.env.PATH, "string");
   },
 });
