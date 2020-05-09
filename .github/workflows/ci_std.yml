@@ -1,7 +1,10 @@
 name: ci_deno
 
-on: [push, pull_request]
-  paths: ['std/**']
+on: 
+  push:
+    paths: ['std/**']
+  pull_request:
+    paths: ['std/**']
 
 jobs:
   build:
