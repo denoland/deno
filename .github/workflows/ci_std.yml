@@ -1,0 +1,63 @@
+name: ci_deno
+
+on: [push, pull_request]
+  paths: ['std/**']
+
+jobs:
+  build:
+    name: ${{ matrix.config.kind }} ${{ matrix.config.os }}
+    if: |
+      github.event_name == 'push' ||
+      !startsWith(github.event.pull_request.head.label, 'denoland:')
+    runs-on: ${{ matrix.config.os }}
+    timeout-minutes: 60
+    strategy:
+      matrix:
+        config:
+          - os: ubuntu-16.04
+            kind: lint
+
+      # Always run master branch builds to completion. This allows the cache to
+      # stay mostly up-to-date in situations where a single job fails due to
+      # e.g. a flaky test.
+      fail-fast:
+        ${{ github.event_name != 'push' || github.ref != 'refs/heads/master' }}
+
+    steps:
+      - name: Configure git
+        run: git config --global core.symlinks true
+
+      - name: Clone repository
+        uses: actions/checkout@v1
+        with:
+          # Use depth > 1, because sometimes we need to rebuild master and if
+          # other commits have landed it will become impossible to rebuild if
+          # the checkout is too shallow.
+          fetch-depth: 5
+          submodules: true
+
+      - name: Install Python
+        uses: actions/setup-python@v1
+        with:
+          python-version: "2.7"
+          architecture: x64
+
+      - name: Remove unused versions of Python
+        if: startsWith(matrix.config.os, 'windows')
+        run: |-
+          $env:PATH -split ";" |
+            Where-Object { Test-Path "$_\python.exe" } |
+            Select-Object -Skip 1 |
+            ForEach-Object { Move-Item "$_" "$_.disabled" }
+
+      - name: Log versions
+        run: |
+          python --version
+
+      - name: lint.py
+        if: matrix.config.kind == 'lint'
+        run: python ./tools/lint.py --js
+
+      - name: test_format.py
+        if: matrix.config.kind == 'lint'
+        run: python ./tools/test_format.py

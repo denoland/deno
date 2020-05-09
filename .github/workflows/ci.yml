@@ -1,6 +1,7 @@
 name: ci
 
 on: [push, pull_request]
+  paths-ignore: ['std/**']
 
 jobs:
   build:
