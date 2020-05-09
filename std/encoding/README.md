@@ -243,9 +243,7 @@ Serializes `object` as a YAML document.
 
 ### More example
 
-See [`./yaml/example`](./yaml/example) folder and [js-yaml] repository.
-
-[js-yaml]: https://github.com/nodeca/js-yaml
+See https://github.com/nodeca/js-yaml.
 
 ## base32
 

@@ -3,14 +3,14 @@
 
 const { cwd } = Deno;
 import { FormatInputPathObject, ParsedPath } from "./interface.ts";
-import { CHAR_DOT, CHAR_FORWARD_SLASH } from "./constants.ts";
+import { CHAR_DOT, CHAR_FORWARD_SLASH } from "./_constants.ts";
 
 import {
   assertPath,
   normalizeString,
   isPosixPathSeparator,
   _format,
-} from "./utils.ts";
+} from "./_util.ts";
 
 export const sep = "/";
 export const delimiter = ":";

@@ -192,6 +192,7 @@ declare function clearInterval(id?: number): void;
 declare function queueMicrotask(func: Function): void;
 
 declare var console: Console;
+declare var crypto: Crypto;
 
 declare function addEventListener(
   type: string,
@@ -576,6 +577,26 @@ declare class Console {
   clear: () => void;
   trace: (...args: unknown[]) => void;
   static [Symbol.hasInstance](instance: Console): boolean;
+}
+
+declare interface Crypto {
+  readonly subtle: null;
+  getRandomValues<
+    T extends
+      | Int8Array
+      | Int16Array
+      | Int32Array
+      | Uint8Array
+      | Uint16Array
+      | Uint32Array
+      | Uint8ClampedArray
+      | Float32Array
+      | Float64Array
+      | DataView
+      | null
+  >(
+    array: T
+  ): T;
 }
 
 type FormDataEntryValue = File | string;

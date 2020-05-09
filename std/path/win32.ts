@@ -8,7 +8,7 @@ import {
   CHAR_BACKWARD_SLASH,
   CHAR_COLON,
   CHAR_QUESTION_MARK,
-} from "./constants.ts";
+} from "./_constants.ts";
 
 import {
   assertPath,
@@ -16,7 +16,7 @@ import {
   isWindowsDeviceRoot,
   normalizeString,
   _format,
-} from "./utils.ts";
+} from "./_util.ts";
 import { assert } from "../testing/asserts.ts";
 
 export const sep = "\\";

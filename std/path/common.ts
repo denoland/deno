@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import { SEP } from "./constants.ts";
+import { SEP } from "./separator.ts";
 
 /** Determines the common path from a set of paths, using an optional separator,
  * which defaults to the OS default separator.

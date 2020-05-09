@@ -12,6 +12,58 @@ use std::io::BufRead;
 use std::process::Command;
 use tempfile::TempDir;
 
+#[test]
+fn x_deno_warning() {
+  let g = util::http_server();
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("--reload")
+    .arg("http://127.0.0.1:4545/cli/tests/x_deno_warning.js")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  let stdout_str = std::str::from_utf8(&output.stdout).unwrap().trim();
+  let stderr_str = std::str::from_utf8(&output.stderr).unwrap().trim();
+  assert_eq!("testing x-deno-warning header", stdout_str);
+  assert!(deno::colors::strip_ansi_codes(stderr_str).contains("Warning foobar"));
+  drop(g);
+}
+
+#[test]
+fn no_color() {
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("cli/tests/no_color.js")
+    .env("NO_COLOR", "1")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  let stdout_str = std::str::from_utf8(&output.stdout).unwrap().trim();
+  assert_eq!("noColor true", stdout_str);
+
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("cli/tests/no_color.js")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  let stdout_str = std::str::from_utf8(&output.stdout).unwrap().trim();
+  assert_eq!("noColor false", stdout_str);
+}
+
 // TODO re-enable. This hangs on macOS
 // https://github.com/denoland/deno/issues/4262
 #[cfg(unix)]
@@ -190,6 +242,37 @@ fn upgrade_in_tmpdir() {
     .wait()
     .unwrap();
   assert!(status.success());
+  let _mtime2 = std::fs::metadata(&exe_path).unwrap().modified().unwrap();
+  // TODO(ry) assert!(mtime1 < mtime2);
+}
+
+// Warning: this test requires internet access.
+#[test]
+fn upgrade_with_version_in_tmpdir() {
+  let temp_dir = TempDir::new().unwrap();
+  let exe_path = if cfg!(windows) {
+    temp_dir.path().join("deno")
+  } else {
+    temp_dir.path().join("deno.exe")
+  };
+  let _ = std::fs::copy(util::deno_exe_path(), &exe_path).unwrap();
+  assert!(exe_path.exists());
+  let _mtime1 = std::fs::metadata(&exe_path).unwrap().modified().unwrap();
+  let status = Command::new(&exe_path)
+    .arg("upgrade")
+    .arg("--force")
+    .arg("--version")
+    .arg("0.42.0")
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(status.success());
+  let upgraded_deno_version = String::from_utf8(
+    Command::new(&exe_path).arg("-V").output().unwrap().stdout,
+  )
+  .unwrap();
+  assert!(upgraded_deno_version.contains("0.42.0"));
   let _mtime2 = std::fs::metadata(&exe_path).unwrap().modified().unwrap();
   // TODO(ry) assert!(mtime1 < mtime2);
 }
@@ -551,7 +634,7 @@ fn repl_test_console_log() {
     None,
     false,
   );
-  assert_eq!(out, "hello\nundefined\nworld\n");
+  assert!(out.ends_with("hello\nundefined\nworld\n"));
   assert!(err.is_empty());
 }
 
@@ -564,37 +647,20 @@ fn repl_test_eof() {
     None,
     false,
   );
-  assert_eq!(out, "3\n");
+  assert!(out.ends_with("3\n"));
   assert!(err.is_empty());
 }
 
+const REPL_MSG: &str = "exit using ctrl+d or close()\n";
+
 #[test]
-fn repl_test_exit_command() {
-  let (out, err) = util::run_and_collect_output(
+fn repl_test_close_command() {
+  let (_out, err) = util::run_and_collect_output(
     true,
     "repl",
-    Some(vec!["exit", "'ignored'"]),
+    Some(vec!["close()", "'ignored'"]),
     None,
     false,
-  );
-  assert!(out.is_empty());
-  assert!(err.is_empty());
-}
-
-#[test]
-fn repl_test_help_command() {
-  let (out, err) =
-    util::run_and_collect_output(true, "repl", Some(vec!["help"]), None, false);
-  assert_eq!(
-    out,
-    vec![
-      "_       Get last evaluation result",
-      "_error  Get last thrown error",
-      "exit    Exit the REPL",
-      "help    Print this help message",
-      "",
-    ]
-    .join("\n")
   );
   assert!(err.is_empty());
 }
@@ -608,7 +674,7 @@ fn repl_test_function() {
     None,
     false,
   );
-  assert_eq!(out, "[Function: writeFileSync]\n");
+  assert!(out.ends_with("[Function: writeFileSync]\n"));
   assert!(err.is_empty());
 }
 
@@ -621,7 +687,7 @@ fn repl_test_multiline() {
     None,
     false,
   );
-  assert_eq!(out, "3\n");
+  assert!(out.ends_with("3\n"));
   assert!(err.is_empty());
 }
 
@@ -634,7 +700,7 @@ fn repl_test_eval_unterminated() {
     None,
     false,
   );
-  assert!(out.is_empty());
+  assert!(out.ends_with(REPL_MSG));
   assert!(err.contains("Unexpected end of input"));
 }
 
@@ -647,7 +713,7 @@ fn repl_test_reference_error() {
     None,
     false,
   );
-  assert!(out.is_empty());
+  assert!(out.ends_with(REPL_MSG));
   assert!(err.contains("not_a_variable is not defined"));
 }
 
@@ -660,7 +726,7 @@ fn repl_test_syntax_error() {
     None,
     false,
   );
-  assert!(out.is_empty());
+  assert!(out.ends_with(REPL_MSG));
   assert!(err.contains("Unexpected identifier"));
 }
 
@@ -673,7 +739,7 @@ fn repl_test_type_error() {
     None,
     false,
   );
-  assert!(out.is_empty());
+  assert!(out.ends_with(REPL_MSG));
   assert!(err.contains("console is not a function"));
 }
 
@@ -686,7 +752,7 @@ fn repl_test_variable() {
     None,
     false,
   );
-  assert_eq!(out, "undefined\n123\n");
+  assert!(out.ends_with("undefined\n123\n"));
   assert!(err.is_empty());
 }
 
@@ -699,7 +765,7 @@ fn repl_test_lexical_scoped_variable() {
     None,
     false,
   );
-  assert_eq!(out, "undefined\n123\n");
+  assert!(out.ends_with("undefined\n123\n"));
   assert!(err.is_empty());
 }
 
@@ -718,7 +784,7 @@ fn repl_test_missing_deno_dir() {
   );
   assert!(read_dir(&test_deno_dir).is_ok());
   remove_dir_all(&test_deno_dir).unwrap();
-  assert_eq!(out, "1\n");
+  assert!(out.ends_with("1\n"));
   assert!(err.is_empty());
 }
 
@@ -731,7 +797,7 @@ fn repl_test_save_last_eval() {
     None,
     false,
   );
-  assert_eq!(out, "1\n1\n");
+  assert!(out.ends_with("1\n1\n"));
   assert!(err.is_empty());
 }
 
@@ -744,7 +810,7 @@ fn repl_test_save_last_thrown() {
     None,
     false,
   );
-  assert_eq!(out, "1\n");
+  assert!(out.ends_with("1\n"));
   assert_eq!(err, "Thrown: 1\n");
 }
 
@@ -757,9 +823,8 @@ fn repl_test_assign_underscore() {
     None,
     false,
   );
-  assert_eq!(
-    out,
-    "Last evaluation result is no longer saved to _.\n1\n2\n1\n"
+  assert!(
+    out.ends_with("Last evaluation result is no longer saved to _.\n1\n2\n1\n")
   );
   assert!(err.is_empty());
 }
@@ -773,16 +838,10 @@ fn repl_test_assign_underscore_error() {
     None,
     false,
   );
-  assert_eq!(
-    out,
-    "Last thrown error is no longer saved to _error.\n1\n1\n"
+  assert!(
+    out.ends_with("Last thrown error is no longer saved to _error.\n1\n1\n")
   );
   assert_eq!(err, "Thrown: 2\n");
-}
-
-#[test]
-fn target_test() {
-  util::run_python_script("tools/target_test.py")
 }
 
 #[test]
@@ -960,6 +1019,7 @@ fn workers() {
     .arg("test")
     .arg("--reload")
     .arg("--allow-net")
+    .arg("--unstable")
     .arg("workers_test.ts")
     .spawn()
     .unwrap()
@@ -1055,17 +1115,6 @@ itest!(_038_checkjs {
   output: "038_checkjs.js.out",
 });
 
-// TODO(bartlomieju): re-enable
-itest_ignore!(_039_worker_deno_ns {
-  args: "run --reload 039_worker_deno_ns.ts",
-  output: "039_worker_deno_ns.ts.out",
-});
-
-itest_ignore!(_040_worker_blob {
-  args: "run --reload 040_worker_blob.ts",
-  output: "040_worker_blob.ts.out",
-});
-
 itest!(_041_dyn_import_eval {
   args: "eval import('./subdir/mod4.js').then(console.log)",
   output: "041_dyn_import_eval.out",
@@ -1118,12 +1167,6 @@ itest_ignore!(_049_info_flag_script_jsx {
   http_server: true,
 });
 
-itest!(_051_wasm_import {
-  args: "run --reload --allow-net --allow-read 051_wasm_import.ts",
-  output: "051_wasm_import.ts.out",
-  http_server: true,
-});
-
 // TODO(ry) Re-enable flaky test https://github.com/denoland/deno/issues/4049
 itest_ignore!(_052_no_remote_flag {
   args:
@@ -1138,12 +1181,6 @@ itest!(_054_info_local_imports {
   args: "info 005_more_imports.ts",
   output: "054_info_local_imports.out",
   exit_code: 0,
-});
-
-itest!(_055_import_wasm_via_network {
-  args: "run --reload http://127.0.0.1:4545/cli/tests/055_import_wasm_via_network.ts",
-  output: "055_import_wasm_via_network.ts.out",
-  http_server: true,
 });
 
 itest!(_056_make_temp_file_write_perm {
@@ -1458,14 +1495,6 @@ itest!(error_local_static_import_from_remote_js {
   output: "error_local_static_import_from_remote.js.out",
 });
 
-// TODO(bartlomieju) Re-enable
-itest_ignore!(error_worker_dynamic {
-  args: "run --reload error_worker_dynamic.ts",
-  check_stderr: true,
-  exit_code: 1,
-  output: "error_worker_dynamic.ts.out",
-});
-
 itest!(exit_error42 {
   exit_code: 42,
   args: "run --reload exit_error42.ts",
@@ -1556,6 +1585,13 @@ itest!(run_v8_flags {
 itest!(run_v8_help {
   args: "repl --v8-flags=--help",
   output: "v8_help.out",
+});
+
+itest!(unsupported_dynamic_import_scheme {
+  args: "eval import('xxx:')",
+  output: "unsupported_dynamic_import_scheme.out",
+  check_stderr: true,
+  exit_code: 1,
 });
 
 itest!(wasm {
@@ -2152,10 +2188,7 @@ fn extract_ws_url_from_stderr(
 
 #[tokio::test]
 async fn inspector_connect() {
-  let script = deno::test_util::root_path()
-    .join("cli")
-    .join("tests")
-    .join("inspector1.js");
+  let script = util::tests_path().join("inspector1.js");
   let mut child = util::deno_cmd()
     .arg("run")
     // Warning: each inspector test should be on its own port to avoid
@@ -2174,6 +2207,7 @@ async fn inspector_connect() {
     .expect("Can't connect");
   assert_eq!("101 Switching Protocols", response.status().to_string());
   child.kill().unwrap();
+  child.wait().unwrap();
 }
 
 enum TestStep {
@@ -2184,10 +2218,7 @@ enum TestStep {
 
 #[tokio::test]
 async fn inspector_break_on_first_line() {
-  let script = deno::test_util::root_path()
-    .join("cli")
-    .join("tests")
-    .join("inspector2.js");
+  let script = util::tests_path().join("inspector2.js");
   let mut child = util::deno_cmd()
     .arg("run")
     // Warning: each inspector test should be on its own port to avoid
@@ -2206,10 +2237,16 @@ async fn inspector_break_on_first_line() {
     .expect("Can't connect");
   assert_eq!(response.status(), 101); // Switching protocols.
 
-  let (mut socket_tx, mut socket_rx) = socket.split();
+  let (mut socket_tx, socket_rx) = socket.split();
+  let mut socket_rx =
+    socket_rx.map(|msg| msg.unwrap().to_string()).filter(|msg| {
+      let pass = !msg.starts_with(r#"{"method":"Debugger.scriptParsed","#);
+      futures::future::ready(pass)
+    });
 
   let stdout = child.stdout.as_mut().unwrap();
-  let mut stdout_lines = std::io::BufReader::new(stdout).lines();
+  let mut stdout_lines =
+    std::io::BufReader::new(stdout).lines().map(|r| r.unwrap());
 
   use TestStep::*;
   let test_steps = vec![
@@ -2224,44 +2261,30 @@ async fn inspector_break_on_first_line() {
     WsRecv(r#"{"id":3,"result":{}}"#),
     WsRecv(r#"{"method":"Debugger.paused","#),
     WsSend(
-      r#"{"id":5,"method":"Runtime.evaluate","params":{"expression":"Deno.core.print(\"hello from the inspector\\n\")","contextId":1,"includeCommandLineAPI":true,"silent":false,"returnByValue":true}}"#,
+      r#"{"id":4,"method":"Runtime.evaluate","params":{"expression":"Deno.core.print(\"hello from the inspector\\n\")","contextId":1,"includeCommandLineAPI":true,"silent":false,"returnByValue":true}}"#,
     ),
-    WsRecv(r#"{"id":5,"result":{"result":{"type":"undefined"}}}"#),
+    WsRecv(r#"{"id":4,"result":{"result":{"type":"undefined"}}}"#),
     StdOut("hello from the inspector"),
-    WsSend(r#"{"id":6,"method":"Debugger.resume"}"#),
-    WsRecv(r#"{"id":6,"result":{}}"#),
+    WsSend(r#"{"id":5,"method":"Debugger.resume"}"#),
+    WsRecv(r#"{"id":5,"result":{}}"#),
     StdOut("hello from the script"),
   ];
 
   for step in test_steps {
     match step {
-      StdOut(s) => match stdout_lines.next() {
-        Some(Ok(line)) => assert_eq!(line, s),
-        other => panic!(other),
-      },
-      WsRecv(s) => loop {
-        let msg = match socket_rx.next().await {
-          Some(Ok(msg)) => msg.to_string(),
-          other => panic!(other),
-        };
-        if !msg.starts_with(r#"{"method":"Debugger.scriptParsed","#) {
-          assert!(msg.starts_with(s));
-          break;
-        }
-      },
+      StdOut(s) => assert_eq!(&stdout_lines.next().unwrap(), s),
+      WsRecv(s) => assert!(socket_rx.next().await.unwrap().starts_with(s)),
       WsSend(s) => socket_tx.send(s.into()).await.unwrap(),
     }
   }
 
   child.kill().unwrap();
+  child.wait().unwrap();
 }
 
 #[tokio::test]
 async fn inspector_pause() {
-  let script = deno::test_util::root_path()
-    .join("cli")
-    .join("tests")
-    .join("inspector1.js");
+  let script = util::tests_path().join("inspector1.js");
   let mut child = util::deno_cmd()
     .arg("run")
     // Warning: each inspector test should be on its own port to avoid
@@ -2317,10 +2340,7 @@ async fn inspector_pause() {
 
 #[tokio::test]
 async fn inspector_port_collision() {
-  let script = deno::test_util::root_path()
-    .join("cli")
-    .join("tests")
-    .join("inspector1.js");
+  let script = util::tests_path().join("inspector1.js");
   let mut child1 = util::deno_cmd()
     .arg("run")
     .arg("--inspect=127.0.0.1:9231")
@@ -2348,8 +2368,114 @@ async fn inspector_port_collision() {
     .read_to_string(&mut stderr_str_2)
     .unwrap();
   assert!(stderr_str_2.contains("Cannot start inspector server"));
+
   child1.kill().unwrap();
-  let _ = child2.kill();
+  child1.wait().unwrap();
+  child2.wait().unwrap();
+}
+
+#[tokio::test]
+async fn inspector_does_not_hang() {
+  let script = util::tests_path().join("inspector3.js");
+  let mut child = util::deno_cmd()
+    .arg("run")
+    // Warning: each inspector test should be on its own port to avoid
+    // conflicting with another inspector test.
+    .arg("--inspect-brk=127.0.0.1:9232")
+    .arg(script)
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+
+  let stderr = child.stderr.as_mut().unwrap();
+  let ws_url = extract_ws_url_from_stderr(stderr);
+  let (socket, response) = tokio_tungstenite::connect_async(ws_url)
+    .await
+    .expect("Can't connect");
+  assert_eq!(response.status(), 101); // Switching protocols.
+
+  let (mut socket_tx, socket_rx) = socket.split();
+  let mut socket_rx =
+    socket_rx.map(|msg| msg.unwrap().to_string()).filter(|msg| {
+      let pass = !msg.starts_with(r#"{"method":"Debugger.scriptParsed","#);
+      futures::future::ready(pass)
+    });
+
+  let stdout = child.stdout.as_mut().unwrap();
+  let mut stdout_lines =
+    std::io::BufReader::new(stdout).lines().map(|r| r.unwrap());
+
+  use TestStep::*;
+  let test_steps = vec![
+    WsSend(r#"{"id":1,"method":"Runtime.enable"}"#),
+    WsSend(r#"{"id":2,"method":"Debugger.enable"}"#),
+    WsRecv(
+      r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
+    ),
+    WsRecv(r#"{"id":1,"result":{}}"#),
+    WsRecv(r#"{"id":2,"result":{"debuggerId":"#),
+    WsSend(r#"{"id":3,"method":"Runtime.runIfWaitingForDebugger"}"#),
+    WsRecv(r#"{"id":3,"result":{}}"#),
+    WsRecv(r#"{"method":"Debugger.paused","#),
+    WsSend(r#"{"id":4,"method":"Debugger.resume"}"#),
+    WsRecv(r#"{"id":4,"result":{}}"#),
+    WsRecv(r#"{"method":"Debugger.resumed","params":{}}"#),
+  ];
+
+  for step in test_steps {
+    match step {
+      WsRecv(s) => assert!(socket_rx.next().await.unwrap().starts_with(s)),
+      WsSend(s) => socket_tx.send(s.into()).await.unwrap(),
+      _ => unreachable!(),
+    }
+  }
+
+  for i in 0..128u32 {
+    let request_id = i + 10;
+    // Expect the number {i} on stdout.
+    let s = format!("{}", i);
+    assert_eq!(stdout_lines.next().unwrap(), s);
+    // Expect hitting the `debugger` statement.
+    let s = r#"{"method":"Debugger.paused","#;
+    assert!(socket_rx.next().await.unwrap().starts_with(s));
+    // Send the 'Debugger.resume' request.
+    let s = format!(r#"{{"id":{},"method":"Debugger.resume"}}"#, request_id);
+    socket_tx.send(s.into()).await.unwrap();
+    // Expect confirmation of the 'Debugger.resume' request.
+    let s = format!(r#"{{"id":{},"result":{{}}}}"#, request_id);
+    assert_eq!(socket_rx.next().await.unwrap(), s);
+    let s = r#"{"method":"Debugger.resumed","params":{}}"#;
+    assert_eq!(socket_rx.next().await.unwrap(), s);
+  }
+
+  // Check that we can gracefully close the websocket connection.
+  socket_tx.close().await.unwrap();
+  socket_rx.for_each(|_| async {}).await;
+
+  assert_eq!(&stdout_lines.next().unwrap(), "done");
+  assert!(child.wait().unwrap().success());
+}
+
+#[test]
+fn exec_path() {
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("--allow-read")
+    .arg("cli/tests/exec_path.ts")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  let stdout_str = std::str::from_utf8(&output.stdout).unwrap().trim();
+  let actual =
+    std::fs::canonicalize(&std::path::Path::new(stdout_str)).unwrap();
+  let expected =
+    std::fs::canonicalize(deno::test_util::deno_exe_path()).unwrap();
+  assert_eq!(expected, actual);
 }
 
 mod util {
@@ -2378,12 +2504,10 @@ mod util {
     envs: Option<Vec<(String, String)>>,
     need_http_server: bool,
   ) -> (String, String) {
-    let root = root_path();
-    let tests_dir = root.join("cli").join("tests");
     let mut deno_process_builder = deno_cmd();
-    deno_process_builder.args(args.split_whitespace());
     deno_process_builder
-      .current_dir(&tests_dir)
+      .args(args.split_whitespace())
+      .current_dir(&deno::test_util::tests_path())
       .stdin(Stdio::piped())
       .stdout(Stdio::piped())
       .stderr(Stdio::piped());

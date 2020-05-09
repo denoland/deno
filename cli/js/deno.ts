@@ -59,7 +59,7 @@ export {
 export { metrics, Metrics } from "./ops/runtime.ts";
 export { mkdirSync, mkdir, MkdirOptions } from "./ops/fs/mkdir.ts";
 export { connect, listen, Listener, Conn } from "./net.ts";
-export { dir, env, exit, execPath, hostname } from "./ops/os.ts";
+export { dir, env, exit, execPath } from "./ops/os.ts";
 export { run, RunOptions, Process, ProcessStatus } from "./process.ts";
 export { DirEntry, readDirSync, readDir } from "./ops/fs/read_dir.ts";
 export { readFileSync, readFile } from "./read_file.ts";

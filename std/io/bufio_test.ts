@@ -15,7 +15,7 @@ import {
   readStringDelim,
   readLines,
 } from "./bufio.ts";
-import * as iotest from "./iotest.ts";
+import * as iotest from "./_iotest.ts";
 import { charCode, copyBytes, stringsReader } from "./util.ts";
 
 const encoder = new TextEncoder();

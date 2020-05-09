@@ -6,7 +6,7 @@ import {
   stringToBytes,
   uuidToBytes,
 } from "./_common.ts";
-import { Sha1 } from "../util/sha1.ts";
+import { Sha1 } from "../hash/sha1.ts";
 import { isString } from "../node/util.ts";
 import { assert } from "../testing/asserts.ts";
 

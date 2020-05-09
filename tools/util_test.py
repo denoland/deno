@@ -37,6 +37,9 @@ class TestUtil(DenoTestCase):
         assert stats3['req_per_sec'] == 96037
         assert stats3['max_latency'] == 6.36
 
+    def test_executable_exists(self):
+        assert os.path.exists(self.deno_exe)
+
 
 if __name__ == '__main__':
     run_tests()

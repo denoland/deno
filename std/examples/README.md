@@ -10,7 +10,7 @@ bookmark to a program.)
 ### A TCP echo server
 
 ```shell
-deno  --allow-net https://deno.land/std/examples/echo_server.ts
+deno run --allow-net https://deno.land/std/examples/echo_server.ts
 ```
 
 Or
@@ -40,7 +40,7 @@ echo example.json | catj -
 ### curl - print the contents of a url to standard output
 
 ```shell
-deno --allow-net=deno.land https://deno.land/std/examples/curl.ts https://deno.land/
+deno run --allow-net=deno.land https://deno.land/std/examples/curl.ts https://deno.land/
 ```
 
 ### gist - easily create and upload Gists
@@ -55,7 +55,7 @@ gist --t "Example gist 2" script2.ts
 ### chat - WebSocket chat server and browser client
 
 ```shell
-deno --allow-net --allow-read https://deno.land/std/examples/chat/server.ts
+deno run --allow-net --allow-read https://deno.land/std/examples/chat/server.ts
 ```
 
 Open http://localhost:8080 on the browser.
