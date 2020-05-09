@@ -8,7 +8,7 @@ TypeScript code.
 To define a test you need to call `Deno.test` with a name and function to be
 tested:
 
-```typescript
+```ts
 Deno.test("hello world", () => {
   const x = 1 + 2;
   if (x !== 3) {
@@ -20,7 +20,7 @@ Deno.test("hello world", () => {
 There are some useful assertion utilities at https://deno.land/std/testing to
 make testing easier:
 
-```typescript
+```ts
 import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
 
 Deno.test("hello world", () => {
@@ -34,7 +34,7 @@ Deno.test("hello world", () => {
 You can also test asynchronous code by passing a test function that returns a
 promise. For this you can use the `async` keyword when defining a function:
 
-```typescript
+```ts
 Deno.test("async hello world", async () => {
   const x = 1 + 2;
 
@@ -63,7 +63,7 @@ test runner checks that each operation you start in the test is completed before
 the end of the test. This is enabled by default for all tests, but can be
 disabled by setting the `sanitizeOps` boolean to false in the test definition.
 
-```typescript
+```ts
 Deno.test({
   name: "leaky test",
   fn() {
@@ -80,7 +80,7 @@ Sometimes you want to ignore tests based on some sort of condition (for example
 you only want a test to run on Windows). For this you can use the `ignore`
 boolean in the test definition. If it is set to true the test will be skipped.
 
-```typescript
+```ts
 Deno.test({
   name: "do macOS feature",
   ignore: Deno.build.os !== "darwin",
@@ -95,11 +95,12 @@ Deno.test({
 To run the test, call `deno test` with the file that contains your test
 function:
 
-```bash
-deno test my_test.ts
+shell deno test my_test.ts
+
 ```
 
 You can also omit the file name, in which case all tests in the current
 directory (recursively) that match the glob `{*_,}test.{js,ts,jsx,tsx}` will be
 run. If you pass a directory, all files in the directory that match this glob
 will be run.
+```
