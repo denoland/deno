@@ -75,7 +75,7 @@ export class Sha1 {
 
       if (typeof msg !== "string") {
         for (i = this.#start; index < length && i < 64; ++index) {
-          blocks[i >> 2] |= (msg[index] as number) << SHIFT[i++ & 3];
+          blocks[i >> 2] |= msg[index] << SHIFT[i++ & 3];
         }
       } else {
         for (i = this.#start; index < length && i < 64; ++index) {
@@ -119,7 +119,7 @@ export class Sha1 {
     return this;
   }
 
-  finalize(): void {
+  private finalize(): void {
     if (this.#finalized) {
       return;
     }
@@ -141,7 +141,7 @@ export class Sha1 {
     this.hash();
   }
 
-  hash(): void {
+  private hash(): void {
     let a = this.#h0;
     let b = this.#h1;
     let c = this.#h2;
