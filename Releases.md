@@ -6,6 +6,34 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### 1.0.0-rc2 / 2020.05.09
+
+- BREAKING(std): Reorg modules, mark as unstable (#5087, #5177)
+- BREAKING(std): Revert "Make WebSocket Reader/Writer" (#5002, #5141)
+- BREAKING: Deno.execPath should require allow-read (#5109)
+- BREAKING: Make Deno.hostname unstable #5108
+- BREAKING: Make Worker with Deno namespace unstable (#5128)
+- BREAKING: Remove support for .wasm imports (#5135)
+- feat(bundle): Add --config flag (#5130)
+- feat(bundle): Format output (#5139)
+- feat(doc): Handle default exports (#4873)
+- feat(repl): Add hint on how to exit REPL (#5143)
+- feat(std/fmt): add 8bit and 24bit ANSI colors (#5168)
+- feat(std/node): add fs.writefile / fs.promises.writeFile (#5054)
+- feat(upgrade): Allow specifying a version (#5156)
+- feat(workers): "crypto" global accessible in Worker scope (#5121)
+- feat: Add support for X-Deno-Warning header (#5161)
+- fix(imports): Fix panic on unsupported scheme (#5131)
+- fix(inspector): Fix inspector hanging when task budget is exceeded (#5083)
+- fix: Allow multiple Set-Cookie headers (#5100)
+- fix: Better error message when DENO_DIR can't be created (#5120)
+- fix: Check destination length in encodeInto in TextEncoder (#5078)
+- fix: Correct type error text (#5150)
+- fix: Remove unnecessary ProcessStdio declaration (#5092)
+- fix: unify display of errors from Rust and JS (#5183)
+- upgrade: rust crates (#5104)
+- upgrade: to rusty_v8 0.4.2 / V8 8.4.300 (#5113)
+
 ### v1.0.0-rc1 / 2020.05.04
 
 - BREAKING: make WebSocket directly implement AsyncIterable (#5045)
