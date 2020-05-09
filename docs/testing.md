@@ -95,12 +95,11 @@ Deno.test({
 To run the test, call `deno test` with the file that contains your test
 function:
 
-shell deno test my_test.ts
-
+```shell
+deno test my_test.ts
 ```
 
 You can also omit the file name, in which case all tests in the current
 directory (recursively) that match the glob `{*_,}test.{js,ts,jsx,tsx}` will be
 run. If you pass a directory, all files in the directory that match this glob
 will be run.
-```
