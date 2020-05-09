@@ -117,15 +117,15 @@ test("String resolver fn will not execute if msg will not be logged", function (
 test("String resolver fn resolves as expected", function (): void {
   const handler = new TestHandler("ERROR");
   const logger = new Logger("ERROR", [handler]);
-  const expensiveFunction = (): string => {
-    return "expensive function result";
+  const expensiveFunction = (x: number): string => {
+    return "expensive function result " + x;
   };
 
-  const firstInlineData = logger.error(expensiveFunction);
-  const secondInlineData = logger.error(expensiveFunction, 1, "abc");
-  assertEquals(firstInlineData, "expensive function result");
+  const firstInlineData = logger.error(() => expensiveFunction(5));
+  const secondInlineData = logger.error(() => expensiveFunction(5), 1, "abc");
+  assertEquals(firstInlineData, "expensive function result 5");
   assertEquals(secondInlineData, {
-    msg: "expensive function result",
+    msg: "expensive function result 5",
     args: [1, "abc"],
   });
 });

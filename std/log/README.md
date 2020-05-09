@@ -233,11 +233,17 @@ open and close file/HTTP connection or any other action you might need.
 For examples check source code of `FileHandler` and `TestHandler`.
 
 ### Inline Logging
-Log functions return the data passed to them.  Data is returned regardless if the
+
+Log functions return the data passed to them. Data is returned regardless if the
 logger actually logs it.
+
 ```ts
-const loggedData: string = logger.debug('hello world');
-const allData: { msg: string, args: unknown[]} = logger.debug('hello world', 1, 'abc');
+const loggedData: string = logger.debug("hello world");
+const allData: { msg: string; args: unknown[] } = logger.debug(
+  "hello world",
+  1,
+  "abc"
+);
 const computedData: string = logger.debug(constructValue());
 console.log(loggedData); // 'hello world'
 console.log(allData); // { msg: 'hello world', args: [1, 'abc'] }
@@ -245,24 +251,28 @@ console.log(computedData); // value of constructValue()
 ```
 
 ### Deferred log statement resolution
-Some log statements are expensive to compute.  Using deferred resolution, you can
+
+Some log statements are expensive to compute. Using deferred resolution, you can
 prevent the computation taking place if the logger won't log the message.
+
 ```ts
-function expensiveLogMsgResolver(): string {
+function expensiveLogMsgResolver(someNum: number, someBool: boolean): string {
   // some expensive computation to compute logMessage
   return logMessage;
 }
 
 // expensiveLogMsgResolver will only be called as a function if this logger will
 // log debug messages
-logger.debug(expensiveLogMsgResolver);
+logger.debug(() => expensiveLogMsgResolver(5, true));
 ```
+
 NOTE: When using deferred log statement resolution, `undefined` will be returned
-if the resolver function is not called because the logger won't log it.  E.g.
+if the resolver function is not called because the logger won't log it. E.g.
+
 ```ts
 await log.setup({
   handlers: {
-    console: new log.handlers.ConsoleHandler("DEBUG")
+    console: new log.handlers.ConsoleHandler("DEBUG"),
   },
 
   loggers: {
@@ -273,5 +283,6 @@ await log.setup({
   },
 });
 
-const data = logger.debug(expensiveLogMsgResolver);  // not logged, as debug < error
+const data = logger.debug(() => expensiveLogMsgResolver(5, true)); // not logged, as debug < error
 console.log(data); // undefined
+```
