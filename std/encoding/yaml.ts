@@ -8,6 +8,8 @@ export {
   DumpOptions as StringifyOptions,
   stringify,
 } from "./_yaml/stringify.ts";
+export { SchemaDefinition } from "./_yaml/schema.ts";
+export { StyleVariant } from "./_yaml/type.ts";
 export {
   CORE_SCHEMA,
   DEFAULT_SCHEMA,
