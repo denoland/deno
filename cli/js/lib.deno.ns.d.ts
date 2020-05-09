@@ -97,14 +97,6 @@ declare namespace Deno {
    * */
   export function test(name: string, fn: () => void | Promise<void>): void;
 
-  /** Get the `hostname` of the machine the Deno process is running on.
-   *
-   *       console.log(Deno.hostname());
-   *
-   *  Requires `allow-env` permission.
-   */
-  export function hostname(): string;
-
   /** Exit the Deno process with optional exit code. If no exit code is supplied
    * then Deno will exit with return code of 0.
    *
