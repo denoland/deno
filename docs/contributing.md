@@ -16,7 +16,7 @@
 ## Development
 
 Instructions on how to build from source can be found
-[here](./building-from-source).
+[here](./contributing/building_from_source.md).
 
 ## Submitting a Pull Request
 
