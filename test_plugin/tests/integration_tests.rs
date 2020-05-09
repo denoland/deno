@@ -37,7 +37,10 @@ fn basic() {
   let stdout = std::str::from_utf8(&output.stdout).unwrap();
   let stderr = std::str::from_utf8(&output.stderr).unwrap();
   if !output.status.success() {
-    println!("Deno run command exited with unsuccessful status {}", output.status);
+    println!(
+      "Deno run command exited with unsuccessful status {}",
+      output.status
+    );
     println!("stdout {}", stdout);
     println!("stderr {}", stderr);
   }
