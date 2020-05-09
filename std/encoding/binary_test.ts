@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import { assertEquals, assertThrowsAsync } from "../testing/asserts.ts";
+import { assertEquals } from "../testing/asserts.ts";
 import {
   getNBytes,
   putVarbig,
@@ -198,7 +198,7 @@ Deno.test("testVarbigBytes", function (): void {
   );
 });
 
-Deno.test("testVarbigBytesLittleEndian", async function (): Promise<void> {
+Deno.test("testVarbigBytesLittleEndian", function (): void {
   const rslt = varbigBytes({
     type: "int64",
     value: 0x0807060504030201n,
@@ -210,12 +210,12 @@ Deno.test("testVarbigBytesLittleEndian", async function (): Promise<void> {
   );
 });
 
-Deno.test("testVarnumBytes", async function (): Promise<void> {
+Deno.test("testVarnumBytes", function (): void {
   const rslt = varnumBytes({ type: "int32", value: 0x01020304 });
   assertEquals(rslt, new Uint8Array([0x01, 0x02, 0x03, 0x04]));
 });
 
-Deno.test("testVarnumBytesLittleEndian", async function (): Promise<void> {
+Deno.test("testVarnumBytesLittleEndian", function (): void {
   const rslt = varnumBytes({
     type: "int32",
     value: 0x04030201,
