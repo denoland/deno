@@ -13,6 +13,28 @@ use std::process::Command;
 use tempfile::TempDir;
 
 #[test]
+fn x_deno_warning() {
+  let g = util::http_server();
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("--reload")
+    .arg("http://127.0.0.1:4545/cli/tests/x_deno_warning.js")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  let stdout_str = std::str::from_utf8(&output.stdout).unwrap().trim();
+  let stderr_str = std::str::from_utf8(&output.stderr).unwrap().trim();
+  assert_eq!("testing x-deno-warning header", stdout_str);
+  assert!(deno::colors::strip_ansi_codes(stderr_str).contains("Warning foobar"));
+  drop(g);
+}
+
+#[test]
 fn no_color() {
   let output = util::deno_cmd()
     .current_dir(util::root_path())
