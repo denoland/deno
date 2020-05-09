@@ -34,14 +34,6 @@
   "testing": {
     "name": "Testing"
   },
-  "plugins": {
-    "name": "Plugins",
-    "children": {
-      "how_do_plugins_work": "How do plugins work?",
-      "creating_plugins": "Creating plugins",
-      "using_plugins": "Using plugins"
-    }
-  },
   "tools": {
     "name": "Tools",
     "children": {
