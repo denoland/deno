@@ -31,7 +31,7 @@ export class WritableStreamDefaultWriterImpl<W>
       throw new TypeError("Invalid stream.");
     }
     if (isWritableStreamLocked(stream)) {
-      throw new TypeError("Cannot create a reader for a locked stream.");
+      throw new TypeError("Cannot create a writer for a locked stream.");
     }
     this[sym.ownerWritableStream] = stream;
     stream[sym.writer] = this;

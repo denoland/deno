@@ -1,4 +1,4 @@
-use crate::compilers::CompiledModule;
+use crate::tsc::CompiledModule;
 use serde_json::json;
 pub use serde_json::Value;
 use std::collections::HashMap;

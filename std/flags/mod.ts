@@ -18,11 +18,11 @@ export interface ArgParsingOptions {
    *      import { parse } from "https://deno.land/std/flags/mod.ts";
    *      // options['--'] is now set to false
    *      console.dir(parse(args, { "--": false }));
-   *      // $ deno example.ts -- a arg1
+   *      // $ deno run example.ts -- a arg1
    *      // output: { _: [ "example.ts", "a", "arg1" ] }
    *      // options['--'] is now set to true
    *      console.dir(parse(args, { "--": true }));
-   *      // $ deno example.ts -- a arg1
+   *      // $ deno run example.ts -- a arg1
    *      // output: { _: [ "example.ts" ], --: [ "a", "arg1" ] }
    *
    * Defaults to `false`.

@@ -12,6 +12,36 @@ use std::io::BufRead;
 use std::process::Command;
 use tempfile::TempDir;
 
+#[test]
+fn no_color() {
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("cli/tests/no_color.js")
+    .env("NO_COLOR", "1")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  let stdout_str = std::str::from_utf8(&output.stdout).unwrap().trim();
+  assert_eq!("noColor true", stdout_str);
+
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("cli/tests/no_color.js")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  let stdout_str = std::str::from_utf8(&output.stdout).unwrap().trim();
+  assert_eq!("noColor false", stdout_str);
+}
+
 // TODO re-enable. This hangs on macOS
 // https://github.com/denoland/deno/issues/4262
 #[cfg(unix)]
@@ -551,7 +581,7 @@ fn repl_test_console_log() {
     None,
     false,
   );
-  assert_eq!(out, "hello\nundefined\nworld\n");
+  assert!(out.ends_with("hello\nundefined\nworld\n"));
   assert!(err.is_empty());
 }
 
@@ -564,37 +594,20 @@ fn repl_test_eof() {
     None,
     false,
   );
-  assert_eq!(out, "3\n");
+  assert!(out.ends_with("3\n"));
   assert!(err.is_empty());
 }
 
+const REPL_MSG: &str = "exit using ctrl+d or close()\n";
+
 #[test]
-fn repl_test_exit_command() {
-  let (out, err) = util::run_and_collect_output(
+fn repl_test_close_command() {
+  let (_out, err) = util::run_and_collect_output(
     true,
     "repl",
-    Some(vec!["exit", "'ignored'"]),
+    Some(vec!["close()", "'ignored'"]),
     None,
     false,
-  );
-  assert!(out.is_empty());
-  assert!(err.is_empty());
-}
-
-#[test]
-fn repl_test_help_command() {
-  let (out, err) =
-    util::run_and_collect_output(true, "repl", Some(vec!["help"]), None, false);
-  assert_eq!(
-    out,
-    vec![
-      "_       Get last evaluation result",
-      "_error  Get last thrown error",
-      "exit    Exit the REPL",
-      "help    Print this help message",
-      "",
-    ]
-    .join("\n")
   );
   assert!(err.is_empty());
 }
@@ -608,7 +621,7 @@ fn repl_test_function() {
     None,
     false,
   );
-  assert_eq!(out, "[Function: writeFileSync]\n");
+  assert!(out.ends_with("[Function: writeFileSync]\n"));
   assert!(err.is_empty());
 }
 
@@ -621,7 +634,7 @@ fn repl_test_multiline() {
     None,
     false,
   );
-  assert_eq!(out, "3\n");
+  assert!(out.ends_with("3\n"));
   assert!(err.is_empty());
 }
 
@@ -634,7 +647,7 @@ fn repl_test_eval_unterminated() {
     None,
     false,
   );
-  assert!(out.is_empty());
+  assert!(out.ends_with(REPL_MSG));
   assert!(err.contains("Unexpected end of input"));
 }
 
@@ -647,7 +660,7 @@ fn repl_test_reference_error() {
     None,
     false,
   );
-  assert!(out.is_empty());
+  assert!(out.ends_with(REPL_MSG));
   assert!(err.contains("not_a_variable is not defined"));
 }
 
@@ -660,7 +673,7 @@ fn repl_test_syntax_error() {
     None,
     false,
   );
-  assert!(out.is_empty());
+  assert!(out.ends_with(REPL_MSG));
   assert!(err.contains("Unexpected identifier"));
 }
 
@@ -673,7 +686,7 @@ fn repl_test_type_error() {
     None,
     false,
   );
-  assert!(out.is_empty());
+  assert!(out.ends_with(REPL_MSG));
   assert!(err.contains("console is not a function"));
 }
 
@@ -686,7 +699,7 @@ fn repl_test_variable() {
     None,
     false,
   );
-  assert_eq!(out, "undefined\n123\n");
+  assert!(out.ends_with("undefined\n123\n"));
   assert!(err.is_empty());
 }
 
@@ -699,7 +712,7 @@ fn repl_test_lexical_scoped_variable() {
     None,
     false,
   );
-  assert_eq!(out, "undefined\n123\n");
+  assert!(out.ends_with("undefined\n123\n"));
   assert!(err.is_empty());
 }
 
@@ -718,7 +731,7 @@ fn repl_test_missing_deno_dir() {
   );
   assert!(read_dir(&test_deno_dir).is_ok());
   remove_dir_all(&test_deno_dir).unwrap();
-  assert_eq!(out, "1\n");
+  assert!(out.ends_with("1\n"));
   assert!(err.is_empty());
 }
 
@@ -731,7 +744,7 @@ fn repl_test_save_last_eval() {
     None,
     false,
   );
-  assert_eq!(out, "1\n1\n");
+  assert!(out.ends_with("1\n1\n"));
   assert!(err.is_empty());
 }
 
@@ -744,7 +757,7 @@ fn repl_test_save_last_thrown() {
     None,
     false,
   );
-  assert_eq!(out, "1\n");
+  assert!(out.ends_with("1\n"));
   assert_eq!(err, "Thrown: 1\n");
 }
 
@@ -757,9 +770,8 @@ fn repl_test_assign_underscore() {
     None,
     false,
   );
-  assert_eq!(
-    out,
-    "Last evaluation result is no longer saved to _.\n1\n2\n1\n"
+  assert!(
+    out.ends_with("Last evaluation result is no longer saved to _.\n1\n2\n1\n")
   );
   assert!(err.is_empty());
 }
@@ -773,16 +785,10 @@ fn repl_test_assign_underscore_error() {
     None,
     false,
   );
-  assert_eq!(
-    out,
-    "Last thrown error is no longer saved to _error.\n1\n1\n"
+  assert!(
+    out.ends_with("Last thrown error is no longer saved to _error.\n1\n1\n")
   );
   assert_eq!(err, "Thrown: 2\n");
-}
-
-#[test]
-fn target_test() {
-  util::run_python_script("tools/target_test.py")
 }
 
 #[test]
@@ -960,6 +966,7 @@ fn workers() {
     .arg("test")
     .arg("--reload")
     .arg("--allow-net")
+    .arg("--unstable")
     .arg("workers_test.ts")
     .spawn()
     .unwrap()
@@ -1055,17 +1062,6 @@ itest!(_038_checkjs {
   output: "038_checkjs.js.out",
 });
 
-// TODO(bartlomieju): re-enable
-itest_ignore!(_039_worker_deno_ns {
-  args: "run --reload 039_worker_deno_ns.ts",
-  output: "039_worker_deno_ns.ts.out",
-});
-
-itest_ignore!(_040_worker_blob {
-  args: "run --reload 040_worker_blob.ts",
-  output: "040_worker_blob.ts.out",
-});
-
 itest!(_041_dyn_import_eval {
   args: "eval import('./subdir/mod4.js').then(console.log)",
   output: "041_dyn_import_eval.out",
@@ -1118,12 +1114,6 @@ itest_ignore!(_049_info_flag_script_jsx {
   http_server: true,
 });
 
-itest!(_051_wasm_import {
-  args: "run --reload --allow-net --allow-read 051_wasm_import.ts",
-  output: "051_wasm_import.ts.out",
-  http_server: true,
-});
-
 // TODO(ry) Re-enable flaky test https://github.com/denoland/deno/issues/4049
 itest_ignore!(_052_no_remote_flag {
   args:
@@ -1138,12 +1128,6 @@ itest!(_054_info_local_imports {
   args: "info 005_more_imports.ts",
   output: "054_info_local_imports.out",
   exit_code: 0,
-});
-
-itest!(_055_import_wasm_via_network {
-  args: "run --reload http://127.0.0.1:4545/cli/tests/055_import_wasm_via_network.ts",
-  output: "055_import_wasm_via_network.ts.out",
-  http_server: true,
 });
 
 itest!(_056_make_temp_file_write_perm {
@@ -1458,14 +1442,6 @@ itest!(error_local_static_import_from_remote_js {
   output: "error_local_static_import_from_remote.js.out",
 });
 
-// TODO(bartlomieju) Re-enable
-itest_ignore!(error_worker_dynamic {
-  args: "run --reload error_worker_dynamic.ts",
-  check_stderr: true,
-  exit_code: 1,
-  output: "error_worker_dynamic.ts.out",
-});
-
 itest!(exit_error42 {
   exit_code: 42,
   args: "run --reload exit_error42.ts",
@@ -1556,6 +1532,13 @@ itest!(run_v8_flags {
 itest!(run_v8_help {
   args: "repl --v8-flags=--help",
   output: "v8_help.out",
+});
+
+itest!(unsupported_dynamic_import_scheme {
+  args: "eval import('xxx:')",
+  output: "unsupported_dynamic_import_scheme.out",
+  check_stderr: true,
+  exit_code: 1,
 });
 
 itest!(wasm {
@@ -2468,12 +2451,10 @@ mod util {
     envs: Option<Vec<(String, String)>>,
     need_http_server: bool,
   ) -> (String, String) {
-    let root = root_path();
-    let tests_dir = root.join("cli").join("tests");
     let mut deno_process_builder = deno_cmd();
-    deno_process_builder.args(args.split_whitespace());
     deno_process_builder
-      .current_dir(&tests_dir)
+      .args(args.split_whitespace())
+      .current_dir(&deno::test_util::tests_path())
       .stdin(Stdio::piped())
       .stdout(Stdio::piped())
       .stderr(Stdio::piped());

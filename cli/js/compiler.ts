@@ -4,10 +4,9 @@
 // This module is the entry point for "compiler" isolate, ie. the one
 // that is created when Deno needs to compile TS/WASM to JS.
 //
-// It provides a two functions that should be called by Rust:
+// It provides a single functions that should be called by Rust:
 //  - `bootstrapTsCompilerRuntime`
-//  - `bootstrapWasmCompilerRuntime`
-// Either of these functions must be called when creating isolate
+// This functions must be called when creating isolate
 // to properly setup runtime.
 
 // NOTE: this import has side effects!
@@ -22,7 +21,6 @@ import { sendAsync, sendSync } from "./ops/dispatch_json.ts";
 import { bootstrapWorkerRuntime } from "./runtime_worker.ts";
 import { assert, log } from "./util.ts";
 import * as util from "./util.ts";
-import { atob } from "./web/text_encoding.ts";
 import { TextDecoder, TextEncoder } from "./web/text_encoding.ts";
 import { core } from "./core.ts";
 
@@ -1123,16 +1121,6 @@ function commonPath(paths: string[], sep = "/"): string {
   return prefix.endsWith(sep) ? prefix : `${prefix}${sep}`;
 }
 
-function base64ToUint8Array(data: string): Uint8Array {
-  const binString = atob(data);
-  const size = binString.length;
-  const bytes = new Uint8Array(size);
-  for (let i = 0; i < size; i++) {
-    bytes[i] = binString.charCodeAt(i);
-  }
-  return bytes;
-}
-
 let rootExports: string[] | undefined;
 
 function normalizeUrl(rootName: string): string {
@@ -1585,41 +1573,9 @@ async function tsCompilerOnMessage({
   // Currently Rust shuts down worker after single request
 }
 
-async function wasmCompilerOnMessage({
-  data: binary,
-}: {
-  data: string;
-}): Promise<void> {
-  const buffer = base64ToUint8Array(binary);
-  // @ts-ignore
-  const compiled = await WebAssembly.compile(buffer);
-
-  util.log(">>> WASM compile start");
-
-  const importList = Array.from(
-    // @ts-ignore
-    new Set(WebAssembly.Module.imports(compiled).map(({ module }) => module))
-  );
-  const exportList = Array.from(
-    // @ts-ignore
-    new Set(WebAssembly.Module.exports(compiled).map(({ name }) => name))
-  );
-
-  globalThis.postMessage({ importList, exportList });
-
-  util.log("<<< WASM compile end");
-
-  // Currently Rust shuts down worker after single request
-}
-
 function bootstrapTsCompilerRuntime(): void {
   bootstrapWorkerRuntime("TS", false);
   globalThis.onmessage = tsCompilerOnMessage;
-}
-
-function bootstrapWasmCompilerRuntime(): void {
-  bootstrapWorkerRuntime("WASM", false);
-  globalThis.onmessage = wasmCompilerOnMessage;
 }
 
 // Removes the `__proto__` for security reasons.  This intentionally makes
@@ -1632,7 +1588,6 @@ Object.defineProperties(globalThis, {
   bootstrap: {
     value: {
       ...globalThis.bootstrap,
-      wasmCompilerRuntime: bootstrapWasmCompilerRuntime,
       tsCompilerRuntime: bootstrapTsCompilerRuntime,
     },
     configurable: true,

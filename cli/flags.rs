@@ -367,6 +367,7 @@ fn install_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
 fn bundle_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   ca_file_arg_parse(flags, matches);
+  config_arg_parse(flags, matches);
   importmap_arg_parse(flags, matches);
   unstable_arg_parse(flags, matches);
 
@@ -698,6 +699,7 @@ fn bundle_subcommand<'a, 'b>() -> App<'a, 'b> {
     .arg(ca_file_arg())
     .arg(importmap_arg())
     .arg(unstable_arg())
+    .arg(config_arg())
     .about("Bundle module and dependencies into single file")
     .long_about(
       "Output a single JavaScript file with all dependencies.
@@ -1920,6 +1922,30 @@ mod tests {
           source_file: "source.ts".to_string(),
           out_file: None,
         },
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn bundle_with_config() {
+    let r = flags_from_vec_safe(svec![
+      "deno",
+      "bundle",
+      "--config",
+      "tsconfig.json",
+      "source.ts",
+      "bundle.js"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Bundle {
+          source_file: "source.ts".to_string(),
+          out_file: Some(PathBuf::from("bundle.js")),
+        },
+        allow_write: true,
+        config_path: Some("tsconfig.json".to_owned()),
         ..Flags::default()
       }
     );

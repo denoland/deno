@@ -1,10 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
-use crate::compilers::runtime_compile;
-use crate::compilers::runtime_transpile;
 use crate::futures::FutureExt;
 use crate::op_error::OpError;
 use crate::state::State;
+use crate::tsc::runtime_compile;
+use crate::tsc::runtime_transpile;
 use deno_core::CoreIsolate;
 use deno_core::ZeroCopyBuf;
 use std::collections::HashMap;
