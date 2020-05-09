@@ -65,7 +65,6 @@ jobs:
       - name: Test deno/std
         run: |
           cd ./std
-          curl https://github.com/denoland/deno/releases/latest | tac | grep -o -P "\(\?\<=\\/den oland\\/deno\\/releases\\/tag\\/\).\*\(\?=\"\)" 
-          curl https://github.com/denoland/deno/releases/latest | tac | grep -o -P '(?<=\/den oland\/deno\/releases\/tag\/).*(?=")'
+          curl -L https://deno.land/x/install/install.sh | sh
           deno test --unstable -A
           cd ..

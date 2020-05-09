@@ -2,9 +2,21 @@ name: ci
 
 on: 
   push:
-    paths-ignore: ['std/**']
+    paths:
+      - '**'
+      - '!std/**'
+      - 'std/bytes/**'
+      - 'std/io/**'
+      - 'std/testing/**'
+      - 'std/textproto/**'
   pull_request:
-    paths-ignore: ['std/**']
+    paths:
+      - '**'
+      - '!std/**'
+      - 'std/bytes/**'
+      - 'std/io/**'
+      - 'std/testing/**'
+      - 'std/textproto/**'
 
 jobs:
   build:
