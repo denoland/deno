@@ -65,6 +65,7 @@ pub enum DenoSubcommand {
   Upgrade {
     dry_run: bool,
     force: bool,
+    version: Option<String>,
   },
 }
 
@@ -563,7 +564,12 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 fn upgrade_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let dry_run = matches.is_present("dry-run");
   let force = matches.is_present("force");
-  flags.subcommand = DenoSubcommand::Upgrade { dry_run, force };
+  let version = matches.value_of("version").map(|s| s.to_string());
+  flags.subcommand = DenoSubcommand::Upgrade {
+    dry_run,
+    force,
+    version,
+  };
 }
 
 fn doc_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
@@ -811,13 +817,20 @@ Future runs of this module will trigger no downloads or compilation unless
 
 fn upgrade_subcommand<'a, 'b>() -> App<'a, 'b> {
   SubCommand::with_name("upgrade")
-    .about("Upgrade deno executable to newest version")
+    .about("Upgrade deno executable to given version")
     .long_about(
-      "Upgrade deno executable to newest available version.
+      "Upgrade deno executable to the given version.
+Defaults to latest.
 
-The latest version is downloaded from
+The version is downloaded from
 https://github.com/denoland/deno/releases
 and is used to replace the current executable.",
+    )
+    .arg(
+      Arg::with_name("version")
+        .long("version")
+        .help("The version to upgrade to")
+        .takes_value(true),
     )
     .arg(
       Arg::with_name("dry-run")
@@ -1354,6 +1367,7 @@ mod tests {
         subcommand: DenoSubcommand::Upgrade {
           force: true,
           dry_run: true,
+          version: None
         },
         ..Flags::default()
       }

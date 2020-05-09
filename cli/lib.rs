@@ -616,9 +616,11 @@ pub fn main() {
       }
       return;
     }
-    DenoSubcommand::Upgrade { force, dry_run } => {
-      upgrade_command(dry_run, force).boxed_local()
-    }
+    DenoSubcommand::Upgrade {
+      force,
+      dry_run,
+      version,
+    } => upgrade_command(dry_run, force, version).boxed_local(),
     _ => unreachable!(),
   };
 

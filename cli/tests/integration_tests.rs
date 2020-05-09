@@ -224,6 +224,37 @@ fn upgrade_in_tmpdir() {
   // TODO(ry) assert!(mtime1 < mtime2);
 }
 
+// Warning: this test requires internet access.
+#[test]
+fn upgrade_with_version_in_tmpdir() {
+  let temp_dir = TempDir::new().unwrap();
+  let exe_path = if cfg!(windows) {
+    temp_dir.path().join("deno")
+  } else {
+    temp_dir.path().join("deno.exe")
+  };
+  let _ = std::fs::copy(util::deno_exe_path(), &exe_path).unwrap();
+  assert!(exe_path.exists());
+  let _mtime1 = std::fs::metadata(&exe_path).unwrap().modified().unwrap();
+  let status = Command::new(&exe_path)
+    .arg("upgrade")
+    .arg("--force")
+    .arg("--version")
+    .arg("0.42.0")
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(status.success());
+  let upgraded_deno_version = String::from_utf8(
+    Command::new(&exe_path).arg("-V").output().unwrap().stdout,
+  )
+  .unwrap();
+  assert!(upgraded_deno_version.contains("0.42.0"));
+  let _mtime2 = std::fs::metadata(&exe_path).unwrap().modified().unwrap();
+  // TODO(ry) assert!(mtime1 < mtime2);
+}
+
 #[test]
 fn installer_test_local_module_run() {
   let temp_dir = TempDir::new().expect("tempdir fail");
