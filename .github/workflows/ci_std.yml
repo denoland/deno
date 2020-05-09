@@ -8,7 +8,7 @@ on:
 
 jobs:
   build:
-    name: ${{ matrix.config.kind }} ${{ matrix.config.os }}
+    name: lint_and_test ${{ matrix.config.os }}
     if: |
       github.event_name == 'push' ||
       !startsWith(github.event.pull_request.head.label, 'denoland:')
@@ -18,7 +18,6 @@ jobs:
       matrix:
         config:
           - os: ubuntu-16.04
-            kind: lint
 
       # Always run master branch builds to completion. This allows the cache to
       # stay mostly up-to-date in situations where a single job fails due to
@@ -58,9 +57,13 @@ jobs:
           python --version
 
       - name: lint.py
-        if: matrix.config.kind == 'lint'
         run: python ./tools/lint.py --js
 
       - name: test_format.py
-        if: matrix.config.kind == 'lint'
         run: python ./tools/test_format.py
+
+      - name: Test deno/std
+        run: |
+          cd ./std
+          deno test --unstable -A
+          cd ..
