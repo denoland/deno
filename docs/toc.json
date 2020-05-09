@@ -16,9 +16,9 @@
   "runtime": {
     "name": "The Runtime",
     "children": {
+      "stability": "Stability",
       "program_lifecycle": "Program Lifecycle",
       "compiler_apis": "Compiler APIs",
-      "unstable": "Unstable APIs",
       "workers": "Workers"
     }
   },
