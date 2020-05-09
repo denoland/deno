@@ -3,7 +3,7 @@ import { assert, assertEquals } from "../../testing/asserts.ts";
 import { TextProtoReader } from "../../textproto/mod.ts";
 import { BufReader } from "../../io/bufio.ts";
 import { connectWebSocket, WebSocket } from "../../ws/mod.ts";
-import { delay } from "../../util/async.ts";
+import { delay } from "../../async/delay.ts";
 
 const { test } = Deno;
 

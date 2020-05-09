@@ -14,9 +14,9 @@ To reload all standard modules
 
 `--reload=https://deno.land/std`
 
-To reload specific modules (in this example - colors and file system utils) use
-a comma to separate URLs
+To reload specific modules (in this example - colors and file system copy) use a
+comma to separate URLs
 
-`--reload=https://deno.land/std/fs/utils.ts,https://deno.land/std/fmt/colors.ts`
+`--reload=https://deno.land/std/fs/copy.ts,https://deno.land/std/fmt/colors.ts`
 
 <!-- Should this be part of examples? --

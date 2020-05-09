@@ -1,13 +1,13 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 import { decode, encode } from "../encoding/utf8.ts";
-import { hasOwnProperty } from "../util/has_own_property.ts";
+import { hasOwnProperty } from "../_util/has_own_property.ts";
 import { BufReader, BufWriter } from "../io/bufio.ts";
 import { readLong, readShort, sliceLongToBytes } from "../io/ioutil.ts";
-import { Sha1 } from "../util/sha1.ts";
-import { writeResponse } from "../http/io.ts";
+import { Sha1 } from "../hash/sha1.ts";
+import { writeResponse } from "../http/_io.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
-import { Deferred, deferred } from "../util/async.ts";
+import { Deferred, deferred } from "../async/deferred.ts";
 import { assert } from "../testing/asserts.ts";
 import { concat } from "../bytes/mod.ts";
 import Conn = Deno.Conn;

@@ -12,12 +12,12 @@ console.dir(parse(args));
 ```
 
 ```
-$ deno run example.ts -a beep -b boop
+$ deno run https://deno.land/std/examples/flags.ts -a beep -b boop
 { _: [], a: 'beep', b: 'boop' }
 ```
 
 ```
-$ deno run example.ts -x 3 -y 4 -n5 -abc --beep=boop foo bar baz
+$ deno run https://deno.land/std/examples/flags.ts -x 3 -y 4 -n5 -abc --beep=boop foo bar baz
 { _: [ 'foo', 'bar', 'baz' ],
   x: 3,
   y: 4,
@@ -56,16 +56,13 @@ options can be:
   the `--` and `parsedArgs['--']` with everything after the `--`. Here's an
   example:
   ```ts
+  // $ deno run example.ts -- a arg1
   const { args } = Deno;
   import { parse } from "https://deno.land/std/flags/mod.ts";
-  // options['--'] is now set to false
   console.dir(parse(args, { "--": false }));
-  // $ deno run example.ts -- a arg1
-  // output: { _: [ "example.ts", "a", "arg1" ] }
-  // options['--'] is now set to true
+  // output: { _: [ "a", "arg1" ] }
   console.dir(parse(args, { "--": true }));
-  // $ deno run example.ts -- a arg1
-  // output: { _: [ "example.ts" ], --: [ "a", "arg1" ] }
+  // output: { _: [], --: [ "a", "arg1" ] }
   ```
 - `options.unknown` - a function which is invoked with a command line parameter
   not defined in the `options` configuration object. If the function returns

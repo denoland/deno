@@ -10,7 +10,7 @@ import {
   CHAR_DOT,
   CHAR_FORWARD_SLASH,
   CHAR_BACKWARD_SLASH,
-} from "./constants.ts";
+} from "./_constants.ts";
 
 export function assertPath(path: string): void {
   if (typeof path !== "string") {

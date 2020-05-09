@@ -21,7 +21,7 @@ import Writer = Deno.Writer;
 import Reader = Deno.Reader;
 import Conn = Deno.Conn;
 import Buffer = Deno.Buffer;
-import { delay } from "../util/async.ts";
+import { delay } from "../async/delay.ts";
 
 test("[ws] read unmasked text frame", async () => {
   // unmasked single text frame with payload "Hello"

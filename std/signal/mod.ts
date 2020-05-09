@@ -1,4 +1,4 @@
-import { MuxAsyncIterator } from "../util/async.ts";
+import { MuxAsyncIterator } from "../async/mux_async_iterator.ts";
 
 export type Disposable = { dispose: () => void };
 
