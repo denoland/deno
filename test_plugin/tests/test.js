@@ -94,3 +94,5 @@ await runTestAsync();
 
 runTestOpCount();
 runTestPluginClose();
+
+Deno.exit(0);
