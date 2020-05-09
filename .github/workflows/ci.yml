@@ -237,3 +237,11 @@ jobs:
           cd ../cli
           sleep 30
           cargo publish
+
+      - name: Test deno/std
+        run: |
+          cd ./std
+          curl https://github.com/denoland/deno/releases/latest | tac | grep -o -P "\(\?\<=\\/den oland\\/deno\\/releases\\/tag\\/\).\*\(\?=\"\)" 
+          curl https://github.com/denoland/deno/releases/latest | tac | grep -o -P '(?<=\/den oland\/deno\/releases\/tag\/).*(?=")'
+          deno test --unstable -A
+          cd ..
