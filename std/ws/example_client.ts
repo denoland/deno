@@ -3,7 +3,7 @@ import {
   isWebSocketCloseEvent,
   isWebSocketPingEvent,
   isWebSocketPongEvent,
-} from "../ws/mod.ts";
+} from "./mod.ts";
 import { encode } from "../encoding/utf8.ts";
 import { BufReader } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
