@@ -1,8 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { Sha256, HmacSha256, Message } from "./sha256.ts";
 import { assertEquals } from "../testing/asserts.ts";
+import { join, resolve } from "../path/mod.ts";
 
 const { test } = Deno;
+
+const testdataDir = resolve("hash", "testdata");
 
 /** Handy function to convert an array/array buffer to a string of hex values. */
 function toHexString(value: number[] | ArrayBuffer): string {
@@ -294,3 +297,13 @@ for (const method of methods) {
     }
   }
 }
+
+test("[hash/sha256] test Uint8Array from Reader", async () => {
+  const data = await Deno.readFile(join(testdataDir, "hashtest"));
+
+  const hash = new Sha256().update(data).hex();
+  assertEquals(
+    hash,
+    "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+  );
+});
