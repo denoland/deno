@@ -80,8 +80,10 @@ deno {} "$@"
 }
 
 fn get_installer_root() -> Result<PathBuf, Error> {
-  if let Ok(env_dir) = env::var("DENO_INSTALL_ROOT").map(PathBuf::from) {
-    return env_dir.canonicalize();
+  if let Ok(env_dir) = env::var("DENO_INSTALL_ROOT") {
+    if !env_dir.is_empty() {
+      return PathBuf::from(env_dir).canonicalize();
+    }
   }
   // In Windows's Powershell $HOME environmental variable maybe null
   // if so use $USERPROFILE instead.
@@ -248,7 +250,12 @@ fn is_in_path(dir: &PathBuf) -> bool {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use std::sync::Mutex;
   use tempfile::TempDir;
+
+  lazy_static! {
+    pub static ref ENV_LOCK: Mutex<()> = Mutex::new(());
+  }
 
   #[test]
   fn test_is_remote_url() {
@@ -317,6 +324,7 @@ mod tests {
 
   #[test]
   fn install_basic() {
+    let _guard = ENV_LOCK.lock().ok();
     let temp_dir = TempDir::new().expect("tempdir fail");
     let temp_dir_str = temp_dir.path().to_string_lossy().to_string();
     // NOTE: this test overrides environmental variables
@@ -325,8 +333,10 @@ mod tests {
     // It means that other test can override env vars when this test is running.
     let original_home = env::var_os("HOME");
     let original_user_profile = env::var_os("HOME");
+    let original_install_root = env::var_os("DENO_INSTALL_ROOT");
     env::set_var("HOME", &temp_dir_str);
     env::set_var("USERPROFILE", &temp_dir_str);
+    env::set_var("DENO_INSTALL_ROOT", "");
 
     install(
       Flags::default(),
@@ -356,6 +366,9 @@ mod tests {
     }
     if let Some(user_profile) = original_user_profile {
       env::set_var("USERPROFILE", user_profile);
+    }
+    if let Some(install_root) = original_install_root {
+      env::set_var("DENO_INSTALL_ROOT", install_root);
     }
   }
 
@@ -475,9 +488,11 @@ mod tests {
 
   #[test]
   fn install_custom_dir_env_var() {
+    let _guard = ENV_LOCK.lock().ok();
     let temp_dir = TempDir::new().expect("tempdir fail");
     let bin_dir = temp_dir.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
+    let original_install_root = env::var_os("DENO_INSTALL_ROOT");
     env::set_var("DENO_INSTALL_ROOT", temp_dir.path().to_path_buf());
 
     install(
@@ -499,6 +514,9 @@ mod tests {
     let content = fs::read_to_string(file_path).unwrap();
     assert!(content
       .contains(r#""run" "http://localhost:4545/cli/tests/echo_server.ts""#));
+    if let Some(install_root) = original_install_root {
+      env::set_var("DENO_INSTALL_ROOT", install_root);
+    }
   }
 
   #[test]
