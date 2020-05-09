@@ -1,9 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-type RawBaseTypes = "int8" | "int16" | "int32" | "uint8" | "uint16" | "uint32";
-type RawNumberTypes = RawBaseTypes | "float32" | "float64";
-type RawBigTypes = RawBaseTypes | "int64" | "uint64";
-type RawTypes = RawNumberTypes | RawBigTypes;
+type RawBaseType = "int8" | "int16" | "int32" | "uint8" | "uint16" | "uint32";
+type RawNumberType = RawBaseType | "float32" | "float64";
+type RawBigType = RawBaseType | "int64" | "uint64";
+export type DataType = RawNumberType | RawBigType;
 
 /** How encoded binary data is ordered. */
 export type Endianness = "little" | "big";
@@ -11,7 +11,7 @@ export type Endianness = "little" | "big";
 /** Options for working with the `number` type. */
 export interface VarnumOptions {
   /** The binary format used. */
-  dataType?: RawNumberTypes;
+  type: RawNumberType;
   /** The binary encoding order used. */
   endian?: Endianness;
 }
@@ -19,12 +19,12 @@ export interface VarnumOptions {
 /** Options for working with the `bigint` type. */
 export interface VarbigOptions {
   /** The binary format used. */
-  dataType?: RawBigTypes;
+  type: RawBigType;
   /** The binary encoding order used. */
   endian?: Endianness;
 }
 
-const rawTypeSizes = {
+const rawTypeSizes: Record<DataType, number> = {
   int8: 1,
   uint8: 1,
   int16: 2,
@@ -35,34 +35,36 @@ const rawTypeSizes = {
   uint64: 8,
   float32: 4,
   float64: 8,
-};
+} as const;
 
-/** Returns the number of bytes required to store the given data-type. */
-export function sizeof(dataType: RawTypes): number {
+/** Number of bytes required to store `dataType`. */
+export function sizeof(dataType: DataType): number {
   return rawTypeSizes[dataType];
 }
 
 /** Reads `n` bytes from `r`.
  *
- * Returns it in a `Uint8Array`, or throws `Deno.errors.UnexpectedEof` if `n` bytes cannot be read. */
+ * Returns it in a `Uint8Array`, or null if `n` bytes cannot be read. */
 export async function getNBytes(
   r: Deno.Reader,
   n: number
-): Promise<Uint8Array> {
+): Promise<Uint8Array | null> {
   const scratch = new Uint8Array(n);
   const nRead = await r.read(scratch);
-  if (nRead === null || nRead < n) throw new Deno.errors.UnexpectedEof();
+  if (nRead === null || nRead < n) return null;
   return scratch;
 }
 
-/** Decode a number from `b`, and return it as a `number`. Data-type defaults to `int32`.
- * Returns `null` if `b` is too short for the data-type given in `o`. */
-export function varnum(b: Uint8Array, o: VarnumOptions = {}): number | null {
-  o.dataType = o.dataType ?? "int32";
+/** Decode a `number` from `o.bytes`.
+ *
+ * If `o.bytes` is shorter than `sizeof(o.type)`, returns `null`. */
+export function varnum(
+  o: VarnumOptions & { bytes: Uint8Array }
+): number | null {
   const littleEndian = (o.endian ?? "big") === "little" ? true : false;
-  if (b.length < sizeof(o.dataType)) return null;
-  const view = new DataView(b.buffer);
-  switch (o.dataType) {
+  if (o.bytes.length < sizeof(o.type)) return null;
+  const view = new DataView(o.bytes.buffer);
+  switch (o.type) {
     case "int8":
       return view.getInt8(0);
     case "uint8":
@@ -82,14 +84,16 @@ export function varnum(b: Uint8Array, o: VarnumOptions = {}): number | null {
   }
 }
 
-/** Decode an integer from `b`, and return it as a `bigint`. Data-type defaults to `int64`.
- * Returns `null` if `b` is too short for the data-type given in `o`. */
-export function varbig(b: Uint8Array, o: VarbigOptions = {}): bigint | null {
-  o.dataType = o.dataType ?? "int64";
+/** Decode a `bigint` from `o.bytes`.
+ *
+ * If `o.bytes` is shorter than `sizeof(o.type)`, returns `null`. */
+export function varbig(
+  o: VarbigOptions & { bytes: Uint8Array }
+): bigint | null {
   const littleEndian = (o.endian ?? "big") === "little" ? true : false;
-  if (b.length < sizeof(o.dataType)) return null;
-  const view = new DataView(b.buffer);
-  switch (o.dataType) {
+  if (o.bytes.length < sizeof(o.type)) return null;
+  const view = new DataView(o.bytes.buffer);
+  switch (o.type) {
     case "int8":
       return BigInt(view.getInt8(0));
     case "uint8":
@@ -109,134 +113,146 @@ export function varbig(b: Uint8Array, o: VarbigOptions = {}): bigint | null {
   }
 }
 
-/** Encode a number `x` into `b`, and return the number of bytes used. Data-type defaults to `int32`.
- * Returns 0 if `b` is too short for the data-type given in `o`. */
+/** Encode `o.value` into `o.bytes`.
+ *
+ * Returns the number of bytes used, or `0` if `o.bytes` is shorter than `sizeof(o.type)`. */
 export function putVarnum(
-  b: Uint8Array,
-  x: number,
-  o: VarnumOptions = {}
+  o: VarnumOptions & { bytes: Uint8Array; value: number }
 ): number {
-  o.dataType = o.dataType ?? "int32";
   const littleEndian = (o.endian ?? "big") === "little" ? true : false;
-  if (b.length < sizeof(o.dataType)) return 0;
-  const view = new DataView(b.buffer);
-  switch (o.dataType) {
+  if (o.bytes.length < sizeof(o.type)) return 0;
+  const view = new DataView(o.bytes.buffer);
+  switch (o.type) {
     case "int8":
-      view.setInt8(0, x);
+      view.setInt8(0, o.value);
       break;
     case "uint8":
-      view.setUint8(0, x);
+      view.setUint8(0, o.value);
       break;
     case "int16":
-      view.setInt16(0, x, littleEndian);
+      view.setInt16(0, o.value, littleEndian);
       break;
     case "uint16":
-      view.setUint16(0, x, littleEndian);
+      view.setUint16(0, o.value, littleEndian);
       break;
     case "int32":
-      view.setInt32(0, x, littleEndian);
+      view.setInt32(0, o.value, littleEndian);
       break;
     case "uint32":
-      view.setUint32(0, x, littleEndian);
+      view.setUint32(0, o.value, littleEndian);
       break;
     case "float32":
-      view.setFloat32(0, x, littleEndian);
+      view.setFloat32(0, o.value, littleEndian);
       break;
     case "float64":
-      view.setFloat64(0, x, littleEndian);
+      view.setFloat64(0, o.value, littleEndian);
       break;
   }
-  return sizeof(o.dataType);
+  return sizeof(o.type);
 }
 
-/** Encode an integer `x` into `b`, and return the number of bytes used. Data-type defaults to `int64`.
- * Returns 0 if `b` is too short for the data-type given in `o`. */
+/** Encode `o.value` into `o.bytes`.
+ *
+ * Returns the number of bytes used, or `0` if `o.bytes` is shorter than `sizeof(o.type)`. */
 export function putVarbig(
-  b: Uint8Array,
-  x: bigint,
-  o: VarbigOptions = {}
+  o: VarbigOptions & { bytes: Uint8Array; value: bigint }
 ): number {
-  o.dataType = o.dataType ?? "int64";
   const littleEndian = (o.endian ?? "big") === "little" ? true : false;
-  if (b.length < sizeof(o.dataType)) return 0;
-  const view = new DataView(b.buffer);
-  switch (o.dataType) {
+  if (o.bytes.length < sizeof(o.type)) return 0;
+  const view = new DataView(o.bytes.buffer);
+  switch (o.type) {
     case "int8":
-      view.setInt8(0, Number(x));
+      view.setInt8(0, Number(o.value));
       break;
     case "uint8":
-      view.setUint8(0, Number(x));
+      view.setUint8(0, Number(o.value));
       break;
     case "int16":
-      view.setInt16(0, Number(x), littleEndian);
+      view.setInt16(0, Number(o.value), littleEndian);
       break;
     case "uint16":
-      view.setUint16(0, Number(x), littleEndian);
+      view.setUint16(0, Number(o.value), littleEndian);
       break;
     case "int32":
-      view.setInt32(0, Number(x), littleEndian);
+      view.setInt32(0, Number(o.value), littleEndian);
       break;
     case "uint32":
-      view.setUint32(0, Number(x), littleEndian);
+      view.setUint32(0, Number(o.value), littleEndian);
       break;
     case "int64":
-      view.setBigInt64(0, x, littleEndian);
+      view.setBigInt64(0, o.value, littleEndian);
       break;
     case "uint64":
-      view.setBigUint64(0, x, littleEndian);
+      view.setBigUint64(0, o.value, littleEndian);
       break;
   }
-  return sizeof(o.dataType);
+  return sizeof(o.type);
 }
 
-/** Reads a number from `r`, comsuming `sizeof(o.dataType)` bytes. Data-type defaults to `int32`.
+/** Decodes a number from `r`, comsuming `sizeof(o.type)` bytes.
  *
- * Returns it as `number`, or throws `Deno.errors.UnexpectedEof` if not enough bytes can be read. */
+ * If less than `sizeof(o.type)` bytes were read, returns `null`. */
 export async function readVarnum(
-  r: Deno.Reader,
-  o: VarnumOptions = {}
-): Promise<number> {
-  o.dataType = o.dataType ?? "int32";
-  const scratch = await getNBytes(r, sizeof(o.dataType));
-  return varnum(scratch, o) as number;
+  o: VarnumOptions & { src: Deno.Reader }
+): Promise<number | null> {
+  const scratch = await getNBytes(o.src, sizeof(o.type));
+  if (scratch === null) return null;
+  return varnum({ bytes: scratch, type: o.type, endian: o.endian }) as number;
 }
 
-/** Reads an integer from `r`, comsuming `sizeof(o.dataType)` bytes. Data-type defaults to `int64`.
+/** Decodes a bigint from `r`, comsuming `sizeof(o.type)` bytes.
  *
- * Returns it as `bigint`, or throws `Deno.errors.UnexpectedEof` if not enough bytes can be read. */
+ * If less than `sizeof(o.type)` bytes were read, returns `null`. */
 export async function readVarbig(
-  r: Deno.Reader,
-  o: VarbigOptions = {}
-): Promise<bigint> {
-  o.dataType = o.dataType ?? "int64";
-  const scratch = await getNBytes(r, sizeof(o.dataType));
-  return varbig(scratch, o) as bigint;
+  o: VarbigOptions & { src: Deno.Reader }
+): Promise<bigint | null> {
+  const scratch = await getNBytes(o.src, sizeof(o.type));
+  if (scratch === null) return null;
+  return varbig({ bytes: scratch, type: o.type, endian: o.endian }) as bigint;
 }
 
-/** Writes a number `x` to `w`. Data-type defaults to `int32`.
+/** Encodes and writes `o.value` to `o.dst`.
  *
  * Returns the number of bytes written. */
 export function writeVarnum(
-  w: Deno.Writer,
-  x: number,
-  o: VarnumOptions = {}
+  o: VarnumOptions & { dst: Deno.Writer; value: number }
 ): Promise<number> {
-  o.dataType = o.dataType ?? "int32";
-  const scratch = new Uint8Array(sizeof(o.dataType));
-  putVarnum(scratch, x, o);
-  return w.write(scratch);
+  const scratch = new Uint8Array(sizeof(o.type));
+  const nWritten = putVarnum({
+    type: o.type,
+    bytes: scratch,
+    value: o.value,
+    endian: o.endian,
+  });
+  return o.dst.write(scratch.subarray(0, nWritten));
 }
 
-/** Writes an integer `x` to `w`. Data-type defaults to `int64`.
+/** Encodes and writes `o.value` to `o.dst`.
  *
  * Returns the number of bytes written. */
 export function writeVarbig(
-  w: Deno.Writer,
-  x: bigint,
-  o: VarbigOptions = {}
+  o: VarbigOptions & { dst: Deno.Writer; value: bigint }
 ): Promise<number> {
-  o.dataType = o.dataType ?? "int64";
-  const scratch = new Uint8Array(sizeof(o.dataType));
-  putVarbig(scratch, x, o);
-  return w.write(scratch);
+  const scratch = new Uint8Array(sizeof(o.type));
+  const nWritten = putVarbig({
+    type: o.type,
+    bytes: scratch,
+    value: o.value,
+    endian: o.endian,
+  });
+  return o.dst.write(scratch.subarray(0, nWritten));
+}
+
+/** Encodes `o.value` into a new `Uint8Array`. */
+export function varnumBytes(o: VarnumOptions & { value: number }): Uint8Array {
+  const b = new Uint8Array(sizeof(o.type));
+  putVarnum({ bytes: b, type: o.type, value: o.value, endian: o.endian });
+  return b;
+}
+
+/** Encodes `o.value` into a new `Uint8Array`. */
+export function varbigBytes(o: VarbigOptions & { value: bigint }): Uint8Array {
+  const b = new Uint8Array(sizeof(o.type));
+  putVarbig({ bytes: b, type: o.type, value: o.value, endian: o.endian });
+  return b;
 }
