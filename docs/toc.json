@@ -17,7 +17,7 @@
     "name": "The Runtime",
     "children": {
       "stability": "Stability",
-      "program_lifecycle": "Program Lifecycle",
+      "program_lifecycle": "Program lifecycle",
       "compiler_apis": "Compiler APIs",
       "workers": "Workers"
     }
@@ -32,11 +32,7 @@
     }
   },
   "testing": {
-    "name": "Testing",
-    "children": {
-      "writing": "Writing tests",
-      "running": "Running tests"
-    }
+    "name": "Testing"
   },
   "plugins": {
     "name": "Plugins",
@@ -73,7 +69,7 @@
     "name": "Examples",
     "children": {
       "unix_cat": "Unix cat program",
-      "fileserver": "File server",
+      "file_server": "File server",
       "tcp_echo": "TCP echo server",
       "subprocess": "Creating a subprocess",
       "permissions": "Inspecting and revoking permissions",
