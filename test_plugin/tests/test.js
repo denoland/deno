@@ -39,20 +39,23 @@ function runTestSync() {
   console.log(`Plugin Sync Response: ${textDecoder.decode(response)}`);
 }
 
-Deno.core.setAsyncHandler(testAsync, (response) => {
-  console.log(`Plugin Async Response: ${textDecoder.decode(response)}`);
-});
-
 function runTestAsync() {
-  const response = Deno.core.dispatch(
-    testAsync,
-    new Uint8Array([116, 101, 115, 116]),
-    new Uint8Array([116, 101, 115, 116])
-  );
+  return new Promise((res, rej) => {
+    Deno.core.setAsyncHandler(testAsync, (response) => {
+      console.log(`Plugin Async Response: ${textDecoder.decode(response)}`);
+      res();
+    });
 
-  if (response != null || response != undefined) {
-    throw new Error("Expected null response!");
-  }
+    const response = Deno.core.dispatch(
+      testAsync,
+      new Uint8Array([116, 101, 115, 116]),
+      new Uint8Array([116, 101, 115, 116])
+    );
+
+    if (response != null || response != undefined) {
+      rej( new Error("Expected null response!"));
+    }
+  });
 }
 
 function runTestOpCount() {
@@ -87,7 +90,7 @@ After: ${postStr}`);
 }
 
 runTestSync();
-runTestAsync();
+await runTestAsync();
 
 runTestOpCount();
 runTestPluginClose();
