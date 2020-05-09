@@ -2,9 +2,6 @@
 //   cd test_plugin
 //   ../target/debug/deno run --allow-plugin --unstable tests/test.js debug
 
-// TODO(ry) Re-enable this test on windows. It is flaky for an unknown reason.
-#![cfg(not(windows))]
-
 use deno::test_util::*;
 use std::process::Command;
 
