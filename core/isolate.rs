@@ -125,6 +125,7 @@ impl From<Script<'_>> for OwnedScript {
 pub enum Snapshot {
   Static(&'static [u8]),
   JustCreated(v8::StartupData),
+  Boxed(Box<[u8]>),
 }
 
 /// Represents data used to initialize isolate at startup
@@ -250,6 +251,7 @@ impl CoreIsolate {
         params = match snapshot {
           Snapshot::Static(data) => params.snapshot_blob(data),
           Snapshot::JustCreated(data) => params.snapshot_blob(data),
+          Snapshot::Boxed(data) => params.snapshot_blob(data),
         };
         true
       } else {
