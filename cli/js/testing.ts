@@ -51,7 +51,10 @@ Before:
   - completed: ${pre.opsCompletedAsync}
 After:
   - dispatched: ${post.opsDispatchedAsync}
-  - completed: ${post.opsCompletedAsync}`
+  - completed: ${post.opsCompletedAsync}
+  
+Make sure to await all promises returned from Deno APIs before 
+finishing test case.`
     );
   };
 }
@@ -71,7 +74,10 @@ function assertResources(
     const postStr = JSON.stringify(post, null, 2);
     const msg = `Test case is leaking resources.
 Before: ${preStr}
-After: ${postStr}`;
+After: ${postStr}
+
+Make sure to close all open resource handles returned from Deno APIs before 
+finishing test case.`;
     assert(preStr === postStr, msg);
   };
 }
@@ -80,22 +86,26 @@ export interface TestDefinition {
   fn: () => void | Promise<void>;
   name: string;
   ignore?: boolean;
-  disableOpSanitizer?: boolean;
-  disableResourceSanitizer?: boolean;
+  sanitizeOps?: boolean;
+  sanitizeResources?: boolean;
 }
 
 const TEST_REGISTRY: TestDefinition[] = [];
 
 export function test(t: TestDefinition): void;
-export function test(fn: () => void | Promise<void>): void;
 export function test(name: string, fn: () => void | Promise<void>): void;
 // Main test function provided by Deno, as you can see it merely
 // creates a new object with "name" and "fn" fields.
 export function test(
-  t: string | TestDefinition | (() => void | Promise<void>),
+  t: string | TestDefinition,
   fn?: () => void | Promise<void>
 ): void {
   let testDef: TestDefinition;
+  const defaults = {
+    ignore: false,
+    sanitizeOps: true,
+    sanitizeResources: true,
+  };
 
   if (typeof t === "string") {
     if (!fn || typeof fn != "function") {
@@ -104,12 +114,7 @@ export function test(
     if (!t) {
       throw new TypeError("The test name can't be empty");
     }
-    testDef = { fn: fn as () => void | Promise<void>, name: t, ignore: false };
-  } else if (typeof t === "function") {
-    if (!t.name) {
-      throw new TypeError("The test function can't be anonymous");
-    }
-    testDef = { fn: t, name: t.name, ignore: false };
+    testDef = { fn: fn as () => void | Promise<void>, name: t, ...defaults };
   } else {
     if (!t.fn) {
       throw new TypeError("Missing test function");
@@ -117,21 +122,21 @@ export function test(
     if (!t.name) {
       throw new TypeError("The test name can't be empty");
     }
-    testDef = { ...t, ignore: Boolean(t.ignore) };
+    testDef = { ...defaults, ...t };
   }
 
-  if (testDef.disableOpSanitizer !== true) {
+  if (testDef.sanitizeOps) {
     testDef.fn = assertOps(testDef.fn);
   }
 
-  if (testDef.disableResourceSanitizer !== true) {
+  if (testDef.sanitizeResources) {
     testDef.fn = assertResources(testDef.fn);
   }
 
   TEST_REGISTRY.push(testDef);
 }
 
-export interface TestMessage {
+interface TestMessage {
   start?: {
     tests: TestDefinition[];
   };
@@ -306,7 +311,7 @@ function createFilterFn(
   };
 }
 
-export interface RunTestsOptions {
+interface RunTestsOptions {
   exitOnFail?: boolean;
   failFast?: boolean;
   filter?: string | RegExp;
@@ -316,7 +321,7 @@ export interface RunTestsOptions {
   onMessage?: (message: TestMessage) => void | Promise<void>;
 }
 
-export async function runTests({
+async function runTests({
   exitOnFail = true,
   failFast = false,
   filter = undefined,
@@ -361,3 +366,5 @@ export async function runTests({
 
   return endMsg!;
 }
+
+exposeForTest("runTests", runTests);

@@ -4,7 +4,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 // Install using `deno install`
-// $ deno install --allow-read catj https://deno.land/std/examples/catj.ts
+// $ deno install --allow-read https://deno.land/std/examples/catj.ts
 
 /* eslint-disable @typescript-eslint/no-use-before-define */
 import { parse } from "../flags/mod.ts";

@@ -18,10 +18,11 @@ import {
   readableStreamDefaultControllerGetDesiredSize,
   resetQueue,
   SizeAlgorithm,
+  setFunctionName,
 } from "./internals.ts";
 import { ReadableStreamImpl } from "./readable_stream.ts";
 import * as sym from "./symbols.ts";
-import { symbols } from "../../symbols.ts";
+import { customInspect } from "../console.ts";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export class ReadableStreamDefaultControllerImpl<R = any>
@@ -112,9 +113,14 @@ export class ReadableStreamDefaultControllerImpl<R = any>
     return pendingPromise;
   }
 
-  [symbols.customInspect](): string {
-    return `ReadableStreamDefaultController { desiredSize: ${String(
+  [customInspect](): string {
+    return `${this.constructor.name} { desiredSize: ${String(
       this.desiredSize
     )} }`;
   }
 }
+
+setFunctionName(
+  ReadableStreamDefaultControllerImpl,
+  "ReadableStreamDefaultController"
+);

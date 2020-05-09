@@ -192,7 +192,7 @@ declare function clearInterval(id?: number): void;
 declare function queueMicrotask(func: Function): void;
 
 declare var console: Console;
-declare var location: Location;
+declare var crypto: Crypto;
 
 declare function addEventListener(
   type: string,
@@ -309,6 +309,21 @@ interface QueuingStrategy<T = any> {
   size?: QueuingStrategySizeCallback<T>;
 }
 
+/** This Streams API interface provides a built-in byte length queuing strategy
+ * that can be used when constructing streams. */
+declare class CountQueuingStrategy implements QueuingStrategy {
+  constructor(options: { highWaterMark: number });
+  highWaterMark: number;
+  size(chunk: any): 1;
+}
+
+declare class ByteLengthQueuingStrategy
+  implements QueuingStrategy<ArrayBufferView> {
+  constructor(options: { highWaterMark: number });
+  highWaterMark: number;
+  size(chunk: ArrayBufferView): number;
+}
+
 /** This Streams API interface represents a readable stream of byte data. The
  * Fetch API offers a concrete instance of a ReadableStream through the body
  * property of a Response object. */
@@ -347,13 +362,58 @@ declare var ReadableStream: {
   ): ReadableStream<R>;
 };
 
-/** This Streams API interface provides a standard abstraction for writing streaming data to a destination, known as a sink. This object comes with built-in backpressure and queuing. */
-interface WritableStream<W = any> {
+interface WritableStreamDefaultControllerCloseCallback {
+  (): void | PromiseLike<void>;
+}
+
+interface WritableStreamDefaultControllerStartCallback {
+  (controller: WritableStreamDefaultController): void | PromiseLike<void>;
+}
+
+interface WritableStreamDefaultControllerWriteCallback<W> {
+  (chunk: W, controller: WritableStreamDefaultController): void | PromiseLike<
+    void
+  >;
+}
+
+interface WritableStreamErrorCallback {
+  (reason: any): void | PromiseLike<void>;
+}
+
+interface UnderlyingSink<W = any> {
+  abort?: WritableStreamErrorCallback;
+  close?: WritableStreamDefaultControllerCloseCallback;
+  start?: WritableStreamDefaultControllerStartCallback;
+  type?: undefined;
+  write?: WritableStreamDefaultControllerWriteCallback<W>;
+}
+
+/** This Streams API interface provides a standard abstraction for writing
+ * streaming data to a destination, known as a sink. This object comes with
+ * built-in backpressure and queuing. */
+declare class WritableStream<W = any> {
+  constructor(
+    underlyingSink?: UnderlyingSink<W>,
+    strategy?: QueuingStrategy<W>
+  );
   readonly locked: boolean;
   abort(reason?: any): Promise<void>;
+  close(): Promise<void>;
   getWriter(): WritableStreamDefaultWriter<W>;
 }
 
+/** This Streams API interface represents a controller allowing control of a
+ * WritableStream's state. When constructing a WritableStream, the underlying
+ * sink is given a corresponding WritableStreamDefaultController instance to
+ * manipulate. */
+interface WritableStreamDefaultController {
+  error(error?: any): void;
+}
+
+/** This Streams API interface is the object returned by
+ * WritableStream.getWriter() and once created locks the < writer to the
+ * WritableStream ensuring that no other streams can write to the underlying
+ * sink. */
 interface WritableStreamDefaultWriter<W = any> {
   readonly closed: Promise<void>;
   readonly desiredSize: number | null;
@@ -362,6 +422,42 @@ interface WritableStreamDefaultWriter<W = any> {
   close(): Promise<void>;
   releaseLock(): void;
   write(chunk: W): Promise<void>;
+}
+
+declare class TransformStream<I = any, O = any> {
+  constructor(
+    transformer?: Transformer<I, O>,
+    writableStrategy?: QueuingStrategy<I>,
+    readableStrategy?: QueuingStrategy<O>
+  );
+  readonly readable: ReadableStream<O>;
+  readonly writable: WritableStream<I>;
+}
+
+interface TransformStreamDefaultController<O = any> {
+  readonly desiredSize: number | null;
+  enqueue(chunk: O): void;
+  error(reason?: any): void;
+  terminate(): void;
+}
+
+interface Transformer<I = any, O = any> {
+  flush?: TransformStreamDefaultControllerCallback<O>;
+  readableType?: undefined;
+  start?: TransformStreamDefaultControllerCallback<O>;
+  transform?: TransformStreamDefaultControllerTransformCallback<I, O>;
+  writableType?: undefined;
+}
+
+interface TransformStreamDefaultControllerCallback<O> {
+  (controller: TransformStreamDefaultController<O>): void | PromiseLike<void>;
+}
+
+interface TransformStreamDefaultControllerTransformCallback<I, O> {
+  (
+    chunk: I,
+    controller: TransformStreamDefaultController<O>
+  ): void | PromiseLike<void>;
 }
 
 interface DOMStringList {
@@ -378,68 +474,6 @@ declare class DOMException extends Error {
   constructor(message?: string, name?: string);
   readonly name: string;
   readonly message: string;
-}
-
-/** The location (URL) of the object it is linked to. Changes done on it are
- * reflected on the object it relates to. Both the Document and Window
- * interface have such a linked Location, accessible via Document.location and
- * Window.location respectively. */
-declare interface Location {
-  /** Returns a DOMStringList object listing the origins of the ancestor
-   * browsing contexts, from the parent browsing context to the top-level
-   * browsing context. */
-  readonly ancestorOrigins: DOMStringList;
-  /** Returns the Location object's URL's fragment (includes leading "#" if
-   * non-empty).
-   *
-   * Can be set, to navigate to the same URL with a changed fragment (ignores
-   * leading "#"). */
-  hash: string;
-  /** Returns the Location object's URL's host and port (if different from the
-   * default port for the scheme).
-   *
-   * Can be set, to navigate to the same URL with a changed host and port. */
-  host: string;
-  /** Returns the Location object's URL's host.
-   *
-   * Can be set, to navigate to the same URL with a changed host. */
-  hostname: string;
-  /** Returns the Location object's URL.
-   *
-   * Can be set, to navigate to the given URL. */
-  href: string;
-  toString(): string;
-  /** Returns the Location object's URL's origin. */
-  readonly origin: string;
-  /** Returns the Location object's URL's path.
-   *
-   * Can be set, to navigate to the same URL with a changed path. */
-  pathname: string;
-  /** Returns the Location object's URL's port.
-   *
-   * Can be set, to navigate to the same URL with a changed port. */
-  port: string;
-  /** Returns the Location object's URL's scheme.
-   *
-   * Can be set, to navigate to the same URL with a changed scheme. */
-  protocol: string;
-  /** Returns the Location object's URL's query (includes leading "?" if
-   * non-empty).
-   *
-   * Can be set, to navigate to the same URL with a changed query (ignores
-   * leading "?"). */
-  search: string;
-  /**
-   * Navigates to the given URL.
-   */
-  assign(url: string): void;
-  /**
-   * Reloads the current page.
-   */
-  reload(): void;
-  /** Removes the current page from the session history and navigates to the
-   * given URL. */
-  replace(url: string): void;
 }
 
 type BufferSource = ArrayBufferView | ArrayBuffer;
@@ -496,9 +530,7 @@ declare class Console {
   dir: (
     obj: unknown,
     options?: Partial<{
-      showHidden: boolean;
       depth: number;
-      colors: boolean;
       indentLevel: number;
     }>
   ) => void;
@@ -545,6 +577,26 @@ declare class Console {
   clear: () => void;
   trace: (...args: unknown[]) => void;
   static [Symbol.hasInstance](instance: Console): boolean;
+}
+
+declare interface Crypto {
+  readonly subtle: null;
+  getRandomValues<
+    T extends
+      | Int8Array
+      | Int16Array
+      | Int32Array
+      | Uint8Array
+      | Uint16Array
+      | Uint32Array
+      | Uint8ClampedArray
+      | Float32Array
+      | Float64Array
+      | DataView
+      | null
+  >(
+    array: T
+  ): T;
 }
 
 type FormDataEntryValue = File | string;
@@ -1094,7 +1146,7 @@ interface URL {
 
 declare const URL: {
   prototype: URL;
-  new (url: string, base?: string | URL): URL;
+  new (url: string | URL, base?: string | URL): URL;
   createObjectURL(object: any): string;
   revokeObjectURL(url: string): void;
 };

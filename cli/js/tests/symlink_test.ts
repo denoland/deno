@@ -16,7 +16,7 @@ unitTest(
       errOnWindows = e;
     }
     if (errOnWindows) {
-      assertEquals(Deno.build.os, "win");
+      assertEquals(Deno.build.os, "windows");
       assertEquals(errOnWindows.message, "not implemented");
     } else {
       const newNameInfoLStat = Deno.lstatSync(newname);
@@ -53,7 +53,7 @@ unitTest(
       err = e;
     }
     if (err) {
-      assertEquals(Deno.build.os, "win");
+      assertEquals(Deno.build.os, "windows");
       // from cli/js/util.ts:notImplemented
       assertEquals(err.message, "not implemented");
     }

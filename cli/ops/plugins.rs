@@ -39,6 +39,7 @@ pub fn op_open_plugin(
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
+  state.check_unstable("Deno.openPlugin");
   let args: OpenPluginArgs = serde_json::from_value(args).unwrap();
   let filename = deno_fs::resolve_from_cwd(Path::new(&args.filename))?;
 

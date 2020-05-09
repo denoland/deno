@@ -31,6 +31,7 @@ fn op_get_dir(
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
+  state.check_unstable("Deno.dir");
   state.check_env()?;
   let args: GetDirArgs = serde_json::from_value(args)?;
 
@@ -81,8 +82,8 @@ fn op_exec_path(
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
-  state.check_env()?;
   let current_exe = env::current_exe().unwrap();
+  state.check_read(&current_exe)?;
   // Now apply URL parser to current exe to get fully resolved path, otherwise
   // we might get `./` and `../` bits in `exec_path`
   let exe_url = Url::from_file_path(current_exe).unwrap();
@@ -155,6 +156,7 @@ fn op_loadavg(
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
+  state.check_unstable("Deno.loadavg");
   state.check_env()?;
   match sys_info::loadavg() {
     Ok(loadavg) => Ok(JsonOp::Sync(json!([
@@ -171,6 +173,7 @@ fn op_hostname(
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
+  state.check_unstable("Deno.hostname");
   state.check_env()?;
   let hostname = sys_info::hostname().unwrap_or_else(|_| "".to_string());
   Ok(JsonOp::Sync(json!(hostname)))
@@ -181,6 +184,7 @@ fn op_os_release(
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
+  state.check_unstable("Deno.osRelease");
   state.check_env()?;
   let release = sys_info::os_release().unwrap_or_else(|_| "".to_string());
   Ok(JsonOp::Sync(json!(release)))

@@ -63,6 +63,7 @@ pub fn prepare_test_modules_urls(
 pub fn render_test_file(
   modules: Vec<Url>,
   fail_fast: bool,
+  quiet: bool,
   filter: Option<String>,
 ) -> String {
   let mut test_file = "".to_string();
@@ -72,12 +73,15 @@ pub fn render_test_file(
   }
 
   let options = if let Some(filter) = filter {
-    json!({ "failFast": fail_fast, "filter": filter })
+    json!({ "failFast": fail_fast, "reportToConsole": !quiet, "disableLog": quiet, "filter": filter })
   } else {
-    json!({ "failFast": fail_fast })
+    json!({ "failFast": fail_fast, "reportToConsole": !quiet, "disableLog": quiet })
   };
 
-  let run_tests_cmd = format!("Deno.runTests({});\n", options);
+  let run_tests_cmd = format!(
+    "// @ts-ignore\nDeno[Deno.internal].runTests({});\n",
+    options
+  );
   test_file.push_str(&run_tests_cmd);
 
   test_file
@@ -149,9 +153,9 @@ mod tests {
     let root_url = Url::from_file_path(root).unwrap().to_string();
     println!("root_url {}", root_url);
     let expected: Vec<Url> = vec![
+      format!("{}/_io_test.ts", root_url),
       format!("{}/cookie_test.ts", root_url),
       format!("{}/file_server_test.ts", root_url),
-      format!("{}/io_test.ts", root_url),
       format!("{}/racing_server_test.ts", root_url),
       format!("{}/server_test.ts", root_url),
     ]

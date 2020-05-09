@@ -19,6 +19,10 @@ pub fn root_path() -> PathBuf {
   PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/.."))
 }
 
+pub fn tests_path() -> PathBuf {
+  root_path().join("cli").join("tests")
+}
+
 pub fn target_dir() -> PathBuf {
   let current_exe = std::env::current_exe().unwrap();
   let target_dir = current_exe.parent().unwrap().parent().unwrap();

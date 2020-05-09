@@ -5,7 +5,7 @@ import { ensureFile, ensureFileSync } from "./ensure_file.ts";
 
 const testdataDir = path.resolve("fs", "testdata");
 
-Deno.test(async function ensureFileIfItNotExist(): Promise<void> {
+Deno.test("ensureFileIfItNotExist", async function (): Promise<void> {
   const testDir = path.join(testdataDir, "ensure_file_1");
   const testFile = path.join(testDir, "test.txt");
 
@@ -22,7 +22,7 @@ Deno.test(async function ensureFileIfItNotExist(): Promise<void> {
   await Deno.remove(testDir, { recursive: true });
 });
 
-Deno.test(function ensureFileSyncIfItNotExist(): void {
+Deno.test("ensureFileSyncIfItNotExist", function (): void {
   const testDir = path.join(testdataDir, "ensure_file_2");
   const testFile = path.join(testDir, "test.txt");
 
@@ -36,7 +36,7 @@ Deno.test(function ensureFileSyncIfItNotExist(): void {
   Deno.removeSync(testDir, { recursive: true });
 });
 
-Deno.test(async function ensureFileIfItExist(): Promise<void> {
+Deno.test("ensureFileIfItExist", async function (): Promise<void> {
   const testDir = path.join(testdataDir, "ensure_file_3");
   const testFile = path.join(testDir, "test.txt");
 
@@ -56,7 +56,7 @@ Deno.test(async function ensureFileIfItExist(): Promise<void> {
   await Deno.remove(testDir, { recursive: true });
 });
 
-Deno.test(function ensureFileSyncIfItExist(): void {
+Deno.test("ensureFileSyncIfItExist", function (): void {
   const testDir = path.join(testdataDir, "ensure_file_4");
   const testFile = path.join(testDir, "test.txt");
 
@@ -73,7 +73,7 @@ Deno.test(function ensureFileSyncIfItExist(): void {
   Deno.removeSync(testDir, { recursive: true });
 });
 
-Deno.test(async function ensureFileIfItExistAsDir(): Promise<void> {
+Deno.test("ensureFileIfItExistAsDir", async function (): Promise<void> {
   const testDir = path.join(testdataDir, "ensure_file_5");
 
   await Deno.mkdir(testDir, { recursive: true });
@@ -89,7 +89,7 @@ Deno.test(async function ensureFileIfItExistAsDir(): Promise<void> {
   await Deno.remove(testDir, { recursive: true });
 });
 
-Deno.test(function ensureFileSyncIfItExistAsDir(): void {
+Deno.test("ensureFileSyncIfItExistAsDir", function (): void {
   const testDir = path.join(testdataDir, "ensure_file_6");
 
   Deno.mkdirSync(testDir, { recursive: true });

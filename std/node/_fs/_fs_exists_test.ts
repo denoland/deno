@@ -5,7 +5,7 @@ import { exists, existsSync } from "./_fs_exists.ts";
 
 const { test } = Deno;
 
-test(async function existsFile() {
+test("existsFile", async function () {
   const availableFile = await new Promise((resolve) => {
     const tmpFilePath = Deno.makeTempFileSync();
     exists(tmpFilePath, (exists: boolean) => {
@@ -20,7 +20,7 @@ test(async function existsFile() {
   assertEquals(notAvailableFile, false);
 });
 
-test(function existsSyncFile() {
+test("existsSyncFile", function () {
   const tmpFilePath = Deno.makeTempFileSync();
   assertEquals(existsSync(tmpFilePath), true);
   Deno.removeSync(tmpFilePath);

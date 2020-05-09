@@ -3,14 +3,14 @@
 
 const { cwd } = Deno;
 import { FormatInputPathObject, ParsedPath } from "./interface.ts";
-import { CHAR_DOT, CHAR_FORWARD_SLASH } from "./constants.ts";
+import { CHAR_DOT, CHAR_FORWARD_SLASH } from "./_constants.ts";
 
 import {
   assertPath,
   normalizeString,
   isPosixPathSeparator,
   _format,
-} from "./utils.ts";
+} from "./_util.ts";
 
 export const sep = "/";
 export const delimiter = ":";
@@ -420,4 +420,15 @@ export function parse(path: string): ParsedPath {
   else if (isAbsolute) ret.dir = "/";
 
   return ret;
+}
+
+/** Converts a file URL to a path string.
+ *
+ *      fromFileUrl("file:///home/foo"); // "/home/foo"
+ *
+ * Note that non-file URLs are treated as file URLs and irrelevant components
+ * are ignored.
+ */
+export function fromFileUrl(url: string | URL): string {
+  return new URL(url).pathname;
 }

@@ -5,15 +5,15 @@ import { StringWriter } from "./writers.ts";
 import { copyN } from "./ioutil.ts";
 import { decode } from "../encoding/utf8.ts";
 
-test(async function ioStringReader(): Promise<void> {
+test("ioStringReader", async function (): Promise<void> {
   const r = new StringReader("abcdef");
   const res0 = await r.read(new Uint8Array(6));
   assertEquals(res0, 6);
   const res1 = await r.read(new Uint8Array(6));
-  assertEquals(res1, Deno.EOF);
+  assertEquals(res1, null);
 });
 
-test(async function ioStringReader(): Promise<void> {
+test("ioStringReader", async function (): Promise<void> {
   const r = new StringReader("abcdef");
   const buf = new Uint8Array(3);
   const res1 = await r.read(buf);
@@ -23,16 +23,16 @@ test(async function ioStringReader(): Promise<void> {
   assertEquals(res2, 3);
   assertEquals(decode(buf), "def");
   const res3 = await r.read(buf);
-  assertEquals(res3, Deno.EOF);
+  assertEquals(res3, null);
   assertEquals(decode(buf), "def");
 });
 
-test(async function ioMultiReader(): Promise<void> {
+test("ioMultiReader", async function (): Promise<void> {
   const r = new MultiReader(new StringReader("abc"), new StringReader("def"));
   const w = new StringWriter();
-  const n = await copyN(w, r, 4);
+  const n = await copyN(r, w, 4);
   assertEquals(n, 4);
   assertEquals(w.toString(), "abcd");
-  await copy(w, r);
+  await copy(r, w);
   assertEquals(w.toString(), "abcdef");
 });

@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use crate::compilers::TargetLib;
+use crate::file_fetcher::SourceFileFetcher;
 use crate::global_state::GlobalState;
 use crate::global_timer::GlobalTimer;
 use crate::import_map::ImportMap;
@@ -7,15 +7,18 @@ use crate::metrics::Metrics;
 use crate::op_error::OpError;
 use crate::ops::JsonOp;
 use crate::ops::MinimalOp;
-use crate::permissions::DenoPermissions;
+use crate::permissions::Permissions;
+use crate::tsc::TargetLib;
 use crate::web_worker::WebWorkerHandle;
 use deno_core::Buf;
 use deno_core::ErrBox;
+use deno_core::ModuleLoadId;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::Op;
 use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
+use futures::Future;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use serde_json::Value;
@@ -28,7 +31,6 @@ use std::rc::Rc;
 use std::str;
 use std::thread::JoinHandle;
 use std::time::Instant;
-
 #[derive(Copy, Clone, Eq, PartialEq)]
 pub enum DebugType {
   /// Can be debugged, will wait for debugger when --inspect-brk given.
@@ -52,7 +54,7 @@ impl Deref for State {
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub struct StateInner {
   pub global_state: GlobalState,
-  pub permissions: DenoPermissions,
+  pub permissions: Permissions,
   pub main_module: ModuleSpecifier,
   /// When flags contains a `.import_map_path` option, the content of the
   /// import map file will be resolved and set.
@@ -230,6 +232,27 @@ impl State {
       dispatcher(isolate, &state, args, zero_copy)
     }
   }
+
+  /// Quits the process if the --unstable flag was not provided.
+  ///
+  /// This is intentionally a non-recoverable check so that people cannot probe
+  /// for unstable APIs from stable programs.
+  pub fn check_unstable(&self, api_name: &str) {
+    // TODO(ry) Maybe use IsolateHandle::terminate_execution here to provide a
+    // stack trace in JS.
+    let s = self.0.borrow();
+    if !s.global_state.flags.unstable {
+      exit_unstable(api_name);
+    }
+  }
+}
+
+fn exit_unstable(api_name: &str) {
+  eprintln!(
+    "Unstable API '{}'. The --unstable flag must be provided.",
+    api_name
+  );
+  std::process::exit(70);
 }
 
 impl ModuleLoader for State {
@@ -265,6 +288,24 @@ impl ModuleLoader for State {
       if let Err(e) = self.check_dyn_import(&module_specifier) {
         return async move { Err(e.into()) }.boxed_local();
       }
+    } else {
+      // Verify that remote file doesn't try to statically import local file.
+      if let Some(referrer) = maybe_referrer.as_ref() {
+        let referrer_url = referrer.as_url();
+        match referrer_url.scheme() {
+          "http" | "https" => {
+            let specifier_url = module_specifier.as_url();
+            match specifier_url.scheme() {
+              "http" | "https" => {}
+              _ => {
+                let e = OpError::permission_denied("Remote module are not allowed to statically import local modules. Use dynamic import instead.".to_string());
+                return async move { Err(e.into()) }.boxed_local();
+              }
+            }
+          }
+          _ => {}
+        }
+      }
     }
 
     let mut state = self.borrow_mut();
@@ -288,20 +329,46 @@ impl ModuleLoader for State {
 
     fut.boxed_local()
   }
+
+  fn prepare_load(
+    &self,
+    _load_id: ModuleLoadId,
+    _module_specifier: &ModuleSpecifier,
+    _maybe_referrer: Option<String>,
+    _is_dyn_import: bool,
+  ) -> Pin<Box<dyn Future<Output = Result<(), ErrBox>>>> {
+    // TODO(bartlomieju):
+    // 1. recursively:
+    //    a) resolve specifier
+    //    b) check permission if dynamic import
+    //    c) fetch/download source code
+    //    d) parse the source code and extract all import/exports (dependencies)
+    //    e) add discovered deps and loop algorithm until no new dependencies
+    //        are discovered
+    // 2. run through appropriate compiler giving it access only to
+    //     discovered files
+
+    async { Ok(()) }.boxed_local()
+  }
 }
 
 impl State {
   /// If `shared_permission` is None then permissions from globa state are used.
   pub fn new(
     global_state: GlobalState,
-    shared_permissions: Option<DenoPermissions>,
+    shared_permissions: Option<Permissions>,
     main_module: ModuleSpecifier,
     debug_type: DebugType,
   ) -> Result<Self, ErrBox> {
     let import_map: Option<ImportMap> =
       match global_state.flags.import_map_path.as_ref() {
         None => None,
-        Some(file_path) => Some(ImportMap::load(file_path)?),
+        Some(file_path) => {
+          if !global_state.flags.unstable {
+            exit_unstable("--importmap")
+          }
+          Some(ImportMap::load(file_path)?)
+        }
       };
 
     let seeded_rng = match global_state.flags.seed {
@@ -336,7 +403,7 @@ impl State {
   /// If `shared_permission` is None then permissions from globa state are used.
   pub fn new_for_worker(
     global_state: GlobalState,
-    shared_permissions: Option<DenoPermissions>,
+    shared_permissions: Option<Permissions>,
     main_module: ModuleSpecifier,
   ) -> Result<Self, ErrBox> {
     let seeded_rng = match global_state.flags.seed {
@@ -408,6 +475,10 @@ impl State {
     module_specifier: &ModuleSpecifier,
   ) -> Result<(), OpError> {
     let u = module_specifier.as_url();
+    // TODO(bartlomieju): temporary fix to prevent hitting `unreachable`
+    // statement that is actually reachable...
+    SourceFileFetcher::check_if_supported_scheme(u)?;
+
     match u.scheme() {
       "http" | "https" => {
         self.check_net_url(u)?;

@@ -25,13 +25,3 @@ unitTest(function nameOfTestCaseCantBeEmpty(): void {
     "The test name can't be empty"
   );
 });
-
-unitTest(function testFnCantBeAnonymous(): void {
-  assertThrows(
-    () => {
-      Deno.test(function () {});
-    },
-    TypeError,
-    "The test function can't be anonymous"
-  );
-});

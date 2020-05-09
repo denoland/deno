@@ -158,6 +158,19 @@ unitTest(function textEncodeInto2(): void {
   ]);
 });
 
+unitTest(function textEncodeInto3(): void {
+  const fixture = "𝓽𝓮𝔁𝓽";
+  const encoder = new TextEncoder();
+  const bytes = new Uint8Array(5);
+  const result = encoder.encodeInto(fixture, bytes);
+  assertEquals(result.read, 2);
+  assertEquals(result.written, 4);
+  // prettier-ignore
+  assertEquals(Array.from(bytes), [
+    0xf0, 0x9d, 0x93, 0xbd, 0x00,
+  ]);
+});
+
 unitTest(function textDecoderSharedUint8Array(): void {
   const ab = new SharedArrayBuffer(6);
   const dataView = new DataView(ab);

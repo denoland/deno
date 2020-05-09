@@ -11,6 +11,7 @@ use serde::Serialize;
 use serde_derive::Deserialize;
 use std::fs;
 use std::fs::File;
+use std::io;
 use std::path::Path;
 use std::path::PathBuf;
 use url::Url;
@@ -101,12 +102,26 @@ impl Metadata {
 }
 
 impl HttpCache {
-  /// Returns error if unable to create directory
-  /// at specified location.
-  pub fn new(location: &Path) -> Result<Self, ErrBox> {
-    fs::create_dir_all(&location)?;
-    Ok(Self {
+  /// Returns a new instance.
+  pub fn new(location: &Path) -> Self {
+    Self {
       location: location.to_owned(),
+    }
+  }
+
+  /// Ensures the location of the cache.
+  pub fn ensure_location(&self) -> io::Result<()> {
+    if self.location.is_dir() {
+      return Ok(());
+    }
+    fs::create_dir_all(&self.location).map_err(|e| {
+      io::Error::new(
+        e.kind(),
+        format!(
+          "Could not create remote modules cache location: {:?}\nCheck the permission of the directory.",
+          self.location
+        ),
+      )
     })
   }
 
@@ -169,15 +184,15 @@ mod tests {
     let dir = TempDir::new().unwrap();
     let mut cache_path = dir.path().to_owned();
     cache_path.push("foobar");
-    let r = HttpCache::new(&cache_path);
-    assert!(r.is_ok());
+    let cache = HttpCache::new(&cache_path);
+    assert!(cache.ensure_location().is_ok());
     assert!(cache_path.is_dir());
   }
 
   #[test]
   fn test_get_set() {
     let dir = TempDir::new().unwrap();
-    let cache = HttpCache::new(dir.path()).unwrap();
+    let cache = HttpCache::new(dir.path());
     let url = Url::parse("https://deno.land/x/welcome.ts").unwrap();
     let mut headers = HashMap::new();
     headers.insert(
