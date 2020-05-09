@@ -1,7 +1,7 @@
 ## Import maps
 
 > This is an unstable feature. Learn more about
-> [unstable features](../../runtime/unstable).
+> [unstable features](../runtime/stability.md).
 
 Deno supports [import maps](https://github.com/WICG/import-maps).
 
