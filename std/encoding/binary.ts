@@ -199,7 +199,7 @@ export function putVarbig(
 export async function readVarnum(
   r: Deno.Reader,
   o: VarnumOptions = {}
-): Promise<number | null> {
+): Promise<number> {
   o.dataType = o.dataType ?? "int32";
   const scratch = await getNBytes(r, sizeof(o.dataType));
   return varnum(scratch, o) as number;
@@ -211,7 +211,7 @@ export async function readVarnum(
 export async function readVarbig(
   r: Deno.Reader,
   o: VarbigOptions = {}
-): Promise<bigint | null> {
+): Promise<bigint> {
   o.dataType = o.dataType ?? "int64";
   const scratch = await getNBytes(r, sizeof(o.dataType));
   return varbig(scratch, o) as bigint;
