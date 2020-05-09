@@ -227,8 +227,7 @@ export function writeVarnum(
 ): Promise<number> {
   o.dataType = o.dataType ?? "int32";
   const scratch = new Uint8Array(sizeof(o.dataType));
-  const nWritten = putVarnum(scratch, x, o);
-  if (nWritten === 0) return Promise.resolve(0);
+  putVarnum(scratch, x, o);
   return w.write(scratch);
 }
 
@@ -242,9 +241,8 @@ export function writeVarbig(
 ): Promise<number> {
   o.dataType = o.dataType ?? "int64";
   const scratch = new Uint8Array(sizeof(o.dataType));
-  const nWritten = putVarbig(scratch, x, o);
-  if (nWritten === 0) return Promise.resolve(0);
-  return w.write(scratch.subarray(0, nWritten));
+  putVarbig(scratch, x, o);
+  return w.write(scratch);
 }
 
 /** Encodes `x` into a new `Uint8Array`.
