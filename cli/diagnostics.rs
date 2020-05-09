@@ -438,7 +438,7 @@ mod tests {
   #[test]
   fn diagnostic_to_string2() {
     let d = diagnostic2();
-    let expected = "TS2322 [ERROR]: Example 1\n  values: o => [\n  ~~~~~~\n    at deno/tests/complex_diagnostics.ts:19:3\n\nTS2000 [ERROR]]: Example 2\n  values: undefined,\n  ~~~~~~\n    at /foo/bar.ts:129:3\n\nFound 2 errors.";
+    let expected = "TS2322 [ERROR]: Example 1\n  values: o => [\n  ~~~~~~\n    at deno/tests/complex_diagnostics.ts:19:3\n\nTS2000 [ERROR]: Example 2\n  values: undefined,\n  ~~~~~~\n    at /foo/bar.ts:129:3\n\nFound 2 errors.";
     assert_eq!(expected, strip_ansi_codes(&d.to_string()));
   }
 
