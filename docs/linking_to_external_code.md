@@ -1,6 +1,6 @@
 # Linking to third party code
 
-In the [Getting Started](../getting_started) section, we saw that Deno could
+In the [Getting Started](./getting_started.md) section, we saw that Deno could
 execute scripts from URLs. Like browser JavaScript, Deno can import libraries
 directly from URLs. This example uses a URL to import an assertion library:
 
@@ -52,7 +52,7 @@ specifying that path as the `$DENO_DIR` environmental variable at runtime.
 
 By using a lock file (using the `--lock` command line flag) you can ensure
 you're running the code you expect to be. You can learn more about this
-[here](./integrity_checking).
+[here](./linking_to_external_code/integrity_checking.md).
 
 ### How do you import to a specific version?
 

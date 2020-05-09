@@ -20,7 +20,8 @@ new Worker("./worker.js", { type: "classic" });
 
 ### Using Deno in worker
 
-**UNSTABLE**: This feature is unstable and requires `--unstable` flag
+> This is an unstable Deno feature. Learn more about
+> [unstable features](./stability.md).
 
 By default `Deno` namespace is not available in worker scope.
 

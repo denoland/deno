@@ -10,7 +10,7 @@ are not ready because they are still in draft phase are locked behind the
 - It enables the use of unstable APIs during runtime.
 - It adds the
   [`lib.deno.unstable.d.ts`](https://github.com/denoland/deno/blob/master/cli/js/lib.deno.unstable.d.ts)
-  file to the list of TypeScript definitions that are used for typechecking.
+  file to the list of TypeScript definitions that are used for type checking.
   This includes the output of `deno types`.
 
 You should be aware that unstable APIs have probably **not undergone a security

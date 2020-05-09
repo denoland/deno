@@ -62,8 +62,8 @@ The above command creates an executable called `file_server` that runs with
 write and read permissions and binds to port 8080.
 
 For good practice, use the
-[`import.meta.main`](#testing-if-current-file-is-the-main-program) idiom to
-specify the entry point in an executable script.
+[`import.meta.main`](../examples/testing_if_main.md) idiom to specify the
+entry point in an executable script.
 
 Example:
 
