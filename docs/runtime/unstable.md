@@ -13,7 +13,3 @@ command line flag. Passing this flag does a few things:
 You should be aware that unstable APIs have probably **not undergone a security
 review**, are likely to have **breaking API changes** in the future and are
 **not ready for production**.
-
-Deno recognizes a special HTTP header "X-Deno-Warning" which allows servers
-hosting code to print messages to stderr as they are being loaded. This is
-utilized by https://deno.land/ when serving master branch std code.
