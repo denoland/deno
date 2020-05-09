@@ -65,6 +65,7 @@
     "children": {
       "building_from_source": "Building from source",
       "development_tools": "Development tools",
+      "style_guide": "Style guide",
       "architecture": "Architecture"
     }
   },
