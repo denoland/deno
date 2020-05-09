@@ -1177,6 +1177,20 @@ pub mod tests {
     let mut isolate2 = CoreIsolate::new(startup_data, false);
     js_check(isolate2.execute("check.js", "if (a != 3) throw Error('x')"));
   }
+
+  #[test]
+  fn test_from_boxed_snapshot() {
+    let snapshot = {
+      let mut isolate = CoreIsolate::new(StartupData::None, true);
+      js_check(isolate.execute("a.js", "a = 1 + 2"));
+      let snap: &[u8] = &*isolate.snapshot();
+      Vec::from(snap).into_boxed_slice()
+    };
+
+    let startup_data = StartupData::Snapshot(Snapshot::Boxed(snapshot));
+    let mut isolate2 = CoreIsolate::new(startup_data, false);
+    js_check(isolate2.execute("check.js", "if (a != 3) throw Error('x')"));
+  }
 }
 
 // TODO(piscisaureus): rusty_v8 should implement the Error trait on
