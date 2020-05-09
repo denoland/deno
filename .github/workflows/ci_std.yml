@@ -1,4 +1,4 @@
-name: ci_deno
+name: ci_std
 
 on: 
   push:
