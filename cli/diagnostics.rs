@@ -89,18 +89,16 @@ fn format_category_and_code(
   code: i64,
 ) -> String {
   let category = match category {
-    DiagnosticCategory::Error => {
-      format!("{}", colors::red_bold("error".to_string()))
-    }
-    DiagnosticCategory::Warning => "warn".to_string(),
-    DiagnosticCategory::Debug => "debug".to_string(),
-    DiagnosticCategory::Info => "info".to_string(),
+    DiagnosticCategory::Error => "ERROR".to_string(),
+    DiagnosticCategory::Warning => "WARN".to_string(),
+    DiagnosticCategory::Debug => "DEBUG".to_string(),
+    DiagnosticCategory::Info => "INFO".to_string(),
     _ => "".to_string(),
   };
 
   let code = colors::bold(format!("TS{}", code.to_string())).to_string();
 
-  format!("{} {}", category, code)
+  format!("{} [{}]", code, category)
 }
 
 fn format_message(
@@ -433,14 +431,14 @@ mod tests {
   #[test]
   fn diagnostic_to_string1() {
     let d = diagnostic1();
-    let expected = "error TS2322: Type \'(o: T) => { v: any; f: (x: B) => string; }[]\' is not assignable to type \'(r: B) => Value<B>[]\'.\n  Types of parameters \'o\' and \'r\' are incompatible.\n    Type \'B\' is not assignable to type \'T\'.\n  values: o => [\n  ~~~~~~\n    at deno/tests/complex_diagnostics.ts:19:3\n\n    The expected type comes from property \'values\' which is declared here on type \'SettingsInterface<B>\'\n      values?: (r: T) => Array<Value<T>>;\n      ~~~~~~\n        at deno/tests/complex_diagnostics.ts:7:3";
+    let expected = "TS2322 [ERROR]: Type \'(o: T) => { v: any; f: (x: B) => string; }[]\' is not assignable to type \'(r: B) => Value<B>[]\'.\n  Types of parameters \'o\' and \'r\' are incompatible.\n    Type \'B\' is not assignable to type \'T\'.\n  values: o => [\n  ~~~~~~\n    at deno/tests/complex_diagnostics.ts:19:3\n\n    The expected type comes from property \'values\' which is declared here on type \'SettingsInterface<B>\'\n      values?: (r: T) => Array<Value<T>>;\n      ~~~~~~\n        at deno/tests/complex_diagnostics.ts:7:3";
     assert_eq!(expected, strip_ansi_codes(&d.to_string()));
   }
 
   #[test]
   fn diagnostic_to_string2() {
     let d = diagnostic2();
-    let expected = "error TS2322: Example 1\n  values: o => [\n  ~~~~~~\n    at deno/tests/complex_diagnostics.ts:19:3\n\nerror TS2000: Example 2\n  values: undefined,\n  ~~~~~~\n    at /foo/bar.ts:129:3\n\nFound 2 errors.";
+    let expected = "TS2322 [ERROR]: Example 1\n  values: o => [\n  ~~~~~~\n    at deno/tests/complex_diagnostics.ts:19:3\n\nTS2000 [ERROR]: Example 2\n  values: undefined,\n  ~~~~~~\n    at /foo/bar.ts:129:3\n\nFound 2 errors.";
     assert_eq!(expected, strip_ansi_codes(&d.to_string()));
   }
 

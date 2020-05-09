@@ -626,7 +626,12 @@ pub fn main() {
 
   let result = tokio_util::run_basic(fut);
   if let Err(err) = result {
-    eprintln!("{}", err.to_string());
+    let msg = format!(
+      "{}: {}",
+      colors::red_bold("error".to_string()),
+      err.to_string(),
+    );
+    eprintln!("{}", msg);
     std::process::exit(1);
   }
 }
