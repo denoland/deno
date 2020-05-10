@@ -533,8 +533,6 @@ fn run_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 }
 
 fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  flags.allow_read = true;
-
   run_test_args_parse(flags, matches);
 
   let failfast = matches.is_present("failfast");
@@ -2390,7 +2388,6 @@ mod tests {
           quiet: false,
           include: Some(svec!["dir1/", "dir2/"]),
         },
-        allow_read: true,
         allow_net: true,
         ..Flags::default()
       }
@@ -2410,7 +2407,6 @@ mod tests {
           filter: Some("foo".to_string()),
           include: Some(svec!["dir1"]),
         },
-        allow_read: true,
         ..Flags::default()
       }
     );
