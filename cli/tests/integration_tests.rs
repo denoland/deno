@@ -1019,6 +1019,7 @@ fn workers() {
     .arg("test")
     .arg("--reload")
     .arg("--allow-net")
+    .arg("--allow-read")
     .arg("--unstable")
     .arg("workers_test.ts")
     .spawn()

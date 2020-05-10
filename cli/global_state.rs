@@ -86,7 +86,6 @@ impl GlobalState {
       compiler_starts: AtomicUsize::new(0),
       compile_lock: AsyncMutex::new(()),
     };
-
     Ok(GlobalState(Arc::new(inner)))
   }
 
