@@ -110,11 +110,7 @@ impl SourceFileFetcher {
   pub fn fetch_cached_source_file(
     &self,
     specifier: &ModuleSpecifier,
-<<<<<<< HEAD
     permissions: Permissions,
-=======
-    _permissions: Permissions,
->>>>>>> drop permissions prefix
   ) -> Option<SourceFile> {
     let maybe_source_file = self.source_file_cache.get(specifier.to_string());
 
@@ -154,11 +150,7 @@ impl SourceFileFetcher {
     &self,
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
-<<<<<<< HEAD
     permissions: Permissions,
-=======
-    _permissions: Permissions,
->>>>>>> drop permissions prefix
   ) -> Result<SourceFile, ErrBox> {
     let module_url = specifier.as_url().to_owned();
     debug!("fetch_source_file specifier: {} ", &module_url);
@@ -1009,11 +1001,7 @@ mod tests {
 
     // first download
     let r = fetcher
-<<<<<<< HEAD
       .fetch_source_file(&specifier, None, Permissions::allow_all())
-=======
-      .fetch_source_file(&specifier, None, Permissions::default())
->>>>>>> drop permissions prefix
       .await;
     assert!(r.is_ok());
 
@@ -1031,11 +1019,7 @@ mod tests {
     // header file creation timestamp (should be the same as after first
     // download)
     let r = fetcher
-<<<<<<< HEAD
       .fetch_source_file(&specifier, None, Permissions::allow_all())
-=======
-      .fetch_source_file(&specifier, None, Permissions::default())
->>>>>>> drop permissions prefix
       .await;
     assert!(r.is_ok());
 
@@ -1509,11 +1493,7 @@ mod tests {
     let specifier =
       ModuleSpecifier::resolve_url(file_url!("/baddir/hello.ts")).unwrap();
     let r = fetcher
-<<<<<<< HEAD
       .fetch_source_file(&specifier, None, Permissions::allow_all())
-=======
-      .fetch_source_file(&specifier, None, Permissions::default())
->>>>>>> drop permissions prefix
       .await;
     assert!(r.is_err());
 
@@ -1522,11 +1502,7 @@ mod tests {
     let specifier =
       ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
     let r = fetcher
-<<<<<<< HEAD
       .fetch_source_file(&specifier, None, Permissions::allow_all())
-=======
-      .fetch_source_file(&specifier, None, Permissions::default())
->>>>>>> drop permissions prefix
       .await;
     assert!(r.is_ok());
   }
@@ -1540,11 +1516,7 @@ mod tests {
     let specifier =
       ModuleSpecifier::resolve_url(file_url!("/baddir/hello.ts")).unwrap();
     let r = fetcher
-<<<<<<< HEAD
       .fetch_source_file(&specifier, None, Permissions::allow_all())
-=======
-      .fetch_source_file(&specifier, None, Permissions::default())
->>>>>>> drop permissions prefix
       .await;
     assert!(r.is_err());
 
@@ -1553,11 +1525,7 @@ mod tests {
     let specifier =
       ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
     let r = fetcher
-<<<<<<< HEAD
       .fetch_source_file(&specifier, None, Permissions::allow_all())
-=======
-      .fetch_source_file(&specifier, None, Permissions::default())
->>>>>>> drop permissions prefix
       .await;
     assert!(r.is_ok());
   }
@@ -1572,11 +1540,7 @@ mod tests {
     let specifier =
       ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
     let r = fetcher
-<<<<<<< HEAD
       .fetch_source_file(&specifier, None, Permissions::allow_all())
-=======
-      .fetch_source_file(&specifier, None, Permissions::default())
->>>>>>> drop permissions prefix
       .await;
     assert!(r.is_ok());
   }
