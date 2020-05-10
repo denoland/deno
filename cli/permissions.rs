@@ -134,6 +134,19 @@ impl Permissions {
     }
   }
 
+  pub fn allow_all() -> Self {
+    Self {
+      allow_read: PermissionState::from(true),
+      allow_write: PermissionState::from(true),
+      allow_net: PermissionState::from(true),
+      allow_env: PermissionState::from(true),
+      allow_run: PermissionState::from(true),
+      allow_plugin: PermissionState::from(true),
+      allow_hrtime: PermissionState::from(true),
+      ..Default::default()
+    }
+  }
+
   pub fn check_run(&self) -> Result<(), OpError> {
     self
       .allow_run
@@ -328,22 +341,6 @@ fn permission_prompt(message: &str) -> bool {
         eprint!("{}", colors::bold(msg_again));
       }
     };
-  }
-}
-
-#[cfg(test)]
-impl Permissions {
-  pub fn allow_all() -> Self {
-    Self {
-      allow_read: PermissionState::from(true),
-      allow_write: PermissionState::from(true),
-      allow_net: PermissionState::from(true),
-      allow_env: PermissionState::from(true),
-      allow_run: PermissionState::from(true),
-      allow_plugin: PermissionState::from(true),
-      allow_hrtime: PermissionState::from(true),
-      ..Default::default()
-    }
   }
 }
 

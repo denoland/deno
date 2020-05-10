@@ -598,7 +598,7 @@ impl TsCompiler {
   ) -> std::io::Result<()> {
     let source_file = self
       .file_fetcher
-      .fetch_cached_source_file(&module_specifier, Permissions::default())
+      .fetch_cached_source_file(&module_specifier, Permissions::allow_all())
       .expect("Source file not found");
 
     // NOTE: JavaScript files are only cached to disk if `checkJs`
@@ -615,7 +615,7 @@ impl TsCompiler {
     self.mark_compiled(module_specifier.as_url());
     let source_file = self
       .file_fetcher
-      .fetch_cached_source_file(&module_specifier, Permissions::default())
+      .fetch_cached_source_file(&module_specifier, Permissions::allow_all())
       .expect("Source file not found");
 
     let version_hash = source_code_version_hash(
@@ -670,7 +670,7 @@ impl TsCompiler {
   ) -> std::io::Result<()> {
     let source_file = self
       .file_fetcher
-      .fetch_cached_source_file(&module_specifier, Permissions::default())
+      .fetch_cached_source_file(&module_specifier, Permissions::allow_all())
       .expect("Source file not found");
 
     // NOTE: JavaScript files are only cached to disk if `checkJs`
@@ -725,7 +725,7 @@ impl TsCompiler {
     if let Some(module_specifier) = self.try_to_resolve(script_name) {
       return self
         .file_fetcher
-        .fetch_cached_source_file(&module_specifier, Permissions::default());
+        .fetch_cached_source_file(&module_specifier, Permissions::allow_all());
     }
 
     None

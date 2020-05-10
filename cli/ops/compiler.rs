@@ -72,7 +72,7 @@ fn op_fetch_source_files(
 
   // TODO(bartlomieju): currently unused, but file fetcher will
   // require them in the near future
-  let permissions = Permissions::default();
+  let permissions = Permissions::allow_all();
   let perms_ = permissions.clone();
   let global_state = state.borrow().global_state.clone();
   let file_fetcher = global_state.file_fetcher.clone();
