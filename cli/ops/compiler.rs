@@ -10,8 +10,10 @@ use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
+use url::Url;
 
 pub fn init(i: &mut CoreIsolate, s: &State) {
+  i.register_op("op_get_cache", s.stateful_json_op(op_get_cache));
   i.register_op("op_resolve_modules", s.stateful_json_op(op_resolve_modules));
   i.register_op(
     "op_fetch_source_files",
@@ -22,6 +24,31 @@ pub fn init(i: &mut CoreIsolate, s: &State) {
     "op_fetch_asset",
     deno_typescript::op_fetch_asset(custom_assets),
   );
+}
+
+#[derive(Deserialize, Debug)]
+struct GetCacheArgs {
+  url: String,
+}
+
+fn op_get_cache(
+  state: &State,
+  args: Value,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<JsonOp, OpError> {
+  let args: GetCacheArgs = serde_json::from_value(args)?;
+  let url = Url::parse(&args.url)?;
+
+  let disk_cache = state.borrow().global_state.dir.gen_cache.clone();
+  let cache_key = disk_cache.get_cache_filename(&url);
+  if let Ok(cache_data) = disk_cache.get(&cache_key) {
+    let cache_str =
+      String::from_utf8(cache_data).map_err(|_| OpError::invalid_utf8())?;
+
+    Ok(JsonOp::Sync(json!({ "content": cache_str })))
+  } else {
+    Ok(JsonOp::Sync(json!({})))
+  }
 }
 
 #[derive(Deserialize, Debug)]

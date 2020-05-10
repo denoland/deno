@@ -23,16 +23,14 @@ import { assert, log } from "./util.ts";
 import * as util from "./util.ts";
 import { TextDecoder, TextEncoder } from "./web/text_encoding.ts";
 import { core } from "./core.ts";
+import Timer from "./timer.ts";
 
-export function resolveModules(
-  specifiers: string[],
-  referrer?: string
-): string[] {
+function resolveModules(specifiers: string[], referrer?: string): string[] {
   util.log("compiler::resolveModules", { specifiers, referrer });
   return sendSync("op_resolve_modules", { specifiers, referrer });
 }
 
-export function fetchSourceFiles(
+function fetchSourceFiles(
   specifiers: string[],
   referrer?: string
 ): Promise<
@@ -61,11 +59,17 @@ function getAsset(name: string): string {
   return decoder.decode(sourceCodeBytes!);
 }
 
+function getCache(url: string): string {
+  const { content } = sendSync("op_get_cache", { url });
+  return content;
+}
+
 // Constants used by `normalizeString` and `resolvePath`
 const CHAR_DOT = 46; /* . */
 const CHAR_FORWARD_SLASH = 47; /* / */
 const ASSETS = "$asset$";
 const OUT_DIR = "$deno$";
+const TS_BUILD_INFO = `${OUT_DIR}/tsbuildinfo.json`;
 
 // TODO(Bartlomieju): this check should be done in Rust
 const IGNORED_COMPILER_OPTIONS: readonly string[] = [
@@ -141,14 +145,17 @@ const DEFAULT_COMPILE_OPTIONS: ts.CompilerOptions = {
   allowNonTsExtensions: true,
   checkJs: false,
   esModuleInterop: true,
+  incremental: true,
   jsx: ts.JsxEmit.React,
   module: ts.ModuleKind.ESNext,
+  moduleResolution: ts.ModuleResolutionKind.NodeJs,
   outDir: OUT_DIR,
   resolveJsonModule: true,
   sourceMap: true,
   strict: true,
   stripComments: true,
   target: ts.ScriptTarget.ESNext,
+  tsBuildInfoFile: TS_BUILD_INFO,
 };
 
 const DEFAULT_RUNTIME_COMPILE_OPTIONS: ts.CompilerOptions = {
@@ -174,6 +181,7 @@ interface CompilerHostOptions {
   target: CompilerHostTarget;
   unstable?: boolean;
   writeFile: WriteFileCallback;
+  rootNames?: string[];
 }
 
 interface ConfigureResponse {
@@ -370,6 +378,10 @@ class SourceFile {
     }
     return undefined;
   }
+
+  static urls(): string[] {
+    return Array.from(SOURCE_FILE_CACHE.keys()).filter(ts.pathIsAbsolute);
+  }
 }
 
 function getAssetInternal(filename: string): SourceFile {
@@ -391,10 +403,12 @@ function getAssetInternal(filename: string): SourceFile {
   });
 }
 
-class Host implements ts.CompilerHost {
+export class Host implements ts.CompilerHost {
   readonly #options = DEFAULT_COMPILE_OPTIONS;
   #target: CompilerHostTarget;
   #writeFile: WriteFileCallback;
+  #rootPath = ".";
+  #rootName = "";
 
   /* Deno specific APIs */
 
@@ -403,6 +417,7 @@ class Host implements ts.CompilerHost {
     target,
     unstable,
     writeFile,
+    rootNames,
   }: CompilerHostOptions) {
     this.#target = target;
     this.#writeFile = writeFile;
@@ -417,6 +432,10 @@ class Host implements ts.CompilerHost {
           : "lib.deno.window.d.ts",
         "lib.deno.unstable.d.ts",
       ];
+    }
+    if (rootNames) {
+      this.#rootName = rootNames[0];
+      this.#rootPath = this.#rootName.split("/").slice(0, -1).join("/");
     }
   }
 
@@ -494,6 +513,24 @@ class Host implements ts.CompilerHost {
     return "\n";
   }
 
+  getAbsolutePath(fileName: string): string {
+    return ts.resolvePath(this.#rootPath, fileName);
+  }
+
+  getModuleAbsolutePath(containingFile: string, specifier: string): string {
+    return ts.resolvePath(
+      ts.getDirectoryPath(this.getAbsolutePath(containingFile)),
+      specifier
+    );
+  }
+
+  getRelativePath(fileName: string): string {
+    if (!ts.pathIsAbsolute(fileName)) {
+      return fileName;
+    }
+    return ts.getRelativePathFromDirectory(this.#rootPath, fileName, false);
+  }
+
   getSourceFile(
     fileName: string,
     languageVersion: ts.ScriptTarget,
@@ -505,21 +542,26 @@ class Host implements ts.CompilerHost {
       assert(!shouldCreateNewSourceFile);
       const sourceFile = fileName.startsWith(ASSETS)
         ? getAssetInternal(fileName)
-        : SourceFile.getCached(fileName);
+        : SourceFile.getCached(this.getAbsolutePath(fileName));
       assert(sourceFile != null);
       if (!sourceFile.tsSourceFile) {
         assert(sourceFile.sourceCode != null);
         const tsSourceFileName = fileName.startsWith(ASSETS)
           ? sourceFile.filename
-          : fileName;
+          : this.getRelativePath(fileName);
 
         sourceFile.tsSourceFile = ts.createSourceFile(
           tsSourceFileName,
           sourceFile.sourceCode,
           languageVersion
         );
+        //@ts-ignore
+        sourceFile.tsSourceFile.version = this.createHash(
+          sourceFile.tsSourceFile.text
+        );
         delete sourceFile.sourceCode;
       }
+
       return sourceFile.tsSourceFile;
     } catch (e) {
       if (onError) {
@@ -531,8 +573,18 @@ class Host implements ts.CompilerHost {
     }
   }
 
-  readFile(_fileName: string): string | undefined {
-    return util.notImplemented();
+  readFile(fileName: string): string | undefined {
+    util.log("compiler::host.readFile", fileName);
+    if (fileName === TS_BUILD_INFO) {
+      return getCache(`${this.#rootName}.json`);
+    }
+    return getCache(
+      this.getAbsolutePath(fileName.replace(OUT_DIR, this.#rootPath))
+    );
+  }
+
+  createHash(data: string): string {
+    return ts.generateDjb2Hash(data);
   }
 
   resolveModuleNames(
@@ -544,22 +596,25 @@ class Host implements ts.CompilerHost {
       containingFile,
     });
     return moduleNames.map((specifier) => {
-      const maybeUrl = SourceFile.getResolvedUrl(specifier, containingFile);
+      const url = this.getModuleAbsolutePath(containingFile, specifier);
 
       let sourceFile: SourceFile | undefined = undefined;
 
       if (specifier.startsWith(ASSETS)) {
         sourceFile = getAssetInternal(specifier);
-      } else if (typeof maybeUrl !== "undefined") {
-        sourceFile = SourceFile.getCached(maybeUrl);
+      } else {
+        sourceFile = SourceFile.getCached(url);
       }
 
       if (!sourceFile) {
         return undefined;
       }
 
+      const resolvedFileName = specifier.startsWith(ASSETS)
+        ? sourceFile.url
+        : this.getRelativePath(sourceFile.url);
       return {
-        resolvedFileName: sourceFile.url,
+        resolvedFileName,
         isExternalLibraryImport: specifier.startsWith(ASSETS),
         extension: sourceFile.extension,
       };
@@ -578,7 +633,11 @@ class Host implements ts.CompilerHost {
     sourceFiles?: readonly ts.SourceFile[]
   ): void {
     util.log("compiler::host.writeFile", fileName);
-    this.#writeFile(fileName, data, sourceFiles);
+    this.#writeFile(
+      this.getAbsolutePath(fileName.replace(OUT_DIR, this.#rootPath)),
+      data,
+      sourceFiles
+    );
   }
 }
 
@@ -876,18 +935,26 @@ function createBundleWriteFile(state: WriteFileState): WriteFileCallback {
 
 // TODO(bartlomieju): probably could be defined inline?
 function createCompileWriteFile(state: WriteFileState): WriteFileCallback {
+  const rootPath = state.rootNames[0].split("/").slice(0, -1).join("/");
   return function writeFile(
     fileName: string,
     data: string,
     sourceFiles?: readonly ts.SourceFile[]
   ): void {
-    assert(sourceFiles != null);
+    const isBuildInfo = fileName === TS_BUILD_INFO.replace(OUT_DIR, rootPath);
+    if (sourceFiles != null) {
+      assert(sourceFiles.length === 1);
+    } else {
+      assert(isBuildInfo);
+    }
     assert(state.host);
     assert(state.emitMap);
     assert(!state.bundle);
-    assert(sourceFiles.length === 1);
+    const filename = isBuildInfo
+      ? `${state.rootNames[0]}.json`
+      : ts.resolvePath(rootPath, sourceFiles![0].fileName);
     state.emitMap[fileName] = {
-      filename: sourceFiles[0].fileName,
+      filename,
       contents: data,
     };
   };
@@ -1039,6 +1106,30 @@ function processConfigureResponse(
   }
   return diagnostics;
 }
+
+const getPreEmitDiagnostics = (
+  program: ts.EmitAndSemanticDiagnosticsBuilderProgram
+): readonly ts.Diagnostic[] => {
+  const allDiagnostics = program.getConfigFileParsingDiagnostics().slice();
+  const configFileParsingDiagnosticsLength = allDiagnostics.length;
+  allDiagnostics.push(...program.getSyntacticDiagnostics());
+
+  // If we didn't have any syntactic errors, then also try getting the global and
+  // semantic errors.
+  if (allDiagnostics.length === configFileParsingDiagnosticsLength) {
+    allDiagnostics.push(
+      ...program.getOptionsDiagnostics(),
+      ...program.getGlobalDiagnostics()
+    );
+
+    if (allDiagnostics.length === configFileParsingDiagnosticsLength) {
+      allDiagnostics.push(...program.getSemanticDiagnostics());
+    }
+  }
+  return allDiagnostics.filter(
+    ({ code }) => !ignoredDiagnostics.includes(code)
+  );
+};
 
 function normalizeString(path: string): string {
   let res = "";
@@ -1246,6 +1337,7 @@ type CompilerRequest =
 interface CompileResult {
   emitMap?: Record<string, EmmitedSource>;
   bundleOutput?: string;
+  sources: string[];
   diagnostics: Diagnostic;
 }
 
@@ -1276,6 +1368,8 @@ async function compile(
     type: CompilerRequestType[request.type],
   });
 
+  const compileTimer = new Timer("Compilation");
+
   // When a programme is emitted, TypeScript will call `writeFile` with
   // each file that needs to be emitted.  The Deno compiler host delegates
   // this, to make it easier to perform the right actions, which vary
@@ -1294,6 +1388,7 @@ async function compile(
     writeFile = createCompileWriteFile(state);
   }
   const host = (state.host = new Host({
+    rootNames,
     bundle,
     target,
     writeFile,
@@ -1323,25 +1418,29 @@ async function compile(
   // to generate the program and possibly emit it.
   if (diagnostics.length === 0) {
     const options = host.getCompilationSettings();
-    const program = ts.createProgram({
-      rootNames,
+    const relativeRootNames = rootNames.map(host.getRelativePath.bind(host));
+    const creationTimer = new Timer("Create program");
+    const program = ts.createIncrementalProgram({
+      rootNames: relativeRootNames,
       options,
       host,
-      oldProgram: TS_SNAPSHOT_PROGRAM,
     });
+    creationTimer.end();
 
-    diagnostics = ts
-      .getPreEmitDiagnostics(program)
-      .filter(({ code }) => !ignoredDiagnostics.includes(code));
+    const diagnosticsTimer = new Timer("Pre emit diagnostics");
+    diagnostics = getPreEmitDiagnostics(program);
+    diagnosticsTimer.end();
 
     // We will only proceed with the emit if there are no diagnostics.
     if (diagnostics && diagnostics.length === 0) {
       if (bundle) {
         // we only support a single root module when bundling
         assert(resolvedRootModules.length === 1);
-        setRootExports(program, resolvedRootModules[0]);
+        // setRootExports(program, resolvedRootModules[0]);
       }
+      const emitTimer = new Timer("Emit");
       const emitResult = program.emit();
+      emitTimer.end();
       assert(emitResult.emitSkipped === false, "Unexpected skip of the emit.");
       // emitResult.diagnostics is `readonly` in TS3.5+ and can't be assigned
       // without casting.
@@ -1360,9 +1459,11 @@ async function compile(
   const result: CompileResult = {
     emitMap: state.emitMap,
     bundleOutput,
+    sources: SourceFile.urls(),
     diagnostics: fromTypeScriptDiagnostic(diagnostics),
   };
 
+  compileTimer.end();
   util.log("<<< compile end", {
     rootNames,
     type: CompilerRequestType[request.type],

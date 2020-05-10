@@ -305,6 +305,7 @@ struct BundleResponse {
 struct CompileResponse {
   diagnostics: Diagnostic,
   emit_map: HashMap<String, EmittedSource>,
+  sources: Vec<String>,
 }
 
 // TODO(bartlomieju): possible deduplicate once TS refactor is stabilized
@@ -445,29 +446,6 @@ impl TsCompiler {
       return self.get_compiled_module(&source_file.url);
     }
 
-    if self.use_disk_cache {
-      // Try to load cached version:
-      // 1. check if there's 'meta' file
-      if let Some(metadata) = self.get_metadata(&source_file.url) {
-        // 2. compare version hashes
-        // TODO: it would probably be good idea to make it method implemented on SourceFile
-        let version_hash_to_validate = source_code_version_hash(
-          &source_file.source_code,
-          version::DENO,
-          &self.config.hash,
-        );
-
-        if metadata.version_hash == version_hash_to_validate {
-          debug!("load_cache metadata version hash match");
-          if let Ok(compiled_module) =
-            self.get_compiled_module(&source_file.url)
-          {
-            self.mark_compiled(&source_file.url);
-            return Ok(compiled_module);
-          }
-        }
-      }
-    }
     let source_file_ = source_file.clone();
     let module_url = source_file.url.clone();
     let target = match target {
@@ -496,6 +474,11 @@ impl TsCompiler {
     let json_str = std::str::from_utf8(&msg).unwrap();
 
     let compile_response: CompileResponse = serde_json::from_str(json_str)?;
+
+    for source in compile_response.sources.iter() {
+      let url = &(Url::parse(source)?);
+      self.mark_compiled(url);
+    }
 
     if !compile_response.diagnostics.items.is_empty() {
       return Err(ErrBox::from(compile_response.diagnostics));
@@ -537,6 +520,8 @@ impl TsCompiler {
         self.cache_source_map(&specifier, &source.contents)?;
       } else if emitted_name.ends_with(".js") {
         self.cache_compiled_file(&specifier, &source.contents)?;
+      } else if emitted_name.ends_with("tsbuildinfo.json") {
+        self.cache_build_info(&specifier, &source.contents)?;
       } else {
         panic!("Trying to cache unknown file type {}", emitted_name);
       }
@@ -611,7 +596,6 @@ impl TsCompiler {
       .disk_cache
       .get_cache_filename_with_extension(module_specifier.as_url(), "js");
     self.disk_cache.set(&js_key, contents.as_bytes())?;
-    self.mark_compiled(module_specifier.as_url());
 
     let version_hash = source_code_version_hash(
       &source_file.source_code,
@@ -679,6 +663,18 @@ impl TsCompiler {
       .disk_cache
       .get_cache_filename_with_extension(module_specifier.as_url(), "js.map");
     self.disk_cache.set(&source_map_key, contents.as_bytes())
+  }
+
+  /// Save TS build info file to on-disk cache.
+  fn cache_build_info(
+    &self,
+    module_specifier: &ModuleSpecifier,
+    contents: &str,
+  ) -> std::io::Result<()> {
+    let build_info_key = self
+      .disk_cache
+      .get_cache_filename(module_specifier.as_url());
+    self.disk_cache.set(&build_info_key, contents.as_bytes())
   }
 }
 
