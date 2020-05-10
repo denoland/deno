@@ -2388,7 +2388,6 @@ mod tests {
           quiet: false,
           include: Some(svec!["dir1/", "dir2/"]),
         },
-        allow_read: true,
         allow_net: true,
         ..Flags::default()
       }
@@ -2408,7 +2407,6 @@ mod tests {
           filter: Some("foo".to_string()),
           include: Some(svec!["dir1"]),
         },
-        allow_read: true,
         ..Flags::default()
       }
     );
