@@ -6,7 +6,7 @@ and TypeScript:
 <!-- prettier-ignore-start -->
 <!-- prettier incorrectly moves the coming soon links to new lines -->
 
-- [test runner (`deno test`)](../testing)
+- [test runner (`deno test`)](./testing.md)
 - [code formatter (`deno fmt`)](./tools/formatter.md)
 - [bundler (`deno bundle`)](./tools/bundler.md)
 - [debugger (`--debug`)](./tools/debugger.md)

@@ -17,13 +17,13 @@ and use modern features wherever possible.
 Because of this browser compatibility a simple `Hello World` program is actually
 no different to one you can run in the browser:
 
-```typescript
+```ts
 console.log("Welcome to Deno 🦕");
 ```
 
 Try the program:
 
-```bash
+```shell
 deno run https://deno.land/std/examples/welcome.ts
 ```
 
@@ -37,7 +37,7 @@ Just like in the browser you can use the web standard
 [`fetch`](https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API) API to
 make HTTP calls:
 
-```typescript
+```ts
 const url = Deno.args[0];
 const res = await fetch(url);
 
@@ -60,7 +60,7 @@ Lets walk through what this application does:
 
 Try it out:
 
-```bash
+```shell
 deno run https://deno.land/std/examples/curl.ts https://example.com
 ```
 
@@ -71,7 +71,7 @@ programs the permission to do certain 'privileged' actions like network access.
 
 Try it out again with the correct permission flag:
 
-```bash
+```shell
 deno run --allow-net=example.com https://deno.land/std/examples/curl.ts https://example.com
 ```
 
@@ -103,7 +103,7 @@ I/O streams in Deno.
 
 Try the program:
 
-```bash
+```shell
 deno run --allow-read https://deno.land/std/examples/cat.ts /etc/passwd
 ```
 

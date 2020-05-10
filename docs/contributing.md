@@ -1,6 +1,6 @@
 # Contributing
 
-- Read the [style guide](contributing/style_guide.md).
+- Read the [style guide](./contributing/style_guide.md).
 
 - Please don't make [the benchmarks](https://deno.land/benchmarks.html) worse.
 

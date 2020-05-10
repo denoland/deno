@@ -8,7 +8,7 @@ Listener for `load` events can be asynchronous and will be awaited. Listener for
 
 Example:
 
-```typescript
+```ts
 // main.ts
 import "./imported.ts";
 

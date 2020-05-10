@@ -4,7 +4,7 @@
 
 Test `deno`:
 
-```bash
+```shell
 # Run the whole suite:
 cargo test
 
@@ -14,7 +14,7 @@ cargo test js_unit_tests
 
 Test `std/`:
 
-```bash
+```shell
 cargo test std_tests
 ```
 
@@ -22,13 +22,13 @@ cargo test std_tests
 
 Lint the code:
 
-```bash
+```shell
 ./tools/lint.py
 ```
 
 Format the code:
 
-```bash
+```shell
 ./tools/format.py
 ```
 
