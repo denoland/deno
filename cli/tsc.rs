@@ -344,12 +344,19 @@ impl TsCompiler {
 
   /// Create a new V8 worker with snapshot of TS compiler and setup compiler's
   /// runtime.
-  fn setup_worker(global_state: GlobalState) -> CompilerWorker {
+  fn setup_worker(
+    global_state: GlobalState,
+    permissions: Permissions,
+  ) -> CompilerWorker {
     let entry_point =
       ModuleSpecifier::resolve_url_or_path("./__$deno$ts_compiler.ts").unwrap();
-    let worker_state =
-      State::new(global_state.clone(), None, entry_point, DebugType::Internal)
-        .expect("Unable to create worker state");
+    let worker_state = State::new(
+      global_state.clone(),
+      Some(permissions),
+      entry_point,
+      DebugType::Internal,
+    )
+    .expect("Unable to create worker state");
 
     // Count how many times we start the compiler worker.
     global_state.compiler_starts.fetch_add(1, Ordering::SeqCst);
@@ -385,7 +392,9 @@ impl TsCompiler {
       global_state.flags.unstable,
     );
 
-    let msg = execute_in_thread(global_state.clone(), req_msg).await?;
+    let permissions = Permissions::allow_all();
+    let msg =
+      execute_in_thread(global_state.clone(), permissions, req_msg).await?;
     let json_str = std::str::from_utf8(&msg).unwrap();
     debug!("Message: {}", json_str);
 
@@ -441,6 +450,7 @@ impl TsCompiler {
     global_state: GlobalState,
     source_file: &SourceFile,
     target: TargetLib,
+    permissions: Permissions,
   ) -> Result<CompiledModule, ErrBox> {
     if self.has_compiled(&source_file.url) {
       return self.get_compiled_module(&source_file.url);
@@ -493,7 +503,8 @@ impl TsCompiler {
       module_url.to_string()
     );
 
-    let msg = execute_in_thread(global_state.clone(), req_msg).await?;
+    let msg =
+      execute_in_thread(global_state.clone(), permissions, req_msg).await?;
     let json_str = std::str::from_utf8(&msg).unwrap();
 
     let compile_response: CompileResponse = serde_json::from_str(json_str)?;
@@ -748,6 +759,7 @@ impl TsCompiler {
 
 async fn execute_in_thread(
   global_state: GlobalState,
+  permissions: Permissions,
   req: Buf,
 ) -> Result<Buf, ErrBox> {
   let (handle_sender, handle_receiver) =
@@ -755,7 +767,7 @@ async fn execute_in_thread(
   let builder =
     std::thread::Builder::new().name("deno-ts-compiler".to_string());
   let join_handle = builder.spawn(move || {
-    let worker = TsCompiler::setup_worker(global_state.clone());
+    let worker = TsCompiler::setup_worker(global_state.clone(), permissions);
     handle_sender.send(Ok(worker.thread_safe_handle())).unwrap();
     drop(handle_sender);
     tokio_util::run_basic(worker).expect("Panic in event loop");
@@ -777,6 +789,7 @@ async fn execute_in_thread(
 /// This function is used by `Deno.compile()` and `Deno.bundle()` APIs.
 pub async fn runtime_compile<S: BuildHasher>(
   global_state: GlobalState,
+  permissions: Permissions,
   root_name: &str,
   sources: &Option<HashMap<String, String, S>>,
   bundle: bool,
@@ -797,7 +810,7 @@ pub async fn runtime_compile<S: BuildHasher>(
 
   let compiler = global_state.ts_compiler.clone();
 
-  let msg = execute_in_thread(global_state, req_msg).await?;
+  let msg = execute_in_thread(global_state, permissions, req_msg).await?;
   let json_str = std::str::from_utf8(&msg).unwrap();
 
   // TODO(bartlomieju): factor `bundle` path into separate function `runtime_bundle`
@@ -821,6 +834,7 @@ pub async fn runtime_compile<S: BuildHasher>(
 /// This function is used by `Deno.transpileOnly()` API.
 pub async fn runtime_transpile<S: BuildHasher>(
   global_state: GlobalState,
+  permissions: Permissions,
   sources: &HashMap<String, String, S>,
   options: &Option<String>,
 ) -> Result<Value, OpError> {
@@ -833,7 +847,7 @@ pub async fn runtime_transpile<S: BuildHasher>(
   .into_boxed_str()
   .into_boxed_bytes();
 
-  let msg = execute_in_thread(global_state, req_msg).await?;
+  let msg = execute_in_thread(global_state, permissions, req_msg).await?;
   let json_str = std::str::from_utf8(&msg).unwrap();
   let v = serde_json::from_str::<serde_json::Value>(json_str)
     .expect("Error decoding JSON string.");
@@ -867,7 +881,12 @@ mod tests {
       GlobalState::mock(vec![String::from("deno"), String::from("hello.js")]);
     let result = mock_state
       .ts_compiler
-      .compile(mock_state.clone(), &out, TargetLib::Main)
+      .compile(
+        mock_state.clone(),
+        &out,
+        TargetLib::Main,
+        Permissions::allow_all(),
+      )
       .await;
     assert!(result.is_ok());
     assert!(result

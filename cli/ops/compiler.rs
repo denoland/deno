@@ -4,7 +4,6 @@ use super::dispatch_json::JsonOp;
 use super::dispatch_json::Value;
 use crate::futures::future::try_join_all;
 use crate::op_error::OpError;
-use crate::permissions::Permissions;
 use crate::state::State;
 use deno_core::CoreIsolate;
 use deno_core::ModuleLoader;
@@ -70,11 +69,11 @@ fn op_fetch_source_files(
     None
   };
 
-  // TODO(bartlomieju): currently unused, but file fetcher will
-  // require them in the near future
-  let permissions = Permissions::allow_all();
+  let s = state.borrow();
+  let global_state = s.global_state.clone();
+  let permissions = s.permissions.clone();
   let perms_ = permissions.clone();
-  let global_state = state.borrow().global_state.clone();
+  drop(s);
   let file_fetcher = global_state.file_fetcher.clone();
   let specifiers = args.specifiers.clone();
   let future = async move {

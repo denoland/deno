@@ -314,9 +314,20 @@ impl ModuleLoader for State {
     let module_url_specified = module_specifier.to_string();
     let global_state = state.global_state.clone();
     let target_lib = state.target_lib.clone();
+    let permissions = if is_dyn_import {
+      state.permissions.clone()
+    } else {
+      Permissions::allow_all()
+    };
+
     let fut = async move {
       let compiled_module = global_state
-        .fetch_compiled_module(module_specifier, maybe_referrer, target_lib)
+        .fetch_compiled_module(
+          module_specifier,
+          maybe_referrer,
+          target_lib,
+          permissions,
+        )
         .await?;
       Ok(deno_core::ModuleSource {
         // Real module name, might be different from initial specifier

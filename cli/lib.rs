@@ -206,7 +206,12 @@ async fn print_file_info(
   let module_specifier_ = module_specifier.clone();
   global_state
     .clone()
-    .fetch_compiled_module(module_specifier_, None, TargetLib::Main)
+    .fetch_compiled_module(
+      module_specifier_,
+      None,
+      TargetLib::Main,
+      Permissions::allow_all(),
+    )
     .await?;
 
   if out.media_type == msg::MediaType::TypeScript

@@ -95,14 +95,11 @@ impl GlobalState {
     module_specifier: ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
     target_lib: TargetLib,
+    permissions: Permissions,
   ) -> Result<CompiledModule, ErrBox> {
     let state1 = self.clone();
     let state2 = self.clone();
     let module_specifier = module_specifier.clone();
-
-    // TODO(bartlomieju): currently unused, but file fetcher will
-    // require them in the near future
-    let permissions = Permissions::allow_all();
 
     let out = self
       .file_fetcher
@@ -119,14 +116,14 @@ impl GlobalState {
       | msg::MediaType::JSX => {
         state1
           .ts_compiler
-          .compile(state1.clone(), &out, target_lib)
+          .compile(state1.clone(), &out, target_lib, permissions.clone())
           .await
       }
       msg::MediaType::JavaScript => {
         if state1.ts_compiler.compile_js {
           state2
             .ts_compiler
-            .compile(state1.clone(), &out, target_lib)
+            .compile(state1.clone(), &out, target_lib, permissions.clone())
             .await
         } else {
           if let Some(types_url) = out.types_url.clone() {
