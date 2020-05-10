@@ -172,8 +172,22 @@ export function bgRgb8(str: string, color: number): string {
   return run(str, code([48, 5, clampAndTruncate(color)], 49));
 }
 
-/** Set text color using 24bit rgb. */
-export function rgb24(str: string, color: Rgb): string {
+/** Set text color using 24bit rgb.
+ * `color` can be a number in range `0x000000` to `0xffffff` or
+ * an `Rgb`.
+ *
+ * To produce the color magenta:
+ *
+ *      rgba24("foo", 0xff00ff);
+ *      rgba24("foo", {r: 255, g: 0, b: 255});
+ */
+export function rgb24(str: string, color: number | Rgb): string {
+  if (typeof color === "number") {
+    return run(
+      str,
+      code([38, 2, (color >> 16) & 0xff, (color >> 8) & 0xff, color & 0xff], 39)
+    );
+  }
   return run(
     str,
     code(
@@ -189,8 +203,22 @@ export function rgb24(str: string, color: Rgb): string {
   );
 }
 
-/** Set background color using 24bit rgb. */
-export function bgRgb24(str: string, color: Rgb): string {
+/** Set background color using 24bit rgb.
+ * `color` can be a number in range `0x000000` to `0xffffff` or
+ * an `Rgb`.
+ *
+ * To produce the color magenta:
+ *
+ *      bgRgba24("foo", 0xff00ff);
+ *      bgRgba24("foo", {r: 255, g: 0, b: 255});
+ */
+export function bgRgb24(str: string, color: number | Rgb): string {
+  if (typeof color === "number") {
+    return run(
+      str,
+      code([48, 2, (color >> 16) & 0xff, (color >> 8) & 0xff, color & 0xff], 49)
+    );
+  }
   return run(
     str,
     code(
