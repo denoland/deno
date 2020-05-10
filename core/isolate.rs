@@ -125,6 +125,7 @@ impl From<Script<'_>> for OwnedScript {
 pub enum Snapshot {
   Static(&'static [u8]),
   JustCreated(v8::StartupData),
+  Boxed(Box<[u8]>),
 }
 
 /// Represents data used to initialize isolate at startup
@@ -250,6 +251,7 @@ impl CoreIsolate {
         params = match snapshot {
           Snapshot::Static(data) => params.snapshot_blob(data),
           Snapshot::JustCreated(data) => params.snapshot_blob(data),
+          Snapshot::Boxed(data) => params.snapshot_blob(data),
         };
         true
       } else {
@@ -1172,6 +1174,20 @@ pub mod tests {
     };
 
     let startup_data = StartupData::Snapshot(Snapshot::JustCreated(snapshot));
+    let mut isolate2 = CoreIsolate::new(startup_data, false);
+    js_check(isolate2.execute("check.js", "if (a != 3) throw Error('x')"));
+  }
+
+  #[test]
+  fn test_from_boxed_snapshot() {
+    let snapshot = {
+      let mut isolate = CoreIsolate::new(StartupData::None, true);
+      js_check(isolate.execute("a.js", "a = 1 + 2"));
+      let snap: &[u8] = &*isolate.snapshot();
+      Vec::from(snap).into_boxed_slice()
+    };
+
+    let startup_data = StartupData::Snapshot(Snapshot::Boxed(snapshot));
     let mut isolate2 = CoreIsolate::new(startup_data, false);
     js_check(isolate2.execute("check.js", "if (a != 3) throw Error('x')"));
   }
