@@ -102,7 +102,7 @@ impl GlobalState {
 
     // TODO(bartlomieju): currently unused, but file fetcher will
     // require them in the near future
-    let permissions = DenoPermissions::default();
+    let permissions = Permissions::default();
 
     let out = self
       .file_fetcher

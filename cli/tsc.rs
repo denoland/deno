@@ -11,8 +11,7 @@ use crate::global_state::GlobalState;
 use crate::msg;
 use crate::op_error::OpError;
 use crate::ops;
-use crate::ops::JsonResult;
-use crate::permissions::DenoPermissions;
+use crate::permissions::Permissions;
 use crate::source_maps::SourceMapGetter;
 use crate::startup_data;
 use crate::state::State;
@@ -599,7 +598,7 @@ impl TsCompiler {
   ) -> std::io::Result<()> {
     let source_file = self
       .file_fetcher
-      .fetch_cached_source_file(&module_specifier, DenoPermissions::default())
+      .fetch_cached_source_file(&module_specifier, Permissions::default())
       .expect("Source file not found");
 
     // NOTE: JavaScript files are only cached to disk if `checkJs`
@@ -616,7 +615,7 @@ impl TsCompiler {
     self.mark_compiled(module_specifier.as_url());
     let source_file = self
       .file_fetcher
-      .fetch_cached_source_file(&module_specifier, DenoPermissions::default())
+      .fetch_cached_source_file(&module_specifier, Permissions::default())
       .expect("Source file not found");
 
     let version_hash = source_code_version_hash(
@@ -671,7 +670,7 @@ impl TsCompiler {
   ) -> std::io::Result<()> {
     let source_file = self
       .file_fetcher
-      .fetch_cached_source_file(&module_specifier)
+      .fetch_cached_source_file(&module_specifier, Permissions::default())
       .expect("Source file not found");
 
     // NOTE: JavaScript files are only cached to disk if `checkJs`
@@ -726,7 +725,7 @@ impl TsCompiler {
     if let Some(module_specifier) = self.try_to_resolve(script_name) {
       return self.file_fetcher.fetch_cached_source_file(
         &module_specifier,
-        DenoPermissions::default(),
+        Permissions::default(),
       );
     }
 
