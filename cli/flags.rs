@@ -533,8 +533,6 @@ fn run_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 }
 
 fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  flags.allow_read = true;
-
   run_test_args_parse(flags, matches);
 
   let failfast = matches.is_present("failfast");
