@@ -4,7 +4,7 @@ use super::dispatch_json::JsonOp;
 use super::dispatch_json::Value;
 use crate::futures::future::try_join_all;
 use crate::op_error::OpError;
-use crate::permissions::DenoPermissions;
+use crate::permissions::Permissions;
 use crate::state::State;
 use deno_core::CoreIsolate;
 use deno_core::ModuleLoader;
