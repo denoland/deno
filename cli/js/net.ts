@@ -151,7 +151,7 @@ export function listen(
 export function listen(options: ListenOptions): Listener {
   const res = netOps.listen({
     transport: "tcp",
-    hostname: "127.0.0.1",
+    hostname: "0.0.0.0",
     ...(options as ListenOptions),
   });
 
