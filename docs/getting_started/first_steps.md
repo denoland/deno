@@ -29,7 +29,7 @@ deno run https://deno.land/std/examples/welcome.ts
 
 ### Making an HTTP request
 
-Something a lot of programs do is fetching data from from a webserver via an
+Something a lot of programs do is fetching data from a webserver via an
 HTTP request. Lets write a small program that fetches a file and prints the
 content to the terminal.
 
