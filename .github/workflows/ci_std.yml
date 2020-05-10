@@ -62,9 +62,9 @@ jobs:
       - name: test_format.py
         run: python ./tools/test_format.py
 
-      - name: Test deno/std
+      - name: Test deno/std against latest public release
         run: |
           cd ./std
           curl -L https://deno.land/x/install/install.sh | sh
-          deno test --unstable -A
+          /home/runner/.deno/bin/deno test --unstable -A
           cd ..
