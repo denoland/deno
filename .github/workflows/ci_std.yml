@@ -38,6 +38,10 @@ jobs:
           fetch-depth: 5
           submodules: true
 
+      - name: Install latest deno release
+        run: |
+          curl -L https://deno.land/x/install/install.sh | sh
+
       - name: Install Python
         uses: actions/setup-python@v1
         with:
@@ -55,6 +59,7 @@ jobs:
       - name: Log versions
         run: |
           python --version
+          /home/runner/.deno/bin/deno --version
 
       - name: lint.py
         run: python ./tools/lint.py --js
@@ -62,9 +67,8 @@ jobs:
       - name: test_format.py
         run: python ./tools/test_format.py
 
-      - name: Test deno/std against latest public release
+      - name: Test deno/std
         run: |
           cd ./std
-          curl -L https://deno.land/x/install/install.sh | sh
           /home/runner/.deno/bin/deno test --unstable -A
           cd ..
