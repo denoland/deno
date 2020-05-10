@@ -318,8 +318,8 @@ impl ModuleLoader for State {
     let permissions = if state.is_main {
       Permissions::allow_all()
     } else {
-      state.permissions.clone()
-    };
+    state.permissions.clone()
+  };
 
     let fut = async move {
       let compiled_module = global_state
