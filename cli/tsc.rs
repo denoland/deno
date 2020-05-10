@@ -723,10 +723,9 @@ impl TsCompiler {
     script_name: &str,
   ) -> Option<SourceFile> {
     if let Some(module_specifier) = self.try_to_resolve(script_name) {
-      return self.file_fetcher.fetch_cached_source_file(
-        &module_specifier,
-        Permissions::default(),
-      );
+      return self
+        .file_fetcher
+        .fetch_cached_source_file(&module_specifier, Permissions::default());
     }
 
     None
