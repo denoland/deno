@@ -11,6 +11,7 @@ import { TextDecoder, TextEncoder } from "./text_encoding.ts";
 /*
 import { blobURLMap } from "./web/url.ts";
 */
+import { ErrorEventImpl as ErrorEvent } from "./error_event.ts";
 import { EventImpl as Event } from "./event.ts";
 import { EventTargetImpl as EventTarget } from "./event_target.ts";
 
@@ -38,36 +39,6 @@ export class MessageEvent extends Event {
     this.data = eventInitDict?.data ?? null;
     this.origin = eventInitDict?.origin ?? "";
     this.lastEventId = eventInitDict?.lastEventId ?? "";
-  }
-}
-
-export interface ErrorEventInit extends EventInit {
-  message?: string;
-  filename?: string;
-  lineno?: number;
-  colno?: number;
-  error?: any;
-}
-
-export class ErrorEvent extends Event {
-  readonly message: string;
-  readonly filename: string;
-  readonly lineno: number;
-  readonly colno: number;
-  readonly error: any;
-
-  constructor(type: string, eventInitDict?: ErrorEventInit) {
-    super(type, {
-      bubbles: eventInitDict?.bubbles ?? false,
-      cancelable: eventInitDict?.cancelable ?? false,
-      composed: eventInitDict?.composed ?? false,
-    });
-
-    this.message = eventInitDict?.message ?? "";
-    this.filename = eventInitDict?.filename ?? "";
-    this.lineno = eventInitDict?.lineno ?? 0;
-    this.colno = eventInitDict?.colno ?? 0;
-    this.error = eventInitDict?.error ?? null;
   }
 }
 
