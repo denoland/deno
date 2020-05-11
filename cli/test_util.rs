@@ -1,9 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-
-// TODO(ry) Make this file test-only. Somehow it's very difficult to export
-// methods to tests/integration_tests.rs if this is enabled...
-// #![cfg(test)]
-
+#![cfg(test)]
 use std::path::PathBuf;
 use std::process::Child;
 use std::process::Command;

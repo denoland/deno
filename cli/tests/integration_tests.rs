@@ -15,21 +15,19 @@ use tempfile::TempDir;
 #[test]
 fn std_tests() {
   let dir = TempDir::new().expect("tempdir fail");
-  let mut deno_cmd = Command::new(util::deno_exe_path());
-  deno_cmd.env("DENO_DIR", dir.path());
-
-  let mut cwd = util::root_path();
-  cwd.push("std");
-  let mut deno = deno_cmd
-    .current_dir(cwd) // note: std tests expect to run from "std" dir
+  let std_path = util::root_path().join("std");
+  let status = util::deno_cmd()
+    .env("DENO_DIR", dir.path())
+    .current_dir(std_path) // TODO(ry) change this to root_path
     .arg("test")
     .arg("--unstable")
     .arg("--seed=86") // Some tests rely on specific random numbers.
     .arg("-A")
     // .arg("-Ldebug")
     .spawn()
-    .expect("failed to spawn script");
-  let status = deno.wait().expect("failed to wait for the child process");
+    .unwrap()
+    .wait()
+    .unwrap();
   assert!(status.success());
 }
 
@@ -51,7 +49,7 @@ fn x_deno_warning() {
   let stdout_str = std::str::from_utf8(&output.stdout).unwrap().trim();
   let stderr_str = std::str::from_utf8(&output.stderr).unwrap().trim();
   assert_eq!("testing x-deno-warning header", stdout_str);
-  assert!(deno::colors::strip_ansi_codes(stderr_str).contains("Warning foobar"));
+  assert!(util::strip_ansi_codes(stderr_str).contains("Warning foobar"));
   drop(g);
 }
 
@@ -110,7 +108,6 @@ pub fn test_raw_tty() {
     nread = master.read(&mut obytes).unwrap();
     assert_eq!(String::from_utf8_lossy(&obytes[0..nread]), "C");
   } else {
-    use deno::test_util::*;
     use nix::sys::termios;
     use std::os::unix::io::AsRawFd;
     use std::process::*;
@@ -122,7 +119,7 @@ pub fn test_raw_tty() {
     termios::tcsetattr(stdin_fd, termios::SetArg::TCSANOW, &t).unwrap();
 
     let deno_dir = TempDir::new().expect("tempdir fail");
-    let mut child = Command::new(deno_exe_path())
+    let mut child = Command::new(util::deno_exe_path())
       .env("DENO_DIR", deno_dir.path())
       .current_dir(util::root_path())
       .arg("run")
@@ -292,23 +289,25 @@ fn installer_test_local_module_run() {
   let temp_dir = TempDir::new().expect("tempdir fail");
   let bin_dir = temp_dir.path().join("bin");
   std::fs::create_dir(&bin_dir).unwrap();
-  let local_module = std::env::current_dir().unwrap().join("tests/echo.ts");
-  let local_module_str = local_module.to_string_lossy();
-  deno::installer::install(
-    deno::flags::Flags::default(),
-    &local_module_str,
-    vec!["hello".to_string()],
-    Some("echo_test".to_string()),
-    Some(temp_dir.path().to_path_buf()),
-    false,
-  )
-  .expect("Failed to install");
+  let status = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("install")
+    .arg("--name")
+    .arg("echo_test")
+    .arg("--root")
+    .arg(temp_dir.path())
+    .arg(util::tests_path().join("echo.ts"))
+    .arg("hello")
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(status.success());
   let mut file_path = bin_dir.join("echo_test");
   if cfg!(windows) {
     file_path = file_path.with_extension("cmd");
   }
   assert!(file_path.exists());
-
   // NOTE: using file_path here instead of exec_name, because tests
   // shouldn't mess with user's PATH env variable
   let output = Command::new(file_path)
@@ -317,13 +316,8 @@ fn installer_test_local_module_run() {
     .env("PATH", util::target_dir())
     .output()
     .expect("failed to spawn script");
-
   let stdout_str = std::str::from_utf8(&output.stdout).unwrap().trim();
-  let stderr_str = std::str::from_utf8(&output.stderr).unwrap().trim();
-  println!("Got stdout: {:?}", stdout_str);
-  println!("Got stderr: {:?}", stderr_str);
   assert!(stdout_str.ends_with("hello, foo"));
-  drop(temp_dir);
 }
 
 #[test]
@@ -332,15 +326,20 @@ fn installer_test_remote_module_run() {
   let temp_dir = TempDir::new().expect("tempdir fail");
   let bin_dir = temp_dir.path().join("bin");
   std::fs::create_dir(&bin_dir).unwrap();
-  deno::installer::install(
-    deno::flags::Flags::default(),
-    "http://localhost:4545/cli/tests/echo.ts",
-    vec!["hello".to_string()],
-    Some("echo_test".to_string()),
-    Some(temp_dir.path().to_path_buf()),
-    false,
-  )
-  .expect("Failed to install");
+  let status = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("install")
+    .arg("--name")
+    .arg("echo_test")
+    .arg("--root")
+    .arg(temp_dir.path())
+    .arg("http://localhost:4545/cli/tests/echo.ts")
+    .arg("hello")
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(status.success());
   let mut file_path = bin_dir.join("echo_test");
   if cfg!(windows) {
     file_path = file_path.with_extension("cmd");
@@ -356,7 +355,6 @@ fn installer_test_remote_module_run() {
     .unwrap()
     .trim()
     .ends_with("hello, foo"));
-  drop(temp_dir);
   drop(g)
 }
 
@@ -1730,8 +1728,6 @@ fn cafile_fetch() {
 
 #[test]
 fn cafile_install_remote_module() {
-  use deno::test_util::*;
-
   let g = util::http_server();
   let temp_dir = TempDir::new().expect("tempdir fail");
   let bin_dir = temp_dir.path().join("bin");
@@ -1739,7 +1735,7 @@ fn cafile_install_remote_module() {
   let deno_dir = TempDir::new().expect("tempdir fail");
   let cafile = util::root_path().join("cli/tests/tls/RootCA.pem");
 
-  let install_output = Command::new(deno_exe_path())
+  let install_output = Command::new(util::deno_exe_path())
     .env("DENO_DIR", deno_dir.path())
     .current_dir(util::root_path())
     .arg("install")
@@ -2471,20 +2467,22 @@ fn exec_path() {
   let stdout_str = std::str::from_utf8(&output.stdout).unwrap().trim();
   let actual =
     std::fs::canonicalize(&std::path::Path::new(stdout_str)).unwrap();
-  let expected =
-    std::fs::canonicalize(deno::test_util::deno_exe_path()).unwrap();
+  let expected = std::fs::canonicalize(util::deno_exe_path()).unwrap();
   assert_eq!(expected, actual);
 }
 
 mod util {
-  use deno::colors::strip_ansi_codes;
-  pub use deno::test_util::*;
   use os_pipe::pipe;
+  use regex::Regex;
   use std::io::Read;
   use std::io::Write;
+  use std::path::PathBuf;
+  use std::process::Child;
   use std::process::Command;
   use std::process::Output;
   use std::process::Stdio;
+  use std::sync::Mutex;
+  use std::sync::MutexGuard;
   use tempfile::TempDir;
 
   pub const PERMISSION_VARIANTS: [&str; 5] =
@@ -2493,6 +2491,94 @@ mod util {
 
   lazy_static! {
     static ref DENO_DIR: TempDir = { TempDir::new().expect("tempdir fail") };
+
+    // STRIP_ANSI_RE and strip_ansi_codes are lifted from the "console" crate.
+    // Copyright 2017 Armin Ronacher <armin.ronacher@active-4.com>. MIT License.
+    static ref STRIP_ANSI_RE: Regex = Regex::new(
+            r"[\x1b\x9b][\[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-PRZcf-nqry=><]"
+    ).unwrap();
+
+    static ref GUARD: Mutex<()> = Mutex::new(());
+  }
+
+  pub fn root_path() -> PathBuf {
+    PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/.."))
+  }
+
+  pub fn tests_path() -> PathBuf {
+    root_path().join("cli").join("tests")
+  }
+
+  pub fn target_dir() -> PathBuf {
+    let current_exe = std::env::current_exe().unwrap();
+    let target_dir = current_exe.parent().unwrap().parent().unwrap();
+    println!("target_dir {}", target_dir.display());
+    target_dir.into()
+  }
+
+  pub fn deno_exe_path() -> PathBuf {
+    // Something like /Users/rld/src/deno/target/debug/deps/deno
+    let mut p = target_dir().join("deno");
+    if cfg!(windows) {
+      p.set_extension("exe");
+    }
+    p
+  }
+
+  pub struct HttpServerGuard<'a> {
+    #[allow(dead_code)]
+    g: MutexGuard<'a, ()>,
+    child: Child,
+  }
+
+  impl<'a> Drop for HttpServerGuard<'a> {
+    fn drop(&mut self) {
+      match self.child.try_wait() {
+        Ok(None) => {
+          self.child.kill().expect("failed to kill http_server.py");
+        }
+        Ok(Some(status)) => {
+          panic!("http_server.py exited unexpectedly {}", status)
+        }
+        Err(e) => panic!("http_server.py err {}", e),
+      }
+    }
+  }
+
+  /// Starts tools/http_server.py when the returned guard is dropped, the server
+  /// will be killed.
+  pub fn http_server<'a>() -> HttpServerGuard<'a> {
+    // TODO(bartlomieju) Allow tests to use the http server in parallel.
+    let g = GUARD.lock().unwrap();
+
+    println!("tools/http_server.py starting...");
+    let mut child = Command::new("python")
+      .current_dir(root_path())
+      .args(&["-u", "tools/http_server.py"])
+      .stdout(Stdio::piped())
+      .spawn()
+      .expect("failed to execute child");
+
+    let stdout = child.stdout.as_mut().unwrap();
+    use std::io::{BufRead, BufReader};
+    let lines = BufReader::new(stdout).lines();
+    // Wait for "ready" on stdout. See tools/http_server.py
+    for maybe_line in lines {
+      if let Ok(line) = maybe_line {
+        if line.starts_with("ready") {
+          break;
+        }
+      } else {
+        panic!(maybe_line.unwrap_err());
+      }
+    }
+
+    HttpServerGuard { child, g }
+  }
+
+  /// Helper function to strip ansi codes.
+  pub fn strip_ansi_codes(s: &str) -> std::borrow::Cow<str> {
+    STRIP_ANSI_RE.replace_all(s, "")
   }
 
   pub fn run_and_collect_output(
@@ -2505,7 +2591,7 @@ mod util {
     let mut deno_process_builder = deno_cmd();
     deno_process_builder
       .args(args.split_whitespace())
-      .current_dir(&deno::test_util::tests_path())
+      .current_dir(&tests_path())
       .stdin(Stdio::piped())
       .stdout(Stdio::piped())
       .stderr(Stdio::piped());
@@ -2543,7 +2629,9 @@ mod util {
   }
 
   pub fn deno_cmd() -> Command {
-    let mut c = Command::new(deno_exe_path());
+    let e = deno_exe_path();
+    assert!(e.exists());
+    let mut c = Command::new(e);
     c.env("DENO_DIR", DENO_DIR.path());
     c
   }
