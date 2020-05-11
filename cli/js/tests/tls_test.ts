@@ -43,7 +43,7 @@ unitTest(
     let err;
     const options = {
       hostname: "localhost",
-      port: 4500,
+      port: 3500,
       certFile: "cli/tests/tls/localhost.crt",
       keyFile: "cli/tests/tls/localhost.key",
     };
@@ -75,7 +75,7 @@ unitTest({ perms: { net: true } }, function listenTLSNoReadPerm(): void {
   try {
     Deno.listenTls({
       hostname: "localhost",
-      port: 4500,
+      port: 3500,
       certFile: "cli/tests/tls/localhost.crt",
       keyFile: "cli/tests/tls/localhost.key",
     });
@@ -94,7 +94,7 @@ unitTest(
     let err;
     const options = {
       hostname: "localhost",
-      port: 4500,
+      port: 3500,
       certFile: "cli/tests/tls/localhost.crt",
       keyFile: "cli/tests/tls/localhost.key",
     };
@@ -123,7 +123,7 @@ unitTest(
     let err;
     const options = {
       hostname: "localhost",
-      port: 4500,
+      port: 3500,
       certFile: "cli/tests/tls/localhost.crt",
       keyFile: "cli/tests/tls/localhost.key",
     };
@@ -151,7 +151,7 @@ unitTest(
   async function dialAndListenTLS(): Promise<void> {
     const resolvable = createResolvable();
     const hostname = "localhost";
-    const port = 4500;
+    const port = 3500;
 
     const listener = Deno.listenTls({
       hostname,
