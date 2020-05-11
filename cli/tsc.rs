@@ -400,6 +400,7 @@ impl TsCompiler {
       global_state.file_fetcher.clone(),
       import_map,
       permissions.clone(),
+      false,
     );
     let module_graph =
       module_graph_loader.build_graph(&module_specifier).await?;
@@ -641,6 +642,7 @@ impl TsCompiler {
     source_file: &SourceFile,
     target: TargetLib,
     permissions: Permissions,
+    is_dyn_import: bool,
   ) -> Result<CompiledModule, ErrBox> {
     if self.has_compiled(&source_file.url) {
       return self.get_compiled_module(&source_file.url);
@@ -686,6 +688,7 @@ impl TsCompiler {
       global_state.file_fetcher.clone(),
       import_map,
       permissions.clone(),
+      is_dyn_import,
     );
     let module_graph =
       module_graph_loader.build_graph(&module_specifier).await?;

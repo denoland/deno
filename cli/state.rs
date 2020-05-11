@@ -328,6 +328,7 @@ impl ModuleLoader for State {
           maybe_referrer,
           target_lib,
           permissions,
+          is_dyn_import,
         )
         .await?;
       Ok(deno_core::ModuleSource {

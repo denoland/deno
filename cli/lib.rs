@@ -212,6 +212,7 @@ async fn print_file_info(
       None,
       TargetLib::Main,
       Permissions::allow_all(),
+      false,
     )
     .await?;
 

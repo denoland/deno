@@ -4,6 +4,7 @@
 use crate::file_fetcher::SourceFileFetcher;
 use crate::import_map::ImportMap;
 use crate::msg::MediaType;
+use crate::op_error::OpError;
 use crate::permissions::Permissions;
 use crate::swc_util::analyze_dependencies_and_references;
 use crate::swc_util::TsReferenceKind;
@@ -78,8 +79,9 @@ pub struct ModuleGraphLoader {
   permissions: Permissions,
   file_fetcher: SourceFileFetcher,
   maybe_import_map: Option<ImportMap>,
-  to_visit: Vec<ModuleSpecifier>,
+  to_visit: Vec<(ModuleSpecifier, Option<ModuleSpecifier>)>,
   pub graph: ModuleGraph,
+  is_dyn_import: bool,
 }
 
 impl ModuleGraphLoader {
@@ -87,6 +89,7 @@ impl ModuleGraphLoader {
     file_fetcher: SourceFileFetcher,
     maybe_import_map: Option<ImportMap>,
     permissions: Permissions,
+    is_dyn_import: bool,
   ) -> Self {
     Self {
       file_fetcher,
@@ -94,6 +97,7 @@ impl ModuleGraphLoader {
       maybe_import_map,
       to_visit: vec![],
       graph: ModuleGraph(HashMap::new()),
+      is_dyn_import,
     }
   }
 
@@ -101,9 +105,9 @@ impl ModuleGraphLoader {
     mut self,
     specifier: &ModuleSpecifier,
   ) -> Result<HashMap<String, ModuleGraphFile>, ErrBox> {
-    self.to_visit.push(specifier.to_owned());
-    while let Some(spec) = self.to_visit.pop() {
-      self.visit_module(&spec).await?;
+    self.to_visit.push((specifier.to_owned(), None));
+    while let Some((spec, maybe_referrer)) = self.to_visit.pop() {
+      self.visit_module(&spec, maybe_referrer).await?;
     }
     Ok(self.graph.0)
   }
@@ -111,14 +115,39 @@ impl ModuleGraphLoader {
   async fn visit_module(
     &mut self,
     module_specifier: &ModuleSpecifier,
+    maybe_referrer: Option<ModuleSpecifier>,
   ) -> Result<(), ErrBox> {
     if self.graph.0.contains_key(&module_specifier.to_string()) {
       return Ok(());
     }
 
+    if !self.is_dyn_import {
+      // Verify that remote file doesn't try to statically import local file.
+      if let Some(referrer) = maybe_referrer.as_ref() {
+        let referrer_url = referrer.as_url();
+        match referrer_url.scheme() {
+          "http" | "https" => {
+            let specifier_url = module_specifier.as_url();
+            match specifier_url.scheme() {
+              "http" | "https" => {}
+              _ => {
+                let e = OpError::permission_denied("Remote module are not allowed to statically import local modules. Use dynamic import instead.".to_string());
+                return Err(e.into());
+              }
+            }
+          }
+          _ => {}
+        }
+      }
+    }
+
     let source_file = self
       .file_fetcher
-      .fetch_source_file(module_specifier, None, self.permissions.clone())
+      .fetch_source_file(
+        module_specifier,
+        maybe_referrer,
+        self.permissions.clone(),
+      )
       .await?;
 
     let mut imports = vec![];
@@ -187,16 +216,19 @@ impl ModuleGraphLoader {
           .get(&import_descriptor.resolved_specifier.to_string())
           .is_none()
         {
-          self
-            .to_visit
-            .push(import_descriptor.resolved_specifier.clone());
+          self.to_visit.push((
+            import_descriptor.resolved_specifier.clone(),
+            Some(module_specifier.clone()),
+          ));
         }
 
         if let Some(type_dir_url) =
           import_descriptor.resolved_type_directive.as_ref()
         {
           if self.graph.0.get(&type_dir_url.to_string()).is_none() {
-            self.to_visit.push(type_dir_url.clone());
+            self
+              .to_visit
+              .push((type_dir_url.clone(), Some(module_specifier.clone())));
           }
         }
 
@@ -219,9 +251,10 @@ impl ModuleGraphLoader {
           .get(&reference_descriptor.resolved_specifier.to_string())
           .is_none()
         {
-          self
-            .to_visit
-            .push(reference_descriptor.resolved_specifier.clone());
+          self.to_visit.push((
+            reference_descriptor.resolved_specifier.clone(),
+            Some(module_specifier.clone()),
+          ));
         }
 
         match ref_desc.kind {
@@ -283,6 +316,7 @@ mod tests {
       global_state.file_fetcher.clone(),
       None,
       Permissions::allow_all(),
+      false,
     );
     let graph = graph_loader.build_graph(&module_specifier).await.unwrap();
 
@@ -354,6 +388,7 @@ mod tests {
       global_state.file_fetcher.clone(),
       None,
       Permissions::allow_all(),
+      false,
     );
     let graph = graph_loader.build_graph(&module_specifier).await.unwrap();
 
@@ -392,6 +427,7 @@ mod tests {
       global_state.file_fetcher.clone(),
       None,
       Permissions::allow_all(),
+      false,
     );
     let graph = graph_loader.build_graph(&module_specifier).await.unwrap();
 
@@ -487,6 +523,7 @@ mod tests {
       global_state.file_fetcher.clone(),
       None,
       Permissions::allow_all(),
+      false,
     );
     let graph = graph_loader.build_graph(&module_specifier).await.unwrap();
 
@@ -551,6 +588,7 @@ mod tests {
       global_state.file_fetcher.clone(),
       None,
       Permissions::allow_all(),
+      false,
     );
     let graph = graph_loader.build_graph(&module_specifier).await.unwrap();
 
