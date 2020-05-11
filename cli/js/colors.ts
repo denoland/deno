@@ -64,7 +64,29 @@ const ANSI_PATTERN = new RegExp(
   "g"
 );
 
+/** Removes all ANSI escape sequences from a string. */
 export function stripColor(string: string): string {
   return string.replace(ANSI_PATTERN, "");
 }
 
+
+
+/** Converts a hex color to an [r,g,b] array. */
+const hexToRgbArray = (color: number) => {
+  color = color & 0xffffff
+
+  return [
+    color >> 16 & 0xff, // red
+    color >> 8 & 0xff,  // green
+    color & 0xff        // blue
+  ]
+}
+
+/** Set text color using 24bit rgb. */
+export const rgb24 = (color: number) => 
+	code([38, 2, ...hexToRgbArray(color)], 39)
+
+
+/** Set text background color using 24bit rgb. */
+export const bgRgb24 = (color: number) =>
+	code([48, 2, ...hexToRgbArray(color)], 49)
