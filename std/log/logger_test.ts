@@ -133,8 +133,8 @@ test("String resolver fn resolves as expected", function (): void {
 test("All types map correctly to log strings and are returned as is", function (): void {
   const handler = new TestHandler("DEBUG");
   const logger = new Logger("DEBUG", [handler]);
-  const sym: Symbol = Symbol();
-  const syma: Symbol = Symbol("a");
+  const sym = Symbol();
+  const syma = Symbol("a");
   const fn = (): string => {
     return "abc";
   };

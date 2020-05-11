@@ -85,6 +85,7 @@ export class Logger {
   }
 
   /** Convert all types to strings for logging */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   asString(data: any): string {
     if (typeof data === "string") {
       return data;
