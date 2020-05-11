@@ -3,7 +3,7 @@ import { isInvalidDate, isTypedArray, TypedArray } from "./util.ts";
 import { cliTable } from "./console_table.ts";
 import { exposeForTest } from "../internals.ts";
 import { PromiseState } from "./promise.ts";
-import { stripColor, yellow, dim, cyan, red, green } from "../colors.ts";
+import { stripColor, yellow, dim, cyan, red, green, magenta, bold } from "../colors.ts";
 
 type ConsoleContext = Set<unknown>;
 type InspectOptions = Partial<{
@@ -265,18 +265,19 @@ function stringify(
     case "number": // Numbers are yellow
       // Special handling of -0
       return yellow(Object.is(value, -0) ? "-0" : `${value}`);
-    case "boolean":
-    case "undefined":
+    case "boolean": // booleans are yellow
+      return yellow(String(value));
+    case "undefined": // undefined is dim
       return dim(String(value));
-    case "symbol":
+    case "symbol": // Symbols are just... symbols
       return String(value);
-    case "bigint":
-      return `${value}n`;
+    case "bigint": // Bigints are yellow
+      return yellow(`${value}n`);
     case "function": // Function string is cyan
       return cyan(createFunctionString(value as Function, ctx));
-    case "object":
+    case "object": // null is bold
       if (value === null) {
-        return "null";
+        return bold("null");
       }
 
       if (ctx.has(value)) { // Circular string is cyan
@@ -413,11 +414,12 @@ function createWeakMapString(): string {
 }
 
 function createDateString(value: Date): string {
-  return isInvalidDate(value) ? "Invalid Date" : value.toISOString(); // without quotes, ISO format
+  // without quotes, ISO format, in magenta like before
+  return magenta(isInvalidDate(value) ? "Invalid Date" : value.toISOString());
 }
 
 function createRegExpString(value: RegExp): string {
-  return value.toString();
+  return red(value.toString()); // RegExps are red
 }
 
 /* eslint-disable @typescript-eslint/ban-types */
