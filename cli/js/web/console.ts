@@ -330,7 +330,7 @@ function createArrayString(
         }
         const emptyItems = i - index;
         const ending = emptyItems > 1 ? "s" : "";
-        return `<${emptyItems} empty item${ending}>`;
+        return dim(`<${emptyItems} empty item${ending}>`);
       } else {
         return stringifyWithQuotes(val, ctx, level + 1, maxLevel);
       }
