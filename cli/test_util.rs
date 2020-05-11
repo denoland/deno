@@ -11,6 +11,30 @@ lazy_static! {
   static ref GUARD: Mutex<()> = Mutex::new(());
 }
 
+pub fn root_path() -> PathBuf {
+  PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/.."))
+}
+
+pub fn tests_path() -> PathBuf {
+  root_path().join("cli").join("tests")
+}
+
+pub fn target_dir() -> PathBuf {
+  let current_exe = std::env::current_exe().unwrap();
+  let target_dir = current_exe.parent().unwrap().parent().unwrap();
+  println!("target_dir {}", target_dir.display());
+  target_dir.into()
+}
+
+pub fn deno_exe_path() -> PathBuf {
+  // Something like /Users/rld/src/deno/target/debug/deps/deno
+  let mut p = target_dir().join("deno");
+  if cfg!(windows) {
+    p.set_extension("exe");
+  }
+  p
+}
+
 pub struct HttpServerGuard<'a> {
   #[allow(dead_code)]
   g: MutexGuard<'a, ()>,
