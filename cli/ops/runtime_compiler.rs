@@ -33,7 +33,6 @@ fn op_compile(
   let s = state.borrow();
   let global_state = s.global_state.clone();
   let permissions = s.permissions.clone();
-  drop(s);
   let fut = async move {
     runtime_compile(
       global_state,
@@ -65,7 +64,6 @@ fn op_transpile(
   let s = state.borrow();
   let global_state = s.global_state.clone();
   let permissions = s.permissions.clone();
-  drop(s);
   let fut = async move {
     runtime_transpile(global_state, permissions, &args.sources, &args.options)
       .await

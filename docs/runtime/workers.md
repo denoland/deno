@@ -20,11 +20,10 @@ new Worker("./worker.js", { type: "classic" });
 
 ### Permissions
 
-Creating new `Worker` instance is treated the same way as a dynamic import;
-therefore appropriate permission is required depending if worker uses local or
-remote code.
+Creating a new `Worker` instance is similar to a dynamic import; therefore Deno
+requires appropriate permission for this action.
 
-Local workers require `--allow-read` permission:
+For workers using local modules; `--allow-read` permission is required:
 
 ```ts
 // main.ts
@@ -43,7 +42,7 @@ $ deno run --allow-read main.ts
 hello world
 ```
 
-Remote workers require `--allow-net` permission:
+For workers using remote modules; `--allow-read` permission is required:
 
 ```ts
 // main.ts
