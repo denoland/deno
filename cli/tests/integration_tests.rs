@@ -15,21 +15,19 @@ use tempfile::TempDir;
 #[test]
 fn std_tests() {
   let dir = TempDir::new().expect("tempdir fail");
-  let mut deno_cmd = Command::new(util::deno_exe_path());
-  deno_cmd.env("DENO_DIR", dir.path());
-
-  let mut cwd = util::root_path();
-  cwd.push("std");
-  let mut deno = deno_cmd
-    .current_dir(cwd) // note: std tests expect to run from "std" dir
+  let std_path = util::root_path().join("std");
+  let status = util::deno_cmd()
+    .env("DENO_DIR", dir.path())
+    .current_dir(std_path) // TODO(ry) change this to root_path
     .arg("test")
     .arg("--unstable")
     .arg("--seed=86") // Some tests rely on specific random numbers.
     .arg("-A")
     // .arg("-Ldebug")
     .spawn()
-    .expect("failed to spawn script");
-  let status = deno.wait().expect("failed to wait for the child process");
+    .unwrap()
+    .wait()
+    .unwrap();
   assert!(status.success());
 }
 
@@ -2631,7 +2629,9 @@ mod util {
   }
 
   pub fn deno_cmd() -> Command {
-    let mut c = Command::new(deno_exe_path());
+    let e = deno_exe_path();
+    assert!(e.exists());
+    let mut c = Command::new(e);
     c.env("DENO_DIR", DENO_DIR.path());
     c
   }
