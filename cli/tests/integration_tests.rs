@@ -155,35 +155,24 @@ fn deno_dir_test() {
 }
 
 #[test]
-fn fetch_test() {
-  use deno::http_cache::url_to_filename;
-  pub use deno::test_util::*;
-  use url::Url;
-
+fn cache_test() {
   let g = util::http_server();
-
   let deno_dir = TempDir::new().expect("tempdir fail");
   let module_url =
-    Url::parse("http://localhost:4545/cli/tests/006_url_imports.ts").unwrap();
-
-  let output = Command::new(deno_exe_path())
+    url::Url::parse("http://localhost:4545/cli/tests/006_url_imports.ts")
+      .unwrap();
+  let output = Command::new(util::deno_exe_path())
     .env("DENO_DIR", deno_dir.path())
     .current_dir(util::root_path())
     .arg("cache")
     .arg(module_url.to_string())
     .output()
     .expect("Failed to spawn script");
-
   assert!(output.status.success());
   let out = std::str::from_utf8(&output.stdout).unwrap();
   assert_eq!(out, "");
-
-  let expected_path = deno_dir
-    .path()
-    .join("deps")
-    .join(url_to_filename(&module_url));
-  assert_eq!(expected_path.exists(), true);
-
+  // TODO(ry) Is there some way to check that the file was actually cached in
+  // DENO_DIR?
   drop(g);
 }
 
@@ -1717,18 +1706,14 @@ itest!(proto_exploit {
 
 #[test]
 fn cafile_fetch() {
-  use deno::http_cache::url_to_filename;
-  pub use deno::test_util::*;
   use url::Url;
-
   let g = util::http_server();
-
   let deno_dir = TempDir::new().expect("tempdir fail");
   let module_url =
     Url::parse("http://localhost:4545/cli/tests/cafile_url_imports.ts")
       .unwrap();
   let cafile = util::root_path().join("cli/tests/tls/RootCA.pem");
-  let output = Command::new(deno_exe_path())
+  let output = Command::new(util::deno_exe_path())
     .env("DENO_DIR", deno_dir.path())
     .current_dir(util::root_path())
     .arg("cache")
@@ -1737,19 +1722,9 @@ fn cafile_fetch() {
     .arg(module_url.to_string())
     .output()
     .expect("Failed to spawn script");
-
-  let code = output.status.code();
+  assert!(output.status.success());
   let out = std::str::from_utf8(&output.stdout).unwrap();
-
-  assert_eq!(Some(0), code);
   assert_eq!(out, "");
-
-  let expected_path = deno_dir
-    .path()
-    .join("deps")
-    .join(url_to_filename(&module_url));
-  assert_eq!(expected_path.exists(), true);
-
   drop(g);
 }
 
