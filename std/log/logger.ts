@@ -7,8 +7,6 @@ import {
 } from "./levels.ts";
 import { BaseHandler } from "./handlers.ts";
 
-type StringResolverFn = () => string;
-
 export class LogRecord {
   readonly msg: string;
   #args: unknown[];
@@ -44,11 +42,18 @@ export class Logger {
     this.handlers = handlers || [];
   }
 
-  _log(
+  /** If the level of the logger is greater than the level to log, then nothing
+   * is logged, otherwise a log record is passed to each log handler.  Any data
+   * passed in is returned.  If a function is passed it, it is only evaluated
+   * if the msg will be logged and the return value will be the result of the
+   * function, not the function itself, unless the function isn't called, in which
+   * case undefined is returned.  All types are coerced to strings for logging.
+   */
+  _log<T>(
     level: number,
-    msg: string | StringResolverFn,
+    msg: T | (() => T),
     ...args: unknown[]
-  ): string | { msg: string; args: unknown[] } | undefined {
+  ): T | { msg: T; args: unknown[] } | undefined {
     if (this.level > level) {
       if (msg instanceof Function) {
         return undefined;
@@ -57,83 +62,107 @@ export class Logger {
       }
     }
 
-    const logMessage = msg instanceof Function ? msg() : msg;
+    let fnResult: T | undefined;
+    let logMessage: string;
+    if (msg instanceof Function) {
+      fnResult = msg();
+      logMessage = this.asString(fnResult);
+    } else {
+      logMessage = this.asString(msg);
+    }
     const record: LogRecord = new LogRecord(logMessage, args, level);
 
     this.handlers.forEach((handler): void => {
       handler.handle(record);
     });
 
-    return args!.length > 0 ? { msg: logMessage, args: args } : logMessage;
+    if (fnResult !== undefined) {
+      return args.length > 0 ? { msg: fnResult, args: args } : fnResult;
+    } else if (!(msg instanceof Function)) {
+      return args.length > 0 ? { msg: msg, args: args } : msg;
+    }
+    return undefined;
   }
 
-  debug(msg: string): string;
-  debug(msg: StringResolverFn): string;
-  debug(msg: string, ...args: unknown[]): { msg: string; args: unknown[] };
-  debug(
-    msg: StringResolverFn,
+  /** Convert all types to strings for logging */
+  asString(data: any): string {
+    if (typeof data === "string") {
+      return data;
+    } else if (
+      data === null ||
+      typeof data === "number" ||
+      typeof data === "bigint" ||
+      typeof data === "boolean" ||
+      typeof data === "undefined"
+    ) {
+      return `${data}`;
+    } else if (typeof data === "symbol") {
+      return String(data);
+    } else if (typeof data === "function") {
+      return "undefined";
+    } else if (typeof data === "object") {
+      return JSON.stringify(data);
+    }
+    return "undefined";
+  }
+
+  debug<T>(msg: T | (() => T)): T;
+  debug<T>(
+    msg: T | (() => T),
     ...args: unknown[]
-  ): { msg: string; args: unknown[] };
-  debug(
-    msg: string | StringResolverFn,
+  ): { msg: T; args: unknown[] } | undefined;
+  debug<T>(
+    msg: T | (() => T),
     ...args: unknown[]
-  ): string | { msg: string; args: unknown[] } | undefined {
+  ): T | { msg: T; args: unknown[] } | undefined {
     return this._log(LogLevels.DEBUG, msg, ...args);
   }
 
-  info(msg: string): string;
-  info(msg: StringResolverFn): string;
-  info(msg: string, ...args: unknown[]): { msg: string; args: unknown[] };
-  info(
-    msg: StringResolverFn,
+  info<T>(msg: T | (() => T)): T;
+  info<T>(
+    msg: T | (() => T),
     ...args: unknown[]
-  ): { msg: string; args: unknown[] };
-  info(
-    msg: string | StringResolverFn,
+  ): { msg: T; args: unknown[] } | undefined;
+  info<T>(
+    msg: T | (() => T),
     ...args: unknown[]
-  ): string | { msg: string; args: unknown[] } | undefined {
+  ): T | { msg: T; args: unknown[] } | undefined {
     return this._log(LogLevels.INFO, msg, ...args);
   }
 
-  warning(msg: string): string;
-  warning(msg: StringResolverFn): string;
-  warning(msg: string, ...args: unknown[]): { msg: string; args: unknown[] };
-  warning(
-    msg: StringResolverFn,
+  warning<T>(msg: T | (() => T)): T;
+  warning<T>(
+    msg: T | (() => T),
     ...args: unknown[]
-  ): { msg: string; args: unknown[] };
-  warning(
-    msg: string | StringResolverFn,
+  ): { msg: T; args: unknown[] } | undefined;
+  warning<T>(
+    msg: T | (() => T),
     ...args: unknown[]
-  ): string | { msg: string; args: unknown[] } | undefined {
+  ): T | { msg: T; args: unknown[] } | undefined {
     return this._log(LogLevels.WARNING, msg, ...args);
   }
 
-  error(msg: string): string;
-  error(msg: StringResolverFn): string;
-  error(msg: string, ...args: unknown[]): { msg: string; args: unknown[] };
-  error(
-    msg: StringResolverFn,
+  error<T>(msg: T | (() => T)): T;
+  error<T>(
+    msg: T | (() => T),
     ...args: unknown[]
-  ): { msg: string; args: unknown[] };
-  error(
-    msg: string | StringResolverFn,
+  ): { msg: T; args: unknown[] } | undefined;
+  error<T>(
+    msg: T | (() => T),
     ...args: unknown[]
-  ): string | { msg: string; args: unknown[] } | undefined {
+  ): T | { msg: T; args: unknown[] } | undefined {
     return this._log(LogLevels.ERROR, msg, ...args);
   }
 
-  critical(msg: string): string;
-  critical(msg: StringResolverFn): string;
-  critical(msg: string, ...args: unknown[]): { msg: string; args: unknown[] };
-  critical(
-    msg: StringResolverFn,
+  critical<T>(msg: T | (() => T)): T;
+  critical<T>(
+    msg: T | (() => T),
     ...args: unknown[]
-  ): { msg: string; args: unknown[] };
-  critical(
-    msg: string | StringResolverFn,
+  ): { msg: T; args: unknown[] } | undefined;
+  critical<T>(
+    msg: T | (() => T),
     ...args: unknown[]
-  ): string | { msg: string; args: unknown[] } | undefined {
+  ): T | { msg: T; args: unknown[] } | undefined {
     return this._log(LogLevels.CRITICAL, msg, ...args);
   }
 }

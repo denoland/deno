@@ -45,8 +45,8 @@ test("customHandler", function (): void {
   assertEquals(record.levelName, "DEBUG");
 
   assertEquals(handler.messages, ["DEBUG foo"]);
-  assertEquals(inlineData.msg, "foo");
-  assertEquals(inlineData.args, [1, 2]);
+  assertEquals(inlineData!.msg, "foo");
+  assertEquals(inlineData!.args, [1, 2]);
 });
 
 test("logFunctions", function (): void {
@@ -128,4 +128,67 @@ test("String resolver fn resolves as expected", function (): void {
     msg: "expensive function result 5",
     args: [1, "abc"],
   });
+});
+
+test("All types map correctly to log strings and are returned as is", function (): void {
+  const handler = new TestHandler("DEBUG");
+  const logger = new Logger("DEBUG", [handler]);
+  const sym: Symbol = Symbol();
+  const syma: Symbol = Symbol("a");
+  const fn = (): string => {
+    return "abc";
+  };
+
+  // string
+  assertEquals(logger.debug("abc"), "abc");
+  assertEquals(logger.debug("def", 1), { msg: "def", args: [1] });
+  // null
+  assertEquals(logger.info(null), null);
+  assertEquals(logger.info(null, 1), { msg: null, args: [1] });
+  // number
+  assertEquals(logger.warning(3), 3);
+  assertEquals(logger.warning(3, 1), { msg: 3, args: [1] });
+  // bigint
+  assertEquals(logger.error(5n), 5n);
+  assertEquals(logger.error(5n, 1), { msg: 5n, args: [1] });
+  // boolean
+  assertEquals(logger.critical(true), true);
+  assertEquals(logger.critical(true, 1), { msg: true, args: [1] });
+  // undefined
+  assertEquals(logger.debug(undefined), undefined);
+  assertEquals(logger.debug(undefined, 1), { msg: undefined, args: [1] });
+  // symbol
+  assertEquals(logger.info(sym), sym);
+  assertEquals(logger.info(syma, 1), { msg: syma, args: [1] });
+  // function
+  assertEquals(logger.warning(fn), "abc");
+  assertEquals(logger.warning(fn, 1), { msg: "abc", args: [1] });
+  // object
+  assertEquals(logger.error({ payload: "data", other: 123 }), {
+    payload: "data",
+    other: 123,
+  });
+  assertEquals(logger.error({ payload: "data", other: 123 }, 1), {
+    msg: { payload: "data", other: 123 },
+    args: [1],
+  });
+
+  assertEquals(handler.messages[0], "DEBUG abc");
+  assertEquals(handler.messages[1], "DEBUG def");
+  assertEquals(handler.messages[2], "INFO null");
+  assertEquals(handler.messages[3], "INFO null");
+  assertEquals(handler.messages[4], "WARNING 3");
+  assertEquals(handler.messages[5], "WARNING 3");
+  assertEquals(handler.messages[6], "ERROR 5");
+  assertEquals(handler.messages[7], "ERROR 5");
+  assertEquals(handler.messages[8], "CRITICAL true");
+  assertEquals(handler.messages[9], "CRITICAL true");
+  assertEquals(handler.messages[10], "DEBUG undefined");
+  assertEquals(handler.messages[11], "DEBUG undefined");
+  assertEquals(handler.messages[12], "INFO Symbol()");
+  assertEquals(handler.messages[13], "INFO Symbol(a)");
+  assertEquals(handler.messages[14], "WARNING abc");
+  assertEquals(handler.messages[15], "WARNING abc");
+  assertEquals(handler.messages[16], 'ERROR {"payload":"data","other":123}');
+  assertEquals(handler.messages[17], 'ERROR {"payload":"data","other":123}');
 });

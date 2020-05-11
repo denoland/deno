@@ -72,49 +72,39 @@ export function getLogger(name?: string): Logger {
   return result;
 }
 
-export function debug(
-  msg: string | (() => string),
+export function debug<T>(
+  msg: T | (() => T),
   ...args: unknown[]
-): string | { msg: string; args: unknown[] } | undefined {
-  return msg instanceof Function
-    ? getLogger("default").debug(msg as () => string, ...args)
-    : getLogger("default").debug(msg as string, ...args);
+): T | { msg: T; args: unknown[] } | undefined {
+  return getLogger("default").debug(msg, ...args);
 }
 
-export function info(
-  msg: string | (() => string),
+export function info<T>(
+  msg: T | (() => T),
   ...args: unknown[]
-): string | { msg: string; args: unknown[] } | undefined {
-  return msg instanceof Function
-    ? getLogger("default").info(msg as () => string, ...args)
-    : getLogger("default").info(msg as string, ...args);
+): T | { msg: T; args: unknown[] } | undefined {
+  return getLogger("default").info(msg, ...args);
 }
 
-export function warning(
-  msg: string | (() => string),
+export function warning<T>(
+  msg: T | (() => T),
   ...args: unknown[]
-): string | { msg: string; args: unknown[] } | undefined {
-  return msg instanceof Function
-    ? getLogger("default").warning(msg as () => string, ...args)
-    : getLogger("default").warning(msg as string, ...args);
+): T | { msg: T; args: unknown[] } | undefined {
+  return getLogger("default").warning(msg, ...args);
 }
 
-export function error(
-  msg: string | (() => string),
+export function error<T>(
+  msg: T | (() => T),
   ...args: unknown[]
-): string | { msg: string; args: unknown[] } | undefined {
-  return msg instanceof Function
-    ? getLogger("default").error(msg as () => string, ...args)
-    : getLogger("default").error(msg as string, ...args);
+): T | { msg: T; args: unknown[] } | undefined {
+  return getLogger("default").error(msg, ...args);
 }
 
-export function critical(
-  msg: string | (() => string),
+export function critical<T>(
+  msg: T | (() => T),
   ...args: unknown[]
-): string | { msg: string; args: unknown[] } | undefined {
-  return msg instanceof Function
-    ? getLogger("default").critical(msg as () => string, ...args)
-    : getLogger("default").critical(msg as string, ...args);
+): T | { msg: T; args: unknown[] } | undefined {
+  return getLogger("default").critical(msg, ...args);
 }
 
 export async function setup(config: LogConfig): Promise<void> {
