@@ -607,6 +607,24 @@ impl TsCompiler {
       return Ok(());
     }
 
+    // Fix source map url present in the file
+    let source_map_key = self
+      .disk_cache
+      .get_cache_filename_with_extension(module_specifier.as_url(), "js.map");
+    let source_map_file_url = Url::from_file_path(self.disk_cache.location.join(source_map_key)).expect("Bad file URL for source map");
+
+    let mut content_lines = contents.split('\n').map(|s| s.to_string()).collect::<Vec<String>>();
+    if content_lines.len() > 0 {
+      let last_line = content_lines.pop().unwrap();
+      if last_line.starts_with("//# sourceMappingURL=") {
+        // Replace last line
+        let new_last_line = format!("//# sourceMappingURL={}", source_map_file_url.to_string());
+        content_lines.push(new_last_line);
+      }
+    }
+
+    let contents = content_lines.join("\n");
+
     let js_key = self
       .disk_cache
       .get_cache_filename_with_extension(module_specifier.as_url(), "js");
