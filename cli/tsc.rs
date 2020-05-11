@@ -886,17 +886,20 @@ mod tests {
       types_url: None,
     };
     let mock_state =
-      GlobalState::mock(vec![String::from("deno"), String::from("hello.js")]);
+      GlobalState::mock(vec![String::from("deno"), String::from("hello.ts")]);
     let result = mock_state
       .ts_compiler
       .compile(mock_state.clone(), &out, TargetLib::Main)
       .await;
     assert!(result.is_ok());
-    assert!(result
-      .unwrap()
-      .code
+    let source_code = result.unwrap().code;
+    assert!(source_code
       .as_bytes()
       .starts_with(b"\"use strict\";\nconsole.log(\"Hello World\");"));
+    let mut lines: Vec<String> =
+      source_code.split("\n").map(|s| s.to_string()).collect();
+    let last_line = lines.pop().unwrap();
+    assert!(last_line.starts_with("//# sourceMappingURL=file://"));
   }
 
   #[tokio::test]
