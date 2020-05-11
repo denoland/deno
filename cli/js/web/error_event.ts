@@ -55,7 +55,7 @@ export class ErrorEventImpl extends Event implements ErrorEvent {
   }
 
   get [Symbol.toStringTag](): string {
-    return "EventTarget";
+    return "ErrorEvent";
   }
 }
 
