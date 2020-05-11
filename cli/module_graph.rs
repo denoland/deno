@@ -279,8 +279,11 @@ mod tests {
       "http://localhost:4545/cli/tests/019_media_types.ts",
     )
     .unwrap();
-    let graph_loader =
-      ModuleGraphLoader::new(global_state.file_fetcher.clone(), None, Permissions::allow_all());
+    let graph_loader = ModuleGraphLoader::new(
+      global_state.file_fetcher.clone(),
+      None,
+      Permissions::allow_all(),
+    );
     let graph = graph_loader.build_graph(&module_specifier).await.unwrap();
 
     assert_eq!(
@@ -347,8 +350,11 @@ mod tests {
     )
     .unwrap();
 
-    let graph_loader =
-      ModuleGraphLoader::new(global_state.file_fetcher.clone(), None, Permissions::allow_all());
+    let graph_loader = ModuleGraphLoader::new(
+      global_state.file_fetcher.clone(),
+      None,
+      Permissions::allow_all(),
+    );
     let graph = graph_loader.build_graph(&module_specifier).await.unwrap();
 
     assert_eq!(
@@ -382,8 +388,11 @@ mod tests {
     )
     .unwrap();
 
-    let graph_loader =
-      ModuleGraphLoader::new(global_state.file_fetcher.clone(), None, Permissions::allow_all());
+    let graph_loader = ModuleGraphLoader::new(
+      global_state.file_fetcher.clone(),
+      None,
+      Permissions::allow_all(),
+    );
     let graph = graph_loader.build_graph(&module_specifier).await.unwrap();
 
     eprintln!("json {:#?}", serde_json::to_value(&graph).unwrap());
@@ -474,8 +483,11 @@ mod tests {
     )
     .unwrap();
 
-    let graph_loader =
-      ModuleGraphLoader::new(global_state.file_fetcher.clone(), None, Permissions::allow_all());
+    let graph_loader = ModuleGraphLoader::new(
+      global_state.file_fetcher.clone(),
+      None,
+      Permissions::allow_all(),
+    );
     let graph = graph_loader.build_graph(&module_specifier).await.unwrap();
 
     eprintln!("{:#?}", serde_json::to_value(&graph).unwrap());
@@ -535,8 +547,11 @@ mod tests {
     )
     .unwrap();
 
-    let graph_loader =
-      ModuleGraphLoader::new(global_state.file_fetcher.clone(), None, Permissions::allow_all());
+    let graph_loader = ModuleGraphLoader::new(
+      global_state.file_fetcher.clone(),
+      None,
+      Permissions::allow_all(),
+    );
     let graph = graph_loader.build_graph(&module_specifier).await.unwrap();
 
     assert_eq!(
