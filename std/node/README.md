@@ -4,7 +4,7 @@ This module is meant to have a compatibility layer for the
 [NodeJS standard library](https://nodejs.org/docs/latest-v12.x/api/).
 
 **Warning**: Any function of this module should not be referred anywhere in the
-deno standard library as it's a compatiblity module.
+deno standard library as it's a compatibility module.
 
 ## Supported Builtins
 
