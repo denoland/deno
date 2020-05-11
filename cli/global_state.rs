@@ -138,13 +138,13 @@ impl GlobalState {
           };
 
           Ok(CompiledModule {
-            code: String::from_utf8(out.source_code)?,
+            code: String::from_utf8(out.source_code.clone())?,
             name: out.url.to_string(),
           })
         }
       }
       _ => Ok(CompiledModule {
-        code: String::from_utf8(out.source_code)?,
+        code: String::from_utf8(out.source_code.clone())?,
         name: out.url.to_string(),
       }),
     }?;
@@ -153,9 +153,9 @@ impl GlobalState {
     if let Some(ref lockfile) = state2.lockfile {
       let mut g = lockfile.lock().unwrap();
       if state2.flags.lock_write {
-        g.insert(&compiled_module);
+        g.insert(&out.url, out.source_code);
       } else {
-        let check = match g.check(&compiled_module) {
+        let check = match g.check(&out.url, out.source_code) {
           Err(e) => return Err(ErrBox::from(e)),
           Ok(v) => v,
         };
