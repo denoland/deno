@@ -102,19 +102,6 @@ impl Worker {
 
     let global_state = state.borrow().global_state.clone();
 
-    let inspect = global_state.flags.inspect.as_ref();
-    let inspect_brk = global_state.flags.inspect_brk.as_ref();
-    let inspector = inspect
-      .or(inspect_brk)
-      .and_then(|host| match state.borrow().debug_type {
-        DebugType::Main if inspect_brk.is_some() => Some((host, true)),
-        DebugType::Main | DebugType::Dependent => Some((host, false)),
-        DebugType::Internal => None,
-      })
-      .map(|(host, wait_for_debugger)| {
-        DenoInspector::new(&mut isolate, *host, wait_for_debugger)
-      });
-
     isolate.set_js_error_create_fn(move |core_js_error| {
       JSError::create(core_js_error, &global_state.ts_compiler)
     });
@@ -128,8 +115,30 @@ impl Worker {
       waker: AtomicWaker::new(),
       internal_channels,
       external_channels,
-      inspector,
+      inspector: None,
     }
+  }
+
+  pub fn attach_inspector(&mut self) {
+    let s = self.state.borrow();
+    let global_state = s.global_state.clone();
+    let debug_type = s.debug_type;
+    let isolate = &mut self.isolate;
+
+    let inspect = global_state.flags.inspect.as_ref();
+    let inspect_brk = global_state.flags.inspect_brk.as_ref();
+    let inspector = inspect
+      .or(inspect_brk)
+      .and_then(|host| match debug_type {
+        DebugType::Main if inspect_brk.is_some() => Some((host, true)),
+        DebugType::Main | DebugType::Dependent => Some((host, false)),
+        DebugType::Internal => None,
+      })
+      .map(|(host, wait_for_debugger)| {
+        DenoInspector::new(isolate, *host, wait_for_debugger)
+      });
+
+    self.inspector = inspector;
   }
 
   /// Same as execute2() but the filename defaults to "$CWD/__anonymous__".

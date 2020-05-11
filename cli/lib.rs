@@ -156,6 +156,7 @@ fn create_main_worker(
   }
 
   worker.execute("bootstrap.mainRuntime()")?;
+  worker.attach_inspector();
   Ok(worker)
 }
 
