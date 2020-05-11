@@ -56,13 +56,8 @@ export function bgCyan        (str: string) { return run(str, code([46], 49)); }
 export function bgWhite       (str: string) { return run(str, code([47], 49)); }
 
 // https://github.com/chalk/ansi-regex/blob/2b56fb0c7a07108e5b54241e8faec160d393aedb/index.js
-const ANSI_PATTERN = new RegExp(
-  [
-    "[\\u001B\\u009B][[\\]()#;?]*(?:(?:(?:[a-zA-Z\\d]*(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]*)*)?\\u0007)",
-    "(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PR-TZcf-ntqry=><~]))",
-  ].join("|"),
-  "g"
-);
+// Speykious: hard-coded the regex, because no need to use a joined list
+const ANSI_PATTERN = /[\u001B\u009B][[\]()#;?]*(?:(?:(?:[a-zA-Z\d]*(?:;[-a-zA-Z\d\/#&.:=?%@~_]*)*)?\u0007)|(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PR-TZcf-ntqry=><~]))/g
 
 /** Removes all ANSI escape sequences from a string. */
 export function stripColor(string: string): string {
