@@ -35,6 +35,7 @@ export function underline     (str: string) { return run(str, code([4],  24)); }
 export function inverse       (str: string) { return run(str, code([7],  27)); }
 export function hidden        (str: string) { return run(str, code([8],  28)); }
 export function strikethrough (str: string) { return run(str, code([9],  29)); }
+
 export function black         (str: string) { return run(str, code([30], 39)); }
 export function red           (str: string) { return run(str, code([31], 39)); }
 export function green         (str: string) { return run(str, code([32], 39)); }
@@ -44,6 +45,7 @@ export function magenta       (str: string) { return run(str, code([35], 39)); }
 export function cyan          (str: string) { return run(str, code([36], 39)); }
 export function white         (str: string) { return run(str, code([37], 39)); }
 export function gray          (str: string) { return run(str, code([90], 39)); }
+
 export function bgBlack       (str: string) { return run(str, code([40], 49)); }
 export function bgRed         (str: string) { return run(str, code([41], 49)); }
 export function bgGreen       (str: string) { return run(str, code([42], 49)); }
