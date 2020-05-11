@@ -69,7 +69,11 @@ fn op_fetch_source_files(
     None
   };
 
-  let global_state = state.borrow().global_state.clone();
+  let s = state.borrow();
+  let global_state = s.global_state.clone();
+  let permissions = s.permissions.clone();
+  let perms_ = permissions.clone();
+  drop(s);
   let file_fetcher = global_state.file_fetcher.clone();
   let specifiers = args.specifiers.clone();
   let future = async move {
@@ -78,6 +82,7 @@ fn op_fetch_source_files(
       .map(|specifier| {
         let file_fetcher_ = file_fetcher.clone();
         let ref_specifier_ = ref_specifier.clone();
+        let perms_ = perms_.clone();
         async move {
           let resolved_specifier = ModuleSpecifier::resolve_url(&specifier)
             .expect("Invalid specifier");
@@ -100,7 +105,7 @@ fn op_fetch_source_files(
             }
           }
           file_fetcher_
-            .fetch_source_file(&resolved_specifier, ref_specifier_)
+            .fetch_source_file(&resolved_specifier, ref_specifier_, perms_)
             .await
         }
         .boxed_local()
@@ -118,7 +123,11 @@ fn op_fetch_source_files(
             let types_specifier = ModuleSpecifier::from(types_url);
             global_state
               .file_fetcher
-              .fetch_source_file(&types_specifier, ref_specifier.clone())
+              .fetch_source_file(
+                &types_specifier,
+                ref_specifier.clone(),
+                permissions.clone(),
+              )
               .await
               .map_err(OpError::from)?
           }

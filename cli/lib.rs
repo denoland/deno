@@ -73,6 +73,7 @@ use crate::global_state::GlobalState;
 use crate::msg::MediaType;
 use crate::op_error::OpError;
 use crate::ops::io::get_stdio;
+use crate::permissions::Permissions;
 use crate::state::DebugType;
 use crate::state::State;
 use crate::tsc::TargetLib;
@@ -187,7 +188,7 @@ async fn print_file_info(
 
   let out = global_state
     .file_fetcher
-    .fetch_source_file(&module_specifier, None)
+    .fetch_source_file(&module_specifier, None, Permissions::allow_all())
     .await?;
 
   println!(
@@ -205,7 +206,12 @@ async fn print_file_info(
   let module_specifier_ = module_specifier.clone();
   global_state
     .clone()
-    .fetch_compiled_module(module_specifier_, None, TargetLib::Main)
+    .fetch_compiled_module(
+      module_specifier_,
+      None,
+      TargetLib::Main,
+      Permissions::allow_all(),
+    )
     .await?;
 
   if out.media_type == msg::MediaType::TypeScript
@@ -407,7 +413,9 @@ async fn doc_command(
       let fetcher = self.clone();
 
       async move {
-        let source_file = fetcher.fetch_source_file(&specifier, None).await?;
+        let source_file = fetcher
+          .fetch_source_file(&specifier, None, Permissions::allow_all())
+          .await?;
         String::from_utf8(source_file.source_code)
           .map_err(|_| OpError::other("failed to parse".to_string()))
       }

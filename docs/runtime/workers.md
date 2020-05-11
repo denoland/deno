@@ -18,6 +18,49 @@ new Worker("./worker.js");
 new Worker("./worker.js", { type: "classic" });
 ```
 
+### Permissions
+
+Creating a new `Worker` instance is similar to a dynamic import; therefore Deno
+requires appropriate permission for this action.
+
+For workers using local modules; `--allow-read` permission is required:
+
+```ts
+// main.ts
+new Worker("./worker.ts", { type: "module" });
+
+// worker.ts
+console.log("hello world");
+self.close();
+```
+
+```shell
+$ deno run main.ts
+error: Uncaught PermissionDenied: read access to "./worker.ts", run again with the --allow-read flag
+
+$ deno run --allow-read main.ts
+hello world
+```
+
+For workers using remote modules; `--allow-read` permission is required:
+
+```ts
+// main.ts
+new Worker("https://example.com/worker.ts", { type: "module" });
+
+// worker.ts
+console.log("hello world");
+self.close();
+```
+
+```shell
+$ deno run main.ts
+error: Uncaught PermissionDenied: net access to "https://example.com/worker.ts", run again with the --allow-net flag
+
+$ deno run --allow-net main.ts
+hello world
+```
+
 ### Using Deno in worker
 
 > This is an unstable Deno feature. Learn more about

@@ -67,6 +67,7 @@ pub struct StateInner {
   pub seeded_rng: Option<StdRng>,
   pub target_lib: TargetLib,
   pub debug_type: DebugType,
+  pub is_main: bool,
 }
 
 impl State {
@@ -314,9 +315,20 @@ impl ModuleLoader for State {
     let module_url_specified = module_specifier.to_string();
     let global_state = state.global_state.clone();
     let target_lib = state.target_lib.clone();
+    let permissions = if state.is_main {
+      Permissions::allow_all()
+    } else {
+      state.permissions.clone()
+    };
+
     let fut = async move {
       let compiled_module = global_state
-        .fetch_compiled_module(module_specifier, maybe_referrer, target_lib)
+        .fetch_compiled_module(
+          module_specifier,
+          maybe_referrer,
+          target_lib,
+          permissions,
+        )
         .await?;
       Ok(deno_core::ModuleSource {
         // Real module name, might be different from initial specifier
@@ -395,6 +407,7 @@ impl State {
       seeded_rng,
       target_lib: TargetLib::Main,
       debug_type,
+      is_main: true,
     }));
 
     Ok(Self(state))
@@ -430,6 +443,7 @@ impl State {
       seeded_rng,
       target_lib: TargetLib::Worker,
       debug_type: DebugType::Dependent,
+      is_main: false,
     }));
 
     Ok(Self(state))

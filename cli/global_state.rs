@@ -86,7 +86,6 @@ impl GlobalState {
       compiler_starts: AtomicUsize::new(0),
       compile_lock: AsyncMutex::new(()),
     };
-
     Ok(GlobalState(Arc::new(inner)))
   }
 
@@ -95,6 +94,7 @@ impl GlobalState {
     module_specifier: ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
     target_lib: TargetLib,
+    permissions: Permissions,
   ) -> Result<CompiledModule, ErrBox> {
     let state1 = self.clone();
     let state2 = self.clone();
@@ -102,7 +102,7 @@ impl GlobalState {
 
     let out = self
       .file_fetcher
-      .fetch_source_file(&module_specifier, maybe_referrer)
+      .fetch_source_file(&module_specifier, maybe_referrer, permissions.clone())
       .await?;
 
     // TODO(ry) Try to lift compile_lock as high up in the call stack for
@@ -115,14 +115,14 @@ impl GlobalState {
       | msg::MediaType::JSX => {
         state1
           .ts_compiler
-          .compile(state1.clone(), &out, target_lib)
+          .compile(state1.clone(), &out, target_lib, permissions.clone())
           .await
       }
       msg::MediaType::JavaScript => {
         if state1.ts_compiler.compile_js {
           state2
             .ts_compiler
-            .compile(state1.clone(), &out, target_lib)
+            .compile(state1.clone(), &out, target_lib, permissions.clone())
             .await
         } else {
           if let Some(types_url) = out.types_url.clone() {
@@ -132,6 +132,7 @@ impl GlobalState {
               .fetch_source_file(
                 &types_specifier,
                 Some(module_specifier.clone()),
+                permissions.clone(),
               )
               .await
               .ok();
