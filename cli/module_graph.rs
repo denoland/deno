@@ -4,6 +4,7 @@
 use crate::file_fetcher::SourceFileFetcher;
 use crate::import_map::ImportMap;
 use crate::msg::MediaType;
+use crate::permissions::Permissions;
 use crate::swc_util::analyze_dependencies_and_references;
 use crate::swc_util::TsReferenceKind;
 use deno_core::ErrBox;
@@ -74,6 +75,7 @@ pub struct ModuleGraphFile {
 }
 
 pub struct ModuleGraphLoader {
+  permissions: Permissions,
   file_fetcher: SourceFileFetcher,
   maybe_import_map: Option<ImportMap>,
   to_visit: Vec<ModuleSpecifier>,
@@ -84,9 +86,11 @@ impl ModuleGraphLoader {
   pub fn new(
     file_fetcher: SourceFileFetcher,
     maybe_import_map: Option<ImportMap>,
+    permissions: Permissions,
   ) -> Self {
     Self {
       file_fetcher,
+      permissions,
       maybe_import_map,
       to_visit: vec![],
       graph: ModuleGraph(HashMap::new()),
@@ -114,7 +118,7 @@ impl ModuleGraphLoader {
 
     let source_file = self
       .file_fetcher
-      .fetch_source_file(module_specifier, None)
+      .fetch_source_file(module_specifier, None, self.permissions.clone())
       .await?;
 
     let mut imports = vec![];
@@ -276,7 +280,7 @@ mod tests {
     )
     .unwrap();
     let graph_loader =
-      ModuleGraphLoader::new(global_state.file_fetcher.clone(), None);
+      ModuleGraphLoader::new(global_state.file_fetcher.clone(), None, Permissions::allow_all());
     let graph = graph_loader.build_graph(&module_specifier).await.unwrap();
 
     assert_eq!(
@@ -344,7 +348,7 @@ mod tests {
     .unwrap();
 
     let graph_loader =
-      ModuleGraphLoader::new(global_state.file_fetcher.clone(), None);
+      ModuleGraphLoader::new(global_state.file_fetcher.clone(), None, Permissions::allow_all());
     let graph = graph_loader.build_graph(&module_specifier).await.unwrap();
 
     assert_eq!(
@@ -379,7 +383,7 @@ mod tests {
     .unwrap();
 
     let graph_loader =
-      ModuleGraphLoader::new(global_state.file_fetcher.clone(), None);
+      ModuleGraphLoader::new(global_state.file_fetcher.clone(), None, Permissions::allow_all());
     let graph = graph_loader.build_graph(&module_specifier).await.unwrap();
 
     eprintln!("json {:#?}", serde_json::to_value(&graph).unwrap());
@@ -471,7 +475,7 @@ mod tests {
     .unwrap();
 
     let graph_loader =
-      ModuleGraphLoader::new(global_state.file_fetcher.clone(), None);
+      ModuleGraphLoader::new(global_state.file_fetcher.clone(), None, Permissions::allow_all());
     let graph = graph_loader.build_graph(&module_specifier).await.unwrap();
 
     eprintln!("{:#?}", serde_json::to_value(&graph).unwrap());
@@ -532,7 +536,7 @@ mod tests {
     .unwrap();
 
     let graph_loader =
-      ModuleGraphLoader::new(global_state.file_fetcher.clone(), None);
+      ModuleGraphLoader::new(global_state.file_fetcher.clone(), None, Permissions::allow_all());
     let graph = graph_loader.build_graph(&module_specifier).await.unwrap();
 
     assert_eq!(

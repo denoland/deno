@@ -115,14 +115,14 @@ impl GlobalState {
       | msg::MediaType::JSX => {
         state1
           .ts_compiler
-          .new_compile(state1.clone(), &out, target_lib)
+          .new_compile(state1.clone(), &out, target_lib, permissions)
           .await
       }
       msg::MediaType::JavaScript => {
         if state1.ts_compiler.compile_js {
           state2
             .ts_compiler
-            .new_compile(state1.clone(), &out, target_lib)
+            .new_compile(state1.clone(), &out, target_lib, permissions)
             .await
         } else {
           if let Some(types_url) = out.types_url.clone() {

@@ -395,8 +395,12 @@ impl TsCompiler {
           Some(ImportMap::load(file_path)?)
         }
       };
-    let module_graph_loader =
-      ModuleGraphLoader::new(global_state.file_fetcher.clone(), import_map);
+    let permissions = Permissions::allow_all();
+    let module_graph_loader = ModuleGraphLoader::new(
+      global_state.file_fetcher.clone(),
+      import_map,
+      permissions.clone(),
+    );
     let module_graph =
       module_graph_loader.build_graph(&module_specifier).await?;
     let module_graph_json =
@@ -433,7 +437,8 @@ impl TsCompiler {
 
     let req_msg = j.to_string().into_boxed_str().into_boxed_bytes();
 
-    let msg = execute_in_thread(global_state.clone(), req_msg).await?;
+    let msg =
+      execute_in_thread(global_state.clone(), permissions, req_msg).await?;
     let json_str = std::str::from_utf8(&msg).unwrap();
     debug!("Message: {}", json_str);
 
@@ -635,6 +640,7 @@ impl TsCompiler {
     global_state: GlobalState,
     source_file: &SourceFile,
     target: TargetLib,
+    permissions: Permissions,
   ) -> Result<CompiledModule, ErrBox> {
     if self.has_compiled(&source_file.url) {
       return self.get_compiled_module(&source_file.url);
@@ -676,8 +682,11 @@ impl TsCompiler {
           Some(ImportMap::load(file_path)?)
         }
       };
-    let module_graph_loader =
-      ModuleGraphLoader::new(global_state.file_fetcher.clone(), import_map);
+    let module_graph_loader = ModuleGraphLoader::new(
+      global_state.file_fetcher.clone(),
+      import_map,
+      permissions.clone(),
+    );
     let module_graph =
       module_graph_loader.build_graph(&module_specifier).await?;
     let module_graph_json =
@@ -725,7 +734,8 @@ impl TsCompiler {
       module_url.to_string()
     );
 
-    let msg = execute_in_thread(global_state.clone(), req_msg).await?;
+    let msg =
+      execute_in_thread(global_state.clone(), permissions, req_msg).await?;
     let json_str = std::str::from_utf8(&msg).unwrap();
 
     let compile_response: CompileResponse = serde_json::from_str(json_str)?;
