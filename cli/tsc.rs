@@ -897,7 +897,7 @@ mod tests {
       .as_bytes()
       .starts_with(b"\"use strict\";\nconsole.log(\"Hello World\");"));
     let mut lines: Vec<String> =
-      source_code.split("\n").map(|s| s.to_string()).collect();
+      source_code.split('\n').map(|s| s.to_string()).collect();
     let last_line = lines.pop().unwrap();
     assert!(last_line.starts_with("//# sourceMappingURL=file://"));
   }
