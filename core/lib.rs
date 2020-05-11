@@ -17,6 +17,7 @@ mod js_errors;
 mod module_specifier;
 mod modules;
 mod ops;
+pub mod plugin_api;
 mod resources;
 mod shared_queue;
 
