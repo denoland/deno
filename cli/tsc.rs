@@ -619,6 +619,33 @@ impl TsCompiler {
       return Ok(());
     }
 
+    // By default TSC output source map url that is relative; we need
+    // to substitute it manually to correct file URL in DENO_DIR.
+    let mut content_lines = contents
+      .split('\n')
+      .map(|s| s.to_string())
+      .collect::<Vec<String>>();
+
+    if !content_lines.is_empty() {
+      let last_line = content_lines.pop().unwrap();
+      if last_line.starts_with("//# sourceMappingURL=") {
+        let source_map_key = self.disk_cache.get_cache_filename_with_extension(
+          module_specifier.as_url(),
+          "js.map",
+        );
+        let source_map_path = self.disk_cache.location.join(source_map_key);
+        let source_map_file_url = Url::from_file_path(source_map_path)
+          .expect("Bad file URL for source map");
+        let new_last_line =
+          format!("//# sourceMappingURL={}", source_map_file_url.to_string());
+        content_lines.push(new_last_line);
+      } else {
+        content_lines.push(last_line);
+      }
+    }
+
+    let contents = content_lines.join("\n");
+
     let js_key = self
       .disk_cache
       .get_cache_filename_with_extension(module_specifier.as_url(), "js");
@@ -878,7 +905,7 @@ mod tests {
       types_url: None,
     };
     let mock_state =
-      GlobalState::mock(vec![String::from("deno"), String::from("hello.js")]);
+      GlobalState::mock(vec![String::from("deno"), String::from("hello.ts")]);
     let result = mock_state
       .ts_compiler
       .compile(
@@ -889,11 +916,14 @@ mod tests {
       )
       .await;
     assert!(result.is_ok());
-    assert!(result
-      .unwrap()
-      .code
+    let source_code = result.unwrap().code;
+    assert!(source_code
       .as_bytes()
       .starts_with(b"\"use strict\";\nconsole.log(\"Hello World\");"));
+    let mut lines: Vec<String> =
+      source_code.split('\n').map(|s| s.to_string()).collect();
+    let last_line = lines.pop().unwrap();
+    assert!(last_line.starts_with("//# sourceMappingURL=file://"));
   }
 
   #[tokio::test]
