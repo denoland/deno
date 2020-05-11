@@ -67,6 +67,7 @@ fn create_web_worker(
     "bootstrap.workerRuntime(\"{}\", {}, \"worker-{}\")",
     name, worker.has_deno_namespace, worker_id
   );
+  worker.attach_inspector();
   worker.execute(&script)?;
 
   Ok(worker)
