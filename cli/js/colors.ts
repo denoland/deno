@@ -27,33 +27,31 @@ function run(str: string, code: Code): string {
     : str;
 }
 
-export const reset         = (str: string) => run(str, code([0],  0))
-export const bold          = (str: string) => run(str, code([1],  22))
-export const dim           = (str: string) => run(str, code([2],  22))
-export const italic        = (str: string) => run(str, code([3],  23))
-export const underline     = (str: string) => run(str, code([4],  24))
-export const inverse       = (str: string) => run(str, code([7],  27))
-export const hidden        = (str: string) => run(str, code([8],  28))
-export const strikethrough = (str: string) => run(str, code([9],  29))
-
-export const black         = (str: string) => run(str, code([30], 39))
-export const red           = (str: string) => run(str, code([31], 39))
-export const green         = (str: string) => run(str, code([32], 39))
-export const yellow        = (str: string) => run(str, code([33], 39))
-export const blue          = (str: string) => run(str, code([34], 39))
-export const magenta       = (str: string) => run(str, code([35], 39))
-export const cyan          = (str: string) => run(str, code([36], 39))
-export const white         = (str: string) => run(str, code([37], 39))
-export const gray          = (str: string) => run(str, code([90], 39))
-
-export const bgBlack       = (str: string) => run(str, code([40], 49))
-export const bgRed         = (str: string) => run(str, code([41], 49))
-export const bgGreen       = (str: string) => run(str, code([42], 49))
-export const bgYellow      = (str: string) => run(str, code([43], 49))
-export const bgBlue        = (str: string) => run(str, code([44], 49))
-export const bgMagenta     = (str: string) => run(str, code([45], 49))
-export const bgCyan        = (str: string) => run(str, code([46], 49))
-export const bgWhite       = (str: string) => run(str, code([47], 49))
+export function reset         (str: string) { return run(str, code([0],  0));  }
+export function bold          (str: string) { return run(str, code([1],  22)); }
+export function dim           (str: string) { return run(str, code([2],  22)); }
+export function italic        (str: string) { return run(str, code([3],  23)); }
+export function underline     (str: string) { return run(str, code([4],  24)); }
+export function inverse       (str: string) { return run(str, code([7],  27)); }
+export function hidden        (str: string) { return run(str, code([8],  28)); }
+export function strikethrough (str: string) { return run(str, code([9],  29)); }
+export function black         (str: string) { return run(str, code([30], 39)); }
+export function red           (str: string) { return run(str, code([31], 39)); }
+export function green         (str: string) { return run(str, code([32], 39)); }
+export function yellow        (str: string) { return run(str, code([33], 39)); }
+export function blue          (str: string) { return run(str, code([34], 39)); }
+export function magenta       (str: string) { return run(str, code([35], 39)); }
+export function cyan          (str: string) { return run(str, code([36], 39)); }
+export function white         (str: string) { return run(str, code([37], 39)); }
+export function gray          (str: string) { return run(str, code([90], 39)); }
+export function bgBlack       (str: string) { return run(str, code([40], 49)); }
+export function bgRed         (str: string) { return run(str, code([41], 49)); }
+export function bgGreen       (str: string) { return run(str, code([42], 49)); }
+export function bgYellow      (str: string) { return run(str, code([43], 49)); }
+export function bgBlue        (str: string) { return run(str, code([44], 49)); }
+export function bgMagenta     (str: string) { return run(str, code([45], 49)); }
+export function bgCyan        (str: string) { return run(str, code([46], 49)); }
+export function bgWhite       (str: string) { return run(str, code([47], 49)); }
 
 // https://github.com/chalk/ansi-regex/blob/2b56fb0c7a07108e5b54241e8faec160d393aedb/index.js
 const ANSI_PATTERN = new RegExp(
@@ -72,7 +70,7 @@ export function stripColor(string: string): string {
 
 
 /** Converts a hex color to an [r,g,b] array. */
-const hexToRgbArray = (color: number) => {
+function hexToRgbArray(color: number): [number, number, number] {
   color = color & 0xffffff
 
   return [
@@ -82,11 +80,18 @@ const hexToRgbArray = (color: number) => {
   ]
 }
 
-/** Set text color using 24bit rgb. */
-export const rgb24 = (color: number) => 
-	code([38, 2, ...hexToRgbArray(color)], 39)
+/**
+ * Set text color using 24bit rgb.
+ * @param color A hexadecimal number representing an RGB color, like 0xff3232 or 0x98cc02
+ */
+export function rgb24(color: number): Code {
+  return code([38, 2, ...hexToRgbArray(color)], 39)
+}
 
-
-/** Set text background color using 24bit rgb. */
-export const bgRgb24 = (color: number) =>
-	code([48, 2, ...hexToRgbArray(color)], 49)
+/**
+ * Set text background color using 24bit rgb.
+ * @param color A hexadecimal number representing an RGB color, like 0xff3232 or 0x98cc02
+ */
+export function bgRgb24(color: number): Code {
+  return code([48, 2, ...hexToRgbArray(color)], 49)
+}
