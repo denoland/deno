@@ -121,8 +121,8 @@ impl Worker {
 
   pub fn attach_inspector(&mut self) {
     let s = self.state.borrow();
-    let global_state = s.global_state.clone();
     let debug_type = s.debug_type;
+    let global_state = &s.global_state;
     let isolate = &mut self.isolate;
 
     let inspect = global_state.flags.inspect.as_ref();
