@@ -1,9 +1,6 @@
 // To run this test manually:
 //   cd test_plugin
-//   ../target/debug/deno --allow-plugin tests/test.js debug
-
-// TODO(ry) Re-enable this test on windows. It is flaky for an unknown reason.
-#![cfg(not(windows))]
+//   ../target/debug/deno run --unstable --allow-plugin tests/test.js debug
 
 use std::path::PathBuf;
 use std::process::Command;
