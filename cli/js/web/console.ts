@@ -330,7 +330,7 @@ function createArrayString(
         }
         const emptyItems = i - index;
         const ending = emptyItems > 1 ? "s" : "";
-        return cyan(`<${emptyItems} empty item${ending}>`);
+        return dim(`<${emptyItems} empty item${ending}>`);
       } else {
         return stringifyWithQuotes(val, ctx, level + 1, maxLevel);
       }
@@ -447,10 +447,10 @@ function createPromiseString(
   const [state, result] = Deno.core.getPromiseDetails(value);
 
   if (state === PromiseState.Pending) {
-    return "Promise { <pending> }";
+    return `Promise { ${cyan("<pending>")} }`;
   }
 
-  const prefix = state === PromiseState.Fulfilled ? "" : "<rejected> ";
+  const prefix = state === PromiseState.Fulfilled ? "" : red("<rejected> ");
 
   const str = `${prefix}${stringifyWithQuotes(
     result,
