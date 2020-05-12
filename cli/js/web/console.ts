@@ -3,7 +3,16 @@ import { isInvalidDate, isTypedArray, TypedArray } from "./util.ts";
 import { cliTable } from "./console_table.ts";
 import { exposeForTest } from "../internals.ts";
 import { PromiseState } from "./promise.ts";
-import { stripColor, yellow, dim, cyan, red, green, magenta, bold } from "../colors.ts";
+import {
+  stripColor,
+  yellow,
+  dim,
+  cyan,
+  red,
+  green,
+  magenta,
+  bold,
+} from "../colors.ts";
 
 type ConsoleContext = Set<unknown>;
 type InspectOptions = Partial<{
@@ -280,12 +289,14 @@ function stringify(
         return bold("null");
       }
 
-      if (ctx.has(value)) { // Circular string is cyan
+      if (ctx.has(value)) {
+        // Circular string is cyan
         return cyan("[Circular]");
       }
 
       return createObjectString(value, ctx, level, maxLevel);
-    default: // Not implemented is red
+    default:
+      // Not implemented is red
       return red("[Not Implemented]");
   }
 }
@@ -512,7 +523,8 @@ function createRawObjectString(
     );
   }
   // Making sure color codes are ignored when calculating the total length
-  const totalLength = entries.length + level + stripColor(entries.join("")).length;
+  const totalLength =
+    entries.length + level + stripColor(entries.join("")).length;
 
   ctx.delete(value);
 
