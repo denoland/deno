@@ -370,6 +370,7 @@ fn js_unit_tests() {
     .arg("cli/js/tests/unit_test_runner.ts")
     .arg("--master")
     .arg("--verbose")
+    .env("NO_COLOR", "1")
     .spawn()
     .expect("failed to spawn script");
   let status = deno.wait().expect("failed to wait for the child process");
@@ -639,7 +640,7 @@ fn repl_test_console_log() {
     true,
     "repl",
     Some(vec!["console.log('hello')", "'world'"]),
-    None,
+    Some(vec![("NO_COLOR", "1")]),
     false,
   );
   assert!(out.ends_with("hello\nundefined\nworld\n"));
@@ -652,7 +653,7 @@ fn repl_test_eof() {
     true,
     "repl",
     Some(vec!["1 + 2"]),
-    None,
+    Some(vec![("NO_COLOR", "1")]),
     false,
   );
   assert!(out.ends_with("3\n"));
@@ -679,7 +680,7 @@ fn repl_test_function() {
     true,
     "repl",
     Some(vec!["Deno.writeFileSync"]),
-    None,
+    Some(vec![("NO_COLOR", "1")]),
     false,
   );
   assert!(out.ends_with("[Function: writeFileSync]\n"));
@@ -692,7 +693,7 @@ fn repl_test_multiline() {
     true,
     "repl",
     Some(vec!["(\n1 + 2\n)"]),
-    None,
+    Some(vec![("NO_COLOR", "1")]),
     false,
   );
   assert!(out.ends_with("3\n"));
@@ -757,7 +758,7 @@ fn repl_test_variable() {
     true,
     "repl",
     Some(vec!["var a = 123;", "a"]),
-    None,
+    Some(vec![("NO_COLOR", "1")]),
     false,
   );
   assert!(out.ends_with("undefined\n123\n"));
@@ -770,7 +771,7 @@ fn repl_test_lexical_scoped_variable() {
     true,
     "repl",
     Some(vec!["let a = 123;", "a"]),
-    None,
+    Some(vec![("NO_COLOR", "1")]),
     false,
   );
   assert!(out.ends_with("undefined\n123\n"));
@@ -787,7 +788,7 @@ fn repl_test_missing_deno_dir() {
     true,
     "repl",
     Some(vec!["1"]),
-    Some(vec![("DENO_DIR".to_owned(), DENO_DIR.to_owned())]),
+    Some(vec![("DENO_DIR".to_owned(), DENO_DIR.to_owned()), ("NO_COLOR", "1")]),
     false,
   );
   assert!(read_dir(&test_deno_dir).is_ok());
@@ -802,7 +803,7 @@ fn repl_test_save_last_eval() {
     true,
     "repl",
     Some(vec!["1", "_"]),
-    None,
+    Some(vec![("NO_COLOR", "1")]),
     false,
   );
   assert!(out.ends_with("1\n1\n"));
@@ -815,7 +816,7 @@ fn repl_test_save_last_thrown() {
     true,
     "repl",
     Some(vec!["throw 1", "_error"]),
-    None,
+    Some(vec![("NO_COLOR", "1")]),
     false,
   );
   assert!(out.ends_with("1\n"));
@@ -828,7 +829,7 @@ fn repl_test_assign_underscore() {
     true,
     "repl",
     Some(vec!["_ = 1", "2", "_"]),
-    None,
+    Some(vec![("NO_COLOR", "1")]),
     false,
   );
   assert!(
@@ -843,7 +844,7 @@ fn repl_test_assign_underscore_error() {
     true,
     "repl",
     Some(vec!["_error = 1", "throw 2", "_error"]),
-    None,
+    Some(vec![("NO_COLOR", "1")]),
     false,
   );
   assert!(
@@ -1538,6 +1539,7 @@ itest!(lib_runtime_api {
 
 itest!(seed_random {
   args: "run --seed=100 seed_random.js",
+  
   output: "seed_random.js.out",
 });
 
@@ -2376,6 +2378,7 @@ async fn inspector_does_not_hang() {
     // Warning: each inspector test should be on its own port to avoid
     // conflicting with another inspector test.
     .arg("--inspect-brk=127.0.0.1:9232")
+    .env("NO_COLOR", "1")
     .arg(script)
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::piped())
