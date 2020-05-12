@@ -889,7 +889,7 @@ unitTest(function consoleTable(): void {
   mockConsole((console, out): void => {
     console.table({ a: "test", b: 1 });
     assertEquals(
-      out.toString(),
+      stripColor(out.toString()),
       `┌─────────┬────────┐
 │ (index) │ Values │
 ├─────────┼────────┤
@@ -902,7 +902,7 @@ unitTest(function consoleTable(): void {
   mockConsole((console, out): void => {
     console.table({ a: { b: 10 }, b: { b: 20, c: 30 } }, ["c"]);
     assertEquals(
-      out.toString(),
+      stripColor(out.toString()),
       `┌─────────┬────┐
 │ (index) │ c  │
 ├─────────┼────┤
@@ -915,7 +915,7 @@ unitTest(function consoleTable(): void {
   mockConsole((console, out): void => {
     console.table([1, 2, [3, [4]], [5, 6], [[7], [8]]]);
     assertEquals(
-      out.toString(),
+      stripColor(out.toString()),
       `┌─────────┬───────┬───────┬────────┐
 │ (index) │   0   │   1   │ Values │
 ├─────────┼───────┼───────┼────────┤
@@ -931,7 +931,7 @@ unitTest(function consoleTable(): void {
   mockConsole((console, out): void => {
     console.table(new Set([1, 2, 3, "test"]));
     assertEquals(
-      out.toString(),
+      stripColor(out.toString()),
       `┌───────────────────┬────────┐
 │ (iteration index) │ Values │
 ├───────────────────┼────────┤
@@ -951,7 +951,7 @@ unitTest(function consoleTable(): void {
       ])
     );
     assertEquals(
-      out.toString(),
+      stripColor(out.toString()),
       `┌───────────────────┬─────┬────────┐
 │ (iteration index) │ Key │ Values │
 ├───────────────────┼─────┼────────┤
@@ -970,7 +970,7 @@ unitTest(function consoleTable(): void {
       h: new Map([[1, "one"]]),
     });
     assertEquals(
-      out.toString(),
+      stripColor(out.toString()),
       `┌─────────┬───────────┬───────────────────┬────────┐
 │ (index) │     c     │         e         │ Values │
 ├─────────┼───────────┼───────────────────┼────────┤
@@ -992,7 +992,7 @@ unitTest(function consoleTable(): void {
       ["test", { b: 20, c: "test" }],
     ]);
     assertEquals(
-      out.toString(),
+      stripColor(out.toString()),
       `┌─────────┬────────┬──────────────────────┬────┬────────┐
 │ (index) │   0    │          1           │ a  │ Values │
 ├─────────┼────────┼──────────────────────┼────┼────────┤
@@ -1008,7 +1008,7 @@ unitTest(function consoleTable(): void {
   mockConsole((console, out): void => {
     console.table([]);
     assertEquals(
-      out.toString(),
+      stripColor(out.toString()),
       `┌─────────┐
 │ (index) │
 ├─────────┤
@@ -1019,7 +1019,7 @@ unitTest(function consoleTable(): void {
   mockConsole((console, out): void => {
     console.table({});
     assertEquals(
-      out.toString(),
+      stripColor(out.toString()),
       `┌─────────┐
 │ (index) │
 ├─────────┤
@@ -1030,7 +1030,7 @@ unitTest(function consoleTable(): void {
   mockConsole((console, out): void => {
     console.table(new Set());
     assertEquals(
-      out.toString(),
+      stripColor(out.toString()),
       `┌───────────────────┐
 │ (iteration index) │
 ├───────────────────┤
@@ -1041,7 +1041,7 @@ unitTest(function consoleTable(): void {
   mockConsole((console, out): void => {
     console.table(new Map());
     assertEquals(
-      out.toString(),
+      stripColor(out.toString()),
       `┌───────────────────┐
 │ (iteration index) │
 ├───────────────────┤
@@ -1056,7 +1056,7 @@ unitTest(function consoleTable(): void {
   mockConsole((console, out): void => {
     console.table(["Hello", "你好", "Amapá"]);
     assertEquals(
-      out.toString(),
+      stripColor(out.toString()),
       `┌─────────┬─────────┐
 │ (index) │ Values  │
 ├─────────┼─────────┤
