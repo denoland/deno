@@ -1031,9 +1031,8 @@ declare namespace Deno {
   /** Asynchronously reads and returns the entire contents of a file as a utf8
    *  encoded string. Reading a directory returns an empty data array.
    *
-   *       const decoder = new TextDecoder("utf-8");
-   *       const data = Deno.readFileSync("hello.txt");
-   *       console.log(decoder.decode(data));
+   *       const data = await Deno.readTextFile("hello.txt");
+   *       console.log(data);
    *
    * Requires `allow-read` permission. */
   export function readTextFile(path: string): Promise<string>;
