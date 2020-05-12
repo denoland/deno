@@ -19,8 +19,6 @@ SharedQueue Binary Layout
 /* eslint-disable @typescript-eslint/no-use-before-define */
 
 ((window) => {
-  const GLOBAL_NAMESPACE = "Deno";
-  const CORE_NAMESPACE = "core";
   const MAX_RECORDS = 100;
   const INDEX_NUM_RECORDS = 0;
   const INDEX_NUM_SHIFTED_OFF = 1;
@@ -30,11 +28,8 @@ SharedQueue Binary Layout
   const HEAD_INIT = 4 * INDEX_RECORDS;
 
   // Available on start due to bindings.
-  const Deno = window[GLOBAL_NAMESPACE];
-  const core = Deno[CORE_NAMESPACE];
-  // Warning: DO NOT use window.Deno after this point.
-  // It is possible that the Deno namespace has been deleted.
-  // Use the above local Deno and core variable instead.
+  const core = window.Deno.core;
+  const { recv, send } = core;
 
   let sharedBytes;
   let shared32;
@@ -51,20 +46,20 @@ SharedQueue Binary Layout
   }
 
   function init() {
-    const shared = Deno.core.shared;
+    const shared = core.shared;
     assert(shared.byteLength > 0);
     assert(sharedBytes == null);
     assert(shared32 == null);
     sharedBytes = new Uint8Array(shared);
     shared32 = new Int32Array(shared);
     asyncHandlers = [];
-    // Callers should not call Deno.core.recv, use setAsyncHandler.
-    Deno.core.recv(handleAsyncMsgFromRust);
+    // Callers should not call core.recv, use setAsyncHandler.
+    recv(handleAsyncMsgFromRust);
   }
 
   function ops() {
     // op id 0 is a special value to retrieve the map of registered ops.
-    const opsMapBytes = Deno.core.send(0, new Uint8Array([]), null);
+    const opsMapBytes = send(0, new Uint8Array([]), null);
     const opsMapJson = String.fromCharCode.apply(null, opsMapBytes);
     return JSON.parse(opsMapJson);
   }
@@ -187,12 +182,14 @@ SharedQueue Binary Layout
   }
 
   function dispatch(opId, control, zeroCopy = null) {
-    return Deno.core.send(opId, control, zeroCopy);
+    return send(opId, control, zeroCopy);
   }
 
-  const denoCore = {
+  Object.assign(window.Deno.core, {
     setAsyncHandler,
     dispatch,
+    ops,
+    // sharedQueue is private but exposed for testing.
     sharedQueue: {
       MAX_RECORDS,
       head,
@@ -202,10 +199,5 @@ SharedQueue Binary Layout
       reset,
       shift,
     },
-    ops,
-  };
-
-  assert(window[GLOBAL_NAMESPACE] != null);
-  assert(window[GLOBAL_NAMESPACE][CORE_NAMESPACE] != null);
-  Object.assign(core, denoCore);
+  });
 })(this);
