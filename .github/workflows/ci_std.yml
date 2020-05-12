@@ -2,11 +2,13 @@ name: ci_std
 
 on: 
   push:
-    paths: ['std/**']
-    paths: ['.github/workflows/**']
+    paths:
+      - 'std/**'
+      - '.github/workflows/**'
   pull_request:
-    paths: ['std/**']
-    paths: ['.github/workflows/**']
+    paths:
+      - 'std/**'
+      - '.github/workflows/**'
 
 jobs:
   build:
