@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "1.0.0-rc2"
+version = "1.0.0-rc3"
 license = "MIT"
 authors = ["the Deno authors"]
 edition = "2018"
@@ -15,12 +15,12 @@ name = "deno"
 path = "main.rs"
 
 [build-dependencies]
-deno_core = { path = "../core", version = "0.43.0" }
-deno_typescript = { path = "../deno_typescript", version = "0.43.0" }
+deno_core = { path = "../core", version = "0.44.0" }
+deno_typescript = { path = "../deno_typescript", version = "0.44.0" }
 
 [dependencies]
-deno_core = { path = "../core", version = "0.43.0" }
-deno_typescript = { path = "../deno_typescript", version = "0.43.0" }
+deno_core = { path = "../core", version = "0.44.0" }
+deno_typescript = { path = "../deno_typescript", version = "0.44.0" }
 
 atty = "0.2.14"
 base64 = "0.12.0"
