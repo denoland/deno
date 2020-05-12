@@ -17,7 +17,7 @@ export class AssertionError extends Error {
 }
 
 function format(v: unknown): string {
-  let string = stripColor(Deno.inspect(v));
+  let string = Deno.inspect(v);
   if (typeof v == "string") {
     string = `"${string.replace(/(?=["\\])/g, "\\")}"`;
   }
