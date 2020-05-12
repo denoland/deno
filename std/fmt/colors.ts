@@ -172,36 +172,38 @@ export function bgRgb8(str: string, color: number): string {
   return run(str, code([48, 5, clampAndTruncate(color)], 49));
 }
 
-/** Set text color using 24bit rgb. */
-export function rgb24(str: string, color: Rgb): string {
-  return run(
-    str,
-    code(
-      [
-        38,
-        2,
-        clampAndTruncate(color.r),
-        clampAndTruncate(color.g),
-        clampAndTruncate(color.b),
-      ],
-      39
-    )
-  );
+function colorToRgbArray(color: Rgb | number): [number, number, number] {
+  if (typeof color === "number") {
+    return [
+      (color >> 16) & 0xff, // red
+      (color >> 8) & 0xff, // green
+      color & 0xff // blue
+    ];
+  } else {
+    return [
+      clampAndTruncate(color.r),
+      clampAndTruncate(color.g),
+      clampAndTruncate(color.b)
+    ]
+  }
 }
 
-/** Set background color using 24bit rgb. */
-export function bgRgb24(str: string, color: Rgb): string {
-  return run(
-    str,
-    code(
-      [
-        48,
-        2,
-        clampAndTruncate(color.r),
-        clampAndTruncate(color.g),
-        clampAndTruncate(color.b),
-      ],
-      49
-    )
-  );
+/** Set text color using 24bit rgb.
+ * You can enter a hexadecimal number like 0xff3280 */
+export function rgb24(str: string, color: Rgb | number): string {
+  return run(str, code([38, 2, ...colorToRgbArray(color)], 39));
+}
+
+/** Set background color using 24bit rgb.
+ * You can enter a hexadecimal number like 0xff3280 */
+export function bgRgb24(str: string, color: Rgb | number): string {
+  return run(str, code([48, 2, ...colorToRgbArray(color)], 49));
+}
+
+
+const ANSI_PATTERN = /[\u001B\u009B][[\]()#;?]*(?:(?:(?:[a-zA-Z\d]*(?:;[-a-zA-Z\d\/#&.:=?%@~_]*)*)?\u0007)|(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PR-TZcf-ntqry=><~]))/g;
+
+/** Removes all ANSI escape sequences from a string. */
+export function stripColor(string: string): string {
+  return string.replace(ANSI_PATTERN, "");
 }
