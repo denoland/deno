@@ -348,9 +348,7 @@ impl CoreIsolate {
   pub(crate) fn shared_init(&mut self) {
     if self.needs_init {
       self.needs_init = false;
-      js_check(
-        self.execute("shared_queue.js", include_str!("shared_queue.js")),
-      );
+      js_check(self.execute("core.js", include_str!("core.js")));
       // Maybe execute the startup script.
       if let Some(s) = self.startup_script.take() {
         self.execute(&s.filename, &s.source).unwrap()
@@ -1126,15 +1124,10 @@ pub mod tests {
   }
 
   #[test]
-  fn test_js() {
+  fn core_test_js() {
     run_in_task(|mut cx| {
       let (mut isolate, _dispatch_count) = setup(Mode::Async);
-      js_check(
-        isolate.execute(
-          "shared_queue_test.js",
-          include_str!("shared_queue_test.js"),
-        ),
-      );
+      js_check(isolate.execute("core_test.js", include_str!("core_test.js")));
       if let Poll::Ready(Err(_)) = isolate.poll_unpin(&mut cx) {
         unreachable!();
       }
