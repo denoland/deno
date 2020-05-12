@@ -11,9 +11,13 @@ use deno_core::CoreIsolate;
 use deno_core::Op;
 use deno_core::OpAsyncFuture;
 use deno_core::OpId;
+use deno_core::Resource;
+use deno_core::ResourceId;
+use deno_core::ResourceTable;
 use deno_core::ZeroCopyBuf;
 use dlopen::symbor::Library;
 use futures::prelude::*;
+use std::cell::RefMut;
 use std::path::Path;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -79,6 +83,79 @@ impl PluginResource {
   }
 }
 
+/// Custom resource type used to ensure that a copy of the Rc<Library> for a plugin
+/// is held with any resource inserted by that plugin to prevent segfaults.
+struct RefResource {
+  _lib: Rc<Library>,
+  inner: Box<dyn Resource>,
+}
+
+struct PluginResourceTable<'a> {
+  resource_table: RefMut<'a, ResourceTable>,
+  lib: Rc<Library>,
+}
+
+impl<'a> plugin_api::WrappedResourceTable for PluginResourceTable<'a> {
+  fn has(&self, rid: ResourceId) -> bool {
+    self.resource_table.has(rid)
+  }
+
+  fn get_boxed(&self, rid: ResourceId) -> Option<&dyn Resource> {
+    use std::borrow::Borrow;
+    // Resources inserted by plugins are inserted in a RefResource wrapper, so
+    // we can ensure a Rc<Library> is held for the plugin to avoid segfaults.
+    // To keep this as similar as possible to the way that normal ops access
+    // resources we need this wrapping to transparent. This just unwrapps all
+    // RefResources and exposes the inner Box<dyn Resource> value. Same thing
+    // for get_mut_boxed.
+    self.resource_table.get_boxed(rid).map(|resource| {
+      if let Some(r) = resource.downcast_ref::<RefResource>() {
+        return r.inner.borrow();
+      }
+      resource
+    })
+  }
+
+  fn get_mut_boxed(&mut self, rid: ResourceId) -> Option<&mut dyn Resource> {
+    self.resource_table.get_mut_boxed(rid).map(|resource| {
+      if resource.is::<RefResource>() {
+        &mut resource.downcast_mut::<RefResource>().unwrap().inner
+      } else {
+        resource
+      }
+    })
+  }
+
+  fn add(&mut self, name: &str, resource: Box<dyn Resource>) -> ResourceId {
+    let ref_resource = RefResource {
+      _lib: self.lib.clone(),
+      inner: resource,
+    };
+    self.resource_table.add(name, Box::new(ref_resource))
+  }
+
+  fn entries(&self) -> Vec<(ResourceId, String)> {
+    self.resource_table.entries()
+  }
+
+  fn close(&mut self, rid: ResourceId) -> Option<()> {
+    self.resource_table.close(rid)
+  }
+
+  fn remove_boxed(&mut self, rid: ResourceId) -> Option<Box<dyn Resource>> {
+    self.resource_table.remove_boxed(rid).map(|resource| {
+      if resource.is::<RefResource>() {
+        match resource.downcast::<RefResource>() {
+          Ok(r) => r.inner,
+          Err(_e) => unreachable!(),
+        }
+      } else {
+        resource
+      }
+    })
+  }
+}
+
 struct PluginInterface<'a> {
   isolate: &'a mut CoreIsolate,
   plugin_lib: &'a Rc<Library>,
@@ -121,6 +198,15 @@ impl<'a> plugin_api::Interface for PluginInterface<'a> {
         }
       },
     )
+  }
+
+  fn resource_table<'b>(
+    &'b mut self,
+  ) -> Box<dyn plugin_api::WrappedResourceTable + 'b> {
+    Box::new(PluginResourceTable {
+      lib: self.plugin_lib.clone(),
+      resource_table: self.isolate.resource_table.borrow_mut(),
+    })
   }
 }
 
