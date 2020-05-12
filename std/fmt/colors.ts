@@ -200,7 +200,10 @@ export function bgRgb24(str: string, color: Rgb | number): string {
   return run(str, code([48, 2, ...colorToRgbArray(color)], 49));
 }
 
-const ANSI_PATTERN = /[\u001B\u009B][[\]()#;?]*(?:(?:(?:[a-zA-Z\d]*(?:;[-a-zA-Z\d\/#&.:=?%@~_]*)*)?\u0007)|(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PR-TZcf-ntqry=><~]))/g;
+// The previous ANSI pattern didn't work
+// this one is from Jeff on StackOverflow.
+// https://stackoverflow.com/a/33925425
+const ANSI_PATTERN = /(?:\x1B[@-_]|[\x80-\x9F])[0-?]*[ -/]*[@-~]/g;
 
 /** Removes all ANSI escape sequences from a string. */
 export function stripColor(string: string): string {
