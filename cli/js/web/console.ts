@@ -813,7 +813,7 @@ export class Console {
     const isSet = data instanceof Set;
     const isMap = data instanceof Map;
     const valuesKey = "Values";
-    const indexKey = isSet || isMap ? "(iteration index)" : "(index)";
+    const indexKey = isSet || isMap ? "(iter idx)" : "(idx)";
 
     if (data instanceof Set) {
       resultData = [...data];
