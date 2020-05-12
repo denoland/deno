@@ -3,7 +3,7 @@ import { assert, assertEquals } from "../testing/asserts.ts";
 import { BufReader } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 import { serveFile } from "./file_server.ts";
-import { mockRequest } from "./testing.ts";
+import { mockRequest } from "./_mock_conn.ts";
 const { test } = Deno;
 let fileServer: Deno.Process;
 

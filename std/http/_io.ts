@@ -4,7 +4,7 @@ import { assert } from "../testing/asserts.ts";
 import { encoder, encode } from "../encoding/utf8.ts";
 import { ServerResponse, ServerRequest } from "./server.ts";
 import { STATUS_TEXT } from "./http_status.ts";
-import { letTimeout, timeoutReader } from "../util/async.ts";
+import { letTimeout, timeoutReader } from "../async/timeout.ts";
 import { bytesReader } from "../io/readers.ts";
 import { ClientResponse, ClientRequest } from "./client.ts";
 import { readUntilEOF } from "../io/ioutil.ts";
