@@ -177,14 +177,14 @@ function colorToRgbArray(color: Rgb | number): [number, number, number] {
     return [
       (color >> 16) & 0xff, // red
       (color >> 8) & 0xff, // green
-      color & 0xff // blue
+      color & 0xff, // blue
     ];
   } else {
     return [
       clampAndTruncate(color.r),
       clampAndTruncate(color.g),
-      clampAndTruncate(color.b)
-    ]
+      clampAndTruncate(color.b),
+    ];
   }
 }
 
@@ -199,7 +199,6 @@ export function rgb24(str: string, color: Rgb | number): string {
 export function bgRgb24(str: string, color: Rgb | number): string {
   return run(str, code([48, 2, ...colorToRgbArray(color)], 49));
 }
-
 
 const ANSI_PATTERN = /[\u001B\u009B][[\]()#;?]*(?:(?:(?:[a-zA-Z\d]*(?:;[-a-zA-Z\d\/#&.:=?%@~_]*)*)?\u0007)|(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PR-TZcf-ntqry=><~]))/g;
 
