@@ -5,3 +5,4 @@
  * will match versions with cli as we have in the past.
  */
 export const VERSION = "0.50.0";
+export const DENO_VERSION = "v1.0.0-rc2";

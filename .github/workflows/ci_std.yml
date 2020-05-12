@@ -40,7 +40,9 @@ jobs:
 
       - name: Install latest deno release
         run: |
-          curl -L https://deno.land/x/install/install.sh | sh
+          denoTestingVersion=$(grep DENO_VERSION << std/version.ts | sed -e 's/.*"\(.*\)".*/\1/')
+          echo $denoTestingVersion
+          curl -L https://deno.land/x/install/install.sh | sh -s $denoTestingVersion
 
       - name: Install Python
         uses: actions/setup-python@v1
