@@ -1594,17 +1594,11 @@ declare namespace Deno {
     kill(signo: number): void;
   }
 
-  export type ProcessStatus =
-    | {
-        success: true;
-        code: 0;
-        signal?: undefined;
-      }
-    | {
-        success: false;
-        code: number;
-        signal?: number;
-      };
+  export interface ProcessStatus {
+    success: boolean;
+    code?: number;
+    signal?: number;
+  }
 
   export interface RunOptions {
     /** Arguments to pass. Note, the first element needs to be a path to the
