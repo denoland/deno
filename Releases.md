@@ -6,6 +6,18 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### 1.0.0-rc3 / 2020.05.12
+
+- BREAKING: Remove public Rust API for the "deno" crate (#5226)
+- feat(core): Allow starting isolate from snapshot bytes on the heap (#5187)
+- fix: Check permissions in SourceFileFetcher (#5011)
+- fix: Expose ErrorEvent globally (#5222)
+- fix: Remove default --allow-read perm for deno test (#5208)
+- fix: Source maps in inspector (#5223)
+- fix(std/encoding/yaml): Correct exports (#5191)
+- fix(plugins): prevent segfaults on windows (#5210)
+- upgrade: dprint 0.17.2 (#5195)
+
 ### 1.0.0-rc2 / 2020.05.09
 
 - BREAKING(std): Reorg modules, mark as unstable (#5087, #5177)
