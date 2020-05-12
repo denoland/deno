@@ -21,6 +21,7 @@ mod tests {
       .arg("--unstable")
       .arg("--seed=86") // Some tests rely on specific random numbers.
       .arg("-A")
+      .env("NO_COLOR", "1")
       // .arg("-Ldebug")
       .spawn()
       .expect("failed to spawn script");
