@@ -3,8 +3,10 @@ name: ci_std
 on: 
   push:
     paths: ['std/**']
+    paths: ['.github/workflows/**']
   pull_request:
     paths: ['std/**']
+    paths: ['.github/workflows/**']
 
 jobs:
   build:
@@ -40,8 +42,8 @@ jobs:
 
       - name: Install latest deno release
         run: |
-          denoTestingVersion=$(grep DENO_VERSION << std/version.ts | sed -e 's/.*"\(.*\)".*/\1/')
-          echo $denoTestingVersion
+          denoTestingVersion=$(grep DENO_VERSION < std/version.ts | sed -e 's/.*"\(.*\)".*/\1/')
+          echo "Testing with deno::$denoTestingVersion"
           curl -L https://deno.land/x/install/install.sh | sh -s $denoTestingVersion
 
       - name: Install Python
