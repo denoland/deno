@@ -185,7 +185,7 @@ SharedQueue Binary Layout
     return send(opId, control, zeroCopy);
   }
 
-  const denoCore = {
+  Object.assign(window.Deno.core, {
     setAsyncHandler,
     dispatch,
     ops,
@@ -199,8 +199,5 @@ SharedQueue Binary Layout
       reset,
       shift,
     },
-  };
-
-  assert(window.Deno.core != null);
-  Object.assign(window.Deno.core, denoCore);
+  });
 })(this);
