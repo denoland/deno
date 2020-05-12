@@ -4,7 +4,7 @@ import { assertThrowsAsync, assertEquals } from "../testing/asserts.ts";
 import { letTimeout } from "./timeout.ts";
 import { TimeoutError } from "./timeout.ts";
 
-const {test} = Deno;
+const { test } = Deno;
 
 test({
   name: "letTimeout",
