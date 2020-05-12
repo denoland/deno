@@ -254,7 +254,7 @@ fn op_chdir(
 ) -> Result<JsonOp, OpError> {
   let args: ChdirArgs = serde_json::from_value(args)?;
   let d = PathBuf::from(&args.directory);
-  state.check_write(&d)?;
+  state.check_read(&d)?;
   set_current_dir(&d)?;
   Ok(JsonOp::Sync(json!({})))
 }

@@ -952,16 +952,37 @@ itest!(deno_test {
   output: "deno_test.out",
 });
 
-itest!(workers {
-  args: "test --reload --allow-net workers_test.ts",
-  http_server: true,
-  output: "workers_test.out",
-});
+#[test]
+fn workers() {
+  let g = util::http_server();
+  let status = util::deno_cmd()
+    .current_dir(util::tests_path())
+    .arg("test")
+    .arg("--reload")
+    .arg("--allow-net")
+    .arg("workers_test.ts")
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(status.success());
+  drop(g);
+}
 
-itest!(compiler_api {
-  args: "test --unstable --reload compiler_api_test.ts",
-  output: "compiler_api_test.out",
-});
+#[test]
+fn compiler_api() {
+  let status = util::deno_cmd()
+    .current_dir(util::tests_path())
+    .arg("test")
+    .arg("--unstable")
+    .arg("--reload")
+    .arg("compiler_api_test.ts")
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(status.success());
+}
 
 itest!(_027_redirect_typescript {
   args: "run --reload 027_redirect_typescript.ts",
@@ -1322,7 +1343,7 @@ itest!(error_014_catch_dynamic_import_error {
 });
 
 itest!(error_015_dynamic_import_permissions {
-  args: "--reload error_015_dynamic_import_permissions.js",
+  args: "run --reload error_015_dynamic_import_permissions.js",
   output: "error_015_dynamic_import_permissions.out",
   check_stderr: true,
   exit_code: 1,
@@ -1331,7 +1352,7 @@ itest!(error_015_dynamic_import_permissions {
 
 // We have an allow-net flag but not allow-read, it should still result in error.
 itest!(error_016_dynamic_import_permissions2 {
-  args: "--reload --allow-net error_016_dynamic_import_permissions2.js",
+  args: "run --reload --allow-net error_016_dynamic_import_permissions2.js",
   output: "error_016_dynamic_import_permissions2.out",
   check_stderr: true,
   exit_code: 1,
@@ -1339,63 +1360,63 @@ itest!(error_016_dynamic_import_permissions2 {
 });
 
 itest!(error_017_hide_long_source_ts {
-  args: "--reload error_017_hide_long_source_ts.ts",
+  args: "run --reload error_017_hide_long_source_ts.ts",
   output: "error_017_hide_long_source_ts.ts.out",
   check_stderr: true,
   exit_code: 1,
 });
 
 itest!(error_018_hide_long_source_js {
-  args: "error_018_hide_long_source_js.js",
+  args: "run error_018_hide_long_source_js.js",
   output: "error_018_hide_long_source_js.js.out",
   check_stderr: true,
   exit_code: 1,
 });
 
 itest!(error_019_stack_function {
-  args: "error_019_stack_function.ts",
+  args: "run error_019_stack_function.ts",
   output: "error_019_stack_function.ts.out",
   check_stderr: true,
   exit_code: 1,
 });
 
 itest!(error_020_stack_constructor {
-  args: "error_020_stack_constructor.ts",
+  args: "run error_020_stack_constructor.ts",
   output: "error_020_stack_constructor.ts.out",
   check_stderr: true,
   exit_code: 1,
 });
 
 itest!(error_021_stack_method {
-  args: "error_021_stack_method.ts",
+  args: "run error_021_stack_method.ts",
   output: "error_021_stack_method.ts.out",
   check_stderr: true,
   exit_code: 1,
 });
 
 itest!(error_022_stack_custom_error {
-  args: "error_022_stack_custom_error.ts",
+  args: "run error_022_stack_custom_error.ts",
   output: "error_022_stack_custom_error.ts.out",
   check_stderr: true,
   exit_code: 1,
 });
 
 itest!(error_023_stack_async {
-  args: "error_023_stack_async.ts",
+  args: "run error_023_stack_async.ts",
   output: "error_023_stack_async.ts.out",
   check_stderr: true,
   exit_code: 1,
 });
 
 itest!(error_024_stack_promise_all {
-  args: "error_024_stack_promise_all.ts",
+  args: "run error_024_stack_promise_all.ts",
   output: "error_024_stack_promise_all.ts.out",
   check_stderr: true,
   exit_code: 1,
 });
 
 itest!(error_025_tab_indent {
-  args: "error_025_tab_indent",
+  args: "run error_025_tab_indent",
   output: "error_025_tab_indent.out",
   check_stderr: true,
   exit_code: 1,
@@ -1420,6 +1441,22 @@ itest!(error_type_definitions {
   check_stderr: true,
   exit_code: 1,
   output: "error_type_definitions.ts.out",
+});
+
+itest!(error_local_static_import_from_remote_ts {
+  args: "run --reload http://localhost:4545/cli/tests/error_local_static_import_from_remote.ts",
+  check_stderr: true,
+  exit_code: 1,
+  http_server: true,
+  output: "error_local_static_import_from_remote.ts.out",
+});
+
+itest!(error_local_static_import_from_remote_js {
+  args: "run --reload http://localhost:4545/cli/tests/error_local_static_import_from_remote.js",
+  check_stderr: true,
+  exit_code: 1,
+  http_server: true,
+  output: "error_local_static_import_from_remote.js.out",
 });
 
 // TODO(bartlomieju) Re-enable
@@ -1518,7 +1555,7 @@ itest!(run_v8_flags {
 });
 
 itest!(run_v8_help {
-  args: "--v8-flags=--help",
+  args: "repl --v8-flags=--help",
   output: "v8_help.out",
 });
 
@@ -1528,27 +1565,27 @@ itest!(wasm {
 });
 
 itest!(wasm_async {
-  args: "wasm_async.js",
+  args: "run wasm_async.js",
   output: "wasm_async.out",
 });
 
 itest!(top_level_await {
-  args: "--allow-read top_level_await.js",
+  args: "run --allow-read top_level_await.js",
   output: "top_level_await.out",
 });
 
 itest!(top_level_await_ts {
-  args: "--allow-read top_level_await.ts",
+  args: "run --allow-read top_level_await.ts",
   output: "top_level_await.out",
 });
 
 itest!(top_level_for_await {
-  args: "top_level_for_await.js",
+  args: "run top_level_for_await.js",
   output: "top_level_for_await.out",
 });
 
 itest!(top_level_for_await_ts {
-  args: "top_level_for_await.ts",
+  args: "run top_level_for_await.ts",
   output: "top_level_for_await.out",
 });
 

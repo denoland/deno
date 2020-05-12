@@ -54,6 +54,7 @@ interface CompilerRequestCompile {
   unstable: boolean;
   bundle: boolean;
   outFile?: string;
+  cwd: string;
 }
 
 interface CompilerRequestRuntimeCompile {
@@ -100,6 +101,7 @@ async function compile(
     rootNames,
     target,
     unstable,
+    cwd,
   } = request;
   util.log(">>> compile start", {
     rootNames,
@@ -132,7 +134,7 @@ async function compile(
 
   // if there is a configuration supplied, we need to parse that
   if (config && config.length && configPath) {
-    const configResult = host.configure(configPath, config);
+    const configResult = host.configure(cwd, configPath, config);
     diagnostics = processConfigureResponse(configResult, configPath);
   }
 
