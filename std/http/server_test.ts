@@ -15,10 +15,10 @@ import {
 } from "../testing/asserts.ts";
 import { ServerResponse, Server, serve, listenAndServe } from "./server.ts";
 import { BufReader, BufWriter } from "../io/bufio.ts";
-import { delay } from "../util/async.ts";
+import { delay } from "../async/delay.ts";
 import { encode, decode } from "../encoding/utf8.ts";
-import { mockRequest } from "./testing.ts";
-import { writeRequest, readResponse } from "./io.ts";
+import { mockRequest } from "./_mock_conn.ts";
+import { writeRequest, readResponse } from "./_io.ts";
 import { ClientRequest, ClientResponse } from "./client.ts";
 
 const { Buffer, test } = Deno;

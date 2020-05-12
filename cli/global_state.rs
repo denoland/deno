@@ -1,16 +1,14 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use crate::compilers::CompiledModule;
-use crate::compilers::JsCompiler;
-use crate::compilers::TargetLib;
-use crate::compilers::TsCompiler;
-use crate::compilers::WasmCompiler;
 use crate::deno_dir;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::flags;
 use crate::http_cache;
 use crate::lockfile::Lockfile;
 use crate::msg;
-use crate::permissions::DenoPermissions;
+use crate::permissions::Permissions;
+use crate::tsc::CompiledModule;
+use crate::tsc::TargetLib;
+use crate::tsc::TsCompiler;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
 use std::env;
@@ -31,12 +29,10 @@ pub struct GlobalStateInner {
   /// Flags parsed from `argv` contents.
   pub flags: flags::Flags,
   /// Permissions parsed from `flags`.
-  pub permissions: DenoPermissions,
+  pub permissions: Permissions,
   pub dir: deno_dir::DenoDir,
   pub file_fetcher: SourceFileFetcher,
-  pub js_compiler: JsCompiler,
   pub ts_compiler: TsCompiler,
-  pub wasm_compiler: WasmCompiler,
   pub lockfile: Option<Mutex<Lockfile>>,
   pub compiler_starts: AtomicUsize,
   compile_lock: AsyncMutex<()>,
@@ -54,7 +50,8 @@ impl GlobalState {
     let custom_root = env::var("DENO_DIR").map(String::into).ok();
     let dir = deno_dir::DenoDir::new(custom_root)?;
     let deps_cache_location = dir.root.join("deps");
-    let http_cache = http_cache::HttpCache::new(&deps_cache_location)?;
+    let http_cache = http_cache::HttpCache::new(&deps_cache_location);
+    http_cache.ensure_location()?;
 
     let file_fetcher = SourceFileFetcher::new(
       http_cache,
@@ -81,17 +78,14 @@ impl GlobalState {
 
     let inner = GlobalStateInner {
       dir,
-      permissions: DenoPermissions::from_flags(&flags),
+      permissions: Permissions::from_flags(&flags),
       flags,
       file_fetcher,
       ts_compiler,
-      js_compiler: JsCompiler {},
-      wasm_compiler: WasmCompiler::default(),
       lockfile,
       compiler_starts: AtomicUsize::new(0),
       compile_lock: AsyncMutex::new(()),
     };
-
     Ok(GlobalState(Arc::new(inner)))
   }
 
@@ -100,6 +94,7 @@ impl GlobalState {
     module_specifier: ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
     target_lib: TargetLib,
+    permissions: Permissions,
   ) -> Result<CompiledModule, ErrBox> {
     let state1 = self.clone();
     let state2 = self.clone();
@@ -107,7 +102,7 @@ impl GlobalState {
 
     let out = self
       .file_fetcher
-      .fetch_source_file(&module_specifier, maybe_referrer)
+      .fetch_source_file(&module_specifier, maybe_referrer, permissions.clone())
       .await?;
 
     // TODO(ry) Try to lift compile_lock as high up in the call stack for
@@ -115,25 +110,19 @@ impl GlobalState {
     let compile_lock = self.compile_lock.lock().await;
 
     let compiled_module = match out.media_type {
-      msg::MediaType::Json | msg::MediaType::Unknown => {
-        state1.js_compiler.compile(out).await
-      }
-      msg::MediaType::Wasm => {
-        state1.wasm_compiler.compile(state1.clone(), &out).await
-      }
       msg::MediaType::TypeScript
       | msg::MediaType::TSX
       | msg::MediaType::JSX => {
         state1
           .ts_compiler
-          .compile(state1.clone(), &out, target_lib)
+          .compile(state1.clone(), &out, target_lib, permissions.clone())
           .await
       }
       msg::MediaType::JavaScript => {
         if state1.ts_compiler.compile_js {
           state2
             .ts_compiler
-            .compile(state1.clone(), &out, target_lib)
+            .compile(state1.clone(), &out, target_lib, permissions.clone())
             .await
         } else {
           if let Some(types_url) = out.types_url.clone() {
@@ -143,23 +132,31 @@ impl GlobalState {
               .fetch_source_file(
                 &types_specifier,
                 Some(module_specifier.clone()),
+                permissions.clone(),
               )
               .await
               .ok();
           };
 
-          state1.js_compiler.compile(out).await
+          Ok(CompiledModule {
+            code: String::from_utf8(out.source_code.clone())?,
+            name: out.url.to_string(),
+          })
         }
       }
+      _ => Ok(CompiledModule {
+        code: String::from_utf8(out.source_code.clone())?,
+        name: out.url.to_string(),
+      }),
     }?;
     drop(compile_lock);
 
     if let Some(ref lockfile) = state2.lockfile {
       let mut g = lockfile.lock().unwrap();
       if state2.flags.lock_write {
-        g.insert(&compiled_module);
+        g.insert(&out.url, out.source_code);
       } else {
-        let check = match g.check(&compiled_module) {
+        let check = match g.check(&out.url, out.source_code) {
           Err(e) => return Err(ErrBox::from(e)),
           Ok(v) => v,
         };

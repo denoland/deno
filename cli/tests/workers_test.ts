@@ -290,3 +290,20 @@ Deno.test({
     await promise2;
   },
 });
+
+Deno.test({
+  name: "worker with crypto in scope",
+  fn: async function (): Promise<void> {
+    const promise = createResolvable();
+    const w = new Worker("../tests/subdir/worker_crypto.js", {
+      type: "module",
+    });
+    w.onmessage = (e): void => {
+      assertEquals(e.data, true);
+      promise.resolve();
+    };
+    w.postMessage(null);
+    await promise;
+    w.terminate();
+  },
+});

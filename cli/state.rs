@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use crate::compilers::TargetLib;
+use crate::file_fetcher::SourceFileFetcher;
 use crate::global_state::GlobalState;
 use crate::global_timer::GlobalTimer;
 use crate::import_map::ImportMap;
@@ -7,7 +7,8 @@ use crate::metrics::Metrics;
 use crate::op_error::OpError;
 use crate::ops::JsonOp;
 use crate::ops::MinimalOp;
-use crate::permissions::DenoPermissions;
+use crate::permissions::Permissions;
+use crate::tsc::TargetLib;
 use crate::web_worker::WebWorkerHandle;
 use deno_core::Buf;
 use deno_core::ErrBox;
@@ -53,7 +54,7 @@ impl Deref for State {
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub struct StateInner {
   pub global_state: GlobalState,
-  pub permissions: DenoPermissions,
+  pub permissions: Permissions,
   pub main_module: ModuleSpecifier,
   /// When flags contains a `.import_map_path` option, the content of the
   /// import map file will be resolved and set.
@@ -66,6 +67,7 @@ pub struct StateInner {
   pub seeded_rng: Option<StdRng>,
   pub target_lib: TargetLib,
   pub debug_type: DebugType,
+  pub is_main: bool,
 }
 
 impl State {
@@ -313,9 +315,20 @@ impl ModuleLoader for State {
     let module_url_specified = module_specifier.to_string();
     let global_state = state.global_state.clone();
     let target_lib = state.target_lib.clone();
+    let permissions = if state.is_main {
+      Permissions::allow_all()
+    } else {
+      state.permissions.clone()
+    };
+
     let fut = async move {
       let compiled_module = global_state
-        .fetch_compiled_module(module_specifier, maybe_referrer, target_lib)
+        .fetch_compiled_module(
+          module_specifier,
+          maybe_referrer,
+          target_lib,
+          permissions,
+        )
         .await?;
       Ok(deno_core::ModuleSource {
         // Real module name, might be different from initial specifier
@@ -355,7 +368,7 @@ impl State {
   /// If `shared_permission` is None then permissions from globa state are used.
   pub fn new(
     global_state: GlobalState,
-    shared_permissions: Option<DenoPermissions>,
+    shared_permissions: Option<Permissions>,
     main_module: ModuleSpecifier,
     debug_type: DebugType,
   ) -> Result<Self, ErrBox> {
@@ -394,6 +407,7 @@ impl State {
       seeded_rng,
       target_lib: TargetLib::Main,
       debug_type,
+      is_main: true,
     }));
 
     Ok(Self(state))
@@ -402,7 +416,7 @@ impl State {
   /// If `shared_permission` is None then permissions from globa state are used.
   pub fn new_for_worker(
     global_state: GlobalState,
-    shared_permissions: Option<DenoPermissions>,
+    shared_permissions: Option<Permissions>,
     main_module: ModuleSpecifier,
   ) -> Result<Self, ErrBox> {
     let seeded_rng = match global_state.flags.seed {
@@ -429,6 +443,7 @@ impl State {
       seeded_rng,
       target_lib: TargetLib::Worker,
       debug_type: DebugType::Dependent,
+      is_main: false,
     }));
 
     Ok(Self(state))
@@ -474,6 +489,10 @@ impl State {
     module_specifier: &ModuleSpecifier,
   ) -> Result<(), OpError> {
     let u = module_specifier.as_url();
+    // TODO(bartlomieju): temporary fix to prevent hitting `unreachable`
+    // statement that is actually reachable...
+    SourceFileFetcher::check_if_supported_scheme(u)?;
+
     match u.scheme() {
       "http" | "https" => {
         self.check_net_url(u)?;

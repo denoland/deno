@@ -125,6 +125,7 @@ impl From<Script<'_>> for OwnedScript {
 pub enum Snapshot {
   Static(&'static [u8]),
   JustCreated(v8::StartupData),
+  Boxed(Box<[u8]>),
 }
 
 /// Represents data used to initialize isolate at startup
@@ -250,6 +251,7 @@ impl CoreIsolate {
         params = match snapshot {
           Snapshot::Static(data) => params.snapshot_blob(data),
           Snapshot::JustCreated(data) => params.snapshot_blob(data),
+          Snapshot::Boxed(data) => params.snapshot_blob(data),
         };
         true
       } else {
@@ -346,9 +348,7 @@ impl CoreIsolate {
   pub(crate) fn shared_init(&mut self) {
     if self.needs_init {
       self.needs_init = false;
-      js_check(
-        self.execute("shared_queue.js", include_str!("shared_queue.js")),
-      );
+      js_check(self.execute("core.js", include_str!("core.js")));
       // Maybe execute the startup script.
       if let Some(s) = self.startup_script.take() {
         self.execute(&s.filename, &s.source).unwrap()
@@ -1124,15 +1124,10 @@ pub mod tests {
   }
 
   #[test]
-  fn test_js() {
+  fn core_test_js() {
     run_in_task(|mut cx| {
       let (mut isolate, _dispatch_count) = setup(Mode::Async);
-      js_check(
-        isolate.execute(
-          "shared_queue_test.js",
-          include_str!("shared_queue_test.js"),
-        ),
-      );
+      js_check(isolate.execute("core_test.js", include_str!("core_test.js")));
       if let Poll::Ready(Err(_)) = isolate.poll_unpin(&mut cx) {
         unreachable!();
       }
@@ -1172,6 +1167,20 @@ pub mod tests {
     };
 
     let startup_data = StartupData::Snapshot(Snapshot::JustCreated(snapshot));
+    let mut isolate2 = CoreIsolate::new(startup_data, false);
+    js_check(isolate2.execute("check.js", "if (a != 3) throw Error('x')"));
+  }
+
+  #[test]
+  fn test_from_boxed_snapshot() {
+    let snapshot = {
+      let mut isolate = CoreIsolate::new(StartupData::None, true);
+      js_check(isolate.execute("a.js", "a = 1 + 2"));
+      let snap: &[u8] = &*isolate.snapshot();
+      Vec::from(snap).into_boxed_slice()
+    };
+
+    let startup_data = StartupData::Snapshot(Snapshot::Boxed(snapshot));
     let mut isolate2 = CoreIsolate::new(startup_data, false);
     js_check(isolate2.execute("check.js", "if (a != 3) throw Error('x')"));
   }

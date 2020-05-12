@@ -153,9 +153,9 @@ mod tests {
     let root_url = Url::from_file_path(root).unwrap().to_string();
     println!("root_url {}", root_url);
     let expected: Vec<Url> = vec![
+      format!("{}/_io_test.ts", root_url),
       format!("{}/cookie_test.ts", root_url),
       format!("{}/file_server_test.ts", root_url),
-      format!("{}/io_test.ts", root_url),
       format!("{}/racing_server_test.ts", root_url),
       format!("{}/server_test.ts", root_url),
     ]

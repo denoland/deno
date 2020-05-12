@@ -12,7 +12,7 @@ test({
   fn: async () => {
     const srouceFile = Deno.makeTempFileSync();
     const err = await new Promise((resolve) => {
-      copyFile(srouceFile, destFile, (err: Error | undefined) => resolve(err));
+      copyFile(srouceFile, destFile, (err?: Error | null) => resolve(err));
     });
     assert(!err);
     assert(existsSync(destFile));

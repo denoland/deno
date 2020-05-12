@@ -4,7 +4,7 @@
 import * as _win32 from "./win32.ts";
 import * as _posix from "./posix.ts";
 
-import { isWindows } from "./constants.ts";
+const isWindows = Deno.build.os == "windows";
 
 const path = isWindows ? _win32 : _posix;
 
@@ -27,8 +27,7 @@ export const {
   toNamespacedPath,
 } = path;
 
-export { common } from "./common.ts";
-export { EOL, SEP, SEP_PATTERN, isWindows } from "./constants.ts";
+export * from "./common.ts";
+export { SEP, SEP_PATTERN } from "./separator.ts";
 export * from "./interface.ts";
 export * from "./glob.ts";
-export * from "./globrex.ts";

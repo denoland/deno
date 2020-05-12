@@ -1064,6 +1064,234 @@ declare namespace RootNs {
       .contains("namespace RootNs")
   );
 }
+
+#[tokio::test]
+async fn export_default_fn() {
+  let source_code = r#"
+export default function foo(a: number) {
+  return a;
+}
+    "#;
+  let loader =
+    TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
+  let entries = DocParser::new(loader).parse("test.ts").await.unwrap();
+  assert_eq!(entries.len(), 1);
+  let entry = &entries[0];
+  let expected_json = json!({
+    "kind": "function",
+    "name": "default",
+    "location": {
+      "filename": "test.ts",
+      "line": 2,
+      "col": 15
+    },
+    "jsDoc": null,
+    "functionDef": {
+      "params": [
+          {
+            "name": "a",
+            "kind": "identifier",
+            "optional": false,
+            "tsType": {
+              "keyword": "number",
+              "kind": "keyword",
+              "repr": "number",
+            },
+          }
+      ],
+      "typeParams": [],
+      "returnType": null,
+      "isAsync": false,
+      "isGenerator": false
+    }
+  });
+  let actual = serde_json::to_value(entry).unwrap();
+  assert_eq!(actual, expected_json);
+
+  assert!(
+    colors::strip_ansi_codes(super::printer::format(entries).as_str())
+      .contains("function default(a: number)")
+  );
+}
+
+#[tokio::test]
+async fn export_default_class() {
+  let source_code = r#"
+/** Class doc */
+export default class Foobar {
+    /** Constructor js doc */
+    constructor(name: string, private private2: number, protected protected2: number) {}
+}
+"#;
+  let loader =
+    TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
+  let entries = DocParser::new(loader).parse("test.ts").await.unwrap();
+  assert_eq!(entries.len(), 1);
+  let expected_json = json!({
+    "kind": "class",
+    "name": "default",
+    "location": {
+      "filename": "test.ts",
+      "line": 3,
+      "col": 0
+    },
+    "jsDoc": "Class doc",
+    "classDef": {
+      "isAbstract": false,
+      "extends": null,
+      "implements": [],
+      "typeParams": [],
+      "constructors": [
+        {
+          "jsDoc": "Constructor js doc",
+          "accessibility": null,
+          "name": "constructor",
+          "params": [
+            {
+              "name": "name",
+              "kind": "identifier",
+              "optional": false,
+              "tsType": {
+                "repr": "string",
+                "kind": "keyword",
+                "keyword": "string"
+              }
+            },
+            {
+              "name": "private2",
+              "kind": "identifier",
+              "optional": false,
+              "tsType": {
+                "repr": "number",
+                "kind": "keyword",
+                "keyword": "number"
+              }
+            },
+            {
+              "name": "protected2",
+              "kind": "identifier",
+              "optional": false,
+              "tsType": {
+                "repr": "number",
+                "kind": "keyword",
+                "keyword": "number"
+              }
+            }
+          ],
+          "location": {
+            "filename": "test.ts",
+            "line": 5,
+            "col": 4
+          }
+        }
+      ],
+      "properties": [],
+      "methods": []
+    }
+  });
+  let entry = &entries[0];
+  let actual = serde_json::to_value(entry).unwrap();
+  assert_eq!(actual, expected_json);
+
+  assert!(
+    colors::strip_ansi_codes(super::printer::format(entries).as_str())
+      .contains("class default")
+  );
+}
+
+#[tokio::test]
+async fn export_default_interface() {
+  let source_code = r#"
+/**
+ * Interface js doc
+ */
+export default interface Reader {
+    /** Read n bytes */
+    read?(buf: Uint8Array, something: unknown): Promise<number>
+}
+    "#;
+  let loader =
+    TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
+  let entries = DocParser::new(loader).parse("test.ts").await.unwrap();
+  assert_eq!(entries.len(), 1);
+  let entry = &entries[0];
+  let expected_json = json!({
+      "kind": "interface",
+      "name": "default",
+      "location": {
+        "filename": "test.ts",
+        "line": 5,
+        "col": 0
+      },
+      "jsDoc": "Interface js doc",
+      "interfaceDef": {
+        "extends": [],
+        "methods": [
+          {
+            "name": "read",
+            "location": {
+              "filename": "test.ts",
+              "line": 7,
+              "col": 4
+            },
+            "optional": true,
+            "jsDoc": "Read n bytes",
+            "params": [
+              {
+                "name": "buf",
+                "kind": "identifier",
+                "optional": false,
+                "tsType": {
+                  "repr": "Uint8Array",
+                  "kind": "typeRef",
+                  "typeRef": {
+                    "typeParams": null,
+                    "typeName": "Uint8Array"
+                  }
+                }
+              },
+              {
+                "name": "something",
+                "kind": "identifier",
+                "optional": false,
+                "tsType": {
+                  "repr": "unknown",
+                  "kind": "keyword",
+                  "keyword": "unknown"
+                }
+              }
+            ],
+            "typeParams": [],
+            "returnType": {
+              "repr": "Promise",
+              "kind": "typeRef",
+              "typeRef": {
+                "typeParams": [
+                  {
+                    "repr": "number",
+                    "kind": "keyword",
+                    "keyword": "number"
+                  }
+                ],
+                "typeName": "Promise"
+              }
+            }
+          }
+        ],
+        "properties": [],
+        "callSignatures": [],
+        "typeParams": [],
+    }
+  });
+  let actual = serde_json::to_value(entry).unwrap();
+  assert_eq!(actual, expected_json);
+
+  assert!(
+    colors::strip_ansi_codes(super::printer::format(entries).as_str())
+      .contains("interface default")
+  );
+}
+
 #[tokio::test]
 async fn optional_return_type() {
   let source_code = r#"
@@ -1120,6 +1348,8 @@ async fn reexports() {
   * JSDoc for bar
   */
 export const bar = "bar";
+
+export default 42;
 "#;
   let reexport_source_code = r#"
 import { bar } from "./nested_reexport.ts";
@@ -1130,7 +1360,7 @@ import { bar } from "./nested_reexport.ts";
 export const foo = "foo";
 "#;
   let test_source_code = r#"
-export { foo as fooConst } from "./reexport.ts";
+export { default, foo as fooConst } from "./reexport.ts";
 
 /** JSDoc for function */
 export function fooFn(a: number) {

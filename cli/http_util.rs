@@ -117,6 +117,15 @@ pub fn fetch_once(
 
     let mut headers_: HashMap<String, String> = HashMap::new();
     let headers = response.headers();
+
+    if let Some(warning) = headers.get("X-Deno-Warning") {
+      eprintln!(
+        "{} {}",
+        crate::colors::yellow("Warning".to_string()),
+        warning.to_str().unwrap()
+      );
+    }
+
     for key in headers.keys() {
       let key_str = key.to_string();
       let values = headers.get_all(key);

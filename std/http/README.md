@@ -14,7 +14,7 @@ for await (const req of s) {
 A small program for serving local files over HTTP
 
 ```sh
-deno --allow-net --allow-read https://deno.land/std/http/file_server.ts
+deno run --allow-net --allow-read https://deno.land/std/http/file_server.ts
 > HTTP server listening on http://0.0.0.0:4500/
 ```
 
