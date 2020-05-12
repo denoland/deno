@@ -3,6 +3,7 @@ use crate::file_fetcher::SourceFileFetcher;
 use crate::global_state::GlobalState;
 use crate::global_timer::GlobalTimer;
 use crate::import_map::ImportMap;
+use crate::inspector::DenoInspector;
 use crate::metrics::Metrics;
 use crate::op_error::OpError;
 use crate::ops::JsonOp;
@@ -11,6 +12,7 @@ use crate::permissions::Permissions;
 use crate::tsc::TargetLib;
 use crate::web_worker::WebWorkerHandle;
 use deno_core::Buf;
+use deno_core::CoreIsolate;
 use deno_core::ErrBox;
 use deno_core::ModuleLoadId;
 use deno_core::ModuleLoader;
@@ -31,15 +33,6 @@ use std::rc::Rc;
 use std::str;
 use std::thread::JoinHandle;
 use std::time::Instant;
-#[derive(Copy, Clone, Eq, PartialEq)]
-pub enum DebugType {
-  /// Can be debugged, will wait for debugger when --inspect-brk given.
-  Main,
-  /// Can be debugged, never waits for debugger.
-  Dependent,
-  /// No inspector instance is created.
-  Internal,
-}
 
 #[derive(Clone)]
 pub struct State(Rc<RefCell<StateInner>>);
@@ -66,8 +59,9 @@ pub struct StateInner {
   pub start_time: Instant,
   pub seeded_rng: Option<StdRng>,
   pub target_lib: TargetLib,
-  pub debug_type: DebugType,
   pub is_main: bool,
+  pub is_internal: bool,
+  pub inspector: Option<Box<DenoInspector>>,
 }
 
 impl State {
@@ -370,7 +364,7 @@ impl State {
     global_state: GlobalState,
     shared_permissions: Option<Permissions>,
     main_module: ModuleSpecifier,
-    debug_type: DebugType,
+    is_internal: bool,
   ) -> Result<Self, ErrBox> {
     let import_map: Option<ImportMap> =
       match global_state.flags.import_map_path.as_ref() {
@@ -406,8 +400,9 @@ impl State {
       start_time: Instant::now(),
       seeded_rng,
       target_lib: TargetLib::Main,
-      debug_type,
       is_main: true,
+      is_internal,
+      inspector: None,
     }));
 
     Ok(Self(state))
@@ -442,8 +437,9 @@ impl State {
       start_time: Instant::now(),
       seeded_rng,
       target_lib: TargetLib::Worker,
-      debug_type: DebugType::Dependent,
       is_main: false,
+      is_internal: false,
+      inspector: None,
     }));
 
     Ok(Self(state))
@@ -512,6 +508,35 @@ impl State {
     }
   }
 
+  pub fn maybe_init_inspector(&self, isolate: &mut CoreIsolate) {
+    let mut state = self.borrow_mut();
+
+    if state.is_internal {
+      return;
+    };
+
+    let inspector_host = {
+      let global_state = &state.global_state;
+      match global_state
+        .flags
+        .inspect
+        .or(global_state.flags.inspect_brk)
+      {
+        Some(host) => host,
+        None => return,
+      }
+    };
+
+    let inspector = DenoInspector::new(isolate, inspector_host);
+    state.inspector.replace(inspector);
+  }
+
+  #[inline]
+  pub fn should_inspector_break_on_first_statement(&self) -> bool {
+    let state = self.borrow();
+    state.inspector.is_some() && state.is_main
+  }
+
   #[cfg(test)]
   pub fn mock(main_module: &str) -> State {
     let module_specifier = ModuleSpecifier::resolve_url_or_path(main_module)
@@ -520,7 +545,7 @@ impl State {
       GlobalState::mock(vec!["deno".to_string()]),
       None,
       module_specifier,
-      DebugType::Main,
+      false,
     )
     .unwrap()
   }

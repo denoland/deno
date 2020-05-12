@@ -74,7 +74,6 @@ use crate::msg::MediaType;
 use crate::op_error::OpError;
 use crate::ops::io::get_stdio;
 use crate::permissions::Permissions;
-use crate::state::DebugType;
 use crate::state::State;
 use crate::tsc::TargetLib;
 use crate::worker::MainWorker;
@@ -140,7 +139,7 @@ fn create_main_worker(
   global_state: GlobalState,
   main_module: ModuleSpecifier,
 ) -> Result<MainWorker, ErrBox> {
-  let state = State::new(global_state, None, main_module, DebugType::Main)?;
+  let state = State::new(global_state, None, main_module, false)?;
 
   let mut worker = MainWorker::new(
     "main".to_string(),

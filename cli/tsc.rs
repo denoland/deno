@@ -15,7 +15,6 @@ use crate::permissions::Permissions;
 use crate::source_maps::SourceMapGetter;
 use crate::startup_data;
 use crate::state::State;
-use crate::state::*;
 use crate::tokio_util;
 use crate::version;
 use crate::web_worker::WebWorker;
@@ -351,13 +350,9 @@ impl TsCompiler {
   ) -> CompilerWorker {
     let entry_point =
       ModuleSpecifier::resolve_url_or_path("./__$deno$ts_compiler.ts").unwrap();
-    let worker_state = State::new(
-      global_state.clone(),
-      Some(permissions),
-      entry_point,
-      DebugType::Internal,
-    )
-    .expect("Unable to create worker state");
+    let worker_state =
+      State::new(global_state.clone(), Some(permissions), entry_point, true)
+        .expect("Unable to create worker state");
 
     // Count how many times we start the compiler worker.
     global_state.compiler_starts.fetch_add(1, Ordering::SeqCst);
