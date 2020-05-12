@@ -33,6 +33,7 @@ use regex::Regex;
 use serde::Deserialize;
 use serde_json::json;
 use serde_json::Value;
+use sourcemap::SourceMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs;
@@ -718,10 +719,27 @@ impl TsCompiler {
       return Ok(());
     }
 
+    let js_key = self
+      .disk_cache
+      .get_cache_filename_with_extension(module_specifier.as_url(), "js");
+    let js_path = self.disk_cache.location.join(js_key);
+    let js_file_url =
+      Url::from_file_path(js_path).expect("Bad file URL for file");
+
     let source_map_key = self
       .disk_cache
       .get_cache_filename_with_extension(module_specifier.as_url(), "js.map");
-    self.disk_cache.set(&source_map_key, contents.as_bytes())
+
+    let mut sm = SourceMap::from_slice(contents.as_bytes())
+      .expect("Invalid source map content");
+    sm.set_file(Some(&js_file_url.to_string()));
+    sm.set_source(0, &module_specifier.to_string());
+
+    let mut output: Vec<u8> = vec![];
+    sm.to_writer(&mut output)
+      .expect("Failed to write source map");
+
+    self.disk_cache.set(&source_map_key, &output)
   }
 }
 
