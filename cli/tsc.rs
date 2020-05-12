@@ -942,6 +942,29 @@ mod tests {
       source_code.split('\n').map(|s| s.to_string()).collect();
     let last_line = lines.pop().unwrap();
     assert!(last_line.starts_with("//# sourceMappingURL=file://"));
+
+    // Get source map file and assert it has proper URLs
+    let source_map = mock_state
+      .ts_compiler
+      .get_source_map_file(&specifier)
+      .expect("Source map not found");
+    let source_str = String::from_utf8(source_map.source_code).unwrap();
+    let source_json: Value = serde_json::from_str(&source_str).unwrap();
+
+    let js_key = mock_state
+      .ts_compiler
+      .disk_cache
+      .get_cache_filename_with_extension(specifier.as_url(), "js");
+    let js_path = mock_state.ts_compiler.disk_cache.location.join(js_key);
+    let js_file_url = Url::from_file_path(js_path).unwrap();
+
+    let file_str = source_json.get("file").unwrap().as_str().unwrap();
+    assert_eq!(file_str, js_file_url.to_string());
+
+    let sources = source_json.get("sources").unwrap().as_array().unwrap();
+    assert_eq!(sources.len(), 1);
+    let source = sources.get(0).unwrap().as_str().unwrap();
+    assert_eq!(source, specifier.to_string());
   }
 
   #[tokio::test]
