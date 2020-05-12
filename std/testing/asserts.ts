@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { red, green, white, gray, bold, stripColor } from "../fmt/colors.ts";
+import { red, green, white, gray, bold } from "../fmt/colors.ts";
 import diff, { DiffType, DiffResult } from "./diff.ts";
 
 const CAN_NOT_DISPLAY = "[Cannot display]";
