@@ -9,16 +9,16 @@ To activate debugging capabilities run Deno with `--inspect` or `--inspect-brk`
 flag.
 
 `--inspect` flag allows to attach debugger at any point in time, while
-`--inspect-brk` will wait for debugger being attached and break execution on the
-first line.
+`--inspect-brk` will wait for debugger being attached and pause execution on the
+first line of code.
 
 ### Chrome Devtools
 
-Let's try debugging simple program using Chrome Devtools; for that purpose we'll
+Let's try debugging simple program using Chrome Devtools; for this purpose we'll
 use [file_server.ts](https://deno.land/std@v0.50.0/http/file_server.ts) from
 `std`; a simple static file server.
 
-Let's use `--inspect-brk` flag to break execution on the first line.
+Use `--inspect-brk` flag to break execution on the first line.
 
 ```shell
 $ deno run --inspect-brk https://deno.land/std@v0.50.0/http/file_server.ts
@@ -38,7 +38,7 @@ It might take a few seconds after opening the devtools to load all modules.
 
 You might notice that Devtools paused execution on the first line of
 `_constants.ts` instead of `file_server.ts`. This is an expected behavior and is
-caused by the way ES modules are evaluated by V8 (`_contants.ts` is left-most,
+caused by the way ES modules are evaluated by V8 (`_constants.ts` is left-most,
 bottom-most dependency of `file_server.ts` so it is evaluated first).
 
 At this point all source code is available in the Devtools, so let's open up
@@ -47,17 +47,17 @@ tree:
 
 ![Open file_server.ts](../images/debugger3.jpg)
 
-_There are duplicate entries for each source file - if you look closesly for
-you'll find duplicate entries for each file; one written regularly and one in
-italics. The former is compiled source file (so in case of `.ts` files it will
-be emitted JavaScript source), while the latter is a source map for the file._
+_Looking closesly you'll find duplicate entries for each file; one written
+regularly and one in italics. The former is compiled source file (so in case of
+`.ts` files it will be emitted JavaScript source), while the latter is a source
+map for the file._
 
 Add a breakpoint in `listenAndServe` method:
 
 ![Break in file_server.ts](../images/debugger4.jpg)
 
 As soon as we've added the breakpoint Devtools automatically opened up source
-map file, which let's us step through the actual source code that includes
+map file, which allows us step through the actual source code that includes
 types.
 
 Let's send a request and inspect it in Devtools:
