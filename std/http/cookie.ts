@@ -35,6 +35,10 @@ export interface Cookie {
 
 export type SameSite = "Strict" | "Lax" | "None";
 
+// RegExp to match field-content in RFC 7230 section 3.2
+// ref: https://tools.ietf.org/html/rfc7230#section-3.2
+const fieldContentRegExp = /^[\u0009\u0020-\u007e\u0080-\u00ff]+$/;
+
 function toString(cookie: Cookie): string {
   if (!cookie.name) {
     return "";
@@ -64,12 +68,18 @@ function toString(cookie: Cookie): string {
     out.push(`Max-Age=${cookie.maxAge}`);
   }
   if (cookie.domain) {
+    if (!fieldContentRegExp.test(cookie.domain)) {
+      throw new TypeError("domain is invalid");
+    }
     out.push(`Domain=${cookie.domain}`);
   }
   if (cookie.sameSite) {
     out.push(`SameSite=${cookie.sameSite}`);
   }
   if (cookie.path) {
+    if (!fieldContentRegExp.test(cookie.path)) {
+      throw new TypeError("path is invalid");
+    }
     out.push(`Path=${cookie.path}`);
   }
   if (cookie.expires) {
