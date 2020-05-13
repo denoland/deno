@@ -72,38 +72,65 @@ export function getLogger(name?: string): Logger {
   return result;
 }
 
+export function debug<T>(msg: () => T, ...args: unknown[]): T | undefined;
+export function debug<T>(msg: T, ...args: unknown[]): T;
 export function debug<T>(
   msg: T | (() => T),
   ...args: unknown[]
-): T | { msg: T; args: unknown[] } | undefined {
+): T | undefined {
+  // Assist TS compiler with pass-through generic type
+  if (msg instanceof Function) {
+    return getLogger("default").debug(msg, ...args);
+  }
   return getLogger("default").debug(msg, ...args);
 }
 
-export function info<T>(
-  msg: T | (() => T),
-  ...args: unknown[]
-): T | { msg: T; args: unknown[] } | undefined {
+export function info<T>(msg: () => T, ...args: unknown[]): T | undefined;
+export function info<T>(msg: T, ...args: unknown[]): T;
+export function info<T>(msg: T | (() => T), ...args: unknown[]): T | undefined {
+  // Assist TS compiler with pass-through generic type
+  if (msg instanceof Function) {
+    return getLogger("default").info(msg, ...args);
+  }
   return getLogger("default").info(msg, ...args);
 }
 
+export function warning<T>(msg: () => T, ...args: unknown[]): T | undefined;
+export function warning<T>(msg: T, ...args: unknown[]): T;
 export function warning<T>(
   msg: T | (() => T),
   ...args: unknown[]
-): T | { msg: T; args: unknown[] } | undefined {
+): T | undefined {
+  // Assist TS compiler with pass-through generic type
+  if (msg instanceof Function) {
+    return getLogger("default").warning(msg, ...args);
+  }
   return getLogger("default").warning(msg, ...args);
 }
 
+export function error<T>(msg: () => T, ...args: unknown[]): T | undefined;
+export function error<T>(msg: T, ...args: unknown[]): T;
 export function error<T>(
   msg: T | (() => T),
   ...args: unknown[]
-): T | { msg: T; args: unknown[] } | undefined {
+): T | undefined {
+  // Assist TS compiler with pass-through generic type
+  if (msg instanceof Function) {
+    return getLogger("default").error(msg, ...args);
+  }
   return getLogger("default").error(msg, ...args);
 }
 
+export function critical<T>(msg: () => T, ...args: unknown[]): T | undefined;
+export function critical<T>(msg: T, ...args: unknown[]): T;
 export function critical<T>(
   msg: T | (() => T),
   ...args: unknown[]
-): T | { msg: T; args: unknown[] } | undefined {
+): T | undefined {
+  // Assist TS compiler with pass-through generic type
+  if (msg instanceof Function) {
+    return getLogger("default").critical(msg, ...args);
+  }
   return getLogger("default").critical(msg, ...args);
 }
 

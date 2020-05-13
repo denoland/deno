@@ -36,7 +36,7 @@ test("customHandler", function (): void {
   const handler = new TestHandler("DEBUG");
   const logger = new Logger("DEBUG", [handler]);
 
-  const inlineData = logger.debug("foo", 1, 2);
+  const inlineData: string = logger.debug("foo", 1, 2);
 
   const record = handler.records[0];
   assertEquals(record.msg, "foo");
@@ -45,8 +45,7 @@ test("customHandler", function (): void {
   assertEquals(record.levelName, "DEBUG");
 
   assertEquals(handler.messages, ["DEBUG foo"]);
-  assertEquals(inlineData!.msg, "foo");
-  assertEquals(inlineData!.args, [1, 2]);
+  assertEquals(inlineData!, "foo");
 });
 
 test("logFunctions", function (): void {
@@ -109,7 +108,7 @@ test("String resolver fn will not execute if msg will not be logged", function (
     return "expensive function result";
   };
 
-  const inlineData = logger.debug(expensiveFunction, 1, 2);
+  const inlineData: string | undefined = logger.debug(expensiveFunction, 1, 2);
   assert(!called);
   assert(inlineData === undefined);
 });
@@ -124,10 +123,7 @@ test("String resolver fn resolves as expected", function (): void {
   const firstInlineData = logger.error(() => expensiveFunction(5));
   const secondInlineData = logger.error(() => expensiveFunction(5), 1, "abc");
   assertEquals(firstInlineData, "expensive function result 5");
-  assertEquals(secondInlineData, {
-    msg: "expensive function result 5",
-    args: [1, "abc"],
-  });
+  assertEquals(secondInlineData, "expensive function result 5");
 });
 
 test("All types map correctly to log strings and are returned as is", function (): void {
@@ -140,37 +136,69 @@ test("All types map correctly to log strings and are returned as is", function (
   };
 
   // string
-  assertEquals(logger.debug("abc"), "abc");
-  assertEquals(logger.debug("def", 1), { msg: "def", args: [1] });
+  const data1: string = logger.debug("abc");
+  assertEquals(data1, "abc");
+  const data2: string = logger.debug("def", 1);
+  assertEquals(data2, "def");
+
   // null
-  assertEquals(logger.info(null), null);
-  assertEquals(logger.info(null, 1), { msg: null, args: [1] });
+  const data3: null = logger.info(null);
+  assertEquals(data3, null);
+  const data4: null = logger.info(null, 1);
+  assertEquals(data4, null);
+
   // number
-  assertEquals(logger.warning(3), 3);
-  assertEquals(logger.warning(3, 1), { msg: 3, args: [1] });
+  const data5: number = logger.warning(3);
+  assertEquals(data5, 3);
+  const data6: number = logger.warning(3, 1);
+  assertEquals(data6, 3);
+
   // bigint
-  assertEquals(logger.error(5n), 5n);
-  assertEquals(logger.error(5n, 1), { msg: 5n, args: [1] });
+  const data7: bigint = logger.error(5n);
+  assertEquals(data7, 5n);
+  const data8: bigint = logger.error(5n, 1);
+  assertEquals(data8, 5n);
+
   // boolean
-  assertEquals(logger.critical(true), true);
-  assertEquals(logger.critical(true, 1), { msg: true, args: [1] });
+  const data9: boolean = logger.critical(true);
+  assertEquals(data9, true);
+  const data10: boolean = logger.critical(true, 1);
+  assertEquals(data10, true);
+
   // undefined
-  assertEquals(logger.debug(undefined), undefined);
-  assertEquals(logger.debug(undefined, 1), { msg: undefined, args: [1] });
+  const data11: undefined = logger.debug(undefined);
+  assertEquals(data11, undefined);
+  const data12: undefined = logger.debug(undefined, 1);
+  assertEquals(data12, undefined);
+
   // symbol
-  assertEquals(logger.info(sym), sym);
-  assertEquals(logger.info(syma, 1), { msg: syma, args: [1] });
+  const data13: symbol = logger.info(sym);
+  assertEquals(data13, sym);
+  const data14: symbol = logger.info(syma, 1);
+  assertEquals(data14, syma);
+
   // function
-  assertEquals(logger.warning(fn), "abc");
-  assertEquals(logger.warning(fn, 1), { msg: "abc", args: [1] });
+  const data15: string | undefined = logger.warning(fn);
+  assertEquals(data15, "abc");
+  const data16: string | undefined = logger.warning(fn, 1);
+  assertEquals(data16, "abc");
+
   // object
-  assertEquals(logger.error({ payload: "data", other: 123 }), {
+  const data17: { payload: string; other: number } = logger.error({
     payload: "data",
     other: 123,
   });
-  assertEquals(logger.error({ payload: "data", other: 123 }, 1), {
-    msg: { payload: "data", other: 123 },
-    args: [1],
+  assertEquals(data17, {
+    payload: "data",
+    other: 123,
+  });
+  const data18: { payload: string; other: number } = logger.error(
+    { payload: "data", other: 123 },
+    1
+  );
+  assertEquals(data18, {
+    payload: "data",
+    other: 123,
   });
 
   assertEquals(handler.messages[0], "DEBUG abc");

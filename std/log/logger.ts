@@ -43,7 +43,7 @@ export class Logger {
   }
 
   /** If the level of the logger is greater than the level to log, then nothing
-   * is logged, otherwise a log record is passed to each log handler.  Any data
+   * is logged, otherwise a log record is passed to each log handler.  `msg` data
    * passed in is returned.  If a function is passed it, it is only evaluated
    * if the msg will be logged and the return value will be the result of the
    * function, not the function itself, unless the function isn't called, in which
@@ -53,13 +53,9 @@ export class Logger {
     level: number,
     msg: T | (() => T),
     ...args: unknown[]
-  ): T | { msg: T; args: unknown[] } | undefined {
+  ): T | undefined {
     if (this.level > level) {
-      if (msg instanceof Function) {
-        return undefined;
-      } else {
-        return args!.length > 0 ? { msg: msg, args: args } : msg;
-      }
+      return msg instanceof Function ? undefined : msg;
     }
 
     let fnResult: T | undefined;
@@ -76,12 +72,11 @@ export class Logger {
       handler.handle(record);
     });
 
-    if (fnResult !== undefined) {
-      return args.length > 0 ? { msg: fnResult, args: args } : fnResult;
-    } else if (!(msg instanceof Function)) {
-      return args.length > 0 ? { msg: msg, args: args } : msg;
+    if (msg instanceof Function) {
+      return fnResult;
     }
-    return undefined;
+
+    return msg;
   }
 
   /** Convert all types to strings for logging */
@@ -107,63 +102,33 @@ export class Logger {
     return "undefined";
   }
 
-  debug<T>(msg: T | (() => T)): T;
-  debug<T>(
-    msg: T | (() => T),
-    ...args: unknown[]
-  ): { msg: T; args: unknown[] } | undefined;
-  debug<T>(
-    msg: T | (() => T),
-    ...args: unknown[]
-  ): T | { msg: T; args: unknown[] } | undefined {
+  debug<T>(msg: () => T, ...args: unknown[]): T | undefined;
+  debug<T>(msg: T, ...args: unknown[]): T;
+  debug<T>(msg: T | (() => T), ...args: unknown[]): T | undefined {
     return this._log(LogLevels.DEBUG, msg, ...args);
   }
 
-  info<T>(msg: T | (() => T)): T;
-  info<T>(
-    msg: T | (() => T),
-    ...args: unknown[]
-  ): { msg: T; args: unknown[] } | undefined;
-  info<T>(
-    msg: T | (() => T),
-    ...args: unknown[]
-  ): T | { msg: T; args: unknown[] } | undefined {
+  info<T>(msg: () => T, ...args: unknown[]): T | undefined;
+  info<T>(msg: T, ...args: unknown[]): T;
+  info<T>(msg: T | (() => T), ...args: unknown[]): T | undefined {
     return this._log(LogLevels.INFO, msg, ...args);
   }
 
-  warning<T>(msg: T | (() => T)): T;
-  warning<T>(
-    msg: T | (() => T),
-    ...args: unknown[]
-  ): { msg: T; args: unknown[] } | undefined;
-  warning<T>(
-    msg: T | (() => T),
-    ...args: unknown[]
-  ): T | { msg: T; args: unknown[] } | undefined {
+  warning<T>(msg: () => T, ...args: unknown[]): T | undefined;
+  warning<T>(msg: T, ...args: unknown[]): T;
+  warning<T>(msg: T | (() => T), ...args: unknown[]): T | undefined {
     return this._log(LogLevels.WARNING, msg, ...args);
   }
 
-  error<T>(msg: T | (() => T)): T;
-  error<T>(
-    msg: T | (() => T),
-    ...args: unknown[]
-  ): { msg: T; args: unknown[] } | undefined;
-  error<T>(
-    msg: T | (() => T),
-    ...args: unknown[]
-  ): T | { msg: T; args: unknown[] } | undefined {
+  error<T>(msg: () => T, ...args: unknown[]): T | undefined;
+  error<T>(msg: T, ...args: unknown[]): T;
+  error<T>(msg: T | (() => T), ...args: unknown[]): T | undefined {
     return this._log(LogLevels.ERROR, msg, ...args);
   }
 
-  critical<T>(msg: T | (() => T)): T;
-  critical<T>(
-    msg: T | (() => T),
-    ...args: unknown[]
-  ): { msg: T; args: unknown[] } | undefined;
-  critical<T>(
-    msg: T | (() => T),
-    ...args: unknown[]
-  ): T | { msg: T; args: unknown[] } | undefined {
+  critical<T>(msg: () => T, ...args: unknown[]): T | undefined;
+  critical<T>(msg: T, ...args: unknown[]): T;
+  critical<T>(msg: T | (() => T), ...args: unknown[]): T | undefined {
     return this._log(LogLevels.CRITICAL, msg, ...args);
   }
 }
