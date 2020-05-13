@@ -2,7 +2,7 @@
 
 Deno provides `deno install` to easily install and distribute executable code.
 
-`deno install [OPTIONS...] [URL] [SCRIPT_ARGS...]` will install the script
+`deno install [OPTIONS...] [EXE_NAME] [URL] [SCRIPT_ARGS...]` will install the script
 available at `URL` under the name `EXE_NAME`.
 
 This command creates a thin, executable shell script which invokes `deno` using
@@ -19,10 +19,10 @@ $ deno install --allow-net --allow-read https://deno.land/std/http/file_server.t
 /Users/deno/.deno/bin/file_server
 ```
 
-To change the executable name, use `-n`/`--name`:
+To change the executable name, provide a name before or after options:
 
 ```shell
-  deno install --allow-net --allow-read -n serve https://deno.land/std/http/file_server.ts
+  deno install --allow-net --allow-read serve https://deno.land/std/http/file_server.ts
 ```
 
 The executable name is inferred by default:
@@ -83,5 +83,5 @@ example installation command to your repository:
 ```shell
 # Install using deno install
 
-$ deno install -n awesome_cli https://example.com/awesome/cli.ts
+$ deno install awesome_cli https://example.com/awesome/cli.ts
 ```
