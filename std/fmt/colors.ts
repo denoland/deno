@@ -156,20 +156,16 @@ export function bgWhite(str: string): string {
 
 /* Special Color Sequences */
 
-function clampAndTruncate(n: number, max = 255, min = 0): number {
-  return Math.trunc(Math.max(Math.min(n, max), min));
-}
-
 /** Set text color using paletted 8bit colors.
  * https://en.wikipedia.org/wiki/ANSI_escape_code#8-bit */
 export function rgb8(str: string, color: number): string {
-  return run(str, code([38, 5, clampAndTruncate(color)], 39));
+  return run(str, code([38, 5, color & 0xff], 39));
 }
 
 /** Set background color using paletted 8bit colors.
  * https://en.wikipedia.org/wiki/ANSI_escape_code#8-bit */
 export function bgRgb8(str: string, color: number): string {
-  return run(str, code([48, 5, clampAndTruncate(color)], 49));
+  return run(str, code([48, 5, color & 0xff], 49));
 }
 
 function colorToRgbArray(color: Rgb | number): [number, number, number] {
@@ -181,9 +177,9 @@ function colorToRgbArray(color: Rgb | number): [number, number, number] {
     ];
   } else {
     return [
-      clampAndTruncate(color.r),
-      clampAndTruncate(color.g),
-      clampAndTruncate(color.b),
+      color.r & 0xff,
+      color.g & 0xff,
+      color.b & 0xff,
     ];
   }
 }
