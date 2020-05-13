@@ -109,9 +109,7 @@ const ignoreDefaults = {
   ignore: true,
 };
 
-function configureTestFn(
-  defaults: Partial<TestDefinition>
-): TestFn{
+function configureTestFn(defaults: Partial<TestDefinition>): TestFn {
   function buildTestDefinition(t: TestDefinition): void;
   function buildTestDefinition(
     name: string,
