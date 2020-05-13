@@ -249,23 +249,17 @@ console.log(booleanData); // true
 console.log(resolvedFunctionData); // 123
 ```
 
-### Deferred log statement resolution
+### Lazy Log Evaluation
 
-Some log statements are expensive to compute. Using deferred resolution, you can
-prevent the computation taking place if the logger won't log the message.
+Some log statements are expensive to compute. In these cases, you can use lazy log
+evaluation to prevent the computation taking place if the logger won't log the message.
 
-```ts
-function expensiveLogMsgResolver(someNum: number, someBool: boolean): string {
-  // some expensive computation to compute logMessage
-  return logMessage;
-}
-
-// expensiveLogMsgResolver will only be called as a function if this logger will
-// log debug messages
-logger.debug(() => expensiveLogMsgResolver(5, true));
+```
+// `expensiveFn(5)` will only be evaluated if this logger is capable of debug logging
+logger.debug(() => `this is expensive: ${expensiveFn(5)}`);
 ```
 
-NOTE: When using deferred log statement resolution, `undefined` will be returned
+NOTE: When using lazy log evaluation, `undefined` will be returned
 if the resolver function is not called because the logger won't log it. E.g.
 
 ```ts
@@ -283,7 +277,7 @@ await log.setup({
 });
 
 const data: string | undefined = logger.debug(() =>
-  expensiveLogMsgResolver(5, true)
+  someExpenseFn(5, true)
 ); // not logged, as debug < error
 console.log(data); // undefined
 ```
