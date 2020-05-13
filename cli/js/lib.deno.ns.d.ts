@@ -47,55 +47,64 @@ declare namespace Deno {
     sanitizeResources?: boolean;
   }
 
-  /** Register a test which will be run when `deno test` is used on the command
-   * line and the containing module looks like a test module.
-   * `fn` can be async if required.
-   *
-   *          import {assert, fail, assertEquals} from "https://deno.land/std/testing/asserts.ts";
-   *
-   *          Deno.test({
-   *            name: "example test",
-   *            fn(): void {
-   *              assertEquals("world", "world");
-   *            },
-   *          });
-   *
-   *          Deno.test({
-   *            name: "example ignored test",
-   *            ignore: Deno.build.os === "windows"
-   *            fn(): void {
-   *              // This test is ignored only on Windows machines
-   *            },
-   *          });
-   *
-   *          Deno.test({
-   *            name: "example async test",
-   *            async fn() {
-   *              const decoder = new TextDecoder("utf-8");
-   *              const data = await Deno.readFile("hello_world.txt");
-   *              assertEquals(decoder.decode(data), "Hello world")
-   *            }
-   *          });
-   */
-  export function test(t: TestDefinition): void;
+  interface TestFn {
+    /** Register a test which will be run when `deno test` is used on the command
+     * line and the containing module looks like a test module.
+     * `fn` can be async if required.
+     *
+     *          import {assert, fail, assertEquals} from "https://deno.land/std/testing/asserts.ts";
+     *
+     *          Deno.test({
+     *            name: "example test",
+     *            fn(): void {
+     *              assertEquals("world", "world");
+     *            },
+     *          });
+     *
+     *          Deno.test({
+     *            name: "example ignored test",
+     *            ignore: Deno.build.os === "windows"
+     *            fn(): void {
+     *              // This test is ignored only on Windows machines
+     *            },
+     *          });
+     *
+     *          Deno.test({
+     *            name: "example async test",
+     *            async fn() {
+     *              const decoder = new TextDecoder("utf-8");
+     *              const data = await Deno.readFile("hello_world.txt");
+     *              assertEquals(decoder.decode(data), "Hello world")
+     *            }
+     *          });
+     */
+    (t: TestDefinition): void;
 
-  /** Register a test which will be run when `deno test` is used on the command
-   * line and the containing module looks like a test module.
-   * `fn` can be async if required.
-   *
-   *        import {assert, fail, assertEquals} from "https://deno.land/std/testing/asserts.ts";
-   *
-   *        Deno.test("My test description", ():void => {
-   *          assertEquals("hello", "hello");
-   *        });
-   *
-   *        Deno.test("My async test description", async ():Promise<void> => {
-   *          const decoder = new TextDecoder("utf-8");
-   *          const data = await Deno.readFile("hello_world.txt");
-   *          assertEquals(decoder.decode(data), "Hello world")
-   *        });
-   * */
-  export function test(name: string, fn: () => void | Promise<void>): void;
+    /** Register a test which will be run when `deno test` is used on the command
+     * line and the containing module looks like a test module.
+     * `fn` can be async if required.
+     *
+     *        import {assert, fail, assertEquals} from "https://deno.land/std/testing/asserts.ts";
+     *
+     *        Deno.test("My test description", ():void => {
+     *          assertEquals("hello", "hello");
+     *        });
+     *
+     *        Deno.test("My async test description", async ():Promise<void> => {
+     *          const decoder = new TextDecoder("utf-8");
+     *          const data = await Deno.readFile("hello_world.txt");
+     *          assertEquals(decoder.decode(data), "Hello world")
+     *        });
+     * */
+    (name: string, fn: () => void | Promise<void>): void;
+  }
+
+  export interface Ignore {
+    ignore: TestFn;
+  }
+
+  export type Test = TestFn & Ignore;
+  export const test: Test;
 
   /** Exit the Deno process with optional exit code. If no exit code is supplied
    * then Deno will exit with return code of 0.

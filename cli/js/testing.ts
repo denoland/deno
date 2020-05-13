@@ -89,52 +89,77 @@ export interface TestDefinition {
   sanitizeOps?: boolean;
   sanitizeResources?: boolean;
 }
+interface TestFn {
+  (t: TestDefinition): void;
+  (name: string, fn: () => void | Promise<void>): void;
+}
+interface Ignore {
+  ignore: TestFn;
+}
+type Test = TestFn & Ignore;
 
 const TEST_REGISTRY: TestDefinition[] = [];
+const testDefinitionDefaults = {
+  ignored: false,
+  sanitizeOps: true,
+  sanitizeResources: true,
+};
+const ignoreDefaults = {
+  ...testDefinitionDefaults,
+  ignore: true,
+};
 
-export function test(t: TestDefinition): void;
-export function test(name: string, fn: () => void | Promise<void>): void;
-// Main test function provided by Deno, as you can see it merely
-// creates a new object with "name" and "fn" fields.
-export function test(
-  t: string | TestDefinition,
-  fn?: () => void | Promise<void>
-): void {
-  let testDef: TestDefinition;
-  const defaults = {
-    ignore: false,
-    sanitizeOps: true,
-    sanitizeResources: true,
-  };
+function configureTestFn(
+  defaults: Partial<TestDefinition>
+): TestFn{
+  function buildTestDefinition(t: TestDefinition): void;
+  function buildTestDefinition(
+    name: string,
+    fn: () => void | Promise<void>
+  ): void;
+  // Main test function provided by Deno, as you can see it merely
+  // creates a new object with "name" and "fn" fields.
+  function buildTestDefinition(
+    t: string | TestDefinition,
+    fn?: () => void | Promise<void>
+  ): void {
+    let testDef: TestDefinition;
+    if (typeof t === "string") {
+      if (!fn || typeof fn != "function") {
+        throw new TypeError("Missing test function");
+      }
+      if (!t) {
+        throw new TypeError("The test name can't be empty");
+      }
+      testDef = { fn: fn as () => void | Promise<void>, name: t, ...defaults };
+    } else {
+      if (!t.fn) {
+        throw new TypeError("Missing test function");
+      }
+      if (!t.name) {
+        throw new TypeError("The test name can't be empty");
+      }
+      testDef = { ...defaults, ...t };
+    }
 
-  if (typeof t === "string") {
-    if (!fn || typeof fn != "function") {
-      throw new TypeError("Missing test function");
+    if (testDef.sanitizeOps) {
+      testDef.fn = assertOps(testDef.fn);
     }
-    if (!t) {
-      throw new TypeError("The test name can't be empty");
+
+    if (testDef.sanitizeResources) {
+      testDef.fn = assertResources(testDef.fn);
     }
-    testDef = { fn: fn as () => void | Promise<void>, name: t, ...defaults };
-  } else {
-    if (!t.fn) {
-      throw new TypeError("Missing test function");
-    }
-    if (!t.name) {
-      throw new TypeError("The test name can't be empty");
-    }
-    testDef = { ...defaults, ...t };
+
+    TEST_REGISTRY.push(testDef);
   }
 
-  if (testDef.sanitizeOps) {
-    testDef.fn = assertOps(testDef.fn);
-  }
-
-  if (testDef.sanitizeResources) {
-    testDef.fn = assertResources(testDef.fn);
-  }
-
-  TEST_REGISTRY.push(testDef);
+  return buildTestDefinition;
 }
+
+export const ignore: TestFn = configureTestFn(ignoreDefaults);
+const t: Test | TestFn = configureTestFn(testDefinitionDefaults);
+(t as Test).ignore = ignore;
+export const test = t;
 
 interface TestMessage {
   start?: {

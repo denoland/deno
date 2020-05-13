@@ -6,6 +6,10 @@ unitTest(function testFnOverloading(): void {
   Deno.test("test fn overloading", (): void => {});
 });
 
+unitTest(function testIgnore(): void {
+  Deno.test.ignore("test .ignore()", (): void => {});
+});
+
 unitTest(function nameOfTestCaseCantBeEmpty(): void {
   assertThrows(
     () => {
