@@ -7,11 +7,11 @@ import * as log from "https://deno.land/std/log/mod.ts";
 
 // Simple default logger out of the box. You can customize it
 // by overriding logger and handler named "default", or providing
-// additional logger configurations
+// additional logger configurations. You can log any type.
 log.debug("Hello world");
-log.info("Hello world");
-log.warning("Hello world");
-log.error("Hello world");
+log.info(123456);
+log.warning(true);
+log.error({ foo: "bar", fizz: "bazz" });
 log.critical("500 Internal server error");
 
 // custom configuration with 2 loggers (the default and `tasks` loggers)
@@ -45,12 +45,12 @@ let logger;
 // get default logger
 logger = log.getLogger();
 logger.debug("fizz"); // logs to `console`, because `file` handler requires "WARNING" level
-logger.warning("buzz"); // logs to both `console` and `file` handlers
+logger.warning(41256); // logs to both `console` and `file` handlers
 
 // get custom logger
 logger = log.getLogger("tasks");
-logger.debug("fizz"); // won't get output because this logger has "ERROR" level
-logger.error("buzz"); // log to `console`
+logger.debug("foo"); // won't get output because this logger has "ERROR" level
+logger.error({ productType: "book", value: "126.11" }); // log to `console`
 
 // if you try to use a logger that hasn't been configured
 // you're good to go, it gets created automatically with level set to 0
@@ -234,20 +234,19 @@ For examples check source code of `FileHandler` and `TestHandler`.
 
 ### Inline Logging
 
-Log functions return the data passed to them. Data is returned regardless if the
-logger actually logs it.
+Log functions return the data passed in the `msg` parameter. Data is returned
+regardless if the logger actually logs it.
 
 ```ts
-const loggedData: string = logger.debug("hello world");
-const allData: { msg: string; args: unknown[] } = logger.debug(
-  "hello world",
-  1,
-  "abc"
-);
-const computedData: string = logger.debug(constructValue());
-console.log(loggedData); // 'hello world'
-console.log(allData); // { msg: 'hello world', args: [1, 'abc'] }
-console.log(computedData); // value of constructValue()
+const stringData: string = logger.debug("hello world");
+const booleanData: boolean = logger.debug(true, 1, "abc");
+const fn = (): number => {
+  return 123;
+};
+const resolvedFunctionData: number = logger.debug(fn());
+console.log(stringData); // 'hello world'
+console.log(booleanData); // true
+console.log(resolvedFunctionData); // 123
 ```
 
 ### Deferred log statement resolution
@@ -283,6 +282,8 @@ await log.setup({
   },
 });
 
-const data = logger.debug(() => expensiveLogMsgResolver(5, true)); // not logged, as debug < error
+const data: string | undefined = logger.debug(() =>
+  expensiveLogMsgResolver(5, true)
+); // not logged, as debug < error
 console.log(data); // undefined
 ```
