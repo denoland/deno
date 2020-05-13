@@ -7,8 +7,8 @@ A secure runtime for JavaScript and TypeScript.
 Deno aims to provide a productive and secure scripting environment for the
 modern programmer. It is built on top of V8, Rust, and TypeScript.
 
-Please read the [introduction](https://deno.land/manual#introduction) for
-more specifics.
+Please read the [introduction](https://deno.land/manual#introduction) for more
+specifics.
 
 [Website](https://deno.land/)
 
