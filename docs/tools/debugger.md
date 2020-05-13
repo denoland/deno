@@ -1,8 +1,9 @@
 ## Debugger
 
-Deno supports [V8 Inspector Protocol](https://v8.dev/docs/inspector); therefore
-it's possible to debug Deno using Chrome Devtools or other clients supporting
-the protocol (eg. VSCode).
+Deno supports [V8 Inspector Protocol](https://v8.dev/docs/inspector).
+
+It is possible to debug Deno programs using Chrome Devtools or other clients
+that support the protocol (eg. VSCode).
 
 To activate debugging capabilities run Deno with `--inspect` or `--inspect-brk`
 flag.
@@ -14,8 +15,8 @@ first line.
 ### Chrome Devtools
 
 Let's try debugging simple program using Chrome Devtools; for that purpose we'll
-use [file_server.ts](https://deno.land/std@v0.50.0/http/file_server.ts); a
-simple server from `std` that serves static files.
+use [file_server.ts](https://deno.land/std@v0.50.0/http/file_server.ts) from
+`std`; a simple static file server.
 
 Let's use `--inspect-brk` flag to break execution on the first line.
 
@@ -28,16 +29,17 @@ Compile https://deno.land/std@v0.50.0/http/file_server.ts
 ```
 
 Open `chrome://inspect` and click `Inspect` next to target:
+
 ![chrome://inspect](../images/debugger1.png)
 
-It might take a few seconds after opening the devtools for all modules to load.
+It might take a few seconds after opening the devtools to load all modules.
 
 ![Devtools opened](../images/debugger2.png)
 
 You might notice that Devtools paused execution on the first line of
 `_constants.ts` instead of `file_server.ts`. This is an expected behavior and is
-caused by the way ES modules are evaluated by V8 - because `_contants.ts` is
-left-most, bottom-most dependency of `file_server.ts` is it evaluated first.
+caused by the way ES modules are evaluated by V8 (`_contants.ts` is left-most,
+bottom-most dependency of `file_server.ts` so it is evaluated first).
 
 At this point all source code is available in the Devtools, so let's open up
 `file_server.ts` and add a breakpoint there; go to "Sources" pane and expand the
@@ -46,8 +48,9 @@ tree:
 ![Open file_server.ts](../images/debugger3.png)
 
 _There are duplicate entries for each source file - if you look closesly for
-each file you'll find an entry writter regularly and an entry in italics. The
-former is compiled source file, while the latter is a source map for the file_
+you'll find duplicate entries for each file; one written regularly and one in
+italics. The former is compiled source file (so in case of `.ts` files it will
+be emitted JavaScript source), while the latter is a source map for the file._
 
 Add a breakpoint in `listenAndServe` method:
 
@@ -57,7 +60,7 @@ As soon as we've added the breakpoint Devtools automatically opened up source
 map file, which let's us step through the actual source code that includes
 types.
 
-Let's send a request and inspect it in Devtools
+Let's send a request and inspect it in Devtools:
 
 ```
 $ curl http://0.0.0.0:4500/
