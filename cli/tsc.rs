@@ -18,7 +18,6 @@ use crate::source_maps::SourceMapGetter;
 use crate::startup_data;
 use crate::state::exit_unstable;
 use crate::state::State;
-use crate::state::*;
 use crate::tokio_util;
 use crate::version;
 use crate::web_worker::WebWorker;
@@ -36,6 +35,7 @@ use regex::Regex;
 use serde::Deserialize;
 use serde_json::json;
 use serde_json::Value;
+use sourcemap::SourceMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs;
@@ -353,13 +353,9 @@ impl TsCompiler {
   ) -> CompilerWorker {
     let entry_point =
       ModuleSpecifier::resolve_url_or_path("./__$deno$ts_compiler.ts").unwrap();
-    let worker_state = State::new(
-      global_state.clone(),
-      Some(permissions),
-      entry_point,
-      DebugType::Internal,
-    )
-    .expect("Unable to create worker state");
+    let worker_state =
+      State::new(global_state.clone(), Some(permissions), entry_point, true)
+        .expect("Unable to create worker state");
 
     // Count how many times we start the compiler worker.
     global_state.compiler_starts.fetch_add(1, Ordering::SeqCst);
@@ -834,6 +830,33 @@ impl TsCompiler {
       return Ok(());
     }
 
+    // By default TSC output source map url that is relative; we need
+    // to substitute it manually to correct file URL in DENO_DIR.
+    let mut content_lines = contents
+      .split('\n')
+      .map(|s| s.to_string())
+      .collect::<Vec<String>>();
+
+    if !content_lines.is_empty() {
+      let last_line = content_lines.pop().unwrap();
+      if last_line.starts_with("//# sourceMappingURL=") {
+        let source_map_key = self.disk_cache.get_cache_filename_with_extension(
+          module_specifier.as_url(),
+          "js.map",
+        );
+        let source_map_path = self.disk_cache.location.join(source_map_key);
+        let source_map_file_url = Url::from_file_path(source_map_path)
+          .expect("Bad file URL for source map");
+        let new_last_line =
+          format!("//# sourceMappingURL={}", source_map_file_url.to_string());
+        content_lines.push(new_last_line);
+      } else {
+        content_lines.push(last_line);
+      }
+    }
+
+    let contents = content_lines.join("\n");
+
     let js_key = self
       .disk_cache
       .get_cache_filename_with_extension(module_specifier.as_url(), "js");
@@ -907,10 +930,27 @@ impl TsCompiler {
       return Ok(());
     }
 
+    let js_key = self
+      .disk_cache
+      .get_cache_filename_with_extension(module_specifier.as_url(), "js");
+    let js_path = self.disk_cache.location.join(js_key);
+    let js_file_url =
+      Url::from_file_path(js_path).expect("Bad file URL for file");
+
     let source_map_key = self
       .disk_cache
       .get_cache_filename_with_extension(module_specifier.as_url(), "js.map");
-    self.disk_cache.set(&source_map_key, contents.as_bytes())
+
+    let mut sm = SourceMap::from_slice(contents.as_bytes())
+      .expect("Invalid source map content");
+    sm.set_file(Some(&js_file_url.to_string()));
+    sm.set_source(0, &module_specifier.to_string());
+
+    let mut output: Vec<u8> = vec![];
+    sm.to_writer(&mut output)
+      .expect("Failed to write source map");
+
+    self.disk_cache.set(&source_map_key, &output)
   }
 }
 
@@ -1095,7 +1135,7 @@ mod tests {
       types_header: None,
     };
     let mock_state =
-      GlobalState::mock(vec![String::from("deno"), String::from("hello.js")]);
+      GlobalState::mock(vec![String::from("deno"), String::from("hello.ts")]);
     let result = mock_state
       .ts_compiler
       .compile(
@@ -1106,11 +1146,37 @@ mod tests {
       )
       .await;
     assert!(result.is_ok());
-    assert!(result
-      .unwrap()
-      .code
+    let source_code = result.unwrap().code;
+    assert!(source_code
       .as_bytes()
       .starts_with(b"\"use strict\";\nconsole.log(\"Hello World\");"));
+    let mut lines: Vec<String> =
+      source_code.split('\n').map(|s| s.to_string()).collect();
+    let last_line = lines.pop().unwrap();
+    assert!(last_line.starts_with("//# sourceMappingURL=file://"));
+
+    // Get source map file and assert it has proper URLs
+    let source_map = mock_state
+      .ts_compiler
+      .get_source_map_file(&specifier)
+      .expect("Source map not found");
+    let source_str = String::from_utf8(source_map.source_code).unwrap();
+    let source_json: Value = serde_json::from_str(&source_str).unwrap();
+
+    let js_key = mock_state
+      .ts_compiler
+      .disk_cache
+      .get_cache_filename_with_extension(specifier.as_url(), "js");
+    let js_path = mock_state.ts_compiler.disk_cache.location.join(js_key);
+    let js_file_url = Url::from_file_path(js_path).unwrap();
+
+    let file_str = source_json.get("file").unwrap().as_str().unwrap();
+    assert_eq!(file_str, js_file_url.to_string());
+
+    let sources = source_json.get("sources").unwrap().as_array().unwrap();
+    assert_eq!(sources.len(), 1);
+    let source = sources.get(0).unwrap().as_str().unwrap();
+    assert_eq!(source, specifier.to_string());
   }
 
   #[tokio::test]

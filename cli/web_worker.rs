@@ -136,7 +136,7 @@ impl WebWorker {
         ops::runtime_compiler::init(isolate, &state);
         ops::fs::init(isolate, &state);
         ops::fs_events::init(isolate, &state);
-        ops::plugins::init(isolate, &state);
+        ops::plugin::init(isolate, &state);
         ops::net::init(isolate, &state);
         ops::tls::init(isolate, &state);
         ops::os::init(isolate, &state);

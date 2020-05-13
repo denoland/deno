@@ -36,7 +36,7 @@ function killFileServer(): void {
 test("file_server serveFile", async (): Promise<void> => {
   await startFileServer();
   try {
-    const res = await fetch("http://localhost:4500/README.md");
+    const res = await fetch("http://localhost:4507/README.md");
     assert(res.headers.has("access-control-allow-origin"));
     assert(res.headers.has("access-control-allow-headers"));
     assertEquals(res.headers.get("content-type"), "text/markdown");
@@ -53,7 +53,7 @@ test("file_server serveFile", async (): Promise<void> => {
 test("serveDirectory", async function (): Promise<void> {
   await startFileServer();
   try {
-    const res = await fetch("http://localhost:4500/");
+    const res = await fetch("http://localhost:4507/");
     assert(res.headers.has("access-control-allow-origin"));
     assert(res.headers.has("access-control-allow-headers"));
     const page = await res.text();
@@ -75,7 +75,7 @@ test("serveDirectory", async function (): Promise<void> {
 test("serveFallback", async function (): Promise<void> {
   await startFileServer();
   try {
-    const res = await fetch("http://localhost:4500/badfile.txt");
+    const res = await fetch("http://localhost:4507/badfile.txt");
     assert(res.headers.has("access-control-allow-origin"));
     assert(res.headers.has("access-control-allow-headers"));
     assertEquals(res.status, 404);
@@ -88,12 +88,12 @@ test("serveFallback", async function (): Promise<void> {
 test("serveWithUnorthodoxFilename", async function (): Promise<void> {
   await startFileServer();
   try {
-    let res = await fetch("http://localhost:4500/http/testdata/%");
+    let res = await fetch("http://localhost:4507/http/testdata/%");
     assert(res.headers.has("access-control-allow-origin"));
     assert(res.headers.has("access-control-allow-headers"));
     assertEquals(res.status, 200);
     let _ = await res.text();
-    res = await fetch("http://localhost:4500/http/testdata/test%20file.txt");
+    res = await fetch("http://localhost:4507/http/testdata/test%20file.txt");
     assert(res.headers.has("access-control-allow-origin"));
     assert(res.headers.has("access-control-allow-headers"));
     assertEquals(res.status, 200);

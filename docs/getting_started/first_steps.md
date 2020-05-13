@@ -29,9 +29,9 @@ deno run https://deno.land/std/examples/welcome.ts
 
 ### Making an HTTP request
 
-Something a lot of programs do is fetching data from from a webserver via an
-HTTP request. Lets write a small program that fetches a file and prints the
-content to the terminal.
+Something a lot of programs do is fetching data from a webserver via an HTTP
+request. Lets write a small program that fetches a file and prints the content
+to the terminal.
 
 Just like in the browser you can use the web standard
 [`fetch`](https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API) API to

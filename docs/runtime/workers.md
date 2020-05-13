@@ -42,7 +42,7 @@ $ deno run --allow-read main.ts
 hello world
 ```
 
-For workers using remote modules; `--allow-read` permission is required:
+For workers using remote modules; `--allow-net` permission is required:
 
 ```ts
 // main.ts

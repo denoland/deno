@@ -7,10 +7,10 @@ import {
 } from "./test_util.ts";
 
 unitTest({ perms: { net: true } }, function netTcpListenClose(): void {
-  const listener = Deno.listen({ hostname: "127.0.0.1", port: 4500 });
+  const listener = Deno.listen({ hostname: "127.0.0.1", port: 3500 });
   assert(listener.addr.transport === "tcp");
   assertEquals(listener.addr.hostname, "127.0.0.1");
-  assertEquals(listener.addr.port, 4500);
+  assertEquals(listener.addr.port, 3500);
   listener.close();
 });
 
@@ -23,12 +23,12 @@ unitTest(
   function netUdpListenClose(): void {
     const socket = Deno.listenDatagram({
       hostname: "127.0.0.1",
-      port: 4500,
+      port: 3500,
       transport: "udp",
     });
     assert(socket.addr.transport === "udp");
     assertEquals(socket.addr.hostname, "127.0.0.1");
-    assertEquals(socket.addr.port, 4500);
+    assertEquals(socket.addr.port, 3500);
     socket.close();
   }
 );
@@ -154,22 +154,22 @@ unitTest(
 unitTest({ perms: { net: true } }, async function netTcpDialListen(): Promise<
   void
 > {
-  const listener = Deno.listen({ port: 4500 });
+  const listener = Deno.listen({ port: 3500 });
   listener.accept().then(
     async (conn): Promise<void> => {
       assert(conn.remoteAddr != null);
       assert(conn.localAddr.transport === "tcp");
       assertEquals(conn.localAddr.hostname, "127.0.0.1");
-      assertEquals(conn.localAddr.port, 4500);
+      assertEquals(conn.localAddr.port, 3500);
       await conn.write(new Uint8Array([1, 2, 3]));
       conn.close();
     }
   );
 
-  const conn = await Deno.connect({ hostname: "127.0.0.1", port: 4500 });
+  const conn = await Deno.connect({ hostname: "127.0.0.1", port: 3500 });
   assert(conn.remoteAddr.transport === "tcp");
   assertEquals(conn.remoteAddr.hostname, "127.0.0.1");
-  assertEquals(conn.remoteAddr.port, 4500);
+  assertEquals(conn.remoteAddr.port, 3500);
   assert(conn.localAddr != null);
   const buf = new Uint8Array(1024);
   const readResult = await conn.read(buf);
@@ -227,9 +227,9 @@ unitTest(
 unitTest(
   { ignore: Deno.build.os === "windows", perms: { net: true } },
   async function netUdpSendReceive(): Promise<void> {
-    const alice = Deno.listenDatagram({ port: 4500, transport: "udp" });
+    const alice = Deno.listenDatagram({ port: 3500, transport: "udp" });
     assert(alice.addr.transport === "udp");
-    assertEquals(alice.addr.port, 4500);
+    assertEquals(alice.addr.port, 3500);
     assertEquals(alice.addr.hostname, "127.0.0.1");
 
     const bob = Deno.listenDatagram({ port: 4501, transport: "udp" });
@@ -242,7 +242,7 @@ unitTest(
 
     const [recvd, remote] = await bob.receive();
     assert(remote.transport === "udp");
-    assertEquals(remote.port, 4500);
+    assertEquals(remote.port, 3500);
     assertEquals(recvd.length, 3);
     assertEquals(1, recvd[0]);
     assertEquals(2, recvd[1]);
@@ -385,7 +385,7 @@ unitTest(
     perms: { net: true },
   },
   async function netListenAsyncIterator(): Promise<void> {
-    const addr = { hostname: "127.0.0.1", port: 4500 };
+    const addr = { hostname: "127.0.0.1", port: 3500 };
     const listener = Deno.listen(addr);
     const runAsyncIterator = async (): Promise<void> => {
       for await (const conn of listener) {
@@ -420,7 +420,7 @@ unitTest(
     perms: { net: true },
   },
   async function netCloseWriteSuccess() {
-    const addr = { hostname: "127.0.0.1", port: 4500 };
+    const addr = { hostname: "127.0.0.1", port: 3500 };
     const listener = Deno.listen(addr);
     const closeDeferred = createResolvable();
     listener.accept().then(async (conn) => {
@@ -459,7 +459,7 @@ unitTest(
     perms: { net: true },
   },
   async function netDoubleCloseWrite() {
-    const addr = { hostname: "127.0.0.1", port: 4500 };
+    const addr = { hostname: "127.0.0.1", port: 3500 };
     const listener = Deno.listen(addr);
     const closeDeferred = createResolvable();
     listener.accept().then(async (conn) => {
@@ -512,7 +512,7 @@ unitTest(
       resolvable.resolve();
     }
 
-    const addr = { hostname: "127.0.0.1", port: 4500 };
+    const addr = { hostname: "127.0.0.1", port: 3500 };
     const listener = Deno.listen(addr);
     iteratorReq(listener);
     const conn = await Deno.connect(addr);
