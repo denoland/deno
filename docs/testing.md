@@ -90,6 +90,14 @@ Deno.test({
 });
 ```
 
+Alternatively if you wish to ignore a test temporarily you can call `Deno.test.ignore` instead of `Deno.test`.
+
+```ts
+Deno.test.ignore('testing unimplemented feature', () => {
+  unimplementedFeature();
+})
+```
+
 ## Running tests
 
 To run the test, call `deno test` with the file that contains your test
