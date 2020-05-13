@@ -49,9 +49,12 @@ function code(open: number[], close: number): Code {
 }
 
 function run(str: string, code: Code): string {
-  return enabled
-    ? `${code.open}${str.replace(code.regexp, code.open)}${code.close}`
-    : str;
+  if (enabled) {
+    return `${code.open}${str.replace(code.regexp, code.open)}${code.close}`;
+  }
+  else {
+    return str;
+  }
 }
 
 export function reset(str: string): string {
@@ -155,11 +158,14 @@ export function bgWhite(str: string): string {
 }
 
 /* Special Color Sequences */
+function clampAndTruncate(color: number, max = 255, min = 0) {
+  return Math.floor(Math.max(Math.min(color, max), min));
+}
 
 /** Set text color using paletted 8bit colors.
  * https://en.wikipedia.org/wiki/ANSI_escape_code#8-bit */
 export function rgb8(str: string, color: number): string {
-  return run(str, code([38, 5, color & 0xff], 39));
+  return run(str, code([38, 5, clampAndTruncate(color)], 39));
 }
 
 /** Set background color using paletted 8bit colors.
@@ -170,6 +176,7 @@ export function bgRgb8(str: string, color: number): string {
 
 function colorToRgbArray(color: Rgb | number): [number, number, number] {
   if (typeof color === "number") {
+    color = clampAndTruncate(color, 0xffffff);
     return [
       (color >> 16) & 0xff, // red
       (color >> 8) & 0xff, // green
@@ -177,9 +184,9 @@ function colorToRgbArray(color: Rgb | number): [number, number, number] {
     ];
   } else {
     return [
-      color.r & 0xff,
-      color.g & 0xff,
-      color.b & 0xff,
+      clampAndTruncate(color.r),
+      clampAndTruncate(color.g),
+      clampAndTruncate(color.b),
     ];
   }
 }
