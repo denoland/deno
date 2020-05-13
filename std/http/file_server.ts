@@ -124,7 +124,7 @@ export async function serveFile(
   return new ServerResponse({
     body: file,
     headers: {
-      "content-type": contentType(filePath) ?? fileInfo.size.toString(),
+      "content-length": contentType(filePath) ?? fileInfo.size.toString(),
     },
   });
 }
