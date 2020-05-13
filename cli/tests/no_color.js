@@ -1,1 +1,1 @@
-console.log("noColor", String(SDeno.noColor));
+console.log("noColor", Deno.noColor);
