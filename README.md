@@ -12,7 +12,7 @@ more specifics.
 
 [Website](https://deno.land/)
 
-[Manual](https://deno.land/manual.html)
+[Manual](https://deno.land/manual)
 
 [Install](https://github.com/denoland/deno_install)
 
