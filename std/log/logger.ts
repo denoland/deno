@@ -44,7 +44,7 @@ export class Logger {
 
   /** If the level of the logger is greater than the level to log, then nothing
    * is logged, otherwise a log record is passed to each log handler.  `msg` data
-   * passed in is returned.  If a function is passed it, it is only evaluated
+   * passed in is returned.  If a function is passed in, it is only evaluated
    * if the msg will be logged and the return value will be the result of the
    * function, not the function itself, unless the function isn't called, in which
    * case undefined is returned.  All types are coerced to strings for logging.
@@ -72,11 +72,7 @@ export class Logger {
       handler.handle(record);
     });
 
-    if (msg instanceof Function) {
-      return fnResult;
-    }
-
-    return msg;
+    return msg instanceof Function ? fnResult : msg;
   }
 
   /** Convert all types to strings for logging */

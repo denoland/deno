@@ -7,7 +7,7 @@ import * as log from "https://deno.land/std/log/mod.ts";
 
 // Simple default logger out of the box. You can customize it
 // by overriding logger and handler named "default", or providing
-// additional logger configurations. You can log any type.
+// additional logger configurations. You can log any data type.
 log.debug("Hello world");
 log.info(123456);
 log.warning(true);
@@ -49,7 +49,7 @@ logger.warning(41256); // logs to both `console` and `file` handlers
 
 // get custom logger
 logger = log.getLogger("tasks");
-logger.debug("foo"); // won't get output because this logger has "ERROR" level
+logger.debug("fizz"); // won't get output because this logger has "ERROR" level
 logger.error({ productType: "book", value: "126.11" }); // log to `console`
 
 // if you try to use a logger that hasn't been configured
