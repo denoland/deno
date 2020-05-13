@@ -251,16 +251,17 @@ console.log(resolvedFunctionData); // 123
 
 ### Lazy Log Evaluation
 
-Some log statements are expensive to compute. In these cases, you can use lazy log
-evaluation to prevent the computation taking place if the logger won't log the message.
+Some log statements are expensive to compute. In these cases, you can use lazy
+log evaluation to prevent the computation taking place if the logger won't log
+the message.
 
-```
-// `expensiveFn(5)` will only be evaluated if this logger is capable of debug logging
+```ts
+// `expensiveFn(5)` is only evaluated if this logger is configured for debug logging
 logger.debug(() => `this is expensive: ${expensiveFn(5)}`);
 ```
 
-NOTE: When using lazy log evaluation, `undefined` will be returned
-if the resolver function is not called because the logger won't log it. E.g.
+NOTE: When using lazy log evaluation, `undefined` will be returned if the
+resolver function is not called because the logger won't log it. E.g.
 
 ```ts
 await log.setup({
@@ -276,8 +277,7 @@ await log.setup({
   },
 });
 
-const data: string | undefined = logger.debug(() =>
-  someExpenseFn(5, true)
-); // not logged, as debug < error
+// not logged, as debug < error
+const data: string | undefined = logger.debug(() => someExpenseFn(5, true));
 console.log(data); // undefined
 ```
