@@ -410,7 +410,7 @@ impl TsCompiler {
 
       deno_fs::write_file(out_file_, output_bytes, 0o666)?;
       // TODO(bartlomieju): add "humanFileSize" method
-      eprintln!("{} bytes emmited.", output_len);
+      eprintln!("{} bytes emitted.", output_len);
     } else {
       println!("{}", output_string);
     }

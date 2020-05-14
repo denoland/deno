@@ -862,7 +862,7 @@ interface Request extends Body {
   readonly integrity: string;
   /**
    * Returns a boolean indicating whether or not request is for a history
-   * navigation (a.k.a. back-foward navigation).
+   * navigation (a.k.a. back-forward navigation).
    */
   readonly isHistoryNavigation: boolean;
   /**

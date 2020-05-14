@@ -9,5 +9,5 @@
 * See "Discussion" in README
 
 * scanf, pack, unpack, annotated hex
-* Error Handling, Consistently.
-* Probably Rewrite, now that I know how it's done.
+* Consistent error handling.
+* Rewrite (probably), now that I know how it's done.

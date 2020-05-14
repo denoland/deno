@@ -270,7 +270,7 @@ declare namespace Deno {
 
   /** **UNSTABLE**: new API, yet to be vetted.
    *
-   * Open and initalize a plugin.
+   * Open and initialize a plugin.
    *
    *        const rid = Deno.openPlugin("./path/to/some/plugin.so");
    *        const opId = Deno.core.ops()["some_op"];
