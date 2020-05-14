@@ -45,7 +45,10 @@ or imports having unnecessary file extensions.
 
 The community has developed extensions for some editors to solve these issues:
 
-- [Deno for VS Code](https://marketplace.visualstudio.com/items?itemName=justjavac.vscode-deno) - [Repository](https://github.com/denoland/vscode_deno)
+- [vscode_deno](https://github.com/denoland/vscode_deno): The beta version is
+  published on the
+  [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=justjavac.vscode-deno).
+  Please report any issues.
 
 Support for JetBrains IDEs is not yet available, but you can follow and upvote
 these issues to stay up to date:
