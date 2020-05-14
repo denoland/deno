@@ -25,7 +25,9 @@ signal object.
 
 ```ts
 const sig = Deno.signal(Deno.Signal.SIGINT);
-setTimeout(() => { sig.dispose(); }, 5000);
+setTimeout(() => {
+  sig.dispose();
+}, 5000);
 
 for await (const _ of sig) {
   console.log("interrupted");
