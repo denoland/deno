@@ -9,7 +9,7 @@ import {
   magenta,
   bold,
   dim,
-} from "../colors.ts";
+} from "../../../std/fmt/colors.ts";
 
 // Some of these APIs aren't exposed in the types and so we have to cast to any
 // in order to "trick" TypeScript.
@@ -921,18 +921,19 @@ unitTest(function consoleGroupWarn(): void {
   });
 });
 
+
 // console.table test
 unitTest(function consoleTable(): void {
   mockConsole((console, out): void => {
     console.table({ a: "test", b: 1 });
     assertEquals(
       stripColor(out.toString()),
-      `┌─────────┬────────┐
-│ (index) │ Values │
-├─────────┼────────┤
-│    a    │ "test" │
-│    b    │   1    │
-└─────────┴────────┘
+      `┌───────┬────────┐
+│ (idx) │ Values │
+├───────┼────────┤
+│   a   │ "test" │
+│   b   │   1    │
+└───────┴────────┘
 `
     );
   });
@@ -940,12 +941,12 @@ unitTest(function consoleTable(): void {
     console.table({ a: { b: 10 }, b: { b: 20, c: 30 } }, ["c"]);
     assertEquals(
       stripColor(out.toString()),
-      `┌─────────┬────┐
-│ (index) │ c  │
-├─────────┼────┤
-│    a    │    │
-│    b    │ 30 │
-└─────────┴────┘
+      `┌───────┬────┐
+│ (idx) │ c  │
+├───────┼────┤
+│   a   │    │
+│   b   │ 30 │
+└───────┴────┘
 `
     );
   });
@@ -953,15 +954,15 @@ unitTest(function consoleTable(): void {
     console.table([1, 2, [3, [4]], [5, 6], [[7], [8]]]);
     assertEquals(
       stripColor(out.toString()),
-      `┌─────────┬───────┬───────┬────────┐
-│ (index) │   0   │   1   │ Values │
-├─────────┼───────┼───────┼────────┤
-│    0    │       │       │   1    │
-│    1    │       │       │   2    │
-│    2    │   3   │ [ 4 ] │        │
-│    3    │   5   │   6   │        │
-│    4    │ [ 7 ] │ [ 8 ] │        │
-└─────────┴───────┴───────┴────────┘
+      `┌───────┬───────┬───────┬────────┐
+│ (idx) │   0   │   1   │ Values │
+├───────┼───────┼───────┼────────┤
+│   0   │       │       │   1    │
+│   1   │       │       │   2    │
+│   2   │   3   │ [ 4 ] │        │
+│   3   │   5   │   6   │        │
+│   4   │ [ 7 ] │ [ 8 ] │        │
+└───────┴───────┴───────┴────────┘
 `
     );
   });
@@ -969,14 +970,14 @@ unitTest(function consoleTable(): void {
     console.table(new Set([1, 2, 3, "test"]));
     assertEquals(
       stripColor(out.toString()),
-      `┌───────────────────┬────────┐
-│ (iteration index) │ Values │
-├───────────────────┼────────┤
-│         0         │   1    │
-│         1         │   2    │
-│         2         │   3    │
-│         3         │ "test" │
-└───────────────────┴────────┘
+      `┌────────────┬────────┐
+│ (iter idx) │ Values │
+├────────────┼────────┤
+│     0      │   1    │
+│     1      │   2    │
+│     2      │   3    │
+│     3      │ "test" │
+└────────────┴────────┘
 `
     );
   });
@@ -989,12 +990,12 @@ unitTest(function consoleTable(): void {
     );
     assertEquals(
       stripColor(out.toString()),
-      `┌───────────────────┬─────┬────────┐
-│ (iteration index) │ Key │ Values │
-├───────────────────┼─────┼────────┤
-│         0         │  1  │ "one"  │
-│         1         │  2  │ "two"  │
-└───────────────────┴─────┴────────┘
+      `┌────────────┬─────┬────────┐
+│ (iter idx) │ Key │ Values │
+├────────────┼─────┼────────┤
+│     0      │  1  │ "one"  │
+│     1      │  2  │ "two"  │
+└────────────┴─────┴────────┘
 `
     );
   });
@@ -1008,15 +1009,15 @@ unitTest(function consoleTable(): void {
     });
     assertEquals(
       stripColor(out.toString()),
-      `┌─────────┬───────────┬───────────────────┬────────┐
-│ (index) │     c     │         e         │ Values │
-├─────────┼───────────┼───────────────────┼────────┤
-│    a    │           │                   │  true  │
-│    b    │ { d: 10 } │ [ 1, 2, [Array] ] │        │
-│    f    │           │                   │ "test" │
-│    g    │           │                   │        │
-│    h    │           │                   │        │
-└─────────┴───────────┴───────────────────┴────────┘
+      `┌───────┬───────────┬───────────────────┬────────┐
+│ (idx) │     c     │         e         │ Values │
+├───────┼───────────┼───────────────────┼────────┤
+│   a   │           │                   │  true  │
+│   b   │ { d: 10 } │ [ 1, 2, [Array] ] │        │
+│   f   │           │                   │ "test" │
+│   g   │           │                   │        │
+│   h   │           │                   │        │
+└───────┴───────────┴───────────────────┴────────┘
 `
     );
   });
@@ -1030,59 +1031,59 @@ unitTest(function consoleTable(): void {
     ]);
     assertEquals(
       stripColor(out.toString()),
-      `┌─────────┬────────┬──────────────────────┬────┬────────┐
-│ (index) │   0    │          1           │ a  │ Values │
-├─────────┼────────┼──────────────────────┼────┼────────┤
-│    0    │        │                      │    │   1    │
-│    1    │        │                      │    │ "test" │
-│    2    │        │                      │    │ false  │
-│    3    │        │                      │ 10 │        │
-│    4    │ "test" │ { b: 20, c: "test" } │    │        │
-└─────────┴────────┴──────────────────────┴────┴────────┘
+      `┌───────┬────────┬──────────────────────┬────┬────────┐
+│ (idx) │   0    │          1           │ a  │ Values │
+├───────┼────────┼──────────────────────┼────┼────────┤
+│   0   │        │                      │    │   1    │
+│   1   │        │                      │    │ "test" │
+│   2   │        │                      │    │ false  │
+│   3   │        │                      │ 10 │        │
+│   4   │ "test" │ { b: 20, c: "test" } │    │        │
+└───────┴────────┴──────────────────────┴────┴────────┘
 `
     );
   });
   mockConsole((console, out): void => {
     console.table([]);
     assertEquals(
-      stripColor(out.toString()),
-      `┌─────────┐
-│ (index) │
-├─────────┤
-└─────────┘
+      out.toString(),
+      `┌───────┐
+│ (idx) │
+├───────┤
+└───────┘
 `
     );
   });
   mockConsole((console, out): void => {
     console.table({});
     assertEquals(
-      stripColor(out.toString()),
-      `┌─────────┐
-│ (index) │
-├─────────┤
-└─────────┘
+      out.toString(),
+      `┌───────┐
+│ (idx) │
+├───────┤
+└───────┘
 `
     );
   });
   mockConsole((console, out): void => {
     console.table(new Set());
     assertEquals(
-      stripColor(out.toString()),
-      `┌───────────────────┐
-│ (iteration index) │
-├───────────────────┤
-└───────────────────┘
+      out.toString(),
+      `┌────────────┐
+│ (iter idx) │
+├────────────┤
+└────────────┘
 `
     );
   });
   mockConsole((console, out): void => {
     console.table(new Map());
     assertEquals(
-      stripColor(out.toString()),
-      `┌───────────────────┐
-│ (iteration index) │
-├───────────────────┤
-└───────────────────┘
+      out.toString(),
+      `┌────────────┐
+│ (iter idx) │
+├────────────┤
+└────────────┘
 `
     );
   });
@@ -1094,13 +1095,13 @@ unitTest(function consoleTable(): void {
     console.table(["Hello", "你好", "Amapá"]);
     assertEquals(
       stripColor(out.toString()),
-      `┌─────────┬─────────┐
-│ (index) │ Values  │
-├─────────┼─────────┤
-│    0    │ "Hello" │
-│    1    │ "你好"  │
-│    2    │ "Amapá" │
-└─────────┴─────────┘
+      `┌───────┬─────────┐
+│ (idx) │ Values  │
+├───────┼─────────┤
+│   0   │ "Hello" │
+│   1   │ "你好"  │
+│   2   │ "Amapá" │
+└───────┴─────────┘
 `
     );
   });
