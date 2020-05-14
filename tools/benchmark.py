@@ -22,7 +22,7 @@ import http_server
 exec_time_benchmarks = [
     ("hello", ["run", "cli/tests/002_hello.ts"]),
     ("relative_import", ["run", "cli/tests/003_relative_import.ts"]),
-    ("error_001", ["run", "cli/tests/error_001.ts"]),
+    ("error_001", ["run", "cli/tests/error_001.ts", "|| true"]),
     ("cold_hello", ["run", "--reload", "cli/tests/002_hello.ts"]),
     ("cold_relative_import",
      ["run", "--reload", "cli/tests/003_relative_import.ts"]),
