@@ -176,16 +176,16 @@ declare namespace WebAssembly {
 
 /** Sets a timer which executes a function once after the timer expires. */
 declare function setTimeout(
-  cb: (...args: unknown[]) => void,
+  cb: (...args: any[]) => void,
   delay?: number,
-  ...args: unknown[]
+  ...args: any[]
 ): number;
 
 /** Repeatedly calls a function , with a fixed time delay between each call. */
 declare function setInterval(
-  cb: (...args: unknown[]) => void,
+  cb: (...args: any[]) => void,
   delay?: number,
-  ...args: unknown[]
+  ...args: any[]
 ): number;
 declare function clearTimeout(id?: number): void;
 declare function clearInterval(id?: number): void;
