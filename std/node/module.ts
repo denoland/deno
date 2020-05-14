@@ -1000,7 +1000,7 @@ function emitCircularRequireWarning(prop: any): void {
 }
 
 // A Proxy that can be used as the prototype of a module.exports object and
-// warns when non-existend properties are accessed.
+// warns when non-existent properties are accessed.
 const CircularRequirePrototypeWarningProxy = new Proxy(
   {},
   {

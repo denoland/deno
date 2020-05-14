@@ -444,7 +444,7 @@ test({
 });
 
 test({
-  name: "asyncronous iteration of events are handled as expected",
+  name: "asynchronous iteration of events are handled as expected",
   async fn() {
     const ee = new EventEmitter();
     setTimeout(() => {
@@ -472,7 +472,7 @@ test({
 });
 
 test({
-  name: "asyncronous error handling of emitted events works as expected",
+  name: "asynchronous error handling of emitted events works as expected",
   async fn() {
     const ee = new EventEmitter();
     const _err = new Error("kaboom");
@@ -497,7 +497,7 @@ test({
 });
 
 test({
-  name: "error thrown during asyncronous processing of events is handled",
+  name: "error thrown during asynchronous processing of events is handled",
   async fn() {
     const ee = new EventEmitter();
     const _err = new Error("kaboom");
@@ -527,7 +527,7 @@ test({
 
 test({
   name:
-    "error thrown in processing loop of asyncronous event prevents processing of additional events",
+    "error thrown in processing loop of asynchronous event prevents processing of additional events",
   async fn() {
     const ee = new EventEmitter();
     const _err = new Error("kaboom");
@@ -552,7 +552,7 @@ test({
 });
 
 test({
-  name: "asyncronous iterator next() works as expected",
+  name: "asynchronous iterator next() works as expected",
   async fn() {
     const ee = new EventEmitter();
     const iterable = on(ee, "foo");
