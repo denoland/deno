@@ -2,10 +2,13 @@
 use crate::op_error::OpError;
 
 #[cfg(not(unix))]
-use winapi::um::{
-  handleapi::CloseHandle,
-  processthreadsapi::{GetCurrentProcess, OpenProcess, TerminateProcess},
-  winnt::PROCESS_TERMINATE,
+use winapi::{
+  shared::minwindef::DWORD,
+  um::{
+    handleapi::CloseHandle,
+    processthreadsapi::{GetCurrentProcess, OpenProcess, TerminateProcess},
+    winnt::PROCESS_TERMINATE,
+  },
 };
 
 #[cfg(unix)]
@@ -25,7 +28,7 @@ pub fn kill(pid: i32, signal: i32) -> Result<(), OpError> {
         let handle = if pid == 0 {
           GetCurrentProcess()
         } else {
-          OpenProcess(PROCESS_TERMINATE, 0, pid as u32)
+          OpenProcess(PROCESS_TERMINATE, 0, pid as DWORD)
         };
 
         if handle.is_null() {
