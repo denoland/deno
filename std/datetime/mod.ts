@@ -172,17 +172,7 @@ export type Unit =
   | "quarters"
   | "years";
 
-export interface DifferenceFormat {
-  miliseconds?: number;
-  seconds?: number;
-  minutes?: number;
-  hours?: number;
-  days?: number;
-  weeks?: number;
-  months?: number;
-  quarters?: number;
-  years?: number;
-}
+export type DifferenceFormat = Partial<Record<Unit, number>>
 
 export type DifferenceOptions = {
   units?: Unit[];
