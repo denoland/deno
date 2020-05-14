@@ -10,8 +10,10 @@
  *
  * This module supports `NO_COLOR` environmental variable disabling any coloring
  * if `NO_COLOR` is set.
+ * 
+ * The global variable 'enabled' was victim of a pointer bug, so it
+ * got removed in the hope for a future ability to disable it in code.
  */
-const { noColor } = Deno;
 
 interface Code {
   open: string;
@@ -20,24 +22,17 @@ interface Code {
 }
 
 /** RGB 8-bits per channel. Each in range `0->255` or `0x00->0xff` */
-interface Rgb {
+export interface Rgb {
   r: number;
   g: number;
   b: number;
 }
 
-let enabled = !noColor;
-
-export function setColorEnabled(value: boolean): void {
-  if (noColor) {
-    return;
-  }
-
-  enabled = value;
-}
-
-export function getColorEnabled(): boolean {
-  return enabled;
+export function run(str: string, code: Code): string {
+  console.log(`run > noColor is ${Deno.noColor}`);
+  return !Deno.noColor ?
+    `${code.open}${str.replace(code.regexp, code.open)}${code.close}`
+    : str;
 }
 
 function code(open: number[], close: number): Code {
@@ -46,15 +41,6 @@ function code(open: number[], close: number): Code {
     close: `\x1b[${close}m`,
     regexp: new RegExp(`\\x1b\\[${close}m`, "g"),
   };
-}
-
-function run(str: string, code: Code): string {
-  if (enabled) {
-    return `${code.open}${str.replace(code.regexp, code.open)}${code.close}`;
-  }
-  else {
-    return str;
-  }
 }
 
 export function reset(str: string): string {
@@ -206,7 +192,7 @@ export function bgRgb24(str: string, color: Rgb | number): string {
 // The previous ANSI pattern didn't work
 // this one is from Jeff on StackOverflow.
 // https://stackoverflow.com/a/33925425
-const ANSI_PATTERN = /(?:\x1B[@-_]|[\x80-\x9F])[0-?]*[ -/]*[@-~]/g;
+const ANSI_PATTERN = /(\x9B|\x1B\[)[0-?]*[ -\/]*[@-~]/gi;
 
 /** Removes all ANSI escape sequences from a string. */
 export function stripColor(string: string): string {
