@@ -122,7 +122,7 @@ impl ModuleGraphLoader {
       let load_result = self.pending_downloads.next().await.unwrap();
       let source_file = load_result?;
       let spec = ModuleSpecifier::from(source_file.url.clone());
-      self.new_visit_module(&spec, source_file)?;
+      self.visit_module(&spec, source_file)?;
       if self.pending_downloads.is_empty() {
         break;
       }
@@ -175,7 +175,7 @@ impl ModuleGraphLoader {
     Ok(())
   }
 
-  fn new_visit_module(
+  fn visit_module(
     &mut self,
     module_specifier: &ModuleSpecifier,
     source_file: SourceFile,
@@ -233,6 +233,7 @@ impl ModuleGraphLoader {
             None
           };
 
+        eprintln!("type directive {:#?}", import_desc.deno_types);
         let import_descriptor = ImportDescriptor {
           specifier: import_desc.specifier.to_string(),
           resolved_specifier,
@@ -271,181 +272,6 @@ impl ModuleGraphLoader {
           reference_descriptor.resolved_specifier.clone(),
           Some(module_specifier.clone()),
         )?;
-
-        match ref_desc.kind {
-          TsReferenceKind::Lib => {
-            lib_directives.push(reference_descriptor);
-          }
-          TsReferenceKind::Types => {
-            types_directives.push(reference_descriptor);
-          }
-          TsReferenceKind::Path => {
-            referenced_files.push(reference_descriptor);
-          }
-        }
-      }
-    }
-
-    self.graph.0.insert(
-      module_specifier.to_string(),
-      ModuleGraphFile {
-        specifier: module_specifier.to_string(),
-        media_type: source_file.media_type,
-        source_code,
-        imports,
-        referenced_files,
-        lib_directives,
-        types_directives,
-        type_headers,
-      },
-    );
-    Ok(())
-  }
-
-  async fn visit_module(
-    &mut self,
-    module_specifier: &ModuleSpecifier,
-    maybe_referrer: Option<ModuleSpecifier>,
-  ) -> Result<(), ErrBox> {
-    if self.graph.0.contains_key(&module_specifier.to_string()) {
-      return Ok(());
-    }
-
-    if !self.is_dyn_import {
-      // Verify that remote file doesn't try to statically import local file.
-      if let Some(referrer) = maybe_referrer.as_ref() {
-        let referrer_url = referrer.as_url();
-        match referrer_url.scheme() {
-          "http" | "https" => {
-            let specifier_url = module_specifier.as_url();
-            match specifier_url.scheme() {
-              "http" | "https" => {}
-              _ => {
-                let e = OpError::permission_denied("Remote module are not allowed to statically import local modules. Use dynamic import instead.".to_string());
-                return Err(e.into());
-              }
-            }
-          }
-          _ => {}
-        }
-      }
-    }
-
-    let source_file = self
-      .file_fetcher
-      .fetch_source_file(
-        module_specifier,
-        maybe_referrer,
-        self.permissions.clone(),
-      )
-      .await?;
-
-    let mut imports = vec![];
-    let mut referenced_files = vec![];
-    let mut lib_directives = vec![];
-    let mut types_directives = vec![];
-    let mut type_headers = vec![];
-
-    let source_code = String::from_utf8(source_file.source_code)?;
-
-    if source_file.media_type == MediaType::JavaScript
-      || source_file.media_type == MediaType::TypeScript
-    {
-      if let Some(types_specifier) = source_file.types_header {
-        let type_header = ReferenceDescriptor {
-          specifier: types_specifier.to_string(),
-          resolved_specifier: ModuleSpecifier::resolve_import(
-            &types_specifier,
-            &module_specifier.to_string(),
-          )?,
-        };
-        type_headers.push(type_header);
-      }
-
-      let (import_descs, ref_descs) =
-        analyze_dependencies_and_references(&source_code, true)?;
-
-      for import_desc in import_descs {
-        let maybe_resolved =
-          if let Some(import_map) = self.maybe_import_map.as_ref() {
-            import_map
-              .resolve(&import_desc.specifier, &module_specifier.to_string())?
-          } else {
-            None
-          };
-
-        let resolved_specifier = if let Some(resolved) = maybe_resolved {
-          resolved
-        } else {
-          ModuleSpecifier::resolve_import(
-            &import_desc.specifier,
-            &module_specifier.to_string(),
-          )?
-        };
-
-        let resolved_type_directive =
-          if let Some(types_specifier) = import_desc.deno_types.as_ref() {
-            Some(ModuleSpecifier::resolve_import(
-              &types_specifier,
-              &module_specifier.to_string(),
-            )?)
-          } else {
-            None
-          };
-
-        let import_descriptor = ImportDescriptor {
-          specifier: import_desc.specifier.to_string(),
-          resolved_specifier,
-          type_directive: import_desc.deno_types,
-          resolved_type_directive,
-        };
-
-        if self
-          .graph
-          .0
-          .get(&import_descriptor.resolved_specifier.to_string())
-          .is_none()
-        {
-          self.to_visit.push((
-            import_descriptor.resolved_specifier.clone(),
-            Some(module_specifier.clone()),
-          ));
-        }
-
-        if let Some(type_dir_url) =
-          import_descriptor.resolved_type_directive.as_ref()
-        {
-          if self.graph.0.get(&type_dir_url.to_string()).is_none() {
-            self
-              .to_visit
-              .push((type_dir_url.clone(), Some(module_specifier.clone())));
-          }
-        }
-
-        imports.push(import_descriptor);
-      }
-
-      for ref_desc in ref_descs {
-        let resolved_specifier = ModuleSpecifier::resolve_import(
-          &ref_desc.specifier,
-          &module_specifier.to_string(),
-        )?;
-        let reference_descriptor = ReferenceDescriptor {
-          specifier: ref_desc.specifier.to_string(),
-          resolved_specifier,
-        };
-
-        if self
-          .graph
-          .0
-          .get(&reference_descriptor.resolved_specifier.to_string())
-          .is_none()
-        {
-          self.to_visit.push((
-            reference_descriptor.resolved_specifier.clone(),
-            Some(module_specifier.clone()),
-          ));
-        }
 
         match ref_desc.kind {
           TsReferenceKind::Lib => {

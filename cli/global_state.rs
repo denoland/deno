@@ -116,20 +116,14 @@ impl GlobalState {
       | msg::MediaType::JSX => {
         state1
           .ts_compiler
-          .new_compile(
-            state1.clone(),
-            &out,
-            target_lib,
-            permissions,
-            is_dyn_import,
-          )
+          .compile(state1.clone(), &out, target_lib, permissions, is_dyn_import)
           .await
       }
       msg::MediaType::JavaScript => {
         if state1.ts_compiler.compile_js {
           state2
             .ts_compiler
-            .new_compile(
+            .compile(
               state1.clone(),
               &out,
               target_lib,

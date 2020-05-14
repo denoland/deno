@@ -222,39 +222,6 @@ impl CompiledFileMetadata {
     serde_json::to_string(&value_map)
   }
 }
-/// Creates the JSON message send to compiler.ts's onmessage.
-fn req(
-  request_type: msg::CompilerRequestType,
-  root_names: Vec<String>,
-  compiler_config: CompilerConfig,
-  target: &str,
-  bundle: bool,
-  unstable: bool,
-) -> Buf {
-  let cwd = std::env::current_dir().unwrap();
-  let j = match (compiler_config.path, compiler_config.content) {
-    (Some(config_path), Some(config_data)) => json!({
-      "type": request_type as i32,
-      "target": target,
-      "rootNames": root_names,
-      "bundle": bundle,
-      "unstable": unstable,
-      "configPath": config_path,
-      "config": str::from_utf8(&config_data).unwrap(),
-      "cwd": cwd,
-    }),
-    _ => json!({
-      "type": request_type as i32,
-      "target": target,
-      "rootNames": root_names,
-      "bundle": bundle,
-      "unstable": unstable,
-      "cwd": cwd,
-    }),
-  };
-
-  j.to_string().into_boxed_str().into_boxed_bytes()
-}
 
 /// Emit a SHA256 hash based on source code, deno version and TS config.
 /// Used to check if a recompilation for source code is needed.
@@ -369,7 +336,7 @@ impl TsCompiler {
     worker
   }
 
-  pub async fn new_bundle(
+  pub async fn bundle(
     &self,
     global_state: GlobalState,
     module_specifier: ModuleSpecifier,
@@ -463,59 +430,6 @@ impl TsCompiler {
     Ok(())
   }
 
-  #[allow(unused)]
-  pub async fn bundle(
-    &self,
-    global_state: GlobalState,
-    module_name: String,
-    out_file: Option<PathBuf>,
-  ) -> Result<(), ErrBox> {
-    debug!(
-      "Invoking the compiler to bundle. module_name: {}",
-      module_name
-    );
-    eprintln!("Bundling {}", module_name);
-
-    let root_names = vec![module_name];
-    let req_msg = req(
-      msg::CompilerRequestType::Compile,
-      root_names,
-      self.config.clone(),
-      "main",
-      true,
-      global_state.flags.unstable,
-    );
-
-    let permissions = Permissions::allow_all();
-    let msg =
-      execute_in_thread(global_state.clone(), permissions, req_msg).await?;
-    let json_str = std::str::from_utf8(&msg).unwrap();
-    debug!("Message: {}", json_str);
-
-    let bundle_response: BundleResponse = serde_json::from_str(json_str)?;
-
-    if !bundle_response.diagnostics.items.is_empty() {
-      return Err(ErrBox::from(bundle_response.diagnostics));
-    }
-
-    let output_string = fmt::format_text(&bundle_response.bundle_output)?;
-
-    if let Some(out_file_) = out_file.as_ref() {
-      eprintln!("Emitting bundle to {:?}", out_file_);
-
-      let output_bytes = output_string.as_bytes();
-      let output_len = output_bytes.len();
-
-      deno_fs::write_file(out_file_, output_bytes, 0o666)?;
-      // TODO(bartlomieju): add "humanFileSize" method
-      eprintln!("{} bytes emmited.", output_len);
-    } else {
-      println!("{}", output_string);
-    }
-
-    Ok(())
-  }
-
   /// Mark given module URL as compiled to avoid multiple compilations of same
   /// module in single run.
   fn mark_compiled(&self, url: &Url) {
@@ -528,87 +442,6 @@ impl TsCompiler {
   fn has_compiled(&self, url: &Url) -> bool {
     let c = self.compiled.lock().unwrap();
     c.contains(url)
-  }
-
-  /// Asynchronously compile module and all it's dependencies.
-  ///
-  /// This method compiled every module at most once.
-  ///
-  /// If `--reload` flag was provided then compiler will not on-disk cache and
-  /// force recompilation.
-  ///
-  /// If compilation is required then new V8 worker is spawned with fresh TS
-  /// compiler.
-  pub async fn compile(
-    &self,
-    global_state: GlobalState,
-    source_file: &SourceFile,
-    target: TargetLib,
-    permissions: Permissions,
-  ) -> Result<CompiledModule, ErrBox> {
-    if self.has_compiled(&source_file.url) {
-      return self.get_compiled_module(&source_file.url);
-    }
-
-    if self.use_disk_cache {
-      // Try to load cached version:
-      // 1. check if there's 'meta' file
-      if let Some(metadata) = self.get_metadata(&source_file.url) {
-        // 2. compare version hashes
-        // TODO: it would probably be good idea to make it method implemented on SourceFile
-        let version_hash_to_validate = source_code_version_hash(
-          &source_file.source_code,
-          version::DENO,
-          &self.config.hash,
-        );
-
-        if metadata.version_hash == version_hash_to_validate {
-          debug!("load_cache metadata version hash match");
-          if let Ok(compiled_module) =
-            self.get_compiled_module(&source_file.url)
-          {
-            self.mark_compiled(&source_file.url);
-            return Ok(compiled_module);
-          }
-        }
-      }
-    }
-    let source_file_ = source_file.clone();
-    let module_url = source_file.url.clone();
-    let target = match target {
-      TargetLib::Main => "main",
-      TargetLib::Worker => "worker",
-    };
-    let root_names = vec![module_url.to_string()];
-    let req_msg = req(
-      msg::CompilerRequestType::Compile,
-      root_names,
-      self.config.clone(),
-      target,
-      false,
-      global_state.flags.unstable,
-    );
-
-    let ts_compiler = self.clone();
-
-    info!(
-      "{} {}",
-      colors::green("Compile".to_string()),
-      module_url.to_string()
-    );
-
-    let msg =
-      execute_in_thread(global_state.clone(), permissions, req_msg).await?;
-    let json_str = std::str::from_utf8(&msg).unwrap();
-
-    let compile_response: CompileResponse = serde_json::from_str(json_str)?;
-
-    if !compile_response.diagnostics.items.is_empty() {
-      return Err(ErrBox::from(compile_response.diagnostics));
-    }
-
-    self.cache_emitted_files(compile_response.emit_map)?;
-    ts_compiler.get_compiled_module(&source_file_.url)
   }
 
   /// Get associated `CompiledFileMetadata` for given module if it exists.
@@ -631,8 +464,16 @@ impl TsCompiler {
     None
   }
 
-  #[allow(unused)]
-  pub async fn new_compile(
+  /// Asynchronously compile module and all it's dependencies.
+  ///
+  /// This method compiled every module at most once.
+  ///
+  /// If `--reload` flag was provided then compiler will not on-disk cache and
+  /// force recompilation.
+  ///
+  /// If compilation is required then new V8 worker is spawned with fresh TS
+  /// compiler.
+  pub async fn compile(
     &self,
     global_state: GlobalState,
     source_file: &SourceFile,
@@ -1143,6 +984,7 @@ mod tests {
         &out,
         TargetLib::Main,
         Permissions::allow_all(),
+        false,
       )
       .await;
     assert!(result.is_ok());
@@ -1197,7 +1039,7 @@ mod tests {
 
     let result = state
       .ts_compiler
-      .new_bundle(state.clone(), module_name, None)
+      .bundle(state.clone(), module_name, None)
       .await;
     assert!(result.is_ok());
   }
