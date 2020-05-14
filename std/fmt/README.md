@@ -18,7 +18,7 @@ This is very much a work-in-progress. I'm actively soliciting feedback.
 - behaviour of `%v` verb. In Golang, this is a shortcut verb to "print the
   default format" of the argument. It is currently implemented to format using
   `toString` in the default case and `inpect` if the `%#v` alternative format
-  flag is used in the format directive. Alternativly, `%V` could be used to
+  flag is used in the format directive. Alternatively, `%V` could be used to
   distinguish the two.
 
   `inspect` output is not defined, however. This may be problematic if using
@@ -32,7 +32,7 @@ This is very much a work-in-progress. I'm actively soliciting feedback.
   Consider possible modifier flags, etc.
 
 - `<` verb. This is an extension that assumes the argument is an array and will
-  format each element according to the format (surrounded by [] and seperated by
+  format each element according to the format (surrounded by [] and separated by
   comma) (`<` Mnemonic: pull each element out of array)
 
 - how to deal with more newfangled Javascript features ( generic Iterables, Map
@@ -176,7 +176,7 @@ the 'depth' config parameter
 
 ## Positional arguments
 
-Arguments do not need to be consumed in the order they are provded and may be
+Arguments do not need to be consumed in the order they are provided and may be
 consumed more than once. E.g.:
 
     sprintf("%[2]s %[1]s", "World", "Hello")

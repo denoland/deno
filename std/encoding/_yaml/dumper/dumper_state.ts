@@ -54,7 +54,7 @@ export interface DumperStateOptions {
   skipInvalid?: boolean;
   /**
    * specifies level of nesting, when to switch from
-   * block to flow style for collections. -1 means block style everwhere
+   * block to flow style for collections. -1 means block style everywhere
    */
   flowLevel?: number;
   /** Each tag may have own set of styles.	- "tag" => "style" map. */

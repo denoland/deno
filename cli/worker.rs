@@ -228,7 +228,7 @@ impl DerefMut for Worker {
 ///
 /// It provides ops available in the `Deno` namespace.
 ///
-/// All WebWorkers created during program execution are decendants of
+/// All WebWorkers created during program execution are descendants of
 /// this worker.
 pub struct MainWorker(Worker);
 

@@ -100,7 +100,7 @@ impl AsMut<[u8]> for ZeroCopyBuf {
   }
 }
 
-/// Stores a script used to initalize a Isolate
+/// Stores a script used to initialize a Isolate
 pub struct Script<'a> {
   pub source: &'a str,
   pub filename: &'a str,

@@ -133,7 +133,7 @@ impl TSIsolate {
 ///
 /// This function writes compiled bundle to disk at provided path.
 ///
-/// Source map file and type declaration file are emmited
+/// Source map file and type declaration file are emitted
 /// alongside the bundle.
 ///
 /// To instantiate bundle use returned `module_name`.

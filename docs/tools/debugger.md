@@ -119,7 +119,7 @@ Change `<entry_point>` to `server.ts` and run created configuration:
 
 ### Other
 
-Any client that implementes Devtools protocol should be able to connect to Deno
+Any client that implements Devtools protocol should be able to connect to Deno
 process.
 
 ### Limitations
