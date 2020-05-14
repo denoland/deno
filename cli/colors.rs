@@ -10,7 +10,7 @@ use termcolor::{Ansi, ColorSpec, WriteColor};
 use termcolor::{BufferWriter, ColorChoice};
 
 lazy_static! {
-        // The previous ANSI pattern didn't work
+        // Staying consistent with the regex pattern from the fmt/colors.ts file
         // this one is from Jeff on StackOverflow.
         // https://stackoverflow.com/a/33925425
         static ref STRIP_ANSI_RE: Regex = Regex::new(
