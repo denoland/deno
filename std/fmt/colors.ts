@@ -29,7 +29,6 @@ export interface Rgb {
 }
 
 export function run(str: string, code: Code): string {
-  console.log(`run > noColor is ${Deno.noColor}`);
   return !Deno.noColor ?
     `${code.open}${str.replace(code.regexp, code.open)}${code.close}`
     : str;
