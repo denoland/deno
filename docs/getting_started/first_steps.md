@@ -124,7 +124,7 @@ For security reasons, Deno does not allow programs to access the network without
 explicit permission. To allow accessing the network, use a command-line flag:
 
 ```shell
-$ deno run --allow-net https://deno.land/std/examples/echo_server.ts
+deno run --allow-net https://deno.land/std/examples/echo_server.ts
 ```
 
 To test it, try sending data to it with netcat:
