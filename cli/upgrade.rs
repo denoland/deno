@@ -28,13 +28,20 @@ use std::string::String;
 use tempfile::TempDir;
 use url::Url;
 
+const NO_ARCHIVE: &str = "No packaged releases available for your architecture";
 // TODO(ry) Auto detect target triples for the uploaded files.
-#[cfg(windows)]
-const ARCHIVE_NAME: &str = "deno-x86_64-pc-windows-msvc.zip";
-#[cfg(target_os = "macos")]
-const ARCHIVE_NAME: &str = "deno-x86_64-apple-darwin.zip";
-#[cfg(target_os = "linux")]
-const ARCHIVE_NAME: &str = "deno-x86_64-unknown-linux-gnu.zip";
+fn get_archive_name() -> &'static str {
+  if cfg!(target_arch = "x86_64") {
+    if cfg!(target_os = "windows") {
+      return "deno-x86_64-pc-windows-msvc.zip";
+    } else if cfg!(target_os = "macos") {
+      return "deno-x86_64-apple-darwin.zip";
+    } else if cfg!(target_os = "linux") {
+      return "deno-x86_64-unknown-linux-gnu.zip";
+    }
+  }
+  NO_ARCHIVE
+}
 
 async fn get_latest_version(client: &Client) -> Result<Version, ErrBox> {
   println!("Checking for latest version");
@@ -59,6 +66,11 @@ pub async fn upgrade_command(
   output: Option<PathBuf>,
   ca_file: Option<String>,
 ) -> Result<(), ErrBox> {
+  if get_archive_name() == NO_ARCHIVE {
+    eprintln!("{}", NO_ARCHIVE);
+    std::process::exit(1)
+  }
+
   let mut client_builder = Client::builder().redirect(Policy::none());
 
   // If we have been provided a CA Certificate, add it into the HTTP client
@@ -162,9 +174,13 @@ fn download_package(
 }
 
 fn compose_url_to_exec(version: &Version) -> Result<Url, ErrBox> {
+  let archive_name = get_archive_name();
+  if archive_name == NO_ARCHIVE {
+    return Err(OpError::other(NO_ARCHIVE.to_string()).into());
+  };
   let s = format!(
     "https://github.com/denoland/deno/releases/download/v{}/{}",
-    version, ARCHIVE_NAME
+    version, archive_name
   );
   Ok(Url::parse(&s)?)
 }
@@ -187,7 +203,7 @@ fn unpack(archive_data: Vec<u8>) -> Result<PathBuf, ErrBox> {
   let exe_path = temp_dir.join("deno").with_extension(exe_ext);
   assert!(!exe_path.exists());
 
-  let archive_ext = Path::new(ARCHIVE_NAME)
+  let archive_ext = Path::new(get_archive_name())
     .extension()
     .and_then(|ext| ext.to_str())
     .unwrap();
@@ -281,14 +297,23 @@ fn test_find_version() {
 #[test]
 fn test_compose_url_to_exec() {
   let v = semver_parse("0.0.1").unwrap();
-  let url = compose_url_to_exec(&v).unwrap();
-  #[cfg(windows)]
-  assert_eq!(url.as_str(), "https://github.com/denoland/deno/releases/download/v0.0.1/deno-x86_64-pc-windows-msvc.zip");
-  #[cfg(target_os = "macos")]
-  assert_eq!(
-    url.as_str(),
+  let r = compose_url_to_exec(&v);
+  if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
+    assert_eq!(
+      r.unwrap().as_str(),
+      "https://github.com/denoland/deno/releases/download/v0.0.1/deno-x86_64-pc-windows-msvc.zip"
+    );
+  } else if cfg!(all(target_os = "macos", target_arch = "x86_64")) {
+    assert_eq!(
+    r.unwrap().as_str(),
     "https://github.com/denoland/deno/releases/download/v0.0.1/deno-x86_64-apple-darwin.zip"
   );
-  #[cfg(target_os = "linux")]
-  assert_eq!(url.as_str(), "https://github.com/denoland/deno/releases/download/v0.0.1/deno-x86_64-unknown-linux-gnu.zip");
+  } else if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
+    assert_eq!(
+    r.unwrap().as_str(),
+    "https://github.com/denoland/deno/releases/download/v0.0.1/deno-x86_64-unknown-linux-gnu.zip"
+  );
+  } else {
+    assert_eq!(r.unwrap_err().to_string(), NO_ARCHIVE);
+  }
 }
