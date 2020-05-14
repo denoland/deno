@@ -11,7 +11,7 @@ import {
   red,
   green,
   magenta,
-  bold,
+  bold
 } from "../../../std/fmt/colors.ts";
 
 type ConsoleContext = Set<unknown>;
