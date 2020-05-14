@@ -28,6 +28,8 @@ window.onunload = (e: Event): void => {
   console.log(`got ${e.type} event in onunload function (main)`);
 };
 
+console.log("log from main script");
+
 // imported.ts
 const handler = (e: Event): void => {
   console.log(`got ${e.type} event in event handler (imported)`);
