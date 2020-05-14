@@ -265,10 +265,7 @@ impl DocParser {
 
         vec![doc_node]
       }
-      ModuleDecl::ExportDefaultExpr(export_default_expr) => {
-        eprintln!("export default expr {:#?}", export_default_expr);
-        vec![]
-      }
+      ModuleDecl::ExportDefaultExpr(_export_default_expr) => vec![],
       _ => vec![],
     }
   }
@@ -455,7 +452,6 @@ impl DocParser {
       if let swc_ecma_ast::ModuleItem::ModuleDecl(module_decl) = node {
         let r = match module_decl {
           ModuleDecl::ExportNamed(named_export) => {
-            eprintln!("export named {:#?}", named_export);
             if let Some(src) = &named_export.src {
               let src_str = src.value.to_string();
               named_export
