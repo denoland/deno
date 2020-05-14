@@ -24,7 +24,7 @@ function maybeDecode(
 
 export function readFile(
   path: string | URL,
-  optOrCallback: ReadFileCallback | FileOptions,
+  optOrCallback: ReadFileCallback | FileOptions | string,
   callback?: ReadFileCallback
 ): void {
   path = path instanceof URL ? fromFileUrl(path) : path;
@@ -47,7 +47,7 @@ export function readFile(
 
 export function readFileSync(
   path: string | URL,
-  opt?: FileOptions
+  opt?: FileOptions | string
 ): string | Uint8Array {
   path = path instanceof URL ? fromFileUrl(path) : path;
   return maybeDecode(denoReadFileSync(path), getEncoding(opt));
