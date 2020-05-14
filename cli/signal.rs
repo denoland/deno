@@ -14,7 +14,6 @@ pub fn kill(pid: i32, signo: i32) -> Result<(), OpError> {
 use winapi::um::handleapi::CloseHandle;
 use winapi::um::processthreadsapi::{OpenProcess, TerminateProcess};
 use winapi::um::winnt::PROCESS_TERMINATE;
-
 pub fn kill(pid: i32, signal: i32) -> Result<(), OpError> {
   unsafe {
     let handle = OpenProcess(PROCESS_TERMINATE, 0, pid as u32);
