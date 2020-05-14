@@ -225,8 +225,8 @@ export function difference(
 
   const differences: DifferenceFormat = {};
 
-  for (const uniqeUnit of uniqueUnits) {
-    switch (uniqeUnit) {
+  for (const uniqueUnit of uniqueUnits) {
+    switch (uniqueUnit) {
       case "miliseconds":
         differences.miliseconds = differenceInMs;
         break;
