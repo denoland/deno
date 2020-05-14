@@ -143,7 +143,7 @@ export function bgWhite(str: string): string {
 }
 
 /* Special Color Sequences */
-function clampAndTruncate(color: number, max = 255, min = 0) {
+function clampAndTruncate(color: number, max = 255, min = 0): number {
   return Math.floor(Math.max(Math.min(color, max), min));
 }
 
