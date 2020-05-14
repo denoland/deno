@@ -47,7 +47,7 @@ tree:
 
 ![Open file_server.ts](../images/debugger3.jpg)
 
-_Looking closesly you'll find duplicate entries for each file; one written
+_Looking closely you'll find duplicate entries for each file; one written
 regularly and one in italics. The former is compiled source file (so in case of
 `.ts` files it will be emitted JavaScript source), while the latter is a source
 map for the file._
