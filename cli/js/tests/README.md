@@ -41,7 +41,7 @@ ways:
 
 `unit_test_runner.ts` is the main script used to run unit tests.
 
-Runner discoveres required permissions combinations by loading
+Runner discovers required permissions combinations by loading
 `cli/js/tests/unit_tests.ts` and going through all registered instances of
 `unitTest`.
 

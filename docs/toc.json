@@ -31,6 +31,9 @@
       "import_maps": "Import maps"
     }
   },
+  "standard_library": {
+    "name": "Standard library"
+  },
   "testing": {
     "name": "Testing"
   },

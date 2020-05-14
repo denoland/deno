@@ -206,7 +206,7 @@ class Printf {
             default:
               const val = parseInt(c);
               // most likely parseInt does something stupid that makes
-              // it unusuable for this scenario ...
+              // it unusable for this scenario ...
               // if we encounter a non (number|*|.) we're done with prec & wid
               if (isNaN(val)) {
                 this.i--;

@@ -96,8 +96,8 @@ for (let i = 0; i < Deno.args.length; i++) {
 }
 ```
 
-The `copy()` function here actually makes no more than the necessary kernel ->
-userspace -> kernel copies. That is, the same memory from which data is read
+The `copy()` function here actually makes no more than the necessary
+kernel→userspace→kernel copies. That is, the same memory from which data is read
 from the file, is written to stdout. This illustrates a general design goal for
 I/O streams in Deno.
 
@@ -124,7 +124,7 @@ For security reasons, Deno does not allow programs to access the network without
 explicit permission. To allow accessing the network, use a command-line flag:
 
 ```shell
-$ deno run --allow-net https://deno.land/std/examples/echo_server.ts
+deno run --allow-net https://deno.land/std/examples/echo_server.ts
 ```
 
 To test it, try sending data to it with netcat:

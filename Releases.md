@@ -6,6 +6,15 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### 1.0.0 / 2020.05.13
+
+Read more about this release at https://deno.land/v1
+
+- fix: default to 0.0.0.0 for Deno.listen (#5203)
+- fix: Make --inspect-brk pause on the first line of _user_ code (#5250)
+- fix: Source maps in inspector for local files (#5245)
+- upgrade: TypeScript 3.9 (#4510)
+
 ### 1.0.0-rc3 / 2020.05.12
 
 - BREAKING: Remove public Rust API for the "deno" crate (#5226)

@@ -16,7 +16,7 @@ export interface GlobrexOptions {
    * @default false */
   extended?: boolean;
   /** Support globstar.
-   * @remarks When globstar is `true`, '/foo/**' is equivelant
+   * @remarks When globstar is `true`, '/foo/**' is equivalent
    * to '/foo/*' when globstar is `false`.
    * Having globstar set to `true` is the same usage as
    * using wildcards in bash.
