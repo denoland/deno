@@ -136,7 +136,7 @@ function createIterableString<T>(
     )}${closingIndentation}`;
   } else {
     iContent = entries.length === 0 ? "" : ` ${entries.join(", ")} `;
-    if (iContent.length > LINE_BREAKING_LENGTH) {
+    if (stripColor(iContent).length > LINE_BREAKING_LENGTH) {
       const initIndentation = `\n${DEFAULT_INDENT.repeat(level + 1)}`;
       const entryIndentation = `,\n${DEFAULT_INDENT.repeat(level + 1)}`;
       const closingIndentation = `\n`;
