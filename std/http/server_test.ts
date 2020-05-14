@@ -351,7 +351,6 @@ test("requestBodyReaderWithTransferEncoding", async function (): Promise<void> {
 
 test({
   name: "destroyed connection",
-  ignore: false,
   fn: async (): Promise<void> => {
     // Runs a simple server as another process
     const p = Deno.run({
@@ -396,7 +395,6 @@ test({
 
 test({
   name: "serveTLS",
-  ignore: false,
   fn: async (): Promise<void> => {
     // Runs a simple server as another process
     const p = Deno.run({
