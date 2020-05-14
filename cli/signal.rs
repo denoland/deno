@@ -1,6 +1,13 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::op_error::OpError;
 
+#[cfg(not(unix))]
+use winapi::um::{
+  handleapi::CloseHandle,
+  processthreadsapi::{OpenProcess, TerminateProcess},
+  winnt::PROCESS_TERMINATE,
+};
+
 #[cfg(unix)]
 pub fn kill(pid: i32, signo: i32) -> Result<(), OpError> {
   use nix::sys::signal::{kill as unix_kill, Signal};
@@ -11,7 +18,21 @@ pub fn kill(pid: i32, signo: i32) -> Result<(), OpError> {
 }
 
 #[cfg(not(unix))]
-pub fn kill(_pid: i32, _signal: i32) -> Result<(), OpError> {
-  // TODO: implement this for windows
+pub fn kill(pid: i32, signal: i32) -> Result<(), OpError> {
+  unsafe {
+    let handle = OpenProcess(PROCESS_TERMINATE, 0, pid as u32);
+    if handle.is_null() {
+      let m = format!("failed to open process : {}", pid);
+      return Err(OpError::other(m));
+    }
+    if TerminateProcess(handle, signal as u32) == 0 {
+      let m = format!("failed to terminate process : {}", pid);
+      return Err(OpError::other(m));
+    }
+    if CloseHandle(handle) == 0 {
+      let m = format!("failed to close handle process : {}", pid);
+      return Err(OpError::other(m));
+    }
+  }
   Ok(())
 }
