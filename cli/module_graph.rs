@@ -1,6 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 #![allow(unused)]
 
+use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::import_map::ImportMap;
 use crate::msg::MediaType;
@@ -10,9 +11,14 @@ use crate::swc_util::analyze_dependencies_and_references;
 use crate::swc_util::TsReferenceKind;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
+use futures::stream::FuturesUnordered;
+use futures::stream::StreamExt;
+use futures::Future;
+use futures::FutureExt;
 use serde::Serialize;
 use serde::Serializer;
 use std::collections::HashMap;
+use std::pin::Pin;
 
 fn serialize_module_specifier<S>(
   spec: &ModuleSpecifier,
@@ -75,10 +81,13 @@ pub struct ModuleGraphFile {
   pub source_code: String,
 }
 
+type SourceFileFuture = Pin<Box<dyn Future<Output = Result<SourceFile, ErrBox>>>>;
+
 pub struct ModuleGraphLoader {
   permissions: Permissions,
   file_fetcher: SourceFileFetcher,
   maybe_import_map: Option<ImportMap>,
+  pending_downloads: FuturesUnordered<SourceFileFuture>,
   to_visit: Vec<(ModuleSpecifier, Option<ModuleSpecifier>)>,
   pub graph: ModuleGraph,
   is_dyn_import: bool,
@@ -96,6 +105,7 @@ impl ModuleGraphLoader {
       permissions,
       maybe_import_map,
       to_visit: vec![],
+      pending_downloads: FuturesUnordered::new(),
       graph: ModuleGraph(HashMap::new()),
       is_dyn_import,
     }
@@ -105,11 +115,190 @@ impl ModuleGraphLoader {
     mut self,
     specifier: &ModuleSpecifier,
   ) -> Result<HashMap<String, ModuleGraphFile>, ErrBox> {
-    self.to_visit.push((specifier.to_owned(), None));
-    while let Some((spec, maybe_referrer)) = self.to_visit.pop() {
-      self.visit_module(&spec, maybe_referrer).await?;
+    self.download_module(specifier.clone(), None)?;
+
+    loop {
+      let load_result = self.pending_downloads.next().await.unwrap();
+      let source_file = load_result?;
+      let spec = ModuleSpecifier::from(source_file.url.clone());
+      self.new_visit_module(&spec, source_file)?;
+      if self.pending_downloads.is_empty() {
+        break;
+      }
     }
+
     Ok(self.graph.0)
+  }
+
+  fn download_module(
+    &mut self,
+    module_specifier: ModuleSpecifier,
+    maybe_referrer: Option<ModuleSpecifier>,
+  ) -> Result<(), ErrBox> {
+    if self.graph.0.contains_key(&module_specifier.to_string()) {
+      return Ok(());
+    }
+
+    if !self.is_dyn_import {
+      // Verify that remote file doesn't try to statically import local file.
+      if let Some(referrer) = maybe_referrer.as_ref() {
+        let referrer_url = referrer.as_url();
+        match referrer_url.scheme() {
+          "http" | "https" => {
+            let specifier_url = module_specifier.as_url();
+            match specifier_url.scheme() {
+              "http" | "https" => {}
+              _ => {
+                let e = OpError::permission_denied("Remote module are not allowed to statically import local modules. Use dynamic import instead.".to_string());
+                return Err(e.into());
+              }
+            }
+          }
+          _ => {}
+        }
+      }
+    }
+
+    let spec = module_specifier;
+    let file_fetcher = self.file_fetcher.clone();
+    let perms = self.permissions.clone();
+
+    let load_future = async move {
+      file_fetcher
+        .new_fetch_source_file(spec, maybe_referrer, perms)
+        .await
+    }
+    .boxed_local();
+
+    self.pending_downloads.push(load_future);
+    Ok(())
+  }
+
+  fn new_visit_module(
+    &mut self,
+    module_specifier: &ModuleSpecifier,
+    source_file: SourceFile,
+  ) -> Result<(), ErrBox> {
+    let mut imports = vec![];
+    let mut referenced_files = vec![];
+    let mut lib_directives = vec![];
+    let mut types_directives = vec![];
+    let mut type_headers = vec![];
+
+    let source_code = String::from_utf8(source_file.source_code)?;
+
+    if source_file.media_type == MediaType::JavaScript
+      || source_file.media_type == MediaType::TypeScript
+    {
+      if let Some(types_specifier) = source_file.types_header {
+        let type_header = ReferenceDescriptor {
+          specifier: types_specifier.to_string(),
+          resolved_specifier: ModuleSpecifier::resolve_import(
+            &types_specifier,
+            &module_specifier.to_string(),
+          )?,
+        };
+        type_headers.push(type_header);
+      }
+
+      let (import_descs, ref_descs) =
+        analyze_dependencies_and_references(&source_code, true)?;
+
+      for import_desc in import_descs {
+        let maybe_resolved =
+          if let Some(import_map) = self.maybe_import_map.as_ref() {
+            import_map
+              .resolve(&import_desc.specifier, &module_specifier.to_string())?
+          } else {
+            None
+          };
+
+        let resolved_specifier = if let Some(resolved) = maybe_resolved {
+          resolved
+        } else {
+          ModuleSpecifier::resolve_import(
+            &import_desc.specifier,
+            &module_specifier.to_string(),
+          )?
+        };
+
+        let resolved_type_directive =
+          if let Some(types_specifier) = import_desc.deno_types.as_ref() {
+            Some(ModuleSpecifier::resolve_import(
+              &types_specifier,
+              &module_specifier.to_string(),
+            )?)
+          } else {
+            None
+          };
+
+        let import_descriptor = ImportDescriptor {
+          specifier: import_desc.specifier.to_string(),
+          resolved_specifier,
+          type_directive: import_desc.deno_types,
+          resolved_type_directive,
+        };
+
+        self.download_module(
+          import_descriptor.resolved_specifier.clone(),
+          Some(module_specifier.clone()),
+        )?;
+
+        if let Some(type_dir_url) =
+          import_descriptor.resolved_type_directive.as_ref()
+        {
+          self.download_module(
+            type_dir_url.clone(),
+            Some(module_specifier.clone()),
+          )?;
+        }
+
+        imports.push(import_descriptor);
+      }
+
+      for ref_desc in ref_descs {
+        let resolved_specifier = ModuleSpecifier::resolve_import(
+          &ref_desc.specifier,
+          &module_specifier.to_string(),
+        )?;
+        let reference_descriptor = ReferenceDescriptor {
+          specifier: ref_desc.specifier.to_string(),
+          resolved_specifier,
+        };
+
+        self.download_module(
+          reference_descriptor.resolved_specifier.clone(),
+          Some(module_specifier.clone()),
+        )?;
+
+        match ref_desc.kind {
+          TsReferenceKind::Lib => {
+            lib_directives.push(reference_descriptor);
+          }
+          TsReferenceKind::Types => {
+            types_directives.push(reference_descriptor);
+          }
+          TsReferenceKind::Path => {
+            referenced_files.push(reference_descriptor);
+          }
+        }
+      }
+    }
+
+    self.graph.0.insert(
+      module_specifier.to_string(),
+      ModuleGraphFile {
+        specifier: module_specifier.to_string(),
+        media_type: source_file.media_type,
+        source_code,
+        imports,
+        referenced_files,
+        lib_directives,
+        types_directives,
+        type_headers,
+      },
+    );
+    Ok(())
   }
 
   async fn visit_module(

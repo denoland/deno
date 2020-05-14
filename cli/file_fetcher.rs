@@ -147,6 +147,18 @@ impl SourceFileFetcher {
     self.source_file_cache.set(specifier.to_string(), file);
   }
 
+  // TODO(bartlomieju): remove
+  pub async fn new_fetch_source_file(
+    &self,
+    specifier: ModuleSpecifier,
+    maybe_referrer: Option<ModuleSpecifier>,
+    permissions: Permissions,
+  ) -> Result<SourceFile, ErrBox> {
+    self
+      .fetch_source_file(&specifier, maybe_referrer, permissions)
+      .await
+  }
+
   pub async fn fetch_source_file(
     &self,
     specifier: &ModuleSpecifier,
