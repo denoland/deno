@@ -50,6 +50,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::task::Poll;
+use std::time::Instant;
 use url::Url;
 
 #[derive(Debug, Clone)]
@@ -543,7 +544,7 @@ impl TsCompiler {
     let cwd = std::env::current_dir().unwrap();
     let j = match (compiler_config.path, compiler_config.content) {
       (Some(config_path), Some(config_data)) => json!({
-        "type": msg::CompilerRequestType::Compile as i32,
+        "type": msg::CompilerRequestType::CompileNew as i32,
         "target": target,
         "rootNames": root_names,
         "bundle": bundle,
@@ -554,7 +555,7 @@ impl TsCompiler {
         "sourceFileMap": module_graph_json,
       }),
       _ => json!({
-        "type": msg::CompilerRequestType::Compile as i32,
+        "type": msg::CompilerRequestType::CompileNew as i32,
         "target": target,
         "rootNames": root_names,
         "bundle": bundle,
@@ -574,8 +575,14 @@ impl TsCompiler {
       module_url.to_string()
     );
 
+    let start = Instant::now();
+
     let msg =
       execute_in_thread(global_state.clone(), permissions, req_msg).await?;
+
+    let end = Instant::now();
+    debug!("time spent in compiler thread {:#?}", end - start);
+
     let json_str = std::str::from_utf8(&msg).unwrap();
 
     let compile_response: CompileResponse = serde_json::from_str(json_str)?;

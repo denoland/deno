@@ -1397,6 +1397,7 @@ function compileNew(request: CompilerRequestCompileNew): CompileResult {
   }
 
   buildSourceFileCache(sourceFileMap);
+  const start = new Date();
   // if there was a configuration and no diagnostics with it, we will continue
   // to generate the program and possibly emit it.
   if (diagnostics.length === 0) {
@@ -1427,6 +1428,9 @@ function compileNew(request: CompilerRequestCompileNew): CompileResult {
     }
   }
 
+  const end = new Date();
+  // @ts-ignore
+  util.log("time in internal TS", end - start);
   let bundleOutput = undefined;
 
   if (bundle) {
@@ -1740,7 +1744,13 @@ async function tsCompilerOnMessage({
       break;
     }
     case CompilerRequestType.CompileNew: {
+      const start = new Date();
       const result = compileNew(request as CompilerRequestCompileNew);
+      const end = new Date();
+      util.log(
+        // @ts-ignore
+        `Time spent in TS program "${end - start}"`
+      );
       globalThis.postMessage(result);
       break;
     }

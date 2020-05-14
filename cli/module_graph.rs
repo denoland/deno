@@ -72,12 +72,14 @@ pub struct ReferenceDescriptor {
 #[serde(rename_all = "camelCase")]
 pub struct ModuleGraphFile {
   pub specifier: String,
+  pub url: String,
+  pub filename: String,
   pub imports: Vec<ImportDescriptor>,
   pub referenced_files: Vec<ReferenceDescriptor>,
   pub lib_directives: Vec<ReferenceDescriptor>,
   pub types_directives: Vec<ReferenceDescriptor>,
   pub type_headers: Vec<ReferenceDescriptor>,
-  pub media_type: MediaType,
+  pub media_type: i32,
   pub source_code: String,
 }
 
@@ -233,7 +235,6 @@ impl ModuleGraphLoader {
             None
           };
 
-        eprintln!("type directive {:#?}", import_desc.deno_types);
         let import_descriptor = ImportDescriptor {
           specifier: import_desc.specifier.to_string(),
           resolved_specifier,
@@ -291,7 +292,9 @@ impl ModuleGraphLoader {
       module_specifier.to_string(),
       ModuleGraphFile {
         specifier: module_specifier.to_string(),
-        media_type: source_file.media_type,
+        url: source_file.url.to_string(),
+        filename: source_file.filename.to_str().unwrap().to_string(),
+        media_type: source_file.media_type as i32,
         source_code,
         imports,
         referenced_files,
