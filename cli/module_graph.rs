@@ -81,7 +81,8 @@ pub struct ModuleGraphFile {
   pub source_code: String,
 }
 
-type SourceFileFuture = Pin<Box<dyn Future<Output = Result<SourceFile, ErrBox>>>>;
+type SourceFileFuture =
+  Pin<Box<dyn Future<Output = Result<SourceFile, ErrBox>>>>;
 
 pub struct ModuleGraphLoader {
   permissions: Permissions,
