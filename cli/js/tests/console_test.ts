@@ -921,7 +921,6 @@ unitTest(function consoleGroupWarn(): void {
   });
 });
 
-
 // console.table test
 unitTest(function consoleTable(): void {
   mockConsole((console, out): void => {

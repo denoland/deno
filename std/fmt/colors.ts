@@ -10,7 +10,7 @@
  *
  * This module supports `NO_COLOR` environmental variable disabling any coloring
  * if `NO_COLOR` is set.
- * 
+ *
  * The global variable 'enabled' was victim of a pointer bug, so it
  * got removed in the hope for a future ability to disable it in code.
  */
@@ -29,8 +29,8 @@ export interface Rgb {
 }
 
 export function run(str: string, code: Code): string {
-  return !Deno.noColor ?
-    `${code.open}${str.replace(code.regexp, code.open)}${code.close}`
+  return !Deno.noColor
+    ? `${code.open}${str.replace(code.regexp, code.open)}${code.close}`
     : str;
 }
 
