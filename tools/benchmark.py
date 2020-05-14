@@ -178,10 +178,7 @@ def run_max_mem_benchmark(deno_exe):
 def run_exec_time(deno_exe, build_dir):
     hyperfine_exe = third_party.get_prebuilt_tool_path("hyperfine")
     benchmark_file = os.path.join(build_dir, "hyperfine_results.json")
-    run([
-        hyperfine_exe, "--export-json", benchmark_file,
-        "--warmup", "3"
-    ] + [
+    run([hyperfine_exe, "--export-json", benchmark_file, "--warmup", "3"] + [
         deno_exe + " " + " ".join(args) for [_, args] in exec_time_benchmarks
     ])
     hyperfine_results = read_json(benchmark_file)
