@@ -18,7 +18,7 @@ from http_benchmark import http_benchmark
 import throughput_benchmark
 import http_server
 
-# The list of the tuples of the benchmark name, arguments and exit code
+# The list of the tuples of the benchmark name, arguments and return code
 exec_time_benchmarks = [
     ("hello", ["run", "cli/tests/002_hello.ts"], None),
     ("relative_import", ["run", "cli/tests/003_relative_import.ts"], None),
@@ -164,12 +164,12 @@ def find_max_mem_in_bytes(time_v_output):
 
 def run_max_mem_benchmark(deno_exe):
     results = {}
-    for (name, args, exit_code) in exec_time_benchmarks:
+    for (name, args, return_code) in exec_time_benchmarks:
         cmd = ["/usr/bin/time", "-v", deno_exe] + args
         try:
             out = subprocess.check_output(cmd, stderr=subprocess.STDOUT)
         except subprocess.CalledProcessError as e:
-            if (exit_code is e.returncode):
+            if (return_code is e.returncode):
                 pass
             else:
                 raise e
@@ -182,19 +182,16 @@ def run_exec_time(deno_exe, build_dir):
     hyperfine_exe = third_party.get_prebuilt_tool_path("hyperfine")
     benchmark_file = os.path.join(build_dir, "hyperfine_results.json")
 
-    def benchmark_command(deno_exe, args, exit_code):
-        # Bash test which asserts the exit code value of the previous command
-        # $? contains the exit status of the last statement
-        def exit_code_test(exit_code):
-            return "; test $? -eq {}".format(
-                exit_code) if exit_code is not None else ""
-
-        return "{} {}{}".format(deno_exe, " ".join(args),
-                                exit_code_test(exit_code))
+    def benchmark_command(deno_exe, args, return_code):
+        # Bash test which asserts the return code value of the previous command
+        # $? contains the return code of the previous command
+        return_code_test = "; test $? -eq {}".format(
+            return_code) if return_code is not None else ""
+        return "{} {}{}".format(deno_exe, " ".join(args), return_code_test)
 
     run([hyperfine_exe, "--export-json", benchmark_file, "--warmup", "3"] + [
-        benchmark_command(deno_exe, args, exit_code)
-        for (_, args, exit_code) in exec_time_benchmarks
+        benchmark_command(deno_exe, args, return_code)
+        for (_, args, return_code) in exec_time_benchmarks
     ])
     hyperfine_results = read_json(benchmark_file)
     results = {}
