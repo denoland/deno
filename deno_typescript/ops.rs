@@ -75,6 +75,7 @@ pub fn op_load_module(s: &mut TSState, v: Value) -> Result<Value, ErrBox> {
         let path_prefix = s.extern_crate_modules.get(crate_name).unwrap();
         let path =
           std::path::Path::new(path_prefix).join(&module_url.path()[1..]);
+        println!("cargo:rerun-if-changed={}", path.display());
         (
           module_specifier.as_str().to_string(),
           std::fs::read_to_string(&path)?,

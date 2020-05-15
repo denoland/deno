@@ -191,6 +191,10 @@ impl Drop for CoreIsolate {
         drop(creator);
       }
     }
+    // TODO(afinch7) this is a temporary fix for a segfault that occurus when
+    // dropping plugin ops. I know that the plugin Rc<Library> value gets dropped
+    // early for some reason, but still not quite sure why.
+    drop(std::mem::take(&mut self.op_registry));
   }
 }
 

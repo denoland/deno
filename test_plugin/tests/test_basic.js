@@ -1,31 +1,4 @@
-const filenameBase = "test_plugin";
-
-let filenameSuffix = ".so";
-let filenamePrefix = "lib";
-
-if (Deno.build.os === "windows") {
-  filenameSuffix = ".dll";
-  filenamePrefix = "";
-}
-if (Deno.build.os === "darwin") {
-  filenameSuffix = ".dylib";
-}
-
-const filename = `../target/${Deno.args[0]}/${filenamePrefix}${filenameBase}${filenameSuffix}`;
-
-// This will be checked against open resources after Plugin.close()
-// in runTestClose() below.
-const resourcesPre = Deno.resources();
-
-const rid = Deno.openPlugin(filename);
-
-const { testSync, testAsync } = Deno.core.ops();
-if (!(testSync > 0)) {
-  throw "bad op id for testSync";
-}
-if (!(testAsync > 0)) {
-  throw "bad op id for testAsync";
-}
+import { testSync, testAsync, runTestPluginClose } from "./ops.js";
 
 const textDecoder = new TextDecoder();
 
@@ -69,20 +42,6 @@ function runTestOpCount() {
   if (end.opsDispatched - start.opsDispatched !== 1) {
     // one op for the plugin and one for Deno.metrics
     throw new Error("The opsDispatched metric is not correct!");
-  }
-}
-
-function runTestPluginClose() {
-  Deno.close(rid);
-
-  const resourcesPost = Deno.resources();
-
-  const preStr = JSON.stringify(resourcesPre, null, 2);
-  const postStr = JSON.stringify(resourcesPost, null, 2);
-  if (preStr !== postStr) {
-    throw new Error(`Difference in open resources before openPlugin and after Plugin.close(): 
-Before: ${preStr}
-After: ${postStr}`);
   }
 }
 
