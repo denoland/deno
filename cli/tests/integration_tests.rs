@@ -146,8 +146,41 @@ fn benchmark_test() {
 
 #[test]
 fn deno_dir_test() {
+  use std::fs::remove_dir_all;
   let g = util::http_server();
-  util::run_python_script("tools/deno_dir_test.py");
+  let deno_dir = TempDir::new().expect("tempdir fail");
+  remove_dir_all(deno_dir.path()).unwrap();
+
+  // Run deno with no env flag
+  let status = util::deno_cmd()
+    .env_remove("DENO_DIR")
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("http://localhost:4545/cli/tests/subdir/print_hello.ts")
+    .spawn()
+    .expect("Failed to spawn script")
+    .wait()
+    .expect("Failed to wait for child process");
+  assert!(status.success());
+  assert!(!deno_dir.path().exists());
+
+  // Run deno with DENO_DIR env flag
+  let status = util::deno_cmd()
+    .env("DENO_DIR", deno_dir.path())
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("http://localhost:4545/cli/tests/subdir/print_hello.ts")
+    .spawn()
+    .expect("Failed to spawn script")
+    .wait()
+    .expect("Failed to wait for child process");
+  assert!(status.success());
+  assert!(deno_dir.path().is_dir());
+  assert!(deno_dir.path().join("deps").is_dir());
+  assert!(deno_dir.path().join("gen").is_dir());
+
+  remove_dir_all(deno_dir.path()).unwrap();
+  drop(deno_dir);
   drop(g);
 }
 
