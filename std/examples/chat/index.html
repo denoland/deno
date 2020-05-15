@@ -33,10 +33,10 @@
       function send() {
         const msg = input.value;
         ws.send(msg);
-        applyState({inputValue: ""})
+        applyState({inputValue: ""});
       }
       function keyDownEvent(e) {
-        if (e.keyCode === 13) return send()
+        if (e.keyCode === 13) return send();
       }
       function connect() {
         if (ws) ws.close();
