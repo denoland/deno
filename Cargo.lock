@@ -532,6 +532,7 @@ dependencies = [
  "log 0.4.8",
  "rusty_v8",
  "serde_json",
+ "strip-ansi-escapes",
  "tokio",
  "url 2.1.1",
 ]
@@ -2103,7 +2104,7 @@ dependencies = [
  "scopeguard 1.1.0",
  "unicode-segmentation",
  "unicode-width",
- "utf8parse",
+ "utf8parse 0.2.0",
  "winapi 0.3.8",
 ]
 
@@ -2385,6 +2386,15 @@ dependencies = [
  "quote 1.0.3",
  "swc_macros_common",
  "syn 1.0.17",
+]
+
+[[package]]
+name = "strip-ansi-escapes"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9d63676e2abafa709460982ddc02a3bb586b6d15a49b75c212e06edd3933acee"
+dependencies = [
+ "vte",
 ]
 
 [[package]]
@@ -2845,6 +2855,12 @@ checksum = "05e42f7c18b8f902290b009cde6d651262f956c98bc51bca4cd1d511c9cd85c7"
 
 [[package]]
 name = "utf8parse"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8772a4ccbb4e89959023bc5b7cb8623a795caa7092d99f3aa9501b9484d4557d"
+
+[[package]]
+name = "utf8parse"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "936e4b492acfd135421d8dca4b1aa80a7bfc26e702ef3af710e0752684df5372"
@@ -2892,6 +2908,15 @@ name = "void"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6a02e4885ed3bc0f2de90ea6dd45ebcbb66dacffe03547fadbb0eeae2770887d"
+
+[[package]]
+name = "vte"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4f42f536e22f7fcbb407639765c8fd78707a33109301f834a594758bedd6e8cf"
+dependencies = [
+ "utf8parse 0.1.1",
+]
 
 [[package]]
 name = "walkdir"
