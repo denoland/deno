@@ -35,44 +35,36 @@ declare namespace Deno {
    * Requires `allow-read` and `allow-write` permissions. */
   export function link(oldpath: string, newpath: string): Promise<void>;
 
-  /** **UNSTABLE**: `type` argument type may be changed to `"dir" | "file"`.
-   *
-   *  **UNSTABLE**: needs security review.
+  /** **UNSTABLE**: needs security review.
    *
    * Creates `newpath` as a symbolic link to `oldpath`.
    *
-   * The type argument can be set to `dir` or `file`. This argument is only
+   * The flag argument can be set to `file` or `dir`. This argument is only
    * available on Windows and ignored on other platforms.
-   *
-   * NOTE: This function is not yet implemented on Windows.
    *
    *       Deno.symlinkSync("old/name", "new/name");
    *
-   * Requires `allow-read` and `allow-write` permissions. */
+   * Requires `allow-write` permission. */
   export function symlinkSync(
     oldpath: string,
     newpath: string,
-    type?: string
+    flag?: string
   ): void;
 
-  /** **UNSTABLE**: `type` argument may be changed to `"dir" | "file"`
-   *
-   *  **UNSTABLE**: needs security review.
+  /** **UNSTABLE**: needs security review.
    *
    * Creates `newpath` as a symbolic link to `oldpath`.
    *
-   * The type argument can be set to `dir` or `file`. This argument is only
+   * The flag argument can be set to `file` or `dir`. This argument is only
    * available on Windows and ignored on other platforms.
    *
-   * NOTE: This function is not yet implemented on Windows.
+   *       Deno.symlink("old/name", "new/name");
    *
-   *       await Deno.symlink("old/name", "new/name");
-   *
-   * Requires `allow-read` and `allow-write` permissions. */
+   * Requires `allow-write` permission. */
   export function symlink(
     oldpath: string,
     newpath: string,
-    type?: string
+    flag?: string
   ): Promise<void>;
 
   /** **UNSTABLE** */
