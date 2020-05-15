@@ -606,12 +606,12 @@ type FormDataEntryValue = File | string;
  * XMLHttpRequest.send() method. It uses the same format a form would use if the
  * encoding type were set to "multipart/form-data". */
 interface FormData extends DomIterable<string, FormDataEntryValue> {
-  append(name: string, value: string | Blob, fileName?: string): void;
+  append(name: string, value: string | Blob | File, fileName?: string): void;
   delete(name: string): void;
   get(name: string): FormDataEntryValue | null;
   getAll(name: string): FormDataEntryValue[];
   has(name: string): boolean;
-  set(name: string, value: string | Blob, fileName?: string): void;
+  set(name: string, value: string | Blob | File, fileName?: string): void;
 }
 
 declare const FormData: {
