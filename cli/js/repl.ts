@@ -1,6 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { exit } from "./ops/os.ts";
 import { core } from "./core.ts";
+import { writable } from "./globals.ts";
 import { version } from "./version.ts";
 import { stringifyArgs } from "./web/console.ts";
 import { startRepl, readline } from "./ops/repl.ts";
@@ -105,6 +106,8 @@ export async function replLoop(): Promise<void> {
       console.log("Last thrown error is no longer saved to _error.");
     },
   });
+
+  Object.defineProperty(globalThis, "close", writable(() => quitRepl(0)));
 
   replLog(`Deno ${version.deno}`);
   replLog("exit using ctrl+d or close()");
