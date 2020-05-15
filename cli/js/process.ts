@@ -23,10 +23,11 @@ async function runStatus(rid: number): Promise<ProcessStatus> {
 
   if (res.gotSignal) {
     const signal = res.exitSignal;
-    return { signal, success: false };
+    return { success: false, code: 128 + signal, signal };
+  } else if (res.exitCode != 0) {
+    return { success: false, code: res.exitCode };
   } else {
-    const code = res.exitCode;
-    return { code, success: code === 0 };
+    return { success: true, code: 0 };
   }
 }
 
@@ -90,11 +91,17 @@ export class Process {
   }
 }
 
-export interface ProcessStatus {
-  success: boolean;
-  code?: number;
-  signal?: number; // TODO: Make this a string, e.g. 'SIGTERM'.
-}
+export type ProcessStatus =
+  | {
+      success: true;
+      code: 0;
+      signal?: undefined;
+    }
+  | {
+      success: false;
+      code: number;
+      signal?: number;
+    };
 
 function isRid(arg: unknown): arg is number {
   return !isNaN(arg as number);
