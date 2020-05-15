@@ -107,6 +107,7 @@ export async function replLoop(): Promise<void> {
     },
   });
 
+  // Configure globalThis.close to terminate REPL properly when `close()` is called.
   Object.defineProperty(
     globalThis,
     "close",
