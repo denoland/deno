@@ -293,9 +293,8 @@ impl fmt::Display for JSError {
     write!(f, "{}", self.message)?;
 
     for formatted_frame in &self.formatted_frames {
-      // Strip ANSI color from formatted_frame.
-      let plain_bytes = strip_ansi_escapes::strip(&formatted_frame).unwrap();
-      write!(f, "\n    at {}", std::str::from_utf8(&plain_bytes).unwrap())?;
+      // TODO: Strip ANSI color from formatted_frame.
+      write!(f, "\n    at {}", formatted_frame)?;
     }
     Ok(())
   }
