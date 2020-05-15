@@ -1005,37 +1005,47 @@ declare class TextEncoder {
 interface URLSearchParams {
   /** Appends a specified key/value pair as a new search parameter.
    *
-   *       let searchParams = new URLSearchParams();
-   *       searchParams.append('name', 'first');
-   *       searchParams.append('name', 'second');
+   * ```ts
+   * let searchParams = new URLSearchParams();
+   * searchParams.append('name', 'first');
+   * searchParams.append('name', 'second');
+   * ```
    */
   append(name: string, value: string): void;
 
   /** Deletes the given search parameter and its associated value,
    * from the list of all search parameters.
    *
-   *       let searchParams = new URLSearchParams([['name', 'value']]);
-   *       searchParams.delete('name');
+   * ```ts
+   * let searchParams = new URLSearchParams([['name', 'value']]);
+   * searchParams.delete('name');
+   * ```
    */
   delete(name: string): void;
 
   /** Returns all the values associated with a given search parameter
    * as an array.
    *
-   *       searchParams.getAll('name');
+   * ```ts
+   * searchParams.getAll('name');
+   * ```
    */
   getAll(name: string): string[];
 
   /** Returns the first value associated to the given search parameter.
    *
-   *       searchParams.get('name');
+   * ```ts
+   * searchParams.get('name');
+   * ```
    */
   get(name: string): string | null;
 
   /** Returns a Boolean that indicates whether a parameter with the
    * specified name exists.
    *
-   *       searchParams.has('name');
+   * ```ts
+   * searchParams.has('name');
+   * ```
    */
   has(name: string): boolean;
 
@@ -1044,7 +1054,9 @@ interface URLSearchParams {
    * deletes the others. If the search parameter doesn't exist, this
    * method creates it.
    *
-   *       searchParams.set('name', 'value');
+   * ```ts
+   * searchParams.set('name', 'value');
+   * ```
    */
   set(name: string, value: string): void;
 
@@ -1052,7 +1064,9 @@ interface URLSearchParams {
    * return undefined. The sort order is according to Unicode code
    * points of the keys.
    *
-   *       searchParams.sort();
+   * ```ts
+   * searchParams.sort();
+   * ```
    */
   sort(): void;
 
@@ -1060,10 +1074,12 @@ interface URLSearchParams {
    * place and return undefined. Optionally accepts an object to use
    * as this when executing callback as second argument.
    *
-   *       const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
-   *       params.forEach((value, key, parent) => {
-   *         console.log(value, key, parent);
-   *       });
+   * ```ts
+   * const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
+   * params.forEach((value, key, parent) => {
+   *   console.log(value, key, parent);
+   * });
+   * ```
    *
    */
   forEach(
@@ -1074,46 +1090,56 @@ interface URLSearchParams {
   /** Returns an iterator allowing to go through all keys contained
    * in this object.
    *
-   *       const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
-   *       for (const key of params.keys()) {
-   *         console.log(key);
-   *       }
+   * ```ts
+   * const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
+   * for (const key of params.keys()) {
+   *   console.log(key);
+   * }
+   * ```
    */
   keys(): IterableIterator<string>;
 
   /** Returns an iterator allowing to go through all values contained
    * in this object.
    *
-   *       const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
-   *       for (const value of params.values()) {
-   *         console.log(value);
-   *       }
+   * ```ts
+   * const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
+   * for (const value of params.values()) {
+   *   console.log(value);
+   * }
+   * ```
    */
   values(): IterableIterator<string>;
 
   /** Returns an iterator allowing to go through all key/value
    * pairs contained in this object.
    *
-   *       const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
-   *       for (const [key, value] of params.entries()) {
-   *         console.log(key, value);
-   *       }
+   * ```ts
+   * const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
+   * for (const [key, value] of params.entries()) {
+   *   console.log(key, value);
+   * }
+   * ```
    */
   entries(): IterableIterator<[string, string]>;
 
   /** Returns an iterator allowing to go through all key/value
    * pairs contained in this object.
    *
-   *       const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
-   *       for (const [key, value] of params) {
-   *         console.log(key, value);
-   *       }
+   * ```ts
+   * const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
+   * for (const [key, value] of params) {
+   *   console.log(key, value);
+   * }
+   * ```
    */
   [Symbol.iterator](): IterableIterator<[string, string]>;
 
   /** Returns a query string suitable for use in a URL.
    *
-   *        searchParams.toString();
+   * ```ts
+   * searchParams.toString();
+   * ```
    */
   toString(): string;
 }
@@ -1206,31 +1232,34 @@ declare class Worker extends EventTarget {
        * Configurable permissions are on the roadmap to be implemented.
        *
        * Example:
-       *    // mod.ts
-       *    const worker = new Worker("./deno_worker.ts", { type: "module", deno: true });
-       *    worker.postMessage({ cmd: "readFile", fileName: "./log.txt" });
        *
-       *    // deno_worker.ts
+       * ```ts
+       * // mod.ts
+       * const worker = new Worker("./deno_worker.ts", { type: "module", deno: true });
+       * worker.postMessage({ cmd: "readFile", fileName: "./log.txt" });
+       *
+       * // deno_worker.ts
        *
        *
-       *    self.onmessage = async function (e) {
-       *        const { cmd, fileName } = e.data;
-       *        if (cmd !== "readFile") {
-       *            throw new Error("Invalid command");
-       *        }
-       *        const buf = await Deno.readFile(fileName);
-       *        const fileContents = new TextDecoder().decode(buf);
-       *        console.log(fileContents);
-       *    }
+       * self.onmessage = async function (e) {
+       *     const { cmd, fileName } = e.data;
+       *     if (cmd !== "readFile") {
+       *         throw new Error("Invalid command");
+       *     }
+       *     const buf = await Deno.readFile(fileName);
+       *     const fileContents = new TextDecoder().decode(buf);
+       *     console.log(fileContents);
+       * }
+       * ```
        *
-       *    // log.txt
-       *    hello world
-       *    hello world 2
+       * // log.txt
+       * hello world
+       * hello world 2
        *
-       *    // run program
-       *    $ deno run --allow-read mod.ts
-       *    hello world
-       *    hello world2
+       * // run program
+       * $ deno run --allow-read mod.ts
+       * hello world
+       * hello world2
        *
        */
       deno?: boolean;
@@ -1246,8 +1275,10 @@ declare namespace performance {
    *
    * Use the flag --allow-hrtime return a precise value.
    *
-   *       const t = performance.now();
-   *       console.log(`${t} ms since start!`);
+   * ```ts
+   * const t = performance.now();
+   * console.log(`${t} ms since start!`);
+   * ```
    */
   export function now(): number;
 }
