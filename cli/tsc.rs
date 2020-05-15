@@ -30,6 +30,7 @@ use futures::future::FutureExt;
 use log::info;
 use regex::Regex;
 use serde::Deserialize;
+use serde::Serialize;
 use serde_json::json;
 use serde_json::Value;
 use sourcemap::SourceMap;
@@ -185,26 +186,22 @@ pub struct CompiledFileMetadata {
   pub version_hash: String,
 }
 
-static SOURCE_PATH: &str = "source_path";
-static VERSION_HASH: &str = "version_hash";
+#[derive(Deserialize, Serialize)]
+struct MaybeMetadata {
+  source_path: String,
+  version_hash: String,
+}
 
 impl CompiledFileMetadata {
   pub fn from_json_string(metadata_string: String) -> Option<Self> {
-    // TODO: use serde for deserialization
-    let maybe_metadata_json: serde_json::Result<serde_json::Value> =
-      serde_json::from_str(&metadata_string);
-
-    if let Ok(metadata_json) = maybe_metadata_json {
-      let source_path = metadata_json[SOURCE_PATH].as_str().map(PathBuf::from);
-      let version_hash = metadata_json[VERSION_HASH].as_str().map(String::from);
-
-      if source_path.is_none() || version_hash.is_none() {
-        return None;
-      }
+    if let Ok(metadata) =
+      serde_json::from_str::<MaybeMetadata>(&metadata_string)
+    {
+      let source_path = PathBuf::from(&metadata.source_path);
 
       return Some(CompiledFileMetadata {
-        source_path: source_path.unwrap(),
-        version_hash: version_hash.unwrap(),
+        source_path,
+        version_hash: metadata.version_hash.clone(),
       });
     }
 
@@ -212,11 +209,12 @@ impl CompiledFileMetadata {
   }
 
   pub fn to_json_string(&self) -> Result<String, serde_json::Error> {
-    let mut value_map = serde_json::map::Map::new();
+    let metadata = MaybeMetadata {
+      source_path: self.source_path.to_str().unwrap().to_string(),
+      version_hash: self.version_hash.clone(),
+    };
 
-    value_map.insert(SOURCE_PATH.to_owned(), json!(&self.source_path));
-    value_map.insert(VERSION_HASH.to_string(), json!(&self.version_hash));
-    serde_json::to_string(&value_map)
+    serde_json::to_string(&metadata)
   }
 }
 /// Creates the JSON message send to compiler.ts's onmessage.
