@@ -1,0 +1,5 @@
+!package.json
+*.bak
+/node_modules
+/dist/*
+!/dist/jsdom.js

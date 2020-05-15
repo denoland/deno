@@ -1,0 +1,10 @@
+{
+  "scripts": {
+    "dist": "webpack-cli && sed -i.bak \"1s/^var/export var/\" dist/jsdom.js"
+  },
+  "devDependencies": {
+    "jsdom": "^16.2.2",
+    "webpack": "^4.43.0",
+    "webpack-cli": "^3.3.11"
+  }
+}
