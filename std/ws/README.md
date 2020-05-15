@@ -102,10 +102,7 @@ try {
     while (true) {
       await Deno.stdout.write(encode("> "));
       const line = await tpr.readLine();
-      if (line === null) {
-        break;
-      }
-      if (line === "close") {
+      if (line === null || line === "close") {
         break;
       } else if (line === "ping") {
         await sock.ping();
