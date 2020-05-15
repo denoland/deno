@@ -50,32 +50,33 @@ declare namespace Deno {
   /** Register a test which will be run when `deno test` is used on the command
    * line and the containing module looks like a test module.
    * `fn` can be async if required.
+   * ```ts
+   * import {assert, fail, assertEquals} from "https://deno.land/std/testing/asserts.ts";
    *
-   *          import {assert, fail, assertEquals} from "https://deno.land/std/testing/asserts.ts";
+   * Deno.test({
+   *   name: "example test",
+   *   fn(): void {
+   *     assertEquals("world", "world");
+   *   },
+   * });
    *
-   *          Deno.test({
-   *            name: "example test",
-   *            fn(): void {
-   *              assertEquals("world", "world");
-   *            },
-   *          });
+   * Deno.test({
+   *   name: "example ignored test",
+   *   ignore: Deno.build.os === "windows"
+   *   fn(): void {
+   *     // This test is ignored only on Windows machines
+   *   },
+   * });
    *
-   *          Deno.test({
-   *            name: "example ignored test",
-   *            ignore: Deno.build.os === "windows"
-   *            fn(): void {
-   *              // This test is ignored only on Windows machines
-   *            },
-   *          });
-   *
-   *          Deno.test({
-   *            name: "example async test",
-   *            async fn() {
-   *              const decoder = new TextDecoder("utf-8");
-   *              const data = await Deno.readFile("hello_world.txt");
-   *              assertEquals(decoder.decode(data), "Hello world")
-   *            }
-   *          });
+   * Deno.test({
+   *   name: "example async test",
+   *   async fn() {
+   *     const decoder = new TextDecoder("utf-8");
+   *     const data = await Deno.readFile("hello_world.txt");
+   *     assertEquals(decoder.decode(data), "Hello world")
+   *   }
+   * });
+   * ```
    */
   export function test(t: TestDefinition): void;
 
@@ -83,24 +84,28 @@ declare namespace Deno {
    * line and the containing module looks like a test module.
    * `fn` can be async if required.
    *
-   *        import {assert, fail, assertEquals} from "https://deno.land/std/testing/asserts.ts";
+   * ```ts
+   * import {assert, fail, assertEquals} from "https://deno.land/std/testing/asserts.ts";
    *
-   *        Deno.test("My test description", ():void => {
-   *          assertEquals("hello", "hello");
-   *        });
+   * Deno.test("My test description", ():void => {
+   *   assertEquals("hello", "hello");
+   * });
    *
-   *        Deno.test("My async test description", async ():Promise<void> => {
-   *          const decoder = new TextDecoder("utf-8");
-   *          const data = await Deno.readFile("hello_world.txt");
-   *          assertEquals(decoder.decode(data), "Hello world")
-   *        });
+   * Deno.test("My async test description", async ():Promise<void> => {
+   *   const decoder = new TextDecoder("utf-8");
+   *   const data = await Deno.readFile("hello_world.txt");
+   *   assertEquals(decoder.decode(data), "Hello world")
+   * });
+   * ```
    * */
   export function test(name: string, fn: () => void | Promise<void>): void;
 
   /** Exit the Deno process with optional exit code. If no exit code is supplied
    * then Deno will exit with return code of 0.
    *
-   *       Deno.exit(5);
+   * ```ts
+   * Deno.exit(5);
+   * ```
    */
   export function exit(code?: number): never;
 
@@ -108,27 +113,32 @@ declare namespace Deno {
     /** Retrieve the value of an environment variable. Returns undefined if that
      * key doesn't exist.
      *
-     *       console.log(Deno.env.get("HOME"));  // e.g. outputs "/home/alice"
-     *       console.log(Deno.env.get("MADE_UP_VAR"));  // outputs "Undefined"
-     *
+     * ```ts
+     * console.log(Deno.env.get("HOME"));  // e.g. outputs "/home/alice"
+     * console.log(Deno.env.get("MADE_UP_VAR"));  // outputs "Undefined"
+     * ```
      * Requires `allow-env` permission. */
     get(key: string): string | undefined;
 
     /** Set the value of an environment variable.
      *
-     *       Deno.env.set("SOME_VAR", "Value"));
-     *       Deno.env.get("SOME_VAR");  // outputs "Value"
+     * ```ts
+     * Deno.env.set("SOME_VAR", "Value"));
+     * Deno.env.get("SOME_VAR");  // outputs "Value"
+     * ```
      *
      * Requires `allow-env` permission. */
     set(key: string, value: string): void;
 
     /** Returns a snapshot of the environment variables at invocation.
      *
-     *       Deno.env.set("TEST_VAR", "A");
-     *       const myEnv = Deno.env.toObject();
-     *       console.log(myEnv.SHELL);
-     *       Deno.env.set("TEST_VAR", "B");
-     *       console.log(myEnv.TEST_VAR);  // outputs "A"
+     * ```ts
+     * Deno.env.set("TEST_VAR", "A");
+     * const myEnv = Deno.env.toObject();
+     * console.log(myEnv.SHELL);
+     * Deno.env.set("TEST_VAR", "B");
+     * console.log(myEnv.TEST_VAR);  // outputs "A"
+     * ```
      *
      * Requires `allow-env` permission. */
     toObject(): { [index: string]: string };
@@ -137,7 +147,9 @@ declare namespace Deno {
   /**
    * Returns the path to the current deno executable.
    *
-   *       console.log(Deno.execPath());  // e.g. "/home/alice/.local/bin/deno"
+   * ```ts
+   * console.log(Deno.execPath());  // e.g. "/home/alice/.local/bin/deno"
+   * ```
    *
    * Requires `allow-read` permission.
    */
@@ -146,9 +158,11 @@ declare namespace Deno {
   /**
    * Change the current working directory to the specified path.
    *
-   *       Deno.chdir("/home/userA");
-   *       Deno.chdir("../userB");
-   *       Deno.chdir("C:\\Program Files (x86)\\Java");
+   * ```ts
+   * Deno.chdir("/home/userA");
+   * Deno.chdir("../userB");
+   * Deno.chdir("C:\\Program Files (x86)\\Java");
+   * ```
    *
    * Throws `Deno.errors.NotFound` if directory not found.
    * Throws `Deno.errors.PermissionDenied` if the user does not have access
@@ -164,7 +178,9 @@ declare namespace Deno {
    * If the current directory can be reached via multiple paths (due to symbolic
    * links), `cwd()` may return any one of them.
    *
-   *       const currentWorkingDirectory = Deno.cwd();
+   * ```ts
+   * const currentWorkingDirectory = Deno.cwd();
+   * ```
    *
    * Throws `Deno.errors.NotFound` if directory not available.
    *
@@ -289,10 +305,12 @@ declare namespace Deno {
    * an error occurs. It resolves to the number of bytes copied or rejects with
    * the first error encountered while copying.
    *
-   *       const source = await Deno.open("my_file.txt");
-   *       const buffer = new Deno.Buffer()
-   *       const bytesCopied1 = await Deno.copy(source, Deno.stdout);
-   *       const bytesCopied2 = await Deno.copy(source, buffer);
+   * ```ts
+   * const source = await Deno.open("my_file.txt");
+   * const buffer = new Deno.Buffer()
+   * const bytesCopied1 = await Deno.copy(source, Deno.stdout);
+   * const bytesCopied2 = await Deno.copy(source, buffer);
+   * ```
    *
    * @param src The source to copy from
    * @param dst The destination to copy to
@@ -308,23 +326,27 @@ declare namespace Deno {
 
   /** Turns a Reader, `r`, into an async iterator.
    *
-   *      let f = await Deno.open("/etc/passwd");
-   *      for await (const chunk of Deno.iter(f)) {
-   *        console.log(chunk);
-   *      }
-   *      f.close();
+   * ```ts
+   * let f = await Deno.open("/etc/passwd");
+   * for await (const chunk of Deno.iter(f)) {
+   *   console.log(chunk);
+   * }
+   * f.close();
+   * ```
    *
    * Second argument can be used to tune size of a buffer.
    * Default size of the buffer is 32kB.
    *
-   *      let f = await Deno.open("/etc/passwd");
-   *      const iter = Deno.iter(f, {
-   *        bufSize: 1024 * 1024
-   *      });
-   *      for await (const chunk of iter) {
-   *        console.log(chunk);
-   *      }
-   *      f.close();
+   * ```ts
+   * let f = await Deno.open("/etc/passwd");
+   * const iter = Deno.iter(f, {
+   *   bufSize: 1024 * 1024
+   * });
+   * for await (const chunk of iter) {
+   *   console.log(chunk);
+   * }
+   * f.close();
+   * ```
    *
    * Iterator uses an internal buffer of fixed size for efficiency; it returns
    * a view on that buffer on each iteration. It is therefore caller's
@@ -340,23 +362,27 @@ declare namespace Deno {
 
   /** Turns a ReaderSync, `r`, into an iterator.
    *
-   *      let f = Deno.openSync("/etc/passwd");
-   *      for (const chunk of Deno.iterSync(reader)) {
-   *        console.log(chunk);
-   *      }
-   *      f.close();
+   * ```ts
+   * let f = Deno.openSync("/etc/passwd");
+   * for (const chunk of Deno.iterSync(reader)) {
+   *   console.log(chunk);
+   * }
+   * f.close();
+   * ```
    *
    * Second argument can be used to tune size of a buffer.
    * Default size of the buffer is 32kB.
    *
-   *      let f = await Deno.open("/etc/passwd");
-   *      const iter = Deno.iterSync(f, {
-   *        bufSize: 1024 * 1024
-   *      });
-   *      for (const chunk of iter) {
-   *        console.log(chunk);
-   *      }
-   *      f.close();
+   * ```ts
+   * let f = await Deno.open("/etc/passwd");
+   * const iter = Deno.iterSync(f, {
+   *   bufSize: 1024 * 1024
+   * });
+   * for (const chunk of iter) {
+   *   console.log(chunk);
+   * }
+   * f.close();
+   * ```
    *
    * Iterator uses an internal buffer of fixed size for efficiency; it returns
    * a view on that buffer on each iteration. It is therefore caller's
@@ -375,9 +401,11 @@ declare namespace Deno {
    * open options.  It is the callers responsibility to close the file when finished
    * with it.
    *
-   *       const file = Deno.openSync("/foo/bar.txt", { read: true, write: true });
-   *       // Do work with file
-   *       Deno.close(file.rid);
+   * ```ts
+   * const file = Deno.openSync("/foo/bar.txt", { read: true, write: true });
+   * // Do work with file
+   * Deno.close(file.rid);
+   * ```
    *
    * Requires `allow-read` and/or `allow-write` permissions depending on options.
    */
@@ -388,9 +416,11 @@ declare namespace Deno {
    * open options.  It is the callers responsibility to close the file when finished
    * with it.
    *
-   *       const file = await Deno.open("/foo/bar.txt", { read: true, write: true });
-   *       // Do work with file
-   *       Deno.close(file.rid);
+   * ```ts
+   * const file = await Deno.open("/foo/bar.txt", { read: true, write: true });
+   * // Do work with file
+   * Deno.close(file.rid);
+   * ```
    *
    * Requires `allow-read` and/or `allow-write` permissions depending on options.
    */
@@ -399,7 +429,9 @@ declare namespace Deno {
   /** Creates a file if none exists or truncates an existing file and returns
    *  an instance of `Deno.File`.
    *
-   *       const file = Deno.createSync("/foo/bar.txt");
+   * ```ts
+   * const file = Deno.createSync("/foo/bar.txt");
+   * ```
    *
    * Requires `allow-read` and `allow-write` permissions.
    */
@@ -408,7 +440,9 @@ declare namespace Deno {
   /** Creates a file if none exists or truncates an existing file and resolves to
    *  an instance of `Deno.File`.
    *
-   *       const file = await Deno.create("/foo/bar.txt");
+   * ```ts
+   * const file = await Deno.create("/foo/bar.txt");
+   * ```
    *
    * Requires `allow-read` and `allow-write` permissions.
    */
@@ -422,12 +456,14 @@ declare namespace Deno {
    * It is possible for a read to successfully return with `0` bytes. This does
    * not indicate EOF.
    *
-   *      // if "/foo/bar.txt" contains the text "hello world":
-   *      const file = Deno.openSync("/foo/bar.txt");
-   *      const buf = new Uint8Array(100);
-   *      const numberOfBytesRead = Deno.readSync(file.rid, buf); // 11 bytes
-   *      const text = new TextDecoder().decode(buf);  // "hello world"
-   *      Deno.close(file.rid);
+   * ```ts
+   * // if "/foo/bar.txt" contains the text "hello world":
+   * const file = Deno.openSync("/foo/bar.txt");
+   * const buf = new Uint8Array(100);
+   * const numberOfBytesRead = Deno.readSync(file.rid, buf); // 11 bytes
+   * const text = new TextDecoder().decode(buf);  // "hello world"
+   * Deno.close(file.rid);
+   * ```
    */
   export function readSync(rid: number, buffer: Uint8Array): number | null;
 
@@ -439,12 +475,14 @@ declare namespace Deno {
    * It is possible for a read to successfully return with `0` bytes. This does
    * not indicate EOF.
    *
-   *      // if "/foo/bar.txt" contains the text "hello world":
-   *      const file = await Deno.open("/foo/bar.txt");
-   *      const buf = new Uint8Array(100);
-   *      const numberOfBytesRead = await Deno.read(file.rid, buf); // 11 bytes
-   *      const text = new TextDecoder().decode(buf);  // "hello world"
-   *      Deno.close(file.rid);
+   * ```ts
+   * // if "/foo/bar.txt" contains the text "hello world":
+   * const file = await Deno.open("/foo/bar.txt");
+   * const buf = new Uint8Array(100);
+   * const numberOfBytesRead = await Deno.read(file.rid, buf); // 11 bytes
+   * const text = new TextDecoder().decode(buf);  // "hello world"
+   * Deno.close(file.rid);
+   * ```
    */
   export function read(rid: number, buffer: Uint8Array): Promise<number | null>;
 
@@ -453,11 +491,13 @@ declare namespace Deno {
    *
    * Returns the number of bytes written.
    *
-   *       const encoder = new TextEncoder();
-   *       const data = encoder.encode("Hello world");
-   *       const file = Deno.openSync("/foo/bar.txt");
-   *       const bytesWritten = Deno.writeSync(file.rid, data); // 11
-   *       Deno.close(file.rid);
+   * ```ts
+   * const encoder = new TextEncoder();
+   * const data = encoder.encode("Hello world");
+   * const file = Deno.openSync("/foo/bar.txt");
+   * const bytesWritten = Deno.writeSync(file.rid, data); // 11
+   * Deno.close(file.rid);
+   * ```
    */
   export function writeSync(rid: number, data: Uint8Array): number;
 
@@ -465,11 +505,13 @@ declare namespace Deno {
    *
    * Resolves to the number of bytes written.
    *
-   *      const encoder = new TextEncoder();
-   *      const data = encoder.encode("Hello world");
-   *      const file = await Deno.open("/foo/bar.txt");
-   *      const bytesWritten = await Deno.write(file.rid, data); // 11
-   *      Deno.close(file.rid);
+   * ```ts
+   * const encoder = new TextEncoder();
+   * const data = encoder.encode("Hello world");
+   * const file = await Deno.open("/foo/bar.txt");
+   * const bytesWritten = await Deno.write(file.rid, data); // 11
+   * Deno.close(file.rid);
+   * ```
    */
   export function write(rid: number, data: Uint8Array): Promise<number>;
 
@@ -477,24 +519,28 @@ declare namespace Deno {
    * given by `whence`.  The new position within the resource (bytes from the
    * start) is returned.
    *
-   *        const file = Deno.openSync('hello.txt', {read: true, write: true, truncate: true, create: true});
-   *        Deno.writeSync(file.rid, new TextEncoder().encode("Hello world"));
-   *        // advance cursor 6 bytes
-   *        const cursorPosition = Deno.seekSync(file.rid, 6, Deno.SeekMode.Start);
-   *        console.log(cursorPosition);  // 6
-   *        const buf = new Uint8Array(100);
-   *        file.readSync(buf);
-   *        console.log(new TextDecoder().decode(buf)); // "world"
+   * ```ts
+   * const file = Deno.openSync('hello.txt', {read: true, write: true, truncate: true, create: true});
+   * Deno.writeSync(file.rid, new TextEncoder().encode("Hello world"));
+   * // advance cursor 6 bytes
+   * const cursorPosition = Deno.seekSync(file.rid, 6, Deno.SeekMode.Start);
+   * console.log(cursorPosition);  // 6
+   * const buf = new Uint8Array(100);
+   * file.readSync(buf);
+   * console.log(new TextDecoder().decode(buf)); // "world"
+   * ```
    *
    * The seek modes work as follows:
    *
-   *        // Given file.rid pointing to file with "Hello world", which is 11 bytes long:
-   *        // Seek 6 bytes from the start of the file
-   *        console.log(Deno.seekSync(file.rid, 6, Deno.SeekMode.Start)); // "6"
-   *        // Seek 2 more bytes from the current position
-   *        console.log(Deno.seekSync(file.rid, 2, Deno.SeekMode.Current)); // "8"
-   *        // Seek backwards 2 bytes from the end of the file
-   *        console.log(Deno.seekSync(file.rid, -2, Deno.SeekMode.End)); // "9" (e.g. 11-2)
+   * ```ts
+   * // Given file.rid pointing to file with "Hello world", which is 11 bytes long:
+   * // Seek 6 bytes from the start of the file
+   * console.log(Deno.seekSync(file.rid, 6, Deno.SeekMode.Start)); // "6"
+   * // Seek 2 more bytes from the current position
+   * console.log(Deno.seekSync(file.rid, 2, Deno.SeekMode.Current)); // "8"
+   * // Seek backwards 2 bytes from the end of the file
+   * console.log(Deno.seekSync(file.rid, -2, Deno.SeekMode.End)); // "9" (e.g. 11-2)
+   * ```
    */
   export function seekSync(
     rid: number,
@@ -505,24 +551,28 @@ declare namespace Deno {
   /** Seek a resource ID (`rid`) to the given `offset` under mode given by `whence`.
    * The call resolves to the new position within the resource (bytes from the start).
    *
-   *        const file = await Deno.open('hello.txt', {read: true, write: true, truncate: true, create: true});
-   *        await Deno.write(file.rid, new TextEncoder().encode("Hello world"));
-   *        // advance cursor 6 bytes
-   *        const cursorPosition = await Deno.seek(file.rid, 6, Deno.SeekMode.Start);
-   *        console.log(cursorPosition);  // 6
-   *        const buf = new Uint8Array(100);
-   *        await file.read(buf);
-   *        console.log(new TextDecoder().decode(buf)); // "world"
+   * ```ts
+   * const file = await Deno.open('hello.txt', {read: true, write: true, truncate: true, create: true});
+   * await Deno.write(file.rid, new TextEncoder().encode("Hello world"));
+   * // advance cursor 6 bytes
+   * const cursorPosition = await Deno.seek(file.rid, 6, Deno.SeekMode.Start);
+   * console.log(cursorPosition);  // 6
+   * const buf = new Uint8Array(100);
+   * await file.read(buf);
+   * console.log(new TextDecoder().decode(buf)); // "world"
+   * ```
    *
    * The seek modes work as follows:
    *
-   *        // Given file.rid pointing to file with "Hello world", which is 11 bytes long:
-   *        // Seek 6 bytes from the start of the file
-   *        console.log(await Deno.seek(file.rid, 6, Deno.SeekMode.Start)); // "6"
-   *        // Seek 2 more bytes from the current position
-   *        console.log(await Deno.seek(file.rid, 2, Deno.SeekMode.Current)); // "8"
-   *        // Seek backwards 2 bytes from the end of the file
-   *        console.log(await Deno.seek(file.rid, -2, Deno.SeekMode.End)); // "9" (e.g. 11-2)
+   * ```ts
+   * // Given file.rid pointing to file with "Hello world", which is 11 bytes long:
+   * // Seek 6 bytes from the start of the file
+   * console.log(await Deno.seek(file.rid, 6, Deno.SeekMode.Start)); // "6"
+   * // Seek 2 more bytes from the current position
+   * console.log(await Deno.seek(file.rid, 2, Deno.SeekMode.Current)); // "8"
+   * // Seek backwards 2 bytes from the end of the file
+   * console.log(await Deno.seek(file.rid, -2, Deno.SeekMode.End)); // "9" (e.g. 11-2)
+   * ```
    */
   export function seek(
     rid: number,
@@ -534,9 +584,11 @@ declare namespace Deno {
    * as via opening or creating a file.  Closing a file when you are finished
    * with it is important to avoid leaking resources.
    *
-   *      const file = await Deno.open("my_file.txt");
-   *      // do work with "file" object
-   *      Deno.close(file.rid);
+   * ```ts
+   * const file = await Deno.open("my_file.txt");
+   * // do work with "file" object
+   * Deno.close(file.rid);
+   * ````
    */
   export function close(rid: number): void;
 
@@ -606,13 +658,15 @@ declare namespace Deno {
    *
    *  Check if a given resource id (`rid`) is a TTY.
    *
-   *       // This example is system and context specific
-   *       const nonTTYRid = Deno.openSync("my_file.txt").rid;
-   *       const ttyRid = Deno.openSync("/dev/tty6").rid;
-   *       console.log(Deno.isatty(nonTTYRid)); // false
-   *       console.log(Deno.isatty(ttyRid)); // true
-   *       Deno.close(nonTTYRid);
-   *       Deno.close(ttyRid);
+   * ```ts
+   * // This example is system and context specific
+   * const nonTTYRid = Deno.openSync("my_file.txt").rid;
+   * const ttyRid = Deno.openSync("/dev/tty6").rid;
+   * console.log(Deno.isatty(nonTTYRid)); // false
+   * console.log(Deno.isatty(ttyRid)); // true
+   * Deno.close(nonTTYRid);
+   * Deno.close(ttyRid);
+   * ```
    */
   export function isatty(rid: number): boolean;
 
@@ -697,79 +751,87 @@ declare namespace Deno {
   /** Read Reader `r` until EOF (`null`) and resolve to the content as
    * Uint8Array`.
    *
-   *       // Example from stdin
-   *       const stdinContent = await Deno.readAll(Deno.stdin);
+   * ```ts
+   * // Example from stdin
+   * const stdinContent = await Deno.readAll(Deno.stdin);
    *
-   *       // Example from file
-   *       const file = await Deno.open("my_file.txt", {read: true});
-   *       const myFileContent = await Deno.readAll(file);
-   *       Deno.close(file.rid);
+   * // Example from file
+   * const file = await Deno.open("my_file.txt", {read: true});
+   * const myFileContent = await Deno.readAll(file);
+   * Deno.close(file.rid);
    *
-   *       // Example from buffer
-   *       const myData = new Uint8Array(100);
-   *       // ... fill myData array with data
-   *       const reader = new Deno.Buffer(myData.buffer as ArrayBuffer);
-   *       const bufferContent = await Deno.readAll(reader);
+   * // Example from buffer
+   * const myData = new Uint8Array(100);
+   * // ... fill myData array with data
+   * const reader = new Deno.Buffer(myData.buffer as ArrayBuffer);
+   * const bufferContent = await Deno.readAll(reader);
+   * ```
    */
   export function readAll(r: Reader): Promise<Uint8Array>;
 
   /** Synchronously reads Reader `r` until EOF (`null`) and returns the content
    * as `Uint8Array`.
    *
-   *       // Example from stdin
-   *       const stdinContent = Deno.readAllSync(Deno.stdin);
+   * ```ts
+   * // Example from stdin
+   * const stdinContent = Deno.readAllSync(Deno.stdin);
    *
-   *       // Example from file
-   *       const file = Deno.openSync("my_file.txt", {read: true});
-   *       const myFileContent = Deno.readAllSync(file);
-   *       Deno.close(file.rid);
+   * // Example from file
+   * const file = Deno.openSync("my_file.txt", {read: true});
+   * const myFileContent = Deno.readAllSync(file);
+   * Deno.close(file.rid);
    *
-   *       // Example from buffer
-   *       const myData = new Uint8Array(100);
-   *       // ... fill myData array with data
-   *       const reader = new Deno.Buffer(myData.buffer as ArrayBuffer);
-   *       const bufferContent = Deno.readAllSync(reader);
+   * // Example from buffer
+   * const myData = new Uint8Array(100);
+   * // ... fill myData array with data
+   * const reader = new Deno.Buffer(myData.buffer as ArrayBuffer);
+   * const bufferContent = Deno.readAllSync(reader);
+   * ```
    */
   export function readAllSync(r: ReaderSync): Uint8Array;
 
   /** Write all the content of the array buffer (`arr`) to the writer (`w`).
    *
-   *       // Example writing to stdout
-   *       const contentBytes = new TextEncoder().encode("Hello World");
-   *       await Deno.writeAll(Deno.stdout, contentBytes);
+   * ```ts
+   * // Example writing to stdout
+   * const contentBytes = new TextEncoder().encode("Hello World");
+   * await Deno.writeAll(Deno.stdout, contentBytes);
    *
-   *       // Example writing to file
-   *       const contentBytes = new TextEncoder().encode("Hello World");
-   *       const file = await Deno.open('test.file', {write: true});
-   *       await Deno.writeAll(file, contentBytes);
-   *       Deno.close(file.rid);
+   * // Example writing to file
+   * const contentBytes = new TextEncoder().encode("Hello World");
+   * const file = await Deno.open('test.file', {write: true});
+   * await Deno.writeAll(file, contentBytes);
+   * Deno.close(file.rid);
    *
-   *       // Example writing to buffer
-   *       const contentBytes = new TextEncoder().encode("Hello World");
-   *       const writer = new Deno.Buffer();
-   *       await Deno.writeAll(writer, contentBytes);
-   *       console.log(writer.bytes().length);  // 11
+   * // Example writing to buffer
+   * const contentBytes = new TextEncoder().encode("Hello World");
+   * const writer = new Deno.Buffer();
+   * await Deno.writeAll(writer, contentBytes);
+   * console.log(writer.bytes().length);  // 11
+   * ```
    */
   export function writeAll(w: Writer, arr: Uint8Array): Promise<void>;
 
   /** Synchronously write all the content of the array buffer (`arr`) to the
    * writer (`w`).
    *
-   *       // Example writing to stdout
-   *       const contentBytes = new TextEncoder().encode("Hello World");
-   *       Deno.writeAllSync(Deno.stdout, contentBytes);
+   * ```ts
+   * // Example writing to stdout
+   * const contentBytes = new TextEncoder().encode("Hello World");
+   * Deno.writeAllSync(Deno.stdout, contentBytes);
    *
-   *       // Example writing to file
-   *       const contentBytes = new TextEncoder().encode("Hello World");
-   *       const file = Deno.openSync('test.file', {write: true});
-   *       Deno.writeAllSync(file, contentBytes);
-   *       Deno.close(file.rid);
+   * // Example writing to file
+   * const contentBytes = new TextEncoder().encode("Hello World");
+   * const file = Deno.openSync('test.file', {write: true});
+   * Deno.writeAllSync(file, contentBytes);
+   * Deno.close(file.rid);
    *
-   *       // Example writing to buffer
-   *       const contentBytes = new TextEncoder().encode("Hello World");
-   *       const writer = new Deno.Buffer();
-   *       Deno.writeAllSync(writer, contentBytes);
-   *       console.log(writer.bytes().length);  // 11
+   * // Example writing to buffer
+   * const contentBytes = new TextEncoder().encode("Hello World");
+   * const writer = new Deno.Buffer();
+   * Deno.writeAllSync(writer, contentBytes);
+   * console.log(writer.bytes().length);  // 11
+   * ```
    */
   export function writeAllSync(w: WriterSync, arr: Uint8Array): void;
 
@@ -789,9 +851,11 @@ declare namespace Deno {
 
   /** Synchronously creates a new directory with the specified path.
    *
-   *       Deno.mkdirSync("new_dir");
-   *       Deno.mkdirSync("nested/directories", { recursive: true });
-   *       Deno.mkdirSync("restricted_access_dir", { mode: 0o700 });
+   * ```ts
+   * Deno.mkdirSync("new_dir");
+   * Deno.mkdirSync("nested/directories", { recursive: true });
+   * Deno.mkdirSync("restricted_access_dir", { mode: 0o700 });
+   * ```
    *
    * Defaults to throwing error if the directory already exists.
    *
@@ -800,9 +864,11 @@ declare namespace Deno {
 
   /** Creates a new directory with the specified path.
    *
-   *       await Deno.mkdir("new_dir");
-   *       await Deno.mkdir("nested/directories", { recursive: true });
-   *       await Deno.mkdir("restricted_access_dir", { mode: 0o700 });
+   * ```ts
+   * await Deno.mkdir("new_dir");
+   * await Deno.mkdir("nested/directories", { recursive: true });
+   * await Deno.mkdir("restricted_access_dir", { mode: 0o700 });
+   * ```
    *
    * Defaults to throwing error if the directory already exists.
    *
@@ -832,8 +898,10 @@ declare namespace Deno {
    * directories. It is the caller's responsibility to remove the directory when
    * no longer needed.
    *
-   *       const tempDirName0 = Deno.makeTempDirSync();  // e.g. /tmp/2894ea76
-   *       const tempDirName1 = Deno.makeTempDirSync({ prefix: 'my_temp' });  // e.g. /tmp/my_temp339c944d
+   * ```ts
+   * const tempDirName0 = Deno.makeTempDirSync();  // e.g. /tmp/2894ea76
+   * const tempDirName1 = Deno.makeTempDirSync({ prefix: 'my_temp' });  // e.g. /tmp/my_temp339c944d
+   * ```
    *
    * Requires `allow-write` permission. */
   // TODO(ry) Doesn't check permissions.
@@ -850,8 +918,10 @@ declare namespace Deno {
    * directories. It is the caller's responsibility to remove the directory when
    * no longer needed.
    *
-   *       const tempDirName0 = await Deno.makeTempDir();  // e.g. /tmp/2894ea76
-   *       const tempDirName1 = await Deno.makeTempDir({ prefix: 'my_temp' }); // e.g. /tmp/my_temp339c944d
+   * ```ts
+   * const tempDirName0 = await Deno.makeTempDir();  // e.g. /tmp/2894ea76
+   * const tempDirName1 = await Deno.makeTempDir({ prefix: 'my_temp' }); // e.g. /tmp/my_temp339c944d
+   * ```
    *
    * Requires `allow-write` permission. */
   // TODO(ry) Doesn't check permissions.
@@ -868,8 +938,10 @@ declare namespace Deno {
    * files. It is the caller's responsibility to remove the file when no longer
    * needed.
    *
-   *       const tempFileName0 = Deno.makeTempFileSync(); // e.g. /tmp/419e0bf2
-   *       const tempFileName1 = Deno.makeTempFileSync({ prefix: 'my_temp' });  // e.g. /tmp/my_temp754d3098
+   * ```ts
+   * const tempFileName0 = Deno.makeTempFileSync(); // e.g. /tmp/419e0bf2
+   * const tempFileName1 = Deno.makeTempFileSync({ prefix: 'my_temp' });  // e.g. /tmp/my_temp754d3098
+   * ```
    *
    * Requires `allow-write` permission. */
   export function makeTempFileSync(options?: MakeTempOptions): string;
@@ -885,8 +957,10 @@ declare namespace Deno {
    * files. It is the caller's responsibility to remove the file when no longer
    * needed.
    *
-   *       const tmpFileName0 = await Deno.makeTempFile();  // e.g. /tmp/419e0bf2
-   *       const tmpFileName1 = await Deno.makeTempFile({ prefix: 'my_temp' });  // e.g. /tmp/my_temp754d3098
+   * ```ts
+   * const tmpFileName0 = await Deno.makeTempFile();  // e.g. /tmp/419e0bf2
+   * const tmpFileName1 = await Deno.makeTempFile({ prefix: 'my_temp' });  // e.g. /tmp/my_temp754d3098
+   * ```
    *
    * Requires `allow-write` permission. */
   export function makeTempFile(options?: MakeTempOptions): Promise<string>;
@@ -894,7 +968,9 @@ declare namespace Deno {
   /** Synchronously changes the permission of a specific file/directory of
    * specified path.  Ignores the process's umask.
    *
-   *       Deno.chmodSync("/path/to/file", 0o666);
+   * ```ts
+   * Deno.chmodSync("/path/to/file", 0o666);
+   * ```
    *
    * For a full description, see [chmod](#chmod)
    *
@@ -906,7 +982,9 @@ declare namespace Deno {
   /** Changes the permission of a specific file/directory of specified path.
    * Ignores the process's umask.
    *
-   *       await Deno.chmod("/path/to/file", 0o666);
+   * ```ts
+   * await Deno.chmod("/path/to/file", 0o666);
+   * ```
    *
    * The mode is a sequence of 3 octal numbers.  The first/left-most number
    * specifies the permissions for the owner.  The second number specifies the
@@ -934,7 +1012,9 @@ declare namespace Deno {
   /** Synchronously change owner of a regular file or directory. This functionality
    * is not available on Windows.
    *
-   *      Deno.chownSync("myFile.txt", 1000, 1002);
+   * ```ts
+   * Deno.chownSync("myFile.txt", 1000, 1002);
+   * ```
    *
    * Requires `allow-write` permission.
    *
@@ -949,7 +1029,9 @@ declare namespace Deno {
   /** Change owner of a regular file or directory. This functionality
    * is not available on Windows.
    *
-   *      await Deno.chown("myFile.txt", 1000, 1002);
+   * ```ts
+   * await Deno.chown("myFile.txt", 1000, 1002);
+   * ```
    *
    * Requires `allow-write` permission.
    *
@@ -969,8 +1051,10 @@ declare namespace Deno {
 
   /** Synchronously removes the named file or directory.
    *
-   *       Deno.removeSync("/path/to/empty_dir/or/file");
-   *       Deno.removeSync("/path/to/populated_dir/or/file", { recursive: true });
+   * ```ts
+   * Deno.removeSync("/path/to/empty_dir/or/file");
+   * Deno.removeSync("/path/to/populated_dir/or/file", { recursive: true });
+   * ```
    *
    * Throws error if permission denied, path not found, or path is a non-empty
    * directory and the `recursive` option isn't set to `true`.
@@ -980,8 +1064,10 @@ declare namespace Deno {
 
   /** Removes the named file or directory.
    *
-   *       await Deno.remove("/path/to/empty_dir/or/file");
-   *       await Deno.remove("/path/to/populated_dir/or/file", { recursive: true });
+   * ```ts
+   * await Deno.remove("/path/to/empty_dir/or/file");
+   * await Deno.remove("/path/to/populated_dir/or/file", { recursive: true });
+   * ```
    *
    * Throws error if permission denied, path not found, or path is a non-empty
    * directory and the `recursive` option isn't set to `true`.
@@ -994,7 +1080,9 @@ declare namespace Deno {
    * `renameSync()` replaces it. OS-specific restrictions may apply when
    * `oldpath` and `newpath` are in different directories.
    *
-   *       Deno.renameSync("old/path", "new/path");
+   * ```ts
+   * Deno.renameSync("old/path", "new/path");
+   * ```
    *
    * On Unix, this operation does not follow symlinks at either path.
    *
@@ -1009,7 +1097,9 @@ declare namespace Deno {
    * OS-specific restrictions may apply when `oldpath` and `newpath` are in
    * different directories.
    *
-   *       await Deno.rename("old/path", "new/path");
+   * ```ts
+   * await Deno.rename("old/path", "new/path");
+   * ```
    *
    * On Unix, this operation does not follow symlinks at either path.
    *
@@ -1022,8 +1112,10 @@ declare namespace Deno {
   /** Synchronously reads and returns the entire contents of a file as utf8 encoded string
    *  encoded string. Reading a directory returns an empty string.
    *
-   *       const data = Deno.readTextFileSync("hello.txt");
-   *       console.log(data);
+   * ```ts
+   * const data = Deno.readTextFileSync("hello.txt");
+   * console.log(data);
+   * ```
    *
    * Requires `allow-read` permission. */
   export function readTextFileSync(path: string): string;
@@ -1031,8 +1123,10 @@ declare namespace Deno {
   /** Asynchronously reads and returns the entire contents of a file as a utf8
    *  encoded string. Reading a directory returns an empty data array.
    *
-   *       const data = await Deno.readTextFile("hello.txt");
-   *       console.log(data);
+   * ```ts
+   * const data = await Deno.readTextFile("hello.txt");
+   * console.log(data);
+   * ```
    *
    * Requires `allow-read` permission. */
   export function readTextFile(path: string): Promise<string>;
@@ -1041,9 +1135,11 @@ declare namespace Deno {
    * of bytes. `TextDecoder` can be used to transform the bytes to string if
    * required.  Reading a directory returns an empty data array.
    *
-   *       const decoder = new TextDecoder("utf-8");
-   *       const data = Deno.readFileSync("hello.txt");
-   *       console.log(decoder.decode(data));
+   * ```ts
+   * const decoder = new TextDecoder("utf-8");
+   * const data = Deno.readFileSync("hello.txt");
+   * console.log(decoder.decode(data));
+   * ```
    *
    * Requires `allow-read` permission. */
   export function readFileSync(path: string): Uint8Array;
@@ -1052,9 +1148,11 @@ declare namespace Deno {
    * `TextDecoder` can be used to transform the bytes to string if required.
    * Reading a directory returns an empty data array.
    *
-   *       const decoder = new TextDecoder("utf-8");
-   *       const data = await Deno.readFile("hello.txt");
-   *       console.log(decoder.decode(data));
+   * ```ts
+   * const decoder = new TextDecoder("utf-8");
+   * const data = await Deno.readFile("hello.txt");
+   * console.log(decoder.decode(data));
+   * ```
    *
    * Requires `allow-read` permission. */
   export function readFile(path: string): Promise<Uint8Array>;
@@ -1126,24 +1224,28 @@ declare namespace Deno {
 
   /** Returns absolute normalized path, with symbolic links resolved.
    *
-   *       // e.g. given /home/alice/file.txt and current directory /home/alice
-   *       Deno.symlinkSync("file.txt", "symlink_file.txt");
-   *       const realPath = Deno.realPathSync("./file.txt");
-   *       const realSymLinkPath = Deno.realPathSync("./symlink_file.txt");
-   *       console.log(realPath);  // outputs "/home/alice/file.txt"
-   *       console.log(realSymLinkPath);  // outputs "/home/alice/file.txt"
+   * ```ts
+   * // e.g. given /home/alice/file.txt and current directory /home/alice
+   * Deno.symlinkSync("file.txt", "symlink_file.txt");
+   * const realPath = Deno.realPathSync("./file.txt");
+   * const realSymLinkPath = Deno.realPathSync("./symlink_file.txt");
+   * console.log(realPath);  // outputs "/home/alice/file.txt"
+   * console.log(realSymLinkPath);  // outputs "/home/alice/file.txt"
+   * ```
    *
    * Requires `allow-read` permission. */
   export function realPathSync(path: string): string;
 
   /** Resolves to the absolute normalized path, with symbolic links resolved.
    *
-   *       // e.g. given /home/alice/file.txt and current directory /home/alice
-   *       await Deno.symlink("file.txt", "symlink_file.txt");
-   *       const realPath = await Deno.realPath("./file.txt");
-   *       const realSymLinkPath = await Deno.realPath("./symlink_file.txt");
-   *       console.log(realPath);  // outputs "/home/alice/file.txt"
-   *       console.log(realSymLinkPath);  // outputs "/home/alice/file.txt"
+   * ```ts
+   * // e.g. given /home/alice/file.txt and current directory /home/alice
+   * await Deno.symlink("file.txt", "symlink_file.txt");
+   * const realPath = await Deno.realPath("./file.txt");
+   * const realSymLinkPath = await Deno.realPath("./symlink_file.txt");
+   * console.log(realPath);  // outputs "/home/alice/file.txt"
+   * console.log(realSymLinkPath);  // outputs "/home/alice/file.txt"
+   * ```
    *
    * Requires `allow-read` permission. */
   export function realPath(path: string): Promise<string>;
@@ -1158,9 +1260,11 @@ declare namespace Deno {
   /** Synchronously reads the directory given by `path` and returns an iterable
    * of `Deno.DirEntry`.
    *
-   *       for (const dirEntry of Deno.readDirSync("/")) {
-   *         console.log(dirEntry.name);
-   *       }
+   * ```ts
+   * for (const dirEntry of Deno.readDirSync("/")) {
+   *   console.log(dirEntry.name);
+   * }
+   * ```
    *
    * Throws error if `path` is not a directory.
    *
@@ -1170,9 +1274,11 @@ declare namespace Deno {
   /** Reads the directory given by `path` and returns an async iterable of
    * `Deno.DirEntry`.
    *
-   *       for await (const dirEntry of Deno.readDir("/")) {
-   *         console.log(dirEntry.name);
-   *       }
+   * ```ts
+   * for await (const dirEntry of Deno.readDir("/")) {
+   *   console.log(dirEntry.name);
+   * }
+   * ```
    *
    * Throws error if `path` is not a directory.
    *
@@ -1183,7 +1289,9 @@ declare namespace Deno {
    * specified path, by default creating a new file if needed, else overwriting.
    * Fails if target path is a directory or is unwritable.
    *
-   *       Deno.copyFileSync("from.txt", "to.txt");
+   * ```ts
+   * Deno.copyFileSync("from.txt", "to.txt");
+   * ```
    *
    * Requires `allow-read` permission on fromPath.
    * Requires `allow-write` permission on toPath. */
@@ -1193,7 +1301,9 @@ declare namespace Deno {
    * by default creating a new file if needed, else overwriting. Fails if target
    * path is a directory or is unwritable.
    *
-   *       await Deno.copyFile("from.txt", "to.txt");
+   * ```ts
+   * await Deno.copyFile("from.txt", "to.txt");
+   * ```
    *
    * Requires `allow-read` permission on fromPath.
    * Requires `allow-write` permission on toPath. */
@@ -1201,8 +1311,10 @@ declare namespace Deno {
 
   /** Returns the full path destination of the named symbolic link.
    *
-   *       Deno.symlinkSync("./test.txt", "./test_link.txt");
-   *       const target = Deno.readLinkSync("./test_link.txt"); // full path of ./test.txt
+   * ```ts
+   * Deno.symlinkSync("./test.txt", "./test_link.txt");
+   * const target = Deno.readLinkSync("./test_link.txt"); // full path of ./test.txt
+   * ```
    *
    * Throws TypeError if called with a hard link
    *
@@ -1211,8 +1323,10 @@ declare namespace Deno {
 
   /** Resolves to the full path destination of the named symbolic link.
    *
-   *       await Deno.symlink("./test.txt", "./test_link.txt");
-   *       const target = await Deno.readLink("./test_link.txt"); // full path of ./test.txt
+   * ```ts
+   * await Deno.symlink("./test.txt", "./test_link.txt");
+   * const target = await Deno.readLink("./test_link.txt"); // full path of ./test.txt
+   * ```
    *
    * Throws TypeError if called with a hard link
    *
@@ -1223,8 +1337,10 @@ declare namespace Deno {
    * symlink, information for the symlink will be returned instead of what it
    * points to.
    *
-   *       const fileInfo = await Deno.lstat("hello.txt");
-   *       assert(fileInfo.isFile);
+   * ```ts
+   * const fileInfo = await Deno.lstat("hello.txt");
+   * assert(fileInfo.isFile);
+   * ```
    *
    * Requires `allow-read` permission. */
   export function lstat(path: string): Promise<FileInfo>;
@@ -1233,8 +1349,10 @@ declare namespace Deno {
    * `path` is a symlink, information for the symlink will be returned instead of
    * what it points to..
    *
-   *       const fileInfo = Deno.lstatSync("hello.txt");
-   *       assert(fileInfo.isFile);
+   * ```ts
+   * const fileInfo = Deno.lstatSync("hello.txt");
+   * assert(fileInfo.isFile);
+   * ```
    *
    * Requires `allow-read` permission. */
   export function lstatSync(path: string): FileInfo;
@@ -1242,8 +1360,10 @@ declare namespace Deno {
   /** Resolves to a `Deno.FileInfo` for the specified `path`. Will always
    * follow symlinks.
    *
-   *       const fileInfo = await Deno.stat("hello.txt");
-   *       assert(fileInfo.isFile);
+   * ```ts
+   * const fileInfo = await Deno.stat("hello.txt");
+   * assert(fileInfo.isFile);
+   * ```
    *
    * Requires `allow-read` permission. */
   export function stat(path: string): Promise<FileInfo>;
@@ -1251,8 +1371,10 @@ declare namespace Deno {
   /** Synchronously returns a `Deno.FileInfo` for the specified `path`. Will
    * always follow symlinks.
    *
-   *       const fileInfo = Deno.statSync("hello.txt");
-   *       assert(fileInfo.isFile);
+   * ```ts
+   * const fileInfo = Deno.statSync("hello.txt");
+   * assert(fileInfo.isFile);
+   * ```
    *
    * Requires `allow-read` permission. */
   export function statSync(path: string): FileInfo;
@@ -1272,12 +1394,14 @@ declare namespace Deno {
   /** Synchronously write `data` to the given `path`, by default creating a new
    * file if needed, else overwriting.
    *
-   *       const encoder = new TextEncoder();
-   *       const data = encoder.encode("Hello world\n");
-   *       Deno.writeFileSync("hello1.txt", data);  // overwrite "hello1.txt" or create it
-   *       Deno.writeFileSync("hello2.txt", data, {create: false});  // only works if "hello2.txt" exists
-   *       Deno.writeFileSync("hello3.txt", data, {mode: 0o777});  // set permissions on new file
-   *       Deno.writeFileSync("hello4.txt", data, {append: true});  // add data to the end of the file
+   * ```ts
+   * const encoder = new TextEncoder();
+   * const data = encoder.encode("Hello world\n");
+   * Deno.writeFileSync("hello1.txt", data);  // overwrite "hello1.txt" or create it
+   * Deno.writeFileSync("hello2.txt", data, {create: false});  // only works if "hello2.txt" exists
+   * Deno.writeFileSync("hello3.txt", data, {mode: 0o777});  // set permissions on new file
+   * Deno.writeFileSync("hello4.txt", data, {append: true});  // add data to the end of the file
+   * ```
    *
    * Requires `allow-write` permission, and `allow-read` if `options.create` is
    * `false`.
@@ -1291,12 +1415,14 @@ declare namespace Deno {
   /** Write `data` to the given `path`, by default creating a new file if needed,
    * else overwriting.
    *
-   *       const encoder = new TextEncoder();
-   *       const data = encoder.encode("Hello world\n");
-   *       await Deno.writeFile("hello1.txt", data);  // overwrite "hello1.txt" or create it
-   *       await Deno.writeFile("hello2.txt", data, {create: false});  // only works if "hello2.txt" exists
-   *       await Deno.writeFile("hello3.txt", data, {mode: 0o777});  // set permissions on new file
-   *       await Deno.writeFile("hello4.txt", data, {append: true});  // add data to the end of the file
+   * ```ts
+   * const encoder = new TextEncoder();
+   * const data = encoder.encode("Hello world\n");
+   * await Deno.writeFile("hello1.txt", data);  // overwrite "hello1.txt" or create it
+   * await Deno.writeFile("hello2.txt", data, {create: false});  // only works if "hello2.txt" exists
+   * await Deno.writeFile("hello3.txt", data, {mode: 0o777});  // set permissions on new file
+   * await Deno.writeFile("hello4.txt", data, {append: true});  // add data to the end of the file
+   * ```
    *
    * Requires `allow-write` permission, and `allow-read` if `options.create` is `false`.
    */
@@ -1309,7 +1435,9 @@ declare namespace Deno {
   /** Synchronously write string `data` to the given `path`, by default creating a new file if needed,
    * else overwriting.
    *
-   *       await Deno.writeTextFileSync("hello1.txt", "Hello world\n");  // overwrite "hello1.txt" or create it
+   * ```ts
+   * await Deno.writeTextFileSync("hello1.txt", "Hello world\n");  // overwrite "hello1.txt" or create it
+   * ```
    *
    * Requires `allow-write` permission, and `allow-read` if `options.create` is `false`.
    */
@@ -1318,7 +1446,9 @@ declare namespace Deno {
   /** Asynchronously write string `data` to the given `path`, by default creating a new file if needed,
    * else overwriting.
    *
-   *       await Deno.writeTextFile("hello1.txt", "Hello world\n");  // overwrite "hello1.txt" or create it
+   * ```ts
+   * await Deno.writeTextFile("hello1.txt", "Hello world\n");  // overwrite "hello1.txt" or create it
+   * ```
    *
    * Requires `allow-write` permission, and `allow-read` if `options.create` is `false`.
    */
@@ -1328,15 +1458,17 @@ declare namespace Deno {
    * specified `len`.  If `len` is not specified then the entire file contents
    * are truncated.
    *
-   *       // truncate the entire file
-   *       Deno.truncateSync("my_file.txt");
+   * ```ts
+   * // truncate the entire file
+   * Deno.truncateSync("my_file.txt");
    *
-   *       // truncate part of the file
-   *       const file = Deno.makeTempFileSync();
-   *       Deno.writeFileSync(file, new TextEncoder().encode("Hello World"));
-   *       Deno.truncateSync(file, 7);
-   *       const data = Deno.readFileSync(file);
-   *       console.log(new TextDecoder().decode(data));
+   * // truncate part of the file
+   * const file = Deno.makeTempFileSync();
+   * Deno.writeFileSync(file, new TextEncoder().encode("Hello World"));
+   * Deno.truncateSync(file, 7);
+   * const data = Deno.readFileSync(file);
+   * console.log(new TextDecoder().decode(data));
+   * ```
    *
    * Requires `allow-write` permission. */
   export function truncateSync(name: string, len?: number): void;
@@ -1344,15 +1476,17 @@ declare namespace Deno {
   /** Truncates or extends the specified file, to reach the specified `len`. If
    * `len` is not specified then the entire file contents are truncated.
    *
-   *       // truncate the entire file
-   *       await Deno.truncate("my_file.txt");
+   * ```ts
+   * // truncate the entire file
+   * await Deno.truncate("my_file.txt");
    *
-   *       // truncate part of the file
-   *       const file = await Deno.makeTempFile();
-   *       await Deno.writeFile(file, new TextEncoder().encode("Hello World"));
-   *       await Deno.truncate(file, 7);
-   *       const data = await Deno.readFile(file);
-   *       console.log(new TextDecoder().decode(data));  // "Hello W"
+   * // truncate part of the file
+   * const file = await Deno.makeTempFile();
+   * await Deno.writeFile(file, new TextEncoder().encode("Hello World"));
+   * await Deno.truncate(file, 7);
+   * const data = await Deno.readFile(file);
+   * console.log(new TextDecoder().decode(data));  // "Hello W"
+   * ```
    *
    * Requires `allow-write` permission. */
   export function truncate(name: string, len?: number): Promise<void>;
@@ -1409,10 +1543,12 @@ declare namespace Deno {
 
   /** Listen announces on the local transport address.
    *
-   *      const listener1 = Deno.listen({ port: 80 })
-   *      const listener2 = Deno.listen({ hostname: "192.0.2.1", port: 80 })
-   *      const listener3 = Deno.listen({ hostname: "[2001:db8::1]", port: 80 });
-   *      const listener4 = Deno.listen({ hostname: "golang.org", port: 80, transport: "tcp" });
+   * ```ts
+   * const listener1 = Deno.listen({ port: 80 })
+   * const listener2 = Deno.listen({ hostname: "192.0.2.1", port: 80 })
+   * const listener3 = Deno.listen({ hostname: "[2001:db8::1]", port: 80 });
+   * const listener4 = Deno.listen({ hostname: "golang.org", port: 80, transport: "tcp" });
+   * ```
    *
    * Requires `allow-net` permission. */
   export function listen(
@@ -1431,7 +1567,9 @@ declare namespace Deno {
   /** Listen announces on the local transport address over TLS (transport layer
    * security).
    *
-   *      const lstnr = Deno.listenTls({ port: 443, certFile: "./server.crt", keyFile: "./server.key" });
+   * ```ts
+   * const lstnr = Deno.listenTls({ port: 443, certFile: "./server.crt", keyFile: "./server.key" });
+   * ```
    *
    * Requires `allow-net` permission. */
   export function listenTls(options: ListenTlsOptions): Listener;
@@ -1449,11 +1587,13 @@ declare namespace Deno {
    * Connects to the hostname (default is "127.0.0.1") and port on the named
    * transport (default is "tcp"), and resolves to the connection (`Conn`).
    *
-   *     const conn1 = await Deno.connect({ port: 80 });
-   *     const conn2 = await Deno.connect({ hostname: "192.0.2.1", port: 80 });
-   *     const conn3 = await Deno.connect({ hostname: "[2001:db8::1]", port: 80 });
-   *     const conn4 = await Deno.connect({ hostname: "golang.org", port: 80, transport: "tcp" });
-   *     const conn5 = await Deno.connect({ path: "/foo/bar.sock", transport: "unix" });
+   * ```ts
+   * const conn1 = await Deno.connect({ port: 80 });
+   * const conn2 = await Deno.connect({ hostname: "192.0.2.1", port: 80 });
+   * const conn3 = await Deno.connect({ hostname: "[2001:db8::1]", port: 80 });
+   * const conn4 = await Deno.connect({ hostname: "golang.org", port: 80, transport: "tcp" });
+   * const conn5 = await Deno.connect({ path: "/foo/bar.sock", transport: "unix" });
+   * ```
    *
    * Requires `allow-net` permission for "tcp" and `allow-read` for unix. */
   export function connect(options: ConnectOptions): Promise<Conn>;
@@ -1473,10 +1613,12 @@ declare namespace Deno {
    * cert file is optional and if not included Mozilla's root certificates will
    * be used (see also https://github.com/ctz/webpki-roots for specifics)
    *
-   *     const conn1 = await Deno.connectTls({ port: 80 });
-   *     const conn2 = await Deno.connectTls({ certFile: "./certs/my_custom_root_CA.pem", hostname: "192.0.2.1", port: 80 });
-   *     const conn3 = await Deno.connectTls({ hostname: "[2001:db8::1]", port: 80 });
-   *     const conn4 = await Deno.connectTls({ certFile: "./certs/my_custom_root_CA.pem", hostname: "golang.org", port: 80});
+   * ```ts
+   * const conn1 = await Deno.connectTls({ port: 80 });
+   * const conn2 = await Deno.connectTls({ certFile: "./certs/my_custom_root_CA.pem", hostname: "192.0.2.1", port: 80 });
+   * const conn3 = await Deno.connectTls({ hostname: "[2001:db8::1]", port: 80 });
+   * const conn4 = await Deno.connectTls({ certFile: "./certs/my_custom_root_CA.pem", hostname: "golang.org", port: 80});
+   * ```
    *
    * Requires `allow-net` permission.
    */
@@ -1528,11 +1670,13 @@ declare namespace Deno {
    * representations. This is an internal API and as such resource
    * representation has `any` type; that means it can change any time.
    *
-   *       console.log(Deno.resources());
-   *       // { 0: "stdin", 1: "stdout", 2: "stderr" }
-   *       Deno.openSync('../test.file');
-   *       console.log(Deno.resources());
-   *       // { 0: "stdin", 1: "stdout", 2: "stderr", 3: "fsFile" }
+   * ```ts
+   * console.log(Deno.resources());
+   * // { 0: "stdin", 1: "stdout", 2: "stderr" }
+   * Deno.openSync('../test.file');
+   * console.log(Deno.resources());
+   * // { 0: "stdin", 1: "stdout", 2: "stderr", 3: "fsFile" }
+   * ```
    */
   export function resources(): ResourceMap;
 
@@ -1549,11 +1693,13 @@ declare namespace Deno {
    * for directories, will watch the specified directory and all sub directories.
    * Note that the exact ordering of the events can vary between operating systems.
    *
-   *       const watcher = Deno.watchFs("/");
-   *       for await (const event of watcher) {
-   *          console.log(">>>> event", event);
-   *          // { kind: "create", paths: [ "/foo.txt" ] }
-   *       }
+   * ```ts
+   * const watcher = Deno.watchFs("/");
+   * for await (const event of watcher) {
+   *    console.log(">>>> event", event);
+   *    // { kind: "create", paths: [ "/foo.txt" ] }
+   * }
+   *```
    *
    * Requires `allow-read` permission.
    */
@@ -1621,9 +1767,11 @@ declare namespace Deno {
   /** Spawns new subprocess.  RunOptions must contain at a minimum the `opt.cmd`,
    * an array of program arguments, the first of which is the binary.
    *
-   *       const p = Deno.run({
-   *         cmd: ["echo", "hello"],
-   *       });
+   * ```ts
+   * const p = Deno.run({
+   *   cmd: ["echo", "hello"],
+   * });
+   * ```
    *
    * Subprocess uses same working directory as parent process unless `opt.cwd`
    * is specified.
@@ -1657,22 +1805,26 @@ declare namespace Deno {
   /** Converts the input into a string that has the same format as printed by
    * `console.log()`.
    *
-   *      const obj = {};
-   *      obj.propA = 10;
-   *      obj.propB = "hello"
-   *      const objAsString = Deno.inspect(obj); // { propA: 10, propB: "hello" }
-   *      console.log(obj);  // prints same value as objAsString, e.g. { propA: 10, propB: "hello" }
+   * ```ts
+   * const obj = {};
+   * obj.propA = 10;
+   * obj.propB = "hello"
+   * const objAsString = Deno.inspect(obj); // { propA: 10, propB: "hello" }
+   * console.log(obj);  // prints same value as objAsString, e.g. { propA: 10, propB: "hello" }
+   * ```
    *
    * You can also register custom inspect functions, via the `customInspect` Deno
    * symbol on objects, to control and customize the output.
    *
-   *      class A {
-   *        x = 10;
-   *        y = "hello";
-   *        [Deno.customInspect](): string {
-   *          return "x=" + this.x + ", y=" + this.y;
-   *        }
-   *      }
+   * ```ts
+   * class A {
+   *   x = 10;
+   *   y = "hello";
+   *   [Deno.customInspect](): string {
+   *     return "x=" + this.x + ", y=" + this.y;
+   *   }
+   * }
+   * ```
    *
    *      const inStringFormat = Deno.inspect(new A()); // "x=10, y=hello"
    *      console.log(inStringFormat);  // prints "x=10, y=hello"
@@ -1709,11 +1861,11 @@ declare namespace Deno {
   /** Returns the script arguments to the program. If for example we run a
    * program:
    *
-   *      deno run --allow-read https://deno.land/std/examples/cat.ts /etc/passwd
+   * deno run --allow-read https://deno.land/std/examples/cat.ts /etc/passwd
    *
    * Then `Deno.args` will contain:
    *
-   *      [ "/etc/passwd" ]
+   * [ "/etc/passwd" ]
    */
   export const args: string[];
 
