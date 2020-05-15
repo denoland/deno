@@ -32,7 +32,6 @@ impl DocFileLoader for TestLoader {
     &self,
     specifier: &str,
   ) -> Pin<Box<dyn Future<Output = Result<String, OpError>>>> {
-    eprintln!("specifier {:#?}", specifier);
     let res = match self.files.get(specifier) {
       Some(source_code) => Ok(source_code.to_string()),
       None => Err(OpError::other("not found".to_string())),

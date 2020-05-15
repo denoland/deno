@@ -16,7 +16,7 @@ for await (const _ of Deno.signal(Deno.Signal.SIGINT)) {
 `Deno.signal()` also works as a promise.
 
 ```ts
-await Deno.signal(Deno.Singal.SIGINT);
+await Deno.signal(Deno.Signal.SIGINT);
 console.log("interrupted!");
 ```
 
