@@ -7,6 +7,7 @@ import {
   assertArrayContains,
   assertMatch,
   assertEquals,
+  assertStrictEq,
   assertThrows,
   AssertionError,
   equal,
@@ -278,7 +279,13 @@ test({
     assertThrows(
       (): void => assertEquals(1, 2),
       AssertionError,
-      [...createHeader(), removed(`-   1`), added(`+   2`), ""].join("\n")
+      [
+        "Values are not equal:",
+        ...createHeader(),
+        removed(`-   1`),
+        added(`+   2`),
+        "",
+      ].join("\n")
     );
   },
 });
@@ -289,7 +296,12 @@ test({
     assertThrows(
       (): void => assertEquals(1, "1"),
       AssertionError,
-      [...createHeader(), removed(`-   1`), added(`+   "1"`)].join("\n")
+      [
+        "Values are not equal:",
+        ...createHeader(),
+        removed(`-   1`),
+        added(`+   "1"`),
+      ].join("\n")
     );
   },
 });
@@ -301,6 +313,7 @@ test({
       (): void => assertEquals([1, "2", 3], ["1", "2", 3]),
       AssertionError,
       [
+        "Values are not equal:",
         ...createHeader(),
         removed(`-   [ 1, "2", 3 ]`),
         added(`+   [ "1", "2", 3 ]`),
@@ -317,10 +330,59 @@ test({
       (): void => assertEquals({ a: 1, b: "2", c: 3 }, { a: 1, b: 2, c: [3] }),
       AssertionError,
       [
+        "Values are not equal:",
         ...createHeader(),
         removed(`-   { a: 1, b: "2", c: 3 }`),
         added(`+   { a: 1, b: 2, c: [ 3 ] }`),
         "",
+      ].join("\n")
+    );
+  },
+});
+
+test({
+  name: "strict pass case",
+  fn(): void {
+    assertStrictEq(true, true);
+    assertStrictEq(10, 10);
+    assertStrictEq("abc", "abc");
+
+    const xs = [1, false, "foo"];
+    const ys = xs;
+    assertStrictEq(xs, ys);
+
+    const x = { a: 1 };
+    const y = x;
+    assertStrictEq(x, y);
+  },
+});
+
+test({
+  name: "strict failed with structure diff",
+  fn(): void {
+    assertThrows(
+      (): void => assertStrictEq({ a: 1, b: 2 }, { a: 1, c: [3] }),
+      AssertionError,
+      [
+        "Values are not strictly equal:",
+        ...createHeader(),
+        removed("-   { a: 1, b: 2 }"),
+        added("+   { a: 1, c: [ 3 ] }"),
+        "",
+      ].join("\n")
+    );
+  },
+});
+
+test({
+  name: "strict failed with reference diff",
+  fn(): void {
+    assertThrows(
+      (): void => assertStrictEq({ a: 1, b: 2 }, { a: 1, b: 2 }),
+      AssertionError,
+      [
+        "Values have the same structure but are not reference-equal:\n",
+        red("     { a: 1, b: 2 }"),
       ].join("\n")
     );
   },
