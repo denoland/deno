@@ -212,7 +212,7 @@ class PartReader implements Reader, Closer {
       .slice(1)
       .map((v: string): string => v.trim())
       .map((kv: string): void => {
-        const [k, v] = kv.split("=").map(v => decodeURI(v).trim());
+        const [k, v] = kv.split("=").map((v: string): string => decodeURI(v).trim());
         if (v) {
           const s = v.charAt(0);
           const e = v.charAt(v.length - 1);
