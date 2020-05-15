@@ -107,7 +107,11 @@ export async function replLoop(): Promise<void> {
     },
   });
 
-  Object.defineProperty(globalThis, "close", writable(() => quitRepl(0)));
+  Object.defineProperty(
+    globalThis,
+    "close",
+    writable(() => quitRepl(0))
+  );
 
   replLog(`Deno ${version.deno}`);
   replLog("exit using ctrl+d or close()");
