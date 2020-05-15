@@ -243,7 +243,7 @@ export class Server implements AsyncIterable<ServerRequest> {
 export type HTTPOptions = Omit<Deno.ListenOptions, "transport">;
 
 /**
- * Create a HTTP server
+ * Create an HTTP server
  *
  *     import { serve } from "https://deno.land/std/http/server.ts";
  *     const body = "Hello World\n";
