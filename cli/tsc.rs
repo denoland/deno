@@ -201,7 +201,7 @@ impl CompiledFileMetadata {
 
       return Some(CompiledFileMetadata {
         source_path,
-        version_hash: metadata.version_hash.clone(),
+        version_hash: metadata.version_hash,
       });
     }
 
