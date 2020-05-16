@@ -83,7 +83,7 @@ impl Into<TsTypeDef> for &TsLitType {
             boolean: None,
           },
         )
-      },
+      }
       TsLit::Bool(bool_) => (
         bool_.value.to_string(),
         LiteralDef {
