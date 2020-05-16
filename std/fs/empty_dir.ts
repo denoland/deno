@@ -43,7 +43,7 @@ export function emptyDirSync(dir: string): void {
   try {
     const items = [...readDirSync(dir)];
 
-    // if directory already exist. then remove it's child item.
+    // if directory already exist, then remove it's child item.
     while (items.length) {
       const item = items.shift();
       if (item && item.name) {
