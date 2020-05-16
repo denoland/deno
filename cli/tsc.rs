@@ -912,7 +912,7 @@ mod tests {
       ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
     let out = SourceFile {
       url: specifier.as_url().clone(),
-      filename: PathBuf::from(p.to_string_lossy().to_string()),
+      filename: PathBuf::from(p.to_str().unwrap().to_string()),
       media_type: msg::MediaType::TypeScript,
       source_code: include_bytes!("./tests/002_hello.ts").to_vec(),
       types_url: None,
@@ -1029,7 +1029,7 @@ mod tests {
     ];
 
     let path = temp_dir_path.join("tsconfig.json");
-    let path_str = path.to_string_lossy().to_string();
+    let path_str = path.to_str().unwrap().to_string();
 
     for (json_str, expected) in test_cases {
       deno_fs::write_file(&path, json_str.as_bytes(), 0o666).unwrap();
@@ -1043,7 +1043,7 @@ mod tests {
     let temp_dir = TempDir::new().expect("tempdir fail");
     let temp_dir_path = temp_dir.path();
     let path = temp_dir_path.join("doesnotexist.json");
-    let path_str = path.to_string_lossy().to_string();
+    let path_str = path.to_str().unwrap().to_string();
     let res = CompilerConfig::load(Some(path_str));
     assert!(res.is_err());
   }

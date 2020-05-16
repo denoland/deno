@@ -114,7 +114,7 @@ pub struct Flags {
 fn join_paths(whitelist: &[PathBuf], d: &str) -> String {
   whitelist
     .iter()
-    .map(|path| path.to_string_lossy().to_string())
+    .map(|path| path.to_str().unwrap().to_string())
     .collect::<Vec<String>>()
     .join(d)
 }
