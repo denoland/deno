@@ -5,7 +5,6 @@ Computes the SHA256 hash and formats the result.
 
 import argparse
 from hashlib import sha256
-import os
 import sys
 
 
