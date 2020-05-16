@@ -184,7 +184,7 @@ static ENV_VARIABLES_HELP: &str = "ENVIRONMENT VARIABLES:
 
 static DENO_HELP: &str = "A secure JavaScript and TypeScript runtime
 
-Docs: https://deno.land/std/manual.md
+Docs: https://deno.land/manual
 Modules: https://deno.land/std/ https://deno.land/x/
 Bugs: https://github.com/denoland/deno/issues
 
@@ -1194,7 +1194,7 @@ fn importmap_arg<'a, 'b>() -> Arg<'a, 'b> {
     .long_help(
       "UNSTABLE:
 Load import map file
-Docs: https://deno.land/std/manual.md#import-maps
+Docs: https://deno.land/manual/linking_to_external_code/import_maps
 Specification: https://wicg.github.io/import-maps/
 Examples: https://github.com/WICG/import-maps#the-import-map",
     )
