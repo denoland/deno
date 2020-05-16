@@ -1,1 +1,3 @@
-# The manual has moved to //docs
+# The manual has moved.
+
+[Click here](https://deno.land/manual) to read the manual.
