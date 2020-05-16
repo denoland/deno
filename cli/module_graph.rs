@@ -1,5 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-#![allow(unused)]
 
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
@@ -92,7 +91,6 @@ pub struct ModuleGraphLoader {
   file_fetcher: SourceFileFetcher,
   maybe_import_map: Option<ImportMap>,
   pending_downloads: FuturesUnordered<SourceFileFuture>,
-  to_visit: Vec<(ModuleSpecifier, Option<ModuleSpecifier>)>,
   pub graph: ModuleGraph,
   is_dyn_import: bool,
   analyze_dynamic_imports: bool,
@@ -110,7 +108,6 @@ impl ModuleGraphLoader {
       file_fetcher,
       permissions,
       maybe_import_map,
-      to_visit: vec![],
       pending_downloads: FuturesUnordered::new(),
       graph: ModuleGraph(HashMap::new()),
       is_dyn_import,
@@ -139,11 +136,11 @@ impl ModuleGraphLoader {
 
   pub fn build_local_graph<S: BuildHasher>(
     &mut self,
-    root_name: &str,
+    _root_name: &str,
     source_map: &HashMap<String, String, S>,
   ) -> Result<(), ErrBox> {
     for (spec, source_code) in source_map.iter() {
-      self.visit_memory_module(spec.to_string(), source_code.to_string());
+      self.visit_memory_module(spec.to_string(), source_code.to_string())?;
     }
 
     Ok(())
@@ -159,17 +156,17 @@ impl ModuleGraphLoader {
     let mut lib_directives = vec![];
     let mut types_directives = vec![];
 
-    let mut dummy_prefix = false;
+    // let mut dummy_prefix = false;
 
     // The resolveModules op only handles fully qualified URLs for referrer.
     // However we will have cases where referrer is "/foo.ts". We add this dummy
-    // prefix "file://" in order to use the op.
-    let module_specifier = if specifier.starts_with('/') {
-      dummy_prefix = true;
-      ModuleSpecifier::resolve_url(&format!("memory://{}", specifier))
-    } else {
-      ModuleSpecifier::resolve_url(&specifier)
-    }?;
+    // prefix "memory://" in order to use resolution logic.
+    let module_specifier =
+      if let Ok(spec) = ModuleSpecifier::resolve_url(&specifier) {
+        spec
+      } else {
+        ModuleSpecifier::resolve_url(&format!("memory://{}", specifier))?
+      };
 
     let (import_descs, ref_descs) = analyze_dependencies_and_references(
       &source_code,
@@ -215,10 +212,17 @@ impl ModuleGraphLoader {
     }
 
     for ref_desc in ref_descs {
-      let resolved_specifier = ModuleSpecifier::resolve_import(
+      let resolve_result = ModuleSpecifier::resolve_import(
         &ref_desc.specifier,
         &module_specifier.to_string(),
-      )?;
+      );
+
+      // Skip for libs like "dom" or "esnext"
+      let resolved_specifier = match resolve_result {
+        Ok(s) => s,
+        Err(_) => continue,
+      };
+
       let reference_descriptor = ReferenceDescriptor {
         specifier: ref_desc.specifier.to_string(),
         resolved_specifier,
@@ -314,9 +318,16 @@ impl ModuleGraphLoader {
     let perms = self.permissions.clone();
 
     let load_future = async move {
-      file_fetcher
-        .new_fetch_source_file(spec, maybe_referrer, perms)
-        .await
+      let source_file = file_fetcher
+        .new_fetch_source_file(spec.clone(), maybe_referrer, perms)
+        .await?;
+      // FIXME(bartlomieju):
+      // because of redirects we may end up with wrong URL,
+      // substitute with original one
+      Ok(SourceFile {
+        url: spec.as_url().to_owned(),
+        ..source_file
+      })
     }
     .boxed_local();
 
@@ -413,10 +424,17 @@ impl ModuleGraphLoader {
       }
 
       for ref_desc in ref_descs {
-        let resolved_specifier = ModuleSpecifier::resolve_import(
+        let resolve_result = ModuleSpecifier::resolve_import(
           &ref_desc.specifier,
           &module_specifier.to_string(),
-        )?;
+        );
+
+        // Skip for libs like "dom" or "esnext"
+        let resolved_specifier = match resolve_result {
+          Ok(s) => s,
+          Err(_) => continue,
+        };
+
         let reference_descriptor = ReferenceDescriptor {
           specifier: ref_desc.specifier.to_string(),
           resolved_specifier,
@@ -464,7 +482,7 @@ impl ModuleGraphLoader {
 mod tests {
   use super::*;
   use crate::GlobalState;
-  use std::path::PathBuf;
+  // use std::path::PathBuf;
 
   // fn rel_module_specifier(relpath: &str) -> ModuleSpecifier {
   //   let p = PathBuf::from(env!("CARGO_MANIFEST_DIR"))

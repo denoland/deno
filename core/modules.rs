@@ -220,6 +220,13 @@ impl RecursiveModuleLoad {
         })
         .boxed()
       }
+      LoadState::ResolveImport(ref _specifier, ref referrer) => {
+        let ref_spec = ModuleSpecifier::resolve_url(referrer)?;
+        self
+          .loader
+          .load(&module_specifier, Some(ref_spec), self.is_dynamic_import())
+          .boxed_local()
+      }
       _ => self
         .loader
         .load(&module_specifier, None, self.is_dynamic_import())
