@@ -397,10 +397,17 @@ fn op_remove(
     let metadata = std::fs::symlink_metadata(&path)?;
     debug!("op_remove {} {}", path.display(), recursive);
     let file_type = metadata.file_type();
-    if file_type.is_file() || file_type.is_symlink() {
+    if file_type.is_file() {
       std::fs::remove_file(&path)?;
     } else if recursive {
       std::fs::remove_dir_all(&path)?;
+    } else if file_type.is_symlink() {
+      let is_symlink_dir = std::fs::metadata(&path)?.is_dir();
+      if is_symlink_dir {
+        std::fs::remove_dir(&path)?;
+      } else {
+        std::fs::remove_file(&path)?;
+      }
     } else {
       std::fs::remove_dir(&path)?;
     }
