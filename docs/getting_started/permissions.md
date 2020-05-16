@@ -27,7 +27,7 @@ $ deno run --allow-read=/etc https://deno.land/std/examples/cat.ts /etc/passwd
 `--allow-write` works same as `--allow-read`.
 
 
-Granting permissions for network access:
+### Network access:
 
 *fetch.ts*:
 ```ts
