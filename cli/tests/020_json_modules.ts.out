@@ -4,6 +4,6 @@ error: Uncaught TypeError: Cannot resolve extension for "[WILDCARD]config.json" 
     at new SourceFile ($deno$/compiler.ts:[WILDCARD])
     at Function.addToCache ($deno$/compiler.ts:[WILDCARD])
     at buildSourceFileCache ($deno$/compiler.ts:[WILDCARD])
-    at async compile ($deno$/compiler.ts:[WILDCARD])
-    at async tsCompilerOnMessage ($deno$/compiler.ts:[WILDCARD])
-    at async workerMessageRecvCallback ($deno$/runtime_worker.ts:[WILDCARD])
+    at compile ($deno$/compiler.ts:[WILDCARD])
+    at tsCompilerOnMessage ($deno$/compiler.ts:[WILDCARD])
+[WILDCARD]

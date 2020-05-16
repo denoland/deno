@@ -8,6 +8,7 @@ use crate::op_error::OpError;
 use crate::permissions::Permissions;
 use crate::swc_util::analyze_dependencies_and_references;
 use crate::swc_util::TsReferenceKind;
+use crate::tsc::get_available_libs;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
 use futures::stream::FuturesUnordered;
@@ -211,17 +212,17 @@ impl ModuleGraphLoader {
       imports.push(import_descriptor);
     }
 
+    let available_libs = get_available_libs();
+
     for ref_desc in ref_descs {
-      let resolve_result = ModuleSpecifier::resolve_import(
+      if available_libs.contains(&ref_desc.specifier) {
+        continue;
+      }
+
+      let resolved_specifier = ModuleSpecifier::resolve_import(
         &ref_desc.specifier,
         &module_specifier.to_string(),
-      );
-
-      // Skip for libs like "dom" or "esnext"
-      let resolved_specifier = match resolve_result {
-        Ok(s) => s,
-        Err(_) => continue,
-      };
+      )?;
 
       let reference_descriptor = ReferenceDescriptor {
         specifier: ref_desc.specifier.to_string(),
@@ -423,17 +424,17 @@ impl ModuleGraphLoader {
         imports.push(import_descriptor);
       }
 
+      let available_libs = get_available_libs();
+
       for ref_desc in ref_descs {
-        let resolve_result = ModuleSpecifier::resolve_import(
+        if available_libs.contains(&ref_desc.specifier) {
+          continue;
+        }
+
+        let resolved_specifier = ModuleSpecifier::resolve_import(
           &ref_desc.specifier,
           &module_specifier.to_string(),
-        );
-
-        // Skip for libs like "dom" or "esnext"
-        let resolved_specifier = match resolve_result {
-          Ok(s) => s,
-          Err(_) => continue,
-        };
+        )?;
 
         let reference_descriptor = ReferenceDescriptor {
           specifier: ref_desc.specifier.to_string(),
