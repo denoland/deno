@@ -319,14 +319,15 @@ impl ModuleGraphLoader {
     let perms = self.permissions.clone();
 
     let load_future = async move {
+      let spec_ = spec.clone();
       let source_file = file_fetcher
-        .new_fetch_source_file(spec.clone(), maybe_referrer, perms)
+        .fetch_source_file(&spec_, maybe_referrer, perms)
         .await?;
       // FIXME(bartlomieju):
       // because of redirects we may end up with wrong URL,
       // substitute with original one
       Ok(SourceFile {
-        url: spec.as_url().to_owned(),
+        url: spec_.as_url().to_owned(),
         ..source_file
       })
     }
