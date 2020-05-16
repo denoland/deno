@@ -379,7 +379,7 @@ impl TsCompiler {
     let cwd = std::env::current_dir().unwrap();
     let j = match (compiler_config.path, compiler_config.content) {
       (Some(config_path), Some(config_data)) => json!({
-        "type": msg::CompilerRequestType::Compile as i32,
+        "type": msg::CompilerRequestType::CompileNew as i32,
         "target": target,
         "rootNames": root_names,
         "bundle": bundle,
@@ -390,7 +390,7 @@ impl TsCompiler {
         "sourceFileMap": module_graph_json,
       }),
       _ => json!({
-        "type": msg::CompilerRequestType::Compile as i32,
+        "type": msg::CompilerRequestType::CompileNew as i32,
         "target": target,
         "rootNames": root_names,
         "bundle": bundle,
@@ -891,7 +891,7 @@ async fn execute_in_thread(
 }
 
 /// This function is used by `Deno.compile()` and `Deno.bundle()` APIs.
-pub async fn new_runtime_compile<S: BuildHasher>(
+pub async fn runtime_compile<S: BuildHasher>(
   global_state: GlobalState,
   permissions: Permissions,
   root_name: &str,
@@ -971,51 +971,6 @@ pub async fn new_runtime_compile<S: BuildHasher>(
   }
 
   // eprintln!("returned {:#?}", json_str);
-  // We're returning `Ok()` instead of `Err()` because it's not runtime
-  // error if there were diagnostics produces; we want to let user handle
-  // diagnostics in the runtime.
-  Ok(serde_json::from_str::<Value>(json_str).unwrap())
-}
-
-#[allow(unused)]
-pub async fn runtime_compile<S: BuildHasher>(
-  global_state: GlobalState,
-  permissions: Permissions,
-  root_name: &str,
-  sources: &Option<HashMap<String, String, S>>,
-  bundle: bool,
-  options: &Option<String>,
-) -> Result<Value, OpError> {
-  let req_msg = json!({
-    "type": msg::CompilerRequestType::RuntimeCompile as i32,
-    "target": "runtime",
-    "rootName": root_name,
-    "sources": sources,
-    "options": options,
-    "bundle": bundle,
-    "unstable": global_state.flags.unstable,
-  })
-  .to_string()
-  .into_boxed_str()
-  .into_boxed_bytes();
-
-  let compiler = global_state.ts_compiler.clone();
-
-  let msg = execute_in_thread(global_state, permissions, req_msg).await?;
-  let json_str = std::str::from_utf8(&msg).unwrap();
-
-  // TODO(bartlomieju): factor `bundle` path into separate function `runtime_bundle`
-  if bundle {
-    let _response: RuntimeBundleResponse = serde_json::from_str(json_str)?;
-    return Ok(serde_json::from_str::<Value>(json_str).unwrap());
-  }
-
-  let response: RuntimeCompileResponse = serde_json::from_str(json_str)?;
-
-  if response.diagnostics.is_empty() && sources.is_none() {
-    compiler.cache_emitted_files(response.emit_map)?;
-  }
-
   // We're returning `Ok()` instead of `Err()` because it's not runtime
   // error if there were diagnostics produces; we want to let user handle
   // diagnostics in the runtime.

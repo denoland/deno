@@ -1502,7 +1502,7 @@ function compileNew(request: CompilerRequestCompileNew): CompileResult {
   util.log("time in internal TS", end - start);
   let bundleOutput = undefined;
 
-  if (bundle) {
+  if (diagnostics && diagnostics.length === 0 && bundle) {
     assert(state.bundleOutput);
     bundleOutput = state.bundleOutput;
   }
@@ -1614,7 +1614,7 @@ async function compile(
 
   let bundleOutput = undefined;
 
-  if (bundle) {
+  if (diagnostics && diagnostics.length === 0 && bundle) {
     assert(state.bundleOutput);
     bundleOutput = state.bundleOutput;
   }

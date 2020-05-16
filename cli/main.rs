@@ -70,6 +70,7 @@ pub use dprint_plugin_typescript::swc_ecma_parser;
 use crate::doc::parser::DocFileLoader;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
+use crate::fs as deno_fs;
 use crate::global_state::GlobalState;
 use crate::msg::MediaType;
 use crate::op_error::OpError;
@@ -385,7 +386,16 @@ async fn bundle_command(
   source_file: String,
   out_file: Option<PathBuf>,
 ) -> Result<(), ErrBox> {
-  let module_name = ModuleSpecifier::resolve_url_or_path(&source_file)?;
+  let mut module_name = ModuleSpecifier::resolve_url_or_path(&source_file)?;
+  let url = module_name.as_url();
+
+  // TODO(bartlomieju): fix this hack in ModuleSpecifier
+  if url.scheme() == "file" {
+    let a = deno_fs::normalize_path(&url.to_file_path().unwrap());
+    let u = Url::from_file_path(a).unwrap();
+    module_name = ModuleSpecifier::from(u)
+  }
+
   let global_state = GlobalState::new(flags)?;
   debug!(">>>>> bundle START");
   let bundle_result = global_state
