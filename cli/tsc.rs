@@ -26,6 +26,7 @@ use deno_core::Buf;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
 use deno_core::StartupData;
+use futures::future::Either;
 use futures::future::Future;
 use futures::future::FutureExt;
 use log::info;
@@ -912,17 +913,31 @@ async fn execute_in_same_thread(
   permissions: Permissions,
   req: Buf,
 ) -> Result<Buf, ErrBox> {
-  let worker = TsCompiler::setup_worker(global_state.clone(), permissions);
+  let mut worker = TsCompiler::setup_worker(global_state.clone(), permissions);
   let handle = worker.thread_safe_handle();
   handle.post_message(req)?;
-  worker.await?;
-  let event = handle.get_event().await.expect("Compiler didn't respond");
-  let buf = match event {
-    WorkerEvent::Message(buf) => Ok(buf),
-    WorkerEvent::Error(error) => Err(error),
-    WorkerEvent::TerminalError(error) => Err(error),
-  }?;
-  Ok(buf)
+
+  let mut event_fut = handle.get_event().boxed_local();
+
+  loop {
+    let select_result = futures::future::select(event_fut, &mut worker).await;
+    match select_result {
+      Either::Left((event_result, _worker)) => {
+        let event = event_result.expect("Compiler didn't respond");
+
+        let buf = match event {
+          WorkerEvent::Message(buf) => Ok(buf),
+          WorkerEvent::Error(error) => Err(error),
+          WorkerEvent::TerminalError(error) => Err(error),
+        }?;
+        return Ok(buf);
+      }
+      Either::Right((worker_result, event_fut_)) => {
+        event_fut = event_fut_;
+        worker_result?;
+      }
+    }
+  }
 }
 
 /// This function is used by `Deno.compile()` and `Deno.bundle()` APIs.
