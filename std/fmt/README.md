@@ -22,7 +22,7 @@ This is very much a work-in-progress. I'm actively soliciting feedback.
   distinguish the two.
 
   `inspect` output is not defined, however. This may be problematic if using
-  this code on other plattforms (and expecting interoperability). To my
+  this code on other platforms (and expecting interoperability). To my
   knowledge, no suitable specification of object representation aside from JSON
   and `toString` exist. ( Aside: see "[Common object formats][3]" in the
   "Console Living Standard" which basically says "do whatever" )
@@ -127,17 +127,17 @@ may be omitted:
 In general, 'width' describes the minimum length of the output, while
 'precision' limits the output.
 
-| verb      | precision                                                      |
-| --------- | -------------------------------------------------------------- |
-| `t`       | n/a                                                            |
-| `b c o`   | n/a                                                            |
-| `x X`     | n/a for number, strings are truncated to p bytes(!)            |
-| `e E f F` | number of places after decimal, default 6                      |
-| `g G`     | set maximum number of digits                                   |
-| `s`       | truncate input                                                 |
-| `T`       | truncate                                                       |
-| `v`       | tuncate, or depth if used with # see "'default' format", below |
-| `j`       | n/a                                                            |
+| verb      | precision                                                       |
+| --------- | --------------------------------------------------------------- |
+| `t`       | n/a                                                             |
+| `b c o`   | n/a                                                             |
+| `x X`     | n/a for number, strings are truncated to p bytes(!)             |
+| `e E f F` | number of places after decimal, default 6                       |
+| `g G`     | set maximum number of digits                                    |
+| `s`       | truncate input                                                  |
+| `T`       | truncate                                                        |
+| `v`       | truncate, or depth if used with # see "'default' format", below |
+| `j`       | n/a                                                             |
 
 Numerical values for width and precision can be substituted for the `*` char, in
 which case the values are obtained from the next args, e.g.:
@@ -181,7 +181,7 @@ consumed more than once. E.g.:
 
     sprintf("%[2]s %[1]s", "World", "Hello")
 
-returns "Hello World". The precence of a positional indicator resets the arg
+returns "Hello World". The presence of a positional indicator resets the arg
 counter allowing args to be reused:
 
     sprintf("dec[%d]=%d hex[%[1]d]=%x oct[%[1]d]=%#o %s", 1, 255, "Third")

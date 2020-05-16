@@ -22,7 +22,9 @@ fn with_io_context<T: AsRef<str>>(
 }
 
 impl DiskCache {
+  /// `location` must be an absolute path.
   pub fn new(location: &Path) -> Self {
+    assert!(location.is_absolute());
     Self {
       location: location.to_owned(),
     }
@@ -211,7 +213,12 @@ mod tests {
 
   #[test]
   fn test_get_cache_filename_with_extension() {
-    let cache = DiskCache::new(&PathBuf::from("foo"));
+    let p = if cfg!(target_os = "windows") {
+      "C:\\foo"
+    } else {
+      "/foo"
+    };
+    let cache = DiskCache::new(&PathBuf::from(p));
 
     let mut test_cases = vec![
       (

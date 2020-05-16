@@ -39,9 +39,9 @@ source /usr/local/etc/bash_completion.d/deno.bash
 ### Editors and IDEs
 
 Because Deno requires the use of file extensions for module imports and allows
-http imports, and the most editors and language servers do not natively support
-this at the moment, many editors will throw errors about being unable to find
-files or imports having unnecessary file extensions.
+http imports, and most editors and language servers do not natively support this
+at the moment, many editors will throw errors about being unable to find files
+or imports having unnecessary file extensions.
 
 The community has developed extensions for some editors to solve these issues:
 

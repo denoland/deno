@@ -261,8 +261,7 @@ fn format_source_loc(
 
 impl fmt::Display for JSError {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    if self.script_resource_name.is_some() {
-      let script_resource_name = self.script_resource_name.as_ref().unwrap();
+    if let Some(script_resource_name) = &self.script_resource_name {
       if self.line_number.is_some() && self.start_column.is_some() {
         assert!(self.line_number.is_some());
         assert!(self.start_column.is_some());

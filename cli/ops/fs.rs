@@ -833,9 +833,9 @@ fn op_make_temp_dir(
     // We can't assume that paths are always valid utf8 strings.
     let path = make_temp(
       // Converting Option<String> to Option<&str>
-      dir.as_ref().map(|x| &**x),
-      prefix.as_ref().map(|x| &**x),
-      suffix.as_ref().map(|x| &**x),
+      dir.as_deref(),
+      prefix.as_deref(),
+      suffix.as_deref(),
       true,
     )?;
     let path_str = into_string(path.into_os_string())?;
@@ -864,9 +864,9 @@ fn op_make_temp_file(
     // We can't assume that paths are always valid utf8 strings.
     let path = make_temp(
       // Converting Option<String> to Option<&str>
-      dir.as_ref().map(|x| &**x),
-      prefix.as_ref().map(|x| &**x),
-      suffix.as_ref().map(|x| &**x),
+      dir.as_deref(),
+      prefix.as_deref(),
+      suffix.as_deref(),
       false,
     )?;
     let path_str = into_string(path.into_os_string())?;
