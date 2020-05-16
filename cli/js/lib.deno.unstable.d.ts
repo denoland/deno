@@ -11,9 +11,11 @@ declare namespace Deno {
    * Retrieve the process umask.  If `mask` is provided, sets the process umask.
    * This call always returns what the umask was before the call.
    *
-   *        console.log(Deno.umask());  // e.g. 18 (0o022)
-   *        const prevUmaskValue = Deno.umask(0o077);  // e.g. 18 (0o022)
-   *        console.log(Deno.umask());  // e.g. 63 (0o077)
+   * ```ts
+   * console.log(Deno.umask());  // e.g. 18 (0o022)
+   * const prevUmaskValue = Deno.umask(0o077);  // e.g. 18 (0o022)
+   * console.log(Deno.umask());  // e.g. 63 (0o077)
+   * ```
    *
    * NOTE:  This API is not implemented on Windows
    */
@@ -21,7 +23,9 @@ declare namespace Deno {
 
   /** Synchronously creates `newpath` as a hard link to `oldpath`.
    *
-   *       Deno.linkSync("old/name", "new/name");
+   * ```ts
+   * Deno.linkSync("old/name", "new/name");
+   * ```
    *
    * Requires `allow-read` and `allow-write` permissions. */
   export function linkSync(oldpath: string, newpath: string): void;
@@ -30,7 +34,9 @@ declare namespace Deno {
    *
    *  **UNSTABLE**: needs security review.
    *
-   *       await Deno.link("old/name", "new/name");
+   * ```ts
+   * await Deno.link("old/name", "new/name");
+   * ```
    *
    * Requires `allow-read` and `allow-write` permissions. */
   export function link(oldpath: string, newpath: string): Promise<void>;
@@ -46,7 +52,9 @@ declare namespace Deno {
    *
    * NOTE: This function is not yet implemented on Windows.
    *
-   *       Deno.symlinkSync("old/name", "new/name");
+   * ```ts
+   * Deno.symlinkSync("old/name", "new/name");
+   * ```
    *
    * Requires `allow-read` and `allow-write` permissions. */
   export function symlinkSync(
@@ -66,7 +74,9 @@ declare namespace Deno {
    *
    * NOTE: This function is not yet implemented on Windows.
    *
-   *       await Deno.symlink("old/name", "new/name");
+   * ```ts
+   * await Deno.symlink("old/name", "new/name");
+   * ```
    *
    * Requires `allow-read` and `allow-write` permissions. */
   export function symlink(
@@ -100,7 +110,9 @@ declare namespace Deno {
    *
    * Returns the user and platform specific directories.
    *
-   *       const homeDirectory = Deno.dir("home");
+   * ```ts
+   * const homeDirectory = Deno.dir("home");
+   * ```
    *
    * Requires `allow-env` permission.
    *
@@ -248,7 +260,9 @@ declare namespace Deno {
    * is no load. On Windows, the three values are always the same and represent
    * the current load, not the 1, 5 and 15 minute load averages.
    *
-   *       console.log(Deno.loadavg());  // e.g. [ 0.71, 0.44, 0.44 ]
+   * ```ts
+   * console.log(Deno.loadavg());  // e.g. [ 0.71, 0.44, 0.44 ]
+   * ```
    *
    * Requires `allow-env` permission.
    *
@@ -259,7 +273,9 @@ declare namespace Deno {
 
   /** Returns the release version of the Operating System.
    *
-   *       console.log(Deno.osRelease());
+   * ```ts
+   * console.log(Deno.osRelease());
+   * ```
    *
    * Requires `allow-env` permission.
    *
@@ -272,10 +288,12 @@ declare namespace Deno {
    *
    * Open and initialize a plugin.
    *
-   *        const rid = Deno.openPlugin("./path/to/some/plugin.so");
-   *        const opId = Deno.core.ops()["some_op"];
-   *        const response = Deno.core.dispatch(opId, new Uint8Array([1,2,3,4]));
-   *        console.log(`Response from plugin ${response}`);
+   * ```ts
+   * const rid = Deno.openPlugin("./path/to/some/plugin.so");
+   * const opId = Deno.core.ops()["some_op"];
+   * const response = Deno.core.dispatch(opId, new Uint8Array([1,2,3,4]));
+   * console.log(`Response from plugin ${response}`);
+   * ```
    *
    * Requires `allow-plugin` permission.
    *
@@ -340,9 +358,11 @@ declare namespace Deno {
    * Format an array of diagnostic items and return them as a single string in a
    * user friendly format.
    *
-   *       const [diagnostics, result] = Deno.compile("file_with_compile_issues.ts");
-   *       console.table(diagnostics);  // Prints raw diagnostic data
-   *       console.log(Deno.formatDiagnostics(diagnostics));  // User friendly output of diagnostics
+   * ```ts
+   * const [diagnostics, result] = Deno.compile("file_with_compile_issues.ts");
+   * console.table(diagnostics);  // Prints raw diagnostic data
+   * console.log(Deno.formatDiagnostics(diagnostics));  // User friendly output of diagnostics
+   * ```
    *
    * @param items An array of diagnostic items to format
    */
@@ -541,13 +561,15 @@ declare namespace Deno {
      * irrespective of if sources are provided on the call. Like other Deno
      * modules, there is no "magical" resolution. For example:
      *
-     *      Deno.compile(
-     *        "./foo.js",
-     *        undefined,
-     *        {
-     *          types: [ "./foo.d.ts", "https://deno.land/x/example/types.d.ts" ]
-     *        }
-     *      );
+     * ```ts
+     * Deno.compile(
+     *   "./foo.js",
+     *   undefined,
+     *   {
+     *     types: [ "./foo.d.ts", "https://deno.land/x/example/types.d.ts" ]
+     *   }
+     * );
+     * ```
      */
     types?: string[];
   }
@@ -569,9 +591,11 @@ declare namespace Deno {
    * type checking and validation, it effectively "strips" the types from the
    * file.
    *
-   *      const results =  await Deno.transpileOnly({
-   *        "foo.ts": `const foo: string = "foo";`
-   *      });
+   * ```ts
+   * const results =  await Deno.transpileOnly({
+   *   "foo.ts": `const foo: string = "foo";`
+   * });
+   * ```
    *
    * @param sources A map where the key is the filename and the value is the text
    *                to transpile. The filename is only used in the transpile and
@@ -598,12 +622,14 @@ declare namespace Deno {
    * the key is the module name and the value is the content. The extension of
    * the module name will be used to determine the media type of the module.
    *
-   *      const [ maybeDiagnostics1, output1 ] = await Deno.compile("foo.ts");
+   * ```ts
+   * const [ maybeDiagnostics1, output1 ] = await Deno.compile("foo.ts");
    *
-   *      const [ maybeDiagnostics2, output2 ] = await Deno.compile("/foo.ts", {
-   *        "/foo.ts": `export * from "./bar.ts";`,
-   *        "/bar.ts": `export const bar = "bar";`
-   *      });
+   * const [ maybeDiagnostics2, output2 ] = await Deno.compile("/foo.ts", {
+   *   "/foo.ts": `export * from "./bar.ts";`,
+   *   "/bar.ts": `export const bar = "bar";`
+   * });
+   * ```
    *
    * @param rootName The root name of the module which will be used as the
    *                 "starting point". If no `sources` is specified, Deno will
@@ -638,13 +664,15 @@ declare namespace Deno {
    * the key is the module name and the value is the content. The extension of the
    * module name will be used to determine the media type of the module.
    *
-   *      // equivalent to "deno bundle foo.ts" from the command line
-   *      const [ maybeDiagnostics1, output1 ] = await Deno.bundle("foo.ts");
+   * ```ts
+   * // equivalent to "deno bundle foo.ts" from the command line
+   * const [ maybeDiagnostics1, output1 ] = await Deno.bundle("foo.ts");
    *
-   *      const [ maybeDiagnostics2, output2 ] = await Deno.bundle("/foo.ts", {
-   *        "/foo.ts": `export * from "./bar.ts";`,
-   *        "/bar.ts": `export const bar = "bar";`
-   *      });
+   * const [ maybeDiagnostics2, output2 ] = await Deno.bundle("/foo.ts", {
+   *   "/foo.ts": `export * from "./bar.ts";`,
+   *   "/bar.ts": `export const bar = "bar";`
+   * });
+   * ```
    *
    * @param rootName The root name of the module which will be used as the
    *                 "starting point". If no `sources` is specified, Deno will
@@ -691,12 +719,14 @@ declare namespace Deno {
    *
    * An example:
    *
-   *       const orig = Deno.applySourceMap({
-   *         fileName: "file://my/module.ts",
-   *         lineNumber: 5,
-   *         columnNumber: 15
-   *       });
-   *       console.log(`${orig.filename}:${orig.line}:${orig.column}`);
+   * ```ts
+   * const orig = Deno.applySourceMap({
+   *   fileName: "file://my/module.ts",
+   *   lineNumber: 5,
+   *   columnNumber: 15
+   * });
+   * console.log(`${orig.filename}:${orig.line}:${orig.column}`);
+   * ```
    */
   export function applySourceMap(location: Location): Location;
 
@@ -793,24 +823,30 @@ declare namespace Deno {
    * Returns the stream of the given signal number. You can use it as an async
    * iterator.
    *
-   *      for await (const _ of Deno.signal(Deno.Signal.SIGTERM)) {
-   *        console.log("got SIGTERM!");
-   *      }
+   * ```ts
+   * for await (const _ of Deno.signal(Deno.Signal.SIGTERM)) {
+   *   console.log("got SIGTERM!");
+   * }
+   * ```
    *
    * You can also use it as a promise. In this case you can only receive the
    * first one.
    *
-   *      await Deno.signal(Deno.Signal.SIGTERM);
-   *      console.log("SIGTERM received!")
+   * ```ts
+   * await Deno.signal(Deno.Signal.SIGTERM);
+   * console.log("SIGTERM received!")
+   * ```
    *
    * If you want to stop receiving the signals, you can use `.dispose()` method
    * of the signal stream object.
    *
-   *      const sig = Deno.signal(Deno.Signal.SIGTERM);
-   *      setTimeout(() => { sig.dispose(); }, 5000);
-   *      for await (const _ of sig) {
-   *        console.log("SIGTERM!")
-   *      }
+   * ```ts
+   * const sig = Deno.signal(Deno.Signal.SIGTERM);
+   * setTimeout(() => { sig.dispose(); }, 5000);
+   * for await (const _ of sig) {
+   *   console.log("SIGTERM!")
+   * }
+   * ```
    *
    * The above for-await loop exits after 5 seconds when `sig.dispose()` is
    * called.
@@ -875,7 +911,9 @@ declare namespace Deno {
    * Reading from a TTY device in raw mode is faster than reading from a TTY
    * device in canonical mode.
    *
-   *       Deno.setRaw(myTTY.rid, true);
+   * ```ts
+   * Deno.setRaw(myTTY.rid, true);
+   * ```
    */
   export function setRaw(rid: number, mode: boolean): void;
 
@@ -885,7 +923,9 @@ declare namespace Deno {
    * of a file system object referenced by `path`. Given times are either in
    * seconds (UNIX epoch time) or as `Date` objects.
    *
-   *       Deno.utimeSync("myfile.txt", 1556495550, new Date());
+   * ```ts
+   * Deno.utimeSync("myfile.txt", 1556495550, new Date());
+   * ```
    *
    * Requires `allow-write` permission. */
   export function utimeSync(
@@ -900,7 +940,9 @@ declare namespace Deno {
    * system object referenced by `path`. Given times are either in seconds
    * (UNIX epoch time) or as `Date` objects.
    *
-   *       await Deno.utime("myfile.txt", 1556495550, new Date());
+   * ```ts
+   * await Deno.utime("myfile.txt", 1556495550, new Date());
+   * ```
    *
    * Requires `allow-write` permission. */
   export function utime(
@@ -927,9 +969,11 @@ declare namespace Deno {
    *
    * Matches behavior of POSIX shutdown(3).
    *
-   *       const listener = Deno.listen({ port: 80 });
-   *       const conn = await listener.accept();
-   *       Deno.shutdown(conn.rid, Deno.ShutdownMode.Write);
+   * ```ts
+   * const listener = Deno.listen({ port: 80 });
+   * const conn = await listener.accept();
+   * Deno.shutdown(conn.rid, Deno.ShutdownMode.Write);
+   * ```
    */
   export function shutdown(rid: number, how: ShutdownMode): Promise<void>;
 
@@ -964,7 +1008,9 @@ declare namespace Deno {
    *
    * Listen announces on the local transport address.
    *
-   *     const listener = Deno.listen({ path: "/foo/bar.sock", transport: "unix" })
+   * ```ts
+   * const listener = Deno.listen({ path: "/foo/bar.sock", transport: "unix" })
+   * ```
    *
    * Requires `allow-read` and `allow-write` permission. */
   export function listen(
@@ -975,15 +1021,17 @@ declare namespace Deno {
    *
    * Listen announces on the local transport address.
    *
-   *      const listener1 = Deno.listenDatagram({
-   *        port: 80,
-   *        transport: "udp"
-   *      });
-   *      const listener2 = Deno.listenDatagram({
-   *        hostname: "golang.org",
-   *        port: 80,
-   *        transport: "udp"
-   *      });
+   * ```ts
+   * const listener1 = Deno.listenDatagram({
+   *   port: 80,
+   *   transport: "udp"
+   * });
+   * const listener2 = Deno.listenDatagram({
+   *   hostname: "golang.org",
+   *   port: 80,
+   *   transport: "udp"
+   * });
+   * ```
    *
    * Requires `allow-net` permission. */
   export function listenDatagram(
@@ -994,10 +1042,12 @@ declare namespace Deno {
    *
    * Listen announces on the local transport address.
    *
-   *     const listener = Deno.listenDatagram({
-   *       address: "/foo/bar.sock",
-   *       transport: "unixpacket"
-   *     });
+   * ```ts
+   * const listener = Deno.listenDatagram({
+   *   address: "/foo/bar.sock",
+   *   transport: "unixpacket"
+   * });
+   * ```
    *
    * Requires `allow-read` and `allow-write` permission. */
   export function listenDatagram(
@@ -1013,11 +1063,13 @@ declare namespace Deno {
    * Connects to the hostname (default is "127.0.0.1") and port on the named
    * transport (default is "tcp"), and resolves to the connection (`Conn`).
    *
-   *     const conn1 = await Deno.connect({ port: 80 });
-   *     const conn2 = await Deno.connect({ hostname: "192.0.2.1", port: 80 });
-   *     const conn3 = await Deno.connect({ hostname: "[2001:db8::1]", port: 80 });
-   *     const conn4 = await Deno.connect({ hostname: "golang.org", port: 80, transport: "tcp" });
-   *     const conn5 = await Deno.connect({ path: "/foo/bar.sock", transport: "unix" });
+   * ```ts
+   * const conn1 = await Deno.connect({ port: 80 });
+   * const conn2 = await Deno.connect({ hostname: "192.0.2.1", port: 80 });
+   * const conn3 = await Deno.connect({ hostname: "[2001:db8::1]", port: 80 });
+   * const conn4 = await Deno.connect({ hostname: "golang.org", port: 80, transport: "tcp" });
+   * const conn5 = await Deno.connect({ path: "/foo/bar.sock", transport: "unix" });
+   * ```
    *
    * Requires `allow-net` permission for "tcp" and `allow-read` for unix. */
   export function connect(
@@ -1041,8 +1093,10 @@ declare namespace Deno {
    * Using this function requires that the other end of the connection is
    * prepared for TLS handshake.
    *
-   *     const conn = await Deno.connect({ port: 80, hostname: "127.0.0.1" });
-   *     const tlsConn = await Deno.startTls(conn, { certFile: "./certs/my_custom_root_CA.pem", hostname: "127.0.0.1", port: 80 });
+   * ```ts
+   * const conn = await Deno.connect({ port: 80, hostname: "127.0.0.1" });
+   * const tlsConn = await Deno.startTls(conn, { certFile: "./certs/my_custom_root_CA.pem", hostname: "127.0.0.1", port: 80 });
+   * ```
    *
    * Requires `allow-net` permission.
    */
@@ -1138,10 +1192,12 @@ declare namespace Deno {
   export class Permissions {
     /** Resolves to the current status of a permission.
      *
-     *       const status = await Deno.permissions.query({ name: "read", path: "/etc" });
-     *       if (status.state === "granted") {
-     *         data = await Deno.readFile("/etc/passwd");
-     *       }
+     * ```ts
+     * const status = await Deno.permissions.query({ name: "read", path: "/etc" });
+     * if (status.state === "granted") {
+     *   data = await Deno.readFile("/etc/passwd");
+     * }
+     * ```
      */
     query(desc: PermissionDescriptor): Promise<PermissionStatus>;
 
@@ -1154,12 +1210,14 @@ declare namespace Deno {
 
     /** Requests the permission, and resolves to the state of the permission.
      *
-     *       const status = await Deno.permissions.request({ name: "env" });
-     *       if (status.state === "granted") {
-     *         console.log(Deno.homeDir());
-     *       } else {
-     *         console.log("'env' permission is denied.");
-     *       }
+     * ```ts
+     * const status = await Deno.permissions.request({ name: "env" });
+     * if (status.state === "granted") {
+     *   console.log(Deno.homeDir());
+     * } else {
+     *   console.log("'env' permission is denied.");
+     * }
+     * ```
      */
     request(desc: PermissionDescriptor): Promise<PermissionStatus>;
   }
@@ -1177,7 +1235,9 @@ declare namespace Deno {
 
   /** Get the `hostname` of the machine the Deno process is running on.
    *
-   *       console.log(Deno.hostname());
+   * ```ts
+   * console.log(Deno.hostname());
+   * ```
    *
    *  Requires `allow-env` permission.
    */
