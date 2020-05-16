@@ -11,6 +11,7 @@ use crate::ops::MinimalOp;
 use crate::permissions::Permissions;
 use crate::tsc::TargetLib;
 use crate::web_worker::WebWorkerHandle;
+use crate::worker::WorkerEvent;
 use deno_core::Buf;
 use deno_core::CoreIsolate;
 use deno_core::ErrBox;
@@ -19,6 +20,7 @@ use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::Op;
 use deno_core::ZeroCopyBuf;
+use futures::channel::mpsc;
 use futures::future::FutureExt;
 use futures::Future;
 use rand::rngs::StdRng;
@@ -90,69 +92,6 @@ impl State {
   {
     use crate::ops::json_op;
     self.core_op(json_op(self.stateful_op2(dispatcher)))
-  }
-
-  /// Wrap core `OpDispatcher` to collect metrics.
-  // TODO(ry) this should be private. Is called by stateful_json_op or
-  // stateful_minimal_op
-  pub fn core_op<D>(
-    &self,
-    dispatcher: D,
-  ) -> impl Fn(&mut deno_core::CoreIsolate, &[u8], Option<ZeroCopyBuf>) -> Op
-  where
-    D: Fn(&mut deno_core::CoreIsolate, &[u8], Option<ZeroCopyBuf>) -> Op,
-  {
-    let state = self.clone();
-
-    move |isolate: &mut deno_core::CoreIsolate,
-          control: &[u8],
-          zero_copy: Option<ZeroCopyBuf>|
-          -> Op {
-      let bytes_sent_control = control.len() as u64;
-      let bytes_sent_zero_copy =
-        zero_copy.as_ref().map(|b| b.len()).unwrap_or(0) as u64;
-
-      let op = dispatcher(isolate, control, zero_copy);
-
-      match op {
-        Op::Sync(buf) => {
-          let mut state_ = state.borrow_mut();
-          state_.metrics.op_sync(
-            bytes_sent_control,
-            bytes_sent_zero_copy,
-            buf.len() as u64,
-          );
-          Op::Sync(buf)
-        }
-        Op::Async(fut) => {
-          let mut state_ = state.borrow_mut();
-          state_
-            .metrics
-            .op_dispatched_async(bytes_sent_control, bytes_sent_zero_copy);
-          let state = state.clone();
-          let result_fut = fut.map(move |buf: Buf| {
-            let mut state_ = state.borrow_mut();
-            state_.metrics.op_completed_async(buf.len() as u64);
-            buf
-          });
-          Op::Async(result_fut.boxed_local())
-        }
-        Op::AsyncUnref(fut) => {
-          let mut state_ = state.borrow_mut();
-          state_.metrics.op_dispatched_async_unref(
-            bytes_sent_control,
-            bytes_sent_zero_copy,
-          );
-          let state = state.clone();
-          let result_fut = fut.map(move |buf: Buf| {
-            let mut state_ = state.borrow_mut();
-            state_.metrics.op_completed_async_unref(buf.len() as u64);
-            buf
-          });
-          Op::AsyncUnref(result_fut.boxed_local())
-        }
-      }
-    }
   }
 
   pub fn stateful_minimal_op2<D>(
@@ -238,6 +177,107 @@ impl State {
     let s = self.0.borrow();
     if !s.global_state.flags.unstable {
       exit_unstable(api_name);
+    }
+  }
+
+  pub fn stateful_web_worker_op<D>(
+    &self,
+    sender: mpsc::Sender<crate::worker::WorkerEvent>,
+    dispatcher: D,
+  ) -> impl Fn(&mut deno_core::CoreIsolate, &[u8], Option<ZeroCopyBuf>) -> Op
+  where
+    D: Fn(
+      &mpsc::Sender<WorkerEvent>,
+      Value,
+      Option<ZeroCopyBuf>,
+    ) -> Result<JsonOp, OpError>,
+  {
+    use crate::ops::json_op;
+    self.core_op(json_op(crate::ops::web_worker::web_worker_op(
+      sender, dispatcher,
+    )))
+  }
+
+  pub fn stateful_web_worker_op2<D>(
+    &self,
+    handle: WebWorkerHandle,
+    sender: mpsc::Sender<crate::worker::WorkerEvent>,
+    dispatcher: D,
+  ) -> impl Fn(&mut deno_core::CoreIsolate, &[u8], Option<ZeroCopyBuf>) -> Op
+  where
+    D: Fn(
+      WebWorkerHandle,
+      &mpsc::Sender<WorkerEvent>,
+      Value,
+      Option<ZeroCopyBuf>,
+    ) -> Result<JsonOp, OpError>,
+  {
+    use crate::ops::json_op;
+    self.core_op(json_op(crate::ops::web_worker::web_worker_op2(
+      handle, sender, dispatcher,
+    )))
+  }
+
+  /// Wrap core `OpDispatcher` to collect metrics.
+  /// This should be private. Is called by stateful_json_op,
+  /// stateful_minimal_op or stateful_web_worker_op
+  fn core_op<D>(
+    &self,
+    dispatcher: D,
+  ) -> impl Fn(&mut deno_core::CoreIsolate, &[u8], Option<ZeroCopyBuf>) -> Op
+  where
+    D: Fn(&mut deno_core::CoreIsolate, &[u8], Option<ZeroCopyBuf>) -> Op,
+  {
+    let state = self.clone();
+
+    move |isolate: &mut deno_core::CoreIsolate,
+          control: &[u8],
+          zero_copy: Option<ZeroCopyBuf>|
+          -> Op {
+      let bytes_sent_control = control.len() as u64;
+      let bytes_sent_zero_copy =
+        zero_copy.as_ref().map(|b| b.len()).unwrap_or(0) as u64;
+
+      let op = dispatcher(isolate, control, zero_copy);
+
+      match op {
+        Op::Sync(buf) => {
+          let mut state_ = state.borrow_mut();
+          state_.metrics.op_sync(
+            bytes_sent_control,
+            bytes_sent_zero_copy,
+            buf.len() as u64,
+          );
+          Op::Sync(buf)
+        }
+        Op::Async(fut) => {
+          let mut state_ = state.borrow_mut();
+          state_
+            .metrics
+            .op_dispatched_async(bytes_sent_control, bytes_sent_zero_copy);
+          let state = state.clone();
+          let result_fut = fut.map(move |buf: Buf| {
+            let mut state_ = state.borrow_mut();
+            state_.metrics.op_completed_async(buf.len() as u64);
+            buf
+          });
+          Op::Async(result_fut.boxed_local())
+        }
+        Op::AsyncUnref(fut) => {
+          let mut state_ = state.borrow_mut();
+          state_.metrics.op_dispatched_async_unref(
+            bytes_sent_control,
+            bytes_sent_zero_copy,
+          );
+          let state = state.clone();
+          let result_fut = fut.map(move |buf: Buf| {
+            let mut state_ = state.borrow_mut();
+            state_.metrics.op_completed_async_unref(buf.len() as u64);
+            buf
+          });
+          Op::AsyncUnref(result_fut.boxed_local())
+        }
+      }
     }
   }
 }

@@ -1,7 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{JsonOp, Value};
 use crate::op_error::OpError;
-use crate::ops::json_op;
 use crate::state::State;
 use crate::web_worker::WebWorkerHandle;
 use crate::worker::WorkerEvent;
@@ -56,18 +55,11 @@ pub fn init(
 ) {
   i.register_op(
     "op_worker_post_message",
-    s.core_op(json_op(web_worker_op(
-      sender.clone(),
-      op_worker_post_message,
-    ))),
+    s.stateful_web_worker_op(sender.clone(), op_worker_post_message),
   );
   i.register_op(
     "op_worker_close",
-    s.core_op(json_op(web_worker_op2(
-      handle,
-      sender.clone(),
-      op_worker_close,
-    ))),
+    s.stateful_web_worker_op2(handle, sender.clone(), op_worker_close),
   );
 }
 
