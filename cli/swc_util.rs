@@ -1,7 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-
-#![allow(unused)]
-
 use crate::swc_common;
 use crate::swc_common::comments::CommentKind;
 use crate::swc_common::comments::Comments;
@@ -10,7 +7,6 @@ use crate::swc_common::errors::DiagnosticBuilder;
 use crate::swc_common::errors::Emitter;
 use crate::swc_common::errors::Handler;
 use crate::swc_common::errors::HandlerFlags;
-use crate::swc_common::BytePos;
 use crate::swc_common::FileName;
 use crate::swc_common::Globals;
 use crate::swc_common::SourceMap;
@@ -251,84 +247,6 @@ impl Visit for DependencyVisitor {
   }
 }
 
-/// Given file name and source code return vector
-/// of unresolved import specifiers.
-///
-/// Returned vector may contain duplicate entries.
-///
-/// Second argument allows to configure if dynamic
-/// imports should be analyzed.
-///
-/// NOTE: Only statically analyzable dynamic imports
-/// are considered; ie. the ones that have plain string specifier:
-///
-///    await import("./fizz.ts")
-///
-/// These imports will be ignored:
-///
-///    await import(`./${dir}/fizz.ts`)
-///    await import("./" + "fizz.ts")
-#[allow(unused)]
-pub fn analyze_dependencies(
-  source_code: &str,
-  analyze_dynamic_imports: bool,
-) -> Result<Vec<String>, SwcDiagnosticBuffer> {
-  let parser = AstParser::new();
-  parser.parse_module("root.ts", source_code, |parse_result| {
-    let module = parse_result?;
-    let mut collector = DependencyVisitor {
-      dependencies: vec![],
-      analyze_dynamic_imports,
-    };
-    collector.visit_module(&module, &module);
-    Ok(collector.dependencies)
-  })
-}
-
-#[test]
-fn test_analyze_dependencies() {
-  let source = r#"
-import { foo } from "./foo.ts";
-export { bar } from "./foo.ts";
-export * from "./bar.ts";
-"#;
-
-  let dependencies =
-    analyze_dependencies(source, false).expect("Failed to parse");
-  assert_eq!(
-    dependencies,
-    vec![
-      "./foo.ts".to_string(),
-      "./foo.ts".to_string(),
-      "./bar.ts".to_string(),
-    ]
-  );
-}
-
-#[test]
-fn test_analyze_dependencies_dyn_imports() {
-  let source = r#"
-import { foo } from "./foo.ts";
-export { bar } from "./foo.ts";
-export * from "./bar.ts";
-
-const a = await import("./fizz.ts");
-const a = await import("./" + "buzz.ts");
-"#;
-
-  let dependencies =
-    analyze_dependencies(source, true).expect("Failed to parse");
-  assert_eq!(
-    dependencies,
-    vec![
-      "./foo.ts".to_string(),
-      "./foo.ts".to_string(),
-      "./bar.ts".to_string(),
-      "./fizz.ts".to_string(),
-    ]
-  );
-}
-
 #[derive(Clone, Debug, PartialEq)]
 enum DependencyKind {
   Import,
@@ -506,7 +424,7 @@ pub fn analyze_dependencies_and_references(
 
         desc.kind != DependencyKind::DynamicImport
       })
-      .map(|mut desc| {
+      .map(|desc| {
         if desc.kind == DependencyKind::Import {
           let deno_types = get_deno_types(&parser, desc.span);
           ImportDescriptor {
