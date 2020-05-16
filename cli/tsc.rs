@@ -181,35 +181,21 @@ impl CompilerConfig {
 /// Includes source code path and state hash.
 /// version_hash is used to validate versions of the file
 /// and could be used to remove stale file in cache.
+#[derive(Deserialize, Serialize)]
 pub struct CompiledFileMetadata {
   pub source_path: PathBuf,
   pub version_hash: String,
-}
-
-#[derive(Deserialize, Serialize)]
-struct MaybeMetadata {
-  source_path: String,
-  version_hash: String,
 }
 
 impl CompiledFileMetadata {
   pub fn from_json_string(
     metadata_string: String,
   ) -> Result<Self, serde_json::Error> {
-    serde_json::from_str::<MaybeMetadata>(&metadata_string).map(|metadata| {
-      CompiledFileMetadata {
-        source_path: metadata.source_path.into(),
-        version_hash: metadata.version_hash,
-      }
-    })
+    serde_json::from_str::<Self>(&metadata_string)
   }
 
   pub fn to_json_string(&self) -> Result<String, serde_json::Error> {
-    let metadata = MaybeMetadata {
-      source_path: self.source_path.to_str().unwrap().to_string(),
-      version_hash: self.version_hash.clone(),
-    };
-    serde_json::to_string(&metadata)
+    serde_json::to_string(self)
   }
 }
 
