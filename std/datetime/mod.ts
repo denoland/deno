@@ -38,8 +38,6 @@ export function parseDate(dateStr: string, format: DateFormat): Date {
   return new Date(Number(y), Number(m) - 1, Number(d));
 }
 
-
-
 export type DateTimeFormat =
   | "mm-dd-yyyy hh:mm"
   | "dd-mm-yyyy hh:mm"
@@ -135,8 +133,22 @@ const months = [
  * until the resulting string reaches the given length.
  * @return Pads the current string.
  */
-function dtPad(v: string, lPad = 2): any {
+function dtPad(v: string, lPad = 2): string {
   return v.padStart(lPad, "0");
+}
+
+/**
+ * Get the current date-time formatted as DD MM hh:mm:ss
+ * @example 21 Feb 13:12:44
+ * @return Format date
+ */
+export function timestamp(date = new Date()): string {
+  const time = [
+    dtPad(date.getHours().toString()),
+    dtPad(date.getMinutes().toString()),
+    dtPad(date.getSeconds().toString()),
+  ].join(":");
+  return [date.getDate(), months[date.getMonth()], time].join(" ");
 }
 
 /**
