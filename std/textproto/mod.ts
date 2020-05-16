@@ -8,6 +8,10 @@ import { charCode } from "../io/util.ts";
 import { concat } from "../bytes/mod.ts";
 import { decode } from "../encoding/utf8.ts";
 
+// From node-fetch
+// Copyright (c) 2016 David Frank. MIT License.
+const invalidHeaderCharRegex = /[^\t\x20-\x7e\x80-\xff]/;
+
 function str(buf: Uint8Array | null | undefined): string {
   if (buf == null) {
     return "";
@@ -102,12 +106,15 @@ export class TextProtoReader {
       ) {
         i++;
       }
-      const value = str(kv.subarray(i));
-
+      const value = str(kv.subarray(i)).replace(
+        invalidHeaderCharRegex,
+        encodeURI
+      );
+      
       // In case of invalid header we swallow the error
       // example: "Audio Mode" => invalid due to space in the key
       try {
-        m.append(key, encodeURIComponent(value));
+        m.append(key, value);
       } catch {}
     }
   }
