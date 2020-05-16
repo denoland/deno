@@ -2,11 +2,18 @@
 use crate::op_error::OpError;
 
 #[cfg(not(unix))]
+const SIGINT: i32 = 2;
+#[cfg(not(unix))]
+const SIGKILL: i32 = 9;
+#[cfg(not(unix))]
+const SIGTERM: i32 = 15;
+
+#[cfg(not(unix))]
 use winapi::{
   shared::minwindef::DWORD,
   um::{
     handleapi::CloseHandle,
-    processthreadsapi::{GetCurrentProcess, OpenProcess, TerminateProcess},
+    processthreadsapi::{OpenProcess, TerminateProcess},
     winnt::PROCESS_TERMINATE,
   },
 };
@@ -22,31 +29,27 @@ pub fn kill(pid: i32, signo: i32) -> Result<(), OpError> {
 
 #[cfg(not(unix))]
 pub fn kill(pid: i32, signal: i32) -> Result<(), OpError> {
-  unsafe {
-    match signal {
-      9 | 15 | 2 => {
-        let handle = if pid == 0 {
-          GetCurrentProcess()
-        } else {
-          OpenProcess(PROCESS_TERMINATE, 0, pid as DWORD)
-        };
-
+  match signal {
+    SIGINT | SIGKILL | SIGTERM => {
+      if pid <= 0 {
+        return Err(OpError::other(String::from("unsupported pid")));
+      }
+      unsafe {
+        let handle = OpenProcess(PROCESS_TERMINATE, 0, pid as DWORD);
         if handle.is_null() {
-          let m = format!("failed to open process : {}", pid);
-          return Err(OpError::other(m));
+          return Err(OpError::from(std::io::Error::last_os_error()));
         }
         if TerminateProcess(handle, 1) == 0 {
-          let m = format!("failed to terminate process : {}", pid);
-          return Err(OpError::other(m));
+          CloseHandle(handle);
+          return Err(OpError::from(std::io::Error::last_os_error()));
         }
         if CloseHandle(handle) == 0 {
-          let m = format!("failed to close handle process : {}", pid);
-          return Err(OpError::other(m));
+          return Err(OpError::from(std::io::Error::last_os_error()));
         }
       }
-      _ => {
-        return Err(OpError::other("Unsupported signal".to_string()));
-      }
+    }
+    _ => {
+      return Err(OpError::other("unsupported signal".to_string()));
     }
   }
   Ok(())
