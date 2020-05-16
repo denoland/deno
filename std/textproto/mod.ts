@@ -107,7 +107,7 @@ export class TextProtoReader {
       // In case of invalid header we swallow the error
       // example: "Audio Mode" => invalid due to space in the key
       try {
-        m.append(key, encodeURI(value));
+        m.append(key, encodeURIComponent(value));
       } catch {}
     }
   }
