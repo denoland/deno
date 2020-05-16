@@ -402,11 +402,16 @@ fn op_remove(
     } else if recursive {
       std::fs::remove_dir_all(&path)?;
     } else if file_type.is_symlink() {
-      let is_symlink_dir = std::fs::metadata(&path)?.is_dir();
-      if is_symlink_dir {
-        std::fs::remove_dir(&path)?;
-      } else {
-        std::fs::remove_file(&path)?;
+      #[cfg(unix)]
+      std::fs::remove_file(&path)?;
+      #[cfg(not(unix))]
+      {
+        let is_symlink_dir = std::fs::metadata(&path)?.is_dir();
+        if is_symlink_dir {
+          std::fs::remove_dir(&path)?;
+        } else {
+          std::fs::remove_file(&path)?;
+        }
       }
     } else {
       std::fs::remove_dir(&path)?;
