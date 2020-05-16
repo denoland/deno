@@ -546,6 +546,11 @@ class Host implements ts.CompilerHost {
     return moduleNames.map((specifier) => {
       const maybeUrl = SourceFile.getResolvedUrl(specifier, containingFile);
 
+      util.log("compiler::host.resolveModulenames receiverd", {
+        maybeUrl,
+        sf: SourceFile.getCached(maybeUrl!),
+      });
+
       let sourceFile: SourceFile | undefined = undefined;
 
       if (specifier.startsWith(ASSETS)) {
@@ -754,6 +759,58 @@ async function processImports(
     }
   }
   return resolvedSources;
+}
+
+function buildLocalSourceFileCache(
+  sourceFileMap: Record<string, SourceFileMapEntry>
+): void {
+  for (const entry of Object.values(sourceFileMap)) {
+    assert(entry.sourceCode.length > 0);
+    SourceFile.addToCache({
+      url: entry.url,
+      filename: entry.url,
+      mediaType: getMediaType(entry.url),
+      sourceCode: entry.sourceCode,
+    });
+
+    for (const importDesc of entry.imports) {
+      let mappedUrl = importDesc.resolvedSpecifier;
+      const importedFile = sourceFileMap[importDesc.resolvedSpecifier];
+      assert(importedFile);
+      const isJsOrJsx =
+        importedFile.mediaType === MediaType.JavaScript ||
+        importedFile.mediaType === MediaType.JSX;
+      // If JS or JSX perform substitution for types if available
+      if (isJsOrJsx) {
+        if (importedFile.typeHeaders.length > 0) {
+          const typeHeaders = importedFile.typeHeaders[0];
+          mappedUrl = typeHeaders.resolvedSpecifier;
+        } else if (importDesc.resolvedTypeDirective) {
+          mappedUrl = importDesc.resolvedTypeDirective;
+        } else if (importedFile.typesDirectives.length > 0) {
+          const typeDirective = importedFile.typesDirectives[0];
+          mappedUrl = typeDirective.resolvedSpecifier;
+        }
+      }
+
+      mappedUrl = mappedUrl.replace("memory://", "");
+      SourceFile.cacheResolvedUrl(mappedUrl, importDesc.specifier, entry.url);
+    }
+    for (const fileRef of entry.referencedFiles) {
+      SourceFile.cacheResolvedUrl(
+        fileRef.resolvedSpecifier.replace("memory://", ""),
+        fileRef.specifier,
+        entry.url
+      );
+    }
+    for (const fileRef of entry.libDirectives) {
+      SourceFile.cacheResolvedUrl(
+        fileRef.resolvedSpecifier.replace("memory://", ""),
+        fileRef.specifier,
+        entry.url
+      );
+    }
+  }
 }
 
 function buildSourceFileCache(
@@ -1326,7 +1383,7 @@ interface CompilerRequestRuntimeCompileNew {
   type: CompilerRequestType.RuntimeCompileNew;
   target: CompilerHostTarget;
   rootNames: string[];
-  sourceFileMap: Record<string, SourceFileMapEntry>,
+  sourceFileMap: Record<string, SourceFileMapEntry>;
   unstable?: boolean;
   bundle?: boolean;
   options?: string;
@@ -1577,10 +1634,17 @@ async function compile(
   return result;
 }
 
-async function runtimeCompileNew(
+function runtimeCompileNew(
   request: CompilerRequestRuntimeCompileNew
-): Promise<RuntimeCompileResult | RuntimeBundleResult> {
-  const { bundle, options, rootNames, target, unstable, sourceFileMap } = request;
+): RuntimeCompileResult | RuntimeBundleResult {
+  const {
+    bundle,
+    options,
+    rootNames,
+    target,
+    unstable,
+    sourceFileMap,
+  } = request;
 
   util.log(">>> runtime compile start", {
     rootNames,
@@ -1595,7 +1659,7 @@ async function runtimeCompileNew(
     convertedOptions = result.options;
   }
 
-  buildSourceFileCache(sourceFileMap);
+  buildLocalSourceFileCache(sourceFileMap);
 
   const state: WriteFileState = {
     type: request.type,
@@ -1676,7 +1740,6 @@ async function runtimeCompileNew(
     } as RuntimeCompileResult;
   }
 }
-
 
 async function runtimeCompile(
   request: CompilerRequestRuntimeCompile
@@ -1875,7 +1938,7 @@ async function tsCompilerOnMessage({
       break;
     }
     case CompilerRequestType.RuntimeCompileNew: {
-      const result = await runtimeCompileNew(
+      const result = runtimeCompileNew(
         request as CompilerRequestRuntimeCompileNew
       );
       globalThis.postMessage(result);

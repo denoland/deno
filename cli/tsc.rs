@@ -908,33 +908,38 @@ pub async fn new_runtime_compile<S: BuildHasher>(
   );
 
   if let Some(s_map) = sources {
+    root_names.push(root_name.to_string());
     module_graph_loader.build_local_graph(root_name, s_map)?;
   } else {
-    let module_specifier = ModuleSpecifier::resolve_import(root_name, "<unknown>")?;
+    let module_specifier =
+      ModuleSpecifier::resolve_import(root_name, "<unknown>")?;
     root_names.push(module_specifier.to_string());
     module_graph_loader.add_to_graph(&module_specifier).await?;
-      
-    
-    // TODO: download all additional files from TSconfig and add them to root_names
-    if let Some(options) = maybe_options {
-      let options_json: serde_json::Value = serde_json::from_str(options)?;
-      if let Some(types_option) = options_json.get("types") {
-        let types_arr = types_option.as_array().expect("types is not an array");
+  }
 
-        for type_value in types_arr {
-          let type_str = type_value.as_str().expect("type is not a string").to_string();
-          let type_specifier = ModuleSpecifier::resolve_url(&type_str)?;
-          module_graph_loader.add_to_graph(&type_specifier).await?;
-          root_names.push(type_specifier.to_string())
-        }
+  // TODO: download all additional files from TSconfig and add them to root_names
+  if let Some(options) = maybe_options {
+    let options_json: serde_json::Value = serde_json::from_str(options)?;
+    if let Some(types_option) = options_json.get("types") {
+      let types_arr = types_option.as_array().expect("types is not an array");
+
+      for type_value in types_arr {
+        let type_str = type_value
+          .as_str()
+          .expect("type is not a string")
+          .to_string();
+        let type_specifier = ModuleSpecifier::resolve_url_or_path(&type_str)?;
+        module_graph_loader.add_to_graph(&type_specifier).await?;
+        root_names.push(type_specifier.to_string())
       }
     }
   }
-  
+
   let module_graph = module_graph_loader.get_graph();
   let module_graph_json =
     serde_json::to_value(module_graph).expect("Failed to serialize data");
 
+  // eprintln!("source graph {:#?}", module_graph_json);
   let req_msg = json!({
     "type": msg::CompilerRequestType::RuntimeCompileNew as i32,
     "target": "runtime",
@@ -965,6 +970,7 @@ pub async fn new_runtime_compile<S: BuildHasher>(
     compiler.cache_emitted_files(response.emit_map)?;
   }
 
+  // eprintln!("returned {:#?}", json_str);
   // We're returning `Ok()` instead of `Err()` because it's not runtime
   // error if there were diagnostics produces; we want to let user handle
   // diagnostics in the runtime.

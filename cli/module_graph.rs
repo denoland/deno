@@ -18,6 +18,7 @@ use futures::FutureExt;
 use serde::Serialize;
 use serde::Serializer;
 use std::collections::HashMap;
+use std::hash::BuildHasher;
 use std::pin::Pin;
 
 fn serialize_module_specifier<S>(
@@ -133,30 +134,119 @@ impl ModuleGraphLoader {
     Ok(())
   }
 
-  pub fn build_local_graph(
+  pub fn build_local_graph<S: BuildHasher>(
     &mut self,
     root_name: &str,
-    source_map: HashMap<String, String>,
+    source_map: &HashMap<String, String, S>,
   ) -> Result<(), ErrBox> {
-    for spec, source_code in source_map {
-      
-    }
-
-    self.download_module(specifier.clone(), None)?;
-
-    loop {
-      let load_result = self.pending_downloads.next().await.unwrap();
-      let source_file = load_result?;
-      let spec = ModuleSpecifier::from(source_file.url.clone());
-      self.visit_module(&spec, source_file)?;
-      if self.pending_downloads.is_empty() {
-        break;
-      }
+    for (spec, source_code) in source_map.iter() {
+      self.visit_memory_module(spec.to_string(), source_code.to_string());
     }
 
     Ok(())
   }
 
+  fn visit_memory_module(
+    &mut self,
+    specifier: String,
+    source_code: String,
+  ) -> Result<(), ErrBox> {
+    let mut imports = vec![];
+    let mut referenced_files = vec![];
+    let mut lib_directives = vec![];
+    let mut types_directives = vec![];
+
+    let mut dummy_prefix = false;
+
+    let module_specifier = if specifier.starts_with('/') {
+      dummy_prefix = true;
+      ModuleSpecifier::resolve_url(&format!("memory://{}", specifier))
+    } else {
+      ModuleSpecifier::resolve_url(&specifier)
+    }?;
+
+    let (import_descs, ref_descs) =
+      analyze_dependencies_and_references(&source_code, true)?;
+
+    for import_desc in import_descs {
+      let maybe_resolved =
+        if let Some(import_map) = self.maybe_import_map.as_ref() {
+          import_map
+            .resolve(&import_desc.specifier, &module_specifier.to_string())?
+        } else {
+          None
+        };
+
+      let resolved_specifier = if let Some(resolved) = maybe_resolved {
+        resolved
+      } else {
+        ModuleSpecifier::resolve_import(
+          &import_desc.specifier,
+          &module_specifier.to_string(),
+        )?
+      };
+
+      let resolved_type_directive =
+        if let Some(types_specifier) = import_desc.deno_types.as_ref() {
+          Some(ModuleSpecifier::resolve_import(
+            &types_specifier,
+            &module_specifier.to_string(),
+          )?)
+        } else {
+          None
+        };
+
+      let import_descriptor = ImportDescriptor {
+        specifier: import_desc.specifier.to_string(),
+        resolved_specifier,
+        type_directive: import_desc.deno_types,
+        resolved_type_directive,
+      };
+
+      imports.push(import_descriptor);
+    }
+
+    for ref_desc in ref_descs {
+      let resolved_specifier = ModuleSpecifier::resolve_import(
+        &ref_desc.specifier,
+        &module_specifier.to_string(),
+      )?;
+      let reference_descriptor = ReferenceDescriptor {
+        specifier: ref_desc.specifier.to_string(),
+        resolved_specifier,
+      };
+
+      match ref_desc.kind {
+        TsReferenceKind::Lib => {
+          lib_directives.push(reference_descriptor);
+        }
+        TsReferenceKind::Types => {
+          types_directives.push(reference_descriptor);
+        }
+        TsReferenceKind::Path => {
+          referenced_files.push(reference_descriptor);
+        }
+      }
+    }
+
+    self.graph.0.insert(
+      module_specifier.to_string(),
+      ModuleGraphFile {
+        specifier: specifier.to_string(),
+        url: specifier.to_string(),
+        filename: specifier,
+        // ignored, it's set in TS worker
+        media_type: MediaType::JavaScript as i32,
+        source_code,
+        imports,
+        referenced_files,
+        lib_directives,
+        types_directives,
+        type_headers: vec![],
+      },
+    );
+    Ok(())
+  }
 
   // TODO: remove
   pub async fn build_graph(
@@ -178,9 +268,7 @@ impl ModuleGraphLoader {
     Ok(self.graph.0)
   }
 
-  pub fn get_graph(
-    self,
-  ) -> HashMap<String, ModuleGraphFile> {
+  pub fn get_graph(self) -> HashMap<String, ModuleGraphFile> {
     self.graph.0
   }
 
