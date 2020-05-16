@@ -39,7 +39,7 @@ This is an exemple on how to whitelist hosts/urls:
 $ deno run --allow-net=deno.land https://deno.land/std/examples/curl.ts https://deno.land/ fetch.ts
 ```
 
-To allow net calls to any host / url use:
+Allow net calls to any host/url:
 ```shell
 $ deno run --allow-net fetch.ts
 ```
