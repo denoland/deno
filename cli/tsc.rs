@@ -365,6 +365,7 @@ impl TsCompiler {
       import_map,
       permissions.clone(),
       false,
+      true,
     );
     let module_graph =
       module_graph_loader.build_graph(&module_specifier).await?;
@@ -527,6 +528,7 @@ impl TsCompiler {
       import_map,
       permissions.clone(),
       is_dyn_import,
+      false,
     );
     let module_graph =
       module_graph_loader.build_graph(&module_specifier).await?;
@@ -904,6 +906,7 @@ pub async fn runtime_compile<S: BuildHasher>(
     global_state.file_fetcher.clone(),
     None,
     permissions.clone(),
+    false,
     false,
   );
 

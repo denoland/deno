@@ -332,6 +332,7 @@ const a = await import("./" + "buzz.ts");
 #[derive(Clone, Debug, PartialEq)]
 enum DependencyKind {
   Import,
+  DynamicImport,
   Export,
 }
 
@@ -387,6 +388,46 @@ impl Visit for NewDependencyVisitor {
       span: export_all.span,
     });
   }
+
+  fn visit_call_expr(
+    &mut self,
+    call_expr: &swc_ecma_ast::CallExpr,
+    parent: &dyn Node,
+  ) {
+    use swc_ecma_ast::Expr::*;
+    use swc_ecma_ast::ExprOrSuper::*;
+
+    swc_ecma_visit::visit_call_expr(self, call_expr, parent);
+    let boxed_expr = match call_expr.callee.clone() {
+      Super(_) => return,
+      Expr(boxed) => boxed,
+    };
+
+    match &*boxed_expr {
+      Ident(ident) => {
+        if &ident.sym.to_string() != "import" {
+          return;
+        }
+      }
+      _ => return,
+    };
+
+    if let Some(arg) = call_expr.args.get(0) {
+      match &*arg.expr {
+        Lit(lit) => {
+          if let swc_ecma_ast::Lit::Str(str_) = lit {
+            let src_str = str_.value.to_string();
+            self.dependencies.push(DependencyDescriptor {
+              specifier: src_str,
+              kind: DependencyKind::DynamicImport,
+              span: call_expr.span,
+            });
+          }
+        }
+        _ => return,
+      }
+    }
+  }
 }
 
 fn get_deno_types(parser: &AstParser, span: Span) -> Option<String> {
@@ -437,7 +478,6 @@ pub struct TsReferenceDescriptor {
   pub specifier: String,
 }
 
-#[allow(unused)]
 pub fn analyze_dependencies_and_references(
   source_code: &str,
   analyze_dynamic_imports: bool,
@@ -459,6 +499,13 @@ pub fn analyze_dependencies_and_references(
     // for each import check if there's relevant @deno-types directive
     let imports = dependency_descriptors
       .iter()
+      .filter(|desc| {
+        if analyze_dynamic_imports {
+          return true;
+        }
+
+        desc.kind != DependencyKind::DynamicImport
+      })
       .map(|mut desc| {
         if desc.kind == DependencyKind::Import {
           let deno_types = get_deno_types(&parser, desc.span);

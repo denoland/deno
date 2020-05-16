@@ -95,6 +95,7 @@ pub struct ModuleGraphLoader {
   to_visit: Vec<(ModuleSpecifier, Option<ModuleSpecifier>)>,
   pub graph: ModuleGraph,
   is_dyn_import: bool,
+  analyze_dynamic_imports: bool,
 }
 
 impl ModuleGraphLoader {
@@ -103,6 +104,7 @@ impl ModuleGraphLoader {
     maybe_import_map: Option<ImportMap>,
     permissions: Permissions,
     is_dyn_import: bool,
+    analyze_dynamic_imports: bool,
   ) -> Self {
     Self {
       file_fetcher,
@@ -112,6 +114,7 @@ impl ModuleGraphLoader {
       pending_downloads: FuturesUnordered::new(),
       graph: ModuleGraph(HashMap::new()),
       is_dyn_import,
+      analyze_dynamic_imports,
     }
   }
 
@@ -168,8 +171,10 @@ impl ModuleGraphLoader {
       ModuleSpecifier::resolve_url(&specifier)
     }?;
 
-    let (import_descs, ref_descs) =
-      analyze_dependencies_and_references(&source_code, true)?;
+    let (import_descs, ref_descs) = analyze_dependencies_and_references(
+      &source_code,
+      self.analyze_dynamic_imports,
+    )?;
 
     for import_desc in import_descs {
       let maybe_resolved =
@@ -350,8 +355,10 @@ impl ModuleGraphLoader {
         type_headers.push(type_header);
       }
 
-      let (import_descs, ref_descs) =
-        analyze_dependencies_and_references(&source_code, true)?;
+      let (import_descs, ref_descs) = analyze_dependencies_and_references(
+        &source_code,
+        self.analyze_dynamic_imports,
+      )?;
 
       for import_desc in import_descs {
         let maybe_resolved =
@@ -482,6 +489,7 @@ mod tests {
       None,
       Permissions::allow_all(),
       false,
+      false,
     );
     let graph = graph_loader.build_graph(&module_specifier).await.unwrap();
 
@@ -554,6 +562,7 @@ mod tests {
       None,
       Permissions::allow_all(),
       false,
+      false,
     );
     let graph = graph_loader.build_graph(&module_specifier).await.unwrap();
 
@@ -592,6 +601,7 @@ mod tests {
       global_state.file_fetcher.clone(),
       None,
       Permissions::allow_all(),
+      false,
       false,
     );
     let graph = graph_loader.build_graph(&module_specifier).await.unwrap();
@@ -689,6 +699,7 @@ mod tests {
       None,
       Permissions::allow_all(),
       false,
+      false,
     );
     let graph = graph_loader.build_graph(&module_specifier).await.unwrap();
 
@@ -753,6 +764,7 @@ mod tests {
       global_state.file_fetcher.clone(),
       None,
       Permissions::allow_all(),
+      false,
       false,
     );
     let graph = graph_loader.build_graph(&module_specifier).await.unwrap();
