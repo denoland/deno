@@ -193,19 +193,15 @@ struct MaybeMetadata {
 }
 
 impl CompiledFileMetadata {
-  pub fn from_json_string(metadata_string: String) -> Option<Self> {
-    if let Ok(metadata) =
-      serde_json::from_str::<MaybeMetadata>(&metadata_string)
-    {
-      let source_path = PathBuf::from(&metadata.source_path);
-
-      return Some(CompiledFileMetadata {
-        source_path,
+  pub fn from_json_string(
+    metadata_string: String,
+  ) -> Result<Self, serde_json::Error> {
+    serde_json::from_str::<MaybeMetadata>(&metadata_string).map(|metadata| {
+      CompiledFileMetadata {
+        source_path: metadata.source_path.into(),
         version_hash: metadata.version_hash,
-      });
-    }
-
-    None
+      }
+    })
   }
 
   pub fn to_json_string(&self) -> Result<String, serde_json::Error> {
@@ -213,10 +209,10 @@ impl CompiledFileMetadata {
       source_path: self.source_path.to_str().unwrap().to_string(),
       version_hash: self.version_hash.clone(),
     };
-
     serde_json::to_string(&metadata)
   }
 }
+
 /// Creates the JSON message send to compiler.ts's onmessage.
 fn req(
   request_type: msg::CompilerRequestType,
@@ -520,7 +516,7 @@ impl TsCompiler {
       .get_cache_filename_with_extension(url, "meta");
     if let Ok(metadata_bytes) = self.disk_cache.get(&cache_key) {
       if let Ok(metadata) = std::str::from_utf8(&metadata_bytes) {
-        if let Some(read_metadata) =
+        if let Ok(read_metadata) =
           CompiledFileMetadata::from_json_string(metadata.to_string())
         {
           return Some(read_metadata);
