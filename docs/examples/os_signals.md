@@ -3,7 +3,7 @@
 > This program makes use of an unstable Deno feature. Learn more about
 > [unstable features](../runtime/stability.md).
 
-[API Reference](https://deno.land/typedoc/index.html#signal)
+[API Reference](https://doc.deno.land/https/raw.githubusercontent.com/denoland/deno/master/cli/js/lib.deno.unstable.d.ts#Deno.signal)
 
 You can use `Deno.signal()` function for handling OS signals.
 
