@@ -627,9 +627,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-typescript"
-version = "0.17.2"
+version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9e945fe5978d1cb0edddf522dc360c8a5d691ecd2fe98a9de74efb3997ed0ec6"
+checksum = "333c186929ffefda1e2db1f58a3ee5802e0a79b0fb7c4d7dad88eb8961472da9"
 dependencies = [
  "dprint-core",
  "serde",
@@ -2435,9 +2435,9 @@ dependencies = [
 
 [[package]]
 name = "swc_ecma_ast"
-version = "0.18.1"
+version = "0.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "31fb43e08500984ecb795ac12cc41a7dac3e55cc649a5e576fd808917a35a525"
+checksum = "08e034fd0f2a837f23fee9e7f92d0b2bd916638fde7d40dddbddcb37389b5c5d"
 dependencies = [
  "enum_kind",
  "num-bigint",
@@ -2449,9 +2449,9 @@ dependencies = [
 
 [[package]]
 name = "swc_ecma_parser"
-version = "0.21.10"
+version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4eb9f7ffcb1d0fac1a6002a5775ef56defcc44dff43e333bbe6fe3804062fde1"
+checksum = "78964f597535cfe7668bc1fb5043078656d151fe94e4b552114cc9e99bebca97"
 dependencies = [
  "either",
  "enum_kind",
@@ -2483,9 +2483,9 @@ dependencies = [
 
 [[package]]
 name = "swc_ecma_visit"
-version = "0.1.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2bdd4d87e6499ff8cc3b32981ab2a3917cea4002a0c4523868181f59d14f4638"
+checksum = "0704052df86db199bd917a9ad35d76b6bcb9a25bc9128a082530ce7f58ee9228"
 dependencies = [
  "num-bigint",
  "swc_atoms",
@@ -2496,9 +2496,9 @@ dependencies = [
 
 [[package]]
 name = "swc_ecma_visit_macros"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ceb3a3184ba505b3f94fa4132a72e754d361ad9913b7e0dc4f01ab38649a9d26"
+checksum = "9083af117bcb987631d99129ce57e634315267d84521fd562926135fa49bee38"
 dependencies = [
  "Inflector",
  "pmutil",
