@@ -394,7 +394,11 @@ fn op_remove(
 
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
+    #[cfg(not(unix))]
+    use std::os::windows::prelude::MetadataExt;
+
     let metadata = std::fs::symlink_metadata(&path)?;
+
     debug!("op_remove {} {}", path.display(), recursive);
     let file_type = metadata.file_type();
     if file_type.is_file() {
@@ -406,10 +410,13 @@ fn op_remove(
       std::fs::remove_file(&path)?;
       #[cfg(not(unix))]
       {
-        let is_symlink_dir = std::fs::metadata(&path)?.is_dir();
-        if is_symlink_dir {
+        use winapi::um::winnt::{
+          FILE_ATTRIBUTE_ARCHIVE, FILE_ATTRIBUTE_DIRECTORY,
+        };
+        let file_attributes = metadata.file_attributes();
+        if file_attributes & FILE_ATTRIBUTE_DIRECTORY != 0 {
           std::fs::remove_dir(&path)?;
-        } else {
+        } else if file_attributes & FILE_ATTRIBUTE_ARCHIVE != 0 {
           std::fs::remove_file(&path)?;
         }
       }
