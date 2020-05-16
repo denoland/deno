@@ -18,10 +18,8 @@ use crate::source_maps::SourceMapGetter;
 use crate::startup_data;
 use crate::state::exit_unstable;
 use crate::state::State;
-use crate::tokio_util;
 use crate::version;
 use crate::web_worker::WebWorker;
-use crate::web_worker::WebWorkerHandle;
 use crate::worker::WorkerEvent;
 use core::task::Context;
 use deno_core::Buf;
@@ -448,7 +446,8 @@ impl TsCompiler {
     let req_msg = j.to_string().into_boxed_str().into_boxed_bytes();
 
     let msg =
-      execute_in_thread(global_state.clone(), permissions, req_msg).await?;
+      execute_in_same_thread(global_state.clone(), permissions, req_msg)
+        .await?;
     let json_str = std::str::from_utf8(&msg).unwrap();
     debug!("Message: {}", json_str);
 
@@ -604,7 +603,8 @@ impl TsCompiler {
     let start = Instant::now();
 
     let msg =
-      execute_in_thread(global_state.clone(), permissions, req_msg).await?;
+      execute_in_same_thread(global_state.clone(), permissions, req_msg)
+        .await?;
 
     let end = Instant::now();
     debug!("time spent in compiler thread {:#?}", end - start);
@@ -907,32 +907,21 @@ impl TsCompiler {
   }
 }
 
-async fn execute_in_thread(
+async fn execute_in_same_thread(
   global_state: GlobalState,
   permissions: Permissions,
   req: Buf,
 ) -> Result<Buf, ErrBox> {
-  let (handle_sender, handle_receiver) =
-    std::sync::mpsc::sync_channel::<Result<WebWorkerHandle, ErrBox>>(1);
-  let builder =
-    std::thread::Builder::new().name("deno-ts-compiler".to_string());
-  let join_handle = builder.spawn(move || {
-    let worker = TsCompiler::setup_worker(global_state.clone(), permissions);
-    handle_sender.send(Ok(worker.thread_safe_handle())).unwrap();
-    drop(handle_sender);
-    tokio_util::run_basic(worker).expect("Panic in event loop");
-  })?;
-  let handle = handle_receiver.recv().unwrap()?;
+  let worker = TsCompiler::setup_worker(global_state.clone(), permissions);
+  let handle = worker.thread_safe_handle();
   handle.post_message(req)?;
+  worker.await?;
   let event = handle.get_event().await.expect("Compiler didn't respond");
   let buf = match event {
     WorkerEvent::Message(buf) => Ok(buf),
     WorkerEvent::Error(error) => Err(error),
     WorkerEvent::TerminalError(error) => Err(error),
   }?;
-  // Shutdown worker and wait for thread to finish
-  handle.terminate();
-  join_handle.join().unwrap();
   Ok(buf)
 }
 
@@ -1002,7 +991,7 @@ pub async fn runtime_compile<S: BuildHasher>(
 
   let compiler = global_state.ts_compiler.clone();
 
-  let msg = execute_in_thread(global_state, permissions, req_msg).await?;
+  let msg = execute_in_same_thread(global_state, permissions, req_msg).await?;
   let json_str = std::str::from_utf8(&msg).unwrap();
 
   // TODO(bartlomieju): factor `bundle` path into separate function `runtime_bundle`
@@ -1040,7 +1029,7 @@ pub async fn runtime_transpile<S: BuildHasher>(
   .into_boxed_str()
   .into_boxed_bytes();
 
-  let msg = execute_in_thread(global_state, permissions, req_msg).await?;
+  let msg = execute_in_same_thread(global_state, permissions, req_msg).await?;
   let json_str = std::str::from_utf8(&msg).unwrap();
   let v = serde_json::from_str::<serde_json::Value>(json_str)
     .expect("Error decoding JSON string.");

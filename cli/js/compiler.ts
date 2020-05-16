@@ -1398,7 +1398,8 @@ async function tsCompilerOnMessage({
         } (${CompilerRequestType[(request as CompilerRequest).type]})`
       );
   }
-  // Currently Rust shuts down worker after single request
+  // Shutdown after single request
+  globalThis.close();
 }
 
 function bootstrapTsCompilerRuntime(): void {
