@@ -161,7 +161,7 @@ impl AstParser {
     self
       .comments
       .take_leading_comments(span.lo())
-      .unwrap_or_else(|| vec![])
+      .unwrap_or_else(Vec::new)
   }
 }
 
