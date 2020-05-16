@@ -1176,7 +1176,7 @@ fn reload_arg_parse(flags: &mut Flags, matches: &ArgMatches) {
   if let Some(cache_bl) = matches.values_of("reload") {
     let raw_cache_blacklist: Vec<String> =
       cache_bl.map(std::string::ToString::to_string).collect();
-    if raw_cache_blacklist.len() == 0 {
+    if raw_cache_blacklist.is_empty() {
       flags.reload = true;
     } else {
       flags.cache_blacklist = resolve_urls(raw_cache_blacklist);
@@ -1237,7 +1237,7 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   if let Some(read_wl) = matches.values_of("allow-read") {
     let raw_read_whitelist: Vec<PathBuf> = read_wl.map(PathBuf::from).collect();
 
-    if raw_read_whitelist.len() == 0 {
+    if raw_read_whitelist.is_empty() {
       flags.allow_read = true;
     } else {
       flags.read_whitelist = resolve_fs_whitelist(&raw_read_whitelist);
@@ -1249,7 +1249,7 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     let raw_write_whitelist: Vec<PathBuf> =
       write_wl.map(PathBuf::from).collect();
 
-    if raw_write_whitelist.len() == 0 {
+    if raw_write_whitelist.is_empty() {
       flags.allow_write = true;
     } else {
       flags.write_whitelist = resolve_fs_whitelist(&raw_write_whitelist);
@@ -1260,7 +1260,7 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   if let Some(net_wl) = matches.values_of("allow-net") {
     let raw_net_whitelist: Vec<String> =
       net_wl.map(std::string::ToString::to_string).collect();
-    if raw_net_whitelist.len() == 0 {
+    if raw_net_whitelist.is_empty() {
       flags.allow_net = true;
     } else {
       flags.net_whitelist = resolve_hosts(raw_net_whitelist);
