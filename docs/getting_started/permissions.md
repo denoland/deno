@@ -34,7 +34,7 @@ Granting permissions for network access:
 const result = await fetch("https://deno.land/");
 ```
 
-This is an example to allow multiple urls:
+This is an exemple on how to whitelist hosts/urls:
 ```shell
 $ deno run --allow-net=deno.land https://deno.land/std/examples/curl.ts https://deno.land/ fetch.ts
 ```
