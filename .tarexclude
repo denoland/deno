@@ -1,0 +1,8 @@
+.cargo_home
+".git*"
+deno_typescript/typescript/tests
+target
+third_party/cpplint
+third_party/node_modules
+third_party/prebuilt
+third_party/python_packages
