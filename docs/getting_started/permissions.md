@@ -34,7 +34,7 @@ $ deno run --allow-read=/etc https://deno.land/std/examples/cat.ts /etc/passwd
 const result = await fetch("https://deno.land/");
 ```
 
-This is an exemple on how to whitelist hosts/urls:
+This is an example on how to whitelist hosts/urls:
 ```shell
 $ deno run --allow-net=deno.land https://deno.land/std/examples/curl.ts https://deno.land/ fetch.ts
 ```
