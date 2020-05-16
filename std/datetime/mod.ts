@@ -38,6 +38,8 @@ export function parseDate(dateStr: string, format: DateFormat): Date {
   return new Date(Number(y), Number(m) - 1, Number(d));
 }
 
+
+
 export type DateTimeFormat =
   | "mm-dd-yyyy hh:mm"
   | "dd-mm-yyyy hh:mm"
@@ -113,6 +115,21 @@ export function currentDayOfYear(): number {
   return dayOfYear(new Date());
 }
 
+const months = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
+
 /**
  * Parse a date to return a IMF formated string date
  * RFC: https://tools.ietf.org/html/rfc7231#section-7.1.1.1
@@ -132,20 +149,6 @@ export function toIMF(date: Date): string {
   const s = dtPad(date.getUTCSeconds().toString());
   const y = date.getUTCFullYear();
   const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  const months = [
-    "Jan",
-    "Feb",
-    "Mar",
-    "Apr",
-    "May",
-    "Jun",
-    "Jul",
-    "Aug",
-    "Sep",
-    "Oct",
-    "Nov",
-    "Dec",
-  ];
   return `${days[date.getUTCDay()]}, ${d} ${
     months[date.getUTCMonth()]
   } ${y} ${h}:${min}:${s} GMT`;
