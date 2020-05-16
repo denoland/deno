@@ -17,38 +17,11 @@ import { CompilerOptions } from "./compiler_options.ts";
 import { Diagnostic, DiagnosticItem } from "./diagnostics.ts";
 import { fromTypeScriptDiagnostic } from "./diagnostics_util.ts";
 import { TranspileOnlyResult } from "./ops/runtime_compiler.ts";
-import { sendAsync, sendSync } from "./ops/dispatch_json.ts";
 import { bootstrapWorkerRuntime } from "./runtime_worker.ts";
-import { assert, log } from "./util.ts";
+import { assert } from "./util.ts";
 import * as util from "./util.ts";
 import { TextDecoder, TextEncoder } from "./web/text_encoding.ts";
 import { core } from "./core.ts";
-
-export function resolveModules(
-  specifiers: string[],
-  referrer?: string
-): string[] {
-  util.log("compiler::resolveModules", { specifiers, referrer });
-  return sendSync("op_resolve_modules", { specifiers, referrer });
-}
-
-export function fetchSourceFiles(
-  specifiers: string[],
-  referrer?: string
-): Promise<
-  Array<{
-    url: string;
-    filename: string;
-    mediaType: number;
-    sourceCode: string;
-  }>
-> {
-  util.log("compiler::fetchSourceFiles", { specifiers, referrer });
-  return sendAsync("op_fetch_source_files", {
-    specifiers,
-    referrer,
-  });
-}
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -261,75 +234,6 @@ class SourceFile {
   constructor(json: SourceFileJson) {
     Object.assign(this, json);
     this.extension = getExtension(this.url, this.mediaType);
-  }
-
-  imports(processJsImports: boolean): SourceFileSpecifierMap[] {
-    if (this.processed) {
-      throw new Error("SourceFile has already been processed.");
-    }
-    assert(this.sourceCode != null);
-    // we shouldn't process imports for files which contain the nocheck pragma
-    // (like bundles)
-    if (this.sourceCode.match(/\/{2}\s+@ts-nocheck/)) {
-      log(`Skipping imports for "${this.filename}"`);
-      return [];
-    }
-
-    const readImportFiles = true;
-    const isJsOrJsx =
-      this.mediaType === MediaType.JavaScript ||
-      this.mediaType === MediaType.JSX;
-    const detectJsImports = isJsOrJsx;
-
-    const preProcessedFileInfo = ts.preProcessFile(
-      this.sourceCode,
-      readImportFiles,
-      detectJsImports
-    );
-    this.processed = true;
-    const files: SourceFileSpecifierMap[] = [];
-
-    function process(references: Array<{ fileName: string }>): void {
-      for (const { fileName } of references) {
-        files.push({ original: fileName, mapped: fileName });
-      }
-    }
-
-    const {
-      importedFiles,
-      referencedFiles,
-      libReferenceDirectives,
-      typeReferenceDirectives,
-    } = preProcessedFileInfo;
-    const typeDirectives = parseTypeDirectives(this.sourceCode);
-
-    if (typeDirectives) {
-      for (const importedFile of importedFiles) {
-        // If there's a type directive for current processed file; then we provide
-        // different `mapped` specifier.
-        const mappedModuleName = getMappedModuleName(
-          importedFile,
-          typeDirectives
-        );
-        files.push({
-          original: importedFile.fileName,
-          mapped: mappedModuleName ?? importedFile.fileName,
-        });
-      }
-    } else if (processJsImports || !isJsOrJsx) {
-      process(importedFiles);
-    }
-    process(referencedFiles);
-    // built in libs comes across as `"dom"` for example, and should be filtered
-    // out during pre-processing as they are either already cached or they will
-    // be lazily fetched by the compiler host.  Ones that contain full files are
-    // not filtered out and will be fetched as normal.
-    const filteredLibs = libReferenceDirectives.filter(
-      ({ fileName }) => !ts.libMap.has(fileName.toLowerCase())
-    );
-    process(filteredLibs);
-    process(typeReferenceDirectives);
-    return files;
   }
 
   static addToCache(json: SourceFileJson): SourceFile {
@@ -637,25 +541,6 @@ const TS_SNAPSHOT_PROGRAM = ts.createProgram({
 // This function is called only during snapshotting process
 const SYSTEM_LOADER = getAsset("system_loader.js");
 
-function resolveSpecifier(specifier: string, referrer: string): string {
-  // The resolveModules op only handles fully qualified URLs for referrer.
-  // However we will have cases where referrer is "/foo.ts". We add this dummy
-  // prefix "file://" in order to use the op.
-  // TODO(ry) Maybe we should perhaps ModuleSpecifier::resolve_import() to
-  // handle this situation.
-  let dummyPrefix = false;
-  const prefix = "file://";
-  if (referrer.startsWith("/")) {
-    dummyPrefix = true;
-    referrer = prefix + referrer;
-  }
-  let r = resolveModules([specifier], referrer)[0];
-  if (dummyPrefix) {
-    r = r.replace(prefix, "");
-  }
-  return r;
-}
-
 function getMediaType(filename: string): MediaType {
   const maybeExtension = /\.([a-zA-Z]+)$/.exec(filename);
   if (!maybeExtension) {
@@ -678,87 +563,6 @@ function getMediaType(filename: string): MediaType {
       util.log(`!!! Unknown extension: "${extension}"`);
       return MediaType.Unknown;
   }
-}
-
-function processLocalImports(
-  sources: Record<string, string>,
-  specifiers: SourceFileSpecifierMap[],
-  referrer?: string,
-  processJsImports = false
-): string[] {
-  if (!specifiers.length) {
-    return [];
-  }
-  const moduleNames = specifiers.map((specifierMap) => {
-    if (referrer) {
-      return resolveSpecifier(specifierMap.mapped, referrer);
-    } else {
-      return specifierMap.mapped;
-    }
-  });
-
-  for (let i = 0; i < moduleNames.length; i++) {
-    const moduleName = moduleNames[i];
-    const specifierMap = specifiers[i];
-    assert(moduleName in sources, `Missing module in sources: "${moduleName}"`);
-    let sourceFile = SourceFile.getCached(moduleName);
-    if (typeof sourceFile === "undefined") {
-      sourceFile = SourceFile.addToCache({
-        url: moduleName,
-        filename: moduleName,
-        sourceCode: sources[moduleName],
-        mediaType: getMediaType(moduleName),
-      });
-    }
-    assert(sourceFile);
-    SourceFile.cacheResolvedUrl(
-      sourceFile.url,
-      specifierMap.original,
-      referrer
-    );
-    if (!sourceFile.processed) {
-      processLocalImports(
-        sources,
-        sourceFile.imports(processJsImports),
-        sourceFile.url,
-        processJsImports
-      );
-    }
-  }
-  return moduleNames;
-}
-
-async function processImports(
-  specifiers: SourceFileSpecifierMap[],
-  referrer?: string,
-  processJsImports = false
-): Promise<string[]> {
-  if (!specifiers.length) {
-    return [];
-  }
-  const sources = specifiers.map(({ mapped }) => mapped);
-  const resolvedSources = resolveModules(sources, referrer);
-  const sourceFiles = await fetchSourceFiles(resolvedSources, referrer);
-  assert(sourceFiles.length === specifiers.length);
-  for (let i = 0; i < sourceFiles.length; i++) {
-    const specifierMap = specifiers[i];
-    const sourceFileJson = sourceFiles[i];
-    let sourceFile = SourceFile.getCached(sourceFileJson.url);
-    if (typeof sourceFile === "undefined") {
-      sourceFile = SourceFile.addToCache(sourceFileJson);
-    }
-    assert(sourceFile);
-    SourceFile.cacheResolvedUrl(
-      sourceFile.url,
-      specifierMap.original,
-      referrer
-    );
-    if (!sourceFile.processed) {
-      const sourceFileImports = sourceFile.imports(processJsImports);
-      await processImports(sourceFileImports, sourceFile.url, processJsImports);
-    }
-  }
-  return resolvedSources;
 }
 
 function buildLocalSourceFileCache(
@@ -864,76 +668,6 @@ function buildSourceFileCache(
   }
 }
 
-interface FileReference {
-  fileName: string;
-  pos: number;
-  end: number;
-}
-
-function getMappedModuleName(
-  source: FileReference,
-  typeDirectives: Map<FileReference, string>
-): string | undefined {
-  const { fileName: sourceFileName, pos: sourcePos } = source;
-  for (const [{ fileName, pos }, value] of typeDirectives.entries()) {
-    if (sourceFileName === fileName && sourcePos === pos) {
-      return value;
-    }
-  }
-  return undefined;
-}
-
-const typeDirectiveRegEx = /@deno-types\s*=\s*(["'])((?:(?=(\\?))\3.)*?)\1/gi;
-
-const importExportRegEx = /(?:import|export)(?:\s+|\s+[\s\S]*?from\s+)?(["'])((?:(?=(\\?))\3.)*?)\1/;
-
-function parseTypeDirectives(
-  sourceCode: string | undefined
-): Map<FileReference, string> | undefined {
-  if (!sourceCode) {
-    return;
-  }
-
-  // collect all the directives in the file and their start and end positions
-  const directives: FileReference[] = [];
-  let maybeMatch: RegExpExecArray | null = null;
-  while ((maybeMatch = typeDirectiveRegEx.exec(sourceCode))) {
-    const [matchString, , fileName] = maybeMatch;
-    const { index: pos } = maybeMatch;
-    directives.push({
-      fileName,
-      pos,
-      end: pos + matchString.length,
-    });
-  }
-  if (!directives.length) {
-    return;
-  }
-
-  // work from the last directive backwards for the next `import`/`export`
-  // statement
-  directives.reverse();
-  const results = new Map<FileReference, string>();
-  for (const { end, fileName, pos } of directives) {
-    const searchString = sourceCode.substring(end);
-    const maybeMatch = importExportRegEx.exec(searchString);
-    if (maybeMatch) {
-      const [matchString, , targetFileName] = maybeMatch;
-      const targetPos =
-        end + maybeMatch.index + matchString.indexOf(targetFileName) - 1;
-      const target: FileReference = {
-        fileName: targetFileName,
-        pos: targetPos,
-        end: targetPos + targetFileName.length,
-      };
-      results.set(target, fileName);
-    }
-    sourceCode = sourceCode.substring(0, pos);
-  }
-
-  return results;
-}
-
 interface EmmitedSource {
   // original filename
   filename: string;
@@ -963,8 +697,6 @@ enum CompilerRequestType {
   Compile = 0,
   RuntimeCompile = 1,
   RuntimeTranspile = 2,
-  CompileNew = 3,
-  RuntimeCompileNew = 4,
 }
 
 // TODO(bartlomieju): probably could be defined inline?
@@ -1319,19 +1051,6 @@ function setRootExports(program: ts.Program, rootModule: string): void {
     .map((sym) => sym.getName());
 }
 
-interface CompilerRequestCompile {
-  type: CompilerRequestType.Compile;
-  target: CompilerHostTarget;
-  rootNames: string[];
-  // TODO(ry) add compiler config to this interface.
-  // options: ts.CompilerOptions;
-  configPath?: string;
-  config?: string;
-  unstable: boolean;
-  bundle: boolean;
-  cwd: string;
-}
-
 interface ImportDescriptor {
   specifier: string;
   resolvedSpecifier: string;
@@ -1356,8 +1075,8 @@ interface SourceFileMapEntry {
   typeHeaders: ReferenceDescriptor[];
 }
 
-interface CompilerRequestCompileNew {
-  type: CompilerRequestType.CompileNew;
+interface CompilerRequestCompile {
+  type: CompilerRequestType.Compile;
   target: CompilerHostTarget;
   rootNames: string[];
   configPath?: string;
@@ -1371,16 +1090,6 @@ interface CompilerRequestCompileNew {
 
 interface CompilerRequestRuntimeCompile {
   type: CompilerRequestType.RuntimeCompile;
-  target: CompilerHostTarget;
-  rootName: string;
-  sources?: Record<string, string>;
-  unstable?: boolean;
-  bundle?: boolean;
-  options?: string;
-}
-
-interface CompilerRequestRuntimeCompileNew {
-  type: CompilerRequestType.RuntimeCompileNew;
   target: CompilerHostTarget;
   rootNames: string[];
   sourceFileMap: Record<string, SourceFileMapEntry>;
@@ -1396,10 +1105,8 @@ interface CompilerRequestRuntimeTranspile {
 }
 
 type CompilerRequest =
-  | CompilerRequestCompileNew
   | CompilerRequestCompile
   | CompilerRequestRuntimeCompile
-  | CompilerRequestRuntimeCompileNew
   | CompilerRequestRuntimeTranspile;
 
 interface CompileResult {
@@ -1418,7 +1125,7 @@ interface RuntimeBundleResult {
   diagnostics: DiagnosticItem[];
 }
 
-function compileNew(request: CompilerRequestCompileNew): CompileResult {
+function compile(request: CompilerRequestCompile): CompileResult {
   const {
     bundle,
     config,
@@ -1522,120 +1229,8 @@ function compileNew(request: CompilerRequestCompileNew): CompileResult {
   return result;
 }
 
-async function compile(
-  request: CompilerRequestCompile
-): Promise<CompileResult> {
-  const {
-    bundle,
-    config,
-    configPath,
-    rootNames,
-    target,
-    unstable,
-    cwd,
-  } = request;
-  util.log(">>> compile start", {
-    rootNames,
-    type: CompilerRequestType[request.type],
-  });
-
-  // When a programme is emitted, TypeScript will call `writeFile` with
-  // each file that needs to be emitted.  The Deno compiler host delegates
-  // this, to make it easier to perform the right actions, which vary
-  // based a lot on the request.
-  const state: WriteFileState = {
-    type: request.type,
-    emitMap: {},
-    bundle,
-    host: undefined,
-    rootNames,
-  };
-  let writeFile: WriteFileCallback;
-  if (bundle) {
-    writeFile = createBundleWriteFile(state);
-  } else {
-    writeFile = createCompileWriteFile(state);
-  }
-  const host = (state.host = new Host({
-    bundle,
-    target,
-    writeFile,
-    unstable,
-  }));
-  let diagnostics: readonly ts.Diagnostic[] = [];
-
-  // if there is a configuration supplied, we need to parse that
-  if (config && config.length && configPath) {
-    const configResult = host.configure(cwd, configPath, config);
-    diagnostics = processConfigureResponse(configResult, configPath) || [];
-  }
-
-  // This will recursively analyse all the code for other imports,
-  // requesting those from the privileged side, populating the in memory
-  // cache which will be used by the host, before resolving.
-  const specifiers = rootNames.map((rootName) => {
-    return { original: rootName, mapped: rootName };
-  });
-  const resolvedRootModules = await processImports(
-    specifiers,
-    undefined,
-    bundle || host.getCompilationSettings().checkJs
-  );
-
-  // if there was a configuration and no diagnostics with it, we will continue
-  // to generate the program and possibly emit it.
-  if (diagnostics.length === 0) {
-    const options = host.getCompilationSettings();
-    const program = ts.createProgram({
-      rootNames,
-      options,
-      host,
-      oldProgram: TS_SNAPSHOT_PROGRAM,
-    });
-
-    diagnostics = ts
-      .getPreEmitDiagnostics(program)
-      .filter(({ code }) => !ignoredDiagnostics.includes(code));
-
-    // We will only proceed with the emit if there are no diagnostics.
-    if (diagnostics && diagnostics.length === 0) {
-      if (bundle) {
-        // we only support a single root module when bundling
-        assert(resolvedRootModules.length === 1);
-        setRootExports(program, resolvedRootModules[0]);
-      }
-      const emitResult = program.emit();
-      assert(emitResult.emitSkipped === false, "Unexpected skip of the emit.");
-      // emitResult.diagnostics is `readonly` in TS3.5+ and can't be assigned
-      // without casting.
-      diagnostics = emitResult.diagnostics;
-    }
-  }
-
-  let bundleOutput = undefined;
-
-  if (diagnostics && diagnostics.length === 0 && bundle) {
-    assert(state.bundleOutput);
-    bundleOutput = state.bundleOutput;
-  }
-
-  assert(state.emitMap);
-  const result: CompileResult = {
-    emitMap: state.emitMap,
-    bundleOutput,
-    diagnostics: fromTypeScriptDiagnostic(diagnostics),
-  };
-
-  util.log("<<< compile end", {
-    rootNames,
-    type: CompilerRequestType[request.type],
-  });
-
-  return result;
-}
-
-function runtimeCompileNew(
-  request: CompilerRequestRuntimeCompileNew
+function runtimeCompile(
+  request: CompilerRequestRuntimeCompile
 ): RuntimeCompileResult | RuntimeBundleResult {
   const {
     bundle,
@@ -1741,147 +1336,6 @@ function runtimeCompileNew(
   }
 }
 
-async function runtimeCompile(
-  request: CompilerRequestRuntimeCompile
-): Promise<RuntimeCompileResult | RuntimeBundleResult> {
-  const { bundle, options, rootName, sources, target, unstable } = request;
-
-  util.log(">>> runtime compile start", {
-    rootName,
-    bundle,
-    sources: sources ? Object.keys(sources) : undefined,
-  });
-
-  // resolve the root name, if there are sources, the root name does not
-  // get resolved
-  const resolvedRootName = sources ? rootName : resolveModules([rootName])[0];
-
-  // if there are options, convert them into TypeScript compiler options,
-  // and resolve any external file references
-  let convertedOptions: ts.CompilerOptions | undefined;
-  let additionalFiles: string[] | undefined;
-  if (options) {
-    const result = convertCompilerOptions(options);
-    convertedOptions = result.options;
-    additionalFiles = result.files;
-  }
-
-  const checkJsImports =
-    bundle || (convertedOptions && convertedOptions.checkJs);
-
-  // recursively process imports, loading each file into memory.  If there
-  // are sources, these files are pulled out of the there, otherwise the
-  // files are retrieved from the privileged side
-  const specifiers = [
-    {
-      original: resolvedRootName,
-      mapped: resolvedRootName,
-    },
-  ];
-  const rootNames = sources
-    ? processLocalImports(sources, specifiers, undefined, checkJsImports)
-    : await processImports(specifiers, undefined, checkJsImports);
-
-  if (additionalFiles) {
-    // any files supplied in the configuration are resolved externally,
-    // even if sources are provided
-    const resolvedNames = resolveModules(additionalFiles);
-    const resolvedSpecifiers = resolvedNames.map((rn) => {
-      return {
-        original: rn,
-        mapped: rn,
-      };
-    });
-    const additionalImports = await processImports(
-      resolvedSpecifiers,
-      undefined,
-      checkJsImports
-    );
-    rootNames.push(...additionalImports);
-  }
-
-  const state: WriteFileState = {
-    type: request.type,
-    bundle,
-    host: undefined,
-    rootNames,
-    sources,
-    emitMap: {},
-    bundleOutput: undefined,
-  };
-  let writeFile: WriteFileCallback;
-  if (bundle) {
-    writeFile = createBundleWriteFile(state);
-  } else {
-    writeFile = createCompileWriteFile(state);
-  }
-
-  const host = (state.host = new Host({
-    bundle,
-    target,
-    writeFile,
-  }));
-  const compilerOptions = [DEFAULT_RUNTIME_COMPILE_OPTIONS];
-  if (convertedOptions) {
-    compilerOptions.push(convertedOptions);
-  }
-  if (unstable) {
-    compilerOptions.push({
-      lib: [
-        "deno.unstable",
-        ...((convertedOptions && convertedOptions.lib) || ["deno.window"]),
-      ],
-    });
-  }
-  if (bundle) {
-    compilerOptions.push(DEFAULT_BUNDLER_OPTIONS);
-  }
-  host.mergeOptions(...compilerOptions);
-
-  const program = ts.createProgram({
-    rootNames,
-    options: host.getCompilationSettings(),
-    host,
-    oldProgram: TS_SNAPSHOT_PROGRAM,
-  });
-
-  if (bundle) {
-    setRootExports(program, rootNames[0]);
-  }
-
-  const diagnostics = ts
-    .getPreEmitDiagnostics(program)
-    .filter(({ code }) => !ignoredDiagnostics.includes(code));
-
-  const emitResult = program.emit();
-
-  assert(emitResult.emitSkipped === false, "Unexpected skip of the emit.");
-
-  assert(state.emitMap);
-  util.log("<<< runtime compile finish", {
-    rootName,
-    sources: sources ? Object.keys(sources) : undefined,
-    bundle,
-    emitMap: Object.keys(state.emitMap),
-  });
-
-  const maybeDiagnostics = diagnostics.length
-    ? fromTypeScriptDiagnostic(diagnostics).items
-    : [];
-
-  if (bundle) {
-    return {
-      diagnostics: maybeDiagnostics,
-      output: state.bundleOutput,
-    } as RuntimeBundleResult;
-  } else {
-    return {
-      diagnostics: maybeDiagnostics,
-      emitMap: state.emitMap,
-    } as RuntimeCompileResult;
-  }
-}
-
 function runtimeTranspile(
   request: CompilerRequestRuntimeTranspile
 ): Promise<Record<string, TranspileOnlyResult>> {
@@ -1915,13 +1369,8 @@ async function tsCompilerOnMessage({
 }): Promise<void> {
   switch (request.type) {
     case CompilerRequestType.Compile: {
-      const result = await compile(request as CompilerRequestCompile);
-      globalThis.postMessage(result);
-      break;
-    }
-    case CompilerRequestType.CompileNew: {
       const start = new Date();
-      const result = compileNew(request as CompilerRequestCompileNew);
+      const result = compile(request as CompilerRequestCompile);
       const end = new Date();
       util.log(
         // @ts-ignore
@@ -1931,16 +1380,7 @@ async function tsCompilerOnMessage({
       break;
     }
     case CompilerRequestType.RuntimeCompile: {
-      const result = await runtimeCompile(
-        request as CompilerRequestRuntimeCompile
-      );
-      globalThis.postMessage(result);
-      break;
-    }
-    case CompilerRequestType.RuntimeCompileNew: {
-      const result = runtimeCompileNew(
-        request as CompilerRequestRuntimeCompileNew
-      );
+      const result = runtimeCompile(request as CompilerRequestRuntimeCompile);
       globalThis.postMessage(result);
       break;
     }

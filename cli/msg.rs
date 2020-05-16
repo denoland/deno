@@ -38,6 +38,4 @@ pub enum CompilerRequestType {
   Compile = 0,
   RuntimeCompile = 1,
   RuntimeTranspile = 2,
-  CompileNew = 3,
-  RuntimeCompileNew = 4,
 }

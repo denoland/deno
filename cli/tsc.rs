@@ -379,7 +379,7 @@ impl TsCompiler {
     let cwd = std::env::current_dir().unwrap();
     let j = match (compiler_config.path, compiler_config.content) {
       (Some(config_path), Some(config_data)) => json!({
-        "type": msg::CompilerRequestType::CompileNew as i32,
+        "type": msg::CompilerRequestType::Compile as i32,
         "target": target,
         "rootNames": root_names,
         "bundle": bundle,
@@ -390,7 +390,7 @@ impl TsCompiler {
         "sourceFileMap": module_graph_json,
       }),
       _ => json!({
-        "type": msg::CompilerRequestType::CompileNew as i32,
+        "type": msg::CompilerRequestType::Compile as i32,
         "target": target,
         "rootNames": root_names,
         "bundle": bundle,
@@ -544,7 +544,7 @@ impl TsCompiler {
     let cwd = std::env::current_dir().unwrap();
     let j = match (compiler_config.path, compiler_config.content) {
       (Some(config_path), Some(config_data)) => json!({
-        "type": msg::CompilerRequestType::CompileNew as i32,
+        "type": msg::CompilerRequestType::Compile as i32,
         "target": target,
         "rootNames": root_names,
         "bundle": bundle,
@@ -555,7 +555,7 @@ impl TsCompiler {
         "sourceFileMap": module_graph_json,
       }),
       _ => json!({
-        "type": msg::CompilerRequestType::CompileNew as i32,
+        "type": msg::CompilerRequestType::Compile as i32,
         "target": target,
         "rootNames": root_names,
         "bundle": bundle,
@@ -941,7 +941,7 @@ pub async fn runtime_compile<S: BuildHasher>(
 
   // eprintln!("source graph {:#?}", module_graph_json);
   let req_msg = json!({
-    "type": msg::CompilerRequestType::RuntimeCompileNew as i32,
+    "type": msg::CompilerRequestType::RuntimeCompile as i32,
     "target": "runtime",
     "rootNames": root_names,
     "sourceFileMap": module_graph_json,

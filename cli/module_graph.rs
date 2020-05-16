@@ -158,6 +158,9 @@ impl ModuleGraphLoader {
 
     let mut dummy_prefix = false;
 
+    // The resolveModules op only handles fully qualified URLs for referrer.
+    // However we will have cases where referrer is "/foo.ts". We add this dummy
+    // prefix "file://" in order to use the op.
     let module_specifier = if specifier.starts_with('/') {
       dummy_prefix = true;
       ModuleSpecifier::resolve_url(&format!("memory://{}", specifier))
