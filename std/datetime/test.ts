@@ -76,6 +76,11 @@ Deno.test("currentDayOfYear", function (): void {
   assertEquals(datetime.currentDayOfYear(), datetime.dayOfYear(new Date()));
 });
 
+Deno.test("timestamp", function (): void {
+  const expected = "5 Apr 23:02:06";
+  assertEquals(datetime.timestamp(new Date(2020, 3, 5, 23, 2, 6)), expected);
+});
+
 Deno.test({
   name: "[DateTime] to IMF",
   fn(): void {
