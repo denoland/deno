@@ -891,6 +891,87 @@ async fn execute_in_thread(
 }
 
 /// This function is used by `Deno.compile()` and `Deno.bundle()` APIs.
+pub async fn new_runtime_compile<S: BuildHasher>(
+  global_state: GlobalState,
+  permissions: Permissions,
+  root_name: &str,
+  sources: &Option<HashMap<String, String, S>>,
+  bundle: bool,
+  maybe_options: &Option<String>,
+) -> Result<Value, OpError> {
+  let mut root_names = vec![];
+  let mut module_graph_loader = ModuleGraphLoader::new(
+    global_state.file_fetcher.clone(),
+    None,
+    permissions.clone(),
+    false,
+  );
+
+  if let Some(s_map) = sources {
+    module_graph_loader.build_local_graph(root_name, s_map)?;
+  } else {
+    let module_specifier = ModuleSpecifier::resolve_import(root_name, "<unknown>")?;
+    root_names.push(module_specifier.to_string());
+    module_graph_loader.add_to_graph(&module_specifier).await?;
+      
+    
+    // TODO: download all additional files from TSconfig and add them to root_names
+    if let Some(options) = maybe_options {
+      let options_json: serde_json::Value = serde_json::from_str(options)?;
+      if let Some(types_option) = options_json.get("types") {
+        let types_arr = types_option.as_array().expect("types is not an array");
+
+        for type_value in types_arr {
+          let type_str = type_value.as_str().expect("type is not a string").to_string();
+          let type_specifier = ModuleSpecifier::resolve_url(&type_str)?;
+          module_graph_loader.add_to_graph(&type_specifier).await?;
+          root_names.push(type_specifier.to_string())
+        }
+      }
+    }
+  }
+  
+  let module_graph = module_graph_loader.get_graph();
+  let module_graph_json =
+    serde_json::to_value(module_graph).expect("Failed to serialize data");
+
+  let req_msg = json!({
+    "type": msg::CompilerRequestType::RuntimeCompileNew as i32,
+    "target": "runtime",
+    "rootNames": root_names,
+    "sourceFileMap": module_graph_json,
+    "options": maybe_options,
+    "bundle": bundle,
+    "unstable": global_state.flags.unstable,
+  })
+  .to_string()
+  .into_boxed_str()
+  .into_boxed_bytes();
+
+  let compiler = global_state.ts_compiler.clone();
+
+  let msg = execute_in_thread(global_state, permissions, req_msg).await?;
+  let json_str = std::str::from_utf8(&msg).unwrap();
+
+  // TODO(bartlomieju): factor `bundle` path into separate function `runtime_bundle`
+  if bundle {
+    let _response: RuntimeBundleResponse = serde_json::from_str(json_str)?;
+    return Ok(serde_json::from_str::<Value>(json_str).unwrap());
+  }
+
+  let response: RuntimeCompileResponse = serde_json::from_str(json_str)?;
+
+  if response.diagnostics.is_empty() && sources.is_none() {
+    compiler.cache_emitted_files(response.emit_map)?;
+  }
+
+  // We're returning `Ok()` instead of `Err()` because it's not runtime
+  // error if there were diagnostics produces; we want to let user handle
+  // diagnostics in the runtime.
+  Ok(serde_json::from_str::<Value>(json_str).unwrap())
+}
+
+#[allow(unused)]
 pub async fn runtime_compile<S: BuildHasher>(
   global_state: GlobalState,
   permissions: Permissions,

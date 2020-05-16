@@ -907,6 +907,7 @@ enum CompilerRequestType {
   RuntimeCompile = 1,
   RuntimeTranspile = 2,
   CompileNew = 3,
+  RuntimeCompileNew = 4,
 }
 
 // TODO(bartlomieju): probably could be defined inline?
@@ -1321,6 +1322,16 @@ interface CompilerRequestRuntimeCompile {
   options?: string;
 }
 
+interface CompilerRequestRuntimeCompileNew {
+  type: CompilerRequestType.RuntimeCompileNew;
+  target: CompilerHostTarget;
+  rootNames: string[];
+  sourceFileMap: Record<string, SourceFileMapEntry>,
+  unstable?: boolean;
+  bundle?: boolean;
+  options?: string;
+}
+
 interface CompilerRequestRuntimeTranspile {
   type: CompilerRequestType.RuntimeTranspile;
   sources: Record<string, string>;
@@ -1331,6 +1342,7 @@ type CompilerRequest =
   | CompilerRequestCompileNew
   | CompilerRequestCompile
   | CompilerRequestRuntimeCompile
+  | CompilerRequestRuntimeCompileNew
   | CompilerRequestRuntimeTranspile;
 
 interface CompileResult {
@@ -1565,6 +1577,107 @@ async function compile(
   return result;
 }
 
+async function runtimeCompileNew(
+  request: CompilerRequestRuntimeCompileNew
+): Promise<RuntimeCompileResult | RuntimeBundleResult> {
+  const { bundle, options, rootNames, target, unstable, sourceFileMap } = request;
+
+  util.log(">>> runtime compile start", {
+    rootNames,
+    bundle,
+  });
+
+  // if there are options, convert them into TypeScript compiler options,
+  // and resolve any external file references
+  let convertedOptions: ts.CompilerOptions | undefined;
+  if (options) {
+    const result = convertCompilerOptions(options);
+    convertedOptions = result.options;
+  }
+
+  buildSourceFileCache(sourceFileMap);
+
+  const state: WriteFileState = {
+    type: request.type,
+    bundle,
+    host: undefined,
+    rootNames,
+    emitMap: {},
+    bundleOutput: undefined,
+  };
+  let writeFile: WriteFileCallback;
+  if (bundle) {
+    writeFile = createBundleWriteFile(state);
+  } else {
+    writeFile = createCompileWriteFile(state);
+  }
+
+  const host = (state.host = new Host({
+    bundle,
+    target,
+    writeFile,
+  }));
+  const compilerOptions = [DEFAULT_RUNTIME_COMPILE_OPTIONS];
+  if (convertedOptions) {
+    compilerOptions.push(convertedOptions);
+  }
+  if (unstable) {
+    compilerOptions.push({
+      lib: [
+        "deno.unstable",
+        ...((convertedOptions && convertedOptions.lib) || ["deno.window"]),
+      ],
+    });
+  }
+  if (bundle) {
+    compilerOptions.push(DEFAULT_BUNDLER_OPTIONS);
+  }
+  host.mergeOptions(...compilerOptions);
+
+  const program = ts.createProgram({
+    rootNames,
+    options: host.getCompilationSettings(),
+    host,
+    oldProgram: TS_SNAPSHOT_PROGRAM,
+  });
+
+  if (bundle) {
+    setRootExports(program, rootNames[0]);
+  }
+
+  const diagnostics = ts
+    .getPreEmitDiagnostics(program)
+    .filter(({ code }) => !ignoredDiagnostics.includes(code));
+
+  const emitResult = program.emit();
+
+  assert(emitResult.emitSkipped === false, "Unexpected skip of the emit.");
+
+  assert(state.emitMap);
+  util.log("<<< runtime compile finish", {
+    rootNames,
+    bundle,
+    emitMap: Object.keys(state.emitMap),
+  });
+
+  const maybeDiagnostics = diagnostics.length
+    ? fromTypeScriptDiagnostic(diagnostics).items
+    : [];
+
+  if (bundle) {
+    return {
+      diagnostics: maybeDiagnostics,
+      output: state.bundleOutput,
+    } as RuntimeBundleResult;
+  } else {
+    return {
+      diagnostics: maybeDiagnostics,
+      emitMap: state.emitMap,
+    } as RuntimeCompileResult;
+  }
+}
+
+
 async function runtimeCompile(
   request: CompilerRequestRuntimeCompile
 ): Promise<RuntimeCompileResult | RuntimeBundleResult> {
@@ -1757,6 +1870,13 @@ async function tsCompilerOnMessage({
     case CompilerRequestType.RuntimeCompile: {
       const result = await runtimeCompile(
         request as CompilerRequestRuntimeCompile
+      );
+      globalThis.postMessage(result);
+      break;
+    }
+    case CompilerRequestType.RuntimeCompileNew: {
+      const result = await runtimeCompileNew(
+        request as CompilerRequestRuntimeCompileNew
       );
       globalThis.postMessage(result);
       break;

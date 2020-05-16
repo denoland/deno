@@ -114,6 +114,51 @@ impl ModuleGraphLoader {
     }
   }
 
+  pub async fn add_to_graph(
+    &mut self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<(), ErrBox> {
+    self.download_module(specifier.clone(), None)?;
+
+    loop {
+      let load_result = self.pending_downloads.next().await.unwrap();
+      let source_file = load_result?;
+      let spec = ModuleSpecifier::from(source_file.url.clone());
+      self.visit_module(&spec, source_file)?;
+      if self.pending_downloads.is_empty() {
+        break;
+      }
+    }
+
+    Ok(())
+  }
+
+  pub fn build_local_graph(
+    &mut self,
+    root_name: &str,
+    source_map: HashMap<String, String>,
+  ) -> Result<(), ErrBox> {
+    for spec, source_code in source_map {
+      
+    }
+
+    self.download_module(specifier.clone(), None)?;
+
+    loop {
+      let load_result = self.pending_downloads.next().await.unwrap();
+      let source_file = load_result?;
+      let spec = ModuleSpecifier::from(source_file.url.clone());
+      self.visit_module(&spec, source_file)?;
+      if self.pending_downloads.is_empty() {
+        break;
+      }
+    }
+
+    Ok(())
+  }
+
+
+  // TODO: remove
   pub async fn build_graph(
     mut self,
     specifier: &ModuleSpecifier,
@@ -131,6 +176,12 @@ impl ModuleGraphLoader {
     }
 
     Ok(self.graph.0)
+  }
+
+  pub fn get_graph(
+    self,
+  ) -> HashMap<String, ModuleGraphFile> {
+    self.graph.0
   }
 
   fn download_module(
@@ -201,6 +252,10 @@ impl ModuleGraphLoader {
             &module_specifier.to_string(),
           )?,
         };
+        self.download_module(
+          type_header.resolved_specifier.clone(),
+          Some(module_specifier.clone()),
+        )?;
         type_headers.push(type_header);
       }
 

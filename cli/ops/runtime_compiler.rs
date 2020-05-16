@@ -3,7 +3,7 @@ use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::futures::FutureExt;
 use crate::op_error::OpError;
 use crate::state::State;
-use crate::tsc::runtime_compile;
+use crate::tsc::new_runtime_compile;
 use crate::tsc::runtime_transpile;
 use deno_core::CoreIsolate;
 use deno_core::ZeroCopyBuf;
@@ -34,7 +34,7 @@ fn op_compile(
   let global_state = s.global_state.clone();
   let permissions = s.permissions.clone();
   let fut = async move {
-    runtime_compile(
+    new_runtime_compile(
       global_state,
       permissions,
       &args.root_name,
