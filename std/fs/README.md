@@ -59,7 +59,7 @@ ensureSymlink("./folder/targetFile.dat", "./folder/targetFile.link.dat"); // ret
 ensureSymlinkSync("./folder/targetFile.dat", "./folder/targetFile.link.dat"); // void
 ```
 
-### eol
+### EOL
 
 Detects and format the passed string for the targeted End Of Line character.
 
