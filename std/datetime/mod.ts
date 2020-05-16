@@ -131,6 +131,15 @@ const months = [
 ];
 
 /**
+ * Pads the current string with another string
+ * until the resulting string reaches the given length.
+ * @return Pads the current string.
+ */
+function dtPad(v: string, lPad = 2): any {
+  return v.padStart(lPad, "0");
+}
+
+/**
  * Parse a date to return a IMF formated string date
  * RFC: https://tools.ietf.org/html/rfc7231#section-7.1.1.1
  * IMF is the time format to use when generating times in HTTP
@@ -140,9 +149,6 @@ const months = [
  * @return IMF date formated string
  */
 export function toIMF(date: Date): string {
-  function dtPad(v: string, lPad = 2): string {
-    return v.padStart(lPad, "0");
-  }
   const d = dtPad(date.getUTCDate().toString());
   const h = dtPad(date.getUTCHours().toString());
   const min = dtPad(date.getUTCMinutes().toString());
