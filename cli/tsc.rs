@@ -30,6 +30,7 @@ use futures::future::FutureExt;
 use log::info;
 use regex::Regex;
 use serde::Deserialize;
+use serde::Serialize;
 use serde_json::json;
 use serde_json::Value;
 use sourcemap::SourceMap;
@@ -180,45 +181,24 @@ impl CompilerConfig {
 /// Includes source code path and state hash.
 /// version_hash is used to validate versions of the file
 /// and could be used to remove stale file in cache.
+#[derive(Deserialize, Serialize)]
 pub struct CompiledFileMetadata {
   pub source_path: PathBuf,
   pub version_hash: String,
 }
 
-static SOURCE_PATH: &str = "source_path";
-static VERSION_HASH: &str = "version_hash";
-
 impl CompiledFileMetadata {
-  pub fn from_json_string(metadata_string: String) -> Option<Self> {
-    // TODO: use serde for deserialization
-    let maybe_metadata_json: serde_json::Result<serde_json::Value> =
-      serde_json::from_str(&metadata_string);
-
-    if let Ok(metadata_json) = maybe_metadata_json {
-      let source_path = metadata_json[SOURCE_PATH].as_str().map(PathBuf::from);
-      let version_hash = metadata_json[VERSION_HASH].as_str().map(String::from);
-
-      if source_path.is_none() || version_hash.is_none() {
-        return None;
-      }
-
-      return Some(CompiledFileMetadata {
-        source_path: source_path.unwrap(),
-        version_hash: version_hash.unwrap(),
-      });
-    }
-
-    None
+  pub fn from_json_string(
+    metadata_string: String,
+  ) -> Result<Self, serde_json::Error> {
+    serde_json::from_str::<Self>(&metadata_string)
   }
 
   pub fn to_json_string(&self) -> Result<String, serde_json::Error> {
-    let mut value_map = serde_json::map::Map::new();
-
-    value_map.insert(SOURCE_PATH.to_owned(), json!(&self.source_path));
-    value_map.insert(VERSION_HASH.to_string(), json!(&self.version_hash));
-    serde_json::to_string(&value_map)
+    serde_json::to_string(self)
   }
 }
+
 /// Creates the JSON message send to compiler.ts's onmessage.
 fn req(
   request_type: msg::CompilerRequestType,
@@ -522,7 +502,7 @@ impl TsCompiler {
       .get_cache_filename_with_extension(url, "meta");
     if let Ok(metadata_bytes) = self.disk_cache.get(&cache_key) {
       if let Ok(metadata) = std::str::from_utf8(&metadata_bytes) {
-        if let Some(read_metadata) =
+        if let Ok(read_metadata) =
           CompiledFileMetadata::from_json_string(metadata.to_string())
         {
           return Some(read_metadata);
