@@ -30,14 +30,14 @@ test("testingEqual", function (): void {
   assert(
     equal(
       { hello: "world", hi: { there: "everyone" } },
-      { hello: "world", hi: { there: "everyone" } },
-    ),
+      { hello: "world", hi: { there: "everyone" } }
+    )
   );
   assert(
     !equal(
       { hello: "world", hi: { there: "everyone" } },
-      { hello: "world", hi: { there: "everyone else" } },
-    ),
+      { hello: "world", hi: { there: "everyone else" } }
+    )
   );
   assert(equal(/deno/, /deno/));
   assert(!equal(/deno/, /node/));
@@ -60,20 +60,20 @@ test("testingEqual", function (): void {
       new Map([
         ["foo", "bar"],
         ["baz", "baz"],
-      ]),
-    ),
+      ])
+    )
   );
   assert(
     equal(
       new Map([["foo", new Map([["bar", "baz"]])]]),
-      new Map([["foo", new Map([["bar", "baz"]])]]),
-    ),
+      new Map([["foo", new Map([["bar", "baz"]])]])
+    )
   );
   assert(
     equal(
       new Map([["foo", { bar: "baz" }]]),
-      new Map([["foo", { bar: "baz" }]]),
-    ),
+      new Map([["foo", { bar: "baz" }]])
+    )
   );
   assert(
     equal(
@@ -84,8 +84,8 @@ test("testingEqual", function (): void {
       new Map([
         ["baz", "qux"],
         ["foo", "bar"],
-      ]),
-    ),
+      ])
+    )
   );
   assert(equal(new Map([["foo", ["bar"]]]), new Map([["foo", ["bar"]]])));
   assert(!equal(new Map([["foo", "bar"]]), new Map([["bar", "baz"]])));
@@ -95,14 +95,14 @@ test("testingEqual", function (): void {
       new Map([
         ["foo", "bar"],
         ["bar", "baz"],
-      ]),
-    ),
+      ])
+    )
   );
   assert(
     !equal(
       new Map([["foo", new Map([["bar", "baz"]])]]),
-      new Map([["foo", new Map([["bar", "qux"]])]]),
-    ),
+      new Map([["foo", new Map([["bar", "qux"]])]])
+    )
   );
   assert(equal(new Map([[{ x: 1 }, true]]), new Map([[{ x: 1 }, true]])));
   assert(!equal(new Map([[{ x: 1 }, true]]), new Map([[{ x: 1 }, false]])));
@@ -170,7 +170,7 @@ test("testingAssertStringContainsThrow", function (): void {
   } catch (e) {
     assert(
       e.message ===
-        `actual: "Denosaurus from Jurassic" expected to contains: "Raptor"`,
+        `actual: "Denosaurus from Jurassic" expected to contains: "Raptor"`
     );
     assert(e instanceof AssertionError);
     didThrow = true;
@@ -189,7 +189,7 @@ test("testingAssertStringMatchingThrows", function (): void {
   } catch (e) {
     assert(
       e.message ===
-        `actual: "Denosaurus from Jurassic" expected to match: "/Raptor/"`,
+        `actual: "Denosaurus from Jurassic" expected to match: "/Raptor/"`
     );
     assert(e instanceof AssertionError);
     didThrow = true;
@@ -228,7 +228,7 @@ test("testingAssertFail", function (): void {
       fail("foo");
     },
     AssertionError,
-    "Failed assertion: foo",
+    "Failed assertion: foo"
   );
 });
 
@@ -242,22 +242,20 @@ test("testingAssertFailWithWrongErrorClass", function (): void {
           fail("foo");
         },
         Error,
-        "Failed assertion: foo",
+        "Failed assertion: foo"
       );
     },
     AssertionError,
-    `Expected error to be instance of "Error", but was "AssertionError"`,
+    `Expected error to be instance of "Error", but was "AssertionError"`
   );
 });
 
 const createHeader = (): string[] => [
   "",
   "",
-  `    ${gray(bold("[Diff]"))} ${red(bold("Actual"))} / ${
-    green(
-      bold("Expected"),
-    )
-  }`,
+  `    ${gray(bold("[Diff]"))} ${red(bold("Actual"))} / ${green(
+    bold("Expected")
+  )}`,
   "",
   "",
 ];
@@ -288,7 +286,7 @@ test({
         removed(`-   1`),
         added(`+   2`),
         "",
-      ].join("\n"),
+      ].join("\n")
     );
   },
 });
@@ -304,7 +302,7 @@ test({
         ...createHeader(),
         removed(`-   1`),
         added(`+   "1"`),
-      ].join("\n"),
+      ].join("\n")
     );
   },
 });
@@ -321,7 +319,7 @@ test({
         removed(`-   [ 1, "2", 3 ]`),
         added(`+   [ "1", "2", 3 ]`),
         "",
-      ].join("\n"),
+      ].join("\n")
     );
   },
 });
@@ -338,7 +336,7 @@ test({
         removed(`-   { a: 1, b: "2", c: 3 }`),
         added(`+   { a: 1, b: 2, c: [ 3 ] }`),
         "",
-      ].join("\n"),
+      ].join("\n")
     );
   },
 });
@@ -372,7 +370,7 @@ test({
         removed("-   { a: 1, b: 2 }"),
         added("+   { a: 1, c: [ 3 ] }"),
         "",
-      ].join("\n"),
+      ].join("\n")
     );
   },
 });
@@ -386,7 +384,7 @@ test({
       [
         "Values have the same structure but are not reference-equal:\n",
         red("     { a: 1, b: 2 }"),
-      ].join("\n"),
+      ].join("\n")
     );
   },
 });
@@ -399,14 +397,12 @@ bottomTypeCases.forEach((v) => {
     fn(): void {
       assertThrows(
         (): void => {
-          assertThrows(
-            (): void => {
-              throw v;
-            },
-          );
+          assertThrows((): void => {
+            throw v;
+          });
         },
         AssertionError,
-        `Expected error to be defined, but received "${v}"`,
+        `Expected error to be defined, but received "${v}"`
       );
     },
   });
@@ -416,14 +412,12 @@ bottomTypeCases.forEach((v) => {
     fn() {
       assertThrowsAsync(
         async () => {
-          await assertThrowsAsync(
-            async () => {
-              throw v;
-            },
-          );
+          await assertThrowsAsync(() => {
+            throw v;
+          });
         },
         AssertionError,
-        `Expected error to be defined, but received "${v}"`,
+        `Expected error to be defined, but received "${v}"`
       );
     },
   });
