@@ -116,6 +116,12 @@ impl ModuleGraphLoader {
     }
   }
 
+  /// This method is used to add specified module and all of its
+  /// dependencies to the graph.
+  ///
+  /// It resolves when all dependent modules have been fetched and analyzed.
+  ///
+  /// This method can be called multiple times.
   pub async fn add_to_graph(
     &mut self,
     specifier: &ModuleSpecifier,
@@ -123,10 +129,8 @@ impl ModuleGraphLoader {
     self.download_module(specifier.clone(), None)?;
 
     loop {
-      let load_result = self.pending_downloads.next().await.unwrap();
-      let source_file = load_result?;
-      let spec = ModuleSpecifier::from(source_file.url.clone());
-      self.visit_module(&spec, source_file)?;
+      let source_file = self.pending_downloads.next().await.unwrap()?;
+      self.visit_module(&source_file.url.into(), source_file)?;
       if self.pending_downloads.is_empty() {
         break;
       }
@@ -135,6 +139,9 @@ impl ModuleGraphLoader {
     Ok(())
   }
 
+  /// This method is used to create a graph from in-memory files stored in
+  /// a hash map. Useful for creating module graph for code received from
+  /// the runtime.
   pub fn build_local_graph<S: BuildHasher>(
     &mut self,
     _root_name: &str,
@@ -147,6 +154,11 @@ impl ModuleGraphLoader {
     Ok(())
   }
 
+  /// Consumes the loader and returns created graph.
+  pub fn get_graph(self) -> HashMap<String, ModuleGraphFile> {
+    self.graph.0
+  }
+
   fn visit_memory_module(
     &mut self,
     specifier: String,
@@ -156,8 +168,6 @@ impl ModuleGraphLoader {
     let mut referenced_files = vec![];
     let mut lib_directives = vec![];
     let mut types_directives = vec![];
-
-    // let mut dummy_prefix = false;
 
     // The resolveModules op only handles fully qualified URLs for referrer.
     // However we will have cases where referrer is "/foo.ts". We add this dummy
@@ -259,10 +269,6 @@ impl ModuleGraphLoader {
       },
     );
     Ok(())
-  }
-
-  pub fn get_graph(self) -> HashMap<String, ModuleGraphFile> {
-    self.graph.0
   }
 
   fn download_module(
