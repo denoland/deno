@@ -300,13 +300,13 @@ mod tests {
       let r = handle.post_message(msg.clone());
       assert!(r.is_ok());
 
-      let maybe_msg = handle.get_event().await;
+      let maybe_msg = handle.get_event().await.unwrap();
       assert!(maybe_msg.is_some());
 
       let r = handle.post_message(msg.clone());
       assert!(r.is_ok());
 
-      let maybe_msg = handle.get_event().await;
+      let maybe_msg = handle.get_event().await.unwrap();
       assert!(maybe_msg.is_some());
       match maybe_msg {
         Some(WorkerEvent::Message(buf)) => {
@@ -321,7 +321,7 @@ mod tests {
         .into_boxed_bytes();
       let r = handle.post_message(msg);
       assert!(r.is_ok());
-      let event = handle.get_event().await;
+      let event = handle.get_event().await.unwrap();
       assert!(event.is_none());
       handle.sender.close_channel();
     });
@@ -348,7 +348,7 @@ mod tests {
       let msg = json!("hi").to_string().into_boxed_str().into_boxed_bytes();
       let r = handle.post_message(msg.clone());
       assert!(r.is_ok());
-      let event = handle.get_event().await;
+      let event = handle.get_event().await.unwrap();
       assert!(event.is_none());
       handle.sender.close_channel();
     });

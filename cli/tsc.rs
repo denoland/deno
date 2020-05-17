@@ -794,7 +794,7 @@ async fn execute_in_thread(
   })?;
   let handle = handle_receiver.recv().unwrap()?;
   handle.post_message(req)?;
-  let event = handle.get_event().await.expect("Compiler didn't respond");
+  let event = handle.get_event().await?.expect("Compiler didn't respond");
   let buf = match event {
     WorkerEvent::Message(buf) => Ok(buf),
     WorkerEvent::Error(error) => Err(error),
