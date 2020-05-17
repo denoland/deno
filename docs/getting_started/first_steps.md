@@ -48,8 +48,8 @@ Let's walk through what this application does:
 
 1. We get the first argument passed to the application, and store it in the
    `url` constant.
-2. We make a request to the url specified, await the response, and store it in the
-   `res` constant.
+2. We make a request to the url specified, await the response, and store it in
+   the `res` constant.
 3. We parse the response body as an
    [`ArrayBuffer`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/ArrayBuffer),
    await the response, and convert it into a
