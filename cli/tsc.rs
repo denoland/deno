@@ -970,7 +970,7 @@ pub async fn runtime_compile<S: BuildHasher>(
     module_graph_loader.add_to_graph(&module_specifier).await?;
   }
 
-  // TODO: download all additional files from TSconfig and add them to root_names
+  // download all additional files from TSconfig and add them to root_names
   if let Some(options) = maybe_options {
     let options_json: serde_json::Value = serde_json::from_str(options)?;
     if let Some(types_option) = options_json.get("types") {
@@ -992,7 +992,6 @@ pub async fn runtime_compile<S: BuildHasher>(
   let module_graph_json =
     serde_json::to_value(module_graph).expect("Failed to serialize data");
 
-  // eprintln!("source graph {:#?}", module_graph_json);
   let req_msg = json!({
     "type": msg::CompilerRequestType::RuntimeCompile as i32,
     "target": "runtime",
@@ -1023,7 +1022,6 @@ pub async fn runtime_compile<S: BuildHasher>(
     compiler.cache_emitted_files(response.emit_map)?;
   }
 
-  // eprintln!("returned {:#?}", json_str);
   // We're returning `Ok()` instead of `Err()` because it's not runtime
   // error if there were diagnostics produces; we want to let user handle
   // diagnostics in the runtime.
