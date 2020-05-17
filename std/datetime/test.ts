@@ -76,6 +76,11 @@ Deno.test("currentDayOfYear", function (): void {
   assertEquals(datetime.currentDayOfYear(), datetime.dayOfYear(new Date()));
 });
 
+Deno.test("isLeapYear", function (): void {
+  assertEquals(datetime.isLeapYear(2012), true);
+  assertEquals(datetime.isLeapYear(2006), false);
+});
+
 Deno.test({
   name: "[DateTime] to IMF",
   fn(): void {
