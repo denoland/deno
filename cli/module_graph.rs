@@ -130,7 +130,7 @@ impl ModuleGraphLoader {
 
     loop {
       let source_file = self.pending_downloads.next().await.unwrap()?;
-      self.visit_module(&source_file.url.into(), source_file)?;
+      self.visit_module(&source_file.url.clone().into(), source_file)?;
       if self.pending_downloads.is_empty() {
         break;
       }
