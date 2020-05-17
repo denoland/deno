@@ -47,10 +47,10 @@ The community has developed extensions for some editors to solve these issues:
 
 #### VS Code
 
-- The beta version of [vscode_deno](https://github.com/denoland/vscode_deno) is
-  published on the
-  [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=justjavac.vscode-deno).
-  Please report any issues.
+The beta version of [vscode_deno](https://github.com/denoland/vscode_deno) is
+published on the
+[Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=justjavac.vscode-deno).
+Please report any issues.
 
 #### JetBrains IDEs
 
@@ -65,9 +65,9 @@ these issues to stay up to date:
 
 Vim works fairly well for Deno/TypeScript if you install
 [CoC](https://github.com/neoclide/coc.nvim) (intellisense engine and language
-server protocol). After CoC itself is installed, from inside Vim, simply
-run `:CocInstall coc-deno`. From now on, things like `gd` (go to definition)
-and `gr` (goto/find references) should work.
+server protocol). After CoC itself is installed, from inside Vim, simply run
+`:CocInstall coc-deno`. From now on, things like `gd` (go to definition) and
+`gr` (goto/find references) should work.
 
 If you don't see your favorite IDE on this list, maybe you can develop an
 extension. Our [community Discord group](https://discord.gg/TGMHGv6) can give
