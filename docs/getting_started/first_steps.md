@@ -136,8 +136,8 @@ hello world
 ```
 
 Like the `cat.ts` example, the `copy()` function here also does not make
-unnecessary memory copies. It receives a packet from the kernel and sends back,
-without further complexity.
+unnecessary memory copies. It receives a packet from the kernel and sends it
+back, without further complexity.
 
 ### More examples
 
