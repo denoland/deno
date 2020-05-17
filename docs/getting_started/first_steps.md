@@ -15,7 +15,7 @@ Deno is a runtime for JavaScript/TypeScript which tries to be web compatible
 and use modern features wherever possible.
 
 Browser compatibility means, a simple `Hello World` program in Deno is the same
-as the one you would run in the browser:
+as the one you can run in the browser:
 
 ```ts
 console.log("Welcome to Deno 🦕");
