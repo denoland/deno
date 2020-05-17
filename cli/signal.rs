@@ -32,7 +32,7 @@ pub fn kill(pid: i32, signal: i32) -> Result<(), OpError> {
   match signal {
     SIGINT | SIGKILL | SIGTERM => {
       if pid <= 0 {
-        return Err(OpError::other("unsupported pid".to_string()));
+        return Err(OpError::type_error("unsupported pid".to_string()));
       }
       unsafe {
         let handle = OpenProcess(PROCESS_TERMINATE, 0, pid as DWORD);
@@ -49,7 +49,7 @@ pub fn kill(pid: i32, signal: i32) -> Result<(), OpError> {
       }
     }
     _ => {
-      return Err(OpError::other("unsupported signal".to_string()));
+      return Err(OpError::type_error("unsupported signal".to_string()));
     }
   }
   Ok(())
