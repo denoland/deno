@@ -129,7 +129,7 @@ pub enum Snapshot {
 }
 
 /// Represents data used to initialize isolate at startup
-/// either a binary snapshot or a javascript source file
+/// either a binary snapshot or a JavaScript source file
 /// in the form of the StartupScript struct.
 pub enum StartupData<'a> {
   Script(Script<'a>),
@@ -142,7 +142,7 @@ type IsolateErrorHandleFn = dyn FnMut(ErrBox) -> Result<(), ErrBox>;
 
 /// A single execution context of JavaScript. Corresponds roughly to the "Web
 /// Worker" concept in the DOM. An CoreIsolate is a Future that can be used with
-/// Tokio.  The CoreIsolate future complete when there is an error or when all
+/// Tokio. The CoreIsolate future complete when there is an error or when all
 /// pending ops have completed.
 ///
 /// Ops are created in JavaScript by calling Deno.core.dispatch(), and in Rust

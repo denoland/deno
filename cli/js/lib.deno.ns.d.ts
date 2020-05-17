@@ -1638,9 +1638,9 @@ declare namespace Deno {
     bytesReceived: number;
   }
 
-  /** Receive metrics from the privileged side of Deno.  This is primarily used
+  /** Receive metrics from the privileged side of Deno. This is primarily used
    * in the development of Deno. 'Ops', also called 'bindings', are the go-between
-   * between Deno Javascript and Deno Rust.
+   * between Deno JavaScript and Deno Rust.
    *
    *      > console.table(Deno.metrics())
    *      ┌─────────────────────────┬────────┐
