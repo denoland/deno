@@ -338,6 +338,11 @@ export function assertThrows(
   try {
     fn();
   } catch (e) {
+    if (e === undefined || e === null) {
+      throw new AssertionError(
+        `Expected error to be defined, but received "${e}"`,
+      );
+    }
     if (ErrorClass && !(Object.getPrototypeOf(e) === ErrorClass.prototype)) {
       msg =
         `Expected error to be instance of "${ErrorClass.name}", but was "${e.constructor.name}"${
@@ -373,6 +378,11 @@ export async function assertThrowsAsync(
   try {
     await fn();
   } catch (e) {
+    if (e === undefined || e === null) {
+      throw new AssertionError(
+        `Expected error to be defined, but received "${e}"`,
+      );
+    }
     if (ErrorClass && !(Object.getPrototypeOf(e) === ErrorClass.prototype)) {
       msg =
         `Expected error to be instance of "${ErrorClass.name}", but got "${e.name}"${

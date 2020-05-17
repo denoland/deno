@@ -390,3 +390,41 @@ test({
     );
   },
 });
+
+const bottomTypeCases = [undefined, null];
+
+bottomTypeCases.forEach((v) => {
+  test({
+    name: `throw ${v}`,
+    fn(): void {
+      assertThrows(
+        (): void => {
+          assertThrows(
+            (): void => {
+              throw v;
+            },
+          );
+        },
+        AssertionError,
+        `Expected error to be defined, but received "${v}"`,
+      );
+    },
+  });
+
+  test({
+    name: `async throw ${v}`,
+    fn() {
+      assertThrowsAsync(
+        async () => {
+          await assertThrowsAsync(
+            async () => {
+              throw v;
+            },
+          );
+        },
+        AssertionError,
+        `Expected error to be defined, but received "${v}"`,
+      );
+    },
+  });
+});
