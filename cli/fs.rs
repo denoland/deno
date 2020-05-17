@@ -4,8 +4,8 @@ use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 
-use tracing::debug;
 use deno_core::ErrBox;
+use tracing::debug;
 use walkdir::WalkDir;
 
 pub fn write_file<T: AsRef<[u8]>>(
