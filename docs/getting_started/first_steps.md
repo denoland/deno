@@ -1,7 +1,7 @@
 ## First steps
 
-This page contains some simple examples that can teach you about the
-fundamentals of Deno.
+This page contains some simple examples to teach you about the fundamentals of
+Deno.
 
 This document assumes that you have some prior knowledge of JavaScript,
 especially about `async`/`await`. If you have no prior knowledge of JavaScript,
@@ -11,11 +11,11 @@ before attempting to start with Deno.
 
 ### Hello World
 
-Deno is a runtime for JavaScript and TypeScript and tries to be web compatible
+Deno is a runtime for JavaScript/TypeScript which tries to be web compatible
 and use modern features wherever possible.
 
-Because of this browser compatibility a simple `Hello World` program is actually
-no different to one you can run in the browser:
+Browser compatibility means, a simple `Hello World` program in Deno is the same
+as the one you would run in the browser:
 
 ```ts
 console.log("Welcome to Deno 🦕");
