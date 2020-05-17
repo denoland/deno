@@ -5,7 +5,6 @@ use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 
 use deno_core::ErrBox;
-use tracing::debug;
 use walkdir::WalkDir;
 
 pub fn write_file<T: AsRef<[u8]>>(
@@ -36,6 +35,7 @@ pub fn write_file_2<T: AsRef<[u8]>>(
     #[cfg(unix)]
     {
       use std::os::unix::fs::PermissionsExt;
+      use tracing::debug;
       let mode = mode & 0o777;
       debug!("set file mode to {:o}", mode);
       let permissions = PermissionsExt::from_mode(mode);
