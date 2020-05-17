@@ -169,6 +169,10 @@ unitTest(function urlDriveLetter() {
   assertEquals(new URL("http://example.com/C:").href, "http://example.com/C:");
 });
 
+unitTest(function urlHostnameUpperCase() {
+  assertEquals(new URL("https://EXAMPLE.COM").href, "https://example.com/");
+});
+
 unitTest(function urlTrim() {
   assertEquals(new URL(" https://example.com  ").href, "https://example.com/");
 });
@@ -182,8 +186,11 @@ unitTest(function urlEncoding() {
     new URL("https://:a !$&*()=,;+'\"@example.com").password,
     "a%20!$&*()%3D,%3B+%27%22"
   );
-  // FIXME(nayeemrmn)
-  // assertEquals(new URL("https://a !$&*()=,+'\"").hostname, "a%20%21%24%26%2A%28%29%3D%2C+%27%22");
+  // FIXME: https://url.spec.whatwg.org/#idna
+  // assertEquals(
+  //   new URL("https://a !$&*()=,+'\"").hostname,
+  //   "a%20%21%24%26%2A%28%29%3D%2C+%27%22"
+  // );
   assertEquals(
     new URL("https://example.com/a ~!@$&*()=:/,;+'\"\\").pathname,
     "/a%20~!@$&*()=:/,;+'%22/"

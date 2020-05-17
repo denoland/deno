@@ -62,9 +62,6 @@ function parse(url: string, isBase = true): URLParts | undefined {
     parts.username = "";
     parts.password = "";
     [parts.hostname, restUrl] = takePattern(restUrl, /^[/\\]{2}([^/\\?#]*)/);
-    if (parts.hostname.includes(":")) {
-      return undefined;
-    }
     parts.port = "";
   } else if (specialSchemes.includes(parts.protocol)) {
     let restAuthority;
@@ -85,7 +82,6 @@ function parse(url: string, isBase = true): URLParts | undefined {
     [parts.password] = takePattern(restAuthentication, /^:(.*)/);
     parts.password = encoding.encodeUserinfo(parts.password);
     [parts.hostname, restAuthority] = takePattern(restAuthority, /^([^:]+)/);
-    parts.hostname = encoding.encodeHostname(parts.hostname);
     [parts.port] = takePattern(restAuthority, /^:(.*)/);
     if (!isValidPort(parts.port)) {
       return undefined;
@@ -95,6 +91,11 @@ function parse(url: string, isBase = true): URLParts | undefined {
     parts.password = "";
     parts.hostname = "";
     parts.port = "";
+  }
+  try {
+    parts.hostname = encoding.encodeHostname(parts.hostname).toLowerCase();
+  } catch {
+    return undefined;
   }
   [parts.path, restUrl] = takePattern(restUrl, /^([^?#]*)/);
   parts.path = encoding.encodePathname(parts.path.replace(/\\/g, "/"));
@@ -286,7 +287,9 @@ export class URLImpl implements URL {
 
   set hostname(value: string) {
     value = String(value);
-    parts.get(this)!.hostname = encoding.encodeHostname(value);
+    try {
+      parts.get(this)!.hostname = encoding.encodeHostname(value);
+    } catch {}
   }
 
   get href(): string {

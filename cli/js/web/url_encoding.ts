@@ -34,7 +34,10 @@ export function encodeUserinfo(s: string): string {
 }
 
 export function encodeHostname(s: string): string {
-  // FIXME(nayeemrmn)
+  // FIXME: https://url.spec.whatwg.org/#idna
+  if (s.includes(":")) {
+    throw new TypeError("Invalid hostname.");
+  }
   return encodeURIComponent(s);
 }
 
