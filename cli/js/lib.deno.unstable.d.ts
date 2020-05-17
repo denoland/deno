@@ -1242,4 +1242,65 @@ declare namespace Deno {
    *  Requires `allow-env` permission.
    */
   export function hostname(): string;
+
+  /** A live view of memory */
+  export class MemoryCursor
+    implements
+      Reader,
+      ReaderSync,
+      Writer,
+      WriterSync,
+      Seeker,
+      SeekerSync,
+      Closer {
+    readonly rid: number;
+    constructor(rid: number);
+    write(p: Uint8Array): Promise<number>;
+    writeSync(p: Uint8Array): number;
+    read(p: Uint8Array): Promise<number | null>;
+    readSync(p: Uint8Array): number | null;
+    seek(offset: number, whence: SeekMode): Promise<number>;
+    seekSync(offset: number, whence: SeekMode): number;
+    close(): void;
+  }
+
+  /** Open a live view of memary
+   * 
+   * Requires --allow-ffi.
+   */
+  export function openMemory(start: number, length: number): MemoryCursor;
+
+  /** Symbol table of an executable object, usually a shared library. */
+  export class Library implements Closer {
+    readonly rid: number;
+    constructor(rid: number);
+    /** Look up the reference to a given symbol in this object. 
+     * 
+     * Throws `Deno.errors.NotFound` if symbol not found.
+     */
+    lookup(symbol: string): number;
+    /** Discard the symbol table.
+     * 
+     * Throws `Deno.errors.BadResource` if something unexpected happened.
+     */
+    close(): void;
+  }
+
+  /**
+   * Load an executable object and retuns its symbol table.
+   *
+   * ```ts
+   * Deno.loadLibrary("libm.so"); // search in system paths. Implementation is platform-dependent
+   * Deno.loadLibrary("./libm.so"); // load from current directory
+   * Deno.loadLibrary("/usr/lib/libm.so"); // load from absolute directory
+   * ```
+   *
+   * Throws `Deno.errors.NotFound` if shared object not found or failed to load.
+   *
+   * Requires --allow-ffi.
+   */
+  export function loadLibrary(
+    path: string | null,
+    // options?: Partial<LoadLibraryOptions>
+  ): Promise<Library>;
 }
