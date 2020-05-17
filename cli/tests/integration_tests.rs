@@ -1228,7 +1228,7 @@ itest!(_056_make_temp_file_write_perm {
 
 // TODO(lucacasonato): remove --unstable when permissions goes stable
 itest!(_057_revoke_permissions {
-  args: "test --quiet -A --unstable 057_revoke_permissions.ts",
+  args: "test -A --unstable 057_revoke_permissions.ts",
   output: "057_revoke_permissions.out",
 });
 
