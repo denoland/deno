@@ -47,14 +47,14 @@ await Deno.stdout.write(body);
 Let's walk through what this application does:
 
 1. We get the first argument passed to the application, and store it in the
-   constant `url`.
+   `url` constant.
 2. We make a request to the url specified, await the response, and store it in the
-   constant `res`.
+   `res` constant.
 3. We parse the response body as an
    [`ArrayBuffer`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/ArrayBuffer),
    await the response, and convert it into a
    [`Uint8Array`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Uint8Array)
-   to store in the constant `body`.
+   to store in the `body` constant.
 4. We write the contents of the `body` constant to `stdout`.
 
 Try it out:
