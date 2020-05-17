@@ -2,6 +2,7 @@
 import { build } from "../build.ts";
 import { getRandomValues } from "../ops/get_random_values.ts";
 import { customInspect } from "./console.ts";
+import * as encoding from "./url_encoding.ts";
 import { urls } from "./url_search_params.ts";
 
 interface URLParts {
@@ -11,7 +12,7 @@ interface URLParts {
   hostname: string;
   port: string;
   path: string;
-  query: string | null;
+  query: string;
   hash: string;
 }
 
@@ -53,7 +54,7 @@ function takePattern(string: string, pattern: RegExp): [string, string] {
 function parse(url: string, isBase = true): URLParts | undefined {
   const parts: Partial<URLParts> = {};
   let restUrl;
-  [parts.protocol, restUrl] = takePattern(url, /^([a-z]+):/);
+  [parts.protocol, restUrl] = takePattern(url.trim(), /^([a-z]+):/);
   if (isBase && parts.protocol == "") {
     return undefined;
   }
@@ -80,8 +81,11 @@ function parse(url: string, isBase = true): URLParts | undefined {
       restAuthentication,
       /^([^:]*)/
     );
+    parts.username = encoding.encodeUserinfo(parts.username);
     [parts.password] = takePattern(restAuthentication, /^:(.*)/);
+    parts.password = encoding.encodeUserinfo(parts.password);
     [parts.hostname, restAuthority] = takePattern(restAuthority, /^([^:]+)/);
+    parts.hostname = encoding.encodeHostname(parts.hostname);
     [parts.port] = takePattern(restAuthority, /^:(.*)/);
     if (!isValidPort(parts.port)) {
       return undefined;
@@ -93,9 +97,11 @@ function parse(url: string, isBase = true): URLParts | undefined {
     parts.port = "";
   }
   [parts.path, restUrl] = takePattern(restUrl, /^([^?#]*)/);
-  parts.path = parts.path.replace(/\\/g, "/");
+  parts.path = encoding.encodePathname(parts.path.replace(/\\/g, "/"));
   [parts.query, restUrl] = takePattern(restUrl, /^(\?[^#]*)/);
+  parts.query = encoding.encodeSearch(parts.query);
   [parts.hash] = takePattern(restUrl, /^(#.*)/);
+  parts.hash = encoding.encodeHash(parts.hash);
   return parts as URLParts;
 }
 
@@ -259,9 +265,7 @@ export class URLImpl implements URL {
         value = `#${value}`;
       }
       // hashes can contain % and # unescaped
-      parts.get(this)!.hash = escape(value)
-        .replace(/%25/g, "%")
-        .replace(/%23/g, "#");
+      parts.get(this)!.hash = encoding.encodeHash(value);
     }
   }
 
@@ -282,7 +286,7 @@ export class URLImpl implements URL {
 
   set hostname(value: string) {
     value = String(value);
-    parts.get(this)!.hostname = encodeURIComponent(value);
+    parts.get(this)!.hostname = encoding.encodeHostname(value);
   }
 
   get href(): string {
@@ -319,7 +323,7 @@ export class URLImpl implements URL {
 
   set password(value: string) {
     value = String(value);
-    parts.get(this)!.password = encodeURIComponent(value);
+    parts.get(this)!.password = encoding.encodeUserinfo(value);
   }
 
   get pathname(): string {
@@ -332,7 +336,7 @@ export class URLImpl implements URL {
       value = `/${value}`;
     }
     // paths can contain % unescaped
-    parts.get(this)!.path = escape(value).replace(/%25/g, "%");
+    parts.get(this)!.path = encoding.encodePathname(value);
   }
 
   get port(): string {
@@ -366,27 +370,13 @@ export class URLImpl implements URL {
   }
 
   get search(): string {
-    const query = parts.get(this)!.query;
-    if (query === null || query === "") {
-      return "";
-    }
-
-    return query;
+    return parts.get(this)!.query;
   }
 
   set search(value: string) {
     value = String(value);
-    let query: string | null;
-
-    if (value === "") {
-      query = null;
-    } else if (value.charAt(0) !== "?") {
-      query = `?${value}`;
-    } else {
-      query = value;
-    }
-
-    parts.get(this)!.query = query;
+    const query = value == "" || value.charAt(0) == "?" ? value : `?${value}`;
+    parts.get(this)!.query = encoding.encodeSearch(query);
     this.#updateSearchParams();
   }
 
@@ -396,7 +386,7 @@ export class URLImpl implements URL {
 
   set username(value: string) {
     value = String(value);
-    parts.get(this)!.username = encodeURIComponent(value);
+    parts.get(this)!.username = encoding.encodeUserinfo(value);
   }
 
   get searchParams(): URLSearchParams {
