@@ -410,13 +410,10 @@ fn op_remove(
       std::fs::remove_file(&path)?;
       #[cfg(not(unix))]
       {
-        use winapi::um::winnt::{
-          FILE_ATTRIBUTE_ARCHIVE, FILE_ATTRIBUTE_DIRECTORY,
-        };
-        let file_attributes = metadata.file_attributes();
-        if file_attributes & FILE_ATTRIBUTE_DIRECTORY != 0 {
+        use winapi::um::winnt::FILE_ATTRIBUTE_DIRECTORY;
+        if metadata.file_attributes() & FILE_ATTRIBUTE_DIRECTORY != 0 {
           std::fs::remove_dir(&path)?;
-        } else if file_attributes & FILE_ATTRIBUTE_ARCHIVE != 0 {
+        } else {
           std::fs::remove_file(&path)?;
         }
       }
