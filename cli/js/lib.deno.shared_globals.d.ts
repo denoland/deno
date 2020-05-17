@@ -1172,7 +1172,7 @@ interface URL {
 
 declare const URL: {
   prototype: URL;
-  new (url: string, base?: string | URL): URL;
+  new (url: string | URL, base?: string | URL): URL;
   createObjectURL(object: any): string;
   revokeObjectURL(url: string): void;
 };
