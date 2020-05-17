@@ -1120,8 +1120,6 @@ declare namespace Deno {
    *
    *      Deno.kill(p.pid, Deno.Signal.SIGINT);
    *
-   * Throws Error (not yet implemented) on Windows
-   *
    * Requires `allow-run` permission. */
   export function kill(pid: number, signo: number): void;
 
