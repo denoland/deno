@@ -4,8 +4,8 @@ fs module is made to provide helpers to manipulate the filesystem.
 
 ## Usage
 
-All the following modules are exposed in `mod.ts`
-This feature is currently unstable. To enable it use `deno run --unstable`
+All the following modules are exposed in `mod.ts` This feature is currently
+unstable. To enable it use `deno run --unstable`
 
 ### emptyDir
 
