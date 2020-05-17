@@ -403,15 +403,15 @@ impl TsCompiler {
         }
       };
     let permissions = Permissions::allow_all();
-    let module_graph_loader = ModuleGraphLoader::new(
+    let mut module_graph_loader = ModuleGraphLoader::new(
       global_state.file_fetcher.clone(),
       import_map,
       permissions.clone(),
       false,
       true,
     );
-    let module_graph =
-      module_graph_loader.build_graph(&module_specifier).await?;
+    module_graph_loader.add_to_graph(&module_specifier).await?;
+    let module_graph = module_graph_loader.get_graph();
     let module_graph_json =
       serde_json::to_value(module_graph).expect("Failed to serialize data");
 
@@ -547,15 +547,16 @@ impl TsCompiler {
           Some(ImportMap::load(file_path)?)
         }
       };
-    let module_graph_loader = ModuleGraphLoader::new(
+    let mut module_graph_loader = ModuleGraphLoader::new(
       global_state.file_fetcher.clone(),
       import_map,
       permissions.clone(),
       is_dyn_import,
       false,
     );
-    let module_graph =
-      module_graph_loader.build_graph(&module_specifier).await?;
+
+    module_graph_loader.add_to_graph(&module_specifier).await?;
+    let module_graph = module_graph_loader.get_graph();
     let module_graph_json =
       serde_json::to_value(module_graph).expect("Failed to serialize data");
 
