@@ -43,10 +43,9 @@ http imports, and most editors and language servers do not natively support this
 at the moment, many editors will throw errors about being unable to find files
 or imports having unnecessary file extensions.
 
-The community has developed extensions for some editors to solve these issues:
+We have developed extensions for some editors to solve these issues:
 
-- [VS Code](https://marketplace.visualstudio.com/items?itemName=axetroy.vscode-deno)
-  by [@axetroy](https://github.com/axetroy).
+- [Deno for VS Code](https://marketplace.visualstudio.com/items?itemName=justjavac.vscode-deno) - [Repository](https://github.com/denoland/vscode_deno)
 
 Support for JetBrains IDEs is not yet available, but you can follow and upvote
 these issues to stay up to date:
