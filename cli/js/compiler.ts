@@ -532,7 +532,9 @@ SNAPSHOT_HOST.getSourceFile(
   ts.ScriptTarget.ESNext
 );
 
-const TS_SNAPSHOT_PROGRAM = ts.createProgram({
+// Created to hydrate source file cache with lib
+// declaration files during snapshotting process.
+const _TS_SNAPSHOT_PROGRAM = ts.createProgram({
   rootNames: [`${ASSETS}/bootstrap.ts`],
   options: SNAPSHOT_COMPILER_OPTIONS,
   host: SNAPSHOT_HOST,
@@ -1182,7 +1184,6 @@ function compile(request: CompilerRequestCompile): CompileResult {
       rootNames,
       options,
       host,
-      oldProgram: TS_SNAPSHOT_PROGRAM,
     });
 
     diagnostics = ts
@@ -1297,7 +1298,6 @@ function runtimeCompile(
     rootNames,
     options: host.getCompilationSettings(),
     host,
-    oldProgram: TS_SNAPSHOT_PROGRAM,
   });
 
   if (bundle) {
