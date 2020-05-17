@@ -8,6 +8,7 @@ use std::error::Error;
 use std::fmt;
 use std::fs;
 use std::io;
+use tracing::debug;
 use url::Url;
 
 #[derive(Debug)]

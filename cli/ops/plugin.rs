@@ -19,6 +19,7 @@ use std::pin::Pin;
 use std::rc::Rc;
 use std::task::Context;
 use std::task::Poll;
+use tracing::debug;
 
 pub fn init(i: &mut CoreIsolate, s: &State) {
   i.register_op(

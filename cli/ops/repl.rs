@@ -8,6 +8,7 @@ use deno_core::CoreIsolate;
 use deno_core::ZeroCopyBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
+use tracing::debug;
 
 pub fn init(i: &mut CoreIsolate, s: &State) {
   i.register_op("op_repl_start", s.stateful_json_op2(op_repl_start));

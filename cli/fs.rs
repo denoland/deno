@@ -4,6 +4,7 @@ use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 
+use tracing::debug;
 use deno_core::ErrBox;
 use walkdir::WalkDir;
 

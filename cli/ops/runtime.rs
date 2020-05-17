@@ -26,7 +26,7 @@ fn op_start(
     // TODO(bartlomieju): `cwd` field is not used in JS, remove?
     "args": gs.flags.argv.clone(),
     "cwd": &env::current_dir().unwrap(),
-    "debugFlag": gs.flags.log_level.map_or(false, |l| l == log::Level::Debug),
+    "debugFlag": gs.flags.log_level.as_ref().map_or(false, |l| *l == tracing::Level::DEBUG),
     "denoVersion": version::DENO,
     "noColor": !colors::use_color(),
     "pid": std::process::id(),

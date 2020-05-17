@@ -18,6 +18,7 @@ use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
 use std::convert::From;
 use std::thread::JoinHandle;
+use tracing::debug;
 
 pub fn init(i: &mut CoreIsolate, s: &State) {
   i.register_op("op_create_worker", s.stateful_json_op(op_create_worker));

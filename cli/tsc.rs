@@ -27,7 +27,6 @@ use deno_core::ModuleSpecifier;
 use deno_core::StartupData;
 use futures::future::Future;
 use futures::future::FutureExt;
-use log::info;
 use regex::Regex;
 use serde::Deserialize;
 use serde_json::json;
@@ -47,6 +46,8 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::task::Poll;
+use tracing::debug;
+use tracing::info;
 use url::Url;
 
 #[derive(Debug, Clone)]

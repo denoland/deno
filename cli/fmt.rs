@@ -20,6 +20,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
+use tracing::debug;
 
 /// Format JavaScript/TypeScript files.
 ///

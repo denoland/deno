@@ -10,7 +10,6 @@ use crate::permissions::Permissions;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
 use futures::future::FutureExt;
-use log::info;
 use regex::Regex;
 use std::collections::HashMap;
 use std::fs;
@@ -23,6 +22,8 @@ use std::result::Result;
 use std::str;
 use std::sync::Arc;
 use std::sync::Mutex;
+use tracing::debug;
+use tracing::info;
 use url::Url;
 
 /// Structure representing local or remote file.

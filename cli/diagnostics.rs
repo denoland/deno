@@ -11,6 +11,7 @@ use serde::Deserialize;
 use serde::Deserializer;
 use std::error::Error;
 use std::fmt;
+use tracing::debug;
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]

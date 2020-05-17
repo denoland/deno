@@ -5,6 +5,7 @@ use deno_core::ErrBox;
 use rustyline::Editor;
 use std::fs;
 use std::path::PathBuf;
+use tracing::debug;
 
 pub struct Repl {
   editor: Editor<()>,

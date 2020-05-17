@@ -22,6 +22,7 @@ use std::pin::Pin;
 use std::task::Context;
 use std::task::Poll;
 use tokio::io::AsyncRead;
+use tracing::debug;
 use url::Url;
 
 /// Create new instance of async reqwest::Client. This client supports

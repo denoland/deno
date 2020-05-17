@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::flags::Flags;
-use log::Level;
 use regex::{Regex, RegexBuilder};
 use std::env;
 use std::fs;
@@ -11,6 +10,7 @@ use std::io::Write;
 #[cfg(not(windows))]
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
+use tracing::Level;
 use url::Url;
 
 lazy_static! {
@@ -193,13 +193,13 @@ pub fn install(
     executable_args.push(ca_file)
   }
   if let Some(log_level) = flags.log_level {
-    if log_level == Level::Error {
+    if log_level == Level::ERROR {
       executable_args.push("--quiet".to_string());
     } else {
       executable_args.push("--log-level".to_string());
       let log_level = match log_level {
-        Level::Debug => "debug",
-        Level::Info => "info",
+        Level::DEBUG => "debug",
+        Level::INFO => "info",
         _ => {
           return Err(Error::new(
             ErrorKind::Other,
@@ -529,7 +529,7 @@ mod tests {
       Flags {
         allow_net: true,
         allow_read: true,
-        log_level: Some(Level::Error),
+        log_level: Some(Level::ERROR),
         ..Flags::default()
       },
       "http://localhost:4545/cli/tests/echo_server.ts",

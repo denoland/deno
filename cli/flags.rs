@@ -5,9 +5,10 @@ use clap::AppSettings;
 use clap::Arg;
 use clap::ArgMatches;
 use clap::SubCommand;
-use log::Level;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
+use tracing::debug;
+use tracing::Level;
 
 /// Creates vector of strings, Vec<String>
 macro_rules! svec {
@@ -225,13 +226,13 @@ pub fn flags_from_vec_safe(args: Vec<String>) -> clap::Result<Flags> {
 
   if matches.is_present("log-level") {
     flags.log_level = match matches.value_of("log-level").unwrap() {
-      "debug" => Some(Level::Debug),
-      "info" => Some(Level::Info),
+      "debug" => Some(Level::DEBUG),
+      "info" => Some(Level::INFO),
       _ => unreachable!(),
     };
   }
   if matches.is_present("quiet") {
-    flags.log_level = Some(Level::Error);
+    flags.log_level = Some(Level::ERROR);
   }
 
   if let Some(m) = matches.subcommand_matches("run") {
@@ -2196,7 +2197,7 @@ mod tests {
         subcommand: DenoSubcommand::Run {
           script: "script.ts".to_string(),
         },
-        log_level: Some(Level::Debug),
+        log_level: Some(Level::DEBUG),
         ..Flags::default()
       }
     );
@@ -2211,7 +2212,7 @@ mod tests {
         subcommand: DenoSubcommand::Run {
           script: "script.ts".to_string(),
         },
-        log_level: Some(Level::Error),
+        log_level: Some(Level::ERROR),
         ..Flags::default()
       }
     );

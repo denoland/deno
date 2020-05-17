@@ -19,6 +19,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
+use tracing::debug;
 
 /// Wrapper for `WorkerHandle` that adds functionality
 /// for terminating workers.

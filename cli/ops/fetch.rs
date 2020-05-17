@@ -11,6 +11,7 @@ use http::header::HeaderName;
 use http::header::HeaderValue;
 use http::Method;
 use std::convert::From;
+use tracing::debug;
 
 pub fn init(i: &mut CoreIsolate, s: &State) {
   i.register_op("op_fetch", s.stateful_json_op2(op_fetch));

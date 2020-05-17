@@ -17,6 +17,7 @@ use std::task::Poll;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio::net::UdpSocket;
+use tracing::debug;
 
 #[cfg(unix)]
 use super::net_unix;

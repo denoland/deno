@@ -13,6 +13,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 #[cfg(test)]
 use std::sync::Mutex;
+use tracing::debug;
 use url::Url;
 
 const PERMISSION_EMOJI: &str = "⚠️";

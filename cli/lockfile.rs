@@ -2,6 +2,7 @@ use serde_json::json;
 pub use serde_json::Value;
 use std::collections::HashMap;
 use std::io::Result;
+use tracing::debug;
 use url::Url;
 
 pub struct Lockfile {

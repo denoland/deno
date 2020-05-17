@@ -3,8 +3,6 @@
 
 #[macro_use]
 extern crate lazy_static;
-#[macro_use]
-extern crate log;
 extern crate futures;
 #[macro_use]
 extern crate serde_json;
@@ -84,44 +82,14 @@ use flags::DenoSubcommand;
 use flags::Flags;
 use futures::future::FutureExt;
 use futures::Future;
-use log::Level;
-use log::Metadata;
-use log::Record;
 use std::env;
 use std::io::Write;
 use std::path::PathBuf;
 use std::pin::Pin;
+use tracing::debug;
+use tracing::Level;
 use upgrade::upgrade_command;
 use url::Url;
-
-static LOGGER: Logger = Logger;
-
-// TODO(ry) Switch to env_logger or other standard crate.
-struct Logger;
-
-impl log::Log for Logger {
-  fn enabled(&self, metadata: &Metadata) -> bool {
-    metadata.level() <= log::max_level()
-  }
-
-  fn log(&self, record: &Record) {
-    if self.enabled(record.metadata()) {
-      let mut target = record.target().to_string();
-
-      if let Some(line_no) = record.line() {
-        target.push_str(":");
-        target.push_str(&line_no.to_string());
-      }
-
-      if record.level() >= Level::Info {
-        eprintln!("{}", record.args());
-      } else {
-        eprintln!("{} RS - {} - {}", record.level(), target, record.args());
-      }
-    }
-  }
-  fn flush(&self) {}
-}
 
 fn write_to_stdout_ignore_sigpipe(bytes: &[u8]) -> Result<(), std::io::Error> {
   use std::io::ErrorKind;
@@ -552,7 +520,6 @@ pub fn main() {
   #[cfg(windows)]
   colors::enable_ansi(); // For Windows 10
 
-  log::set_logger(&LOGGER).unwrap();
   let args: Vec<String> = env::args().collect();
   let flags = flags::flags_from_vec(args);
 
@@ -562,11 +529,18 @@ pub fn main() {
     v8_set_flags(v8_flags_);
   }
 
-  let log_level = match flags.log_level {
-    Some(level) => level,
-    None => Level::Info, // Default log level
+  let log_level = match &flags.log_level {
+    Some(level) => level.clone(),
+    None => Level::INFO, // Default log level
   };
-  log::set_max_level(log_level.to_level_filter());
+
+  let subscriber = tracing_subscriber::fmt()
+    .with_writer(std::io::stderr)
+    .with_max_level(log_level)
+    .finish();
+
+  tracing::subscriber::set_global_default(subscriber)
+    .expect("setting tracing default failed");
 
   let fut = match flags.clone().subcommand {
     DenoSubcommand::Bundle {

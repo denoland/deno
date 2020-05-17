@@ -7,6 +7,8 @@ use crate::js::COMPILER_SNAPSHOT;
 use deno_core::Snapshot;
 use deno_core::StartupData;
 
+use tracing::debug;
+
 #[cfg(feature = "no-snapshot-init")]
 pub fn deno_isolate_init() -> StartupData<'static> {
   debug!("Deno isolate init without snapshots.");
