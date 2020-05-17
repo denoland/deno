@@ -41,9 +41,11 @@ declare namespace Deno {
    *
    * The flag argument can be set to `file` or `dir`. This argument is only
    * available on Windows and ignored on other platforms.
-   *
-   *       Deno.symlinkSync("old/name", "new/name");
-   *
+   * 
+   * ```ts
+   * Deno.symlinkSync("old/name", "new/name");
+   * ```
+   * 
    * Requires `allow-write` permission. */
   export function symlinkSync(
     oldpath: string,
@@ -57,9 +59,11 @@ declare namespace Deno {
    *
    * The flag argument can be set to `file` or `dir`. This argument is only
    * available on Windows and ignored on other platforms.
-   *
-   *       Deno.symlink("old/name", "new/name");
-   *
+   * 
+   * ```ts
+   * await Deno.symlink("old/name", "new/name");
+   * ```
+   * 
    * Requires `allow-write` permission. */
   export function symlink(
     oldpath: string,
