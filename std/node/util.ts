@@ -1,3 +1,5 @@
+export { promisify } from "./_util/_util_promisify.ts";
+
 export function isArray(value: unknown): boolean {
   return Array.isArray(value);
 }
