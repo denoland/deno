@@ -6,7 +6,9 @@ use clap::Arg;
 use clap::ArgMatches;
 use clap::SubCommand;
 use log::Level;
+use regex::Regex;
 use std::net::SocketAddr;
+use std::net::{IpAddr, Ipv6Addr};
 use std::path::{Path, PathBuf};
 
 /// Creates vector of strings, Vec<String>
@@ -1314,39 +1316,94 @@ pub fn resolve_urls(urls: Vec<String>) -> Vec<String> {
   out
 }
 
-/// Expands "bare port" paths (eg. ":8080") into full paths with hosts. It
-/// expands to such paths into 3 paths with following hosts: `0.0.0.0:port`,
-/// `127.0.0.1:port` and `localhost:port`.
+/// Validate host or host:port pair.
 fn resolve_hosts(paths: Vec<String>) -> Vec<String> {
+  lazy_static! {
+    // https://tools.ietf.org/html/rfc1035
+    static ref DOMAIN_ALLOWED_CHARACTERS: Regex = Regex::new(r"^[-.a-zA-Z0-9]+$").unwrap();
+  }
+
   let mut out: Vec<String> = vec![];
   for host_and_port in paths.iter() {
-    let parts = host_and_port.split(':').collect::<Vec<&str>>();
+    // pure port:                 :1234
+    // ipv4 with port:            1.2.3.4:1234
+    // ipv6 with port:            [1:2:3::4]:1234
+    // pure ipv4:                 1.2.3.4
+    // pure ipv6 with bracket:    [1:2:3::4]
+    // pure ipv6 without bracket: 1:2:3::4
+    // pure domain name:          example.com
+    // domain name with port:     example.com:1234
 
-    match parts.len() {
-      // host only
-      1 => {
-        out.push(host_and_port.to_owned());
+    if host_and_port.parse::<SocketAddr>().is_ok() {
+      // ipv4 with port / ipv6 with port
+      out.push(host_and_port.to_owned());
+      continue;
+    }
+    if host_and_port.parse::<IpAddr>().is_ok() {
+      // pure ipv4 / pure ipv6 without bracket
+      out.push(host_and_port.to_owned());
+      continue;
+    }
+    if host_and_port.starts_with('[')
+      && host_and_port.ends_with(']')
+      && host_and_port[1..host_and_port.len() - 1]
+        .parse::<Ipv6Addr>()
+        .is_ok()
+    {
+      // pure ipv6 with bracket
+      out.push(host_and_port.to_owned());
+      continue;
+    }
+    if host_and_port.starts_with(':') {
+      let port = host_and_port[1..].parse::<i32>().unwrap_or(0);
+      if let Ok(hosts) = expand_port_to_localhost(port) {
+        out.extend(hosts);
+        continue;
       }
-      // host and port (NOTE: host might be empty string)
-      2 => {
-        let host = parts[0];
-        let port = parts[1];
-
-        if !host.is_empty() {
+    }
+    let parts = host_and_port.split(':').collect::<Vec<&str>>();
+    if !parts.is_empty()
+      && parts.len() < 3
+      && DOMAIN_ALLOWED_CHARACTERS.is_match(parts[0])
+    {
+      if parts.len() == 1 {
+        // pure domain name
+        out.push(host_and_port.to_owned());
+        continue;
+      } else if parts.len() == 2 {
+        let port = parts[1].parse::<i32>().unwrap_or(0);
+        if port > 0 && port < 65536 {
+          // domain name with port
           out.push(host_and_port.to_owned());
           continue;
         }
-
-        // we got bare port, let's add default hosts
-        for host in ["0.0.0.0", "127.0.0.1", "localhost"].iter() {
-          out.push(format!("{}:{}", host, port));
-        }
       }
-      _ => panic!("Bad host:port pair: {}", host_and_port),
     }
+    panic!(
+      "{}: Bad host or host:port pair: {}",
+      crate::colors::red("Error".to_string()),
+      host_and_port
+    );
   }
 
   out
+}
+
+/// Expands port into full localhost paths.
+/// It expands port into 5 paths with following hosts: `0.0.0.0:port`,
+/// `127.0.0.1:port`, `[::]:port`, `[::1]:port` and `localhost:port`.
+fn expand_port_to_localhost(port: i32) -> Result<Vec<String>, &'static str> {
+  if port <= 0 || port >= 65536 {
+    return Err("invalid port");
+  }
+
+  let mut out: Vec<String> = vec![];
+
+  for host in ["0.0.0.0", "127.0.0.1", "[::]", "[::1]", "localhost"].iter() {
+    out.push(format!("{}:{}", host, port));
+  }
+
+  Ok(out)
 }
 
 #[cfg(test)]
@@ -2336,10 +2393,47 @@ mod tests {
           "deno.land",
           "0.0.0.0:8000",
           "127.0.0.1:8000",
+          "[::]:8000",
+          "[::1]:8000",
           "localhost:8000",
           "0.0.0.0:4545",
           "127.0.0.1:4545",
+          "[::]:4545",
+          "[::1]:4545",
           "localhost:4545"
+        ],
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn allow_net_whitelist_with_ipv6_address() {
+    let r = flags_from_vec_safe(svec![
+      "deno",
+      "run",
+      "--allow-net=deno.land,deno.land:80,::,127.0.0.1,[::1],1.2.3.4:5678,:5678,[::1]:8080",
+      "script.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run {
+          script: "script.ts".to_string(),
+        },
+        net_whitelist: svec![
+          "deno.land",
+          "deno.land:80",
+          "::",
+          "127.0.0.1",
+          "[::1]",
+          "1.2.3.4:5678",
+          "0.0.0.0:5678",
+          "127.0.0.1:5678",
+          "[::]:5678",
+          "[::1]:5678",
+          "localhost:5678",
+          "[::1]:8080"
         ],
         ..Flags::default()
       }
@@ -2697,5 +2791,27 @@ mod tests {
         ..Flags::default()
       }
     );
+  }
+
+  #[test]
+  fn expand_port_to_localhost_address() {
+    let r = expand_port_to_localhost(65535);
+    assert!(r.is_ok());
+    assert_eq!(
+      r.unwrap(),
+      svec![
+        "0.0.0.0:65535",
+        "127.0.0.1:65535",
+        "[::]:65535",
+        "[::1]:65535",
+        "localhost:65535"
+      ],
+    );
+  }
+
+  #[test]
+  fn expand_invalid_port_to_localhost_address() {
+    assert!(expand_port_to_localhost(0).is_err());
+    assert!(expand_port_to_localhost(65536).is_err());
   }
 }

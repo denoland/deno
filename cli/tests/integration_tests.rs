@@ -2207,6 +2207,30 @@ fn test_permissions_net_listen_allow_localhost() {
   assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
 }
 
+#[test]
+fn test_permissions_net_listen_allow_ipv6_validate_success() {
+  let (_, err) = util::run_and_collect_output(
+    true,
+			"run --allow-net=[::1]:8080 complex_permissions_test.ts netListen [::1]:8080",
+			None,
+			None,
+      false,
+		);
+  assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
+}
+
+#[test]
+fn test_permissions_net_listen_allow_ipv6_validate_fail() {
+  let (_, err) = util::run_and_collect_output(
+    false,
+    "run --allow-net=::1:8080 complex_permissions_test.ts netListen [::1]:8080",
+    None,
+    None,
+    false,
+  );
+  assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
+}
+
 fn inspect_flag_with_unique_port(flag_prefix: &str) -> String {
   use std::sync::atomic::{AtomicU16, Ordering};
   static PORT: AtomicU16 = AtomicU16::new(9229);
