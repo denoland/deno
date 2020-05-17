@@ -1290,9 +1290,9 @@ declare namespace Deno {
    * Load an executable object and retuns its symbol table.
    *
    * ```ts
-   * Deno.loadLibrary("libm.so"); // search in system paths. Implementation is platform-dependent
-   * Deno.loadLibrary("./libm.so"); // load from current directory
-   * Deno.loadLibrary("/usr/lib/libm.so"); // load from absolute directory
+   * Deno.loadLibrary("libraylib.so"); // search in system paths. Implementation is platform-dependent
+   * Deno.loadLibrary("./libraylib.so"); // load from current directory
+   * Deno.loadLibrary("/usr/lib/libraylib.so"); // load from absolute directory
    * ```
    *
    * Throws `Deno.errors.NotFound` if shared object not found or failed to load.
