@@ -114,6 +114,14 @@ export function currentDayOfYear(): number {
 }
 
 /**
+ * Returns true if that year is a leap year, and false if it is not.
+ * @returns true or false
+ */
+export function isLeapYear(year: number): boolean {
+  return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+}
+
+/**
  * Parse a date to return a IMF formated string date
  * RFC: https://tools.ietf.org/html/rfc7231#section-7.1.1.1
  * IMF is the time format to use when generating times in HTTP
