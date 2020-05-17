@@ -535,6 +535,9 @@ pub fn main() {
   };
 
   let subscriber = tracing_subscriber::fmt()
+    .without_time()
+    .with_target(false)
+    .with_level(false)
     .with_writer(std::io::stderr)
     .with_max_level(log_level)
     .finish();
