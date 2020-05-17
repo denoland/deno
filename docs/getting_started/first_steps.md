@@ -30,7 +30,7 @@ deno run https://deno.land/std/examples/welcome.ts
 ### Making an HTTP request
 
 Something a lot of programs do is fetching data from a webserver via an HTTP
-request. Lets write a small program that fetches a file and prints the content
+request. Let's write a small program that fetches a file and prints the content
 to the terminal.
 
 Just like in the browser you can use the web standard
@@ -45,7 +45,7 @@ const body = new Uint8Array(await res.arrayBuffer());
 await Deno.stdout.write(body);
 ```
 
-Lets walk through what this application does:
+Let's walk through what this application does:
 
 1. We get the first argument passed to the application and store it in the
    variable `url`.

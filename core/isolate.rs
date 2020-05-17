@@ -529,8 +529,7 @@ impl Future for CoreIsolate {
       assert_eq!(inner.shared.size(), 0);
     }
 
-    if overflow_response.is_some() {
-      let (op_id, buf) = overflow_response.take().unwrap();
+    if let Some((op_id, buf)) = overflow_response.take() {
       async_op_response(
         scope,
         Some((op_id, buf)),
