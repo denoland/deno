@@ -923,7 +923,9 @@ async fn execute_in_same_thread(
     let select_result = futures::future::select(event_fut, &mut worker).await;
     match select_result {
       Either::Left((event_result, _worker)) => {
-        let event = event_result.expect("Compiler didn't respond");
+        let event = event_result
+          .expect("Compiler didn't respond")
+          .expect("Empty message");
 
         let buf = match event {
           WorkerEvent::Message(buf) => Ok(buf),
