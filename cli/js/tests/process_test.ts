@@ -5,12 +5,20 @@ import {
   assertStrContains,
   unitTest,
 } from "./test_util.ts";
-const { kill, run, readFile, open, makeTempDir, writeFile } = Deno;
+const {
+  kill,
+  run,
+  readFile,
+  open,
+  makeTempDir,
+  writeFile,
+  writeFileSync,
+} = Deno;
 
 unitTest(function runPermissions(): void {
   let caughtError = false;
   try {
-    Deno.run({ cmd: ["python", "-c", "print('hello world')"] });
+    run({ cmd: ["python", "-c", "print('hello world')"] });
   } catch (e) {
     caughtError = true;
     assert(e instanceof Deno.errors.PermissionDenied);
@@ -99,7 +107,7 @@ while True:
     pass
 `;
 
-    Deno.writeFileSync(`${cwd}/${pyProgramFile}.py`, enc.encode(pyProgram));
+    writeFileSync(`${cwd}/${pyProgramFile}.py`, enc.encode(pyProgram));
     const p = run({
       cwd,
       cmd: ["python", `${pyProgramFile}.py`],
@@ -108,7 +116,7 @@ while True:
     // Write the expected exit code *after* starting python.
     // This is how we verify that `run()` is actually asynchronous.
     const code = 84;
-    Deno.writeFileSync(`${cwd}/${exitCodeFile}`, enc.encode(`${code}`));
+    writeFileSync(`${cwd}/${exitCodeFile}`, enc.encode(`${code}`));
 
     const status = await p.status();
     assertEquals(status.success, false);
@@ -325,60 +333,54 @@ unitTest(function signalNumbers(): void {
   }
 });
 
-// Ignore signal tests on windows for now...
-if (Deno.build.os !== "windows") {
-  unitTest(function killPermissions(): void {
-    let caughtError = false;
-    try {
-      // Unlike the other test cases, we don't have permission to spawn a
-      // subprocess we can safely kill. Instead we send SIGCONT to the current
-      // process - assuming that Deno does not have a special handler set for it
-      // and will just continue even if a signal is erroneously sent.
-      Deno.kill(Deno.pid, Deno.Signal.SIGCONT);
-    } catch (e) {
-      caughtError = true;
-      assert(e instanceof Deno.errors.PermissionDenied);
-    }
-    assert(caughtError);
+unitTest(function killPermissions(): void {
+  let caughtError = false;
+  try {
+    // Unlike the other test cases, we don't have permission to spawn a
+    // subprocess we can safely kill. Instead we send SIGCONT to the current
+    // process - assuming that Deno does not have a special handler set for it
+    // and will just continue even if a signal is erroneously sent.
+    kill(Deno.pid, Deno.Signal.SIGCONT);
+  } catch (e) {
+    caughtError = true;
+    assert(e instanceof Deno.errors.PermissionDenied);
+  }
+  assert(caughtError);
+});
+
+unitTest({ perms: { run: true } }, async function killSuccess(): Promise<void> {
+  const p = run({
+    cmd: ["python", "-c", "from time import sleep; sleep(10000)"],
   });
 
-  unitTest({ perms: { run: true } }, async function killSuccess(): Promise<
-    void
-  > {
-    const p = run({
-      cmd: ["python", "-c", "from time import sleep; sleep(10000)"],
-    });
+  assertEquals(Deno.Signal.SIGINT, 2);
+  kill(p.pid, Deno.Signal.SIGINT);
+  const status = await p.status();
 
-    assertEquals(Deno.Signal.SIGINT, 2);
-    kill(p.pid, Deno.Signal.SIGINT);
-    const status = await p.status();
+  assertEquals(status.success, false);
+  // TODO(ry) On Linux, status.code is sometimes undefined and sometimes 1.
+  // The following assert is causing this test to be flaky. Investigate and
+  // re-enable when it can be made deterministic.
+  // assertEquals(status.code, 1);
+  // assertEquals(status.signal, Deno.Signal.SIGINT);
+  p.close();
+});
 
-    assertEquals(status.success, false);
-    // TODO(ry) On Linux, status.code is sometimes undefined and sometimes 1.
-    // The following assert is causing this test to be flaky. Investigate and
-    // re-enable when it can be made deterministic.
-    // assertEquals(status.code, 1);
-    // assertEquals(status.signal, Deno.Signal.SIGINT);
-    p.close();
+unitTest({ perms: { run: true } }, function killFailed(): void {
+  const p = run({
+    cmd: ["python", "-c", "from time import sleep; sleep(10000)"],
   });
+  assert(!p.stdin);
+  assert(!p.stdout);
 
-  unitTest({ perms: { run: true } }, function killFailed(): void {
-    const p = run({
-      cmd: ["python", "-c", "from time import sleep; sleep(10000)"],
-    });
-    assert(!p.stdin);
-    assert(!p.stdout);
+  let err;
+  try {
+    kill(p.pid, 12345);
+  } catch (e) {
+    err = e;
+  }
+  assert(!!err);
+  assert(err instanceof TypeError);
 
-    let err;
-    try {
-      kill(p.pid, 12345);
-    } catch (e) {
-      err = e;
-    }
-
-    assert(!!err);
-    assert(err instanceof TypeError);
-
-    p.close();
-  });
-}
+  p.close();
+});

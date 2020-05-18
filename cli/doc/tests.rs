@@ -1435,3 +1435,101 @@ export function fooFn(a: number) {
       .contains("function fooFn(a: number)")
   );
 }
+
+#[tokio::test]
+async fn ts_lit_types() {
+  let source_code = r#"
+export type boolLit = false;
+export type strLit = "text";
+export type tplLit = `text`;
+export type numLit = 5;
+"#;
+  let loader =
+    TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
+  let entries = DocParser::new(loader).parse("test.ts").await.unwrap();
+  let actual = serde_json::to_value(entries).unwrap();
+  let expected_json = json!([
+    {
+      "kind": "typeAlias",
+      "name": "boolLit",
+      "location": {
+        "filename": "test.ts",
+        "line": 2,
+        "col": 0
+      },
+      "jsDoc": null,
+      "typeAliasDef": {
+        "tsType": {
+          "repr": "false",
+          "kind": "literal",
+          "literal": {
+            "kind": "boolean",
+            "boolean": false
+          }
+        },
+        "typeParams": []
+      }
+    }, {
+      "kind": "typeAlias",
+      "name": "strLit",
+      "location": {
+        "filename": "test.ts",
+        "line": 3,
+        "col": 0
+      },
+      "jsDoc": null,
+      "typeAliasDef": {
+        "tsType": {
+          "repr": "text",
+          "kind": "literal",
+          "literal": {
+            "kind": "string",
+            "string": "text"
+          }
+        },
+        "typeParams": []
+      }
+    }, {
+      "kind": "typeAlias",
+      "name": "tplLit",
+      "location": {
+        "filename": "test.ts",
+        "line": 4,
+        "col": 0
+      },
+      "jsDoc": null,
+      "typeAliasDef": {
+        "tsType": {
+          "repr": "text",
+          "kind": "literal",
+          "literal": {
+            "kind": "string",
+            "string": "text"
+          }
+        },
+        "typeParams": []
+      }
+    }, {
+      "kind": "typeAlias",
+      "name": "numLit",
+      "location": {
+        "filename": "test.ts",
+        "line": 5,
+        "col": 0
+      },
+      "jsDoc": null,
+      "typeAliasDef": {
+        "tsType": {
+          "repr": "5",
+          "kind": "literal",
+          "literal": {
+            "kind": "number",
+            "number": 5.0
+          }
+        },
+        "typeParams": []
+      }
+    }
+  ]);
+  assert_eq!(actual, expected_json);
+}

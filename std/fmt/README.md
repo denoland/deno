@@ -35,7 +35,7 @@ This is very much a work-in-progress. I'm actively soliciting feedback.
   format each element according to the format (surrounded by [] and separated by
   comma) (`<` Mnemonic: pull each element out of array)
 
-- how to deal with more newfangled Javascript features ( generic Iterables, Map
+- how to deal with more newfangled JavaScript features (generic Iterables, Map
   and Set types, typed Arrays, ...)
 
 - the implementation is fairly rough around the edges:
