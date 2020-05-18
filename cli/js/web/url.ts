@@ -2,7 +2,6 @@
 import { build } from "../build.ts";
 import { getRandomValues } from "../ops/get_random_values.ts";
 import { customInspect } from "./console.ts";
-import * as encoding from "./url_encoding.ts";
 import { urls } from "./url_search_params.ts";
 
 interface URLParts {
@@ -78,9 +77,9 @@ function parse(url: string, isBase = true): URLParts | undefined {
       restAuthentication,
       /^([^:]*)/
     );
-    parts.username = encoding.encodeUserinfo(parts.username);
+    parts.username = encodeUserinfo(parts.username);
     [parts.password] = takePattern(restAuthentication, /^:(.*)/);
-    parts.password = encoding.encodeUserinfo(parts.password);
+    parts.password = encodeUserinfo(parts.password);
     [parts.hostname, restAuthority] = takePattern(restAuthority, /^([^:]+)/);
     [parts.port] = takePattern(restAuthority, /^:(.*)/);
     if (!isValidPort(parts.port)) {
@@ -93,16 +92,16 @@ function parse(url: string, isBase = true): URLParts | undefined {
     parts.port = "";
   }
   try {
-    parts.hostname = encoding.encodeHostname(parts.hostname).toLowerCase();
+    parts.hostname = encodeHostname(parts.hostname).toLowerCase();
   } catch {
     return undefined;
   }
   [parts.path, restUrl] = takePattern(restUrl, /^([^?#]*)/);
-  parts.path = encoding.encodePathname(parts.path.replace(/\\/g, "/"));
+  parts.path = encodePathname(parts.path.replace(/\\/g, "/"));
   [parts.query, restUrl] = takePattern(restUrl, /^(\?[^#]*)/);
-  parts.query = encoding.encodeSearch(parts.query);
+  parts.query = encodeSearch(parts.query);
   [parts.hash] = takePattern(restUrl, /^(#.*)/);
-  parts.hash = encoding.encodeHash(parts.hash);
+  parts.hash = encodeHash(parts.hash);
   return parts as URLParts;
 }
 
@@ -266,7 +265,7 @@ export class URLImpl implements URL {
         value = `#${value}`;
       }
       // hashes can contain % and # unescaped
-      parts.get(this)!.hash = encoding.encodeHash(value);
+      parts.get(this)!.hash = encodeHash(value);
     }
   }
 
@@ -288,7 +287,7 @@ export class URLImpl implements URL {
   set hostname(value: string) {
     value = String(value);
     try {
-      parts.get(this)!.hostname = encoding.encodeHostname(value);
+      parts.get(this)!.hostname = encodeHostname(value);
     } catch {}
   }
 
@@ -326,7 +325,7 @@ export class URLImpl implements URL {
 
   set password(value: string) {
     value = String(value);
-    parts.get(this)!.password = encoding.encodeUserinfo(value);
+    parts.get(this)!.password = encodeUserinfo(value);
   }
 
   get pathname(): string {
@@ -339,7 +338,7 @@ export class URLImpl implements URL {
       value = `/${value}`;
     }
     // paths can contain % unescaped
-    parts.get(this)!.path = encoding.encodePathname(value);
+    parts.get(this)!.path = encodePathname(value);
   }
 
   get port(): string {
@@ -379,7 +378,7 @@ export class URLImpl implements URL {
   set search(value: string) {
     value = String(value);
     const query = value == "" || value.charAt(0) == "?" ? value : `?${value}`;
-    parts.get(this)!.query = encoding.encodeSearch(query);
+    parts.get(this)!.query = encodeSearch(query);
     this.#updateSearchParams();
   }
 
@@ -389,7 +388,7 @@ export class URLImpl implements URL {
 
   set username(value: string) {
     value = String(value);
-    parts.get(this)!.username = encoding.encodeUserinfo(value);
+    parts.get(this)!.username = encodeUserinfo(value);
   }
 
   get searchParams(): URLSearchParams {
@@ -466,4 +465,57 @@ export class URLImpl implements URL {
     // persisten storage for per globalThis.location.origin at some point.
     blobURLMap.delete(url);
   }
+}
+
+function charInC0ControlSet(c: string): boolean {
+  return c >= "\u0000" && c <= "\u001F";
+}
+
+function charInSearchSet(c: string): boolean {
+  // prettier-ignore
+  return charInC0ControlSet(c) || ["\u0020", "\u0022", "\u0023", "\u0027", "\u003C", "\u003E"].includes(c) || c > "\u007E";
+}
+
+function charInFragmentSet(c: string): boolean {
+  // prettier-ignore
+  return charInC0ControlSet(c) || ["\u0020", "\u0022", "\u003C", "\u003E", "\u0060"].includes(c);
+}
+
+function charInPathSet(c: string): boolean {
+  // prettier-ignore
+  return charInFragmentSet(c) || ["\u0023", "\u003F", "\u007B", "\u007D"].includes(c);
+}
+
+function charInUserinfoSet(c: string): boolean {
+  // "\u0027" ("'") seemingly isn't in the spec, but matches Chrome and Firefox.
+  // prettier-ignore
+  return charInPathSet(c) || ["\u0027", "\u002F", "\u003A", "\u003B", "\u003D", "\u0040", "\u005B", "\u005C", "\u005D", "\u005E", "\u007C"].includes(c);
+}
+
+function encodeChar(c: string): string {
+  return `%${c.charCodeAt(0).toString(16)}`.toUpperCase();
+}
+
+function encodeUserinfo(s: string): string {
+  return [...s].map((c) => (charInUserinfoSet(c) ? encodeChar(c) : c)).join("");
+}
+
+function encodeHostname(s: string): string {
+  // FIXME: https://url.spec.whatwg.org/#idna
+  if (s.includes(":")) {
+    throw new TypeError("Invalid hostname.");
+  }
+  return encodeURIComponent(s);
+}
+
+function encodePathname(s: string): string {
+  return [...s].map((c) => (charInPathSet(c) ? encodeChar(c) : c)).join("");
+}
+
+function encodeSearch(s: string): string {
+  return [...s].map((c) => (charInSearchSet(c) ? encodeChar(c) : c)).join("");
+}
+
+function encodeHash(s: string): string {
+  return [...s].map((c) => (charInFragmentSet(c) ? encodeChar(c) : c)).join("");
 }
