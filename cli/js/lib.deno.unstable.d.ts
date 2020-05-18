@@ -41,11 +41,15 @@ declare namespace Deno {
    * Requires `allow-read` and `allow-write` permissions. */
   export function link(oldpath: string, newpath: string): Promise<void>;
 
+  export type SymlinkOptions = {
+    type: "file" | "dir";
+  };
+
   /** **UNSTABLE**: needs security review.
    *
    * Creates `newpath` as a symbolic link to `oldpath`.
    *
-   * The flag argument can be set to `file` or `dir`. This argument is only
+   * The options.type parameter can be set to `file` or `dir`. This argument is only
    * available on Windows and ignored on other platforms.
    *
    * ```ts
@@ -56,14 +60,14 @@ declare namespace Deno {
   export function symlinkSync(
     oldpath: string,
     newpath: string,
-    flag?: string
+    options?: SymlinkOptions
   ): void;
 
   /** **UNSTABLE**: needs security review.
    *
    * Creates `newpath` as a symbolic link to `oldpath`.
    *
-   * The flag argument can be set to `file` or `dir`. This argument is only
+   * The options.type parameter can be set to `file` or `dir`. This argument is only
    * available on Windows and ignored on other platforms.
    *
    * ```ts
@@ -74,7 +78,7 @@ declare namespace Deno {
   export function symlink(
     oldpath: string,
     newpath: string,
-    flag?: string
+    options?: SymlinkOptions
   ): Promise<void>;
 
   /** **UNSTABLE** */

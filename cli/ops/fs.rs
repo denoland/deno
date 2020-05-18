@@ -672,7 +672,14 @@ struct SymlinkArgs {
   oldpath: String,
   newpath: String,
   #[cfg(not(unix))]
-  flag: Option<String>,
+  options: Option<SymlinkOptions>,
+}
+
+#[cfg(not(unix))]
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SymlinkOptions {
+  _type: String,
 }
 
 fn op_symlink(
@@ -700,11 +707,11 @@ fn op_symlink(
     {
       use std::os::windows::fs::{symlink_dir, symlink_file};
 
-      match args.flag {
-        Some(flag) => match flag.as_ref() {
+      match args.options {
+        Some(options) => match options._type.as_ref() {
           "file" => symlink_file(&oldpath, &newpath)?,
           "dir" => symlink_dir(&oldpath, &newpath)?,
-          _ => return Err(OpError::type_error("unsupported flag".to_string())),
+          _ => return Err(OpError::type_error("unsupported type".to_string())),
         },
         None => {
           let old_meta = std::fs::metadata(&oldpath);
