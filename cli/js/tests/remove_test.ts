@@ -480,7 +480,7 @@ unitTest({ perms: { write: false } }, async function removeAllPerm(): Promise<
   assertEquals(err.name, "PermissionDenied");
 });
 
-if (Deno.build.os == "windows") {
+if (Deno.build.os === "windows") {
   unitTest(
     { perms: { run: true, write: true, read: true } },
     async function removeFileSymlink(): Promise<void> {
