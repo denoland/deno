@@ -2,7 +2,8 @@
 
 import { sendSync } from "./dispatch_json.ts";
 
-export function lookup(rid: number, symbol: string): number {
+export function lookup(rid: number, symbol: string): MemoryAddr {
+  // TODO return MemoryAddr
   return sendSync("op_dlsym", {
     rid,
     symbol,
@@ -17,12 +18,26 @@ export function call(rid: number, args: any[]): any {
   });
 }
 
-export function readMemory(addr: number, p: Uint8Array): void {
-  // TODO implement this
-}
+/** An opaque pointer */
+export class MemoryAddr {
+  /** Return the memory address to the start of the `buffer`.
+   * Requires --allow-ffi. */
+  static fromBuffer(buffer: SharedArrayBuffer): MemoryAddr {
+    // TODO implement this
+  }
 
-export function writeMemory(addr: number, p: Uint8Array): void {
-  // TODO implement this
+  /** Construct a buffer with access to a fixed chunk of memory.
+   * Requires --allow-ffi. */
+  toBuffer(length: number): SharedArrayBuffer {
+    // TODO implement this
+  }
+
+  static fromHex(addr: string): MemoryAddr {
+    // TODO implement this
+  }
+  toHex(): string {
+    // TODO implement this
+  }
 }
 
 export interface ForeignFunctionInfo {

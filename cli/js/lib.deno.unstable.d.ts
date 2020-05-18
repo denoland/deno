@@ -1243,15 +1243,19 @@ declare namespace Deno {
    */
   export function hostname(): string;
 
-  type MemoryAddr = number;
+  /** An opaque pointer */
+  export class MemoryAddr {
+    /** Return the memory address to the start of the `buffer`.
+     * Requires --allow-ffi. */
+    static fromBuffer(buffer: SharedArrayBuffer): MemoryAddr;
 
-  /** Read from an arbitrary chunk of memory
-   * Requires --allow-ffi. */
-  export function readMemory(addr: MemoryAddr, p: Uint8Array): void;
+    /** Construct a buffer with access to a fixed chunk of memory.
+     * Requires --allow-ffi. */
+    toBuffer(length: number): SharedArrayBuffer;
 
-  /** Write to an arbitrary chunk of memory
-   * Requires --allow-ffi. */
-  export function writeMemory(addr: MemoryAddr, p: Uint8Array): void;
+    static fromHex(addr: string): MemoryAddr;
+    toHex(): string;
+  }
 
   /** Symbol table of an executable object, usually a shared library. */
   export class ForeignLibrary implements Closer {

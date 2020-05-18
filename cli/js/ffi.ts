@@ -7,14 +7,12 @@ import {
   loadForeignFunction as opLoadFunction,
   loadForeignLibrary as opLoadLibrary,
 } from "./ops/ffi.ts";
-import { ForeignFunctionInfo } from "./ops/ffi.ts";
-
-export { readMemory, writeMemory } from "./ops/ffi.ts";
-export { ForeignFunctionInfo } from "./ops/ffi.ts";
+import { MemoryAddr, ForeignFunctionInfo } from "./ops/ffi.ts";
+export { MemoryAddr, ForeignFunctionInfo } from "./ops/ffi.ts";
 
 export class ForeignLibrary implements Closer {
   constructor(readonly rid: number) {}
-  lookup(symbol: string): number {
+  lookup(symbol: string): MemoryAddr {
     return lookup(this.rid, symbol);
   }
   close(): void {
