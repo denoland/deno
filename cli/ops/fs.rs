@@ -740,7 +740,7 @@ fn op_symlink(
               }
             }
             Err(_) => return Err(OpError::type_error(
-              "you must pass a flag argument in windows for non existing path"
+              "you must pass a `options` argument for non-existent target path in windows"
                 .to_string(),
             )),
           }
