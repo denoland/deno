@@ -41,26 +41,10 @@ default directory is:
 
 ## FAQ
 
-### But what if `https://deno.land/` goes down?
+### How do I import a specific version of a module?
 
-Relying on external servers is convenient for development but brittle in
-production. Production software should always bundle its dependencies. In Deno
-this is done by checking the `$DENO_DIR` into your source control system, and
-specifying that path as the `$DENO_DIR` environmental variable at runtime.
-
-### How can I trust a URL that may change?
-
-By using a lock file (using the `--lock` command line flag) you can ensure
-you're running the code you expect to be. You can learn more about this
-[here](./linking_to_external_code/integrity_checking.md).
-
-### How do you import to a specific version?
-
-Simply specify the version in the URL. For example, this URL fully specifies the
-code being run: `https://unpkg.com/liltest@0.0.5/dist/liltest.js`. Combined with
-the aforementioned technique of setting `$DENO_DIR` in production to stored
-code, one can fully specify the exact code being run, and execute the code
-without network access.
+Specify the version in the URL. For example, this URL fully specifies the code
+being run: `https://unpkg.com/liltest@0.0.5/dist/liltest.js`.
 
 ### It seems unwieldy to import URLs everywhere.
 
@@ -91,3 +75,31 @@ import { assertEquals, runTests, test } from "./deps.ts";
 
 This design circumvents a plethora of complexity spawned by package management
 software, centralized code repositories, and superfluous file formats.
+
+### How can I trust a URL that may change?
+
+By using a lock file (with the `--lock` command line flag), you can ensure that
+the code pulled from a URL is the same as it was during initial development. You
+can learn more about this
+[here](./linking_to_external_code/integrity_checking.md).
+
+### But what if the host of the URL goes down? The source won't be available.
+
+This, like the above, is a problem faced by _any_ remote dependency system.
+Relying on external servers is convenient for development but brittle in
+production. Production software should always vendor its dependencies. In Node
+this is done by checking `node_modules` into source control. In Deno this is
+done by pointing `$DENO_DIR` to some project-local directory at runtime, and
+similarly checking that into source control:
+
+```shell
+# Download the dependencies.
+DENO_DIR=./deno_dir deno cache src/deps.ts
+
+# Make sure the variable is set for any command which invokes the cache.
+DENO_DIR=./deno_dir deno test src
+
+# Check the directory into source control.
+git add -u deno_dir
+git commit
+```
