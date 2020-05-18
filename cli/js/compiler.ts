@@ -450,7 +450,9 @@ class Host implements ts.CompilerHost {
     return moduleNames.map((specifier) => {
       const maybeUrl = SourceFile.getResolvedUrl(specifier, containingFile);
 
-      util.log("compiler::host.resolveModulenames receiverd", {
+      util.log("compiler::host.resolveModuleNames maybeUrl", {
+        specifier,
+        containingFile,
         maybeUrl,
         sf: SourceFile.getCached(maybeUrl!),
       });
@@ -532,8 +534,9 @@ SNAPSHOT_HOST.getSourceFile(
   ts.ScriptTarget.ESNext
 );
 
-// Created to hydrate source file cache with lib
-// declaration files during snapshotting process.
+// We never use this program; it's only created 
+// during snapshotting to hydrate and populate 
+// source file cache with lib declaration files.
 const _TS_SNAPSHOT_PROGRAM = ts.createProgram({
   rootNames: [`${ASSETS}/bootstrap.ts`],
   options: SNAPSHOT_COMPILER_OPTIONS,
@@ -1175,7 +1178,6 @@ function compile(request: CompilerRequestCompile): CompileResult {
   }
 
   buildSourceFileCache(sourceFileMap);
-  const start = new Date();
   // if there was a configuration and no diagnostics with it, we will continue
   // to generate the program and possibly emit it.
   if (diagnostics.length === 0) {
@@ -1205,9 +1207,6 @@ function compile(request: CompilerRequestCompile): CompileResult {
     }
   }
 
-  const end = new Date();
-  // @ts-ignore
-  util.log("time in internal TS", end - start);
   let bundleOutput = undefined;
 
   if (diagnostics && diagnostics.length === 0 && bundle) {
@@ -1369,13 +1368,7 @@ async function tsCompilerOnMessage({
 }): Promise<void> {
   switch (request.type) {
     case CompilerRequestType.Compile: {
-      const start = new Date();
       const result = compile(request as CompilerRequestCompile);
-      const end = new Date();
-      util.log(
-        // @ts-ignore
-        `Time spent in TS program "${end - start}"`
-      );
       globalThis.postMessage(result);
       break;
     }

@@ -169,6 +169,7 @@ impl ModuleGraphLoader {
     let mut lib_directives = vec![];
     let mut types_directives = vec![];
 
+    // FIXME(bartlomieju):
     // The resolveModules op only handles fully qualified URLs for referrer.
     // However we will have cases where referrer is "/foo.ts". We add this dummy
     // prefix "memory://" in order to use resolution logic.
