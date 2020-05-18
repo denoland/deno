@@ -47,14 +47,13 @@ impl ResourceTable {
   }
 
   fn next_rid(&mut self) -> ResourceId {
-    let next_rid = self.next_id;
     self.next_id = loop {
       let rand_id = random::<ResourceId>();
       if self.map.get(&rand_id).is_none() {
         break rand_id;
       }
     };
-    next_rid as ResourceId
+    self.next_id
   }
 
   pub fn add(&mut self, name: &str, resource: Box<dyn Resource>) -> ResourceId {
