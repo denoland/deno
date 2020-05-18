@@ -56,10 +56,7 @@ export function equal(a: Uint8Array, match: Uint8Array): boolean {
 
 /** Check whether binary array has binary prefix  **/
 export function hasPrefix(a: Uint8Array, prefix: Uint8Array): boolean {
-  for (let i = 0, max = prefix.length; i < max; i++) {
-    if (a[i] !== prefix[i]) return false;
-  }
-  return true;
+  return a.length >= prefix.length && equal(a.slice(0, prefix.length), prefix);
 }
 
 /**
