@@ -1243,42 +1243,25 @@ declare namespace Deno {
    */
   export function hostname(): string;
 
-  /** A live view of memory */
-  export class MemoryCursor
-    implements
-      Reader,
-      ReaderSync,
-      Writer,
-      WriterSync,
-      Seeker,
-      SeekerSync,
-      Closer {
-    readonly rid: number;
-    constructor(rid: number);
-    write(p: Uint8Array): Promise<number>;
-    writeSync(p: Uint8Array): number;
-    read(p: Uint8Array): Promise<number | null>;
-    readSync(p: Uint8Array): number | null;
-    seek(offset: number, whence: SeekMode): Promise<number>;
-    seekSync(offset: number, whence: SeekMode): number;
-    close(): void;
-  }
+  type MemoryAddr = number;
 
-  /** Open a live view of memary
-   * 
-   * Requires --allow-ffi.
-   */
-  export function openMemory(start: number, length: number): MemoryCursor;
+  /** Read from an arbitrary chunk of memory
+   * Requires --allow-ffi. */
+  export function readMemory(addr: MemoryAddr, p: Uint8Array): void;
+
+  /** Write to an arbitrary chunk of memory
+   * Requires --allow-ffi. */
+  export function writeMemory(addr: MemoryAddr, p: Uint8Array): void;
 
   /** Symbol table of an executable object, usually a shared library. */
-  export class Library implements Closer {
+  export class ForeignLibrary implements Closer {
     readonly rid: number;
     constructor(rid: number);
     /** Look up the reference to a given symbol in this object. 
      * 
      * Throws `Deno.errors.NotFound` if symbol not found.
      */
-    lookup(symbol: string): number;
+    lookup(symbol: string): MemoryAddr;
     /** Discard the symbol table.
      * 
      * Throws `Deno.errors.BadResource` if something unexpected happened.
@@ -1290,17 +1273,49 @@ declare namespace Deno {
    * Load an executable object and retuns its symbol table.
    *
    * ```ts
-   * Deno.loadLibrary("libraylib.so"); // search in system paths. Implementation is platform-dependent
-   * Deno.loadLibrary("./libraylib.so"); // load from current directory
-   * Deno.loadLibrary("/usr/lib/libraylib.so"); // load from absolute directory
+   * Deno.loadForeignLibrary(null); // search in the running executable (deno)
+   * Deno.loadForeignLibrary("libraylib.so"); // search in system paths. Implementation is platform-dependent
+   * Deno.loadForeignLibrary("./libraylib.so"); // load from current directory
+   * Deno.loadForeignLibrary("/usr/lib/libraylib.so"); // load from absolute directory
    * ```
    *
    * Throws `Deno.errors.NotFound` if shared object not found or failed to load.
    *
    * Requires --allow-ffi.
    */
-  export function loadLibrary(
-    path: string | null,
-    // options?: Partial<LoadLibraryOptions>
-  ): Promise<Library>;
+  export function loadForeignLibrary(path: string | null): ForeignLibrary;
+
+  export enum ForeignABI {
+    // TODO
+  }
+
+  export enum ForeignType {
+    Default = "default",
+    // TODO
+  }
+
+  export interface ForeignFunctionInfo {
+    abi: ForeignABI;
+    args: ForeignType[];
+    numVariadic?: number;
+  }
+
+  export class ForeignFunction implements Closer {
+    readonly rid: number;
+    constructor(rid: number);
+    call(...args: any[]): any;
+    close(): void;
+  }
+
+  /**
+   * Load a foreign function from memory.
+   *
+   * ```ts
+   * const lib = Deno.loadForeignLibrary("msvcrt.dll")
+   * Deno.loadForeignFunction();
+   * ```
+   *
+   * Requires --allow-ffi.
+   */
+  export function loadForeignFunction(addr: MemoryAddr, info: ForeignFunctionInfo): ForeignFunction;
 }
