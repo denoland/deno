@@ -83,7 +83,13 @@ unitTest(
   { perms: { write: true, read: true } },
   function removeSyncDanglingSymlinkSuccess(): void {
     const danglingSymlinkPath = Deno.makeTempDirSync() + "/dangling_symlink";
-    Deno.symlinkSync("unexistent_file", danglingSymlinkPath, "file");
+    if (Deno.build.os === "windows") {
+      Deno.symlinkSync("unexistent_file", danglingSymlinkPath, {
+        type: "file",
+      });
+    } else {
+      Deno.symlinkSync("unexistent_file", danglingSymlinkPath);
+    }
     const pathInfo = Deno.lstatSync(danglingSymlinkPath);
     assert(pathInfo.isSymlink);
     Deno.removeSync(danglingSymlinkPath);
@@ -106,7 +112,11 @@ unitTest(
     const filePath = tempDir + "/test.txt";
     const validSymlinkPath = tempDir + "/valid_symlink";
     Deno.writeFileSync(filePath, data, { mode: 0o666 });
-    Deno.symlinkSync(filePath, validSymlinkPath, "file");
+    if (Deno.build.os === "windows") {
+      Deno.symlinkSync(filePath, validSymlinkPath, { type: "file" });
+    } else {
+      Deno.symlinkSync(filePath, validSymlinkPath);
+    }
     const symlinkPathInfo = Deno.statSync(validSymlinkPath);
     assert(symlinkPathInfo.isFile);
     Deno.removeSync(validSymlinkPath);
@@ -299,7 +309,13 @@ unitTest(
   { perms: { write: true, read: true } },
   async function removeDanglingSymlinkSuccess(): Promise<void> {
     const danglingSymlinkPath = Deno.makeTempDirSync() + "/dangling_symlink";
-    Deno.symlinkSync("unexistent_file", danglingSymlinkPath, "file");
+    if (Deno.build.os === "windows") {
+      Deno.symlinkSync("unexistent_file", danglingSymlinkPath, {
+        type: "file",
+      });
+    } else {
+      Deno.symlinkSync("unexistent_file", danglingSymlinkPath);
+    }
     const pathInfo = Deno.lstatSync(danglingSymlinkPath);
     assert(pathInfo.isSymlink);
     await Deno.remove(danglingSymlinkPath);
@@ -322,7 +338,11 @@ unitTest(
     const filePath = tempDir + "/test.txt";
     const validSymlinkPath = tempDir + "/valid_symlink";
     Deno.writeFileSync(filePath, data, { mode: 0o666 });
-    Deno.symlinkSync(filePath, validSymlinkPath, "file");
+    if (Deno.build.os === "windows") {
+      Deno.symlinkSync(filePath, validSymlinkPath, { type: "file" });
+    } else {
+      Deno.symlinkSync(filePath, validSymlinkPath);
+    }
     const symlinkPathInfo = Deno.statSync(validSymlinkPath);
     assert(symlinkPathInfo.isFile);
     await Deno.remove(validSymlinkPath);
