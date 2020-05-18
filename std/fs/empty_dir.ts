@@ -6,7 +6,7 @@ const { readDir, readDirSync, mkdir, mkdirSync, remove, removeSync } = Deno;
  * Deletes directory contents if the directory is not empty.
  * If the directory does not exist, it is created.
  * The directory itself is not deleted.
- * Requires the `--allow-read` and `--alow-write` flag.
+ * Requires the `--allow-read` and `--allow-write` flag.
  */
 export async function emptyDir(dir: string): Promise<void> {
   try {
@@ -37,13 +37,13 @@ export async function emptyDir(dir: string): Promise<void> {
  * Deletes directory contents if the directory is not empty.
  * If the directory does not exist, it is created.
  * The directory itself is not deleted.
- * Requires the `--allow-read` and `--alow-write` flag.
+ * Requires the `--allow-read` and `--allow-write` flag.
  */
 export function emptyDirSync(dir: string): void {
   try {
     const items = [...readDirSync(dir)];
 
-    // if directory already exist. then remove it's child item.
+    // If the directory exists, remove all entries inside it.
     while (items.length) {
       const item = items.shift();
       if (item && item.name) {

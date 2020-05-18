@@ -9,9 +9,8 @@
  * @license MIT
  */
 
-export type Message = string | number[] | ArrayBuffer | Uint8Array;
+export type Message = string | number[] | ArrayBuffer;
 
-const ERROR = "input is invalid type";
 const HEX_CHARS = "0123456789abcdef".split("");
 const EXTRA = [-2147483648, 8388608, 32768, 128] as const;
 const SHIFT = [24, 16, 8, 0] as const;
@@ -100,25 +99,14 @@ export class Sha256 {
     if (this.#finalized) {
       return this;
     }
+
     let msg: string | number[] | Uint8Array | undefined;
-    if (typeof message !== "string") {
-      if (typeof message === "object") {
-        if (message === null) {
-          throw new Error(ERROR);
-        } else if (message instanceof ArrayBuffer) {
-          msg = new Uint8Array(message);
-        } else if (!Array.isArray(message)) {
-          if (!ArrayBuffer.isView(message)) {
-            throw new Error(ERROR);
-          }
-        }
-      } else {
-        throw new Error(ERROR);
-      }
+    if (message instanceof ArrayBuffer) {
+      msg = new Uint8Array(message);
+    } else {
+      msg = message;
     }
-    if (msg === undefined) {
-      msg = message as string | number[];
-    }
+
     let index = 0;
     const length = msg.length;
     const blocks = this.#blocks;
@@ -524,22 +512,11 @@ export class HmacSha256 extends Sha256 {
       }
       key = bytes;
     } else {
-      if (typeof secretKey === "object") {
-        if (secretKey === null) {
-          throw new Error(ERROR);
-        } else if (secretKey instanceof ArrayBuffer) {
-          key = new Uint8Array(secretKey);
-        } else if (!Array.isArray(secretKey)) {
-          if (!ArrayBuffer.isView(secretKey)) {
-            throw new Error(ERROR);
-          }
-        }
+      if (secretKey instanceof ArrayBuffer) {
+        key = new Uint8Array(secretKey);
       } else {
-        throw new Error(ERROR);
+        key = secretKey;
       }
-    }
-    if (key === undefined) {
-      key = secretKey as number[] | Uint8Array;
     }
 
     if (key.length > 64) {

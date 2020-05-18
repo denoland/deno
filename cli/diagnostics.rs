@@ -107,14 +107,15 @@ fn format_message(
   level: usize,
 ) -> String {
   debug!("format_message");
-  if message_chain.is_none() {
-    return format!("{:indent$}{}", "", message, indent = level);
+
+  if let Some(message_chain) = message_chain {
+    let mut s = message_chain.format_message(level);
+    s.pop();
+
+    s
+  } else {
+    format!("{:indent$}{}", "", message, indent = level)
   }
-
-  let mut s = message_chain.clone().unwrap().format_message(level);
-  s.pop();
-
-  s
 }
 
 /// Formats optional source, line and column numbers into a single string.
@@ -146,26 +147,28 @@ fn format_maybe_related_information(
   }
 
   let mut s = String::new();
-  let related_information = related_information.clone().unwrap();
-  for rd in related_information {
-    s.push_str("\n\n");
-    s.push_str(&format_stack(
-      match rd.category {
-        DiagnosticCategory::Error => true,
-        _ => false,
-      },
-      format_message(&rd.message_chain, &rd.message, 0),
-      rd.source_line.clone(),
-      rd.start_column,
-      rd.end_column,
-      // Formatter expects 1-based line and column numbers, but ours are 0-based.
-      &[format_maybe_frame(
-        rd.script_resource_name.clone(),
-        rd.line_number.map(|n| n + 1),
-        rd.start_column.map(|n| n + 1),
-      )],
-      4,
-    ));
+
+  if let Some(related_information) = related_information {
+    for rd in related_information {
+      s.push_str("\n\n");
+      s.push_str(&format_stack(
+        match rd.category {
+          DiagnosticCategory::Error => true,
+          _ => false,
+        },
+        format_message(&rd.message_chain, &rd.message, 0),
+        rd.source_line.clone(),
+        rd.start_column,
+        rd.end_column,
+        // Formatter expects 1-based line and column numbers, but ours are 0-based.
+        &[format_maybe_frame(
+          rd.script_resource_name.clone(),
+          rd.line_number.map(|n| n + 1),
+          rd.start_column.map(|n| n + 1),
+        )],
+        4,
+      ));
+    }
   }
 
   s
@@ -222,8 +225,8 @@ impl DiagnosticMessageChain {
     s.push_str(&std::iter::repeat(" ").take(level * 2).collect::<String>());
     s.push_str(&self.message);
     s.push('\n');
-    if self.next.is_some() {
-      let arr = self.next.clone().unwrap();
+    if let Some(next) = &self.next {
+      let arr = next.clone();
       for dm in arr {
         s.push_str(&dm.format_message(level + 1));
       }

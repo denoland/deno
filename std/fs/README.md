@@ -4,7 +4,8 @@ fs module is made to provide helpers to manipulate the filesystem.
 
 ## Usage
 
-All the following modules are exposed in `mod.ts`
+All the following modules are exposed in `mod.ts` This feature is currently
+unstable. To enable it use `deno run --unstable`
 
 ### emptyDir
 
@@ -59,7 +60,7 @@ ensureSymlink("./folder/targetFile.dat", "./folder/targetFile.link.dat"); // ret
 ensureSymlinkSync("./folder/targetFile.dat", "./folder/targetFile.link.dat"); // void
 ```
 
-### eol
+### EOL
 
 Detects and format the passed string for the targeted End Of Line character.
 
@@ -89,21 +90,6 @@ import { exists, existsSync } from "https://deno.land/std/fs/mod.ts";
 
 exists("./foo"); // returns a Promise<boolean>
 existsSync("./foo"); // returns boolean
-```
-
-### globToRegExp
-
-Generate a regex based on glob pattern and options This was meant to be using
-the the `fs.walk` function but can be used anywhere else.
-
-```ts
-import { globToRegExp } from "https://deno.land/std/fs/mod.ts";
-
-globToRegExp("foo/**/*.json", {
-  flags: "g",
-  extended: true,
-  globstar: true,
-}); // returns the regex to find all .json files in the folder foo
 ```
 
 ### move

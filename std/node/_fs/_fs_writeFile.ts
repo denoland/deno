@@ -63,3 +63,47 @@ export function writeFile(
     }
   })();
 }
+
+export function writeFileSync(
+  pathOrRid: string | number,
+  data: string | Uint8Array,
+  options?: string | WriteFileOptions
+): void {
+  const flag: string | undefined = isFileOptions(options)
+    ? options.flag
+    : undefined;
+
+  const mode: number | undefined = isFileOptions(options)
+    ? options.mode
+    : undefined;
+
+  const encoding = getEncoding(options) || "utf8";
+  const openOptions = getOpenOptions(flag || "w");
+
+  if (typeof data === "string" && encoding === "utf8")
+    data = new TextEncoder().encode(data) as Uint8Array;
+
+  const isRid = typeof pathOrRid === "number";
+  let file;
+
+  let error: Error | null = null;
+  try {
+    file = isRid
+      ? new Deno.File(pathOrRid as number)
+      : Deno.openSync(pathOrRid as string, openOptions);
+
+    if (!isRid && mode) {
+      if (Deno.build.os === "windows") notImplemented(`"mode" on Windows`);
+      Deno.chmodSync(pathOrRid as string, mode);
+    }
+
+    Deno.writeAllSync(file, data as Uint8Array);
+  } catch (e) {
+    error = e;
+  } finally {
+    // Make sure to close resource
+    if (!isRid && file) file.close();
+
+    if (error) throw error;
+  }
+}

@@ -6,9 +6,10 @@
 
 ### Permissions whitelist
 
-Deno also provides permissions whitelist.
+Deno also allows you to control the granularity of permissions with whitelists.
 
-This is an example to restrict file system access by whitelist.
+This example restricts file system access by whitelisting only the `/usr`
+directory:
 
 ```shell
 $ deno run --allow-read=/usr https://deno.land/std/examples/cat.ts /etc/passwd
@@ -18,15 +19,14 @@ error: Uncaught PermissionDenied: read access to "/etc/passwd", run again with t
     ...
 ```
 
-You can grant read permission under `/etc` dir
+Try it out again with the correct permissions by whitelisting `/etc` instead:
 
 ```shell
 $ deno run --allow-read=/etc https://deno.land/std/examples/cat.ts /etc/passwd
 ```
 
-`--allow-write` works same as `--allow-read`.
+`--allow-write` works the same as `--allow-read`.
 
-### Network access:
 
 _fetch.ts_:
 

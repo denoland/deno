@@ -201,7 +201,7 @@ function copyDirSync(src: string, dest: string, options: CopyOptions): void {
 
 /**
  * Copy a file or directory. The directory can have contents. Like `cp -r`.
- * Requires the `--allow-read` and `--alow-write` flag.
+ * Requires the `--allow-read` and `--allow-write` flag.
  * @param src the file/directory path.
  *            Note that if `src` is a directory it will copy everything inside
  *            of this directory, not the entire directory itself
@@ -240,7 +240,7 @@ export async function copy(
 
 /**
  * Copy a file or directory. The directory can have contents. Like `cp -r`.
- * Requires the `--allow-read` and `--alow-write` flag.
+ * Requires the `--allow-read` and `--allow-write` flag.
  * @param src the file/directory path.
  *            Note that if `src` is a directory it will copy everything inside
  *            of this directory, not the entire directory itself

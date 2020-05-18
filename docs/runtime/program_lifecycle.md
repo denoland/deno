@@ -28,6 +28,8 @@ window.onunload = (e: Event): void => {
   console.log(`got ${e.type} event in onunload function (main)`);
 };
 
+console.log("log from main script");
+
 // imported.ts
 const handler = (e: Event): void => {
   console.log(`got ${e.type} event in event handler (imported)`);
@@ -64,5 +66,5 @@ got unload event in event handler (main)
 ```
 
 All listeners added using `window.addEventListener` were run, but
-`window.onload` and `window.onunload` defined in `main.ts` overridden handlers
+`window.onload` and `window.onunload` defined in `main.ts` overrode handlers
 defined in `imported.ts`.

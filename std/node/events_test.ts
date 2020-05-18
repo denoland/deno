@@ -269,7 +269,7 @@ test({
 });
 
 test({
-  name: "It is OK to try to remove non-existant listener",
+  name: "It is OK to try to remove non-existent listener",
   fn() {
     const testEmitter = new EventEmitter();
 
@@ -281,7 +281,7 @@ test({
     assertEquals(testEmitter.listenerCount("event"), 1);
 
     testEmitter.removeListener("event", madeUpEvent);
-    testEmitter.removeListener("non-existant event", madeUpEvent);
+    testEmitter.removeListener("non-existent event", madeUpEvent);
 
     assertEquals(testEmitter.listenerCount("event"), 1);
   },

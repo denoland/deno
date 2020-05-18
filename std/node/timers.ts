@@ -5,7 +5,9 @@ export const clearTimeout = window.clearTimeout;
 export const setInterval = window.setInterval;
 export const clearInterval = window.clearInterval;
 export const setImmediate = (
-  cb: (...args: unknown[]) => void,
-  ...args: unknown[]
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  cb: (...args: any[]) => void,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ...args: any[]
 ): number => window.setTimeout(cb, 0, ...args);
 export const clearImmediate = window.clearTimeout;
