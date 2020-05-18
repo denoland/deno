@@ -165,6 +165,33 @@ lazy_static! {
     Regex::new(r#""checkJs"\s*?:\s*?true"#).unwrap();
 }
 
+/// Create a new worker with snapshot of TS compiler and setup compiler's
+/// runtime.
+fn create_compiler_worker(
+  global_state: GlobalState,
+  permissions: Permissions,
+) -> CompilerWorker {
+  // TODO(bartlomieju): these $deno$ specifiers should be unified for all subcommands
+  // like 'eval', 'repl'
+  let entry_point =
+    ModuleSpecifier::resolve_url_or_path("./__$deno$ts_compiler.ts").unwrap();
+  let worker_state =
+    State::new(global_state.clone(), Some(permissions), entry_point, true)
+      .expect("Unable to create worker state");
+
+  // TODO(bartlomieju): this metric is never used anywhere
+  // Count how many times we start the compiler worker.
+  global_state.compiler_starts.fetch_add(1, Ordering::SeqCst);
+
+  let mut worker = CompilerWorker::new(
+    "TS".to_string(),
+    startup_data::compiler_isolate_init(),
+    worker_state,
+  );
+  worker.execute("bootstrap.tsCompilerRuntime()").unwrap();
+  worker
+}
+
 #[derive(Clone)]
 pub enum TargetLib {
   Main,
@@ -354,30 +381,6 @@ impl TsCompiler {
       compiled: Mutex::new(HashSet::new()),
       use_disk_cache,
     })))
-  }
-
-  /// Create a new V8 worker with snapshot of TS compiler and setup compiler's
-  /// runtime.
-  fn setup_worker(
-    global_state: GlobalState,
-    permissions: Permissions,
-  ) -> CompilerWorker {
-    let entry_point =
-      ModuleSpecifier::resolve_url_or_path("./__$deno$ts_compiler.ts").unwrap();
-    let worker_state =
-      State::new(global_state.clone(), Some(permissions), entry_point, true)
-        .expect("Unable to create worker state");
-
-    // Count how many times we start the compiler worker.
-    global_state.compiler_starts.fetch_add(1, Ordering::SeqCst);
-
-    let mut worker = CompilerWorker::new(
-      "TS".to_string(),
-      startup_data::compiler_isolate_init(),
-      worker_state,
-    );
-    worker.execute("bootstrap.tsCompilerRuntime()").unwrap();
-    worker
   }
 
   /// Mark given module URL as compiled to avoid multiple compilations of same
@@ -818,7 +821,7 @@ async fn execute_in_same_thread(
   permissions: Permissions,
   req: Buf,
 ) -> Result<Buf, ErrBox> {
-  let mut worker = TsCompiler::setup_worker(global_state.clone(), permissions);
+  let mut worker = create_compiler_worker(global_state.clone(), permissions);
   let handle = worker.thread_safe_handle();
   handle.post_message(req)?;
 
@@ -919,6 +922,9 @@ pub async fn bundle(
 
   assert!(bundle_response.bundle_output.is_some());
   let output = bundle_response.bundle_output.unwrap();
+
+  // TODO(bartlomieju): the rest of this function should be handled
+  // in `main.rs` - it has nothing to do with TypeScript...
   let output_string = fmt::format_text(&output)?;
 
   if let Some(out_file_) = out_file.as_ref() {
@@ -928,6 +934,7 @@ pub async fn bundle(
     let output_len = output_bytes.len();
 
     deno_fs::write_file(out_file_, output_bytes, 0o666)?;
+    // TODO(bartlomieju): do we really need to show this info? (it doesn't respect --quiet flag)
     // TODO(bartlomieju): add "humanFileSize" method
     eprintln!("{} bytes emitted.", output_len);
   } else {
