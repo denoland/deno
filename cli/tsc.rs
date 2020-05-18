@@ -312,7 +312,7 @@ struct EmittedSource {
 #[serde(rename_all = "camelCase")]
 struct BundleResponse {
   diagnostics: Diagnostic,
-  bundle_output: String,
+  bundle_output: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -458,7 +458,9 @@ impl TsCompiler {
       return Err(ErrBox::from(bundle_response.diagnostics));
     }
 
-    let output_string = fmt::format_text(&bundle_response.bundle_output)?;
+    assert!(bundle_response.bundle_output.is_some());
+    let output = bundle_response.bundle_output.unwrap();
+    let output_string = fmt::format_text(&output)?;
 
     if let Some(out_file_) = out_file.as_ref() {
       eprintln!("Emitting bundle to {:?}", out_file_);
