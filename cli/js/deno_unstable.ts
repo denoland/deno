@@ -23,3 +23,14 @@ export {
   PermissionStatus,
   Permissions,
 } from "./permissions.ts";
+export {
+  ForeignLibrary,
+  ForeignFunctionInfo,
+  ForeignFunction,
+  foreignABIs,
+  foreignTypes,
+  readMemory,
+  writeMemory,
+  loadForeignLibrary,
+  loadForeignFunction,
+} from "./ffi.ts";

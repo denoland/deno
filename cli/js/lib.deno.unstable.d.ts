@@ -1285,79 +1285,76 @@ declare namespace Deno {
    */
   export function loadForeignLibrary(path: string | null): ForeignLibrary;
 
-  export enum ForeignABI {
-    DEFAULT_ABI = "DEFAULT_ABI",
-    AIX = "AIX",
-    ARCOMPACT = "ARCOMPACT",
-    ASM = "ASM",
-    CLOSURES = "CLOSURES",
-    COMPAT = "COMPAT",
-    COMPAT_GCC_SYSV = "COMPAT_GCC_SYSV",
-    COMPAT_LINUX = "COMPAT_LINUX",
-    COMPAT_LINUX_SOFT_FLOAT = "COMPAT_LINUX_SOFT_FLOAT",
-    COMPAT_LINUX64 = "COMPAT_LINUX64",
-    COMPAT_SYSV = "COMPAT_SYSV",
-    DARWIN = "DARWIN",
-    EABI = "EABI",
-    EFI64 = "EFI64",
-    ELFBSD = "ELFBSD",
-    EXTRA_CIF_FIELDS = "EXTRA_CIF_FIELDS",
-    FASTCALL = "FASTCALL",
-    GNUW64 = "GNUW64",
-    GO_CLOSURES = "GO_CLOSURES",
-    LINUX = "LINUX",
-    LINUX_LONG_DOUBLE_128 = "LINUX_LONG_DOUBLE_128",
-    LINUX_LONG_DOUBLE_IEEE128 = "LINUX_LONG_DOUBLE_IEEE128",
-    LINUX_STRUCT_ALIGN = "LINUX_STRUCT_ALIGN",
-    MIPS_O32 = "MIPS_O32",
-    MS_CDECL = "MS_CDECL",
-    N32 = "N32",
-    N32_SOFT_FLOAT = "N32_SOFT_FLOAT",
-    N64 = "N64",
-    N64_SOFT_FLOAT = "N64_SOFT_FLOAT",
-    NATIVE_RAW_API = "NATIVE_RAW_API",
-    O32 = "O32",
-    O32_SOFT_FLOAT = "O32_SOFT_FLOAT",
-    OBSD = "OBSD",
-    OSF = "OSF",
-    PA32 = "PA32",
-    PA64 = "PA64",
-    PASCAL = "PASCAL",
-    PPC_TYPE_LAST = "PPC_TYPE_LAST",
-    REGISTER = "REGISTER",
-    STDCALL = "STDCALL",
-    SYSV = "SYSV",
-    SYSV_IBM_LONG_DOUBLE = "SYSV_IBM_LONG_DOUBLE",
-    SYSV_LONG_DOUBLE_128 = "SYSV_LONG_DOUBLE_128",
-    SYSV_SOFT_FLOAT = "SYSV_SOFT_FLOAT",
-    SYSV_STRUCT_RET = "SYSV_STRUCT_RET",
-    SYSV_TYPE_SMALL_STRUCT = "SYSV_TYPE_SMALL_STRUCT",
-    TARGET_HAS_COMPLEX_TYPE = "TARGET_HAS_COMPLEX_TYPE",
-    TARGET_SPECIFIC_VARIADIC = "TARGET_SPECIFIC_VARIADIC",
-    THISCALL = "THISCALL",
-    TRAMPOLINE_SIZE = "TRAMPOLINE_SIZE",
-    TYPE_LAST = "TYPE_LAST",
-    TYPE_UINT128 = "TYPE_UINT128",
-    UNIX = "UNIX",
-    UNIX64 = "UNIX64",
-    UNUSED_1 = "UNUSED_1",
-    UNUSED_2 = "UNUSED_2",
-    UNUSED_3 = "UNUSED_3",
-    V2_TYPE_DOUBLE_HOMOG = "V2_TYPE_DOUBLE_HOMOG",
-    V2_TYPE_FLOAT_HOMOG = "V2_TYPE_FLOAT_HOMOG",
-    V2_TYPE_SMALL_STRUCT = "V2_TYPE_SMALL_STRUCT",
-    V2_TYPE_VECTOR = "V2_TYPE_VECTOR",
-    V2_TYPE_VECTOR_HOMOG = "V2_TYPE_VECTOR_HOMOG",
-    V8 = "V8",
-    V9 = "V9",
-    VFP = "VFP",
-    WIN64 = "WIN64",
+  export const enum ForeignABI {
+    "DEFAULT_ABI",
+    "AIX",
+    "ARCOMPACT",
+    "ASM",
+    "CLOSURES",
+    "COMPAT",
+    "COMPAT_GCC_SYSV",
+    "COMPAT_LINUX",
+    "COMPAT_LINUX_SOFT_FLOAT",
+    "COMPAT_LINUX64",
+    "COMPAT_SYSV",
+    "DARWIN",
+    "EABI",
+    "EFI64",
+    "ELFBSD",
+    "EXTRA_CIF_FIELDS",
+    "FASTCALL",
+    "GNUW64",
+    "GO_CLOSURES",
+    "LINUX",
+    "LINUX_LONG_DOUBLE_128",
+    "LINUX_LONG_DOUBLE_IEEE128",
+    "LINUX_STRUCT_ALIGN",
+    "MIPS_O32",
+    "MS_CDECL",
+    "N32",
+    "N32_SOFT_FLOAT",
+    "N64",
+    "N64_SOFT_FLOAT",
+    "NATIVE_RAW_API",
+    "O32",
+    "O32_SOFT_FLOAT",
+    "OBSD",
+    "OSF",
+    "PA32",
+    "PA64",
+    "PASCAL",
+    "PPC_TYPE_LAST",
+    "REGISTER",
+    "STDCALL",
+    "SYSV",
+    "SYSV_IBM_LONG_DOUBLE",
+    "SYSV_LONG_DOUBLE_128",
+    "SYSV_SOFT_FLOAT",
+    "SYSV_STRUCT_RET",
+    "SYSV_TYPE_SMALL_STRUCT",
+    "TARGET_HAS_COMPLEX_TYPE",
+    "TARGET_SPECIFIC_VARIADIC",
+    "THISCALL",
+    "TRAMPOLINE_SIZE",
+    "TYPE_LAST",
+    "TYPE_UINT128",
+    "UNIX",
+    "UNIX64",
+    "UNUSED_1",
+    "UNUSED_2",
+    "UNUSED_3",
+    "V2_TYPE_DOUBLE_HOMOG",
+    "V2_TYPE_FLOAT_HOMOG",
+    "V2_TYPE_SMALL_STRUCT",
+    "V2_TYPE_VECTOR",
+    "V2_TYPE_VECTOR_HOMOG",
+    "V8",
+    "V9",
+    "VFP",
+    "WIN64",
   }
 
-  export const availableForeignABI: ForeignType[];
-
-  // no struct, sorry
-  export enum ForeignType {
+  export const enum ForeignType {
     "void",
     "uint8",
     "sint8",
@@ -1376,12 +1373,18 @@ declare namespace Deno {
     "complex_longdouble",
   }
 
-  export const availableForeignType: ForeignType[];
+  export const foreignABIs: ForeignType[];
+  export const foreignTypes: ForeignType[];
 
   export interface ForeignFunctionInfo {
     ret: ForeignType;
     args: ForeignType[];
-    // 0 calls prep_cif_var, and null calls prep_cif (fixed args)
+    /** Number of variadic arguments used to call this function.
+     * Is `numVariadic` is null, all arguments are fixed.
+     * Note: If you need to call the same function with different arguments,
+     * call `loadForeignFunction` with different `numVariadic`. The number of arguments
+     * on any instance of `ForeignFunction` is fixed.
+     */
     numVariadic: number | null;
   }
 
@@ -1407,6 +1410,6 @@ declare namespace Deno {
   export function loadForeignFunction(
     addr: MemoryAddr,
     abi: ForeignABI,
-    info: Partial<ForeignFunctionInfo>
+    info: ForeignFunctionInfo
   ): ForeignFunction;
 }
