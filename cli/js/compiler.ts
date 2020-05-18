@@ -632,7 +632,7 @@ function buildSourceFileCache(
   }
 }
 
-interface EmmitedSource {
+interface EmittedSource {
   // original filename
   filename: string;
   // compiled contents
@@ -651,7 +651,7 @@ interface WriteFileState {
   bundleOutput?: string;
   host?: Host;
   rootNames: string[];
-  emitMap?: Record<string, EmmitedSource>;
+  emitMap?: Record<string, EmittedSource>;
   sources?: Record<string, string>;
 }
 
@@ -1074,13 +1074,13 @@ type CompilerRequest =
   | CompilerRequestRuntimeTranspile;
 
 interface CompileResult {
-  emitMap?: Record<string, EmmitedSource>;
+  emitMap?: Record<string, EmittedSource>;
   bundleOutput?: string;
   diagnostics: Diagnostic;
 }
 
 interface RuntimeCompileResult {
-  emitMap: Record<string, EmmitedSource>;
+  emitMap: Record<string, EmittedSource>;
   diagnostics: DiagnosticItem[];
 }
 

@@ -380,104 +380,6 @@ impl TsCompiler {
     worker
   }
 
-  pub async fn bundle(
-    &self,
-    global_state: GlobalState,
-    module_specifier: ModuleSpecifier,
-    out_file: Option<PathBuf>,
-  ) -> Result<(), ErrBox> {
-    debug!(
-      "Invoking the compiler to bundle. module_name: {}",
-      module_specifier.to_string()
-    );
-    eprintln!("Bundling {}", module_specifier.to_string());
-
-    let import_map: Option<ImportMap> =
-      match global_state.flags.import_map_path.as_ref() {
-        None => None,
-        Some(file_path) => {
-          if !global_state.flags.unstable {
-            exit_unstable("--importmap")
-          }
-          Some(ImportMap::load(file_path)?)
-        }
-      };
-    let permissions = Permissions::allow_all();
-    let mut module_graph_loader = ModuleGraphLoader::new(
-      global_state.file_fetcher.clone(),
-      import_map,
-      permissions.clone(),
-      false,
-      true,
-    );
-    module_graph_loader.add_to_graph(&module_specifier).await?;
-    let module_graph = module_graph_loader.get_graph();
-    let module_graph_json =
-      serde_json::to_value(module_graph).expect("Failed to serialize data");
-
-    let root_names = vec![module_specifier.to_string()];
-    let bundle = true;
-    let target = "main";
-    let unstable = global_state.flags.unstable;
-    let compiler_config = self.config.clone();
-    let cwd = std::env::current_dir().unwrap();
-    let j = match (compiler_config.path, compiler_config.content) {
-      (Some(config_path), Some(config_data)) => json!({
-        "type": msg::CompilerRequestType::Compile as i32,
-        "target": target,
-        "rootNames": root_names,
-        "bundle": bundle,
-        "unstable": unstable,
-        "configPath": config_path,
-        "config": str::from_utf8(&config_data).unwrap(),
-        "cwd": cwd,
-        "sourceFileMap": module_graph_json,
-      }),
-      _ => json!({
-        "type": msg::CompilerRequestType::Compile as i32,
-        "target": target,
-        "rootNames": root_names,
-        "bundle": bundle,
-        "unstable": unstable,
-        "cwd": cwd,
-        "sourceFileMap": module_graph_json,
-      }),
-    };
-
-    let req_msg = j.to_string().into_boxed_str().into_boxed_bytes();
-
-    let msg =
-      execute_in_same_thread(global_state.clone(), permissions, req_msg)
-        .await?;
-    let json_str = std::str::from_utf8(&msg).unwrap();
-    debug!("Message: {}", json_str);
-
-    let bundle_response: BundleResponse = serde_json::from_str(json_str)?;
-
-    if !bundle_response.diagnostics.items.is_empty() {
-      return Err(ErrBox::from(bundle_response.diagnostics));
-    }
-
-    assert!(bundle_response.bundle_output.is_some());
-    let output = bundle_response.bundle_output.unwrap();
-    let output_string = fmt::format_text(&output)?;
-
-    if let Some(out_file_) = out_file.as_ref() {
-      eprintln!("Emitting bundle to {:?}", out_file_);
-
-      let output_bytes = output_string.as_bytes();
-      let output_len = output_bytes.len();
-
-      deno_fs::write_file(out_file_, output_bytes, 0o666)?;
-      // TODO(bartlomieju): add "humanFileSize" method
-      eprintln!("{} bytes emitted.", output_len);
-    } else {
-      println!("{}", output_string);
-    }
-
-    Ok(())
-  }
-
   /// Mark given module URL as compiled to avoid multiple compilations of same
   /// module in single run.
   fn mark_compiled(&self, url: &Url) {
@@ -945,6 +847,96 @@ async fn execute_in_same_thread(
   }
 }
 
+pub async fn bundle(
+  global_state: &GlobalState,
+  compiler_config: CompilerConfig,
+  module_specifier: ModuleSpecifier,
+  maybe_import_map: Option<ImportMap>,
+  out_file: Option<PathBuf>,
+  unstable: bool,
+) -> Result<(), ErrBox> {
+  debug!(
+    "Invoking the compiler to bundle. module_name: {}",
+    module_specifier.to_string()
+  );
+  eprintln!("Bundling {}", module_specifier.to_string());
+
+  let permissions = Permissions::allow_all();
+  let mut module_graph_loader = ModuleGraphLoader::new(
+    global_state.file_fetcher.clone(),
+    maybe_import_map,
+    permissions.clone(),
+    false,
+    true,
+  );
+  module_graph_loader.add_to_graph(&module_specifier).await?;
+  let module_graph = module_graph_loader.get_graph();
+  let module_graph_json =
+    serde_json::to_value(module_graph).expect("Failed to serialize data");
+
+  let root_names = vec![module_specifier.to_string()];
+  let bundle = true;
+  let target = "main";
+  let cwd = std::env::current_dir().unwrap();
+
+  // TODO(bartlomieju): this is non-sense; CompilerConfig's `path` and `content` should
+  // be optional
+  let j = match (compiler_config.path, compiler_config.content) {
+    (Some(config_path), Some(config_data)) => json!({
+      "type": msg::CompilerRequestType::Compile as i32,
+      "target": target,
+      "rootNames": root_names,
+      "bundle": bundle,
+      "unstable": unstable,
+      "configPath": config_path,
+      "config": str::from_utf8(&config_data).unwrap(),
+      "cwd": cwd,
+      "sourceFileMap": module_graph_json,
+    }),
+    _ => json!({
+      "type": msg::CompilerRequestType::Compile as i32,
+      "target": target,
+      "rootNames": root_names,
+      "bundle": bundle,
+      "unstable": unstable,
+      "cwd": cwd,
+      "sourceFileMap": module_graph_json,
+    }),
+  };
+
+  let req_msg = j.to_string().into_boxed_str().into_boxed_bytes();
+
+  let msg =
+    execute_in_same_thread(global_state.clone(), permissions, req_msg).await?;
+  let json_str = std::str::from_utf8(&msg).unwrap();
+  debug!("Message: {}", json_str);
+
+  let bundle_response: BundleResponse = serde_json::from_str(json_str)?;
+
+  if !bundle_response.diagnostics.items.is_empty() {
+    return Err(ErrBox::from(bundle_response.diagnostics));
+  }
+
+  assert!(bundle_response.bundle_output.is_some());
+  let output = bundle_response.bundle_output.unwrap();
+  let output_string = fmt::format_text(&output)?;
+
+  if let Some(out_file_) = out_file.as_ref() {
+    eprintln!("Emitting bundle to {:?}", out_file_);
+
+    let output_bytes = output_string.as_bytes();
+    let output_len = output_bytes.len();
+
+    deno_fs::write_file(out_file_, output_bytes, 0o666)?;
+    // TODO(bartlomieju): add "humanFileSize" method
+    eprintln!("{} bytes emitted.", output_len);
+  } else {
+    println!("{}", output_string);
+  }
+
+  Ok(())
+}
+
 /// This function is used by `Deno.compile()` and `Deno.bundle()` APIs.
 pub async fn runtime_compile<S: BuildHasher>(
   global_state: GlobalState,
@@ -1140,10 +1132,15 @@ mod tests {
       String::from("$deno$/bundle.js"),
     ]);
 
-    let result = state
-      .ts_compiler
-      .bundle(state.clone(), module_name, None)
-      .await;
+    let result = bundle(
+      &state,
+      CompilerConfig::load(None).unwrap(),
+      module_name,
+      None,
+      None,
+      false,
+    )
+    .await;
     assert!(result.is_ok());
   }
 
