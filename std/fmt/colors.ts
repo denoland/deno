@@ -10,10 +10,8 @@
  *
  * This module supports `NO_COLOR` environmental variable disabling any coloring
  * if `NO_COLOR` is set.
- *
- * The global variable 'enabled' was victim of a pointer bug, so it
- * got removed in the hope for a future ability to disable it in code.
  */
+const { noColor } = Deno;
 
 interface Code {
   open: string;
@@ -22,16 +20,24 @@ interface Code {
 }
 
 /** RGB 8-bits per channel. Each in range `0->255` or `0x00->0xff` */
-export interface Rgb {
+interface Rgb {
   r: number;
   g: number;
   b: number;
 }
 
-export function run(str: string, code: Code): string {
-  return !Deno.noColor
-    ? `${code.open}${str.replace(code.regexp, code.open)}${code.close}`
-    : str;
+let enabled = !noColor;
+
+export function setColorEnabled(value: boolean): void {
+  if (noColor) {
+    return;
+  }
+
+  enabled = value;
+}
+
+export function getColorEnabled(): boolean {
+  return enabled;
 }
 
 function code(open: number[], close: number): Code {
@@ -40,6 +46,12 @@ function code(open: number[], close: number): Code {
     close: `\x1b[${close}m`,
     regexp: new RegExp(`\\x1b\\[${close}m`, "g"),
   };
+}
+
+function run(str: string, code: Code): string {
+  return enabled
+    ? `${code.open}${str.replace(code.regexp, code.open)}${code.close}`
+    : str;
 }
 
 export function reset(str: string): string {
@@ -143,8 +155,9 @@ export function bgWhite(str: string): string {
 }
 
 /* Special Color Sequences */
-function clampAndTruncate(color: number, max = 255, min = 0): number {
-  return Math.floor(Math.max(Math.min(color, max), min));
+
+function clampAndTruncate(n: number, max = 255, min = 0): number {
+  return Math.trunc(Math.max(Math.min(n, max), min));
 }
 
 /** Set text color using paletted 8bit colors.
@@ -156,44 +169,39 @@ export function rgb8(str: string, color: number): string {
 /** Set background color using paletted 8bit colors.
  * https://en.wikipedia.org/wiki/ANSI_escape_code#8-bit */
 export function bgRgb8(str: string, color: number): string {
-  return run(str, code([48, 5, color & 0xff], 49));
+  return run(str, code([48, 5, clampAndTruncate(color)], 49));
 }
 
-function colorToRgbArray(color: Rgb | number): [number, number, number] {
-  if (typeof color === "number") {
-    color = clampAndTruncate(color, 0xffffff);
-    return [
-      (color >> 16) & 0xff, // red
-      (color >> 8) & 0xff, // green
-      color & 0xff, // blue
-    ];
-  } else {
-    return [
-      clampAndTruncate(color.r),
-      clampAndTruncate(color.g),
-      clampAndTruncate(color.b),
-    ];
-  }
+/** Set text color using 24bit rgb. */
+export function rgb24(str: string, color: Rgb): string {
+  return run(
+    str,
+    code(
+      [
+        38,
+        2,
+        clampAndTruncate(color.r),
+        clampAndTruncate(color.g),
+        clampAndTruncate(color.b),
+      ],
+      39
+    )
+  );
 }
 
-/** Set text color using 24bit rgb.
- * You can enter a hexadecimal number like 0xff3280 */
-export function rgb24(str: string, color: Rgb | number): string {
-  return run(str, code([38, 2, ...colorToRgbArray(color)], 39));
-}
-
-/** Set background color using 24bit rgb.
- * You can enter a hexadecimal number like 0xff3280 */
-export function bgRgb24(str: string, color: Rgb | number): string {
-  return run(str, code([48, 2, ...colorToRgbArray(color)], 49));
-}
-
-// The previous ANSI pattern didn't work
-// this one is from Jeff on StackOverflow.
-// https://stackoverflow.com/a/33925425
-const ANSI_PATTERN = /(\x9B|\x1B\[)[0-?]*[ -\/]*[@-~]/gi;
-
-/** Removes all ANSI escape sequences from a string. */
-export function stripColor(string: string): string {
-  return string.replace(ANSI_PATTERN, "");
+/** Set background color using 24bit rgb. */
+export function bgRgb24(str: string, color: Rgb): string {
+  return run(
+    str,
+    code(
+      [
+        48,
+        2,
+        clampAndTruncate(color.r),
+        clampAndTruncate(color.g),
+        clampAndTruncate(color.b),
+      ],
+      49
+    )
+  );
 }

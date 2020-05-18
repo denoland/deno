@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { gray, green, italic, red, yellow } from "../../std/fmt/colors.ts";
+import { gray, green, italic, red, yellow } from "./colors.ts";
 import { exit } from "./ops/os.ts";
 import { Console, stringifyArgs } from "./web/console.ts";
 import { stdout } from "./files.ts";

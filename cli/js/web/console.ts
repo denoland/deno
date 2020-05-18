@@ -12,7 +12,7 @@ import {
   green,
   magenta,
   bold,
-} from "../../../std/fmt/colors.ts";
+} from "../colors.ts";
 
 type ConsoleContext = Set<unknown>;
 type InspectOptions = Partial<{

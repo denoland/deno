@@ -12,7 +12,7 @@
 // NOTE: this import has side effects!
 import "./ts_global.d.ts";
 
-import { bold, cyan, yellow } from "../../std/fmt/colors.ts";
+import { bold, cyan, yellow } from "./colors.ts";
 import { CompilerOptions } from "./compiler_options.ts";
 import { Diagnostic, DiagnosticItem } from "./diagnostics.ts";
 import { fromTypeScriptDiagnostic } from "./diagnostics_util.ts";

@@ -1,27 +1,26 @@
 import { sprintf } from "./sprintf.ts";
 
 import { assertEquals } from "../testing/asserts.ts";
-import { stripColor } from "./colors.ts";
 
 const S = sprintf;
 
 Deno.test("noVerb", function (): void {
-  assertEquals(S("bla"), "bla");
+  assertEquals(sprintf("bla"), "bla");
 });
 
 Deno.test("percent", function (): void {
-  assertEquals(S("%%"), "%");
-  assertEquals(S("!%%!"), "!%!");
-  assertEquals(S("!%%"), "!%");
-  assertEquals(S("%%!"), "%!");
+  assertEquals(sprintf("%%"), "%");
+  assertEquals(sprintf("!%%!"), "!%!");
+  assertEquals(sprintf("!%%"), "!%");
+  assertEquals(sprintf("%%!"), "%!");
 });
 Deno.test("testBoolean", function (): void {
-  assertEquals(S("%t", true), "true");
-  assertEquals(S("%10t", true), "      true");
-  assertEquals(S("%-10t", false), "false     ");
-  assertEquals(S("%t", false), "false");
-  assertEquals(S("bla%t", true), "blatrue");
-  assertEquals(S("%tbla", false), "falsebla");
+  assertEquals(sprintf("%t", true), "true");
+  assertEquals(sprintf("%10t", true), "      true");
+  assertEquals(sprintf("%-10t", false), "false     ");
+  assertEquals(sprintf("%t", false), "false");
+  assertEquals(sprintf("bla%t", true), "blatrue");
+  assertEquals(sprintf("%tbla", false), "falsebla");
 });
 
 Deno.test("testIntegerB", function (): void {
@@ -601,12 +600,12 @@ Deno.test("testWeirdos", function (): void {
 Deno.test("formatV", function (): void {
   const a = { a: { a: { a: { a: { a: { a: { a: {} } } } } } } };
   assertEquals(S("%v", a), "[object Object]");
-  assertEquals(stripColor(S("%#v", a)), "{ a: { a: { a: { a: [Object] } } } }");
+  assertEquals(S("%#v", a), "{ a: { a: { a: { a: [Object] } } } }");
   assertEquals(
     S("%#.8v", a),
     "{ a: { a: { a: { a: { a: { a: { a: {} } } } } } } }"
   );
-  assertEquals(stripColor(S("%#.1v", a)), "{ a: [Object] }");
+  assertEquals(S("%#.1v", a), "{ a: [Object] }");
 });
 
 Deno.test("formatJ", function (): void {
@@ -618,11 +617,11 @@ Deno.test("flagLessThan", function (): void {
   const a = { a: { a: { a: { a: { a: { a: { a: {} } } } } } } };
   const aArray = [a, a, a];
   assertEquals(
-    stripColor(S("%<#.1v", aArray)),
+    S("%<#.1v", aArray),
     "[ { a: [Object] }, { a: [Object] }, { a: [Object] } ]"
   );
   const fArray = [1.2345, 0.98765, 123456789.5678];
-  assertEquals(stripColor(S("%<.2f", fArray)), "[ 1.23, 0.99, 123456789.57 ]");
+  assertEquals(S("%<.2f", fArray), "[ 1.23, 0.99, 123456789.57 ]");
 });
 
 Deno.test("testErrors", function (): void {
