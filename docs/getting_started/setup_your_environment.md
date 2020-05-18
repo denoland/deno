@@ -6,7 +6,7 @@ IDE of choice.
 
 ### Environmental variables
 
-There are several env vars that control how Deno behaves:
+There are several environment variables that control how Deno behaves:
 
 `DENO_DIR` defaults to `$HOME/.deno` but can be set to any path to control where
 generated and cached source code is written and read to.
@@ -18,7 +18,7 @@ boolean constant `Deno.noColor`.
 ### Shell autocomplete
 
 You can generate completion script for your shell using the
-`deno completions <shell>` command. The command outputs to stdout so you should
+`deno completions <shell>` command. The commandoutputs to stdout, so you should
 redirect it to an appropriate file.
 
 The supported shells are:
