@@ -2,7 +2,7 @@
 // Forked from Node's lib/internal/cli_table.js
 
 import { hasOwnProperty } from "./util.ts";
-import { stripColor } from "../../../std/fmt/colors.ts";
+import { stripColor } from "../colors.ts";
 
 const tableChars = {
   middleMiddle: "─",

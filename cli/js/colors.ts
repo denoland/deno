@@ -63,6 +63,10 @@ export function gray(str: string): string {
   return run(str, code(90, 39));
 }
 
+export function magenta(str: string): string {
+  return run(str, code(35, 39));
+}
+
 export function dim(str: string): string {
   return run(str, code(2, 22));
 }
