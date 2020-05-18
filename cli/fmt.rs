@@ -77,7 +77,7 @@ fn print_diff(file_path: &PathBuf, orig: &str, edit: &str) {
             for c in diffs {
               match c {
                 Difference::Same(ref z) => {
-                  let split = z.split("\n").enumerate();
+                  let split = z.split('\n').enumerate();
                   for (i, s) in split {
                     if i > 0 {
                       println!();
@@ -88,7 +88,7 @@ fn print_diff(file_path: &PathBuf, orig: &str, edit: &str) {
                   }
                 }
                 Difference::Add(ref z) => {
-                  let split = z.split("\n").enumerate();
+                  let split = z.split('\n').enumerate();
                   for (i, s) in split {
                     if i > 0 {
                       println!();
@@ -104,7 +104,7 @@ fn print_diff(file_path: &PathBuf, orig: &str, edit: &str) {
             println!()
           }
           _ => {
-            let split = x.split("\n").enumerate();
+            let split = x.split('\n').enumerate();
             for (i, s) in split {
               print!("{}{} ", line + i, colors::gray("|".to_string()));
               print!("{}", colors::green_bold("-".to_string()));
@@ -115,13 +115,12 @@ fn print_diff(file_path: &PathBuf, orig: &str, edit: &str) {
         line += 1 + x.matches('\n').count();
       }
       Difference::Rem(ref x) => {
-        let split = x.split("\n").enumerate();
+        let split = x.split('\n').enumerate();
         for (i, s) in split {
           print!("{}{} ", line + i, colors::gray("|".to_string()));
           print!("{}", colors::red_bold("-".to_string()));
           println!("{}", colors::red(s.to_string()));
         }
-        // line += 1;
       }
       Difference::Same(ref x) => {
         line += 1 + x.matches('\n').count();
