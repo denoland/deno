@@ -1,6 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 #![deny(warnings)]
 
+extern crate difference;
 #[macro_use]
 extern crate lazy_static;
 #[macro_use]

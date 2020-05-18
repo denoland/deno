@@ -7,9 +7,11 @@
 //! the future it can be easily extended to provide
 //! the same functions as ops available in JS runtime.
 
+use crate::colors;
 use crate::fs::files_in_subtree;
 use crate::op_error::OpError;
 use deno_core::ErrBox;
+use difference::{Changeset, Difference};
 use dprint_plugin_typescript as dprint;
 use std::fs;
 use std::io::stdin;
@@ -55,6 +57,54 @@ pub async fn format(args: Vec<String>, check: bool) -> Result<(), ErrBox> {
   }
 }
 
+fn print_diff(file_path: &PathBuf, orig: &str, edit: &str) {
+  println!();
+  println!("{} {}:", colors::bold("from".to_string()), file_path.display().to_string());
+  let Changeset { diffs, .. } = Changeset::new(orig, edit, "\n");
+  let mut line = 1;
+  for i in 0..diffs.len() {
+    match diffs[i] {
+      Difference::Add(ref x) => {
+        match diffs[i - 1] {
+          Difference::Rem(ref y) => {
+            print!("{}{} ", line, colors::gray("|".to_string()));
+            print!("{}", colors::green("+".to_string()));
+            let Changeset { diffs, .. } = Changeset::new(y, x, "");
+            for c in diffs {
+              match c {
+                Difference::Same(ref z) => {
+                  print!("{}", colors::green(z.to_string()));
+                }
+                Difference::Add(ref z) => {
+                  print!("{}", colors::white_on_green(z.to_string()));
+                }
+                _ => (),
+              }
+            }
+            println!()
+          }
+          _ => {
+            print!("{}{} ", line, colors::gray("|".to_string()));
+            print!("{}", colors::green("+".to_string()));
+            println!("{}", colors::green(x.to_string()));
+          }
+        };
+        line += 1 + x.matches('\n').count();
+      }
+      Difference::Rem(ref x) => {
+        print!("{}{} ", line, colors::gray("|".to_string()));
+        print!("{}", colors::red_bold("-".to_string()));
+        println!("{}", colors::red(x.to_string()));
+        // line += 1;
+      }
+      Difference::Same(ref x) => {
+        line += 1 + x.matches('\n').count();
+      }
+    }
+  }
+  println!();
+}
+
 async fn check_source_files(
   config: dprint::configuration::Configuration,
   paths: Vec<PathBuf>,
@@ -72,6 +122,8 @@ async fn check_source_files(
         Ok(formatted_text) => {
           if formatted_text != file_contents {
             not_formatted_files_count.fetch_add(1, Ordering::SeqCst);
+            let _g = output_lock.lock().unwrap();
+            print_diff(&file_path, &file_contents, &formatted_text);
           }
         }
         Err(e) => {
