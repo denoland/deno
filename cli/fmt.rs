@@ -58,6 +58,31 @@ pub async fn format(args: Vec<String>, check: bool) -> Result<(), ErrBox> {
 }
 
 fn print_diff(file_path: &PathBuf, orig: &str, edit: &str) {
+  let line_number_width = edit.split('\n').count().to_string().chars().count();
+  let print_line_number = |line| {
+    print!(
+      "{:0width$}{} ",
+      line,
+      colors::gray("|".to_string()),
+      width = line_number_width
+    );
+  };
+  let print_add = || {
+    print!("{}", colors::green_bold("+".to_string()));
+  };
+  let print_add_text = |s: String| {
+    print!("{}", colors::green(s));
+  };
+  let print_add_text_highlited = |s: String| {
+    print!("{}", colors::white_on_green(s));
+  };
+  let print_rem = || {
+    print!("{}", colors::red_bold("-".to_string()));
+  };
+  let print_rem_text = |s: String| {
+    print!("{}", colors::red(s));
+  };
+
   println!();
   println!(
     "{} {}:",
@@ -71,31 +96,34 @@ fn print_diff(file_path: &PathBuf, orig: &str, edit: &str) {
       Difference::Add(ref x) => {
         match diffs[i - 1] {
           Difference::Rem(ref y) => {
-            print!("{}{} ", line, colors::gray("|".to_string()));
-            print!("{}", colors::green("+".to_string()));
+            print_line_number(line);
+            print_add();
             let Changeset { diffs, .. } = Changeset::new(y, x, "");
+            let mut inline = line;
             for c in diffs {
               match c {
                 Difference::Same(ref z) => {
                   let split = z.split('\n').enumerate();
                   for (i, s) in split {
                     if i > 0 {
+                      inline += 1;
                       println!();
-                      print!("{}{} ", line + i, colors::gray("|".to_string()));
-                      print!("{}", colors::green_bold("+".to_string()));
+                      print_line_number(inline);
+                      print_add();
                     }
-                    print!("{}", colors::green(s.to_string()));
+                    print_add_text(s.to_string());
                   }
                 }
                 Difference::Add(ref z) => {
                   let split = z.split('\n').enumerate();
                   for (i, s) in split {
                     if i > 0 {
+                      inline += 1;
                       println!();
-                      print!("{}{} ", line + i, colors::gray("|".to_string()));
-                      print!("{}", colors::green_bold("+".to_string()));
+                      print_line_number(inline);
+                      print_add();
                     }
-                    print!("{}", colors::white_on_green(s.to_string()));
+                    print_add_text_highlited(s.to_string());
                   }
                 }
                 _ => (),
@@ -106,9 +134,10 @@ fn print_diff(file_path: &PathBuf, orig: &str, edit: &str) {
           _ => {
             let split = x.split('\n').enumerate();
             for (i, s) in split {
-              print!("{}{} ", line + i, colors::gray("|".to_string()));
-              print!("{}", colors::green_bold("-".to_string()));
-              println!("{}", colors::green(s.to_string()));
+              print_line_number(line + i);
+              print_add();
+              print_add_text(s.to_string());
+              println!()
             }
           }
         };
@@ -117,9 +146,10 @@ fn print_diff(file_path: &PathBuf, orig: &str, edit: &str) {
       Difference::Rem(ref x) => {
         let split = x.split('\n').enumerate();
         for (i, s) in split {
-          print!("{}{} ", line + i, colors::gray("|".to_string()));
-          print!("{}", colors::red_bold("-".to_string()));
-          println!("{}", colors::red(s.to_string()));
+          print_line_number(line + i);
+          print_rem();
+          print_rem_text(s.to_string());
+          println!()
         }
       }
       Difference::Same(ref x) => {
