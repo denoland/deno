@@ -26,20 +26,22 @@ $ deno run --allow-read=/etc https://deno.land/std/examples/cat.ts /etc/passwd
 
 `--allow-write` works same as `--allow-read`.
 
-
 ### Network access:
 
-*fetch.ts*:
+_fetch.ts_:
+
 ```ts
 const result = await fetch("https://deno.land/");
 ```
 
 This is an example on how to whitelist hosts/urls:
+
 ```shell
 $ deno run --allow-net=deno.land https://deno.land/std/examples/curl.ts https://deno.land/ fetch.ts
 ```
 
 Allow net calls to any host/url:
+
 ```shell
 $ deno run --allow-net fetch.ts
 ```
