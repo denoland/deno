@@ -59,7 +59,11 @@ pub async fn format(args: Vec<String>, check: bool) -> Result<(), ErrBox> {
 
 fn print_diff(file_path: &PathBuf, orig: &str, edit: &str) {
   println!();
-  println!("{} {}:", colors::bold("from".to_string()), file_path.display().to_string());
+  println!(
+    "{} {}:",
+    colors::bold("from".to_string()),
+    file_path.display().to_string()
+  );
   let Changeset { diffs, .. } = Changeset::new(orig, edit, "\n");
   let mut line = 1;
   for i in 0..diffs.len() {
