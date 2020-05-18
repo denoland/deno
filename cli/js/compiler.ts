@@ -534,8 +534,8 @@ SNAPSHOT_HOST.getSourceFile(
   ts.ScriptTarget.ESNext
 );
 
-// We never use this program; it's only created 
-// during snapshotting to hydrate and populate 
+// We never use this program; it's only created
+// during snapshotting to hydrate and populate
 // source file cache with lib declaration files.
 const _TS_SNAPSHOT_PROGRAM = ts.createProgram({
   rootNames: [`${ASSETS}/bootstrap.ts`],
