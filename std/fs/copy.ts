@@ -111,7 +111,9 @@ async function copySymLink(
   await ensureValidCopy(src, dest, options);
   const originSrcFilePath = await Deno.readLink(src);
   const type = getFileInfoType(await Deno.lstat(src));
-  await Deno.symlink(originSrcFilePath, dest, type);
+  await Deno.symlink(originSrcFilePath, dest, {
+    type: type === "dir" ? "dir" : "file",
+  });
   if (options.preserveTimestamps) {
     const statInfo = await Deno.lstat(src);
     assert(statInfo.atime instanceof Date, `statInfo.atime is unavailable`);
@@ -129,7 +131,9 @@ function copySymlinkSync(
   ensureValidCopySync(src, dest, options);
   const originSrcFilePath = Deno.readLinkSync(src);
   const type = getFileInfoType(Deno.lstatSync(src));
-  Deno.symlinkSync(originSrcFilePath, dest, type);
+  Deno.symlinkSync(originSrcFilePath, dest, {
+    type: type === "dir" ? "dir" : "file",
+  });
   if (options.preserveTimestamps) {
     const statInfo = Deno.lstatSync(src);
     assert(statInfo.atime instanceof Date, `statInfo.atime is unavailable`);
