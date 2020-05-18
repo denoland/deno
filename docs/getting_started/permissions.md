@@ -38,7 +38,7 @@ const result = await fetch("https://deno.land/");
 This is an example on how to whitelist hosts/urls:
 
 ```shell
-$ deno run --allow-net=github.com,https://deno.land/std/examples/curl.ts,https://doc.deno.land fetch.ts
+$ deno run --allow-net=github.com,deno.land fetch.ts
 ```
 
 Allow net calls to any host/url:
