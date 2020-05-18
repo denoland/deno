@@ -10,14 +10,15 @@ export function deepAssign(
     if (!source || typeof source !== `object`) {
       return;
     }
-    Object.entries(source).forEach(([key, value]: [string, unknown]): void => {
+    for (const key of Object.keys(source)) {
+      const value: unknown = source[key];
       if (value instanceof Date) {
         target[key] = new Date(value);
-        return;
+        continue;
       }
       if (!value || typeof value !== `object`) {
         target[key] = value;
-        return;
+        continue;
       }
       if (Array.isArray(value)) {
         target[key] = [];
@@ -28,7 +29,7 @@ export function deepAssign(
       }
       assert(value);
       deepAssign(target[key] as Record<string, unknown>, value);
-    });
+    }
   }
   return target;
 }
