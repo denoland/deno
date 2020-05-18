@@ -1,6 +1,6 @@
 # Linking to third party code
 
-In the [Getting Started](./getting_started.md) section, we saw that Deno could
+In the [Getting Started](./getting_started.md) section, we saw Deno could
 execute scripts from URLs. Like browser JavaScript, Deno can import libraries
 directly from URLs. This example uses a URL to import an assertion library:
 
@@ -29,10 +29,10 @@ and yet it accessed the network. The runtime has special access to download
 imports and cache them to disk.
 
 Deno caches remote imports in a special directory specified by the `$DENO_DIR`
-environmental variable. It defaults to the system's cache directory if
-`$DENO_DIR` is not specified. The next time you run the program, no downloads
-will be made. If the program hasn't changed, it won't be recompiled either. The
-default directory is:
+environment variable. It defaults to the system's cache directory if `$DENO_DIR`
+is not specified. The next time you run the program, no downloads will be made.
+If the program hasn't changed, it won't be recompiled either. The default
+directory is:
 
 - On Linux/Redox: `$XDG_CACHE_HOME/deno` or `$HOME/.cache/deno`
 - On Windows: `%LOCALAPPDATA%/deno` (`%LOCALAPPDATA%` = `FOLDERID_LocalAppData`)
