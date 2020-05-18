@@ -214,9 +214,9 @@ export function difference(
         "years",
       ];
 
-  const bigger = from > to ? from : to;
-  const smaller = from > to ? to : from;
-  const differenceInMs = bigger.getTime() - smaller.getTime();
+  const bigger = Math.max(from.getTime(), to.getTime());
+  const smaller = Math.min(from.getTime(), to.getTime());
+  const differenceInMs = bigger - smaller;
 
   const differences: DifferenceFormat = {};
 
@@ -241,20 +241,20 @@ export function difference(
         differences.weeks = Math.floor(differenceInMs / WEEK);
         break;
       case "months":
-        differences.months = calculateMonthDifference(bigger, smaller);
+        differences.months = calculateMonthsDifference(bigger, smaller);
         break;
       case "quarters":
         const quarters =
           (typeof differences.months !== "undefined" &&
             differences.months / 4) ||
-          calculateMonthDifference(bigger, smaller) / 4;
+          calculateMonthsDifference(bigger, smaller) / 4;
         differences.quarters = Math.floor(quarters);
         break;
       case "years":
         const years =
           (typeof differences.months !== "undefined" &&
             differences.months / 12) ||
-          calculateMonthDifference(bigger, smaller) / 12;
+          calculateMonthsDifference(bigger, smaller) / 12;
         differences.years = Math.floor(years);
         break;
     }
@@ -263,14 +263,18 @@ export function difference(
   return differences;
 }
 
-function calculateMonthDifference(bigger: Date, smaller: Date): number {
-  const yearsDiff = bigger.getFullYear() - smaller.getFullYear();
-  const monthsDiff = bigger.getMonth() - smaller.getMonth();
+function calculateMonthsDifference(bigger: number, smaller: number): number {
+  const biggerDate = new Date(bigger);
+  const smallerDate = new Date(smaller);
+  const yearsDiff = biggerDate.getFullYear() - smallerDate.getFullYear();
+  const monthsDiff = biggerDate.getMonth() - smallerDate.getMonth();
   const calendarDiffrences = Math.abs(yearsDiff * 12 + monthsDiff);
-  const compareResult = bigger > smaller ? 1 : -1;
-  bigger.setMonth(bigger.getMonth() - compareResult * calendarDiffrences);
+  const compareResult = biggerDate > smallerDate ? 1 : -1;
+  biggerDate.setMonth(
+    biggerDate.getMonth() - compareResult * calendarDiffrences
+  );
   const isLastMonthNotFull =
-    bigger > smaller ? 1 : -1 === -compareResult ? 1 : 0;
+    biggerDate > smallerDate ? 1 : -1 === -compareResult ? 1 : 0;
   const months = compareResult * (calendarDiffrences - isLastMonthNotFull);
   return months === 0 ? 0 : months;
 }
