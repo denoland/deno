@@ -123,29 +123,29 @@ unitTest(function consoleTestStringifyCircular(): void {
 
   nestedObj.o = circularObj;
   const nestedObjExpected = `{
-  num: 1,
-  bool: true,
-  str: "a",
-  method: [Function: method],
-  asyncMethod: [AsyncFunction: asyncMethod],
-  generatorMethod: [GeneratorFunction: generatorMethod],
-  un: undefined,
-  nu: null,
-  arrowFunc: [Function: arrowFunc],
-  extendedClass: Extended { a: 1, b: 2 },
-  nFunc: [Function],
-  extendedCstr: [Function: Extended],
+  num: ${yellow("1")},
+  bool: ${yellow("true")},
+  str: ${green('"a"')},
+  method: ${cyan("[Function: method]")},
+  asyncMethod: ${cyan("[AsyncFunction: asyncMethod]")},
+  generatorMethod: ${cyan("[GeneratorFunction: generatorMethod]")},
+  un: ${dim("undefined")},
+  nu: ${bold("null")},
+  arrowFunc: ${cyan("[Function: arrowFunc]")},
+  extendedClass: Extended { a: ${yellow("1")}, b: ${yellow("2")} },
+  nFunc: ${cyan("[Function]")},
+  extendedCstr: ${cyan("[Function: Extended]")},
   o: {
-    num: 2,
-    bool: false,
-    str: "b",
-    method: [Function: method],
-    un: undefined,
-    nu: null,
-    nested: [Circular],
+    num: ${yellow("2")},
+    bool: ${yellow("false")},
+    str: ${green('"b"')},
+    method: ${cyan("[Function: method]")},
+    un: ${dim("undefined")},
+    nu: ${bold("null")},
+    nested: ${cyan("[Circular]")},
     emptyObj: {},
-    arr: [ 1, "s", false, null, [Circular] ],
-    baseClass: Base { a: 1 }
+    arr: [ ${yellow("1")}, ${green('"s"')}, ${yellow("false")}, ${bold("null")}, ${cyan("[Circular]")} ],
+    baseClass: Base { a: ${yellow("1")} }
   }
 }`;
 
@@ -215,47 +215,45 @@ unitTest(function consoleTestStringifyCircular(): void {
   assertEquals(stringify(Uint8Array.prototype), "TypedArray {}");
   assertEquals(
     stringify({ a: { b: { c: { d: new Set([1]) } } } }),
-    `{ a: { b: { c: { d: [Set] } } } }`
+    `{ a: { b: { c: { d: ${cyan("[Set]")} } } } }`
   );
-  assertEquals(stripColor(stringify(nestedObj)), nestedObjExpected);
+  assertEquals(stringify(nestedObj), nestedObjExpected);
   assertEquals(
     stripColor(stringify(JSON)),
-    'JSON { Symbol(Symbol.toStringTag): "JSON" }'
+    `JSON { Symbol(Symbol.toStringTag): ${green("JSON")} }`
   );
   assertEquals(
-    stripColor(stringify(console)),
+    stringify(console),
     `{
-  log: [Function],
-  debug: [Function],
-  info: [Function],
-  dir: [Function],
-  dirxml: [Function],
-  warn: [Function],
-  error: [Function],
-  assert: [Function],
-  count: [Function],
-  countReset: [Function],
-  table: [Function],
-  time: [Function],
-  timeLog: [Function],
-  timeEnd: [Function],
-  group: [Function],
-  groupCollapsed: [Function],
-  groupEnd: [Function],
-  clear: [Function],
-  trace: [Function],
-  indentLevel: 0,
-  Symbol(isConsoleInstance): true
+  log: ${cyan("[Function]")},
+  debug: ${cyan("[Function]")},
+  info: ${cyan("[Function]")},
+  dir: ${cyan("[Function]")},
+  dirxml: ${cyan("[Function]")},
+  warn: ${cyan("[Function]")},
+  error: ${cyan("[Function]")},
+  assert: ${cyan("[Function]")},
+  count: ${cyan("[Function]")},
+  countReset: ${cyan("[Function]")},
+  table: ${cyan("[Function]")},
+  time: ${cyan("[Function]")},
+  timeLog: ${cyan("[Function]")},
+  timeEnd: ${cyan("[Function]")},
+  group: ${cyan("[Function]")},
+  groupCollapsed: ${cyan("[Function]")},
+  groupEnd: ${cyan("[Function]")},
+  clear: ${cyan("[Function]")},
+  trace: ${cyan("[Function]")},
+  indentLevel: ${yellow("0")},
+  Symbol(isConsoleInstance): ${yellow("true")}
 }`
   );
   assertEquals(
-    stripColor(
-      stringify({ str: 1, [Symbol.for("sym")]: 2, [Symbol.toStringTag]: "TAG" })
-    ),
-    'TAG { str: 1, Symbol(sym): 2, Symbol(Symbol.toStringTag): "TAG" }'
+    stringify({ str: 1, [Symbol.for("sym")]: 2, [Symbol.toStringTag]: "TAG" }),
+    `TAG { str: ${yellow("1")}, Symbol(sym): ${yellow("2")}, Symbol(Symbol.toStringTag): ${green('"TAG"')} }`
   );
   // test inspect is working the same
-  assertEquals(stripColor(inspect(nestedObj)), nestedObjExpected);
+  assertEquals(inspect(nestedObj), nestedObjExpected);
 });
 /* eslint-enable @typescript-eslint/explicit-function-return-type */
 
@@ -1176,3 +1174,5 @@ unitTest(function consoleTrace(): void {
     assert(err.toString().includes("Trace: custom message"));
   });
 });
+
+console.log(stringify(JSON));
