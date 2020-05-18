@@ -521,6 +521,7 @@ dependencies = [
  "lazy_static",
  "libc",
  "log 0.4.8",
+ "rand 0.7.3",
  "rusty_v8",
  "serde_json",
  "tokio",

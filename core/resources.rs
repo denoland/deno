@@ -7,6 +7,7 @@
 // descriptor (hence the different name).
 
 use downcast_rs::Downcast;
+use rand::random;
 use std::any::Any;
 use std::collections::HashMap;
 
@@ -21,7 +22,7 @@ type ResourceMap = HashMap<ResourceId, (String, Box<dyn Resource>)>;
 #[derive(Default)]
 pub struct ResourceTable {
   map: ResourceMap,
-  next_id: u32,
+  next_id: ResourceId,
 }
 
 impl ResourceTable {
@@ -45,10 +46,14 @@ impl ResourceTable {
     None
   }
 
-  // TODO: resource id allocation should probably be randomized for security.
   fn next_rid(&mut self) -> ResourceId {
     let next_rid = self.next_id;
-    self.next_id += 1;
+    self.next_id = loop {
+      let rand_id: ResourceId = random();
+      if self.map.get(&rand_id).is_none() {
+        break rand_id;
+      }
+    };
     next_rid as ResourceId
   }
 
