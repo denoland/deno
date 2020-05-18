@@ -7,7 +7,7 @@ Workers can be used to run code on multiple threads. Each instance of `Worker`
 is run on a separate thread, dedicated only to that worker.
 
 Currently Deno supports only `module` type workers; thus it's essential to pass
-`type: "module"` option when creating new worker:
+`type: "module"` option when creating a new worker:
 
 ```ts
 // Good
@@ -66,9 +66,9 @@ hello world
 > This is an unstable Deno feature. Learn more about
 > [unstable features](./stability.md).
 
-By default `Deno` namespace is not available in worker scope.
+By default the `Deno` namespace is not available in worker scope.
 
-To add `Deno` namespace pass `deno: true` option when creating new worker:
+To add the `Deno` namespace pass `deno: true` option when creating new worker:
 
 ```ts
 // main.js
@@ -92,7 +92,7 @@ $ deno run --allow-read --unstable main.js
 hello world
 ```
 
-When `Deno` namespace is available in worker scope; the worker inherits parent
-process permissions (the ones specified using `--allow-*` flags).
+When the `Deno` namespace is available in worker scope, the worker inherits its
+parent process' permissions (the ones specified using `--allow-*` flags).
 
 We intend to make permissions configurable for workers.
