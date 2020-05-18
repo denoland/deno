@@ -62,6 +62,14 @@ export function hasPrefix(a: Uint8Array, prefix: Uint8Array): boolean {
   return true;
 }
 
+/** Check whether binary array has binary suffix  **/
+export function hasSuffix(a: Uint8Array, suffix: Uint8Array): boolean {
+  return (
+    a.length >= suffix.length &&
+    equal(a.slice(a.length - suffix.length), suffix)
+  );
+}
+
 /**
  * Repeat bytes. returns a new byte slice consisting of `count` copies of `b`.
  * @param b The origin bytes

@@ -7,6 +7,7 @@ import {
   hasPrefix,
   repeat,
   concat,
+  hasSuffix,
 } from "./mod.ts";
 import { assertEquals, assertThrows, assert } from "../testing/asserts.ts";
 import { encode, decode } from "../encoding/utf8.ts";
@@ -44,6 +45,11 @@ Deno.test("[bytes] equal", () => {
 
 Deno.test("[bytes] hasPrefix", () => {
   const v = hasPrefix(new Uint8Array([0, 1, 2]), new Uint8Array([0, 1]));
+  assertEquals(v, true);
+});
+
+Deno.test("[bytes] hasSuffix", () => {
+  const v = hasSuffix(new Uint8Array([0, 1, 2]), new Uint8Array([1, 2]));
   assertEquals(v, true);
 });
 
