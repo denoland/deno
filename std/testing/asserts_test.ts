@@ -393,13 +393,31 @@ const bottomTypeCases = [undefined, null];
 
 bottomTypeCases.forEach((v) => {
   test({
-    name: `throw ${v}`,
+    name: `acceptable "${v}"`,
+    fn(): void {
+      assertThrows((): void => {
+        throw v;
+      });
+    },
+  });
+
+  test({
+    name: `async acceptable ${v}`,
+    async fn() {
+      await assertThrowsAsync(() => {
+        throw v;
+      });
+    },
+  });
+
+  test({
+    name: `not acceptable "${v}" if ErrorClass is specified`,
     fn(): void {
       assertThrows(
         (): void => {
           assertThrows((): void => {
             throw v;
-          });
+          }, Error);
         },
         AssertionError,
         `Expected error to be defined, but received "${v}"`
@@ -408,13 +426,13 @@ bottomTypeCases.forEach((v) => {
   });
 
   test({
-    name: `async throw ${v}`,
-    fn() {
-      assertThrowsAsync(
+    name: `async not acceptable ${v} if ErrorClass is specified`,
+    async fn() {
+      await assertThrowsAsync(
         async () => {
           await assertThrowsAsync(() => {
             throw v;
-          });
+          }, Error);
         },
         AssertionError,
         `Expected error to be defined, but received "${v}"`

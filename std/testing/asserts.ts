@@ -333,7 +333,7 @@ export function assertThrows(
   try {
     fn();
   } catch (e) {
-    if (e === undefined || e === null) {
+    if (ErrorClass && (e === undefined || e === null)) {
       throw new AssertionError(
         `Expected error to be defined, but received "${e}"`
       );
@@ -371,7 +371,7 @@ export async function assertThrowsAsync(
   try {
     await fn();
   } catch (e) {
-    if (e === undefined || e === null) {
+    if (ErrorClass && (e === undefined || e === null)) {
       throw new AssertionError(
         `Expected error to be defined, but received "${e}"`
       );
