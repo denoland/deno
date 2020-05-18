@@ -77,10 +77,26 @@ fn print_diff(file_path: &PathBuf, orig: &str, edit: &str) {
             for c in diffs {
               match c {
                 Difference::Same(ref z) => {
-                  print!("{}", colors::green(z.to_string()));
+                  let split = z.split("\n").enumerate();
+                  for (i, s) in split {
+                    if i > 0 {
+                      println!();
+                      print!("{}{} ", line + i, colors::gray("|".to_string()));
+                      print!("{}", colors::green_bold("+".to_string()));
+                    }
+                    print!("{}", colors::green(s.to_string()));
+                  }
                 }
                 Difference::Add(ref z) => {
-                  print!("{}", colors::white_on_green(z.to_string()));
+                  let split = z.split("\n").enumerate();
+                  for (i, s) in split {
+                    if i > 0 {
+                      println!();
+                      print!("{}{} ", line + i, colors::gray("|".to_string()));
+                      print!("{}", colors::green_bold("+".to_string()));
+                    }
+                    print!("{}", colors::white_on_green(s.to_string()));
+                  }
                 }
                 _ => (),
               }
@@ -88,17 +104,23 @@ fn print_diff(file_path: &PathBuf, orig: &str, edit: &str) {
             println!()
           }
           _ => {
-            print!("{}{} ", line, colors::gray("|".to_string()));
-            print!("{}", colors::green("+".to_string()));
-            println!("{}", colors::green(x.to_string()));
+            let split = x.split("\n").enumerate();
+            for (i, s) in split {
+              print!("{}{} ", line + i, colors::gray("|".to_string()));
+              print!("{}", colors::green_bold("-".to_string()));
+              println!("{}", colors::green(s.to_string()));
+            }
           }
         };
         line += 1 + x.matches('\n').count();
       }
       Difference::Rem(ref x) => {
-        print!("{}{} ", line, colors::gray("|".to_string()));
-        print!("{}", colors::red_bold("-".to_string()));
-        println!("{}", colors::red(x.to_string()));
+        let split = x.split("\n").enumerate();
+        for (i, s) in split {
+          print!("{}{} ", line + i, colors::gray("|".to_string()));
+          print!("{}", colors::red_bold("-".to_string()));
+          println!("{}", colors::red(s.to_string()));
+        }
         // line += 1;
       }
       Difference::Same(ref x) => {
