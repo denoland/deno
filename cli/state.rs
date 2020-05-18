@@ -242,7 +242,7 @@ impl State {
   }
 }
 
-fn exit_unstable(api_name: &str) {
+pub fn exit_unstable(api_name: &str) {
   eprintln!(
     "Unstable API '{}'. The --unstable flag must be provided.",
     api_name
@@ -322,6 +322,7 @@ impl ModuleLoader for State {
           maybe_referrer,
           target_lib,
           permissions,
+          is_dyn_import,
         )
         .await?;
       Ok(deno_core::ModuleSource {

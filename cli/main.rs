@@ -42,6 +42,7 @@ pub mod installer;
 mod js;
 mod lockfile;
 mod metrics;
+mod module_graph;
 pub mod msg;
 pub mod op_error;
 pub mod ops;
@@ -69,6 +70,7 @@ pub use dprint_plugin_typescript::swc_ecma_parser;
 use crate::doc::parser::DocFileLoader;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
+use crate::fs as deno_fs;
 use crate::global_state::GlobalState;
 use crate::msg::MediaType;
 use crate::op_error::OpError;
@@ -210,6 +212,7 @@ async fn print_file_info(
       None,
       TargetLib::Main,
       Permissions::allow_all(),
+      false,
     )
     .await?;
 
@@ -354,6 +357,7 @@ async fn eval_command(
     filename: main_module_url.to_file_path().unwrap(),
     url: main_module_url,
     types_url: None,
+    types_header: None,
     media_type: if as_typescript {
       MediaType::TypeScript
     } else {
@@ -382,12 +386,21 @@ async fn bundle_command(
   source_file: String,
   out_file: Option<PathBuf>,
 ) -> Result<(), ErrBox> {
-  let module_name = ModuleSpecifier::resolve_url_or_path(&source_file)?;
+  let mut module_name = ModuleSpecifier::resolve_url_or_path(&source_file)?;
+  let url = module_name.as_url();
+
+  // TODO(bartlomieju): fix this hack in ModuleSpecifier
+  if url.scheme() == "file" {
+    let a = deno_fs::normalize_path(&url.to_file_path().unwrap());
+    let u = Url::from_file_path(a).unwrap();
+    module_name = ModuleSpecifier::from(u)
+  }
+
   let global_state = GlobalState::new(flags)?;
   debug!(">>>>> bundle START");
   let bundle_result = global_state
     .ts_compiler
-    .bundle(global_state.clone(), module_name.to_string(), out_file)
+    .bundle(global_state.clone(), module_name, out_file)
     .await;
   debug!(">>>>> bundle END");
   bundle_result
@@ -530,6 +543,7 @@ async fn test_command(
     filename: test_file_url.to_file_path().unwrap(),
     url: test_file_url,
     types_url: None,
+    types_header: None,
     media_type: MediaType::TypeScript,
     source_code: test_file.clone().into_bytes(),
   };
