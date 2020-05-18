@@ -1,7 +1,12 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { assert } from "../testing/asserts.ts";
-import { SECOND, MINUTE, HOUR, DAY, WEEK } from "./_constants.ts";
 export type DateFormat = "mm-dd-yyyy" | "dd-mm-yyyy" | "yyyy-mm-dd";
+
+export const SECOND = 1e3;
+export const MINUTE = SECOND * 60;
+export const HOUR = MINUTE * 60;
+export const DAY = HOUR * 24;
+export const WEEK = DAY * 7;
 
 function execForce(reg: RegExp, pat: string): RegExpExecArray {
   const v = reg.exec(pat);
@@ -157,7 +162,7 @@ export function toIMF(date: Date): string {
 export function isLeap(year: Date | number): boolean {
   const yearNumber = year instanceof Date ? year.getFullYear() : year;
   return (
-    !(yearNumber % 400) || (yearNumber % 4 === 0 && yearNumber % 100 !== 0)
+    (yearNumber % 4 === 0 && yearNumber % 100 !== 0) || yearNumber % 400 === 0
   );
 }
 
