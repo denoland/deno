@@ -85,7 +85,7 @@ can learn more about this
 
 ### But what if the host of the URL goes down? The source won't be available.
 
-This, like the above, is a problem faced by *any* remote dependency system.
+This, like the above, is a problem faced by _any_ remote dependency system.
 Relying on external servers is convenient for development but brittle in
 production. Production software should always vendor its dependencies. In Node
 this is done by checking `node_modules` into source control. In Deno this is
