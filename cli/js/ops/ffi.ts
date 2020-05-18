@@ -17,11 +17,11 @@ export function call(rid: number, args: any[]): any {
   });
 }
 
-export function readMemory(addr: MemoryAddr, p: Uint8Array): void {
+export function readMemory(addr: number, p: Uint8Array): void {
   // TODO implement this
 }
 
-export function writeMemory(addr: MemoryAddr, p: Uint8Array): void {
+export function writeMemory(addr: number, p: Uint8Array): void {
   // TODO implement this
 }
 
