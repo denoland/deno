@@ -103,7 +103,10 @@ impl Metadata {
 
 impl HttpCache {
   /// Returns a new instance.
+  ///
+  /// `location` must be an absolute path.
   pub fn new(location: &Path) -> Self {
+    assert!(location.is_absolute());
     Self {
       location: location.to_owned(),
     }

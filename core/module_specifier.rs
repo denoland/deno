@@ -32,19 +32,15 @@ impl fmt::Display for ModuleResolutionError {
         write!(f, "invalid base URL for relative import: {}", err)
       }
       InvalidPath(ref path) => write!(f, "invalid module path: {:?}", path),
-      ImportPrefixMissing(ref specifier, ref maybe_referrer) => {
-        let msg = format!(
-          "relative import path \"{}\" not prefixed with / or ./ or ../",
-          specifier
-        );
-        let msg = if let Some(referrer) = maybe_referrer {
-          format!("{} Imported from \"{}\"", msg, referrer)
-        } else {
-          msg
-        };
-
-        write!(f, "{}", msg)
-      }
+      ImportPrefixMissing(ref specifier, ref maybe_referrer) => write!(
+        f,
+        "relative import path \"{}\" not prefixed with / or ./ or ../{}",
+        specifier,
+        match maybe_referrer {
+          Some(referrer) => format!(" Imported from \"{}\"", referrer),
+          None => format!(""),
+        }
+      ),
     }
   }
 }

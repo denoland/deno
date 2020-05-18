@@ -184,7 +184,7 @@ careful not to introduce circular imports.
 
 ### If a filename starts with an underscore: `_foo.ts`, do not link to it.
 
-Sometimes there maybe situations where an internal module is necessary but its
+Sometimes there may be situations where an internal module is necessary but its
 API is not meant to be stable or linked to. In this case prefix it with an
 underscore. By convention, only files in its own directory should import it.
 
