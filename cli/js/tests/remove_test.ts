@@ -484,7 +484,7 @@ if (Deno.build.os == "windows") {
   unitTest(
     { perms: { run: true, write: true, read: true } },
     async function removeFileSymlink(): Promise<void> {
-      let symlink = Deno.run({
+      const symlink = Deno.run({
         cmd: ["cmd", "/c", "mklink", "file_link", "bar"],
         stdout: "null",
       });
@@ -505,7 +505,7 @@ if (Deno.build.os == "windows") {
   unitTest(
     { perms: { run: true, write: true, read: true } },
     async function removeDirSymlink(): Promise<void> {
-      let symlink = Deno.run({
+      const symlink = Deno.run({
         cmd: ["cmd", "/c", "mklink", "/d", "dir_link", "bar"],
         stdout: "null",
       });
