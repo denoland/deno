@@ -29,7 +29,7 @@ writeVarbig(w: Deno.Writer, x: bigint, o: VarbigOptions = {}): Promise<number>
 
 ## CSV
 
-- **`parseCsv(input: string | BufReader, opt: ParseCsvOptions): Promise<unknown[]>`**:
+- **`parse(input: string | BufReader, opt: ParseCsvOptions): Promise<unknown[]>`**:
   Read the string/buffer into an
 
 ### Usage
@@ -38,7 +38,7 @@ writeVarbig(w: Deno.Writer, x: bigint, o: VarbigOptions = {}): Promise<number>
 const string = "a,b,c\nd,e,f";
 
 console.log(
-  await parseCsv(string, {
+  await parse(string, {
     header: false,
   })
 );

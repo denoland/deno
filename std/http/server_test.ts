@@ -351,11 +351,15 @@ test("requestBodyReaderWithTransferEncoding", async function (): Promise<void> {
 
 test({
   name: "destroyed connection",
-  ignore: false,
   fn: async (): Promise<void> => {
     // Runs a simple server as another process
     const p = Deno.run({
-      cmd: [Deno.execPath(), "run","--allow-net", "http/testdata/simple_server.ts"],
+      cmd: [
+        Deno.execPath(),
+        "run",
+        "--allow-net",
+        "http/testdata/simple_server.ts",
+      ],
       stdout: "piped",
     });
 
@@ -391,7 +395,6 @@ test({
 
 test({
   name: "serveTLS",
-  ignore: false,
   fn: async (): Promise<void> => {
     // Runs a simple server as another process
     const p = Deno.run({
