@@ -218,7 +218,10 @@ unitTest(function consoleTestStringifyCircular(): void {
     `{ a: { b: { c: { d: [Set] } } } }`
   );
   assertEquals(stripColor(stringify(nestedObj)), nestedObjExpected);
-  assertEquals(stripColor(stringify(JSON)), 'JSON { Symbol(Symbol.toStringTag): "JSON" }');
+  assertEquals(
+    stripColor(stringify(JSON)),
+    'JSON { Symbol(Symbol.toStringTag): "JSON" }'
+  );
   assertEquals(
     stripColor(stringify(console)),
     `{
