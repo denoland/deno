@@ -487,6 +487,9 @@ mod tests {
     Ok(graph_loader.get_graph())
   }
 
+  // TODO(bartlomieju): this test is flaky, because it's using 019_media_types
+  // file, reenable once Python server is replaced with Rust one.
+  #[ignore]
   #[tokio::test]
   async fn source_graph_fetch() {
     let http_server_guard = crate::test_util::http_server();
