@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import * as path from "../path/mod.ts";
 import { ensureDir, ensureDirSync } from "./ensure_dir.ts";
-import { isSubdir, getFileInfoType } from "./utils.ts";
+import { isSubdir, getFileInfoType } from "./_util.ts";
 import { assert } from "../testing/asserts.ts";
 
 export interface CopyOptions {
@@ -85,9 +85,9 @@ async function copyFile(
   await Deno.copyFile(src, dest);
   if (options.preserveTimestamps) {
     const statInfo = await Deno.stat(src);
-    assert(statInfo.accessed != null, `statInfo.accessed is unavailable`);
-    assert(statInfo.modified != null, `statInfo.modified is unavailable`);
-    await Deno.utime(dest, statInfo.accessed, statInfo.modified);
+    assert(statInfo.atime instanceof Date, `statInfo.atime is unavailable`);
+    assert(statInfo.mtime instanceof Date, `statInfo.mtime is unavailable`);
+    await Deno.utime(dest, statInfo.atime, statInfo.mtime);
   }
 }
 /* copy file to dest synchronously */
@@ -96,9 +96,9 @@ function copyFileSync(src: string, dest: string, options: CopyOptions): void {
   Deno.copyFileSync(src, dest);
   if (options.preserveTimestamps) {
     const statInfo = Deno.statSync(src);
-    assert(statInfo.accessed != null, `statInfo.accessed is unavailable`);
-    assert(statInfo.modified != null, `statInfo.modified is unavailable`);
-    Deno.utimeSync(dest, statInfo.accessed, statInfo.modified);
+    assert(statInfo.atime instanceof Date, `statInfo.atime is unavailable`);
+    assert(statInfo.mtime instanceof Date, `statInfo.mtime is unavailable`);
+    Deno.utimeSync(dest, statInfo.atime, statInfo.mtime);
   }
 }
 
@@ -109,14 +109,14 @@ async function copySymLink(
   options: CopyOptions
 ): Promise<void> {
   await ensureValidCopy(src, dest, options);
-  const originSrcFilePath = await Deno.readlink(src);
+  const originSrcFilePath = await Deno.readLink(src);
   const type = getFileInfoType(await Deno.lstat(src));
   await Deno.symlink(originSrcFilePath, dest, type);
   if (options.preserveTimestamps) {
     const statInfo = await Deno.lstat(src);
-    assert(statInfo.accessed != null, `statInfo.accessed is unavailable`);
-    assert(statInfo.modified != null, `statInfo.modified is unavailable`);
-    await Deno.utime(dest, statInfo.accessed, statInfo.modified);
+    assert(statInfo.atime instanceof Date, `statInfo.atime is unavailable`);
+    assert(statInfo.mtime instanceof Date, `statInfo.mtime is unavailable`);
+    await Deno.utime(dest, statInfo.atime, statInfo.mtime);
   }
 }
 
@@ -127,14 +127,14 @@ function copySymlinkSync(
   options: CopyOptions
 ): void {
   ensureValidCopySync(src, dest, options);
-  const originSrcFilePath = Deno.readlinkSync(src);
+  const originSrcFilePath = Deno.readLinkSync(src);
   const type = getFileInfoType(Deno.lstatSync(src));
   Deno.symlinkSync(originSrcFilePath, dest, type);
   if (options.preserveTimestamps) {
     const statInfo = Deno.lstatSync(src);
-    assert(statInfo.accessed != null, `statInfo.accessed is unavailable`);
-    assert(statInfo.modified != null, `statInfo.modified is unavailable`);
-    Deno.utimeSync(dest, statInfo.accessed, statInfo.modified);
+    assert(statInfo.atime instanceof Date, `statInfo.atime is unavailable`);
+    assert(statInfo.mtime instanceof Date, `statInfo.mtime is unavailable`);
+    Deno.utimeSync(dest, statInfo.atime, statInfo.mtime);
   }
 }
 
@@ -152,20 +152,20 @@ async function copyDir(
 
   if (options.preserveTimestamps) {
     const srcStatInfo = await Deno.stat(src);
-    assert(srcStatInfo.accessed != null, `statInfo.accessed is unavailable`);
-    assert(srcStatInfo.modified != null, `statInfo.modified is unavailable`);
-    await Deno.utime(dest, srcStatInfo.accessed, srcStatInfo.modified);
+    assert(srcStatInfo.atime instanceof Date, `statInfo.atime is unavailable`);
+    assert(srcStatInfo.mtime instanceof Date, `statInfo.mtime is unavailable`);
+    await Deno.utime(dest, srcStatInfo.atime, srcStatInfo.mtime);
   }
 
-  for await (const file of Deno.readdir(src)) {
-    const srcPath = path.join(src, file.name);
+  for await (const entry of Deno.readDir(src)) {
+    const srcPath = path.join(src, entry.name);
     const destPath = path.join(dest, path.basename(srcPath as string));
-    if (file.isDirectory) {
-      await copyDir(srcPath, destPath, options);
-    } else if (file.isFile) {
-      await copyFile(srcPath, destPath, options);
-    } else if (file.isSymlink) {
+    if (entry.isSymlink) {
       await copySymLink(srcPath, destPath, options);
+    } else if (entry.isDirectory) {
+      await copyDir(srcPath, destPath, options);
+    } else if (entry.isFile) {
+      await copyFile(srcPath, destPath, options);
     }
   }
 }
@@ -180,28 +180,28 @@ function copyDirSync(src: string, dest: string, options: CopyOptions): void {
 
   if (options.preserveTimestamps) {
     const srcStatInfo = Deno.statSync(src);
-    assert(srcStatInfo.accessed != null, `statInfo.accessed is unavailable`);
-    assert(srcStatInfo.modified != null, `statInfo.modified is unavailable`);
-    Deno.utimeSync(dest, srcStatInfo.accessed, srcStatInfo.modified);
+    assert(srcStatInfo.atime instanceof Date, `statInfo.atime is unavailable`);
+    assert(srcStatInfo.mtime instanceof Date, `statInfo.mtime is unavailable`);
+    Deno.utimeSync(dest, srcStatInfo.atime, srcStatInfo.mtime);
   }
 
-  for (const file of Deno.readdirSync(src)) {
-    assert(file.name != null, "file.name must be set");
-    const srcPath = path.join(src, file.name);
+  for (const entry of Deno.readDirSync(src)) {
+    assert(entry.name != null, "file.name must be set");
+    const srcPath = path.join(src, entry.name);
     const destPath = path.join(dest, path.basename(srcPath as string));
-    if (file.isDirectory) {
-      copyDirSync(srcPath, destPath, options);
-    } else if (file.isFile) {
-      copyFileSync(srcPath, destPath, options);
-    } else if (file.isSymlink) {
+    if (entry.isSymlink) {
       copySymlinkSync(srcPath, destPath, options);
+    } else if (entry.isDirectory) {
+      copyDirSync(srcPath, destPath, options);
+    } else if (entry.isFile) {
+      copyFileSync(srcPath, destPath, options);
     }
   }
 }
 
 /**
  * Copy a file or directory. The directory can have contents. Like `cp -r`.
- * Requires the `--allow-read` and `--alow-write` flag.
+ * Requires the `--allow-read` and `--allow-write` flag.
  * @param src the file/directory path.
  *            Note that if `src` is a directory it will copy everything inside
  *            of this directory, not the entire directory itself
@@ -229,18 +229,18 @@ export async function copy(
     );
   }
 
-  if (srcStat.isDirectory) {
+  if (srcStat.isSymlink) {
+    await copySymLink(src, dest, options);
+  } else if (srcStat.isDirectory) {
     await copyDir(src, dest, options);
   } else if (srcStat.isFile) {
     await copyFile(src, dest, options);
-  } else if (srcStat.isSymlink) {
-    await copySymLink(src, dest, options);
   }
 }
 
 /**
  * Copy a file or directory. The directory can have contents. Like `cp -r`.
- * Requires the `--allow-read` and `--alow-write` flag.
+ * Requires the `--allow-read` and `--allow-write` flag.
  * @param src the file/directory path.
  *            Note that if `src` is a directory it will copy everything inside
  *            of this directory, not the entire directory itself
@@ -268,11 +268,11 @@ export function copySync(
     );
   }
 
-  if (srcStat.isDirectory) {
+  if (srcStat.isSymlink) {
+    copySymlinkSync(src, dest, options);
+  } else if (srcStat.isDirectory) {
     copyDirSync(src, dest, options);
   } else if (srcStat.isFile) {
     copyFileSync(src, dest, options);
-  } else if (srcStat.isSymlink) {
-    copySymlinkSync(src, dest, options);
   }
 }

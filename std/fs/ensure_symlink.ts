@@ -2,7 +2,7 @@
 import * as path from "../path/mod.ts";
 import { ensureDir, ensureDirSync } from "./ensure_dir.ts";
 import { exists, existsSync } from "./exists.ts";
-import { getFileInfoType } from "./utils.ts";
+import { getFileInfoType } from "./_util.ts";
 
 /**
  * Ensures that the link exists.

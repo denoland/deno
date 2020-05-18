@@ -2,6 +2,6 @@
 import { assertEquals } from "../testing/asserts.ts";
 import { parse } from "./mod.ts";
 
-Deno.test(function whitespaceShouldBeWhitespace(): void {
+Deno.test("whitespaceShouldBeWhitespace", function (): void {
   assertEquals(parse(["-x", "\t"]).x, "\t");
 });

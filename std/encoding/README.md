@@ -17,8 +17,8 @@ Available Functions:
 ```typescript
 sizeof(dataType: RawTypes): number
 getNBytes(r: Deno.Reader, n: number): Promise<Uint8Array>
-varnum(b: Uint8Array, o: VarnumOptions = {}): number | Deno.EOF
-varbig(b: Uint8Array, o: VarbigOptions = {}): bigint | Deno.EOF
+varnum(b: Uint8Array, o: VarnumOptions = {}): number | null
+varbig(b: Uint8Array, o: VarbigOptions = {}): bigint | null
 putVarnum(b: Uint8Array, x: number, o: VarnumOptions = {}): number
 putVarbig(b: Uint8Array, x: bigint, o: VarbigOptions = {}): number
 readVarnum(r: Deno.Reader, o: VarnumOptions = {}): Promise<number>
@@ -29,7 +29,7 @@ writeVarbig(w: Deno.Writer, x: bigint, o: VarbigOptions = {}): Promise<number>
 
 ## CSV
 
-- **`parseCsv(input: string | BufReader, opt: ParseCsvOptions): Promise<unknown[]>`**:
+- **`parse(input: string | BufReader, opt: ParseCsvOptions): Promise<unknown[]>`**:
   Read the string/buffer into an
 
 ### Usage
@@ -38,7 +38,7 @@ writeVarbig(w: Deno.Writer, x: bigint, o: VarbigOptions = {}): Promise<number>
 const string = "a,b,c\nd,e,f";
 
 console.log(
-  await parseCsv(string, {
+  await parse(string, {
     header: false,
   })
 );
@@ -243,9 +243,7 @@ Serializes `object` as a YAML document.
 
 ### More example
 
-See [`./yaml/example`](./yaml/example) folder and [js-yaml] repository.
-
-[js-yaml]: https://github.com/nodeca/js-yaml
+See https://github.com/nodeca/js-yaml.
 
 ## base32
 

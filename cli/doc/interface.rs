@@ -57,7 +57,7 @@ pub struct InterfaceDef {
   pub type_params: Vec<TsTypeParamDef>,
 }
 
-fn expr_to_name(expr: &swc_ecma_ast::Expr) -> String {
+pub fn expr_to_name(expr: &swc_ecma_ast::Expr) -> String {
   use crate::swc_ecma_ast::Expr::*;
   use crate::swc_ecma_ast::ExprOrSuper::*;
 
@@ -65,7 +65,7 @@ fn expr_to_name(expr: &swc_ecma_ast::Expr) -> String {
     Ident(ident) => ident.sym.to_string(),
     Member(member_expr) => {
       let left = match &member_expr.obj {
-        Super(_) => "TODO".to_string(),
+        Super(_) => "super".to_string(),
         Expr(boxed_expr) => expr_to_name(&*boxed_expr),
       };
       let right = expr_to_name(&*member_expr.prop);
@@ -114,8 +114,8 @@ pub fn get_doc_for_ts_interface_decl(
           name,
           js_doc: method_js_doc,
           location: doc_parser
-            .source_map
-            .lookup_char_pos(ts_method_sig.span.lo())
+            .ast_parser
+            .get_span_location(ts_method_sig.span)
             .into(),
           optional: ts_method_sig.optional,
           params,
@@ -126,10 +126,7 @@ pub fn get_doc_for_ts_interface_decl(
       }
       TsPropertySignature(ts_prop_sig) => {
         let prop_js_doc = doc_parser.js_doc_for_span(ts_prop_sig.span);
-        let name = match &*ts_prop_sig.key {
-          swc_ecma_ast::Expr::Ident(ident) => ident.sym.to_string(),
-          _ => "TODO".to_string(),
-        };
+        let name = expr_to_name(&*ts_prop_sig.key);
 
         let mut params = vec![];
 
@@ -151,8 +148,8 @@ pub fn get_doc_for_ts_interface_decl(
           name,
           js_doc: prop_js_doc,
           location: doc_parser
-            .source_map
-            .lookup_char_pos(ts_prop_sig.span.lo())
+            .ast_parser
+            .get_span_location(ts_prop_sig.span)
             .into(),
           params,
           ts_type,
@@ -183,8 +180,8 @@ pub fn get_doc_for_ts_interface_decl(
         let call_sig_def = InterfaceCallSignatureDef {
           js_doc: call_sig_js_doc,
           location: doc_parser
-            .source_map
-            .lookup_char_pos(ts_call_sig.span.lo())
+            .ast_parser
+            .get_span_location(ts_call_sig.span)
             .into(),
           params,
           ts_type,

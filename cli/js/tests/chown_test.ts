@@ -2,7 +2,7 @@
 import { unitTest, assertEquals, assert } from "./test_util.ts";
 
 // chown on Windows is noop for now, so ignore its testing on Windows
-if (Deno.build.os !== "win") {
+if (Deno.build.os !== "windows") {
   async function getUidAndGid(): Promise<{ uid: number; gid: number }> {
     // get the user ID and group ID of the current process
     const uidProc = Deno.run({
@@ -108,7 +108,7 @@ if (Deno.build.os !== "win") {
     async function chownSyncSucceed(): Promise<void> {
       // TODO: when a file's owner is actually being changed,
       // chown only succeeds if run under priviledged user (root)
-      // The test script has no such priviledge, so need to find a better way to test this case
+      // The test script has no such privilege, so need to find a better way to test this case
       const { uid, gid } = await getUidAndGid();
 
       const enc = new TextEncoder();

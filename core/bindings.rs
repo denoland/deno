@@ -60,7 +60,7 @@ pub fn script_origin<'a>(
   let resource_column_offset = v8::Integer::new(s, 0);
   let resource_is_shared_cross_origin = v8::Boolean::new(s, false);
   let script_id = v8::Integer::new(s, 123);
-  let source_map_url = v8::String::new(s, "source_map_url").unwrap();
+  let source_map_url = v8::String::new(s, "").unwrap();
   let resource_is_opaque = v8::Boolean::new(s, true);
   let is_wasm = v8::Boolean::new(s, false);
   let is_module = v8::Boolean::new(s, false);
@@ -85,7 +85,7 @@ pub fn module_origin<'a>(
   let resource_column_offset = v8::Integer::new(s, 0);
   let resource_is_shared_cross_origin = v8::Boolean::new(s, false);
   let script_id = v8::Integer::new(s, 123);
-  let source_map_url = v8::String::new(s, "source_map_url").unwrap();
+  let source_map_url = v8::String::new(s, "").unwrap();
   let resource_is_opaque = v8::Boolean::new(s, true);
   let is_wasm = v8::Boolean::new(s, false);
   let is_module = v8::Boolean::new(s, true);
@@ -277,13 +277,11 @@ pub extern "C" fn host_import_module_dynamically_callback(
   let mut resolver_handle = v8::Global::new();
   resolver_handle.set(scope, resolver);
 
-  let import_id = core_isolate.next_dyn_import_id;
-  core_isolate.next_dyn_import_id += 1;
-  core_isolate
-    .dyn_import_map
-    .insert(import_id, resolver_handle);
-
-  core_isolate.dyn_import_cb(&specifier_str, &referrer_name_str, import_id);
+  core_isolate.dyn_import_cb(
+    resolver_handle,
+    &specifier_str,
+    &referrer_name_str,
+  );
 
   &mut *scope.escape(promise)
 }

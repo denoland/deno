@@ -4,7 +4,7 @@ use crate::fmt_errors::JSError;
 use crate::global_state::GlobalState;
 use crate::op_error::OpError;
 use crate::ops::io::get_stdio;
-use crate::permissions::DenoPermissions;
+use crate::permissions::Permissions;
 use crate::startup_data;
 use crate::state::State;
 use crate::tokio_util::create_basic_runtime;
@@ -39,7 +39,7 @@ fn create_web_worker(
   worker_id: u32,
   name: String,
   global_state: GlobalState,
-  permissions: DenoPermissions,
+  permissions: Permissions,
   specifier: ModuleSpecifier,
   has_deno_namespace: bool,
 ) -> Result<WebWorker, ErrBox> {
@@ -64,7 +64,7 @@ fn create_web_worker(
   // Instead of using name for log we use `worker-${id}` because
   // WebWorkers can have empty string as name.
   let script = format!(
-    "bootstrapWorkerRuntime(\"{}\", {}, \"worker-{}\")",
+    "bootstrap.workerRuntime(\"{}\", {}, \"worker-{}\")",
     name, worker.has_deno_namespace, worker_id
   );
   worker.execute(&script)?;
@@ -77,7 +77,7 @@ fn run_worker_thread(
   worker_id: u32,
   name: String,
   global_state: GlobalState,
-  permissions: DenoPermissions,
+  permissions: Permissions,
   specifier: ModuleSpecifier,
   has_deno_namespace: bool,
   maybe_source_code: Option<String>,
@@ -184,6 +184,9 @@ fn op_create_worker(
   };
   let args_name = args.name;
   let use_deno_namespace = args.use_deno_namespace;
+  if use_deno_namespace {
+    state.check_unstable("Worker.deno");
+  }
   let parent_state = state.clone();
   let mut state = state.borrow_mut();
   let global_state = state.global_state.clone();
@@ -303,7 +306,7 @@ fn op_host_get_message(
   };
   let state_ = state.clone();
   let op = async move {
-    let response = match worker_handle.get_event().await {
+    let response = match worker_handle.get_event().await? {
       Some(event) => {
         // Terminal error means that worker should be removed from worker table.
         if let WorkerEvent::TerminalError(_) = &event {

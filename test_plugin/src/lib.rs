@@ -1,20 +1,17 @@
-extern crate deno_core;
-extern crate futures;
-
-use deno_core::Buf;
-use deno_core::CoreIsolate;
-use deno_core::Op;
-use deno_core::ZeroCopyBuf;
+use deno_core::plugin_api::Buf;
+use deno_core::plugin_api::Interface;
+use deno_core::plugin_api::Op;
+use deno_core::plugin_api::ZeroCopyBuf;
 use futures::future::FutureExt;
 
 #[no_mangle]
-pub fn deno_plugin_init(isolate: &mut CoreIsolate) {
-  isolate.register_op("testSync", op_test_sync);
-  isolate.register_op("testAsync", op_test_async);
+pub fn deno_plugin_init(interface: &mut dyn Interface) {
+  interface.register_op("testSync", op_test_sync);
+  interface.register_op("testAsync", op_test_async);
 }
 
-pub fn op_test_sync(
-  _isolate: &mut CoreIsolate,
+fn op_test_sync(
+  _interface: &mut dyn Interface,
   data: &[u8],
   zero_copy: Option<ZeroCopyBuf>,
 ) -> Op {
@@ -31,8 +28,8 @@ pub fn op_test_sync(
   Op::Sync(result_box)
 }
 
-pub fn op_test_async(
-  _isolate: &mut CoreIsolate,
+fn op_test_async(
+  _interface: &mut dyn Interface,
   data: &[u8],
   zero_copy: Option<ZeroCopyBuf>,
 ) -> Op {

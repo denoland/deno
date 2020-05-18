@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { exists, existsSync } from "./exists.ts";
-import { isSubdir } from "./utils.ts";
+import { isSubdir } from "./_util.ts";
 
 interface MoveOptions {
   overwrite?: boolean;
@@ -21,7 +21,9 @@ export async function move(
   }
 
   if (overwrite) {
-    await Deno.remove(dest, { recursive: true });
+    if (await exists(dest)) {
+      await Deno.remove(dest, { recursive: true });
+    }
     await Deno.rename(src, dest);
   } else {
     if (await exists(dest)) {
@@ -33,7 +35,7 @@ export async function move(
   return;
 }
 
-/** Moves a file or directory */
+/** Moves a file or directory synchronously */
 export function moveSync(
   src: string,
   dest: string,
@@ -48,7 +50,9 @@ export function moveSync(
   }
 
   if (overwrite) {
-    Deno.removeSync(dest, { recursive: true });
+    if (existsSync(dest)) {
+      Deno.removeSync(dest, { recursive: true });
+    }
     Deno.renameSync(src, dest);
   } else {
     if (existsSync(dest)) {

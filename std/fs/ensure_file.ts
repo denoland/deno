@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import * as path from "../path/mod.ts";
 import { ensureDir, ensureDirSync } from "./ensure_dir.ts";
-import { getFileInfoType } from "./utils.ts";
+import { getFileInfoType } from "./_util.ts";
 const { lstat, lstatSync, writeFile, writeFileSync } = Deno;
 
 /**
@@ -10,7 +10,7 @@ const { lstat, lstatSync, writeFile, writeFileSync } = Deno;
  * exist.
  * these directories are created. If the file already exists,
  * it is NOTMODIFIED.
- * Requires the `--allow-read` and `--alow-write` flag.
+ * Requires the `--allow-read` and `--allow-write` flag.
  */
 export async function ensureFile(filePath: string): Promise<void> {
   try {
@@ -41,7 +41,7 @@ export async function ensureFile(filePath: string): Promise<void> {
  * exist,
  * these directories are created. If the file already exists,
  * it is NOT MODIFIED.
- * Requires the `--allow-read` and `--alow-write` flag.
+ * Requires the `--allow-read` and `--allow-write` flag.
  */
 export function ensureFileSync(filePath: string): void {
   try {

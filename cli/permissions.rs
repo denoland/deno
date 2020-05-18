@@ -97,7 +97,7 @@ impl Default for PermissionState {
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct DenoPermissions {
+pub struct Permissions {
   // Keep in sync with cli/js/permissions.ts
   pub allow_read: PermissionState,
   pub read_whitelist: HashSet<PathBuf>,
@@ -111,8 +111,15 @@ pub struct DenoPermissions {
   pub allow_hrtime: PermissionState,
 }
 
-impl DenoPermissions {
+impl Permissions {
   pub fn from_flags(flags: &Flags) -> Self {
+    // assert each whitelist path is absolute, since the cwd may change.
+    for path in &flags.read_whitelist {
+      assert!(path.has_root());
+    }
+    for path in &flags.write_whitelist {
+      assert!(path.has_root());
+    }
     Self {
       allow_read: PermissionState::from(flags.allow_read),
       read_whitelist: flags.read_whitelist.iter().cloned().collect(),
@@ -124,6 +131,19 @@ impl DenoPermissions {
       allow_run: PermissionState::from(flags.allow_run),
       allow_plugin: PermissionState::from(flags.allow_plugin),
       allow_hrtime: PermissionState::from(flags.allow_hrtime),
+    }
+  }
+
+  pub fn allow_all() -> Self {
+    Self {
+      allow_read: PermissionState::from(true),
+      allow_write: PermissionState::from(true),
+      allow_net: PermissionState::from(true),
+      allow_env: PermissionState::from(true),
+      allow_run: PermissionState::from(true),
+      allow_plugin: PermissionState::from(true),
+      allow_hrtime: PermissionState::from(true),
+      ..Default::default()
     }
   }
 
@@ -392,7 +412,7 @@ mod tests {
       PathBuf::from("/b/c"),
     ];
 
-    let perms = DenoPermissions::from_flags(&Flags {
+    let perms = Permissions::from_flags(&Flags {
       read_whitelist: whitelist.clone(),
       write_whitelist: whitelist,
       ..Default::default()
@@ -439,7 +459,7 @@ mod tests {
 
   #[test]
   fn test_check_net() {
-    let perms = DenoPermissions::from_flags(&Flags {
+    let perms = Permissions::from_flags(&Flags {
       net_whitelist: svec![
         "localhost",
         "deno.land",
@@ -523,13 +543,13 @@ mod tests {
   #[test]
   fn test_permissions_request_run() {
     let guard = PERMISSION_PROMPT_GUARD.lock().unwrap();
-    let mut perms0 = DenoPermissions::from_flags(&Flags {
+    let mut perms0 = Permissions::from_flags(&Flags {
       ..Default::default()
     });
     set_prompt_result(true);
     assert_eq!(perms0.request_run(), PermissionState::Allow);
 
-    let mut perms1 = DenoPermissions::from_flags(&Flags {
+    let mut perms1 = Permissions::from_flags(&Flags {
       ..Default::default()
     });
     set_prompt_result(false);
@@ -541,7 +561,7 @@ mod tests {
   fn test_permissions_request_read() {
     let guard = PERMISSION_PROMPT_GUARD.lock().unwrap();
     let whitelist = vec![PathBuf::from("/foo/bar")];
-    let mut perms0 = DenoPermissions::from_flags(&Flags {
+    let mut perms0 = Permissions::from_flags(&Flags {
       read_whitelist: whitelist.clone(),
       ..Default::default()
     });
@@ -553,7 +573,7 @@ mod tests {
       PermissionState::Allow
     );
 
-    let mut perms1 = DenoPermissions::from_flags(&Flags {
+    let mut perms1 = Permissions::from_flags(&Flags {
       read_whitelist: whitelist.clone(),
       ..Default::default()
     });
@@ -563,7 +583,7 @@ mod tests {
       PermissionState::Allow
     );
 
-    let mut perms2 = DenoPermissions::from_flags(&Flags {
+    let mut perms2 = Permissions::from_flags(&Flags {
       read_whitelist: whitelist,
       ..Default::default()
     });
@@ -579,7 +599,7 @@ mod tests {
   fn test_permissions_request_write() {
     let guard = PERMISSION_PROMPT_GUARD.lock().unwrap();
     let whitelist = vec![PathBuf::from("/foo/bar")];
-    let mut perms0 = DenoPermissions::from_flags(&Flags {
+    let mut perms0 = Permissions::from_flags(&Flags {
       write_whitelist: whitelist.clone(),
       ..Default::default()
     });
@@ -591,7 +611,7 @@ mod tests {
       PermissionState::Allow
     );
 
-    let mut perms1 = DenoPermissions::from_flags(&Flags {
+    let mut perms1 = Permissions::from_flags(&Flags {
       write_whitelist: whitelist.clone(),
       ..Default::default()
     });
@@ -601,7 +621,7 @@ mod tests {
       PermissionState::Allow
     );
 
-    let mut perms2 = DenoPermissions::from_flags(&Flags {
+    let mut perms2 = Permissions::from_flags(&Flags {
       write_whitelist: whitelist,
       ..Default::default()
     });
@@ -618,7 +638,7 @@ mod tests {
     let guard = PERMISSION_PROMPT_GUARD.lock().unwrap();
     let whitelist = svec!["localhost:8080"];
 
-    let mut perms0 = DenoPermissions::from_flags(&Flags {
+    let mut perms0 = Permissions::from_flags(&Flags {
       net_whitelist: whitelist.clone(),
       ..Default::default()
     });
@@ -632,7 +652,7 @@ mod tests {
       PermissionState::Allow
     );
 
-    let mut perms1 = DenoPermissions::from_flags(&Flags {
+    let mut perms1 = Permissions::from_flags(&Flags {
       net_whitelist: whitelist.clone(),
       ..Default::default()
     });
@@ -644,7 +664,7 @@ mod tests {
       PermissionState::Allow
     );
 
-    let mut perms2 = DenoPermissions::from_flags(&Flags {
+    let mut perms2 = Permissions::from_flags(&Flags {
       net_whitelist: whitelist.clone(),
       ..Default::default()
     });
@@ -656,7 +676,7 @@ mod tests {
       PermissionState::Deny
     );
 
-    let mut perms3 = DenoPermissions::from_flags(&Flags {
+    let mut perms3 = Permissions::from_flags(&Flags {
       net_whitelist: whitelist,
       ..Default::default()
     });
@@ -668,13 +688,13 @@ mod tests {
   #[test]
   fn test_permissions_request_env() {
     let guard = PERMISSION_PROMPT_GUARD.lock().unwrap();
-    let mut perms0 = DenoPermissions::from_flags(&Flags {
+    let mut perms0 = Permissions::from_flags(&Flags {
       ..Default::default()
     });
     set_prompt_result(true);
     assert_eq!(perms0.request_env(), PermissionState::Allow);
 
-    let mut perms1 = DenoPermissions::from_flags(&Flags {
+    let mut perms1 = Permissions::from_flags(&Flags {
       ..Default::default()
     });
     set_prompt_result(false);
@@ -685,13 +705,13 @@ mod tests {
   #[test]
   fn test_permissions_request_plugin() {
     let guard = PERMISSION_PROMPT_GUARD.lock().unwrap();
-    let mut perms0 = DenoPermissions::from_flags(&Flags {
+    let mut perms0 = Permissions::from_flags(&Flags {
       ..Default::default()
     });
     set_prompt_result(true);
     assert_eq!(perms0.request_plugin(), PermissionState::Allow);
 
-    let mut perms1 = DenoPermissions::from_flags(&Flags {
+    let mut perms1 = Permissions::from_flags(&Flags {
       ..Default::default()
     });
     set_prompt_result(false);
@@ -702,13 +722,13 @@ mod tests {
   #[test]
   fn test_permissions_request_hrtime() {
     let guard = PERMISSION_PROMPT_GUARD.lock().unwrap();
-    let mut perms0 = DenoPermissions::from_flags(&Flags {
+    let mut perms0 = Permissions::from_flags(&Flags {
       ..Default::default()
     });
     set_prompt_result(true);
     assert_eq!(perms0.request_hrtime(), PermissionState::Allow);
 
-    let mut perms1 = DenoPermissions::from_flags(&Flags {
+    let mut perms1 = Permissions::from_flags(&Flags {
       ..Default::default()
     });
     set_prompt_result(false);

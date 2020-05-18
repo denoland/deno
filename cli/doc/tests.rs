@@ -1,7 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::DocParser;
 use crate::colors;
-use serde_json;
 use serde_json::json;
 
 use super::parser::DocFileLoader;
@@ -33,7 +32,6 @@ impl DocFileLoader for TestLoader {
     &self,
     specifier: &str,
   ) -> Pin<Box<dyn Future<Output = Result<String, OpError>>>> {
-    eprintln!("specifier {:#?}", specifier);
     let res = match self.files.get(specifier) {
       Some(source_code) => Ok(source_code.to_string()),
       None => Err(OpError::other("not found".to_string())),
@@ -247,28 +245,125 @@ export function foo([e,,f, ...g]: number[], { c, d: asdf, i = "asdf", ...rest}, 
 
 #[tokio::test]
 async fn export_const() {
-  let source_code =
-    "/** Something about fizzBuzz */\nexport const fizzBuzz = \"fizzBuzz\";\n";
+  let source_code = r#"
+/** Something about fizzBuzz */
+export const fizzBuzz = "fizzBuzz";
+
+export const env: {
+  /** get doc */
+  get(key: string): string | undefined;
+
+  /** set doc */
+  set(key: string, value: string): void;
+}
+"#;
   let loader =
     TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
   let entries = DocParser::new(loader).parse("test.ts").await.unwrap();
-  assert_eq!(entries.len(), 1);
-  let entry = &entries[0];
-  let expected_json = json!({
-    "kind": "variable",
-    "name": "fizzBuzz",
-    "location": {
-      "filename": "test.ts",
-      "line": 2,
-      "col": 0
+  assert_eq!(entries.len(), 2);
+  let expected_json = json!([
+  {
+    "kind":"variable",
+    "name":"fizzBuzz",
+    "location":{
+      "filename":"test.ts",
+      "line":3,
+      "col":0
     },
-    "jsDoc": "Something about fizzBuzz",
-    "variableDef": {
-      "tsType": null,
-      "kind": "const"
+    "jsDoc":"Something about fizzBuzz",
+    "variableDef":{
+      "tsType":null,
+      "kind":"const"
     }
-  });
-  let actual = serde_json::to_value(entry).unwrap();
+  },
+  {
+    "kind":"variable",
+    "name":"env",
+    "location":{
+      "filename":"test.ts",
+      "line":5,
+      "col":0
+    },
+    "jsDoc":null,
+    "variableDef":{
+      "tsType":{
+        "repr":"",
+        "kind":"typeLiteral",
+        "typeLiteral":{
+          "methods":[{
+            "name":"get",
+            "params":[
+              {
+                "name":"key",
+                "kind":"identifier",
+                "optional":false,
+                "tsType":{
+                  "repr":"string",
+                  "kind":"keyword",
+                  "keyword":"string"
+                }
+              }
+            ],
+            "returnType":{
+              "repr":"",
+              "kind":"union",
+              "union":[
+                {
+                  "repr":"string",
+                  "kind":"keyword",
+                  "keyword":"string"
+                },
+                {
+                  "repr":"undefined",
+                  "kind":"keyword",
+                  "keyword":"undefined"
+                }
+              ]
+            },
+            "typeParams":[]
+          }, {
+            "name":"set",
+            "params":[
+              {
+                "name":"key",
+                "kind":"identifier",
+                "optional":false,
+                "tsType":{
+                  "repr":"string",
+                  "kind":"keyword",
+                  "keyword":"string"
+                }
+              },
+              {
+                "name":"value",
+                "kind":"identifier",
+                "optional":false,
+                "tsType":{
+                  "repr":"string",
+                  "kind":"keyword",
+                  "keyword":"string"
+                }
+              }
+              ],
+              "returnType":{
+                "repr":"void",
+                "kind":"keyword",
+                "keyword":"void"
+              },
+              "typeParams":[]
+            }
+            ],
+            "properties":[],
+            "callSignatures":[]
+          }
+        },
+        "kind":"const"
+      }
+    }
+    ]
+  );
+
+  let actual = serde_json::to_value(entries.clone()).unwrap();
   assert_eq!(actual, expected_json);
 
   assert!(
@@ -968,6 +1063,234 @@ declare namespace RootNs {
       .contains("namespace RootNs")
   );
 }
+
+#[tokio::test]
+async fn export_default_fn() {
+  let source_code = r#"
+export default function foo(a: number) {
+  return a;
+}
+    "#;
+  let loader =
+    TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
+  let entries = DocParser::new(loader).parse("test.ts").await.unwrap();
+  assert_eq!(entries.len(), 1);
+  let entry = &entries[0];
+  let expected_json = json!({
+    "kind": "function",
+    "name": "default",
+    "location": {
+      "filename": "test.ts",
+      "line": 2,
+      "col": 15
+    },
+    "jsDoc": null,
+    "functionDef": {
+      "params": [
+          {
+            "name": "a",
+            "kind": "identifier",
+            "optional": false,
+            "tsType": {
+              "keyword": "number",
+              "kind": "keyword",
+              "repr": "number",
+            },
+          }
+      ],
+      "typeParams": [],
+      "returnType": null,
+      "isAsync": false,
+      "isGenerator": false
+    }
+  });
+  let actual = serde_json::to_value(entry).unwrap();
+  assert_eq!(actual, expected_json);
+
+  assert!(
+    colors::strip_ansi_codes(super::printer::format(entries).as_str())
+      .contains("function default(a: number)")
+  );
+}
+
+#[tokio::test]
+async fn export_default_class() {
+  let source_code = r#"
+/** Class doc */
+export default class Foobar {
+    /** Constructor js doc */
+    constructor(name: string, private private2: number, protected protected2: number) {}
+}
+"#;
+  let loader =
+    TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
+  let entries = DocParser::new(loader).parse("test.ts").await.unwrap();
+  assert_eq!(entries.len(), 1);
+  let expected_json = json!({
+    "kind": "class",
+    "name": "default",
+    "location": {
+      "filename": "test.ts",
+      "line": 3,
+      "col": 0
+    },
+    "jsDoc": "Class doc",
+    "classDef": {
+      "isAbstract": false,
+      "extends": null,
+      "implements": [],
+      "typeParams": [],
+      "constructors": [
+        {
+          "jsDoc": "Constructor js doc",
+          "accessibility": null,
+          "name": "constructor",
+          "params": [
+            {
+              "name": "name",
+              "kind": "identifier",
+              "optional": false,
+              "tsType": {
+                "repr": "string",
+                "kind": "keyword",
+                "keyword": "string"
+              }
+            },
+            {
+              "name": "private2",
+              "kind": "identifier",
+              "optional": false,
+              "tsType": {
+                "repr": "number",
+                "kind": "keyword",
+                "keyword": "number"
+              }
+            },
+            {
+              "name": "protected2",
+              "kind": "identifier",
+              "optional": false,
+              "tsType": {
+                "repr": "number",
+                "kind": "keyword",
+                "keyword": "number"
+              }
+            }
+          ],
+          "location": {
+            "filename": "test.ts",
+            "line": 5,
+            "col": 4
+          }
+        }
+      ],
+      "properties": [],
+      "methods": []
+    }
+  });
+  let entry = &entries[0];
+  let actual = serde_json::to_value(entry).unwrap();
+  assert_eq!(actual, expected_json);
+
+  assert!(
+    colors::strip_ansi_codes(super::printer::format(entries).as_str())
+      .contains("class default")
+  );
+}
+
+#[tokio::test]
+async fn export_default_interface() {
+  let source_code = r#"
+/**
+ * Interface js doc
+ */
+export default interface Reader {
+    /** Read n bytes */
+    read?(buf: Uint8Array, something: unknown): Promise<number>
+}
+    "#;
+  let loader =
+    TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
+  let entries = DocParser::new(loader).parse("test.ts").await.unwrap();
+  assert_eq!(entries.len(), 1);
+  let entry = &entries[0];
+  let expected_json = json!({
+      "kind": "interface",
+      "name": "default",
+      "location": {
+        "filename": "test.ts",
+        "line": 5,
+        "col": 0
+      },
+      "jsDoc": "Interface js doc",
+      "interfaceDef": {
+        "extends": [],
+        "methods": [
+          {
+            "name": "read",
+            "location": {
+              "filename": "test.ts",
+              "line": 7,
+              "col": 4
+            },
+            "optional": true,
+            "jsDoc": "Read n bytes",
+            "params": [
+              {
+                "name": "buf",
+                "kind": "identifier",
+                "optional": false,
+                "tsType": {
+                  "repr": "Uint8Array",
+                  "kind": "typeRef",
+                  "typeRef": {
+                    "typeParams": null,
+                    "typeName": "Uint8Array"
+                  }
+                }
+              },
+              {
+                "name": "something",
+                "kind": "identifier",
+                "optional": false,
+                "tsType": {
+                  "repr": "unknown",
+                  "kind": "keyword",
+                  "keyword": "unknown"
+                }
+              }
+            ],
+            "typeParams": [],
+            "returnType": {
+              "repr": "Promise",
+              "kind": "typeRef",
+              "typeRef": {
+                "typeParams": [
+                  {
+                    "repr": "number",
+                    "kind": "keyword",
+                    "keyword": "number"
+                  }
+                ],
+                "typeName": "Promise"
+              }
+            }
+          }
+        ],
+        "properties": [],
+        "callSignatures": [],
+        "typeParams": [],
+    }
+  });
+  let actual = serde_json::to_value(entry).unwrap();
+  assert_eq!(actual, expected_json);
+
+  assert!(
+    colors::strip_ansi_codes(super::printer::format(entries).as_str())
+      .contains("interface default")
+  );
+}
+
 #[tokio::test]
 async fn optional_return_type() {
   let source_code = r#"
@@ -1024,6 +1347,8 @@ async fn reexports() {
   * JSDoc for bar
   */
 export const bar = "bar";
+
+export default 42;
 "#;
   let reexport_source_code = r#"
 import { bar } from "./nested_reexport.ts";
@@ -1034,7 +1359,7 @@ import { bar } from "./nested_reexport.ts";
 export const foo = "foo";
 "#;
   let test_source_code = r#"
-export { foo as fooConst } from "./reexport.ts";
+export { default, foo as fooConst } from "./reexport.ts";
 
 /** JSDoc for function */
 export function fooFn(a: number) {
@@ -1109,4 +1434,102 @@ export function fooFn(a: number) {
     colors::strip_ansi_codes(super::printer::format(entries).as_str())
       .contains("function fooFn(a: number)")
   );
+}
+
+#[tokio::test]
+async fn ts_lit_types() {
+  let source_code = r#"
+export type boolLit = false;
+export type strLit = "text";
+export type tplLit = `text`;
+export type numLit = 5;
+"#;
+  let loader =
+    TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
+  let entries = DocParser::new(loader).parse("test.ts").await.unwrap();
+  let actual = serde_json::to_value(entries).unwrap();
+  let expected_json = json!([
+    {
+      "kind": "typeAlias",
+      "name": "boolLit",
+      "location": {
+        "filename": "test.ts",
+        "line": 2,
+        "col": 0
+      },
+      "jsDoc": null,
+      "typeAliasDef": {
+        "tsType": {
+          "repr": "false",
+          "kind": "literal",
+          "literal": {
+            "kind": "boolean",
+            "boolean": false
+          }
+        },
+        "typeParams": []
+      }
+    }, {
+      "kind": "typeAlias",
+      "name": "strLit",
+      "location": {
+        "filename": "test.ts",
+        "line": 3,
+        "col": 0
+      },
+      "jsDoc": null,
+      "typeAliasDef": {
+        "tsType": {
+          "repr": "text",
+          "kind": "literal",
+          "literal": {
+            "kind": "string",
+            "string": "text"
+          }
+        },
+        "typeParams": []
+      }
+    }, {
+      "kind": "typeAlias",
+      "name": "tplLit",
+      "location": {
+        "filename": "test.ts",
+        "line": 4,
+        "col": 0
+      },
+      "jsDoc": null,
+      "typeAliasDef": {
+        "tsType": {
+          "repr": "text",
+          "kind": "literal",
+          "literal": {
+            "kind": "string",
+            "string": "text"
+          }
+        },
+        "typeParams": []
+      }
+    }, {
+      "kind": "typeAlias",
+      "name": "numLit",
+      "location": {
+        "filename": "test.ts",
+        "line": 5,
+        "col": 0
+      },
+      "jsDoc": null,
+      "typeAliasDef": {
+        "tsType": {
+          "repr": "5",
+          "kind": "literal",
+          "literal": {
+            "kind": "number",
+            "number": 5.0
+          }
+        },
+        "typeParams": []
+      }
+    }
+  ]);
+  assert_eq!(actual, expected_json);
 }

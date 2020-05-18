@@ -8,7 +8,7 @@ export function symlinkSync(
   newpath: string,
   type?: string
 ): void {
-  if (build.os === "win" && type) {
+  if (build.os === "windows" && type) {
     return util.notImplemented();
   }
   sendSync("op_symlink", { oldpath, newpath });
@@ -19,7 +19,7 @@ export async function symlink(
   newpath: string,
   type?: string
 ): Promise<void> {
-  if (build.os === "win" && type) {
+  if (build.os === "windows" && type) {
     return util.notImplemented();
   }
   await sendAsync("op_symlink", { oldpath, newpath });

@@ -14,7 +14,13 @@ Deno.test({
 
     const decoder = new TextDecoder();
     const process = Deno.run({
-      cmd: [Deno.execPath(), "--allow-net", "curl.ts", "http://localhost:8081"],
+      cmd: [
+        Deno.execPath(),
+        "run",
+        "--allow-net",
+        "curl.ts",
+        "http://localhost:8081",
+      ],
       cwd: "examples",
       stdout: "piped",
     });

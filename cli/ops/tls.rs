@@ -54,10 +54,11 @@ struct StartTLSArgs {
 
 pub fn op_start_tls(
   isolate: &mut CoreIsolate,
-  _state: &State,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
+  state.check_unstable("Deno.startTls");
   let args: StartTLSArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let cert_file = args.cert_file.clone();
@@ -66,6 +67,11 @@ pub fn op_start_tls(
   let mut domain = args.hostname;
   if domain.is_empty() {
     domain.push_str("localhost");
+  }
+
+  state.check_net(&domain, 0)?;
+  if let Some(path) = cert_file.clone() {
+    state.check_read(Path::new(&path))?;
   }
 
   let op = async move {
@@ -285,9 +291,7 @@ impl TlsListenerResource {
   /// Stop tracking a task.
   /// Happens when the task is done and thus no further tracking is needed.
   pub fn untrack_task(&mut self) {
-    if self.waker.is_some() {
-      self.waker.take();
-    }
+    self.waker.take();
   }
 }
 

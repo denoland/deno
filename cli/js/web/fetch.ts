@@ -28,7 +28,8 @@ function hasHeaderValueOf(s: string, value: string): boolean {
   return new RegExp(`^${value}[\t\s]*;?`).test(s);
 }
 
-class Body implements domTypes.Body, ReadableStream<Uint8Array>, io.ReadCloser {
+class Body
+  implements domTypes.Body, ReadableStream<Uint8Array>, io.Reader, io.Closer {
   #bodyUsed = false;
   #bodyPromise: Promise<ArrayBuffer> | null = null;
   #data: ArrayBuffer | null = null;
@@ -219,7 +220,7 @@ class Body implements domTypes.Body, ReadableStream<Uint8Array>, io.ReadCloser {
     return decoder.decode(ab);
   }
 
-  read(p: Uint8Array): Promise<number | io.EOF> {
+  read(p: Uint8Array): Promise<number | null> {
     this.#bodyUsed = true;
     return read(this.#rid, p);
   }
@@ -257,7 +258,7 @@ class Body implements domTypes.Body, ReadableStream<Uint8Array>, io.ReadCloser {
 
   pipeThrough<T>(
     _: {
-      writable: domTypes.WritableStream<Uint8Array>;
+      writable: WritableStream<Uint8Array>;
       readable: ReadableStream<T>;
     },
     _options?: PipeOptions
@@ -266,7 +267,7 @@ class Body implements domTypes.Body, ReadableStream<Uint8Array>, io.ReadCloser {
   }
 
   pipeTo(
-    _dest: domTypes.WritableStream<Uint8Array>,
+    _dest: WritableStream<Uint8Array>,
     _options?: PipeOptions
   ): Promise<void> {
     return notImplemented();

@@ -90,7 +90,7 @@ unitTest(
     } catch (err) {
       errOnWindows = err;
     }
-    if (Deno.build.os === "win") {
+    if (Deno.build.os === "windows") {
       assertEquals(errOnWindows.message, "not implemented");
     } else {
       const pathInfo = Deno.lstatSync(danglingSymlinkPath);
@@ -123,7 +123,7 @@ unitTest(
     } catch (err) {
       errOnWindows = err;
     }
-    if (Deno.build.os === "win") {
+    if (Deno.build.os === "windows") {
       assertEquals(errOnWindows.message, "not implemented");
     } else {
       const symlinkPathInfo = Deno.statSync(validSymlinkPath);
@@ -326,7 +326,7 @@ unitTest(
     } catch (e) {
       errOnWindows = e;
     }
-    if (Deno.build.os === "win") {
+    if (Deno.build.os === "windows") {
       assertEquals(errOnWindows.message, "not implemented");
     } else {
       const pathInfo = Deno.lstatSync(danglingSymlinkPath);
@@ -359,7 +359,7 @@ unitTest(
     } catch (e) {
       errOnWindows = e;
     }
-    if (Deno.build.os === "win") {
+    if (Deno.build.os === "windows") {
       assertEquals(errOnWindows.message, "not implemented");
     } else {
       const symlinkPathInfo = Deno.statSync(validSymlinkPath);
@@ -479,3 +479,48 @@ unitTest({ perms: { write: false } }, async function removeAllPerm(): Promise<
   assert(err instanceof Deno.errors.PermissionDenied);
   assertEquals(err.name, "PermissionDenied");
 });
+
+if (Deno.build.os === "windows") {
+  unitTest(
+    { perms: { run: true, write: true, read: true } },
+    async function removeFileSymlink(): Promise<void> {
+      const symlink = Deno.run({
+        cmd: ["cmd", "/c", "mklink", "file_link", "bar"],
+        stdout: "null",
+      });
+
+      assert(await symlink.status());
+      symlink.close();
+      await Deno.remove("file_link");
+      let err;
+      try {
+        await Deno.lstat("file_link");
+      } catch (e) {
+        err = e;
+      }
+      assert(err instanceof Deno.errors.NotFound);
+    }
+  );
+
+  unitTest(
+    { perms: { run: true, write: true, read: true } },
+    async function removeDirSymlink(): Promise<void> {
+      const symlink = Deno.run({
+        cmd: ["cmd", "/c", "mklink", "/d", "dir_link", "bar"],
+        stdout: "null",
+      });
+
+      assert(await symlink.status());
+      symlink.close();
+
+      await Deno.remove("dir_link");
+      let err;
+      try {
+        await Deno.lstat("dir_link");
+      } catch (e) {
+        err = e;
+      }
+      assert(err instanceof Deno.errors.NotFound);
+    }
+  );
+}

@@ -136,7 +136,7 @@ impl WebWorker {
         ops::runtime_compiler::init(isolate, &state);
         ops::fs::init(isolate, &state);
         ops::fs_events::init(isolate, &state);
-        ops::plugins::init(isolate, &state);
+        ops::plugin::init(isolate, &state);
         ops::net::init(isolate, &state);
         ops::tls::init(isolate, &state);
         ops::os::init(isolate, &state);
@@ -263,7 +263,7 @@ mod tests {
       false,
     );
     worker
-      .execute("bootstrapWorkerRuntime(\"TEST\", false)")
+      .execute("bootstrap.workerRuntime(\"TEST\", false)")
       .unwrap();
     worker
   }
@@ -300,13 +300,13 @@ mod tests {
       let r = handle.post_message(msg.clone());
       assert!(r.is_ok());
 
-      let maybe_msg = handle.get_event().await;
+      let maybe_msg = handle.get_event().await.unwrap();
       assert!(maybe_msg.is_some());
 
       let r = handle.post_message(msg.clone());
       assert!(r.is_ok());
 
-      let maybe_msg = handle.get_event().await;
+      let maybe_msg = handle.get_event().await.unwrap();
       assert!(maybe_msg.is_some());
       match maybe_msg {
         Some(WorkerEvent::Message(buf)) => {
@@ -321,7 +321,7 @@ mod tests {
         .into_boxed_bytes();
       let r = handle.post_message(msg);
       assert!(r.is_ok());
-      let event = handle.get_event().await;
+      let event = handle.get_event().await.unwrap();
       assert!(event.is_none());
       handle.sender.close_channel();
     });
@@ -348,7 +348,7 @@ mod tests {
       let msg = json!("hi").to_string().into_boxed_str().into_boxed_bytes();
       let r = handle.post_message(msg.clone());
       assert!(r.is_ok());
-      let event = handle.get_event().await;
+      let event = handle.get_event().await.unwrap();
       assert!(event.is_none());
       handle.sender.close_channel();
     });

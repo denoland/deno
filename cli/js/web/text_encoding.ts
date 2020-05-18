@@ -55,13 +55,13 @@ function stringToCodePoints(input: string): number[] {
 }
 
 class UTF8Encoder implements Encoder {
-  handler(codePoint: number): number | number[] {
+  handler(codePoint: number): "finished" | number[] {
     if (codePoint === END_OF_STREAM) {
-      return FINISHED;
+      return "finished";
     }
 
     if (inRange(codePoint, 0x00, 0x7f)) {
-      return codePoint;
+      return [codePoint];
     }
 
     let count: number;
@@ -144,7 +144,7 @@ interface Decoder {
 }
 
 interface Encoder {
-  handler(codePoint: number): number | number[];
+  handler(codePoint: number): "finished" | number[];
 }
 
 class SingleByteDecoder implements Decoder {
@@ -534,14 +534,10 @@ export class TextEncoder {
 
     while (true) {
       const result = encoder.handler(inputStream.read());
-      if (result === FINISHED) {
+      if (result === "finished") {
         break;
       }
-      if (Array.isArray(result)) {
-        output.push(...result);
-      } else {
-        output.push(result);
-      }
+      output.push(...result);
     }
 
     return new Uint8Array(output);
@@ -554,11 +550,11 @@ export class TextEncoder {
     let read = 0;
     while (true) {
       const result = encoder.handler(inputStream.read());
-      if (result === FINISHED) {
+      if (result === "finished") {
         break;
       }
-      read++;
-      if (Array.isArray(result)) {
+      if (dest.length - written >= result.length) {
+        read++;
         dest.set(result, written);
         written += result.length;
         if (result.length > 3) {
@@ -566,8 +562,7 @@ export class TextEncoder {
           read++;
         }
       } else {
-        dest[written] = result;
-        written++;
+        break;
       }
     }
 

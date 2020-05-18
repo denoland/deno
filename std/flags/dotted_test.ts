@@ -2,7 +2,7 @@
 import { assertEquals } from "../testing/asserts.ts";
 import { parse } from "./mod.ts";
 
-Deno.test(function dottedAlias(): void {
+Deno.test("dottedAlias", function (): void {
   const argv = parse(["--a.b", "22"], {
     default: { "a.b": 11 },
     alias: { "a.b": "aa.bb" },
@@ -11,13 +11,13 @@ Deno.test(function dottedAlias(): void {
   assertEquals(argv.aa.bb, 22);
 });
 
-Deno.test(function dottedDefault(): void {
+Deno.test("dottedDefault", function (): void {
   const argv = parse([], { default: { "a.b": 11 }, alias: { "a.b": "aa.bb" } });
   assertEquals(argv.a.b, 11);
   assertEquals(argv.aa.bb, 11);
 });
 
-Deno.test(function dottedDefaultWithNoAlias(): void {
+Deno.test("dottedDefaultWithNoAlias", function (): void {
   const argv = parse([], { default: { "a.b": 11 } });
   assertEquals(argv.a.b, 11);
 });

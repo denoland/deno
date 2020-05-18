@@ -15,27 +15,16 @@ export interface OpenOptions {
   mode?: number;
 }
 
-export type OpenMode = "r" | "r+" | "w" | "w+" | "a" | "a+" | "x" | "x+";
-
-export function openSync(
-  path: string,
-  openMode: OpenMode | undefined,
-  options: OpenOptions | undefined
-): number {
+export function openSync(path: string, options: OpenOptions): number {
   const mode: number | undefined = options?.mode;
-  return sendSync("op_open", { path, options, openMode, mode });
+  return sendSync("op_open", { path, options, mode });
 }
 
-export function open(
-  path: string,
-  openMode: OpenMode | undefined,
-  options: OpenOptions | undefined
-): Promise<number> {
+export function open(path: string, options: OpenOptions): Promise<number> {
   const mode: number | undefined = options?.mode;
   return sendAsync("op_open", {
     path,
     options,
-    openMode,
     mode,
   });
 }

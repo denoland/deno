@@ -9,7 +9,7 @@ import { readJson, readJsonSync } from "./read_json.ts";
 
 const testdataDir = path.resolve("fs", "testdata");
 
-Deno.test(async function readJsonFileNotExists(): Promise<void> {
+Deno.test("readJsonFileNotExists", async function (): Promise<void> {
   const emptyJsonFile = path.join(testdataDir, "json_not_exists.json");
 
   await assertThrowsAsync(
@@ -19,7 +19,7 @@ Deno.test(async function readJsonFileNotExists(): Promise<void> {
   );
 });
 
-Deno.test(async function readEmptyJsonFile(): Promise<void> {
+Deno.test("readEmptyJsonFile", async function (): Promise<void> {
   const emptyJsonFile = path.join(testdataDir, "json_empty.json");
 
   await assertThrowsAsync(
@@ -29,7 +29,7 @@ Deno.test(async function readEmptyJsonFile(): Promise<void> {
   );
 });
 
-Deno.test(async function readInvalidJsonFile(): Promise<void> {
+Deno.test("readInvalidJsonFile", async function (): Promise<void> {
   const invalidJsonFile = path.join(testdataDir, "json_invalid.json");
 
   await assertThrowsAsync(
@@ -39,7 +39,7 @@ Deno.test(async function readInvalidJsonFile(): Promise<void> {
   );
 });
 
-Deno.test(async function readValidArrayJsonFile(): Promise<void> {
+Deno.test("readValidArrayJsonFile", async function (): Promise<void> {
   const invalidJsonFile = path.join(testdataDir, "json_valid_array.json");
 
   const json = await readJson(invalidJsonFile);
@@ -47,7 +47,7 @@ Deno.test(async function readValidArrayJsonFile(): Promise<void> {
   assertEquals(json, ["1", "2", "3"]);
 });
 
-Deno.test(async function readValidObjJsonFile(): Promise<void> {
+Deno.test("readValidObjJsonFile", async function (): Promise<void> {
   const invalidJsonFile = path.join(testdataDir, "json_valid_obj.json");
 
   const json = await readJson(invalidJsonFile);
@@ -55,13 +55,15 @@ Deno.test(async function readValidObjJsonFile(): Promise<void> {
   assertEquals(json, { key1: "value1", key2: "value2" });
 });
 
-Deno.test(async function readValidObjJsonFileWithRelativePath(): Promise<void> {
+Deno.test("readValidObjJsonFileWithRelativePath", async function (): Promise<
+  void
+> {
   const json = await readJson("./fs/testdata/json_valid_obj.json");
 
   assertEquals(json, { key1: "value1", key2: "value2" });
 });
 
-Deno.test(function readJsonFileNotExistsSync(): void {
+Deno.test("readJsonFileNotExistsSync", function (): void {
   const emptyJsonFile = path.join(testdataDir, "json_not_exists.json");
 
   assertThrows((): void => {
@@ -69,7 +71,7 @@ Deno.test(function readJsonFileNotExistsSync(): void {
   });
 });
 
-Deno.test(function readEmptyJsonFileSync(): void {
+Deno.test("readEmptyJsonFileSync", function (): void {
   const emptyJsonFile = path.join(testdataDir, "json_empty.json");
 
   assertThrows((): void => {
@@ -77,7 +79,7 @@ Deno.test(function readEmptyJsonFileSync(): void {
   });
 });
 
-Deno.test(function readInvalidJsonFile(): void {
+Deno.test("readInvalidJsonFile", function (): void {
   const invalidJsonFile = path.join(testdataDir, "json_invalid.json");
 
   assertThrows((): void => {
@@ -85,7 +87,7 @@ Deno.test(function readInvalidJsonFile(): void {
   });
 });
 
-Deno.test(function readValidArrayJsonFileSync(): void {
+Deno.test("readValidArrayJsonFileSync", function (): void {
   const invalidJsonFile = path.join(testdataDir, "json_valid_array.json");
 
   const json = readJsonSync(invalidJsonFile);
@@ -93,7 +95,7 @@ Deno.test(function readValidArrayJsonFileSync(): void {
   assertEquals(json, ["1", "2", "3"]);
 });
 
-Deno.test(function readValidObjJsonFileSync(): void {
+Deno.test("readValidObjJsonFileSync", function (): void {
   const invalidJsonFile = path.join(testdataDir, "json_valid_obj.json");
 
   const json = readJsonSync(invalidJsonFile);
@@ -101,7 +103,7 @@ Deno.test(function readValidObjJsonFileSync(): void {
   assertEquals(json, { key1: "value1", key2: "value2" });
 });
 
-Deno.test(function readValidObjJsonFileSyncWithRelativePath(): void {
+Deno.test("readValidObjJsonFileSyncWithRelativePath", function (): void {
   const json = readJsonSync("./fs/testdata/json_valid_obj.json");
 
   assertEquals(json, { key1: "value1", key2: "value2" });
