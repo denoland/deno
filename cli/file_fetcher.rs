@@ -34,6 +34,7 @@ pub struct SourceFile {
   pub url: Url,
   pub filename: PathBuf,
   pub types_url: Option<Url>,
+  pub types_header: Option<String>,
   pub media_type: msg::MediaType,
   pub source_code: Vec<u8>,
 }
@@ -323,6 +324,7 @@ impl SourceFileFetcher {
       media_type,
       source_code,
       types_url,
+      types_header: None,
     })
   }
 
@@ -380,6 +382,7 @@ impl SourceFileFetcher {
       &fake_filepath,
       headers.get("content-type").map(|e| e.as_str()),
     );
+    let types_header = headers.get("x-typescript-types").map(|e| e.to_string());
     let types_url = match media_type {
       msg::MediaType::JavaScript | msg::MediaType::JSX => get_types_url(
         &module_url,
@@ -394,6 +397,7 @@ impl SourceFileFetcher {
       media_type,
       source_code,
       types_url,
+      types_header,
     }))
   }
 
@@ -502,6 +506,8 @@ impl SourceFileFetcher {
             headers.get("content-type").map(String::as_str),
           );
 
+          let types_header =
+            headers.get("x-typescript-types").map(String::to_string);
           let types_url = match media_type {
             msg::MediaType::JavaScript | msg::MediaType::JSX => get_types_url(
               &module_url,
@@ -517,6 +523,7 @@ impl SourceFileFetcher {
             media_type,
             source_code: source,
             types_url,
+            types_header,
           };
 
           Ok(source_file)

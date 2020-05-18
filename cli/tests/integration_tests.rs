@@ -1353,7 +1353,7 @@ itest!(error_004_missing_module {
 });
 
 itest!(error_005_missing_dynamic_import {
-  args: "run --reload error_005_missing_dynamic_import.ts",
+  args: "run --reload --allow-read error_005_missing_dynamic_import.ts",
   exit_code: 1,
   output: "error_005_missing_dynamic_import.ts.out",
 });
