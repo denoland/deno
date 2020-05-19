@@ -3,6 +3,12 @@ export function notImplemented(msg?: string): never {
   throw new Error(message);
 }
 
+export type _TextDecoder = typeof TextDecoder.prototype;
+export const _TextDecoder = TextDecoder;
+
+export type _TextEncoder = typeof TextEncoder.prototype;
+export const _TextEncoder = TextEncoder;
+
 // API helpers
 
 export type MaybeNull<T> = T | null;
