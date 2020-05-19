@@ -37,11 +37,7 @@ const readFile = promisify(fs.readFile);
 const customPromisifyArgs = Symbol.for("deno.nodejs.util.promisify.customArgs");
 
 test("Errors should reject the promise", async function testPromiseRejection() {
-  await assertThrowsAsync(
-    () => readFile("/dontexist"),
-    Deno.errors.NotFound,
-    "No such file or directory"
-  );
+  await assertThrowsAsync(() => readFile("/dontexist"), Deno.errors.NotFound);
 });
 
 test("Promisify.custom", async function testPromisifyCustom() {
