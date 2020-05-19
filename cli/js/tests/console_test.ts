@@ -219,8 +219,8 @@ unitTest(function consoleTestStringifyCircular(): void {
   );
   assertEquals(stringify(nestedObj), nestedObjExpected);
   assertEquals(
-    stripColor(stringify(JSON)),
-    `JSON { Symbol(Symbol.toStringTag): ${green("JSON")} }`
+    stringify(JSON),
+    `JSON { Symbol(Symbol.toStringTag): ${green('"JSON"')} }`
   );
   assertEquals(
     stringify(console),
@@ -646,7 +646,7 @@ unitTest(async function consoleTestStringifyPromises(): Promise<void> {
   } catch (err) {}
   const strLines = stringify(rejectedPromise).split("\n");
   assertEquals(strLines[0], "Promise {");
-  assertEquals(strLines[1], ` ${red("<rejected>")} Error: Whoops`);
+  assertEquals(strLines[1], `  ${red("<rejected>")} Error: Whoops`);
 });
 
 unitTest(function consoleTestWithCustomInspector(): void {
@@ -679,7 +679,7 @@ unitTest(function consoleTestWithCustomInspectorError(): void {
   assertEquals(stringify(new B({ a: "a" })), "a");
   assertEquals(
     stringify(B.prototype),
-    `{ ${green("Symbol(Deno.symbols.customInspect)")}: ${cyan(
+    `{ Symbol(Deno.symbols.customInspect): ${cyan(
       "[Function: [Deno.symbols.customInspect]]"
     )} }`
   );
@@ -687,37 +687,37 @@ unitTest(function consoleTestWithCustomInspectorError(): void {
 
 unitTest(function consoleTestWithIntegerFormatSpecifier(): void {
   assertEquals(stringify("%i"), "%i");
-  assertEquals(stringify("%i", 42.0), yellow("42"));
-  assertEquals(stringify("%i", 42), yellow("42"));
-  assertEquals(stringify("%i", "42"), yellow("42"));
-  assertEquals(stringify("%i", "42.0"), yellow("42"));
-  assertEquals(stringify("%i", 1.5), yellow("1"));
-  assertEquals(stringify("%i", -0.5), yellow("0"));
-  assertEquals(stringify("%i", ""), yellow("NaN"));
-  assertEquals(stringify("%i", Symbol()), yellow("NaN"));
-  assertEquals(stringify("%i %d", 42, 43), `${yellow("42")} ${yellow("43")}`);
-  assertEquals(stringify("%d %i", 42), `${yellow("42")} %i`);
-  assertEquals(stringify("%d", 12345678901234567890123), yellow("1"));
+  assertEquals(stringify("%i", 42.0), "42");
+  assertEquals(stringify("%i", 42), "42");
+  assertEquals(stringify("%i", "42"), "42");
+  assertEquals(stringify("%i", "42.0"), "42");
+  assertEquals(stringify("%i", 1.5), "1");
+  assertEquals(stringify("%i", -0.5), "0");
+  assertEquals(stringify("%i", ""), "NaN");
+  assertEquals(stringify("%i", Symbol()), "NaN");
+  assertEquals(stringify("%i %d", 42, 43), "42 43");
+  assertEquals(stringify("%d %i", 42), "42 %i");
+  assertEquals(stringify("%d", 12345678901234567890123), "1");
   assertEquals(
     stringify("%i", 12345678901234567890123n),
-    yellow("12345678901234567890123n")
+    "12345678901234567890123n"
   );
 });
 
 unitTest(function consoleTestWithFloatFormatSpecifier(): void {
   assertEquals(stringify("%f"), "%f");
-  assertEquals(stringify("%f", 42.0), yellow("42"));
-  assertEquals(stringify("%f", 42), yellow("42"));
-  assertEquals(stringify("%f", "42"), yellow("42"));
-  assertEquals(stringify("%f", "42.0"), yellow("42"));
-  assertEquals(stringify("%f", 1.5), yellow("1.5"));
-  assertEquals(stringify("%f", -0.5), yellow("-0.5"));
-  assertEquals(stringify("%f", Math.PI), yellow("3.141592653589793"));
-  assertEquals(stringify("%f", ""), yellow("NaN"));
-  assertEquals(stringify("%f", Symbol("foo")), yellow("NaN"));
-  assertEquals(stringify("%f", 5n), yellow("5"));
-  assertEquals(stringify("%f %f", 42, 43), `${yellow("42")} ${yellow("43")}`);
-  assertEquals(stringify("%f %f", 42), `${yellow("42")} %f`);
+  assertEquals(stringify("%f", 42.0), "42");
+  assertEquals(stringify("%f", 42), "42");
+  assertEquals(stringify("%f", "42"), "42");
+  assertEquals(stringify("%f", "42.0"), "42");
+  assertEquals(stringify("%f", 1.5), "1.5");
+  assertEquals(stringify("%f", -0.5), "-0.5");
+  assertEquals(stringify("%f", Math.PI), "3.141592653589793");
+  assertEquals(stringify("%f", ""), "NaN");
+  assertEquals(stringify("%f", Symbol("foo")), "NaN");
+  assertEquals(stringify("%f", 5n), "5");
+  assertEquals(stringify("%f %f", 42, 43), `42 43`);
+  assertEquals(stringify("%f %f", 42), `42 %f`);
 });
 
 unitTest(function consoleTestWithStringFormatSpecifier(): void {
@@ -734,7 +734,7 @@ unitTest(function consoleTestWithStringFormatSpecifier(): void {
 unitTest(function consoleTestWithObjectFormatSpecifier(): void {
   assertEquals(stringify("%o"), "%o");
   assertEquals(stringify("%o", 42), yellow("42"));
-  assertEquals(stringify("%o", "foo"), green("foo"));
+  assertEquals(stringify("%o", "foo"), "foo");
   assertEquals(stringify("o: %o, a: %O", {}, []), "o: {}, a: []");
   assertEquals(stringify("%o", { a: 42 }), `{ a: ${yellow("42")} }`);
   assertEquals(
@@ -752,9 +752,9 @@ unitTest(function consoleTestWithVariousOrInvalidFormatSpecifier(): void {
   assertEquals(stringify("%s:%s", "foo", "bar"), "foo:bar");
   assertEquals(stringify("%s:%s", "foo", "bar", "baz"), "foo:bar baz");
   assertEquals(stringify("%%%s%%", "hi"), "%hi%");
-  assertEquals(stringify("%d:%d", 12), `${yellow("12")}:%d`);
-  assertEquals(stringify("%i:%i", 12), `${yellow("12")}:%i`);
-  assertEquals(stringify("%f:%f", 12), `${yellow("12")}:%f`);
+  assertEquals(stringify("%d:%d", 12), `12:%d`);
+  assertEquals(stringify("%i:%i", 12), `12:%i`);
+  assertEquals(stringify("%f:%f", 12), `12:%f`);
   assertEquals(stringify("o: %o, a: %o", {}), "o: {}, a: %o");
   assertEquals(stringify("abc%", 1), `abc% ${yellow("1")}`);
 });
@@ -888,9 +888,9 @@ unitTest(function consoleGroup(): void {
     assertEquals(
       out.toString(),
       `1
-  2
-  3
-    4
+    2
+    3
+        4
 5
 6
 `
@@ -917,9 +917,9 @@ unitTest(function consoleGroupWarn(): void {
     assertEquals(
       both.toString(),
       `1
-  2
-    3
-  4
+    2
+        3
+    4
 5
 6
 7
@@ -1138,7 +1138,7 @@ unitTest(function consoleLogShoultNotThrowErrorWhenInvalidDateIsPassed(): void {
   mockConsole((console, out) => {
     const invalidDate = new Date("test");
     console.log(invalidDate);
-    assertEquals(out.toString(), "Invalid Date\n");
+    assertEquals(out.toString(), `${magenta("Invalid Date")}\n`);
   });
 });
 
@@ -1150,7 +1150,7 @@ unitTest(function consoleDir(): void {
   });
   mockConsole((console, out): void => {
     console.dir("DIR", { indentLevel: 2 });
-    assertEquals(out.toString(), "  DIR\n");
+    assertEquals(out.toString(), "    DIR\n");
   });
 });
 
@@ -1162,7 +1162,7 @@ unitTest(function consoleDirXml(): void {
   });
   mockConsole((console, out): void => {
     console.dirxml("DIRXML", { indentLevel: 2 });
-    assertEquals(out.toString(), "  DIRXML\n");
+    assertEquals(out.toString(), "    DIRXML\n");
   });
 });
 
