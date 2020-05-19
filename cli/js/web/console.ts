@@ -96,7 +96,7 @@ function createIterableString<T>(
   config: IterablePrintConfig<T>
 ): string {
   if (level >= maxLevel) {
-    return `[${config.typeName}]`;
+    return cyan(`[${config.typeName}]`);
   }
   ctx.add(value);
 
@@ -461,7 +461,7 @@ function createPromiseString(
     return `Promise { ${cyan("<pending>")} }`;
   }
 
-  const prefix = state === PromiseState.Fulfilled ? "" : red("<rejected> ");
+  const prefix = state === PromiseState.Fulfilled ? "" : `${red("<rejected>")} `;
 
   const str = `${prefix}${stringifyWithQuotes(
     result,
