@@ -332,8 +332,12 @@ test({
       [
         "Values are not equal:",
         ...createHeader(),
-        removed(`-   { a: ${yellow("1")}, b: ${green('"2"')}, c: ${yellow("3")} }`),
-        added(`+   { a: ${yellow("1")}, b: ${yellow("2")}, c: [ ${yellow("3")} ] }`),
+        removed(
+          `-   { a: ${yellow("1")}, b: ${green('"2"')}, c: ${yellow("3")} }`
+        ),
+        added(
+          `+   { a: ${yellow("1")}, b: ${yellow("2")}, c: [ ${yellow("3")} ] }`
+        ),
         "",
       ].join("\n")
     );
