@@ -163,8 +163,10 @@ test("Data is written to correct file", async function testCorrectWriteUsingPath
 });
 
 test("Path can be an URL", async function testCorrectWriteUsingURL() {
-  const filePath = path.join(testDataDir, "_fs_writeFile_test_file_url.txt");
-  const url = new URL("file://" + filePath);
+  const url = new URL(
+    "file://" + path.join(testDataDir, "_fs_writeFile_test_file_url.txt")
+  );
+  const filePath = path.fromFileUrl(url);
   const res = await new Promise((resolve) => {
     writeFile(url, "hello world", resolve);
   });
