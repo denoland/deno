@@ -12,7 +12,7 @@ test({
     assert(Deno.resources()[file.rid]);
     await new Promise((resolve, reject) => {
       close(file.rid, (err) => {
-        if (err) reject();
+        if (err !== null) reject();
         else resolve();
       });
     })

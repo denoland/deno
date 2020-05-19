@@ -6,7 +6,7 @@ export function close(fd: number, callback: CallbackWithError): void {
   queueMicrotask(() => {
     try {
       Deno.close(fd);
-      callback();
+      callback(null);
     } catch (err) {
       callback(err);
     }
