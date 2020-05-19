@@ -24,10 +24,10 @@ import {
   CHAR_LOWERCASE_Z,
   CHAR_FORWARD_SLASH,
   CHAR_BACKWARD_SLASH,
-} from "../path/constants.ts";
+} from "../path/_constants.ts";
 import * as path from "./path.ts";
 
-const isWindows = Deno.build.os === "win";
+const isWindows = Deno.build.os === "windows";
 
 const forwardSlashRegEx = /\//g;
 const percentRegEx = /%/g;
