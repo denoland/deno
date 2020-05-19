@@ -10,8 +10,7 @@ import {
 import { writeFile, writeFileSync } from "./_fs_writeFile.ts";
 import * as path from "../../path/mod.ts";
 
-const dirname = new URL(".", import.meta.url).pathname;
-const testDataDir = path.join(dirname, "testdata");
+const testDataDir = path.resolve(path.join("node", "_fs", "testdata"));
 const decoder = new TextDecoder("utf-8");
 
 test("Callback must be a function error", function fn() {
