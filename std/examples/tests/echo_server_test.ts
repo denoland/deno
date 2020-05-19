@@ -19,10 +19,10 @@ Deno.test("[examples/echo_server]", async () => {
     assertNotEquals(message, null);
     assertStrictEq(
       decoder.decode((message as ReadLineResult).line).trim(),
-      "Listening on 0.0.0.0:8080"
+      "Listening on 0.0.0.0:4600"
     );
 
-    conn = await Deno.connect({ hostname: "127.0.0.1", port: 8080 });
+    conn = await Deno.connect({ hostname: "127.0.0.1", port: 4600 });
     const connReader = new BufReader(conn);
 
     await conn.write(encoder.encode("Hello echo_server\n"));

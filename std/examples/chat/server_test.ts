@@ -39,7 +39,7 @@ test({
   async fn() {
     const server = await startServer();
     try {
-      const resp = await fetch("http://127.0.0.1:8080/");
+      const resp = await fetch("http://127.0.0.1:4601/");
       assertEquals(resp.status, 200);
       assertEquals(resp.headers.get("content-type"), "text/html");
       const html = await resp.text();
@@ -58,7 +58,7 @@ test({
     const server = await startServer();
     let ws: WebSocket | undefined;
     try {
-      ws = await connectWebSocket("http://127.0.0.1:8080/ws");
+      ws = await connectWebSocket("http://127.0.0.1:4601/ws");
       const it = ws[Symbol.asyncIterator]();
 
       assertEquals((await it.next()).value, "Connected: [1]");
