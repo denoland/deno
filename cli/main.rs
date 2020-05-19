@@ -26,6 +26,7 @@ mod checksum;
 pub mod colors;
 pub mod deno_dir;
 pub mod diagnostics;
+mod diff;
 mod disk_cache;
 mod doc;
 mod file_fetcher;
