@@ -469,8 +469,8 @@ dependencies = [
  "clap",
  "deno_core",
  "deno_typescript",
- "difference",
  "dirs",
+ "dissimilar",
  "dlopen",
  "dprint-plugin-typescript",
  "futures 0.3.4",
@@ -549,12 +549,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "difference"
-version = "2.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "524cbf6897b527295dff137cec09ecf3a05f4fddffd7dfcd1585403449e74198"
-
-[[package]]
 name = "digest"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -584,6 +578,12 @@ dependencies = [
  "redox_users",
  "winapi 0.3.8",
 ]
+
+[[package]]
+name = "dissimilar"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "39de161cd2ebbd6e5783db53a82a47b6a47dcfef754130839603561745528b94"
 
 [[package]]
 name = "dlopen"
