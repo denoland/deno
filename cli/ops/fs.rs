@@ -687,6 +687,15 @@ struct SymlinkArgs {
   promise_id: Option<u64>,
   oldpath: String,
   newpath: String,
+  #[cfg(not(unix))]
+  options: Option<SymlinkOptions>,
+}
+
+#[cfg(not(unix))]
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SymlinkOptions {
+  _type: String,
 }
 
 fn op_symlink(
@@ -710,13 +719,34 @@ fn op_symlink(
       symlink(&oldpath, &newpath)?;
       Ok(json!({}))
     }
-    // TODO Implement symlink, use type for Windows
     #[cfg(not(unix))]
     {
-      // Unlike with chmod/chown, here we don't
-      // require `oldpath` to exist on Windows
-      let _ = oldpath; // avoid unused warning
-      Err(OpError::not_implemented())
+      use std::os::windows::fs::{symlink_dir, symlink_file};
+
+      match args.options {
+        Some(options) => match options._type.as_ref() {
+          "file" => symlink_file(&oldpath, &newpath)?,
+          "dir" => symlink_dir(&oldpath, &newpath)?,
+          _ => return Err(OpError::type_error("unsupported type".to_string())),
+        },
+        None => {
+          let old_meta = std::fs::metadata(&oldpath);
+          match old_meta {
+            Ok(metadata) => {
+              if metadata.is_file() {
+                symlink_file(&oldpath, &newpath)?
+              } else if metadata.is_dir() {
+                symlink_dir(&oldpath, &newpath)?
+              }
+            }
+            Err(_) => return Err(OpError::type_error(
+              "you must pass a `options` argument for non-existent target path in windows"
+                .to_string(),
+            )),
+          }
+        }
+      };
+      Ok(json!({}))
     }
   })
 }
