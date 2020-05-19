@@ -2,7 +2,7 @@
 import { assertEquals } from "../testing/asserts.ts";
 import { parse } from "./mod.ts";
 
-Deno.test(function booleanDefaultTrue(): void {
+Deno.test("booleanDefaultTrue", function (): void {
   const argv = parse([], {
     boolean: "sometrue",
     default: { sometrue: true },
@@ -10,7 +10,7 @@ Deno.test(function booleanDefaultTrue(): void {
   assertEquals(argv.sometrue, true);
 });
 
-Deno.test(function booleanDefaultFalse(): void {
+Deno.test("booleanDefaultFalse", function (): void {
   const argv = parse([], {
     boolean: "somefalse",
     default: { somefalse: false },
@@ -18,7 +18,7 @@ Deno.test(function booleanDefaultFalse(): void {
   assertEquals(argv.somefalse, false);
 });
 
-Deno.test(function booleanDefaultNull(): void {
+Deno.test("booleanDefaultNull", function (): void {
   const argv = parse([], {
     boolean: "maybe",
     default: { maybe: null },

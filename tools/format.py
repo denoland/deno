@@ -4,17 +4,37 @@ import os
 import sys
 import argparse
 from third_party import python_env
-from util import git_ls_files, third_party_path, root_path, run
+from util import git_ls_files, git_staged, third_party_path, root_path
+from util import print_command, run
+
+cmd_args = None
 
 
-def main():
-    os.chdir(root_path)
+def get_cmd_args():
+    global cmd_args
+
+    if cmd_args:
+        return cmd_args
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--js", help="run prettier", action="store_true")
     parser.add_argument("--py", help="run yapf", action="store_true")
     parser.add_argument("--rs", help="run rustfmt", action="store_true")
-    args = parser.parse_args()
+    parser.add_argument(
+        "--staged", help="run only on staged files", action="store_true")
+    cmd_args = parser.parse_args()
+    return cmd_args
+
+
+def get_sources(*args):
+    getter = git_staged if get_cmd_args().staged else git_ls_files
+    return getter(*args)
+
+
+def main():
+    os.chdir(root_path)
+
+    args = get_cmd_args()
 
     did_fmt = False
     if args.js:
@@ -34,36 +54,41 @@ def main():
 
 
 def prettier():
-    print "prettier"
     script = os.path.join(third_party_path, "node_modules", "prettier",
                           "bin-prettier.js")
-    source_files = git_ls_files(root_path, ["*.js", "*.json", "*.ts", "*.md"])
-    run(["node", script, "--write", "--loglevel=error", "--"] + source_files,
-        shell=False,
-        quiet=True)
+    source_files = get_sources(root_path, ["*.js", "*.json", "*.ts", "*.md"])
+    if source_files:
+        print_command("prettier", source_files)
+        run(["node", script, "--write", "--loglevel=error", "--"] +
+            source_files,
+            shell=False,
+            quiet=True)
 
 
 def yapf():
-    print "yapf"
     script = os.path.join(third_party_path, "python_packages", "bin", "yapf")
-    source_files = git_ls_files(root_path, ["*.py"])
-    run([sys.executable, script, "-i", "--"] + source_files,
-        env=python_env(),
-        shell=False,
-        quiet=True)
+    source_files = get_sources(root_path, ["*.py"])
+    if source_files:
+        print_command("yapf", source_files)
+        run([sys.executable, script, "-i", "--style=pep8", "--"] +
+            source_files,
+            env=python_env(),
+            shell=False,
+            quiet=True)
 
 
 def rustfmt():
-    print "rustfmt"
     config_file = os.path.join(root_path, ".rustfmt.toml")
-    source_files = git_ls_files(root_path, ["*.rs"])
-    run([
-        "rustfmt",
-        "--config-path=" + config_file,
-        "--",
-    ] + source_files,
-        shell=False,
-        quiet=True)
+    source_files = get_sources(root_path, ["*.rs"])
+    if source_files:
+        print_command("rustfmt", source_files)
+        run([
+            "rustfmt",
+            "--config-path=" + config_file,
+            "--",
+        ] + source_files,
+            shell=False,
+            quiet=True)
 
 
 if __name__ == "__main__":

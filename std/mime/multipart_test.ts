@@ -1,16 +1,14 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-const { Buffer, copy, open, remove } = Deno;
+const { Buffer, open, test } = Deno;
 import {
   assert,
   assertEquals,
   assertThrows,
   assertThrowsAsync,
 } from "../testing/asserts.ts";
-const { test } = Deno;
 import * as path from "../path/mod.ts";
 import {
-  FormFile,
   MultipartReader,
   MultipartWriter,
   isFormFile,
@@ -23,8 +21,9 @@ const e = new TextEncoder();
 const boundary = "--abcde";
 const dashBoundary = e.encode("--" + boundary);
 const nlDashBoundary = e.encode("\r\n--" + boundary);
+const testdataDir = path.resolve("mime", "testdata");
 
-test(function multipartScanUntilBoundary1(): void {
+test("multipartScanUntilBoundary1", function (): void {
   const data = `--${boundary}`;
   const n = scanUntilBoundary(
     e.encode(data),
@@ -33,10 +32,10 @@ test(function multipartScanUntilBoundary1(): void {
     0,
     true
   );
-  assertEquals(n, Deno.EOF);
+  assertEquals(n, null);
 });
 
-test(function multipartScanUntilBoundary2(): void {
+test("multipartScanUntilBoundary2", function (): void {
   const data = `foo\r\n--${boundary}`;
   const n = scanUntilBoundary(
     e.encode(data),
@@ -48,7 +47,7 @@ test(function multipartScanUntilBoundary2(): void {
   assertEquals(n, 3);
 });
 
-test(function multipartScanUntilBoundary3(): void {
+test("multipartScanUntilBoundary3", function (): void {
   const data = `foobar`;
   const n = scanUntilBoundary(
     e.encode(data),
@@ -60,7 +59,7 @@ test(function multipartScanUntilBoundary3(): void {
   assertEquals(n, data.length);
 });
 
-test(function multipartScanUntilBoundary4(): void {
+test("multipartScanUntilBoundary4", function (): void {
   const data = `foo\r\n--`;
   const n = scanUntilBoundary(
     e.encode(data),
@@ -72,36 +71,38 @@ test(function multipartScanUntilBoundary4(): void {
   assertEquals(n, 3);
 });
 
-test(function multipartMatchAfterPrefix1(): void {
+test("multipartMatchAfterPrefix1", function (): void {
   const data = `${boundary}\r`;
   const v = matchAfterPrefix(e.encode(data), e.encode(boundary), false);
   assertEquals(v, 1);
 });
 
-test(function multipartMatchAfterPrefix2(): void {
+test("multipartMatchAfterPrefix2", function (): void {
   const data = `${boundary}hoge`;
   const v = matchAfterPrefix(e.encode(data), e.encode(boundary), false);
   assertEquals(v, -1);
 });
 
-test(function multipartMatchAfterPrefix3(): void {
+test("multipartMatchAfterPrefix3", function (): void {
   const data = `${boundary}`;
   const v = matchAfterPrefix(e.encode(data), e.encode(boundary), false);
   assertEquals(v, 0);
 });
 
-test(async function multipartMultipartWriter(): Promise<void> {
+test("multipartMultipartWriter", async function (): Promise<void> {
   const buf = new Buffer();
   const mw = new MultipartWriter(buf);
   await mw.writeField("foo", "foo");
   await mw.writeField("bar", "bar");
-  const f = await open(path.resolve("./mime/testdata/sample.txt"), "r");
+  const f = await open(path.resolve("./mime/testdata/sample.txt"), {
+    read: true,
+  });
   await mw.writeFile("file", "sample.txt", f);
   await mw.close();
   f.close();
 });
 
-test(function multipartMultipartWriter2(): void {
+test("multipartMultipartWriter2", function (): void {
   const w = new StringWriter();
   assertThrows(
     (): MultipartWriter => new MultipartWriter(w, ""),
@@ -130,7 +131,7 @@ test(function multipartMultipartWriter2(): void {
   );
 });
 
-test(async function multipartMultipartWriter3(): Promise<void> {
+test("multipartMultipartWriter3", async function (): Promise<void> {
   const w = new StringWriter();
   const mw = new MultipartWriter(w);
   await mw.writeField("foo", "foo");
@@ -173,46 +174,107 @@ test(async function multipartMultipartWriter3(): Promise<void> {
   );
 });
 
-test(async function multipartMultipartReader(): Promise<void> {
-  // FIXME: path resolution
-  const o = await open(path.resolve("./mime/testdata/sample.txt"));
-  const mr = new MultipartReader(
-    o,
-    "--------------------------434049563556637648550474"
-  );
-  const form = await mr.readForm(10 << 20);
-  assertEquals(form["foo"], "foo");
-  assertEquals(form["bar"], "bar");
-  const file = form["file"] as FormFile;
-  assertEquals(isFormFile(file), true);
-  assert(file.content !== void 0);
-  o.close();
+test({
+  name: "[mime/multipart] readForm() basic",
+  async fn() {
+    const o = await open(path.resolve("./mime/testdata/sample.txt"));
+    const mr = new MultipartReader(
+      o,
+      "--------------------------434049563556637648550474"
+    );
+    const form = await mr.readForm();
+    assertEquals(form.value("foo"), "foo");
+    assertEquals(form.value("bar"), "bar");
+    const file = form.file("file");
+    assert(isFormFile(file));
+    assert(file.content !== void 0);
+    o.close();
+  },
 });
 
-test(async function multipartMultipartReader2(): Promise<void> {
-  const o = await open(path.resolve("./mime/testdata/sample.txt"));
-  const mr = new MultipartReader(
-    o,
-    "--------------------------434049563556637648550474"
-  );
-  const form = await mr.readForm(20); //
-  try {
-    assertEquals(form["foo"], "foo");
-    assertEquals(form["bar"], "bar");
-    const file = form["file"] as FormFile;
-    assertEquals(file.type, "application/octet-stream");
-    assert(file.tempfile != null);
-    const f = await open(file.tempfile);
-    const w = new StringWriter();
-    await copy(w, f);
-    const json = JSON.parse(w.toString());
-    assertEquals(json["compilerOptions"]["target"], "es2018");
-    f.close();
-  } finally {
-    const file = form["file"] as FormFile;
-    if (file.tempfile) {
-      await remove(file.tempfile);
+test({
+  name:
+    "[mime/multipart] readForm() should store big file completely in temp file",
+  async fn() {
+    const multipartFile = path.join(testdataDir, "form-data.dat");
+    const sampleFile = await Deno.makeTempFile();
+    const writer = await open(multipartFile, { write: true, create: true });
+
+    const size = 1 << 24; // 16mb
+
+    await Deno.truncate(sampleFile, size);
+    const bigFile = await open(sampleFile, { read: true });
+
+    const mw = new MultipartWriter(writer);
+    await mw.writeField("deno", "land");
+    await mw.writeField("bar", "bar");
+    await mw.writeFile("file", "sample.bin", bigFile);
+
+    await mw.close();
+    writer.close();
+    bigFile.close();
+
+    const o = await Deno.open(multipartFile);
+    const mr = new MultipartReader(o, mw.boundary);
+    // use low-memory to write "file" into temp file.
+    const form = await mr.readForm(20);
+    try {
+      assertEquals(form.value("deno"), "land");
+      assertEquals(form.value("bar"), "bar");
+      const file = form.file("file");
+      assert(file != null);
+      assert(file.tempfile != null);
+      assertEquals(file.size, size);
+      assertEquals(file.type, "application/octet-stream");
+      // TODO checksum of tmp & sampleFile
+    } finally {
+      await Deno.remove(multipartFile);
+      await Deno.remove(sampleFile);
+      await form.removeAll();
+      o.close();
     }
+  },
+});
+
+test({
+  name: "[mime/multipart] removeAll() should remove all tempfiles",
+  async fn() {
+    const o = await open(path.resolve("./mime/testdata/sample.txt"));
+    const mr = new MultipartReader(
+      o,
+      "--------------------------434049563556637648550474"
+    );
+    const form = await mr.readForm(20);
+    const file = form.file("file");
+    assert(file != null);
+    const { tempfile, content } = file;
+    assert(tempfile != null);
+    assert(content == null);
+    const stat = await Deno.stat(tempfile);
+    assertEquals(stat.size, file.size);
+    await form.removeAll();
+    await assertThrowsAsync(async () => {
+      await Deno.stat(tempfile);
+    }, Deno.errors.NotFound);
     o.close();
-  }
+  },
+});
+
+test({
+  name: "[mime/multipart] entries()",
+  async fn() {
+    const o = await open(path.resolve("./mime/testdata/sample.txt"));
+    const mr = new MultipartReader(
+      o,
+      "--------------------------434049563556637648550474"
+    );
+    const form = await mr.readForm();
+    const map = new Map(form.entries());
+    assertEquals(map.get("foo"), "foo");
+    assertEquals(map.get("bar"), "bar");
+    const file = map.get("file");
+    assert(isFormFile(file));
+    assertEquals(file.filename, "tsconfig.json");
+    o.close();
+  },
 });

@@ -14,7 +14,7 @@ import { BufReader, BufWriter } from "../io/bufio.ts";
 import { encoder } from "../encoding/utf8.ts";
 import { assertStrictEq, assert } from "../testing/asserts.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
-import { hasOwnProperty } from "../util/has_own_property.ts";
+import { hasOwnProperty } from "../_util/has_own_property.ts";
 
 /** FormFile object */
 export interface FormFile {
@@ -105,7 +105,7 @@ export function scanUntilBoundary(
   newLineDashBoundary: Uint8Array,
   total: number,
   eof: boolean
-): number | Deno.EOF {
+): number | null {
   if (total === 0) {
     // At beginning of body, allow dashBoundary.
     if (hasPrefix(buf, dashBoundary)) {
@@ -115,7 +115,7 @@ export function scanUntilBoundary(
         case 0:
           return 0;
         case 1:
-          return Deno.EOF;
+          return null;
       }
     }
     if (hasPrefix(dashBoundary, buf)) {
@@ -132,7 +132,7 @@ export function scanUntilBoundary(
       case 0:
         return i;
       case 1:
-        return i > 0 ? i : Deno.EOF;
+        return i > 0 ? i : null;
     }
   }
   if (hasPrefix(newLineDashBoundary, buf)) {
@@ -151,12 +151,12 @@ export function scanUntilBoundary(
 }
 
 class PartReader implements Reader, Closer {
-  n: number | Deno.EOF = 0;
+  n: number | null = 0;
   total = 0;
 
   constructor(private mr: MultipartReader, public readonly headers: Headers) {}
 
-  async read(p: Uint8Array): Promise<number | Deno.EOF> {
+  async read(p: Uint8Array): Promise<number | null> {
     const br = this.mr.bufReader;
 
     // Read into buffer until we identify some data to return,
@@ -165,7 +165,7 @@ class PartReader implements Reader, Closer {
     while (this.n === 0) {
       peekLength = max(peekLength, br.buffered());
       const peekBuf = await br.peek(peekLength);
-      if (peekBuf === Deno.EOF) {
+      if (peekBuf === null) {
         throw new Deno.errors.UnexpectedEof();
       }
       const eof = peekBuf.length < peekLength;
@@ -183,8 +183,8 @@ class PartReader implements Reader, Closer {
       }
     }
 
-    if (this.n === Deno.EOF) {
-      return Deno.EOF;
+    if (this.n === null) {
+      return null;
     }
 
     const nread = min(p.length, this.n);
@@ -251,6 +251,17 @@ function skipLWSPChar(u: Uint8Array): Uint8Array {
   return ret.slice(0, j);
 }
 
+export interface MultipartFormData {
+  file(key: string): FormFile | undefined;
+  value(key: string): string | undefined;
+  entries(): IterableIterator<[string, string | FormFile | undefined]>;
+  [Symbol.iterator](): IterableIterator<
+    [string, string | FormFile | undefined]
+  >;
+  /** Remove all tempfiles */
+  removeAll(): Promise<void>;
+}
+
 /** Reader for parsing multipart/form-data */
 export class MultipartReader {
   readonly newLine = encoder.encode("\r\n");
@@ -268,16 +279,16 @@ export class MultipartReader {
    * overflowed file data will be written to temporal files.
    * String field values are never written to files.
    * null value means parsing or writing to file was failed in some reason.
+   * @param maxMemory maximum memory size to store file in memory. bytes. @default 10485760 (10MB)
    *  */
-  async readForm(
-    maxMemory: number
-  ): Promise<{ [key: string]: null | string | FormFile }> {
-    const result = Object.create(null);
+  async readForm(maxMemory = 10 << 20): Promise<MultipartFormData> {
+    const fileMap = new Map<string, FormFile>();
+    const valueMap = new Map<string, string>();
     let maxValueBytes = maxMemory + (10 << 20);
     const buf = new Buffer(new Uint8Array(maxValueBytes));
     for (;;) {
       const p = await this.nextPart();
-      if (p === Deno.EOF) {
+      if (p === null) {
         break;
       }
       if (p.formName === "") {
@@ -286,18 +297,18 @@ export class MultipartReader {
       buf.reset();
       if (!p.fileName) {
         // value
-        const n = await copyN(buf, p, maxValueBytes);
+        const n = await copyN(p, buf, maxValueBytes);
         maxValueBytes -= n;
         if (maxValueBytes < 0) {
           throw new RangeError("message too large");
         }
-        const value = buf.toString();
-        result[p.formName] = value;
+        const value = new TextDecoder().decode(buf.bytes());
+        valueMap.set(p.formName, value);
         continue;
       }
       // file
-      let formFile: FormFile | null = null;
-      const n = await copy(buf, p);
+      let formFile: FormFile | undefined;
+      const n = await copyN(p, buf, maxValueBytes);
       const contentType = p.headers.get("content-type");
       assert(contentType != null, "content-type must be set");
       if (n > maxMemory) {
@@ -308,11 +319,8 @@ export class MultipartReader {
           postfix: ext,
         });
         try {
-          const size = await copyN(
-            file,
-            new MultiReader(buf, p),
-            maxValueBytes
-          );
+          const size = await copy(new MultiReader(buf, p), file);
+
           file.close();
           formFile = {
             filename: p.fileName,
@@ -322,6 +330,7 @@ export class MultipartReader {
           };
         } catch (e) {
           await remove(filepath);
+          throw e;
         }
       } else {
         formFile = {
@@ -333,15 +342,17 @@ export class MultipartReader {
         maxMemory -= n;
         maxValueBytes -= n;
       }
-      result[p.formName] = formFile;
+      if (formFile) {
+        fileMap.set(p.formName, formFile);
+      }
     }
-    return result;
+    return multipatFormData(fileMap, valueMap);
   }
 
   private currentPart: PartReader | undefined;
   private partsRead = 0;
 
-  private async nextPart(): Promise<PartReader | Deno.EOF> {
+  private async nextPart(): Promise<PartReader | null> {
     if (this.currentPart) {
       this.currentPart.close();
     }
@@ -351,14 +362,14 @@ export class MultipartReader {
     let expectNewPart = false;
     for (;;) {
       const line = await this.bufReader.readSlice("\n".charCodeAt(0));
-      if (line === Deno.EOF) {
+      if (line === null) {
         throw new Deno.errors.UnexpectedEof();
       }
       if (this.isBoundaryDelimiterLine(line)) {
         this.partsRead++;
         const r = new TextProtoReader(this.bufReader);
         const headers = await r.readMIMEHeader();
-        if (headers === Deno.EOF) {
+        if (headers === null) {
           throw new Deno.errors.UnexpectedEof();
         }
         const np = new PartReader(this, headers);
@@ -366,7 +377,7 @@ export class MultipartReader {
         return np;
       }
       if (this.isFinalBoundary(line)) {
-        return Deno.EOF;
+        return null;
       }
       if (expectNewPart) {
         throw new Error(`expecting a new Part; got line ${line}`);
@@ -397,6 +408,43 @@ export class MultipartReader {
     const rest = line.slice(this.dashBoundary.length);
     return equal(skipLWSPChar(rest), this.newLine);
   }
+}
+
+function multipatFormData(
+  fileMap: Map<string, FormFile>,
+  valueMap: Map<string, string>
+): MultipartFormData {
+  function file(key: string): FormFile | undefined {
+    return fileMap.get(key);
+  }
+  function value(key: string): string | undefined {
+    return valueMap.get(key);
+  }
+  function* entries(): IterableIterator<
+    [string, string | FormFile | undefined]
+  > {
+    yield* fileMap;
+    yield* valueMap;
+  }
+  async function removeAll(): Promise<void> {
+    const promises: Array<Promise<void>> = [];
+    for (const val of fileMap.values()) {
+      if (!val.tempfile) continue;
+      promises.push(Deno.remove(val.tempfile));
+    }
+    await Promise.all(promises);
+  }
+  return {
+    file,
+    value,
+    entries,
+    removeAll,
+    [Symbol.iterator](): IterableIterator<
+      [string, string | FormFile | undefined]
+    > {
+      return entries();
+    },
+  };
 }
 
 class PartWriter implements Writer {
@@ -523,14 +571,14 @@ export class MultipartWriter {
     file: Reader
   ): Promise<void> {
     const f = await this.createFormFile(field, filename);
-    await copy(f, file);
+    await copy(file, f);
   }
 
   private flush(): Promise<void> {
     return this.bufWriter.flush();
   }
 
-  /** Close writer. No additional data can be writen to stream */
+  /** Close writer. No additional data can be written to stream */
   async close(): Promise<void> {
     if (this.isClosed) {
       throw new Error("multipart: writer is closed");

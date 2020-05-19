@@ -48,10 +48,8 @@ unitTest(function eventStopImmediatePropagationSuccess(): void {
   const event = new Event(type);
 
   assertEquals(event.cancelBubble, false);
-  assertEquals(event.cancelBubbleImmediately, false);
   event.stopImmediatePropagation();
   assertEquals(event.cancelBubble, true);
-  assertEquals(event.cancelBubbleImmediately, true);
 });
 
 unitTest(function eventPreventDefaultSuccess(): void {

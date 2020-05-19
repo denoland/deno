@@ -36,7 +36,7 @@ const CHAR_FORWARD_SLASH = "/".charCodeAt(0);
 const CHAR_BACKWARD_SLASH = "\\".charCodeAt(0);
 const CHAR_COLON = ":".charCodeAt(0);
 
-const isWindows = path.isWindows;
+const isWindows = Deno.build.os == "windows";
 
 const relativeResolveCache = Object.create(null);
 
@@ -54,7 +54,7 @@ function stat(filename: string): StatResult {
   }
   try {
     const info = Deno.statSync(filename);
-    const result = info.isFile() ? 0 : 1;
+    const result = info.isFile ? 0 : 1;
     if (statCache !== null) statCache.set(filename, result);
     return result;
   } catch (e) {
@@ -510,10 +510,10 @@ class Module {
    * with `node_modules` lookup and `index.js` lookup support.
    * Also injects available Node.js builtin module polyfills.
    *
-   *     const require_ = createRequire(import.meta.url);
-   *     const fs = require_("fs");
-   *     const leftPad = require_("left-pad");
-   *     const cjsModule = require_("./cjs_mod");
+   *     const require = createRequire(import.meta.url);
+   *     const fs = require("fs");
+   *     const leftPad = require("left-pad");
+   *     const cjsModule = require("./cjs_mod");
    *
    * @param filename path or URL to current module
    * @return Require function to import CJS modules
@@ -534,8 +534,8 @@ class Module {
   }
 
   static _initPaths(): void {
-    const homeDir = Deno.env("HOME");
-    const nodePath = Deno.env("NODE_PATH");
+    const homeDir = Deno.env.get("HOME");
+    const nodePath = Deno.env.get("NODE_PATH");
 
     // Removed $PREFIX/bin/node case
 
@@ -758,7 +758,7 @@ function toRealPath(requestPath: string): string {
   let fullPath = requestPath;
   while (true) {
     try {
-      fullPath = Deno.readlinkSync(fullPath);
+      fullPath = Deno.readLinkSync(fullPath);
     } catch {
       break;
     }
@@ -1000,7 +1000,7 @@ function emitCircularRequireWarning(prop: any): void {
 }
 
 // A Proxy that can be used as the prototype of a module.exports object and
-// warns when non-existend properties are accessed.
+// warns when non-existent properties are accessed.
 const CircularRequirePrototypeWarningProxy = new Proxy(
   {},
   {

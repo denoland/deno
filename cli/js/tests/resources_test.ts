@@ -1,6 +1,16 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { unitTest, assertEquals, assert } from "./test_util.ts";
 
+unitTest(function resourcesCloseBadArgs(): void {
+  let err;
+  try {
+    Deno.close((null as unknown) as number);
+  } catch (e) {
+    err = e;
+  }
+  assert(err instanceof Deno.errors.InvalidData);
+});
+
 unitTest(function resourcesStdio(): void {
   const res = Deno.resources();
 

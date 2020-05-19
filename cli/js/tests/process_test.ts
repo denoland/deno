@@ -5,12 +5,20 @@ import {
   assertStrContains,
   unitTest,
 } from "./test_util.ts";
-const { kill, run, readFile, open, makeTempDir, writeFile } = Deno;
+const {
+  kill,
+  run,
+  readFile,
+  open,
+  makeTempDir,
+  writeFile,
+  writeFileSync,
+} = Deno;
 
 unitTest(function runPermissions(): void {
   let caughtError = false;
   try {
-    Deno.run({ cmd: ["python", "-c", "print('hello world')"] });
+    run({ cmd: ["python", "-c", "print('hello world')"] });
   } catch (e) {
     caughtError = true;
     assert(e instanceof Deno.errors.PermissionDenied);
@@ -49,7 +57,7 @@ unitTest(
 unitTest(
   {
     // No signals on windows.
-    ignore: Deno.build.os === "win",
+    ignore: Deno.build.os === "windows",
     perms: { run: true },
   },
   async function runCommandFailedWithSignal(): Promise<void> {
@@ -99,7 +107,7 @@ while True:
     pass
 `;
 
-    Deno.writeFileSync(`${cwd}/${pyProgramFile}.py`, enc.encode(pyProgram));
+    writeFileSync(`${cwd}/${pyProgramFile}.py`, enc.encode(pyProgram));
     const p = run({
       cwd,
       cmd: ["python", `${pyProgramFile}.py`],
@@ -108,7 +116,7 @@ while True:
     // Write the expected exit code *after* starting python.
     // This is how we verify that `run()` is actually asynchronous.
     const code = 84;
-    Deno.writeFileSync(`${cwd}/${exitCodeFile}`, enc.encode(`${code}`));
+    writeFileSync(`${cwd}/${exitCodeFile}`, enc.encode(`${code}`));
 
     const status = await p.status();
     assertEquals(status.success, false);
@@ -154,14 +162,14 @@ unitTest({ perms: { run: true } }, async function runStdoutPiped(): Promise<
 
   const data = new Uint8Array(10);
   let r = await p.stdout!.read(data);
-  if (r === Deno.EOF) {
-    throw new Error("p.stdout.read(...) should not be EOF");
+  if (r === null) {
+    throw new Error("p.stdout.read(...) should not be null");
   }
   assertEquals(r, 5);
   const s = new TextDecoder().decode(data.subarray(0, r));
   assertEquals(s, "hello");
   r = await p.stdout!.read(data);
-  assertEquals(r, Deno.EOF);
+  assertEquals(r, null);
   p.stdout!.close();
 
   const status = await p.status();
@@ -183,14 +191,14 @@ unitTest({ perms: { run: true } }, async function runStderrPiped(): Promise<
 
   const data = new Uint8Array(10);
   let r = await p.stderr!.read(data);
-  if (r === Deno.EOF) {
-    throw new Error("p.stderr.read should not return EOF here");
+  if (r === null) {
+    throw new Error("p.stderr.read should not return null here");
   }
   assertEquals(r, 5);
   const s = new TextDecoder().decode(data.subarray(0, r));
   assertEquals(s, "hello");
   r = await p.stderr!.read(data);
-  assertEquals(r, Deno.EOF);
+  assertEquals(r, null);
   p.stderr!.close();
 
   const status = await p.status();
@@ -229,7 +237,10 @@ unitTest(
   async function runRedirectStdoutStderr(): Promise<void> {
     const tempDir = await makeTempDir();
     const fileName = tempDir + "/redirected_stdio.txt";
-    const file = await open(fileName, "w");
+    const file = await open(fileName, {
+      create: true,
+      write: true,
+    });
 
     const p = run({
       cmd: [
@@ -261,7 +272,7 @@ unitTest(
     const fileName = tempDir + "/redirected_stdio.txt";
     const encoder = new TextEncoder();
     await writeFile(fileName, encoder.encode("hello"));
-    const file = await open(fileName, "r");
+    const file = await open(fileName);
 
     const p = run({
       cmd: ["python", "-c", "import sys; assert 'hello' == sys.stdin.read();"],
@@ -310,72 +321,66 @@ unitTest({ perms: { run: true } }, async function runClose(): Promise<void> {
 
   const data = new Uint8Array(10);
   const r = await p.stderr!.read(data);
-  assertEquals(r, Deno.EOF);
+  assertEquals(r, null);
   p.stderr!.close();
 });
 
 unitTest(function signalNumbers(): void {
-  if (Deno.build.os === "mac") {
+  if (Deno.build.os === "darwin") {
     assertEquals(Deno.Signal.SIGSTOP, 17);
   } else if (Deno.build.os === "linux") {
     assertEquals(Deno.Signal.SIGSTOP, 19);
   }
 });
 
-// Ignore signal tests on windows for now...
-if (Deno.build.os !== "win") {
-  unitTest(function killPermissions(): void {
-    let caughtError = false;
-    try {
-      // Unlike the other test cases, we don't have permission to spawn a
-      // subprocess we can safely kill. Instead we send SIGCONT to the current
-      // process - assuming that Deno does not have a special handler set for it
-      // and will just continue even if a signal is erroneously sent.
-      Deno.kill(Deno.pid, Deno.Signal.SIGCONT);
-    } catch (e) {
-      caughtError = true;
-      assert(e instanceof Deno.errors.PermissionDenied);
-    }
-    assert(caughtError);
+unitTest(function killPermissions(): void {
+  let caughtError = false;
+  try {
+    // Unlike the other test cases, we don't have permission to spawn a
+    // subprocess we can safely kill. Instead we send SIGCONT to the current
+    // process - assuming that Deno does not have a special handler set for it
+    // and will just continue even if a signal is erroneously sent.
+    kill(Deno.pid, Deno.Signal.SIGCONT);
+  } catch (e) {
+    caughtError = true;
+    assert(e instanceof Deno.errors.PermissionDenied);
+  }
+  assert(caughtError);
+});
+
+unitTest({ perms: { run: true } }, async function killSuccess(): Promise<void> {
+  const p = run({
+    cmd: ["python", "-c", "from time import sleep; sleep(10000)"],
   });
 
-  unitTest({ perms: { run: true } }, async function killSuccess(): Promise<
-    void
-  > {
-    const p = run({
-      cmd: ["python", "-c", "from time import sleep; sleep(10000)"],
-    });
+  assertEquals(Deno.Signal.SIGINT, 2);
+  kill(p.pid, Deno.Signal.SIGINT);
+  const status = await p.status();
 
-    assertEquals(Deno.Signal.SIGINT, 2);
-    kill(p.pid, Deno.Signal.SIGINT);
-    const status = await p.status();
+  assertEquals(status.success, false);
+  // TODO(ry) On Linux, status.code is sometimes undefined and sometimes 1.
+  // The following assert is causing this test to be flaky. Investigate and
+  // re-enable when it can be made deterministic.
+  // assertEquals(status.code, 1);
+  // assertEquals(status.signal, Deno.Signal.SIGINT);
+  p.close();
+});
 
-    assertEquals(status.success, false);
-    // TODO(ry) On Linux, status.code is sometimes undefined and sometimes 1.
-    // The following assert is causing this test to be flaky. Investigate and
-    // re-enable when it can be made deterministic.
-    // assertEquals(status.code, 1);
-    // assertEquals(status.signal, Deno.Signal.SIGINT);
-    p.close();
+unitTest({ perms: { run: true } }, function killFailed(): void {
+  const p = run({
+    cmd: ["python", "-c", "from time import sleep; sleep(10000)"],
   });
+  assert(!p.stdin);
+  assert(!p.stdout);
 
-  unitTest({ perms: { run: true } }, function killFailed(): void {
-    const p = run({
-      cmd: ["python", "-c", "from time import sleep; sleep(10000)"],
-    });
-    assert(!p.stdin);
-    assert(!p.stdout);
+  let err;
+  try {
+    kill(p.pid, 12345);
+  } catch (e) {
+    err = e;
+  }
+  assert(!!err);
+  assert(err instanceof TypeError);
 
-    let err;
-    try {
-      kill(p.pid, 12345);
-    } catch (e) {
-      err = e;
-    }
-
-    assert(!!err);
-    assert(err instanceof TypeError);
-
-    p.close();
-  });
-}
+  p.close();
+});

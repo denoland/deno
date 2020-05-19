@@ -1,8 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { customInspect } from "./console.ts";
-import * as domTypes from "./dom_types.ts";
-import { urls, URLSearchParams } from "./url_search_params.ts";
+import { build } from "../build.ts";
 import { getRandomValues } from "../ops/get_random_values.ts";
+import { customInspect } from "./console.ts";
+import { urls } from "./url_search_params.ts";
 
 interface URLParts {
   protocol: string;
@@ -11,29 +11,9 @@ interface URLParts {
   hostname: string;
   port: string;
   path: string;
-  query: string | null;
+  query: string;
   hash: string;
 }
-
-const patterns = {
-  protocol: "(?:([a-z]+):)",
-  authority: "(?://([^/?#]*))",
-  path: "([^?#]*)",
-  query: "(\\?[^#]*)",
-  hash: "(#.*)",
-
-  authentication: "(?:([^:]*)(?::([^@]*))?@)",
-  hostname: "([^:]+)",
-  port: "(?::(\\d+))",
-};
-
-const urlRegExp = new RegExp(
-  `^${patterns.protocol}?${patterns.authority}?${patterns.path}${patterns.query}?${patterns.hash}?`
-);
-
-const authorityRegExp = new RegExp(
-  `^${patterns.authentication}?${patterns.hostname}${patterns.port}?$`
-);
 
 const searchParamsMethods: Array<keyof URLSearchParams> = [
   "append",
@@ -41,27 +21,88 @@ const searchParamsMethods: Array<keyof URLSearchParams> = [
   "set",
 ];
 
-function parse(url: string): URLParts | undefined {
-  const urlMatch = urlRegExp.exec(url);
-  if (urlMatch) {
-    const [, , authority] = urlMatch;
-    const authorityMatch = authority
-      ? authorityRegExp.exec(authority)
-      : [null, null, null, null, null];
-    if (authorityMatch) {
-      return {
-        protocol: urlMatch[1] || "",
-        username: authorityMatch[1] || "",
-        password: authorityMatch[2] || "",
-        hostname: authorityMatch[3] || "",
-        port: authorityMatch[4] || "",
-        path: urlMatch[3] || "",
-        query: urlMatch[4] || "",
-        hash: urlMatch[5] || "",
-      };
-    }
+const specialSchemes = ["ftp", "file", "http", "https", "ws", "wss"];
+
+// https://url.spec.whatwg.org/#special-scheme
+const schemePorts: { [key: string]: string } = {
+  ftp: "21",
+  file: "",
+  http: "80",
+  https: "443",
+  ws: "80",
+  wss: "443",
+};
+const MAX_PORT = 2 ** 16 - 1;
+
+// Remove the part of the string that matches the pattern and return the
+// remainder (RHS) as well as the first captured group of the matched substring
+// (LHS). e.g.
+//      takePattern("https://deno.land:80", /^([a-z]+):[/]{2}/)
+//        = ["http", "deno.land:80"]
+//      takePattern("deno.land:80", /^([^:]+):)
+//        = ["deno.land", "80"]
+function takePattern(string: string, pattern: RegExp): [string, string] {
+  let capture = "";
+  const rest = string.replace(pattern, (_, capture_) => {
+    capture = capture_;
+    return "";
+  });
+  return [capture, rest];
+}
+
+function parse(url: string, isBase = true): URLParts | undefined {
+  const parts: Partial<URLParts> = {};
+  let restUrl;
+  [parts.protocol, restUrl] = takePattern(url.trim(), /^([a-z]+):/);
+  if (isBase && parts.protocol == "") {
+    return undefined;
   }
-  return undefined;
+  if (parts.protocol == "file") {
+    parts.username = "";
+    parts.password = "";
+    [parts.hostname, restUrl] = takePattern(restUrl, /^[/\\]{2}([^/\\?#]*)/);
+    parts.port = "";
+  } else if (specialSchemes.includes(parts.protocol)) {
+    let restAuthority;
+    [restAuthority, restUrl] = takePattern(
+      restUrl,
+      /^[/\\]{2}[/\\]*([^/\\?#]+)/
+    );
+    if (isBase && restAuthority == "") {
+      return undefined;
+    }
+    let restAuthentication;
+    [restAuthentication, restAuthority] = takePattern(restAuthority, /^(.*)@/);
+    [parts.username, restAuthentication] = takePattern(
+      restAuthentication,
+      /^([^:]*)/
+    );
+    parts.username = encodeUserinfo(parts.username);
+    [parts.password] = takePattern(restAuthentication, /^:(.*)/);
+    parts.password = encodeUserinfo(parts.password);
+    [parts.hostname, restAuthority] = takePattern(restAuthority, /^([^:]+)/);
+    [parts.port] = takePattern(restAuthority, /^:(.*)/);
+    if (!isValidPort(parts.port)) {
+      return undefined;
+    }
+  } else {
+    parts.username = "";
+    parts.password = "";
+    parts.hostname = "";
+    parts.port = "";
+  }
+  try {
+    parts.hostname = encodeHostname(parts.hostname).toLowerCase();
+  } catch {
+    return undefined;
+  }
+  [parts.path, restUrl] = takePattern(restUrl, /^([^?#]*)/);
+  parts.path = encodePathname(parts.path.replace(/\\/g, "/"));
+  [parts.query, restUrl] = takePattern(restUrl, /^(\?[^#]*)/);
+  parts.query = encodeSearch(parts.query);
+  [parts.hash] = takePattern(restUrl, /^(#.*)/);
+  parts.hash = encodeHash(parts.hash);
+  return parts as URLParts;
 }
 
 // Based on https://github.com/kelektiv/node-uuid
@@ -74,7 +115,7 @@ function generateUUID(): string {
 }
 
 // Keep it outside of URL to avoid any attempts of access.
-export const blobURLMap = new Map<string, domTypes.Blob>();
+export const blobURLMap = new Map<string, Blob>();
 
 function isAbsolutePath(path: string): boolean {
   return path.startsWith("/");
@@ -82,7 +123,12 @@ function isAbsolutePath(path: string): boolean {
 
 // Resolves `.`s and `..`s where possible.
 // Preserves repeating and trailing `/`s by design.
-function normalizePath(path: string): string {
+// On Windows, drive letter paths will be given a leading slash, and also a
+// trailing slash if there are no other components e.g. "C:" -> "/C:/".
+function normalizePath(path: string, isFilePath = false): string {
+  if (build.os == "windows" && isFilePath) {
+    path = path.replace(/^\/*([A-Za-z]:)(\/|$)/, "/$1/");
+  }
   const isAbsolute = isAbsolutePath(path);
   path = path.replace(/^\//, "");
   const pathSegments = path.split("/");
@@ -113,33 +159,60 @@ function normalizePath(path: string): string {
 }
 
 // Standard URL basing logic, applied to paths.
-function resolvePathFromBase(path: string, basePath: string): string {
-  const normalizedPath = normalizePath(path);
-  if (isAbsolutePath(normalizedPath)) {
-    return normalizedPath;
+function resolvePathFromBase(
+  path: string,
+  basePath: string,
+  isFilePath = false
+): string {
+  let normalizedPath = normalizePath(path, isFilePath);
+  let normalizedBasePath = normalizePath(basePath, isFilePath);
+
+  let driveLetterPrefix = "";
+  if (build.os == "windows" && isFilePath) {
+    let driveLetter = "";
+    let baseDriveLetter = "";
+    [driveLetter, normalizedPath] = takePattern(
+      normalizedPath,
+      /^(\/[A-Za-z]:)(?=\/)/
+    );
+    [baseDriveLetter, normalizedBasePath] = takePattern(
+      normalizedBasePath,
+      /^(\/[A-Za-z]:)(?=\/)/
+    );
+    driveLetterPrefix = driveLetter || baseDriveLetter;
   }
-  const normalizedBasePath = normalizePath(basePath);
+
+  if (isAbsolutePath(normalizedPath)) {
+    return `${driveLetterPrefix}${normalizedPath}`;
+  }
   if (!isAbsolutePath(normalizedBasePath)) {
     throw new TypeError("Base path must be absolute.");
   }
 
   // Special case.
   if (path == "") {
-    return normalizedBasePath;
+    return `${driveLetterPrefix}${normalizedBasePath}`;
   }
 
   // Remove everything after the last `/` in `normalizedBasePath`.
   const prefix = normalizedBasePath.replace(/[^\/]*$/, "");
-  // If `normalizedPath` ends with `.` or `..`, add a trailing space.
+  // If `normalizedPath` ends with `.` or `..`, add a trailing slash.
   const suffix = normalizedPath.replace(/(?<=(^|\/)(\.|\.\.))$/, "/");
 
-  return normalizePath(prefix + suffix);
+  return `${driveLetterPrefix}${normalizePath(prefix + suffix)}`;
+}
+
+function isValidPort(value: string): boolean {
+  // https://url.spec.whatwg.org/#port-state
+  if (value === "") true;
+  const port = Number(value);
+  return Number.isInteger(port) && port >= 0 && port <= MAX_PORT;
 }
 
 /** @internal */
 export const parts = new WeakMap<URL, URLParts>();
 
-export class URL implements domTypes.URL {
+export class URLImpl implements URL {
   #searchParams!: URLSearchParams;
 
   [customInspect](): string {
@@ -192,9 +265,7 @@ export class URL implements domTypes.URL {
         value = `#${value}`;
       }
       // hashes can contain % and # unescaped
-      parts.get(this)!.hash = escape(value)
-        .replace(/%25/g, "%")
-        .replace(/%23/g, "#");
+      parts.get(this)!.hash = encodeHash(value);
     }
   }
 
@@ -215,7 +286,9 @@ export class URL implements domTypes.URL {
 
   set hostname(value: string) {
     value = String(value);
-    parts.get(this)!.hostname = encodeURIComponent(value);
+    try {
+      parts.get(this)!.hostname = encodeHostname(value);
+    } catch {}
   }
 
   get href(): string {
@@ -252,7 +325,7 @@ export class URL implements domTypes.URL {
 
   set password(value: string) {
     value = String(value);
-    parts.get(this)!.password = encodeURIComponent(value);
+    parts.get(this)!.password = encodeUserinfo(value);
   }
 
   get pathname(): string {
@@ -265,18 +338,23 @@ export class URL implements domTypes.URL {
       value = `/${value}`;
     }
     // paths can contain % unescaped
-    parts.get(this)!.path = escape(value).replace(/%25/g, "%");
+    parts.get(this)!.path = encodePathname(value);
   }
 
   get port(): string {
-    return parts.get(this)!.port;
+    const port = parts.get(this)!.port;
+    if (schemePorts[parts.get(this)!.protocol] === port) {
+      return "";
+    }
+
+    return port;
   }
 
   set port(value: string) {
-    const port = parseInt(String(value), 10);
-    parts.get(this)!.port = isNaN(port)
-      ? ""
-      : Math.max(0, port % 2 ** 16).toString();
+    if (!isValidPort(value)) {
+      return;
+    }
+    parts.get(this)!.port = value.toString();
   }
 
   get protocol(): string {
@@ -294,27 +372,13 @@ export class URL implements domTypes.URL {
   }
 
   get search(): string {
-    const query = parts.get(this)!.query;
-    if (query === null || query === "") {
-      return "";
-    }
-
-    return query;
+    return parts.get(this)!.query;
   }
 
   set search(value: string) {
     value = String(value);
-    let query: string | null;
-
-    if (value === "") {
-      query = null;
-    } else if (value.charAt(0) !== "?") {
-      query = `?${value}`;
-    } else {
-      query = value;
-    }
-
-    parts.get(this)!.query = query;
+    const query = value == "" || value.charAt(0) == "?" ? value : `?${value}`;
+    parts.get(this)!.query = encodeSearch(query);
     this.#updateSearchParams();
   }
 
@@ -324,28 +388,30 @@ export class URL implements domTypes.URL {
 
   set username(value: string) {
     value = String(value);
-    parts.get(this)!.username = encodeURIComponent(value);
+    parts.get(this)!.username = encodeUserinfo(value);
   }
 
   get searchParams(): URLSearchParams {
     return this.#searchParams;
   }
 
-  constructor(url: string, base?: string | URL) {
+  constructor(url: string | URL, base?: string | URL) {
     let baseParts: URLParts | undefined;
     if (base) {
       baseParts = typeof base === "string" ? parse(base) : parts.get(base);
-      if (!baseParts || baseParts.protocol == "") {
+      if (baseParts == undefined) {
         throw new TypeError("Invalid base URL.");
       }
     }
 
-    const urlParts = parse(url);
-    if (!urlParts) {
+    const urlParts =
+      typeof url === "string" ? parse(url, !baseParts) : parts.get(url);
+    if (urlParts == undefined) {
       throw new TypeError("Invalid URL.");
     }
 
     if (urlParts.protocol) {
+      urlParts.path = normalizePath(urlParts.path, urlParts.protocol == "file");
       parts.set(this, urlParts);
     } else if (baseParts) {
       parts.set(this, {
@@ -354,13 +420,18 @@ export class URL implements domTypes.URL {
         password: baseParts.password,
         hostname: baseParts.hostname,
         port: baseParts.port,
-        path: resolvePathFromBase(urlParts.path, baseParts.path || "/"),
+        path: resolvePathFromBase(
+          urlParts.path,
+          baseParts.path || "/",
+          baseParts.protocol == "file"
+        ),
         query: urlParts.query,
         hash: urlParts.hash,
       });
     } else {
-      throw new TypeError("URL requires a base URL.");
+      throw new TypeError("Invalid URL.");
     }
+
     this.#updateSearchParams();
   }
 
@@ -373,8 +444,8 @@ export class URL implements domTypes.URL {
   }
 
   // TODO(kevinkassimo): implement MediaSource version in the future.
-  static createObjectURL(b: domTypes.Blob): string {
-    const origin = globalThis.location.origin || "http://deno-opaque-origin";
+  static createObjectURL(b: Blob): string {
+    const origin = "http://deno-opaque-origin";
     const key = `blob:${origin}/${generateUUID()}`;
     blobURLMap.set(key, b);
     return key;
@@ -394,4 +465,57 @@ export class URL implements domTypes.URL {
     // persisten storage for per globalThis.location.origin at some point.
     blobURLMap.delete(url);
   }
+}
+
+function charInC0ControlSet(c: string): boolean {
+  return c >= "\u0000" && c <= "\u001F";
+}
+
+function charInSearchSet(c: string): boolean {
+  // prettier-ignore
+  return charInC0ControlSet(c) || ["\u0020", "\u0022", "\u0023", "\u0027", "\u003C", "\u003E"].includes(c) || c > "\u007E";
+}
+
+function charInFragmentSet(c: string): boolean {
+  // prettier-ignore
+  return charInC0ControlSet(c) || ["\u0020", "\u0022", "\u003C", "\u003E", "\u0060"].includes(c);
+}
+
+function charInPathSet(c: string): boolean {
+  // prettier-ignore
+  return charInFragmentSet(c) || ["\u0023", "\u003F", "\u007B", "\u007D"].includes(c);
+}
+
+function charInUserinfoSet(c: string): boolean {
+  // "\u0027" ("'") seemingly isn't in the spec, but matches Chrome and Firefox.
+  // prettier-ignore
+  return charInPathSet(c) || ["\u0027", "\u002F", "\u003A", "\u003B", "\u003D", "\u0040", "\u005B", "\u005C", "\u005D", "\u005E", "\u007C"].includes(c);
+}
+
+function encodeChar(c: string): string {
+  return `%${c.charCodeAt(0).toString(16)}`.toUpperCase();
+}
+
+function encodeUserinfo(s: string): string {
+  return [...s].map((c) => (charInUserinfoSet(c) ? encodeChar(c) : c)).join("");
+}
+
+function encodeHostname(s: string): string {
+  // FIXME: https://url.spec.whatwg.org/#idna
+  if (s.includes(":")) {
+    throw new TypeError("Invalid hostname.");
+  }
+  return encodeURIComponent(s);
+}
+
+function encodePathname(s: string): string {
+  return [...s].map((c) => (charInPathSet(c) ? encodeChar(c) : c)).join("");
+}
+
+function encodeSearch(s: string): string {
+  return [...s].map((c) => (charInSearchSet(c) ? encodeChar(c) : c)).join("");
+}
+
+function encodeHash(s: string): string {
+  return [...s].map((c) => (charInFragmentSet(c) ? encodeChar(c) : c)).join("");
 }

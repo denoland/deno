@@ -6,6 +6,7 @@ Deno.test("[examples/cat] print multiple files", async () => {
   const process = Deno.run({
     cmd: [
       Deno.execPath(),
+      "run",
       "--allow-read",
       "cat.ts",
       "testdata/cat/hello.txt",

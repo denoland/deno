@@ -1,16 +1,12 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { isTypedArray, TypedArray } from "./util.ts";
-import { TextEncoder } from "./text_encoding.ts";
-import { File, stdout } from "../files.ts";
+import { isInvalidDate, isTypedArray, TypedArray } from "./util.ts";
 import { cliTable } from "./console_table.ts";
 import { exposeForTest } from "../internals.ts";
 import { PromiseState } from "./promise.ts";
 
 type ConsoleContext = Set<unknown>;
 type InspectOptions = Partial<{
-  showHidden: boolean;
   depth: number;
-  colors: boolean;
   indentLevel: number;
 }>;
 
@@ -37,16 +33,6 @@ export class CSI {
 }
 
 /* eslint-disable @typescript-eslint/no-use-before-define */
-
-function cursorTo(stream: File, _x: number, _y?: number): void {
-  const uint8 = new TextEncoder().encode(CSI.kClear);
-  stream.writeSync(uint8);
-}
-
-function clearScreenDown(stream: File): void {
-  const uint8 = new TextEncoder().encode(CSI.kClearScreenDown);
-  stream.writeSync(uint8);
-}
 
 function getClassInstanceName(instance: unknown): string {
   if (typeof instance !== "object") {
@@ -421,8 +407,7 @@ function createWeakMapString(): string {
 }
 
 function createDateString(value: Date): string {
-  // without quotes, ISO format
-  return value.toISOString();
+  return isInvalidDate(value) ? "Invalid Date" : value.toISOString(); // without quotes, ISO format
 }
 
 function createRegExpString(value: RegExp): string {
@@ -933,8 +918,8 @@ export class Console {
 
   clear = (): void => {
     this.indentLevel = 0;
-    cursorTo(stdout, 0, 0);
-    clearScreenDown(stdout);
+    this.#printFunc(CSI.kClear, false);
+    this.#printFunc(CSI.kClearScreenDown, false);
   };
 
   trace = (...args: unknown[]): void => {
@@ -953,7 +938,7 @@ export class Console {
   }
 }
 
-export const customInspect = Symbol.for("Deno.customInspect");
+export const customInspect = Symbol("Deno.symbols.customInspect");
 
 export function inspect(
   value: unknown,

@@ -1,12 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-/* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, no-var */
 
 /// <reference no-default-lib="true" />
-// TODO: we need to remove this, but Fetch::Response::Body implements Reader
-// which requires Deno.EOF, and we shouldn't be leaking that, but https_proxy
-// at the least requires the Reader interface on Body, which it shouldn't
-/// <reference lib="deno.ns" />
 /// <reference lib="esnext" />
 
 // This follows the WebIDL at: https://webassembly.github.io/spec/js-api/
@@ -180,22 +176,23 @@ declare namespace WebAssembly {
 
 /** Sets a timer which executes a function once after the timer expires. */
 declare function setTimeout(
-  cb: (...args: unknown[]) => void,
+  cb: (...args: any[]) => void,
   delay?: number,
-  ...args: unknown[]
+  ...args: any[]
 ): number;
+
 /** Repeatedly calls a function , with a fixed time delay between each call. */
 declare function setInterval(
-  cb: (...args: unknown[]) => void,
+  cb: (...args: any[]) => void,
   delay?: number,
-  ...args: unknown[]
+  ...args: any[]
 ): number;
 declare function clearTimeout(id?: number): void;
 declare function clearInterval(id?: number): void;
 declare function queueMicrotask(func: Function): void;
 
-declare const console: Console;
-declare const location: Location;
+declare var console: Console;
+declare var crypto: Crypto;
 
 declare function addEventListener(
   type: string,
@@ -248,6 +245,24 @@ interface ReadableStreamDefaultReader<R = any> {
   releaseLock(): void;
 }
 
+interface ReadableStreamReader<R = any> {
+  cancel(): Promise<void>;
+  read(): Promise<ReadableStreamReadResult<R>>;
+  releaseLock(): void;
+}
+
+interface ReadableByteStreamControllerCallback {
+  (controller: ReadableByteStreamController): void | PromiseLike<void>;
+}
+
+interface UnderlyingByteSource {
+  autoAllocateChunkSize?: number;
+  cancel?: ReadableStreamErrorCallback;
+  pull?: ReadableByteStreamControllerCallback;
+  start?: ReadableByteStreamControllerCallback;
+  type: "bytes";
+}
+
 interface UnderlyingSource<R = any> {
   cancel?: ReadableStreamErrorCallback;
   pull?: ReadableStreamDefaultControllerCallback<R>;
@@ -263,11 +278,50 @@ interface ReadableStreamDefaultControllerCallback<R> {
   (controller: ReadableStreamDefaultController<R>): void | PromiseLike<void>;
 }
 
-interface ReadableStreamDefaultController<R> {
-  readonly desiredSize: number;
-  enqueue(chunk?: R): void;
+interface ReadableStreamDefaultController<R = any> {
+  readonly desiredSize: number | null;
   close(): void;
-  error(e?: any): void;
+  enqueue(chunk: R): void;
+  error(error?: any): void;
+}
+
+interface ReadableByteStreamController {
+  readonly byobRequest: undefined;
+  readonly desiredSize: number | null;
+  close(): void;
+  enqueue(chunk: ArrayBufferView): void;
+  error(error?: any): void;
+}
+
+interface PipeOptions {
+  preventAbort?: boolean;
+  preventCancel?: boolean;
+  preventClose?: boolean;
+  signal?: AbortSignal;
+}
+
+interface QueuingStrategySizeCallback<T = any> {
+  (chunk: T): number;
+}
+
+interface QueuingStrategy<T = any> {
+  highWaterMark?: number;
+  size?: QueuingStrategySizeCallback<T>;
+}
+
+/** This Streams API interface provides a built-in byte length queuing strategy
+ * that can be used when constructing streams. */
+declare class CountQueuingStrategy implements QueuingStrategy {
+  constructor(options: { highWaterMark: number });
+  highWaterMark: number;
+  size(chunk: any): 1;
+}
+
+declare class ByteLengthQueuingStrategy
+  implements QueuingStrategy<ArrayBufferView> {
+  constructor(options: { highWaterMark: number });
+  highWaterMark: number;
+  size(chunk: ArrayBufferView): number;
 }
 
 /** This Streams API interface represents a readable stream of byte data. The
@@ -276,25 +330,90 @@ interface ReadableStreamDefaultController<R> {
 interface ReadableStream<R = any> {
   readonly locked: boolean;
   cancel(reason?: any): Promise<void>;
-  // TODO(ry) It doesn't seem like Chrome supports this.
+  getIterator(options?: { preventCancel?: boolean }): AsyncIterableIterator<R>;
   // getReader(options: { mode: "byob" }): ReadableStreamBYOBReader;
   getReader(): ReadableStreamDefaultReader<R>;
+  pipeThrough<T>(
+    {
+      writable,
+      readable,
+    }: {
+      writable: WritableStream<R>;
+      readable: ReadableStream<T>;
+    },
+    options?: PipeOptions
+  ): ReadableStream<T>;
+  pipeTo(dest: WritableStream<R>, options?: PipeOptions): Promise<void>;
   tee(): [ReadableStream<R>, ReadableStream<R>];
+  [Symbol.asyncIterator](options?: {
+    preventCancel?: boolean;
+  }): AsyncIterableIterator<R>;
 }
 
-declare const ReadableStream: {
+declare var ReadableStream: {
   prototype: ReadableStream;
-  // TODO(ry) This doesn't match lib.dom.d.ts
-  new <R = any>(src?: UnderlyingSource<R>): ReadableStream<R>;
+  new (
+    underlyingSource: UnderlyingByteSource,
+    strategy?: { highWaterMark?: number; size?: undefined }
+  ): ReadableStream<Uint8Array>;
+  new <R = any>(
+    underlyingSource?: UnderlyingSource<R>,
+    strategy?: QueuingStrategy<R>
+  ): ReadableStream<R>;
 };
 
-/** This Streams API interface provides a standard abstraction for writing streaming data to a destination, known as a sink. This object comes with built-in backpressure and queuing. */
-interface WritableStream<W = any> {
+interface WritableStreamDefaultControllerCloseCallback {
+  (): void | PromiseLike<void>;
+}
+
+interface WritableStreamDefaultControllerStartCallback {
+  (controller: WritableStreamDefaultController): void | PromiseLike<void>;
+}
+
+interface WritableStreamDefaultControllerWriteCallback<W> {
+  (chunk: W, controller: WritableStreamDefaultController): void | PromiseLike<
+    void
+  >;
+}
+
+interface WritableStreamErrorCallback {
+  (reason: any): void | PromiseLike<void>;
+}
+
+interface UnderlyingSink<W = any> {
+  abort?: WritableStreamErrorCallback;
+  close?: WritableStreamDefaultControllerCloseCallback;
+  start?: WritableStreamDefaultControllerStartCallback;
+  type?: undefined;
+  write?: WritableStreamDefaultControllerWriteCallback<W>;
+}
+
+/** This Streams API interface provides a standard abstraction for writing
+ * streaming data to a destination, known as a sink. This object comes with
+ * built-in backpressure and queuing. */
+declare class WritableStream<W = any> {
+  constructor(
+    underlyingSink?: UnderlyingSink<W>,
+    strategy?: QueuingStrategy<W>
+  );
   readonly locked: boolean;
   abort(reason?: any): Promise<void>;
+  close(): Promise<void>;
   getWriter(): WritableStreamDefaultWriter<W>;
 }
 
+/** This Streams API interface represents a controller allowing control of a
+ * WritableStream's state. When constructing a WritableStream, the underlying
+ * sink is given a corresponding WritableStreamDefaultController instance to
+ * manipulate. */
+interface WritableStreamDefaultController {
+  error(error?: any): void;
+}
+
+/** This Streams API interface is the object returned by
+ * WritableStream.getWriter() and once created locks the < writer to the
+ * WritableStream ensuring that no other streams can write to the underlying
+ * sink. */
 interface WritableStreamDefaultWriter<W = any> {
   readonly closed: Promise<void>;
   readonly desiredSize: number | null;
@@ -303,6 +422,42 @@ interface WritableStreamDefaultWriter<W = any> {
   close(): Promise<void>;
   releaseLock(): void;
   write(chunk: W): Promise<void>;
+}
+
+declare class TransformStream<I = any, O = any> {
+  constructor(
+    transformer?: Transformer<I, O>,
+    writableStrategy?: QueuingStrategy<I>,
+    readableStrategy?: QueuingStrategy<O>
+  );
+  readonly readable: ReadableStream<O>;
+  readonly writable: WritableStream<I>;
+}
+
+interface TransformStreamDefaultController<O = any> {
+  readonly desiredSize: number | null;
+  enqueue(chunk: O): void;
+  error(reason?: any): void;
+  terminate(): void;
+}
+
+interface Transformer<I = any, O = any> {
+  flush?: TransformStreamDefaultControllerCallback<O>;
+  readableType?: undefined;
+  start?: TransformStreamDefaultControllerCallback<O>;
+  transform?: TransformStreamDefaultControllerTransformCallback<I, O>;
+  writableType?: undefined;
+}
+
+interface TransformStreamDefaultControllerCallback<O> {
+  (controller: TransformStreamDefaultController<O>): void | PromiseLike<void>;
+}
+
+interface TransformStreamDefaultControllerTransformCallback<I, O> {
+  (
+    chunk: I,
+    controller: TransformStreamDefaultController<O>
+  ): void | PromiseLike<void>;
 }
 
 interface DOMStringList {
@@ -315,66 +470,10 @@ interface DOMStringList {
   [index: number]: string;
 }
 
-/** The location (URL) of the object it is linked to. Changes done on it are
- * reflected on the object it relates to. Both the Document and Window
- * interface have such a linked Location, accessible via Document.location and
- * Window.location respectively. */
-declare interface Location {
-  /** Returns a DOMStringList object listing the origins of the ancestor
-   * browsing contexts, from the parent browsing context to the top-level
-   * browsing context. */
-  readonly ancestorOrigins: DOMStringList;
-  /** Returns the Location object's URL's fragment (includes leading "#" if
-   * non-empty).
-   *
-   * Can be set, to navigate to the same URL with a changed fragment (ignores
-   * leading "#"). */
-  hash: string;
-  /** Returns the Location object's URL's host and port (if different from the
-   * default port for the scheme).
-   *
-   * Can be set, to navigate to the same URL with a changed host and port. */
-  host: string;
-  /** Returns the Location object's URL's host.
-   *
-   * Can be set, to navigate to the same URL with a changed host. */
-  hostname: string;
-  /** Returns the Location object's URL.
-   *
-   * Can be set, to navigate to the given URL. */
-  href: string;
-  toString(): string;
-  /** Returns the Location object's URL's origin. */
-  readonly origin: string;
-  /** Returns the Location object's URL's path.
-   *
-   * Can be set, to navigate to the same URL with a changed path. */
-  pathname: string;
-  /** Returns the Location object's URL's port.
-   *
-   * Can be set, to navigate to the same URL with a changed port. */
-  port: string;
-  /** Returns the Location object's URL's scheme.
-   *
-   * Can be set, to navigate to the same URL with a changed scheme. */
-  protocol: string;
-  /** Returns the Location object's URL's query (includes leading "?" if
-   * non-empty).
-   *
-   * Can be set, to navigate to the same URL with a changed query (ignores
-   * leading "?"). */
-  search: string;
-  /**
-   * Navigates to the given URL.
-   */
-  assign(url: string): void;
-  /**
-   * Reloads the current page.
-   */
-  reload(): void;
-  /** Removes the current page from the session history and navigates to the
-   * given URL. */
-  replace(url: string): void;
+declare class DOMException extends Error {
+  constructor(message?: string, name?: string);
+  readonly name: string;
+  readonly message: string;
 }
 
 type BufferSource = ArrayBufferView | ArrayBuffer;
@@ -431,9 +530,7 @@ declare class Console {
   dir: (
     obj: unknown,
     options?: Partial<{
-      showHidden: boolean;
       depth: number;
-      colors: boolean;
       indentLevel: number;
     }>
   ) => void;
@@ -480,6 +577,26 @@ declare class Console {
   clear: () => void;
   trace: (...args: unknown[]) => void;
   static [Symbol.hasInstance](instance: Console): boolean;
+}
+
+declare interface Crypto {
+  readonly subtle: null;
+  getRandomValues<
+    T extends
+      | Int8Array
+      | Int16Array
+      | Int32Array
+      | Uint8Array
+      | Uint16Array
+      | Uint32Array
+      | Uint8ClampedArray
+      | Float32Array
+      | Float64Array
+      | DataView
+      | null
+  >(
+    array: T
+  ): T;
 }
 
 type FormDataEntryValue = File | string;
@@ -745,7 +862,7 @@ interface Request extends Body {
   readonly integrity: string;
   /**
    * Returns a boolean indicating whether or not request is for a history
-   * navigation (a.k.a. back-foward navigation).
+   * navigation (a.k.a. back-forward navigation).
    */
   readonly isHistoryNavigation: boolean;
   /**
@@ -888,37 +1005,47 @@ declare class TextEncoder {
 interface URLSearchParams {
   /** Appends a specified key/value pair as a new search parameter.
    *
-   *       let searchParams = new URLSearchParams();
-   *       searchParams.append('name', 'first');
-   *       searchParams.append('name', 'second');
+   * ```ts
+   * let searchParams = new URLSearchParams();
+   * searchParams.append('name', 'first');
+   * searchParams.append('name', 'second');
+   * ```
    */
   append(name: string, value: string): void;
 
   /** Deletes the given search parameter and its associated value,
    * from the list of all search parameters.
    *
-   *       let searchParams = new URLSearchParams([['name', 'value']]);
-   *       searchParams.delete('name');
+   * ```ts
+   * let searchParams = new URLSearchParams([['name', 'value']]);
+   * searchParams.delete('name');
+   * ```
    */
   delete(name: string): void;
 
   /** Returns all the values associated with a given search parameter
    * as an array.
    *
-   *       searchParams.getAll('name');
+   * ```ts
+   * searchParams.getAll('name');
+   * ```
    */
   getAll(name: string): string[];
 
   /** Returns the first value associated to the given search parameter.
    *
-   *       searchParams.get('name');
+   * ```ts
+   * searchParams.get('name');
+   * ```
    */
   get(name: string): string | null;
 
   /** Returns a Boolean that indicates whether a parameter with the
    * specified name exists.
    *
-   *       searchParams.has('name');
+   * ```ts
+   * searchParams.has('name');
+   * ```
    */
   has(name: string): boolean;
 
@@ -927,7 +1054,9 @@ interface URLSearchParams {
    * deletes the others. If the search parameter doesn't exist, this
    * method creates it.
    *
-   *       searchParams.set('name', 'value');
+   * ```ts
+   * searchParams.set('name', 'value');
+   * ```
    */
   set(name: string, value: string): void;
 
@@ -935,7 +1064,9 @@ interface URLSearchParams {
    * return undefined. The sort order is according to Unicode code
    * points of the keys.
    *
-   *       searchParams.sort();
+   * ```ts
+   * searchParams.sort();
+   * ```
    */
   sort(): void;
 
@@ -943,10 +1074,12 @@ interface URLSearchParams {
    * place and return undefined. Optionally accepts an object to use
    * as this when executing callback as second argument.
    *
-   *       const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
-   *       params.forEach((value, key, parent) => {
-   *         console.log(value, key, parent);
-   *       });
+   * ```ts
+   * const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
+   * params.forEach((value, key, parent) => {
+   *   console.log(value, key, parent);
+   * });
+   * ```
    *
    */
   forEach(
@@ -957,46 +1090,56 @@ interface URLSearchParams {
   /** Returns an iterator allowing to go through all keys contained
    * in this object.
    *
-   *       const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
-   *       for (const key of params.keys()) {
-   *         console.log(key);
-   *       }
+   * ```ts
+   * const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
+   * for (const key of params.keys()) {
+   *   console.log(key);
+   * }
+   * ```
    */
   keys(): IterableIterator<string>;
 
   /** Returns an iterator allowing to go through all values contained
    * in this object.
    *
-   *       const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
-   *       for (const value of params.values()) {
-   *         console.log(value);
-   *       }
+   * ```ts
+   * const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
+   * for (const value of params.values()) {
+   *   console.log(value);
+   * }
+   * ```
    */
   values(): IterableIterator<string>;
 
   /** Returns an iterator allowing to go through all key/value
    * pairs contained in this object.
    *
-   *       const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
-   *       for (const [key, value] of params.entries()) {
-   *         console.log(key, value);
-   *       }
+   * ```ts
+   * const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
+   * for (const [key, value] of params.entries()) {
+   *   console.log(key, value);
+   * }
+   * ```
    */
   entries(): IterableIterator<[string, string]>;
 
   /** Returns an iterator allowing to go through all key/value
    * pairs contained in this object.
    *
-   *       const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
-   *       for (const [key, value] of params) {
-   *         console.log(key, value);
-   *       }
+   * ```ts
+   * const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
+   * for (const [key, value] of params) {
+   *   console.log(key, value);
+   * }
+   * ```
    */
   [Symbol.iterator](): IterableIterator<[string, string]>;
 
   /** Returns a query string suitable for use in a URL.
    *
-   *        searchParams.toString();
+   * ```ts
+   * searchParams.toString();
+   * ```
    */
   toString(): string;
 }
@@ -1029,23 +1172,101 @@ interface URL {
 
 declare const URL: {
   prototype: URL;
-  new (url: string, base?: string | URL): URL;
+  new (url: string | URL, base?: string | URL): URL;
   createObjectURL(object: any): string;
   revokeObjectURL(url: string): void;
 };
 
-declare class Worker {
-  onerror?: (e: Event) => void;
-  onmessage?: (data: any) => void;
-  onmessageerror?: () => void;
+interface MessageEventInit extends EventInit {
+  data?: any;
+  origin?: string;
+  lastEventId?: string;
+}
+
+declare class MessageEvent extends Event {
+  readonly data: any;
+  readonly origin: string;
+  readonly lastEventId: string;
+  constructor(type: string, eventInitDict?: MessageEventInit);
+}
+
+interface ErrorEventInit extends EventInit {
+  message?: string;
+  filename?: string;
+  lineno?: number;
+  colno?: number;
+  error?: any;
+}
+
+declare class ErrorEvent extends Event {
+  readonly message: string;
+  readonly filename: string;
+  readonly lineno: number;
+  readonly colno: number;
+  readonly error: any;
+  constructor(type: string, eventInitDict?: ErrorEventInit);
+}
+
+interface PostMessageOptions {
+  transfer?: any[];
+}
+
+declare class Worker extends EventTarget {
+  onerror?: (e: ErrorEvent) => void;
+  onmessage?: (e: MessageEvent) => void;
+  onmessageerror?: (e: MessageEvent) => void;
   constructor(
     specifier: string,
     options?: {
       type?: "classic" | "module";
       name?: string;
+      /** UNSTABLE: New API. Expect many changes; most likely this
+       * field will be made into an object for more granular
+       * configuration of worker thread (permissions, import map, etc.).
+       *
+       * Set to `true` to make `Deno` namespace and all of its methods
+       * available to worker thread.
+       *
+       * Currently worker inherits permissions from main thread (permissions
+       * given using `--allow-*` flags).
+       * Configurable permissions are on the roadmap to be implemented.
+       *
+       * Example:
+       *
+       * ```ts
+       * // mod.ts
+       * const worker = new Worker("./deno_worker.ts", { type: "module", deno: true });
+       * worker.postMessage({ cmd: "readFile", fileName: "./log.txt" });
+       *
+       * // deno_worker.ts
+       *
+       *
+       * self.onmessage = async function (e) {
+       *     const { cmd, fileName } = e.data;
+       *     if (cmd !== "readFile") {
+       *         throw new Error("Invalid command");
+       *     }
+       *     const buf = await Deno.readFile(fileName);
+       *     const fileContents = new TextDecoder().decode(buf);
+       *     console.log(fileContents);
+       * }
+       * ```
+       *
+       * // log.txt
+       * hello world
+       * hello world 2
+       *
+       * // run program
+       * $ deno run --allow-read mod.ts
+       * hello world
+       * hello world2
+       *
+       */
+      deno?: boolean;
     }
   );
-  postMessage(data: any): void;
+  postMessage(message: any, transfer: ArrayBuffer[]): void;
+  postMessage(message: any, options?: PostMessageOptions): void;
   terminate(): void;
 }
 
@@ -1054,104 +1275,12 @@ declare namespace performance {
    *
    * Use the flag --allow-hrtime return a precise value.
    *
-   *       const t = performance.now();
-   *       console.log(`${t} ms since start!`);
+   * ```ts
+   * const t = performance.now();
+   * console.log(`${t} ms since start!`);
+   * ```
    */
   export function now(): number;
-}
-
-/** An event which takes place in the DOM. */
-interface Event {
-  /**
-   * Returns true or false depending on how event was initialized. True if
-   * event goes through its target's ancestors in reverse tree order, and
-   * false otherwise.
-   */
-  readonly bubbles: boolean;
-
-  // TODO(ry) Remove cancelBubbleImmediately - non-standard extension.
-  cancelBubbleImmediately: boolean;
-
-  cancelBubble: boolean;
-  /**
-   * Returns true or false depending on how event was initialized. Its return
-   * value does not always carry meaning, but true can indicate that part of
-   * the operation during which event was dispatched, can be canceled by
-   * invoking the preventDefault() method.
-   */
-  readonly cancelable: boolean;
-  /**
-   * Returns true or false depending on how event was initialized. True if
-   * event invokes listeners past a ShadowRoot node that is the root of its
-   * target, and false otherwise.
-   */
-  readonly composed: boolean;
-  /**
-   * Returns the object whose event listener's callback is currently being
-   * invoked.
-   */
-  readonly currentTarget: EventTarget | null;
-  /**
-   * Returns true if preventDefault() was invoked successfully to indicate
-   * cancelation, and false otherwise.
-   */
-  readonly defaultPrevented: boolean;
-  /**
-   * Returns the event's phase, which is one of NONE, CAPTURING_PHASE,
-   * AT_TARGET, and BUBBLING_PHASE.
-   */
-  readonly eventPhase: number;
-  /**
-   * Returns true if event was dispatched by the user agent, and false
-   * otherwise.
-   */
-  readonly isTrusted: boolean;
-  returnValue: boolean;
-  /** @deprecated */
-  readonly srcElement: EventTarget | null;
-  /**
-   * Returns the object to which event is dispatched (its target).
-   */
-  readonly target: EventTarget | null;
-  /**
-   * Returns the event's timestamp as the number of milliseconds measured
-   * relative to the time origin.
-   */
-  readonly timeStamp: number;
-  /**
-   * Returns the type of event, e.g. "click", "hashchange", or "submit".
-   */
-  readonly type: string;
-  /**
-   * Returns the invocation target objects of event's path (objects on which
-   * listeners will be invoked), except for any nodes in shadow trees of which
-   * the shadow root's mode is "closed" that are not reachable from event's
-   * currentTarget.
-   */
-  composedPath(): EventTarget[];
-  initEvent(type: string, bubbles?: boolean, cancelable?: boolean): void;
-  /**
-   * If invoked when the cancelable attribute value is true, and while
-   * executing a listener for the event with passive set to false, signals to
-   * the operation that caused event to be dispatched that it needs to be
-   * canceled.
-   */
-  preventDefault(): void;
-  /**
-   * Invoking this method prevents event from reaching any registered event
-   * listeners after the current one finishes running and, when dispatched in
-   * a tree, also prevents event from reaching any other objects.
-   */
-  stopImmediatePropagation(): void;
-  /**
-   * When dispatched in a tree, invoking this method prevents event from
-   * reaching any objects other than the current object.
-   */
-  stopPropagation(): void;
-  readonly AT_TARGET: number;
-  readonly BUBBLING_PHASE: number;
-  readonly CAPTURING_PHASE: number;
-  readonly NONE: number;
 }
 
 interface EventInit {
@@ -1160,22 +1289,75 @@ interface EventInit {
   composed?: boolean;
 }
 
-declare const Event: {
-  prototype: Event;
-  new (type: string, eventInitDict?: EventInit): Event;
+/** An event which takes place in the DOM. */
+declare class Event {
+  constructor(type: string, eventInitDict?: EventInit);
+  /** Returns true or false depending on how event was initialized. True if
+   * event goes through its target's ancestors in reverse tree order, and
+   * false otherwise. */
+  readonly bubbles: boolean;
+  cancelBubble: boolean;
+  /** Returns true or false depending on how event was initialized. Its return
+   * value does not always carry meaning, but true can indicate that part of the
+   * operation during which event was dispatched, can be canceled by invoking
+   * the preventDefault() method. */
+  readonly cancelable: boolean;
+  /** Returns true or false depending on how event was initialized. True if
+   * event invokes listeners past a ShadowRoot node that is the root of its
+   * target, and false otherwise. */
+  readonly composed: boolean;
+  /** Returns the object whose event listener's callback is currently being
+   * invoked. */
+  readonly currentTarget: EventTarget | null;
+  /** Returns true if preventDefault() was invoked successfully to indicate
+   * cancellation, and false otherwise. */
+  readonly defaultPrevented: boolean;
+  /** Returns the event's phase, which is one of NONE, CAPTURING_PHASE,
+   * AT_TARGET, and BUBBLING_PHASE. */
+  readonly eventPhase: number;
+  /** Returns true if event was dispatched by the user agent, and false
+   * otherwise. */
+  readonly isTrusted: boolean;
+  /** Returns the object to which event is dispatched (its target). */
+  readonly target: EventTarget | null;
+  /** Returns the event's timestamp as the number of milliseconds measured
+   * relative to the time origin. */
+  readonly timeStamp: number;
+  /** Returns the type of event, e.g. "click", "hashchange", or "submit". */
+  readonly type: string;
+  /** Returns the invocation target objects of event's path (objects on which
+   * listeners will be invoked), except for any nodes in shadow trees of which
+   * the shadow root's mode is "closed" that are not reachable from event's
+   * currentTarget. */
+  composedPath(): EventTarget[];
+  /** If invoked when the cancelable attribute value is true, and while
+   * executing a listener for the event with passive set to false, signals to
+   * the operation that caused event to be dispatched that it needs to be
+   * canceled. */
+  preventDefault(): void;
+  /** Invoking this method prevents event from reaching any registered event
+   * listeners after the current one finishes running and, when dispatched in a
+   * tree, also prevents event from reaching any other objects. */
+  stopImmediatePropagation(): void;
+  /** When dispatched in a tree, invoking this method prevents event from
+   * reaching any objects other than the current object. */
+  stopPropagation(): void;
   readonly AT_TARGET: number;
   readonly BUBBLING_PHASE: number;
   readonly CAPTURING_PHASE: number;
   readonly NONE: number;
-};
+  static readonly AT_TARGET: number;
+  static readonly BUBBLING_PHASE: number;
+  static readonly CAPTURING_PHASE: number;
+  static readonly NONE: number;
+}
 
 /**
  * EventTarget is a DOM interface implemented by objects that can receive events
  * and may have listeners for them.
  */
-interface EventTarget {
-  /**
-   * Appends an event listener for events whose type attribute value is type.
+declare class EventTarget {
+  /** Appends an event listener for events whose type attribute value is type.
    * The callback argument sets the callback that will be invoked when the event
    * is dispatched.
    *
@@ -1197,41 +1379,32 @@ interface EventTarget {
    * invoked once after which the event listener will be removed.
    *
    * The event listener is appended to target's event listener list and is not
-   * appended if it has the same type, callback, and capture.
-   */
+   * appended if it has the same type, callback, and capture. */
   addEventListener(
     type: string,
     listener: EventListenerOrEventListenerObject | null,
     options?: boolean | AddEventListenerOptions
   ): void;
-  /**
-   * Dispatches a synthetic event event to target and returns true if either
+  /** Dispatches a synthetic event event to target and returns true if either
    * event's cancelable attribute value is false or its preventDefault() method
-   * was not invoked, and false otherwise.
-   */
+   * was not invoked, and false otherwise. */
   dispatchEvent(event: Event): boolean;
-  /**
-   * Removes the event listener in target's event listener list with the same
-   * type, callback, and options.
-   */
+  /** Removes the event listener in target's event listener list with the same
+   * type, callback, and options. */
   removeEventListener(
     type: string,
     callback: EventListenerOrEventListenerObject | null,
     options?: EventListenerOptions | boolean
   ): void;
+  [Symbol.toStringTag]: string;
 }
 
-declare const EventTarget: {
-  prototype: EventTarget;
-  new (): EventTarget;
-};
-
 interface EventListener {
-  (evt: Event): void;
+  (evt: Event): void | Promise<void>;
 }
 
 interface EventListenerObject {
-  handleEvent(evt: Event): void;
+  handleEvent(evt: Event): void | Promise<void>;
 }
 
 declare type EventListenerOrEventListenerObject =
@@ -1257,27 +1430,26 @@ interface ProgressEvent<T extends EventTarget = EventTarget> extends Event {
   readonly total: number;
 }
 
-interface CustomEvent<T = any> extends Event {
-  /**
-   * Returns any custom data event was created with. Typically used for synthetic events.
-   */
-  readonly detail: T;
-  initCustomEvent(
-    typeArg: string,
-    canBubbleArg: boolean,
-    cancelableArg: boolean,
-    detailArg: T
-  ): void;
-}
-
 interface CustomEventInit<T = any> extends EventInit {
   detail?: T;
 }
 
-declare const CustomEvent: {
-  prototype: CustomEvent;
-  new <T>(typeArg: string, eventInitDict?: CustomEventInit<T>): CustomEvent<T>;
-};
+declare class CustomEvent<T = any> extends Event {
+  constructor(typeArg: string, eventInitDict?: CustomEventInit<T>);
+  /** Returns any custom data event was created with. Typically used for
+   * synthetic events. */
+  readonly detail: T;
+}
+
+/** A controller object that allows you to abort one or more DOM requests as and
+ * when desired. */
+declare class AbortController {
+  /** Returns the AbortSignal object associated with this object. */
+  readonly signal: AbortSignal;
+  /** Invoking this method will set this object's AbortSignal's aborted flag and
+   * signal to any observers that the associated activity is to be aborted. */
+  abort(): void;
+}
 
 interface AbortSignalEventMap {
   abort: Event;
@@ -1286,10 +1458,8 @@ interface AbortSignalEventMap {
 /** A signal object that allows you to communicate with a DOM request (such as a
  * Fetch) and abort it if required via an AbortController object. */
 interface AbortSignal extends EventTarget {
-  /**
-   * Returns true if this AbortSignal's AbortController has signaled to abort,
-   * and false otherwise.
-   */
+  /** Returns true if this AbortSignal's AbortController has signaled to abort,
+   * and false otherwise. */
   readonly aborted: boolean;
   onabort: ((this: AbortSignal, ev: Event) => any) | null;
   addEventListener<K extends keyof AbortSignalEventMap>(

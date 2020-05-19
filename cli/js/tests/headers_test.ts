@@ -1,9 +1,14 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { unitTest, assert, assertEquals } from "./test_util.ts";
+import {
+  unitTest,
+  assert,
+  assertEquals,
+  assertStrContains,
+} from "./test_util.ts";
 const {
   stringifyArgs,
   // @ts-ignore TypeScript (as of 3.7) does not support indexing namespaces by symbol
-} = Deno[Deno.symbols.internal];
+} = Deno[Deno.internal];
 
 // Logic heavily copied from web-platform-tests, make
 // sure pass mostly header basic test
@@ -276,9 +281,9 @@ unitTest(function headerParamsArgumentsCheck(): void {
       }
     }
     assertEquals(hasThrown, 2);
-    assertEquals(
+    assertStrContains(
       errMsg,
-      `Headers.${method} requires at least 1 argument, but only 0 present`
+      `${method} requires at least 1 argument, but only 0 present`
     );
   });
 
@@ -300,9 +305,9 @@ unitTest(function headerParamsArgumentsCheck(): void {
       }
     }
     assertEquals(hasThrown, 2);
-    assertEquals(
+    assertStrContains(
       errMsg,
-      `Headers.${method} requires at least 2 arguments, but only 0 present`
+      `${method} requires at least 2 arguments, but only 0 present`
     );
 
     hasThrown = 0;
@@ -320,11 +325,71 @@ unitTest(function headerParamsArgumentsCheck(): void {
       }
     }
     assertEquals(hasThrown, 2);
-    assertEquals(
+    assertStrContains(
       errMsg,
-      `Headers.${method} requires at least 2 arguments, but only 1 present`
+      `${method} requires at least 2 arguments, but only 1 present`
     );
   });
+});
+
+unitTest(function headersInitMultiple(): void {
+  const headers = new Headers([
+    ["Set-Cookie", "foo=bar"],
+    ["Set-Cookie", "bar=baz"],
+    ["X-Deno", "foo"],
+    ["X-Deno", "bar"],
+  ]);
+  const actual = [...headers];
+  assertEquals(actual, [
+    ["set-cookie", "foo=bar"],
+    ["set-cookie", "bar=baz"],
+    ["x-deno", "foo, bar"],
+  ]);
+});
+
+unitTest(function headersAppendMultiple(): void {
+  const headers = new Headers([
+    ["Set-Cookie", "foo=bar"],
+    ["X-Deno", "foo"],
+  ]);
+  headers.append("set-Cookie", "bar=baz");
+  headers.append("x-Deno", "bar");
+  const actual = [...headers];
+  assertEquals(actual, [
+    ["set-cookie", "foo=bar"],
+    ["x-deno", "foo, bar"],
+    ["set-cookie", "bar=baz"],
+  ]);
+});
+
+unitTest(function headersAppendDuplicateSetCookieKey(): void {
+  const headers = new Headers([["Set-Cookie", "foo=bar"]]);
+  headers.append("set-Cookie", "foo=baz");
+  headers.append("Set-cookie", "baz=bar");
+  const actual = [...headers];
+  assertEquals(actual, [
+    ["set-cookie", "foo=baz"],
+    ["set-cookie", "baz=bar"],
+  ]);
+});
+
+unitTest(function headersSetDuplicateCookieKey(): void {
+  const headers = new Headers([["Set-Cookie", "foo=bar"]]);
+  headers.set("set-Cookie", "foo=baz");
+  headers.set("set-cookie", "bar=qat");
+  const actual = [...headers];
+  assertEquals(actual, [
+    ["set-cookie", "foo=baz"],
+    ["set-cookie", "bar=qat"],
+  ]);
+});
+
+unitTest(function headersGetSetCookie(): void {
+  const headers = new Headers([
+    ["Set-Cookie", "foo=bar"],
+    ["set-Cookie", "bar=qat"],
+  ]);
+  assertEquals(headers.get("SET-COOKIE"), "foo=bar, bar=qat");
 });
 
 unitTest(function toStringShouldBeWebCompatibility(): void {

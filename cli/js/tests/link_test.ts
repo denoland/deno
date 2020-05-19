@@ -31,8 +31,8 @@ unitTest(
     // Remove oldname. File still accessible through newname.
     Deno.removeSync(oldName);
     const newNameStat = Deno.statSync(newName);
-    assert(newNameStat.isFile());
-    assert(!newNameStat.isSymlink()); // Not a symlink.
+    assert(newNameStat.isFile);
+    assert(!newNameStat.isSymlink); // Not a symlink.
     assertEquals(
       newData3,
       new TextDecoder().decode(Deno.readFileSync(newName))
@@ -137,8 +137,8 @@ unitTest(
     // Remove oldname. File still accessible through newname.
     Deno.removeSync(oldName);
     const newNameStat = Deno.statSync(newName);
-    assert(newNameStat.isFile());
-    assert(!newNameStat.isSymlink()); // Not a symlink.
+    assert(newNameStat.isFile);
+    assert(!newNameStat.isSymlink); // Not a symlink.
     assertEquals(
       newData3,
       new TextDecoder().decode(Deno.readFileSync(newName))

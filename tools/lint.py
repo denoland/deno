@@ -5,20 +5,39 @@
 import os
 import sys
 import argparse
-from util import enable_ansi_colors, git_ls_files, root_path, run
-from util import third_party_path, build_mode
+from util import enable_ansi_colors, git_ls_files, git_staged, root_path, run
+from util import third_party_path, build_mode, print_command
 from third_party import python_env
+
+cmd_args = None
+
+
+def get_cmd_args():
+    global cmd_args
+
+    if cmd_args:
+        return cmd_args
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--js", help="run eslint", action="store_true")
+    parser.add_argument("--py", help="run pylint", action="store_true")
+    parser.add_argument("--rs", help="run clippy", action="store_true")
+    parser.add_argument(
+        "--staged", help="run only on staged files", action="store_true")
+    cmd_args = parser.parse_args()
+    return cmd_args
+
+
+def get_sources(*args):
+    getter = git_staged if get_cmd_args().staged else git_ls_files
+    return getter(*args)
 
 
 def main():
     enable_ansi_colors()
     os.chdir(root_path)
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--js", help="run eslint", action="store_true")
-    parser.add_argument("--py", help="run pylint", action="store_true")
-    parser.add_argument("--rs", help="run clippy", action="store_true")
-    args = parser.parse_args()
+    args = get_cmd_args()
 
     did_fmt = False
     if args.js:
@@ -38,36 +57,39 @@ def main():
 
 
 def eslint():
-    print "eslint"
     script = os.path.join(third_party_path, "node_modules", "eslint", "bin",
                           "eslint")
     # Find all *directories* in the main repo that contain .ts/.js files.
-    source_files = git_ls_files(root_path, [
+    source_files = get_sources(root_path, [
         "*.js", "*.ts", ":!:std/**/testdata/*", ":!:std/**/node_modules/*",
-        ":!:cli/compilers/*"
+        ":!:cli/compilers/wasm_wrap.js", ":!:cli/tests/error_syntax.js"
     ])
-    source_dirs = set([os.path.dirname(f) for f in source_files])
-    # Within the source dirs, eslint does its own globbing, taking into account
-    # the exclusion rules listed in '.eslintignore'.
-    source_globs = ["%s/*.{js,ts}" % d for d in source_dirs]
-    # Set NODE_PATH so we don't have to maintain a symlink in root_path.
-    env = os.environ.copy()
-    env["NODE_PATH"] = os.path.join(root_path, "third_party", "node_modules")
-    run(["node", script, "--max-warnings=0", "--"] + source_globs,
-        shell=False,
-        env=env,
-        quiet=True)
+    if source_files:
+        print_command("eslint", source_files)
+        # Set NODE_PATH so we don't have to maintain a symlink in root_path.
+        env = os.environ.copy()
+        env["NODE_PATH"] = os.path.join(root_path, "third_party",
+                                        "node_modules")
+        run(["node", script, "--max-warnings=0", "--"] + source_files,
+            shell=False,
+            env=env,
+            quiet=True)
 
 
 def pylint():
-    print "pylint"
     script = os.path.join(third_party_path, "python_packages", "pylint")
     rcfile = os.path.join(root_path, "tools", "pylintrc")
-    source_files = git_ls_files(root_path, ["*.py"])
-    run([sys.executable, script, "--rcfile=" + rcfile, "--"] + source_files,
-        env=python_env(),
-        shell=False,
-        quiet=True)
+    msg_template = "{path}({line}:{column}) {category}: {msg} ({symbol})"
+    source_files = get_sources(root_path, ["*.py"])
+    if source_files:
+        print_command("pylint", source_files)
+        run([
+            sys.executable, script, "--rcfile=" + rcfile,
+            "--msg-template=" + msg_template, "--"
+        ] + source_files,
+            env=python_env(),
+            shell=False,
+            quiet=True)
 
 
 def clippy():

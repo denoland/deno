@@ -24,13 +24,15 @@ export function writeFileSync(
     }
   }
 
-  const openMode = !!options.append ? "a" : "w";
-  const file = openSync(path, openMode);
+  const openOptions = !!options.append
+    ? { write: true, create: true, append: true }
+    : { write: true, create: true, truncate: true };
+  const file = openSync(path, openOptions);
 
   if (
     options.mode !== undefined &&
     options.mode !== null &&
-    build.os !== "win"
+    build.os !== "windows"
   ) {
     chmodSync(path, options.mode);
   }
@@ -52,13 +54,15 @@ export async function writeFile(
     }
   }
 
-  const openMode = !!options.append ? "a" : "w";
-  const file = await open(path, openMode);
+  const openOptions = !!options.append
+    ? { write: true, create: true, append: true }
+    : { write: true, create: true, truncate: true };
+  const file = await open(path, openOptions);
 
   if (
     options.mode !== undefined &&
     options.mode !== null &&
-    build.os !== "win"
+    build.os !== "windows"
   ) {
     await chmod(path, options.mode);
   }

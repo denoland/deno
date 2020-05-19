@@ -4,14 +4,21 @@ import {
   globToRegExp,
   isAbsolute,
   isGlob,
-  isWindows,
   joinGlobs,
   normalize,
 } from "../path/mod.ts";
-import { WalkInfo, walk, walkSync } from "./walk.ts";
+import {
+  WalkEntry,
+  createWalkEntry,
+  createWalkEntrySync,
+  walk,
+  walkSync,
+} from "./walk.ts";
 import { assert } from "../testing/asserts.ts";
-const { cwd, stat, statSync } = Deno;
+const { cwd } = Deno;
 type FileInfo = Deno.FileInfo;
+
+const isWindows = Deno.build.os == "windows";
 
 export interface ExpandGlobOptions extends GlobOptions {
   root?: string;
@@ -48,9 +55,15 @@ function throwUnlessNotFound(error: Error): void {
   }
 }
 
+function comparePath(a: WalkEntry, b: WalkEntry): number {
+  if (a.path < b.path) return -1;
+  if (a.path > b.path) return 1;
+  return 0;
+}
+
 /**
  * Expand the glob string from the specified `root` directory and yield each
- * result as a `WalkInfo` object.
+ * result as a `WalkEntry` object.
  */
 export async function* expandGlob(
   glob: string,
@@ -61,7 +74,7 @@ export async function* expandGlob(
     extended = false,
     globstar = false,
   }: ExpandGlobOptions = {}
-): AsyncIterableIterator<WalkInfo> {
+): AsyncIterableIterator<WalkEntry> {
   const globOptions: GlobOptions = { extended, globstar };
   const absRoot = isAbsolute(root)
     ? normalize(root)
@@ -73,8 +86,8 @@ export async function* expandGlob(
   const excludePatterns = exclude
     .map(resolveFromRoot)
     .map((s: string): RegExp => globToRegExp(s, globOptions));
-  const shouldInclude = (filename: string): boolean =>
-    !excludePatterns.some((p: RegExp): boolean => !!filename.match(p));
+  const shouldInclude = (path: string): boolean =>
+    !excludePatterns.some((p: RegExp): boolean => !!path.match(p));
   const { segments, hasTrailingSep, winRoot } = split(resolveFromRoot(glob));
 
   let fixedRoot = winRoot != undefined ? winRoot : "/";
@@ -84,40 +97,40 @@ export async function* expandGlob(
     fixedRoot = joinGlobs([fixedRoot, seg], globOptions);
   }
 
-  let fixedRootInfo: WalkInfo;
+  let fixedRootInfo: WalkEntry;
   try {
-    fixedRootInfo = { filename: fixedRoot, info: await stat(fixedRoot) };
+    fixedRootInfo = await createWalkEntry(fixedRoot);
   } catch (error) {
     return throwUnlessNotFound(error);
   }
 
   async function* advanceMatch(
-    walkInfo: WalkInfo,
+    walkInfo: WalkEntry,
     globSegment: string
-  ): AsyncIterableIterator<WalkInfo> {
-    if (!walkInfo.info.isDirectory()) {
+  ): AsyncIterableIterator<WalkEntry> {
+    if (!walkInfo.isDirectory) {
       return;
     } else if (globSegment == "..") {
-      const parentPath = joinGlobs([walkInfo.filename, ".."], globOptions);
+      const parentPath = joinGlobs([walkInfo.path, ".."], globOptions);
       try {
         if (shouldInclude(parentPath)) {
-          return yield { filename: parentPath, info: await stat(parentPath) };
+          return yield await createWalkEntry(parentPath);
         }
       } catch (error) {
         throwUnlessNotFound(error);
       }
       return;
     } else if (globSegment == "**") {
-      return yield* walk(walkInfo.filename, {
+      return yield* walk(walkInfo.path, {
         includeFiles: false,
         skip: excludePatterns,
       });
     }
-    yield* walk(walkInfo.filename, {
+    yield* walk(walkInfo.path, {
       maxDepth: 1,
       match: [
         globToRegExp(
-          joinGlobs([walkInfo.filename, globSegment], globOptions),
+          joinGlobs([walkInfo.path, globSegment], globOptions),
           globOptions
         ),
       ],
@@ -125,31 +138,26 @@ export async function* expandGlob(
     });
   }
 
-  let currentMatches: WalkInfo[] = [fixedRootInfo];
+  let currentMatches: WalkEntry[] = [fixedRootInfo];
   for (const segment of segments) {
     // Advancing the list of current matches may introduce duplicates, so we
     // pass everything through this Map.
-    const nextMatchMap: Map<string, FileInfo> = new Map();
+    const nextMatchMap: Map<string, WalkEntry> = new Map();
     for (const currentMatch of currentMatches) {
       for await (const nextMatch of advanceMatch(currentMatch, segment)) {
-        nextMatchMap.set(nextMatch.filename, nextMatch.info);
+        nextMatchMap.set(nextMatch.path, nextMatch);
       }
     }
-    currentMatches = [...nextMatchMap].sort().map(
-      ([filename, info]): WalkInfo => ({
-        filename,
-        info,
-      })
-    );
+    currentMatches = [...nextMatchMap.values()].sort(comparePath);
   }
   if (hasTrailingSep) {
-    currentMatches = currentMatches.filter(({ info }): boolean =>
-      info.isDirectory()
+    currentMatches = currentMatches.filter(
+      (entry: WalkEntry): boolean => entry.isDirectory
     );
   }
   if (!includeDirs) {
     currentMatches = currentMatches.filter(
-      ({ info }): boolean => !info.isDirectory()
+      (entry: WalkEntry): boolean => !entry.isDirectory
     );
   }
   yield* currentMatches;
@@ -165,7 +173,7 @@ export function* expandGlobSync(
     extended = false,
     globstar = false,
   }: ExpandGlobOptions = {}
-): IterableIterator<WalkInfo> {
+): IterableIterator<WalkEntry> {
   const globOptions: GlobOptions = { extended, globstar };
   const absRoot = isAbsolute(root)
     ? normalize(root)
@@ -177,8 +185,8 @@ export function* expandGlobSync(
   const excludePatterns = exclude
     .map(resolveFromRoot)
     .map((s: string): RegExp => globToRegExp(s, globOptions));
-  const shouldInclude = (filename: string): boolean =>
-    !excludePatterns.some((p: RegExp): boolean => !!filename.match(p));
+  const shouldInclude = (path: string): boolean =>
+    !excludePatterns.some((p: RegExp): boolean => !!path.match(p));
   const { segments, hasTrailingSep, winRoot } = split(resolveFromRoot(glob));
 
   let fixedRoot = winRoot != undefined ? winRoot : "/";
@@ -188,40 +196,40 @@ export function* expandGlobSync(
     fixedRoot = joinGlobs([fixedRoot, seg], globOptions);
   }
 
-  let fixedRootInfo: WalkInfo;
+  let fixedRootInfo: WalkEntry;
   try {
-    fixedRootInfo = { filename: fixedRoot, info: statSync(fixedRoot) };
+    fixedRootInfo = createWalkEntrySync(fixedRoot);
   } catch (error) {
     return throwUnlessNotFound(error);
   }
 
   function* advanceMatch(
-    walkInfo: WalkInfo,
+    walkInfo: WalkEntry,
     globSegment: string
-  ): IterableIterator<WalkInfo> {
-    if (!walkInfo.info.isDirectory()) {
+  ): IterableIterator<WalkEntry> {
+    if (!walkInfo.isDirectory) {
       return;
     } else if (globSegment == "..") {
-      const parentPath = joinGlobs([walkInfo.filename, ".."], globOptions);
+      const parentPath = joinGlobs([walkInfo.path, ".."], globOptions);
       try {
         if (shouldInclude(parentPath)) {
-          return yield { filename: parentPath, info: statSync(parentPath) };
+          return yield createWalkEntrySync(parentPath);
         }
       } catch (error) {
         throwUnlessNotFound(error);
       }
       return;
     } else if (globSegment == "**") {
-      return yield* walkSync(walkInfo.filename, {
+      return yield* walkSync(walkInfo.path, {
         includeFiles: false,
         skip: excludePatterns,
       });
     }
-    yield* walkSync(walkInfo.filename, {
+    yield* walkSync(walkInfo.path, {
       maxDepth: 1,
       match: [
         globToRegExp(
-          joinGlobs([walkInfo.filename, globSegment], globOptions),
+          joinGlobs([walkInfo.path, globSegment], globOptions),
           globOptions
         ),
       ],
@@ -229,31 +237,26 @@ export function* expandGlobSync(
     });
   }
 
-  let currentMatches: WalkInfo[] = [fixedRootInfo];
+  let currentMatches: WalkEntry[] = [fixedRootInfo];
   for (const segment of segments) {
     // Advancing the list of current matches may introduce duplicates, so we
     // pass everything through this Map.
-    const nextMatchMap: Map<string, FileInfo> = new Map();
+    const nextMatchMap: Map<string, WalkEntry> = new Map();
     for (const currentMatch of currentMatches) {
       for (const nextMatch of advanceMatch(currentMatch, segment)) {
-        nextMatchMap.set(nextMatch.filename, nextMatch.info);
+        nextMatchMap.set(nextMatch.path, nextMatch);
       }
     }
-    currentMatches = [...nextMatchMap].sort().map(
-      ([filename, info]): WalkInfo => ({
-        filename,
-        info,
-      })
-    );
+    currentMatches = [...nextMatchMap.values()].sort(comparePath);
   }
   if (hasTrailingSep) {
-    currentMatches = currentMatches.filter(({ info }): boolean =>
-      info.isDirectory()
+    currentMatches = currentMatches.filter(
+      (entry: WalkEntry): boolean => entry.isDirectory
     );
   }
   if (!includeDirs) {
     currentMatches = currentMatches.filter(
-      ({ info }): boolean => !info.isDirectory()
+      (entry: WalkEntry): boolean => !entry.isDirectory
     );
   }
   yield* currentMatches;

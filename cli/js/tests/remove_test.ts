@@ -10,7 +10,7 @@ unitTest(
     const path = Deno.makeTempDirSync() + "/subdir";
     Deno.mkdirSync(path);
     const pathInfo = Deno.statSync(path);
-    assert(pathInfo.isDirectory()); // check exist first
+    assert(pathInfo.isDirectory); // check exist first
     Deno.removeSync(path); // remove
     // We then check again after remove
     let err;
@@ -33,7 +33,7 @@ unitTest(
     const filename = Deno.makeTempDirSync() + "/test.txt";
     Deno.writeFileSync(filename, data, { mode: 0o666 });
     const fileInfo = Deno.statSync(filename);
-    assert(fileInfo.isFile()); // check exist first
+    assert(fileInfo.isFile); // check exist first
     Deno.removeSync(filename); // remove
     // We then check again after remove
     let err;
@@ -56,9 +56,9 @@ unitTest(
     Deno.mkdirSync(path, { recursive: true });
     Deno.mkdirSync(subPath);
     const pathInfo = Deno.statSync(path);
-    assert(pathInfo.isDirectory()); // check exist first
+    assert(pathInfo.isDirectory); // check exist first
     const subPathInfo = Deno.statSync(subPath);
-    assert(subPathInfo.isDirectory()); // check exist first
+    assert(subPathInfo.isDirectory); // check exist first
     let err;
     try {
       // Should not be able to recursively remove
@@ -83,27 +83,23 @@ unitTest(
   { perms: { write: true, read: true } },
   function removeSyncDanglingSymlinkSuccess(): void {
     const danglingSymlinkPath = Deno.makeTempDirSync() + "/dangling_symlink";
-    // TODO(#3832): Remove "not Implemented" error checking when symlink creation is implemented for Windows
-    let errOnWindows;
-    try {
-      Deno.symlinkSync("unexistent_file", danglingSymlinkPath);
-    } catch (err) {
-      errOnWindows = err;
-    }
-    if (Deno.build.os === "win") {
-      assertEquals(errOnWindows.message, "not implemented");
+    if (Deno.build.os === "windows") {
+      Deno.symlinkSync("unexistent_file", danglingSymlinkPath, {
+        type: "file",
+      });
     } else {
-      const pathInfo = Deno.lstatSync(danglingSymlinkPath);
-      assert(pathInfo.isSymlink());
-      Deno.removeSync(danglingSymlinkPath);
-      let err;
-      try {
-        Deno.lstatSync(danglingSymlinkPath);
-      } catch (e) {
-        err = e;
-      }
-      assert(err instanceof Deno.errors.NotFound);
+      Deno.symlinkSync("unexistent_file", danglingSymlinkPath);
     }
+    const pathInfo = Deno.lstatSync(danglingSymlinkPath);
+    assert(pathInfo.isSymlink);
+    Deno.removeSync(danglingSymlinkPath);
+    let err;
+    try {
+      Deno.lstatSync(danglingSymlinkPath);
+    } catch (e) {
+      err = e;
+    }
+    assert(err instanceof Deno.errors.NotFound);
   }
 );
 
@@ -116,28 +112,22 @@ unitTest(
     const filePath = tempDir + "/test.txt";
     const validSymlinkPath = tempDir + "/valid_symlink";
     Deno.writeFileSync(filePath, data, { mode: 0o666 });
-    // TODO(#3832): Remove "not Implemented" error checking when symlink creation is implemented for Windows
-    let errOnWindows;
-    try {
-      Deno.symlinkSync(filePath, validSymlinkPath);
-    } catch (err) {
-      errOnWindows = err;
-    }
-    if (Deno.build.os === "win") {
-      assertEquals(errOnWindows.message, "not implemented");
+    if (Deno.build.os === "windows") {
+      Deno.symlinkSync(filePath, validSymlinkPath, { type: "file" });
     } else {
-      const symlinkPathInfo = Deno.statSync(validSymlinkPath);
-      assert(symlinkPathInfo.isFile());
-      Deno.removeSync(validSymlinkPath);
-      let err;
-      try {
-        Deno.statSync(validSymlinkPath);
-      } catch (e) {
-        err = e;
-      }
-      Deno.removeSync(filePath);
-      assert(err instanceof Deno.errors.NotFound);
+      Deno.symlinkSync(filePath, validSymlinkPath);
     }
+    const symlinkPathInfo = Deno.statSync(validSymlinkPath);
+    assert(symlinkPathInfo.isFile);
+    Deno.removeSync(validSymlinkPath);
+    let err;
+    try {
+      Deno.statSync(validSymlinkPath);
+    } catch (e) {
+      err = e;
+    }
+    Deno.removeSync(filePath);
+    assert(err instanceof Deno.errors.NotFound);
   }
 );
 
@@ -159,7 +149,7 @@ unitTest(
     let path = Deno.makeTempDirSync() + "/dir/subdir";
     Deno.mkdirSync(path, { recursive: true });
     let pathInfo = Deno.statSync(path);
-    assert(pathInfo.isDirectory()); // check exist first
+    assert(pathInfo.isDirectory); // check exist first
     Deno.removeSync(path, { recursive: true }); // remove
     // We then check again after remove
     let err;
@@ -177,9 +167,9 @@ unitTest(
     Deno.mkdirSync(path, { recursive: true });
     Deno.mkdirSync(subPath);
     pathInfo = Deno.statSync(path);
-    assert(pathInfo.isDirectory()); // check exist first
+    assert(pathInfo.isDirectory); // check exist first
     const subPathInfo = Deno.statSync(subPath);
-    assert(subPathInfo.isDirectory()); // check exist first
+    assert(subPathInfo.isDirectory); // check exist first
     Deno.removeSync(path, { recursive: true }); // remove
     // We then check parent directory again after remove
     try {
@@ -201,7 +191,7 @@ unitTest(
     const filename = Deno.makeTempDirSync() + "/test.txt";
     Deno.writeFileSync(filename, data, { mode: 0o666 });
     const fileInfo = Deno.statSync(filename);
-    assert(fileInfo.isFile()); // check exist first
+    assert(fileInfo.isFile); // check exist first
     Deno.removeSync(filename, { recursive: true }); // remove
     // We then check again after remove
     let err;
@@ -247,7 +237,7 @@ unitTest(
     const path = Deno.makeTempDirSync() + "/dir/subdir";
     Deno.mkdirSync(path, { recursive: true });
     const pathInfo = Deno.statSync(path);
-    assert(pathInfo.isDirectory()); // check exist first
+    assert(pathInfo.isDirectory); // check exist first
     await Deno.remove(path); // remove
     // We then check again after remove
     let err;
@@ -270,7 +260,7 @@ unitTest(
     const filename = Deno.makeTempDirSync() + "/test.txt";
     Deno.writeFileSync(filename, data, { mode: 0o666 });
     const fileInfo = Deno.statSync(filename);
-    assert(fileInfo.isFile()); // check exist first
+    assert(fileInfo.isFile); // check exist first
     await Deno.remove(filename); // remove
     // We then check again after remove
     let err;
@@ -293,9 +283,9 @@ unitTest(
     Deno.mkdirSync(path, { recursive: true });
     Deno.mkdirSync(subPath);
     const pathInfo = Deno.statSync(path);
-    assert(pathInfo.isDirectory()); // check exist first
+    assert(pathInfo.isDirectory); // check exist first
     const subPathInfo = Deno.statSync(subPath);
-    assert(subPathInfo.isDirectory()); // check exist first
+    assert(subPathInfo.isDirectory); // check exist first
     let err;
     try {
       // Should not be able to recursively remove
@@ -319,27 +309,23 @@ unitTest(
   { perms: { write: true, read: true } },
   async function removeDanglingSymlinkSuccess(): Promise<void> {
     const danglingSymlinkPath = Deno.makeTempDirSync() + "/dangling_symlink";
-    // TODO(#3832): Remove "not Implemented" error checking when symlink creation is implemented for Windows
-    let errOnWindows;
-    try {
-      Deno.symlinkSync("unexistent_file", danglingSymlinkPath);
-    } catch (e) {
-      errOnWindows = e;
-    }
-    if (Deno.build.os === "win") {
-      assertEquals(errOnWindows.message, "not implemented");
+    if (Deno.build.os === "windows") {
+      Deno.symlinkSync("unexistent_file", danglingSymlinkPath, {
+        type: "file",
+      });
     } else {
-      const pathInfo = Deno.lstatSync(danglingSymlinkPath);
-      assert(pathInfo.isSymlink());
-      await Deno.remove(danglingSymlinkPath);
-      let err;
-      try {
-        Deno.lstatSync(danglingSymlinkPath);
-      } catch (e) {
-        err = e;
-      }
-      assert(err instanceof Deno.errors.NotFound);
+      Deno.symlinkSync("unexistent_file", danglingSymlinkPath);
     }
+    const pathInfo = Deno.lstatSync(danglingSymlinkPath);
+    assert(pathInfo.isSymlink);
+    await Deno.remove(danglingSymlinkPath);
+    let err;
+    try {
+      Deno.lstatSync(danglingSymlinkPath);
+    } catch (e) {
+      err = e;
+    }
+    assert(err instanceof Deno.errors.NotFound);
   }
 );
 
@@ -352,28 +338,22 @@ unitTest(
     const filePath = tempDir + "/test.txt";
     const validSymlinkPath = tempDir + "/valid_symlink";
     Deno.writeFileSync(filePath, data, { mode: 0o666 });
-    // TODO(#3832): Remove "not Implemented" error checking when symlink creation is implemented for Windows
-    let errOnWindows;
-    try {
-      Deno.symlinkSync(filePath, validSymlinkPath);
-    } catch (e) {
-      errOnWindows = e;
-    }
-    if (Deno.build.os === "win") {
-      assertEquals(errOnWindows.message, "not implemented");
+    if (Deno.build.os === "windows") {
+      Deno.symlinkSync(filePath, validSymlinkPath, { type: "file" });
     } else {
-      const symlinkPathInfo = Deno.statSync(validSymlinkPath);
-      assert(symlinkPathInfo.isFile());
-      await Deno.remove(validSymlinkPath);
-      let err;
-      try {
-        Deno.statSync(validSymlinkPath);
-      } catch (e) {
-        err = e;
-      }
-      Deno.removeSync(filePath);
-      assert(err instanceof Deno.errors.NotFound);
+      Deno.symlinkSync(filePath, validSymlinkPath);
     }
+    const symlinkPathInfo = Deno.statSync(validSymlinkPath);
+    assert(symlinkPathInfo.isFile);
+    await Deno.remove(validSymlinkPath);
+    let err;
+    try {
+      Deno.statSync(validSymlinkPath);
+    } catch (e) {
+      err = e;
+    }
+    Deno.removeSync(filePath);
+    assert(err instanceof Deno.errors.NotFound);
   }
 );
 
@@ -397,7 +377,7 @@ unitTest(
     let path = Deno.makeTempDirSync() + "/dir/subdir";
     Deno.mkdirSync(path, { recursive: true });
     let pathInfo = Deno.statSync(path);
-    assert(pathInfo.isDirectory()); // check exist first
+    assert(pathInfo.isDirectory); // check exist first
     await Deno.remove(path, { recursive: true }); // remove
     // We then check again after remove
     let err;
@@ -415,9 +395,9 @@ unitTest(
     Deno.mkdirSync(path, { recursive: true });
     Deno.mkdirSync(subPath);
     pathInfo = Deno.statSync(path);
-    assert(pathInfo.isDirectory()); // check exist first
+    assert(pathInfo.isDirectory); // check exist first
     const subPathInfo = Deno.statSync(subPath);
-    assert(subPathInfo.isDirectory()); // check exist first
+    assert(subPathInfo.isDirectory); // check exist first
     await Deno.remove(path, { recursive: true }); // remove
     // We then check parent directory again after remove
     try {
@@ -439,7 +419,7 @@ unitTest(
     const filename = Deno.makeTempDirSync() + "/test.txt";
     Deno.writeFileSync(filename, data, { mode: 0o666 });
     const fileInfo = Deno.statSync(filename);
-    assert(fileInfo.isFile()); // check exist first
+    assert(fileInfo.isFile); // check exist first
     await Deno.remove(filename, { recursive: true }); // remove
     // We then check again after remove
     let err;
@@ -479,3 +459,48 @@ unitTest({ perms: { write: false } }, async function removeAllPerm(): Promise<
   assert(err instanceof Deno.errors.PermissionDenied);
   assertEquals(err.name, "PermissionDenied");
 });
+
+if (Deno.build.os === "windows") {
+  unitTest(
+    { perms: { run: true, write: true, read: true } },
+    async function removeFileSymlink(): Promise<void> {
+      const symlink = Deno.run({
+        cmd: ["cmd", "/c", "mklink", "file_link", "bar"],
+        stdout: "null",
+      });
+
+      assert(await symlink.status());
+      symlink.close();
+      await Deno.remove("file_link");
+      let err;
+      try {
+        await Deno.lstat("file_link");
+      } catch (e) {
+        err = e;
+      }
+      assert(err instanceof Deno.errors.NotFound);
+    }
+  );
+
+  unitTest(
+    { perms: { run: true, write: true, read: true } },
+    async function removeDirSymlink(): Promise<void> {
+      const symlink = Deno.run({
+        cmd: ["cmd", "/c", "mklink", "/d", "dir_link", "bar"],
+        stdout: "null",
+      });
+
+      assert(await symlink.status());
+      symlink.close();
+
+      await Deno.remove("dir_link");
+      let err;
+      try {
+        await Deno.lstat("dir_link");
+      } catch (e) {
+        err = e;
+      }
+      assert(err instanceof Deno.errors.NotFound);
+    }
+  );
+}

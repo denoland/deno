@@ -13,7 +13,3 @@ pub fn gen(v: Vec<&[u8]>) -> String {
   }
   out
 }
-
-pub fn gen2(s: &str) -> String {
-  gen(vec![s.as_bytes()])
-}

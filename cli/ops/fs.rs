@@ -1,24 +1,27 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // Some deserializer fields are only used on Unix and Windows build fails without it
 use super::dispatch_json::{blocking_json, Deserialize, JsonOp, Value};
+use super::io::std_file_resource;
 use super::io::{FileMetadata, StreamResource, StreamResourceHolder};
 use crate::fs::resolve_from_cwd;
 use crate::op_error::OpError;
 use crate::ops::dispatch_json::JsonResult;
 use crate::state::State;
-use deno_core::*;
+use deno_core::CoreIsolate;
+use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
 use std::convert::From;
 use std::env::{current_dir, set_current_dir, temp_dir};
-use std::io::SeekFrom;
+use std::io;
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
 use rand::{thread_rng, Rng};
 
-pub fn init(i: &mut Isolate, s: &State) {
-  i.register_op("op_open", s.stateful_json_op(op_open));
-  i.register_op("op_seek", s.stateful_json_op(op_seek));
+pub fn init(i: &mut CoreIsolate, s: &State) {
+  i.register_op("op_open", s.stateful_json_op2(op_open));
+  i.register_op("op_seek", s.stateful_json_op2(op_seek));
   i.register_op("op_umask", s.stateful_json_op(op_umask));
   i.register_op("op_chdir", s.stateful_json_op(op_chdir));
   i.register_op("op_mkdir", s.stateful_json_op(op_mkdir));
@@ -49,8 +52,7 @@ fn into_string(s: std::ffi::OsString) -> Result<String, OpError> {
 struct OpenArgs {
   promise_id: Option<u64>,
   path: String,
-  options: Option<OpenOptions>,
-  open_mode: Option<String>,
+  options: OpenOptions,
   mode: Option<u32>,
 }
 
@@ -67,121 +69,75 @@ struct OpenOptions {
 }
 
 fn op_open(
+  isolate: &mut CoreIsolate,
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   let args: OpenArgs = serde_json::from_value(args)?;
   let path = resolve_from_cwd(Path::new(&args.path))?;
-  let state_ = state.clone();
+  let resource_table = isolate.resource_table.clone();
 
-  let mut open_options = if let Some(mode) = args.mode {
-    #[allow(unused_mut)]
-    let mut std_options = std::fs::OpenOptions::new();
+  let mut open_options = std::fs::OpenOptions::new();
+
+  if let Some(mode) = args.mode {
     // mode only used if creating the file on Unix
     // if not specified, defaults to 0o666
     #[cfg(unix)]
     {
       use std::os::unix::fs::OpenOptionsExt;
-      std_options.mode(mode & 0o777);
+      open_options.mode(mode & 0o777);
     }
     #[cfg(not(unix))]
     let _ = mode; // avoid unused warning
-    tokio::fs::OpenOptions::from(std_options)
-  } else {
-    tokio::fs::OpenOptions::new()
-  };
+  }
 
-  if let Some(options) = args.options {
-    if options.read {
-      state.check_read(&path)?;
-    }
+  let options = args.options;
+  if options.read {
+    state.check_read(&path)?;
+  }
 
-    if options.write || options.append {
-      state.check_write(&path)?;
-    }
+  if options.write || options.append {
+    state.check_write(&path)?;
+  }
 
-    open_options
-      .read(options.read)
-      .create(options.create)
-      .write(options.write)
-      .truncate(options.truncate)
-      .append(options.append)
-      .create_new(options.create_new);
-  } else if let Some(open_mode) = args.open_mode {
-    let open_mode = open_mode.as_ref();
-    match open_mode {
-      "r" => {
-        state.check_read(&path)?;
-      }
-      "w" | "a" | "x" => {
-        state.check_write(&path)?;
-      }
-      &_ => {
-        state.check_read(&path)?;
-        state.check_write(&path)?;
-      }
-    };
-
-    match open_mode {
-      "r" => {
-        open_options.read(true);
-      }
-      "r+" => {
-        open_options.read(true).write(true);
-      }
-      "w" => {
-        open_options.create(true).write(true).truncate(true);
-      }
-      "w+" => {
-        open_options
-          .read(true)
-          .create(true)
-          .write(true)
-          .truncate(true);
-      }
-      "a" => {
-        open_options.create(true).append(true);
-      }
-      "a+" => {
-        open_options.read(true).create(true).append(true);
-      }
-      "x" => {
-        open_options.create_new(true).write(true);
-      }
-      "x+" => {
-        open_options.create_new(true).read(true).write(true);
-      }
-      &_ => {
-        // TODO: this should be type error
-        return Err(OpError::other("Unknown open mode.".to_string()));
-      }
-    }
-  } else {
-    return Err(OpError::other(
-      "Open requires either openMode or options.".to_string(),
-    ));
-  };
+  open_options
+    .read(options.read)
+    .create(options.create)
+    .write(options.write)
+    .truncate(options.truncate)
+    .append(options.append)
+    .create_new(options.create_new);
 
   let is_sync = args.promise_id.is_none();
 
-  let fut = async move {
-    let fs_file = open_options.open(path).await?;
-    let mut state = state_.borrow_mut();
-    let rid = state.resource_table.add(
-      "fsFile",
-      Box::new(StreamResourceHolder::new(StreamResource::FsFile(
-        fs_file,
-        FileMetadata::default(),
-      ))),
-    );
-    Ok(json!(rid))
-  };
-
   if is_sync {
-    let buf = futures::executor::block_on(fut)?;
-    Ok(JsonOp::Sync(buf))
+    let std_file = open_options.open(path)?;
+    let tokio_file = tokio::fs::File::from_std(std_file);
+    let mut resource_table = resource_table.borrow_mut();
+    let rid = resource_table.add(
+      "fsFile",
+      Box::new(StreamResourceHolder::new(StreamResource::FsFile(Some((
+        tokio_file,
+        FileMetadata::default(),
+      ))))),
+    );
+    Ok(JsonOp::Sync(json!(rid)))
   } else {
+    let fut = async move {
+      let tokio_file = tokio::fs::OpenOptions::from(open_options)
+        .open(path)
+        .await?;
+      let mut resource_table = resource_table.borrow_mut();
+      let rid = resource_table.add(
+        "fsFile",
+        Box::new(StreamResourceHolder::new(StreamResource::FsFile(Some((
+          tokio_file,
+          FileMetadata::default(),
+        ))))),
+      );
+      Ok(json!(rid))
+    };
     Ok(JsonOp::Async(fut.boxed_local()))
   }
 }
@@ -196,10 +152,12 @@ struct SeekArgs {
 }
 
 fn op_seek(
-  state: &State,
+  isolate: &mut CoreIsolate,
+  _state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
+  use std::io::{Seek, SeekFrom};
   let args: SeekArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let offset = args.offset;
@@ -217,29 +175,31 @@ fn op_seek(
     }
   };
 
-  let state = state.borrow();
-  let resource_holder = state
-    .resource_table
-    .get::<StreamResourceHolder>(rid)
-    .ok_or_else(OpError::bad_resource_id)?;
-
-  let tokio_file = match resource_holder.resource {
-    StreamResource::FsFile(ref file, _) => file,
-    _ => return Err(OpError::bad_resource_id()),
-  };
-  let mut file = futures::executor::block_on(tokio_file.try_clone())?;
-
+  let resource_table = isolate.resource_table.clone();
   let is_sync = args.promise_id.is_none();
-  let fut = async move {
-    debug!("op_seek {} {} {}", rid, offset, whence);
-    let pos = file.seek(seek_from).await?;
-    Ok(json!(pos))
-  };
 
   if is_sync {
-    let buf = futures::executor::block_on(fut)?;
-    Ok(JsonOp::Sync(buf))
+    let mut resource_table = resource_table.borrow_mut();
+    let pos = std_file_resource(&mut resource_table, rid, |r| match r {
+      Ok(std_file) => std_file.seek(seek_from).map_err(OpError::from),
+      Err(_) => Err(OpError::type_error(
+        "cannot seek on this type of resource".to_string(),
+      )),
+    })?;
+    Ok(JsonOp::Sync(json!(pos)))
   } else {
+    // TODO(ry) This is a fake async op. We need to use poll_fn,
+    // tokio::fs::File::start_seek and tokio::fs::File::poll_complete
+    let fut = async move {
+      let mut resource_table = resource_table.borrow_mut();
+      let pos = std_file_resource(&mut resource_table, rid, |r| match r {
+        Ok(std_file) => std_file.seek(seek_from).map_err(OpError::from),
+        Err(_) => Err(OpError::type_error(
+          "cannot seek on this type of resource".to_string(),
+        )),
+      })?;
+      Ok(json!(pos))
+    };
     Ok(JsonOp::Async(fut.boxed_local()))
   }
 }
@@ -250,10 +210,11 @@ struct UmaskArgs {
 }
 
 fn op_umask(
-  _state: &State,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
+  state.check_unstable("Deno.umask");
   let args: UmaskArgs = serde_json::from_value(args)?;
   // TODO implement umask for Windows
   // see https://github.com/nodejs/node/blob/master/src/node_process_methods.cc
@@ -287,12 +248,14 @@ struct ChdirArgs {
 }
 
 fn op_chdir(
-  _state: &State,
+  state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   let args: ChdirArgs = serde_json::from_value(args)?;
-  set_current_dir(&args.directory)?;
+  let d = PathBuf::from(&args.directory);
+  state.check_read(&d)?;
+  set_current_dir(&d)?;
   Ok(JsonOp::Sync(json!({})))
 }
 
@@ -431,13 +394,29 @@ fn op_remove(
 
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
+    #[cfg(not(unix))]
+    use std::os::windows::prelude::MetadataExt;
+
     let metadata = std::fs::symlink_metadata(&path)?;
+
     debug!("op_remove {} {}", path.display(), recursive);
     let file_type = metadata.file_type();
-    if file_type.is_file() || file_type.is_symlink() {
+    if file_type.is_file() {
       std::fs::remove_file(&path)?;
     } else if recursive {
       std::fs::remove_dir_all(&path)?;
+    } else if file_type.is_symlink() {
+      #[cfg(unix)]
+      std::fs::remove_file(&path)?;
+      #[cfg(not(unix))]
+      {
+        use winapi::um::winnt::FILE_ATTRIBUTE_DIRECTORY;
+        if metadata.file_attributes() & FILE_ATTRIBUTE_DIRECTORY != 0 {
+          std::fs::remove_dir(&path)?;
+        } else {
+          std::fs::remove_file(&path)?;
+        }
+      }
     } else {
       std::fs::remove_dir(&path)?;
     }
@@ -481,21 +460,23 @@ fn op_copy_file(
   })
 }
 
-macro_rules! to_seconds {
-  ($time:expr) => {{
-    // Unwrap is safe here as if the file is before the unix epoch
-    // something is very wrong.
-    $time
-      .and_then(|t| Ok(t.duration_since(UNIX_EPOCH).unwrap().as_secs()))
-      .unwrap_or(0)
-  }};
+fn to_msec(maybe_time: Result<SystemTime, io::Error>) -> serde_json::Value {
+  match maybe_time {
+    Ok(time) => {
+      let msec = time
+        .duration_since(UNIX_EPOCH)
+        .map(|t| t.as_secs_f64() * 1000f64)
+        .unwrap_or_else(|err| err.duration().as_secs_f64() * -1000f64);
+      serde_json::Number::from_f64(msec)
+        .map(serde_json::Value::Number)
+        .unwrap_or(serde_json::Value::Null)
+    }
+    Err(_) => serde_json::Value::Null,
+  }
 }
 
 #[inline(always)]
-fn get_stat_json(
-  metadata: std::fs::Metadata,
-  maybe_name: Option<String>,
-) -> JsonResult {
+fn get_stat_json(metadata: std::fs::Metadata) -> JsonResult {
   // Unix stat member (number types only). 0 if not on unix.
   macro_rules! usm {
     ($member: ident) => {{
@@ -512,15 +493,15 @@ fn get_stat_json(
 
   #[cfg(unix)]
   use std::os::unix::fs::MetadataExt;
-  let mut json_val = json!({
+  let json_val = json!({
     "isFile": metadata.is_file(),
     "isDirectory": metadata.is_dir(),
     "isSymlink": metadata.file_type().is_symlink(),
     "size": metadata.len(),
-    // In seconds. Available on both Unix or Windows.
-    "modified":to_seconds!(metadata.modified()),
-    "accessed":to_seconds!(metadata.accessed()),
-    "created":to_seconds!(metadata.created()),
+    // In milliseconds, like JavaScript. Available on both Unix or Windows.
+    "mtime": to_msec(metadata.modified()),
+    "atime": to_msec(metadata.accessed()),
+    "birthtime": to_msec(metadata.created()),
     // Following are only valid under Unix.
     "dev": usm!(dev),
     "ino": usm!(ino),
@@ -534,14 +515,6 @@ fn get_stat_json(
     "blksize": usm!(blksize),
     "blocks": usm!(blocks),
   });
-
-  // "name" is an optional field by our design.
-  if let Some(name) = maybe_name {
-    if let serde_json::Value::Object(ref mut m) = json_val {
-      m.insert("name".to_owned(), json!(name));
-    }
-  }
-
   Ok(json_val)
 }
 
@@ -572,7 +545,7 @@ fn op_stat(
     } else {
       std::fs::metadata(&path)?
     };
-    get_stat_json(metadata, None)
+    get_stat_json(metadata)
   })
 }
 
@@ -631,10 +604,15 @@ fn op_read_dir(
     let entries: Vec<_> = std::fs::read_dir(path)?
       .filter_map(|entry| {
         let entry = entry.unwrap();
-        let metadata = entry.metadata().unwrap();
+        let file_type = entry.file_type().unwrap();
         // Not all filenames can be encoded as UTF-8. Skip those for now.
-        if let Ok(filename) = into_string(entry.file_name()) {
-          Some(get_stat_json(metadata, Some(filename)).unwrap())
+        if let Ok(name) = into_string(entry.file_name()) {
+          Some(json!({
+            "name": name,
+            "isFile": file_type.is_file(),
+            "isDirectory": file_type.is_dir(),
+            "isSymlink": file_type.is_symlink()
+          }))
         } else {
           None
         }
@@ -687,6 +665,7 @@ fn op_link(
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
+  state.check_unstable("Deno.link");
   let args: LinkArgs = serde_json::from_value(args)?;
   let oldpath = resolve_from_cwd(Path::new(&args.oldpath))?;
   let newpath = resolve_from_cwd(Path::new(&args.newpath))?;
@@ -708,6 +687,15 @@ struct SymlinkArgs {
   promise_id: Option<u64>,
   oldpath: String,
   newpath: String,
+  #[cfg(not(unix))]
+  options: Option<SymlinkOptions>,
+}
+
+#[cfg(not(unix))]
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SymlinkOptions {
+  _type: String,
 }
 
 fn op_symlink(
@@ -715,6 +703,7 @@ fn op_symlink(
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
+  state.check_unstable("Deno.symlink");
   let args: SymlinkArgs = serde_json::from_value(args)?;
   let oldpath = resolve_from_cwd(Path::new(&args.oldpath))?;
   let newpath = resolve_from_cwd(Path::new(&args.newpath))?;
@@ -730,13 +719,34 @@ fn op_symlink(
       symlink(&oldpath, &newpath)?;
       Ok(json!({}))
     }
-    // TODO Implement symlink, use type for Windows
     #[cfg(not(unix))]
     {
-      // Unlike with chmod/chown, here we don't
-      // require `oldpath` to exist on Windows
-      let _ = oldpath; // avoid unused warning
-      Err(OpError::not_implemented())
+      use std::os::windows::fs::{symlink_dir, symlink_file};
+
+      match args.options {
+        Some(options) => match options._type.as_ref() {
+          "file" => symlink_file(&oldpath, &newpath)?,
+          "dir" => symlink_dir(&oldpath, &newpath)?,
+          _ => return Err(OpError::type_error("unsupported type".to_string())),
+        },
+        None => {
+          let old_meta = std::fs::metadata(&oldpath);
+          match old_meta {
+            Ok(metadata) => {
+              if metadata.is_file() {
+                symlink_file(&oldpath, &newpath)?
+              } else if metadata.is_dir() {
+                symlink_dir(&oldpath, &newpath)?
+              }
+            }
+            Err(_) => return Err(OpError::type_error(
+              "you must pass a `options` argument for non-existent target path in windows"
+                .to_string(),
+            )),
+          }
+        }
+      };
+      Ok(json!({}))
     }
   })
 }
@@ -869,9 +879,9 @@ fn op_make_temp_dir(
     // We can't assume that paths are always valid utf8 strings.
     let path = make_temp(
       // Converting Option<String> to Option<&str>
-      dir.as_ref().map(|x| &**x),
-      prefix.as_ref().map(|x| &**x),
-      suffix.as_ref().map(|x| &**x),
+      dir.as_deref(),
+      prefix.as_deref(),
+      suffix.as_deref(),
       true,
     )?;
     let path_str = into_string(path.into_os_string())?;
@@ -900,9 +910,9 @@ fn op_make_temp_file(
     // We can't assume that paths are always valid utf8 strings.
     let path = make_temp(
       // Converting Option<String> to Option<&str>
-      dir.as_ref().map(|x| &**x),
-      prefix.as_ref().map(|x| &**x),
-      suffix.as_ref().map(|x| &**x),
+      dir.as_deref(),
+      prefix.as_deref(),
+      suffix.as_deref(),
       false,
     )?;
     let path_str = into_string(path.into_os_string())?;
@@ -925,6 +935,8 @@ fn op_utime(
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
+  state.check_unstable("Deno.utime");
+
   let args: UtimeArgs = serde_json::from_value(args)?;
   let path = resolve_from_cwd(Path::new(&args.path))?;
 
@@ -939,11 +951,12 @@ fn op_utime(
 }
 
 fn op_cwd(
-  _state: &State,
+  state: &State,
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   let path = current_dir()?;
+  state.check_read(&path)?;
   let path_str = into_string(path.into_os_string())?;
   Ok(JsonOp::Sync(json!(path_str)))
 }

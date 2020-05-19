@@ -4,20 +4,20 @@ import { Listener, Conn, ConnImpl, ListenerImpl } from "./net.ts";
 
 // TODO(ry) There are many configuration options to add...
 // https://docs.rs/rustls/0.16.0/rustls/struct.ClientConfig.html
-interface ConnectTLSOptions {
+interface ConnectTlsOptions {
   transport?: "tcp";
   port: number;
   hostname?: string;
   certFile?: string;
 }
 
-export async function connectTLS({
+export async function connectTls({
   port,
   hostname = "127.0.0.1",
   transport = "tcp",
   certFile = undefined,
-}: ConnectTLSOptions): Promise<Conn> {
-  const res = await tlsOps.connectTLS({
+}: ConnectTlsOptions): Promise<Conn> {
+  const res = await tlsOps.connectTls({
     port,
     hostname,
     transport,
@@ -33,7 +33,7 @@ class TLSListenerImpl extends ListenerImpl {
   }
 }
 
-export interface ListenTLSOptions {
+export interface ListenTlsOptions {
   port: number;
   hostname?: string;
   transport?: "tcp";
@@ -41,14 +41,14 @@ export interface ListenTLSOptions {
   keyFile: string;
 }
 
-export function listenTLS({
+export function listenTls({
   port,
   certFile,
   keyFile,
   hostname = "0.0.0.0",
   transport = "tcp",
-}: ListenTLSOptions): Listener {
-  const res = tlsOps.listenTLS({
+}: ListenTlsOptions): Listener {
+  const res = tlsOps.listenTls({
     port,
     certFile,
     keyFile,
@@ -56,4 +56,21 @@ export function listenTLS({
     transport,
   });
   return new TLSListenerImpl(res.rid, res.localAddr);
+}
+
+interface StartTlsOptions {
+  hostname?: string;
+  certFile?: string;
+}
+
+export async function startTls(
+  conn: Conn,
+  { hostname = "127.0.0.1", certFile = undefined }: StartTlsOptions = {}
+): Promise<Conn> {
+  const res = await tlsOps.startTls({
+    rid: conn.rid,
+    hostname,
+    certFile,
+  });
+  return new ConnImpl(res.rid, res.remoteAddr!, res.localAddr!);
 }

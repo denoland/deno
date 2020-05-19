@@ -1,8 +1,25 @@
-// TODO(ry) Re-enable this test on windows. It is flaky for an unknown reason.
-#![cfg(not(windows))]
+// To run this test manually:
+//   cd test_plugin
+//   ../target/debug/deno run --unstable --allow-plugin tests/test.js debug
 
-use deno::test_util::*;
+use std::path::PathBuf;
 use std::process::Command;
+
+fn target_dir() -> PathBuf {
+  let current_exe = std::env::current_exe().unwrap();
+  let target_dir = current_exe.parent().unwrap().parent().unwrap();
+  println!("target_dir {}", target_dir.display());
+  target_dir.into()
+}
+
+fn deno_exe_path() -> PathBuf {
+  // Something like /Users/rld/src/deno/target/debug/deps/deno
+  let mut p = target_dir().join("deno");
+  if cfg!(windows) {
+    p.set_extension("exe");
+  }
+  p
+}
 
 fn deno_cmd() -> Command {
   assert!(deno_exe_path().exists());
@@ -26,7 +43,9 @@ fn basic() {
   let build_plugin_output = build_plugin.output().unwrap();
   assert!(build_plugin_output.status.success());
   let output = deno_cmd()
+    .arg("run")
     .arg("--allow-plugin")
+    .arg("--unstable")
     .arg("tests/test.js")
     .arg(BUILD_VARIANT)
     .output()
@@ -38,11 +57,7 @@ fn basic() {
     println!("stderr {}", stderr);
   }
   assert!(output.status.success());
-  let expected = if cfg!(target_os = "windows") {
-    "Hello from plugin. data: test | zero_copy: test\nPlugin Sync Response: test\r\nHello from plugin. data: test | zero_copy: test\nPlugin Async Response: test\r\n"
-  } else {
-    "Hello from plugin. data: test | zero_copy: test\nPlugin Sync Response: test\nHello from plugin. data: test | zero_copy: test\nPlugin Async Response: test\n"
-  };
+  let expected = "Hello from plugin. data: test | zero_copy: test\nPlugin Sync Response: test\nHello from plugin. data: test | zero_copy: test\nPlugin Async Response: test\n";
   assert_eq!(stdout, expected);
   assert_eq!(stderr, "");
 }

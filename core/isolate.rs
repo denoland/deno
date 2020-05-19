@@ -13,14 +13,15 @@ use crate::js_errors::JSError;
 use crate::ops::*;
 use crate::shared_queue::SharedQueue;
 use crate::shared_queue::RECOMMENDED_SIZE;
+use crate::ResourceTable;
 use futures::future::FutureExt;
-use futures::future::TryFutureExt;
 use futures::stream::select;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
 use futures::task::AtomicWaker;
 use futures::Future;
 use libc::c_void;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::convert::From;
 use std::error::Error;
@@ -33,6 +34,8 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex, Once};
 use std::task::Context;
 use std::task::Poll;
+
+type PendingOpFuture = Pin<Box<dyn Future<Output = (OpId, Buf)>>>;
 
 /// A ZeroCopyBuf encapsulates a slice that's been borrowed from a JavaScript
 /// ArrayBuffer object. JavaScript objects can normally be garbage collected,
@@ -63,15 +66,25 @@ impl ZeroCopyBuf {
 impl Deref for ZeroCopyBuf {
   type Target = [u8];
   fn deref(&self) -> &[u8] {
-    let buf = unsafe { &**self.backing_store.get() };
-    &buf[self.byte_offset..self.byte_offset + self.byte_length]
+    unsafe {
+      bindings::get_backing_store_slice(
+        &self.backing_store,
+        self.byte_offset,
+        self.byte_length,
+      )
+    }
   }
 }
 
 impl DerefMut for ZeroCopyBuf {
   fn deref_mut(&mut self) -> &mut [u8] {
-    let buf = unsafe { &mut **self.backing_store.get() };
-    &mut buf[self.byte_offset..self.byte_offset + self.byte_length]
+    unsafe {
+      bindings::get_backing_store_slice_mut(
+        &self.backing_store,
+        self.byte_offset,
+        self.byte_length,
+      )
+    }
   }
 }
 
@@ -87,34 +100,7 @@ impl AsMut<[u8]> for ZeroCopyBuf {
   }
 }
 
-pub enum SnapshotConfig {
-  Borrowed(v8::StartupData<'static>),
-  Owned(v8::OwnedStartupData),
-}
-
-impl From<&'static [u8]> for SnapshotConfig {
-  fn from(sd: &'static [u8]) -> Self {
-    Self::Borrowed(v8::StartupData::new(sd))
-  }
-}
-
-impl From<v8::OwnedStartupData> for SnapshotConfig {
-  fn from(sd: v8::OwnedStartupData) -> Self {
-    Self::Owned(sd)
-  }
-}
-
-impl Deref for SnapshotConfig {
-  type Target = v8::StartupData<'static>;
-  fn deref(&self) -> &Self::Target {
-    match self {
-      Self::Borrowed(sd) => sd,
-      Self::Owned(sd) => &*sd,
-    }
-  }
-}
-
-/// Stores a script used to initalize a Isolate
+/// Stores a script used to initialize a Isolate
 pub struct Script<'a> {
   pub source: &'a str,
   pub filename: &'a str,
@@ -136,13 +122,17 @@ impl From<Script<'_>> for OwnedScript {
   }
 }
 
-/// Represents data used to initialize isolate at startup
-/// either a binary snapshot or a javascript source file
-/// in the form of the StartupScript struct.
+pub enum Snapshot {
+  Static(&'static [u8]),
+  JustCreated(v8::StartupData),
+  Boxed(Box<[u8]>),
+}
+
+/// Represents data used to initialize an isolate at startup, either
+/// in the form of a binary snapshot or a JavaScript source file.
 pub enum StartupData<'a> {
   Script(Script<'a>),
-  Snapshot(&'static [u8]),
-  OwnedSnapshot(v8::OwnedStartupData),
+  Snapshot(Snapshot),
   None,
 }
 
@@ -150,19 +140,19 @@ type JSErrorCreateFn = dyn Fn(JSError) -> ErrBox;
 type IsolateErrorHandleFn = dyn FnMut(ErrBox) -> Result<(), ErrBox>;
 
 /// A single execution context of JavaScript. Corresponds roughly to the "Web
-/// Worker" concept in the DOM. An Isolate is a Future that can be used with
-/// Tokio.  The Isolate future complete when there is an error or when all
+/// Worker" concept in the DOM. An CoreIsolate is a Future that can be used with
+/// Tokio. The CoreIsolate future completes when there is an error or when all
 /// pending ops have completed.
 ///
 /// Ops are created in JavaScript by calling Deno.core.dispatch(), and in Rust
 /// by implementing dispatcher function that takes control buffer and optional zero copy buffer
 /// as arguments. An async Op corresponds exactly to a Promise in JavaScript.
 #[allow(unused)]
-pub struct Isolate {
+pub struct CoreIsolate {
   pub v8_isolate: Option<v8::OwnedIsolate>,
   snapshot_creator: Option<v8::SnapshotCreator>,
   has_snapshotted: bool,
-  snapshot: Option<SnapshotConfig>,
+  pub resource_table: Rc<RefCell<ResourceTable>>,
   pub global_context: v8::Global<v8::Context>,
   pub(crate) shared_ab: v8::Global<v8::SharedArrayBuffer>,
   pub(crate) js_recv_cb: v8::Global<v8::Function>,
@@ -176,12 +166,12 @@ pub struct Isolate {
   pending_unref_ops: FuturesUnordered<PendingOpFuture>,
   have_unpolled_ops: bool,
   startup_script: Option<OwnedScript>,
-  pub op_registry: Rc<OpRegistry>,
+  pub op_registry: OpRegistry,
   waker: AtomicWaker,
   error_handler: Option<Box<IsolateErrorHandleFn>>,
 }
 
-impl Drop for Isolate {
+impl Drop for CoreIsolate {
   fn drop(&mut self) {
     if let Some(creator) = self.snapshot_creator.take() {
       // TODO(ry): in rusty_v8, `SnapShotCreator::get_owned_isolate()` returns
@@ -207,7 +197,7 @@ static DENO_INIT: Once = Once::new();
 
 #[allow(clippy::missing_safety_doc)]
 pub unsafe fn v8_init() {
-  let platform = v8::new_default_platform();
+  let platform = v8::new_default_platform().unwrap();
   v8::V8::initialize_platform(platform);
   v8::V8::initialize();
   // TODO(ry) This makes WASM compile synchronously. Eventually we should
@@ -222,7 +212,7 @@ pub unsafe fn v8_init() {
   v8::V8::set_flags_from_command_line(argv);
 }
 
-impl Isolate {
+impl CoreIsolate {
   /// startup_data defines the snapshot or script used at startup to initialize
   /// the isolate.
   pub fn new(startup_data: StartupData, will_snapshot: bool) -> Box<Self> {
@@ -230,31 +220,20 @@ impl Isolate {
       unsafe { v8_init() };
     });
 
-    let mut load_snapshot: Option<SnapshotConfig> = None;
-    let mut startup_script: Option<OwnedScript> = None;
-
-    // Separate into Option values for each startup type
-    match startup_data {
-      StartupData::Script(d) => {
-        startup_script = Some(d.into());
-      }
-      StartupData::Snapshot(d) => {
-        load_snapshot = Some(d.into());
-      }
-      StartupData::OwnedSnapshot(d) => {
-        load_snapshot = Some(d.into());
-      }
-      StartupData::None => {}
+    let (startup_script, startup_snapshot) = match startup_data {
+      StartupData::Script(script) => (Some(script.into()), None),
+      StartupData::Snapshot(snapshot) => (None, Some(snapshot)),
+      StartupData::None => (None, None),
     };
 
     let mut global_context = v8::Global::<v8::Context>::new();
     let (mut isolate, maybe_snapshot_creator) = if will_snapshot {
       // TODO(ry) Support loading snapshots before snapshotting.
-      assert!(load_snapshot.is_none());
+      assert!(startup_snapshot.is_none());
       let mut creator =
         v8::SnapshotCreator::new(Some(&bindings::EXTERNAL_REFERENCES));
       let isolate = unsafe { creator.get_owned_isolate() };
-      let mut isolate = Isolate::setup_isolate(isolate);
+      let mut isolate = CoreIsolate::setup_isolate(isolate);
 
       let mut hs = v8::HandleScope::new(&mut isolate);
       let scope = hs.enter();
@@ -265,26 +244,31 @@ impl Isolate {
 
       (isolate, Some(creator))
     } else {
-      let mut params = v8::Isolate::create_params();
-      params.set_array_buffer_allocator(v8::new_default_allocator());
-      params.set_external_references(&bindings::EXTERNAL_REFERENCES);
-      if let Some(ref mut snapshot) = load_snapshot {
-        params.set_snapshot_blob(snapshot);
-      }
+      let mut params = v8::Isolate::create_params()
+        .external_references(&**bindings::EXTERNAL_REFERENCES);
+      let snapshot_loaded = if let Some(snapshot) = startup_snapshot {
+        params = match snapshot {
+          Snapshot::Static(data) => params.snapshot_blob(data),
+          Snapshot::JustCreated(data) => params.snapshot_blob(data),
+          Snapshot::Boxed(data) => params.snapshot_blob(data),
+        };
+        true
+      } else {
+        false
+      };
 
       let isolate = v8::Isolate::new(params);
-      let mut isolate = Isolate::setup_isolate(isolate);
+      let mut isolate = CoreIsolate::setup_isolate(isolate);
 
       let mut hs = v8::HandleScope::new(&mut isolate);
       let scope = hs.enter();
 
-      let context = match load_snapshot {
-        Some(_) => v8::Context::new(scope),
-        None => {
-          // If no snapshot is provided, we initialize the context with empty
-          // main source code and source maps.
-          bindings::initialize_context(scope)
-        }
+      let context = if snapshot_loaded {
+        v8::Context::new(scope)
+      } else {
+        // If no snapshot is provided, we initialize the context with empty
+        // main source code and source maps.
+        bindings::initialize_context(scope)
       };
       global_context.set(scope, context);
 
@@ -297,12 +281,12 @@ impl Isolate {
     let core_isolate = Self {
       v8_isolate: None,
       global_context,
+      resource_table: Rc::new(RefCell::new(ResourceTable::default())),
       pending_promise_exceptions: HashMap::new(),
       shared_ab: v8::Global::<v8::SharedArrayBuffer>::new(),
       js_recv_cb: v8::Global::<v8::Function>::new(),
       js_macrotask_cb: v8::Global::<v8::Function>::new(),
       snapshot_creator: maybe_snapshot_creator,
-      snapshot: load_snapshot,
       has_snapshotted: false,
       shared_isolate_handle: Arc::new(Mutex::new(None)),
       js_error_create_fn: Box::new(JSError::create),
@@ -312,7 +296,7 @@ impl Isolate {
       pending_unref_ops: FuturesUnordered::new(),
       have_unpolled_ops: false,
       startup_script,
-      op_registry: Rc::new(OpRegistry::new()),
+      op_registry: OpRegistry::new(),
       waker: AtomicWaker::new(),
       error_handler: None,
     };
@@ -331,7 +315,7 @@ impl Isolate {
     boxed_isolate
   }
 
-  pub fn setup_isolate(mut isolate: v8::OwnedIsolate) -> v8::OwnedIsolate {
+  fn setup_isolate(mut isolate: v8::OwnedIsolate) -> v8::OwnedIsolate {
     isolate.set_capture_stack_trace_for_uncaught_exceptions(true, 10);
     isolate.set_promise_reject_callback(bindings::promise_reject_callback);
     isolate
@@ -342,9 +326,9 @@ impl Isolate {
   /// corresponds to the second argument of Deno.core.dispatch().
   ///
   /// Requires runtime to explicitly ask for op ids before using any of the ops.
-  pub fn register_op<F>(&self, name: &str, op: F) -> OpId
+  pub fn register_op<F>(&mut self, name: &str, op: F) -> OpId
   where
-    F: Fn(&[u8], Option<ZeroCopyBuf>) -> CoreOp + 'static,
+    F: Fn(&mut CoreIsolate, &[u8], Option<ZeroCopyBuf>) -> Op + 'static,
   {
     self.op_registry.register(name, op)
   }
@@ -363,9 +347,7 @@ impl Isolate {
   pub(crate) fn shared_init(&mut self) {
     if self.needs_init {
       self.needs_init = false;
-      js_check(
-        self.execute("shared_queue.js", include_str!("shared_queue.js")),
-      );
+      js_check(self.execute("core.js", include_str!("core.js")));
       // Maybe execute the startup script.
       if let Some(s) = self.startup_script.take() {
         self.execute(&s.filename, &s.source).unwrap()
@@ -380,17 +362,14 @@ impl Isolate {
     control_buf: &[u8],
     zero_copy_buf: Option<ZeroCopyBuf>,
   ) -> Option<(OpId, Box<[u8]>)> {
-    let maybe_op = self.op_registry.call(op_id, control_buf, zero_copy_buf);
-
-    let op = match maybe_op {
-      Some(op) => op,
-      None => {
-        let message =
-          v8::String::new(scope, &format!("Unknown op id: {}", op_id)).unwrap();
-        let exception = v8::Exception::type_error(scope, message);
-        scope.isolate().throw_exception(exception);
-        return None;
-      }
+    let op = if let Some(dispatcher) = self.op_registry.get(op_id) {
+      dispatcher(self, control_buf, zero_copy_buf)
+    } else {
+      let message =
+        v8::String::new(scope, &format!("Unknown op id: {}", op_id)).unwrap();
+      let exception = v8::Exception::type_error(scope, message);
+      scope.isolate().throw_exception(exception);
+      return None;
     };
 
     debug_assert_eq!(self.shared.size(), 0);
@@ -402,13 +381,13 @@ impl Isolate {
         Some((op_id, buf))
       }
       Op::Async(fut) => {
-        let fut2 = fut.map_ok(move |buf| (op_id, buf));
+        let fut2 = fut.map(move |buf| (op_id, buf));
         self.pending_ops.push(fut2.boxed_local());
         self.have_unpolled_ops = true;
         None
       }
       Op::AsyncUnref(fut) => {
-        let fut2 = fut.map_ok(move |buf| (op_id, buf));
+        let fut2 = fut.map(move |buf| (op_id, buf));
         self.pending_unref_ops.push(fut2.boxed_local());
         self.have_unpolled_ops = true;
         None
@@ -420,7 +399,7 @@ impl Isolate {
   ///
   /// ErrBox can be downcast to a type that exposes additional information about
   /// the V8 exception. By default this type is JSError, however it may be a
-  /// different type if Isolate::set_js_error_create_fn() has been used.
+  /// different type if CoreIsolate::set_js_error_create_fn() has been used.
   pub fn execute(
     &mut self,
     js_filename: &str,
@@ -446,7 +425,14 @@ impl Isolate {
     let tc = try_catch.enter();
 
     let mut script =
-      v8::Script::compile(scope, context, source, Some(&origin)).unwrap();
+      match v8::Script::compile(scope, context, source, Some(&origin)) {
+        Some(script) => script,
+        None => {
+          let exception = tc.exception().unwrap();
+          return exception_to_err_result(scope, exception, js_error_create_fn);
+        }
+      };
+
     match script.run(scope, context) {
       Some(_) => Ok(()),
       None => {
@@ -462,8 +448,8 @@ impl Isolate {
   ///
   /// ErrBox can be downcast to a type that exposes additional information about
   /// the V8 exception. By default this type is JSError, however it may be a
-  /// different type if Isolate::set_js_error_create_fn() has been used.
-  pub fn snapshot(&mut self) -> v8::OwnedStartupData {
+  /// different type if CoreIsolate::set_js_error_create_fn() has been used.
+  pub fn snapshot(&mut self) -> v8::StartupData {
     assert!(self.snapshot_creator.is_some());
 
     // Note: create_blob() method must not be called from within a HandleScope.
@@ -486,7 +472,7 @@ impl Isolate {
   }
 }
 
-impl Future for Isolate {
+impl Future for CoreIsolate {
   type Output = Result<(), ErrBox>;
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
@@ -521,10 +507,9 @@ impl Future for Isolate {
       match select(&mut inner.pending_ops, &mut inner.pending_unref_ops)
         .poll_next_unpin(cx)
       {
-        Poll::Ready(Some(Err(_))) => panic!("unexpected op error"),
         Poll::Ready(None) => break,
         Poll::Pending => break,
-        Poll::Ready(Some(Ok((op_id, buf)))) => {
+        Poll::Ready(Some((op_id, buf))) => {
           let successful_push = inner.shared.push(op_id, &buf);
           if !successful_push {
             // If we couldn't push the response to the shared queue, because
@@ -543,8 +528,7 @@ impl Future for Isolate {
       assert_eq!(inner.shared.size(), 0);
     }
 
-    if overflow_response.is_some() {
-      let (op_id, buf) = overflow_response.take().unwrap();
+    if let Some((op_id, buf)) = overflow_response.take() {
       async_op_response(
         scope,
         Some((op_id, buf)),
@@ -741,7 +725,7 @@ pub mod tests {
       }
     }
     panic!(
-      "Isolate still not ready after polling {} times.",
+      "CoreIsolate still not ready after polling {} times.",
       max_poll_count
     )
   }
@@ -755,63 +739,64 @@ pub mod tests {
     OverflowResAsync,
   }
 
-  pub fn setup(mode: Mode) -> (Box<Isolate>, Arc<AtomicUsize>) {
+  pub fn setup(mode: Mode) -> (Box<CoreIsolate>, Arc<AtomicUsize>) {
     let dispatch_count = Arc::new(AtomicUsize::new(0));
     let dispatch_count_ = dispatch_count.clone();
 
-    let mut isolate = Isolate::new(StartupData::None, false);
+    let mut isolate = CoreIsolate::new(StartupData::None, false);
 
-    let dispatcher =
-      move |control: &[u8], _zero_copy: Option<ZeroCopyBuf>| -> CoreOp {
-        dispatch_count_.fetch_add(1, Ordering::Relaxed);
-        match mode {
-          Mode::Async => {
-            assert_eq!(control.len(), 1);
-            assert_eq!(control[0], 42);
-            let buf = vec![43u8].into_boxed_slice();
-            Op::Async(futures::future::ok(buf).boxed())
-          }
-          Mode::AsyncUnref => {
-            assert_eq!(control.len(), 1);
-            assert_eq!(control[0], 42);
-            let fut = async {
-              // This future never finish.
-              futures::future::pending::<()>().await;
-              let buf = vec![43u8].into_boxed_slice();
-              Ok(buf)
-            };
-            Op::AsyncUnref(fut.boxed())
-          }
-          Mode::OverflowReqSync => {
-            assert_eq!(control.len(), 100 * 1024 * 1024);
-            let buf = vec![43u8].into_boxed_slice();
-            Op::Sync(buf)
-          }
-          Mode::OverflowResSync => {
-            assert_eq!(control.len(), 1);
-            assert_eq!(control[0], 42);
-            let mut vec = Vec::<u8>::new();
-            vec.resize(100 * 1024 * 1024, 0);
-            vec[0] = 99;
-            let buf = vec.into_boxed_slice();
-            Op::Sync(buf)
-          }
-          Mode::OverflowReqAsync => {
-            assert_eq!(control.len(), 100 * 1024 * 1024);
-            let buf = vec![43u8].into_boxed_slice();
-            Op::Async(futures::future::ok(buf).boxed())
-          }
-          Mode::OverflowResAsync => {
-            assert_eq!(control.len(), 1);
-            assert_eq!(control[0], 42);
-            let mut vec = Vec::<u8>::new();
-            vec.resize(100 * 1024 * 1024, 0);
-            vec[0] = 4;
-            let buf = vec.into_boxed_slice();
-            Op::Async(futures::future::ok(buf).boxed())
-          }
+    let dispatcher = move |_isolate: &mut CoreIsolate,
+                           control: &[u8],
+                           _zero_copy: Option<ZeroCopyBuf>|
+          -> Op {
+      dispatch_count_.fetch_add(1, Ordering::Relaxed);
+      match mode {
+        Mode::Async => {
+          assert_eq!(control.len(), 1);
+          assert_eq!(control[0], 42);
+          let buf = vec![43u8].into_boxed_slice();
+          Op::Async(futures::future::ready(buf).boxed())
         }
-      };
+        Mode::AsyncUnref => {
+          assert_eq!(control.len(), 1);
+          assert_eq!(control[0], 42);
+          let fut = async {
+            // This future never finish.
+            futures::future::pending::<()>().await;
+            vec![43u8].into_boxed_slice()
+          };
+          Op::AsyncUnref(fut.boxed())
+        }
+        Mode::OverflowReqSync => {
+          assert_eq!(control.len(), 100 * 1024 * 1024);
+          let buf = vec![43u8].into_boxed_slice();
+          Op::Sync(buf)
+        }
+        Mode::OverflowResSync => {
+          assert_eq!(control.len(), 1);
+          assert_eq!(control[0], 42);
+          let mut vec = Vec::<u8>::new();
+          vec.resize(100 * 1024 * 1024, 0);
+          vec[0] = 99;
+          let buf = vec.into_boxed_slice();
+          Op::Sync(buf)
+        }
+        Mode::OverflowReqAsync => {
+          assert_eq!(control.len(), 100 * 1024 * 1024);
+          let buf = vec![43u8].into_boxed_slice();
+          Op::Async(futures::future::ready(buf).boxed())
+        }
+        Mode::OverflowResAsync => {
+          assert_eq!(control.len(), 1);
+          assert_eq!(control[0], 42);
+          let mut vec = Vec::<u8>::new();
+          vec.resize(100 * 1024 * 1024, 0);
+          vec[0] = 4;
+          let buf = vec.into_boxed_slice();
+          Op::Async(futures::future::ready(buf).boxed())
+        }
+      }
+    };
 
     isolate.register_op("test", dispatcher);
 
@@ -1137,19 +1122,24 @@ pub mod tests {
   }
 
   #[test]
-  fn test_js() {
+  fn core_test_js() {
     run_in_task(|mut cx| {
       let (mut isolate, _dispatch_count) = setup(Mode::Async);
-      js_check(
-        isolate.execute(
-          "shared_queue_test.js",
-          include_str!("shared_queue_test.js"),
-        ),
-      );
+      js_check(isolate.execute("core_test.js", include_str!("core_test.js")));
       if let Poll::Ready(Err(_)) = isolate.poll_unpin(&mut cx) {
         unreachable!();
       }
     });
+  }
+
+  #[test]
+  fn syntax_error() {
+    let mut isolate = CoreIsolate::new(StartupData::None, false);
+    let src = "hocuspocus(";
+    let r = isolate.execute("i.js", src);
+    let e = r.unwrap_err();
+    let js_error = e.downcast::<JSError>().unwrap();
+    assert_eq!(js_error.end_column, Some(11));
   }
 
   #[test]
@@ -1169,13 +1159,27 @@ pub mod tests {
   #[test]
   fn will_snapshot() {
     let snapshot = {
-      let mut isolate = Isolate::new(StartupData::None, true);
+      let mut isolate = CoreIsolate::new(StartupData::None, true);
       js_check(isolate.execute("a.js", "a = 1 + 2"));
       isolate.snapshot()
     };
 
-    let startup_data = StartupData::OwnedSnapshot(snapshot);
-    let mut isolate2 = Isolate::new(startup_data, false);
+    let startup_data = StartupData::Snapshot(Snapshot::JustCreated(snapshot));
+    let mut isolate2 = CoreIsolate::new(startup_data, false);
+    js_check(isolate2.execute("check.js", "if (a != 3) throw Error('x')"));
+  }
+
+  #[test]
+  fn test_from_boxed_snapshot() {
+    let snapshot = {
+      let mut isolate = CoreIsolate::new(StartupData::None, true);
+      js_check(isolate.execute("a.js", "a = 1 + 2"));
+      let snap: &[u8] = &*isolate.snapshot();
+      Vec::from(snap).into_boxed_slice()
+    };
+
+    let startup_data = StartupData::Snapshot(Snapshot::Boxed(snapshot));
+    let mut isolate2 = CoreIsolate::new(startup_data, false);
     js_check(isolate2.execute("check.js", "if (a != 3) throw Error('x')"));
   }
 }

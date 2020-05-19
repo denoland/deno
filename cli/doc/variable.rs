@@ -19,7 +19,6 @@ pub fn get_doc_for_var_decl(
 ) -> (String, VariableDef) {
   assert!(!var_decl.decls.is_empty());
   let var_declarator = var_decl.decls.get(0).unwrap();
-
   let var_name = match &var_declarator.name {
     swc_ecma_ast::Pat::Ident(ident) => ident.sym.to_string(),
     _ => "<TODO>".to_string(),

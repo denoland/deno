@@ -4,7 +4,8 @@ fs module is made to provide helpers to manipulate the filesystem.
 
 ## Usage
 
-All the following modules are exposed in `mod.ts`
+All the following modules are exposed in `mod.ts` This feature is currently
+unstable. To enable it use `deno run --unstable`
 
 ### emptyDir
 
@@ -55,19 +56,11 @@ import {
   ensureSymlinkSync,
 } from "https://deno.land/std/fs/mod.ts";
 
-ensureSymlink(
-  "./folder/targetFile.dat",
-  "./folder/targetFile.link.dat",
-  "file"
-); // returns promise
-ensureSymlinkSync(
-  "./folder/targetFile.dat",
-  "./folder/targetFile.link.dat",
-  "file"
-); // void
+ensureSymlink("./folder/targetFile.dat", "./folder/targetFile.link.dat"); // returns promise
+ensureSymlinkSync("./folder/targetFile.dat", "./folder/targetFile.link.dat"); // void
 ```
 
-### eol
+### EOL
 
 Detects and format the passed string for the targeted End Of Line character.
 
@@ -97,21 +90,6 @@ import { exists, existsSync } from "https://deno.land/std/fs/mod.ts";
 
 exists("./foo"); // returns a Promise<boolean>
 existsSync("./foo"); // returns boolean
-```
-
-### globToRegExp
-
-Generate a regex based on glob pattern and options This was meant to be using
-the the `fs.walk` function but can be used anywhere else.
-
-```ts
-import { globToRegExp } from "https://deno.land/std/fs/mod.ts";
-
-globToRegExp("foo/**/*.json", {
-  flags: "g",
-  extended: true,
-  globstar: true,
-}); // returns the regex to find all .json files in the folder foo
 ```
 
 ### move
@@ -151,27 +129,6 @@ const f = await readJson("./foo.json");
 const foo = readJsonSync("./foo.json");
 ```
 
-### walk
-
-Iterate all files in a directory recursively.
-
-```ts
-import { walk, walkSync } from "https://deno.land/std/fs/mod.ts";
-
-for (const fileInfo of walkSync(".")) {
-  console.log(fileInfo.filename);
-}
-
-// Async
-async function printFilesNames() {
-  for await (const fileInfo of walk()) {
-    console.log(fileInfo.filename);
-  }
-}
-
-printFilesNames().then(() => console.log("Done!"));
-```
-
 ### writeJson
 
 Writes an object to a JSON file.
@@ -190,6 +147,27 @@ writeJson("./target.dat", { foo: "bar" }, { spaces: 2 }); // returns a promise
 writeJsonSync("./target.dat", { foo: "bar" }, { replacer: ["foo"] }); // void
 ```
 
+### walk
+
+Iterate all files in a directory recursively.
+
+```ts
+import { walk, walkSync } from "https://deno.land/std/fs/mod.ts";
+
+for (const fileInfo of walkSync(".")) {
+  console.log(fileInfo.filename);
+}
+
+// Async
+async function printFilesNames() {
+  for await (const entry of walk()) {
+    console.log(entry.path);
+  }
+}
+
+printFilesNames().then(() => console.log("Done!"));
+```
+
 ### readFileStr
 
 Read file and output it as a string.
@@ -202,7 +180,7 @@ Read file and output it as a string.
 import { readFileStr, readFileStrSync } from "https://deno.land/std/fs/mod.ts";
 
 readFileStr("./target.dat", { encoding: "utf8" }); // returns a promise
-readFileStrSync("./target.dat", { encoding: "utf8" }); // void
+readFileStrSync("./target.dat", { encoding: "utf8" }); // string
 ```
 
 ### writeFileStr

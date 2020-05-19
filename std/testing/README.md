@@ -51,7 +51,7 @@ Deno.test({
 Short syntax (named function instead of object):
 
 ```ts
-Deno.test(function example(): void {
+Deno.test("example", function (): void {
   assertEquals("world", "world");
   assertEquals({ hello: "world" }, { hello: "world" });
 });
@@ -60,14 +60,14 @@ Deno.test(function example(): void {
 Using `assertStrictEq()`:
 
 ```ts
-Deno.test(function isStrictlyEqual(): void {
+Deno.test("isStrictlyEqual", function (): void {
   const a = {};
   const b = a;
   assertStrictEq(a, b);
 });
 
 // This test fails
-Deno.test(function isNotStrictlyEqual(): void {
+Deno.test("isNotStrictlyEqual", function (): void {
   const a = {};
   const b = {};
   assertStrictEq(a, b);
@@ -77,7 +77,7 @@ Deno.test(function isNotStrictlyEqual(): void {
 Using `assertThrows()`:
 
 ```ts
-Deno.test(function doesThrow(): void {
+Deno.test("doesThrow", function (): void {
   assertThrows((): void => {
     throw new TypeError("hello world!");
   });
@@ -94,7 +94,7 @@ Deno.test(function doesThrow(): void {
 });
 
 // This test will not pass
-Deno.test(function fails(): void {
+Deno.test("fails", function (): void {
   assertThrows((): void => {
     console.log("Hello world");
   });
@@ -104,7 +104,7 @@ Deno.test(function fails(): void {
 Using `assertThrowsAsync()`:
 
 ```ts
-Deno.test(async function doesThrow(): Promise<void> {
+Deno.test("doesThrow", async function (): Promise<void> {
   await assertThrowsAsync(
     async (): Promise<void> => {
       throw new TypeError("hello world!");
@@ -128,7 +128,7 @@ Deno.test(async function doesThrow(): Promise<void> {
 });
 
 // This test will not pass
-Deno.test(async function fails(): Promise<void> {
+Deno.test("fails", async function (): Promise<void> {
   await assertThrowsAsync(
     async (): Promise<void> => {
       console.log("Hello world");

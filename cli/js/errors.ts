@@ -23,6 +23,7 @@ export enum ErrorKind {
   URIError = 20,
   TypeError = 21,
   Other = 22,
+  Busy = 23,
 }
 
 export function getErrorClass(kind: ErrorKind): { new (msg: string): Error } {
@@ -67,6 +68,8 @@ export function getErrorClass(kind: ErrorKind): { new (msg: string): Error } {
       return BadResource;
     case ErrorKind.Http:
       return Http;
+    case ErrorKind.Busy:
+      return Busy;
   }
 }
 
@@ -172,6 +175,12 @@ class Http extends Error {
     this.name = "Http";
   }
 }
+class Busy extends Error {
+  constructor(msg: string) {
+    super(msg);
+    this.name = "Busy";
+  }
+}
 
 export const errors = {
   NotFound: NotFound,
@@ -191,4 +200,5 @@ export const errors = {
   UnexpectedEof: UnexpectedEof,
   BadResource: BadResource,
   Http: Http,
+  Busy: Busy,
 };

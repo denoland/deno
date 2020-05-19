@@ -20,9 +20,17 @@ export function log(...args: unknown[]): void {
 }
 
 // @internal
-export function assert(cond: unknown, msg = "assert"): asserts cond {
+export class AssertionError extends Error {
+  constructor(msg?: string) {
+    super(msg);
+    this.name = "AssertionError";
+  }
+}
+
+// @internal
+export function assert(cond: unknown, msg = "Assertion failed."): asserts cond {
   if (!cond) {
-    throw Error(msg);
+    throw new AssertionError(msg);
   }
 }
 
