@@ -15,7 +15,7 @@ function code(open: number, close: number): Code {
 }
 
 function run(str: string, code: Code): string {
-  return globalThis.Deno.noColor
+  return !globalThis || !globalThis.Deno || globalThis.Deno.noColor
     ? str
     : `${code.open}${str.replace(code.regexp, code.open)}${code.close}`;
 }
