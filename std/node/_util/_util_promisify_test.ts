@@ -181,6 +181,27 @@ test("Promisify a promise", function testPromisifyPromise() {
   assertStrictEq(a, b);
 });
 
+test("Test error", async function testInvalidArguments() {
+  let errToThrow;
+
+  const thrower = promisify(function (
+    a: number,
+    b: number,
+    c: number,
+    cb: Function
+  ): void {
+    errToThrow = new Error(`${a}-${b}-${c}-${cb}`);
+    throw errToThrow;
+  });
+
+  try {
+    await thrower(1, 2, 3);
+    throw new Error(`should've failed`);
+  } catch (e) {
+    assertStrictEq(e, errToThrow);
+  }
+});
+
 test("Test invalid arguments", function testInvalidArguments() {
   [undefined, null, true, 0, "str", {}, [], Symbol()].forEach((input) => {
     try {

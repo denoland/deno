@@ -48,7 +48,11 @@ export function promisify(original: Function): Function {
     // @ts-ignore TypeScript (as of 3.7) does not support indexing namespaces by symbol
     const fn = original[kCustomPromisifiedSymbol];
     if (typeof fn !== "function") {
-      throw new ERR_INVALID_ARG_TYPE("util.promisify.custom", "Function", fn);
+      throw new NodeInvalidArgTypeError(
+        "util.promisify.custom",
+        "Function",
+        fn
+      );
     }
     return Object.defineProperty(fn, kCustomPromisifiedSymbol, {
       value: fn,
@@ -63,7 +67,7 @@ export function promisify(original: Function): Function {
   // @ts-ignore TypeScript (as of 3.7) does not support indexing namespaces by symbol
   const argumentNames = original[kCustomPromisifyArgsSymbol];
 
-  function fn(...args: unknown[]): Promise {
+  function fn(...args: unknown[]): Promise<unknown> {
     return new Promise((resolve, reject) => {
       // @ts-ignore
       original.call(this, ...args, (err: Error, ...values: unknown[]) => {
