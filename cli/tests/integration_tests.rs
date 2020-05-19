@@ -696,13 +696,15 @@ const REPL_MSG: &str = "exit using ctrl+d or close()\n";
 
 #[test]
 fn repl_test_close_command() {
-  let (_out, err) = util::run_and_collect_output(
+  let (out, err) = util::run_and_collect_output(
     true,
     "repl",
     Some(vec!["close()", "'ignored'"]),
     None,
     false,
   );
+
+  assert!(!out.contains("ignored"));
   assert!(err.is_empty());
 }
 
