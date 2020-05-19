@@ -1,5 +1,6 @@
-const path = await Deno.makeTempFile({ dir: "./subdir/" });
-if (path.startsWith(Deno.cwd())) {
+const sep = Deno.build.os == "windows" ? "\\" : "/";
+const path = await Deno.makeTempFile({ dir: `.${sep}subdir` });
+if (path.startsWith(`.${sep}subdir${sep}`)) {
   console.log("good", path);
 } else {
   throw Error("bad " + path);

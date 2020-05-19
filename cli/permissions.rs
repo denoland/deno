@@ -1,8 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::colors;
 use crate::flags::Flags;
+use crate::fs::resolve_from_cwd;
 use crate::op_error::OpError;
 use std::collections::HashSet;
+use std::env::current_dir;
 use std::fmt;
 #[cfg(not(test))]
 use std::io;
@@ -161,10 +163,30 @@ impl Permissions {
   }
 
   pub fn check_read(&self, path: &Path) -> Result<(), OpError> {
-    self.get_state_read(&Some(path)).check(
-      &format!("read access to \"{}\"", path.display()),
+    let resolved_path = resolve_from_cwd(path).unwrap();
+    let display_path = if path.is_absolute() {
+      path
+    } else {
+      match self.get_state_read(&Some(&current_dir()?)).check("", "") {
+        Ok(_) => &resolved_path,
+        Err(_) => path,
+      }
+    };
+    self.get_state_read(&Some(&resolved_path)).check(
+      &format!("read access to \"{}\"", display_path.display()),
       "--allow-read",
     )
+  }
+
+  pub fn check_read_blind(
+    &self,
+    path: &Path,
+    display: &str,
+  ) -> Result<(), OpError> {
+    let resolved_path = resolve_from_cwd(path).unwrap();
+    self
+      .get_state_read(&Some(&resolved_path))
+      .check(&format!("read access to <{}>", display), "--allow-read")
   }
 
   fn get_state_write(&self, path: &Option<&Path>) -> PermissionState {
@@ -175,8 +197,17 @@ impl Permissions {
   }
 
   pub fn check_write(&self, path: &Path) -> Result<(), OpError> {
-    self.get_state_write(&Some(path)).check(
-      &format!("write access to \"{}\"", path.display()),
+    let resolved_path = resolve_from_cwd(path).unwrap();
+    let display_path = if path.is_absolute() {
+      path
+    } else {
+      match self.get_state_read(&Some(&current_dir()?)).check("", "") {
+        Ok(_) => &resolved_path,
+        Err(_) => path,
+      }
+    };
+    self.get_state_write(&Some(&resolved_path)).check(
+      &format!("write access to \"{}\"", display_path.display()),
       "--allow-write",
     )
   }
@@ -226,8 +257,17 @@ impl Permissions {
   }
 
   pub fn check_plugin(&self, path: &Path) -> Result<(), OpError> {
+    let resolved_path = resolve_from_cwd(path).unwrap();
+    let display_path = if path.is_absolute() {
+      path
+    } else {
+      match self.get_state_read(&Some(&current_dir()?)).check("", "") {
+        Ok(_) => &resolved_path,
+        Err(_) => path,
+      }
+    };
     self.allow_plugin.check(
-      &format!("access to open a plugin: {}", path.display()),
+      &format!("access to open a plugin: {}", display_path.display()),
       "--allow-plugin",
     )
   }
