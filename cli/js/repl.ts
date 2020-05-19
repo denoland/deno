@@ -1,7 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { exit } from "./ops/os.ts";
 import { core } from "./core.ts";
-import { writable } from "./globals.ts";
 import { version } from "./version.ts";
 import { stringifyArgs } from "./web/console.ts";
 import { startRepl, readline } from "./ops/repl.ts";
@@ -33,6 +32,13 @@ function isRecoverableError(e: Error): boolean {
   return recoverableErrorMessages.includes(e.message);
 }
 
+// Returns `true` if `close()` is called in REPL.
+// We should quit the REPL when this function returns `true`.
+function isCloseCalled(): boolean {
+  // @ts-ignore
+  return globalThis.closed;
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Value = any;
 
@@ -46,7 +52,9 @@ function evaluate(code: string): boolean {
   const [result, errInfo] = core.evalContext(code);
   if (!errInfo) {
     lastEvalResult = result;
-    replLog(result);
+    if (!isCloseCalled()) {
+      replLog(result);
+    }
   } else if (errInfo.isCompileError && isRecoverableError(errInfo.thrown)) {
     // Recoverable compiler error
     return false; // don't consume code.
@@ -107,17 +115,14 @@ export async function replLoop(): Promise<void> {
     },
   });
 
-  // Configure globalThis.close to terminate REPL properly when `close()` is called.
-  Object.defineProperty(
-    globalThis,
-    "close",
-    writable(() => quitRepl(0))
-  );
-
   replLog(`Deno ${version.deno}`);
   replLog("exit using ctrl+d or close()");
 
   while (true) {
+    if (isCloseCalled()) {
+      quitRepl(0);
+    }
+
     let code = "";
     // Top level read
     try {
