@@ -7,7 +7,7 @@ import {
   WebSocket,
 } from "../../ws/mod.ts";
 
-async function handleWs(sock: WebSocket) {
+async function handleWs(sock: WebSocket): Promise<void> {
   console.log("socket connected!");
   try {
     for await (const ev of sock) {
