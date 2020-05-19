@@ -3,20 +3,14 @@
 import { CallbackWithError } from "./_fs_common.ts";
 
 export function close(fd: number, callback: CallbackWithError): void {
-  new Promise((resolve, reject) => {
+  queueMicrotask(() => {
     try {
       Deno.close(fd);
-      resolve();
-    } catch (err) {
-      reject(err);
-    }
-  })
-    .then(() => {
       callback();
-    })
-    .catch((err) => {
+    } catch (err) {
       callback(err);
-    });
+    }
+  });
 }
 
 export function closeSync(fd: number): void {
