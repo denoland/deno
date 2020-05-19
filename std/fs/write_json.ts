@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Replacer = (key: string, value: any) => any;
 
@@ -7,7 +8,14 @@ export interface WriteJsonOptions {
   replacer?: Array<number | string> | Replacer;
 }
 
-/* Writes an object to a JSON file. */
+/** 
+ * Writes an object to a JSON file. 
+ * 
+ * @param filePath File to write
+ * @param object The object write to file
+ * @param options Options for JSON stringifying
+ * @returns Promise<void>
+ */
 export async function writeJson(
   filePath: string,
   object: any,
@@ -29,7 +37,14 @@ export async function writeJson(
   await Deno.writeFile(filePath, new TextEncoder().encode(contentRaw));
 }
 
-/* Writes an object to a JSON file. */
+/** 
+ * Writes an object to a JSON file synchronously. 
+ * 
+ * @param filePath File to write
+ * @param object The object write to file
+ * @param options Options for JSON stringifying
+ * @returns void
+ */
 export function writeJsonSync(
   filePath: string,
   object: any,
