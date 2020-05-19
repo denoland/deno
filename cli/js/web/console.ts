@@ -461,7 +461,8 @@ function createPromiseString(
     return `Promise { ${cyan("<pending>")} }`;
   }
 
-  const prefix = state === PromiseState.Fulfilled ? "" : `${red("<rejected>")} `;
+  const prefix =
+    state === PromiseState.Fulfilled ? "" : `${red("<rejected>")} `;
 
   const str = `${prefix}${stringifyWithQuotes(
     result,

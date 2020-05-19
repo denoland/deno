@@ -144,7 +144,9 @@ unitTest(function consoleTestStringifyCircular(): void {
     nu: ${bold("null")},
     nested: ${cyan("[Circular]")},
     emptyObj: {},
-    arr: [ ${yellow("1")}, ${green('"s"')}, ${yellow("false")}, ${bold("null")}, ${cyan("[Circular]")} ],
+    arr: [ ${yellow("1")}, ${green('"s"')}, ${yellow("false")}, ${bold(
+    "null"
+  )}, ${cyan("[Circular]")} ],
     baseClass: Base { a: ${yellow("1")} }
   }
 }`;
@@ -250,7 +252,9 @@ unitTest(function consoleTestStringifyCircular(): void {
   );
   assertEquals(
     stringify({ str: 1, [Symbol.for("sym")]: 2, [Symbol.toStringTag]: "TAG" }),
-    `TAG { str: ${yellow("1")}, Symbol(sym): ${yellow("2")}, Symbol(Symbol.toStringTag): ${green('"TAG"')} }`
+    `TAG { str: ${yellow("1")}, Symbol(sym): ${yellow(
+      "2"
+    )}, Symbol(Symbol.toStringTag): ${green('"TAG"')} }`
   );
   // test inspect is working the same
   assertEquals(inspect(nestedObj), nestedObjExpected);
