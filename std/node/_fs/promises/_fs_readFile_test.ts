@@ -3,10 +3,8 @@ import { readFile } from "./_fs_readFile.ts";
 import * as path from "../../../path/mod.ts";
 import { assertEquals, assert } from "../../../testing/asserts.ts";
 
-const dirname = new URL(".", import.meta.url).pathname;
-
 const testData = path.resolve(
-  path.join(dirname, "..", "testdata", "hello.txt")
+  path.join("node", "_fs", "testdata", "hello.txt")
 );
 
 test("readFileSuccess", async function () {
