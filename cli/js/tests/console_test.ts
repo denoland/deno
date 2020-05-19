@@ -13,7 +13,7 @@ import {
   magenta,
   bold,
   dim,
-} from "../../../std/fmt/colors.ts";
+} from "../colors.ts";
 
 // Some of these APIs aren't exposed in the types and so we have to cast to any
 // in order to "trick" TypeScript.
