@@ -1,6 +1,7 @@
 import { sprintf } from "./sprintf.ts";
 
 import { assertEquals } from "../testing/asserts.ts";
+import { cyan, yellow } from "./colors.ts";
 
 const S = sprintf;
 
@@ -600,12 +601,12 @@ Deno.test("testWeirdos", function (): void {
 Deno.test("formatV", function (): void {
   const a = { a: { a: { a: { a: { a: { a: { a: {} } } } } } } };
   assertEquals(S("%v", a), "[object Object]");
-  assertEquals(S("%#v", a), "{ a: { a: { a: { a: [Object] } } } }");
+  assertEquals(S("%#v", a), `{ a: { a: { a: { a: ${cyan("[Object]")} } } } }`);
   assertEquals(
     S("%#.8v", a),
     "{ a: { a: { a: { a: { a: { a: { a: {} } } } } } } }"
   );
-  assertEquals(S("%#.1v", a), "{ a: [Object] }");
+  assertEquals(S("%#.1v", a), `{ a: ${cyan("[Object]")} }`);
 });
 
 Deno.test("formatJ", function (): void {
@@ -618,7 +619,9 @@ Deno.test("flagLessThan", function (): void {
   const aArray = [a, a, a];
   assertEquals(
     S("%<#.1v", aArray),
-    "[ { a: [Object] }, { a: [Object] }, { a: [Object] } ]"
+    `[ { a: ${cyan("[Object]")} }, { a: ${cyan("[Object]")} }, { a: ${cyan(
+      "[Object]"
+    )} } ]`
   );
   const fArray = [1.2345, 0.98765, 123456789.5678];
   assertEquals(S("%<.2f", fArray), "[ 1.23, 0.99, 123456789.57 ]");
@@ -638,7 +641,10 @@ Deno.test("testErrors", function (): void {
 
   assertEquals(S("%*.2f", "a", 1.1), "%!(BAD WIDTH 'a')");
   assertEquals(S("%.*f", "a", 1.1), "%!(BAD PREC 'a')");
-  assertEquals(S("%.[2]*f", 1.23, "p"), "%!(BAD PREC 'p')%!(EXTRA '1.23')");
+  assertEquals(
+    S("%.[2]*f", 1.23, "p"),
+    `%!(BAD PREC 'p')%!(EXTRA '${yellow("1.23")}')`
+  );
   assertEquals(S("%.[2]*[1]f Yippie!", 1.23, "p"), "%!(BAD PREC 'p') Yippie!");
 
   assertEquals(S("%[1]*.2f", "a", "p"), "%!(BAD WIDTH 'a')");
@@ -649,7 +655,10 @@ Deno.test("testErrors", function (): void {
   // remains to be determined how to handle bad indices ...
   // (realistically) the entire error handling is still up for grabs.
   assertEquals(S("%[hallo]s %d %d %d", 1, 2, 3, 4), "%!(BAD INDEX) 2 3 4");
-  assertEquals(S("%[5]s", 1, 2, 3, 4), "%!(BAD INDEX)%!(EXTRA '2' '3' '4')");
+  assertEquals(
+    S("%[5]s", 1, 2, 3, 4),
+    `%!(BAD INDEX)%!(EXTRA '${yellow("2")}' '${yellow("3")}' '${yellow("4")}')`
+  );
   assertEquals(S("%[5]f"), "%!(BAD INDEX)");
   assertEquals(S("%.[5]f"), "%!(BAD INDEX)");
   assertEquals(S("%.[5]*f"), "%!(BAD INDEX)");
