@@ -2,12 +2,8 @@
 import { encode } from "../encoding/utf8.ts";
 import { BufReader, BufWriter } from "../io/bufio.ts";
 import { assert } from "../testing/asserts.ts";
-import {
-  deferred,
-  Deferred,
-  MuxAsyncIterator,
-  timeoutReader,
-} from "../util/async.ts";
+import { timeoutReader } from "../async/timeout.ts";
+import { deferred, Deferred, MuxAsyncIterator } from "../async/mod.ts";
 import {
   bodyReader,
   chunkedBodyReader,
@@ -16,7 +12,7 @@ import {
   KeepAlive,
   parseKeepAlive,
   parseHTTPVersion,
-} from "./io.ts";
+} from "./_io.ts";
 import { TimeUnits } from "../datetime/mod.ts";
 import { emptyReader } from "../io/readers.ts";
 import { readUntilEOF } from "../io/ioutil.ts";

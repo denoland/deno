@@ -2,51 +2,9 @@
 use crate::deno_dir::DenoDir;
 use crate::op_error::OpError;
 use deno_core::ErrBox;
+use rustyline::Editor;
 use std::fs;
 use std::path::PathBuf;
-
-#[cfg(not(windows))]
-use rustyline::Editor;
-
-// Work around the issue that on Windows, `struct Editor` does not implement the
-// `Send` trait, because it embeds a windows HANDLE which is a type alias for
-// *mut c_void. This value isn't actually a pointer and there's nothing that
-// can be mutated through it, so hack around it. TODO: a prettier solution.
-#[cfg(windows)]
-use std::ops::{Deref, DerefMut};
-
-#[cfg(windows)]
-struct Editor<T: rustyline::Helper> {
-  inner: rustyline::Editor<T>,
-}
-
-#[cfg(windows)]
-unsafe impl<T: rustyline::Helper> Send for Editor<T> {}
-
-#[cfg(windows)]
-impl<T: rustyline::Helper> Editor<T> {
-  pub fn new() -> Editor<T> {
-    Editor {
-      inner: rustyline::Editor::<T>::new(),
-    }
-  }
-}
-
-#[cfg(windows)]
-impl<T: rustyline::Helper> Deref for Editor<T> {
-  type Target = rustyline::Editor<T>;
-
-  fn deref(&self) -> &rustyline::Editor<T> {
-    &self.inner
-  }
-}
-
-#[cfg(windows)]
-impl<T: rustyline::Helper> DerefMut for Editor<T> {
-  fn deref_mut(&mut self) -> &mut rustyline::Editor<T> {
-    &mut self.inner
-  }
-}
 
 pub struct Repl {
   editor: Editor<()>,

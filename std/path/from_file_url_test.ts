@@ -26,7 +26,7 @@ Deno.test("[path] fromFileUrl (win32)", function () {
   // assertEquals(path.win32.fromFileUrl("file:////server"), "\\");
   // assertEquals(path.win32.fromFileUrl("file:////server/file"), "\\file");
   assertEquals(path.win32.fromFileUrl("file:///c"), "\\c");
-  assertEquals(path.win32.fromFileUrl("file:///c:"), "\\c:");
+  assertEquals(path.win32.fromFileUrl("file:///c:"), "c:\\");
   assertEquals(path.win32.fromFileUrl("file:///c:/"), "c:\\");
   assertEquals(path.win32.fromFileUrl("file:///C:/"), "C:\\");
   assertEquals(path.win32.fromFileUrl("file:///C:/Users/"), "C:\\Users\\");

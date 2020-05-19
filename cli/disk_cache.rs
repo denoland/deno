@@ -1,6 +1,7 @@
 use crate::fs as deno_fs;
 use std::ffi::OsStr;
 use std::fs;
+use std::io;
 use std::path::Component;
 use std::path::Path;
 use std::path::PathBuf;
@@ -22,12 +23,22 @@ fn with_io_context<T: AsRef<str>>(
 
 impl DiskCache {
   pub fn new(location: &Path) -> Self {
-    if !&location.is_dir() {
-      fs::create_dir_all(&location).ok();
-    }
     Self {
       location: location.to_owned(),
     }
+  }
+
+  /// Ensures the location of the cache.
+  pub fn ensure_location(&self) -> io::Result<()> {
+    if self.location.is_dir() {
+      return Ok(());
+    }
+    fs::create_dir_all(&self.location).map_err(|e| {
+      io::Error::new(e.kind(), format!(
+        "Could not create TypeScript compiler cache location: {:?}\nCheck the permission of the directory.",
+        self.location
+      ))
+    })
   }
 
   pub fn get_cache_filename(&self, url: &Url) -> PathBuf {
@@ -140,7 +151,8 @@ mod tests {
     let cache_location = TempDir::new().unwrap();
     let mut cache_path = cache_location.path().to_owned();
     cache_path.push("foo");
-    DiskCache::new(&cache_path);
+    let cache = DiskCache::new(&cache_path);
+    cache.ensure_location().expect("Testing expect:");
     assert!(cache_path.is_dir());
   }
 
@@ -151,7 +163,8 @@ mod tests {
     assert!(fs::remove_dir(&cache_location).is_ok());
     cache_location.push("foo");
     assert_eq!(cache_location.is_dir(), false);
-    DiskCache::new(&cache_location);
+    let cache = DiskCache::new(&cache_location);
+    cache.ensure_location().expect("Testing expect:");
     assert_eq!(cache_location.is_dir(), true);
   }
 

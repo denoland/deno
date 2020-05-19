@@ -21,7 +21,7 @@ import Writer = Deno.Writer;
 import Reader = Deno.Reader;
 import Conn = Deno.Conn;
 import Buffer = Deno.Buffer;
-import { delay } from "../util/async.ts";
+import { delay } from "../async/delay.ts";
 
 test("[ws] read unmasked text frame", async () => {
   // unmasked single text frame with payload "Hello"
@@ -355,7 +355,7 @@ test("[ws] WebSocket should throw `Deno.errors.ConnectionReset` when peer closed
   await assertThrowsAsync(() => sock.close(0), Deno.errors.ConnectionReset);
 });
 
-test("[ws] WebSocket shouldn't throw `Deno.errors.UnexpectedEof` on recive()", async () => {
+test("[ws] WebSocket shouldn't throw `Deno.errors.UnexpectedEof`", async () => {
   const buf = new Buffer();
   const eofReader: Deno.Reader = {
     read(_: Uint8Array): Promise<number | null> {
@@ -364,7 +364,7 @@ test("[ws] WebSocket shouldn't throw `Deno.errors.UnexpectedEof` on recive()", a
   };
   const conn = dummyConn(eofReader, buf);
   const sock = createWebSocket({ conn });
-  const it = sock.receive();
+  const it = sock[Symbol.asyncIterator]();
   const { value, done } = await it.next();
   assertEquals(value, undefined);
   assertEquals(done, true);
@@ -404,72 +404,14 @@ test({
   },
 });
 
-test("[ws] WebSocket should implement Writer", async () => {
-  const buf = new Buffer();
-
-  const conn = dummyConn(buf, buf);
-  const sock = createWebSocket({ conn });
-
-  const [write0, write1, write2] = await Promise.all([
-    sock.write(new Uint8Array([1, 2, 3])),
-    sock.write(new Uint8Array([])),
-    sock.write(new Uint8Array([0])),
-  ]);
-
-  assertEquals(write0, 3);
-  assertEquals(write1, 0);
-  assertEquals(write2, 1);
-});
-
-test("[ws] WebSocket should implement Reader", async () => {
-  const hello = new Uint8Array([0x81, 0x05, 0x48, 0x65, 0x6c, 0x6c, 0x6f]);
-
-  const bufHello = new Buffer(hello);
-
-  const conn = dummyConn(bufHello, new Buffer());
-  const sock = createWebSocket({ conn });
-
-  const p = new Uint8Array(100);
-  const read = await sock.read(p);
-  const readLast = await sock.read(p);
-
-  const helloLength = "Hello".length;
-
-  assertEquals(read, helloLength);
-  assertEquals(decode(new Buffer(p.subarray(0, helloLength)).bytes()), "Hello");
-  assertEquals(readLast, null);
-});
-
-test("[ws] WebSocket Reader should ignore non-message frames", async () => {
-  const pong = new Uint8Array([
-    0x8a,
-    0x85,
-    0x37,
-    0xfa,
-    0x21,
-    0x3d,
-    0x7f,
-    0x9f,
-    0x4d,
-    0x51,
-    0x58,
-  ]);
+test("[ws] WebSocket should act as asyncIterator", async () => {
   const pingHello = new Uint8Array([0x89, 0x05, 0x48, 0x65, 0x6c, 0x6c, 0x6f]);
   const hello = new Uint8Array([0x81, 0x05, 0x48, 0x65, 0x6c, 0x6c, 0x6f]);
-  const close = new Uint8Array([0x88]);
-
-  const dataPayloadLength = 0x100;
-  const dataArr = [0x82, 0x7e, 0x01, 0x00];
-  for (let i = 0; i < dataPayloadLength; i++) {
-    dataArr.push(i);
-  }
-  const data = new Uint8Array(dataArr);
+  const close = new Uint8Array([0x88, 0x04, 0x03, 0xf3, 0x34, 0x32]);
 
   enum Frames {
     ping,
-    text,
-    pong,
-    data,
+    hello,
     close,
     end,
   }
@@ -479,27 +421,15 @@ test("[ws] WebSocket Reader should ignore non-message frames", async () => {
   const reader: Reader = {
     read(p: Uint8Array): Promise<number | null> {
       if (frame === Frames.ping) {
-        frame = Frames.text;
+        frame = Frames.hello;
         p.set(pingHello);
         return Promise.resolve(pingHello.byteLength);
       }
 
-      if (frame === Frames.text) {
-        frame = Frames.pong;
+      if (frame === Frames.hello) {
+        frame = Frames.close;
         p.set(hello);
         return Promise.resolve(hello.byteLength);
-      }
-
-      if (frame === Frames.pong) {
-        frame = Frames.data;
-        p.set(pong);
-        return Promise.resolve(pong.byteLength);
-      }
-
-      if (frame === Frames.data) {
-        frame = Frames.close;
-        p.set(data);
-        return Promise.resolve(data.byteLength);
       }
 
       if (frame === Frames.close) {
@@ -515,11 +445,13 @@ test("[ws] WebSocket Reader should ignore non-message frames", async () => {
   const conn = dummyConn(reader, new Buffer());
   const sock = createWebSocket({ conn });
 
-  const p = await Deno.readAll(sock);
+  const events = [];
+  for await (const wsEvent of sock) {
+    events.push(wsEvent);
+  }
 
-  const helloLength = "Hello".length;
-
-  assertEquals(p.byteLength, helloLength + dataPayloadLength);
-  assertEquals(decode(new Buffer(p.subarray(0, helloLength)).bytes()), "Hello");
-  assertEquals(p.subarray(helloLength), data.subarray(4));
+  assertEquals(events.length, 3);
+  assertEquals(events[0], ["ping", encode("Hello")]);
+  assertEquals(events[1], "Hello");
+  assertEquals(events[2], { code: 1011, reason: "42" });
 });

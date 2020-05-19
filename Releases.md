@@ -6,6 +6,78 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### 1.0.0-rc3 / 2020.05.12
+
+- BREAKING: Remove public Rust API for the "deno" crate (#5226)
+- feat(core): Allow starting isolate from snapshot bytes on the heap (#5187)
+- fix: Check permissions in SourceFileFetcher (#5011)
+- fix: Expose ErrorEvent globally (#5222)
+- fix: Remove default --allow-read perm for deno test (#5208)
+- fix: Source maps in inspector (#5223)
+- fix(std/encoding/yaml): Correct exports (#5191)
+- fix(plugins): prevent segfaults on windows (#5210)
+- upgrade: dprint 0.17.2 (#5195)
+
+### 1.0.0-rc2 / 2020.05.09
+
+- BREAKING(std): Reorg modules, mark as unstable (#5087, #5177)
+- BREAKING(std): Revert "Make WebSocket Reader/Writer" (#5002, #5141)
+- BREAKING: Deno.execPath should require allow-read (#5109)
+- BREAKING: Make Deno.hostname unstable #5108
+- BREAKING: Make Worker with Deno namespace unstable (#5128)
+- BREAKING: Remove support for .wasm imports (#5135)
+- feat(bundle): Add --config flag (#5130)
+- feat(bundle): Format output (#5139)
+- feat(doc): Handle default exports (#4873)
+- feat(repl): Add hint on how to exit REPL (#5143)
+- feat(std/fmt): add 8bit and 24bit ANSI colors (#5168)
+- feat(std/node): add fs.writefile / fs.promises.writeFile (#5054)
+- feat(upgrade): Allow specifying a version (#5156)
+- feat(workers): "crypto" global accessible in Worker scope (#5121)
+- feat: Add support for X-Deno-Warning header (#5161)
+- fix(imports): Fix panic on unsupported scheme (#5131)
+- fix(inspector): Fix inspector hanging when task budget is exceeded (#5083)
+- fix: Allow multiple Set-Cookie headers (#5100)
+- fix: Better error message when DENO_DIR can't be created (#5120)
+- fix: Check destination length in encodeInto in TextEncoder (#5078)
+- fix: Correct type error text (#5150)
+- fix: Remove unnecessary ProcessStdio declaration (#5092)
+- fix: unify display of errors from Rust and JS (#5183)
+- upgrade: rust crates (#5104)
+- upgrade: to rusty_v8 0.4.2 / V8 8.4.300 (#5113)
+
+### v1.0.0-rc1 / 2020.05.04
+
+- BREAKING: make WebSocket directly implement AsyncIterable (#5045)
+- BREAKING: remove CLI 'deno script.ts' alias to 'deno run script.ts' (#5026)
+- BREAKING: remove support for JSON imports (#5037)
+- BREAKING: remove window.location and self.location (#5034)
+- BREAKING: reorder std/io/utils copyBytes arguments (#5022, #5021)
+- feat(URL): Support drive letters for file URLs on Windows (#5074)
+- feat(deno install): simplify CLI flags (#5036)
+- feat(deno fmt): Add `deno-fmt-ignore` and `deno-fmt-ignore-file` comment
+  support #5075
+- feat(std): Add sha256 and sha224 support (along with HMAC variants) (#5066)
+- feat(std/node): ability add to path argument to be URL type (#5055)
+- feat(std/node): make process global (#4985)
+- feat(std/node): toString for globals (#5013)
+- feat: Add WritableStreams, TransformStream, TransformStreamController (#5042,
+  #4980)
+- feat: Make WebSocket Reader/Writer (#5002)
+- feat: make Deno.cwd stable (#5068)
+- fix(console): Formatting misalignment on console.table (#5046)
+- fix(deno doc): Better repr for object literal types (#4998)
+- fix(deno fmt): Format `abstract async` as `abstract async` (#5020)
+- fix(std): Use fromFileUrl (#5005)
+- fix(std/http): Hang when content-length unhandled (#5024)
+- fix: Deno.chdir Should require allow-read not allow-write (#5033)
+- fix: Respect NO_COLOR for stack frames (#5051)
+- fix: URL constructor throws confusing error on invalid scheme (#5057)
+- fix: Disallow static import of local modules from remote modules (#5050)
+- fix: Misaligned error reporting on tab char (#5032)
+- refactor(core): Add "prepare_load" hook to ModuleLoader trait (#4866)
+- refactor: Don't expose unstable APIs to runtime (#5061 #4957)
+
 ### v0.42.0 / 2020.04.29
 
 - BREAKING: "address" renamed to "path" in

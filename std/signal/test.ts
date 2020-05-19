@@ -1,6 +1,6 @@
 const { test } = Deno;
 import { assertEquals, assertThrows } from "../testing/asserts.ts";
-import { delay } from "../util/async.ts";
+import { delay } from "../async/delay.ts";
 import { signal, onSignal } from "./mod.ts";
 
 test({

@@ -18,7 +18,7 @@ more specifics.
 
 [API Reference](https://deno.land/typedoc/)
 
-[Style Guide](https://deno.land/style_guide.html)
+[Style Guide](https://github.com/denoland/deno/blob/master/docs/contributing/style_guide.md)
 
 [Module Repository](https://deno.land/x/)
 

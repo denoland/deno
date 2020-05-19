@@ -6,10 +6,12 @@ import * as abortController from "./web/abort_controller.ts";
 import * as abortSignal from "./web/abort_signal.ts";
 import * as blob from "./web/blob.ts";
 import * as consoleTypes from "./web/console.ts";
+import * as csprng from "./ops/get_random_values.ts";
 import * as promiseTypes from "./web/promise.ts";
 import * as customEvent from "./web/custom_event.ts";
 import * as domException from "./web/dom_exception.ts";
 import * as domFile from "./web/dom_file.ts";
+import * as errorEvent from "./web/error_event.ts";
 import * as event from "./web/event.ts";
 import * as eventTarget from "./web/event_target.ts";
 import * as formData from "./web/form_data.ts";
@@ -147,7 +149,6 @@ declare global {
     workerRuntime: ((name: string) => Promise<void> | void) | undefined;
     // Assigned to `self` global - compiler
     tsCompilerRuntime: (() => void) | undefined;
-    wasmCompilerRuntime: (() => void) | undefined;
   };
 
   var onerror:
@@ -223,9 +224,11 @@ export const windowOrWorkerGlobalScopeProperties = {
     queuingStrategy.ByteLengthQueuingStrategyImpl
   ),
   CountQueuingStrategy: nonEnumerable(queuingStrategy.CountQueuingStrategyImpl),
+  crypto: readOnly(csprng),
   File: nonEnumerable(domFile.DomFileImpl),
   CustomEvent: nonEnumerable(customEvent.CustomEventImpl),
   DOMException: nonEnumerable(domException.DOMExceptionImpl),
+  ErrorEvent: nonEnumerable(errorEvent.ErrorEventImpl),
   Event: nonEnumerable(event.EventImpl),
   EventTarget: nonEnumerable(eventTarget.EventTargetImpl),
   URL: nonEnumerable(url.URLImpl),

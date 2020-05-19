@@ -1,12 +1,25 @@
 // To run this test manually:
 //   cd test_plugin
-//   ../target/debug/deno --allow-plugin tests/test.js debug
+//   ../target/debug/deno run --unstable --allow-plugin tests/test.js debug
 
-// TODO(ry) Re-enable this test on windows. It is flaky for an unknown reason.
-#![cfg(not(windows))]
-
-use deno::test_util::*;
+use std::path::PathBuf;
 use std::process::Command;
+
+fn target_dir() -> PathBuf {
+  let current_exe = std::env::current_exe().unwrap();
+  let target_dir = current_exe.parent().unwrap().parent().unwrap();
+  println!("target_dir {}", target_dir.display());
+  target_dir.into()
+}
+
+fn deno_exe_path() -> PathBuf {
+  // Something like /Users/rld/src/deno/target/debug/deps/deno
+  let mut p = target_dir().join("deno");
+  if cfg!(windows) {
+    p.set_extension("exe");
+  }
+  p
+}
 
 fn deno_cmd() -> Command {
   assert!(deno_exe_path().exists());

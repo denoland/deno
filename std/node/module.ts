@@ -36,7 +36,7 @@ const CHAR_FORWARD_SLASH = "/".charCodeAt(0);
 const CHAR_BACKWARD_SLASH = "\\".charCodeAt(0);
 const CHAR_COLON = ":".charCodeAt(0);
 
-const isWindows = path.isWindows;
+const isWindows = Deno.build.os == "windows";
 
 const relativeResolveCache = Object.create(null);
 

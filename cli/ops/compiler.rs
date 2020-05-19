@@ -3,7 +3,6 @@ use super::dispatch_json::Deserialize;
 use super::dispatch_json::JsonOp;
 use super::dispatch_json::Value;
 use crate::futures::future::try_join_all;
-use crate::msg;
 use crate::op_error::OpError;
 use crate::state::State;
 use deno_core::CoreIsolate;
@@ -13,7 +12,6 @@ use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
 
 pub fn init(i: &mut CoreIsolate, s: &State) {
-  i.register_op("op_cache", s.stateful_json_op(op_cache));
   i.register_op("op_resolve_modules", s.stateful_json_op(op_resolve_modules));
   i.register_op(
     "op_fetch_source_files",
@@ -24,35 +22,6 @@ pub fn init(i: &mut CoreIsolate, s: &State) {
     "op_fetch_asset",
     deno_typescript::op_fetch_asset(custom_assets),
   );
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct CacheArgs {
-  module_id: String,
-  contents: String,
-  extension: String,
-}
-
-fn op_cache(
-  state: &State,
-  args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<JsonOp, OpError> {
-  let args: CacheArgs = serde_json::from_value(args)?;
-
-  let module_specifier = ModuleSpecifier::resolve_url(&args.module_id)
-    .expect("Should be valid module specifier");
-
-  let state_ = &state.borrow().global_state;
-  let ts_compiler = state_.ts_compiler.clone();
-  ts_compiler.cache_compiler_output(
-    &module_specifier,
-    &args.extension,
-    &args.contents,
-  )?;
-
-  Ok(JsonOp::Sync(json!({})))
 }
 
 #[derive(Deserialize, Debug)]
@@ -100,7 +69,11 @@ fn op_fetch_source_files(
     None
   };
 
-  let global_state = state.borrow().global_state.clone();
+  let s = state.borrow();
+  let global_state = s.global_state.clone();
+  let permissions = s.permissions.clone();
+  let perms_ = permissions.clone();
+  drop(s);
   let file_fetcher = global_state.file_fetcher.clone();
   let specifiers = args.specifiers.clone();
   let future = async move {
@@ -109,6 +82,7 @@ fn op_fetch_source_files(
       .map(|specifier| {
         let file_fetcher_ = file_fetcher.clone();
         let ref_specifier_ = ref_specifier.clone();
+        let perms_ = perms_.clone();
         async move {
           let resolved_specifier = ModuleSpecifier::resolve_url(&specifier)
             .expect("Invalid specifier");
@@ -131,7 +105,7 @@ fn op_fetch_source_files(
             }
           }
           file_fetcher_
-            .fetch_source_file(&resolved_specifier, ref_specifier_)
+            .fetch_source_file(&resolved_specifier, ref_specifier_, perms_)
             .await
         }
         .boxed_local()
@@ -149,27 +123,17 @@ fn op_fetch_source_files(
             let types_specifier = ModuleSpecifier::from(types_url);
             global_state
               .file_fetcher
-              .fetch_source_file(&types_specifier, ref_specifier.clone())
+              .fetch_source_file(
+                &types_specifier,
+                ref_specifier.clone(),
+                permissions.clone(),
+              )
               .await
               .map_err(OpError::from)?
           }
           _ => f,
         };
-        // Special handling of WASM and JSON files:
-        // compile them into JS first!
-        // This allows TS to do correct export types as well as bundles.
-        let source_code = match file.media_type {
-          msg::MediaType::Wasm => {
-            global_state
-              .wasm_compiler
-              .compile(global_state.clone(), &file)
-              .await
-              .map_err(|e| OpError::other(e.to_string()))?
-              .code
-          }
-          _ => String::from_utf8(file.source_code)
-            .map_err(|_| OpError::invalid_utf8())?,
-        };
+        let source_code = String::from_utf8(file.source_code).map_err(|_| OpError::invalid_utf8())?;
         Ok::<_, OpError>(json!({
           "url": file.url.to_string(),
           "filename": file.filename.to_str().unwrap(),

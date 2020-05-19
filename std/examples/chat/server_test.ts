@@ -3,7 +3,7 @@ import { assert, assertEquals } from "../../testing/asserts.ts";
 import { TextProtoReader } from "../../textproto/mod.ts";
 import { BufReader } from "../../io/bufio.ts";
 import { connectWebSocket, WebSocket } from "../../ws/mod.ts";
-import { delay } from "../../util/async.ts";
+import { delay } from "../../async/delay.ts";
 
 const { test } = Deno;
 
@@ -59,7 +59,8 @@ test({
     let ws: WebSocket | undefined;
     try {
       ws = await connectWebSocket("http://127.0.0.1:8080/ws");
-      const it = ws.receive();
+      const it = ws[Symbol.asyncIterator]();
+
       assertEquals((await it.next()).value, "Connected: [1]");
       ws.send("Hello");
       assertEquals((await it.next()).value, "[1]: Hello");

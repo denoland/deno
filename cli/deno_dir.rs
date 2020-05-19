@@ -31,6 +31,7 @@ impl DenoDir {
       root,
       gen_cache: DiskCache::new(&gen_path),
     };
+    deno_dir.gen_cache.ensure_location()?;
 
     Ok(deno_dir)
   }

@@ -1,19 +1,17 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 import { decode, encode } from "../encoding/utf8.ts";
-import { hasOwnProperty } from "../util/has_own_property.ts";
+import { hasOwnProperty } from "../_util/has_own_property.ts";
 import { BufReader, BufWriter } from "../io/bufio.ts";
 import { readLong, readShort, sliceLongToBytes } from "../io/ioutil.ts";
-import { Sha1 } from "../util/sha1.ts";
-import { writeResponse } from "../http/io.ts";
+import { Sha1 } from "../hash/sha1.ts";
+import { writeResponse } from "../http/_io.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
-import { Deferred, deferred } from "../util/async.ts";
+import { Deferred, deferred } from "../async/deferred.ts";
 import { assert } from "../testing/asserts.ts";
 import { concat } from "../bytes/mod.ts";
-import { copyBytes } from "../io/util.ts";
 import Conn = Deno.Conn;
 import Writer = Deno.Writer;
-import Reader = Deno.Reader;
 
 export enum OpCode {
   Continue = 0x0,
@@ -67,11 +65,11 @@ export interface WebSocketFrame {
   payload: Uint8Array;
 }
 
-export interface WebSocket extends Reader, Writer {
+export interface WebSocket extends AsyncIterable<WebSocketEvent> {
   readonly conn: Conn;
   readonly isClosed: boolean;
 
-  receive(): AsyncIterableIterator<WebSocketEvent>;
+  [Symbol.asyncIterator](): AsyncIterableIterator<WebSocketEvent>;
 
   /**
    * @throws `Deno.errors.ConnectionReset`
@@ -228,7 +226,7 @@ class WebSocketImpl implements WebSocket {
     this.bufWriter = bufWriter || new BufWriter(conn);
   }
 
-  async *receive(): AsyncIterableIterator<WebSocketEvent> {
+  async *[Symbol.asyncIterator](): AsyncIterableIterator<WebSocketEvent> {
     let frames: WebSocketFrame[] = [];
     let payloadsLength = 0;
     while (!this._isClosed) {
@@ -327,26 +325,6 @@ class WebSocketImpl implements WebSocket {
       mask: this.mask,
     };
     return this.enqueue(frame);
-  }
-
-  async write(p: Uint8Array): Promise<number> {
-    await this.send(p);
-
-    return p.byteLength;
-  }
-
-  async read(p: Uint8Array): Promise<number | null> {
-    for await (const ev of this.receive()) {
-      if (ev instanceof Uint8Array) {
-        return copyBytes(ev, p);
-      }
-
-      if (typeof ev === "string") {
-        return copyBytes(encode(ev), p);
-      }
-    }
-
-    return null;
   }
 
   ping(data: WebSocketMessage = ""): Promise<void> {

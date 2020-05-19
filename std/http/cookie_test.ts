@@ -2,7 +2,7 @@
 import { ServerResponse } from "./server.ts";
 import { getCookies, delCookie, setCookie } from "./cookie.ts";
 import { assert, assertEquals } from "../testing/asserts.ts";
-import { mockRequest } from "./testing.ts";
+import { mockRequest } from "./_mock_conn.ts";
 const { test } = Deno;
 
 test({

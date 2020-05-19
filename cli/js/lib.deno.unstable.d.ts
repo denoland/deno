@@ -1024,21 +1024,6 @@ declare namespace Deno {
     options: ConnectOptions | UnixConnectOptions
   ): Promise<Conn>;
 
-  /**
-   * **UNSTABLE**: Currently under evaluation to decide if explicit permission is
-   * required to get the value of the current working directory.
-   *
-   * Return a string representing the current working directory.
-   *
-   * If the current directory can be reached via multiple paths (due to symbolic
-   * links), `cwd()` may return any one of them.
-   *
-   *       const currentWorkingDirectory = Deno.cwd();
-   *
-   * Throws `Deno.errors.NotFound` if directory not available.
-   */
-  export function cwd(): string;
-
   export interface StartTlsOptions {
     /** A literal IP address or host name that can be resolved to an IP address.
      * If not specified, defaults to `127.0.0.1`. */
@@ -1189,4 +1174,12 @@ declare namespace Deno {
     state: PermissionState;
     constructor(state: PermissionState);
   }
+
+  /** Get the `hostname` of the machine the Deno process is running on.
+   *
+   *       console.log(Deno.hostname());
+   *
+   *  Requires `allow-env` permission.
+   */
+  export function hostname(): string;
 }

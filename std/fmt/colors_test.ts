@@ -118,3 +118,41 @@ Deno.test("testBgCyan", function (): void {
 Deno.test("testBgWhite", function (): void {
   assertEquals(c.bgWhite("foo bar"), "[47mfoo bar[49m");
 });
+
+Deno.test("testClampUsingRgb8", function (): void {
+  assertEquals(c.rgb8("foo bar", -10), "[38;5;0mfoo bar[39m");
+});
+
+Deno.test("testTruncateUsingRgb8", function (): void {
+  assertEquals(c.rgb8("foo bar", 42.5), "[38;5;42mfoo bar[39m");
+});
+
+Deno.test("testRgb8", function (): void {
+  assertEquals(c.rgb8("foo bar", 42), "[38;5;42mfoo bar[39m");
+});
+
+Deno.test("test_bgRgb8", function (): void {
+  assertEquals(c.bgRgb8("foo bar", 42), "[48;5;42mfoo bar[49m");
+});
+
+Deno.test("test_rgb24", function (): void {
+  assertEquals(
+    c.rgb24("foo bar", {
+      r: 41,
+      g: 42,
+      b: 43,
+    }),
+    "[38;2;41;42;43mfoo bar[39m"
+  );
+});
+
+Deno.test("test_bgRgb24", function (): void {
+  assertEquals(
+    c.bgRgb24("foo bar", {
+      r: 41,
+      g: 42,
+      b: 43,
+    }),
+    "[48;2;41;42;43mfoo bar[49m"
+  );
+});

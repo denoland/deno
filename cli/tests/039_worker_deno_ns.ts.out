@@ -1,4 +1,0 @@
-has_ns.ts: is window.Deno available: true
-[SPAWNED BY has_ns.ts] maybe_ns.ts: is window.Deno available: true
-no_ns.ts: is window.Deno available: false
-[SPAWNED BY no_ns.ts] maybe_ns.ts: is window.Deno available: false

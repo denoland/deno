@@ -9,7 +9,6 @@
 
 import * as denoNs from "./deno.ts";
 import * as denoUnstableNs from "./deno_unstable.ts";
-import * as csprng from "./ops/get_random_values.ts";
 import { exit } from "./ops/os.ts";
 import {
   readOnly,
@@ -57,7 +56,6 @@ function windowClose(): void {
 export const mainRuntimeGlobalProperties = {
   window: readOnly(globalThis),
   self: readOnly(globalThis),
-  crypto: readOnly(csprng),
   // TODO(bartlomieju): from MDN docs (https://developer.mozilla.org/en-US/docs/Web/API/WorkerGlobalScope)
   // it seems those two properties should be available to workers as well
   onload: writable(null),
