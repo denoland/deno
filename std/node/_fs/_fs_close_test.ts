@@ -29,6 +29,26 @@ test({
 });
 
 test({
+  name: "close callback should be asynchronous",
+  async fn() {
+    const tempFile: string = Deno.makeTempFileSync();
+    const file: Deno.File = Deno.openSync(tempFile);
+
+    let foo: string;
+    const promise = new Promise((resolve) => {
+      close(file.rid, () => {
+        assert(foo === "bar");
+        resolve();
+      });
+      foo = "bar";
+    });
+
+    await promise;
+    Deno.removeSync(tempFile);
+  },
+});
+
+test({
   name: "SYNC: File is closed",
   fn() {
     const tempFile: string = Deno.makeTempFileSync();
