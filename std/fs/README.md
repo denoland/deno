@@ -196,3 +196,17 @@ import {
 writeFileStr("./target.dat", "file content"); // returns a promise
 writeFileStrSync("./target.dat", "file content"); // void
 ```
+
+### appendFileStr
+
+Append the string to file.
+
+```ts
+import {
+  appendFileStr,
+  appendFileStrSync,
+} from "https://deno.land/std/fs/mod.ts";
+
+appendFileStr("./target.dat", "file content"); // returns a promise
+appendFileStrSync("./target.dat", "file content"); // void
+```

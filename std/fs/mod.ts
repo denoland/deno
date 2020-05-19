@@ -10,6 +10,7 @@ export * from "./move.ts";
 export * from "./copy.ts";
 export * from "./read_file_str.ts";
 export * from "./write_file_str.ts";
+export * from "./append_file_str.ts";
 export * from "./read_json.ts";
 export * from "./write_json.ts";
 export * from "./walk.ts";
