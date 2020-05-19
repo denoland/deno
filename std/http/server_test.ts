@@ -349,13 +349,16 @@ test("requestBodyReaderWithTransferEncoding", async function (): Promise<void> {
 });
 
 test({
-  name: "[http] destroyed connection",
-  // FIXME(bartlomieju): hangs on windows, cause can't do `Deno.kill`
-  ignore: true,
+  name: "destroyed connection",
   fn: async (): Promise<void> => {
     // Runs a simple server as another process
     const p = Deno.run({
-      cmd: [Deno.execPath(), "--allow-net", "http/testdata/simple_server.ts"],
+      cmd: [
+        Deno.execPath(),
+        "run",
+        "--allow-net",
+        "http/testdata/simple_server.ts",
+      ],
       stdout: "piped",
     });
 
@@ -390,14 +393,13 @@ test({
 });
 
 test({
-  name: "[http] serveTLS",
-  // FIXME(bartlomieju): hangs on windows, cause can't do `Deno.kill`
-  ignore: true,
+  name: "serveTLS",
   fn: async (): Promise<void> => {
     // Runs a simple server as another process
     const p = Deno.run({
       cmd: [
         Deno.execPath(),
+        "run",
         "--allow-net",
         "--allow-read",
         "http/testdata/simple_https_server.ts",

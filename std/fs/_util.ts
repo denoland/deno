@@ -16,14 +16,7 @@ export function isSubdir(
   }
   const srcArray = src.split(sep);
   const destArray = dest.split(sep);
-  // see: https://github.com/Microsoft/TypeScript/issues/30821
-  return srcArray.reduce(
-    // @ts-ignore
-    (acc: true, current: string, i: number): boolean => {
-      return acc && destArray[i] === current;
-    },
-    true
-  );
+  return srcArray.every((current, i) => destArray[i] === current);
 }
 
 export type PathType = "file" | "dir" | "symlink";

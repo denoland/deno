@@ -24,7 +24,7 @@ export interface Cookie {
   path?: string;
   /** Indicates if the cookie is made using SSL & HTTPS. */
   secure?: boolean;
-  /** Indicates that cookie is not accessible via Javascript. **/
+  /** Indicates that cookie is not accessible via JavaScript. **/
   httpOnly?: boolean;
   /** Allows servers to assert that a cookie ought not to
    * be sent along with cross-site requests. */

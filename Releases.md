@@ -6,6 +6,15 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### 1.0.0 / 2020.05.13
+
+Read more about this release at https://deno.land/v1
+
+- fix: default to 0.0.0.0 for Deno.listen (#5203)
+- fix: Make --inspect-brk pause on the first line of _user_ code (#5250)
+- fix: Source maps in inspector for local files (#5245)
+- upgrade: TypeScript 3.9 (#4510)
+
 ### 1.0.0-rc3 / 2020.05.12
 
 - BREAKING: Remove public Rust API for the "deno" crate (#5226)
@@ -679,7 +688,7 @@ https://github.com/denoland/deno_install
 - fix: Ensure DENO_DIR when saving the REPL history (#3106)
 - fix: Update echo_server to new listen API (denoland/deno_std#625)
 - fix: [prettier] deno fmt should format jsx/tsx files (#3118)
-- fix: [tls] op_dial_tls is not registerd and broken (#3121)
+- fix: [tls] op_dial_tls is not registered and broken (#3121)
 - fix: clearTimer bug (#3143)
 - fix: remote jsx/tsx files were compiled as js/ts (#3125)
 - perf: eager poll async ops in Isolate (#3046, #3128)
@@ -703,7 +712,7 @@ In deno:
 - fix: Implement ignoreBOM option of UTF8Decoder in text_encoding (#3040)
 - fix: Support top-level-await in TypeScript (#3024)
 - fix: iterators on UrlSearchParams (#3044)
-- fix: listenDefaults/dialDefaults may be overriden in some cases (#3027)
+- fix: listenDefaults/dialDefaults may be overridden in some cases (#3027)
 - upgrade: V8 to 7.9.218 (#3067)
 - upgrade: rust to 1.38.0 (#3030)
 - chore: Migrate CI to github actions (#3052, #3056, #3049, #3071, #3076, #3070,

@@ -279,7 +279,7 @@ export class MultipartReader {
    * overflowed file data will be written to temporal files.
    * String field values are never written to files.
    * null value means parsing or writing to file was failed in some reason.
-   * @param maxMemory maximum memory size to store file in memory. bytes. @default 1048576 (1MB)
+   * @param maxMemory maximum memory size to store file in memory. bytes. @default 10485760 (10MB)
    *  */
   async readForm(maxMemory = 10 << 20): Promise<MultipartFormData> {
     const fileMap = new Map<string, FormFile>();
@@ -578,7 +578,7 @@ export class MultipartWriter {
     return this.bufWriter.flush();
   }
 
-  /** Close writer. No additional data can be writen to stream */
+  /** Close writer. No additional data can be written to stream */
   async close(): Promise<void> {
     if (this.isClosed) {
       throw new Error("multipart: writer is closed");

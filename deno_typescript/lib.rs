@@ -133,7 +133,7 @@ impl TSIsolate {
 ///
 /// This function writes compiled bundle to disk at provided path.
 ///
-/// Source map file and type declaration file are emmited
+/// Source map file and type declaration file are emitted
 /// alongside the bundle.
 ///
 /// To instantiate bundle use returned `module_name`.
@@ -305,6 +305,8 @@ pub fn get_asset(name: &str) -> Option<&'static str> {
     "lib.esnext.asynciterable.d.ts" => inc!("lib.esnext.asynciterable.d.ts"),
     "lib.esnext.bigint.d.ts" => inc!("lib.esnext.bigint.d.ts"),
     "lib.esnext.intl.d.ts" => inc!("lib.esnext.intl.d.ts"),
+    "lib.esnext.promise.d.ts" => inc!("lib.esnext.promise.d.ts"),
+    "lib.esnext.string.d.ts" => inc!("lib.esnext.string.d.ts"),
     "lib.esnext.symbol.d.ts" => inc!("lib.esnext.symbol.d.ts"),
     "lib.scripthost.d.ts" => inc!("lib.scripthost.d.ts"),
     "lib.webworker.d.ts" => inc!("lib.webworker.d.ts"),
