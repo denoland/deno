@@ -1352,7 +1352,6 @@ fn resolve_hosts(paths: Vec<String>) -> Vec<String> {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use std::env::current_dir;
 
   #[test]
   fn upgrade() {
@@ -1853,7 +1852,7 @@ mod tests {
       r.unwrap(),
       Flags {
         allow_read: false,
-        read_whitelist: vec![current_dir().unwrap(), temp_dir],
+        read_whitelist: vec![PathBuf::from("."), temp_dir],
         subcommand: DenoSubcommand::Run {
           script: "script.ts".to_string(),
         },
@@ -1877,7 +1876,7 @@ mod tests {
       r.unwrap(),
       Flags {
         allow_write: false,
-        write_whitelist: vec![current_dir().unwrap(), temp_dir],
+        write_whitelist: vec![PathBuf::from("."), temp_dir],
         subcommand: DenoSubcommand::Run {
           script: "script.ts".to_string(),
         },

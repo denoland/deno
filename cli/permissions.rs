@@ -136,6 +136,24 @@ impl Permissions {
     }
   }
 
+  /// Arbitrary helper. Resolves the path from CWD, and also gets a path that
+  /// can be displayed without leaking the CWD when not allowed.
+  fn resolved_and_display_path(&self, path: &Path) -> (PathBuf, PathBuf) {
+    let resolved_path = resolve_from_cwd(path).unwrap();
+    let display_path = if path.is_absolute() {
+      path.to_path_buf()
+    } else {
+      match self
+        .get_state_read(&Some(&current_dir().unwrap()))
+        .check("", "")
+      {
+        Ok(_) => resolved_path.clone(),
+        Err(_) => path.to_path_buf(),
+      }
+    };
+    (resolved_path, display_path)
+  }
+
   pub fn allow_all() -> Self {
     Self {
       allow_read: PermissionState::from(true),
@@ -163,15 +181,7 @@ impl Permissions {
   }
 
   pub fn check_read(&self, path: &Path) -> Result<(), OpError> {
-    let resolved_path = resolve_from_cwd(path).unwrap();
-    let display_path = if path.is_absolute() {
-      path
-    } else {
-      match self.get_state_read(&Some(&current_dir()?)).check("", "") {
-        Ok(_) => &resolved_path,
-        Err(_) => path,
-      }
-    };
+    let (resolved_path, display_path) = self.resolved_and_display_path(path);
     self.get_state_read(&Some(&resolved_path)).check(
       &format!("read access to \"{}\"", display_path.display()),
       "--allow-read",
@@ -197,15 +207,7 @@ impl Permissions {
   }
 
   pub fn check_write(&self, path: &Path) -> Result<(), OpError> {
-    let resolved_path = resolve_from_cwd(path).unwrap();
-    let display_path = if path.is_absolute() {
-      path
-    } else {
-      match self.get_state_read(&Some(&current_dir()?)).check("", "") {
-        Ok(_) => &resolved_path,
-        Err(_) => path,
-      }
-    };
+    let (resolved_path, display_path) = self.resolved_and_display_path(path);
     self.get_state_write(&Some(&resolved_path)).check(
       &format!("write access to \"{}\"", display_path.display()),
       "--allow-write",
@@ -257,15 +259,7 @@ impl Permissions {
   }
 
   pub fn check_plugin(&self, path: &Path) -> Result<(), OpError> {
-    let resolved_path = resolve_from_cwd(path).unwrap();
-    let display_path = if path.is_absolute() {
-      path
-    } else {
-      match self.get_state_read(&Some(&current_dir()?)).check("", "") {
-        Ok(_) => &resolved_path,
-        Err(_) => path,
-      }
-    };
+    let (_, display_path) = self.resolved_and_display_path(path);
     self.allow_plugin.check(
       &format!("access to open a plugin: {}", display_path.display()),
       "--allow-plugin",
@@ -279,26 +273,34 @@ impl Permissions {
   }
 
   pub fn request_read(&mut self, path: &Option<&Path>) -> PermissionState {
-    if path.map_or(false, |f| check_path_white_list(f, &self.read_whitelist)) {
-      return PermissionState::Allow;
-    };
-    self.allow_read.request(&match path {
-      None => "Deno requests read access".to_string(),
-      Some(path) => {
-        format!("Deno requests read access to \"{}\"", path.display())
+    let paths = path.map(|p| self.resolved_and_display_path(p));
+    if let Some((p, _)) = paths.as_ref() {
+      if check_path_white_list(&p, &self.read_whitelist) {
+        return PermissionState::Allow;
       }
+    };
+    self.allow_read.request(&match paths {
+      None => "Deno requests read access".to_string(),
+      Some((_, display_path)) => format!(
+        "Deno requests read access to \"{}\"",
+        display_path.display()
+      ),
     })
   }
 
   pub fn request_write(&mut self, path: &Option<&Path>) -> PermissionState {
-    if path.map_or(false, |f| check_path_white_list(f, &self.write_whitelist)) {
-      return PermissionState::Allow;
-    };
-    self.allow_write.request(&match path {
-      None => "Deno requests write access".to_string(),
-      Some(path) => {
-        format!("Deno requests write access to \"{}\"", path.display())
+    let paths = path.map(|p| self.resolved_and_display_path(p));
+    if let Some((p, _)) = paths.as_ref() {
+      if check_path_white_list(&p, &self.write_whitelist) {
+        return PermissionState::Allow;
       }
+    };
+    self.allow_write.request(&match paths {
+      None => "Deno requests write access".to_string(),
+      Some((_, display_path)) => format!(
+        "Deno requests write access to \"{}\"",
+        display_path.display()
+      ),
     })
   }
 
