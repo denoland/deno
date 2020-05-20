@@ -30,10 +30,13 @@ fn op_compile(
 ) -> Result<JsonOp, OpError> {
   state.check_unstable("Deno.compile");
   let args: CompileArgs = serde_json::from_value(args)?;
-  let global_state = state.borrow().global_state.clone();
+  let s = state.borrow();
+  let global_state = s.global_state.clone();
+  let permissions = s.permissions.clone();
   let fut = async move {
     runtime_compile(
       global_state,
+      permissions,
       &args.root_name,
       &args.sources,
       args.bundle,
@@ -58,9 +61,12 @@ fn op_transpile(
 ) -> Result<JsonOp, OpError> {
   state.check_unstable("Deno.transpile");
   let args: TranspileArgs = serde_json::from_value(args)?;
-  let global_state = state.borrow().global_state.clone();
+  let s = state.borrow();
+  let global_state = s.global_state.clone();
+  let permissions = s.permissions.clone();
   let fut = async move {
-    runtime_transpile(global_state, &args.sources, &args.options).await
+    runtime_transpile(global_state, permissions, &args.sources, &args.options)
+      .await
   }
   .boxed_local();
   Ok(JsonOp::Async(fut))

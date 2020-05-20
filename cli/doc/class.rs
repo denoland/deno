@@ -123,10 +123,10 @@ pub fn class_to_class_def(
         let mut params = vec![];
 
         for param in &ctor.params {
-          use crate::swc_ecma_ast::PatOrTsParamProp::*;
+          use crate::swc_ecma_ast::ParamOrTsParamProp::*;
 
           let param_def = match param {
-            Pat(pat) => pat_to_param_def(pat),
+            Param(param) => pat_to_param_def(&param.pat),
             TsParamProp(ts_param_prop) => {
               use swc_ecma_ast::TsParamPropParam;
 

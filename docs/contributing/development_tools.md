@@ -4,7 +4,7 @@
 
 Test `deno`:
 
-```bash
+```shell
 # Run the whole suite:
 cargo test
 
@@ -14,7 +14,7 @@ cargo test js_unit_tests
 
 Test `std/`:
 
-```bash
+```shell
 cargo test std_tests
 ```
 
@@ -22,13 +22,13 @@ cargo test std_tests
 
 Lint the code:
 
-```bash
+```shell
 ./tools/lint.py
 ```
 
 Format the code:
 
-```bash
+```shell
 ./tools/format.py
 ```
 
@@ -139,7 +139,7 @@ Particularly useful ones:
 See our benchmarks [over here](https://deno.land/benchmarks)
 
 The benchmark chart supposes
-https://github.com/denoland/benchmark_data/data.json has the type
+https://github.com/denoland/benchmark_data/blob/gh-pages/data.json has the type
 `BenchmarkData[]` where `BenchmarkData` is defined like the below:
 
 ```ts

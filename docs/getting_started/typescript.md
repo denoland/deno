@@ -100,7 +100,7 @@ be provided to Deno on program execution.
 You need to explicitly tell Deno where to look for this configuration by setting
 the `-c` argument when executing your application.
 
-```bash
+```shell
 deno run -c tsconfig.json mod.ts
 ```
 

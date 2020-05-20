@@ -26,8 +26,10 @@ exec_time_benchmarks = [
     ("cold_hello", ["run", "--reload", "cli/tests/002_hello.ts"]),
     ("cold_relative_import",
      ["run", "--reload", "cli/tests/003_relative_import.ts"]),
-    ("workers_startup", ["run", "cli/tests/workers_startup_bench.ts"]),
-    ("workers_round_robin", ["run", "cli/tests/workers_round_robin_bench.ts"]),
+    ("workers_startup",
+     ["run", "--allow-read", "cli/tests/workers_startup_bench.ts"]),
+    ("workers_round_robin",
+     ["run", "--allow-read", "cli/tests/workers_round_robin_bench.ts"]),
     ("text_decoder", ["run", "cli/tests/text_decoder_perf.js"]),
     ("text_encoder", ["run", "cli/tests/text_encoder_perf.js"]),
 ]

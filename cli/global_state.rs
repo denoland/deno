@@ -86,7 +86,6 @@ impl GlobalState {
       compiler_starts: AtomicUsize::new(0),
       compile_lock: AsyncMutex::new(()),
     };
-
     Ok(GlobalState(Arc::new(inner)))
   }
 
@@ -95,6 +94,8 @@ impl GlobalState {
     module_specifier: ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
     target_lib: TargetLib,
+    permissions: Permissions,
+    is_dyn_import: bool,
   ) -> Result<CompiledModule, ErrBox> {
     let state1 = self.clone();
     let state2 = self.clone();
@@ -102,7 +103,7 @@ impl GlobalState {
 
     let out = self
       .file_fetcher
-      .fetch_source_file(&module_specifier, maybe_referrer)
+      .fetch_source_file(&module_specifier, maybe_referrer, permissions.clone())
       .await?;
 
     // TODO(ry) Try to lift compile_lock as high up in the call stack for
@@ -115,14 +116,20 @@ impl GlobalState {
       | msg::MediaType::JSX => {
         state1
           .ts_compiler
-          .compile(state1.clone(), &out, target_lib)
+          .compile(state1.clone(), &out, target_lib, permissions, is_dyn_import)
           .await
       }
       msg::MediaType::JavaScript => {
         if state1.ts_compiler.compile_js {
           state2
             .ts_compiler
-            .compile(state1.clone(), &out, target_lib)
+            .compile(
+              state1.clone(),
+              &out,
+              target_lib,
+              permissions,
+              is_dyn_import,
+            )
             .await
         } else {
           if let Some(types_url) = out.types_url.clone() {
@@ -132,19 +139,20 @@ impl GlobalState {
               .fetch_source_file(
                 &types_specifier,
                 Some(module_specifier.clone()),
+                permissions.clone(),
               )
               .await
               .ok();
           };
 
           Ok(CompiledModule {
-            code: String::from_utf8(out.source_code)?,
+            code: String::from_utf8(out.source_code.clone())?,
             name: out.url.to_string(),
           })
         }
       }
       _ => Ok(CompiledModule {
-        code: String::from_utf8(out.source_code)?,
+        code: String::from_utf8(out.source_code.clone())?,
         name: out.url.to_string(),
       }),
     }?;
@@ -153,9 +161,9 @@ impl GlobalState {
     if let Some(ref lockfile) = state2.lockfile {
       let mut g = lockfile.lock().unwrap();
       if state2.flags.lock_write {
-        g.insert(&compiled_module);
+        g.insert(&out.url, out.source_code);
       } else {
-        let check = match g.check(&compiled_module) {
+        let check = match g.check(&out.url, out.source_code) {
           Err(e) => return Err(ErrBox::from(e)),
           Ok(v) => v,
         };

@@ -150,11 +150,7 @@ impl fmt::Display for JSError {
       "{}",
       &format_stack(
         true,
-        format!(
-          "{}: {}",
-          colors::red_bold("error".to_string()),
-          self.0.message.clone()
-        ),
+        self.0.message.clone(),
         self.0.source_line.clone(),
         self.0.start_column,
         self.0.end_column,

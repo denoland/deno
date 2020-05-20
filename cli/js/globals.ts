@@ -11,6 +11,7 @@ import * as promiseTypes from "./web/promise.ts";
 import * as customEvent from "./web/custom_event.ts";
 import * as domException from "./web/dom_exception.ts";
 import * as domFile from "./web/dom_file.ts";
+import * as errorEvent from "./web/error_event.ts";
 import * as event from "./web/event.ts";
 import * as eventTarget from "./web/event_target.ts";
 import * as formData from "./web/form_data.ts";
@@ -135,6 +136,7 @@ declare global {
   // Assigned to `window` global - main runtime
   var Deno: {
     core: DenoCore;
+    noColor: boolean;
   };
   var onload: ((e: Event) => void) | undefined;
   var onunload: ((e: Event) => void) | undefined;
@@ -227,6 +229,7 @@ export const windowOrWorkerGlobalScopeProperties = {
   File: nonEnumerable(domFile.DomFileImpl),
   CustomEvent: nonEnumerable(customEvent.CustomEventImpl),
   DOMException: nonEnumerable(domException.DOMExceptionImpl),
+  ErrorEvent: nonEnumerable(errorEvent.ErrorEventImpl),
   Event: nonEnumerable(event.EventImpl),
   EventTarget: nonEnumerable(eventTarget.EventTargetImpl),
   URL: nonEnumerable(url.URLImpl),

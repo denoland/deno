@@ -37,7 +37,7 @@ const serverArgs = parse(args) as FileServerArgs;
 
 const CORSEnabled = serverArgs.cors ? true : false;
 const target = posix.resolve(serverArgs._[1] ?? "");
-const addr = `0.0.0.0:${serverArgs.port ?? serverArgs.p ?? 4500}`;
+const addr = `0.0.0.0:${serverArgs.port ?? serverArgs.p ?? 4507}`;
 
 const MEDIA_TYPES: Record<string, string> = {
   ".md": "text/markdown",
@@ -51,6 +51,7 @@ const MEDIA_TYPES: Record<string, string> = {
   ".js": "application/javascript",
   ".jsx": "text/jsx",
   ".gz": "application/gzip",
+  ".css": "text/css",
 };
 
 /** Returns the content-type based on the extension of a path. */

@@ -20,9 +20,6 @@ Some of the Web APIs are using ops under the hood, eg. `console`, `performance`.
   to work with DOM events
   - **Implementation notes:** There is no DOM hierarchy in Deno, so there is no
     tree for Events to bubble/capture through.
-- [URL](https://developer.mozilla.org/en-US/docs/Web/API/URL) and
-  [URLSearchParams](https://developer.mozilla.org/en-US/docs/Web/API/URLSearchParams):
-  to construct and parse URLSs
 - [fetch](https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope/fetch),
   [Request](https://developer.mozilla.org/en-US/docs/Web/API/Request),
   [Response](https://developer.mozilla.org/en-US/docs/Web/API/Response),
@@ -38,6 +35,11 @@ Some of the Web APIs are using ops under the hood, eg. `console`, `performance`.
   [clearTimeout](https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope/clearTimeout):
   scheduling callbacks in future and
   [clearInterval](https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope/clearInterval)
+- [Stream](https://developer.mozilla.org/en-US/docs/Web/API/Streams_API) for
+  creating, composing, and consuming streams of data
+- [URL](https://developer.mozilla.org/en-US/docs/Web/API/URL) and
+  [URLSearchParams](https://developer.mozilla.org/en-US/docs/Web/API/URLSearchParams):
+  to construct and parse URLSs
 - [Worker](https://developer.mozilla.org/en-US/docs/Web/API/Worker): executing
   additional code in a separate thread
   - **Implementation notes:** Blob URLs are not supported, object ownership

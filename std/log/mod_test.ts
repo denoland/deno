@@ -1,6 +1,19 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 const { test } = Deno;
-import { assertEquals } from "../testing/asserts.ts";
-import { debug, info, warning, error, critical } from "./mod.ts";
+import { assert, assertEquals } from "../testing/asserts.ts";
+import { getLogger, debug, info, warning, error, critical } from "./mod.ts";
+import { Logger } from "./logger.ts";
+
+let logger: Logger | null = null;
+try {
+  // Need to initialize it here
+  // otherwise it will be already initialized on Deno.test
+  logger = getLogger();
+} catch {}
+
+test("logger is initialized", function (): void {
+  assert(logger instanceof Logger);
+});
 
 test("default loggers work as expected", function (): void {
   const sym = Symbol("a");
