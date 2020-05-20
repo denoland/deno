@@ -1,11 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { serve } from "../../http/server.ts";
+import { serve } from "../http/server.ts";
 import {
   acceptWebSocket,
   isWebSocketCloseEvent,
   isWebSocketPingEvent,
   WebSocket,
-} from "../../ws/mod.ts";
+} from "./mod.ts";
 
 async function handleWs(sock: WebSocket): Promise<void> {
   console.log("socket connected!");
