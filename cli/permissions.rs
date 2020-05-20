@@ -2,6 +2,8 @@
 use crate::colors;
 use crate::flags::Flags;
 use crate::op_error::OpError;
+use serde::de;
+use serde::Deserialize;
 use std::collections::HashSet;
 use std::fmt;
 #[cfg(not(test))]
@@ -96,18 +98,54 @@ impl Default for PermissionState {
   }
 }
 
-#[derive(Clone, Debug, Default)]
+struct BoolPermVisitor;
+
+fn deserialize_permission_state<'de, D>(
+  d: D,
+) -> Result<PermissionState, D::Error>
+where
+  D: de::Deserializer<'de>,
+{
+  impl<'de> de::Visitor<'de> for BoolPermVisitor {
+    type Value = PermissionState;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+      formatter.write_str("a boolean value")
+    }
+
+    fn visit_bool<E>(self, value: bool) -> Result<Self::Value, E>
+    where
+      E: de::Error,
+    {
+      if value {
+        Ok(PermissionState::Allow)
+      } else {
+        Ok(PermissionState::Deny)
+      }
+    }
+  }
+  d.deserialize_bool(BoolPermVisitor)
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
 pub struct Permissions {
   // Keep in sync with cli/js/permissions.ts
+  #[serde(deserialize_with = "deserialize_permission_state")]
   pub allow_read: PermissionState,
   pub read_whitelist: HashSet<PathBuf>,
+  #[serde(deserialize_with = "deserialize_permission_state")]
   pub allow_write: PermissionState,
   pub write_whitelist: HashSet<PathBuf>,
+  #[serde(deserialize_with = "deserialize_permission_state")]
   pub allow_net: PermissionState,
   pub net_whitelist: HashSet<String>,
+  #[serde(deserialize_with = "deserialize_permission_state")]
   pub allow_env: PermissionState,
+  #[serde(deserialize_with = "deserialize_permission_state")]
   pub allow_run: PermissionState,
+  #[serde(deserialize_with = "deserialize_permission_state")]
   pub allow_plugin: PermissionState,
+  #[serde(deserialize_with = "deserialize_permission_state")]
   pub allow_hrtime: PermissionState,
 }
 
