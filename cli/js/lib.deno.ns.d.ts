@@ -27,12 +27,12 @@ declare namespace Deno {
   };
 
   /** The current process id of the runtime. */
-  export let pid: number;
+  export const pid: number;
 
   /** Reflects the `NO_COLOR` environment variable.
    *
    * See: https://no-color.org/ */
-  export let noColor: boolean;
+  export const noColor: boolean;
 
   export interface TestDefinition {
     fn: () => void | Promise<void>;

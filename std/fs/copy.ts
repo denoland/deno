@@ -4,6 +4,8 @@ import { ensureDir, ensureDirSync } from "./ensure_dir.ts";
 import { isSubdir, getFileInfoType } from "./_util.ts";
 import { assert } from "../testing/asserts.ts";
 
+const isWindows = Deno.build.os === "windows";
+
 export interface CopyOptions {
   /**
    * overwrite existing file or directory. Default is `false`
@@ -111,7 +113,13 @@ async function copySymLink(
   await ensureValidCopy(src, dest, options);
   const originSrcFilePath = await Deno.readLink(src);
   const type = getFileInfoType(await Deno.lstat(src));
-  await Deno.symlink(originSrcFilePath, dest, type);
+  if (isWindows) {
+    await Deno.symlink(originSrcFilePath, dest, {
+      type: type === "dir" ? "dir" : "file",
+    });
+  } else {
+    await Deno.symlink(originSrcFilePath, dest);
+  }
   if (options.preserveTimestamps) {
     const statInfo = await Deno.lstat(src);
     assert(statInfo.atime instanceof Date, `statInfo.atime is unavailable`);
@@ -129,7 +137,14 @@ function copySymlinkSync(
   ensureValidCopySync(src, dest, options);
   const originSrcFilePath = Deno.readLinkSync(src);
   const type = getFileInfoType(Deno.lstatSync(src));
-  Deno.symlinkSync(originSrcFilePath, dest, type);
+  if (isWindows) {
+    Deno.symlinkSync(originSrcFilePath, dest, {
+      type: type === "dir" ? "dir" : "file",
+    });
+  } else {
+    Deno.symlinkSync(originSrcFilePath, dest);
+  }
+
   if (options.preserveTimestamps) {
     const statInfo = Deno.lstatSync(src);
     assert(statInfo.atime instanceof Date, `statInfo.atime is unavailable`);

@@ -17,7 +17,7 @@ This is very much a work-in-progress. I'm actively soliciting feedback.
 
 - behaviour of `%v` verb. In Golang, this is a shortcut verb to "print the
   default format" of the argument. It is currently implemented to format using
-  `toString` in the default case and `inpect` if the `%#v` alternative format
+  `toString` in the default case and `inspect` if the `%#v` alternative format
   flag is used in the format directive. Alternatively, `%V` could be used to
   distinguish the two.
 

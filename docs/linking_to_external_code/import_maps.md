@@ -5,7 +5,7 @@
 
 Deno supports [import maps](https://github.com/WICG/import-maps).
 
-You can use import map with the `--importmap=<FILE>` CLI flag.
+You can use import maps with the `--importmap=<FILE>` CLI flag.
 
 Current limitations:
 
