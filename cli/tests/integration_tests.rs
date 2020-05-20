@@ -400,7 +400,7 @@ fn js_unit_tests() {
     .arg("--unstable")
     .arg("--reload")
     .arg("-A")
-    .arg("cli/js/tests/unit_test_runner.ts")
+    .arg("cli/tests/unit/unit_test_runner.ts")
     .arg("--master")
     .arg("--verbose")
     .env("NO_COLOR", "1")
