@@ -12,6 +12,7 @@ import {
   BufWriterSync,
   BufferFullError,
   PartialReadError,
+  ReadLineResult,
   readStringDelim,
   readLines,
 } from "./bufio.ts";
@@ -444,4 +445,23 @@ Deno.test("readStringDelimAndLines", async function (): Promise<void> {
 
   assertEquals(lines_.length, 10);
   assertEquals(lines_, ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]);
+});
+
+Deno.test(async function bufReaderShouldNotShareArrayBufferAcrossReads() {
+  const decoder = new TextDecoder();
+  const data = "abcdefghijklmnopqrstuvwxyz";
+  const bufSize = 25;
+  const b = new BufReader(stringsReader(data), bufSize);
+
+  const r1 = (await b.readLine()) as ReadLineResult;
+  assertNotEOF(r1);
+  assertEquals(decoder.decode(r1.line), "abcdefghijklmnopqrstuvwxy");
+
+  const r2 = (await b.readLine()) as ReadLineResult;
+  assertNotEOF(r2);
+  assertEquals(decoder.decode(r2.line), "z");
+  assert(
+    r1.line.buffer !== r2.line.buffer,
+    "array buffer should not be shared across reads"
+  );
 });
