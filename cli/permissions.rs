@@ -113,20 +113,20 @@ pub struct Permissions {
   pub allow_hrtime: PermissionState,
 }
 
+fn resolve_fs_whitelist(whitelist: &[PathBuf]) -> HashSet<PathBuf> {
+  whitelist
+    .iter()
+    .map(|raw_path| resolve_from_cwd(Path::new(&raw_path)).unwrap())
+    .collect()
+}
+
 impl Permissions {
   pub fn from_flags(flags: &Flags) -> Self {
-    // assert each whitelist path is absolute, since the cwd may change.
-    for path in &flags.read_whitelist {
-      assert!(path.has_root());
-    }
-    for path in &flags.write_whitelist {
-      assert!(path.has_root());
-    }
     Self {
       allow_read: PermissionState::from(flags.allow_read),
-      read_whitelist: flags.read_whitelist.iter().cloned().collect(),
+      read_whitelist: resolve_fs_whitelist(&flags.read_whitelist),
       allow_write: PermissionState::from(flags.allow_write),
-      write_whitelist: flags.write_whitelist.iter().cloned().collect(),
+      write_whitelist: resolve_fs_whitelist(&flags.write_whitelist),
       allow_net: PermissionState::from(flags.allow_net),
       net_whitelist: flags.net_whitelist.iter().cloned().collect(),
       allow_env: PermissionState::from(flags.allow_env),
@@ -339,10 +339,12 @@ impl Permissions {
     url: &Option<&str>,
     path: &Option<&Path>,
   ) -> Result<PermissionState, OpError> {
+    let path = path.map(|p| resolve_from_cwd(p).unwrap());
+    let path = path.as_deref();
     match name {
       "run" => Ok(self.allow_run),
-      "read" => Ok(self.get_state_read(path)),
-      "write" => Ok(self.get_state_write(path)),
+      "read" => Ok(self.get_state_read(&path)),
+      "write" => Ok(self.get_state_write(&path)),
       "net" => self.get_state_net_url(url),
       "env" => Ok(self.allow_env),
       "plugin" => Ok(self.allow_plugin),
@@ -489,6 +491,14 @@ mod tests {
     // Sub path within /b/c
     assert!(perms.check_read(Path::new("/b/c/sub/path")).is_ok());
     assert!(perms.check_write(Path::new("/b/c/sub/path")).is_ok());
+
+    // Sub path within /b/c, needs normalizing
+    assert!(perms
+      .check_read(Path::new("/b/c/sub/path/../path/."))
+      .is_ok());
+    assert!(perms
+      .check_write(Path::new("/b/c/sub/path/../path/."))
+      .is_ok());
 
     // Inside of /b but outside of /b/c
     assert!(perms.check_read(Path::new("/b/e")).is_err());
