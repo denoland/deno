@@ -447,21 +447,24 @@ Deno.test("readStringDelimAndLines", async function (): Promise<void> {
   assertEquals(lines_, ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]);
 });
 
-Deno.test(async function bufReaderShouldNotShareArrayBufferAcrossReads() {
-  const decoder = new TextDecoder();
-  const data = "abcdefghijklmnopqrstuvwxyz";
-  const bufSize = 25;
-  const b = new BufReader(stringsReader(data), bufSize);
+Deno.test(
+  "bufReaderShouldNotShareArrayBufferAcrossReads",
+  async function (): Promise<void> {
+    const decoder = new TextDecoder();
+    const data = "abcdefghijklmnopqrstuvwxyz";
+    const bufSize = 25;
+    const b = new BufReader(stringsReader(data), bufSize);
 
-  const r1 = (await b.readLine()) as ReadLineResult;
-  assertNotEOF(r1);
-  assertEquals(decoder.decode(r1.line), "abcdefghijklmnopqrstuvwxy");
+    const r1 = (await b.readLine()) as ReadLineResult;
+    assert(r1 !== null);
+    assertEquals(decoder.decode(r1.line), "abcdefghijklmnopqrstuvwxy");
 
-  const r2 = (await b.readLine()) as ReadLineResult;
-  assertNotEOF(r2);
-  assertEquals(decoder.decode(r2.line), "z");
-  assert(
-    r1.line.buffer !== r2.line.buffer,
-    "array buffer should not be shared across reads"
-  );
-});
+    const r2 = (await b.readLine()) as ReadLineResult;
+    assert(r2 !== null);
+    assertEquals(decoder.decode(r2.line), "z");
+    assert(
+      r1.line.buffer !== r2.line.buffer,
+      "array buffer should not be shared across reads"
+    );
+  }
+);
