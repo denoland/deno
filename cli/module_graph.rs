@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use crate::file_fetcher::map_file_extension;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::import_map::ImportMap;
@@ -19,6 +20,7 @@ use serde::Serialize;
 use serde::Serializer;
 use std::collections::HashMap;
 use std::hash::BuildHasher;
+use std::path::PathBuf;
 use std::pin::Pin;
 
 fn serialize_module_specifier<S>(
@@ -258,9 +260,9 @@ impl ModuleGraphLoader {
       ModuleGraphFile {
         specifier: specifier.to_string(),
         url: specifier.to_string(),
+        media_type: map_file_extension(&PathBuf::from(specifier.clone()))
+          as i32,
         filename: specifier,
-        // ignored, it's set in TS worker
-        media_type: MediaType::JavaScript as i32,
         source_code,
         imports,
         referenced_files,
