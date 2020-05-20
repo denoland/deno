@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 import { assert } from "../testing/asserts.ts";
 export type DateFormat = "mm-dd-yyyy" | "dd-mm-yyyy" | "yyyy-mm-dd";
 
@@ -157,6 +158,7 @@ export function toIMF(date: Date): string {
 
 /**
  * Check given year is a leap year or not.
+ * based on : https://docs.microsoft.com/en-us/office/troubleshoot/excel/determine-a-leap-year
  * @param year year in number or Date format
  */
 export function isLeap(year: Date | number): boolean {
