@@ -39,3 +39,8 @@ export function intoCallbackAPIWithIntercept<T1, T2>(
     .then((value) => cb && cb(null, interceptor(value)))
     .catch((err) => cb && cb(err, null));
 }
+
+export function spliceOne(list: string[], index: number): void {
+  for (; index + 1 < list.length; index++) list[index] = list[index + 1];
+  list.pop();
+}
