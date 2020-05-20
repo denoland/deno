@@ -164,7 +164,12 @@ test("Data is written to correct file", async function testCorrectWriteUsingPath
 
 test("Path can be an URL", async function testCorrectWriteUsingURL() {
   const url = new URL(
-    "file://" + path.join(testDataDir, "_fs_writeFile_test_file_url.txt")
+    Deno.build.os === "windows"
+      ? "file:///" +
+        path
+          .join(testDataDir, "_fs_writeFile_test_file_url.txt")
+          .replace(/\\/g, "/")
+      : "file://" + path.join(testDataDir, "_fs_writeFile_test_file_url.txt")
   );
   const filePath = path.fromFileUrl(url);
   const res = await new Promise((resolve) => {
@@ -248,7 +253,11 @@ test("sync: Path can be an URL", function testCorrectWriteSyncUsingURL() {
     testDataDir,
     "_fs_writeFileSync_test_file_url.txt"
   );
-  const url = new URL("file://" + filePath);
+  const url = new URL(
+    Deno.build.os === "windows"
+      ? "file:///" + filePath.replace(/\\/g, "/")
+      : "file://" + filePath
+  );
   writeFileSync(url, "hello world");
 
   const data = Deno.readFileSync(filePath);
