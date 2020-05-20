@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import { Sponge } from "./Sponge.ts";
+import { Sponge } from "./sponge.ts";
 import { keccakf } from "./keccakf.ts";
 
 /* eslint-disable @typescript-eslint/camelcase, @typescript-eslint/class-name-casing */
