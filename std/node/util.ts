@@ -1,3 +1,5 @@
+export { callbackify } from "./_util/_util_callbackify.ts";
+
 export function isArray(value: unknown): boolean {
   return Array.isArray(value);
 }
