@@ -70,3 +70,4 @@ import "./write_file_test.ts";
 import "./write_text_file_test.ts";
 import "./performance_test.ts";
 import "./version_test.ts";
+import "./streams_internal_test.ts";
