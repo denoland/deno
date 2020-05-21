@@ -19,6 +19,7 @@ pub fn init(i: &mut CoreIsolate, s: &State) {
   i.register_op("op_hostname", s.stateful_json_op(op_hostname));
   i.register_op("op_loadavg", s.stateful_json_op(op_loadavg));
   i.register_op("op_os_release", s.stateful_json_op(op_os_release));
+  i.register_op("op_type", s.stateful_json_op(op_type));
 }
 
 #[derive(Deserialize)]
@@ -188,4 +189,13 @@ fn op_os_release(
   state.check_env()?;
   let release = sys_info::os_release().unwrap_or_else(|_| "".to_string());
   Ok(JsonOp::Sync(json!(release)))
+}
+
+fn op_type(
+  state: &State,
+  _args: Value,
+  _zero_copy: Option<ZeroCopyBuf>,
+) ->  Result<JsonOp, OpError> {
+  state.check_env()?;
+  Ok(JsonOp::Sync(json!(sys_info::os_type())))
 }

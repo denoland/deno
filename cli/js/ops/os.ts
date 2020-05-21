@@ -67,3 +67,9 @@ export function dir(kind: DirKind): string | null {
 export function execPath(): string {
   return sendSync("op_exec_path");
 }
+
+export function osType(): string {
+  return sendSync("op_type");
+}
+
+

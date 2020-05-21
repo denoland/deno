@@ -321,6 +321,24 @@ unitTest({ perms: { env: false } }, function hostnamePerm(): void {
   assert(caughtError);
 });
 
+
+unitTest({ perms: { env: true } }, function releaseDir(): void {
+  assertNotEquals(Deno.osType(), "");
+});
+
+unitTest({ perms: { env: false } }, function releasePerm(): void {
+  let caughtError = false;
+  try {
+    Deno.osType();
+  } catch (err) {
+    caughtError = true;
+    assert(err instanceof Deno.errors.PermissionDenied);
+    assertEquals(err.name, "PermissionDenied");
+  }
+  assert(caughtError);
+});
+
+
 unitTest({ perms: { env: true } }, function releaseDir(): void {
   assertNotEquals(Deno.osRelease(), "");
 });

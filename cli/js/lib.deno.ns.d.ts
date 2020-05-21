@@ -155,6 +155,9 @@ declare namespace Deno {
    */
   export function execPath(): string;
 
+
+  export function osType(): string;
+
   /**
    * Change the current working directory to the specified path.
    *
