@@ -17,6 +17,7 @@ use deno_core::ResourceTable;
 use deno_core::ZeroCopyBuf;
 use dlopen::symbor::Library;
 use futures::prelude::*;
+use std::cell::Ref;
 use std::cell::RefMut;
 use std::path::Path;
 use std::pin::Pin;
@@ -73,6 +74,7 @@ pub fn op_open_plugin(
   Ok(JsonOp::Sync(json!(rid)))
 }
 
+/// A resource that stores a dynamically loaded plugin.
 struct PluginResource {
   lib: Rc<Library>,
 }
@@ -80,79 +82,6 @@ struct PluginResource {
 impl PluginResource {
   fn new(lib: &Rc<Library>) -> Self {
     Self { lib: lib.clone() }
-  }
-}
-
-/// Custom resource type used to ensure that a copy of the Rc<Library> for a plugin
-/// is held with any resource inserted by that plugin to prevent segfaults.
-struct RefResource {
-  _lib: Rc<Library>,
-  inner: Box<dyn Resource>,
-}
-
-struct PluginResourceTable<'a> {
-  resource_table: RefMut<'a, ResourceTable>,
-  lib: Rc<Library>,
-}
-
-impl<'a> plugin_api::WrappedResourceTable for PluginResourceTable<'a> {
-  fn has(&self, rid: ResourceId) -> bool {
-    self.resource_table.has(rid)
-  }
-
-  fn get_boxed(&self, rid: ResourceId) -> Option<&dyn Resource> {
-    use std::borrow::Borrow;
-    // Resources inserted by plugins are inserted in a RefResource wrapper, so
-    // we can ensure a Rc<Library> is held for the plugin to avoid segfaults.
-    // To keep this as similar as possible to the way that normal ops access
-    // resources we need this wrapping to transparent. This just unwrapps all
-    // RefResources and exposes the inner Box<dyn Resource> value. Same thing
-    // for get_mut_boxed.
-    self.resource_table.get_boxed(rid).map(|resource| {
-      if let Some(r) = resource.downcast_ref::<RefResource>() {
-        return r.inner.borrow();
-      }
-      resource
-    })
-  }
-
-  fn get_mut_boxed(&mut self, rid: ResourceId) -> Option<&mut dyn Resource> {
-    self.resource_table.get_mut_boxed(rid).map(|resource| {
-      if resource.is::<RefResource>() {
-        &mut resource.downcast_mut::<RefResource>().unwrap().inner
-      } else {
-        resource
-      }
-    })
-  }
-
-  fn add(&mut self, name: &str, resource: Box<dyn Resource>) -> ResourceId {
-    let ref_resource = RefResource {
-      _lib: self.lib.clone(),
-      inner: resource,
-    };
-    self.resource_table.add(name, Box::new(ref_resource))
-  }
-
-  fn entries(&self) -> Vec<(ResourceId, String)> {
-    self.resource_table.entries()
-  }
-
-  fn close(&mut self, rid: ResourceId) -> Option<()> {
-    self.resource_table.close(rid)
-  }
-
-  fn remove_boxed(&mut self, rid: ResourceId) -> Option<Box<dyn Resource>> {
-    self.resource_table.remove_boxed(rid).map(|resource| {
-      if resource.is::<RefResource>() {
-        match resource.downcast::<RefResource>() {
-          Ok(r) => r.inner,
-          Err(_e) => unreachable!(),
-        }
-      } else {
-        resource
-      }
-    })
   }
 }
 
@@ -167,6 +96,14 @@ impl<'a> PluginInterface<'a> {
       isolate,
       plugin_lib,
     }
+  }
+
+  fn resource_table(&self) -> Ref<ResourceTable> {
+    self.isolate.resource_table.borrow()
+  }
+
+  fn resource_table_mut(&mut self) -> RefMut<ResourceTable> {
+    self.isolate.resource_table.borrow_mut()
   }
 }
 
@@ -200,13 +137,8 @@ impl<'a> plugin_api::Interface for PluginInterface<'a> {
     )
   }
 
-  fn resource_table<'b>(
-    &'b mut self,
-  ) -> Box<dyn plugin_api::WrappedResourceTable + 'b> {
-    Box::new(PluginResourceTable {
-      lib: self.plugin_lib.clone(),
-      resource_table: self.isolate.resource_table.borrow_mut(),
-    })
+  fn resource_table(&mut self) -> &mut dyn plugin_api::ResourceTable {
+    self
   }
 }
 
@@ -235,5 +167,53 @@ impl Future for PluginOpAsyncFuture {
 impl Drop for PluginOpAsyncFuture {
   fn drop(&mut self) {
     self.fut.take();
+  }
+}
+
+/// A resource that has been inserted in the resource table by a dynamically
+/// loaded plugin.
+struct RefResource {
+  inner: Box<dyn Resource>,
+  _plugin_lib: Rc<Library>,
+}
+
+impl<'a> plugin_api::ResourceTable for PluginInterface<'a> {
+  fn add(&mut self, name: &str, resource: Box<dyn Resource>) -> ResourceId {
+    let ref_resource = RefResource {
+      inner: resource,
+      _plugin_lib: self.plugin_lib.clone(),
+    };
+    self.resource_table_mut().add(name, Box::new(ref_resource))
+  }
+
+  fn get(&self, rid: ResourceId) -> Option<Ref<dyn Resource>> {
+    // Resources inserted by plugins are wrapped in a RefResource wrapper, so
+    // we can ensure a reference to Rc<Library> is kept for as long as the
+    // resource stays in the resource table.
+    let table = self.resource_table();
+    match table.get::<RefResource>(rid) {
+      Some(_) => Some(Ref::map(table, |t| {
+        &*t.get::<RefResource>(rid).unwrap().inner
+      })),
+      None => None,
+    }
+  }
+
+  fn get_mut(&mut self, rid: ResourceId) -> Option<RefMut<dyn Resource>> {
+    let mut table = self.resource_table_mut();
+    match table.get_mut::<RefResource>(rid) {
+      Some(_) => Some(RefMut::map(table, |t| {
+        &mut *t.get_mut::<RefResource>(rid).unwrap().inner
+      })),
+      None => None,
+    }
+  }
+
+  fn remove(&mut self, rid: ResourceId) -> Option<Box<dyn Resource>> {
+    let mut table = self.resource_table_mut();
+    match table.get_mut::<RefResource>(rid) {
+      Some(_) => table.remove::<RefResource>(rid).map(|rc| rc.inner),
+      None => None, // `rid` does not reference a RefResource, so leave it.
+    }
   }
 }

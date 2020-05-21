@@ -8,6 +8,7 @@ use futures::future::FutureExt;
 pub fn deno_plugin_init(interface: &mut dyn Interface) {
   interface.register_op("testSync", op_test_sync);
   interface.register_op("testAsync", op_test_async);
+  interface.register_op("testResources", op_test_resources);
 }
 
 fn op_test_sync(
@@ -54,4 +55,55 @@ fn op_test_async(
   };
 
   Op::Async(fut.boxed())
+}
+
+struct TestResource {
+  noise: String,
+}
+
+fn op_test_resources(
+  interface: &mut dyn Interface,
+  _data: &[u8],
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Op {
+  // `add()`
+  let rid = {
+    let rc = Box::new(TestResource {
+      noise: "woof".to_owned(),
+    });
+    let rc: Box<dyn deno_core::plugin_api::Resource> = rc;
+    interface.resource_table().add("test_resource", rc)
+  };
+  {
+    // `has()`
+    let found = interface.resource_table().has(rid);
+    assert!(found);
+  }
+  {
+    // `get()`
+    let rc = interface.resource_table().get(rid).unwrap();
+    let rc = rc.downcast_ref::<TestResource>().unwrap();
+    assert_eq!(&rc.noise, "woof");
+  }
+  {
+    // `get_mut()`
+    let mut rc = interface.resource_table().get_mut(rid).unwrap();
+    let mut rc = rc.downcast_mut::<TestResource>().unwrap();
+    assert_eq!(&rc.noise, "woof");
+    rc.noise = "mooh".to_owned();
+  }
+  {
+    // `remove()`
+    let rc = interface.resource_table().remove(rid).unwrap();
+    let rc = rc.downcast::<TestResource>().ok().unwrap();
+    assert_eq!(&rc.noise, "mooh");
+  }
+  {
+    // After `remove()` the resource should be gone.
+    let found1 = interface.resource_table().has(rid);
+    assert!(!found1);
+    let found2 = interface.resource_table().close(rid).is_some();
+    assert!(!found2);
+  }
+  Op::Sync(Default::default())
 }
