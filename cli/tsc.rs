@@ -459,7 +459,7 @@ impl TsCompiler {
       import_map,
       permissions.clone(),
       is_dyn_import,
-      false,
+      true,
     );
 
     module_graph_loader.add_to_graph(&module_specifier).await?;
