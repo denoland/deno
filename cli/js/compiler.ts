@@ -585,7 +585,6 @@ function buildSourceFileCache(
   sourceFileMap: Record<string, SourceFileMapEntry>
 ): void {
   for (const entry of Object.values(sourceFileMap)) {
-    assert(entry.sourceCode.length > 0);
     SourceFile.addToCache({
       url: entry.url,
       filename: entry.url,
@@ -597,6 +596,9 @@ function buildSourceFileCache(
       let mappedUrl = importDesc.resolvedSpecifier;
       const importedFile = sourceFileMap[importDesc.resolvedSpecifier];
       assert(importedFile);
+      if (importedFile.redirect) {
+        mappedUrl = importedFile.redirect;
+      }
       const isJsOrJsx =
         importedFile.mediaType === MediaType.JavaScript ||
         importedFile.mediaType === MediaType.JSX;
@@ -1032,6 +1034,7 @@ interface SourceFileMapEntry {
   url: string;
   sourceCode: string;
   mediaType: MediaType;
+  redirect?: string;
   imports: ImportDescriptor[];
   referencedFiles: ReferenceDescriptor[];
   libDirectives: ReferenceDescriptor[];
