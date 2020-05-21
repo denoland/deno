@@ -19,7 +19,7 @@ const resourcesPre = Deno.resources();
 
 const rid = Deno.openPlugin(filename);
 
-const { testSync, testAsync } = Deno.core.ops();
+const { testSync, testAsync, testResources } = Deno.core.ops();
 if (!(testSync > 0)) {
   throw "bad op id for testSync";
 }
@@ -55,6 +55,10 @@ function runTestAsync() {
   }
 }
 
+function runTestResources() {
+  Deno.core.dispatch(testResources, new Uint8Array());
+}
+
 function runTestOpCount() {
   const start = Deno.metrics();
 
@@ -88,6 +92,7 @@ After: ${postStr}`);
 
 runTestSync();
 runTestAsync();
+runTestResources();
 
 runTestOpCount();
 runTestPluginClose();

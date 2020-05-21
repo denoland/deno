@@ -8,8 +8,6 @@
 
 use downcast_rs::Downcast;
 use std::any::Any;
-use std::borrow::Borrow;
-use std::borrow::BorrowMut;
 use std::collections::HashMap;
 
 /// ResourceId is Deno's version of a file descriptor. ResourceId is also referred
@@ -39,23 +37,12 @@ impl ResourceTable {
     None
   }
 
-  pub fn get_boxed(&self, rid: ResourceId) -> Option<&dyn Resource> {
-    self.map.get(&rid).map(|(_n, r)| r.borrow())
-  }
-
   pub fn get_mut<T: Resource>(&mut self, rid: ResourceId) -> Option<&mut T> {
     if let Some((_name, resource)) = self.map.get_mut(&rid) {
       return resource.downcast_mut::<T>();
     }
 
     None
-  }
-
-  pub fn get_mut_boxed(
-    &mut self,
-    rid: ResourceId,
-  ) -> Option<&mut dyn Resource> {
-    self.map.get_mut(&rid).map(|(_n, r)| r.borrow_mut())
   }
 
   // TODO: resource id allocation should probably be randomized for security.
@@ -95,10 +82,6 @@ impl ResourceTable {
       return res;
     }
     None
-  }
-
-  pub fn remove_boxed(&mut self, rid: ResourceId) -> Option<Box<dyn Resource>> {
-    self.map.remove(&rid).map(|(_n, r)| r)
   }
 }
 
