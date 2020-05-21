@@ -176,6 +176,8 @@ impl EsIsolate {
     let mut cs = v8::ContextScope::new(scope, context);
     let scope = cs.enter();
 
+    drop(core_state);
+
     let mut try_catch = v8::TryCatch::new(scope);
     let tc = try_catch.enter();
 
@@ -185,6 +187,7 @@ impl EsIsolate {
       _ => panic!("module id {} not found in module table", id),
     };
     let mut module = module_info.handle.get(scope).unwrap();
+    drop(state);
 
     if module.get_status() == v8::ModuleStatus::Errored {
       exception_to_err_result(scope, module.get_exception())?
@@ -380,11 +383,14 @@ impl EsIsolate {
   }
 
   fn poll_dyn_imports(&mut self, cx: &mut Context) -> Poll<Result<(), ErrBox>> {
-    let state_rc = Self::state(self);
-    let mut state = state_rc.borrow_mut();
-
     loop {
-      match state.pending_dyn_imports.poll_next_unpin(cx) {
+      let poll_result = {
+        let state_rc = Self::state(self);
+        let mut state = state_rc.borrow_mut();
+        state.pending_dyn_imports.poll_next_unpin(cx)
+      };
+
+      match poll_result {
         Poll::Pending | Poll::Ready(None) => {
           // There are no active dynamic import loaders, or none are ready.
           return Poll::Ready(Ok(()));
@@ -403,6 +409,8 @@ impl EsIsolate {
                 match self.register_during_load(info, &mut load) {
                   Ok(()) => {
                     // Keep importing until it's fully drained
+                    let state_rc = Self::state(self);
+                    let state = state_rc.borrow_mut();
                     state.pending_dyn_imports.push(load.into_future());
                   }
                   Err(err) => self.dyn_import_error(dyn_import_id, err)?,
@@ -475,14 +483,26 @@ impl EsIsolate {
         id
       }
       // Module not registered yet, do it now.
-      None => self.mod_new(is_main, &module_url_found, &code)?,
+      None => {
+        drop(state);
+        self.mod_new(is_main, &module_url_found, &code)?
+      }
     };
 
     // Now we must iterate over all imports of the module and load them.
-    let imports = state.modules.get_children(module_id).unwrap();
+    let imports = {
+      let state_rc = Self::state(self);
+      let state = state_rc.borrow();
+      state.modules.get_children(module_id).unwrap().clone()
+    };
 
     for module_specifier in imports {
-      if !state.modules.is_registered(module_specifier) {
+      let is_registered = {
+        let state_rc = Self::state(self);
+        let state = state_rc.borrow();
+        state.modules.is_registered(&module_specifier)
+      };
+      if !is_registered {
         load
           .add_import(module_specifier.to_owned(), referrer_specifier.clone());
       }
@@ -510,13 +530,13 @@ impl EsIsolate {
     specifier: &ModuleSpecifier,
     code: Option<String>,
   ) -> Result<ModuleId, ErrBox> {
-    let state_rc = Self::state(self);
-    let state = state_rc.borrow();
-    let load = RecursiveModuleLoad::main(
-      &specifier.to_string(),
-      code,
-      state.loader.clone(),
-    );
+    let loader = {
+      let state_rc = Self::state(self);
+      let state = state_rc.borrow();
+      state.loader.clone()
+    };
+
+    let load = RecursiveModuleLoad::main(&specifier.to_string(), code, loader);
     let (_load_id, prepare_result) = load.prepare().await;
 
     let mut load = prepare_result?;
@@ -545,20 +565,30 @@ impl Future for EsIsolate {
     let state_rc = Self::state(es_isolate);
     let state = state_rc.borrow();
 
-    state.waker.register(cx.waker());
+    let (has_preparing_dyn_imports, has_pending_dyn_imports) = {
+      state.waker.register(cx.waker());
+      (
+        !state.preparing_dyn_imports.is_empty(),
+        !state.pending_dyn_imports.is_empty(),
+      )
+    };
 
-    if !state.preparing_dyn_imports.is_empty() {
+    drop(state);
+
+    if has_preparing_dyn_imports {
       let poll_imports = es_isolate.prepare_dyn_imports(cx)?;
       assert!(poll_imports.is_ready());
     }
 
-    if !state.pending_dyn_imports.is_empty() {
+    if has_pending_dyn_imports {
       let poll_imports = es_isolate.poll_dyn_imports(cx)?;
       assert!(poll_imports.is_ready());
     }
 
     match ready!(es_isolate.0.poll_unpin(cx)) {
       Ok(()) => {
+        let state_rc = Self::state(es_isolate);
+        let state = state_rc.borrow();
         if state.pending_dyn_imports.is_empty()
           && state.preparing_dyn_imports.is_empty()
         {
@@ -659,7 +689,7 @@ pub mod tests {
 
     let mut isolate = EsIsolate::new(loader, StartupData::None, false);
 
-    let dispatcher = move |_state: Rc<RefCell<CoreIsolateState>>,
+    let dispatcher = move |_state: &mut CoreIsolateState,
                            control: &[u8],
                            _zero_copy: Option<ZeroCopyBuf>|
           -> Op {

@@ -881,7 +881,9 @@ mod tests {
         ]
       );
 
-      let modules = &isolate.modules;
+      let state_rc = EsIsolate::state(&isolate);
+      let state = state_rc.borrow();
+      let modules = &state.modules;
 
       assert_eq!(modules.get_id("file:///redirect1.js"), Some(redirect1_id));
 
@@ -1019,7 +1021,9 @@ mod tests {
       vec!["file:///b.js", "file:///c.js", "file:///d.js"]
     );
 
-    let modules = &isolate.modules;
+    let state_rc = EsIsolate::state(&isolate);
+    let state = state_rc.borrow();
+    let modules = &state.modules;
 
     assert_eq!(modules.get_id("file:///main_with_code.js"), Some(main_id));
     let b_id = modules.get_id("file:///b.js").unwrap();

@@ -87,10 +87,12 @@ fn test_op_registry() {
   expected.insert("test".to_string(), 1);
   assert_eq!(op_registry.name_to_id, expected);
 
-  let mut isolate = CoreIsolate::new(crate::StartupData::None, false);
+  let isolate = CoreIsolate::new(crate::StartupData::None, false);
 
   let dispatch = op_registry.get(test_id).unwrap();
-  let res = dispatch(CoreIsolate::state(&isolate), &[], None);
+  let state_rc = CoreIsolate::state(&isolate);
+  let mut state = state_rc.borrow_mut();
+  let res = dispatch(&mut state, &[], None);
   if let Op::Sync(buf) = res {
     assert_eq!(buf.len(), 0);
   } else {
@@ -103,6 +105,7 @@ fn test_op_registry() {
 
 #[test]
 fn register_op_during_call() {
+  use crate::CoreIsolate;
   use std::sync::atomic;
   use std::sync::Arc;
   use std::sync::Mutex;
@@ -127,13 +130,17 @@ fn register_op_during_call() {
   };
   assert!(test_id != 0);
 
-  let mut isolate = CoreIsolate::new(crate::StartupData::None, false);
+  let isolate = CoreIsolate::new(crate::StartupData::None, false);
 
   let dispatcher1 = {
     let g = op_registry.lock().unwrap();
     g.get(test_id).unwrap()
   };
-  dispatcher1(CoreIsolate::state(&isolate), &[], None);
+  {
+    let state_rc = CoreIsolate::state(&isolate);
+    let mut state = state_rc.borrow_mut();
+    dispatcher1(&mut state, &[], None);
+  }
 
   let mut expected = HashMap::new();
   expected.insert("ops".to_string(), 0);
@@ -148,7 +155,9 @@ fn register_op_during_call() {
     let g = op_registry.lock().unwrap();
     g.get(2).unwrap()
   };
-  let res = dispatcher2(CoreIsolate::state(isolate), &[], None);
+  let state_rc = CoreIsolate::state(&isolate);
+  let mut state = state_rc.borrow_mut();
+  let res = dispatcher2(&mut state, &[], None);
   if let Op::Sync(buf) = res {
     assert_eq!(buf.len(), 0);
   } else {

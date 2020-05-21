@@ -446,12 +446,17 @@ impl Future for CoreIsolate {
     core_isolate.shared_init();
 
     let state_rc = Self::state(core_isolate);
-    let state = state_rc.borrow();
-    state.waker.register(cx.waker());
+    {
+      let state = state_rc.borrow();
+      state.waker.register(cx.waker());
+    }
 
     let mut hs = v8::HandleScope::new(core_isolate);
     let scope = hs.enter();
-    let context = state.global_context.get(scope).unwrap();
+    let context = {
+      let state = state_rc.borrow();
+      state.global_context.get(scope).unwrap()
+    };
     let mut cs = v8::ContextScope::new(scope, context);
     let scope = cs.enter();
 
@@ -472,7 +477,6 @@ impl Future for CoreIsolate {
         Poll::Ready(None) => break,
         Poll::Pending => break,
         Poll::Ready(Some((op_id, buf))) => {
-          let mut state = state_rc.borrow_mut();
           let successful_push = state.shared.push(op_id, &buf);
           if !successful_push {
             // If we couldn't push the response to the shared queue, because
@@ -485,9 +489,15 @@ impl Future for CoreIsolate {
       }
     }
 
-    if state.shared.size() > 0 {
+    let shared_size = {
+      let state = state_rc.borrow();
+      state.shared.size()
+    };
+
+    if shared_size > 0 {
       async_op_response(scope, None)?;
       // The other side should have shifted off all the messages.
+      let state = state_rc.borrow();
       assert_eq!(state.shared.size(), 0);
     }
 
@@ -499,6 +509,7 @@ impl Future for CoreIsolate {
 
     check_promise_exceptions(scope)?;
 
+    let state = state_rc.borrow();
     // We're idle if pending_ops is empty.
     if state.pending_ops.is_empty() {
       Poll::Ready(Ok(()))
