@@ -98,3 +98,14 @@ export function NewHttpException(
 ): HttpException | any {
   return new (createHttpExceptionConstructor(status))(message!);
 }
+
+/**
+ * Throw a specific class of `HttpException`.
+ * @throws
+ */
+export function ThrowHttpException(
+  status: number | Status,
+  message?: string,
+): never {
+  throw new (createHttpExceptionConstructor(status))(message!);
+}
