@@ -126,8 +126,10 @@ export enum Status {
   NotExtended = 510,
   /** RFC 6585, 6 */
   NetworkAuthenticationRequired = 511,
+}
 
-  /** RFC 2616, 6.1.1 */
+/** RFC 2616, 6.1.1 */
+export enum WildcardStatus {
   Informational = 1,
   Success = 2,
   Redirection = 3,
@@ -196,9 +198,12 @@ export const STATUS_TEXT = new Map<Status, string>([
   [Status.LoopDetected, "Loop Detected"],
   [Status.NotExtended, "Not Extended"],
   [Status.NetworkAuthenticationRequired, "Network Authentication Required"],
-  [Status.Informational, "Informational"],
-  [Status.Success, "Success"],
-  [Status.Redirection, "Redirection"],
-  [Status.ClientError, "Client Error"],
-  [Status.ServerError, "Server Error"],
+]);
+
+export const WILDCARD_STATUS_TEXT = new Map<WildcardStatus, string>([
+  [WildcardStatus.Informational, "Informational"],
+  [WildcardStatus.Success, "Success"],
+  [WildcardStatus.Redirection, "Redirection"],
+  [WildcardStatus.ClientError, "Client Error"],
+  [WildcardStatus.ServerError, "Server Error"],
 ]);

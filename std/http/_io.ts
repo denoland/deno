@@ -3,7 +3,7 @@ import { TextProtoReader } from "../textproto/mod.ts";
 import { assert } from "../testing/asserts.ts";
 import { encoder } from "../encoding/utf8.ts";
 import { ServerRequest, Response } from "./server.ts";
-import { STATUS_TEXT } from "./http_status.ts";
+import { STATUS_TEXT, WILDCARD_STATUS_TEXT } from "./http_status.ts";
 
 export function emptyReader(): Deno.Reader {
   return {
@@ -231,7 +231,8 @@ export async function writeResponse(
   }
 
   const statusText =
-    STATUS_TEXT.get(statusCode) ?? STATUS_TEXT.get(getFirstDigit(statusCode));
+    STATUS_TEXT.get(statusCode) ??
+    WILDCARD_STATUS_TEXT.get(getFirstDigit(statusCode));
   const writer = BufWriter.create(w);
 
   if (!r.body) {

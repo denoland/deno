@@ -19,7 +19,7 @@ import { BufReader, ReadLineResult } from "../io/bufio.ts";
 import { ServerRequest, Response } from "./server.ts";
 import { StringReader } from "../io/readers.ts";
 import { mockConn } from "./_mock_conn.ts";
-import { STATUS_TEXT } from "./http_status.ts";
+import { WILDCARD_STATUS_TEXT } from "./http_status.ts";
 
 const { Buffer, test, readAll } = Deno;
 
@@ -479,11 +479,11 @@ test("testReadRequestError", async function (): Promise<void> {
 
 test("iss 5645: support custom http headers", async () => {
   const tests = [
-    { status: 155, exp: STATUS_TEXT.get(1) },
-    { status: 255, exp: STATUS_TEXT.get(2) },
-    { status: 355, exp: STATUS_TEXT.get(3) },
-    { status: 455, exp: STATUS_TEXT.get(4) },
-    { status: 555, exp: STATUS_TEXT.get(5) },
+    { status: 155, exp: WILDCARD_STATUS_TEXT.get(1) },
+    { status: 255, exp: WILDCARD_STATUS_TEXT.get(2) },
+    { status: 355, exp: WILDCARD_STATUS_TEXT.get(3) },
+    { status: 455, exp: WILDCARD_STATUS_TEXT.get(4) },
+    { status: 555, exp: WILDCARD_STATUS_TEXT.get(5) },
   ];
 
   for (const t of tests) {
