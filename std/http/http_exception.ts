@@ -1,3 +1,5 @@
+// Structured inspired by Oak's httpError.ts
+// https://github.com/oakserver/oak/blob/master/httpError.ts
 import { Status, STATUS_TEXT } from "./http_status.ts";
 
 /**
@@ -48,4 +50,40 @@ export class HttpException extends Error {
     return this.status;
   }
 
+}
+
+/**
+ * Create HTTP Exception Constructor.
+ * @return class typeof HttpException
+ */
+function createHttpExceptionConstructor<E extends typeof HttpException>(
+  statusCode: number | Status
+): E {
+  const identifier = statusCode >= 400 && statusCode < 500
+    ? `Http${STATUS_TEXT.get(statusCode)}Exception`
+    : '';
+  const newException = (class extends HttpException {
+  /**
+   * @usageNotes
+   *
+   * By default, the JSON response body contains two properties:
+   * - `statusCode`: this will be the value of statusCode.
+   * - `message`: argument contains a short description of the HTTP exception
+   * override this by supplying a string in the `message` parameter.
+   *
+   * @param message string describing the exception.
+   */
+    constructor(message?: string) {
+      super(
+        message || STATUS_TEXT.get(statusCode)!,
+        statusCode
+      );
+      Object.defineProperty(this, 'identifier', {
+        configurable: true,
+        writable: true,
+        value: identifier
+      });
+    }
+  });
+  return newException as E;
 }
