@@ -203,7 +203,7 @@ impl<'a> plugin_api::ResourceTable for PluginResourceTable<'a> {
   }
 
   fn close(&mut self, rid: ResourceId) -> Option<()> {
-    self.inner.remove::<RefResource>(rid).map(|_| ())
+    self.inner.close(rid)
   }
 
   fn get(&self, rid: ResourceId) -> Option<&dyn Resource> {
