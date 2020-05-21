@@ -36,7 +36,7 @@ const encoder = new TextEncoder();
 const serverArgs = parse(args) as FileServerArgs;
 
 const CORSEnabled = serverArgs.cors ? true : false;
-const target = posix.resolve(serverArgs._[1] ?? "");
+const target = posix.resolve(serverArgs._[0] ?? "");
 const addr = `0.0.0.0:${serverArgs.port ?? serverArgs.p ?? 4507}`;
 
 const MEDIA_TYPES: Record<string, string> = {
