@@ -1030,7 +1030,7 @@ report results to standard output:
   deno test src/fetch_test.ts src/signal_test.ts
 
 Directory arguments are expanded to all contained files matching the glob
-{*_,}test.{js,ts,jsx,tsx}:
+{*_,*.,}test.{js,ts,jsx,tsx}:
   deno test src/",
     )
 }

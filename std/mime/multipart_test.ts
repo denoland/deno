@@ -188,6 +188,10 @@ test({
     const file = form.file("file");
     assert(isFormFile(file));
     assert(file.content !== void 0);
+    const file2 = form.file("file2");
+    assert(isFormFile(file2));
+    assert(file2.filename === "中文.json");
+    assert(file2.content !== void 0);
     o.close();
   },
 });
