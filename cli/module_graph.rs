@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use crate::file_fetcher::map_file_extension;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::import_map::ImportMap;
@@ -19,6 +20,7 @@ use serde::Serialize;
 use serde::Serializer;
 use std::collections::HashMap;
 use std::hash::BuildHasher;
+use std::path::PathBuf;
 use std::pin::Pin;
 
 fn serialize_module_specifier<S>(
@@ -258,9 +260,9 @@ impl ModuleGraphLoader {
       ModuleGraphFile {
         specifier: specifier.to_string(),
         url: specifier.to_string(),
+        media_type: map_file_extension(&PathBuf::from(specifier.clone()))
+          as i32,
         filename: specifier,
-        // ignored, it's set in TS worker
-        media_type: MediaType::JavaScript as i32,
         source_code,
         imports,
         referenced_files,
@@ -272,6 +274,8 @@ impl ModuleGraphLoader {
     Ok(())
   }
 
+  // TODO(bartlomieju): decorate errors with import location in the source code
+  // https://github.com/denoland/deno/issues/5080
   fn download_module(
     &mut self,
     module_specifier: ModuleSpecifier,
@@ -280,6 +284,18 @@ impl ModuleGraphLoader {
     if self.graph.0.contains_key(&module_specifier.to_string()) {
       return Ok(());
     }
+
+    // Disallow http:// imports from modules loaded over https://
+    if let Some(referrer) = maybe_referrer.as_ref() {
+      if let "https" = referrer.as_url().scheme() {
+        if let "http" = module_specifier.as_url().scheme() {
+          let e = OpError::permission_denied(
+            "Modules loaded over https:// are not allowed to import modules over http://".to_string()
+          );
+          return Err(e.into());
+        };
+      };
+    };
 
     if !self.is_dyn_import {
       // Verify that remote file doesn't try to statically import local file.
@@ -291,7 +307,9 @@ impl ModuleGraphLoader {
             match specifier_url.scheme() {
               "http" | "https" => {}
               _ => {
-                let e = OpError::permission_denied("Remote module are not allowed to statically import local modules. Use dynamic import instead.".to_string());
+                let e = OpError::permission_denied(
+                  "Remote modules are not allowed to statically import local modules. Use dynamic import instead.".to_string()
+                );
                 return Err(e.into());
               }
             }

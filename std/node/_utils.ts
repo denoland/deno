@@ -3,6 +3,12 @@ export function notImplemented(msg?: string): never {
   throw new Error(message);
 }
 
+export type _TextDecoder = typeof TextDecoder.prototype;
+export const _TextDecoder = TextDecoder;
+
+export type _TextEncoder = typeof TextEncoder.prototype;
+export const _TextEncoder = TextEncoder;
+
 // API helpers
 
 export type MaybeNull<T> = T | null;
@@ -32,4 +38,9 @@ export function intoCallbackAPIWithIntercept<T1, T2>(
   func(...args)
     .then((value) => cb && cb(null, interceptor(value)))
     .catch((err) => cb && cb(err, null));
+}
+
+export function spliceOne(list: string[], index: number): void {
+  for (; index + 1 < list.length; index++) list[index] = list[index + 1];
+  list.pop();
 }
