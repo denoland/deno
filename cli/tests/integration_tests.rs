@@ -2465,6 +2465,31 @@ async fn inspector_does_not_hang() {
   assert!(child.wait().unwrap().success());
 }
 
+#[tokio::test]
+async fn inspector_without_brk_runs_code() {
+  let script = util::tests_path().join("inspector4.js");
+  let mut child = util::deno_cmd()
+    .arg("run")
+    // Warning: each inspector test should be on its own port to avoid
+    // conflicting with another inspector test.
+    .arg("--inspect=127.0.0.1:9233")
+    .arg(script)
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  extract_ws_url_from_stderr(child.stderr.as_mut().unwrap());
+
+  // Check that inspector actually runs code without waiting for inspector
+  // connection
+  let mut stdout = std::io::BufReader::new(child.stdout.as_mut().unwrap());
+  let mut stdout_first_line = String::from("");
+  let _ = stdout.read_line(&mut stdout_first_line).unwrap();
+  assert_eq!(stdout_first_line, "hello\n");
+
+  child.kill().unwrap();
+}
+
 #[test]
 fn exec_path() {
   let output = util::deno_cmd()
