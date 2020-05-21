@@ -117,7 +117,7 @@ export class Queue<T> {
 
     return {
       next: async (): Promise<IteratorResult<T>> => {
-        if (this.size() === 0) {
+        if (this.isEmpty()) {
           if (this.#closed) {
             return { value: undefined, done: true };
           } else {
@@ -125,7 +125,7 @@ export class Queue<T> {
             this.#dataIsAvailable = deferred();
           }
         }
-        const finished = this.size() === 0 && this.#closed;
+        const finished = this.isEmpty() && this.#closed;
         return { value: this.remove()!, done: finished };
       },
 
