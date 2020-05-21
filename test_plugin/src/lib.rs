@@ -104,7 +104,7 @@ fn op_test_resources(
     assert!(found);
   }
   {
-    // After `remove()` the resource should be gone.
+    // After `close()` the resource should be gone.
     let found1 = interface.resource_table().has(rid);
     assert!(!found1);
     let found2 = interface.resource_table().close(rid).is_some();
