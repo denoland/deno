@@ -155,7 +155,6 @@ declare namespace Deno {
    */
   export function execPath(): string;
 
-
   export function osType(): string;
 
   /**

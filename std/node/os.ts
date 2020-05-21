@@ -195,7 +195,6 @@ export function type(): string {
   return Deno.osType();
 }
 
-
 /** Not yet implemented */
 export function uptime(): number {
   notImplemented(SEE_GITHUB_ISSUE);

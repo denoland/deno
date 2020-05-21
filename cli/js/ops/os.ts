@@ -71,5 +71,3 @@ export function execPath(): string {
 export function osType(): string {
   return sendSync("op_type");
 }
-
-

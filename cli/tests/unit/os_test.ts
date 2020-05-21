@@ -321,7 +321,6 @@ unitTest({ perms: { env: false } }, function hostnamePerm(): void {
   assert(caughtError);
 });
 
-
 unitTest({ perms: { env: true } }, function osType(): void {
   assertNotEquals(Deno.osType(), "");
 });
@@ -337,7 +336,6 @@ unitTest({ perms: { env: false } }, function osTypePerm(): void {
   }
   assert(caughtError);
 });
-
 
 unitTest({ perms: { env: true } }, function releaseDir(): void {
   assertNotEquals(Deno.osRelease(), "");
