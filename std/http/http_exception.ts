@@ -61,7 +61,7 @@ function createHttpExceptionConstructor<E extends typeof HttpException>(
 ): E {
   const identifier = statusCode >= 400 && statusCode < 500
     ? `Http${STATUS_TEXT.get(statusCode)}Exception`
-    : '';
+    : 'Not Supported';
   const newException = (class extends HttpException {
   /**
    * @usageNotes
@@ -86,4 +86,15 @@ function createHttpExceptionConstructor<E extends typeof HttpException>(
     }
   });
   return newException as E;
+}
+
+/**
+ * Create a specific class of `HttpException`.
+ * @return class typeof HttpException
+ */
+export function NewHttpException(
+  status: number | Status,
+  message?: string,
+): HttpException | any {
+  return new (createHttpExceptionConstructor(status))(message!);
 }
