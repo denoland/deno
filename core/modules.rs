@@ -744,7 +744,9 @@ mod tests {
       ]
     );
 
-    let modules = &isolate.modules;
+    let state_rc = EsIsolate::state(&isolate);
+    let state = state_rc.borrow();
+    let modules = &state.modules;
     assert_eq!(modules.get_id("file:///a.js"), Some(a_id));
     let b_id = modules.get_id("file:///b.js").unwrap();
     let c_id = modules.get_id("file:///c.js").unwrap();
@@ -806,7 +808,9 @@ mod tests {
         ]
       );
 
-      let modules = &isolate.modules;
+      let state_rc = EsIsolate::state(&isolate);
+      let state = state_rc.borrow();
+      let modules = &state.modules;
 
       assert_eq!(modules.get_id("file:///circular1.js"), Some(circular1_id));
       let circular2_id = modules.get_id("file:///circular2.js").unwrap();
