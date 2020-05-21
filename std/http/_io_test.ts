@@ -19,6 +19,8 @@ import { BufReader, ReadLineResult } from "../io/bufio.ts";
 import { ServerRequest, Response } from "./server.ts";
 import { StringReader } from "../io/readers.ts";
 import { mockConn } from "./_mock_conn.ts";
+import { STATUS_TEXT } from "./http_status.ts";
+
 const { Buffer, test, readAll } = Deno;
 
 test("bodyReader", async () => {
@@ -472,5 +474,46 @@ test("testReadRequestError", async function (): Promise<void> {
         assertEquals(req.headers.get(h.key), h.value);
       }
     }
+  }
+});
+
+test("iss 5645: support custom http headers", async () => {
+  const tests = [
+    { status: 155, exp: STATUS_TEXT.get(1) },
+    { status: 255, exp: STATUS_TEXT.get(2) },
+    { status: 355, exp: STATUS_TEXT.get(3) },
+    { status: 455, exp: STATUS_TEXT.get(4) },
+    { status: 555, exp: STATUS_TEXT.get(5) },
+  ];
+
+  for (const t of tests) {
+    const w = new Buffer();
+    const body = new StringReader("Hello");
+
+    await writeResponse(w, {
+      status: t.status,
+      headers: new Headers({
+        "transfer-encoding": "chunked",
+        trailer: "deno,node",
+      }),
+      body,
+      trailers: () => new Headers({ deno: "land", node: "js" }),
+    });
+    const ret = new TextDecoder().decode(w.bytes());
+    const exp = [
+      `HTTP/1.1 ${t.status} ${t.exp}`,
+      "transfer-encoding: chunked",
+      "trailer: deno,node",
+      "",
+      "5",
+      "Hello",
+      "0",
+      "",
+      "deno: land",
+      "node: js",
+      "",
+      "",
+    ].join("\r\n");
+    assertEquals(ret, exp);
   }
 });

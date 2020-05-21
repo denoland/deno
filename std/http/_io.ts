@@ -218,14 +218,22 @@ export async function writeResponse(
   w: Deno.Writer,
   r: Response
 ): Promise<void> {
+  const getFirstDigit = (n: number): number => {
+    return (n / Math.pow(10, Math.floor(Math.log(n) / Math.LN10) - 0)) % 10 | 0;
+  };
+
   const protoMajor = 1;
   const protoMinor = 1;
   const statusCode = r.status || 200;
-  const statusText = STATUS_TEXT.get(statusCode);
-  const writer = BufWriter.create(w);
-  if (!statusText) {
+
+  if (statusCode < 100 || statusCode > 999) {
     throw new Deno.errors.InvalidData("Bad status code");
   }
+
+  const statusText =
+    STATUS_TEXT.get(statusCode) ?? STATUS_TEXT.get(getFirstDigit(statusCode));
+  const writer = BufWriter.create(w);
+
   if (!r.body) {
     r.body = new Uint8Array();
   }
