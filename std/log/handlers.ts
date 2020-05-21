@@ -9,6 +9,7 @@ import { red, yellow, blue, bold } from "../fmt/colors.ts";
 import { existsSync, exists } from "../fs/exists.ts";
 import { Queue } from "../collections/queue.ts";
 import { BufWriterSync } from "../io/bufio.ts";
+import { deferred, Deferred } from "../async/deferred.ts";
 
 const DEFAULT_FORMATTER = "{levelName} {msg}";
 type FormatterFunction = (logRecord: LogRecord) => string;
@@ -101,13 +102,14 @@ interface FileHandlerOptions extends HandlerOptions {
 }
 
 export class FileHandler extends WriterHandler {
+  protected _buff!: BufWriterSync;
   protected _file!: File;
   protected _filename: string;
   protected _mode: LogMode;
   protected _openOptions: OpenOptions;
   #encoder = new TextEncoder();
   #queue: Queue<string> = new Queue<string>();
-  #buff!: BufWriterSync;
+  #drainComplete!: Deferred<void>;
 
   constructor(levelName: LevelName, options: FileHandlerOptions) {
     super(levelName, options);
@@ -126,24 +128,40 @@ export class FileHandler extends WriterHandler {
   async setup(): Promise<void> {
     this._file = await open(this._filename, this._openOptions);
     this._writer = this._file;
-    this.#buff = new BufWriterSync(this._file);
+    this._buff = new BufWriterSync(this._file);
+    this.#queue.reset();
+    this.#drainComplete = deferred();
 
     window.addEventListener("unload", () => {
-      this.#buff.flush();
+      this._buff.flush();
     });
 
     (async (): Promise<void> => {
       for await (const msg of this.#queue.drainAndWait()) {
-        this.#buff.writeSync(this.#encoder.encode(msg + "\n"));
+        this.writeLog(msg);
       }
+      this.#drainComplete.resolve();
     })();
+  }
+
+  protected writeLog(msg: string): void {
+    this._buff.writeSync(this.#encoder.encode(msg + "\n"));
   }
 
   log(msg: string): void {
     this.#queue.add(msg);
   }
 
-  destroy(): Promise<void> {
+  flush(): void {
+    this._buff.flush();
+  }
+
+  async destroy(): Promise<void> {
+    this.#queue.close();
+    if (!this.#queue.isEmpty()) {
+      await this.#drainComplete;
+    }
+    this.flush();
     this._file.close();
     return Promise.resolve();
   }
@@ -194,16 +212,12 @@ export class RotatingFileHandler extends FileHandler {
     }
   }
 
-  handle(logRecord: LogRecord): void {
-    if (this.level > logRecord.level) return;
-
-    const msg = this.format(logRecord);
+  protected writeLog(msg: string): void {
     const currentFileSize = statSync(this._filename).size;
     if (currentFileSize + msg.length > this.#maxBytes) {
       this.rotateLogFiles();
     }
-
-    return this.log(msg);
+    super.writeLog(msg);
   }
 
   rotateLogFiles(): void {
@@ -219,6 +233,7 @@ export class RotatingFileHandler extends FileHandler {
     }
 
     this._file = openSync(this._filename, this._openOptions);
+    this._buff = new BufWriterSync(this._file);
     this._writer = this._file;
   }
 }
