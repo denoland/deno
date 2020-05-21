@@ -1,7 +1,7 @@
 ## First steps
 
-This page contains some simple examples that can teach you about the
-fundamentals of Deno.
+This page contains some simple examples to teach you about the fundamentals of
+Deno.
 
 This document assumes that you have some prior knowledge of JavaScript,
 especially about `async`/`await`. If you have no prior knowledge of JavaScript,
@@ -11,11 +11,11 @@ before attempting to start with Deno.
 
 ### Hello World
 
-Deno is a runtime for JavaScript and TypeScript and tries to be web compatible
-and use modern features wherever possible.
+Deno is a runtime for JavaScript/TypeScript which tries to be web compatible and
+use modern features wherever possible.
 
-Because of this browser compatibility a simple `Hello World` program is actually
-no different to one you can run in the browser:
+Browser compatibility means, a simple `Hello World` program in Deno is the same
+as the one you can run in the browser:
 
 ```ts
 console.log("Welcome to Deno 🦕");
@@ -29,9 +29,8 @@ deno run https://deno.land/std/examples/welcome.ts
 
 ### Making an HTTP request
 
-Something a lot of programs do is fetching data from a webserver via an HTTP
-request. Let's write a small program that fetches a file and prints the content
-to the terminal.
+Many programs use HTTP requests to fetch data from a webserver. Let's write a
+small program that fetches a file and prints its contents out to the terminal.
 
 Just like in the browser you can use the web standard
 [`fetch`](https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API) API to
@@ -47,16 +46,16 @@ await Deno.stdout.write(body);
 
 Let's walk through what this application does:
 
-1. We get the first argument passed to the application and store it in the
-   variable `url`.
-2. We make a request to the url specified, await the response, and store it in a
-   variable named `res`.
+1. We get the first argument passed to the application, and store it in the
+   `url` constant.
+2. We make a request to the url specified, await the response, and store it in
+   the `res` constant.
 3. We parse the response body as an
    [`ArrayBuffer`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/ArrayBuffer),
-   await the response, convert it into a
+   await the response, and convert it into a
    [`Uint8Array`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Uint8Array)
-   and store it in the variable `body`.
-4. We write the contents of the `body` variable to `stdout`.
+   to store in the `body` constant.
+4. We write the contents of the `body` constant to `stdout`.
 
 Try it out:
 
@@ -64,10 +63,10 @@ Try it out:
 deno run https://deno.land/std/examples/curl.ts https://example.com
 ```
 
-You will see that this program returns an error regarding network access, so
-what did we do wrong? You might remember from the introduction that Deno is a
-runtime that is secure by default. This means that you need to explicitly give
-programs the permission to do certain 'privileged' actions like network access.
+You will see this program returns an error regarding network access, so what did
+we do wrong? You might remember from the introduction that Deno is a runtime
+which is secure by default. This means you need to explicitly give programs the
+permission to do certain 'privileged' actions, such as access the network.
 
 Try it out again with the correct permission flag:
 
@@ -136,8 +135,8 @@ hello world
 ```
 
 Like the `cat.ts` example, the `copy()` function here also does not make
-unnecessary memory copies. It receives a packet from the kernel and sends back,
-without further complexity.
+unnecessary memory copies. It receives a packet from the kernel and sends it
+back, without further complexity.
 
 ### More examples
 

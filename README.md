@@ -16,7 +16,7 @@ specifics.
 
 [Install](https://github.com/denoland/deno_install)
 
-[API Reference](https://deno.land/typedoc/)
+[API Reference](https://doc.deno.land)
 
 [Style Guide](https://github.com/denoland/deno/blob/master/docs/contributing/style_guide.md)
 

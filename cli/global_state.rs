@@ -95,6 +95,7 @@ impl GlobalState {
     maybe_referrer: Option<ModuleSpecifier>,
     target_lib: TargetLib,
     permissions: Permissions,
+    is_dyn_import: bool,
   ) -> Result<CompiledModule, ErrBox> {
     let state1 = self.clone();
     let state2 = self.clone();
@@ -115,14 +116,20 @@ impl GlobalState {
       | msg::MediaType::JSX => {
         state1
           .ts_compiler
-          .compile(state1.clone(), &out, target_lib, permissions.clone())
+          .compile(state1.clone(), &out, target_lib, permissions, is_dyn_import)
           .await
       }
       msg::MediaType::JavaScript => {
         if state1.ts_compiler.compile_js {
           state2
             .ts_compiler
-            .compile(state1.clone(), &out, target_lib, permissions.clone())
+            .compile(
+              state1.clone(),
+              &out,
+              target_lib,
+              permissions,
+              is_dyn_import,
+            )
             .await
         } else {
           if let Some(types_url) = out.types_url.clone() {

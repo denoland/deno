@@ -291,9 +291,7 @@ impl TlsListenerResource {
   /// Stop tracking a task.
   /// Happens when the task is done and thus no further tracking is needed.
   pub fn untrack_task(&mut self) {
-    if self.waker.is_some() {
-      self.waker.take();
-    }
+    self.waker.take();
   }
 }
 

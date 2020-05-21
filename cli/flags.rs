@@ -184,7 +184,7 @@ static ENV_VARIABLES_HELP: &str = "ENVIRONMENT VARIABLES:
 
 static DENO_HELP: &str = "A secure JavaScript and TypeScript runtime
 
-Docs: https://deno.land/std/manual.md
+Docs: https://deno.land/manual
 Modules: https://deno.land/std/ https://deno.land/x/
 Bugs: https://github.com/denoland/deno/issues
 
@@ -1030,7 +1030,7 @@ report results to standard output:
   deno test src/fetch_test.ts src/signal_test.ts
 
 Directory arguments are expanded to all contained files matching the glob
-{*_,}test.{js,ts,jsx,tsx}:
+{*_,*.,}test.{js,ts,jsx,tsx}:
   deno test src/",
     )
 }
@@ -1173,16 +1173,15 @@ fn reload_arg<'a, 'b>() -> Arg<'a, 'b> {
 }
 
 fn reload_arg_parse(flags: &mut Flags, matches: &ArgMatches) {
-  if matches.is_present("reload") {
-    if matches.value_of("reload").is_some() {
-      let cache_bl = matches.values_of("reload").unwrap();
-      let raw_cache_blacklist: Vec<String> =
-        cache_bl.map(std::string::ToString::to_string).collect();
+  if let Some(cache_bl) = matches.values_of("reload") {
+    let raw_cache_blacklist: Vec<String> =
+      cache_bl.map(std::string::ToString::to_string).collect();
+    if raw_cache_blacklist.is_empty() {
+      flags.reload = true;
+    } else {
       flags.cache_blacklist = resolve_urls(raw_cache_blacklist);
       debug!("cache blacklist: {:#?}", &flags.cache_blacklist);
       flags.reload = false;
-    } else {
-      flags.reload = true;
     }
   }
 }
@@ -1195,7 +1194,7 @@ fn importmap_arg<'a, 'b>() -> Arg<'a, 'b> {
     .long_help(
       "UNSTABLE:
 Load import map file
-Docs: https://deno.land/std/manual.md#import-maps
+Docs: https://deno.land/manual/linking_to_external_code/import_maps
 Specification: https://wicg.github.io/import-maps/
 Examples: https://github.com/WICG/import-maps#the-import-map",
     )
@@ -1235,39 +1234,40 @@ fn no_remote_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 }
 
 fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  if matches.is_present("allow-read") {
-    if matches.value_of("allow-read").is_some() {
-      let read_wl = matches.values_of("allow-read").unwrap();
-      let raw_read_whitelist: Vec<PathBuf> =
-        read_wl.map(PathBuf::from).collect();
+  if let Some(read_wl) = matches.values_of("allow-read") {
+    let raw_read_whitelist: Vec<PathBuf> = read_wl.map(PathBuf::from).collect();
+
+    if raw_read_whitelist.is_empty() {
+      flags.allow_read = true;
+    } else {
       flags.read_whitelist = resolve_fs_whitelist(&raw_read_whitelist);
       debug!("read whitelist: {:#?}", &flags.read_whitelist);
-    } else {
-      flags.allow_read = true;
     }
   }
-  if matches.is_present("allow-write") {
-    if matches.value_of("allow-write").is_some() {
-      let write_wl = matches.values_of("allow-write").unwrap();
-      let raw_write_whitelist: Vec<PathBuf> =
-        write_wl.map(PathBuf::from).collect();
+
+  if let Some(write_wl) = matches.values_of("allow-write") {
+    let raw_write_whitelist: Vec<PathBuf> =
+      write_wl.map(PathBuf::from).collect();
+
+    if raw_write_whitelist.is_empty() {
+      flags.allow_write = true;
+    } else {
       flags.write_whitelist = resolve_fs_whitelist(&raw_write_whitelist);
       debug!("write whitelist: {:#?}", &flags.write_whitelist);
-    } else {
-      flags.allow_write = true;
     }
   }
-  if matches.is_present("allow-net") {
-    if matches.value_of("allow-net").is_some() {
-      let net_wl = matches.values_of("allow-net").unwrap();
-      let raw_net_whitelist =
-        net_wl.map(std::string::ToString::to_string).collect();
+
+  if let Some(net_wl) = matches.values_of("allow-net") {
+    let raw_net_whitelist: Vec<String> =
+      net_wl.map(std::string::ToString::to_string).collect();
+    if raw_net_whitelist.is_empty() {
+      flags.allow_net = true;
+    } else {
       flags.net_whitelist = resolve_hosts(raw_net_whitelist);
       debug!("net whitelist: {:#?}", &flags.net_whitelist);
-    } else {
-      flags.allow_net = true;
     }
   }
+
   if matches.is_present("allow-env") {
     flags.allow_env = true;
   }

@@ -35,7 +35,7 @@ export async function move(
   return;
 }
 
-/** Moves a file or directory */
+/** Moves a file or directory synchronously */
 export function moveSync(
   src: string,
   dest: string,

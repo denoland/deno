@@ -45,8 +45,14 @@ or imports having unnecessary file extensions.
 
 The community has developed extensions for some editors to solve these issues:
 
-- [VS Code](https://marketplace.visualstudio.com/items?itemName=axetroy.vscode-deno)
-  by [@axetroy](https://github.com/axetroy).
+#### VS Code
+
+The beta version of [vscode_deno](https://github.com/denoland/vscode_deno) is
+published on the
+[Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=justjavac.vscode-deno).
+Please report any issues.
+
+#### JetBrains IDEs
 
 Support for JetBrains IDEs is not yet available, but you can follow and upvote
 these issues to stay up to date:
@@ -54,6 +60,14 @@ these issues to stay up to date:
 - https://youtrack.jetbrains.com/issue/WEB-41607
 - https://youtrack.jetbrains.com/issue/WEB-42983
 - https://youtrack.jetbrains.com/issue/WEB-31667
+
+#### Vim and NeoVim
+
+Vim works fairly well for Deno/TypeScript if you install
+[CoC](https://github.com/neoclide/coc.nvim) (intellisense engine and language
+server protocol). After CoC itself is installed, from inside Vim, simply run
+`:CocInstall coc-deno`. From now on, things like `gd` (go to definition) and
+`gr` (goto/find references) should work.
 
 If you don't see your favorite IDE on this list, maybe you can develop an
 extension. Our [community Discord group](https://discord.gg/TGMHGv6) can give

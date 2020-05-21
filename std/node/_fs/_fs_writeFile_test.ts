@@ -128,27 +128,6 @@ test("Data is written to correct rid", async function testCorrectWriteUsingRid()
   assertEquals(decoder.decode(data), "hello world");
 });
 
-test("Data is written to correct rid", async function testCorrectWriteUsingRid() {
-  const tempFile: string = await Deno.makeTempFile();
-  const file: Deno.File = await Deno.open(tempFile, {
-    create: true,
-    write: true,
-    read: true,
-  });
-
-  await new Promise((resolve, reject) => {
-    writeFile(file.rid, "hello world", (err) => {
-      if (err) return reject(err);
-      resolve();
-    });
-  });
-  Deno.close(file.rid);
-
-  const data = await Deno.readFile(tempFile);
-  await Deno.remove(tempFile);
-  assertEquals(decoder.decode(data), "hello world");
-});
-
 test("Data is written to correct file", async function testCorrectWriteUsingPath() {
   const res = await new Promise((resolve) => {
     writeFile("_fs_writeFile_test_file.txt", "hello world", resolve);

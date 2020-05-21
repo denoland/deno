@@ -3,8 +3,8 @@
 Deno supports browser compatible lifecycle events: `load` and `unload`. You can
 use these events to provide setup and cleanup code in your program.
 
-Listener for `load` events can be asynchronous and will be awaited. Listener for
-`unload` events need to be synchronous. Both events cannot be cancelled.
+Listeners for `load` events can be asynchronous and will be awaited. Listeners
+for `unload` events need to be synchronous. Both events cannot be cancelled.
 
 Example:
 
@@ -51,7 +51,7 @@ console.log("log from imported script");
 
 Note that you can use both `window.addEventListener` and
 `window.onload`/`window.onunload` to define handlers for events. There is a
-major difference between them, let's run example:
+major difference between them, let's run the example:
 
 ```shell
 $ deno run main.ts
@@ -66,5 +66,5 @@ got unload event in event handler (main)
 ```
 
 All listeners added using `window.addEventListener` were run, but
-`window.onload` and `window.onunload` defined in `main.ts` overridden handlers
+`window.onload` and `window.onunload` defined in `main.ts` overrode handlers
 defined in `imported.ts`.
