@@ -15,20 +15,22 @@ pub use crate::Resource;
 pub use crate::ResourceId;
 pub use crate::ZeroCopyBuf;
 
-use std::cell::Ref;
-use std::cell::RefMut;
-
 pub type InitFn = fn(&mut dyn Interface);
 
 pub type DispatchOpFn =
   fn(&mut dyn Interface, &[u8], Option<ZeroCopyBuf>) -> Op;
 
+pub trait Interface {
+  fn register_op(&mut self, name: &str, dispatcher: DispatchOpFn) -> OpId;
+  fn resource_table(&mut self) -> &mut dyn ResourceTable;
+}
+
 /// Equivalent to ResourceTable for normal ops, but uses dynamic dispatch
 /// rather than type parameters for the `get`, `get_mut`, and `remove` methods.
 pub trait ResourceTable {
   fn add(&mut self, name: &str, resource: Box<dyn Resource>) -> ResourceId;
-  fn get(&self, rid: ResourceId) -> Option<Ref<dyn Resource>>;
-  fn get_mut(&mut self, rid: ResourceId) -> Option<RefMut<dyn Resource>>;
+  fn get(&self, rid: ResourceId) -> Option<&dyn Resource>;
+  fn get_mut(&mut self, rid: ResourceId) -> Option<&mut dyn Resource>;
   fn remove(&mut self, rid: ResourceId) -> Option<Box<dyn Resource>>;
 
   // Convenience functions -- these can be automatically implemented using the
@@ -39,9 +41,4 @@ pub trait ResourceTable {
   fn close(&mut self, rid: ResourceId) -> Option<()> {
     self.remove(rid).map(|_| ())
   }
-}
-
-pub trait Interface {
-  fn register_op(&mut self, name: &str, dispatcher: DispatchOpFn) -> OpId;
-  fn resource_table(&mut self) -> &mut dyn ResourceTable;
 }
