@@ -279,6 +279,21 @@ impl ModuleLoader for State {
     is_dyn_import: bool,
   ) -> Pin<Box<deno_core::ModuleSourceFuture>> {
     let module_specifier = module_specifier.clone();
+
+    // TODO(bartlomieju): this code is duplicated from module_graph.
+    // It should be removed when `prepare_load` will be used to load modules.
+    // Disallow http:// imports from modules loaded over https://
+    if let Some(referrer) = maybe_referrer.as_ref() {
+      if let "https" = referrer.as_url().scheme() {
+        if let "http" = module_specifier.as_url().scheme() {
+          let e = OpError::permission_denied(
+            "Modules loaded over https:// are not allowed to import modules over http://".to_string()
+          );
+          return async move { Err(e.into()) }.boxed_local();
+        }
+      }
+    }
+
     if is_dyn_import {
       if let Err(e) = self.check_dyn_import(&module_specifier) {
         return async move { Err(e.into()) }.boxed_local();
@@ -293,7 +308,9 @@ impl ModuleLoader for State {
             match specifier_url.scheme() {
               "http" | "https" => {}
               _ => {
-                let e = OpError::permission_denied("Remote module are not allowed to statically import local modules. Use dynamic import instead.".to_string());
+                let e = OpError::permission_denied(
+                  "Remote modules are not allowed to statically import local modules. Use dynamic import instead.".to_string()
+                );
                 return async move { Err(e.into()) }.boxed_local();
               }
             }

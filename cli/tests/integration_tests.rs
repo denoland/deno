@@ -400,7 +400,7 @@ fn js_unit_tests() {
     .arg("--unstable")
     .arg("--reload")
     .arg("-A")
-    .arg("cli/js/tests/unit_test_runner.ts")
+    .arg("cli/tests/unit/unit_test_runner.ts")
     .arg("--master")
     .arg("--verbose")
     .env("NO_COLOR", "1")
@@ -1684,6 +1684,20 @@ itest_ignore!(cafile_info {
     "info --cert tls/RootCA.pem https://localhost:5545/cli/tests/cafile_info.ts",
   output: "cafile_info.ts.out",
   http_server: true,
+});
+
+itest!(disallow_http_from_https_js {
+  args: "run --quiet --reload --cert tls/RootCA.pem https://localhost:5545/cli/tests/disallow_http_from_https.js",
+  output: "disallow_http_from_https_js.out",
+  http_server: true,
+  exit_code: 1,
+});
+
+itest!(disallow_http_from_https_ts {
+  args: "run --quiet --reload --cert tls/RootCA.pem https://localhost:5545/cli/tests/disallow_http_from_https.ts",
+  output: "disallow_http_from_https_ts.out",
+  http_server: true,
+  exit_code: 1,
 });
 
 itest!(fix_js_import_js {

@@ -18,20 +18,20 @@ from http_benchmark import http_benchmark
 import throughput_benchmark
 import http_server
 
-# The list of the tuples of the benchmark name and arguments
+# The list of the tuples of the benchmark name, arguments and return code
 exec_time_benchmarks = [
-    ("hello", ["run", "cli/tests/002_hello.ts"]),
-    ("relative_import", ["run", "cli/tests/003_relative_import.ts"]),
-    ("error_001", ["run", "cli/tests/error_001.ts"]),
-    ("cold_hello", ["run", "--reload", "cli/tests/002_hello.ts"]),
+    ("hello", ["run", "cli/tests/002_hello.ts"], None),
+    ("relative_import", ["run", "cli/tests/003_relative_import.ts"], None),
+    ("error_001", ["run", "cli/tests/error_001.ts"], 1),
+    ("cold_hello", ["run", "--reload", "cli/tests/002_hello.ts"], None),
     ("cold_relative_import",
-     ["run", "--reload", "cli/tests/003_relative_import.ts"]),
+     ["run", "--reload", "cli/tests/003_relative_import.ts"], None),
     ("workers_startup",
-     ["run", "--allow-read", "cli/tests/workers_startup_bench.ts"]),
+     ["run", "--allow-read", "cli/tests/workers_startup_bench.ts"], None),
     ("workers_round_robin",
-     ["run", "--allow-read", "cli/tests/workers_round_robin_bench.ts"]),
-    ("text_decoder", ["run", "cli/tests/text_decoder_perf.js"]),
-    ("text_encoder", ["run", "cli/tests/text_encoder_perf.js"]),
+     ["run", "--allow-read", "cli/tests/workers_round_robin_bench.ts"], None),
+    ("text_decoder", ["run", "cli/tests/text_decoder_perf.js"], None),
+    ("text_encoder", ["run", "cli/tests/text_encoder_perf.js"], None),
 ]
 
 
@@ -145,7 +145,7 @@ def run_throughput(deno_exe):
 def run_strace_benchmarks(deno_exe, new_data):
     thread_count = {}
     syscall_count = {}
-    for (name, args) in exec_time_benchmarks:
+    for (name, args, _) in exec_time_benchmarks:
         s = get_strace_summary([deno_exe] + args)
         thread_count[name] = s["clone"]["calls"] + 1
         syscall_count[name] = s["total"]["calls"]
@@ -164,12 +164,15 @@ def find_max_mem_in_bytes(time_v_output):
 
 def run_max_mem_benchmark(deno_exe):
     results = {}
-    for (name, args) in exec_time_benchmarks:
+    for (name, args, return_code) in exec_time_benchmarks:
         cmd = ["/usr/bin/time", "-v", deno_exe] + args
         try:
             out = subprocess.check_output(cmd, stderr=subprocess.STDOUT)
-        except subprocess.CalledProcessError:
-            pass
+        except subprocess.CalledProcessError as e:
+            if (return_code is e.returncode):
+                pass
+            else:
+                raise e
         mem = find_max_mem_in_bytes(out)
         results[name] = mem
     return results
@@ -178,16 +181,22 @@ def run_max_mem_benchmark(deno_exe):
 def run_exec_time(deno_exe, build_dir):
     hyperfine_exe = third_party.get_prebuilt_tool_path("hyperfine")
     benchmark_file = os.path.join(build_dir, "hyperfine_results.json")
-    run([
-        hyperfine_exe, "--ignore-failure", "--export-json", benchmark_file,
-        "--warmup", "3"
-    ] + [
-        deno_exe + " " + " ".join(args) for [_, args] in exec_time_benchmarks
+
+    def benchmark_command(deno_exe, args, return_code):
+        # Bash test which asserts the return code value of the previous command
+        # $? contains the return code of the previous command
+        return_code_test = "; test $? -eq {}".format(
+            return_code) if return_code is not None else ""
+        return "{} {}{}".format(deno_exe, " ".join(args), return_code_test)
+
+    run([hyperfine_exe, "--export-json", benchmark_file, "--warmup", "3"] + [
+        benchmark_command(deno_exe, args, return_code)
+        for (_, args, return_code) in exec_time_benchmarks
     ])
     hyperfine_results = read_json(benchmark_file)
     results = {}
-    for [[name, _], data] in zip(exec_time_benchmarks,
-                                 hyperfine_results["results"]):
+    for [[name, _, _], data] in zip(exec_time_benchmarks,
+                                    hyperfine_results["results"]):
         results[name] = {
             "mean": data["mean"],
             "stddev": data["stddev"],
