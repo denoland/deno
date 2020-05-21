@@ -42,6 +42,7 @@ pub mod installer;
 mod js;
 mod lockfile;
 mod metrics;
+mod module_graph;
 pub mod msg;
 pub mod op_error;
 pub mod ops;
@@ -69,12 +70,14 @@ pub use dprint_plugin_typescript::swc_ecma_parser;
 use crate::doc::parser::DocFileLoader;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
+use crate::fs as deno_fs;
 use crate::global_state::GlobalState;
+use crate::import_map::ImportMap;
 use crate::msg::MediaType;
 use crate::op_error::OpError;
 use crate::ops::io::get_stdio;
 use crate::permissions::Permissions;
-use crate::state::DebugType;
+use crate::state::exit_unstable;
 use crate::state::State;
 use crate::tsc::TargetLib;
 use crate::worker::MainWorker;
@@ -140,7 +143,7 @@ fn create_main_worker(
   global_state: GlobalState,
   main_module: ModuleSpecifier,
 ) -> Result<MainWorker, ErrBox> {
-  let state = State::new(global_state, None, main_module, DebugType::Main)?;
+  let state = State::new(global_state, None, main_module, false)?;
 
   let mut worker = MainWorker::new(
     "main".to_string(),
@@ -211,6 +214,7 @@ async fn print_file_info(
       None,
       TargetLib::Main,
       Permissions::allow_all(),
+      false,
     )
     .await?;
 
@@ -355,6 +359,7 @@ async fn eval_command(
     filename: main_module_url.to_file_path().unwrap(),
     url: main_module_url,
     types_url: None,
+    types_header: None,
     media_type: if as_typescript {
       MediaType::TypeScript
     } else {
@@ -383,13 +388,41 @@ async fn bundle_command(
   source_file: String,
   out_file: Option<PathBuf>,
 ) -> Result<(), ErrBox> {
-  let module_name = ModuleSpecifier::resolve_url_or_path(&source_file)?;
-  let global_state = GlobalState::new(flags)?;
+  let mut module_name = ModuleSpecifier::resolve_url_or_path(&source_file)?;
+  let url = module_name.as_url();
+
+  // TODO(bartlomieju): fix this hack in ModuleSpecifier
+  if url.scheme() == "file" {
+    let a = deno_fs::normalize_path(&url.to_file_path().unwrap());
+    let u = Url::from_file_path(a).unwrap();
+    module_name = ModuleSpecifier::from(u)
+  }
+
   debug!(">>>>> bundle START");
-  let bundle_result = global_state
-    .ts_compiler
-    .bundle(global_state.clone(), module_name.to_string(), out_file)
-    .await;
+  let compiler_config = tsc::CompilerConfig::load(flags.config_path.clone())?;
+
+  let maybe_import_map = match flags.import_map_path.as_ref() {
+    None => None,
+    Some(file_path) => {
+      if !flags.unstable {
+        exit_unstable("--importmap")
+      }
+      Some(ImportMap::load(file_path)?)
+    }
+  };
+
+  let global_state = GlobalState::new(flags)?;
+
+  let bundle_result = tsc::bundle(
+    &global_state,
+    compiler_config,
+    module_name,
+    maybe_import_map,
+    out_file,
+    global_state.flags.unstable,
+  )
+  .await;
+
   debug!(">>>>> bundle END");
   bundle_result
 }
@@ -531,6 +564,7 @@ async fn test_command(
     filename: test_file_url.to_file_path().unwrap(),
     url: test_file_url,
     types_url: None,
+    types_header: None,
     media_type: MediaType::TypeScript,
     source_code: test_file.clone().into_bytes(),
   };

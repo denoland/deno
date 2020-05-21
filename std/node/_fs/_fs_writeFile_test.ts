@@ -7,11 +7,11 @@ import {
   assertNotEquals,
   assertThrows,
 } from "../../testing/asserts.ts";
-import { writeFile } from "./_fs_writeFile.ts";
+import { writeFile, writeFileSync } from "./_fs_writeFile.ts";
 
 const decoder = new TextDecoder("utf-8");
 
-test("Invalid encoding results in error()", function fn() {
+test("Callback must be a function error", function fn() {
   assertThrows(
     () => {
       writeFile("some/path", "some data", "utf8");
@@ -29,6 +29,15 @@ test("Invalid encoding results in error()", function testEncodingErrors() {
     Error,
     `The value "made-up-encoding" is invalid for option "encoding"`
   );
+
+  assertThrows(
+    () => {
+      writeFileSync("some/path", "some data", "made-up-encoding");
+    },
+    Error,
+    `The value "made-up-encoding" is invalid for option "encoding"`
+  );
+
   assertThrows(
     () => {
       writeFile(
@@ -43,6 +52,16 @@ test("Invalid encoding results in error()", function testEncodingErrors() {
     Error,
     `The value "made-up-encoding" is invalid for option "encoding"`
   );
+
+  assertThrows(
+    () => {
+      writeFileSync("some/path", "some data", {
+        encoding: "made-up-encoding",
+      });
+    },
+    Error,
+    `The value "made-up-encoding" is invalid for option "encoding"`
+  );
 });
 
 test("Unsupported encoding results in error()", function testUnsupportedEncoding() {
@@ -53,6 +72,15 @@ test("Unsupported encoding results in error()", function testUnsupportedEncoding
     Error,
     `Not implemented: "hex" encoding`
   );
+
+  assertThrows(
+    () => {
+      writeFileSync("some/path", "some data", "hex");
+    },
+    Error,
+    `Not implemented: "hex" encoding`
+  );
+
   assertThrows(
     () => {
       writeFile(
@@ -67,27 +95,16 @@ test("Unsupported encoding results in error()", function testUnsupportedEncoding
     Error,
     `Not implemented: "base64" encoding`
   );
-});
 
-test("Data is written to correct rid", async function testCorrectWriteUsingRid() {
-  const tempFile: string = await Deno.makeTempFile();
-  const file: Deno.File = await Deno.open(tempFile, {
-    create: true,
-    write: true,
-    read: true,
-  });
-
-  await new Promise((resolve, reject) => {
-    writeFile(file.rid, "hello world", (err) => {
-      if (err) return reject(err);
-      resolve();
-    });
-  });
-  Deno.close(file.rid);
-
-  const data = await Deno.readFile(tempFile);
-  await Deno.remove(tempFile);
-  assertEquals(decoder.decode(data), "hello world");
+  assertThrows(
+    () => {
+      writeFileSync("some/path", "some data", {
+        encoding: "base64",
+      });
+    },
+    Error,
+    `Not implemented: "base64" encoding`
+  );
 });
 
 test("Data is written to correct rid", async function testCorrectWriteUsingRid() {
@@ -159,4 +176,42 @@ test("Mode is not set when rid is passed", async function testCorrectFileModeRid
   await Deno.remove(filename);
   assert(fileInfo.mode);
   assertNotEquals(fileInfo.mode & 0o777, 0o777);
+});
+
+test("Data is written synchronously to correct rid", function testCorrectWriteSyncUsingRid() {
+  const tempFile: string = Deno.makeTempFileSync();
+  const file: Deno.File = Deno.openSync(tempFile, {
+    create: true,
+    write: true,
+    read: true,
+  });
+
+  writeFileSync(file.rid, "hello world");
+  Deno.close(file.rid);
+
+  const data = Deno.readFileSync(tempFile);
+  Deno.removeSync(tempFile);
+  assertEquals(decoder.decode(data), "hello world");
+});
+
+test("Data is written synchronously to correct file", function testCorrectWriteSyncUsingPath() {
+  const file = "_fs_writeFileSync_test_file";
+
+  writeFileSync(file, "hello world");
+
+  const data = Deno.readFileSync(file);
+  Deno.removeSync(file);
+  assertEquals(decoder.decode(data), "hello world");
+});
+
+test("Mode is correctly set when writing synchronously", function testCorrectFileModeSync() {
+  if (Deno.build.os === "windows") return;
+  const filename = "_fs_writeFileSync_test_file.txt";
+
+  writeFileSync(filename, "hello world", { mode: 0o777 });
+
+  const fileInfo = Deno.statSync(filename);
+  Deno.removeSync(filename);
+  assert(fileInfo && fileInfo.mode);
+  assertEquals(fileInfo.mode & 0o777, 0o777);
 });

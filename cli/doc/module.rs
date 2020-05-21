@@ -16,7 +16,6 @@ pub fn get_doc_node_for_export_decl(
   let js_doc = doc_parser.js_doc_for_span(export_span);
   let location = doc_parser.ast_parser.get_span_location(export_span).into();
 
-  eprintln!("decl {:#?}", export_decl);
   match &export_decl.decl {
     Decl::Class(class_decl) => {
       let (name, class_def) =

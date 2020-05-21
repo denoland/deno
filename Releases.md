@@ -6,6 +6,54 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### 1.0.1 / 2020.05.20
+
+Changes in the CLI:
+
+- fix(doc): crash on formatting type predicate (#5651)
+- fix: Implement Deno.kill for windows (#5347)
+- fix: Implement Deno.symlink() for windows (#5533)
+- fix: Make Deno.remove() work with directory symlinks on windows (#5488)
+- fix: Mark Deno.pid and Deno.noColor as const (#5593)
+- fix: Remove debug prints introduced in e18aaf49c (#5356)
+- fix: Return error if more than one listener calls `WorkerHandle::get_event()`
+  (#5461)
+- fix: Simplify fmt::Display for ModuleResolutionError (#5550)
+- fix: URL utf8 encoding (#5557)
+- fix: don't panic on Deno.close invalid argument (#5320)
+- fix: panic if DENO_DIR is a relative path (#5375)
+- fix: setTimeout and friends have too strict types (#5412)
+- refactor: rewrite TS dependency analysis in Rust (#5029, #5603)
+- update: dprint 0.18.4 (#5671)
+
+Changes in std version 0.52.0:
+
+- feat(std/bytes): add hasSuffix and contains functions, update docs (#4801)
+- feat(std/fmt): rgb24 and bgRgb24 can use numbers for color (#5198)
+- feat(std/hash): add fnv implementation (#5403)
+- feat(std/node) Export TextDecoder and TextEncoder from util (#5663)
+- feat(std/node): Add fs.promises.readFile (#5656)
+- feat(std/node): add util.callbackify (#5415)
+- feat(std/node): first pass at url module (#4700)
+- feat(std/node): fs.writeFileSync polyfill (#5414)
+- fix(std/hash): SHA1 hash of Uint8Array (#5086)
+- fix(std/http): Add .css to the MEDIA_TYPES. (#5367)
+- fix(std/io): BufReader should not share the internal buffer across reads
+  (#4543)
+- fix(std/log): await default logger setup (#5341)
+- fix(std/node) improve fs.close compatibility (#5649)
+- fix(std/node): fs.readFile should take string as option (#5316)
+- fix(std/testing): Provide message and diff for assertStrictEq (#5417)
+
+### 1.0.0 / 2020.05.13
+
+Read more about this release at https://deno.land/v1
+
+- fix: default to 0.0.0.0 for Deno.listen (#5203)
+- fix: Make --inspect-brk pause on the first line of _user_ code (#5250)
+- fix: Source maps in inspector for local files (#5245)
+- upgrade: TypeScript 3.9 (#4510)
+
 ### 1.0.0-rc3 / 2020.05.12
 
 - BREAKING: Remove public Rust API for the "deno" crate (#5226)
@@ -679,7 +727,7 @@ https://github.com/denoland/deno_install
 - fix: Ensure DENO_DIR when saving the REPL history (#3106)
 - fix: Update echo_server to new listen API (denoland/deno_std#625)
 - fix: [prettier] deno fmt should format jsx/tsx files (#3118)
-- fix: [tls] op_dial_tls is not registerd and broken (#3121)
+- fix: [tls] op_dial_tls is not registered and broken (#3121)
 - fix: clearTimer bug (#3143)
 - fix: remote jsx/tsx files were compiled as js/ts (#3125)
 - perf: eager poll async ops in Isolate (#3046, #3128)
@@ -703,7 +751,7 @@ In deno:
 - fix: Implement ignoreBOM option of UTF8Decoder in text_encoding (#3040)
 - fix: Support top-level-await in TypeScript (#3024)
 - fix: iterators on UrlSearchParams (#3044)
-- fix: listenDefaults/dialDefaults may be overriden in some cases (#3027)
+- fix: listenDefaults/dialDefaults may be overridden in some cases (#3027)
 - upgrade: V8 to 7.9.218 (#3067)
 - upgrade: rust to 1.38.0 (#3030)
 - chore: Migrate CI to github actions (#3052, #3056, #3049, #3071, #3076, #3070,

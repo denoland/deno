@@ -489,7 +489,7 @@ impl EsIsolate {
     // 2. Source code resolved result have a different name as requested:
     //   2a. The module with resolved module name has been registered
     //     -> alias
-    //   2b. The module with resolved module name has not yet been registerd
+    //   2b. The module with resolved module name has not yet been registered
     //     -> register & alias
 
     // If necessary, register an alias.

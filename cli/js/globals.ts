@@ -136,6 +136,7 @@ declare global {
   // Assigned to `window` global - main runtime
   var Deno: {
     core: DenoCore;
+    noColor: boolean;
   };
   var onload: ((e: Event) => void) | undefined;
   var onunload: ((e: Event) => void) | undefined;

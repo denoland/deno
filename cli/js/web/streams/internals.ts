@@ -140,7 +140,7 @@ function createReadableStream<T>(
   highWaterMark = 1,
   sizeAlgorithm: SizeAlgorithm<T> = (): number => 1
 ): ReadableStreamImpl<T> {
-  assert(isNonNegativeNumber(highWaterMark));
+  highWaterMark = validateAndNormalizeHighWaterMark(highWaterMark);
   const stream: ReadableStreamImpl<T> = Object.create(
     ReadableStreamImpl.prototype
   );
@@ -168,7 +168,7 @@ function createWritableStream<W>(
   highWaterMark = 1,
   sizeAlgorithm: SizeAlgorithm<W> = (): number => 1
 ): WritableStreamImpl<W> {
-  assert(isNonNegativeNumber(highWaterMark));
+  highWaterMark = validateAndNormalizeHighWaterMark(highWaterMark);
   const stream = Object.create(WritableStreamImpl.prototype);
   initializeWritableStream(stream);
   const controller = Object.create(
@@ -324,7 +324,7 @@ function isNonNegativeNumber(v: unknown): v is number {
   if (typeof v !== "number") {
     return false;
   }
-  if (v === NaN) {
+  if (Number.isNaN(v)) {
     return false;
   }
   if (v < 0) {
@@ -1872,7 +1872,7 @@ export function validateAndNormalizeHighWaterMark(
   highWaterMark: number
 ): number {
   highWaterMark = Number(highWaterMark);
-  if (highWaterMark === NaN || highWaterMark < 0) {
+  if (Number.isNaN(highWaterMark) || highWaterMark < 0) {
     throw new RangeError(
       `highWaterMark must be a positive number or Infinity.  Received: ${highWaterMark}.`
     );

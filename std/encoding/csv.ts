@@ -34,7 +34,7 @@ export class ParseError extends Error {
  * @property lazyQuotes - Allow unquoted quote in a quoted field or non double
  *           quoted quotes in quoted field Default: 'false'
  * @property fieldsPerRecord - Enabling the check of fields for each row.
- *           If == 0, first row is used as referal for the number of fields.
+ *           If == 0, first row is used as referral for the number of fields.
  */
 export interface ReadOptions {
   comma?: string;

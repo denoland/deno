@@ -7,6 +7,7 @@ import {
   assertArrayContains,
   assertMatch,
   assertEquals,
+  assertStrictEq,
   assertThrows,
   AssertionError,
   equal,
@@ -14,7 +15,7 @@ import {
   unimplemented,
   unreachable,
 } from "./asserts.ts";
-import { red, green, gray, bold } from "../fmt/colors.ts";
+import { red, green, gray, bold, yellow } from "../fmt/colors.ts";
 const { test } = Deno;
 
 test("testingEqual", function (): void {
@@ -278,7 +279,13 @@ test({
     assertThrows(
       (): void => assertEquals(1, 2),
       AssertionError,
-      [...createHeader(), removed(`-   1`), added(`+   2`), ""].join("\n")
+      [
+        "Values are not equal:",
+        ...createHeader(),
+        removed(`-   ${yellow("1")}`),
+        added(`+   ${yellow("2")}`),
+        "",
+      ].join("\n")
     );
   },
 });
@@ -289,7 +296,12 @@ test({
     assertThrows(
       (): void => assertEquals(1, "1"),
       AssertionError,
-      [...createHeader(), removed(`-   1`), added(`+   "1"`)].join("\n")
+      [
+        "Values are not equal:",
+        ...createHeader(),
+        removed(`-   ${yellow("1")}`),
+        added(`+   "1"`),
+      ].join("\n")
     );
   },
 });
@@ -301,9 +313,10 @@ test({
       (): void => assertEquals([1, "2", 3], ["1", "2", 3]),
       AssertionError,
       [
+        "Values are not equal:",
         ...createHeader(),
-        removed(`-   [ 1, "2", 3 ]`),
-        added(`+   [ "1", "2", 3 ]`),
+        removed(`-   [ ${yellow("1")}, ${green('"2"')}, ${yellow("3")} ]`),
+        added(`+   [ ${green('"1"')}, ${green('"2"')}, ${yellow("3")} ]`),
         "",
       ].join("\n")
     );
@@ -317,10 +330,63 @@ test({
       (): void => assertEquals({ a: 1, b: "2", c: 3 }, { a: 1, b: 2, c: [3] }),
       AssertionError,
       [
+        "Values are not equal:",
         ...createHeader(),
-        removed(`-   { a: 1, b: "2", c: 3 }`),
-        added(`+   { a: 1, b: 2, c: [ 3 ] }`),
+        removed(
+          `-   { a: ${yellow("1")}, b: ${green('"2"')}, c: ${yellow("3")} }`
+        ),
+        added(
+          `+   { a: ${yellow("1")}, b: ${yellow("2")}, c: [ ${yellow("3")} ] }`
+        ),
         "",
+      ].join("\n")
+    );
+  },
+});
+
+test({
+  name: "strict pass case",
+  fn(): void {
+    assertStrictEq(true, true);
+    assertStrictEq(10, 10);
+    assertStrictEq("abc", "abc");
+
+    const xs = [1, false, "foo"];
+    const ys = xs;
+    assertStrictEq(xs, ys);
+
+    const x = { a: 1 };
+    const y = x;
+    assertStrictEq(x, y);
+  },
+});
+
+test({
+  name: "strict failed with structure diff",
+  fn(): void {
+    assertThrows(
+      (): void => assertStrictEq({ a: 1, b: 2 }, { a: 1, c: [3] }),
+      AssertionError,
+      [
+        "Values are not strictly equal:",
+        ...createHeader(),
+        removed(`-   { a: ${yellow("1")}, b: ${yellow("2")} }`),
+        added(`+   { a: ${yellow("1")}, c: [ ${yellow("3")} ] }`),
+        "",
+      ].join("\n")
+    );
+  },
+});
+
+test({
+  name: "strict failed with reference diff",
+  fn(): void {
+    assertThrows(
+      (): void => assertStrictEq({ a: 1, b: 2 }, { a: 1, b: 2 }),
+      AssertionError,
+      [
+        "Values have the same structure but are not reference-equal:\n",
+        red(`     { a: ${yellow("1")}, b: ${yellow("2")} }`),
       ].join("\n")
     );
   },

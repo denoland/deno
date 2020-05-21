@@ -96,7 +96,7 @@ function spawnWorkerRunner(
     "run",
     "--unstable", // TODO(ry) be able to test stable vs unstable
     "-A",
-    "cli/js/tests/unit_test_runner.ts",
+    "cli/tests/unit/unit_test_runner.ts",
     "--worker",
     `--addr=${addr}`,
     `--perms=${permStr}`,

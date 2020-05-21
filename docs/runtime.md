@@ -26,7 +26,7 @@ file.
 
 All APIs that are not web standard are contained in the global `Deno` namespace.
 It has the APIs for reading from files, opening TCP sockets, and executing
-subprocesses, ect.
+subprocesses, etc.
 
 The TypeScript definitions for the Deno namespaces can be found in the
 [`lib.deno.ns.d.ts`](https://github.com/denoland/deno/blob/master/cli/js/lib.deno.ns.d.ts)

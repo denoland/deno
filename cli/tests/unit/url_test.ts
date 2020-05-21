@@ -169,6 +169,42 @@ unitTest(function urlDriveLetter() {
   assertEquals(new URL("http://example.com/C:").href, "http://example.com/C:");
 });
 
+unitTest(function urlHostnameUpperCase() {
+  assertEquals(new URL("https://EXAMPLE.COM").href, "https://example.com/");
+});
+
+unitTest(function urlTrim() {
+  assertEquals(new URL(" https://example.com  ").href, "https://example.com/");
+});
+
+unitTest(function urlEncoding() {
+  assertEquals(
+    new URL("https://a !$&*()=,;+'\"@example.com").username,
+    "a%20!$&*()%3D,%3B+%27%22"
+  );
+  assertEquals(
+    new URL("https://:a !$&*()=,;+'\"@example.com").password,
+    "a%20!$&*()%3D,%3B+%27%22"
+  );
+  // FIXME: https://url.spec.whatwg.org/#idna
+  // assertEquals(
+  //   new URL("https://a !$&*()=,+'\"").hostname,
+  //   "a%20%21%24%26%2A%28%29%3D%2C+%27%22"
+  // );
+  assertEquals(
+    new URL("https://example.com/a ~!@$&*()=:/,;+'\"\\").pathname,
+    "/a%20~!@$&*()=:/,;+'%22/"
+  );
+  assertEquals(
+    new URL("https://example.com?a ~!@$&*()=:/,;?+'\"\\").search,
+    "?a%20~!@$&*()=:/,;?+%27%22\\"
+  );
+  assertEquals(
+    new URL("https://example.com#a ~!@#$&*()=:/,;?+'\"\\").hash,
+    "#a%20~!@#$&*()=:/,;?+'%22\\"
+  );
+});
+
 unitTest(function urlBaseURL(): void {
   const base = new URL(
     "https://foo:bar@baz.qat:8000/qux/quux?foo=bar&baz=12#qat"
