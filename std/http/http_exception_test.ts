@@ -1,4 +1,4 @@
-import { HttpException, NewHttpException } from './http_exception.ts';
+import { HttpException, NewHttpException, ThrowHttpException } from './http_exception.ts';
 import { Status, STATUS_TEXT } from './http_status.ts';
 import { assert, assertEquals } from "../testing/asserts.ts";
 const { test } = Deno;
@@ -23,5 +23,21 @@ test({
     assertEquals(NewHttpException(status).getStatus(), 403);
     assertEquals(NewHttpException(status, message).getResponse(), 'Forbidden');
     assertEquals(NewHttpException(500).identifier, 'Not Supported');
+  },
+});
+
+
+test({
+  name: "ThrowHttpException",
+  fn(): void {
+    const message: string = 'RequestTimeout';
+    const status: Status = Status.RequestTimeout;
+    let didThrow = false;
+    try {
+      ThrowHttpException(status,message)
+    } catch (e) {
+      didThrow = true;
+    }
+    assertEquals(didThrow, true);
   },
 });
