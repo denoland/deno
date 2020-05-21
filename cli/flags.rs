@@ -28,6 +28,7 @@ pub enum DenoSubcommand {
     filter: Option<String>,
   },
   Eval {
+    print: bool,
     code: String,
     as_typescript: bool,
   },
@@ -430,7 +431,9 @@ fn eval_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.allow_hrtime = true;
   let code = matches.value_of("code").unwrap().to_string();
   let as_typescript = matches.is_present("ts");
+  let print = matches.is_present("print");
   flags.subcommand = DenoSubcommand::Eval {
+    print,
     code,
     as_typescript,
   }
@@ -741,6 +744,14 @@ This command has implicit access to all permissions (--allow-all).",
         .long("ts")
         .short("T")
         .help("Treat eval input as TypeScript")
+        .takes_value(false)
+        .multiple(false),
+    )
+    .arg(
+      Arg::with_name("print")
+        .long("print")
+        .short("p")
+        .help("print result to stdout")
         .takes_value(false)
         .multiple(false),
     )
@@ -1693,7 +1704,31 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Eval {
+          print: false,
           code: "'console.log(\"hello\")'".to_string(),
+          as_typescript: false,
+        },
+        allow_net: true,
+        allow_env: true,
+        allow_run: true,
+        allow_read: true,
+        allow_write: true,
+        allow_plugin: true,
+        allow_hrtime: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn eval_p() {
+    let r = flags_from_vec_safe(svec!["deno", "eval", "-p", "1+2"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Eval {
+          print: true,
+          code: "1+2".to_string(),
           as_typescript: false,
         },
         allow_net: true,
@@ -1721,6 +1756,7 @@ mod tests {
       Flags {
         unstable: true,
         subcommand: DenoSubcommand::Eval {
+          print: false,
           code: "'console.log(\"hello\")'".to_string(),
           as_typescript: false,
         },
@@ -1748,6 +1784,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Eval {
+          print: false,
           code: "'console.log(\"hello\")'".to_string(),
           as_typescript: true,
         },
@@ -1771,6 +1808,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Eval {
+          print: false,
           code: "42".to_string(),
           as_typescript: false,
         },
@@ -2456,6 +2494,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Eval {
+          print: false,
           code: "console.log('hello world')".to_string(),
           as_typescript: false,
         },
@@ -2484,6 +2523,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Eval {
+          print: false,
           code: "const foo = 'bar'".to_string(),
           as_typescript: false,
         },

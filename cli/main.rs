@@ -333,6 +333,7 @@ async fn eval_command(
   flags: Flags,
   code: String,
   as_typescript: bool,
+  print: bool,
 ) -> Result<(), ErrBox> {
   // Force TypeScript compile.
   let main_module =
@@ -341,6 +342,13 @@ async fn eval_command(
   let mut worker = MainWorker::create(global_state, main_module.clone())?;
   let main_module_url = main_module.as_url().to_owned();
   // Create a dummy source file.
+  let source_code = if print {
+    "console.log(".to_string() + &code + ")"
+  } else {
+    code.clone()
+  }
+  .into_bytes();
+
   let source_file = SourceFile {
     filename: main_module_url.to_file_path().unwrap(),
     url: main_module_url,
@@ -351,7 +359,7 @@ async fn eval_command(
     } else {
       MediaType::JavaScript
     },
-    source_code: code.clone().into_bytes(),
+    source_code,
   };
   // Save our fake file into file fetcher cache
   // to allow module access by TS compiler (e.g. op_fetch_source_files)
@@ -627,9 +635,10 @@ pub fn main() {
       filter,
     } => doc_command(flags, source_file, json, filter).boxed_local(),
     DenoSubcommand::Eval {
+      print,
       code,
       as_typescript,
-    } => eval_command(flags, code, as_typescript).boxed_local(),
+    } => eval_command(flags, code, as_typescript, print).boxed_local(),
     DenoSubcommand::Cache { files } => {
       cache_command(flags, files).boxed_local()
     }
