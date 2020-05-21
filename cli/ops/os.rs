@@ -195,7 +195,8 @@ fn op_type(
   state: &State,
   _args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) ->  Result<JsonOp, OpError> {
+) -> Result<JsonOp, OpError> {
   state.check_env()?;
-  Ok(JsonOp::Sync(json!(sys_info::os_type())))
+  let os_type = sys_info::os_type().unwrap_or_else(|_| "".to_string());
+  Ok(JsonOp::Sync(json!(os_type)))
 }

@@ -322,11 +322,11 @@ unitTest({ perms: { env: false } }, function hostnamePerm(): void {
 });
 
 
-unitTest({ perms: { env: true } }, function releaseDir(): void {
+unitTest({ perms: { env: true } }, function osType(): void {
   assertNotEquals(Deno.osType(), "");
 });
 
-unitTest({ perms: { env: false } }, function releasePerm(): void {
+unitTest({ perms: { env: false } }, function osTypePerm(): void {
   let caughtError = false;
   try {
     Deno.osType();
