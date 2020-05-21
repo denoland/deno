@@ -88,14 +88,14 @@ impl PluginResource {
 
 struct PluginInterface<'a> {
   op_registry: &'a mut OpRegistry,
-  resource_table: PluginResourceTable<'a>,
+  resource_table: ResourceTableRef<'a>,
   plugin_lib: &'a Rc<Library>,
 }
 
 impl<'a> PluginInterface<'a> {
   fn new(isolate: &'a mut CoreIsolate, plugin_lib: &'a Rc<Library>) -> Self {
     let resource_table =
-      PluginResourceTable::new(&mut isolate.resource_table, plugin_lib);
+      ResourceTableRef::new(&mut isolate.resource_table, plugin_lib);
     Self {
       op_registry: &mut isolate.op_registry,
       resource_table,
@@ -166,12 +166,15 @@ impl Drop for PluginOpAsyncFuture {
   }
 }
 
-struct PluginResourceTable<'a> {
+/// A wrapper around a short-lived mutable borrow of the actual resource table.
+/// This borrow is available to plugin init functions and op dispatchers so
+/// they can interact with the resource table in a controlled way.
+struct ResourceTableRef<'a> {
   inner: RefMut<'a, ResourceTable>,
   plugin_lib: &'a Rc<Library>,
 }
 
-impl<'a> PluginResourceTable<'a> {
+impl<'a> ResourceTableRef<'a> {
   fn new(
     resource_table: &'a mut Rc<RefCell<ResourceTable>>,
     plugin_lib: &'a Rc<Library>,
@@ -190,7 +193,7 @@ struct PluginDefinedResource {
   _plugin_lib: Rc<Library>,
 }
 
-impl<'a> plugin_api::ResourceTable for PluginResourceTable<'a> {
+impl<'a> plugin_api::ResourceTable for ResourceTableRef<'a> {
   fn add(&mut self, name: &str, resource: Box<dyn Resource>) -> ResourceId {
     // Resources defined by plugins are wrapped in a `PluginDefinedResource`
     // wrapper, in order to be sure that the plugin's `Rc<Library>` is kept
