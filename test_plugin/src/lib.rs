@@ -66,12 +66,11 @@ fn op_test_resources(
   _data: &[u8],
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Op {
-  // `add()`
   let rid = {
+    // `add()`
     let rc = Box::new(TestResource {
       noise: "woof".to_owned(),
     });
-    let rc: Box<dyn deno_core::plugin_api::Resource> = rc;
     interface.resource_table().add("test_resource", rc)
   };
   {
