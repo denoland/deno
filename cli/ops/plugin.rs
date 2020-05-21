@@ -11,13 +11,14 @@ use deno_core::CoreIsolate;
 use deno_core::Op;
 use deno_core::OpAsyncFuture;
 use deno_core::OpId;
+use deno_core::OpRegistry;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ResourceTable;
 use deno_core::ZeroCopyBuf;
 use dlopen::symbor::Library;
 use futures::prelude::*;
-use std::cell::Ref;
+use std::cell::RefCell;
 use std::cell::RefMut;
 use std::path::Path;
 use std::pin::Pin;
@@ -86,24 +87,20 @@ impl PluginResource {
 }
 
 struct PluginInterface<'a> {
-  isolate: &'a mut CoreIsolate,
+  op_registry: &'a mut OpRegistry,
+  resource_table: PluginResourceTable<'a>,
   plugin_lib: &'a Rc<Library>,
 }
 
 impl<'a> PluginInterface<'a> {
   fn new(isolate: &'a mut CoreIsolate, plugin_lib: &'a Rc<Library>) -> Self {
+    let resource_table =
+      PluginResourceTable::new(&mut isolate.resource_table, plugin_lib);
     Self {
-      isolate,
+      op_registry: &mut isolate.op_registry,
+      resource_table,
       plugin_lib,
     }
-  }
-
-  fn resource_table(&self) -> Ref<ResourceTable> {
-    self.isolate.resource_table.borrow()
-  }
-
-  fn resource_table_mut(&mut self) -> RefMut<ResourceTable> {
-    self.isolate.resource_table.borrow_mut()
   }
 }
 
@@ -119,9 +116,9 @@ impl<'a> plugin_api::Interface for PluginInterface<'a> {
     dispatch_op_fn: plugin_api::DispatchOpFn,
   ) -> OpId {
     let plugin_lib = self.plugin_lib.clone();
-    self.isolate.op_registry.register(
-      name,
-      move |isolate, control, zero_copy| {
+    self
+      .op_registry
+      .register(name, move |isolate, control, zero_copy| {
         let mut interface = PluginInterface::new(isolate, &plugin_lib);
         let op = dispatch_op_fn(&mut interface, control, zero_copy);
         match op {
@@ -133,12 +130,11 @@ impl<'a> plugin_api::Interface for PluginInterface<'a> {
             Op::AsyncUnref(PluginOpAsyncFuture::new(&plugin_lib, fut))
           }
         }
-      },
-    )
+      })
   }
 
   fn resource_table(&mut self) -> &mut dyn plugin_api::ResourceTable {
-    self
+    &mut self.resource_table
   }
 }
 
@@ -170,6 +166,23 @@ impl Drop for PluginOpAsyncFuture {
   }
 }
 
+struct PluginResourceTable<'a> {
+  inner: RefMut<'a, ResourceTable>,
+  plugin_lib: &'a Rc<Library>,
+}
+
+impl<'a> PluginResourceTable<'a> {
+  fn new(
+    resource_table: &'a mut Rc<RefCell<ResourceTable>>,
+    plugin_lib: &'a Rc<Library>,
+  ) -> Self {
+    Self {
+      inner: resource_table.borrow_mut(),
+      plugin_lib,
+    }
+  }
+}
+
 /// A resource that has been inserted in the resource table by a dynamically
 /// loaded plugin.
 struct RefResource {
@@ -177,43 +190,30 @@ struct RefResource {
   _plugin_lib: Rc<Library>,
 }
 
-impl<'a> plugin_api::ResourceTable for PluginInterface<'a> {
+impl<'a> plugin_api::ResourceTable for PluginResourceTable<'a> {
   fn add(&mut self, name: &str, resource: Box<dyn Resource>) -> ResourceId {
+    // Resources inserted by plugins are wrapped in a RefResource wrapper, so
+    // we can ensure a reference to Rc<Library> is kept for as long as the
+    // resource stays in the resource table.
     let ref_resource = RefResource {
       inner: resource,
       _plugin_lib: self.plugin_lib.clone(),
     };
-    self.resource_table_mut().add(name, Box::new(ref_resource))
+    self.inner.add(name, Box::new(ref_resource))
   }
 
-  fn get(&self, rid: ResourceId) -> Option<Ref<dyn Resource>> {
-    // Resources inserted by plugins are wrapped in a RefResource wrapper, so
-    // we can ensure a reference to Rc<Library> is kept for as long as the
-    // resource stays in the resource table.
-    let table = self.resource_table();
-    match table.get::<RefResource>(rid) {
-      Some(_) => Some(Ref::map(table, |t| {
-        &*t.get::<RefResource>(rid).unwrap().inner
-      })),
-      None => None,
-    }
+  fn get(&self, rid: ResourceId) -> Option<&dyn Resource> {
+    self.inner.get::<RefResource>(rid).map(|rc| &*rc.inner)
   }
 
-  fn get_mut(&mut self, rid: ResourceId) -> Option<RefMut<dyn Resource>> {
-    let mut table = self.resource_table_mut();
-    match table.get_mut::<RefResource>(rid) {
-      Some(_) => Some(RefMut::map(table, |t| {
-        &mut *t.get_mut::<RefResource>(rid).unwrap().inner
-      })),
-      None => None,
-    }
+  fn get_mut(&mut self, rid: ResourceId) -> Option<&mut dyn Resource> {
+    self
+      .inner
+      .get_mut::<RefResource>(rid)
+      .map(|rc| &mut *rc.inner)
   }
 
   fn remove(&mut self, rid: ResourceId) -> Option<Box<dyn Resource>> {
-    let mut table = self.resource_table_mut();
-    match table.get_mut::<RefResource>(rid) {
-      Some(_) => table.remove::<RefResource>(rid).map(|rc| rc.inner),
-      None => None, // `rid` does not reference a RefResource, so leave it.
-    }
+    self.inner.remove::<RefResource>(rid).map(|rc| rc.inner)
   }
 }

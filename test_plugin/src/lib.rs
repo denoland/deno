@@ -87,7 +87,7 @@ fn op_test_resources(
   }
   {
     // `get_mut()`
-    let mut rc = interface.resource_table().get_mut(rid).unwrap();
+    let rc = interface.resource_table().get_mut(rid).unwrap();
     let mut rc = rc.downcast_mut::<TestResource>().unwrap();
     assert_eq!(&rc.noise, "woof");
     rc.noise = "mooh".to_owned();
