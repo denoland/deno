@@ -25,20 +25,12 @@ pub trait Interface {
   fn resource_table(&mut self) -> &mut dyn ResourceTable;
 }
 
-/// Equivalent to ResourceTable for normal ops, but uses dynamic dispatch
-/// rather than type parameters for the `get`, `get_mut`, and `remove` methods.
+/// Similar to `struct ResourceTable` for normal ops, but uses dynamic dispatch
+/// instead of type parameters for its methods.
 pub trait ResourceTable {
   fn add(&mut self, name: &str, resource: Box<dyn Resource>) -> ResourceId;
+  fn close(&mut self, rid: ResourceId) -> Option<()>;
   fn get(&self, rid: ResourceId) -> Option<&dyn Resource>;
   fn get_mut(&mut self, rid: ResourceId) -> Option<&mut dyn Resource>;
-  fn remove(&mut self, rid: ResourceId) -> Option<Box<dyn Resource>>;
-
-  // Convenience functions -- these can be automatically implemented using the
-  // trait methods above.
-  fn has(&self, rid: ResourceId) -> bool {
-    self.get(rid).map(|_| true).unwrap_or(false)
-  }
-  fn close(&mut self, rid: ResourceId) -> Option<()> {
-    self.remove(rid).map(|_| ())
-  }
+  fn has(&self, rid: ResourceId) -> bool;
 }

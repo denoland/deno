@@ -202,6 +202,10 @@ impl<'a> plugin_api::ResourceTable for PluginResourceTable<'a> {
     self.inner.add(name, Box::new(ref_resource))
   }
 
+  fn close(&mut self, rid: ResourceId) -> Option<()> {
+    self.inner.remove::<RefResource>(rid).map(|_| ())
+  }
+
   fn get(&self, rid: ResourceId) -> Option<&dyn Resource> {
     self.inner.get::<RefResource>(rid).map(|rc| &*rc.inner)
   }
@@ -213,7 +217,7 @@ impl<'a> plugin_api::ResourceTable for PluginResourceTable<'a> {
       .map(|rc| &mut *rc.inner)
   }
 
-  fn remove(&mut self, rid: ResourceId) -> Option<Box<dyn Resource>> {
-    self.inner.remove::<RefResource>(rid).map(|rc| rc.inner)
+  fn has(&self, rid: ResourceId) -> bool {
+    self.inner.has(rid)
   }
 }

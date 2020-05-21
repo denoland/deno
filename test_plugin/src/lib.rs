@@ -93,10 +93,15 @@ fn op_test_resources(
     rc.noise = "mooh".to_owned();
   }
   {
-    // `remove()`
-    let rc = interface.resource_table().remove(rid).unwrap();
-    let rc = rc.downcast::<TestResource>().ok().unwrap();
+    // The resource's internal state should have changed.
+    let rc = interface.resource_table().get(rid).unwrap();
+    let rc = rc.downcast_ref::<TestResource>().unwrap();
     assert_eq!(&rc.noise, "mooh");
+  }
+  {
+    // `close()`
+    let found = interface.resource_table().close(rid).is_some();
+    assert!(found);
   }
   {
     // After `remove()` the resource should be gone.
