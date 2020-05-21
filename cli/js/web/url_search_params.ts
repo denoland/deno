@@ -76,13 +76,7 @@ export class URLSearchParamsImpl implements URLSearchParams {
     if (url == null) {
       return;
     }
-
-    let query: string | null = this.toString();
-    if (query === "") {
-      query = null;
-    }
-
-    parts.get(url)!.query = query;
+    parts.get(url)!.query = this.toString();
   };
 
   #append = (name: string, value: string): void => {

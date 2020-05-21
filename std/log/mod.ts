@@ -127,4 +127,4 @@ export async function setup(config: LogConfig): Promise<void> {
   }
 }
 
-setup(DEFAULT_CONFIG);
+await setup(DEFAULT_CONFIG);

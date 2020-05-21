@@ -5,7 +5,7 @@ const { lstat, lstatSync, mkdir, mkdirSync } = Deno;
 /**
  * Ensures that the directory exists.
  * If the directory structure does not exist, it is created. Like mkdir -p.
- * Requires the `--allow-read` and `--alow-write` flag.
+ * Requires the `--allow-read` and `--allow-write` flag.
  */
 export async function ensureDir(dir: string): Promise<void> {
   try {
@@ -28,7 +28,7 @@ export async function ensureDir(dir: string): Promise<void> {
 /**
  * Ensures that the directory exists.
  * If the directory structure does not exist, it is created. Like mkdir -p.
- * Requires the `--allow-read` and `--alow-write` flag.
+ * Requires the `--allow-read` and `--allow-write` flag.
  */
 export function ensureDirSync(dir: string): void {
   try {
