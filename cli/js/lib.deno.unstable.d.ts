@@ -1243,19 +1243,13 @@ declare namespace Deno {
    */
   export function hostname(): string;
 
-  /** An opaque pointer */
-  export class MemoryAddr {
-    /** Return the memory address to the start of the `buffer`.
-     * Requires --allow-ffi. */
-    static fromBuffer(buffer: SharedArrayBuffer): MemoryAddr;
+  /** Return the memory address to the start of the `buffer`.
+   * Requires --allow-ffi. */
+  export function bufferStart(buffer: SharedArrayBuffer): BigInt;
 
-    /** Construct a buffer with access to a fixed chunk of memory.
-     * Requires --allow-ffi. */
-    toBuffer(length: number): SharedArrayBuffer;
-
-    static fromHex(addr: string): MemoryAddr;
-    toHex(): string;
-  }
+  /** Construct a buffer with access to a fixed chunk of memory.
+   * Requires --allow-ffi. */
+  export function bufferFromPointer(start: BigInt, length: number): SharedArrayBuffer;
 
   /** Symbol table of an executable object, usually a shared library. */
   export class ForeignLibrary implements Closer {
@@ -1265,7 +1259,7 @@ declare namespace Deno {
      *
      * Throws `Deno.errors.NotFound` if symbol not found.
      */
-    lookup(symbol: string): MemoryAddr;
+    lookup(symbol: string): BigInt;
     /** Discard the symbol table.
      *
      * Throws `Deno.errors.BadResource` if something unexpected happened.
@@ -1291,75 +1285,10 @@ declare namespace Deno {
 
   export const enum ForeignABI {
     "DEFAULT_ABI",
-    "AIX",
-    "ARCOMPACT",
-    "ASM",
-    "CLOSURES",
-    "COMPAT",
-    "COMPAT_GCC_SYSV",
-    "COMPAT_LINUX",
-    "COMPAT_LINUX_SOFT_FLOAT",
-    "COMPAT_LINUX64",
-    "COMPAT_SYSV",
-    "DARWIN",
-    "EABI",
-    "EFI64",
-    "ELFBSD",
-    "EXTRA_CIF_FIELDS",
-    "FASTCALL",
-    "GNUW64",
-    "GO_CLOSURES",
-    "LINUX",
-    "LINUX_LONG_DOUBLE_128",
-    "LINUX_LONG_DOUBLE_IEEE128",
-    "LINUX_STRUCT_ALIGN",
-    "MIPS_O32",
-    "MS_CDECL",
-    "N32",
-    "N32_SOFT_FLOAT",
-    "N64",
-    "N64_SOFT_FLOAT",
-    "NATIVE_RAW_API",
-    "O32",
-    "O32_SOFT_FLOAT",
-    "OBSD",
-    "OSF",
-    "PA32",
-    "PA64",
-    "PASCAL",
-    "PPC_TYPE_LAST",
-    "REGISTER",
-    "STDCALL",
-    "SYSV",
-    "SYSV_IBM_LONG_DOUBLE",
-    "SYSV_LONG_DOUBLE_128",
-    "SYSV_SOFT_FLOAT",
-    "SYSV_STRUCT_RET",
-    "SYSV_TYPE_SMALL_STRUCT",
-    "TARGET_HAS_COMPLEX_TYPE",
-    "TARGET_SPECIFIC_VARIADIC",
-    "THISCALL",
-    "TRAMPOLINE_SIZE",
-    "TYPE_LAST",
-    "TYPE_UINT128",
-    "UNIX",
-    "UNIX64",
-    "UNUSED_1",
-    "UNUSED_2",
-    "UNUSED_3",
-    "V2_TYPE_DOUBLE_HOMOG",
-    "V2_TYPE_FLOAT_HOMOG",
-    "V2_TYPE_SMALL_STRUCT",
-    "V2_TYPE_VECTOR",
-    "V2_TYPE_VECTOR_HOMOG",
-    "V8",
-    "V9",
-    "VFP",
-    "WIN64",
   }
 
   export const enum ForeignType {
-    "void",
+    "void", // nothing
     "uint8",
     "sint8",
     "uint16",
@@ -1371,10 +1300,7 @@ declare namespace Deno {
     "float",
     "double",
     "longdouble",
-    "pointer",
-    "complex_float",
-    "complex_double",
-    "complex_longdouble",
+    "pointer", // BigInt
   }
 
   export const foreignABIs: ForeignType[];
@@ -1412,7 +1338,7 @@ declare namespace Deno {
    * Requires --allow-ffi.
    */
   export function loadForeignFunction(
-    addr: MemoryAddr,
+    addr: BigInt,
     abi: ForeignABI,
     info: ForeignFunctionInfo
   ): ForeignFunction;
