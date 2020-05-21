@@ -185,17 +185,17 @@ impl<'a> PluginResourceTable<'a> {
 
 /// A resource that has been inserted in the resource table by a dynamically
 /// loaded plugin.
-struct RefResource {
+struct PluginDefinedResource {
   inner: Box<dyn Resource>,
   _plugin_lib: Rc<Library>,
 }
 
 impl<'a> plugin_api::ResourceTable for PluginResourceTable<'a> {
   fn add(&mut self, name: &str, resource: Box<dyn Resource>) -> ResourceId {
-    // Resources inserted by plugins are wrapped in a RefResource wrapper, so
-    // we can ensure a reference to Rc<Library> is kept for as long as the
-    // resource stays in the resource table.
-    let ref_resource = RefResource {
+    // Resources defined by plugins are wrapped in a `PluginDefinedResource`
+    // wrapper, in order to be sure that the plugin's `Rc<Library>` is kept
+    // alive as long as the plugin has resources in the table.
+    let ref_resource = PluginDefinedResource {
       inner: resource,
       _plugin_lib: self.plugin_lib.clone(),
     };
@@ -207,13 +207,16 @@ impl<'a> plugin_api::ResourceTable for PluginResourceTable<'a> {
   }
 
   fn get(&self, rid: ResourceId) -> Option<&dyn Resource> {
-    self.inner.get::<RefResource>(rid).map(|rc| &*rc.inner)
+    self
+      .inner
+      .get::<PluginDefinedResource>(rid)
+      .map(|rc| &*rc.inner)
   }
 
   fn get_mut(&mut self, rid: ResourceId) -> Option<&mut dyn Resource> {
     self
       .inner
-      .get_mut::<RefResource>(rid)
+      .get_mut::<PluginDefinedResource>(rid)
       .map(|rc| &mut *rc.inner)
   }
 
