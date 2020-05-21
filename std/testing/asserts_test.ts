@@ -9,6 +9,7 @@ import {
   assertEquals,
   assertStrictEq,
   assertThrows,
+  assertInstanceOf,
   AssertionError,
   equal,
   fail,
@@ -389,5 +390,20 @@ test({
         red(`     { a: ${yellow("1")}, b: ${yellow("2")} }`),
       ].join("\n")
     );
+  },
+});
+
+test({
+  name: "testingAssertInstanceOf",
+  fn(): void {
+    class Foo{};
+    const foo = new Foo();
+    assertInstanceOf(foo, Foo);
+
+    const myString = new String("Hello");
+    assertInstanceOf(myString, String);
+
+    const myArray = new Array(["Hello"]);
+    assertInstanceOf(myArray, Array);
   },
 });

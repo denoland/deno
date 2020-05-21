@@ -388,6 +388,19 @@ export async function assertThrowsAsync(
   return error;
 }
 
+export function assertInstanceOf(
+  actual: unknown,
+  expected: Function,
+  msg?: string
+): void {
+  if ((actual instanceof expected) === false) {
+    if (!msg) {
+      msg = `actual: "${format(actual)}" expected to match: "${format(expected)}"`;
+    }
+    throw new AssertionError(msg);
+  }
+}
+
 /** Use this to stub out methods that will throw when invoked. */
 export function unimplemented(msg?: string): never {
   throw new AssertionError(msg || "unimplemented");
