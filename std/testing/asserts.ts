@@ -389,7 +389,7 @@ export async function assertThrowsAsync(
 }
 
 /**
- * Assert an object is an instance of a particular type. This useful to check
+ * Assert an object is an instance of a particular type. This is useful to check
  * polymorphic relationships, for instance check B is an instance of A if B
  * extends A.
  */
@@ -400,7 +400,9 @@ export function assertInstanceOf(
 ): void {
   if (!(actual instanceof expected)) {
     if (!msg) {
-      msg = `actual: "${format(actual)}" expected to match: "${format(expected)}"`;
+      msg = `actual: "${format(actual)}" expected to match: "${
+        format(expected)
+      }"`;
     }
     throw new AssertionError(msg);
   }

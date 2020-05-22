@@ -436,7 +436,9 @@ test({
     assertThrows(
       (): void => assertInstanceOf(new String(), Array),
       AssertionError,
-      `actual: "${cyan(`[String: ""]`)}" expected to match: "${cyan("[Function: Array]")}"`
+      `actual: "${cyan(`[String: ""]`)}" expected to match: "${
+        cyan("[Function: Array]")
+      }"`
     );
   },
 });
