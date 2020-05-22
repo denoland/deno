@@ -238,7 +238,6 @@ test({
 test({
   name: "RotatingFileHandler with all backups rollover",
   async fn() {
-    console.log("1");
     Deno.writeFileSync(LOG_FILE, new TextEncoder().encode("original log file"));
     Deno.writeFileSync(
       LOG_FILE + ".1",
@@ -339,6 +338,27 @@ test({
     }
     await fileHandler.destroy();
     assertEquals((await Deno.stat(LOG_FILE)).size, 10 * 10000);
+    Deno.removeSync(LOG_FILE);
+  },
+});
+
+test({
+  name: "Unload event will flush remaining logs",
+  async fn() {
+    const fileHandler = new FileHandler("WARNING", {
+      filename: LOG_FILE,
+      mode: "w",
+    });
+
+    await fileHandler.setup();
+    for (let i = 0; i < 100; i++) {
+      fileHandler.handle(new LogRecord("AAA", [], LogLevels.ERROR)); // 'ERROR AAA\n' = 10 bytes
+    }
+    // Nothing written to file yet, as it's all in the buffer
+    assertEquals((await Deno.stat(LOG_FILE)).size, 0);
+    dispatchEvent(new Event("unload"));
+    assertEquals((await Deno.stat(LOG_FILE)).size, 10 * 100);
+    await fileHandler.destroy();
     Deno.removeSync(LOG_FILE);
   },
 });
