@@ -400,9 +400,9 @@ export function assertInstanceOf(
 ): void {
   if (!(actual instanceof expected)) {
     if (!msg) {
-      msg = `actual: "${format(actual)}" expected to match: "${
-        format(expected)
-      }"`;
+      msg = `actual: "${format(actual)}" expected to match: "${format(
+        expected
+      )}"`;
     }
     throw new AssertionError(msg);
   }

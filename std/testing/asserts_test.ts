@@ -396,7 +396,7 @@ test({
 test({
   name: "testingAssertInstanceOf",
   fn(): void {
-    class Foo{};
+    class Foo {}
     const foo = new Foo();
     assertInstanceOf(foo, Foo);
 
@@ -406,8 +406,8 @@ test({
     const myArray = new Array(["Hello"]);
     assertInstanceOf(myArray, Array);
 
-    class Person {};
-    class Adult extends Person{};
+    class Person {}
+    class Adult extends Person {}
 
     function getThing(): Person {
       return new Adult();
@@ -415,8 +415,8 @@ test({
 
     assertInstanceOf(getThing(), Adult);
 
-    class A{};
-    class B extends A{};
+    class A {}
+    class B extends A {}
 
     const b = new B();
 
@@ -427,8 +427,8 @@ test({
 test({
   name: "testingAssertInstanceOf Fail",
   fn(): void {
-    class Foo{};
-    class Bar{};
+    class Foo {}
+    class Bar {}
     const foo = new Foo();
     assertThrows(
       (): void => assertInstanceOf(foo, Bar),
@@ -439,9 +439,9 @@ test({
     assertThrows(
       (): void => assertInstanceOf(new String(), Array),
       AssertionError,
-      `actual: "${cyan(`[String: ""]`)}" expected to match: "${
-        cyan("[Function: Array]")
-      }"`
+      `actual: "${cyan(`[String: ""]`)}" expected to match: "${cyan(
+        "[Function: Array]"
+      )}"`
     );
   },
 });
