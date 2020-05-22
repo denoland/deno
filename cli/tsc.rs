@@ -466,7 +466,6 @@ impl TsCompiler {
     let module_graph = module_graph_loader.get_graph();
     let module_graph_json =
       serde_json::to_value(module_graph).expect("Failed to serialize data");
-
     let target = match target {
       TargetLib::Main => "main",
       TargetLib::Worker => "worker",

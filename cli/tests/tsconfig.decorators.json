@@ -1,5 +1,5 @@
 {
-   "compilerOptions": {
-       "experimentalDecorators": true
-   }
+  "compilerOptions": {
+    "experimentalDecorators": true
+  }
 }
