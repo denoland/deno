@@ -4,8 +4,8 @@ import { assertEquals, assert } from "../../testing/asserts.ts";
 import * as path from "../path.ts";
 
 const testDir = Deno.makeTempDirSync();
-const oldname = path.join(testDir + "/oldname");
-const newname = path.join(testDir + "/newname");
+const oldname = path.join(testDir, "oldname");
+const newname = path.join(testDir, "newname");
 
 if (Deno.build.os === "windows") {
   Deno.symlinkSync(oldname, newname, { type: "file" });
