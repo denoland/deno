@@ -393,7 +393,7 @@ export function assertInstanceOf(
   expected: Function,
   msg?: string
 ): void {
-  if ((actual instanceof expected) === false) {
+  if (!(actual instanceof expected)) {
     if (!msg) {
       msg = `actual: "${format(actual)}" expected to match: "${format(expected)}"`;
     }

@@ -16,7 +16,7 @@ import {
   unimplemented,
   unreachable,
 } from "./asserts.ts";
-import { red, green, gray, bold, yellow } from "../fmt/colors.ts";
+import { red, green, gray, bold, yellow, cyan } from "../fmt/colors.ts";
 const { test } = Deno;
 
 test("testingEqual", function (): void {
@@ -405,5 +405,19 @@ test({
 
     const myArray = new Array(["Hello"]);
     assertInstanceOf(myArray, Array);
+  },
+});
+
+test({
+  name: "testingAssertInstanceOf Fail",
+  fn(): void {
+    class Foo{};
+    class Bar{};
+    const foo = new Foo();
+    assertThrows(
+      (): void => assertInstanceOf(foo, Bar),
+      AssertionError,
+      `actual: "Foo {}" expected to match: "${cyan("[Function: Bar]")}"`
+    );
   },
 });
