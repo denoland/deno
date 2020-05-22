@@ -135,7 +135,8 @@ impl ModuleGraphLoader {
     self.download_module(specifier.clone(), None)?;
 
     loop {
-      let (specifier, source_file) = self.pending_downloads.next().await.unwrap()?;
+      let (specifier, source_file) =
+        self.pending_downloads.next().await.unwrap()?;
       self.visit_module(&specifier, source_file)?;
       if self.pending_downloads.is_empty() {
         break;
@@ -354,8 +355,12 @@ impl ModuleGraphLoader {
     let mut type_headers = vec![];
 
     // IMPORTANT: source_file.url might be different than requested
-    // module_specifier - this situation needs to be handled manually
-    if module_specifier.to_string() != source_file.url.to_string() {
+    // module_specifier because of HTTP redirects. In such
+    // situation we add an "empty" ModuleGraphFile with 'redirect'
+    // field set that will be later used in TS worker when building
+    // map of available source file. It will perform substitution
+    // for proper URL point to redirect target.
+    if module_specifier.as_url() != &source_file.url {
       // TODO(bartlomieju): refactor, this is a band-aid
       self.graph.0.insert(
         module_specifier.to_string(),
@@ -373,7 +378,7 @@ impl ModuleGraphLoader {
           type_headers: vec![],
         },
       );
-    } 
+    }
 
     let module_specifier = ModuleSpecifier::from(source_file.url.clone());
     let source_code = String::from_utf8(source_file.source_code)?;

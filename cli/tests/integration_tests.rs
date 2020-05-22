@@ -1565,6 +1565,12 @@ itest!(type_directives_js_main {
   exit_code: 0,
 });
 
+itest!(type_directives_redirect {
+  args: "run --reload type_directives_redirect.ts",
+  output: "type_directives_redirect.ts.out",
+  http_server: true,
+});
+
 itest!(types {
   args: "types",
   output: "types.out",
