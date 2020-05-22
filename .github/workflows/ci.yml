@@ -1,40 +1,18 @@
 name: ci
 
-on: [push, pull_request]
+on:
+  - push
+  - pull_request
 
 jobs:
   build:
-    name: ${{ matrix.config.variant }} ${{ matrix.config.os }} ${{ matrix.config.target }}
+    name: ${{ matrix.config.variant }} ${{ matrix.config.target }}
     if: |
       github.event_name == 'push' ||
       !startsWith(github.event.pull_request.head.label, 'denoland:')
     runs-on: ${{ matrix.config.os }}
-    timeout-minutes: 60
+    timeout-minutes: 120
     strategy:
-      matrix:
-        config:
-          - os: macOS-latest
-            variant: release
-            target: x86_64-apple-darwin
-          - os: windows-2019
-            variant: release
-            target: x86_64-pc-windows-msvc
-          - os: ubuntu-16.04
-            variant: release
-            target: x86_64-unknown-linux-gnu
-          - os: ubuntu-16.04
-            variant: release
-            target: aarch64-unknown-linux-gnu
-          - os: ubuntu-16.04
-            variant: debug
-            target: x86_64-unknown-linux-gnu
-          - os: ubuntu-16.04
-            variant: bench
-            target: x86_64-unknown-linux-gnu
-          - os: ubuntu-16.04
-            variant: lint
-            target: x86_64-unknown-linux-gnu
-
       # Always run master branch builds to completion. This allows the cache to
       # stay mostly up-to-date in situations where a single job fails due to
       # e.g. a flaky test.
@@ -43,6 +21,11 @@ jobs:
       fail-fast:
         ${{ github.event_name == 'pull_request' || (github.ref !=
         'refs/heads/master' && !startsWith(github.ref, 'refs/tags/')) }}
+      matrix:
+        config:
+          - os: ubuntu-16.04
+            target: aarch64-unknown-linux-gnu
+            variant: release
 
     env:
       CARGO_INCREMENTAL: 0
@@ -72,6 +55,12 @@ jobs:
           mkdir -p target/release
           tar --exclude=.cargo_home --exclude=".git*" --exclude=target --exclude=deno_typescript/typescript/tests --exclude=third_party/cpplint --exclude=third_party/node_modules --exclude=third_party/python_packages --exclude=third_party/prebuilt -czvf target/release/deno_src.tar.gz -C .. deno
 
+      # - name: Install cross build dependencies (aarch64)
+      #   if: matrix.config.target == 'aarch64-unknown-linux-gnu'
+      #   run: |
+      #     sudo apt-get update
+      #     sudo apt-get install -y --no-install-recommends g++-aarch64-linux-gnu libc6-dev-arm64-cross
+
       - name: Cache
         uses: denoland/github-actions-cache@stable-prerelease
         with:
@@ -84,202 +73,217 @@ jobs:
             target/*/.*
             target/*/build
             target/*/deps
-            target/${{ matrix.config.target }}/*/.*
-            target/${{ matrix.config.target }}/*/build
-            target/${{ matrix.config.target }}/*/deps
-          key: ${{ matrix.config.target }}-${{ matrix.config.os }}-${{ matrix.config.variant }}-${{ hashFiles('Cargo.lock') }}
+          key: ${{ matrix.config.target }}-${{ matrix.config.os }}-${{ matrix.config.kind }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
-            ${{ matrix.config.target }}-${{ matrix.config.os }}-${{ matrix.config.variant }}-
+            ${{ matrix.config.target }}-${{ matrix.config.os }}-${{ matrix.config.kind }}-
 
-      - name: Install cross build dependencies (aarch64)
-        if: matrix.config.target == 'aarch64-unknown-linux-gnu'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends g++-aarch64-linux-gnu libc6-dev-arm64-cross
-
-      - name: Install rust
+      - name: tmp cache
         if: |
-          startsWith(matrix.config.target, 'x86_64')
-        uses: hecrj/setup-rust-action@v1
-        with:
-          rust-version: "1.43.0"
-
-      - name: Install rust (cross-compile)
-        if: |
-          !startsWith(matrix.config.target, 'x86_64')
-        uses: hecrj/setup-rust-action@v1
-        with:
-          rust-version: "1.43.0"
-          targets: ${{ matrix.config.target }}
-
-      - name: Install clippy and rustfmt
-        if: matrix.config.variant == 'lint'
-        run: |
-          rustup component add clippy
-          rustup component add rustfmt
-
-      - name: Install Python
-        uses: actions/setup-python@v1
-        with:
-          python-version: "2.7"
-          architecture: x64
-
-      - name: Remove unused versions of Python
-        if: startsWith(matrix.config.os, 'windows')
-        run: |-
-          $env:PATH -split ";" |
-            Where-Object { Test-Path "$_\python.exe" } |
-            Select-Object -Skip 1 |
-            ForEach-Object { Move-Item "$_" "$_.disabled" }
-
-      - name: Log versions
-        run: |
-          node -v
-          python --version
-          rustc --version
-          cargo --version
-          rustup show
-
-      - name: Configure cargo data directory
-        # After this point, all cargo registry and crate data is stored in
-        # $GITHUB_WORKSPACE/.cargo_home. This allows us to cache only the files
-        # that are needed during the build process. Additionally, this works
-        # around a bug in the 'cache' action that causes directories outside of
-        # the workspace dir to be saved/restored incorrectly.
-        run: echo "::set-env name=CARGO_HOME::$(pwd)/.cargo_home"
-
-      - name: lint.py
-        if: matrix.config.variant == 'lint'
-        run: python ./tools/lint.py
-
-      - name: test_format.py
-        if: matrix.config.variant == 'lint'
-        run: python ./tools/test_format.py
-
-      - name: Build release
-        if: |
-          (matrix.config.variant == 'release' || matrix.config.variant == 'bench') &&
-          startsWith(matrix.config.target, 'x86_64')
-        run: cargo build --release --locked --all-targets
-
-      - name: Build release (aarch64)
-        if: |
-          (matrix.config.variant == 'release' || matrix.config.variant == 'bench') &&
           matrix.config.target == 'aarch64-unknown-linux-gnu'
-        run: |
-          export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER="aarch64-linux-gnu-gcc"
-          cargo build --release --locked --all-targets --target ${{ matrix.config.target }}
-
-      - name: Build debug
-        if: matrix.config.variant == 'debug'
-        run: cargo build --locked --all-targets
-
-      - name: Test release
-        if: |
-          matrix.config.variant == 'release' &&
-          startsWith(matrix.config.target, 'x86_64')
-        run: cargo test --release --locked --all-targets
-
-      - name: Test debug
-        if: matrix.config.variant == 'debug'
-        run: cargo test --locked --all-targets
-
-      - name: Run Benchmarks
-        if: matrix.config.variant == 'bench'
-        run: python ./tools/benchmark.py --release
-
-      - name: Post Benchmarks
-        if: |
-          matrix.config.variant == 'bench' &&
-          github.repository == 'denoland/deno' &&
-          github.ref == 'refs/heads/master'
-        env:
-          DENOBOT_PAT: ${{ secrets.DENOBOT_PAT }}
-        run: |
-          git clone --depth 1 -b gh-pages https://${DENOBOT_PAT}@github.com/denoland/benchmark_data.git gh-pages
-          python ./tools/build_benchmark_jsons.py --release
-          cd gh-pages
-          git config user.email "propelml@gmail.com"
-          git config user.name "denobot"
-          git add .
-          git commit --message "Update benchmarks"
-          git push origin gh-pages
-
-      - name: Worker info
-        if: matrix.config.variant == 'bench'
-        run: |
-          cat /proc/cpuinfo
-          cat /proc/meminfo
-
-      - name: Pre-release (linux)
-        if: |
-          startsWith(matrix.config.os, 'ubuntu') &&
-          matrix.config.variant == 'release' &&
-          matrix.config.target == 'x86_64-unknown-linux-gnu'
-        run: |
-          cd target/release
-          zip -r deno-x86_64-unknown-linux-gnu.zip deno
-          ./deno types > lib.deno.d.ts
-
-      - name: Pre-release (linux aarch64)
-        if: |
-          startsWith(matrix.config.os, 'ubuntu') &&
-          matrix.config.variant == 'release' &&
-          matrix.config.target == 'aarch64-unknown-linux-gnu'
-        run: |
-          cd target/aarch64-unknown-linux-gnu/release
-          zip -r deno-aarch64-unknown-linux-gnu.zip deno
-
-      - name: Pre-release (mac)
-        if: |
-          startsWith(matrix.config.os, 'macOS') &&
-          matrix.config.variant == 'release'
-        run: |
-          cd target/release
-          zip -r deno-x86_64-apple-darwin.zip deno
-
-      - name: Pre-release (windows)
-        if: |
-          startsWith(matrix.config.os, 'windows') &&
-          matrix.config.variant == 'release'
-        run: |
-          Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno-x86_64-pc-windows-msvc.zip
-
-      - name: Release
-        uses: softprops/action-gh-release@v1
-        if: |
-          matrix.config.variant == 'release' &&
-          github.repository == 'denoland/deno' &&
-          startsWith(github.ref, 'refs/tags/') &&
-          !startsWith(github.ref, 'refs/tags/std/')
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: denoland/github-actions-cache@stable-prerelease
         with:
-          files: |
-            target/release/deno-x86_64-apple-darwin.zip
-            target/release/deno-x86_64-pc-windows-msvc.zip
-            target/release/deno-x86_64-unknown-linux-gnu.zip
-            target/aarch64-unknown-linux-gnu/release/deno-aarch64-unknown-linux-gnu.zip
-            target/release/deno_src.tar.gz
-            target/release/lib.deno.d.ts
-          draft: true
+          path: docker-registry
+          key: ${{ matrix.config.target }}-${{ hashFiles(format('.github/Dockerfile.{0}', matrix.config.target)) }}
 
-      - name: Publish
-        if: |
-          startsWith(matrix.config.os, 'ubuntu') &&
-          matrix.config.variant == 'release' &&
-          github.repository == 'denoland/deno' &&
-          startsWith(github.ref, 'refs/tags/') &&
-          !startsWith(github.ref, 'refs/tags/std/') &&
-          matrix.config.target == 'x86_64-unknown-linux-gnu'
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      - name: tmp base
+        if: startsWith(matrix.config.os, 'ubuntu') && matrix.config.target == 'aarch64-unknown-linux-gnu'
         run: |
-          cd core
-          cargo publish
-          cd ../deno_typescript
-          sleep 30
-          cargo publish
-          cd ../cli
-          sleep 30
-          cargo publish
+          echo "================================="
+          docker buildx version
+          echo "================================="
+          ls -al /proc/sys/fs/binfmt_misc/
+          echo "================================="
+          docker run --rm --privileged docker/binfmt:66f9012c56a8316f9244ffd7622d7c21c1f6f28d
+          echo "================================="
+          ls -al /proc/sys/fs/binfmt_misc/
+          echo "================================="
+          cat /proc/sys/fs/binfmt_misc/qemu-aarch64 || true
+          echo "================================="
+          docker buildx create --use --name crossbuilder
+          echo "================================="
+          docker buildx ls
+          echo "================================="
+          docker buildx build -t testing --platform=linux/arm64 .github --file .github/Dockerfile.${{ matrix.config.target }}.${{ matrix.config.os }} 
+
+
+        # date
+        # docker run -d -p 5000:5000 -v ./docker-registry:/var/lib/registry registry:2
+        # docker run --rm --privileged multiarch/qemu-user-static --reset -publish yes
+        # # Wait for registry
+        # while ! curl -so/dev/null localhost:5000; do sleep .2; done
+        # echo "Registry ready, building"
+        # docker build .github --file .github/Dockerfile.${{ matrix.config.target }} --tag localhost:5000/base --cache-from=localhost:5000/base --build-arg BUILDKIT_INLINE_CACHE=1
+        # # Add build to cache
+        # docker push localhost:5000/base || true
+        # date
+
+      # - name: tmp build
+      #   if: startsWith(matrix.config.os, 'ubuntu') && matrix.config.target == 'aarch64-unknown-linux-gnu'
+      #   run: |
+      #     ls -al target || true
+      #     ls -al .cargo_home || true
+      #     docker run --rm --workdir "/github/workspace" -v "${PWD}:/github/workspace" -e CARGO_HOME="/github/workspace/.cargo_home" localhost:5000/base bash -c "cargo build --locked"
+      #     ls -al target || true
+      #     ls -al .cargo_home || true
+
+      # - name: Install rust
+      #   if: |
+      #     startsWith(matrix.config.target, 'x86_64')
+      #   uses: hecrj/setup-rust-action@v1
+      #   with:
+      #     rust-version: "1.43.0"
+
+      # - name: Install rust (cross-compile)
+      #   if: |
+      #     !startsWith(matrix.config.target, 'x86_64')
+      #   uses: hecrj/setup-rust-action@v1
+      #   with:
+      #     rust-version: "1.43.0"
+      #     targets: ${{ matrix.config.target }}
+
+      # - name: Install clippy and rustfmt
+      #   if: matrix.config.variant == 'lint'
+      #   run: |
+      #     rustup component add clippy
+      #     rustup component add rustfmt
+
+      # - name: Install Python
+      #   uses: actions/setup-python@v1
+      #   with:
+      #     python-version: "2.7"
+      #     architecture: x64
+
+      # - name: Remove unused versions of Python
+      #   if: startsWith(matrix.config.os, 'windows')
+      #   run: |-
+      #     $env:PATH -split ";" |
+      #       Where-Object { Test-Path "$_\python.exe" } |
+      #       Select-Object -Skip 1 |
+      #       ForEach-Object { Move-Item "$_" "$_.disabled" }
+
+      # - name: Log versions
+      #   run: |
+      #     node -v
+      #     python --version
+      #     rustc --version
+      #     cargo --version
+      #     rustup show
+
+      # - name: Configure cargo data directory
+      #   # After this point, all cargo registry and crate data is stored in
+      #   # $GITHUB_WORKSPACE/.cargo_home. This allows us to cache only the files
+      #   # that are needed during the build process. Additionally, this works
+      #   # around a bug in the 'cache' action that causes directories outside of
+      #   # the workspace dir to be saved/restored incorrectly.
+      #   run: echo "::set-env name=CARGO_HOME::$(pwd)/.cargo_home"
+
+      # - name: Cache
+      #   uses: denoland/github-actions-cache@stable-prerelease
+      #   with:
+      #     # Note: crates from the denoland/deno git repo always get rebuilt,
+      #     # and their outputs ('deno', 'libdeno.rlib' etc.) are quite big,
+      #     # so we cache only those subdirectories of target/{debug|release} that
+      #     # contain the build output for crates that come from the registry.
+      #     path: |-
+      #       .cargo_home
+      #       target/*/.*
+      #       target/*/build
+      #       target/*/deps
+      #     key: ${{ matrix.config.target }}-${{ matrix.config.os }}-${{ matrix.config.variant }}-${{ hashFiles('Cargo.lock') }}
+      #     restore-keys: |
+      #       ${{ matrix.config.target }}-${{ matrix.config.os }}-${{ matrix.config.variant }}-
+
+      # - name: lint.py
+      #   if: matrix.config.variant == 'lint'
+      #   run: python ./tools/lint.py
+
+      # - name: test_format.py
+      #   if: matrix.config.variant == 'lint'
+      #   run: python ./tools/test_format.py
+
+      # - name: Build
+      #   run: cargo build --locked --all-targets ${{ env.CARGO_VARIANT_FLAG }} --target ${{ matrix.config.target }}
+
+      # - name: Test
+      #   # if: startsWith(matrix.config.target, 'x86_64')
+      #   run: cargo test --locked --all-targets ${{ env.CARGO_VARIANT_FLAG }}
+
+      # - name: Run Benchmarks
+      #   if: matrix.config.variant == 'bench'
+      #   run: python ./tools/benchmark.py --release
+
+      # - name: Post Benchmarks
+      #   if: |
+      #     matrix.config.variant == 'bench' &&
+      #     github.repository == 'denoland/deno' &&
+      #     github.ref == 'refs/heads/master'
+      #   env:
+      #     DENOBOT_PAT: ${{ secrets.DENOBOT_PAT }}
+      #   run: |
+      #     git clone --depth 1 -b gh-pages https://${DENOBOT_PAT}@github.com/denoland/benchmark_data.git gh-pages
+      #     python ./tools/build_benchmark_jsons.py --release
+      #     cd gh-pages
+      #     git config user.email "propelml@gmail.com"
+      #     git config user.name "denobot"
+      #     git add .
+      #     git commit --message "Update benchmarks"
+      #     git push origin gh-pages
+
+      # - name: Worker info
+      #   if: matrix.config.variant == 'bench'
+      #   run: |
+      #     cat /proc/cpuinfo
+      #     cat /proc/meminfo
+
+      # - name: Pre-release (unix)
+      #   if: |
+      #     !startsWith(matrix.config.os, 'windows') &&
+      #     matrix.config.variant == 'release'
+      #   run: |
+      #     cp target/${{ matrix.config.target }}/${{ matrix.config.variant }}/deno .
+      #     zip -r deno-${{ matrix.config.target }}.zip deno
+      #     ./deno types > lib.deno.d.ts
+
+      # - name: Pre-release (windows)
+      #   if: |
+      #     startsWith(matrix.config.os, 'windows') &&
+      #     matrix.config.variant == 'release'
+      #   run: Compress-Archive -CompressionLevel Optimal -Force
+      #     -Path target/${{ matrix.config.target }}/${{ matrix.config.variant }}/deno.exe
+      #     -DestinationPath target/${{ matrix.config.target }}/${{ matrix.config.variant }}/deno-${{ matrix.config.target }}.zip
+
+      # - name: Release
+      #   uses: softprops/action-gh-release@v1
+      #   if: |
+      #     matrix.config.variant == 'release' &&
+      #     github.repository == 'denoland/deno' &&
+      #     startsWith(github.ref, 'refs/tags/') &&
+      #     !startsWith(github.ref, 'refs/tags/std/')
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #   with:
+      #     files: |
+      #       target/${{ matrix.config.variant }}/deno-${{ matrix.config.target }}.zip
+      #       target/${{ matrix.config.variant }}/deno_src.tar.gz
+      #       target/${{ matrix.config.variant }}/lib.deno.d.ts
+      #     draft: true
+
+      # - name: Publish
+      #   if: |
+      #     startsWith(matrix.config.os, 'ubuntu') &&
+      #     matrix.config.variant == 'release' &&
+      #     github.repository == 'denoland/deno' &&
+      #     startsWith(github.ref, 'refs/tags/') &&
+      #     !startsWith(github.ref, 'refs/tags/std/') &&
+      #     matrix.config.target == 'x86_64-unknown-linux-gnu'
+      #   env:
+      #     CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      #   run: |
+      #     cd core
+      #     cargo publish
+      #     cd ../deno_typescript
+      #     sleep 30
+      #     cargo publish
+      #     cd ../cli
+      #     sleep 30
+      #     cargo publish
