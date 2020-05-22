@@ -388,6 +388,11 @@ export async function assertThrowsAsync(
   return error;
 }
 
+/**
+ * Assert an object is an instance of a particular type. This useful to check
+ * polymorphic relationships, for instance check B is an instance of A if B
+ * extends A.
+ */
 export function assertInstanceOf(
   actual: unknown,
   expected: Function,
