@@ -13,12 +13,6 @@ export { chmodSync, chmod } from "./ops/fs/chmod.ts";
 export { chownSync, chown } from "./ops/fs/chown.ts";
 export { customInspect, inspect } from "./web/console.ts";
 export { copyFileSync, copyFile } from "./ops/fs/copy_file.ts";
-export {
-  Diagnostic,
-  DiagnosticCategory,
-  DiagnosticItem,
-  DiagnosticMessageChain,
-} from "./diagnostics.ts";
 export { chdir, cwd } from "./ops/fs/dir.ts";
 export { errors } from "./errors.ts";
 export {
