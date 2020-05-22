@@ -14,10 +14,10 @@ export class HttpException extends Error {
    *
    * @usageNotes
    * The constructor arguments define the response and the HTTP response status code.
-   * - The `response` argument (required) defines the JSON response body.
+   * - The `response` argument (required) defines the response body.
    * - The `status` argument (required) defines the HTTP Status Code.
    *
-   * By default, the JSON response body contains two properties:
+   * By default, the response body contains two properties:
    * - `statusCode`: the Http Status Code.
    * - `message`: a short description of the HTTP error by default; override this
    * by supplying a string in the `response` parameter.
@@ -28,8 +28,8 @@ export class HttpException extends Error {
    * @param status HTTP response status code.
    */
   constructor(
-    private readonly response: string ,
-    private readonly status: number | Status = Status.InternalServerError,
+    private readonly response: string,
+    private readonly status: number | Status = Status.InternalServerError
   ) {
     super();
   }
@@ -49,7 +49,6 @@ export class HttpException extends Error {
   public getStatus(): number {
     return this.status;
   }
-
 }
 
 /**
@@ -59,33 +58,31 @@ export class HttpException extends Error {
 function createHttpExceptionConstructor<E extends typeof HttpException>(
   statusCode: number | Status
 ): E {
-  const identifier = statusCode >= 400 && statusCode < 500
-    ? `Http${STATUS_TEXT.get(statusCode)}Exception`
-    : 'Not Supported';
-  const newException = (class extends HttpException {
-  /**
-   * @usageNotes
-   *
-   * By default, the JSON response body contains two properties:
-   * - `statusCode`: this will be the value of statusCode.
-   * - `message`: argument contains a short description of the HTTP exception
-   * override this by supplying a string in the `message` parameter.
-   *
-   * @param message string describing the exception.
-   */
+  const identifier =
+    statusCode >= 400 && statusCode < 500
+      ? `Http${STATUS_TEXT.get(statusCode)}Exception`
+      : "Not Supported";
+  const NewException = class extends HttpException {
+    /**
+     * @usageNotes
+     *
+     * By default, the response body contains two properties:
+     * - `statusCode`: this will be the value of statusCode.
+     * - `message`: argument contains a short description of the HTTP exception
+     * override this by supplying a string in the `message` parameter.
+     *
+     * @param message string describing the exception.
+     */
     constructor(message?: string) {
-      super(
-        message || STATUS_TEXT.get(statusCode)!,
-        statusCode
-      );
-      Object.defineProperty(this, 'identifier', {
+      super(message || STATUS_TEXT.get(statusCode)!, statusCode);
+      Object.defineProperty(this, "identifier", {
         configurable: true,
         writable: true,
-        value: identifier
+        value: identifier,
       });
     }
-  });
-  return newException as E;
+  };
+  return NewException as E;
 }
 
 /**
@@ -94,8 +91,8 @@ function createHttpExceptionConstructor<E extends typeof HttpException>(
  */
 export function NewHttpException(
   status: number | Status,
-  message?: string,
-): HttpException | any {
+  message?: string
+): HttpException {
   return new (createHttpExceptionConstructor(status))(message!);
 }
 
@@ -105,7 +102,7 @@ export function NewHttpException(
  */
 export function ThrowHttpException(
   status: number | Status,
-  message?: string,
+  message?: string
 ): never {
   throw new (createHttpExceptionConstructor(status))(message!);
 }
