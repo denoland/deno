@@ -24,8 +24,8 @@ class TestHandler extends BaseHandler {
 
 /** Messages are put into a queue and processed in a for await async loop.  This
  * function will pause test execution and let the next event loop run to process
- * the next item on the queue, and then flush the buffer to allow the test to
- * check the output in the destination file.
+ * the remaining items on the queue, and then flush the buffer to allow the test
+ * to check the output in the destination file.
  */
 async function nextEventLoopAndFlushLogs(handler: FileHandler): Promise<void> {
   await new Promise((res) => {
