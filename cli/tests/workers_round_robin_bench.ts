@@ -31,7 +31,7 @@ function handleAsyncMsgFromWorker(
   if (promise === null) {
     throw new Error(`Failed to find promise: cmdId: ${msg.cmdId}, msg: ${msg}`);
   }
-  promise.resolve(data);
+  promise?.resolve(data);
 }
 
 async function main(): Promise<void> {

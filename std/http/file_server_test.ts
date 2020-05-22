@@ -7,7 +7,15 @@ import { serveFile } from "./file_server.ts";
 const { test } = Deno;
 let fileServer: Deno.Process;
 
-async function startFileServer(): Promise<void> {
+type FileServerCfg = {
+  target?: string;
+  port?: number;
+};
+
+async function startFileServer({
+  target = ".",
+  port = 4507,
+}: FileServerCfg = {}): Promise<void> {
   fileServer = Deno.run({
     cmd: [
       Deno.execPath(),
@@ -15,8 +23,10 @@ async function startFileServer(): Promise<void> {
       "--allow-read",
       "--allow-net",
       "http/file_server.ts",
-      ".",
+      target,
       "--cors",
+      "-p",
+      `${port}`,
     ],
     stdout: "piped",
     stderr: "null",
@@ -40,7 +50,7 @@ async function killFileServer(): Promise<void> {
   fileServer.stdout!.close();
 }
 
-test("file_server serveFile", async (): Promise<void> => {
+test("file_server serveFile in ./", async (): Promise<void> => {
   await startFileServer();
   try {
     const res = await fetch("http://localhost:4507/README.md");
@@ -51,6 +61,24 @@ test("file_server serveFile", async (): Promise<void> => {
     const localFile = new TextDecoder().decode(
       await Deno.readFile("README.md")
     );
+    assertEquals(downloadedFile, localFile);
+  } finally {
+    await killFileServer();
+  }
+});
+
+test("file_server serveFile in ./http", async (): Promise<void> => {
+  await startFileServer({ target: "./http" });
+  try {
+    const res = await fetch("http://localhost:4507/README.md");
+    assert(res.headers.has("access-control-allow-origin"));
+    assert(res.headers.has("access-control-allow-headers"));
+    assertEquals(res.headers.get("content-type"), "text/markdown");
+    const downloadedFile = await res.text();
+    const localFile = new TextDecoder().decode(
+      await Deno.readFile("./http/README.md")
+    );
+    console.log(downloadedFile, localFile);
     assertEquals(downloadedFile, localFile);
   } finally {
     await killFileServer();

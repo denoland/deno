@@ -55,22 +55,6 @@ This is very much a work-in-progress. I'm actively soliciting feedback.
   are not likely useful) are missing, namely %q (print quoted), %U (unicode
   format)
 
-## Author
-
-Tim Becker (tim@presseverykey.com)
-
-## License
-
-MIT
-
-The implementation is inspired by POSIX and Golang (see above) but does not port
-implementation code. A number of Golang test-cases based on:
-
-    https://golang.org/src/fmt/fmt_test.go
-    ( BSD: Copyright (c) 2009 The Go Authors. All rights reserved. )
-
-were used.
-
 # printf: prints formatted output
 
 sprintf converts and formats a variable number of arguments as is specified by a
