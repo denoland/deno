@@ -124,8 +124,7 @@ test({
         });
         await fileHandler.setup();
       },
-      Deno.errors.AlreadyExists,
-      "ile exists"
+      Deno.errors.AlreadyExists
     );
     Deno.removeSync(LOG_FILE);
   },
