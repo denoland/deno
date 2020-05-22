@@ -307,6 +307,20 @@ impl Visit for NewDependencyVisitor {
     });
   }
 
+  fn visit_ts_import_type(
+    &mut self,
+    ts_import_type: &swc_ecma_ast::TsImportType,
+    _parent: &dyn Node,
+  ) {
+    // TODO(bartlomieju): possibly add separate DependencyKind
+    let src_str = ts_import_type.arg.value.to_string();
+    self.dependencies.push(DependencyDescriptor {
+      specifier: src_str,
+      kind: DependencyKind::Import,
+      span: ts_import_type.arg.span,
+    });
+  }
+
   fn visit_call_expr(
     &mut self,
     call_expr: &swc_ecma_ast::CallExpr,
