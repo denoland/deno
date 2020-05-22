@@ -405,6 +405,19 @@ test({
 
     const myArray = new Array(["Hello"]);
     assertInstanceOf(myArray, Array);
+
+    function getThing(): Object {
+      return new String("Yo!");
+    }
+
+    assertInstanceOf(getThing(), String);
+
+    class A{};
+    class B extends A{};
+
+    let b = new B();
+
+    assertInstanceOf(b, A);
   },
 });
 
@@ -418,6 +431,12 @@ test({
       (): void => assertInstanceOf(foo, Bar),
       AssertionError,
       `actual: "Foo {}" expected to match: "${cyan("[Function: Bar]")}"`
+    );
+
+    assertThrows(
+      (): void => assertInstanceOf(new String(), Array),
+      AssertionError,
+      `actual: "${cyan(`[String: ""]`)}" expected to match: "${cyan("[Function: Array]")}"`
     );
   },
 });
