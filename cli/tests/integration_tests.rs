@@ -1571,6 +1571,13 @@ itest!(type_directives_redirect {
   http_server: true,
 });
 
+itest!(ts_type_imports {
+  args: "run --reload ts_type_imports.ts",
+  output: "ts_type_imports.ts.out",
+  exit_code: 1,
+  http_server: true,
+});
+
 itest!(types {
   args: "types",
   output: "types.out",
