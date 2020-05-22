@@ -186,8 +186,7 @@ impl<'a> ResourceTableRef<'a> {
   }
 }
 
-/// A resource that has been inserted in the resource table by a dynamically
-/// loaded plugin.
+/// A wrapper for resource types defined by dynamically loaded plugins.
 struct PluginDefinedResource {
   inner: Box<dyn Resource>,
   _plugin_lib: Rc<Library>,
@@ -198,11 +197,11 @@ impl<'a> plugin_api::ResourceTable for ResourceTableRef<'a> {
     // Resources defined by plugins are wrapped in a `PluginDefinedResource`
     // wrapper, in order to be sure that the plugin's `Rc<Library>` is kept
     // alive as long as the plugin has resources in the table.
-    let ref_resource = PluginDefinedResource {
+    let rc = PluginDefinedResource {
       inner: resource,
       _plugin_lib: self.plugin_lib.clone(),
     };
-    self.inner.add(name, Box::new(ref_resource))
+    self.inner.add(name, Box::new(rc))
   }
 
   fn close(&mut self, rid: ResourceId) -> Option<()> {
