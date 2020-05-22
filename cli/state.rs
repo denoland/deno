@@ -552,7 +552,9 @@ impl State {
   #[inline]
   pub fn should_inspector_break_on_first_statement(&self) -> bool {
     let state = self.borrow();
-    state.inspector.is_some() && state.is_main
+    state.inspector.is_some()
+      && state.is_main
+      && state.global_state.flags.inspect_brk.is_some()
   }
 
   #[cfg(test)]
