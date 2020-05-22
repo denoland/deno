@@ -3,7 +3,6 @@
 const { test } = Deno;
 import { assert, assertEquals, assertThrows } from "../testing/asserts.ts";
 import { Queue } from "./queue.ts";
-import { deferred, Deferred } from "../async/deferred.ts";
 
 function assertQueue(
   queue: Queue<string>,
@@ -59,55 +58,47 @@ test("remove data from queue", function (): void {
 test("Async draining of queue consumes items and waits for new data", async function (): Promise<
   void
 > {
-  let dataProcessed: Deferred<void> = deferred();
   const queue: Queue<string> = new Queue<string>();
   const output: string[] = [];
   let drainComplete = false;
-  const deferredDrainComplete: Deferred<void> = deferred();
 
   // Start draining, but first pause and wait on data to enter the queue
   (async (): Promise<void> => {
     for await (const msg of queue.drainAndWait()) {
       output.push(msg);
-      dataProcessed.resolve();
     }
     drainComplete = true;
-    deferredDrainComplete.resolve();
   })();
 
   queue.add("a");
-  await dataProcessed;
-  assertEquals(output, ["a"]);
-  assert(queue.isEmpty());
-
-  dataProcessed = deferred();
-
-  //queue is drained.  Add more data to prove it will continue processing it.
   queue.add("b");
   queue.add("c");
-  await dataProcessed; // wait for 'b' to process
-  dataProcessed = deferred();
-  await dataProcessed; // wait for 'c' to process
+  await new Promise((res) => setTimeout(res, 0));
   assertEquals(output, ["a", "b", "c"]);
   assert(queue.isEmpty());
 
-  dataProcessed = deferred();
+  //queue is drained.  Add more data to prove it will continue processing it.
+  queue.add("d");
+  queue.add("e");
+  await new Promise((res) => setTimeout(res, 0));
+
+  assertEquals(output, ["a", "b", "c", "d", "e"]);
+  assert(queue.isEmpty());
 
   //now let's close the queue
   assert(!drainComplete);
-  queue.add("d");
+  queue.add("f");
   queue.close();
-  await dataProcessed;
-  assertEquals(output, ["a", "b", "c", "d"]);
+  await new Promise((res) => setTimeout(res, 0));
+
+  assertEquals(output, ["a", "b", "c", "d", "e", "f"]);
   assert(queue.isEmpty());
 
   //assert we drop out of the 'for await of' iterator
-  await deferredDrainComplete;
   assert(drainComplete);
-  assertEquals(queueToArray(queue), []);
 });
 
-test("Async draining of queue consumes items and completes", function (): void {
+test("Sync draining of queue consumes items and completes", function (): void {
   const queue: Queue<string> = new Queue<string>();
   const output: string[] = [];
 
@@ -115,7 +106,7 @@ test("Async draining of queue consumes items and completes", function (): void {
   queue.add("b");
   queue.add("c");
 
-  // This drain setup will drain the queue once and then quit the for/await/of loop
+  // This drain setup will drain the queue and then quit the for/of loop
   for (const msg of queue.drain()) {
     output.push(msg);
   }

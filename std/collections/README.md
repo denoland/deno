@@ -1,12 +1,10 @@
 # Collections
 
-Included in this package are various data structures.
-
 ## Queue
 
 A queue operates on a first in first out (FIFO) principle, just like a queue in
-real life. Items are added to the back of the queue and asdfd from the front of
-the queue.
+real life. Items are added to the back of the queue and removed from the front
+of the queue.
 
 Examples:
 
@@ -50,7 +48,7 @@ const queue: Queue<string> = new Queue<string>();
 
 (async () => {
   for await (let msg of queue.drainAndWait()) {
-    //process msg
+    console.log(msg);
   }
 })();
 // drain is running, but paused, waiting on data to enter the queue
@@ -58,6 +56,10 @@ const queue: Queue<string> = new Queue<string>();
 // Add data to the queue to be processed on the next event loop
 queue.add("a");
 queue.add("b");
+
+// Tick over to the next event loop to let the queue data be processed
+await new Promise((res) => setTimeout(res, 0));
+
 // After all data is processed, the for..await..of waits for more data in the queue
 queue.close();
 // On close, after all data remaining in the queue is processed, the for..await..of
