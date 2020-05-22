@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 /** Reads a JSON file and then parses it into an object */
-export async function readJson(filePath: string): Promise<unknown> {
+export async function readJson<T>(filePath: string): Promise<T> {
   const decoder = new TextDecoder("utf-8");
 
   const content = decoder.decode(await Deno.readFile(filePath));
@@ -15,7 +15,7 @@ export async function readJson(filePath: string): Promise<unknown> {
 }
 
 /** Reads a JSON file and then parses it into an object */
-export function readJsonSync(filePath: string): unknown {
+export function readJsonSync<T>(filePath: string): T {
   const decoder = new TextDecoder("utf-8");
 
   const content = decoder.decode(Deno.readFileSync(filePath));
