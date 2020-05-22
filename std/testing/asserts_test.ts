@@ -406,16 +406,19 @@ test({
     const myArray = new Array(["Hello"]);
     assertInstanceOf(myArray, Array);
 
-    function getThing(): Object {
-      return new String("Yo!");
+    class Person {};
+    class Adult extends Person{};
+
+    function getThing(): Person {
+      return new Adult();
     }
 
-    assertInstanceOf(getThing(), String);
+    assertInstanceOf(getThing(), Adult);
 
     class A{};
     class B extends A{};
 
-    let b = new B();
+    const b = new B();
 
     assertInstanceOf(b, A);
   },
