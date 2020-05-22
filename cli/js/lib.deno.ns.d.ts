@@ -168,7 +168,7 @@ declare namespace Deno {
    * Throws `Deno.errors.PermissionDenied` if the user does not have access
    * rights
    *
-   * Requires --allow-read.
+   * Requires `allow-read` permission.
    */
   export function chdir(directory: string): void;
 
@@ -184,7 +184,7 @@ declare namespace Deno {
    *
    * Throws `Deno.errors.NotFound` if directory not available.
    *
-   * Requires --allow-read
+   * Requires `allow-read` permission.
    */
   export function cwd(): string;
 
