@@ -39,7 +39,7 @@ const MAX_PORT = 2 ** 16 - 1;
 // (LHS). e.g.
 //      takePattern("https://deno.land:80", /^([a-z]+):[/]{2}/)
 //        = ["http", "deno.land:80"]
-//      takePattern("deno.land:80", /^([^:]+):)
+//      takePattern("deno.land:80", /^([^:]+)/)
 //        = ["deno.land", "80"]
 function takePattern(string: string, pattern: RegExp): [string, string] {
   let capture = "";
