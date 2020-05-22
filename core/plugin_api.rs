@@ -11,8 +11,6 @@
 pub use crate::Buf;
 pub use crate::Op;
 pub use crate::OpId;
-pub use crate::Resource;
-pub use crate::ResourceId;
 pub use crate::ZeroCopyBuf;
 
 pub type InitFn = fn(&mut dyn Interface);
@@ -22,15 +20,4 @@ pub type DispatchOpFn =
 
 pub trait Interface {
   fn register_op(&mut self, name: &str, dispatcher: DispatchOpFn) -> OpId;
-  fn resource_table(&mut self) -> &mut dyn ResourceTable;
-}
-
-/// Similar to `struct ResourceTable` for normal ops, but uses dynamic dispatch
-/// instead of type parameters for its methods.
-pub trait ResourceTable {
-  fn add(&mut self, name: &str, resource: Box<dyn Resource>) -> ResourceId;
-  fn close(&mut self, rid: ResourceId) -> Option<()>;
-  fn get(&self, rid: ResourceId) -> Option<&dyn Resource>;
-  fn get_mut(&mut self, rid: ResourceId) -> Option<&mut dyn Resource>;
-  fn has(&self, rid: ResourceId) -> bool;
 }

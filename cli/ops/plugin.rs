@@ -11,15 +11,9 @@ use deno_core::CoreIsolate;
 use deno_core::Op;
 use deno_core::OpAsyncFuture;
 use deno_core::OpId;
-use deno_core::OpRegistry;
-use deno_core::Resource;
-use deno_core::ResourceId;
-use deno_core::ResourceTable;
 use deno_core::ZeroCopyBuf;
 use dlopen::symbor::Library;
 use futures::prelude::*;
-use std::cell::RefCell;
-use std::cell::RefMut;
 use std::path::Path;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -75,7 +69,6 @@ pub fn op_open_plugin(
   Ok(JsonOp::Sync(json!(rid)))
 }
 
-/// A resource that stores a dynamically loaded plugin.
 struct PluginResource {
   lib: Rc<Library>,
 }
@@ -87,18 +80,14 @@ impl PluginResource {
 }
 
 struct PluginInterface<'a> {
-  op_registry: &'a mut OpRegistry,
-  resource_table: ResourceTableRef<'a>,
+  isolate: &'a mut CoreIsolate,
   plugin_lib: &'a Rc<Library>,
 }
 
 impl<'a> PluginInterface<'a> {
   fn new(isolate: &'a mut CoreIsolate, plugin_lib: &'a Rc<Library>) -> Self {
-    let resource_table =
-      ResourceTableRef::new(&mut isolate.resource_table, plugin_lib);
     Self {
-      op_registry: &mut isolate.op_registry,
-      resource_table,
+      isolate,
       plugin_lib,
     }
   }
@@ -116,9 +105,9 @@ impl<'a> plugin_api::Interface for PluginInterface<'a> {
     dispatch_op_fn: plugin_api::DispatchOpFn,
   ) -> OpId {
     let plugin_lib = self.plugin_lib.clone();
-    self
-      .op_registry
-      .register(name, move |isolate, control, zero_copy| {
+    self.isolate.op_registry.register(
+      name,
+      move |isolate, control, zero_copy| {
         let mut interface = PluginInterface::new(isolate, &plugin_lib);
         let op = dispatch_op_fn(&mut interface, control, zero_copy);
         match op {
@@ -130,11 +119,8 @@ impl<'a> plugin_api::Interface for PluginInterface<'a> {
             Op::AsyncUnref(PluginOpAsyncFuture::new(&plugin_lib, fut))
           }
         }
-      })
-  }
-
-  fn resource_table(&mut self) -> &mut dyn plugin_api::ResourceTable {
-    &mut self.resource_table
+      },
+    )
   }
 }
 
@@ -163,66 +149,5 @@ impl Future for PluginOpAsyncFuture {
 impl Drop for PluginOpAsyncFuture {
   fn drop(&mut self) {
     self.fut.take();
-  }
-}
-
-/// A wrapper around a short-lived mutable borrow of the actual resource table.
-/// This borrow is available to plugin init functions and op dispatchers so
-/// they can interact with the resource table in a controlled way.
-struct ResourceTableRef<'a> {
-  inner: RefMut<'a, ResourceTable>,
-  plugin_lib: &'a Rc<Library>,
-}
-
-impl<'a> ResourceTableRef<'a> {
-  fn new(
-    resource_table: &'a mut Rc<RefCell<ResourceTable>>,
-    plugin_lib: &'a Rc<Library>,
-  ) -> Self {
-    Self {
-      inner: resource_table.borrow_mut(),
-      plugin_lib,
-    }
-  }
-}
-
-/// A wrapper for resource types defined by dynamically loaded plugins.
-struct PluginDefinedResource {
-  inner: Box<dyn Resource>,
-  _plugin_lib: Rc<Library>,
-}
-
-impl<'a> plugin_api::ResourceTable for ResourceTableRef<'a> {
-  fn add(&mut self, name: &str, resource: Box<dyn Resource>) -> ResourceId {
-    // Resources defined by plugins are wrapped in a `PluginDefinedResource`
-    // wrapper, in order to be sure that the plugin's `Rc<Library>` is kept
-    // alive as long as the plugin has resources in the table.
-    let rc = PluginDefinedResource {
-      inner: resource,
-      _plugin_lib: self.plugin_lib.clone(),
-    };
-    self.inner.add(name, Box::new(rc))
-  }
-
-  fn close(&mut self, rid: ResourceId) -> Option<()> {
-    self.inner.close(rid)
-  }
-
-  fn get(&self, rid: ResourceId) -> Option<&dyn Resource> {
-    self
-      .inner
-      .get::<PluginDefinedResource>(rid)
-      .map(|rc| &*rc.inner)
-  }
-
-  fn get_mut(&mut self, rid: ResourceId) -> Option<&mut dyn Resource> {
-    self
-      .inner
-      .get_mut::<PluginDefinedResource>(rid)
-      .map(|rc| &mut *rc.inner)
-  }
-
-  fn has(&self, rid: ResourceId) -> bool {
-    self.inner.has(rid)
   }
 }
