@@ -147,7 +147,6 @@ unitTest(
         body: data,
       }
     );
-    const headers = response.headers;
     assert(response.body !== null);
     const reader = await response.body.getReader();
     let total = 0;

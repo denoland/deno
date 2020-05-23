@@ -1,18 +1,15 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { assert, createResolvable, notImplemented } from "../util.ts";
+import { notImplemented } from "../util.ts";
 import { isTypedArray } from "./util.ts";
 import * as domTypes from "./dom_types.d.ts";
 import { TextDecoder, TextEncoder } from "./text_encoding.ts";
 import { DenoBlob, bytesSymbol as blobBytesSymbol } from "./blob.ts";
-import * as io from "../io.ts";
 import { read } from "../ops/io.ts";
 import { close } from "../ops/resources.ts";
-import { Buffer } from "../buffer.ts";
 import { fetch as opFetch, FetchResponse } from "../ops/fetch.ts";
 import * as Body from "./body.ts";
 import { DomFileImpl } from "./dom_file.ts";
 import { ReadableStreamImpl } from "./streams/readable_stream.ts";
-import { ReadableStreamDefaultControllerImpl } from "./streams/readable_stream_default_controller.ts";
 
 function getHeaderValueParams(value: string): Map<string, string> {
   const params = new Map();
@@ -25,10 +22,6 @@ function getHeaderValueParams(value: string): Map<string, string> {
     .map(([k, v]): [string, string] => [k, v.replace(/^"([^"]*)"$/, "$1")])
     .forEach(([k, v]): Map<string, string> => params.set(k, v));
   return params;
-}
-
-function hasHeaderValueOf(s: string, value: string): boolean {
-  return new RegExp(`^${value}[\t\s]*;?`).test(s);
 }
 
 const responseData = new WeakMap();
@@ -48,8 +41,8 @@ export class Response extends Body.Body implements domTypes.Response {
       throw new TypeError(`'init' is not an object`);
     }
 
-    let { type = "default", url = "", redirected } =
-      responseData.get(init) || {};
+    const extraInit = responseData.get(init) || {};
+    let { type = "default", url = "" } = extraInit;
 
     let status = (Number(init.status) || 0) ?? 200;
     let statusText = init.statusText ?? "";
@@ -134,7 +127,7 @@ export class Response extends Body.Body implements domTypes.Response {
     this.statusText = statusText;
     this.status = status;
     this.headers = headers;
-    this.redirected = redirected;
+    this.redirected = extraInit.redirected;
     this.type = type;
   }
 
@@ -310,7 +303,7 @@ export async function fetch(
     const fetchResponse = await sendFetchReq(url, method, headers, body);
 
     const responseBody = new ReadableStreamImpl({
-      async pull(controller: ReadableStreamDefaultController) {
+      async pull(controller: ReadableStreamDefaultController): void {
         const b = new Uint8Array(16 * 32);
         const result = await read(fetchResponse.bodyRid, b);
         if (result === null) {
