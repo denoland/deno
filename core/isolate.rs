@@ -360,14 +360,15 @@ impl CoreIsolate {
     js_source: &str,
   ) -> Result<(), ErrBox> {
     self.shared_init();
-    let state = Self::state(self);
-
+    let state_rc = Self::state(self);
+    let state = state_rc.borrow();
+    let js_error_create_fn = &*state.js_error_create_fn;
     let mut hs = v8::HandleScope::new(self.v8_isolate.as_mut().unwrap());
     let scope = hs.enter();
-    let context = state.borrow().global_context.get(scope).unwrap();
+    let context = state.global_context.get(scope).unwrap();
     let mut cs = v8::ContextScope::new(scope, context);
     let scope = cs.enter();
-
+    
     let source = v8::String::new(scope, js_source).unwrap();
     let name = v8::String::new(scope, js_filename).unwrap();
     let origin = bindings::script_origin(scope, name);
@@ -380,7 +381,7 @@ impl CoreIsolate {
         Some(script) => script,
         None => {
           let exception = tc.exception().unwrap();
-          return exception_to_err_result(scope, exception);
+          return exception_to_err_result(scope, exception, js_error_create_fn);
         }
       };
 
@@ -389,7 +390,7 @@ impl CoreIsolate {
       None => {
         assert!(tc.has_caught());
         let exception = tc.exception().unwrap();
-        exception_to_err_result(scope, exception)
+        exception_to_err_result(scope, exception, js_error_create_fn)
       }
     }
   }
@@ -446,10 +447,8 @@ impl Future for CoreIsolate {
     core_isolate.shared_init();
 
     let state_rc = Self::state(core_isolate);
-    {
-      let state = state_rc.borrow();
-      state.waker.register(cx.waker());
-    }
+    let mut state = state_rc.borrow_mut();
+    state.waker.register(cx.waker());
 
     let mut hs = v8::HandleScope::new(core_isolate);
     let scope = hs.enter();
@@ -460,8 +459,11 @@ impl Future for CoreIsolate {
     let mut cs = v8::ContextScope::new(scope, context);
     let scope = cs.enter();
 
-    check_promise_exceptions(scope)?;
-
+    check_promise_exceptions(
+      scope,
+      &mut state
+    )?;
+    drop(state);
     let mut overflow_response: Option<(OpId, Buf)> = None;
 
     loop {
@@ -489,25 +491,32 @@ impl Future for CoreIsolate {
       }
     }
 
-    let shared_size = {
-      let state = state_rc.borrow();
-      state.shared.size()
-    };
-
-    if shared_size > 0 {
-      async_op_response(scope, None)?;
+    let state = state_rc.borrow();
+    if state.shared.size() > 0 {
+      async_op_response(
+        scope, 
+        None, 
+        &state.js_recv_cb,
+        &*state.js_error_create_fn,
+      )?;
       // The other side should have shifted off all the messages.
-      let state = state_rc.borrow();
       assert_eq!(state.shared.size(), 0);
     }
+    drop(state);
 
+    let mut state = state_rc.borrow_mut();
     if let Some((op_id, buf)) = overflow_response.take() {
-      async_op_response(scope, Some((op_id, buf)))?;
+      async_op_response(
+        scope, 
+        Some((op_id, buf)),
+        &state.js_recv_cb,
+        &*state.js_error_create_fn,
+      )?;
     }
 
-    drain_macrotasks(scope)?;
+    drain_macrotasks(scope, &state.js_macrotask_cb, &*state.js_error_create_fn)?;
 
-    check_promise_exceptions(scope)?;
+    check_promise_exceptions(scope, &mut state)?;
 
     let state = state_rc.borrow();
     // We're idle if pending_ops is empty.
@@ -589,14 +598,13 @@ impl CoreIsolateState {
 fn async_op_response<'s>(
   scope: &mut impl v8::ToLocal<'s>,
   maybe_buf: Option<(OpId, Box<[u8]>)>,
+  js_recv_cb: &v8::Global<v8::Function>,	
+  js_error_create_fn: &JSErrorCreateFn,
 ) -> Result<(), ErrBox> {
   let context = scope.get_current_context().unwrap();
   let global: v8::Local<v8::Value> = context.global(scope).into();
-  let state_rc = CoreIsolate::state(scope.isolate());
-  let state = state_rc.borrow();
 
-  let js_recv_cb = state
-    .js_recv_cb
+  let js_recv_cb = js_recv_cb
     .get(scope)
     .expect("Deno.core.recv has not been called.");
 
@@ -617,19 +625,19 @@ fn async_op_response<'s>(
 
   match tc.exception() {
     None => Ok(()),
-    Some(exception) => exception_to_err_result(scope, exception),
+    Some(exception) => exception_to_err_result(scope, exception, js_error_create_fn),
   }
 }
 
 fn drain_macrotasks<'s>(
   scope: &mut impl v8::ToLocal<'s>,
+  js_macrotask_cb: &v8::Global<v8::Function>,	
+  js_error_create_fn: &JSErrorCreateFn,
 ) -> Result<(), ErrBox> {
   let context = scope.get_current_context().unwrap();
   let global: v8::Local<v8::Value> = context.global(scope).into();
-  let state_rc = CoreIsolate::state(scope.isolate());
-  let state = state_rc.borrow();
 
-  let js_macrotask_cb = state.js_macrotask_cb.get(scope);
+  let js_macrotask_cb = js_macrotask_cb.get(scope);
   if js_macrotask_cb.is_none() {
     return Ok(());
   }
@@ -645,7 +653,7 @@ fn drain_macrotasks<'s>(
     let is_done = js_macrotask_cb.call(scope, context, global, &[]);
 
     if let Some(exception) = tc.exception() {
-      return exception_to_err_result(scope, exception);
+      return exception_to_err_result(scope, exception, js_error_create_fn);
     }
 
     let is_done = is_done.unwrap();
@@ -668,6 +676,7 @@ pub(crate) fn attach_handle_to_error(
 pub(crate) fn exception_to_err_result<'s, T>(
   scope: &mut impl v8::ToLocal<'s>,
   exception: v8::Local<v8::Value>,
+  js_error_create_fn: &JSErrorCreateFn,
 ) -> Result<T, ErrBox> {
   // TODO(piscisaureus): in rusty_v8, `is_execution_terminating()` should
   // also be implemented on `struct Isolate`.
@@ -695,11 +704,7 @@ pub(crate) fn exception_to_err_result<'s, T>(
   }
 
   let js_error = JSError::from_v8_exception(scope, exception);
-
-  let state_rc = CoreIsolate::state(scope.isolate());
-  let state = state_rc.borrow();
-
-  let js_error = (state.js_error_create_fn)(js_error);
+  let js_error = (js_error_create_fn)(js_error);
 
   if is_terminating_exception {
     // Re-enable exception termination.
@@ -713,14 +718,12 @@ pub(crate) fn exception_to_err_result<'s, T>(
 
 fn check_promise_exceptions<'s>(
   scope: &mut impl v8::ToLocal<'s>,
+  state: &mut CoreIsolateState
 ) -> Result<(), ErrBox> {
-  let state_rc = CoreIsolate::state(scope.isolate());
-  let mut state = state_rc.borrow_mut();
-
   if let Some(&key) = state.pending_promise_exceptions.keys().next() {
     let handle = state.pending_promise_exceptions.remove(&key).unwrap();
     let exception = handle.get(scope).expect("empty error handle");
-    exception_to_err_result(scope, exception)
+    exception_to_err_result(scope, exception, &state.js_error_create_fn)
   } else {
     Ok(())
   }
