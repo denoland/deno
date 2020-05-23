@@ -394,8 +394,7 @@ unitTest(
       `host: ${addr}\r\n\r\n`,
     ].join("");
     assertEquals(actual, expected);
-
-    await response.arrayBuffer();
+    await response.text();
   }
 );
 
@@ -433,8 +432,7 @@ unitTest(
       body,
     ].join("");
     assertEquals(actual, expected);
-
-    await response.arrayBuffer();
+    await response.text();
   }
 );
 
@@ -472,8 +470,7 @@ unitTest(
       bodyStr,
     ].join("");
     assertEquals(actual, expected);
-
-    await response.arrayBuffer();
+    await response.text();
   }
 );
 
