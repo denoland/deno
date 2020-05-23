@@ -188,6 +188,8 @@ impl Permissions {
     )
   }
 
+  /// As `check_read()`, but permission error messages will anonymize the path
+  /// by replacing it with the given `display`.
   pub fn check_read_blind(
     &self,
     path: &Path,

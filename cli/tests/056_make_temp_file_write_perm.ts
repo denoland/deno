@@ -1,9 +1,9 @@
-const sep = Deno.build.os == "windows" ? "\\" : "/";
-const path = await Deno.makeTempFile({ dir: `.${sep}subdir` });
-if (path.startsWith(`.${sep}subdir${sep}`)) {
+const path = await Deno.makeTempFile({ dir: `subdir` });
+try {
+  if (!path.match(/^subdir[/\\][^/\\]+/)) {
+    throw Error("bad " + path);
+  }
   console.log("good", path);
-} else {
-  throw Error("bad " + path);
+} finally {
+  await Deno.remove(path);
 }
-console.log(path);
-await Deno.remove(path);
