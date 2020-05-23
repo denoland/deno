@@ -7,6 +7,8 @@
 //! the future it can be easily extended to provide
 //! the same functions as ops available in JS runtime.
 
+use crate::colors;
+use crate::diff::diff;
 use crate::fs::files_in_subtree;
 use crate::op_error::OpError;
 use deno_core::ErrBox;
@@ -63,7 +65,9 @@ async fn check_source_files(
 ) -> Result<(), ErrBox> {
   let not_formatted_files_count = Arc::new(AtomicUsize::new(0));
   let formatter = Arc::new(dprint::Formatter::new(config));
-  let output_lock = Arc::new(Mutex::new(0)); // prevent threads outputting at the same time
+
+  // prevent threads outputting at the same time
+  let output_lock = Arc::new(Mutex::new(0));
 
   run_parallelized(paths, {
     let not_formatted_files_count = not_formatted_files_count.clone();
@@ -74,6 +78,25 @@ async fn check_source_files(
         Ok(formatted_text) => {
           if formatted_text != file_text {
             not_formatted_files_count.fetch_add(1, Ordering::SeqCst);
+            let _g = output_lock.lock().unwrap();
+            match diff(&file_text, &formatted_text) {
+              Ok(diff) => {
+                println!();
+                println!(
+                  "{} {}:",
+                  colors::bold("from".to_string()),
+                  file_path.display().to_string()
+                );
+                println!("{}", diff);
+              }
+              Err(e) => {
+                eprintln!(
+                  "Error generating diff: {}",
+                  file_path.to_string_lossy()
+                );
+                eprintln!("   {}", e);
+              }
+            }
           }
         }
         Err(e) => {

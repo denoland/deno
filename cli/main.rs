@@ -1,6 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 #![deny(warnings)]
 
+extern crate dissimilar;
 #[macro_use]
 extern crate lazy_static;
 #[macro_use]
@@ -25,6 +26,7 @@ mod checksum;
 pub mod colors;
 pub mod deno_dir;
 pub mod diagnostics;
+mod diff;
 mod disk_cache;
 mod doc;
 mod file_fetcher;

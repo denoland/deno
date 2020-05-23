@@ -28,6 +28,7 @@ bytes = "0.5.4"
 byteorder = "1.3.4"
 clap = "2.33.1"
 dirs = "2.0.2"
+dissimilar = "1.0"
 dlopen = "0.1.8"
 dprint-plugin-typescript = "0.19.2"
 futures = { version = "0.3.5", features = ["compat", "io-compat"] }
