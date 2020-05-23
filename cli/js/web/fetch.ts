@@ -303,7 +303,7 @@ export async function fetch(
     const fetchResponse = await sendFetchReq(url, method, headers, body);
 
     const responseBody = new ReadableStreamImpl({
-      async pull(controller: ReadableStreamDefaultController): void {
+      async pull(controller: ReadableStreamDefaultController): Promise<void> {
         const b = new Uint8Array(16 * 32);
         const result = await read(fetchResponse.bodyRid, b);
         if (result === null) {
