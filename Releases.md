@@ -1580,7 +1580,7 @@ Changes since v0.1.7:
 - Use constructor.name to print out function type #664
 - Rename deno.argv to deno.args
 - Add deno.trace() #795
-- Continuous benchmarks https://denoland.github.io/deno/
+- Continuous benchmarks
 
 ### v0.1.5 / 2018.09.21
 
