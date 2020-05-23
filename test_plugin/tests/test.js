@@ -32,7 +32,7 @@ const textDecoder = new TextDecoder();
 const textEncoder = new TextEncoder();
  
 function runTestSync() {
-  let view = textEncoder.encode("test");
+  const view = textEncoder.encode("test");
   
   const response = Deno.core.dispatch(
     testSync,
@@ -48,7 +48,7 @@ Deno.core.setAsyncHandler(testAsync, (response) => {
 });
 
 function runTestAsync() {
-  let view = textEncoder.encode("test");
+  const view = textEncoder.encode("test");
   
   const response = Deno.core.dispatch(
     testAsync,
