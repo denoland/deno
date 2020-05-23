@@ -7,6 +7,7 @@ import { getLevelByName, LevelName, LogLevels } from "./levels.ts";
 import { LogRecord } from "./logger.ts";
 import { red, yellow, blue, bold } from "../fmt/colors.ts";
 import { existsSync, exists } from "../fs/exists.ts";
+import { BufWriterSync } from "../io/bufio.ts";
 
 const DEFAULT_FORMATTER = "{levelName} {msg}";
 type FormatterFunction = (logRecord: LogRecord) => string;
@@ -100,10 +101,11 @@ interface FileHandlerOptions extends HandlerOptions {
 
 export class FileHandler extends WriterHandler {
   protected _file!: File;
+  protected _buf!: BufWriterSync;
   protected _filename: string;
   protected _mode: LogMode;
   protected _openOptions: OpenOptions;
-  #encoder = new TextEncoder();
+  protected _encoder = new TextEncoder();
 
   constructor(levelName: LevelName, options: FileHandlerOptions) {
     super(levelName, options);
@@ -122,14 +124,34 @@ export class FileHandler extends WriterHandler {
   async setup(): Promise<void> {
     this._file = await open(this._filename, this._openOptions);
     this._writer = this._file;
+    this._buf = new BufWriterSync(this._file);
+
+    window.addEventListener("unload", () =>
+      queueMicrotask(() => this._buf.flush())
+    );
   }
 
   log(msg: string): void {
-    Deno.writeSync(this._file.rid, this.#encoder.encode(msg + "\n"));
+    queueMicrotask(() => this.writeLog(msg));
   }
 
-  destroy(): Promise<void> {
-    this._file.close();
+  protected writeLog(msg: string): void {
+    this._buf.writeSync(this._encoder.encode(msg + "\n"));
+  }
+
+  flush(): void {
+    this._buf.flush();
+  }
+
+  async destroy(): Promise<void> {
+    await new Promise((res) => {
+      // queue a buffer flush and file close behind any pending log writes
+      queueMicrotask(() => {
+        this._buf.flush();
+        this._file.close();
+        res();
+      });
+    });
     return Promise.resolve();
   }
 }
@@ -179,19 +201,20 @@ export class RotatingFileHandler extends FileHandler {
     }
   }
 
-  handle(logRecord: LogRecord): void {
-    if (this.level > logRecord.level) return;
-
-    const msg = this.format(logRecord);
+  protected writeLog(msg: string): void {
     const currentFileSize = statSync(this._filename).size;
-    if (currentFileSize + msg.length > this.#maxBytes) {
+    if (
+      currentFileSize + msg.length + this._buf.buffered() + 1 >
+      this.#maxBytes
+    ) {
       this.rotateLogFiles();
     }
 
-    return this.log(msg);
+    this._buf.writeSync(this._encoder.encode(msg + "\n"));
   }
 
   rotateLogFiles(): void {
+    this._buf.flush();
     close(this._file.rid);
 
     for (let i = this.#maxBackupCount - 1; i >= 0; i--) {
@@ -205,5 +228,6 @@ export class RotatingFileHandler extends FileHandler {
 
     this._file = openSync(this._filename, this._openOptions);
     this._writer = this._file;
+    this._buf = new BufWriterSync(this._file);
   }
 }

@@ -22,6 +22,15 @@ class TestHandler extends BaseHandler {
   }
 }
 
+async function waitAndFlush(fileHandler: FileHandler): Promise<void> {
+  await new Promise((res) =>
+    queueMicrotask(() => {
+      fileHandler.flush();
+      res();
+    })
+  );
+}
+
 test("simpleHandler", function (): void {
   const cases = new Map<number, string[]>([
     [
@@ -194,7 +203,7 @@ test({
 });
 
 test({
-  name: "RotatingFileHandler with first rollover",
+  name: "RotatingFileHandler with first rollover, monitor step by step",
   async fn() {
     const fileHandler = new RotatingFileHandler("WARNING", {
       filename: LOG_FILE,
@@ -205,15 +214,42 @@ test({
     await fileHandler.setup();
 
     fileHandler.handle(new LogRecord("AAA", [], LogLevels.ERROR)); // 'ERROR AAA\n' = 10 bytes
+    await waitAndFlush(fileHandler);
     assertEquals((await Deno.stat(LOG_FILE)).size, 10);
     fileHandler.handle(new LogRecord("AAA", [], LogLevels.ERROR));
+    await waitAndFlush(fileHandler);
     assertEquals((await Deno.stat(LOG_FILE)).size, 20);
     fileHandler.handle(new LogRecord("AAA", [], LogLevels.ERROR));
+    await waitAndFlush(fileHandler);
     // Rollover occurred. Log file now has 1 record, rollover file has the original 2
     assertEquals((await Deno.stat(LOG_FILE)).size, 10);
     assertEquals((await Deno.stat(LOG_FILE + ".1")).size, 20);
+    await fileHandler.destroy();
+
+    Deno.removeSync(LOG_FILE);
+    Deno.removeSync(LOG_FILE + ".1");
+  },
+});
+
+test({
+  name: "RotatingFileHandler with first rollover, check all at once",
+  async fn() {
+    const fileHandler = new RotatingFileHandler("WARNING", {
+      filename: LOG_FILE,
+      maxBytes: 25,
+      maxBackupCount: 3,
+      mode: "w",
+    });
+    await fileHandler.setup();
+
+    fileHandler.handle(new LogRecord("AAA", [], LogLevels.ERROR)); // 'ERROR AAA\n' = 10 bytes
+    fileHandler.handle(new LogRecord("AAA", [], LogLevels.ERROR));
+    fileHandler.handle(new LogRecord("AAA", [], LogLevels.ERROR));
 
     await fileHandler.destroy();
+
+    assertEquals((await Deno.stat(LOG_FILE)).size, 10);
+    assertEquals((await Deno.stat(LOG_FILE + ".1")).size, 20);
 
     Deno.removeSync(LOG_FILE);
     Deno.removeSync(LOG_FILE + ".1");
@@ -305,5 +341,24 @@ test({
       Error,
       "maxBackupCount cannot be less than 1"
     );
+  },
+});
+
+test({
+  name: "Window unload flushes buffer",
+  async fn() {
+    const fileHandler = new FileHandler("WARNING", {
+      filename: LOG_FILE,
+      mode: "w",
+    });
+    await fileHandler.setup();
+    fileHandler.handle(new LogRecord("AAA", [], LogLevels.ERROR)); // 'ERROR AAA\n' = 10 bytes
+
+    assertEquals((await Deno.stat(LOG_FILE)).size, 0);
+    dispatchEvent(new Event("unload"));
+    assertEquals((await Deno.stat(LOG_FILE)).size, 10);
+
+    await fileHandler.destroy();
+    Deno.removeSync(LOG_FILE);
   },
 });
