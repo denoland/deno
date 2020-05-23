@@ -62,7 +62,7 @@ declare namespace Deno {
    *
    * Deno.test({
    *   name: "example ignored test",
-   *   ignore: Deno.build.os === "windows"
+   *   ignore: Deno.build.os === "windows",
    *   fn(): void {
    *     // This test is ignored only on Windows machines
    *   },
@@ -73,7 +73,7 @@ declare namespace Deno {
    *   async fn() {
    *     const decoder = new TextDecoder("utf-8");
    *     const data = await Deno.readFile("hello_world.txt");
-   *     assertEquals(decoder.decode(data), "Hello world")
+   *     assertEquals(decoder.decode(data), "Hello world");
    *   }
    * });
    * ```
@@ -94,7 +94,7 @@ declare namespace Deno {
    * Deno.test("My async test description", async ():Promise<void> => {
    *   const decoder = new TextDecoder("utf-8");
    *   const data = await Deno.readFile("hello_world.txt");
-   *   assertEquals(decoder.decode(data), "Hello world")
+   *   assertEquals(decoder.decode(data), "Hello world");
    * });
    * ```
    * */
@@ -1828,7 +1828,7 @@ declare namespace Deno {
    * ```ts
    * const obj = {};
    * obj.propA = 10;
-   * obj.propB = "hello"
+   * obj.propB = "hello";
    * const objAsString = Deno.inspect(obj); // { propA: 10, propB: "hello" }
    * console.log(obj);  // prints same value as objAsString, e.g. { propA: 10, propB: "hello" }
    * ```
