@@ -126,9 +126,7 @@ export class FileHandler extends WriterHandler {
     this._writer = this._file;
     this._buf = new BufWriterSync(this._file);
 
-    window.addEventListener("unload", () =>
-      queueMicrotask(() => this._buf.flush())
-    );
+    window.addEventListener("unload", () => this._buf.flush());
   }
 
   log(msg: string): void {
@@ -144,7 +142,7 @@ export class FileHandler extends WriterHandler {
   }
 
   async destroy(): Promise<void> {
-    await new Promise((res) => {
+    return new Promise((res) => {
       // queue a buffer flush and file close behind any pending log writes
       queueMicrotask(() => {
         this._buf.flush();
@@ -152,7 +150,6 @@ export class FileHandler extends WriterHandler {
         res();
       });
     });
-    return Promise.resolve();
   }
 }
 
