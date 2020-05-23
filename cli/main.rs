@@ -139,7 +139,7 @@ fn write_to_stdout_ignore_sigpipe(bytes: &[u8]) -> Result<(), std::io::Error> {
   }
 }
 
-fn write_lockfile(global_state : GlobalState) -> Result<(), std::io::Error>  {
+fn write_lockfile(global_state: GlobalState) -> Result<(), std::io::Error> {
   if global_state.flags.lock_write {
     if let Some(ref lockfile) = global_state.lockfile {
       let g = lockfile.lock().unwrap();
@@ -338,12 +338,12 @@ async fn cache_command(flags: Flags, files: Vec<String>) -> Result<(), ErrBox> {
   let mut worker =
     create_main_worker(global_state.clone(), main_module.clone())?;
 
-  write_lockfile(global_state)?;
-
   for file in files {
     let specifier = ModuleSpecifier::resolve_url_or_path(&file)?;
     worker.preload_module(&specifier).await.map(|_| ())?;
   }
+
+  write_lockfile(global_state)?;
 
   Ok(())
 }
@@ -518,8 +518,8 @@ async fn run_command(flags: Flags, script: String) -> Result<(), ErrBox> {
   let mut worker =
     create_main_worker(global_state.clone(), main_module.clone())?;
   debug!("main_module {}", main_module);
-  write_lockfile(global_state)?;
   worker.execute_module(&main_module).await?;
+  write_lockfile(global_state)?;
   worker.execute("window.dispatchEvent(new Event('load'))")?;
   (&mut *worker).await?;
   worker.execute("window.dispatchEvent(new Event('unload'))")?;
