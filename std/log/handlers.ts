@@ -141,7 +141,7 @@ export class FileHandler extends WriterHandler {
     this._buf.flush();
   }
 
-  async destroy(): Promise<void> {
+  destroy(): Promise<void> {
     return new Promise((res) => {
       // queue a buffer flush and file close behind any pending log writes
       queueMicrotask(() => {
