@@ -802,7 +802,8 @@ mod tests {
       write_whitelist: HashSet::new(),
       net_whitelist: HashSet::new(),
     };
-    let deserialized_perms: Permissions = serde_json::from_str(json_perms).unwrap();
+    let deserialized_perms: Permissions =
+      serde_json::from_str(json_perms).unwrap();
     assert_eq!(perms0, deserialized_perms);
   }
 }
