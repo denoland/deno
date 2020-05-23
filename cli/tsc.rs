@@ -5,8 +5,6 @@ use crate::diagnostics::DiagnosticItem;
 use crate::disk_cache::DiskCache;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
-use crate::fmt;
-use crate::fs as deno_fs;
 use crate::global_state::GlobalState;
 use crate::import_map::ImportMap;
 use crate::module_graph::ModuleGraphLoader;
@@ -854,14 +852,12 @@ pub async fn bundle(
   compiler_config: CompilerConfig,
   module_specifier: ModuleSpecifier,
   maybe_import_map: Option<ImportMap>,
-  out_file: Option<PathBuf>,
   unstable: bool,
-) -> Result<(), ErrBox> {
+) -> Result<String, ErrBox> {
   debug!(
     "Invoking the compiler to bundle. module_name: {}",
     module_specifier.to_string()
   );
-  eprintln!("Bundling {}", module_specifier.to_string());
 
   let permissions = Permissions::allow_all();
   let mut module_graph_loader = ModuleGraphLoader::new(
@@ -921,26 +917,7 @@ pub async fn bundle(
 
   assert!(bundle_response.bundle_output.is_some());
   let output = bundle_response.bundle_output.unwrap();
-
-  // TODO(bartlomieju): the rest of this function should be handled
-  // in `main.rs` - it has nothing to do with TypeScript...
-  let output_string = fmt::format_text(&output)?;
-
-  if let Some(out_file_) = out_file.as_ref() {
-    eprintln!("Emitting bundle to {:?}", out_file_);
-
-    let output_bytes = output_string.as_bytes();
-    let output_len = output_bytes.len();
-
-    deno_fs::write_file(out_file_, output_bytes, 0o666)?;
-    // TODO(bartlomieju): do we really need to show this info? (it doesn't respect --quiet flag)
-    // TODO(bartlomieju): add "humanFileSize" method
-    eprintln!("{} bytes emitted.", output_len);
-  } else {
-    println!("{}", output_string);
-  }
-
-  Ok(())
+  Ok(output)
 }
 
 /// This function is used by `Deno.compile()` and `Deno.bundle()` APIs.
@@ -1142,7 +1119,6 @@ mod tests {
       &state,
       CompilerConfig::load(None).unwrap(),
       module_name,
-      None,
       None,
       false,
     )
