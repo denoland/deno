@@ -400,7 +400,7 @@ unitTest(
 
 unitTest(
   {
-    ignore:Deno.build.os === "windows",
+    ignore: Deno.build.os === "windows",
     perms: { net: true },
   },
   async function fetchPostBodyString(): Promise<void> {
