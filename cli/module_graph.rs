@@ -48,6 +48,13 @@ where
   }
 }
 
+const SUPPORTED_MEDIA_TYPES: [MediaType; 4] = [
+  MediaType::JavaScript,
+  MediaType::TypeScript,
+  MediaType::JSX,
+  MediaType::TSX,
+];
+
 #[derive(Debug, Serialize)]
 pub struct ModuleGraph(HashMap<String, ModuleGraphFile>);
 
@@ -384,9 +391,7 @@ impl ModuleGraphLoader {
     let module_specifier = ModuleSpecifier::from(source_file.url.clone());
     let source_code = String::from_utf8(source_file.source_code)?;
 
-    if source_file.media_type == MediaType::JavaScript
-      || source_file.media_type == MediaType::TypeScript
-    {
+    if SUPPORTED_MEDIA_TYPES.contains(&source_file.media_type) {
       if let Some(types_specifier) = source_file.types_header {
         let type_header = ReferenceDescriptor {
           specifier: types_specifier.to_string(),
