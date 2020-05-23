@@ -139,6 +139,19 @@ fn write_to_stdout_ignore_sigpipe(bytes: &[u8]) -> Result<(), std::io::Error> {
   }
 }
 
+fn write_lockfile(global_state : GlobalState) -> Result<(), std::io::Error>  {
+  if global_state.flags.lock_write {
+    if let Some(ref lockfile) = global_state.lockfile {
+      let g = lockfile.lock().unwrap();
+      g.write()?;
+    } else {
+      eprintln!("--lock flag must be specified when using --lock-write");
+      std::process::exit(11);
+    }
+  }
+  Ok(())
+}
+
 fn create_main_worker(
   global_state: GlobalState,
   main_module: ModuleSpecifier,
@@ -325,19 +338,11 @@ async fn cache_command(flags: Flags, files: Vec<String>) -> Result<(), ErrBox> {
   let mut worker =
     create_main_worker(global_state.clone(), main_module.clone())?;
 
+  write_lockfile(global_state)?;
+
   for file in files {
     let specifier = ModuleSpecifier::resolve_url_or_path(&file)?;
     worker.preload_module(&specifier).await.map(|_| ())?;
-  }
-
-  if global_state.flags.lock_write {
-    if let Some(ref lockfile) = global_state.lockfile {
-      let g = lockfile.lock().unwrap();
-      g.write()?;
-    } else {
-      eprintln!("--lock flag must be specified when using --lock-write");
-      std::process::exit(11);
-    }
   }
 
   Ok(())
@@ -513,19 +518,11 @@ async fn run_command(flags: Flags, script: String) -> Result<(), ErrBox> {
   let mut worker =
     create_main_worker(global_state.clone(), main_module.clone())?;
   debug!("main_module {}", main_module);
+  write_lockfile(global_state)?;
   worker.execute_module(&main_module).await?;
   worker.execute("window.dispatchEvent(new Event('load'))")?;
   (&mut *worker).await?;
   worker.execute("window.dispatchEvent(new Event('unload'))")?;
-  if global_state.flags.lock_write {
-    if let Some(ref lockfile) = global_state.lockfile {
-      let g = lockfile.lock().unwrap();
-      g.write()?;
-    } else {
-      eprintln!("--lock flag must be specified when using --lock-write");
-      std::process::exit(11);
-    }
-  }
   Ok(())
 }
 
