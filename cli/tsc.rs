@@ -555,10 +555,23 @@ impl TsCompiler {
       let specifier = ModuleSpecifier::resolve_url(&source.filename)
         .expect("Should be a valid module specifier");
 
+      let source_file = self
+        .file_fetcher
+        .fetch_cached_source_file(&specifier, Permissions::allow_all())
+        .expect("Source file not found");
+
+      // NOTE: JavaScript files are only cached to disk if `checkJs`
+      // option in on
+      if source_file.media_type == msg::MediaType::JavaScript
+        && !self.compile_js
+      {
+        continue;
+      }
+
       if emitted_name.ends_with(".map") {
         self.cache_source_map(&specifier, &source.contents)?;
       } else if emitted_name.ends_with(".js") {
-        self.cache_compiled_file(&specifier, &source.contents)?;
+        self.cache_compiled_file(&specifier, source_file, &source.contents)?;
       } else {
         panic!("Trying to cache unknown file type {}", emitted_name);
       }
@@ -616,20 +629,9 @@ impl TsCompiler {
   fn cache_compiled_file(
     &self,
     module_specifier: &ModuleSpecifier,
+    source_file: SourceFile,
     contents: &str,
   ) -> std::io::Result<()> {
-    let source_file = self
-      .file_fetcher
-      .fetch_cached_source_file(&module_specifier, Permissions::allow_all())
-      .expect("Source file not found");
-
-    // NOTE: JavaScript files are only cached to disk if `checkJs`
-    // option in on
-    if source_file.media_type == msg::MediaType::JavaScript && !self.compile_js
-    {
-      return Ok(());
-    }
-
     // By default TSC output source map url that is relative; we need
     // to substitute it manually to correct file URL in DENO_DIR.
     let mut content_lines = contents
@@ -662,10 +664,6 @@ impl TsCompiler {
       .get_cache_filename_with_extension(module_specifier.as_url(), "js");
     self.disk_cache.set(&js_key, contents.as_bytes())?;
     self.mark_compiled(module_specifier.as_url());
-    let source_file = self
-      .file_fetcher
-      .fetch_cached_source_file(&module_specifier, Permissions::allow_all())
-      .expect("Source file not found");
 
     let version_hash = source_code_version_hash(
       &source_file.source_code,
@@ -718,18 +716,6 @@ impl TsCompiler {
     module_specifier: &ModuleSpecifier,
     contents: &str,
   ) -> std::io::Result<()> {
-    let source_file = self
-      .file_fetcher
-      .fetch_cached_source_file(&module_specifier, Permissions::allow_all())
-      .expect("Source file not found");
-
-    // NOTE: JavaScript files are only cached to disk if `checkJs`
-    // option in on
-    if source_file.media_type == msg::MediaType::JavaScript && !self.compile_js
-    {
-      return Ok(());
-    }
-
     let js_key = self
       .disk_cache
       .get_cache_filename_with_extension(module_specifier.as_url(), "js");
