@@ -136,6 +136,32 @@ unitTest({ perms: { net: true } }, async function fetchBodyReader(): Promise<
   assertEquals(total, Number(headers.get("Content-Length")));
 });
 
+unitTest(
+  { perms: { net: true } },
+  async function fetchBodyReaderBigBody(): Promise<void> {
+    const data = "a".repeat(1 << 10);
+    const response = await fetch(
+      "http://localhost:4545/cli/tests/echo_server",
+      {
+        method: "POST",
+        body: data,
+      }
+    );
+    const headers = response.headers;
+    assert(response.body !== null);
+    const reader = await response.body.getReader();
+    let total = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      assert(value);
+      total += value.length;
+    }
+
+    assertEquals(total, data.length);
+  }
+);
+
 unitTest({ perms: { net: true } }, async function responseClone(): Promise<
   void
 > {
