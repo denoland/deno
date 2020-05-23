@@ -30,15 +30,11 @@ if (!(testAsync > 0)) {
 const textDecoder = new TextDecoder();
 
 const textEncoder = new TextEncoder();
- 
+
 function runTestSync() {
   const view = textEncoder.encode("test");
-  
-  const response = Deno.core.dispatch(
-    testSync,
-    view,
-    view
-  );
+
+  const response = Deno.core.dispatch(testSync, view, view);
 
   console.log(`Plugin Sync Response: ${textDecoder.decode(response)}`);
 }
@@ -49,12 +45,8 @@ Deno.core.setAsyncHandler(testAsync, (response) => {
 
 function runTestAsync() {
   const view = textEncoder.encode("test");
-  
-  const response = Deno.core.dispatch(
-    testAsync,
-    view,
-    view
-  );
+
+  const response = Deno.core.dispatch(testAsync, view, view);
 
   if (response != null || response != undefined) {
     throw new Error("Expected null response!");
