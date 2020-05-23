@@ -30,7 +30,8 @@ async function wsHandler(ws: WebSocket): Promise<void> {
   }
 }
 
-listenAndServe({ port: 8080 }, async (req) => {
+const port = parseInt(Deno.args[0] ?? "4601");
+listenAndServe({ port }, async (req) => {
   if (req.method === "GET" && req.url === "/") {
     //Serve with hack
     const u = new URL("./index.html", import.meta.url);
@@ -77,4 +78,4 @@ listenAndServe({ port: 8080 }, async (req) => {
     }
   }
 });
-console.log("chat server starting on :8080....");
+console.log(`chat server starting on :${port}....`);

@@ -7,7 +7,7 @@ import { delay } from "../../async/delay.ts";
 
 const { test } = Deno;
 
-async function startServer(): Promise<Deno.Process> {
+async function startServer(port: number): Promise<Deno.Process> {
   const server = Deno.run({
     // TODO(lucacasonato): remove unstable once possible
     cmd: [
@@ -17,6 +17,7 @@ async function startServer(): Promise<Deno.Process> {
       "--allow-read",
       "--unstable",
       "server.ts",
+      `${port}`,
     ],
     cwd: "examples/chat",
     stdout: "piped",
@@ -37,7 +38,7 @@ async function startServer(): Promise<Deno.Process> {
 test({
   name: "[examples/chat] GET / should serve html",
   async fn() {
-    const server = await startServer();
+    const server = await startServer(4601);
     try {
       const resp = await fetch("http://127.0.0.1:4601/");
       assertEquals(resp.status, 200);
@@ -55,10 +56,10 @@ test({
 test({
   name: "[examples/chat] GET /ws should upgrade conn to ws",
   async fn() {
-    const server = await startServer();
+    const server = await startServer(4602);
     let ws: WebSocket | undefined;
     try {
-      ws = await connectWebSocket("http://127.0.0.1:4601/ws");
+      ws = await connectWebSocket("http://127.0.0.1:4602/ws");
       const it = ws[Symbol.asyncIterator]();
 
       assertEquals((await it.next()).value, "Connected: [1]");
