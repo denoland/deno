@@ -74,10 +74,12 @@ use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::fs as deno_fs;
 use crate::global_state::GlobalState;
+use crate::import_map::ImportMap;
 use crate::msg::MediaType;
 use crate::op_error::OpError;
 use crate::ops::io::get_stdio;
 use crate::permissions::Permissions;
+use crate::state::exit_unstable;
 use crate::state::State;
 use crate::tsc::TargetLib;
 use crate::worker::MainWorker;
@@ -347,6 +349,7 @@ async fn eval_command(
   flags: Flags,
   code: String,
   as_typescript: bool,
+  print: bool,
 ) -> Result<(), ErrBox> {
   // Force TypeScript compile.
   let main_module =
@@ -355,6 +358,13 @@ async fn eval_command(
   let mut worker = create_main_worker(global_state, main_module.clone())?;
   let main_module_url = main_module.as_url().to_owned();
   // Create a dummy source file.
+  let source_code = if print {
+    "console.log(".to_string() + &code + ")"
+  } else {
+    code.clone()
+  }
+  .into_bytes();
+
   let source_file = SourceFile {
     filename: main_module_url.to_file_path().unwrap(),
     url: main_module_url,
@@ -365,7 +375,7 @@ async fn eval_command(
     } else {
       MediaType::JavaScript
     },
-    source_code: code.clone().into_bytes(),
+    source_code,
   };
   // Save our fake file into file fetcher cache
   // to allow module access by TS compiler (e.g. op_fetch_source_files)
@@ -398,12 +408,31 @@ async fn bundle_command(
     module_name = ModuleSpecifier::from(u)
   }
 
-  let global_state = GlobalState::new(flags)?;
   debug!(">>>>> bundle START");
-  let bundle_result = global_state
-    .ts_compiler
-    .bundle(global_state.clone(), module_name, out_file)
-    .await;
+  let compiler_config = tsc::CompilerConfig::load(flags.config_path.clone())?;
+
+  let maybe_import_map = match flags.import_map_path.as_ref() {
+    None => None,
+    Some(file_path) => {
+      if !flags.unstable {
+        exit_unstable("--importmap")
+      }
+      Some(ImportMap::load(file_path)?)
+    }
+  };
+
+  let global_state = GlobalState::new(flags)?;
+
+  let bundle_result = tsc::bundle(
+    &global_state,
+    compiler_config,
+    module_name,
+    maybe_import_map,
+    out_file,
+    global_state.flags.unstable,
+  )
+  .await;
+
   debug!(">>>>> bundle END");
   bundle_result
 }
@@ -595,9 +624,10 @@ pub fn main() {
       filter,
     } => doc_command(flags, source_file, json, filter).boxed_local(),
     DenoSubcommand::Eval {
+      print,
       code,
       as_typescript,
-    } => eval_command(flags, code, as_typescript).boxed_local(),
+    } => eval_command(flags, code, as_typescript, print).boxed_local(),
     DenoSubcommand::Cache { files } => {
       cache_command(flags, files).boxed_local()
     }

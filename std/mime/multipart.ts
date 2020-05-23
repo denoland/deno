@@ -206,7 +206,7 @@ class PartReader implements Reader, Closer {
     const cd = this.headers.get("content-disposition");
     const params: { [key: string]: string } = {};
     assert(cd != null, "content-disposition must be set");
-    const comps = cd.split(";");
+    const comps = decodeURI(cd).split(";");
     this.contentDisposition = comps[0];
     comps
       .slice(1)

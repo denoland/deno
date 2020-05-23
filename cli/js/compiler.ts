@@ -18,20 +18,15 @@ import { Diagnostic, DiagnosticItem } from "./diagnostics.ts";
 import { fromTypeScriptDiagnostic } from "./diagnostics_util.ts";
 import { TranspileOnlyResult } from "./ops/runtime_compiler.ts";
 import { bootstrapWorkerRuntime } from "./runtime_worker.ts";
-import { assert } from "./util.ts";
-import * as util from "./util.ts";
-import { TextDecoder, TextEncoder } from "./web/text_encoding.ts";
+import { assert, log, notImplemented } from "./util.ts";
 import { core } from "./core.ts";
 
-const encoder = new TextEncoder();
-const decoder = new TextDecoder();
-
+// We really don't want to depend on JSON dispatch during snapshotting, so
+// this op exchanges strings with Rust as raw byte arrays.
 function getAsset(name: string): string {
   const opId = core.ops()["op_fetch_asset"];
-  // We really don't want to depend on JSON dispatch during snapshotting, so
-  // this op exchanges strings with Rust as raw byte arrays.
-  const sourceCodeBytes = core.dispatch(opId, encoder.encode(name));
-  return decoder.decode(sourceCodeBytes!);
+  const sourceCodeBytes = core.dispatch(opId, core.encode(name));
+  return core.decode(sourceCodeBytes!);
 }
 
 // Constants used by `normalizeString` and `resolvePath`
@@ -194,18 +189,6 @@ function getExtension(fileName: string, mediaType: MediaType): ts.Extension {
   }
 }
 
-/** Because we support providing types for JS files as well as X-TypeScript-Types
- * header we might be feeding TS compiler with different files than import specifiers
- * suggest. To accomplish that we keep track of two different specifiers:
- *  - original - the one in import statement (import "./foo.js")
- *  - mapped - if there's no type directive it's the same as original, otherwise
- *             it's unresolved specifier for type directive (/// @deno-types="./foo.d.ts")
- */
-interface SourceFileSpecifierMap {
-  original: string;
-  mapped: string;
-}
-
 /** A global cache of module source files that have been loaded.
  * This cache will be rewritten to be populated on compiler startup
  * with files provided from Rust in request message.
@@ -329,7 +312,7 @@ class Host implements ts.CompilerHost {
     path: string,
     configurationText: string
   ): ConfigureResponse {
-    util.log("compiler::host.configure", path);
+    log("compiler::host.configure", path);
     assert(configurationText);
     const { config, error } = ts.parseConfigFileTextToJson(
       path,
@@ -367,7 +350,7 @@ class Host implements ts.CompilerHost {
   /* TypeScript CompilerHost APIs */
 
   fileExists(_fileName: string): boolean {
-    return util.notImplemented();
+    return notImplemented();
   }
 
   getCanonicalFileName(fileName: string): string {
@@ -375,7 +358,7 @@ class Host implements ts.CompilerHost {
   }
 
   getCompilationSettings(): ts.CompilerOptions {
-    util.log("compiler::host.getCompilationSettings()");
+    log("compiler::host.getCompilationSettings()");
     return this.#options;
   }
 
@@ -384,7 +367,7 @@ class Host implements ts.CompilerHost {
   }
 
   getDefaultLibFileName(_options: ts.CompilerOptions): string {
-    util.log("compiler::host.getDefaultLibFileName()");
+    log("compiler::host.getDefaultLibFileName()");
     switch (this.#target) {
       case CompilerHostTarget.Main:
       case CompilerHostTarget.Runtime:
@@ -404,7 +387,7 @@ class Host implements ts.CompilerHost {
     onError?: (message: string) => void,
     shouldCreateNewSourceFile?: boolean
   ): ts.SourceFile | undefined {
-    util.log("compiler::host.getSourceFile", fileName);
+    log("compiler::host.getSourceFile", fileName);
     try {
       assert(!shouldCreateNewSourceFile);
       const sourceFile = fileName.startsWith(ASSETS)
@@ -436,21 +419,21 @@ class Host implements ts.CompilerHost {
   }
 
   readFile(_fileName: string): string | undefined {
-    return util.notImplemented();
+    return notImplemented();
   }
 
   resolveModuleNames(
     moduleNames: string[],
     containingFile: string
   ): Array<ts.ResolvedModuleFull | undefined> {
-    util.log("compiler::host.resolveModuleNames", {
+    log("compiler::host.resolveModuleNames", {
       moduleNames,
       containingFile,
     });
     return moduleNames.map((specifier) => {
       const maybeUrl = SourceFile.getResolvedUrl(specifier, containingFile);
 
-      util.log("compiler::host.resolveModuleNames maybeUrl", {
+      log("compiler::host.resolveModuleNames maybeUrl", {
         specifier,
         containingFile,
         maybeUrl,
@@ -488,7 +471,7 @@ class Host implements ts.CompilerHost {
     _onError?: (message: string) => void,
     sourceFiles?: readonly ts.SourceFile[]
   ): void {
-    util.log("compiler::host.writeFile", fileName);
+    log("compiler::host.writeFile", fileName);
     this.#writeFile(fileName, data, sourceFiles);
   }
 }
@@ -546,30 +529,6 @@ const _TS_SNAPSHOT_PROGRAM = ts.createProgram({
 // This function is called only during snapshotting process
 const SYSTEM_LOADER = getAsset("system_loader.js");
 
-function getMediaType(filename: string): MediaType {
-  const maybeExtension = /\.([a-zA-Z]+)$/.exec(filename);
-  if (!maybeExtension) {
-    util.log(`!!! Could not identify valid extension: "${filename}"`);
-    return MediaType.Unknown;
-  }
-  const [, extension] = maybeExtension;
-  switch (extension.toLowerCase()) {
-    case "js":
-      return MediaType.JavaScript;
-    case "jsx":
-      return MediaType.JSX;
-    case "ts":
-      return MediaType.TypeScript;
-    case "tsx":
-      return MediaType.TSX;
-    case "wasm":
-      return MediaType.Wasm;
-    default:
-      util.log(`!!! Unknown extension: "${extension}"`);
-      return MediaType.Unknown;
-  }
-}
-
 function buildLocalSourceFileCache(
   sourceFileMap: Record<string, SourceFileMapEntry>
 ): void {
@@ -578,7 +537,7 @@ function buildLocalSourceFileCache(
     SourceFile.addToCache({
       url: entry.url,
       filename: entry.url,
-      mediaType: getMediaType(entry.url),
+      mediaType: entry.mediaType,
       sourceCode: entry.sourceCode,
     });
 
@@ -673,7 +632,7 @@ function buildSourceFileCache(
   }
 }
 
-interface EmmitedSource {
+interface EmittedSource {
   // original filename
   filename: string;
   // compiled contents
@@ -692,7 +651,7 @@ interface WriteFileState {
   bundleOutput?: string;
   host?: Host;
   rootNames: string[];
-  emitMap?: Record<string, EmmitedSource>;
+  emitMap?: Record<string, EmittedSource>;
   sources?: Record<string, string>;
 }
 
@@ -1115,13 +1074,13 @@ type CompilerRequest =
   | CompilerRequestRuntimeTranspile;
 
 interface CompileResult {
-  emitMap?: Record<string, EmmitedSource>;
+  emitMap?: Record<string, EmittedSource>;
   bundleOutput?: string;
   diagnostics: Diagnostic;
 }
 
 interface RuntimeCompileResult {
-  emitMap: Record<string, EmmitedSource>;
+  emitMap: Record<string, EmittedSource>;
   diagnostics: DiagnosticItem[];
 }
 
@@ -1141,7 +1100,7 @@ function compile(request: CompilerRequestCompile): CompileResult {
     cwd,
     sourceFileMap,
   } = request;
-  util.log(">>> compile start", {
+  log(">>> compile start", {
     rootNames,
     type: CompilerRequestType[request.type],
   });
@@ -1221,7 +1180,7 @@ function compile(request: CompilerRequestCompile): CompileResult {
     diagnostics: fromTypeScriptDiagnostic(diagnostics),
   };
 
-  util.log("<<< compile end", {
+  log("<<< compile end", {
     rootNames,
     type: CompilerRequestType[request.type],
   });
@@ -1241,7 +1200,7 @@ function runtimeCompile(
     sourceFileMap,
   } = request;
 
-  util.log(">>> runtime compile start", {
+  log(">>> runtime compile start", {
     rootNames,
     bundle,
   });
@@ -1312,7 +1271,7 @@ function runtimeCompile(
   assert(emitResult.emitSkipped === false, "Unexpected skip of the emit.");
 
   assert(state.emitMap);
-  util.log("<<< runtime compile finish", {
+  log("<<< runtime compile finish", {
     rootNames,
     bundle,
     emitMap: Object.keys(state.emitMap),
@@ -1385,7 +1344,7 @@ async function tsCompilerOnMessage({
       break;
     }
     default:
-      util.log(
+      log(
         `!!! unhandled CompilerRequestType: ${
           (request as CompilerRequest).type
         } (${CompilerRequestType[(request as CompilerRequest).type]})`

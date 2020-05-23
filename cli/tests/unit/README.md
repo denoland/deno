@@ -42,7 +42,7 @@ ways:
 `unit_test_runner.ts` is the main script used to run unit tests.
 
 Runner discovers required permissions combinations by loading
-`cli/js/tests/unit_tests.ts` and going through all registered instances of
+`cli/tests/unit/unit_tests.ts` and going through all registered instances of
 `unitTest`.
 
 There are three ways to run `unit_test_runner.ts`:
@@ -50,27 +50,27 @@ There are three ways to run `unit_test_runner.ts`:
 ```
 # Run all tests. Spawns worker processes for each discovered permission
 # combination:
-target/debug/deno run -A cli/js/tests/unit_test_runner.ts --master
+target/debug/deno run -A cli/tests/unit/unit_test_runner.ts --master
 
 # By default all output of worker processes is discarded; for debug purposes
 # the --verbose flag preserves output from the worker
-target/debug/deno run -A cli/js/tests/unit_test_runner.ts --master --verbose
+target/debug/deno run -A cli/tests/unit/unit_test_runner.ts --master --verbose
 
 # Run subset of tests that don't require any permissions
-target/debug/deno run --unstable cli/js/tests/unit_test_runner.ts
+target/debug/deno run --unstable cli/tests/unit/unit_test_runner.ts
 
 # Run subset tests that require "net" and "read" permissions
-target/debug/deno run --unstable --allow-net --allow-read cli/js/tests/unit_test_runner.ts
+target/debug/deno run --unstable --allow-net --allow-read cli/tests/unit/unit_test_runner.ts
 
 # "worker" mode communicates with parent using TCP socket on provided address;
 # after initial setup drops permissions to specified set. It shouldn't be used
 # directly, only be "master" process.
-target/debug/deno run -A cli/js/tests/unit_test_runner.ts --worker --addr=127.0.0.1:4500 --perms=net,write,run
+target/debug/deno run -A cli/tests/unit/unit_test_runner.ts --worker --addr=127.0.0.1:4500 --perms=net,write,run
 
 # Run specific tests
-target/debug/deno run --unstable --allow-net cli/js/tests/unit_test_runner.ts -- netTcpListenClose
+target/debug/deno run --unstable --allow-net cli/tests/unit/unit_test_runner.ts -- netTcpListenClose
 
-RUST_BACKTRACE=1 cargo run -- run --unstable --allow-read --allow-write cli/js/tests/unit_test_runner.ts -- netUnixDialListen
+RUST_BACKTRACE=1 cargo run -- run --unstable --allow-read --allow-write cli/tests/unit/unit_test_runner.ts -- netUnixDialListen
 ```
 
 ### Http server
