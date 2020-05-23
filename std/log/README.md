@@ -107,7 +107,10 @@ interface HandlerOptions {
 #### `FileHandler`
 
 This handler will output to a file using an optional mode (default is `a`, e.g.
-append). The file will grow indefinitely. This logger takes `FileOptions`:
+append). The file will grow indefinitely. Logging is performed asynchronously
+using a buffer for greater performance. Logs are automatically flushed from the
+buffer upon completion of the process, or when the `handler.destroy()` or
+`handler.flush()` methods are called. This logger takes `FileOptions`:
 
 ```typescript
 interface FileHandlerOptions {
@@ -147,6 +150,10 @@ discarding the original contents of `log.txt.3` since 3 is the maximum number of
 backups to keep), `log.txt.1` would be renamed to `log.txt.2`, `log.txt` would
 be renamed to `log.txt.1` and finally `log.txt` would be created from scratch
 where the new log message would be written.
+
+Logging is performed asynchronously using a buffer for greater performance. Logs
+are automatically flushed from the buffer upon completion of the process, or
+when the `handler.destroy()` or `handler.flush()` methods are called.
 
 Options for this handler are:
 
