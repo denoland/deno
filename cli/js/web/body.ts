@@ -7,15 +7,7 @@ import { ReadableStreamImpl } from "./streams/readable_stream.ts";
 const { TextEncoder, TextDecoder } = encoding;
 const DenoBlob = blob.DenoBlob;
 
-export type BodySource =
-  | Blob
-  | BufferSource
-  | FormData
-  | URLSearchParams
-  | ReadableStream
-  | string;
-
-function validateBodyType(owner: Body, bodySource: BodySource): boolean {
+function validateBodyType(owner: Body, bodySource: BodyInit | null): boolean {
   if (
     bodySource instanceof Int8Array ||
     bodySource instanceof Int16Array ||
@@ -75,6 +67,8 @@ function bufferFromStream(stream: ReadableStreamReader): Promise<ArrayBuffer> {
             parts.push(encoder.encode(value));
           } else if (value instanceof ArrayBuffer) {
             parts.push(new Uint8Array(value));
+          } else if (value instanceof Uint8Array) {
+            parts.push(value);
           } else if (!value) {
             // noop for undefined
           } else {
@@ -113,7 +107,10 @@ export const BodyUsedError =
 export class Body implements domTypes.Body {
   protected _stream: ReadableStreamImpl<string | ArrayBuffer> | null;
 
-  constructor(protected _bodySource: BodySource, readonly contentType: string) {
+  constructor(
+    protected _bodySource: BodyInit | null,
+    readonly contentType: string
+  ) {
     validateBodyType(this, _bodySource);
     this._bodySource = _bodySource;
     this.contentType = contentType;
@@ -149,7 +146,9 @@ export class Body implements domTypes.Body {
   }
 
   public async blob(): Promise<Blob> {
-    return new DenoBlob([await this.arrayBuffer()]);
+    return new DenoBlob([await this.arrayBuffer()], {
+      type: this.contentType,
+    });
   }
 
   // ref: https://fetch.spec.whatwg.org/#body-mixin
