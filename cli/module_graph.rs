@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use crate::file_fetcher::map_file_extension;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::import_map::ImportMap;
@@ -18,7 +19,9 @@ use futures::FutureExt;
 use serde::Serialize;
 use serde::Serializer;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::hash::BuildHasher;
+use std::path::PathBuf;
 use std::pin::Pin;
 
 fn serialize_module_specifier<S>(
@@ -74,6 +77,7 @@ pub struct ReferenceDescriptor {
 pub struct ModuleGraphFile {
   pub specifier: String,
   pub url: String,
+  pub redirect: Option<String>,
   pub filename: String,
   pub imports: Vec<ImportDescriptor>,
   pub referenced_files: Vec<ReferenceDescriptor>,
@@ -85,13 +89,14 @@ pub struct ModuleGraphFile {
 }
 
 type SourceFileFuture =
-  Pin<Box<dyn Future<Output = Result<SourceFile, ErrBox>>>>;
+  Pin<Box<dyn Future<Output = Result<(ModuleSpecifier, SourceFile), ErrBox>>>>;
 
 pub struct ModuleGraphLoader {
   permissions: Permissions,
   file_fetcher: SourceFileFetcher,
   maybe_import_map: Option<ImportMap>,
   pending_downloads: FuturesUnordered<SourceFileFuture>,
+  has_downloaded: HashSet<ModuleSpecifier>,
   pub graph: ModuleGraph,
   is_dyn_import: bool,
   analyze_dynamic_imports: bool,
@@ -110,6 +115,7 @@ impl ModuleGraphLoader {
       permissions,
       maybe_import_map,
       pending_downloads: FuturesUnordered::new(),
+      has_downloaded: HashSet::new(),
       graph: ModuleGraph(HashMap::new()),
       is_dyn_import,
       analyze_dynamic_imports,
@@ -129,8 +135,9 @@ impl ModuleGraphLoader {
     self.download_module(specifier.clone(), None)?;
 
     loop {
-      let source_file = self.pending_downloads.next().await.unwrap()?;
-      self.visit_module(&source_file.url.clone().into(), source_file)?;
+      let (specifier, source_file) =
+        self.pending_downloads.next().await.unwrap()?;
+      self.visit_module(&specifier, source_file)?;
       if self.pending_downloads.is_empty() {
         break;
       }
@@ -181,6 +188,7 @@ impl ModuleGraphLoader {
       };
 
     let (import_descs, ref_descs) = analyze_dependencies_and_references(
+      &specifier,
       &source_code,
       self.analyze_dynamic_imports,
     )?;
@@ -258,9 +266,10 @@ impl ModuleGraphLoader {
       ModuleGraphFile {
         specifier: specifier.to_string(),
         url: specifier.to_string(),
+        redirect: None,
+        media_type: map_file_extension(&PathBuf::from(specifier.clone()))
+          as i32,
         filename: specifier,
-        // ignored, it's set in TS worker
-        media_type: MediaType::JavaScript as i32,
         source_code,
         imports,
         referenced_files,
@@ -272,14 +281,28 @@ impl ModuleGraphLoader {
     Ok(())
   }
 
+  // TODO(bartlomieju): decorate errors with import location in the source code
+  // https://github.com/denoland/deno/issues/5080
   fn download_module(
     &mut self,
     module_specifier: ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
   ) -> Result<(), ErrBox> {
-    if self.graph.0.contains_key(&module_specifier.to_string()) {
+    if self.has_downloaded.contains(&module_specifier) {
       return Ok(());
     }
+
+    // Disallow http:// imports from modules loaded over https://
+    if let Some(referrer) = maybe_referrer.as_ref() {
+      if let "https" = referrer.as_url().scheme() {
+        if let "http" = module_specifier.as_url().scheme() {
+          let e = OpError::permission_denied(
+            "Modules loaded over https:// are not allowed to import modules over http://".to_string()
+          );
+          return Err(e.into());
+        };
+      };
+    };
 
     if !self.is_dyn_import {
       // Verify that remote file doesn't try to statically import local file.
@@ -291,7 +314,9 @@ impl ModuleGraphLoader {
             match specifier_url.scheme() {
               "http" | "https" => {}
               _ => {
-                let e = OpError::permission_denied("Remote module are not allowed to statically import local modules. Use dynamic import instead.".to_string());
+                let e = OpError::permission_denied(
+                  "Remote modules are not allowed to statically import local modules. Use dynamic import instead.".to_string()
+                );
                 return Err(e.into());
               }
             }
@@ -301,6 +326,7 @@ impl ModuleGraphLoader {
       }
     }
 
+    self.has_downloaded.insert(module_specifier.clone());
     let spec = module_specifier;
     let file_fetcher = self.file_fetcher.clone();
     let perms = self.permissions.clone();
@@ -310,13 +336,7 @@ impl ModuleGraphLoader {
       let source_file = file_fetcher
         .fetch_source_file(&spec_, maybe_referrer, perms)
         .await?;
-      // FIXME(bartlomieju):
-      // because of redirects we may end up with wrong URL,
-      // substitute with original one
-      Ok(SourceFile {
-        url: spec_.as_url().to_owned(),
-        ..source_file
-      })
+      Ok((spec_.clone(), source_file))
     }
     .boxed_local();
 
@@ -335,6 +355,33 @@ impl ModuleGraphLoader {
     let mut types_directives = vec![];
     let mut type_headers = vec![];
 
+    // IMPORTANT: source_file.url might be different than requested
+    // module_specifier because of HTTP redirects. In such
+    // situation we add an "empty" ModuleGraphFile with 'redirect'
+    // field set that will be later used in TS worker when building
+    // map of available source file. It will perform substitution
+    // for proper URL point to redirect target.
+    if module_specifier.as_url() != &source_file.url {
+      // TODO(bartlomieju): refactor, this is a band-aid
+      self.graph.0.insert(
+        module_specifier.to_string(),
+        ModuleGraphFile {
+          specifier: module_specifier.to_string(),
+          url: module_specifier.to_string(),
+          redirect: Some(source_file.url.to_string()),
+          filename: source_file.filename.to_str().unwrap().to_string(),
+          media_type: source_file.media_type as i32,
+          source_code: "".to_string(),
+          imports: vec![],
+          referenced_files: vec![],
+          lib_directives: vec![],
+          types_directives: vec![],
+          type_headers: vec![],
+        },
+      );
+    }
+
+    let module_specifier = ModuleSpecifier::from(source_file.url.clone());
     let source_code = String::from_utf8(source_file.source_code)?;
 
     if source_file.media_type == MediaType::JavaScript
@@ -356,6 +403,7 @@ impl ModuleGraphLoader {
       }
 
       let (import_descs, ref_descs) = analyze_dependencies_and_references(
+        &module_specifier.to_string(),
         &source_code,
         self.analyze_dynamic_imports,
       )?;
@@ -452,7 +500,8 @@ impl ModuleGraphLoader {
       module_specifier.to_string(),
       ModuleGraphFile {
         specifier: module_specifier.to_string(),
-        url: source_file.url.to_string(),
+        url: module_specifier.to_string(),
+        redirect: None,
         filename: source_file.filename.to_str().unwrap().to_string(),
         media_type: source_file.media_type as i32,
         source_code,

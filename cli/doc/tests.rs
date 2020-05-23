@@ -162,6 +162,19 @@ export function foo(a: string, b?: number, cb: (...cbArgs: unknown[]) => void, .
 }
 
 #[tokio::test]
+async fn format_type_predicate() {
+  let source_code = r#"
+export function isFish(pet: Fish | Bird): pet is Fish {
+    return (pet as Fish).swim !== undefined;
+}
+"#;
+  let loader =
+    TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
+  let entries = DocParser::new(loader).parse("test.ts").await.unwrap();
+  super::printer::format(entries);
+}
+
+#[tokio::test]
 async fn export_fn2() {
   let source_code = r#"
 interface AssignOpts {

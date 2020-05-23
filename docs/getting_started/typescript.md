@@ -24,7 +24,7 @@ takes the form of a compiler hint. Compiler hints inform Deno the location of
 `.d.ts` files and the JavaScript code that is imported that they relate to. The
 hint is `@deno-types` and when specified the value will be used in the compiler
 instead of the JavaScript module. For example, if you had `foo.js`, but you know
-that along side of it was `foo.d.ts` which was the types for the file, the code
+that alongside of it was `foo.d.ts` which was the types for the file, the code
 would look like this:
 
 ```ts
@@ -48,7 +48,7 @@ If you are hosting modules which you want to be consumed by Deno, and you want
 to inform Deno about the location of the type definitions, you can utilize a
 triple-slash directive in the actual code. For example, if you have a JavaScript
 module and you would like to provide Deno with the location of the type
-definitions which happen to be alongside that file, your JavaScript module named
+definition which happens to be alongside that file, your JavaScript module named
 `foo.js` might look like this:
 
 ```js

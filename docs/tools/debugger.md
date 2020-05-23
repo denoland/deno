@@ -60,7 +60,12 @@ As soon as we've added the breakpoint Devtools automatically opened up source
 map file, which allows us step through the actual source code that includes
 types.
 
-Let's send a request and inspect it in Devtools:
+Now that we have our breakpoints set, we can resume the execution of our script
+so that we might inspect an incoming request. Hit the Resume script execution
+button to do so. You might even need to hit it twice!
+
+Once our script is running again, let's send a request and inspect it in
+Devtools:
 
 ```
 $ curl http://0.0.0.0:4500/

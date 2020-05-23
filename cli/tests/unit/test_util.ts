@@ -327,12 +327,12 @@ unitTest(function permissionsMatches(): void {
 
 /*
  * Ensure all unit test files (e.g. xxx_test.ts) are present as imports in
- * cli/js/tests/unit_tests.ts as it is easy to miss this out
+ * cli/tests/unit/unit_tests.ts as it is easy to miss this out
  */
 unitTest(
   { perms: { read: true } },
   function assertAllUnitTestFilesImported(): void {
-    const directoryTestFiles = [...Deno.readDirSync("./cli/js/tests/")]
+    const directoryTestFiles = [...Deno.readDirSync("./cli/tests/unit/")]
       .map((k) => k.name)
       .filter(
         (file) =>
@@ -342,7 +342,7 @@ unitTest(
           !file!.endsWith("unit_test_runner.ts")
       );
     const unitTestsFile: Uint8Array = Deno.readFileSync(
-      "./cli/js/tests/unit_tests.ts"
+      "./cli/tests/unit/unit_tests.ts"
     );
     const importLines = new TextDecoder("utf-8")
       .decode(unitTestsFile)
@@ -355,7 +355,7 @@ unitTest(
     directoryTestFiles.forEach((dirFile) => {
       if (!importedTestFiles.includes(dirFile!)) {
         throw new Error(
-          "cil/js/tests/unit_tests.ts is missing import of test file: cli/js/" +
+          "cil/tests/unit/unit_tests.ts is missing import of test file: cli/js/" +
             dirFile
         );
       }

@@ -127,6 +127,9 @@ fn render_params(params: Vec<doc::ParamDef>) -> String {
 }
 
 fn render_ts_type(ts_type: doc::ts_type::TsTypeDef) -> String {
+  if ts_type.kind.is_none() {
+    return "<UNIMPLEMENTED>".to_string();
+  }
   let kind = ts_type.kind.unwrap();
   match kind {
     TsTypeDefKind::Array => {
