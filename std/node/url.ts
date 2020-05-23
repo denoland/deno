@@ -72,7 +72,7 @@ function getPathFromURLWin(url: URL): string {
     return `\\\\${hostname}${pathname}`;
   } else {
     // Otherwise, it's a local path that requires a drive letter
-    const letter = pathname.codePointAt(1) || 0x20;
+    const letter = pathname.codePointAt(1)! | 0x20;
     const sep = pathname[2];
     if (
       letter < CHAR_LOWERCASE_A ||
