@@ -62,15 +62,12 @@ impl PermissionState {
     *self
   }
 
-  pub fn fork(
-    self,
-    permission_to_be_forked: bool,
-  ) -> Result<PermissionState, OpError> {
-    if permission_to_be_forked && self == PermissionState::Deny {
+  pub fn fork(self, value: bool) -> Result<PermissionState, OpError> {
+    if value && self == PermissionState::Deny {
       Err(OpError::permission_denied(
         "Arguments escalate parent permissions.".to_string(),
       ))
-    } else if permission_to_be_forked {
+    } else if value {
       Ok(PermissionState::Allow)
     } else {
       Ok(PermissionState::Deny)
@@ -951,6 +948,35 @@ mod tests {
         )
         .expect("Testing expect"),
       DenoPermissions {
+        allow_read: PermissionState::Allow,
+        read_whitelist: HashSet::new(),
+        allow_write: PermissionState::Allow,
+        write_whitelist: HashSet::new(),
+        allow_net: PermissionState::Allow,
+        net_whitelist: HashSet::new(),
+        allow_env: PermissionState::Allow,
+        allow_run: PermissionState::Allow,
+        allow_plugin: PermissionState::Deny,
+        allow_hrtime: PermissionState::Deny,
+      }
+    );
+    set_prompt_result(false);
+    assert_eq!(
+      perms0
+        .fork(
+          true,
+          HashSet::new(),
+          true,
+          HashSet::new(),
+          true,
+          HashSet::new(),
+          true,
+          true,
+          false,
+          false,
+        )
+        .expect("Testing expect"),
+      Permissions {
         allow_read: PermissionState::Allow,
         read_whitelist: HashSet::new(),
         allow_write: PermissionState::Allow,
