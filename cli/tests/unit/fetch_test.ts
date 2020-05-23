@@ -367,8 +367,7 @@ function bufferServer(addr: string): Deno.Buffer {
 
 unitTest(
   {
-    // FIXME(bartlomieju)
-    ignore: true,
+    ignore: Deno.build.os === "windows",
     perms: { net: true },
   },
   async function fetchRequest(): Promise<void> {
@@ -389,16 +388,20 @@ unitTest(
       "POST /blah HTTP/1.1\r\n",
       "hello: World\r\n",
       "foo: Bar\r\n",
+      "accept: */*\r\n",
+      `user-agent: Deno/${Deno.version.deno}\r\n`,
+      "accept-encoding: gzip, br\r\n",
       `host: ${addr}\r\n\r\n`,
     ].join("");
     assertEquals(actual, expected);
+
+    await response.arrayBuffer();
   }
 );
 
 unitTest(
   {
-    // FIXME(bartlomieju)
-    ignore: true,
+    ignore: Deno.build.os === "windows",
     perms: { net: true },
   },
   async function fetchPostBodyString(): Promise<void> {
@@ -421,18 +424,23 @@ unitTest(
       "POST /blah HTTP/1.1\r\n",
       "hello: World\r\n",
       "foo: Bar\r\n",
+      "content-type: text/plain;charset=UTF-8\r\n",
+      "accept: */*\r\n",
+      `user-agent: Deno/${Deno.version.deno}\r\n`,
+      "accept-encoding: gzip, br\r\n",
       `host: ${addr}\r\n`,
       `content-length: ${body.length}\r\n\r\n`,
       body,
     ].join("");
     assertEquals(actual, expected);
+
+    await response.arrayBuffer();
   }
 );
 
 unitTest(
   {
-    // FIXME(bartlomieju)
-    ignore: true,
+    ignore: Deno.build.os === "windows",
     perms: { net: true },
   },
   async function fetchPostBodyTypedArray(): Promise<void> {
@@ -456,11 +464,16 @@ unitTest(
       "POST /blah HTTP/1.1\r\n",
       "hello: World\r\n",
       "foo: Bar\r\n",
+      "accept: */*\r\n",
+      `user-agent: Deno/${Deno.version.deno}\r\n`,
+      "accept-encoding: gzip, br\r\n",
       `host: ${addr}\r\n`,
       `content-length: ${body.byteLength}\r\n\r\n`,
       bodyStr,
     ].join("");
     assertEquals(actual, expected);
+
+    await response.arrayBuffer();
   }
 );
 
