@@ -51,7 +51,6 @@ impl GlobalState {
     let dir = deno_dir::DenoDir::new(custom_root)?;
     let deps_cache_location = dir.root.join("deps");
     let http_cache = http_cache::HttpCache::new(&deps_cache_location);
-    http_cache.ensure_location()?;
 
     let file_fetcher = SourceFileFetcher::new(
       http_cache,
