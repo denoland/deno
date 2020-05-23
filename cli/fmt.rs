@@ -7,6 +7,8 @@
 //! the future it can be easily extended to provide
 //! the same functions as ops available in JS runtime.
 
+use crate::colors;
+use crate::diff::diff;
 use crate::fs::files_in_subtree;
 use crate::op_error::OpError;
 use deno_core::ErrBox;
@@ -72,6 +74,25 @@ async fn check_source_files(
         Ok(formatted_text) => {
           if formatted_text != file_contents {
             not_formatted_files_count.fetch_add(1, Ordering::SeqCst);
+            let _g = output_lock.lock().unwrap();
+            match diff(&file_contents, &formatted_text) {
+              Ok(diff) => {
+                println!();
+                println!(
+                  "{} {}:",
+                  colors::bold("from".to_string()),
+                  file_path.display().to_string()
+                );
+                println!("{}", diff);
+              }
+              Err(e) => {
+                eprintln!(
+                  "Error generating diff: {}",
+                  file_path.to_string_lossy()
+                );
+                eprintln!("   {}", e);
+              }
+            }
           }
         }
         Err(e) => {
