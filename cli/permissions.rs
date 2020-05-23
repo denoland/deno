@@ -127,7 +127,7 @@ where
   d.deserialize_bool(BoolPermVisitor)
 }
 
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 pub struct Permissions {
   // Keep in sync with cli/js/permissions.ts
   #[serde(deserialize_with = "deserialize_permission_state")]
@@ -771,6 +771,32 @@ mod tests {
     });
     set_prompt_result(false);
     assert_eq!(perms1.request_hrtime(), PermissionState::Deny);
+    drop(guard);
+  }
+
+  #[test]
+  fn test_deserialize_perms() {
+    let json_perms = r#"
+    {
+      "allow_read": true,
+      "read_whitelist": [],
+      "allow_write": true,
+      "write_whitelist": [],
+      "allow_net": true,
+      "net_whitelist": [],
+      "allow_env": true,
+      "allow_run": true,
+      "allow_plugin": true,
+      "allow_hrtime": true
+    }
+    "#;
+    let guard = PERMISSION_PROMPT_GUARD.lock().unwrap();
+    let mut perms0 = Permissions::from_flags(&Flags {
+      ..Default::default()
+    });
+    set_prompt_result(true);
+    let deserialized_perms: Permissions = serde_json::from_str(json_perms).unwrap();
+    assert_eq!(perms0, deserialized_perms);
     drop(guard);
   }
 }
