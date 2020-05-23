@@ -1582,6 +1582,29 @@ itest!(type_directives_js_main {
   exit_code: 0,
 });
 
+itest!(type_directives_redirect {
+  args: "run --reload type_directives_redirect.ts",
+  output: "type_directives_redirect.ts.out",
+  http_server: true,
+});
+
+itest!(ts_type_imports {
+  args: "run --reload ts_type_imports.ts",
+  output: "ts_type_imports.ts.out",
+  exit_code: 1,
+});
+
+itest!(ts_decorators {
+  args: "run --reload -c tsconfig.decorators.json ts_decorators.ts",
+  output: "ts_decorators.ts.out",
+});
+
+itest!(swc_syntax_error {
+  args: "run --reload swc_syntax_error.ts",
+  output: "swc_syntax_error.ts.out",
+  exit_code: 1,
+});
+
 itest!(types {
   args: "types",
   output: "types.out",
@@ -1701,6 +1724,20 @@ itest_ignore!(cafile_info {
     "info --cert tls/RootCA.pem https://localhost:5545/cli/tests/cafile_info.ts",
   output: "cafile_info.ts.out",
   http_server: true,
+});
+
+itest!(disallow_http_from_https_js {
+  args: "run --quiet --reload --cert tls/RootCA.pem https://localhost:5545/cli/tests/disallow_http_from_https.js",
+  output: "disallow_http_from_https_js.out",
+  http_server: true,
+  exit_code: 1,
+});
+
+itest!(disallow_http_from_https_ts {
+  args: "run --quiet --reload --cert tls/RootCA.pem https://localhost:5545/cli/tests/disallow_http_from_https.ts",
+  output: "disallow_http_from_https_ts.out",
+  http_server: true,
+  exit_code: 1,
 });
 
 itest!(fix_js_import_js {
@@ -2466,6 +2503,31 @@ async fn inspector_does_not_hang() {
 
   assert_eq!(&stdout_lines.next().unwrap(), "done");
   assert!(child.wait().unwrap().success());
+}
+
+#[tokio::test]
+async fn inspector_without_brk_runs_code() {
+  let script = util::tests_path().join("inspector4.js");
+  let mut child = util::deno_cmd()
+    .arg("run")
+    // Warning: each inspector test should be on its own port to avoid
+    // conflicting with another inspector test.
+    .arg("--inspect=127.0.0.1:9233")
+    .arg(script)
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  extract_ws_url_from_stderr(child.stderr.as_mut().unwrap());
+
+  // Check that inspector actually runs code without waiting for inspector
+  // connection
+  let mut stdout = std::io::BufReader::new(child.stdout.as_mut().unwrap());
+  let mut stdout_first_line = String::from("");
+  let _ = stdout.read_line(&mut stdout_first_line).unwrap();
+  assert_eq!(stdout_first_line, "hello\n");
+
+  child.kill().unwrap();
 }
 
 #[test]
