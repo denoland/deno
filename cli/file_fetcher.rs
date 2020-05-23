@@ -535,7 +535,7 @@ impl SourceFileFetcher {
   }
 }
 
-fn map_file_extension(path: &Path) -> msg::MediaType {
+pub fn map_file_extension(path: &Path) -> msg::MediaType {
   match path.extension() {
     None => msg::MediaType::Unknown,
     Some(os_str) => match os_str.to_str() {

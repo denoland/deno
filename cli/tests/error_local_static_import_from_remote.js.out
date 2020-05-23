@@ -1,2 +1,2 @@
 [WILDCARD]
-error: Remote module are not allowed to statically import local modules. Use dynamic import instead.
+error: Remote modules are not allowed to statically import local modules. Use dynamic import instead.

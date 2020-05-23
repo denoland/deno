@@ -24,7 +24,7 @@ function maybeDecode(
 
 export function readFile(
   path: string | URL,
-  optOrCallback: ReadFileCallback | FileOptions | string,
+  optOrCallback: ReadFileCallback | FileOptions | string | undefined,
   callback?: ReadFileCallback
 ): void {
   path = path instanceof URL ? fromFileUrl(path) : path;

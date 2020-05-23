@@ -80,7 +80,7 @@ fn no_color() {
     .unwrap();
   assert!(output.status.success());
   let stdout_str = std::str::from_utf8(&output.stdout).unwrap().trim();
-  assert_eq!("noColor false", stdout_str);
+  assert_eq!("noColor false", util::strip_ansi_codes(stdout_str));
 }
 
 // TODO re-enable. This hangs on macOS
@@ -400,9 +400,10 @@ fn js_unit_tests() {
     .arg("--unstable")
     .arg("--reload")
     .arg("-A")
-    .arg("cli/js/tests/unit_test_runner.ts")
+    .arg("cli/tests/unit/unit_test_runner.ts")
     .arg("--master")
     .arg("--verbose")
+    .env("NO_COLOR", "1")
     .spawn()
     .expect("failed to spawn script");
   let status = deno.wait().expect("failed to wait for the child process");
@@ -672,7 +673,7 @@ fn repl_test_console_log() {
     true,
     "repl",
     Some(vec!["console.log('hello')", "'world'"]),
-    None,
+    Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
     false,
   );
   assert!(out.ends_with("hello\nundefined\nworld\n"));
@@ -685,7 +686,7 @@ fn repl_test_eof() {
     true,
     "repl",
     Some(vec!["1 + 2"]),
-    None,
+    Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
     false,
   );
   assert!(out.ends_with("3\n"));
@@ -696,13 +697,15 @@ const REPL_MSG: &str = "exit using ctrl+d or close()\n";
 
 #[test]
 fn repl_test_close_command() {
-  let (_out, err) = util::run_and_collect_output(
+  let (out, err) = util::run_and_collect_output(
     true,
     "repl",
     Some(vec!["close()", "'ignored'"]),
     None,
     false,
   );
+
+  assert!(!out.contains("ignored"));
   assert!(err.is_empty());
 }
 
@@ -712,7 +715,7 @@ fn repl_test_function() {
     true,
     "repl",
     Some(vec!["Deno.writeFileSync"]),
-    None,
+    Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
     false,
   );
   assert!(out.ends_with("[Function: writeFileSync]\n"));
@@ -725,7 +728,7 @@ fn repl_test_multiline() {
     true,
     "repl",
     Some(vec!["(\n1 + 2\n)"]),
-    None,
+    Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
     false,
   );
   assert!(out.ends_with("3\n"));
@@ -790,7 +793,7 @@ fn repl_test_variable() {
     true,
     "repl",
     Some(vec!["var a = 123;", "a"]),
-    None,
+    Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
     false,
   );
   assert!(out.ends_with("undefined\n123\n"));
@@ -803,7 +806,7 @@ fn repl_test_lexical_scoped_variable() {
     true,
     "repl",
     Some(vec!["let a = 123;", "a"]),
-    None,
+    Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
     false,
   );
   assert!(out.ends_with("undefined\n123\n"));
@@ -820,7 +823,10 @@ fn repl_test_missing_deno_dir() {
     true,
     "repl",
     Some(vec!["1"]),
-    Some(vec![("DENO_DIR".to_owned(), DENO_DIR.to_owned())]),
+    Some(vec![
+      ("DENO_DIR".to_owned(), DENO_DIR.to_owned()),
+      ("NO_COLOR".to_owned(), "1".to_owned()),
+    ]),
     false,
   );
   assert!(read_dir(&test_deno_dir).is_ok());
@@ -835,7 +841,7 @@ fn repl_test_save_last_eval() {
     true,
     "repl",
     Some(vec!["1", "_"]),
-    None,
+    Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
     false,
   );
   assert!(out.ends_with("1\n1\n"));
@@ -848,7 +854,7 @@ fn repl_test_save_last_thrown() {
     true,
     "repl",
     Some(vec!["throw 1", "_error"]),
-    None,
+    Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
     false,
   );
   assert!(out.ends_with("1\n"));
@@ -861,7 +867,7 @@ fn repl_test_assign_underscore() {
     true,
     "repl",
     Some(vec!["_ = 1", "2", "_"]),
-    None,
+    Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
     false,
   );
   assert!(
@@ -876,7 +882,7 @@ fn repl_test_assign_underscore_error() {
     true,
     "repl",
     Some(vec!["_error = 1", "throw 2", "_error"]),
-    None,
+    Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
     false,
   );
   assert!(
@@ -1533,6 +1539,7 @@ itest!(lib_runtime_api {
 
 itest!(seed_random {
   args: "run --seed=100 seed_random.js",
+
   output: "seed_random.js.out",
 });
 
@@ -1556,6 +1563,29 @@ itest!(type_directives_js_main {
   args: "run --reload -L debug type_directives_js_main.js",
   output: "type_directives_js_main.js.out",
   exit_code: 0,
+});
+
+itest!(type_directives_redirect {
+  args: "run --reload type_directives_redirect.ts",
+  output: "type_directives_redirect.ts.out",
+  http_server: true,
+});
+
+itest!(ts_type_imports {
+  args: "run --reload ts_type_imports.ts",
+  output: "ts_type_imports.ts.out",
+  exit_code: 1,
+});
+
+itest!(ts_decorators {
+  args: "run --reload -c tsconfig.decorators.json ts_decorators.ts",
+  output: "ts_decorators.ts.out",
+});
+
+itest!(swc_syntax_error {
+  args: "run --reload swc_syntax_error.ts",
+  output: "swc_syntax_error.ts.out",
+  exit_code: 1,
 });
 
 itest!(types {
@@ -1677,6 +1707,20 @@ itest_ignore!(cafile_info {
     "info --cert tls/RootCA.pem https://localhost:5545/cli/tests/cafile_info.ts",
   output: "cafile_info.ts.out",
   http_server: true,
+});
+
+itest!(disallow_http_from_https_js {
+  args: "run --quiet --reload --cert tls/RootCA.pem https://localhost:5545/cli/tests/disallow_http_from_https.js",
+  output: "disallow_http_from_https_js.out",
+  http_server: true,
+  exit_code: 1,
+});
+
+itest!(disallow_http_from_https_ts {
+  args: "run --quiet --reload --cert tls/RootCA.pem https://localhost:5545/cli/tests/disallow_http_from_https.ts",
+  output: "disallow_http_from_https_ts.out",
+  http_server: true,
+  exit_code: 1,
 });
 
 itest!(fix_js_import_js {
@@ -2368,6 +2412,7 @@ async fn inspector_does_not_hang() {
     // Warning: each inspector test should be on its own port to avoid
     // conflicting with another inspector test.
     .arg("--inspect-brk=127.0.0.1:9232")
+    .env("NO_COLOR", "1")
     .arg(script)
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::piped())
@@ -2441,6 +2486,31 @@ async fn inspector_does_not_hang() {
 
   assert_eq!(&stdout_lines.next().unwrap(), "done");
   assert!(child.wait().unwrap().success());
+}
+
+#[tokio::test]
+async fn inspector_without_brk_runs_code() {
+  let script = util::tests_path().join("inspector4.js");
+  let mut child = util::deno_cmd()
+    .arg("run")
+    // Warning: each inspector test should be on its own port to avoid
+    // conflicting with another inspector test.
+    .arg("--inspect=127.0.0.1:9233")
+    .arg(script)
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  extract_ws_url_from_stderr(child.stderr.as_mut().unwrap());
+
+  // Check that inspector actually runs code without waiting for inspector
+  // connection
+  let mut stdout = std::io::BufReader::new(child.stdout.as_mut().unwrap());
+  let mut stdout_first_line = String::from("");
+  let _ = stdout.read_line(&mut stdout_first_line).unwrap();
+  assert_eq!(stdout_first_line, "hello\n");
+
+  child.kill().unwrap();
 }
 
 #[test]

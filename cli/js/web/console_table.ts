@@ -2,6 +2,7 @@
 // Forked from Node's lib/internal/cli_table.js
 
 import { hasOwnProperty } from "./util.ts";
+import { stripColor } from "../colors.ts";
 
 const tableChars = {
   middleMiddle: "─",
@@ -18,12 +19,6 @@ const tableChars = {
   right: " │",
   middle: " │ ",
 };
-
-const colorRegExp = /\u001b\[\d\d?m/g;
-
-function removeColors(str: string): string {
-  return str.replace(colorRegExp, "");
-}
 
 function isFullWidthCodePoint(code: number): boolean {
   // Code points are partially derived from:
@@ -65,7 +60,7 @@ function isFullWidthCodePoint(code: number): boolean {
 }
 
 function getStringWidth(str: string): number {
-  str = removeColors(str).normalize("NFC");
+  str = stripColor(str).normalize("NFC");
   let width = 0;
 
   for (const ch of str) {
