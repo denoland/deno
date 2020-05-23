@@ -2,17 +2,19 @@
 
 import { Closer } from "./io.ts";
 import { close } from "./ops/resources.ts";
-import { lookup, call } from "./ops/ffi.ts";
 import {
+  lookup,
+  call,
   loadForeignFunction as opLoadFunction,
   loadForeignLibrary as opLoadLibrary,
 } from "./ops/ffi.ts";
-import { MemoryAddr, ForeignFunctionInfo } from "./ops/ffi.ts";
-export { MemoryAddr, ForeignFunctionInfo } from "./ops/ffi.ts";
+export { listForeignABIs, bufferStart, bufferFromPointer } from "./ops/ffi.ts";
+import { ForeignFunctionInfo } from "./ops/ffi.ts";
+export { ForeignType, ForeignFunctionInfo } from "./ops/ffi.ts";
 
 export class ForeignLibrary implements Closer {
   constructor(readonly rid: number) {}
-  lookup(symbol: string): MemoryAddr {
+  lookup(symbol: string): BigInt {
     return lookup(this.rid, symbol);
   }
   close(): void {
@@ -24,20 +26,13 @@ export class ForeignFunction implements Closer {
   constructor(readonly rid: number) {}
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   call(...args: any[]): any {
+    // TODO sanitize and type conversion on call and return
     return call(this.rid, args);
   }
   close(): void {
     close(this.rid);
   }
 }
-
-// Those should be generated at compile time, but how?
-export const foreignABIs: string[] = [
-  /* TODO */
-];
-export const foreignTypes: string[] = [
-  /* TODO */
-];
 
 export function loadForeignLibrary(path: string | null): ForeignLibrary {
   const rid = opLoadLibrary(path);

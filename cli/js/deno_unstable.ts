@@ -24,13 +24,13 @@ export {
   Permissions,
 } from "./permissions.ts";
 export {
+  ForeignType,
   ForeignLibrary,
   ForeignFunctionInfo,
   ForeignFunction,
-  foreignABIs,
-  foreignTypes,
-  readMemory,
-  writeMemory,
+  listForeignABIs,
+  bufferStart,
+  bufferFromPointer,
   loadForeignLibrary,
   loadForeignFunction,
 } from "./ffi.ts";

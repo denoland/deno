@@ -1243,13 +1243,19 @@ declare namespace Deno {
    */
   export function hostname(): string;
 
-  /** Return the memory address to the start of the `buffer`.
-   * Requires --allow-ffi. */
-  export function bufferStart(buffer: SharedArrayBuffer): BigInt;
-
-  /** Construct a buffer with access to a fixed chunk of memory.
-   * Requires --allow-ffi. */
-  export function bufferFromPointer(start: BigInt, length: number): SharedArrayBuffer;
+  export type ForeignType =
+    | "void" // nothing
+    | "uint8" // number | BigInt
+    | "sint8" // number | BigInt
+    | "uint16" // number | BigInt
+    | "sint16" // number | BigInt
+    | "uint32" // number | BigInt
+    | "sint32" // number | BigInt
+    | "uint64" // number (unsafe) | BigInt
+    | "sint64" // number (unsafe) | BigInt
+    | "float" // number
+    | "double" // number
+    | "pointer"; // BigInt
 
   /** Symbol table of an executable object, usually a shared library. */
   export class ForeignLibrary implements Closer {
@@ -1266,45 +1272,6 @@ declare namespace Deno {
      */
     close(): void;
   }
-
-  /**
-   * Load an executable object and retuns its symbol table.
-   *
-   * ```ts
-   * Deno.loadForeignLibrary(null); // search in the running executable (deno)
-   * Deno.loadForeignLibrary("libraylib.so"); // search in system paths. Implementation is platform-dependent
-   * Deno.loadForeignLibrary("./libraylib.so"); // load from current directory
-   * Deno.loadForeignLibrary("/usr/lib/libraylib.so"); // load from absolute directory
-   * ```
-   *
-   * Throws `Deno.errors.NotFound` if shared object not found or failed to load.
-   *
-   * Requires --allow-ffi.
-   */
-  export function loadForeignLibrary(path: string | null): ForeignLibrary;
-
-  export const enum ForeignABI {
-    "DEFAULT_ABI",
-  }
-
-  export const enum ForeignType {
-    "void", // nothing
-    "uint8",
-    "sint8",
-    "uint16",
-    "sint16",
-    "uint32",
-    "sint32",
-    "uint64",
-    "sint64",
-    "float",
-    "double",
-    "longdouble",
-    "pointer", // BigInt
-  }
-
-  export const foreignABIs: ForeignType[];
-  export const foreignTypes: ForeignType[];
 
   export interface ForeignFunctionInfo {
     ret: ForeignType;
@@ -1326,6 +1293,36 @@ declare namespace Deno {
     close(): void;
   }
 
+  /** Return all ABI available in this runtime. */
+  export function listForeignABIs(): string[];
+
+  /** Return the memory address to the start of the `buffer`.
+   * Requires --allow-ffi. */
+  export function bufferStart(buffer: SharedArrayBuffer): BigInt;
+
+  /** Construct a buffer with access to a fixed chunk of memory.
+   * Requires --allow-ffi. */
+  export function bufferFromPointer(
+    start: BigInt,
+    length: number
+  ): SharedArrayBuffer;
+
+  /**
+   * Load an executable object and retuns its symbol table.
+   *
+   * ```ts
+   * Deno.loadForeignLibrary(null); // search in the running executable (deno)
+   * Deno.loadForeignLibrary("libraylib.so"); // search in system paths. Implementation is platform-dependent
+   * Deno.loadForeignLibrary("./libraylib.so"); // load from current directory
+   * Deno.loadForeignLibrary("/usr/lib/libraylib.so"); // load from absolute directory
+   * ```
+   *
+   * Throws `Deno.errors.NotFound` if shared object not found or failed to load.
+   *
+   * Requires --allow-ffi.
+   */
+  export function loadForeignLibrary(path: string | null): ForeignLibrary;
+
   /**
    * Load a foreign function from memory.
    *
@@ -1339,7 +1336,7 @@ declare namespace Deno {
    */
   export function loadForeignFunction(
     addr: BigInt,
-    abi: ForeignABI,
+    abi: string,
     info: ForeignFunctionInfo
   ): ForeignFunction;
 }
