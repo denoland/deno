@@ -86,10 +86,10 @@ pub fn diff(orig_text: &str, edit_text: &str) -> Result<String, fmt::Error> {
   let mut text2 = edit_text.to_string();
 
   if !text1.ends_with('\n') {
-    write!(text1, "{}", '\n')?;
+    writeln!(text1)?;
   }
   if !text2.ends_with('\n') {
-    write!(text2, "{}", '\n')?;
+    writeln!(text2)?;
   }
 
   let mut orig_line: usize = 1;
@@ -148,7 +148,7 @@ pub fn diff(orig_text: &str, edit_text: &str) -> Result<String, fmt::Error> {
       }
     }
   }
-  return Ok(diff);
+  Ok(diff)
 }
 
 #[test]
