@@ -29,11 +29,15 @@ if (!(testAsync > 0)) {
 
 const textDecoder = new TextDecoder();
 
+const textEncoder = new TextEncoder();
+ 
 function runTestSync() {
+  var view = textEncoder.encode("test");
+  
   const response = Deno.core.dispatch(
     testSync,
-    new Uint8Array([116, 101, 115, 116]),
-    new Uint8Array([116, 101, 115, 116])
+    view,
+    view
   );
 
   console.log(`Plugin Sync Response: ${textDecoder.decode(response)}`);
@@ -44,10 +48,12 @@ Deno.core.setAsyncHandler(testAsync, (response) => {
 });
 
 function runTestAsync() {
+  var view = textEncoder.encode("test");
+  
   const response = Deno.core.dispatch(
     testAsync,
-    new Uint8Array([116, 101, 115, 116]),
-    new Uint8Array([116, 101, 115, 116])
+    view,
+    view
   );
 
   if (response != null || response != undefined) {
