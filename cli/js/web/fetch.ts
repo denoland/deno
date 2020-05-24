@@ -10,23 +10,7 @@ import { close } from "../ops/resources.ts";
 import { Buffer } from "../buffer.ts";
 import { fetch as opFetch, FetchResponse } from "../ops/fetch.ts";
 import { DomFileImpl } from "./dom_file.ts";
-
-function getHeaderValueParams(value: string): Map<string, string> {
-  const params = new Map();
-  // Forced to do so for some Map constructor param mismatch
-  value
-    .split(";")
-    .slice(1)
-    .map((s): string[] => s.trim().split("="))
-    .filter((arr): boolean => arr.length > 1)
-    .map(([k, v]): [string, string] => [k, v.replace(/^"([^"]*)"$/, "$1")])
-    .forEach(([k, v]): Map<string, string> => params.set(k, v));
-  return params;
-}
-
-function hasHeaderValueOf(s: string, value: string): boolean {
-  return new RegExp(`^${value}[\t\s]*;?`).test(s);
-}
+import { getHeaderValueParams, hasHeaderValueOf } from "./util.ts";
 
 class Body
   implements domTypes.Body, ReadableStream<Uint8Array>, io.Reader, io.Closer {

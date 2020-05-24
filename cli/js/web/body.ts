@@ -2,6 +2,7 @@ import * as blob from "./blob.ts";
 import * as encoding from "./text_encoding.ts";
 import * as domTypes from "./dom_types.d.ts";
 import { ReadableStreamImpl } from "./streams/readable_stream.ts";
+import { getHeaderValueParams, hasHeaderValueOf } from "./util.ts";
 
 // only namespace imports work for now, plucking out what we need
 const { TextEncoder, TextDecoder } = encoding;
@@ -88,23 +89,6 @@ function bufferFromStream(stream: ReadableStreamReader): Promise<ArrayBuffer> {
         });
     })();
   });
-}
-
-function getHeaderValueParams(value: string): Map<string, string> {
-  const params = new Map();
-  // Forced to do so for some Map constructor param mismatch
-  value
-    .split(";")
-    .slice(1)
-    .map((s): string[] => s.trim().split("="))
-    .filter((arr): boolean => arr.length > 1)
-    .map(([k, v]): [string, string] => [k, v.replace(/^"([^"]*)"$/, "$1")])
-    .forEach(([k, v]): Map<string, string> => params.set(k, v));
-  return params;
-}
-
-function hasHeaderValueOf(s: string, value: string): boolean {
-  return new RegExp(`^${value}[\t\s]*;?`).test(s);
 }
 
 export const BodyUsedError =
