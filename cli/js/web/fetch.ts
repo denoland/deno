@@ -305,7 +305,7 @@ export async function fetch(
     const responseBody = new ReadableStreamImpl({
       async pull(controller: ReadableStreamDefaultController): Promise<void> {
         try {
-          const b = new Uint8Array(16 * 32);
+          const b = new Uint8Array(1024 * 32);
           const result = await read(fetchResponse.bodyRid, b);
           if (result === null) {
             controller.close();
