@@ -9,7 +9,7 @@ use crate::op_error::OpError;
 use crate::permissions::Permissions;
 use crate::swc_util::analyze_dependencies_and_references;
 use crate::swc_util::TsReferenceKind;
-use crate::tsc::get_available_libs;
+use crate::tsc::AVAILABLE_LIBS;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
 use futures::stream::FuturesUnordered;
@@ -238,10 +238,8 @@ impl ModuleGraphLoader {
       imports.push(import_descriptor);
     }
 
-    let available_libs = get_available_libs();
-
     for ref_desc in ref_descs {
-      if available_libs.contains(&ref_desc.specifier) {
+      if AVAILABLE_LIBS.contains(&ref_desc.specifier.as_str()) {
         continue;
       }
 
@@ -465,10 +463,8 @@ impl ModuleGraphLoader {
         imports.push(import_descriptor);
       }
 
-      let available_libs = get_available_libs();
-
       for ref_desc in ref_descs {
-        if available_libs.contains(&ref_desc.specifier) {
+        if AVAILABLE_LIBS.contains(&ref_desc.specifier.as_str()) {
           continue;
         }
 
