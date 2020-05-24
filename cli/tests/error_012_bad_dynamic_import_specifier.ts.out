@@ -1,1 +1,1 @@
-[WILDCARD]error: Uncaught TypeError: relative import path "bad-module.ts" not prefixed with / or ./ or ../ Imported from "[WILDCARD]/error_012_bad_dynamic_import_specifier.ts"
+error: relative import path "bad-module.ts" not prefixed with / or ./ or ../ Imported from "[WILDCARD]/error_012_bad_dynamic_import_specifier.ts"

@@ -29,45 +29,63 @@ use std::sync::RwLock;
 
 #[derive(Clone, Debug)]
 pub struct SwcDiagnosticBuffer {
-  pub diagnostics: Vec<Diagnostic>,
+  pub diagnostics: Vec<String>,
 }
 
 impl Error for SwcDiagnosticBuffer {}
 
 impl fmt::Display for SwcDiagnosticBuffer {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    let msg = self
-      .diagnostics
-      .iter()
-      .map(|d| d.message())
-      .collect::<Vec<String>>()
-      .join(",");
+    let msg = self.diagnostics.join(",");
 
     f.pad(&msg)
   }
 }
 
+impl SwcDiagnosticBuffer {
+  pub fn from_swc_error(
+    error_buffer: SwcErrorBuffer,
+    parser: &AstParser,
+  ) -> Self {
+    let s = error_buffer.0.read().unwrap().clone();
+
+    let diagnostics = s
+      .iter()
+      .map(|d| {
+        let mut msg = d.message();
+
+        if let Some(span) = d.span.primary_span() {
+          let location = parser.get_span_location(span);
+          let filename = match &location.file.name {
+            FileName::Custom(n) => n,
+            _ => unreachable!(),
+          };
+          msg = format!(
+            "{} at {}:{}:{}",
+            msg, filename, location.line, location.col_display
+          );
+        }
+
+        msg
+      })
+      .collect::<Vec<String>>();
+
+    Self { diagnostics }
+  }
+}
+
 #[derive(Clone)]
-pub struct SwcErrorBuffer(Arc<RwLock<SwcDiagnosticBuffer>>);
+pub struct SwcErrorBuffer(Arc<RwLock<Vec<Diagnostic>>>);
 
 impl SwcErrorBuffer {
   pub fn default() -> Self {
-    Self(Arc::new(RwLock::new(SwcDiagnosticBuffer {
-      diagnostics: vec![],
-    })))
+    Self(Arc::new(RwLock::new(vec![])))
   }
 }
 
 impl Emitter for SwcErrorBuffer {
   fn emit(&mut self, db: &DiagnosticBuilder) {
-    self.0.write().unwrap().diagnostics.push((**db).clone());
-  }
-}
-
-impl From<SwcErrorBuffer> for SwcDiagnosticBuffer {
-  fn from(buf: SwcErrorBuffer) -> Self {
-    let s = buf.0.read().unwrap();
-    s.clone()
+    self.0.write().unwrap().push((**db).clone());
   }
 }
 
@@ -125,8 +143,11 @@ impl AstParser {
         handler: &self.handler,
       };
 
+      // TODO(bartlomieju): lexer should be configurable by the caller
       let mut ts_config = TsConfig::default();
       ts_config.dynamic_import = true;
+      ts_config.decorators = true;
+      ts_config.tsx = true;
       let syntax = Syntax::Typescript(ts_config);
 
       let lexer = Lexer::new(
@@ -143,8 +164,8 @@ impl AstParser {
         parser
           .parse_module()
           .map_err(move |mut err: DiagnosticBuilder| {
-            err.cancel();
-            SwcDiagnosticBuffer::from(buffered_err)
+            err.emit();
+            SwcDiagnosticBuffer::from_swc_error(buffered_err, self)
           });
 
       callback(parse_result)
@@ -307,6 +328,20 @@ impl Visit for NewDependencyVisitor {
     });
   }
 
+  fn visit_ts_import_type(
+    &mut self,
+    ts_import_type: &swc_ecma_ast::TsImportType,
+    _parent: &dyn Node,
+  ) {
+    // TODO(bartlomieju): possibly add separate DependencyKind
+    let src_str = ts_import_type.arg.value.to_string();
+    self.dependencies.push(DependencyDescriptor {
+      specifier: src_str,
+      kind: DependencyKind::Import,
+      span: ts_import_type.arg.span,
+    });
+  }
+
   fn visit_call_expr(
     &mut self,
     call_expr: &swc_ecma_ast::CallExpr,
@@ -397,6 +432,7 @@ pub struct TsReferenceDescriptor {
 }
 
 pub fn analyze_dependencies_and_references(
+  file_name: &str,
   source_code: &str,
   analyze_dynamic_imports: bool,
 ) -> Result<
@@ -404,7 +440,7 @@ pub fn analyze_dependencies_and_references(
   SwcDiagnosticBuffer,
 > {
   let parser = AstParser::new();
-  parser.parse_module("root.ts", source_code, |parse_result| {
+  parser.parse_module(file_name, source_code, |parse_result| {
     let module = parse_result?;
     let mut collector = NewDependencyVisitor {
       dependencies: vec![],
@@ -512,7 +548,8 @@ console.log(qat.qat);
 "#;
 
   let (imports, references) =
-    analyze_dependencies_and_references(source, true).expect("Failed to parse");
+    analyze_dependencies_and_references("some/file.ts", source, true)
+      .expect("Failed to parse");
 
   assert_eq!(
     imports,
