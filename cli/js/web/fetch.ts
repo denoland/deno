@@ -304,14 +304,24 @@ export async function fetch(
 
     const responseBody = new ReadableStreamImpl({
       async pull(controller: ReadableStreamDefaultController): Promise<void> {
-        const b = new Uint8Array(16 * 32);
-        const result = await read(fetchResponse.bodyRid, b);
-        if (result === null) {
-          close(fetchResponse.bodyRid);
-          return controller.close();
-        }
+        try {
+          const b = new Uint8Array(16 * 32);
+          const result = await read(fetchResponse.bodyRid, b);
+          if (result === null) {
+            controller.close();
+            return close(fetchResponse.bodyRid);
+          }
 
-        controller.enqueue(b.subarray(0, result));
+          controller.enqueue(b.subarray(0, result));
+        } catch (e) {
+          controller.error(e);
+          controller.close();
+          close(fetchResponse.bodyRid);
+        }
+      },
+      cancel() {
+        // When reader.cancel() is called
+        close(fetchResponse.bodyRid);
       },
     });
 
