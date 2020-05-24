@@ -367,8 +367,6 @@ function bufferServer(addr: string): Deno.Buffer {
 
 unitTest(
   {
-    // FIXME(bartlomieju)
-    ignore: true,
     perms: { net: true },
   },
   async function fetchRequest(): Promise<void> {
@@ -381,6 +379,7 @@ unitTest(
         ["Foo", "Bar"],
       ],
     });
+    await response.arrayBuffer();
     assertEquals(response.status, 404);
     assertEquals(response.headers.get("Content-Length"), "2");
 
@@ -389,6 +388,9 @@ unitTest(
       "POST /blah HTTP/1.1\r\n",
       "hello: World\r\n",
       "foo: Bar\r\n",
+      "accept: */*\r\n",
+      `user-agent: Deno/${Deno.version.deno}\r\n`,
+      "accept-encoding: gzip, br\r\n",
       `host: ${addr}\r\n\r\n`,
     ].join("");
     assertEquals(actual, expected);
@@ -397,8 +399,6 @@ unitTest(
 
 unitTest(
   {
-    // FIXME(bartlomieju)
-    ignore: true,
     perms: { net: true },
   },
   async function fetchPostBodyString(): Promise<void> {
@@ -413,6 +413,7 @@ unitTest(
       ],
       body,
     });
+    await response.arrayBuffer();
     assertEquals(response.status, 404);
     assertEquals(response.headers.get("Content-Length"), "2");
 
@@ -421,6 +422,10 @@ unitTest(
       "POST /blah HTTP/1.1\r\n",
       "hello: World\r\n",
       "foo: Bar\r\n",
+      "content-type: text/plain;charset=UTF-8\r\n",
+      "accept: */*\r\n",
+      `user-agent: Deno/${Deno.version.deno}\r\n`,
+      "accept-encoding: gzip, br\r\n",
       `host: ${addr}\r\n`,
       `content-length: ${body.length}\r\n\r\n`,
       body,
@@ -431,8 +436,6 @@ unitTest(
 
 unitTest(
   {
-    // FIXME(bartlomieju)
-    ignore: true,
     perms: { net: true },
   },
   async function fetchPostBodyTypedArray(): Promise<void> {
@@ -448,6 +451,7 @@ unitTest(
       ],
       body,
     });
+    await response.arrayBuffer();
     assertEquals(response.status, 404);
     assertEquals(response.headers.get("Content-Length"), "2");
 
@@ -456,6 +460,9 @@ unitTest(
       "POST /blah HTTP/1.1\r\n",
       "hello: World\r\n",
       "foo: Bar\r\n",
+      "accept: */*\r\n",
+      `user-agent: Deno/${Deno.version.deno}\r\n`,
+      "accept-encoding: gzip, br\r\n",
       `host: ${addr}\r\n`,
       `content-length: ${body.byteLength}\r\n\r\n`,
       bodyStr,
