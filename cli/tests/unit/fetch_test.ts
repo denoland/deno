@@ -139,7 +139,7 @@ unitTest({ perms: { net: true } }, async function fetchBodyReader(): Promise<
 unitTest(
   { perms: { net: true } },
   async function fetchBodyReaderBigBody(): Promise<void> {
-    const data = "a".repeat(1 << 10);
+    const data = "a".repeat(10 << 10); // 10mb
     const response = await fetch(
       "http://localhost:4545/cli/tests/echo_server",
       {
