@@ -367,7 +367,6 @@ function bufferServer(addr: string): Deno.Buffer {
 
 unitTest(
   {
-    ignore: Deno.build.os === "windows",
     perms: { net: true },
   },
   async function fetchRequest(): Promise<void> {
@@ -400,7 +399,6 @@ unitTest(
 
 unitTest(
   {
-    ignore: Deno.build.os === "windows",
     perms: { net: true },
   },
   async function fetchPostBodyString(): Promise<void> {
@@ -438,7 +436,6 @@ unitTest(
 
 unitTest(
   {
-    ignore: Deno.build.os === "windows",
     perms: { net: true },
   },
   async function fetchPostBodyTypedArray(): Promise<void> {
