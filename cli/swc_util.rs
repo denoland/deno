@@ -147,6 +147,7 @@ impl AstParser {
       let mut ts_config = TsConfig::default();
       ts_config.dynamic_import = true;
       ts_config.decorators = true;
+      ts_config.tsx = true;
       let syntax = Syntax::Typescript(ts_config);
 
       let lexer = Lexer::new(

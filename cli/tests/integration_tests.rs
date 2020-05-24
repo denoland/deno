@@ -1723,6 +1723,11 @@ itest!(disallow_http_from_https_ts {
   exit_code: 1,
 });
 
+itest!(tsx_imports {
+  args: "run --reload tsx_imports.ts",
+  output: "tsx_imports.ts.out",
+});
+
 itest!(fix_js_import_js {
   args: "run --quiet --reload fix_js_import_js.ts",
   output: "fix_js_import_js.ts.out",
