@@ -179,6 +179,7 @@ export class RotatingFileHandler extends FileHandler {
         }
       }
     }
+    this.#currentFileSize = (await stat(this._filename)).size;
   }
 
   handle(logRecord: LogRecord): void {
