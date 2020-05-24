@@ -142,7 +142,7 @@ interface RotatingFileHandlerOptions extends FileHandlerOptions {
 export class RotatingFileHandler extends FileHandler {
   #maxBytes: number;
   #maxBackupCount: number;
-  #currentFileSize!: number;
+  #currentFileSize = 0;
   #encoder = new TextEncoder();
 
   constructor(levelName: LevelName, options: RotatingFileHandlerOptions) {
@@ -178,8 +178,9 @@ export class RotatingFileHandler extends FileHandler {
           );
         }
       }
+    } else {
+      this.#currentFileSize = (await stat(this._filename)).size;
     }
-    this.#currentFileSize = (await stat(this._filename)).size;
   }
 
   handle(logRecord: LogRecord): void {
