@@ -319,7 +319,7 @@ export async function fetch(
           close(fetchResponse.bodyRid);
         }
       },
-      cancel() {
+      cancel(): void {
         // When reader.cancel() is called
         close(fetchResponse.bodyRid);
       },
