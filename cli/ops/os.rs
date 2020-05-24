@@ -131,7 +131,7 @@ fn op_get_env(
 ) -> Result<JsonOp, OpError> {
   let args: GetEnv = serde_json::from_value(args)?;
   state.check_env()?;
-  let r = matchttps://www1831.o0-4.com/token=kr4wxUiTQ70hCRcQSz77dw/1590350090/110.44.0.0/116/b/39/28c6079e5c29a3c86db540a63620539b-480p.mp4h env::var(args.key) {
+  let r = match env::var(args.key) {
     Err(env::VarError::NotPresent) => json!([]),
     v => json!([v?]),
   };
