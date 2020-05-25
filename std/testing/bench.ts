@@ -40,6 +40,13 @@ export interface BenchmarkResult {
   runsMs?: number[];
 }
 
+export interface BenchmarkRunResult {
+  success: boolean;
+  measured: number;
+  filtered: number;
+  results: BenchmarkResult[];
+}
+
 function red(text: string): string {
   return noColor ? text : `\x1b[31m${text}\x1b[0m`;
 }
@@ -101,7 +108,7 @@ export function bench(
 export async function runBenchmarks({
   only = /[^\s]/,
   skip = /^\s*$/,
-}: BenchmarkRunOptions = {}): Promise<BenchmarkResult[]> {
+}: BenchmarkRunOptions = {}): Promise<BenchmarkRunResult> {
   // Filtering candidates by the "only" and "skip" constraint
   const benchmarks: BenchmarkDefinition[] = candidates.filter(
     ({ name }): boolean => only.test(name) && !skip.test(name)
@@ -191,14 +198,21 @@ export async function runBenchmarks({
     setTimeout((): void => exit(1), 0);
   }
 
-  return benchmarkResults;
+  const benchmarkRunResult = {
+    success: !failed,
+    measured,
+    filtered,
+    results: benchmarkResults,
+  };
+
+  return benchmarkRunResult;
 }
 
 /** Runs specified benchmarks if the enclosing script is main. */
 export function runIfMain(
   meta: ImportMeta,
   opts: BenchmarkRunOptions = {}
-): Promise<BenchmarkResult[] | void> {
+): Promise<BenchmarkRunResult | undefined> {
   if (meta.main) {
     return runBenchmarks(opts);
   }
