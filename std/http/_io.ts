@@ -4,6 +4,7 @@ import { assert } from "../testing/asserts.ts";
 import { encoder } from "../encoding/utf8.ts";
 import { ServerRequest, Response } from "./server.ts";
 import { STATUS_TEXT } from "./http_status.ts";
+import { Method } from "./http_method.ts";
 
 export function emptyReader(): Deno.Reader {
   return {
@@ -331,7 +332,7 @@ export async function readRequest(
   const req = new ServerRequest();
   req.conn = conn;
   req.r = bufr;
-  [req.method, req.url, req.proto] = firstLine.split(" ", 3);
+  [req.method, req.url, req.proto] = <[Method, string, string]>firstLine.split(" ", 3);
   [req.protoMinor, req.protoMajor] = parseHTTPVersion(req.proto);
   req.headers = headers;
   fixLength(req);
