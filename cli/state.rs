@@ -5,6 +5,7 @@ use crate::global_timer::GlobalTimer;
 use crate::import_map::ImportMap;
 use crate::inspector::DenoInspector;
 use crate::metrics::Metrics;
+use crate::module_graph::ModuleGraphLoader;
 use crate::op_error::OpError;
 use crate::ops::JsonOp;
 use crate::ops::MinimalOp;
@@ -357,22 +358,28 @@ impl ModuleLoader for State {
   fn prepare_load(
     &self,
     _load_id: ModuleLoadId,
-    _module_specifier: &ModuleSpecifier,
+    module_specifier: &ModuleSpecifier,
     _maybe_referrer: Option<String>,
-    _is_dyn_import: bool,
+    is_dyn_import: bool,
   ) -> Pin<Box<dyn Future<Output = Result<(), ErrBox>>>> {
-    // TODO(bartlomieju):
-    // 1. recursively:
-    //    a) resolve specifier
-    //    b) check permission if dynamic import
-    //    c) fetch/download source code
-    //    d) parse the source code and extract all import/exports (dependencies)
-    //    e) add discovered deps and loop algorithm until no new dependencies
-    //        are discovered
-    // 2. run through appropriate compiler giving it access only to
-    //     discovered files
+    let module_specifier = module_specifier.clone();
+    let state = self.borrow();
+    let permissions = if state.is_main && !is_dyn_import {
+      Permissions::allow_all()
+    } else {
+      state.permissions.clone()
+    };
 
-    async { Ok(()) }.boxed_local()
+    let mut module_graph_loader = ModuleGraphLoader::new(
+      state.global_state.file_fetcher.clone(),
+      state.import_map.clone(),
+      permissions,
+      is_dyn_import,
+      false,
+    );
+
+    async move { module_graph_loader.add_to_graph(&module_specifier).await }
+      .boxed_local()
   }
 }
 

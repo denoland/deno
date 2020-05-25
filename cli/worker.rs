@@ -340,7 +340,6 @@ mod tests {
     });
 
     let state = state_.borrow();
-    assert_eq!(state.metrics.resolve_count, 1);
     // Check that we didn't start the compiler.
     assert_eq!(state.global_state.compiler_starts.load(Ordering::SeqCst), 0);
   }

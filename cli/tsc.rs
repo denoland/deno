@@ -155,6 +155,7 @@ impl Future for CompilerWorker {
   }
 }
 
+// TODO(bartlomieju): use JSONC parser from dprint instead of Regex
 lazy_static! {
   static ref CHECK_JS_RE: Regex =
     Regex::new(r#""checkJs"\s*?:\s*?true"#).unwrap();

@@ -1406,7 +1406,7 @@ itest!(error_014_catch_dynamic_import_error {
 });
 
 itest!(error_015_dynamic_import_permissions {
-  args: "run --reload error_015_dynamic_import_permissions.js",
+  args: "run --reload --quiet error_015_dynamic_import_permissions.js",
   output: "error_015_dynamic_import_permissions.out",
   exit_code: 1,
   http_server: true,
