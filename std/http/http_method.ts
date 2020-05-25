@@ -1,3 +1,6 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
+/** HTTP methods */
 export enum Method {
   GET = "GET",
   HEAD = "HEAD",
