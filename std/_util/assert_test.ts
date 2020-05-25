@@ -1,5 +1,6 @@
-import { assert, AssertionError } from "../testing/asserts.ts";
-import { assertThrows } from "https://deno.land/std@v0.50.0/testing/asserts.ts";
+import { assert, DenoStdInternalError } from "./assert.ts";
+import { assertThrows } from "../testing/asserts.ts";
+
 const { test } = Deno;
 
 test({
@@ -14,7 +15,7 @@ test({
   fn(): void {
     assertThrows(() => {
       assert(false);
-    }, AssertionError);
+    }, DenoStdInternalError);
   },
 });
 test({
@@ -24,7 +25,7 @@ test({
       () => {
         assert(false, "Oops! Should be true");
       },
-      AssertionError,
+      DenoStdInternalError,
       "Oops! Should be true"
     );
   },
