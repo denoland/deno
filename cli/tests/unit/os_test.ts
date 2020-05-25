@@ -20,6 +20,13 @@ unitTest({ perms: { env: true } }, function envNotFound(): void {
   assertEquals(r, undefined);
 });
 
+unitTest({ perms: { env: true } }, function deleteEnv(): void {
+  Deno.env.set("TEST_VAR", "A");
+  assertEquals(Deno.env.get("TEST_VAR"), "A");
+  assertEquals(Deno.env.delete("TEST_VAR"), undefined);
+  assertEquals(Deno.env.get("TEST_VAR"), undefined);
+});
+
 unitTest(function envPermissionDenied1(): void {
   let err;
   try {

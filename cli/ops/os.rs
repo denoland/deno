@@ -15,6 +15,7 @@ pub fn init(i: &mut CoreIsolate, s: &State) {
   i.register_op("op_exec_path", s.stateful_json_op(op_exec_path));
   i.register_op("op_set_env", s.stateful_json_op(op_set_env));
   i.register_op("op_get_env", s.stateful_json_op(op_get_env));
+  i.register_op("op_delete_env", s.stateful_json_op(op_delete_env));
   i.register_op("op_get_dir", s.stateful_json_op(op_get_dir));
   i.register_op("op_hostname", s.stateful_json_op(op_hostname));
   i.register_op("op_loadavg", s.stateful_json_op(op_loadavg));
@@ -135,6 +136,22 @@ fn op_get_env(
     v => json!([v?]),
   };
   Ok(JsonOp::Sync(r))
+}
+
+#[derive(Deserialize)]
+struct DeleteEnv {
+  key: String,
+}
+
+fn op_delete_env(
+  state: &State,
+  args: Value,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<JsonOp, OpError> {
+  let args: DeleteEnv = serde_json::from_value(args)?;
+  state.check_env()?;
+  env::remove_var(args.key);
+  Ok(JsonOp::Sync(json!({})))
 }
 
 #[derive(Deserialize)]
