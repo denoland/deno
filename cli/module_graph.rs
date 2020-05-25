@@ -138,8 +138,9 @@ impl ModuleGraphLoader {
   pub async fn add_to_graph(
     &mut self,
     specifier: &ModuleSpecifier,
+    maybe_referrer: Option<ModuleSpecifier>,
   ) -> Result<(), ErrBox> {
-    self.download_module(specifier.clone(), None)?;
+    self.download_module(specifier.clone(), maybe_referrer)?;
 
     loop {
       let (specifier, source_file) =
@@ -533,7 +534,7 @@ mod tests {
       false,
       false,
     );
-    graph_loader.add_to_graph(&module_specifier).await?;
+    graph_loader.add_to_graph(&module_specifier, None).await?;
     Ok(graph_loader.get_graph())
   }
 

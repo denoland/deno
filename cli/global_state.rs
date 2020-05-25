@@ -94,7 +94,7 @@ impl GlobalState {
   pub async fn prepare_module_load(
     &self,
     module_specifier: ModuleSpecifier,
-    _maybe_referrer: Option<ModuleSpecifier>,
+    maybe_referrer: Option<ModuleSpecifier>,
     target_lib: TargetLib,
     permissions: Permissions,
     is_dyn_import: bool,
@@ -115,7 +115,9 @@ impl GlobalState {
       is_dyn_import,
       false,
     );
-    module_graph_loader.add_to_graph(&module_specifier).await?;
+    module_graph_loader
+      .add_to_graph(&module_specifier, maybe_referrer)
+      .await?;
     let module_graph = module_graph_loader.get_graph();
 
     let out = self

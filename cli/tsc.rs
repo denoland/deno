@@ -459,7 +459,9 @@ impl TsCompiler {
       true,
     );
 
-    module_graph_loader.add_to_graph(&module_specifier).await?;
+    module_graph_loader
+      .add_to_graph(&module_specifier, None)
+      .await?;
     let module_graph = module_graph_loader.get_graph();
     let module_graph_json =
       serde_json::to_value(module_graph).expect("Failed to serialize data");
@@ -959,7 +961,9 @@ pub async fn bundle(
     false,
     true,
   );
-  module_graph_loader.add_to_graph(&module_specifier).await?;
+  module_graph_loader
+    .add_to_graph(&module_specifier, None)
+    .await?;
   let module_graph = module_graph_loader.get_graph();
   let module_graph_json =
     serde_json::to_value(module_graph).expect("Failed to serialize data");
@@ -1037,7 +1041,9 @@ pub async fn runtime_compile<S: BuildHasher>(
     let module_specifier =
       ModuleSpecifier::resolve_import(root_name, "<unknown>")?;
     root_names.push(module_specifier.to_string());
-    module_graph_loader.add_to_graph(&module_specifier).await?;
+    module_graph_loader
+      .add_to_graph(&module_specifier, None)
+      .await?;
   }
 
   // download all additional files from TSconfig and add them to root_names
@@ -1052,7 +1058,9 @@ pub async fn runtime_compile<S: BuildHasher>(
           .expect("type is not a string")
           .to_string();
         let type_specifier = ModuleSpecifier::resolve_url_or_path(&type_str)?;
-        module_graph_loader.add_to_graph(&type_specifier).await?;
+        module_graph_loader
+          .add_to_graph(&type_specifier, None)
+          .await?;
         root_names.push(type_specifier.to_string())
       }
     }
