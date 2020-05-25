@@ -325,4 +325,5 @@ of the module:
 ```
 
 Maintain browser compatibility for such a module by either not using the global
-`Deno` namespace or feature-testing for it.
+`Deno` namespace or feature-testing for it. Make sure any new dependencies are
+also browser compatible.
