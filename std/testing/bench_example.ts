@@ -26,4 +26,6 @@ bench(function throwing(b): void {
 });
 
 // Bench control
-runBenchmarks({ skip: /throw/ });
+if (import.meta.main) {
+  runBenchmarks({ skip: /throw/ });
+}
