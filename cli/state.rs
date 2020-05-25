@@ -328,6 +328,7 @@ impl ModuleLoader for State {
     };
     drop(state);
 
+    // TODO(bartlomieju): `prepare_module_load` should take `load_id` param
     async move {
       global_state
         .prepare_module_load(

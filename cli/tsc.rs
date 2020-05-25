@@ -15,7 +15,6 @@ use crate::ops;
 use crate::permissions::Permissions;
 use crate::source_maps::SourceMapGetter;
 use crate::startup_data;
-use crate::state::exit_unstable;
 use crate::state::State;
 use crate::version;
 use crate::web_worker::WebWorker;
@@ -49,7 +48,6 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::task::Poll;
-use std::time::Instant;
 use url::Url;
 
 pub const AVAILABLE_LIBS: &[&str] = &[
@@ -405,147 +403,6 @@ impl TsCompiler {
     c.insert(url.clone());
   }
 
-  /// Check if given module URL has already been compiled and can be fetched
-  /// directly from disk.
-  fn has_compiled(&self, url: &Url) -> bool {
-    let c = self.compiled.lock().unwrap();
-    c.contains(url)
-  }
-
-  /// Asynchronously compile module and all it's dependencies.
-  ///
-  /// This method compiled every module at most once.
-  ///
-  /// If `--reload` flag was provided then compiler will not on-disk cache and
-  /// force recompilation.
-  ///
-  /// If compilation is required then new V8 worker is spawned with fresh TS
-  /// compiler.
-  pub async fn compile(
-    &self,
-    global_state: GlobalState,
-    source_file: &SourceFile,
-    target: TargetLib,
-    permissions: Permissions,
-    is_dyn_import: bool,
-  ) -> Result<CompiledModule, ErrBox> {
-    if self.has_compiled(&source_file.url) {
-      return self.get_compiled_module(&source_file.url);
-    }
-
-    if self.use_disk_cache {
-      // Try to load cached version:
-      // 1. check if there's 'meta' file
-      if let Some(metadata) = self.get_metadata(&source_file.url) {
-        // 2. compare version hashes
-        // TODO: it would probably be good idea to make it method implemented on SourceFile
-        let version_hash_to_validate = source_code_version_hash(
-          &source_file.source_code,
-          version::DENO,
-          &self.config.hash,
-        );
-
-        if metadata.version_hash == version_hash_to_validate {
-          debug!("load_cache metadata version hash match");
-          if let Ok(compiled_module) =
-            self.get_compiled_module(&source_file.url)
-          {
-            self.mark_compiled(&source_file.url);
-            return Ok(compiled_module);
-          }
-        }
-      }
-    }
-    let source_file_ = source_file.clone();
-    let module_url = source_file.url.clone();
-    let module_specifier = ModuleSpecifier::from(source_file.url.clone());
-    let import_map: Option<ImportMap> =
-      match global_state.flags.import_map_path.as_ref() {
-        None => None,
-        Some(file_path) => {
-          if !global_state.flags.unstable {
-            exit_unstable("--importmap")
-          }
-          Some(ImportMap::load(file_path)?)
-        }
-      };
-    let mut module_graph_loader = ModuleGraphLoader::new(
-      global_state.file_fetcher.clone(),
-      import_map,
-      permissions.clone(),
-      is_dyn_import,
-      true,
-    );
-
-    module_graph_loader
-      .add_to_graph(&module_specifier, None)
-      .await?;
-    let module_graph = module_graph_loader.get_graph();
-    let module_graph_json =
-      serde_json::to_value(module_graph).expect("Failed to serialize data");
-    let target = match target {
-      TargetLib::Main => "main",
-      TargetLib::Worker => "worker",
-    };
-    let root_names = vec![module_url.to_string()];
-    let bundle = false;
-    let unstable = global_state.flags.unstable;
-    let compiler_config = self.config.clone();
-    let cwd = std::env::current_dir().unwrap();
-    let j = match (compiler_config.path, compiler_config.content) {
-      (Some(config_path), Some(config_data)) => json!({
-        "type": msg::CompilerRequestType::Compile as i32,
-        "target": target,
-        "rootNames": root_names,
-        "bundle": bundle,
-        "unstable": unstable,
-        "configPath": config_path,
-        "config": str::from_utf8(&config_data).unwrap(),
-        "cwd": cwd,
-        "sourceFileMap": module_graph_json,
-      }),
-      _ => json!({
-        "type": msg::CompilerRequestType::Compile as i32,
-        "target": target,
-        "rootNames": root_names,
-        "bundle": bundle,
-        "unstable": unstable,
-        "cwd": cwd,
-        "sourceFileMap": module_graph_json,
-      }),
-    };
-
-    let req_msg = j.to_string().into_boxed_str().into_boxed_bytes();
-
-    let ts_compiler = self.clone();
-
-    info!(
-      "{} {}",
-      colors::green("Compile".to_string()),
-      module_url.to_string()
-    );
-
-    let start = Instant::now();
-
-    let msg =
-      execute_in_same_thread(global_state.clone(), permissions, req_msg)
-        .await?;
-
-    let end = Instant::now();
-    debug!("time spent in compiler thread {:#?}", end - start);
-
-    let json_str = std::str::from_utf8(&msg).unwrap();
-
-    let compile_response: CompileResponse = serde_json::from_str(json_str)?;
-
-    if !compile_response.diagnostics.items.is_empty() {
-      return Err(ErrBox::from(compile_response.diagnostics));
-    }
-
-    self.cache_emitted_files(compile_response.emit_map)?;
-    ts_compiler.get_compiled_module(&source_file_.url)
-  }
-
   fn has_compiled_source(
     &self,
     file_fetcher: &SourceFileFetcher,
@@ -590,44 +447,27 @@ impl TsCompiler {
     permissions: Permissions,
     module_graph: HashMap<String, ModuleGraphFile>,
   ) -> Result<(), ErrBox> {
-    let mut has_cached_version = true;
+    let mut has_cached_version = false;
 
     if self.use_disk_cache {
       if let Some(metadata) = self.get_graph_metadata(&source_file.url) {
+        has_cached_version = true;
+
         let version_hash = crate::checksum::gen(vec![
           version::DENO.as_bytes(),
           &self.config.hash,
         ]);
 
         has_cached_version &= metadata.version_hash == version_hash;
+        has_cached_version &= self
+          .has_compiled_source(&global_state.file_fetcher, &source_file.url);
 
         for dep in metadata.deps {
           let url = Url::parse(&dep).expect("Dep is not a valid url");
-          let a = self.has_compiled_source(&global_state.file_fetcher, &url);
-          has_cached_version &= a;
-        }
-
-        // Try to load cached version:
-        // 1. check if there's 'meta' file
-        if let Some(metadata) = self.get_metadata(&source_file.url) {
-          // 2. compare version hashes
-          // TODO: it would probably be good idea to make it method implemented on SourceFile
-          let version_hash_to_validate = source_code_version_hash(
-            &source_file.source_code,
-            version::DENO,
-            &self.config.hash,
-          );
-
           has_cached_version &=
-            metadata.version_hash == version_hash_to_validate;
-        } else {
-          has_cached_version = false;
+            self.has_compiled_source(&global_state.file_fetcher, &url);
         }
-      } else {
-        has_cached_version = false;
       }
-    } else {
-      has_cached_version = false;
     }
 
     if has_cached_version {
@@ -672,20 +512,16 @@ impl TsCompiler {
 
     let req_msg = j.to_string().into_boxed_str().into_boxed_bytes();
 
+    // TODO(bartlomieju): lift this call up - TSC shouldn't print anything
     info!(
       "{} {}",
       colors::green("Compile".to_string()),
       module_url.to_string()
     );
 
-    let start = Instant::now();
-
     let msg =
       execute_in_same_thread(global_state.clone(), permissions, req_msg)
         .await?;
-
-    let end = Instant::now();
-    debug!("time spent in compiler thread {:#?}", end - start);
 
     let json_str = std::str::from_utf8(&msg).unwrap();
 
@@ -1280,18 +1116,36 @@ mod tests {
     };
     let mock_state =
       GlobalState::mock(vec![String::from("deno"), String::from("hello.ts")]);
+
+    let mut module_graph_loader = ModuleGraphLoader::new(
+      mock_state.file_fetcher.clone(),
+      None,
+      Permissions::allow_all(),
+      false,
+      false,
+    );
+    module_graph_loader
+      .add_to_graph(&specifier, None)
+      .await
+      .expect("Failed to create graph");
+    let module_graph = module_graph_loader.get_graph();
+
     let result = mock_state
       .ts_compiler
-      .compile(
+      .compile_module_graph(
         mock_state.clone(),
         &out,
         TargetLib::Main,
         Permissions::allow_all(),
-        false,
+        module_graph,
       )
       .await;
     assert!(result.is_ok());
-    let source_code = result.unwrap().code;
+    let compiled_file = mock_state
+      .ts_compiler
+      .get_compiled_module(&out.url)
+      .unwrap();
+    let source_code = compiled_file.code;
     assert!(source_code
       .as_bytes()
       .starts_with(b"\"use strict\";\nconsole.log(\"Hello World\");"));
