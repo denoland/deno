@@ -167,7 +167,7 @@ lazy_static! {
 
 /// Create a new worker with snapshot of TS compiler and setup compiler's
 /// runtime.
-fn create_compiler_worker(
+async fn create_compiler_worker(
   global_state: GlobalState,
   permissions: Permissions,
 ) -> CompilerWorker {
@@ -177,6 +177,7 @@ fn create_compiler_worker(
     ModuleSpecifier::resolve_url_or_path("./__$deno$ts_compiler.ts").unwrap();
   let worker_state =
     State::new(global_state.clone(), Some(permissions), entry_point, true)
+      .await
       .expect("Unable to create worker state");
 
   // TODO(bartlomieju): this metric is never used anywhere
@@ -451,7 +452,7 @@ impl TsCompiler {
           if !global_state.flags.unstable {
             exit_unstable("--importmap")
           }
-          Some(ImportMap::load(file_path)?)
+          Some(ImportMap::load(file_path, &global_state).await?)
         }
       };
     let mut module_graph_loader = ModuleGraphLoader::new(
@@ -820,7 +821,8 @@ async fn execute_in_same_thread(
   permissions: Permissions,
   req: Buf,
 ) -> Result<Buf, ErrBox> {
-  let mut worker = create_compiler_worker(global_state.clone(), permissions);
+  let mut worker =
+    create_compiler_worker(global_state.clone(), permissions).await;
   let handle = worker.thread_safe_handle();
   handle.post_message(req)?;
 

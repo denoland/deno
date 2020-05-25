@@ -375,7 +375,7 @@ impl ModuleLoader for State {
 
 impl State {
   /// If `shared_permission` is None then permissions from globa state are used.
-  pub fn new(
+  pub async fn new(
     global_state: GlobalState,
     shared_permissions: Option<Permissions>,
     main_module: ModuleSpecifier,
@@ -388,7 +388,7 @@ impl State {
           if !global_state.flags.unstable {
             exit_unstable("--importmap")
           }
-          Some(ImportMap::load(file_path)?)
+          Some(ImportMap::load(file_path, &global_state).await?)
         }
       };
 
@@ -525,12 +525,12 @@ impl State {
   pub fn mock(main_module: &str) -> State {
     let module_specifier = ModuleSpecifier::resolve_url_or_path(main_module)
       .expect("Invalid entry module");
-    State::new(
+    futures::executor::block_on(State::new(
       GlobalState::mock(vec!["deno".to_string()]),
       None,
       module_specifier,
       false,
-    )
+    ))
     .unwrap()
   }
 }

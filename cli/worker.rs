@@ -305,8 +305,13 @@ mod tests {
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let global_state = GlobalState::new(flags::Flags::default()).unwrap();
-    let state =
-      State::new(global_state, None, module_specifier.clone(), false).unwrap();
+    let state = futures::executor::block_on(State::new(
+      global_state,
+      None,
+      module_specifier.clone(),
+      false,
+    ))
+    .unwrap();
     let state_ = state.clone();
     tokio_util::run_basic(async move {
       let mut worker =
@@ -334,8 +339,13 @@ mod tests {
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let global_state = GlobalState::new(flags::Flags::default()).unwrap();
-    let state =
-      State::new(global_state, None, module_specifier.clone(), false).unwrap();
+    let state = futures::executor::block_on(State::new(
+      global_state,
+      None,
+      module_specifier.clone(),
+      false,
+    ))
+    .unwrap();
     let state_ = state.clone();
     tokio_util::run_basic(async move {
       let mut worker =
@@ -374,6 +384,7 @@ mod tests {
     let global_state = GlobalState::new(flags).unwrap();
     let state =
       State::new(global_state.clone(), None, module_specifier.clone(), false)
+        .await
         .unwrap();
     let mut worker = MainWorker::new(
       "TEST".to_string(),

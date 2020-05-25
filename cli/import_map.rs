@@ -1,3 +1,4 @@
+use crate::global_state::GlobalState;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
 use indexmap::IndexMap;
@@ -46,26 +47,46 @@ pub struct ImportMap {
 }
 
 impl ImportMap {
-  pub fn load(file_path: &str) -> Result<Self, ErrBox> {
-    let file_url = ModuleSpecifier::resolve_url_or_path(file_path)?.to_string();
-    let resolved_path = std::env::current_dir().unwrap().join(file_path);
-    debug!(
-      "Attempt to load import map: {}",
-      resolved_path.to_str().unwrap()
-    );
+  pub async fn load(
+    file_path: &str,
+    state: &GlobalState,
+  ) -> Result<Self, ErrBox> {
+    let specifier = ModuleSpecifier::resolve_url_or_path(file_path)?;
+    let file_url = specifier.to_string();
 
-    // Load the contents of import map
-    let json_string = fs::read_to_string(&resolved_path).map_err(|err| {
-      io::Error::new(
-        io::ErrorKind::InvalidInput,
-        format!(
-          "Error retrieving import map file at \"{}\": {}",
-          resolved_path.to_str().unwrap(),
-          err.to_string()
-        )
-        .as_str(),
-      )
-    })?;
+    // the json_string can from a url or a file
+    let json_string =
+      if SUPPORTED_FETCH_SCHEMES[..2].contains(&specifier.as_url().scheme()) {
+        // for url: only support http / https schema
+        debug!(
+          "Attempt to load import map from url: {}",
+          &specifier.as_url().as_str()
+        );
+        let map_file = state
+          .file_fetcher
+          .fetch_source_file(&specifier, None, state.permissions.clone())
+          .await?;
+        String::from_utf8(map_file.source_code)?
+      } else {
+        let resolved_path = std::env::current_dir().unwrap().join(file_path);
+        debug!(
+          "Attempt to load import map: {}",
+          resolved_path.to_str().unwrap()
+        );
+
+        // Load the contents of import map
+        fs::read_to_string(&resolved_path).map_err(|err| {
+          io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!(
+              "Error retrieving import map file at \"{}\": {}",
+              resolved_path.to_str().unwrap(),
+              err.to_string()
+            )
+            .as_str(),
+          )
+        })?
+      };
     // The URL of the import map is the base URL for its values.
     ImportMap::from_json(&file_url, &json_string).map_err(ErrBox::from)
   }
@@ -475,7 +496,11 @@ mod tests {
   #[test]
   fn load_nonexistent() {
     let file_path = "nonexistent_import_map.json";
-    assert!(ImportMap::load(file_path).is_err());
+    assert!(futures::executor::block_on(ImportMap::load(
+      file_path,
+      &GlobalState::new(crate::flags::Flags::default()).unwrap()
+    ))
+    .is_err());
   }
 
   #[test]
