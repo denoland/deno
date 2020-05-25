@@ -1,7 +1,6 @@
 const { test } = Deno;
 import { bench, runBenchmarks } from "./bench.ts";
-
-import "./bench_example.ts";
+import { assertEquals, assert } from "./asserts.ts";
 
 test({
   name: "benching",
@@ -57,6 +56,23 @@ test({
       // Throws bc the timer's stop method is never called
     });
 
-    await runBenchmarks({ skip: /throw/ });
+    const benchResult = await runBenchmarks({ skip: /throw/ });
+
+    assertEquals(benchResult.success, true);
+    assertEquals(benchResult.measured, 5);
+    assertEquals(benchResult.filtered, 1);
+    assertEquals(benchResult.results.length, 5);
+
+    const resultWithMultipleRunsFiltered = benchResult.results.filter(
+      (r) => r.name === "runs100ForIncrementX1e6"
+    );
+    assertEquals(resultWithMultipleRunsFiltered.length, 1);
+
+    const resultWithMultipleRuns = resultWithMultipleRunsFiltered[0];
+    assert(!!resultWithMultipleRuns.runsAvg);
+    assert(!!resultWithMultipleRuns.runsCount);
+    assert(!!resultWithMultipleRuns.runsMs);
+    assertEquals(resultWithMultipleRuns.runsCount, 100);
+    assertEquals(resultWithMultipleRuns.runsMs!.length, 100);
   },
 });
