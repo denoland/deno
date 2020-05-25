@@ -1,15 +1,15 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-export class AssertionError extends Error {
+export class AssertionFailedError extends Error {
   constructor(message: string) {
     super(message);
-    this.name = "AssertionError";
+    this.name = "AssertionFailedError";
   }
 }
 
 /** Make an assertion, if not `true`, then throw. */
 export function assert(expr: unknown, msg = ""): asserts expr {
   if (!expr) {
-    throw new AssertionError(msg);
+    throw new AssertionFailedError(msg);
   }
 }
