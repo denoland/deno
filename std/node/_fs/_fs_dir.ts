@@ -1,5 +1,5 @@
 import Dirent from "./_fs_dirent.ts";
-import { assert } from "../../testing/asserts.ts";
+import { assert } from "../../validation/assert.ts";
 
 export default class Dir {
   private dirPath: string | Uint8Array;

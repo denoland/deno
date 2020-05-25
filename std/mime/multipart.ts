@@ -12,7 +12,8 @@ import { extname } from "../path/mod.ts";
 import { tempFile } from "../io/util.ts";
 import { BufReader, BufWriter } from "../io/bufio.ts";
 import { encoder } from "../encoding/utf8.ts";
-import { assertStrictEq, assert } from "../testing/asserts.ts";
+import { assertStrictEq } from "../testing/asserts.ts";
+import { assert } from "../validation/assert.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 import { hasOwnProperty } from "../_util/has_own_property.ts";
 
