@@ -505,6 +505,8 @@ export async function fetch(
           contentType = "text/plain;charset=UTF-8";
         } else if (isTypedArray(init.body)) {
           body = init.body;
+        } else if (init.body instanceof ArrayBuffer) {
+          body = new Uint8Array(init.body);
         } else if (init.body instanceof URLSearchParams) {
           body = new TextEncoder().encode(init.body.toString());
           contentType = "application/x-www-form-urlencoded;charset=UTF-8";
