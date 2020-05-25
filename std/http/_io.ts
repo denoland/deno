@@ -332,7 +332,11 @@ export async function readRequest(
   const req = new ServerRequest();
   req.conn = conn;
   req.r = bufr;
-  [req.method, req.url, req.proto] = firstLine.split(" ", 3) as [Method, string, string];
+  [req.method, req.url, req.proto] = firstLine.split(" ", 3) as [
+    Method,
+    string,
+    string
+  ];
   [req.protoMinor, req.protoMajor] = parseHTTPVersion(req.proto);
   req.headers = headers;
   fixLength(req);
