@@ -586,7 +586,6 @@ unitTest({ perms: { net: true } }, async function fetchBodyReadTwice(): Promise<
   void
 > {
   const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
-  assertEquals(response.url, "http://localhost:4545/cli/tests/fixture.json");
 
   // Read body
   const _json = await response.json();
