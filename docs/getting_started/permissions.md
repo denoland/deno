@@ -1,16 +1,16 @@
 ## Permissions
 
 Deno is secure by default. Therefore, unless you specifically enable it, a deno
-script has no file, network, or environment access for example. Access to
+module has no file, network, or environment access for example. Access to
 security sensitive areas or functions requires the use of permissions to be
 granted to a deno process on the command line.
 
-For the following example, `myscript.ts` has been granted read-only access to
-the file system. It cannot write to it, or perform any other security sensitive
+For the following example, `mod.ts` has been granted read-only access to the
+file system. It cannot write to it, or perform any other security sensitive
 functions.
 
 ```shell
-deno run --allow-read myscript.ts
+deno run --allow-read mod.ts
 ```
 
 ### Permissions list
