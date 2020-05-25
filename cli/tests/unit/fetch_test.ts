@@ -581,3 +581,48 @@ unitTest(function responseRedirect(): void {
   assertEquals(redir.headers.get("Location"), "example.com/newLocation");
   assertEquals(redir.type, "default");
 });
+
+unitTest({ perms: { net: true } }, async function fetchBodyReadTwice(): Promise<
+  void
+> {
+  const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
+  assertEquals(response.url, "http://localhost:4545/cli/tests/fixture.json");
+
+  // Read body
+  const _json = await response.json();
+
+  // All calls after the body was consumed, should fail
+  const methods = ["json", "text", "formData", "arrayBuffer"];
+  for (const method of methods) {
+    try {
+      // @ts-ignore
+      await response[method]();
+      fail(
+        "Reading body multiple times should failed, the stream should've been locked."
+      );
+    } catch {}
+  }
+});
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchBodyReaderAfterRead(): Promise<void> {
+    const response = await fetch(
+      "http://localhost:4545/cli/tests/fixture.json"
+    );
+    const headers = response.headers;
+    assert(response.body !== null);
+    const reader = await response.body.getReader();
+    let total = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      assert(value);
+    }
+
+    try {
+      response.body.getReader();
+      fail("The stream should've been locked.");
+    } catch {}
+  }
+);
