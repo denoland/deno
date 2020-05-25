@@ -1,14 +1,19 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { red, green, white, gray, bold } from "../fmt/colors.ts";
 import diff, { DiffType, DiffResult } from "./diff.ts";
-import { assert, AssertionError } from "../validation/assert.ts";
-export { assert, AssertionError } from "../validation/assert.ts";
 
 const CAN_NOT_DISPLAY = "[Cannot display]";
 
 interface Constructor {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   new (...args: any[]): any;
+}
+
+export class AssertionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AssertionError";
+  }
 }
 
 function format(v: unknown): string {
@@ -122,6 +127,13 @@ export function equal(c: unknown, d: unknown): boolean {
     }
     return false;
   })(c, d);
+}
+
+/** Make an assertion, if not `true`, then throw. */
+export function assert(expr: unknown, msg = ""): asserts expr {
+  if (!expr) {
+    throw new AssertionError(msg);
+  }
 }
 
 /**
