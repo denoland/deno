@@ -315,7 +315,7 @@ export function foo(): string {
 programs can rely on. We want to guarantee to users that this code does not
 include potentially unreviewed third party code.
 
-#### Document browser compatiblity.
+#### Document and maintain browser compatiblity.
 
 If a module is browser compatible, include the following in the JSDoc at the top
 of the module:
@@ -323,3 +323,6 @@ of the module:
 ```ts
 /** This module is browser compatible. */
 ```
+
+Maintain browser compatibility for such a module by either not using the global
+`Deno` namespace or feature-testing for it.
