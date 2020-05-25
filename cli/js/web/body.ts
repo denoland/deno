@@ -59,36 +59,29 @@ function concatenate(...arrays: Uint8Array[]): ArrayBuffer {
   return result.buffer as ArrayBuffer;
 }
 
-function bufferFromStream(stream: ReadableStreamReader): Promise<ArrayBuffer> {
-  return new Promise((resolve, reject): void => {
-    const parts: Uint8Array[] = [];
-    const encoder = new TextEncoder();
-    // recurse
-    (function pump(): void {
-      stream
-        .read()
-        .then(({ done, value }): void => {
-          if (done) {
-            return resolve(concatenate(...parts));
-          }
+async function bufferFromStream(
+  stream: ReadableStreamReader
+): Promise<ArrayBuffer> {
+  const parts: Uint8Array[] = [];
+  const encoder = new TextEncoder();
 
-          if (typeof value === "string") {
-            parts.push(encoder.encode(value));
-          } else if (value instanceof ArrayBuffer) {
-            parts.push(new Uint8Array(value));
-          } else if (!value) {
-            // noop for undefined
-          } else {
-            reject("unhandled type on stream read");
-          }
+  while (true) {
+    const { done, value } = await stream.read();
 
-          return pump();
-        })
-        .catch((err): void => {
-          reject(err);
-        });
-    })();
-  });
+    if (done) break;
+
+    if (typeof value === "string") {
+      parts.push(encoder.encode(value));
+    } else if (value instanceof ArrayBuffer) {
+      parts.push(new Uint8Array(value));
+    } else if (!value) {
+      // noop for undefined
+    } else {
+      throw new Error("unhandled type on stream read");
+    }
+  }
+
+  return concatenate(...parts);
 }
 
 export const BodyUsedError =
