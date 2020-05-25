@@ -581,3 +581,110 @@ unitTest(function responseRedirect(): void {
   assertEquals(redir.headers.get("Location"), "example.com/newLocation");
   assertEquals(redir.type, "default");
 });
+
+unitTest({ perms: { net: true } }, async function fetchBodyReadTwice(): Promise<
+  void
+> {
+  const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
+
+  // Read body
+  const _json = await response.json();
+  assert(_json);
+
+  // All calls after the body was consumed, should fail
+  const methods = ["json", "text", "formData", "arrayBuffer"];
+  for (const method of methods) {
+    try {
+      // @ts-ignore
+      await response[method]();
+      fail(
+        "Reading body multiple times should failed, the stream should've been locked."
+      );
+    } catch {}
+  }
+});
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchBodyReaderAfterRead(): Promise<void> {
+    const response = await fetch(
+      "http://localhost:4545/cli/tests/fixture.json"
+    );
+    assert(response.body !== null);
+    const reader = await response.body.getReader();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      assert(value);
+    }
+
+    try {
+      response.body.getReader();
+      fail("The stream should've been locked.");
+    } catch {}
+  }
+);
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchBodyReaderWithCancelAndNewReader(): Promise<void> {
+    const data = "a".repeat(1 << 10);
+    const response = await fetch(
+      "http://localhost:4545/cli/tests/echo_server",
+      {
+        method: "POST",
+        body: data,
+      }
+    );
+    assert(response.body !== null);
+    const firstReader = await response.body.getReader();
+
+    // Acquire reader without reading & release
+    await firstReader.releaseLock();
+
+    const reader = await response.body.getReader();
+
+    let total = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      assert(value);
+      total += value.length;
+    }
+
+    assertEquals(total, data.length);
+  }
+);
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchBodyReaderWithReadCancelAndNewReader(): Promise<void> {
+    const data = "a".repeat(1 << 10);
+
+    const response = await fetch(
+      "http://localhost:4545/cli/tests/echo_server",
+      {
+        method: "POST",
+        body: data,
+      }
+    );
+    assert(response.body !== null);
+    const firstReader = await response.body.getReader();
+
+    // Do one single read with first reader
+    const { value: firstValue } = await firstReader.read();
+    assert(firstValue);
+    await firstReader.releaseLock();
+
+    // Continue read with second reader
+    const reader = await response.body.getReader();
+    let total = firstValue.length || 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      assert(value);
+      total += value.length;
+    }
+    assertEquals(total, data.length);
+  }
+);
