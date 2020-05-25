@@ -32,6 +32,14 @@ export interface BenchmarkRunOptions {
   skip?: RegExp;
 }
 
+export interface BenchmarkResult {
+  name: string;
+  totalMs: number;
+  runsAvg?: number;
+  runsCount?: number;
+  runsMs?: number[];
+}
+
 function red(text: string): string {
   return noColor ? text : `\x1b[31m${text}\x1b[0m`;
 }
@@ -93,7 +101,7 @@ export function bench(
 export async function runBenchmarks({
   only = /[^\s]/,
   skip = /^\s*$/,
-}: BenchmarkRunOptions = {}): Promise<void> {
+}: BenchmarkRunOptions = {}): Promise<BenchmarkResult[]> {
   // Filtering candidates by the "only" and "skip" constraint
   const benchmarks: BenchmarkDefinition[] = candidates.filter(
     ({ name }): boolean => only.test(name) && !skip.test(name)
@@ -111,6 +119,8 @@ export async function runBenchmarks({
     benchmarks.length,
     `benchmark${benchmarks.length === 1 ? " ..." : "s ..."}`
   );
+  // Initializing results array
+  const benchmarkResults: BenchmarkResult[] = [];
   for (const { name, runs = 0, func } of benchmarks) {
     // See https://github.com/denoland/deno/pull/1452 about groupCollapsed
     console.groupCollapsed(`benchmark ${name} ... `);
@@ -123,10 +133,14 @@ export async function runBenchmarks({
         // Making sure the benchmark was started/stopped properly
         assertTiming(clock);
         result = `${clock.stop - clock.start}ms`;
+        // Adding one-time run to results
+        benchmarkResults.push({ name, totalMs: clock.stop - clock.start });
       } else if (runs > 1) {
         // Averaging runs
         let pendingRuns = runs;
         let totalMs = 0;
+        // Initializing array holding individual runs ms
+        const runsMs = [];
         // Would be better 2 not run these serially
         while (true) {
           // b is a benchmark timer interfacing an unset (NaN) benchmark clock
@@ -135,11 +149,21 @@ export async function runBenchmarks({
           assertTiming(clock);
           // Summing up
           totalMs += clock.stop - clock.start;
+          // Adding partial result
+          runsMs.push(clock.stop - clock.start);
           // Resetting the benchmark clock
           clock.start = clock.stop = NaN;
           // Once all ran
           if (!--pendingRuns) {
             result = `${runs} runs avg: ${totalMs / runs}ms`;
+            // Adding result of multiple runs
+            benchmarkResults.push({
+              name,
+              totalMs,
+              runsAvg: totalMs / runs,
+              runsCount: runs,
+              runsMs,
+            });
             break;
           }
         }
@@ -166,13 +190,15 @@ export async function runBenchmarks({
   if (failed) {
     setTimeout((): void => exit(1), 0);
   }
+
+  return benchmarkResults;
 }
 
 /** Runs specified benchmarks if the enclosing script is main. */
 export function runIfMain(
   meta: ImportMeta,
   opts: BenchmarkRunOptions = {}
-): Promise<void> {
+): Promise<BenchmarkResult[] | void> {
   if (meta.main) {
     return runBenchmarks(opts);
   }
