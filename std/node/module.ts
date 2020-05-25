@@ -30,7 +30,7 @@ import * as nodeEvents from "./events.ts";
 import * as nodeQueryString from "./querystring.ts";
 
 import * as path from "../path/mod.ts";
-import { assert } from "../validation/assert.ts";
+import { assert } from "../_util/assert.ts";
 import { pathToFileURL, fileURLToPath } from "./url.ts";
 
 const CHAR_FORWARD_SLASH = "/".charCodeAt(0);

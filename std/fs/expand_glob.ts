@@ -14,7 +14,7 @@ import {
   walk,
   walkSync,
 } from "./walk.ts";
-import { assert } from "../validation/assert.ts";
+import { assert } from "../_util/assert.ts";
 const { cwd } = Deno;
 type FileInfo = Deno.FileInfo;
 

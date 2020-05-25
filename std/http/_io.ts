@@ -1,6 +1,6 @@
 import { BufReader, BufWriter } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
-import { assert } from "../validation/assert.ts";
+import { assert } from "../_util/assert.ts";
 import { encoder } from "../encoding/utf8.ts";
 import { ServerRequest, Response } from "./server.ts";
 import { STATUS_TEXT } from "./http_status.ts";
@@ -131,7 +131,9 @@ export async function readTrailers(
   if (!keys) return;
   const tp = new TextProtoReader(r);
   const result = await tp.readMIMEHeader();
-  assert(result !== null, "trailer must be set");
+  if (result === null) {
+    throw new Deno.errors.InvalidData("trailer must be set");
+  }
   for (const [k, v] of result) {
     if (!keys.has(k)) {
       throw new Error("Undeclared trailer field");
@@ -139,7 +141,9 @@ export async function readTrailers(
     keys.delete(k);
     headers.append(k, v);
   }
-  assert(keys.size === 0, "Missing trailers");
+  if (keys.size !== 0) {
+    throw new Deno.errors.InvalidData("Missing trailers");
+  }
   headers.delete("trailer");
 }
 
@@ -198,16 +202,16 @@ export async function writeTrailers(
     .split(",")
     .map((s) => s.trim().toLowerCase());
   for (const f of trailerHeaderFields) {
-    assert(
-      !kProhibitedTrailerHeaders.includes(f),
-      `"${f}" is prohibited for trailer header`
-    );
+    if (kProhibitedTrailerHeaders.includes(f)) {
+      throw new Deno.errors.InvalidData(
+        `"${f}" is prohibited for trailer header`
+      );
+    }
   }
   for (const [key, value] of trailers) {
-    assert(
-      trailerHeaderFields.includes(key),
-      `Not trailer header field: ${key}`
-    );
+    if (!trailerHeaderFields.includes(key)) {
+      throw new Deno.errors.InvalidData(`Not trailer header field: ${key}`);
+    }
     await writer.write(encoder.encode(`${key}: ${value}\r\n`));
   }
   await writer.write(encoder.encode("\r\n"));

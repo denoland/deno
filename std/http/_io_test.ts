@@ -18,7 +18,6 @@ import { BufReader, ReadLineResult } from "../io/bufio.ts";
 import { ServerRequest, Response } from "./server.ts";
 import { StringReader } from "../io/readers.ts";
 import { mockConn } from "./_mock_conn.ts";
-import { AssertionFailedError } from "../validation/assert.ts";
 const { Buffer, test, readAll } = Deno;
 
 test("bodyReader", async () => {
@@ -164,7 +163,7 @@ test("writeTrailer should throw", async () => {
           new Headers({ [f]: "1" })
         );
       },
-      AssertionFailedError,
+      Deno.errors.InvalidData,
       "prohibited"
     );
   }
@@ -176,7 +175,7 @@ test("writeTrailer should throw", async () => {
         new Headers({ node: "js" })
       );
     },
-    AssertionFailedError,
+    Deno.errors.InvalidData,
     "Not trailer"
   );
 });
