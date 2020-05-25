@@ -35,8 +35,8 @@ export interface BenchmarkRunOptions {
 export interface BenchmarkResult {
   name: string;
   totalMs: number;
-  runsAvg?: number;
   runsCount?: number;
+  runsAvgMs?: number;
   runsMs?: number[];
 }
 
@@ -167,8 +167,8 @@ export async function runBenchmarks({
             benchmarkResults.push({
               name,
               totalMs,
-              runsAvg: totalMs / runs,
               runsCount: runs,
+              runsAvgMs: totalMs / runs,
               runsMs,
             });
             break;
