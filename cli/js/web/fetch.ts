@@ -9,7 +9,7 @@ import { close } from "../ops/resources.ts";
 import { fetch as opFetch, FetchResponse } from "../ops/fetch.ts";
 import * as Body from "./body.ts";
 import { DomFileImpl } from "./dom_file.ts";
-import { getHeaderValueParams, hasHeaderValueOf } from "./util.ts";
+import { getHeaderValueParams } from "./util.ts";
 import { ReadableStreamImpl } from "./streams/readable_stream.ts";
 
 const responseData = new WeakMap();
