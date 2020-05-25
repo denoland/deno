@@ -1067,7 +1067,7 @@ declare namespace Deno {
    * const conn5 = await Deno.connect({ path: "/foo/bar.sock", transport: "unix" });
    * ```
    *
-   * Requires `allow-net` permission for "tcp" and `allow-read` for unix. */
+   * Requires `allow-net` permission for "tcp" and `allow-read` for "unix". */
   export function connect(
     options: ConnectOptions | UnixConnectOptions
   ): Promise<Conn>;

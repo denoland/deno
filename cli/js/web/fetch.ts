@@ -9,20 +9,8 @@ import { close } from "../ops/resources.ts";
 import { fetch as opFetch, FetchResponse } from "../ops/fetch.ts";
 import * as Body from "./body.ts";
 import { DomFileImpl } from "./dom_file.ts";
+import { getHeaderValueParams, hasHeaderValueOf } from "./util.ts";
 import { ReadableStreamImpl } from "./streams/readable_stream.ts";
-
-function getHeaderValueParams(value: string): Map<string, string> {
-  const params = new Map();
-  // Forced to do so for some Map constructor param mismatch
-  value
-    .split(";")
-    .slice(1)
-    .map((s): string[] => s.trim().split("="))
-    .filter((arr): boolean => arr.length > 1)
-    .map(([k, v]): [string, string] => [k, v.replace(/^"([^"]*)"$/, "$1")])
-    .forEach(([k, v]): Map<string, string> => params.set(k, v));
-  return params;
-}
 
 const responseData = new WeakMap();
 export class Response extends Body.Body implements domTypes.Response {
@@ -31,7 +19,6 @@ export class Response extends Body.Body implements domTypes.Response {
   readonly url: string;
   readonly status: number;
   readonly statusText: string;
-
   headers: Headers;
 
   constructor(body: BodyInit | null = null, init?: domTypes.ResponseInit) {
@@ -233,6 +220,8 @@ export async function fetch(
           contentType = "text/plain;charset=UTF-8";
         } else if (isTypedArray(init.body)) {
           body = init.body;
+        } else if (init.body instanceof ArrayBuffer) {
+          body = new Uint8Array(init.body);
         } else if (init.body instanceof URLSearchParams) {
           body = new TextEncoder().encode(init.body.toString());
           contentType = "application/x-www-form-urlencoded;charset=UTF-8";

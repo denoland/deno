@@ -8,7 +8,9 @@ import {
   assertThrows,
 } from "../../testing/asserts.ts";
 import { writeFile, writeFileSync } from "./_fs_writeFile.ts";
+import * as path from "../../path/mod.ts";
 
+const testDataDir = path.resolve(path.join("node", "_fs", "testdata"));
 const decoder = new TextDecoder("utf-8");
 
 test("Callback must be a function error", function fn() {
@@ -139,6 +141,27 @@ test("Data is written to correct file", async function testCorrectWriteUsingPath
   assertEquals(decoder.decode(data), "hello world");
 });
 
+test("Path can be an URL", async function testCorrectWriteUsingURL() {
+  const url = new URL(
+    Deno.build.os === "windows"
+      ? "file:///" +
+        path
+          .join(testDataDir, "_fs_writeFile_test_file_url.txt")
+          .replace(/\\/g, "/")
+      : "file://" + path.join(testDataDir, "_fs_writeFile_test_file_url.txt")
+  );
+  const filePath = path.fromFileUrl(url);
+  const res = await new Promise((resolve) => {
+    writeFile(url, "hello world", resolve);
+  });
+  assert(res === null);
+
+  const data = await Deno.readFile(filePath);
+  await Deno.remove(filePath);
+  assertEquals(res, null);
+  assertEquals(decoder.decode(data), "hello world");
+});
+
 test("Mode is correctly set", async function testCorrectFileMode() {
   if (Deno.build.os === "windows") return;
   const filename = "_fs_writeFile_test_file.txt";
@@ -201,6 +224,23 @@ test("Data is written synchronously to correct file", function testCorrectWriteS
 
   const data = Deno.readFileSync(file);
   Deno.removeSync(file);
+  assertEquals(decoder.decode(data), "hello world");
+});
+
+test("sync: Path can be an URL", function testCorrectWriteSyncUsingURL() {
+  const filePath = path.join(
+    testDataDir,
+    "_fs_writeFileSync_test_file_url.txt"
+  );
+  const url = new URL(
+    Deno.build.os === "windows"
+      ? "file:///" + filePath.replace(/\\/g, "/")
+      : "file://" + filePath
+  );
+  writeFileSync(url, "hello world");
+
+  const data = Deno.readFileSync(filePath);
+  Deno.removeSync(filePath);
   assertEquals(decoder.decode(data), "hello world");
 });
 
