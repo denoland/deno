@@ -2207,6 +2207,13 @@ fn test_permissions_net_listen_allow_localhost() {
   assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
 }
 
+fn inspect_flag_with_unique_port(flag_prefix: &str) -> String {
+  use std::sync::atomic::{AtomicU16, Ordering};
+  static PORT: AtomicU16 = AtomicU16::new(9229);
+  let port = PORT.fetch_add(1, Ordering::Relaxed);
+  format!("{}=127.0.0.1:{}", flag_prefix, port)
+}
+
 fn extract_ws_url_from_stderr(
   stderr: &mut std::process::ChildStderr,
 ) -> url::Url {
@@ -2226,9 +2233,7 @@ async fn inspector_connect() {
   let script = util::tests_path().join("inspector1.js");
   let mut child = util::deno_cmd()
     .arg("run")
-    // Warning: each inspector test should be on its own port to avoid
-    // conflicting with another inspector test.
-    .arg("--inspect=127.0.0.1:9228")
+    .arg(inspect_flag_with_unique_port("--inspect"))
     .arg(script)
     .stderr(std::process::Stdio::piped())
     .spawn()
@@ -2256,9 +2261,7 @@ async fn inspector_break_on_first_line() {
   let script = util::tests_path().join("inspector2.js");
   let mut child = util::deno_cmd()
     .arg("run")
-    // Warning: each inspector test should be on its own port to avoid
-    // conflicting with another inspector test.
-    .arg("--inspect-brk=127.0.0.1:9229")
+    .arg(inspect_flag_with_unique_port("--inspect-brk"))
     .arg(script)
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::piped())
@@ -2322,9 +2325,7 @@ async fn inspector_pause() {
   let script = util::tests_path().join("inspector1.js");
   let mut child = util::deno_cmd()
     .arg("run")
-    // Warning: each inspector test should be on its own port to avoid
-    // conflicting with another inspector test.
-    .arg("--inspect=127.0.0.1:9230")
+    .arg(inspect_flag_with_unique_port("--inspect"))
     .arg(script)
     .stderr(std::process::Stdio::piped())
     .spawn()
@@ -2376,9 +2377,11 @@ async fn inspector_pause() {
 #[tokio::test]
 async fn inspector_port_collision() {
   let script = util::tests_path().join("inspector1.js");
+  let inspect_flag = inspect_flag_with_unique_port("--inspect");
+
   let mut child1 = util::deno_cmd()
     .arg("run")
-    .arg("--inspect=127.0.0.1:9231")
+    .arg(&inspect_flag)
     .arg(script.clone())
     .stderr(std::process::Stdio::piped())
     .spawn()
@@ -2388,7 +2391,7 @@ async fn inspector_port_collision() {
 
   let mut child2 = util::deno_cmd()
     .arg("run")
-    .arg("--inspect=127.0.0.1:9231")
+    .arg(&inspect_flag)
     .arg(script)
     .stderr(std::process::Stdio::piped())
     .spawn()
@@ -2414,9 +2417,7 @@ async fn inspector_does_not_hang() {
   let script = util::tests_path().join("inspector3.js");
   let mut child = util::deno_cmd()
     .arg("run")
-    // Warning: each inspector test should be on its own port to avoid
-    // conflicting with another inspector test.
-    .arg("--inspect-brk=127.0.0.1:9232")
+    .arg(inspect_flag_with_unique_port("--inspect-brk"))
     .env("NO_COLOR", "1")
     .arg(script)
     .stdout(std::process::Stdio::piped())
@@ -2498,9 +2499,7 @@ async fn inspector_without_brk_runs_code() {
   let script = util::tests_path().join("inspector4.js");
   let mut child = util::deno_cmd()
     .arg("run")
-    // Warning: each inspector test should be on its own port to avoid
-    // conflicting with another inspector test.
-    .arg("--inspect=127.0.0.1:9233")
+    .arg(inspect_flag_with_unique_port("--inspect"))
     .arg(script)
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::piped())
