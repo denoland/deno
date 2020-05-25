@@ -28,8 +28,6 @@ The following permissions are available:
 | --allow-run                                                                                                           | Allow running subprocesses. Be aware that subprocesses are not run in a sandbox and therefore do not have the same security restrictions as the deno process. Therefore, use with caution. |
 | --allow-write=\<allow-write\>                                                                                         | Allow file system write access. You can specify an optional, comma separated list of directories or files to provide a whitelist of allowed file system access.                            |
 
-<!-- TODO(lucacasonato): description of all permissions -->
-
 ### Permissions whitelist
 
 Deno also allows you to control the granularity of some permissions with
