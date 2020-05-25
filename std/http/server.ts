@@ -10,7 +10,6 @@ import {
   writeResponse,
   readRequest,
 } from "./_io.ts";
-import { Method } from "./http_method.ts";
 import Listener = Deno.Listener;
 import Conn = Deno.Conn;
 import Reader = Deno.Reader;
@@ -18,7 +17,7 @@ const { listen, listenTls } = Deno;
 
 export class ServerRequest {
   url!: string;
-  method!: Method;
+  method!: string;
   proto!: string;
   protoMinor!: number;
   protoMajor!: number;
