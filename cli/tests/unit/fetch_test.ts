@@ -118,6 +118,49 @@ unitTest({ perms: { net: true } }, async function fetchAsyncIterator(): Promise<
 });
 */
 
+unitTest({ perms: { net: true } }, async function fetchBodyReader(): Promise<
+  void
+> {
+  const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
+  const headers = response.headers;
+  assert(response.body !== null);
+  const reader = await response.body.getReader();
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    assert(value);
+    total += value.length;
+  }
+
+  assertEquals(total, Number(headers.get("Content-Length")));
+});
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchBodyReaderBigBody(): Promise<void> {
+    const data = "a".repeat(10 << 10); // 10mb
+    const response = await fetch(
+      "http://localhost:4545/cli/tests/echo_server",
+      {
+        method: "POST",
+        body: data,
+      }
+    );
+    assert(response.body !== null);
+    const reader = await response.body.getReader();
+    let total = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      assert(value);
+      total += value.length;
+    }
+
+    assertEquals(total, data.length);
+  }
+);
+
 unitTest({ perms: { net: true } }, async function responseClone(): Promise<
   void
 > {
@@ -537,18 +580,4 @@ unitTest(function responseRedirect(): void {
   assertEquals(redir.url, "");
   assertEquals(redir.headers.get("Location"), "example.com/newLocation");
   assertEquals(redir.type, "default");
-});
-
-unitTest(function responseConstructionHeaderRemoval(): void {
-  const res = new Response(
-    "example.com",
-    200,
-    "OK",
-    [["Set-Cookie", "mysessionid"]],
-    -1,
-    false,
-    "basic",
-    null
-  );
-  assert(res.headers.get("Set-Cookie") != "mysessionid");
 });

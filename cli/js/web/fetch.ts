@@ -1,312 +1,76 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { assert, createResolvable, notImplemented } from "../util.ts";
+import { notImplemented } from "../util.ts";
 import { isTypedArray } from "./util.ts";
 import * as domTypes from "./dom_types.d.ts";
 import { TextDecoder, TextEncoder } from "./text_encoding.ts";
 import { DenoBlob, bytesSymbol as blobBytesSymbol } from "./blob.ts";
-import * as io from "../io.ts";
 import { read } from "../ops/io.ts";
 import { close } from "../ops/resources.ts";
-import { Buffer } from "../buffer.ts";
 import { fetch as opFetch, FetchResponse } from "../ops/fetch.ts";
+import * as Body from "./body.ts";
 import { DomFileImpl } from "./dom_file.ts";
-import { getHeaderValueParams, hasHeaderValueOf } from "./util.ts";
+import { getHeaderValueParams } from "./util.ts";
+import { ReadableStreamImpl } from "./streams/readable_stream.ts";
 
-class Body
-  implements domTypes.Body, ReadableStream<Uint8Array>, io.Reader, io.Closer {
-  #bodyUsed = false;
-  #bodyPromise: Promise<ArrayBuffer> | null = null;
-  #data: ArrayBuffer | null = null;
-  #rid: number;
-  readonly locked: boolean = false; // TODO
-  readonly body: ReadableStream<Uint8Array>;
-
-  constructor(rid: number, readonly contentType: string) {
-    this.#rid = rid;
-    this.body = this;
-  }
-
-  #bodyBuffer = async (): Promise<ArrayBuffer> => {
-    assert(this.#bodyPromise == null);
-    const buf = new Buffer();
-    try {
-      const nread = await buf.readFrom(this);
-      const ui8 = buf.bytes();
-      assert(ui8.byteLength === nread);
-      this.#data = ui8.buffer.slice(
-        ui8.byteOffset,
-        ui8.byteOffset + nread
-      ) as ArrayBuffer;
-      assert(this.#data.byteLength === nread);
-    } finally {
-      this.close();
-    }
-
-    return this.#data;
-  };
-
-  // eslint-disable-next-line require-await
-  async arrayBuffer(): Promise<ArrayBuffer> {
-    // If we've already bufferred the response, just return it.
-    if (this.#data != null) {
-      return this.#data;
-    }
-
-    // If there is no _bodyPromise yet, start it.
-    if (this.#bodyPromise == null) {
-      this.#bodyPromise = this.#bodyBuffer();
-    }
-
-    return this.#bodyPromise;
-  }
-
-  async blob(): Promise<Blob> {
-    const arrayBuffer = await this.arrayBuffer();
-    return new DenoBlob([arrayBuffer], {
-      type: this.contentType,
-    });
-  }
-
-  // ref: https://fetch.spec.whatwg.org/#body-mixin
-  async formData(): Promise<FormData> {
-    const formData = new FormData();
-    const enc = new TextEncoder();
-    if (hasHeaderValueOf(this.contentType, "multipart/form-data")) {
-      const params = getHeaderValueParams(this.contentType);
-      if (!params.has("boundary")) {
-        // TypeError is required by spec
-        throw new TypeError("multipart/form-data must provide a boundary");
-      }
-      // ref: https://tools.ietf.org/html/rfc2046#section-5.1
-      const boundary = params.get("boundary")!;
-      const dashBoundary = `--${boundary}`;
-      const delimiter = `\r\n${dashBoundary}`;
-      const closeDelimiter = `${delimiter}--`;
-
-      const body = await this.text();
-      let bodyParts: string[];
-      const bodyEpilogueSplit = body.split(closeDelimiter);
-      if (bodyEpilogueSplit.length < 2) {
-        bodyParts = [];
-      } else {
-        // discard epilogue
-        const bodyEpilogueTrimmed = bodyEpilogueSplit[0];
-        // first boundary treated special due to optional prefixed \r\n
-        const firstBoundaryIndex = bodyEpilogueTrimmed.indexOf(dashBoundary);
-        if (firstBoundaryIndex < 0) {
-          throw new TypeError("Invalid boundary");
-        }
-        const bodyPreambleTrimmed = bodyEpilogueTrimmed
-          .slice(firstBoundaryIndex + dashBoundary.length)
-          .replace(/^[\s\r\n\t]+/, ""); // remove transport-padding CRLF
-        // trimStart might not be available
-        // Be careful! body-part allows trailing \r\n!
-        // (as long as it is not part of `delimiter`)
-        bodyParts = bodyPreambleTrimmed
-          .split(delimiter)
-          .map((s): string => s.replace(/^[\s\r\n\t]+/, ""));
-        // TODO: LWSP definition is actually trickier,
-        // but should be fine in our case since without headers
-        // we should just discard the part
-      }
-      for (const bodyPart of bodyParts) {
-        const headers = new Headers();
-        const headerOctetSeperatorIndex = bodyPart.indexOf("\r\n\r\n");
-        if (headerOctetSeperatorIndex < 0) {
-          continue; // Skip unknown part
-        }
-        const headerText = bodyPart.slice(0, headerOctetSeperatorIndex);
-        const octets = bodyPart.slice(headerOctetSeperatorIndex + 4);
-
-        // TODO: use textproto.readMIMEHeader from deno_std
-        const rawHeaders = headerText.split("\r\n");
-        for (const rawHeader of rawHeaders) {
-          const sepIndex = rawHeader.indexOf(":");
-          if (sepIndex < 0) {
-            continue; // Skip this header
-          }
-          const key = rawHeader.slice(0, sepIndex);
-          const value = rawHeader.slice(sepIndex + 1);
-          headers.set(key, value);
-        }
-        if (!headers.has("content-disposition")) {
-          continue; // Skip unknown part
-        }
-        // Content-Transfer-Encoding Deprecated
-        const contentDisposition = headers.get("content-disposition")!;
-        const partContentType = headers.get("content-type") || "text/plain";
-        // TODO: custom charset encoding (needs TextEncoder support)
-        // const contentTypeCharset =
-        //   getHeaderValueParams(partContentType).get("charset") || "";
-        if (!hasHeaderValueOf(contentDisposition, "form-data")) {
-          continue; // Skip, might not be form-data
-        }
-        const dispositionParams = getHeaderValueParams(contentDisposition);
-        if (!dispositionParams.has("name")) {
-          continue; // Skip, unknown name
-        }
-        const dispositionName = dispositionParams.get("name")!;
-        if (dispositionParams.has("filename")) {
-          const filename = dispositionParams.get("filename")!;
-          const blob = new DenoBlob([enc.encode(octets)], {
-            type: partContentType,
-          });
-          // TODO: based on spec
-          // https://xhr.spec.whatwg.org/#dom-formdata-append
-          // https://xhr.spec.whatwg.org/#create-an-entry
-          // Currently it does not mention how I could pass content-type
-          // to the internally created file object...
-          formData.append(dispositionName, blob, filename);
-        } else {
-          formData.append(dispositionName, octets);
-        }
-      }
-      return formData;
-    } else if (
-      hasHeaderValueOf(this.contentType, "application/x-www-form-urlencoded")
-    ) {
-      // From https://github.com/github/fetch/blob/master/fetch.js
-      // Copyright (c) 2014-2016 GitHub, Inc. MIT License
-      const body = await this.text();
-      try {
-        body
-          .trim()
-          .split("&")
-          .forEach((bytes): void => {
-            if (bytes) {
-              const split = bytes.split("=");
-              const name = split.shift()!.replace(/\+/g, " ");
-              const value = split.join("=").replace(/\+/g, " ");
-              formData.append(
-                decodeURIComponent(name),
-                decodeURIComponent(value)
-              );
-            }
-          });
-      } catch (e) {
-        throw new TypeError("Invalid form urlencoded format");
-      }
-      return formData;
-    } else {
-      throw new TypeError("Invalid form data");
-    }
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async json(): Promise<any> {
-    const text = await this.text();
-    return JSON.parse(text);
-  }
-
-  async text(): Promise<string> {
-    const ab = await this.arrayBuffer();
-    const decoder = new TextDecoder("utf-8");
-    return decoder.decode(ab);
-  }
-
-  read(p: Uint8Array): Promise<number | null> {
-    this.#bodyUsed = true;
-    return read(this.#rid, p);
-  }
-
-  close(): Promise<void> {
-    close(this.#rid);
-    return Promise.resolve();
-  }
-
-  cancel(): Promise<void> {
-    return notImplemented();
-  }
-
-  getIterator(_options?: {
-    preventCancel?: boolean;
-  }): AsyncIterableIterator<Uint8Array> {
-    return notImplemented();
-  }
-
-  getReader(): ReadableStreamDefaultReader<Uint8Array> {
-    return notImplemented();
-  }
-
-  tee(): [ReadableStream, ReadableStream] {
-    return notImplemented();
-  }
-
-  [Symbol.asyncIterator](): AsyncIterableIterator<Uint8Array> {
-    return io.iter(this);
-  }
-
-  get bodyUsed(): boolean {
-    return this.#bodyUsed;
-  }
-
-  pipeThrough<T>(
-    _: {
-      writable: WritableStream<Uint8Array>;
-      readable: ReadableStream<T>;
-    },
-    _options?: PipeOptions
-  ): ReadableStream<T> {
-    return notImplemented();
-  }
-
-  pipeTo(
-    _dest: WritableStream<Uint8Array>,
-    _options?: PipeOptions
-  ): Promise<void> {
-    return notImplemented();
-  }
-}
-
-export class Response implements domTypes.Response {
+const responseData = new WeakMap();
+export class Response extends Body.Body implements domTypes.Response {
   readonly type: ResponseType;
   readonly redirected: boolean;
+  readonly url: string;
+  readonly status: number;
+  readonly statusText: string;
   headers: Headers;
-  readonly trailer: Promise<Headers>;
-  readonly body: Body | null;
 
-  constructor(
-    readonly url: string,
-    readonly status: number,
-    readonly statusText: string,
-    headersList: Array<[string, string]>,
-    rid: number,
-    redirected_: boolean,
-    readonly type_: null | ResponseType = "default",
-    body_: null | Body = null
-  ) {
-    this.trailer = createResolvable();
-    this.headers = new Headers(headersList);
-    const contentType = this.headers.get("content-type") || "";
+  constructor(body: BodyInit | null = null, init?: domTypes.ResponseInit) {
+    init = init ?? {};
 
-    if (body_ == null) {
-      this.body = new Body(rid, contentType);
-    } else {
-      this.body = body_;
+    if (typeof init !== "object") {
+      throw new TypeError(`'init' is not an object`);
     }
 
-    if (type_ == null) {
-      this.type = "default";
+    const extraInit = responseData.get(init) || {};
+    let { type = "default", url = "" } = extraInit;
+
+    let status = (Number(init.status) || 0) ?? 200;
+    let statusText = init.statusText ?? "";
+    let headers =
+      init.headers instanceof Headers
+        ? init.headers
+        : new Headers(init.headers);
+
+    if (init.status && (status < 200 || status > 599)) {
+      throw new RangeError(
+        `The status provided (${init.status}) is outside the range [200, 599]`
+      );
+    }
+
+    // null body status
+    if (body && [/* 101, */ 204, 205, 304].includes(status)) {
+      throw new TypeError("Response with null body status cannot have body");
+    }
+
+    if (!type) {
+      type = "default";
     } else {
-      this.type = type_;
-      if (type_ == "error") {
+      type = type;
+      if (type == "error") {
         // spec: https://fetch.spec.whatwg.org/#concept-network-error
-        this.status = 0;
-        this.statusText = "";
-        this.headers = new Headers();
-        this.body = null;
+        status = 0;
+        statusText = "";
+        headers = new Headers();
+        body = null;
         /* spec for other Response types:
            https://fetch.spec.whatwg.org/#concept-filtered-response-basic
            Please note that type "basic" is not the same thing as "default".*/
-      } else if (type_ == "basic") {
-        for (const h of this.headers) {
+      } else if (type == "basic") {
+        for (const h of headers) {
           /* Forbidden Response-Header Names:
              https://fetch.spec.whatwg.org/#forbidden-response-header-name */
           if (["set-cookie", "set-cookie2"].includes(h[0].toLowerCase())) {
-            this.headers.delete(h[0]);
+            headers.delete(h[0]);
           }
         }
-      } else if (type_ == "cors") {
+      } else if (type == "cors") {
         /* CORS-safelisted Response-Header Names:
              https://fetch.spec.whatwg.org/#cors-safelisted-response-header-name */
         const allowedHeaders = [
@@ -318,7 +82,7 @@ export class Response implements domTypes.Response {
           "Last-Modified",
           "Pragma",
         ].map((c: string) => c.toLowerCase());
-        for (const h of this.headers) {
+        for (const h of headers) {
           /* Technically this is still not standards compliant because we are
              supposed to allow headers allowed in the
              'Access-Control-Expose-Headers' header in the 'internal response'
@@ -328,87 +92,39 @@ export class Response implements domTypes.Response {
              TODO(serverhiccups): change how internal responses are handled
              so we can do this properly. */
           if (!allowedHeaders.includes(h[0].toLowerCase())) {
-            this.headers.delete(h[0]);
+            headers.delete(h[0]);
           }
         }
         /* TODO(serverhiccups): Once I fix the 'internal response' thing,
            these actually need to treat the internal response differently */
-      } else if (type_ == "opaque" || type_ == "opaqueredirect") {
-        this.url = "";
-        this.status = 0;
-        this.statusText = "";
-        this.headers = new Headers();
-        this.body = null;
+      } else if (type == "opaque" || type == "opaqueredirect") {
+        url = "";
+        status = 0;
+        statusText = "";
+        headers = new Headers();
+        body = null;
       }
     }
 
-    this.redirected = redirected_;
-  }
+    const contentType = headers.get("content-type") || "";
 
-  #bodyViewable = (): boolean => {
-    if (
-      this.type == "error" ||
-      this.type == "opaque" ||
-      this.type == "opaqueredirect" ||
-      this.body == undefined
-    ) {
-      return true;
-    }
-    return false;
-  };
+    super(body, contentType);
 
-  arrayBuffer(): Promise<ArrayBuffer> {
-    /* You have to do the null check here and not in the function because
-     * otherwise TS complains about this.body potentially being null */
-    if (this.#bodyViewable() || this.body == null) {
-      return Promise.reject(new Error("Response body is null"));
-    }
-    return this.body.arrayBuffer();
-  }
-
-  blob(): Promise<Blob> {
-    if (this.#bodyViewable() || this.body == null) {
-      return Promise.reject(new Error("Response body is null"));
-    }
-    return this.body.blob();
-  }
-
-  formData(): Promise<FormData> {
-    if (this.#bodyViewable() || this.body == null) {
-      return Promise.reject(new Error("Response body is null"));
-    }
-    return this.body.formData();
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  json(): Promise<any> {
-    if (this.#bodyViewable() || this.body == null) {
-      return Promise.reject(new Error("Response body is null"));
-    }
-    return this.body.json();
-  }
-
-  text(): Promise<string> {
-    if (this.#bodyViewable() || this.body == null) {
-      return Promise.reject(new Error("Response body is null"));
-    }
-    return this.body.text();
+    this.url = url;
+    this.statusText = statusText;
+    this.status = status;
+    this.headers = headers;
+    this.redirected = extraInit.redirected;
+    this.type = type;
   }
 
   get ok(): boolean {
     return 200 <= this.status && this.status < 300;
   }
 
-  get bodyUsed(): boolean {
-    if (this.body === null) return false;
-    return this.body.bodyUsed;
-  }
-
-  clone(): domTypes.Response {
+  public clone(): domTypes.Response {
     if (this.bodyUsed) {
-      throw new TypeError(
-        "Failed to execute 'clone' on 'Response': Response body is already used"
-      );
+      throw TypeError(Body.BodyUsedError);
     }
 
     const iterators = this.headers.entries();
@@ -417,16 +133,20 @@ export class Response implements domTypes.Response {
       headersList.push(header);
     }
 
-    return new Response(
-      this.url,
-      this.status,
-      this.statusText,
-      headersList,
-      -1,
-      this.redirected,
-      this.type,
-      this.body
-    );
+    let resBody = this._bodySource;
+
+    if (this._bodySource instanceof ReadableStreamImpl) {
+      const tees = this._bodySource.tee();
+      this._stream = this._bodySource = tees[0];
+      resBody = tees[1];
+    }
+
+    const cloned = new Response(resBody, {
+      status: this.status,
+      statusText: this.statusText,
+      headers: new Headers(headersList),
+    });
+    return cloned;
   }
 
   static redirect(url: URL | string, status: number): domTypes.Response {
@@ -435,16 +155,11 @@ export class Response implements domTypes.Response {
         "The redirection status must be one of 301, 302, 303, 307 and 308."
       );
     }
-    return new Response(
-      "",
+    return new Response(null, {
       status,
-      "",
-      [["Location", typeof url === "string" ? url : url.toString()]],
-      -1,
-      false,
-      "default",
-      null
-    );
+      statusText: "",
+      headers: [["Location", typeof url === "string" ? url : url.toString()]],
+    });
   }
 }
 
@@ -576,26 +291,65 @@ export async function fetch(
   while (remRedirectCount) {
     const fetchResponse = await sendFetchReq(url, method, headers, body);
 
-    const response = new Response(
+    const responseBody = new ReadableStreamImpl({
+      async pull(controller: ReadableStreamDefaultController): Promise<void> {
+        try {
+          const b = new Uint8Array(1024 * 32);
+          const result = await read(fetchResponse.bodyRid, b);
+          if (result === null) {
+            controller.close();
+            return close(fetchResponse.bodyRid);
+          }
+
+          controller.enqueue(b.subarray(0, result));
+        } catch (e) {
+          controller.error(e);
+          controller.close();
+          close(fetchResponse.bodyRid);
+        }
+      },
+      cancel(): void {
+        // When reader.cancel() is called
+        close(fetchResponse.bodyRid);
+      },
+    });
+
+    let responseInit: ResponseInit = {
+      status: fetchResponse.status,
+      statusText: fetchResponse.statusText,
+      headers: fetchResponse.headers,
+    };
+
+    responseData.set(responseInit, {
+      redirected,
+      rid: fetchResponse.bodyRid,
       url,
-      fetchResponse.status,
-      fetchResponse.statusText,
-      fetchResponse.headers,
-      fetchResponse.bodyRid,
-      redirected
-    );
-    if ([301, 302, 303, 307, 308].includes(response.status)) {
+    });
+
+    const response = new Response(responseBody, responseInit);
+
+    if ([301, 302, 303, 307, 308].includes(fetchResponse.status)) {
       // We won't use body of received response, so close it now
       // otherwise it will be kept in resource table.
       close(fetchResponse.bodyRid);
       // We're in a redirect status
       switch ((init && init.redirect) || "follow") {
         case "error":
-          /* I suspect that deno will probably crash if you try to use that
-             rid, which suggests to me that Response needs to be refactored */
-          return new Response("", 0, "", [], -1, false, "error", null);
+          responseInit = {};
+          responseData.set(responseInit, {
+            type: "error",
+            redirected: false,
+            url: "",
+          });
+          return new Response(null, responseInit);
         case "manual":
-          return new Response("", 0, "", [], -1, false, "opaqueredirect", null);
+          responseInit = {};
+          responseData.set(responseInit, {
+            type: "opaqueredirect",
+            redirected: false,
+            url: "",
+          });
+          return new Response(null, responseInit);
         case "follow":
         default:
           let redirectUrl = response.headers.get("Location");
