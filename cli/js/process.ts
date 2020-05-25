@@ -12,6 +12,7 @@ export type ProcessStdio = "inherit" | "piped" | "null";
 export interface RunOptions {
   cmd: string[];
   cwd?: string;
+  detached?: boolean;
   env?: { [key: string]: string };
   stdout?: ProcessStdio | number;
   stderr?: ProcessStdio | number;
@@ -110,6 +111,7 @@ interface RunResponse {
 export function run({
   cmd,
   cwd = undefined,
+  detached = false,
   env = {},
   stdout = "inherit",
   stderr = "inherit",
@@ -118,6 +120,7 @@ export function run({
   const res = runOp({
     cmd: cmd.map(String),
     cwd,
+    detached,
     env: Object.entries(env),
     stdin: isRid(stdin) ? "" : stdin,
     stdout: isRid(stdout) ? "" : stdout,

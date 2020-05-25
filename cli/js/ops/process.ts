@@ -19,6 +19,7 @@ export function runStatus(rid: number): Promise<RunStatusResponse> {
 interface RunRequest {
   cmd: string[];
   cwd?: string;
+  detached?: boolean;
   env?: Array<[string, string]>;
   stdin: string;
   stdout: string;

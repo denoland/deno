@@ -1775,6 +1775,7 @@ declare namespace Deno {
      * binary */
     cmd: string[];
     cwd?: string;
+    detached?: boolean;
     env?: {
       [key: string]: string;
     };
@@ -1797,6 +1798,10 @@ declare namespace Deno {
    *
    * Environmental variables for subprocess can be specified using `opt.env`
    * mapping.
+   * 
+   * Set `opt.detached` to true to run the child process in detached mode. 
+   * This is equivalent to setting `DETACHED_PROCESS` flag in windows 
+   * and calling `setsid()` before exec in unix
    *
    * By default subprocess inherits stdio of parent process. To change that
    * `opt.stdout`, `opt.stderr` and `opt.stdin` can be specified independently -

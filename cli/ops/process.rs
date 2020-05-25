@@ -46,6 +46,7 @@ fn subprocess_stdio_map(s: &str) -> std::process::Stdio {
 struct RunArgs {
   cmd: Vec<String>,
   cwd: Option<String>,
+  detached: bool,
   env: Vec<(String, String)>,
   stdin: String,
   stdout: String,
@@ -73,6 +74,7 @@ fn op_run(
   let args = run_args.cmd;
   let env = run_args.env;
   let cwd = run_args.cwd;
+  let detached = run_args.detached;
 
   let mut c = Command::new(args.get(0).unwrap());
   (1..args.len()).for_each(|i| {
@@ -109,8 +111,30 @@ fn op_run(
     c.stderr(subprocess_stdio_map(run_args.stderr.as_ref()));
   }
 
-  // We want to kill child when it's closed
-  c.kill_on_drop(true);
+  // We want to kill child when it's closed and not in detached mode
+  if !detached {
+    c.kill_on_drop(true);
+  }
+
+  //Detach the process
+  #[cfg(windows)]
+  {
+    let mut win_flags: u32 = 0x00000000;
+    if detached {
+      win_flags = win_flags | 0x00000008;
+    }
+    c.creation_flags(win_flags);
+  }
+
+  #[cfg(unix)]
+  unsafe {
+    if detached {        
+      c.pre_exec(|| {
+        libc::setsid();
+        Ok(())
+      });
+    }
+  }
 
   // Spawn the command.
   let mut child = c.spawn()?;
