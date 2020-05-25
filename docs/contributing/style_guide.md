@@ -314,3 +314,12 @@ export function foo(): string {
 `https://deno.land/std/` is intended to be baseline functionality that all Deno
 programs can rely on. We want to guarantee to users that this code does not
 include potentially unreviewed third party code.
+
+#### Document browser compatiblity.
+
+If a module is browser compatible, include the following in the JSDoc at the top
+of the module:
+
+```ts
+/** This module is browser compatible. */
+```
