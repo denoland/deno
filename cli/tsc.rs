@@ -7,6 +7,7 @@ use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::global_state::GlobalState;
 use crate::import_map::ImportMap;
+use crate::module_graph::ModuleGraphFile;
 use crate::module_graph::ModuleGraphLoader;
 use crate::msg;
 use crate::op_error::OpError;
@@ -523,6 +524,113 @@ impl TsCompiler {
 
     self.cache_emitted_files(compile_response.emit_map)?;
     ts_compiler.get_compiled_module(&source_file_.url)
+  }
+
+  /// Asynchronously compile module and all it's dependencies.
+  ///
+  /// This method compiled every module at most once.
+  ///
+  /// If `--reload` flag was provided then compiler will not on-disk cache and
+  /// force recompilation.
+  ///
+  /// If compilation is required then new V8 worker is spawned with fresh TS
+  /// compiler.
+  pub async fn new_compile(
+    &self,
+    global_state: GlobalState,
+    source_file: &SourceFile,
+    target: TargetLib,
+    permissions: Permissions,
+    module_graph: HashMap<String, ModuleGraphFile>,
+  ) -> Result<(), ErrBox> {
+    if self.has_compiled(&source_file.url) {
+      return Ok(());
+    }
+
+    if self.use_disk_cache {
+      // Try to load cached version:
+      // 1. check if there's 'meta' file
+      if let Some(metadata) = self.get_metadata(&source_file.url) {
+        // 2. compare version hashes
+        // TODO: it would probably be good idea to make it method implemented on SourceFile
+        let version_hash_to_validate = source_code_version_hash(
+          &source_file.source_code,
+          version::DENO,
+          &self.config.hash,
+        );
+
+        if metadata.version_hash == version_hash_to_validate {
+          debug!("load_cache metadata version hash match");
+          if self.get_compiled_module(&source_file.url).is_ok() {
+            self.mark_compiled(&source_file.url);
+            return Ok(());
+          }
+        }
+      }
+    }
+    let module_url = source_file.url.clone();
+
+    let module_graph_json =
+      serde_json::to_value(module_graph).expect("Failed to serialize data");
+    let target = match target {
+      TargetLib::Main => "main",
+      TargetLib::Worker => "worker",
+    };
+    let root_names = vec![module_url.to_string()];
+    let bundle = false;
+    let unstable = global_state.flags.unstable;
+    let compiler_config = self.config.clone();
+    let cwd = std::env::current_dir().unwrap();
+    let j = match (compiler_config.path, compiler_config.content) {
+      (Some(config_path), Some(config_data)) => json!({
+        "type": msg::CompilerRequestType::Compile as i32,
+        "target": target,
+        "rootNames": root_names,
+        "bundle": bundle,
+        "unstable": unstable,
+        "configPath": config_path,
+        "config": str::from_utf8(&config_data).unwrap(),
+        "cwd": cwd,
+        "sourceFileMap": module_graph_json,
+      }),
+      _ => json!({
+        "type": msg::CompilerRequestType::Compile as i32,
+        "target": target,
+        "rootNames": root_names,
+        "bundle": bundle,
+        "unstable": unstable,
+        "cwd": cwd,
+        "sourceFileMap": module_graph_json,
+      }),
+    };
+
+    let req_msg = j.to_string().into_boxed_str().into_boxed_bytes();
+
+    info!(
+      "{} {}",
+      colors::green("Compile".to_string()),
+      module_url.to_string()
+    );
+
+    let start = Instant::now();
+
+    let msg =
+      execute_in_same_thread(global_state.clone(), permissions, req_msg)
+        .await?;
+
+    let end = Instant::now();
+    debug!("time spent in compiler thread {:#?}", end - start);
+
+    let json_str = std::str::from_utf8(&msg).unwrap();
+
+    let compile_response: CompileResponse = serde_json::from_str(json_str)?;
+
+    if !compile_response.diagnostics.items.is_empty() {
+      return Err(ErrBox::from(compile_response.diagnostics));
+    }
+
+    self.cache_emitted_files(compile_response.emit_map)?;
+    Ok(())
   }
 
   /// Get associated `CompiledFileMetadata` for given module if it exists.

@@ -3,7 +3,9 @@ use crate::deno_dir;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::flags;
 use crate::http_cache;
+use crate::import_map::ImportMap;
 use crate::lockfile::Lockfile;
+use crate::module_graph::ModuleGraphLoader;
 use crate::msg;
 use crate::permissions::Permissions;
 use crate::tsc::CompiledModule;
@@ -87,6 +89,76 @@ impl GlobalState {
       compile_lock: AsyncMutex::new(()),
     };
     Ok(GlobalState(Arc::new(inner)))
+  }
+
+  pub async fn prepare_module_load(
+    &self,
+    module_specifier: ModuleSpecifier,
+    _maybe_referrer: Option<ModuleSpecifier>,
+    target_lib: TargetLib,
+    permissions: Permissions,
+    is_dyn_import: bool,
+    maybe_import_map: Option<ImportMap>,
+  ) -> Result<(), ErrBox> {
+    let state1 = self.clone();
+    let state2 = self.clone();
+    let module_specifier = module_specifier.clone();
+
+    // TODO(ry) Try to lift compile_lock as high up in the call stack for
+    // sanity.
+    let compile_lock = self.compile_lock.lock().await;
+
+    let mut module_graph_loader = ModuleGraphLoader::new(
+      self.file_fetcher.clone(),
+      maybe_import_map,
+      permissions.clone(),
+      is_dyn_import,
+      false,
+    );
+    module_graph_loader.add_to_graph(&module_specifier).await?;
+    let module_graph = module_graph_loader.get_graph();
+
+    let out = self
+      .file_fetcher
+      .fetch_cached_source_file(&module_specifier, permissions.clone())
+      .expect("Source file not found");
+
+    // Check if we need to compile files
+    match out.media_type {
+      msg::MediaType::TypeScript
+      | msg::MediaType::TSX
+      | msg::MediaType::JSX => {
+        state1
+          .ts_compiler
+          .new_compile(
+            state1.clone(),
+            &out,
+            target_lib,
+            permissions,
+            module_graph,
+          )
+          .await?;
+      }
+      msg::MediaType::JavaScript => {
+        if state1.ts_compiler.compile_js {
+          state2
+            .ts_compiler
+            .new_compile(
+              state1.clone(),
+              &out,
+              target_lib,
+              permissions,
+              module_graph,
+            )
+            .await?;
+        }
+      }
+      _ => {}
+    };
+
+    drop(compile_lock);
+
+    Ok(())
   }
 
   pub async fn fetch_compiled_module(

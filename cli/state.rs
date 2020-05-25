@@ -5,7 +5,6 @@ use crate::global_timer::GlobalTimer;
 use crate::import_map::ImportMap;
 use crate::inspector::DenoInspector;
 use crate::metrics::Metrics;
-use crate::module_graph::ModuleGraphLoader;
 use crate::op_error::OpError;
 use crate::ops::JsonOp;
 use crate::ops::MinimalOp;
@@ -359,27 +358,42 @@ impl ModuleLoader for State {
     &self,
     _load_id: ModuleLoadId,
     module_specifier: &ModuleSpecifier,
-    _maybe_referrer: Option<String>,
+    maybe_referrer: Option<String>,
     is_dyn_import: bool,
   ) -> Pin<Box<dyn Future<Output = Result<(), ErrBox>>>> {
     let module_specifier = module_specifier.clone();
     let state = self.borrow();
+    let target_lib = state.target_lib.clone();
+    let maybe_import_map = state.import_map.clone();
     let permissions = if state.is_main && !is_dyn_import {
       Permissions::allow_all()
     } else {
       state.permissions.clone()
     };
+    let global_state = state.global_state.clone();
+    // TODO(bartlomieju): I'm not sure if it's correct to ignore
+    // bad referrer - this is the case for `Deno.core.evalContext()` where
+    // `ref_str` is `<unknown>`.
+    let maybe_referrer = if let Some(ref_str) = maybe_referrer {
+      ModuleSpecifier::resolve_url(&ref_str).ok()
+    } else {
+      None
+    };
+    drop(state);
 
-    let mut module_graph_loader = ModuleGraphLoader::new(
-      state.global_state.file_fetcher.clone(),
-      state.import_map.clone(),
-      permissions,
-      is_dyn_import,
-      false,
-    );
-
-    async move { module_graph_loader.add_to_graph(&module_specifier).await }
-      .boxed_local()
+    async move {
+      global_state
+        .prepare_module_load(
+          module_specifier,
+          maybe_referrer,
+          target_lib,
+          permissions,
+          is_dyn_import,
+          maybe_import_map,
+        )
+        .await
+    }
+    .boxed_local()
   }
 }
 
