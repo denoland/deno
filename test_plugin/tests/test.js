@@ -11,7 +11,7 @@ if (Deno.build.os === "darwin") {
   filenameSuffix = ".dylib";
 }
 
-const filename = `../target/${Deno.args[0]}/${filenamePrefix}${filenameBase}${filenameSuffix}`;
+const filename = `../../target/${Deno.args[0]}/${filenamePrefix}${filenameBase}${filenameSuffix}`;
 
 // This will be checked against open resources after Plugin.close()
 // in runTestClose() below.
