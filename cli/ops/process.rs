@@ -128,7 +128,7 @@ fn op_run(
 
   #[cfg(unix)]
   unsafe {
-    if detached {        
+    if detached {
       c.pre_exec(|| {
         libc::setsid();
         Ok(())
