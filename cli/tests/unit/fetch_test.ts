@@ -260,6 +260,19 @@ unitTest(
 
 unitTest(
   { perms: { net: true } },
+  async function fetchInitArrayBufferBody(): Promise<void> {
+    const data = "Hello World";
+    const response = await fetch("http://localhost:4545/echo_server", {
+      method: "POST",
+      body: new TextEncoder().encode(data).buffer,
+    });
+    const text = await response.text();
+    assertEquals(text, data);
+  }
+);
+
+unitTest(
+  { perms: { net: true } },
   async function fetchInitURLSearchParamsBody(): Promise<void> {
     const data = "param1=value1&param2=value2";
     const params = new URLSearchParams(data);
