@@ -207,15 +207,28 @@ async fn print_file_info(
   );
 
   let module_specifier_ = module_specifier.clone();
+  let maybe_import_map = match global_state.flags.import_map_path.as_ref() {
+    None => None,
+    Some(file_path) => {
+      if !global_state.flags.unstable {
+        exit_unstable("--importmap")
+      }
+      Some(ImportMap::load(file_path)?)
+    }
+  };
   global_state
-    .clone()
-    .fetch_compiled_module(
-      module_specifier_,
+    .prepare_module_load(
+      module_specifier_.clone(),
       None,
       TargetLib::Main,
       Permissions::allow_all(),
       false,
+      maybe_import_map,
     )
+    .await?;
+  global_state
+    .clone()
+    .fetch_compiled_module(module_specifier_, None)
     .await?;
 
   if out.media_type == msg::MediaType::TypeScript

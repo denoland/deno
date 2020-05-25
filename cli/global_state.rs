@@ -150,13 +150,11 @@ impl GlobalState {
     Ok(())
   }
 
+  // TODO(bartlomieju): this method doesn't need to be async anymore
   pub async fn fetch_compiled_module(
     &self,
     module_specifier: ModuleSpecifier,
-    maybe_referrer: Option<ModuleSpecifier>,
-    _target_lib: TargetLib,
-    permissions: Permissions,
-    _is_dyn_import: bool,
+    _maybe_referrer: Option<ModuleSpecifier>,
   ) -> Result<CompiledModule, ErrBox> {
     let state1 = self.clone();
     let state2 = self.clone();
@@ -164,8 +162,8 @@ impl GlobalState {
 
     let out = self
       .file_fetcher
-      .fetch_source_file(&module_specifier, maybe_referrer, permissions.clone())
-      .await?;
+      .fetch_cached_source_file(&module_specifier, Permissions::allow_all())
+      .expect("Cached source file doesn't exist");
 
     // TODO(ry) Try to lift compile_lock as high up in the call stack for
     // sanity.

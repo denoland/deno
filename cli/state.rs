@@ -271,79 +271,23 @@ impl ModuleLoader for State {
     Ok(module_specifier)
   }
 
-  // TODO(bartlomieju): this method should only access
-  // already compiled/loaded code - it shouldn't be
-  // able to spin up TS compiler
-  /// Given an absolute url, load its source code.
   fn load(
     &self,
     module_specifier: &ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
-    is_dyn_import: bool,
+    _is_dyn_import: bool,
   ) -> Pin<Box<deno_core::ModuleSourceFuture>> {
-    let module_specifier = module_specifier.clone();
-
-    // TODO(bartlomieju): this code is duplicated from module_graph.
-    // It should be removed when `prepare_load` will be used to load modules.
-    // Disallow http:// imports from modules loaded over https://
-    if let Some(referrer) = maybe_referrer.as_ref() {
-      if let "https" = referrer.as_url().scheme() {
-        if let "http" = module_specifier.as_url().scheme() {
-          let e = OpError::permission_denied(
-            "Modules loaded over https:// are not allowed to import modules over http://".to_string()
-          );
-          return async move { Err(e.into()) }.boxed_local();
-        }
-      }
-    }
-
-    if is_dyn_import {
-      if let Err(e) = self.check_dyn_import(&module_specifier) {
-        return async move { Err(e.into()) }.boxed_local();
-      }
-    } else {
-      // Verify that remote file doesn't try to statically import local file.
-      if let Some(referrer) = maybe_referrer.as_ref() {
-        let referrer_url = referrer.as_url();
-        match referrer_url.scheme() {
-          "http" | "https" => {
-            let specifier_url = module_specifier.as_url();
-            match specifier_url.scheme() {
-              "http" | "https" => {}
-              _ => {
-                let e = OpError::permission_denied(
-                  "Remote modules are not allowed to statically import local modules. Use dynamic import instead.".to_string()
-                );
-                return async move { Err(e.into()) }.boxed_local();
-              }
-            }
-          }
-          _ => {}
-        }
-      }
-    }
-
+    let module_specifier = module_specifier.to_owned();
     let mut state = self.borrow_mut();
     // TODO(bartlomieju): incrementing resolve_count here has no sense...
     state.metrics.resolve_count += 1;
     let module_url_specified = module_specifier.to_string();
     let global_state = state.global_state.clone();
-    let target_lib = state.target_lib.clone();
-    let permissions = if state.is_main {
-      Permissions::allow_all()
-    } else {
-      state.permissions.clone()
-    };
 
+    // TODO(bartlomieju): `fetch_compiled_module` should take `load_id` param
     let fut = async move {
       let compiled_module = global_state
-        .fetch_compiled_module(
-          module_specifier,
-          maybe_referrer,
-          target_lib,
-          permissions,
-          is_dyn_import,
-        )
+        .fetch_compiled_module(module_specifier, maybe_referrer)
         .await?;
       Ok(deno_core::ModuleSource {
         // Real module name, might be different from initial specifier
