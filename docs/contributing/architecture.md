@@ -2,15 +2,15 @@
 
 ### Deno and Linux analogy
 
-|                       **Linux** | **Deno**                         |
-| ------------------------------: | :------------------------------- |
-|                       Processes | Web Workers                      |
-|                        Syscalls | Ops                              |
-|           File descriptors (fd) | [Resource ids (rid)](#resources) |
-|                       Scheduler | Tokio                            |
-| Userland: libc++ / glib / boost | https://deno.land/std/           |
-|                 /proc/\$\$/stat | [Deno.metrics()](#metrics)       |
-|                       man pages | deno types                       |
+|                       **Linux** | **Deno**                                                                           |
+| ------------------------------: | :--------------------------------------------------------------------------------- |
+|                       Processes | Web Workers                                                                        |
+|                        Syscalls | Ops                                                                                |
+|           File descriptors (fd) | [Resource ids (rid)](https://deno.land/manual/contributing/architecture#resources) |
+|                       Scheduler | Tokio                                                                              |
+| Userland: libc++ / glib / boost | https://deno.land/std/                                                             |
+|                 /proc/\$\$/stat | [Deno.metrics()](https://deno.land/manual/contributing/architecture#metrics)       |
+|                       man pages | deno types                                                                         |
 
 #### Resources
 

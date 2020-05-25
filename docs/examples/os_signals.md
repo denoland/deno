@@ -1,7 +1,7 @@
 ## Handle OS Signals
 
 > This program makes use of an unstable Deno feature. Learn more about
-> [unstable features](../runtime/stability.md).
+> [unstable features](https://deno.land/manual/runtime/stability).
 
 [API Reference](https://doc.deno.land/https/raw.githubusercontent.com/denoland/deno/master/cli/js/lib.deno.unstable.d.ts#Deno.signal)
 

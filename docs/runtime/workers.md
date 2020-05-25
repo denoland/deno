@@ -64,7 +64,7 @@ hello world
 ### Using Deno in worker
 
 > This is an unstable Deno feature. Learn more about
-> [unstable features](./stability.md).
+> [unstable features](https://deno.land/manual/runtime/stability).
 
 By default the `Deno` namespace is not available in worker scope.
 

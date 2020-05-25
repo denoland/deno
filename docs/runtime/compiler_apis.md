@@ -1,7 +1,7 @@
 ## Compiler API
 
 > This is an unstable Deno feature. Learn more about
-> [unstable features](./stability.md).
+> [unstable features](https://deno.land/manual/runtime/stability).
 
 Deno supports runtime access to the built-in TypeScript compiler. There are
 three methods in the `Deno` namespace that provide this access.

@@ -1,6 +1,6 @@
 # Contributing
 
-- Read the [style guide](./contributing/style_guide.md).
+- Read the [style guide](https://deno.land/manual/contributing/style_guide).
 
 - Please don't make [the benchmarks](https://deno.land/benchmarks.html) worse.
 
@@ -16,7 +16,7 @@
 ## Development
 
 Instructions on how to build from source can be found
-[here](./contributing/building_from_source.md).
+[here](https://deno.land/manual/contributing/building_from_source).
 
 ## Submitting a Pull Request
 

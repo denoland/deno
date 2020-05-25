@@ -52,8 +52,8 @@ Deno.test("async hello world", async () => {
 ### Resource and async op sanitizers
 
 Certain actions in Deno create resources in the resource table
-([learn more here](./contributing/architecture.md)). These resources should be
-closed after you are done using them.
+([learn more here](https://deno.land/manual/contributing/architecture)). These
+resources should be closed after you are done using them.
 
 For each test definition the test runner checks that all resources created in
 this test have been closed. This is to prevent resource 'leaks'. This is enabled
