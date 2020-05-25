@@ -100,8 +100,6 @@ impl GlobalState {
     is_dyn_import: bool,
     maybe_import_map: Option<ImportMap>,
   ) -> Result<(), ErrBox> {
-    let state1 = self.clone();
-    let state2 = self.clone();
     let module_specifier = module_specifier.clone();
 
     // TODO(ry) Try to lift compile_lock as high up in the call stack for
@@ -126,37 +124,26 @@ impl GlobalState {
       .expect("Source file not found");
 
     // Check if we need to compile files
-    match out.media_type {
+    let needs_compilation = match out.media_type {
       msg::MediaType::TypeScript
       | msg::MediaType::TSX
-      | msg::MediaType::JSX => {
-        state1
-          .ts_compiler
-          .new_compile(
-            state1.clone(),
-            &out,
-            target_lib,
-            permissions,
-            module_graph,
-          )
-          .await?;
-      }
-      msg::MediaType::JavaScript => {
-        if state1.ts_compiler.compile_js {
-          state2
-            .ts_compiler
-            .new_compile(
-              state1.clone(),
-              &out,
-              target_lib,
-              permissions,
-              module_graph,
-            )
-            .await?;
-        }
-      }
-      _ => {}
+      | msg::MediaType::JSX => true,
+      msg::MediaType::JavaScript => self.ts_compiler.compile_js,
+      _ => false,
     };
+
+    if needs_compilation {
+      self
+        .ts_compiler
+        .compile_module_graph(
+          self.clone(),
+          &out,
+          target_lib,
+          permissions,
+          module_graph,
+        )
+        .await?;
+    }
 
     drop(compile_lock);
 
@@ -167,9 +154,9 @@ impl GlobalState {
     &self,
     module_specifier: ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
-    target_lib: TargetLib,
+    _target_lib: TargetLib,
     permissions: Permissions,
-    is_dyn_import: bool,
+    _is_dyn_import: bool,
   ) -> Result<CompiledModule, ErrBox> {
     let state1 = self.clone();
     let state2 = self.clone();
@@ -184,52 +171,24 @@ impl GlobalState {
     // sanity.
     let compile_lock = self.compile_lock.lock().await;
 
-    let compiled_module = match out.media_type {
+    // Check if we need to compile files
+    let needs_compilation = match out.media_type {
       msg::MediaType::TypeScript
       | msg::MediaType::TSX
-      | msg::MediaType::JSX => {
-        state1
-          .ts_compiler
-          .compile(state1.clone(), &out, target_lib, permissions, is_dyn_import)
-          .await
-      }
-      msg::MediaType::JavaScript => {
-        if state1.ts_compiler.compile_js {
-          state2
-            .ts_compiler
-            .compile(
-              state1.clone(),
-              &out,
-              target_lib,
-              permissions,
-              is_dyn_import,
-            )
-            .await
-        } else {
-          if let Some(types_url) = out.types_url.clone() {
-            let types_specifier = ModuleSpecifier::from(types_url);
-            state1
-              .file_fetcher
-              .fetch_source_file(
-                &types_specifier,
-                Some(module_specifier.clone()),
-                permissions.clone(),
-              )
-              .await
-              .ok();
-          };
+      | msg::MediaType::JSX => true,
+      msg::MediaType::JavaScript => self.ts_compiler.compile_js,
+      _ => false,
+    };
 
-          Ok(CompiledModule {
-            code: String::from_utf8(out.source_code.clone())?,
-            name: out.url.to_string(),
-          })
-        }
-      }
-      _ => Ok(CompiledModule {
+    let compiled_module = if needs_compilation {
+      state1.ts_compiler.get_compiled_module(&out.url)?
+    } else {
+      CompiledModule {
         code: String::from_utf8(out.source_code.clone())?,
         name: out.url.to_string(),
-      }),
-    }?;
+      }
+    };
+
     drop(compile_lock);
 
     if let Some(ref lockfile) = state2.lockfile {

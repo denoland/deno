@@ -291,6 +291,24 @@ impl CompiledFileMetadata {
   }
 }
 
+#[derive(Deserialize, Serialize)]
+pub struct GraphFileMetadata {
+  pub deps: Vec<String>,
+  pub version_hash: String,
+}
+
+impl GraphFileMetadata {
+  pub fn from_json_string(
+    metadata_string: String,
+  ) -> Result<Self, serde_json::Error> {
+    serde_json::from_str::<Self>(&metadata_string)
+  }
+
+  pub fn to_json_string(&self) -> Result<String, serde_json::Error> {
+    serde_json::to_string(self)
+  }
+}
+
 /// Emit a SHA256 hash based on source code, deno version and TS config.
 /// Used to check if a recompilation for source code is needed.
 pub fn source_code_version_hash(
@@ -528,31 +546,16 @@ impl TsCompiler {
     ts_compiler.get_compiled_module(&source_file_.url)
   }
 
-  /// Asynchronously compile module and all it's dependencies.
-  ///
-  /// This method compiled every module at most once.
-  ///
-  /// If `--reload` flag was provided then compiler will not on-disk cache and
-  /// force recompilation.
-  ///
-  /// If compilation is required then new V8 worker is spawned with fresh TS
-  /// compiler.
-  pub async fn new_compile(
+  fn has_compiled_source(
     &self,
-    global_state: GlobalState,
-    source_file: &SourceFile,
-    target: TargetLib,
-    permissions: Permissions,
-    module_graph: HashMap<String, ModuleGraphFile>,
-  ) -> Result<(), ErrBox> {
-    if self.has_compiled(&source_file.url) {
-      return Ok(());
-    }
-
-    if self.use_disk_cache {
-      // Try to load cached version:
-      // 1. check if there's 'meta' file
-      if let Some(metadata) = self.get_metadata(&source_file.url) {
+    file_fetcher: &SourceFileFetcher,
+    url: &Url,
+  ) -> bool {
+    let specifier = ModuleSpecifier::from(url.clone());
+    if let Some(source_file) = file_fetcher
+      .fetch_cached_source_file(&specifier, Permissions::allow_all())
+    {
+      if let Some(metadata) = self.get_metadata(&url) {
         // 2. compare version hashes
         // TODO: it would probably be good idea to make it method implemented on SourceFile
         let version_hash_to_validate = source_code_version_hash(
@@ -562,14 +565,75 @@ impl TsCompiler {
         );
 
         if metadata.version_hash == version_hash_to_validate {
-          debug!("load_cache metadata version hash match");
-          if self.get_compiled_module(&source_file.url).is_ok() {
-            self.mark_compiled(&source_file.url);
-            return Ok(());
-          }
+          return true;
         }
       }
     }
+
+    false
+  }
+
+  /// Asynchronously compile module and all it's dependencies.
+  ///
+  /// This method compiled every module at most once.
+  ///
+  /// If `--reload` flag was provided then compiler will not on-disk cache and
+  /// force recompilation.
+  ///
+  /// If compilation is required then new V8 worker is spawned with fresh TS
+  /// compiler.
+  pub async fn compile_module_graph(
+    &self,
+    global_state: GlobalState,
+    source_file: &SourceFile,
+    target: TargetLib,
+    permissions: Permissions,
+    module_graph: HashMap<String, ModuleGraphFile>,
+  ) -> Result<(), ErrBox> {
+    let mut has_cached_version = true;
+
+    if self.use_disk_cache {
+      if let Some(metadata) = self.get_graph_metadata(&source_file.url) {
+        let version_hash = crate::checksum::gen(vec![
+          version::DENO.as_bytes(),
+          &self.config.hash,
+        ]);
+
+        has_cached_version &= metadata.version_hash == version_hash;
+
+        for dep in metadata.deps {
+          let url = Url::parse(&dep).expect("Dep is not a valid url");
+          let a = self.has_compiled_source(&global_state.file_fetcher, &url);
+          has_cached_version &= a;
+        }
+
+        // Try to load cached version:
+        // 1. check if there's 'meta' file
+        if let Some(metadata) = self.get_metadata(&source_file.url) {
+          // 2. compare version hashes
+          // TODO: it would probably be good idea to make it method implemented on SourceFile
+          let version_hash_to_validate = source_code_version_hash(
+            &source_file.source_code,
+            version::DENO,
+            &self.config.hash,
+          );
+
+          has_cached_version &=
+            metadata.version_hash == version_hash_to_validate;
+        } else {
+          has_cached_version = false;
+        }
+      } else {
+        has_cached_version = false;
+      }
+    } else {
+      has_cached_version = false;
+    }
+
+    if has_cached_version {
+      return Ok(());
+    }
+
     let module_url = source_file.url.clone();
 
     let module_graph_json =
@@ -631,8 +695,69 @@ impl TsCompiler {
       return Err(ErrBox::from(compile_response.diagnostics));
     }
 
+    self.set_graph_metadata(
+      source_file.url.clone(),
+      &compile_response.emit_map,
+    )?;
     self.cache_emitted_files(compile_response.emit_map)?;
     Ok(())
+  }
+
+  fn get_graph_metadata(&self, url: &Url) -> Option<GraphFileMetadata> {
+    // Try to load cached version:
+    // 1. check if there's 'meta' file
+    let cache_key = self
+      .disk_cache
+      .get_cache_filename_with_extension(url, "graph");
+    if let Ok(metadata_bytes) = self.disk_cache.get(&cache_key) {
+      if let Ok(metadata) = std::str::from_utf8(&metadata_bytes) {
+        if let Ok(read_metadata) =
+          GraphFileMetadata::from_json_string(metadata.to_string())
+        {
+          return Some(read_metadata);
+        }
+      }
+    }
+
+    None
+  }
+
+  fn set_graph_metadata(
+    &self,
+    url: Url,
+    emit_map: &HashMap<String, EmittedSource>,
+  ) -> std::io::Result<()> {
+    let version_hash =
+      crate::checksum::gen(vec![version::DENO.as_bytes(), &self.config.hash]);
+    let mut deps = vec![];
+
+    for (_emitted_name, source) in emit_map.iter() {
+      let specifier = ModuleSpecifier::resolve_url(&source.filename)
+        .expect("Should be a valid module specifier");
+
+      let source_file = self
+        .file_fetcher
+        .fetch_cached_source_file(&specifier, Permissions::allow_all())
+        .expect("Source file not found");
+
+      // NOTE: JavaScript files are only cached to disk if `checkJs`
+      // option in on
+      if source_file.media_type == msg::MediaType::JavaScript
+        && !self.compile_js
+      {
+        continue;
+      }
+
+      deps.push(specifier.to_string());
+    }
+
+    let graph_metadata = GraphFileMetadata { deps, version_hash };
+    let meta_key = self
+      .disk_cache
+      .get_cache_filename_with_extension(&url, "graph");
+    self
+      .disk_cache
+      .set(&meta_key, graph_metadata.to_json_string()?.as_bytes())
   }
 
   /// Get associated `CompiledFileMetadata` for given module if it exists.

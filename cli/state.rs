@@ -271,6 +271,9 @@ impl ModuleLoader for State {
     Ok(module_specifier)
   }
 
+  // TODO(bartlomieju): this method should only access
+  // already compiled/loaded code - it shouldn't be
+  // able to spin up TS compiler
   /// Given an absolute url, load its source code.
   fn load(
     &self,
