@@ -17,16 +17,25 @@ deno run --allow-read mod.ts
 
 The following permissions are available:
 
-| Command&nbsp;line&nbsp;flag&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Permission description                                                                                                                                                                     |
-| --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| -A, --allow-all                                                                                                       | Allow all permissions. This disables all security.                                                                                                                                         |
-| --allow-env                                                                                                           | Allow environment access for things like getting and setting of environment variables.                                                                                                     |
-| --allow-hrtime                                                                                                        | Allow high resolution time measurement. High resolution time can be used in timing attacks and fingerprinting.                                                                             |
-| --allow-net=\<allow-net\>                                                                                             | Allow network access. You can specify an optional, comma separated list of domains to provide a whitelist of allowed domains.                                                              |
-| --allow-plugin                                                                                                        | Allow loading plugins.                                                                                                                                                                     |
-| -allow-read=\<allow-read\>                                                                                            | Allow file system read access. You can specify an optional, comma separated list of directories or files to provide a whitelist of allowed file system access.                             |
-| --allow-run                                                                                                           | Allow running subprocesses. Be aware that subprocesses are not run in a sandbox and therefore do not have the same security restrictions as the deno process. Therefore, use with caution. |
-| --allow-write=\<allow-write\>                                                                                         | Allow file system write access. You can specify an optional, comma separated list of directories or files to provide a whitelist of allowed file system access.                            |
+- **-A, --allow-all** Allow all permissions. This disables all security.
+- **--allow-env** Allow environment access for things like getting and setting
+  of environment variables.
+- **--allow-hrtime** Allow high resolution time measurement. High resolution
+  time can be used in timing attacks and fingerprinting.
+- **--allow-net=\<allow-net\>** Allow network access. You can specify an
+  optional, comma separated list of domains to provide a whitelist of allowed
+  domains.
+- **--allow-plugin** Allow loading plugins. Please note that --allow-plugin is
+  an unstable feature.
+- **--allow-read=\<allow-read\>** Allow file system read access. You can specify
+  an optional, comma separated list of directories or files to provide a
+  whitelist of allowed file system access.
+- **--allow-run** Allow running subprocesses. Be aware that subprocesses are not
+  run in a sandbox and therefore do not have the same security restrictions as
+  the deno process. Therefore, use with caution.
+- **--allow-write=\<allow-write\>** Allow file system write access. You can
+  specify an optional, comma separated list of directories or files to provide a
+  whitelist of allowed file system access.
 
 ### Permissions whitelist
 
