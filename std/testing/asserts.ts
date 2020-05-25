@@ -1,4 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+/** This module is browser compatible. Do not rely on good formatting of values
+ * for AssertionError messages in browsers. */
+
 import { red, green, white, gray, bold } from "../fmt/colors.ts";
 import diff, { DiffType, DiffResult } from "./diff.ts";
 
@@ -17,7 +20,7 @@ export class AssertionError extends Error {
 }
 
 function format(v: unknown): string {
-  let string = Deno.inspect(v);
+  let string = globalThis.Deno ? Deno.inspect(v) : String(v);
   if (typeof v == "string") {
     string = `"${string.replace(/(?=["\\])/g, "\\")}"`;
   }
@@ -254,7 +257,7 @@ export function assertStrContains(
 ): void {
   if (!actual.includes(expected)) {
     if (!msg) {
-      msg = `actual: "${actual}" expected to contains: "${expected}"`;
+      msg = `actual: "${actual}" expected to contain: "${expected}"`;
     }
     throw new AssertionError(msg);
   }
@@ -286,7 +289,7 @@ export function assertArrayContains(
     return;
   }
   if (!msg) {
-    msg = `actual: "${actual}" expected to contains: "${expected}"`;
+    msg = `actual: "${actual}" expected to contain: "${expected}"`;
     msg += "\n";
     msg += `missing: ${missing}`;
   }
