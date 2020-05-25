@@ -11,7 +11,10 @@
 pub use crate::Buf;
 pub use crate::Op;
 pub use crate::OpId;
+pub use crate::ResourceTable;
 pub use crate::ZeroCopyBuf;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 pub type InitFn = fn(&mut dyn Interface);
 
@@ -20,4 +23,5 @@ pub type DispatchOpFn =
 
 pub trait Interface {
   fn register_op(&mut self, name: &str, dispatcher: DispatchOpFn) -> OpId;
+  fn resource_table(&mut self) -> Rc<RefCell<ResourceTable>>;
 }

@@ -71,42 +71,51 @@ fn op_test_resources(
     let rc = Box::new(TestResource {
       noise: "woof".to_owned(),
     });
-    interface.resource_table().add("test_resource", rc)
+    let rt = interface.resource_table();
+    let mut rt = rt.borrow_mut();
+    rt.add("test_resource", rc)
   };
   {
     // `has()`
-    let found = interface.resource_table().has(rid);
+    let found = interface.resource_table().borrow().has(rid);
     assert!(found);
   }
   {
     // `get()`
-    let rc = interface.resource_table().get(rid).unwrap();
-    let rc = rc.downcast_ref::<TestResource>().unwrap();
+    let rt = interface.resource_table();
+    let rt = rt.borrow();
+    let rc = rt.get::<TestResource>(rid).unwrap();
     assert_eq!(&rc.noise, "woof");
   }
   {
     // `get_mut()`
-    let rc = interface.resource_table().get_mut(rid).unwrap();
-    let mut rc = rc.downcast_mut::<TestResource>().unwrap();
+    let rt = interface.resource_table();
+    let mut rt = rt.borrow_mut();
+    let rc = rt.get_mut::<TestResource>(rid).unwrap();
     assert_eq!(&rc.noise, "woof");
     rc.noise = "mooh".to_owned();
   }
   {
     // The resource's internal state should have changed.
-    let rc = interface.resource_table().get(rid).unwrap();
-    let rc = rc.downcast_ref::<TestResource>().unwrap();
+    let rt = interface.resource_table();
+    let rt = rt.borrow();
+    let rc = rt.get::<TestResource>(rid).unwrap();
     assert_eq!(&rc.noise, "mooh");
   }
   {
     // `close()`
-    let found = interface.resource_table().close(rid).is_some();
+    let rt = interface.resource_table();
+    let mut rt = rt.borrow_mut();
+    let found = rt.close(rid).is_some();
     assert!(found);
   }
   {
+    let rt = interface.resource_table();
+    let mut rt = rt.borrow_mut();
     // After `close()` the resource should be gone.
-    let found1 = interface.resource_table().has(rid);
+    let found1 = rt.has(rid);
     assert!(!found1);
-    let found2 = interface.resource_table().close(rid).is_some();
+    let found2 = rt.close(rid).is_some();
     assert!(!found2);
   }
   Op::Sync(Default::default())

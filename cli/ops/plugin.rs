@@ -11,9 +11,11 @@ use deno_core::CoreIsolate;
 use deno_core::Op;
 use deno_core::OpAsyncFuture;
 use deno_core::OpId;
+use deno_core::ResourceTable;
 use deno_core::ZeroCopyBuf;
 use dlopen::symbor::Library;
 use futures::prelude::*;
+use std::cell::RefCell;
 use std::path::Path;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -121,6 +123,10 @@ impl<'a> plugin_api::Interface for PluginInterface<'a> {
         }
       },
     )
+  }
+
+  fn resource_table(&mut self) -> Rc<RefCell<ResourceTable>> {
+    self.isolate.resource_table.clone()
   }
 }
 
