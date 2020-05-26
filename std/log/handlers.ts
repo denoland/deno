@@ -125,7 +125,7 @@ export class FileHandler extends WriterHandler {
   }
 
   log(msg: string): void {
-    Deno.writeSync(this._file.rid, this.#encoder.encode(msg + "\n"));
+    Deno.writeAllSync(this._file, this.#encoder.encode(msg + "\n"));
   }
 
   destroy(): Promise<void> {

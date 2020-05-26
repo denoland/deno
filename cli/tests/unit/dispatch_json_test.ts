@@ -20,9 +20,9 @@ unitTest(
 );
 
 unitTest(function malformedJsonControlBuffer(): void {
-  // @ts-ignore
+  // @ts-expect-error
   const opId = Deno.core.ops()["op_open"];
-  // @ts-ignore
+  // @ts-expect-error
   const res = Deno.core.send(opId, new Uint8Array([1, 2, 3, 4, 5]));
   const resText = new TextDecoder().decode(res);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

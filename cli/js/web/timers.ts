@@ -239,7 +239,7 @@ export function setTimeout(
   ...args: Args
 ): number {
   checkBigInt(delay);
-  // @ts-ignore
+  // @ts-expect-error
   checkThis(this);
   return setTimer(cb, delay, args, false);
 }
@@ -250,7 +250,7 @@ export function setInterval(
   ...args: Args
 ): number {
   checkBigInt(delay);
-  // @ts-ignore
+  // @ts-expect-error
   checkThis(this);
   return setTimer(cb, delay, args, true);
 }

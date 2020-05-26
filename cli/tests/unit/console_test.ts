@@ -22,7 +22,7 @@ const customInspect = Deno.customInspect;
 const {
   Console,
   stringifyArgs,
-  // @ts-ignore TypeScript (as of 3.7) does not support indexing namespaces by symbol
+  // @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
 } = Deno[Deno.internal];
 
 function stringify(...args: unknown[]): string {
@@ -590,7 +590,7 @@ unitTest(function consoleTestStringifyIterable() {
   0,                <120 empty items>
 ]`
   );
-*/
+  */
 });
 
 unitTest(async function consoleTestStringifyPromises(): Promise<void> {
@@ -727,7 +727,6 @@ unitTest(function consoleTestCallToStringOnLabel(): void {
   mockConsole((console) => {
     for (const method of methods) {
       let hasCalled = false;
-      // @ts-ignore
       console[method]({
         toString(): void {
           hasCalled = true;

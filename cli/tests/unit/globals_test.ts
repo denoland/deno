@@ -48,12 +48,12 @@ unitTest(function webAssemblyExists(): void {
 unitTest(function DenoNamespaceImmutable(): void {
   const denoCopy = window.Deno;
   try {
-    // @ts-ignore
+    // @ts-expect-error
     Deno = 1;
   } catch {}
   assert(denoCopy === Deno);
   try {
-    // @ts-ignore
+    // @ts-expect-error
     window.Deno = 1;
   } catch {}
   assert(denoCopy === Deno);
@@ -64,7 +64,7 @@ unitTest(function DenoNamespaceImmutable(): void {
 
   const { readFile } = Deno;
   try {
-    // @ts-ignore
+    // @ts-expect-error
     Deno.readFile = 1;
   } catch {}
   assert(readFile === Deno.readFile);
@@ -73,19 +73,19 @@ unitTest(function DenoNamespaceImmutable(): void {
   } catch {}
   assert(readFile === Deno.readFile);
 
-  // @ts-ignore
+  // @ts-expect-error
   const { print } = Deno.core;
   try {
-    // @ts-ignore
+    // @ts-expect-error
     Deno.core.print = 1;
   } catch {}
-  // @ts-ignore
+  // @ts-expect-error
   assert(print === Deno.core.print);
   try {
-    // @ts-ignore
+    // @ts-expect-error
     delete Deno.core.print;
   } catch {}
-  // @ts-ignore
+  // @ts-expect-error
   assert(print === Deno.core.print);
 });
 

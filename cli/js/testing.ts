@@ -333,11 +333,10 @@ async function runTests({
   const filterFn = createFilterFn(filter, skip);
   const testApi = new TestApi(TEST_REGISTRY, filterFn, failFast);
 
-  // @ts-ignore
   const originalConsole = globalThis.console;
 
   if (disableLog) {
-    // @ts-ignore
+    // @ts-expect-error
     globalThis.console = disabledConsole;
   }
 
@@ -356,7 +355,6 @@ async function runTests({
   }
 
   if (disableLog) {
-    // @ts-ignore
     globalThis.console = originalConsole;
   }
 

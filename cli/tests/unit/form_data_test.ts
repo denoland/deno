@@ -41,9 +41,9 @@ unitTest(function formDataParamsGetSuccess(): void {
   formData.append("a", "true");
   formData.append("b", "false");
   formData.append("a", "null");
-  // @ts-ignore
+  // @ts-expect-error
   formData.append("d", undefined);
-  // @ts-ignore
+  // @ts-expect-error
   formData.append("e", null);
   assertEquals(formData.get("a"), "true");
   assertEquals(formData.get("b"), "false");
@@ -70,10 +70,10 @@ unitTest(function formDataParamsSetSuccess(): void {
   assertEquals(formData.getAll("b"), ["false"]);
   formData.set("a", "false");
   assertEquals(formData.getAll("a"), ["false"]);
-  // @ts-ignore
+  // @ts-expect-error
   formData.set("d", undefined);
   assertEquals(formData.get("d"), "undefined");
-  // @ts-ignore
+  // @ts-expect-error
   formData.set("e", null);
   assertEquals(formData.get("e"), "null");
 });
@@ -134,7 +134,7 @@ unitTest(function formDataParamsArgumentsCheck(): void {
     let hasThrown = 0;
     let errMsg = "";
     try {
-      // @ts-ignore
+      // @ts-expect-error
       formData[method]();
       hasThrown = 1;
     } catch (err) {
@@ -158,7 +158,7 @@ unitTest(function formDataParamsArgumentsCheck(): void {
     let errMsg = "";
 
     try {
-      // @ts-ignore
+      // @ts-expect-error
       formData[method]();
       hasThrown = 1;
     } catch (err) {
@@ -178,7 +178,7 @@ unitTest(function formDataParamsArgumentsCheck(): void {
     hasThrown = 0;
     errMsg = "";
     try {
-      // @ts-ignore
+      // @ts-expect-error
       formData[method]("foo");
       hasThrown = 1;
     } catch (err) {
