@@ -122,6 +122,14 @@ Change `<entry_point>` to `server.ts` and run created configuration:
 
 ![VSCode debugger](../images/debugger7.jpg)
 
+### JetBrains IDEs
+
+You can debug Deno using your JetBrains IDE by right-clicking the file you want
+to debug and selecting the `Debug 'Deno: <file name>'` option. This will create
+a run/debug configuration which has no permission flags set, so to change that
+you need to modify the run/debug configuration and change the `Arguments` field
+with the required flags.
+
 ### Other
 
 Any client that implements Devtools protocol should be able to connect to Deno
