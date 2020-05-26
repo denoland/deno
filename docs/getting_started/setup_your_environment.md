@@ -8,8 +8,8 @@ IDE of choice.
 
 There are several env vars that control how Deno behaves:
 
-`DENO_DIR` defaults to `$HOME/.deno` but can be set to any path to control where
-generated and cached source code is written and read to.
+`DENO_DIR` defaults to `$HOME/.cache/deno` but can be set to any path to control
+where generated and cached source code is written and read to.
 
 `NO_COLOR` will turn off color output if set. See https://no-color.org/. User
 code can test if `NO_COLOR` was set without having `--allow-env` by using the

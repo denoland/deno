@@ -14,7 +14,7 @@ before attempting to start with Deno.
 Deno is a runtime for JavaScript/TypeScript which tries to be web compatible and
 use modern features wherever possible.
 
-Browser compatibility means, a simple `Hello World` program in Deno is the same
+Browser compatibility means a simple `Hello World` program in Deno is the same
 as the one you can run in the browser:
 
 ```ts
@@ -87,9 +87,9 @@ In this program each command-line argument is assumed to be a filename, the file
 is opened, and printed to stdout.
 
 ```ts
-for (let i = 0; i < Deno.args.length; i++) {
-  let filename = Deno.args[i];
-  let file = await Deno.open(filename);
+const filenames = Deno.args;
+for (const filename of filenames) {
+  const file = await Deno.open(filename);
   await Deno.copy(file, Deno.stdout);
   file.close();
 }
@@ -112,8 +112,10 @@ This is an example of a simple server which accepts connections on port 8080,
 and returns to the client anything it sends.
 
 ```ts
-const listener = Deno.listen({ port: 8080 });
-console.log("listening on 0.0.0.0:8080");
+const hostname = "0.0.0.0";
+const port = 8080;
+const listener = Deno.listen({ hostname, port });
+console.log(`Listening on ${hostname}:${port}`);
 for await (const conn of listener) {
   Deno.copy(conn, conn);
 }

@@ -59,10 +59,21 @@ Use `deno help` to see help text documenting Deno's flags and usage. Use
 
 ### Updating
 
-To update a previously installed version of Deno, you can run `deno upgrade`.
+To update a previously installed version of Deno, you can run:
+
+```shell
+deno upgrade
+```
+
 This will fetch the latest release from
 [github.com/denoland/deno/releases](https://github.com/denoland/deno/releases),
 unzip it, and replace your current executable with it.
+
+You can also use this utility to install a specific version of Deno:
+
+```shell
+deno upgrade --version 1.0.1
+```
 
 ### Building from source
 
