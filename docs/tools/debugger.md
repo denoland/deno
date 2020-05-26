@@ -83,7 +83,7 @@ Deno can be debugged using VSCode.
 Official support in plugin is being worked on -
 https://github.com/denoland/vscode_deno/issues/12
 
-We can still attach debugger by manually providing `launch.json` config:
+We can still attach debugger by manually providing a `launch.json` config:
 
 ```json
 {
