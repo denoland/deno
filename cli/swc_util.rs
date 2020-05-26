@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+use crate::msg::MediaType;
 use crate::swc_common;
 use crate::swc_common::comments::CommentKind;
 use crate::swc_common::comments::Comments;
@@ -13,19 +14,42 @@ use crate::swc_common::SourceMap;
 use crate::swc_common::Span;
 use crate::swc_ecma_ast;
 use crate::swc_ecma_parser::lexer::Lexer;
+use crate::swc_ecma_parser::EsConfig;
 use crate::swc_ecma_parser::JscTarget;
 use crate::swc_ecma_parser::Parser;
 use crate::swc_ecma_parser::Session;
 use crate::swc_ecma_parser::SourceFileInput;
 use crate::swc_ecma_parser::Syntax;
 use crate::swc_ecma_parser::TsConfig;
-use swc_ecma_visit::Node;
-use swc_ecma_visit::Visit;
-
 use std::error::Error;
 use std::fmt;
 use std::sync::Arc;
 use std::sync::RwLock;
+use swc_ecma_visit::Node;
+use swc_ecma_visit::Visit;
+
+fn get_default_es_config() -> EsConfig {
+  let mut config = EsConfig::default();
+  config.num_sep = true;
+  config.class_private_props = false;
+  config.class_private_methods = false;
+  config.class_props = false;
+  config.export_default_from = true;
+  config.export_namespace_from = true;
+  config.dynamic_import = true;
+  config.nullish_coalescing = true;
+  config.optional_chaining = true;
+  config.import_meta = true;
+  config.top_level_await = true;
+  config
+}
+
+fn get_default_ts_config() -> TsConfig {
+  let mut ts_config = TsConfig::default();
+  ts_config.dynamic_import = true;
+  ts_config.decorators = true;
+  ts_config
+}
 
 #[derive(Clone, Debug)]
 pub struct SwcDiagnosticBuffer {
@@ -126,6 +150,7 @@ impl AstParser {
   pub fn parse_module<F, R>(
     &self,
     file_name: &str,
+    media_type: MediaType,
     source_code: &str,
     callback: F,
   ) -> R
@@ -143,12 +168,21 @@ impl AstParser {
         handler: &self.handler,
       };
 
-      // TODO(bartlomieju): lexer should be configurable by the caller
-      let mut ts_config = TsConfig::default();
-      ts_config.dynamic_import = true;
-      ts_config.decorators = true;
-      ts_config.tsx = true;
-      let syntax = Syntax::Typescript(ts_config);
+      let syntax = match media_type {
+        MediaType::JavaScript => Syntax::Es(get_default_es_config()),
+        MediaType::JSX => {
+          let mut config = get_default_es_config();
+          config.jsx = true;
+          Syntax::Es(config)
+        }
+        MediaType::TypeScript => Syntax::Typescript(get_default_ts_config()),
+        MediaType::TSX => {
+          let mut config = get_default_ts_config();
+          config.tsx = true;
+          Syntax::Typescript(config)
+        }
+        _ => Syntax::Es(get_default_es_config()),
+      };
 
       let lexer = Lexer::new(
         session,
@@ -433,6 +467,7 @@ pub struct TsReferenceDescriptor {
 
 pub fn analyze_dependencies_and_references(
   file_name: &str,
+  media_type: MediaType,
   source_code: &str,
   analyze_dynamic_imports: bool,
 ) -> Result<
@@ -440,7 +475,7 @@ pub fn analyze_dependencies_and_references(
   SwcDiagnosticBuffer,
 > {
   let parser = AstParser::new();
-  parser.parse_module(file_name, source_code, |parse_result| {
+  parser.parse_module(file_name, media_type, source_code, |parse_result| {
     let module = parse_result?;
     let mut collector = NewDependencyVisitor {
       dependencies: vec![],
@@ -547,9 +582,13 @@ console.log(fizz);
 console.log(qat.qat);  
 "#;
 
-  let (imports, references) =
-    analyze_dependencies_and_references("some/file.ts", source, true)
-      .expect("Failed to parse");
+  let (imports, references) = analyze_dependencies_and_references(
+    "some/file.ts",
+    MediaType::TypeScript,
+    source,
+    true,
+  )
+  .expect("Failed to parse");
 
   assert_eq!(
     imports,

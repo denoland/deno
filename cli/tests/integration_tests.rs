@@ -1743,6 +1743,11 @@ itest!(proto_exploit {
   output: "proto_exploit.js.out",
 });
 
+itest!(ts_with_generic {
+  args: "run ts_with_generic.ts",
+  output: "ts_with_generic.ts.out",
+});
+
 #[test]
 fn cafile_fetch() {
   use url::Url;

@@ -196,6 +196,7 @@ impl ModuleGraphLoader {
 
     let (import_descs, ref_descs) = analyze_dependencies_and_references(
       &specifier,
+      map_file_extension(&PathBuf::from(&specifier)),
       &source_code,
       self.analyze_dynamic_imports,
     )?;
@@ -409,6 +410,7 @@ impl ModuleGraphLoader {
 
       let (import_descs, ref_descs) = analyze_dependencies_and_references(
         &module_specifier.to_string(),
+        source_file.media_type,
         &source_code,
         self.analyze_dynamic_imports,
       )?;
