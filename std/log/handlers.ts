@@ -120,6 +120,17 @@ export class FileHandler extends WriterHandler {
   }
 
   async setup(): Promise<void> {
+    if (this._mode === "w") {
+      if (await exists(this._filename)) {
+        await Deno.remove(this._filename);
+      }
+    } else if (this._mode === "x") {
+      if (await exists(this._filename) {
+        throw new Deno.errors.AlreadyExists(
+          "Log file " + this._filename + " already exists"
+        );
+      }
+    }
     this._file = await open(this._filename, this._openOptions);
     this._writer = this._file;
   }
