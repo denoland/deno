@@ -14,7 +14,7 @@ first line of code.
 
 ### Chrome Devtools
 
-Let's try debugging program using Chrome Devtools; for this purpose we'll use
+Let's try debugging a program using Chrome Devtools; for this purpose we'll use
 [file_server.ts](https://deno.land/std@v0.50.0/http/file_server.ts) from `std`;
 a static file server.
 
