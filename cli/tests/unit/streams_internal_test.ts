@@ -8,7 +8,7 @@ unitTest(function streamReadableHwmError() {
       () => {
         new ReadableStream<number>(
           undefined,
-          // @ts-ignore
+          // @ts-expect-error
           { highWaterMark }
         );
       },
@@ -20,7 +20,7 @@ unitTest(function streamReadableHwmError() {
   assertThrows(() => {
     new ReadableStream<number>(
       undefined,
-      // @ts-ignore
+      // @ts-expect-error
       { highWaterMark: Symbol("hwk") }
     );
   }, TypeError);
@@ -33,7 +33,7 @@ unitTest(function streamWriteableHwmError() {
       () => {
         new WritableStream(
           undefined,
-          // @ts-ignore
+          // @ts-expect-error
           new CountQueuingStrategy({ highWaterMark })
         );
       },
@@ -45,7 +45,7 @@ unitTest(function streamWriteableHwmError() {
   assertThrows(() => {
     new WritableStream(
       undefined,
-      // @ts-ignore
+      // @ts-expect-error
       new CountQueuingStrategy({ highWaterMark: Symbol("hwmk") })
     );
   }, TypeError);
@@ -59,7 +59,7 @@ unitTest(function streamTransformHwmError() {
         new TransformStream(
           undefined,
           undefined,
-          // @ts-ignore
+          // @ts-expect-error
           { highWaterMark }
         );
       },
@@ -72,7 +72,7 @@ unitTest(function streamTransformHwmError() {
     new TransformStream(
       undefined,
       undefined,
-      // @ts-ignore
+      // @ts-expect-error
       { highWaterMark: Symbol("hwmk") }
     );
   }, TypeError);

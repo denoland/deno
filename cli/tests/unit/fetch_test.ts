@@ -93,7 +93,7 @@ unitTest({ perms: { net: true } }, async function fetchBodyUsed(): Promise<
   assertEquals(response.bodyUsed, false);
   assertThrows((): void => {
     // Assigning to read-only property throws in the strict mode.
-    // @ts-ignore
+    // @ts-expect-error
     response.bodyUsed = true;
   });
   await response.blob();
@@ -595,7 +595,7 @@ unitTest({ perms: { net: true } }, async function fetchBodyReadTwice(): Promise<
   const methods = ["json", "text", "formData", "arrayBuffer"];
   for (const method of methods) {
     try {
-      // @ts-ignore
+      // @ts-expect-error
       await response[method]();
       fail(
         "Reading body multiple times should failed, the stream should've been locked."

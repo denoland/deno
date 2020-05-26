@@ -223,7 +223,7 @@ function groupEntries<T>(
     let order = "padStart";
     if (value !== undefined) {
       for (let i = 0; i < entries.length; i++) {
-        //@ts-ignore
+        //@ts-expect-error
         if (typeof value[i] !== "number" && typeof value[i] !== "bigint") {
           order = "padEnd";
           break;
@@ -239,7 +239,7 @@ function groupEntries<T>(
       for (; j < max - 1; j++) {
         // In future, colors should be taken here into the account
         const padding = maxLineLength[j - i];
-        //@ts-ignore
+        //@ts-expect-error
         str += `${entries[j]}, `[order](padding, " ");
       }
       if (order === "padStart") {
@@ -412,7 +412,7 @@ function createMapString(
     },
     group: false,
   };
-  //@ts-ignore
+  //@ts-expect-error
   return createIterableString(value, ctx, level, maxLevel, printConfig);
 }
 
@@ -494,7 +494,7 @@ function createRawObjectString(
   let baseString = "";
 
   let shouldShowDisplayName = false;
-  // @ts-ignore
+  // @ts-expect-error
   let displayName = value[Symbol.toStringTag];
   if (!displayName) {
     displayName = getClassInstanceName(value);
@@ -515,7 +515,7 @@ function createRawObjectString(
   for (const key of symbolKeys) {
     entries.push(
       `${key.toString()}: ${stringifyWithQuotes(
-        // @ts-ignore
+        // @ts-expect-error
         value[key],
         ctx,
         level + 1,
@@ -949,7 +949,7 @@ export class Console {
       name: "Trace",
       message,
     };
-    // @ts-ignore
+    // @ts-expect-error
     Error.captureStackTrace(err, this.trace);
     this.error((err as Error).stack);
   };

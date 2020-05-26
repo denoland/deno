@@ -244,19 +244,19 @@ function prepareStackTrace(
         }
       )
       .map((callSite): string => {
-        // @ts-ignore
+        // @ts-expect-error
         error.__callSiteEvals.push(Object.freeze(evaluateCallSite(callSite)));
         const isInternal =
           callSite.getFileName()?.startsWith("$deno$") ?? false;
         const string = callSiteToString(callSite, isInternal);
-        // @ts-ignore
+        // @ts-expect-error
         error.__formattedFrames.push(string);
         return `    at ${colors.stripColor(string)}`;
       })
       .join("\n");
-  // @ts-ignore
+  // @ts-expect-error
   Object.freeze(error.__callSiteEvals);
-  // @ts-ignore
+  // @ts-expect-error
   Object.freeze(error.__formattedFrames);
   return errorString;
 }
