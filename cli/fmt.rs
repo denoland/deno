@@ -220,6 +220,7 @@ fn read_file_contents(file_path: &PathBuf) -> Result<FileContents, ErrBox> {
   let file_text = fs::read_to_string(&file_path)?;
   let had_bom = file_text.starts_with(BOM_CHAR);
   let text = if had_bom {
+    // remove the BOM
     String::from(&file_text[BOM_CHAR.len_utf8()..])
   } else {
     file_text
