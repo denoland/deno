@@ -54,12 +54,12 @@ Please report any issues.
 
 #### JetBrains IDEs
 
-Support for JetBrains IDEs is not yet available, but you can follow and upvote
-these issues to stay up to date:
+Support for JetBrains IDEs is available through
+[the Deno plugin](https://plugins.jetbrains.com/plugin/14382-deno).
 
-- https://youtrack.jetbrains.com/issue/WEB-41607
-- https://youtrack.jetbrains.com/issue/WEB-42983
-- https://youtrack.jetbrains.com/issue/WEB-31667
+For more information on how to set-up your JetBrains IDE for Deno, read
+[this comment](https://youtrack.jetbrains.com/issue/WEB-41607#focus=streamItem-27-4160152.0-0)
+on YouTrack.
 
 #### Vim and NeoVim
 
