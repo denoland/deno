@@ -81,8 +81,14 @@ pub fn normalize_path(path: &Path) -> PathBuf {
 }
 
 pub fn resolve_from_cwd(path: &Path) -> Result<PathBuf, ErrBox> {
+  if path == Path::new("~") {
+    return Ok(dirs::home_dir().unwrap());
+  }
   let resolved_path = if path.is_absolute() {
     path.to_owned()
+  } else if path.starts_with("~") {
+    let home = dirs::home_dir().unwrap();
+    home.join(path.strip_prefix("~/").unwrap())
   } else {
     let cwd = current_dir().unwrap();
     cwd.join(path)
@@ -111,6 +117,25 @@ mod tests {
   fn resolve_from_cwd_parent() {
     let cwd = current_dir().unwrap();
     assert_eq!(resolve_from_cwd(Path::new("a/..")).unwrap(), cwd);
+  }
+
+  #[test]
+  fn resolve_from_cwd_home() {
+    let home = dirs::home_dir().unwrap();
+    let cwd = current_dir().unwrap();
+    assert_eq!(resolve_from_cwd(Path::new("~")).unwrap(), home);
+    assert_eq!(
+      resolve_from_cwd(Path::new("~/a/b")).unwrap(),
+      home.join(Path::new("a/b"))
+    );
+    assert_eq!(
+      resolve_from_cwd(Path::new("~a/b")).unwrap(),
+      cwd.join(Path::new("~a/b"))
+    );
+    assert_eq!(
+      resolve_from_cwd(Path::new("~/../a")).unwrap(),
+      normalize_path(&home.join(Path::new("../a")))
+    );
   }
 
   #[test]
