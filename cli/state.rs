@@ -312,6 +312,9 @@ impl ModuleLoader for State {
     let state = self.borrow();
     let target_lib = state.target_lib.clone();
     let maybe_import_map = state.import_map.clone();
+    // Only "main" module is loaded without permission check,
+    // ie. module that is associated with "is_main" state
+    // and is not a dynamic import.
     let permissions = if state.is_main && !is_dyn_import {
       Permissions::allow_all()
     } else {

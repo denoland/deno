@@ -170,7 +170,7 @@ impl GlobalState {
     let compile_lock = self.compile_lock.lock().await;
 
     // Check if we need to compile files
-    let needs_compilation = match out.media_type {
+    let was_compiled = match out.media_type {
       msg::MediaType::TypeScript
       | msg::MediaType::TSX
       | msg::MediaType::JSX => true,
@@ -178,7 +178,7 @@ impl GlobalState {
       _ => false,
     };
 
-    let compiled_module = if needs_compilation {
+    let compiled_module = if was_compiled {
       state1.ts_compiler.get_compiled_module(&out.url)?
     } else {
       CompiledModule {

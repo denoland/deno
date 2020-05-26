@@ -1,1 +1,2 @@
 error: Modules loaded over https:// are not allowed to import modules over http://
+Imported from "https://localhost:5545/cli/tests/disallow_http_from_https.ts:2"

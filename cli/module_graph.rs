@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use crate::doc::Location;
 use crate::file_fetcher::map_file_extension;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
@@ -23,6 +24,15 @@ use std::collections::HashSet;
 use std::hash::BuildHasher;
 use std::path::PathBuf;
 use std::pin::Pin;
+
+fn err_with_location(e: ErrBox, location: Location) -> ErrBox {
+  let location_str = format!(
+    "\nImported from \"{}:{}\"",
+    location.filename, location.line
+  );
+  let err_str = e.to_string();
+  OpError::other(format!("{}{}", err_str, location_str)).into()
+}
 
 fn serialize_module_specifier<S>(
   spec: &ModuleSpecifier,
@@ -443,22 +453,26 @@ impl ModuleGraphLoader {
         let import_descriptor = ImportDescriptor {
           specifier: import_desc.specifier.to_string(),
           resolved_specifier,
-          type_directive: import_desc.deno_types,
+          type_directive: import_desc.deno_types.clone(),
           resolved_type_directive,
         };
 
-        self.download_module(
-          import_descriptor.resolved_specifier.clone(),
-          Some(module_specifier.clone()),
-        )?;
+        self
+          .download_module(
+            import_descriptor.resolved_specifier.clone(),
+            Some(module_specifier.clone()),
+          )
+          .map_err(|e| err_with_location(e, import_desc.location.clone()))?;
 
         if let Some(type_dir_url) =
           import_descriptor.resolved_type_directive.as_ref()
         {
-          self.download_module(
-            type_dir_url.clone(),
-            Some(module_specifier.clone()),
-          )?;
+          self
+            .download_module(
+              type_dir_url.clone(),
+              Some(module_specifier.clone()),
+            )
+            .map_err(|e| err_with_location(e, import_desc.location.clone()))?;
         }
 
         imports.push(import_descriptor);
@@ -479,10 +493,12 @@ impl ModuleGraphLoader {
           resolved_specifier,
         };
 
-        self.download_module(
-          reference_descriptor.resolved_specifier.clone(),
-          Some(module_specifier.clone()),
-        )?;
+        self
+          .download_module(
+            reference_descriptor.resolved_specifier.clone(),
+            Some(module_specifier.clone()),
+          )
+          .map_err(|e| err_with_location(e, ref_desc.location.clone()))?;
 
         match ref_desc.kind {
           TsReferenceKind::Lib => {
