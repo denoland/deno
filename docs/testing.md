@@ -35,6 +35,8 @@ You can also test asynchronous code by passing a test function that returns a
 promise. For this you can use the `async` keyword when defining a function:
 
 ```ts
+import { delay } from "https://deno.land/std/async/delay.ts";
+
 Deno.test("async hello world", async () => {
   const x = 1 + 2;
 

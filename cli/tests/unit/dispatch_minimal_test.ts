@@ -26,9 +26,9 @@ unitTest(async function sendAsyncStackTrace(): Promise<void> {
 });
 
 unitTest(function malformedMinimalControlBuffer(): void {
-  // @ts-ignore
+  // @ts-expect-error
   const readOpId = Deno.core.ops()["op_read"];
-  // @ts-ignore
+  // @ts-expect-error
   const res = Deno.core.send(readOpId, new Uint8Array([1, 2, 3, 4, 5]));
   const header = res.slice(0, 12);
   const buf32 = new Int32Array(

@@ -93,7 +93,7 @@ unitTest({ perms: { net: true } }, async function fetchBodyUsed(): Promise<
   assertEquals(response.bodyUsed, false);
   assertThrows((): void => {
     // Assigning to read-only property throws in the strict mode.
-    // @ts-ignore
+    // @ts-expect-error
     response.bodyUsed = true;
   });
   await response.blob();
@@ -117,6 +117,49 @@ unitTest({ perms: { net: true } }, async function fetchAsyncIterator(): Promise<
   const _json = await response.json();
 });
 */
+
+unitTest({ perms: { net: true } }, async function fetchBodyReader(): Promise<
+  void
+> {
+  const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
+  const headers = response.headers;
+  assert(response.body !== null);
+  const reader = await response.body.getReader();
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    assert(value);
+    total += value.length;
+  }
+
+  assertEquals(total, Number(headers.get("Content-Length")));
+});
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchBodyReaderBigBody(): Promise<void> {
+    const data = "a".repeat(10 << 10); // 10mb
+    const response = await fetch(
+      "http://localhost:4545/cli/tests/echo_server",
+      {
+        method: "POST",
+        body: data,
+      }
+    );
+    assert(response.body !== null);
+    const reader = await response.body.getReader();
+    let total = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      assert(value);
+      total += value.length;
+    }
+
+    assertEquals(total, data.length);
+  }
+);
 
 unitTest({ perms: { net: true } }, async function responseClone(): Promise<
   void
@@ -260,6 +303,19 @@ unitTest(
 
 unitTest(
   { perms: { net: true } },
+  async function fetchInitArrayBufferBody(): Promise<void> {
+    const data = "Hello World";
+    const response = await fetch("http://localhost:4545/echo_server", {
+      method: "POST",
+      body: new TextEncoder().encode(data).buffer,
+    });
+    const text = await response.text();
+    assertEquals(text, data);
+  }
+);
+
+unitTest(
+  { perms: { net: true } },
   async function fetchInitURLSearchParamsBody(): Promise<void> {
     const data = "param1=value1&param2=value2";
     const params = new URLSearchParams(data);
@@ -367,8 +423,6 @@ function bufferServer(addr: string): Deno.Buffer {
 
 unitTest(
   {
-    // FIXME(bartlomieju)
-    ignore: true,
     perms: { net: true },
   },
   async function fetchRequest(): Promise<void> {
@@ -381,6 +435,7 @@ unitTest(
         ["Foo", "Bar"],
       ],
     });
+    await response.arrayBuffer();
     assertEquals(response.status, 404);
     assertEquals(response.headers.get("Content-Length"), "2");
 
@@ -389,6 +444,9 @@ unitTest(
       "POST /blah HTTP/1.1\r\n",
       "hello: World\r\n",
       "foo: Bar\r\n",
+      "accept: */*\r\n",
+      `user-agent: Deno/${Deno.version.deno}\r\n`,
+      "accept-encoding: gzip, br\r\n",
       `host: ${addr}\r\n\r\n`,
     ].join("");
     assertEquals(actual, expected);
@@ -397,8 +455,6 @@ unitTest(
 
 unitTest(
   {
-    // FIXME(bartlomieju)
-    ignore: true,
     perms: { net: true },
   },
   async function fetchPostBodyString(): Promise<void> {
@@ -413,6 +469,7 @@ unitTest(
       ],
       body,
     });
+    await response.arrayBuffer();
     assertEquals(response.status, 404);
     assertEquals(response.headers.get("Content-Length"), "2");
 
@@ -421,6 +478,10 @@ unitTest(
       "POST /blah HTTP/1.1\r\n",
       "hello: World\r\n",
       "foo: Bar\r\n",
+      "content-type: text/plain;charset=UTF-8\r\n",
+      "accept: */*\r\n",
+      `user-agent: Deno/${Deno.version.deno}\r\n`,
+      "accept-encoding: gzip, br\r\n",
       `host: ${addr}\r\n`,
       `content-length: ${body.length}\r\n\r\n`,
       body,
@@ -431,8 +492,6 @@ unitTest(
 
 unitTest(
   {
-    // FIXME(bartlomieju)
-    ignore: true,
     perms: { net: true },
   },
   async function fetchPostBodyTypedArray(): Promise<void> {
@@ -448,6 +507,7 @@ unitTest(
       ],
       body,
     });
+    await response.arrayBuffer();
     assertEquals(response.status, 404);
     assertEquals(response.headers.get("Content-Length"), "2");
 
@@ -456,6 +516,9 @@ unitTest(
       "POST /blah HTTP/1.1\r\n",
       "hello: World\r\n",
       "foo: Bar\r\n",
+      "accept: */*\r\n",
+      `user-agent: Deno/${Deno.version.deno}\r\n`,
+      "accept-encoding: gzip, br\r\n",
       `host: ${addr}\r\n`,
       `content-length: ${body.byteLength}\r\n\r\n`,
       bodyStr,
@@ -519,16 +582,109 @@ unitTest(function responseRedirect(): void {
   assertEquals(redir.type, "default");
 });
 
-unitTest(function responseConstructionHeaderRemoval(): void {
-  const res = new Response(
-    "example.com",
-    200,
-    "OK",
-    [["Set-Cookie", "mysessionid"]],
-    -1,
-    false,
-    "basic",
-    null
-  );
-  assert(res.headers.get("Set-Cookie") != "mysessionid");
+unitTest({ perms: { net: true } }, async function fetchBodyReadTwice(): Promise<
+  void
+> {
+  const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
+
+  // Read body
+  const _json = await response.json();
+  assert(_json);
+
+  // All calls after the body was consumed, should fail
+  const methods = ["json", "text", "formData", "arrayBuffer"];
+  for (const method of methods) {
+    try {
+      // @ts-expect-error
+      await response[method]();
+      fail(
+        "Reading body multiple times should failed, the stream should've been locked."
+      );
+    } catch {}
+  }
 });
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchBodyReaderAfterRead(): Promise<void> {
+    const response = await fetch(
+      "http://localhost:4545/cli/tests/fixture.json"
+    );
+    assert(response.body !== null);
+    const reader = await response.body.getReader();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      assert(value);
+    }
+
+    try {
+      response.body.getReader();
+      fail("The stream should've been locked.");
+    } catch {}
+  }
+);
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchBodyReaderWithCancelAndNewReader(): Promise<void> {
+    const data = "a".repeat(1 << 10);
+    const response = await fetch(
+      "http://localhost:4545/cli/tests/echo_server",
+      {
+        method: "POST",
+        body: data,
+      }
+    );
+    assert(response.body !== null);
+    const firstReader = await response.body.getReader();
+
+    // Acquire reader without reading & release
+    await firstReader.releaseLock();
+
+    const reader = await response.body.getReader();
+
+    let total = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      assert(value);
+      total += value.length;
+    }
+
+    assertEquals(total, data.length);
+  }
+);
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchBodyReaderWithReadCancelAndNewReader(): Promise<void> {
+    const data = "a".repeat(1 << 10);
+
+    const response = await fetch(
+      "http://localhost:4545/cli/tests/echo_server",
+      {
+        method: "POST",
+        body: data,
+      }
+    );
+    assert(response.body !== null);
+    const firstReader = await response.body.getReader();
+
+    // Do one single read with first reader
+    const { value: firstValue } = await firstReader.read();
+    assert(firstValue);
+    await firstReader.releaseLock();
+
+    // Continue read with second reader
+    const reader = await response.body.getReader();
+    let total = firstValue.length || 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      assert(value);
+      total += value.length;
+    }
+    assertEquals(total, data.length);
+  }
+);

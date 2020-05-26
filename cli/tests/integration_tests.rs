@@ -1723,6 +1723,11 @@ itest!(disallow_http_from_https_ts {
   exit_code: 1,
 });
 
+itest!(tsx_imports {
+  args: "run --reload tsx_imports.ts",
+  output: "tsx_imports.ts.out",
+});
+
 itest!(fix_js_import_js {
   args: "run --quiet --reload fix_js_import_js.ts",
   output: "fix_js_import_js.ts.out",
@@ -2202,12 +2207,17 @@ fn test_permissions_net_listen_allow_localhost() {
   assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
 }
 
+fn inspect_flag_with_unique_port(flag_prefix: &str) -> String {
+  use std::sync::atomic::{AtomicU16, Ordering};
+  static PORT: AtomicU16 = AtomicU16::new(9229);
+  let port = PORT.fetch_add(1, Ordering::Relaxed);
+  format!("{}=127.0.0.1:{}", flag_prefix, port)
+}
+
 fn extract_ws_url_from_stderr(
-  stderr: &mut std::process::ChildStderr,
+  stderr_lines: &mut impl std::iter::Iterator<Item = String>,
 ) -> url::Url {
-  let mut stderr = std::io::BufReader::new(stderr);
-  let mut stderr_first_line = String::from("");
-  let _ = stderr.read_line(&mut stderr_first_line).unwrap();
+  let stderr_first_line = stderr_lines.next().unwrap();
   assert!(stderr_first_line.starts_with("Debugger listening on "));
   let v: Vec<_> = stderr_first_line.match_indices("ws:").collect();
   assert_eq!(v.len(), 1);
@@ -2221,15 +2231,17 @@ async fn inspector_connect() {
   let script = util::tests_path().join("inspector1.js");
   let mut child = util::deno_cmd()
     .arg("run")
-    // Warning: each inspector test should be on its own port to avoid
-    // conflicting with another inspector test.
-    .arg("--inspect=127.0.0.1:9228")
+    .arg(inspect_flag_with_unique_port("--inspect"))
     .arg(script)
     .stderr(std::process::Stdio::piped())
     .spawn()
     .unwrap();
-  let ws_url = extract_ws_url_from_stderr(child.stderr.as_mut().unwrap());
-  println!("ws_url {}", ws_url);
+
+  let stderr = child.stderr.as_mut().unwrap();
+  let mut stderr_lines =
+    std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
+  let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
+
   // We use tokio_tungstenite as a websocket client because warp (which is
   // a dependency of Deno) uses it.
   let (_socket, response) = tokio_tungstenite::connect_async(ws_url)
@@ -2242,6 +2254,7 @@ async fn inspector_connect() {
 
 enum TestStep {
   StdOut(&'static str),
+  StdErr(&'static str),
   WsRecv(&'static str),
   WsSend(&'static str),
 }
@@ -2251,9 +2264,7 @@ async fn inspector_break_on_first_line() {
   let script = util::tests_path().join("inspector2.js");
   let mut child = util::deno_cmd()
     .arg("run")
-    // Warning: each inspector test should be on its own port to avoid
-    // conflicting with another inspector test.
-    .arg("--inspect-brk=127.0.0.1:9229")
+    .arg(inspect_flag_with_unique_port("--inspect-brk"))
     .arg(script)
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::piped())
@@ -2261,7 +2272,10 @@ async fn inspector_break_on_first_line() {
     .unwrap();
 
   let stderr = child.stderr.as_mut().unwrap();
-  let ws_url = extract_ws_url_from_stderr(stderr);
+  let mut stderr_lines =
+    std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
+  let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
+
   let (socket, response) = tokio_tungstenite::connect_async(ws_url)
     .await
     .expect("Can't connect");
@@ -2305,6 +2319,7 @@ async fn inspector_break_on_first_line() {
       StdOut(s) => assert_eq!(&stdout_lines.next().unwrap(), s),
       WsRecv(s) => assert!(socket_rx.next().await.unwrap().starts_with(s)),
       WsSend(s) => socket_tx.send(s.into()).await.unwrap(),
+      _ => unreachable!(),
     }
   }
 
@@ -2317,14 +2332,17 @@ async fn inspector_pause() {
   let script = util::tests_path().join("inspector1.js");
   let mut child = util::deno_cmd()
     .arg("run")
-    // Warning: each inspector test should be on its own port to avoid
-    // conflicting with another inspector test.
-    .arg("--inspect=127.0.0.1:9230")
+    .arg(inspect_flag_with_unique_port("--inspect"))
     .arg(script)
     .stderr(std::process::Stdio::piped())
     .spawn()
     .unwrap();
-  let ws_url = extract_ws_url_from_stderr(child.stderr.as_mut().unwrap());
+
+  let stderr = child.stderr.as_mut().unwrap();
+  let mut stderr_lines =
+    std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
+  let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
+
   // We use tokio_tungstenite as a websocket client because warp (which is
   // a dependency of Deno) uses it.
   let (mut socket, _) = tokio_tungstenite::connect_async(ws_url)
@@ -2371,19 +2389,25 @@ async fn inspector_pause() {
 #[tokio::test]
 async fn inspector_port_collision() {
   let script = util::tests_path().join("inspector1.js");
+  let inspect_flag = inspect_flag_with_unique_port("--inspect");
+
   let mut child1 = util::deno_cmd()
     .arg("run")
-    .arg("--inspect=127.0.0.1:9231")
+    .arg(&inspect_flag)
     .arg(script.clone())
     .stderr(std::process::Stdio::piped())
     .spawn()
     .unwrap();
-  let ws_url_1 = extract_ws_url_from_stderr(child1.stderr.as_mut().unwrap());
-  println!("ws_url {}", ws_url_1);
+
+  let stderr_1 = child1.stderr.as_mut().unwrap();
+  let mut stderr_lines_1 = std::io::BufReader::new(stderr_1)
+    .lines()
+    .map(|r| r.unwrap());
+  let _ = extract_ws_url_from_stderr(&mut stderr_lines_1);
 
   let mut child2 = util::deno_cmd()
     .arg("run")
-    .arg("--inspect=127.0.0.1:9231")
+    .arg(&inspect_flag)
     .arg(script)
     .stderr(std::process::Stdio::piped())
     .spawn()
@@ -2409,9 +2433,7 @@ async fn inspector_does_not_hang() {
   let script = util::tests_path().join("inspector3.js");
   let mut child = util::deno_cmd()
     .arg("run")
-    // Warning: each inspector test should be on its own port to avoid
-    // conflicting with another inspector test.
-    .arg("--inspect-brk=127.0.0.1:9232")
+    .arg(inspect_flag_with_unique_port("--inspect-brk"))
     .env("NO_COLOR", "1")
     .arg(script)
     .stdout(std::process::Stdio::piped())
@@ -2420,7 +2442,10 @@ async fn inspector_does_not_hang() {
     .unwrap();
 
   let stderr = child.stderr.as_mut().unwrap();
-  let ws_url = extract_ws_url_from_stderr(stderr);
+  let mut stderr_lines =
+    std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
+  let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
+
   let (socket, response) = tokio_tungstenite::connect_async(ws_url)
     .await
     .expect("Can't connect");
@@ -2493,24 +2518,106 @@ async fn inspector_without_brk_runs_code() {
   let script = util::tests_path().join("inspector4.js");
   let mut child = util::deno_cmd()
     .arg("run")
-    // Warning: each inspector test should be on its own port to avoid
-    // conflicting with another inspector test.
-    .arg("--inspect=127.0.0.1:9233")
+    .arg(inspect_flag_with_unique_port("--inspect"))
     .arg(script)
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::piped())
     .spawn()
     .unwrap();
-  extract_ws_url_from_stderr(child.stderr.as_mut().unwrap());
+
+  let stderr = child.stderr.as_mut().unwrap();
+  let mut stderr_lines =
+    std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
+  let _ = extract_ws_url_from_stderr(&mut stderr_lines);
 
   // Check that inspector actually runs code without waiting for inspector
-  // connection
-  let mut stdout = std::io::BufReader::new(child.stdout.as_mut().unwrap());
-  let mut stdout_first_line = String::from("");
-  let _ = stdout.read_line(&mut stdout_first_line).unwrap();
-  assert_eq!(stdout_first_line, "hello\n");
+  // connection.
+  let stdout = child.stdout.as_mut().unwrap();
+  let mut stdout_lines =
+    std::io::BufReader::new(stdout).lines().map(|r| r.unwrap());
+  let stdout_first_line = stdout_lines.next().unwrap();
+  assert_eq!(stdout_first_line, "hello");
 
   child.kill().unwrap();
+  child.wait().unwrap();
+}
+
+#[tokio::test]
+async fn inspector_runtime_evaluate_does_not_crash() {
+  let mut child = util::deno_cmd()
+    .arg("repl")
+    .arg(inspect_flag_with_unique_port("--inspect"))
+    .stdin(std::process::Stdio::piped())
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+
+  let stderr = child.stderr.as_mut().unwrap();
+  let mut stderr_lines = std::io::BufReader::new(stderr)
+    .lines()
+    .map(|r| r.unwrap())
+    .filter(|s| s.as_str() != "Debugger session started.");
+  let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
+
+  let (socket, response) = tokio_tungstenite::connect_async(ws_url)
+    .await
+    .expect("Can't connect");
+  assert_eq!(response.status(), 101); // Switching protocols.
+
+  let (mut socket_tx, socket_rx) = socket.split();
+  let mut socket_rx =
+    socket_rx.map(|msg| msg.unwrap().to_string()).filter(|msg| {
+      let pass = !msg.starts_with(r#"{"method":"Debugger.scriptParsed","#);
+      futures::future::ready(pass)
+    });
+
+  let stdin = child.stdin.take().unwrap();
+
+  let stdout = child.stdout.as_mut().unwrap();
+  let mut stdout_lines = std::io::BufReader::new(stdout)
+    .lines()
+    .map(|r| r.unwrap())
+    .filter(|s| !s.starts_with("Deno "));
+
+  use TestStep::*;
+  let test_steps = vec![
+    WsSend(r#"{"id":1,"method":"Runtime.enable"}"#),
+    WsSend(r#"{"id":2,"method":"Debugger.enable"}"#),
+    WsRecv(
+      r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
+    ),
+    WsRecv(r#"{"id":1,"result":{}}"#),
+    WsRecv(r#"{"id":2,"result":{"debuggerId":"#),
+    WsSend(r#"{"id":3,"method":"Runtime.runIfWaitingForDebugger"}"#),
+    WsRecv(r#"{"id":3,"result":{}}"#),
+    StdOut("exit using ctrl+d or close()"),
+    WsSend(
+      r#"{"id":4,"method":"Runtime.compileScript","params":{"expression":"Deno.cwd()","sourceURL":"","persistScript":false,"executionContextId":1}}"#,
+    ),
+    WsRecv(r#"{"id":4,"result":{}}"#),
+    WsSend(
+      r#"{"id":5,"method":"Runtime.evaluate","params":{"expression":"Deno.cwd()","objectGroup":"console","includeCommandLineAPI":true,"silent":false,"contextId":1,"returnByValue":true,"generatePreview":true,"userGesture":true,"awaitPromise":false,"replMode":true}}"#,
+    ),
+    WsRecv(r#"{"id":5,"result":{"result":{"type":"string","value":""#),
+    WsSend(
+      r#"{"id":6,"method":"Runtime.evaluate","params":{"expression":"console.error('done');","objectGroup":"console","includeCommandLineAPI":true,"silent":false,"contextId":1,"returnByValue":true,"generatePreview":true,"userGesture":true,"awaitPromise":false,"replMode":true}}"#,
+    ),
+    WsRecv(r#"{"id":6,"result":{"result":{"type":"undefined"}}}"#),
+    StdErr("done"),
+  ];
+
+  for step in test_steps {
+    match step {
+      StdOut(s) => assert_eq!(&stdout_lines.next().unwrap(), s),
+      StdErr(s) => assert_eq!(&stderr_lines.next().unwrap(), s),
+      WsRecv(s) => assert!(socket_rx.next().await.unwrap().starts_with(s)),
+      WsSend(s) => socket_tx.send(s.into()).await.unwrap(),
+    }
+  }
+
+  std::mem::drop(stdin);
+  child.wait().unwrap();
 }
 
 #[test]

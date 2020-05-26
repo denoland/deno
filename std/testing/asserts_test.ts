@@ -169,7 +169,7 @@ test("testingAssertStringContainsThrow", function (): void {
   } catch (e) {
     assert(
       e.message ===
-        `actual: "Denosaurus from Jurassic" expected to contains: "Raptor"`
+        `actual: "Denosaurus from Jurassic" expected to contain: "Raptor"`
     );
     assert(e instanceof AssertionError);
     didThrow = true;

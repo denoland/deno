@@ -1612,10 +1612,9 @@ declare namespace Deno {
    * const conn2 = await Deno.connect({ hostname: "192.0.2.1", port: 80 });
    * const conn3 = await Deno.connect({ hostname: "[2001:db8::1]", port: 80 });
    * const conn4 = await Deno.connect({ hostname: "golang.org", port: 80, transport: "tcp" });
-   * const conn5 = await Deno.connect({ path: "/foo/bar.sock", transport: "unix" });
    * ```
    *
-   * Requires `allow-net` permission for "tcp" and `allow-read` for unix. */
+   * Requires `allow-net` permission for "tcp". */
   export function connect(options: ConnectOptions): Promise<Conn>;
 
   export interface ConnectTlsOptions {

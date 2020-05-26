@@ -30,7 +30,7 @@ import { log, immutableDefine } from "./util.ts";
 // TODO: factor out `Deno` global assignment to separate function
 // Add internal object to Deno object.
 // This is not exposed as part of the Deno types.
-// @ts-ignore
+// @ts-expect-error
 denoNs[internalSymbol] = internalObject;
 
 let windowIsClosing = false;
@@ -71,7 +71,7 @@ export function bootstrapMainRuntime(): void {
     throw new Error("Worker runtime already bootstrapped");
   }
   // Remove bootstrapping methods from global scope
-  // @ts-ignore
+  // @ts-expect-error
   globalThis.bootstrap = undefined;
   log("bootstrapMainRuntime");
   hasBootstrapped = true;

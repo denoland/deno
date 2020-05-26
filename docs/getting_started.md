@@ -3,7 +3,9 @@
 In this chapter we'll discuss:
 
 - Installing Deno
-- Running a simple `Hello World` script
+- Setting up your environment
+- Running a `Hello World` script
 - Writing our own script
+- Understanding permissions
 - Using Deno with TypeScript
 - Using WebAssembly
