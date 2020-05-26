@@ -302,6 +302,7 @@ fn op_connect(
       transport_args: ArgsEnum::Unix(args),
     } if transport == "unix" => {
       let address_path = net_unix::Path::new(&args.path);
+      state.check_unstable("Deno.connect");
       state.check_read(&address_path)?;
       let op = async move {
         let path = args.path;
@@ -524,6 +525,9 @@ fn op_listen(
       transport,
       transport_args: ArgsEnum::Unix(args),
     } if transport == "unix" || transport == "unixpacket" => {
+      if transport == "unix" {
+        state.check_unstable("Deno.listen");
+      }
       if transport == "unixpacket" {
         state.check_unstable("Deno.listenDatagram");
       }
