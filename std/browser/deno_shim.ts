@@ -13,6 +13,7 @@ export function purgeResources(): void {
   purge && purge();
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import type { SeekMode } from "./_ops_shim.ts";
 
 export async function getDenoShim(): Promise<DenoNamespace> {
@@ -20,13 +21,9 @@ export async function getDenoShim(): Promise<DenoNamespace> {
     return denoShim;
   }
 
-  const {
-    Buffer,
-    readAll,
-    readAllSync,
-    writeAll,
-    writeAllSync,
-  } = await import("../../cli/js/buffer.ts");
+  const { Buffer, readAll, readAllSync, writeAll, writeAllSync } = await import(
+    "../../cli/js/buffer.ts"
+  );
   const { DiagnosticCategory } = await import("../../cli/js/diagnostics.ts");
   const { errors } = await import("../../cli/js/errors.ts");
   const { copy, iter, iterSync } = await import("../../cli/js/io.ts");
@@ -78,10 +75,12 @@ export async function getDenoShim(): Promise<DenoNamespace> {
   const env: DenoNamespace["env"] = new Env();
 
   function cwd(): string {
+    /* eslint-disable @typescript-eslint/no-explicit-any */
     if (window && (window as any).location) {
       const loc: URL = (window as any).location;
       return `${loc.origin}${loc.pathname}`;
     }
+    /* eslint-enable @typescript-eslint/no-explicit-any */
     return "";
   }
 
@@ -132,14 +131,14 @@ export async function getDenoShim(): Promise<DenoNamespace> {
 
     if (createOrCreateNewWithoutWriteOrAppend) {
       throw new Error(
-        "'create' or 'createNew' options require 'write' or 'append' option",
+        "'create' or 'createNew' options require 'write' or 'append' option"
       );
     }
   }
 
   function open(
     path: string,
-    options: Deno.OpenOptions = { read: true },
+    options: Deno.OpenOptions = { read: true }
   ): Promise<File> {
     try {
       checkOpenOptions(options);
@@ -152,7 +151,7 @@ export async function getDenoShim(): Promise<DenoNamespace> {
 
   function openSync(
     path: string,
-    options: Deno.OpenOptions = { read: true },
+    options: Deno.OpenOptions = { read: true }
   ): File {
     checkOpenOptions(options);
     const rid = opOpen(path, options);
@@ -242,9 +241,11 @@ export async function getDenoShim(): Promise<DenoNamespace> {
     return false;
   }
 
-  function makeTempDirSync(
-    { dir = "/tmp", prefix = "", suffix = "" }: Deno.MakeTempOptions = {},
-  ): string {
+  function makeTempDirSync({
+    dir = "/tmp",
+    prefix = "",
+    suffix = "",
+  }: Deno.MakeTempOptions = {}): string {
     const str = Math.random().toString(36).substring(7);
     return `${dir}${dir.match(/\/$/) ? "" : "/"}${prefix}${str}${suffix}`;
   }
@@ -307,7 +308,7 @@ export async function getDenoShim(): Promise<DenoNamespace> {
   function writeFileSync(
     path: string,
     data: Uint8Array,
-    options: Deno.WriteFileOptions,
+    options: Deno.WriteFileOptions
   ): void {
     const openOptions = !!options.append
       ? { write: true, create: true, append: true }
@@ -322,7 +323,7 @@ export async function getDenoShim(): Promise<DenoNamespace> {
   async function writeFile(
     path: string,
     data: Uint8Array,
-    options: Deno.WriteFileOptions,
+    options: Deno.WriteFileOptions
   ): Promise<void> {
     writeFileSync(path, data, options);
   }
@@ -396,105 +397,105 @@ export async function getDenoShim(): Promise<DenoNamespace> {
   const shim: DenoNamespace = Object.create(null);
 
   Object.defineProperties(shim, {
-    "errors": readOnly(errors),
-    "pid": readOnly(0),
-    "noColor": readOnly(true),
+    errors: readOnly(errors),
+    pid: readOnly(0),
+    noColor: readOnly(true),
     // TODO figure out what to do about the test interface
-    "test": readOnly(noop),
-    "exit": readOnly(exit),
-    "env": readOnly(env),
-    "execPath": readOnly(() => "/usr/bin/deno"),
-    "chdir": readOnly(noop),
-    "cwd": readOnly(cwd),
-    "SeekMode": readOnly(SeekMode),
-    "copy": readOnly(copy),
-    "iter": readOnly(iter),
-    "iterSync": readOnly(iterSync),
-    "open": readOnly(open),
-    "openSync": readOnly(openSync),
-    "create": readOnly(create),
-    "createSync": readOnly(createSync),
-    "read": readOnly(read),
-    "readSync": readOnly(readSync),
-    "write": readOnly(write),
-    "writeSync": readOnly(writeSync),
-    "seek": readOnly(seek),
-    "seekSync": readOnly(seekSync),
-    "close": readOnly(close),
-    "File": readOnly(File),
-    "stdin": readOnly(stdin),
-    "stdout": readOnly(stdout),
-    "stderr": readOnly(stderr),
-    "isatty": readOnly(isatty),
-    "Buffer": readOnly(Buffer),
-    "readAll": readOnly(readAll),
-    "readAllSync": readOnly(readAllSync),
-    "writeAll": readOnly(writeAll),
-    "writeAllSync": readOnly(writeAllSync),
-    "mkdirSync": readOnly(noop),
-    "mkdir": readOnly(asyncNoop),
-    "makeTempDirSync": readOnly(makeTempDirSync),
-    "makeTempDir": readOnly(makeTempDir),
-    "makeTempFileSync": readOnly(makeTempFileSync),
-    "makeTempFile": readOnly(makeTempFile),
-    "chmodSync": readOnly(noop),
-    "chmod": readOnly(asyncNoop),
-    "chownSync": readOnly(noop),
-    "chown": readOnly(asyncNoop),
+    test: readOnly(noop),
+    exit: readOnly(exit),
+    env: readOnly(env),
+    execPath: readOnly(() => "/usr/bin/deno"),
+    chdir: readOnly(noop),
+    cwd: readOnly(cwd),
+    SeekMode: readOnly(SeekMode),
+    copy: readOnly(copy),
+    iter: readOnly(iter),
+    iterSync: readOnly(iterSync),
+    open: readOnly(open),
+    openSync: readOnly(openSync),
+    create: readOnly(create),
+    createSync: readOnly(createSync),
+    read: readOnly(read),
+    readSync: readOnly(readSync),
+    write: readOnly(write),
+    writeSync: readOnly(writeSync),
+    seek: readOnly(seek),
+    seekSync: readOnly(seekSync),
+    close: readOnly(close),
+    File: readOnly(File),
+    stdin: readOnly(stdin),
+    stdout: readOnly(stdout),
+    stderr: readOnly(stderr),
+    isatty: readOnly(isatty),
+    Buffer: readOnly(Buffer),
+    readAll: readOnly(readAll),
+    readAllSync: readOnly(readAllSync),
+    writeAll: readOnly(writeAll),
+    writeAllSync: readOnly(writeAllSync),
+    mkdirSync: readOnly(noop),
+    mkdir: readOnly(asyncNoop),
+    makeTempDirSync: readOnly(makeTempDirSync),
+    makeTempDir: readOnly(makeTempDir),
+    makeTempFileSync: readOnly(makeTempFileSync),
+    makeTempFile: readOnly(makeTempFile),
+    chmodSync: readOnly(noop),
+    chmod: readOnly(asyncNoop),
+    chownSync: readOnly(noop),
+    chown: readOnly(asyncNoop),
     // TODO consider implementing
-    "removeSync": readOnly(noop),
+    removeSync: readOnly(noop),
     // TODO consider implementing
-    "remove": readOnly(asyncNoop),
+    remove: readOnly(asyncNoop),
     // TODO consider implementing
-    "renameSync": readOnly(noop),
+    renameSync: readOnly(noop),
     // TODO consider implementing
-    "rename": readOnly(asyncNoop),
-    "readTextFileSync": readOnly(readTextFileSync),
-    "readTextFile": readOnly(readTextFile),
-    "readFileSync": readOnly(readFileSync),
-    "readFile": readOnly(readFile),
-    "realPathSync": readOnly(realPathSync),
-    "realPath": readOnly(realPath),
+    rename: readOnly(asyncNoop),
+    readTextFileSync: readOnly(readTextFileSync),
+    readTextFile: readOnly(readTextFile),
+    readFileSync: readOnly(readFileSync),
+    readFile: readOnly(readFile),
+    realPathSync: readOnly(realPathSync),
+    realPath: readOnly(realPath),
     // TODO consider implementing
-    "readDirSync": readOnly(genNoop),
+    readDirSync: readOnly(genNoop),
     // TODO consider implementing
-    "readDir": readOnly(asyncGenNoop),
-    "copyFileSync": readOnly(copyFileSync),
-    "copyFile": readOnly(copyFile),
-    "readLinkSync": readOnly(notImplemented),
-    "readLink": readOnly(notImplemented),
-    "lstat": readOnly(notImplemented),
-    "lstatSync": readOnly(notImplemented),
-    "stat": readOnly(notImplemented),
-    "statSync": readOnly(notImplemented),
-    "writeFileSync": readOnly(writeFileSync),
-    "writeFile": readOnly(writeFile),
-    "writeTextFileSync": readOnly(writeTextFileSync),
-    "writeTextFile": readOnly(writeTextFile),
-    "truncateSync": readOnly(truncateSync),
-    "truncate": readOnly(truncate),
-    "listen": readOnly(notImplemented),
-    "listenTls": readOnly(notImplemented),
-    "connect": readOnly(notImplemented),
-    "connectTls": readOnly(notImplemented),
-    "metrics": readOnly(metrics),
-    "resources": readOnly(resources),
-    "watchFs": readOnly(asyncGenNoop),
-    "Process": readOnly(notImplemented),
-    "run": readOnly(notImplemented),
+    readDir: readOnly(asyncGenNoop),
+    copyFileSync: readOnly(copyFileSync),
+    copyFile: readOnly(copyFile),
+    readLinkSync: readOnly(notImplemented),
+    readLink: readOnly(notImplemented),
+    lstat: readOnly(notImplemented),
+    lstatSync: readOnly(notImplemented),
+    stat: readOnly(notImplemented),
+    statSync: readOnly(notImplemented),
+    writeFileSync: readOnly(writeFileSync),
+    writeFile: readOnly(writeFile),
+    writeTextFileSync: readOnly(writeTextFileSync),
+    writeTextFile: readOnly(writeTextFile),
+    truncateSync: readOnly(truncateSync),
+    truncate: readOnly(truncate),
+    listen: readOnly(notImplemented),
+    listenTls: readOnly(notImplemented),
+    connect: readOnly(notImplemented),
+    connectTls: readOnly(notImplemented),
+    metrics: readOnly(metrics),
+    resources: readOnly(resources),
+    watchFs: readOnly(asyncGenNoop),
+    Process: readOnly(notImplemented),
+    run: readOnly(notImplemented),
     // TODO consider implementing
-    "inspect": readOnly(notImplemented),
-    "build": readOnly(build),
-    "version": readOnly(version),
-    "args": readOnly([]),
-    "customInspect": readOnly(customInspect),
+    inspect: readOnly(notImplemented),
+    build: readOnly(build),
+    version: readOnly(version),
+    args: readOnly([]),
+    customInspect: readOnly(customInspect),
     // Intentionally not in Deno namespace
-    "internal": readOnly(Symbol.for("Deno internal")),
-    "core": readOnly({}),
+    internal: readOnly(Symbol.for("Deno internal")),
+    core: readOnly({}),
     // TODO see: https://github.com/denoland/deno/issues/5744
-    "DiagnosticCategory": readOnly(DiagnosticCategory),
+    DiagnosticCategory: readOnly(DiagnosticCategory),
     // TODO see: https://github.com/denoland/deno/issues/5745
-    "dir": readOnly(notImplemented),
+    dir: readOnly(notImplemented),
   });
 
   Object.freeze(shim);
@@ -502,9 +503,8 @@ export async function getDenoShim(): Promise<DenoNamespace> {
 }
 
 if (!("Deno" in window)) {
-  Object.defineProperty(
-    window,
-    "Deno",
-    { value: await getDenoShim(), enumerable: true },
-  );
+  Object.defineProperty(window, "Deno", {
+    value: await getDenoShim(),
+    enumerable: true,
+  });
 }

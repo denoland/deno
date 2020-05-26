@@ -20,7 +20,7 @@ test({
       assert(
         typeof denoShim[key as keyof typeof denoShim] ===
           typeof Deno[key as keyof typeof Deno],
-        `Types of property ${key} should match.`,
+        `Types of property ${key} should match.`
       );
     }
   },

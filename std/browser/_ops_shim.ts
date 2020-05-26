@@ -16,10 +16,7 @@ interface Resource {
   closed: boolean;
 }
 
-const resources = new Map<
-  number,
-  Resource
->();
+const resources = new Map<number, Resource>();
 let resourceId = 0;
 
 function resourcesIncludes(path: string): number | undefined {
@@ -100,15 +97,14 @@ function readResource(rid: number, data: Uint8Array): number {
     }
     if (item.options && !item.options.read) {
       throw new errors.PermissionDenied(
-        `Resource not open for reading: ${rid}`,
+        `Resource not open for reading: ${rid}`
       );
     }
     const { pos } = item;
     const ab = new Uint8Array(item.buf);
     const remaining = ab.byteLength - pos;
-    const readLength = remaining > data.byteLength
-      ? data.byteLength
-      : remaining;
+    const readLength =
+      remaining > data.byteLength ? data.byteLength : remaining;
     data.set(ab.slice(pos, pos + readLength), 0);
     item.pos += readLength;
     return readLength;
@@ -163,13 +159,13 @@ function writeResource(rid: number, data: Uint8Array): number {
     }
     if (item.options && !item.options.write) {
       throw new errors.PermissionDenied(
-        `Resource not open for writing: ${rid}`,
+        `Resource not open for writing: ${rid}`
       );
     }
     const ab = new Uint8Array(item.buf);
     const byteLength = data.byteLength + item.pos;
     const b = new Uint8Array(
-      ab.byteLength > byteLength ? ab.byteLength : byteLength,
+      ab.byteLength > byteLength ? ab.byteLength : byteLength
     );
     b.set(ab, 0);
     b.set(data, item.pos);
@@ -197,7 +193,7 @@ export function open(path: string, options: Deno.OpenOptions): number {
 // eslint-disable-next-line require-await
 export async function read(
   rid: number,
-  buffer: Uint8Array,
+  buffer: Uint8Array
 ): Promise<number | null> {
   if (buffer.length === 0) {
     return Promise.resolve(0);
@@ -229,7 +225,7 @@ export function readSync(rid: number, buffer: Uint8Array): number | null {
 export function seek(
   rid: number,
   offset: number,
-  whence: SeekMode,
+  whence: SeekMode
 ): Promise<number> {
   try {
     const result = seekResource(rid, offset, whence);
@@ -242,7 +238,7 @@ export function seek(
 export function seekSync(
   rid: number,
   offset: number,
-  whence: SeekMode,
+  whence: SeekMode
 ): number {
   return seekResource(rid, offset, whence);
 }
