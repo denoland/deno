@@ -1120,6 +1120,24 @@ itest!(_033_import_map {
   output: "033_import_map.out",
 });
 
+itest!(_033_import_map_http {
+  args: "run --quiet --reload --allow-net \
+     --importmap=http://127.0.0.1:4545/cli/tests/importmaps/import_map.json \
+     --unstable http://127.0.0.1:4545/cli/tests/importmaps/test.ts",
+  output: "033_import_map.out",
+  http_server: true,
+});
+
+// TODO(futurist): clarify the base_url algorithm of "scopes" in importmap
+// below test will fail since the scopes' base_url are from importmap arg
+itest_ignore!(_033_import_map_http_local_entry {
+  args: "run --quiet --reload --allow-net \
+     --importmap=http://127.0.0.1:4545/cli/tests/importmaps/import_map.json \
+     --unstable importmaps/test.ts",
+  output: "033_import_map.out",
+  http_server: true,
+});
+
 itest!(import_map_no_unstable {
   args:
     "run --quiet --reload --importmap=importmaps/import_map.json importmaps/test.ts",
