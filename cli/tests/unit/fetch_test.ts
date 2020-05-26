@@ -702,3 +702,60 @@ unitTest(
     assertEquals(total, data.length);
   }
 );
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchResourceOpenIfBodyIsNotConsumed(): Promise<void> {
+    const resources = Deno.resources();
+    await fetch("http://localhost:4545/cli/tests/fixture.json");
+    // If I don't consume the body, the resource handle should remain open
+
+    let isOpen = false;
+    for (const [key, name] of Object.entries(Deno.resources())) {
+      const rid: number = Number(key);
+      if (name === "httpBody" && !resources[rid]) {
+        isOpen = true;
+        Deno.close(rid);
+      }
+    }
+
+    assert(isOpen);
+  }
+);
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchResourceOpenIfBodyIsNotConsumed(): Promise<void> {
+    const resources = Deno.resources();
+    await fetch("http://localhost:4545/cli/tests/fixture.json");
+    // If I don't consume the body, the resource handle should remain open
+
+    // Close resource so the test don't fail
+    let isOpen = false;
+    for (const [key, name] of Object.entries(Deno.resources())) {
+      const rid: number = Number(key);
+      if (name === "httpBody" && !resources[rid]) {
+        isOpen = true;
+        Deno.close(rid);
+      }
+    }
+
+    // Make sure the resource handle was open
+    assert(isOpen);
+  }
+);
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchResourceCloseAbortSignalAfterResponse(): Promise<void> {
+    const controller = new AbortController();
+
+    await fetch("http://localhost:4545/cli/tests/fixture.json", {
+      signal: controller.signal,
+    });
+
+    // After I abort the httpBody resource must be closed
+    // The test should not fail with: Test case is leaking resources
+    controller.abort();
+  }
+);

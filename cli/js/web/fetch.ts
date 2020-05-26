@@ -11,6 +11,7 @@ import * as Body from "./body.ts";
 import { DomFileImpl } from "./dom_file.ts";
 import { getHeaderValueParams } from "./util.ts";
 import { ReadableStreamImpl } from "./streams/readable_stream.ts";
+import { DOMExceptionImpl as DOMException } from "./dom_exception.ts";
 
 const responseData = new WeakMap();
 export class Response extends Body.Body implements domTypes.Response {
@@ -163,6 +164,31 @@ export class Response extends Body.Body implements domTypes.Response {
   }
 }
 
+function getReadableStream(rid) {
+  return new ReadableStreamImpl({
+    async pull(controller: ReadableStreamDefaultController): Promise<void> {
+      try {
+        const b = new Uint8Array(1024 * 32);
+        const result = await read(rid, b);
+        if (result === null) {
+          controller.close();
+          return close(rid);
+        }
+
+        controller.enqueue(b.subarray(0, result));
+      } catch (e) {
+        controller.error(e);
+        controller.close();
+        close(rid);
+      }
+    },
+    cancel(): void {
+      // When reader.cancel() is called
+      close(rid);
+    },
+  });
+}
+
 function sendFetchReq(
   url: string,
   method: string | null,
@@ -288,31 +314,24 @@ export async function fetch(
     }
   }
 
+  if (init.signal && init.signal.aborted) {
+    throw new DOMException("Aborted", "AbortError");
+  }
+
+  let responseBody;
+  if (init.signal) {
+    const abort = () => {
+      // TODO: cancel sendFetchReq if it's still pending when there's an API for that
+      if (responseBody) responseBody.cancel("Aborted");
+      init.signal.removeListener("abort", abort);
+    };
+    init.signal.addEventListener("abort", abort);
+  }
+
   while (remRedirectCount) {
     const fetchResponse = await sendFetchReq(url, method, headers, body);
 
-    const responseBody = new ReadableStreamImpl({
-      async pull(controller: ReadableStreamDefaultController): Promise<void> {
-        try {
-          const b = new Uint8Array(1024 * 32);
-          const result = await read(fetchResponse.bodyRid, b);
-          if (result === null) {
-            controller.close();
-            return close(fetchResponse.bodyRid);
-          }
-
-          controller.enqueue(b.subarray(0, result));
-        } catch (e) {
-          controller.error(e);
-          controller.close();
-          close(fetchResponse.bodyRid);
-        }
-      },
-      cancel(): void {
-        // When reader.cancel() is called
-        close(fetchResponse.bodyRid);
-      },
-    });
+    responseBody = getReadableStream(fetchResponse.bodyRid);
 
     let responseInit: ResponseInit = {
       status: fetchResponse.status,
