@@ -138,7 +138,6 @@ function createIterableString<T>(
   } else {
     iContent = entries.length === 0 ? "" : ` ${entries.join(", ")} `;
     if (stripColor(iContent).length > LINE_BREAKING_LENGTH) {
-
       iContent = `${initIndentation}${entries.join(
         entryIndentation
       )}${closingIndentation}`;
