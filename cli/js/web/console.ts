@@ -124,12 +124,13 @@ function createIterableString<T>(
 
   const iPrefix = `${config.displayName ? config.displayName + " " : ""}`;
 
+  const initIndentation = `\n${DEFAULT_INDENT.repeat(level + 1)}`;
+  const entryIndentation = `,\n${DEFAULT_INDENT.repeat(level + 1)}`;
+  const closingIndentation = `\n${DEFAULT_INDENT.repeat(level)}`;
+
   let iContent: string;
   if (config.group && entries.length > MIN_GROUP_LENGTH) {
     const groups = groupEntries(entries, level, value);
-    const initIndentation = `\n${DEFAULT_INDENT.repeat(level + 1)}`;
-    const entryIndentation = `,\n${DEFAULT_INDENT.repeat(level + 1)}`;
-    const closingIndentation = `\n${DEFAULT_INDENT.repeat(level)}`;
 
     iContent = `${initIndentation}${groups.join(
       entryIndentation
@@ -137,9 +138,6 @@ function createIterableString<T>(
   } else {
     iContent = entries.length === 0 ? "" : ` ${entries.join(", ")} `;
     if (stripColor(iContent).length > LINE_BREAKING_LENGTH) {
-      const initIndentation = `\n${DEFAULT_INDENT.repeat(level + 1)}`;
-      const entryIndentation = `,\n${DEFAULT_INDENT.repeat(level + 1)}`;
-      const closingIndentation = `\n`;
 
       iContent = `${initIndentation}${entries.join(
         entryIndentation
