@@ -49,7 +49,7 @@ The community has developed extensions for some editors to solve these issues:
 
 The beta version of [vscode_deno](https://github.com/denoland/vscode_deno) is
 published on the
-[Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=justjavac.vscode-deno).
+[Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=denoland.vscode-deno).
 Please report any issues.
 
 #### JetBrains IDEs
