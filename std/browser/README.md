@@ -39,6 +39,30 @@ should try to detect the environment you are running in and avoid using `Deno`
 APIs. One easy way to do that is that `Deno.build.target` will be set to
 `"browser"` when the shim is loaded.
 
+#### Unstable APIs
+
+If you want to shim Deno's unstable APIs, like when using the `--unstable` flag
+with the Deno CLI, there is an export of the module which can do this for you.
+Import the `unstable()` function and await it, which will add the unstable APIs
+to the `Deno` namespace.
+
+```ts
+import { unstable } from "https://deno.land/std/browsers/deno_shim.ts";
+
+await unstable();
+```
+
+If your target browser does not support top-level-await yet, you will need to
+avoid using it, even when bundling, by using an IIFE:
+
+```ts
+import { unstable } from "https://deno.land/std/browsers/deno_shim.ts";
+
+(async () => {
+  await unstable();
+})();
+```
+
 ### Virtual File System and Resources
 
 Most of the file system IO operations have been stubbed out in the shim, where
@@ -75,3 +99,16 @@ these APIs will throw with an `Error` saying the feature isn't implemented:
 - `Deno.Process`
 - `Deno.run`
 - `Deno.inspect`
+
+And there are some unstable:
+
+- `Deno.openPlugin`
+- `Deno.formatDiagnostics`
+- `Deno.trasnpileOnly`
+- `Deno.compile`
+- `Deno.bundle`
+- `Deno.applySourceMap`
+- `Deno.SignalStream`
+- `Deno.signal`
+- `Deno.listenDatagram`
+- `Deno.startTls`

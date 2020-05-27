@@ -1,9 +1,13 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+import type { SeekMode } from "./_ops_shim.ts";
+
 type DenoNamespace = typeof Deno;
 type DenoEnv = DenoNamespace["env"];
 
-let denoShim: DenoNamespace | undefined;
+let denoProperties: Record<keyof DenoNamespace, PropertyDescriptor> | undefined;
+let denoUnstableProperties: Record<string, PropertyDescriptor> | undefined;
 let purge: () => void | undefined;
 
 /** De-reference any virtual files that are closed, so that their contents
@@ -13,18 +17,169 @@ export function purgeResources(): void {
   purge && purge();
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-import type { SeekMode } from "./_ops_shim.ts";
+function readOnly(value: unknown): PropertyDescriptor {
+  return {
+    value,
+    writable: false,
+    enumerable: true,
+    configurable: false,
+  };
+}
 
+function noop(): void {}
+async function asyncNoop(): Promise<void> {}
+function* genNoop(): Iterable<void> {}
+async function* asyncGenNoop(): AsyncIterable<void> {}
+function notImplemented(): never {
+  throw new Error("This feature is not implemented in browsers.");
+}
+
+/** Adds `Deno` unstable APIs to the shim.  If the `Deno` namespace is being
+ * provided by the shim, it will be redefined with the unstable APIs. */
+export async function unstable(): Promise<void> {
+  if (!window || denoUnstableProperties) {
+    return;
+  }
+  if (!("Deno" in window)) {
+    throw new Error("Deno namespace should already be defined");
+  }
+  if (!denoProperties) {
+    await getDenoShim();
+  }
+
+  const { DiagnosticCategory } = await import("../../cli/js/diagnostics.ts");
+
+  let umaskValue = 0o777;
+
+  function umask(mask?: number): number {
+    const value = umaskValue;
+    if (typeof mask === "number") {
+      umaskValue = mask;
+    }
+    return value;
+  }
+
+  function dir(kind: Deno.DirKind): string {
+    return `/${kind}`;
+  }
+
+  function loadavg(): [number, number, number] {
+    return [0, 0, 0];
+  }
+
+  function osRelease(): string {
+    return "browser";
+  }
+
+  const signals = {
+    alarm: notImplemented,
+    child: notImplemented,
+    hungup: notImplemented,
+    interrupt: notImplemented,
+    io: notImplemented,
+    pipe: notImplemented,
+    quit: notImplemented,
+    terminate: notImplemented,
+    userDefined1: notImplemented,
+    userDefined2: notImplemented,
+    windowChange: notImplemented,
+  };
+
+  enum ShutdownMode {
+    Read = 0,
+    Write,
+    ReadWrite,
+  }
+
+  class PermissionStatus {
+    constructor(public state: Deno.PermissionState) {}
+  }
+
+  class Permissions {
+    query(): Promise<PermissionStatus> {
+      return Promise.resolve(new PermissionStatus("granted"));
+    }
+
+    revoke(): Promise<PermissionStatus> {
+      return Promise.resolve(new PermissionStatus("granted"));
+    }
+
+    request(): Promise<PermissionStatus> {
+      return Promise.resolve(new PermissionStatus("granted"));
+    }
+  }
+
+  const permissions = new Permissions();
+
+  function hostname(): string {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (window as any).location.hostname;
+  }
+
+  denoUnstableProperties = {
+    umask: readOnly(umask),
+    linkSync: readOnly(noop),
+    link: readOnly(asyncNoop),
+    symlinkSync: readOnly(noop),
+    symlink: readOnly(asyncNoop),
+    dir: readOnly(dir),
+    loadavg: readOnly(loadavg),
+    osRelease: readOnly(osRelease),
+    openPlugin: readOnly(notImplemented),
+    DiagnosticCategory: readOnly(DiagnosticCategory),
+    formatDiagnostics: readOnly(notImplemented),
+    transpileOnly: readOnly(notImplemented),
+    compile: readOnly(notImplemented),
+    bundle: readOnly(notImplemented),
+    applySourceMap: readOnly(notImplemented),
+    Signal: readOnly({}),
+    SignalStream: readOnly(notImplemented),
+    signal: readOnly(notImplemented),
+    signals: readOnly(signals),
+    setRaw: readOnly(noop),
+    utimeSync: readOnly(noop),
+    utime: readOnly(asyncNoop),
+    ShutdownMode: readOnly(ShutdownMode),
+    shutdown: readOnly(asyncNoop),
+    listenDatagram: readOnly(notImplemented),
+    startTls: readOnly(notImplemented),
+    kill: readOnly(noop),
+    Permissions: readOnly(Permissions),
+    permissions: readOnly(permissions),
+    PermissionStatus: readOnly(PermissionStatus),
+    hostname: readOnly(hostname),
+  };
+
+  Object.assign(denoProperties, denoUnstableProperties);
+
+  if (Deno.build.target !== "browser") {
+    return;
+  }
+  const value = Object.create(null);
+  Object.defineProperties(value, denoProperties!);
+  Object.defineProperty(window, "Deno", {
+    value,
+    writable: false,
+    enumerable: true,
+    configurable: true,
+  });
+}
+
+/** Resolve with an object that contains all the properties of the `Deno`
+ * namespace.  This will automatically be called when imported into an
+ * environment where there is a `window` that does not have a `Deno` property
+ * already defined (like a browser). */
 export async function getDenoShim(): Promise<DenoNamespace> {
-  if (denoShim) {
-    return denoShim;
+  if (denoProperties) {
+    const shim = Object.create(null);
+    Object.defineProperties(shim, denoProperties);
+    Object.freeze(shim);
+    return shim;
   }
 
   const { Buffer, readAll, readAllSync, writeAll, writeAllSync } = await import(
     "../../cli/js/buffer.ts"
   );
-  const { DiagnosticCategory } = await import("../../cli/js/diagnostics.ts");
   const { errors } = await import("../../cli/js/errors.ts");
   const { copy, iter, iterSync } = await import("../../cli/js/io.ts");
   const {
@@ -44,15 +199,6 @@ export async function getDenoShim(): Promise<DenoNamespace> {
   } = await import("./_ops_shim.ts");
 
   purge = purgeResources;
-
-  function readOnly(value: unknown): PropertyDescriptor {
-    return {
-      value,
-      writable: false,
-      enumerable: true,
-      configurable: false,
-    };
-  }
 
   function exit(): void {
     window && window.close();
@@ -386,17 +532,7 @@ export async function getDenoShim(): Promise<DenoNamespace> {
 
   const customInspect = Symbol.for("custom inspect");
 
-  function noop(): void {}
-  async function asyncNoop(): Promise<void> {}
-  function* genNoop(): Iterable<void> {}
-  async function* asyncGenNoop(): AsyncIterable<void> {}
-  function notImplemented(): never {
-    throw new Error("This feature is not implemented in browsers.");
-  }
-
-  const shim: DenoNamespace = Object.create(null);
-
-  Object.defineProperties(shim, {
+  denoProperties = {
     errors: readOnly(errors),
     pid: readOnly(0),
     noColor: readOnly(true),
@@ -489,22 +625,25 @@ export async function getDenoShim(): Promise<DenoNamespace> {
     version: readOnly(version),
     args: readOnly([]),
     customInspect: readOnly(customInspect),
-    // Intentionally not in Deno namespace
+    // Intentionally not exposed in the types
+    // @ts-expect-error
     internal: readOnly(Symbol.for("Deno internal")),
     core: readOnly({}),
-    // TODO see: https://github.com/denoland/deno/issues/5744
-    DiagnosticCategory: readOnly(DiagnosticCategory),
-    // TODO see: https://github.com/denoland/deno/issues/5745
-    dir: readOnly(notImplemented),
-  });
+  };
 
+  const shim = Object.create(null);
+  Object.defineProperties(shim, denoProperties!);
   Object.freeze(shim);
   return shim;
 }
 
-if (!("Deno" in window)) {
-  Object.defineProperty(window, "Deno", {
-    value: await getDenoShim(),
-    enumerable: true,
-  });
-}
+(async (): Promise<void> => {
+  if (window && !("Deno" in window)) {
+    Object.defineProperty(window, "Deno", {
+      value: await getDenoShim(),
+      writable: false,
+      enumerable: true,
+      configurable: true,
+    });
+  }
+})();
