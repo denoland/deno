@@ -1,3 +1,5 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 import { Buffer } from "../../buffer.ts";
 import { bytesSymbol } from "../blob.ts";
 import { DomFileImpl } from "../dom_file.ts";
