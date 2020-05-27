@@ -2063,7 +2063,7 @@ fn test_permissions_rw_no_prefix() {
 }
 
 #[test]
-fn test_permissions_read_watch_fs_allow_cwd() {
+fn test_permissions_read_watch_fs_with_relative_path() {
   let (_, err) = util::run_and_collect_output(
     true,
     "run --allow-read=. complex_permissions_test.ts readWatchFs tls",
