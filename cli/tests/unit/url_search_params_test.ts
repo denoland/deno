@@ -177,7 +177,7 @@ unitTest(function urlSearchParamsAppendArgumentsCheck(): void {
       const searchParams = new URLSearchParams();
       let hasThrown = 0;
       try {
-        // @ts-ignore
+        // @ts-expect-error
         searchParams[method]();
         hasThrown = 1;
       } catch (err) {
@@ -194,7 +194,7 @@ unitTest(function urlSearchParamsAppendArgumentsCheck(): void {
     const searchParams = new URLSearchParams();
     let hasThrown = 0;
     try {
-      // @ts-ignore
+      // @ts-expect-error
       searchParams[method]("foo");
       hasThrown = 1;
     } catch (err) {
@@ -235,7 +235,7 @@ unitTest(function urlSearchParamsCustomSymbolIterator(): void {
 unitTest(
   function urlSearchParamsCustomSymbolIteratorWithNonStringParams(): void {
     const params = {};
-    // @ts-ignore
+    // @ts-expect-error
     params[Symbol.iterator] = function* (): IterableIterator<[number, number]> {
       yield [1, 2];
     };

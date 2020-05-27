@@ -20,7 +20,7 @@ function setup() {
     Base,
     // This is using an internal API we don't want published as types, so having
     // to cast to any to "trick" TypeScript
-    // @ts-ignore TypeScript (as of 3.7) does not support indexing namespaces by symbol
+    // @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
     DomIterable: Deno[Deno.internal].DomIterableMixin(Base, dataSymbol),
   };
 }

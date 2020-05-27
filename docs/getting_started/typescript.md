@@ -2,12 +2,19 @@
 
 <!-- TODO(lucacasonato): text on 'just import .ts' -->
 
-### Using external type definitions
-
 Deno supports both JavaScript and TypeScript as first class languages at
 runtime. This means it requires fully qualified module names, including the
 extension (or a server providing the correct media type). In addition, Deno has
-no "magical" module resolution.
+no "magical" module resolution. Instead, imported modules are specified as files
+(including extensions) or fully qualified URL imports. Typescript modules can be
+directly imported. E.g.
+
+```
+import { Response } from "https://deno.land/std@0.53.0/http/server.ts";
+import { queue } from "./collections.ts";
+```
+
+### Using external type definitions
 
 The out of the box TypeScript compiler though relies on both extension-less
 modules and the Node.js module resolution logic to apply types to JavaScript
@@ -98,7 +105,7 @@ way to support customization a configuration file such as `tsconfig.json` might
 be provided to Deno on program execution.
 
 You need to explicitly tell Deno where to look for this configuration by setting
-the `-c` argument when executing your application.
+the `-c` (or `--config`) argument when executing your application.
 
 ```shell
 deno run -c tsconfig.json mod.ts

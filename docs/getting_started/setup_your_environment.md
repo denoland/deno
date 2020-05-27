@@ -8,8 +8,8 @@ IDE of choice.
 
 There are several env vars that control how Deno behaves:
 
-`DENO_DIR` defaults to `$HOME/.deno` but can be set to any path to control where
-generated and cached source code is written and read to.
+`DENO_DIR` defaults to `$HOME/.cache/deno` but can be set to any path to control
+where generated and cached source code is written and read to.
 
 `NO_COLOR` will turn off color output if set. See https://no-color.org/. User
 code can test if `NO_COLOR` was set without having `--allow-env` by using the
@@ -49,17 +49,17 @@ The community has developed extensions for some editors to solve these issues:
 
 The beta version of [vscode_deno](https://github.com/denoland/vscode_deno) is
 published on the
-[Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=justjavac.vscode-deno).
+[Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=denoland.vscode-deno).
 Please report any issues.
 
 #### JetBrains IDEs
 
-Support for JetBrains IDEs is not yet available, but you can follow and upvote
-these issues to stay up to date:
+Support for JetBrains IDEs is available through
+[the Deno plugin](https://plugins.jetbrains.com/plugin/14382-deno).
 
-- https://youtrack.jetbrains.com/issue/WEB-41607
-- https://youtrack.jetbrains.com/issue/WEB-42983
-- https://youtrack.jetbrains.com/issue/WEB-31667
+For more information on how to set-up your JetBrains IDE for Deno, read
+[this comment](https://youtrack.jetbrains.com/issue/WEB-41607#focus=streamItem-27-4160152.0-0)
+on YouTrack.
 
 #### Vim and NeoVim
 

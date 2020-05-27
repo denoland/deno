@@ -48,6 +48,13 @@ where
   }
 }
 
+const SUPPORTED_MEDIA_TYPES: [MediaType; 4] = [
+  MediaType::JavaScript,
+  MediaType::TypeScript,
+  MediaType::JSX,
+  MediaType::TSX,
+];
+
 #[derive(Debug, Serialize)]
 pub struct ModuleGraph(HashMap<String, ModuleGraphFile>);
 
@@ -189,6 +196,7 @@ impl ModuleGraphLoader {
 
     let (import_descs, ref_descs) = analyze_dependencies_and_references(
       &specifier,
+      map_file_extension(&PathBuf::from(&specifier)),
       &source_code,
       self.analyze_dynamic_imports,
     )?;
@@ -384,9 +392,7 @@ impl ModuleGraphLoader {
     let module_specifier = ModuleSpecifier::from(source_file.url.clone());
     let source_code = String::from_utf8(source_file.source_code)?;
 
-    if source_file.media_type == MediaType::JavaScript
-      || source_file.media_type == MediaType::TypeScript
-    {
+    if SUPPORTED_MEDIA_TYPES.contains(&source_file.media_type) {
       if let Some(types_specifier) = source_file.types_header {
         let type_header = ReferenceDescriptor {
           specifier: types_specifier.to_string(),
@@ -404,6 +410,7 @@ impl ModuleGraphLoader {
 
       let (import_descs, ref_descs) = analyze_dependencies_and_references(
         &module_specifier.to_string(),
+        source_file.media_type,
         &source_code,
         self.analyze_dynamic_imports,
       )?;
@@ -779,6 +786,25 @@ mod tests {
         }
       ])
     );
+    drop(http_server_guard);
+  }
+
+  #[tokio::test]
+  async fn source_graph_different_langs() {
+    let http_server_guard = crate::test_util::http_server();
+
+    // ModuleGraphLoader was mistakenly parsing this file as TSX
+    // https://github.com/denoland/deno/issues/5867
+
+    let module_specifier = ModuleSpecifier::resolve_url_or_path(
+      "http://localhost:4545/cli/tests/ts_with_generic.ts",
+    )
+    .unwrap();
+
+    build_graph(&module_specifier)
+      .await
+      .expect("Failed to build graph");
+
     drop(http_server_guard);
   }
 }
