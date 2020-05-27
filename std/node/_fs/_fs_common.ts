@@ -1,7 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import { notImplemented } from "../_utils.ts";
-
 export type CallbackWithError = (err?: Error | null) => void;
 
 export interface FileOptions {
@@ -35,28 +33,7 @@ export function getEncoding(
   const encoding =
     typeof optOrCallback === "string" ? optOrCallback : optOrCallback.encoding;
   if (!encoding) return null;
-  if (encoding === "utf8" || encoding === "utf-8") {
-    return "utf8";
-  }
-  if (encoding === "buffer") {
-    return "buffer";
-  }
-
-  const notImplementedEncodings = [
-    "utf16le",
-    "latin1",
-    "base64",
-    "hex",
-    "ascii",
-    "binary",
-    "ucs2",
-  ];
-
-  if (notImplementedEncodings.includes(encoding)) {
-    notImplemented(`"${encoding}" encoding`);
-  }
-
-  throw new Error(`The value "${encoding}" is invalid for option "encoding"`);
+  return encoding;
 }
 
 export function getOpenOptions(flag: string | undefined): Deno.OpenOptions {
