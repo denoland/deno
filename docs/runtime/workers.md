@@ -34,7 +34,7 @@ new Worker("./worker.ts", { type: "module" });
 **worker.ts**
 
 ```ts
-console.log("hello world");
+await console.log("hello world");
 self.close();
 ```
 
