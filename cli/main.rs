@@ -427,8 +427,7 @@ async fn bundle_command(
 
   let global_state = GlobalState::new(flags)?;
 
-  // TODO(bartlomieju): probably should respect --quiet flag
-  eprintln!("Bundling {}", module_specifier.to_string());
+  info!("Bundling {}", module_specifier.to_string());
 
   let output = tsc::bundle(
     &global_state,
@@ -444,15 +443,12 @@ async fn bundle_command(
   let output_string = fmt::format_text(&output)?;
 
   if let Some(out_file_) = out_file.as_ref() {
-    eprintln!("Emitting bundle to {:?}", out_file_);
-
+    info!("Emitting bundle to {:?}", out_file_);
     let output_bytes = output_string.as_bytes();
     let output_len = output_bytes.len();
-
     deno_fs::write_file(out_file_, output_bytes, 0o666)?;
-    // TODO(bartlomieju): do we really need to show this info? (it doesn't respect --quiet flag)
     // TODO(bartlomieju): add "humanFileSize" method
-    eprintln!("{} bytes emitted.", output_len);
+    info!("{} bytes emitted.", output_len);
   } else {
     println!("{}", output_string);
   }
