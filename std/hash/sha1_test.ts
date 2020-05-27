@@ -18,7 +18,7 @@ function toHexString(value: number[] | ArrayBuffer): string {
 }
 
 // prettier-ignore
-// dprint-ignore
+// deno-fmt-ignore
 const fixtures: {
   sha1: Record<string, Record<string, Message>>;
 } = {
