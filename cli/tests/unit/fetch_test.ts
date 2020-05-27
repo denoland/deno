@@ -363,6 +363,36 @@ unitTest(
   }
 );
 
+unitTest(
+  { perms: { net: true } },
+  async function fetchInitFormDataTextFileBody(): Promise<void> {
+    const fileContent = "deno land";
+    const form = new FormData();
+    form.append("field", "value");
+    form.append(
+      "file",
+      new Blob([new TextEncoder().encode(fileContent)], {
+        type: "text/plain",
+      }),
+      "deno.txt"
+    );
+    const response = await fetch("http://localhost:4545/echo_server", {
+      method: "POST",
+      body: form,
+    });
+    const resultForm = await response.formData();
+    assertEquals(form.get("field"), resultForm.get("field"));
+
+    const file = form.get("file") as File;
+    const resultFile = resultForm.get("file") as File;
+
+    assertEquals(file.size, resultFile.size);
+    assertEquals(file.name, resultFile.name);
+    assertEquals(file.type, resultFile.type);
+    assertEquals(await file.text(), await resultFile.text());
+  }
+);
+
 unitTest({ perms: { net: true } }, async function fetchUserAgent(): Promise<
   void
 > {
