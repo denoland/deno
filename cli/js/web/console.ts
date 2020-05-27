@@ -825,6 +825,7 @@ export class Console {
     let resultData: any;
     const isSet = data instanceof Set;
     const isMap = data instanceof Map;
+    const is2DArray = data instanceof Array && data.every(element => element instanceof Array);
     const valuesKey = "Values";
     const indexKey = isSet || isMap ? "(iter idx)" : "(idx)";
 
@@ -874,7 +875,7 @@ export class Console {
       indexKey,
       ...(properties || [
         ...headerKeys,
-        !isMap && values.length > 0 && valuesKey,
+        !isMap && !is2DArray && values.length > 0 && valuesKey,
       ]),
     ].filter(Boolean) as string[];
     const body = [indexKeys, ...bodyValues, values];
