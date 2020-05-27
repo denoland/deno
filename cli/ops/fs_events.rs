@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
+use crate::fs::resolve_from_cwd;
 use crate::op_error::OpError;
 use crate::state::State;
 use deno_core::CoreIsolate;
@@ -15,7 +16,7 @@ use notify::RecursiveMode;
 use notify::Watcher;
 use serde::Serialize;
 use std::convert::From;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tokio::sync::mpsc;
 
 pub fn init(i: &mut CoreIsolate, s: &State) {
@@ -90,7 +91,7 @@ pub fn op_fs_events_open(
     RecursiveMode::NonRecursive
   };
   for path in &args.paths {
-    state.check_read(&PathBuf::from(path))?;
+    state.check_read(&resolve_from_cwd(Path::new(&path))?)?;
     watcher.watch(path, recursive_mode).map_err(ErrBox::from)?;
   }
   let resource = FsEventsResource { watcher, receiver };

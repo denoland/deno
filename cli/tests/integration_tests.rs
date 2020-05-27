@@ -2063,6 +2063,18 @@ fn test_permissions_rw_no_prefix() {
 }
 
 #[test]
+fn test_permissions_read_watch_fs_allow_cwd() {
+  let (_, err) = util::run_and_collect_output(
+    true,
+    "run --allow-read=. complex_permissions_test.ts readWatchFs tls",
+    None,
+    None,
+    true,
+  );
+  assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
+}
+
+#[test]
 fn test_permissions_net_fetch_allow_localhost_4545() {
   let (_, err) = util::run_and_collect_output(
     true,

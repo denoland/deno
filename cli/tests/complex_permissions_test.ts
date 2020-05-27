@@ -11,6 +11,9 @@ const test: { [key: string]: Function } = {
       writeFileSync(file, new Uint8Array(0), { append: true })
     );
   },
+  readWatchFs(paths: string[]): void {
+    paths.forEach((path) => Deno.watchFs(path));
+  },
   netFetch(hosts: string[]): void {
     hosts.forEach((host) => fetch(host));
   },
