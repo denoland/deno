@@ -44,7 +44,6 @@
       "script_installer": "Script installer",
       "formatter": "Formatter",
       "bundler": "Bundler",
-      "documentation_generator": "Documentation generator",
       "dependency_inspector": "Dependency inspector"
     }
   },

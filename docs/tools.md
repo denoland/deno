@@ -9,7 +9,7 @@ and TypeScript:
 - [bundler (`deno bundle`)](./tools/bundler.md)
 - [debugger (`--inspect, --inspect-brk`)](./tools/debugger.md)
 - [dependency inspector (`deno info`)](./tools/dependency_inspector.md)
-- [documentation generator (`deno doc`)](./tools/documentation_generator.md)
+- documentation generator (`deno doc`) [coming soon]()
 - [formatter (`deno fmt`)](./tools/formatter.md)
 - [test runner (`deno test`)](./testing.md)
 - linter (`deno lint`) [coming soon](https://github.com/denoland/deno/issues/1880)
