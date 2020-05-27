@@ -30,7 +30,7 @@ clap = "2.33.0"
 dirs = "2.0.2"
 dissimilar = "1.0"
 dlopen = "0.1.8"
-dprint-plugin-typescript = "0.18.5"
+dprint-plugin-typescript = "0.19.0"
 futures = { version = "0.3.4", features = ["compat", "io-compat"] }
 glob = "0.3.0"
 http = "0.2.1"
