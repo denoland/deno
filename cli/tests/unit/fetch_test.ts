@@ -359,6 +359,24 @@ unitTest(
   }
 );
 
+unitTest(
+  { perms: { net: true } },
+  async function fetchInitFormDataBlobFilenameBody(): Promise<void> {
+    const form = new FormData();
+    form.append("field", "value");
+    form.append("file", new Blob([new TextEncoder().encode("deno")]));
+    const response = await fetch("http://localhost:4545/echo_server", {
+      method: "POST",
+      body: form,
+    });
+    const resultForm = await response.formData();
+    assertEquals(form.get("field"), resultForm.get("field"));
+    const file = resultForm.get("file");
+    assert(file instanceof File);
+    assertEquals(file.name, "blob");
+  }
+);
+
 unitTest({ perms: { net: true } }, async function fetchUserAgent(): Promise<
   void
 > {

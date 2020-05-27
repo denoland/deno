@@ -99,6 +99,15 @@ unitTest(function formDataSetEmptyBlobSuccess(): void {
   */
 });
 
+unitTest(function formDataBlobFilename(): void {
+  const formData = new FormData();
+  const content = new TextEncoder().encode("deno");
+  formData.set("a", new Blob([content]));
+  const file = formData.get("a");
+  assert(file instanceof File);
+  assertEquals(file.name, "blob");
+});
+
 unitTest(function formDataParamsForEachSuccess(): void {
   const init = [
     ["a", "54"],
