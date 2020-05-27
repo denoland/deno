@@ -170,9 +170,14 @@ fn create_compiler_worker(
   // like 'eval', 'repl'
   let entry_point =
     ModuleSpecifier::resolve_url_or_path("./__$deno$ts_compiler.ts").unwrap();
-  let worker_state =
-    State::new(global_state.clone(), Some(permissions), entry_point, true)
-      .expect("Unable to create worker state");
+  let worker_state = State::new(
+    global_state.clone(),
+    Some(permissions),
+    entry_point,
+    None,
+    true,
+  )
+  .expect("Unable to create worker state");
 
   // TODO(bartlomieju): this metric is never used anywhere
   // Count how many times we start the compiler worker.
@@ -396,6 +401,7 @@ impl TsCompiler {
     })))
   }
 
+  // TODO(bartlomieju): this method is no longer needed
   /// Mark given module URL as compiled to avoid multiple compilations of same
   /// module in single run.
   fn mark_compiled(&self, url: &Url) {
@@ -403,6 +409,9 @@ impl TsCompiler {
     c.insert(url.clone());
   }
 
+  /// Check if there is compiled source in cache that is valid
+  /// and can be used again.
+  // TODO(bartlomieju): there should be check that cached file actually exists
   fn has_compiled_source(
     &self,
     file_fetcher: &SourceFileFetcher,

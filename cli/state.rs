@@ -351,19 +351,9 @@ impl State {
     global_state: GlobalState,
     shared_permissions: Option<Permissions>,
     main_module: ModuleSpecifier,
+    maybe_import_map: Option<ImportMap>,
     is_internal: bool,
   ) -> Result<Self, ErrBox> {
-    let import_map: Option<ImportMap> =
-      match global_state.flags.import_map_path.as_ref() {
-        None => None,
-        Some(file_path) => {
-          if !global_state.flags.unstable {
-            exit_unstable("--importmap")
-          }
-          Some(ImportMap::load(file_path)?)
-        }
-      };
-
     let seeded_rng = match global_state.flags.seed {
       Some(seed) => Some(StdRng::seed_from_u64(seed)),
       None => None,
@@ -379,7 +369,7 @@ impl State {
       global_state,
       main_module,
       permissions,
-      import_map,
+      import_map: maybe_import_map,
       metrics: Metrics::default(),
       global_timer: GlobalTimer::new(),
       workers: HashMap::new(),
@@ -501,6 +491,7 @@ impl State {
       GlobalState::mock(vec!["deno".to_string()]),
       None,
       module_specifier,
+      None,
       false,
     )
     .unwrap()

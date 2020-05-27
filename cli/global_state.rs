@@ -8,6 +8,7 @@ use crate::lockfile::Lockfile;
 use crate::module_graph::ModuleGraphLoader;
 use crate::msg;
 use crate::permissions::Permissions;
+use crate::state::exit_unstable;
 use crate::tsc::CompiledModule;
 use crate::tsc::TargetLib;
 use crate::tsc::TsCompiler;
@@ -37,6 +38,7 @@ pub struct GlobalStateInner {
   pub ts_compiler: TsCompiler,
   pub lockfile: Option<Mutex<Lockfile>>,
   pub compiler_starts: AtomicUsize,
+  pub maybe_import_map: Option<ImportMap>,
   compile_lock: AsyncMutex<()>,
 }
 
@@ -77,6 +79,17 @@ impl GlobalState {
       None
     };
 
+    let maybe_import_map: Option<ImportMap> =
+      match flags.import_map_path.as_ref() {
+        None => None,
+        Some(file_path) => {
+          if !flags.unstable {
+            exit_unstable("--importmap")
+          }
+          Some(ImportMap::load(file_path)?)
+        }
+      };
+
     let inner = GlobalStateInner {
       dir,
       permissions: Permissions::from_flags(&flags),
@@ -84,6 +97,7 @@ impl GlobalState {
       file_fetcher,
       ts_compiler,
       lockfile,
+      maybe_import_map,
       compiler_starts: AtomicUsize::new(0),
       compile_lock: AsyncMutex::new(()),
     };
@@ -223,12 +237,4 @@ impl GlobalState {
 fn thread_safe() {
   fn f<S: Send + Sync>(_: S) {}
   f(GlobalState::mock(vec![]));
-}
-
-#[test]
-fn import_map_given_for_repl() {
-  let _result = GlobalState::new(flags::Flags {
-    import_map_path: Some("import_map.json".to_string()),
-    ..flags::Flags::default()
-  });
 }
