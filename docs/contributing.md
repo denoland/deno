@@ -47,7 +47,8 @@ As an example, see how `Deno.rename()` was proposed and added in
 
 ## Releases
 
-Summary of the changes from previous releases can be found [here](https://github.com/denoland/deno/releases).
+Summary of the changes from previous releases can be found
+[here](https://github.com/denoland/deno/releases).
 
 ## Documenting APIs
 
