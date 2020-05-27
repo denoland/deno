@@ -1,17 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-// TODO(kitsonk) Replace with `deno_std/colors/mod.ts` when we can load modules
-// which end in `.ts`.
-
-import { noColor } from "./deno.ts";
-
 interface Code {
   open: string;
   close: string;
   regexp: RegExp;
 }
-
-const enabled = !noColor;
 
 function code(open: number, close: number): Code {
   return {
@@ -22,9 +15,9 @@ function code(open: number, close: number): Code {
 }
 
 function run(str: string, code: Code): string {
-  return enabled
-    ? `${code.open}${str.replace(code.regexp, code.open)}${code.close}`
-    : str;
+  return !globalThis || !globalThis.Deno || globalThis.Deno.noColor
+    ? str
+    : `${code.open}${str.replace(code.regexp, code.open)}${code.close}`;
 }
 
 export function bold(str: string): string {

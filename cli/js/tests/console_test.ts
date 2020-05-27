@@ -1,19 +1,15 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-// TODO(ry) The test functions in this file have way too many asserts in them.
-// They need to be broken up into smaller more manageable tests.
+// TODO(ry) The unit test functions in this module are too coarse. They should
+// be broken up into smaller bits.
+
+// TODO(ry) These tests currentl strip all the ANSI colors out. We don't have a
+// good way to control whether we produce color output or not since
+// std/fmt/colors auto determines whether to put colors in or not. We need
+// better infrastructure here so we can properly test the colors.
 
 import { assert, assertEquals, unitTest } from "./test_util.ts";
-import {
-  stripColor,
-  yellow,
-  cyan,
-  red,
-  green,
-  magenta,
-  bold,
-  dim,
-} from "../colors.ts";
+import { stripColor } from "../../../std/fmt/colors.ts";
 
 // Some of these APIs aren't exposed in the types and so we have to cast to any
 // in order to "trick" TypeScript.
@@ -30,7 +26,7 @@ const {
 } = Deno[Deno.internal];
 
 function stringify(...args: unknown[]): string {
-  return stringifyArgs(args).replace(/\n$/, "");
+  return stripColor(stringifyArgs(args).replace(/\n$/, ""));
 }
 
 // test cases from web-platform-tests
@@ -62,11 +58,10 @@ unitTest(function consoleTestAssertShouldNotThrowError(): void {
   });
 });
 
-// Modifying the test to take colors into account
 unitTest(function consoleTestStringifyComplexObjects(): void {
   assertEquals(stringify("foo"), "foo");
-  assertEquals(stripColor(stringify(["foo", "bar"])), `[ "foo", "bar" ]`);
-  assertEquals(stripColor(stringify({ foo: "bar" })), `{ foo: "bar" }`);
+  assertEquals(stringify(["foo", "bar"]), `[ "foo", "bar" ]`);
+  assertEquals(stringify({ foo: "bar" }), `{ foo: "bar" }`);
 });
 
 unitTest(function consoleTestStringifyLongStrings(): void {
@@ -123,51 +118,46 @@ unitTest(function consoleTestStringifyCircular(): void {
 
   nestedObj.o = circularObj;
   const nestedObjExpected = `{
-  num: ${yellow("1")},
-  bool: ${yellow("true")},
-  str: ${green('"a"')},
-  method: ${cyan("[Function: method]")},
-  asyncMethod: ${cyan("[AsyncFunction: asyncMethod]")},
-  generatorMethod: ${cyan("[GeneratorFunction: generatorMethod]")},
-  un: ${dim("undefined")},
-  nu: ${bold("null")},
-  arrowFunc: ${cyan("[Function: arrowFunc]")},
-  extendedClass: Extended { a: ${yellow("1")}, b: ${yellow("2")} },
-  nFunc: ${cyan("[Function]")},
-  extendedCstr: ${cyan("[Function: Extended]")},
+  num: 1,
+  bool: true,
+  str: "a",
+  method: [Function: method],
+  asyncMethod: [AsyncFunction: asyncMethod],
+  generatorMethod: [GeneratorFunction: generatorMethod],
+  un: undefined,
+  nu: null,
+  arrowFunc: [Function: arrowFunc],
+  extendedClass: Extended { a: 1, b: 2 },
+  nFunc: [Function],
+  extendedCstr: [Function: Extended],
   o: {
-    num: ${yellow("2")},
-    bool: ${yellow("false")},
-    str: ${green('"b"')},
-    method: ${cyan("[Function: method]")},
-    un: ${dim("undefined")},
-    nu: ${bold("null")},
-    nested: ${cyan("[Circular]")},
+    num: 2,
+    bool: false,
+    str: "b",
+    method: [Function: method],
+    un: undefined,
+    nu: null,
+    nested: [Circular],
     emptyObj: {},
-    arr: [ ${yellow("1")}, ${green('"s"')}, ${yellow("false")}, ${bold(
-    "null"
-  )}, ${cyan("[Circular]")} ],
-    baseClass: Base { a: ${yellow("1")} }
+    arr: [ 1, "s", false, null, [Circular] ],
+    baseClass: Base { a: 1 }
   }
 }`;
 
-  assertEquals(stringify(1), yellow("1"));
-  assertEquals(stringify(-0), yellow("-0"));
-  assertEquals(stringify(1n), yellow("1n"));
+  assertEquals(stringify(1), "1");
+  assertEquals(stringify(-0), "-0");
+  assertEquals(stringify(1n), "1n");
   assertEquals(stringify("s"), "s");
-  assertEquals(stringify(false), yellow("false"));
-  assertEquals(stringify(new Number(1)), cyan("[Number: 1]"));
-  assertEquals(stringify(new Boolean(true)), cyan("[Boolean: true]"));
-  assertEquals(stringify(new String("deno")), cyan(`[String: "deno"]`));
-  assertEquals(stringify(/[0-9]*/), red("/[0-9]*/"));
+  assertEquals(stringify(false), "false");
+  assertEquals(stringify(new Number(1)), "[Number: 1]");
+  assertEquals(stringify(new Boolean(true)), "[Boolean: true]");
+  assertEquals(stringify(new String("deno")), `[String: "deno"]`);
+  assertEquals(stringify(/[0-9]*/), "/[0-9]*/");
   assertEquals(
     stringify(new Date("2018-12-10T02:26:59.002Z")),
-    magenta("2018-12-10T02:26:59.002Z")
+    "2018-12-10T02:26:59.002Z"
   );
-  assertEquals(
-    stringify(new Set([1, 2, 3])),
-    `Set { ${[1, 2, 3].map((n) => yellow(String(n))).join(", ")} }`
-  );
+  assertEquals(stringify(new Set([1, 2, 3])), "Set { 1, 2, 3 }");
   assertEquals(
     stringify(
       new Map([
@@ -175,89 +165,73 @@ unitTest(function consoleTestStringifyCircular(): void {
         [2, "two"],
       ])
     ),
-    `Map { ${yellow("1")} => ${green('"one"')}, ${yellow("2")} => ${green(
-      '"two"'
-    )} }`
+    `Map { 1 => "one", 2 => "two" }`
   );
-  assertEquals(
-    stringify(new WeakSet()),
-    `WeakSet { ${cyan("[items unknown]")} }`
-  );
-  assertEquals(
-    stringify(new WeakMap()),
-    `WeakMap { ${cyan("[items unknown]")} }`
-  );
-  assertEquals(stringify(Symbol(1)), green("Symbol(1)"));
-  assertEquals(stringify(null), bold("null"));
-  assertEquals(stringify(undefined), dim("undefined"));
-  assertEquals(
-    stringify(new Extended()),
-    `Extended { a: ${yellow("1")}, b: ${yellow("2")} }`
-  );
+  assertEquals(stringify(new WeakSet()), "WeakSet { [items unknown] }");
+  assertEquals(stringify(new WeakMap()), "WeakMap { [items unknown] }");
+  assertEquals(stringify(Symbol(1)), "Symbol(1)");
+  assertEquals(stringify(null), "null");
+  assertEquals(stringify(undefined), "undefined");
+  assertEquals(stringify(new Extended()), "Extended { a: 1, b: 2 }");
   assertEquals(
     stringify(function f(): void {}),
-    cyan("[Function: f]")
+    "[Function: f]"
   );
   assertEquals(
     stringify(async function af(): Promise<void> {}),
-    cyan("[AsyncFunction: af]")
+    "[AsyncFunction: af]"
   );
   assertEquals(
     stringify(function* gf() {}),
-    cyan("[GeneratorFunction: gf]")
+    "[GeneratorFunction: gf]"
   );
   assertEquals(
     stringify(async function* agf() {}),
-    cyan("[AsyncGeneratorFunction: agf]")
+    "[AsyncGeneratorFunction: agf]"
   );
   assertEquals(
     stringify(new Uint8Array([1, 2, 3])),
-    `Uint8Array(3) [ ${[1, 2, 3].map((n) => yellow(String(n))).join(", ")} ]`
+    "Uint8Array(3) [ 1, 2, 3 ]"
   );
   assertEquals(stringify(Uint8Array.prototype), "TypedArray {}");
   assertEquals(
     stringify({ a: { b: { c: { d: new Set([1]) } } } }),
-    `{ a: { b: { c: { d: ${cyan("[Set]")} } } } }`
+    "{ a: { b: { c: { d: [Set] } } } }"
   );
   assertEquals(stringify(nestedObj), nestedObjExpected);
-  assertEquals(
-    stringify(JSON),
-    `JSON { Symbol(Symbol.toStringTag): ${green('"JSON"')} }`
-  );
+  assertEquals(stringify(JSON), 'JSON { Symbol(Symbol.toStringTag): "JSON" }');
   assertEquals(
     stringify(console),
     `{
-  log: ${cyan("[Function]")},
-  debug: ${cyan("[Function]")},
-  info: ${cyan("[Function]")},
-  dir: ${cyan("[Function]")},
-  dirxml: ${cyan("[Function]")},
-  warn: ${cyan("[Function]")},
-  error: ${cyan("[Function]")},
-  assert: ${cyan("[Function]")},
-  count: ${cyan("[Function]")},
-  countReset: ${cyan("[Function]")},
-  table: ${cyan("[Function]")},
-  time: ${cyan("[Function]")},
-  timeLog: ${cyan("[Function]")},
-  timeEnd: ${cyan("[Function]")},
-  group: ${cyan("[Function]")},
-  groupCollapsed: ${cyan("[Function]")},
-  groupEnd: ${cyan("[Function]")},
-  clear: ${cyan("[Function]")},
-  trace: ${cyan("[Function]")},
-  indentLevel: ${yellow("0")},
-  Symbol(isConsoleInstance): ${yellow("true")}
+  log: [Function],
+  debug: [Function],
+  info: [Function],
+  dir: [Function],
+  dirxml: [Function],
+  warn: [Function],
+  error: [Function],
+  assert: [Function],
+  count: [Function],
+  countReset: [Function],
+  table: [Function],
+  time: [Function],
+  timeLog: [Function],
+  timeEnd: [Function],
+  group: [Function],
+  groupCollapsed: [Function],
+  groupEnd: [Function],
+  clear: [Function],
+  trace: [Function],
+  indentLevel: 0,
+  Symbol(isConsoleInstance): true
 }`
   );
   assertEquals(
     stringify({ str: 1, [Symbol.for("sym")]: 2, [Symbol.toStringTag]: "TAG" }),
-    `TAG { str: ${yellow("1")}, Symbol(sym): ${yellow(
-      "2"
-    )}, Symbol(Symbol.toStringTag): ${green('"TAG"')} }`
+    'TAG { str: 1, Symbol(sym): 2, Symbol(Symbol.toStringTag): "TAG" }'
   );
   // test inspect is working the same
-  assertEquals(inspect(nestedObj), nestedObjExpected);
+  assertEquals(stripColor(inspect(nestedObj)), nestedObjExpected);
 });
 /* eslint-enable @typescript-eslint/explicit-function-return-type */
 
@@ -265,22 +239,25 @@ unitTest(function consoleTestStringifyWithDepth(): void {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const nestedObj: any = { a: { b: { c: { d: { e: { f: 42 } } } } } };
   assertEquals(
-    stringifyArgs([nestedObj], { depth: 3 }),
-    `{ a: { b: { c: ${cyan("[Object]")} } } }`
+    stripColor(stringifyArgs([nestedObj], { depth: 3 })),
+    "{ a: { b: { c: [Object] } } }"
   );
   assertEquals(
-    stringifyArgs([nestedObj], { depth: 4 }),
-    `{ a: { b: { c: { d: ${cyan("[Object]")} } } } }`
+    stripColor(stringifyArgs([nestedObj], { depth: 4 })),
+    "{ a: { b: { c: { d: [Object] } } } }"
   );
-  assertEquals(stringifyArgs([nestedObj], { depth: 0 }), cyan("[Object]"));
   assertEquals(
-    stringifyArgs([nestedObj]),
-    `{ a: { b: { c: { d: ${cyan("[Object]")} } } } }`
+    stripColor(stringifyArgs([nestedObj], { depth: 0 })),
+    "[Object]"
+  );
+  assertEquals(
+    stripColor(stringifyArgs([nestedObj])),
+    "{ a: { b: { c: { d: [Object] } } } }"
   );
   // test inspect is working the same way
   assertEquals(
-    inspect(nestedObj, { depth: 4 }),
-    `{ a: { b: { c: { d: ${cyan("[Object]")} } } } }`
+    stripColor(inspect(nestedObj, { depth: 4 })),
+    "{ a: { b: { c: { d: [Object] } } } }"
   );
 });
 
@@ -301,7 +278,7 @@ unitTest(function consoleTestStringifyLargeObject(): void {
     },
   };
   assertEquals(
-    stripColor(stringify(obj)),
+    stringify(obj),
     `{
   a: 2,
   o: {
@@ -321,15 +298,12 @@ unitTest(function consoleTestStringifyLargeObject(): void {
 });
 
 unitTest(function consoleTestStringifyIterable() {
-  const shortArray = [1, 2, 3];
-  assertEquals(
-    stringify(shortArray),
-    `[ ${[1, 2, 3].map((n) => yellow(String(n))).join(", ")} ]`
-  );
+  const shortArray = [1, 2, 3, 4, 5];
+  assertEquals(stringify(shortArray), "[ 1, 2, 3, 4, 5 ]");
 
   const longArray = new Array(200).fill(0);
   assertEquals(
-    stripColor(stringify(longArray)),
+    stringify(longArray),
     `[
   0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
   0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -344,7 +318,7 @@ unitTest(function consoleTestStringifyIterable() {
 
   const obj = { a: "a", longArray };
   assertEquals(
-    stripColor(stringify(obj)),
+    stringify(obj),
     `{
   a: "a",
   longArray: [
@@ -364,19 +338,14 @@ unitTest(function consoleTestStringifyIterable() {
     ["a", 0],
     ["b", 1],
   ]);
-  assertEquals(
-    stringify(shortMap),
-    `Map { ${green('"a"')} => ${yellow("0")}, ${green('"b"')} => ${yellow(
-      "1"
-    )} }`
-  );
+  assertEquals(stringify(shortMap), `Map { "a" => 0, "b" => 1 }`);
 
   const longMap = new Map();
   for (const key of Array(200).keys()) {
     longMap.set(`${key}`, key);
   }
   assertEquals(
-    stripColor(stringify(longMap)),
+    stringify(longMap),
     `Map {
   "0" => 0,
   "1" => 1,
@@ -483,16 +452,13 @@ unitTest(function consoleTestStringifyIterable() {
   );
 
   const shortSet = new Set([1, 2, 3]);
-  assertEquals(
-    stringify(shortSet),
-    `Set { ${[1, 2, 3].map((n) => yellow(String(n))).join(", ")} }`
-  );
+  assertEquals(stringify(shortSet), `Set { 1, 2, 3 }`);
   const longSet = new Set();
   for (const key of Array(200).keys()) {
     longSet.add(key);
   }
   assertEquals(
-    stripColor(stringify(longSet)),
+    stringify(longSet),
     `Set {
   0,
   1,
@@ -602,16 +568,14 @@ unitTest(function consoleTestStringifyIterable() {
   withEmptyEl.fill(0, 4, 6);
   assertEquals(
     stringify(withEmptyEl),
-    `[ ${dim("<4 empty items>")}, ${yellow("0")}, ${yellow("0")}, ${dim(
-      "<4 empty items>"
-    )} ]`
+    `[ <4 empty items>, 0, 0, <4 empty items> ]`
   );
 
-  /* TODO(ry) Fix this test.
+  /* TODO(ry) Fix this test 
   const lWithEmptyEl = Array(200);
   lWithEmptyEl.fill(0, 50, 80);
   assertEquals(
-    stripColor(stringify(lWithEmptyEl)),
+    stringify(lWithEmptyEl),
     `[
   <50 empty items>, 0,                 0,
   0,                0,                 0,
@@ -626,20 +590,17 @@ unitTest(function consoleTestStringifyIterable() {
   0,                <120 empty items>
 ]`
   );
-  */
+*/
 });
 
 unitTest(async function consoleTestStringifyPromises(): Promise<void> {
   const pendingPromise = new Promise((_res, _rej) => {});
-  assertEquals(stringify(pendingPromise), `Promise { ${cyan("<pending>")} }`);
+  assertEquals(stringify(pendingPromise), "Promise { <pending> }");
 
   const resolvedPromise = new Promise((res, _rej) => {
     res("Resolved!");
   });
-  assertEquals(
-    stringify(resolvedPromise),
-    `Promise { ${green('"Resolved!"')} }`
-  );
+  assertEquals(stringify(resolvedPromise), `Promise { "Resolved!" }`);
 
   let rejectedPromise;
   try {
@@ -650,7 +611,7 @@ unitTest(async function consoleTestStringifyPromises(): Promise<void> {
   } catch (err) {}
   const strLines = stringify(rejectedPromise).split("\n");
   assertEquals(strLines[0], "Promise {");
-  assertEquals(strLines[1], `  ${red("<rejected>")} Error: Whoops`);
+  assertEquals(strLines[1], "  <rejected> Error: Whoops");
 });
 
 unitTest(function consoleTestWithCustomInspector(): void {
@@ -683,9 +644,7 @@ unitTest(function consoleTestWithCustomInspectorError(): void {
   assertEquals(stringify(new B({ a: "a" })), "a");
   assertEquals(
     stringify(B.prototype),
-    `{ Symbol(Deno.symbols.customInspect): ${cyan(
-      "[Function: [Deno.symbols.customInspect]]"
-    )} }`
+    "{ Symbol(Deno.symbols.customInspect): [Function: [Deno.symbols.customInspect]] }"
   );
 });
 
@@ -720,8 +679,8 @@ unitTest(function consoleTestWithFloatFormatSpecifier(): void {
   assertEquals(stringify("%f", ""), "NaN");
   assertEquals(stringify("%f", Symbol("foo")), "NaN");
   assertEquals(stringify("%f", 5n), "5");
-  assertEquals(stringify("%f %f", 42, 43), `42 43`);
-  assertEquals(stringify("%f %f", 42), `42 %f`);
+  assertEquals(stringify("%f %f", 42, 43), "42 43");
+  assertEquals(stringify("%f %f", 42), "42 %f");
 });
 
 unitTest(function consoleTestWithStringFormatSpecifier(): void {
@@ -737,13 +696,13 @@ unitTest(function consoleTestWithStringFormatSpecifier(): void {
 
 unitTest(function consoleTestWithObjectFormatSpecifier(): void {
   assertEquals(stringify("%o"), "%o");
-  assertEquals(stringify("%o", 42), yellow("42"));
+  assertEquals(stringify("%o", 42), "42");
   assertEquals(stringify("%o", "foo"), "foo");
   assertEquals(stringify("o: %o, a: %O", {}, []), "o: {}, a: []");
-  assertEquals(stringify("%o", { a: 42 }), `{ a: ${yellow("42")} }`);
+  assertEquals(stringify("%o", { a: 42 }), "{ a: 42 }");
   assertEquals(
     stringify("%o", { a: { b: { c: { d: new Set([1]) } } } }),
-    `{ a: { b: { c: { d: ${cyan("[Set]")} } } } }`
+    "{ a: { b: { c: { d: [Set] } } } }"
   );
 });
 
@@ -756,11 +715,11 @@ unitTest(function consoleTestWithVariousOrInvalidFormatSpecifier(): void {
   assertEquals(stringify("%s:%s", "foo", "bar"), "foo:bar");
   assertEquals(stringify("%s:%s", "foo", "bar", "baz"), "foo:bar baz");
   assertEquals(stringify("%%%s%%", "hi"), "%hi%");
-  assertEquals(stringify("%d:%d", 12), `12:%d`);
-  assertEquals(stringify("%i:%i", 12), `12:%i`);
-  assertEquals(stringify("%f:%f", 12), `12:%f`);
+  assertEquals(stringify("%d:%d", 12), "12:%d");
+  assertEquals(stringify("%i:%i", 12), "12:%i");
+  assertEquals(stringify("%f:%f", 12), "12:%f");
   assertEquals(stringify("o: %o, a: %o", {}), "o: {}, a: %o");
-  assertEquals(stringify("abc%", 1), `abc% ${yellow("1")}`);
+  assertEquals(stringify("abc%", 1), "abc% 1");
 });
 
 unitTest(function consoleTestCallToStringOnLabel(): void {
@@ -1056,7 +1015,7 @@ unitTest(function consoleTable(): void {
   mockConsole((console, out): void => {
     console.table([]);
     assertEquals(
-      out.toString(),
+      stripColor(out.toString()),
       `┌───────┐
 │ (idx) │
 ├───────┤
@@ -1067,7 +1026,7 @@ unitTest(function consoleTable(): void {
   mockConsole((console, out): void => {
     console.table({});
     assertEquals(
-      out.toString(),
+      stripColor(out.toString()),
       `┌───────┐
 │ (idx) │
 ├───────┤
@@ -1078,7 +1037,7 @@ unitTest(function consoleTable(): void {
   mockConsole((console, out): void => {
     console.table(new Set());
     assertEquals(
-      out.toString(),
+      stripColor(out.toString()),
       `┌────────────┐
 │ (iter idx) │
 ├────────────┤
@@ -1089,7 +1048,7 @@ unitTest(function consoleTable(): void {
   mockConsole((console, out): void => {
     console.table(new Map());
     assertEquals(
-      out.toString(),
+      stripColor(out.toString()),
       `┌────────────┐
 │ (iter idx) │
 ├────────────┤
@@ -1142,7 +1101,7 @@ unitTest(function consoleLogShoultNotThrowErrorWhenInvalidDateIsPassed(): void {
   mockConsole((console, out) => {
     const invalidDate = new Date("test");
     console.log(invalidDate);
-    assertEquals(out.toString(), `${magenta("Invalid Date")}\n`);
+    assertEquals(stripColor(out.toString()), "Invalid Date\n");
   });
 });
 
@@ -1178,5 +1137,3 @@ unitTest(function consoleTrace(): void {
     assert(err.toString().includes("Trace: custom message"));
   });
 });
-
-console.log(stringify(JSON));

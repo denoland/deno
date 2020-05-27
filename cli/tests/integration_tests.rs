@@ -80,7 +80,7 @@ fn no_color() {
     .unwrap();
   assert!(output.status.success());
   let stdout_str = std::str::from_utf8(&output.stdout).unwrap().trim();
-  assert_eq!("noColor false", stdout_str);
+  assert_eq!("noColor false", util::strip_ansi_codes(stdout_str));
 }
 
 // TODO re-enable. This hangs on macOS

@@ -10,11 +10,10 @@ use termcolor::{Ansi, ColorSpec, WriteColor};
 use termcolor::{BufferWriter, ColorChoice};
 
 lazy_static! {
-        // Staying consistent with the regex pattern from the fmt/colors.ts file
-        // this one is from Jeff on StackOverflow.
-        // https://stackoverflow.com/a/33925425
+        // STRIP_ANSI_RE and strip_ansi_codes are lifted from the "console" crate.
+        // Copyright 2017 Armin Ronacher <armin.ronacher@active-4.com>. MIT License.
         static ref STRIP_ANSI_RE: Regex = Regex::new(
-                r"(?:\x1B[@-_]|[\x80-\x9F])[0-?]*[ -/]*[@-~]"
+                r"[\x1b\x9b][\[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-PRZcf-nqry=><]"
         ).unwrap();
         static ref NO_COLOR: bool = {
                 env::var_os("NO_COLOR").is_some()
