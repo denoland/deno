@@ -30,6 +30,7 @@ export interface BenchmarkDefinition {
 export interface BenchmarkRunOptions {
   only?: RegExp;
   skip?: RegExp;
+  silent?: boolean;
 }
 
 export interface BenchmarkResult {
@@ -108,6 +109,7 @@ export function bench(
 export async function runBenchmarks({
   only = /[^\s]/,
   skip = /^\s*$/,
+  silent,
 }: BenchmarkRunOptions = {}): Promise<BenchmarkRunResult> {
   // Filtering candidates by the "only" and "skip" constraint
   const benchmarks: BenchmarkDefinition[] = candidates.filter(
@@ -120,17 +122,24 @@ export async function runBenchmarks({
   // Setting up a shared benchmark clock and timer
   const clock: BenchmarkClock = { start: NaN, stop: NaN };
   const b = createBenchmarkTimer(clock);
-  // Iterating given benchmark definitions (await-in-loop)
-  console.log(
-    "running",
-    benchmarks.length,
-    `benchmark${benchmarks.length === 1 ? " ..." : "s ..."}`
-  );
+
+  if (!silent) {
+    // Iterating given benchmark definitions (await-in-loop)
+    console.log(
+      "running",
+      benchmarks.length,
+      `benchmark${benchmarks.length === 1 ? " ..." : "s ..."}`
+    );
+  }
+
   // Initializing results array
   const benchmarkResults: BenchmarkResult[] = [];
   for (const { name, runs = 0, func } of benchmarks) {
-    // See https://github.com/denoland/deno/pull/1452 about groupCollapsed
-    console.groupCollapsed(`benchmark ${name} ... `);
+    if (!silent) {
+      // See https://github.com/denoland/deno/pull/1452 about groupCollapsed
+      console.groupCollapsed(`benchmark ${name} ... `);
+    }
+
     // Trying benchmark.func
     let result = "";
     try {
@@ -177,22 +186,33 @@ export async function runBenchmarks({
       }
     } catch (err) {
       failed = true;
-      console.groupEnd();
-      console.error(red(err.stack));
+      if (!silent) {
+        console.groupEnd();
+        console.error(red(err.stack));
+      }
+
       break;
     }
-    // Reporting
-    console.log(blue(result));
-    console.groupEnd();
+
+    if (!silent) {
+      // Reporting
+      console.log(blue(result));
+      console.groupEnd();
+    }
+
     measured++;
     // Resetting the benchmark clock
     clock.start = clock.stop = NaN;
   }
-  // Closing results
-  console.log(
-    `benchmark result: ${failed ? red("FAIL") : blue("DONE")}. ` +
-      `${measured} measured; ${filtered} filtered`
-  );
+
+  if (!silent) {
+    // Closing results
+    console.log(
+      `benchmark result: ${failed ? red("FAIL") : blue("DONE")}. ` +
+        `${measured} measured; ${filtered} filtered`
+    );
+  }
+
   // Making sure the program exit code is not zero in case of failure
   if (failed) {
     setTimeout((): void => exit(1), 0);
