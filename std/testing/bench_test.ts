@@ -1,6 +1,11 @@
 const { test } = Deno;
 import { bench, runBenchmarks, BenchmarkRunError } from "./bench.ts";
-import { assertEquals, assert, assertThrowsAsync } from "./asserts.ts";
+import {
+  assertEquals,
+  assert,
+  assertThrows,
+  assertThrowsAsync,
+} from "./asserts.ts";
 
 test({
   name: "benching",
@@ -79,9 +84,9 @@ test({
 
 test({
   name: "benchWithoutName",
-  fn: async function (): Promise<void> {
-    assertThrowsAsync(
-      async (): Promise<void> => {
+  fn() {
+    assertThrows(
+      (): void => {
         bench(() => {});
       },
       Error,
@@ -93,7 +98,7 @@ test({
 test({
   name: "benchWithoutStop",
   fn: async function (): Promise<void> {
-    assertThrowsAsync(
+    await assertThrowsAsync(
       async (): Promise<void> => {
         bench(function benchWithoutStop(b): void {
           b.start();
@@ -110,7 +115,7 @@ test({
 test({
   name: "benchWithoutStart",
   fn: async function (): Promise<void> {
-    assertThrowsAsync(
+    await assertThrowsAsync(
       async (): Promise<void> => {
         bench(function benchWithoutStart(b): void {
           b.stop();
@@ -127,7 +132,7 @@ test({
 test({
   name: "benchStopBeforeStart",
   fn: async function (): Promise<void> {
-    assertThrowsAsync(
+    await assertThrowsAsync(
       async (): Promise<void> => {
         bench(function benchStopBeforeStart(b): void {
           b.stop();
