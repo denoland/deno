@@ -6,10 +6,10 @@
 
 use rusty_v8 as v8;
 
-use crate::any_error::ErrBox;
 use crate::bindings;
+use crate::errors::ErrBox;
+use crate::errors::ErrWithV8Handle;
 use crate::futures::FutureExt;
-use crate::ErrWithV8Handle;
 use futures::ready;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
@@ -26,20 +26,19 @@ use std::rc::Rc;
 use std::task::Context;
 use std::task::Poll;
 
-use crate::isolate::attach_handle_to_error;
-use crate::isolate::exception_to_err_result;
-use crate::isolate::CoreIsolate;
-use crate::isolate::StartupData;
+use crate::core_isolate::exception_to_err_result;
+use crate::errors::attach_handle_to_error;
 use crate::module_specifier::ModuleSpecifier;
 use crate::modules::LoadState;
+use crate::modules::ModuleId;
+use crate::modules::ModuleLoadId;
 use crate::modules::ModuleLoader;
 use crate::modules::ModuleSource;
 use crate::modules::Modules;
 use crate::modules::PrepareLoadFuture;
 use crate::modules::RecursiveModuleLoad;
-
-pub type ModuleId = i32;
-pub type ModuleLoadId = i32;
+use crate::CoreIsolate;
+use crate::StartupData;
 
 /// More specialized version of `CoreIsolate` that provides loading
 /// and execution of ES Modules.
@@ -597,11 +596,11 @@ impl Future for EsIsolate {
 #[cfg(test)]
 pub mod tests {
   use super::*;
-  use crate::isolate::js_check;
-  use crate::isolate::tests::run_in_task;
-  use crate::isolate::ZeroCopyBuf;
+  use crate::core_isolate::tests::run_in_task;
+  use crate::js_check;
   use crate::modules::ModuleSourceFuture;
   use crate::ops::*;
+  use crate::ZeroCopyBuf;
   use std::io;
   use std::sync::atomic::{AtomicUsize, Ordering};
   use std::sync::Arc;
