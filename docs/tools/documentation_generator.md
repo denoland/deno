@@ -30,4 +30,4 @@ export function add (x: number, y: number): number
   Adds x and y. @param {number} x @param {number} y @returns {number} Sum of x and y
 ```
 
-<!-- TODO(mattd3v): write more things, and add code examples -->
+<!-- TODO(mattd3v): add details -->
