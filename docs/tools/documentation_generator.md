@@ -17,16 +17,11 @@ export function add(x: number, y: number): number {
 }
 ```
 
-Executing the Deno CLI documentation command:
+Running the Deno `doc` command, prints the function's JSDoc comment to `stdout`:
 
 ```shell
 deno doc add.ts
-```
-
-Prints the following to `stdout`:
-
-```
-export function add(x: number, y: number): number
+function add(x: number, y: number): number
   Adds x and y. @param {number} x @param {number} y @returns {number} Sum of x and y
 ```
 
