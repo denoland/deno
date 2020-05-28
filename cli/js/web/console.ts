@@ -874,7 +874,9 @@ export class Console {
       indexKey,
       ...(properties || [
         ...headerKeys,
-        !isMap && values.length > 0 && valuesKey,
+        !isMap &&
+          values.filter((values) => values !== "").length > 0 &&
+          valuesKey,
       ]),
     ].filter(Boolean) as string[];
     const body = [indexKeys, ...bodyValues, values];
