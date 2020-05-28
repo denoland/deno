@@ -53,18 +53,9 @@ export class ServerRequest {
   private _body: Deno.Reader | null = null;
 
   /**
-   * Body of the request.
+   * Body of the request.  The easiest way to consume the body is:
    *
-   *     const buf = new Uint8Array(req.contentLength);
-   *     let bufSlice = buf;
-   *     let totRead = 0;
-   *     while (true) {
-   *       const nread = await req.body.read(bufSlice);
-   *       if (nread === null) break;
-   *       totRead += nread;
-   *       if (totRead >= req.contentLength) break;
-   *       bufSlice = bufSlice.subarray(nread);
-   *     }
+   *     const buf: Uint8Array = await Deno.readAll(req.body);
    */
   get body(): Deno.Reader {
     if (!this._body) {
