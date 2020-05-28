@@ -15,7 +15,7 @@ const filename = `../target/${Deno.args[0]}/${filenamePrefix}${filenameBase}${fi
 
 // This will be checked against open resources after Plugin.close()
 // in runTestClose() below.
-const resourcesPre = Deno.resources();
+// const resourcesPre = Deno.resources();
 
 const rid = Deno.openPlugin(filename);
 
