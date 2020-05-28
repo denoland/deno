@@ -706,7 +706,9 @@ fn repl_test_strict() {
     None,
     false,
   );
-  assert!(err.contains("Uncaught TypeError: Cannot add property c, object is not extensible"));
+  assert!(err.contains(
+    "Uncaught TypeError: Cannot add property c, object is not extensible"
+  ));
 }
 
 const REPL_MSG: &str = "exit using ctrl+d or close()\n";
