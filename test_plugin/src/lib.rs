@@ -118,5 +118,14 @@ fn op_test_resources(
     let found2 = rt.close(rid).is_some();
     assert!(!found2);
   }
+  {
+    // add and leave in table
+    let rc = Box::new(TestResource {
+      noise: "woof".to_owned(),
+    });
+    let rt = interface.resource_table();
+    let mut rt = rt.borrow_mut();
+    rt.add("test_resource", rc);
+  }
   Op::Sync(Default::default())
 }

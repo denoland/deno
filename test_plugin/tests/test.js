@@ -79,6 +79,7 @@ function runTestOpCount() {
 function runTestPluginClose() {
   Deno.close(rid);
 
+  /*
   const resourcesPost = Deno.resources();
 
   const preStr = JSON.stringify(resourcesPre, null, 2);
@@ -88,6 +89,7 @@ function runTestPluginClose() {
 Before: ${preStr}
 After: ${postStr}`);
   }
+  */
 }
 
 runTestSync();
