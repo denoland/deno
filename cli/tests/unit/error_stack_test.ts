@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { unitTest, assert } from "./test_util.ts";
 
-// @ts-ignore TypeScript (as of 3.7) does not support indexing namespaces by symbol
+// @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
 const { setPrepareStackTrace } = Deno[Deno.internal];
 
 interface CallSite {

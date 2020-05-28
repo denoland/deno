@@ -496,7 +496,6 @@ test({
   async fn(): Promise<void> {
     const serverRoutine = async (): Promise<void> => {
       const server = serve(":8124");
-      // @ts-ignore
       for await (const req of server) {
         await assertThrowsAsync(async () => {
           await req.respond({

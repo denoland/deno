@@ -196,6 +196,7 @@ impl ModuleGraphLoader {
 
     let (import_descs, ref_descs) = analyze_dependencies_and_references(
       &specifier,
+      map_file_extension(&PathBuf::from(&specifier)),
       &source_code,
       self.analyze_dynamic_imports,
     )?;
@@ -409,6 +410,7 @@ impl ModuleGraphLoader {
 
       let (import_descs, ref_descs) = analyze_dependencies_and_references(
         &module_specifier.to_string(),
+        source_file.media_type,
         &source_code,
         self.analyze_dynamic_imports,
       )?;
@@ -784,6 +786,25 @@ mod tests {
         }
       ])
     );
+    drop(http_server_guard);
+  }
+
+  #[tokio::test]
+  async fn source_graph_different_langs() {
+    let http_server_guard = crate::test_util::http_server();
+
+    // ModuleGraphLoader was mistakenly parsing this file as TSX
+    // https://github.com/denoland/deno/issues/5867
+
+    let module_specifier = ModuleSpecifier::resolve_url_or_path(
+      "http://localhost:4545/cli/tests/ts_with_generic.ts",
+    )
+    .unwrap();
+
+    build_graph(&module_specifier)
+      .await
+      .expect("Failed to build graph");
+
     drop(http_server_guard);
   }
 }
