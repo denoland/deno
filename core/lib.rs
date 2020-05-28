@@ -20,6 +20,7 @@ mod ops;
 pub mod plugin_api;
 mod resources;
 mod shared_queue;
+mod zero_copy_buf;
 
 pub use rusty_v8 as v8;
 
@@ -32,6 +33,7 @@ pub use crate::module_specifier::*;
 pub use crate::modules::*;
 pub use crate::ops::*;
 pub use crate::resources::*;
+pub use crate::zero_copy_buf::ZeroCopyBuf;
 
 pub fn v8_version() -> &'static str {
   v8::V8::get_version()

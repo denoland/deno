@@ -14,6 +14,7 @@ use crate::ops::*;
 use crate::shared_queue::SharedQueue;
 use crate::shared_queue::RECOMMENDED_SIZE;
 use crate::ResourceTable;
+use crate::ZeroCopyBuf;
 use futures::future::FutureExt;
 use futures::stream::select;
 use futures::stream::FuturesUnordered;
@@ -27,7 +28,6 @@ use std::convert::From;
 use std::error::Error;
 use std::fmt;
 use std::mem::forget;
-use std::ops::{Deref, DerefMut};
 use std::option::Option;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -36,69 +36,6 @@ use std::task::Context;
 use std::task::Poll;
 
 type PendingOpFuture = Pin<Box<dyn Future<Output = (OpId, Buf)>>>;
-
-/// A ZeroCopyBuf encapsulates a slice that's been borrowed from a JavaScript
-/// ArrayBuffer object. JavaScript objects can normally be garbage collected,
-/// but the existence of a ZeroCopyBuf inhibits this until it is dropped. It
-/// behaves much like an Arc<[u8]>, although a ZeroCopyBuf currently can't be
-/// cloned.
-pub struct ZeroCopyBuf {
-  backing_store: v8::SharedRef<v8::BackingStore>,
-  byte_offset: usize,
-  byte_length: usize,
-}
-
-unsafe impl Send for ZeroCopyBuf {}
-
-impl ZeroCopyBuf {
-  pub fn new(view: v8::Local<v8::ArrayBufferView>) -> Self {
-    let backing_store = view.buffer().unwrap().get_backing_store();
-    let byte_offset = view.byte_offset();
-    let byte_length = view.byte_length();
-    Self {
-      backing_store,
-      byte_offset,
-      byte_length,
-    }
-  }
-}
-
-impl Deref for ZeroCopyBuf {
-  type Target = [u8];
-  fn deref(&self) -> &[u8] {
-    unsafe {
-      bindings::get_backing_store_slice(
-        &self.backing_store,
-        self.byte_offset,
-        self.byte_length,
-      )
-    }
-  }
-}
-
-impl DerefMut for ZeroCopyBuf {
-  fn deref_mut(&mut self) -> &mut [u8] {
-    unsafe {
-      bindings::get_backing_store_slice_mut(
-        &self.backing_store,
-        self.byte_offset,
-        self.byte_length,
-      )
-    }
-  }
-}
-
-impl AsRef<[u8]> for ZeroCopyBuf {
-  fn as_ref(&self) -> &[u8] {
-    &*self
-  }
-}
-
-impl AsMut<[u8]> for ZeroCopyBuf {
-  fn as_mut(&mut self) -> &mut [u8] {
-    &mut *self
-  }
-}
 
 /// Stores a script used to initialize a Isolate
 pub struct Script<'a> {
