@@ -65,7 +65,7 @@ impl State {
   pub fn stateful_json_op<D>(
     &self,
     dispatcher: D,
-  ) -> impl Fn(&mut deno_core::CoreIsolate, &[u8], Option<ZeroCopyBuf>) -> Op
+  ) -> impl Fn(&mut deno_core::CoreIsolateState, &[u8], Option<ZeroCopyBuf>) -> Op
   where
     D: Fn(&State, Value, Option<ZeroCopyBuf>) -> Result<JsonOp, OpError>,
   {
@@ -76,10 +76,10 @@ impl State {
   pub fn stateful_json_op2<D>(
     &self,
     dispatcher: D,
-  ) -> impl Fn(&mut deno_core::CoreIsolate, &[u8], Option<ZeroCopyBuf>) -> Op
+  ) -> impl Fn(&mut deno_core::CoreIsolateState, &[u8], Option<ZeroCopyBuf>) -> Op
   where
     D: Fn(
-      &mut deno_core::CoreIsolate,
+      &mut deno_core::CoreIsolateState,
       &State,
       Value,
       Option<ZeroCopyBuf>,
@@ -95,13 +95,13 @@ impl State {
   pub fn core_op<D>(
     &self,
     dispatcher: D,
-  ) -> impl Fn(&mut deno_core::CoreIsolate, &[u8], Option<ZeroCopyBuf>) -> Op
+  ) -> impl Fn(&mut deno_core::CoreIsolateState, &[u8], Option<ZeroCopyBuf>) -> Op
   where
-    D: Fn(&mut deno_core::CoreIsolate, &[u8], Option<ZeroCopyBuf>) -> Op,
+    D: Fn(&mut deno_core::CoreIsolateState, &[u8], Option<ZeroCopyBuf>) -> Op,
   {
     let state = self.clone();
 
-    move |isolate: &mut deno_core::CoreIsolate,
+    move |isolate_state: &mut deno_core::CoreIsolateState,
           control: &[u8],
           zero_copy: Option<ZeroCopyBuf>|
           -> Op {
@@ -109,7 +109,7 @@ impl State {
       let bytes_sent_zero_copy =
         zero_copy.as_ref().map(|b| b.len()).unwrap_or(0) as u64;
 
-      let op = dispatcher(isolate, control, zero_copy);
+      let op = dispatcher(isolate_state, control, zero_copy);
 
       match op {
         Op::Sync(buf) => {
@@ -155,10 +155,10 @@ impl State {
   pub fn stateful_minimal_op2<D>(
     &self,
     dispatcher: D,
-  ) -> impl Fn(&mut deno_core::CoreIsolate, &[u8], Option<ZeroCopyBuf>) -> Op
+  ) -> impl Fn(&mut deno_core::CoreIsolateState, &[u8], Option<ZeroCopyBuf>) -> Op
   where
     D: Fn(
-      &mut deno_core::CoreIsolate,
+      &mut deno_core::CoreIsolateState,
       &State,
       bool,
       i32,
@@ -167,12 +167,12 @@ impl State {
   {
     let state = self.clone();
     self.core_op(crate::ops::minimal_op(
-      move |isolate: &mut deno_core::CoreIsolate,
+      move |isolate_state: &mut deno_core::CoreIsolateState,
             is_sync: bool,
             rid: i32,
             zero_copy: Option<ZeroCopyBuf>|
             -> MinimalOp {
-        dispatcher(isolate, &state, is_sync, rid, zero_copy)
+        dispatcher(isolate_state, &state, is_sync, rid, zero_copy)
       },
     ))
   }
@@ -186,7 +186,7 @@ impl State {
     &self,
     dispatcher: D,
   ) -> impl Fn(
-    &mut deno_core::CoreIsolate,
+    &mut deno_core::CoreIsolateState,
     Value,
     Option<ZeroCopyBuf>,
   ) -> Result<JsonOp, OpError>
@@ -194,7 +194,7 @@ impl State {
     D: Fn(&State, Value, Option<ZeroCopyBuf>) -> Result<JsonOp, OpError>,
   {
     let state = self.clone();
-    move |_isolate: &mut deno_core::CoreIsolate,
+    move |_isolate_state: &mut deno_core::CoreIsolateState,
           args: Value,
           zero_copy: Option<ZeroCopyBuf>|
           -> Result<JsonOp, OpError> { dispatcher(&state, args, zero_copy) }
@@ -204,24 +204,24 @@ impl State {
     &self,
     dispatcher: D,
   ) -> impl Fn(
-    &mut deno_core::CoreIsolate,
+    &mut deno_core::CoreIsolateState,
     Value,
     Option<ZeroCopyBuf>,
   ) -> Result<JsonOp, OpError>
   where
     D: Fn(
-      &mut deno_core::CoreIsolate,
+      &mut deno_core::CoreIsolateState,
       &State,
       Value,
       Option<ZeroCopyBuf>,
     ) -> Result<JsonOp, OpError>,
   {
     let state = self.clone();
-    move |isolate: &mut deno_core::CoreIsolate,
+    move |isolate_state: &mut deno_core::CoreIsolateState,
           args: Value,
           zero_copy: Option<ZeroCopyBuf>|
           -> Result<JsonOp, OpError> {
-      dispatcher(isolate, &state, args, zero_copy)
+      dispatcher(isolate_state, &state, args, zero_copy)
     }
   }
 
