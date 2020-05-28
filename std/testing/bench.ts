@@ -42,10 +42,18 @@ export interface BenchmarkResult {
 }
 
 export interface BenchmarkRunResult {
-  success: boolean;
   measured: number;
   filtered: number;
   results: BenchmarkResult[];
+}
+
+export class BenchmarkRunError extends Error {
+  benchmarkName?: string;
+  constructor(msg: string, benchmarkName?: string) {
+    super(msg);
+    this.name = "BenchmarkRunError";
+    this.benchmarkName = benchmarkName;
+  }
 }
 
 function red(text: string): string {
@@ -60,16 +68,22 @@ function verifyOr1Run(runs?: number): number {
   return runs && runs >= 1 && runs !== Infinity ? Math.floor(runs) : 1;
 }
 
-function assertTiming(clock: BenchmarkClock): void {
+function assertTiming(clock: BenchmarkClock, benchmarkName: string): void {
   // NaN indicates that a benchmark has not been timed properly
   if (!clock.stop) {
-    throw new Error("The benchmark timer's stop method must be called");
+    throw new BenchmarkRunError(
+      `Running benchmarks FAILED during benchmark named [${benchmarkName}]. The benchmark timer's stop method must be called`,
+      benchmarkName
+    );
   } else if (!clock.start) {
-    throw new Error("The benchmark timer's start method must be called");
+    throw new BenchmarkRunError(
+      `Running benchmarks FAILED during benchmark named [${benchmarkName}]. The benchmark timer's start method must be called`,
+      benchmarkName
+    );
   } else if (clock.start > clock.stop) {
-    throw new Error(
-      "The benchmark timer's start method must be called before its " +
-        "stop method"
+    throw new BenchmarkRunError(
+      `Running benchmarks FAILED during benchmark named [${benchmarkName}]. The benchmark timer's start method must be called before its stop method`,
+      benchmarkName
     );
   }
 }
@@ -118,7 +132,7 @@ export async function runBenchmarks({
   // Init main counters and error flag
   const filtered = candidates.length - benchmarks.length;
   let measured = 0;
-  let failed = false;
+  let failError: Error | undefined = undefined;
   // Setting up a shared benchmark clock and timer
   const clock: BenchmarkClock = { start: NaN, stop: NaN };
   const b = createBenchmarkTimer(clock);
@@ -147,7 +161,7 @@ export async function runBenchmarks({
         // b is a benchmark timer interfacing an unset (NaN) benchmark clock
         await func(b);
         // Making sure the benchmark was started/stopped properly
-        assertTiming(clock);
+        assertTiming(clock, name);
         result = `${clock.stop - clock.start}ms`;
         // Adding one-time run to results
         benchmarkResults.push({ name, totalMs: clock.stop - clock.start });
@@ -162,7 +176,7 @@ export async function runBenchmarks({
           // b is a benchmark timer interfacing an unset (NaN) benchmark clock
           await func(b);
           // Making sure the benchmark was started/stopped properly
-          assertTiming(clock);
+          assertTiming(clock, name);
           // Summing up
           totalMs += clock.stop - clock.start;
           // Adding partial result
@@ -185,7 +199,8 @@ export async function runBenchmarks({
         }
       }
     } catch (err) {
-      failed = true;
+      failError = err;
+
       if (!silent) {
         console.groupEnd();
         console.error(red(err.stack));
@@ -208,18 +223,17 @@ export async function runBenchmarks({
   if (!silent) {
     // Closing results
     console.log(
-      `benchmark result: ${failed ? red("FAIL") : blue("DONE")}. ` +
+      `benchmark result: ${!!failError ? red("FAIL") : blue("DONE")}. ` +
         `${measured} measured; ${filtered} filtered`
     );
   }
 
   // Making sure the program exit code is not zero in case of failure
-  if (failed) {
-    setTimeout((): void => exit(1), 0);
+  if (!!failError) {
+    throw failError;
   }
 
   const benchmarkRunResult = {
-    success: !failed,
     measured,
     filtered,
     results: benchmarkResults,

@@ -1,6 +1,6 @@
 const { test } = Deno;
-import { bench, runBenchmarks } from "./bench.ts";
-import { assertEquals, assert } from "./asserts.ts";
+import { bench, runBenchmarks, BenchmarkRunError } from "./bench.ts";
+import { assertEquals, assert, assertThrowsAsync } from "./asserts.ts";
 
 test({
   name: "benching",
@@ -74,5 +74,70 @@ test({
     assert(!!resultWithMultipleRuns.runsMs);
     assertEquals(resultWithMultipleRuns.runsCount, 100);
     assertEquals(resultWithMultipleRuns.runsMs!.length, 100);
+  },
+});
+
+test({
+  name: "benchWithoutName",
+  fn: async function (): Promise<void> {
+    assertThrowsAsync(
+      async (): Promise<void> => {
+        bench(() => {});
+      },
+      Error,
+      "The benchmark function must not be anonymous"
+    );
+  },
+});
+
+test({
+  name: "benchWithoutStop",
+  fn: async function (): Promise<void> {
+    assertThrowsAsync(
+      async (): Promise<void> => {
+        bench(function benchWithoutStop(b): void {
+          b.start();
+          // Throws bc the timer's stop method is never called
+        });
+        await runBenchmarks({ only: /benchWithoutStop/, silent: true });
+      },
+      BenchmarkRunError,
+      "The benchmark timer's stop method must be called"
+    );
+  },
+});
+
+test({
+  name: "benchWithoutStart",
+  fn: async function (): Promise<void> {
+    assertThrowsAsync(
+      async (): Promise<void> => {
+        bench(function benchWithoutStart(b): void {
+          b.stop();
+          // Throws bc the timer's start method is never called
+        });
+        await runBenchmarks({ only: /benchWithoutStart/, silent: true });
+      },
+      BenchmarkRunError,
+      "The benchmark timer's start method must be called"
+    );
+  },
+});
+
+test({
+  name: "benchStopBeforeStart",
+  fn: async function (): Promise<void> {
+    assertThrowsAsync(
+      async (): Promise<void> => {
+        bench(function benchStopBeforeStart(b): void {
+          b.stop();
+          b.start();
+          // Throws bc the timer's stop is called before start
+        });
+        await runBenchmarks({ only: /benchStopBeforeStart/, silent: true });
+      },
+      BenchmarkRunError,
+      "The benchmark timer's start method must be called before its stop method"
+    );
   },
 });
