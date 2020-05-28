@@ -2,8 +2,6 @@
 const { test } = Deno;
 import { fail, assertEquals } from "../../testing/asserts.ts";
 import { link, linkSync } from "./_fs_link.ts";
-import { writeFileStrSync } from "../../fs/write_file_str.ts";
-import { readFileStrSync } from "../../fs/read_file_str.ts";
 import { assert } from "https://deno.land/std@v0.50.0/testing/asserts.ts";
 const isWindows = Deno.build.os === "windows";
 
@@ -12,22 +10,22 @@ test({
   name: "ASYNC: hard linking files works as expected",
   async fn() {
     const tempFile: string = await Deno.makeTempFile();
+    const linkedFile: string = tempFile + ".link";
     await new Promise((res, rej) => {
-      link(tempFile, tempFile + ".link", (err) => {
+      link(tempFile, linkedFile, (err) => {
         if (err) rej(err);
         else res();
       });
     })
       .then(() => {
-        writeFileStrSync(tempFile, "hello world");
-        assertEquals(readFileStrSync(tempFile + ".link"), "hello world");
+        assertEquals(Deno.statSync(tempFile), Deno.statSync(linkedFile));
       })
       .catch(() => {
         fail("Expected to succeed");
       })
       .finally(() => {
         Deno.removeSync(tempFile);
-        Deno.removeSync(tempFile + ".link");
+        Deno.removeSync(linkedFile);
       });
   },
 });
@@ -59,11 +57,11 @@ test({
   name: "SYNC: hard linking files works as expected",
   fn() {
     const tempFile: string = Deno.makeTempFileSync();
-    linkSync(tempFile, tempFile + ".link");
+    const linkedFile: string = tempFile + ".link";
+    linkSync(tempFile, linkedFile);
 
-    writeFileStrSync(tempFile, "hello world");
-    assertEquals(readFileStrSync(tempFile + ".link"), "hello world");
+    assertEquals(Deno.statSync(tempFile), Deno.statSync(linkedFile));
     Deno.removeSync(tempFile);
-    Deno.removeSync(tempFile + ".link");
+    Deno.removeSync(linkedFile);
   },
 });
