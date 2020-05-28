@@ -30,6 +30,8 @@ use crate::core_isolate::exception_to_err_result;
 use crate::errors::attach_handle_to_error;
 use crate::module_specifier::ModuleSpecifier;
 use crate::modules::LoadState;
+use crate::modules::ModuleId;
+use crate::modules::ModuleLoadId;
 use crate::modules::ModuleLoader;
 use crate::modules::ModuleSource;
 use crate::modules::Modules;
@@ -37,9 +39,6 @@ use crate::modules::PrepareLoadFuture;
 use crate::modules::RecursiveModuleLoad;
 use crate::CoreIsolate;
 use crate::StartupData;
-
-pub type ModuleId = i32;
-pub type ModuleLoadId = i32;
 
 /// More specialized version of `CoreIsolate` that provides loading
 /// and execution of ES Modules.

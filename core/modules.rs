@@ -2,8 +2,6 @@
 
 use rusty_v8 as v8;
 
-use crate::es_isolate::ModuleId;
-use crate::es_isolate::ModuleLoadId;
 use crate::module_specifier::ModuleSpecifier;
 use crate::ErrBox;
 use futures::future::FutureExt;
@@ -24,6 +22,9 @@ use std::task::Poll;
 lazy_static! {
   pub static ref NEXT_LOAD_ID: AtomicI32 = AtomicI32::new(0);
 }
+
+pub type ModuleId = i32;
+pub type ModuleLoadId = i32;
 
 /// EsModule source code that will be loaded into V8.
 ///
