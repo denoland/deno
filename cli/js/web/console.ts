@@ -842,27 +842,33 @@ export class Console {
       resultData = data!;
     }
 
+    let hasPrimitives = false;
     Object.keys(resultData).forEach((k, idx): void => {
       const value: unknown = resultData[k]!;
-
-      if (value !== null && typeof value === "object") {
-        Object.entries(value as { [key: string]: unknown }).forEach(
-          ([k, v]): void => {
-            if (properties && !properties.includes(k)) {
-              return;
-            }
-
+      const primitive =
+        value === null ||
+        (typeof value !== "function" && typeof value !== "object");
+      if (properties === undefined && primitive) {
+        hasPrimitives = true;
+        values.push(stringifyValue(value));
+      } else {
+        const valueObj = (value as { [key: string]: unknown }) || {};
+        const keys = properties || Object.keys(valueObj);
+        for (const k of keys) {
+          if (primitive || !valueObj.hasOwnProperty(k)) {
             if (objectValues[k]) {
-              objectValues[k].push(stringifyValue(v));
+              // fill with blanks for idx to avoid misplacing from later values
+              objectValues[k].push("");
+            }
+          } else {
+            if (objectValues[k]) {
+              objectValues[k].push(stringifyValue(valueObj[k]));
             } else {
-              objectValues[k] = createColumn(v, idx);
+              objectValues[k] = createColumn(valueObj[k], idx);
             }
           }
-        );
-
+        }
         values.push("");
-      } else {
-        values.push(stringifyValue(value));
       }
 
       indexKeys.push(k);
@@ -872,10 +878,7 @@ export class Console {
     const bodyValues = Object.values(objectValues);
     const header = [
       indexKey,
-      ...(properties || [
-        ...headerKeys,
-        !isMap && values.length > 0 && valuesKey,
-      ]),
+      ...(properties || [...headerKeys, !isMap && hasPrimitives && valuesKey]),
     ].filter(Boolean) as string[];
     const body = [indexKeys, ...bodyValues, values];
 
