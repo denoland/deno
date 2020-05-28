@@ -115,7 +115,6 @@ impl EsIsolate {
 
     let core_state_rc = CoreIsolate::state(self);
     let core_state = core_state_rc.borrow();
-    let js_error_create_fn = &*core_state.js_error_create_fn;
     let mut hs = v8::HandleScope::new(&mut self.0);
     let scope = hs.enter();
     let context = core_state.global_context.get(scope).unwrap();
@@ -135,11 +134,7 @@ impl EsIsolate {
 
     if tc.has_caught() {
       assert!(maybe_module.is_none());
-      return exception_to_err_result(
-        scope,
-        tc.exception().unwrap(),
-        js_error_create_fn,
-      );
+      return exception_to_err_result(scope, tc.exception().unwrap());
     }
 
     let module = maybe_module.unwrap();
@@ -173,7 +168,6 @@ impl EsIsolate {
 
     let core_state_rc = CoreIsolate::state(self);
     let core_state = core_state_rc.borrow();
-    let js_error_create_fn = &*core_state.js_error_create_fn;
     let mut hs = v8::HandleScope::new(&mut self.0);
     let scope = hs.enter();
     let context = core_state.global_context.get(scope).unwrap();
@@ -192,11 +186,7 @@ impl EsIsolate {
     drop(state);
 
     if module.get_status() == v8::ModuleStatus::Errored {
-      exception_to_err_result(
-        scope,
-        module.get_exception(),
-        js_error_create_fn,
-      )?
+      exception_to_err_result(scope, module.get_exception())?
     }
 
     let result =
@@ -205,7 +195,7 @@ impl EsIsolate {
       Some(_) => Ok(()),
       None => {
         let exception = tc.exception().unwrap();
-        exception_to_err_result(scope, exception, js_error_create_fn)
+        exception_to_err_result(scope, exception)
       }
     }
   }
@@ -275,12 +265,8 @@ impl EsIsolate {
       v8::ModuleStatus::Evaluated => Ok(()),
       v8::ModuleStatus::Errored => {
         let exception = module.get_exception();
-        exception_to_err_result(
-          scope,
-          exception,
-          &*core_state.js_error_create_fn,
-        )
-        .map_err(|err| attach_handle_to_error(scope, err, exception))
+        exception_to_err_result(scope, exception)
+          .map_err(|err| attach_handle_to_error(scope, err, exception))
       }
       other => panic!("Unexpected module status {:?}", other),
     }

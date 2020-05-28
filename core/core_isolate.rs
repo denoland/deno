@@ -299,12 +299,13 @@ impl CoreIsolate {
     self.shared_init();
     let state_rc = Self::state(self);
     let state = state_rc.borrow();
-    let js_error_create_fn = &*state.js_error_create_fn;
     let mut hs = v8::HandleScope::new(self.v8_isolate.as_mut().unwrap());
     let scope = hs.enter();
     let context = state.global_context.get(scope).unwrap();
     let mut cs = v8::ContextScope::new(scope, context);
     let scope = cs.enter();
+
+    drop(state);
 
     let source = v8::String::new(scope, js_source).unwrap();
     let name = v8::String::new(scope, js_filename).unwrap();
@@ -318,7 +319,7 @@ impl CoreIsolate {
         Some(script) => script,
         None => {
           let exception = tc.exception().unwrap();
-          return exception_to_err_result(scope, exception, js_error_create_fn);
+          return exception_to_err_result(scope, exception);
         }
       };
 
@@ -327,7 +328,7 @@ impl CoreIsolate {
       None => {
         assert!(tc.has_caught());
         let exception = tc.exception().unwrap();
-        exception_to_err_result(scope, exception, js_error_create_fn)
+        exception_to_err_result(scope, exception)
       }
     }
   }
@@ -427,12 +428,7 @@ impl Future for CoreIsolate {
 
     let state = state_rc.borrow();
     if state.shared.size() > 0 {
-      async_op_response(
-        scope,
-        None,
-        &state.js_recv_cb,
-        &*state.js_error_create_fn,
-      )?;
+      async_op_response(scope, None, &state.js_recv_cb)?;
       // The other side should have shifted off all the messages.
       assert_eq!(state.shared.size(), 0);
     }
@@ -440,19 +436,10 @@ impl Future for CoreIsolate {
 
     let mut state = state_rc.borrow_mut();
     if let Some((op_id, buf)) = overflow_response.take() {
-      async_op_response(
-        scope,
-        Some((op_id, buf)),
-        &state.js_recv_cb,
-        &*state.js_error_create_fn,
-      )?;
+      async_op_response(scope, Some((op_id, buf)), &state.js_recv_cb)?;
     }
 
-    drain_macrotasks(
-      scope,
-      &state.js_macrotask_cb,
-      &*state.js_error_create_fn,
-    )?;
+    drain_macrotasks(scope, &state.js_macrotask_cb)?;
 
     check_promise_exceptions(scope, &mut state)?;
 
@@ -537,7 +524,6 @@ fn async_op_response<'s>(
   scope: &mut impl v8::ToLocal<'s>,
   maybe_buf: Option<(OpId, Box<[u8]>)>,
   js_recv_cb: &v8::Global<v8::Function>,
-  js_error_create_fn: &JSErrorCreateFn,
 ) -> Result<(), ErrBox> {
   let context = scope.get_current_context().unwrap();
   let global: v8::Local<v8::Value> = context.global(scope).into();
@@ -563,16 +549,13 @@ fn async_op_response<'s>(
 
   match tc.exception() {
     None => Ok(()),
-    Some(exception) => {
-      exception_to_err_result(scope, exception, js_error_create_fn)
-    }
+    Some(exception) => exception_to_err_result(scope, exception),
   }
 }
 
 fn drain_macrotasks<'s>(
   scope: &mut impl v8::ToLocal<'s>,
   js_macrotask_cb: &v8::Global<v8::Function>,
-  js_error_create_fn: &JSErrorCreateFn,
 ) -> Result<(), ErrBox> {
   let context = scope.get_current_context().unwrap();
   let global: v8::Local<v8::Value> = context.global(scope).into();
@@ -593,7 +576,7 @@ fn drain_macrotasks<'s>(
     let is_done = js_macrotask_cb.call(scope, context, global, &[]);
 
     if let Some(exception) = tc.exception() {
-      return exception_to_err_result(scope, exception, js_error_create_fn);
+      return exception_to_err_result(scope, exception);
     }
 
     let is_done = is_done.unwrap();
@@ -608,7 +591,6 @@ fn drain_macrotasks<'s>(
 pub(crate) fn exception_to_err_result<'s, T>(
   scope: &mut impl v8::ToLocal<'s>,
   exception: v8::Local<v8::Value>,
-  js_error_create_fn: &JSErrorCreateFn,
 ) -> Result<T, ErrBox> {
   // TODO(piscisaureus): in rusty_v8, `is_execution_terminating()` should
   // also be implemented on `struct Isolate`.
@@ -636,7 +618,11 @@ pub(crate) fn exception_to_err_result<'s, T>(
   }
 
   let js_error = JSError::from_v8_exception(scope, exception);
-  let js_error = (js_error_create_fn)(js_error);
+
+  let state_rc = CoreIsolate::state(scope.isolate());
+  let state = state_rc.borrow();
+
+  let js_error = (state.js_error_create_fn)(js_error);
 
   if is_terminating_exception {
     // Re-enable exception termination.
@@ -655,7 +641,7 @@ fn check_promise_exceptions<'s>(
   if let Some(&key) = state.pending_promise_exceptions.keys().next() {
     let handle = state.pending_promise_exceptions.remove(&key).unwrap();
     let exception = handle.get(scope).expect("empty error handle");
-    exception_to_err_result(scope, exception, &state.js_error_create_fn)
+    exception_to_err_result(scope, exception)
   } else {
     Ok(())
   }
