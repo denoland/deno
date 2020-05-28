@@ -844,7 +844,7 @@ export class Console {
 
     let hasPrimitives = false;
     Object.keys(resultData).forEach((k, idx): void => {
-      let value: unknown = resultData[k]!;
+      const value: unknown = resultData[k]!;
       const primitive =
         value === null ||
         (typeof value !== "function" && typeof value !== "object");
