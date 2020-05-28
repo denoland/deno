@@ -77,7 +77,7 @@ function transformMessageText(messageText: string, code: number): string {
       messageText.endsWith("on type 'typeof Deno'.") &&
       unstableDenoGlobalProperties.includes(property)
     ) {
-      return ` 'Deno.${property}' is an unstable API. Did you forget to run with the '--unstable' flag?`;
+      return `${messageText} 'Deno.${property}' is an unstable API. Did you forget to run with the '--unstable' flag?`;
     }
   }
   return messageText;
