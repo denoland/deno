@@ -12,7 +12,7 @@ For example, given a file `add.ts` with the contents:
  * @param {number} y
  * @returns {number} Sum of x and y
  */
-export function add (x: number, y: number): number {
+export function add(x: number, y: number): number {
   return x + y;
 }
 ```
@@ -26,7 +26,7 @@ deno doc add.ts
 Prints the following to `stdout`:
 
 ```
-export function add (x: number, y: number): number 
+export function add(x: number, y: number): number
   Adds x and y. @param {number} x @param {number} y @returns {number} Sum of x and y
 ```
 
