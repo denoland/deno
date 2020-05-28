@@ -23,14 +23,20 @@ mod zero_copy_buf;
 
 pub use rusty_v8 as v8;
 
-pub use crate::core_isolate::*;
-pub use crate::errors::*;
-pub use crate::es_isolate::*;
+pub use crate::core_isolate::js_check;
+pub use crate::core_isolate::CoreIsolate;
+pub use crate::core_isolate::Script;
+pub use crate::core_isolate::StartupData;
+pub use crate::errors::ErrBox;
+pub use crate::errors::JSError;
+pub use crate::es_isolate::EsIsolate;
 pub use crate::flags::v8_set_flags;
-pub use crate::module_specifier::*;
-pub use crate::modules::*;
-pub use crate::ops::*;
-pub use crate::resources::*;
+pub use crate::module_specifier::ModuleSpecifier;
+pub use crate::modules::RecursiveModuleLoad;
+pub use crate::ops::Buf;
+pub use crate::ops::Op;
+pub use crate::ops::OpId;
+pub use crate::resources::ResourceTable;
 pub use crate::zero_copy_buf::ZeroCopyBuf;
 
 pub fn v8_version() -> &'static str {

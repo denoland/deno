@@ -7,9 +7,9 @@
 use rusty_v8 as v8;
 
 use crate::bindings;
+use crate::errors::ErrBox;
+use crate::errors::ErrWithV8Handle;
 use crate::futures::FutureExt;
-use crate::ErrBox;
-use crate::ErrWithV8Handle;
 use futures::ready;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
@@ -26,8 +26,8 @@ use std::rc::Rc;
 use std::task::Context;
 use std::task::Poll;
 
+use crate::core_isolate::exception_to_err_result;
 use crate::errors::attach_handle_to_error;
-use crate::exception_to_err_result;
 use crate::module_specifier::ModuleSpecifier;
 use crate::modules::LoadState;
 use crate::modules::ModuleLoader;
