@@ -548,13 +548,20 @@ macro_rules! include_crate_modules {
 mod tests {
   use super::*;
   use crate::es_isolate::EsIsolate;
-  use crate::isolate::js_check;
+  use crate::js_check;
+  use crate::StartupData;
   use futures::future::FutureExt;
   use std::error::Error;
   use std::fmt;
   use std::future::Future;
   use std::sync::Arc;
   use std::sync::Mutex;
+
+  // TODO(ry) Sadly FuturesUnordered requires the current task to be set. So
+  // even though we are only using poll() in these tests and not Tokio, we must
+  // nevertheless run it in the tokio executor. Ideally run_in_task can be
+  // removed in the future.
+  use crate::core_isolate::tests::run_in_task;
 
   struct MockLoader {
     pub loads: Arc<Mutex<Vec<String>>>,
@@ -715,13 +722,6 @@ mod tests {
     if (import.meta.main) throw Error();
     if (import.meta.url != 'file:///d.js') throw Error();
   "#;
-
-  // TODO(ry) Sadly FuturesUnordered requires the current task to be set. So
-  // even though we are only using poll() in these tests and not Tokio, we must
-  // nevertheless run it in the tokio executor. Ideally run_in_task can be
-  // removed in the future.
-  use crate::isolate::tests::run_in_task;
-  use crate::isolate::StartupData;
 
   #[test]
   fn test_recursive_load() {

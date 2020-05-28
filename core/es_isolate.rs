@@ -26,10 +26,8 @@ use std::rc::Rc;
 use std::task::Context;
 use std::task::Poll;
 
-use crate::isolate::attach_handle_to_error;
-use crate::isolate::exception_to_err_result;
-use crate::isolate::CoreIsolate;
-use crate::isolate::StartupData;
+use crate::attach_handle_to_error;
+use crate::exception_to_err_result;
 use crate::module_specifier::ModuleSpecifier;
 use crate::modules::LoadState;
 use crate::modules::ModuleLoader;
@@ -37,6 +35,8 @@ use crate::modules::ModuleSource;
 use crate::modules::Modules;
 use crate::modules::PrepareLoadFuture;
 use crate::modules::RecursiveModuleLoad;
+use crate::CoreIsolate;
+use crate::StartupData;
 
 pub type ModuleId = i32;
 pub type ModuleLoadId = i32;
@@ -597,11 +597,11 @@ impl Future for EsIsolate {
 #[cfg(test)]
 pub mod tests {
   use super::*;
-  use crate::isolate::js_check;
-  use crate::isolate::tests::run_in_task;
-  use crate::isolate::ZeroCopyBuf;
+  use crate::core_isolate::tests::run_in_task;
+  use crate::js_check;
   use crate::modules::ModuleSourceFuture;
   use crate::ops::*;
+  use crate::ZeroCopyBuf;
   use std::io;
   use std::sync::atomic::{AtomicUsize, Ordering};
   use std::sync::Arc;
