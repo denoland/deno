@@ -15,7 +15,7 @@ import {
   unimplemented,
   unreachable,
 } from "./asserts.ts";
-import { red, green, gray, bold } from "../fmt/colors.ts";
+import { red, green, gray, bold, yellow } from "../fmt/colors.ts";
 const { test } = Deno;
 
 test("testingEqual", function (): void {
@@ -282,8 +282,8 @@ test({
       [
         "Values are not equal:",
         ...createHeader(),
-        removed(`-   1`),
-        added(`+   2`),
+        removed(`-   ${yellow("1")}`),
+        added(`+   ${yellow("2")}`),
         "",
       ].join("\n")
     );
@@ -299,7 +299,7 @@ test({
       [
         "Values are not equal:",
         ...createHeader(),
-        removed(`-   1`),
+        removed(`-   ${yellow("1")}`),
         added(`+   "1"`),
       ].join("\n")
     );
@@ -315,8 +315,8 @@ test({
       [
         "Values are not equal:",
         ...createHeader(),
-        removed(`-   [ 1, "2", 3 ]`),
-        added(`+   [ "1", "2", 3 ]`),
+        removed(`-   [ ${yellow("1")}, ${green('"2"')}, ${yellow("3")} ]`),
+        added(`+   [ ${green('"1"')}, ${green('"2"')}, ${yellow("3")} ]`),
         "",
       ].join("\n")
     );
@@ -332,8 +332,12 @@ test({
       [
         "Values are not equal:",
         ...createHeader(),
-        removed(`-   { a: 1, b: "2", c: 3 }`),
-        added(`+   { a: 1, b: 2, c: [ 3 ] }`),
+        removed(
+          `-   { a: ${yellow("1")}, b: ${green('"2"')}, c: ${yellow("3")} }`
+        ),
+        added(
+          `+   { a: ${yellow("1")}, b: ${yellow("2")}, c: [ ${yellow("3")} ] }`
+        ),
         "",
       ].join("\n")
     );
@@ -366,8 +370,8 @@ test({
       [
         "Values are not strictly equal:",
         ...createHeader(),
-        removed("-   { a: 1, b: 2 }"),
-        added("+   { a: 1, c: [ 3 ] }"),
+        removed(`-   { a: ${yellow("1")}, b: ${yellow("2")} }`),
+        added(`+   { a: ${yellow("1")}, c: [ ${yellow("3")} ] }`),
         "",
       ].join("\n")
     );
@@ -382,7 +386,7 @@ test({
       AssertionError,
       [
         "Values have the same structure but are not reference-equal:\n",
-        red("     { a: 1, b: 2 }"),
+        red(`     { a: ${yellow("1")}, b: ${yellow("2")} }`),
       ].join("\n")
     );
   },

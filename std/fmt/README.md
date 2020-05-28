@@ -17,7 +17,7 @@ This is very much a work-in-progress. I'm actively soliciting feedback.
 
 - behaviour of `%v` verb. In Golang, this is a shortcut verb to "print the
   default format" of the argument. It is currently implemented to format using
-  `toString` in the default case and `inpect` if the `%#v` alternative format
+  `toString` in the default case and `inspect` if the `%#v` alternative format
   flag is used in the format directive. Alternatively, `%V` could be used to
   distinguish the two.
 
@@ -35,7 +35,7 @@ This is very much a work-in-progress. I'm actively soliciting feedback.
   format each element according to the format (surrounded by [] and separated by
   comma) (`<` Mnemonic: pull each element out of array)
 
-- how to deal with more newfangled Javascript features ( generic Iterables, Map
+- how to deal with more newfangled JavaScript features (generic Iterables, Map
   and Set types, typed Arrays, ...)
 
 - the implementation is fairly rough around the edges:
@@ -54,22 +54,6 @@ This is very much a work-in-progress. I'm actively soliciting feedback.
 - some flags that are potentially applicable ( POSIX long and unsigned modifiers
   are not likely useful) are missing, namely %q (print quoted), %U (unicode
   format)
-
-## Author
-
-Tim Becker (tim@presseverykey.com)
-
-## License
-
-MIT
-
-The implementation is inspired by POSIX and Golang (see above) but does not port
-implementation code. A number of Golang test-cases based on:
-
-    https://golang.org/src/fmt/fmt_test.go
-    ( BSD: Copyright (c) 2009 The Go Authors. All rights reserved. )
-
-were used.
 
 # printf: prints formatted output
 

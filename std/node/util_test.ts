@@ -148,3 +148,21 @@ test({
     assert(!util.isPrimitive(objectType));
   },
 });
+
+test({
+  name: "[util] TextDecoder",
+  fn() {
+    assert(util.TextDecoder === TextDecoder);
+    const td: util.TextDecoder = new util.TextDecoder();
+    assert(td instanceof TextDecoder);
+  },
+});
+
+test({
+  name: "[util] TextEncoder",
+  fn() {
+    assert(util.TextEncoder === TextEncoder);
+    const te: util.TextEncoder = new util.TextEncoder();
+    assert(te instanceof TextEncoder);
+  },
+});

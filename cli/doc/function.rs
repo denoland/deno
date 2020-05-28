@@ -25,7 +25,7 @@ pub fn function_to_function_def(
   let mut params = vec![];
 
   for param in &function.params {
-    let param_def = pat_to_param_def(param);
+    let param_def = pat_to_param_def(&param.pat);
     params.push(param_def);
   }
 

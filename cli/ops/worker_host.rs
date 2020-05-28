@@ -306,7 +306,7 @@ fn op_host_get_message(
   };
   let state_ = state.clone();
   let op = async move {
-    let response = match worker_handle.get_event().await {
+    let response = match worker_handle.get_event().await? {
       Some(event) => {
         // Terminal error means that worker should be removed from worker table.
         if let WorkerEvent::TerminalError(_) = &event {

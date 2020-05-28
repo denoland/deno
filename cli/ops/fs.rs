@@ -394,13 +394,29 @@ fn op_remove(
 
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
+    #[cfg(not(unix))]
+    use std::os::windows::prelude::MetadataExt;
+
     let metadata = std::fs::symlink_metadata(&path)?;
+
     debug!("op_remove {} {}", path.display(), recursive);
     let file_type = metadata.file_type();
-    if file_type.is_file() || file_type.is_symlink() {
+    if file_type.is_file() {
       std::fs::remove_file(&path)?;
     } else if recursive {
       std::fs::remove_dir_all(&path)?;
+    } else if file_type.is_symlink() {
+      #[cfg(unix)]
+      std::fs::remove_file(&path)?;
+      #[cfg(not(unix))]
+      {
+        use winapi::um::winnt::FILE_ATTRIBUTE_DIRECTORY;
+        if metadata.file_attributes() & FILE_ATTRIBUTE_DIRECTORY != 0 {
+          std::fs::remove_dir(&path)?;
+        } else {
+          std::fs::remove_file(&path)?;
+        }
+      }
     } else {
       std::fs::remove_dir(&path)?;
     }
@@ -671,6 +687,15 @@ struct SymlinkArgs {
   promise_id: Option<u64>,
   oldpath: String,
   newpath: String,
+  #[cfg(not(unix))]
+  options: Option<SymlinkOptions>,
+}
+
+#[cfg(not(unix))]
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SymlinkOptions {
+  _type: String,
 }
 
 fn op_symlink(
@@ -694,13 +719,34 @@ fn op_symlink(
       symlink(&oldpath, &newpath)?;
       Ok(json!({}))
     }
-    // TODO Implement symlink, use type for Windows
     #[cfg(not(unix))]
     {
-      // Unlike with chmod/chown, here we don't
-      // require `oldpath` to exist on Windows
-      let _ = oldpath; // avoid unused warning
-      Err(OpError::not_implemented())
+      use std::os::windows::fs::{symlink_dir, symlink_file};
+
+      match args.options {
+        Some(options) => match options._type.as_ref() {
+          "file" => symlink_file(&oldpath, &newpath)?,
+          "dir" => symlink_dir(&oldpath, &newpath)?,
+          _ => return Err(OpError::type_error("unsupported type".to_string())),
+        },
+        None => {
+          let old_meta = std::fs::metadata(&oldpath);
+          match old_meta {
+            Ok(metadata) => {
+              if metadata.is_file() {
+                symlink_file(&oldpath, &newpath)?
+              } else if metadata.is_dir() {
+                symlink_dir(&oldpath, &newpath)?
+              }
+            }
+            Err(_) => return Err(OpError::type_error(
+              "you must pass a `options` argument for non-existent target path in windows"
+                .to_string(),
+            )),
+          }
+        }
+      };
+      Ok(json!({}))
     }
   })
 }

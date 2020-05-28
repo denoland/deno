@@ -32,6 +32,13 @@ function isRecoverableError(e: Error): boolean {
   return recoverableErrorMessages.includes(e.message);
 }
 
+// Returns `true` if `close()` is called in REPL.
+// We should quit the REPL when this function returns `true`.
+function isCloseCalled(): boolean {
+  // @ts-ignore
+  return globalThis.closed;
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Value = any;
 
@@ -45,7 +52,9 @@ function evaluate(code: string): boolean {
   const [result, errInfo] = core.evalContext(code);
   if (!errInfo) {
     lastEvalResult = result;
-    replLog(result);
+    if (!isCloseCalled()) {
+      replLog(result);
+    }
   } else if (errInfo.isCompileError && isRecoverableError(errInfo.thrown)) {
     // Recoverable compiler error
     return false; // don't consume code.
@@ -110,6 +119,10 @@ export async function replLoop(): Promise<void> {
   replLog("exit using ctrl+d or close()");
 
   while (true) {
+    if (isCloseCalled()) {
+      quitRepl(0);
+    }
+
     let code = "";
     // Top level read
     try {
