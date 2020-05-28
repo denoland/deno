@@ -115,18 +115,14 @@ test({
 test({
   name: "FileHandler with mode 'x' will throw if log file already exists",
   async fn() {
-    await assertThrowsAsync(
-      async () => {
-        Deno.writeFileSync(LOG_FILE, new TextEncoder().encode("hello world"));
-        const fileHandler = new FileHandler("WARNING", {
-          filename: LOG_FILE,
-          mode: "x",
-        });
-        await fileHandler.setup();
-      },
-      Deno.errors.AlreadyExists,
-      "ile exists"
-    );
+    await assertThrowsAsync(async () => {
+      Deno.writeFileSync(LOG_FILE, new TextEncoder().encode("hello world"));
+      const fileHandler = new FileHandler("WARNING", {
+        filename: LOG_FILE,
+        mode: "x",
+      });
+      await fileHandler.setup();
+    }, Deno.errors.AlreadyExists);
     Deno.removeSync(LOG_FILE);
   },
 });
