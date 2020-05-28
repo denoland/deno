@@ -2,10 +2,10 @@
 
 use rusty_v8 as v8;
 
-use crate::any_error::ErrBox;
 use crate::es_isolate::ModuleId;
 use crate::es_isolate::ModuleLoadId;
 use crate::module_specifier::ModuleSpecifier;
+use crate::ErrBox;
 use futures::future::FutureExt;
 use futures::stream::FuturesUnordered;
 use futures::stream::Stream;

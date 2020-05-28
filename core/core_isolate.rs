@@ -7,12 +7,12 @@
 
 use rusty_v8 as v8;
 
-use crate::any_error::ErrBox;
 use crate::bindings;
-use crate::js_errors::JSError;
 use crate::ops::*;
 use crate::shared_queue::SharedQueue;
 use crate::shared_queue::RECOMMENDED_SIZE;
+use crate::ErrBox;
+use crate::JSError;
 use crate::ResourceTable;
 use crate::ZeroCopyBuf;
 use futures::future::FutureExt;
@@ -25,8 +25,6 @@ use libc::c_void;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::convert::From;
-use std::error::Error;
-use std::fmt;
 use std::mem::forget;
 use std::option::Option;
 use std::pin::Pin;
@@ -562,14 +560,6 @@ fn drain_macrotasks<'s>(
   }
 
   Ok(())
-}
-
-pub(crate) fn attach_handle_to_error(
-  scope: &mut impl v8::InIsolate,
-  err: ErrBox,
-  handle: v8::Local<v8::Value>,
-) -> ErrBox {
-  ErrWithV8Handle::new(scope, err, handle).into()
 }
 
 pub(crate) fn exception_to_err_result<'s, T>(
@@ -1118,44 +1108,5 @@ pub mod tests {
     let startup_data = StartupData::Snapshot(Snapshot::Boxed(snapshot));
     let mut isolate2 = CoreIsolate::new(startup_data, false);
     js_check(isolate2.execute("check.js", "if (a != 3) throw Error('x')"));
-  }
-}
-
-// TODO(piscisaureus): rusty_v8 should implement the Error trait on
-// values of type v8::Global<T>.
-pub struct ErrWithV8Handle {
-  err: ErrBox,
-  handle: v8::Global<v8::Value>,
-}
-
-impl ErrWithV8Handle {
-  pub fn new(
-    scope: &mut impl v8::InIsolate,
-    err: ErrBox,
-    handle: v8::Local<v8::Value>,
-  ) -> Self {
-    let handle = v8::Global::new_from(scope, handle);
-    Self { err, handle }
-  }
-
-  pub fn get_handle(&self) -> &v8::Global<v8::Value> {
-    &self.handle
-  }
-}
-
-unsafe impl Send for ErrWithV8Handle {}
-unsafe impl Sync for ErrWithV8Handle {}
-
-impl Error for ErrWithV8Handle {}
-
-impl fmt::Display for ErrWithV8Handle {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    self.err.fmt(f)
-  }
-}
-
-impl fmt::Debug for ErrWithV8Handle {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    self.err.fmt(f)
   }
 }
