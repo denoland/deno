@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { notImplemented } from "../_utils.ts";
+import { fromFileUrl } from "../path.ts";
 
 import {
   WriteFileOptions,
@@ -10,7 +11,7 @@ import {
 } from "./_fs_common.ts";
 
 export function writeFile(
-  pathOrRid: string | number,
+  pathOrRid: string | number | URL,
   data: string | Uint8Array,
   optOrCallback: string | CallbackWithError | WriteFileOptions | undefined,
   callback?: CallbackWithError
@@ -23,6 +24,8 @@ export function writeFile(
   if (!callbackFn) {
     throw new TypeError("Callback must be a function.");
   }
+
+  pathOrRid = pathOrRid instanceof URL ? fromFileUrl(pathOrRid) : pathOrRid;
 
   const flag: string | undefined = isFileOptions(options)
     ? options.flag
@@ -65,10 +68,12 @@ export function writeFile(
 }
 
 export function writeFileSync(
-  pathOrRid: string | number,
+  pathOrRid: string | number | URL,
   data: string | Uint8Array,
   options?: string | WriteFileOptions
 ): void {
+  pathOrRid = pathOrRid instanceof URL ? fromFileUrl(pathOrRid) : pathOrRid;
+
   const flag: string | undefined = isFileOptions(options)
     ? options.flag
     : undefined;

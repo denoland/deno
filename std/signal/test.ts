@@ -9,7 +9,7 @@ test({
   fn() {
     assertThrows(
       () => {
-        // @ts-ignore
+        // @ts-expect-error
         signal();
       },
       Error,

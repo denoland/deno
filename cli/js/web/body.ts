@@ -2,20 +2,13 @@ import * as blob from "./blob.ts";
 import * as encoding from "./text_encoding.ts";
 import * as domTypes from "./dom_types.d.ts";
 import { ReadableStreamImpl } from "./streams/readable_stream.ts";
+import { getHeaderValueParams, hasHeaderValueOf } from "./util.ts";
 
 // only namespace imports work for now, plucking out what we need
 const { TextEncoder, TextDecoder } = encoding;
 const DenoBlob = blob.DenoBlob;
 
-export type BodySource =
-  | Blob
-  | BufferSource
-  | FormData
-  | URLSearchParams
-  | ReadableStream
-  | string;
-
-function validateBodyType(owner: Body, bodySource: BodySource): boolean {
+function validateBodyType(owner: Body, bodySource: BodyInit | null): boolean {
   if (
     bodySource instanceof Int8Array ||
     bodySource instanceof Int16Array ||
@@ -58,53 +51,31 @@ function concatenate(...arrays: Uint8Array[]): ArrayBuffer {
   return result.buffer as ArrayBuffer;
 }
 
-function bufferFromStream(stream: ReadableStreamReader): Promise<ArrayBuffer> {
-  return new Promise((resolve, reject): void => {
-    const parts: Uint8Array[] = [];
-    const encoder = new TextEncoder();
-    // recurse
-    (function pump(): void {
-      stream
-        .read()
-        .then(({ done, value }): void => {
-          if (done) {
-            return resolve(concatenate(...parts));
-          }
+async function bufferFromStream(
+  stream: ReadableStreamReader
+): Promise<ArrayBuffer> {
+  const parts: Uint8Array[] = [];
+  const encoder = new TextEncoder();
 
-          if (typeof value === "string") {
-            parts.push(encoder.encode(value));
-          } else if (value instanceof ArrayBuffer) {
-            parts.push(new Uint8Array(value));
-          } else if (!value) {
-            // noop for undefined
-          } else {
-            reject("unhandled type on stream read");
-          }
+  while (true) {
+    const { done, value } = await stream.read();
 
-          return pump();
-        })
-        .catch((err): void => {
-          reject(err);
-        });
-    })();
-  });
-}
+    if (done) break;
 
-function getHeaderValueParams(value: string): Map<string, string> {
-  const params = new Map();
-  // Forced to do so for some Map constructor param mismatch
-  value
-    .split(";")
-    .slice(1)
-    .map((s): string[] => s.trim().split("="))
-    .filter((arr): boolean => arr.length > 1)
-    .map(([k, v]): [string, string] => [k, v.replace(/^"([^"]*)"$/, "$1")])
-    .forEach(([k, v]): Map<string, string> => params.set(k, v));
-  return params;
-}
+    if (typeof value === "string") {
+      parts.push(encoder.encode(value));
+    } else if (value instanceof ArrayBuffer) {
+      parts.push(new Uint8Array(value));
+    } else if (value instanceof Uint8Array) {
+      parts.push(value);
+    } else if (!value) {
+      // noop for undefined
+    } else {
+      throw new Error("unhandled type on stream read");
+    }
+  }
 
-function hasHeaderValueOf(s: string, value: string): boolean {
-  return new RegExp(`^${value}[\t\s]*;?`).test(s);
+  return concatenate(...parts);
 }
 
 export const BodyUsedError =
@@ -113,7 +84,10 @@ export const BodyUsedError =
 export class Body implements domTypes.Body {
   protected _stream: ReadableStreamImpl<string | ArrayBuffer> | null;
 
-  constructor(protected _bodySource: BodySource, readonly contentType: string) {
+  constructor(
+    protected _bodySource: BodyInit | null,
+    readonly contentType: string
+  ) {
     validateBodyType(this, _bodySource);
     this._bodySource = _bodySource;
     this.contentType = contentType;
@@ -126,7 +100,6 @@ export class Body implements domTypes.Body {
     }
 
     if (this._bodySource instanceof ReadableStreamImpl) {
-      // @ts-ignore
       this._stream = this._bodySource;
     }
     if (typeof this._bodySource === "string") {
@@ -149,7 +122,9 @@ export class Body implements domTypes.Body {
   }
 
   public async blob(): Promise<Blob> {
-    return new DenoBlob([await this.arrayBuffer()]);
+    return new DenoBlob([await this.arrayBuffer()], {
+      type: this.contentType,
+    });
   }
 
   // ref: https://fetch.spec.whatwg.org/#body-mixin
@@ -314,7 +289,6 @@ export class Body implements domTypes.Body {
         enc.encode(this._bodySource).buffer as ArrayBuffer
       );
     } else if (this._bodySource instanceof ReadableStreamImpl) {
-      // @ts-ignore
       return bufferFromStream(this._bodySource.getReader());
     } else if (this._bodySource instanceof FormData) {
       const enc = new TextEncoder();

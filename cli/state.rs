@@ -3,7 +3,6 @@ use crate::file_fetcher::SourceFileFetcher;
 use crate::global_state::GlobalState;
 use crate::global_timer::GlobalTimer;
 use crate::import_map::ImportMap;
-use crate::inspector::DenoInspector;
 use crate::metrics::Metrics;
 use crate::op_error::OpError;
 use crate::ops::JsonOp;
@@ -12,7 +11,6 @@ use crate::permissions::Permissions;
 use crate::tsc::TargetLib;
 use crate::web_worker::WebWorkerHandle;
 use deno_core::Buf;
-use deno_core::CoreIsolate;
 use deno_core::ErrBox;
 use deno_core::ModuleLoadId;
 use deno_core::ModuleLoader;
@@ -61,7 +59,6 @@ pub struct StateInner {
   pub target_lib: TargetLib,
   pub is_main: bool,
   pub is_internal: bool,
-  pub inspector: Option<Box<DenoInspector>>,
 }
 
 impl State {
@@ -420,7 +417,6 @@ impl State {
       target_lib: TargetLib::Main,
       is_main: true,
       is_internal,
-      inspector: None,
     }));
 
     Ok(Self(state))
@@ -457,7 +453,6 @@ impl State {
       target_lib: TargetLib::Worker,
       is_main: false,
       is_internal: false,
-      inspector: None,
     }));
 
     Ok(Self(state))
@@ -524,37 +519,6 @@ impl State {
       }
       _ => unreachable!(),
     }
-  }
-
-  pub fn maybe_init_inspector(&self, isolate: &mut CoreIsolate) {
-    let mut state = self.borrow_mut();
-
-    if state.is_internal {
-      return;
-    };
-
-    let inspector_host = {
-      let global_state = &state.global_state;
-      match global_state
-        .flags
-        .inspect
-        .or(global_state.flags.inspect_brk)
-      {
-        Some(host) => host,
-        None => return,
-      }
-    };
-
-    let inspector = DenoInspector::new(isolate, inspector_host);
-    state.inspector.replace(inspector);
-  }
-
-  #[inline]
-  pub fn should_inspector_break_on_first_statement(&self) -> bool {
-    let state = self.borrow();
-    state.inspector.is_some()
-      && state.is_main
-      && state.global_state.flags.inspect_brk.is_some()
   }
 
   #[cfg(test)]
