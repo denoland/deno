@@ -571,7 +571,7 @@ unitTest(function consoleTestStringifyIterable() {
     `[ <4 empty items>, 0, 0, <4 empty items> ]`
   );
 
-  /* TODO(ry) Fix this test 
+  /* TODO(ry) Fix this test
   const lWithEmptyEl = Array(200);
   lWithEmptyEl.fill(0, 50, 80);
   assertEquals(
@@ -1070,6 +1070,36 @@ unitTest(function consoleTable(): void {
 │   1   │ "你好"  │
 │   2   │ "Amapá" │
 └───────┴─────────┘
+`
+    );
+  });
+  mockConsole((console, out): void => {
+    console.table([
+      [1, 2],
+      [3, 4],
+    ]);
+    assertEquals(
+      stripColor(out.toString()),
+      `┌───────┬───┬───┐
+│ (idx) │ 0 │ 1 │
+├───────┼───┼───┤
+│   0   │ 1 │ 2 │
+│   1   │ 3 │ 4 │
+└───────┴───┴───┘
+`
+    );
+  });
+  mockConsole((console, out): void => {
+    console.table({ 1: { a: 4, b: 5 }, 2: null, 3: { b: 6, c: 7 } }, ["b"]);
+    assertEquals(
+      stripColor(out.toString()),
+      `┌───────┬───┐
+│ (idx) │ b │
+├───────┼───┤
+│   1   │ 5 │
+│   2   │   │
+│   3   │ 6 │
+└───────┴───┘
 `
     );
   });
