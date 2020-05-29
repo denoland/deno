@@ -33,6 +33,11 @@ export interface BenchmarkRunOptions {
   silent?: boolean;
 }
 
+export interface BenchmarkClearOptions {
+  only?: RegExp;
+  skip?: RegExp;
+}
+
 export interface BenchmarkResult {
   name: string;
   totalMs: number;
@@ -121,6 +126,17 @@ export function bench(
       func: benchmark.func,
     });
   }
+}
+
+export function clearBenchmarks({
+  only = /[^\s]/,
+  skip = /$^/,
+}: BenchmarkClearOptions = {}) {
+  const keep = candidates.filter(
+    ({ name }): boolean => !only.test(name) || skip.test(name)
+  );
+  candidates.splice(0, candidates.length);
+  candidates.push(...keep);
 }
 
 /** Runs all registered and non-skipped benchmarks serially. */
