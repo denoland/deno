@@ -82,7 +82,7 @@ test("chunkedBodyReader with trailers", async () => {
 
 test("readTrailers", async () => {
   const h = new Headers({
-    trailer: "deno,node",
+    trailer: "Deno, Node",
   });
   const trailer = ["deno: land", "node: js", "", ""].join("\r\n");
   await readTrailers(h, new BufReader(new Buffer(encode(trailer))));
@@ -112,7 +112,7 @@ test("readTrailer should throw if undeclared headers found in trailer", async ()
 });
 
 test("readTrailer should throw if trailer contains prohibited fields", async () => {
-  for (const f of ["content-length", "trailer", "transfer-encoding"]) {
+  for (const f of ["Content-Length", "Trailer", "Transfer-Encoding"]) {
     const h = new Headers({
       trailer: f,
     });
