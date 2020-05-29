@@ -214,17 +214,20 @@ impl EsIsolate {
     let state = state_rc.borrow();
 
     let core_state_rc = CoreIsolate::state(self);
-    let mut core_state = core_state_rc.borrow_mut();
 
     let mut hs = v8::HandleScope::new(&mut self.0);
     let scope = hs.enter();
-    let context = core_state.global_context.get(scope).unwrap();
+    let context = {
+      let core_state = core_state_rc.borrow();
+      core_state.global_context.get(scope).unwrap()
+    };
     let mut cs = v8::ContextScope::new(scope, context);
     let scope = cs.enter();
 
     let info = state.modules.get_info(id).expect("ModuleInfo not found");
     let module = info.handle.get(scope).expect("Empty module handle");
     let mut status = module.get_status();
+    drop(state);
     if status == v8::ModuleStatus::Instantiated {
       // IMPORTANT: Top-level-await is enabled, which means that return value
       // of module evaluation is a promise.
@@ -255,6 +258,7 @@ impl EsIsolate {
         let promise = v8::Local::<v8::Promise>::try_from(value)
           .expect("Expected to get promise as module evaluation result");
         let promise_id = promise.get_identity_hash();
+        let mut core_state = core_state_rc.borrow_mut();
         if let Some(mut handle) =
           core_state.pending_promise_exceptions.remove(&promise_id)
         {
@@ -562,7 +566,6 @@ impl EsIsolate {
   }
 
   pub fn state(isolate: &v8::Isolate) -> Rc<RefCell<EsIsolateState>> {
-    println!("EsIsolate::state");
     let s = isolate.get_slot::<Rc<RefCell<EsIsolateState>>>().unwrap();
     s.clone()
   }
