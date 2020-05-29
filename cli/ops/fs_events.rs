@@ -61,6 +61,32 @@ impl From<NotifyEvent> for FsEvent {
   }
 }
 
+fn create_resource(
+  paths: &[PathBuf],
+  recursive_mode: RecursiveMode,
+  state: Option<&State>,
+) -> Result<FsEventsResource, deno_core::ErrBox> {
+  let (sender, receiver) = mpsc::channel::<Result<FsEvent, ErrBox>>(16);
+  let sender = std::sync::Mutex::new(sender);
+  let mut watcher: RecommendedWatcher =
+    Watcher::new_immediate(move |res: Result<NotifyEvent, NotifyError>| {
+      let res2 = res.map(FsEvent::from).map_err(ErrBox::from);
+      let mut sender = sender.lock().unwrap();
+      // Ignore result, if send failed it means that watcher was already closed,
+      // but not all messages have been flushed.
+      let _ = sender.try_send(res2);
+    })
+    .map_err(ErrBox::from)?;
+
+  for path in paths {
+    if let Some(st) = state {
+      st.check_read(path)?
+    }
+    watcher.watch(path, recursive_mode).map_err(ErrBox::from)?;
+  }
+  Ok(FsEventsResource { watcher, receiver })
+}
+
 pub fn op_fs_events_open(
   isolate: &mut CoreIsolate,
   state: &State,
@@ -73,27 +99,14 @@ pub fn op_fs_events_open(
     paths: Vec<String>,
   }
   let args: OpenArgs = serde_json::from_value(args)?;
-  let (sender, receiver) = mpsc::channel::<Result<FsEvent, ErrBox>>(16);
-  let sender = std::sync::Mutex::new(sender);
-  let mut watcher: RecommendedWatcher =
-    Watcher::new_immediate(move |res: Result<NotifyEvent, NotifyError>| {
-      let res2 = res.map(FsEvent::from).map_err(ErrBox::from);
-      let mut sender = sender.lock().unwrap();
-      // Ignore result, if send failed it means that watcher was already closed,
-      // but not all messages have been flushed.
-      let _ = sender.try_send(res2);
-    })
-    .map_err(ErrBox::from)?;
   let recursive_mode = if args.recursive {
     RecursiveMode::Recursive
   } else {
     RecursiveMode::NonRecursive
   };
-  for path in &args.paths {
-    state.check_read(&PathBuf::from(path))?;
-    watcher.watch(path, recursive_mode).map_err(ErrBox::from)?;
-  }
-  let resource = FsEventsResource { watcher, receiver };
+  let path_vec = args.paths.iter().map(PathBuf::from).collect::<Vec<_>>();
+  let resource =
+    create_resource(&path_vec.as_slice(), recursive_mode, Some(&state))?;
   let mut resource_table = isolate.resource_table.borrow_mut();
   let rid = resource_table.add("fsEvents", Box::new(resource));
   Ok(JsonOp::Sync(json!(rid)))
@@ -131,23 +144,12 @@ pub fn op_fs_events_poll(
 pub async fn async_reader(
   paths: &[PathBuf],
 ) -> Result<serde_json::Value, deno_core::ErrBox> {
-  let (sender, mut receiver) = mpsc::channel::<Result<FsEvent, ErrBox>>(16);
-  let sender = std::sync::Mutex::new(sender);
-  let mut watcher: RecommendedWatcher =
-    Watcher::new_immediate(move |res: Result<NotifyEvent, NotifyError>| {
-      let res2 = res.map(FsEvent::from).map_err(ErrBox::from);
-      let mut sender = sender.lock().unwrap();
-      futures::executor::block_on(sender.send(res2)).expect("fs events error");
-    })?;
+  let mut resource =
+    create_resource(paths, RecursiveMode::Recursive, None::<&State>)?;
 
-  for path in paths {
-    watcher
-      .watch(path, RecursiveMode::Recursive)
-      .map_err(ErrBox::from)?;
-  }
-
-  let poll = poll_fn(move |cx| {
-    receiver
+  let f = poll_fn(move |cx| {
+    resource
+      .receiver
       .poll_recv(cx)
       .map(|maybe_result| match maybe_result {
         Some(Ok(value)) => Ok(json!({ "value": value, "done": false })),
@@ -155,5 +157,5 @@ pub async fn async_reader(
         None => Ok(json!({ "done": true })),
       })
   });
-  poll.await
+  f.await
 }
