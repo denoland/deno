@@ -128,8 +128,8 @@ export async function serveFile(
     headers.set("content-type", contentTypeValue);
   }
   req.done.then(() => {
-    file.close()
-  })
+    file.close();
+  });
   return {
     status: 200,
     body: file,
