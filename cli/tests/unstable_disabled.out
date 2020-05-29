@@ -1,5 +1,5 @@
 [WILDCARD]
-error: TS2339 [ERROR]: Property 'loadavg' does not exist on type 'typeof Deno'.
+error: TS2339 [ERROR]: Property 'loadavg' does not exist on type 'typeof Deno'. 'Deno.loadavg' is an unstable API. Did you forget to run with the '--unstable' flag?
 console.log(Deno.loadavg);
                  ~~~~~~~
     at [WILDCARD]/cli/tests/unstable.ts:1:18
