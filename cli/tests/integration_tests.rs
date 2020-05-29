@@ -693,6 +693,24 @@ fn repl_test_eof() {
   assert!(err.is_empty());
 }
 
+#[test]
+fn repl_test_strict() {
+  let (_, err) = util::run_and_collect_output(
+    true,
+    "repl",
+    Some(vec![
+      "let a = {};",
+      "Object.preventExtensions(a);",
+      "a.c = 1;",
+    ]),
+    None,
+    false,
+  );
+  assert!(err.contains(
+    "Uncaught TypeError: Cannot add property c, object is not extensible"
+  ));
+}
+
 const REPL_MSG: &str = "exit using ctrl+d or close()\n";
 
 #[test]
