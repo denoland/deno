@@ -425,6 +425,17 @@ impl State {
     self.borrow().permissions.check_read(path)
   }
 
+  /// As `check_read()`, but permission error messages will anonymize the path
+  /// by replacing it with the given `display`.
+  #[inline]
+  pub fn check_read_blind(
+    &self,
+    path: &Path,
+    display: &str,
+  ) -> Result<(), OpError> {
+    self.borrow().permissions.check_read_blind(path, display)
+  }
+
   #[inline]
   pub fn check_write(&self, path: &Path) -> Result<(), OpError> {
     self.borrow().permissions.check_write(path)
