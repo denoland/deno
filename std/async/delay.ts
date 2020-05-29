@@ -2,8 +2,6 @@
 /* Resolves after the given number of milliseconds. */
 export const delay = (ms: number): Promise<void> => {
   return new Promise((res): number =>
-    setTimeout((): void => {
-      res();
-    }, ms)
+    setTimeout(res, ms)
   );
 }
