@@ -450,8 +450,10 @@ impl Future for CoreIsolate {
     {
       let state = state_rc.borrow();
       if state.shared.size() > 0 {
-        async_op_response(scope, None, &state.js_recv_cb)?;
+        drop(state);
+        async_op_response(scope, None)?;
         // The other side should have shifted off all the messages.
+        let state = state_rc.borrow();
         assert_eq!(state.shared.size(), 0);
       }
     }
@@ -459,7 +461,7 @@ impl Future for CoreIsolate {
     {
       let mut state = state_rc.borrow_mut();
       if let Some((op_id, buf)) = overflow_response.take() {
-        async_op_response(scope, Some((op_id, buf)), &state.js_recv_cb)?;
+        async_op_response(scope, Some((op_id, buf)))?;
       }
       drain_macrotasks(scope, &state.js_macrotask_cb)?;
 
@@ -546,14 +548,18 @@ impl CoreIsolateState {
 fn async_op_response<'s>(
   scope: &mut impl v8::ToLocal<'s>,
   maybe_buf: Option<(OpId, Box<[u8]>)>,
-  js_recv_cb: &v8::Global<v8::Function>,
 ) -> Result<(), ErrBox> {
   let context = scope.get_current_context().unwrap();
   let global: v8::Local<v8::Value> = context.global(scope).into();
 
-  let js_recv_cb = js_recv_cb
+  let state_rc = CoreIsolate::state(scope.isolate());
+  let state = state_rc.borrow_mut();
+
+  let js_recv_cb = state
+    .js_recv_cb
     .get(scope)
     .expect("Deno.core.recv has not been called.");
+  drop(state);
 
   // TODO(piscisaureus): properly integrate TryCatch in the scope chain.
   let mut try_catch = v8::TryCatch::new(scope);
