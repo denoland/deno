@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 /* Resolves after the given number of milliseconds. */
 export const delay = (ms: number): Promise<void> => {
-  return new Promise((res): number =>
-    setTimeout(res, ms)
-  );
+  return new Promise(res => {
+    setTimeout(res, ms);
+  });
 }
