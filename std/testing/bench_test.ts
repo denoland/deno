@@ -73,10 +73,10 @@ test({
 
     const resultWithMultipleRuns = resultWithMultipleRunsFiltered[0];
     assert(!!resultWithMultipleRuns.runsCount);
-    assert(!!resultWithMultipleRuns.runsAvgMs);
-    assert(!!resultWithMultipleRuns.runsMs);
+    assert(!!resultWithMultipleRuns.measuredRunsAvgMs);
+    assert(!!resultWithMultipleRuns.measuredRunsMs);
     assertEquals(resultWithMultipleRuns.runsCount, 100);
-    assertEquals(resultWithMultipleRuns.runsMs!.length, 100);
+    assertEquals(resultWithMultipleRuns.measuredRunsMs!.length, 100);
   },
 });
 

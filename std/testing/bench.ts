@@ -37,8 +37,8 @@ export interface BenchmarkResult {
   name: string;
   totalMs: number;
   runsCount?: number;
-  runsAvgMs?: number;
-  runsMs?: number[];
+  measuredRunsAvgMs?: number;
+  measuredRunsMs?: number[];
 }
 
 export interface BenchmarkRunResult {
@@ -47,8 +47,8 @@ export interface BenchmarkRunResult {
 }
 
 export interface BenchmarkRunProgress extends BenchmarkRunResult {
-  queued: { name: string; runsCount: number }[];
-  running?: { name: string; runsCount: number; measuredMs: number[] }; // TODO measuredRunsMs
+  queued: Array<{ name: string; runsCount: number }>;
+  running?: { name: string; runsCount: number; measuredRunsMs: number[] };
 }
 
 export class BenchmarkRunError extends Error {
@@ -179,7 +179,7 @@ export async function runBenchmarks(
       );
     }
     // Init the progress of the running benchmark
-    progress.running = { name, runsCount: runs, measuredMs: [] };
+    progress.running = { name, runsCount: runs, measuredRunsMs: [] };
     // Publish starting of a benchmark
     progressCb && progressCb(progress);
 
@@ -216,7 +216,7 @@ export async function runBenchmarks(
           // Summing up
           totalMs += measuredMs;
           // Adding partial result
-          progress.running.measuredMs.push(measuredMs);
+          progress.running.measuredRunsMs.push(measuredMs);
           // Publish partial benchmark results
           progressCb && progressCb(progress);
 
@@ -230,8 +230,8 @@ export async function runBenchmarks(
               name,
               totalMs,
               runsCount: runs,
-              runsAvgMs: totalMs / runs,
-              runsMs: progress.running.measuredMs,
+              measuredRunsAvgMs: totalMs / runs,
+              measuredRunsMs: progress.running.measuredRunsMs,
             });
             // Clear currently running
             delete progress.running;
