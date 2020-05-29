@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+use crate::msg::MediaType;
 use crate::swc_common;
 use crate::swc_common::comments::CommentKind;
 use crate::swc_common::comments::Comments;
@@ -13,61 +14,102 @@ use crate::swc_common::SourceMap;
 use crate::swc_common::Span;
 use crate::swc_ecma_ast;
 use crate::swc_ecma_parser::lexer::Lexer;
+use crate::swc_ecma_parser::EsConfig;
 use crate::swc_ecma_parser::JscTarget;
 use crate::swc_ecma_parser::Parser;
 use crate::swc_ecma_parser::Session;
 use crate::swc_ecma_parser::SourceFileInput;
 use crate::swc_ecma_parser::Syntax;
 use crate::swc_ecma_parser::TsConfig;
-use swc_ecma_visit::Node;
-use swc_ecma_visit::Visit;
-
 use std::error::Error;
 use std::fmt;
 use std::sync::Arc;
 use std::sync::RwLock;
+use swc_ecma_visit::Node;
+use swc_ecma_visit::Visit;
+
+fn get_default_es_config() -> EsConfig {
+  let mut config = EsConfig::default();
+  config.num_sep = true;
+  config.class_private_props = false;
+  config.class_private_methods = false;
+  config.class_props = false;
+  config.export_default_from = true;
+  config.export_namespace_from = true;
+  config.dynamic_import = true;
+  config.nullish_coalescing = true;
+  config.optional_chaining = true;
+  config.import_meta = true;
+  config.top_level_await = true;
+  config
+}
+
+fn get_default_ts_config() -> TsConfig {
+  let mut ts_config = TsConfig::default();
+  ts_config.dynamic_import = true;
+  ts_config.decorators = true;
+  ts_config
+}
 
 #[derive(Clone, Debug)]
 pub struct SwcDiagnosticBuffer {
-  pub diagnostics: Vec<Diagnostic>,
+  pub diagnostics: Vec<String>,
 }
 
 impl Error for SwcDiagnosticBuffer {}
 
 impl fmt::Display for SwcDiagnosticBuffer {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    let msg = self
-      .diagnostics
-      .iter()
-      .map(|d| d.message())
-      .collect::<Vec<String>>()
-      .join(",");
+    let msg = self.diagnostics.join(",");
 
     f.pad(&msg)
   }
 }
 
+impl SwcDiagnosticBuffer {
+  pub fn from_swc_error(
+    error_buffer: SwcErrorBuffer,
+    parser: &AstParser,
+  ) -> Self {
+    let s = error_buffer.0.read().unwrap().clone();
+
+    let diagnostics = s
+      .iter()
+      .map(|d| {
+        let mut msg = d.message();
+
+        if let Some(span) = d.span.primary_span() {
+          let location = parser.get_span_location(span);
+          let filename = match &location.file.name {
+            FileName::Custom(n) => n,
+            _ => unreachable!(),
+          };
+          msg = format!(
+            "{} at {}:{}:{}",
+            msg, filename, location.line, location.col_display
+          );
+        }
+
+        msg
+      })
+      .collect::<Vec<String>>();
+
+    Self { diagnostics }
+  }
+}
+
 #[derive(Clone)]
-pub struct SwcErrorBuffer(Arc<RwLock<SwcDiagnosticBuffer>>);
+pub struct SwcErrorBuffer(Arc<RwLock<Vec<Diagnostic>>>);
 
 impl SwcErrorBuffer {
   pub fn default() -> Self {
-    Self(Arc::new(RwLock::new(SwcDiagnosticBuffer {
-      diagnostics: vec![],
-    })))
+    Self(Arc::new(RwLock::new(vec![])))
   }
 }
 
 impl Emitter for SwcErrorBuffer {
   fn emit(&mut self, db: &DiagnosticBuilder) {
-    self.0.write().unwrap().diagnostics.push((**db).clone());
-  }
-}
-
-impl From<SwcErrorBuffer> for SwcDiagnosticBuffer {
-  fn from(buf: SwcErrorBuffer) -> Self {
-    let s = buf.0.read().unwrap();
-    s.clone()
+    self.0.write().unwrap().push((**db).clone());
   }
 }
 
@@ -108,6 +150,7 @@ impl AstParser {
   pub fn parse_module<F, R>(
     &self,
     file_name: &str,
+    media_type: MediaType,
     source_code: &str,
     callback: F,
   ) -> R
@@ -125,9 +168,21 @@ impl AstParser {
         handler: &self.handler,
       };
 
-      let mut ts_config = TsConfig::default();
-      ts_config.dynamic_import = true;
-      let syntax = Syntax::Typescript(ts_config);
+      let syntax = match media_type {
+        MediaType::JavaScript => Syntax::Es(get_default_es_config()),
+        MediaType::JSX => {
+          let mut config = get_default_es_config();
+          config.jsx = true;
+          Syntax::Es(config)
+        }
+        MediaType::TypeScript => Syntax::Typescript(get_default_ts_config()),
+        MediaType::TSX => {
+          let mut config = get_default_ts_config();
+          config.tsx = true;
+          Syntax::Typescript(config)
+        }
+        _ => Syntax::Es(get_default_es_config()),
+      };
 
       let lexer = Lexer::new(
         session,
@@ -143,8 +198,8 @@ impl AstParser {
         parser
           .parse_module()
           .map_err(move |mut err: DiagnosticBuilder| {
-            err.cancel();
-            SwcDiagnosticBuffer::from(buffered_err)
+            err.emit();
+            SwcDiagnosticBuffer::from_swc_error(buffered_err, self)
           });
 
       callback(parse_result)
@@ -307,6 +362,20 @@ impl Visit for NewDependencyVisitor {
     });
   }
 
+  fn visit_ts_import_type(
+    &mut self,
+    ts_import_type: &swc_ecma_ast::TsImportType,
+    _parent: &dyn Node,
+  ) {
+    // TODO(bartlomieju): possibly add separate DependencyKind
+    let src_str = ts_import_type.arg.value.to_string();
+    self.dependencies.push(DependencyDescriptor {
+      specifier: src_str,
+      kind: DependencyKind::Import,
+      span: ts_import_type.arg.span,
+    });
+  }
+
   fn visit_call_expr(
     &mut self,
     call_expr: &swc_ecma_ast::CallExpr,
@@ -397,6 +466,8 @@ pub struct TsReferenceDescriptor {
 }
 
 pub fn analyze_dependencies_and_references(
+  file_name: &str,
+  media_type: MediaType,
   source_code: &str,
   analyze_dynamic_imports: bool,
 ) -> Result<
@@ -404,7 +475,7 @@ pub fn analyze_dependencies_and_references(
   SwcDiagnosticBuffer,
 > {
   let parser = AstParser::new();
-  parser.parse_module("root.ts", source_code, |parse_result| {
+  parser.parse_module(file_name, media_type, source_code, |parse_result| {
     let module = parse_result?;
     let mut collector = NewDependencyVisitor {
       dependencies: vec![],
@@ -511,8 +582,13 @@ console.log(fizz);
 console.log(qat.qat);  
 "#;
 
-  let (imports, references) =
-    analyze_dependencies_and_references(source, true).expect("Failed to parse");
+  let (imports, references) = analyze_dependencies_and_references(
+    "some/file.ts",
+    MediaType::TypeScript,
+    source,
+    true,
+  )
+  .expect("Failed to parse");
 
   assert_eq!(
     imports,

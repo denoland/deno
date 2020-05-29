@@ -5,5 +5,5 @@ Object.defineProperty(globalThis, Symbol.toStringTag, {
   configurable: true,
 });
 
-// @ts-ignore
+// @ts-expect-error
 globalThis["global"] = globalThis;
