@@ -1,6 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 const { test } = Deno;
-import { assert, assertEquals, assertThrowsAsync } from "../testing/asserts.ts";
+import {
+  assert,
+  assertEquals,
+  assertThrowsAsync,
+  assertNotEquals,
+} from "../testing/asserts.ts";
 import {
   LogLevels,
   LogLevelNames,
@@ -124,18 +129,14 @@ test({
 test({
   name: "FileHandler with mode 'x' will throw if log file already exists",
   async fn() {
-    await assertThrowsAsync(
-      async () => {
-        Deno.writeFileSync(LOG_FILE, new TextEncoder().encode("hello world"));
-        const fileHandler = new FileHandler("WARNING", {
-          filename: LOG_FILE,
-          mode: "x",
-        });
-        await fileHandler.setup();
-      },
-      Deno.errors.AlreadyExists,
-      "ile exists"
-    );
+    await assertThrowsAsync(async () => {
+      Deno.writeFileSync(LOG_FILE, new TextEncoder().encode("hello world"));
+      const fileHandler = new FileHandler("WARNING", {
+        filename: LOG_FILE,
+        mode: "x",
+      });
+      await fileHandler.setup();
+    }, Deno.errors.AlreadyExists);
     Deno.removeSync(LOG_FILE);
   },
 });
@@ -360,5 +361,39 @@ test({
 
     await fileHandler.destroy();
     Deno.removeSync(LOG_FILE);
+  },
+});
+
+test({
+  name: "RotatingFileHandler: rotate on byte length, not msg length",
+  async fn() {
+    const fileHandler = new RotatingFileHandler("WARNING", {
+      filename: LOG_FILE,
+      maxBytes: 6,
+      maxBackupCount: 1,
+      mode: "w",
+    });
+    await fileHandler.setup();
+
+    const msg = "。";
+    const msgLength = msg.length;
+    const msgByteLength = new TextEncoder().encode(msg).byteLength;
+    assertNotEquals(msgLength, msgByteLength);
+    assertEquals(msgLength, 1);
+    assertEquals(msgByteLength, 3);
+
+    fileHandler.log(msg);
+    fileHandler.log(msg);
+
+    await fileHandler.destroy();
+
+    const fileSize1 = (await Deno.stat(LOG_FILE)).size;
+    const fileSize2 = (await Deno.stat(LOG_FILE + ".1")).size;
+
+    assertEquals(fileSize1, msgByteLength + 1);
+    assertEquals(fileSize2, msgByteLength + 1);
+
+    Deno.removeSync(LOG_FILE);
+    Deno.removeSync(LOG_FILE + ".1");
   },
 });

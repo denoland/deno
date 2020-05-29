@@ -1,9 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::es_isolate::EsIsolate;
-use crate::isolate::CoreIsolate;
-use crate::isolate::ZeroCopyBuf;
-use crate::js_errors::JSError;
+use crate::CoreIsolate;
+use crate::EsIsolate;
+use crate::JSError;
+use crate::ZeroCopyBuf;
 
 use rusty_v8 as v8;
 use v8::MapFnTo;
