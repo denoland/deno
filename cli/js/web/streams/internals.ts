@@ -311,26 +311,7 @@ export function isDetachedBuffer(value: object): boolean {
 }
 
 function isFiniteNonNegativeNumber(v: unknown): v is number {
-  if (!isNonNegativeNumber(v)) {
-    return false;
-  }
-  if (v === Infinity) {
-    return false;
-  }
-  return true;
-}
-
-function isNonNegativeNumber(v: unknown): v is number {
-  if (typeof v !== "number") {
-    return false;
-  }
-  if (Number.isNaN(v)) {
-    return false;
-  }
-  if (v < 0) {
-    return false;
-  }
-  return true;
+  return Number.isFinite(v) && (v as number) >= 0;
 }
 
 export function isReadableByteStreamController(

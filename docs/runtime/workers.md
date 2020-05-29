@@ -25,11 +25,15 @@ requires appropriate permission for this action.
 
 For workers using local modules; `--allow-read` permission is required:
 
-```ts
-// main.ts
-new Worker("./worker.ts", { type: "module" });
+**main.ts**
 
-// worker.ts
+```ts
+new Worker("./worker.ts", { type: "module" });
+```
+
+**worker.ts**
+
+```ts
 console.log("hello world");
 self.close();
 ```
@@ -44,11 +48,15 @@ hello world
 
 For workers using remote modules; `--allow-net` permission is required:
 
-```ts
-// main.ts
-new Worker("https://example.com/worker.ts", { type: "module" });
+**main.ts**
 
-// worker.ts
+```ts
+new Worker("https://example.com/worker.ts", { type: "module" });
+```
+
+**worker.ts** (at https[]()://example.com/worker.ts)
+
+```ts
 console.log("hello world");
 self.close();
 ```
@@ -70,20 +78,27 @@ By default the `Deno` namespace is not available in worker scope.
 
 To add the `Deno` namespace pass `deno: true` option when creating new worker:
 
+**main.js**
+
 ```ts
-// main.js
 const worker = new Worker("./worker.js", { type: "module", deno: true });
 worker.postMessage({ filename: "./log.txt" });
+```
 
-// worker.js
+**worker.js**
+
+```ts
 self.onmessage = async (e) => {
   const { filename } = e.data;
   const text = await Deno.readTextFile(filename);
   console.log(text);
   self.close();
 };
+```
 
-// log.txt
+**log.txt**
+
+```
 hello world
 ```
 

@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+use crate::file_fetcher::map_file_extension;
 use crate::op_error::OpError;
 use crate::swc_common::comments::CommentKind;
 use crate::swc_common::Span;
@@ -15,6 +16,7 @@ use deno_core::ModuleSpecifier;
 use futures::Future;
 use regex::Regex;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::pin::Pin;
 
 use super::namespace::NamespaceDef;
@@ -57,9 +59,12 @@ impl DocParser {
     file_name: &str,
     source_code: &str,
   ) -> Result<ModuleDoc, SwcDiagnosticBuffer> {
-    self
-      .ast_parser
-      .parse_module(file_name, source_code, |parse_result| {
+    let media_type = map_file_extension(&PathBuf::from(file_name));
+    self.ast_parser.parse_module(
+      file_name,
+      media_type,
+      source_code,
+      |parse_result| {
         let module = parse_result?;
         let doc_entries =
           self.get_doc_nodes_for_module_body(module.body.clone());
@@ -69,7 +74,8 @@ impl DocParser {
           reexports,
         };
         Ok(module_doc)
-      })
+      },
+    )
   }
 
   pub async fn parse(&self, file_name: &str) -> Result<Vec<DocNode>, ErrBox> {
@@ -524,7 +530,7 @@ impl DocParser {
 
   pub fn js_doc_for_span(&self, span: Span) -> Option<String> {
     let comments = self.ast_parser.get_span_comments(span);
-    let js_doc_comment = comments.iter().find(|comment| {
+    let js_doc_comment = comments.iter().rev().find(|comment| {
       comment.kind == CommentKind::Block && comment.text.starts_with('*')
     })?;
 

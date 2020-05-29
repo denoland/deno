@@ -6,6 +6,24 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### 1.0.2 / 2020.05.22
+
+Changes in the CLI:
+
+- fix: --inspect flag working like --inspect-brk (#5697)
+- fix: Disallow http imports for modules loaded over https (#5680)
+- fix: Redirects handling in module analysis (#5726)
+- fix: SWC lexer settings and silent errors (#5752)
+- fix: TS type imports (#5733)
+- fix(fmt): Do not panic on new expr with no parens. (#5734)
+- fix(cli/js/streams): High water mark validation (#5681)
+
+Changes in std version 0.53.0:
+
+- fix(std/http): file_server's target directory (#5695)
+- feat(std/hash): add md5 (#5719)
+- refactor: Move std/fmt/sprintf.ts to std/fmt/printf.ts (#4567)
+
 ### 1.0.1 / 2020.05.20
 
 Changes in the CLI:
@@ -1562,7 +1580,7 @@ Changes since v0.1.7:
 - Use constructor.name to print out function type #664
 - Rename deno.argv to deno.args
 - Add deno.trace() #795
-- Continuous benchmarks https://denoland.github.io/deno/
+- Continuous benchmarks
 
 ### v0.1.5 / 2018.09.21
 

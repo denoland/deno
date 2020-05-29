@@ -459,14 +459,13 @@ impl TsCompiler {
       import_map,
       permissions.clone(),
       is_dyn_import,
-      false,
+      true,
     );
 
     module_graph_loader.add_to_graph(&module_specifier).await?;
     let module_graph = module_graph_loader.get_graph();
     let module_graph_json =
       serde_json::to_value(module_graph).expect("Failed to serialize data");
-
     let target = match target {
       TargetLib::Main => "main",
       TargetLib::Worker => "worker",

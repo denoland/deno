@@ -189,3 +189,22 @@ export function defineEnumerableProps(
     Reflect.defineProperty(Ctor.prototype, prop, { enumerable: true });
   }
 }
+
+// @internal
+export function getHeaderValueParams(value: string): Map<string, string> {
+  const params = new Map();
+  // Forced to do so for some Map constructor param mismatch
+  value
+    .split(";")
+    .slice(1)
+    .map((s): string[] => s.trim().split("="))
+    .filter((arr): boolean => arr.length > 1)
+    .map(([k, v]): [string, string] => [k, v.replace(/^"([^"]*)"$/, "$1")])
+    .forEach(([k, v]): Map<string, string> => params.set(k, v));
+  return params;
+}
+
+// @internal
+export function hasHeaderValueOf(s: string, value: string): boolean {
+  return new RegExp(`^${value}[\t\s]*;?`).test(s);
+}

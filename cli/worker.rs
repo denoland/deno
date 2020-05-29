@@ -12,7 +12,6 @@ use futures::channel::mpsc;
 use futures::future::FutureExt;
 use futures::stream::StreamExt;
 use futures::task::AtomicWaker;
-use std::cell::RefMut;
 use std::env;
 use std::future::Future;
 use std::ops::Deref;
@@ -88,6 +87,7 @@ fn create_channels() -> (WorkerChannelsInternal, WorkerHandle) {
 pub struct Worker {
   pub name: String,
   pub isolate: Box<deno_core::EsIsolate>,
+  pub inspector: Option<Box<DenoInspector>>,
   pub state: State,
   pub waker: AtomicWaker,
   pub(crate) internal_channels: WorkerChannelsInternal,
@@ -99,18 +99,30 @@ impl Worker {
     let loader = Rc::new(state.clone());
     let mut isolate = deno_core::EsIsolate::new(loader, startup_data, false);
 
-    state.maybe_init_inspector(&mut isolate);
+    {
+      let global_state = state.borrow().global_state.clone();
+      isolate.set_js_error_create_fn(move |core_js_error| {
+        JSError::create(core_js_error, &global_state.ts_compiler)
+      });
+    }
 
-    let global_state = state.borrow().global_state.clone();
-    isolate.set_js_error_create_fn(move |core_js_error| {
-      JSError::create(core_js_error, &global_state.ts_compiler)
-    });
+    let inspector = {
+      let state = state.borrow();
+      let global_state = &state.global_state;
+      global_state
+        .flags
+        .inspect
+        .or(global_state.flags.inspect_brk)
+        .filter(|_| !state.is_internal)
+        .map(|inspector_host| DenoInspector::new(&mut isolate, inspector_host))
+    };
 
     let (internal_channels, external_channels) = create_channels();
 
     Self {
       name,
       isolate,
+      inspector,
       state,
       waker: AtomicWaker::new(),
       internal_channels,
@@ -173,16 +185,14 @@ impl Worker {
     self.external_channels.clone()
   }
 
-  #[inline(always)]
-  fn inspector(&self) -> RefMut<Option<Box<DenoInspector>>> {
-    let state = self.state.borrow_mut();
-    RefMut::map(state, |s| &mut s.inspector)
-  }
-
-  fn wait_for_inspector_session(&self) {
-    if self.state.should_inspector_break_on_first_statement() {
+  fn wait_for_inspector_session(&mut self) {
+    let should_break_on_first_statement = self.inspector.is_some() && {
+      let state = self.state.borrow();
+      state.is_main && state.global_state.flags.inspect_brk.is_some()
+    };
+    if should_break_on_first_statement {
       self
-        .inspector()
+        .inspector
         .as_mut()
         .unwrap()
         .wait_for_session_and_break_on_next_statement()
@@ -194,7 +204,7 @@ impl Drop for Worker {
   fn drop(&mut self) {
     // The Isolate object must outlive the Inspector object, but this is
     // currently not enforced by the type system.
-    self.inspector().take();
+    self.inspector.take();
   }
 }
 
@@ -205,7 +215,7 @@ impl Future for Worker {
     let inner = self.get_mut();
 
     // We always poll the inspector if it exists.
-    let _ = inner.inspector().as_mut().map(|i| i.poll_unpin(cx));
+    let _ = inner.inspector.as_mut().map(|i| i.poll_unpin(cx));
     inner.waker.register(cx.waker());
     inner.isolate.poll_unpin(cx)
   }
