@@ -673,6 +673,7 @@ fn check_promise_exceptions<'s>(
 
   if let Some(&key) = state.pending_promise_exceptions.keys().next() {
     let handle = state.pending_promise_exceptions.remove(&key).unwrap();
+    drop(state);
     let exception = handle.get(scope).expect("empty error handle");
     exception_to_err_result(scope, exception)
   } else {

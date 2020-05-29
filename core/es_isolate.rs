@@ -297,12 +297,16 @@ impl EsIsolate {
     let mut cs = v8::ContextScope::new(scope, context);
     let scope = cs.enter();
 
+    drop(core_state);
+
     let mut resolver_handle = state
       .dyn_import_map
       .remove(&id)
       .expect("Invalid dyn import id");
     let resolver = resolver_handle.get(scope).unwrap();
     resolver_handle.reset(scope);
+
+    drop(state);
 
     let exception = err
       .downcast_ref::<ErrWithV8Handle>()
