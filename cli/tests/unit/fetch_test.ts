@@ -702,3 +702,15 @@ unitTest(
     assertEquals(total, data.length);
   }
 );
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchResourceCloseAfterStreamCancel(): Promise<void> {
+    const res = await fetch("http://localhost:4545/cli/tests/fixture.json");
+    assert(res.body !== null);
+
+    // After ReadableStream.cancel is called, resource handle must be closed
+    // The test should not fail with: Test case is leaking resources
+    await res.body.cancel();
+  }
+);
