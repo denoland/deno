@@ -401,10 +401,7 @@ impl Future for CoreIsolate {
     let mut cs = v8::ContextScope::new(scope, context);
     let scope = cs.enter();
 
-    {
-      let mut state = state_rc.borrow_mut();
-      check_promise_exceptions(scope, &mut state)?;
-    }
+    check_promise_exceptions(scope)?;
 
     let mut overflow_response: Option<(OpId, Buf)> = None;
 
@@ -459,13 +456,13 @@ impl Future for CoreIsolate {
     }
 
     {
-      let mut state = state_rc.borrow_mut();
       if let Some((op_id, buf)) = overflow_response.take() {
         async_op_response(scope, Some((op_id, buf)))?;
       }
-      drain_macrotasks(scope, &state.js_macrotask_cb)?;
 
-      check_promise_exceptions(scope, &mut state)?;
+      drain_macrotasks(scope)?;
+
+      check_promise_exceptions(scope)?;
     }
 
     let state = state_rc.borrow();
@@ -584,12 +581,15 @@ fn async_op_response<'s>(
 
 fn drain_macrotasks<'s>(
   scope: &mut impl v8::ToLocal<'s>,
-  js_macrotask_cb: &v8::Global<v8::Function>,
 ) -> Result<(), ErrBox> {
   let context = scope.get_current_context().unwrap();
   let global: v8::Local<v8::Value> = context.global(scope).into();
 
-  let js_macrotask_cb = js_macrotask_cb.get(scope);
+  let js_macrotask_cb = {
+    let state_rc = CoreIsolate::state(scope.isolate());
+    let state = state_rc.borrow_mut();
+    state.js_macrotask_cb.get(scope)
+  };
   if js_macrotask_cb.is_none() {
     return Ok(());
   }
@@ -650,7 +650,6 @@ pub(crate) fn exception_to_err_result<'s, T>(
 
   let state_rc = CoreIsolate::state(scope.isolate());
   let state = state_rc.borrow();
-
   let js_error = (state.js_error_create_fn)(js_error);
 
   if is_terminating_exception {
@@ -665,8 +664,10 @@ pub(crate) fn exception_to_err_result<'s, T>(
 
 fn check_promise_exceptions<'s>(
   scope: &mut impl v8::ToLocal<'s>,
-  state: &mut CoreIsolateState,
 ) -> Result<(), ErrBox> {
+  let state_rc = CoreIsolate::state(scope.isolate());
+  let mut state = state_rc.borrow_mut();
+
   if let Some(&key) = state.pending_promise_exceptions.keys().next() {
     let handle = state.pending_promise_exceptions.remove(&key).unwrap();
     let exception = handle.get(scope).expect("empty error handle");
