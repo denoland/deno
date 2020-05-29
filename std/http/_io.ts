@@ -113,11 +113,10 @@ export function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
   return { read };
 }
 
-const kProhibitedTrailerHeaders = [
-  "transfer-encoding",
-  "content-length",
-  "trailer",
-];
+function isProhibidedForTrailer(key: string): boolean {
+  const s = new Set(["transfer-encoding", "content-length", "trailer"]);
+  return s.has(key.toLowerCase());
+}
 
 /**
  * Read trailer headers from reader and append values to headers.
@@ -127,40 +126,41 @@ export async function readTrailers(
   headers: Headers,
   r: BufReader
 ): Promise<void> {
-  const keys = parseTrailer(headers.get("trailer"));
-  if (!keys) return;
+  const headerKeys = parseTrailer(headers.get("trailer"));
+  if (!headerKeys) return;
   const tp = new TextProtoReader(r);
   const result = await tp.readMIMEHeader();
   if (result === null) {
     throw new Deno.errors.InvalidData("trailer must be set");
   }
   for (const [k, v] of result) {
-    if (!keys.has(k)) {
+    if (!headerKeys.has(k)) {
       throw new Error("Undeclared trailer field");
     }
-    keys.delete(k);
+    headerKeys.delete(k);
     headers.append(k, v);
   }
-  if (keys.size !== 0) {
+  if (Array.from(headerKeys).length !== 0) {
     throw new Deno.errors.InvalidData("Missing trailers");
   }
+
   headers.delete("trailer");
 }
 
-function parseTrailer(field: string | null): Set<string> | undefined {
+function parseTrailer(field: string | null): Headers | undefined {
   if (field == null) {
     return undefined;
   }
-  const keys = field.split(",").map((v) => v.trim());
+  const keys = field.split(",").map((v) => v.trim().toLowerCase());
   if (keys.length === 0) {
     throw new Error("Empty trailer");
   }
-  for (const invalid of kProhibitedTrailerHeaders) {
-    if (keys.includes(invalid)) {
+  for (const key of keys) {
+    if (isProhibidedForTrailer(key)) {
       throw new Error(`Prohibited field for trailer`);
     }
   }
-  return new Set(keys);
+  return new Headers(keys.map((key) => [key, ""]));
 }
 
 export async function writeChunkedBody(
@@ -202,7 +202,7 @@ export async function writeTrailers(
     .split(",")
     .map((s) => s.trim().toLowerCase());
   for (const f of trailerHeaderFields) {
-    if (kProhibitedTrailerHeaders.includes(f)) {
+    if (isProhibidedForTrailer(f)) {
       throw new Deno.errors.InvalidData(
         `"${f}" is prohibited for trailer header`
       );

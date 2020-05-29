@@ -42,7 +42,7 @@ unitTest(
 
     const body = buildBody(text);
 
-    // @ts-ignore
+    // @ts-expect-error
     body.contentType = "multipart/form-data;boundary=boundary";
 
     const formData = await body.formData();
@@ -62,7 +62,7 @@ unitTest(
 
     const body = buildBody(text);
 
-    // @ts-ignore
+    // @ts-expect-error
     body.contentType = "application/x-www-form-urlencoded";
 
     const formData = await body.formData();

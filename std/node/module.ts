@@ -263,9 +263,9 @@ class Module {
         message = message + "\nRequire stack:\n- " + requireStack.join("\n- ");
       }
       const err = new Error(message);
-      // @ts-ignore
+      // @ts-expect-error
       err.code = "MODULE_NOT_FOUND";
-      // @ts-ignore
+      // @ts-expect-error
       err.requireStack = requireStack;
       throw err;
     }
@@ -737,7 +737,7 @@ function tryPackage(
         `Cannot find module '${filename}'. ` +
           'Please verify that the package.json has a valid "main" entry'
       );
-      // @ts-ignore
+      // @ts-expect-error
       err.code = "MODULE_NOT_FOUND";
       throw err;
     }
@@ -882,7 +882,7 @@ function applyExports(basePath: string, expansion: string): string {
     `Package exports for '${basePath}' do not define ` +
       `a '${mappingKey}' subpath`
   );
-  // @ts-ignore
+  // @ts-expect-error
   e.code = "MODULE_NOT_FOUND";
   throw e;
 }
@@ -982,7 +982,7 @@ function resolveExportsTarget(
   } else {
     e = new Error(`No valid exports main found for '${basePath}'`);
   }
-  // @ts-ignore
+  // @ts-expect-error
   e.code = "MODULE_NOT_FOUND";
   throw e;
 }
@@ -1007,7 +1007,7 @@ const CircularRequirePrototypeWarningProxy = new Proxy(
   {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     get(target, prop): any {
-      // @ts-ignore
+      // @ts-expect-error
       if (prop in target) return target[prop];
       emitCircularRequireWarning(prop);
       return undefined;
@@ -1058,7 +1058,7 @@ type RequireWrapper = (
 function wrapSafe(filename: string, content: string): RequireWrapper {
   // TODO: fix this
   const wrapper = Module.wrap(content);
-  // @ts-ignore
+  // @ts-expect-error
   const [f, err] = Deno.core.evalContext(wrapper, filename);
   if (err) {
     throw err;

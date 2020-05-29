@@ -3,9 +3,12 @@ use crate::deno_dir;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::flags;
 use crate::http_cache;
+use crate::import_map::ImportMap;
 use crate::lockfile::Lockfile;
+use crate::module_graph::ModuleGraphLoader;
 use crate::msg;
 use crate::permissions::Permissions;
+use crate::state::exit_unstable;
 use crate::tsc::CompiledModule;
 use crate::tsc::TargetLib;
 use crate::tsc::TsCompiler;
@@ -35,6 +38,7 @@ pub struct GlobalStateInner {
   pub ts_compiler: TsCompiler,
   pub lockfile: Option<Mutex<Lockfile>>,
   pub compiler_starts: AtomicUsize,
+  pub maybe_import_map: Option<ImportMap>,
   compile_lock: AsyncMutex<()>,
 }
 
@@ -75,6 +79,17 @@ impl GlobalState {
       None
     };
 
+    let maybe_import_map: Option<ImportMap> =
+      match flags.import_map_path.as_ref() {
+        None => None,
+        Some(file_path) => {
+          if !flags.unstable {
+            exit_unstable("--importmap")
+          }
+          Some(ImportMap::load(file_path)?)
+        }
+      };
+
     let inner = GlobalStateInner {
       dir,
       permissions: Permissions::from_flags(&flags),
@@ -82,19 +97,85 @@ impl GlobalState {
       file_fetcher,
       ts_compiler,
       lockfile,
+      maybe_import_map,
       compiler_starts: AtomicUsize::new(0),
       compile_lock: AsyncMutex::new(()),
     };
     Ok(GlobalState(Arc::new(inner)))
   }
 
-  pub async fn fetch_compiled_module(
+  /// This function is called when new module load is
+  /// initialized by the EsIsolate. Its resposibility is to collect
+  /// all dependencies and if it is required then also perform TS typecheck
+  /// and traspilation.
+  pub async fn prepare_module_load(
     &self,
     module_specifier: ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
     target_lib: TargetLib,
     permissions: Permissions,
     is_dyn_import: bool,
+    maybe_import_map: Option<ImportMap>,
+  ) -> Result<(), ErrBox> {
+    let module_specifier = module_specifier.clone();
+
+    // TODO(ry) Try to lift compile_lock as high up in the call stack for
+    // sanity.
+    let compile_lock = self.compile_lock.lock().await;
+
+    let mut module_graph_loader = ModuleGraphLoader::new(
+      self.file_fetcher.clone(),
+      maybe_import_map,
+      permissions.clone(),
+      is_dyn_import,
+      false,
+    );
+    module_graph_loader
+      .add_to_graph(&module_specifier, maybe_referrer)
+      .await?;
+    let module_graph = module_graph_loader.get_graph();
+
+    let out = self
+      .file_fetcher
+      .fetch_cached_source_file(&module_specifier, permissions.clone())
+      .expect("Source file not found");
+
+    // Check if we need to compile files
+    let needs_compilation = match out.media_type {
+      msg::MediaType::TypeScript
+      | msg::MediaType::TSX
+      | msg::MediaType::JSX => true,
+      msg::MediaType::JavaScript => self.ts_compiler.compile_js,
+      _ => false,
+    };
+
+    if needs_compilation {
+      self
+        .ts_compiler
+        .compile_module_graph(
+          self.clone(),
+          &out,
+          target_lib,
+          permissions,
+          module_graph,
+        )
+        .await?;
+    }
+
+    drop(compile_lock);
+
+    Ok(())
+  }
+
+  // TODO(bartlomieju): this method doesn't need to be async anymore
+  /// This method is used after `prepare_module_load` finishes and EsIsolate
+  /// starts loading source and executing source code. This method shouldn't
+  /// perform any IO (besides $DENO_DIR) and only operate on sources collected
+  /// during `prepare_module_load`.
+  pub async fn fetch_compiled_module(
+    &self,
+    module_specifier: ModuleSpecifier,
+    _maybe_referrer: Option<ModuleSpecifier>,
   ) -> Result<CompiledModule, ErrBox> {
     let state1 = self.clone();
     let state2 = self.clone();
@@ -102,59 +183,31 @@ impl GlobalState {
 
     let out = self
       .file_fetcher
-      .fetch_source_file(&module_specifier, maybe_referrer, permissions.clone())
-      .await?;
+      .fetch_cached_source_file(&module_specifier, Permissions::allow_all())
+      .expect("Cached source file doesn't exist");
 
     // TODO(ry) Try to lift compile_lock as high up in the call stack for
     // sanity.
     let compile_lock = self.compile_lock.lock().await;
 
-    let compiled_module = match out.media_type {
+    // Check if we need to compile files
+    let was_compiled = match out.media_type {
       msg::MediaType::TypeScript
       | msg::MediaType::TSX
-      | msg::MediaType::JSX => {
-        state1
-          .ts_compiler
-          .compile(state1.clone(), &out, target_lib, permissions, is_dyn_import)
-          .await
-      }
-      msg::MediaType::JavaScript => {
-        if state1.ts_compiler.compile_js {
-          state2
-            .ts_compiler
-            .compile(
-              state1.clone(),
-              &out,
-              target_lib,
-              permissions,
-              is_dyn_import,
-            )
-            .await
-        } else {
-          if let Some(types_url) = out.types_url.clone() {
-            let types_specifier = ModuleSpecifier::from(types_url);
-            state1
-              .file_fetcher
-              .fetch_source_file(
-                &types_specifier,
-                Some(module_specifier.clone()),
-                permissions.clone(),
-              )
-              .await
-              .ok();
-          };
+      | msg::MediaType::JSX => true,
+      msg::MediaType::JavaScript => self.ts_compiler.compile_js,
+      _ => false,
+    };
 
-          Ok(CompiledModule {
-            code: String::from_utf8(out.source_code.clone())?,
-            name: out.url.to_string(),
-          })
-        }
-      }
-      _ => Ok(CompiledModule {
+    let compiled_module = if was_compiled {
+      state1.ts_compiler.get_compiled_module(&out.url)?
+    } else {
+      CompiledModule {
         code: String::from_utf8(out.source_code.clone())?,
         name: out.url.to_string(),
-      }),
-    }?;
+      }
+    };
+
     drop(compile_lock);
 
     if let Some(ref lockfile) = state2.lockfile {
@@ -192,12 +245,4 @@ impl GlobalState {
 fn thread_safe() {
   fn f<S: Send + Sync>(_: S) {}
   f(GlobalState::mock(vec![]));
-}
-
-#[test]
-fn import_map_given_for_repl() {
-  let _result = GlobalState::new(flags::Flags {
-    import_map_path: Some("import_map.json".to_string()),
-    ..flags::Flags::default()
-  });
 }
