@@ -306,7 +306,8 @@ mod tests {
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let global_state = GlobalState::new(flags::Flags::default()).unwrap();
     let state =
-      State::new(global_state, None, module_specifier.clone(), false).unwrap();
+      State::new(global_state, None, module_specifier.clone(), None, false)
+        .unwrap();
     let state_ = state.clone();
     tokio_util::run_basic(async move {
       let mut worker =
@@ -335,7 +336,8 @@ mod tests {
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let global_state = GlobalState::new(flags::Flags::default()).unwrap();
     let state =
-      State::new(global_state, None, module_specifier.clone(), false).unwrap();
+      State::new(global_state, None, module_specifier.clone(), None, false)
+        .unwrap();
     let state_ = state.clone();
     tokio_util::run_basic(async move {
       let mut worker =
@@ -350,7 +352,6 @@ mod tests {
     });
 
     let state = state_.borrow();
-    assert_eq!(state.metrics.resolve_count, 1);
     // Check that we didn't start the compiler.
     assert_eq!(state.global_state.compiler_starts.load(Ordering::SeqCst), 0);
   }
@@ -372,9 +373,14 @@ mod tests {
       ..flags::Flags::default()
     };
     let global_state = GlobalState::new(flags).unwrap();
-    let state =
-      State::new(global_state.clone(), None, module_specifier.clone(), false)
-        .unwrap();
+    let state = State::new(
+      global_state.clone(),
+      None,
+      module_specifier.clone(),
+      None,
+      false,
+    )
+    .unwrap();
     let mut worker = MainWorker::new(
       "TEST".to_string(),
       startup_data::deno_isolate_init(),

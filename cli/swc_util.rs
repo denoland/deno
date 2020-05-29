@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+use crate::doc::Location;
 use crate::msg::MediaType;
 use crate::swc_common;
 use crate::swc_common::comments::CommentKind;
@@ -450,6 +451,7 @@ fn get_deno_types(parser: &AstParser, span: Span) -> Option<String> {
 pub struct ImportDescriptor {
   pub specifier: String,
   pub deno_types: Option<String>,
+  pub location: Location,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -463,6 +465,7 @@ pub enum TsReferenceKind {
 pub struct TsReferenceDescriptor {
   pub kind: TsReferenceKind,
   pub specifier: String,
+  pub location: Location,
 }
 
 pub fn analyze_dependencies_and_references(
@@ -496,16 +499,19 @@ pub fn analyze_dependencies_and_references(
         desc.kind != DependencyKind::DynamicImport
       })
       .map(|desc| {
+        let location = parser.get_span_location(desc.span);
         if desc.kind == DependencyKind::Import {
           let deno_types = get_deno_types(&parser, desc.span);
           ImportDescriptor {
             specifier: desc.specifier.to_string(),
             deno_types,
+            location: location.into(),
           }
         } else {
           ImportDescriptor {
             specifier: desc.specifier.to_string(),
             deno_types: None,
+            location: location.into(),
           }
         }
       })
@@ -553,7 +559,12 @@ pub fn analyze_dependencies_and_references(
         .trim_end_matches('\'')
         .to_string();
 
-      references.push(TsReferenceDescriptor { kind, specifier });
+      let location = parser.get_span_location(comment.span);
+      references.push(TsReferenceDescriptor {
+        kind,
+        specifier,
+        location: location.into(),
+      });
     }
     Ok((imports, references))
   })
@@ -595,15 +606,30 @@ console.log(qat.qat);
     vec![
       ImportDescriptor {
         specifier: "./type_definitions/foo.js".to_string(),
-        deno_types: Some("./type_definitions/foo.d.ts".to_string())
+        deno_types: Some("./type_definitions/foo.d.ts".to_string()),
+        location: Location {
+          filename: "some/file.ts".to_string(),
+          line: 9,
+          col: 0,
+        },
       },
       ImportDescriptor {
         specifier: "./type_definitions/fizz.js".to_string(),
-        deno_types: Some("./type_definitions/fizz.d.ts".to_string())
+        deno_types: Some("./type_definitions/fizz.d.ts".to_string()),
+        location: Location {
+          filename: "some/file.ts".to_string(),
+          line: 11,
+          col: 0,
+        },
       },
       ImportDescriptor {
         specifier: "./type_definitions/qat.ts".to_string(),
-        deno_types: None
+        deno_types: None,
+        location: Location {
+          filename: "some/file.ts".to_string(),
+          line: 15,
+          col: 0,
+        },
       },
     ]
   );
@@ -617,14 +643,29 @@ console.log(qat.qat);
       TsReferenceDescriptor {
         specifier: "dom".to_string(),
         kind: TsReferenceKind::Lib,
+        location: Location {
+          filename: "some/file.ts".to_string(),
+          line: 5,
+          col: 0,
+        },
       },
       TsReferenceDescriptor {
         specifier: "./type_reference.d.ts".to_string(),
         kind: TsReferenceKind::Types,
+        location: Location {
+          filename: "some/file.ts".to_string(),
+          line: 6,
+          col: 0,
+        },
       },
       TsReferenceDescriptor {
         specifier: "./type_reference/dep.ts".to_string(),
         kind: TsReferenceKind::Path,
+        location: Location {
+          filename: "some/file.ts".to_string(),
+          line: 7,
+          col: 0,
+        },
       },
     ]
   );

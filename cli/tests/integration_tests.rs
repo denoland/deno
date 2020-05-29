@@ -413,6 +413,71 @@ fn js_unit_tests() {
 }
 
 #[test]
+fn ts_dependency_recompilation() {
+  let t = TempDir::new().expect("tempdir fail");
+  let ats = t.path().join("a.ts");
+
+  std::fs::write(
+    &ats,
+    "
+    import { foo } from \"./b.ts\";
+
+    function print(str: string): void {
+        console.log(str);
+    }
+    
+    print(foo);",
+  )
+  .unwrap();
+
+  let bts = t.path().join("b.ts");
+  std::fs::write(
+    &bts,
+    "
+    export const foo = \"foo\";",
+  )
+  .unwrap();
+
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .env("NO_COLOR", "1")
+    .arg("run")
+    .arg(&ats)
+    .output()
+    .expect("failed to spawn script");
+
+  let stdout_output = std::str::from_utf8(&output.stdout).unwrap().trim();
+  let stderr_output = std::str::from_utf8(&output.stderr).unwrap().trim();
+
+  assert!(stdout_output.ends_with("foo"));
+  assert!(stderr_output.starts_with("Compile"));
+
+  // Overwrite contents of b.ts and run again
+  std::fs::write(
+    &bts,
+    "
+    export const foo = 5;",
+  )
+  .expect("error writing file");
+
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .env("NO_COLOR", "1")
+    .arg("run")
+    .arg(&ats)
+    .output()
+    .expect("failed to spawn script");
+
+  let stdout_output = std::str::from_utf8(&output.stdout).unwrap().trim();
+  let stderr_output = std::str::from_utf8(&output.stderr).unwrap().trim();
+
+  // error: TS2345 [ERROR]: Argument of type '5' is not assignable to parameter of type 'string'.
+  assert!(stderr_output.contains("TS2345"));
+  assert!(!output.status.success());
+  assert!(stdout_output.is_empty());
+}
+
+#[test]
 fn bundle_exports() {
   // First we have to generate a bundle of some module that has exports.
   let mod1 = util::root_path().join("cli/tests/subdir/mod1.ts");
@@ -691,6 +756,24 @@ fn repl_test_eof() {
   );
   assert!(out.ends_with("3\n"));
   assert!(err.is_empty());
+}
+
+#[test]
+fn repl_test_strict() {
+  let (_, err) = util::run_and_collect_output(
+    true,
+    "repl",
+    Some(vec![
+      "let a = {};",
+      "Object.preventExtensions(a);",
+      "a.c = 1;",
+    ]),
+    None,
+    false,
+  );
+  assert!(err.contains(
+    "Uncaught TypeError: Cannot add property c, object is not extensible"
+  ));
 }
 
 const REPL_MSG: &str = "exit using ctrl+d or close()\n";
@@ -1365,7 +1448,7 @@ itest!(error_004_missing_module {
 });
 
 itest!(error_005_missing_dynamic_import {
-  args: "run --reload --allow-read error_005_missing_dynamic_import.ts",
+  args: "run --reload --allow-read --quiet error_005_missing_dynamic_import.ts",
   exit_code: 1,
   output: "error_005_missing_dynamic_import.ts.out",
 });
@@ -1412,7 +1495,7 @@ itest!(error_014_catch_dynamic_import_error {
 });
 
 itest!(error_015_dynamic_import_permissions {
-  args: "run --reload error_015_dynamic_import_permissions.js",
+  args: "run --reload --quiet error_015_dynamic_import_permissions.js",
   output: "error_015_dynamic_import_permissions.out",
   exit_code: 1,
   http_server: true,
@@ -1868,14 +1951,17 @@ fn cafile_bundle_remote_exports() {
 #[test]
 fn test_permissions_with_allow() {
   for permission in &util::PERMISSION_VARIANTS {
-    let (_, err) = util::run_and_collect_output(
-      true,
-      &format!("run --allow-{0} permission_test.ts {0}Required", permission),
-      None,
-      None,
-      false,
-    );
-    assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
+    let status = util::deno_cmd()
+      .current_dir(&util::tests_path())
+      .arg("run")
+      .arg(format!("--allow-{0}", permission))
+      .arg("permission_test.ts")
+      .arg(format!("{0}Required", permission))
+      .spawn()
+      .unwrap()
+      .wait()
+      .unwrap();
+    assert!(status.success());
   }
 }
 
@@ -1897,19 +1983,22 @@ fn test_permissions_without_allow() {
 fn test_permissions_rw_inside_project_dir() {
   const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
   for permission in &PERMISSION_VARIANTS {
-    let (_, err) = util::run_and_collect_output(
-      true,
-      &format!(
-        "run --allow-{0}={1} complex_permissions_test.ts {0} {2} {2}",
+    let status = util::deno_cmd()
+      .current_dir(&util::tests_path())
+      .arg("run")
+      .arg(format!(
+        "--allow-{0}={1}",
         permission,
-        util::root_path().into_os_string().into_string().unwrap(),
-        "complex_permissions_test.ts"
-      ),
-      None,
-      None,
-      false,
-    );
-    assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
+        util::root_path().into_os_string().into_string().unwrap()
+      ))
+      .arg("complex_permissions_test.ts")
+      .arg(permission)
+      .arg("complex_permissions_test.ts")
+      .spawn()
+      .unwrap()
+      .wait()
+      .unwrap();
+    assert!(status.success());
   }
 }
 
@@ -1946,24 +2035,27 @@ fn test_permissions_rw_outside_test_dir() {
 fn test_permissions_rw_inside_test_dir() {
   const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
   for permission in &PERMISSION_VARIANTS {
-    let (_, err) = util::run_and_collect_output(
-      true,
-      &format!(
-        "run --allow-{0}={1} complex_permissions_test.ts {0} {2}",
+    let status = util::deno_cmd()
+      .current_dir(&util::tests_path())
+      .arg("run")
+      .arg(format!(
+        "--allow-{0}={1}",
         permission,
         util::root_path()
           .join("cli")
           .join("tests")
           .into_os_string()
           .into_string()
-          .unwrap(),
-        "complex_permissions_test.ts"
-      ),
-      None,
-      None,
-      false,
-    );
-    assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
+          .unwrap()
+      ))
+      .arg("complex_permissions_test.ts")
+      .arg(permission)
+      .arg("complex_permissions_test.ts")
+      .spawn()
+      .unwrap()
+      .wait()
+      .unwrap();
+    assert!(status.success());
   }
 }
 
@@ -2018,17 +2110,18 @@ fn test_permissions_rw_inside_test_and_js_dir() {
     .into_string()
     .unwrap();
   for permission in &PERMISSION_VARIANTS {
-    let (_, err) = util::run_and_collect_output(
-      true,
-      &format!(
-        "run --allow-{0}={1},{2} complex_permissions_test.ts {0} {3}",
-        permission, test_dir, js_dir, "complex_permissions_test.ts"
-      ),
-      None,
-      None,
-      false,
-    );
-    assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
+    let status = util::deno_cmd()
+      .current_dir(&util::tests_path())
+      .arg("run")
+      .arg(format!("--allow-{0}={1},{2}", permission, test_dir, js_dir))
+      .arg("complex_permissions_test.ts")
+      .arg(permission)
+      .arg("complex_permissions_test.ts")
+      .spawn()
+      .unwrap()
+      .wait()
+      .unwrap();
+    assert!(status.success());
   }
 }
 
@@ -2036,17 +2129,18 @@ fn test_permissions_rw_inside_test_and_js_dir() {
 fn test_permissions_rw_relative() {
   const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
   for permission in &PERMISSION_VARIANTS {
-    let (_, err) = util::run_and_collect_output(
-      true,
-      &format!(
-				"run --allow-{0}=. complex_permissions_test.ts {0} complex_permissions_test.ts",
-				permission
-			),
-      None,
-      None,
-      false,
-    );
-    assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
+    let status = util::deno_cmd()
+      .current_dir(&util::tests_path())
+      .arg("run")
+      .arg(format!("--allow-{0}=.", permission))
+      .arg("complex_permissions_test.ts")
+      .arg(permission)
+      .arg("complex_permissions_test.ts")
+      .spawn()
+      .unwrap()
+      .wait()
+      .unwrap();
+    assert!(status.success());
   }
 }
 
@@ -2054,17 +2148,18 @@ fn test_permissions_rw_relative() {
 fn test_permissions_rw_no_prefix() {
   const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
   for permission in &PERMISSION_VARIANTS {
-    let (_, err) = util::run_and_collect_output(
-      true,
-			&format!(
-				"run --allow-{0}=tls/../ complex_permissions_test.ts {0} complex_permissions_test.ts",
-				permission
-			),
-			None,
-			None,
-			false,
-		);
-    assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
+    let status = util::deno_cmd()
+      .current_dir(&util::tests_path())
+      .arg("run")
+      .arg(format!("--allow-{0}=tls/../", permission))
+      .arg("complex_permissions_test.ts")
+      .arg(permission)
+      .arg("complex_permissions_test.ts")
+      .spawn()
+      .unwrap()
+      .wait()
+      .unwrap();
+    assert!(status.success());
   }
 }
 
