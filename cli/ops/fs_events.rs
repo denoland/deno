@@ -18,6 +18,11 @@ use std::convert::From;
 use std::path::PathBuf;
 use tokio::sync::mpsc;
 
+
+
+//use futures::future::PollFn;
+//use std::pin::Pin;
+
 pub fn init(i: &mut CoreIsolate, s: &State) {
   i.register_op("op_fs_events_open", s.stateful_json_op2(op_fs_events_open));
   i.register_op("op_fs_events_poll", s.stateful_json_op2(op_fs_events_poll));
@@ -126,4 +131,33 @@ pub fn op_fs_events_poll(
       })
   });
   Ok(JsonOp::Async(f.boxed_local()))
+}
+
+
+
+
+pub async fn async_reader(paths: &Vec<PathBuf>) -> Result<serde_json::Value, deno_core::ErrBox> {
+  let (sender, mut receiver) = mpsc::channel::<Result<FsEvent, ErrBox>>(16);
+  let sender = std::sync::Mutex::new(sender);
+  let mut watcher: RecommendedWatcher =
+    Watcher::new_immediate(move |res: Result<NotifyEvent, NotifyError>| {
+      let res2 = res.map(FsEvent::from).map_err(ErrBox::from);
+      let mut sender = sender.lock().unwrap();
+      futures::executor::block_on(sender.send(res2)).expect("fs events error");
+    })?;
+
+  for path in paths {
+    watcher.watch(path, RecursiveMode::Recursive).map_err(ErrBox::from)?;
+  }
+
+  let poll = poll_fn(move |cx| {
+    receiver
+      .poll_recv(cx)
+      .map(|maybe_result| match maybe_result {
+        Some(Ok(value)) => Ok(json!({ "value": value, "done": false })),
+        Some(Err(err)) => Err(err),
+        None => Ok(json!({ "done": true })),
+      })
+  });
+  return poll.await
 }

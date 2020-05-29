@@ -97,6 +97,8 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use upgrade::upgrade_command;
 use url::Url;
+use tokio::select;
+use crate::ops::fs_events::async_reader;
 
 static LOGGER: Logger = Logger;
 
@@ -509,14 +511,30 @@ async fn run_repl(flags: Flags) -> Result<(), ErrBox> {
 
 async fn run_command(flags: Flags, script: String) -> Result<(), ErrBox> {
   let global_state = GlobalState::new(flags.clone())?;
-  let main_module = ModuleSpecifier::resolve_url_or_path(&script).unwrap();
-  let mut worker =
-    create_main_worker(global_state.clone(), main_module.clone())?;
-  debug!("main_module {}", main_module);
-  worker.execute_module(&main_module).await?;
-  worker.execute("window.dispatchEvent(new Event('load'))")?;
-  (&mut *worker).await?;
-  worker.execute("window.dispatchEvent(new Event('unload'))")?;
+  /*let paths: Vec<PathBuf> = flags.watch_paths;
+  let str_vec: Vec<_> = paths.iter().map(|x| x.to_string_lossy()).collect::<Vec<_>>();
+  let string: String = str_vec.join(", ");
+  println!("{:?}", string);*/
+  loop {
+    let main_module = ModuleSpecifier::resolve_url_or_path(&script).unwrap();
+    let mut worker =
+      create_main_worker(global_state.clone(), main_module.clone())?;
+    debug!("main_module {}", main_module);
+    worker.execute_module(&main_module).await?;
+    worker.execute("window.dispatchEvent(new Event('load'))")?;
+    let mut is_file_changed = false;
+    let t1 = async_reader(&flags.watch_paths).boxed_local();
+    select! {
+      _ = t1 => {
+          is_file_changed = true;
+          println!("File change detected! Restarting!");
+        },
+      _ = (&mut *worker) => {},
+    };
+    worker.execute("window.dispatchEvent(new Event('unload'))")?;
+    if !is_file_changed { break; }
+  }
+  //(&mut *worker).await?;
   if global_state.flags.lock_write {
     if let Some(ref lockfile) = global_state.lockfile {
       let g = lockfile.lock().unwrap();

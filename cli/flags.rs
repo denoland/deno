@@ -108,6 +108,7 @@ pub struct Flags {
   pub unstable: bool,
   pub v8_flags: Option<Vec<String>>,
   pub version: bool,
+  pub watch_paths: Vec<PathBuf>,
   pub write_whitelist: Vec<PathBuf>,
 }
 
@@ -488,6 +489,7 @@ fn run_test_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   v8_flags_arg_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
   permission_args_parse(flags, matches);
+  watch_arg_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
   inspect_arg_parse(flags, matches);
   unstable_arg_parse(flags, matches);
@@ -975,6 +977,15 @@ fn run_test_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
 fn run_subcommand<'a, 'b>() -> App<'a, 'b> {
   run_test_args(SubCommand::with_name("run"))
     .setting(AppSettings::TrailingVarArg)
+    .arg(
+      Arg::with_name("watch")
+        .long("watch")
+        .min_values(0)
+        .takes_value(true)
+        .use_delimiter(true)
+        .require_equals(true)
+        .help("Restart the server on file change"),
+    )
     .arg(script_arg())
     .about("Run a program given a filename or url to the module")
     .long_about(
@@ -1289,6 +1300,19 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     flags.allow_write = true;
     flags.allow_plugin = true;
     flags.allow_hrtime = true;
+  }
+}
+
+fn watch_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  if let Some(watch_p) = matches.values_of("watch") {
+    let mut raw_watch_paths: Vec<PathBuf> =
+      watch_p.map(PathBuf::from).collect();
+
+    if raw_watch_paths.is_empty() {
+      raw_watch_paths = vec![PathBuf::from(".")];
+    }
+    flags.watch_paths = resolve_fs_whitelist(&raw_watch_paths);
+    debug!("watch paths: {:#?}", &flags.watch_paths);
   }
 }
 
