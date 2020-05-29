@@ -1,7 +1,7 @@
 use super::dispatch_json::{Deserialize, JsonOp};
 use super::io::{StreamResource, StreamResourceHolder};
 use crate::op_error::OpError;
-use deno_core::CoreIsolate;
+use deno_core::CoreIsolateState;
 use deno_core::ResourceTable;
 use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
@@ -27,11 +27,11 @@ pub struct UnixListenArgs {
 }
 
 pub fn accept_unix(
-  isolate: &mut CoreIsolate,
+  isolate_state: &mut CoreIsolateState,
   rid: u32,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
-  let resource_table = isolate.resource_table.clone();
+  let resource_table = isolate_state.resource_table.clone();
   {
     let _ = resource_table
       .borrow()
@@ -78,12 +78,12 @@ pub fn accept_unix(
 }
 
 pub fn receive_unix_packet(
-  isolate: &mut CoreIsolate,
+  isolate_state: &mut CoreIsolateState,
   rid: u32,
   zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<JsonOp, OpError> {
   let mut buf = zero_copy.unwrap();
-  let resource_table = isolate.resource_table.clone();
+  let resource_table = isolate_state.resource_table.clone();
 
   let op = async move {
     let mut resource_table_ = resource_table.borrow_mut();

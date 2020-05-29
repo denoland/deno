@@ -16,20 +16,20 @@ use crate::JSError;
 use crate::ResourceTable;
 use crate::ZeroCopyBuf;
 use futures::future::FutureExt;
-use futures::stream::select;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
 use futures::task::AtomicWaker;
 use futures::Future;
-use libc::c_void;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::convert::From;
 use std::mem::forget;
+use std::ops::Deref;
+use std::ops::DerefMut;
 use std::option::Option;
 use std::pin::Pin;
 use std::rc::Rc;
-use std::sync::{Arc, Mutex, Once};
+use std::sync::Once;
 use std::task::Context;
 use std::task::Poll;
 
@@ -72,7 +72,6 @@ pub enum StartupData<'a> {
 }
 
 type JSErrorCreateFn = dyn Fn(JSError) -> ErrBox;
-type IsolateErrorHandleFn = dyn FnMut(ErrBox) -> Result<(), ErrBox>;
 
 /// A single execution context of JavaScript. Corresponds roughly to the "Web
 /// Worker" concept in the DOM. An CoreIsolate is a Future that can be used with
@@ -82,28 +81,53 @@ type IsolateErrorHandleFn = dyn FnMut(ErrBox) -> Result<(), ErrBox>;
 /// Ops are created in JavaScript by calling Deno.core.dispatch(), and in Rust
 /// by implementing dispatcher function that takes control buffer and optional zero copy buffer
 /// as arguments. An async Op corresponds exactly to a Promise in JavaScript.
-#[allow(unused)]
 pub struct CoreIsolate {
-  pub v8_isolate: Option<v8::OwnedIsolate>,
+  // This is an Option<OwnedIsolate> instead of just OwnedIsolate to workaround
+  // an safety issue with SnapshotCreator. See CoreIsolate::drop.
+  v8_isolate: Option<v8::OwnedIsolate>,
   snapshot_creator: Option<v8::SnapshotCreator>,
   has_snapshotted: bool,
+  needs_init: bool,
+  startup_script: Option<OwnedScript>,
+}
+
+/// Internal state for CoreIsolate which is stored in one of v8::Isolate's
+/// embedder slots.
+pub struct CoreIsolateState {
   pub resource_table: Rc<RefCell<ResourceTable>>,
   pub global_context: v8::Global<v8::Context>,
   pub(crate) shared_ab: v8::Global<v8::SharedArrayBuffer>,
   pub(crate) js_recv_cb: v8::Global<v8::Function>,
   pub(crate) js_macrotask_cb: v8::Global<v8::Function>,
   pub(crate) pending_promise_exceptions: HashMap<i32, v8::Global<v8::Value>>,
-  shared_isolate_handle: Arc<Mutex<Option<*mut v8::Isolate>>>,
   pub(crate) js_error_create_fn: Box<JSErrorCreateFn>,
-  needs_init: bool,
   pub(crate) shared: SharedQueue,
   pending_ops: FuturesUnordered<PendingOpFuture>,
   pending_unref_ops: FuturesUnordered<PendingOpFuture>,
   have_unpolled_ops: bool,
-  startup_script: Option<OwnedScript>,
   pub op_registry: OpRegistry,
   waker: AtomicWaker,
-  error_handler: Option<Box<IsolateErrorHandleFn>>,
+}
+
+// TODO(ry) The trait v8::InIsolate is superfluous. HandleScope::new should just
+// take &mut v8::Isolate.
+impl v8::InIsolate for CoreIsolate {
+  fn isolate(&mut self) -> &mut v8::Isolate {
+    self.v8_isolate.as_mut().unwrap()
+  }
+}
+
+impl Deref for CoreIsolate {
+  type Target = v8::Isolate;
+  fn deref(&self) -> &v8::Isolate {
+    self.v8_isolate.as_ref().unwrap()
+  }
+}
+
+impl DerefMut for CoreIsolate {
+  fn deref_mut(&mut self) -> &mut v8::Isolate {
+    self.v8_isolate.as_mut().unwrap()
+  }
 }
 
 impl Drop for CoreIsolate {
@@ -128,8 +152,6 @@ impl Drop for CoreIsolate {
   }
 }
 
-static DENO_INIT: Once = Once::new();
-
 #[allow(clippy::missing_safety_doc)]
 pub unsafe fn v8_init() {
   let platform = v8::new_default_platform().unwrap();
@@ -150,7 +172,8 @@ pub unsafe fn v8_init() {
 impl CoreIsolate {
   /// startup_data defines the snapshot or script used at startup to initialize
   /// the isolate.
-  pub fn new(startup_data: StartupData, will_snapshot: bool) -> Box<Self> {
+  pub fn new(startup_data: StartupData, will_snapshot: bool) -> Self {
+    static DENO_INIT: Once = Once::new();
     DENO_INIT.call_once(|| {
       unsafe { v8_init() };
     });
@@ -210,50 +233,130 @@ impl CoreIsolate {
       (isolate, None)
     };
 
-    let shared = SharedQueue::new(RECOMMENDED_SIZE);
-    let needs_init = true;
-
-    let core_isolate = Self {
-      v8_isolate: None,
+    isolate.set_slot(Rc::new(RefCell::new(CoreIsolateState {
       global_context,
       resource_table: Rc::new(RefCell::new(ResourceTable::default())),
       pending_promise_exceptions: HashMap::new(),
       shared_ab: v8::Global::<v8::SharedArrayBuffer>::new(),
       js_recv_cb: v8::Global::<v8::Function>::new(),
       js_macrotask_cb: v8::Global::<v8::Function>::new(),
-      snapshot_creator: maybe_snapshot_creator,
-      has_snapshotted: false,
-      shared_isolate_handle: Arc::new(Mutex::new(None)),
       js_error_create_fn: Box::new(JSError::create),
-      shared,
-      needs_init,
+      shared: SharedQueue::new(RECOMMENDED_SIZE),
       pending_ops: FuturesUnordered::new(),
       pending_unref_ops: FuturesUnordered::new(),
       have_unpolled_ops: false,
-      startup_script,
       op_registry: OpRegistry::new(),
       waker: AtomicWaker::new(),
-      error_handler: None,
-    };
+    })));
 
-    let mut boxed_isolate = Box::new(core_isolate);
-    {
-      let core_isolate_ptr: *mut Self = Box::into_raw(boxed_isolate);
-      unsafe { isolate.set_data(0, core_isolate_ptr as *mut c_void) };
-      boxed_isolate = unsafe { Box::from_raw(core_isolate_ptr) };
-      let shared_handle_ptr = &mut *isolate;
-      *boxed_isolate.shared_isolate_handle.lock().unwrap() =
-        Some(shared_handle_ptr);
-      boxed_isolate.v8_isolate = Some(isolate);
+    Self {
+      v8_isolate: Some(isolate),
+      snapshot_creator: maybe_snapshot_creator,
+      has_snapshotted: false,
+      needs_init: true,
+      startup_script,
     }
-
-    boxed_isolate
   }
 
   fn setup_isolate(mut isolate: v8::OwnedIsolate) -> v8::OwnedIsolate {
     isolate.set_capture_stack_trace_for_uncaught_exceptions(true, 10);
     isolate.set_promise_reject_callback(bindings::promise_reject_callback);
     isolate
+  }
+
+  pub fn state(isolate: &v8::Isolate) -> Rc<RefCell<CoreIsolateState>> {
+    let s = isolate.get_slot::<Rc<RefCell<CoreIsolateState>>>().unwrap();
+    s.clone()
+  }
+
+  /// Executes a bit of built-in JavaScript to provide Deno.sharedQueue.
+  fn shared_init(&mut self) {
+    if self.needs_init {
+      self.needs_init = false;
+      js_check(self.execute("core.js", include_str!("core.js")));
+      // Maybe execute the startup script.
+      if let Some(s) = self.startup_script.take() {
+        self.execute(&s.filename, &s.source).unwrap()
+      }
+    }
+  }
+
+  /// Executes traditional JavaScript code (traditional = not ES modules)
+  ///
+  /// ErrBox can be downcast to a type that exposes additional information about
+  /// the V8 exception. By default this type is JSError, however it may be a
+  /// different type if CoreIsolate::set_js_error_create_fn() has been used.
+  pub fn execute(
+    &mut self,
+    js_filename: &str,
+    js_source: &str,
+  ) -> Result<(), ErrBox> {
+    self.shared_init();
+
+    let state_rc = Self::state(self);
+    let state = state_rc.borrow();
+
+    let mut hs = v8::HandleScope::new(self.v8_isolate.as_mut().unwrap());
+    let scope = hs.enter();
+    let context = state.global_context.get(scope).unwrap();
+    let mut cs = v8::ContextScope::new(scope, context);
+    let scope = cs.enter();
+
+    drop(state);
+
+    let source = v8::String::new(scope, js_source).unwrap();
+    let name = v8::String::new(scope, js_filename).unwrap();
+    let origin = bindings::script_origin(scope, name);
+
+    let mut try_catch = v8::TryCatch::new(scope);
+    let tc = try_catch.enter();
+
+    let mut script =
+      match v8::Script::compile(scope, context, source, Some(&origin)) {
+        Some(script) => script,
+        None => {
+          let exception = tc.exception().unwrap();
+          return exception_to_err_result(scope, exception);
+        }
+      };
+
+    match script.run(scope, context) {
+      Some(_) => Ok(()),
+      None => {
+        assert!(tc.has_caught());
+        let exception = tc.exception().unwrap();
+        exception_to_err_result(scope, exception)
+      }
+    }
+  }
+
+  /// Takes a snapshot. The isolate should have been created with will_snapshot
+  /// set to true.
+  ///
+  /// ErrBox can be downcast to a type that exposes additional information about
+  /// the V8 exception. By default this type is JSError, however it may be a
+  /// different type if CoreIsolate::set_js_error_create_fn() has been used.
+  pub fn snapshot(&mut self) -> v8::StartupData {
+    assert!(self.snapshot_creator.is_some());
+    let state = Self::state(self);
+
+    // Note: create_blob() method must not be called from within a HandleScope.
+    // The HandleScope created here is exited at the end of the block.
+    // TODO(piscisaureus): The rusty_v8 type system should enforce this.
+    {
+      let v8_isolate = self.v8_isolate.as_mut().unwrap();
+      let mut hs = v8::HandleScope::new(v8_isolate);
+      let scope = hs.enter();
+      state.borrow_mut().global_context.reset(scope);
+    }
+
+    let snapshot_creator = self.snapshot_creator.as_mut().unwrap();
+    let snapshot = snapshot_creator
+      .create_blob(v8::FunctionCodeHandling::Keep)
+      .unwrap();
+    self.has_snapshotted = true;
+
+    snapshot
   }
 
   /// Defines the how Deno.core.dispatch() acts.
@@ -263,7 +366,125 @@ impl CoreIsolate {
   /// Requires runtime to explicitly ask for op ids before using any of the ops.
   pub fn register_op<F>(&mut self, name: &str, op: F) -> OpId
   where
-    F: Fn(&mut CoreIsolate, &[u8], Option<ZeroCopyBuf>) -> Op + 'static,
+    F: Fn(&mut CoreIsolateState, &[u8], Option<ZeroCopyBuf>) -> Op + 'static,
+  {
+    let state_rc = Self::state(self);
+    let mut state = state_rc.borrow_mut();
+    state.op_registry.register(name, op)
+  }
+}
+
+impl Future for CoreIsolate {
+  type Output = Result<(), ErrBox>;
+
+  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+    let core_isolate = self.get_mut();
+    core_isolate.shared_init();
+
+    let state_rc = Self::state(core_isolate);
+    {
+      let state = state_rc.borrow();
+      state.waker.register(cx.waker());
+    }
+
+    let mut hs = v8::HandleScope::new(core_isolate);
+    let scope = hs.enter();
+    let context = {
+      let state = state_rc.borrow();
+      state.global_context.get(scope).unwrap()
+    };
+    let mut cs = v8::ContextScope::new(scope, context);
+    let scope = cs.enter();
+
+    check_promise_exceptions(scope)?;
+
+    let mut overflow_response: Option<(OpId, Buf)> = None;
+
+    loop {
+      let mut state = state_rc.borrow_mut();
+      // Now handle actual ops.
+      state.have_unpolled_ops = false;
+
+      let pending_r = state.pending_ops.poll_next_unpin(cx);
+      match pending_r {
+        Poll::Ready(None) => break,
+        Poll::Pending => break,
+        Poll::Ready(Some((op_id, buf))) => {
+          let successful_push = state.shared.push(op_id, &buf);
+          if !successful_push {
+            // If we couldn't push the response to the shared queue, because
+            // there wasn't enough size, we will return the buffer via the
+            // legacy route, using the argument of deno_respond.
+            overflow_response = Some((op_id, buf));
+            break;
+          }
+        }
+      };
+    }
+
+    loop {
+      let mut state = state_rc.borrow_mut();
+      let unref_r = state.pending_unref_ops.poll_next_unpin(cx);
+      #[allow(clippy::match_wild_err_arm)]
+      match unref_r {
+        Poll::Ready(None) => break,
+        Poll::Pending => break,
+        Poll::Ready(Some((op_id, buf))) => {
+          let successful_push = state.shared.push(op_id, &buf);
+          if !successful_push {
+            // If we couldn't push the response to the shared queue, because
+            // there wasn't enough size, we will return the buffer via the
+            // legacy route, using the argument of deno_respond.
+            overflow_response = Some((op_id, buf));
+            break;
+          }
+        }
+      };
+    }
+
+    {
+      let state = state_rc.borrow();
+      if state.shared.size() > 0 {
+        drop(state);
+        async_op_response(scope, None)?;
+        // The other side should have shifted off all the messages.
+        let state = state_rc.borrow();
+        assert_eq!(state.shared.size(), 0);
+      }
+    }
+
+    {
+      if let Some((op_id, buf)) = overflow_response.take() {
+        async_op_response(scope, Some((op_id, buf)))?;
+      }
+
+      drain_macrotasks(scope)?;
+
+      check_promise_exceptions(scope)?;
+    }
+
+    let state = state_rc.borrow();
+    // We're idle if pending_ops is empty.
+    if state.pending_ops.is_empty() {
+      Poll::Ready(Ok(()))
+    } else {
+      if state.have_unpolled_ops {
+        state.waker.wake();
+      }
+      Poll::Pending
+    }
+  }
+}
+
+impl CoreIsolateState {
+  /// Defines the how Deno.core.dispatch() acts.
+  /// Called whenever Deno.core.dispatch() is called in JavaScript. zero_copy_buf
+  /// corresponds to the second argument of Deno.core.dispatch().
+  ///
+  /// Requires runtime to explicitly ask for op ids before using any of the ops.
+  pub fn register_op<F>(&mut self, name: &str, op: F) -> OpId
+  where
+    F: Fn(&mut CoreIsolateState, &[u8], Option<ZeroCopyBuf>) -> Op + 'static,
   {
     self.op_registry.register(name, op)
   }
@@ -276,18 +497,6 @@ impl CoreIsolate {
     f: impl Fn(JSError) -> ErrBox + 'static,
   ) {
     self.js_error_create_fn = Box::new(f);
-  }
-
-  /// Executes a bit of built-in JavaScript to provide Deno.sharedQueue.
-  pub(crate) fn shared_init(&mut self) {
-    if self.needs_init {
-      self.needs_init = false;
-      js_check(self.execute("core.js", include_str!("core.js")));
-      // Maybe execute the startup script.
-      if let Some(s) = self.startup_script.take() {
-        self.execute(&s.filename, &s.source).unwrap()
-      }
-    }
   }
 
   pub fn dispatch_op<'s>(
@@ -329,180 +538,23 @@ impl CoreIsolate {
       }
     }
   }
-
-  /// Executes traditional JavaScript code (traditional = not ES modules)
-  ///
-  /// ErrBox can be downcast to a type that exposes additional information about
-  /// the V8 exception. By default this type is JSError, however it may be a
-  /// different type if CoreIsolate::set_js_error_create_fn() has been used.
-  pub fn execute(
-    &mut self,
-    js_filename: &str,
-    js_source: &str,
-  ) -> Result<(), ErrBox> {
-    self.shared_init();
-
-    let js_error_create_fn = &*self.js_error_create_fn;
-    let v8_isolate = self.v8_isolate.as_mut().unwrap();
-
-    let mut hs = v8::HandleScope::new(v8_isolate);
-    let scope = hs.enter();
-    assert!(!self.global_context.is_empty());
-    let context = self.global_context.get(scope).unwrap();
-    let mut cs = v8::ContextScope::new(scope, context);
-    let scope = cs.enter();
-
-    let source = v8::String::new(scope, js_source).unwrap();
-    let name = v8::String::new(scope, js_filename).unwrap();
-    let origin = bindings::script_origin(scope, name);
-
-    let mut try_catch = v8::TryCatch::new(scope);
-    let tc = try_catch.enter();
-
-    let mut script =
-      match v8::Script::compile(scope, context, source, Some(&origin)) {
-        Some(script) => script,
-        None => {
-          let exception = tc.exception().unwrap();
-          return exception_to_err_result(scope, exception, js_error_create_fn);
-        }
-      };
-
-    match script.run(scope, context) {
-      Some(_) => Ok(()),
-      None => {
-        assert!(tc.has_caught());
-        let exception = tc.exception().unwrap();
-        exception_to_err_result(scope, exception, js_error_create_fn)
-      }
-    }
-  }
-
-  /// Takes a snapshot. The isolate should have been created with will_snapshot
-  /// set to true.
-  ///
-  /// ErrBox can be downcast to a type that exposes additional information about
-  /// the V8 exception. By default this type is JSError, however it may be a
-  /// different type if CoreIsolate::set_js_error_create_fn() has been used.
-  pub fn snapshot(&mut self) -> v8::StartupData {
-    assert!(self.snapshot_creator.is_some());
-
-    // Note: create_blob() method must not be called from within a HandleScope.
-    // The HandleScope created here is exited at the end of the block.
-    // TODO(piscisaureus): The rusty_v8 type system should enforce this.
-    {
-      let v8_isolate = self.v8_isolate.as_mut().unwrap();
-      let mut hs = v8::HandleScope::new(v8_isolate);
-      let scope = hs.enter();
-      self.global_context.reset(scope);
-    }
-
-    let snapshot_creator = self.snapshot_creator.as_mut().unwrap();
-    let snapshot = snapshot_creator
-      .create_blob(v8::FunctionCodeHandling::Keep)
-      .unwrap();
-    self.has_snapshotted = true;
-
-    snapshot
-  }
-}
-
-impl Future for CoreIsolate {
-  type Output = Result<(), ErrBox>;
-
-  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-    let inner = self.get_mut();
-    inner.waker.register(cx.waker());
-    inner.shared_init();
-
-    let v8_isolate = inner.v8_isolate.as_mut().unwrap();
-    let js_error_create_fn = &*inner.js_error_create_fn;
-    let js_recv_cb = &inner.js_recv_cb;
-    let js_macrotask_cb = &inner.js_macrotask_cb;
-    let pending_promise_exceptions = &mut inner.pending_promise_exceptions;
-
-    let mut hs = v8::HandleScope::new(v8_isolate);
-    let scope = hs.enter();
-    let context = inner.global_context.get(scope).unwrap();
-    let mut cs = v8::ContextScope::new(scope, context);
-    let scope = cs.enter();
-
-    check_promise_exceptions(
-      scope,
-      pending_promise_exceptions,
-      js_error_create_fn,
-    )?;
-
-    let mut overflow_response: Option<(OpId, Buf)> = None;
-
-    loop {
-      // Now handle actual ops.
-      inner.have_unpolled_ops = false;
-      #[allow(clippy::match_wild_err_arm)]
-      match select(&mut inner.pending_ops, &mut inner.pending_unref_ops)
-        .poll_next_unpin(cx)
-      {
-        Poll::Ready(None) => break,
-        Poll::Pending => break,
-        Poll::Ready(Some((op_id, buf))) => {
-          let successful_push = inner.shared.push(op_id, &buf);
-          if !successful_push {
-            // If we couldn't push the response to the shared queue, because
-            // there wasn't enough size, we will return the buffer via the
-            // legacy route, using the argument of deno_respond.
-            overflow_response = Some((op_id, buf));
-            break;
-          }
-        }
-      }
-    }
-
-    if inner.shared.size() > 0 {
-      async_op_response(scope, None, js_recv_cb, js_error_create_fn)?;
-      // The other side should have shifted off all the messages.
-      assert_eq!(inner.shared.size(), 0);
-    }
-
-    if let Some((op_id, buf)) = overflow_response.take() {
-      async_op_response(
-        scope,
-        Some((op_id, buf)),
-        js_recv_cb,
-        js_error_create_fn,
-      )?;
-    }
-
-    drain_macrotasks(scope, js_macrotask_cb, js_error_create_fn)?;
-
-    check_promise_exceptions(
-      scope,
-      pending_promise_exceptions,
-      js_error_create_fn,
-    )?;
-
-    // We're idle if pending_ops is empty.
-    if inner.pending_ops.is_empty() {
-      Poll::Ready(Ok(()))
-    } else {
-      if inner.have_unpolled_ops {
-        inner.waker.wake();
-      }
-      Poll::Pending
-    }
-  }
 }
 
 fn async_op_response<'s>(
   scope: &mut impl v8::ToLocal<'s>,
   maybe_buf: Option<(OpId, Box<[u8]>)>,
-  js_recv_cb: &v8::Global<v8::Function>,
-  js_error_create_fn: &JSErrorCreateFn,
 ) -> Result<(), ErrBox> {
   let context = scope.get_current_context().unwrap();
   let global: v8::Local<v8::Value> = context.global(scope).into();
-  let js_recv_cb = js_recv_cb
+
+  let state_rc = CoreIsolate::state(scope.isolate());
+  let state = state_rc.borrow_mut();
+
+  let js_recv_cb = state
+    .js_recv_cb
     .get(scope)
     .expect("Deno.core.recv has not been called.");
+  drop(state);
 
   // TODO(piscisaureus): properly integrate TryCatch in the scope chain.
   let mut try_catch = v8::TryCatch::new(scope);
@@ -521,20 +573,21 @@ fn async_op_response<'s>(
 
   match tc.exception() {
     None => Ok(()),
-    Some(exception) => {
-      exception_to_err_result(scope, exception, js_error_create_fn)
-    }
+    Some(exception) => exception_to_err_result(scope, exception),
   }
 }
 
 fn drain_macrotasks<'s>(
   scope: &mut impl v8::ToLocal<'s>,
-  js_macrotask_cb: &v8::Global<v8::Function>,
-  js_error_create_fn: &JSErrorCreateFn,
 ) -> Result<(), ErrBox> {
   let context = scope.get_current_context().unwrap();
   let global: v8::Local<v8::Value> = context.global(scope).into();
-  let js_macrotask_cb = js_macrotask_cb.get(scope);
+
+  let js_macrotask_cb = {
+    let state_rc = CoreIsolate::state(scope.isolate());
+    let state = state_rc.borrow_mut();
+    state.js_macrotask_cb.get(scope)
+  };
   if js_macrotask_cb.is_none() {
     return Ok(());
   }
@@ -550,7 +603,7 @@ fn drain_macrotasks<'s>(
     let is_done = js_macrotask_cb.call(scope, context, global, &[]);
 
     if let Some(exception) = tc.exception() {
-      return exception_to_err_result(scope, exception, js_error_create_fn);
+      return exception_to_err_result(scope, exception);
     }
 
     let is_done = is_done.unwrap();
@@ -565,7 +618,6 @@ fn drain_macrotasks<'s>(
 pub(crate) fn exception_to_err_result<'s, T>(
   scope: &mut impl v8::ToLocal<'s>,
   exception: v8::Local<v8::Value>,
-  js_error_create_fn: &JSErrorCreateFn,
 ) -> Result<T, ErrBox> {
   // TODO(piscisaureus): in rusty_v8, `is_execution_terminating()` should
   // also be implemented on `struct Isolate`.
@@ -593,7 +645,10 @@ pub(crate) fn exception_to_err_result<'s, T>(
   }
 
   let js_error = JSError::from_v8_exception(scope, exception);
-  let js_error = (js_error_create_fn)(js_error);
+
+  let state_rc = CoreIsolate::state(scope.isolate());
+  let state = state_rc.borrow();
+  let js_error = (state.js_error_create_fn)(js_error);
 
   if is_terminating_exception {
     // Re-enable exception termination.
@@ -607,13 +662,15 @@ pub(crate) fn exception_to_err_result<'s, T>(
 
 fn check_promise_exceptions<'s>(
   scope: &mut impl v8::ToLocal<'s>,
-  pending_promise_exceptions: &mut HashMap<i32, v8::Global<v8::Value>>,
-  js_error_create_fn: &JSErrorCreateFn,
 ) -> Result<(), ErrBox> {
-  if let Some(&key) = pending_promise_exceptions.keys().next() {
-    let handle = pending_promise_exceptions.remove(&key).unwrap();
+  let state_rc = CoreIsolate::state(scope.isolate());
+  let mut state = state_rc.borrow_mut();
+
+  if let Some(&key) = state.pending_promise_exceptions.keys().next() {
+    let handle = state.pending_promise_exceptions.remove(&key).unwrap();
+    drop(state);
     let exception = handle.get(scope).expect("empty error handle");
-    exception_to_err_result(scope, exception, js_error_create_fn)
+    exception_to_err_result(scope, exception)
   } else {
     Ok(())
   }
@@ -632,6 +689,7 @@ pub mod tests {
   use futures::future::lazy;
   use std::ops::FnOnce;
   use std::sync::atomic::{AtomicUsize, Ordering};
+  use std::sync::Arc;
 
   pub fn run_in_task<F>(f: F)
   where
@@ -666,13 +724,13 @@ pub mod tests {
     OverflowResAsync,
   }
 
-  pub fn setup(mode: Mode) -> (Box<CoreIsolate>, Arc<AtomicUsize>) {
+  pub fn setup(mode: Mode) -> (CoreIsolate, Arc<AtomicUsize>) {
     let dispatch_count = Arc::new(AtomicUsize::new(0));
     let dispatch_count_ = dispatch_count.clone();
 
     let mut isolate = CoreIsolate::new(StartupData::None, false);
 
-    let dispatcher = move |_isolate: &mut CoreIsolate,
+    let dispatcher = move |_state: &mut CoreIsolateState,
                            control: &[u8],
                            _zero_copy: Option<ZeroCopyBuf>|
           -> Op {
