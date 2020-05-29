@@ -250,9 +250,6 @@ pub extern "C" fn host_import_module_dynamically_callback(
   let mut cbs = v8::CallbackScope::new_escapable(context);
   let mut hs = v8::EscapableHandleScope::new(cbs.enter());
   let scope = hs.enter();
-  let isolate = scope.isolate();
-  let core_isolate: &mut EsIsolate =
-    unsafe { &mut *(isolate.get_data(1) as *mut EsIsolate) };
 
   // NOTE(bartlomieju): will crash for non-UTF-8 specifier
   let specifier_str = specifier
@@ -277,11 +274,11 @@ pub extern "C" fn host_import_module_dynamically_callback(
   let mut resolver_handle = v8::Global::new();
   resolver_handle.set(scope, resolver);
 
-  core_isolate.dyn_import_cb(
-    resolver_handle,
-    &specifier_str,
-    &referrer_name_str,
-  );
+  {
+    let state_rc = EsIsolate::state(scope.isolate());
+    let mut state = state_rc.borrow_mut();
+    state.dyn_import_cb(resolver_handle, &specifier_str, &referrer_name_str);
+  }
 
   &mut *scope.escape(promise)
 }
@@ -294,14 +291,13 @@ pub extern "C" fn host_initialize_import_meta_object_callback(
   let mut cbs = v8::CallbackScope::new(context);
   let mut hs = v8::HandleScope::new(cbs.enter());
   let scope = hs.enter();
-  let isolate = scope.isolate();
-  let core_isolate: &mut EsIsolate =
-    unsafe { &mut *(isolate.get_data(1) as *mut EsIsolate) };
+  let state_rc = EsIsolate::state(scope.isolate());
+  let state = state_rc.borrow();
 
   let id = module.get_identity_hash();
   assert_ne!(id, 0);
 
-  let info = core_isolate.modules.get_info(id).expect("Module not found");
+  let info = state.modules.get_info(id).expect("Module not found");
 
   meta.create_data_property(
     context,
@@ -320,10 +316,10 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
   let mut hs = v8::HandleScope::new(cbs.enter());
   let scope = hs.enter();
 
-  let core_isolate: &mut CoreIsolate =
-    unsafe { &mut *(scope.isolate().get_data(0) as *mut CoreIsolate) };
+  let state_rc = CoreIsolate::state(scope.isolate());
+  let mut state = state_rc.borrow_mut();
 
-  let context = core_isolate.global_context.get(scope).unwrap();
+  let context = state.global_context.get(scope).unwrap();
   let mut cs = v8::ContextScope::new(scope, context);
   let scope = cs.enter();
 
@@ -335,13 +331,13 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
       let error = message.get_value();
       let mut error_global = v8::Global::<v8::Value>::new();
       error_global.set(scope, error);
-      core_isolate
+      state
         .pending_promise_exceptions
         .insert(promise_id, error_global);
     }
     v8::PromiseRejectEvent::PromiseHandlerAddedAfterReject => {
       if let Some(mut handle) =
-        core_isolate.pending_promise_exceptions.remove(&promise_id)
+        state.pending_promise_exceptions.remove(&promise_id)
       {
         handle.reset(scope);
       }
@@ -415,17 +411,17 @@ fn recv(
   args: v8::FunctionCallbackArguments,
   _rv: v8::ReturnValue,
 ) {
-  let core_isolate: &mut CoreIsolate =
-    unsafe { &mut *(scope.isolate().get_data(0) as *mut CoreIsolate) };
+  let state_rc = CoreIsolate::state(scope.isolate());
+  let mut state = state_rc.borrow_mut();
 
-  if !core_isolate.js_recv_cb.is_empty() {
+  if !state.js_recv_cb.is_empty() {
     let msg = v8::String::new(scope, "Deno.core.recv already called.").unwrap();
     scope.isolate().throw_exception(msg.into());
     return;
   }
 
   let recv_fn = v8::Local::<v8::Function>::try_from(args.get(0)).unwrap();
-  core_isolate.js_recv_cb.set(scope, recv_fn);
+  state.js_recv_cb.set(scope, recv_fn);
 }
 
 fn send(
@@ -433,10 +429,6 @@ fn send(
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
-  let core_isolate: &mut CoreIsolate =
-    unsafe { &mut *(scope.isolate().get_data(0) as *mut CoreIsolate) };
-  assert!(!core_isolate.global_context.is_empty());
-
   let op_id = match v8::Local::<v8::Uint32>::try_from(args.get(0)) {
     Ok(op_id) => op_id.value() as u32,
     Err(err) => {
@@ -465,9 +457,12 @@ fn send(
       .map(ZeroCopyBuf::new)
       .ok();
 
+  let state_rc = CoreIsolate::state(scope.isolate());
+  let mut state = state_rc.borrow_mut();
+  assert!(!state.global_context.is_empty());
+
   // If response is empty then it's either async op or exception was thrown
-  let maybe_response =
-    core_isolate.dispatch_op(scope, op_id, control, zero_copy);
+  let maybe_response = state.dispatch_op(scope, op_id, control, zero_copy);
 
   if let Some(response) = maybe_response {
     // Synchronous response.
@@ -476,7 +471,7 @@ fn send(
 
     if !buf.is_empty() {
       let ui8 = boxed_slice_to_uint8array(scope, buf);
-      rv.set(ui8.into())
+      rv.set(ui8.into());
     }
   }
 }
@@ -486,10 +481,10 @@ fn set_macrotask_callback(
   args: v8::FunctionCallbackArguments,
   _rv: v8::ReturnValue,
 ) {
-  let core_isolate: &mut CoreIsolate =
-    unsafe { &mut *(scope.isolate().get_data(0) as *mut CoreIsolate) };
+  let state_rc = CoreIsolate::state(scope.isolate());
+  let mut state = state_rc.borrow_mut();
 
-  if !core_isolate.js_macrotask_cb.is_empty() {
+  if !state.js_macrotask_cb.is_empty() {
     let msg =
       v8::String::new(scope, "Deno.core.setMacrotaskCallback already called.")
         .unwrap();
@@ -499,7 +494,7 @@ fn set_macrotask_callback(
 
   let macrotask_cb_fn =
     v8::Local::<v8::Function>::try_from(args.get(0)).unwrap();
-  core_isolate.js_macrotask_cb.set(scope, macrotask_cb_fn);
+  state.js_macrotask_cb.set(scope, macrotask_cb_fn);
 }
 
 fn eval_context(
@@ -507,10 +502,10 @@ fn eval_context(
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
-  let core_isolate: &mut CoreIsolate =
-    unsafe { &mut *(scope.isolate().get_data(0) as *mut CoreIsolate) };
-  assert!(!core_isolate.global_context.is_empty());
-  let context = core_isolate.global_context.get(scope).unwrap();
+  let state_rc = CoreIsolate::state(scope.isolate());
+  let state = state_rc.borrow();
+  assert!(!state.global_context.is_empty());
+  let context = state.global_context.get(scope).unwrap();
 
   let source = match v8::Local::<v8::String>::try_from(args.get(0)) {
     Ok(s) => s,
@@ -643,10 +638,10 @@ fn format_error(
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
-  let core_isolate: &mut CoreIsolate =
-    unsafe { &mut *(scope.isolate().get_data(0) as *mut CoreIsolate) };
   let e = JSError::from_v8_exception(scope, args.get(0));
-  let e = (core_isolate.js_error_create_fn)(e);
+  let state_rc = CoreIsolate::state(scope.isolate());
+  let state = state_rc.borrow();
+  let e = (state.js_error_create_fn)(e);
   let e = e.to_string();
   let e = v8::String::new(scope, &e).unwrap();
   rv.set(e.into())
@@ -734,19 +729,19 @@ fn shared_getter(
   _args: v8::PropertyCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
-  let core_isolate: &mut CoreIsolate =
-    unsafe { &mut *(scope.isolate().get_data(0) as *mut CoreIsolate) };
+  let state_rc = CoreIsolate::state(scope.isolate());
+  let mut state = state_rc.borrow_mut();
 
   // Lazily initialize the persistent external ArrayBuffer.
-  if core_isolate.shared_ab.is_empty() {
+  if state.shared_ab.is_empty() {
     let ab = v8::SharedArrayBuffer::with_backing_store(
       scope,
-      core_isolate.shared.get_backing_store(),
+      state.shared.get_backing_store(),
     );
-    core_isolate.shared_ab.set(scope, ab);
+    state.shared_ab.set(scope, ab);
   }
 
-  let shared_ab = core_isolate.shared_ab.get(scope).unwrap();
+  let shared_ab = state.shared_ab.get(scope).unwrap();
   rv.set(shared_ab.into());
 }
 
@@ -759,11 +754,11 @@ pub fn module_resolve_callback<'s>(
   let mut scope = v8::EscapableHandleScope::new(scope.enter());
   let scope = scope.enter();
 
-  let core_isolate: &mut EsIsolate =
-    unsafe { &mut *(scope.isolate().get_data(1) as *mut EsIsolate) };
+  let state_rc = EsIsolate::state(scope.isolate());
+  let mut state = state_rc.borrow_mut();
 
   let referrer_id = referrer.get_identity_hash();
-  let referrer_name = core_isolate
+  let referrer_name = state
     .modules
     .get_info(referrer_id)
     .expect("ModuleInfo not found")
@@ -778,8 +773,8 @@ pub fn module_resolve_callback<'s>(
     let req_str = req.to_rust_string_lossy(scope);
 
     if req_str == specifier_str {
-      let id = core_isolate.module_resolve_cb(&req_str, referrer_id);
-      let maybe_info = core_isolate.modules.get_info(id);
+      let id = state.module_resolve_cb(&req_str, referrer_id);
+      let maybe_info = state.modules.get_info(id);
 
       if maybe_info.is_none() {
         let msg = format!(
@@ -810,10 +805,10 @@ fn get_promise_details(
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
-  let core_isolate: &mut CoreIsolate =
-    unsafe { &mut *(scope.isolate().get_data(0) as *mut CoreIsolate) };
-  assert!(!core_isolate.global_context.is_empty());
-  let context = core_isolate.global_context.get(scope).unwrap();
+  let state_rc = CoreIsolate::state(scope.isolate());
+  let state = state_rc.borrow();
+  assert!(!state.global_context.is_empty());
+  let context = state.global_context.get(scope).unwrap();
 
   let promise = match v8::Local::<v8::Promise>::try_from(args.get(0)) {
     Ok(val) => val,

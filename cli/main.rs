@@ -80,7 +80,9 @@ use crate::state::State;
 use crate::tsc::TargetLib;
 use crate::worker::MainWorker;
 use deno_core::v8_set_flags;
+use deno_core::CoreIsolate;
 use deno_core::ErrBox;
+use deno_core::EsIsolate;
 use deno_core::ModuleSpecifier;
 use flags::DenoSubcommand;
 use flags::Flags;
@@ -170,7 +172,9 @@ fn create_main_worker(
 
   {
     let (stdin, stdout, stderr) = get_stdio();
-    let mut t = worker.resource_table.borrow_mut();
+    let state_rc = CoreIsolate::state(&worker.isolate);
+    let state = state_rc.borrow();
+    let mut t = state.resource_table.borrow_mut();
     t.add("stdin", Box::new(stdin));
     t.add("stdout", Box::new(stdout));
     t.add("stderr", Box::new(stderr));
@@ -268,7 +272,10 @@ async fn print_file_info(
     );
   }
 
-  if let Some(deps) = worker.isolate.modules.deps(&module_specifier) {
+  let es_state_rc = EsIsolate::state(&worker.isolate);
+  let es_state = es_state_rc.borrow();
+
+  if let Some(deps) = es_state.modules.deps(&module_specifier) {
     println!("{}{}", colors::bold("deps:\n".to_string()), deps.name);
     if let Some(ref depsdeps) = deps.deps {
       for d in depsdeps {
