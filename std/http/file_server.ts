@@ -6,7 +6,7 @@
 // TODO Add tests like these:
 // https://github.com/indexzero/http-server/blob/master/test/http-server-test.js
 
-const { args, stat, readDir, open, exit } = Deno;
+const { args, stat, readDir, open, exit, close } = Deno;
 import { posix, extname } from "../path/mod.ts";
 import { listenAndServe, ServerRequest, Response } from "./server.ts";
 import { parse } from "../flags/mod.ts";
@@ -127,6 +127,9 @@ export async function serveFile(
   if (contentTypeValue) {
     headers.set("content-type", contentTypeValue);
   }
+  req.done.then(() => {
+    close(file.rid);
+  })
   return {
     status: 200,
     body: file,
