@@ -362,8 +362,8 @@ unitTest({ perms: { run: true } }, async function killSuccess(): Promise<void> {
     assertEquals(status.code, 128 + Deno.Signal.SIGINT);
     assertEquals(status.signal, Deno.Signal.SIGINT);
   } catch {
-    // FIXME(ry): On Windows sometimes the following values are given instead.
-    // Investigate and remove this catch when it can be made deterministic.
+    // TODO(nayeemrmn): On Windows sometimes the following values are given
+    // instead. Investigate and remove this catch when fixed.
     assertEquals(status.code, 1);
     assertEquals(status.signal, undefined);
   }
