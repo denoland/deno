@@ -3,11 +3,8 @@
 /**
  * Resolves after the given number of milliseconds.
  *
- * @param {number} ms - Number of delay in milliseconds.
- * @return {Promise<void>}
- *
  * @example
- *  await delay(1000);
+ *       await delay(1000);
  */
 export function delay(ms: number): Promise<void> {
   return new Promise((res): number =>
