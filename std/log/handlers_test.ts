@@ -1,6 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 const { test } = Deno;
-import { assert, assertEquals, assertThrowsAsync, assertNotEquals } from "../testing/asserts.ts";
+import {
+  assert,
+  assertEquals,
+  assertThrowsAsync,
+  assertNotEquals,
+} from "../testing/asserts.ts";
 import {
   LogLevels,
   LogLevelNames,
