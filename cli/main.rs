@@ -531,7 +531,6 @@ async fn run_repl(flags: Flags) -> Result<(), ErrBox> {
 
 async fn run_command(flags: Flags, script: String) -> Result<(), ErrBox> {
   let global_state = GlobalState::new(flags.clone())?;
-<<<<<<< HEAD
   loop {
     let main_module = ModuleSpecifier::resolve_url_or_path(&script).unwrap();
     let mut worker =
