@@ -413,11 +413,25 @@ impl Future for CoreIsolate {
       // Now handle actual ops.
       state.have_unpolled_ops = false;
 
-      // TODO(ry) select isn't working with state somehow
-      // use futures::stream::select;
-      // match select(&mut state.pending_ops, &mut state.pending_unref_ops)
+      let pending_r = state.pending_ops.poll_next_unpin(cx);
+      let unref_r = state.pending_unref_ops.poll_next_unpin(cx);
+      match pending_r {
+        Poll::Ready(None) => break,
+        Poll::Pending => {}
+        Poll::Ready(Some((op_id, buf))) => {
+          let successful_push = state.shared.push(op_id, &buf);
+          if !successful_push {
+            // If we couldn't push the response to the shared queue, because
+            // there wasn't enough size, we will return the buffer via the
+            // legacy route, using the argument of deno_respond.
+            overflow_response = Some((op_id, buf));
+            break;
+          }
+        }
+      };
+
       #[allow(clippy::match_wild_err_arm)]
-      match state.pending_ops.poll_next_unpin(cx) {
+      match unref_r {
         Poll::Ready(None) => break,
         Poll::Pending => break,
         Poll::Ready(Some((op_id, buf))) => {
@@ -430,7 +444,7 @@ impl Future for CoreIsolate {
             break;
           }
         }
-      }
+      };
     }
 
     {

@@ -398,9 +398,9 @@ impl EsIsolate {
   }
 
   fn poll_dyn_imports(&mut self, cx: &mut Context) -> Poll<Result<(), ErrBox>> {
+    let state_rc = Self::state(self);
     loop {
       let poll_result = {
-        let state_rc = Self::state(self);
         let mut state = state_rc.borrow_mut();
         state.pending_dyn_imports.poll_next_unpin(cx)
       };
@@ -424,7 +424,6 @@ impl EsIsolate {
                 match self.register_during_load(info, &mut load) {
                   Ok(()) => {
                     // Keep importing until it's fully drained
-                    let state_rc = Self::state(self);
                     let state = state_rc.borrow_mut();
                     state.pending_dyn_imports.push(load.into_future());
                   }
@@ -1003,7 +1002,9 @@ pub mod tests {
       assert_eq!(prepare_load_count.load(Ordering::Relaxed), 1);
 
       // Second poll actually loads modules into the isolate.
-      assert!(match isolate.poll_unpin(cx) {
+      let r = isolate.poll_unpin(cx);
+      dbg!(&r);
+      assert!(match r {
         Poll::Ready(Ok(_)) => true,
         _ => false,
       });
