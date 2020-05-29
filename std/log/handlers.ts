@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-const { open, openSync, close, renameSync, statSync } = Deno;
+const { open, openSync, close, renameSync, stat } = Deno;
 type File = Deno.File;
 type Writer = Deno.Writer;
 type OpenOptions = Deno.OpenOptions;
@@ -142,6 +142,8 @@ interface RotatingFileHandlerOptions extends FileHandlerOptions {
 export class RotatingFileHandler extends FileHandler {
   #maxBytes: number;
   #maxBackupCount: number;
+  #currentFileSize = 0;
+  #encoder = new TextEncoder();
 
   constructor(levelName: LevelName, options: RotatingFileHandlerOptions) {
     super(levelName, options);
@@ -176,6 +178,8 @@ export class RotatingFileHandler extends FileHandler {
           );
         }
       }
+    } else {
+      this.#currentFileSize = (await stat(this._filename)).size;
     }
   }
 
@@ -183,9 +187,12 @@ export class RotatingFileHandler extends FileHandler {
     if (this.level > logRecord.level) return;
 
     const msg = this.format(logRecord);
-    const currentFileSize = statSync(this._filename).size;
-    if (currentFileSize + msg.length > this.#maxBytes) {
+    const msgByteLength = this.#encoder.encode(msg).byteLength + 1;
+    if (this.#currentFileSize + msgByteLength > this.#maxBytes) {
       this.rotateLogFiles();
+      this.#currentFileSize = msgByteLength;
+    } else {
+      this.#currentFileSize += msgByteLength;
     }
 
     return this.log(msg);

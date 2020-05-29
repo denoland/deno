@@ -1,6 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 const { test } = Deno;
-import { assert, assertEquals, assertThrowsAsync } from "../testing/asserts.ts";
+import {
+  assert,
+  assertEquals,
+  assertThrowsAsync,
+  assertNotEquals,
+} from "../testing/asserts.ts";
 import {
   LogLevels,
   LogLevelNames,
@@ -301,5 +306,31 @@ test({
       Error,
       "maxBackupCount cannot be less than 1"
     );
+  },
+});
+
+test({
+  name: "RotatingFileHandler fileSize equal to bytelength of message + 1",
+  async fn() {
+    const fileHandler = new RotatingFileHandler("WARNING", {
+      filename: LOG_FILE,
+      maxBytes: 100,
+      maxBackupCount: 1,
+      mode: "w",
+    });
+    await fileHandler.setup();
+
+    const msg = "。";
+    const msgLength = msg.length;
+    const msgByteLength = new TextEncoder().encode(msg).byteLength;
+    await fileHandler.log(msg);
+    const fileSzie = (await Deno.stat(LOG_FILE)).size;
+
+    assertEquals(fileSzie, msgByteLength + 1);
+    assertNotEquals(fileSzie, msgLength);
+    assertNotEquals(fileSzie, msgLength + 1);
+
+    await fileHandler.destroy();
+    Deno.removeSync(LOG_FILE);
   },
 });
