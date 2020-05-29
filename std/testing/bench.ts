@@ -131,7 +131,7 @@ export function bench(
 export function clearBenchmarks({
   only = /[^\s]/,
   skip = /$^/,
-}: BenchmarkClearOptions = {}) {
+}: BenchmarkClearOptions = {}): void {
   const keep = candidates.filter(
     ({ name }): boolean => !only.test(name) || skip.test(name)
   );
@@ -207,9 +207,12 @@ export async function runBenchmarks(
         await func(b);
         // Making sure the benchmark was started/stopped properly
         assertTiming(clock, name);
-        result = `${clock.stop - clock.start}ms`;
+        // Calculate length of run
+        const measuredMs = clock.stop - clock.start;
+
+        result = `${measuredMs}ms`;
         // Adding one-time run to results
-        progress.results.push({ name, totalMs: clock.stop - clock.start });
+        progress.results.push({ name, totalMs: measuredMs });
         // Clear currently running
         delete progress.running;
         // Publish one-time run benchmark finish
