@@ -297,8 +297,10 @@ impl CoreIsolate {
     js_source: &str,
   ) -> Result<(), ErrBox> {
     self.shared_init();
+
     let state_rc = Self::state(self);
     let state = state_rc.borrow();
+
     let mut hs = v8::HandleScope::new(self.v8_isolate.as_mut().unwrap());
     let scope = hs.enter();
     let context = state.global_context.get(scope).unwrap();
@@ -385,8 +387,10 @@ impl Future for CoreIsolate {
     core_isolate.shared_init();
 
     let state_rc = Self::state(core_isolate);
-    let mut state = state_rc.borrow_mut();
-    state.waker.register(cx.waker());
+    {
+      let state = state_rc.borrow();
+      state.waker.register(cx.waker());
+    }
 
     let mut hs = v8::HandleScope::new(core_isolate);
     let scope = hs.enter();
@@ -397,8 +401,11 @@ impl Future for CoreIsolate {
     let mut cs = v8::ContextScope::new(scope, context);
     let scope = cs.enter();
 
-    check_promise_exceptions(scope, &mut state)?;
-    drop(state);
+    {
+      let mut state = state_rc.borrow_mut();
+      check_promise_exceptions(scope, &mut state)?;
+    }
+
     let mut overflow_response: Option<(OpId, Buf)> = None;
 
     loop {
@@ -426,22 +433,24 @@ impl Future for CoreIsolate {
       }
     }
 
-    let state = state_rc.borrow();
-    if state.shared.size() > 0 {
-      async_op_response(scope, None, &state.js_recv_cb)?;
-      // The other side should have shifted off all the messages.
-      assert_eq!(state.shared.size(), 0);
-    }
-    drop(state);
-
-    let mut state = state_rc.borrow_mut();
-    if let Some((op_id, buf)) = overflow_response.take() {
-      async_op_response(scope, Some((op_id, buf)), &state.js_recv_cb)?;
+    {
+      let state = state_rc.borrow();
+      if state.shared.size() > 0 {
+        async_op_response(scope, None, &state.js_recv_cb)?;
+        // The other side should have shifted off all the messages.
+        assert_eq!(state.shared.size(), 0);
+      }
     }
 
-    drain_macrotasks(scope, &state.js_macrotask_cb)?;
+    {
+      let mut state = state_rc.borrow_mut();
+      if let Some((op_id, buf)) = overflow_response.take() {
+        async_op_response(scope, Some((op_id, buf)), &state.js_recv_cb)?;
+      }
+      drain_macrotasks(scope, &state.js_macrotask_cb)?;
 
-    check_promise_exceptions(scope, &mut state)?;
+      check_promise_exceptions(scope, &mut state)?;
+    }
 
     let state = state_rc.borrow();
     // We're idle if pending_ops is empty.

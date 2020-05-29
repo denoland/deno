@@ -429,10 +429,6 @@ fn send(
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
-  let state_rc = CoreIsolate::state(scope.isolate());
-  let mut state = state_rc.borrow_mut();
-  assert!(!state.global_context.is_empty());
-
   let op_id = match v8::Local::<v8::Uint32>::try_from(args.get(0)) {
     Ok(op_id) => op_id.value() as u32,
     Err(err) => {
@@ -461,6 +457,10 @@ fn send(
       .map(ZeroCopyBuf::new)
       .ok();
 
+  let state_rc = CoreIsolate::state(scope.isolate());
+  let mut state = state_rc.borrow_mut();
+  assert!(!state.global_context.is_empty());
+
   // If response is empty then it's either async op or exception was thrown
   let maybe_response = state.dispatch_op(scope, op_id, control, zero_copy);
 
@@ -471,7 +471,7 @@ fn send(
 
     if !buf.is_empty() {
       let ui8 = boxed_slice_to_uint8array(scope, buf);
-      rv.set(ui8.into())
+      rv.set(ui8.into());
     }
   }
 }
