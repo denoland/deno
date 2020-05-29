@@ -179,10 +179,6 @@ Runs all registered benchmarks serially. Filtering can be applied by setting
 `BenchmarkRunOptions.only` and/or `BenchmarkRunOptions.skip` to regular
 expressions matching benchmark names.
 
-##### `runIfMain(meta: ImportMeta, opts?: BenchmarkRunOptions): Promise<void>`
-
-Runs specified benchmarks if the enclosing script is main.
-
 ##### Other exports
 
 ```ts
