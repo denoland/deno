@@ -42,9 +42,13 @@ export interface BenchmarkResult {
 }
 
 export interface BenchmarkRunResult {
-  measured: number;
   filtered: number;
   results: BenchmarkResult[];
+}
+
+export interface BenchmarkRunProgress extends BenchmarkRunResult {
+  queued: { name: string; runsCount: number }[];
+  running?: { name: string; runsCount: number; measuredMs: number[] }; // TODO measuredRunsMs
 }
 
 export class BenchmarkRunError extends Error {
@@ -120,22 +124,34 @@ export function bench(
 }
 
 /** Runs all registered and non-skipped benchmarks serially. */
-export async function runBenchmarks({
-  only = /[^\s]/,
-  skip = /^\s*$/,
-  silent,
-}: BenchmarkRunOptions = {}): Promise<BenchmarkRunResult> {
+export async function runBenchmarks(
+  { only = /[^\s]/, skip = /^\s*$/, silent }: BenchmarkRunOptions = {},
+  progressCb?: (progress: BenchmarkRunProgress) => void
+): Promise<BenchmarkRunResult> {
   // Filtering candidates by the "only" and "skip" constraint
   const benchmarks: BenchmarkDefinition[] = candidates.filter(
     ({ name }): boolean => only.test(name) && !skip.test(name)
   );
   // Init main counters and error flag
   const filtered = candidates.length - benchmarks.length;
-  let measured = 0;
   let failError: Error | undefined = undefined;
   // Setting up a shared benchmark clock and timer
   const clock: BenchmarkClock = { start: NaN, stop: NaN };
   const b = createBenchmarkTimer(clock);
+
+  // Init progress data
+  const progress: BenchmarkRunProgress = {
+    // bench.run is already ensured with verifyOr1Run on register
+    queued: benchmarks.map((bench) => ({
+      name: bench.name,
+      runsCount: bench.runs!,
+    })),
+    results: [],
+    filtered,
+  };
+
+  // Publish initial progress data
+  progressCb && progressCb(progress);
 
   if (!silent) {
     // Iterating given benchmark definitions (await-in-loop)
@@ -146,13 +162,26 @@ export async function runBenchmarks({
     );
   }
 
-  // Initializing results array
-  const benchmarkResults: BenchmarkResult[] = [];
   for (const { name, runs = 0, func } of benchmarks) {
     if (!silent) {
       // See https://github.com/denoland/deno/pull/1452 about groupCollapsed
       console.groupCollapsed(`benchmark ${name} ... `);
     }
+
+    // Remove benchmark from queued
+    const queueIndex = progress.queued.findIndex(
+      (queued) => queued.name === name && queued.runsCount === runs
+    );
+    if (queueIndex != -1) {
+      progress.queued.splice(
+        progress.queued.indexOf({ name, runsCount: runs }),
+        1
+      );
+    }
+    // Init the progress of the running benchmark
+    progress.running = { name, runsCount: runs, measuredMs: [] };
+    // Publish starting of a benchmark
+    progressCb && progressCb(progress);
 
     // Trying benchmark.func
     let result = "";
@@ -164,36 +193,50 @@ export async function runBenchmarks({
         assertTiming(clock, name);
         result = `${clock.stop - clock.start}ms`;
         // Adding one-time run to results
-        benchmarkResults.push({ name, totalMs: clock.stop - clock.start });
+        progress.results.push({ name, totalMs: clock.stop - clock.start });
+        // Clear currently running
+        delete progress.running;
+        // Publish one-time run benchmark finish
+        progressCb && progressCb(progress);
       } else if (runs > 1) {
         // Averaging runs
         let pendingRuns = runs;
         let totalMs = 0;
-        // Initializing array holding individual runs ms
-        const runsMs = [];
+
         // Would be better 2 not run these serially
         while (true) {
           // b is a benchmark timer interfacing an unset (NaN) benchmark clock
           await func(b);
           // Making sure the benchmark was started/stopped properly
           assertTiming(clock, name);
+
+          // Calculate length of run
+          const measuredMs = clock.stop - clock.start;
+
           // Summing up
-          totalMs += clock.stop - clock.start;
+          totalMs += measuredMs;
           // Adding partial result
-          runsMs.push(clock.stop - clock.start);
+          progress.running.measuredMs.push(measuredMs);
+          // Publish partial benchmark results
+          progressCb && progressCb(progress);
+
           // Resetting the benchmark clock
           clock.start = clock.stop = NaN;
           // Once all ran
           if (!--pendingRuns) {
             result = `${runs} runs avg: ${totalMs / runs}ms`;
             // Adding result of multiple runs
-            benchmarkResults.push({
+            progress.results.push({
               name,
               totalMs,
               runsCount: runs,
               runsAvgMs: totalMs / runs,
-              runsMs,
+              runsMs: progress.running.measuredMs,
             });
+            // Clear currently running
+            delete progress.running;
+            // Publish results of a multiple run benchmark
+            progressCb && progressCb(progress);
             break;
           }
         }
@@ -215,16 +258,20 @@ export async function runBenchmarks({
       console.groupEnd();
     }
 
-    measured++;
     // Resetting the benchmark clock
     clock.start = clock.stop = NaN;
   }
+
+  // Indicate finished running
+  delete progress.queued;
+  // Publish final result in Cb too
+  progressCb && progressCb(progress);
 
   if (!silent) {
     // Closing results
     console.log(
       `benchmark result: ${!!failError ? red("FAIL") : blue("DONE")}. ` +
-        `${measured} measured; ${filtered} filtered`
+        `${progress.results.length} measured; ${filtered} filtered`
     );
   }
 
@@ -234,9 +281,8 @@ export async function runBenchmarks({
   }
 
   const benchmarkRunResult = {
-    measured,
     filtered,
-    results: benchmarkResults,
+    results: progress.results,
   };
 
   return benchmarkRunResult;
