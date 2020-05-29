@@ -72,12 +72,10 @@ use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::fs as deno_fs;
 use crate::global_state::GlobalState;
-use crate::import_map::ImportMap;
 use crate::msg::MediaType;
 use crate::op_error::OpError;
 use crate::ops::io::get_stdio;
 use crate::permissions::Permissions;
-use crate::state::exit_unstable;
 use crate::state::State;
 use crate::tsc::TargetLib;
 use crate::worker::MainWorker;
@@ -156,7 +154,13 @@ fn create_main_worker(
   global_state: GlobalState,
   main_module: ModuleSpecifier,
 ) -> Result<MainWorker, ErrBox> {
-  let state = State::new(global_state, None, main_module, false)?;
+  let state = State::new(
+    global_state.clone(),
+    None,
+    main_module,
+    global_state.maybe_import_map.clone(),
+    false,
+  )?;
 
   let mut worker = MainWorker::new(
     "main".to_string(),
@@ -220,15 +224,20 @@ async fn print_file_info(
   );
 
   let module_specifier_ = module_specifier.clone();
+
   global_state
-    .clone()
-    .fetch_compiled_module(
-      module_specifier_,
+    .prepare_module_load(
+      module_specifier_.clone(),
       None,
       TargetLib::Main,
       Permissions::allow_all(),
       false,
+      global_state.maybe_import_map.clone(),
     )
+    .await?;
+  global_state
+    .clone()
+    .fetch_compiled_module(module_specifier_, None)
     .await?;
 
   if out.media_type == msg::MediaType::TypeScript
@@ -393,43 +402,49 @@ async fn bundle_command(
   source_file: String,
   out_file: Option<PathBuf>,
 ) -> Result<(), ErrBox> {
-  let mut module_name = ModuleSpecifier::resolve_url_or_path(&source_file)?;
-  let url = module_name.as_url();
+  let mut module_specifier =
+    ModuleSpecifier::resolve_url_or_path(&source_file)?;
+  let url = module_specifier.as_url();
 
   // TODO(bartlomieju): fix this hack in ModuleSpecifier
   if url.scheme() == "file" {
     let a = deno_fs::normalize_path(&url.to_file_path().unwrap());
     let u = Url::from_file_path(a).unwrap();
-    module_name = ModuleSpecifier::from(u)
+    module_specifier = ModuleSpecifier::from(u)
   }
 
   debug!(">>>>> bundle START");
   let compiler_config = tsc::CompilerConfig::load(flags.config_path.clone())?;
 
-  let maybe_import_map = match flags.import_map_path.as_ref() {
-    None => None,
-    Some(file_path) => {
-      if !flags.unstable {
-        exit_unstable("--importmap")
-      }
-      Some(ImportMap::load(file_path)?)
-    }
-  };
-
   let global_state = GlobalState::new(flags)?;
 
-  let bundle_result = tsc::bundle(
+  info!("Bundling {}", module_specifier.to_string());
+
+  let output = tsc::bundle(
     &global_state,
     compiler_config,
-    module_name,
-    maybe_import_map,
-    out_file,
+    module_specifier,
+    global_state.maybe_import_map.clone(),
     global_state.flags.unstable,
   )
-  .await;
+  .await?;
 
   debug!(">>>>> bundle END");
-  bundle_result
+
+  let output_string = fmt::format_text(&output)?;
+
+  if let Some(out_file_) = out_file.as_ref() {
+    info!("Emitting bundle to {:?}", out_file_);
+    let output_bytes = output_string.as_bytes();
+    let output_len = output_bytes.len();
+    deno_fs::write_file(out_file_, output_bytes, 0o666)?;
+    // TODO(bartlomieju): add "humanFileSize" method
+    info!("{} bytes emitted.", output_len);
+  } else {
+    println!("{}", output_string);
+  }
+
+  Ok(())
 }
 
 async fn doc_command(
