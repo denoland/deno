@@ -245,12 +245,13 @@ And not
 
 Code examples should not utilise the triple-back tick (\`\`\`) notation or tags.
 They should just be marked by indentation, which requires a break before the
-block and 6 additional spaces for each line of the example. This is 4 more than
-the first column of the comment. For example:
+block and 6 additional spaces for each line of the example. For example:
 
 ```ts
-/** A straight forward comment and an example:
+/**
+ * A straight forward comment and an example:
  *
+ * @example
  *       import { foo } from "deno";
  *       foo("bar");
  */
