@@ -251,7 +251,7 @@ export async function fetch(
     method = input.method;
     headers = input.headers;
 
-    //@ts-ignore
+    //@ts-expect-error
     if (input._bodySource) {
       body = new DataView(await input.arrayBuffer());
     }

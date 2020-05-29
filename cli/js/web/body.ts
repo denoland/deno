@@ -100,7 +100,6 @@ export class Body implements domTypes.Body {
     }
 
     if (this._bodySource instanceof ReadableStreamImpl) {
-      // @ts-ignore
       this._stream = this._bodySource;
     }
     if (typeof this._bodySource === "string") {
@@ -290,7 +289,6 @@ export class Body implements domTypes.Body {
         enc.encode(this._bodySource).buffer as ArrayBuffer
       );
     } else if (this._bodySource instanceof ReadableStreamImpl) {
-      // @ts-ignore
       return bufferFromStream(this._bodySource.getReader());
     } else if (this._bodySource instanceof FormData) {
       const enc = new TextEncoder();

@@ -93,30 +93,27 @@ unitTest({ perms: { net: true } }, async function fetchBodyUsed(): Promise<
   assertEquals(response.bodyUsed, false);
   assertThrows((): void => {
     // Assigning to read-only property throws in the strict mode.
-    // @ts-ignore
+    // @ts-expect-error
     response.bodyUsed = true;
   });
   await response.blob();
   assertEquals(response.bodyUsed, true);
 });
 
-// TODO(ry) response.body shouldn't be iterable. Instead we should use
-// response.body.getReader().
-/*
 unitTest({ perms: { net: true } }, async function fetchAsyncIterator(): Promise<
   void
 > {
   const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
   const headers = response.headers;
+
+  assert(response.body !== null);
   let total = 0;
   for await (const chunk of response.body) {
     total += chunk.length;
   }
 
   assertEquals(total, Number(headers.get("Content-Length")));
-  const _json = await response.json();
 });
-*/
 
 unitTest({ perms: { net: true } }, async function fetchBodyReader(): Promise<
   void
@@ -198,11 +195,10 @@ unitTest(
     assert(formData.has("field_1"));
     assertEquals(formData.get("field_1")!.toString(), "value_1 \r\n");
     assert(formData.has("field_2"));
-    /* TODO(ry) Re-enable this test once we bring back the global File type.
-  const file = formData.get("field_2") as File;
-  assertEquals(file.name, "file.js");
-  */
-    // Currently we cannot read from file...
+    const file = formData.get("field_2") as File;
+    assertEquals(file.name, "file.js");
+
+    assertEquals(await file.text(), `console.log("Hi")`);
   }
 );
 
@@ -360,6 +356,24 @@ unitTest(
     });
     const resultForm = await response.formData();
     assertEquals(form.get("field"), resultForm.get("field"));
+  }
+);
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchInitFormDataBlobFilenameBody(): Promise<void> {
+    const form = new FormData();
+    form.append("field", "value");
+    form.append("file", new Blob([new TextEncoder().encode("deno")]));
+    const response = await fetch("http://localhost:4545/echo_server", {
+      method: "POST",
+      body: form,
+    });
+    const resultForm = await response.formData();
+    assertEquals(form.get("field"), resultForm.get("field"));
+    const file = resultForm.get("file");
+    assert(file instanceof File);
+    assertEquals(file.name, "blob");
   }
 );
 
@@ -611,3 +625,110 @@ unitTest(function responseRedirect(): void {
   assertEquals(redir.headers.get("Location"), "example.com/newLocation");
   assertEquals(redir.type, "default");
 });
+
+unitTest({ perms: { net: true } }, async function fetchBodyReadTwice(): Promise<
+  void
+> {
+  const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
+
+  // Read body
+  const _json = await response.json();
+  assert(_json);
+
+  // All calls after the body was consumed, should fail
+  const methods = ["json", "text", "formData", "arrayBuffer"];
+  for (const method of methods) {
+    try {
+      // @ts-expect-error
+      await response[method]();
+      fail(
+        "Reading body multiple times should failed, the stream should've been locked."
+      );
+    } catch {}
+  }
+});
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchBodyReaderAfterRead(): Promise<void> {
+    const response = await fetch(
+      "http://localhost:4545/cli/tests/fixture.json"
+    );
+    assert(response.body !== null);
+    const reader = await response.body.getReader();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      assert(value);
+    }
+
+    try {
+      response.body.getReader();
+      fail("The stream should've been locked.");
+    } catch {}
+  }
+);
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchBodyReaderWithCancelAndNewReader(): Promise<void> {
+    const data = "a".repeat(1 << 10);
+    const response = await fetch(
+      "http://localhost:4545/cli/tests/echo_server",
+      {
+        method: "POST",
+        body: data,
+      }
+    );
+    assert(response.body !== null);
+    const firstReader = await response.body.getReader();
+
+    // Acquire reader without reading & release
+    await firstReader.releaseLock();
+
+    const reader = await response.body.getReader();
+
+    let total = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      assert(value);
+      total += value.length;
+    }
+
+    assertEquals(total, data.length);
+  }
+);
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchBodyReaderWithReadCancelAndNewReader(): Promise<void> {
+    const data = "a".repeat(1 << 10);
+
+    const response = await fetch(
+      "http://localhost:4545/cli/tests/echo_server",
+      {
+        method: "POST",
+        body: data,
+      }
+    );
+    assert(response.body !== null);
+    const firstReader = await response.body.getReader();
+
+    // Do one single read with first reader
+    const { value: firstValue } = await firstReader.read();
+    assert(firstValue);
+    await firstReader.releaseLock();
+
+    // Continue read with second reader
+    const reader = await response.body.getReader();
+    let total = firstValue.length || 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      assert(value);
+      total += value.length;
+    }
+    assertEquals(total, data.length);
+  }
+);

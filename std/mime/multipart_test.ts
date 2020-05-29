@@ -145,7 +145,7 @@ test("multipartMultipartWriter3", async function (): Promise<void> {
   );
   await assertThrowsAsync(
     async (): Promise<void> => {
-      // @ts-ignore
+      // @ts-expect-error
       await mw.writeFile("bar", "file", null);
     },
     Error,

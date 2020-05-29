@@ -35,7 +35,7 @@ function isRecoverableError(e: Error): boolean {
 // Returns `true` if `close()` is called in REPL.
 // We should quit the REPL when this function returns `true`.
 function isCloseCalled(): boolean {
-  // @ts-ignore
+  // @ts-expect-error
   return globalThis.closed;
 }
 
