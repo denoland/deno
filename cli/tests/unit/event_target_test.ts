@@ -4,11 +4,8 @@ import { unitTest, assertEquals } from "./test_util.ts";
 unitTest(function addEventListenerTest(): void {
   const document = new EventTarget();
 
-  // @ts-ignore tests ignoring the type system for resilience
   assertEquals(document.addEventListener("x", null, false), undefined);
-  // @ts-ignore
   assertEquals(document.addEventListener("x", null, true), undefined);
-  // @ts-ignore
   assertEquals(document.addEventListener("x", null), undefined);
 });
 
@@ -71,11 +68,8 @@ unitTest(function anEventTargetCanBeSubclassed(): void {
 
 unitTest(function removingNullEventListenerShouldSucceed(): void {
   const document = new EventTarget();
-  // @ts-ignore
   assertEquals(document.removeEventListener("x", null, false), undefined);
-  // @ts-ignore
   assertEquals(document.removeEventListener("x", null, true), undefined);
-  // @ts-ignore
   assertEquals(document.removeEventListener("x", null), undefined);
 });
 

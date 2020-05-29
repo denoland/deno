@@ -2,6 +2,8 @@
 use crate::colors;
 use crate::flags::Flags;
 use crate::op_error::OpError;
+use serde::de;
+use serde::Deserialize;
 use std::collections::HashSet;
 use std::fmt;
 #[cfg(not(test))]
@@ -96,18 +98,54 @@ impl Default for PermissionState {
   }
 }
 
-#[derive(Clone, Debug, Default)]
+struct BoolPermVisitor;
+
+fn deserialize_permission_state<'de, D>(
+  d: D,
+) -> Result<PermissionState, D::Error>
+where
+  D: de::Deserializer<'de>,
+{
+  impl<'de> de::Visitor<'de> for BoolPermVisitor {
+    type Value = PermissionState;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+      formatter.write_str("a boolean value")
+    }
+
+    fn visit_bool<E>(self, value: bool) -> Result<Self::Value, E>
+    where
+      E: de::Error,
+    {
+      if value {
+        Ok(PermissionState::Allow)
+      } else {
+        Ok(PermissionState::Deny)
+      }
+    }
+  }
+  d.deserialize_bool(BoolPermVisitor)
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 pub struct Permissions {
   // Keep in sync with cli/js/permissions.ts
+  #[serde(deserialize_with = "deserialize_permission_state")]
   pub allow_read: PermissionState,
   pub read_whitelist: HashSet<PathBuf>,
+  #[serde(deserialize_with = "deserialize_permission_state")]
   pub allow_write: PermissionState,
   pub write_whitelist: HashSet<PathBuf>,
+  #[serde(deserialize_with = "deserialize_permission_state")]
   pub allow_net: PermissionState,
   pub net_whitelist: HashSet<String>,
+  #[serde(deserialize_with = "deserialize_permission_state")]
   pub allow_env: PermissionState,
+  #[serde(deserialize_with = "deserialize_permission_state")]
   pub allow_run: PermissionState,
+  #[serde(deserialize_with = "deserialize_permission_state")]
   pub allow_plugin: PermissionState,
+  #[serde(deserialize_with = "deserialize_permission_state")]
   pub allow_hrtime: PermissionState,
 }
 
@@ -734,5 +772,38 @@ mod tests {
     set_prompt_result(false);
     assert_eq!(perms1.request_hrtime(), PermissionState::Deny);
     drop(guard);
+  }
+
+  #[test]
+  fn test_deserialize_perms() {
+    let json_perms = r#"
+    {
+      "allow_read": true,
+      "read_whitelist": [],
+      "allow_write": true,
+      "write_whitelist": [],
+      "allow_net": true,
+      "net_whitelist": [],
+      "allow_env": true,
+      "allow_run": true,
+      "allow_plugin": true,
+      "allow_hrtime": true
+    }
+    "#;
+    let perms0 = Permissions {
+      allow_read: PermissionState::Allow,
+      allow_write: PermissionState::Allow,
+      allow_net: PermissionState::Allow,
+      allow_hrtime: PermissionState::Allow,
+      allow_env: PermissionState::Allow,
+      allow_plugin: PermissionState::Allow,
+      allow_run: PermissionState::Allow,
+      read_whitelist: HashSet::new(),
+      write_whitelist: HashSet::new(),
+      net_whitelist: HashSet::new(),
+    };
+    let deserialized_perms: Permissions =
+      serde_json::from_str(json_perms).unwrap();
+    assert_eq!(perms0, deserialized_perms);
   }
 }

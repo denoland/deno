@@ -238,19 +238,19 @@ function prepareStackTrace(error: Error, callSites: CallSite[]): string {
     __formattedFrames: { value: [], configurable: true },
   });
   for (const callSite of mappedCallSites) {
-    // @ts-ignore
+    // @ts-expect-error
     error.__callSiteEvals.push(Object.freeze(evaluateCallSite(callSite)));
     const isInternal = callSite.getFileName()?.startsWith("$deno$") ?? false;
-    // @ts-ignore
+    // @ts-expect-error
     error.__formattedFrames.push(callSiteToString(callSite, isInternal));
   }
-  // @ts-ignore
+  // @ts-expect-error
   Object.freeze(error.__callSiteEvals);
-  // @ts-ignore
+  // @ts-expect-error
   Object.freeze(error.__formattedFrames);
   return (
     `${error.name}: ${error.message}\n` +
-    // @ts-ignore
+    // @ts-expect-error
     error.__formattedFrames
       .map((s: string) => `    at ${colors.stripColor(s)}`)
       .join("\n")

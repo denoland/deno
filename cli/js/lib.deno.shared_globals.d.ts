@@ -922,6 +922,12 @@ declare const Request: {
   new (input: RequestInfo, init?: RequestInit): Request;
 };
 
+interface ResponseInit {
+  headers?: HeadersInit;
+  status?: number;
+  statusText?: string;
+}
+
 type ResponseType =
   | "basic"
   | "cors"
@@ -945,20 +951,7 @@ interface Response extends Body {
 
 declare const Response: {
   prototype: Response;
-
-  // TODO(#4667) Response constructor is non-standard.
-  // new(body?: BodyInit | null, init?: ResponseInit): Response;
-  new (
-    url: string,
-    status: number,
-    statusText: string,
-    headersList: Array<[string, string]>,
-    rid: number,
-    redirected_: boolean,
-    type_?: null | ResponseType,
-    body_?: null | Body
-  ): Response;
-
+  new (body?: BodyInit | null, init?: ResponseInit): Response;
   error(): Response;
   redirect(url: string, status?: number): Response;
 };
