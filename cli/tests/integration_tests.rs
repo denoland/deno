@@ -1326,6 +1326,12 @@ itest!(_058_tasks_microtasks_close {
   output: "058_tasks_microtasks_close.ts.out",
 });
 
+itest!(_059_fs_relative_path_perm {
+  args: "run 059_fs_relative_path_perm.ts",
+  output: "059_fs_relative_path_perm.ts.out",
+  exit_code: 1,
+});
+
 itest!(js_import_detect {
   args: "run --quiet --reload js_import_detect.ts",
   output: "js_import_detect.ts.out",

@@ -897,7 +897,11 @@ declare namespace Deno {
 
   export interface MakeTempOptions {
     /** Directory where the temporary directory should be created (defaults to
-     * the env variable TMPDIR, or the system's default, usually /tmp). */
+     * the env variable TMPDIR, or the system's default, usually /tmp).
+     *
+     * Note that if the passed `dir` is relative, the path returned by
+     * makeTempFile() and makeTempDir() will also be relative. Be mindful of
+     * this when changing working directory. */
     dir?: string;
     /** String that should precede the random portion of the temporary
      * directory's name. */
@@ -1253,7 +1257,9 @@ declare namespace Deno {
    * console.log(realSymLinkPath);  // outputs "/home/alice/file.txt"
    * ```
    *
-   * Requires `allow-read` permission. */
+   * Requires `allow-read` permission for the target path.
+   * Also requires `allow-read` permission for the CWD if the target path is
+   * relative.*/
   export function realPathSync(path: string): string;
 
   /** Resolves to the absolute normalized path, with symbolic links resolved.
@@ -1267,7 +1273,9 @@ declare namespace Deno {
    * console.log(realSymLinkPath);  // outputs "/home/alice/file.txt"
    * ```
    *
-   * Requires `allow-read` permission. */
+   * Requires `allow-read` permission for the target path.
+   * Also requires `allow-read` permission for the CWD if the target path is
+   * relative.*/
   export function realPath(path: string): Promise<string>;
 
   export interface DirEntry {

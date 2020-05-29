@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { unitTest, assert, assertEquals } from "./test_util.ts";
+import { unitTest, assert, assertEquals, assertThrows } from "./test_util.ts";
 
 unitTest({ perms: { read: true } }, function dirCwdNotNull(): void {
   assert(Deno.cwd() != null);
@@ -29,32 +29,31 @@ unitTest({ perms: { read: true, write: true } }, function dirCwdError(): void {
     Deno.chdir(path);
     Deno.removeSync(path);
     try {
-      Deno.cwd();
-      throw Error("current directory removed, should throw error");
-    } catch (err) {
-      if (err instanceof Deno.errors.NotFound) {
-        assert(err.name === "NotFound");
-      } else {
-        throw Error("raised different exception");
-      }
+      assertThrows(() => {
+        Deno.cwd();
+      }, Deno.errors.NotFound);
+    } finally {
+      Deno.chdir(initialdir);
     }
-    Deno.chdir(initialdir);
   }
+});
+
+unitTest({ perms: { read: false } }, function dirCwdPermError(): void {
+  assertThrows(
+    () => {
+      Deno.cwd();
+    },
+    Deno.errors.PermissionDenied,
+    "read access to <CWD>, run again with the --allow-read flag"
+  );
 });
 
 unitTest(
   { perms: { read: true, write: true } },
   function dirChdirError(): void {
     const path = Deno.makeTempDirSync() + "test";
-    try {
+    assertThrows(() => {
       Deno.chdir(path);
-      throw Error("directory not available, should throw error");
-    } catch (err) {
-      if (err instanceof Deno.errors.NotFound) {
-        assert(err.name === "NotFound");
-      } else {
-        throw Error("raised different exception");
-      }
-    }
+    }, Deno.errors.NotFound);
   }
 );

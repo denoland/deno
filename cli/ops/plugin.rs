@@ -1,5 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use crate::fs::resolve_from_cwd;
 use crate::op_error::OpError;
 use crate::ops::dispatch_json::Deserialize;
 use crate::ops::dispatch_json::JsonOp;
@@ -14,7 +13,7 @@ use deno_core::OpId;
 use deno_core::ZeroCopyBuf;
 use dlopen::symbor::Library;
 use futures::prelude::*;
-use std::path::Path;
+use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::task::Context;
@@ -41,7 +40,7 @@ pub fn op_open_plugin(
 ) -> Result<JsonOp, OpError> {
   state.check_unstable("Deno.openPlugin");
   let args: OpenPluginArgs = serde_json::from_value(args).unwrap();
-  let filename = resolve_from_cwd(Path::new(&args.filename))?;
+  let filename = PathBuf::from(&args.filename);
 
   state.check_plugin(&filename)?;
 
