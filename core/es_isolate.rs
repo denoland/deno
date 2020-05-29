@@ -469,7 +469,6 @@ impl EsIsolate {
       ModuleSpecifier::resolve_url(&module_url_found).unwrap();
 
     let state_rc = Self::state(self);
-    let mut state = state_rc.borrow_mut();
     // #A There are 3 cases to handle at this moment:
     // 1. Source code resolved result have the same module name as requested
     //    and is not yet registered
@@ -482,12 +481,18 @@ impl EsIsolate {
 
     // If necessary, register an alias.
     if module_url_specified != module_url_found {
+      let mut state = state_rc.borrow_mut();
       state
         .modules
         .alias(&module_url_specified, &module_url_found);
     }
 
-    let module_id = match state.modules.get_id(&module_url_found) {
+    let maybe_mod_id = {
+      let state = state_rc.borrow();
+      state.modules.get_id(&module_url_found)
+    };
+
+    let module_id = match maybe_mod_id {
       Some(id) => {
         // Module has already been registered.
         debug!(
@@ -497,10 +502,7 @@ impl EsIsolate {
         id
       }
       // Module not registered yet, do it now.
-      None => {
-        drop(state);
-        self.mod_new(is_main, &module_url_found, &code)?
-      }
+      None => self.mod_new(is_main, &module_url_found, &code)?,
     };
 
     // Now we must iterate over all imports of the module and load them.
