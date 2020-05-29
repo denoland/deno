@@ -7,7 +7,11 @@
 Most modules in the repository should have the following copyright header:
 
 ```ts
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+/**
+ * @license
+ * Copyright (c) 2018-2020 The Deno Authors. All rights reserved.
+ * This code may only be used under the MIT license.
+ */
 ```
 
 If the code originates elsewhere, ensure that the file has the proper copyright
