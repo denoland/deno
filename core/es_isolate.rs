@@ -6,10 +6,10 @@
 
 use rusty_v8 as v8;
 
-use crate::any_error::ErrBox;
 use crate::bindings;
+use crate::errors::ErrBox;
+use crate::errors::ErrWithV8Handle;
 use crate::futures::FutureExt;
-use crate::ErrWithV8Handle;
 use futures::ready;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
@@ -18,6 +18,7 @@ use futures::task::AtomicWaker;
 use futures::Future;
 use libc::c_void;
 use std::collections::HashMap;
+use std::convert::TryFrom;
 use std::ops::{Deref, DerefMut};
 use std::option::Option;
 use std::pin::Pin;
@@ -25,19 +26,19 @@ use std::rc::Rc;
 use std::task::Context;
 use std::task::Poll;
 
-use crate::isolate::attach_handle_to_error;
-use crate::isolate::exception_to_err_result;
-use crate::isolate::CoreIsolate;
-use crate::isolate::StartupData;
+use crate::core_isolate::exception_to_err_result;
+use crate::errors::attach_handle_to_error;
 use crate::module_specifier::ModuleSpecifier;
 use crate::modules::LoadState;
+use crate::modules::ModuleId;
+use crate::modules::ModuleLoadId;
 use crate::modules::ModuleLoader;
 use crate::modules::ModuleSource;
 use crate::modules::Modules;
+use crate::modules::PrepareLoadFuture;
 use crate::modules::RecursiveModuleLoad;
-
-pub type ModuleId = i32;
-pub type DynImportId = i32;
+use crate::CoreIsolate;
+use crate::StartupData;
 
 /// More specialized version of `CoreIsolate` that provides loading
 /// and execution of ES Modules.
@@ -49,10 +50,10 @@ pub struct EsIsolate {
   core_isolate: Box<CoreIsolate>,
   loader: Rc<dyn ModuleLoader>,
   pub modules: Modules,
-  pub(crate) next_dyn_import_id: DynImportId,
   pub(crate) dyn_import_map:
-    HashMap<DynImportId, v8::Global<v8::PromiseResolver>>,
+    HashMap<ModuleLoadId, v8::Global<v8::PromiseResolver>>,
 
+  preparing_dyn_imports: FuturesUnordered<Pin<Box<PrepareLoadFuture>>>,
   pending_dyn_imports: FuturesUnordered<StreamFuture<RecursiveModuleLoad>>,
   waker: AtomicWaker,
 }
@@ -92,8 +93,8 @@ impl EsIsolate {
       modules: Modules::new(),
       loader,
       core_isolate,
-      next_dyn_import_id: 0,
       dyn_import_map: HashMap::new(),
+      preparing_dyn_imports: FuturesUnordered::new(),
       pending_dyn_imports: FuturesUnordered::new(),
       waker: AtomicWaker::new(),
     };
@@ -235,16 +236,41 @@ impl EsIsolate {
     let info = self.modules.get_info(id).expect("ModuleInfo not found");
     let module = info.handle.get(scope).expect("Empty module handle");
     let mut status = module.get_status();
-
     if status == v8::ModuleStatus::Instantiated {
-      let ok = module.evaluate(scope, context).is_some();
+      // IMPORTANT: Top-level-await is enabled, which means that return value
+      // of module evaluation is a promise.
+      //
+      // Because that promise is created internally by V8, when error occurs during
+      // module evaluation the promise is rejected, and since the promise has no rejection
+      // handler it will result in call to `bindings::promise_reject_callback` adding
+      // the promise to pending promise rejection table - meaning Isolate will return
+      // error on next poll().
+      //
+      // This situation is not desirable as we want to manually return error at the
+      // end of this function to handle it further. It means we need to manually
+      // remove this promise from pending promise rejection table.
+      //
+      // For more details see:
+      // https://github.com/denoland/deno/issues/4908
+      // https://v8.dev/features/top-level-await#module-execution-order
+      let maybe_value = module.evaluate(scope, context);
+
       // Update status after evaluating.
       status = module.get_status();
-      if ok {
+
+      if let Some(value) = maybe_value {
         assert!(
           status == v8::ModuleStatus::Evaluated
             || status == v8::ModuleStatus::Errored
         );
+        let promise = v8::Local::<v8::Promise>::try_from(value)
+          .expect("Expected to get promise as module evaluation result");
+        let promise_id = promise.get_identity_hash();
+        if let Some(mut handle) =
+          core_isolate.pending_promise_exceptions.remove(&promise_id)
+        {
+          handle.reset(scope);
+        }
       } else {
         assert!(status == v8::ModuleStatus::Errored);
       }
@@ -278,25 +304,26 @@ impl EsIsolate {
   // Called by V8 during `Isolate::mod_instantiate`.
   pub fn dyn_import_cb(
     &mut self,
+    resolver_handle: v8::Global<v8::PromiseResolver>,
     specifier: &str,
     referrer: &str,
-    id: DynImportId,
   ) {
     debug!("dyn_import specifier {} referrer {} ", specifier, referrer);
 
     let load = RecursiveModuleLoad::dynamic_import(
-      id,
       specifier,
       referrer,
       self.loader.clone(),
     );
+    self.dyn_import_map.insert(load.id, resolver_handle);
     self.waker.wake();
-    self.pending_dyn_imports.push(load.into_future());
+    let fut = load.prepare().boxed_local();
+    self.preparing_dyn_imports.push(fut);
   }
 
   fn dyn_import_error(
     &mut self,
-    id: DynImportId,
+    id: ModuleLoadId,
     err: ErrBox,
   ) -> Result<(), ErrBox> {
     let core_isolate = &mut self.core_isolate;
@@ -331,7 +358,7 @@ impl EsIsolate {
 
   fn dyn_import_done(
     &mut self,
-    id: DynImportId,
+    id: ModuleLoadId,
     mod_id: ModuleId,
   ) -> Result<(), ErrBox> {
     debug!("dyn_import_done {} {:?}", id, mod_id);
@@ -363,6 +390,33 @@ impl EsIsolate {
     Ok(())
   }
 
+  fn prepare_dyn_imports(
+    &mut self,
+    cx: &mut Context,
+  ) -> Poll<Result<(), ErrBox>> {
+    loop {
+      match self.preparing_dyn_imports.poll_next_unpin(cx) {
+        Poll::Pending | Poll::Ready(None) => {
+          // There are no active dynamic import loaders, or none are ready.
+          return Poll::Ready(Ok(()));
+        }
+        Poll::Ready(Some(prepare_poll)) => {
+          let dyn_import_id = prepare_poll.0;
+          let prepare_result = prepare_poll.1;
+
+          match prepare_result {
+            Ok(load) => {
+              self.pending_dyn_imports.push(load.into_future());
+            }
+            Err(err) => {
+              self.dyn_import_error(dyn_import_id, err)?;
+            }
+          }
+        }
+      }
+    }
+  }
+
   fn poll_dyn_imports(&mut self, cx: &mut Context) -> Poll<Result<(), ErrBox>> {
     loop {
       match self.pending_dyn_imports.poll_next_unpin(cx) {
@@ -373,7 +427,7 @@ impl EsIsolate {
         Poll::Ready(Some(load_stream_poll)) => {
           let maybe_result = load_stream_poll.0;
           let mut load = load_stream_poll.1;
-          let dyn_import_id = load.dyn_import_id.unwrap();
+          let dyn_import_id = load.id;
 
           if let Some(load_stream_result) = maybe_result {
             match load_stream_result {
@@ -434,7 +488,7 @@ impl EsIsolate {
     // 2. Source code resolved result have a different name as requested:
     //   2a. The module with resolved module name has been registered
     //     -> alias
-    //   2b. The module with resolved module name has not yet been registerd
+    //   2b. The module with resolved module name has not yet been registered
     //     -> register & alias
 
     // If necessary, register an alias.
@@ -487,11 +541,14 @@ impl EsIsolate {
     specifier: &ModuleSpecifier,
     code: Option<String>,
   ) -> Result<ModuleId, ErrBox> {
-    let mut load = RecursiveModuleLoad::main(
+    let load = RecursiveModuleLoad::main(
       &specifier.to_string(),
       code,
       self.loader.clone(),
     );
+    let (_load_id, prepare_result) = load.prepare().await;
+
+    let mut load = prepare_result?;
 
     while let Some(info_result) = load.next().await {
       let info = info_result?;
@@ -511,7 +568,11 @@ impl Future for EsIsolate {
 
     inner.waker.register(cx.waker());
 
-    // If there are any pending dyn_import futures, do those first.
+    if !inner.preparing_dyn_imports.is_empty() {
+      let poll_imports = inner.prepare_dyn_imports(cx)?;
+      assert!(poll_imports.is_ready());
+    }
+
     if !inner.pending_dyn_imports.is_empty() {
       let poll_imports = inner.poll_dyn_imports(cx)?;
       assert!(poll_imports.is_ready());
@@ -519,7 +580,9 @@ impl Future for EsIsolate {
 
     match ready!(inner.core_isolate.poll_unpin(cx)) {
       Ok(()) => {
-        if inner.pending_dyn_imports.is_empty() {
+        if inner.pending_dyn_imports.is_empty()
+          && inner.preparing_dyn_imports.is_empty()
+        {
           Poll::Ready(Ok(()))
         } else {
           Poll::Pending
@@ -533,11 +596,11 @@ impl Future for EsIsolate {
 #[cfg(test)]
 pub mod tests {
   use super::*;
-  use crate::isolate::js_check;
-  use crate::isolate::tests::run_in_task;
-  use crate::isolate::ZeroCopyBuf;
+  use crate::core_isolate::tests::run_in_task;
+  use crate::js_check;
   use crate::modules::ModuleSourceFuture;
   use crate::ops::*;
+  use crate::ZeroCopyBuf;
   use std::io;
   use std::sync::atomic::{AtomicUsize, Ordering};
   use std::sync::Arc;
@@ -696,7 +759,7 @@ pub mod tests {
       if let Poll::Ready(Ok(_)) = result {
         unreachable!();
       }
-      assert_eq!(count.load(Ordering::Relaxed), 1);
+      assert_eq!(count.load(Ordering::Relaxed), 2);
     })
   }
 
@@ -792,6 +855,7 @@ pub mod tests {
   fn dyn_import_ok() {
     #[derive(Clone, Default)]
     struct DynImportOkLoader {
+      pub prepare_load_count: Arc<AtomicUsize>,
       pub resolve_count: Arc<AtomicUsize>,
       pub load_count: Arc<AtomicUsize>,
     }
@@ -804,11 +868,8 @@ pub mod tests {
         _is_main: bool,
       ) -> Result<ModuleSpecifier, ErrBox> {
         let c = self.resolve_count.fetch_add(1, Ordering::Relaxed);
-        match c {
-          0 => assert_eq!(specifier, "./b.js"),
-          1 => assert_eq!(specifier, "./b.js"),
-          _ => unreachable!(),
-        }
+        assert!(c < 4);
+        assert_eq!(specifier, "./b.js");
         assert_eq!(referrer, "file:///dyn_import3.js");
         let s = ModuleSpecifier::resolve_import(specifier, referrer).unwrap();
         Ok(s)
@@ -828,10 +889,22 @@ pub mod tests {
         };
         async move { Ok(info) }.boxed()
       }
+
+      fn prepare_load(
+        &self,
+        _load_id: ModuleLoadId,
+        _module_specifier: &ModuleSpecifier,
+        _maybe_referrer: Option<String>,
+        _is_dyn_import: bool,
+      ) -> Pin<Box<dyn Future<Output = Result<(), ErrBox>>>> {
+        self.prepare_load_count.fetch_add(1, Ordering::Relaxed);
+        async { Ok(()) }.boxed_local()
+      }
     }
 
     run_in_task(|cx| {
       let loader = Rc::new(DynImportOkLoader::default());
+      let prepare_load_count = loader.prepare_load_count.clone();
       let resolve_count = loader.resolve_count.clone();
       let load_count = loader.load_count.clone();
       let mut isolate = EsIsolate::new(loader, StartupData::None, false);
@@ -854,17 +927,25 @@ pub mod tests {
           "#,
       ));
 
+      // First poll runs `prepare_load` hook.
+      assert!(match isolate.poll_unpin(cx) {
+        Poll::Pending => true,
+        _ => false,
+      });
+      assert_eq!(prepare_load_count.load(Ordering::Relaxed), 1);
+
+      // Second poll actually loads modules into the isolate.
       assert!(match isolate.poll_unpin(cx) {
         Poll::Ready(Ok(_)) => true,
         _ => false,
       });
-      assert_eq!(resolve_count.load(Ordering::Relaxed), 2);
+      assert_eq!(resolve_count.load(Ordering::Relaxed), 4);
       assert_eq!(load_count.load(Ordering::Relaxed), 2);
       assert!(match isolate.poll_unpin(cx) {
         Poll::Ready(Ok(_)) => true,
         _ => false,
       });
-      assert_eq!(resolve_count.load(Ordering::Relaxed), 2);
+      assert_eq!(resolve_count.load(Ordering::Relaxed), 4);
       assert_eq!(load_count.load(Ordering::Relaxed), 2);
     })
   }

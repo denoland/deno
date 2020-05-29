@@ -1,10 +1,10 @@
-#!/usr/bin/env -S deno --allow-read
+#!/usr/bin/env -S deno run --allow-read
 // Ported from: https://github.com/soheilpro/catj
 // Copyright (c) 2014 Soheil Rashidi
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 // Install using `deno install`
-// $ deno install --allow-read catj https://deno.land/std/examples/catj.ts
+// $ deno install --allow-read https://deno.land/std/examples/catj.ts
 
 /* eslint-disable @typescript-eslint/no-use-before-define */
 import { parse } from "../flags/mod.ts";

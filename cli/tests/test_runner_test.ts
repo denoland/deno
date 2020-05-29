@@ -2,18 +2,18 @@
 
 import { assert } from "../../std/testing/asserts.ts";
 
-Deno.test(function fail1() {
+Deno.test("fail1", function () {
   assert(false, "fail1 assertion");
 });
 
-Deno.test(function fail2() {
+Deno.test("fail2", function () {
   assert(false, "fail2 assertion");
 });
 
-Deno.test(function success1() {
+Deno.test("success1", function () {
   assert(true);
 });
 
-Deno.test(function fail3() {
+Deno.test("fail3", function () {
   assert(false, "fail3 assertion");
 });

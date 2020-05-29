@@ -179,7 +179,8 @@ function fire(timer: Timer): void {
   callback();
 }
 
-export type Args = unknown[];
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type Args = any[];
 
 function checkThis(thisArg: unknown): void {
   if (thisArg !== null && thisArg !== undefined && thisArg !== globalThis) {
@@ -238,7 +239,7 @@ export function setTimeout(
   ...args: Args
 ): number {
   checkBigInt(delay);
-  // @ts-ignore
+  // @ts-expect-error
   checkThis(this);
   return setTimer(cb, delay, args, false);
 }
@@ -249,7 +250,7 @@ export function setInterval(
   ...args: Args
 ): number {
   checkBigInt(delay);
-  // @ts-ignore
+  // @ts-expect-error
   checkThis(this);
   return setTimer(cb, delay, args, true);
 }

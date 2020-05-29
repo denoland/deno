@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+use super::interface::expr_to_name;
 use super::params::ts_fn_param_to_param_def;
 use super::ts_type_param::maybe_type_param_decl_to_type_param_defs;
 use super::ts_type_param::TsTypeParamDef;
@@ -24,7 +25,6 @@ use crate::swc_ecma_ast::TsTypeQuery;
 use crate::swc_ecma_ast::TsTypeRef;
 use crate::swc_ecma_ast::TsUnionOrIntersectionType;
 use serde::Serialize;
-
 // pub enum TsType {
 //  *      TsKeywordType(TsKeywordType),
 //  *      TsThisType(TsThisType),
@@ -69,6 +69,21 @@ impl Into<TsTypeDef> for &TsLitType {
           boolean: None,
         },
       ),
+      TsLit::Tpl(tpl) => {
+        // A template literal in a type is not allowed to have
+        // expressions, so there will only be one quasi.
+        let quasi = tpl.quasis.get(0).expect("Expected tpl to have a quasi.");
+        let text = quasi.raw.value.to_string();
+        (
+          text.clone(),
+          LiteralDef {
+            kind: LiteralDefKind::String, // semantically the same
+            number: None,
+            string: Some(text),
+            boolean: None,
+          },
+        )
+      }
       TsLit::Bool(bool_) => (
         bool_.value.to_string(),
         LiteralDef {
@@ -354,8 +369,9 @@ impl Into<TsTypeDef> for &TsTypeLit {
           let type_params = maybe_type_param_decl_to_type_param_defs(
             ts_method_sig.type_params.as_ref(),
           );
+          let name = expr_to_name(&*ts_method_sig.key);
           let method_def = LiteralMethodDef {
-            name: "<TODO>".to_string(),
+            name,
             params,
             return_type: maybe_return_type,
             type_params,
@@ -363,10 +379,7 @@ impl Into<TsTypeDef> for &TsTypeLit {
           methods.push(method_def);
         }
         TsPropertySignature(ts_prop_sig) => {
-          let name = match &*ts_prop_sig.key {
-            swc_ecma_ast::Expr::Ident(ident) => ident.sym.to_string(),
-            _ => "TODO".to_string(),
-          };
+          let name = expr_to_name(&*ts_prop_sig.key);
 
           let mut params = vec![];
 

@@ -9,7 +9,7 @@ export interface NetAddr {
 
 export interface UnixAddr {
   transport: "unix" | "unixpacket";
-  address: string;
+  path: string;
 }
 
 export type Addr = NetAddr | UnixAddr;
@@ -22,8 +22,9 @@ export enum ShutdownMode {
   ReadWrite, // unused
 }
 
-export function shutdown(rid: number, how: ShutdownMode): void {
+export function shutdown(rid: number, how: ShutdownMode): Promise<void> {
   sendSync("op_shutdown", { rid, how });
+  return Promise.resolve();
 }
 
 interface AcceptResponse {

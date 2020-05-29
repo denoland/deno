@@ -1,4 +1,5 @@
-[WILDCARD]error TS2322: Type '{ a: { b: { c(): { d: number; }; }; }; }' is not assignable to type '{ a: { b: { c(): { d: string; }; }; }; }'.
+[WILDCARD]
+error: TS2322 [ERROR]: Type '{ a: { b: { c(): { d: number; }; }; }; }' is not assignable to type '{ a: { b: { c(): { d: string; }; }; }; }'.
   The types of 'a.b.c().d' are incompatible between these types.
     Type 'number' is not assignable to type 'string'.
 x = y;

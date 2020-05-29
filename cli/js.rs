@@ -20,6 +20,7 @@ pub static DENO_NS_LIB: &str = include_str!("js/lib.deno.ns.d.ts");
 pub static SHARED_GLOBALS_LIB: &str =
   include_str!("js/lib.deno.shared_globals.d.ts");
 pub static WINDOW_LIB: &str = include_str!("js/lib.deno.window.d.ts");
+pub static UNSTABLE_NS_LIB: &str = include_str!("js/lib.deno.unstable.d.ts");
 
 #[test]
 fn cli_snapshot() {
@@ -49,7 +50,7 @@ fn compiler_snapshot() {
   deno_core::js_check(isolate.execute(
     "<anon>",
     r#"
-    if (!(bootstrap.tsCompilerRuntime && bootstrap.wasmCompilerRuntime)) {
+    if (!(bootstrap.tsCompilerRuntime)) {
         throw Error("bad");
       }
       console.log(`ts version: ${ts.version}`);

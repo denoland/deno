@@ -17,23 +17,24 @@ import {
   eventTargetProperties,
   setEventTargetData,
 } from "./globals.ts";
-import * as Deno from "./deno.ts";
+import { unstableMethods, unstableProperties } from "./globals_unstable.ts";
+import * as denoNs from "./deno.ts";
+import * as denoUnstableNs from "./deno_unstable.ts";
 import * as webWorkerOps from "./ops/web_worker.ts";
-import { LocationImpl } from "./web/location.ts";
 import { log, assert, immutableDefine } from "./util.ts";
-import { MessageEvent, ErrorEvent } from "./web/workers.ts";
+import { ErrorEventImpl as ErrorEvent } from "./web/error_event.ts";
+import { MessageEvent } from "./web/workers.ts";
 import { TextEncoder } from "./web/text_encoding.ts";
 import * as runtime from "./runtime.ts";
-import { internalObject } from "./internals.ts";
-import { symbols } from "./symbols.ts";
+import { internalObject, internalSymbol } from "./internals.ts";
 import { setSignals } from "./signals.ts";
 
 // FIXME(bartlomieju): duplicated in `runtime_main.ts`
 // TODO: factor out `Deno` global assignment to separate function
 // Add internal object to Deno object.
 // This is not exposed as part of the Deno types.
-// @ts-ignore
-Deno[symbols.internal] = internalObject;
+// @ts-expect-error
+denoNs[internalSymbol] = internalObject;
 
 const encoder = new TextEncoder();
 
@@ -127,7 +128,7 @@ export function bootstrapWorkerRuntime(
     throw new Error("Worker runtime already bootstrapped");
   }
   // Remove bootstrapping methods from global scope
-  // @ts-ignore
+  // @ts-expect-error
   globalThis.bootstrap = undefined;
   log("bootstrapWorkerRuntime");
   hasBootstrapped = true;
@@ -137,21 +138,27 @@ export function bootstrapWorkerRuntime(
   Object.defineProperties(globalThis, eventTargetProperties);
   Object.defineProperties(globalThis, { name: readOnly(name) });
   setEventTargetData(globalThis);
-  const s = runtime.start(internalName ?? name);
+  const { unstableFlag, pid, noColor, args } = runtime.start(
+    internalName ?? name
+  );
 
-  const location = new LocationImpl(s.location);
-  immutableDefine(globalThis, "location", location);
-  Object.freeze(globalThis.location);
+  if (unstableFlag) {
+    Object.defineProperties(globalThis, unstableMethods);
+    Object.defineProperties(globalThis, unstableProperties);
+  }
 
   if (useDenoNamespace) {
-    Object.defineProperties(Deno, {
-      pid: readOnly(s.pid),
-      noColor: readOnly(s.noColor),
-      args: readOnly(Object.freeze(s.args)),
+    if (unstableFlag) {
+      Object.assign(denoNs, denoUnstableNs);
+    }
+    Object.defineProperties(denoNs, {
+      pid: readOnly(pid),
+      noColor: readOnly(noColor),
+      args: readOnly(Object.freeze(args)),
     });
     // Setup `Deno` global - we're actually overriding already
     // existing global `Deno` with `Deno` namespace from "./deno.ts".
-    immutableDefine(globalThis, "Deno", Deno);
+    immutableDefine(globalThis, "Deno", denoNs);
     Object.freeze(globalThis.Deno);
     Object.freeze(globalThis.Deno.core);
     Object.freeze(globalThis.Deno.core.sharedQueue);

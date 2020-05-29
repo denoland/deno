@@ -93,12 +93,11 @@ export interface TestDefinition {
 const TEST_REGISTRY: TestDefinition[] = [];
 
 export function test(t: TestDefinition): void;
-export function test(fn: () => void | Promise<void>): void;
 export function test(name: string, fn: () => void | Promise<void>): void;
 // Main test function provided by Deno, as you can see it merely
 // creates a new object with "name" and "fn" fields.
 export function test(
-  t: string | TestDefinition | (() => void | Promise<void>),
+  t: string | TestDefinition,
   fn?: () => void | Promise<void>
 ): void {
   let testDef: TestDefinition;
@@ -116,11 +115,6 @@ export function test(
       throw new TypeError("The test name can't be empty");
     }
     testDef = { fn: fn as () => void | Promise<void>, name: t, ...defaults };
-  } else if (typeof t === "function") {
-    if (!t.name) {
-      throw new TypeError("The test function can't be anonymous");
-    }
-    testDef = { fn: t, name: t.name, ...defaults };
   } else {
     if (!t.fn) {
       throw new TypeError("Missing test function");
@@ -142,7 +136,7 @@ export function test(
   TEST_REGISTRY.push(testDef);
 }
 
-export interface TestMessage {
+interface TestMessage {
   start?: {
     tests: TestDefinition[];
   };
@@ -317,7 +311,7 @@ function createFilterFn(
   };
 }
 
-export interface RunTestsOptions {
+interface RunTestsOptions {
   exitOnFail?: boolean;
   failFast?: boolean;
   filter?: string | RegExp;
@@ -327,7 +321,7 @@ export interface RunTestsOptions {
   onMessage?: (message: TestMessage) => void | Promise<void>;
 }
 
-export async function runTests({
+async function runTests({
   exitOnFail = true,
   failFast = false,
   filter = undefined,
@@ -339,11 +333,10 @@ export async function runTests({
   const filterFn = createFilterFn(filter, skip);
   const testApi = new TestApi(TEST_REGISTRY, filterFn, failFast);
 
-  // @ts-ignore
   const originalConsole = globalThis.console;
 
   if (disableLog) {
-    // @ts-ignore
+    // @ts-expect-error
     globalThis.console = disabledConsole;
   }
 
@@ -362,7 +355,6 @@ export async function runTests({
   }
 
   if (disableLog) {
-    // @ts-ignore
     globalThis.console = originalConsole;
   }
 
@@ -372,3 +364,5 @@ export async function runTests({
 
   return endMsg!;
 }
+
+exposeForTest("runTests", runTests);

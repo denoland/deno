@@ -9,13 +9,13 @@ import {
 } from "../../testing/asserts.ts";
 const { execPath, run } = Deno;
 
-Deno.test(async function xevalSuccess(): Promise<void> {
+Deno.test("xevalSuccess", async function (): Promise<void> {
   const chunks: string[] = [];
   await xeval(stringsReader("a\nb\nc"), ($): number => chunks.push($));
   assertEquals(chunks, ["a", "b", "c"]);
 });
 
-Deno.test(async function xevalDelimiter(): Promise<void> {
+Deno.test("xevalDelimiter", async function (): Promise<void> {
   const chunks: string[] = [];
   await xeval(stringsReader("!MADMADAMADAM!"), ($): number => chunks.push($), {
     delimiter: "MADAM",
@@ -29,7 +29,7 @@ Deno.test({
   name: "xevalCliReplvar",
   fn: async function (): Promise<void> {
     const p = run({
-      cmd: [execPath(), xevalPath, "--replvar=abc", "console.log(abc)"],
+      cmd: [execPath(), "run", xevalPath, "--replvar=abc", "console.log(abc)"],
       stdin: "piped",
       stdout: "piped",
       stderr: "null",
@@ -43,9 +43,9 @@ Deno.test({
   },
 });
 
-Deno.test(async function xevalCliSyntaxError(): Promise<void> {
+Deno.test("xevalCliSyntaxError", async function (): Promise<void> {
   const p = run({
-    cmd: [execPath(), xevalPath, "("],
+    cmd: [execPath(), "run", xevalPath, "("],
     stdin: "null",
     stdout: "piped",
     stderr: "piped",

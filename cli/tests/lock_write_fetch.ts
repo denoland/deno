@@ -32,10 +32,20 @@ const fetchCheckProc = Deno.run({
 const fetchCheckProcCode = (await fetchCheckProc.status()).code;
 console.log(`fetch check code: ${fetchCheckProcCode}`);
 
+Deno.removeSync("./lock_write_fetch.json");
+
 const runProc = Deno.run({
   stdout: "null",
   stderr: "null",
-  cmd: [Deno.execPath(), "--lock=lock_write_fetch.json", "https_import.ts"],
+  cmd: [
+    Deno.execPath(),
+    "run",
+    "--lock=lock_write_fetch.json",
+    "--lock-write",
+    "--allow-read",
+    "file_exists.ts",
+    "lock_write_fetch.json",
+  ],
 });
 
 const runCode = (await runProc.status()).code;

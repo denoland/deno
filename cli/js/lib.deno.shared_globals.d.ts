@@ -176,23 +176,23 @@ declare namespace WebAssembly {
 
 /** Sets a timer which executes a function once after the timer expires. */
 declare function setTimeout(
-  cb: (...args: unknown[]) => void,
+  cb: (...args: any[]) => void,
   delay?: number,
-  ...args: unknown[]
+  ...args: any[]
 ): number;
 
 /** Repeatedly calls a function , with a fixed time delay between each call. */
 declare function setInterval(
-  cb: (...args: unknown[]) => void,
+  cb: (...args: any[]) => void,
   delay?: number,
-  ...args: unknown[]
+  ...args: any[]
 ): number;
 declare function clearTimeout(id?: number): void;
 declare function clearInterval(id?: number): void;
 declare function queueMicrotask(func: Function): void;
 
 declare var console: Console;
-declare var location: Location;
+declare var crypto: Crypto;
 
 declare function addEventListener(
   type: string,
@@ -309,6 +309,21 @@ interface QueuingStrategy<T = any> {
   size?: QueuingStrategySizeCallback<T>;
 }
 
+/** This Streams API interface provides a built-in byte length queuing strategy
+ * that can be used when constructing streams. */
+declare class CountQueuingStrategy implements QueuingStrategy {
+  constructor(options: { highWaterMark: number });
+  highWaterMark: number;
+  size(chunk: any): 1;
+}
+
+declare class ByteLengthQueuingStrategy
+  implements QueuingStrategy<ArrayBufferView> {
+  constructor(options: { highWaterMark: number });
+  highWaterMark: number;
+  size(chunk: ArrayBufferView): number;
+}
+
 /** This Streams API interface represents a readable stream of byte data. The
  * Fetch API offers a concrete instance of a ReadableStream through the body
  * property of a Response object. */
@@ -347,13 +362,58 @@ declare var ReadableStream: {
   ): ReadableStream<R>;
 };
 
-/** This Streams API interface provides a standard abstraction for writing streaming data to a destination, known as a sink. This object comes with built-in backpressure and queuing. */
-interface WritableStream<W = any> {
+interface WritableStreamDefaultControllerCloseCallback {
+  (): void | PromiseLike<void>;
+}
+
+interface WritableStreamDefaultControllerStartCallback {
+  (controller: WritableStreamDefaultController): void | PromiseLike<void>;
+}
+
+interface WritableStreamDefaultControllerWriteCallback<W> {
+  (chunk: W, controller: WritableStreamDefaultController): void | PromiseLike<
+    void
+  >;
+}
+
+interface WritableStreamErrorCallback {
+  (reason: any): void | PromiseLike<void>;
+}
+
+interface UnderlyingSink<W = any> {
+  abort?: WritableStreamErrorCallback;
+  close?: WritableStreamDefaultControllerCloseCallback;
+  start?: WritableStreamDefaultControllerStartCallback;
+  type?: undefined;
+  write?: WritableStreamDefaultControllerWriteCallback<W>;
+}
+
+/** This Streams API interface provides a standard abstraction for writing
+ * streaming data to a destination, known as a sink. This object comes with
+ * built-in backpressure and queuing. */
+declare class WritableStream<W = any> {
+  constructor(
+    underlyingSink?: UnderlyingSink<W>,
+    strategy?: QueuingStrategy<W>
+  );
   readonly locked: boolean;
   abort(reason?: any): Promise<void>;
+  close(): Promise<void>;
   getWriter(): WritableStreamDefaultWriter<W>;
 }
 
+/** This Streams API interface represents a controller allowing control of a
+ * WritableStream's state. When constructing a WritableStream, the underlying
+ * sink is given a corresponding WritableStreamDefaultController instance to
+ * manipulate. */
+interface WritableStreamDefaultController {
+  error(error?: any): void;
+}
+
+/** This Streams API interface is the object returned by
+ * WritableStream.getWriter() and once created locks the < writer to the
+ * WritableStream ensuring that no other streams can write to the underlying
+ * sink. */
 interface WritableStreamDefaultWriter<W = any> {
   readonly closed: Promise<void>;
   readonly desiredSize: number | null;
@@ -362,6 +422,42 @@ interface WritableStreamDefaultWriter<W = any> {
   close(): Promise<void>;
   releaseLock(): void;
   write(chunk: W): Promise<void>;
+}
+
+declare class TransformStream<I = any, O = any> {
+  constructor(
+    transformer?: Transformer<I, O>,
+    writableStrategy?: QueuingStrategy<I>,
+    readableStrategy?: QueuingStrategy<O>
+  );
+  readonly readable: ReadableStream<O>;
+  readonly writable: WritableStream<I>;
+}
+
+interface TransformStreamDefaultController<O = any> {
+  readonly desiredSize: number | null;
+  enqueue(chunk: O): void;
+  error(reason?: any): void;
+  terminate(): void;
+}
+
+interface Transformer<I = any, O = any> {
+  flush?: TransformStreamDefaultControllerCallback<O>;
+  readableType?: undefined;
+  start?: TransformStreamDefaultControllerCallback<O>;
+  transform?: TransformStreamDefaultControllerTransformCallback<I, O>;
+  writableType?: undefined;
+}
+
+interface TransformStreamDefaultControllerCallback<O> {
+  (controller: TransformStreamDefaultController<O>): void | PromiseLike<void>;
+}
+
+interface TransformStreamDefaultControllerTransformCallback<I, O> {
+  (
+    chunk: I,
+    controller: TransformStreamDefaultController<O>
+  ): void | PromiseLike<void>;
 }
 
 interface DOMStringList {
@@ -378,68 +474,6 @@ declare class DOMException extends Error {
   constructor(message?: string, name?: string);
   readonly name: string;
   readonly message: string;
-}
-
-/** The location (URL) of the object it is linked to. Changes done on it are
- * reflected on the object it relates to. Both the Document and Window
- * interface have such a linked Location, accessible via Document.location and
- * Window.location respectively. */
-declare interface Location {
-  /** Returns a DOMStringList object listing the origins of the ancestor
-   * browsing contexts, from the parent browsing context to the top-level
-   * browsing context. */
-  readonly ancestorOrigins: DOMStringList;
-  /** Returns the Location object's URL's fragment (includes leading "#" if
-   * non-empty).
-   *
-   * Can be set, to navigate to the same URL with a changed fragment (ignores
-   * leading "#"). */
-  hash: string;
-  /** Returns the Location object's URL's host and port (if different from the
-   * default port for the scheme).
-   *
-   * Can be set, to navigate to the same URL with a changed host and port. */
-  host: string;
-  /** Returns the Location object's URL's host.
-   *
-   * Can be set, to navigate to the same URL with a changed host. */
-  hostname: string;
-  /** Returns the Location object's URL.
-   *
-   * Can be set, to navigate to the given URL. */
-  href: string;
-  toString(): string;
-  /** Returns the Location object's URL's origin. */
-  readonly origin: string;
-  /** Returns the Location object's URL's path.
-   *
-   * Can be set, to navigate to the same URL with a changed path. */
-  pathname: string;
-  /** Returns the Location object's URL's port.
-   *
-   * Can be set, to navigate to the same URL with a changed port. */
-  port: string;
-  /** Returns the Location object's URL's scheme.
-   *
-   * Can be set, to navigate to the same URL with a changed scheme. */
-  protocol: string;
-  /** Returns the Location object's URL's query (includes leading "?" if
-   * non-empty).
-   *
-   * Can be set, to navigate to the same URL with a changed query (ignores
-   * leading "?"). */
-  search: string;
-  /**
-   * Navigates to the given URL.
-   */
-  assign(url: string): void;
-  /**
-   * Reloads the current page.
-   */
-  reload(): void;
-  /** Removes the current page from the session history and navigates to the
-   * given URL. */
-  replace(url: string): void;
 }
 
 type BufferSource = ArrayBufferView | ArrayBuffer;
@@ -496,9 +530,7 @@ declare class Console {
   dir: (
     obj: unknown,
     options?: Partial<{
-      showHidden: boolean;
       depth: number;
-      colors: boolean;
       indentLevel: number;
     }>
   ) => void;
@@ -545,6 +577,26 @@ declare class Console {
   clear: () => void;
   trace: (...args: unknown[]) => void;
   static [Symbol.hasInstance](instance: Console): boolean;
+}
+
+declare interface Crypto {
+  readonly subtle: null;
+  getRandomValues<
+    T extends
+      | Int8Array
+      | Int16Array
+      | Int32Array
+      | Uint8Array
+      | Uint16Array
+      | Uint32Array
+      | Uint8ClampedArray
+      | Float32Array
+      | Float64Array
+      | DataView
+      | null
+  >(
+    array: T
+  ): T;
 }
 
 type FormDataEntryValue = File | string;
@@ -810,7 +862,7 @@ interface Request extends Body {
   readonly integrity: string;
   /**
    * Returns a boolean indicating whether or not request is for a history
-   * navigation (a.k.a. back-foward navigation).
+   * navigation (a.k.a. back-forward navigation).
    */
   readonly isHistoryNavigation: boolean;
   /**
@@ -870,6 +922,12 @@ declare const Request: {
   new (input: RequestInfo, init?: RequestInit): Request;
 };
 
+interface ResponseInit {
+  headers?: HeadersInit;
+  status?: number;
+  statusText?: string;
+}
+
 type ResponseType =
   | "basic"
   | "cors"
@@ -893,20 +951,7 @@ interface Response extends Body {
 
 declare const Response: {
   prototype: Response;
-
-  // TODO(#4667) Response constructor is non-standard.
-  // new(body?: BodyInit | null, init?: ResponseInit): Response;
-  new (
-    url: string,
-    status: number,
-    statusText: string,
-    headersList: Array<[string, string]>,
-    rid: number,
-    redirected_: boolean,
-    type_?: null | ResponseType,
-    body_?: null | Body
-  ): Response;
-
+  new (body?: BodyInit | null, init?: ResponseInit): Response;
   error(): Response;
   redirect(url: string, status?: number): Response;
 };
@@ -953,37 +998,47 @@ declare class TextEncoder {
 interface URLSearchParams {
   /** Appends a specified key/value pair as a new search parameter.
    *
-   *       let searchParams = new URLSearchParams();
-   *       searchParams.append('name', 'first');
-   *       searchParams.append('name', 'second');
+   * ```ts
+   * let searchParams = new URLSearchParams();
+   * searchParams.append('name', 'first');
+   * searchParams.append('name', 'second');
+   * ```
    */
   append(name: string, value: string): void;
 
   /** Deletes the given search parameter and its associated value,
    * from the list of all search parameters.
    *
-   *       let searchParams = new URLSearchParams([['name', 'value']]);
-   *       searchParams.delete('name');
+   * ```ts
+   * let searchParams = new URLSearchParams([['name', 'value']]);
+   * searchParams.delete('name');
+   * ```
    */
   delete(name: string): void;
 
   /** Returns all the values associated with a given search parameter
    * as an array.
    *
-   *       searchParams.getAll('name');
+   * ```ts
+   * searchParams.getAll('name');
+   * ```
    */
   getAll(name: string): string[];
 
   /** Returns the first value associated to the given search parameter.
    *
-   *       searchParams.get('name');
+   * ```ts
+   * searchParams.get('name');
+   * ```
    */
   get(name: string): string | null;
 
   /** Returns a Boolean that indicates whether a parameter with the
    * specified name exists.
    *
-   *       searchParams.has('name');
+   * ```ts
+   * searchParams.has('name');
+   * ```
    */
   has(name: string): boolean;
 
@@ -992,7 +1047,9 @@ interface URLSearchParams {
    * deletes the others. If the search parameter doesn't exist, this
    * method creates it.
    *
-   *       searchParams.set('name', 'value');
+   * ```ts
+   * searchParams.set('name', 'value');
+   * ```
    */
   set(name: string, value: string): void;
 
@@ -1000,7 +1057,9 @@ interface URLSearchParams {
    * return undefined. The sort order is according to Unicode code
    * points of the keys.
    *
-   *       searchParams.sort();
+   * ```ts
+   * searchParams.sort();
+   * ```
    */
   sort(): void;
 
@@ -1008,10 +1067,12 @@ interface URLSearchParams {
    * place and return undefined. Optionally accepts an object to use
    * as this when executing callback as second argument.
    *
-   *       const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
-   *       params.forEach((value, key, parent) => {
-   *         console.log(value, key, parent);
-   *       });
+   * ```ts
+   * const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
+   * params.forEach((value, key, parent) => {
+   *   console.log(value, key, parent);
+   * });
+   * ```
    *
    */
   forEach(
@@ -1022,46 +1083,56 @@ interface URLSearchParams {
   /** Returns an iterator allowing to go through all keys contained
    * in this object.
    *
-   *       const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
-   *       for (const key of params.keys()) {
-   *         console.log(key);
-   *       }
+   * ```ts
+   * const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
+   * for (const key of params.keys()) {
+   *   console.log(key);
+   * }
+   * ```
    */
   keys(): IterableIterator<string>;
 
   /** Returns an iterator allowing to go through all values contained
    * in this object.
    *
-   *       const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
-   *       for (const value of params.values()) {
-   *         console.log(value);
-   *       }
+   * ```ts
+   * const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
+   * for (const value of params.values()) {
+   *   console.log(value);
+   * }
+   * ```
    */
   values(): IterableIterator<string>;
 
   /** Returns an iterator allowing to go through all key/value
    * pairs contained in this object.
    *
-   *       const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
-   *       for (const [key, value] of params.entries()) {
-   *         console.log(key, value);
-   *       }
+   * ```ts
+   * const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
+   * for (const [key, value] of params.entries()) {
+   *   console.log(key, value);
+   * }
+   * ```
    */
   entries(): IterableIterator<[string, string]>;
 
   /** Returns an iterator allowing to go through all key/value
    * pairs contained in this object.
    *
-   *       const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
-   *       for (const [key, value] of params) {
-   *         console.log(key, value);
-   *       }
+   * ```ts
+   * const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
+   * for (const [key, value] of params) {
+   *   console.log(key, value);
+   * }
+   * ```
    */
   [Symbol.iterator](): IterableIterator<[string, string]>;
 
   /** Returns a query string suitable for use in a URL.
    *
-   *        searchParams.toString();
+   * ```ts
+   * searchParams.toString();
+   * ```
    */
   toString(): string;
 }
@@ -1094,7 +1165,7 @@ interface URL {
 
 declare const URL: {
   prototype: URL;
-  new (url: string, base?: string | URL): URL;
+  new (url: string | URL, base?: string | URL): URL;
   createObjectURL(object: any): string;
   revokeObjectURL(url: string): void;
 };
@@ -1154,31 +1225,34 @@ declare class Worker extends EventTarget {
        * Configurable permissions are on the roadmap to be implemented.
        *
        * Example:
-       *    // mod.ts
-       *    const worker = new Worker("./deno_worker.ts", { type: "module", deno: true });
-       *    worker.postMessage({ cmd: "readFile", fileName: "./log.txt" });
        *
-       *    // deno_worker.ts
+       * ```ts
+       * // mod.ts
+       * const worker = new Worker("./deno_worker.ts", { type: "module", deno: true });
+       * worker.postMessage({ cmd: "readFile", fileName: "./log.txt" });
+       *
+       * // deno_worker.ts
        *
        *
-       *    self.onmessage = async function (e) {
-       *        const { cmd, fileName } = e.data;
-       *        if (cmd !== "readFile") {
-       *            throw new Error("Invalid command");
-       *        }
-       *        const buf = await Deno.readFile(fileName);
-       *        const fileContents = new TextDecoder().decode(buf);
-       *        console.log(fileContents);
-       *    }
+       * self.onmessage = async function (e) {
+       *     const { cmd, fileName } = e.data;
+       *     if (cmd !== "readFile") {
+       *         throw new Error("Invalid command");
+       *     }
+       *     const buf = await Deno.readFile(fileName);
+       *     const fileContents = new TextDecoder().decode(buf);
+       *     console.log(fileContents);
+       * }
+       * ```
        *
-       *    // log.txt
-       *    hello world
-       *    hello world 2
+       * // log.txt
+       * hello world
+       * hello world 2
        *
-       *    // run program
-       *    $ deno run --allow-read mod.ts
-       *    hello world
-       *    hello world2
+       * // run program
+       * $ deno run --allow-read mod.ts
+       * hello world
+       * hello world2
        *
        */
       deno?: boolean;
@@ -1194,8 +1268,10 @@ declare namespace performance {
    *
    * Use the flag --allow-hrtime return a precise value.
    *
-   *       const t = performance.now();
-   *       console.log(`${t} ms since start!`);
+   * ```ts
+   * const t = performance.now();
+   * console.log(`${t} ms since start!`);
+   * ```
    */
   export function now(): number;
 }

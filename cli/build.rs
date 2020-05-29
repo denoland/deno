@@ -20,6 +20,11 @@ fn main() {
     deno_typescript::ts_version()
   );
 
+  println!(
+    "cargo:rustc-env=TARGET={}",
+    std::env::var("TARGET").unwrap()
+  );
+
   let extern_crate_modules = include_crate_modules![deno_core];
 
   // The generation of snapshots is slow and often unnecessary. Until we figure
@@ -89,6 +94,10 @@ fn main() {
   custom_libs.insert(
     "lib.deno.ns.d.ts".to_string(),
     c.join("js/lib.deno.ns.d.ts"),
+  );
+  custom_libs.insert(
+    "lib.deno.unstable.d.ts".to_string(),
+    c.join("js/lib.deno.unstable.d.ts"),
   );
   runtime_isolate.register_op(
     "op_fetch_asset",

@@ -14,7 +14,7 @@ function isHeaders(value: any): value is Headers {
   return value instanceof Headers;
 }
 
-const headerMap = Symbol("header map");
+const headersData = Symbol("headers data");
 
 // TODO: headerGuard? Investigate if it is needed
 // node-fetch did not implement this but it is in the spec
@@ -39,9 +39,131 @@ function validateValue(value: string): void {
   }
 }
 
+/** Appends a key and value to the header list.
+ *
+ * The spec indicates that when a key already exists, the append adds the new
+ * value onto the end of the existing value.  The behaviour of this though
+ * varies when the key is `set-cookie`.  In this case, if the key of the cookie
+ * already exists, the value is replaced, but if the key of the cookie does not
+ * exist, and additional `set-cookie` header is added.
+ *
+ * The browser specification of `Headers` is written for clients, and not
+ * servers, and Deno is a server, meaning that it needs to follow the patterns
+ * expected for servers, of which a `set-cookie` header is expected for each
+ * unique cookie key, but duplicate cookie keys should not exist. */
+function dataAppend(
+  data: Array<[string, string]>,
+  key: string,
+  value: string
+): void {
+  for (let i = 0; i < data.length; i++) {
+    const [dataKey] = data[i];
+    if (key === "set-cookie" && dataKey === "set-cookie") {
+      const [, dataValue] = data[i];
+      const [dataCookieKey] = dataValue.split("=");
+      const [cookieKey] = value.split("=");
+      if (dataCookieKey === cookieKey) {
+        data[i][1] = value;
+        return;
+      }
+    } else {
+      if (dataKey === key) {
+        data[i][1] += `, ${value}`;
+        return;
+      }
+    }
+  }
+  data.push([key, value]);
+}
+
+/** Gets a value of a key in the headers list.
+ *
+ * This varies slightly from spec behaviour in that when the key is `set-cookie`
+ * the value returned will look like a concatenated value, when in fact, if the
+ * headers were iterated over, each individual `set-cookie` value is a unique
+ * entry in the headers list. */
+function dataGet(
+  data: Array<[string, string]>,
+  key: string
+): string | undefined {
+  const setCookieValues = [];
+  for (const [dataKey, value] of data) {
+    if (dataKey === key) {
+      if (key === "set-cookie") {
+        setCookieValues.push(value);
+      } else {
+        return value;
+      }
+    }
+  }
+  if (setCookieValues.length) {
+    return setCookieValues.join(", ");
+  }
+  return undefined;
+}
+
+/** Sets a value of a key in the headers list.
+ *
+ * The spec indicates that the value should be replaced if the key already
+ * exists.  The behaviour here varies, where if the key is `set-cookie` the key
+ * of the cookie is inspected, and if the key of the cookie already exists,
+ * then the value is replaced.  If the key of the cookie is not found, then
+ * the value of the `set-cookie` is added to the list of headers.
+ *
+ * The browser specification of `Headers` is written for clients, and not
+ * servers, and Deno is a server, meaning that it needs to follow the patterns
+ * expected for servers, of which a `set-cookie` header is expected for each
+ * unique cookie key, but duplicate cookie keys should not exist. */
+function dataSet(
+  data: Array<[string, string]>,
+  key: string,
+  value: string
+): void {
+  for (let i = 0; i < data.length; i++) {
+    const [dataKey] = data[i];
+    if (dataKey === key) {
+      // there could be multiple set-cookie headers, but all others are unique
+      if (key === "set-cookie") {
+        const [, dataValue] = data[i];
+        const [dataCookieKey] = dataValue.split("=");
+        const [cookieKey] = value.split("=");
+        if (cookieKey === dataCookieKey) {
+          data[i][1] = value;
+          return;
+        }
+      } else {
+        data[i][1] = value;
+        return;
+      }
+    }
+  }
+  data.push([key, value]);
+}
+
+function dataDelete(data: Array<[string, string]>, key: string): void {
+  let i = 0;
+  while (i < data.length) {
+    const [dataKey] = data[i];
+    if (dataKey === key) {
+      data.splice(i, 1);
+    } else {
+      i++;
+    }
+  }
+}
+
+function dataHas(data: Array<[string, string]>, key: string): boolean {
+  for (const [dataKey] of data) {
+    if (dataKey === key) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // ref: https://fetch.spec.whatwg.org/#dom-headers
 class HeadersBase {
-  [headerMap]: Map<string, string>;
+  [headersData]: Array<[string, string]>;
 
   constructor(init?: HeadersInit) {
     if (init === null) {
@@ -49,9 +171,9 @@ class HeadersBase {
         "Failed to construct 'Headers'; The provided value was not valid"
       );
     } else if (isHeaders(init)) {
-      this[headerMap] = new Map(init);
+      this[headersData] = [...init];
     } else {
-      this[headerMap] = new Map();
+      this[headersData] = [];
       if (Array.isArray(init)) {
         for (const tuple of init) {
           // If header does not contain exactly two items,
@@ -63,37 +185,25 @@ class HeadersBase {
             2
           );
 
-          const [name, value] = normalizeParams(tuple[0], tuple[1]);
-          validateName(name);
-          validateValue(value);
-          const existingValue = this[headerMap].get(name);
-          this[headerMap].set(
-            name,
-            existingValue ? `${existingValue}, ${value}` : value
-          );
+          this.append(tuple[0], tuple[1]);
         }
       } else if (init) {
-        const names = Object.keys(init);
-        for (const rawName of names) {
-          const rawValue = init[rawName];
-          const [name, value] = normalizeParams(rawName, rawValue);
-          validateName(name);
-          validateValue(value);
-          this[headerMap].set(name, value);
+        for (const [rawName, rawValue] of Object.entries(init)) {
+          this.append(rawName, rawValue);
         }
       }
     }
   }
 
   [customInspect](): string {
-    let headerSize = this[headerMap].size;
+    let length = this[headersData].length;
     let output = "";
-    this[headerMap].forEach((value, key) => {
-      const prefix = headerSize === this[headerMap].size ? " " : "";
-      const postfix = headerSize === 1 ? " " : ", ";
+    for (const [key, value] of this[headersData]) {
+      const prefix = length === this[headersData].length ? " " : "";
+      const postfix = length === 1 ? " " : ", ";
       output = output + `${prefix}${key}: ${value}${postfix}`;
-      headerSize--;
-    });
+      length--;
+    }
     return `Headers {${output}}`;
   }
 
@@ -103,31 +213,28 @@ class HeadersBase {
     const [newname, newvalue] = normalizeParams(name, value);
     validateName(newname);
     validateValue(newvalue);
-    const v = this[headerMap].get(newname);
-    const str = v ? `${v}, ${newvalue}` : newvalue;
-    this[headerMap].set(newname, str);
+    dataAppend(this[headersData], newname, newvalue);
   }
 
   delete(name: string): void {
     requiredArguments("Headers.delete", arguments.length, 1);
     const [newname] = normalizeParams(name);
     validateName(newname);
-    this[headerMap].delete(newname);
+    dataDelete(this[headersData], newname);
   }
 
   get(name: string): string | null {
     requiredArguments("Headers.get", arguments.length, 1);
     const [newname] = normalizeParams(name);
     validateName(newname);
-    const value = this[headerMap].get(newname);
-    return value || null;
+    return dataGet(this[headersData], newname) ?? null;
   }
 
   has(name: string): boolean {
     requiredArguments("Headers.has", arguments.length, 1);
     const [newname] = normalizeParams(name);
     validateName(newname);
-    return this[headerMap].has(newname);
+    return dataHas(this[headersData], newname);
   }
 
   set(name: string, value: string): void {
@@ -135,7 +242,7 @@ class HeadersBase {
     const [newname, newvalue] = normalizeParams(name, value);
     validateName(newname);
     validateValue(newvalue);
-    this[headerMap].set(newname, newvalue);
+    dataSet(this[headersData], newname, newvalue);
   }
 
   get [Symbol.toStringTag](): string {
@@ -148,4 +255,4 @@ export class HeadersImpl extends DomIterableMixin<
   string,
   string,
   typeof HeadersBase
->(HeadersBase, headerMap) {}
+>(HeadersBase, headersData) {}

@@ -41,12 +41,12 @@ class FileReader implements Deno.Reader {
 
   constructor(private filePath: string) {}
 
-  public async read(p: Uint8Array): Promise<number | Deno.EOF> {
+  public async read(p: Uint8Array): Promise<number | null> {
     if (!this.file) {
       this.file = await Deno.open(this.filePath, { read: true });
     }
     const res = await Deno.read(this.file.rid, p);
-    if (res === Deno.EOF) {
+    if (res === null) {
       Deno.close(this.file.rid);
       this.file = undefined;
     }
@@ -317,10 +317,9 @@ export class Tar {
 
     const mode =
         opts.fileMode || (info && info.mode) || parseInt("777", 8) & 0xfff,
-      mtime =
-        opts.mtime ||
-        (info && info.modified) ||
-        Math.floor(new Date().getTime() / 1000),
+      mtime = Math.floor(
+        opts.mtime ?? (info?.mtime ?? new Date()).valueOf() / 1000
+      ),
       uid = opts.uid || 0,
       gid = opts.gid || 0;
     if (typeof opts.owner === "string" && opts.owner.length >= 32) {

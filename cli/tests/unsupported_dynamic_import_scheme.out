@@ -1,0 +1,5 @@
+error: Uncaught TypeError: Unsupported scheme "xxx" for module "xxx:". Supported schemes: [
+    "http",
+    "https",
+    "file",
+]

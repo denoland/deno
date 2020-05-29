@@ -35,7 +35,11 @@ def get_port(port=None):
 def deno_tcp(deno_exe):
     port = get_port()
     deno_cmd = [
-        deno_exe, "run", "--allow-net", "tools/deno_tcp.ts",
+        # TODO(lucacasonato): remove unstable when stabilized
+        deno_exe,
+        "run",
+        "--allow-net",
+        "tools/deno_tcp.ts",
         server_addr(port)
     ]
     print "http_benchmark testing DENO tcp."
@@ -45,7 +49,8 @@ def deno_tcp(deno_exe):
 def deno_http(deno_exe):
     port = get_port()
     deno_cmd = [
-        deno_exe, "run", "--allow-net", "std/http/http_bench.ts",
+        deno_exe, "run", "--allow-net", "--reload", "--unstable",
+        "std/http/http_bench.ts",
         server_addr(port)
     ]
     print "http_benchmark testing DENO using net/http."

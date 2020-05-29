@@ -1,4 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+/** This module is browser compatible. Do not rely on good formatting of values
+ * for AssertionError messages in browsers. */
+
 import { red, green, white, gray, bold } from "../fmt/colors.ts";
 import diff, { DiffType, DiffResult } from "./diff.ts";
 
@@ -17,7 +20,7 @@ export class AssertionError extends Error {
 }
 
 function format(v: unknown): string {
-  let string = Deno.inspect(v);
+  let string = globalThis.Deno ? Deno.inspect(v) : String(v);
   if (typeof v == "string") {
     string = `"${string.replace(/(?=["\\])/g, "\\")}"`;
   }
@@ -156,7 +159,8 @@ export function assertEquals(
       actualString.split("\n"),
       expectedString.split("\n")
     );
-    message = buildMessage(diffResult).join("\n");
+    const diffMsg = buildMessage(diffResult).join("\n");
+    message = `Values are not equal:\n${diffMsg}`;
   } catch (e) {
     message = `\n${red(CAN_NOT_DISPLAY)} + \n\n`;
   }
@@ -205,24 +209,41 @@ export function assertStrictEq(
   expected: unknown,
   msg?: string
 ): void {
-  if (actual !== expected) {
-    let actualString: string;
-    let expectedString: string;
-    try {
-      actualString = String(actual);
-    } catch (e) {
-      actualString = "[Cannot display]";
-    }
-    try {
-      expectedString = String(expected);
-    } catch (e) {
-      expectedString = "[Cannot display]";
-    }
-    if (!msg) {
-      msg = `actual: ${actualString} expected: ${expectedString}`;
-    }
-    throw new AssertionError(msg);
+  if (actual === expected) {
+    return;
   }
+
+  let message: string;
+
+  if (msg) {
+    message = msg;
+  } else {
+    const actualString = format(actual);
+    const expectedString = format(expected);
+
+    if (actualString === expectedString) {
+      const withOffset = actualString
+        .split("\n")
+        .map((l) => `     ${l}`)
+        .join("\n");
+      message = `Values have the same structure but are not reference-equal:\n\n${red(
+        withOffset
+      )}\n`;
+    } else {
+      try {
+        const diffResult = diff(
+          actualString.split("\n"),
+          expectedString.split("\n")
+        );
+        const diffMsg = buildMessage(diffResult).join("\n");
+        message = `Values are not strictly equal:\n${diffMsg}`;
+      } catch (e) {
+        message = `\n${red(CAN_NOT_DISPLAY)} + \n\n`;
+      }
+    }
+  }
+
+  throw new AssertionError(message);
 }
 
 /**
@@ -236,7 +257,7 @@ export function assertStrContains(
 ): void {
   if (!actual.includes(expected)) {
     if (!msg) {
-      msg = `actual: "${actual}" expected to contains: "${expected}"`;
+      msg = `actual: "${actual}" expected to contain: "${expected}"`;
     }
     throw new AssertionError(msg);
   }
@@ -268,7 +289,7 @@ export function assertArrayContains(
     return;
   }
   if (!msg) {
-    msg = `actual: "${actual}" expected to contains: "${expected}"`;
+    msg = `actual: "${actual}" expected to contain: "${expected}"`;
     msg += "\n";
     msg += `missing: ${missing}`;
   }
@@ -378,9 +399,4 @@ export function unimplemented(msg?: string): never {
 /** Use this to assert unreachable code. */
 export function unreachable(): never {
   throw new AssertionError("unreachable");
-}
-
-export function assertNotEOF<T extends {}>(val: T | Deno.EOF): T {
-  assertNotEquals(val, Deno.EOF);
-  return val as T;
 }

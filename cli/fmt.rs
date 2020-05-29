@@ -21,116 +21,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
-fn is_supported(path: &Path) -> bool {
-  if let Some(ext) = path.extension() {
-    ext == "ts" || ext == "tsx" || ext == "js" || ext == "jsx"
-  } else {
-    false
-  }
-}
-
-fn get_config() -> dprint::configuration::Configuration {
-  use dprint::configuration::*;
-  ConfigurationBuilder::new().deno().build()
-}
-
-async fn check_source_files(
-  config: dprint::configuration::Configuration,
-  paths: Vec<PathBuf>,
-) -> Result<(), ErrBox> {
-  let not_formatted_files_count = Arc::new(AtomicUsize::new(0));
-  let formatter = Arc::new(dprint::Formatter::new(config));
-  let output_lock = Arc::new(Mutex::new(0)); // prevent threads outputting at the same time
-
-  run_parallelized(paths, {
-    let not_formatted_files_count = not_formatted_files_count.clone();
-    move |file_path| {
-      let file_path_str = file_path.to_string_lossy();
-      let file_contents = fs::read_to_string(&file_path)?;
-      let r = formatter.format_text(&file_path_str, &file_contents);
-      match r {
-        Ok(formatted_text) => {
-          if formatted_text != file_contents {
-            not_formatted_files_count.fetch_add(1, Ordering::SeqCst);
-          }
-        }
-        Err(e) => {
-          let _g = output_lock.lock().unwrap();
-          eprintln!("Error checking: {}", &file_path_str);
-          eprintln!("   {}", e);
-        }
-      }
-      Ok(())
-    }
-  })
-  .await?;
-
-  let not_formatted_files_count =
-    not_formatted_files_count.load(Ordering::SeqCst);
-  if not_formatted_files_count == 0 {
-    Ok(())
-  } else {
-    Err(
-      OpError::other(format!(
-        "Found {} not formatted {}",
-        not_formatted_files_count,
-        files_str(not_formatted_files_count),
-      ))
-      .into(),
-    )
-  }
-}
-
-fn files_str(len: usize) -> &'static str {
-  if len == 1 {
-    "file"
-  } else {
-    "files"
-  }
-}
-
-async fn format_source_files(
-  config: dprint::configuration::Configuration,
-  paths: Vec<PathBuf>,
-) -> Result<(), ErrBox> {
-  let formatted_files_count = Arc::new(AtomicUsize::new(0));
-  let formatter = Arc::new(dprint::Formatter::new(config));
-  let output_lock = Arc::new(Mutex::new(0)); // prevent threads outputting at the same time
-
-  run_parallelized(paths, {
-    let formatted_files_count = formatted_files_count.clone();
-    move |file_path| {
-      let file_path_str = file_path.to_string_lossy();
-      let file_contents = fs::read_to_string(&file_path)?;
-      let r = formatter.format_text(&file_path_str, &file_contents);
-      match r {
-        Ok(formatted_text) => {
-          if formatted_text != file_contents {
-            fs::write(&file_path, formatted_text)?;
-            formatted_files_count.fetch_add(1, Ordering::SeqCst);
-            let _g = output_lock.lock().unwrap();
-            println!("{}", file_path_str);
-          }
-        }
-        Err(e) => {
-          let _g = output_lock.lock().unwrap();
-          eprintln!("Error formatting: {}", &file_path_str);
-          eprintln!("   {}", e);
-        }
-      }
-      Ok(())
-    }
-  })
-  .await?;
-
-  let formatted_files_count = formatted_files_count.load(Ordering::SeqCst);
-  debug!(
-    "Formatted {} {}",
-    formatted_files_count,
-    files_str(formatted_files_count),
-  );
-  Ok(())
-}
+const BOM_CHAR: char = '\u{FEFF}';
 
 /// Format JavaScript/TypeScript files.
 ///
@@ -160,10 +51,103 @@ pub async fn format(args: Vec<String>, check: bool) -> Result<(), ErrBox> {
   }
   let config = get_config();
   if check {
-    check_source_files(config, target_files).await?;
+    check_source_files(config, target_files).await
   } else {
-    format_source_files(config, target_files).await?;
+    format_source_files(config, target_files).await
   }
+}
+
+async fn check_source_files(
+  config: dprint::configuration::Configuration,
+  paths: Vec<PathBuf>,
+) -> Result<(), ErrBox> {
+  let not_formatted_files_count = Arc::new(AtomicUsize::new(0));
+  let formatter = Arc::new(dprint::Formatter::new(config));
+  let output_lock = Arc::new(Mutex::new(0)); // prevent threads outputting at the same time
+
+  run_parallelized(paths, {
+    let not_formatted_files_count = not_formatted_files_count.clone();
+    move |file_path| {
+      let file_text = read_file_contents(&file_path)?.text;
+      let r = formatter.format_text(&file_path, &file_text);
+      match r {
+        Ok(formatted_text) => {
+          if formatted_text != file_text {
+            not_formatted_files_count.fetch_add(1, Ordering::SeqCst);
+          }
+        }
+        Err(e) => {
+          let _g = output_lock.lock().unwrap();
+          eprintln!("Error checking: {}", file_path.to_string_lossy());
+          eprintln!("   {}", e);
+        }
+      }
+      Ok(())
+    }
+  })
+  .await?;
+
+  let not_formatted_files_count =
+    not_formatted_files_count.load(Ordering::SeqCst);
+  if not_formatted_files_count == 0 {
+    Ok(())
+  } else {
+    Err(
+      OpError::other(format!(
+        "Found {} not formatted {}",
+        not_formatted_files_count,
+        files_str(not_formatted_files_count),
+      ))
+      .into(),
+    )
+  }
+}
+
+async fn format_source_files(
+  config: dprint::configuration::Configuration,
+  paths: Vec<PathBuf>,
+) -> Result<(), ErrBox> {
+  let formatted_files_count = Arc::new(AtomicUsize::new(0));
+  let formatter = Arc::new(dprint::Formatter::new(config));
+  let output_lock = Arc::new(Mutex::new(0)); // prevent threads outputting at the same time
+
+  run_parallelized(paths, {
+    let formatted_files_count = formatted_files_count.clone();
+    move |file_path| {
+      let file_contents = read_file_contents(&file_path)?;
+      let r = formatter.format_text(&file_path, &file_contents.text);
+      match r {
+        Ok(formatted_text) => {
+          if formatted_text != file_contents.text {
+            write_file_contents(
+              &file_path,
+              FileContents {
+                had_bom: file_contents.had_bom,
+                text: formatted_text,
+              },
+            )?;
+            formatted_files_count.fetch_add(1, Ordering::SeqCst);
+            let _g = output_lock.lock().unwrap();
+            println!("{}", file_path.to_string_lossy());
+          }
+        }
+        Err(e) => {
+          let _g = output_lock.lock().unwrap();
+          eprintln!("Error formatting: {}", file_path.to_string_lossy());
+          eprintln!("   {}", e);
+        }
+      }
+      Ok(())
+    }
+  })
+  .await?;
+
+  let formatted_files_count = formatted_files_count.load(Ordering::SeqCst);
+  debug!(
+    "Formatted {} {}",
+    formatted_files_count,
+    files_str(formatted_files_count),
+  );
   Ok(())
 }
 
@@ -177,7 +161,8 @@ fn format_stdin(check: bool) -> Result<(), ErrBox> {
   }
   let formatter = dprint::Formatter::new(get_config());
 
-  match formatter.format_text("_stdin.ts", &source) {
+  // dprint will fallback to jsx parsing if parsing this as a .ts file doesn't work
+  match formatter.format_text(&PathBuf::from("_stdin.ts"), &source) {
     Ok(formatted_text) => {
       if check {
         if formatted_text != source {
@@ -192,6 +177,70 @@ fn format_stdin(check: bool) -> Result<(), ErrBox> {
     }
   }
   Ok(())
+}
+
+/// Formats the given source text
+pub fn format_text(source: &str) -> Result<String, ErrBox> {
+  dprint::Formatter::new(get_config())
+    .format_text(&PathBuf::from("_tmp.ts"), &source)
+    .map_err(|e| OpError::other(e).into())
+}
+
+fn files_str(len: usize) -> &'static str {
+  if len == 1 {
+    "file"
+  } else {
+    "files"
+  }
+}
+
+fn is_supported(path: &Path) -> bool {
+  let lowercase_ext = path
+    .extension()
+    .and_then(|e| e.to_str())
+    .map(|e| e.to_lowercase());
+  if let Some(ext) = lowercase_ext {
+    ext == "ts" || ext == "tsx" || ext == "js" || ext == "jsx"
+  } else {
+    false
+  }
+}
+
+fn get_config() -> dprint::configuration::Configuration {
+  use dprint::configuration::*;
+  ConfigurationBuilder::new().deno().build()
+}
+
+struct FileContents {
+  text: String,
+  had_bom: bool,
+}
+
+fn read_file_contents(file_path: &PathBuf) -> Result<FileContents, ErrBox> {
+  let file_text = fs::read_to_string(&file_path)?;
+  let had_bom = file_text.starts_with(BOM_CHAR);
+  let text = if had_bom {
+    // remove the BOM
+    String::from(&file_text[BOM_CHAR.len_utf8()..])
+  } else {
+    file_text
+  };
+
+  Ok(FileContents { text, had_bom })
+}
+
+fn write_file_contents(
+  file_path: &PathBuf,
+  file_contents: FileContents,
+) -> Result<(), ErrBox> {
+  let file_text = if file_contents.had_bom {
+    // add back the BOM
+    format!("{}{}", BOM_CHAR, file_contents.text)
+  } else {
+    file_contents.text
+  };
+
+  Ok(fs::write(file_path, file_text)?)
 }
 
 async fn run_parallelized<F>(
@@ -247,6 +296,10 @@ fn test_is_supported() {
   assert!(is_supported(Path::new("cli/tests/002_hello.ts")));
   assert!(is_supported(Path::new("foo.jsx")));
   assert!(is_supported(Path::new("foo.tsx")));
+  assert!(is_supported(Path::new("foo.TS")));
+  assert!(is_supported(Path::new("foo.TSX")));
+  assert!(is_supported(Path::new("foo.JS")));
+  assert!(is_supported(Path::new("foo.JSX")));
 }
 
 #[tokio::test]
