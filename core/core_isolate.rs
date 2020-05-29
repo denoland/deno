@@ -411,10 +411,9 @@ impl Future for CoreIsolate {
       state.have_unpolled_ops = false;
 
       let pending_r = state.pending_ops.poll_next_unpin(cx);
-      let unref_r = state.pending_unref_ops.poll_next_unpin(cx);
       match pending_r {
         Poll::Ready(None) => break,
-        Poll::Pending => {}
+        Poll::Pending => break,
         Poll::Ready(Some((op_id, buf))) => {
           let successful_push = state.shared.push(op_id, &buf);
           if !successful_push {
@@ -426,7 +425,11 @@ impl Future for CoreIsolate {
           }
         }
       };
+    }
 
+    loop {
+      let mut state = state_rc.borrow_mut();
+      let unref_r = state.pending_unref_ops.poll_next_unpin(cx);
       #[allow(clippy::match_wild_err_arm)]
       match unref_r {
         Poll::Ready(None) => break,

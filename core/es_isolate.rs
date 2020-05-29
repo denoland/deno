@@ -579,31 +579,32 @@ impl Future for EsIsolate {
     let es_isolate = self.get_mut();
 
     let state_rc = Self::state(es_isolate);
-    let state = state_rc.borrow();
 
-    let (has_preparing_dyn_imports, has_pending_dyn_imports) = {
+    {
+      let state = state_rc.borrow();
       state.waker.register(cx.waker());
-      (
-        !state.preparing_dyn_imports.is_empty(),
-        !state.pending_dyn_imports.is_empty(),
-      )
+    }
+
+    let has_preparing = {
+      let state = state_rc.borrow();
+      !state.preparing_dyn_imports.is_empty()
     };
-
-    drop(state);
-
-    if has_preparing_dyn_imports {
+    if has_preparing {
       let poll_imports = es_isolate.prepare_dyn_imports(cx)?;
       assert!(poll_imports.is_ready());
     }
 
-    if has_pending_dyn_imports {
+    let has_pending = {
+      let state = state_rc.borrow();
+      !state.pending_dyn_imports.is_empty()
+    };
+    if has_pending {
       let poll_imports = es_isolate.poll_dyn_imports(cx)?;
       assert!(poll_imports.is_ready());
     }
 
     match ready!(es_isolate.0.poll_unpin(cx)) {
       Ok(()) => {
-        let state_rc = Self::state(es_isolate);
         let state = state_rc.borrow();
         if state.pending_dyn_imports.is_empty()
           && state.preparing_dyn_imports.is_empty()
@@ -1004,9 +1005,7 @@ pub mod tests {
       assert_eq!(prepare_load_count.load(Ordering::Relaxed), 1);
 
       // Second poll actually loads modules into the isolate.
-      let r = isolate.poll_unpin(cx);
-      dbg!(&r);
-      assert!(match r {
+      assert!(match isolate.poll_unpin(cx) {
         Poll::Ready(Ok(_)) => true,
         _ => false,
       });
