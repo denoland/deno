@@ -922,6 +922,12 @@ declare const Request: {
   new (input: RequestInfo, init?: RequestInit): Request;
 };
 
+interface ResponseInit {
+  headers?: HeadersInit;
+  status?: number;
+  statusText?: string;
+}
+
 type ResponseType =
   | "basic"
   | "cors"
@@ -945,20 +951,7 @@ interface Response extends Body {
 
 declare const Response: {
   prototype: Response;
-
-  // TODO(#4667) Response constructor is non-standard.
-  // new(body?: BodyInit | null, init?: ResponseInit): Response;
-  new (
-    url: string,
-    status: number,
-    statusText: string,
-    headersList: Array<[string, string]>,
-    rid: number,
-    redirected_: boolean,
-    type_?: null | ResponseType,
-    body_?: null | Body
-  ): Response;
-
+  new (body?: BodyInit | null, init?: ResponseInit): Response;
   error(): Response;
   redirect(url: string, status?: number): Response;
 };
@@ -1488,3 +1481,11 @@ declare const AbortSignal: {
   prototype: AbortSignal;
   new (): AbortSignal;
 };
+
+interface ErrorConstructor {
+  /** See https://v8.dev/docs/stack-trace-api#stack-trace-collection-for-custom-exceptions. */
+  // eslint-disable-next-line @typescript-eslint/ban-types
+  captureStackTrace(error: Object, constructor?: Function): void;
+  // TODO(nayeemrmn): Support `Error.prepareStackTrace()`. We currently use this
+  // internally in a way that makes it unavailable for users.
+}

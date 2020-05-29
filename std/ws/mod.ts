@@ -491,7 +491,7 @@ export async function handshake(
     throw new Error("ws: invalid status line: " + statusLine);
   }
 
-  // @ts-ignore
+  // @ts-expect-error
   const { version, statusCode } = m.groups;
   if (version !== "HTTP/1.1" || statusCode !== "101") {
     throw new Error(

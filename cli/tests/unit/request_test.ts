@@ -10,7 +10,7 @@ unitTest(function fromInit(): void {
     },
   });
 
-  // @ts-ignore
+  // @ts-expect-error
   assertEquals("ahoyhoy", req._bodySource);
   assertEquals(req.url, "https://example.com");
   assertEquals(req.headers.get("test-header"), "value");
@@ -18,13 +18,13 @@ unitTest(function fromInit(): void {
 
 unitTest(function fromRequest(): void {
   const r = new Request("https://example.com");
-  // @ts-ignore
+  // @ts-expect-error
   r._bodySource = "ahoyhoy";
   r.headers.set("test-header", "value");
 
   const req = new Request(r);
 
-  // @ts-ignore
+  // @ts-expect-error
   assertEquals(req._bodySource, r._bodySource);
   assertEquals(req.url, r.url);
   assertEquals(req.headers.get("test-header"), r.headers.get("test-header"));
@@ -44,6 +44,6 @@ unitTest(async function cloneRequestBodyStream(): Promise<void> {
 
   assertEquals(b1, b2);
 
-  // @ts-ignore
+  // @ts-expect-error
   assert(r1._bodySource !== r2._bodySource);
 });

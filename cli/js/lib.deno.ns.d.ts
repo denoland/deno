@@ -62,7 +62,7 @@ declare namespace Deno {
    *
    * Deno.test({
    *   name: "example ignored test",
-   *   ignore: Deno.build.os === "windows"
+   *   ignore: Deno.build.os === "windows",
    *   fn(): void {
    *     // This test is ignored only on Windows machines
    *   },
@@ -73,7 +73,7 @@ declare namespace Deno {
    *   async fn() {
    *     const decoder = new TextDecoder("utf-8");
    *     const data = await Deno.readFile("hello_world.txt");
-   *     assertEquals(decoder.decode(data), "Hello world")
+   *     assertEquals(decoder.decode(data), "Hello world");
    *   }
    * });
    * ```
@@ -94,7 +94,7 @@ declare namespace Deno {
    * Deno.test("My async test description", async ():Promise<void> => {
    *   const decoder = new TextDecoder("utf-8");
    *   const data = await Deno.readFile("hello_world.txt");
-   *   assertEquals(decoder.decode(data), "Hello world")
+   *   assertEquals(decoder.decode(data), "Hello world");
    * });
    * ```
    * */
@@ -897,7 +897,11 @@ declare namespace Deno {
 
   export interface MakeTempOptions {
     /** Directory where the temporary directory should be created (defaults to
-     * the env variable TMPDIR, or the system's default, usually /tmp). */
+     * the env variable TMPDIR, or the system's default, usually /tmp).
+     *
+     * Note that if the passed `dir` is relative, the path returned by
+     * makeTempFile() and makeTempDir() will also be relative. Be mindful of
+     * this when changing working directory. */
     dir?: string;
     /** String that should precede the random portion of the temporary
      * directory's name. */
@@ -1253,7 +1257,9 @@ declare namespace Deno {
    * console.log(realSymLinkPath);  // outputs "/home/alice/file.txt"
    * ```
    *
-   * Requires `allow-read` permission. */
+   * Requires `allow-read` permission for the target path.
+   * Also requires `allow-read` permission for the CWD if the target path is
+   * relative.*/
   export function realPathSync(path: string): string;
 
   /** Resolves to the absolute normalized path, with symbolic links resolved.
@@ -1267,7 +1273,9 @@ declare namespace Deno {
    * console.log(realSymLinkPath);  // outputs "/home/alice/file.txt"
    * ```
    *
-   * Requires `allow-read` permission. */
+   * Requires `allow-read` permission for the target path.
+   * Also requires `allow-read` permission for the CWD if the target path is
+   * relative.*/
   export function realPath(path: string): Promise<string>;
 
   export interface DirEntry {
@@ -1612,10 +1620,9 @@ declare namespace Deno {
    * const conn2 = await Deno.connect({ hostname: "192.0.2.1", port: 80 });
    * const conn3 = await Deno.connect({ hostname: "[2001:db8::1]", port: 80 });
    * const conn4 = await Deno.connect({ hostname: "golang.org", port: 80, transport: "tcp" });
-   * const conn5 = await Deno.connect({ path: "/foo/bar.sock", transport: "unix" });
    * ```
    *
-   * Requires `allow-net` permission for "tcp" and `allow-read` for unix. */
+   * Requires `allow-net` permission for "tcp". */
   export function connect(options: ConnectOptions): Promise<Conn>;
 
   export interface ConnectTlsOptions {
@@ -1828,7 +1835,7 @@ declare namespace Deno {
    * ```ts
    * const obj = {};
    * obj.propA = 10;
-   * obj.propB = "hello"
+   * obj.propB = "hello";
    * const objAsString = Deno.inspect(obj); // { propA: 10, propB: "hello" }
    * console.log(obj);  // prints same value as objAsString, e.g. { propA: 10, propB: "hello" }
    * ```
