@@ -418,7 +418,7 @@ impl Permissions {
     allow_run: bool,
     allow_plugin: bool,
     allow_hrtime: bool,
-  ) -> Result<DenoPermissions, OpError> {
+  ) -> Result<Permissions, OpError> {
     let allow_read = self.allow_read.fork(allow_read)?;
     let allow_write = self.allow_write.fork(allow_write)?;
     let allow_net = self.allow_net.fork(allow_net)?;
@@ -442,7 +442,7 @@ impl Permissions {
         self.net_whitelist
       )))
     } else {
-      Ok(DenoPermissions {
+      Ok(Permissions {
         allow_read,
         read_whitelist,
         allow_write,
@@ -924,11 +924,11 @@ mod tests {
       serde_json::from_str(json_perms).unwrap();
     assert_eq!(perms0, deserialized_perms);
   }
-  
+
   #[test]
   fn test_fork() {
     let guard = PERMISSION_PROMPT_GUARD.lock().unwrap();
-    let perms0 = DenoPermissions::from_flags(&Flags {
+    let perms0 = Permissions::from_flags(&Flags {
       ..Default::default()
     });
     set_prompt_result(true);
@@ -947,7 +947,7 @@ mod tests {
           false,
         )
         .expect("Testing expect"),
-      DenoPermissions {
+      Permissions {
         allow_read: PermissionState::Allow,
         read_whitelist: HashSet::new(),
         allow_write: PermissionState::Allow,
