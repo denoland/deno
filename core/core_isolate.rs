@@ -72,7 +72,6 @@ pub enum StartupData<'a> {
 }
 
 type JSErrorCreateFn = dyn Fn(JSError) -> ErrBox;
-type IsolateErrorHandleFn = dyn FnMut(ErrBox) -> Result<(), ErrBox>;
 
 /// A single execution context of JavaScript. Corresponds roughly to the "Web
 /// Worker" concept in the DOM. An CoreIsolate is a Future that can be used with
@@ -108,9 +107,6 @@ pub struct CoreIsolateState {
   have_unpolled_ops: bool,
   pub op_registry: OpRegistry,
   waker: AtomicWaker,
-  // TODO(bartlomieju): get rid of this field?
-  #[allow(unused)]
-  error_handler: Option<Box<IsolateErrorHandleFn>>,
 }
 
 // TODO(ry) The trait v8::InIsolate is superfluous. HandleScope::new should just
@@ -251,7 +247,6 @@ impl CoreIsolate {
       have_unpolled_ops: false,
       op_registry: OpRegistry::new(),
       waker: AtomicWaker::new(),
-      error_handler: None,
     })));
 
     Self {
