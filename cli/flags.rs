@@ -1294,13 +1294,13 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
 fn watch_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   if let Some(watch_p) = matches.values_of("watch") {
-    let mut raw_watch_paths: Vec<PathBuf> =
-      watch_p.map(PathBuf::from).collect();
+    let raw_watch_paths: Vec<PathBuf> = watch_p.map(PathBuf::from).collect();
 
     if raw_watch_paths.is_empty() {
-      raw_watch_paths = vec![PathBuf::from(".")];
+      flags.watch_paths = vec![PathBuf::from(".")];
+    } else {
+      flags.watch_paths = raw_watch_paths;
     }
-    flags.watch_paths = resolve_fs_whitelist(&raw_watch_paths);
     debug!("watch paths: {:#?}", &flags.watch_paths);
   }
 }

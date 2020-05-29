@@ -74,6 +74,7 @@ use crate::fs as deno_fs;
 use crate::global_state::GlobalState;
 use crate::msg::MediaType;
 use crate::op_error::OpError;
+use crate::ops::fs_events::async_reader;
 use crate::ops::io::get_stdio;
 use crate::permissions::Permissions;
 use crate::state::State;
@@ -93,10 +94,9 @@ use std::env;
 use std::io::Write;
 use std::path::PathBuf;
 use std::pin::Pin;
+use tokio::select;
 use upgrade::upgrade_command;
 use url::Url;
-use tokio::select;
-use crate::ops::fs_events::async_reader;
 
 static LOGGER: Logger = Logger;
 
@@ -530,8 +530,8 @@ async fn run_repl(flags: Flags) -> Result<(), ErrBox> {
 }
 
 async fn run_command(flags: Flags, script: String) -> Result<(), ErrBox> {
-  let global_state = GlobalState::new(flags.clone())?;
   loop {
+    let global_state = GlobalState::new(flags.clone())?;
     let main_module = ModuleSpecifier::resolve_url_or_path(&script).unwrap();
     let mut worker =
       create_main_worker(global_state.clone(), main_module.clone())?;
@@ -549,7 +549,9 @@ async fn run_command(flags: Flags, script: String) -> Result<(), ErrBox> {
       _ = (&mut *worker) => {},
     };
     worker.execute("window.dispatchEvent(new Event('unload'))")?;
-    if !is_file_changed { break; }
+    if !is_file_changed {
+      break;
+    }
   }
   Ok(())
 }
