@@ -111,7 +111,6 @@ impl EsIsolate {
     source: &str,
   ) -> Result<ModuleId, ErrBox> {
     let state_rc = Self::state(self);
-    let mut state = state_rc.borrow_mut();
 
     let core_state_rc = CoreIsolate::state(self);
     let core_state = core_state_rc.borrow();
@@ -144,6 +143,7 @@ impl EsIsolate {
     for i in 0..module.get_module_requests_length() {
       let import_specifier =
         module.get_module_request(i).to_rust_string_lossy(scope);
+      let state = state_rc.borrow();
       let module_specifier =
         state.loader.resolve(&import_specifier, name, false)?;
       import_specifiers.push(module_specifier);
@@ -151,9 +151,13 @@ impl EsIsolate {
 
     let mut handle = v8::Global::<v8::Module>::new();
     handle.set(scope, module);
-    state
-      .modules
-      .register(id, name, main, handle, import_specifiers);
+
+    {
+      let mut state = state_rc.borrow_mut();
+      state
+        .modules
+        .register(id, name, main, handle, import_specifiers);
+    }
     Ok(id)
   }
 
@@ -316,7 +320,6 @@ impl EsIsolate {
     mod_id: ModuleId,
   ) -> Result<(), ErrBox> {
     let state_rc = Self::state(self);
-    let mut state = state_rc.borrow_mut();
 
     let core_state_rc = CoreIsolate::state(self);
     let core_state = core_state_rc.borrow();
@@ -329,19 +332,27 @@ impl EsIsolate {
     let mut cs = v8::ContextScope::new(scope, context);
     let scope = cs.enter();
 
-    let mut resolver_handle = state
-      .dyn_import_map
-      .remove(&id)
-      .expect("Invalid dyn import id");
+    let mut resolver_handle = {
+      let mut state = state_rc.borrow_mut();
+      state
+        .dyn_import_map
+        .remove(&id)
+        .expect("Invalid dyn import id")
+    };
     let resolver = resolver_handle.get(scope).unwrap();
     resolver_handle.reset(scope);
-    let info = state
-      .modules
-      .get_info(mod_id)
-      .expect("Dyn import module info not found");
-    // Resolution success
-    let mut module = info.handle.get(scope).unwrap();
+
+    let mut module = {
+      let state = state_rc.borrow();
+      let info = state
+        .modules
+        .get_info(mod_id)
+        .expect("Dyn import module info not found");
+      // Resolution success
+      info.handle.get(scope).unwrap()
+    };
     assert_eq!(module.get_status(), v8::ModuleStatus::Evaluated);
+
     let module_namespace = module.get_module_namespace();
     resolver.resolve(context, module_namespace).unwrap();
     scope.isolate().run_microtasks();
@@ -353,10 +364,13 @@ impl EsIsolate {
     cx: &mut Context,
   ) -> Poll<Result<(), ErrBox>> {
     let state_rc = Self::state(self);
-    let mut state = state_rc.borrow_mut();
 
     loop {
-      match state.preparing_dyn_imports.poll_next_unpin(cx) {
+      let r = {
+        let mut state = state_rc.borrow_mut();
+        state.preparing_dyn_imports.poll_next_unpin(cx)
+      };
+      match r {
         Poll::Pending | Poll::Ready(None) => {
           // There are no active dynamic import loaders, or none are ready.
           return Poll::Ready(Ok(()));
@@ -367,6 +381,7 @@ impl EsIsolate {
 
           match prepare_result {
             Ok(load) => {
+              let state = state_rc.borrow_mut();
               state.pending_dyn_imports.push(load.into_future());
             }
             Err(err) => {
@@ -547,6 +562,7 @@ impl EsIsolate {
   }
 
   pub fn state(isolate: &v8::Isolate) -> Rc<RefCell<EsIsolateState>> {
+    println!("EsIsolate::state");
     let s = isolate.get_slot::<Rc<RefCell<EsIsolateState>>>().unwrap();
     s.clone()
   }
@@ -727,17 +743,22 @@ pub mod tests {
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
 
     let state_rc = EsIsolate::state(&isolate);
-    let state = state_rc.borrow();
-    let imports = state.modules.get_children(mod_a);
-    assert_eq!(
-      imports,
-      Some(&vec![ModuleSpecifier::resolve_url("file:///b.js").unwrap()])
-    );
+    {
+      let state = state_rc.borrow();
+      let imports = state.modules.get_children(mod_a);
+      assert_eq!(
+        imports,
+        Some(&vec![ModuleSpecifier::resolve_url("file:///b.js").unwrap()])
+      );
+    }
     let mod_b = isolate
       .mod_new(false, "file:///b.js", "export function b() { return 'b' }")
       .unwrap();
-    let imports = state.modules.get_children(mod_b).unwrap();
-    assert_eq!(imports.len(), 0);
+    {
+      let state = state_rc.borrow();
+      let imports = state.modules.get_children(mod_b).unwrap();
+      assert_eq!(imports.len(), 0);
+    }
 
     js_check(isolate.mod_instantiate(mod_b));
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
