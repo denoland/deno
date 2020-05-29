@@ -414,9 +414,6 @@ fn js_unit_tests() {
 
 #[test]
 fn ts_dependency_recompilation() {
-  // First we have to generate a bundle of some module that has exports.
-  let mod1 = util::root_path().join("cli/tests/subdir/mod1.ts");
-  assert!(mod1.is_file());
   let t = TempDir::new().expect("tempdir fail");
   let ats = t.path().join("a.ts");
 
@@ -431,7 +428,7 @@ fn ts_dependency_recompilation() {
     
     print(foo);",
   )
-  .expect("error writing file");
+  .unwrap();
 
   let bts = t.path().join("b.ts");
   std::fs::write(
@@ -439,7 +436,7 @@ fn ts_dependency_recompilation() {
     "
     export const foo = \"foo\";",
   )
-  .expect("error writing file");
+  .unwrap();
 
   let output = util::deno_cmd()
     .current_dir(util::root_path())
@@ -474,16 +471,10 @@ fn ts_dependency_recompilation() {
   let stdout_output = std::str::from_utf8(&output.stdout).unwrap().trim();
   let stderr_output = std::str::from_utf8(&output.stderr).unwrap().trim();
 
-  let err_lines = stderr_output
-    .split('\n')
-    .map(|s| s.to_string())
-    .collect::<Vec<_>>();
-  assert!(err_lines.get(0).unwrap().starts_with("Compile"));
-  assert_eq!(
-    err_lines.get(1).unwrap(),
-    "error: TS2345 [ERROR]: Argument of type '5' is not assignable to parameter of type 'string'."
-  );
-  assert_eq!(stdout_output, "");
+  // error: TS2345 [ERROR]: Argument of type '5' is not assignable to parameter of type 'string'.
+  assert!(stderr_output.contains("TS2345 [ERROR]"));
+  assert!(!output.status.success());
+  assert!(stdout_output.is_empty());
 }
 
 #[test]

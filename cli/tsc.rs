@@ -294,6 +294,10 @@ impl CompiledFileMetadata {
   }
 }
 
+/// Information associated with compilation of a "module graph",
+/// ie. entry point and all its dependencies.
+/// It's used to perform cache invalidation if content of any
+/// dependency changes.
 #[derive(Deserialize, Serialize)]
 pub struct GraphFileMetadata {
   pub deps: Vec<String>,

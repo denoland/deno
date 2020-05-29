@@ -25,7 +25,10 @@ use std::hash::BuildHasher;
 use std::path::PathBuf;
 use std::pin::Pin;
 
-fn err_with_location(e: ErrBox, location: Location) -> ErrBox {
+// TODO(bartlomieju): it'd be great if this function returned
+// more structured data and possibly format the same as TS diagnostics.
+/// Decorate error with location of import that caused the error.
+fn err_with_location(e: ErrBox, location: &Location) -> ErrBox {
   let location_str = format!(
     "\nImported from \"{}:{}\"",
     location.filename, location.line
@@ -464,7 +467,7 @@ impl ModuleGraphLoader {
             import_descriptor.resolved_specifier.clone(),
             Some(module_specifier.clone()),
           )
-          .map_err(|e| err_with_location(e, import_desc.location.clone()))?;
+          .map_err(|e| err_with_location(e, &import_desc.location))?;
 
         if let Some(type_dir_url) =
           import_descriptor.resolved_type_directive.as_ref()
@@ -474,7 +477,7 @@ impl ModuleGraphLoader {
               type_dir_url.clone(),
               Some(module_specifier.clone()),
             )
-            .map_err(|e| err_with_location(e, import_desc.location.clone()))?;
+            .map_err(|e| err_with_location(e, &import_desc.location))?;
         }
 
         imports.push(import_descriptor);
@@ -500,7 +503,7 @@ impl ModuleGraphLoader {
             reference_descriptor.resolved_specifier.clone(),
             Some(module_specifier.clone()),
           )
-          .map_err(|e| err_with_location(e, ref_desc.location.clone()))?;
+          .map_err(|e| err_with_location(e, &ref_desc.location))?;
 
         match ref_desc.kind {
           TsReferenceKind::Lib => {
