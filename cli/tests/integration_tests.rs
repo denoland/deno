@@ -767,6 +767,24 @@ fn repl_test_eof() {
   assert!(err.is_empty());
 }
 
+#[test]
+fn repl_test_strict() {
+  let (_, err) = util::run_and_collect_output(
+    true,
+    "repl",
+    Some(vec![
+      "let a = {};",
+      "Object.preventExtensions(a);",
+      "a.c = 1;",
+    ]),
+    None,
+    false,
+  );
+  assert!(err.contains(
+    "Uncaught TypeError: Cannot add property c, object is not extensible"
+  ));
+}
+
 const REPL_MSG: &str = "exit using ctrl+d or close()\n";
 
 #[test]
@@ -1936,14 +1954,17 @@ fn cafile_bundle_remote_exports() {
 #[test]
 fn test_permissions_with_allow() {
   for permission in &util::PERMISSION_VARIANTS {
-    let (_, err) = util::run_and_collect_output(
-      true,
-      &format!("run --allow-{0} permission_test.ts {0}Required", permission),
-      None,
-      None,
-      false,
-    );
-    assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
+    let status = util::deno_cmd()
+      .current_dir(&util::tests_path())
+      .arg("run")
+      .arg(format!("--allow-{0}", permission))
+      .arg("permission_test.ts")
+      .arg(format!("{0}Required", permission))
+      .spawn()
+      .unwrap()
+      .wait()
+      .unwrap();
+    assert!(status.success());
   }
 }
 
@@ -1965,19 +1986,22 @@ fn test_permissions_without_allow() {
 fn test_permissions_rw_inside_project_dir() {
   const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
   for permission in &PERMISSION_VARIANTS {
-    let (_, err) = util::run_and_collect_output(
-      true,
-      &format!(
-        "run --allow-{0}={1} complex_permissions_test.ts {0} {2} {2}",
+    let status = util::deno_cmd()
+      .current_dir(&util::tests_path())
+      .arg("run")
+      .arg(format!(
+        "--allow-{0}={1}",
         permission,
-        util::root_path().into_os_string().into_string().unwrap(),
-        "complex_permissions_test.ts"
-      ),
-      None,
-      None,
-      false,
-    );
-    assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
+        util::root_path().into_os_string().into_string().unwrap()
+      ))
+      .arg("complex_permissions_test.ts")
+      .arg(permission)
+      .arg("complex_permissions_test.ts")
+      .spawn()
+      .unwrap()
+      .wait()
+      .unwrap();
+    assert!(status.success());
   }
 }
 
@@ -2014,24 +2038,27 @@ fn test_permissions_rw_outside_test_dir() {
 fn test_permissions_rw_inside_test_dir() {
   const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
   for permission in &PERMISSION_VARIANTS {
-    let (_, err) = util::run_and_collect_output(
-      true,
-      &format!(
-        "run --allow-{0}={1} complex_permissions_test.ts {0} {2}",
+    let status = util::deno_cmd()
+      .current_dir(&util::tests_path())
+      .arg("run")
+      .arg(format!(
+        "--allow-{0}={1}",
         permission,
         util::root_path()
           .join("cli")
           .join("tests")
           .into_os_string()
           .into_string()
-          .unwrap(),
-        "complex_permissions_test.ts"
-      ),
-      None,
-      None,
-      false,
-    );
-    assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
+          .unwrap()
+      ))
+      .arg("complex_permissions_test.ts")
+      .arg(permission)
+      .arg("complex_permissions_test.ts")
+      .spawn()
+      .unwrap()
+      .wait()
+      .unwrap();
+    assert!(status.success());
   }
 }
 
@@ -2086,17 +2113,18 @@ fn test_permissions_rw_inside_test_and_js_dir() {
     .into_string()
     .unwrap();
   for permission in &PERMISSION_VARIANTS {
-    let (_, err) = util::run_and_collect_output(
-      true,
-      &format!(
-        "run --allow-{0}={1},{2} complex_permissions_test.ts {0} {3}",
-        permission, test_dir, js_dir, "complex_permissions_test.ts"
-      ),
-      None,
-      None,
-      false,
-    );
-    assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
+    let status = util::deno_cmd()
+      .current_dir(&util::tests_path())
+      .arg("run")
+      .arg(format!("--allow-{0}={1},{2}", permission, test_dir, js_dir))
+      .arg("complex_permissions_test.ts")
+      .arg(permission)
+      .arg("complex_permissions_test.ts")
+      .spawn()
+      .unwrap()
+      .wait()
+      .unwrap();
+    assert!(status.success());
   }
 }
 
@@ -2104,17 +2132,18 @@ fn test_permissions_rw_inside_test_and_js_dir() {
 fn test_permissions_rw_relative() {
   const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
   for permission in &PERMISSION_VARIANTS {
-    let (_, err) = util::run_and_collect_output(
-      true,
-      &format!(
-				"run --allow-{0}=. complex_permissions_test.ts {0} complex_permissions_test.ts",
-				permission
-			),
-      None,
-      None,
-      false,
-    );
-    assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
+    let status = util::deno_cmd()
+      .current_dir(&util::tests_path())
+      .arg("run")
+      .arg(format!("--allow-{0}=.", permission))
+      .arg("complex_permissions_test.ts")
+      .arg(permission)
+      .arg("complex_permissions_test.ts")
+      .spawn()
+      .unwrap()
+      .wait()
+      .unwrap();
+    assert!(status.success());
   }
 }
 
@@ -2122,17 +2151,18 @@ fn test_permissions_rw_relative() {
 fn test_permissions_rw_no_prefix() {
   const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
   for permission in &PERMISSION_VARIANTS {
-    let (_, err) = util::run_and_collect_output(
-      true,
-			&format!(
-				"run --allow-{0}=tls/../ complex_permissions_test.ts {0} complex_permissions_test.ts",
-				permission
-			),
-			None,
-			None,
-			false,
-		);
-    assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
+    let status = util::deno_cmd()
+      .current_dir(&util::tests_path())
+      .arg("run")
+      .arg(format!("--allow-{0}=tls/../", permission))
+      .arg("complex_permissions_test.ts")
+      .arg(permission)
+      .arg("complex_permissions_test.ts")
+      .spawn()
+      .unwrap()
+      .wait()
+      .unwrap();
+    assert!(status.success());
   }
 }
 

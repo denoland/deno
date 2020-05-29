@@ -1,11 +1,76 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::ErrBox;
 use rusty_v8 as v8;
+use std::any::Any;
+use std::any::TypeId;
 use std::convert::TryFrom;
 use std::convert::TryInto;
 use std::error::Error;
 use std::fmt;
+use std::ops::Deref;
+
+// The Send and Sync traits are required because deno is multithreaded and we
+// need to be able to handle errors across threads.
+pub trait AnyError: Any + Error + Send + Sync + 'static {}
+impl<T> AnyError for T where T: Any + Error + Send + Sync + Sized + 'static {}
+
+#[derive(Debug)]
+pub struct ErrBox(Box<dyn AnyError>);
+
+impl dyn AnyError {
+  pub fn downcast_ref<T: AnyError>(&self) -> Option<&T> {
+    if Any::type_id(self) == TypeId::of::<T>() {
+      let target = self as *const Self as *const T;
+      let target = unsafe { &*target };
+      Some(target)
+    } else {
+      None
+    }
+  }
+}
+
+impl ErrBox {
+  pub fn downcast<T: AnyError>(self) -> Result<T, Self> {
+    if Any::type_id(&*self.0) == TypeId::of::<T>() {
+      let target = Box::into_raw(self.0) as *mut T;
+      let target = unsafe { Box::from_raw(target) };
+      Ok(*target)
+    } else {
+      Err(self)
+    }
+  }
+}
+
+impl AsRef<dyn AnyError> for ErrBox {
+  fn as_ref(&self) -> &dyn AnyError {
+    self.0.as_ref()
+  }
+}
+
+impl Deref for ErrBox {
+  type Target = Box<dyn AnyError>;
+  fn deref(&self) -> &Self::Target {
+    &self.0
+  }
+}
+
+impl<T: AnyError> From<T> for ErrBox {
+  fn from(error: T) -> Self {
+    Self(Box::new(error))
+  }
+}
+
+impl From<Box<dyn AnyError>> for ErrBox {
+  fn from(boxed: Box<dyn AnyError>) -> Self {
+    Self(boxed)
+  }
+}
+
+impl fmt::Display for ErrBox {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    self.0.fmt(f)
+  }
+}
 
 /// A `JSError` represents an exception coming from V8, with stack frames and
 /// line numbers. The deno_cli crate defines another `JSError` type, which wraps
@@ -296,5 +361,52 @@ impl fmt::Display for JSError {
       write!(f, "\n    at {}", formatted_frame)?;
     }
     Ok(())
+  }
+}
+
+pub(crate) fn attach_handle_to_error(
+  scope: &mut impl v8::InIsolate,
+  err: ErrBox,
+  handle: v8::Local<v8::Value>,
+) -> ErrBox {
+  ErrWithV8Handle::new(scope, err, handle).into()
+}
+
+// TODO(piscisaureus): rusty_v8 should implement the Error trait on
+// values of type v8::Global<T>.
+pub struct ErrWithV8Handle {
+  err: ErrBox,
+  handle: v8::Global<v8::Value>,
+}
+
+impl ErrWithV8Handle {
+  pub fn new(
+    scope: &mut impl v8::InIsolate,
+    err: ErrBox,
+    handle: v8::Local<v8::Value>,
+  ) -> Self {
+    let handle = v8::Global::new_from(scope, handle);
+    Self { err, handle }
+  }
+
+  pub fn get_handle(&self) -> &v8::Global<v8::Value> {
+    &self.handle
+  }
+}
+
+unsafe impl Send for ErrWithV8Handle {}
+unsafe impl Sync for ErrWithV8Handle {}
+
+impl Error for ErrWithV8Handle {}
+
+impl fmt::Display for ErrWithV8Handle {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    self.err.fmt(f)
+  }
+}
+
+impl fmt::Debug for ErrWithV8Handle {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    self.err.fmt(f)
   }
 }
