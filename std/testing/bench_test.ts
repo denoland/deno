@@ -63,7 +63,6 @@ test({
 
     const benchResult = await runBenchmarks({ skip: /throw/ });
 
-    assertEquals(benchResult.measured, 5);
     assertEquals(benchResult.filtered, 1);
     assertEquals(benchResult.results.length, 5);
 
