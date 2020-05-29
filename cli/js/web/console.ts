@@ -948,7 +948,6 @@ export class Console {
       name: "Trace",
       message,
     };
-    // @ts-expect-error
     Error.captureStackTrace(err, this.trace);
     this.error((err as Error).stack);
   };
