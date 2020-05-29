@@ -638,9 +638,9 @@ fn format_error(
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
+  let e = JSError::from_v8_exception(scope, args.get(0));
   let state_rc = CoreIsolate::state(scope.isolate());
   let state = state_rc.borrow();
-  let e = JSError::from_v8_exception(scope, args.get(0));
   let e = (state.js_error_create_fn)(e);
   let e = e.to_string();
   let e = v8::String::new(scope, &e).unwrap();
