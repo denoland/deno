@@ -126,10 +126,10 @@ pub fn op_fs_events_poll(
   let resource_table = isolate.resource_table.clone();
   let f = poll_fn(move |cx| {
     let mut resource_table = resource_table.borrow_mut();
-    let watcher = resource_table
+    let resource = resource_table
       .get_mut::<FsEventsResource>(rid)
       .ok_or_else(OpError::bad_resource_id)?;
-    watcher
+    resource
       .receiver
       .poll_recv(cx)
       .map(|maybe_result| match maybe_result {
@@ -141,21 +141,31 @@ pub fn op_fs_events_poll(
   Ok(JsonOp::Async(f.boxed_local()))
 }
 
-pub async fn async_reader(
+pub async fn file_watcher(
   paths: &[PathBuf],
 ) -> Result<serde_json::Value, deno_core::ErrBox> {
-  let mut resource =
-    create_resource(paths, RecursiveMode::Recursive, None::<&State>)?;
-
-  let f = poll_fn(move |cx| {
-    resource
-      .receiver
-      .poll_recv(cx)
-      .map(|maybe_result| match maybe_result {
-        Some(Ok(value)) => Ok(json!({ "value": value, "done": false })),
-        Some(Err(err)) => Err(err),
-        None => Ok(json!({ "done": true })),
-      })
-  });
-  f.await
+  loop {
+    let mut resource =
+      create_resource(paths, RecursiveMode::Recursive, None::<&State>)?;
+    let f = poll_fn(move |cx| {
+      resource
+        .receiver
+        .poll_recv(cx)
+        .map(|maybe_result| match maybe_result {
+          Some(Ok(value)) => {
+            println!("{:?}", value);
+            Ok(json!({ "value": value, "done": false }))
+          }
+          Some(Err(err)) => Err(err),
+          None => Ok(json!({ "done": true })),
+        })
+    });
+    let res = f.await?;
+    if res["value"].is_object() && res["value"]["kind"].is_string() {
+      let kind = &res["value"]["kind"];
+      if kind == "create" || kind == "modify" || kind == "remove" {
+        return Ok(res);
+      }
+    }
+  }
 }

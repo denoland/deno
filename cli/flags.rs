@@ -370,6 +370,7 @@ fn bundle_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   ca_file_arg_parse(flags, matches);
   config_arg_parse(flags, matches);
   importmap_arg_parse(flags, matches);
+  watch_arg_parse(flags, matches);
   unstable_arg_parse(flags, matches);
 
   let source_file = matches.value_of("source_file").unwrap().to_string();
@@ -694,6 +695,7 @@ fn bundle_subcommand<'a, 'b>() -> App<'a, 'b> {
         .required(true),
     )
     .arg(Arg::with_name("out_file").takes_value(true).required(false))
+    .arg(watch_arg())
     .arg(ca_file_arg())
     .arg(importmap_arg())
     .arg(unstable_arg())
@@ -939,6 +941,7 @@ fn permission_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
 
 fn run_test_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
   permission_args(inspect_args(app))
+    .arg(watch_arg())
     .arg(importmap_arg())
     .arg(unstable_arg())
     .arg(reload_arg())
@@ -969,15 +972,6 @@ fn run_test_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
 fn run_subcommand<'a, 'b>() -> App<'a, 'b> {
   run_test_args(SubCommand::with_name("run"))
     .setting(AppSettings::TrailingVarArg)
-    .arg(
-      Arg::with_name("watch")
-        .long("watch")
-        .min_values(0)
-        .takes_value(true)
-        .use_delimiter(true)
-        .require_equals(true)
-        .help("Restart the server on file change"),
-    )
     .arg(script_arg())
     .about("Run a program given a filename or url to the module")
     .long_about(
@@ -1290,6 +1284,16 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     flags.allow_plugin = true;
     flags.allow_hrtime = true;
   }
+}
+
+fn watch_arg<'a, 'b>() -> Arg<'a, 'b> {
+  Arg::with_name("watch")
+    .long("watch")
+    .min_values(0)
+    .takes_value(true)
+    .use_delimiter(true)
+    .require_equals(true)
+    .help("Restart the server on file change")
 }
 
 fn watch_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {

@@ -74,7 +74,7 @@ use crate::fs as deno_fs;
 use crate::global_state::GlobalState;
 use crate::msg::MediaType;
 use crate::op_error::OpError;
-use crate::ops::fs_events::async_reader;
+use crate::ops::fs_events::file_watcher;
 use crate::ops::io::get_stdio;
 use crate::permissions::Permissions;
 use crate::state::State;
@@ -306,6 +306,52 @@ fn get_types(unstable: bool) -> String {
   }
 }
 
+type WatchFuture =
+  Pin<Box<dyn Future<Output = std::result::Result<(), deno_core::ErrBox>>>>;
+
+async fn watch_func<F>(
+  watch_paths: &[PathBuf],
+  closure: F,
+) -> Result<(), ErrBox>
+where
+  F: Fn() -> WatchFuture,
+{
+  async fn error_handling(func: WatchFuture) {
+    let result = func.await;
+    if let Err(err) = result {
+      let msg = format!(
+        "{}: {}",
+        colors::red_bold("error".to_string()),
+        err.to_string(),
+      );
+      eprintln!("{}", msg);
+    }
+  }
+
+  if watch_paths.is_empty() {
+    let func = closure();
+    func.await?;
+  } else {
+    loop {
+      let func = error_handling(closure());
+      let mut is_file_changed = false;
+      select! {
+        _ = file_watcher(watch_paths) => {
+            is_file_changed = true;
+            println!("File change detected! Restarting!");
+          },
+        _ = func => { },
+      };
+      if !is_file_changed {
+        println!("Process terminated! Restarting on file change...");
+        file_watcher(watch_paths).await?;
+        println!("File change detected! Restarting!");
+      }
+    }
+  }
+  Ok(())
+}
+
 async fn info_command(
   flags: Flags,
   file: Option<String>,
@@ -399,7 +445,7 @@ async fn eval_command(
   Ok(())
 }
 
-async fn bundle_command(
+async fn bundle_command_exec(
   flags: Flags,
   source_file: String,
   out_file: Option<PathBuf>,
@@ -446,6 +492,19 @@ async fn bundle_command(
     println!("{}", output_string);
   }
 
+  Ok(())
+}
+
+async fn bundle_command(
+  flags: Flags,
+  source_file: String,
+  out_file: Option<PathBuf>,
+) -> Result<(), ErrBox> {
+  watch_func(&flags.watch_paths, || {
+    bundle_command_exec(flags.clone(), source_file.clone(), out_file.clone())
+      .boxed_local()
+  })
+  .await?;
   Ok(())
 }
 
@@ -529,34 +588,29 @@ async fn run_repl(flags: Flags) -> Result<(), ErrBox> {
   }
 }
 
-async fn run_command(flags: Flags, script: String) -> Result<(), ErrBox> {
-  loop {
-    let global_state = GlobalState::new(flags.clone())?;
-    let main_module = ModuleSpecifier::resolve_url_or_path(&script).unwrap();
-    let mut worker =
-      create_main_worker(global_state.clone(), main_module.clone())?;
-    debug!("main_module {}", main_module);
-    worker.execute_module(&main_module).await?;
-    write_lockfile(global_state)?;
-    worker.execute("window.dispatchEvent(new Event('load'))")?;
-    let mut is_file_changed = false;
-    let t1 = async_reader(&flags.watch_paths).boxed_local();
-    select! {
-      _ = t1 => {
-          is_file_changed = true;
-          println!("File change detected! Restarting!");
-        },
-      _ = (&mut *worker) => {},
-    };
-    worker.execute("window.dispatchEvent(new Event('unload'))")?;
-    if !is_file_changed {
-      break;
-    }
-  }
+async fn run_command_exec(flags: Flags, script: String) -> Result<(), ErrBox> {
+  let global_state = GlobalState::new(flags)?;
+  let main_module = ModuleSpecifier::resolve_url_or_path(&script).unwrap();
+  let mut worker =
+    create_main_worker(global_state.clone(), main_module.clone())?;
+  debug!("main_module {}", main_module);
+  worker.execute_module(&main_module).await?;
+  write_lockfile(global_state)?;
+  worker.execute("window.dispatchEvent(new Event('load'))")?;
+  (&mut *worker).await?;
+  worker.execute("window.dispatchEvent(new Event('unload'))")?;
   Ok(())
 }
 
-async fn test_command(
+async fn run_command(flags: Flags, script: String) -> Result<(), ErrBox> {
+  watch_func(&flags.watch_paths, || {
+    run_command_exec(flags.clone(), script.clone()).boxed_local()
+  })
+  .await?;
+  Ok(())
+}
+
+async fn test_command_exec(
   flags: Flags,
   include: Option<Vec<String>>,
   fail_fast: bool,
@@ -608,6 +662,29 @@ async fn test_command(
   worker.execute("window.dispatchEvent(new Event('load'))")?;
   (&mut *worker).await?;
   worker.execute("window.dispatchEvent(new Event('unload'))")
+}
+
+async fn test_command(
+  flags: Flags,
+  include: Option<Vec<String>>,
+  fail_fast: bool,
+  quiet: bool,
+  allow_none: bool,
+  filter: Option<String>,
+) -> Result<(), ErrBox> {
+  watch_func(&flags.watch_paths, || {
+    test_command_exec(
+      flags.clone(),
+      include.clone(),
+      fail_fast,
+      quiet,
+      allow_none,
+      filter.clone(),
+    )
+    .boxed_local()
+  })
+  .await?;
+  Ok(())
 }
 
 pub fn main() {
