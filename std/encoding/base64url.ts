@@ -43,5 +43,3 @@ export function encode(data: string | ArrayBuffer): string {
 export function decode(data: string): ArrayBuffer {
   return convertBase64ToArrayBuffer(convertBase64urlToBase64(data));
 }
-
-console.log(encode(">?>d?ß"));
