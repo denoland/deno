@@ -92,7 +92,7 @@ fn format_(doc_nodes: Vec<doc::DocNode>, indent: i64) -> String {
   for node in sorted {
     output.push_str(&format_signature(&node, indent));
     if let Some(js_doc) = node.js_doc {
-      output.push_str(&format_jsdoc(js_doc, true, indent));
+      output.push_str(&format_jsdoc(js_doc, false, indent));
     }
     output.push_str("\n");
     if DocNodeKind::Namespace == node.kind {
