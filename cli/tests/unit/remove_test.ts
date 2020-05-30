@@ -460,6 +460,31 @@ unitTest({ perms: { write: false } }, async function removeAllPerm(): Promise<
   assertEquals(err.name, "PermissionDenied");
 });
 
+unitTest(
+  {
+    ignore: Deno.build.os === "windows",
+    perms: { write: true, read: true },
+  },
+  async function removeUnixSocketSuccess(): Promise<void> {
+    for (const method of ["remove", "removeSync"] as const) {
+      // MAKE TEMPORARY UNIX SOCKET
+      const path = Deno.makeTempDirSync() + "/test.sock";
+      const listener = Deno.listen({ transport: "unix", path });
+      listener.close();
+      Deno.statSync(path); // check if unix socket exists
+
+      await Deno[method](path);
+      let err;
+      try {
+        Deno.statSync(path);
+      } catch (e) {
+        err = e;
+      }
+      assert(err instanceof Deno.errors.NotFound);
+    }
+  }
+);
+
 if (Deno.build.os === "windows") {
   unitTest(
     { perms: { run: true, write: true, read: true } },
