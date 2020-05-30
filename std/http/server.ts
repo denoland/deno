@@ -33,6 +33,10 @@ export class ServerRequest {
    * If null, then content length is invalid or not given (e.g. chunked encoding).
    */
   get contentLength(): number | null {
+    // missing header means invalid
+    if (!this.headers) {
+      return this._contentLength = null;
+    }
     // undefined means not cached.
     // null means invalid or not provided.
     if (this._contentLength === undefined) {
