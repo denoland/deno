@@ -3,6 +3,7 @@ use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::op_error::OpError;
 use crate::state::State;
 use deno_core::CoreIsolate;
+use deno_core::CoreIsolateState;
 use deno_core::ErrBox;
 use deno_core::ZeroCopyBuf;
 use futures::future::poll_fn;
@@ -88,7 +89,7 @@ fn create_resource(
 }
 
 pub fn op_fs_events_open(
-  isolate: &mut CoreIsolate,
+  isolate_state: &mut CoreIsolateState,
   state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
@@ -107,13 +108,13 @@ pub fn op_fs_events_open(
   let path_vec = args.paths.iter().map(PathBuf::from).collect::<Vec<_>>();
   let resource =
     create_resource(&path_vec.as_slice(), recursive_mode, Some(&state))?;
-  let mut resource_table = isolate.resource_table.borrow_mut();
+  let mut resource_table = isolate_state.resource_table.borrow_mut();
   let rid = resource_table.add("fsEvents", Box::new(resource));
   Ok(JsonOp::Sync(json!(rid)))
 }
 
 pub fn op_fs_events_poll(
-  isolate: &mut CoreIsolate,
+  isolate_state: &mut CoreIsolateState,
   _state: &State,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
@@ -123,7 +124,7 @@ pub fn op_fs_events_poll(
     rid: u32,
   }
   let PollArgs { rid } = serde_json::from_value(args)?;
-  let resource_table = isolate.resource_table.clone();
+  let resource_table = isolate_state.resource_table.clone();
   let f = poll_fn(move |cx| {
     let mut resource_table = resource_table.borrow_mut();
     let resource = resource_table

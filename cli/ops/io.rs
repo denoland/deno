@@ -3,6 +3,7 @@ use crate::http_util::HttpBody;
 use crate::op_error::OpError;
 use crate::state::State;
 use deno_core::CoreIsolate;
+use deno_core::CoreIsolateState;
 use deno_core::ResourceTable;
 use deno_core::ZeroCopyBuf;
 use futures::future::poll_fn;
@@ -206,7 +207,7 @@ impl DenoAsyncRead for StreamResource {
 }
 
 pub fn op_read(
-  isolate: &mut CoreIsolate,
+  isolate_state: &mut CoreIsolateState,
   _state: &State,
   is_sync: bool,
   rid: i32,
@@ -216,7 +217,7 @@ pub fn op_read(
   if zero_copy.is_none() {
     return MinimalOp::Sync(Err(no_buffer_specified()));
   }
-  let resource_table = isolate.resource_table.clone();
+  let resource_table = isolate_state.resource_table.clone();
 
   let mut buf = zero_copy.unwrap();
 
@@ -330,7 +331,7 @@ impl DenoAsyncWrite for StreamResource {
 }
 
 pub fn op_write(
-  isolate: &mut CoreIsolate,
+  isolate_state: &mut CoreIsolateState,
   _state: &State,
   is_sync: bool,
   rid: i32,
@@ -346,7 +347,7 @@ pub fn op_write(
   if is_sync {
     MinimalOp::Sync({
       // First we look up the rid in the resource table.
-      let mut resource_table = isolate.resource_table.borrow_mut();
+      let mut resource_table = isolate_state.resource_table.borrow_mut();
       std_file_resource(&mut resource_table, rid as u32, move |r| match r {
         Ok(std_file) => {
           use std::io::Write;
@@ -361,7 +362,7 @@ pub fn op_write(
       })
     })
   } else {
-    let resource_table = isolate.resource_table.clone();
+    let resource_table = isolate_state.resource_table.clone();
     MinimalOp::Async(
       async move {
         let nwritten = poll_fn(|cx| {

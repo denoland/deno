@@ -4,6 +4,7 @@ use crate::inspector::DenoInspector;
 use crate::ops;
 use crate::state::State;
 use deno_core::Buf;
+use deno_core::CoreIsolate;
 use deno_core::ErrBox;
 use deno_core::ModuleId;
 use deno_core::ModuleSpecifier;
@@ -86,7 +87,7 @@ fn create_channels() -> (WorkerChannelsInternal, WorkerHandle) {
 ///  - `WebWorker`
 pub struct Worker {
   pub name: String,
-  pub isolate: Box<deno_core::EsIsolate>,
+  pub isolate: deno_core::EsIsolate,
   pub inspector: Option<Box<DenoInspector>>,
   pub state: State,
   pub waker: AtomicWaker,
@@ -101,7 +102,9 @@ impl Worker {
 
     {
       let global_state = state.borrow().global_state.clone();
-      isolate.set_js_error_create_fn(move |core_js_error| {
+      let core_state_rc = CoreIsolate::state(&isolate);
+      let mut core_state = core_state_rc.borrow_mut();
+      core_state.set_js_error_create_fn(move |core_js_error| {
         JSError::create(core_js_error, &global_state.ts_compiler)
       });
     }

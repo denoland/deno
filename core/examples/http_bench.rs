@@ -4,6 +4,7 @@ extern crate derive_deref;
 extern crate log;
 
 use deno_core::CoreIsolate;
+use deno_core::CoreIsolateState;
 use deno_core::Op;
 use deno_core::ResourceTable;
 use deno_core::Script;
@@ -77,7 +78,7 @@ impl From<Record> for RecordBuf {
 }
 
 struct Isolate {
-  core_isolate: Box<CoreIsolate>, // Unclear why CoreIsolate::new() returns a box.
+  core_isolate: CoreIsolate,
   state: State,
 }
 
@@ -115,7 +116,7 @@ impl Isolate {
     F: 'static + Fn(State, u32, Option<ZeroCopyBuf>) -> Result<u32, Error>,
   {
     let state = self.state.clone();
-    let core_handler = move |_isolate: &mut CoreIsolate,
+    let core_handler = move |_isolate_state: &mut CoreIsolateState,
                              control_buf: &[u8],
                              zero_copy_buf: Option<ZeroCopyBuf>|
           -> Op {
@@ -145,7 +146,7 @@ impl Isolate {
     <F::Ok as TryInto<i32>>::Error: Debug,
   {
     let state = self.state.clone();
-    let core_handler = move |_isolate: &mut CoreIsolate,
+    let core_handler = move |_isolate_state: &mut CoreIsolateState,
                              control_buf: &[u8],
                              zero_copy_buf: Option<ZeroCopyBuf>|
           -> Op {
