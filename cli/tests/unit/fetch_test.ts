@@ -728,6 +728,7 @@ unitTest(
         headers,
       });
       assertEquals(res.body, null);
+      assertEquals(res.status, status);
     }
   }
 );
