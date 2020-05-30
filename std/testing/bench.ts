@@ -153,7 +153,8 @@ export function bench(
   }
 }
 
-/** Clears benchmark candidates which name matches `only` and doesn't match `skip`. Removes all candidates if options were not provided */
+/** Clears benchmark candidates which name matches `only` and doesn't match `skip`.
+ * Removes all candidates if options were not provided */
 export function clearBenchmarks({
   only = /[^\s]/,
   skip = /$^/,
@@ -165,7 +166,12 @@ export function clearBenchmarks({
   candidates.push(...keep);
 }
 
-/** Runs all registered and non-skipped benchmarks serially. */
+/**
+ * Runs all registered and non-skipped benchmarks serially.
+ *
+ * @param {(progress: BenchmarkRunProgress) => void} [progressCb] provides the possibility to get updates of the current progress during the run of the benchmarking
+ * @returns {Promise<BenchmarkRunResult>} the results of the benchmarking
+ */
 export async function runBenchmarks(
   { only = /[^\s]/, skip = /^\s*$/, silent }: BenchmarkRunOptions = {},
   progressCb?: (progress: BenchmarkRunProgress) => void
