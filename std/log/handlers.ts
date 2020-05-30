@@ -100,12 +100,14 @@ interface FileHandlerOptions extends HandlerOptions {
 }
 
 export class FileHandler extends WriterHandler {
-  protected _file!: File;
+  protected _file: File | undefined;
   protected _buf!: BufWriterSync;
   protected _filename: string;
   protected _mode: LogMode;
   protected _openOptions: OpenOptions;
   protected _encoder = new TextEncoder();
+  #intervalId = -1;
+  #unloadCallback = (): Promise<void> => this.destroy();
 
   constructor(levelName: LevelName, options: FileHandlerOptions) {
     super(levelName, options);
@@ -126,30 +128,38 @@ export class FileHandler extends WriterHandler {
     this._writer = this._file;
     this._buf = new BufWriterSync(this._file);
 
-    window.addEventListener("unload", () => this._buf.flush());
+    addEventListener("unload", this.#unloadCallback);
+
+    // // flush the buffer every 30 seconds
+    this.#intervalId = setInterval(() => this.flush(), 30 * 1000);
+  }
+
+  handle(logRecord: LogRecord): void {
+    super.handle(logRecord);
+
+    // Immediately flush if log level is higher than ERROR
+    if (logRecord.level > LogLevels.ERROR) {
+      this.flush();
+    }
   }
 
   log(msg: string): void {
-    queueMicrotask(() => this.writeLog(msg));
-  }
-
-  protected writeLog(msg: string): void {
     this._buf.writeSync(this._encoder.encode(msg + "\n"));
   }
 
   flush(): void {
-    this._buf.flush();
+    if (this._buf?.buffered() > 0) {
+      this._buf.flush();
+    }
   }
 
   destroy(): Promise<void> {
-    return new Promise((res) => {
-      // queue a buffer flush and file close behind any pending log writes
-      queueMicrotask(() => {
-        this._buf.flush();
-        this._file.close();
-        res();
-      });
-    });
+    this.flush();
+    this._file?.close();
+    this._file = undefined;
+    removeEventListener("unload", this.#unloadCallback);
+    clearInterval(this.#intervalId);
+    return Promise.resolve();
   }
 }
 
@@ -162,7 +172,6 @@ export class RotatingFileHandler extends FileHandler {
   #maxBytes: number;
   #maxBackupCount: number;
   #currentFileSize = 0;
-  #encoder = new TextEncoder();
 
   constructor(levelName: LevelName, options: RotatingFileHandlerOptions) {
     super(levelName, options);
@@ -172,9 +181,11 @@ export class RotatingFileHandler extends FileHandler {
 
   async setup(): Promise<void> {
     if (this.#maxBytes < 1) {
+      this.destroy();
       throw new Error("maxBytes cannot be less than 1");
     }
     if (this.#maxBackupCount < 1) {
+      this.destroy();
       throw new Error("maxBackupCount cannot be less than 1");
     }
     await super.setup();
@@ -191,7 +202,7 @@ export class RotatingFileHandler extends FileHandler {
       // Throw if any backups also exist
       for (let i = 1; i <= this.#maxBackupCount; i++) {
         if (await exists(this._filename + "." + i)) {
-          Deno.close(this._file.rid);
+          this.destroy();
           throw new Deno.errors.AlreadyExists(
             "Backup log file " + this._filename + "." + i + " already exists"
           );
@@ -202,8 +213,8 @@ export class RotatingFileHandler extends FileHandler {
     }
   }
 
-  protected writeLog(msg: string): void {
-    const msgByteLength = this.#encoder.encode(msg).byteLength + 1;
+  log(msg: string): void {
+    const msgByteLength = this._encoder.encode(msg).byteLength + 1;
 
     if (this.#currentFileSize + msgByteLength > this.#maxBytes) {
       this.rotateLogFiles();
@@ -216,7 +227,7 @@ export class RotatingFileHandler extends FileHandler {
 
   rotateLogFiles(): void {
     this._buf.flush();
-    close(this._file.rid);
+    close(this._file!.rid);
 
     for (let i = this.#maxBackupCount - 1; i >= 0; i--) {
       const source = this._filename + (i === 0 ? "" : "." + i);

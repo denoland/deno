@@ -27,15 +27,6 @@ class TestHandler extends BaseHandler {
   }
 }
 
-async function waitAndFlush(fileHandler: FileHandler): Promise<void> {
-  await new Promise((res) =>
-    queueMicrotask(() => {
-      fileHandler.flush();
-      res();
-    })
-  );
-}
-
 test("simpleHandler", function (): void {
   const cases = new Map<number, string[]>([
     [
@@ -129,14 +120,20 @@ test({
 test({
   name: "FileHandler with mode 'x' will throw if log file already exists",
   async fn() {
+    const fileHandler = new FileHandler("WARNING", {
+      filename: LOG_FILE,
+      mode: "x",
+    });
+    Deno.writeFileSync(LOG_FILE, new TextEncoder().encode("hello world"));
+
     await assertThrowsAsync(async () => {
-      Deno.writeFileSync(LOG_FILE, new TextEncoder().encode("hello world"));
-      const fileHandler = new FileHandler("WARNING", {
-        filename: LOG_FILE,
-        mode: "x",
-      });
       await fileHandler.setup();
     }, Deno.errors.AlreadyExists);
+
+    await fileHandler.destroy();
+    // see comment in timers.ts (setGlobalTimeout) regarding conflict of
+    // setInterval and tests complaining of leaking ops
+
     Deno.removeSync(LOG_FILE);
   },
 });
@@ -181,23 +178,25 @@ test({
   name:
     "RotatingFileHandler with mode 'x' will throw if any log file already exists",
   async fn() {
+    Deno.writeFileSync(
+      LOG_FILE + ".3",
+      new TextEncoder().encode("hello world")
+    );
+    const fileHandler = new RotatingFileHandler("WARNING", {
+      filename: LOG_FILE,
+      maxBytes: 50,
+      maxBackupCount: 3,
+      mode: "x",
+    });
     await assertThrowsAsync(
       async () => {
-        Deno.writeFileSync(
-          LOG_FILE + ".3",
-          new TextEncoder().encode("hello world")
-        );
-        const fileHandler = new RotatingFileHandler("WARNING", {
-          filename: LOG_FILE,
-          maxBytes: 50,
-          maxBackupCount: 3,
-          mode: "x",
-        });
         await fileHandler.setup();
       },
       Deno.errors.AlreadyExists,
       "Backup log file " + LOG_FILE + ".3 already exists"
     );
+
+    fileHandler.destroy();
     Deno.removeSync(LOG_FILE + ".3");
     Deno.removeSync(LOG_FILE);
   },
@@ -215,13 +214,13 @@ test({
     await fileHandler.setup();
 
     fileHandler.handle(new LogRecord("AAA", [], LogLevels.ERROR)); // 'ERROR AAA\n' = 10 bytes
-    await waitAndFlush(fileHandler);
+    fileHandler.flush();
     assertEquals((await Deno.stat(LOG_FILE)).size, 10);
     fileHandler.handle(new LogRecord("AAA", [], LogLevels.ERROR));
-    await waitAndFlush(fileHandler);
+    fileHandler.flush();
     assertEquals((await Deno.stat(LOG_FILE)).size, 20);
     fileHandler.handle(new LogRecord("AAA", [], LogLevels.ERROR));
-    await waitAndFlush(fileHandler);
+    fileHandler.flush();
     // Rollover occurred. Log file now has 1 record, rollover file has the original 2
     assertEquals((await Deno.stat(LOG_FILE)).size, 10);
     assertEquals((await Deno.stat(LOG_FILE + ".1")).size, 20);
@@ -359,7 +358,6 @@ test({
     dispatchEvent(new Event("unload"));
     assertEquals((await Deno.stat(LOG_FILE)).size, 10);
 
-    await fileHandler.destroy();
     Deno.removeSync(LOG_FILE);
   },
 });
@@ -369,7 +367,7 @@ test({
   async fn() {
     const fileHandler = new RotatingFileHandler("WARNING", {
       filename: LOG_FILE,
-      maxBytes: 6,
+      maxBytes: 7,
       maxBackupCount: 1,
       mode: "w",
     });
@@ -382,8 +380,8 @@ test({
     assertEquals(msgLength, 1);
     assertEquals(msgByteLength, 3);
 
-    fileHandler.log(msg);
-    fileHandler.log(msg);
+    fileHandler.log(msg); // logs 4 bytes (including '\n')
+    fileHandler.log(msg); // max bytes is 7, but this would be 8.  Rollover.
 
     await fileHandler.destroy();
 
@@ -395,5 +393,32 @@ test({
 
     Deno.removeSync(LOG_FILE);
     Deno.removeSync(LOG_FILE + ".1");
+  },
+});
+
+test({
+  name: "FileHandler: Critical logs trigger immediate flush",
+  async fn() {
+    const fileHandler = new FileHandler("WARNING", {
+      filename: LOG_FILE,
+      mode: "w",
+    });
+    await fileHandler.setup();
+
+    fileHandler.handle(new LogRecord("AAA", [], LogLevels.ERROR));
+
+    // ERROR won't trigger immediate flush
+    const fileSize = (await Deno.stat(LOG_FILE)).size;
+    assertEquals(fileSize, 0);
+
+    fileHandler.handle(new LogRecord("AAA", [], LogLevels.CRITICAL));
+
+    // CRITICAL will trigger immediate flush
+    const fileSize2 = (await Deno.stat(LOG_FILE)).size;
+    // ERROR record is 10 bytes, CRITICAL is 13 bytes
+    assertEquals(fileSize2, 23);
+
+    await fileHandler.destroy();
+    Deno.removeSync(LOG_FILE);
   },
 });
