@@ -17,7 +17,7 @@ pub fn init(i: &mut CoreIsolate, s: &State) {
 fn op_get_random_values(
   state: &State,
   _args: Value,
-  mut zero_copy: Box<[ZeroCopyBuf]>,
+  zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   assert!(zero_copy.len() == 1);
 

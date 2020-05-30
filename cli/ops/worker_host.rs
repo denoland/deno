@@ -174,7 +174,7 @@ struct CreateWorkerArgs {
 fn op_create_worker(
   state: &State,
   args: Value,
-  _data: Box<[ZeroCopyBuf]>,
+  _data: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let args: CreateWorkerArgs = serde_json::from_value(args)?;
 
@@ -230,7 +230,7 @@ struct WorkerArgs {
 fn op_host_terminate_worker(
   state: &State,
   args: Value,
-  _data: Box<[ZeroCopyBuf]>,
+  _data: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
@@ -296,7 +296,7 @@ fn serialize_worker_event(event: WorkerEvent) -> Value {
 fn op_host_get_message(
   state: &State,
   args: Value,
-  _data: Box<[ZeroCopyBuf]>,
+  _data: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
@@ -345,7 +345,7 @@ fn op_host_get_message(
 fn op_host_post_message(
   state: &State,
   args: Value,
-  data: Box<[ZeroCopyBuf]>,
+  data: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   if data.len() != 1 {
     panic!("Invalid number of arguments");

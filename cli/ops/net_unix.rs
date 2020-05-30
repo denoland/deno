@@ -29,7 +29,7 @@ pub struct UnixListenArgs {
 pub fn accept_unix(
   isolate_state: &mut CoreIsolateState,
   rid: u32,
-  _zero_copy: Box<[ZeroCopyBuf]>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let resource_table = isolate_state.resource_table.clone();
   {
@@ -80,11 +80,12 @@ pub fn accept_unix(
 pub fn receive_unix_packet(
   isolate_state: &mut CoreIsolateState,
   rid: u32,
-  mut zero_copy: Box<[ZeroCopyBuf]>,
+  zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   if zero_copy.len() != 1 {
     panic!("Invalid number of arguments");
   }
+  let mut zero_copy = zero_copy[0].clone();
   let resource_table = isolate_state.resource_table.clone();
 
   let op = async move {
@@ -94,8 +95,7 @@ pub fn receive_unix_packet(
       .ok_or_else(|| {
         OpError::bad_resource("Socket has been closed".to_string())
       })?;
-    let (size, remote_addr) =
-      resource.socket.recv_from(&mut zero_copy[0]).await?;
+    let (size, remote_addr) = resource.socket.recv_from(&mut zero_copy).await?;
     Ok(json!({
       "size": size,
       "remoteAddr": {

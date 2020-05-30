@@ -13,7 +13,7 @@ pub fn deno_plugin_init(interface: &mut dyn Interface) {
 fn op_test_sync(
   _interface: &mut dyn Interface,
   data: &[u8],
-  zero_copy: Box<[ZeroCopyBuf]>,
+  zero_copy: &mut [ZeroCopyBuf],
 ) -> Op {
   if let Some(buf) = zero_copy.get(0) {
     let data_str = std::str::from_utf8(&data[..]).unwrap();
@@ -31,11 +31,12 @@ fn op_test_sync(
 fn op_test_async(
   _interface: &mut dyn Interface,
   data: &[u8],
-  zero_copy: Box<[ZeroCopyBuf]>,
+  zero_copy: &mut [ZeroCopyBuf],
 ) -> Op {
+  let zero_copy = zero_copy.get(0).cloned();
   let data_str = std::str::from_utf8(&data[..]).unwrap().to_string();
   let fut = async move {
-    if let Some(buf) = zero_copy.get(0) {
+    if let Some(buf) = zero_copy {
       let buf_str = std::str::from_utf8(&buf[..]).unwrap();
       println!(
         "Hello from plugin. data: {} | zero_copy: {}",

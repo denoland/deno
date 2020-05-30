@@ -40,7 +40,7 @@ struct AcceptArgs {
 fn accept_tcp(
   isolate_state: &mut CoreIsolateState,
   args: AcceptArgs,
-  _zero_copy: Box<[ZeroCopyBuf]>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let rid = args.rid as u32;
   let resource_table = isolate_state.resource_table.clone();
@@ -101,7 +101,7 @@ fn op_accept(
   isolate_state: &mut CoreIsolateState,
   _state: &State,
   args: Value,
-  zero_copy: Box<[ZeroCopyBuf]>,
+  zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let args: AcceptArgs = serde_json::from_value(args)?;
   match args.transport.as_str() {
@@ -125,11 +125,12 @@ fn receive_udp(
   isolate_state: &mut CoreIsolateState,
   _state: &State,
   args: ReceiveArgs,
-  mut zero_copy: Box<[ZeroCopyBuf]>,
+  zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   if zero_copy.len() != 1 {
     panic!("Invalid number of arguments");
   }
+  let mut zero_copy = zero_copy[0].clone();
 
   let rid = args.rid as u32;
 
@@ -145,7 +146,7 @@ fn receive_udp(
         })?;
       let socket = &mut resource.socket;
       socket
-        .poll_recv_from(cx, &mut zero_copy[0])
+        .poll_recv_from(cx, &mut zero_copy)
         .map_err(OpError::from)
     });
     let (size, remote_addr) = receive_fut.await?;
@@ -166,7 +167,7 @@ fn op_receive(
   isolate_state: &mut CoreIsolateState,
   state: &State,
   args: Value,
-  zero_copy: Box<[ZeroCopyBuf]>,
+  zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   if zero_copy.len() != 1 {
     panic!("Invalid number of arguments");
@@ -197,11 +198,13 @@ fn op_send(
   isolate_state: &mut CoreIsolateState,
   state: &State,
   args: Value,
-  zero_copy: Box<[ZeroCopyBuf]>,
+  zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   if zero_copy.len() != 1 {
     panic!("Invalid number of arguments");
   }
+  let zero_copy = zero_copy[0].clone();
+
   let resource_table = isolate_state.resource_table.clone();
   match serde_json::from_value(args)? {
     SendArgs {
@@ -220,7 +223,7 @@ fn op_send(
           })?;
         let socket = &mut resource.socket;
         let addr = resolve_addr(&args.hostname, args.port)?;
-        socket.send_to(&zero_copy[0], addr).await?;
+        socket.send_to(&zero_copy, addr).await?;
         Ok(json!({}))
       };
 
@@ -244,7 +247,7 @@ fn op_send(
 
         let socket = &mut resource.socket;
         socket
-          .send_to(&zero_copy[0], &resource.local_addr.as_pathname().unwrap())
+          .send_to(&zero_copy, &resource.local_addr.as_pathname().unwrap())
           .await?;
 
         Ok(json!({}))
@@ -267,7 +270,7 @@ fn op_connect(
   isolate_state: &mut CoreIsolateState,
   state: &State,
   args: Value,
-  _zero_copy: Box<[ZeroCopyBuf]>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let resource_table = isolate_state.resource_table.clone();
   match serde_json::from_value(args)? {
@@ -353,7 +356,7 @@ fn op_shutdown(
   isolate_state: &mut CoreIsolateState,
   state: &State,
   args: Value,
-  _zero_copy: Box<[ZeroCopyBuf]>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   state.check_unstable("Deno.shutdown");
 
@@ -495,7 +498,7 @@ fn op_listen(
   isolate_state: &mut CoreIsolateState,
   state: &State,
   args: Value,
-  _zero_copy: Box<[ZeroCopyBuf]>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let mut resource_table = isolate_state.resource_table.borrow_mut();
   match serde_json::from_value(args)? {

@@ -211,7 +211,7 @@ pub fn op_read(
   _state: &State,
   is_sync: bool,
   rid: i32,
-  mut zero_copy: Box<[ZeroCopyBuf]>,
+  zero_copy: &mut [ZeroCopyBuf],
 ) -> MinimalOp {
   debug!("read rid={}", rid);
   match zero_copy.len() {
@@ -239,6 +239,7 @@ pub fn op_read(
       })
     })
   } else {
+    let mut zero_copy = zero_copy[0].clone();
     MinimalOp::Async(
       poll_fn(move |cx| {
         let mut resource_table = resource_table.borrow_mut();
@@ -249,7 +250,7 @@ pub fn op_read(
         let mut task_tracker_id: Option<usize> = None;
         let nread = match resource_holder
           .resource
-          .poll_read(cx, &mut zero_copy[0])
+          .poll_read(cx, &mut zero_copy)
           .map_err(OpError::from)
         {
           Poll::Ready(t) => {
@@ -335,7 +336,7 @@ pub fn op_write(
   _state: &State,
   is_sync: bool,
   rid: i32,
-  zero_copy: Box<[ZeroCopyBuf]>,
+  zero_copy: &mut [ZeroCopyBuf],
 ) -> MinimalOp {
   debug!("write rid={}", rid);
   match zero_copy.len() {
@@ -362,6 +363,7 @@ pub fn op_write(
       })
     })
   } else {
+    let zero_copy = zero_copy[0].clone();
     let resource_table = isolate_state.resource_table.clone();
     MinimalOp::Async(
       async move {
@@ -370,7 +372,7 @@ pub fn op_write(
           let resource_holder = resource_table
             .get_mut::<StreamResourceHolder>(rid as u32)
             .ok_or_else(OpError::bad_resource_id)?;
-          resource_holder.resource.poll_write(cx, &zero_copy[0])
+          resource_holder.resource.poll_write(cx, &zero_copy)
         })
         .await?;
 

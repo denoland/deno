@@ -28,7 +28,7 @@ pub fn op_fetch(
   isolate_state: &mut CoreIsolateState,
   state: &State,
   args: Value,
-  data: Box<[ZeroCopyBuf]>,
+  data: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let args: FetchArgs = serde_json::from_value(args)?;
   let url = args.url;

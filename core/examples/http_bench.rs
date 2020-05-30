@@ -113,12 +113,12 @@ impl Isolate {
 
   fn register_sync_op<F>(&mut self, name: &'static str, handler: F)
   where
-    F: 'static + Fn(State, u32, Box<[ZeroCopyBuf]>) -> Result<u32, Error>,
+    F: 'static + Fn(State, u32, &mut [ZeroCopyBuf]) -> Result<u32, Error>,
   {
     let state = self.state.clone();
     let core_handler = move |_isolate_state: &mut CoreIsolateState,
                              control_buf: &[u8],
-                             zero_copy_bufs: Box<[ZeroCopyBuf]>|
+                             zero_copy_bufs: &mut [ZeroCopyBuf]|
           -> Op {
       let state = state.clone();
       let record = Record::from(control_buf);
@@ -139,7 +139,7 @@ impl Isolate {
   fn register_op<F>(
     &mut self,
     name: &'static str,
-    handler: impl Fn(State, u32, Box<[ZeroCopyBuf]>) -> F + Copy + 'static,
+    handler: impl Fn(State, u32, &mut [ZeroCopyBuf]) -> F + Copy + 'static,
   ) where
     F: TryFuture,
     F::Ok: TryInto<i32>,
@@ -148,15 +148,16 @@ impl Isolate {
     let state = self.state.clone();
     let core_handler = move |_isolate_state: &mut CoreIsolateState,
                              control_buf: &[u8],
-                             zero_copy_bufs: Box<[ZeroCopyBuf]>|
+                             zero_copy_bufs: &mut [ZeroCopyBuf]|
           -> Op {
       let state = state.clone();
       let record = Record::from(control_buf);
       let is_sync = record.promise_id == 0;
       assert!(!is_sync);
 
+      let mut zero_copy = zero_copy_bufs.to_vec();
       let fut = async move {
-        let op = handler(state, record.rid, zero_copy_bufs);
+        let op = handler(state, record.rid, &mut zero_copy);
         let result = op
           .map_ok(|r| r.try_into().expect("op result does not fit in i32"))
           .unwrap_or_else(|_| -1)
@@ -182,7 +183,7 @@ impl Future for Isolate {
 fn op_close(
   state: State,
   rid: u32,
-  _buf: Box<[ZeroCopyBuf]>,
+  _buf: &mut [ZeroCopyBuf],
 ) -> Result<u32, Error> {
   debug!("close rid={}", rid);
   let resource_table = &mut state.borrow_mut().resource_table;
@@ -195,7 +196,7 @@ fn op_close(
 fn op_listen(
   state: State,
   _rid: u32,
-  _buf: Box<[ZeroCopyBuf]>,
+  _buf: &mut [ZeroCopyBuf],
 ) -> Result<u32, Error> {
   debug!("listen");
   let addr = "127.0.0.1:4544".parse::<SocketAddr>().unwrap();
@@ -209,7 +210,7 @@ fn op_listen(
 fn op_accept(
   state: State,
   rid: u32,
-  _buf: Box<[ZeroCopyBuf]>,
+  _buf: &mut [ZeroCopyBuf],
 ) -> impl TryFuture<Ok = u32, Error = Error> {
   debug!("accept rid={}", rid);
 
@@ -227,11 +228,13 @@ fn op_accept(
 fn op_read(
   state: State,
   rid: u32,
-  mut buf: Box<[ZeroCopyBuf]>,
+  bufs: &mut [ZeroCopyBuf],
 ) -> impl TryFuture<Ok = usize, Error = Error> {
-  if buf.len() != 1 {
+  if bufs.len() != 1 {
     panic!("Invalid number of buffers");
   }
+  let mut buf = bufs[0].clone();
+
   debug!("read rid={}", rid);
 
   poll_fn(move |cx| {
@@ -239,18 +242,19 @@ fn op_read(
     let stream = resource_table
       .get_mut::<TcpStream>(rid)
       .ok_or_else(bad_resource)?;
-    Pin::new(stream).poll_read(cx, &mut buf[0])
+    Pin::new(stream).poll_read(cx, &mut buf)
   })
 }
 
 fn op_write(
   state: State,
   rid: u32,
-  buf: Box<[ZeroCopyBuf]>,
+  bufs: &mut [ZeroCopyBuf],
 ) -> impl TryFuture<Ok = usize, Error = Error> {
-  if buf.len() != 1 {
+  if bufs.len() != 1 {
     panic!("Invalid number of buffers");
   }
+  let buf = bufs[0].clone();
   debug!("write rid={}", rid);
 
   poll_fn(move |cx| {
@@ -258,7 +262,7 @@ fn op_write(
     let stream = resource_table
       .get_mut::<TcpStream>(rid)
       .ok_or_else(bad_resource)?;
-    Pin::new(stream).poll_write(cx, &buf[0])
+    Pin::new(stream).poll_write(cx, &buf)
   })
 }
 

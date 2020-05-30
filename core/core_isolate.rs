@@ -366,7 +366,7 @@ impl CoreIsolate {
   /// Requires runtime to explicitly ask for op ids before using any of the ops.
   pub fn register_op<F>(&mut self, name: &str, op: F) -> OpId
   where
-    F: Fn(&mut CoreIsolateState, &[u8], Box<[ZeroCopyBuf]>) -> Op + 'static,
+    F: Fn(&mut CoreIsolateState, &[u8], &mut [ZeroCopyBuf]) -> Op + 'static,
   {
     let state_rc = Self::state(self);
     let mut state = state_rc.borrow_mut();
@@ -484,7 +484,7 @@ impl CoreIsolateState {
   /// Requires runtime to explicitly ask for op ids before using any of the ops.
   pub fn register_op<F>(&mut self, name: &str, op: F) -> OpId
   where
-    F: Fn(&mut CoreIsolateState, &[u8], Box<[ZeroCopyBuf]>) -> Op + 'static,
+    F: Fn(&mut CoreIsolateState, &[u8], &mut [ZeroCopyBuf]) -> Op + 'static,
   {
     self.op_registry.register(name, op)
   }
@@ -504,7 +504,7 @@ impl CoreIsolateState {
     scope: &mut impl v8::ToLocal<'s>,
     op_id: OpId,
     control_buf: &[u8],
-    zero_copy_bufs: Box<[ZeroCopyBuf]>,
+    zero_copy_bufs: &mut [ZeroCopyBuf],
   ) -> Option<(OpId, Box<[u8]>)> {
     let op = if let Some(dispatcher) = self.op_registry.get(op_id) {
       dispatcher(self, control_buf, zero_copy_bufs)
@@ -732,7 +732,7 @@ pub mod tests {
 
     let dispatcher = move |_state: &mut CoreIsolateState,
                            control: &[u8],
-                           _zero_copy: Box<[ZeroCopyBuf]>|
+                           _zero_copy: &mut [ZeroCopyBuf]|
           -> Op {
       dispatch_count_.fetch_add(1, Ordering::Relaxed);
       match mode {
