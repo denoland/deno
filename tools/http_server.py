@@ -363,7 +363,7 @@ def start(s):
 def spawn():
     servers = (server(), redirect_server(), another_redirect_server(),
                double_redirects_server(), https_server(),
-               absolute_redirect_server())
+               absolute_redirect_server(), inf_redirects_server())
     # In order to wait for each of the servers to be ready, we try connecting to
     # them with a tcp socket.
     for running_server in servers:
