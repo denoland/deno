@@ -219,30 +219,12 @@ export default class EventEmitter {
     eventName: string | symbol,
     listener: Function
   ): WrappedFunction {
-    const wrapper = function (
-      this: {
-        eventName: string | symbol;
-        listener: Function;
-        rawListener: Function;
-        context: EventEmitter;
-      },
-      ...args: any[] // eslint-disable-line @typescript-eslint/no-explicit-any
-    ): void {
-      this.context.removeListener(this.eventName, this.rawListener);
-      this.listener.apply(this.context, args);
+    const wrapped: WrappedFunction = (...args: unknown[]): void => {
+      this.removeListener(eventName, wrapped);
+      listener.apply(this, args);
     };
-    const wrapperContext = {
-      eventName: eventName,
-      listener: listener,
-      rawListener: (wrapper as unknown) as WrappedFunction,
-      context: this,
-    };
-    const wrapped = (wrapper.bind(
-      wrapperContext
-    ) as unknown) as WrappedFunction;
-    wrapperContext.rawListener = wrapped;
     wrapped.listener = listener;
-    return wrapped as WrappedFunction;
+    return wrapped;
   }
 
   /**
