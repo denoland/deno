@@ -65,7 +65,7 @@ export class ServerRequest {
     if (!this._body) {
       if (this.contentLength != null) {
         this._body = bodyReader(this.contentLength, this.r);
-      } else 
+      } else {
         const transferEncoding = (this.headers == null) ? null : this.headers.get("transfer-encoding");
         if (transferEncoding != null) {
           const parts = transferEncoding
