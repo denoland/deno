@@ -23,36 +23,61 @@ export interface BenchmarkFunction {
 export interface BenchmarkDefinition {
   func: BenchmarkFunction;
   name: string;
+  /** Defines how many times the provided `func` should be benchmarked in succession */
   runs?: number;
 }
 
 /** Defines runBenchmark's run constraints by matching benchmark names. */
 export interface BenchmarkRunOptions {
+  /** Only benchmarks which name match this regexp will be run*/
   only?: RegExp;
+  /** Benchmarks which name match this regexp will be skipped */
   skip?: RegExp;
+  /** Setting it to true prevents default benchmarking progress logs to the commandline*/
   silent?: boolean;
 }
 
+/** Defines clearBenchmark's constraints by matching benchmark names. */
 export interface BenchmarkClearOptions {
+  /** Only benchmarks which name match this regexp will be removed */
   only?: RegExp;
+  /** Benchmarks which name match this regexp will be kept */
   skip?: RegExp;
 }
 
+/** Defines the result of a single benchmark */
 export interface BenchmarkResult {
+  /** The name of the benchmark */
   name: string;
+  /** The total time it took to run a given bechmark  */
   totalMs: number;
+  /** Times the benchmark was run in succession.
+   *
+   * Only defined if `runs` for this  bench is greater than 1. */
   runsCount?: number;
+  /** The average time of running the benchmark in milliseconds.
+   *
+   * Only defined if `runs` for this  bench is greater than 1. */
   measuredRunsAvgMs?: number;
+  /** The individual measurements in millisecond it took to run the benchmark.
+   *
+   * Only defined if `runs` for this  bench is greater than 1. */
   measuredRunsMs?: number[];
 }
 
+/** Defines the result of a `runBenchmarks` call */
 export interface BenchmarkRunResult {
+  /** How many benchmark were ignored by the provided `only` and `skip` */
   filtered: number;
+  /** The individual results each benchmark that was run */
   results: BenchmarkResult[];
 }
 
+/** Defines the current progress during the run of `runBenchmarks` */
 export interface BenchmarkRunProgress extends BenchmarkRunResult {
+  /** List of the queued benchmarks to run and their run count */
   queued: Array<{ name: string; runsCount: number }>;
+  /** The currently running benchmark with its name, run count and the already finished measurements in milliseconds */
   running?: { name: string; runsCount: number; measuredRunsMs: number[] };
 }
 
@@ -128,6 +153,7 @@ export function bench(
   }
 }
 
+/** Clears benchmark candidates which name matches `only` and doesn't match `skip`. Removes all candidates if options were not provided */
 export function clearBenchmarks({
   only = /[^\s]/,
   skip = /$^/,
