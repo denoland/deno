@@ -100,6 +100,39 @@ unitTest({ perms: { net: true } }, async function fetchBodyUsed(): Promise<
   assertEquals(response.bodyUsed, true);
 });
 
+unitTest(
+  { perms: { net: true } },
+  async function fetchBodyUsedReader(): Promise<void> {
+    const response = await fetch(
+      "http://localhost:4545/cli/tests/fixture.json"
+    );
+    assert(response.body !== null);
+
+    const reader = response.body.getReader();
+    // Getting a reader should lock the stream but does not consume the body
+    // so bodyUsed should not be true
+    assertEquals(response.bodyUsed, false);
+    reader.releaseLock();
+    await response.json();
+    assertEquals(response.bodyUsed, true);
+  }
+);
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchBodyUsedCancelStream(): Promise<void> {
+    const response = await fetch(
+      "http://localhost:4545/cli/tests/fixture.json"
+    );
+    assert(response.body !== null);
+
+    assertEquals(response.bodyUsed, false);
+    const promise = response.body.cancel();
+    assertEquals(response.bodyUsed, true);
+    await promise;
+  }
+);
+
 unitTest({ perms: { net: true } }, async function fetchAsyncIterator(): Promise<
   void
 > {
