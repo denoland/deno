@@ -929,8 +929,8 @@ fn op_make_temp_file(
 struct UtimeArgs {
   promise_id: Option<u64>,
   path: String,
-  atime: u64,
-  mtime: u64,
+  atime: i64,
+  mtime: i64,
 }
 
 fn op_utime(
