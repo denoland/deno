@@ -792,3 +792,88 @@ unitTest(
     controller.abort();
   }
 );
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchAbortControllerAbortedBeforeFetch(): Promise<void> {
+    const controller = new AbortController();
+
+    // Aborted before fetch starts
+    controller.abort();
+
+    try {
+      await fetch("http://localhost:4545/cli/tests/fixture.json", {
+        signal: controller.signal,
+      });
+    } catch (e) {
+      assert(e instanceof DOMException);
+    }
+  }
+);
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchAbortControllerAbortedBeforeFetchFinishes(): Promise<
+    void
+  > {
+    const controller = new AbortController();
+
+    queueMicrotask(() => controller.abort());
+
+    try {
+      // aborted before fetch finishes
+      // TODO(marcosc90): This should cancel the HTTP request too
+      // Once that's implemented check if that's the case
+      await fetch("http://localhost:4545/cli/tests/fixture.json", {
+        signal: controller.signal,
+      });
+    } catch (e) {
+      assert(e instanceof DOMException);
+    }
+  }
+);
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchAbortControllerAbortedResponseProperties(): Promise<
+    void
+  > {
+    const controller = new AbortController();
+
+    const res = await fetch("http://localhost:4545/cli/tests/fixture.json", {
+      signal: controller.signal,
+    });
+    const expected = { ...res };
+    controller.abort();
+
+    // res.headers, res.ok, res.status, etc should not change after .abort
+    assertEquals(expected, res);
+  }
+);
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchConsumeBodyAfterAbort(): Promise<void> {
+    const controller = new AbortController();
+
+    const res = await fetch("http://localhost:4545/cli/tests/fixture.json", {
+      signal: controller.signal,
+    });
+    controller.abort();
+
+    assert(res.body !== null);
+    assertEquals(res.bodyUsed, true);
+
+    const methods = ["json", "text", "arrayBuffer"];
+    for (const method of methods) {
+      try {
+        // @ts-expect-error
+        await res[method]();
+        fail("Reading body after request was aborted should throw AbortError.");
+      } catch (e) {
+        assertEquals(e.name, "AbortError");
+        assert(e instanceof DOMException);
+      }
+    }
+  }
+);

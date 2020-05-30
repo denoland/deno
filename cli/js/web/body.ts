@@ -4,6 +4,9 @@ import * as domTypes from "./dom_types.d.ts";
 import { ReadableStreamImpl } from "./streams/readable_stream.ts";
 import { isReadableStreamDisturbed } from "./streams/internals.ts";
 import { getHeaderValueParams, hasHeaderValueOf } from "./util.ts";
+import * as sym from "./streams/symbols.ts";
+import { DOMExceptionImpl as DOMException } from "./dom_exception.ts";
+import { aborted } from "./fetch.ts";
 
 // only namespace imports work for now, plucking out what we need
 const { TextEncoder, TextDecoder } = encoding;
@@ -270,6 +273,15 @@ export class Body implements domTypes.Body {
   }
 
   public arrayBuffer(): Promise<ArrayBuffer> {
+    // @ts-ignore
+    if (this.body && this.body[aborted]) {
+      throw new DOMException("The operation was aborted", "AbortError");
+    }
+
+    if (this.bodyUsed) {
+      throw new TypeError("Body is already used");
+    }
+
     if (
       this._bodySource instanceof Int8Array ||
       this._bodySource instanceof Int16Array ||

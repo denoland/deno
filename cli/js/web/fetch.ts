@@ -13,6 +13,8 @@ import { getHeaderValueParams } from "./util.ts";
 import { ReadableStreamImpl } from "./streams/readable_stream.ts";
 import { DOMExceptionImpl as DOMException } from "./dom_exception.ts";
 
+export const aborted = Symbol("aborted");
+
 const responseData = new WeakMap();
 export class Response extends Body.Body implements domTypes.Response {
   readonly type: ResponseType;
@@ -164,7 +166,7 @@ export class Response extends Body.Body implements domTypes.Response {
   }
 }
 
-function getReadableStream(rid) {
+function getReadableStream(rid: number): ReadableStream {
   return new ReadableStreamImpl({
     async pull(controller: ReadableStreamDefaultController): Promise<void> {
       try {
@@ -182,7 +184,7 @@ function getReadableStream(rid) {
         close(rid);
       }
     },
-    cancel(): void {
+    cancel(reason): void {
       // When reader.cancel() is called
       close(rid);
     },
@@ -314,24 +316,36 @@ export async function fetch(
     }
   }
 
-  if (init.signal && init.signal.aborted) {
-    throw new DOMException("Aborted", "AbortError");
-  }
+  const signal: AbortSignal | undefined | null = init ? init.signal : null;
 
-  let responseBody;
-  if (init.signal) {
-    const abort = () => {
-      // TODO: cancel sendFetchReq if it's still pending when there's an API for that
-      if (responseBody) responseBody.cancel("Aborted");
-      init.signal.removeListener("abort", abort);
-    };
-    init.signal.addEventListener("abort", abort);
+  let responseBody: ReadableStream;
+
+  const abortAlgorithm = () => {
+    if (!signal || !signal.aborted) return;
+    // TODO: cancel sendFetchReq if it's still pending when there's an API for that
+    signal.removeEventListener("abort", abortAlgorithm);
+
+    if (responseBody) {
+      // @ts-ignore
+      responseBody[aborted] = true;
+      responseBody.cancel("Aborted");
+    }
+  };
+
+  if (signal) {
+    signal.addEventListener("abort", abortAlgorithm);
   }
 
   while (remRedirectCount) {
+    if (signal && signal.aborted) {
+      throw new DOMException("The operation was aborted", "AbortError");
+    }
+
     const fetchResponse = await sendFetchReq(url, method, headers, body);
 
     responseBody = getReadableStream(fetchResponse.bodyRid);
+
+    if (signal) abortAlgorithm();
 
     let responseInit: ResponseInit = {
       status: fetchResponse.status,
