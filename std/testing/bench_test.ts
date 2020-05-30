@@ -1,5 +1,10 @@
 const { test } = Deno;
-import { bench, runBenchmarks, BenchmarkRunError } from "./bench.ts";
+import {
+  bench,
+  runBenchmarks,
+  BenchmarkRunError,
+  clearBenchmarks,
+} from "./bench.ts";
 import {
   assertEquals,
   assert,
@@ -77,6 +82,8 @@ test({
     assert(!!resultWithMultipleRuns.measuredRunsMs);
     assertEquals(resultWithMultipleRuns.runsCount, 100);
     assertEquals(resultWithMultipleRuns.measuredRunsMs!.length, 100);
+
+    clearBenchmarks();
   },
 });
 
@@ -144,3 +151,89 @@ test({
     );
   },
 });
+
+test({
+  name: "clearBenchmarks",
+  fn: async function (): Promise<void> {
+    dummyBench("test");
+
+    clearBenchmarks();
+    const benchingResults = await runBenchmarks({ silent: true });
+
+    assertEquals(benchingResults.filtered, 0);
+    assertEquals(benchingResults.results.length, 0);
+  },
+});
+
+test({
+  name: "clearBenchmarksWithOnly",
+  fn: async function (): Promise<void> {
+    // to reset candidates
+    clearBenchmarks();
+
+    dummyBench("test");
+    dummyBench("onlyclear");
+
+    clearBenchmarks({ only: /only/ });
+    const benchingResults = await runBenchmarks({ silent: true });
+
+    assertEquals(benchingResults.filtered, 0);
+    assertEquals(benchingResults.results.length, 1);
+    assertEquals(benchingResults.results[0].name, "test");
+  },
+});
+
+test({
+  name: "clearBenchmarksWithSkip",
+  fn: async function (): Promise<void> {
+    // to reset candidates
+    clearBenchmarks();
+
+    dummyBench("test");
+    dummyBench("skipclear");
+
+    clearBenchmarks({ skip: /skip/ });
+    const benchingResults = await runBenchmarks({ silent: true });
+
+    assertEquals(benchingResults.filtered, 0);
+    assertEquals(benchingResults.results.length, 1);
+    assertEquals(benchingResults.results[0].name, "skipclear");
+  },
+});
+
+test({
+  name: "clearBenchmarksWithOnlySkip",
+  fn: async function (): Promise<void> {
+    // to reset candidates
+    clearBenchmarks();
+
+    dummyBench("test");
+    dummyBench("clearonly");
+    dummyBench("clearskip");
+    dummyBench("clearonly");
+
+    clearBenchmarks({ only: /clear/, skip: /skip/ });
+    const benchingResults = await runBenchmarks({ silent: true });
+
+    assertEquals(benchingResults.filtered, 0);
+    assertEquals(benchingResults.results.length, 2);
+    assertEquals(
+      benchingResults.results.filter(({ name }) => name === "test").length,
+      1
+    );
+    assertEquals(
+      benchingResults.results.filter(({ name }) => name === "clearskip").length,
+      1
+    );
+  },
+});
+
+function dummyBench(name: string) {
+  bench({
+    name,
+    func(b) {
+      b.start();
+      b.stop();
+    },
+  });
+}
