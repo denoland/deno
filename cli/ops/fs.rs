@@ -417,8 +417,11 @@ fn op_remove(
           std::fs::remove_file(&path)?;
         }
       }
-    } else {
+    } else if file_type.is_dir() {
       std::fs::remove_dir(&path)?;
+    } else {
+      // pipes, sockets, etc...
+      std::fs::remove_file(&path)?;
     }
     Ok(json!({}))
   })

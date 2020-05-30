@@ -228,6 +228,29 @@ unitTest({ perms: { write: false } }, function removeAllSyncPerm(): void {
   assertEquals(err.name, "PermissionDenied");
 });
 
+unitTest(
+  {
+    ignore: Deno.build.os === "windows",
+    perms: { write: true, read: true },
+  },
+  function removeSyncUnixSocketSuccess(): void {
+    // MAKE TEMPORARY UNIX SOCKET
+    const path = Deno.makeTempDirSync() + "/test.sock";
+    const listener = Deno.listen({ transport: "unix", path });
+    listener.close();
+    Deno.statSync(path); // check if unix socket exists
+
+    Deno.removeSync(path);
+    let err;
+    try {
+      Deno.statSync(path);
+    } catch (e) {
+      err = e;
+    }
+    assert(err instanceof Deno.errors.NotFound);
+  }
+);
+
 // ASYNC
 
 unitTest(
@@ -459,6 +482,29 @@ unitTest({ perms: { write: false } }, async function removeAllPerm(): Promise<
   assert(err instanceof Deno.errors.PermissionDenied);
   assertEquals(err.name, "PermissionDenied");
 });
+
+unitTest(
+  {
+    ignore: Deno.build.os === "windows",
+    perms: { write: true, read: true },
+  },
+  async function removeUnixSocketSuccess(): Promise<void> {
+    // MAKE TEMPORARY UNIX SOCKET
+    const path = Deno.makeTempDirSync() + "/test.sock";
+    const listener = Deno.listen({ transport: "unix", path });
+    listener.close();
+    Deno.statSync(path); // check if unix socket exists
+
+    await Deno.remove(path);
+    let err;
+    try {
+      Deno.statSync(path);
+    } catch (e) {
+      err = e;
+    }
+    assert(err instanceof Deno.errors.NotFound);
+  }
+);
 
 if (Deno.build.os === "windows") {
   unitTest(
