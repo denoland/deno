@@ -326,7 +326,7 @@ test({
   },
 });
 
-function dummyBench(name: string, runs: number = 1): void {
+function dummyBench(name: string, runs = 1): void {
   bench({
     name,
     runs,
