@@ -189,10 +189,7 @@ export async function runBenchmarks(
       (queued) => queued.name === name && queued.runsCount === runs
     );
     if (queueIndex != -1) {
-      progress.queued.splice(
-        progress.queued.indexOf({ name, runsCount: runs }),
-        1
-      );
+      progress.queued.splice(queueIndex, 1);
     }
     // Init the progress of the running benchmark
     progress.running = { name, runsCount: runs, measuredRunsMs: [] };

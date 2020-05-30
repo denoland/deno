@@ -4,6 +4,7 @@ import {
   runBenchmarks,
   BenchmarkRunError,
   clearBenchmarks,
+  BenchmarkRunProgress,
 } from "./bench.ts";
 import {
   assertEquals,
@@ -72,7 +73,7 @@ test({
     assertEquals(benchResult.results.length, 5);
 
     const resultWithMultipleRunsFiltered = benchResult.results.filter(
-      (r) => r.name === "runs100ForIncrementX1e6"
+      ({ name }) => name === "runs100ForIncrementX1e6"
     );
     assertEquals(resultWithMultipleRunsFiltered.length, 1);
 
@@ -228,9 +229,107 @@ test({
   },
 });
 
-function dummyBench(name: string) {
+test({
+  name: "benchingProgressCallback",
+  fn: async function (): Promise<void> {
+    clearBenchmarks();
+    dummyBench("skip");
+    dummyBench("single");
+    dummyBench("multiple", 2);
+
+    const progressCallbacks: BenchmarkRunProgress[] = [];
+
+    const benchingResults = await runBenchmarks(
+      { skip: /skip/, silent: true },
+      (progress) => {
+        // needs to be deep copied
+        progressCallbacks.push(JSON.parse(JSON.stringify(progress)));
+      }
+    );
+
+    let pc = 0;
+    // Assert initial progress before running
+    let progress = progressCallbacks[pc++];
+    assertEquals(progress.filtered, 1);
+    assertEquals(progress.queued.length, 2);
+    assertEquals(progress.running, undefined);
+    assertEquals(progress.results, []);
+
+    // Assert start of bench "single"
+    progress = progressCallbacks[pc++];
+    assertEquals(progress.filtered, 1);
+    assertEquals(progress.queued.length, 1);
+    assertEquals(
+      progress.queued.filter(({ name }) => name == "multiple").length,
+      1
+    );
+    assertEquals(progress.running, {
+      name: "single",
+      runsCount: 1,
+      measuredRunsMs: [],
+    });
+    assertEquals(progress.results, []);
+
+    // Assert result of bench "single"
+    progress = progressCallbacks[pc++];
+    assertEquals(progress.queued.length, 1);
+    assertEquals(progress.running, undefined);
+    assertEquals(progress.results.length, 1);
+    assertEquals(
+      progress.results.filter(({ name }) => name == "single").length,
+      1
+    );
+
+    // Assert start of bench "multiple"
+    progress = progressCallbacks[pc++];
+    assertEquals(progress.queued.length, 0);
+    assertEquals(progress.running, {
+      name: "multiple",
+      runsCount: 2,
+      measuredRunsMs: [],
+    });
+    assertEquals(progress.results.length, 1);
+
+    // Assert first result of bench "multiple"
+    progress = progressCallbacks[pc++];
+    assertEquals(progress.queued.length, 0);
+    assertEquals(progress.running!.measuredRunsMs.length, 1);
+    assertEquals(progress.results.length, 1);
+
+    // Assert second result of bench "multiple"
+    progress = progressCallbacks[pc++];
+    assertEquals(progress.queued.length, 0);
+    assertEquals(progress.running!.measuredRunsMs.length, 2);
+    assertEquals(progress.results.length, 1);
+
+    // Assert finish of bench "multiple"
+    progress = progressCallbacks[pc++];
+    assertEquals(progress.queued.length, 0);
+    assertEquals(progress.running, undefined);
+    assertEquals(progress.results.length, 2);
+    assertEquals(
+      progress.results.filter(({ name }) => name == "single").length,
+      1
+    );
+
+    const resultOfMultiple = progress.results.filter(
+      ({ name }) => name == "multiple"
+    );
+    assertEquals(resultOfMultiple.length, 1);
+    assert(!!resultOfMultiple[0].measuredRunsMs);
+    assertEquals(resultOfMultiple[0].measuredRunsMs!.length, 2);
+    assert(!!resultOfMultiple[0].measuredRunsAvgMs);
+
+    // The last progress should equal the final result from promise
+    progress = progressCallbacks[pc++];
+    assertEquals(progress, benchingResults);
+  },
+});
+
+function dummyBench(name: string, runs: number = 1): void {
   bench({
     name,
+    runs,
     func(b) {
       b.start();
       b.stop();
