@@ -1001,7 +1001,7 @@ declare namespace Deno {
    * NOTE: This API currently throws on Windows
    *
    * Requires `allow-write` permission. */
-  export function chmodSync(path: string, mode: number): void;
+  export function chmodSync(path: string | URL, mode: number): void;
 
   /** Changes the permission of a specific file/directory of specified path.
    * Ignores the process's umask.
@@ -1031,7 +1031,7 @@ declare namespace Deno {
    * NOTE: This API currently throws on Windows
    *
    * Requires `allow-write` permission. */
-  export function chmod(path: string, mode: number): Promise<void>;
+  export function chmod(path: string | URL, mode: number): Promise<void>;
 
   /** Synchronously change owner of a regular file or directory. This functionality
    * is not available on Windows.
@@ -1048,7 +1048,7 @@ declare namespace Deno {
    * @param uid user id (UID) of the new owner
    * @param gid group id (GID) of the new owner
    */
-  export function chownSync(path: string, uid: number, gid: number): void;
+  export function chownSync(path: string | URL, uid: number, gid: number): void;
 
   /** Change owner of a regular file or directory. This functionality
    * is not available on Windows.
@@ -1065,7 +1065,7 @@ declare namespace Deno {
    * @param uid user id (UID) of the new owner
    * @param gid group id (GID) of the new owner
    */
-  export function chown(path: string, uid: number, gid: number): Promise<void>;
+  export function chown(path: string | URL, uid: number, gid: number): Promise<void>;
 
   export interface RemoveOptions {
     /** Defaults to `false`. If set to `true`, path will be removed even if
