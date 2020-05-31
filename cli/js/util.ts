@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+import { build } from "./build.ts";
 
 let logDebug = false;
 let logSource = "JS";
@@ -77,4 +78,13 @@ export function immutableDefine(
     configurable: false,
     writable: false,
   });
+}
+
+// @internal
+export function pathFromURL(url: URL): string {
+  return build.os == "windows"
+    ? new URL(url).pathname
+        .replace(/^\/*([A-Za-z]:)(\/|$)/, "$1/")
+        .replace(/\//g, "\\")
+    : new URL(url).pathname;
 }

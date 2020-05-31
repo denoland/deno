@@ -1166,7 +1166,7 @@ declare namespace Deno {
    * ```
    *
    * Requires `allow-read` permission. */
-  export function readFileSync(path: string): Uint8Array;
+  export function readFileSync(path: string | URL): Uint8Array;
 
   /** Reads and resolves to the entire contents of a file as an array of bytes.
    * `TextDecoder` can be used to transform the bytes to string if required.
@@ -1179,7 +1179,7 @@ declare namespace Deno {
    * ```
    *
    * Requires `allow-read` permission. */
-  export function readFile(path: string): Promise<Uint8Array>;
+  export function readFile(path: string | URL): Promise<Uint8Array>;
 
   /** A FileInfo describes a file and is returned by `stat`, `lstat`,
    * `statSync`, `lstatSync`. */
@@ -1435,7 +1435,7 @@ declare namespace Deno {
    * `false`.
    */
   export function writeFileSync(
-    path: string,
+    path: string | URL,
     data: Uint8Array,
     options?: WriteFileOptions
   ): void;
@@ -1455,7 +1455,7 @@ declare namespace Deno {
    * Requires `allow-write` permission, and `allow-read` if `options.create` is `false`.
    */
   export function writeFile(
-    path: string,
+    path: string | URL,
     data: Uint8Array,
     options?: WriteFileOptions
   ): Promise<void>;

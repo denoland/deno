@@ -15,6 +15,20 @@ unitTest(
   }
 );
 
+unitTest(
+  { perms: { read: true, write: true } },
+  function writeFileSyncUrl(): void {
+    const enc = new TextEncoder();
+    const data = enc.encode("Hello");
+    const fileUrl = new URL(`file://${Deno.makeTempDirSync()}/test.txt`);
+    Deno.writeFileSync(fileUrl, data);
+    const dataRead = Deno.readFileSync(fileUrl);
+    const dec = new TextDecoder("utf-8");
+    const actual = dec.decode(dataRead);
+    assertEquals("Hello", actual);
+  }
+);
+
 unitTest({ perms: { write: true } }, function writeFileSyncFail(): void {
   const enc = new TextEncoder();
   const data = enc.encode("Hello");
@@ -119,6 +133,20 @@ unitTest(
     const filename = Deno.makeTempDirSync() + "/test.txt";
     await Deno.writeFile(filename, data);
     const dataRead = Deno.readFileSync(filename);
+    const dec = new TextDecoder("utf-8");
+    const actual = dec.decode(dataRead);
+    assertEquals("Hello", actual);
+  }
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  async function writeFileUrl(): Promise<void> {
+    const enc = new TextEncoder();
+    const data = enc.encode("Hello");
+    const fileUrl = new URL(`file://${Deno.makeTempDirSync()}/test.txt`);
+    await Deno.writeFile(fileUrl, data);
+    const dataRead = Deno.readFileSync(fileUrl);
     const dec = new TextDecoder("utf-8");
     const actual = dec.decode(dataRead);
     assertEquals("Hello", actual);
