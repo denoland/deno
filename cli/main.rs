@@ -455,7 +455,7 @@ async fn bundle_command(
 fn human_size(bytse: f64) -> String {
   let negative = if bytse.is_sign_positive() { "" } else { "-" };
   let bytse = bytse.abs();
-  let units = ["Bytes", "kB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
+  let units = ["Bytes", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
   if bytse < 1_f64 {
     return format!("{}{} {}", negative, bytse, "Bytes");
   }
