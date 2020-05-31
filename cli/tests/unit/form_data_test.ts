@@ -6,7 +6,7 @@ import {
   assertStrContains,
 } from "./test_util.ts";
 
-unitTest({ ignore: true }, function formDataHasCorrectNameProp(): void {
+unitTest(function formDataHasCorrectNameProp(): void {
   assertEquals(FormData.name, "FormData");
 });
 
