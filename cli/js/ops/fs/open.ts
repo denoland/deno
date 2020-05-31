@@ -24,7 +24,10 @@ export function openSync(path: string | URL, options: OpenOptions): number {
   return sendSync("op_open", { path, options, mode });
 }
 
-export function open(path: string | URL, options: OpenOptions): Promise<number> {
+export function open(
+  path: string | URL,
+  options: OpenOptions
+): Promise<number> {
   const mode: number | undefined = options?.mode;
   if (path instanceof URL) {
     path = pathFromURL(path);

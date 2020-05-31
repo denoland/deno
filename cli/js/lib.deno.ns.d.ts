@@ -424,7 +424,10 @@ declare namespace Deno {
    *
    * Requires `allow-read` and/or `allow-write` permissions depending on options.
    */
-  export function open(path: string | URL, options?: OpenOptions): Promise<File>;
+  export function open(
+    path: string | URL,
+    options?: OpenOptions
+  ): Promise<File>;
 
   /** Creates a file if none exists or truncates an existing file and returns
    *  an instance of `Deno.File`.
@@ -893,7 +896,10 @@ declare namespace Deno {
    * Defaults to throwing error if the directory already exists.
    *
    * Requires `allow-write` permission. */
-  export function mkdir(path: string | URL, options?: MkdirOptions): Promise<void>;
+  export function mkdir(
+    path: string | URL,
+    options?: MkdirOptions
+  ): Promise<void>;
 
   export interface MakeTempOptions {
     /** Directory where the temporary directory should be created (defaults to
@@ -1065,7 +1071,11 @@ declare namespace Deno {
    * @param uid user id (UID) of the new owner
    * @param gid group id (GID) of the new owner
    */
-  export function chown(path: string | URL, uid: number, gid: number): Promise<void>;
+  export function chown(
+    path: string | URL,
+    uid: number,
+    gid: number
+  ): Promise<void>;
 
   export interface RemoveOptions {
     /** Defaults to `false`. If set to `true`, path will be removed even if
@@ -1097,7 +1107,10 @@ declare namespace Deno {
    * directory and the `recursive` option isn't set to `true`.
    *
    * Requires `allow-write` permission. */
-  export function remove(path: string | URL, options?: RemoveOptions): Promise<void>;
+  export function remove(
+    path: string | URL,
+    options?: RemoveOptions
+  ): Promise<void>;
 
   /** Synchronously renames (moves) `oldpath` to `newpath`. Paths may be files or
    * directories.  If `newpath` already exists and is not a directory,
@@ -1114,7 +1127,10 @@ declare namespace Deno {
    * they are. It's always an error to rename anything to a non-empty directory.
    *
    * Requires `allow-read` and `allow-write` permissions. */
-  export function renameSync(oldpath: string | URL, newpath: string | URL): void;
+  export function renameSync(
+    oldpath: string | URL,
+    newpath: string | URL
+  ): void;
 
   /** Renames (moves) `oldpath` to `newpath`.  Paths may be files or directories.
    * If `newpath` already exists and is not a directory, `rename()` replaces it.
@@ -1131,7 +1147,10 @@ declare namespace Deno {
    * they are. It's always an error to rename anything to a non-empty directory.
    *
    * Requires `allow-read` and `allow-write` permission. */
-  export function rename(oldpath: string | URL, newpath: string | URL): Promise<void>;
+  export function rename(
+    oldpath: string | URL,
+    newpath: string | URL
+  ): Promise<void>;
 
   /** Synchronously reads and returns the entire contents of a file as utf8 encoded string
    *  encoded string. Reading a directory returns an empty string.
@@ -1323,7 +1342,10 @@ declare namespace Deno {
    *
    * Requires `allow-read` permission on fromPath.
    * Requires `allow-write` permission on toPath. */
-  export function copyFileSync(fromPath: string | URL, toPath: string | URL): void;
+  export function copyFileSync(
+    fromPath: string | URL,
+    toPath: string | URL
+  ): void;
 
   /** Copies the contents and permissions of one file to another specified path,
    * by default creating a new file if needed, else overwriting. Fails if target
@@ -1335,7 +1357,10 @@ declare namespace Deno {
    *
    * Requires `allow-read` permission on fromPath.
    * Requires `allow-write` permission on toPath. */
-  export function copyFile(fromPath: string | URL, toPath: string | URL): Promise<void>;
+  export function copyFile(
+    fromPath: string | URL,
+    toPath: string | URL
+  ): Promise<void>;
 
   /** Returns the full path destination of the named symbolic link.
    *
@@ -1480,7 +1505,10 @@ declare namespace Deno {
    *
    * Requires `allow-write` permission, and `allow-read` if `options.create` is `false`.
    */
-  export function writeTextFile(path: string | URL, data: string): Promise<void>;
+  export function writeTextFile(
+    path: string | URL,
+    data: string
+  ): Promise<void>;
 
   /** Synchronously truncates or extends the specified file, to reach the
    * specified `len`.  If `len` is not specified then the entire file contents

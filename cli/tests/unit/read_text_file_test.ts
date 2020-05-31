@@ -50,17 +50,16 @@ unitTest(
   }
 );
 
-unitTest(
-  { perms: { read: true } },
-  async function readTextFileByUrl(): Promise<void> {
-    const data = await Deno.readTextFile(
-      new URL(`file://${await Deno.realPath("cli/tests/fixture.json")}`)
-    );
-    assert(data.length > 0);
-    const pkg = JSON.parse(data);
-    assertEquals(pkg.name, "deno");
-  }
-);
+unitTest({ perms: { read: true } }, async function readTextFileByUrl(): Promise<
+  void
+> {
+  const data = await Deno.readTextFile(
+    new URL(`file://${await Deno.realPath("cli/tests/fixture.json")}`)
+  );
+  assert(data.length > 0);
+  const pkg = JSON.parse(data);
+  assertEquals(pkg.name, "deno");
+});
 
 unitTest({ perms: { read: false } }, async function readTextFilePerm(): Promise<
   void

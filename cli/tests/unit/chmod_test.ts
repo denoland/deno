@@ -33,7 +33,7 @@ unitTest(
     assert(fileInfo.mode);
     assertEquals(fileInfo.mode & 0o777, 0o777);
 
-    Deno.removeSync(tempDir, { recursive: true })
+    Deno.removeSync(tempDir, { recursive: true });
   }
 );
 

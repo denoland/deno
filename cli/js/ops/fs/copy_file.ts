@@ -2,7 +2,10 @@
 import { sendSync, sendAsync } from "../dispatch_json.ts";
 import { pathFromURL } from "../../util.ts";
 
-export function copyFileSync(fromPath: string | URL, toPath: string | URL): void {
+export function copyFileSync(
+  fromPath: string | URL,
+  toPath: string | URL
+): void {
   if (fromPath instanceof URL) {
     fromPath = pathFromURL(fromPath);
   }

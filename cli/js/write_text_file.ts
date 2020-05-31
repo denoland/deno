@@ -9,7 +9,10 @@ export function writeTextFileSync(path: string | URL, data: string): void {
   file.close();
 }
 
-export async function writeTextFile(path: string | URL, data: string): Promise<void> {
+export async function writeTextFile(
+  path: string | URL,
+  data: string
+): Promise<void> {
   const file = await open(path, { write: true, create: true, truncate: true });
   const enc = new TextEncoder();
   const contents = enc.encode(data);

@@ -27,11 +27,15 @@ unitTest(
 
     const testsDir = Deno.realPathSync("cli/tests/");
 
-    const packageInfoByUrl = Deno.statSync(new URL(`file://${Deno.realPathSync("README.md")}`));
+    const packageInfoByUrl = Deno.statSync(
+      new URL(`file://${Deno.realPathSync("README.md")}`)
+    );
     assert(packageInfoByUrl.isFile);
     assert(!packageInfoByUrl.isSymlink);
 
-    const modulesInfoByUrl = Deno.statSync(new URL(`file://${testsDir}/symlink_to_subdir`));
+    const modulesInfoByUrl = Deno.statSync(
+      new URL(`file://${testsDir}/symlink_to_subdir`)
+    );
     assert(modulesInfoByUrl.isDirectory);
     assert(!modulesInfoByUrl.isSymlink);
 
@@ -42,10 +46,15 @@ unitTest(
     const tempUrl = new URL(`file://${Deno.makeTempFileSync()}`);
     const tempInfoByUrl = Deno.statSync(tempUrl);
     now = Date.now();
-    assert(tempInfoByUrl.atime !== null && now - tempInfoByUrl.atime.valueOf() < 1000);
-    assert(tempInfoByUrl.mtime !== null && now - tempInfoByUrl.mtime.valueOf() < 1000);
     assert(
-      tempInfoByUrl.birthtime === null || now - tempInfoByUrl.birthtime.valueOf() < 1000
+      tempInfoByUrl.atime !== null && now - tempInfoByUrl.atime.valueOf() < 1000
+    );
+    assert(
+      tempInfoByUrl.mtime !== null && now - tempInfoByUrl.mtime.valueOf() < 1000
+    );
+    assert(
+      tempInfoByUrl.birthtime === null ||
+        now - tempInfoByUrl.birthtime.valueOf() < 1000
     );
   }
 );
@@ -81,7 +90,9 @@ unitTest({ perms: { read: true } }, function lstatSyncSuccess(): void {
   assert(packageInfo.isFile);
   assert(!packageInfo.isSymlink);
 
-    const packageInfoByUrl =  Deno.lstatSync(new URL(`file://${Deno.realPathSync("README.md")}`));
+  const packageInfoByUrl = Deno.lstatSync(
+    new URL(`file://${Deno.realPathSync("README.md")}`)
+  );
   assert(packageInfoByUrl.isFile);
   assert(!packageInfoByUrl.isSymlink);
 
@@ -89,7 +100,9 @@ unitTest({ perms: { read: true } }, function lstatSyncSuccess(): void {
   assert(!modulesInfo.isDirectory);
   assert(modulesInfo.isSymlink);
 
-    const modulesInfoByUrl = Deno.lstatSync(new URL(`file://${Deno.realPathSync("cli/tests/")}/symlink_to_subdir`));
+  const modulesInfoByUrl = Deno.lstatSync(
+    new URL(`file://${Deno.realPathSync("cli/tests/")}/symlink_to_subdir`)
+  );
   assert(!modulesInfoByUrl.isDirectory);
   assert(modulesInfoByUrl.isSymlink);
 
@@ -97,7 +110,9 @@ unitTest({ perms: { read: true } }, function lstatSyncSuccess(): void {
   assert(coreInfo.isDirectory);
   assert(!coreInfo.isSymlink);
 
-    const coreInfoByUrl = Deno.lstatSync(new URL(`file://${Deno.realPathSync("core")}`));
+  const coreInfoByUrl = Deno.lstatSync(
+    new URL(`file://${Deno.realPathSync("core")}`)
+  );
   assert(coreInfoByUrl.isDirectory);
   assert(!coreInfoByUrl.isSymlink);
 });
@@ -137,7 +152,9 @@ unitTest(
     assert(packageInfo.isFile);
     assert(!packageInfo.isSymlink);
 
-    const packageInfoByUrl = await Deno.stat(new URL(`file://${Deno.realPathSync("README.md")}`));
+    const packageInfoByUrl = await Deno.stat(
+      new URL(`file://${Deno.realPathSync("README.md")}`)
+    );
     assert(packageInfoByUrl.isFile);
     assert(!packageInfoByUrl.isSymlink);
 
@@ -145,7 +162,9 @@ unitTest(
     assert(modulesInfo.isDirectory);
     assert(!modulesInfo.isSymlink);
 
-    const modulesInfoByUrl = await Deno.stat(new URL(`file://${testsDir}/symlink_to_subdir`));
+    const modulesInfoByUrl = await Deno.stat(
+      new URL(`file://${testsDir}/symlink_to_subdir`)
+    );
     assert(modulesInfoByUrl.isDirectory);
     assert(!modulesInfoByUrl.isSymlink);
 
@@ -170,10 +189,15 @@ unitTest(
     const tempUrl = new URL(`file://${await Deno.makeTempFile()}`);
     const tempInfoByUrl = await Deno.stat(tempUrl);
     now = Date.now();
-    assert(tempInfoByUrl.atime !== null && now - tempInfoByUrl.atime.valueOf() < 1000);
-    assert(tempInfoByUrl.mtime !== null && now - tempInfoByUrl.mtime.valueOf() < 1000);
     assert(
-      tempInfoByUrl.birthtime === null || now - tempInfoByUrl.birthtime.valueOf() < 1000
+      tempInfoByUrl.atime !== null && now - tempInfoByUrl.atime.valueOf() < 1000
+    );
+    assert(
+      tempInfoByUrl.mtime !== null && now - tempInfoByUrl.mtime.valueOf() < 1000
+    );
+    assert(
+      tempInfoByUrl.birthtime === null ||
+        now - tempInfoByUrl.birthtime.valueOf() < 1000
     );
   }
 );
@@ -213,7 +237,9 @@ unitTest({ perms: { read: true } }, async function lstatSuccess(): Promise<
   assert(packageInfo.isFile);
   assert(!packageInfo.isSymlink);
 
-  const packageInfoByUrl =  await Deno.lstat(new URL(`file://${Deno.realPathSync("README.md")}`));
+  const packageInfoByUrl = await Deno.lstat(
+    new URL(`file://${Deno.realPathSync("README.md")}`)
+  );
   assert(packageInfoByUrl.isFile);
   assert(!packageInfoByUrl.isSymlink);
 
@@ -221,7 +247,9 @@ unitTest({ perms: { read: true } }, async function lstatSuccess(): Promise<
   assert(!modulesInfo.isDirectory);
   assert(modulesInfo.isSymlink);
 
-  const modulesInfoByUrl = await Deno.lstat(new URL(`file://${Deno.realPathSync("cli/tests/")}/symlink_to_subdir`));
+  const modulesInfoByUrl = await Deno.lstat(
+    new URL(`file://${Deno.realPathSync("cli/tests/")}/symlink_to_subdir`)
+  );
   assert(!modulesInfoByUrl.isDirectory);
   assert(modulesInfoByUrl.isSymlink);
 
@@ -229,7 +257,9 @@ unitTest({ perms: { read: true } }, async function lstatSuccess(): Promise<
   assert(coreInfo.isDirectory);
   assert(!coreInfo.isSymlink);
 
-  const coreInfoByUrl = await Deno.lstat(new URL(`file://${Deno.realPathSync("core")}`));
+  const coreInfoByUrl = await Deno.lstat(
+    new URL(`file://${Deno.realPathSync("core")}`)
+  );
   assert(coreInfoByUrl.isDirectory);
   assert(!coreInfoByUrl.isSymlink);
 });

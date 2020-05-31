@@ -21,7 +21,7 @@ unitTest(
 unitTest(
   { perms: { read: true, write: true } },
   function mkdirSyncWithUrl(): void {
-    const fileUrl = new URL(`file://${Deno.makeTempDirSync()}/dir`)
+    const fileUrl = new URL(`file://${Deno.makeTempDirSync()}/dir`);
     Deno.mkdirSync(fileUrl);
     assertDirectory(fileUrl.pathname);
   }
@@ -59,7 +59,7 @@ unitTest(
 unitTest(
   { perms: { read: true, write: true } },
   async function mkdirWithUrl(): Promise<void> {
-    const fileUrl = new URL(`file://${Deno.makeTempDirSync()}/dir`)
+    const fileUrl = new URL(`file://${Deno.makeTempDirSync()}/dir`);
     await Deno.mkdir(fileUrl);
     assertDirectory(fileUrl.pathname);
   }

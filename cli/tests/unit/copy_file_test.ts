@@ -13,7 +13,10 @@ function writeFileString(filename: string | URL, s: string): void {
   Deno.writeFileSync(filename, data, { mode: 0o666 });
 }
 
-function assertSameContent(filename1: string | URL, filename2: string | URL): void {
+function assertSameContent(
+  filename1: string | URL,
+  filename2: string | URL
+): void {
   const data1 = Deno.readFileSync(filename1);
   const data2 = Deno.readFileSync(filename2);
   assertEquals(data1, data2);
