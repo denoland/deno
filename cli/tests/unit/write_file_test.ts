@@ -20,12 +20,15 @@ unitTest(
   function writeFileSyncUrl(): void {
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
-    const fileUrl = new URL(`file://${Deno.makeTempDirSync()}/test.txt`);
+    const tempDir = Deno.makeTempDirSync();
+    const fileUrl = new URL(`file://${tempDir}/test.txt`);
     Deno.writeFileSync(fileUrl, data);
     const dataRead = Deno.readFileSync(fileUrl);
     const dec = new TextDecoder("utf-8");
     const actual = dec.decode(dataRead);
     assertEquals("Hello", actual);
+
+    Deno.removeSync(tempDir, { recursive: true });
   }
 );
 
@@ -144,12 +147,15 @@ unitTest(
   async function writeFileUrl(): Promise<void> {
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
-    const fileUrl = new URL(`file://${Deno.makeTempDirSync()}/test.txt`);
+    const tempDir = await Deno.makeTempDir();
+    const fileUrl = new URL(`file://${tempDir}/test.txt`);
     await Deno.writeFile(fileUrl, data);
     const dataRead = Deno.readFileSync(fileUrl);
     const dec = new TextDecoder("utf-8");
     const actual = dec.decode(dataRead);
     assertEquals("Hello", actual);
+
+    Deno.removeSync(tempDir, { recursive: true });
   }
 );
 
