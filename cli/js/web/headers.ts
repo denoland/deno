@@ -256,3 +256,8 @@ export class HeadersImpl extends DomIterableMixin<
   string,
   typeof HeadersBase
 >(HeadersBase, headersData) {}
+
+Object.defineProperty(HeadersImpl, "name", {
+  value: "Headers",
+  configurable: true,
+});
