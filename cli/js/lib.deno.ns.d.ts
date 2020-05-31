@@ -509,7 +509,7 @@ declare namespace Deno {
    * ```ts
    * const encoder = new TextEncoder();
    * const data = encoder.encode("Hello world");
-   * const file = Deno.openSync("/foo/bar.txt");
+   * const file = Deno.openSync("/foo/bar.txt", {write: true});
    * const bytesWritten = Deno.writeSync(file.rid, data); // 11
    * Deno.close(file.rid);
    * ```
@@ -528,7 +528,7 @@ declare namespace Deno {
    * ```ts
    * const encoder = new TextEncoder();
    * const data = encoder.encode("Hello world");
-   * const file = await Deno.open("/foo/bar.txt");
+   * const file = await Deno.open("/foo/bar.txt", { write: true });
    * const bytesWritten = await Deno.write(file.rid, data); // 11
    * Deno.close(file.rid);
    * ```
