@@ -20,7 +20,8 @@ unitTest({ perms: { read: true } }, function readDirSyncSuccess(): void {
 });
 
 unitTest({ perms: { read: true } }, function readDirSyncWithUrl(): void {
-  const dirUrl = new URL(`file://${Deno.realPathSync("cli/tests")}`);
+  const cwd = Deno.cwd().replace(/\\/g, "/");
+  const dirUrl = new URL(`file:///${cwd}/cli/tests`);
   const files = [...Deno.readDirSync(dirUrl)];
   assertSameContent(files);
 });
@@ -77,7 +78,8 @@ unitTest({ perms: { read: true } }, async function readDirSuccess(): Promise<
 unitTest({ perms: { read: true } }, async function readDirWithUrl(): Promise<
   void
 > {
-  const dirUrl = new URL(`file://${Deno.realPathSync("cli/tests")}`);
+  const cwd = Deno.cwd().replace(/\\/g, "/");
+  const dirUrl = new URL(`file:///${cwd}/cli/tests`);
   const files = [];
   for await (const dirEntry of Deno.readDir(dirUrl)) {
     files.push(dirEntry);

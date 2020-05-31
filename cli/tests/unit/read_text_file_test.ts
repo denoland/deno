@@ -8,8 +8,9 @@ unitTest({ perms: { read: true } }, function readTextFileSyncSuccess(): void {
 });
 
 unitTest({ perms: { read: true } }, function readTextFileSyncByUrl(): void {
+  const cwd = Deno.cwd().replace(/\\/g, "/");
   const data = Deno.readTextFileSync(
-    new URL(`file://${Deno.realPathSync("cli/tests/fixture.json")}`)
+    new URL(`file://${cwd}/cli/tests/fixture.json`)
   );
   assert(data.length > 0);
   const pkg = JSON.parse(data);
@@ -53,8 +54,9 @@ unitTest(
 unitTest({ perms: { read: true } }, async function readTextFileByUrl(): Promise<
   void
 > {
+  const cwd = Deno.cwd().replace(/\\/g, "/");
   const data = await Deno.readTextFile(
-    new URL(`file://${await Deno.realPath("cli/tests/fixture.json")}`)
+    new URL(`file://${cwd}/cli/tests/fixture.json`)
   );
   assert(data.length > 0);
   const pkg = JSON.parse(data);
