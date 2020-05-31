@@ -17,10 +17,6 @@ export function writeFileSync(
   data: Uint8Array,
   options: WriteFileOptions = {}
 ): void {
-  if (path instanceof URL) {
-    path = pathFromURL(path);
-  }
-
   if (options.create !== undefined) {
     const create = !!options.create;
     if (!create) {
@@ -51,10 +47,6 @@ export async function writeFile(
   data: Uint8Array,
   options: WriteFileOptions = {}
 ): Promise<void> {
-  if (path instanceof URL) {
-    path = pathFromURL(path);
-  }
-
   if (options.create !== undefined) {
     const create = !!options.create;
     if (!create) {

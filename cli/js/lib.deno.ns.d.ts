@@ -409,7 +409,7 @@ declare namespace Deno {
    *
    * Requires `allow-read` and/or `allow-write` permissions depending on options.
    */
-  export function openSync(path: string, options?: OpenOptions): File;
+  export function openSync(path: string | URL, options?: OpenOptions): File;
 
   /** Open a file and resolve to an instance of `Deno.File`.  The
    * file does not need to previously exist if using the `create` or `createNew`
@@ -424,7 +424,7 @@ declare namespace Deno {
    *
    * Requires `allow-read` and/or `allow-write` permissions depending on options.
    */
-  export function open(path: string, options?: OpenOptions): Promise<File>;
+  export function open(path: string | URL, options?: OpenOptions): Promise<File>;
 
   /** Creates a file if none exists or truncates an existing file and returns
    *  an instance of `Deno.File`.

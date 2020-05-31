@@ -198,6 +198,44 @@ unitTest(
 );
 
 unitTest(
+  {
+    perms: { read: true, write: true },
+  },
+  function openSyncUrl(): void {
+    const fileUrl = new URL(`file://${Deno.makeTempDirSync()}/test_open.txt`)
+    const file = Deno.openSync(fileUrl, {
+      write: true,
+      createNew: true,
+      mode: 0o626,
+    });
+    file.close();
+    const pathInfo = Deno.statSync(fileUrl);
+    if (Deno.build.os !== "windows") {
+      assertEquals(pathInfo.mode! & 0o777, 0o626 & ~Deno.umask());
+    }
+  }
+);
+
+unitTest(
+  {
+    perms: { read: true, write: true },
+  },
+  async function openUrl(): Promise<void> {
+    const fileUrl = new URL(`file://${await Deno.makeTempDir()}/test_open.txt`)
+    const file = await Deno.open(fileUrl, {
+      write: true,
+      createNew: true,
+      mode: 0o626,
+    });
+    file.close();
+    const pathInfo = Deno.statSync(fileUrl);
+    if (Deno.build.os !== "windows") {
+      assertEquals(pathInfo.mode! & 0o777, 0o626 & ~Deno.umask());
+    }
+  }
+);
+
+unitTest(
   { perms: { write: false } },
   async function writePermFailure(): Promise<void> {
     const filename = "tests/hello.txt";

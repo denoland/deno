@@ -21,7 +21,7 @@ import {
 export { OpenOptions } from "./ops/fs/open.ts";
 
 export function openSync(
-  path: string,
+  path: string | URL,
   options: OpenOptions = { read: true }
 ): File {
   checkOpenOptions(options);
@@ -30,7 +30,7 @@ export function openSync(
 }
 
 export async function open(
-  path: string,
+  path: string | URL,
   options: OpenOptions = { read: true }
 ): Promise<File> {
   checkOpenOptions(options);
