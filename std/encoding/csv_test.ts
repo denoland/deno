@@ -384,7 +384,7 @@ x,,,
     Input:
       "#ignore\n".repeat(10000) + "@".repeat(5000) + "," + "*".repeat(5000),
     Output: [["@".repeat(5000), "*".repeat(5000)]],
-    Comment: "#"
+    Comment: "#",
   },
   {
     Name: "QuoteWithTrailingCRLF",
