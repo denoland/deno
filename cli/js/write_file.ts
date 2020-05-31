@@ -4,7 +4,6 @@ import { open, openSync } from "./files.ts";
 import { chmod, chmodSync } from "./ops/fs/chmod.ts";
 import { writeAll, writeAllSync } from "./buffer.ts";
 import { build } from "./build.ts";
-import { pathFromURL } from "./util.ts";
 
 export interface WriteFileOptions {
   append?: boolean;
