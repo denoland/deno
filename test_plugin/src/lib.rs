@@ -15,13 +15,14 @@ fn op_test_sync(
   data: &[u8],
   zero_copy: &mut [ZeroCopyBuf],
 ) -> Op {
-  if let Some(buf) = zero_copy.get(0) {
-    let data_str = std::str::from_utf8(&data[..]).unwrap();
+  let data_str = std::str::from_utf8(&data[..]).unwrap();
+  let zero_copy = zero_copy.to_vec();
+  if !zero_copy.is_empty() {
+    println!("Hello from plugin. data: {}", data_str);
+  }
+  for (idx, buf) in zero_copy.iter().enumerate() {
     let buf_str = std::str::from_utf8(&buf[..]).unwrap();
-    println!(
-      "Hello from plugin. data: {} | zero_copy: {}",
-      data_str, buf_str
-    );
+    println!("zero_copy[{}]: {}", idx, buf_str);
   }
   let result = b"test";
   let result_box: Buf = Box::new(*result);
@@ -33,15 +34,15 @@ fn op_test_async(
   data: &[u8],
   zero_copy: &mut [ZeroCopyBuf],
 ) -> Op {
-  let zero_copy = zero_copy.get(0).cloned();
-  let data_str = std::str::from_utf8(&data[..]).unwrap().to_string();
+  let zero_copy = zero_copy.to_vec();
+  if !zero_copy.is_empty() {
+    let data_str = std::str::from_utf8(&data[..]).unwrap().to_string();
+    println!("Hello from plugin. data: {}", data_str);
+  }
   let fut = async move {
-    if let Some(buf) = zero_copy {
+    for (idx, buf) in zero_copy.iter().enumerate() {
       let buf_str = std::str::from_utf8(&buf[..]).unwrap();
-      println!(
-        "Hello from plugin. data: {} | zero_copy: {}",
-        data_str, buf_str
-      );
+      println!("zero_copy[{}]: {}", idx, buf_str);
     }
     let (tx, rx) = futures::channel::oneshot::channel::<Result<(), ()>>();
     std::thread::spawn(move || {
