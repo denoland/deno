@@ -364,7 +364,7 @@ declare namespace Deno {
    *
    * ```ts
    * let f = Deno.openSync("/etc/passwd");
-   * for (const chunk of Deno.iterSync(reader)) {
+   * for (const chunk of Deno.iterSync(f)) {
    *   console.log(chunk);
    * }
    * f.close();
