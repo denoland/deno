@@ -194,8 +194,9 @@ class ContentTypeHandler(QuietSimpleHTTPRequestHandler):
     def do_POST(self):
         # Simple echo server for request reflection
         if "echo_server" in self.path:
+            status = int(self.headers.getheader('x-status', "200"))
             self.protocol_version = 'HTTP/1.1'
-            self.send_response(200, 'OK')
+            self.send_response(status, 'OK')
             if self.headers.has_key('content-type'):
                 self.send_header('content-type',
                                  self.headers.getheader('content-type'))
