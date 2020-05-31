@@ -5,7 +5,7 @@ edition = "2018"
 
 [dependencies]
 hyper = "0.13.5"
-tokio = { version = "0.2.20", features = ["full"] }
+tokio = { version = "0.2.21", features = ["full"] }
 
 [[bin]]
 name = "hyper_hello"

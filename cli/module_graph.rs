@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use crate::doc::Location;
 use crate::file_fetcher::map_file_extension;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
@@ -9,7 +10,7 @@ use crate::op_error::OpError;
 use crate::permissions::Permissions;
 use crate::swc_util::analyze_dependencies_and_references;
 use crate::swc_util::TsReferenceKind;
-use crate::tsc::get_available_libs;
+use crate::tsc::AVAILABLE_LIBS;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
 use futures::stream::FuturesUnordered;
@@ -23,6 +24,18 @@ use std::collections::HashSet;
 use std::hash::BuildHasher;
 use std::path::PathBuf;
 use std::pin::Pin;
+
+// TODO(bartlomieju): it'd be great if this function returned
+// more structured data and possibly format the same as TS diagnostics.
+/// Decorate error with location of import that caused the error.
+fn err_with_location(e: ErrBox, location: &Location) -> ErrBox {
+  let location_str = format!(
+    "\nImported from \"{}:{}\"",
+    location.filename, location.line
+  );
+  let err_str = e.to_string();
+  OpError::other(format!("{}{}", err_str, location_str)).into()
+}
 
 fn serialize_module_specifier<S>(
   spec: &ModuleSpecifier,
@@ -138,8 +151,9 @@ impl ModuleGraphLoader {
   pub async fn add_to_graph(
     &mut self,
     specifier: &ModuleSpecifier,
+    maybe_referrer: Option<ModuleSpecifier>,
   ) -> Result<(), ErrBox> {
-    self.download_module(specifier.clone(), None)?;
+    self.download_module(specifier.clone(), maybe_referrer)?;
 
     loop {
       let (specifier, source_file) =
@@ -239,10 +253,8 @@ impl ModuleGraphLoader {
       imports.push(import_descriptor);
     }
 
-    let available_libs = get_available_libs();
-
     for ref_desc in ref_descs {
-      if available_libs.contains(&ref_desc.specifier) {
+      if AVAILABLE_LIBS.contains(&ref_desc.specifier.as_str()) {
         continue;
       }
 
@@ -446,31 +458,33 @@ impl ModuleGraphLoader {
         let import_descriptor = ImportDescriptor {
           specifier: import_desc.specifier.to_string(),
           resolved_specifier,
-          type_directive: import_desc.deno_types,
+          type_directive: import_desc.deno_types.clone(),
           resolved_type_directive,
         };
 
-        self.download_module(
-          import_descriptor.resolved_specifier.clone(),
-          Some(module_specifier.clone()),
-        )?;
+        self
+          .download_module(
+            import_descriptor.resolved_specifier.clone(),
+            Some(module_specifier.clone()),
+          )
+          .map_err(|e| err_with_location(e, &import_desc.location))?;
 
         if let Some(type_dir_url) =
           import_descriptor.resolved_type_directive.as_ref()
         {
-          self.download_module(
-            type_dir_url.clone(),
-            Some(module_specifier.clone()),
-          )?;
+          self
+            .download_module(
+              type_dir_url.clone(),
+              Some(module_specifier.clone()),
+            )
+            .map_err(|e| err_with_location(e, &import_desc.location))?;
         }
 
         imports.push(import_descriptor);
       }
 
-      let available_libs = get_available_libs();
-
       for ref_desc in ref_descs {
-        if available_libs.contains(&ref_desc.specifier) {
+        if AVAILABLE_LIBS.contains(&ref_desc.specifier.as_str()) {
           continue;
         }
 
@@ -484,10 +498,12 @@ impl ModuleGraphLoader {
           resolved_specifier,
         };
 
-        self.download_module(
-          reference_descriptor.resolved_specifier.clone(),
-          Some(module_specifier.clone()),
-        )?;
+        self
+          .download_module(
+            reference_descriptor.resolved_specifier.clone(),
+            Some(module_specifier.clone()),
+          )
+          .map_err(|e| err_with_location(e, &ref_desc.location))?;
 
         match ref_desc.kind {
           TsReferenceKind::Lib => {
@@ -539,7 +555,7 @@ mod tests {
       false,
       false,
     );
-    graph_loader.add_to_graph(&module_specifier).await?;
+    graph_loader.add_to_graph(&module_specifier, None).await?;
     Ok(graph_loader.get_graph())
   }
 

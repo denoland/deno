@@ -10,6 +10,79 @@ import {
   DiagnosticItem,
 } from "./diagnostics.ts";
 
+const unstableDenoGlobalProperties = [
+  "umask",
+  "linkSync",
+  "link",
+  "symlinkSync",
+  "symlink",
+  "DirKind",
+  "dir",
+  "loadavg",
+  "osRelease",
+  "openPlugin",
+  "DiagnosticCategory",
+  "DiagnosticMessageChain",
+  "DiagnosticItem",
+  "Diagnostic",
+  "formatDiagnostics",
+  "CompilerOptions",
+  "TranspileOnlyResult",
+  "transpileOnly",
+  "compile",
+  "bundle",
+  "Location",
+  "applySourceMap",
+  "LinuxSignal",
+  "MacOSSignal",
+  "Signal",
+  "SignalStream",
+  "signal",
+  "signals",
+  "setRaw",
+  "utimeSync",
+  "utime",
+  "ShutdownMode",
+  "shutdown",
+  "DatagramConn",
+  "UnixListenOptions",
+  "listen",
+  "listenDatagram",
+  "UnixConnectOptions",
+  "connect",
+  "StartTlsOptions",
+  "startTls",
+  "kill",
+  "PermissionName",
+  "PermissionState",
+  "RunPermissionDescriptor",
+  "ReadPermissionDescriptor",
+  "WritePermissionDescriptor",
+  "NetPermissionDescriptor",
+  "EnvPermissionDescriptor",
+  "PluginPermissionDescriptor",
+  "HrtimePermissionDescriptor",
+  "PermissionDescriptor",
+  "Permissions",
+  "PermissionStatus",
+  "hostname",
+];
+
+function transformMessageText(messageText: string, code: number): string {
+  if (code === 2339) {
+    const property = messageText
+      .replace(/^Property '/, "")
+      .replace(/' does not exist on type 'typeof Deno'\.$/, "");
+    if (
+      messageText.endsWith("on type 'typeof Deno'.") &&
+      unstableDenoGlobalProperties.includes(property)
+    ) {
+      return `${messageText} 'Deno.${property}' is an unstable API. Did you forget to run with the '--unstable' flag?`;
+    }
+  }
+  return messageText;
+}
+
 interface SourceInformation {
   sourceLine: string;
   lineNumber: number;
@@ -78,7 +151,8 @@ function fromDiagnosticMessageChain(
     return undefined;
   }
 
-  return messageChain.map(({ messageText: message, code, category, next }) => {
+  return messageChain.map(({ messageText, code, category, next }) => {
+    const message = transformMessageText(messageText, code);
     return {
       message,
       code,
@@ -110,9 +184,9 @@ function parseDiagnostic(
   let message: string;
   let messageChain: DiagnosticMessageChain | undefined;
   if (typeof messageText === "string") {
-    message = messageText;
+    message = transformMessageText(messageText, code);
   } else {
-    message = messageText.messageText;
+    message = transformMessageText(messageText.messageText, messageText.code);
     messageChain = fromDiagnosticMessageChain([messageText])![0];
   }
 

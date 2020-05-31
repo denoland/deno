@@ -1,5 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use crate::fs::resolve_from_cwd;
 use clap::App;
 use clap::AppSettings;
 use clap::Arg;
@@ -7,7 +6,7 @@ use clap::ArgMatches;
 use clap::SubCommand;
 use log::Level;
 use std::net::SocketAddr;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 /// Creates vector of strings, Vec<String>
 macro_rules! svec {
@@ -470,13 +469,6 @@ fn lock_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   if matches.is_present("lock-write") {
     flags.lock_write = true;
   }
-}
-
-fn resolve_fs_whitelist(whitelist: &[PathBuf]) -> Vec<PathBuf> {
-  whitelist
-    .iter()
-    .map(|raw_path| resolve_from_cwd(Path::new(&raw_path)).unwrap())
-    .collect()
 }
 
 // Shared between the run and test subcommands. They both take similar options.
@@ -1235,25 +1227,22 @@ fn no_remote_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
 fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   if let Some(read_wl) = matches.values_of("allow-read") {
-    let raw_read_whitelist: Vec<PathBuf> = read_wl.map(PathBuf::from).collect();
+    let read_whitelist: Vec<PathBuf> = read_wl.map(PathBuf::from).collect();
 
-    if raw_read_whitelist.is_empty() {
+    if read_whitelist.is_empty() {
       flags.allow_read = true;
     } else {
-      flags.read_whitelist = resolve_fs_whitelist(&raw_read_whitelist);
-      debug!("read whitelist: {:#?}", &flags.read_whitelist);
+      flags.read_whitelist = read_whitelist;
     }
   }
 
   if let Some(write_wl) = matches.values_of("allow-write") {
-    let raw_write_whitelist: Vec<PathBuf> =
-      write_wl.map(PathBuf::from).collect();
+    let write_whitelist: Vec<PathBuf> = write_wl.map(PathBuf::from).collect();
 
-    if raw_write_whitelist.is_empty() {
+    if write_whitelist.is_empty() {
       flags.allow_write = true;
     } else {
-      flags.write_whitelist = resolve_fs_whitelist(&raw_write_whitelist);
-      debug!("write whitelist: {:#?}", &flags.write_whitelist);
+      flags.write_whitelist = write_whitelist;
     }
   }
 
@@ -1352,7 +1341,6 @@ fn resolve_hosts(paths: Vec<String>) -> Vec<String> {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use std::env::current_dir;
 
   #[test]
   fn upgrade() {
@@ -1853,7 +1841,7 @@ mod tests {
       r.unwrap(),
       Flags {
         allow_read: false,
-        read_whitelist: vec![current_dir().unwrap(), temp_dir],
+        read_whitelist: vec![PathBuf::from("."), temp_dir],
         subcommand: DenoSubcommand::Run {
           script: "script.ts".to_string(),
         },
@@ -1877,7 +1865,7 @@ mod tests {
       r.unwrap(),
       Flags {
         allow_write: false,
-        write_whitelist: vec![current_dir().unwrap(), temp_dir],
+        write_whitelist: vec![PathBuf::from("."), temp_dir],
         subcommand: DenoSubcommand::Run {
           script: "script.ts".to_string(),
         },
