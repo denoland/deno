@@ -1,0 +1,1 @@
+import "./002_hello.ts";

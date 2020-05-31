@@ -7,6 +7,7 @@ use crate::import_map::ImportMap;
 use crate::lockfile::Lockfile;
 use crate::module_graph::ModuleGraphLoader;
 use crate::msg;
+use crate::msg::MediaType;
 use crate::permissions::Permissions;
 use crate::state::exit_unstable;
 use crate::tsc::CompiledModule;
@@ -141,13 +142,26 @@ impl GlobalState {
       .expect("Source file not found");
 
     // Check if we need to compile files
-    let needs_compilation = match out.media_type {
-      msg::MediaType::TypeScript
-      | msg::MediaType::TSX
-      | msg::MediaType::JSX => true,
-      msg::MediaType::JavaScript => self.ts_compiler.compile_js,
-      _ => false,
-    };
+    // Compilation happens if either:
+    // - `checkJs` is set to true in TS config
+    // - entry point is a TS file
+    // - any dependency in module graph is a TS file
+    let has_ts_dep = module_graph.values().any(|module_file| {
+      let media_type = module_file.media_type;
+
+      media_type == (MediaType::TypeScript as i32)
+        || media_type == (MediaType::TSX as i32)
+        || media_type == (MediaType::JSX as i32)
+    });
+
+    let needs_compilation = has_ts_dep
+      || (match out.media_type {
+        msg::MediaType::TypeScript
+        | msg::MediaType::TSX
+        | msg::MediaType::JSX => true,
+        msg::MediaType::JavaScript => self.ts_compiler.compile_js,
+        _ => false,
+      });
 
     if needs_compilation {
       self
