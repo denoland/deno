@@ -1297,7 +1297,7 @@ declare namespace Deno {
    * Throws error if `path` is not a directory.
    *
    * Requires `allow-read` permission. */
-  export function readDirSync(path: string): Iterable<DirEntry>;
+  export function readDirSync(path: string | URL): Iterable<DirEntry>;
 
   /** Reads the directory given by `path` and returns an async iterable of
    * `Deno.DirEntry`.
@@ -1311,7 +1311,7 @@ declare namespace Deno {
    * Throws error if `path` is not a directory.
    *
    * Requires `allow-read` permission. */
-  export function readDir(path: string): AsyncIterable<DirEntry>;
+  export function readDir(path: string | URL): AsyncIterable<DirEntry>;
 
   /** Synchronously copies the contents and permissions of one file to another
    * specified path, by default creating a new file if needed, else overwriting.
