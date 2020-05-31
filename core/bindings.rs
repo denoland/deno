@@ -456,40 +456,44 @@ fn send(
   let mut state = state_rc.borrow_mut();
   assert!(!state.global_context.is_empty());
 
-  // If response is empty then it's either async op or exception was thrown
-  let maybe_response = match std::cmp::max(args.length() - 2, 0) {
-    0 => state.dispatch_op(scope, op_id, control, &mut []),
-    1 => {
-      let zero_copy_buf =
-        match v8::Local::<v8::ArrayBufferView>::try_from(args.get(2)) {
-          Ok(view) => ZeroCopyBuf::new(view),
-          Err(err) => {
-            let s = format!("invalid argument {}", err);
-            let msg = v8::String::new(scope, &s).unwrap();
-            scope.isolate().throw_exception(msg.into());
-            return;
-          }
-        };
-      state.dispatch_op(scope, op_id, control, &mut [zero_copy_buf])
-    }
-    cap => {
-      // Collect all ArrayBufferView's
-      let mut zero_copy_bufs =
-        Vec::with_capacity(usize::try_from(cap).unwrap());
-      for i in 2..args.length() {
-        zero_copy_bufs.push(
-          match v8::Local::<v8::ArrayBufferView>::try_from(args.get(i)) {
-            Ok(view) => ZeroCopyBuf::new(view),
-            Err(err) => {
-              let s = format!("invalid argument {} at {}", err, i - 2);
-              let msg = v8::String::new(scope, &s).unwrap();
-              scope.isolate().throw_exception(msg.into());
-              return;
-            }
-          },
-        );
+  let mut buf_iter = (2..args.length()).map(|idx| {
+    v8::Local::<v8::ArrayBufferView>::try_from(args.get(idx))
+      .map(ZeroCopyBuf::new)
+      .map_err(|err| {
+        let msg = format!("Invalid argument at position {}: {}", idx, err);
+        let msg = v8::String::new(scope, &msg).unwrap();
+        v8::Exception::type_error(scope, msg)
+      })
+  });
+
+  let mut buf_one: ZeroCopyBuf;
+  let mut buf_vec: Vec<ZeroCopyBuf>;
+
+  // Collect all ArrayBufferView's
+  let buf_iter_result = match buf_iter.len() {
+    0 => Ok(&mut [][..]),
+    1 => match buf_iter.next().unwrap() {
+      Ok(buf) => {
+        buf_one = buf;
+        Ok(std::slice::from_mut(&mut buf_one))
       }
-      state.dispatch_op(scope, op_id, control, &mut zero_copy_bufs)
+      Err(err) => Err(err),
+    },
+    _ => match buf_iter.collect::<Result<Vec<_>, _>>() {
+      Ok(v) => {
+        buf_vec = v;
+        Ok(&mut buf_vec[..])
+      }
+      Err(err) => Err(err),
+    },
+  };
+
+  // If response is empty then it's either async op or exception was thrown
+  let maybe_response = match buf_iter_result {
+    Ok(bufs) => state.dispatch_op(scope, op_id, control, bufs),
+    Err(exc) => {
+      scope.isolate().throw_exception(exc);
+      return;
     }
   };
 
