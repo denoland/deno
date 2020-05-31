@@ -12,6 +12,9 @@ import { DomFileImpl } from "./dom_file.ts";
 import { getHeaderValueParams } from "./util.ts";
 import { ReadableStreamImpl } from "./streams/readable_stream.ts";
 
+const NULL_BODY_STATUS = [/* 101, */ 204, 205, 304];
+const REDIRECT_STATUS = [301, 302, 303, 307, 308];
+
 const responseData = new WeakMap();
 export class Response extends Body.Body implements domTypes.Response {
   readonly type: ResponseType;
@@ -45,7 +48,7 @@ export class Response extends Body.Body implements domTypes.Response {
     }
 
     // null body status
-    if (body && [/* 101, */ 204, 205, 304].includes(status)) {
+    if (body && NULL_BODY_STATUS.includes(status)) {
       throw new TypeError("Response with null body status cannot have body");
     }
 
@@ -288,32 +291,43 @@ export async function fetch(
     }
   }
 
+  let responseBody;
   let responseInit: ResponseInit = {};
   while (remRedirectCount) {
     const fetchResponse = await sendFetchReq(url, method, headers, body);
 
-    const responseBody = new ReadableStreamImpl({
-      async pull(controller: ReadableStreamDefaultController): Promise<void> {
-        try {
-          const b = new Uint8Array(1024 * 32);
-          const result = await read(fetchResponse.bodyRid, b);
-          if (result === null) {
-            controller.close();
-            return close(fetchResponse.bodyRid);
-          }
+    if (
+      NULL_BODY_STATUS.includes(fetchResponse.status) ||
+      REDIRECT_STATUS.includes(fetchResponse.status)
+    ) {
+      // We won't use body of received response, so close it now
+      // otherwise it will be kept in resource table.
+      close(fetchResponse.bodyRid);
+      responseBody = null;
+    } else {
+      responseBody = new ReadableStreamImpl({
+        async pull(controller: ReadableStreamDefaultController): Promise<void> {
+          try {
+            const b = new Uint8Array(1024 * 32);
+            const result = await read(fetchResponse.bodyRid, b);
+            if (result === null) {
+              controller.close();
+              return close(fetchResponse.bodyRid);
+            }
 
-          controller.enqueue(b.subarray(0, result));
-        } catch (e) {
-          controller.error(e);
-          controller.close();
+            controller.enqueue(b.subarray(0, result));
+          } catch (e) {
+            controller.error(e);
+            controller.close();
+            close(fetchResponse.bodyRid);
+          }
+        },
+        cancel(): void {
+          // When reader.cancel() is called
           close(fetchResponse.bodyRid);
-        }
-      },
-      cancel(): void {
-        // When reader.cancel() is called
-        close(fetchResponse.bodyRid);
-      },
-    });
+        },
+      });
+    }
 
     responseInit = {
       status: fetchResponse.status,
@@ -329,10 +343,7 @@ export async function fetch(
 
     const response = new Response(responseBody, responseInit);
 
-    if ([301, 302, 303, 307, 308].includes(fetchResponse.status)) {
-      // We won't use body of received response, so close it now
-      // otherwise it will be kept in resource table.
-      close(fetchResponse.bodyRid);
+    if (REDIRECT_STATUS.includes(fetchResponse.status)) {
       // We're in a redirect status
       switch ((init && init.redirect) || "follow") {
         case "error":
