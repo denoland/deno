@@ -1371,7 +1371,7 @@ declare namespace Deno {
    * ```
    *
    * Requires `allow-read` permission. */
-  export function lstat(path: string): Promise<FileInfo>;
+  export function lstat(path: string | URL): Promise<FileInfo>;
 
   /** Synchronously returns a `Deno.FileInfo` for the specified `path`. If
    * `path` is a symlink, information for the symlink will be returned instead of
@@ -1383,7 +1383,7 @@ declare namespace Deno {
    * ```
    *
    * Requires `allow-read` permission. */
-  export function lstatSync(path: string): FileInfo;
+  export function lstatSync(path: string | URL): FileInfo;
 
   /** Resolves to a `Deno.FileInfo` for the specified `path`. Will always
    * follow symlinks.
@@ -1394,7 +1394,7 @@ declare namespace Deno {
    * ```
    *
    * Requires `allow-read` permission. */
-  export function stat(path: string): Promise<FileInfo>;
+  export function stat(path: string | URL): Promise<FileInfo>;
 
   /** Synchronously returns a `Deno.FileInfo` for the specified `path`. Will
    * always follow symlinks.
@@ -1405,7 +1405,7 @@ declare namespace Deno {
    * ```
    *
    * Requires `allow-read` permission. */
-  export function statSync(path: string): FileInfo;
+  export function statSync(path: string | URL): FileInfo;
 
   /** Options for writing to a file. */
   export interface WriteFileOptions {
