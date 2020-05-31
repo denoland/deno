@@ -131,8 +131,6 @@ test({
     }, Deno.errors.AlreadyExists);
 
     await fileHandler.destroy();
-    // see comment in timers.ts (setGlobalTimeout) regarding conflict of
-    // setInterval and tests complaining of leaking ops
 
     Deno.removeSync(LOG_FILE);
   },

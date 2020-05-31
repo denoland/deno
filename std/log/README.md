@@ -109,7 +109,8 @@ interface HandlerOptions {
 This handler will output to a file using an optional mode (default is `a`, e.g.
 append). The file will grow indefinitely. It uses a buffer for writing to file
 and will automatically flush, though you can trigger this yourself with
-`fileHandler.flush()`. This logger takes `FileOptions`:
+`fileHandler.flush()`. Log messages with a log level greater than error are
+immediately flushed. This logger takes `FileOptions`:
 
 ```typescript
 interface FileHandlerOptions {
@@ -151,7 +152,8 @@ be renamed to `log.txt.1` and finally `log.txt` would be created from scratch
 where the new log message would be written.
 
 This handler uses a buffer for writing to file and will automatically flush,
-though you can trigger this yourself with `fileHandler.flush()`.
+though you can trigger this yourself with `fileHandler.flush()`. Log messages
+with a log level greater than error are immediately flushed.
 
 Options for this handler are:
 
