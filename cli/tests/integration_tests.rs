@@ -1832,6 +1832,11 @@ itest!(es_private_fields {
   output: "es_private_fields.js.out",
 });
 
+itest!(cjs_imports {
+  args: "run --quiet --reload cjs_imports.ts",
+  output: "cjs_imports.ts.out",
+});
+
 itest!(proto_exploit {
   args: "run proto_exploit.js",
   output: "proto_exploit.js.out",

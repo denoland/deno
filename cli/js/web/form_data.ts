@@ -137,3 +137,8 @@ export class FormDataImpl extends DomIterableMixin<
   FormDataEntryValue,
   typeof FormDataBase
 >(FormDataBase, dataSymbol) {}
+
+Object.defineProperty(FormDataImpl, "name", {
+  value: "FormData",
+  configurable: true,
+});
