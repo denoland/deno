@@ -1142,7 +1142,7 @@ declare namespace Deno {
    * ```
    *
    * Requires `allow-read` permission. */
-  export function readTextFileSync(path: string): string;
+  export function readTextFileSync(path: string | URL): string;
 
   /** Asynchronously reads and returns the entire contents of a file as a utf8
    *  encoded string. Reading a directory returns an empty data array.
@@ -1153,7 +1153,7 @@ declare namespace Deno {
    * ```
    *
    * Requires `allow-read` permission. */
-  export function readTextFile(path: string): Promise<string>;
+  export function readTextFile(path: string | URL): Promise<string>;
 
   /** Synchronously reads and returns the entire contents of a file as an array
    * of bytes. `TextDecoder` can be used to transform the bytes to string if
