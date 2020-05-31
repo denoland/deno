@@ -28,9 +28,7 @@ unitTest(
     const cwd = Deno.cwd().replace(/\\/g, "/");
     const testsDir = `${cwd}/cli/tests/`;
 
-    const packageInfoByUrl = Deno.statSync(
-      new URL(`file://${cwd}/README.md`)
-    );
+    const packageInfoByUrl = Deno.statSync(new URL(`file://${cwd}/README.md`));
     assert(packageInfoByUrl.isFile);
     assert(!packageInfoByUrl.isSymlink);
 
@@ -97,9 +95,7 @@ unitTest({ perms: { read: true } }, function lstatSyncSuccess(): void {
   assert(packageInfo.isFile);
   assert(!packageInfo.isSymlink);
 
-  const packageInfoByUrl = Deno.lstatSync(
-    new URL(`file://${cwd}/README.md`)
-  );
+  const packageInfoByUrl = Deno.lstatSync(new URL(`file://${cwd}/README.md`));
   assert(packageInfoByUrl.isFile);
   assert(!packageInfoByUrl.isSymlink);
 
@@ -117,9 +113,7 @@ unitTest({ perms: { read: true } }, function lstatSyncSuccess(): void {
   assert(coreInfo.isDirectory);
   assert(!coreInfo.isSymlink);
 
-  const coreInfoByUrl = Deno.lstatSync(
-    new URL(`file://${cwd}/core`)
-  );
+  const coreInfoByUrl = Deno.lstatSync(new URL(`file://${cwd}/core`));
   assert(coreInfoByUrl.isDirectory);
   assert(!coreInfoByUrl.isSymlink);
 });
@@ -194,7 +188,7 @@ unitTest(
       tempInfo.birthtime === null || now - tempInfo.birthtime.valueOf() < 1000
     );
 
-    const tempFileForUrl = await Deno.makeTempFile()
+    const tempFileForUrl = await Deno.makeTempFile();
     const tempUrl = new URL(`file://${tempFileForUrl}`);
     const tempInfoByUrl = await Deno.stat(tempUrl);
     now = Date.now();
@@ -251,9 +245,7 @@ unitTest({ perms: { read: true } }, async function lstatSuccess(): Promise<
   assert(packageInfo.isFile);
   assert(!packageInfo.isSymlink);
 
-  const packageInfoByUrl = await Deno.lstat(
-    new URL(`file://${cwd}/README.md`)
-  );
+  const packageInfoByUrl = await Deno.lstat(new URL(`file://${cwd}/README.md`));
   assert(packageInfoByUrl.isFile);
   assert(!packageInfoByUrl.isSymlink);
 
@@ -271,9 +263,7 @@ unitTest({ perms: { read: true } }, async function lstatSuccess(): Promise<
   assert(coreInfo.isDirectory);
   assert(!coreInfo.isSymlink);
 
-  const coreInfoByUrl = await Deno.lstat(
-    new URL(`file://${cwd}/core`)
-  );
+  const coreInfoByUrl = await Deno.lstat(new URL(`file://${cwd}/core`));
   assert(coreInfoByUrl.isDirectory);
   assert(!coreInfoByUrl.isSymlink);
 });
