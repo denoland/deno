@@ -41,6 +41,21 @@ unitTest(
 );
 
 unitTest(
+  { perms: { read: true, write: true } },
+  function renameSyncByUrl(): void {
+    const testDir = Deno.makeTempDirSync();
+    const oldUrl = new URL(`file://${testDir}/oldpath`);
+    const newUrl = new URL(`file://${testDir}/newpath`);
+    Deno.mkdirSync(oldUrl);
+    Deno.renameSync(oldUrl, newUrl);
+    assertDirectory(newUrl.pathname);
+    assertMissing(oldUrl.pathname);
+
+    Deno.removeSync(testDir, { recursive: true });
+  }
+);
+
+unitTest(
   { perms: { read: false, write: true } },
   function renameSyncReadPerm(): void {
     let err;
@@ -82,6 +97,21 @@ unitTest(
     await Deno.rename(oldpath, newpath);
     assertDirectory(newpath);
     assertMissing(oldpath);
+  }
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  async function renameByUrl(): Promise<void> {
+    const testDir = Deno.makeTempDirSync();
+    const oldUrl = new URL(`file://${testDir}/oldpath`);
+    const newUrl = new URL(`file://${testDir}/newpath`);
+    Deno.mkdirSync(oldUrl);
+    await Deno.rename(oldUrl, newUrl);
+    assertDirectory(newUrl.pathname);
+    assertMissing(oldUrl.pathname);
+
+    Deno.removeSync(testDir, { recursive: true });
   }
 );
 
