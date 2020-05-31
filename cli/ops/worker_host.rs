@@ -347,9 +347,7 @@ fn op_host_post_message(
   args: Value,
   data: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
-  if data.len() != 1 {
-    panic!("Invalid number of arguments");
-  }
+  assert_eq!(data.len(), 1, "Invalid number of arguments");
   let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
   let msg = Vec::from(&*data[0]).into_boxed_slice();

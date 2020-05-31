@@ -86,9 +86,7 @@ fn op_worker_post_message(
   _args: Value,
   data: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
-  if data.len() != 1 {
-    panic!("Invalid number of arguments");
-  }
+  assert_eq!(data.len(), 1, "Invalid number of arguments");
   let d = Vec::from(&*data[0]).into_boxed_slice();
   let mut sender = sender.clone();
   sender

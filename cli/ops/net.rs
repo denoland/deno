@@ -127,9 +127,7 @@ fn receive_udp(
   args: ReceiveArgs,
   zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
-  if zero_copy.len() != 1 {
-    panic!("Invalid number of arguments");
-  }
+  assert_eq!(zero_copy.len(), 1, "Invalid number of arguments");
   let mut zero_copy = zero_copy[0].clone();
 
   let rid = args.rid as u32;
@@ -169,9 +167,8 @@ fn op_receive(
   args: Value,
   zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
-  if zero_copy.len() != 1 {
-    panic!("Invalid number of arguments");
-  }
+  assert_eq!(zero_copy.len(), 1, "Invalid number of arguments");
+
   let args: ReceiveArgs = serde_json::from_value(args)?;
   match args.transport.as_str() {
     "udp" => receive_udp(isolate_state, state, args, zero_copy),
@@ -200,9 +197,7 @@ fn op_send(
   args: Value,
   zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
-  if zero_copy.len() != 1 {
-    panic!("Invalid number of arguments");
-  }
+  assert_eq!(zero_copy.len(), 1, "Invalid number of arguments");
   let zero_copy = zero_copy[0].clone();
 
   let resource_table = isolate_state.resource_table.clone();

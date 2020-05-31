@@ -19,7 +19,7 @@ fn op_get_random_values(
   _args: Value,
   zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
-  assert!(zero_copy.len() == 1);
+  assert_eq!(zero_copy.len(), 1);
 
   if let Some(ref mut seeded_rng) = state.borrow_mut().seeded_rng {
     seeded_rng.fill(&mut *zero_copy[0]);

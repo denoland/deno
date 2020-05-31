@@ -230,9 +230,7 @@ fn op_read(
   rid: u32,
   bufs: &mut [ZeroCopyBuf],
 ) -> impl TryFuture<Ok = usize, Error = Error> {
-  if bufs.len() != 1 {
-    panic!("Invalid number of buffers");
-  }
+  assert_eq!(bufs.len(), 1, "Invalid number of arguments");
   let mut buf = bufs[0].clone();
 
   debug!("read rid={}", rid);
@@ -251,9 +249,7 @@ fn op_write(
   rid: u32,
   bufs: &mut [ZeroCopyBuf],
 ) -> impl TryFuture<Ok = usize, Error = Error> {
-  if bufs.len() != 1 {
-    panic!("Invalid number of buffers");
-  }
+  assert_eq!(bufs.len(), 1, "Invalid number of arguments");
   let buf = bufs[0].clone();
   debug!("write rid={}", rid);
 

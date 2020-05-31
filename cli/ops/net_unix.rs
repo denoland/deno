@@ -82,9 +82,7 @@ pub fn receive_unix_packet(
   rid: u32,
   zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
-  if zero_copy.len() != 1 {
-    panic!("Invalid number of arguments");
-  }
+  assert_eq!(zero_copy.len(), 1, "Invalid number of arguments");
   let mut zero_copy = zero_copy[0].clone();
   let resource_table = isolate_state.resource_table.clone();
 
