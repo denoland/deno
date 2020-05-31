@@ -254,7 +254,7 @@ unitTest({ perms: { read: true } }, async function lstatSuccess(): Promise<
   assert(modulesInfo.isSymlink);
 
   const modulesInfoByUrl = await Deno.lstat(
-    new URL(`file://${cwd}cli/tests/symlink_to_subdir`)
+    new URL(`file://${cwd}/cli/tests/symlink_to_subdir`)
   );
   assert(!modulesInfoByUrl.isDirectory);
   assert(modulesInfoByUrl.isSymlink);
