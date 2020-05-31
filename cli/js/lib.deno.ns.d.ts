@@ -1366,6 +1366,7 @@ declare namespace Deno {
    * points to.
    *
    * ```ts
+   * import { assert } from "https://deno.land/std/testing/asserts.ts";
    * const fileInfo = await Deno.lstat("hello.txt");
    * assert(fileInfo.isFile);
    * ```
@@ -1389,6 +1390,7 @@ declare namespace Deno {
    * follow symlinks.
    *
    * ```ts
+   * import { assert } from "https://deno.land/std/testing/asserts.ts";
    * const fileInfo = await Deno.stat("hello.txt");
    * assert(fileInfo.isFile);
    * ```
@@ -1400,6 +1402,7 @@ declare namespace Deno {
    * always follow symlinks.
    *
    * ```ts
+   * import { assert } from "https://deno.land/std/testing/asserts.ts";
    * const fileInfo = Deno.statSync("hello.txt");
    * assert(fileInfo.isFile);
    * ```
