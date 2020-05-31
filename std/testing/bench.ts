@@ -51,17 +51,11 @@ export interface BenchmarkResult {
   name: string;
   /** The total time it took to run a given bechmark  */
   totalMs: number;
-  /** Times the benchmark was run in succession.
-   *
-   * Only defined if `runs` for this  bench is greater than 1. */
+  /** Times the benchmark was run in succession. Only defined if `runs` for this  bench is greater than 1. */
   runsCount?: number;
-  /** The average time of running the benchmark in milliseconds.
-   *
-   * Only defined if `runs` for this  bench is greater than 1. */
+  /** The average time of running the benchmark in milliseconds. Only defined if `runs` for this  bench is greater than 1. */
   measuredRunsAvgMs?: number;
-  /** The individual measurements in millisecond it took to run the benchmark.
-   *
-   * Only defined if `runs` for this  bench is greater than 1. */
+  /** The individual measurements in millisecond it took to run the benchmark. Only defined if `runs` for this  bench is greater than 1. */
   measuredRunsMs?: number[];
 }
 
@@ -69,13 +63,13 @@ export interface BenchmarkResult {
 export interface BenchmarkRunResult {
   /** How many benchmark were ignored by the provided `only` and `skip` */
   filtered: number;
-  /** The individual results each benchmark that was run */
+  /** The individual results for each benchmark that was run */
   results: BenchmarkResult[];
 }
 
 /** Defines the current progress during the run of `runBenchmarks` */
 export interface BenchmarkRunProgress extends BenchmarkRunResult {
-  /** List of the queued benchmarks to run and their run count */
+  /** List of the queued benchmarks to run with their name and their run count */
   queued: Array<{ name: string; runsCount: number }>;
   /** The currently running benchmark with its name, run count and the already finished measurements in milliseconds */
   running?: { name: string; runsCount: number; measuredRunsMs: number[] };
@@ -169,8 +163,8 @@ export function clearBenchmarks({
 /**
  * Runs all registered and non-skipped benchmarks serially.
  *
- * @param {(progress: BenchmarkRunProgress) => void} [progressCb] provides the possibility to get updates of the current progress during the run of the benchmarking
- * @returns {Promise<BenchmarkRunResult>} the results of the benchmarking
+ * @param [progressCb] provides the possibility to get updates of the current progress during the run of the benchmarking
+ * @returns results of the benchmarking
  */
 export async function runBenchmarks(
   { only = /[^\s]/, skip = /^\s*$/, silent }: BenchmarkRunOptions = {},

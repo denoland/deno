@@ -89,7 +89,7 @@ test({
 });
 
 test({
-  name: "benchWithoutName",
+  name: "Bench without name should throw",
   fn() {
     assertThrows(
       (): void => {
@@ -102,7 +102,7 @@ test({
 });
 
 test({
-  name: "benchWithoutStop",
+  name: "Bench without stop should throw",
   fn: async function (): Promise<void> {
     await assertThrowsAsync(
       async (): Promise<void> => {
@@ -119,7 +119,7 @@ test({
 });
 
 test({
-  name: "benchWithoutStart",
+  name: "Bench without start should throw",
   fn: async function (): Promise<void> {
     await assertThrowsAsync(
       async (): Promise<void> => {
@@ -136,7 +136,7 @@ test({
 });
 
 test({
-  name: "benchStopBeforeStart",
+  name: "Bench with stop before start should throw",
   fn: async function (): Promise<void> {
     await assertThrowsAsync(
       async (): Promise<void> => {
@@ -154,7 +154,7 @@ test({
 });
 
 test({
-  name: "clearBenchmarks",
+  name: "clearBenchmarks should clear all candidates",
   fn: async function (): Promise<void> {
     dummyBench("test");
 
@@ -167,7 +167,7 @@ test({
 });
 
 test({
-  name: "clearBenchmarksWithOnly",
+  name: "clearBenchmarks with only as option",
   fn: async function (): Promise<void> {
     // to reset candidates
     clearBenchmarks();
@@ -185,7 +185,7 @@ test({
 });
 
 test({
-  name: "clearBenchmarksWithSkip",
+  name: "clearBenchmarks with skip as option",
   fn: async function (): Promise<void> {
     // to reset candidates
     clearBenchmarks();
@@ -203,7 +203,7 @@ test({
 });
 
 test({
-  name: "clearBenchmarksWithOnlySkip",
+  name: "clearBenchmarks with only and skip as option",
   fn: async function (): Promise<void> {
     // to reset candidates
     clearBenchmarks();
@@ -230,7 +230,7 @@ test({
 });
 
 test({
-  name: "benchingProgressCallback",
+  name: "progressCallback of runBenchmarks",
   fn: async function (): Promise<void> {
     clearBenchmarks();
     dummyBench("skip");
@@ -311,7 +311,6 @@ test({
       progress.results.filter(({ name }) => name == "single").length,
       1
     );
-
     const resultOfMultiple = progress.results.filter(
       ({ name }) => name == "multiple"
     );
