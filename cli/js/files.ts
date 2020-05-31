@@ -38,7 +38,7 @@ export async function open(
   return new File(rid);
 }
 
-export function createSync(path: string): File {
+export function createSync(path: string | URL): File {
   return openSync(path, {
     read: true,
     write: true,
@@ -47,7 +47,7 @@ export function createSync(path: string): File {
   });
 }
 
-export function create(path: string): Promise<File> {
+export function create(path: string | URL): Promise<File> {
   return open(path, {
     read: true,
     write: true,

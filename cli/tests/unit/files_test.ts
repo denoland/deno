@@ -374,6 +374,67 @@ unitTest(
 
 unitTest(
   { perms: { read: true, write: true } },
+  async function createFileWithUrl(): Promise<void> {
+    const tempDir = await Deno.makeTempDir();
+    const fileUrl = new URL(`file://${tempDir}/test.txt`)
+    const f = await Deno.create(fileUrl);
+    let fileInfo = Deno.statSync(fileUrl);
+    assert(fileInfo.isFile);
+    assert(fileInfo.size === 0);
+    const enc = new TextEncoder();
+    const data = enc.encode("Hello");
+    await f.write(data);
+    fileInfo = Deno.statSync(fileUrl);
+    assert(fileInfo.size === 5);
+    f.close();
+
+    await Deno.remove(tempDir, { recursive: true });
+  }
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  async function createSyncFile(): Promise<void> {
+    const tempDir = await Deno.makeTempDir();
+    const filename = tempDir + "/test.txt";
+    const f = Deno.createSync(filename);
+    let fileInfo = Deno.statSync(filename);
+    assert(fileInfo.isFile);
+    assert(fileInfo.size === 0);
+    const enc = new TextEncoder();
+    const data = enc.encode("Hello");
+    await f.write(data);
+    fileInfo = Deno.statSync(filename);
+    assert(fileInfo.size === 5);
+    f.close();
+
+    // TODO: test different modes
+    await Deno.remove(tempDir, { recursive: true });
+  }
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  async function createSyncFileWithUrl(): Promise<void> {
+    const tempDir = await Deno.makeTempDir();
+    const fileUrl = new URL(`file://${tempDir}/test.txt`);
+    const f = Deno.createSync(fileUrl);
+    let fileInfo = Deno.statSync(fileUrl);
+    assert(fileInfo.isFile);
+    assert(fileInfo.size === 0);
+    const enc = new TextEncoder();
+    const data = enc.encode("Hello");
+    await f.write(data);
+    fileInfo = Deno.statSync(fileUrl);
+    assert(fileInfo.size === 5);
+    f.close();
+
+    await Deno.remove(tempDir, { recursive: true });
+  }
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
   async function openModeWrite(): Promise<void> {
     const tempDir = Deno.makeTempDirSync();
     const encoder = new TextEncoder();
