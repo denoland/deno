@@ -1323,7 +1323,7 @@ declare namespace Deno {
    *
    * Requires `allow-read` permission on fromPath.
    * Requires `allow-write` permission on toPath. */
-  export function copyFileSync(fromPath: string, toPath: string): void;
+  export function copyFileSync(fromPath: string | URL, toPath: string | URL): void;
 
   /** Copies the contents and permissions of one file to another specified path,
    * by default creating a new file if needed, else overwriting. Fails if target
@@ -1335,7 +1335,7 @@ declare namespace Deno {
    *
    * Requires `allow-read` permission on fromPath.
    * Requires `allow-write` permission on toPath. */
-  export function copyFile(fromPath: string, toPath: string): Promise<void>;
+  export function copyFile(fromPath: string | URL, toPath: string | URL): Promise<void>;
 
   /** Returns the full path destination of the named symbolic link.
    *
