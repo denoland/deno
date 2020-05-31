@@ -472,6 +472,15 @@ fn human_size(bytse: f64) -> String {
   format!("{}{} {}", negative, pretty_bytes, unit)
 }
 
+#[test]
+fn human_size_test() {
+  let units = ["Bytes", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
+  for (index, unit) in units.iter().enumerate() {
+    let power = index as f64 * 3.0;
+    assert_eq!(human_size(10_f64.powf(power)), format!("{} {}", 1, unit))
+  }
+}
+
 async fn doc_command(
   flags: Flags,
   source_file: Option<String>,
