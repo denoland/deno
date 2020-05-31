@@ -5,7 +5,7 @@ const REMOVE_METHODS = ["remove", "removeSync"] as const;
 
 unitTest(
   { perms: { write: true, read: true } },
-  async function removeSuccess(): Promise<void> {
+  async function removeDirSuccess(): Promise<void> {
     for (const method of REMOVE_METHODS) {
       // REMOVE EMPTY DIRECTORY
       const path = Deno.makeTempDirSync() + "/subdir";
