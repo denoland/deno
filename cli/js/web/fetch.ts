@@ -292,6 +292,7 @@ export async function fetch(
   }
 
   let responseBody;
+  let responseInit: ResponseInit = {};
   while (remRedirectCount) {
     const fetchResponse = await sendFetchReq(url, method, headers, body);
 
@@ -328,7 +329,7 @@ export async function fetch(
       });
     }
 
-    let responseInit: ResponseInit = {
+    responseInit = {
       status: fetchResponse.status,
       statusText: fetchResponse.statusText,
       headers: fetchResponse.headers,
@@ -385,6 +386,12 @@ export async function fetch(
       return response;
     }
   }
-  // Return a network error due to too many redirections
-  throw notImplemented();
+
+  responseData.set(responseInit, {
+    type: "error",
+    redirected: false,
+    url: "",
+  });
+
+  return new Response(null, responseInit);
 }

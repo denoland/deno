@@ -93,6 +93,8 @@ export enum Status {
   Locked = 423,
   /** RFC 4918, 11.4 */
   FailedDependency = 424,
+  /** RFC 8470, 5.2 */
+  TooEarly = 425,
   /** RFC 7231, 6.5.15 */
   UpgradeRequired = 426,
   /** RFC 6585, 3 */
@@ -173,6 +175,7 @@ export const STATUS_TEXT = new Map<Status, string>([
   [Status.UnprocessableEntity, "Unprocessable Entity"],
   [Status.Locked, "Locked"],
   [Status.FailedDependency, "Failed Dependency"],
+  [Status.TooEarly, "Too Early"],
   [Status.UpgradeRequired, "Upgrade Required"],
   [Status.PreconditionRequired, "Precondition Required"],
   [Status.TooManyRequests, "Too Many Requests"],

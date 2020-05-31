@@ -10,6 +10,10 @@ const {
   // @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
 } = Deno[Deno.internal];
 
+unitTest(function headersHasCorrectNameProp(): void {
+  assertEquals(Headers.name, "Headers");
+});
+
 // Logic heavily copied from web-platform-tests, make
 // sure pass mostly header basic test
 // ref: https://github.com/web-platform-tests/wpt/blob/7c50c216081d6ea3c9afe553ee7b64534020a1b2/fetch/api/headers/headers-basic.html
