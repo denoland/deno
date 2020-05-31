@@ -141,27 +141,26 @@ impl GlobalState {
       .fetch_cached_source_file(&module_specifier, permissions.clone())
       .expect("Source file not found");
 
-    // Check if we need to compile files
+    // Check if we need to compile files.
     // Compilation happens if either:
     // - `checkJs` is set to true in TS config
     // - entry point is a TS file
     // - any dependency in module graph is a TS file
-    let has_ts_dep = module_graph.values().any(|module_file| {
+    let mut needs_compilation = match out.media_type {
+      msg::MediaType::TypeScript
+      | msg::MediaType::TSX
+      | msg::MediaType::JSX => true,
+      msg::MediaType::JavaScript => self.ts_compiler.compile_js,
+      _ => false,
+    };
+
+    needs_compilation |= module_graph.values().any(|module_file| {
       let media_type = module_file.media_type;
 
       media_type == (MediaType::TypeScript as i32)
         || media_type == (MediaType::TSX as i32)
         || media_type == (MediaType::JSX as i32)
     });
-
-    let needs_compilation = has_ts_dep
-      || (match out.media_type {
-        msg::MediaType::TypeScript
-        | msg::MediaType::TSX
-        | msg::MediaType::JSX => true,
-        msg::MediaType::JavaScript => self.ts_compiler.compile_js,
-        _ => false,
-      });
 
     if needs_compilation {
       self
