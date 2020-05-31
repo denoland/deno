@@ -880,7 +880,7 @@ declare namespace Deno {
    * Defaults to throwing error if the directory already exists.
    *
    * Requires `allow-write` permission. */
-  export function mkdirSync(path: string, options?: MkdirOptions): void;
+  export function mkdirSync(path: string | URL, options?: MkdirOptions): void;
 
   /** Creates a new directory with the specified path.
    *
@@ -893,7 +893,7 @@ declare namespace Deno {
    * Defaults to throwing error if the directory already exists.
    *
    * Requires `allow-write` permission. */
-  export function mkdir(path: string, options?: MkdirOptions): Promise<void>;
+  export function mkdir(path: string | URL, options?: MkdirOptions): Promise<void>;
 
   export interface MakeTempOptions {
     /** Directory where the temporary directory should be created (defaults to
