@@ -245,14 +245,13 @@ unitTest(
 
 unitTest(
   {
-    // FIXME(bartlomieju):
-    // The feature below is not implemented, but the test should work after implementation
-    ignore: true,
     perms: { net: true },
   },
   async function fetchWithInfRedirection(): Promise<void> {
     const response = await fetch("http://localhost:4549/cli/tests"); // will redirect to the same place
     assertEquals(response.status, 0); // network error
+    assertEquals(response.type, "error");
+    assertEquals(response.ok, false);
   }
 );
 
@@ -712,5 +711,43 @@ unitTest(
     // After ReadableStream.cancel is called, resource handle must be closed
     // The test should not fail with: Test case is leaking resources
     await res.body.cancel();
+  }
+);
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchNullBodyStatus(): Promise<void> {
+    const nullBodyStatus = [204, 205, 304];
+
+    for (const status of nullBodyStatus) {
+      const headers = new Headers([["x-status", String(status)]]);
+      const res = await fetch("http://localhost:4545/cli/tests/echo_server", {
+        body: "deno",
+        method: "POST",
+        headers,
+      });
+      assertEquals(res.body, null);
+      assertEquals(res.status, status);
+    }
+  }
+);
+
+unitTest(
+  { perms: { net: true } },
+  function fetchResponseConstructorNullBody(): void {
+    const nullBodyStatus = [204, 205, 304];
+
+    for (const status of nullBodyStatus) {
+      try {
+        new Response("deno", { status });
+        fail("Response with null body status cannot have body");
+      } catch (e) {
+        assert(e instanceof TypeError);
+        assertEquals(
+          e.message,
+          "Response with null body status cannot have body"
+        );
+      }
+    }
   }
 );
