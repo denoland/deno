@@ -8,7 +8,8 @@ export enum Status {
   SwitchingProtocols = 101,
   /** RFC 2518, 10.1 */
   Processing = 102,
-
+  /** RFC 8297 **/
+  EarlyHints = 103,
   /** RFC 7231, 6.3.1 */
   OK = 200,
   /** RFC 7231, 6.3.2 */
@@ -134,6 +135,7 @@ export const STATUS_TEXT = new Map<Status, string>([
   [Status.Continue, "Continue"],
   [Status.SwitchingProtocols, "Switching Protocols"],
   [Status.Processing, "Processing"],
+  [Status.EarlyHints, "Early Hints"],
   [Status.OK, "OK"],
   [Status.Created, "Created"],
   [Status.Accepted, "Accepted"],
