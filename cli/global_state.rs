@@ -5,6 +5,7 @@ use crate::flags;
 use crate::http_cache;
 use crate::import_map::ImportMap;
 use crate::lockfile::Lockfile;
+use crate::module_graph::ModuleGraphFile;
 use crate::module_graph::ModuleGraphLoader;
 use crate::msg;
 use crate::msg::MediaType;
@@ -142,27 +143,13 @@ impl GlobalState {
       .expect("Source file not found");
 
     // Check if we need to compile files.
-    // Compilation happens if either:
-    // - `checkJs` is set to true in TS config
-    // - entry point is a TS file
-    // - any dependency in module graph is a TS file
-    let mut needs_compilation = match out.media_type {
-      msg::MediaType::TypeScript
-      | msg::MediaType::TSX
-      | msg::MediaType::JSX => true,
-      msg::MediaType::JavaScript => self.ts_compiler.compile_js,
-      _ => false,
-    };
+    let should_compile = needs_compilation(
+      self.ts_compiler.compile_js,
+      out.media_type,
+      module_graph.values().collect::<Vec<_>>(),
+    );
 
-    needs_compilation |= module_graph.values().any(|module_file| {
-      let media_type = module_file.media_type;
-
-      media_type == (MediaType::TypeScript as i32)
-        || media_type == (MediaType::TSX as i32)
-        || media_type == (MediaType::JSX as i32)
-    });
-
-    if needs_compilation {
+    if should_compile {
       self
         .ts_compiler
         .compile_module_graph(
@@ -254,8 +241,62 @@ impl GlobalState {
   }
 }
 
+// Compilation happens if either:
+// - `checkJs` is set to true in TS config
+// - entry point is a TS file
+// - any dependency in module graph is a TS file
+fn needs_compilation(
+  compile_js: bool,
+  media_type: MediaType,
+  module_graph_files: Vec<&ModuleGraphFile>,
+) -> bool {
+  let mut needs_compilation = match media_type {
+    msg::MediaType::TypeScript | msg::MediaType::TSX | msg::MediaType::JSX => {
+      true
+    }
+    msg::MediaType::JavaScript => compile_js,
+    _ => false,
+  };
+
+  needs_compilation |= module_graph_files.iter().any(|module_file| {
+    let media_type = module_file.media_type;
+
+    media_type == (MediaType::TypeScript as i32)
+      || media_type == (MediaType::TSX as i32)
+      || media_type == (MediaType::JSX as i32)
+  });
+
+  needs_compilation
+}
+
 #[test]
 fn thread_safe() {
   fn f<S: Send + Sync>(_: S) {}
   f(GlobalState::mock(vec![]));
+}
+
+#[test]
+fn test_needs_compilation() {
+  assert!(!needs_compilation(false, MediaType::JavaScript, vec![]));
+  assert!(needs_compilation(true, MediaType::JavaScript, vec![]));
+  assert!(needs_compilation(false, MediaType::TypeScript, vec![]));
+  assert!(needs_compilation(false, MediaType::JSX, vec![]));
+  assert!(needs_compilation(false, MediaType::TSX, vec![]));
+  assert!(needs_compilation(
+    false,
+    MediaType::JavaScript,
+    vec![&ModuleGraphFile {
+      specifier: "some/file.ts".to_string(),
+      url: "file:///some/file.ts".to_string(),
+      redirect: None,
+      filename: "some/file.ts".to_string(),
+      imports: vec![],
+      referenced_files: vec![],
+      lib_directives: vec![],
+      types_directives: vec![],
+      type_headers: vec![],
+      media_type: MediaType::TypeScript as i32,
+      source_code: "function foo() {}".to_string(),
+    }]
+  ));
 }
