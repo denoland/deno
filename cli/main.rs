@@ -459,7 +459,7 @@ fn human_size(bytse: f64) -> String {
   if bytse < 1_f64 {
     return format!("{}{} {}", negative, bytse, "Bytes");
   }
-  let delimiter = 1000_f64;
+  let delimiter = 1024_f64;
   let exponent = std::cmp::min(
     (bytse.ln() / delimiter.ln()).floor() as i32,
     (units.len() - 1) as i32,
@@ -474,11 +474,15 @@ fn human_size(bytse: f64) -> String {
 
 #[test]
 fn human_size_test() {
-  let units = ["Bytes", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
-  for (index, unit) in units.iter().enumerate() {
-    let power = index as f64 * 3.0;
-    assert_eq!(human_size(10_f64.powf(power)), format!("{} {}", 1, unit))
-  }
+  assert_eq!(human_size(16 as f64), "16 Bytes");
+  assert_eq!(human_size((16*1024) as f64), "16 KB");
+  assert_eq!(human_size((16*1024*1024) as f64), "16 MB");
+  assert_eq!(human_size(16_f64*1024_f64.powf(3.0)), "16 GB");
+  assert_eq!(human_size(16_f64*1024_f64.powf(4.0)), "16 TB");
+  assert_eq!(human_size(16_f64*1024_f64.powf(5.0)), "16 PB");
+  assert_eq!(human_size(16_f64*1024_f64.powf(6.0)), "16 EB");
+  assert_eq!(human_size(16_f64*1024_f64.powf(7.0)), "16 ZB");
+  assert_eq!(human_size(16_f64*1024_f64.powf(8.0)), "16 YB");
 }
 
 async fn doc_command(
