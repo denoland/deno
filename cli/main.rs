@@ -474,7 +474,7 @@ fn human_size(bytse: f64) -> String {
 
 #[test]
 fn human_size_test() {
-  assert_eq!(human_size(16 as f64), "16 Bytes");
+  assert_eq!(human_size(16_f64), "16 Bytes");
   assert_eq!(human_size((16 * 1024) as f64), "16 KB");
   assert_eq!(human_size((16 * 1024 * 1024) as f64), "16 MB");
   assert_eq!(human_size(16_f64 * 1024_f64.powf(3.0)), "16 GB");
