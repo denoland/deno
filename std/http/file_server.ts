@@ -127,6 +127,9 @@ export async function serveFile(
   if (contentTypeValue) {
     headers.set("content-type", contentTypeValue);
   }
+  req.done.then(() => {
+    file.close();
+  });
   return {
     status: 200,
     body: file,
