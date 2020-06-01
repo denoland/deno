@@ -14,7 +14,6 @@ import {
   isFormFile,
   matchAfterPrefix,
   scanUntilBoundary,
-  FormFile,
 } from "./multipart.ts";
 import { StringWriter } from "../io/writers.ts";
 
