@@ -2,6 +2,7 @@ import * as blob from "./blob.ts";
 import * as encoding from "./text_encoding.ts";
 import * as domTypes from "./dom_types.d.ts";
 import { ReadableStreamImpl } from "./streams/readable_stream.ts";
+import { isReadableStreamDisturbed } from "./streams/internals.ts";
 import { getHeaderValueParams, hasHeaderValueOf } from "./util.ts";
 import { MultipartParser } from "./fetch/multipart.ts";
 
@@ -116,7 +117,7 @@ export class Body implements domTypes.Body {
   }
 
   get bodyUsed(): boolean {
-    if (this.body && this.body.locked) {
+    if (this.body && isReadableStreamDisturbed(this.body)) {
       return true;
     }
     return false;
