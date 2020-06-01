@@ -130,7 +130,7 @@ export class FileHandler extends WriterHandler {
 
     addEventListener("unload", this.#unloadCallback);
 
-    // // flush the buffer every 30 seconds
+    // flush the buffer every 30 seconds
     this.#intervalId = setInterval(() => this.flush(), 30 * 1000);
   }
 
