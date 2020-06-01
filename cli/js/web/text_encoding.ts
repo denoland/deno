@@ -23,6 +23,7 @@
 // ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 // OTHER DEALINGS IN THE SOFTWARE.
 
+import { DOMExceptionImpl as DOMException } from "./dom_exception.ts";
 import * as base64 from "./base64.ts";
 import { decodeUtf8 } from "./decode_utf8.ts";
 import { core } from "../core.ts";
@@ -101,8 +102,10 @@ export function atob(s: string): string {
 
   const rem = s.length % 4;
   if (rem === 1 || /[^+/0-9A-Za-z]/.test(s)) {
-    // TODO: throw `DOMException`
-    throw new TypeError("The string to be decoded is not correctly encoded");
+    throw new DOMException(
+      "The string to be decoded is not correctly encoded",
+      "DataDecodeError"
+    );
   }
 
   // base64-js requires length exactly times of 4

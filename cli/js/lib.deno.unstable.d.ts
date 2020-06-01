@@ -1067,7 +1067,7 @@ declare namespace Deno {
    * const conn5 = await Deno.connect({ path: "/foo/bar.sock", transport: "unix" });
    * ```
    *
-   * Requires `allow-net` permission for "tcp" and `allow-read` for unix. */
+   * Requires `allow-net` permission for "tcp" and `allow-read` for "unix". */
   export function connect(
     options: ConnectOptions | UnixConnectOptions
   ): Promise<Conn>;
@@ -1207,7 +1207,7 @@ declare namespace Deno {
      * ```ts
      * const status = await Deno.permissions.request({ name: "env" });
      * if (status.state === "granted") {
-     *   console.log(Deno.homeDir());
+     *   console.log(Deno.dir("home");
      * } else {
      *   console.log("'env' permission is denied.");
      * }

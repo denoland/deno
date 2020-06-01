@@ -44,6 +44,10 @@ impl DocFileLoader for TestLoader {
 #[tokio::test]
 async fn export_fn() {
   let source_code = r#"/**
+* @module foo
+*/
+
+/**
 * Hello there, this is a multiline JSdoc.
 *
 * It has many lines
@@ -51,6 +55,9 @@ async fn export_fn() {
 * Or not that many?
 */
 export function foo(a: string, b?: number, cb: (...cbArgs: unknown[]) => void, ...args: unknown[]): void {
+    /**
+     * @todo document all the things.
+     */
     console.log("Hello world");
 }
 "#;
@@ -143,7 +150,7 @@ export function foo(a: string, b?: number, cb: (...cbArgs: unknown[]) => void, .
     "location": {
       "col": 0,
       "filename": "test.ts",
-      "line": 8,
+      "line": 12,
     },
     "name": "foo",
   });
@@ -159,6 +166,19 @@ export function foo(a: string, b?: number, cb: (...cbArgs: unknown[]) => void, .
     colors::strip_ansi_codes(super::printer::format(entries).as_str())
       .contains("b?: number")
   );
+}
+
+#[tokio::test]
+async fn format_type_predicate() {
+  let source_code = r#"
+export function isFish(pet: Fish | Bird): pet is Fish {
+    return (pet as Fish).swim !== undefined;
+}
+"#;
+  let loader =
+    TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
+  let entries = DocParser::new(loader).parse("test.ts").await.unwrap();
+  super::printer::format(entries);
 }
 
 #[tokio::test]

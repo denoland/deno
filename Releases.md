@@ -6,6 +6,105 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### 1.0.3 / 2020.05.29
+
+Changes in the CLI:
+
+- fix: Add unstable checks for Deno.dir and Diagnostics (#5750)
+- fix: Add unstable checks for unix transport (#5818)
+- fix: Create HTTP cache lazily (#5795)
+- fix: Dependency analysis in TS compiler (#5817, #5785, #5870)
+- fix: Expose Error.captureStackTrace (#5254)
+- fix: Improved typechecking error for unstable props (#5503)
+- fix: REPL evaluates in strict mode (#5565)
+- fix: Write lock file before running any code (#5794)
+- fix(debugger): BorrowMutError when evaluating expression in inspector console
+  (#5822)
+- fix(doc): Handle comments at the top of the file (#5891)
+- fix(fmt): Handle formatting UTF-8 w/ BOM files (#5881)
+- fix(permissions): Fix CWD and exec path leaks (#5642)
+- fix(web/blob): DenoBlob name (#5879)
+- fix(web/console): Hide `values` for console.table if display not necessary
+  (#5914)
+- fix(web/console): Improve indentation when displaying objects with console.log
+  (#5909)
+- fix(web/encoding): atob should throw dom exception (#5730)
+- fix(web/fetch): Make Response constructor standard (#5787)
+- fix(web/fetch): Allow ArrayBuffer as Fetch request body (#5831)
+- fix(web/formData): Set default filename for Blob to <blob> (#5907)
+- upgrade: dprint to 0.19.0 (#5899)
+
+Changes in std version 0.54.0:
+
+- feat(std/encoding): Add base64 (#5811)
+- feat(std/http): Handle .wasm files in file_server (#5896)
+- feat(std/node): Add link/linkSync polyfill (#5930)
+- feat(std/node): fs.writeFile/sync path can now be an URL (#5652)
+- feat(std/testing): Return results in benchmark promise (#5842)
+- fix(std/http): readTrailer evaluates header names by case-insensitive (#4902)
+- fix(std/log): Improve the calculation of byte length (#5819)
+- fix(std/log): Fix FileHandler test with mode 'x' on non-English systems
+  (#5757)
+- fix(std/log): Use writeAllSync instead of writeSync (#5868)
+- fix(std/testing/asserts): Support browsers (#5847)
+
+### 1.0.2 / 2020.05.22
+
+Changes in the CLI:
+
+- fix: --inspect flag working like --inspect-brk (#5697)
+- fix: Disallow http imports for modules loaded over https (#5680)
+- fix: Redirects handling in module analysis (#5726)
+- fix: SWC lexer settings and silent errors (#5752)
+- fix: TS type imports (#5733)
+- fix(fmt): Do not panic on new expr with no parens. (#5734)
+- fix(cli/js/streams): High water mark validation (#5681)
+
+Changes in std version 0.53.0:
+
+- fix(std/http): file_server's target directory (#5695)
+- feat(std/hash): add md5 (#5719)
+- refactor: Move std/fmt/sprintf.ts to std/fmt/printf.ts (#4567)
+
+### 1.0.1 / 2020.05.20
+
+Changes in the CLI:
+
+- fix(doc): crash on formatting type predicate (#5651)
+- fix: Implement Deno.kill for windows (#5347)
+- fix: Implement Deno.symlink() for windows (#5533)
+- fix: Make Deno.remove() work with directory symlinks on windows (#5488)
+- fix: Mark Deno.pid and Deno.noColor as const (#5593)
+- fix: Remove debug prints introduced in e18aaf49c (#5356)
+- fix: Return error if more than one listener calls `WorkerHandle::get_event()`
+  (#5461)
+- fix: Simplify fmt::Display for ModuleResolutionError (#5550)
+- fix: URL utf8 encoding (#5557)
+- fix: don't panic on Deno.close invalid argument (#5320)
+- fix: panic if DENO_DIR is a relative path (#5375)
+- fix: setTimeout and friends have too strict types (#5412)
+- refactor: rewrite TS dependency analysis in Rust (#5029, #5603)
+- update: dprint 0.18.4 (#5671)
+
+Changes in std version 0.52.0:
+
+- feat(std/bytes): add hasSuffix and contains functions, update docs (#4801)
+- feat(std/fmt): rgb24 and bgRgb24 can use numbers for color (#5198)
+- feat(std/hash): add fnv implementation (#5403)
+- feat(std/node) Export TextDecoder and TextEncoder from util (#5663)
+- feat(std/node): Add fs.promises.readFile (#5656)
+- feat(std/node): add util.callbackify (#5415)
+- feat(std/node): first pass at url module (#4700)
+- feat(std/node): fs.writeFileSync polyfill (#5414)
+- fix(std/hash): SHA1 hash of Uint8Array (#5086)
+- fix(std/http): Add .css to the MEDIA_TYPES. (#5367)
+- fix(std/io): BufReader should not share the internal buffer across reads
+  (#4543)
+- fix(std/log): await default logger setup (#5341)
+- fix(std/node) improve fs.close compatibility (#5649)
+- fix(std/node): fs.readFile should take string as option (#5316)
+- fix(std/testing): Provide message and diff for assertStrictEq (#5417)
+
 ### 1.0.0 / 2020.05.13
 
 Read more about this release at https://deno.land/v1
@@ -1523,7 +1622,7 @@ Changes since v0.1.7:
 - Use constructor.name to print out function type #664
 - Rename deno.argv to deno.args
 - Add deno.trace() #795
-- Continuous benchmarks https://denoland.github.io/deno/
+- Continuous benchmarks
 
 ### v0.1.5 / 2018.09.21
 

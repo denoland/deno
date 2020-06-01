@@ -3,12 +3,24 @@ import { isInvalidDate, isTypedArray, TypedArray } from "./util.ts";
 import { cliTable } from "./console_table.ts";
 import { exposeForTest } from "../internals.ts";
 import { PromiseState } from "./promise.ts";
+import {
+  stripColor,
+  yellow,
+  dim,
+  cyan,
+  red,
+  green,
+  magenta,
+  bold,
+} from "../colors.ts";
 
 type ConsoleContext = Set<unknown>;
 type InspectOptions = Partial<{
   depth: number;
   indentLevel: number;
 }>;
+
+const DEFAULT_INDENT = "  "; // Default indent string
 
 const DEFAULT_MAX_DEPTH = 4; // Default depth of logging nested objects
 const LINE_BREAKING_LENGTH = 80;
@@ -84,7 +96,7 @@ function createIterableString<T>(
   config: IterablePrintConfig<T>
 ): string {
   if (level >= maxLevel) {
-    return `[${config.typeName}]`;
+    return cyan(`[${config.typeName}]`);
   }
   ctx.add(value);
 
@@ -112,25 +124,21 @@ function createIterableString<T>(
 
   const iPrefix = `${config.displayName ? config.displayName + " " : ""}`;
 
+  const initIndentation = `\n${DEFAULT_INDENT.repeat(level + 1)}`;
+  const entryIndentation = `,\n${DEFAULT_INDENT.repeat(level + 1)}`;
+  const closingIndentation = `\n${DEFAULT_INDENT.repeat(level)}`;
+
   let iContent: string;
   if (config.group && entries.length > MIN_GROUP_LENGTH) {
     const groups = groupEntries(entries, level, value);
-    const initIndentation = `\n${"  ".repeat(level + 1)}`;
-    const entryIndetation = `,\n${"  ".repeat(level + 1)}`;
-    const closingIndentation = `\n${"  ".repeat(level)}`;
-
     iContent = `${initIndentation}${groups.join(
-      entryIndetation
+      entryIndentation
     )}${closingIndentation}`;
   } else {
     iContent = entries.length === 0 ? "" : ` ${entries.join(", ")} `;
-    if (iContent.length > LINE_BREAKING_LENGTH) {
-      const initIndentation = `\n${" ".repeat(level + 1)}`;
-      const entryIndetation = `,\n${" ".repeat(level + 1)}`;
-      const closingIndentation = `\n`;
-
+    if (stripColor(iContent).length > LINE_BREAKING_LENGTH) {
       iContent = `${initIndentation}${entries.join(
-        entryIndetation
+        entryIndentation
       )}${closingIndentation}`;
     }
   }
@@ -155,10 +163,12 @@ function groupEntries<T>(
   const separatorSpace = 2; // Add 1 for the space and 1 for the separator.
   const dataLen = new Array(entriesLength);
   // Calculate the total length of all output entries and the individual max
-  // entries length of all output entries. In future colors should be taken
-  // here into the account
+  // entries length of all output entries.
+  // IN PROGRESS: Colors are being taken into account.
   for (let i = 0; i < entriesLength; i++) {
-    const len = entries[i].length;
+    // Taking colors into account: removing the ANSI color
+    // codes from the string before measuring its length
+    const len = stripColor(entries[i]).length;
     dataLen[i] = len;
     totalLength += len + separatorSpace;
     if (maxLength < len) maxLength = len;
@@ -209,7 +219,7 @@ function groupEntries<T>(
     let order = "padStart";
     if (value !== undefined) {
       for (let i = 0; i < entries.length; i++) {
-        //@ts-ignore
+        //@ts-expect-error
         if (typeof value[i] !== "number" && typeof value[i] !== "bigint") {
           order = "padEnd";
           break;
@@ -225,7 +235,7 @@ function groupEntries<T>(
       for (; j < max - 1; j++) {
         // In future, colors should be taken here into the account
         const padding = maxLineLength[j - i];
-        //@ts-ignore
+        //@ts-expect-error
         str += `${entries[j]}, `[order](padding, " ");
       }
       if (order === "padStart") {
@@ -257,29 +267,33 @@ function stringify(
   switch (typeof value) {
     case "string":
       return value;
-    case "number":
+    case "number": // Numbers are yellow
       // Special handling of -0
-      return Object.is(value, -0) ? "-0" : `${value}`;
-    case "boolean":
-    case "undefined":
-    case "symbol":
-      return String(value);
-    case "bigint":
-      return `${value}n`;
-    case "function":
-      return createFunctionString(value as Function, ctx);
-    case "object":
+      return yellow(Object.is(value, -0) ? "-0" : `${value}`);
+    case "boolean": // booleans are yellow
+      return yellow(String(value));
+    case "undefined": // undefined is dim
+      return dim(String(value));
+    case "symbol": // Symbols are green
+      return green(String(value));
+    case "bigint": // Bigints are yellow
+      return yellow(`${value}n`);
+    case "function": // Function string is cyan
+      return cyan(createFunctionString(value as Function, ctx));
+    case "object": // null is bold
       if (value === null) {
-        return "null";
+        return bold("null");
       }
 
       if (ctx.has(value)) {
-        return "[Circular]";
+        // Circular string is cyan
+        return cyan("[Circular]");
       }
 
       return createObjectString(value, ctx, level, maxLevel);
     default:
-      return "[Not Implemented]";
+      // Not implemented is red
+      return red("[Not Implemented]");
   }
 }
 
@@ -296,7 +310,7 @@ function stringifyWithQuotes(
         value.length > STR_ABBREVIATE_SIZE
           ? value.slice(0, STR_ABBREVIATE_SIZE) + "..."
           : value;
-      return JSON.stringify(trunc);
+      return green(`"${trunc}"`); // Quoted strings are green
     default:
       return stringify(value, ctx, level, maxLevel);
   }
@@ -323,9 +337,9 @@ function createArrayString(
         }
         const emptyItems = i - index;
         const ending = emptyItems > 1 ? "s" : "";
-        return `<${emptyItems} empty item${ending}>`;
+        return dim(`<${emptyItems} empty item${ending}>`);
       } else {
-        return stringifyWithQuotes(val, ctx, level + 1, maxLevel);
+        return stringifyWithQuotes(val, ctx, level, maxLevel);
       }
     },
     group: true,
@@ -394,38 +408,39 @@ function createMapString(
     },
     group: false,
   };
-  //@ts-ignore
+  //@ts-expect-error
   return createIterableString(value, ctx, level, maxLevel, printConfig);
 }
 
 function createWeakSetString(): string {
-  return "WeakSet { [items unknown] }"; // as seen in Node
+  return `WeakSet { ${cyan("[items unknown]")} }`; // as seen in Node, with cyan color
 }
 
 function createWeakMapString(): string {
-  return "WeakMap { [items unknown] }"; // as seen in Node
+  return `WeakMap { ${cyan("[items unknown]")} }`; // as seen in Node, with cyan color
 }
 
 function createDateString(value: Date): string {
-  return isInvalidDate(value) ? "Invalid Date" : value.toISOString(); // without quotes, ISO format
+  // without quotes, ISO format, in magenta like before
+  return magenta(isInvalidDate(value) ? "Invalid Date" : value.toISOString());
 }
 
 function createRegExpString(value: RegExp): string {
-  return value.toString();
+  return red(value.toString()); // RegExps are red
 }
 
 /* eslint-disable @typescript-eslint/ban-types */
 
 function createStringWrapperString(value: String): string {
-  return `[String: "${value.toString()}"]`;
+  return cyan(`[String: "${value.toString()}"]`); // wrappers are in cyan
 }
 
 function createBooleanWrapperString(value: Boolean): string {
-  return `[Boolean: ${value.toString()}]`;
+  return cyan(`[Boolean: ${value.toString()}]`); // wrappers are in cyan
 }
 
 function createNumberWrapperString(value: Number): string {
-  return `[Number: ${value.toString()}]`;
+  return cyan(`[Number: ${value.toString()}]`); // wrappers are in cyan
 }
 
 /* eslint-enable @typescript-eslint/ban-types */
@@ -439,10 +454,11 @@ function createPromiseString(
   const [state, result] = Deno.core.getPromiseDetails(value);
 
   if (state === PromiseState.Pending) {
-    return "Promise { <pending> }";
+    return `Promise { ${cyan("<pending>")} }`;
   }
 
-  const prefix = state === PromiseState.Fulfilled ? "" : "<rejected> ";
+  const prefix =
+    state === PromiseState.Fulfilled ? "" : `${red("<rejected>")} `;
 
   const str = `${prefix}${stringifyWithQuotes(
     result,
@@ -452,7 +468,7 @@ function createPromiseString(
   )}`;
 
   if (str.length + PROMISE_STRING_BASE_LENGTH > LINE_BREAKING_LENGTH) {
-    return `Promise {\n${" ".repeat(level + 1)}${str}\n}`;
+    return `Promise {\n${DEFAULT_INDENT.repeat(level + 1)}${str}\n}`;
   }
 
   return `Promise { ${str} }`;
@@ -467,14 +483,14 @@ function createRawObjectString(
   maxLevel: number
 ): string {
   if (level >= maxLevel) {
-    return "[Object]";
+    return cyan("[Object]"); // wrappers are in cyan
   }
   ctx.add(value);
 
   let baseString = "";
 
   let shouldShowDisplayName = false;
-  // @ts-ignore
+  // @ts-expect-error
   let displayName = value[Symbol.toStringTag];
   if (!displayName) {
     displayName = getClassInstanceName(value);
@@ -495,7 +511,7 @@ function createRawObjectString(
   for (const key of symbolKeys) {
     entries.push(
       `${key.toString()}: ${stringifyWithQuotes(
-        // @ts-ignore
+        // @ts-expect-error
         value[key],
         ctx,
         level + 1,
@@ -503,16 +519,17 @@ function createRawObjectString(
       )}`
     );
   }
-
-  const totalLength = entries.length + level + entries.join("").length;
+  // Making sure color codes are ignored when calculating the total length
+  const totalLength =
+    entries.length + level + stripColor(entries.join("")).length;
 
   ctx.delete(value);
 
   if (entries.length === 0) {
     baseString = "{}";
   } else if (totalLength > LINE_BREAKING_LENGTH) {
-    const entryIndent = " ".repeat(level + 1);
-    const closingIndent = " ".repeat(level);
+    const entryIndent = DEFAULT_INDENT.repeat(level + 1);
+    const closingIndent = DEFAULT_INDENT.repeat(level);
     baseString = `{\n${entryIndent}${entries.join(
       `,\n${entryIndent}`
     )}\n${closingIndent}}`;
@@ -668,7 +685,7 @@ export function stringifyArgs(
   }
 
   if (indentLevel > 0) {
-    const groupIndent = " ".repeat(indentLevel);
+    const groupIndent = DEFAULT_INDENT.repeat(indentLevel);
     if (str.indexOf("\n") !== -1) {
       str = str.replace(/\n/g, `\n${groupIndent}`);
     }
@@ -805,7 +822,7 @@ export class Console {
     const isSet = data instanceof Set;
     const isMap = data instanceof Map;
     const valuesKey = "Values";
-    const indexKey = isSet || isMap ? "(iteration index)" : "(index)";
+    const indexKey = isSet || isMap ? "(iter idx)" : "(idx)";
 
     if (data instanceof Set) {
       resultData = [...data];
@@ -821,27 +838,33 @@ export class Console {
       resultData = data!;
     }
 
+    let hasPrimitives = false;
     Object.keys(resultData).forEach((k, idx): void => {
       const value: unknown = resultData[k]!;
-
-      if (value !== null && typeof value === "object") {
-        Object.entries(value as { [key: string]: unknown }).forEach(
-          ([k, v]): void => {
-            if (properties && !properties.includes(k)) {
-              return;
-            }
-
+      const primitive =
+        value === null ||
+        (typeof value !== "function" && typeof value !== "object");
+      if (properties === undefined && primitive) {
+        hasPrimitives = true;
+        values.push(stringifyValue(value));
+      } else {
+        const valueObj = (value as { [key: string]: unknown }) || {};
+        const keys = properties || Object.keys(valueObj);
+        for (const k of keys) {
+          if (primitive || !valueObj.hasOwnProperty(k)) {
             if (objectValues[k]) {
-              objectValues[k].push(stringifyValue(v));
+              // fill with blanks for idx to avoid misplacing from later values
+              objectValues[k].push("");
+            }
+          } else {
+            if (objectValues[k]) {
+              objectValues[k].push(stringifyValue(valueObj[k]));
             } else {
-              objectValues[k] = createColumn(v, idx);
+              objectValues[k] = createColumn(valueObj[k], idx);
             }
           }
-        );
-
+        }
         values.push("");
-      } else {
-        values.push(stringifyValue(value));
       }
 
       indexKeys.push(k);
@@ -851,10 +874,7 @@ export class Console {
     const bodyValues = Object.values(objectValues);
     const header = [
       indexKey,
-      ...(properties || [
-        ...headerKeys,
-        !isMap && values.length > 0 && valuesKey,
-      ]),
+      ...(properties || [...headerKeys, !isMap && hasPrimitives && valuesKey]),
     ].filter(Boolean) as string[];
     const body = [indexKeys, ...bodyValues, values];
 
@@ -928,7 +948,6 @@ export class Console {
       name: "Trace",
       message,
     };
-    // @ts-ignore
     Error.captureStackTrace(err, this.trace);
     this.error((err as Error).stack);
   };
