@@ -452,17 +452,50 @@ fn send(
     Err(_) => &[],
   };
 
-  let zero_copy: Option<ZeroCopyBuf> =
-    v8::Local::<v8::ArrayBufferView>::try_from(args.get(2))
-      .map(ZeroCopyBuf::new)
-      .ok();
-
   let state_rc = CoreIsolate::state(scope.isolate());
   let mut state = state_rc.borrow_mut();
   assert!(!state.global_context.is_empty());
 
+  let mut buf_iter = (2..args.length()).map(|idx| {
+    v8::Local::<v8::ArrayBufferView>::try_from(args.get(idx))
+      .map(ZeroCopyBuf::new)
+      .map_err(|err| {
+        let msg = format!("Invalid argument at position {}: {}", idx, err);
+        let msg = v8::String::new(scope, &msg).unwrap();
+        v8::Exception::type_error(scope, msg)
+      })
+  });
+
+  let mut buf_one: ZeroCopyBuf;
+  let mut buf_vec: Vec<ZeroCopyBuf>;
+
+  // Collect all ArrayBufferView's
+  let buf_iter_result = match buf_iter.len() {
+    0 => Ok(&mut [][..]),
+    1 => match buf_iter.next().unwrap() {
+      Ok(buf) => {
+        buf_one = buf;
+        Ok(std::slice::from_mut(&mut buf_one))
+      }
+      Err(err) => Err(err),
+    },
+    _ => match buf_iter.collect::<Result<Vec<_>, _>>() {
+      Ok(v) => {
+        buf_vec = v;
+        Ok(&mut buf_vec[..])
+      }
+      Err(err) => Err(err),
+    },
+  };
+
   // If response is empty then it's either async op or exception was thrown
-  let maybe_response = state.dispatch_op(scope, op_id, control, zero_copy);
+  let maybe_response = match buf_iter_result {
+    Ok(bufs) => state.dispatch_op(scope, op_id, control, bufs),
+    Err(exc) => {
+      scope.isolate().throw_exception(exc);
+      return;
+    }
+  };
 
   if let Some(response) = maybe_response {
     // Synchronous response.

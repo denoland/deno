@@ -37,7 +37,7 @@ pub fn op_open_plugin(
   isolate_state: &mut CoreIsolateState,
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   state.check_unstable("Deno.openPlugin");
   let args: OpenPluginArgs = serde_json::from_value(args).unwrap();

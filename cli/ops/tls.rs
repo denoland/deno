@@ -57,7 +57,7 @@ pub fn op_start_tls(
   isolate_state: &mut CoreIsolateState,
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   state.check_unstable("Deno.startTls");
   let args: StartTLSArgs = serde_json::from_value(args)?;
@@ -136,7 +136,7 @@ pub fn op_connect_tls(
   isolate_state: &mut CoreIsolateState,
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let args: ConnectTLSArgs = serde_json::from_value(args)?;
   let cert_file = args.cert_file.clone();
@@ -310,7 +310,7 @@ fn op_listen_tls(
   isolate_state: &mut CoreIsolateState,
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let args: ListenTlsArgs = serde_json::from_value(args)?;
   assert_eq!(args.transport, "tcp");
@@ -360,7 +360,7 @@ fn op_accept_tls(
   isolate_state: &mut CoreIsolateState,
   _state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let args: AcceptTlsArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
