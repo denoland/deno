@@ -1,7 +1,6 @@
 const { copy, test } = Deno;
 import { assertEquals } from "../testing/asserts.ts";
-import { LimitedReader } from "./limited_reader.ts";
-import { MultiReader, StringReader } from "./readers.ts";
+import { LimitedReader, MultiReader, StringReader } from "./readers.ts";
 import { StringWriter } from "./writers.ts";
 import { copyN } from "./ioutil.ts";
 import { decode } from "../encoding/utf8.ts";
@@ -39,13 +38,26 @@ test("ioMultiReader", async function (): Promise<void> {
 });
 
 test("ioLimitedReader", async function (): Promise<void> {
-  let r = new LimitedReader(new StringReader("abc"), 2);
+  let sr = new StringReader("abc");
+  let r = new LimitedReader(sr, 2);
   let buffer = await Deno.readAll(r);
   assertEquals(decode(buffer), "ab");
-  r = new LimitedReader(new StringReader("abc"), 3);
+  assertEquals(decode(await Deno.readAll(sr)), "c");
+  sr = new StringReader("abc");
+  r = new LimitedReader(sr, 3);
   buffer = await Deno.readAll(r);
   assertEquals(decode(buffer), "abc");
-  r = new LimitedReader(new StringReader("abc"), 4);
+  assertEquals((await Deno.readAll(r)).length, 0);
+  sr = new StringReader("abc");
+  r = new LimitedReader(sr, 4);
   buffer = await Deno.readAll(r);
   assertEquals(decode(buffer), "abc");
+  assertEquals((await Deno.readAll(r)).length, 0);
+});
+
+test("ioLimitedReader", async function (): Promise<void> {
+  const rb = new StringReader("abc");
+  const wb = new StringWriter();
+  await Deno.copy(new LimitedReader(rb, -1), wb);
+  assertEquals(wb.toString(), "");
 });
