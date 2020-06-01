@@ -4,10 +4,7 @@ import { pathFromURL } from "../../util.ts";
 
 type MkdirArgs = { path: string; recursive: boolean; mode?: number };
 
-function mkdirArgs(path: string | URL, options?: MkdirOptions): MkdirArgs {
-  if (path instanceof URL) {
-    path = pathFromURL(path);
-  }
+function mkdirArgs(path: string, options?: MkdirOptions): MkdirArgs {
   const args: MkdirArgs = { path, recursive: false };
   if (options) {
     if (typeof options.recursive == "boolean") {
@@ -26,6 +23,9 @@ export interface MkdirOptions {
 }
 
 export function mkdirSync(path: string | URL, options?: MkdirOptions): void {
+  if (path instanceof URL) {
+    path = pathFromURL(path);
+  }
   sendSync("op_mkdir", mkdirArgs(path, options));
 }
 
@@ -33,5 +33,8 @@ export async function mkdir(
   path: string | URL,
   options?: MkdirOptions
 ): Promise<void> {
+  if (path instanceof URL) {
+    path = pathFromURL(path);
+  }
   await sendAsync("op_mkdir", mkdirArgs(path, options));
 }
