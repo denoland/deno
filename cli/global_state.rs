@@ -277,6 +277,23 @@ fn thread_safe() {
 
 #[test]
 fn test_needs_compilation() {
+  assert!(!needs_compilation(
+    false,
+    MediaType::JavaScript,
+    vec![&ModuleGraphFile {
+      specifier: "some/file.js".to_string(),
+      url: "file:///some/file.js".to_string(),
+      redirect: None,
+      filename: "some/file.js".to_string(),
+      imports: vec![],
+      referenced_files: vec![],
+      lib_directives: vec![],
+      types_directives: vec![],
+      type_headers: vec![],
+      media_type: MediaType::JavaScript as i32,
+      source_code: "function foo() {}".to_string(),
+    }]
+  ));
   assert!(!needs_compilation(false, MediaType::JavaScript, vec![]));
   assert!(needs_compilation(true, MediaType::JavaScript, vec![]));
   assert!(needs_compilation(false, MediaType::TypeScript, vec![]));
