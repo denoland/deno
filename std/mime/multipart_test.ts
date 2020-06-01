@@ -14,6 +14,7 @@ import {
   isFormFile,
   matchAfterPrefix,
   scanUntilBoundary,
+  FormFile,
 } from "./multipart.ts";
 import { StringWriter } from "../io/writers.ts";
 
@@ -225,7 +226,10 @@ test({
     try {
       assertEquals(form.value("deno"), "land");
       assertEquals(form.value("bar"), "bar");
-      const file: any = form.file("file");
+      let file: FormFile | FormFile[] | undefined = form.file("file");
+      if (Array.isArray(file)) {
+        file = file[0];
+      }
       assert(file != null);
       assert(file.tempfile != null);
       assertEquals(file.size, size);
@@ -249,7 +253,10 @@ test({
       "--------------------------434049563556637648550474"
     );
     const form = await mr.readForm(20);
-    const file: any = form.file("file");
+    let file: FormFile | FormFile[] | undefined = form.file("file");
+    if (Array.isArray(file)) {
+      file = file[0];
+    }
     assert(file != null);
     const { tempfile, content } = file;
     assert(tempfile != null);
