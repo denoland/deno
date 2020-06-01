@@ -475,14 +475,14 @@ fn human_size(bytse: f64) -> String {
 #[test]
 fn human_size_test() {
   assert_eq!(human_size(16 as f64), "16 Bytes");
-  assert_eq!(human_size((16*1024) as f64), "16 KB");
-  assert_eq!(human_size((16*1024*1024) as f64), "16 MB");
-  assert_eq!(human_size(16_f64*1024_f64.powf(3.0)), "16 GB");
-  assert_eq!(human_size(16_f64*1024_f64.powf(4.0)), "16 TB");
-  assert_eq!(human_size(16_f64*1024_f64.powf(5.0)), "16 PB");
-  assert_eq!(human_size(16_f64*1024_f64.powf(6.0)), "16 EB");
-  assert_eq!(human_size(16_f64*1024_f64.powf(7.0)), "16 ZB");
-  assert_eq!(human_size(16_f64*1024_f64.powf(8.0)), "16 YB");
+  assert_eq!(human_size((16 * 1024) as f64), "16 KB");
+  assert_eq!(human_size((16 * 1024 * 1024) as f64), "16 MB");
+  assert_eq!(human_size(16_f64 * 1024_f64.powf(3.0)), "16 GB");
+  assert_eq!(human_size(16_f64 * 1024_f64.powf(4.0)), "16 TB");
+  assert_eq!(human_size(16_f64 * 1024_f64.powf(5.0)), "16 PB");
+  assert_eq!(human_size(16_f64 * 1024_f64.powf(6.0)), "16 EB");
+  assert_eq!(human_size(16_f64 * 1024_f64.powf(7.0)), "16 ZB");
+  assert_eq!(human_size(16_f64 * 1024_f64.powf(8.0)), "16 YB");
 }
 
 async fn doc_command(
