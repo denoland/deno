@@ -1,4 +1,7 @@
 export { callbackify } from "./_util/_util_callbackify.ts";
+import * as types from "./_util/_util_types.ts";
+
+export { types };
 
 export function isArray(value: unknown): boolean {
   return Array.isArray(value);
