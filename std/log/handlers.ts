@@ -7,6 +7,7 @@ import { getLevelByName, LevelName, LogLevels } from "./levels.ts";
 import { LogRecord } from "./logger.ts";
 import { red, yellow, blue, bold } from "../fmt/colors.ts";
 import { existsSync, exists } from "../fs/exists.ts";
+import { BufWriterSync } from "../io/bufio.ts";
 
 const DEFAULT_FORMATTER = "{levelName} {msg}";
 type FormatterFunction = (logRecord: LogRecord) => string;
@@ -99,11 +100,14 @@ interface FileHandlerOptions extends HandlerOptions {
 }
 
 export class FileHandler extends WriterHandler {
-  protected _file!: File;
+  protected _file: File | undefined;
+  protected _buf!: BufWriterSync;
   protected _filename: string;
   protected _mode: LogMode;
   protected _openOptions: OpenOptions;
-  #encoder = new TextEncoder();
+  protected _encoder = new TextEncoder();
+  #intervalId = -1;
+  #unloadCallback = (): Promise<void> => this.destroy();
 
   constructor(levelName: LevelName, options: FileHandlerOptions) {
     super(levelName, options);
@@ -122,14 +126,39 @@ export class FileHandler extends WriterHandler {
   async setup(): Promise<void> {
     this._file = await open(this._filename, this._openOptions);
     this._writer = this._file;
+    this._buf = new BufWriterSync(this._file);
+
+    addEventListener("unload", this.#unloadCallback);
+
+    // flush the buffer every 30 seconds
+    this.#intervalId = setInterval(() => this.flush(), 30 * 1000);
+  }
+
+  handle(logRecord: LogRecord): void {
+    super.handle(logRecord);
+
+    // Immediately flush if log level is higher than ERROR
+    if (logRecord.level > LogLevels.ERROR) {
+      this.flush();
+    }
   }
 
   log(msg: string): void {
-    Deno.writeAllSync(this._file, this.#encoder.encode(msg + "\n"));
+    this._buf.writeSync(this._encoder.encode(msg + "\n"));
+  }
+
+  flush(): void {
+    if (this._buf?.buffered() > 0) {
+      this._buf.flush();
+    }
   }
 
   destroy(): Promise<void> {
-    this._file.close();
+    this.flush();
+    this._file?.close();
+    this._file = undefined;
+    removeEventListener("unload", this.#unloadCallback);
+    clearInterval(this.#intervalId);
     return Promise.resolve();
   }
 }
@@ -143,7 +172,6 @@ export class RotatingFileHandler extends FileHandler {
   #maxBytes: number;
   #maxBackupCount: number;
   #currentFileSize = 0;
-  #encoder = new TextEncoder();
 
   constructor(levelName: LevelName, options: RotatingFileHandlerOptions) {
     super(levelName, options);
@@ -153,9 +181,11 @@ export class RotatingFileHandler extends FileHandler {
 
   async setup(): Promise<void> {
     if (this.#maxBytes < 1) {
+      this.destroy();
       throw new Error("maxBytes cannot be less than 1");
     }
     if (this.#maxBackupCount < 1) {
+      this.destroy();
       throw new Error("maxBackupCount cannot be less than 1");
     }
     await super.setup();
@@ -172,7 +202,7 @@ export class RotatingFileHandler extends FileHandler {
       // Throw if any backups also exist
       for (let i = 1; i <= this.#maxBackupCount; i++) {
         if (await exists(this._filename + "." + i)) {
-          Deno.close(this._file.rid);
+          this.destroy();
           throw new Deno.errors.AlreadyExists(
             "Backup log file " + this._filename + "." + i + " already exists"
           );
@@ -183,23 +213,21 @@ export class RotatingFileHandler extends FileHandler {
     }
   }
 
-  handle(logRecord: LogRecord): void {
-    if (this.level > logRecord.level) return;
+  log(msg: string): void {
+    const msgByteLength = this._encoder.encode(msg).byteLength + 1;
 
-    const msg = this.format(logRecord);
-    const msgByteLength = this.#encoder.encode(msg).byteLength + 1;
     if (this.#currentFileSize + msgByteLength > this.#maxBytes) {
       this.rotateLogFiles();
-      this.#currentFileSize = msgByteLength;
-    } else {
-      this.#currentFileSize += msgByteLength;
+      this.#currentFileSize = 0;
     }
 
-    return this.log(msg);
+    this._buf.writeSync(this._encoder.encode(msg + "\n"));
+    this.#currentFileSize += msgByteLength;
   }
 
   rotateLogFiles(): void {
-    close(this._file.rid);
+    this._buf.flush();
+    close(this._file!.rid);
 
     for (let i = this.#maxBackupCount - 1; i >= 0; i--) {
       const source = this._filename + (i === 0 ? "" : "." + i);
@@ -212,5 +240,6 @@ export class RotatingFileHandler extends FileHandler {
 
     this._file = openSync(this._filename, this._openOptions);
     this._writer = this._file;
+    this._buf = new BufWriterSync(this._file);
   }
 }
