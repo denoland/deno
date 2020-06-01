@@ -225,7 +225,7 @@ test({
     try {
       assertEquals(form.value("deno"), "land");
       assertEquals(form.value("bar"), "bar");
-      const file = form.file("file");
+      const file: any = form.file("file");
       assert(file != null);
       assert(file.tempfile != null);
       assertEquals(file.size, size);
@@ -249,7 +249,7 @@ test({
       "--------------------------434049563556637648550474"
     );
     const form = await mr.readForm(20);
-    const file = form.file("file");
+    const file: any = form.file("file");
     assert(file != null);
     const { tempfile, content } = file;
     assert(tempfile != null);
