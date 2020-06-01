@@ -1,4 +1,12 @@
 import { unitTest, assert, assertEquals } from "./test_util.ts";
+import { resolve, join } from "../../../std/path/mod.ts";
+
+const getResolvedUrl = (path: string): URL =>
+  new URL(
+    Deno.build.os === "windows"
+      ? "file:///" + resolve(path).replace(/\\/g, "/")
+      : "file://" + resolve(path)
+  );
 
 unitTest(
   { perms: { read: true, write: true } },
@@ -14,7 +22,7 @@ unitTest(
   { perms: { read: true, write: true } },
   function writeTextFileSyncByUrl(): void {
     const tempDir = Deno.makeTempDirSync();
-    const fileUrl = new URL(`file://${tempDir}/test.txt`);
+    const fileUrl = getResolvedUrl(join(tempDir, "test.txt"));
     Deno.writeTextFileSync(fileUrl, "Hello");
     const dataRead = Deno.readTextFileSync(fileUrl);
     assertEquals("Hello", dataRead);
@@ -63,7 +71,7 @@ unitTest(
   { perms: { read: true, write: true } },
   async function writeTextFileByUrl(): Promise<void> {
     const tempDir = Deno.makeTempDirSync();
-    const fileUrl = new URL(`file://${tempDir}/test.txt`);
+    const fileUrl = getResolvedUrl(join(tempDir, "test.txt"));
     await Deno.writeTextFile(fileUrl, "Hello");
     const dataRead = Deno.readTextFileSync(fileUrl);
     assertEquals("Hello", dataRead);

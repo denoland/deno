@@ -1,5 +1,13 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { unitTest, assert, assertEquals } from "./test_util.ts";
+import { resolve } from "../../../std/path/mod.ts";
+
+const getResolvedUrl = (path: string): URL =>
+  new URL(
+    Deno.build.os === "windows"
+      ? "file:///" + resolve(path).replace(/\\/g, "/")
+      : "file://" + resolve(path)
+  );
 
 function assertSameContent(files: Deno.DirEntry[]): void {
   let counter = 0;
@@ -20,9 +28,7 @@ unitTest({ perms: { read: true } }, function readDirSyncSuccess(): void {
 });
 
 unitTest({ perms: { read: true } }, function readDirSyncWithUrl(): void {
-  const cwd = Deno.cwd().replace(/\\/g, "/");
-  const dirUrl = new URL(`file:///${cwd}/cli/tests`);
-  const files = [...Deno.readDirSync(dirUrl)];
+  const files = [...Deno.readDirSync(getResolvedUrl("cli/tests"))];
   assertSameContent(files);
 });
 
@@ -78,10 +84,8 @@ unitTest({ perms: { read: true } }, async function readDirSuccess(): Promise<
 unitTest({ perms: { read: true } }, async function readDirWithUrl(): Promise<
   void
 > {
-  const cwd = Deno.cwd().replace(/\\/g, "/");
-  const dirUrl = new URL(`file:///${cwd}/cli/tests`);
   const files = [];
-  for await (const dirEntry of Deno.readDir(dirUrl)) {
+  for await (const dirEntry of Deno.readDir(getResolvedUrl("cli/tests"))) {
     files.push(dirEntry);
   }
   assertSameContent(files);

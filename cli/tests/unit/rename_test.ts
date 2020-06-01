@@ -1,5 +1,15 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { unitTest, assert, assertEquals, assertThrows } from "./test_util.ts";
+import { resolve, join } from "../../../std/path/mod.ts";
+
+const getResolvedUrl = (path: string): URL =>
+  new URL(
+    Deno.build.os === "windows"
+      ? "file:///" + resolve(path).replace(/\\/g, "/")
+      : "file://" + resolve(path)
+  );
+
+const RENAME_METHODS = ["rename", "renameSync"] as const;
 
 function assertMissing(path: string): void {
   let caughtErr = false;
@@ -42,16 +52,18 @@ unitTest(
 
 unitTest(
   { perms: { read: true, write: true } },
-  function renameSyncByUrl(): void {
-    const testDir = Deno.makeTempDirSync();
-    const oldUrl = new URL(`file://${testDir}/oldpath`);
-    const newUrl = new URL(`file://${testDir}/newpath`);
-    Deno.mkdirSync(oldUrl);
-    Deno.renameSync(oldUrl, newUrl);
-    assertDirectory(newUrl.pathname);
-    assertMissing(oldUrl.pathname);
+  async function renameByUrl(): Promise<void> {
+    for (const method of RENAME_METHODS) {
+      const testDir = Deno.makeTempDirSync();
+      const oldUrl = getResolvedUrl(join(testDir, "oldpath"));
+      const newUrl = getResolvedUrl(join(testDir, "newpath"));
+      Deno.mkdirSync(oldUrl);
+      await Deno[method](oldUrl, newUrl);
+      assertDirectory(newUrl.pathname);
+      assertMissing(oldUrl.pathname);
 
-    Deno.removeSync(testDir, { recursive: true });
+      Deno.removeSync(testDir, { recursive: true });
+    }
   }
 );
 
@@ -97,21 +109,6 @@ unitTest(
     await Deno.rename(oldpath, newpath);
     assertDirectory(newpath);
     assertMissing(oldpath);
-  }
-);
-
-unitTest(
-  { perms: { read: true, write: true } },
-  async function renameByUrl(): Promise<void> {
-    const testDir = Deno.makeTempDirSync();
-    const oldUrl = new URL(`file://${testDir}/oldpath`);
-    const newUrl = new URL(`file://${testDir}/newpath`);
-    Deno.mkdirSync(oldUrl);
-    await Deno.rename(oldUrl, newUrl);
-    assertDirectory(newUrl.pathname);
-    assertMissing(oldUrl.pathname);
-
-    Deno.removeSync(testDir, { recursive: true });
   }
 );
 

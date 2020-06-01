@@ -1,5 +1,13 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { unitTest, assert, assertEquals } from "./test_util.ts";
+import { resolve, join } from "../../../std/path/mod.ts";
+
+const getResolvedUrl = (path: string): URL =>
+  new URL(
+    Deno.build.os === "windows"
+      ? "file:///" + resolve(path).replace(/\\/g, "/")
+      : "file://" + resolve(path)
+  );
 
 const REMOVE_METHODS = ["remove", "removeSync"] as const;
 
@@ -42,6 +50,34 @@ unitTest(
       let err;
       try {
         Deno.statSync(filename);
+      } catch (e) {
+        err = e;
+      }
+      // File is gone
+      assert(err instanceof Deno.errors.NotFound);
+    }
+  }
+);
+
+unitTest(
+  { perms: { write: true, read: true } },
+  async function removeFileByUrl(): Promise<void> {
+    for (const method of REMOVE_METHODS) {
+      // REMOVE FILE
+      const enc = new TextEncoder();
+      const data = enc.encode("Hello");
+
+      const tempDir = Deno.makeTempDirSync();
+      const fileUrl = getResolvedUrl(join(tempDir, "test.txt"));
+
+      Deno.writeFileSync(fileUrl, data, { mode: 0o666 });
+      const fileInfo = Deno.statSync(fileUrl);
+      assert(fileInfo.isFile); // check exist first
+      await Deno[method](fileUrl); // remove
+      // We then check again after remove
+      let err;
+      try {
+        Deno.statSync(fileUrl);
       } catch (e) {
         err = e;
       }

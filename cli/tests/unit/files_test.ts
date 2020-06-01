@@ -5,6 +5,14 @@ import {
   assertEquals,
   assertStrContains,
 } from "./test_util.ts";
+import { resolve, join } from "../../../std/path/mod.ts";
+
+const getResolvedUrl = (path: string): URL =>
+  new URL(
+    Deno.build.os === "windows"
+      ? "file:///" + resolve(path).replace(/\\/g, "/")
+      : "file://" + resolve(path)
+  );
 
 unitTest(function filesStdioFileDescriptors(): void {
   assertEquals(Deno.stdin.rid, 0);
@@ -202,7 +210,8 @@ unitTest(
     perms: { read: true, write: true },
   },
   function openSyncUrl(): void {
-    const fileUrl = new URL(`file://${Deno.makeTempDirSync()}/test_open.txt`);
+    const tempDir = Deno.makeTempDirSync();
+    const fileUrl = getResolvedUrl(join(tempDir, "test_open.txt"));
     const file = Deno.openSync(fileUrl, {
       write: true,
       createNew: true,
@@ -213,6 +222,8 @@ unitTest(
     if (Deno.build.os !== "windows") {
       assertEquals(pathInfo.mode! & 0o777, 0o626 & ~Deno.umask());
     }
+
+    Deno.removeSync(tempDir, { recursive: true });
   }
 );
 
@@ -221,7 +232,8 @@ unitTest(
     perms: { read: true, write: true },
   },
   async function openUrl(): Promise<void> {
-    const fileUrl = new URL(`file://${await Deno.makeTempDir()}/test_open.txt`);
+    const tempDir = await Deno.makeTempDir();
+    const fileUrl = getResolvedUrl(join(tempDir, "test_open.txt"));
     const file = await Deno.open(fileUrl, {
       write: true,
       createNew: true,
@@ -232,6 +244,8 @@ unitTest(
     if (Deno.build.os !== "windows") {
       assertEquals(pathInfo.mode! & 0o777, 0o626 & ~Deno.umask());
     }
+
+    Deno.removeSync(tempDir, { recursive: true });
   }
 );
 
@@ -414,7 +428,7 @@ unitTest(
   { perms: { read: true, write: true } },
   async function createFileWithUrl(): Promise<void> {
     const tempDir = await Deno.makeTempDir();
-    const fileUrl = new URL(`file://${tempDir}/test.txt`);
+    const fileUrl = getResolvedUrl(join(tempDir, "test.txt"));
     const f = await Deno.create(fileUrl);
     let fileInfo = Deno.statSync(fileUrl);
     assert(fileInfo.isFile);
@@ -455,7 +469,7 @@ unitTest(
   { perms: { read: true, write: true } },
   async function createSyncFileWithUrl(): Promise<void> {
     const tempDir = await Deno.makeTempDir();
-    const fileUrl = new URL(`file://${tempDir}/test.txt`);
+    const fileUrl = getResolvedUrl(join(tempDir, "test.txt"));
     const f = Deno.createSync(fileUrl);
     let fileInfo = Deno.statSync(fileUrl);
     assert(fileInfo.isFile);
