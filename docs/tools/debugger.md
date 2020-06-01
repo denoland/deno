@@ -14,9 +14,9 @@ first line of code.
 
 ### Chrome Devtools
 
-Let's try debugging simple program using Chrome Devtools; for this purpose we'll
-use [file_server.ts](https://deno.land/std@v0.50.0/http/file_server.ts) from
-`std`; a simple static file server.
+Let's try debugging a program using Chrome Devtools; for this purpose we'll use
+[file_server.ts](https://deno.land/std@v0.50.0/http/file_server.ts) from `std`;
+a static file server.
 
 Use `--inspect-brk` flag to break execution on the first line.
 
@@ -83,7 +83,7 @@ Deno can be debugged using VSCode.
 Official support in plugin is being worked on -
 https://github.com/denoland/vscode_deno/issues/12
 
-We can still attach debugger by manually providing simple `launch.json` config:
+We can still attach debugger by manually providing a `launch.json` config:
 
 ```json
 {
@@ -108,10 +108,10 @@ This time let's try with local source file, create `server.ts`:
 
 ```ts
 import { serve } from "https://deno.land/std@v0.50.0/http/server.ts";
-const s = serve({ port: 8000 });
+const server = serve({ port: 8000 });
 console.log("http://localhost:8000/");
 
-for await (const req of s) {
+for await (const req of server) {
   req.respond({ body: "Hello World\n" });
 }
 ```
@@ -121,6 +121,14 @@ Change `<entry_point>` to `server.ts` and run created configuration:
 ![VSCode debugger](../images/debugger6.jpg)
 
 ![VSCode debugger](../images/debugger7.jpg)
+
+### JetBrains IDEs
+
+You can debug Deno using your JetBrains IDE by right-clicking the file you want
+to debug and selecting the `Debug 'Deno: <file name>'` option. This will create
+a run/debug configuration which has no permission flags set, so to change that
+you need to modify the run/debug configuration and change the `Arguments` field
+with the required flags.
 
 ### Other
 

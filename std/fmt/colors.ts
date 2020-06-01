@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-/**
- * A module to print ANSI terminal colors. Inspired by chalk, kleur, and colors
+/** A module to print ANSI terminal colors. Inspired by chalk, kleur, and colors
  * on npm.
  *
  * ```
@@ -10,8 +9,10 @@
  *
  * This module supports `NO_COLOR` environmental variable disabling any coloring
  * if `NO_COLOR` is set.
- */
-const { noColor } = Deno;
+ *
+ * This module is browser compatible. */
+
+const noColor = globalThis.Deno?.noColor ?? true;
 
 interface Code {
   open: string;

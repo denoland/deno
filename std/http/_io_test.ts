@@ -94,7 +94,7 @@ test("[http/io] chunkedBodyReader with trailers", async () => {
 
 test("[http/io] readTrailers", async () => {
   const h = new Headers({
-    trailer: "deno,node",
+    trailer: "Deno, Node",
   });
   const trailer = ["deno: land", "node: js", "", ""].join("\r\n");
   await readTrailers(h, new BufReader(new Buffer(encode(trailer))));
@@ -123,8 +123,8 @@ test("[http/io] readTrailer should throw if undeclared headers found in trailer"
   }
 });
 
-test("[http/io] readTrailer should throw if trailer contains prohibited fields", async () => {
-  for (const f of ["content-length", "trailer", "transfer-encoding"]) {
+test("readTrailer should throw if trailer contains prohibited fields", async () => {
+  for (const f of ["Content-Length", "Trailer", "Transfer-Encoding"]) {
     const h = new Headers({
       trailer: f,
     });

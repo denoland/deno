@@ -10,13 +10,13 @@ const destFile = "./destination.txt";
 test({
   name: "[std/node/fs] copy file",
   fn: async () => {
-    const srouceFile = Deno.makeTempFileSync();
+    const sourceFile = Deno.makeTempFileSync();
     const err = await new Promise((resolve) => {
-      copyFile(srouceFile, destFile, (err?: Error | null) => resolve(err));
+      copyFile(sourceFile, destFile, (err?: Error | null) => resolve(err));
     });
     assert(!err);
     assert(existsSync(destFile));
-    Deno.removeSync(srouceFile);
+    Deno.removeSync(sourceFile);
     Deno.removeSync(destFile);
   },
 });
@@ -24,10 +24,10 @@ test({
 test({
   name: "[std/node/fs] copy file sync",
   fn: () => {
-    const srouceFile = Deno.makeTempFileSync();
-    copyFileSync(srouceFile, destFile);
+    const sourceFile = Deno.makeTempFileSync();
+    copyFileSync(sourceFile, destFile);
     assert(existsSync(destFile));
-    Deno.removeSync(srouceFile);
+    Deno.removeSync(sourceFile);
     Deno.removeSync(destFile);
   },
 });

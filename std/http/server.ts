@@ -84,7 +84,11 @@ export class ServerRequest {
 
   private _body: Deno.Reader | null = null;
 
-  /**  Body of the request */
+  /**
+   * Body of the request.  The easiest way to consume the body is:
+   *
+   *     const buf: Uint8Array = await Deno.readAll(req.body);
+   */
   get body(): Deno.Reader {
     if (!this._body) {
       if (this.contentLength != null) {
@@ -284,8 +288,8 @@ export type HTTPOptions = Omit<Deno.ListenOptions, "transport"> & ServeOptions;
  *
  *     import { serve } from "https://deno.land/std/http/server.ts";
  *     const body = "Hello World\n";
- *     const s = serve({ port: 8000 });
- *     for await (const req of s) {
+ *     const server = serve({ port: 8000 });
+ *     for await (const req of server) {
  *       req.respond({ body });
  *     }
  */
