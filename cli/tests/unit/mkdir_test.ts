@@ -1,13 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { unitTest, assert, assertEquals, assertThrows } from "./test_util.ts";
-import { resolve, join } from "../../../std/path/mod.ts";
-
-const getResolvedUrl = (path: string): URL =>
-  new URL(
-    Deno.build.os === "windows"
-      ? "file:///" + resolve(path).replace(/\\/g, "/")
-      : "file://" + resolve(path)
-  );
 
 function assertDirectory(path: string, mode?: number): void {
   const info = Deno.lstatSync(path);
@@ -23,18 +15,6 @@ unitTest(
     const path = Deno.makeTempDirSync() + "/dir";
     Deno.mkdirSync(path);
     assertDirectory(path);
-  }
-);
-
-unitTest(
-  { perms: { read: true, write: true } },
-  function mkdirSyncWithUrl(): void {
-    const tempDir = Deno.makeTempDirSync();
-    const fileUrl = getResolvedUrl(join(tempDir, "dir"));
-    Deno.mkdirSync(fileUrl);
-    assertDirectory(fileUrl.pathname);
-
-    Deno.removeSync(tempDir, { recursive: true });
   }
 );
 
@@ -64,18 +44,6 @@ unitTest(
     const path = Deno.makeTempDirSync() + "/dir";
     await Deno.mkdir(path);
     assertDirectory(path);
-  }
-);
-
-unitTest(
-  { perms: { read: true, write: true } },
-  async function mkdirWithUrl(): Promise<void> {
-    const tempDir = await Deno.makeTempDir();
-    const fileUrl = getResolvedUrl(join(tempDir, "dir"));
-    await Deno.mkdir(fileUrl);
-    assertDirectory(fileUrl.pathname);
-
-    Deno.removeSync(tempDir, { recursive: true });
   }
 );
 
