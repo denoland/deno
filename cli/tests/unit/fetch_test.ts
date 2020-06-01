@@ -217,6 +217,25 @@ unitTest(
 );
 
 unitTest(
+  { perms: { net: true } },
+  async function fetchInitFormDataBinaryFileBody(): Promise<void> {
+    // Some random bytes
+    // prettier-ignore
+    const binaryFile = new Uint8Array([108,2,0,0,145,22,162,61,157,227,166,77,138,75,180,56,119,188,177,183]);
+    const response = await fetch("http://localhost:4545/echo_multipart_file", {
+      method: "POST",
+      body: binaryFile,
+    });
+    const resultForm = await response.formData();
+    const resultFile = resultForm.get("file") as File;
+
+    assertEquals(resultFile.type, "application/octet-stream");
+    assertEquals(resultFile.name, "file.bin");
+    assertEquals(new Uint8Array(await resultFile.arrayBuffer()), binaryFile);
+  }
+);
+
+unitTest(
   {
     perms: { net: true },
   },
