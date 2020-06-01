@@ -269,6 +269,78 @@ unitTest(
 );
 
 unitTest(
+  { perms: { net: true } },
+  async function fetchInitFormDataBinaryFileBody2(): Promise<void> {
+    // Some random bytes
+    // prettier-ignore
+    const binaryFile = new Uint8Array([108,2,0,0,145,22,162,61,157,227,166,77,138,75,180,56,119,188,177,183]);
+    const response = await fetch("http://localhost:4545/echo_multipart_file", {
+      method: "POST",
+      body: binaryFile,
+    });
+    const resultForm = await response.formData();
+    //
+    const resultFile = resultForm.get("file") as File;
+    assertEquals(resultFile.type, "application/octet-stream");
+    assertEquals(new Uint8Array(await resultFile.arrayBuffer()), binaryFile);
+  }
+);
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchInitFormDataMultipleFilesBody(): Promise<void> {
+    const files = [
+      {
+        // prettier-ignore
+        content: new Uint8Array([137,80,78,71,13,10,26,10, 137, 1, 25]),
+        type: "image/png",
+        name: "image",
+        fileName: "some-image.png",
+      },
+      {
+        // prettier-ignore
+        content: new Uint8Array([108,2,0,0,145,22,162,61,157,227,166,77,138,75,180,56,119,188,177,183]),
+        name: "file",
+        fileName: "file.bin",
+        expectedType: "application/octet-stream",
+      },
+      {
+        content: new TextEncoder().encode("deno land"),
+        type: "text/plain",
+        name: "text",
+        fileName: "deno.txt",
+      },
+    ];
+    const form = new FormData();
+    form.append("field", "value");
+    for (const file of files) {
+      form.append(
+        file.name,
+        new Blob([file.content], { type: file.type }),
+        file.fileName
+      );
+    }
+    const response = await fetch("http://localhost:4545/echo_server", {
+      method: "POST",
+      body: form,
+    });
+    const resultForm = await response.formData();
+    assertEquals(form.get("field"), resultForm.get("field"));
+    for (const file of files) {
+      const inputFile = form.get(file.name) as File;
+      const resultFile = resultForm.get(file.name) as File;
+      assertEquals(inputFile.size, resultFile.size);
+      assertEquals(inputFile.name, resultFile.name);
+      assertEquals(file.expectedType || file.type, resultFile.type);
+      assertEquals(
+        new Uint8Array(await resultFile.arrayBuffer()),
+        file.content
+      );
+    }
+  }
+);
+
+unitTest(
   {
     perms: { net: true },
   },
