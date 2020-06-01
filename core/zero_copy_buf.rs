@@ -8,6 +8,7 @@ use std::ops::DerefMut;
 /// but the existence of a ZeroCopyBuf inhibits this until it is dropped. It
 /// behaves much like an Arc<[u8]>, although a ZeroCopyBuf currently can't be
 /// cloned.
+#[derive(Clone)]
 pub struct ZeroCopyBuf {
   backing_store: v8::SharedRef<v8::BackingStore>,
   byte_offset: usize,

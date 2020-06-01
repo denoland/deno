@@ -367,6 +367,11 @@ export function isReadableStreamLocked(stream: ReadableStreamImpl): boolean {
   return stream[sym.reader] ? true : false;
 }
 
+export function isReadableStreamDisturbed(stream: ReadableStream): boolean {
+  assert(isReadableStream(stream));
+  return stream[sym.disturbed] ? true : false;
+}
+
 export function isTransformStream(
   x: unknown
 ): x is TransformStreamImpl<any, any> {

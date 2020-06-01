@@ -5,6 +5,7 @@ use crate::op_error::OpError;
 use crate::resolve_addr::resolve_addr;
 use crate::state::State;
 use deno_core::CoreIsolate;
+use deno_core::CoreIsolateState;
 use deno_core::ResourceTable;
 use deno_core::ZeroCopyBuf;
 use futures::future::poll_fn;
@@ -37,12 +38,12 @@ struct AcceptArgs {
 }
 
 fn accept_tcp(
-  isolate: &mut CoreIsolate,
+  isolate_state: &mut CoreIsolateState,
   args: AcceptArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let rid = args.rid as u32;
-  let resource_table = isolate.resource_table.clone();
+  let resource_table = isolate_state.resource_table.clone();
 
   let op = async move {
     let accept_fut = poll_fn(|cx| {
@@ -97,16 +98,16 @@ fn accept_tcp(
 }
 
 fn op_accept(
-  isolate: &mut CoreIsolate,
+  isolate_state: &mut CoreIsolateState,
   _state: &State,
   args: Value,
-  zero_copy: Option<ZeroCopyBuf>,
+  zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let args: AcceptArgs = serde_json::from_value(args)?;
   match args.transport.as_str() {
-    "tcp" => accept_tcp(isolate, args, zero_copy),
+    "tcp" => accept_tcp(isolate_state, args, zero_copy),
     #[cfg(unix)]
-    "unix" => net_unix::accept_unix(isolate, args.rid as u32, zero_copy),
+    "unix" => net_unix::accept_unix(isolate_state, args.rid as u32, zero_copy),
     _ => Err(OpError::other(format!(
       "Unsupported transport protocol {}",
       args.transport
@@ -121,16 +122,17 @@ struct ReceiveArgs {
 }
 
 fn receive_udp(
-  isolate: &mut CoreIsolate,
+  isolate_state: &mut CoreIsolateState,
   _state: &State,
   args: ReceiveArgs,
-  zero_copy: Option<ZeroCopyBuf>,
+  zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
-  let mut buf = zero_copy.unwrap();
+  assert_eq!(zero_copy.len(), 1, "Invalid number of arguments");
+  let mut zero_copy = zero_copy[0].clone();
 
   let rid = args.rid as u32;
 
-  let resource_table = isolate.resource_table.clone();
+  let resource_table = isolate_state.resource_table.clone();
 
   let op = async move {
     let receive_fut = poll_fn(|cx| {
@@ -141,7 +143,9 @@ fn receive_udp(
           OpError::bad_resource("Socket has been closed".to_string())
         })?;
       let socket = &mut resource.socket;
-      socket.poll_recv_from(cx, &mut buf).map_err(OpError::from)
+      socket
+        .poll_recv_from(cx, &mut zero_copy)
+        .map_err(OpError::from)
     });
     let (size, remote_addr) = receive_fut.await?;
     Ok(json!({
@@ -158,18 +162,19 @@ fn receive_udp(
 }
 
 fn op_receive(
-  isolate: &mut CoreIsolate,
+  isolate_state: &mut CoreIsolateState,
   state: &State,
   args: Value,
-  zero_copy: Option<ZeroCopyBuf>,
+  zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
-  assert!(zero_copy.is_some());
+  assert_eq!(zero_copy.len(), 1, "Invalid number of arguments");
+
   let args: ReceiveArgs = serde_json::from_value(args)?;
   match args.transport.as_str() {
-    "udp" => receive_udp(isolate, state, args, zero_copy),
+    "udp" => receive_udp(isolate_state, state, args, zero_copy),
     #[cfg(unix)]
     "unixpacket" => {
-      net_unix::receive_unix_packet(isolate, args.rid as u32, zero_copy)
+      net_unix::receive_unix_packet(isolate_state, args.rid as u32, zero_copy)
     }
     _ => Err(OpError::other(format!(
       "Unsupported transport protocol {}",
@@ -187,14 +192,15 @@ struct SendArgs {
 }
 
 fn op_send(
-  isolate: &mut CoreIsolate,
+  isolate_state: &mut CoreIsolateState,
   state: &State,
   args: Value,
-  zero_copy: Option<ZeroCopyBuf>,
+  zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
-  assert!(zero_copy.is_some());
-  let buf = zero_copy.unwrap();
-  let resource_table = isolate.resource_table.clone();
+  assert_eq!(zero_copy.len(), 1, "Invalid number of arguments");
+  let zero_copy = zero_copy[0].clone();
+
+  let resource_table = isolate_state.resource_table.clone();
   match serde_json::from_value(args)? {
     SendArgs {
       rid,
@@ -212,7 +218,7 @@ fn op_send(
           })?;
         let socket = &mut resource.socket;
         let addr = resolve_addr(&args.hostname, args.port)?;
-        socket.send_to(&buf, addr).await?;
+        socket.send_to(&zero_copy, addr).await?;
         Ok(json!({}))
       };
 
@@ -236,7 +242,7 @@ fn op_send(
 
         let socket = &mut resource.socket;
         socket
-          .send_to(&buf, &resource.local_addr.as_pathname().unwrap())
+          .send_to(&zero_copy, &resource.local_addr.as_pathname().unwrap())
           .await?;
 
         Ok(json!({}))
@@ -256,12 +262,12 @@ struct ConnectArgs {
 }
 
 fn op_connect(
-  isolate: &mut CoreIsolate,
+  isolate_state: &mut CoreIsolateState,
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
-  let resource_table = isolate.resource_table.clone();
+  let resource_table = isolate_state.resource_table.clone();
   match serde_json::from_value(args)? {
     ConnectArgs {
       transport,
@@ -342,10 +348,10 @@ struct ShutdownArgs {
 }
 
 fn op_shutdown(
-  isolate: &mut CoreIsolate,
+  isolate_state: &mut CoreIsolateState,
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   state.check_unstable("Deno.shutdown");
 
@@ -360,7 +366,7 @@ fn op_shutdown(
     _ => unimplemented!(),
   };
 
-  let mut resource_table = isolate.resource_table.borrow_mut();
+  let mut resource_table = isolate_state.resource_table.borrow_mut();
   let resource_holder = resource_table
     .get_mut::<StreamResourceHolder>(rid)
     .ok_or_else(OpError::bad_resource_id)?;
@@ -484,12 +490,12 @@ fn listen_udp(
 }
 
 fn op_listen(
-  isolate: &mut CoreIsolate,
+  isolate_state: &mut CoreIsolateState,
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
-  let mut resource_table = isolate.resource_table.borrow_mut();
+  let mut resource_table = isolate_state.resource_table.borrow_mut();
   match serde_json::from_value(args)? {
     ListenArgs {
       transport,
