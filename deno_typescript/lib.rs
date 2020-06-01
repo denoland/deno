@@ -50,15 +50,15 @@ pub struct TSState {
 fn compiler_op<D>(
   ts_state: Arc<Mutex<TSState>>,
   dispatcher: D,
-) -> impl Fn(&mut CoreIsolateState, &[u8], Option<ZeroCopyBuf>) -> Op
+) -> impl Fn(&mut CoreIsolateState, &[u8], &mut [ZeroCopyBuf]) -> Op
 where
   D: Fn(&mut TSState, &[u8]) -> Op,
 {
   move |_state: &mut CoreIsolateState,
         control: &[u8],
-        zero_copy_buf: Option<ZeroCopyBuf>|
+        zero_copy_bufs: &mut [ZeroCopyBuf]|
         -> Op {
-    assert!(zero_copy_buf.is_none()); // zero_copy_buf unused in compiler.
+    assert!(zero_copy_bufs.is_empty()); // zero_copy_bufs unused in compiler.
     let mut s = ts_state.lock().unwrap();
     dispatcher(&mut s, control)
   }
@@ -332,15 +332,15 @@ pub fn trace_serializer() {
 /// CoreIsolate.
 pub fn op_fetch_asset<S: ::std::hash::BuildHasher>(
   custom_assets: HashMap<String, PathBuf, S>,
-) -> impl Fn(&mut CoreIsolateState, &[u8], Option<ZeroCopyBuf>) -> Op {
+) -> impl Fn(&mut CoreIsolateState, &[u8], &mut [ZeroCopyBuf]) -> Op {
   for (_, path) in custom_assets.iter() {
     println!("cargo:rerun-if-changed={}", path.display());
   }
   move |_state: &mut CoreIsolateState,
         control: &[u8],
-        zero_copy_buf: Option<ZeroCopyBuf>|
+        zero_copy_bufs: &mut [ZeroCopyBuf]|
         -> Op {
-    assert!(zero_copy_buf.is_none()); // zero_copy_buf unused in this op.
+    assert!(zero_copy_bufs.is_empty()); // zero_copy_bufs unused in this op.
     let name = std::str::from_utf8(control).unwrap();
 
     let asset_code = if let Some(source_code) = get_asset(name) {

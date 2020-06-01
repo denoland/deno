@@ -66,7 +66,7 @@ pub fn op_fs_events_open(
   isolate_state: &mut CoreIsolateState,
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   #[derive(Deserialize)]
   struct OpenArgs {
@@ -104,7 +104,7 @@ pub fn op_fs_events_poll(
   isolate_state: &mut CoreIsolateState,
   _state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   #[derive(Deserialize)]
   struct PollArgs {

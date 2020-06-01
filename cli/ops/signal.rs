@@ -43,7 +43,7 @@ fn op_signal_bind(
   isolate_state: &mut CoreIsolateState,
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   state.check_unstable("Deno.signal");
   let args: BindSignalArgs = serde_json::from_value(args)?;
@@ -65,7 +65,7 @@ fn op_signal_poll(
   isolate_state: &mut CoreIsolateState,
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   state.check_unstable("Deno.signal");
   let args: SignalArgs = serde_json::from_value(args)?;
@@ -92,7 +92,7 @@ pub fn op_signal_unbind(
   isolate_state: &mut CoreIsolateState,
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   state.check_unstable("Deno.signal");
   let args: SignalArgs = serde_json::from_value(args)?;
@@ -117,7 +117,7 @@ pub fn op_signal_bind(
   _isolate_state: &mut CoreIsolateState,
   _state: &State,
   _args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   unimplemented!();
 }
@@ -127,7 +127,7 @@ fn op_signal_unbind(
   _isolate_state: &mut CoreIsolateState,
   _state: &State,
   _args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   unimplemented!();
 }
@@ -137,7 +137,7 @@ fn op_signal_poll(
   _isolate_state: &mut CoreIsolateState,
   _state: &State,
   _args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   unimplemented!();
 }

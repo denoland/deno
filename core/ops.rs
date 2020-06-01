@@ -22,7 +22,7 @@ pub enum Op {
 
 /// Main type describing op
 pub type OpDispatcher =
-  dyn Fn(&mut CoreIsolateState, &[u8], Option<ZeroCopyBuf>) -> Op + 'static;
+  dyn Fn(&mut CoreIsolateState, &[u8], &mut [ZeroCopyBuf]) -> Op + 'static;
 
 #[derive(Default)]
 pub struct OpRegistry {
@@ -43,7 +43,7 @@ impl OpRegistry {
 
   pub fn register<F>(&mut self, name: &str, op: F) -> OpId
   where
-    F: Fn(&mut CoreIsolateState, &[u8], Option<ZeroCopyBuf>) -> Op + 'static,
+    F: Fn(&mut CoreIsolateState, &[u8], &mut [ZeroCopyBuf]) -> Op + 'static,
   {
     let op_id = self.dispatchers.len() as u32;
 
@@ -92,7 +92,7 @@ fn test_op_registry() {
   let dispatch = op_registry.get(test_id).unwrap();
   let state_rc = CoreIsolate::state(&isolate);
   let mut state = state_rc.borrow_mut();
-  let res = dispatch(&mut state, &[], None);
+  let res = dispatch(&mut state, &[], &mut []);
   if let Op::Sync(buf) = res {
     assert_eq!(buf.len(), 0);
   } else {
@@ -139,7 +139,7 @@ fn register_op_during_call() {
   {
     let state_rc = CoreIsolate::state(&isolate);
     let mut state = state_rc.borrow_mut();
-    dispatcher1(&mut state, &[], None);
+    dispatcher1(&mut state, &[], &mut []);
   }
 
   let mut expected = HashMap::new();
@@ -157,7 +157,7 @@ fn register_op_during_call() {
   };
   let state_rc = CoreIsolate::state(&isolate);
   let mut state = state_rc.borrow_mut();
-  let res = dispatcher2(&mut state, &[], None);
+  let res = dispatcher2(&mut state, &[], &mut []);
   if let Op::Sync(buf) = res {
     assert_eq!(buf.len(), 0);
   } else {

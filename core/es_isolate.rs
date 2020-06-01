@@ -712,7 +712,7 @@ pub mod tests {
 
     let dispatcher = move |_state: &mut CoreIsolateState,
                            control: &[u8],
-                           _zero_copy: Option<ZeroCopyBuf>|
+                           _zero_copy: &mut [ZeroCopyBuf]|
           -> Op {
       dispatch_count_.fetch_add(1, Ordering::Relaxed);
       assert_eq!(control.len(), 1);
