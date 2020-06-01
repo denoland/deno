@@ -226,7 +226,7 @@ test({
     try {
       assertEquals(form.value("deno"), "land");
       assertEquals(form.value("bar"), "bar");
-      let file: FormFile | FormFile[] | undefined = form.file("file");
+      let file = form.file("file");
       if (Array.isArray(file)) {
         file = file[0];
       }
@@ -253,7 +253,7 @@ test({
       "--------------------------434049563556637648550474"
     );
     const form = await mr.readForm(20);
-    let file: FormFile | FormFile[] | undefined = form.file("file");
+    let file = form.file("file");
     if (Array.isArray(file)) {
       file = file[0];
     }
