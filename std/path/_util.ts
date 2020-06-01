@@ -1,7 +1,8 @@
 // Copyright the Browserify authors. MIT License.
 // Ported from https://github.com/browserify/path-browserify/
+/** This module is browser compatible. */
 
-import { FormatInputPathObject } from "./interface.ts";
+import { FormatInputPathObject } from "./_interface.ts";
 import {
   CHAR_UPPERCASE_A,
   CHAR_LOWERCASE_A,
