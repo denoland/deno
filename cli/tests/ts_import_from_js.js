@@ -1,1 +1,1 @@
-import "./002_hello.ts";
+import "./005_more_imports.ts";

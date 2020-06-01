@@ -1,1 +1,1 @@
-Hello World
+Hello
