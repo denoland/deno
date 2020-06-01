@@ -345,7 +345,7 @@ export class MultipartReader {
         maxValueBytes -= n;
       }
       if (formFile) {
-        let mapVal = fileMap.get(p.formName);
+        const mapVal = fileMap.get(p.formName);
         if (mapVal !== undefined) {
           if (Array.isArray(mapVal)) {
             mapVal.push(formFile);
