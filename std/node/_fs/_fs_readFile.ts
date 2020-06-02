@@ -17,10 +17,10 @@ function maybeDecode(
   data: Uint8Array,
   encoding: string | null
 ): string | Buffer {
-  if (encoding === "utf8") {
-    return new TextDecoder().decode(data);
-  }
-  return new Buffer(data.buffer, data.byteOffset, data.byteLength);
+  const buffer = new Buffer(data.buffer, data.byteOffset, data.byteLength);
+  if (encoding)
+    return buffer.toString(encoding);
+  return buffer;
 }
 
 export function readFile(
