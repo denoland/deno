@@ -536,9 +536,11 @@ fn eval_context(
   mut rv: v8::ReturnValue,
 ) {
   let state_rc = CoreIsolate::state(scope.isolate());
-  let state = state_rc.borrow();
-  assert!(!state.global_context.is_empty());
-  let context = state.global_context.get(scope).unwrap();
+  let context = {
+    let state = state_rc.borrow();
+    assert!(!state.global_context.is_empty());
+    state.global_context.get(scope).unwrap()
+  };
 
   let source = match v8::Local::<v8::String>::try_from(args.get(0)) {
     Ok(s) => s,
