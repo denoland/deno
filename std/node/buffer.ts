@@ -67,6 +67,7 @@ export default class Buffer extends Uint8Array {
    * Creates a new Buffer containing string.
    */
   static from(string: string): Buffer;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   static from(value: any, offset?: number, length?: number): Buffer {
     if (typeof value == "string")
       return new Buffer(new TextEncoder().encode(value).buffer);
