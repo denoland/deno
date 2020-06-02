@@ -314,6 +314,64 @@ export function assertMatch(
 }
 
 /**
+ * Make an assertion that `actual` greater than `expected` value. If not
+ * then thrown.
+ */
+export function assertGreater(
+  actual: number,
+  expected: number,
+  msg?: string
+): void {
+  if (actual > expected) {
+    let actualString: string;
+    let expectedString: string;
+    try {
+      actualString = format(actual);
+    } catch (e) {
+      actualString = "[Cannot display]";
+    }
+    try {
+      expectedString = format(expected);
+    } catch (e) {
+      expectedString = "[Cannot display]";
+    }
+    if (!msg) {
+      msg = `actual: ${actualString} expected: value to be greater than ${expectedString}`;
+    }
+    throw new AssertionError(msg);
+  }
+}
+
+/**
+ * Make an assertion that `actual` less than `expected` value. If not
+ * then thrown.
+ */
+export function assertLess(
+  actual: number,
+  expected: number,
+  msg?: string
+): void {
+  if (actual < expected) {
+    let actualString: string;
+    let expectedString: string;
+    try {
+      actualString = format(actual);
+    } catch (e) {
+      actualString = "[Cannot display]";
+    }
+    try {
+      expectedString = format(expected);
+    } catch (e) {
+      expectedString = "[Cannot display]";
+    }
+    if (!msg) {
+      msg = `actual: ${actualString} expected: value to be less than ${expectedString}`;
+    }
+    throw new AssertionError(msg);
+  }
+}
+
+/**
  * Forcefully throws a failed assertion
  */
 export function fail(msg?: string): void {
