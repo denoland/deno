@@ -2,7 +2,7 @@
 
 const { test } = Deno;
 import { assertEquals } from "../testing/asserts.ts";
-import { Md5 } from "./md5.ts";
+import { createHash } from "./mod.ts";
 
 const millionAs = "a".repeat(1000000);
 
@@ -43,14 +43,16 @@ const testSetBase64 = [
 
 test("[hash/md5] testMd5Hex", () => {
   for (const [input, output] of testSetHex) {
-    const md5 = new Md5();
+    const md5 = createHash("md5");
     assertEquals(md5.update(input).toString(), output);
+    md5.dispose();
   }
 });
 
 test("[hash/md5] testMd5Base64", () => {
   for (const [input, output] of testSetBase64) {
-    const md5 = new Md5();
+    const md5 = createHash("md5");
     assertEquals(md5.update(input).toString("base64"), output);
+    md5.dispose();
   }
 });

@@ -1916,4 +1916,62 @@ declare namespace Deno {
    * called when `Deno.inspect()` is called, or when the object is logged to
    * the console. */
   export const customInspect: unique symbol;
+
+  export interface Disposer {
+    /** Releases all underlying resources used by given object.
+     * All disposable objects must call `dispose` in order to avoid resource leak.
+     *
+     * ```ts
+     * const md5 = createHash("md5");
+     * md5.update("hello");
+     * console.log(md5.toString("hex"));
+     * md5.dispose();
+     * ```
+     */
+    dispose(): void;
+  }
+
+  /** Creates new hash instance with desired algorithm given by `algorithm`.
+   *
+   * Note that created hash must be closed in order to avoid resource leak.
+   *
+   * ```ts
+   * const sha1 = Deno.createHash("sha1");
+   * // use sha1
+   * Deno.close(sha1);
+   * ```
+   *
+   * Throws error if `algorithm` is not supported.
+   *
+   * It is recommended to use `createHash` in std/hash module instead.
+   *
+   * Returns rid of created hash context. */
+  export function createHash(algorithm: string): number;
+
+  /** Updates hash instance previously created by `createHash`.
+   *
+   * ```ts
+   * const data = new Uint8Array();
+   * const sha1 = Deno.createHash("sha1");
+   * Deno.updateHash(sha1, data);
+   * // ...
+   * ```
+   *
+   * It is recommended to use `Hash` in std/hash module instead. */
+  export function updateHash(rid: number, buffer: Uint8Array): void;
+
+  /** Finalizes hash computation and emits the value
+   *
+   * ```ts
+   * const data = new Uint8Array();
+   * const sha1 = Deno.createHash("sha1");
+   * Deno.updateHash(sha1, data);
+   * const hash = Deno.digestHash(sha1);
+   * console.log(hash);
+   * ```
+   *
+   * It is recommended to use `Hash` in std/hash module instead.
+   *
+   * Returns final hash value */
+  export function digestHash(rid: number): Uint8Array;
 }

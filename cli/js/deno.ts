@@ -9,6 +9,7 @@ export {
   writeAllSync,
 } from "./buffer.ts";
 export { build } from "./build.ts";
+export { Disposer } from "./disposer.ts";
 export { chmodSync, chmod } from "./ops/fs/chmod.ts";
 export { chownSync, chown } from "./ops/fs/chown.ts";
 export { customInspect, inspect } from "./web/console.ts";
@@ -30,6 +31,7 @@ export {
 } from "./files.ts";
 export { read, readSync, write, writeSync } from "./ops/io.ts";
 export { FsEvent, watchFs } from "./ops/fs_events.ts";
+export { createHash, updateHash, digestHash } from "./ops/hash.ts";
 export { internalSymbol as internal } from "./internals.ts";
 export {
   copy,
