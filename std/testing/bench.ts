@@ -196,7 +196,6 @@ export async function runBenchmarks(
   progressCb && progressCb(progress);
 
   if (!silent) {
-    // Iterating given benchmark definitions (await-in-loop)
     console.log(
       "running",
       benchmarks.length,
@@ -204,6 +203,7 @@ export async function runBenchmarks(
     );
   }
 
+  // Iterating given benchmark definitions (await-in-loop)
   for (const { name, runs = 0, func } of benchmarks) {
     if (!silent) {
       // See https://github.com/denoland/deno/pull/1452 about groupCollapsed
@@ -317,7 +317,7 @@ export async function runBenchmarks(
     );
   }
 
-  // Making sure the program exit code is not zero in case of failure
+  // Throw error if there was a failing benchmark
   if (!!failError) {
     throw failError;
   }

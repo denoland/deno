@@ -218,14 +218,8 @@ test({
 
     assertEquals(benchingResults.filtered, 0);
     assertEquals(benchingResults.results.length, 2);
-    assertEquals(
-      benchingResults.results.filter(({ name }) => name === "test").length,
-      1
-    );
-    assertEquals(
-      benchingResults.results.filter(({ name }) => name === "clearskip").length,
-      1
-    );
+    assert(!!benchingResults.results.find(({ name }) => name === "test"));
+    assert(!!benchingResults.results.find(({ name }) => name === "clearskip"));
   },
 });
 
@@ -259,10 +253,7 @@ test({
     progress = progressCallbacks[pc++];
     assertEquals(progress.filtered, 1);
     assertEquals(progress.queued.length, 1);
-    assertEquals(
-      progress.queued.filter(({ name }) => name == "multiple").length,
-      1
-    );
+    assert(!!progress.queued.find(({ name }) => name == "multiple"));
     assertEquals(progress.running, {
       name: "single",
       runsCount: 1,
@@ -275,10 +266,7 @@ test({
     assertEquals(progress.queued.length, 1);
     assertEquals(progress.running, undefined);
     assertEquals(progress.results.length, 1);
-    assertEquals(
-      progress.results.filter(({ name }) => name == "single").length,
-      1
-    );
+    assert(!!progress.results.find(({ name }) => name == "single"));
 
     // Assert start of bench "multiple"
     progress = progressCallbacks[pc++];
@@ -307,17 +295,14 @@ test({
     assertEquals(progress.queued.length, 0);
     assertEquals(progress.running, undefined);
     assertEquals(progress.results.length, 2);
-    assertEquals(
-      progress.results.filter(({ name }) => name == "single").length,
-      1
-    );
+    assert(!!progress.results.find(({ name }) => name == "single"));
     const resultOfMultiple = progress.results.filter(
       ({ name }) => name == "multiple"
     );
     assertEquals(resultOfMultiple.length, 1);
     assert(!!resultOfMultiple[0].measuredRunsMs);
-    assertEquals(resultOfMultiple[0].measuredRunsMs!.length, 2);
     assert(!!resultOfMultiple[0].measuredRunsAvgMs);
+    assertEquals(resultOfMultiple[0].measuredRunsMs!.length, 2);
 
     // The last progress should equal the final result from promise
     progress = progressCallbacks[pc++];
