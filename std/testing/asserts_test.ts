@@ -7,6 +7,8 @@ import {
   assertArrayContains,
   assertMatch,
   assertEquals,
+  assertLess,
+  assertGreater,
   assertStrictEq,
   assertThrows,
   AssertionError,
@@ -123,6 +125,34 @@ test("testingNotEquals", function (): void {
   let didThrow;
   try {
     assertNotEquals("Raptor", "Raptor");
+    didThrow = false;
+  } catch (e) {
+    assert(e instanceof AssertionError);
+    didThrow = true;
+  }
+  assertEquals(didThrow, true);
+});
+
+test("testingAssertGreater", function (): void {
+  assertGreater(2, 3);
+  assertGreater(4, 4);
+  let didThrow;
+  try {
+    assertGreater(6, 1);
+    didThrow = false;
+  } catch (e) {
+    assert(e instanceof AssertionError);
+    didThrow = true;
+  }
+  assertEquals(didThrow, true);
+});
+
+test("testingAssertLess", function (): void {
+  assertLess(4, 1);
+  assertLess(9, 2);
+  let didThrow;
+  try {
+    assertLess(5, 7);
     didThrow = false;
   } catch (e) {
     assert(e instanceof AssertionError);
