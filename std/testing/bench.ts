@@ -351,7 +351,7 @@ function publishProgress(
   progress: BenchmarkRunProgress,
   state: ProgressState,
   progressCb?: (progress: BenchmarkRunProgress) => void
-) {
+): void {
   progressCb && progressCb(cloneProgressWithState(progress, state));
 }
 
