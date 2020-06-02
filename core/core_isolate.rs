@@ -366,7 +366,7 @@ impl CoreIsolate {
   /// Requires runtime to explicitly ask for op ids before using any of the ops.
   pub fn register_op<F>(&mut self, name: &str, op: F) -> OpId
   where
-    F: Fn(&mut CoreIsolateState, &[u8], &mut [ZeroCopyBuf]) -> Op + 'static,
+    F: Fn(&mut CoreIsolateState, &mut [ZeroCopyBuf]) -> Op + 'static,
   {
     let state_rc = Self::state(self);
     let mut state = state_rc.borrow_mut();
@@ -484,7 +484,7 @@ impl CoreIsolateState {
   /// Requires runtime to explicitly ask for op ids before using any of the ops.
   pub fn register_op<F>(&mut self, name: &str, op: F) -> OpId
   where
-    F: Fn(&mut CoreIsolateState, &[u8], &mut [ZeroCopyBuf]) -> Op + 'static,
+    F: Fn(&mut CoreIsolateState, &mut [ZeroCopyBuf]) -> Op + 'static,
   {
     self.op_registry.register(name, op)
   }
@@ -503,11 +503,10 @@ impl CoreIsolateState {
     &mut self,
     scope: &mut impl v8::ToLocal<'s>,
     op_id: OpId,
-    control_buf: &[u8],
     zero_copy_bufs: &mut [ZeroCopyBuf],
   ) -> Option<(OpId, Box<[u8]>)> {
     let op = if let Some(dispatcher) = self.op_registry.get(op_id) {
-      dispatcher(self, control_buf, zero_copy_bufs)
+      dispatcher(self, zero_copy_bufs)
     } else {
       let message =
         v8::String::new(scope, &format!("Unknown op id: {}", op_id)).unwrap();
@@ -732,20 +731,21 @@ pub mod tests {
     let mut isolate = CoreIsolate::new(StartupData::None, false);
 
     let dispatcher = move |_state: &mut CoreIsolateState,
-                           control: &[u8],
                            zero_copy: &mut [ZeroCopyBuf]|
           -> Op {
       dispatch_count_.fetch_add(1, Ordering::Relaxed);
       match mode {
         Mode::Async => {
-          assert_eq!(control.len(), 1);
-          assert_eq!(control[0], 42);
+          assert_eq!(zero_copy.len(), 1);
+          assert_eq!(zero_copy[0].len(), 1);
+          assert_eq!(zero_copy[0][0], 42);
           let buf = vec![43u8].into_boxed_slice();
           Op::Async(futures::future::ready(buf).boxed())
         }
         Mode::AsyncUnref => {
-          assert_eq!(control.len(), 1);
-          assert_eq!(control[0], 42);
+          assert_eq!(zero_copy.len(), 1);
+          assert_eq!(zero_copy[0].len(), 1);
+          assert_eq!(zero_copy[0][0], 42);
           let fut = async {
             // This future never finish.
             futures::future::pending::<()>().await;
@@ -754,8 +754,6 @@ pub mod tests {
           Op::AsyncUnref(fut.boxed())
         }
         Mode::AsyncZeroCopy(count) => {
-          assert_eq!(control.len(), 1);
-          assert_eq!(control[0], 24);
           assert_eq!(zero_copy.len(), count as usize);
           zero_copy.iter().enumerate().for_each(|(idx, buf)| {
             assert_eq!(buf.len(), 1);
@@ -766,13 +764,15 @@ pub mod tests {
           Op::Async(futures::future::ready(buf).boxed())
         }
         Mode::OverflowReqSync => {
-          assert_eq!(control.len(), 100 * 1024 * 1024);
+          assert_eq!(zero_copy.len(), 1);
+          assert_eq!(zero_copy[0].len(), 100 * 1024 * 1024);
           let buf = vec![43u8].into_boxed_slice();
           Op::Sync(buf)
         }
         Mode::OverflowResSync => {
-          assert_eq!(control.len(), 1);
-          assert_eq!(control[0], 42);
+          assert_eq!(zero_copy.len(), 1);
+          assert_eq!(zero_copy[0].len(), 1);
+          assert_eq!(zero_copy[0][0], 42);
           let mut vec = Vec::<u8>::new();
           vec.resize(100 * 1024 * 1024, 0);
           vec[0] = 99;
@@ -780,13 +780,15 @@ pub mod tests {
           Op::Sync(buf)
         }
         Mode::OverflowReqAsync => {
-          assert_eq!(control.len(), 100 * 1024 * 1024);
+          assert_eq!(zero_copy.len(), 1);
+          assert_eq!(zero_copy[0].len(), 100 * 1024 * 1024);
           let buf = vec![43u8].into_boxed_slice();
           Op::Async(futures::future::ready(buf).boxed())
         }
         Mode::OverflowResAsync => {
-          assert_eq!(control.len(), 1);
-          assert_eq!(control[0], 42);
+          assert_eq!(zero_copy.len(), 1);
+          assert_eq!(zero_copy[0].len(), 1);
+          assert_eq!(zero_copy[0][0], 42);
           let mut vec = Vec::<u8>::new();
           vec.resize(100 * 1024 * 1024, 0);
           vec[0] = 4;
@@ -835,8 +837,7 @@ pub mod tests {
     js_check(isolate.execute(
       "filename.js",
       r#"
-        let control = new Uint8Array([24]);
-        Deno.core.send(1, control);
+        Deno.core.send(1);
         "#,
     ));
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
@@ -848,9 +849,8 @@ pub mod tests {
     js_check(isolate.execute(
       "filename.js",
       r#"
-        let control = new Uint8Array([24]);
         let zero_copy = new Uint8Array([0]);
-        Deno.core.send(1, control, zero_copy);
+        Deno.core.send(1, zero_copy);
         "#,
     ));
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
@@ -862,10 +862,9 @@ pub mod tests {
     js_check(isolate.execute(
       "filename.js",
       r#"
-        let control = new Uint8Array([24]);
         let zero_copy_a = new Uint8Array([0]);
         let zero_copy_b = new Uint8Array([1]);
-        Deno.core.send(1, control, zero_copy_a, zero_copy_b);
+        Deno.core.send(1, zero_copy_a, zero_copy_b);
         "#,
     ));
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
@@ -1148,7 +1147,7 @@ pub mod tests {
         r#"
           let thrown;
           try {
-            Deno.core.dispatch(100, []);
+            Deno.core.dispatch(100);
           } catch (e) {
             thrown = e;
           }

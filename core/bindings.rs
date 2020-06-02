@@ -440,24 +440,11 @@ fn send(
     }
   };
 
-  let control_backing_store: v8::SharedRef<v8::BackingStore>;
-  let control = match v8::Local::<v8::ArrayBufferView>::try_from(args.get(1)) {
-    Ok(view) => unsafe {
-      control_backing_store = view.buffer(scope).unwrap().get_backing_store();
-      get_backing_store_slice(
-        &control_backing_store,
-        view.byte_offset(),
-        view.byte_length(),
-      )
-    },
-    Err(_) => &[],
-  };
-
   let state_rc = CoreIsolate::state(scope.isolate());
   let mut state = state_rc.borrow_mut();
   assert!(!state.global_context.is_empty());
 
-  let mut buf_iter = (2..args.length()).map(|idx| {
+  let mut buf_iter = (1..args.length()).map(|idx| {
     v8::Local::<v8::ArrayBufferView>::try_from(args.get(idx))
       .map(|view| ZeroCopyBuf::new(scope, view))
       .map_err(|err| {
@@ -491,7 +478,7 @@ fn send(
 
   // If response is empty then it's either async op or exception was thrown
   let maybe_response = match buf_iter_result {
-    Ok(bufs) => state.dispatch_op(scope, op_id, control, bufs),
+    Ok(bufs) => state.dispatch_op(scope, op_id, bufs),
     Err(exc) => {
       scope.isolate().throw_exception(exc);
       return;
