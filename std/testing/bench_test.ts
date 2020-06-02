@@ -5,6 +5,7 @@ import {
   BenchmarkRunError,
   clearBenchmarks,
   BenchmarkRunProgress,
+  ProgressState,
 } from "./bench.ts";
 import {
   assertEquals,
@@ -237,13 +238,14 @@ test({
       { skip: /skip/, silent: true },
       (progress) => {
         // needs to be deep copied
-        progressCallbacks.push(JSON.parse(JSON.stringify(progress)));
+        progressCallbacks.push(progress);
       }
     );
 
     let pc = 0;
     // Assert initial progress before running
     let progress = progressCallbacks[pc++];
+    assertEquals(progress.state, ProgressState.BenchmarkingStart);
     assertEquals(progress.filtered, 1);
     assertEquals(progress.queued.length, 2);
     assertEquals(progress.running, undefined);
@@ -251,6 +253,7 @@ test({
 
     // Assert start of bench "single"
     progress = progressCallbacks[pc++];
+    assertEquals(progress.state, ProgressState.BenchStart);
     assertEquals(progress.filtered, 1);
     assertEquals(progress.queued.length, 1);
     assert(!!progress.queued.find(({ name }) => name == "multiple"));
@@ -263,6 +266,7 @@ test({
 
     // Assert result of bench "single"
     progress = progressCallbacks[pc++];
+    assertEquals(progress.state, ProgressState.BenchResult);
     assertEquals(progress.queued.length, 1);
     assertEquals(progress.running, undefined);
     assertEquals(progress.results.length, 1);
@@ -270,6 +274,7 @@ test({
 
     // Assert start of bench "multiple"
     progress = progressCallbacks[pc++];
+    assertEquals(progress.state, ProgressState.BenchStart);
     assertEquals(progress.queued.length, 0);
     assertEquals(progress.running, {
       name: "multiple",
@@ -280,18 +285,21 @@ test({
 
     // Assert first result of bench "multiple"
     progress = progressCallbacks[pc++];
+    assertEquals(progress.state, ProgressState.BenchPartialResult);
     assertEquals(progress.queued.length, 0);
     assertEquals(progress.running!.measuredRunsMs.length, 1);
     assertEquals(progress.results.length, 1);
 
     // Assert second result of bench "multiple"
     progress = progressCallbacks[pc++];
+    assertEquals(progress.state, ProgressState.BenchPartialResult);
     assertEquals(progress.queued.length, 0);
     assertEquals(progress.running!.measuredRunsMs.length, 2);
     assertEquals(progress.results.length, 1);
 
     // Assert finish of bench "multiple"
     progress = progressCallbacks[pc++];
+    assertEquals(progress.state, ProgressState.BenchResult);
     assertEquals(progress.queued.length, 0);
     assertEquals(progress.running, undefined);
     assertEquals(progress.results.length, 2);
@@ -304,8 +312,10 @@ test({
     assert(!!resultOfMultiple[0].measuredRunsAvgMs);
     assertEquals(resultOfMultiple[0].measuredRunsMs!.length, 2);
 
-    // The last progress should equal the final result from promise
+    // The last progress should equal the final result from promise except the state property
     progress = progressCallbacks[pc++];
+    assertEquals(progress.state, ProgressState.BenchmarkingEnd);
+    delete progress.state;
     assertEquals(progress, benchingResults);
   },
 });

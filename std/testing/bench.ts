@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+import { deepAssign } from "../_util/deep_assign.ts";
 
 const { noColor } = Deno;
 
@@ -73,6 +74,17 @@ export interface BenchmarkRunProgress extends BenchmarkRunResult {
   queued: Array<{ name: string; runsCount: number }>;
   /** The currently running benchmark with its name, run count and the already finished measurements in milliseconds */
   running?: { name: string; runsCount: number; measuredRunsMs: number[] };
+  /** Indicates in which state benchmarking currently is */
+  state: ProgressState;
+}
+
+/** Defines the states `BenchmarkRunProgress` can be in */
+export enum ProgressState {
+  BenchmarkingStart = "benchmarking_start",
+  BenchStart = "bench_start",
+  BenchPartialResult = "bench_partial_result",
+  BenchResult = "bench_result",
+  BenchmarkingEnd = "benchmarking_end",
 }
 
 export class BenchmarkRunError extends Error {
@@ -190,10 +202,11 @@ export async function runBenchmarks(
     })),
     results: [],
     filtered,
+    state: ProgressState.BenchmarkingStart,
   };
 
   // Publish initial progress data
-  progressCb && progressCb(progress);
+  publishProgress(progress, ProgressState.BenchmarkingStart, progressCb);
 
   if (!silent) {
     console.log(
@@ -220,7 +233,7 @@ export async function runBenchmarks(
     // Init the progress of the running benchmark
     progress.running = { name, runsCount: runs, measuredRunsMs: [] };
     // Publish starting of a benchmark
-    progressCb && progressCb(progress);
+    publishProgress(progress, ProgressState.BenchStart, progressCb);
 
     // Trying benchmark.func
     let result = "";
@@ -239,7 +252,7 @@ export async function runBenchmarks(
         // Clear currently running
         delete progress.running;
         // Publish one-time run benchmark finish
-        progressCb && progressCb(progress);
+        publishProgress(progress, ProgressState.BenchResult, progressCb);
       } else if (runs > 1) {
         // Averaging runs
         let pendingRuns = runs;
@@ -260,7 +273,11 @@ export async function runBenchmarks(
           // Adding partial result
           progress.running.measuredRunsMs.push(measuredMs);
           // Publish partial benchmark results
-          progressCb && progressCb(progress);
+          publishProgress(
+            progress,
+            ProgressState.BenchPartialResult,
+            progressCb
+          );
 
           // Resetting the benchmark clock
           clock.start = clock.stop = NaN;
@@ -278,7 +295,7 @@ export async function runBenchmarks(
             // Clear currently running
             delete progress.running;
             // Publish results of a multiple run benchmark
-            progressCb && progressCb(progress);
+            publishProgress(progress, ProgressState.BenchResult, progressCb);
             break;
           }
         }
@@ -307,7 +324,7 @@ export async function runBenchmarks(
   // Indicate finished running
   delete progress.queued;
   // Publish final result in Cb too
-  progressCb && progressCb(progress);
+  publishProgress(progress, ProgressState.BenchmarkingEnd, progressCb);
 
   if (!silent) {
     // Closing results
@@ -328,4 +345,19 @@ export async function runBenchmarks(
   };
 
   return benchmarkRunResult;
+}
+
+function publishProgress(
+  progress: BenchmarkRunProgress,
+  state: ProgressState,
+  progressCb?: (progress: BenchmarkRunProgress) => void
+) {
+  progressCb && progressCb(cloneProgressWithState(progress, state));
+}
+
+function cloneProgressWithState(
+  progress: BenchmarkRunProgress,
+  state: ProgressState
+): BenchmarkRunProgress {
+  return deepAssign({}, progress, { state }) as BenchmarkRunProgress;
 }
