@@ -22,8 +22,8 @@ unitTest(function newHeaderTest(): void {
   new Headers(undefined);
   new Headers({});
   try {
-    // @ts-expect-error
-    new Headers(null);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    new Headers(null as any);
   } catch (e) {
     assertEquals(
       e.message,
@@ -36,8 +36,8 @@ const headerDict: Record<string, string> = {
   name1: "value1",
   name2: "value2",
   name3: "value3",
-  // @ts-expect-error
-  name4: undefined,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  name4: undefined as any,
   "Content-Type": "value4",
 };
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -264,17 +264,17 @@ unitTest(function headerParamsShouldThrowTypeError(): void {
 });
 
 unitTest(function headerParamsArgumentsCheck(): void {
-  const methodRequireOneParam = ["delete", "get", "has", "forEach"];
+  const methodRequireOneParam = ["delete", "get", "has", "forEach"] as const;
 
-  const methodRequireTwoParams = ["append", "set"];
+  const methodRequireTwoParams = ["append", "set"] as const;
 
   methodRequireOneParam.forEach((method): void => {
     const headers = new Headers();
     let hasThrown = 0;
     let errMsg = "";
     try {
-      // @ts-expect-error
-      headers[method]();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (headers as any)[method]();
       hasThrown = 1;
     } catch (err) {
       errMsg = err.message;
@@ -297,8 +297,8 @@ unitTest(function headerParamsArgumentsCheck(): void {
     let errMsg = "";
 
     try {
-      // @ts-expect-error
-      headers[method]();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (headers as any)[method]();
       hasThrown = 1;
     } catch (err) {
       errMsg = err.message;
@@ -317,8 +317,8 @@ unitTest(function headerParamsArgumentsCheck(): void {
     hasThrown = 0;
     errMsg = "";
     try {
-      // @ts-expect-error
-      headers[method]("foo");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (headers as any)[method]("foo");
       hasThrown = 1;
     } catch (err) {
       errMsg = err.message;

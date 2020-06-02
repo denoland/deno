@@ -92,9 +92,8 @@ unitTest({ perms: { net: true } }, async function fetchBodyUsed(): Promise<
   const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
   assertEquals(response.bodyUsed, false);
   assertThrows((): void => {
-    // Assigning to read-only property throws in the strict mode.
-    // @ts-expect-error
-    response.bodyUsed = true;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (response as any).bodyUsed = true;
   });
   await response.blob();
   assertEquals(response.bodyUsed, true);
@@ -657,10 +656,9 @@ unitTest({ perms: { net: true } }, async function fetchBodyReadTwice(): Promise<
   assert(_json);
 
   // All calls after the body was consumed, should fail
-  const methods = ["json", "text", "formData", "arrayBuffer"];
+  const methods = ["json", "text", "formData", "arrayBuffer"] as const;
   for (const method of methods) {
     try {
-      // @ts-expect-error
       await response[method]();
       fail(
         "Reading body multiple times should failed, the stream should've been locked."
