@@ -18,8 +18,7 @@ function maybeDecode(
   encoding: string | null
 ): string | Buffer {
   const buffer = new Buffer(data.buffer, data.byteOffset, data.byteLength);
-  if (encoding)
-    return buffer.toString(encoding);
+  if (encoding) return buffer.toString(encoding);
   return buffer;
 }
 
