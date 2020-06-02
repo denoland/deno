@@ -430,6 +430,9 @@ fn send(
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
+  use std::mem::MaybeUninit;
+  use std::ptr::drop_in_place;
+
   let op_id = match v8::Local::<v8::Uint32>::try_from(args.get(0)) {
     Ok(op_id) => op_id.value() as u32,
     Err(err) => {
@@ -444,7 +447,7 @@ fn send(
   let mut state = state_rc.borrow_mut();
   assert!(!state.global_context.is_empty());
 
-  let mut buf_iter = (1..args.length()).map(|idx| {
+  let buf_iter = (1..args.length()).map(|idx| {
     v8::Local::<v8::ArrayBufferView>::try_from(args.get(idx))
       .map(|view| ZeroCopyBuf::new(scope, view))
       .map_err(|err| {
@@ -454,45 +457,86 @@ fn send(
       })
   });
 
-  let mut buf_one: ZeroCopyBuf;
+  let buf_iter_len = buf_iter.len();
+
+  // Depending on potential errors and the number of args,
+  // this array might only be partially initiallized.
+  // Manual cleanup required, see below.
+  let mut buf_stack: [MaybeUninit<ZeroCopyBuf>; 2] =
+    unsafe { MaybeUninit::uninit().assume_init() };
+  let mut buf_stack_initialized = 0;
+  let use_stack = buf_iter_len <= buf_stack.len();
+
   let mut buf_vec: Vec<ZeroCopyBuf>;
 
-  // Collect all ArrayBufferView's
-  let buf_iter_result = match buf_iter.len() {
-    0 => Ok(&mut [][..]),
-    1 => match buf_iter.next().unwrap() {
-      Ok(buf) => {
-        buf_one = buf;
-        Ok(std::slice::from_mut(&mut buf_one))
+  // If response is empty then it's either async op or exception was thrown.
+  // In case of an error the arguments are invalid.
+  let maybe_response_or_err = {
+    // Use a new scope to ensure buf_iter_result lives only as long as its valid.
+    // It also needs to be dropped to ensure there aren't two mutable references during cleanup.
+
+    // Collect all ArrayBufferView's
+    let buf_iter_result = match buf_iter_len {
+      c if use_stack => {
+        let mut maybe_err = None;
+        for (idx, buf) in buf_iter.enumerate() {
+          match buf {
+            Ok(buf) => {
+              buf_stack[idx] = MaybeUninit::new(buf);
+              buf_stack_initialized += 1;
+            }
+            Err(err) => {
+              maybe_err = Some(err);
+              break;
+            }
+          }
+        }
+        match maybe_err {
+          Some(err) => Err(err),
+          None => Ok(unsafe {
+            // If maybe_err is None, c elements of buf_stack have been initialized,
+            // thus returning a slice of the first c elements is valid.
+            &mut (*(&mut buf_stack as *mut [MaybeUninit<ZeroCopyBuf>]
+              as *mut [ZeroCopyBuf]))[0..c]
+          }),
+        }
       }
-      Err(err) => Err(err),
-    },
-    _ => match buf_iter.collect::<Result<Vec<_>, _>>() {
-      Ok(v) => {
-        buf_vec = v;
-        Ok(&mut buf_vec[..])
-      }
-      Err(err) => Err(err),
-    },
+      _ => match buf_iter.collect::<Result<Vec<_>, _>>() {
+        Ok(v) => {
+          buf_vec = v;
+          Ok(&mut buf_vec[..])
+        }
+        Err(err) => Err(err),
+      },
+    };
+
+    buf_iter_result.map(|bufs| state.dispatch_op(scope, op_id, bufs))
   };
 
-  // If response is empty then it's either async op or exception was thrown
-  let maybe_response = match buf_iter_result {
-    Ok(bufs) => state.dispatch_op(scope, op_id, bufs),
+  // Because of MaybeUninit, stack allocated ZeroCopyBuf's are not dropped automatically.
+  if use_stack {
+    // In case of an error in buf_iter_result the number of elements
+    // initialized will be less than available in the iterator.
+    for buf in &mut buf_stack[0..buf_stack_initialized] {
+      unsafe { drop_in_place(buf.as_mut_ptr()) }
+    }
+  }
+
+  match maybe_response_or_err {
+    Ok(maybe_response) => {
+      if let Some(response) = maybe_response {
+        // Synchronous response.
+        // Note op_id is not passed back in the case of synchronous response.
+        let (_op_id, buf) = response;
+
+        if !buf.is_empty() {
+          let ui8 = boxed_slice_to_uint8array(scope, buf);
+          rv.set(ui8.into());
+        }
+      }
+    }
     Err(exc) => {
       scope.isolate().throw_exception(exc);
-      return;
-    }
-  };
-
-  if let Some(response) = maybe_response {
-    // Synchronous response.
-    // Note op_id is not passed back in the case of synchronous response.
-    let (_op_id, buf) = response;
-
-    if !buf.is_empty() {
-      let ui8 = boxed_slice_to_uint8array(scope, buf);
-      rv.set(ui8.into());
     }
   }
 }
