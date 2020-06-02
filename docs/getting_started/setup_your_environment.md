@@ -65,9 +65,10 @@ on YouTrack.
 
 Vim works fairly well for Deno/TypeScript if you install
 [CoC](https://github.com/neoclide/coc.nvim) (intellisense engine and language
-server protocol). After CoC itself is installed, from inside Vim, simply run
-`:CocInstall coc-deno`. From now on, things like `gd` (go to definition) and
-`gr` (goto/find references) should work.
+server protocol). After CoC itself is installed, from inside Vim, simply run 
+`:CocInstall coc-tsserver` and `:CocInstall coc-deno`. To get get autocompletion 
+working for Deno type definitions run `:CocCommand deno.types`. From now on, 
+things like `gd` (go to definition) and`gr` (goto/find references) should work.
 
 #### Emacs
 
