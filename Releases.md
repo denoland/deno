@@ -6,6 +6,37 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### 1.0.4 / 2020.06.02
+
+Changes in the CLI:
+
+- feat(core): Ops can take several zero copy buffers (#4788)
+- fix(bundle): better size output (#5997)
+- fix(cli): Deno.remove() fails to remove unix socket (#5967)
+- fix(cli): compile TS dependencies of JS files (#6000)
+- fix(cli): ES private fields parsing in SWC (#5964)
+- fix(cli): Better use of @ts-expect-error (#6038)
+- fix(cli): media type for .cjs and application/node (#6005)
+- fix(doc): remove JSDoc comment truncation (#6031)
+- fix(cli/js/web): Body.bodyUsed should use IsReadableStreamDisturbed
+- fix(cli/js/web): formData parser for binary files in fetch() (#6015)
+- fix(cli/js/web): set null body for null-body status in fetch() (#5980)
+- fix(cli/js/web): network error on multiple redirects in fetch() (#5985)
+- fix(cli/js/web): Headers.name and FormData.name (#5994)
+- upgrade: Rust crates (#5959, #6032)
+
+Changes in std version 0.55.0:
+
+- feat(std/hash): add Sha512 and HmacSha512 (#6009)
+- feat(std/http) support code 103 Early Hints (#6021)
+- feat(std/http): add TooEarly status code (#5999)
+- feat(std/io): add LimitedReader (#6026)
+- feat(std/log): buffered file logging (#6014)
+- feat(std/mime/multipart): Added multiple FormFile input (#6027)
+- feat(std/node): add util.type.isDate (#6029)
+- fix(std/http): file server not closing files (#5952)
+- fix(std/path): support browsers (#6003)
+
 ### 1.0.3 / 2020.05.29
 
 Changes in the CLI:
