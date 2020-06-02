@@ -187,7 +187,7 @@ function sendFetchReq(
 }
 
 export async function fetch(
-  input: domTypes.Request | URL | string,
+  input: (domTypes.Request & { _bodySource?: unknown }) | URL | string,
   init?: domTypes.RequestInit
 ): Promise<Response> {
   let url: string;
@@ -285,7 +285,6 @@ export async function fetch(
     method = input.method;
     headers = input.headers;
 
-    //@ts-expect-error
     if (input._bodySource) {
       body = new DataView(await input.arrayBuffer());
     }
