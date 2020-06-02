@@ -90,3 +90,8 @@ unitTest(async function blobStream(): Promise<void> {
   await read();
   assertEquals(decode(bytes), "Hello World");
 });
+
+unitTest(function blobConstructorNameIsBlob(): void {
+  const blob = new Blob();
+  assertEquals(blob.constructor.name, "Blob");
+});

@@ -1,5 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use crate::fs::resolve_from_cwd;
 use crate::op_error::OpError;
 use crate::ops::dispatch_json::Deserialize;
 use crate::ops::dispatch_json::JsonOp;
@@ -8,6 +7,7 @@ use crate::ops::json_op;
 use crate::state::State;
 use deno_core::plugin_api;
 use deno_core::CoreIsolate;
+use deno_core::CoreIsolateState;
 use deno_core::Op;
 use deno_core::OpAsyncFuture;
 use deno_core::OpId;
@@ -16,7 +16,7 @@ use deno_core::ZeroCopyBuf;
 use dlopen::symbor::Library;
 use futures::prelude::*;
 use std::cell::RefCell;
-use std::path::Path;
+use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::task::Context;
@@ -36,14 +36,14 @@ struct OpenPluginArgs {
 }
 
 pub fn op_open_plugin(
-  isolate: &mut CoreIsolate,
+  isolate_state: &mut CoreIsolateState,
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   state.check_unstable("Deno.openPlugin");
   let args: OpenPluginArgs = serde_json::from_value(args).unwrap();
-  let filename = resolve_from_cwd(Path::new(&args.filename))?;
+  let filename = PathBuf::from(&args.filename);
 
   state.check_plugin(&filename)?;
 
@@ -53,7 +53,7 @@ pub fn op_open_plugin(
     .map_err(OpError::from)?;
   let plugin_resource = PluginResource::new(&plugin_lib);
 
-  let mut resource_table = isolate.resource_table.borrow_mut();
+  let mut resource_table = isolate_state.resource_table.borrow_mut();
   let rid = resource_table.add("plugin", Box::new(plugin_resource));
   let plugin_resource = resource_table.get::<PluginResource>(rid).unwrap();
 
@@ -65,7 +65,7 @@ pub fn op_open_plugin(
   .unwrap();
   drop(resource_table);
 
-  let mut interface = PluginInterface::new(isolate, &plugin_lib);
+  let mut interface = PluginInterface::new(isolate_state, &plugin_lib);
   deno_plugin_init(&mut interface);
 
   Ok(JsonOp::Sync(json!(rid)))
@@ -82,14 +82,17 @@ impl PluginResource {
 }
 
 struct PluginInterface<'a> {
-  isolate: &'a mut CoreIsolate,
+  isolate_state: &'a mut CoreIsolateState,
   plugin_lib: &'a Rc<Library>,
 }
 
 impl<'a> PluginInterface<'a> {
-  fn new(isolate: &'a mut CoreIsolate, plugin_lib: &'a Rc<Library>) -> Self {
+  fn new(
+    isolate_state: &'a mut CoreIsolateState,
+    plugin_lib: &'a Rc<Library>,
+  ) -> Self {
     Self {
-      isolate,
+      isolate_state,
       plugin_lib,
     }
   }
@@ -107,10 +110,10 @@ impl<'a> plugin_api::Interface for PluginInterface<'a> {
     dispatch_op_fn: plugin_api::DispatchOpFn,
   ) -> OpId {
     let plugin_lib = self.plugin_lib.clone();
-    self.isolate.op_registry.register(
+    self.isolate_state.op_registry.register(
       name,
-      move |isolate, control, zero_copy| {
-        let mut interface = PluginInterface::new(isolate, &plugin_lib);
+      move |isolate_state, control, zero_copy| {
+        let mut interface = PluginInterface::new(isolate_state, &plugin_lib);
         let op = dispatch_op_fn(&mut interface, control, zero_copy);
         match op {
           sync_op @ Op::Sync(..) => sync_op,
@@ -126,7 +129,7 @@ impl<'a> plugin_api::Interface for PluginInterface<'a> {
   }
 
   fn resource_table(&mut self) -> Rc<RefCell<ResourceTable>> {
-    self.isolate.resource_table.clone()
+    self.isolate_state.resource_table.clone()
   }
 }
 

@@ -44,6 +44,10 @@ impl DocFileLoader for TestLoader {
 #[tokio::test]
 async fn export_fn() {
   let source_code = r#"/**
+* @module foo
+*/
+
+/**
 * Hello there, this is a multiline JSdoc.
 *
 * It has many lines
@@ -51,6 +55,9 @@ async fn export_fn() {
 * Or not that many?
 */
 export function foo(a: string, b?: number, cb: (...cbArgs: unknown[]) => void, ...args: unknown[]): void {
+    /**
+     * @todo document all the things.
+     */
     console.log("Hello world");
 }
 "#;
@@ -143,7 +150,7 @@ export function foo(a: string, b?: number, cb: (...cbArgs: unknown[]) => void, .
     "location": {
       "col": 0,
       "filename": "test.ts",
-      "line": 8,
+      "line": 12,
     },
     "name": "foo",
   });

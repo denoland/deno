@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { unitTest, assert } from "./test_util.ts";
+import { assert, assertEquals, unitTest } from "./test_util.ts";
 
-// @ts-ignore TypeScript (as of 3.7) does not support indexing namespaces by symbol
+// @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
 const { setPrepareStackTrace } = Deno[Deno.internal];
 
 interface CallSite {
@@ -94,6 +94,18 @@ unitTest(function prepareStackTrace(): void {
   ]);
   assert(result.startsWith("Error: foo\n"));
   assert(result.includes(".ts:"), "should remap to something in 'js/'");
+});
+
+unitTest(function captureStackTrace(): void {
+  function foo(): void {
+    const error = new Error();
+    const stack1 = error.stack!;
+    Error.captureStackTrace(error, foo);
+    const stack2 = error.stack!;
+    // stack2 should be stack1 without the first frame.
+    assertEquals(stack2, stack1.replace(/(?<=^[^\n]*\n)[^\n]*\n/, ""));
+  }
+  foo();
 });
 
 unitTest(function applySourceMap(): void {

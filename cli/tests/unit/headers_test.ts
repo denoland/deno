@@ -7,8 +7,12 @@ import {
 } from "./test_util.ts";
 const {
   stringifyArgs,
-  // @ts-ignore TypeScript (as of 3.7) does not support indexing namespaces by symbol
+  // @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
 } = Deno[Deno.internal];
+
+unitTest(function headersHasCorrectNameProp(): void {
+  assertEquals(Headers.name, "Headers");
+});
 
 // Logic heavily copied from web-platform-tests, make
 // sure pass mostly header basic test
@@ -18,7 +22,7 @@ unitTest(function newHeaderTest(): void {
   new Headers(undefined);
   new Headers({});
   try {
-    // @ts-ignore
+    // @ts-expect-error
     new Headers(null);
   } catch (e) {
     assertEquals(
@@ -32,7 +36,7 @@ const headerDict: Record<string, string> = {
   name1: "value1",
   name2: "value2",
   name3: "value3",
-  // @ts-ignore
+  // @ts-expect-error
   name4: undefined,
   "Content-Type": "value4",
 };
@@ -269,7 +273,7 @@ unitTest(function headerParamsArgumentsCheck(): void {
     let hasThrown = 0;
     let errMsg = "";
     try {
-      // @ts-ignore
+      // @ts-expect-error
       headers[method]();
       hasThrown = 1;
     } catch (err) {
@@ -293,7 +297,7 @@ unitTest(function headerParamsArgumentsCheck(): void {
     let errMsg = "";
 
     try {
-      // @ts-ignore
+      // @ts-expect-error
       headers[method]();
       hasThrown = 1;
     } catch (err) {
@@ -313,7 +317,7 @@ unitTest(function headerParamsArgumentsCheck(): void {
     hasThrown = 0;
     errMsg = "";
     try {
-      // @ts-ignore
+      // @ts-expect-error
       headers[method]("foo");
       hasThrown = 1;
     } catch (err) {
