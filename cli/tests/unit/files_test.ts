@@ -290,8 +290,8 @@ unitTest(
     // writing null should throw an error
     let err;
     try {
-      // @ts-expect-error
-      await file.write(null);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await file.write(null as any);
     } catch (e) {
       err = e;
     }
@@ -322,8 +322,8 @@ unitTest(
     // reading file into null buffer should throw an error
     let err;
     try {
-      // @ts-expect-error
-      await file.read(null);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await file.read(null as any);
     } catch (e) {
       err = e;
     }

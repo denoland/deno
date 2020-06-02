@@ -145,8 +145,8 @@ test("multipartMultipartWriter3", async function (): Promise<void> {
   );
   await assertThrowsAsync(
     async (): Promise<void> => {
-      // @ts-expect-error
-      await mw.writeFile("bar", "file", null);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await mw.writeFile("bar", "file", null as any);
     },
     Error,
     "closed"
