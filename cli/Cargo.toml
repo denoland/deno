@@ -61,6 +61,7 @@ warp = "0.2.3"
 semver-parser = "0.9.0"
 uuid = { version = "0.8.1", features = ["v4"] }
 swc_ecma_visit = "0.5.1"
+dunce = "1.0.0"
 
 [target.'cfg(windows)'.dependencies]
 winapi = "0.3.8"

@@ -9,6 +9,7 @@ use crate::state::State;
 use deno_core::CoreIsolate;
 use deno_core::CoreIsolateState;
 use deno_core::ZeroCopyBuf;
+use dunce::canonicalize;
 use futures::future::FutureExt;
 use std::convert::From;
 use std::env::{current_dir, set_current_dir, temp_dir};
@@ -577,12 +578,9 @@ fn op_realpath(
     debug!("op_realpath {}", path.display());
     // corresponds to the realpath on Unix and
     // CreateFile and GetFinalPathNameByHandle on Windows
-    let realpath = std::fs::canonicalize(&path)?;
-    let mut realpath_str =
-      into_string(realpath.into_os_string())?.replace("\\", "/");
-    if cfg!(windows) {
-      realpath_str = realpath_str.trim_start_matches("//?/").to_string();
-    }
+    let realpath = canonicalize(&path)?;
+    let realpath_str = into_string(realpath.into_os_string())?;
+
     Ok(json!(realpath_str))
   })
 }
