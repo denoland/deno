@@ -74,13 +74,10 @@ use crate::fs as deno_fs;
 use crate::global_state::GlobalState;
 use crate::msg::MediaType;
 use crate::op_error::OpError;
-use crate::ops::io::get_stdio;
 use crate::permissions::Permissions;
-use crate::state::State;
 use crate::tsc::TargetLib;
 use crate::worker::MainWorker;
 use deno_core::v8_set_flags;
-use deno_core::CoreIsolate;
 use deno_core::ErrBox;
 use deno_core::EsIsolate;
 use deno_core::ModuleSpecifier;
@@ -150,38 +147,6 @@ fn write_lockfile(global_state: GlobalState) -> Result<(), std::io::Error> {
     }
   }
   Ok(())
-}
-
-fn create_main_worker(
-  global_state: GlobalState,
-  main_module: ModuleSpecifier,
-) -> Result<MainWorker, ErrBox> {
-  let state = State::new(
-    global_state.clone(),
-    None,
-    main_module,
-    global_state.maybe_import_map.clone(),
-    false,
-  )?;
-
-  let mut worker = MainWorker::new(
-    "main".to_string(),
-    startup_data::deno_isolate_init(),
-    state,
-  );
-
-  {
-    let (stdin, stdout, stderr) = get_stdio();
-    let state_rc = CoreIsolate::state(&worker.isolate);
-    let state = state_rc.borrow();
-    let mut t = state.resource_table.borrow_mut();
-    t.add("stdin", Box::new(stdin));
-    t.add("stdout", Box::new(stdout));
-    t.add("stderr", Box::new(stderr));
-  }
-
-  worker.execute("bootstrap.mainRuntime()")?;
-  Ok(worker)
 }
 
 fn print_cache_info(state: &GlobalState) {
@@ -323,7 +288,7 @@ async fn info_command(
   }
 
   let main_module = ModuleSpecifier::resolve_url_or_path(&file.unwrap())?;
-  let mut worker = create_main_worker(global_state, main_module.clone())?;
+  let mut worker = MainWorker::create(global_state, main_module.clone())?;
   worker.preload_module(&main_module).await?;
   print_file_info(&worker, main_module.clone()).await
 }
@@ -341,7 +306,7 @@ async fn install_command(
   fetch_flags.reload = true;
   let global_state = GlobalState::new(fetch_flags)?;
   let main_module = ModuleSpecifier::resolve_url_or_path(&module_url)?;
-  let mut worker = create_main_worker(global_state, main_module.clone())?;
+  let mut worker = MainWorker::create(global_state, main_module.clone())?;
   worker.preload_module(&main_module).await?;
   installer::install(flags, &module_url, args, name, root, force)
     .map_err(ErrBox::from)
@@ -352,7 +317,7 @@ async fn cache_command(flags: Flags, files: Vec<String>) -> Result<(), ErrBox> {
     ModuleSpecifier::resolve_url_or_path("./__$deno$fetch.ts").unwrap();
   let global_state = GlobalState::new(flags)?;
   let mut worker =
-    create_main_worker(global_state.clone(), main_module.clone())?;
+    MainWorker::create(global_state.clone(), main_module.clone())?;
 
   for file in files {
     let specifier = ModuleSpecifier::resolve_url_or_path(&file)?;
@@ -373,7 +338,7 @@ async fn eval_command(
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./__$deno$eval.ts").unwrap();
   let global_state = GlobalState::new(flags)?;
-  let mut worker = create_main_worker(global_state, main_module.clone())?;
+  let mut worker = MainWorker::create(global_state, main_module.clone())?;
   let main_module_url = main_module.as_url().to_owned();
   // Create a dummy source file.
   let source_file = SourceFile {
@@ -559,7 +524,7 @@ async fn run_repl(flags: Flags) -> Result<(), ErrBox> {
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./__$deno$repl.ts").unwrap();
   let global_state = GlobalState::new(flags)?;
-  let mut worker = create_main_worker(global_state, main_module)?;
+  let mut worker = MainWorker::create(global_state, main_module)?;
   loop {
     (&mut *worker).await?;
   }
@@ -569,7 +534,7 @@ async fn run_command(flags: Flags, script: String) -> Result<(), ErrBox> {
   let global_state = GlobalState::new(flags.clone())?;
   let main_module = ModuleSpecifier::resolve_url_or_path(&script).unwrap();
   let mut worker =
-    create_main_worker(global_state.clone(), main_module.clone())?;
+    MainWorker::create(global_state.clone(), main_module.clone())?;
   debug!("main_module {}", main_module);
   worker.execute_module(&main_module).await?;
   write_lockfile(global_state)?;
@@ -608,7 +573,7 @@ async fn test_command(
   let main_module =
     ModuleSpecifier::resolve_url(&test_file_url.to_string()).unwrap();
   let mut worker =
-    create_main_worker(global_state.clone(), main_module.clone())?;
+    MainWorker::create(global_state.clone(), main_module.clone())?;
   // Create a dummy source file.
   let source_file = SourceFile {
     filename: test_file_url.to_file_path().unwrap(),
