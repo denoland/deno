@@ -746,6 +746,18 @@ fn repl_test_console_log() {
 }
 
 #[test]
+fn repl_cwd() {
+  let (_out, err) = util::run_and_collect_output(
+    true,
+    "repl",
+    Some(vec!["Deno.cwd()"]),
+    Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+    false,
+  );
+  assert!(err.is_empty());
+}
+
+#[test]
 fn repl_test_eof() {
   let (out, err) = util::run_and_collect_output(
     true,
