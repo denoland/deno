@@ -34,10 +34,7 @@ interface FileServerArgs {
 const encoder = new TextEncoder();
 
 const serverArgs = parse(args) as FileServerArgs;
-
-const CORSEnabled = serverArgs.cors ? true : false;
 const target = posix.resolve(serverArgs._[0] ?? "");
-const addr = `0.0.0.0:${serverArgs.port ?? serverArgs.p ?? 4507}`;
 
 const MEDIA_TYPES: Record<string, string> = {
   ".md": "text/markdown",
@@ -58,23 +55,6 @@ const MEDIA_TYPES: Record<string, string> = {
 /** Returns the content-type based on the extension of a path. */
 function contentType(path: string): string | undefined {
   return MEDIA_TYPES[extname(path)];
-}
-
-if (serverArgs.h ?? serverArgs.help) {
-  console.log(`Deno File Server
-  Serves a local directory in HTTP.
-
-INSTALL:
-  deno install --allow-net --allow-read https://deno.land/std/http/file_server.ts
-
-USAGE:
-  file_server [path] [options]
-
-OPTIONS:
-  -h, --help          Prints help information
-  -p, --port <PORT>   Set port
-  --cors              Enable CORS via the "Access-Control-Allow-Origin" header`);
-  exit();
 }
 
 function modeToString(isDir: boolean, maybeMode: number | null): string {
@@ -319,6 +299,26 @@ function html(strings: TemplateStringsArray, ...values: unknown[]): string {
 }
 
 function main(): void {
+  const CORSEnabled = serverArgs.cors ? true : false;
+  const addr = `0.0.0.0:${serverArgs.port ?? serverArgs.p ?? 4507}`;
+
+  if (serverArgs.h ?? serverArgs.help) {
+    console.log(`Deno File Server
+    Serves a local directory in HTTP.
+  
+  INSTALL:
+    deno install --allow-net --allow-read https://deno.land/std/http/file_server.ts
+  
+  USAGE:
+    file_server [path] [options]
+  
+  OPTIONS:
+    -h, --help          Prints help information
+    -p, --port <PORT>   Set port
+    --cors              Enable CORS via the "Access-Control-Allow-Origin" header`);
+    exit();
+  }
+
   listenAndServe(
     addr,
     async (req): Promise<void> => {
