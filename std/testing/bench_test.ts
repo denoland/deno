@@ -308,7 +308,7 @@ test({
     );
     assertEquals(resultOfMultiple.length, 1);
     assert(!!resultOfMultiple[0].measuredRunsMs);
-    assert(!!resultOfMultiple[0].measuredRunsAvgMs);
+    assert(!isNaN(resultOfMultiple[0].measuredRunsAvgMs!));
     assertEquals(resultOfMultiple[0].measuredRunsMs!.length, 2);
 
     // The last progress should equal the final result from promise except the state property
