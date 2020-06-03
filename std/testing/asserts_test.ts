@@ -268,16 +268,12 @@ test("testingAssertFailWithReturnTypes", function (): void {
 
 test("testingAssertFailAsync", function (): void {
   assertThrowsAsync(
-    async () => {
-      await Promise.resolve(fail());
-    },
+    () => Promise.resolve(fail()),
     AssertionError,
     "Failed assertion."
   );
   assertThrowsAsync(
-    async (): Promise<void> => {
-      await Promise.resolve(fail("foo"));
-    },
+    () => Promise.resolve(fail("foo")),
     AssertionError,
     "Failed assertion: foo"
   );
@@ -286,20 +282,17 @@ test("testingAssertFailAsync", function (): void {
 test("testingAssertFailAsyncWithReturnTypes", function (): void {
   const shouldFail = true;
 
-  assertThrowsAsync(async () => {
+  assertThrowsAsync(() => {
     if (shouldFail) throw new Error("failed");
-    const a = await Promise.resolve("a Promise<string>");
-    return a;
+    return Promise.resolve("a Promise<string>");
   });
-  assertThrowsAsync(async () => {
+  assertThrowsAsync(() => {
     if (shouldFail) throw new Error("failed");
-    const a = await Promise.resolve(123);
-    return a;
+    return Promise.resolve(123);
   });
-  assertThrowsAsync(async () => {
+  assertThrowsAsync(() => {
     if (shouldFail) throw new Error("failed");
-    const a = await Promise.resolve({ a: true });
-    return a;
+    return Promise.resolve({ a: true });
   });
 });
 
