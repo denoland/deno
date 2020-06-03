@@ -250,27 +250,33 @@ test("testingAssertFailWithReturnTypes", function (): void {
   const shouldFail = true;
 
   assertThrows(() => {
-    if (shouldFail) throw new Error('failed')
+    if (shouldFail) throw new Error("failed");
 
     return "a string";
   });
   assertThrows(() => {
-    if (shouldFail) throw new Error('failed')
+    if (shouldFail) throw new Error("failed");
 
     return 123;
   });
   assertThrows(() => {
-    if (shouldFail) throw new Error('failed')
+    if (shouldFail) throw new Error("failed");
 
-    return {a: true};
+    return { a: true };
   });
 });
 
 test("testingAssertFailAsync", function (): void {
-  assertThrowsAsync(async () => fail(), AssertionError, "Failed assertion.");
+  assertThrowsAsync(
+    async () => {
+      await Promise.resolve(fail());
+    },
+    AssertionError,
+    "Failed assertion."
+  );
   assertThrowsAsync(
     async (): Promise<void> => {
-      fail("foo");
+      await Promise.resolve(fail("foo"));
     },
     AssertionError,
     "Failed assertion: foo"
@@ -281,19 +287,19 @@ test("testingAssertFailAsyncWithReturnTypes", function (): void {
   const shouldFail = true;
 
   assertThrowsAsync(async () => {
-    if (shouldFail) throw new Error('failed')
-
-    return "a Promise<string>";
+    if (shouldFail) throw new Error("failed");
+    const a = await Promise.resolve("a Promise<string>");
+    return a;
   });
   assertThrowsAsync(async () => {
-    if (shouldFail) throw new Error('failed')
-
-    return 123;
+    if (shouldFail) throw new Error("failed");
+    const a = await Promise.resolve(123);
+    return a;
   });
   assertThrowsAsync(async () => {
-    if (shouldFail) throw new Error('failed')
-
-    return {a: true};
+    if (shouldFail) throw new Error("failed");
+    const a = await Promise.resolve({ a: true });
+    return a;
   });
 });
 
