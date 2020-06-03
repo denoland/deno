@@ -133,7 +133,8 @@ impl EsIsolate {
 
     if tc.has_caught() {
       assert!(maybe_module.is_none());
-      return exception_to_err_result(scope, tc.exception().unwrap());
+      let e = tc.exception(scope).unwrap();
+      return exception_to_err_result(scope, e);
     }
 
     let module = maybe_module.unwrap();
@@ -198,7 +199,7 @@ impl EsIsolate {
     match result {
       Some(_) => Ok(()),
       None => {
-        let exception = tc.exception().unwrap();
+        let exception = tc.exception(scope).unwrap();
         exception_to_err_result(scope, exception)
       }
     }
@@ -352,7 +353,7 @@ impl EsIsolate {
     let resolver = resolver_handle.get(scope).unwrap();
     resolver_handle.reset(scope);
 
-    let mut module = {
+    let module = {
       let state = state_rc.borrow();
       let info = state
         .modules
