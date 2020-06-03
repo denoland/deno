@@ -9,6 +9,7 @@ import {
   assertEquals,
   assertStrictEq,
   assertThrows,
+  assertThrowsAsync,
   AssertionError,
   equal,
   fail,
@@ -243,6 +244,57 @@ test("testingAssertFailWithWrongErrorClass", function (): void {
     AssertionError,
     `Expected error to be instance of "Error", but was "AssertionError"`
   );
+});
+
+test("testingAssertFailWithReturnTypes", function (): void {
+  const shouldFail = true;
+
+  assertThrows(() => {
+    if (shouldFail) throw new Error('failed')
+
+    return "a string";
+  });
+  assertThrows(() => {
+    if (shouldFail) throw new Error('failed')
+
+    return 123;
+  });
+  assertThrows(() => {
+    if (shouldFail) throw new Error('failed')
+
+    return {a: true};
+  });
+});
+
+test("testingAssertFailAsync", function (): void {
+  assertThrowsAsync(async () => fail(), AssertionError, "Failed assertion.");
+  assertThrowsAsync(
+    async (): Promise<void> => {
+      fail("foo");
+    },
+    AssertionError,
+    "Failed assertion: foo"
+  );
+});
+
+test("testingAssertFailAsyncWithReturnTypes", function (): void {
+  const shouldFail = true;
+
+  assertThrowsAsync(async () => {
+    if (shouldFail) throw new Error('failed')
+
+    return "a Promise<string>";
+  });
+  assertThrowsAsync(async () => {
+    if (shouldFail) throw new Error('failed')
+
+    return 123;
+  });
+  assertThrowsAsync(async () => {
+    if (shouldFail) throw new Error('failed')
+
+    return {a: true};
+  });
 });
 
 const createHeader = (): string[] => [
