@@ -330,13 +330,15 @@ impl EsIsolate {
     let state_rc = Self::state(self);
 
     let core_state_rc = CoreIsolate::state(self);
-    let core_state = core_state_rc.borrow();
 
     debug!("dyn_import_done {} {:?}", id, mod_id);
     assert!(mod_id != 0);
     let mut hs = v8::HandleScope::new(&mut self.0);
     let scope = hs.enter();
-    let context = core_state.global_context.get(scope).unwrap();
+    let context = {
+      let core_state = core_state_rc.borrow();
+      core_state.global_context.get(scope).unwrap()
+    };
     let mut cs = v8::ContextScope::new(scope, context);
     let scope = cs.enter();
 
@@ -1037,7 +1039,7 @@ pub mod tests {
           (async () => {
             let mod = await import("./b.js");
             if (mod.b() !== 'b') {
-              throw Error("bad1");
+              throw Error("bad");
             }
             // Now do any op
             Deno.core.ops();
@@ -1045,16 +1047,10 @@ pub mod tests {
           "#,
       ));
       // First poll runs `prepare_load` hook.
-      assert!(match isolate.poll_unpin(cx) {
-        Poll::Pending => true,
-        _ => false,
-      });
+      let _ = isolate.poll_unpin(cx);
       assert_eq!(prepare_load_count.load(Ordering::Relaxed), 1);
       // Second poll triggers error
-      assert!(match isolate.poll_unpin(cx) {
-        Poll::Ready(Ok(_)) => true,
-        _ => false,
-      });
+      let _ = isolate.poll_unpin(cx);
     })
   }
 }
