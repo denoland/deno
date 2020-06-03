@@ -81,6 +81,7 @@ use deno_core::v8_set_flags;
 use deno_core::ErrBox;
 use deno_core::EsIsolate;
 use deno_core::ModuleSpecifier;
+use deno_lint;
 use flags::DenoSubcommand;
 use flags::Flags;
 use futures::future::FutureExt;
@@ -310,6 +311,36 @@ async fn install_command(
   worker.preload_module(&main_module).await?;
   installer::install(flags, &module_url, args, name, root, force)
     .map_err(ErrBox::from)
+}
+
+async fn lint_command(flags: Flags, files: Vec<String>) -> Result<(), ErrBox> {
+  let global_state = GlobalState::new(flags)?;
+
+  let mut error_counts = 0;
+
+  for file in files {
+    let specifier = ModuleSpecifier::resolve_url_or_path(&file)?;
+    let source_file = global_state.file_fetcher.fetch_source_file(&specifier, None, Permissions::allow_all()).await?;
+    let source_code = String::from_utf8(source_file.source_code)?;
+
+    let mut linter = deno_lint::linter::Linter::default();
+    let lint_rules = deno_lint::rules::get_all_rules();
+
+    let file_diagnostics = linter
+      .lint(file, source_code, lint_rules)?;
+
+    error_counts += file_diagnostics.len();
+    for d in file_diagnostics.iter() {
+      eprintln!("{}", d.to_pretty_string());
+    }
+  }
+
+  if error_counts > 0 {
+    eprintln!("Found {} problems", error_counts);
+    std::process::exit(1);
+  }
+
+  Ok(())
 }
 
 async fn cache_command(flags: Flags, files: Vec<String>) -> Result<(), ErrBox> {
@@ -646,6 +677,9 @@ pub fn main() {
     } => {
       install_command(flags, module_url, args, name, root, force).boxed_local()
     }
+    DenoSubcommand::Lint {
+      files,
+    } => lint_command(flags, files).boxed_local(),
     DenoSubcommand::Repl => run_repl(flags).boxed_local(),
     DenoSubcommand::Run { script } => run_command(flags, script).boxed_local(),
     DenoSubcommand::Test {
