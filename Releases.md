@@ -6,6 +6,22 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### 1.0.5 / 2020.06.03
+
+Changes in the CLI:
+
+- fix(fetch): Support 101 status code (#6059)
+- fix: REPL BorrowMutError panic (#6055)
+- fix: dynamic import BorrowMutError (#6065)
+- upgrade: dprint 0.19.1 and swc_ecma_parser 0.24.3 (#6068)
+- upgrade: rusty_v8 0.5.0 (#6070)
+
+Changes in std version 0.56.0:
+
+- feat(std/testing): benching progress callback (#5941)
+- feat(std/encoding): add base64url module (#5976)
+- fix(std/testing/asserts): Format values in assertArrayContains() (#6060)
+
 ### 1.0.4 / 2020.06.02
 
 Changes in the CLI:
