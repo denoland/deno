@@ -237,7 +237,6 @@ test({
     const benchingResults = await runBenchmarks(
       { skip: /skip/, silent: true },
       (progress) => {
-        // needs to be deep copied
         progressCallbacks.push(progress);
       }
     );
