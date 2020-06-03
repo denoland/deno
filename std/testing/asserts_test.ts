@@ -246,23 +246,11 @@ test("testingAssertFailWithWrongErrorClass", function (): void {
   );
 });
 
-test("testingAssertFailWithReturnTypes", function (): void {
+test("testingAssertFailWithReturnType", function (): void {
   const shouldFail = true;
-
   assertThrows(() => {
     if (shouldFail) throw new Error("failed");
-
     return "a string";
-  });
-  assertThrows(() => {
-    if (shouldFail) throw new Error("failed");
-
-    return 123;
-  });
-  assertThrows(() => {
-    if (shouldFail) throw new Error("failed");
-
-    return { a: true };
   });
 });
 
@@ -279,20 +267,11 @@ test("testingAssertFailAsync", function (): void {
   );
 });
 
-test("testingAssertFailAsyncWithReturnTypes", function (): void {
+test("testingAssertFailAsyncWithReturnType", function (): void {
   const shouldFail = true;
-
   assertThrowsAsync(() => {
     if (shouldFail) throw new Error("failed");
     return Promise.resolve("a Promise<string>");
-  });
-  assertThrowsAsync(() => {
-    if (shouldFail) throw new Error("failed");
-    return Promise.resolve(123);
-  });
-  assertThrowsAsync(() => {
-    if (shouldFail) throw new Error("failed");
-    return Promise.resolve({ a: true });
   });
 });
 
