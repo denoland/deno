@@ -336,8 +336,8 @@ async function runTests({
   const originalConsole = globalThis.console;
 
   if (disableLog) {
-    // @ts-expect-error
-    globalThis.console = disabledConsole;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).console = disabledConsole;
   }
 
   let endMsg: TestMessage["end"];

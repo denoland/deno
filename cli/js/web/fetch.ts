@@ -15,6 +15,9 @@ import { DOMExceptionImpl as DOMException } from "./dom_exception.ts";
 
 export const aborted = Symbol("aborted");
 
+const NULL_BODY_STATUS = [101, 204, 205, 304];
+const REDIRECT_STATUS = [301, 302, 303, 307, 308];
+
 const responseData = new WeakMap();
 export class Response extends Body.Body implements domTypes.Response {
   readonly type: ResponseType;
@@ -48,7 +51,7 @@ export class Response extends Body.Body implements domTypes.Response {
     }
 
     // null body status
-    if (body && [/* 101, */ 204, 205, 304].includes(status)) {
+    if (body && NULL_BODY_STATUS.includes(status)) {
       throw new TypeError("Response with null body status cannot have body");
     }
 
@@ -115,7 +118,7 @@ export class Response extends Body.Body implements domTypes.Response {
 
     this.url = url;
     this.statusText = statusText;
-    this.status = status;
+    this.status = extraInit.status || status;
     this.headers = headers;
     this.redirected = extraInit.redirected;
     this.type = type;
@@ -212,7 +215,7 @@ function sendFetchReq(
 }
 
 export async function fetch(
-  input: domTypes.Request | URL | string,
+  input: (domTypes.Request & { _bodySource?: unknown }) | URL | string,
   init?: domTypes.RequestInit
 ): Promise<Response> {
   let url: string;
@@ -310,7 +313,6 @@ export async function fetch(
     method = input.method;
     headers = input.headers;
 
-    //@ts-expect-error
     if (input._bodySource) {
       body = new DataView(await input.arrayBuffer());
     }
@@ -319,6 +321,7 @@ export async function fetch(
   const signal: AbortSignal | undefined | null = init ? init.signal : null;
 
   let responseBody: ReadableStream;
+  let responseInit: ResponseInit = {};
 
   const abortAlgorithm = () => {
     if (!signal || !signal.aborted) return;
@@ -343,12 +346,21 @@ export async function fetch(
 
     const fetchResponse = await sendFetchReq(url, method, headers, body);
 
-    responseBody = getReadableStream(fetchResponse.bodyRid);
+    if (
+      NULL_BODY_STATUS.includes(fetchResponse.status) ||
+      REDIRECT_STATUS.includes(fetchResponse.status)
+    ) {
+      // We won't use body of received response, so close it now
+      // otherwise it will be kept in resource table.
+      close(fetchResponse.bodyRid);
+      responseBody = null;
+    } else {
+      responseBody = getReadableStream(fetchResponse.bodyRid);
+      if (signal) abortAlgorithm();
+    }
 
-    if (signal) abortAlgorithm();
-
-    let responseInit: ResponseInit = {
-      status: fetchResponse.status,
+    responseInit = {
+      status: 200,
       statusText: fetchResponse.statusText,
       headers: fetchResponse.headers,
     };
@@ -356,15 +368,13 @@ export async function fetch(
     responseData.set(responseInit, {
       redirected,
       rid: fetchResponse.bodyRid,
+      status: fetchResponse.status,
       url,
     });
 
     const response = new Response(responseBody, responseInit);
 
-    if ([301, 302, 303, 307, 308].includes(fetchResponse.status)) {
-      // We won't use body of received response, so close it now
-      // otherwise it will be kept in resource table.
-      close(fetchResponse.bodyRid);
+    if (REDIRECT_STATUS.includes(fetchResponse.status)) {
       // We're in a redirect status
       switch ((init && init.redirect) || "follow") {
         case "error":
@@ -407,6 +417,12 @@ export async function fetch(
       return response;
     }
   }
-  // Return a network error due to too many redirections
-  throw notImplemented();
+
+  responseData.set(responseInit, {
+    type: "error",
+    redirected: false,
+    url: "",
+  });
+
+  return new Response(null, responseInit);
 }

@@ -364,7 +364,7 @@ declare namespace Deno {
    *
    * ```ts
    * let f = Deno.openSync("/etc/passwd");
-   * for (const chunk of Deno.iterSync(reader)) {
+   * for (const chunk of Deno.iterSync(f)) {
    *   console.log(chunk);
    * }
    * f.close();
@@ -509,7 +509,7 @@ declare namespace Deno {
    * ```ts
    * const encoder = new TextEncoder();
    * const data = encoder.encode("Hello world");
-   * const file = Deno.openSync("/foo/bar.txt");
+   * const file = Deno.openSync("/foo/bar.txt", {write: true});
    * const bytesWritten = Deno.writeSync(file.rid, data); // 11
    * Deno.close(file.rid);
    * ```
@@ -528,7 +528,7 @@ declare namespace Deno {
    * ```ts
    * const encoder = new TextEncoder();
    * const data = encoder.encode("Hello world");
-   * const file = await Deno.open("/foo/bar.txt");
+   * const file = await Deno.open("/foo/bar.txt", { write: true });
    * const bytesWritten = await Deno.write(file.rid, data); // 11
    * Deno.close(file.rid);
    * ```
@@ -897,7 +897,11 @@ declare namespace Deno {
 
   export interface MakeTempOptions {
     /** Directory where the temporary directory should be created (defaults to
-     * the env variable TMPDIR, or the system's default, usually /tmp). */
+     * the env variable TMPDIR, or the system's default, usually /tmp).
+     *
+     * Note that if the passed `dir` is relative, the path returned by
+     * makeTempFile() and makeTempDir() will also be relative. Be mindful of
+     * this when changing working directory. */
     dir?: string;
     /** String that should precede the random portion of the temporary
      * directory's name. */
@@ -1253,7 +1257,9 @@ declare namespace Deno {
    * console.log(realSymLinkPath);  // outputs "/home/alice/file.txt"
    * ```
    *
-   * Requires `allow-read` permission. */
+   * Requires `allow-read` permission for the target path.
+   * Also requires `allow-read` permission for the CWD if the target path is
+   * relative.*/
   export function realPathSync(path: string): string;
 
   /** Resolves to the absolute normalized path, with symbolic links resolved.
@@ -1267,7 +1273,9 @@ declare namespace Deno {
    * console.log(realSymLinkPath);  // outputs "/home/alice/file.txt"
    * ```
    *
-   * Requires `allow-read` permission. */
+   * Requires `allow-read` permission for the target path.
+   * Also requires `allow-read` permission for the CWD if the target path is
+   * relative.*/
   export function realPath(path: string): Promise<string>;
 
   export interface DirEntry {
@@ -1358,6 +1366,7 @@ declare namespace Deno {
    * points to.
    *
    * ```ts
+   * import { assert } from "https://deno.land/std/testing/asserts.ts";
    * const fileInfo = await Deno.lstat("hello.txt");
    * assert(fileInfo.isFile);
    * ```
@@ -1381,6 +1390,7 @@ declare namespace Deno {
    * follow symlinks.
    *
    * ```ts
+   * import { assert } from "https://deno.land/std/testing/asserts.ts";
    * const fileInfo = await Deno.stat("hello.txt");
    * assert(fileInfo.isFile);
    * ```
@@ -1392,6 +1402,7 @@ declare namespace Deno {
    * always follow symlinks.
    *
    * ```ts
+   * import { assert } from "https://deno.land/std/testing/asserts.ts";
    * const fileInfo = Deno.statSync("hello.txt");
    * assert(fileInfo.isFile);
    * ```

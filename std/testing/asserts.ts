@@ -2,7 +2,7 @@
 /** This module is browser compatible. Do not rely on good formatting of values
  * for AssertionError messages in browsers. */
 
-import { red, green, white, gray, bold } from "../fmt/colors.ts";
+import { red, green, white, gray, bold, stripColor } from "../fmt/colors.ts";
 import diff, { DiffType, DiffResult } from "./diff.ts";
 
 const CAN_NOT_DISPLAY = "[Cannot display]";
@@ -289,9 +289,9 @@ export function assertArrayContains(
     return;
   }
   if (!msg) {
-    msg = `actual: "${actual}" expected to contain: "${expected}"`;
-    msg += "\n";
-    msg += `missing: ${missing}`;
+    msg = `actual: "${format(actual)}" expected to contain: "${format(
+      expected
+    )}"\nmissing: ${format(missing)}`;
   }
   throw new AssertionError(msg);
 }
@@ -342,7 +342,10 @@ export function assertThrows(
       }"${msg ? `: ${msg}` : "."}`;
       throw new AssertionError(msg);
     }
-    if (msgIncludes && !e.message.includes(msgIncludes)) {
+    if (
+      msgIncludes &&
+      !stripColor(e.message).includes(stripColor(msgIncludes))
+    ) {
       msg = `Expected error message to include "${msgIncludes}", but got "${
         e.message
       }"${msg ? `: ${msg}` : "."}`;
@@ -375,7 +378,10 @@ export async function assertThrowsAsync(
       }"${msg ? `: ${msg}` : "."}`;
       throw new AssertionError(msg);
     }
-    if (msgIncludes && !e.message.includes(msgIncludes)) {
+    if (
+      msgIncludes &&
+      !stripColor(e.message).includes(stripColor(msgIncludes))
+    ) {
       msg = `Expected error message to include "${msgIncludes}", but got "${
         e.message
       }"${msg ? `: ${msg}` : "."}`;

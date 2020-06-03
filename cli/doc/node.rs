@@ -32,7 +32,7 @@ pub struct ParamDef {
   pub ts_type: Option<super::ts_type::TsTypeDef>,
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Clone, PartialEq)]
 pub struct Location {
   pub filename: String,
   pub line: usize,

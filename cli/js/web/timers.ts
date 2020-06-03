@@ -234,23 +234,23 @@ function setTimer(
 }
 
 export function setTimeout(
+  this: unknown,
   cb: (...args: Args) => void,
   delay = 0,
   ...args: Args
 ): number {
   checkBigInt(delay);
-  // @ts-expect-error
   checkThis(this);
   return setTimer(cb, delay, args, false);
 }
 
 export function setInterval(
+  this: unknown,
   cb: (...args: Args) => void,
   delay = 0,
   ...args: Args
 ): number {
   checkBigInt(delay);
-  // @ts-expect-error
   checkThis(this);
   return setTimer(cb, delay, args, true);
 }
