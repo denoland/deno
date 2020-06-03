@@ -239,7 +239,8 @@ pub fn boxed_slice_to_uint8array<'sc>(
   let backing_store = v8::ArrayBuffer::new_backing_store_from_boxed_slice(buf);
   let backing_store_shared = backing_store.make_shared();
   let ab = v8::ArrayBuffer::with_backing_store(scope, &backing_store_shared);
-  v8::Uint8Array::new(ab, 0, buf_len).expect("Failed to create UintArray8")
+  v8::Uint8Array::new(scope, ab, 0, buf_len)
+    .expect("Failed to create UintArray8")
 }
 
 pub extern "C" fn host_import_module_dynamically_callback(
@@ -442,7 +443,7 @@ fn send(
   let control_backing_store: v8::SharedRef<v8::BackingStore>;
   let control = match v8::Local::<v8::ArrayBufferView>::try_from(args.get(1)) {
     Ok(view) => unsafe {
-      control_backing_store = view.buffer().unwrap().get_backing_store();
+      control_backing_store = view.buffer(scope).unwrap().get_backing_store();
       get_backing_store_slice(
         &control_backing_store,
         view.byte_offset(),
@@ -458,7 +459,7 @@ fn send(
 
   let mut buf_iter = (2..args.length()).map(|idx| {
     v8::Local::<v8::ArrayBufferView>::try_from(args.get(idx))
-      .map(ZeroCopyBuf::new)
+      .map(|view| ZeroCopyBuf::new(scope, view))
       .map_err(|err| {
         let msg = format!("Invalid argument at position {}: {}", idx, err);
         let msg = v8::String::new(scope, &msg).unwrap();
@@ -575,7 +576,7 @@ fn eval_context(
 
   if maybe_script.is_none() {
     assert!(tc.has_caught());
-    let exception = tc.exception().unwrap();
+    let exception = tc.exception(scope).unwrap();
 
     output.set(
       context,
@@ -616,7 +617,7 @@ fn eval_context(
 
   if result.is_none() {
     assert!(tc.has_caught());
-    let exception = tc.exception().unwrap();
+    let exception = tc.exception(scope).unwrap();
 
     output.set(
       context,
@@ -701,14 +702,15 @@ fn encode(
 
   let buf = if text_bytes.is_empty() {
     let ab = v8::ArrayBuffer::new(scope, 0);
-    v8::Uint8Array::new(ab, 0, 0).expect("Failed to create UintArray8")
+    v8::Uint8Array::new(scope, ab, 0, 0).expect("Failed to create UintArray8")
   } else {
     let buf_len = text_bytes.len();
     let backing_store =
       v8::ArrayBuffer::new_backing_store_from_boxed_slice(text_bytes);
     let backing_store_shared = backing_store.make_shared();
     let ab = v8::ArrayBuffer::with_backing_store(scope, &backing_store_shared);
-    v8::Uint8Array::new(ab, 0, buf_len).expect("Failed to create UintArray8")
+    v8::Uint8Array::new(scope, ab, 0, buf_len)
+      .expect("Failed to create UintArray8")
   };
 
   rv.set(buf.into())
@@ -729,7 +731,7 @@ fn decode(
     }
   };
 
-  let backing_store = view.buffer().unwrap().get_backing_store();
+  let backing_store = view.buffer(scope).unwrap().get_backing_store();
   let buf = unsafe {
     get_backing_store_slice(
       &backing_store,
