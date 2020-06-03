@@ -844,20 +844,7 @@ pub mod tests {
   }
 
   #[test]
-  fn test_dispatch_one_zero_copy_buf() {
-    let (mut isolate, dispatch_count) = setup(Mode::AsyncZeroCopy(1));
-    js_check(isolate.execute(
-      "filename.js",
-      r#"
-        let zero_copy = new Uint8Array([0]);
-        Deno.core.send(1, zero_copy);
-        "#,
-    ));
-    assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
-  }
-
-  #[test]
-  fn test_dispatch_two_zero_copy_bufs() {
+  fn test_dispatch_stack_zero_copy_bufs() {
     let (mut isolate, dispatch_count) = setup(Mode::AsyncZeroCopy(2));
     js_check(isolate.execute(
       "filename.js",
@@ -865,6 +852,23 @@ pub mod tests {
         let zero_copy_a = new Uint8Array([0]);
         let zero_copy_b = new Uint8Array([1]);
         Deno.core.send(1, zero_copy_a, zero_copy_b);
+        "#,
+    ));
+    assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
+  }
+
+  #[test]
+  fn test_dispatch_heap_zero_copy_bufs() {
+    let (mut isolate, dispatch_count) = setup(Mode::AsyncZeroCopy(5));
+    js_check(isolate.execute(
+      "filename.js",
+      r#"
+        let zero_copy_a = new Uint8Array([0]);
+        let zero_copy_b = new Uint8Array([1]);
+        let zero_copy_c = new Uint8Array([2]);
+        let zero_copy_d = new Uint8Array([3]);
+        let zero_copy_e = new Uint8Array([4]);
+        Deno.core.send(1, zero_copy_a, zero_copy_b, zero_copy_c, zero_copy_d, zero_copy_e);
         "#,
     ));
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
