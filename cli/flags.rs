@@ -2450,6 +2450,37 @@ mod tests {
   }
 
   #[test]
+  fn allow_net_whitelist_with_ipv6_address() {
+    let r = flags_from_vec_safe(svec![
+      "deno",
+      "run",
+      "--allow-net=deno.land,deno.land:80,::,127.0.0.1,[::1],1.2.3.4:5678,:5678,[::1]:8080",
+      "script.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run {
+          script: "script.ts".to_string(),
+        },
+        net_whitelist: svec![
+          "deno.land",
+          "deno.land:80",
+          "::",
+          "127.0.0.1",
+          "[::1]",
+          "1.2.3.4:5678",
+          "0.0.0.0:5678",
+          "127.0.0.1:5678",
+          "localhost:5678",
+          "[::1]:8080"
+        ],
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
   fn lock_write() {
     let r = flags_from_vec_safe(svec![
       "deno",
