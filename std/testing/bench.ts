@@ -6,6 +6,7 @@ const { noColor } = Deno;
 interface BenchmarkClock {
   start: number;
   stop: number;
+  for?: string;
 }
 
 /** Provides methods for starting and stopping a benchmark clock. */
@@ -108,22 +109,22 @@ function verifyOr1Run(runs?: number): number {
   return runs && runs >= 1 && runs !== Infinity ? Math.floor(runs) : 1;
 }
 
-function assertTiming(clock: BenchmarkClock, benchmarkName: string): void {
+function assertTiming(clock: BenchmarkClock): void {
   // NaN indicates that a benchmark has not been timed properly
   if (!clock.stop) {
     throw new BenchmarkRunError(
-      `Running benchmarks FAILED during benchmark named [${benchmarkName}]. The benchmark timer's stop method must be called`,
-      benchmarkName
+      `Running benchmarks FAILED during benchmark named [${clock.for}]. The benchmark timer's stop method must be called`,
+      clock.for
     );
   } else if (!clock.start) {
     throw new BenchmarkRunError(
-      `Running benchmarks FAILED during benchmark named [${benchmarkName}]. The benchmark timer's start method must be called`,
-      benchmarkName
+      `Running benchmarks FAILED during benchmark named [${clock.for}]. The benchmark timer's start method must be called`,
+      clock.for
     );
   } else if (clock.start > clock.stop) {
     throw new BenchmarkRunError(
-      `Running benchmarks FAILED during benchmark named [${benchmarkName}]. The benchmark timer's start method must be called before its stop method`,
-      benchmarkName
+      `Running benchmarks FAILED during benchmark named [${clock.for}]. The benchmark timer's start method must be called before its stop method`,
+      clock.for
     );
   }
 }
@@ -134,6 +135,12 @@ function createBenchmarkTimer(clock: BenchmarkClock): BenchmarkTimer {
       clock.start = performance.now();
     },
     stop(): void {
+      if (isNaN(clock.start)) {
+        throw new BenchmarkRunError(
+          `Running benchmarks FAILED during benchmark named [${clock.for}]. The benchmark timer's start method must be called before its stop method`,
+          clock.for
+        );
+      }
       clock.stop = performance.now();
     },
   };
@@ -223,6 +230,9 @@ export async function runBenchmarks(
       console.groupCollapsed(`benchmark ${name} ... `);
     }
 
+    // Provide the benchmark name for clock assertions
+    clock.for = name;
+
     // Remove benchmark from queued
     const queueIndex = progress.queued.findIndex(
       (queued) => queued.name === name && queued.runsCount === runs
@@ -242,7 +252,7 @@ export async function runBenchmarks(
         // b is a benchmark timer interfacing an unset (NaN) benchmark clock
         await func(b);
         // Making sure the benchmark was started/stopped properly
-        assertTiming(clock, name);
+        assertTiming(clock);
         // Calculate length of run
         const measuredMs = clock.stop - clock.start;
 
@@ -263,7 +273,7 @@ export async function runBenchmarks(
           // b is a benchmark timer interfacing an unset (NaN) benchmark clock
           await func(b);
           // Making sure the benchmark was started/stopped properly
-          assertTiming(clock, name);
+          assertTiming(clock);
 
           // Calculate length of run
           const measuredMs = clock.stop - clock.start;
@@ -319,6 +329,7 @@ export async function runBenchmarks(
 
     // Resetting the benchmark clock
     clock.start = clock.stop = NaN;
+    delete clock.for;
   }
 
   // Indicate finished running
