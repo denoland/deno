@@ -443,6 +443,7 @@ dependencies = [
  "bytes 0.5.4",
  "clap",
  "deno_core",
+ "deno_lint",
  "deno_typescript",
  "dirs",
  "dissimilar",
@@ -501,6 +502,24 @@ dependencies = [
  "serde_json",
  "tokio",
  "url 2.1.1",
+]
+
+[[package]]
+name = "deno_lint"
+version = "0.1.3"
+dependencies = [
+ "clap",
+ "lazy_static",
+ "regex",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "swc_atoms",
+ "swc_common",
+ "swc_ecma_ast",
+ "swc_ecma_parser",
+ "swc_ecma_visit",
+ "termcolor",
 ]
 
 [[package]]
