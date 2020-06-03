@@ -1,14 +1,16 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { unitTest, assert } from "./test_util.ts";
+import { sep } from "../../../std/path/mod.ts";
 
 unitTest({ perms: { read: true } }, function realPathSyncSuccess(): void {
-  const incompletePath = "cli/tests/fixture.json";
+  const incompletePath = `cli${sep}tests${sep}fixture.json`;
   const realPath = Deno.realPathSync(incompletePath);
   if (Deno.build.os !== "windows") {
     assert(realPath.startsWith("/"));
   } else {
     assert(/^[A-Z]/.test(realPath));
   }
+
   assert(realPath.endsWith(incompletePath));
 });
 
@@ -54,7 +56,7 @@ unitTest({ perms: { read: true } }, function realPathSyncNotFound(): void {
 unitTest({ perms: { read: true } }, async function realPathSuccess(): Promise<
   void
 > {
-  const incompletePath = "cli/tests/fixture.json";
+  const incompletePath = `cli${sep}tests${sep}fixture.json`;
   const realPath = await Deno.realPath(incompletePath);
   if (Deno.build.os !== "windows") {
     assert(realPath.startsWith("/"));
