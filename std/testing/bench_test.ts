@@ -263,6 +263,13 @@ test({
     });
     assertEquals(progress.results, []);
 
+    // Assert running result of bench "single"
+    progress = progressCallbacks[pc++];
+    assertEquals(progress.state, ProgressState.BenchPartialResult);
+    assertEquals(progress.queued.length, 1);
+    assertEquals(progress.running!.measuredRunsMs.length, 1);
+    assertEquals(progress.results.length, 0);
+
     // Assert result of bench "single"
     progress = progressCallbacks[pc++];
     assertEquals(progress.state, ProgressState.BenchResult);
