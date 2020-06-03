@@ -832,7 +832,7 @@ unitTest(
     // Close resource so the test don't fail
     let isOpen = false;
     for (const [key, name] of Object.entries(Deno.resources())) {
-      const rid: number = Number(key);
+      const rid = Number(key);
       if (name === "httpBody" && !resources[rid]) {
         isOpen = true;
         Deno.close(rid);
@@ -853,7 +853,7 @@ unitTest(
       signal: controller.signal,
     });
 
-    // After I abort the httpBody resource must be closed
+    // After fetch is aborted the httpBody resource must be closed
     // The test should not fail with: Test case is leaking resources
     controller.abort();
   }
@@ -868,28 +868,6 @@ unitTest(
     controller.abort();
 
     try {
-      await fetch("http://localhost:4545/cli/tests/fixture.json", {
-        signal: controller.signal,
-      });
-    } catch (e) {
-      assert(e instanceof DOMException);
-    }
-  }
-);
-
-unitTest(
-  { perms: { net: true } },
-  async function fetchAbortControllerAbortedBeforeFetchFinishes(): Promise<
-    void
-  > {
-    const controller = new AbortController();
-
-    queueMicrotask(() => controller.abort());
-
-    try {
-      // aborted before fetch finishes
-      // TODO(marcosc90): This should cancel the HTTP request too
-      // Once that's implemented check if that's the case
       await fetch("http://localhost:4545/cli/tests/fixture.json", {
         signal: controller.signal,
       });
@@ -935,11 +913,41 @@ unitTest(
       try {
         // @ts-expect-error
         await res[method]();
-        fail("Reading body after request was aborted should throw AbortError.");
+        fail(
+          "Reading body after request was aborted. Should throw AbortError."
+        );
       } catch (e) {
         assertEquals(e.name, "AbortError");
         assert(e instanceof DOMException);
       }
     }
+  }
+);
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchAbortControllerAbortedTimer(): Promise<void> {
+    const controller = new AbortController();
+    const pre = Deno.metrics();
+
+    setTimeout(() => controller.abort(), 1000); // abort after 1 second
+
+    try {
+      // aborted before fetch finishes
+      await fetch("http://localhost:4545/sleep", {
+        headers: new Headers([["x-sleep", "2"]]),
+        signal: controller.signal,
+      });
+      fail("Request was aborted. Should throw AbortError.");
+    } catch (e) {
+      assert(e instanceof DOMException);
+    }
+
+    const post = Deno.metrics();
+    assert(post.opsDispatchedAsync - pre.opsDispatchedAsync !== 0);
+
+    // Wait to make sure all async ops (fetch) are finished by now
+    // TODO(marcosc90): once fetch can be aborted this should be removed
+    await new Promise((resolve) => setTimeout(resolve, 1500));
   }
 );

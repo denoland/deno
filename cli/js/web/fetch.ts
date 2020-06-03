@@ -187,7 +187,7 @@ function getReadableStream(rid: number): ReadableStream {
         close(rid);
       }
     },
-    cancel(reason): void {
+    cancel(): void {
       // When reader.cancel() is called
       close(rid);
     },
@@ -198,8 +198,13 @@ function sendFetchReq(
   url: string,
   method: string | null,
   headers: Headers | null,
-  body: ArrayBufferView | undefined
+  body: ArrayBufferView | undefined,
+  signal?: AbortSignal | null
 ): Promise<FetchResponse> {
+  if (signal && signal.aborted) {
+    throw new DOMException("The operation was aborted", "AbortError");
+  }
+
   let headerArray: Array<[string, string]> = [];
   if (headers) {
     headerArray = Array.from(headers.entries());
@@ -211,7 +216,25 @@ function sendFetchReq(
     headers: headerArray,
   };
 
-  return opFetch(args, body);
+  return new Promise((resolve, reject) => {
+    // Wrapped in a Promise because there's no API to abort opFetch
+    // Once it's possible to abort the Promise wrapper can be removed
+    opFetch(args, body)
+      .then((response) => {
+        if (signal && signal.aborted) close(response.bodyRid);
+        resolve(response);
+      })
+      .catch(reject);
+
+    if (signal) {
+      const abortRequest = (): void => {
+        // TODO: cancel request, close socket...
+        reject(new DOMException("The operation was aborted", "AbortError"));
+        signal.removeEventListener("abort", abortRequest);
+      };
+      signal.addEventListener("abort", abortRequest);
+    }
+  });
 }
 
 export async function fetch(
@@ -320,10 +343,10 @@ export async function fetch(
 
   const signal: AbortSignal | undefined | null = init ? init.signal : null;
 
-  let responseBody: ReadableStream;
+  let responseBody: ReadableStream | null;
   let responseInit: ResponseInit = {};
 
-  const abortAlgorithm = () => {
+  const abortAlgorithm = (): void => {
     if (!signal || !signal.aborted) return;
     // TODO: cancel sendFetchReq if it's still pending when there's an API for that
     signal.removeEventListener("abort", abortAlgorithm);
@@ -340,11 +363,13 @@ export async function fetch(
   }
 
   while (remRedirectCount) {
-    if (signal && signal.aborted) {
-      throw new DOMException("The operation was aborted", "AbortError");
-    }
-
-    const fetchResponse = await sendFetchReq(url, method, headers, body);
+    const fetchResponse = await sendFetchReq(
+      url,
+      method,
+      headers,
+      body,
+      signal
+    );
 
     if (
       NULL_BODY_STATUS.includes(fetchResponse.status) ||

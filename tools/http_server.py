@@ -189,6 +189,14 @@ class ContentTypeHandler(QuietSimpleHTTPRequestHandler):
                       '\r\n--boundary--\r\n'
                       'Epilogue'))
             return
+        if "sleep" in self.path:
+            seconds = int(self.headers.getheader('x-sleep', "1"))
+            sleep(seconds)
+            self.protocol_version = 'HTTP/1.1'
+            self.send_response(200, 'OK')
+            self.end_headers()
+            self.wfile.write(bytes('ok'))
+            return
         return SimpleHTTPServer.SimpleHTTPRequestHandler.do_GET(self)
 
     def do_POST(self):
