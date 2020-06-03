@@ -99,6 +99,7 @@ pub struct Flags {
   pub lock_write: bool,
   pub log_level: Option<Level>,
   pub net_whitelist: Vec<String>,
+  pub no_format: bool,
   pub no_prompts: bool,
   pub no_remote: bool,
   pub read_whitelist: Vec<PathBuf>,
@@ -370,6 +371,7 @@ fn bundle_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   config_arg_parse(flags, matches);
   importmap_arg_parse(flags, matches);
   unstable_arg_parse(flags, matches);
+  no_format_arg_parse(flags, matches);
 
   let source_file = matches.value_of("source_file").unwrap().to_string();
 
@@ -696,6 +698,7 @@ fn bundle_subcommand<'a, 'b>() -> App<'a, 'b> {
     .arg(importmap_arg())
     .arg(unstable_arg())
     .arg(config_arg())
+    .arg(no_format_arg())
     .about("Bundle module and dependencies into single file")
     .long_about(
       "Output a single JavaScript file with all dependencies.
@@ -1210,6 +1213,18 @@ fn v8_flags_arg_parse(flags: &mut Flags, matches: &ArgMatches) {
   if let Some(v8_flags) = matches.values_of("v8-flags") {
     let s: Vec<String> = v8_flags.map(String::from).collect();
     flags.v8_flags = Some(s);
+  }
+}
+
+fn no_format_arg<'a, 'b>() -> Arg<'a, 'b> {
+  Arg::with_name("no-format")
+    .long("no-format")
+    .help("Do not format bundle output")
+}
+
+fn no_format_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  if matches.is_present("no-format") {
+    flags.no_format = true;
   }
 }
 

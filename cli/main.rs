@@ -402,8 +402,11 @@ async fn bundle_command(
   .await?;
 
   debug!(">>>>> bundle END");
-
-  let output_string = fmt::format_text(&output)?;
+  let output_string = if global_state.flags.no_format {
+    output
+  } else {
+    fmt::format_text(&output)?
+  };
 
   if let Some(out_file_) = out_file.as_ref() {
     info!("Emitting bundle to {:?}", out_file_);

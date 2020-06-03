@@ -1396,6 +1396,11 @@ itest!(bundle {
   output: "bundle.test.out",
 });
 
+itest!(bundle_no_format {
+  args: "bundle subdir/mod1.ts --no-format",
+  output: "bundle_no_format.test.out",
+});
+
 itest!(fmt_stdin {
   args: "fmt -",
   input: Some("const a = 1\n"),
