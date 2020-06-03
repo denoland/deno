@@ -179,13 +179,6 @@ fn format_stdin(check: bool) -> Result<(), ErrBox> {
   Ok(())
 }
 
-/// Formats the given source text
-pub fn format_text(source: &str) -> Result<String, ErrBox> {
-  dprint::Formatter::new(get_config())
-    .format_text(&PathBuf::from("_tmp.ts"), &source)
-    .map_err(|e| OpError::other(e).into())
-}
-
 fn files_str(len: usize) -> &'static str {
   if len == 1 {
     "file"
