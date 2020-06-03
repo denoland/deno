@@ -925,57 +925,57 @@ pub mod tests {
   }
   */
 
+  #[derive(Clone, Default)]
+  struct DynImportOkLoader {
+    pub prepare_load_count: Arc<AtomicUsize>,
+    pub resolve_count: Arc<AtomicUsize>,
+    pub load_count: Arc<AtomicUsize>,
+  }
+
+  impl ModuleLoader for DynImportOkLoader {
+    fn resolve(
+      &self,
+      specifier: &str,
+      referrer: &str,
+      _is_main: bool,
+    ) -> Result<ModuleSpecifier, ErrBox> {
+      let c = self.resolve_count.fetch_add(1, Ordering::Relaxed);
+      assert!(c < 4);
+      assert_eq!(specifier, "./b.js");
+      assert_eq!(referrer, "file:///dyn_import3.js");
+      let s = ModuleSpecifier::resolve_import(specifier, referrer).unwrap();
+      Ok(s)
+    }
+
+    fn load(
+      &self,
+      specifier: &ModuleSpecifier,
+      _maybe_referrer: Option<ModuleSpecifier>,
+      _is_dyn_import: bool,
+    ) -> Pin<Box<ModuleSourceFuture>> {
+      self.load_count.fetch_add(1, Ordering::Relaxed);
+      let info = ModuleSource {
+        module_url_specified: specifier.to_string(),
+        module_url_found: specifier.to_string(),
+        code: "export function b() { return 'b' }".to_owned(),
+      };
+      async move { Ok(info) }.boxed()
+    }
+
+    fn prepare_load(
+      &self,
+      _load_id: ModuleLoadId,
+      _module_specifier: &ModuleSpecifier,
+      _maybe_referrer: Option<String>,
+      _is_dyn_import: bool,
+    ) -> Pin<Box<dyn Future<Output = Result<(), ErrBox>>>> {
+      self.prepare_load_count.fetch_add(1, Ordering::Relaxed);
+      async { Ok(()) }.boxed_local()
+    }
+  }
+
   #[test]
   fn dyn_import_ok() {
-    #[derive(Clone, Default)]
-    struct DynImportOkLoader {
-      pub prepare_load_count: Arc<AtomicUsize>,
-      pub resolve_count: Arc<AtomicUsize>,
-      pub load_count: Arc<AtomicUsize>,
-    }
-
-    impl ModuleLoader for DynImportOkLoader {
-      fn resolve(
-        &self,
-        specifier: &str,
-        referrer: &str,
-        _is_main: bool,
-      ) -> Result<ModuleSpecifier, ErrBox> {
-        let c = self.resolve_count.fetch_add(1, Ordering::Relaxed);
-        assert!(c < 4);
-        assert_eq!(specifier, "./b.js");
-        assert_eq!(referrer, "file:///dyn_import3.js");
-        let s = ModuleSpecifier::resolve_import(specifier, referrer).unwrap();
-        Ok(s)
-      }
-
-      fn load(
-        &self,
-        specifier: &ModuleSpecifier,
-        _maybe_referrer: Option<ModuleSpecifier>,
-        _is_dyn_import: bool,
-      ) -> Pin<Box<ModuleSourceFuture>> {
-        self.load_count.fetch_add(1, Ordering::Relaxed);
-        let info = ModuleSource {
-          module_url_specified: specifier.to_string(),
-          module_url_found: specifier.to_string(),
-          code: "export function b() { return 'b' }".to_owned(),
-        };
-        async move { Ok(info) }.boxed()
-      }
-
-      fn prepare_load(
-        &self,
-        _load_id: ModuleLoadId,
-        _module_specifier: &ModuleSpecifier,
-        _maybe_referrer: Option<String>,
-        _is_dyn_import: bool,
-      ) -> Pin<Box<dyn Future<Output = Result<(), ErrBox>>>> {
-        self.prepare_load_count.fetch_add(1, Ordering::Relaxed);
-        async { Ok(()) }.boxed_local()
-      }
-    }
-
     run_in_task(|cx| {
       let loader = Rc::new(DynImportOkLoader::default());
       let prepare_load_count = loader.prepare_load_count.clone();
@@ -1021,6 +1021,40 @@ pub mod tests {
       });
       assert_eq!(resolve_count.load(Ordering::Relaxed), 4);
       assert_eq!(load_count.load(Ordering::Relaxed), 2);
+    })
+  }
+
+  #[test]
+  fn dyn_import_borrow_mut_error() {
+    // https://github.com/denoland/deno/issues/6054
+    run_in_task(|cx| {
+      let loader = Rc::new(DynImportOkLoader::default());
+      let prepare_load_count = loader.prepare_load_count.clone();
+      let mut isolate = EsIsolate::new(loader, StartupData::None, false);
+      js_check(isolate.execute(
+        "file:///dyn_import3.js",
+        r#"
+          (async () => {
+            let mod = await import("./b.js");
+            if (mod.b() !== 'b') {
+              throw Error("bad1");
+            }
+            // Now do any op
+            Deno.core.ops();
+          })();
+          "#,
+      ));
+      // First poll runs `prepare_load` hook.
+      assert!(match isolate.poll_unpin(cx) {
+        Poll::Pending => true,
+        _ => false,
+      });
+      assert_eq!(prepare_load_count.load(Ordering::Relaxed), 1);
+      // Second poll triggers error
+      assert!(match isolate.poll_unpin(cx) {
+        Poll::Ready(Ok(_)) => true,
+        _ => false,
+      });
     })
   }
 }
