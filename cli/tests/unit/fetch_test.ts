@@ -767,7 +767,7 @@ unitTest(
 unitTest(
   { perms: { net: true } },
   async function fetchNullBodyStatus(): Promise<void> {
-    const nullBodyStatus = [204, 205, 304];
+    const nullBodyStatus = [101, 204, 205, 304];
 
     for (const status of nullBodyStatus) {
       const headers = new Headers([["x-status", String(status)]]);
@@ -796,6 +796,26 @@ unitTest(
         assertEquals(
           e.message,
           "Response with null body status cannot have body"
+        );
+      }
+    }
+  }
+);
+
+unitTest(
+  { perms: { net: true } },
+  function fetchResponseConstructorInvalidStatus(): void {
+    const invalidStatus = [101, 600, 199];
+
+    for (const status of invalidStatus) {
+      try {
+        new Response("deno", { status });
+        fail("Invalid status");
+      } catch (e) {
+        assert(e instanceof RangeError);
+        assertEquals(
+          e.message,
+          `The status provided (${status}) is outside the range [200, 599]`
         );
       }
     }

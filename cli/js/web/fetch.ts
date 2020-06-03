@@ -12,7 +12,7 @@ import { DomFileImpl } from "./dom_file.ts";
 import { getHeaderValueParams } from "./util.ts";
 import { ReadableStreamImpl } from "./streams/readable_stream.ts";
 
-const NULL_BODY_STATUS = [/* 101, */ 204, 205, 304];
+const NULL_BODY_STATUS = [101, 204, 205, 304];
 const REDIRECT_STATUS = [301, 302, 303, 307, 308];
 
 const responseData = new WeakMap();
@@ -115,7 +115,7 @@ export class Response extends Body.Body implements domTypes.Response {
 
     this.url = url;
     this.statusText = statusText;
-    this.status = status;
+    this.status = extraInit.status || status;
     this.headers = headers;
     this.redirected = extraInit.redirected;
     this.type = type;
@@ -329,7 +329,7 @@ export async function fetch(
     }
 
     responseInit = {
-      status: fetchResponse.status,
+      status: 200,
       statusText: fetchResponse.statusText,
       headers: fetchResponse.headers,
     };
@@ -337,6 +337,7 @@ export async function fetch(
     responseData.set(responseInit, {
       redirected,
       rid: fetchResponse.bodyRid,
+      status: fetchResponse.status,
       url,
     });
 
