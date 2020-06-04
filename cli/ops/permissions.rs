@@ -31,7 +31,7 @@ struct PermissionArgs {
 pub fn op_query_permission(
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let args: PermissionArgs = serde_json::from_value(args)?;
   let state = state.borrow();
@@ -47,7 +47,7 @@ pub fn op_query_permission(
 pub fn op_revoke_permission(
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let args: PermissionArgs = serde_json::from_value(args)?;
   let mut state = state.borrow_mut();
@@ -74,7 +74,7 @@ pub fn op_revoke_permission(
 pub fn op_request_permission(
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let args: PermissionArgs = serde_json::from_value(args)?;
   let mut state = state.borrow_mut();

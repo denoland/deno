@@ -17,7 +17,7 @@ pub fn init(i: &mut CoreIsolate, s: &State) {
 fn op_start(
   state: &State,
   _args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let state = state.borrow();
   let gs = &state.global_state;
@@ -42,7 +42,7 @@ fn op_start(
 fn op_metrics(
   state: &State,
   _args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let state = state.borrow();
   let m = &state.metrics;

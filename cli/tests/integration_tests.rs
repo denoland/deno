@@ -746,6 +746,18 @@ fn repl_test_console_log() {
 }
 
 #[test]
+fn repl_cwd() {
+  let (_out, err) = util::run_and_collect_output(
+    true,
+    "repl",
+    Some(vec!["Deno.cwd()"]),
+    Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+    false,
+  );
+  assert!(err.is_empty());
+}
+
+#[test]
 fn repl_test_eof() {
   let (out, err) = util::run_and_collect_output(
     true,
@@ -1825,6 +1837,21 @@ itest!(fix_js_import_js {
 itest!(fix_js_imports {
   args: "run --quiet --reload fix_js_imports.ts",
   output: "fix_js_imports.ts.out",
+});
+
+itest!(es_private_fields {
+  args: "run --quiet --reload es_private_fields.js",
+  output: "es_private_fields.js.out",
+});
+
+itest!(cjs_imports {
+  args: "run --quiet --reload cjs_imports.ts",
+  output: "cjs_imports.ts.out",
+});
+
+itest!(ts_import_from_js {
+  args: "run --quiet --reload ts_import_from_js.js",
+  output: "ts_import_from_js.js.out",
 });
 
 itest!(proto_exploit {
