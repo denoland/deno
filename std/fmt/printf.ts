@@ -40,7 +40,7 @@ enum F {
   exponent,
 }
 
-class Printf {
+export class Printf {
   format: string;
   args: unknown[];
   i: number;
@@ -680,3 +680,4 @@ export function printf(format: string, ...args: unknown[]): void {
   const s = sprintf(format, ...args);
   Deno.stdout.writeSync(new TextEncoder().encode(s));
 }
+
