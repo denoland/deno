@@ -247,9 +247,8 @@ test("testingAssertFailWithWrongErrorClass", function (): void {
 });
 
 test("testingAssertFailWithReturnType", function (): void {
-  const shouldFail = true;
   assertThrows(() => {
-    if (shouldFail) throw new Error("failed");
+    throw new Error();
     return "a string";
   });
 });
@@ -268,9 +267,8 @@ test("testingAssertFailAsync", function (): void {
 });
 
 test("testingAssertFailAsyncWithReturnType", function (): void {
-  const shouldFail = true;
   assertThrowsAsync(() => {
-    if (shouldFail) throw new Error("failed");
+    throw new Error();
     return Promise.resolve("a Promise<string>");
   });
 });
