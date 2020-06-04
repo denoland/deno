@@ -403,16 +403,14 @@ async fn bundle_command(
 
   debug!(">>>>> bundle END");
 
-  let output_string = fmt::format_text(&output)?;
-
   if let Some(out_file_) = out_file.as_ref() {
     info!("Emitting bundle to {:?}", out_file_);
-    let output_bytes = output_string.as_bytes();
+    let output_bytes = output.as_bytes();
     let output_len = output_bytes.len();
     deno_fs::write_file(out_file_, output_bytes, 0o666)?;
     info!("{} emitted.", human_size(output_len as f64));
   } else {
-    println!("{}", output_string);
+    println!("{}", output);
   }
   Ok(())
 }
