@@ -9,6 +9,7 @@ import {
   assertEquals,
   assertStrictEq,
   assertThrows,
+  assertThrowsAsync,
   AssertionError,
   equal,
   fail,
@@ -243,6 +244,20 @@ test("testingAssertFailWithWrongErrorClass", function (): void {
     AssertionError,
     `Expected error to be instance of "Error", but was "AssertionError"`
   );
+});
+
+test("testingAssertThrowsWithReturnType", () => {
+  assertThrows(() => {
+    throw new Error();
+    return "a string";
+  });
+});
+
+test("testingAssertThrowsAsyncWithReturnType", () => {
+  assertThrowsAsync(() => {
+    throw new Error();
+    return Promise.resolve("a Promise<string>");
+  });
 });
 
 const createHeader = (): string[] => [

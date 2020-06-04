@@ -325,8 +325,8 @@ export function fail(msg?: string): void {
  * throws.  An error class and a string that should be included in the
  * error message can also be asserted.
  */
-export function assertThrows(
-  fn: () => void,
+export function assertThrows<T = void>(
+  fn: () => T,
   ErrorClass?: Constructor,
   msgIncludes = "",
   msg?: string
@@ -361,8 +361,8 @@ export function assertThrows(
   return error;
 }
 
-export async function assertThrowsAsync(
-  fn: () => Promise<void>,
+export async function assertThrowsAsync<T = void>(
+  fn: () => Promise<T>,
   ErrorClass?: Constructor,
   msgIncludes = "",
   msg?: string
