@@ -680,4 +680,3 @@ export function printf(format: string, ...args: unknown[]): void {
   const s = sprintf(format, ...args);
   Deno.stdout.writeSync(new TextEncoder().encode(s));
 }
-
