@@ -246,27 +246,14 @@ test("testingAssertFailWithWrongErrorClass", function (): void {
   );
 });
 
-test("testingAssertFailWithReturnType", function (): void {
+test("testingAssertFailWithReturnType", () => {
   assertThrows(() => {
     throw new Error();
     return "a string";
   });
 });
 
-test("testingAssertFailAsync", function (): void {
-  assertThrowsAsync(
-    () => Promise.resolve(fail()),
-    AssertionError,
-    "Failed assertion."
-  );
-  assertThrowsAsync(
-    () => Promise.resolve(fail("foo")),
-    AssertionError,
-    "Failed assertion: foo"
-  );
-});
-
-test("testingAssertFailAsyncWithReturnType", function (): void {
+test("testingAssertFailAsyncWithReturnType", () => {
   assertThrowsAsync(() => {
     throw new Error();
     return Promise.resolve("a Promise<string>");
