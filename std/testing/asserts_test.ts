@@ -246,14 +246,14 @@ test("testingAssertFailWithWrongErrorClass", function (): void {
   );
 });
 
-test("testingAssertFailWithReturnType", () => {
+test("testingAssertThrowsWithReturnType", () => {
   assertThrows(() => {
     throw new Error();
     return "a string";
   });
 });
 
-test("testingAssertFailAsyncWithReturnType", () => {
+test("testingAssertThrowsAsyncWithReturnType", () => {
   assertThrowsAsync(() => {
     throw new Error();
     return Promise.resolve("a Promise<string>");
