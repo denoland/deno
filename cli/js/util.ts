@@ -80,7 +80,6 @@ export function immutableDefine(
   });
 }
 
-// @internal
 export function pathFromURL(url: URL): string {
   return build.os == "windows"
     ? new URL(url).pathname
