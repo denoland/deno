@@ -190,13 +190,13 @@ export class Body implements domTypes.Body {
   }
 
   public arrayBuffer(): Promise<ArrayBuffer> {
+    if (this.bodyUsed) {
+      throw new TypeError("Body is already used");
+    }
+
     // @ts-ignore
     if (this.body && this.body[aborted]) {
       throw new DOMException("The operation was aborted", "AbortError");
-    }
-
-    if (this.bodyUsed) {
-      throw new TypeError("Body is already used");
     }
 
     if (

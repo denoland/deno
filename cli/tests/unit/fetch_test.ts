@@ -926,6 +926,91 @@ unitTest(
 
 unitTest(
   { perms: { net: true } },
+  async function fetchConsumeAbortAfterConsumingBody(): Promise<void> {
+    const controller = new AbortController();
+
+    const res = await fetch("http://localhost:4545/cli/tests/fixture.json", {
+      signal: controller.signal,
+    });
+
+    // Consume first, then abort
+    await res.arrayBuffer();
+
+    controller.abort();
+
+    assert(res.body !== null);
+    assertEquals(res.bodyUsed, true);
+
+    const methods = ["json", "text", "arrayBuffer"];
+    for (const method of methods) {
+      try {
+        // @ts-expect-error
+        await res[method]();
+        fail(
+          "Reading body after request was aborted. Should throw AbortError."
+        );
+      } catch (e) {
+        console.log(e);
+        assert(e instanceof TypeError);
+      }
+    }
+  }
+);
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchConsumeAbortAfterLockingStreamNewReader(): Promise<void> {
+    const controller = new AbortController();
+
+    const res = await fetch("http://localhost:4545/cli/tests/fixture.json", {
+      signal: controller.signal,
+    });
+
+    assert(res.body !== null);
+    // Lock stream, then abort
+    const reader = res.body.getReader();
+
+    controller.abort();
+    reader.releaseLock();
+
+    // I should be able to acquire a reader
+    const reader2 = res.body.getReader();
+    try {
+      // But read should fail
+      await reader2.read();
+      fail("Should throw AbortError.");
+    } catch (e) {
+      assert(e instanceof DOMException);
+    }
+  }
+);
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchConsumeAbortAfterLockingStream(): Promise<void> {
+    const controller = new AbortController();
+
+    const res = await fetch("http://localhost:4545/cli/tests/fixture.json", {
+      signal: controller.signal,
+    });
+
+    assert(res.body !== null);
+    // Lock stream, then abort
+    const reader = res.body.getReader();
+
+    controller.abort();
+
+    try {
+      await reader.read();
+      fail("Should throw AbortError.");
+    } catch (e) {
+      assert(e instanceof DOMException);
+    }
+  }
+);
+
+unitTest(
+  { perms: { net: true } },
   async function fetchAbortControllerAbortedTimer(): Promise<void> {
     const controller = new AbortController();
     const pre = Deno.metrics();

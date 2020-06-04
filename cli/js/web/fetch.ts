@@ -11,6 +11,7 @@ import * as Body from "./body.ts";
 import { DomFileImpl } from "./dom_file.ts";
 import { getHeaderValueParams } from "./util.ts";
 import { ReadableStreamImpl } from "./streams/readable_stream.ts";
+import * as streamSym from "./streams/symbols.ts";
 import { DOMExceptionImpl as DOMException } from "./dom_exception.ts";
 
 export const aborted = Symbol("aborted");
@@ -345,6 +346,7 @@ export async function fetch(
 
   let responseBody: ReadableStream | null;
   let responseInit: ResponseInit = {};
+  let rid: number;
 
   const abortAlgorithm = (): void => {
     if (!signal || !signal.aborted) return;
@@ -354,7 +356,16 @@ export async function fetch(
     if (responseBody) {
       // @ts-ignore
       responseBody[aborted] = true;
-      responseBody.cancel("Aborted");
+      if (!responseBody.locked) responseBody.cancel("Aborted");
+      else {
+        // @ts-ignore
+        const controller = responseBody[streamSym.readableStreamController];
+        controller.error(
+          new DOMException("The operation was aborted", "AbortError")
+        );
+
+        close(rid);
+      }
     }
   };
 
@@ -370,6 +381,8 @@ export async function fetch(
       body,
       signal
     );
+
+    rid = fetchResponse.bodyRid;
 
     if (
       NULL_BODY_STATUS.includes(fetchResponse.status) ||
