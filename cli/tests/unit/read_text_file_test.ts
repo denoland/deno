@@ -1,12 +1,4 @@
 import { unitTest, assert, assertEquals } from "./test_util.ts";
-import { resolve } from "../../../std/path/mod.ts";
-
-const getResolvedUrl = (path: string): URL =>
-  new URL(
-    Deno.build.os === "windows"
-      ? "file:///" + resolve(path).replace(/\\/g, "/")
-      : "file://" + resolve(path)
-  );
 
 unitTest({ perms: { read: true } }, function readTextFileSyncSuccess(): void {
   const data = Deno.readTextFileSync("cli/tests/fixture.json");
@@ -16,7 +8,7 @@ unitTest({ perms: { read: true } }, function readTextFileSyncSuccess(): void {
 });
 
 unitTest({ perms: { read: true } }, function readTextFileSyncByUrl(): void {
-  const data = Deno.readTextFileSync(getResolvedUrl("cli/tests/fixture.json"));
+  const data = Deno.readTextFileSync(new URL("file:./cli/tests/fixture.json"));
   assert(data.length > 0);
   const pkg = JSON.parse(data);
   assertEquals(pkg.name, "deno");
@@ -60,7 +52,7 @@ unitTest({ perms: { read: true } }, async function readTextFileByUrl(): Promise<
   void
 > {
   const data = await Deno.readTextFile(
-    getResolvedUrl("cli/tests/fixture.json")
+    new URL("file:./cli/tests/fixture.json")
   );
   assert(data.length > 0);
   const pkg = JSON.parse(data);

@@ -1,13 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { unitTest, assert, assertEquals } from "./test_util.ts";
-import { resolve, join } from "../../../std/path/mod.ts";
-
-const getResolvedUrl = (path: string): URL =>
-  new URL(
-    Deno.build.os === "windows"
-      ? "file:///" + resolve(path).replace(/\\/g, "/")
-      : "file://" + resolve(path)
-  );
 
 function readFileString(filename: string | URL): string {
   const dataRead = Deno.readFileSync(filename);
@@ -51,8 +43,12 @@ unitTest(
   { perms: { read: true, write: true } },
   function copyFileSyncByUrl(): void {
     const tempDir = Deno.makeTempDirSync();
-    const fromUrl = getResolvedUrl(join(tempDir, "from.txt"));
-    const toUrl = getResolvedUrl(join(tempDir, "to.txt"));
+    const fromUrl = new URL(
+      `file://${Deno.build.os === "windows" && "/"}${tempDir}/from.txt`
+    );
+    const toUrl = new URL(
+      `file://${Deno.build.os === "windows" && "/"}${tempDir}/to.txt`
+    );
     writeFileString(fromUrl, "Hello world!");
     Deno.copyFileSync(fromUrl, toUrl);
     // No change to original file
@@ -152,8 +148,12 @@ unitTest(
   { perms: { read: true, write: true } },
   async function copyFileByUrl(): Promise<void> {
     const tempDir = Deno.makeTempDirSync();
-    const fromUrl = getResolvedUrl(join(tempDir, "from.txt"));
-    const toUrl = getResolvedUrl(join(tempDir, "to.txt"));
+    const fromUrl = new URL(
+      `file://${Deno.build.os === "windows" && "/"}${tempDir}/from.txt`
+    );
+    const toUrl = new URL(
+      `file://${Deno.build.os === "windows" && "/"}${tempDir}/to.txt`
+    );
     writeFileString(fromUrl, "Hello world!");
     await Deno.copyFile(fromUrl, toUrl);
     // No change to original file

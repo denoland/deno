@@ -1,13 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { unitTest, assert, assertEquals } from "./test_util.ts";
-import { resolve } from "../../../std/path/mod.ts";
-
-const getResolvedUrl = (path: string): URL =>
-  new URL(
-    Deno.build.os === "windows"
-      ? "file:///" + resolve(path).replace(/\\/g, "/")
-      : "file://" + resolve(path)
-  );
 
 unitTest(
   { perms: { read: true, write: true } },
@@ -33,22 +25,24 @@ unitTest(
       tempInfo.birthtime === null || now - tempInfo.birthtime.valueOf() < 1000
     );
 
-    const packageInfoByUrl = Deno.statSync(getResolvedUrl("README.md"));
+    const packageInfoByUrl = Deno.statSync(new URL("file:./README.md"));
     assert(packageInfoByUrl.isFile);
     assert(!packageInfoByUrl.isSymlink);
 
     const modulesInfoByUrl = Deno.statSync(
-      getResolvedUrl("cli/tests/symlink_to_subdir")
+      new URL("file:./cli/tests/symlink_to_subdir")
     );
     assert(modulesInfoByUrl.isDirectory);
     assert(!modulesInfoByUrl.isSymlink);
 
-    const testsInfoByUrl = Deno.statSync(getResolvedUrl("cli/tests"));
+    const testsInfoByUrl = Deno.statSync(new URL("file:./cli/tests"));
     assert(testsInfoByUrl.isDirectory);
     assert(!testsInfoByUrl.isSymlink);
 
     const tempFileForUrl = Deno.makeTempFileSync();
-    const tempInfoByUrl = Deno.statSync(getResolvedUrl(tempFileForUrl));
+    const tempInfoByUrl = Deno.statSync(
+      new URL(`file://${Deno.build.os === "windows" && "/"}${tempFileForUrl}`)
+    );
     now = Date.now();
     assert(
       tempInfoByUrl.atime !== null && now - tempInfoByUrl.atime.valueOf() < 1000
@@ -97,7 +91,7 @@ unitTest({ perms: { read: true } }, function lstatSyncSuccess(): void {
   assert(packageInfo.isFile);
   assert(!packageInfo.isSymlink);
 
-  const packageInfoByUrl = Deno.lstatSync(getResolvedUrl("README.md"));
+  const packageInfoByUrl = Deno.lstatSync(new URL("file:./README.md"));
   assert(packageInfoByUrl.isFile);
   assert(!packageInfoByUrl.isSymlink);
 
@@ -106,7 +100,7 @@ unitTest({ perms: { read: true } }, function lstatSyncSuccess(): void {
   assert(modulesInfo.isSymlink);
 
   const modulesInfoByUrl = Deno.lstatSync(
-    getResolvedUrl("cli/tests/symlink_to_subdir")
+    new URL("file:./cli/tests/symlink_to_subdir")
   );
   assert(!modulesInfoByUrl.isDirectory);
   assert(modulesInfoByUrl.isSymlink);
@@ -115,7 +109,7 @@ unitTest({ perms: { read: true } }, function lstatSyncSuccess(): void {
   assert(coreInfo.isDirectory);
   assert(!coreInfo.isSymlink);
 
-  const coreInfoByUrl = Deno.lstatSync(getResolvedUrl("core"));
+  const coreInfoByUrl = Deno.lstatSync(new URL("file:./core"));
   assert(coreInfoByUrl.isDirectory);
   assert(!coreInfoByUrl.isSymlink);
 });
@@ -153,7 +147,7 @@ unitTest(
     assert(packageInfo.isFile);
     assert(!packageInfo.isSymlink);
 
-    const packageInfoByUrl = await Deno.stat(getResolvedUrl("README.md"));
+    const packageInfoByUrl = await Deno.stat(new URL("file:./README.md"));
     assert(packageInfoByUrl.isFile);
     assert(!packageInfoByUrl.isSymlink);
 
@@ -162,7 +156,7 @@ unitTest(
     assert(!modulesInfo.isSymlink);
 
     const modulesInfoByUrl = await Deno.stat(
-      getResolvedUrl("cli/tests/symlink_to_subdir")
+      new URL("file:./cli/tests/symlink_to_subdir")
     );
     assert(modulesInfoByUrl.isDirectory);
     assert(!modulesInfoByUrl.isSymlink);
@@ -171,7 +165,7 @@ unitTest(
     assert(testsInfo.isDirectory);
     assert(!testsInfo.isSymlink);
 
-    const testsInfoByUrl = await Deno.stat(getResolvedUrl("cli/tests"));
+    const testsInfoByUrl = await Deno.stat(new URL("file:./cli/tests"));
     assert(testsInfoByUrl.isDirectory);
     assert(!testsInfoByUrl.isSymlink);
 
@@ -186,7 +180,9 @@ unitTest(
     );
 
     const tempFileForUrl = await Deno.makeTempFile();
-    const tempInfoByUrl = await Deno.stat(getResolvedUrl(tempFileForUrl));
+    const tempInfoByUrl = await Deno.stat(
+      new URL(`file://${Deno.build.os === "windows" && "/"}${tempFileForUrl}`)
+    );
     now = Date.now();
     assert(
       tempInfoByUrl.atime !== null && now - tempInfoByUrl.atime.valueOf() < 1000
@@ -239,7 +235,7 @@ unitTest({ perms: { read: true } }, async function lstatSuccess(): Promise<
   assert(packageInfo.isFile);
   assert(!packageInfo.isSymlink);
 
-  const packageInfoByUrl = await Deno.lstat(getResolvedUrl("README.md"));
+  const packageInfoByUrl = await Deno.lstat(new URL("file:./README.md"));
   assert(packageInfoByUrl.isFile);
   assert(!packageInfoByUrl.isSymlink);
 
@@ -248,7 +244,7 @@ unitTest({ perms: { read: true } }, async function lstatSuccess(): Promise<
   assert(modulesInfo.isSymlink);
 
   const modulesInfoByUrl = await Deno.lstat(
-    getResolvedUrl("cli/tests/symlink_to_subdir")
+    new URL("file:./cli/tests/symlink_to_subdir")
   );
   assert(!modulesInfoByUrl.isDirectory);
   assert(modulesInfoByUrl.isSymlink);
@@ -257,7 +253,7 @@ unitTest({ perms: { read: true } }, async function lstatSuccess(): Promise<
   assert(coreInfo.isDirectory);
   assert(!coreInfo.isSymlink);
 
-  const coreInfoByUrl = await Deno.lstat(getResolvedUrl("core"));
+  const coreInfoByUrl = await Deno.lstat(new URL("file:./core"));
   assert(coreInfoByUrl.isDirectory);
   assert(!coreInfoByUrl.isSymlink);
 });

@@ -1,13 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { unitTest, assert, assertEquals } from "./test_util.ts";
-import { resolve, join } from "../../../std/path/mod.ts";
-
-const getResolvedUrl = (path: string): URL =>
-  new URL(
-    Deno.build.os === "windows"
-      ? "file:///" + resolve(path).replace(/\\/g, "/")
-      : "file://" + resolve(path)
-  );
 
 unitTest(
   { perms: { read: true, write: true } },
@@ -29,7 +21,9 @@ unitTest(
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
     const tempDir = Deno.makeTempDirSync();
-    const fileUrl = getResolvedUrl(join(tempDir, "test.txt"));
+    const fileUrl = new URL(
+      `file://${Deno.build.os === "windows" && "/"}${tempDir}/test.txt`
+    );
     Deno.writeFileSync(fileUrl, data);
     const dataRead = Deno.readFileSync(fileUrl);
     const dec = new TextDecoder("utf-8");
@@ -156,7 +150,9 @@ unitTest(
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
     const tempDir = await Deno.makeTempDir();
-    const fileUrl = getResolvedUrl(join(tempDir, "test.txt"));
+    const fileUrl = new URL(
+      `file://${Deno.build.os === "windows" && "/"}${tempDir}/test.txt`
+    );
     await Deno.writeFile(fileUrl, data);
     const dataRead = Deno.readFileSync(fileUrl);
     const dec = new TextDecoder("utf-8");
