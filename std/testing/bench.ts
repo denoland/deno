@@ -53,12 +53,12 @@ export interface BenchmarkResult {
   name: string;
   /** The total time it took to run a given bechmark  */
   totalMs: number;
-  /** Times the benchmark was run in succession. Only defined if `runs` for this  bench is greater than 1. */
-  runsCount?: number;
-  /** The average time of running the benchmark in milliseconds. Only defined if `runs` for this  bench is greater than 1. */
-  measuredRunsAvgMs?: number;
-  /** The individual measurements in millisecond it took to run the benchmark. Only defined if `runs` for this  bench is greater than 1. */
-  measuredRunsMs?: number[];
+  /** Times the benchmark was run in succession. */
+  runsCount: number;
+  /** The average time of running the benchmark in milliseconds. */
+  measuredRunsAvgMs: number;
+  /** The individual measurements in milliseconds it took to run the benchmark.*/
+  measuredRunsMs: number[];
 }
 
 /** Defines the result of a `runBenchmarks` call */
@@ -248,66 +248,48 @@ export async function runBenchmarks(
     // Trying benchmark.func
     let result = "";
     try {
-      if (runs === 1) {
+      // Averaging runs
+      let pendingRuns = runs;
+      let totalMs = 0;
+
+      // Would be better 2 not run these serially
+      while (true) {
         // b is a benchmark timer interfacing an unset (NaN) benchmark clock
         await func(b);
         // Making sure the benchmark was started/stopped properly
         assertTiming(clock);
+
         // Calculate length of run
         const measuredMs = clock.stop - clock.start;
 
-        result = `${measuredMs}ms`;
-        // Adding one-time run to results
-        progress.results.push({ name, totalMs: measuredMs });
-        // Clear currently running
-        delete progress.running;
-        // Publish one-time run benchmark finish
-        publishProgress(progress, ProgressState.BenchResult, progressCb);
-      } else if (runs > 1) {
-        // Averaging runs
-        let pendingRuns = runs;
-        let totalMs = 0;
+        // Summing up
+        totalMs += measuredMs;
+        // Adding partial result
+        progress.running.measuredRunsMs.push(measuredMs);
+        // Publish partial benchmark results
+        publishProgress(progress, ProgressState.BenchPartialResult, progressCb);
 
-        // Would be better 2 not run these serially
-        while (true) {
-          // b is a benchmark timer interfacing an unset (NaN) benchmark clock
-          await func(b);
-          // Making sure the benchmark was started/stopped properly
-          assertTiming(clock);
-
-          // Calculate length of run
-          const measuredMs = clock.stop - clock.start;
-
-          // Summing up
-          totalMs += measuredMs;
-          // Adding partial result
-          progress.running.measuredRunsMs.push(measuredMs);
-          // Publish partial benchmark results
-          publishProgress(
-            progress,
-            ProgressState.BenchPartialResult,
-            progressCb
-          );
-
-          // Resetting the benchmark clock
-          clock.start = clock.stop = NaN;
-          // Once all ran
-          if (!--pendingRuns) {
-            result = `${runs} runs avg: ${totalMs / runs}ms`;
-            // Adding result of multiple runs
-            progress.results.push({
-              name,
-              totalMs,
-              runsCount: runs,
-              measuredRunsAvgMs: totalMs / runs,
-              measuredRunsMs: progress.running.measuredRunsMs,
-            });
-            // Clear currently running
-            delete progress.running;
-            // Publish results of a multiple run benchmark
-            publishProgress(progress, ProgressState.BenchResult, progressCb);
-            break;
-          }
+        // Resetting the benchmark clock
+        clock.start = clock.stop = NaN;
+        // Once all ran
+        if (!--pendingRuns) {
+          result =
+            runs == 1
+              ? `${totalMs}ms`
+              : `${runs} runs avg: ${totalMs / runs}ms`;
+          // Adding results
+          progress.results.push({
+            name,
+            totalMs,
+            runsCount: runs,
+            measuredRunsAvgMs: totalMs / runs,
+            measuredRunsMs: progress.running.measuredRunsMs,
+          });
+          // Clear currently running
+          delete progress.running;
+          // Publish results of the benchmark
+          publishProgress(progress, ProgressState.BenchResult, progressCb);
+          break;
         }
       }
     } catch (err) {

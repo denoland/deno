@@ -73,6 +73,18 @@ test({
     assertEquals(benchResult.filtered, 1);
     assertEquals(benchResult.results.length, 5);
 
+    const resultWithSingleRunsFiltered = benchResult.results.filter(
+      ({ name }) => name === "forDecrementX1e9"
+    );
+    assertEquals(resultWithSingleRunsFiltered.length, 1);
+
+    const resultWithSingleRuns = resultWithSingleRunsFiltered[0];
+    assert(!!resultWithSingleRuns.runsCount);
+    assert(!!resultWithSingleRuns.measuredRunsAvgMs);
+    assert(!!resultWithSingleRuns.measuredRunsMs);
+    assertEquals(resultWithSingleRuns.runsCount, 1);
+    assertEquals(resultWithSingleRuns.measuredRunsMs.length, 1);
+
     const resultWithMultipleRunsFiltered = benchResult.results.filter(
       ({ name }) => name === "runs100ForIncrementX1e6"
     );
@@ -83,7 +95,7 @@ test({
     assert(!!resultWithMultipleRuns.measuredRunsAvgMs);
     assert(!!resultWithMultipleRuns.measuredRunsMs);
     assertEquals(resultWithMultipleRuns.runsCount, 100);
-    assertEquals(resultWithMultipleRuns.measuredRunsMs!.length, 100);
+    assertEquals(resultWithMultipleRuns.measuredRunsMs.length, 100);
 
     clearBenchmarks();
   },
@@ -263,6 +275,13 @@ test({
     });
     assertEquals(progress.results, []);
 
+    // Assert running result of bench "single"
+    progress = progressCallbacks[pc++];
+    assertEquals(progress.state, ProgressState.BenchPartialResult);
+    assertEquals(progress.queued.length, 1);
+    assertEquals(progress.running!.measuredRunsMs.length, 1);
+    assertEquals(progress.results.length, 0);
+
     // Assert result of bench "single"
     progress = progressCallbacks[pc++];
     assertEquals(progress.state, ProgressState.BenchResult);
@@ -308,8 +327,8 @@ test({
     );
     assertEquals(resultOfMultiple.length, 1);
     assert(!!resultOfMultiple[0].measuredRunsMs);
-    assert(!isNaN(resultOfMultiple[0].measuredRunsAvgMs!));
-    assertEquals(resultOfMultiple[0].measuredRunsMs!.length, 2);
+    assert(!isNaN(resultOfMultiple[0].measuredRunsAvgMs));
+    assertEquals(resultOfMultiple[0].measuredRunsMs.length, 2);
 
     // The last progress should equal the final result from promise except the state property
     progress = progressCallbacks[pc++];
