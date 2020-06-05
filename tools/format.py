@@ -58,11 +58,16 @@ def prettier():
                           "bin-prettier.js")
     source_files = get_sources(root_path, ["*.js", "*.json", "*.ts", "*.md"])
     if source_files:
-        print_command("prettier", source_files)
-        run(["node", script, "--write", "--loglevel=error", "--"] +
-            source_files,
-            shell=False,
-            quiet=True)
+        # https://support.microsoft.com/en-us/help/830473/command-prompt-cmd-exe-command-line-string-limitation
+        max_command_length = 8191
+        while len(source_files) > 0:
+            command = ["node", script, "--write", "--loglevel=error", "--"]
+            while len(source_files) > 0:
+                command.append(source_files.pop())
+                if len(" ".join(command)) > max_command_length:
+                    source_files.append(command.pop())
+                    break
+            run(command, shell=False, quiet=True)
 
 
 def yapf():
