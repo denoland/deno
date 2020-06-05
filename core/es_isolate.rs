@@ -987,9 +987,8 @@ pub mod tests {
         referrer: &str,
         _is_main: bool,
       ) -> Result<ModuleSpecifier, ErrBox> {
-        //self.count.fetch_add(1, Ordering::Relaxed);
-        //assert_eq!(specifier, "./b.js");
-        //assert_eq!(referrer, "file:///a.js");
+        assert_eq!(specifier, "file:///main.js");
+        assert_eq!(referrer, ".");
         let s = ModuleSpecifier::resolve_import(specifier, referrer).unwrap();
         Ok(s)
       }
