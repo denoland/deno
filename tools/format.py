@@ -58,15 +58,14 @@ def prettier():
                           "bin-prettier.js")
     source_files = get_sources(root_path, ["*.js", "*.json", "*.ts", "*.md"])
     if source_files:
-        max_command_length = 32000
+        max_command_length = 24000
         while len(source_files) > 0:
             command = ["node", script, "--write", "--loglevel=error", "--"]
             while len(source_files) > 0:
                 command.append(source_files.pop())
                 if len(" ".join(command)) > max_command_length:
-                    source_files.append(command.pop())
+                    run(command, shell=False, quiet=True)
                     break
-            run(command, shell=False, quiet=True)
 
 
 def yapf():
