@@ -548,7 +548,7 @@ async fn doctest_command(
   let main_module =
     ModuleSpecifier::resolve_url(&doctest_file_url.to_string()).unwrap();
   let mut worker =
-    create_main_worker(global_state.clone(), main_module.clone())?;
+    MainWorker::create(global_state.clone(), main_module.clone())?;
 
   let source_file = SourceFile {
     filename: doctest_file_url.to_file_path().unwrap(),
