@@ -250,7 +250,7 @@ export function assertStrictEquals(
  * Make an assertion that actual contains expected. If not
  * then thrown.
  */
-export function assertStrContains(
+export function assertStringContains(
   actual: string,
   expected: string,
   msg?: string

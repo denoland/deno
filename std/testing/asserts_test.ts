@@ -3,7 +3,7 @@
 import {
   assert,
   assertNotEquals,
-  assertStrContains,
+  assertStringContains,
   assertArrayContains,
   assertMatch,
   assertEquals,
@@ -133,12 +133,12 @@ test("testingNotEquals", function (): void {
 });
 
 test("testingAssertStringContains", function (): void {
-  assertStrContains("Denosaurus", "saur");
-  assertStrContains("Denosaurus", "Deno");
-  assertStrContains("Denosaurus", "rus");
+  assertStringContains("Denosaurus", "saur");
+  assertStringContains("Denosaurus", "Deno");
+  assertStringContains("Denosaurus", "rus");
   let didThrow;
   try {
-    assertStrContains("Denosaurus", "Raptor");
+    assertStringContains("Denosaurus", "Raptor");
     didThrow = false;
   } catch (e) {
     assert(e instanceof AssertionError);
@@ -162,7 +162,7 @@ test("testingArrayContains", function (): void {
 test("testingAssertStringContainsThrow", function (): void {
   let didThrow = false;
   try {
-    assertStrContains("Denosaurus from Jurassic", "Raptor");
+    assertStringContains("Denosaurus from Jurassic", "Raptor");
   } catch (e) {
     assert(
       e.message ===
