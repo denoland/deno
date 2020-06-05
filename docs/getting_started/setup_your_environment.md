@@ -69,6 +69,36 @@ server protocol). After CoC itself is installed, from inside Vim, simply run
 `:CocInstall coc-deno`. From now on, things like `gd` (go to definition) and
 `gr` (goto/find references) should work.
 
+#### Emacs
+
+Emacs works pretty well for a TypeScript project targeted to Deno by using a
+combination of [tide](https://github.com/ananthakumaran/tide) which is the
+canonical way of using TypeScript within Emacs and
+[typescript-deno-plugin](https://github.com/justjavac/typescript-deno-plugin)
+which is what is used by the
+[official VSCode extension for Deno](https://github.com/denoland/vscode_deno).
+
+To use it, first make sure that `tide` is setup for your instance of Emacs.
+Next, as instructed on the
+[typescript-deno-plugin](https://github.com/justjavac/typescript-deno-plugin)
+page, first `npm install --save-dev typescript-deno-plugin typescript` in your
+project (`npm init -y` as necessary), then add the following block to your
+`tsconfig.json` and you are off to the races!
+
+```json
+{
+  "compilerOptions": {
+    "plugins": [
+      {
+        "name": "typescript-deno-plugin",
+        "enable": true, // default is `true`
+        "importmap": "import_map.json"
+      }
+    ]
+  }
+}
+```
+
 If you don't see your favorite IDE on this list, maybe you can develop an
 extension. Our [community Discord group](https://discord.gg/TGMHGv6) can give
 you some pointers on where to get started.

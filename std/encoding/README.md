@@ -29,8 +29,50 @@ writeVarbig(w: Deno.Writer, x: bigint, o: VarbigOptions = {}): Promise<number>
 
 ## CSV
 
-- **`parse(input: string | BufReader, opt: ParseCsvOptions): Promise<unknown[]>`**:
-  Read the string/buffer into an
+### API
+
+#### `readMatrix(reader: BufReader, opt: ReadOptions = { comma: ",", trimLeadingSpace: false, lazyQuotes: false }): Promise<string[][]>`
+
+Parse the CSV from the `reader` with the options provided and return
+`string[][]`.
+
+#### `parse(input: string | BufReader, opt: ParseOptions = { header: false }): Promise<unknown[]>`:
+
+Parse the CSV string/buffer with the options provided. The result of this
+function is as follows:
+
+- If you don't provide both `opt.header` and `opt.parse`, it returns
+  `string[][]`.
+- If you provide `opt.header` but not `opt.parse`, it returns `object[]`.
+- If you provide `opt.parse`, it returns an array where each element is the
+  value returned from `opt.parse`.
+
+##### `ParseOptions`
+
+- **`header: boolean | string[] | HeaderOptions[];`**: If a boolean is provided,
+  the first line will be used as Header definitions. If `string[]` or
+  `HeaderOptions[]` those names will be used for header definition.
+- **`parse?: (input: unknown) => unknown;`**: Parse function for the row, which
+  will be executed after parsing of all columns. Therefore if you don't provide
+  header and parse function with headers, input will be `string[]`.
+
+##### `HeaderOptions`
+
+- **`name: string;`**: Name of the header to be used as property.
+- **`parse?: (input: string) => unknown;`**: Parse function for the column. This
+  is executed on each entry of the header. This can be combined with the Parse
+  function of the rows.
+
+##### `ReadOptions`
+
+- **`comma?: string;`**: Character which separates values. Default: `','`
+- **`comment?: string;`**: Character to start a comment. Default: `'#'`
+- **`trimLeadingSpace?: boolean;`**: Flag to trim the leading space of the
+  value. Default: `false`
+- **`lazyQuotes?: boolean;`**: Allow unquoted quote in a quoted field or non
+  double quoted quotes in quoted field. Default: 'false`
+- **`fieldsPerRecord?`**: Enabling the check of fields for each row. If == 0,
+  first row is used as referral for the number of fields.
 
 ### Usage
 

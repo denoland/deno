@@ -530,7 +530,7 @@ impl DocParser {
 
   pub fn js_doc_for_span(&self, span: Span) -> Option<String> {
     let comments = self.ast_parser.get_span_comments(span);
-    let js_doc_comment = comments.iter().find(|comment| {
+    let js_doc_comment = comments.iter().rev().find(|comment| {
       comment.kind == CommentKind::Block && comment.text.starts_with('*')
     })?;
 
