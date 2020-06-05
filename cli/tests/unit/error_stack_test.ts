@@ -93,7 +93,7 @@ unitTest(function prepareStackTrace(): void {
     getMockCallSite("CLI_SNAPSHOT.js", 23, 0),
   ]);
   assert(result.startsWith("Error: foo\n"));
-  assert(result.includes(".ts:"), "should remap to something in 'js/'");
+  assert(result.includes(".ts#"), "should remap to something in 'js/'");
 });
 
 unitTest(function captureStackTrace(): void {
