@@ -174,34 +174,92 @@ declare namespace WebAssembly {
   }
 }
 
-/** Sets a timer which executes a function once after the timer expires. */
+/** Sets a timer which executes a function once after the timer expires. Returns
+ * an id which may be used to cancel the timeout.
+ *
+ *     setTimeout(() => { console.log('hello'); }, 500);
+ */
 declare function setTimeout(
+  /** callback function to execute when timer expires */
   cb: (...args: any[]) => void,
+  /** delay in ms */
   delay?: number,
+  /** arguments passed to callback function */
   ...args: any[]
 ): number;
 
-/** Repeatedly calls a function , with a fixed time delay between each call. */
+/** Repeatedly calls a function , with a fixed time delay between each call.
+ *
+ *     // Outputs 'hello' to the console every 500ms
+ *     setInterval(() => { console.log('hello'); }, 500);
+ */
 declare function setInterval(
+  /** callback function to execute when timer expires */
   cb: (...args: any[]) => void,
+  /** delay in ms */
   delay?: number,
+  /** arguments passed to callback function */
   ...args: any[]
 ): number;
-declare function clearTimeout(id?: number): void;
+
+/** Cancels a timed, repeating action which was previously started by a call
+ * to `setInterval()`
+ *
+ *     const id = setInterval(()= > {console.log('hello');}, 500);
+ *     ...
+ *     clearInterval(id);
+ */
 declare function clearInterval(id?: number): void;
+
+/** Cancels a scheduled action initiated by `setTimeout()`
+ *
+ *     const id = setTimeout(()= > {console.log('hello');}, 500);
+ *     ...
+ *     clearTimeout(id);
+ */
+declare function clearTimeout(id?: number): void;
+
+/** A microtask is a short function which is executed after the function or
+ * module which created it exits and only if the JavaScript execution stack is
+ * empty, but before returning control to the event loop being used to drive the
+ * script's execution environment. This event loop may be either the main event
+ * loop or the event loop driving a web worker.
+ *
+ *     queueMicrotask(() => { console.log('This event loop stack is complete'); });
+ */
 declare function queueMicrotask(func: Function): void;
 
 declare var console: Console;
 declare var crypto: Crypto;
 
+/** Registers an event listener in the global scope, which will be called
+ * synchronously whenever the event `type` is dispatched.
+ *
+ *     addEventListener('unload', () => { console.log('All finished!'); });
+ *     ...
+ *     dispatchEvent(new Event('unload'));
+ */
 declare function addEventListener(
   type: string,
   callback: EventListenerOrEventListenerObject | null,
   options?: boolean | AddEventListenerOptions | undefined
 ): void;
 
+/** Dispatches an event in the global scope, synchronously invoking any
+ * registered event listeners for this event in the appropriate order. Returns
+ * false if event is cancelable and at least one of the event handlers which
+ * handled this event called Event.preventDefault(). Otherwise it returns true.
+ *
+ *     dispatchEvent(new Event('unload'));
+ */
 declare function dispatchEvent(event: Event): boolean;
 
+/** Remove a previously registered event listener from the global scope
+ *
+ *     const lstnr = () => { console.log('hello'); };
+ *     addEventListener('load', lstnr);
+ *     removeEventListener('load', lstnr);
+ */
 declare function removeEventListener(
   type: string,
   callback: EventListenerOrEventListenerObject | null,
@@ -956,15 +1014,29 @@ declare const Response: {
   redirect(url: string, status?: number): Response;
 };
 
-/** Fetch a resource from the network. */
+/** Fetch a resource from the network. It returns a Promise that resolves to the
+ * Response to that request, whether it is successful or not.
+ *
+ *     const response = await fetch("http://my.json.host/data.json");
+ *     console.log(response.status);  // e.g. 200
+ *     console.log(response.statusText); // e.g. "OK"
+ *     const jsonData = await response.json();
+ */
 declare function fetch(
   input: Request | URL | string,
   init?: RequestInit
 ): Promise<Response>;
 
+/** Decodes a string of data which has been encoded using base-64 encoding.
+ *
+ *     console.log(atob("aGVsbG8gd29ybGQ=")); // outputs 'hello world'
+ */
 declare function atob(s: string): string;
 
-/** Creates a base-64 ASCII string from the input string. */
+/** Creates a base-64 ASCII encoded string from the input string.
+ *
+ *     console.log(btoa("hello world"));  // outputs "aGVsbG8gd29ybGQ="
+ */
 declare function btoa(s: string): string;
 
 declare class TextDecoder {
@@ -1266,7 +1338,7 @@ declare class Worker extends EventTarget {
 declare namespace performance {
   /** Returns a current time from Deno's start in milliseconds.
    *
-   * Use the flag --allow-hrtime return a precise value.
+   * Use the permission flag `--allow-hrtime` return a precise value.
    *
    * ```ts
    * const t = performance.now();
@@ -1481,3 +1553,11 @@ declare const AbortSignal: {
   prototype: AbortSignal;
   new (): AbortSignal;
 };
+
+interface ErrorConstructor {
+  /** See https://v8.dev/docs/stack-trace-api#stack-trace-collection-for-custom-exceptions. */
+  // eslint-disable-next-line @typescript-eslint/ban-types
+  captureStackTrace(error: Object, constructor?: Function): void;
+  // TODO(nayeemrmn): Support `Error.prepareStackTrace()`. We currently use this
+  // internally in a way that makes it unavailable for users.
+}

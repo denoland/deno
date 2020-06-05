@@ -9,6 +9,7 @@ import {
   assertEquals,
   assertStrictEq,
   assertThrows,
+  assertThrowsAsync,
   AssertionError,
   equal,
   fail,
@@ -151,15 +152,11 @@ test("testingArrayContains", function (): void {
   const fixtureObject = [{ deno: "luv" }, { deno: "Js" }];
   assertArrayContains(fixture, ["deno"]);
   assertArrayContains(fixtureObject, [{ deno: "luv" }]);
-  let didThrow;
-  try {
-    assertArrayContains(fixtureObject, [{ deno: "node" }]);
-    didThrow = false;
-  } catch (e) {
-    assert(e instanceof AssertionError);
-    didThrow = true;
-  }
-  assertEquals(didThrow, true);
+  assertThrows(
+    (): void => assertArrayContains(fixtureObject, [{ deno: "node" }]),
+    AssertionError,
+    `actual: "[ { deno: "luv" }, { deno: "Js" } ]" expected to contain: "[ { deno: "node" } ]"\nmissing: [ { deno: "node" } ]`
+  );
 });
 
 test("testingAssertStringContainsThrow", function (): void {
@@ -247,6 +244,20 @@ test("testingAssertFailWithWrongErrorClass", function (): void {
     AssertionError,
     `Expected error to be instance of "Error", but was "AssertionError"`
   );
+});
+
+test("testingAssertThrowsWithReturnType", () => {
+  assertThrows(() => {
+    throw new Error();
+    return "a string";
+  });
+});
+
+test("testingAssertThrowsAsyncWithReturnType", () => {
+  assertThrowsAsync(() => {
+    throw new Error();
+    return Promise.resolve("a Promise<string>");
+  });
 });
 
 const createHeader = (): string[] => [

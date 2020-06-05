@@ -6,6 +6,95 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### 1.0.5 / 2020.06.03
+
+Changes in the CLI:
+
+- fix(fetch): Support 101 status code (#6059)
+- fix: REPL BorrowMutError panic (#6055)
+- fix: dynamic import BorrowMutError (#6065)
+- upgrade: dprint 0.19.1 and swc_ecma_parser 0.24.3 (#6068)
+- upgrade: rusty_v8 0.5.0 (#6070)
+
+Changes in std version 0.56.0:
+
+- feat(std/testing): benching progress callback (#5941)
+- feat(std/encoding): add base64url module (#5976)
+- fix(std/testing/asserts): Format values in assertArrayContains() (#6060)
+
+### 1.0.4 / 2020.06.02
+
+Changes in the CLI:
+
+- feat(core): Ops can take several zero copy buffers (#4788)
+- fix(bundle): better size output (#5997)
+- fix(cli): Deno.remove() fails to remove unix socket (#5967)
+- fix(cli): compile TS dependencies of JS files (#6000)
+- fix(cli): ES private fields parsing in SWC (#5964)
+- fix(cli): Better use of @ts-expect-error (#6038)
+- fix(cli): media type for .cjs and application/node (#6005)
+- fix(doc): remove JSDoc comment truncation (#6031)
+- fix(cli/js/web): Body.bodyUsed should use IsReadableStreamDisturbed
+- fix(cli/js/web): formData parser for binary files in fetch() (#6015)
+- fix(cli/js/web): set null body for null-body status in fetch() (#5980)
+- fix(cli/js/web): network error on multiple redirects in fetch() (#5985)
+- fix(cli/js/web): Headers.name and FormData.name (#5994)
+- upgrade: Rust crates (#5959, #6032)
+
+Changes in std version 0.55.0:
+
+- feat(std/hash): add Sha512 and HmacSha512 (#6009)
+- feat(std/http) support code 103 Early Hints (#6021)
+- feat(std/http): add TooEarly status code (#5999)
+- feat(std/io): add LimitedReader (#6026)
+- feat(std/log): buffered file logging (#6014)
+- feat(std/mime/multipart): Added multiple FormFile input (#6027)
+- feat(std/node): add util.type.isDate (#6029)
+- fix(std/http): file server not closing files (#5952)
+- fix(std/path): support browsers (#6003)
+
+### 1.0.3 / 2020.05.29
+
+Changes in the CLI:
+
+- fix: Add unstable checks for Deno.dir and Diagnostics (#5750)
+- fix: Add unstable checks for unix transport (#5818)
+- fix: Create HTTP cache lazily (#5795)
+- fix: Dependency analysis in TS compiler (#5817, #5785, #5870)
+- fix: Expose Error.captureStackTrace (#5254)
+- fix: Improved typechecking error for unstable props (#5503)
+- fix: REPL evaluates in strict mode (#5565)
+- fix: Write lock file before running any code (#5794)
+- fix(debugger): BorrowMutError when evaluating expression in inspector console
+  (#5822)
+- fix(doc): Handle comments at the top of the file (#5891)
+- fix(fmt): Handle formatting UTF-8 w/ BOM files (#5881)
+- fix(permissions): Fix CWD and exec path leaks (#5642)
+- fix(web/blob): DenoBlob name (#5879)
+- fix(web/console): Hide `values` for console.table if display not necessary
+  (#5914)
+- fix(web/console): Improve indentation when displaying objects with console.log
+  (#5909)
+- fix(web/encoding): atob should throw dom exception (#5730)
+- fix(web/fetch): Make Response constructor standard (#5787)
+- fix(web/fetch): Allow ArrayBuffer as Fetch request body (#5831)
+- fix(web/formData): Set default filename for Blob to <blob> (#5907)
+- upgrade: dprint to 0.19.0 (#5899)
+
+Changes in std version 0.54.0:
+
+- feat(std/encoding): Add base64 (#5811)
+- feat(std/http): Handle .wasm files in file_server (#5896)
+- feat(std/node): Add link/linkSync polyfill (#5930)
+- feat(std/node): fs.writeFile/sync path can now be an URL (#5652)
+- feat(std/testing): Return results in benchmark promise (#5842)
+- fix(std/http): readTrailer evaluates header names by case-insensitive (#4902)
+- fix(std/log): Improve the calculation of byte length (#5819)
+- fix(std/log): Fix FileHandler test with mode 'x' on non-English systems
+  (#5757)
+- fix(std/log): Use writeAllSync instead of writeSync (#5868)
+- fix(std/testing/asserts): Support browsers (#5847)
+
 ### 1.0.2 / 2020.05.22
 
 Changes in the CLI:
