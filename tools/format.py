@@ -58,8 +58,7 @@ def prettier():
                           "bin-prettier.js")
     source_files = get_sources(root_path, ["*.js", "*.json", "*.ts", "*.md"])
     if source_files:
-        # https://support.microsoft.com/en-us/help/830473/command-prompt-cmd-exe-command-line-string-limitation
-        max_command_length = 8191
+        max_command_length = 32000
         while len(source_files) > 0:
             command = ["node", script, "--write", "--loglevel=error", "--"]
             while len(source_files) > 0:
