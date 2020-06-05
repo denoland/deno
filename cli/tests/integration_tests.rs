@@ -2787,7 +2787,7 @@ mod util {
   pub const PERMISSION_DENIED_PATTERN: &str = "PermissionDenied";
 
   lazy_static! {
-    static ref DENO_DIR: TempDir = { TempDir::new().expect("tempdir fail") };
+    static ref DENO_DIR: TempDir = TempDir::new().expect("tempdir fail");
 
     // STRIP_ANSI_RE and strip_ansi_codes are lifted from the "console" crate.
     // Copyright 2017 Armin Ronacher <armin.ronacher@active-4.com>. MIT License.
