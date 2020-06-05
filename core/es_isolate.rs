@@ -575,6 +575,12 @@ impl EsIsolate {
     self.mod_instantiate(root_id).map(|_| root_id)
   }
 
+  pub fn snapshot(&mut self) -> v8::StartupData {
+    let state_rc = Self::state(self);
+    std::mem::take(&mut state_rc.borrow_mut().modules);
+    CoreIsolate::snapshot(self)
+  }
+
   pub fn state(isolate: &v8::Isolate) -> Rc<RefCell<EsIsolateState>> {
     let s = isolate.get_slot::<Rc<RefCell<EsIsolateState>>>().unwrap();
     s.clone()
