@@ -2,9 +2,9 @@ import { assert, unitTest, assertMatch, unreachable } from "./test_util.ts";
 
 const openErrorStackPattern = new RegExp(
   `^.*
-    at unwrapResponse \\(.*dispatch_json\\.ts#.*\\)
-    at Object.sendAsync \\(.*dispatch_json\\.ts#.*\\)
-    at async Object\\.open \\(.*files\\.ts#.*\\).*$`,
+    at unwrapResponse \\(.*dispatch_json\\.ts:.*\\)
+    at Object.sendAsync \\(.*dispatch_json\\.ts:.*\\)
+    at async Object\\.open \\(.*files\\.ts:.*\\).*$`,
   "ms"
 );
 
