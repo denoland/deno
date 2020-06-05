@@ -119,7 +119,7 @@ function getFileLocation(callSite: CallSite, isInternal = false): string {
 
   const lineNumber = callSite.getLineNumber();
   if (lineNumber != null) {
-    result += `${black(":")}${yellow(lineNumber.toString())}`;
+    result += `${black("#")}${yellow(lineNumber.toString())}`;
 
     const columnNumber = callSite.getColumnNumber();
     if (columnNumber != null) {
