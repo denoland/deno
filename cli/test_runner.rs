@@ -7,7 +7,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use url::Url;
 
-fn is_supported(p: &Path) -> bool {
+pub(crate) fn is_supported(p: &Path) -> bool {
   use std::path::Component;
   if let Some(Component::Normal(basename_os_str)) = p.components().next_back() {
     let basename = basename_os_str.to_string_lossy();

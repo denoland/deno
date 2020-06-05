@@ -27,6 +27,7 @@ pub mod deno_dir;
 pub mod diagnostics;
 mod disk_cache;
 mod doc;
+mod doctest_runner;
 mod file_fetcher;
 pub mod flags;
 mod fmt;
@@ -497,6 +498,59 @@ async fn doc_command(
   }
 }
 
+async fn doctest_command(
+  flags: Flags,
+  include: Option<Vec<String>>,
+  fail_fast: bool,
+  quiet: bool,
+  allow_none: bool,
+  filter: Option<String>,
+) -> Result<(), ErrBox> {
+  let global_state = GlobalState::new(flags.clone())?;
+  let cwd = std::env::current_dir().expect("No current directory");
+  let include = include.unwrap_or_else(|| vec![".".to_string()]);
+  let doctests = doctest_runner::prepare_doctest(include);
+
+  if doctests.is_empty() {
+    println!("No matching doctest modules found");
+    if !allow_none {
+      std::process::exit(1);
+    }
+    return Ok(());
+  }
+
+  let doctest_file_path = cwd.join(".deno_doctest.test.ts");
+  let doctest_file_url =
+    Url::from_file_path(&doctest_file_path).expect("Should be valid file url");
+  let doctest_file =
+    doctest_runner::render_doctest_file(doctests, fail_fast, quiet, filter);
+  let main_module =
+    ModuleSpecifier::resolve_url(&doctest_file_url.to_string()).unwrap();
+  let mut worker =
+    create_main_worker(global_state.clone(), main_module.clone())?;
+
+  let source_file = SourceFile {
+    filename: doctest_file_url.to_file_path().unwrap(),
+    url: doctest_file_url,
+    types_url: None,
+    types_header: None,
+    media_type: MediaType::TypeScript,
+    source_code: doctest_file.clone().into_bytes(),
+  };
+
+  worker
+    .state
+    .borrow()
+    .global_state
+    .file_fetcher
+    .save_source_file_in_cache(&main_module, source_file);
+  let execute_result = worker.execute_module(&main_module).await;
+  execute_result?;
+  worker.execute("window.dispatchEvent(new Event('load'))")?;
+  (&mut *worker).await?;
+  worker.execute("window.dispatchEvent(new Event('unload'))")
+}
+
 async fn run_repl(flags: Flags) -> Result<(), ErrBox> {
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./__$deno$repl.ts").unwrap();
@@ -613,6 +667,14 @@ pub fn main() {
       json,
       filter,
     } => doc_command(flags, source_file, json, filter).boxed_local(),
+    DenoSubcommand::Doctest {
+      include,
+      fail_fast,
+      quiet,
+      allow_none,
+      filter,
+    } => doctest_command(flags, include, fail_fast, quiet, allow_none, filter)
+      .boxed_local(),
     DenoSubcommand::Eval {
       code,
       as_typescript,
