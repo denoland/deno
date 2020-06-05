@@ -7,7 +7,7 @@ export {
   assertEquals,
   assertMatch,
   assertNotEquals,
-  assertStrictEq,
+  assertStrictEquals,
   assertStrContains,
   unreachable,
   fail,

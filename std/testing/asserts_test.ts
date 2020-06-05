@@ -7,7 +7,7 @@ import {
   assertArrayContains,
   assertMatch,
   assertEquals,
-  assertStrictEq,
+  assertStrictEquals,
   assertThrows,
   assertThrowsAsync,
   AssertionError,
@@ -358,17 +358,17 @@ test({
 test({
   name: "strict pass case",
   fn(): void {
-    assertStrictEq(true, true);
-    assertStrictEq(10, 10);
-    assertStrictEq("abc", "abc");
+    assertStrictEquals(true, true);
+    assertStrictEquals(10, 10);
+    assertStrictEquals("abc", "abc");
 
     const xs = [1, false, "foo"];
     const ys = xs;
-    assertStrictEq(xs, ys);
+    assertStrictEquals(xs, ys);
 
     const x = { a: 1 };
     const y = x;
-    assertStrictEq(x, y);
+    assertStrictEquals(x, y);
   },
 });
 
@@ -376,7 +376,7 @@ test({
   name: "strict failed with structure diff",
   fn(): void {
     assertThrows(
-      (): void => assertStrictEq({ a: 1, b: 2 }, { a: 1, c: [3] }),
+      (): void => assertStrictEquals({ a: 1, b: 2 }, { a: 1, c: [3] }),
       AssertionError,
       [
         "Values are not strictly equal:",
@@ -393,7 +393,7 @@ test({
   name: "strict failed with reference diff",
   fn(): void {
     assertThrows(
-      (): void => assertStrictEq({ a: 1, b: 2 }, { a: 1, b: 2 }),
+      (): void => assertStrictEquals({ a: 1, b: 2 }, { a: 1, b: 2 }),
       AssertionError,
       [
         "Values have the same structure but are not reference-equal:\n",

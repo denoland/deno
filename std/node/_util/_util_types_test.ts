@@ -21,40 +21,40 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-import { assertStrictEq } from "../../testing/asserts.ts";
+import { assertStrictEquals } from "../../testing/asserts.ts";
 
 import { isDate } from "./_util_types.ts";
 
 const { test } = Deno;
 
 test("New date instance with no arguments", () => {
-  assertStrictEq(isDate(new Date()), true);
+  assertStrictEquals(isDate(new Date()), true);
 });
 
 test("New date instance with value 0", () => {
-  assertStrictEq(isDate(new Date(0)), true);
+  assertStrictEquals(isDate(new Date(0)), true);
 });
 
 test("New date instance in new context", () => {
-  assertStrictEq(isDate(new (eval("Date"))()), true);
+  assertStrictEquals(isDate(new (eval("Date"))()), true);
 });
 
 test("Date function is not of type Date", () => {
-  assertStrictEq(isDate(Date()), false);
+  assertStrictEquals(isDate(Date()), false);
 });
 
 test("Object is not of type Date", () => {
-  assertStrictEq(isDate({}), false);
+  assertStrictEquals(isDate({}), false);
 });
 
 test("Array is not of type Date", () => {
-  assertStrictEq(isDate([]), false);
+  assertStrictEquals(isDate([]), false);
 });
 
 test("Error is not of type Date", () => {
-  assertStrictEq(isDate(new Error()), false);
+  assertStrictEquals(isDate(new Error()), false);
 });
 
 test("New object from Date prototype is not of type Date", () => {
-  assertStrictEq(isDate(Object.create(Date.prototype)), false);
+  assertStrictEquals(isDate(Object.create(Date.prototype)), false);
 });
