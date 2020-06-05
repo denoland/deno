@@ -506,14 +506,11 @@ dependencies = [
 
 [[package]]
 name = "deno_lint"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "clap",
  "lazy_static",
  "regex",
- "serde",
- "serde_derive",
- "serde_json",
  "swc_atoms",
  "swc_common",
  "swc_ecma_ast",
