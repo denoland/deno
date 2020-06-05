@@ -315,6 +315,19 @@ async fn install_command(
 async fn lint_command(flags: Flags, files: Vec<String>) -> Result<(), ErrBox> {
   let global_state = GlobalState::new(flags)?;
 
+  // TODO(bartlomieju): refactor, it's non-sense to create
+  // state just to perform unstable check...
+  use crate::state::State;
+  let state = State::new(
+    global_state.clone(),
+    None,
+    ModuleSpecifier::resolve_url("file:///dummy.ts").unwrap(),
+    None,
+    true,
+  )?;
+
+  state.check_unstable("lint");
+
   let mut error_counts = 0;
 
   for file in files {

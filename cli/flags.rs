@@ -583,6 +583,7 @@ fn doc_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 }
 
 fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  unstable_arg_parse(flags, matches);
   let files = matches
     .values_of("files")
     .unwrap()
@@ -895,6 +896,7 @@ Show documentation for runtime built-ins:
 
 fn lint_subcommand<'a, 'b>() -> App<'a, 'b> {
   SubCommand::with_name("lint")
+    .arg(unstable_arg())
     .arg(
       Arg::with_name("files")
         .takes_value(true)
