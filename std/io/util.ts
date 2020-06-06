@@ -1,9 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-const { Buffer, mkdir, open } = Deno;
+const { mkdir, open } = Deno;
 type File = Deno.File;
 type Reader = Deno.Reader;
 import * as path from "../path/mod.ts";
-import { encode } from "../encoding/utf8.ts";
 
 /**
  * Copy bytes from one Uint8Array to another.  Bytes from `src` which don't fit
