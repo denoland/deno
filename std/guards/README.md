@@ -65,7 +65,15 @@ The latest ECMAScript standard defines nine types:
 
 #### `isBigInt`
 
-⚠️ Currently not exposed because `BigInt` support requires targeting ES2020.
+```typescript
+let val: bigint | number;
+
+if (isBigint(val)) {
+  // TypeScript will infer val: bigint
+} else {
+  // TypeScript will infer val: number
+}
+```
 
 #### `isBoolean`
 
@@ -146,8 +154,7 @@ Full TypeScript (type inference) support.
 Answers `true` if and only if:
 
 - `isNull(value) === false`; and
-- `typeof value === "object"`; and
-- `Array.isArray(value) === false`
+- `typeof value === "object"`
 
 Full TypeScript (type inference) support.
 

@@ -36,11 +36,11 @@ const getString = (): string => {
   return values[index];
 };
 
-// const getBigInt = () => {
-//   const values = [42n, BigInt("42")]
-//   const index = Math.floor(Math.random()*values.length)
-//   return values[index]
-// }
+const getBigInt = (): bigint => {
+  const values = [42n, BigInt("42")];
+  const index = Math.floor(Math.random() * values.length);
+  return values[index];
+};
 
 const getSymbol = (): symbol => {
   return Symbol("symbol");
@@ -51,7 +51,7 @@ test("isUndefined", (): void => {
   assertEquals(primitives.isUndefined(getBoolean()), false);
   assertEquals(primitives.isUndefined(getNumber()), false);
   assertEquals(primitives.isUndefined(getString()), false);
-  // assertEquals(primitives.isUndefined(getBigInt()), false)
+  assertEquals(primitives.isUndefined(getBigInt()), false);
   assertEquals(primitives.isUndefined(getSymbol()), false);
 });
 
@@ -60,7 +60,7 @@ test("isBoolean", (): void => {
   assertEquals(primitives.isBoolean(getBoolean()), true);
   assertEquals(primitives.isBoolean(getNumber()), false);
   assertEquals(primitives.isBoolean(getString()), false);
-  // assertEquals(primitives.isBoolean(getBigInt()), false)
+  assertEquals(primitives.isBoolean(getBigInt()), false);
   assertEquals(primitives.isBoolean(getSymbol()), false);
 });
 
@@ -69,7 +69,7 @@ test("isNumber", (): void => {
   assertEquals(primitives.isNumber(getBoolean()), false);
   assertEquals(primitives.isNumber(getNumber()), true);
   assertEquals(primitives.isNumber(getString()), false);
-  // assertEquals(primitives.isNumber(getBigInt()), false)
+  assertEquals(primitives.isNumber(getBigInt()), false);
   assertEquals(primitives.isNumber(getSymbol()), false);
 });
 
@@ -78,24 +78,24 @@ test("isString", (): void => {
   assertEquals(primitives.isString(getBoolean()), false);
   assertEquals(primitives.isString(getNumber()), false);
   assertEquals(primitives.isString(getString()), true);
-  // assertEquals(primitives.isString(getBigInt()), false)
+  assertEquals(primitives.isString(getBigInt()), false);
   assertEquals(primitives.isString(getSymbol()), false);
 });
 
-// test("isBigInt", t => {
-// assertEquals(primitives.isBigInt(getUndefined()), false)
-// assertEquals(primitives.isBigInt(getBoolean()), false)
-// assertEquals(primitives.isBigInt(getNumber()), false)
-// assertEquals(primitives.isBigInt(getString()), false)
-// assertEquals(primitives.isBigInt(getBigInt()), true)
-// assertEquals(primitives.isBigInt(getSymbol()), false)
-// })
+test("isBigInt", (): void => {
+  assertEquals(primitives.isBigInt(getUndefined()), false);
+  assertEquals(primitives.isBigInt(getBoolean()), false);
+  assertEquals(primitives.isBigInt(getNumber()), false);
+  assertEquals(primitives.isBigInt(getString()), false);
+  assertEquals(primitives.isBigInt(getBigInt()), true);
+  assertEquals(primitives.isBigInt(getSymbol()), false);
+});
 
 test("isSymbol", (): void => {
   assertEquals(primitives.isSymbol(getUndefined()), false);
   assertEquals(primitives.isSymbol(getBoolean()), false);
   assertEquals(primitives.isSymbol(getNumber()), false);
   assertEquals(primitives.isSymbol(getString()), false);
-  // assertEquals(primitives.isSymbol(getBigInt()), false)
+  assertEquals(primitives.isSymbol(getBigInt()), false);
   assertEquals(primitives.isSymbol(getSymbol()), true);
 });

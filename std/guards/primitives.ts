@@ -25,9 +25,9 @@ export const isString = <U>(term: string | U): term is string => {
   return typeof term === "string";
 };
 
-// export const isBigInt = <U>(term: bigint | U): term is bigint => {
-//   return typeof term === "bigint";
-// };
+export const isBigInt = <U>(term: bigint | U): term is bigint => {
+  return typeof term === "bigint";
+};
 
 export const isSymbol = <U>(term: symbol | U): term is symbol => {
   return typeof term === "symbol";
