@@ -50,9 +50,8 @@ pub fn prepare_doctest(
     .iter()
     .filter_map(|dir| {
       // TODO(iykekings) use deno error instead
-      let content = std::fs::read_to_string(&dir).expect(
-        format!("File doesn't exist {}", dir.to_str().unwrap_or("")).as_str(),
-      );
+      let content = std::fs::read_to_string(&dir)
+        .unwrap_or_else(|_| panic!("File doesn't exist {}", dir.display()));
       extract_jsdoc_examples(content, dir.to_owned())
     })
     .collect::<Vec<_>>()
@@ -115,7 +114,7 @@ fn extract_jsdoc_examples(input: String, p: PathBuf) -> Option<DocTest> {
         .lines()
         .skip(1)
         .filter_map(|line| {
-          let res = match line.trim_start().starts_with("*") {
+          let res = match line.trim_start().starts_with('*') {
             true => line.replacen("*", "", 1).trim_start().to_string(),
             false => line.trim_start().to_string(),
           };
@@ -132,7 +131,7 @@ fn extract_jsdoc_examples(input: String, p: PathBuf) -> Option<DocTest> {
       };
       Some(DocTestBody {
         caption: caption.to_owned(),
-        line_number: line_number.clone(),
+        line_number: *line_number,
         path: p.clone(),
         value: body,
         ignore: test_tag == Some("ignore"),
