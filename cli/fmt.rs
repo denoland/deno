@@ -193,7 +193,7 @@ fn is_supported(path: &Path) -> bool {
     .and_then(|e| e.to_str())
     .map(|e| e.to_lowercase());
   if let Some(ext) = lowercase_ext {
-    ext == "ts" || ext == "tsx" || ext == "js" || ext == "jsx"
+    ext == "ts" || ext == "tsx" || ext == "js" || ext == "jsx" || ext == "mjs"
   } else {
     false
   }
@@ -293,6 +293,8 @@ fn test_is_supported() {
   assert!(is_supported(Path::new("foo.TSX")));
   assert!(is_supported(Path::new("foo.JS")));
   assert!(is_supported(Path::new("foo.JSX")));
+  assert!(is_supported(Path::new("foo.mjs")));
+  assert!(!is_supported(Path::new("foo.mjsx")));
 }
 
 #[tokio::test]
