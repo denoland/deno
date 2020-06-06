@@ -27,13 +27,6 @@ pub enum DenoSubcommand {
     source_file: Option<String>,
     filter: Option<String>,
   },
-  Doctest {
-    fail_fast: bool,
-    quiet: bool,
-    allow_none: bool,
-    include: Option<Vec<String>>,
-    filter: Option<String>,
-  },
   Eval {
     code: String,
     as_typescript: bool,
