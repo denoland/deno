@@ -23,7 +23,7 @@ struct DocTestBody {
   is_async: bool,
 }
 
-pub fn prepare_doctest(
+pub fn prepare_doctests(
   mut include: Vec<String>,
   root_path: &PathBuf,
 ) -> Vec<DocTest> {

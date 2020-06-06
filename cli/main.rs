@@ -519,60 +519,6 @@ async fn doc_command(
   }
 }
 
-async fn doctest_command(
-  flags: Flags,
-  include: Option<Vec<String>>,
-  fail_fast: bool,
-  quiet: bool,
-  allow_none: bool,
-  filter: Option<String>,
-) -> Result<(), ErrBox> {
-  let global_state = GlobalState::new(flags.clone())?;
-  let cwd = std::env::current_dir()
-    .expect("expected: process has a current working directory");
-  let include = include.unwrap_or_else(|| vec![".".to_string()]);
-  let doctests = doctest_runner::prepare_doctest(include, &cwd);
-
-  if doctests.is_empty() {
-    println!("No matching doctest modules found");
-    if !allow_none {
-      std::process::exit(1);
-    }
-    return Ok(());
-  }
-
-  let doctest_file_path = cwd.join(".deno_doctest.test.ts");
-  let doctest_file_url =
-    Url::from_file_path(&doctest_file_path).expect("Should be valid file url");
-  let doctest_file =
-    doctest_runner::render_doctest_file(doctests, fail_fast, quiet, filter);
-  let main_module =
-    ModuleSpecifier::resolve_url(&doctest_file_url.to_string()).unwrap();
-  let mut worker =
-    MainWorker::create(global_state.clone(), main_module.clone())?;
-
-  let source_file = SourceFile {
-    filename: doctest_file_url.to_file_path().unwrap(),
-    url: doctest_file_url,
-    types_url: None,
-    types_header: None,
-    media_type: MediaType::TypeScript,
-    source_code: doctest_file.clone().into_bytes(),
-  };
-
-  worker
-    .state
-    .borrow()
-    .global_state
-    .file_fetcher
-    .save_source_file_in_cache(&main_module, source_file);
-  let execute_result = worker.execute_module(&main_module).await;
-  execute_result?;
-  worker.execute("window.dispatchEvent(new Event('load'))")?;
-  (&mut *worker).await?;
-  worker.execute("window.dispatchEvent(new Event('unload'))")
-}
-
 async fn run_repl(flags: Flags) -> Result<(), ErrBox> {
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./__$deno$repl.ts").unwrap();
@@ -598,6 +544,7 @@ async fn run_command(flags: Flags, script: String) -> Result<(), ErrBox> {
 }
 
 async fn test_command(
+  docs: bool,
   flags: Flags,
   include: Option<Vec<String>>,
   fail_fast: bool,
@@ -608,9 +555,29 @@ async fn test_command(
   let global_state = GlobalState::new(flags.clone())?;
   let cwd = std::env::current_dir().expect("No current directory");
   let include = include.unwrap_or_else(|| vec![".".to_string()]);
-  let test_modules = test_runner::prepare_test_modules_urls(include, &cwd)?;
 
-  if test_modules.is_empty() {
+  let (test_file, is_empty) = if !docs {
+    let test_modules = test_runner::prepare_test_modules_urls(include, &cwd)?;
+    let empty = &test_modules.is_empty();
+    (
+      test_runner::render_test_file(test_modules, fail_fast, quiet, filter),
+      empty.clone(),
+    )
+  } else {
+    let doctest_modules = doctest_runner::prepare_doctests(include, &cwd);
+    let empty = &doctest_modules.is_empty();
+    (
+      doctest_runner::render_doctest_file(
+        doctest_modules,
+        fail_fast,
+        quiet,
+        filter,
+      ),
+      empty.clone(),
+    )
+  };
+
+  if is_empty {
     println!("No matching test modules found");
     if !allow_none {
       std::process::exit(1);
@@ -621,8 +588,6 @@ async fn test_command(
   let test_file_path = cwd.join(".deno.test.ts");
   let test_file_url =
     Url::from_file_path(&test_file_path).expect("Should be valid file url");
-  let test_file =
-    test_runner::render_test_file(test_modules, fail_fast, quiet, filter);
   let main_module =
     ModuleSpecifier::resolve_url(&test_file_url.to_string()).unwrap();
   let mut worker =
@@ -681,14 +646,6 @@ pub fn main() {
       json,
       filter,
     } => doc_command(flags, source_file, json, filter).boxed_local(),
-    DenoSubcommand::Doctest {
-      include,
-      fail_fast,
-      quiet,
-      allow_none,
-      filter,
-    } => doctest_command(flags, include, fail_fast, quiet, allow_none, filter)
-      .boxed_local(),
     DenoSubcommand::Eval {
       code,
       as_typescript,
@@ -712,13 +669,16 @@ pub fn main() {
     DenoSubcommand::Repl => run_repl(flags).boxed_local(),
     DenoSubcommand::Run { script } => run_command(flags, script).boxed_local(),
     DenoSubcommand::Test {
+      docs,
       fail_fast,
       quiet,
       include,
       allow_none,
       filter,
-    } => test_command(flags, include, fail_fast, quiet, allow_none, filter)
-      .boxed_local(),
+    } => {
+      test_command(docs, flags, include, fail_fast, quiet, allow_none, filter)
+        .boxed_local()
+    }
     DenoSubcommand::Completions { buf } => {
       if let Err(e) = write_to_stdout_ignore_sigpipe(&buf) {
         eprintln!("{}", e);

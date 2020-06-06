@@ -61,6 +61,7 @@ pub enum DenoSubcommand {
     script: String,
   },
   Test {
+    docs: bool,
     fail_fast: bool,
     quiet: bool,
     allow_none: bool,
@@ -266,8 +267,6 @@ pub fn flags_from_vec_safe(args: Vec<String>) -> clap::Result<Flags> {
     upgrade_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("doc") {
     doc_parse(&mut flags, m);
-  } else if let Some(m) = matches.subcommand_matches("doctest") {
-    doctest_parse(&mut flags, m);
   } else {
     repl_parse(&mut flags, &matches);
   }
@@ -322,7 +321,6 @@ If the flag is set, restrict these messages to errors.",
     .subcommand(types_subcommand())
     .subcommand(upgrade_subcommand())
     .subcommand(doc_subcommand())
-    .subcommand(doctest_subcommand())
     .long_about(DENO_HELP)
     .after_help(ENV_VARIABLES_HELP)
 }
@@ -537,6 +535,7 @@ fn run_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   run_test_args_parse(flags, matches);
 
+  let docs = matches.is_present("docs");
   let failfast = matches.is_present("failfast");
   let allow_none = matches.is_present("allow_none");
   let quiet = matches.is_present("quiet");
@@ -553,6 +552,7 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   };
 
   flags.subcommand = DenoSubcommand::Test {
+    docs,
     fail_fast: failfast,
     quiet,
     include,
@@ -583,33 +583,6 @@ fn doc_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     source_file,
     json,
     filter,
-  };
-}
-
-fn doctest_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  run_test_args_parse(flags, matches);
-
-  let failfast = matches.is_present("failfast");
-  let allow_none = matches.is_present("allow_none");
-  let quiet = matches.is_present("quiet");
-  let filter = matches.value_of("filter").map(String::from);
-  let include = if matches.is_present("files") {
-    let files: Vec<String> = matches
-      .values_of("files")
-      .unwrap()
-      .map(String::from)
-      .collect();
-    Some(files)
-  } else {
-    None
-  };
-
-  flags.subcommand = DenoSubcommand::Doctest {
-    include,
-    fail_fast: failfast,
-    quiet,
-    filter,
-    allow_none,
   };
 }
 
@@ -915,46 +888,6 @@ Show documentation for runtime built-ins:
     )
 }
 
-fn doctest_subcommand<'a, 'b>() -> App<'a, 'b> {
-  run_test_args(SubCommand::with_name("doctest"))
-    .arg(
-      Arg::with_name("failfast")
-        .long("failfast")
-        .help("Stop on first error")
-        .takes_value(false),
-    )
-    .arg(
-      Arg::with_name("allow_none")
-        .long("allow-none")
-        .help("Don't return error code if no files with doctests are found")
-        .takes_value(false),
-    )
-    .arg(
-      Arg::with_name("filter")
-        .long("filter")
-        .takes_value(true)
-        .help("A pattern to filter the doctests to run by"),
-    )
-    .arg(
-      Arg::with_name("files")
-        .help("List of file names to run")
-        .takes_value(true)
-        .multiple(true),
-    )
-    .about("Run Doctests")
-    .long_about(
-      "Run doctests using Deno's built-in doctest runner.
-
-Evaluate the given modules, run all doctests declared in JSDoc @example block and
-report results to standard output:
-  deno doctest src/fetch.ts src/signal.ts
-
-Directory arguments are expanded to all contained files matching the glob
-{*_,*.,}.{js,ts,jsx,tsx} except test files:
-  deno doctest src/",
-    )
-}
-
 fn permission_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
   app
     .arg(
@@ -1070,6 +1003,12 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
       Arg::with_name("failfast")
         .long("failfast")
         .help("Stop on first error")
+        .takes_value(false),
+    )
+    .arg(
+      Arg::with_name("docs")
+        .long("docs")
+        .help("Run code examples as tests")
         .takes_value(false),
     )
     .arg(
@@ -2447,6 +2386,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Test {
+          docs: false,
           fail_fast: false,
           filter: None,
           allow_none: true,
@@ -2466,6 +2406,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Test {
+          docs: false,
           fail_fast: false,
           allow_none: false,
           quiet: false,
@@ -2759,6 +2700,25 @@ mod tests {
           script: "foo.js".to_string(),
         },
         inspect: Some("127.0.0.1:9229".parse().unwrap()),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn doctest() {
+    let r = flags_from_vec_safe(svec!["deno", "test", "--docs"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Test {
+          allow_none: false,
+          docs: true,
+          fail_fast: false,
+          quiet: false,
+          include: None,
+          filter: None
+        },
         ..Flags::default()
       }
     );
