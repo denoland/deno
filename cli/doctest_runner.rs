@@ -114,7 +114,7 @@ fn extract_jsdoc_examples(input: String, p: PathBuf) -> Option<DocTest> {
       Some(DocTestBody {
         caption,
         line_number: *line_number,
-        path: path.unwrap_or("".to_string()),
+        path: path.unwrap_or_else(|| "".to_string()),
         value: code_block,
         ignore: test_tag == Some("ignore"),
         is_async,
@@ -225,9 +225,10 @@ fn get_code_from_example(ex: &str) -> String {
     .lines()
     .skip(1)
     .filter_map(|line| {
-      let res = match line.trim_start().starts_with('*') {
-        true => line.replacen("*", "", 1).trim_start().to_string(),
-        false => line.trim_start().to_string(),
+      let res = if line.trim_start().starts_with('*') {
+        line.replacen("*", "", 1).trim_start().to_string()
+      } else {
+        line.trim_start().to_string()
       };
       match res.len() {
         0 => None,
