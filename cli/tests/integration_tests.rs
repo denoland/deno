@@ -1737,6 +1737,12 @@ itest!(wasm_async {
   output: "wasm_async.out",
 });
 
+itest!(wasm_unreachable {
+  args: "run wasm_unreachable.js",
+  output: "wasm_unreachable.out",
+  exit_code: 1,
+});
+
 itest!(top_level_await {
   args: "run --allow-read top_level_await.js",
   output: "top_level_await.out",
