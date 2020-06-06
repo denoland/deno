@@ -3,7 +3,7 @@ import {
   unitTest,
   assert,
   assertEquals,
-  assertStrContains,
+  assertStringContains,
 } from "./test_util.ts";
 
 unitTest(function formDataHasCorrectNameProp(): void {
@@ -155,7 +155,7 @@ unitTest(function formDataParamsArgumentsCheck(): void {
       }
     }
     assertEquals(hasThrown, 2);
-    assertStrContains(
+    assertStringContains(
       errMsg,
       `${method} requires at least 1 argument, but only 0 present`
     );
@@ -179,7 +179,7 @@ unitTest(function formDataParamsArgumentsCheck(): void {
       }
     }
     assertEquals(hasThrown, 2);
-    assertStrContains(
+    assertStringContains(
       errMsg,
       `${method} requires at least 2 arguments, but only 0 present`
     );
@@ -199,7 +199,7 @@ unitTest(function formDataParamsArgumentsCheck(): void {
       }
     }
     assertEquals(hasThrown, 2);
-    assertStrContains(
+    assertStringContains(
       errMsg,
       `${method} requires at least 2 arguments, but only 1 present`
     );

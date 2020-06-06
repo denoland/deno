@@ -204,7 +204,7 @@ export function assertNotEquals(
  * Make an assertion that `actual` and `expected` are strictly equal.  If
  * not then throw.
  */
-export function assertStrictEq(
+export function assertStrictEquals(
   actual: unknown,
   expected: unknown,
   msg?: string
@@ -250,7 +250,7 @@ export function assertStrictEq(
  * Make an assertion that actual contains expected. If not
  * then thrown.
  */
-export function assertStrContains(
+export function assertStringContains(
   actual: string,
   expected: string,
   msg?: string
