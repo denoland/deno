@@ -14,14 +14,17 @@ fn is_supported(p: &Path) -> bool {
     basename.ends_with("_test.ts")
       || basename.ends_with("_test.tsx")
       || basename.ends_with("_test.js")
+      || basename.ends_with("_test.mjs")
       || basename.ends_with("_test.jsx")
       || basename.ends_with(".test.ts")
       || basename.ends_with(".test.tsx")
       || basename.ends_with(".test.js")
+      || basename.ends_with(".test.mjs")
       || basename.ends_with(".test.jsx")
       || basename == "test.ts"
       || basename == "test.tsx"
       || basename == "test.js"
+      || basename == "test.mjs"
       || basename == "test.jsx"
   } else {
     false

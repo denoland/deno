@@ -1,6 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 #![deny(warnings)]
 
+extern crate dissimilar;
 #[macro_use]
 extern crate lazy_static;
 #[macro_use]
@@ -25,6 +26,7 @@ mod checksum;
 pub mod colors;
 pub mod deno_dir;
 pub mod diagnostics;
+mod diff;
 mod disk_cache;
 mod doc;
 mod file_fetcher;
@@ -333,6 +335,7 @@ async fn eval_command(
   flags: Flags,
   code: String,
   as_typescript: bool,
+  print: bool,
 ) -> Result<(), ErrBox> {
   // Force TypeScript compile.
   let main_module =
@@ -341,6 +344,13 @@ async fn eval_command(
   let mut worker = MainWorker::create(global_state, main_module.clone())?;
   let main_module_url = main_module.as_url().to_owned();
   // Create a dummy source file.
+  let source_code = if print {
+    "console.log(".to_string() + &code + ")"
+  } else {
+    code.clone()
+  }
+  .into_bytes();
+
   let source_file = SourceFile {
     filename: main_module_url.to_file_path().unwrap(),
     url: main_module_url,
@@ -351,7 +361,7 @@ async fn eval_command(
     } else {
       MediaType::JavaScript
     },
-    source_code: code.clone().into_bytes(),
+    source_code,
   };
   // Save our fake file into file fetcher cache
   // to allow module access by TS compiler (e.g. op_fetch_source_files)
@@ -403,16 +413,14 @@ async fn bundle_command(
 
   debug!(">>>>> bundle END");
 
-  let output_string = fmt::format_text(&output)?;
-
   if let Some(out_file_) = out_file.as_ref() {
     info!("Emitting bundle to {:?}", out_file_);
-    let output_bytes = output_string.as_bytes();
+    let output_bytes = output.as_bytes();
     let output_len = output_bytes.len();
     deno_fs::write_file(out_file_, output_bytes, 0o666)?;
     info!("{} emitted.", human_size(output_len as f64));
   } else {
-    println!("{}", output_string);
+    println!("{}", output);
   }
   Ok(())
 }
@@ -629,9 +637,10 @@ pub fn main() {
       filter,
     } => doc_command(flags, source_file, json, filter).boxed_local(),
     DenoSubcommand::Eval {
+      print,
       code,
       as_typescript,
-    } => eval_command(flags, code, as_typescript).boxed_local(),
+    } => eval_command(flags, code, as_typescript, print).boxed_local(),
     DenoSubcommand::Cache { files } => {
       cache_command(flags, files).boxed_local()
     }

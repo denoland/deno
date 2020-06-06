@@ -41,6 +41,7 @@ pub fn format_details(node: doc::DocNode) -> String {
 
   let maybe_extra = match node.kind {
     DocNodeKind::Class => Some(format_class_details(node)),
+    DocNodeKind::Enum => Some(format_enum_details(node)),
     DocNodeKind::Namespace => Some(format_namespace_details(node)),
     _ => None,
   };
@@ -407,6 +408,17 @@ fn format_class_details(node: doc::DocNode) -> String {
       ),
       1,
     ));
+  }
+  details.push_str("\n");
+  details
+}
+
+fn format_enum_details(node: doc::DocNode) -> String {
+  let mut details = String::new();
+  let enum_def = node.enum_def.unwrap();
+  for member in enum_def.members {
+    details
+      .push_str(&add_indent(format!("{}\n", colors::bold(member.name)), 1));
   }
   details.push_str("\n");
   details
