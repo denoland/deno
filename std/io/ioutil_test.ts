@@ -105,5 +105,4 @@ Deno.test("testStringReaderEof", async function (): Promise<void> {
   assertEquals(await r.read(new Uint8Array()), 0);
   assertEquals(await r.read(new Uint8Array(4)), 3);
   assertEquals(await r.read(new Uint8Array(1)), null);
-  assertEquals(await r.read(new Uint8Array(0)), null);
 });
