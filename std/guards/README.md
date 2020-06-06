@@ -4,37 +4,37 @@ A comprehensive collection of type guards.
 
 ## Table of contents
 
--   [Usage](#usage)
+- [Usage](#usage)
 
-    -   [Primitives](#primitives)
+  - [Primitives](#primitives)
 
-        -   [`isBigInt`](#isbigint)
-        -   [`isBoolean`](#isboolean)
-        -   [`isNumber`](#isnumber)
-        -   [`isString`](#isstring)
-        -   [`isSymbol`](#issymbol)
-        -   [`isUndefined`](#isundefined)
+    - [`isBigInt`](#isbigint)
+    - [`isBoolean`](#isboolean)
+    - [`isNumber`](#isnumber)
+    - [`isString`](#isstring)
+    - [`isSymbol`](#issymbol)
+    - [`isUndefined`](#isundefined)
 
-    -   [Special](#special)
+  - [Special](#special)
 
-        -   [`isNull`](#isnull)
-        -   [`isFunction`](#isfunction)
-        -   [`isObject`](#isobject)
-        -   [`isArray`](#isarray)
-        -   [`isMap`](#ismap)
-        -   [`isSet`](#isset)
-        -   [`isWeakMap`](#isweakmap)
-        -   [`isWeakSet`](#isweakset)
-        -   [`isDate`](#isdate)
+    - [`isNull`](#isnull)
+    - [`isFunction`](#isfunction)
+    - [`isObject`](#isobject)
+    - [`isArray`](#isarray)
+    - [`isMap`](#ismap)
+    - [`isSet`](#isset)
+    - [`isWeakMap`](#isweakmap)
+    - [`isWeakSet`](#isweakset)
+    - [`isDate`](#isdate)
 
-    -   [Convenience](#convenience)
+  - [Convenience](#convenience)
 
-        -   [`isNonEmptyArray`](#isnonemptyarray)
-        -   [`isValidNumber`](#isvalidnumber)
-        -   [`isInteger`](#isinteger)
-        -   [`isPositiveInteger`](#ispositiveinteger)
-        -   [`isNonNegativeInteger`](#isnonnegativeinteger)
-        -   [`isNegativeInteger`](#isnegativeinteger)
+    - [`isNonEmptyArray`](#isnonemptyarray)
+    - [`isValidNumber`](#isvalidnumber)
+    - [`isInteger`](#isinteger)
+    - [`isPositiveInteger`](#ispositiveinteger)
+    - [`isNonNegativeInteger`](#isnonnegativeinteger)
+    - [`isNegativeInteger`](#isnegativeinteger)
 
 ## Usage
 
@@ -42,24 +42,24 @@ From <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Data_structures>:
 
 The latest ECMAScript standard defines nine types:
 
--   Six Data Types that are primitives, checked by `typeof` operator:
-    -   `undefined`: `typeof instance === "undefined"`
-    -   `Boolean`: `typeof instance === "boolean"`
-    -   `Number`: `typeof instance === "number"`
-    -   `String`: `typeof instance === "string"`
-    -   `BigInt`: `typeof instance === "bigint"`
-    -   `Symbol`: `typeof instance === "symbol"`
--   `null`: `typeof instance === "object"`. Special primitive type having
-    additional usage for it's value: if object is not inherited, then `null` is
-    shown;
--   `Object`: `typeof instance === "object"`. Special non-data but structural type
-    for any constructed object instance also used as data structures: new
-    `Object`, new `Array`, new `Map`, new `Set`, new `WeakMap`, new `WeakSet`, new
-    `Date` and almost everything made with `new` keyword;
--   `Function` non data structure, though it also answers for `typeof` operator:
-    `typeof instance === "function"`. This answer is done as a special shorthand
-    for `Function`s, though every `Function` constructor is derived from `Object`
-    constructor.
+- Six Data Types that are primitives, checked by `typeof` operator:
+  - `undefined`: `typeof instance === "undefined"`
+  - `Boolean`: `typeof instance === "boolean"`
+  - `Number`: `typeof instance === "number"`
+  - `String`: `typeof instance === "string"`
+  - `BigInt`: `typeof instance === "bigint"`
+  - `Symbol`: `typeof instance === "symbol"`
+- `null`: `typeof instance === "object"`. Special primitive type having
+  additional usage for it's value: if object is not inherited, then `null` is
+  shown;
+- `Object`: `typeof instance === "object"`. Special non-data but structural type
+  for any constructed object instance also used as data structures: new
+  `Object`, new `Array`, new `Map`, new `Set`, new `WeakMap`, new `WeakSet`, new
+  `Date` and almost everything made with `new` keyword;
+- `Function` non data structure, though it also answers for `typeof` operator:
+  `typeof instance === "function"`. This answer is done as a special shorthand
+  for `Function`s, though every `Function` constructor is derived from `Object`
+  constructor.
 
 ### Primitives
 
@@ -153,8 +153,8 @@ Full TypeScript (type inference) support.
 
 Answers `true` if and only if:
 
--   `isNull(value) === false`; and
--   `typeof value === "object"`
+- `isNull(value) === false`; and
+- `typeof value === "object"`
 
 Full TypeScript (type inference) support.
 
