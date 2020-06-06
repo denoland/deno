@@ -561,7 +561,7 @@ async fn test_command(
     let empty = &test_modules.is_empty();
     (
       test_runner::render_test_file(test_modules, fail_fast, quiet, filter),
-      empty.clone(),
+      *empty,
     )
   } else {
     let doctest_modules = doctest_runner::prepare_doctests(include, &cwd);
@@ -573,7 +573,7 @@ async fn test_command(
         quiet,
         filter,
       ),
-      empty.clone(),
+      *empty,
     )
   };
 
