@@ -3,12 +3,13 @@
 import {
   assert,
   assertNotEquals,
-  assertStrContains,
+  assertStringContains,
   assertArrayContains,
   assertMatch,
   assertEquals,
-  assertStrictEq,
+  assertStrictEquals,
   assertThrows,
+  assertThrowsAsync,
   AssertionError,
   equal,
   fail,
@@ -132,12 +133,12 @@ test("testingNotEquals", function (): void {
 });
 
 test("testingAssertStringContains", function (): void {
-  assertStrContains("Denosaurus", "saur");
-  assertStrContains("Denosaurus", "Deno");
-  assertStrContains("Denosaurus", "rus");
+  assertStringContains("Denosaurus", "saur");
+  assertStringContains("Denosaurus", "Deno");
+  assertStringContains("Denosaurus", "rus");
   let didThrow;
   try {
-    assertStrContains("Denosaurus", "Raptor");
+    assertStringContains("Denosaurus", "Raptor");
     didThrow = false;
   } catch (e) {
     assert(e instanceof AssertionError);
@@ -151,21 +152,17 @@ test("testingArrayContains", function (): void {
   const fixtureObject = [{ deno: "luv" }, { deno: "Js" }];
   assertArrayContains(fixture, ["deno"]);
   assertArrayContains(fixtureObject, [{ deno: "luv" }]);
-  let didThrow;
-  try {
-    assertArrayContains(fixtureObject, [{ deno: "node" }]);
-    didThrow = false;
-  } catch (e) {
-    assert(e instanceof AssertionError);
-    didThrow = true;
-  }
-  assertEquals(didThrow, true);
+  assertThrows(
+    (): void => assertArrayContains(fixtureObject, [{ deno: "node" }]),
+    AssertionError,
+    `actual: "[ { deno: "luv" }, { deno: "Js" } ]" expected to contain: "[ { deno: "node" } ]"\nmissing: [ { deno: "node" } ]`
+  );
 });
 
 test("testingAssertStringContainsThrow", function (): void {
   let didThrow = false;
   try {
-    assertStrContains("Denosaurus from Jurassic", "Raptor");
+    assertStringContains("Denosaurus from Jurassic", "Raptor");
   } catch (e) {
     assert(
       e.message ===
@@ -247,6 +244,20 @@ test("testingAssertFailWithWrongErrorClass", function (): void {
     AssertionError,
     `Expected error to be instance of "Error", but was "AssertionError"`
   );
+});
+
+test("testingAssertThrowsWithReturnType", () => {
+  assertThrows(() => {
+    throw new Error();
+    return "a string";
+  });
+});
+
+test("testingAssertThrowsAsyncWithReturnType", () => {
+  assertThrowsAsync(() => {
+    throw new Error();
+    return Promise.resolve("a Promise<string>");
+  });
 });
 
 const createHeader = (): string[] => [
@@ -347,17 +358,17 @@ test({
 test({
   name: "strict pass case",
   fn(): void {
-    assertStrictEq(true, true);
-    assertStrictEq(10, 10);
-    assertStrictEq("abc", "abc");
+    assertStrictEquals(true, true);
+    assertStrictEquals(10, 10);
+    assertStrictEquals("abc", "abc");
 
     const xs = [1, false, "foo"];
     const ys = xs;
-    assertStrictEq(xs, ys);
+    assertStrictEquals(xs, ys);
 
     const x = { a: 1 };
     const y = x;
-    assertStrictEq(x, y);
+    assertStrictEquals(x, y);
   },
 });
 
@@ -365,7 +376,7 @@ test({
   name: "strict failed with structure diff",
   fn(): void {
     assertThrows(
-      (): void => assertStrictEq({ a: 1, b: 2 }, { a: 1, c: [3] }),
+      (): void => assertStrictEquals({ a: 1, b: 2 }, { a: 1, c: [3] }),
       AssertionError,
       [
         "Values are not strictly equal:",
@@ -382,7 +393,7 @@ test({
   name: "strict failed with reference diff",
   fn(): void {
     assertThrows(
-      (): void => assertStrictEq({ a: 1, b: 2 }, { a: 1, b: 2 }),
+      (): void => assertStrictEquals({ a: 1, b: 2 }, { a: 1, b: 2 }),
       AssertionError,
       [
         "Values have the same structure but are not reference-equal:\n",

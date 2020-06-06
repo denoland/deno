@@ -3,7 +3,7 @@ import {
   unitTest,
   assert,
   assertEquals,
-  assertStrContains,
+  assertStringContains,
   assertThrows,
   fail,
 } from "./test_util.ts";
@@ -18,7 +18,7 @@ unitTest({ perms: { net: true } }, async function fetchProtocolError(): Promise<
     err = err_;
   }
   assert(err instanceof TypeError);
-  assertStrContains(err.message, "not supported");
+  assertStringContains(err.message, "not supported");
 });
 
 unitTest(
@@ -31,7 +31,7 @@ unitTest(
       err = err_;
     }
     assert(err instanceof Deno.errors.Http);
-    assertStrContains(err.message, "error trying to connect");
+    assertStringContains(err.message, "error trying to connect");
   }
 );
 
@@ -92,9 +92,8 @@ unitTest({ perms: { net: true } }, async function fetchBodyUsed(): Promise<
   const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
   assertEquals(response.bodyUsed, false);
   assertThrows((): void => {
-    // Assigning to read-only property throws in the strict mode.
-    // @ts-expect-error
-    response.bodyUsed = true;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (response as any).bodyUsed = true;
   });
   await response.blob();
   assertEquals(response.bodyUsed, true);
@@ -264,24 +263,6 @@ unitTest(
 
     assertEquals(resultFile.type, "application/octet-stream");
     assertEquals(resultFile.name, "file.bin");
-    assertEquals(new Uint8Array(await resultFile.arrayBuffer()), binaryFile);
-  }
-);
-
-unitTest(
-  { perms: { net: true } },
-  async function fetchInitFormDataBinaryFileBody2(): Promise<void> {
-    // Some random bytes
-    // prettier-ignore
-    const binaryFile = new Uint8Array([108,2,0,0,145,22,162,61,157,227,166,77,138,75,180,56,119,188,177,183]);
-    const response = await fetch("http://localhost:4545/echo_multipart_file", {
-      method: "POST",
-      body: binaryFile,
-    });
-    const resultForm = await response.formData();
-    //
-    const resultFile = resultForm.get("file") as File;
-    assertEquals(resultFile.type, "application/octet-stream");
     assertEquals(new Uint8Array(await resultFile.arrayBuffer()), binaryFile);
   }
 );
@@ -759,10 +740,9 @@ unitTest({ perms: { net: true } }, async function fetchBodyReadTwice(): Promise<
   assert(_json);
 
   // All calls after the body was consumed, should fail
-  const methods = ["json", "text", "formData", "arrayBuffer"];
+  const methods = ["json", "text", "formData", "arrayBuffer"] as const;
   for (const method of methods) {
     try {
-      // @ts-expect-error
       await response[method]();
       fail(
         "Reading body multiple times should failed, the stream should've been locked."
@@ -871,7 +851,7 @@ unitTest(
 unitTest(
   { perms: { net: true } },
   async function fetchNullBodyStatus(): Promise<void> {
-    const nullBodyStatus = [204, 205, 304];
+    const nullBodyStatus = [101, 204, 205, 304];
 
     for (const status of nullBodyStatus) {
       const headers = new Headers([["x-status", String(status)]]);
@@ -900,6 +880,26 @@ unitTest(
         assertEquals(
           e.message,
           "Response with null body status cannot have body"
+        );
+      }
+    }
+  }
+);
+
+unitTest(
+  { perms: { net: true } },
+  function fetchResponseConstructorInvalidStatus(): void {
+    const invalidStatus = [101, 600, 199];
+
+    for (const status of invalidStatus) {
+      try {
+        new Response("deno", { status });
+        fail("Invalid status");
+      } catch (e) {
+        assert(e instanceof RangeError);
+        assertEquals(
+          e.message,
+          `The status provided (${status}) is outside the range [200, 599]`
         );
       }
     }

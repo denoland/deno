@@ -521,7 +521,7 @@ pub fn analyze_dependencies_and_references(
     let comments = parser
       .comments
       .take_leading_comments(module_span.lo())
-      .unwrap_or_else(|| vec![]);
+      .unwrap_or_else(Vec::new);
 
     let mut references = vec![];
     for comment in comments {

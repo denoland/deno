@@ -214,7 +214,13 @@ function evaluateCallSite(callSite: CallSite): CallSiteEval {
   };
 }
 
-function prepareStackTrace(error: Error, callSites: CallSite[]): string {
+function prepareStackTrace(
+  error: Error & {
+    __callSiteEvals: CallSiteEval[];
+    __formattedFrames: string[];
+  },
+  callSites: CallSite[]
+): string {
   const mappedCallSites = callSites.map(
     (callSite): CallSite => {
       const fileName = callSite.getFileName();
@@ -238,19 +244,14 @@ function prepareStackTrace(error: Error, callSites: CallSite[]): string {
     __formattedFrames: { value: [], configurable: true },
   });
   for (const callSite of mappedCallSites) {
-    // @ts-expect-error
     error.__callSiteEvals.push(Object.freeze(evaluateCallSite(callSite)));
     const isInternal = callSite.getFileName()?.startsWith("$deno$") ?? false;
-    // @ts-expect-error
     error.__formattedFrames.push(callSiteToString(callSite, isInternal));
   }
-  // @ts-expect-error
   Object.freeze(error.__callSiteEvals);
-  // @ts-expect-error
   Object.freeze(error.__formattedFrames);
   return (
     `${error.name}: ${error.message}\n` +
-    // @ts-expect-error
     error.__formattedFrames
       .map((s: string) => `    at ${colors.stripColor(s)}`)
       .join("\n")

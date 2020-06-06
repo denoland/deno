@@ -216,14 +216,18 @@ function groupEntries<T>(
       lineMaxLength += separatorSpace;
       maxLineLength[i] = lineMaxLength;
     }
-    let order = "padStart";
+    let order: "padStart" | "padEnd" = "padStart";
     if (value !== undefined) {
       for (let i = 0; i < entries.length; i++) {
-        //@ts-expect-error
-        if (typeof value[i] !== "number" && typeof value[i] !== "bigint") {
+        /* eslint-disable @typescript-eslint/no-explicit-any */
+        if (
+          typeof (value as any)[i] !== "number" &&
+          typeof (value as any)[i] !== "bigint"
+        ) {
           order = "padEnd";
           break;
         }
+        /* eslint-enable */
       }
     }
     // Each iteration creates a single line of grouped entries.
@@ -235,7 +239,6 @@ function groupEntries<T>(
       for (; j < max - 1; j++) {
         // In future, colors should be taken here into the account
         const padding = maxLineLength[j - i];
-        //@ts-expect-error
         str += `${entries[j]}, `[order](padding, " ");
       }
       if (order === "padStart") {
@@ -408,8 +411,8 @@ function createMapString(
     },
     group: false,
   };
-  //@ts-expect-error
-  return createIterableString(value, ctx, level, maxLevel, printConfig);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return createIterableString(value as any, ctx, level, maxLevel, printConfig);
 }
 
 function createWeakSetString(): string {
@@ -477,7 +480,7 @@ function createPromiseString(
 // TODO: Proxy
 
 function createRawObjectString(
-  value: { [key: string]: unknown },
+  value: Record<string, unknown>,
   ctx: ConsoleContext,
   level: number,
   maxLevel: number
@@ -490,8 +493,9 @@ function createRawObjectString(
   let baseString = "";
 
   let shouldShowDisplayName = false;
-  // @ts-expect-error
-  let displayName = value[Symbol.toStringTag];
+  let displayName = (value as { [Symbol.toStringTag]: string })[
+    Symbol.toStringTag
+  ];
   if (!displayName) {
     displayName = getClassInstanceName(value);
   }
@@ -511,8 +515,8 @@ function createRawObjectString(
   for (const key of symbolKeys) {
     entries.push(
       `${key.toString()}: ${stringifyWithQuotes(
-        // @ts-expect-error
-        value[key],
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        value[key as any],
         ctx,
         level + 1,
         maxLevel

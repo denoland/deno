@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { unitTest, assertNotEquals, assertStrictEq } from "./test_util.ts";
+import { unitTest, assertNotEquals, assertStrictEquals } from "./test_util.ts";
 
 unitTest(function getRandomValuesInt8Array(): void {
   const arr = new Int8Array(32);
@@ -47,5 +47,5 @@ unitTest(function getRandomValuesReturnValue(): void {
   const arr = new Uint32Array(8);
   const rtn = crypto.getRandomValues(arr);
   assertNotEquals(arr, new Uint32Array(8));
-  assertStrictEq(rtn, arr);
+  assertStrictEquals(rtn, arr);
 });
