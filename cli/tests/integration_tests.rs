@@ -765,6 +765,18 @@ fn data_import() {
 }
 
 #[test]
+fn data_import_invalid() {
+  let (_, err) = util::run_and_collect_output(
+    false,
+    "run --unstable --reload data_import_invalid.js",
+    None,
+    None,
+    false,
+  );
+  assert!(err.contains("Malformed data url, missing comma"));
+}
+
+#[test]
 fn data_import_origin_upgrade() {
   let (_, err) = util::run_and_collect_output(
     false,
