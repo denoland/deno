@@ -16,12 +16,12 @@ export class StringReader implements Reader {
   constructor(private readonly s: string) {}
 
   read(p: Uint8Array): Promise<number | null> {
+    if (this.offs == this.buf.byteLength) {
+      return Promise.resolve(null);
+    }
     const n = Math.min(p.byteLength, this.buf.byteLength - this.offs);
     p.set(this.buf.slice(this.offs, this.offs + n));
     this.offs += n;
-    if (n === 0) {
-      return Promise.resolve(null);
-    }
     return Promise.resolve(n);
   }
 }
