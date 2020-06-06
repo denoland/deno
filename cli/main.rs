@@ -558,7 +558,7 @@ async fn run_command(flags: Flags, script: String) -> Result<(), ErrBox> {
       url: main_module_url,
       types_url: None,
       types_header: None,
-      media_type: MediaType::Unknown,
+      media_type: MediaType::TypeScript,
       source_code: source,
     };
     // Save our fake file into file fetcher cache
