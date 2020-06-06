@@ -85,7 +85,7 @@ fn run_from_stdin() {
     .stdin
     .as_mut()
     .unwrap()
-    .write_all("console.log(\"Hello World\");".as_bytes())
+    .write_all(b"console.log(\"Hello World\");")
     .unwrap();
   let output = deno.wait_with_output().unwrap();
   assert!(output.status.success());
