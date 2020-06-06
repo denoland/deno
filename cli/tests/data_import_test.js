@@ -10,7 +10,7 @@ Deno.test("static base64 data url import", () => {
 Deno.test("dynamic base64 data url import", async () => {
   const data2 = await import(
     // export const leet = 1337
-    "data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGxlZXQgPSAxMzM3"
+    "data:application/javascript;base64,ZXhwb3J0IGNvbnN0IGxlZXQgPSAxMzM3"
   );
   assertEquals(data2.leet, 1337);
 });

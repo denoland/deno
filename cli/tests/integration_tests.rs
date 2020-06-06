@@ -754,7 +754,6 @@ fn data_import() {
   let status = util::deno_cmd()
     .current_dir(util::tests_path())
     .arg("test")
-    .arg("--unstable")
     .arg("--reload")
     .arg("data_import_test.js")
     .spawn()

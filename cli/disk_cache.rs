@@ -94,10 +94,7 @@ impl DiskCache {
         out = out.join(remaining_components);
       }
       "data" => {
-        out.push(base64::encode(ring::digest::digest(
-          &ring::digest::SHA256,
-          url.as_str().as_bytes(),
-        )));
+        out.push(crate::checksum::gen(vec![url.as_str().as_bytes()]));
       }
       scheme => {
         unimplemented!(

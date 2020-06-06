@@ -550,12 +550,10 @@ fn extract_data_url(url: &Url) -> Result<SourceFile, ErrBox> {
   let url_content = &url.as_str()[5..];
   let mut part_iterator = url_content.splitn(2, ',');
 
-  let media_type_str = part_iterator
-    .next()
-    .expect("Malformed data url, missing comma");
+  let media_type_str = part_iterator.next().unwrap();
   let data = part_iterator
     .next()
-    .expect("Malformed data url, missing data");
+    .expect("Malformed data url, missing comma");
 
   let filename = PathBuf::new();
   let maybe_base64 = media_type_str.rsplit(';').next();
@@ -569,7 +567,8 @@ fn extract_data_url(url: &Url) -> Result<SourceFile, ErrBox> {
   Ok(SourceFile {
     url: url.clone(),
     filename,
-    types_url: Option::None,
+    types_url: None,
+    types_header: None,
     media_type,
     source_code,
   })
