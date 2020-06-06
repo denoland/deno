@@ -92,6 +92,26 @@ fn run_from_stdin() {
 
   let deno_out = std::str::from_utf8(&output.stdout).unwrap().trim();
   assert_eq!("Hello World", deno_out);
+
+  let mut deno = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("-")
+    .stdout(std::process::Stdio::piped())
+    .stdin(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  deno
+    .stdin
+    .as_mut()
+    .unwrap()
+    .write_all(b"console.log(\"Bye cached code\");")
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  assert!(output.status.success());
+
+  let deno_out = std::str::from_utf8(&output.stdout).unwrap().trim();
+  assert_eq!("Bye cached code", deno_out);
 }
 
 #[test]
