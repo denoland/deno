@@ -1,3 +1,4 @@
-Please be professional in the forums. We follow [Rust's code of
-conduct](https://www.rust-lang.org/policies/code-of-conduct) (CoC) Have a
-problem? Email ry@tinyclouds.org.
+Deno uses [Rust's Code of
+Conduct](https://www.rust-lang.org/policies/code-of-conduct). In the
+forums, every community member must follow the rules and values expressed
+there. Please email ry@tinyclouds.org to report any instance of misconduct.
