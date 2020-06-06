@@ -8,6 +8,7 @@ use std::ops::DerefMut;
 /// but the existence of a ZeroCopyBuf inhibits this until it is dropped. It
 /// behaves much like an Arc<[u8]>, although a ZeroCopyBuf currently can't be
 /// cloned.
+#[derive(Clone)]
 pub struct ZeroCopyBuf {
   backing_store: v8::SharedRef<v8::BackingStore>,
   byte_offset: usize,
@@ -17,8 +18,11 @@ pub struct ZeroCopyBuf {
 unsafe impl Send for ZeroCopyBuf {}
 
 impl ZeroCopyBuf {
-  pub fn new(view: v8::Local<v8::ArrayBufferView>) -> Self {
-    let backing_store = view.buffer().unwrap().get_backing_store();
+  pub fn new<'s>(
+    scope: &mut impl v8::ToLocal<'s>,
+    view: v8::Local<v8::ArrayBufferView>,
+  ) -> Self {
+    let backing_store = view.buffer(scope).unwrap().get_backing_store();
     let byte_offset = view.byte_offset();
     let byte_length = view.byte_length();
     Self {
