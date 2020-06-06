@@ -28,11 +28,6 @@ export function charCode(s: string): number {
   return s.charCodeAt(0);
 }
 
-// TODO(ry) Remove this - use StringReader instead.
-export function stringsReader(s: string): Reader {
-  return new Buffer(encode(s).buffer);
-}
-
 /** Create or open a temporal file at specified directory with prefix and
  *  postfix
  * */
