@@ -528,9 +528,10 @@ async fn doctest_command(
   filter: Option<String>,
 ) -> Result<(), ErrBox> {
   let global_state = GlobalState::new(flags.clone())?;
-  let cwd = std::env::current_dir().expect("No current directory");
+  let cwd = std::env::current_dir()
+    .expect("expected: process has a current working directory");
   let include = include.unwrap_or_else(|| vec![".".to_string()]);
-  let doctests = doctest_runner::prepare_doctest(include);
+  let doctests = doctest_runner::prepare_doctest(include, &cwd);
 
   if doctests.is_empty() {
     println!("No matching doctest modules found");
