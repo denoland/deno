@@ -8,7 +8,7 @@ extern crate pty;
 extern crate tempfile;
 
 use futures::prelude::*;
-use std::io::BufRead;
+use std::io::{BufRead, Write};
 use std::process::Command;
 use tempfile::TempDir;
 
@@ -73,30 +73,25 @@ fn eval_p() {
 #[test]
 
 fn run_from_stdin() {
-  let cat = Command::new("cat")
-    .current_dir(util::root_path())
-    .arg("cli/tests/001_hello.js")
-    .stdout(std::process::Stdio::piped())
-    .spawn()
-    .unwrap();
-  let process = util::deno_cmd()
+  let mut deno = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("run")
     .arg("-")
     .stdout(std::process::Stdio::piped())
-    .stdin(std::process::Stdio::from(cat.stdout.unwrap()))
+    .stdin(std::process::Stdio::piped())
     .spawn()
     .unwrap();
-  let output = process.wait_with_output().unwrap();
+  deno
+    .stdin
+    .as_mut()
+    .unwrap()
+    .write_all("console.log(\"Hello World\");".as_bytes())
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
   assert!(output.status.success());
-  let mut desired_output = std::fs::read_to_string(
-    util::root_path().join("cli/tests/001_hello.js.out"),
-  )
-  .unwrap();
-  desired_output.truncate(desired_output.len() - 1);
 
-  let stdout_str = std::str::from_utf8(&output.stdout).unwrap().trim();
-  assert_eq!(desired_output, stdout_str);
+  let deno_out = std::str::from_utf8(&output.stdout).unwrap().trim();
+  assert_eq!("Hello World", deno_out);
 }
 
 #[test]

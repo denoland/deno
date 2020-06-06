@@ -544,7 +544,7 @@ async fn run_command(flags: Flags, script: String) -> Result<(), ErrBox> {
   let main_module = if script != "-" {
     ModuleSpecifier::resolve_url_or_path(&script).unwrap()
   } else {
-    ModuleSpecifier::resolve_url_or_path("./__$deno$run.ts").unwrap()
+    ModuleSpecifier::resolve_url_or_path("./__$deno$stdin.ts").unwrap()
   };
   let mut worker =
     MainWorker::create(global_state.clone(), main_module.clone())?;
