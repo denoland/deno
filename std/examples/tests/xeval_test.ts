@@ -4,7 +4,7 @@ import { stringsReader } from "../../io/util.ts";
 import { decode, encode } from "../../encoding/utf8.ts";
 import {
   assertEquals,
-  assertStrContains,
+  assertStringContains,
   assert,
 } from "../../testing/asserts.ts";
 const { execPath, run } = Deno;
@@ -52,6 +52,6 @@ Deno.test("xevalCliSyntaxError", async function (): Promise<void> {
   });
   assertEquals(await p.status(), { code: 1, success: false });
   assertEquals(decode(await p.output()), "");
-  assertStrContains(decode(await p.stderrOutput()), "Uncaught SyntaxError");
+  assertStringContains(decode(await p.stderrOutput()), "Uncaught SyntaxError");
   p.close();
 });

@@ -1,6 +1,10 @@
 const { cwd, execPath, run } = Deno;
 import { decode } from "../encoding/utf8.ts";
-import { assert, assertEquals, assertStrContains } from "../testing/asserts.ts";
+import {
+  assert,
+  assertEquals,
+  assertStringContains,
+} from "../testing/asserts.ts";
 import {
   join,
   joinGlobs,
@@ -122,7 +126,7 @@ Deno.test("expandGlobPermError", async function (): Promise<void> {
   });
   assertEquals(await p.status(), { code: 1, success: false });
   assertEquals(decode(await p.output()), "");
-  assertStrContains(
+  assertStringContains(
     decode(await p.stderrOutput()),
     "Uncaught PermissionDenied"
   );

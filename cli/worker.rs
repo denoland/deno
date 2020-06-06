@@ -1,9 +1,13 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::fmt_errors::JSError;
+use crate::global_state::GlobalState;
 use crate::inspector::DenoInspector;
 use crate::ops;
+use crate::ops::io::get_stdio;
+use crate::startup_data;
 use crate::state::State;
 use deno_core::Buf;
+use deno_core::CoreIsolate;
 use deno_core::ErrBox;
 use deno_core::ModuleId;
 use deno_core::ModuleSpecifier;
@@ -86,7 +90,7 @@ fn create_channels() -> (WorkerChannelsInternal, WorkerHandle) {
 ///  - `WebWorker`
 pub struct Worker {
   pub name: String,
-  pub isolate: Box<deno_core::EsIsolate>,
+  pub isolate: deno_core::EsIsolate,
   pub inspector: Option<Box<DenoInspector>>,
   pub state: State,
   pub waker: AtomicWaker,
@@ -101,7 +105,9 @@ impl Worker {
 
     {
       let global_state = state.borrow().global_state.clone();
-      isolate.set_js_error_create_fn(move |core_js_error| {
+      let core_state_rc = CoreIsolate::state(&isolate);
+      let mut core_state = core_state_rc.borrow_mut();
+      core_state.set_js_error_create_fn(move |core_js_error| {
         JSError::create(core_js_error, &global_state.ts_compiler)
       });
     }
@@ -243,7 +249,8 @@ impl DerefMut for Worker {
 pub struct MainWorker(Worker);
 
 impl MainWorker {
-  pub fn new(name: String, startup_data: StartupData, state: State) -> Self {
+  // TODO(ry) combine MainWorker::new and MainWorker::create.
+  fn new(name: String, startup_data: StartupData, state: State) -> Self {
     let state_ = state.clone();
     let mut worker = Worker::new(name, startup_data, state_);
     {
@@ -270,6 +277,35 @@ impl MainWorker {
       ops::worker_host::init(isolate, &state);
     }
     Self(worker)
+  }
+
+  pub fn create(
+    global_state: GlobalState,
+    main_module: ModuleSpecifier,
+  ) -> Result<MainWorker, ErrBox> {
+    let state = State::new(
+      global_state.clone(),
+      None,
+      main_module,
+      global_state.maybe_import_map.clone(),
+      false,
+    )?;
+    let mut worker = MainWorker::new(
+      "main".to_string(),
+      startup_data::deno_isolate_init(),
+      state,
+    );
+    {
+      let (stdin, stdout, stderr) = get_stdio();
+      let state_rc = CoreIsolate::state(&worker.isolate);
+      let state = state_rc.borrow();
+      let mut t = state.resource_table.borrow_mut();
+      t.add("stdin", Box::new(stdin));
+      t.add("stdout", Box::new(stdout));
+      t.add("stderr", Box::new(stderr));
+    }
+    worker.execute("bootstrap.mainRuntime()")?;
+    Ok(worker)
   }
 }
 
