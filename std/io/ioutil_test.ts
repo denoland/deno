@@ -8,8 +8,10 @@ import {
   readLong,
   readShort,
   sliceLongToBytes,
+  isEof,
 } from "./ioutil.ts";
 import { BufReader } from "./bufio.ts";
+import { StringReader } from "./readers.ts";
 import { stringsReader, tempFile } from "./util.ts";
 import * as path from "../path/mod.ts";
 
@@ -97,4 +99,15 @@ Deno.test("copyNWriteAllData", async function (): Promise<void> {
   await Deno.remove(filepath);
 
   assertEquals(n, size);
+});
+
+Deno.test("testIsEof", async function (): Promise<void> {
+  const r = new StringReader("abc");
+  assertEquals(await isEof(r), false);
+  await r.read(new Uint8Array(2));
+  assertEquals(await isEof(r), false);
+  await r.read(new Uint8Array(2));
+  assertEquals(await isEof(r), true);
+  await r.read(new Uint8Array(2));
+  assertEquals(await isEof(r), true);
 });

@@ -5,6 +5,7 @@ type Writer = Deno.Writer;
 import { assert } from "../testing/asserts.ts";
 
 const DEFAULT_BUFFER_SIZE = 32 * 1024;
+const empty = new Uint8Array();
 
 /** copy N size at the most.
  *  If read size is lesser than N, then returns nread
@@ -81,4 +82,9 @@ export function sliceLongToBytes(d: number, dest = new Array(8)): number[] {
     big >>= 8n;
   }
   return dest;
+}
+
+export async function isEof(r: Deno.Reader): Promise<boolean> {
+  const read = await r.read(empty);
+  return read == null;
 }
