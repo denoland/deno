@@ -764,6 +764,20 @@ fn data_import() {
 }
 
 #[test]
+fn data_import_origin_upgrade() {
+  let (_, err) = util::run_and_collect_output(
+    false,
+    "run --reload data_import_origin_upgrade.js",
+    None,
+    None,
+    false,
+  );
+  assert!(err.contains(
+    "Modules loaded with data:// are not allowed to import other modules"
+  ));
+}
+
+#[test]
 fn repl_test_console_log() {
   let (out, err) = util::run_and_collect_output(
     true,

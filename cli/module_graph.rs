@@ -313,6 +313,7 @@ impl ModuleGraphLoader {
     }
 
     // Disallow http:// imports from modules loaded over https://
+    // Disallow any imports from modules loaded with data://
     if let Some(referrer) = maybe_referrer.as_ref() {
       if let "https" = referrer.as_url().scheme() {
         if let "http" = module_specifier.as_url().scheme() {
@@ -322,6 +323,13 @@ impl ModuleGraphLoader {
           return Err(e.into());
         };
       };
+      if let "data" = referrer.as_url().scheme() {
+        let e = OpError::permission_denied(
+          "Modules loaded with data:// are not allowed to import other modules"
+            .to_string(),
+        );
+        return Err(e.into());
+      }
     };
 
     if !self.is_dyn_import {
@@ -332,7 +340,7 @@ impl ModuleGraphLoader {
           "http" | "https" => {
             let specifier_url = module_specifier.as_url();
             match specifier_url.scheme() {
-              "http" | "https" => {}
+              "http" | "https" | "data" => {}
               _ => {
                 let e = OpError::permission_denied(
                   "Remote modules are not allowed to statically import local modules. Use dynamic import instead.".to_string()
