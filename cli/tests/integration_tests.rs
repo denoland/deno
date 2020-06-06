@@ -754,6 +754,7 @@ fn data_import() {
   let status = util::deno_cmd()
     .current_dir(util::tests_path())
     .arg("test")
+    .arg("--unstable")
     .arg("--reload")
     .arg("data_import_test.js")
     .spawn()
@@ -767,7 +768,7 @@ fn data_import() {
 fn data_import_origin_upgrade() {
   let (_, err) = util::run_and_collect_output(
     false,
-    "run --reload data_import_origin_upgrade.js",
+    "run --unstable --reload data_import_origin_upgrade.js",
     None,
     None,
     false,

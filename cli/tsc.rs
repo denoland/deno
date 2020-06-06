@@ -932,6 +932,7 @@ pub async fn bundle(
     global_state.file_fetcher.clone(),
     maybe_import_map,
     permissions.clone(),
+    global_state.flags.unstable,
     false,
     true,
   );
@@ -1004,6 +1005,7 @@ pub async fn runtime_compile<S: BuildHasher>(
     global_state.file_fetcher.clone(),
     None,
     permissions.clone(),
+    global_state.flags.unstable,
     false,
     false,
   );
@@ -1134,6 +1136,7 @@ mod tests {
       mock_state.file_fetcher.clone(),
       None,
       Permissions::allow_all(),
+      mock_state.flags.unstable,
       false,
       false,
     );

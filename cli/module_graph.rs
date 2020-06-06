@@ -8,6 +8,7 @@ use crate::import_map::ImportMap;
 use crate::msg::MediaType;
 use crate::op_error::OpError;
 use crate::permissions::Permissions;
+use crate::state::exit_unstable;
 use crate::swc_util::analyze_dependencies_and_references;
 use crate::swc_util::TsReferenceKind;
 use crate::tsc::AVAILABLE_LIBS;
@@ -118,6 +119,7 @@ pub struct ModuleGraphLoader {
   pending_downloads: FuturesUnordered<SourceFileFuture>,
   has_downloaded: HashSet<ModuleSpecifier>,
   pub graph: ModuleGraph,
+  is_unstable: bool,
   is_dyn_import: bool,
   analyze_dynamic_imports: bool,
 }
@@ -127,6 +129,7 @@ impl ModuleGraphLoader {
     file_fetcher: SourceFileFetcher,
     maybe_import_map: Option<ImportMap>,
     permissions: Permissions,
+    is_unstable: bool,
     is_dyn_import: bool,
     analyze_dynamic_imports: bool,
   ) -> Self {
@@ -137,6 +140,7 @@ impl ModuleGraphLoader {
       pending_downloads: FuturesUnordered::new(),
       has_downloaded: HashSet::new(),
       graph: ModuleGraph(HashMap::new()),
+      is_unstable,
       is_dyn_import,
       analyze_dynamic_imports,
     }
@@ -310,6 +314,10 @@ impl ModuleGraphLoader {
   ) -> Result<(), ErrBox> {
     if self.has_downloaded.contains(&module_specifier) {
       return Ok(());
+    }
+
+    if !self.is_unstable && module_specifier.as_url().scheme() == "data" {
+      exit_unstable("data imports");
     }
 
     // Disallow http:// imports from modules loaded over https://
@@ -560,6 +568,7 @@ mod tests {
       global_state.file_fetcher.clone(),
       None,
       Permissions::allow_all(),
+      global_state.flags.unstable,
       false,
       false,
     );
