@@ -61,6 +61,18 @@ impl PermissionState {
     }
     *self
   }
+
+  pub fn fork(self, value: bool) -> Result<PermissionState, OpError> {
+    if value && self == PermissionState::Deny {
+      Err(OpError::permission_denied(
+        "Arguments escalate parent permissions.".to_string(),
+      ))
+    } else if value {
+      Ok(PermissionState::Allow)
+    } else {
+      Ok(PermissionState::Deny)
+    }
+  }
 }
 
 impl From<usize> for PermissionState {
@@ -390,6 +402,58 @@ impl Permissions {
       "plugin" => Ok(self.allow_plugin),
       "hrtime" => Ok(self.allow_hrtime),
       n => Err(OpError::other(format!("No such permission name: {}", n))),
+    }
+  }
+
+  #[allow(clippy::too_many_arguments)]
+  pub fn fork(
+    &self,
+    allow_read: bool,
+    read_whitelist: HashSet<PathBuf>,
+    allow_write: bool,
+    write_whitelist: HashSet<PathBuf>,
+    allow_net: bool,
+    net_whitelist: HashSet<String>,
+    allow_env: bool,
+    allow_run: bool,
+    allow_plugin: bool,
+    allow_hrtime: bool,
+  ) -> Result<Permissions, OpError> {
+    let allow_read = self.allow_read.fork(allow_read)?;
+    let allow_write = self.allow_write.fork(allow_write)?;
+    let allow_net = self.allow_net.fork(allow_net)?;
+    let allow_env = self.allow_env.fork(allow_env)?;
+    let allow_run = self.allow_run.fork(allow_run)?;
+    let allow_plugin = self.allow_plugin.fork(allow_plugin)?;
+    let allow_hrtime = self.allow_hrtime.fork(allow_hrtime)?;
+    if !(read_whitelist.is_subset(&self.read_whitelist)) {
+      Err(OpError::permission_denied(format!(
+        "Arguments escalate parent permissions. Parent Permissions have only {:?} in `read_whitelist`",
+        self.read_whitelist
+      )))
+    } else if !(write_whitelist.is_subset(&self.write_whitelist)) {
+      Err(OpError::permission_denied(format!(
+        "Arguments escalate parent permissions. Parent Permissions have only {:?} in `write_whitelist`",
+        self.write_whitelist
+      )))
+    } else if !(net_whitelist.is_subset(&self.net_whitelist)) {
+      Err(OpError::permission_denied(format!(
+        "Arguments escalate parent permissions. Parent Permissions have only {:?} in `net_whitelist`",
+        self.net_whitelist
+      )))
+    } else {
+      Ok(Permissions {
+        allow_read,
+        read_whitelist,
+        allow_write,
+        write_whitelist,
+        allow_net,
+        net_whitelist,
+        allow_env,
+        allow_run,
+        allow_plugin,
+        allow_hrtime,
+      })
     }
   }
 }
@@ -859,5 +923,72 @@ mod tests {
     let deserialized_perms: Permissions =
       serde_json::from_str(json_perms).unwrap();
     assert_eq!(perms0, deserialized_perms);
+  }
+
+  #[test]
+  fn test_fork() {
+    let guard = PERMISSION_PROMPT_GUARD.lock().unwrap();
+    let perms0 = Permissions::from_flags(&Flags {
+      ..Default::default()
+    });
+    set_prompt_result(true);
+    assert_eq!(
+      perms0
+        .fork(
+          true,
+          HashSet::new(),
+          true,
+          HashSet::new(),
+          true,
+          HashSet::new(),
+          true,
+          true,
+          false,
+          false,
+        )
+        .expect("Testing expect"),
+      Permissions {
+        allow_read: PermissionState::Allow,
+        read_whitelist: HashSet::new(),
+        allow_write: PermissionState::Allow,
+        write_whitelist: HashSet::new(),
+        allow_net: PermissionState::Allow,
+        net_whitelist: HashSet::new(),
+        allow_env: PermissionState::Allow,
+        allow_run: PermissionState::Allow,
+        allow_plugin: PermissionState::Deny,
+        allow_hrtime: PermissionState::Deny,
+      }
+    );
+    set_prompt_result(false);
+    assert_eq!(
+      perms0
+        .fork(
+          true,
+          HashSet::new(),
+          true,
+          HashSet::new(),
+          true,
+          HashSet::new(),
+          true,
+          true,
+          false,
+          false,
+        )
+        .expect("Testing expect"),
+      Permissions {
+        allow_read: PermissionState::Allow,
+        read_whitelist: HashSet::new(),
+        allow_write: PermissionState::Allow,
+        write_whitelist: HashSet::new(),
+        allow_net: PermissionState::Allow,
+        net_whitelist: HashSet::new(),
+        allow_env: PermissionState::Allow,
+        allow_run: PermissionState::Allow,
+        allow_plugin: PermissionState::Deny,
+        allow_hrtime: PermissionState::Deny,
+      }
+    );
+    drop(guard);
   }
 }
