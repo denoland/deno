@@ -885,6 +885,10 @@ export enum Hello {
   assert_eq!(actual, expected_json);
 
   assert!(colors::strip_ansi_codes(
+    super::printer::format_details(entry.clone()).as_str()
+  )
+  .contains("World"));
+  assert!(colors::strip_ansi_codes(
     super::printer::format(entries.clone()).as_str()
   )
   .contains("Some enum for good measure"));

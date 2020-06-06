@@ -15,7 +15,7 @@ fn op_resources(
   isolate_state: &mut CoreIsolateState,
   _state: &State,
   _args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let serialized_resources = isolate_state.resource_table.borrow().entries();
   Ok(JsonOp::Sync(json!(serialized_resources)))
@@ -26,7 +26,7 @@ fn op_close(
   isolate_state: &mut CoreIsolateState,
   _state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   #[derive(Deserialize)]
   struct CloseArgs {

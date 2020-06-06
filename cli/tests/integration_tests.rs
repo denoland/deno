@@ -54,6 +54,23 @@ fn x_deno_warning() {
 }
 
 #[test]
+fn eval_p() {
+  let output = util::deno_cmd()
+    .arg("eval")
+    .arg("-p")
+    .arg("1+2")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  let stdout_str =
+    util::strip_ansi_codes(std::str::from_utf8(&output.stdout).unwrap().trim());
+  assert_eq!("3", stdout_str);
+}
+
+#[test]
 fn no_color() {
   let output = util::deno_cmd()
     .current_dir(util::root_path())
@@ -742,6 +759,18 @@ fn repl_test_console_log() {
     false,
   );
   assert!(out.ends_with("hello\nundefined\nworld\n"));
+  assert!(err.is_empty());
+}
+
+#[test]
+fn repl_cwd() {
+  let (_out, err) = util::run_and_collect_output(
+    true,
+    "repl",
+    Some(vec!["Deno.cwd()"]),
+    Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+    false,
+  );
   assert!(err.is_empty());
 }
 
@@ -1837,6 +1866,11 @@ itest!(cjs_imports {
   output: "cjs_imports.ts.out",
 });
 
+itest!(ts_import_from_js {
+  args: "run --quiet --reload ts_import_from_js.js",
+  output: "ts_import_from_js.js.out",
+});
+
 itest!(proto_exploit {
   args: "run proto_exploit.js",
   output: "proto_exploit.js.out",
@@ -2770,7 +2804,7 @@ mod util {
   pub const PERMISSION_DENIED_PATTERN: &str = "PermissionDenied";
 
   lazy_static! {
-    static ref DENO_DIR: TempDir = { TempDir::new().expect("tempdir fail") };
+    static ref DENO_DIR: TempDir = TempDir::new().expect("tempdir fail");
 
     // STRIP_ANSI_RE and strip_ansi_codes are lifted from the "console" crate.
     // Copyright 2017 Armin Ronacher <armin.ronacher@active-4.com>. MIT License.

@@ -35,12 +35,13 @@ pub fn format_details(node: doc::DocNode) -> String {
 
   let js_doc = node.js_doc.clone();
   if let Some(js_doc) = js_doc {
-    details.push_str(&format_jsdoc(js_doc, false, 1));
+    details.push_str(&format_jsdoc(js_doc, 1));
   }
   details.push_str("\n");
 
   let maybe_extra = match node.kind {
     DocNodeKind::Class => Some(format_class_details(node)),
+    DocNodeKind::Enum => Some(format_enum_details(node)),
     DocNodeKind::Namespace => Some(format_namespace_details(node)),
     _ => None,
   };
@@ -92,7 +93,7 @@ fn format_(doc_nodes: Vec<doc::DocNode>, indent: i64) -> String {
   for node in sorted {
     output.push_str(&format_signature(&node, indent));
     if let Some(js_doc) = node.js_doc {
-      output.push_str(&format_jsdoc(js_doc, true, indent));
+      output.push_str(&format_jsdoc(js_doc, indent));
     }
     output.push_str("\n");
     if DocNodeKind::Namespace == node.kind {
@@ -308,19 +309,15 @@ fn add_indent(string: String, indent: i64) -> String {
 }
 
 // TODO: this should use some sort of markdown to console parser.
-fn format_jsdoc(jsdoc: String, truncated: bool, indent: i64) -> String {
-  let mut lines = jsdoc.split("\n\n").map(|line| line.replace("\n", " "));
+fn format_jsdoc(jsdoc: String, indent: i64) -> String {
+  let lines = jsdoc.split("\n\n").map(|line| line.replace("\n", " "));
 
   let mut js_doc = String::new();
 
-  if truncated {
-    let first_line = lines.next().unwrap_or_else(|| "".to_string());
-    js_doc.push_str(&add_indent(format!("{}\n", first_line), indent + 1));
-  } else {
-    for line in lines {
-      js_doc.push_str(&add_indent(format!("{}\n", line), indent + 1));
-    }
+  for line in lines {
+    js_doc.push_str(&add_indent(format!("{}\n", line), indent + 1));
   }
+
   format!("{}", colors::gray(js_doc))
 }
 
@@ -411,6 +408,17 @@ fn format_class_details(node: doc::DocNode) -> String {
       ),
       1,
     ));
+  }
+  details.push_str("\n");
+  details
+}
+
+fn format_enum_details(node: doc::DocNode) -> String {
+  let mut details = String::new();
+  let enum_def = node.enum_def.unwrap();
+  for member in enum_def.members {
+    details
+      .push_str(&add_indent(format!("{}\n", colors::bold(member.name)), 1));
   }
   details.push_str("\n");
   details

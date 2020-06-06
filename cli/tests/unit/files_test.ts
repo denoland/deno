@@ -3,7 +3,7 @@ import {
   unitTest,
   assert,
   assertEquals,
-  assertStrContains,
+  assertStringContains,
 } from "./test_util.ts";
 
 unitTest(function filesStdioFileDescriptors(): void {
@@ -273,7 +273,7 @@ unitTest(async function openOptions(): Promise<void> {
     err = e;
   }
   assert(!!err);
-  assertStrContains(
+  assertStringContains(
     err.message,
     "OpenOptions requires at least one option to be true"
   );
@@ -284,7 +284,10 @@ unitTest(async function openOptions(): Promise<void> {
     err = e;
   }
   assert(!!err);
-  assertStrContains(err.message, "'truncate' option requires 'write' option");
+  assertStringContains(
+    err.message,
+    "'truncate' option requires 'write' option"
+  );
 
   try {
     await Deno.open(filename, { create: true, write: false });
@@ -292,7 +295,7 @@ unitTest(async function openOptions(): Promise<void> {
     err = e;
   }
   assert(!!err);
-  assertStrContains(
+  assertStringContains(
     err.message,
     "'create' or 'createNew' options require 'write' or 'append' option"
   );
@@ -303,7 +306,7 @@ unitTest(async function openOptions(): Promise<void> {
     err = e;
   }
   assert(!!err);
-  assertStrContains(
+  assertStringContains(
     err.message,
     "'create' or 'createNew' options require 'write' or 'append' option"
   );
@@ -338,8 +341,8 @@ unitTest(
     // writing null should throw an error
     let err;
     try {
-      // @ts-expect-error
-      await file.write(null);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await file.write(null as any);
     } catch (e) {
       err = e;
     }
@@ -370,8 +373,8 @@ unitTest(
     // reading file into null buffer should throw an error
     let err;
     try {
-      // @ts-expect-error
-      await file.read(null);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await file.read(null as any);
     } catch (e) {
       err = e;
     }
@@ -673,7 +676,7 @@ unitTest({ perms: { read: true } }, async function seekMode(): Promise<void> {
   }
   assert(!!err);
   assert(err instanceof TypeError);
-  assertStrContains(err.message, "Invalid seek mode");
+  assertStringContains(err.message, "Invalid seek mode");
 
   // We should still be able to read the file
   // since it is still open.

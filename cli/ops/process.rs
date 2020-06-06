@@ -64,7 +64,7 @@ fn op_run(
   isolate_state: &mut CoreIsolateState,
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let run_args: RunArgs = serde_json::from_value(args)?;
 
@@ -178,7 +178,7 @@ fn op_run_status(
   isolate_state: &mut CoreIsolateState,
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let args: RunStatusArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
@@ -228,7 +228,7 @@ struct KillArgs {
 fn op_kill(
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   state.check_unstable("Deno.kill");
   state.check_run()?;

@@ -28,7 +28,7 @@ pub fn op_fetch(
   isolate_state: &mut CoreIsolateState,
   state: &State,
   args: Value,
-  data: Option<ZeroCopyBuf>,
+  data: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let args: FetchArgs = serde_json::from_value(args)?;
   let url = args.url;
@@ -57,8 +57,10 @@ pub fn op_fetch(
 
   let mut request = client.request(method, url_);
 
-  if let Some(buf) = data {
-    request = request.body(Vec::from(&*buf));
+  match data.len() {
+    0 => {}
+    1 => request = request.body(Vec::from(&*data[0])),
+    _ => panic!("Invalid number of arguments"),
   }
 
   for (key, value) in args.headers {

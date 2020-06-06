@@ -116,13 +116,13 @@ fn test_parse_min_record() {
 
 pub fn minimal_op<D>(
   d: D,
-) -> impl Fn(&mut CoreIsolateState, &[u8], Option<ZeroCopyBuf>) -> Op
+) -> impl Fn(&mut CoreIsolateState, &[u8], &mut [ZeroCopyBuf]) -> Op
 where
-  D: Fn(&mut CoreIsolateState, bool, i32, Option<ZeroCopyBuf>) -> MinimalOp,
+  D: Fn(&mut CoreIsolateState, bool, i32, &mut [ZeroCopyBuf]) -> MinimalOp,
 {
   move |isolate_state: &mut CoreIsolateState,
         control: &[u8],
-        zero_copy: Option<ZeroCopyBuf>| {
+        zero_copy: &mut [ZeroCopyBuf]| {
     let mut record = match parse_min_record(control) {
       Some(r) => r,
       None => {
