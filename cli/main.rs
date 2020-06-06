@@ -531,7 +531,7 @@ async fn doctest_command(
   let cwd = std::env::current_dir()
     .expect("expected: process has a current working directory");
   let include = include.unwrap_or_else(|| vec![".".to_string()]);
-  let doctests = doctest_runner::prepare_doctest(include);
+  let doctests = doctest_runner::prepare_doctest(include, &cwd);
 
   if doctests.is_empty() {
     println!("No matching doctest modules found");

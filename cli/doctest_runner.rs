@@ -1,7 +1,7 @@
 use regex::Regex;
 use std::collections::HashSet;
 use std::ffi::OsStr;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use crate::fs as deno_fs;
 use crate::installer::is_remote_url;
@@ -17,7 +17,7 @@ pub struct DocTest {
 struct DocTestBody {
   caption: String,
   line_number: usize,
-  path: PathBuf,
+  path: String,
   value: String,
   ignore: bool,
   is_async: bool,
@@ -25,14 +25,14 @@ struct DocTestBody {
 
 pub fn prepare_doctest(
   mut include: Vec<String>,
-  // root_path: &PathBuf,
+  root_path: &PathBuf,
 ) -> Vec<DocTest> {
   include.retain(|n| !is_remote_url(n));
 
   let mut prepared = vec![];
 
   for path in include {
-    let p = deno_fs::normalize_path(&Path::new(&path));
+    let p = deno_fs::normalize_path(&root_path.join(path));
     if p.is_dir() {
       let test_files = deno_fs::files_in_subtree(p, |p| {
         let valid_ext = ["ts", "tsx", "js", "jsx"];
@@ -105,10 +105,16 @@ fn extract_jsdoc_examples(input: String, p: PathBuf) -> Option<DocTest> {
       let line_number = &input[0..offset].lines().count();
       let code_block = get_code_from_example(&example_section);
       let is_async = AWAIT_PATTERN.find(&example_section).is_some();
+
+      let cwd = std::env::current_dir()
+        .expect("expected: process has a current working directory");
+      let path = p
+        .to_str()
+        .map(|x| x.replace(cwd.to_str().unwrap_or(""), ""));
       Some(DocTestBody {
         caption,
         line_number: *line_number,
-        path: p.clone(),
+        path: path.unwrap_or("".to_string()),
         value: code_block,
         ignore: test_tag == Some("ignore"),
         is_async,
@@ -167,8 +173,8 @@ pub fn render_doctest_file(
       .map(|test| {
           let async_str = if test.is_async {"async "} else {""};
           format!(
-              "Deno.test({{\n\tname: \"{} -> {} (line {})\",\n\tignore: {},\n\t{}fn() {{\n{}\n}}\n}});\n",
-              test.path.display(),
+              "Deno.test({{\n\tname: \"{} - {} (line {})\",\n\tignore: {},\n\t{}fn() {{\n{}\n}}\n}});\n",
+              &test.path[1..],
               test.caption,
               test.line_number,
               test.ignore,
