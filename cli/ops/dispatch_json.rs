@@ -46,17 +46,17 @@ struct AsyncArgs {
 
 pub fn json_op<D>(
   d: D,
-) -> impl Fn(&mut CoreIsolateState, &[u8], Option<ZeroCopyBuf>) -> Op
+) -> impl Fn(&mut CoreIsolateState, &[u8], &mut [ZeroCopyBuf]) -> Op
 where
   D: Fn(
     &mut CoreIsolateState,
     Value,
-    Option<ZeroCopyBuf>,
+    &mut [ZeroCopyBuf],
   ) -> Result<JsonOp, OpError>,
 {
   move |isolate_state: &mut CoreIsolateState,
         control: &[u8],
-        zero_copy: Option<ZeroCopyBuf>| {
+        zero_copy: &mut [ZeroCopyBuf]| {
     let async_args: AsyncArgs = match serde_json::from_slice(control) {
       Ok(args) => args,
       Err(e) => {

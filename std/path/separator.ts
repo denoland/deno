@@ -1,4 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-const isWindows = Deno.build.os == "windows";
+/** This module is browser compatible. */
+
+import { isWindows } from "./_constants.ts";
+
 export const SEP = isWindows ? "\\" : "/";
 export const SEP_PATTERN = isWindows ? /[\\/]+/ : /\/+/;
