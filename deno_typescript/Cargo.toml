@@ -1,6 +1,6 @@
 [package]
 name = "deno_typescript"
-version = "0.45.2"
+version = "0.47.1"
 license = "MIT"
 description = "To compile TypeScript to a snapshot during build.rs"
 repository = "https://github.com/denoland/deno"
@@ -19,6 +19,6 @@ exclude = [
 path = "lib.rs"
 
 [dependencies]
-deno_core = { path = "../core", version = "0.45.0" }
-serde_json = "1.0.52"
-serde = { version = "1.0.106", features = ["derive"] }
+deno_core = { path = "../core", version = "0.47.1" }
+serde_json = "1.0.53"
+serde = { version = "1.0.111", features = ["derive"] }

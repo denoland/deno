@@ -3,7 +3,7 @@ import {
   unitTest,
   assert,
   assertEquals,
-  assertStrContains,
+  assertStringContains,
   assertThrows,
   fail,
 } from "./test_util.ts";
@@ -18,7 +18,7 @@ unitTest({ perms: { net: true } }, async function fetchProtocolError(): Promise<
     err = err_;
   }
   assert(err instanceof TypeError);
-  assertStrContains(err.message, "not supported");
+  assertStringContains(err.message, "not supported");
 });
 
 unitTest(
@@ -31,7 +31,7 @@ unitTest(
       err = err_;
     }
     assert(err instanceof Deno.errors.Http);
-    assertStrContains(err.message, "error trying to connect");
+    assertStringContains(err.message, "error trying to connect");
   }
 );
 
@@ -92,31 +92,60 @@ unitTest({ perms: { net: true } }, async function fetchBodyUsed(): Promise<
   const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
   assertEquals(response.bodyUsed, false);
   assertThrows((): void => {
-    // Assigning to read-only property throws in the strict mode.
-    // @ts-expect-error
-    response.bodyUsed = true;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (response as any).bodyUsed = true;
   });
   await response.blob();
   assertEquals(response.bodyUsed, true);
 });
 
-// TODO(ry) response.body shouldn't be iterable. Instead we should use
-// response.body.getReader().
-/*
+unitTest(
+  { perms: { net: true } },
+  async function fetchBodyUsedReader(): Promise<void> {
+    const response = await fetch(
+      "http://localhost:4545/cli/tests/fixture.json"
+    );
+    assert(response.body !== null);
+
+    const reader = response.body.getReader();
+    // Getting a reader should lock the stream but does not consume the body
+    // so bodyUsed should not be true
+    assertEquals(response.bodyUsed, false);
+    reader.releaseLock();
+    await response.json();
+    assertEquals(response.bodyUsed, true);
+  }
+);
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchBodyUsedCancelStream(): Promise<void> {
+    const response = await fetch(
+      "http://localhost:4545/cli/tests/fixture.json"
+    );
+    assert(response.body !== null);
+
+    assertEquals(response.bodyUsed, false);
+    const promise = response.body.cancel();
+    assertEquals(response.bodyUsed, true);
+    await promise;
+  }
+);
+
 unitTest({ perms: { net: true } }, async function fetchAsyncIterator(): Promise<
   void
 > {
   const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
   const headers = response.headers;
+
+  assert(response.body !== null);
   let total = 0;
   for await (const chunk of response.body) {
     total += chunk.length;
   }
 
   assertEquals(total, Number(headers.get("Content-Length")));
-  const _json = await response.json();
 });
-*/
 
 unitTest({ perms: { net: true } }, async function fetchBodyReader(): Promise<
   void
@@ -198,11 +227,10 @@ unitTest(
     assert(formData.has("field_1"));
     assertEquals(formData.get("field_1")!.toString(), "value_1 \r\n");
     assert(formData.has("field_2"));
-    /* TODO(ry) Re-enable this test once we bring back the global File type.
-  const file = formData.get("field_2") as File;
-  assertEquals(file.name, "file.js");
-  */
-    // Currently we cannot read from file...
+    const file = formData.get("field_2") as File;
+    assertEquals(file.name, "file.js");
+
+    assertEquals(await file.text(), `console.log("Hi")`);
   }
 );
 
@@ -217,6 +245,25 @@ unitTest(
     assertEquals(formData.get("field_1")!.toString(), "Hi");
     assert(formData.has("field_2"));
     assertEquals(formData.get("field_2")!.toString(), "<Deno>");
+  }
+);
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchInitFormDataBinaryFileBody(): Promise<void> {
+    // Some random bytes
+    // prettier-ignore
+    const binaryFile = new Uint8Array([108,2,0,0,145,22,162,61,157,227,166,77,138,75,180,56,119,188,177,183]);
+    const response = await fetch("http://localhost:4545/echo_multipart_file", {
+      method: "POST",
+      body: binaryFile,
+    });
+    const resultForm = await response.formData();
+    const resultFile = resultForm.get("file") as File;
+
+    assertEquals(resultFile.type, "application/octet-stream");
+    assertEquals(resultFile.name, "file.bin");
+    assertEquals(new Uint8Array(await resultFile.arrayBuffer()), binaryFile);
   }
 );
 
@@ -249,14 +296,13 @@ unitTest(
 
 unitTest(
   {
-    // FIXME(bartlomieju):
-    // The feature below is not implemented, but the test should work after implementation
-    ignore: true,
     perms: { net: true },
   },
   async function fetchWithInfRedirection(): Promise<void> {
     const response = await fetch("http://localhost:4549/cli/tests"); // will redirect to the same place
     assertEquals(response.status, 0); // network error
+    assertEquals(response.type, "error");
+    assertEquals(response.ok, false);
   }
 );
 
@@ -360,6 +406,24 @@ unitTest(
     });
     const resultForm = await response.formData();
     assertEquals(form.get("field"), resultForm.get("field"));
+  }
+);
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchInitFormDataBlobFilenameBody(): Promise<void> {
+    const form = new FormData();
+    form.append("field", "value");
+    form.append("file", new Blob([new TextEncoder().encode("deno")]));
+    const response = await fetch("http://localhost:4545/echo_server", {
+      method: "POST",
+      body: form,
+    });
+    const resultForm = await response.formData();
+    assertEquals(form.get("field"), resultForm.get("field"));
+    const file = resultForm.get("file");
+    assert(file instanceof File);
+    assertEquals(file.name, "blob");
   }
 );
 
@@ -592,10 +656,9 @@ unitTest({ perms: { net: true } }, async function fetchBodyReadTwice(): Promise<
   assert(_json);
 
   // All calls after the body was consumed, should fail
-  const methods = ["json", "text", "formData", "arrayBuffer"];
+  const methods = ["json", "text", "formData", "arrayBuffer"] as const;
   for (const method of methods) {
     try {
-      // @ts-expect-error
       await response[method]();
       fail(
         "Reading body multiple times should failed, the stream should've been locked."
@@ -686,5 +749,75 @@ unitTest(
       total += value.length;
     }
     assertEquals(total, data.length);
+  }
+);
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchResourceCloseAfterStreamCancel(): Promise<void> {
+    const res = await fetch("http://localhost:4545/cli/tests/fixture.json");
+    assert(res.body !== null);
+
+    // After ReadableStream.cancel is called, resource handle must be closed
+    // The test should not fail with: Test case is leaking resources
+    await res.body.cancel();
+  }
+);
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchNullBodyStatus(): Promise<void> {
+    const nullBodyStatus = [101, 204, 205, 304];
+
+    for (const status of nullBodyStatus) {
+      const headers = new Headers([["x-status", String(status)]]);
+      const res = await fetch("http://localhost:4545/cli/tests/echo_server", {
+        body: "deno",
+        method: "POST",
+        headers,
+      });
+      assertEquals(res.body, null);
+      assertEquals(res.status, status);
+    }
+  }
+);
+
+unitTest(
+  { perms: { net: true } },
+  function fetchResponseConstructorNullBody(): void {
+    const nullBodyStatus = [204, 205, 304];
+
+    for (const status of nullBodyStatus) {
+      try {
+        new Response("deno", { status });
+        fail("Response with null body status cannot have body");
+      } catch (e) {
+        assert(e instanceof TypeError);
+        assertEquals(
+          e.message,
+          "Response with null body status cannot have body"
+        );
+      }
+    }
+  }
+);
+
+unitTest(
+  { perms: { net: true } },
+  function fetchResponseConstructorInvalidStatus(): void {
+    const invalidStatus = [101, 600, 199];
+
+    for (const status of invalidStatus) {
+      try {
+        new Response("deno", { status });
+        fail("Invalid status");
+      } catch (e) {
+        assert(e instanceof RangeError);
+        assertEquals(
+          e.message,
+          `The status provided (${status}) is outside the range [200, 599]`
+        );
+      }
+    }
   }
 );

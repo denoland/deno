@@ -9,8 +9,11 @@ on
 For APIs where a web standard already exists, like `fetch` for HTTP requests,
 Deno uses these rather than inventing a new proprietary API.
 
-The documentation for all of these Web APIs can be found on
+The detailed documentation for implemented Web APIs can be found on
 [doc.deno.land](https://doc.deno.land/https/raw.githubusercontent.com/denoland/deno/master/cli/js/lib.deno.shared_globals.d.ts).
+Additionally, a full list of the Web APIs which Deno implements is also
+available
+[in the repository](https://github.com/denoland/deno/blob/master/cli/js/web/README.md).
 
 The TypeScript definitions for the implemented web APIs can be found in the
 [`lib.deno.shared_globals.d.ts`](https://github.com/denoland/deno/blob/master/cli/js/lib.deno.shared_globals.d.ts)

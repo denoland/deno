@@ -284,15 +284,13 @@ unitTest({ perms: { read: true } }, function execPath(): void {
 });
 
 unitTest({ perms: { read: false } }, function execPathPerm(): void {
-  let caughtError = false;
-  try {
-    Deno.execPath();
-  } catch (err) {
-    caughtError = true;
-    assert(err instanceof Deno.errors.PermissionDenied);
-    assertEquals(err.name, "PermissionDenied");
-  }
-  assert(caughtError);
+  assertThrows(
+    () => {
+      Deno.execPath();
+    },
+    Deno.errors.PermissionDenied,
+    "read access to <exec_path>, run again with the --allow-read flag"
+  );
 });
 
 unitTest({ perms: { env: true } }, function loadavgSuccess(): void {

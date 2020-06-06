@@ -194,8 +194,9 @@ class ContentTypeHandler(QuietSimpleHTTPRequestHandler):
     def do_POST(self):
         # Simple echo server for request reflection
         if "echo_server" in self.path:
+            status = int(self.headers.getheader('x-status', "200"))
             self.protocol_version = 'HTTP/1.1'
-            self.send_response(200, 'OK')
+            self.send_response(status, 'OK')
             if self.headers.has_key('content-type'):
                 self.send_header('content-type',
                                  self.headers.getheader('content-type'))
@@ -205,6 +206,25 @@ class ContentTypeHandler(QuietSimpleHTTPRequestHandler):
             self.end_headers()
             data_string = self.rfile.read(int(self.headers['Content-Length']))
             self.wfile.write(bytes(data_string))
+            return
+        if "echo_multipart_file" in self.path:
+            self.protocol_version = 'HTTP/1.1'
+            self.send_response(200, 'OK')
+            self.send_header('Content-type',
+                             'multipart/form-data;boundary=boundary')
+            self.end_headers()
+            file_content = self.rfile.read(int(self.headers['Content-Length']))
+            self.wfile.write(
+                bytes('--boundary\t \r\n'
+                      'Content-Disposition: form-data; name="field_1"\r\n'
+                      '\r\n'
+                      'value_1 \r\n'
+                      '\r\n--boundary\r\n'
+                      'Content-Disposition: form-data; name="file"; '
+                      'filename="file.bin"\r\n'
+                      'Content-Type: application/octet-stream\r\n'
+                      '\r\n') + bytes(file_content) +
+                bytes('\r\n--boundary--\r\n'))
             return
         self.protocol_version = 'HTTP/1.1'
         self.send_response(501)
@@ -363,7 +383,7 @@ def start(s):
 def spawn():
     servers = (server(), redirect_server(), another_redirect_server(),
                double_redirects_server(), https_server(),
-               absolute_redirect_server())
+               absolute_redirect_server(), inf_redirects_server())
     # In order to wait for each of the servers to be ready, we try connecting to
     # them with a tcp socket.
     for running_server in servers:

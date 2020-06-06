@@ -544,6 +544,7 @@ pub fn map_file_extension(path: &Path) -> msg::MediaType {
       Some("js") => msg::MediaType::JavaScript,
       Some("jsx") => msg::MediaType::JSX,
       Some("mjs") => msg::MediaType::JavaScript,
+      Some("cjs") => msg::MediaType::JavaScript,
       Some("json") => msg::MediaType::Json,
       Some("wasm") => msg::MediaType::Wasm,
       _ => msg::MediaType::Unknown,
@@ -572,7 +573,8 @@ fn map_content_type(path: &Path, content_type: Option<&str>) -> msg::MediaType {
         | "text/javascript"
         | "application/ecmascript"
         | "text/ecmascript"
-        | "application/x-javascript" => {
+        | "application/x-javascript"
+        | "application/node" => {
           map_js_like_extension(path, msg::MediaType::JavaScript)
         }
         "application/json" | "text/json" => msg::MediaType::Json,
@@ -1597,6 +1599,10 @@ mod tests {
       msg::MediaType::Wasm
     );
     assert_eq!(
+      map_file_extension(Path::new("foo/bar.cjs")),
+      msg::MediaType::JavaScript
+    );
+    assert_eq!(
       map_file_extension(Path::new("foo/bar.txt")),
       msg::MediaType::Unknown
     );
@@ -1640,6 +1646,10 @@ mod tests {
     assert_eq!(
       map_content_type(Path::new("foo/bar.wasm"), None),
       msg::MediaType::Wasm
+    );
+    assert_eq!(
+      map_content_type(Path::new("foo/bar.cjs"), None),
+      msg::MediaType::JavaScript
     );
     assert_eq!(
       map_content_type(Path::new("foo/bar"), None),
@@ -1693,6 +1703,10 @@ mod tests {
     assert_eq!(
       map_content_type(Path::new("foo/bar"), Some("application/json")),
       msg::MediaType::Json
+    );
+    assert_eq!(
+      map_content_type(Path::new("foo/bar"), Some("application/node")),
+      msg::MediaType::JavaScript
     );
     assert_eq!(
       map_content_type(Path::new("foo/bar"), Some("text/json")),
