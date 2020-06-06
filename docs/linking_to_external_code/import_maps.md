@@ -1,11 +1,11 @@
 ## Import maps
 
 > This is an unstable feature. Learn more about
-> [unstable features](../../runtime/unstable).
+> [unstable features](../runtime/stability.md).
 
 Deno supports [import maps](https://github.com/WICG/import-maps).
 
-You can use import map with the `--importmap=<FILE>` CLI flag.
+You can use import maps with the `--importmap=<FILE>` CLI flag.
 
 Current limitations:
 
@@ -38,5 +38,5 @@ for await (const req of serve(":8000")) {
 ```
 
 ```shell
-$ deno run --importmap=import_map.json hello_server.ts
+$ deno run --allow-net --importmap=import_map.json --unstable hello_server.ts
 ```

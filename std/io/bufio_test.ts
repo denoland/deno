@@ -12,11 +12,13 @@ import {
   BufWriterSync,
   BufferFullError,
   PartialReadError,
+  ReadLineResult,
   readStringDelim,
   readLines,
 } from "./bufio.ts";
-import * as iotest from "./iotest.ts";
-import { charCode, copyBytes, stringsReader } from "./util.ts";
+import * as iotest from "./_iotest.ts";
+import { StringReader } from "./readers.ts";
+import { charCode, copyBytes } from "./util.ts";
 
 const encoder = new TextEncoder();
 
@@ -37,7 +39,7 @@ async function readBytes(buf: BufReader): Promise<string> {
 
 Deno.test("bufioReaderSimple", async function (): Promise<void> {
   const data = "hello world";
-  const b = new BufReader(stringsReader(data));
+  const b = new BufReader(new StringReader(data));
   const s = await readBytes(b);
   assertEquals(s, data);
 });
@@ -118,7 +120,7 @@ Deno.test("bufioBufReader", async function (): Promise<void> {
     for (const readmaker of readMakers) {
       for (const bufreader of bufreaders) {
         for (const bufsize of bufsizes) {
-          const read = readmaker.fn(stringsReader(text));
+          const read = readmaker.fn(new StringReader(text));
           const buf = new BufReader(read, bufsize);
           const s = await bufreader.fn(buf);
           const debugStr =
@@ -135,7 +137,7 @@ Deno.test("bufioBufferFull", async function (): Promise<void> {
   const longString =
     "And now, hello, world! It is the time for all good men to come to the" +
     " aid of their party";
-  const buf = new BufReader(stringsReader(longString), MIN_READ_BUFFER_SIZE);
+  const buf = new BufReader(new StringReader(longString), MIN_READ_BUFFER_SIZE);
   const decoder = new TextDecoder();
 
   try {
@@ -155,7 +157,7 @@ Deno.test("bufioBufferFull", async function (): Promise<void> {
 
 Deno.test("bufioReadString", async function (): Promise<void> {
   const string = "And now, hello world!";
-  const buf = new BufReader(stringsReader(string), MIN_READ_BUFFER_SIZE);
+  const buf = new BufReader(new StringReader(string), MIN_READ_BUFFER_SIZE);
 
   const line = await buf.readString(",");
   assert(line !== null);
@@ -247,7 +249,7 @@ Deno.test("bufioPeek", async function (): Promise<void> {
   const p = new Uint8Array(10);
   // string is 16 (minReadBufferSize) long.
   const buf = new BufReader(
-    stringsReader("abcdefghijklmnop"),
+    new StringReader("abcdefghijklmnop"),
     MIN_READ_BUFFER_SIZE
   );
 
@@ -445,3 +447,25 @@ Deno.test("readStringDelimAndLines", async function (): Promise<void> {
   assertEquals(lines_.length, 10);
   assertEquals(lines_, ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]);
 });
+
+Deno.test(
+  "bufReaderShouldNotShareArrayBufferAcrossReads",
+  async function (): Promise<void> {
+    const decoder = new TextDecoder();
+    const data = "abcdefghijklmnopqrstuvwxyz";
+    const bufSize = 25;
+    const b = new BufReader(new StringReader(data), bufSize);
+
+    const r1 = (await b.readLine()) as ReadLineResult;
+    assert(r1 !== null);
+    assertEquals(decoder.decode(r1.line), "abcdefghijklmnopqrstuvwxy");
+
+    const r2 = (await b.readLine()) as ReadLineResult;
+    assert(r2 !== null);
+    assertEquals(decoder.decode(r2.line), "z");
+    assert(
+      r1.line.buffer !== r2.line.buffer,
+      "array buffer should not be shared across reads"
+    );
+  }
+);

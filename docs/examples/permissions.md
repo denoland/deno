@@ -1,7 +1,7 @@
 ## Inspecting and revoking permissions
 
 > This program makes use of an unstable Deno feature. Learn more about
-> [unstable features](../../runtime/unstable).
+> [unstable features](../runtime/stability.md).
 
 Sometimes a program may want to revoke previously granted permissions. When a
 program, at a later stage, needs those permissions, it will fail.
@@ -13,7 +13,7 @@ if (status.state !== "granted") {
   throw new Error("need write permission");
 }
 
-const log = await Deno.open("request.log", "a+");
+const log = await Deno.open("request.log", { write: true, append: true });
 
 // revoke some permissions
 await Deno.permissions.revoke({ name: "read" });

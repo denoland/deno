@@ -59,12 +59,12 @@ export function asyncMsgFromRust(resUi8: Uint8Array): void {
 export function sendSync(
   opName: string,
   args: object = {},
-  zeroCopy?: Uint8Array
+  ...zeroCopy: Uint8Array[]
 ): Ok {
   const opId = OPS_CACHE[opName];
   util.log("sendSync", opName, opId);
   const argsUi8 = encode(args);
-  const resUi8 = core.dispatch(opId, argsUi8, zeroCopy);
+  const resUi8 = core.dispatch(opId, argsUi8, ...zeroCopy);
   util.assert(resUi8 != null);
 
   const res = decode(resUi8);
@@ -75,7 +75,7 @@ export function sendSync(
 export async function sendAsync(
   opName: string,
   args: object = {},
-  zeroCopy?: Uint8Array
+  ...zeroCopy: Uint8Array[]
 ): Promise<Ok> {
   const opId = OPS_CACHE[opName];
   util.log("sendAsync", opName, opId);
@@ -84,7 +84,7 @@ export async function sendAsync(
   const promise = util.createResolvable<Ok>();
 
   const argsUi8 = encode(args);
-  const buf = core.dispatch(opId, argsUi8, zeroCopy);
+  const buf = core.dispatch(opId, argsUi8, ...zeroCopy);
   if (buf) {
     // Sync result.
     const res = decode(buf);

@@ -1,13 +1,13 @@
 ## Handle OS Signals
 
 > This program makes use of an unstable Deno feature. Learn more about
-> [unstable features](../../runtime/unstable).
+> [unstable features](../runtime/stability.md).
 
-[API Reference](https://deno.land/typedoc/index.html#signal)
+[API Reference](https://doc.deno.land/https/raw.githubusercontent.com/denoland/deno/master/cli/js/lib.deno.unstable.d.ts#Deno.signal)
 
 You can use `Deno.signal()` function for handling OS signals.
 
-```
+```ts
 for await (const _ of Deno.signal(Deno.Signal.SIGINT)) {
   console.log("interrupted!");
 }
@@ -15,17 +15,19 @@ for await (const _ of Deno.signal(Deno.Signal.SIGINT)) {
 
 `Deno.signal()` also works as a promise.
 
-```
-await Deno.signal(Deno.Singal.SIGINT);
+```ts
+await Deno.signal(Deno.Signal.SIGINT);
 console.log("interrupted!");
 ```
 
 If you want to stop watching the signal, you can use `dispose()` method of the
 signal object.
 
-```
+```ts
 const sig = Deno.signal(Deno.Signal.SIGINT);
-setTimeout(() => { sig.dispose(); }, 5000);
+setTimeout(() => {
+  sig.dispose();
+}, 5000);
 
 for await (const _ of sig) {
   console.log("interrupted");

@@ -1,4 +1,5 @@
-[WILDCARD]error TS2552: Cannot find name 'consol'. Did you mean 'console'?
+[WILDCARD]
+error: TS2552 [ERROR]: Cannot find name 'consol'. Did you mean 'console'?
 consol.log("hello world!");
 ~~~~~~
     at [WILDCARD]tests/038_checkjs.js:2:1
@@ -8,7 +9,7 @@ consol.log("hello world!");
                 ~~~~~~~
         at [WILDCARD]
 
-error TS2552: Cannot find name 'Foo'. Did you mean 'foo'?
+TS2552 [ERROR]: Cannot find name 'Foo'. Did you mean 'foo'?
 const foo = new Foo();
                 ~~~
     at [WILDCARD]tests/038_checkjs.js:6:17

@@ -21,7 +21,7 @@ import Writer = Deno.Writer;
 import Reader = Deno.Reader;
 import Conn = Deno.Conn;
 import Buffer = Deno.Buffer;
-import { delay } from "../util/async.ts";
+import { delay } from "../async/delay.ts";
 
 test("[ws] read unmasked text frame", async () => {
   // unmasked single text frame with payload "Hello"
@@ -283,8 +283,8 @@ function dummyConn(r: Reader, w: Writer): Conn {
   return {
     rid: -1,
     closeWrite: (): void => {},
-    read: (x): Promise<number | null> => r.read(x),
-    write: (x): Promise<number> => w.write(x),
+    read: (x: Uint8Array): Promise<number | null> => r.read(x),
+    write: (x: Uint8Array): Promise<number> => w.write(x),
     close: (): void => {},
     localAddr: { transport: "tcp", hostname: "0.0.0.0", port: 0 },
     remoteAddr: { transport: "tcp", hostname: "0.0.0.0", port: 0 },

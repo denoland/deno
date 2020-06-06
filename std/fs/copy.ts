@@ -1,8 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import * as path from "../path/mod.ts";
 import { ensureDir, ensureDirSync } from "./ensure_dir.ts";
-import { isSubdir, getFileInfoType } from "./utils.ts";
+import { isSubdir, getFileInfoType } from "./_util.ts";
 import { assert } from "../testing/asserts.ts";
+
+const isWindows = Deno.build.os === "windows";
 
 export interface CopyOptions {
   /**
@@ -111,7 +113,13 @@ async function copySymLink(
   await ensureValidCopy(src, dest, options);
   const originSrcFilePath = await Deno.readLink(src);
   const type = getFileInfoType(await Deno.lstat(src));
-  await Deno.symlink(originSrcFilePath, dest, type);
+  if (isWindows) {
+    await Deno.symlink(originSrcFilePath, dest, {
+      type: type === "dir" ? "dir" : "file",
+    });
+  } else {
+    await Deno.symlink(originSrcFilePath, dest);
+  }
   if (options.preserveTimestamps) {
     const statInfo = await Deno.lstat(src);
     assert(statInfo.atime instanceof Date, `statInfo.atime is unavailable`);
@@ -129,7 +137,14 @@ function copySymlinkSync(
   ensureValidCopySync(src, dest, options);
   const originSrcFilePath = Deno.readLinkSync(src);
   const type = getFileInfoType(Deno.lstatSync(src));
-  Deno.symlinkSync(originSrcFilePath, dest, type);
+  if (isWindows) {
+    Deno.symlinkSync(originSrcFilePath, dest, {
+      type: type === "dir" ? "dir" : "file",
+    });
+  } else {
+    Deno.symlinkSync(originSrcFilePath, dest);
+  }
+
   if (options.preserveTimestamps) {
     const statInfo = Deno.lstatSync(src);
     assert(statInfo.atime instanceof Date, `statInfo.atime is unavailable`);
@@ -201,7 +216,7 @@ function copyDirSync(src: string, dest: string, options: CopyOptions): void {
 
 /**
  * Copy a file or directory. The directory can have contents. Like `cp -r`.
- * Requires the `--allow-read` and `--alow-write` flag.
+ * Requires the `--allow-read` and `--allow-write` flag.
  * @param src the file/directory path.
  *            Note that if `src` is a directory it will copy everything inside
  *            of this directory, not the entire directory itself
@@ -240,7 +255,7 @@ export async function copy(
 
 /**
  * Copy a file or directory. The directory can have contents. Like `cp -r`.
- * Requires the `--allow-read` and `--alow-write` flag.
+ * Requires the `--allow-read` and `--allow-write` flag.
  * @param src the file/directory path.
  *            Note that if `src` is a directory it will copy everything inside
  *            of this directory, not the entire directory itself

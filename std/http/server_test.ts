@@ -10,14 +10,14 @@ import {
   assert,
   assertEquals,
   assertMatch,
-  assertStrContains,
+  assertStringContains,
   assertThrowsAsync,
 } from "../testing/asserts.ts";
 import { Response, ServerRequest, Server, serve } from "./server.ts";
 import { BufReader, BufWriter } from "../io/bufio.ts";
-import { delay } from "../util/async.ts";
+import { delay } from "../async/delay.ts";
 import { encode, decode } from "../encoding/utf8.ts";
-import { mockConn } from "./mock.ts";
+import { mockConn } from "./_mock_conn.ts";
 
 const { Buffer, test } = Deno;
 
@@ -351,12 +351,15 @@ test("requestBodyReaderWithTransferEncoding", async function (): Promise<void> {
 
 test({
   name: "destroyed connection",
-  // FIXME(bartlomieju): hangs on windows, cause can't do `Deno.kill`
-  ignore: true,
   fn: async (): Promise<void> => {
     // Runs a simple server as another process
     const p = Deno.run({
-      cmd: [Deno.execPath(), "--allow-net", "http/testdata/simple_server.ts"],
+      cmd: [
+        Deno.execPath(),
+        "run",
+        "--allow-net",
+        "http/testdata/simple_server.ts",
+      ],
       stdout: "piped",
     });
 
@@ -392,13 +395,12 @@ test({
 
 test({
   name: "serveTLS",
-  // FIXME(bartlomieju): hangs on windows, cause can't do `Deno.kill`
-  ignore: true,
   fn: async (): Promise<void> => {
     // Runs a simple server as another process
     const p = Deno.run({
       cmd: [
         Deno.execPath(),
+        "run",
         "--allow-net",
         "--allow-read",
         "http/testdata/simple_https_server.ts",
@@ -478,7 +480,7 @@ test({
     const nread = await conn.read(res);
     assert(nread !== null);
     const resStr = new TextDecoder().decode(res.subarray(0, nread));
-    assertStrContains(resStr, "/hello");
+    assertStringContains(resStr, "/hello");
     server.close();
     await p;
     // Client connection should still be open, verify that
@@ -494,7 +496,6 @@ test({
   async fn(): Promise<void> {
     const serverRoutine = async (): Promise<void> => {
       const server = serve(":8124");
-      // @ts-ignore
       for await (const req of server) {
         await assertThrowsAsync(async () => {
           await req.respond({

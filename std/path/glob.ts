@@ -1,5 +1,8 @@
-import { SEP, SEP_PATTERN } from "./constants.ts";
-import { globrex } from "./globrex.ts";
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+/** This module is browser compatible. */
+
+import { SEP, SEP_PATTERN } from "./separator.ts";
+import { globrex } from "./_globrex.ts";
 import { join, normalize } from "./mod.ts";
 import { assert } from "../testing/asserts.ts";
 

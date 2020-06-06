@@ -20,7 +20,7 @@ pub fn init(i: &mut CoreIsolate, s: &State) {
 fn op_global_timer_stop(
   state: &State,
   _args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let mut state = state.borrow_mut();
   state.global_timer.cancel();
@@ -35,7 +35,7 @@ struct GlobalTimerArgs {
 fn op_global_timer(
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let args: GlobalTimerArgs = serde_json::from_value(args)?;
   let val = args.timeout;
@@ -57,7 +57,7 @@ fn op_global_timer(
 fn op_now(
   state: &State,
   _args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let state = state.borrow();
   let seconds = state.start_time.elapsed().as_secs();

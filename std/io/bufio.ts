@@ -338,7 +338,11 @@ export class BufReader implements Reader {
       // Buffer full?
       if (this.buffered() >= this.buf.byteLength) {
         this.r = this.w;
-        throw new BufferFullError(this.buf);
+        // #4521 The internal buffer should not be reused across reads because it causes corruption of data.
+        const oldbuf = this.buf;
+        const newbuf = this.buf.slice(0);
+        this.buf = newbuf;
+        throw new BufferFullError(oldbuf);
       }
 
       s = this.w - this.r; // do not rescan area we scanned before

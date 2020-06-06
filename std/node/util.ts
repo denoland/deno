@@ -1,3 +1,8 @@
+export { callbackify } from "./_util/_util_callbackify.ts";
+import * as types from "./_util/_util_types.ts";
+
+export { types };
+
 export function isArray(value: unknown): boolean {
   return Array.isArray(value);
 }
@@ -68,3 +73,13 @@ export function validateIntegerRange(
     );
   }
 }
+
+import { _TextDecoder, _TextEncoder } from "./_utils.ts";
+
+/** The global TextDecoder */
+export type TextDecoder = import("./_utils.ts")._TextDecoder;
+export const TextDecoder = _TextDecoder;
+
+/** The global TextEncoder */
+export type TextEncoder = import("./_utils.ts")._TextEncoder;
+export const TextEncoder = _TextEncoder;

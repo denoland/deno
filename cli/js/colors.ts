@@ -1,17 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-// TODO(kitsonk) Replace with `deno_std/colors/mod.ts` when we can load modules
-// which end in `.ts`.
-
-import { noColor } from "./deno.ts";
-
 interface Code {
   open: string;
   close: string;
   regexp: RegExp;
 }
-
-const enabled = !noColor;
 
 function code(open: number, close: number): Code {
   return {
@@ -22,9 +15,9 @@ function code(open: number, close: number): Code {
 }
 
 function run(str: string, code: Code): string {
-  return enabled
-    ? `${code.open}${str.replace(code.regexp, code.open)}${code.close}`
-    : str;
+  return !globalThis || !globalThis.Deno || globalThis.Deno.noColor
+    ? str
+    : `${code.open}${str.replace(code.regexp, code.open)}${code.close}`;
 }
 
 export function bold(str: string): string {
@@ -61,6 +54,14 @@ export function white(str: string): string {
 
 export function gray(str: string): string {
   return run(str, code(90, 39));
+}
+
+export function magenta(str: string): string {
+  return run(str, code(35, 39));
+}
+
+export function dim(str: string): string {
+  return run(str, code(2, 22));
 }
 
 // https://github.com/chalk/ansi-regex/blob/2b56fb0c7a07108e5b54241e8faec160d393aedb/index.js

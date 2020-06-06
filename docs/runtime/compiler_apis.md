@@ -1,5 +1,8 @@
 ## Compiler API
 
+> This is an unstable Deno feature. Learn more about
+> [unstable features](./stability.md).
+
 Deno supports runtime access to the built-in TypeScript compiler. There are
 three methods in the `Deno` namespace that provide this access.
 
@@ -15,9 +18,11 @@ fully qualified module name, and the value is the text source of the module. If
 `sources` is passed, Deno will resolve all the modules from within that hash and
 not attempt to resolve them outside of Deno. If `sources` are not provided, Deno
 will resolve modules as if the root module had been passed on the command line.
-Deno will also cache any of these resources. The `options` argument is a set of
-options of type `Deno.CompilerOptions`, which is a subset of the TypeScript
-compiler options containing the ones supported by Deno.
+Deno will also cache any of these resources. All resolved resources are treated
+as dynamic imports and require read or net permissions depending on if they're
+local or remote. The `options` argument is a set of options of type
+`Deno.CompilerOptions`, which is a subset of the TypeScript compiler options
+containing the ones supported by Deno.
 
 The method resolves with a tuple. The first argument contains any diagnostics
 (syntax or type errors) related to the code. The second argument is a map where
@@ -47,7 +52,7 @@ const [diagnostics, emitMap] = await Deno.compile(
 );
 ```
 
-In this case `emitMap` will contain a simple `console.log()` statement.
+In this case `emitMap` will contain a `console.log()` statement.
 
 ### `Deno.bundle()`
 
@@ -63,10 +68,12 @@ The `sources` is a hash where the key is the fully qualified module name, and
 the value is the text source of the module. If `sources` is passed, Deno will
 resolve all the modules from within that hash and not attempt to resolve them
 outside of Deno. If `sources` are not provided, Deno will resolve modules as if
-the root module had been passed on the command line. Deno will also cache any of
-these resources. The `options` argument is a set of options of type
-`Deno.CompilerOptions`, which is a subset of the TypeScript compiler options
-containing the ones supported by Deno.
+the root module had been passed on the command line. All resolved resources are
+treated as dynamic imports and require read or net permissions depending if
+they're local or remote. Deno will also cache any of these resources. The
+`options` argument is a set of options of type `Deno.CompilerOptions`, which is
+a subset of the TypeScript compiler options containing the ones supported by
+Deno.
 
 An example of providing sources:
 

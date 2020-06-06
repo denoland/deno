@@ -2,14 +2,14 @@
 import { encode } from "../encoding/utf8.ts";
 import { BufReader, BufWriter } from "../io/bufio.ts";
 import { assert } from "../testing/asserts.ts";
-import { deferred, Deferred, MuxAsyncIterator } from "../util/async.ts";
+import { deferred, Deferred, MuxAsyncIterator } from "../async/mod.ts";
 import {
   bodyReader,
   chunkedBodyReader,
   emptyReader,
   writeResponse,
   readRequest,
-} from "./io.ts";
+} from "./_io.ts";
 import Listener = Deno.Listener;
 import Conn = Deno.Conn;
 import Reader = Deno.Reader;
@@ -53,18 +53,9 @@ export class ServerRequest {
   private _body: Deno.Reader | null = null;
 
   /**
-   * Body of the request.
+   * Body of the request.  The easiest way to consume the body is:
    *
-   *     const buf = new Uint8Array(req.contentLength);
-   *     let bufSlice = buf;
-   *     let totRead = 0;
-   *     while (true) {
-   *       const nread = await req.body.read(bufSlice);
-   *       if (nread === null) break;
-   *       totRead += nread;
-   *       if (totRead >= req.contentLength) break;
-   *       bufSlice = bufSlice.subarray(nread);
-   *     }
+   *     const buf: Uint8Array = await Deno.readAll(req.body);
    */
   get body(): Deno.Reader {
     if (!this._body) {
@@ -247,8 +238,8 @@ export type HTTPOptions = Omit<Deno.ListenOptions, "transport">;
  *
  *     import { serve } from "https://deno.land/std/http/server.ts";
  *     const body = "Hello World\n";
- *     const s = serve({ port: 8000 });
- *     for await (const req of s) {
+ *     const server = serve({ port: 8000 });
+ *     for await (const req of server) {
  *       req.respond({ body });
  *     }
  */
