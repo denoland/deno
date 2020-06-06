@@ -84,6 +84,7 @@ export function sliceLongToBytes(d: number, dest = new Array(8)): number[] {
   return dest;
 }
 
+/** Checks if `r` reached EOF */
 export async function isEof(r: Deno.Reader): Promise<boolean> {
   const read = await r.read(empty);
   return read == null;
