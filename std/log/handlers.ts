@@ -106,7 +106,6 @@ export class FileHandler extends WriterHandler {
   protected _mode: LogMode;
   protected _openOptions: OpenOptions;
   protected _encoder = new TextEncoder();
-  #intervalId = -1;
   #unloadCallback = (): Promise<void> => this.destroy();
 
   constructor(levelName: LevelName, options: FileHandlerOptions) {
@@ -129,9 +128,6 @@ export class FileHandler extends WriterHandler {
     this._buf = new BufWriterSync(this._file);
 
     addEventListener("unload", this.#unloadCallback);
-
-    // flush the buffer every 30 seconds
-    this.#intervalId = setInterval(() => this.flush(), 30 * 1000);
   }
 
   handle(logRecord: LogRecord): void {
@@ -158,7 +154,6 @@ export class FileHandler extends WriterHandler {
     this._file?.close();
     this._file = undefined;
     removeEventListener("unload", this.#unloadCallback);
-    clearInterval(this.#intervalId);
     return Promise.resolve();
   }
 }

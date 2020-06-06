@@ -445,6 +445,7 @@ dependencies = [
  "deno_core",
  "deno_typescript",
  "dirs",
+ "dissimilar",
  "dlopen",
  "dprint-plugin-typescript",
  "futures 0.3.5",
@@ -552,6 +553,12 @@ dependencies = [
  "redox_users",
  "winapi 0.3.8",
 ]
+
+[[package]]
+name = "dissimilar"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "39de161cd2ebbd6e5783db53a82a47b6a47dcfef754130839603561745528b94"
 
 [[package]]
 name = "dlopen"
