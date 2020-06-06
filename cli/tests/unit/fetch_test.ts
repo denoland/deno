@@ -3,7 +3,7 @@ import {
   unitTest,
   assert,
   assertEquals,
-  assertStrContains,
+  assertStringContains,
   assertThrows,
   fail,
 } from "./test_util.ts";
@@ -18,7 +18,7 @@ unitTest({ perms: { net: true } }, async function fetchProtocolError(): Promise<
     err = err_;
   }
   assert(err instanceof TypeError);
-  assertStrContains(err.message, "not supported");
+  assertStringContains(err.message, "not supported");
 });
 
 unitTest(
@@ -31,7 +31,7 @@ unitTest(
       err = err_;
     }
     assert(err instanceof Deno.errors.Http);
-    assertStrContains(err.message, "error trying to connect");
+    assertStringContains(err.message, "error trying to connect");
   }
 );
 
