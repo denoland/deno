@@ -6,7 +6,7 @@
 import {
   assertEquals,
   assert,
-  assertStrContains,
+  assertStringContains,
   unitTest,
 } from "./test_util.ts";
 
@@ -164,7 +164,7 @@ unitTest(async function bufferTooLargeByteWrites(): Promise<void> {
   }
 
   assert(err instanceof Error);
-  assertStrContains(err.message, "grown beyond the maximum size");
+  assertStringContains(err.message, "grown beyond the maximum size");
 });
 
 unitTest(async function bufferLargeByteReads(): Promise<void> {

@@ -102,6 +102,6 @@ deno test my_test.ts
 ```
 
 You can also omit the file name, in which case all tests in the current
-directory (recursively) that match the glob `{*_,*.,}test.{js,ts,jsx,tsx}` will
-be run. If you pass a directory, all files in the directory that match this glob
-will be run.
+directory (recursively) that match the glob `{*_,*.,}test.{js,mjs,ts,jsx,tsx}`
+will be run. If you pass a directory, all files in the directory that match this
+glob will be run.

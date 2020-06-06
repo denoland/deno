@@ -270,7 +270,7 @@ impl CoreIsolate {
   }
 
   /// Executes a bit of built-in JavaScript to provide Deno.sharedQueue.
-  fn shared_init(&mut self) {
+  pub(crate) fn shared_init(&mut self) {
     if self.needs_init {
       self.needs_init = false;
       js_check(self.execute("core.js", include_str!("core.js")));
