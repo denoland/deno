@@ -63,7 +63,7 @@ test("isObject", (): void => {
   assertEquals(special.isObject(undefined), false);
   assertEquals(special.isObject("str"), false);
   assertEquals(special.isObject(42), false);
-  assertEquals(special.isObject([]), false);
+  assertEquals(special.isObject([]), true);
   assertEquals(special.isObject(Symbol("symbol")), false);
 });
 
