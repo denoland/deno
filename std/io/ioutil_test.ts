@@ -101,6 +101,14 @@ Deno.test("copyNWriteAllData", async function (): Promise<void> {
   assertEquals(n, size);
 });
 
+Deno.test("testStringReaderEof", async function (): Promise<void> {
+  const r = new StringReader("abc");
+  assertEquals(await r.read(new Uint8Array()), 0);
+  assertEquals(await r.read(new Uint8Array(4)), 3);
+  assertEquals(await r.read(new Uint8Array(1)), null);
+  assertEquals(await r.read(new Uint8Array(0)), null);
+});
+
 Deno.test("testIsEof", async function (): Promise<void> {
   const r = new StringReader("abc");
   assertEquals(await isEof(r), false);
