@@ -280,8 +280,8 @@ mod test {
     assert!(res.is_some());
 
     let doctest = res.unwrap();
-    assert_eq!(1, *&doctest.imports.len());
-    assert_eq!(*&doctest.bodies.len(), 1);
+    assert_eq!(1, doctest.imports.len());
+    assert_eq!(doctest.bodies.len(), 1);
     let body = &doctest.bodies[0];
     assert!(!body.is_async);
     assert!(!body.ignore);
@@ -338,8 +338,8 @@ mod test {
 
     let doctest = res.unwrap();
     // imports are deduped
-    assert_eq!(1, *&doctest.imports.len());
-    assert_eq!(*&doctest.bodies.len(), 2);
+    assert_eq!(1, doctest.imports.len());
+    assert_eq!(doctest.bodies.len(), 2);
     let body1 = &doctest.bodies[0];
     let body2 = &doctest.bodies[1];
     assert!(!body1.is_async);
