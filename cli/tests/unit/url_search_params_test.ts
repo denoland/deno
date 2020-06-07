@@ -177,8 +177,8 @@ unitTest(function urlSearchParamsAppendArgumentsCheck(): void {
       const searchParams = new URLSearchParams();
       let hasThrown = 0;
       try {
-        // @ts-ignore
-        searchParams[method]();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (searchParams as any)[method]();
         hasThrown = 1;
       } catch (err) {
         if (err instanceof TypeError) {
@@ -194,8 +194,8 @@ unitTest(function urlSearchParamsAppendArgumentsCheck(): void {
     const searchParams = new URLSearchParams();
     let hasThrown = 0;
     try {
-      // @ts-ignore
-      searchParams[method]("foo");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (searchParams as any)[method]("foo");
       hasThrown = 1;
     } catch (err) {
       if (err instanceof TypeError) {
@@ -235,8 +235,10 @@ unitTest(function urlSearchParamsCustomSymbolIterator(): void {
 unitTest(
   function urlSearchParamsCustomSymbolIteratorWithNonStringParams(): void {
     const params = {};
-    // @ts-ignore
-    params[Symbol.iterator] = function* (): IterableIterator<[number, number]> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (params as any)[Symbol.iterator] = function* (): IterableIterator<
+      [number, number]
+    > {
       yield [1, 2];
     };
     const params1 = new URLSearchParams((params as unknown) as string[][]);

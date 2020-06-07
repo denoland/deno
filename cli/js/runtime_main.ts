@@ -30,8 +30,8 @@ import { log, immutableDefine } from "./util.ts";
 // TODO: factor out `Deno` global assignment to separate function
 // Add internal object to Deno object.
 // This is not exposed as part of the Deno types.
-// @ts-ignore
-denoNs[internalSymbol] = internalObject;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+(denoNs as any)[internalSymbol] = internalObject;
 
 let windowIsClosing = false;
 
@@ -71,8 +71,8 @@ export function bootstrapMainRuntime(): void {
     throw new Error("Worker runtime already bootstrapped");
   }
   // Remove bootstrapping methods from global scope
-  // @ts-ignore
-  globalThis.bootstrap = undefined;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (globalThis as any).bootstrap = undefined;
   log("bootstrapMainRuntime");
   hasBootstrapped = true;
   Object.defineProperties(globalThis, windowOrWorkerGlobalScopeMethods);

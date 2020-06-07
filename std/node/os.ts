@@ -192,7 +192,7 @@ export function totalmem(): number {
 
 /** Returns the operating system name as returned by uname(3) */
 export function type(): string {
-  return Deno.osType();
+  return Deno.osName();
 }
 
 /** Not yet implemented */

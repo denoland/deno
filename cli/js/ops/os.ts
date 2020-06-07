@@ -68,6 +68,6 @@ export function execPath(): string {
   return sendSync("op_exec_path");
 }
 
-export function osType(): string {
-  return sendSync("op_type");
+export function osName(): string {
+  return sendSync("op_name");
 }

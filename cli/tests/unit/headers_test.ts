@@ -3,12 +3,16 @@ import {
   unitTest,
   assert,
   assertEquals,
-  assertStrContains,
+  assertStringContains,
 } from "./test_util.ts";
 const {
   stringifyArgs,
-  // @ts-ignore TypeScript (as of 3.7) does not support indexing namespaces by symbol
+  // @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
 } = Deno[Deno.internal];
+
+unitTest(function headersHasCorrectNameProp(): void {
+  assertEquals(Headers.name, "Headers");
+});
 
 // Logic heavily copied from web-platform-tests, make
 // sure pass mostly header basic test
@@ -18,8 +22,8 @@ unitTest(function newHeaderTest(): void {
   new Headers(undefined);
   new Headers({});
   try {
-    // @ts-ignore
-    new Headers(null);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    new Headers(null as any);
   } catch (e) {
     assertEquals(
       e.message,
@@ -32,8 +36,8 @@ const headerDict: Record<string, string> = {
   name1: "value1",
   name2: "value2",
   name3: "value3",
-  // @ts-ignore
-  name4: undefined,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  name4: undefined as any,
   "Content-Type": "value4",
 };
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -260,17 +264,17 @@ unitTest(function headerParamsShouldThrowTypeError(): void {
 });
 
 unitTest(function headerParamsArgumentsCheck(): void {
-  const methodRequireOneParam = ["delete", "get", "has", "forEach"];
+  const methodRequireOneParam = ["delete", "get", "has", "forEach"] as const;
 
-  const methodRequireTwoParams = ["append", "set"];
+  const methodRequireTwoParams = ["append", "set"] as const;
 
   methodRequireOneParam.forEach((method): void => {
     const headers = new Headers();
     let hasThrown = 0;
     let errMsg = "";
     try {
-      // @ts-ignore
-      headers[method]();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (headers as any)[method]();
       hasThrown = 1;
     } catch (err) {
       errMsg = err.message;
@@ -281,7 +285,7 @@ unitTest(function headerParamsArgumentsCheck(): void {
       }
     }
     assertEquals(hasThrown, 2);
-    assertStrContains(
+    assertStringContains(
       errMsg,
       `${method} requires at least 1 argument, but only 0 present`
     );
@@ -293,8 +297,8 @@ unitTest(function headerParamsArgumentsCheck(): void {
     let errMsg = "";
 
     try {
-      // @ts-ignore
-      headers[method]();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (headers as any)[method]();
       hasThrown = 1;
     } catch (err) {
       errMsg = err.message;
@@ -305,7 +309,7 @@ unitTest(function headerParamsArgumentsCheck(): void {
       }
     }
     assertEquals(hasThrown, 2);
-    assertStrContains(
+    assertStringContains(
       errMsg,
       `${method} requires at least 2 arguments, but only 0 present`
     );
@@ -313,8 +317,8 @@ unitTest(function headerParamsArgumentsCheck(): void {
     hasThrown = 0;
     errMsg = "";
     try {
-      // @ts-ignore
-      headers[method]("foo");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (headers as any)[method]("foo");
       hasThrown = 1;
     } catch (err) {
       errMsg = err.message;
@@ -325,7 +329,7 @@ unitTest(function headerParamsArgumentsCheck(): void {
       }
     }
     assertEquals(hasThrown, 2);
-    assertStrContains(
+    assertStringContains(
       errMsg,
       `${method} requires at least 2 arguments, but only 1 present`
     );

@@ -21,6 +21,7 @@
 
 import "./global.ts";
 
+import * as nodeBuffer from "./buffer.ts";
 import * as nodeFS from "./fs.ts";
 import * as nodeUtil from "./util.ts";
 import * as nodePath from "./path.ts";
@@ -262,10 +263,11 @@ class Module {
       if (requireStack.length > 0) {
         message = message + "\nRequire stack:\n- " + requireStack.join("\n- ");
       }
-      const err = new Error(message);
-      // @ts-ignore
+      const err = new Error(message) as Error & {
+        code: string;
+        requireStack: string[];
+      };
       err.code = "MODULE_NOT_FOUND";
-      // @ts-ignore
       err.requireStack = requireStack;
       throw err;
     }
@@ -594,6 +596,7 @@ function createNativeModule(id: string, exports: any): Module {
   return mod;
 }
 
+nativeModulePolyfill.set("buffer", createNativeModule("buffer", nodeBuffer));
 nativeModulePolyfill.set("fs", createNativeModule("fs", nodeFS));
 nativeModulePolyfill.set("events", createNativeModule("events", nodeEvents));
 nativeModulePolyfill.set("os", createNativeModule("os", nodeOs));
@@ -732,12 +735,10 @@ function tryPackage(
   if (actual === false) {
     actual = tryExtensions(path.resolve(requestPath, "index"), exts, isMain);
     if (!actual) {
-      // eslint-disable-next-line no-restricted-syntax
       const err = new Error(
         `Cannot find module '${filename}'. ` +
           'Please verify that the package.json has a valid "main" entry'
-      );
-      // @ts-ignore
+      ) as Error & { code: string };
       err.code = "MODULE_NOT_FOUND";
       throw err;
     }
@@ -881,8 +882,7 @@ function applyExports(basePath: string, expansion: string): string {
   const e = new Error(
     `Package exports for '${basePath}' do not define ` +
       `a '${mappingKey}' subpath`
-  );
-  // @ts-ignore
+  ) as Error & { code?: string };
   e.code = "MODULE_NOT_FOUND";
   throw e;
 }
@@ -973,7 +973,7 @@ function resolveExportsTarget(
       }
     }
   }
-  let e: Error;
+  let e: Error & { code?: string };
   if (mappingKey !== ".") {
     e = new Error(
       `Package exports for '${basePath}' do not define a ` +
@@ -982,7 +982,6 @@ function resolveExportsTarget(
   } else {
     e = new Error(`No valid exports main found for '${basePath}'`);
   }
-  // @ts-ignore
   e.code = "MODULE_NOT_FOUND";
   throw e;
 }
@@ -1006,8 +1005,7 @@ const CircularRequirePrototypeWarningProxy = new Proxy(
   {},
   {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    get(target, prop): any {
-      // @ts-ignore
+    get(target: Record<string, any>, prop: string): any {
       if (prop in target) return target[prop];
       emitCircularRequireWarning(prop);
       return undefined;
@@ -1058,8 +1056,8 @@ type RequireWrapper = (
 function wrapSafe(filename: string, content: string): RequireWrapper {
   // TODO: fix this
   const wrapper = Module.wrap(content);
-  // @ts-ignore
-  const [f, err] = Deno.core.evalContext(wrapper, filename);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [f, err] = (Deno as any).core.evalContext(wrapper, filename);
   if (err) {
     throw err;
   }

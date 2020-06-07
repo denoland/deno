@@ -130,9 +130,9 @@ export function setCookie(res: Response, cookie: Cookie): void {
  * @param name Name of the cookie to Delete
  * Example:
  *
- *     delCookie(res,'foo');
+ *     deleteCookie(res,'foo');
  */
-export function delCookie(res: Response, name: string): void {
+export function deleteCookie(res: Response, name: string): void {
   setCookie(res, {
     name: name,
     value: "",

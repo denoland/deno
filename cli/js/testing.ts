@@ -333,12 +333,11 @@ async function runTests({
   const filterFn = createFilterFn(filter, skip);
   const testApi = new TestApi(TEST_REGISTRY, filterFn, failFast);
 
-  // @ts-ignore
   const originalConsole = globalThis.console;
 
   if (disableLog) {
-    // @ts-ignore
-    globalThis.console = disabledConsole;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).console = disabledConsole;
   }
 
   let endMsg: TestMessage["end"];
@@ -356,7 +355,6 @@ async function runTests({
   }
 
   if (disableLog) {
-    // @ts-ignore
     globalThis.console = originalConsole;
   }
 

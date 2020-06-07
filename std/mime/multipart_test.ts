@@ -145,8 +145,8 @@ test("multipartMultipartWriter3", async function (): Promise<void> {
   );
   await assertThrowsAsync(
     async (): Promise<void> => {
-      // @ts-ignore
-      await mw.writeFile("bar", "file", null);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await mw.writeFile("bar", "file", null as any);
     },
     Error,
     "closed"
@@ -225,7 +225,10 @@ test({
     try {
       assertEquals(form.value("deno"), "land");
       assertEquals(form.value("bar"), "bar");
-      const file = form.file("file");
+      let file = form.file("file");
+      if (Array.isArray(file)) {
+        file = file[0];
+      }
       assert(file != null);
       assert(file.tempfile != null);
       assertEquals(file.size, size);
@@ -249,7 +252,10 @@ test({
       "--------------------------434049563556637648550474"
     );
     const form = await mr.readForm(20);
-    const file = form.file("file");
+    let file = form.file("file");
+    if (Array.isArray(file)) {
+      file = file[0];
+    }
     assert(file != null);
     const { tempfile, content } = file;
     assert(tempfile != null);

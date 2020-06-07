@@ -3,11 +3,11 @@
 use super::dispatch_json::{blocking_json, Deserialize, JsonOp, Value};
 use super::io::std_file_resource;
 use super::io::{FileMetadata, StreamResource, StreamResourceHolder};
-use crate::fs::resolve_from_cwd;
 use crate::op_error::OpError;
 use crate::ops::dispatch_json::JsonResult;
 use crate::state::State;
 use deno_core::CoreIsolate;
+use deno_core::CoreIsolateState;
 use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
 use std::convert::From;
@@ -69,14 +69,14 @@ struct OpenOptions {
 }
 
 fn op_open(
-  isolate: &mut CoreIsolate,
+  isolate_state: &mut CoreIsolateState,
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let args: OpenArgs = serde_json::from_value(args)?;
-  let path = resolve_from_cwd(Path::new(&args.path))?;
-  let resource_table = isolate.resource_table.clone();
+  let path = Path::new(&args.path).to_path_buf();
+  let resource_table = isolate_state.resource_table.clone();
 
   let mut open_options = std::fs::OpenOptions::new();
 
@@ -152,10 +152,10 @@ struct SeekArgs {
 }
 
 fn op_seek(
-  isolate: &mut CoreIsolate,
+  isolate_state: &mut CoreIsolateState,
   _state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   use std::io::{Seek, SeekFrom};
   let args: SeekArgs = serde_json::from_value(args)?;
@@ -175,7 +175,7 @@ fn op_seek(
     }
   };
 
-  let resource_table = isolate.resource_table.clone();
+  let resource_table = isolate_state.resource_table.clone();
   let is_sync = args.promise_id.is_none();
 
   if is_sync {
@@ -212,7 +212,7 @@ struct UmaskArgs {
 fn op_umask(
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   state.check_unstable("Deno.umask");
   let args: UmaskArgs = serde_json::from_value(args)?;
@@ -250,7 +250,7 @@ struct ChdirArgs {
 fn op_chdir(
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let args: ChdirArgs = serde_json::from_value(args)?;
   let d = PathBuf::from(&args.directory);
@@ -271,10 +271,10 @@ struct MkdirArgs {
 fn op_mkdir(
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let args: MkdirArgs = serde_json::from_value(args)?;
-  let path = resolve_from_cwd(Path::new(&args.path))?;
+  let path = Path::new(&args.path).to_path_buf();
   let mode = args.mode.unwrap_or(0o777) & 0o777;
 
   state.check_write(&path)?;
@@ -305,10 +305,10 @@ struct ChmodArgs {
 fn op_chmod(
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let args: ChmodArgs = serde_json::from_value(args)?;
-  let path = resolve_from_cwd(Path::new(&args.path))?;
+  let path = Path::new(&args.path).to_path_buf();
   let mode = args.mode & 0o777;
 
   state.check_write(&path)?;
@@ -345,10 +345,10 @@ struct ChownArgs {
 fn op_chown(
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let args: ChownArgs = serde_json::from_value(args)?;
-  let path = resolve_from_cwd(Path::new(&args.path))?;
+  let path = Path::new(&args.path).to_path_buf();
 
   state.check_write(&path)?;
 
@@ -384,10 +384,10 @@ struct RemoveArgs {
 fn op_remove(
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let args: RemoveArgs = serde_json::from_value(args)?;
-  let path = resolve_from_cwd(Path::new(&args.path))?;
+  let path = PathBuf::from(&args.path);
   let recursive = args.recursive;
 
   state.check_write(&path)?;
@@ -417,8 +417,11 @@ fn op_remove(
           std::fs::remove_file(&path)?;
         }
       }
-    } else {
+    } else if file_type.is_dir() {
       std::fs::remove_dir(&path)?;
+    } else {
+      // pipes, sockets, etc...
+      std::fs::remove_file(&path)?;
     }
     Ok(json!({}))
   })
@@ -435,11 +438,11 @@ struct CopyFileArgs {
 fn op_copy_file(
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let args: CopyFileArgs = serde_json::from_value(args)?;
-  let from = resolve_from_cwd(Path::new(&args.from))?;
-  let to = resolve_from_cwd(Path::new(&args.to))?;
+  let from = PathBuf::from(&args.from);
+  let to = PathBuf::from(&args.to);
 
   state.check_read(&from)?;
   state.check_write(&to)?;
@@ -529,10 +532,10 @@ struct StatArgs {
 fn op_stat(
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let args: StatArgs = serde_json::from_value(args)?;
-  let path = resolve_from_cwd(Path::new(&args.path))?;
+  let path = PathBuf::from(&args.path);
   let lstat = args.lstat;
 
   state.check_read(&path)?;
@@ -559,12 +562,15 @@ struct RealpathArgs {
 fn op_realpath(
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let args: RealpathArgs = serde_json::from_value(args)?;
-  let path = resolve_from_cwd(Path::new(&args.path))?;
+  let path = PathBuf::from(&args.path);
 
   state.check_read(&path)?;
+  if path.is_relative() {
+    state.check_read_blind(&current_dir()?, "CWD")?;
+  }
 
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
@@ -591,10 +597,10 @@ struct ReadDirArgs {
 fn op_read_dir(
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let args: ReadDirArgs = serde_json::from_value(args)?;
-  let path = resolve_from_cwd(Path::new(&args.path))?;
+  let path = PathBuf::from(&args.path);
 
   state.check_read(&path)?;
 
@@ -634,11 +640,11 @@ struct RenameArgs {
 fn op_rename(
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let args: RenameArgs = serde_json::from_value(args)?;
-  let oldpath = resolve_from_cwd(Path::new(&args.oldpath))?;
-  let newpath = resolve_from_cwd(Path::new(&args.newpath))?;
+  let oldpath = PathBuf::from(&args.oldpath);
+  let newpath = PathBuf::from(&args.newpath);
 
   state.check_read(&oldpath)?;
   state.check_write(&oldpath)?;
@@ -663,12 +669,12 @@ struct LinkArgs {
 fn op_link(
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   state.check_unstable("Deno.link");
   let args: LinkArgs = serde_json::from_value(args)?;
-  let oldpath = resolve_from_cwd(Path::new(&args.oldpath))?;
-  let newpath = resolve_from_cwd(Path::new(&args.newpath))?;
+  let oldpath = PathBuf::from(&args.oldpath);
+  let newpath = PathBuf::from(&args.newpath);
 
   state.check_read(&oldpath)?;
   state.check_write(&newpath)?;
@@ -701,12 +707,12 @@ struct SymlinkOptions {
 fn op_symlink(
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   state.check_unstable("Deno.symlink");
   let args: SymlinkArgs = serde_json::from_value(args)?;
-  let oldpath = resolve_from_cwd(Path::new(&args.oldpath))?;
-  let newpath = resolve_from_cwd(Path::new(&args.newpath))?;
+  let oldpath = PathBuf::from(&args.oldpath);
+  let newpath = PathBuf::from(&args.newpath);
 
   state.check_write(&newpath)?;
 
@@ -761,10 +767,10 @@ struct ReadLinkArgs {
 fn op_read_link(
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let args: ReadLinkArgs = serde_json::from_value(args)?;
-  let path = resolve_from_cwd(Path::new(&args.path))?;
+  let path = PathBuf::from(&args.path);
 
   state.check_read(&path)?;
 
@@ -788,10 +794,10 @@ struct TruncateArgs {
 fn op_truncate(
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let args: TruncateArgs = serde_json::from_value(args)?;
-  let path = resolve_from_cwd(Path::new(&args.path))?;
+  let path = PathBuf::from(&args.path);
   let len = args.len;
 
   state.check_write(&path)?;
@@ -862,11 +868,11 @@ struct MakeTempArgs {
 fn op_make_temp_dir(
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let args: MakeTempArgs = serde_json::from_value(args)?;
 
-  let dir = args.dir.map(|s| resolve_from_cwd(Path::new(&s)).unwrap());
+  let dir = args.dir.map(|s| PathBuf::from(&s));
   let prefix = args.prefix.map(String::from);
   let suffix = args.suffix.map(String::from);
 
@@ -893,11 +899,11 @@ fn op_make_temp_dir(
 fn op_make_temp_file(
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let args: MakeTempArgs = serde_json::from_value(args)?;
 
-  let dir = args.dir.map(|s| resolve_from_cwd(Path::new(&s)).unwrap());
+  let dir = args.dir.map(|s| PathBuf::from(&s));
   let prefix = args.prefix.map(String::from);
   let suffix = args.suffix.map(String::from);
 
@@ -926,19 +932,19 @@ fn op_make_temp_file(
 struct UtimeArgs {
   promise_id: Option<u64>,
   path: String,
-  atime: u64,
-  mtime: u64,
+  atime: i64,
+  mtime: i64,
 }
 
 fn op_utime(
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   state.check_unstable("Deno.utime");
 
   let args: UtimeArgs = serde_json::from_value(args)?;
-  let path = resolve_from_cwd(Path::new(&args.path))?;
+  let path = PathBuf::from(&args.path);
 
   state.check_write(&path)?;
 
@@ -953,10 +959,10 @@ fn op_utime(
 fn op_cwd(
   state: &State,
   _args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let path = current_dir()?;
-  state.check_read(&path)?;
+  state.check_read_blind(&path, "CWD")?;
   let path_str = into_string(path.into_os_string())?;
   Ok(JsonOp::Sync(json!(path_str)))
 }

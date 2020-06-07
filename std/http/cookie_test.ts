@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { ServerRequest, Response } from "./server.ts";
-import { getCookies, delCookie, setCookie } from "./cookie.ts";
+import { getCookies, deleteCookie, setCookie } from "./cookie.ts";
 import { assert, assertEquals } from "../testing/asserts.ts";
 const { test } = Deno;
 
@@ -36,7 +36,7 @@ test({
   name: "Cookie Delete",
   fn(): void {
     const res: Response = {};
-    delCookie(res, "deno");
+    deleteCookie(res, "deno");
     assertEquals(
       res.headers?.get("Set-Cookie"),
       "deno=; Expires=Thu, 01 Jan 1970 00:00:00 GMT"

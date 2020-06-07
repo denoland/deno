@@ -5,5 +5,5 @@ Object.defineProperty(globalThis, Symbol.toStringTag, {
   configurable: true,
 });
 
-// @ts-ignore
-globalThis["global"] = globalThis;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+(globalThis as any)["global"] = globalThis;

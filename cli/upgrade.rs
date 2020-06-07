@@ -172,28 +172,40 @@ fn unpack(archive_data: Vec<u8>) -> Result<PathBuf, ErrBox> {
       cmd.stdin.as_mut().unwrap().write_all(&archive_data)?;
       cmd.wait()?
     }
+    "zip" if cfg!(windows) => {
+      let archive_path = temp_dir.join("deno.zip");
+      fs::write(&archive_path, &archive_data)?;
+      Command::new("powershell.exe")
+        .arg("-NoLogo")
+        .arg("-NoProfile")
+        .arg("-NonInteractive")
+        .arg("-Command")
+        .arg(
+          "& {
+            param($Path, $DestinationPath)
+            trap { $host.ui.WriteErrorLine($_.Exception); exit 1 }
+            Add-Type -AssemblyName System.IO.Compression.FileSystem
+            [System.IO.Compression.ZipFile]::ExtractToDirectory(
+              $Path,
+              $DestinationPath
+            );
+          }",
+        )
+        .arg("-Path")
+        .arg(&archive_path)
+        .arg("-DestinationPath")
+        .arg(&temp_dir)
+        .spawn()?
+        .wait()?
+    }
     "zip" => {
-      if cfg!(windows) {
-        let archive_path = temp_dir.join("deno.zip");
-        fs::write(&archive_path, &archive_data)?;
-        Command::new("powershell.exe")
-          .arg("-Command")
-          .arg("Expand-Archive")
-          .arg("-Path")
-          .arg(&archive_path)
-          .arg("-DestinationPath")
-          .arg(&temp_dir)
-          .spawn()?
-          .wait()?
-      } else {
-        let archive_path = temp_dir.join("deno.zip");
-        fs::write(&archive_path, &archive_data)?;
-        Command::new("unzip")
-          .current_dir(&temp_dir)
-          .arg(archive_path)
-          .spawn()?
-          .wait()?
-      }
+      let archive_path = temp_dir.join("deno.zip");
+      fs::write(&archive_path, &archive_data)?;
+      Command::new("unzip")
+        .current_dir(&temp_dir)
+        .arg(archive_path)
+        .spawn()?
+        .wait()?
     }
     ext => panic!("Unsupported archive type: '{}'", ext),
   };
