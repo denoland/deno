@@ -64,10 +64,14 @@ deno cache --reload --lock=lock.json src/deps.ts
 deno test --allow-read src
 ```
 
-Or alternatively
+Note that `deno run` will cause dependencies to load and compile if you have not
+cached them first as above. Therefore as a fail safe, you can also use the lock
+file when running your module to validate modified dependencies are not used.
+This will not update the lock file, only validate dependencies in your module
+against those found in the lock file. Use `deno cache` method above as the best
+practice way to update your lock file with missing dependencies.
 
 ```shell
-# Run src/deps.ts, validating dependencies against lock.json and updating
-# lock.json with any new ones.
-deno run --lock=lock.json --lock-write src/deps.ts
+# Run src/deps.ts, validating dependencies against lock.json
+deno run --lock=lock.json src/deps.ts
 ```
