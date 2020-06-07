@@ -38,11 +38,9 @@ export class Mutex implements Locker {
     }
   }
 
-
   private static mus: {
     [key: string]: Mutex;
   } = {};
-
 
   /**
    *  Execute an async function that cannot be interrupted by 
@@ -67,7 +65,7 @@ export class Mutex implements Locker {
       await cb();
     } finally {
       Mutex.mus[name].unlock();
-      if(!Mutex.mus[name].locked){//nobody waiting?
+      if (!Mutex.mus[name].locked) { //nobody waiting?
         delete Mutex.mus[name];
       }
     }

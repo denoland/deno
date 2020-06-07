@@ -2,7 +2,6 @@
 import { Mutex } from "./mutex.ts";
 import { delay as sleep } from "./delay.ts";
 
-
 let x = 0;
 async function needsLockX(): Promise<void> {
   const oldX: number = x;
@@ -79,13 +78,11 @@ Deno.test("without locks (2)", async function () {
   ]);
   if (x !== 1 || y !== 1) {
     throw new Error(
-      "Code without locks behaves unexpectedly: " + 
-      "x = " + x + ", y = " + y
+      "Code without locks behaves unexpectedly: " +
+        "x = " + x + ", y = " + y,
     );
   }
 });
-
-
 
 Deno.test("doAtomic with multiple named locks", async function () {
   x = 0;
@@ -148,27 +145,26 @@ Deno.test("deadlock should not occur if locked function throws", async function 
   await testDonep; // wait for timeout to fire before exiting test
 });
 
-
-Deno.test('reusing a lock name should be possible', async function(){
+Deno.test("reusing a lock name should be possible", async function () {
   x = 0;
 
-  await Mutex.doAtomic('x', needsLockX);
+  await Mutex.doAtomic("x", needsLockX);
   await sleep(100);
-  await Mutex.doAtomic('x', needsLockX);
+  await Mutex.doAtomic("x", needsLockX);
 
-  if(x !== 2){
-    throw new Error('Race condition detected: x = ');
+  if (x !== 2) {
+    throw new Error("Race condition detected: x = ");
   }
 });
 
-Deno.test('reusing a lock should be possible', async function(){
+Deno.test("reusing a lock should be possible", async function () {
   x = 0;
 
   //Mutex.doAtomic does some cleanup that could mask errors
   const recycledMu = new Mutex();
-  async function recyclingDoAtomic(cb: () => void): Promise<void>{
+  async function recyclingDoAtomic(cb: () => void): Promise<void> {
     await recycledMu.lock();
-    try{
+    try {
       await cb();
     } finally {
       recycledMu.unlock();
@@ -179,65 +175,55 @@ Deno.test('reusing a lock should be possible', async function(){
   await sleep(100);
   await recyclingDoAtomic(needsLockX);
 
-  if(x !== 2){
-    throw new Error('Race condition detected: x = ');
+  if (x !== 2) {
+    throw new Error("Race condition detected: x = ");
   }
 });
 
-
-
-Deno.test('should not be allowed to unlock before locking', function(){
-
+Deno.test("should not be allowed to unlock before locking", function () {
   const mu = new Mutex();
-  try{
+  try {
     mu.unlock();
   } catch (e) {
     return;
   }
 
-  throw new Error('no error when releasing nonexistent lock');
+  throw new Error("no error when releasing nonexistent lock");
 });
 
-
-Deno.test('Should not be allowed to unlock the same lock twice', async function(){
-
+Deno.test("Should not be allowed to unlock the same lock twice", async function () {
   const mu = new Mutex();
   await mu.lock();
   mu.unlock();
-  try{
+  try {
     mu.unlock();
   } catch (e) {
     return;
   }
-  throw new Error('no error when double unlocking');
-
+  throw new Error("no error when double unlocking");
 });
 
-
-Deno.test('locking twice should deadlock', async function(){
+Deno.test("locking twice should deadlock", async function () {
   const mu = new Mutex();
   await mu.lock();
-  let done = function(): void {};
-  const donep = new Promise<void>(function(res, _){
+  let done = function (): void {};
+  const donep = new Promise<void>(function (res, _) {
     done = res;
   });
-  const lockOrTimeoutp = new Promise<void>(function(res,rej){
-    sleep(200).then(()=>{res();done();});
+  const lockOrTimeoutp = new Promise<void>(function (res, rej) {
+    sleep(200).then(() => {
+      res();
+      done();
+    });
     mu.lock()
-      .then(()=>{rej('No deadlock detected');})
-      .catch(()=>{rej('No deadlock detected');});
+      .then(() => {
+        rej("No deadlock detected");
+      })
+      .catch(() => {
+        rej("No deadlock detected");
+      });
   });
 
   await lockOrTimeoutp;
   await donep;
 });
-
-
-
-
-
-
-
-
-
-
