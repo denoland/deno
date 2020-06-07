@@ -8,7 +8,7 @@ import { Sha1 } from "../hash/sha1.ts";
 import { writeResponse } from "../http/_io.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 import { Deferred, deferred } from "../async/deferred.ts";
-import { assert } from "../testing/asserts.ts";
+import { assert } from "../_util/assert.ts";
 import { concat } from "../bytes/mod.ts";
 import Conn = Deno.Conn;
 import Writer = Deno.Writer;
