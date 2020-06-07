@@ -173,19 +173,15 @@ export class Buffer implements Reader, ReaderSync, Writer, WriterSync {
   readFromSync(r: ReaderSync): number {
     let n = 0;
     while (true) {
-      try {
-        const i = this.#grow(MIN_READ);
-        this.#reslice(i);
-        const fub = new Uint8Array(this.#buf.buffer, i);
-        const nread = r.readSync(fub);
-        if (nread === null) {
-          return n;
-        }
-        this.#reslice(i + nread);
-        n += nread;
-      } catch (e) {
+      const i = this.#grow(MIN_READ);
+      this.#reslice(i);
+      const fub = new Uint8Array(this.#buf.buffer, i);
+      const nread = r.readSync(fub);
+      if (nread === null) {
         return n;
       }
+      this.#reslice(i + nread);
+      n += nread;
     }
   }
 }
