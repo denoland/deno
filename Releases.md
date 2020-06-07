@@ -104,7 +104,7 @@ Changes in the CLI:
 - fix: Redirects handling in module analysis (#5726)
 - fix: SWC lexer settings and silent errors (#5752)
 - fix: TS type imports (#5733)
-- fix(fmt): Do not panic on new expr with no parens. (#5734)
+- fix(fmt): Do not panic on new expr with no parens (#5734)
 - fix(cli/js/streams): High water mark validation (#5681)
 
 Changes in std version 0.53.0:
