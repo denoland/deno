@@ -429,6 +429,10 @@ export async function acceptWebSocket(req: {
     if (typeof secKey !== "string") {
       throw new Error("sec-websocket-key is not provided");
     }
+    const secProtocol = headers.get("sec-websocket-protocol");
+    if (typeof secProtocol !== "string") {
+      throw new Error("sec-websocket-protocol is not provided");
+    }
     const secAccept = createSecAccept(secKey);
     await writeResponse(bufWriter, {
       status: 101,
@@ -436,6 +440,7 @@ export async function acceptWebSocket(req: {
         Upgrade: "websocket",
         Connection: "Upgrade",
         "Sec-WebSocket-Accept": secAccept,
+        "Sec-WebSocket-Protocol": secProtocol,
       }),
     });
     return sock;
