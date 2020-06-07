@@ -505,11 +505,10 @@ dependencies = [
 
 [[package]]
 name = "deno_lint"
-version = "0.1.6"
+version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "98a1423991b250b313ea7d2cbe6b04dbf1235cd531ccaec32912e68fa41e1f0b"
+checksum = "77a3ec96c92609aa121d085f3a1351d3836e55b78a4b8ce79ea771c2ad9bd80b"
 dependencies = [
- "clap",
  "lazy_static",
  "regex",
  "swc_atoms",
@@ -517,7 +516,6 @@ dependencies = [
  "swc_ecma_ast",
  "swc_ecma_parser",
  "swc_ecma_visit",
- "termcolor",
 ]
 
 [[package]]

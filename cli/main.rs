@@ -345,7 +345,27 @@ async fn lint_command(flags: Flags, files: Vec<String>) -> Result<(), ErrBox> {
 
     error_counts += file_diagnostics.len();
     for d in file_diagnostics.iter() {
-      eprintln!("{}", d.to_pretty_string());
+      let pretty_message = format!(
+        "({}) {}",
+        colors::gray(d.code.to_string()),
+        d.message.clone()
+      );
+      eprintln!(
+        "{}\n",
+        fmt_errors::format_stack(
+          true,
+          pretty_message,
+          Some(d.line_src.clone()),
+          Some(d.location.col as i64),
+          Some((d.location.col + d.snippet_length) as i64),
+          &[fmt_errors::format_location(
+            d.location.filename.clone(),
+            d.location.line as i64,
+            d.location.col as i64,
+          )],
+          0
+        )
+      );
     }
   }
 
