@@ -355,11 +355,20 @@ export async function fetch(
 
     if (responseBody) {
       // @ts-ignore
+      const state = responseBody[streamSym.state];
+      if (state === "closed") {
+        // Stream is already closed, nothing to do
+        return;
+      }
+
+      // @ts-ignore
       responseBody[aborted] = true;
+
       if (!responseBody.locked) responseBody.cancel("Aborted");
       else {
         // @ts-ignore
         const controller = responseBody[streamSym.readableStreamController];
+
         controller.error(
           new DOMException("The operation was aborted", "AbortError")
         );

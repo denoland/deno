@@ -908,10 +908,9 @@ unitTest(
     assert(res.body !== null);
     assertEquals(res.bodyUsed, true);
 
-    const methods = ["json", "text", "arrayBuffer"];
+    const methods = ["json", "text", "arrayBuffer"] as const;
     for (const method of methods) {
       try {
-        // @ts-expect-error
         await res[method]();
         fail(
           "Reading body after request was aborted. Should throw AbortError."
@@ -941,10 +940,9 @@ unitTest(
     assert(res.body !== null);
     assertEquals(res.bodyUsed, true);
 
-    const methods = ["json", "text", "arrayBuffer"];
+    const methods = ["json", "text", "arrayBuffer"] as const;
     for (const method of methods) {
       try {
-        // @ts-expect-error
         await res[method]();
         fail(
           "Reading body after request was aborted. Should throw AbortError."
