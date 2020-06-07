@@ -35,17 +35,19 @@ async function needsLockButThrows(): Promise<void> {
 async function lockFail(): Promise<void> {
   try {
     await Mutex.doAtomic("z", needsLockButThrows);
-  } catch (e) {
-  }
+  } catch (e) {}
 }
 
-Deno.test("code without locks is subject to race conditions", async function () {
-  x = 0;
-  await Promise.all([needsLockX(), needsLockX(), needsLockX()]);
-  if (x !== 1) {
-    throw new Error("Code without locks behaves unexpectedly: x = " + x);
+Deno.test(
+  "code without locks is subject to race conditions",
+  async function () {
+    x = 0;
+    await Promise.all([needsLockX(), needsLockX(), needsLockX()]);
+    if (x !== 1) {
+      throw new Error("Code without locks behaves unexpectedly: x = " + x);
+    }
   }
-});
+);
 
 Deno.test("doAtomic prevents race conditions", async function () {
   x = 0;
@@ -78,8 +80,7 @@ Deno.test("without locks (2)", async function () {
   ]);
   if (x !== 1 || y !== 1) {
     throw new Error(
-      "Code without locks behaves unexpectedly: " +
-        "x = " + x + ", y = " + y,
+      "Code without locks behaves unexpectedly: " + "x = " + x + ", y = " + y
     );
   }
 });
@@ -110,40 +111,45 @@ Deno.test("doAtomic with multiple named locks", async function () {
   }
 });
 
-Deno.test("deadlock should not occur if locked function throws", async function () {
-  z = 0;
-  const multiFailp = Promise.all([lockFail(), lockFail(), lockFail()]);
+Deno.test(
+  "deadlock should not occur if locked function throws",
+  async function () {
+    z = 0;
+    const multiFailp = Promise.all([lockFail(), lockFail(), lockFail()]);
 
-  let testDonec = function (): void {};
+    let testDonec = function (): void {};
 
-  const testDonep = new Promise<void>(function (res, _) {
-    testDonec = res;
-  });
-
-  const multiFailOrTimeoutp = new Promise<void>(function (res, rej) {
-    multiFailp.then(() => {
-      res();
-    }).catch(() => {
-      rej();
+    const testDonep = new Promise<void>(function (res, _) {
+      testDonec = res;
     });
-    // 10ms * 3 = should only take ~30ms.  100ms for some breathing room
-    sleep(100).then(function () {
-      rej(); //will be ignored if the above fired first
-      testDonec();
+
+    const multiFailOrTimeoutp = new Promise<void>(function (res, rej) {
+      multiFailp
+        .then(() => {
+          res();
+        })
+        .catch(() => {
+          rej();
+        });
+      // 10ms * 3 = should only take ~30ms.  100ms for some breathing room
+      sleep(100).then(function () {
+        rej(); //will be ignored if the above fired first
+        testDonec();
+      });
     });
-  });
 
-  try {
-    await multiFailOrTimeoutp;
-  } catch (e) {
-    throw new Error("Deadlock Detected");
-  }
-  if (z !== 3) {
-    throw new Error("Race condition detected: z = " + z);
-  }
+    try {
+      await multiFailOrTimeoutp;
+    } catch (e) {
+      throw new Error("Deadlock Detected");
+    }
+    if (z !== 3) {
+      throw new Error("Race condition detected: z = " + z);
+    }
 
-  await testDonep; // wait for timeout to fire before exiting test
-});
+    await testDonep; // wait for timeout to fire before exiting test
+  }
+);
 
 Deno.test("reusing a lock name should be possible", async function () {
   x = 0;
@@ -191,17 +197,20 @@ Deno.test("should not be allowed to unlock before locking", function () {
   throw new Error("no error when releasing nonexistent lock");
 });
 
-Deno.test("Should not be allowed to unlock the same lock twice", async function () {
-  const mu = new Mutex();
-  await mu.lock();
-  mu.unlock();
-  try {
+Deno.test(
+  "Should not be allowed to unlock the same lock twice",
+  async function () {
+    const mu = new Mutex();
+    await mu.lock();
     mu.unlock();
-  } catch (e) {
-    return;
+    try {
+      mu.unlock();
+    } catch (e) {
+      return;
+    }
+    throw new Error("no error when double unlocking");
   }
-  throw new Error("no error when double unlocking");
-});
+);
 
 Deno.test("locking twice should deadlock", async function () {
   const mu = new Mutex();

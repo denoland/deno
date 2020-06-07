@@ -43,20 +43,17 @@ export class Mutex implements Locker {
   } = {};
 
   /**
-   *  Execute an async function that cannot be interrupted by 
-   *  functions requesting a lock of the same name.  
+   *  Execute an async function that cannot be interrupted by
+   *  functions requesting a lock of the same name.
    *
-   *  Example usage: 
+   *  Example usage:
    *
    *      await doAtomic("name_of_lock", async function(){
    *        const dat = await read_from_shared_resource();
    *        await write_to_shared_resource(dat + 1);
    *      )};
    */
-  static async doAtomic(
-    name: string,
-    cb: () => Promise<void>,
-  ): Promise<void> {
+  static async doAtomic(name: string, cb: () => Promise<void>): Promise<void> {
     if (!Mutex.mus[name]) {
       Mutex.mus[name] = new Mutex();
     }
@@ -65,7 +62,8 @@ export class Mutex implements Locker {
       await cb();
     } finally {
       Mutex.mus[name].unlock();
-      if (!Mutex.mus[name].locked) { //nobody waiting?
+      if (!Mutex.mus[name].locked) {
+        //nobody waiting?
         delete Mutex.mus[name];
       }
     }
