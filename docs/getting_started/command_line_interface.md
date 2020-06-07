@@ -1,8 +1,8 @@
 ## Command line interface
 
 Deno is a command line program. You should be familiar with some simple commands
-having followed the examples thus far and already understand the basics of
-shell usage.
+having followed the examples thus far and already understand the basics of shell
+usage.
 
 There are multiple ways of viewing the main help text:
 
