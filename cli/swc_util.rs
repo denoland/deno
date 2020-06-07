@@ -32,9 +32,9 @@ use swc_ecma_visit::Visit;
 fn get_default_es_config() -> EsConfig {
   let mut config = EsConfig::default();
   config.num_sep = true;
-  config.class_private_props = false;
-  config.class_private_methods = false;
-  config.class_props = false;
+  config.class_private_props = true;
+  config.class_private_methods = true;
+  config.class_props = true;
   config.export_default_from = true;
   config.export_namespace_from = true;
   config.dynamic_import = true;
@@ -521,7 +521,7 @@ pub fn analyze_dependencies_and_references(
     let comments = parser
       .comments
       .take_leading_comments(module_span.lo())
-      .unwrap_or_else(|| vec![]);
+      .unwrap_or_else(Vec::new);
 
     let mut references = vec![];
     for comment in comments {

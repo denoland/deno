@@ -59,7 +59,7 @@ SharedQueue Binary Layout
 
   function ops() {
     // op id 0 is a special value to retrieve the map of registered ops.
-    const opsMapBytes = send(0, new Uint8Array([]), null);
+    const opsMapBytes = send(0, new Uint8Array([]));
     const opsMapJson = String.fromCharCode.apply(null, opsMapBytes);
     return JSON.parse(opsMapJson);
   }
@@ -181,13 +181,9 @@ SharedQueue Binary Layout
     }
   }
 
-  function dispatch(opId, control, zeroCopy = null) {
-    return send(opId, control, zeroCopy);
-  }
-
   Object.assign(window.Deno.core, {
     setAsyncHandler,
-    dispatch,
+    dispatch: send,
     ops,
     // sharedQueue is private but exposed for testing.
     sharedQueue: {
