@@ -194,10 +194,10 @@ fn op_os_release(
 fn op_name(
   state: &State,
   _args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   state.check_unstable("Deno.osName");
   state.check_env()?;
-  let os_type = sys_info::os_type().unwrap_or_else(|_| "".to_string());
-  Ok(JsonOp::Sync(json!(os_type)))
+  let os_name = sys_info::os_type().unwrap_or_else(|_| "".to_string());
+  Ok(JsonOp::Sync(json!(os_name)))
 }
