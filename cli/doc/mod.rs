@@ -31,38 +31,43 @@ pub fn find_nodes_by_name_recursively(
   let mut parts = name.splitn(2, '.');
   let name = parts.next();
   let leftover = parts.next();
-
   if name.is_none() {
     return doc_nodes;
   }
 
   let name = name.unwrap();
-  let mut filtered: Vec<DocNode> = vec![];
-  for node in doc_nodes {
-    if node.name == name {
-      filtered.push(node);
-    }
-  }
+  let doc_nodes = find_nodes_by_name(doc_nodes, name.to_string());
 
   let mut found: Vec<DocNode> = vec![];
   match leftover {
     Some(leftover) => {
-      for node in filtered {
-        let children = match node.kind {
-          DocNodeKind::Namespace => {
-            let namespace_def = node.namespace_def.unwrap();
-            find_nodes_by_name_recursively(
-              namespace_def.elements,
-              leftover.to_string(),
-            )
-          }
-          // TODO(#4516) handle class, interface etc...
-          _ => vec![],
-        };
+      for node in doc_nodes {
+        let children = find_children_by_name(node, leftover.to_string());
         found.extend(children);
       }
       found
     }
-    None => filtered,
+    None => doc_nodes,
+  }
+}
+
+fn find_nodes_by_name(doc_nodes: Vec<DocNode>, name: String) -> Vec<DocNode> {
+  let mut found: Vec<DocNode> = vec![];
+  for node in doc_nodes {
+    if node.name == name {
+      found.push(node);
+    }
+  }
+  found
+}
+
+fn find_children_by_name(node: DocNode, name: String) -> Vec<DocNode> {
+  match node.kind {
+    DocNodeKind::Namespace => {
+      let namespace_def = node.namespace_def.unwrap();
+      find_nodes_by_name_recursively(namespace_def.elements, name)
+    }
+    // TODO(#4516) handle class, interface etc...
+    _ => vec![],
   }
 }
