@@ -183,7 +183,8 @@ static ENV_VARIABLES_HELP: &str = "ENVIRONMENT VARIABLES:
     NO_COLOR             Set to disable color
     HTTP_PROXY           Proxy address for HTTP requests
                          (module downloads, fetch)
-    HTTPS_PROXY          Same but for HTTPS";
+    HTTPS_PROXY          Proxy address for HTTPS requests
+                         (module downloads, fetch)";
 
 static DENO_HELP: &str = "A secure JavaScript and TypeScript runtime
 
