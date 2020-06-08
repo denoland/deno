@@ -8,6 +8,7 @@ import {
   assert,
   assertStringContains,
   assertThrows,
+  assertThrowsAsync,
   unitTest,
 } from "./test_util.ts";
 
@@ -203,6 +204,9 @@ unitTest(async function bufferReadFrom(): Promise<void> {
     const fub = new Uint8Array(testString.length);
     await empty(b, s, fub);
   }
+  assertThrowsAsync(async function () {
+    await new Buffer().readFrom(null!);
+  });
 });
 
 unitTest(async function bufferReadFromSync(): Promise<void> {

@@ -4,6 +4,7 @@ import { assert, assertEquals } from "../../../std/testing/asserts.ts";
 export {
   assert,
   assertThrows,
+  assertThrowsAsync,
   assertEquals,
   assertMatch,
   assertNotEquals,
