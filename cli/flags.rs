@@ -50,6 +50,9 @@ pub enum DenoSubcommand {
     root: Option<PathBuf>,
     force: bool,
   },
+  Lint {
+    files: Vec<String>,
+  },
   Repl,
   Run {
     script: String,
@@ -260,6 +263,8 @@ pub fn flags_from_vec_safe(args: Vec<String>) -> clap::Result<Flags> {
     upgrade_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("doc") {
     doc_parse(&mut flags, m);
+  } else if let Some(m) = matches.subcommand_matches("lint") {
+    lint_parse(&mut flags, m);
   } else {
     repl_parse(&mut flags, &matches);
   }
@@ -302,18 +307,19 @@ If the flag is set, restrict these messages to errors.",
         .global(true),
     )
     .subcommand(bundle_subcommand())
-    .subcommand(completions_subcommand())
-    .subcommand(eval_subcommand())
     .subcommand(cache_subcommand())
+    .subcommand(completions_subcommand())
+    .subcommand(doc_subcommand())
+    .subcommand(eval_subcommand())
     .subcommand(fmt_subcommand())
     .subcommand(info_subcommand())
     .subcommand(install_subcommand())
+    .subcommand(lint_subcommand())
     .subcommand(repl_subcommand())
     .subcommand(run_subcommand())
     .subcommand(test_subcommand())
     .subcommand(types_subcommand())
     .subcommand(upgrade_subcommand())
-    .subcommand(doc_subcommand())
     .long_about(DENO_HELP)
     .after_help(ENV_VARIABLES_HELP)
 }
@@ -577,6 +583,16 @@ fn doc_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     json,
     filter,
   };
+}
+
+fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  unstable_arg_parse(flags, matches);
+  let files = matches
+    .values_of("files")
+    .unwrap()
+    .map(String::from)
+    .collect();
+  flags.subcommand = DenoSubcommand::Lint { files };
 }
 
 fn types_subcommand<'a, 'b>() -> App<'a, 'b> {
@@ -886,6 +902,25 @@ Show documentation for runtime built-ins:
         .required(false)
         .conflicts_with("json")
         .conflicts_with("pretty"),
+    )
+}
+
+fn lint_subcommand<'a, 'b>() -> App<'a, 'b> {
+  SubCommand::with_name("lint")
+    .about("Lint source files")
+    .long_about(
+      "Lint JavaScript/TypeScript source code.
+  deno lint myfile1.ts myfile2.js
+
+Ignore diagnostics on next line preceding it with an ignore comment and code:
+  // deno-lint-ignore no-explicit-any",
+    )
+    .arg(unstable_arg())
+    .arg(
+      Arg::with_name("files")
+        .takes_value(true)
+        .required(true)
+        .min_values(1),
     )
 }
 
