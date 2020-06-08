@@ -24,7 +24,7 @@
 import {
   assert,
   assertEquals,
-  assertStrictEq,
+  assertStrictEquals,
   assertThrowsAsync,
 } from "../../testing/asserts.ts";
 
@@ -49,8 +49,8 @@ test("Promisify.custom", async function testPromisifyCustom() {
 
   const promisifiedFnA = promisify(fn);
   const promisifiedFnB = promisify(promisifiedFnA);
-  assertStrictEq(promisifiedFnA, promisifedFn);
-  assertStrictEq(promisifiedFnB, promisifedFn);
+  assertStrictEquals(promisifiedFnA, promisifedFn);
+  assertStrictEquals(promisifiedFnB, promisifedFn);
 
   await promisifiedFnA;
   await promisifiedFnB;
@@ -67,9 +67,9 @@ test("promiisfy.custom symbol", function testPromisifyCustomSymbol() {
   // @ts-ignore TypeScript (as of 3.7) does not support indexing namespaces by symbol
   fn[kCustomPromisifiedSymbol] = promisifiedFn;
 
-  assertStrictEq(kCustomPromisifiedSymbol, promisify.custom);
-  assertStrictEq(promisify(fn), promisifiedFn);
-  assertStrictEq(promisify(promisify(fn)), promisifiedFn);
+  assertStrictEquals(kCustomPromisifiedSymbol, promisify.custom);
+  assertStrictEquals(promisify(fn), promisifiedFn);
+  assertStrictEquals(promisify(promisify(fn)), promisifiedFn);
 });
 
 test("Invalid argument should throw", function testThrowInvalidArgument() {
@@ -79,7 +79,7 @@ test("Invalid argument should throw", function testThrowInvalidArgument() {
   try {
     promisify(fn);
   } catch (e) {
-    assertStrictEq(e.code, "ERR_INVALID_ARG_TYPE");
+    assertStrictEquals(e.code, "ERR_INVALID_ARG_TYPE");
     assert(e instanceof TypeError);
   }
 });
@@ -104,7 +104,7 @@ test("Multiple callback args without custom promisify args", async function test
     callback(null, "foo", "bar");
   }
   const value = await promisify(fn)();
-  assertStrictEq(value, "foo");
+  assertStrictEquals(value, "foo");
 });
 
 test("Undefined resolved value", async function testPromisifyWithUndefinedResolvedValue() {
@@ -112,7 +112,7 @@ test("Undefined resolved value", async function testPromisifyWithUndefinedResolv
     callback(null);
   }
   const value = await promisify(fn)();
-  assertStrictEq(value, undefined);
+  assertStrictEquals(value, undefined);
 });
 
 test("Undefined resolved value II", async function testPromisifyWithUndefinedResolvedValueII() {
@@ -120,7 +120,7 @@ test("Undefined resolved value II", async function testPromisifyWithUndefinedRes
     callback();
   }
   const value = await promisify(fn)();
-  assertStrictEq(value, undefined);
+  assertStrictEquals(value, undefined);
 });
 
 test("Resolved value: number", async function testPromisifyWithNumberResolvedValue() {
@@ -128,7 +128,7 @@ test("Resolved value: number", async function testPromisifyWithNumberResolvedVal
     callback(err, val);
   }
   const value = await promisify(fn)(null, 42);
-  assertStrictEq(value, 42);
+  assertStrictEquals(value, 42);
 });
 
 test("Rejected value", async function testPromisifyWithNumberRejectedValue() {
@@ -166,7 +166,7 @@ test("Multiple callback", async function testPromisifyWithMultipleCallback() {
 
   await fn();
   await Promise.resolve();
-  return assertStrictEq(stack, err.stack);
+  return assertStrictEquals(stack, err.stack);
 });
 
 test("Promisify a promise", function testPromisifyPromise() {
@@ -174,7 +174,7 @@ test("Promisify a promise", function testPromisifyPromise() {
   const a = promisify(function (): void {});
   const b = promisify(a);
   assert(c !== a);
-  assertStrictEq(a, b);
+  assertStrictEquals(a, b);
 });
 
 test("Test error", async function testInvalidArguments() {
@@ -194,7 +194,7 @@ test("Test error", async function testInvalidArguments() {
     await thrower(1, 2, 3);
     throw new Error(`should've failed`);
   } catch (e) {
-    assertStrictEq(e, errToThrow);
+    assertStrictEquals(e, errToThrow);
   }
 });
 
@@ -204,7 +204,7 @@ test("Test invalid arguments", function testInvalidArguments() {
       // @ts-ignore TypeScript
       promisify(input);
     } catch (e) {
-      assertStrictEq(e.code, "ERR_INVALID_ARG_TYPE");
+      assertStrictEquals(e.code, "ERR_INVALID_ARG_TYPE");
       assert(e instanceof TypeError);
       assertEquals(
         e.message,
