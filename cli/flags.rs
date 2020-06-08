@@ -896,6 +896,14 @@ Show documentation for runtime built-ins:
 
 fn lint_subcommand<'a, 'b>() -> App<'a, 'b> {
   SubCommand::with_name("lint")
+    .about("Lint source files")
+    .long_about(
+      "Lint JavaScript/TypeScript source code.
+  deno lint myfile1.ts myfile2.js
+
+Ignore diagnostics on next line preceding it with an ignore comment and code:
+  // deno-lint-ignore no-explicit-any",
+    )
     .arg(unstable_arg())
     .arg(
       Arg::with_name("files")
@@ -903,7 +911,6 @@ fn lint_subcommand<'a, 'b>() -> App<'a, 'b> {
         .required(true)
         .min_values(1),
     )
-    .about("Lint source files")
 }
 
 fn permission_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
