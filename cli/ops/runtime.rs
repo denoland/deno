@@ -6,11 +6,13 @@ use crate::state::State;
 use crate::version;
 use crate::DenoSubcommand;
 use deno_core::CoreIsolate;
+use deno_core::ModuleSpecifier;
 use deno_core::ZeroCopyBuf;
 use std::env;
 
 pub fn init(i: &mut CoreIsolate, s: &State) {
   i.register_op("op_start", s.stateful_json_op(op_start));
+  i.register_op("op_main_url", s.stateful_json_op(op_main_url));
   i.register_op("op_metrics", s.stateful_json_op(op_metrics));
 }
 
@@ -31,13 +33,24 @@ fn op_start(
     "noColor": !colors::use_color(),
     "pid": std::process::id(),
     "repl": gs.flags.subcommand == DenoSubcommand::Repl,
-    "scriptUrl": state.main_module.to_string(),
     "target": env!("TARGET"),
     "tsVersion": version::TYPESCRIPT,
     "unstableFlag": gs.flags.unstable,
     "v8Version": version::v8(),
     "versionFlag": gs.flags.version,
   })))
+}
+
+fn op_main_url(
+  state: &State,
+  _args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<JsonOp, OpError> {
+  let main = &state.borrow().main_module.to_string();
+  let main_url = ModuleSpecifier::resolve_url_or_path(&main)?;
+  let main_path = std::env::current_dir().unwrap().join(main_url.to_string());
+  state.check_read_blind(&main_path, "main_url")?;
+  Ok(JsonOp::Sync(json!(&main)))
 }
 
 fn op_metrics(

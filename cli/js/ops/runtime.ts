@@ -11,7 +11,6 @@ export interface Start {
   noColor: boolean;
   pid: number;
   repl: boolean;
-  scriptUrl: URL;
   target: string;
   tsVersion: string;
   unstableFlag: boolean;
@@ -20,9 +19,11 @@ export interface Start {
 }
 
 export function opStart(): Start {
-  const s = sendSync("op_start");
-  s.scriptUrl = new URLImpl(s.scriptUrl);
-  return s;
+  return sendSync("op_start");
+}
+
+export function opMainUrl(): URLImpl {
+  return new URLImpl(sendSync("op_main_url"));
 }
 
 export interface Metrics {

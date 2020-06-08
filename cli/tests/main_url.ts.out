@@ -1,0 +1,2 @@
+main_url2 [WILDCARD]tests/main_url.ts
+main_url [WILDCARD]tests/main_url.ts

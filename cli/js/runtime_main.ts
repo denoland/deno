@@ -9,6 +9,7 @@
 
 import * as denoNs from "./deno.ts";
 import * as denoUnstableNs from "./deno_unstable.ts";
+import { opMainUrl } from "./ops/runtime.ts";
 import { exit } from "./ops/os.ts";
 import {
   readOnly,
@@ -95,18 +96,18 @@ export function bootstrapMainRuntime(): void {
     }
   });
 
-  const { args, cwd, noColor, pid, repl, scriptUrl, unstableFlag } = runtime.start();
+  const { args, cwd, noColor, pid, repl, unstableFlag } = runtime.start();
 
   Object.defineProperties(denoNs, {
     pid: readOnly(pid),
     noColor: readOnly(noColor),
-    scriptUrl: readOnly(scriptUrl),
     args: readOnly(Object.freeze(args)),
   });
 
   if (unstableFlag) {
     Object.defineProperties(globalThis, unstableMethods);
     Object.defineProperties(globalThis, unstableProperties);
+    Object.defineProperty(denoNs, "mainUrl", getterOnly(opMainUrl));
     Object.assign(denoNs, denoUnstableNs);
   }
 
