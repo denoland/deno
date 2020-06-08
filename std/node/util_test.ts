@@ -166,3 +166,11 @@ test({
     assert(te instanceof TextEncoder);
   },
 });
+
+test({
+  name: "[util] isDate",
+  fn() {
+    // Test verifies the method is exposed. See _util/_util_types_test for details
+    assert(util.types.isDate(new Date()));
+  },
+});

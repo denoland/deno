@@ -25,12 +25,14 @@ pub use rusty_v8 as v8;
 
 pub use crate::core_isolate::js_check;
 pub use crate::core_isolate::CoreIsolate;
+pub use crate::core_isolate::CoreIsolateState;
 pub use crate::core_isolate::Script;
 pub use crate::core_isolate::Snapshot;
 pub use crate::core_isolate::StartupData;
 pub use crate::errors::ErrBox;
 pub use crate::errors::JSError;
 pub use crate::es_isolate::EsIsolate;
+pub use crate::es_isolate::EsIsolateState;
 pub use crate::flags::v8_set_flags;
 pub use crate::module_specifier::ModuleResolutionError;
 pub use crate::module_specifier::ModuleSpecifier;

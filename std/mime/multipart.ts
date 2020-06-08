@@ -12,7 +12,7 @@ import { extname } from "../path/mod.ts";
 import { tempFile } from "../io/util.ts";
 import { BufReader, BufWriter } from "../io/bufio.ts";
 import { encoder } from "../encoding/utf8.ts";
-import { assertStrictEq, assert } from "../testing/asserts.ts";
+import { assert } from "../_util/assert.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 import { hasOwnProperty } from "../_util/has_own_property.ts";
 
@@ -178,7 +178,7 @@ class PartReader implements Reader, Closer {
       );
       if (this.n === 0) {
         // Force buffered I/O to read more into buffer.
-        assertStrictEq(eof, false);
+        assert(eof === false);
         peekLength++;
       }
     }
@@ -190,7 +190,7 @@ class PartReader implements Reader, Closer {
     const nread = min(p.length, this.n);
     const buf = p.subarray(0, nread);
     const r = await br.readFull(buf);
-    assertStrictEq(r, buf);
+    assert(r === buf);
     this.n -= nread;
     this.total += nread;
     return nread;
@@ -252,11 +252,13 @@ function skipLWSPChar(u: Uint8Array): Uint8Array {
 }
 
 export interface MultipartFormData {
-  file(key: string): FormFile | undefined;
+  file(key: string): FormFile | FormFile[] | undefined;
   value(key: string): string | undefined;
-  entries(): IterableIterator<[string, string | FormFile | undefined]>;
+  entries(): IterableIterator<
+    [string, string | FormFile | FormFile[] | undefined]
+  >;
   [Symbol.iterator](): IterableIterator<
-    [string, string | FormFile | undefined]
+    [string, string | FormFile | FormFile[] | undefined]
   >;
   /** Remove all tempfiles */
   removeAll(): Promise<void>;
@@ -282,7 +284,7 @@ export class MultipartReader {
    * @param maxMemory maximum memory size to store file in memory. bytes. @default 10485760 (10MB)
    *  */
   async readForm(maxMemory = 10 << 20): Promise<MultipartFormData> {
-    const fileMap = new Map<string, FormFile>();
+    const fileMap = new Map<string, FormFile | FormFile[]>();
     const valueMap = new Map<string, string>();
     let maxValueBytes = maxMemory + (10 << 20);
     const buf = new Buffer(new Uint8Array(maxValueBytes));
@@ -307,7 +309,7 @@ export class MultipartReader {
         continue;
       }
       // file
-      let formFile: FormFile | undefined;
+      let formFile: FormFile | FormFile[] | undefined;
       const n = await copyN(p, buf, maxValueBytes);
       const contentType = p.headers.get("content-type");
       assert(contentType != null, "content-type must be set");
@@ -343,7 +345,16 @@ export class MultipartReader {
         maxValueBytes -= n;
       }
       if (formFile) {
-        fileMap.set(p.formName, formFile);
+        const mapVal = fileMap.get(p.formName);
+        if (mapVal !== undefined) {
+          if (Array.isArray(mapVal)) {
+            mapVal.push(formFile);
+          } else {
+            fileMap.set(p.formName, [mapVal, formFile]);
+          }
+        } else {
+          fileMap.set(p.formName, formFile);
+        }
       }
     }
     return multipatFormData(fileMap, valueMap);
@@ -411,17 +422,17 @@ export class MultipartReader {
 }
 
 function multipatFormData(
-  fileMap: Map<string, FormFile>,
+  fileMap: Map<string, FormFile | FormFile[]>,
   valueMap: Map<string, string>
 ): MultipartFormData {
-  function file(key: string): FormFile | undefined {
+  function file(key: string): FormFile | FormFile[] | undefined {
     return fileMap.get(key);
   }
   function value(key: string): string | undefined {
     return valueMap.get(key);
   }
   function* entries(): IterableIterator<
-    [string, string | FormFile | undefined]
+    [string, string | FormFile | FormFile[] | undefined]
   > {
     yield* fileMap;
     yield* valueMap;
@@ -429,8 +440,15 @@ function multipatFormData(
   async function removeAll(): Promise<void> {
     const promises: Array<Promise<void>> = [];
     for (const val of fileMap.values()) {
-      if (!val.tempfile) continue;
-      promises.push(Deno.remove(val.tempfile));
+      if (Array.isArray(val)) {
+        for (const subVal of val) {
+          if (!subVal.tempfile) continue;
+          promises.push(Deno.remove(subVal.tempfile));
+        }
+      } else {
+        if (!val.tempfile) continue;
+        promises.push(Deno.remove(val.tempfile));
+      }
     }
     await Promise.all(promises);
   }
@@ -440,7 +458,7 @@ function multipatFormData(
     entries,
     removeAll,
     [Symbol.iterator](): IterableIterator<
-      [string, string | FormFile | undefined]
+      [string, string | FormFile | FormFile[] | undefined]
     > {
       return entries();
     },

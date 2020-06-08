@@ -100,7 +100,7 @@ function callbackify(original: any): any {
     };
     original.apply(this, args).then(
       (ret: unknown) => {
-        setTimeout(cb.bind(this, null, ret), 0);
+        queueMicrotask(cb.bind(this, null, ret));
       },
       (rej: unknown) => {
         rej = rej || new NodeFalsyValueRejectionError(rej);

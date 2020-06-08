@@ -1,7 +1,11 @@
 /* eslint-disable @typescript-eslint/no-var-requires */
 
 const { test } = Deno;
-import { assertEquals, assert, assertStrContains } from "../testing/asserts.ts";
+import {
+  assertEquals,
+  assert,
+  assertStringContains,
+} from "../testing/asserts.ts";
 import { createRequire } from "./module.ts";
 
 const require = createRequire(import.meta.url);
@@ -54,6 +58,6 @@ test("requireStack", function () {
   try {
     hello();
   } catch (e) {
-    assertStrContains(e.stack, "/tests/cjs/cjs_throw.js");
+    assertStringContains(e.stack, "/tests/cjs/cjs_throw.js");
   }
 });

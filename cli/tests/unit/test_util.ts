@@ -7,8 +7,8 @@ export {
   assertEquals,
   assertMatch,
   assertNotEquals,
-  assertStrictEq,
-  assertStrContains,
+  assertStrictEquals,
+  assertStringContains,
   unreachable,
   fail,
 } from "../../../std/testing/asserts.ts";

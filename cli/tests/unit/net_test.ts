@@ -4,6 +4,7 @@ import {
   assert,
   assertEquals,
   createResolvable,
+  assertNotEquals,
 } from "./test_util.ts";
 
 unitTest({ perms: { net: true } }, function netTcpListenClose(): void {
@@ -11,6 +12,7 @@ unitTest({ perms: { net: true } }, function netTcpListenClose(): void {
   assert(listener.addr.transport === "tcp");
   assertEquals(listener.addr.hostname, "127.0.0.1");
   assertEquals(listener.addr.port, 3500);
+  assertNotEquals(listener.rid, 0);
   listener.close();
 });
 
