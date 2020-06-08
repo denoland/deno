@@ -56,8 +56,8 @@ pub fn find_nodes_by_name_recursively(
               leftover.to_string(),
             )
           }
-          // TODO(#4516) handle class, interface, enum, etc...
-          _ => vec![node.clone()],
+          // TODO(#4516) handle class, interface etc...
+          _ => vec![],
         };
         found.extend(children);
       }
