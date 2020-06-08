@@ -105,7 +105,7 @@ const DEFAULT_BUNDLER_OPTIONS: ts.CompilerOptions = {
 };
 
 const DEFAULT_COMPILE_OPTIONS: ts.CompilerOptions = {
-  allowJs: false,
+  allowJs: true,
   allowNonTsExtensions: true,
   checkJs: false,
   esModuleInterop: true,
@@ -1168,8 +1168,9 @@ function compile(request: CompilerRequestCompile): CompileResult {
       }
       const emitResult = program.emit();
       // If `checkJs` is off we still might be compiling entry point JavaScript file
-      // (if it has `.ts` imports), but it won't be emitted.
-      if (options.checkJs) {
+      // (if it has `.ts` imports), but it won't be emitted. In that case we skip
+      // assertion.
+      if (!bundle && options.checkJs) {
         assert(
           emitResult.emitSkipped === false,
           "Unexpected skip of the emit."

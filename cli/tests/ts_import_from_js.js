@@ -1,4 +1,3 @@
-import "./005_more_imports.ts";
-import { printHello } from "http://localhost:4545/cli/tests/subdir/mod2.ts";
+import { printHello } from "./ts_import_from_js.deps.js";
 printHello();
 console.log("success");
