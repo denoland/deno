@@ -211,8 +211,12 @@ export class Server implements AsyncIterable<ServerRequest> {
     try {
       conn = await this.listener.accept();
     } catch (error) {
-      if (error instanceof Deno.errors.BadResource) {
-        return;
+      if (
+        error instanceof Deno.errors.BadResource ||
+        error instanceof Deno.errors.InvalidData ||
+        error instanceof Deno.errors.UnexpectedEof
+      ) {
+        return mux.add(this.acceptConnAndIterateHttpRequests(mux));
       }
       throw error;
     }
