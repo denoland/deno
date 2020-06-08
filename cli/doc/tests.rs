@@ -1598,7 +1598,6 @@ export namespace Deno {
   assert_eq!(found.len(), 1);
   assert_eq!(found[0].name, "a".to_string());
 
-  let found =
-    find_nodes_by_name_recursively(entries, "a.b.c".to_string());
+  let found = find_nodes_by_name_recursively(entries, "a.b.c".to_string());
   assert_eq!(found.len(), 0);
 }
