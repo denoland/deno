@@ -24,43 +24,45 @@ pub use parser::DocParser;
 #[cfg(test)]
 mod tests;
 
-pub fn find_node_by_name_recursively(
+pub fn find_nodes_by_name_recursively(
   doc_nodes: Vec<DocNode>,
   name: String,
-) -> Option<DocNode> {
+) -> Vec<DocNode> {
   let mut parts = name.splitn(2, '.');
   let name = parts.next();
   let leftover = parts.next();
-  name?;
-  let node = find_node_by_name(doc_nodes, name.unwrap().to_string());
-  match node {
-    Some(node) => match node.kind {
-      DocNodeKind::Namespace => {
-        if let Some(leftover) = leftover {
-          find_node_by_name_recursively(
-            node.namespace_def.unwrap().elements,
-            leftover.to_string(),
-          )
-        } else {
-          Some(node)
-        }
-      }
-      _ => {
-        if leftover.is_none() {
-          Some(node)
-        } else {
-          None
-        }
-      }
-    },
-    _ => None,
-  }
-}
 
-fn find_node_by_name(doc_nodes: Vec<DocNode>, name: String) -> Option<DocNode> {
-  let node = doc_nodes.iter().find(|node| node.name == name);
-  match node {
-    Some(node) => Some(node.clone()),
-    None => None,
+  if name.is_none() {
+    return doc_nodes;
+  }
+
+  let name = name.unwrap();
+  let mut filtered: Vec<DocNode> = vec![];
+  for node in doc_nodes {
+    if node.name == name {
+      filtered.push(node);
+    }
+  }
+
+  let mut found: Vec<DocNode> = vec![];
+  match leftover {
+    Some(leftover) => {
+      for node in filtered {
+        let children = match node.kind {
+          DocNodeKind::Namespace => {
+            let namespace_def = node.namespace_def.unwrap();
+            find_nodes_by_name_recursively(
+              namespace_def.elements,
+              leftover.to_string(),
+            )
+          }
+          // TODO(#4516) handle class, interface, enum, etc...
+          _ => vec![node.clone()],
+        };
+        found.extend(children);
+      }
+      found
+    }
+    None => filtered,
   }
 }
