@@ -437,6 +437,11 @@ Deno.test("bufioReadLine", async function (): Promise<void> {
   await testReadLine(testInputrn);
 });
 
+Deno.test("bufioReadLineSync", function (): void {
+  testReadLineSync(testInput);
+  testReadLineSync(testInputrn);
+});
+
 Deno.test("bufioPeek", async function (): Promise<void> {
   const decoder = new TextDecoder();
   const p = new Uint8Array(10);
