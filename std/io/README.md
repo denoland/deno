@@ -33,6 +33,27 @@ import * as path from "https://deno.land/std/path/mod.ts";
 ## Rest of the file
 ````
 
+### readLinesSync
+
+Synchronous read reader[like file], line by line
+
+```ts title="readLinesSync"
+import { readLinesSync } from "./bufio.ts";
+import { StringReader } from "./readers.ts";
+
+for (const line of readLinesSync(new StringReader("Lorem\nipsum\n"))) {
+  console.log("read line", line);
+}
+```
+
+**Output:**
+
+````text
+read line Lorem
+read line ipsum
+read line 
+````
+
 ### readStringDelim
 
 Read reader`[like file]` chunk by chunk, splitting based on delimiter.
