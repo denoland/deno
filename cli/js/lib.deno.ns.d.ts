@@ -1545,6 +1545,9 @@ declare namespace Deno {
     /** Return the address of the `Listener`. */
     readonly addr: Addr;
 
+    /** Return the rid of the `Listener`. */
+    readonly rid: number;
+
     [Symbol.asyncIterator](): AsyncIterableIterator<Conn>;
   }
 
