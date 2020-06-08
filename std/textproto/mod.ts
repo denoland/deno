@@ -199,7 +199,7 @@ export class TextProtoReaderSync {
     if (buf === null) {
       return null;
     } else if (buf[0] == charCode(" ") || buf[0] == charCode("\t")) {
-      line = (this.readLineSlice()) as Uint8Array;
+      line = this.readLineSlice() as Uint8Array;
     }
 
     buf = this.r.peek(1);

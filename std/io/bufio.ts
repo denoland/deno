@@ -1077,7 +1077,7 @@ export async function* readDelim(
 /** Read delimited bytes from a Reader. */
 export function* readDelimSync(
   reader: ReaderSync,
-  delim: Uint8Array,
+  delim: Uint8Array
 ): IterableIterator<Uint8Array> {
   // Avoid unicode problems
   const delimLen = delim.length;
@@ -1167,8 +1167,6 @@ export async function* readLines(
 
 /** Read strings line-by-line from a Reader. */
 // eslint-disable-next-line require-await
-export function* readLinesSync(
-  reader: ReaderSync
-): IterableIterator<string> {
+export function* readLinesSync(reader: ReaderSync): IterableIterator<string> {
   yield* readStringDelimSync(reader, "\n");
 }

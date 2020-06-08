@@ -48,11 +48,11 @@ for (const line of readLinesSync(new StringReader("Lorem\nipsum\n"))) {
 
 **Output:**
 
-````text
+```text
 read line Lorem
 read line ipsum
-read line 
-````
+read line
+```
 
 ### readStringDelim
 

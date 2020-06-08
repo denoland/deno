@@ -98,7 +98,8 @@ test({
 test({
   name: "[textproto] Reader : MIME Header Non compliant",
   fn(): void {
-    const input = "Foo: bar\r\n" +
+    const input =
+      "Foo: bar\r\n" +
       "Content-Language: en\r\n" +
       "SID : 0\r\n" +
       "Audio Mode : None\r\n" +
@@ -144,7 +145,8 @@ test({
 test({
   name: "[textproto] Reader : MIME Header Trim Continued",
   fn(): void {
-    const input = "" + // for code formatting purpose.
+    const input =
+      "" + // for code formatting purpose.
       "a:\n" +
       " 0 \r\n" +
       "b:1 \t\r\n" +
@@ -185,7 +187,7 @@ test({
     const input = "abcdefghijklmnopqrstuvwxyz";
     const bufSize = 25;
     const tp = new TextProtoReaderSync(
-      new BufReaderSync(new StringReader(input), bufSize),
+      new BufReaderSync(new StringReader(input), bufSize)
     );
     const line = tp.readLine();
     assertEquals(line, input);

@@ -93,7 +93,10 @@ const readSyncMakers: ReadSyncMaker[] = [
     name: "byte",
     fn: (r): iotestSync.OneByteReader => new iotestSync.OneByteReader(r),
   },
-  { name: "half", fn: (r): iotestSync.HalfReader => new iotestSync.HalfReader(r) },
+  {
+    name: "half",
+    fn: (r): iotestSync.HalfReader => new iotestSync.HalfReader(r),
+  },
   // TODO { name: "data+err", r => new iotest.DataErrReader(r) },
   // { name: "timeout", fn: r => new iotest.TimeoutReader(r) },
 ];
@@ -256,7 +259,10 @@ Deno.test("bufioBufferFullSync", function (): void {
   const longString =
     "And now, hello, world! It is the time for all good men to come to the" +
     " aid of their party";
-  const buf = new BufReaderSync(new StringReader(longString), MIN_READ_BUFFER_SIZE);
+  const buf = new BufReaderSync(
+    new StringReader(longString),
+    MIN_READ_BUFFER_SIZE
+  );
   const decoder = new TextDecoder();
 
   try {
@@ -787,11 +793,11 @@ Deno.test(
     const bufSize = 25;
     const b = new BufReaderSync(new StringReader(data), bufSize);
 
-    const r1 = (b.readLine()) as ReadLineResult;
+    const r1 = b.readLine() as ReadLineResult;
     assert(r1 !== null);
     assertEquals(decoder.decode(r1.line), "abcdefghijklmnopqrstuvwxy");
 
-    const r2 = (b.readLine()) as ReadLineResult;
+    const r2 = b.readLine() as ReadLineResult;
     assert(r2 !== null);
     assertEquals(decoder.decode(r2.line), "z");
     assert(
