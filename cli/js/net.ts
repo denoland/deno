@@ -26,6 +26,8 @@ export interface Listener extends AsyncIterable<Conn> {
 
   addr: Addr;
 
+  rid: number;
+
   [Symbol.asyncIterator](): AsyncIterableIterator<Conn>;
 }
 
