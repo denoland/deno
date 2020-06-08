@@ -1167,7 +1167,14 @@ function compile(request: CompilerRequestCompile): CompileResult {
         setRootExports(program, rootNames[0]);
       }
       const emitResult = program.emit();
-      assert(emitResult.emitSkipped === false, "Unexpected skip of the emit.");
+      // If `checkJs` is off we still might be compiling entry point JavaScript file
+      // (if it has `.ts` imports), but it won't be emitted.
+      if (options.checkJs) {
+        assert(
+          emitResult.emitSkipped === false,
+          "Unexpected skip of the emit."
+        );
+      }
       // emitResult.diagnostics is `readonly` in TS3.5+ and can't be assigned
       // without casting.
       diagnostics = emitResult.diagnostics;

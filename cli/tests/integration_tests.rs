@@ -1869,6 +1869,7 @@ itest!(cjs_imports {
 itest!(ts_import_from_js {
   args: "run --quiet --reload ts_import_from_js.js",
   output: "ts_import_from_js.js.out",
+  http_server: true,
 });
 
 itest!(proto_exploit {
