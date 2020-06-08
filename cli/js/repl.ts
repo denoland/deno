@@ -35,8 +35,8 @@ function isRecoverableError(e: Error): boolean {
 // Returns `true` if `close()` is called in REPL.
 // We should quit the REPL when this function returns `true`.
 function isCloseCalled(): boolean {
-  // @ts-ignore
-  return globalThis.closed;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (globalThis as any).closed;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -49,11 +49,18 @@ let lastThrownError: Value = undefined;
 // Returns true if code is consumed (no error/irrecoverable error).
 // Returns false if error is recoverable
 function evaluate(code: string): boolean {
-  const [result, errInfo] = core.evalContext(code);
+  // each evalContext is a separate function body, and we want strict mode to
+  // work, so we should ensure that the code starts with "use strict"
+  const [result, errInfo] = core.evalContext(`"use strict";\n\n${code}`);
   if (!errInfo) {
-    lastEvalResult = result;
+    // when a function is eval'ed with just "use strict" sometimes the result
+    // is "use strict" which should be discarded
+    lastEvalResult =
+      typeof result === "string" && result === "use strict"
+        ? undefined
+        : result;
     if (!isCloseCalled()) {
-      replLog(result);
+      replLog(lastEvalResult);
     }
   } else if (errInfo.isCompileError && isRecoverableError(errInfo.thrown)) {
     // Recoverable compiler error

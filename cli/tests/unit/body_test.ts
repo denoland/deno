@@ -42,8 +42,8 @@ unitTest(
 
     const body = buildBody(text);
 
-    // @ts-ignore
-    body.contentType = "multipart/form-data;boundary=boundary";
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (body as any).contentType = "multipart/form-data;boundary=boundary";
 
     const formData = await body.formData();
     assert(formData.has("field_1"));
@@ -62,8 +62,8 @@ unitTest(
 
     const body = buildBody(text);
 
-    // @ts-ignore
-    body.contentType = "application/x-www-form-urlencoded";
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (body as any).contentType = "application/x-www-form-urlencoded";
 
     const formData = await body.formData();
     assert(formData.has("field_1"));

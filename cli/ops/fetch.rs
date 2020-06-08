@@ -5,6 +5,7 @@ use crate::http_util::{create_http_client, HttpBody};
 use crate::op_error::OpError;
 use crate::state::State;
 use deno_core::CoreIsolate;
+use deno_core::CoreIsolateState;
 use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
 use http::header::HeaderName;
@@ -24,10 +25,10 @@ struct FetchArgs {
 }
 
 pub fn op_fetch(
-  isolate: &mut CoreIsolate,
+  isolate_state: &mut CoreIsolateState,
   state: &State,
   args: Value,
-  data: Option<ZeroCopyBuf>,
+  data: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let args: FetchArgs = serde_json::from_value(args)?;
   let url = args.url;
@@ -56,8 +57,10 @@ pub fn op_fetch(
 
   let mut request = client.request(method, url_);
 
-  if let Some(buf) = data {
-    request = request.body(Vec::from(&*buf));
+  match data.len() {
+    0 => {}
+    1 => request = request.body(Vec::from(&*data[0])),
+    _ => panic!("Invalid number of arguments"),
   }
 
   for (key, value) in args.headers {
@@ -67,7 +70,7 @@ pub fn op_fetch(
   }
   debug!("Before fetch {}", url);
 
-  let resource_table = isolate.resource_table.clone();
+  let resource_table = isolate_state.resource_table.clone();
   let future = async move {
     let res = request.send().await?;
     debug!("Fetch response {}", url);

@@ -1,8 +1,12 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::colors;
 use crate::flags::Flags;
+use crate::fs::resolve_from_cwd;
 use crate::op_error::OpError;
+use serde::de;
+use serde::Deserialize;
 use std::collections::HashSet;
+use std::env::current_dir;
 use std::fmt;
 #[cfg(not(test))]
 use std::io;
@@ -57,6 +61,18 @@ impl PermissionState {
     }
     *self
   }
+
+  pub fn fork(self, value: bool) -> Result<PermissionState, OpError> {
+    if value && self == PermissionState::Deny {
+      Err(OpError::permission_denied(
+        "Arguments escalate parent permissions.".to_string(),
+      ))
+    } else if value {
+      Ok(PermissionState::Allow)
+    } else {
+      Ok(PermissionState::Deny)
+    }
+  }
 }
 
 impl From<usize> for PermissionState {
@@ -96,35 +112,71 @@ impl Default for PermissionState {
   }
 }
 
-#[derive(Clone, Debug, Default)]
+struct BoolPermVisitor;
+
+fn deserialize_permission_state<'de, D>(
+  d: D,
+) -> Result<PermissionState, D::Error>
+where
+  D: de::Deserializer<'de>,
+{
+  impl<'de> de::Visitor<'de> for BoolPermVisitor {
+    type Value = PermissionState;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+      formatter.write_str("a boolean value")
+    }
+
+    fn visit_bool<E>(self, value: bool) -> Result<Self::Value, E>
+    where
+      E: de::Error,
+    {
+      if value {
+        Ok(PermissionState::Allow)
+      } else {
+        Ok(PermissionState::Deny)
+      }
+    }
+  }
+  d.deserialize_bool(BoolPermVisitor)
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 pub struct Permissions {
   // Keep in sync with cli/js/permissions.ts
+  #[serde(deserialize_with = "deserialize_permission_state")]
   pub allow_read: PermissionState,
   pub read_whitelist: HashSet<PathBuf>,
+  #[serde(deserialize_with = "deserialize_permission_state")]
   pub allow_write: PermissionState,
   pub write_whitelist: HashSet<PathBuf>,
+  #[serde(deserialize_with = "deserialize_permission_state")]
   pub allow_net: PermissionState,
   pub net_whitelist: HashSet<String>,
+  #[serde(deserialize_with = "deserialize_permission_state")]
   pub allow_env: PermissionState,
+  #[serde(deserialize_with = "deserialize_permission_state")]
   pub allow_run: PermissionState,
+  #[serde(deserialize_with = "deserialize_permission_state")]
   pub allow_plugin: PermissionState,
+  #[serde(deserialize_with = "deserialize_permission_state")]
   pub allow_hrtime: PermissionState,
+}
+
+fn resolve_fs_whitelist(whitelist: &[PathBuf]) -> HashSet<PathBuf> {
+  whitelist
+    .iter()
+    .map(|raw_path| resolve_from_cwd(Path::new(&raw_path)).unwrap())
+    .collect()
 }
 
 impl Permissions {
   pub fn from_flags(flags: &Flags) -> Self {
-    // assert each whitelist path is absolute, since the cwd may change.
-    for path in &flags.read_whitelist {
-      assert!(path.has_root());
-    }
-    for path in &flags.write_whitelist {
-      assert!(path.has_root());
-    }
     Self {
       allow_read: PermissionState::from(flags.allow_read),
-      read_whitelist: flags.read_whitelist.iter().cloned().collect(),
+      read_whitelist: resolve_fs_whitelist(&flags.read_whitelist),
       allow_write: PermissionState::from(flags.allow_write),
-      write_whitelist: flags.write_whitelist.iter().cloned().collect(),
+      write_whitelist: resolve_fs_whitelist(&flags.write_whitelist),
       allow_net: PermissionState::from(flags.allow_net),
       net_whitelist: flags.net_whitelist.iter().cloned().collect(),
       allow_env: PermissionState::from(flags.allow_env),
@@ -132,6 +184,24 @@ impl Permissions {
       allow_plugin: PermissionState::from(flags.allow_plugin),
       allow_hrtime: PermissionState::from(flags.allow_hrtime),
     }
+  }
+
+  /// Arbitrary helper. Resolves the path from CWD, and also gets a path that
+  /// can be displayed without leaking the CWD when not allowed.
+  fn resolved_and_display_path(&self, path: &Path) -> (PathBuf, PathBuf) {
+    let resolved_path = resolve_from_cwd(path).unwrap();
+    let display_path = if path.is_absolute() {
+      path.to_path_buf()
+    } else {
+      match self
+        .get_state_read(&Some(&current_dir().unwrap()))
+        .check("", "")
+      {
+        Ok(_) => resolved_path.clone(),
+        Err(_) => path.to_path_buf(),
+      }
+    };
+    (resolved_path, display_path)
   }
 
   pub fn allow_all() -> Self {
@@ -161,10 +231,24 @@ impl Permissions {
   }
 
   pub fn check_read(&self, path: &Path) -> Result<(), OpError> {
-    self.get_state_read(&Some(path)).check(
-      &format!("read access to \"{}\"", path.display()),
+    let (resolved_path, display_path) = self.resolved_and_display_path(path);
+    self.get_state_read(&Some(&resolved_path)).check(
+      &format!("read access to \"{}\"", display_path.display()),
       "--allow-read",
     )
+  }
+
+  /// As `check_read()`, but permission error messages will anonymize the path
+  /// by replacing it with the given `display`.
+  pub fn check_read_blind(
+    &self,
+    path: &Path,
+    display: &str,
+  ) -> Result<(), OpError> {
+    let resolved_path = resolve_from_cwd(path).unwrap();
+    self
+      .get_state_read(&Some(&resolved_path))
+      .check(&format!("read access to <{}>", display), "--allow-read")
   }
 
   fn get_state_write(&self, path: &Option<&Path>) -> PermissionState {
@@ -175,8 +259,9 @@ impl Permissions {
   }
 
   pub fn check_write(&self, path: &Path) -> Result<(), OpError> {
-    self.get_state_write(&Some(path)).check(
-      &format!("write access to \"{}\"", path.display()),
+    let (resolved_path, display_path) = self.resolved_and_display_path(path);
+    self.get_state_write(&Some(&resolved_path)).check(
+      &format!("write access to \"{}\"", display_path.display()),
       "--allow-write",
     )
   }
@@ -226,8 +311,9 @@ impl Permissions {
   }
 
   pub fn check_plugin(&self, path: &Path) -> Result<(), OpError> {
+    let (_, display_path) = self.resolved_and_display_path(path);
     self.allow_plugin.check(
-      &format!("access to open a plugin: {}", path.display()),
+      &format!("access to open a plugin: {}", display_path.display()),
       "--allow-plugin",
     )
   }
@@ -239,26 +325,34 @@ impl Permissions {
   }
 
   pub fn request_read(&mut self, path: &Option<&Path>) -> PermissionState {
-    if path.map_or(false, |f| check_path_white_list(f, &self.read_whitelist)) {
-      return PermissionState::Allow;
-    };
-    self.allow_read.request(&match path {
-      None => "Deno requests read access".to_string(),
-      Some(path) => {
-        format!("Deno requests read access to \"{}\"", path.display())
+    let paths = path.map(|p| self.resolved_and_display_path(p));
+    if let Some((p, _)) = paths.as_ref() {
+      if check_path_white_list(&p, &self.read_whitelist) {
+        return PermissionState::Allow;
       }
+    };
+    self.allow_read.request(&match paths {
+      None => "Deno requests read access".to_string(),
+      Some((_, display_path)) => format!(
+        "Deno requests read access to \"{}\"",
+        display_path.display()
+      ),
     })
   }
 
   pub fn request_write(&mut self, path: &Option<&Path>) -> PermissionState {
-    if path.map_or(false, |f| check_path_white_list(f, &self.write_whitelist)) {
-      return PermissionState::Allow;
-    };
-    self.allow_write.request(&match path {
-      None => "Deno requests write access".to_string(),
-      Some(path) => {
-        format!("Deno requests write access to \"{}\"", path.display())
+    let paths = path.map(|p| self.resolved_and_display_path(p));
+    if let Some((p, _)) = paths.as_ref() {
+      if check_path_white_list(&p, &self.write_whitelist) {
+        return PermissionState::Allow;
       }
+    };
+    self.allow_write.request(&match paths {
+      None => "Deno requests write access".to_string(),
+      Some((_, display_path)) => format!(
+        "Deno requests write access to \"{}\"",
+        display_path.display()
+      ),
     })
   }
 
@@ -297,15 +391,69 @@ impl Permissions {
     url: &Option<&str>,
     path: &Option<&Path>,
   ) -> Result<PermissionState, OpError> {
+    let path = path.map(|p| resolve_from_cwd(p).unwrap());
+    let path = path.as_deref();
     match name {
       "run" => Ok(self.allow_run),
-      "read" => Ok(self.get_state_read(path)),
-      "write" => Ok(self.get_state_write(path)),
+      "read" => Ok(self.get_state_read(&path)),
+      "write" => Ok(self.get_state_write(&path)),
       "net" => self.get_state_net_url(url),
       "env" => Ok(self.allow_env),
       "plugin" => Ok(self.allow_plugin),
       "hrtime" => Ok(self.allow_hrtime),
       n => Err(OpError::other(format!("No such permission name: {}", n))),
+    }
+  }
+
+  #[allow(clippy::too_many_arguments)]
+  pub fn fork(
+    &self,
+    allow_read: bool,
+    read_whitelist: HashSet<PathBuf>,
+    allow_write: bool,
+    write_whitelist: HashSet<PathBuf>,
+    allow_net: bool,
+    net_whitelist: HashSet<String>,
+    allow_env: bool,
+    allow_run: bool,
+    allow_plugin: bool,
+    allow_hrtime: bool,
+  ) -> Result<Permissions, OpError> {
+    let allow_read = self.allow_read.fork(allow_read)?;
+    let allow_write = self.allow_write.fork(allow_write)?;
+    let allow_net = self.allow_net.fork(allow_net)?;
+    let allow_env = self.allow_env.fork(allow_env)?;
+    let allow_run = self.allow_run.fork(allow_run)?;
+    let allow_plugin = self.allow_plugin.fork(allow_plugin)?;
+    let allow_hrtime = self.allow_hrtime.fork(allow_hrtime)?;
+    if !(read_whitelist.is_subset(&self.read_whitelist)) {
+      Err(OpError::permission_denied(format!(
+        "Arguments escalate parent permissions. Parent Permissions have only {:?} in `read_whitelist`",
+        self.read_whitelist
+      )))
+    } else if !(write_whitelist.is_subset(&self.write_whitelist)) {
+      Err(OpError::permission_denied(format!(
+        "Arguments escalate parent permissions. Parent Permissions have only {:?} in `write_whitelist`",
+        self.write_whitelist
+      )))
+    } else if !(net_whitelist.is_subset(&self.net_whitelist)) {
+      Err(OpError::permission_denied(format!(
+        "Arguments escalate parent permissions. Parent Permissions have only {:?} in `net_whitelist`",
+        self.net_whitelist
+      )))
+    } else {
+      Ok(Permissions {
+        allow_read,
+        read_whitelist,
+        allow_write,
+        write_whitelist,
+        allow_net,
+        net_whitelist,
+        allow_env,
+        allow_run,
+        allow_plugin,
+        allow_hrtime,
+      })
     }
   }
 }
@@ -447,6 +595,14 @@ mod tests {
     // Sub path within /b/c
     assert!(perms.check_read(Path::new("/b/c/sub/path")).is_ok());
     assert!(perms.check_write(Path::new("/b/c/sub/path")).is_ok());
+
+    // Sub path within /b/c, needs normalizing
+    assert!(perms
+      .check_read(Path::new("/b/c/sub/path/../path/."))
+      .is_ok());
+    assert!(perms
+      .check_write(Path::new("/b/c/sub/path/../path/."))
+      .is_ok());
 
     // Inside of /b but outside of /b/c
     assert!(perms.check_read(Path::new("/b/e")).is_err());
@@ -733,6 +889,106 @@ mod tests {
     });
     set_prompt_result(false);
     assert_eq!(perms1.request_hrtime(), PermissionState::Deny);
+    drop(guard);
+  }
+
+  #[test]
+  fn test_deserialize_perms() {
+    let json_perms = r#"
+    {
+      "allow_read": true,
+      "read_whitelist": [],
+      "allow_write": true,
+      "write_whitelist": [],
+      "allow_net": true,
+      "net_whitelist": [],
+      "allow_env": true,
+      "allow_run": true,
+      "allow_plugin": true,
+      "allow_hrtime": true
+    }
+    "#;
+    let perms0 = Permissions {
+      allow_read: PermissionState::Allow,
+      allow_write: PermissionState::Allow,
+      allow_net: PermissionState::Allow,
+      allow_hrtime: PermissionState::Allow,
+      allow_env: PermissionState::Allow,
+      allow_plugin: PermissionState::Allow,
+      allow_run: PermissionState::Allow,
+      read_whitelist: HashSet::new(),
+      write_whitelist: HashSet::new(),
+      net_whitelist: HashSet::new(),
+    };
+    let deserialized_perms: Permissions =
+      serde_json::from_str(json_perms).unwrap();
+    assert_eq!(perms0, deserialized_perms);
+  }
+
+  #[test]
+  fn test_fork() {
+    let guard = PERMISSION_PROMPT_GUARD.lock().unwrap();
+    let perms0 = Permissions::from_flags(&Flags {
+      ..Default::default()
+    });
+    set_prompt_result(true);
+    assert_eq!(
+      perms0
+        .fork(
+          true,
+          HashSet::new(),
+          true,
+          HashSet::new(),
+          true,
+          HashSet::new(),
+          true,
+          true,
+          false,
+          false,
+        )
+        .expect("Testing expect"),
+      Permissions {
+        allow_read: PermissionState::Allow,
+        read_whitelist: HashSet::new(),
+        allow_write: PermissionState::Allow,
+        write_whitelist: HashSet::new(),
+        allow_net: PermissionState::Allow,
+        net_whitelist: HashSet::new(),
+        allow_env: PermissionState::Allow,
+        allow_run: PermissionState::Allow,
+        allow_plugin: PermissionState::Deny,
+        allow_hrtime: PermissionState::Deny,
+      }
+    );
+    set_prompt_result(false);
+    assert_eq!(
+      perms0
+        .fork(
+          true,
+          HashSet::new(),
+          true,
+          HashSet::new(),
+          true,
+          HashSet::new(),
+          true,
+          true,
+          false,
+          false,
+        )
+        .expect("Testing expect"),
+      Permissions {
+        allow_read: PermissionState::Allow,
+        read_whitelist: HashSet::new(),
+        allow_write: PermissionState::Allow,
+        write_whitelist: HashSet::new(),
+        allow_net: PermissionState::Allow,
+        net_whitelist: HashSet::new(),
+        allow_env: PermissionState::Allow,
+        allow_run: PermissionState::Allow,
+        allow_plugin: PermissionState::Deny,
+        allow_hrtime: PermissionState::Deny,
+      }
+    );
     drop(guard);
   }
 }

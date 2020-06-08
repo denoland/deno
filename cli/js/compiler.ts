@@ -585,7 +585,6 @@ function buildSourceFileCache(
   sourceFileMap: Record<string, SourceFileMapEntry>
 ): void {
   for (const entry of Object.values(sourceFileMap)) {
-    assert(entry.sourceCode.length > 0);
     SourceFile.addToCache({
       url: entry.url,
       filename: entry.url,
@@ -596,7 +595,15 @@ function buildSourceFileCache(
     for (const importDesc of entry.imports) {
       let mappedUrl = importDesc.resolvedSpecifier;
       const importedFile = sourceFileMap[importDesc.resolvedSpecifier];
+      // IMPORTANT: due to HTTP redirects we might end up in situation
+      // where URL points to a file with completely different URL.
+      // In that case we take value of `redirect` field and cache
+      // resolved specifier pointing to the value of the redirect.
+      // It's not very elegant solution and should be rethinked.
       assert(importedFile);
+      if (importedFile.redirect) {
+        mappedUrl = importedFile.redirect;
+      }
       const isJsOrJsx =
         importedFile.mediaType === MediaType.JavaScript ||
         importedFile.mediaType === MediaType.JSX;
@@ -1032,6 +1039,7 @@ interface SourceFileMapEntry {
   url: string;
   sourceCode: string;
   mediaType: MediaType;
+  redirect?: string;
   imports: ImportDescriptor[];
   referencedFiles: ReferenceDescriptor[];
   libDirectives: ReferenceDescriptor[];

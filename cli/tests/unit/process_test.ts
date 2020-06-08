@@ -2,7 +2,7 @@
 import {
   assert,
   assertEquals,
-  assertStrContains,
+  assertStringContains,
   unitTest,
 } from "./test_util.ts";
 const {
@@ -260,8 +260,8 @@ unitTest(
     const decoder = new TextDecoder();
     const text = decoder.decode(fileContents);
 
-    assertStrContains(text, "error");
-    assertStrContains(text, "output");
+    assertStringContains(text, "error");
+    assertStringContains(text, "output");
   }
 );
 

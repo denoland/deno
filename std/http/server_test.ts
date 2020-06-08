@@ -10,7 +10,7 @@ import {
   assert,
   assertEquals,
   assertMatch,
-  assertStrContains,
+  assertStringContains,
   assertThrowsAsync,
 } from "../testing/asserts.ts";
 import { Response, ServerRequest, Server, serve } from "./server.ts";
@@ -480,7 +480,7 @@ test({
     const nread = await conn.read(res);
     assert(nread !== null);
     const resStr = new TextDecoder().decode(res.subarray(0, nread));
-    assertStrContains(resStr, "/hello");
+    assertStringContains(resStr, "/hello");
     server.close();
     await p;
     // Client connection should still be open, verify that
@@ -496,7 +496,6 @@ test({
   async fn(): Promise<void> {
     const serverRoutine = async (): Promise<void> => {
       const server = serve(":8124");
-      // @ts-ignore
       for await (const req of server) {
         await assertThrowsAsync(async () => {
           await req.respond({

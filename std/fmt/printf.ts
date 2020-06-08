@@ -1,3 +1,8 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+//
+// This implementation is inspired by POSIX and Golang but does not port
+// implementation code.
+
 enum State {
   PASSTHROUGH,
   PERCENT,
@@ -5,6 +10,7 @@ enum State {
   PRECISION,
   WIDTH,
 }
+
 enum WorP {
   WIDTH,
   PRECISION,
@@ -21,14 +27,11 @@ class Flags {
   precision = -1;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-
 const min = Math.min;
-
 const UNICODE_REPLACEMENT_CHARACTER = "\ufffd";
 const DEFAULT_PRECISION = 6;
-
 const FLOAT_REGEXP = /(-?)(\d)\.?(\d*)e([+-])(\d+)/;
+
 enum F {
   sign = 1,
   mantissa,
@@ -39,8 +42,7 @@ enum F {
 
 class Printf {
   format: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  args: any[];
+  args: unknown[];
   i: number;
 
   state: State = State.PASSTHROUGH;
@@ -54,8 +56,7 @@ class Printf {
   // barf, store precision and width errors for later processing ...
   tmpError?: string;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  constructor(format: string, ...args: any[]) {
+  constructor(format: string, ...args: unknown[]) {
     this.format = format;
     this.args = args;
     this.haveSeen = new Array(args.length);
@@ -166,6 +167,7 @@ class Printf {
       } // switch state
     }
   }
+
   handleWidthOrPrecisionRef(wOrP: WorP): void {
     if (this.argNum >= this.args.length) {
       // handle Positional should have already taken care of it...
@@ -187,6 +189,7 @@ class Printf {
     }
     this.argNum++;
   }
+
   handleWidthAndPrecision(flags: Flags): void {
     const fmt = this.format;
     for (; this.i !== this.format.length; ++this.i) {
@@ -270,8 +273,10 @@ class Printf {
     this.argNum = err ? this.argNum : positional - 1;
     return;
   }
+
   handleLessThan(): string {
-    const arg = this.args[this.argNum];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const arg = this.args[this.argNum] as any;
     if ((arg || {}).constructor.name !== "Array") {
       throw new Error(`arg ${arg} is not an array. Todo better error handling`);
     }
@@ -282,6 +287,7 @@ class Printf {
     }
     return str + " ]";
   }
+
   handleVerb(): void {
     const verb = this.format[this.i];
     this.verb = verb;
@@ -649,8 +655,7 @@ class Printf {
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  fmtV(val: any): string {
+  fmtV(val: object): string {
     if (this.flags.sharp) {
       const options =
         this.flags.precision !== -1 ? { depth: this.flags.precision } : {};
@@ -661,14 +666,17 @@ class Printf {
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  fmtJ(val: any): string {
+  fmtJ(val: unknown): string {
     return JSON.stringify(val);
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function sprintf(format: string, ...args: any[]): string {
+export function sprintf(format: string, ...args: unknown[]): string {
   const printf = new Printf(format, ...args);
   return printf.doPrintf();
+}
+
+export function printf(format: string, ...args: unknown[]): void {
+  const s = sprintf(format, ...args);
+  Deno.stdout.writeSync(new TextEncoder().encode(s));
 }

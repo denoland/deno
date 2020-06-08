@@ -25,10 +25,16 @@ unitTest(async function sendAsyncStackTrace(): Promise<void> {
   }
 });
 
+/* eslint-disable @typescript-eslint/no-namespace, @typescript-eslint/no-explicit-any,no-var */
+declare global {
+  namespace Deno {
+    var core: any;
+  }
+}
+/* eslint-enable */
+
 unitTest(function malformedMinimalControlBuffer(): void {
-  // @ts-ignore
   const readOpId = Deno.core.ops()["op_read"];
-  // @ts-ignore
   const res = Deno.core.send(readOpId, new Uint8Array([1, 2, 3, 4, 5]));
   const header = res.slice(0, 12);
   const buf32 = new Int32Array(

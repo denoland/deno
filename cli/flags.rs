@@ -1,5 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use crate::fs::resolve_from_cwd;
 use clap::App;
 use clap::AppSettings;
 use clap::Arg;
@@ -7,7 +6,7 @@ use clap::ArgMatches;
 use clap::SubCommand;
 use log::Level;
 use std::net::SocketAddr;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 /// Creates vector of strings, Vec<String>
 macro_rules! svec {
@@ -50,6 +49,9 @@ pub enum DenoSubcommand {
     name: Option<String>,
     root: Option<PathBuf>,
     force: bool,
+  },
+  Lint {
+    files: Vec<String>,
   },
   Repl,
   Run {
@@ -261,6 +263,8 @@ pub fn flags_from_vec_safe(args: Vec<String>) -> clap::Result<Flags> {
     upgrade_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("doc") {
     doc_parse(&mut flags, m);
+  } else if let Some(m) = matches.subcommand_matches("lint") {
+    lint_parse(&mut flags, m);
   } else {
     repl_parse(&mut flags, &matches);
   }
@@ -303,18 +307,19 @@ If the flag is set, restrict these messages to errors.",
         .global(true),
     )
     .subcommand(bundle_subcommand())
-    .subcommand(completions_subcommand())
-    .subcommand(eval_subcommand())
     .subcommand(cache_subcommand())
+    .subcommand(completions_subcommand())
+    .subcommand(doc_subcommand())
+    .subcommand(eval_subcommand())
     .subcommand(fmt_subcommand())
     .subcommand(info_subcommand())
     .subcommand(install_subcommand())
+    .subcommand(lint_subcommand())
     .subcommand(repl_subcommand())
     .subcommand(run_subcommand())
     .subcommand(test_subcommand())
     .subcommand(types_subcommand())
     .subcommand(upgrade_subcommand())
-    .subcommand(doc_subcommand())
     .long_about(DENO_HELP)
     .after_help(ENV_VARIABLES_HELP)
 }
@@ -475,13 +480,6 @@ fn lock_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   }
 }
 
-fn resolve_fs_whitelist(whitelist: &[PathBuf]) -> Vec<PathBuf> {
-  whitelist
-    .iter()
-    .map(|raw_path| resolve_from_cwd(Path::new(&raw_path)).unwrap())
-    .collect()
-}
-
 // Shared between the run and test subcommands. They both take similar options.
 fn run_test_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   reload_arg_parse(flags, matches);
@@ -585,6 +583,16 @@ fn doc_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     json,
     filter,
   };
+}
+
+fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  unstable_arg_parse(flags, matches);
+  let files = matches
+    .values_of("files")
+    .unwrap()
+    .map(String::from)
+    .collect();
+  flags.subcommand = DenoSubcommand::Lint { files };
 }
 
 fn types_subcommand<'a, 'b>() -> App<'a, 'b> {
@@ -897,6 +905,25 @@ Show documentation for runtime built-ins:
     )
 }
 
+fn lint_subcommand<'a, 'b>() -> App<'a, 'b> {
+  SubCommand::with_name("lint")
+    .about("Lint source files")
+    .long_about(
+      "Lint JavaScript/TypeScript source code.
+  deno lint myfile1.ts myfile2.js
+
+Ignore diagnostics on next line preceding it with an ignore comment and code:
+  // deno-lint-ignore no-explicit-any",
+    )
+    .arg(unstable_arg())
+    .arg(
+      Arg::with_name("files")
+        .takes_value(true)
+        .required(true)
+        .min_values(1),
+    )
+}
+
 fn permission_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
   app
     .arg(
@@ -1041,7 +1068,7 @@ report results to standard output:
   deno test src/fetch_test.ts src/signal_test.ts
 
 Directory arguments are expanded to all contained files matching the glob
-{*_,}test.{js,ts,jsx,tsx}:
+{*_,*.,}test.{js,mjs,ts,jsx,tsx}:
   deno test src/",
     )
 }
@@ -1246,25 +1273,22 @@ fn no_remote_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
 fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   if let Some(read_wl) = matches.values_of("allow-read") {
-    let raw_read_whitelist: Vec<PathBuf> = read_wl.map(PathBuf::from).collect();
+    let read_whitelist: Vec<PathBuf> = read_wl.map(PathBuf::from).collect();
 
-    if raw_read_whitelist.is_empty() {
+    if read_whitelist.is_empty() {
       flags.allow_read = true;
     } else {
-      flags.read_whitelist = resolve_fs_whitelist(&raw_read_whitelist);
-      debug!("read whitelist: {:#?}", &flags.read_whitelist);
+      flags.read_whitelist = read_whitelist;
     }
   }
 
   if let Some(write_wl) = matches.values_of("allow-write") {
-    let raw_write_whitelist: Vec<PathBuf> =
-      write_wl.map(PathBuf::from).collect();
+    let write_whitelist: Vec<PathBuf> = write_wl.map(PathBuf::from).collect();
 
-    if raw_write_whitelist.is_empty() {
+    if write_whitelist.is_empty() {
       flags.allow_write = true;
     } else {
-      flags.write_whitelist = resolve_fs_whitelist(&raw_write_whitelist);
-      debug!("write whitelist: {:#?}", &flags.write_whitelist);
+      flags.write_whitelist = write_whitelist;
     }
   }
 
@@ -1363,7 +1387,6 @@ fn resolve_hosts(paths: Vec<String>) -> Vec<String> {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use std::env::current_dir;
 
   #[test]
   fn upgrade() {
@@ -1891,7 +1914,7 @@ mod tests {
       r.unwrap(),
       Flags {
         allow_read: false,
-        read_whitelist: vec![current_dir().unwrap(), temp_dir],
+        read_whitelist: vec![PathBuf::from("."), temp_dir],
         subcommand: DenoSubcommand::Run {
           script: "script.ts".to_string(),
         },
@@ -1915,7 +1938,7 @@ mod tests {
       r.unwrap(),
       Flags {
         allow_write: false,
-        write_whitelist: vec![current_dir().unwrap(), temp_dir],
+        write_whitelist: vec![PathBuf::from("."), temp_dir],
         subcommand: DenoSubcommand::Run {
           script: "script.ts".to_string(),
         },

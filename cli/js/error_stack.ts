@@ -215,50 +215,47 @@ function evaluateCallSite(callSite: CallSite): CallSiteEval {
 }
 
 function prepareStackTrace(
-  error: Error,
-  structuredStackTrace: CallSite[]
+  error: Error & {
+    __callSiteEvals: CallSiteEval[];
+    __formattedFrames: string[];
+  },
+  callSites: CallSite[]
 ): string {
+  const mappedCallSites = callSites.map(
+    (callSite): CallSite => {
+      const fileName = callSite.getFileName();
+      const lineNumber = callSite.getLineNumber();
+      const columnNumber = callSite.getColumnNumber();
+      if (fileName && lineNumber != null && columnNumber != null) {
+        return patchCallSite(
+          callSite,
+          applySourceMap({
+            fileName,
+            lineNumber,
+            columnNumber,
+          })
+        );
+      }
+      return callSite;
+    }
+  );
   Object.defineProperties(error, {
-    __callSiteEvals: { value: [] },
-    __formattedFrames: { value: [] },
+    __callSiteEvals: { value: [], configurable: true },
+    __formattedFrames: { value: [], configurable: true },
   });
-  const errorString =
-    `${error.name}: ${error.message}\n` +
-    structuredStackTrace
-      .map(
-        (callSite): CallSite => {
-          const fileName = callSite.getFileName();
-          const lineNumber = callSite.getLineNumber();
-          const columnNumber = callSite.getColumnNumber();
-          if (fileName && lineNumber != null && columnNumber != null) {
-            return patchCallSite(
-              callSite,
-              applySourceMap({
-                fileName,
-                lineNumber,
-                columnNumber,
-              })
-            );
-          }
-          return callSite;
-        }
-      )
-      .map((callSite): string => {
-        // @ts-ignore
-        error.__callSiteEvals.push(Object.freeze(evaluateCallSite(callSite)));
-        const isInternal =
-          callSite.getFileName()?.startsWith("$deno$") ?? false;
-        const string = callSiteToString(callSite, isInternal);
-        // @ts-ignore
-        error.__formattedFrames.push(string);
-        return `    at ${colors.stripColor(string)}`;
-      })
-      .join("\n");
-  // @ts-ignore
+  for (const callSite of mappedCallSites) {
+    error.__callSiteEvals.push(Object.freeze(evaluateCallSite(callSite)));
+    const isInternal = callSite.getFileName()?.startsWith("$deno$") ?? false;
+    error.__formattedFrames.push(callSiteToString(callSite, isInternal));
+  }
   Object.freeze(error.__callSiteEvals);
-  // @ts-ignore
   Object.freeze(error.__formattedFrames);
-  return errorString;
+  return (
+    `${error.name}: ${error.message}\n` +
+    error.__formattedFrames
+      .map((s: string) => `    at ${colors.stripColor(s)}`)
+      .join("\n")
+  );
 }
 
 // @internal
