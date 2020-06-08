@@ -576,8 +576,6 @@ test({
         s !== null && s.includes("server listening"),
         "server must be started"
       );
-      // Requests to the server and immediately closes the connection
-
       // Invalid certificate, connection should throw
       // but should not crash the server
       assertThrowsAsync(
