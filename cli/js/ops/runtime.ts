@@ -1,6 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 import { sendSync } from "./dispatch_json.ts";
+import { URLImpl } from "../web/url.ts";
 
 export interface Start {
   args: string[];
@@ -10,6 +11,7 @@ export interface Start {
   noColor: boolean;
   pid: number;
   repl: boolean;
+  scriptUrl: URL;
   target: string;
   tsVersion: string;
   unstableFlag: boolean;
@@ -18,7 +20,9 @@ export interface Start {
 }
 
 export function opStart(): Start {
-  return sendSync("op_start");
+  const s = sendSync("op_start");
+  s.scriptUrl = new URLImpl(s.scriptUrl);
+  return s;
 }
 
 export interface Metrics {

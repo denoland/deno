@@ -95,11 +95,12 @@ export function bootstrapMainRuntime(): void {
     }
   });
 
-  const { args, cwd, noColor, pid, repl, unstableFlag } = runtime.start();
+  const { args, cwd, noColor, pid, repl, scriptUrl, unstableFlag } = runtime.start();
 
   Object.defineProperties(denoNs, {
     pid: readOnly(pid),
     noColor: readOnly(noColor),
+    scriptUrl: readOnly(scriptUrl),
     args: readOnly(Object.freeze(args)),
   });
 

@@ -442,7 +442,7 @@ fn ts_dependency_recompilation() {
     function print(str: string): void {
         console.log(str);
     }
-    
+
     print(foo);",
   )
   .unwrap();
@@ -1643,6 +1643,11 @@ itest!(if_main {
 itest!(import_meta {
   args: "run --quiet --reload import_meta.ts",
   output: "import_meta.ts.out",
+});
+
+itest!(script_url {
+  args: "run --quiet --reload script_url.ts",
+  output: "script_url.ts.out",
 });
 
 itest!(lib_ref {
