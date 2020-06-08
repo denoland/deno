@@ -50,7 +50,7 @@ unitTest(function urlParsing(): void {
   assertEquals(
     JSON.stringify({ key: urlv6 }),
     `{"key":"https://foo:bar@[::1]:8000/qux/quux?foo=bar&baz=12#qat"}`
-  );  
+  );
 });
 
 unitTest(function urlModifications(): void {
