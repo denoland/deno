@@ -1170,7 +1170,14 @@ function compile(request: CompilerRequestCompile): CompileResult {
       // If `checkJs` is off we still might be compiling entry point JavaScript file
       // (if it has `.ts` imports), but it won't be emitted. In that case we skip
       // assertion.
-      if (!bundle && options.checkJs) {
+      if (!bundle) {
+        if (options.checkJs) {
+          assert(
+            emitResult.emitSkipped === false,
+            "Unexpected skip of the emit."
+          );
+        }
+      } else {
         assert(
           emitResult.emitSkipped === false,
           "Unexpected skip of the emit."
