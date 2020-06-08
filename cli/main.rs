@@ -579,8 +579,8 @@ async fn doc_command(
   } else {
     let details = if let Some(filter) = maybe_filter {
       let nodes =
-        doc::find_nodes_by_name_recursively(doc_nodes.clone(), filter.clone());
-      if nodes.len() == 0 {
+        doc::find_nodes_by_name_recursively(doc_nodes, filter.clone());
+      if nodes.is_empty() {
         eprintln!("Node {} was not found!", filter);
         std::process::exit(1);
       }
