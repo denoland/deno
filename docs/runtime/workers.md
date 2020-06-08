@@ -87,15 +87,10 @@ To add the `Deno` namespace pass `deno: true` option when creating new worker:
 **main.js**
 
 ```ts
-<<<<<<< HEAD
-const worker = new Worker("./worker.js", { type: "module", deno: true });
-=======
-// main.js
 const worker = new Worker(
   new URL("worker.js", import.meta.url).href,
   { type: "module", deno: true }
 );
->>>>>>> 8008ef88... BREAKING: fix(Worker): Disable relative module specifiers
 worker.postMessage({ filename: "./log.txt" });
 ```
 
