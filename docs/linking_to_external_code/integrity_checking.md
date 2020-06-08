@@ -11,7 +11,7 @@ changed? This could lead to your production module running with different
 dependency code than your local module. Deno's solution to avoid this is to use
 integrity checking and lock files.
 
-### Lock files
+### Caching and lock files
 
 Deno can store and check subresource integrity for modules using a small JSON
 file. Use the `--lock=lock.json` to enable and specify lock file checking. To
@@ -64,14 +64,22 @@ deno cache --reload --lock=lock.json src/deps.ts
 deno test --allow-read src
 ```
 
-Note that `deno run` will cause dependencies to load and compile if you have not
-cached them first as above. Therefore as a fail safe, you can also use the lock
-file when running your module to validate modified dependencies are not used.
-This will not update the lock file, only validate dependencies in your module
-against those found in the lock file. Use `deno cache` method above as the best
-practice way to update your lock file with missing dependencies.
+### Runtime verification
+
+Like caching above, you can also use the `--lock=lock.json` option during use of
+the `deno run` sub command, validating the integrity of any locked modules
+during the run. Remember that this only validates against dependencies
+previously added to the `lock.json` file. New dependencies will be cached but
+not validated.
+
+You can take this a step further as well by using the `--cached-only` flag to
+require that remote dependencies are already cached.
 
 ```shell
-# Run src/deps.ts, validating dependencies against lock.json
-deno run --lock=lock.json src/deps.ts
+deno run --lock=lock.json --cached-only mod.ts
 ```
+
+This will fail if there are any dependencies in the dependency tree for mod.ts
+which are not yet cached.
+
+<!-- TODO - Add detail on dynamic imports -->
