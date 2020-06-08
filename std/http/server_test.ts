@@ -13,7 +13,7 @@ import {
   assertStringContains,
   assertThrowsAsync,
 } from "../testing/asserts.ts";
-import { Response, ServerRequest, Server, serve } from "./server.ts";
+import { Response, ServerRequest, Server, serve, serveTLS } from "./server.ts";
 import { BufReader, BufWriter } from "../io/bufio.ts";
 import { delay } from "../async/delay.ts";
 import { encode, decode } from "../encoding/utf8.ts";
@@ -549,40 +549,29 @@ test({
 test({
   name: "serveTLS Invalid Cert",
   fn: async (): Promise<void> => {
-    // Runs a simple server as another process
-    const p = Deno.run({
-      cmd: [
-        Deno.execPath(),
-        "run",
-        "--allow-net",
-        "--allow-read",
-        "http/testdata/simple_https_server.ts",
-      ],
-      stdout: "piped",
-    });
-
-    let serverIsRunning = true;
-    const statusPromise = p
-      .status()
-      .then((): void => {
-        serverIsRunning = false;
-      })
-      .catch((_): void => {}); // Ignores the error when closing the process.
+    async function iteratorReq(server: Server): Promise<void> {
+      for await (const req of server) {
+        await req.respond({ body: new TextEncoder().encode("Hello HTTPS") });
+      }
+    }
+    const port = 9122;
+    const tlsOptions = {
+      hostname: "localhost",
+      port,
+      certFile: "./http/testdata/tls/localhost.crt",
+      keyFile: "./http/testdata/tls/localhost.key",
+    };
+    const server = serveTLS(tlsOptions);
+    const p = iteratorReq(server);
 
     try {
-      const r = new TextProtoReader(new BufReader(p.stdout!));
-      const s = await r.readLine();
-      assert(
-        s !== null && s.includes("server listening"),
-        "server must be started"
-      );
       // Invalid certificate, connection should throw
       // but should not crash the server
       assertThrowsAsync(
         () =>
           Deno.connectTls({
             hostname: "localhost",
-            port: 4503,
+            port,
             // certFile
           }),
         Deno.errors.InvalidData
@@ -591,7 +580,7 @@ test({
       // Valid request after invalid
       const conn = await Deno.connectTls({
         hostname: "localhost",
-        port: 4503,
+        port,
         certFile: "http/testdata/tls/RootCA.pem",
       });
 
@@ -605,13 +594,10 @@ test({
       conn.close();
       const resStr = new TextDecoder().decode(res.subarray(0, nread));
       assert(resStr.includes("Hello HTTPS"));
-      assert(serverIsRunning);
     } finally {
       // Stops the sever and allows `p.status()` promise to resolve
-      Deno.kill(p.pid, Deno.Signal.SIGKILL);
-      await statusPromise;
-      p.stdout!.close();
-      p.close();
+      server.close();
+      await p;
     }
   },
 });
