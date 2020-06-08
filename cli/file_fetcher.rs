@@ -34,6 +34,7 @@ pub struct SourceFile {
   pub url: Url,
   pub filename: PathBuf,
   pub types_url: Option<Url>,
+  pub types_header: Option<String>,
   pub media_type: msg::MediaType,
   pub source_code: Vec<u8>,
 }
@@ -323,6 +324,7 @@ impl SourceFileFetcher {
       media_type,
       source_code,
       types_url,
+      types_header: None,
     })
   }
 
@@ -380,6 +382,7 @@ impl SourceFileFetcher {
       &fake_filepath,
       headers.get("content-type").map(|e| e.as_str()),
     );
+    let types_header = headers.get("x-typescript-types").map(|e| e.to_string());
     let types_url = match media_type {
       msg::MediaType::JavaScript | msg::MediaType::JSX => get_types_url(
         &module_url,
@@ -394,6 +397,7 @@ impl SourceFileFetcher {
       media_type,
       source_code,
       types_url,
+      types_header,
     }))
   }
 
@@ -502,6 +506,8 @@ impl SourceFileFetcher {
             headers.get("content-type").map(String::as_str),
           );
 
+          let types_header =
+            headers.get("x-typescript-types").map(String::to_string);
           let types_url = match media_type {
             msg::MediaType::JavaScript | msg::MediaType::JSX => get_types_url(
               &module_url,
@@ -517,6 +523,7 @@ impl SourceFileFetcher {
             media_type,
             source_code: source,
             types_url,
+            types_header,
           };
 
           Ok(source_file)
@@ -528,7 +535,7 @@ impl SourceFileFetcher {
   }
 }
 
-fn map_file_extension(path: &Path) -> msg::MediaType {
+pub fn map_file_extension(path: &Path) -> msg::MediaType {
   match path.extension() {
     None => msg::MediaType::Unknown,
     Some(os_str) => match os_str.to_str() {
@@ -537,6 +544,7 @@ fn map_file_extension(path: &Path) -> msg::MediaType {
       Some("js") => msg::MediaType::JavaScript,
       Some("jsx") => msg::MediaType::JSX,
       Some("mjs") => msg::MediaType::JavaScript,
+      Some("cjs") => msg::MediaType::JavaScript,
       Some("json") => msg::MediaType::Json,
       Some("wasm") => msg::MediaType::Wasm,
       _ => msg::MediaType::Unknown,
@@ -565,7 +573,8 @@ fn map_content_type(path: &Path, content_type: Option<&str>) -> msg::MediaType {
         | "text/javascript"
         | "application/ecmascript"
         | "text/ecmascript"
-        | "application/x-javascript" => {
+        | "application/x-javascript"
+        | "application/node" => {
           map_js_like_extension(path, msg::MediaType::JavaScript)
         }
         "application/json" | "text/json" => msg::MediaType::Json,
@@ -1590,6 +1599,10 @@ mod tests {
       msg::MediaType::Wasm
     );
     assert_eq!(
+      map_file_extension(Path::new("foo/bar.cjs")),
+      msg::MediaType::JavaScript
+    );
+    assert_eq!(
       map_file_extension(Path::new("foo/bar.txt")),
       msg::MediaType::Unknown
     );
@@ -1633,6 +1646,10 @@ mod tests {
     assert_eq!(
       map_content_type(Path::new("foo/bar.wasm"), None),
       msg::MediaType::Wasm
+    );
+    assert_eq!(
+      map_content_type(Path::new("foo/bar.cjs"), None),
+      msg::MediaType::JavaScript
     );
     assert_eq!(
       map_content_type(Path::new("foo/bar"), None),
@@ -1686,6 +1703,10 @@ mod tests {
     assert_eq!(
       map_content_type(Path::new("foo/bar"), Some("application/json")),
       msg::MediaType::Json
+    );
+    assert_eq!(
+      map_content_type(Path::new("foo/bar"), Some("application/node")),
+      msg::MediaType::JavaScript
     );
     assert_eq!(
       map_content_type(Path::new("foo/bar"), Some("text/json")),

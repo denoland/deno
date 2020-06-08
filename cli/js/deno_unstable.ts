@@ -23,3 +23,9 @@ export {
   PermissionStatus,
   Permissions,
 } from "./permissions.ts";
+export {
+  Diagnostic,
+  DiagnosticCategory,
+  DiagnosticItem,
+  DiagnosticMessageChain,
+} from "./diagnostics.ts";

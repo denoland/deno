@@ -9,8 +9,8 @@ test({
   fn() {
     assertThrows(
       () => {
-        // @ts-ignore
-        signal();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (signal as any)();
       },
       Error,
       "No signals are given. You need to specify at least one signal to create a signal stream."

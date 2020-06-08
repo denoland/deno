@@ -1,2 +1,1 @@
-error: Uncaught SyntaxError: Unexpected end of input
-    at [WILDCARD]tests/error_syntax_empty_trailing_line.mjs:[WILDCARD]
+error: Unexpected eof at [WILDCARD]tests/error_syntax_empty_trailing_line.mjs:2:21

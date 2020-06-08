@@ -5,12 +5,12 @@
 
 import { BufReader } from "../io/bufio.ts";
 import { TextProtoReader } from "./mod.ts";
-import { stringsReader } from "../io/util.ts";
+import { StringReader } from "../io/readers.ts";
 import { assert, assertEquals, assertThrows } from "../testing/asserts.ts";
 const { test } = Deno;
 
 function reader(s: string): TextProtoReader {
-  return new TextProtoReader(new BufReader(stringsReader(s)));
+  return new TextProtoReader(new BufReader(new StringReader(s)));
 }
 
 test({
@@ -178,5 +178,18 @@ test({
     assert(m !== null);
     assertEquals(m.get("Accept"), "*/*");
     assertEquals(m.get("Content-Disposition"), 'form-data; name="test"');
+  },
+});
+
+test({
+  name: "[textproto] #4521 issue",
+  async fn() {
+    const input = "abcdefghijklmnopqrstuvwxyz";
+    const bufSize = 25;
+    const tp = new TextProtoReader(
+      new BufReader(new StringReader(input), bufSize)
+    );
+    const line = await tp.readLine();
+    assertEquals(line, input);
   },
 });

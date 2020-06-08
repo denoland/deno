@@ -21,7 +21,9 @@ declare namespace Deno {
    */
   export function umask(mask?: number): number;
 
-  /** Synchronously creates `newpath` as a hard link to `oldpath`.
+  /** **UNSTABLE**: This API needs a security review.
+   *
+   * Synchronously creates `newpath` as a hard link to `oldpath`.
    *
    * ```ts
    * Deno.linkSync("old/name", "new/name");
@@ -30,9 +32,9 @@ declare namespace Deno {
    * Requires `allow-read` and `allow-write` permissions. */
   export function linkSync(oldpath: string, newpath: string): void;
 
-  /** Creates `newpath` as a hard link to `oldpath`.
+  /** **UNSTABLE**: This API needs a security review.
    *
-   *  **UNSTABLE**: needs security review.
+   * Creates `newpath` as a hard link to `oldpath`.
    *
    * ```ts
    * await Deno.link("old/name", "new/name");
@@ -41,48 +43,44 @@ declare namespace Deno {
    * Requires `allow-read` and `allow-write` permissions. */
   export function link(oldpath: string, newpath: string): Promise<void>;
 
-  /** **UNSTABLE**: `type` argument type may be changed to `"dir" | "file"`.
-   *
-   *  **UNSTABLE**: needs security review.
+  export type SymlinkOptions = {
+    type: "file" | "dir";
+  };
+
+  /** **UNSTABLE**: This API needs a security review.
    *
    * Creates `newpath` as a symbolic link to `oldpath`.
    *
-   * The type argument can be set to `dir` or `file`. This argument is only
+   * The options.type parameter can be set to `file` or `dir`. This argument is only
    * available on Windows and ignored on other platforms.
-   *
-   * NOTE: This function is not yet implemented on Windows.
    *
    * ```ts
    * Deno.symlinkSync("old/name", "new/name");
    * ```
    *
-   * Requires `allow-read` and `allow-write` permissions. */
+   * Requires `allow-write` permission. */
   export function symlinkSync(
     oldpath: string,
     newpath: string,
-    type?: string
+    options?: SymlinkOptions
   ): void;
 
-  /** **UNSTABLE**: `type` argument may be changed to `"dir" | "file"`
-   *
-   *  **UNSTABLE**: needs security review.
+  /** **UNSTABLE**: This API needs a security review.
    *
    * Creates `newpath` as a symbolic link to `oldpath`.
    *
-   * The type argument can be set to `dir` or `file`. This argument is only
+   * The options.type parameter can be set to `file` or `dir`. This argument is only
    * available on Windows and ignored on other platforms.
-   *
-   * NOTE: This function is not yet implemented on Windows.
    *
    * ```ts
    * await Deno.symlink("old/name", "new/name");
    * ```
    *
-   * Requires `allow-read` and `allow-write` permissions. */
+   * Requires `allow-write` permission. */
   export function symlink(
     oldpath: string,
     newpath: string,
-    type?: string
+    options?: SymlinkOptions
   ): Promise<void>;
 
   /** **UNSTABLE** */
@@ -254,7 +252,10 @@ declare namespace Deno {
    */
   export function dir(kind: DirKind): string | null;
 
-  /** Returns an array containing the 1, 5, and 15 minute load averages. The
+  /** **Unstable**  There are questions around which permission this needs. And
+   * maybe should be renamed (loadAverage?)
+   *
+   * Returns an array containing the 1, 5, and 15 minute load averages. The
    * load average is a measure of CPU and IO utilization of the last one, five,
    * and 15 minute periods expressed as a fractional number.  Zero means there
    * is no load. On Windows, the three values are always the same and represent
@@ -265,13 +266,14 @@ declare namespace Deno {
    * ```
    *
    * Requires `allow-env` permission.
-   *
-   * **Unstable**  There are questions around which permission this needs. And
-   * maybe should be renamed (loadAverage?)
    */
   export function loadavg(): number[];
 
-  /** Returns the release version of the Operating System.
+  /** **Unstable** new API. yet to be vetted. Under consideration to possibly move to
+   * Deno.build or Deno.versions and if it should depend sys-info, which may not
+   * be desireable.
+   *
+   * Returns the release version of the Operating System.
    *
    * ```ts
    * console.log(Deno.osRelease());
@@ -279,8 +281,6 @@ declare namespace Deno {
    *
    * Requires `allow-env` permission.
    *
-   * **Unstable** new API maybe move to Deno.build or Deno.versions? Depends on
-   * sys-info, which we don't necessarally want to depend on.
    */
   export function osRelease(): string;
 
@@ -703,7 +703,7 @@ declare namespace Deno {
     columnNumber: number;
   }
 
-  /** UNSTABLE: new API, yet to be vetted.
+  /** **UNSTABLE**: new API, yet to be vetted.
    *
    * Given a current location in a module, lookup the source location and return
    * it.
@@ -797,7 +797,7 @@ declare namespace Deno {
     SIGUSR2 = 31,
   }
 
-  /** **UNSTABLE**: make platform independent.
+  /** **UNSTABLE**: Further changes required to make platform independent.
    *
    * Signals numbers. This is platform dependent. */
   export const Signal: typeof MacOSSignal | typeof LinuxSignal;
@@ -951,7 +951,7 @@ declare namespace Deno {
     mtime: number | Date
   ): Promise<void>;
 
-  /** **UNSTABLE**: Maybe remove `ShutdownMode` entirely.
+  /** **UNSTABLE**: Under consideration to remove `ShutdownMode` entirely.
    *
    * Corresponds to `SHUT_RD`, `SHUT_WR`, `SHUT_RDWR` on POSIX-like systems.
    *
@@ -977,7 +977,7 @@ declare namespace Deno {
    */
   export function shutdown(rid: number, how: ShutdownMode): Promise<void>;
 
-  /** **UNSTABLE**:: new API, yet to be vetted.
+  /** **UNSTABLE**: new API, yet to be vetted.
    *
    * A generic transport listener for message-oriented protocols. */
   export interface DatagramConn extends AsyncIterable<[Uint8Array, Addr]> {
@@ -1017,7 +1017,7 @@ declare namespace Deno {
     options: UnixListenOptions & { transport: "unix" }
   ): Listener;
 
-  /** **UNSTABLE**: new API
+  /** **UNSTABLE**: new API, yet to be vetted
    *
    * Listen announces on the local transport address.
    *
@@ -1038,7 +1038,7 @@ declare namespace Deno {
     options: ListenOptions & { transport: "udp" }
   ): DatagramConn;
 
-  /** **UNSTABLE**: new API
+  /** **UNSTABLE**: new API, yet to be vetted
    *
    * Listen announces on the local transport address.
    *
@@ -1059,7 +1059,9 @@ declare namespace Deno {
     path: string;
   }
 
-  /**
+  /** **UNSTABLE**:  The unix socket transport is unstable as a new API yet to
+   * be vetted.  The TCP transport is considered stable.
+   *
    * Connects to the hostname (default is "127.0.0.1") and port on the named
    * transport (default is "tcp"), and resolves to the connection (`Conn`).
    *
@@ -1071,7 +1073,7 @@ declare namespace Deno {
    * const conn5 = await Deno.connect({ path: "/foo/bar.sock", transport: "unix" });
    * ```
    *
-   * Requires `allow-net` permission for "tcp" and `allow-read` for unix. */
+   * Requires `allow-net` permission for "tcp" and `allow-read` for "unix". */
   export function connect(
     options: ConnectOptions | UnixConnectOptions
   ): Promise<Conn>;
@@ -1211,7 +1213,7 @@ declare namespace Deno {
      * ```ts
      * const status = await Deno.permissions.request({ name: "env" });
      * if (status.state === "granted") {
-     *   console.log(Deno.homeDir());
+     *   console.log(Deno.dir("home");
      * } else {
      *   console.log("'env' permission is denied.");
      * }
@@ -1220,8 +1222,8 @@ declare namespace Deno {
     request(desc: PermissionDescriptor): Promise<PermissionStatus>;
   }
 
-  /** **UNSTABLE**: maybe move to `navigator.permissions` to match web API. It
-   * could look like `navigator.permissions.query({ name: Deno.symbols.read })`.
+  /** **UNSTABLE**: Under consideration to move to `navigator.permissions` to
+   * match web API. It could look like `navigator.permissions.query({ name: Deno.symbols.read })`.
    */
   export const permissions: Permissions;
 
@@ -1231,7 +1233,10 @@ declare namespace Deno {
     constructor(state: PermissionState);
   }
 
-  /** Get the `hostname` of the machine the Deno process is running on.
+  /**  **UNSTABLE**: New API, yet to be vetted.  Additional consideration is still
+   * necessary around the permissions required.
+   *
+   * Get the `hostname` of the machine the Deno process is running on.
    *
    * ```ts
    * console.log(Deno.hostname());

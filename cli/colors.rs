@@ -52,6 +52,12 @@ pub fn red_bold(s: String) -> impl fmt::Display {
   style(&s, style_spec)
 }
 
+pub fn green_bold(s: String) -> impl fmt::Display {
+  let mut style_spec = ColorSpec::new();
+  style_spec.set_fg(Some(Ansi256(10))).set_bold(true);
+  style(&s, style_spec)
+}
+
 pub fn italic_bold(s: String) -> impl fmt::Display {
   let mut style_spec = ColorSpec::new();
   style_spec.set_bold(true).set_italic(true);
@@ -61,6 +67,18 @@ pub fn italic_bold(s: String) -> impl fmt::Display {
 pub fn black_on_white(s: String) -> impl fmt::Display {
   let mut style_spec = ColorSpec::new();
   style_spec.set_bg(Some(White)).set_fg(Some(Black));
+  style(&s, style_spec)
+}
+
+pub fn white_on_red(s: String) -> impl fmt::Display {
+  let mut style_spec = ColorSpec::new();
+  style_spec.set_bg(Some(Red)).set_fg(Some(White));
+  style(&s, style_spec)
+}
+
+pub fn white_on_green(s: String) -> impl fmt::Display {
+  let mut style_spec = ColorSpec::new();
+  style_spec.set_bg(Some(Ansi256(10))).set_fg(Some(White));
   style(&s, style_spec)
 }
 

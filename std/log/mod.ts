@@ -7,7 +7,7 @@ import {
   FileHandler,
   RotatingFileHandler,
 } from "./handlers.ts";
-import { assert } from "../testing/asserts.ts";
+import { assert } from "../_util/assert.ts";
 import { LevelName } from "./levels.ts";
 
 export { LogLevels } from "./levels.ts";
@@ -127,4 +127,4 @@ export async function setup(config: LogConfig): Promise<void> {
   }
 }
 
-setup(DEFAULT_CONFIG);
+await setup(DEFAULT_CONFIG);

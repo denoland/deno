@@ -161,7 +161,7 @@ async function readBytes(
 // Ensures it does not impact garbage collection.
 export const blobBytesWeakMap = new WeakMap<Blob, Uint8Array>();
 
-export class DenoBlob implements Blob {
+class DenoBlob implements Blob {
   [bytesSymbol]: Uint8Array;
   readonly size: number = 0;
   readonly type: string = "";
@@ -216,3 +216,11 @@ export class DenoBlob implements Blob {
     return readBytes(getStream(this[bytesSymbol]).getReader());
   }
 }
+
+// we want the Base class name to be the name of the class.
+Object.defineProperty(DenoBlob, "name", {
+  value: "Blob",
+  configurable: true,
+});
+
+export { DenoBlob };

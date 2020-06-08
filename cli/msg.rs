@@ -2,9 +2,11 @@
 
 // Warning! The values in this enum are duplicated in js/compiler.ts
 // Update carefully!
+use serde::Serialize;
+
 #[allow(non_camel_case_types)]
 #[repr(i8)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug, Serialize)]
 pub enum MediaType {
   JavaScript = 0,
   JSX = 1,
