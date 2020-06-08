@@ -1,3 +1,4 @@
+export { promisify } from "./_util/_util_promisify.ts";
 export { callbackify } from "./_util/_util_callbackify.ts";
 import * as types from "./_util/_util_types.ts";
 
