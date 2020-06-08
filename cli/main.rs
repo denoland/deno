@@ -1,6 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 #![deny(warnings)]
 
+extern crate dissimilar;
 #[macro_use]
 extern crate lazy_static;
 #[macro_use]
@@ -25,6 +26,7 @@ mod checksum;
 pub mod colors;
 pub mod deno_dir;
 pub mod diagnostics;
+mod diff;
 mod disk_cache;
 mod doc;
 mod file_fetcher;
@@ -312,6 +314,71 @@ async fn install_command(
     .map_err(ErrBox::from)
 }
 
+async fn lint_command(flags: Flags, files: Vec<String>) -> Result<(), ErrBox> {
+  let global_state = GlobalState::new(flags)?;
+
+  // TODO(bartlomieju): refactor, it's non-sense to create
+  // state just to perform unstable check...
+  use crate::state::State;
+  let state = State::new(
+    global_state.clone(),
+    None,
+    ModuleSpecifier::resolve_url("file:///dummy.ts").unwrap(),
+    None,
+    true,
+  )?;
+
+  state.check_unstable("lint");
+
+  let mut error_counts = 0;
+
+  for file in files {
+    let specifier = ModuleSpecifier::resolve_url_or_path(&file)?;
+    let source_file = global_state
+      .file_fetcher
+      .fetch_source_file(&specifier, None, Permissions::allow_all())
+      .await?;
+    let source_code = String::from_utf8(source_file.source_code)?;
+
+    let mut linter = deno_lint::linter::Linter::default();
+    let lint_rules = deno_lint::rules::get_all_rules();
+
+    let file_diagnostics = linter.lint(file, source_code, lint_rules)?;
+
+    error_counts += file_diagnostics.len();
+    for d in file_diagnostics.iter() {
+      let pretty_message = format!(
+        "({}) {}",
+        colors::gray(d.code.to_string()),
+        d.message.clone()
+      );
+      eprintln!(
+        "{}\n",
+        fmt_errors::format_stack(
+          true,
+          pretty_message,
+          Some(d.line_src.clone()),
+          Some(d.location.col as i64),
+          Some((d.location.col + d.snippet_length) as i64),
+          &[fmt_errors::format_location(
+            d.location.filename.clone(),
+            d.location.line as i64,
+            d.location.col as i64,
+          )],
+          0
+        )
+      );
+    }
+  }
+
+  if error_counts > 0 {
+    eprintln!("Found {} problems", error_counts);
+    std::process::exit(1);
+  }
+
+  Ok(())
+}
+
 async fn cache_command(flags: Flags, files: Vec<String>) -> Result<(), ErrBox> {
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./__$deno$fetch.ts").unwrap();
@@ -333,6 +400,7 @@ async fn eval_command(
   flags: Flags,
   code: String,
   as_typescript: bool,
+  print: bool,
 ) -> Result<(), ErrBox> {
   // Force TypeScript compile.
   let main_module =
@@ -341,6 +409,13 @@ async fn eval_command(
   let mut worker = MainWorker::create(global_state, main_module.clone())?;
   let main_module_url = main_module.as_url().to_owned();
   // Create a dummy source file.
+  let source_code = if print {
+    "console.log(".to_string() + &code + ")"
+  } else {
+    code.clone()
+  }
+  .into_bytes();
+
   let source_file = SourceFile {
     filename: main_module_url.to_file_path().unwrap(),
     url: main_module_url,
@@ -351,7 +426,7 @@ async fn eval_command(
     } else {
       MediaType::JavaScript
     },
-    source_code: code.clone().into_bytes(),
+    source_code,
   };
   // Save our fake file into file fetcher cache
   // to allow module access by TS compiler (e.g. op_fetch_source_files)
@@ -403,16 +478,14 @@ async fn bundle_command(
 
   debug!(">>>>> bundle END");
 
-  let output_string = fmt::format_text(&output)?;
-
   if let Some(out_file_) = out_file.as_ref() {
     info!("Emitting bundle to {:?}", out_file_);
-    let output_bytes = output_string.as_bytes();
+    let output_bytes = output.as_bytes();
     let output_len = output_bytes.len();
     deno_fs::write_file(out_file_, output_bytes, 0o666)?;
     info!("{} emitted.", human_size(output_len as f64));
   } else {
-    println!("{}", output_string);
+    println!("{}", output);
   }
   Ok(())
 }
@@ -629,9 +702,10 @@ pub fn main() {
       filter,
     } => doc_command(flags, source_file, json, filter).boxed_local(),
     DenoSubcommand::Eval {
+      print,
       code,
       as_typescript,
-    } => eval_command(flags, code, as_typescript).boxed_local(),
+    } => eval_command(flags, code, as_typescript, print).boxed_local(),
     DenoSubcommand::Cache { files } => {
       cache_command(flags, files).boxed_local()
     }
@@ -648,6 +722,7 @@ pub fn main() {
     } => {
       install_command(flags, module_url, args, name, root, force).boxed_local()
     }
+    DenoSubcommand::Lint { files } => lint_command(flags, files).boxed_local(),
     DenoSubcommand::Repl => run_repl(flags).boxed_local(),
     DenoSubcommand::Run { script } => run_command(flags, script).boxed_local(),
     DenoSubcommand::Test {

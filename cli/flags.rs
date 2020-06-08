@@ -28,6 +28,7 @@ pub enum DenoSubcommand {
     filter: Option<String>,
   },
   Eval {
+    print: bool,
     code: String,
     as_typescript: bool,
   },
@@ -48,6 +49,9 @@ pub enum DenoSubcommand {
     name: Option<String>,
     root: Option<PathBuf>,
     force: bool,
+  },
+  Lint {
+    files: Vec<String>,
   },
   Repl,
   Run {
@@ -179,7 +183,8 @@ static ENV_VARIABLES_HELP: &str = "ENVIRONMENT VARIABLES:
     NO_COLOR             Set to disable color
     HTTP_PROXY           Proxy address for HTTP requests
                          (module downloads, fetch)
-    HTTPS_PROXY          Same but for HTTPS";
+    HTTPS_PROXY          Proxy address for HTTPS requests
+                         (module downloads, fetch)";
 
 static DENO_HELP: &str = "A secure JavaScript and TypeScript runtime
 
@@ -259,6 +264,8 @@ pub fn flags_from_vec_safe(args: Vec<String>) -> clap::Result<Flags> {
     upgrade_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("doc") {
     doc_parse(&mut flags, m);
+  } else if let Some(m) = matches.subcommand_matches("lint") {
+    lint_parse(&mut flags, m);
   } else {
     repl_parse(&mut flags, &matches);
   }
@@ -301,18 +308,19 @@ If the flag is set, restrict these messages to errors.",
         .global(true),
     )
     .subcommand(bundle_subcommand())
-    .subcommand(completions_subcommand())
-    .subcommand(eval_subcommand())
     .subcommand(cache_subcommand())
+    .subcommand(completions_subcommand())
+    .subcommand(doc_subcommand())
+    .subcommand(eval_subcommand())
     .subcommand(fmt_subcommand())
     .subcommand(info_subcommand())
     .subcommand(install_subcommand())
+    .subcommand(lint_subcommand())
     .subcommand(repl_subcommand())
     .subcommand(run_subcommand())
     .subcommand(test_subcommand())
     .subcommand(types_subcommand())
     .subcommand(upgrade_subcommand())
-    .subcommand(doc_subcommand())
     .long_about(DENO_HELP)
     .after_help(ENV_VARIABLES_HELP)
 }
@@ -430,7 +438,9 @@ fn eval_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.allow_hrtime = true;
   let code = matches.value_of("code").unwrap().to_string();
   let as_typescript = matches.is_present("ts");
+  let print = matches.is_present("print");
   flags.subcommand = DenoSubcommand::Eval {
+    print,
     code,
     as_typescript,
   }
@@ -574,6 +584,16 @@ fn doc_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     json,
     filter,
   };
+}
+
+fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  unstable_arg_parse(flags, matches);
+  let files = matches
+    .values_of("files")
+    .unwrap()
+    .map(String::from)
+    .collect();
+  flags.subcommand = DenoSubcommand::Lint { files };
 }
 
 fn types_subcommand<'a, 'b>() -> App<'a, 'b> {
@@ -744,6 +764,14 @@ This command has implicit access to all permissions (--allow-all).",
         .takes_value(false)
         .multiple(false),
     )
+    .arg(
+      Arg::with_name("print")
+        .long("print")
+        .short("p")
+        .help("print result to stdout")
+        .takes_value(false)
+        .multiple(false),
+    )
     .arg(Arg::with_name("code").takes_value(true).required(true))
     .arg(v8_flags_arg())
 }
@@ -875,6 +903,25 @@ Show documentation for runtime built-ins:
         .required(false)
         .conflicts_with("json")
         .conflicts_with("pretty"),
+    )
+}
+
+fn lint_subcommand<'a, 'b>() -> App<'a, 'b> {
+  SubCommand::with_name("lint")
+    .about("Lint source files")
+    .long_about(
+      "Lint JavaScript/TypeScript source code.
+  deno lint myfile1.ts myfile2.js
+
+Ignore diagnostics on next line preceding it with an ignore comment and code:
+  // deno-lint-ignore no-explicit-any",
+    )
+    .arg(unstable_arg())
+    .arg(
+      Arg::with_name("files")
+        .takes_value(true)
+        .required(true)
+        .min_values(1),
     )
 }
 
@@ -1022,7 +1069,7 @@ report results to standard output:
   deno test src/fetch_test.ts src/signal_test.ts
 
 Directory arguments are expanded to all contained files matching the glob
-{*_,*.,}test.{js,ts,jsx,tsx}:
+{*_,*.,}test.{js,mjs,ts,jsx,tsx}:
   deno test src/",
     )
 }
@@ -1693,7 +1740,31 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Eval {
+          print: false,
           code: "'console.log(\"hello\")'".to_string(),
+          as_typescript: false,
+        },
+        allow_net: true,
+        allow_env: true,
+        allow_run: true,
+        allow_read: true,
+        allow_write: true,
+        allow_plugin: true,
+        allow_hrtime: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn eval_p() {
+    let r = flags_from_vec_safe(svec!["deno", "eval", "-p", "1+2"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Eval {
+          print: true,
+          code: "1+2".to_string(),
           as_typescript: false,
         },
         allow_net: true,
@@ -1721,6 +1792,7 @@ mod tests {
       Flags {
         unstable: true,
         subcommand: DenoSubcommand::Eval {
+          print: false,
           code: "'console.log(\"hello\")'".to_string(),
           as_typescript: false,
         },
@@ -1748,6 +1820,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Eval {
+          print: false,
           code: "'console.log(\"hello\")'".to_string(),
           as_typescript: true,
         },
@@ -1771,6 +1844,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Eval {
+          print: false,
           code: "42".to_string(),
           as_typescript: false,
         },
@@ -2456,6 +2530,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Eval {
+          print: false,
           code: "console.log('hello world')".to_string(),
           as_typescript: false,
         },
@@ -2484,6 +2559,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Eval {
+          print: false,
           code: "const foo = 'bar'".to_string(),
           as_typescript: false,
         },

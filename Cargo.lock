@@ -443,8 +443,10 @@ dependencies = [
  "bytes 0.5.4",
  "clap",
  "deno_core",
+ "deno_lint",
  "deno_typescript",
  "dirs",
+ "dissimilar",
  "dlopen",
  "dprint-plugin-typescript",
  "futures 0.3.5",
@@ -503,6 +505,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "deno_lint"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "77a3ec96c92609aa121d085f3a1351d3836e55b78a4b8ce79ea771c2ad9bd80b"
+dependencies = [
+ "lazy_static",
+ "regex",
+ "swc_atoms",
+ "swc_common",
+ "swc_ecma_ast",
+ "swc_ecma_parser",
+ "swc_ecma_visit",
+]
+
+[[package]]
 name = "deno_typescript"
 version = "0.47.1"
 dependencies = [
@@ -552,6 +569,12 @@ dependencies = [
  "redox_users",
  "winapi 0.3.8",
 ]
+
+[[package]]
+name = "dissimilar"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "39de161cd2ebbd6e5783db53a82a47b6a47dcfef754130839603561745528b94"
 
 [[package]]
 name = "dlopen"

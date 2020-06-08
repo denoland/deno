@@ -2,7 +2,7 @@
 // Structured similarly to Go's cookie.go
 // https://github.com/golang/go/blob/master/src/net/http/cookie.go
 import { ServerRequest, Response } from "./server.ts";
-import { assert } from "../testing/asserts.ts";
+import { assert } from "../_util/assert.ts";
 import { toIMF } from "../datetime/mod.ts";
 
 export interface Cookies {
@@ -130,9 +130,9 @@ export function setCookie(res: Response, cookie: Cookie): void {
  * @param name Name of the cookie to Delete
  * Example:
  *
- *     delCookie(res,'foo');
+ *     deleteCookie(res,'foo');
  */
-export function delCookie(res: Response, name: string): void {
+export function deleteCookie(res: Response, name: string): void {
   setCookie(res, {
     name: name,
     value: "",

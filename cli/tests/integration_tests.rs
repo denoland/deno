@@ -54,6 +54,23 @@ fn x_deno_warning() {
 }
 
 #[test]
+fn eval_p() {
+  let output = util::deno_cmd()
+    .arg("eval")
+    .arg("-p")
+    .arg("1+2")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  let stdout_str =
+    util::strip_ansi_codes(std::str::from_utf8(&output.stdout).unwrap().trim());
+  assert_eq!("3", stdout_str);
+}
+
+#[test]
 fn no_color() {
   let output = util::deno_cmd()
     .current_dir(util::root_path())
@@ -2845,7 +2862,7 @@ mod util {
   pub const PERMISSION_DENIED_PATTERN: &str = "PermissionDenied";
 
   lazy_static! {
-    static ref DENO_DIR: TempDir = { TempDir::new().expect("tempdir fail") };
+    static ref DENO_DIR: TempDir = TempDir::new().expect("tempdir fail");
 
     // STRIP_ANSI_RE and strip_ansi_codes are lifted from the "console" crate.
     // Copyright 2017 Armin Ronacher <armin.ronacher@active-4.com>. MIT License.

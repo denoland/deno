@@ -61,12 +61,12 @@ export function signal(
 export function onSignal(signo: number, callback: () => void): Disposable {
   const sig = signal(signo);
 
-  //setTimeout allows `sig` to be returned before blocking on the await
-  setTimeout(async () => {
+  // allows `sig` to be returned before blocking on the await
+  (async (): Promise<void> => {
     for await (const _ of sig) {
       callback();
     }
-  }, 0);
+  })();
 
   return sig;
 }

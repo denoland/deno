@@ -24,7 +24,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 const { test } = Deno;
-import { assert, assertStrictEq } from "../../testing/asserts.ts";
+import { assert, assertStrictEquals } from "../../testing/asserts.ts";
 import { callbackify } from "./_util_callbackify.ts";
 
 const values = [
@@ -89,8 +89,8 @@ test("callbackify passes the resolution value as the second argument to the call
     const cbAsyncFn = callbackify(asyncFn);
     testQueue.enqueue((done) => {
       cbAsyncFn((err: unknown, ret: unknown) => {
-        assertStrictEq(err, null);
-        assertStrictEq(ret, value);
+        assertStrictEquals(err, null);
+        assertStrictEquals(ret, value);
         done();
       });
     });
@@ -101,8 +101,8 @@ test("callbackify passes the resolution value as the second argument to the call
     const cbPromiseFn = callbackify(promiseFn);
     testQueue.enqueue((done) => {
       cbPromiseFn((err: unknown, ret: unknown) => {
-        assertStrictEq(err, null);
-        assertStrictEq(ret, value);
+        assertStrictEquals(err, null);
+        assertStrictEquals(ret, value);
         done();
       });
     });
@@ -119,8 +119,8 @@ test("callbackify passes the resolution value as the second argument to the call
     const cbThenableFn = callbackify(thenableFn);
     testQueue.enqueue((done) => {
       cbThenableFn((err: unknown, ret: unknown) => {
-        assertStrictEq(err, null);
-        assertStrictEq(ret, value);
+        assertStrictEquals(err, null);
+        assertStrictEquals(ret, value);
         done();
       });
     });
@@ -138,21 +138,21 @@ test("callbackify passes the rejection value as the first argument to the callba
       return Promise.reject(value);
     }
     const cbAsyncFn = callbackify(asyncFn);
-    assertStrictEq(cbAsyncFn.length, 1);
-    assertStrictEq(cbAsyncFn.name, "asyncFnCallbackified");
+    assertStrictEquals(cbAsyncFn.length, 1);
+    assertStrictEquals(cbAsyncFn.name, "asyncFnCallbackified");
     testQueue.enqueue((done) => {
       cbAsyncFn((err: unknown, ret: unknown) => {
-        assertStrictEq(ret, undefined);
+        assertStrictEquals(ret, undefined);
         if (err instanceof Error) {
           if ("reason" in err) {
             assert(!value);
-            assertStrictEq((err as any).code, "ERR_FALSY_VALUE_REJECTION");
-            assertStrictEq((err as any).reason, value);
+            assertStrictEquals((err as any).code, "ERR_FALSY_VALUE_REJECTION");
+            assertStrictEquals((err as any).reason, value);
           } else {
-            assertStrictEq(String(value).endsWith(err.message), true);
+            assertStrictEquals(String(value).endsWith(err.message), true);
           }
         } else {
-          assertStrictEq(err, value);
+          assertStrictEquals(err, value);
         }
         done();
       });
@@ -170,20 +170,20 @@ test("callbackify passes the rejection value as the first argument to the callba
     });
 
     const cbPromiseFn = callbackify(promiseFn);
-    assertStrictEq(promiseFn.name, obj);
+    assertStrictEquals(promiseFn.name, obj);
     testQueue.enqueue((done) => {
       cbPromiseFn((err: unknown, ret: unknown) => {
-        assertStrictEq(ret, undefined);
+        assertStrictEquals(ret, undefined);
         if (err instanceof Error) {
           if ("reason" in err) {
             assert(!value);
-            assertStrictEq((err as any).code, "ERR_FALSY_VALUE_REJECTION");
-            assertStrictEq((err as any).reason, value);
+            assertStrictEquals((err as any).code, "ERR_FALSY_VALUE_REJECTION");
+            assertStrictEquals((err as any).reason, value);
           } else {
-            assertStrictEq(String(value).endsWith(err.message), true);
+            assertStrictEquals(String(value).endsWith(err.message), true);
           }
         } else {
-          assertStrictEq(err, value);
+          assertStrictEquals(err, value);
         }
         done();
       });
@@ -202,17 +202,17 @@ test("callbackify passes the rejection value as the first argument to the callba
     const cbThenableFn = callbackify(thenableFn);
     testQueue.enqueue((done) => {
       cbThenableFn((err: unknown, ret: unknown) => {
-        assertStrictEq(ret, undefined);
+        assertStrictEquals(ret, undefined);
         if (err instanceof Error) {
           if ("reason" in err) {
             assert(!value);
-            assertStrictEq((err as any).code, "ERR_FALSY_VALUE_REJECTION");
-            assertStrictEq((err as any).reason, value);
+            assertStrictEquals((err as any).code, "ERR_FALSY_VALUE_REJECTION");
+            assertStrictEquals((err as any).reason, value);
           } else {
-            assertStrictEq(String(value).endsWith(err.message), true);
+            assertStrictEquals(String(value).endsWith(err.message), true);
           }
         } else {
-          assertStrictEq(err, value);
+          assertStrictEquals(err, value);
         }
         done();
       });
@@ -228,24 +228,24 @@ test("callbackify passes arguments to the original", async () => {
   for (const value of values) {
     // eslint-disable-next-line require-await
     async function asyncFn<T>(arg: T): Promise<T> {
-      assertStrictEq(arg, value);
+      assertStrictEquals(arg, value);
       return arg;
     }
 
     const cbAsyncFn = callbackify(asyncFn);
-    assertStrictEq(cbAsyncFn.length, 2);
+    assertStrictEquals(cbAsyncFn.length, 2);
     assert(Object.getPrototypeOf(cbAsyncFn) !== Object.getPrototypeOf(asyncFn));
-    assertStrictEq(Object.getPrototypeOf(cbAsyncFn), Function.prototype);
+    assertStrictEquals(Object.getPrototypeOf(cbAsyncFn), Function.prototype);
     testQueue.enqueue((done) => {
       cbAsyncFn(value, (err: unknown, ret: unknown) => {
-        assertStrictEq(err, null);
-        assertStrictEq(ret, value);
+        assertStrictEquals(err, null);
+        assertStrictEquals(ret, value);
         done();
       });
     });
 
     function promiseFn<T>(arg: T): Promise<T> {
-      assertStrictEq(arg, value);
+      assertStrictEquals(arg, value);
       return Promise.resolve(arg);
     }
     const obj = {};
@@ -257,11 +257,11 @@ test("callbackify passes arguments to the original", async () => {
     });
 
     const cbPromiseFn = callbackify(promiseFn);
-    assertStrictEq(promiseFn.length, obj);
+    assertStrictEquals(promiseFn.length, obj);
     testQueue.enqueue((done) => {
       cbPromiseFn(value, (err: unknown, ret: unknown) => {
-        assertStrictEq(err, null);
-        assertStrictEq(ret, value);
+        assertStrictEquals(err, null);
+        assertStrictEquals(ret, value);
         done();
       });
     });
@@ -276,7 +276,7 @@ test("callbackify preserves the `this` binding", async () => {
   for (const value of values) {
     const objectWithSyncFunction = {
       fn(this: unknown, arg: typeof value): Promise<typeof value> {
-        assertStrictEq(this, objectWithSyncFunction);
+        assertStrictEquals(this, objectWithSyncFunction);
         return Promise.resolve(arg);
       },
     };
@@ -287,9 +287,9 @@ test("callbackify preserves the `this` binding", async () => {
         err: unknown,
         ret: unknown
       ) {
-        assertStrictEq(err, null);
-        assertStrictEq(ret, value);
-        assertStrictEq(this, objectWithSyncFunction);
+        assertStrictEquals(err, null);
+        assertStrictEquals(ret, value);
+        assertStrictEquals(this, objectWithSyncFunction);
         done();
       });
     });
@@ -297,7 +297,7 @@ test("callbackify preserves the `this` binding", async () => {
     const objectWithAsyncFunction = {
       // eslint-disable-next-line require-await
       async fn(this: unknown, arg: typeof value): Promise<typeof value> {
-        assertStrictEq(this, objectWithAsyncFunction);
+        assertStrictEquals(this, objectWithAsyncFunction);
         return arg;
       },
     };
@@ -308,9 +308,9 @@ test("callbackify preserves the `this` binding", async () => {
         err: unknown,
         ret: unknown
       ) {
-        assertStrictEq(err, null);
-        assertStrictEq(ret, value);
-        assertStrictEq(this, objectWithAsyncFunction);
+        assertStrictEquals(err, null);
+        assertStrictEquals(ret, value);
+        assertStrictEquals(this, objectWithAsyncFunction);
         done();
       });
     });
@@ -326,9 +326,9 @@ test("callbackify throws with non-function inputs", () => {
       throw Error("We should never reach this error");
     } catch (err) {
       assert(err instanceof TypeError);
-      assertStrictEq((err as any).code, "ERR_INVALID_ARG_TYPE");
-      assertStrictEq(err.name, "TypeError");
-      assertStrictEq(
+      assertStrictEquals((err as any).code, "ERR_INVALID_ARG_TYPE");
+      assertStrictEquals(err.name, "TypeError");
+      assertStrictEquals(
         err.message,
         'The "original" argument must be of type function.'
       );
@@ -353,9 +353,9 @@ test("callbackify returns a function that throws if the last argument is not a f
       throw Error("We should never reach this error");
     } catch (err) {
       assert(err instanceof TypeError);
-      assertStrictEq((err as any).code, "ERR_INVALID_ARG_TYPE");
-      assertStrictEq(err.name, "TypeError");
-      assertStrictEq(
+      assertStrictEquals((err as any).code, "ERR_INVALID_ARG_TYPE");
+      assertStrictEquals(err.name, "TypeError");
+      assertStrictEquals(
         err.message,
         "The last argument must be of type function."
       );
