@@ -2,15 +2,12 @@
 import { unitTest, assertThrows } from "./test_util.ts";
 
 unitTest(function streamReadableHwmError() {
-  const invalidHwm = [NaN, Number("NaN"), {}, -1, "two"];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const invalidHwm: any[] = [NaN, Number("NaN"), {}, -1, "two"];
   for (const highWaterMark of invalidHwm) {
     assertThrows(
       () => {
-        new ReadableStream<number>(
-          undefined,
-          // @ts-ignore
-          { highWaterMark }
-        );
+        new ReadableStream<number>(undefined, { highWaterMark });
       },
       RangeError,
       "highWaterMark must be a positive number or Infinity.  Received:"
@@ -20,20 +17,20 @@ unitTest(function streamReadableHwmError() {
   assertThrows(() => {
     new ReadableStream<number>(
       undefined,
-      // @ts-ignore
-      { highWaterMark: Symbol("hwk") }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { highWaterMark: Symbol("hwk") as any }
     );
   }, TypeError);
 });
 
 unitTest(function streamWriteableHwmError() {
-  const invalidHwm = [NaN, Number("NaN"), {}, -1, "two"];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const invalidHwm: any[] = [NaN, Number("NaN"), {}, -1, "two"];
   for (const highWaterMark of invalidHwm) {
     assertThrows(
       () => {
         new WritableStream(
           undefined,
-          // @ts-ignore
           new CountQueuingStrategy({ highWaterMark })
         );
       },
@@ -45,23 +42,19 @@ unitTest(function streamWriteableHwmError() {
   assertThrows(() => {
     new WritableStream(
       undefined,
-      // @ts-ignore
-      new CountQueuingStrategy({ highWaterMark: Symbol("hwmk") })
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      new CountQueuingStrategy({ highWaterMark: Symbol("hwmk") as any })
     );
   }, TypeError);
 });
 
 unitTest(function streamTransformHwmError() {
-  const invalidHwm = [NaN, Number("NaN"), {}, -1, "two"];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const invalidHwm: any[] = [NaN, Number("NaN"), {}, -1, "two"];
   for (const highWaterMark of invalidHwm) {
     assertThrows(
       () => {
-        new TransformStream(
-          undefined,
-          undefined,
-          // @ts-ignore
-          { highWaterMark }
-        );
+        new TransformStream(undefined, undefined, { highWaterMark });
       },
       RangeError,
       "highWaterMark must be a positive number or Infinity.  Received:"
@@ -72,8 +65,8 @@ unitTest(function streamTransformHwmError() {
     new TransformStream(
       undefined,
       undefined,
-      // @ts-ignore
-      { highWaterMark: Symbol("hwmk") }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { highWaterMark: Symbol("hwmk") as any }
     );
   }, TypeError);
 });

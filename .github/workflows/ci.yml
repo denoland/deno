@@ -44,7 +44,7 @@ jobs:
         run: git config --global core.symlinks true
 
       - name: Clone repository
-        uses: actions/checkout@v1
+        uses: actions/checkout@v2
         with:
           # Use depth > 1, because sometimes we need to rebuild master and if
           # other commits have landed it will become impossible to rebuild if
@@ -66,7 +66,7 @@ jobs:
       - name: Install rust
         uses: hecrj/setup-rust-action@v1
         with:
-          rust-version: "1.43.0"
+          rust-version: 1.44.0
 
       - name: Install clippy and rustfmt
         if: matrix.config.kind == 'lint'
@@ -104,7 +104,7 @@ jobs:
         run: echo "::set-env name=CARGO_HOME::$(pwd)/.cargo_home"
 
       - name: Cache
-        uses: denoland/github-actions-cache@stable-prerelease
+        uses: actions/cache@v2
         with:
           # Note: crates from the denoland/deno git repo always get rebuilt,
           # and their outputs ('deno', 'libdeno.rlib' etc.) are quite big,

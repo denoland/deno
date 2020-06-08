@@ -3,23 +3,23 @@
 import { intoCallbackAPIWithIntercept, MaybeEmpty } from "../_utils.ts";
 
 import { getEncoding, FileOptions } from "./_fs_common.ts";
+import { Buffer } from "../buffer.ts";
 import { fromFileUrl } from "../path.ts";
 
 const { readFile: denoReadFile, readFileSync: denoReadFileSync } = Deno;
 
 type ReadFileCallback = (
   err: MaybeEmpty<Error>,
-  data: MaybeEmpty<string | Uint8Array>
+  data: MaybeEmpty<string | Buffer>
 ) => void;
 
 function maybeDecode(
   data: Uint8Array,
   encoding: string | null
-): string | Uint8Array {
-  if (encoding === "utf8") {
-    return new TextDecoder().decode(data);
-  }
-  return data;
+): string | Buffer {
+  const buffer = new Buffer(data.buffer, data.byteOffset, data.byteLength);
+  if (encoding) return buffer.toString(encoding);
+  return buffer;
 }
 
 export function readFile(
@@ -37,9 +37,9 @@ export function readFile(
 
   const encoding = getEncoding(optOrCallback);
 
-  intoCallbackAPIWithIntercept<Uint8Array, string | Uint8Array>(
+  intoCallbackAPIWithIntercept<Uint8Array, string | Buffer>(
     denoReadFile,
-    (data: Uint8Array): string | Uint8Array => maybeDecode(data, encoding),
+    (data: Uint8Array): string | Buffer => maybeDecode(data, encoding),
     cb,
     path
   );
@@ -48,7 +48,7 @@ export function readFile(
 export function readFileSync(
   path: string | URL,
   opt?: FileOptions | string
-): string | Uint8Array {
+): string | Buffer {
   path = path instanceof URL ? fromFileUrl(path) : path;
   return maybeDecode(denoReadFileSync(path), getEncoding(opt));
 }

@@ -4,6 +4,7 @@ use super::io::{StreamResource, StreamResourceHolder};
 use crate::op_error::OpError;
 use crate::state::State;
 use deno_core::CoreIsolate;
+use deno_core::CoreIsolateState;
 use deno_core::ZeroCopyBuf;
 #[cfg(unix)]
 use nix::sys::termios;
@@ -46,10 +47,10 @@ struct SetRawArgs {
 }
 
 pub fn op_set_raw(
-  isolate: &mut CoreIsolate,
+  isolate_state: &mut CoreIsolateState,
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   state.check_unstable("Deno.setRaw");
   let args: SetRawArgs = serde_json::from_value(args)?;
@@ -67,7 +68,7 @@ pub fn op_set_raw(
     use winapi::shared::minwindef::FALSE;
     use winapi::um::{consoleapi, handleapi};
 
-    let mut resource_table = isolate.resource_table.borrow_mut();
+    let mut resource_table = isolate_state.resource_table.borrow_mut();
     let resource_holder = resource_table.get_mut::<StreamResourceHolder>(rid);
     if resource_holder.is_none() {
       return Err(OpError::bad_resource_id());
@@ -133,7 +134,7 @@ pub fn op_set_raw(
   {
     use std::os::unix::io::AsRawFd;
 
-    let mut resource_table = isolate.resource_table.borrow_mut();
+    let mut resource_table = isolate_state.resource_table.borrow_mut();
     let resource_holder = resource_table.get_mut::<StreamResourceHolder>(rid);
     if resource_holder.is_none() {
       return Err(OpError::bad_resource_id());
@@ -215,15 +216,15 @@ struct IsattyArgs {
 }
 
 pub fn op_isatty(
-  isolate: &mut CoreIsolate,
+  isolate_state: &mut CoreIsolateState,
   _state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let args: IsattyArgs = serde_json::from_value(args)?;
   let rid = args.rid;
 
-  let mut resource_table = isolate.resource_table.borrow_mut();
+  let mut resource_table = isolate_state.resource_table.borrow_mut();
   let isatty: bool =
     std_file_resource(&mut resource_table, rid as u32, move |r| match r {
       Ok(std_file) => {

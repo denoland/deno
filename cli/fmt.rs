@@ -7,6 +7,8 @@
 //! the future it can be easily extended to provide
 //! the same functions as ops available in JS runtime.
 
+use crate::colors;
+use crate::diff::diff;
 use crate::fs::files_in_subtree;
 use crate::op_error::OpError;
 use deno_core::ErrBox;
@@ -20,6 +22,8 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
+
+const BOM_CHAR: char = '\u{FEFF}';
 
 /// Format JavaScript/TypeScript files.
 ///
@@ -61,17 +65,38 @@ async fn check_source_files(
 ) -> Result<(), ErrBox> {
   let not_formatted_files_count = Arc::new(AtomicUsize::new(0));
   let formatter = Arc::new(dprint::Formatter::new(config));
-  let output_lock = Arc::new(Mutex::new(0)); // prevent threads outputting at the same time
+
+  // prevent threads outputting at the same time
+  let output_lock = Arc::new(Mutex::new(0));
 
   run_parallelized(paths, {
     let not_formatted_files_count = not_formatted_files_count.clone();
     move |file_path| {
-      let file_contents = fs::read_to_string(&file_path)?;
-      let r = formatter.format_text(&file_path, &file_contents);
+      let file_text = read_file_contents(&file_path)?.text;
+      let r = formatter.format_text(&file_path, &file_text);
       match r {
         Ok(formatted_text) => {
-          if formatted_text != file_contents {
+          if formatted_text != file_text {
             not_formatted_files_count.fetch_add(1, Ordering::SeqCst);
+            let _g = output_lock.lock().unwrap();
+            match diff(&file_text, &formatted_text) {
+              Ok(diff) => {
+                println!();
+                println!(
+                  "{} {}:",
+                  colors::bold("from".to_string()),
+                  file_path.display().to_string()
+                );
+                println!("{}", diff);
+              }
+              Err(e) => {
+                eprintln!(
+                  "Error generating diff: {}",
+                  file_path.to_string_lossy()
+                );
+                eprintln!("   {}", e);
+              }
+            }
           }
         }
         Err(e) => {
@@ -112,12 +137,18 @@ async fn format_source_files(
   run_parallelized(paths, {
     let formatted_files_count = formatted_files_count.clone();
     move |file_path| {
-      let file_contents = fs::read_to_string(&file_path)?;
-      let r = formatter.format_text(&file_path, &file_contents);
+      let file_contents = read_file_contents(&file_path)?;
+      let r = formatter.format_text(&file_path, &file_contents.text);
       match r {
         Ok(formatted_text) => {
-          if formatted_text != file_contents {
-            fs::write(&file_path, formatted_text)?;
+          if formatted_text != file_contents.text {
+            write_file_contents(
+              &file_path,
+              FileContents {
+                had_bom: file_contents.had_bom,
+                text: formatted_text,
+              },
+            )?;
             formatted_files_count.fetch_add(1, Ordering::SeqCst);
             let _g = output_lock.lock().unwrap();
             println!("{}", file_path.to_string_lossy());
@@ -171,13 +202,6 @@ fn format_stdin(check: bool) -> Result<(), ErrBox> {
   Ok(())
 }
 
-/// Formats the given source text
-pub fn format_text(source: &str) -> Result<String, ErrBox> {
-  dprint::Formatter::new(get_config())
-    .format_text(&PathBuf::from("_tmp.ts"), &source)
-    .map_err(|e| OpError::other(e).into())
-}
-
 fn files_str(len: usize) -> &'static str {
   if len == 1 {
     "file"
@@ -192,7 +216,7 @@ fn is_supported(path: &Path) -> bool {
     .and_then(|e| e.to_str())
     .map(|e| e.to_lowercase());
   if let Some(ext) = lowercase_ext {
-    ext == "ts" || ext == "tsx" || ext == "js" || ext == "jsx"
+    ext == "ts" || ext == "tsx" || ext == "js" || ext == "jsx" || ext == "mjs"
   } else {
     false
   }
@@ -201,6 +225,38 @@ fn is_supported(path: &Path) -> bool {
 fn get_config() -> dprint::configuration::Configuration {
   use dprint::configuration::*;
   ConfigurationBuilder::new().deno().build()
+}
+
+struct FileContents {
+  text: String,
+  had_bom: bool,
+}
+
+fn read_file_contents(file_path: &PathBuf) -> Result<FileContents, ErrBox> {
+  let file_text = fs::read_to_string(&file_path)?;
+  let had_bom = file_text.starts_with(BOM_CHAR);
+  let text = if had_bom {
+    // remove the BOM
+    String::from(&file_text[BOM_CHAR.len_utf8()..])
+  } else {
+    file_text
+  };
+
+  Ok(FileContents { text, had_bom })
+}
+
+fn write_file_contents(
+  file_path: &PathBuf,
+  file_contents: FileContents,
+) -> Result<(), ErrBox> {
+  let file_text = if file_contents.had_bom {
+    // add back the BOM
+    format!("{}{}", BOM_CHAR, file_contents.text)
+  } else {
+    file_contents.text
+  };
+
+  Ok(fs::write(file_path, file_text)?)
 }
 
 async fn run_parallelized<F>(
@@ -260,6 +316,8 @@ fn test_is_supported() {
   assert!(is_supported(Path::new("foo.TSX")));
   assert!(is_supported(Path::new("foo.JS")));
   assert!(is_supported(Path::new("foo.JSX")));
+  assert!(is_supported(Path::new("foo.mjs")));
+  assert!(!is_supported(Path::new("foo.mjsx")));
 }
 
 #[tokio::test]

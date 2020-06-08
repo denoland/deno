@@ -45,16 +45,24 @@ unitTest(function webAssemblyExists(): void {
   assert(typeof WebAssembly.compile === "function");
 });
 
+/* eslint-disable @typescript-eslint/no-namespace, @typescript-eslint/no-explicit-any,no-var */
+declare global {
+  namespace Deno {
+    var core: any;
+  }
+}
+/* eslint-enable */
+
 unitTest(function DenoNamespaceImmutable(): void {
   const denoCopy = window.Deno;
   try {
-    // @ts-ignore
-    Deno = 1;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (Deno as any) = 1;
   } catch {}
   assert(denoCopy === Deno);
   try {
-    // @ts-ignore
-    window.Deno = 1;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).Deno = 1;
   } catch {}
   assert(denoCopy === Deno);
   try {
@@ -64,8 +72,8 @@ unitTest(function DenoNamespaceImmutable(): void {
 
   const { readFile } = Deno;
   try {
-    // @ts-ignore
-    Deno.readFile = 1;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (Deno as any).readFile = 1;
   } catch {}
   assert(readFile === Deno.readFile);
   try {
@@ -73,19 +81,14 @@ unitTest(function DenoNamespaceImmutable(): void {
   } catch {}
   assert(readFile === Deno.readFile);
 
-  // @ts-ignore
   const { print } = Deno.core;
   try {
-    // @ts-ignore
     Deno.core.print = 1;
   } catch {}
-  // @ts-ignore
   assert(print === Deno.core.print);
   try {
-    // @ts-ignore
     delete Deno.core.print;
   } catch {}
-  // @ts-ignore
   assert(print === Deno.core.print);
 });
 

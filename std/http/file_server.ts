@@ -1,4 +1,4 @@
-#!/usr/bin/env -S deno --allow-net
+#!/usr/bin/env -S deno run --allow-net --allow-read
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 // This program serves files in the current directory over HTTP.
@@ -10,7 +10,7 @@ const { args, stat, readDir, open, exit } = Deno;
 import { posix, extname } from "../path/mod.ts";
 import { listenAndServe, ServerRequest, Response } from "./server.ts";
 import { parse } from "../flags/mod.ts";
-import { assert } from "../testing/asserts.ts";
+import { assert } from "../_util/assert.ts";
 
 interface EntryInfo {
   mode: string;
@@ -34,10 +34,7 @@ interface FileServerArgs {
 const encoder = new TextEncoder();
 
 const serverArgs = parse(args) as FileServerArgs;
-
-const CORSEnabled = serverArgs.cors ? true : false;
 const target = posix.resolve(serverArgs._[0] ?? "");
-const addr = `0.0.0.0:${serverArgs.port ?? serverArgs.p ?? 4507}`;
 
 const MEDIA_TYPES: Record<string, string> = {
   ".md": "text/markdown",
@@ -52,28 +49,12 @@ const MEDIA_TYPES: Record<string, string> = {
   ".jsx": "text/jsx",
   ".gz": "application/gzip",
   ".css": "text/css",
+  ".wasm": "application/wasm",
 };
 
 /** Returns the content-type based on the extension of a path. */
 function contentType(path: string): string | undefined {
   return MEDIA_TYPES[extname(path)];
-}
-
-if (serverArgs.h ?? serverArgs.help) {
-  console.log(`Deno File Server
-  Serves a local directory in HTTP.
-
-INSTALL:
-  deno install --allow-net --allow-read https://deno.land/std/http/file_server.ts
-
-USAGE:
-  file_server [path] [options]
-
-OPTIONS:
-  -h, --help          Prints help information
-  -p, --port <PORT>   Set port
-  --cors              Enable CORS via the "Access-Control-Allow-Origin" header`);
-  exit();
 }
 
 function modeToString(isDir: boolean, maybeMode: number | null): string {
@@ -126,6 +107,9 @@ export async function serveFile(
   if (contentTypeValue) {
     headers.set("content-type", contentTypeValue);
   }
+  req.done.then(() => {
+    file.close();
+  });
   return {
     status: 200,
     body: file,
@@ -315,6 +299,26 @@ function html(strings: TemplateStringsArray, ...values: unknown[]): string {
 }
 
 function main(): void {
+  const CORSEnabled = serverArgs.cors ? true : false;
+  const addr = `0.0.0.0:${serverArgs.port ?? serverArgs.p ?? 4507}`;
+
+  if (serverArgs.h ?? serverArgs.help) {
+    console.log(`Deno File Server
+    Serves a local directory in HTTP.
+  
+  INSTALL:
+    deno install --allow-net --allow-read https://deno.land/std/http/file_server.ts
+  
+  USAGE:
+    file_server [path] [options]
+  
+  OPTIONS:
+    -h, --help          Prints help information
+    -p, --port <PORT>   Set port
+    --cors              Enable CORS via the "Access-Control-Allow-Origin" header`);
+    exit();
+  }
+
   listenAndServe(
     addr,
     async (req): Promise<void> => {
