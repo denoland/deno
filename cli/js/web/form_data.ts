@@ -22,7 +22,7 @@ class FormDataBase {
     if (value instanceof domFile.DomFileImpl) {
       this[dataSymbol].push([name, value]);
     } else if (value instanceof blob.DenoBlob) {
-      const dfile = new domFile.DomFileImpl([value], filename || name, {
+      const dfile = new domFile.DomFileImpl([value], filename || "blob", {
         type: value.type,
       });
       this[dataSymbol].push([name, dfile]);
@@ -96,7 +96,7 @@ class FormDataBase {
           if (value instanceof domFile.DomFileImpl) {
             this[dataSymbol][i][1] = value;
           } else if (value instanceof blob.DenoBlob) {
-            const dfile = new domFile.DomFileImpl([value], filename || name, {
+            const dfile = new domFile.DomFileImpl([value], filename || "blob", {
               type: value.type,
             });
             this[dataSymbol][i][1] = dfile;
@@ -117,7 +117,7 @@ class FormDataBase {
       if (value instanceof domFile.DomFileImpl) {
         this[dataSymbol].push([name, value]);
       } else if (value instanceof blob.DenoBlob) {
-        const dfile = new domFile.DomFileImpl([value], filename || name, {
+        const dfile = new domFile.DomFileImpl([value], filename || "blob", {
           type: value.type,
         });
         this[dataSymbol].push([name, dfile]);
@@ -137,3 +137,8 @@ export class FormDataImpl extends DomIterableMixin<
   FormDataEntryValue,
   typeof FormDataBase
 >(FormDataBase, dataSymbol) {}
+
+Object.defineProperty(FormDataImpl, "name", {
+  value: "FormData",
+  configurable: true,
+});

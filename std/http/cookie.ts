@@ -2,7 +2,7 @@
 // Structured similarly to Go's cookie.go
 // https://github.com/golang/go/blob/master/src/net/http/cookie.go
 import { ServerRequest, Response } from "./server.ts";
-import { assert } from "../testing/asserts.ts";
+import { assert } from "../_util/assert.ts";
 import { toIMF } from "../datetime/mod.ts";
 
 export interface Cookies {
@@ -24,7 +24,7 @@ export interface Cookie {
   path?: string;
   /** Indicates if the cookie is made using SSL & HTTPS. */
   secure?: boolean;
-  /** Indicates that cookie is not accessible via Javascript. **/
+  /** Indicates that cookie is not accessible via JavaScript. **/
   httpOnly?: boolean;
   /** Allows servers to assert that a cookie ought not to
    * be sent along with cross-site requests. */
@@ -130,9 +130,9 @@ export function setCookie(res: Response, cookie: Cookie): void {
  * @param name Name of the cookie to Delete
  * Example:
  *
- *     delCookie(res,'foo');
+ *     deleteCookie(res,'foo');
  */
-export function delCookie(res: Response, name: string): void {
+export function deleteCookie(res: Response, name: string): void {
   setCookie(res, {
     name: name,
     value: "",

@@ -21,6 +21,7 @@
 
 import "./global.ts";
 
+import * as nodeBuffer from "./buffer.ts";
 import * as nodeFS from "./fs.ts";
 import * as nodeUtil from "./util.ts";
 import * as nodePath from "./path.ts";
@@ -30,7 +31,8 @@ import * as nodeEvents from "./events.ts";
 import * as nodeQueryString from "./querystring.ts";
 
 import * as path from "../path/mod.ts";
-import { assert } from "../testing/asserts.ts";
+import { assert } from "../_util/assert.ts";
+import { pathToFileURL, fileURLToPath } from "./url.ts";
 
 const CHAR_FORWARD_SLASH = "/".charCodeAt(0);
 const CHAR_BACKWARD_SLASH = "\\".charCodeAt(0);
@@ -261,10 +263,11 @@ class Module {
       if (requireStack.length > 0) {
         message = message + "\nRequire stack:\n- " + requireStack.join("\n- ");
       }
-      const err = new Error(message);
-      // @ts-ignore
+      const err = new Error(message) as Error & {
+        code: string;
+        requireStack: string[];
+      };
       err.code = "MODULE_NOT_FOUND";
-      // @ts-ignore
       err.requireStack = requireStack;
       throw err;
     }
@@ -593,6 +596,7 @@ function createNativeModule(id: string, exports: any): Module {
   return mod;
 }
 
+nativeModulePolyfill.set("buffer", createNativeModule("buffer", nodeBuffer));
 nativeModulePolyfill.set("fs", createNativeModule("fs", nodeFS));
 nativeModulePolyfill.set("events", createNativeModule("events", nodeEvents));
 nativeModulePolyfill.set("os", createNativeModule("os", nodeOs));
@@ -731,12 +735,10 @@ function tryPackage(
   if (actual === false) {
     actual = tryExtensions(path.resolve(requestPath, "index"), exts, isMain);
     if (!actual) {
-      // eslint-disable-next-line no-restricted-syntax
       const err = new Error(
         `Cannot find module '${filename}'. ` +
           'Please verify that the package.json has a valid "main" entry'
-      );
-      // @ts-ignore
+      ) as Error & { code: string };
       err.code = "MODULE_NOT_FOUND";
       throw err;
     }
@@ -880,8 +882,7 @@ function applyExports(basePath: string, expansion: string): string {
   const e = new Error(
     `Package exports for '${basePath}' do not define ` +
       `a '${mappingKey}' subpath`
-  );
-  // @ts-ignore
+  ) as Error & { code?: string };
   e.code = "MODULE_NOT_FOUND";
   throw e;
 }
@@ -972,7 +973,7 @@ function resolveExportsTarget(
       }
     }
   }
-  let e: Error;
+  let e: Error & { code?: string };
   if (mappingKey !== ".") {
     e = new Error(
       `Package exports for '${basePath}' do not define a ` +
@@ -981,7 +982,6 @@ function resolveExportsTarget(
   } else {
     e = new Error(`No valid exports main found for '${basePath}'`);
   }
-  // @ts-ignore
   e.code = "MODULE_NOT_FOUND";
   throw e;
 }
@@ -1000,13 +1000,12 @@ function emitCircularRequireWarning(prop: any): void {
 }
 
 // A Proxy that can be used as the prototype of a module.exports object and
-// warns when non-existend properties are accessed.
+// warns when non-existent properties are accessed.
 const CircularRequirePrototypeWarningProxy = new Proxy(
   {},
   {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    get(target, prop): any {
-      // @ts-ignore
+    get(target: Record<string, any>, prop: string): any {
       if (prop in target) return target[prop];
       emitCircularRequireWarning(prop);
       return undefined;
@@ -1057,8 +1056,8 @@ type RequireWrapper = (
 function wrapSafe(filename: string, content: string): RequireWrapper {
   // TODO: fix this
   const wrapper = Module.wrap(content);
-  // @ts-ignore
-  const [f, err] = Deno.core.evalContext(wrapper, filename);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [f, err] = (Deno as any).core.evalContext(wrapper, filename);
   if (err) {
     throw err;
   }
@@ -1160,103 +1159,6 @@ function stripBOM(content: string): string {
     content = content.slice(1);
   }
   return content;
-}
-
-const forwardSlashRegEx = /\//g;
-const CHAR_LOWERCASE_A = "a".charCodeAt(0);
-const CHAR_LOWERCASE_Z = "z".charCodeAt(0);
-
-function getPathFromURLWin32(url: URL): string {
-  // const hostname = url.hostname;
-  let pathname = url.pathname;
-  for (let n = 0; n < pathname.length; n++) {
-    if (pathname[n] === "%") {
-      const third = pathname.codePointAt(n + 2)! | 0x20;
-      if (
-        (pathname[n + 1] === "2" && third === 102) || // 2f 2F /
-        (pathname[n + 1] === "5" && third === 99)
-      ) {
-        // 5c 5C \
-        throw new Error(
-          "Invalid file url path: must not include encoded \\ or / characters"
-        );
-      }
-    }
-  }
-  pathname = pathname.replace(forwardSlashRegEx, "\\");
-  pathname = decodeURIComponent(pathname);
-  // TODO: handle windows hostname case (needs bindings)
-  const letter = pathname.codePointAt(1)! | 0x20;
-  const sep = pathname[2];
-  if (
-    letter < CHAR_LOWERCASE_A ||
-    letter > CHAR_LOWERCASE_Z || // a..z A..Z
-    sep !== ":"
-  ) {
-    throw new Error("Invalid file URL path: must be absolute");
-  }
-  return pathname.slice(1);
-}
-
-function getPathFromURLPosix(url: URL): string {
-  if (url.hostname !== "") {
-    throw new Error("Invalid file URL host");
-  }
-  const pathname = url.pathname;
-  for (let n = 0; n < pathname.length; n++) {
-    if (pathname[n] === "%") {
-      const third = pathname.codePointAt(n + 2)! | 0x20;
-      if (pathname[n + 1] === "2" && third === 102) {
-        throw new Error(
-          "Invalid file URL path: must not include encoded / characters"
-        );
-      }
-    }
-  }
-  return decodeURIComponent(pathname);
-}
-
-function fileURLToPath(path: string | URL): string {
-  if (typeof path === "string") {
-    path = new URL(path);
-  }
-  if (path.protocol !== "file:") {
-    throw new Error("Protocol has to be file://");
-  }
-  return isWindows ? getPathFromURLWin32(path) : getPathFromURLPosix(path);
-}
-
-const percentRegEx = /%/g;
-const backslashRegEx = /\\/g;
-const newlineRegEx = /\n/g;
-const carriageReturnRegEx = /\r/g;
-const tabRegEx = /\t/g;
-function pathToFileURL(filepath: string): URL {
-  let resolved = path.resolve(filepath);
-  // path.resolve strips trailing slashes so we must add them back
-  const filePathLast = filepath.charCodeAt(filepath.length - 1);
-  if (
-    (filePathLast === CHAR_FORWARD_SLASH ||
-      (isWindows && filePathLast === CHAR_BACKWARD_SLASH)) &&
-    resolved[resolved.length - 1] !== path.sep
-  ) {
-    resolved += "/";
-  }
-  const outURL = new URL("file://");
-  if (resolved.includes("%")) resolved = resolved.replace(percentRegEx, "%25");
-  // In posix, "/" is a valid character in paths
-  if (!isWindows && resolved.includes("\\")) {
-    resolved = resolved.replace(backslashRegEx, "%5C");
-  }
-  if (resolved.includes("\n")) {
-    resolved = resolved.replace(newlineRegEx, "%0A");
-  }
-  if (resolved.includes("\r")) {
-    resolved = resolved.replace(carriageReturnRegEx, "%0D");
-  }
-  if (resolved.includes("\t")) resolved = resolved.replace(tabRegEx, "%09");
-  outURL.pathname = resolved;
-  return outURL;
 }
 
 export const builtinModules = Module.builtinModules;

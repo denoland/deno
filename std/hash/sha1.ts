@@ -7,20 +7,22 @@
  * @license MIT
  */
 
-const HEX_CHARS = "0123456789abcdef".split("");
-const EXTRA = Uint32Array.of(-2147483648, 8388608, 32768, 128);
-const SHIFT = Uint32Array.of(24, 16, 8, 0);
+export type Message = string | number[] | ArrayBuffer;
 
-const blocks = new Uint32Array(80);
+const HEX_CHARS = "0123456789abcdef".split("");
+const EXTRA = [-2147483648, 8388608, 32768, 128] as const;
+const SHIFT = [24, 16, 8, 0] as const;
+
+const blocks: number[] = [];
 
 export class Sha1 {
-  #blocks: Uint32Array;
-  #block: number;
-  #start: number;
-  #bytes: number;
-  #hBytes: number;
-  #finalized: boolean;
-  #hashed: boolean;
+  #blocks!: number[];
+  #block!: number;
+  #start!: number;
+  #bytes!: number;
+  #hBytes!: number;
+  #finalized!: boolean;
+  #hashed!: boolean;
 
   #h0 = 0x67452301;
   #h1 = 0xefcdab89;
@@ -31,9 +33,10 @@ export class Sha1 {
 
   constructor(sharedMemory = false) {
     if (sharedMemory) {
-      this.#blocks = blocks.fill(0, 0, 17);
+      blocks[0] = blocks[16] = blocks[1] = blocks[2] = blocks[3] = blocks[4] = blocks[5] = blocks[6] = blocks[7] = blocks[8] = blocks[9] = blocks[10] = blocks[11] = blocks[12] = blocks[13] = blocks[14] = blocks[15] = 0;
+      this.#blocks = blocks;
     } else {
-      this.#blocks = new Uint32Array(80);
+      this.#blocks = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
     }
 
     this.#h0 = 0x67452301;
@@ -46,41 +49,37 @@ export class Sha1 {
     this.#finalized = this.#hashed = false;
   }
 
-  update(data: string | ArrayBuffer | ArrayBufferView): Sha1 {
+  update(message: Message): this {
     if (this.#finalized) {
       return this;
     }
-    let notString = true;
-    let message;
-    if (data instanceof ArrayBuffer) {
-      message = new Uint8Array(data);
-    } else if (ArrayBuffer.isView(data)) {
-      message = new Uint8Array(data.buffer);
+
+    let msg: string | number[] | Uint8Array | undefined;
+    if (message instanceof ArrayBuffer) {
+      msg = new Uint8Array(message);
     } else {
-      notString = false;
-      message = String(data);
+      msg = message;
     }
-    let code;
+
     let index = 0;
-    let i;
-    const start = this.#start;
-    const length = message.length || 0;
+    const length = msg.length;
     const blocks = this.#blocks;
 
     while (index < length) {
+      let i: number;
       if (this.#hashed) {
         this.#hashed = false;
         blocks[0] = this.#block;
-        blocks.fill(0, 1, 17);
+        blocks[16] = blocks[1] = blocks[2] = blocks[3] = blocks[4] = blocks[5] = blocks[6] = blocks[7] = blocks[8] = blocks[9] = blocks[10] = blocks[11] = blocks[12] = blocks[13] = blocks[14] = blocks[15] = 0;
       }
 
-      if (notString) {
-        for (i = start; index < length && i < 64; ++index) {
-          blocks[i >> 2] |= (message[index] as number) << SHIFT[i++ & 3];
+      if (typeof msg !== "string") {
+        for (i = this.#start; index < length && i < 64; ++index) {
+          blocks[i >> 2] |= msg[index] << SHIFT[i++ & 3];
         }
       } else {
-        for (i = start; index < length && i < 64; ++index) {
-          code = (message as string).charCodeAt(index);
+        for (i = this.#start; index < length && i < 64; ++index) {
+          let code = msg.charCodeAt(index);
           if (code < 0x80) {
             blocks[i >> 2] |= code << SHIFT[i++ & 3];
           } else if (code < 0x800) {
@@ -93,8 +92,7 @@ export class Sha1 {
           } else {
             code =
               0x10000 +
-              (((code & 0x3ff) << 10) |
-                ((message as string).charCodeAt(++index) & 0x3ff));
+              (((code & 0x3ff) << 10) | (msg.charCodeAt(++index) & 0x3ff));
             blocks[i >> 2] |= (0xf0 | (code >> 18)) << SHIFT[i++ & 3];
             blocks[i >> 2] |= (0x80 | ((code >> 12) & 0x3f)) << SHIFT[i++ & 3];
             blocks[i >> 2] |= (0x80 | ((code >> 6) & 0x3f)) << SHIFT[i++ & 3];
@@ -104,7 +102,7 @@ export class Sha1 {
       }
 
       this.#lastByteIndex = i;
-      this.#bytes += i - start;
+      this.#bytes += i - this.#start;
       if (i >= 64) {
         this.#block = blocks[16];
         this.#start = i - 64;
@@ -121,7 +119,7 @@ export class Sha1 {
     return this;
   }
 
-  finalize(): void {
+  private finalize(): void {
     if (this.#finalized) {
       return;
     }
@@ -136,20 +134,22 @@ export class Sha1 {
         this.hash();
       }
       blocks[0] = this.#block;
-      blocks.fill(0, 1, 17);
+      blocks[16] = blocks[1] = blocks[2] = blocks[3] = blocks[4] = blocks[5] = blocks[6] = blocks[7] = blocks[8] = blocks[9] = blocks[10] = blocks[11] = blocks[12] = blocks[13] = blocks[14] = blocks[15] = 0;
     }
     blocks[14] = (this.#hBytes << 3) | (this.#bytes >>> 29);
     blocks[15] = this.#bytes << 3;
     this.hash();
   }
 
-  hash(): void {
+  private hash(): void {
     let a = this.#h0;
     let b = this.#h1;
     let c = this.#h2;
     let d = this.#h3;
     let e = this.#h4;
-    let f, j, t;
+    let f: number;
+    let j: number;
+    let t: number;
     const blocks = this.#blocks;
 
     for (j = 16; j < 80; ++j) {
@@ -368,7 +368,15 @@ export class Sha1 {
 
   arrayBuffer(): ArrayBuffer {
     this.finalize();
-    return Uint32Array.of(this.#h0, this.#h1, this.#h2, this.#h3, this.#h4)
-      .buffer;
+
+    const buffer = new ArrayBuffer(20);
+    const dataView = new DataView(buffer);
+    dataView.setUint32(0, this.#h0);
+    dataView.setUint32(4, this.#h1);
+    dataView.setUint32(8, this.#h2);
+    dataView.setUint32(12, this.#h3);
+    dataView.setUint32(16, this.#h4);
+
+    return buffer;
   }
 }

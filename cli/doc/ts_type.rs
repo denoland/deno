@@ -69,6 +69,21 @@ impl Into<TsTypeDef> for &TsLitType {
           boolean: None,
         },
       ),
+      TsLit::Tpl(tpl) => {
+        // A template literal in a type is not allowed to have
+        // expressions, so there will only be one quasi.
+        let quasi = tpl.quasis.get(0).expect("Expected tpl to have a quasi.");
+        let text = quasi.raw.value.to_string();
+        (
+          text.clone(),
+          LiteralDef {
+            kind: LiteralDefKind::String, // semantically the same
+            number: None,
+            string: Some(text),
+            boolean: None,
+          },
+        )
+      }
       TsLit::Bool(bool_) => (
         bool_.value.to_string(),
         LiteralDef {

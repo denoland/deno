@@ -6,17 +6,13 @@ let System, __instantiateAsync, __instantiate;
 })();
 
 System.register("print_hello", [], function (exports_1, context_1) {
-  [WILDCARD]
+[WILDCARD]
 });
-System.register(
-  "subdir2/mod2",
-  ["print_hello"],
-  function (exports_2, context_2) {
-    [WILDCARD]
-  },
-);
+System.register("subdir2/mod2", ["print_hello"], function (exports_2, context_2) {
+[WILDCARD]
+});
 System.register("mod1", ["subdir2/mod2"], function (exports_3, context_3) {
-  [WILDCARD]
+[WILDCARD]
 });
 
 const __exp = __instantiate("mod1");

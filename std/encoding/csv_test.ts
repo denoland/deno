@@ -385,7 +385,6 @@ x,,,
       "#ignore\n".repeat(10000) + "@".repeat(5000) + "," + "*".repeat(5000),
     Output: [["@".repeat(5000), "*".repeat(5000)]],
     Comment: "#",
-    ignore: true, // TODO(#4521)
   },
   {
     Name: "QuoteWithTrailingCRLF",
@@ -455,7 +454,6 @@ x,,,
 ];
 for (const t of testCases) {
   Deno.test({
-    ignore: !!t.ignore,
     name: `[CSV] ${t.Name}`,
     async fn(): Promise<void> {
       let comma = ",";

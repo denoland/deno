@@ -1,5 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { red, green, white, gray, bold } from "../fmt/colors.ts";
+/** This module is browser compatible. Do not rely on good formatting of values
+ * for AssertionError messages in browsers. */
+
+import { red, green, white, gray, bold, stripColor } from "../fmt/colors.ts";
 import diff, { DiffType, DiffResult } from "./diff.ts";
 
 const CAN_NOT_DISPLAY = "[Cannot display]";
@@ -17,7 +20,7 @@ export class AssertionError extends Error {
 }
 
 function format(v: unknown): string {
-  let string = Deno.inspect(v);
+  let string = globalThis.Deno ? Deno.inspect(v) : String(v);
   if (typeof v == "string") {
     string = `"${string.replace(/(?=["\\])/g, "\\")}"`;
   }
@@ -156,7 +159,8 @@ export function assertEquals(
       actualString.split("\n"),
       expectedString.split("\n")
     );
-    message = buildMessage(diffResult).join("\n");
+    const diffMsg = buildMessage(diffResult).join("\n");
+    message = `Values are not equal:\n${diffMsg}`;
   } catch (e) {
     message = `\n${red(CAN_NOT_DISPLAY)} + \n\n`;
   }
@@ -200,43 +204,60 @@ export function assertNotEquals(
  * Make an assertion that `actual` and `expected` are strictly equal.  If
  * not then throw.
  */
-export function assertStrictEq(
+export function assertStrictEquals(
   actual: unknown,
   expected: unknown,
   msg?: string
 ): void {
-  if (actual !== expected) {
-    let actualString: string;
-    let expectedString: string;
-    try {
-      actualString = String(actual);
-    } catch (e) {
-      actualString = "[Cannot display]";
-    }
-    try {
-      expectedString = String(expected);
-    } catch (e) {
-      expectedString = "[Cannot display]";
-    }
-    if (!msg) {
-      msg = `actual: ${actualString} expected: ${expectedString}`;
-    }
-    throw new AssertionError(msg);
+  if (actual === expected) {
+    return;
   }
+
+  let message: string;
+
+  if (msg) {
+    message = msg;
+  } else {
+    const actualString = format(actual);
+    const expectedString = format(expected);
+
+    if (actualString === expectedString) {
+      const withOffset = actualString
+        .split("\n")
+        .map((l) => `     ${l}`)
+        .join("\n");
+      message = `Values have the same structure but are not reference-equal:\n\n${red(
+        withOffset
+      )}\n`;
+    } else {
+      try {
+        const diffResult = diff(
+          actualString.split("\n"),
+          expectedString.split("\n")
+        );
+        const diffMsg = buildMessage(diffResult).join("\n");
+        message = `Values are not strictly equal:\n${diffMsg}`;
+      } catch (e) {
+        message = `\n${red(CAN_NOT_DISPLAY)} + \n\n`;
+      }
+    }
+  }
+
+  throw new AssertionError(message);
 }
 
 /**
  * Make an assertion that actual contains expected. If not
  * then thrown.
  */
-export function assertStrContains(
+export function assertStringContains(
   actual: string,
   expected: string,
   msg?: string
 ): void {
   if (!actual.includes(expected)) {
     if (!msg) {
-      msg = `actual: "${actual}" expected to contains: "${expected}"`;
+      msg = `actual: "${actual}" expected to contain: "${expected}"`;
     }
     throw new AssertionError(msg);
   }
@@ -268,9 +289,9 @@ export function assertArrayContains(
     return;
   }
   if (!msg) {
-    msg = `actual: "${actual}" expected to contains: "${expected}"`;
-    msg += "\n";
-    msg += `missing: ${missing}`;
+    msg = `actual: "${format(actual)}" expected to contain: "${format(
+      expected
+    )}"\nmissing: ${format(missing)}`;
   }
   throw new AssertionError(msg);
 }
@@ -304,8 +325,8 @@ export function fail(msg?: string): void {
  * throws.  An error class and a string that should be included in the
  * error message can also be asserted.
  */
-export function assertThrows(
-  fn: () => void,
+export function assertThrows<T = void>(
+  fn: () => T,
   ErrorClass?: Constructor,
   msgIncludes = "",
   msg?: string
@@ -321,7 +342,10 @@ export function assertThrows(
       }"${msg ? `: ${msg}` : "."}`;
       throw new AssertionError(msg);
     }
-    if (msgIncludes && !e.message.includes(msgIncludes)) {
+    if (
+      msgIncludes &&
+      !stripColor(e.message).includes(stripColor(msgIncludes))
+    ) {
       msg = `Expected error message to include "${msgIncludes}", but got "${
         e.message
       }"${msg ? `: ${msg}` : "."}`;
@@ -337,8 +361,8 @@ export function assertThrows(
   return error;
 }
 
-export async function assertThrowsAsync(
-  fn: () => Promise<void>,
+export async function assertThrowsAsync<T = void>(
+  fn: () => Promise<T>,
   ErrorClass?: Constructor,
   msgIncludes = "",
   msg?: string
@@ -354,7 +378,10 @@ export async function assertThrowsAsync(
       }"${msg ? `: ${msg}` : "."}`;
       throw new AssertionError(msg);
     }
-    if (msgIncludes && !e.message.includes(msgIncludes)) {
+    if (
+      msgIncludes &&
+      !stripColor(e.message).includes(stripColor(msgIncludes))
+    ) {
       msg = `Expected error message to include "${msgIncludes}", but got "${
         e.message
       }"${msg ? `: ${msg}` : "."}`;

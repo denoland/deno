@@ -9,14 +9,13 @@
  * @license MIT
  */
 
-export type Message = string | number[] | ArrayBuffer | Uint8Array;
+export type Message = string | number[] | ArrayBuffer;
 
-const ERROR = "input is invalid type";
 const HEX_CHARS = "0123456789abcdef".split("");
 const EXTRA = [-2147483648, 8388608, 32768, 128] as const;
 const SHIFT = [24, 16, 8, 0] as const;
 // prettier-ignore
-// dprint-ignore
+// deno-fmt-ignore
 const K = [
   0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1,
   0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3,
@@ -100,25 +99,14 @@ export class Sha256 {
     if (this.#finalized) {
       return this;
     }
+
     let msg: string | number[] | Uint8Array | undefined;
-    if (typeof message !== "string") {
-      if (typeof message === "object") {
-        if (message === null) {
-          throw new Error(ERROR);
-        } else if (message instanceof ArrayBuffer) {
-          msg = new Uint8Array(message);
-        } else if (!Array.isArray(message)) {
-          if (!ArrayBuffer.isView(message)) {
-            throw new Error(ERROR);
-          }
-        }
-      } else {
-        throw new Error(ERROR);
-      }
+    if (message instanceof ArrayBuffer) {
+      msg = new Uint8Array(message);
+    } else {
+      msg = message;
     }
-    if (msg === undefined) {
-      msg = message as string | number[];
-    }
+
     let index = 0;
     const length = msg.length;
     const blocks = this.#blocks;
@@ -524,22 +512,11 @@ export class HmacSha256 extends Sha256 {
       }
       key = bytes;
     } else {
-      if (typeof secretKey === "object") {
-        if (secretKey === null) {
-          throw new Error(ERROR);
-        } else if (secretKey instanceof ArrayBuffer) {
-          key = new Uint8Array(secretKey);
-        } else if (!Array.isArray(secretKey)) {
-          if (!ArrayBuffer.isView(secretKey)) {
-            throw new Error(ERROR);
-          }
-        }
+      if (secretKey instanceof ArrayBuffer) {
+        key = new Uint8Array(secretKey);
       } else {
-        throw new Error(ERROR);
+        key = secretKey;
       }
-    }
-    if (key === undefined) {
-      key = secretKey as number[] | Uint8Array;
     }
 
     if (key.length > 64) {

@@ -22,21 +22,23 @@ fn with_io_context<T: AsRef<str>>(
 }
 
 impl DiskCache {
+  /// `location` must be an absolute path.
   pub fn new(location: &Path) -> Self {
+    assert!(location.is_absolute());
     Self {
       location: location.to_owned(),
     }
   }
 
   /// Ensures the location of the cache.
-  pub fn ensure_location(&self) -> io::Result<()> {
-    if self.location.is_dir() {
+  pub fn ensure_dir_exists(&self, path: &Path) -> io::Result<()> {
+    if path.is_dir() {
       return Ok(());
     }
-    fs::create_dir_all(&self.location).map_err(|e| {
+    fs::create_dir_all(&path).map_err(|e| {
       io::Error::new(e.kind(), format!(
         "Could not create TypeScript compiler cache location: {:?}\nCheck the permission of the directory.",
-        self.location
+        path
       ))
     })
   }
@@ -127,8 +129,7 @@ impl DiskCache {
   pub fn set(&self, filename: &Path, data: &[u8]) -> std::io::Result<()> {
     let path = self.location.join(filename);
     match path.parent() {
-      Some(ref parent) => fs::create_dir_all(parent)
-        .map_err(|e| with_io_context(&e, format!("{:#?}", &path))),
+      Some(ref parent) => self.ensure_dir_exists(parent),
       None => Ok(()),
     }?;
     deno_fs::write_file(&path, data, 0o666)
@@ -152,7 +153,9 @@ mod tests {
     let mut cache_path = cache_location.path().to_owned();
     cache_path.push("foo");
     let cache = DiskCache::new(&cache_path);
-    cache.ensure_location().expect("Testing expect:");
+    cache
+      .ensure_dir_exists(&cache.location)
+      .expect("Testing expect:");
     assert!(cache_path.is_dir());
   }
 
@@ -164,7 +167,9 @@ mod tests {
     cache_location.push("foo");
     assert_eq!(cache_location.is_dir(), false);
     let cache = DiskCache::new(&cache_location);
-    cache.ensure_location().expect("Testing expect:");
+    cache
+      .ensure_dir_exists(&cache.location)
+      .expect("Testing expect:");
     assert_eq!(cache_location.is_dir(), true);
   }
 
@@ -211,7 +216,12 @@ mod tests {
 
   #[test]
   fn test_get_cache_filename_with_extension() {
-    let cache = DiskCache::new(&PathBuf::from("foo"));
+    let p = if cfg!(target_os = "windows") {
+      "C:\\foo"
+    } else {
+      "/foo"
+    };
+    let cache = DiskCache::new(&PathBuf::from(p));
 
     let mut test_cases = vec![
       (

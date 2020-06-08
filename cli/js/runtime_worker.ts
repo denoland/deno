@@ -22,7 +22,8 @@ import * as denoNs from "./deno.ts";
 import * as denoUnstableNs from "./deno_unstable.ts";
 import * as webWorkerOps from "./ops/web_worker.ts";
 import { log, assert, immutableDefine } from "./util.ts";
-import { MessageEvent, ErrorEvent } from "./web/workers.ts";
+import { ErrorEventImpl as ErrorEvent } from "./web/error_event.ts";
+import { MessageEvent } from "./web/workers.ts";
 import { TextEncoder } from "./web/text_encoding.ts";
 import * as runtime from "./runtime.ts";
 import { internalObject, internalSymbol } from "./internals.ts";
@@ -32,8 +33,8 @@ import { setSignals } from "./signals.ts";
 // TODO: factor out `Deno` global assignment to separate function
 // Add internal object to Deno object.
 // This is not exposed as part of the Deno types.
-// @ts-ignore
-denoNs[internalSymbol] = internalObject;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+(denoNs as any)[internalSymbol] = internalObject;
 
 const encoder = new TextEncoder();
 
@@ -127,8 +128,8 @@ export function bootstrapWorkerRuntime(
     throw new Error("Worker runtime already bootstrapped");
   }
   // Remove bootstrapping methods from global scope
-  // @ts-ignore
-  globalThis.bootstrap = undefined;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (globalThis as any).bootstrap = undefined;
   log("bootstrapWorkerRuntime");
   hasBootstrapped = true;
   Object.defineProperties(globalThis, windowOrWorkerGlobalScopeMethods);

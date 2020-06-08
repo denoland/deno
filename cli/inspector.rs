@@ -374,16 +374,11 @@ impl DenoInspector {
   pub fn new(
     isolate: &mut deno_core::CoreIsolate,
     host: SocketAddr,
-    wait_for_debugger: bool,
   ) -> Box<Self> {
-    let deno_core::CoreIsolate {
-      v8_isolate,
-      global_context,
-      ..
-    } = isolate;
+    let core_state_rc = deno_core::CoreIsolate::state(isolate);
+    let core_state = core_state_rc.borrow();
 
-    let v8_isolate = v8_isolate.as_mut().unwrap();
-    let mut hs = v8::HandleScope::new(v8_isolate);
+    let mut hs = v8::HandleScope::new(isolate);
     let scope = hs.enter();
 
     let (new_websocket_tx, new_websocket_rx) =
@@ -406,7 +401,7 @@ impl DenoInspector {
         v8::inspector::V8Inspector::create(scope, unsafe { &mut *self_ptr });
 
       let sessions = InspectorSessions::new(self_ptr, new_websocket_rx);
-      let flags = InspectorFlags::new(wait_for_debugger);
+      let flags = InspectorFlags::new();
       let waker = InspectorWaker::new(scope.isolate().thread_safe_handle());
 
       Self {
@@ -421,14 +416,11 @@ impl DenoInspector {
     });
 
     // Tell the inspector about the global context.
-    let context = global_context.get(scope).unwrap();
+    let context = core_state.global_context.get(scope).unwrap();
     let context_name = v8::inspector::StringView::from(&b"global context"[..]);
     self_.context_created(context, Self::CONTEXT_GROUP_ID, context_name);
 
     // Register this inspector with the server thread.
-    // Note: poll_sessions() might block if we need to wait for a
-    // debugger front-end to connect. Therefore the server thread must to be
-    // nofified *before* polling.
     InspectorServer::register_inspector(info);
 
     // Poll the session handler so we will get notified whenever there is
@@ -469,14 +461,9 @@ impl DenoInspector {
             replace(&mut self.flags.borrow_mut().session_handshake_done, false);
           match poll_result {
             Poll::Pending if handshake_done => {
-              let mut session = sessions.handshake.take().unwrap();
-              if replace(
-                &mut self.flags.borrow_mut().waiting_for_session,
-                false,
-              ) {
-                session.break_on_first_statement();
-              }
+              let session = sessions.handshake.take().unwrap();
               sessions.established.push(session);
+              take(&mut self.flags.borrow_mut().waiting_for_session);
             }
             Poll::Ready(_) => sessions.handshake = None,
             Poll::Pending => break,
@@ -547,6 +534,21 @@ impl DenoInspector {
       };
     }
   }
+
+  /// This function blocks the thread until at least one inspector client has
+  /// established a websocket connection and successfully completed the
+  /// handshake. After that, it instructs V8 to pause at the next statement.
+  pub fn wait_for_session_and_break_on_next_statement(&mut self) {
+    loop {
+      match self.sessions.get_mut().established.iter_mut().next() {
+        Some(session) => break session.break_on_next_statement(),
+        None => {
+          self.flags.get_mut().waiting_for_session = true;
+          let _ = self.poll_sessions(None).unwrap();
+        }
+      };
+    }
+  }
 }
 
 #[derive(Default)]
@@ -557,11 +559,8 @@ struct InspectorFlags {
 }
 
 impl InspectorFlags {
-  fn new(waiting_for_session: bool) -> RefCell<Self> {
-    let self_ = Self {
-      waiting_for_session,
-      ..Default::default()
-    };
+  fn new() -> RefCell<Self> {
+    let self_ = Self::default();
     RefCell::new(self_)
   }
 }
@@ -753,7 +752,7 @@ impl DenoInspectorSession {
     let _ = self.websocket_tx.unbounded_send(msg);
   }
 
-  pub fn break_on_first_statement(&mut self) {
+  pub fn break_on_next_statement(&mut self) {
     let reason = v8::inspector::StringView::from(&b"debugCommand"[..]);
     let detail = v8::inspector::StringView::empty();
     self.schedule_pause_on_next_statement(reason, detail);

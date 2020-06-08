@@ -22,7 +22,7 @@
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 import { validateIntegerRange } from "./util.ts";
-import { assert } from "../testing/asserts.ts";
+import { assert } from "../_util/assert.ts";
 
 export interface WrappedFunction extends Function {
   listener: Function;

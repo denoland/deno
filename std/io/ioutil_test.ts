@@ -9,8 +9,9 @@ import {
   readShort,
   sliceLongToBytes,
 } from "./ioutil.ts";
+import { StringReader } from "./readers.ts";
 import { BufReader } from "./bufio.ts";
-import { stringsReader, tempFile } from "./util.ts";
+import { tempFile } from "./util.ts";
 import * as path from "../path/mod.ts";
 
 class BinaryReader implements Reader {
@@ -73,7 +74,7 @@ Deno.test("testSliceLongToBytes2", function (): void {
 
 Deno.test("testCopyN1", async function (): Promise<void> {
   const w = new Buffer();
-  const r = stringsReader("abcdefghij");
+  const r = new StringReader("abcdefghij");
   const n = await copyN(r, w, 3);
   assertEquals(n, 3);
   assertEquals(new TextDecoder().decode(w.bytes()), "abc");
@@ -81,7 +82,7 @@ Deno.test("testCopyN1", async function (): Promise<void> {
 
 Deno.test("testCopyN2", async function (): Promise<void> {
   const w = new Buffer();
-  const r = stringsReader("abcdefghij");
+  const r = new StringReader("abcdefghij");
   const n = await copyN(r, w, 11);
   assertEquals(n, 10);
   assertEquals(new TextDecoder().decode(w.bytes()), "abcdefghij");
@@ -91,10 +92,17 @@ Deno.test("copyNWriteAllData", async function (): Promise<void> {
   const { filepath, file } = await tempFile(path.resolve("io"));
   const size = 16 * 1024 + 1;
   const data = "a".repeat(32 * 1024);
-  const r = stringsReader(data);
+  const r = new StringReader(data);
   const n = await copyN(r, file, size); // Over max file possible buffer
   file.close();
   await Deno.remove(filepath);
 
   assertEquals(n, size);
+});
+
+Deno.test("testStringReaderEof", async function (): Promise<void> {
+  const r = new StringReader("abc");
+  assertEquals(await r.read(new Uint8Array()), 0);
+  assertEquals(await r.read(new Uint8Array(4)), 3);
+  assertEquals(await r.read(new Uint8Array(1)), null);
 });

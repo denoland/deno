@@ -1,8 +1,8 @@
-use crate::tsc::CompiledModule;
 use serde_json::json;
 pub use serde_json::Value;
 use std::collections::HashMap;
 use std::io::Result;
+use url::Url;
 
 pub struct Lockfile {
   need_read: bool,
@@ -43,16 +43,17 @@ impl Lockfile {
 
   /// Lazily reads the filename, checks the given module is included.
   /// Returns Ok(true) if check passed
-  pub fn check(&mut self, m: &CompiledModule) -> Result<bool> {
-    if m.name.starts_with("file:") {
+  pub fn check(&mut self, url: &Url, code: Vec<u8>) -> Result<bool> {
+    let url_str = url.to_string();
+    if url_str.starts_with("file:") {
       return Ok(true);
     }
     if self.need_read {
       self.read()?;
     }
     assert!(!self.need_read);
-    Ok(if let Some(lockfile_checksum) = self.map.get(&m.name) {
-      let compiled_checksum = crate::checksum::gen2(&m.code);
+    Ok(if let Some(lockfile_checksum) = self.map.get(&url_str) {
+      let compiled_checksum = crate::checksum::gen(vec![&code]);
       lockfile_checksum == &compiled_checksum
     } else {
       false
@@ -60,11 +61,12 @@ impl Lockfile {
   }
 
   // Returns true if module was not already inserted.
-  pub fn insert(&mut self, m: &CompiledModule) -> bool {
-    if m.name.starts_with("file:") {
+  pub fn insert(&mut self, url: &Url, code: Vec<u8>) -> bool {
+    let url_str = url.to_string();
+    if url_str.starts_with("file:") {
       return false;
     }
-    let checksum = crate::checksum::gen2(&m.code);
-    self.map.insert(m.name.clone(), checksum).is_none()
+    let checksum = crate::checksum::gen(vec![&code]);
+    self.map.insert(url_str, checksum).is_none()
   }
 }

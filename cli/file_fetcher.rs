@@ -6,6 +6,7 @@ use crate::http_util::create_http_client;
 use crate::http_util::FetchOnceResult;
 use crate::msg;
 use crate::op_error::OpError;
+use crate::permissions::Permissions;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
 use futures::future::FutureExt;
@@ -33,6 +34,7 @@ pub struct SourceFile {
   pub url: Url,
   pub filename: PathBuf,
   pub types_url: Option<Url>,
+  pub types_header: Option<String>,
   pub media_type: msg::MediaType,
   pub source_code: Vec<u8>,
 }
@@ -109,6 +111,7 @@ impl SourceFileFetcher {
   pub fn fetch_cached_source_file(
     &self,
     specifier: &ModuleSpecifier,
+    permissions: Permissions,
   ) -> Option<SourceFile> {
     let maybe_source_file = self.source_file_cache.get(specifier.to_string());
 
@@ -123,7 +126,7 @@ impl SourceFileFetcher {
     // future, because it doesn't actually do any asynchronous
     // action in that path.
     if let Ok(maybe_source_file) =
-      self.get_source_file_from_local_cache(specifier.as_url())
+      self.get_source_file_from_local_cache(specifier.as_url(), &permissions)
     {
       return maybe_source_file;
     }
@@ -148,6 +151,7 @@ impl SourceFileFetcher {
     &self,
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
+    permissions: Permissions,
   ) -> Result<SourceFile, ErrBox> {
     let module_url = specifier.as_url().to_owned();
     debug!("fetch_source_file specifier: {} ", &module_url);
@@ -167,6 +171,7 @@ impl SourceFileFetcher {
         self.use_disk_cache,
         self.no_remote,
         self.cached_only,
+        &permissions,
       )
       .await;
 
@@ -222,6 +227,7 @@ impl SourceFileFetcher {
   fn get_source_file_from_local_cache(
     &self,
     module_url: &Url,
+    permissions: &Permissions,
   ) -> Result<Option<SourceFile>, ErrBox> {
     let url_scheme = module_url.scheme();
     let is_local_file = url_scheme == "file";
@@ -229,7 +235,7 @@ impl SourceFileFetcher {
 
     // Local files are always fetched from disk bypassing cache entirely.
     if is_local_file {
-      return self.fetch_local_file(&module_url).map(Some);
+      return self.fetch_local_file(&module_url, permissions).map(Some);
     }
 
     self.fetch_cached_remote_source(&module_url)
@@ -252,6 +258,7 @@ impl SourceFileFetcher {
     use_disk_cache: bool,
     no_remote: bool,
     cached_only: bool,
+    permissions: &Permissions,
   ) -> Result<SourceFile, ErrBox> {
     let url_scheme = module_url.scheme();
     let is_local_file = url_scheme == "file";
@@ -259,7 +266,7 @@ impl SourceFileFetcher {
 
     // Local files are always fetched from disk bypassing cache entirely.
     if is_local_file {
-      return self.fetch_local_file(&module_url);
+      return self.fetch_local_file(&module_url, permissions);
     }
 
     // The file is remote, fail if `no_remote` is true.
@@ -276,18 +283,29 @@ impl SourceFileFetcher {
 
     // Fetch remote file and cache on-disk for subsequent access
     self
-      .fetch_remote_source(&module_url, use_disk_cache, cached_only, 10)
+      .fetch_remote_source(
+        &module_url,
+        use_disk_cache,
+        cached_only,
+        10,
+        permissions,
+      )
       .await
   }
 
   /// Fetch local source file.
-  fn fetch_local_file(&self, module_url: &Url) -> Result<SourceFile, ErrBox> {
+  fn fetch_local_file(
+    &self,
+    module_url: &Url,
+    permissions: &Permissions,
+  ) -> Result<SourceFile, ErrBox> {
     let filepath = module_url.to_file_path().map_err(|()| {
       ErrBox::from(OpError::uri_error(
         "File URL contains invalid path".to_owned(),
       ))
     })?;
 
+    permissions.check_read(&filepath)?;
     let source_code = match fs::read(filepath.clone()) {
       Ok(c) => c,
       Err(e) => return Err(e.into()),
@@ -306,6 +324,7 @@ impl SourceFileFetcher {
       media_type,
       source_code,
       types_url,
+      types_header: None,
     })
   }
 
@@ -363,6 +382,7 @@ impl SourceFileFetcher {
       &fake_filepath,
       headers.get("content-type").map(|e| e.as_str()),
     );
+    let types_header = headers.get("x-typescript-types").map(|e| e.to_string());
     let types_url = match media_type {
       msg::MediaType::JavaScript | msg::MediaType::JSX => get_types_url(
         &module_url,
@@ -377,6 +397,7 @@ impl SourceFileFetcher {
       media_type,
       source_code,
       types_url,
+      types_header,
     }))
   }
 
@@ -390,9 +411,14 @@ impl SourceFileFetcher {
     use_disk_cache: bool,
     cached_only: bool,
     redirect_limit: i64,
+    permissions: &Permissions,
   ) -> Pin<Box<dyn Future<Output = Result<SourceFile, ErrBox>>>> {
     if redirect_limit < 0 {
       let e = OpError::http("too many redirects".to_string());
+      return futures::future::err(e.into()).boxed_local();
+    }
+
+    if let Err(e) = permissions.check_net_url(&module_url) {
       return futures::future::err(e.into()).boxed_local();
     }
 
@@ -441,6 +467,7 @@ impl SourceFileFetcher {
       Ok((_, headers)) => headers.get("etag").map(String::from),
       Err(_) => None,
     };
+    let permissions = permissions.clone();
     let http_client = self.http_client.clone();
     // Single pass fetch, either yields code or yields redirect.
     let f = async move {
@@ -463,6 +490,7 @@ impl SourceFileFetcher {
               use_disk_cache,
               cached_only,
               redirect_limit - 1,
+              &permissions,
             )
             .await
         }
@@ -478,6 +506,8 @@ impl SourceFileFetcher {
             headers.get("content-type").map(String::as_str),
           );
 
+          let types_header =
+            headers.get("x-typescript-types").map(String::to_string);
           let types_url = match media_type {
             msg::MediaType::JavaScript | msg::MediaType::JSX => get_types_url(
               &module_url,
@@ -493,6 +523,7 @@ impl SourceFileFetcher {
             media_type,
             source_code: source,
             types_url,
+            types_header,
           };
 
           Ok(source_file)
@@ -504,7 +535,7 @@ impl SourceFileFetcher {
   }
 }
 
-fn map_file_extension(path: &Path) -> msg::MediaType {
+pub fn map_file_extension(path: &Path) -> msg::MediaType {
   match path.extension() {
     None => msg::MediaType::Unknown,
     Some(os_str) => match os_str.to_str() {
@@ -513,6 +544,7 @@ fn map_file_extension(path: &Path) -> msg::MediaType {
       Some("js") => msg::MediaType::JavaScript,
       Some("jsx") => msg::MediaType::JSX,
       Some("mjs") => msg::MediaType::JavaScript,
+      Some("cjs") => msg::MediaType::JavaScript,
       Some("json") => msg::MediaType::Json,
       Some("wasm") => msg::MediaType::Wasm,
       _ => msg::MediaType::Unknown,
@@ -541,7 +573,8 @@ fn map_content_type(path: &Path, content_type: Option<&str>) -> msg::MediaType {
         | "text/javascript"
         | "application/ecmascript"
         | "text/ecmascript"
-        | "application/x-javascript" => {
+        | "application/x-javascript"
+        | "application/node" => {
           map_js_like_extension(path, msg::MediaType::JavaScript)
         }
         "application/json" | "text/json" => msg::MediaType::Json,
@@ -752,11 +785,15 @@ mod tests {
     if cfg!(windows) {
       // Should fail: missing drive letter.
       let u = Url::parse("file:///etc/passwd").unwrap();
-      fetcher.fetch_local_file(&u).unwrap_err();
+      fetcher
+        .fetch_local_file(&u, &Permissions::allow_all())
+        .unwrap_err();
     } else {
       // Should fail: local network paths are not supported on unix.
       let u = Url::parse("file://server/etc/passwd").unwrap();
-      fetcher.fetch_local_file(&u).unwrap_err();
+      fetcher
+        .fetch_local_file(&u, &Permissions::allow_all())
+        .unwrap_err();
     }
   }
 
@@ -774,7 +811,13 @@ mod tests {
     let cache_filename = fetcher.http_cache.get_cache_filename(&module_url);
 
     let result = fetcher
-      .get_source_file(&module_url, true, false, false)
+      .get_source_file(
+        &module_url,
+        true,
+        false,
+        false,
+        &Permissions::allow_all(),
+      )
       .await;
     assert!(result.is_ok());
     let r = result.unwrap();
@@ -795,7 +838,13 @@ mod tests {
     metadata.write(&cache_filename).unwrap();
 
     let result2 = fetcher_1
-      .get_source_file(&module_url, true, false, false)
+      .get_source_file(
+        &module_url,
+        true,
+        false,
+        false,
+        &Permissions::allow_all(),
+      )
       .await;
     assert!(result2.is_ok());
     let r2 = result2.unwrap();
@@ -818,7 +867,13 @@ mod tests {
     metadata.write(&cache_filename).unwrap();
 
     let result3 = fetcher_2
-      .get_source_file(&module_url_1, true, false, false)
+      .get_source_file(
+        &module_url_1,
+        true,
+        false,
+        false,
+        &Permissions::allow_all(),
+      )
       .await;
     assert!(result3.is_ok());
     let r3 = result3.unwrap();
@@ -839,7 +894,13 @@ mod tests {
     // and don't use cache
     let fetcher = setup_file_fetcher(temp_dir.path());
     let result4 = fetcher
-      .get_source_file(&module_url_2, false, false, false)
+      .get_source_file(
+        &module_url_2,
+        false,
+        false,
+        false,
+        &Permissions::allow_all(),
+      )
       .await;
     assert!(result4.is_ok());
     let r4 = result4.unwrap();
@@ -863,7 +924,13 @@ mod tests {
     let cache_filename = fetcher.http_cache.get_cache_filename(&module_url);
 
     let result = fetcher
-      .get_source_file(&module_url, true, false, false)
+      .get_source_file(
+        &module_url,
+        true,
+        false,
+        false,
+        &Permissions::allow_all(),
+      )
       .await;
     assert!(result.is_ok());
     let r = result.unwrap();
@@ -883,7 +950,13 @@ mod tests {
     metadata.write(&cache_filename).unwrap();
 
     let result2 = fetcher
-      .get_source_file(&module_url, true, false, false)
+      .get_source_file(
+        &module_url,
+        true,
+        false,
+        false,
+        &Permissions::allow_all(),
+      )
       .await;
     assert!(result2.is_ok());
     let r2 = result2.unwrap();
@@ -903,7 +976,13 @@ mod tests {
     // process) and don't use cache
     let fetcher = setup_file_fetcher(temp_dir.path());
     let result3 = fetcher
-      .get_source_file(&module_url_1, false, false, false)
+      .get_source_file(
+        &module_url_1,
+        false,
+        false,
+        false,
+        &Permissions::allow_all(),
+      )
       .await;
     assert!(result3.is_ok());
     let r3 = result3.unwrap();
@@ -930,7 +1009,9 @@ mod tests {
       fetcher.http_cache.get_cache_filename(&specifier.as_url());
 
     // first download
-    let r = fetcher.fetch_source_file(&specifier, None).await;
+    let r = fetcher
+      .fetch_source_file(&specifier, None, Permissions::allow_all())
+      .await;
     assert!(r.is_ok());
 
     let headers_file_name =
@@ -946,7 +1027,9 @@ mod tests {
     // `use_disk_cache` is set to false, this can be verified using source
     // header file creation timestamp (should be the same as after first
     // download)
-    let r = fetcher.fetch_source_file(&specifier, None).await;
+    let r = fetcher
+      .fetch_source_file(&specifier, None, Permissions::allow_all())
+      .await;
     assert!(r.is_ok());
 
     let result = fs::File::open(&headers_file_name);
@@ -984,7 +1067,13 @@ mod tests {
 
     // Test basic follow and headers recording
     let result = fetcher
-      .get_source_file(&redirect_module_url, true, false, false)
+      .get_source_file(
+        &redirect_module_url,
+        true,
+        false,
+        false,
+        &Permissions::allow_all(),
+      )
       .await;
     assert!(result.is_ok());
     let mod_meta = result.unwrap();
@@ -1033,7 +1122,13 @@ mod tests {
 
     // Test double redirects and headers recording
     let result = fetcher
-      .get_source_file(&double_redirect_url, true, false, false)
+      .get_source_file(
+        &double_redirect_url,
+        true,
+        false,
+        false,
+        &Permissions::allow_all(),
+      )
       .await;
     assert!(result.is_ok());
     let mod_meta = result.unwrap();
@@ -1080,7 +1175,13 @@ mod tests {
 
     // Test that redirect target is not downloaded twice for different redirect source.
     let result = fetcher
-      .get_source_file(&double_redirect_url, true, false, false)
+      .get_source_file(
+        &double_redirect_url,
+        true,
+        false,
+        false,
+        &Permissions::allow_all(),
+      )
       .await;
     assert!(result.is_ok());
     let result = fs::File::open(&target_path);
@@ -1095,7 +1196,13 @@ mod tests {
     // using source header file creation timestamp (should be the same as
     // after first `get_source_file`)
     let result = fetcher
-      .get_source_file(&redirect_url, true, false, false)
+      .get_source_file(
+        &redirect_url,
+        true,
+        false,
+        false,
+        &Permissions::allow_all(),
+      )
       .await;
     assert!(result.is_ok());
     let result = fs::File::open(&target_path_);
@@ -1121,12 +1228,24 @@ mod tests {
 
     // Test that redirections can be limited
     let result = fetcher
-      .fetch_remote_source(&double_redirect_url, false, false, 2)
+      .fetch_remote_source(
+        &double_redirect_url,
+        false,
+        false,
+        2,
+        &Permissions::allow_all(),
+      )
       .await;
     assert!(result.is_ok());
 
     let result = fetcher
-      .fetch_remote_source(&double_redirect_url, false, false, 1)
+      .fetch_remote_source(
+        &double_redirect_url,
+        false,
+        false,
+        1,
+        &Permissions::allow_all(),
+      )
       .await;
     assert!(result.is_err());
     // FIXME(bartlomieju):
@@ -1161,7 +1280,13 @@ mod tests {
 
     // Test basic follow and headers recording
     let result = fetcher
-      .get_source_file(&redirect_module_url, true, false, false)
+      .get_source_file(
+        &redirect_module_url,
+        true,
+        false,
+        false,
+        &Permissions::allow_all(),
+      )
       .await;
     assert!(result.is_ok());
     let mod_meta = result.unwrap();
@@ -1193,7 +1318,13 @@ mod tests {
       Url::parse("http://localhost:4545/cli/tests/002_hello.ts").unwrap();
     // Remote modules are not allowed
     let result = fetcher
-      .get_source_file(&module_url, true, true, false)
+      .get_source_file(
+        &module_url,
+        true,
+        true,
+        false,
+        &Permissions::allow_all(),
+      )
       .await;
     assert!(result.is_err());
     // FIXME(bartlomieju):
@@ -1216,7 +1347,13 @@ mod tests {
 
     // file hasn't been cached before
     let result = fetcher
-      .get_source_file(&module_url, true, false, true)
+      .get_source_file(
+        &module_url,
+        true,
+        false,
+        true,
+        &Permissions::allow_all(),
+      )
       .await;
     assert!(result.is_err());
     // FIXME(bartlomieju):
@@ -1225,12 +1362,24 @@ mod tests {
 
     // download and cache file
     let result = fetcher_1
-      .get_source_file(&module_url_1, true, false, false)
+      .get_source_file(
+        &module_url_1,
+        true,
+        false,
+        false,
+        &Permissions::allow_all(),
+      )
       .await;
     assert!(result.is_ok());
     // module is already cached, should be ok even with `cached_only`
     let result = fetcher_2
-      .get_source_file(&module_url_2, true, false, true)
+      .get_source_file(
+        &module_url_2,
+        true,
+        false,
+        true,
+        &Permissions::allow_all(),
+      )
       .await;
     assert!(result.is_ok());
     drop(http_server_guard);
@@ -1244,7 +1393,13 @@ mod tests {
       Url::parse("http://127.0.0.1:4545/cli/tests/subdir/mt_video_mp2t.t3.ts")
         .unwrap();
     let result = fetcher
-      .fetch_remote_source(&module_url, false, false, 10)
+      .fetch_remote_source(
+        &module_url,
+        false,
+        false,
+        10,
+        &Permissions::allow_all(),
+      )
       .await;
     assert!(result.is_ok());
     let r = result.unwrap();
@@ -1289,7 +1444,13 @@ mod tests {
     let module_url_3_ = module_url_3.clone();
 
     let result = fetcher
-      .fetch_remote_source(&module_url, false, false, 10)
+      .fetch_remote_source(
+        &module_url,
+        false,
+        false,
+        10,
+        &Permissions::allow_all(),
+      )
       .await;
     assert!(result.is_ok());
     let r = result.unwrap();
@@ -1298,7 +1459,13 @@ mod tests {
     let (_, headers) = fetcher.http_cache.get(&module_url).unwrap();
     assert_eq!(headers.get("content-type").unwrap(), "text/typescript");
     let result = fetcher_1
-      .fetch_remote_source(&module_url_2, false, false, 10)
+      .fetch_remote_source(
+        &module_url_2,
+        false,
+        false,
+        10,
+        &Permissions::allow_all(),
+      )
       .await;
     assert!(result.is_ok());
     let r2 = result.unwrap();
@@ -1309,7 +1476,13 @@ mod tests {
 
     // test unknown extension
     let result = fetcher_2
-      .fetch_remote_source(&module_url_3, false, false, 10)
+      .fetch_remote_source(
+        &module_url_3,
+        false,
+        false,
+        10,
+        &Permissions::allow_all(),
+      )
       .await;
     assert!(result.is_ok());
     let r3 = result.unwrap();
@@ -1328,14 +1501,18 @@ mod tests {
     // Test failure case.
     let specifier =
       ModuleSpecifier::resolve_url(file_url!("/baddir/hello.ts")).unwrap();
-    let r = fetcher.fetch_source_file(&specifier, None).await;
+    let r = fetcher
+      .fetch_source_file(&specifier, None, Permissions::allow_all())
+      .await;
     assert!(r.is_err());
 
     let p =
       std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("js/main.ts");
     let specifier =
       ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
-    let r = fetcher.fetch_source_file(&specifier, None).await;
+    let r = fetcher
+      .fetch_source_file(&specifier, None, Permissions::allow_all())
+      .await;
     assert!(r.is_ok());
   }
 
@@ -1347,14 +1524,18 @@ mod tests {
     // Test failure case.
     let specifier =
       ModuleSpecifier::resolve_url(file_url!("/baddir/hello.ts")).unwrap();
-    let r = fetcher.fetch_source_file(&specifier, None).await;
+    let r = fetcher
+      .fetch_source_file(&specifier, None, Permissions::allow_all())
+      .await;
     assert!(r.is_err());
 
     let p =
       std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("js/main.ts");
     let specifier =
       ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
-    let r = fetcher.fetch_source_file(&specifier, None).await;
+    let r = fetcher
+      .fetch_source_file(&specifier, None, Permissions::allow_all())
+      .await;
     assert!(r.is_ok());
   }
 
@@ -1367,7 +1548,9 @@ mod tests {
       .join("tests/001_hello.js");
     let specifier =
       ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
-    let r = fetcher.fetch_source_file(&specifier, None).await;
+    let r = fetcher
+      .fetch_source_file(&specifier, None, Permissions::allow_all())
+      .await;
     assert!(r.is_ok());
   }
 
@@ -1416,6 +1599,10 @@ mod tests {
       msg::MediaType::Wasm
     );
     assert_eq!(
+      map_file_extension(Path::new("foo/bar.cjs")),
+      msg::MediaType::JavaScript
+    );
+    assert_eq!(
       map_file_extension(Path::new("foo/bar.txt")),
       msg::MediaType::Unknown
     );
@@ -1459,6 +1646,10 @@ mod tests {
     assert_eq!(
       map_content_type(Path::new("foo/bar.wasm"), None),
       msg::MediaType::Wasm
+    );
+    assert_eq!(
+      map_content_type(Path::new("foo/bar.cjs"), None),
+      msg::MediaType::JavaScript
     );
     assert_eq!(
       map_content_type(Path::new("foo/bar"), None),
@@ -1512,6 +1703,10 @@ mod tests {
     assert_eq!(
       map_content_type(Path::new("foo/bar"), Some("application/json")),
       msg::MediaType::Json
+    );
+    assert_eq!(
+      map_content_type(Path::new("foo/bar"), Some("application/node")),
+      msg::MediaType::JavaScript
     );
     assert_eq!(
       map_content_type(Path::new("foo/bar"), Some("text/json")),
@@ -1611,7 +1806,13 @@ mod tests {
       Url::parse("http://127.0.0.1:4545/etag_script.ts").unwrap();
 
     let source = fetcher
-      .fetch_remote_source(&module_url, false, false, 1)
+      .fetch_remote_source(
+        &module_url,
+        false,
+        false,
+        1,
+        &Permissions::allow_all(),
+      )
       .await;
     assert!(source.is_ok());
     let source = source.unwrap();
@@ -1633,7 +1834,13 @@ mod tests {
     let file_name = fetcher.http_cache.get_cache_filename(&module_url);
     let _ = fs::write(&file_name, "changed content");
     let cached_source = fetcher
-      .fetch_remote_source(&module_url, false, false, 1)
+      .fetch_remote_source(
+        &module_url,
+        false,
+        false,
+        1,
+        &Permissions::allow_all(),
+      )
       .await
       .unwrap();
     assert_eq!(cached_source.source_code, b"changed content");
@@ -1732,7 +1939,13 @@ mod tests {
     let module_url =
       Url::parse("http://127.0.0.1:4545/xTypeScriptTypes.js").unwrap();
     let source = fetcher
-      .fetch_remote_source(&module_url, false, false, 1)
+      .fetch_remote_source(
+        &module_url,
+        false,
+        false,
+        1,
+        &Permissions::allow_all(),
+      )
       .await;
     assert!(source.is_ok());
     let source = source.unwrap();
@@ -1752,7 +1965,13 @@ mod tests {
     let module_url =
       Url::parse("http://127.0.0.1:4545/referenceTypes.js").unwrap();
     let source = fetcher
-      .fetch_remote_source(&module_url, false, false, 1)
+      .fetch_remote_source(
+        &module_url,
+        false,
+        false,
+        1,
+        &Permissions::allow_all(),
+      )
       .await;
     assert!(source.is_ok());
     let source = source.unwrap();

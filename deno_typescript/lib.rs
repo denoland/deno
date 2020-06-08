@@ -9,6 +9,7 @@ mod ops;
 use deno_core::js_check;
 pub use deno_core::v8_set_flags;
 use deno_core::CoreIsolate;
+use deno_core::CoreIsolateState;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
 use deno_core::Op;
@@ -49,22 +50,22 @@ pub struct TSState {
 fn compiler_op<D>(
   ts_state: Arc<Mutex<TSState>>,
   dispatcher: D,
-) -> impl Fn(&mut CoreIsolate, &[u8], Option<ZeroCopyBuf>) -> Op
+) -> impl Fn(&mut CoreIsolateState, &[u8], &mut [ZeroCopyBuf]) -> Op
 where
   D: Fn(&mut TSState, &[u8]) -> Op,
 {
-  move |_isolate: &mut CoreIsolate,
+  move |_state: &mut CoreIsolateState,
         control: &[u8],
-        zero_copy_buf: Option<ZeroCopyBuf>|
+        zero_copy_bufs: &mut [ZeroCopyBuf]|
         -> Op {
-    assert!(zero_copy_buf.is_none()); // zero_copy_buf unused in compiler.
+    assert!(zero_copy_bufs.is_empty()); // zero_copy_bufs unused in compiler.
     let mut s = ts_state.lock().unwrap();
     dispatcher(&mut s, control)
   }
 }
 
 pub struct TSIsolate {
-  isolate: Box<CoreIsolate>,
+  isolate: CoreIsolate,
   state: Arc<Mutex<TSState>>,
 }
 
@@ -133,7 +134,7 @@ impl TSIsolate {
 ///
 /// This function writes compiled bundle to disk at provided path.
 ///
-/// Source map file and type declaration file are emmited
+/// Source map file and type declaration file are emitted
 /// alongside the bundle.
 ///
 /// To instantiate bundle use returned `module_name`.
@@ -305,6 +306,8 @@ pub fn get_asset(name: &str) -> Option<&'static str> {
     "lib.esnext.asynciterable.d.ts" => inc!("lib.esnext.asynciterable.d.ts"),
     "lib.esnext.bigint.d.ts" => inc!("lib.esnext.bigint.d.ts"),
     "lib.esnext.intl.d.ts" => inc!("lib.esnext.intl.d.ts"),
+    "lib.esnext.promise.d.ts" => inc!("lib.esnext.promise.d.ts"),
+    "lib.esnext.string.d.ts" => inc!("lib.esnext.string.d.ts"),
     "lib.esnext.symbol.d.ts" => inc!("lib.esnext.symbol.d.ts"),
     "lib.scripthost.d.ts" => inc!("lib.scripthost.d.ts"),
     "lib.webworker.d.ts" => inc!("lib.webworker.d.ts"),
@@ -329,15 +332,15 @@ pub fn trace_serializer() {
 /// CoreIsolate.
 pub fn op_fetch_asset<S: ::std::hash::BuildHasher>(
   custom_assets: HashMap<String, PathBuf, S>,
-) -> impl Fn(&mut CoreIsolate, &[u8], Option<ZeroCopyBuf>) -> Op {
+) -> impl Fn(&mut CoreIsolateState, &[u8], &mut [ZeroCopyBuf]) -> Op {
   for (_, path) in custom_assets.iter() {
     println!("cargo:rerun-if-changed={}", path.display());
   }
-  move |_isolate: &mut CoreIsolate,
+  move |_state: &mut CoreIsolateState,
         control: &[u8],
-        zero_copy_buf: Option<ZeroCopyBuf>|
+        zero_copy_bufs: &mut [ZeroCopyBuf]|
         -> Op {
-    assert!(zero_copy_buf.is_none()); // zero_copy_buf unused in this op.
+    assert!(zero_copy_bufs.is_empty()); // zero_copy_bufs unused in this op.
     let name = std::str::from_utf8(control).unwrap();
 
     let asset_code = if let Some(source_code) = get_asset(name) {
