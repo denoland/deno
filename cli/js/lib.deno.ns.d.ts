@@ -1899,9 +1899,6 @@ declare namespace Deno {
    */
   export const args: string[];
 
-  /** The URL of the file that was originally executed from the command-line. */
-  export const mainUrl: URL;
-
   /** A symbol which can be used as a key for a custom method which will be
    * called when `Deno.inspect()` is called, or when the object is logged to
    * the console. */
