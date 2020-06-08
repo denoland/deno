@@ -1564,11 +1564,12 @@ async fn filter_nodes_by_name() {
   let source_code = r#"
 export namespace Deno {
   export class Buffer {}
-  export function test(options: object): void {}
+  export function test(options: object): void;
+  export function test(name: string, fn: Function): void;
+  export function test(name: string | object, fn?: Function): void {}
 }
 
 export namespace Deno {
-  export function test(name: string, fn: Function): void {}
   export namespace Inner {
     export function a(): void {}
     export const b = 100;
@@ -1587,9 +1588,10 @@ export namespace Deno {
 
   let found =
     find_nodes_by_name_recursively(entries.clone(), "Deno.test".to_string());
-  assert_eq!(found.len(), 2);
+  assert_eq!(found.len(), 3);
   assert_eq!(found[0].name, "test".to_string());
   assert_eq!(found[1].name, "test".to_string());
+  assert_eq!(found[2].name, "test".to_string());
 
   let found =
     find_nodes_by_name_recursively(entries.clone(), "Deno.Inner.a".to_string());
