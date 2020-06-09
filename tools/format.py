@@ -64,8 +64,8 @@ def prettier():
             while len(source_files) > 0:
                 command.append(source_files.pop())
                 if len(" ".join(command)) > max_command_length:
-                    run(command, shell=False, quiet=True)
                     break
+            run(command, shell=False, quiet=True)
 
 
 def yapf():
