@@ -1,5 +1,3 @@
 // deno-lint-ignore-file
 
-function foo(): any {
-
-}
+function foo(): any {}
