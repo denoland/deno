@@ -1,4 +1,4 @@
-import { assert } from "../../../std/testing/asserts.ts";
+import { assert } from "../../../std/assert/mod.ts";
 
 const handler = (e: Event): void => {
   assert(!e.cancelable);

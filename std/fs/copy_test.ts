@@ -4,7 +4,7 @@ import {
   assertThrows,
   assertThrowsAsync,
   assert,
-} from "../testing/asserts.ts";
+} from "../assert/mod.ts";
 import * as path from "../path/mod.ts";
 import { copy, copySync } from "./copy.ts";
 import { exists, existsSync } from "./exists.ts";

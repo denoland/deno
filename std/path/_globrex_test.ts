@@ -1,7 +1,7 @@
 // This file is ported from globrex@0.1.2
 // MIT License
 // Copyright (c) 2018 Terkel Gjervig Nielsen
-import { assertEquals } from "../testing/asserts.ts";
+import { assertEquals } from "../assert/mod.ts";
 import { GlobrexOptions, globrex } from "./_globrex.ts";
 
 const isWin = Deno.build.os === "windows";

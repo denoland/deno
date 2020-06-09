@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import { assert } from "../../std/testing/asserts.ts";
+import { assert } from "../../std/assert/mod.ts";
 
 Deno.test("fail1", function () {
   assert(false, "fail1 assertion");

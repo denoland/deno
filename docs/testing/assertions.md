@@ -1,11 +1,11 @@
 ## Assertions
 
 To help developers write tests the Deno standard library comes with a built in
-[assertions module](https://deno.land/std/testing/asserts.ts) which can be
-imported from `https://deno.land/std/testing/asserts.ts`.
+[assertions module](https://deno.land/std/assert/mod.ts) which can be imported
+from `https://deno.land/std/assert/mod.ts`.
 
 ```js
-import { assert } from "https://deno.land/std/testing/asserts.ts";
+import { assert } from "https://deno.land/std/assert/mod.ts";
 
 Deno.test("Hello Test", () => {
   assert("Hello");

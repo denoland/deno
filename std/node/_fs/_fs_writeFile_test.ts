@@ -4,10 +4,10 @@ import {
   assertEquals,
   assertNotEquals,
   assertThrows,
-} from "../../testing/asserts.ts";
-import { writeFile, writeFileSync } from "./_fs_writeFile.ts";
-import type { TextEncodings } from "./_fs_common.ts";
+} from "../../assert/mod.ts";
 import * as path from "../../path/mod.ts";
+import type { TextEncodings } from "./_fs_common.ts";
+import { writeFile, writeFileSync } from "./_fs_writeFile.ts";
 
 const testDataDir = path.resolve(path.join("node", "_fs", "testdata"));
 const decoder = new TextDecoder("utf-8");

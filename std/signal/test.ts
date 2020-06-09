@@ -1,4 +1,4 @@
-import { assertEquals, assertThrows } from "../testing/asserts.ts";
+import { assertEquals, assertThrows } from "../assert/mod.ts";
 import { delay } from "../async/delay.ts";
 import { signal, onSignal } from "./mod.ts";
 

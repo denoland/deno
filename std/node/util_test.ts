@@ -1,4 +1,4 @@
-import { assert } from "../testing/asserts.ts";
+import { assert } from "../assert/mod.ts";
 import * as util from "./util.ts";
 
 Deno.test({

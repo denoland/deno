@@ -1,4 +1,4 @@
-import { assert, assertEquals } from "../testing/asserts.ts";
+import { assert, assertEquals } from "../assert/mod.ts";
 import { testWalk, touch, walkArray } from "../fs/walk_test.ts";
 import { globToRegExp, isGlob, joinGlobs, normalizeGlob } from "./glob.ts";
 import { SEP, join } from "./mod.ts";

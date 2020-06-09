@@ -5,13 +5,13 @@ import {
   clearBenchmarks,
   BenchmarkRunProgress,
   ProgressState,
-} from "./bench.ts";
+} from "./mod.ts";
 import {
   assertEquals,
   assert,
   assertThrows,
   assertThrowsAsync,
-} from "./asserts.ts";
+} from "../assert/mod.ts";
 
 Deno.test({
   name: "benching",

@@ -1,9 +1,4 @@
-import {
-  assert,
-  assertEquals,
-  fail,
-  assertThrows,
-} from "../testing/asserts.ts";
+import { assert, assertEquals, fail, assertThrows } from "../assert/mod.ts";
 import EventEmitter, { WrappedFunction, once, on } from "./events.ts";
 
 const shouldNeverBeEmitted: Function = () => {

@@ -1,9 +1,5 @@
+import { assert, assertEquals, assertStringContains } from "../assert/mod.ts";
 import { decode } from "../encoding/utf8.ts";
-import {
-  assert,
-  assertEquals,
-  assertStringContains,
-} from "../testing/asserts.ts";
 import {
   join,
   joinGlobs,

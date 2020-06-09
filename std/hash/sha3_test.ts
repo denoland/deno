@@ -1,6 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 /* eslint-disable @typescript-eslint/camelcase */
-import { assertEquals, assertThrows } from "../testing/asserts.ts";
+import { assertEquals, assertThrows } from "../assert/mod.ts";
+import * as hex from "../encoding/hex.ts";
 import {
   Keccak224,
   Keccak256,
@@ -13,7 +14,6 @@ import {
   Shake128,
   Shake256,
 } from "./sha3.ts";
-import * as hex from "../encoding/hex.ts";
 
 const millionAs = "a".repeat(1000000);
 

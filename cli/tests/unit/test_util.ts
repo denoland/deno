@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import { assert, assertEquals } from "../../../std/testing/asserts.ts";
+import { assert, assertEquals } from "../../../std/assert/mod.ts";
 import * as colors from "../../../std/fmt/colors.ts";
 export { colors };
 import { resolve } from "../../../std/path/mod.ts";
@@ -15,7 +15,7 @@ export {
   assertStringContains,
   unreachable,
   fail,
-} from "../../../std/testing/asserts.ts";
+} from "../../../std/assert/mod.ts";
 export { readLines } from "../../../std/io/bufio.ts";
 export { parse as parseArgs } from "../../../std/flags/mod.ts";
 

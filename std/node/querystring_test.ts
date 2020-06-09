@@ -1,4 +1,4 @@
-import { assertEquals } from "../testing/asserts.ts";
+import { assertEquals } from "../assert/mod.ts";
 import { stringify, parse } from "./querystring.ts";
 
 Deno.test({

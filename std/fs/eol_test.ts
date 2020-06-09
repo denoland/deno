@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { assertEquals } from "../testing/asserts.ts";
+import { assertEquals } from "../assert/mod.ts";
 import { format, detect, EOL } from "./eol.ts";
 
 const CRLFinput = "deno\r\nis not\r\nnode";

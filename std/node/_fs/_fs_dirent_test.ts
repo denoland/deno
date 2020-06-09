@@ -1,4 +1,4 @@
-import { assert, assertEquals, assertThrows } from "../../testing/asserts.ts";
+import { assert, assertEquals, assertThrows } from "../../assert/mod.ts";
 import Dirent from "./_fs_dirent.ts";
 
 class DirEntryMock implements Deno.DirEntry {

@@ -1,4 +1,4 @@
-import { assert, assertThrows, assertEquals } from "../testing/asserts.ts";
+import { assert, assertThrows, assertEquals } from "../assert/mod.ts";
 import * as os from "./os.ts";
 
 Deno.test({

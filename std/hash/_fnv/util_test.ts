@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { assertEquals } from "../../testing/asserts.ts";
+import { assertEquals } from "../../assert/mod.ts";
 import { mul32, mul64 } from "./util.ts";
 
 Deno.test("[hash/fnv/util] mul32", () => {

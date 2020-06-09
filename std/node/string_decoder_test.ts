@@ -1,4 +1,4 @@
-import { assertEquals } from "../testing/asserts.ts";
+import { assertEquals } from "../assert/mod.ts";
 import Buffer from "./buffer.ts";
 import { StringDecoder } from "./string_decoder.ts";
 

@@ -1,8 +1,8 @@
-import { assertEquals } from "../testing/asserts.ts";
+import { assertEquals } from "../assert/mod.ts";
+import { decode } from "../encoding/utf8.ts";
+import { copyN } from "./ioutil.ts";
 import { LimitedReader, MultiReader, StringReader } from "./readers.ts";
 import { StringWriter } from "./writers.ts";
-import { copyN } from "./ioutil.ts";
-import { decode } from "../encoding/utf8.ts";
 
 Deno.test("ioStringReader", async function (): Promise<void> {
   const r = new StringReader("abcdef");

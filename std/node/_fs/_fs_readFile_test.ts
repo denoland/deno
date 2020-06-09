@@ -1,6 +1,6 @@
-import { readFile, readFileSync } from "./_fs_readFile.ts";
+import { assertEquals, assert } from "../../assert/mod.ts";
 import * as path from "../../path/mod.ts";
-import { assertEquals, assert } from "../../testing/asserts.ts";
+import { readFile, readFileSync } from "./_fs_readFile.ts";
 
 const testData = path.resolve(
   path.join("node", "_fs", "testdata", "hello.txt"),

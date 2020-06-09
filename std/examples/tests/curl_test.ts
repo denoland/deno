@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+import { assertStrictEquals } from "../../assert/mod.ts";
 import { serve } from "../../http/server.ts";
-import { assertStrictEquals } from "../../testing/asserts.ts";
 
 Deno.test({
   name: "[examples/curl] send a request to a specified url",

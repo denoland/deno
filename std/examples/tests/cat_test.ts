@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { assertStrictEquals } from "../../testing/asserts.ts";
+import { assertStrictEquals } from "../../assert/mod.ts";
 
 Deno.test("[examples/cat] print multiple files", async () => {
   const decoder = new TextDecoder();

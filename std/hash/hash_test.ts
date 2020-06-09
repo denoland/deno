@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { assertEquals, assertThrows } from "../testing/asserts.ts";
+import { assertEquals, assertThrows } from "../assert/mod.ts";
 import { createHash, SupportedAlgorithm } from "./mod.ts";
 
 const millionAs = "a".repeat(1000000);

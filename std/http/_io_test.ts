@@ -3,7 +3,10 @@ import {
   assertEquals,
   assert,
   assertNotEquals,
-} from "../testing/asserts.ts";
+} from "../assert/mod.ts";
+import { encode, decode } from "../encoding/utf8.ts";
+import { BufReader, ReadLineResult } from "../io/bufio.ts";
+import { StringReader } from "../io/readers.ts";
 import {
   bodyReader,
   chunkedBodyReader,
@@ -13,11 +16,8 @@ import {
   readRequest,
   writeResponse,
 } from "./_io.ts";
-import { encode, decode } from "../encoding/utf8.ts";
-import { BufReader, ReadLineResult } from "../io/bufio.ts";
-import { ServerRequest, Response } from "./server.ts";
-import { StringReader } from "../io/readers.ts";
 import { mockConn } from "./_mock_conn.ts";
+import { ServerRequest, Response } from "./server.ts";
 
 Deno.test("bodyReader", async () => {
   const text = "Hello, Deno";

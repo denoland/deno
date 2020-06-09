@@ -3,7 +3,7 @@
 // Copyright 2011 The Go Authors. All rights reserved. BSD license.
 // https://github.com/golang/go/blob/master/LICENSE
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { assertEquals } from "../testing/asserts.ts";
+import { assertEquals } from "../assert/mod.ts";
 import { Fnv32, Fnv32a, Fnv64, Fnv64a } from "./fnv.ts";
 
 const golden32 = [

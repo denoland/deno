@@ -1,6 +1,6 @@
 /* eslint-disable */
 
-import { assert, assertEquals } from "../testing/asserts.ts";
+import { assert, assertEquals } from "../assert/mod.ts";
 import * as path from "../path/mod.ts";
 import WASI from "./snapshot_preview1.ts";
 

@@ -1,12 +1,12 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { assertEquals, assertThrows } from "../testing/asserts.ts";
-import * as log from "./mod.ts";
+import { assertEquals, assertThrows } from "../assert/mod.ts";
 import {
   LogLevelNames,
   LevelName,
   getLevelByName,
   getLevelName,
 } from "./levels.ts";
+import * as log from "./mod.ts";
 
 class TestHandler extends log.handlers.BaseHandler {
   public messages: string[] = [];

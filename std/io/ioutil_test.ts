@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { assertEquals } from "../testing/asserts.ts";
+import { assertEquals } from "../assert/mod.ts";
+import { BufReader } from "./bufio.ts";
 import {
   copyN,
   readInt,
@@ -7,10 +8,9 @@ import {
   readShort,
   sliceLongToBytes,
 } from "./ioutil.ts";
-import { StringReader } from "./readers.ts";
-import { BufReader } from "./bufio.ts";
-import { tempFile } from "./util.ts";
 import * as path from "../path/mod.ts";
+import { StringReader } from "./readers.ts";
+import { tempFile } from "./util.ts";
 
 class BinaryReader implements Deno.Reader {
   index = 0;

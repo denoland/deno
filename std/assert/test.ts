@@ -15,7 +15,7 @@ import {
   fail,
   unimplemented,
   unreachable,
-} from "./asserts.ts";
+} from "./mod.ts";
 import { red, green, gray, bold, yellow, stripColor } from "../fmt/colors.ts";
 
 Deno.test("testingEqual", function (): void {

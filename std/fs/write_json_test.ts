@@ -3,7 +3,7 @@ import {
   assertEquals,
   assertThrowsAsync,
   assertThrows,
-} from "../testing/asserts.ts";
+} from "../assert/mod.ts";
 import * as path from "../path/mod.ts";
 import { writeJson, writeJsonSync } from "./write_json.ts";
 

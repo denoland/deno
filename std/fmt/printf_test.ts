@@ -5,9 +5,9 @@
 //   https://golang.org/src/fmt/fmt_test.go
 //   BSD: Copyright (c) 2009 The Go Authors. All rights reserved.
 
-import { sprintf } from "./printf.ts";
-import { assertEquals } from "../testing/asserts.ts";
+import { assertEquals } from "../assert/mod.ts";
 import { cyan, yellow } from "./colors.ts";
+import { sprintf } from "./printf.ts";
 
 const S = sprintf;
 

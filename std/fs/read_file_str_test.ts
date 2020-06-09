@@ -1,4 +1,4 @@
-import { assert } from "../testing/asserts.ts";
+import { assert } from "../assert/mod.ts";
 import * as path from "../path/mod.ts";
 import { readFileStrSync, readFileStr } from "./read_file_str.ts";
 

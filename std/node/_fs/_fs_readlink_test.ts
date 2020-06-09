@@ -1,6 +1,6 @@
-import { readlink, readlinkSync } from "./_fs_readlink.ts";
-import { assertEquals, assert } from "../../testing/asserts.ts";
+import { assertEquals, assert } from "../../assert/mod.ts";
 import * as path from "../path.ts";
+import { readlink, readlinkSync } from "./_fs_readlink.ts";
 
 const testDir = Deno.makeTempDirSync();
 const oldname = path.join(testDir, "oldname");

@@ -1,5 +1,5 @@
 import { assert, DenoStdInternalError } from "./assert.ts";
-import { assertThrows } from "../testing/asserts.ts";
+import { assertThrows } from "../assert/mod.ts";
 
 Deno.test({
   name: "assert valid scenario",

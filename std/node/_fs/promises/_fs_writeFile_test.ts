@@ -4,7 +4,7 @@ import {
   assertEquals,
   assertNotEquals,
   assertThrowsAsync,
-} from "../../../testing/asserts.ts";
+} from "../../../assert/mod.ts";
 import { writeFile } from "./_fs_writeFile.ts";
 import type { TextEncodings } from "../_fs_common.ts";
 

@@ -20,7 +20,7 @@
 // DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
-import { assert, assertStrictEquals } from "../../testing/asserts.ts";
+import { assert, assertStrictEquals } from "../../assert/mod.ts";
 import { callbackify } from "./_util_callbackify.ts";
 
 const values = [

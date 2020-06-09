@@ -25,9 +25,9 @@ import {
   assertEquals,
   assertStrictEquals,
   assertThrowsAsync,
-} from "../../testing/asserts.ts";
-import { promisify } from "./_util_promisify.ts";
+} from "../../assert/mod.ts";
 import * as fs from "../fs.ts";
+import { promisify } from "./_util_promisify.ts";
 
 const readFile = promisify(fs.readFile);
 const customPromisifyArgs = Symbol.for("nodejs.util.promisify.customArgs");

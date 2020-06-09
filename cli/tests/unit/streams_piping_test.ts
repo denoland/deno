@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { unitTest, assert, assertEquals } from "./test_util.ts";
-import { assertThrowsAsync } from "../../../std/testing/asserts.ts";
+import { assertThrowsAsync } from "../../../std/assert/mod.ts";
 
 unitTest(function streamPipeLocks() {
   const rs = new ReadableStream();

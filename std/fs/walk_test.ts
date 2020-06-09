@@ -1,5 +1,5 @@
+import { assert, assertEquals, assertThrowsAsync } from "../assert/mod.ts";
 import { walk, walkSync, WalkOptions, WalkEntry } from "./walk.ts";
-import { assert, assertEquals, assertThrowsAsync } from "../testing/asserts.ts";
 
 export function testWalk(
   setup: (arg0: string) => void | Promise<void>,

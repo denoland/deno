@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { assert } from "../../testing/asserts.ts";
+import { assert } from "../../assert/mod.ts";
 import { copyFile, copyFileSync } from "./_fs_copy.ts";
 import { existsSync } from "./_fs_exists.ts";
 

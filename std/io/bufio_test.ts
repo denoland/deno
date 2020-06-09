@@ -2,7 +2,8 @@
 // Copyright 2009 The Go Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
-import { assert, assertEquals, fail } from "../testing/asserts.ts";
+import { assert, assertEquals, fail } from "../assert/mod.ts";
+import * as iotest from "./_iotest.ts";
 import {
   BufReader,
   BufWriter,
@@ -13,7 +14,6 @@ import {
   readStringDelim,
   readLines,
 } from "./bufio.ts";
-import * as iotest from "./_iotest.ts";
 import { StringReader } from "./readers.ts";
 import { StringWriter } from "./writers.ts";
 import { charCode } from "./util.ts";

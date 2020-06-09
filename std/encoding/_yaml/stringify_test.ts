@@ -3,7 +3,7 @@
 // Copyright 2011-2015 by Vitaly Puzrin. All rights reserved. MIT license.
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import { assertEquals } from "../../testing/asserts.ts";
+import { assertEquals } from "../../assert/mod.ts";
 import { stringify } from "./stringify.ts";
 
 Deno.test({

@@ -1,4 +1,4 @@
-import { assertEquals } from "../testing/asserts.ts";
+import { assertEquals } from "../assert/mod.ts";
 import * as path from "../path/mod.ts";
 import { writeFileStr, writeFileStrSync } from "./write_file_str.ts";
 

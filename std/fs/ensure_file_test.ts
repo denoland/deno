@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { assertThrows, assertThrowsAsync } from "../testing/asserts.ts";
+import { assertThrows, assertThrowsAsync } from "../assert/mod.ts";
 import * as path from "../path/mod.ts";
 import { ensureFile, ensureFileSync } from "./ensure_file.ts";
 

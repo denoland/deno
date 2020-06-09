@@ -5,14 +5,18 @@
 // Ported from
 // https://github.com/golang/go/blob/master/src/net/http/responsewrite_test.go
 
-import { TextProtoReader } from "../textproto/mod.ts";
 import {
   assert,
   assertEquals,
   assertMatch,
   assertStringContains,
   assertThrowsAsync,
-} from "../testing/asserts.ts";
+} from "../assert/mod.ts";
+import { delay } from "../async/delay.ts";
+import { encode, decode } from "../encoding/utf8.ts";
+import { BufReader, BufWriter } from "../io/bufio.ts";
+import { TextProtoReader } from "../textproto/mod.ts";
+import { mockConn } from "./_mock_conn.ts";
 import {
   Response,
   ServerRequest,
@@ -21,10 +25,6 @@ import {
   serveTLS,
   _parseAddrFromStr,
 } from "./server.ts";
-import { BufReader, BufWriter } from "../io/bufio.ts";
-import { delay } from "../async/delay.ts";
-import { encode, decode } from "../encoding/utf8.ts";
-import { mockConn } from "./_mock_conn.ts";
 
 interface ResponseTest {
   response: Response;

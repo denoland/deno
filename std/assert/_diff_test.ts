@@ -1,5 +1,5 @@
-import diff from "./diff.ts";
-import { assertEquals } from "../testing/asserts.ts";
+import diff from "./_diff.ts";
+import { assertEquals } from "../assert/mod.ts";
 
 Deno.test({
   name: "empty",

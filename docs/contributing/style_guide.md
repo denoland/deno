@@ -278,7 +278,7 @@ test myTestFunction ... ok
 Example of test:
 
 ```ts
-import { assertEquals } from "https://deno.land/std@v0.11/testing/asserts.ts";
+import { assertEquals } from "https://deno.land/std@v0.11/assert/mod.ts";
 import { foo } from "./mod.ts";
 
 Deno.test("myTestFunction" function() {

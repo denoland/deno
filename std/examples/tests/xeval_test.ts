@@ -1,12 +1,12 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { xeval } from "../xeval.ts";
-import { StringReader } from "../../io/readers.ts";
-import { decode, encode } from "../../encoding/utf8.ts";
 import {
   assertEquals,
   assertStringContains,
   assert,
-} from "../../testing/asserts.ts";
+} from "../../assert/mod.ts";
+import { decode, encode } from "../../encoding/utf8.ts";
+import { StringReader } from "../../io/readers.ts";
+import { xeval } from "../xeval.ts";
 
 Deno.test("xevalSuccess", async function (): Promise<void> {
   const chunks: string[] = [];

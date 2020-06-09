@@ -1,9 +1,8 @@
 // Copyright the Browserify authors. MIT License.
 // Ported from https://github.com/browserify/path-browserify/
-import type { FormatInputPathObject, ParsedPath } from "./mod.ts";
-
-import { assertEquals } from "../testing/asserts.ts";
+import { assertEquals } from "../assert/mod.ts";
 import { win32, posix } from "./mod.ts";
+import type { FormatInputPathObject, ParsedPath } from "./mod.ts";
 
 type FormatTestCase = [FormatInputPathObject, string];
 type ParseTestCase = [string, ParsedPath];

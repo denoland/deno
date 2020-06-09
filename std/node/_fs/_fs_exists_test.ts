@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { assertEquals } from "../../testing/asserts.ts";
+import { assertEquals } from "../../assert/mod.ts";
 import { exists, existsSync } from "./_fs_exists.ts";
 
 Deno.test("existsFile", async function () {

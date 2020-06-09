@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEquals } from "../../std/testing/asserts.ts";
+
+import { assert, assertEquals } from "../../std/assert/mod.ts";
 
 Deno.test({
   name: "Deno.compile() - sources provided",

@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { assertStrictEquals, assertNotEquals } from "../../testing/asserts.ts";
+import { assertStrictEquals, assertNotEquals } from "../../assert/mod.ts";
 import { BufReader, ReadLineResult } from "../../io/bufio.ts";
 
 Deno.test("[examples/echo_server]", async () => {

@@ -1,4 +1,4 @@
-import { assert, assertEquals, fail } from "../../testing/asserts.ts";
+import { assert, assertEquals, fail } from "../../assert/mod.ts";
 import Dir from "./_fs_dir.ts";
 import type Dirent from "./_fs_dirent.ts";
 

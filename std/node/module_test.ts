@@ -1,9 +1,5 @@
 /* eslint-disable @typescript-eslint/no-var-requires */
-import {
-  assertEquals,
-  assert,
-  assertStringContains,
-} from "../testing/asserts.ts";
+import { assertEquals, assert, assertStringContains } from "../assert/mod.ts";
 import { createRequire } from "./module.ts";
 
 const require = createRequire(import.meta.url);

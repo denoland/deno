@@ -1,4 +1,4 @@
-import { assert } from "../../../std/testing/asserts.ts";
+import { assert } from "../../../std/assert/mod.ts";
 import "./imported.ts";
 
 const eventHandler = (e: Event): void => {

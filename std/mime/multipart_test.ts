@@ -4,7 +4,8 @@ import {
   assertEquals,
   assertThrows,
   assertThrowsAsync,
-} from "../testing/asserts.ts";
+} from "../assert/mod.ts";
+import { StringWriter } from "../io/writers.ts";
 import * as path from "../path/mod.ts";
 import {
   MultipartReader,
@@ -13,7 +14,6 @@ import {
   matchAfterPrefix,
   scanUntilBoundary,
 } from "./multipart.ts";
-import { StringWriter } from "../io/writers.ts";
 
 const e = new TextEncoder();
 const boundary = "--abcde";

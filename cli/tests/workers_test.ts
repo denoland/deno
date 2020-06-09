@@ -7,7 +7,7 @@
 // yet implemented. Once it gets implemented this file should be
 // again moved to `cli/js/` as an unit test file.
 
-import { assert, assertEquals } from "../../std/testing/asserts.ts";
+import { assert, assertEquals } from "../../std/assert/mod.ts";
 
 export interface ResolvableMethods<T> {
   resolve: (value?: T | PromiseLike<T>) => void;

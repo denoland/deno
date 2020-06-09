@@ -34,7 +34,7 @@ to make testing easier:
 import {
   assertEquals,
   assertArrayContains,
-} from "https://deno.land/std/testing/asserts.ts";
+} from "https://deno.land/std/assert/mod.ts";
 
 Deno.test("hello world", () => {
   const x = 1 + 2;

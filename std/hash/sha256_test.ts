@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { Sha256, HmacSha256, Message } from "./sha256.ts";
-import { assertEquals } from "../testing/asserts.ts";
+import { assertEquals } from "../assert/mod.ts";
 import { join, resolve } from "../path/mod.ts";
+import { Sha256, HmacSha256, Message } from "./sha256.ts";
 
 const testdataDir = resolve("hash", "testdata");
 

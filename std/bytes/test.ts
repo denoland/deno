@@ -1,5 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+import { assertEquals, assertThrows, assert } from "../assert/mod.ts";
+import { encode, decode } from "../encoding/utf8.ts";
 import {
   findIndex,
   findLastIndex,
@@ -11,8 +13,6 @@ import {
   contains,
   copyBytes,
 } from "./mod.ts";
-import { assertEquals, assertThrows, assert } from "../testing/asserts.ts";
-import { encode, decode } from "../encoding/utf8.ts";
 
 Deno.test("[bytes] findIndex1", () => {
   const i = findIndex(

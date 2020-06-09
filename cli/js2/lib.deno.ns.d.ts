@@ -114,7 +114,7 @@ declare namespace Deno {
    * line and the containing module looks like a test module.
    * `fn` can be async if required.
    * ```ts
-   * import {assert, fail, assertEquals} from "https://deno.land/std/testing/asserts.ts";
+   * import {assert, fail, assertEquals} from "https://deno.land/std/assert/mod.ts";
    *
    * Deno.test({
    *   name: "example test",
@@ -148,7 +148,7 @@ declare namespace Deno {
    * `fn` can be async if required.
    *
    * ```ts
-   * import {assert, fail, assertEquals} from "https://deno.land/std/testing/asserts.ts";
+   * import {assert, fail, assertEquals} from "https://deno.land/std/assert/mod.ts";
    *
    * Deno.test("My test description", ():void => {
    *   assertEquals("hello", "hello");
@@ -1464,7 +1464,7 @@ declare namespace Deno {
    * points to.
    *
    * ```ts
-   * import { assert } from "https://deno.land/std/testing/asserts.ts";
+   * import { assert } from "https://deno.land/std/assert/mod.ts";
    * const fileInfo = await Deno.lstat("hello.txt");
    * assert(fileInfo.isFile);
    * ```
@@ -1488,7 +1488,7 @@ declare namespace Deno {
    * follow symlinks.
    *
    * ```ts
-   * import { assert } from "https://deno.land/std/testing/asserts.ts";
+   * import { assert } from "https://deno.land/std/assert/mod.ts";
    * const fileInfo = await Deno.stat("hello.txt");
    * assert(fileInfo.isFile);
    * ```
@@ -1500,7 +1500,7 @@ declare namespace Deno {
    * always follow symlinks.
    *
    * ```ts
-   * import { assert } from "https://deno.land/std/testing/asserts.ts";
+   * import { assert } from "https://deno.land/std/assert/mod.ts";
    * const fileInfo = Deno.statSync("hello.txt");
    * assert(fileInfo.isFile);
    * ```

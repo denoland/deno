@@ -1,7 +1,7 @@
 // Test cases copied from https://github.com/LinusU/base32-encode/blob/master/test.js
 // Copyright (c) 2016-2017 Linus Unnebäck. MIT license.
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { assertEquals, assert } from "../testing/asserts.ts";
+import { assertEquals, assert } from "../assert/mod.ts";
 import { encode, decode } from "./base32.ts";
 
 // Lifted from https://stackoverflow.com/questions/38987784
