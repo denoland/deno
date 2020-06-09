@@ -3,15 +3,11 @@ import { sendSync, sendAsync } from "../dispatch_json.ts";
 import { pathFromURL } from "../../util.ts";
 
 export function chmodSync(path: string | URL, mode: number): void {
-  if (path instanceof URL) {
-    path = pathFromURL(path);
-  }
+  path = pathFromURL(path);
   sendSync("op_chmod", { path, mode });
 }
 
 export async function chmod(path: string | URL, mode: number): Promise<void> {
-  if (path instanceof URL) {
-    path = pathFromURL(path);
-  }
+  path = pathFromURL(path);
   await sendAsync("op_chmod", { path, mode });
 }

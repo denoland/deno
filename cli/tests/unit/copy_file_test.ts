@@ -44,10 +44,10 @@ unitTest(
   function copyFileSyncByUrl(): void {
     const tempDir = Deno.makeTempDirSync();
     const fromUrl = new URL(
-      `file://${Deno.build.os === "windows" && "/"}${tempDir}/from.txt`
+      `file://${Deno.build.os === "windows" ? "/" : ""}${tempDir}/from.txt`
     );
     const toUrl = new URL(
-      `file://${Deno.build.os === "windows" && "/"}${tempDir}/to.txt`
+      `file://${Deno.build.os === "windows" ? "/" : ""}${tempDir}/to.txt`
     );
     writeFileString(fromUrl, "Hello world!");
     Deno.copyFileSync(fromUrl, toUrl);
@@ -149,10 +149,10 @@ unitTest(
   async function copyFileByUrl(): Promise<void> {
     const tempDir = Deno.makeTempDirSync();
     const fromUrl = new URL(
-      `file://${Deno.build.os === "windows" && "/"}${tempDir}/from.txt`
+      `file://${Deno.build.os === "windows" ? "/" : ""}${tempDir}/from.txt`
     );
     const toUrl = new URL(
-      `file://${Deno.build.os === "windows" && "/"}${tempDir}/to.txt`
+      `file://${Deno.build.os === "windows" ? "/" : ""}${tempDir}/to.txt`
     );
     writeFileString(fromUrl, "Hello world!");
     await Deno.copyFile(fromUrl, toUrl);

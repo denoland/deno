@@ -22,7 +22,7 @@ unitTest(
     const data = enc.encode("Hello");
     const tempDir = Deno.makeTempDirSync();
     const fileUrl = new URL(
-      `file://${Deno.build.os === "windows" && "/"}${tempDir}/test.txt`
+      `file://${Deno.build.os === "windows" ? "/" : ""}${tempDir}/test.txt`
     );
     Deno.writeFileSync(fileUrl, data);
     const dataRead = Deno.readFileSync(fileUrl);
@@ -151,7 +151,7 @@ unitTest(
     const data = enc.encode("Hello");
     const tempDir = await Deno.makeTempDir();
     const fileUrl = new URL(
-      `file://${Deno.build.os === "windows" && "/"}${tempDir}/test.txt`
+      `file://${Deno.build.os === "windows" ? "/" : ""}${tempDir}/test.txt`
     );
     await Deno.writeFile(fileUrl, data);
     const dataRead = Deno.readFileSync(fileUrl);

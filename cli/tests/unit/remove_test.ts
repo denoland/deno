@@ -61,7 +61,7 @@ unitTest(
 
       const tempDir = Deno.makeTempDirSync();
       const fileUrl = new URL(
-        `file://${Deno.build.os === "windows" && "/"}${tempDir}/test.txt`
+        `file://${Deno.build.os === "windows" ? "/" : ""}${tempDir}/test.txt`
       );
 
       Deno.writeFileSync(fileUrl, data, { mode: 0o666 });

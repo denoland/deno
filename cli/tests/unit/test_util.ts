@@ -367,5 +367,5 @@ unitTest(
 export function pathToAbsoluteFileUrl(path: string): URL {
   path = resolve(path);
 
-  return new URL(`file://${Deno.build.os === "windows" && "/"}${path}`);
+  return new URL(`file://${Deno.build.os === "windows" ? "/" : ""}${path}`);
 }

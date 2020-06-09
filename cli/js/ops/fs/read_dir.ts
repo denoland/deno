@@ -18,16 +18,12 @@ function res(response: ReadDirResponse): DirEntry[] {
 }
 
 export function readDirSync(path: string | URL): Iterable<DirEntry> {
-  if (path instanceof URL) {
-    path = pathFromURL(path);
-  }
+  path = pathFromURL(path);
   return res(sendSync("op_read_dir", { path }))[Symbol.iterator]();
 }
 
 export function readDir(path: string | URL): AsyncIterable<DirEntry> {
-  if (path instanceof URL) {
-    path = pathFromURL(path);
-  }
+  path = pathFromURL(path);
   const array = sendAsync("op_read_dir", { path }).then(res);
   return {
     async *[Symbol.asyncIterator](): AsyncIterableIterator<DirEntry> {

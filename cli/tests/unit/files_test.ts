@@ -204,7 +204,7 @@ unitTest(
   function openSyncUrl(): void {
     const tempDir = Deno.makeTempDirSync();
     const fileUrl = new URL(
-      `file://${Deno.build.os === "windows" && "/"}${tempDir}/test_open.txt`
+      `file://${Deno.build.os === "windows" ? "/" : ""}${tempDir}/test_open.txt`
     );
     const file = Deno.openSync(fileUrl, {
       write: true,
@@ -228,7 +228,7 @@ unitTest(
   async function openUrl(): Promise<void> {
     const tempDir = await Deno.makeTempDir();
     const fileUrl = new URL(
-      `file://${Deno.build.os === "windows" && "/"}${tempDir}/test_open.txt`
+      `file://${Deno.build.os === "windows" ? "/" : ""}${tempDir}/test_open.txt`
     );
     const file = await Deno.open(fileUrl, {
       write: true,
@@ -428,7 +428,7 @@ unitTest(
   async function createFileWithUrl(): Promise<void> {
     const tempDir = await Deno.makeTempDir();
     const fileUrl = new URL(
-      `file://${Deno.build.os === "windows" && "/"}${tempDir}/test.txt`
+      `file://${Deno.build.os === "windows" ? "/" : ""}${tempDir}/test.txt`
     );
     const f = await Deno.create(fileUrl);
     let fileInfo = Deno.statSync(fileUrl);
@@ -471,7 +471,7 @@ unitTest(
   async function createSyncFileWithUrl(): Promise<void> {
     const tempDir = await Deno.makeTempDir();
     const fileUrl = new URL(
-      `file://${Deno.build.os === "windows" && "/"}${tempDir}/test.txt`
+      `file://${Deno.build.os === "windows" ? "/" : ""}${tempDir}/test.txt`
     );
     const f = Deno.createSync(fileUrl);
     let fileInfo = Deno.statSync(fileUrl);

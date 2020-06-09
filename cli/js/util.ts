@@ -80,10 +80,45 @@ export function immutableDefine(
   });
 }
 
-export function pathFromURL(url: URL): string {
-  return build.os == "windows"
-    ? new URL(url).pathname
-        .replace(/^\/*([A-Za-z]:)(\/|$)/, "$1/")
-        .replace(/\//g, "\\")
-    : new URL(url).pathname;
+function pathFromURLWin32(url: URL): string {
+  if (url.hostname !== "") {
+    //TODO(actual-size) Node adds a punycode decoding step, we should consider adding this
+    return `\\\\${url.hostname}${url.pathname}`;
+  }
+
+  const validPath = /^\/(?<driveLetter>[A-Za-z]):\//;
+  const matches = validPath.exec(url.pathname);
+
+  if (!matches?.groups?.driveLetter) {
+    throw new TypeError("A URL with the file schema must be absolute.");
+  }
+
+  // we don't want a leading slash on an absolute path in Windows
+  return url.pathname.slice(1);
+}
+
+function pathFromURLPosix(url: URL): string {
+  if (url.hostname !== "") {
+    throw new TypeError(`File URL must be 'localhost' or empty.`);
+  }
+
+  return decodeURIComponent(url.pathname);
+}
+
+export function pathFromURL(pathOrUrl: string | URL): string {
+  if (typeof pathOrUrl == "string") {
+    try {
+      pathOrUrl = new URL(pathOrUrl);
+    } catch {}
+  }
+  if (pathOrUrl instanceof URL) {
+    if (pathOrUrl.protocol != "file:") {
+      throw new TypeError("Must be a path string or file URL.");
+    }
+
+    return build.os == "windows"
+      ? pathFromURLWin32(pathOrUrl)
+      : pathFromURLPosix(pathOrUrl);
+  }
+  return pathOrUrl;
 }

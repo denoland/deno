@@ -6,12 +6,9 @@ export function copyFileSync(
   fromPath: string | URL,
   toPath: string | URL
 ): void {
-  if (fromPath instanceof URL) {
-    fromPath = pathFromURL(fromPath);
-  }
-  if (toPath instanceof URL) {
-    toPath = pathFromURL(toPath);
-  }
+  fromPath = pathFromURL(fromPath);
+  toPath = pathFromURL(toPath);
+
   sendSync("op_copy_file", { from: fromPath, to: toPath });
 }
 
@@ -19,11 +16,8 @@ export async function copyFile(
   fromPath: string | URL,
   toPath: string | URL
 ): Promise<void> {
-  if (fromPath instanceof URL) {
-    fromPath = pathFromURL(fromPath);
-  }
-  if (toPath instanceof URL) {
-    toPath = pathFromURL(toPath);
-  }
+  fromPath = pathFromURL(fromPath);
+  toPath = pathFromURL(toPath);
+
   await sendAsync("op_copy_file", { from: fromPath, to: toPath });
 }

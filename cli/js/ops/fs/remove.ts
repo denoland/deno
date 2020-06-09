@@ -10,9 +10,7 @@ export function removeSync(
   path: string | URL,
   options: RemoveOptions = {}
 ): void {
-  if (path instanceof URL) {
-    path = pathFromURL(path);
-  }
+  path = pathFromURL(path);
   sendSync("op_remove", { path, recursive: !!options.recursive });
 }
 
@@ -20,8 +18,6 @@ export async function remove(
   path: string | URL,
   options: RemoveOptions = {}
 ): Promise<void> {
-  if (path instanceof URL) {
-    path = pathFromURL(path);
-  }
+  path = pathFromURL(path);
   await sendAsync("op_remove", { path, recursive: !!options.recursive });
 }

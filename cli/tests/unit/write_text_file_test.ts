@@ -15,7 +15,7 @@ unitTest(
   function writeTextFileSyncByUrl(): void {
     const tempDir = Deno.makeTempDirSync();
     const fileUrl = new URL(
-      `file://${Deno.build.os === "windows" && "/"}${tempDir}/test.txt`
+      `file://${Deno.build.os === "windows" ? "/" : ""}${tempDir}/test.txt`
     );
     Deno.writeTextFileSync(fileUrl, "Hello");
     const dataRead = Deno.readTextFileSync(fileUrl);
@@ -66,7 +66,7 @@ unitTest(
   async function writeTextFileByUrl(): Promise<void> {
     const tempDir = Deno.makeTempDirSync();
     const fileUrl = new URL(
-      `file://${Deno.build.os === "windows" && "/"}${tempDir}/test.txt`
+      `file://${Deno.build.os === "windows" ? "/" : ""}${tempDir}/test.txt`
     );
     await Deno.writeTextFile(fileUrl, "Hello");
     const dataRead = Deno.readTextFileSync(fileUrl);

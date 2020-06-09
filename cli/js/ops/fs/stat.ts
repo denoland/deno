@@ -67,9 +67,7 @@ export function parseFileInfo(response: StatResponse): FileInfo {
 }
 
 export async function lstat(path: string | URL): Promise<FileInfo> {
-  if (path instanceof URL) {
-    path = pathFromURL(path);
-  }
+  path = pathFromURL(path);
   const res = (await sendAsync("op_stat", {
     path,
     lstat: true,
@@ -78,9 +76,7 @@ export async function lstat(path: string | URL): Promise<FileInfo> {
 }
 
 export function lstatSync(path: string | URL): FileInfo {
-  if (path instanceof URL) {
-    path = pathFromURL(path);
-  }
+  path = pathFromURL(path);
   const res = sendSync("op_stat", {
     path,
     lstat: true,
@@ -89,9 +85,7 @@ export function lstatSync(path: string | URL): FileInfo {
 }
 
 export async function stat(path: string | URL): Promise<FileInfo> {
-  if (path instanceof URL) {
-    path = pathFromURL(path);
-  }
+  path = pathFromURL(path);
   const res = (await sendAsync("op_stat", {
     path,
     lstat: false,
@@ -100,9 +94,7 @@ export async function stat(path: string | URL): Promise<FileInfo> {
 }
 
 export function statSync(path: string | URL): FileInfo {
-  if (path instanceof URL) {
-    path = pathFromURL(path);
-  }
+  path = pathFromURL(path);
   const res = sendSync("op_stat", {
     path,
     lstat: false,

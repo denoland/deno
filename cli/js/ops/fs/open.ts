@@ -18,9 +18,7 @@ export interface OpenOptions {
 
 export function openSync(path: string | URL, options: OpenOptions): number {
   const mode: number | undefined = options?.mode;
-  if (path instanceof URL) {
-    path = pathFromURL(path);
-  }
+  path = pathFromURL(path);
   return sendSync("op_open", { path, options, mode });
 }
 
@@ -29,9 +27,7 @@ export function open(
   options: OpenOptions
 ): Promise<number> {
   const mode: number | undefined = options?.mode;
-  if (path instanceof URL) {
-    path = pathFromURL(path);
-  }
+  path = pathFromURL(path);
   return sendAsync("op_open", {
     path,
     options,

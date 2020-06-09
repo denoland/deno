@@ -46,7 +46,9 @@ unitTest(
 
     const tempFileForUrl = Deno.makeTempFileSync();
     const tempInfoByUrl = Deno.statSync(
-      new URL(`file://${Deno.build.os === "windows" && "/"}${tempFileForUrl}`)
+      new URL(
+        `file://${Deno.build.os === "windows" ? "/" : ""}${tempFileForUrl}`
+      )
     );
     now = Date.now();
     assert(
@@ -188,7 +190,9 @@ unitTest(
 
     const tempFileForUrl = await Deno.makeTempFile();
     const tempInfoByUrl = await Deno.stat(
-      new URL(`file://${Deno.build.os === "windows" && "/"}${tempFileForUrl}`)
+      new URL(
+        `file://${Deno.build.os === "windows" ? "/" : ""}${tempFileForUrl}`
+      )
     );
     now = Date.now();
     assert(
