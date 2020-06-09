@@ -182,24 +182,10 @@ will output:
 }
 ```
 
-### Usage
-
-#### Parse
+### Basic usage
 
 ```ts
-import { parse } from "https://deno.land/std/encoding/toml.ts";
-import { readFileStrSync } from "https://deno.land/std/fs/read_file_str.ts";
-
-const tomlObject = parse(readFileStrSync("file.toml"));
-
-const tomlString = 'foo.bar = "Deno"';
-const tomlObject22 = parse(tomlString);
-```
-
-#### Stringify
-
-```ts
-import { stringify } from "https://deno.land/std/encoding/toml.ts";
+import { parse, stringify } from "https://deno.land/std/encoding/toml.ts";
 const obj = {
   bin: [
     { name: "deno", path: "cli/main.rs" },
@@ -208,6 +194,32 @@ const obj = {
   nib: [{ name: "node", path: "not_found" }],
 };
 const tomlString = stringify(obj);
+console.log(tomlString);
+
+// =>
+// [[bin]]
+// name = "deno"
+// path = "cli/main.rs"
+
+// [[bin]]
+// name = "deno_core"
+// path = "src/foo.rs"
+
+// [[nib]]
+// name = "node"
+// path = "not_found"
+
+const tomlObject = parse(tomlString);
+console.log(tomlObject);
+
+// =>
+// {
+//     bin: [
+//       { name: "deno", path: "cli/main.rs" },
+//       { name: "deno_core", path: "src/foo.rs" }
+//     ],
+//     nib: [ { name: "node", path: "not_found" } ]
+//   }
 ```
 
 ## YAML
