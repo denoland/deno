@@ -74,22 +74,22 @@ pub struct ModuleGraph(HashMap<String, ModuleGraphFile>);
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportDescriptor {
-  specifier: String,
+  pub specifier: String,
   #[serde(serialize_with = "serialize_module_specifier")]
-  resolved_specifier: ModuleSpecifier,
+  pub resolved_specifier: ModuleSpecifier,
   // These two fields are for support of @deno-types directive
   // directly prepending import statement
-  type_directive: Option<String>,
+  pub type_directive: Option<String>,
   #[serde(serialize_with = "serialize_option_module_specifier")]
-  resolved_type_directive: Option<ModuleSpecifier>,
+  pub resolved_type_directive: Option<ModuleSpecifier>,
 }
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReferenceDescriptor {
-  specifier: String,
+  pub specifier: String,
   #[serde(serialize_with = "serialize_module_specifier")]
-  resolved_specifier: ModuleSpecifier,
+  pub resolved_specifier: ModuleSpecifier,
 }
 
 #[derive(Debug, Serialize)]

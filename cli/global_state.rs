@@ -143,7 +143,7 @@ impl GlobalState {
       .expect("Source file not found");
 
     // Check if we need to compile files.
-    let should_compile = needs_compilation(
+    let (should_compile, allow_js) = needs_compilation(
       self.ts_compiler.compile_js,
       out.media_type,
       module_graph.values().collect::<Vec<_>>(),
@@ -158,6 +158,7 @@ impl GlobalState {
           target_lib,
           permissions,
           module_graph,
+          allow_js,
         )
         .await?;
     }
@@ -249,7 +250,9 @@ fn needs_compilation(
   compile_js: bool,
   media_type: MediaType,
   module_graph_files: Vec<&ModuleGraphFile>,
-) -> bool {
+) -> (bool, bool) {
+  let mut allow_js = false;
+
   let mut needs_compilation = match media_type {
     msg::MediaType::TypeScript | msg::MediaType::TSX | msg::MediaType::JSX => {
       true
@@ -266,7 +269,26 @@ fn needs_compilation(
       || media_type == (MediaType::JSX as i32)
   });
 
-  needs_compilation
+  allow_js |= module_graph_files.iter().any(|module_file| {
+    if module_file.media_type == (MediaType::JavaScript as i32) {
+      module_file.imports.iter().any(|import_desc| {
+        let import_file = module_graph_files
+          .iter()
+          .find(|f| {
+            f.specifier == import_desc.resolved_specifier.to_string().as_str()
+          })
+          .expect("Failed to find imported file");
+        let media_type = import_file.media_type;
+        media_type == (MediaType::TypeScript as i32)
+          || media_type == (MediaType::TSX as i32)
+          || media_type == (MediaType::JSX as i32)
+      })
+    } else {
+      false
+    }
+  });
+
+  (needs_compilation, allow_js)
 }
 
 #[test]
@@ -277,7 +299,9 @@ fn thread_safe() {
 
 #[test]
 fn test_needs_compilation() {
-  assert!(!needs_compilation(
+  use crate::module_graph::ImportDescriptor;
+
+  let (needs_comp, allow_js) = needs_compilation(
     false,
     MediaType::JavaScript,
     vec![&ModuleGraphFile {
@@ -292,28 +316,74 @@ fn test_needs_compilation() {
       type_headers: vec![],
       media_type: MediaType::JavaScript as i32,
       source_code: "function foo() {}".to_string(),
-    }]
-  ));
-  assert!(!needs_compilation(false, MediaType::JavaScript, vec![]));
-  assert!(needs_compilation(true, MediaType::JavaScript, vec![]));
-  assert!(needs_compilation(false, MediaType::TypeScript, vec![]));
-  assert!(needs_compilation(false, MediaType::JSX, vec![]));
-  assert!(needs_compilation(false, MediaType::TSX, vec![]));
-  assert!(needs_compilation(
+    }],
+  );
+  assert!(!needs_comp);
+  assert!(!allow_js);
+
+  let (needs_comp, allow_js) =
+    needs_compilation(false, MediaType::JavaScript, vec![]);
+  assert!(!needs_comp);
+  assert!(!allow_js);
+
+  let (needs_comp, allow_js) =
+    needs_compilation(true, MediaType::JavaScript, vec![]);
+  assert!(needs_comp);
+  assert!(!allow_js);
+
+  let (needs_comp, allow_js) =
+    needs_compilation(false, MediaType::TypeScript, vec![]);
+  assert!(needs_comp);
+  assert!(!allow_js);
+
+  let (needs_comp, allow_js) = needs_compilation(false, MediaType::JSX, vec![]);
+  assert!(needs_comp);
+  assert!(!allow_js);
+
+  let (needs_comp, allow_js) = needs_compilation(false, MediaType::TSX, vec![]);
+  assert!(needs_comp);
+  assert!(!allow_js);
+
+  let (needs_comp, allow_js) = needs_compilation(
     false,
     MediaType::JavaScript,
-    vec![&ModuleGraphFile {
-      specifier: "some/file.ts".to_string(),
-      url: "file:///some/file.ts".to_string(),
-      redirect: None,
-      filename: "some/file.ts".to_string(),
-      imports: vec![],
-      referenced_files: vec![],
-      lib_directives: vec![],
-      types_directives: vec![],
-      type_headers: vec![],
-      media_type: MediaType::TypeScript as i32,
-      source_code: "function foo() {}".to_string(),
-    }]
-  ));
+    vec![
+      &ModuleGraphFile {
+        specifier: "file:///some/file.ts".to_string(),
+        url: "file:///some/file.ts".to_string(),
+        redirect: None,
+        filename: "some/file.ts".to_string(),
+        imports: vec![],
+        referenced_files: vec![],
+        lib_directives: vec![],
+        types_directives: vec![],
+        type_headers: vec![],
+        media_type: MediaType::TypeScript as i32,
+        source_code: "function foo() {}".to_string(),
+      },
+      &ModuleGraphFile {
+        specifier: "file:///some/file1.js".to_string(),
+        url: "file:///some/file1.js".to_string(),
+        redirect: None,
+        filename: "some/file1.js".to_string(),
+        imports: vec![ImportDescriptor {
+          specifier: "./file.ts".to_string(),
+          resolved_specifier: ModuleSpecifier::resolve_url(
+            "file:///some/file.ts",
+          )
+          .unwrap(),
+          type_directive: None,
+          resolved_type_directive: None,
+        }],
+        referenced_files: vec![],
+        lib_directives: vec![],
+        types_directives: vec![],
+        type_headers: vec![],
+        media_type: MediaType::JavaScript as i32,
+        source_code: "function foo() {}".to_string(),
+      },
+    ],
+  );
+  assert!(needs_comp);
+  assert!(allow_js);
 }

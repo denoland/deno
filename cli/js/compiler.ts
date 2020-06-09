@@ -105,7 +105,7 @@ const DEFAULT_BUNDLER_OPTIONS: ts.CompilerOptions = {
 };
 
 const DEFAULT_COMPILE_OPTIONS: ts.CompilerOptions = {
-  allowJs: true,
+  allowJs: false,
   allowNonTsExtensions: true,
   checkJs: false,
   esModuleInterop: true,
@@ -1049,6 +1049,7 @@ interface SourceFileMapEntry {
 
 interface CompilerRequestCompile {
   type: CompilerRequestType.Compile;
+  allowJs: boolean;
   target: CompilerHostTarget;
   rootNames: string[];
   configPath?: string;
@@ -1099,6 +1100,7 @@ interface RuntimeBundleResult {
 
 function compile(request: CompilerRequestCompile): CompileResult {
   const {
+    allowJs,
     bundle,
     config,
     configPath,
@@ -1137,6 +1139,8 @@ function compile(request: CompilerRequestCompile): CompileResult {
     unstable,
   }));
   let diagnostics: readonly ts.Diagnostic[] = [];
+
+  host.mergeOptions({ allowJs });
 
   // if there is a configuration supplied, we need to parse that
   if (config && config.length && configPath) {

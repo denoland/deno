@@ -459,6 +459,7 @@ impl TsCompiler {
     target: TargetLib,
     permissions: Permissions,
     module_graph: HashMap<String, ModuleGraphFile>,
+    allow_js: bool,
   ) -> Result<(), ErrBox> {
     let mut has_cached_version = false;
 
@@ -503,6 +504,7 @@ impl TsCompiler {
     let j = match (compiler_config.path, compiler_config.content) {
       (Some(config_path), Some(config_data)) => json!({
         "type": msg::CompilerRequestType::Compile as i32,
+        "allowJs": allow_js,
         "target": target,
         "rootNames": root_names,
         "bundle": bundle,
@@ -514,6 +516,7 @@ impl TsCompiler {
       }),
       _ => json!({
         "type": msg::CompilerRequestType::Compile as i32,
+        "allowJs": allow_js,
         "target": target,
         "rootNames": root_names,
         "bundle": bundle,
@@ -1151,6 +1154,7 @@ mod tests {
         TargetLib::Main,
         Permissions::allow_all(),
         module_graph,
+        false,
       )
       .await;
     assert!(result.is_ok());
