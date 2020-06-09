@@ -25,6 +25,15 @@ Extra steps for Windows users:
 
 ### Prerequisites
 
+You will need to [install Rust](https://www.rust-lang.org/tools/install). Make
+sure to fetch the latest stable release as Deno does not support nightly builds.
+Check that you have the required tools:
+
+```
+rustc -V
+cargo -V
+```
+
 The easiest way to build Deno is by using a precompiled version of V8:
 
 ```
