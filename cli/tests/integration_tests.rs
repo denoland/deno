@@ -1939,6 +1939,12 @@ itest!(proto_exploit {
   output: "proto_exploit.js.out",
 });
 
+itest!(deno_lint {
+  args: "lint --unstable lint/file1.js lint/file2.ts lint/ignored_file.ts",
+  output: "lint/expected.out",
+  exit_code: 1,
+});
+
 #[test]
 fn cafile_fetch() {
   use url::Url;

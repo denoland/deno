@@ -1,0 +1,16 @@
+(no-var) `var` keyword is not allowed
+var a = 1,
+~~~~~~~~~~
+    at [WILDCARD]file1.js:1:0
+
+(single-var-declarator) Multiple variable declarators are not allowed
+var a = 1,
+~~~~~~~~~~
+    at [WILDCARD]file1.js:1:0
+
+(no-empty) Empty block statement
+} catch (e) {}
+            ~~
+    at [WILDCARD]file2.ts:3:12
+
+Found 3 problems
