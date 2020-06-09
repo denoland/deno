@@ -77,6 +77,7 @@ function is as follows:
 ### Usage
 
 ```ts
+import { parse } from "https://deno.land/std/encoding/csv.ts";
 const string = "a,b,c\nd,e,f";
 
 console.log(
