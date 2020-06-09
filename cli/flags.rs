@@ -336,6 +336,7 @@ fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
 fn install_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   permission_args_parse(flags, matches);
+  config_arg_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
   unstable_arg_parse(flags, matches);
 
@@ -660,6 +661,7 @@ fn install_subcommand<'a, 'b>() -> App<'a, 'b> {
             .takes_value(false))
         .arg(ca_file_arg())
         .arg(unstable_arg())
+        .arg(config_arg())
         .about("Install script as an executable")
         .long_about(
 "Installs a script as an executable in the installation root's bin directory.
@@ -2173,6 +2175,32 @@ mod tests {
         ..Flags::default()
       }
     );
+  }
+
+  #[test]
+  fn install_with_config() {
+    let r = flags_from_vec_safe(svec![
+      "deno",
+      "install",
+      "--config",
+      "tsconfig.json",
+      "https://deno.land/std/examples/colors.ts"
+    ]);
+
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Install {
+          name: None,
+          module_url: "https://deno.land/std/examples/colors.ts".to_string(),
+          args: svec![],
+          root: None,
+          force: false,
+        },
+        config_path: Some("tsconfig.json".to_owned()),
+        ..Flags::default()
+      }
+    )
   }
 
   #[test]
