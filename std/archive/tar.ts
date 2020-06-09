@@ -1,5 +1,5 @@
 /**
- * Ported and modified from: https://github.com/jshttp/mime-types and
+ * Ported and modified from: https://github.com/beatgammit/tar-js and
  * licensed as:
  *
  * (The MIT License)
@@ -28,7 +28,7 @@
  */
 import { MultiReader } from "../io/readers.ts";
 import { BufReader } from "../io/bufio.ts";
-import { assert } from "../testing/asserts.ts";
+import { assert } from "../_util/assert.ts";
 
 const recordSize = 512;
 const ustar = "ustar\u000000";
@@ -259,15 +259,9 @@ export interface UntarOptions extends TarInfo {
  */
 export class Tar {
   data: TarDataWithSource[];
-  written: number;
-  out: Uint8Array;
-  private blockSize: number;
 
-  constructor(recordsPerBlock?: number) {
+  constructor() {
     this.data = [];
-    this.written = 0;
-    this.blockSize = (recordsPerBlock || 20) * recordSize;
-    this.out = clean(this.blockSize);
   }
 
   /**

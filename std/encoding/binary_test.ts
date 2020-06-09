@@ -12,6 +12,8 @@ import {
   varnum,
   writeVarbig,
   writeVarnum,
+  varbigBytes,
+  varnumBytes,
 } from "./binary.ts";
 
 Deno.test("testGetNBytes", async function (): Promise<void> {
@@ -159,4 +161,30 @@ Deno.test("testWriteVarnumLittleEndian", async function (): Promise<void> {
   await writeVarnum(buff, 0x04030201, { endian: "little" });
   await buff.read(data);
   assertEquals(data, new Uint8Array([0x01, 0x02, 0x03, 0x04]));
+});
+
+Deno.test("testVarbigBytes", function (): void {
+  const rslt = varbigBytes(0x0102030405060708n);
+  assertEquals(
+    rslt,
+    new Uint8Array([0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08])
+  );
+});
+
+Deno.test("testVarbigBytesLittleEndian", function (): void {
+  const rslt = varbigBytes(0x0807060504030201n, { endian: "little" });
+  assertEquals(
+    rslt,
+    new Uint8Array([0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08])
+  );
+});
+
+Deno.test("testVarnumBytes", function (): void {
+  const rslt = varnumBytes(0x01020304);
+  assertEquals(rslt, new Uint8Array([0x01, 0x02, 0x03, 0x04]));
+});
+
+Deno.test("testVarnumBytesLittleEndian", function (): void {
+  const rslt = varnumBytes(0x04030201, { endian: "little" });
+  assertEquals(rslt, new Uint8Array([0x01, 0x02, 0x03, 0x04]));
 });

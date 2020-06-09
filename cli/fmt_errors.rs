@@ -10,6 +10,15 @@ use std::ops::Deref;
 
 const SOURCE_ABBREV_THRESHOLD: usize = 150;
 
+pub fn format_location(filename: String, line: i64, col: i64) -> String {
+  format!(
+    "{}:{}:{}",
+    colors::cyan(filename),
+    colors::yellow(line.to_string()),
+    colors::yellow(col.to_string())
+  )
+}
+
 pub fn format_stack(
   is_error: bool,
   message_line: String,
@@ -137,11 +146,10 @@ impl fmt::Display for JSError {
       && self.0.line_number.is_some()
       && self.0.start_column.is_some()
     {
-      formatted_frames = vec![format!(
-        "{}:{}:{}",
-        colors::cyan(self.0.script_resource_name.clone().unwrap()),
-        colors::yellow(self.0.line_number.unwrap().to_string()),
-        colors::yellow((self.0.start_column.unwrap() + 1).to_string())
+      formatted_frames = vec![format_location(
+        self.0.script_resource_name.clone().unwrap(),
+        self.0.line_number.unwrap(),
+        self.0.start_column.unwrap() + 1,
       )]
     };
 

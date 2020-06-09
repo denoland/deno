@@ -152,8 +152,66 @@ pub fn test_raw_tty() {
 
 #[test]
 fn test_pattern_match() {
-  assert!(util::pattern_match("foo[BAR]baz", "foobarbaz", "[BAR]"));
-  assert!(!util::pattern_match("foo[BAR]baz", "foobazbar", "[BAR]"));
+  // foo, bar, baz, qux, quux, quuz, corge, grault, garply, waldo, fred, plugh, xyzzy
+
+  let wildcard = "[BAR]";
+  assert!(util::pattern_match("foo[BAR]baz", "foobarbaz", wildcard));
+  assert!(!util::pattern_match("foo[BAR]baz", "foobazbar", wildcard));
+
+  let multiline_pattern = "[BAR]
+foo:
+[BAR]baz[BAR]";
+
+  fn multi_line_builder(input: &str, leading_text: Option<&str>) -> String {
+    // If there is leading text add a newline so it's on it's own line
+    let head = match leading_text {
+      Some(v) => format!("{}\n", v),
+      None => "".to_string(),
+    };
+    format!(
+      "{}foo:
+quuz {} corge
+grault",
+      head, input
+    )
+  }
+
+  // Validate multi-line string builder
+  assert_eq!(
+    "QUUX=qux
+foo:
+quuz BAZ corge
+grault",
+    multi_line_builder("BAZ", Some("QUUX=qux"))
+  );
+
+  // Correct input & leading line
+  assert!(util::pattern_match(
+    multiline_pattern,
+    &multi_line_builder("baz", Some("QUX=quux")),
+    wildcard
+  ));
+
+  // Correct input & no leading line
+  assert!(util::pattern_match(
+    multiline_pattern,
+    &multi_line_builder("baz", None),
+    wildcard
+  ));
+
+  // Incorrect input & leading line
+  assert!(!util::pattern_match(
+    multiline_pattern,
+    &multi_line_builder("garply", Some("QUX=quux")),
+    wildcard
+  ));
+
+  // Incorrect input & no leading line
+  assert!(!util::pattern_match(
+    multiline_pattern,
+    &multi_line_builder("garply", None),
+    wildcard
+  ));
 }
 
 #[test]
@@ -2996,6 +3054,8 @@ mod util {
       let (mut reader, writer) = pipe().unwrap();
       let tests_dir = root.join("cli").join("tests");
       let mut command = deno_cmd();
+      println!("deno_exe args {}", self.args);
+      println!("deno_exe tests path {:?}", &tests_dir);
       command.args(args);
       command.current_dir(&tests_dir);
       command.stdin(Stdio::piped());
@@ -3056,7 +3116,7 @@ mod util {
 
   pub fn pattern_match(pattern: &str, s: &str, wildcard: &str) -> bool {
     // Normalize line endings
-    let s = s.replace("\r\n", "\n");
+    let mut s = s.replace("\r\n", "\n");
     let pattern = pattern.replace("\r\n", "\n");
 
     if pattern == wildcard {
@@ -3070,6 +3130,13 @@ mod util {
 
     if !s.starts_with(parts[0]) {
       return false;
+    }
+
+    // If the first line of the pattern is just a wildcard the newline character
+    // needs to be pre-pended so it can safely match anything or nothing and
+    // continue matching.
+    if pattern.lines().next() == Some(wildcard) {
+      s.insert_str(0, "\n");
     }
 
     let mut t = s.split_at(parts[0].len());
