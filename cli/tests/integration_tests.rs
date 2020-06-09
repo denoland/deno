@@ -500,7 +500,7 @@ fn ts_dependency_recompilation() {
     function print(str: string): void {
         console.log(str);
     }
-    
+
     print(foo);",
   )
   .unwrap();
@@ -1417,6 +1417,11 @@ itest!(_059_fs_relative_path_perm {
   args: "run 059_fs_relative_path_perm.ts",
   output: "059_fs_relative_path_perm.ts.out",
   exit_code: 1,
+});
+
+itest!(_060_deno_doc_displays_all_overloads_in_details_view {
+  args: "doc 060_deno_doc_displays_all_overloads_in_details_view.ts NS.test",
+  output: "060_deno_doc_displays_all_overloads_in_details_view.ts.out",
 });
 
 itest!(js_import_detect {

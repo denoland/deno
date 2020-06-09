@@ -578,13 +578,17 @@ async fn doc_command(
     serde_json::to_writer_pretty(writer, &doc_nodes).map_err(ErrBox::from)
   } else {
     let details = if let Some(filter) = maybe_filter {
-      let node = doc::find_node_by_name_recursively(doc_nodes, filter.clone());
-      if let Some(node) = node {
-        doc::printer::format_details(node)
-      } else {
+      let nodes =
+        doc::find_nodes_by_name_recursively(doc_nodes, filter.clone());
+      if nodes.is_empty() {
         eprintln!("Node {} was not found!", filter);
         std::process::exit(1);
       }
+      let mut details = String::new();
+      for node in nodes {
+        details.push_str(doc::printer::format_details(node).as_str());
+      }
+      details
     } else {
       doc::printer::format(doc_nodes)
     };
