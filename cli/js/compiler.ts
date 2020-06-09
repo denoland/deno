@@ -1140,7 +1140,9 @@ function compile(request: CompilerRequestCompile): CompileResult {
   }));
   let diagnostics: readonly ts.Diagnostic[] = [];
 
-  host.mergeOptions({ allowJs });
+  if (!bundle) {
+    host.mergeOptions({ allowJs });
+  }
 
   // if there is a configuration supplied, we need to parse that
   if (config && config.length && configPath) {
