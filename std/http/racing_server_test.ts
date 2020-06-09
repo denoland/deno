@@ -3,7 +3,7 @@ import { BufReader, BufWriter } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 const { connect, run, test } = Deno;
 
-let server: Deno.Process;
+let server: Deno.Process<Deno.RunOptions & { stdout: "piped" }>;
 async function startServer(): Promise<void> {
   server = run({
     // TODO(lucacasonato): remove unstable when stabilized
@@ -18,7 +18,7 @@ async function startServer(): Promise<void> {
 }
 function killServer(): void {
   server.close();
-  server.stdout?.close();
+  server.stdout.close();
 }
 
 const input = [

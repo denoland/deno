@@ -1,7 +1,7 @@
 // Documentation and interface for walk were adapted from Go
 // https://golang.org/pkg/path/filepath/#Walk
 // Copyright 2009 The Go Authors. All rights reserved. BSD license.
-import { unimplemented, assert } from "../testing/asserts.ts";
+import { assert } from "../_util/assert.ts";
 import { basename, join, normalize } from "../path/mod.ts";
 const { readDir, readDirSync, stat, statSync } = Deno;
 
@@ -107,7 +107,7 @@ export async function* walk(
     if (entry.isSymlink) {
       if (followSymlinks) {
         // TODO(ry) Re-enable followSymlinks.
-        unimplemented();
+        throw new Error("unimplemented");
       } else {
         continue;
       }
@@ -159,7 +159,7 @@ export function* walkSync(
   for (const entry of readDirSync(root)) {
     if (entry.isSymlink) {
       if (followSymlinks) {
-        unimplemented();
+        throw new Error("unimplemented");
       } else {
         continue;
       }

@@ -15,8 +15,7 @@ pub use crate::ZeroCopyBuf;
 
 pub type InitFn = fn(&mut dyn Interface);
 
-pub type DispatchOpFn =
-  fn(&mut dyn Interface, &[u8], Option<ZeroCopyBuf>) -> Op;
+pub type DispatchOpFn = fn(&mut dyn Interface, &[u8], &mut [ZeroCopyBuf]) -> Op;
 
 pub trait Interface {
   fn register_op(&mut self, name: &str, dispatcher: DispatchOpFn) -> OpId;

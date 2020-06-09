@@ -8,7 +8,7 @@ import { Sha1 } from "../hash/sha1.ts";
 import { writeResponse } from "../http/_io.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 import { Deferred, deferred } from "../async/deferred.ts";
-import { assert } from "../testing/asserts.ts";
+import { assert } from "../_util/assert.ts";
 import { concat } from "../bytes/mod.ts";
 import Conn = Deno.Conn;
 import Writer = Deno.Writer;
@@ -491,7 +491,7 @@ export async function handshake(
     throw new Error("ws: invalid status line: " + statusLine);
   }
 
-  // @ts-ignore
+  assert(m.groups);
   const { version, statusCode } = m.groups;
   if (version !== "HTTP/1.1" || statusCode !== "101") {
     throw new Error(

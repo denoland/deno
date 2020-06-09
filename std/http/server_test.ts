@@ -10,10 +10,10 @@ import {
   assert,
   assertEquals,
   assertMatch,
-  assertStrContains,
+  assertStringContains,
   assertThrowsAsync,
 } from "../testing/asserts.ts";
-import { Response, ServerRequest, Server, serve } from "./server.ts";
+import { Response, ServerRequest, Server, serve, serveTLS } from "./server.ts";
 import { BufReader, BufWriter } from "../io/bufio.ts";
 import { delay } from "../async/delay.ts";
 import { encode, decode } from "../encoding/utf8.ts";
@@ -372,7 +372,7 @@ test({
       .catch((_): void => {}); // Ignores the error when closing the process.
 
     try {
-      const r = new TextProtoReader(new BufReader(p.stdout!));
+      const r = new TextProtoReader(new BufReader(p.stdout));
       const s = await r.readLine();
       assert(s !== null && s.includes("server listening"));
       await delay(100);
@@ -387,7 +387,7 @@ test({
       // Stops the sever and allows `p.status()` promise to resolve
       Deno.kill(p.pid, Deno.Signal.SIGKILL);
       await statusPromise;
-      p.stdout!.close();
+      p.stdout.close();
       p.close();
     }
   },
@@ -417,7 +417,7 @@ test({
       .catch((_): void => {}); // Ignores the error when closing the process.
 
     try {
-      const r = new TextProtoReader(new BufReader(p.stdout!));
+      const r = new TextProtoReader(new BufReader(p.stdout));
       const s = await r.readLine();
       assert(
         s !== null && s.includes("server listening"),
@@ -444,7 +444,7 @@ test({
       // Stops the sever and allows `p.status()` promise to resolve
       Deno.kill(p.pid, Deno.Signal.SIGKILL);
       await statusPromise;
-      p.stdout!.close();
+      p.stdout.close();
       p.close();
     }
   },
@@ -480,7 +480,7 @@ test({
     const nread = await conn.read(res);
     assert(nread !== null);
     const resStr = new TextDecoder().decode(res.subarray(0, nread));
-    assertStrContains(resStr, "/hello");
+    assertStringContains(resStr, "/hello");
     server.close();
     await p;
     // Client connection should still be open, verify that
@@ -496,7 +496,6 @@ test({
   async fn(): Promise<void> {
     const serverRoutine = async (): Promise<void> => {
       const server = serve(":8124");
-      // @ts-ignore
       for await (const req of server) {
         await assertThrowsAsync(async () => {
           await req.respond({
@@ -544,5 +543,61 @@ test({
     conn.close();
     server.close();
     assert((await entry).done);
+  },
+});
+
+test({
+  name: "serveTLS Invalid Cert",
+  fn: async (): Promise<void> => {
+    async function iteratorReq(server: Server): Promise<void> {
+      for await (const req of server) {
+        await req.respond({ body: new TextEncoder().encode("Hello HTTPS") });
+      }
+    }
+    const port = 9122;
+    const tlsOptions = {
+      hostname: "localhost",
+      port,
+      certFile: "./http/testdata/tls/localhost.crt",
+      keyFile: "./http/testdata/tls/localhost.key",
+    };
+    const server = serveTLS(tlsOptions);
+    const p = iteratorReq(server);
+
+    try {
+      // Invalid certificate, connection should throw
+      // but should not crash the server
+      assertThrowsAsync(
+        () =>
+          Deno.connectTls({
+            hostname: "localhost",
+            port,
+            // certFile
+          }),
+        Deno.errors.InvalidData
+      );
+
+      // Valid request after invalid
+      const conn = await Deno.connectTls({
+        hostname: "localhost",
+        port,
+        certFile: "http/testdata/tls/RootCA.pem",
+      });
+
+      await Deno.writeAll(
+        conn,
+        new TextEncoder().encode("GET / HTTP/1.0\r\n\r\n")
+      );
+      const res = new Uint8Array(100);
+      const nread = await conn.read(res);
+      assert(nread !== null);
+      conn.close();
+      const resStr = new TextDecoder().decode(res.subarray(0, nread));
+      assert(resStr.includes("Hello HTTPS"));
+    } finally {
+      // Stops the sever and allows `p.status()` promise to resolve
+      server.close();
+      await p;
+    }
   },
 });

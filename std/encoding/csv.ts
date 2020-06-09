@@ -7,7 +7,7 @@
 import { BufReader } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 import { StringReader } from "../io/readers.ts";
-import { assert } from "../testing/asserts.ts";
+import { assert } from "../_util/assert.ts";
 
 const INVALID_RUNE = ["\r", "\n", '"'];
 
@@ -32,7 +32,7 @@ export class ParseError extends Error {
  * @property trimLeadingSpace - Flag to trim the leading space of the value.
  *           Default: 'false'
  * @property lazyQuotes - Allow unquoted quote in a quoted field or non double
- *           quoted quotes in quoted field Default: 'false'
+ *           quoted quotes in quoted field. Default: 'false'
  * @property fieldsPerRecord - Enabling the check of fields for each row.
  *           If == 0, first row is used as referral for the number of fields.
  */
@@ -209,6 +209,12 @@ async function readLine(tp: TextProtoReader): Promise<string | null> {
   return line;
 }
 
+/**
+ * Parse the CSV from the `reader` with the options provided and return `string[][]`.
+ *
+ * @param reader provides the CSV data to parse
+ * @param opt controls the parsing behavior
+ */
 export async function readMatrix(
   reader: BufReader,
   opt: ReadOptions = {
@@ -253,16 +259,30 @@ export async function readMatrix(
 }
 
 /**
+ * Parse the CSV string/buffer with the options provided.
+ *
  * HeaderOptions provides the column definition
  * and the parse function for each entry of the
  * column.
  */
 export interface HeaderOptions {
+  /**
+   * Name of the header to be used as property
+   */
   name: string;
+  /**
+   * Parse function for the column.
+   * This is executed on each entry of the header.
+   * This can be combined with the Parse function of the rows.
+   */
   parse?: (input: string) => unknown;
 }
 
 export interface ParseOptions extends ReadOptions {
+  /**
+   * If a boolean is provided, the first line will be used as Header definitions.
+   * If `string[]` or `HeaderOptions[]` those names will be used for header definition.
+   */
   header: boolean | string[] | HeaderOptions[];
   /** Parse function for rows.
    * Example:
@@ -287,6 +307,9 @@ export interface ParseOptions extends ReadOptions {
  * for columns and rows.
  * @param input Input to parse. Can be a string or BufReader.
  * @param opt options of the parser.
+ * @returns If you don't provide both `opt.header` and `opt.parse`, it returns `string[][]`.
+ *   If you provide `opt.header` but not `opt.parse`, it returns `object[]`.
+ *   If you provide `opt.parse`, it returns an array where each element is the value returned from `opt.parse`.
  */
 export async function parse(
   input: string | BufReader,

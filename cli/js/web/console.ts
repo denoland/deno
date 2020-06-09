@@ -124,23 +124,19 @@ function createIterableString<T>(
 
   const iPrefix = `${config.displayName ? config.displayName + " " : ""}`;
 
+  const initIndentation = `\n${DEFAULT_INDENT.repeat(level + 1)}`;
+  const entryIndentation = `,\n${DEFAULT_INDENT.repeat(level + 1)}`;
+  const closingIndentation = `\n${DEFAULT_INDENT.repeat(level)}`;
+
   let iContent: string;
   if (config.group && entries.length > MIN_GROUP_LENGTH) {
     const groups = groupEntries(entries, level, value);
-    const initIndentation = `\n${DEFAULT_INDENT.repeat(level + 1)}`;
-    const entryIndentation = `,\n${DEFAULT_INDENT.repeat(level + 1)}`;
-    const closingIndentation = `\n${DEFAULT_INDENT.repeat(level)}`;
-
     iContent = `${initIndentation}${groups.join(
       entryIndentation
     )}${closingIndentation}`;
   } else {
     iContent = entries.length === 0 ? "" : ` ${entries.join(", ")} `;
     if (stripColor(iContent).length > LINE_BREAKING_LENGTH) {
-      const initIndentation = `\n${DEFAULT_INDENT.repeat(level + 1)}`;
-      const entryIndentation = `,\n${DEFAULT_INDENT.repeat(level + 1)}`;
-      const closingIndentation = `\n`;
-
       iContent = `${initIndentation}${entries.join(
         entryIndentation
       )}${closingIndentation}`;
@@ -220,14 +216,18 @@ function groupEntries<T>(
       lineMaxLength += separatorSpace;
       maxLineLength[i] = lineMaxLength;
     }
-    let order = "padStart";
+    let order: "padStart" | "padEnd" = "padStart";
     if (value !== undefined) {
       for (let i = 0; i < entries.length; i++) {
-        //@ts-ignore
-        if (typeof value[i] !== "number" && typeof value[i] !== "bigint") {
+        /* eslint-disable @typescript-eslint/no-explicit-any */
+        if (
+          typeof (value as any)[i] !== "number" &&
+          typeof (value as any)[i] !== "bigint"
+        ) {
           order = "padEnd";
           break;
         }
+        /* eslint-enable */
       }
     }
     // Each iteration creates a single line of grouped entries.
@@ -239,7 +239,6 @@ function groupEntries<T>(
       for (; j < max - 1; j++) {
         // In future, colors should be taken here into the account
         const padding = maxLineLength[j - i];
-        //@ts-ignore
         str += `${entries[j]}, `[order](padding, " ");
       }
       if (order === "padStart") {
@@ -343,7 +342,7 @@ function createArrayString(
         const ending = emptyItems > 1 ? "s" : "";
         return dim(`<${emptyItems} empty item${ending}>`);
       } else {
-        return stringifyWithQuotes(val, ctx, level + 1, maxLevel);
+        return stringifyWithQuotes(val, ctx, level, maxLevel);
       }
     },
     group: true,
@@ -412,8 +411,8 @@ function createMapString(
     },
     group: false,
   };
-  //@ts-ignore
-  return createIterableString(value, ctx, level, maxLevel, printConfig);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return createIterableString(value as any, ctx, level, maxLevel, printConfig);
 }
 
 function createWeakSetString(): string {
@@ -481,7 +480,7 @@ function createPromiseString(
 // TODO: Proxy
 
 function createRawObjectString(
-  value: { [key: string]: unknown },
+  value: Record<string, unknown>,
   ctx: ConsoleContext,
   level: number,
   maxLevel: number
@@ -494,8 +493,9 @@ function createRawObjectString(
   let baseString = "";
 
   let shouldShowDisplayName = false;
-  // @ts-ignore
-  let displayName = value[Symbol.toStringTag];
+  let displayName = (value as { [Symbol.toStringTag]: string })[
+    Symbol.toStringTag
+  ];
   if (!displayName) {
     displayName = getClassInstanceName(value);
   }
@@ -515,8 +515,8 @@ function createRawObjectString(
   for (const key of symbolKeys) {
     entries.push(
       `${key.toString()}: ${stringifyWithQuotes(
-        // @ts-ignore
-        value[key],
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        value[key as any],
         ctx,
         level + 1,
         maxLevel
@@ -842,27 +842,33 @@ export class Console {
       resultData = data!;
     }
 
+    let hasPrimitives = false;
     Object.keys(resultData).forEach((k, idx): void => {
       const value: unknown = resultData[k]!;
-
-      if (value !== null && typeof value === "object") {
-        Object.entries(value as { [key: string]: unknown }).forEach(
-          ([k, v]): void => {
-            if (properties && !properties.includes(k)) {
-              return;
-            }
-
+      const primitive =
+        value === null ||
+        (typeof value !== "function" && typeof value !== "object");
+      if (properties === undefined && primitive) {
+        hasPrimitives = true;
+        values.push(stringifyValue(value));
+      } else {
+        const valueObj = (value as { [key: string]: unknown }) || {};
+        const keys = properties || Object.keys(valueObj);
+        for (const k of keys) {
+          if (primitive || !valueObj.hasOwnProperty(k)) {
             if (objectValues[k]) {
-              objectValues[k].push(stringifyValue(v));
+              // fill with blanks for idx to avoid misplacing from later values
+              objectValues[k].push("");
+            }
+          } else {
+            if (objectValues[k]) {
+              objectValues[k].push(stringifyValue(valueObj[k]));
             } else {
-              objectValues[k] = createColumn(v, idx);
+              objectValues[k] = createColumn(valueObj[k], idx);
             }
           }
-        );
-
+        }
         values.push("");
-      } else {
-        values.push(stringifyValue(value));
       }
 
       indexKeys.push(k);
@@ -872,10 +878,7 @@ export class Console {
     const bodyValues = Object.values(objectValues);
     const header = [
       indexKey,
-      ...(properties || [
-        ...headerKeys,
-        !isMap && values.length > 0 && valuesKey,
-      ]),
+      ...(properties || [...headerKeys, !isMap && hasPrimitives && valuesKey]),
     ].filter(Boolean) as string[];
     const body = [indexKeys, ...bodyValues, values];
 
@@ -949,7 +952,6 @@ export class Console {
       name: "Trace",
       message,
     };
-    // @ts-ignore
     Error.captureStackTrace(err, this.trace);
     this.error((err as Error).stack);
   };

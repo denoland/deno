@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { assertStrictEq, assertNotEquals } from "../../testing/asserts.ts";
+import { assertStrictEquals, assertNotEquals } from "../../testing/asserts.ts";
 import { BufReader, ReadLineResult } from "../../io/bufio.ts";
 
 Deno.test("[examples/echo_server]", async () => {
@@ -13,11 +13,11 @@ Deno.test("[examples/echo_server]", async () => {
 
   let conn: Deno.Conn | undefined;
   try {
-    const processReader = new BufReader(process.stdout!);
+    const processReader = new BufReader(process.stdout);
     const message = await processReader.readLine();
 
     assertNotEquals(message, null);
-    assertStrictEq(
+    assertStrictEquals(
       decoder.decode((message as ReadLineResult).line).trim(),
       "Listening on 0.0.0.0:8080"
     );
@@ -35,10 +35,10 @@ Deno.test("[examples/echo_server]", async () => {
       .trim();
     const expectedResponse = "Hello echo_server";
 
-    assertStrictEq(actualResponse, expectedResponse);
+    assertStrictEquals(actualResponse, expectedResponse);
   } finally {
     conn?.close();
-    process.stdout!.close();
+    process.stdout.close();
     process.close();
   }
 });

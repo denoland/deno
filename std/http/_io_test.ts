@@ -1,5 +1,4 @@
 import {
-  AssertionError,
   assertThrowsAsync,
   assertEquals,
   assert,
@@ -82,7 +81,7 @@ test("chunkedBodyReader with trailers", async () => {
 
 test("readTrailers", async () => {
   const h = new Headers({
-    trailer: "deno,node",
+    trailer: "Deno, Node",
   });
   const trailer = ["deno: land", "node: js", "", ""].join("\r\n");
   await readTrailers(h, new BufReader(new Buffer(encode(trailer))));
@@ -105,14 +104,14 @@ test("readTrailer should throw if undeclared headers found in trailer", async ()
       async () => {
         await readTrailers(h, new BufReader(new Buffer(encode(trailer))));
       },
-      Error,
-      "Undeclared trailer field"
+      Deno.errors.InvalidData,
+      `Undeclared trailers: [ "`
     );
   }
 });
 
 test("readTrailer should throw if trailer contains prohibited fields", async () => {
-  for (const f of ["content-length", "trailer", "transfer-encoding"]) {
+  for (const f of ["Content-Length", "Trailer", "Transfer-Encoding"]) {
     const h = new Headers({
       trailer: f,
     });
@@ -120,8 +119,8 @@ test("readTrailer should throw if trailer contains prohibited fields", async () 
       async () => {
         await readTrailers(h, new BufReader(new Buffer()));
       },
-      Error,
-      "Prohibited field for trailer"
+      Deno.errors.InvalidData,
+      `Prohibited trailer names: [ "`
     );
   }
 });
@@ -145,15 +144,15 @@ test("writeTrailer should throw", async () => {
     () => {
       return writeTrailers(w, new Headers(), new Headers());
     },
-    Error,
-    'must have "trailer"'
+    TypeError,
+    "Missing trailer header."
   );
   await assertThrowsAsync(
     () => {
       return writeTrailers(w, new Headers({ trailer: "deno" }), new Headers());
     },
-    Error,
-    "only allowed"
+    TypeError,
+    `Trailers are only allowed for "transfer-encoding: chunked", got "transfer-encoding: null".`
   );
   for (const f of ["content-length", "trailer", "transfer-encoding"]) {
     await assertThrowsAsync(
@@ -164,8 +163,8 @@ test("writeTrailer should throw", async () => {
           new Headers({ [f]: "1" })
         );
       },
-      AssertionError,
-      "prohibited"
+      TypeError,
+      `Prohibited trailer names: [ "`
     );
   }
   await assertThrowsAsync(
@@ -176,8 +175,8 @@ test("writeTrailer should throw", async () => {
         new Headers({ node: "js" })
       );
     },
-    AssertionError,
-    "Not trailer"
+    TypeError,
+    `Undeclared trailers: [ "node" ].`
   );
 });
 

@@ -1,8 +1,10 @@
 // This file is ported from globrex@0.1.2
 // MIT License
 // Copyright (c) 2018 Terkel Gjervig Nielsen
+/** This module is browser compatible. */
 
-const isWin = Deno.build.os === "windows";
+import { isWindows as isWin } from "./_constants.ts";
+
 const SEP = isWin ? `(?:\\\\|\\/)` : `\\/`;
 const SEP_ESC = isWin ? `\\\\` : `/`;
 const SEP_RAW = isWin ? `\\` : `/`;

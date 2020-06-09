@@ -7,7 +7,9 @@ import { delay } from "../../async/delay.ts";
 
 const { test } = Deno;
 
-async function startServer(): Promise<Deno.Process> {
+async function startServer(): Promise<
+  Deno.Process<Deno.RunOptions & { stdout: "piped" }>
+> {
   const server = Deno.run({
     // TODO(lucacasonato): remove unstable once possible
     cmd: [
@@ -27,7 +29,7 @@ async function startServer(): Promise<Deno.Process> {
     const s = await r.readLine();
     assert(s !== null && s.includes("chat server starting"));
   } catch (err) {
-    server.stdout!.close();
+    server.stdout.close();
     server.close();
   }
 
@@ -46,7 +48,7 @@ test({
       assert(html.includes("ws chat example"), "body is ok");
     } finally {
       server.close();
-      server.stdout!.close();
+      server.stdout.close();
     }
     await delay(10);
   },
@@ -66,7 +68,7 @@ test({
       assertEquals((await it.next()).value, "[1]: Hello");
     } finally {
       server.close();
-      server.stdout!.close();
+      server.stdout.close();
       ws!.conn.close();
     }
   },

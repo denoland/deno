@@ -1,6 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 #![deny(warnings)]
 
+extern crate dissimilar;
 #[macro_use]
 extern crate lazy_static;
 #[macro_use]
@@ -25,6 +26,7 @@ mod checksum;
 pub mod colors;
 pub mod deno_dir;
 pub mod diagnostics;
+mod diff;
 mod disk_cache;
 mod doc;
 mod file_fetcher;
@@ -74,13 +76,12 @@ use crate::fs as deno_fs;
 use crate::global_state::GlobalState;
 use crate::msg::MediaType;
 use crate::op_error::OpError;
-use crate::ops::io::get_stdio;
 use crate::permissions::Permissions;
-use crate::state::State;
 use crate::tsc::TargetLib;
 use crate::worker::MainWorker;
 use deno_core::v8_set_flags;
 use deno_core::ErrBox;
+use deno_core::EsIsolate;
 use deno_core::ModuleSpecifier;
 use flags::DenoSubcommand;
 use flags::Flags;
@@ -137,28 +138,17 @@ fn write_to_stdout_ignore_sigpipe(bytes: &[u8]) -> Result<(), std::io::Error> {
   }
 }
 
-fn create_main_worker(
-  global_state: GlobalState,
-  main_module: ModuleSpecifier,
-) -> Result<MainWorker, ErrBox> {
-  let state = State::new(global_state, None, main_module, false)?;
-
-  let mut worker = MainWorker::new(
-    "main".to_string(),
-    startup_data::deno_isolate_init(),
-    state,
-  );
-
-  {
-    let (stdin, stdout, stderr) = get_stdio();
-    let mut t = worker.resource_table.borrow_mut();
-    t.add("stdin", Box::new(stdin));
-    t.add("stdout", Box::new(stdout));
-    t.add("stderr", Box::new(stderr));
+fn write_lockfile(global_state: GlobalState) -> Result<(), std::io::Error> {
+  if global_state.flags.lock_write {
+    if let Some(ref lockfile) = global_state.lockfile {
+      let g = lockfile.lock().unwrap();
+      g.write()?;
+    } else {
+      eprintln!("--lock flag must be specified when using --lock-write");
+      std::process::exit(11);
+    }
   }
-
-  worker.execute("bootstrap.mainRuntime()")?;
-  Ok(worker)
+  Ok(())
 }
 
 fn print_cache_info(state: &GlobalState) {
@@ -205,15 +195,20 @@ async fn print_file_info(
   );
 
   let module_specifier_ = module_specifier.clone();
+
   global_state
-    .clone()
-    .fetch_compiled_module(
-      module_specifier_,
+    .prepare_module_load(
+      module_specifier_.clone(),
       None,
       TargetLib::Main,
       Permissions::allow_all(),
       false,
+      global_state.maybe_import_map.clone(),
     )
+    .await?;
+  global_state
+    .clone()
+    .fetch_compiled_module(module_specifier_, None)
     .await?;
 
   if out.media_type == msg::MediaType::TypeScript
@@ -244,7 +239,10 @@ async fn print_file_info(
     );
   }
 
-  if let Some(deps) = worker.isolate.modules.deps(&module_specifier) {
+  let es_state_rc = EsIsolate::state(&worker.isolate);
+  let es_state = es_state_rc.borrow();
+
+  if let Some(deps) = es_state.modules.deps(&module_specifier) {
     println!("{}{}", colors::bold("deps:\n".to_string()), deps.name);
     if let Some(ref depsdeps) = deps.deps {
       for d in depsdeps {
@@ -292,7 +290,7 @@ async fn info_command(
   }
 
   let main_module = ModuleSpecifier::resolve_url_or_path(&file.unwrap())?;
-  let mut worker = create_main_worker(global_state, main_module.clone())?;
+  let mut worker = MainWorker::create(global_state, main_module.clone())?;
   worker.preload_module(&main_module).await?;
   print_file_info(&worker, main_module.clone()).await
 }
@@ -310,10 +308,75 @@ async fn install_command(
   fetch_flags.reload = true;
   let global_state = GlobalState::new(fetch_flags)?;
   let main_module = ModuleSpecifier::resolve_url_or_path(&module_url)?;
-  let mut worker = create_main_worker(global_state, main_module.clone())?;
+  let mut worker = MainWorker::create(global_state, main_module.clone())?;
   worker.preload_module(&main_module).await?;
   installer::install(flags, &module_url, args, name, root, force)
     .map_err(ErrBox::from)
+}
+
+async fn lint_command(flags: Flags, files: Vec<String>) -> Result<(), ErrBox> {
+  let global_state = GlobalState::new(flags)?;
+
+  // TODO(bartlomieju): refactor, it's non-sense to create
+  // state just to perform unstable check...
+  use crate::state::State;
+  let state = State::new(
+    global_state.clone(),
+    None,
+    ModuleSpecifier::resolve_url("file:///dummy.ts").unwrap(),
+    None,
+    true,
+  )?;
+
+  state.check_unstable("lint");
+
+  let mut error_counts = 0;
+
+  for file in files {
+    let specifier = ModuleSpecifier::resolve_url_or_path(&file)?;
+    let source_file = global_state
+      .file_fetcher
+      .fetch_source_file(&specifier, None, Permissions::allow_all())
+      .await?;
+    let source_code = String::from_utf8(source_file.source_code)?;
+
+    let mut linter = deno_lint::linter::Linter::default();
+    let lint_rules = deno_lint::rules::get_all_rules();
+
+    let file_diagnostics = linter.lint(file, source_code, lint_rules)?;
+
+    error_counts += file_diagnostics.len();
+    for d in file_diagnostics.iter() {
+      let pretty_message = format!(
+        "({}) {}",
+        colors::gray(d.code.to_string()),
+        d.message.clone()
+      );
+      eprintln!(
+        "{}\n",
+        fmt_errors::format_stack(
+          true,
+          pretty_message,
+          Some(d.line_src.clone()),
+          Some(d.location.col as i64),
+          Some((d.location.col + d.snippet_length) as i64),
+          &[fmt_errors::format_location(
+            d.location.filename.clone(),
+            d.location.line as i64,
+            d.location.col as i64,
+          )],
+          0
+        )
+      );
+    }
+  }
+
+  if error_counts > 0 {
+    eprintln!("Found {} problems", error_counts);
+    std::process::exit(1);
+  }
+
+  Ok(())
 }
 
 async fn cache_command(flags: Flags, files: Vec<String>) -> Result<(), ErrBox> {
@@ -321,22 +384,14 @@ async fn cache_command(flags: Flags, files: Vec<String>) -> Result<(), ErrBox> {
     ModuleSpecifier::resolve_url_or_path("./__$deno$fetch.ts").unwrap();
   let global_state = GlobalState::new(flags)?;
   let mut worker =
-    create_main_worker(global_state.clone(), main_module.clone())?;
+    MainWorker::create(global_state.clone(), main_module.clone())?;
 
   for file in files {
     let specifier = ModuleSpecifier::resolve_url_or_path(&file)?;
     worker.preload_module(&specifier).await.map(|_| ())?;
   }
 
-  if global_state.flags.lock_write {
-    if let Some(ref lockfile) = global_state.lockfile {
-      let g = lockfile.lock().unwrap();
-      g.write()?;
-    } else {
-      eprintln!("--lock flag must be specified when using --lock-write");
-      std::process::exit(11);
-    }
-  }
+  write_lockfile(global_state)?;
 
   Ok(())
 }
@@ -345,14 +400,22 @@ async fn eval_command(
   flags: Flags,
   code: String,
   as_typescript: bool,
+  print: bool,
 ) -> Result<(), ErrBox> {
   // Force TypeScript compile.
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./__$deno$eval.ts").unwrap();
   let global_state = GlobalState::new(flags)?;
-  let mut worker = create_main_worker(global_state, main_module.clone())?;
+  let mut worker = MainWorker::create(global_state, main_module.clone())?;
   let main_module_url = main_module.as_url().to_owned();
   // Create a dummy source file.
+  let source_code = if print {
+    "console.log(".to_string() + &code + ")"
+  } else {
+    code.clone()
+  }
+  .into_bytes();
+
   let source_file = SourceFile {
     filename: main_module_url.to_file_path().unwrap(),
     url: main_module_url,
@@ -363,7 +426,7 @@ async fn eval_command(
     } else {
       MediaType::JavaScript
     },
-    source_code: code.clone().into_bytes(),
+    source_code,
   };
   // Save our fake file into file fetcher cache
   // to allow module access by TS compiler (e.g. op_fetch_source_files)
@@ -386,24 +449,78 @@ async fn bundle_command(
   source_file: String,
   out_file: Option<PathBuf>,
 ) -> Result<(), ErrBox> {
-  let mut module_name = ModuleSpecifier::resolve_url_or_path(&source_file)?;
-  let url = module_name.as_url();
+  let mut module_specifier =
+    ModuleSpecifier::resolve_url_or_path(&source_file)?;
+  let url = module_specifier.as_url();
 
   // TODO(bartlomieju): fix this hack in ModuleSpecifier
   if url.scheme() == "file" {
     let a = deno_fs::normalize_path(&url.to_file_path().unwrap());
     let u = Url::from_file_path(a).unwrap();
-    module_name = ModuleSpecifier::from(u)
+    module_specifier = ModuleSpecifier::from(u)
   }
 
-  let global_state = GlobalState::new(flags)?;
   debug!(">>>>> bundle START");
-  let bundle_result = global_state
-    .ts_compiler
-    .bundle(global_state.clone(), module_name, out_file)
-    .await;
+  let compiler_config = tsc::CompilerConfig::load(flags.config_path.clone())?;
+
+  let global_state = GlobalState::new(flags)?;
+
+  info!("Bundling {}", module_specifier.to_string());
+
+  let output = tsc::bundle(
+    &global_state,
+    compiler_config,
+    module_specifier,
+    global_state.maybe_import_map.clone(),
+    global_state.flags.unstable,
+  )
+  .await?;
+
   debug!(">>>>> bundle END");
-  bundle_result
+
+  if let Some(out_file_) = out_file.as_ref() {
+    info!("Emitting bundle to {:?}", out_file_);
+    let output_bytes = output.as_bytes();
+    let output_len = output_bytes.len();
+    deno_fs::write_file(out_file_, output_bytes, 0o666)?;
+    info!("{} emitted.", human_size(output_len as f64));
+  } else {
+    println!("{}", output);
+  }
+  Ok(())
+}
+
+fn human_size(bytse: f64) -> String {
+  let negative = if bytse.is_sign_positive() { "" } else { "-" };
+  let bytse = bytse.abs();
+  let units = ["Bytes", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
+  if bytse < 1_f64 {
+    return format!("{}{} {}", negative, bytse, "Bytes");
+  }
+  let delimiter = 1024_f64;
+  let exponent = std::cmp::min(
+    (bytse.ln() / delimiter.ln()).floor() as i32,
+    (units.len() - 1) as i32,
+  );
+  let pretty_bytes = format!("{:.2}", bytse / delimiter.powi(exponent))
+    .parse::<f64>()
+    .unwrap()
+    * 1_f64;
+  let unit = units[exponent as usize];
+  format!("{}{} {}", negative, pretty_bytes, unit)
+}
+
+#[test]
+fn human_size_test() {
+  assert_eq!(human_size(16_f64), "16 Bytes");
+  assert_eq!(human_size((16 * 1024) as f64), "16 KB");
+  assert_eq!(human_size((16 * 1024 * 1024) as f64), "16 MB");
+  assert_eq!(human_size(16_f64 * 1024_f64.powf(3.0)), "16 GB");
+  assert_eq!(human_size(16_f64 * 1024_f64.powf(4.0)), "16 TB");
+  assert_eq!(human_size(16_f64 * 1024_f64.powf(5.0)), "16 PB");
+  assert_eq!(human_size(16_f64 * 1024_f64.powf(6.0)), "16 EB");
+  assert_eq!(human_size(16_f64 * 1024_f64.powf(7.0)), "16 ZB");
+  assert_eq!(human_size(16_f64 * 1024_f64.powf(8.0)), "16 YB");
 }
 
 async fn doc_command(
@@ -461,13 +578,17 @@ async fn doc_command(
     serde_json::to_writer_pretty(writer, &doc_nodes).map_err(ErrBox::from)
   } else {
     let details = if let Some(filter) = maybe_filter {
-      let node = doc::find_node_by_name_recursively(doc_nodes, filter.clone());
-      if let Some(node) = node {
-        doc::printer::format_details(node)
-      } else {
+      let nodes =
+        doc::find_nodes_by_name_recursively(doc_nodes, filter.clone());
+      if nodes.is_empty() {
         eprintln!("Node {} was not found!", filter);
         std::process::exit(1);
       }
+      let mut details = String::new();
+      for node in nodes {
+        details.push_str(doc::printer::format_details(node).as_str());
+      }
+      details
     } else {
       doc::printer::format(doc_nodes)
     };
@@ -480,7 +601,7 @@ async fn run_repl(flags: Flags) -> Result<(), ErrBox> {
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./__$deno$repl.ts").unwrap();
   let global_state = GlobalState::new(flags)?;
-  let mut worker = create_main_worker(global_state, main_module)?;
+  let mut worker = MainWorker::create(global_state, main_module)?;
   loop {
     (&mut *worker).await?;
   }
@@ -490,21 +611,13 @@ async fn run_command(flags: Flags, script: String) -> Result<(), ErrBox> {
   let global_state = GlobalState::new(flags.clone())?;
   let main_module = ModuleSpecifier::resolve_url_or_path(&script).unwrap();
   let mut worker =
-    create_main_worker(global_state.clone(), main_module.clone())?;
+    MainWorker::create(global_state.clone(), main_module.clone())?;
   debug!("main_module {}", main_module);
   worker.execute_module(&main_module).await?;
+  write_lockfile(global_state)?;
   worker.execute("window.dispatchEvent(new Event('load'))")?;
   (&mut *worker).await?;
   worker.execute("window.dispatchEvent(new Event('unload'))")?;
-  if global_state.flags.lock_write {
-    if let Some(ref lockfile) = global_state.lockfile {
-      let g = lockfile.lock().unwrap();
-      g.write()?;
-    } else {
-      eprintln!("--lock flag must be specified when using --lock-write");
-      std::process::exit(11);
-    }
-  }
   Ok(())
 }
 
@@ -537,7 +650,7 @@ async fn test_command(
   let main_module =
     ModuleSpecifier::resolve_url(&test_file_url.to_string()).unwrap();
   let mut worker =
-    create_main_worker(global_state.clone(), main_module.clone())?;
+    MainWorker::create(global_state.clone(), main_module.clone())?;
   // Create a dummy source file.
   let source_file = SourceFile {
     filename: test_file_url.to_file_path().unwrap(),
@@ -593,9 +706,10 @@ pub fn main() {
       filter,
     } => doc_command(flags, source_file, json, filter).boxed_local(),
     DenoSubcommand::Eval {
+      print,
       code,
       as_typescript,
-    } => eval_command(flags, code, as_typescript).boxed_local(),
+    } => eval_command(flags, code, as_typescript, print).boxed_local(),
     DenoSubcommand::Cache { files } => {
       cache_command(flags, files).boxed_local()
     }
@@ -612,6 +726,7 @@ pub fn main() {
     } => {
       install_command(flags, module_url, args, name, root, force).boxed_local()
     }
+    DenoSubcommand::Lint { files } => lint_command(flags, files).boxed_local(),
     DenoSubcommand::Repl => run_repl(flags).boxed_local(),
     DenoSubcommand::Run { script } => run_command(flags, script).boxed_local(),
     DenoSubcommand::Test {
