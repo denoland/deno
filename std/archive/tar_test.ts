@@ -8,12 +8,39 @@
  * **to run this test**
  * deno run --allow-read archive/tar_test.ts
  */
-import { assertEquals } from "../testing/asserts.ts";
+import { assertEquals, assert } from "../testing/asserts.ts";
 
 import { resolve } from "../path/mod.ts";
 import { Tar, Untar } from "./tar.ts";
 
 const filePath = resolve("archive", "testdata", "example.txt");
+
+interface TestEntry {
+  name: string;
+  content?: Uint8Array;
+  filePath?: string;
+}
+
+async function createTar(entries: TestEntry[]): Promise<Tar> {
+  const tar = new Tar();
+  // put data on memory
+  for (const file of entries) {
+    let options;
+
+    if (file.content) {
+      options = {
+        reader: new Deno.Buffer(file.content),
+        contentSize: file.content.byteLength,
+      };
+    } else {
+      options = { filePath: file.filePath };
+    }
+
+    await tar.append(file.name, options);
+  }
+
+  return tar;
+}
 
 Deno.test("createTarArchive", async function (): Promise<void> {
   // initialize
@@ -54,10 +81,11 @@ Deno.test("deflateTarArchive", async function (): Promise<void> {
 
   // read data from a tar archive
   const untar = new Untar(tar.getReader());
-  const buf = new Deno.Buffer();
-  const result = await untar.extract(buf);
-  const untarText = new TextDecoder("utf-8").decode(buf.bytes());
+  const result = await untar.extract();
+  assert(result !== null);
+  const untarText = new TextDecoder("utf-8").decode(await Deno.readAll(result));
 
+  assertEquals(await untar.extract(), null); // EOF
   // tests
   assertEquals(result.fileName, fileName);
   assertEquals(untarText, text);
@@ -80,11 +108,150 @@ Deno.test("appendFileWithLongNameToTarArchive", async function (): Promise<
 
   // read data from a tar archive
   const untar = new Untar(tar.getReader());
-  const buf = new Deno.Buffer();
-  const result = await untar.extract(buf);
-  const untarText = new TextDecoder("utf-8").decode(buf.bytes());
+  const result = await untar.extract();
+  assert(result !== null);
+  const untarText = new TextDecoder("utf-8").decode(await Deno.readAll(result));
 
   // tests
   assertEquals(result.fileName, fileName);
   assertEquals(untarText, text);
+});
+
+Deno.test("untarAsyncIterator", async function (): Promise<void> {
+  const entries: TestEntry[] = [
+    {
+      name: "output.txt",
+      content: new TextEncoder().encode("hello tar world!"),
+    },
+    {
+      name: "dir/tar.ts",
+      filePath,
+    },
+  ];
+
+  const tar = await createTar(entries);
+
+  // read data from a tar archive
+  const untar = new Untar(tar.getReader());
+
+  for await (const entry of untar) {
+    const expected = entries.shift();
+    assert(expected);
+
+    let content = expected.content;
+    if (expected.filePath) {
+      content = await Deno.readFile(expected.filePath);
+    }
+
+    assertEquals(content, await Deno.readAll(entry));
+    assertEquals(expected.name, entry.fileName);
+  }
+
+  assertEquals(entries.length, 0);
+});
+
+Deno.test("untarAsyncIteratorWithoutReadingBody", async function (): Promise<
+  void
+> {
+  const entries: TestEntry[] = [
+    {
+      name: "output.txt",
+      content: new TextEncoder().encode("hello tar world!"),
+    },
+    {
+      name: "dir/tar.ts",
+      filePath,
+    },
+  ];
+
+  const tar = await createTar(entries);
+
+  // read data from a tar archive
+  const untar = new Untar(tar.getReader());
+
+  for await (const entry of untar) {
+    const expected = entries.shift();
+    assert(expected);
+    assertEquals(expected.name, entry.fileName);
+  }
+
+  assertEquals(entries.length, 0);
+});
+
+Deno.test(
+  "untarAsyncIteratorWithoutReadingBodyFromFileReader",
+  async function (): Promise<void> {
+    const entries: TestEntry[] = [
+      {
+        name: "output.txt",
+        content: new TextEncoder().encode("hello tar world!"),
+      },
+      {
+        name: "dir/tar.ts",
+        filePath,
+      },
+    ];
+
+    const outputFile = resolve("archive", "testdata", "test.tar");
+
+    const tar = await createTar(entries);
+    const file = await Deno.open(outputFile, { create: true, write: true });
+    await Deno.copy(tar.getReader(), file);
+    file.close();
+
+    const reader = await Deno.open(outputFile, { read: true });
+    // read data from a tar archive
+    const untar = new Untar(reader);
+
+    for await (const entry of untar) {
+      const expected = entries.shift();
+      assert(expected);
+      assertEquals(expected.name, entry.fileName);
+    }
+
+    reader.close();
+    await Deno.remove(outputFile);
+    assertEquals(entries.length, 0);
+  }
+);
+
+Deno.test("untarAsyncIteratorFromFileReader", async function (): Promise<void> {
+  const entries: TestEntry[] = [
+    {
+      name: "output.txt",
+      content: new TextEncoder().encode("hello tar world!"),
+    },
+    {
+      name: "dir/tar.ts",
+      filePath,
+    },
+  ];
+
+  const outputFile = resolve("archive", "testdata", "test.tar");
+
+  const tar = await createTar(entries);
+  const file = await Deno.open(outputFile, { create: true, write: true });
+  await Deno.copy(tar.getReader(), file);
+  file.close();
+
+  const reader = await Deno.open(outputFile, { read: true });
+  // read data from a tar archive
+  const untar = new Untar(reader);
+
+  for await (const entry of untar) {
+    const expected = entries.shift();
+    assert(expected);
+
+    let content = expected.content;
+    if (expected.filePath) {
+      content = await Deno.readFile(expected.filePath);
+    }
+
+    assertEquals(content, await Deno.readAll(entry));
+    assertEquals(expected.name, entry.fileName);
+  }
+
+  reader.close();
+  await Deno.remove(outputFile);
+  assertEquals(entries.length, 0);
 });
