@@ -339,11 +339,13 @@ async fn lint_command(flags: Flags, files: Vec<String>) -> Result<(), ErrBox> {
       .fetch_source_file(&specifier, None, Permissions::allow_all())
       .await?;
     let source_code = String::from_utf8(source_file.source_code)?;
+    let syntax = swc_util::get_syntax_for_media_type(source_file.media_type);
 
     let mut linter = deno_lint::linter::Linter::default();
     let lint_rules = deno_lint::rules::get_all_rules();
 
-    let file_diagnostics = linter.lint(file, source_code, lint_rules)?;
+    let file_diagnostics =
+      linter.lint(file, source_code, syntax, lint_rules)?;
 
     error_counts += file_diagnostics.len();
     for d in file_diagnostics.iter() {
