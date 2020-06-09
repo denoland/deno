@@ -338,6 +338,30 @@ test({
   },
 });
 
+test({
+  name: "async progressCallback",
+  fn: async function (): Promise<void> {
+    clearBenchmarks();
+    dummyBench("single");
+
+    const asyncCallbacks = [];
+
+    await runBenchmarks(
+      { silent: true },
+      (progress) => {
+        return new Promise(resolve => {
+          setTimeout(() => {
+            asyncCallbacks.push(progress);
+            resolve();
+          }, 10);
+        })
+      }
+    );
+
+    assertEquals(asyncCallbacks.length, 5);
+  }
+});
+
 function dummyBench(name: string, runs = 1): void {
   bench({
     name,
