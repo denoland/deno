@@ -5,17 +5,15 @@ import { Closer, Reader, Writer } from "./io.ts";
 import { readAll } from "./buffer.ts";
 import { kill, runStatus as runStatusOp, run as runOp } from "./ops/process.ts";
 
-export type ProcessStdio = "inherit" | "piped" | "null";
-
 // TODO Maybe extend VSCode's 'CommandOptions'?
 // See https://code.visualstudio.com/docs/editor/tasks-appendix#_schema-for-tasksjson
 export interface RunOptions {
   cmd: string[];
   cwd?: string;
   env?: { [key: string]: string };
-  stdout?: ProcessStdio | number;
-  stderr?: ProcessStdio | number;
-  stdin?: ProcessStdio | number;
+  stdout?: "inherit" | "piped" | "null" | number;
+  stderr?: "inherit" | "piped" | "null" | number;
+  stdin?: "inherit" | "piped" | "null" | number;
 }
 
 async function runStatus(rid: number): Promise<ProcessStatus> {
@@ -30,12 +28,12 @@ async function runStatus(rid: number): Promise<ProcessStatus> {
   }
 }
 
-export class Process {
+export class Process<T extends RunOptions = RunOptions> {
   readonly rid: number;
   readonly pid: number;
-  readonly stdin?: Writer & Closer;
-  readonly stdout?: Reader & Closer;
-  readonly stderr?: Reader & Closer;
+  readonly stdin!: T["stdin"] extends "piped" ? Writer & Closer : null;
+  readonly stdout!: T["stdout"] extends "piped" ? Reader & Closer : null;
+  readonly stderr!: T["stderr"] extends "piped" ? Reader & Closer : null;
 
   // @internal
   constructor(res: RunResponse) {
@@ -43,15 +41,19 @@ export class Process {
     this.pid = res.pid;
 
     if (res.stdinRid && res.stdinRid > 0) {
-      this.stdin = new File(res.stdinRid);
+      this.stdin = (new File(res.stdinRid) as unknown) as Process<T>["stdin"];
     }
 
     if (res.stdoutRid && res.stdoutRid > 0) {
-      this.stdout = new File(res.stdoutRid);
+      this.stdout = (new File(res.stdoutRid) as unknown) as Process<
+        T
+      >["stdout"];
     }
 
     if (res.stderrRid && res.stderrRid > 0) {
-      this.stderr = new File(res.stderrRid);
+      this.stderr = (new File(res.stderrRid) as unknown) as Process<
+        T
+      >["stderr"];
     }
   }
 
@@ -61,23 +63,23 @@ export class Process {
 
   async output(): Promise<Uint8Array> {
     if (!this.stdout) {
-      throw new Error("Process.output: stdout is undefined");
+      throw new TypeError("stdout was not piped");
     }
     try {
-      return await readAll(this.stdout);
+      return await readAll(this.stdout as Reader & Closer);
     } finally {
-      this.stdout.close();
+      (this.stdout as Reader & Closer).close();
     }
   }
 
   async stderrOutput(): Promise<Uint8Array> {
     if (!this.stderr) {
-      throw new Error("Process.stderrOutput: stderr is undefined");
+      throw new TypeError("stderr was not piped");
     }
     try {
-      return await readAll(this.stderr);
+      return await readAll(this.stderr as Reader & Closer);
     } finally {
-      this.stderr.close();
+      (this.stderr as Reader & Closer).close();
     }
   }
 
@@ -107,14 +109,15 @@ interface RunResponse {
   stdoutRid: number | null;
   stderrRid: number | null;
 }
-export function run({
+
+export function run<T extends RunOptions = RunOptions>({
   cmd,
   cwd = undefined,
   env = {},
   stdout = "inherit",
   stderr = "inherit",
   stdin = "inherit",
-}: RunOptions): Process {
+}: T): Process<T> {
   const res = runOp({
     cmd: cmd.map(String),
     cwd,
@@ -126,5 +129,5 @@ export function run({
     stdoutRid: isRid(stdout) ? stdout : 0,
     stderrRid: isRid(stderr) ? stderr : 0,
   }) as RunResponse;
-  return new Process(res);
+  return new Process<T>(res);
 }

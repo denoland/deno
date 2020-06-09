@@ -52,6 +52,24 @@ fn get_default_ts_config() -> TsConfig {
   ts_config
 }
 
+pub fn get_syntax_for_media_type(media_type: MediaType) -> Syntax {
+  match media_type {
+    MediaType::JavaScript => Syntax::Es(get_default_es_config()),
+    MediaType::JSX => {
+      let mut config = get_default_es_config();
+      config.jsx = true;
+      Syntax::Es(config)
+    }
+    MediaType::TypeScript => Syntax::Typescript(get_default_ts_config()),
+    MediaType::TSX => {
+      let mut config = get_default_ts_config();
+      config.tsx = true;
+      Syntax::Typescript(config)
+    }
+    _ => Syntax::Es(get_default_es_config()),
+  }
+}
+
 #[derive(Clone, Debug)]
 pub struct SwcDiagnosticBuffer {
   pub diagnostics: Vec<String>,
@@ -169,21 +187,7 @@ impl AstParser {
         handler: &self.handler,
       };
 
-      let syntax = match media_type {
-        MediaType::JavaScript => Syntax::Es(get_default_es_config()),
-        MediaType::JSX => {
-          let mut config = get_default_es_config();
-          config.jsx = true;
-          Syntax::Es(config)
-        }
-        MediaType::TypeScript => Syntax::Typescript(get_default_ts_config()),
-        MediaType::TSX => {
-          let mut config = get_default_ts_config();
-          config.tsx = true;
-          Syntax::Typescript(config)
-        }
-        _ => Syntax::Es(get_default_es_config()),
-      };
+      let syntax = get_syntax_for_media_type(media_type);
 
       let lexer = Lexer::new(
         session,

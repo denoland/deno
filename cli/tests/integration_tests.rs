@@ -500,7 +500,7 @@ fn ts_dependency_recompilation() {
     function print(str: string): void {
         console.log(str);
     }
-    
+
     print(foo);",
   )
   .unwrap();
@@ -1419,6 +1419,11 @@ itest!(_059_fs_relative_path_perm {
   exit_code: 1,
 });
 
+itest!(_060_deno_doc_displays_all_overloads_in_details_view {
+  args: "doc 060_deno_doc_displays_all_overloads_in_details_view.ts NS.test",
+  output: "060_deno_doc_displays_all_overloads_in_details_view.ts.out",
+});
+
 itest!(js_import_detect {
   args: "run --quiet --reload js_import_detect.ts",
   output: "js_import_detect.ts.out",
@@ -1938,6 +1943,12 @@ itest!(ts_import_from_js {
 itest!(proto_exploit {
   args: "run proto_exploit.js",
   output: "proto_exploit.js.out",
+});
+
+itest!(deno_lint {
+  args: "lint --unstable lint/file1.js lint/file2.ts lint/ignored_file.ts",
+  output: "lint/expected.out",
+  exit_code: 1,
 });
 
 #[test]

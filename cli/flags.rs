@@ -911,10 +911,17 @@ fn lint_subcommand<'a, 'b>() -> App<'a, 'b> {
     .about("Lint source files")
     .long_about(
       "Lint JavaScript/TypeScript source code.
-  deno lint myfile1.ts myfile2.js
+  deno lint --unstable myfile1.ts myfile2.js
 
-Ignore diagnostics on next line preceding it with an ignore comment and code:
-  // deno-lint-ignore no-explicit-any",
+Ignore diagnostics on the next line by preceding it with an ignore comment and
+rule name:
+  // deno-lint-ignore no-explicit-any
+
+  // deno-lint-ignore require-await no-empty
+
+Ignore linting a file by adding an ignore comment at the top of the file:
+  // deno-lint-ignore-file
+",
     )
     .arg(unstable_arg())
     .arg(

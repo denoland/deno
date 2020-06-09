@@ -130,6 +130,16 @@ declare namespace Deno {
      * Requires `allow-env` permission. */
     set(key: string, value: string): void;
 
+    /** Delete the value of an environment variable.
+     *
+     * ```ts
+     * Deno.env.set("SOME_VAR", "Value"));
+     * Deno.env.delete("SOME_VAR");  // outputs "Undefined"
+     * ```
+     *
+     * Requires `allow-env` permission. */
+    delete(key: string): void;
+
     /** Returns a snapshot of the environment variables at invocation.
      *
      * ```ts
@@ -1741,12 +1751,12 @@ declare namespace Deno {
     options?: { recursive: boolean }
   ): AsyncIterableIterator<FsEvent>;
 
-  export class Process {
+  export class Process<T extends RunOptions = RunOptions> {
     readonly rid: number;
     readonly pid: number;
-    readonly stdin?: Writer & Closer;
-    readonly stdout?: Reader & Closer;
-    readonly stderr?: Reader & Closer;
+    readonly stdin: T["stdin"] extends "piped" ? Writer & Closer : null;
+    readonly stdout: T["stdout"] extends "piped" ? Reader & Closer : null;
+    readonly stderr: T["stderr"] extends "piped" ? Reader & Closer : null;
     /** Resolves to the current status of the process. */
     status(): Promise<ProcessStatus>;
     /** Buffer the stdout until EOF and return it as `Uint8Array`.
@@ -1829,7 +1839,7 @@ declare namespace Deno {
    * Details of the spawned process are returned.
    *
    * Requires `allow-run` permission. */
-  export function run(opt: RunOptions): Process;
+  export function run<T extends RunOptions = RunOptions>(opt: T): Process<T>;
 
   interface InspectOptions {
     depth?: number;

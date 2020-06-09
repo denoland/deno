@@ -17,7 +17,7 @@ Deno.test("[examples/catj] print an array", async () => {
 
     assertStrictEquals(actual, expected);
   } finally {
-    process.stdin!.close();
+    process.stdin.close();
     process.close();
   }
 });
@@ -36,7 +36,7 @@ Deno.test("[examples/catj] print an object", async () => {
 
     assertStrictEquals(actual, expected);
   } finally {
-    process.stdin!.close();
+    process.stdin.close();
     process.close();
   }
 });
@@ -54,7 +54,7 @@ Deno.test("[examples/catj] print multiple files", async () => {
 
     assertStrictEquals(actual, expected);
   } finally {
-    process.stdin!.close();
+    process.stdin.close();
     process.close();
   }
 });
@@ -64,8 +64,8 @@ Deno.test("[examples/catj] read from stdin", async () => {
   const process = catj("-");
   const input = `{ "foo": "bar" }`;
   try {
-    await process.stdin!.write(new TextEncoder().encode(input));
-    process.stdin!.close();
+    await process.stdin.write(new TextEncoder().encode(input));
+    process.stdin.close();
     const output = await process.output();
     const actual = decoder.decode(output).trim();
 
@@ -75,7 +75,9 @@ Deno.test("[examples/catj] read from stdin", async () => {
   }
 });
 
-function catj(...files: string[]): Deno.Process {
+function catj(
+  ...files: string[]
+): Deno.Process<Deno.RunOptions & { stdin: "piped"; stdout: "piped" }> {
   return Deno.run({
     cmd: [Deno.execPath(), "run", "--allow-read", "catj.ts", ...files],
     cwd: "examples",
