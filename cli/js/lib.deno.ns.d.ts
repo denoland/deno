@@ -130,6 +130,16 @@ declare namespace Deno {
      * Requires `allow-env` permission. */
     set(key: string, value: string): void;
 
+    /** Delete the value of an environment variable.
+     *
+     * ```ts
+     * Deno.env.set("SOME_VAR", "Value"));
+     * Deno.env.delete("SOME_VAR");  // outputs "Undefined"
+     * ```
+     *
+     * Requires `allow-env` permission. */
+    delete(key: string): void;
+
     /** Returns a snapshot of the environment variables at invocation.
      *
      * ```ts
