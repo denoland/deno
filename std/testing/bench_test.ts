@@ -346,20 +346,17 @@ test({
 
     const asyncCallbacks = [];
 
-    await runBenchmarks(
-      { silent: true },
-      (progress) => {
-        return new Promise(resolve => {
-          setTimeout(() => {
-            asyncCallbacks.push(progress);
-            resolve();
-          }, 10);
-        })
-      }
-    );
+    await runBenchmarks({ silent: true }, (progress) => {
+      return new Promise((resolve) => {
+        queueMicrotask(() => {
+          asyncCallbacks.push(progress);
+          resolve();
+        });
+      });
+    });
 
     assertEquals(asyncCallbacks.length, 5);
-  }
+  },
 });
 
 function dummyBench(name: string, runs = 1): void {
