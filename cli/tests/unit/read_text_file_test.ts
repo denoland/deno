@@ -14,7 +14,7 @@ unitTest({ perms: { read: true } }, function readTextFileSyncSuccess(): void {
 
 unitTest({ perms: { read: true } }, function readTextFileSyncByUrl(): void {
   const data = Deno.readTextFileSync(
-    pathToAbsoluteFileUrl("./cli/tests/fixture.json")
+    pathToAbsoluteFileUrl("cli/tests/fixture.json")
   );
   assert(data.length > 0);
   const pkg = JSON.parse(data);
@@ -59,7 +59,7 @@ unitTest({ perms: { read: true } }, async function readTextFileByUrl(): Promise<
   void
 > {
   const data = await Deno.readTextFile(
-    pathToAbsoluteFileUrl("./cli/tests/fixture.json")
+    pathToAbsoluteFileUrl("cli/tests/fixture.json")
   );
   assert(data.length > 0);
   const pkg = JSON.parse(data);

@@ -25,7 +25,7 @@ unitTest({ perms: { read: true } }, function readDirSyncSuccess(): void {
 });
 
 unitTest({ perms: { read: true } }, function readDirSyncWithUrl(): void {
-  const files = [...Deno.readDirSync(pathToAbsoluteFileUrl("./cli/tests"))];
+  const files = [...Deno.readDirSync(pathToAbsoluteFileUrl("cli/tests"))];
   assertSameContent(files);
 });
 
@@ -83,7 +83,7 @@ unitTest({ perms: { read: true } }, async function readDirWithUrl(): Promise<
 > {
   const files = [];
   for await (const dirEntry of Deno.readDir(
-    pathToAbsoluteFileUrl("./cli/tests")
+    pathToAbsoluteFileUrl("cli/tests")
   )) {
     files.push(dirEntry);
   }
