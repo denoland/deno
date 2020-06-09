@@ -146,7 +146,7 @@ struct DeleteEnv {
 fn op_delete_env(
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let args: DeleteEnv = serde_json::from_value(args)?;
   state.check_env()?;
