@@ -187,8 +187,8 @@ will output:
 #### Parse
 
 ```ts
-import { parse } from "./parser.ts";
-import { readFileStrSync } from "../fs/read_file_str.ts";
+import { parse } from "https://deno.land/std/encoding/toml.ts";
+import { readFileStrSync } from "https://deno.land/std/fs/read_file_str.ts";
 
 const tomlObject = parse(readFileStrSync("file.toml"));
 
@@ -199,7 +199,7 @@ const tomlObject22 = parse(tomlString);
 #### Stringify
 
 ```ts
-import { stringify } from "./parser.ts";
+import { stringify } from "https://deno.land/std/encoding/toml.ts";
 const obj = {
   bin: [
     { name: "deno", path: "cli/main.rs" },
