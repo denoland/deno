@@ -405,12 +405,16 @@ impl TsCompiler {
     })))
   }
 
-  // TODO(bartlomieju): this method is no longer needed
   /// Mark given module URL as compiled to avoid multiple compilations of same
   /// module in single run.
   fn mark_compiled(&self, url: &Url) {
     let mut c = self.compiled.lock().unwrap();
     c.insert(url.clone());
+  }
+
+  fn has_compiled(&self, url: &Url) -> bool {
+    let c = self.compiled.lock().unwrap();
+    c.contains(url)
   }
 
   /// Check if there is compiled source in cache that is valid
@@ -463,7 +467,7 @@ impl TsCompiler {
   ) -> Result<(), ErrBox> {
     let mut has_cached_version = false;
 
-    if self.use_disk_cache {
+    if self.use_disk_cache || self.has_compiled(&source_file.url) {
       if let Some(metadata) = self.get_graph_metadata(&source_file.url) {
         has_cached_version = true;
 
