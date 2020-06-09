@@ -76,6 +76,23 @@ import { assertEquals, runTests, test } from "./deps.ts";
 This design circumvents a plethora of complexity spawned by package management
 software, centralized code repositories, and superfluous file formats.
 
+#### Best practice: Selectively break up libraries.
+
+If you are writing a library exposing a functionality `foo()` which uses a large
+third party dependency, and another functionality `bar()` which does not use it,
+there should be a way for your users to depend on `bar()` without pulling in the
+dependency of `foo()`.
+
+You are not restricted to using only one `deps.ts` in a project. Place `bar()`
+in an independent dependency tree with its own `deps.ts` (and entry-point
+`mod.ts` if applicable). This allows `bar()` to be used without the burden of
+large unused imports.
+
+There a balance to be struck here. You can be extremely granular about this at
+the cost of having lots of `deps.ts` and entry-point modules to manage (author
+_and_ user inconvenience), or you can compromise and allow small volumes of
+unused imports in some cases. It is up to the author.
+
 ### How can I trust a URL that may change?
 
 By using a lock file (with the `--lock` command line flag), you can ensure that
