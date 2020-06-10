@@ -504,19 +504,11 @@ pub fn analyze_dependencies_and_references(
       })
       .map(|desc| {
         let location = parser.get_span_location(desc.span);
-        if desc.kind == DependencyKind::Import {
-          let deno_types = get_deno_types(&parser, desc.span);
-          ImportDescriptor {
-            specifier: desc.specifier.to_string(),
-            deno_types,
-            location: location.into(),
-          }
-        } else {
-          ImportDescriptor {
-            specifier: desc.specifier.to_string(),
-            deno_types: None,
-            location: location.into(),
-          }
+        let deno_types = get_deno_types(&parser, desc.span);
+        ImportDescriptor {
+          specifier: desc.specifier.to_string(),
+          deno_types,
+          location: location.into(),
         }
       })
       .collect();

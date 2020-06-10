@@ -1729,6 +1729,12 @@ itest!(type_definitions {
   output: "type_definitions.ts.out",
 });
 
+itest!(type_definitions_for_export {
+  args: "run --reload type_definitions_for_export.ts",
+  output: "type_definitions_for_export.ts.out",
+  exit_code: 1,
+});
+
 itest!(type_directives_01 {
   args: "run --reload -L debug type_directives_01.ts",
   output: "type_directives_01.ts.out",
