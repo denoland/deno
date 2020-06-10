@@ -66,7 +66,7 @@ unitTest(
     });
     const status = await p.status();
     assertEquals(status.success, false);
-    assertEquals(status.code, undefined);
+    assertEquals(status.code, 128 + 9);
     assertEquals(status.signal, 9);
     p.close();
   }
@@ -358,11 +358,15 @@ unitTest({ perms: { run: true } }, async function killSuccess(): Promise<void> {
   const status = await p.status();
 
   assertEquals(status.success, false);
-  // TODO(ry) On Linux, status.code is sometimes undefined and sometimes 1.
-  // The following assert is causing this test to be flaky. Investigate and
-  // re-enable when it can be made deterministic.
-  // assertEquals(status.code, 1);
-  // assertEquals(status.signal, Deno.Signal.SIGINT);
+  try {
+    assertEquals(status.code, 128 + Deno.Signal.SIGINT);
+    assertEquals(status.signal, Deno.Signal.SIGINT);
+  } catch {
+    // TODO(nayeemrmn): On Windows sometimes the following values are given
+    // instead. Investigate and remove this catch when fixed.
+    assertEquals(status.code, 1);
+    assertEquals(status.signal, undefined);
+  }
   p.close();
 });
 
