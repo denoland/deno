@@ -1,12 +1,12 @@
-(no-var) `var` keyword is not allowed
-var a = 1,
-~~~~~~~~~~
+(ban-untagged-ignore) Ignore directive requires lint rule code
+// deno-lint-ignore
+~~~~~~~~~~~~~~~~~~~
     at [WILDCARD]file1.js:1:0
 
-(single-var-declarator) Multiple variable declarators are not allowed
-var a = 1,
-~~~~~~~~~~
-    at [WILDCARD]file1.js:1:0
+(no-empty) Empty block statement
+while (false) {}
+              ~~
+    at [WILDCARD]file1.js:2:14
 
 (no-empty) Empty block statement
 } catch (e) {}
@@ -23,14 +23,4 @@ function foo(): any {}
 ~~~~~~~~~~~~~~~~~~~~~~
     at [WILDCARD]file2.ts:6:0
 
-(ban-untagged-ignore) Ignore directive requires lint rule code
-// deno-lint-ignore
-~~~~~~~~~~~~~~~~~~~
-    at [WILDCARD]file2.ts:8:0
-
-(no-empty) Empty block statement
-while (false) {}
-              ~~
-    at [WILDCARD]file2.ts:9:14
-
-Found 7 problems
+Found 5 problems
