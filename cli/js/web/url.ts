@@ -80,7 +80,10 @@ function parse(url: string, isBase = true): URLParts | undefined {
     parts.username = encodeUserinfo(parts.username);
     [parts.password] = takePattern(restAuthentication, /^:(.*)/);
     parts.password = encodeUserinfo(parts.password);
-    [parts.hostname, restAuthority] = takePattern(restAuthority, /^(\[[0-9a-fA-F.:]{2,}\]|[^:]+)/);
+    [parts.hostname, restAuthority] = takePattern(
+      restAuthority,
+      /^(\[[0-9a-fA-F.:]{2,}\]|[^:]+)/
+    );
     [parts.port] = takePattern(restAuthority, /^:(.*)/);
     if (!isValidPort(parts.port)) {
       return undefined;
