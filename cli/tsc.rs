@@ -467,6 +467,9 @@ impl TsCompiler {
   ) -> Result<(), ErrBox> {
     let mut has_cached_version = false;
 
+    // Only use disk cache if `--reload` flag was not used or
+    // this file has already been compiled during current process
+    // lifetime.
     if self.use_disk_cache || self.has_compiled(&source_file.url) {
       if let Some(metadata) = self.get_graph_metadata(&source_file.url) {
         has_cached_version = true;
