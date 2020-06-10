@@ -27,12 +27,17 @@ function getEnv(key: string): string | undefined {
   return sendSync("op_get_env", { key })[0];
 }
 
+function deleteEnv(key: string): void {
+  sendSync("op_delete_env", { key });
+}
+
 export const env = {
   get: getEnv,
   toObject(): { [key: string]: string } {
     return sendSync("op_env");
   },
   set: setEnv,
+  delete: deleteEnv,
 };
 
 type DirKind =

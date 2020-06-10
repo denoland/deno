@@ -37,7 +37,10 @@ function handleAsyncMsgFromWorker(
 async function main(): Promise<void> {
   const workers: Array<[Map<number, Resolvable<string>>, Worker]> = [];
   for (let i = 1; i <= workerCount; ++i) {
-    const worker = new Worker("./subdir/bench_worker.ts", { type: "module" });
+    const worker = new Worker(
+      new URL("subdir/bench_worker.ts", import.meta.url).href,
+      { type: "module" }
+    );
     const promise = createResolvable<void>();
     worker.onmessage = (e): void => {
       if (e.data.cmdId === 0) promise.resolve();

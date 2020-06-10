@@ -279,13 +279,15 @@ export default class EventEmitter {
       return this;
     }
 
-    if (eventName && this._events.has(eventName)) {
-      const listeners = (this._events.get(eventName) as Array<
-        Function | WrappedFunction
-      >).slice(); // Create a copy; We use it AFTER it's deleted.
-      this._events.delete(eventName);
-      for (const listener of listeners) {
-        this.emit("removeListener", eventName, listener);
+    if (eventName) {
+      if (this._events.has(eventName)) {
+        const listeners = (this._events.get(eventName) as Array<
+          Function | WrappedFunction
+        >).slice(); // Create a copy; We use it AFTER it's deleted.
+        this._events.delete(eventName);
+        for (const listener of listeners) {
+          this.emit("removeListener", eventName, listener);
+        }
       }
     } else {
       const eventList: [string | symbol] = this.eventNames();

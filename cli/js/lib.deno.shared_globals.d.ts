@@ -1300,7 +1300,10 @@ declare class Worker extends EventTarget {
        *
        * ```ts
        * // mod.ts
-       * const worker = new Worker("./deno_worker.ts", { type: "module", deno: true });
+       * const worker = new Worker(
+       *   new URL("deno_worker.ts", import.meta.url).href,
+       *   { type: "module", deno: true }
+       * );
        * worker.postMessage({ cmd: "readFile", fileName: "./log.txt" });
        *
        * // deno_worker.ts

@@ -339,11 +339,13 @@ async fn lint_command(flags: Flags, files: Vec<String>) -> Result<(), ErrBox> {
       .fetch_source_file(&specifier, None, Permissions::allow_all())
       .await?;
     let source_code = String::from_utf8(source_file.source_code)?;
+    let syntax = swc_util::get_syntax_for_media_type(source_file.media_type);
 
     let mut linter = deno_lint::linter::Linter::default();
     let lint_rules = deno_lint::rules::get_all_rules();
 
-    let file_diagnostics = linter.lint(file, source_code, lint_rules)?;
+    let file_diagnostics =
+      linter.lint(file, source_code, syntax, lint_rules)?;
 
     error_counts += file_diagnostics.len();
     for d in file_diagnostics.iter() {
@@ -578,13 +580,17 @@ async fn doc_command(
     serde_json::to_writer_pretty(writer, &doc_nodes).map_err(ErrBox::from)
   } else {
     let details = if let Some(filter) = maybe_filter {
-      let node = doc::find_node_by_name_recursively(doc_nodes, filter.clone());
-      if let Some(node) = node {
-        doc::printer::format_details(node)
-      } else {
+      let nodes =
+        doc::find_nodes_by_name_recursively(doc_nodes, filter.clone());
+      if nodes.is_empty() {
         eprintln!("Node {} was not found!", filter);
         std::process::exit(1);
       }
+      let mut details = String::new();
+      for node in nodes {
+        details.push_str(doc::printer::format_details(node).as_str());
+      }
+      details
     } else {
       doc::printer::format(doc_nodes)
     };

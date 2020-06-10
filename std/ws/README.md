@@ -8,13 +8,13 @@ ws module is made to provide helpers to create WebSocket client/server.
 
 ```ts
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { serve } from "../../http/server.ts";
+import { serve } from "https://deno.land/std/http/server.ts";
 import {
   acceptWebSocket,
   isWebSocketCloseEvent,
   isWebSocketPingEvent,
   WebSocket,
-} from "../../ws/mod.ts";
+} from "https://deno.land/std/ws/mod.ts";
 
 async function handleWs(sock: WebSocket) {
   console.log("socket connected!");

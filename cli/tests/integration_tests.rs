@@ -152,8 +152,66 @@ pub fn test_raw_tty() {
 
 #[test]
 fn test_pattern_match() {
-  assert!(util::pattern_match("foo[BAR]baz", "foobarbaz", "[BAR]"));
-  assert!(!util::pattern_match("foo[BAR]baz", "foobazbar", "[BAR]"));
+  // foo, bar, baz, qux, quux, quuz, corge, grault, garply, waldo, fred, plugh, xyzzy
+
+  let wildcard = "[BAR]";
+  assert!(util::pattern_match("foo[BAR]baz", "foobarbaz", wildcard));
+  assert!(!util::pattern_match("foo[BAR]baz", "foobazbar", wildcard));
+
+  let multiline_pattern = "[BAR]
+foo:
+[BAR]baz[BAR]";
+
+  fn multi_line_builder(input: &str, leading_text: Option<&str>) -> String {
+    // If there is leading text add a newline so it's on it's own line
+    let head = match leading_text {
+      Some(v) => format!("{}\n", v),
+      None => "".to_string(),
+    };
+    format!(
+      "{}foo:
+quuz {} corge
+grault",
+      head, input
+    )
+  }
+
+  // Validate multi-line string builder
+  assert_eq!(
+    "QUUX=qux
+foo:
+quuz BAZ corge
+grault",
+    multi_line_builder("BAZ", Some("QUUX=qux"))
+  );
+
+  // Correct input & leading line
+  assert!(util::pattern_match(
+    multiline_pattern,
+    &multi_line_builder("baz", Some("QUX=quux")),
+    wildcard
+  ));
+
+  // Correct input & no leading line
+  assert!(util::pattern_match(
+    multiline_pattern,
+    &multi_line_builder("baz", None),
+    wildcard
+  ));
+
+  // Incorrect input & leading line
+  assert!(!util::pattern_match(
+    multiline_pattern,
+    &multi_line_builder("garply", Some("QUX=quux")),
+    wildcard
+  ));
+
+  // Incorrect input & no leading line
+  assert!(!util::pattern_match(
+    multiline_pattern,
+    &multi_line_builder("garply", None),
+    wildcard
+  ));
 }
 
 #[test]
@@ -442,7 +500,7 @@ fn ts_dependency_recompilation() {
     function print(str: string): void {
         console.log(str);
     }
-    
+
     print(foo);",
   )
   .unwrap();
@@ -1361,6 +1419,11 @@ itest!(_059_fs_relative_path_perm {
   exit_code: 1,
 });
 
+itest!(_060_deno_doc_displays_all_overloads_in_details_view {
+  args: "doc 060_deno_doc_displays_all_overloads_in_details_view.ts NS.test",
+  output: "060_deno_doc_displays_all_overloads_in_details_view.ts.out",
+});
+
 itest!(js_import_detect {
   args: "run --quiet --reload js_import_detect.ts",
   output: "js_import_detect.ts.out",
@@ -1666,6 +1729,12 @@ itest!(type_definitions {
   output: "type_definitions.ts.out",
 });
 
+itest!(type_definitions_for_export {
+  args: "run --reload type_definitions_for_export.ts",
+  output: "type_definitions_for_export.ts.out",
+  exit_code: 1,
+});
+
 itest!(type_directives_01 {
   args: "run --reload -L debug type_directives_01.ts",
   output: "type_directives_01.ts.out",
@@ -1880,6 +1949,12 @@ itest!(single_compile_with_reload {
 itest!(proto_exploit {
   args: "run proto_exploit.js",
   output: "proto_exploit.js.out",
+});
+
+itest!(deno_lint {
+  args: "lint --unstable lint/file1.js lint/file2.ts lint/ignored_file.ts",
+  output: "lint/expected.out",
+  exit_code: 1,
 });
 
 #[test]
@@ -3002,6 +3077,8 @@ mod util {
       let (mut reader, writer) = pipe().unwrap();
       let tests_dir = root.join("cli").join("tests");
       let mut command = deno_cmd();
+      println!("deno_exe args {}", self.args);
+      println!("deno_exe tests path {:?}", &tests_dir);
       command.args(args);
       command.current_dir(&tests_dir);
       command.stdin(Stdio::piped());
@@ -3062,7 +3139,7 @@ mod util {
 
   pub fn pattern_match(pattern: &str, s: &str, wildcard: &str) -> bool {
     // Normalize line endings
-    let s = s.replace("\r\n", "\n");
+    let mut s = s.replace("\r\n", "\n");
     let pattern = pattern.replace("\r\n", "\n");
 
     if pattern == wildcard {
@@ -3076,6 +3153,13 @@ mod util {
 
     if !s.starts_with(parts[0]) {
       return false;
+    }
+
+    // If the first line of the pattern is just a wildcard the newline character
+    // needs to be pre-pended so it can safely match anything or nothing and
+    // continue matching.
+    if pattern.lines().next() == Some(wildcard) {
+      s.insert_str(0, "\n");
     }
 
     let mut t = s.split_at(parts[0].len());

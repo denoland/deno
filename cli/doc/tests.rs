@@ -1557,3 +1557,51 @@ export type numLit = 5;
   ]);
   assert_eq!(actual, expected_json);
 }
+
+#[tokio::test]
+async fn filter_nodes_by_name() {
+  use super::find_nodes_by_name_recursively;
+  let source_code = r#"
+export namespace Deno {
+  export class Buffer {}
+  export function test(options: object): void;
+  export function test(name: string, fn: Function): void;
+  export function test(name: string | object, fn?: Function): void {}
+}
+
+export namespace Deno {
+  export namespace Inner {
+    export function a(): void {}
+    export const b = 100;
+  }
+}
+"#;
+  let loader =
+    TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
+  let entries = DocParser::new(loader).parse("test.ts").await.unwrap();
+
+  let found =
+    find_nodes_by_name_recursively(entries.clone(), "Deno".to_string());
+  assert_eq!(found.len(), 2);
+  assert_eq!(found[0].name, "Deno".to_string());
+  assert_eq!(found[1].name, "Deno".to_string());
+
+  let found =
+    find_nodes_by_name_recursively(entries.clone(), "Deno.test".to_string());
+  assert_eq!(found.len(), 3);
+  assert_eq!(found[0].name, "test".to_string());
+  assert_eq!(found[1].name, "test".to_string());
+  assert_eq!(found[2].name, "test".to_string());
+
+  let found =
+    find_nodes_by_name_recursively(entries.clone(), "Deno.Inner.a".to_string());
+  assert_eq!(found.len(), 1);
+  assert_eq!(found[0].name, "a".to_string());
+
+  let found =
+    find_nodes_by_name_recursively(entries.clone(), "Deno.test.a".to_string());
+  assert_eq!(found.len(), 0);
+
+  let found = find_nodes_by_name_recursively(entries, "a.b.c".to_string());
+  assert_eq!(found.len(), 0);
+}

@@ -37,6 +37,17 @@ lazy_static! {
   /// resource table is dropped storing reference to that handle, the handle
   /// itself won't be closed (so Deno.core.print) will still work.
   // TODO(ry) It should be possible to close stdout.
+  static ref STDIN_HANDLE: std::fs::File = {
+    #[cfg(not(windows))]
+    let stdin = unsafe { std::fs::File::from_raw_fd(0) };
+    #[cfg(windows)]
+    let stdin = unsafe {
+      std::fs::File::from_raw_handle(winapi::um::processenv::GetStdHandle(
+        winapi::um::winbase::STD_INPUT_HANDLE,
+      ))
+    };
+    stdin
+  };
   static ref STDOUT_HANDLE: std::fs::File = {
     #[cfg(not(windows))]
     let stdout = unsafe { std::fs::File::from_raw_fd(1) };
@@ -71,10 +82,10 @@ pub fn get_stdio() -> (
   StreamResourceHolder,
   StreamResourceHolder,
 ) {
-  let stdin = StreamResourceHolder::new(StreamResource::Stdin(
-    tokio::io::stdin(),
-    TTYMetadata::default(),
-  ));
+  let stdin = StreamResourceHolder::new(StreamResource::FsFile(Some({
+    let stdin = STDIN_HANDLE.try_clone().unwrap();
+    (tokio::fs::File::from_std(stdin), FileMetadata::default())
+  })));
   let stdout = StreamResourceHolder::new(StreamResource::FsFile(Some({
     let stdout = STDOUT_HANDLE.try_clone().unwrap();
     (tokio::fs::File::from_std(stdout), FileMetadata::default())

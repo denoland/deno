@@ -13,7 +13,7 @@ Deno.test("[examples/echo_server]", async () => {
 
   let conn: Deno.Conn | undefined;
   try {
-    const processReader = new BufReader(process.stdout!);
+    const processReader = new BufReader(process.stdout);
     const message = await processReader.readLine();
 
     assertNotEquals(message, null);
@@ -38,7 +38,7 @@ Deno.test("[examples/echo_server]", async () => {
     assertStrictEquals(actualResponse, expectedResponse);
   } finally {
     conn?.close();
-    process.stdout!.close();
+    process.stdout.close();
     process.close();
   }
 });

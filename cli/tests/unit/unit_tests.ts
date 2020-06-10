@@ -52,6 +52,7 @@ import "./request_test.ts";
 import "./resources_test.ts";
 import "./signal_test.ts";
 import "./stat_test.ts";
+import "./stdio_test.ts";
 import "./streams_internal_test.ts";
 import "./streams_piping_test.ts";
 import "./streams_transform_test.ts";
