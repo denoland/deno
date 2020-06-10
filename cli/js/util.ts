@@ -94,8 +94,9 @@ function pathFromURLWin32(url: URL): string {
     throw new TypeError("A URL with the file schema must be absolute.");
   }
 
+  let pathname = url.pathname.replace("/", "\\");
   // we don't want a leading slash on an absolute path in Windows
-  return url.pathname.slice(1);
+  return pathname.slice(1);
 }
 
 function pathFromURLPosix(url: URL): string {
