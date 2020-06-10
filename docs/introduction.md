@@ -1,7 +1,7 @@
 # Introduction
 
-Deno is a JavaScript/TypeScript runtime with secure defaults and a great
-developer experience.
+Deno is a JavaScript/TypeScript runtime with secure defaults and great developer
+experience.
 
 It's built on V8, Rust, and Tokio.
 
@@ -42,8 +42,8 @@ have been historically written with bash or python.
   in JavaScript and do not use the global `Deno` namespace (or feature test for
   it), ought to also be able to be run in a modern web browser without change.
 - Provide built-in tooling like unit testing, code formatting, and linting to
-  improve developer experience.
-- Does not leak V8 concepts into user land.
+  improve the developer experience.
+- Does not leak V8 concepts into userland.
 - Be able to serve HTTP efficiently
 
 ## Comparison to Node.js
@@ -53,9 +53,10 @@ have been historically written with bash or python.
 - Deno does not use `package.json` in its module resolution algorithm.
 - All async actions in Deno return a promise. Thus Deno provides different APIs
   than Node.
-- Deno requires explicit permissions for file, network, and environment access.
+- Deno requires explicit permissions for the file, network, and environment
+  access.
 - Deno always dies on uncaught errors.
-- Uses "ES Modules" and does not support `require()`. Third party modules are
+- Uses "ES Modules" and does not support `require()`. Third-party modules are
   imported via URLs:
 
   ```javascript
