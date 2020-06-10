@@ -32,26 +32,6 @@ fn std_tests() {
 }
 
 #[test]
-fn std_lint() {
-  let std_path = util::root_path().join("std");
-  let output = util::deno_cmd()
-    .arg("lint")
-    .arg("--unstable")
-    .arg(std_path)
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(!output.status.success());
-  let stdout_str = std::str::from_utf8(&output.stdout).unwrap().trim();
-  assert!(stdout_str.is_empty());
-  let stderr_str = std::str::from_utf8(&output.stderr).unwrap().trim();
-  assert!(util::strip_ansi_codes(stderr_str).ends_with("problems"));
-}
-
-#[test]
 fn x_deno_warning() {
   let g = util::http_server();
   let output = util::deno_cmd()
