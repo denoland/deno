@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { build } from "./build.ts";
+import { exposeForTest } from "./internals.ts";
 
 let logDebug = false;
 let logSource = "JS";
@@ -99,7 +100,7 @@ function pathFromURLWin32(url: URL): string {
 
 function pathFromURLPosix(url: URL): string {
   if (url.hostname !== "") {
-    throw new TypeError(`File URL must be 'localhost' or empty.`);
+    throw new TypeError(`Host must be empty.`);
   }
 
   return decodeURIComponent(url.pathname);
@@ -122,3 +123,5 @@ export function pathFromURL(pathOrUrl: string | URL): string {
   }
   return pathOrUrl;
 }
+
+exposeForTest("pathFromURL", pathFromURL);
