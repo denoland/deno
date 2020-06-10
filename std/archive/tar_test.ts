@@ -255,3 +255,143 @@ Deno.test("untarAsyncIteratorFromFileReader", async function (): Promise<void> {
   await Deno.remove(outputFile);
   assertEquals(entries.length, 0);
 });
+
+Deno.test(
+  "untarAsyncIteratorReadingLessThanRecordSize",
+  async function (): Promise<void> {
+    // record size is 512
+    const bufSizes = [1, 53, 256, 511];
+
+    for (const bufSize of bufSizes) {
+      const entries: TestEntry[] = [
+        {
+          name: "output.txt",
+          content: new TextEncoder().encode("hello tar world!".repeat(100)),
+        },
+        // Need to test at least two files, to make sure the first entry doesn't over-read
+        // Causing the next to fail with: chesum error
+        {
+          name: "deni.txt",
+          content: new TextEncoder().encode("deno!".repeat(250)),
+        },
+      ];
+
+      const tar = await createTar(entries);
+
+      // read data from a tar archive
+      const untar = new Untar(tar.getReader());
+
+      for await (const entry of untar) {
+        const expected = entries.shift();
+        assert(expected);
+        assertEquals(expected.name, entry.fileName);
+
+        const writer = new Deno.Buffer();
+        while (true) {
+          const buf = new Uint8Array(bufSize);
+          const n = await entry.read(buf);
+          if (n === null) break;
+
+          await writer.write(buf.subarray(0, n));
+        }
+        assertEquals(writer.bytes(), expected!.content);
+      }
+
+      assertEquals(entries.length, 0);
+    }
+  }
+);
+
+Deno.test("untarLinuxGeneratedTar", async function (): Promise<void> {
+  const filePath = resolve("archive", "testdata", "deno.tar");
+  const file = await Deno.open(filePath, { read: true });
+
+  const expectedEntries = [
+    {
+      fileName: "archive/",
+      fileSize: 0,
+      fileMode: 509,
+      mtime: 1591800767,
+      uid: 1001,
+      gid: 1001,
+      owner: "deno",
+      group: "deno",
+      type: "directory",
+    },
+    {
+      fileName: "archive/deno/",
+      fileSize: 0,
+      fileMode: 509,
+      mtime: 1591799635,
+      uid: 1001,
+      gid: 1001,
+      owner: "deno",
+      group: "deno",
+      type: "directory",
+    },
+    {
+      fileName: "archive/deno/land/",
+      fileSize: 0,
+      fileMode: 509,
+      mtime: 1591799660,
+      uid: 1001,
+      gid: 1001,
+      owner: "deno",
+      group: "deno",
+      type: "directory",
+    },
+    {
+      fileName: "archive/deno/land/land.txt",
+      fileMode: 436,
+      fileSize: 5,
+      mtime: 1591799660,
+      uid: 1001,
+      gid: 1001,
+      owner: "deno",
+      group: "deno",
+      type: "file",
+      content: new TextEncoder().encode("land\n"),
+    },
+    {
+      fileName: "archive/file.txt",
+      fileMode: 436,
+      fileSize: 5,
+      mtime: 1591799626,
+      uid: 1001,
+      gid: 1001,
+      owner: "deno",
+      group: "deno",
+      type: "file",
+      content: new TextEncoder().encode("file\n"),
+    },
+    {
+      fileName: "archive/deno.txt",
+      fileMode: 436,
+      fileSize: 5,
+      mtime: 1591799642,
+      uid: 1001,
+      gid: 1001,
+      owner: "deno",
+      group: "deno",
+      type: "file",
+      content: new TextEncoder().encode("deno\n"),
+    },
+  ];
+
+  const untar = new Untar(file);
+
+  for await (const entry of untar) {
+    const expected = expectedEntries.shift();
+    assert(expected);
+    const content = expected.content;
+    delete expected.content;
+
+    assertEquals(entry, expected);
+
+    if (content) {
+      assertEquals(content, await Deno.readAll(entry));
+    }
+  }
+
+  file.close();
+});

@@ -21,6 +21,7 @@ await tar.append("land.txt", {
 
 const writer = await Deno.open("./out.tar", { write: true, create: true });
 await Deno.copy(tar.getReader(), writer);
+writer.close();
 ```
 
 ## Untar
@@ -34,16 +35,17 @@ const reader = await Deno.open("./out.tar", { read: true });
 const untar = new Untar(reader);
 
 for await (const entry of untar) {
-  console.log(entry); // Entry metadata
+  console.log(entry); // metadata
   /*
-      fileName: "archive/deno.txt",
+    fileName: "archive/deno.txt",
     fileMode: 33204,
     mtime: 1591657305,
     uid: 0,
     gid: 0,
     size: 24400,
     type: 'file'
-   */
+  */
+
   if (entry.type === "directory") {
     await ensureDir(entry.fileName);
     continue;
@@ -51,7 +53,7 @@ for await (const entry of untar) {
 
   await ensureFile(entry.fileName);
   const file = await Deno.open(entry.fileName, { write: true });
-  // Entry is a reader
+  // <entry> is a reader
   await Deno.copy(entry, file);
 }
 reader.close();

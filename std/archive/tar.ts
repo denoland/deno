@@ -291,9 +291,13 @@ export interface TarOptions extends TarInfo {
   contentSize?: number;
 }
 
-export interface UntarOptions extends TarInfo {
+export interface TarMeta extends TarInfo {
   fileName: string;
+  fileSize?: number;
 }
+
+// eslint-disable-next-line @typescript-eslint/no-empty-interface
+interface TarEntry extends TarMeta {}
 
 /**
  * A class to create a tar archive
@@ -442,63 +446,72 @@ export class Tar {
   }
 }
 
-interface TarEntry extends UntarOptions {
-  size: number;
-}
-
 class TarEntry implements Reader {
   #header: TarHeader;
   #reader: Reader | (Reader & Deno.Seeker);
   #size: number;
   #read = 0;
-  #discarded = false;
+  #consumed = false;
+  #entrySize: number;
   constructor(
-    meta: UntarOptions,
+    meta: TarMeta,
     header: TarHeader,
     reader: Reader | (Reader & Deno.Seeker)
   ) {
     Object.assign(this, meta);
     this.#header = header;
     this.#reader = reader;
-    const decoder = new TextDecoder();
-    this.#size = parseInt(decoder.decode(header.fileSize), 8);
+
+    // File Size
+    this.#size = this.fileSize || 0;
+    // Entry Size
+    const blocks = Math.ceil(this.#size / recordSize);
+    this.#entrySize = blocks * recordSize;
   }
 
-  get discarded(): boolean {
-    return this.#discarded;
+  get consumed(): boolean {
+    return this.#consumed;
   }
 
   async read(p: Uint8Array): Promise<number | null> {
-    //TODO: Handle p.length < 512
-    let bytesLeft = this.#size - this.#read;
+    // Bytes left for entry
+    const entryBytesLeft = this.#entrySize - this.#read;
+    const bufSize = Math.min(
+      // bufSize can't be greater than p.length nor bytes left in the entry
+      p.length,
+      entryBytesLeft
+    );
 
-    // To avoid reading from next entry
-    if (bytesLeft <= 0) return null;
+    if (entryBytesLeft <= 0) return null;
 
-    const block = new Uint8Array(recordSize);
+    const block = new Uint8Array(bufSize);
     const n = await readBlock(this.#reader, block);
+    const bytesLeft = this.#size - this.#read;
 
-    if (n === null) return null;
+    this.#read += n || 0;
+    if (n === null || bytesLeft <= 0) {
+      if (null) this.#consumed = true;
+      return null;
+    }
 
-    this.#read += n;
-    bytesLeft -= n;
-    const offset = bytesLeft < 0 ? bytesLeft : n;
-
+    // Remove zero filled
+    const offset = bytesLeft < n ? bytesLeft : n;
     p.set(block.subarray(0, offset), 0);
 
-    return offset < 0 ? n - Math.abs(offset) : n;
+    return offset < 0 ? n - Math.abs(offset) : offset;
   }
 
   async discard(): Promise<void> {
     // Discard current entry
-    if (this.#discarded) return;
-    this.#discarded = true;
+    if (this.#consumed) return;
+    this.#consumed = true;
 
     if (typeof (this.#reader as Seeker).seek === "function") {
-      const blocks = Math.ceil((this.#size - this.#read) / recordSize);
-      const size = blocks * recordSize;
-      await (this.#reader as Seeker).seek(size, Deno.SeekMode.Current);
-      this.#read = this.size;
+      await (this.#reader as Seeker).seek(
+        this.#entrySize - this.#read,
+        Deno.SeekMode.Current
+      );
+      this.#read = this.#entrySize;
     } else {
       await Deno.readAll(this);
     }
@@ -555,10 +568,10 @@ export class Untar {
     return header;
   };
 
-  #getMetadata = (header: TarHeader): UntarOptions => {
+  #getMetadata = (header: TarHeader): TarMeta => {
     const decoder = new TextDecoder();
     // get meta data
-    const meta: UntarOptions = {
+    const meta: TarMeta = {
       fileName: decoder.decode(trim(header.fileName)),
     };
     const fileNamePrefix = trim(header.fileNamePrefix);
@@ -585,13 +598,14 @@ export class Untar {
       }
     );
 
+    meta.fileSize = parseInt(decoder.decode(header.fileSize), 8);
     meta.type = types[meta.type as string] || meta.type;
 
     return meta;
   };
 
   async extract(): Promise<TarEntry | null> {
-    if (this.#entry && !this.#entry.discarded) {
+    if (this.#entry && !this.#entry.consumed) {
       // If entry body was not read, discard the body
       // so we can read the next entry.
       await this.#entry.discard();
