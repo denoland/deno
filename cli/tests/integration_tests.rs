@@ -32,6 +32,26 @@ fn std_tests() {
 }
 
 #[test]
+fn std_lint() {
+  let std_path = util::root_path().join("std");
+  let output = util::deno_cmd()
+    .arg("lint")
+    .arg("--unstable")
+    .arg(std_path)
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(!output.status.success());
+  let stdout_str = std::str::from_utf8(&output.stdout).unwrap().trim();
+  assert!(stdout_str.is_empty());
+  let stderr_str = std::str::from_utf8(&output.stderr).unwrap().trim();
+  assert!(util::strip_ansi_codes(stderr_str).ends_with("problems"));
+}
+
+#[test]
 fn x_deno_warning() {
   let g = util::http_server();
   let output = util::deno_cmd()
@@ -1952,7 +1972,13 @@ itest!(proto_exploit {
 });
 
 itest!(deno_lint {
-  args: "lint --unstable lint/file1.js lint/file2.ts lint/ignored_file.ts",
+  args: "lint --unstable lint/file2.ts lint/file1.js lint/ignored_file.ts",
+  output: "lint/expected.out",
+  exit_code: 1,
+});
+
+itest!(deno_lint_glob {
+  args: "lint --unstable lint/",
   output: "lint/expected.out",
   exit_code: 1,
 });
