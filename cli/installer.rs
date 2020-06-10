@@ -653,12 +653,13 @@ mod tests {
     let cwd = std::env::current_dir().unwrap();
     let config_file_path = cwd.join("tsconfig.json");
     let config = "{}";
-    let mut config_file = File::create(&config_file_path)?;
-    config_file.write_all(config.as_bytes())?;
+    let mut config_file = File::create(&config_file_path).unwrap();
+    let result = config_file.write_all(config.as_bytes());
+    assert!(result.is_ok());
 
-    install(
+    let result = install(
       Flags {
-        config_path: "tsconfig.json",
+        config_path: Some("tsconfig.json".to_string()),
         ..Flags::default()
       },
       "http://localhost:4545/cli/tests/cat.ts",
@@ -667,6 +668,8 @@ mod tests {
       Some(temp_dir.path().to_path_buf()),
       true,
     );
+
+    assert!(result.is_ok());
 
     let mut file_path = bin_dir.join("echo_test.tsconfig.json");
     if cfg!(windows) {
