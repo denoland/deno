@@ -671,8 +671,7 @@ mod tests {
 
     assert!(result.is_ok());
 
-    let mut file_path = bin_dir.join("echo_test.tsconfig.json");
-
+    let file_path = bin_dir.join("echo_test.tsconfig.json");
     assert!(file_path.exists());
     let content = fs::read_to_string(file_path).unwrap();
     assert!(content == "{}");
