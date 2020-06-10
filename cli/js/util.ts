@@ -94,7 +94,7 @@ function pathFromURLWin32(url: URL): string {
     throw new TypeError("A URL with the file schema must be absolute.");
   }
 
-  const pathname = url.pathname.replace("/", "\\");
+  const pathname = url.pathname.replace(/\//g, "\\");
   // we don't want a leading slash on an absolute path in Windows
   return pathname.slice(1);
 }
