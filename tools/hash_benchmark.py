@@ -20,12 +20,15 @@ algorithms = [
 ]
 
 
-def run_benchmark(deno_exe, method, input):
+def run_benchmark(deno_exe, method, input_file):
     # compile
     subprocess.call([deno_exe, "run", "cli/tests/hash/hash.ts"])
 
     for alg in algorithms:
-        args = [deno_exe, "run", "--allow-read", "cli/tests/hash/hash.ts", method, alg, input]
+        args = [
+            deno_exe, "run", "--allow-read", "cli/tests/hash/hash.ts", method,
+            alg, input_file
+        ]
 
         start = time.time()
         subprocess.call(args)
@@ -36,7 +39,7 @@ def run_benchmark(deno_exe, method, input):
 
 def main():
     if len(sys.argv) < 4:
-        print "Usage ./tools/hash_benchmark.py <path/to/deno> <method: 'rust' or 'js'> <input file>"
+        print "Usage ./tools/hash_benchmark.py path/to/deno method input"
         sys.exit(1)
 
     run_benchmark(sys.argv[1], sys.argv[2], sys.argv[3])
