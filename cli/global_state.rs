@@ -244,12 +244,10 @@ impl GlobalState {
   }
 }
 
-/// Check if TS compiler should be run with `allowJs` setting on. This
+/// Determine if TS compiler should be run with `allowJs` setting on. This
 /// is the case when there's a JavaScript file with non-JavaScript import.
 fn should_allow_js(module_graph_files: &[&ModuleGraphFile]) -> bool {
-  let mut allow_js = false;
-
-  allow_js |= module_graph_files.iter().any(|module_file| {
+  module_graph_files.iter().any(|module_file| {
     if module_file.media_type != (MediaType::JavaScript as i32) {
       false
     } else {
@@ -266,9 +264,7 @@ fn should_allow_js(module_graph_files: &[&ModuleGraphFile]) -> bool {
           || media_type == (MediaType::JSX as i32)
       })
     }
-  });
-
-  allow_js
+  })
 }
 
 // Compilation happens if either:
