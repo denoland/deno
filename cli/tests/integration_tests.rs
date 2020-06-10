@@ -1972,14 +1972,14 @@ itest!(proto_exploit {
 });
 
 itest!(deno_lint {
-  args: "lint --unstable lint/file2.ts lint/file1.js lint/ignored_file.ts",
+  args: "lint --unstable lint/file1.js lint/file2.ts lint/ignored_file.ts",
   output: "lint/expected.out",
   exit_code: 1,
 });
 
 itest!(deno_lint_glob {
   args: "lint --unstable lint/",
-  output: "lint/expected.out",
+  output: "lint/expected_glob.out",
   exit_code: 1,
 });
 
