@@ -95,7 +95,11 @@ function parse(url: string, isBase = true): URLParts | undefined {
     parts.port = "";
   }
   try {
-    parts.hostname = encodeHostname(parts.hostname).toLowerCase();
+    const IPv6re = /^\[[0-9a-fA-F.:]{2,}\]$/;
+    if (!IPv6re.test(parts.hostname)) {
+      parts.hostname = encodeHostname(parts.hostname); // Non-IPv6 URLs
+    }
+    parts.hostname = parts.hostname.toLowerCase();
   } catch {
     return undefined;
   }
