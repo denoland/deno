@@ -257,14 +257,13 @@ unitTest(
 unitTest(
   { ignore: Deno.build.os === "windows", perms: { net: true } },
   async function netUdpBorrowMutError(): Promise<void> {
-    const buffer = new Uint8Array();
     const socket = Deno.listenDatagram({
       port: 4501,
-      transport: "udp"
+      transport: "udp",
     });
     // Panic happened on second send: BorrowMutError
-    let a = socket.send(new Uint8Array(), socket.addr);
-    let b = socket.send(new Uint8Array(), socket.addr);
+    const a = socket.send(new Uint8Array(), socket.addr);
+    const b = socket.send(new Uint8Array(), socket.addr);
     await Promise.all([a, b]);
     socket.close();
   }
