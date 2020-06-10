@@ -1957,6 +1957,12 @@ itest!(deno_lint {
   exit_code: 1,
 });
 
+itest!(deno_lint_glob {
+  args: "lint --unstable lint/",
+  output: "lint/expected_glob.out",
+  exit_code: 1,
+});
+
 #[test]
 fn cafile_fetch() {
   use url::Url;

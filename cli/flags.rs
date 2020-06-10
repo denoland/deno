@@ -588,11 +588,10 @@ fn doc_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
 fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   unstable_arg_parse(flags, matches);
-  let files = matches
-    .values_of("files")
-    .unwrap()
-    .map(String::from)
-    .collect();
+  let files = match matches.values_of("files") {
+    Some(f) => f.map(String::from).collect(),
+    None => vec![],
+  };
   flags.subcommand = DenoSubcommand::Lint { files };
 }
 
@@ -911,6 +910,7 @@ fn lint_subcommand<'a, 'b>() -> App<'a, 'b> {
     .about("Lint source files")
     .long_about(
       "Lint JavaScript/TypeScript source code.
+  deno lint --unstable
   deno lint --unstable myfile1.ts myfile2.js
 
 Ignore diagnostics on the next line by preceding it with an ignore comment and
@@ -927,8 +927,8 @@ Ignore linting a file by adding an ignore comment at the top of the file:
     .arg(
       Arg::with_name("files")
         .takes_value(true)
-        .required(true)
-        .min_values(1),
+        .multiple(true)
+        .required(false),
     )
 }
 
@@ -1635,6 +1635,37 @@ mod tests {
           check: false,
           files: vec![],
         },
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn lint() {
+    let r = flags_from_vec_safe(svec![
+      "deno",
+      "lint",
+      "--unstable",
+      "script_1.ts",
+      "script_2.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Lint {
+          files: vec!["script_1.ts".to_string(), "script_2.ts".to_string()]
+        },
+        unstable: true,
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec_safe(svec!["deno", "lint", "--unstable"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Lint { files: vec![] },
+        unstable: true,
         ..Flags::default()
       }
     );

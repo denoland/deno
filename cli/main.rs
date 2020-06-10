@@ -42,6 +42,7 @@ mod import_map;
 mod inspector;
 pub mod installer;
 mod js;
+mod lint;
 mod lockfile;
 mod metrics;
 mod module_graph;
@@ -321,7 +322,7 @@ async fn lint_command(flags: Flags, files: Vec<String>) -> Result<(), ErrBox> {
   // state just to perform unstable check...
   use crate::state::State;
   let state = State::new(
-    global_state.clone(),
+    global_state,
     None,
     ModuleSpecifier::resolve_url("file:///dummy.ts").unwrap(),
     None,
@@ -329,56 +330,7 @@ async fn lint_command(flags: Flags, files: Vec<String>) -> Result<(), ErrBox> {
   )?;
 
   state.check_unstable("lint");
-
-  let mut error_counts = 0;
-
-  for file in files {
-    let specifier = ModuleSpecifier::resolve_url_or_path(&file)?;
-    let source_file = global_state
-      .file_fetcher
-      .fetch_source_file(&specifier, None, Permissions::allow_all())
-      .await?;
-    let source_code = String::from_utf8(source_file.source_code)?;
-    let syntax = swc_util::get_syntax_for_media_type(source_file.media_type);
-
-    let mut linter = deno_lint::linter::Linter::default();
-    let lint_rules = deno_lint::rules::get_all_rules();
-
-    let file_diagnostics =
-      linter.lint(file, source_code, syntax, lint_rules)?;
-
-    error_counts += file_diagnostics.len();
-    for d in file_diagnostics.iter() {
-      let pretty_message = format!(
-        "({}) {}",
-        colors::gray(d.code.to_string()),
-        d.message.clone()
-      );
-      eprintln!(
-        "{}\n",
-        fmt_errors::format_stack(
-          true,
-          pretty_message,
-          Some(d.line_src.clone()),
-          Some(d.location.col as i64),
-          Some((d.location.col + d.snippet_length) as i64),
-          &[fmt_errors::format_location(
-            d.location.filename.clone(),
-            d.location.line as i64,
-            d.location.col as i64,
-          )],
-          0
-        )
-      );
-    }
-  }
-
-  if error_counts > 0 {
-    eprintln!("Found {} problems", error_counts);
-    std::process::exit(1);
-  }
-
-  Ok(())
+  lint::lint_files(files)
 }
 
 async fn cache_command(flags: Flags, files: Vec<String>) -> Result<(), ErrBox> {
