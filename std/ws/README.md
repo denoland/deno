@@ -59,7 +59,7 @@ if (import.meta.main) {
       headers,
     })
       .then(handleWs)
-      .catch(async (e) => {
+      .catch(async (err) => {
         console.error(`failed to accept websocket: ${err}`);
         await req.respond({ status: 400 });
       });
