@@ -79,6 +79,21 @@ deno {} "$@"
   Ok(())
 }
 
+fn generate_config_file(
+  file_path: PathBuf,
+  config_file_name: Option<String>,
+) -> Result<(), Error> {
+  if let Some(config_file_name) = config_file_name {
+    let file_name = file_path.to_str().unwrap();
+    let config_file_copy_name = format!("{}{}", file_name, ".tsconfig.json");
+    let config_file_copy_path = PathBuf::from(config_file_copy_name);
+    let cwd = std::env::current_dir().unwrap();
+    let config_file_path = cwd.join(config_file_name);
+    fs::copy(config_file_path, config_file_copy_path)?;
+  }
+  Ok(())
+}
+
 fn get_installer_root() -> Result<PathBuf, Error> {
   if let Ok(env_dir) = env::var("DENO_INSTALL_ROOT") {
     if !env_dir.is_empty() {
@@ -215,6 +230,7 @@ pub fn install(
   executable_args.extend_from_slice(&args);
 
   generate_executable_file(file_path.to_owned(), executable_args)?;
+  generate_config_file(file_path.to_owned(), flags.config_path)?;
 
   println!("✅ Successfully installed {}", name);
   println!("{}", file_path.to_string_lossy());
