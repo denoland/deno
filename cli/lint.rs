@@ -48,7 +48,7 @@ fn lint_file(file_path: PathBuf) -> Result<Vec<LintDiagnostic>, ErrBox> {
   let syntax = swc_util::get_syntax_for_media_type(media_type);
 
   let mut linter = Linter::default();
-  let lint_rules = rules::get_all_rules();
+  let lint_rules = rules::get_recommended_rules();
 
   let file_diagnostics =
     linter.lint(file_name, source_code, syntax, lint_rules)?;
