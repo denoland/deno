@@ -645,4 +645,36 @@ mod tests {
     let file_content_2 = fs::read_to_string(&file_path).unwrap();
     assert!(file_content_2.contains("cat.ts"));
   }
+
+  #[test]
+  fn install_with_config() {
+    let temp_dir = TempDir::new().expect("tempdir fail");
+    let bin_dir = temp_dir.path().join("bin");
+    let cwd = std::env::current_dir().unwrap();
+    let config_file_path = cwd.join("tsconfig.json");
+    let config = "{}";
+    let mut config_file = File::create(&config_file_path)?;
+    config_file.write_all(config.as_bytes())?;
+
+    install(
+      Flags {
+        config_path: "tsconfig.json",
+        ..Flags::default()
+      },
+      "http://localhost:4545/cli/tests/cat.ts",
+      vec![],
+      Some("echo_test".to_string()),
+      Some(temp_dir.path().to_path_buf()),
+      true,
+    );
+
+    let mut file_path = bin_dir.join("echo_test.tsconfig.json");
+    if cfg!(windows) {
+      file_path = file_path.with_extension("cmd");
+    }
+
+    assert!(file_path.exists());
+    let content = fs::read_to_string(file_path).unwrap();
+    assert!(content == "{}");
+  }
 }
