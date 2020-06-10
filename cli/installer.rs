@@ -672,9 +672,6 @@ mod tests {
     assert!(result.is_ok());
 
     let mut file_path = bin_dir.join("echo_test.tsconfig.json");
-    if cfg!(windows) {
-      file_path = file_path.with_extension("cmd");
-    }
 
     assert!(file_path.exists());
     let content = fs::read_to_string(file_path).unwrap();
