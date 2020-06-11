@@ -24,6 +24,7 @@ use std::sync::{Arc, Mutex};
 
 pub async fn lint_files(args: Vec<String>) -> Result<(), ErrBox> {
   let target_files = collect_files(args)?;
+  debug!("Found {} files", target_files.len());
 
   let error_count = Arc::new(AtomicUsize::new(0));
 
