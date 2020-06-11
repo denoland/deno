@@ -53,6 +53,36 @@ unitTest(
 
 unitTest(
   { perms: { write: true, read: true } },
+  async function removeFileByUrl(): Promise<void> {
+    for (const method of REMOVE_METHODS) {
+      // REMOVE FILE
+      const enc = new TextEncoder();
+      const data = enc.encode("Hello");
+
+      const tempDir = Deno.makeTempDirSync();
+      const fileUrl = new URL(
+        `file://${Deno.build.os === "windows" ? "/" : ""}${tempDir}/test.txt`
+      );
+
+      Deno.writeFileSync(fileUrl, data, { mode: 0o666 });
+      const fileInfo = Deno.statSync(fileUrl);
+      assert(fileInfo.isFile); // check exist first
+      await Deno[method](fileUrl); // remove
+      // We then check again after remove
+      let err;
+      try {
+        Deno.statSync(fileUrl);
+      } catch (e) {
+        err = e;
+      }
+      // File is gone
+      assert(err instanceof Deno.errors.NotFound);
+    }
+  }
+);
+
+unitTest(
+  { perms: { write: true, read: true } },
   async function removeFail(): Promise<void> {
     for (const method of REMOVE_METHODS) {
       // NON-EMPTY DIRECTORY

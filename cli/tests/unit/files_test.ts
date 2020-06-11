@@ -198,6 +198,54 @@ unitTest(
 );
 
 unitTest(
+  {
+    perms: { read: true, write: true },
+  },
+  function openSyncUrl(): void {
+    const tempDir = Deno.makeTempDirSync();
+    const fileUrl = new URL(
+      `file://${Deno.build.os === "windows" ? "/" : ""}${tempDir}/test_open.txt`
+    );
+    const file = Deno.openSync(fileUrl, {
+      write: true,
+      createNew: true,
+      mode: 0o626,
+    });
+    file.close();
+    const pathInfo = Deno.statSync(fileUrl);
+    if (Deno.build.os !== "windows") {
+      assertEquals(pathInfo.mode! & 0o777, 0o626 & ~Deno.umask());
+    }
+
+    Deno.removeSync(tempDir, { recursive: true });
+  }
+);
+
+unitTest(
+  {
+    perms: { read: true, write: true },
+  },
+  async function openUrl(): Promise<void> {
+    const tempDir = await Deno.makeTempDir();
+    const fileUrl = new URL(
+      `file://${Deno.build.os === "windows" ? "/" : ""}${tempDir}/test_open.txt`
+    );
+    const file = await Deno.open(fileUrl, {
+      write: true,
+      createNew: true,
+      mode: 0o626,
+    });
+    file.close();
+    const pathInfo = Deno.statSync(fileUrl);
+    if (Deno.build.os !== "windows") {
+      assertEquals(pathInfo.mode! & 0o777, 0o626 & ~Deno.umask());
+    }
+
+    Deno.removeSync(tempDir, { recursive: true });
+  }
+);
+
+unitTest(
   { perms: { write: false } },
   async function writePermFailure(): Promise<void> {
     const filename = "tests/hello.txt";
@@ -371,6 +419,71 @@ unitTest(
     f.close();
 
     // TODO: test different modes
+    await Deno.remove(tempDir, { recursive: true });
+  }
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  async function createFileWithUrl(): Promise<void> {
+    const tempDir = await Deno.makeTempDir();
+    const fileUrl = new URL(
+      `file://${Deno.build.os === "windows" ? "/" : ""}${tempDir}/test.txt`
+    );
+    const f = await Deno.create(fileUrl);
+    let fileInfo = Deno.statSync(fileUrl);
+    assert(fileInfo.isFile);
+    assert(fileInfo.size === 0);
+    const enc = new TextEncoder();
+    const data = enc.encode("Hello");
+    await f.write(data);
+    fileInfo = Deno.statSync(fileUrl);
+    assert(fileInfo.size === 5);
+    f.close();
+
+    await Deno.remove(tempDir, { recursive: true });
+  }
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  async function createSyncFile(): Promise<void> {
+    const tempDir = await Deno.makeTempDir();
+    const filename = tempDir + "/test.txt";
+    const f = Deno.createSync(filename);
+    let fileInfo = Deno.statSync(filename);
+    assert(fileInfo.isFile);
+    assert(fileInfo.size === 0);
+    const enc = new TextEncoder();
+    const data = enc.encode("Hello");
+    await f.write(data);
+    fileInfo = Deno.statSync(filename);
+    assert(fileInfo.size === 5);
+    f.close();
+
+    // TODO: test different modes
+    await Deno.remove(tempDir, { recursive: true });
+  }
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  async function createSyncFileWithUrl(): Promise<void> {
+    const tempDir = await Deno.makeTempDir();
+    const fileUrl = new URL(
+      `file://${Deno.build.os === "windows" ? "/" : ""}${tempDir}/test.txt`
+    );
+    const f = Deno.createSync(fileUrl);
+    let fileInfo = Deno.statSync(fileUrl);
+    assert(fileInfo.isFile);
+    assert(fileInfo.size === 0);
+    const enc = new TextEncoder();
+    const data = enc.encode("Hello");
+    await f.write(data);
+    fileInfo = Deno.statSync(fileUrl);
+    assert(fileInfo.size === 5);
+    f.close();
+
     await Deno.remove(tempDir, { recursive: true });
   }
 );

@@ -1,6 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { sendSync, sendAsync } from "../dispatch_json.ts";
 import { build } from "../../build.ts";
+import { pathFromURL } from "../../util.ts";
 
 export interface FileInfo {
   size: number;
@@ -65,7 +66,8 @@ export function parseFileInfo(response: StatResponse): FileInfo {
   };
 }
 
-export async function lstat(path: string): Promise<FileInfo> {
+export async function lstat(path: string | URL): Promise<FileInfo> {
+  path = pathFromURL(path);
   const res = (await sendAsync("op_stat", {
     path,
     lstat: true,
@@ -73,7 +75,8 @@ export async function lstat(path: string): Promise<FileInfo> {
   return parseFileInfo(res);
 }
 
-export function lstatSync(path: string): FileInfo {
+export function lstatSync(path: string | URL): FileInfo {
+  path = pathFromURL(path);
   const res = sendSync("op_stat", {
     path,
     lstat: true,
@@ -81,7 +84,8 @@ export function lstatSync(path: string): FileInfo {
   return parseFileInfo(res);
 }
 
-export async function stat(path: string): Promise<FileInfo> {
+export async function stat(path: string | URL): Promise<FileInfo> {
+  path = pathFromURL(path);
   const res = (await sendAsync("op_stat", {
     path,
     lstat: false,
@@ -89,7 +93,8 @@ export async function stat(path: string): Promise<FileInfo> {
   return parseFileInfo(res);
 }
 
-export function statSync(path: string): FileInfo {
+export function statSync(path: string | URL): FileInfo {
+  path = pathFromURL(path);
   const res = sendSync("op_stat", {
     path,
     lstat: false,
