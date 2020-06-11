@@ -90,7 +90,9 @@ export class ServerRequest {
       try {
         // Eagerly close on error.
         this.conn.close();
-      } catch {}
+      } catch {
+        // Pass
+      }
       err = e;
     }
     // Signal that this request has been processed and the next pipelined
@@ -108,7 +110,9 @@ export class ServerRequest {
     // Consume unread body
     const body = this.body;
     const buf = new Uint8Array(1024);
-    while ((await body.read(buf)) !== null) {}
+    while ((await body.read(buf)) !== null) {
+      // Pass
+    }
     this.finalized = true;
   }
 }

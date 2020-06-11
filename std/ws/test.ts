@@ -282,11 +282,9 @@ test("[ws] ws.close() should use 1000 as close code", async () => {
 function dummyConn(r: Reader, w: Writer): Conn {
   return {
     rid: -1,
-    // deno-lint-ignore no-empty
     closeWrite: (): void => {},
     read: (x: Uint8Array): Promise<number | null> => r.read(x),
     write: (x: Uint8Array): Promise<number> => w.write(x),
-    // deno-lint-ignore no-empty
     close: (): void => {},
     localAddr: { transport: "tcp", hostname: "0.0.0.0", port: 0 },
     remoteAddr: { transport: "tcp", hostname: "0.0.0.0", port: 0 },

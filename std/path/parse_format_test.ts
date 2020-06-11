@@ -1,6 +1,6 @@
 // Copyright the Browserify authors. MIT License.
 // Ported from https://github.com/browserify/path-browserify/
-/* eslint-disable @typescript-eslint/no-explicit-any */
+
 // TODO(kt3k): fix any types in this file
 
 const { test } = Deno;
@@ -80,6 +80,7 @@ const unixSpecialCaseFormatTests = [
   [{}, ""],
 ];
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function checkParseFormat(path: any, paths: any): void {
   paths.forEach(function (p: Array<Record<string, unknown>>) {
     const element = p[0];
@@ -96,6 +97,7 @@ function checkParseFormat(path: any, paths: any): void {
   });
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function checkSpecialCaseParseFormat(path: any, testCases: any): void {
   testCases.forEach(function (testCase: Array<Record<string, unknown>>) {
     const element = testCase[0];
@@ -107,6 +109,7 @@ function checkSpecialCaseParseFormat(path: any, testCases: any): void {
   });
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function checkFormat(path: any, testCases: unknown[][]): void {
   testCases.forEach(function (testCase) {
     assertEquals(path.format(testCase[0]), testCase[1]);

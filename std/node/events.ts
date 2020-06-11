@@ -226,7 +226,8 @@ export default class EventEmitter {
         rawListener: Function;
         context: EventEmitter;
       },
-      ...args: any[] // eslint-disable-line @typescript-eslint/no-explicit-any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ...args: any[]
     ): void {
       this.context.removeListener(this.eventName, this.rawListener);
       this.listener.apply(this.context, args);

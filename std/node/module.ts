@@ -659,7 +659,9 @@ function readPackage(requestPath: string): PackageInfo | null {
     json = new TextDecoder().decode(
       Deno.readFileSync(path.toNamespacedPath(jsonPath))
     );
-  } catch {}
+  } catch {
+    // pass
+  }
 
   if (json === undefined) {
     packageJsonCache.set(jsonPath, null);
@@ -839,7 +841,7 @@ function applyExports(basePath: string, expansion: string): string {
   }
 
   if (typeof pkgExports === "object") {
-    if (pkgExports.hasOwnProperty(mappingKey)) {
+    if (Object.prototype.hasOwnProperty.call(pkgExports, mappingKey)) {
       const mapping = pkgExports[mappingKey];
       return resolveExportsTarget(
         pathToFileURL(basePath + "/"),
@@ -959,7 +961,7 @@ function resolveExportsTarget(
     }
   } else if (typeof target === "object" && target !== null) {
     // removed experimentalConditionalExports
-    if (target.hasOwnProperty("default")) {
+    if (Object.prototype.hasOwnProperty.call(target, "default")) {
       try {
         return resolveExportsTarget(
           pkgPath,
@@ -1012,7 +1014,7 @@ const CircularRequirePrototypeWarningProxy = new Proxy(
     },
 
     getOwnPropertyDescriptor(target, prop): PropertyDescriptor | undefined {
-      if (target.hasOwnProperty(prop)) {
+      if (Object.prototype.hasOwnProperty.call(target, prop)) {
         return Object.getOwnPropertyDescriptor(target, prop);
       }
       emitCircularRequireWarning(prop);

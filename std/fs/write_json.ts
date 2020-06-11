@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-/* eslint-disable @typescript-eslint/no-explicit-any */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Replacer = (key: string, value: any) => any;
 
 export interface WriteJsonOptions {
@@ -10,6 +10,7 @@ export interface WriteJsonOptions {
 /* Writes an object to a JSON file. */
 export async function writeJson(
   filePath: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   object: any,
   options: WriteJsonOptions = {}
 ): Promise<void> {
@@ -32,6 +33,7 @@ export async function writeJson(
 /* Writes an object to a JSON file. */
 export function writeJsonSync(
   filePath: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   object: any,
   options: WriteJsonOptions = {}
 ): void {

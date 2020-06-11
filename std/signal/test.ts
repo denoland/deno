@@ -23,7 +23,6 @@ test({
   ignore: Deno.build.os === "windows",
   fn: async (): Promise<void> => {
     // This prevents the program from exiting.
-    // deno-lint-ignore no-empty
     const t = setInterval(() => {}, 1000);
 
     let c = 0;
@@ -65,7 +64,6 @@ test({
   ignore: Deno.build.os === "windows",
   async fn() {
     // This prevents the program from exiting.
-    // deno-lint-ignore no-empty
     const t = setInterval(() => {}, 1000);
 
     let calledCount = 0;

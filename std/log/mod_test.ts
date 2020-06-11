@@ -9,7 +9,9 @@ try {
   // Need to initialize it here
   // otherwise it will be already initialized on Deno.test
   logger = getLogger();
-} catch {}
+} catch {
+  // Pass
+}
 
 test("logger is initialized", function (): void {
   assert(logger instanceof Logger);
