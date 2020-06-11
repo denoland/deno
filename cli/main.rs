@@ -92,6 +92,7 @@ use log::Level;
 use log::Metadata;
 use log::Record;
 use std::env;
+use std::io::Read;
 use std::io::Write;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -563,9 +564,36 @@ async fn run_repl(flags: Flags) -> Result<(), ErrBox> {
 
 async fn run_command(flags: Flags, script: String) -> Result<(), ErrBox> {
   let global_state = GlobalState::new(flags.clone())?;
-  let main_module = ModuleSpecifier::resolve_url_or_path(&script).unwrap();
+  let main_module = if script != "-" {
+    ModuleSpecifier::resolve_url_or_path(&script).unwrap()
+  } else {
+    ModuleSpecifier::resolve_url_or_path("./__$deno$stdin.ts").unwrap()
+  };
   let mut worker =
     MainWorker::create(global_state.clone(), main_module.clone())?;
+  if script == "-" {
+    let mut source = Vec::new();
+    std::io::stdin().read_to_end(&mut source)?;
+    let main_module_url = main_module.as_url().to_owned();
+    // Create a dummy source file.
+    let source_file = SourceFile {
+      filename: main_module_url.to_file_path().unwrap(),
+      url: main_module_url,
+      types_url: None,
+      types_header: None,
+      media_type: MediaType::TypeScript,
+      source_code: source,
+    };
+    // Save our fake file into file fetcher cache
+    // to allow module access by TS compiler (e.g. op_fetch_source_files)
+    worker
+      .state
+      .borrow()
+      .global_state
+      .file_fetcher
+      .save_source_file_in_cache(&main_module, source_file);
+  };
+
   debug!("main_module {}", main_module);
   worker.execute_module(&main_module).await?;
   write_lockfile(global_state)?;
