@@ -264,7 +264,7 @@ fn write_file_contents(
   Ok(fs::write(file_path, file_text)?)
 }
 
-async fn run_parallelized<F>(
+pub async fn run_parallelized<F>(
   file_paths: Vec<PathBuf>,
   f: F,
 ) -> Result<(), ErrBox>

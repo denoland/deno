@@ -331,7 +331,7 @@ async fn lint_command(flags: Flags, files: Vec<String>) -> Result<(), ErrBox> {
   )?;
 
   state.check_unstable("lint");
-  lint::lint_files(files)
+  lint::lint_files(files).await
 }
 
 async fn cache_command(flags: Flags, files: Vec<String>) -> Result<(), ErrBox> {
