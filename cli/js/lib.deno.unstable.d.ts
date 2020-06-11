@@ -1245,4 +1245,7 @@ declare namespace Deno {
    *  Requires `allow-env` permission.
    */
   export function hostname(): string;
+
+  /** **UNSTABLE**: The URL of the file that was originally executed from the command-line. */
+  export const mainModule: string;
 }

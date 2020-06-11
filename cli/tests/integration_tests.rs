@@ -1708,6 +1708,11 @@ itest!(import_meta {
   output: "import_meta.ts.out",
 });
 
+itest!(main_module {
+  args: "run --quiet --unstable --allow-read --reload main_module.ts",
+  output: "main_module.ts.out",
+});
+
 itest!(lib_ref {
   args: "run --quiet --unstable --reload lib_ref.ts",
   output: "lib_ref.ts.out",
