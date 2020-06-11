@@ -18,7 +18,7 @@ import { unitTest, assertEquals } from "./test_util.ts";
 // }
 
 // Straight from https://encoding.spec.whatwg.org/encodings.json
-const encodings_table = [
+const encodingsTable = [
   {
     encodings: [
       {
@@ -400,7 +400,7 @@ const encodings_table = [
   },
 ];
 
-const singleByteEncodings = encodings_table.filter((group) => {
+const singleByteEncodings = encodingsTable.filter((group) => {
   return group.heading === "Legacy single-byte encodings";
 })[0].encodings;
 
@@ -446,13 +446,13 @@ for (let i = 0, l = view.byteLength; i < l; i++) {
 function assertDecode(
   data: string,
   encoding: keyof typeof singleByteIndexes | "ISO-8859-8-I"
-) {
+): void {
   if (encoding == "ISO-8859-8-I") {
     encoding = "ISO-8859-8";
   }
-  for (var i = 0, l = data.length; i < l; i++) {
-    var cp = data.charCodeAt(i),
-      expectedCp = i < 0x80 ? i : singleByteIndexes[encoding][i - 0x80];
+  for (let i = 0, l = data.length; i < l; i++) {
+    let cp = data.charCodeAt(i);
+    let expectedCp = i < 0x80 ? i : singleByteIndexes[encoding][i - 0x80];
     if (expectedCp == null) {
       expectedCp = 0xfffd;
     }
@@ -466,7 +466,7 @@ for (let i = 0, l = singleByteEncodings.length; i < l; i++) {
     const label = encoding.labels[ii];
     unitTest(
       {
-        [label]: () => {
+        [label]: (): void => {
           const decoder = new TextDecoder(label);
           const data = decoder.decode(view);
 
