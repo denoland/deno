@@ -84,9 +84,8 @@ fn generate_config_file(
   config_file_name: Option<String>,
 ) -> Result<(), Error> {
   if let Some(config_file_name) = config_file_name {
-    let file_name = file_path.to_str().unwrap();
-    let config_file_copy_name = format!("{}{}", file_name, ".tsconfig.json");
-    let config_file_copy_path = PathBuf::from(config_file_copy_name);
+    let mut config_file_copy_path = file_path;
+    config_file_copy_path.set_extension("tsconfig.json");
     let cwd = std::env::current_dir().unwrap();
     let config_file_path = cwd.join(config_file_name);
     fs::copy(config_file_path, config_file_copy_path)?;
@@ -671,11 +670,7 @@ mod tests {
 
     assert!(result.is_ok());
 
-    let config_file_name = if cfg!(windows) {
-      "echo_test.cmd.tsconfig.json"
-    } else {
-      "echo_test.tsconfig.json"
-    };
+    let config_file_name = "echo_test.tsconfig.json";
 
     let file_path = bin_dir.join(config_file_name.to_string());
     assert!(file_path.exists());
