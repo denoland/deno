@@ -9,7 +9,7 @@
 
 import * as denoNs from "./deno.ts";
 import * as denoUnstableNs from "./deno_unstable.ts";
-import { opMainUrl } from "./ops/runtime.ts";
+import { opMainModule } from "./ops/runtime.ts";
 import { exit } from "./ops/os.ts";
 import {
   readOnly,
@@ -107,7 +107,7 @@ export function bootstrapMainRuntime(): void {
   if (unstableFlag) {
     Object.defineProperties(globalThis, unstableMethods);
     Object.defineProperties(globalThis, unstableProperties);
-    Object.defineProperty(denoNs, "mainUrl", getterOnly(opMainUrl));
+    Object.defineProperty(denoNs, "mainModule", getterOnly(opMainModule));
     Object.assign(denoNs, denoUnstableNs);
   }
 

@@ -1247,5 +1247,5 @@ declare namespace Deno {
   export function hostname(): string;
 
   /** **UNSTABLE**: The URL of the file that was originally executed from the command-line. */
-  export const mainUrl: URL;
+  export const mainModule: string;
 }
