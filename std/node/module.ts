@@ -912,7 +912,6 @@ function resolveExports(
   return path.resolve(nmPath, request);
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function resolveExportsTarget(
   pkgPath: URL,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1116,7 +1115,6 @@ interface RequireResolveFunction extends RequireResolve {
 }
 
 interface RequireFunction extends Require {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   resolve: RequireResolveFunction;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   extensions: { [key: string]: (module: Module, filename: string) => any };

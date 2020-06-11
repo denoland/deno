@@ -435,7 +435,6 @@ export function on(
   const unconsumedEventValues: any[] = [];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const unconsumedPromises: any[] = [];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let error: Error | null = null;
   let finished = false;
 
