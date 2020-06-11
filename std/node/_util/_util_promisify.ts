@@ -69,7 +69,7 @@ export function promisify(original: Function): Function {
 
   function fn(...args: unknown[]): Promise<unknown> {
     return new Promise((resolve, reject) => {
-      // @ts-ignore
+      // @ts-ignore: 'this' implicitly has type 'any' because it does not have a type annotation
       original.call(this, ...args, (err: Error, ...values: unknown[]) => {
         if (err) {
           return reject(err);
