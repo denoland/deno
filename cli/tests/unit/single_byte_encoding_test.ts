@@ -11,9 +11,10 @@ import { unitTest, assertEquals } from "./test_util.ts";
 // function unitTest(func: Function) {
 //   try {
 //     func();
-//     console.log("(success) test " + func.name);
+//     console.log(`(success) test ${func.name}`);
 //   } catch (error) {
-//     console.log("(fail)    test " + func.name);
+//     // prettier-ignore
+//     console.log(`(fail)    test ${func.name}${" ".repeat(12 - func.name.length)}  ${error.message}`);
 //   }
 // }
 
@@ -148,10 +149,11 @@ const encodingsTable = [
         ],
         name: "ISO-8859-8",
       },
-      {
-        labels: ["csiso88598i", "iso-8859-8-i", "logical"],
-        name: "ISO-8859-8-I",
-      },
+      // ignored because iso-8859-8-i is not supported
+      // {
+      //   labels: ["csiso88598i", "iso-8859-8-i", "logical"],
+      //   name: "ISO-8859-8-I",
+      // },
       {
         labels: [
           "csisolatin6",
