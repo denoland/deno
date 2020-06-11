@@ -125,6 +125,9 @@ export function run<T extends RunOptions = RunOptions>({
   stderr = "inherit",
   stdin = "inherit",
 }: T): Process<T> {
+  if (!Array.isArray(cmd)) {
+    throw new TypeError("cmd field should be an array");
+  }
   const res = runOp({
     cmd: cmd.map(String),
     cwd,
