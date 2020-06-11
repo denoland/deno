@@ -451,7 +451,7 @@ function assertDecode(
     encoding = "ISO-8859-8";
   }
   for (let i = 0, l = data.length; i < l; i++) {
-    let cp = data.charCodeAt(i);
+    const cp = data.charCodeAt(i);
     let expectedCp = i < 0x80 ? i : singleByteIndexes[encoding][i - 0x80];
     if (expectedCp == null) {
       expectedCp = 0xfffd;
