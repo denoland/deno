@@ -51,7 +51,7 @@ export class Logger {
    */
   _log<T>(
     level: number,
-    msg: T | (() => T),
+    msg: (T extends Function ? never : T) | (() => T),
     ...args: unknown[]
   ): T | undefined {
     if (this.level > level) {
@@ -75,9 +75,7 @@ export class Logger {
     return msg instanceof Function ? fnResult : msg;
   }
 
-  /** Convert all types to strings for logging */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  asString(data: any): string {
+  asString(data: unknown): string {
     if (typeof data === "string") {
       return data;
     } else if (
@@ -85,13 +83,10 @@ export class Logger {
       typeof data === "number" ||
       typeof data === "bigint" ||
       typeof data === "boolean" ||
-      typeof data === "undefined"
+      typeof data === "undefined" ||
+      typeof data === "symbol"
     ) {
-      return `${data}`;
-    } else if (typeof data === "symbol") {
       return String(data);
-    } else if (typeof data === "function") {
-      return "undefined";
     } else if (typeof data === "object") {
       return JSON.stringify(data);
     }
@@ -99,32 +94,47 @@ export class Logger {
   }
 
   debug<T>(msg: () => T, ...args: unknown[]): T | undefined;
-  debug<T>(msg: T, ...args: unknown[]): T;
-  debug<T>(msg: T | (() => T), ...args: unknown[]): T | undefined {
+  debug<T>(msg: T extends Function ? never : T, ...args: unknown[]): T;
+  debug<T>(
+    msg: (T extends Function ? never : T) | (() => T),
+    ...args: unknown[]
+  ): T | undefined {
     return this._log(LogLevels.DEBUG, msg, ...args);
   }
 
   info<T>(msg: () => T, ...args: unknown[]): T | undefined;
-  info<T>(msg: T, ...args: unknown[]): T;
-  info<T>(msg: T | (() => T), ...args: unknown[]): T | undefined {
+  info<T>(msg: T extends Function ? never : T, ...args: unknown[]): T;
+  info<T>(
+    msg: (T extends Function ? never : T) | (() => T),
+    ...args: unknown[]
+  ): T | undefined {
     return this._log(LogLevels.INFO, msg, ...args);
   }
 
   warning<T>(msg: () => T, ...args: unknown[]): T | undefined;
-  warning<T>(msg: T, ...args: unknown[]): T;
-  warning<T>(msg: T | (() => T), ...args: unknown[]): T | undefined {
+  warning<T>(msg: T extends Function ? never : T, ...args: unknown[]): T;
+  warning<T>(
+    msg: (T extends Function ? never : T) | (() => T),
+    ...args: unknown[]
+  ): T | undefined {
     return this._log(LogLevels.WARNING, msg, ...args);
   }
 
   error<T>(msg: () => T, ...args: unknown[]): T | undefined;
-  error<T>(msg: T, ...args: unknown[]): T;
-  error<T>(msg: T | (() => T), ...args: unknown[]): T | undefined {
+  error<T>(msg: T extends Function ? never : T, ...args: unknown[]): T;
+  error<T>(
+    msg: (T extends Function ? never : T) | (() => T),
+    ...args: unknown[]
+  ): T | undefined {
     return this._log(LogLevels.ERROR, msg, ...args);
   }
 
   critical<T>(msg: () => T, ...args: unknown[]): T | undefined;
-  critical<T>(msg: T, ...args: unknown[]): T;
-  critical<T>(msg: T | (() => T), ...args: unknown[]): T | undefined {
+  critical<T>(msg: T extends Function ? never : T, ...args: unknown[]): T;
+  critical<T>(
+    msg: (T extends Function ? never : T) | (() => T),
+    ...args: unknown[]
+  ): T | undefined {
     return this._log(LogLevels.CRITICAL, msg, ...args);
   }
 }
