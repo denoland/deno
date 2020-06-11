@@ -32,6 +32,19 @@ fn std_tests() {
 }
 
 #[test]
+fn std_lint() {
+  let status = util::deno_cmd()
+    .arg("lint")
+    .arg("--unstable")
+    .arg(util::root_path().join("std"))
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(status.success());
+}
+
+#[test]
 fn x_deno_warning() {
   let g = util::http_server();
   let output = util::deno_cmd()
