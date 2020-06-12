@@ -3,12 +3,11 @@
 // Copyright 2009 The Go Authors. All rights reserved. BSD license.
 import { assert } from "../_util/assert.ts";
 import { basename, join, normalize } from "../path/mod.ts";
-const { readDir, readDirSync, stat, statSync } = Deno;
 
 export function createWalkEntrySync(path: string): WalkEntry {
   path = normalize(path);
   const name = basename(path);
-  const info = statSync(path);
+  const info = Deno.statSync(path);
   return {
     path,
     name,
@@ -21,7 +20,7 @@ export function createWalkEntrySync(path: string): WalkEntry {
 export async function createWalkEntry(path: string): Promise<WalkEntry> {
   path = normalize(path);
   const name = basename(path);
-  const info = await stat(path);
+  const info = await Deno.stat(path);
   return {
     path,
     name,
@@ -103,7 +102,7 @@ export async function* walk(
   if (maxDepth < 1 || !include(root, undefined, undefined, skip)) {
     return;
   }
-  for await (const entry of readDir(root)) {
+  for await (const entry of Deno.readDir(root)) {
     if (entry.isSymlink) {
       if (followSymlinks) {
         // TODO(ry) Re-enable followSymlinks.
@@ -156,7 +155,7 @@ export function* walkSync(
   if (maxDepth < 1 || !include(root, undefined, undefined, skip)) {
     return;
   }
-  for (const entry of readDirSync(root)) {
+  for (const entry of Deno.readDirSync(root)) {
     if (entry.isSymlink) {
       if (followSymlinks) {
         throw new Error("unimplemented");

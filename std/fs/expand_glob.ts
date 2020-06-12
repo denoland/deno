@@ -15,8 +15,6 @@ import {
   walkSync,
 } from "./walk.ts";
 import { assert } from "../_util/assert.ts";
-const { cwd } = Deno;
-type FileInfo = Deno.FileInfo;
 
 const isWindows = Deno.build.os == "windows";
 
@@ -68,7 +66,7 @@ function comparePath(a: WalkEntry, b: WalkEntry): number {
 export async function* expandGlob(
   glob: string,
   {
-    root = cwd(),
+    root = Deno.cwd(),
     exclude = [],
     includeDirs = true,
     extended = false,
@@ -78,7 +76,7 @@ export async function* expandGlob(
   const globOptions: GlobOptions = { extended, globstar };
   const absRoot = isAbsolute(root)
     ? normalize(root)
-    : joinGlobs([cwd(), root], globOptions);
+    : joinGlobs([Deno.cwd(), root], globOptions);
   const resolveFromRoot = (path: string): string =>
     isAbsolute(path)
       ? normalize(path)
@@ -167,7 +165,7 @@ export async function* expandGlob(
 export function* expandGlobSync(
   glob: string,
   {
-    root = cwd(),
+    root = Deno.cwd(),
     exclude = [],
     includeDirs = true,
     extended = false,
@@ -177,7 +175,7 @@ export function* expandGlobSync(
   const globOptions: GlobOptions = { extended, globstar };
   const absRoot = isAbsolute(root)
     ? normalize(root)
-    : joinGlobs([cwd(), root], globOptions);
+    : joinGlobs([Deno.cwd(), root], globOptions);
   const resolveFromRoot = (path: string): string =>
     isAbsolute(path)
       ? normalize(path)

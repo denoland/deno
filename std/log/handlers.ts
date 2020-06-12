@@ -1,8 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-const { open, openSync, close, renameSync, stat } = Deno;
-type File = Deno.File;
-type Writer = Deno.Writer;
-type OpenOptions = Deno.OpenOptions;
 import { getLevelByName, LevelName, LogLevels } from "./levels.ts";
 import { LogRecord } from "./logger.ts";
 import { red, yellow, blue, bold } from "../fmt/colors.ts";
@@ -88,7 +84,7 @@ export class ConsoleHandler extends BaseHandler {
 }
 
 export abstract class WriterHandler extends BaseHandler {
-  protected _writer!: Writer;
+  protected _writer!: Deno.Writer;
   #encoder = new TextEncoder();
 
   abstract log(msg: string): void;
@@ -100,11 +96,11 @@ interface FileHandlerOptions extends HandlerOptions {
 }
 
 export class FileHandler extends WriterHandler {
-  protected _file: File | undefined;
+  protected _file: Deno.File | undefined;
   protected _buf!: BufWriterSync;
   protected _filename: string;
   protected _mode: LogMode;
-  protected _openOptions: OpenOptions;
+  protected _openOptions: Deno.OpenOptions;
   protected _encoder = new TextEncoder();
   #unloadCallback = (): Promise<void> => this.destroy();
 
@@ -123,7 +119,7 @@ export class FileHandler extends WriterHandler {
   }
 
   async setup(): Promise<void> {
-    this._file = await open(this._filename, this._openOptions);
+    this._file = await Deno.open(this._filename, this._openOptions);
     this._writer = this._file;
     this._buf = new BufWriterSync(this._file);
 
@@ -204,7 +200,7 @@ export class RotatingFileHandler extends FileHandler {
         }
       }
     } else {
-      this.#currentFileSize = (await stat(this._filename)).size;
+      this.#currentFileSize = (await Deno.stat(this._filename)).size;
     }
   }
 
@@ -222,18 +218,18 @@ export class RotatingFileHandler extends FileHandler {
 
   rotateLogFiles(): void {
     this._buf.flush();
-    close(this._file!.rid);
+    Deno.close(this._file!.rid);
 
     for (let i = this.#maxBackupCount - 1; i >= 0; i--) {
       const source = this._filename + (i === 0 ? "" : "." + i);
       const dest = this._filename + "." + (i + 1);
 
       if (existsSync(source)) {
-        renameSync(source, dest);
+        Deno.renameSync(source, dest);
       }
     }
 
-    this._file = openSync(this._filename, this._openOptions);
+    this._file = Deno.openSync(this._filename, this._openOptions);
     this._writer = this._file;
     this._buf = new BufWriterSync(this._file);
   }

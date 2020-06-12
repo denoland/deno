@@ -20,27 +20,26 @@
 // DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
-
 import {
   assert,
   assertEquals,
   assertStrictEquals,
   assertThrowsAsync,
 } from "../../testing/asserts.ts";
-
 import { promisify } from "./_util_promisify.ts";
 import * as fs from "../fs.ts";
-
-const { test } = Deno;
 
 const readFile = promisify(fs.readFile);
 const customPromisifyArgs = Symbol.for("deno.nodejs.util.promisify.customArgs");
 
-test("Errors should reject the promise", async function testPromiseRejection() {
-  await assertThrowsAsync(() => readFile("/dontexist"), Deno.errors.NotFound);
-});
+Deno.test(
+  "Errors should reject the promise",
+  async function testPromiseRejection() {
+    await assertThrowsAsync(() => readFile("/dontexist"), Deno.errors.NotFound);
+  }
+);
 
-test("Promisify.custom", async function testPromisifyCustom() {
+Deno.test("Promisify.custom", async function testPromisifyCustom() {
   function fn(): void {}
 
   function promisifedFn(): void {}
@@ -56,7 +55,7 @@ test("Promisify.custom", async function testPromisifyCustom() {
   await promisifiedFnB;
 });
 
-test("promiisfy.custom symbol", function testPromisifyCustomSymbol() {
+Deno.test("promiisfy.custom symbol", function testPromisifyCustomSymbol() {
   function fn(): void {}
 
   function promisifiedFn(): void {}
@@ -72,7 +71,7 @@ test("promiisfy.custom symbol", function testPromisifyCustomSymbol() {
   assertStrictEquals(promisify(promisify(fn)), promisifiedFn);
 });
 
-test("Invalid argument should throw", function testThrowInvalidArgument() {
+Deno.test("Invalid argument should throw", function testThrowInvalidArgument() {
   function fn(): void {}
   // @ts-ignore TypeScript (as of 3.7) does not support indexing namespaces by symbol
   fn[promisify.custom] = 42;
@@ -84,7 +83,7 @@ test("Invalid argument should throw", function testThrowInvalidArgument() {
   }
 });
 
-test("Custom promisify args", async function testPromisifyCustomArgs() {
+Deno.test("Custom promisify args", async function testPromisifyCustomArgs() {
   const firstValue = 5;
   const secondValue = 17;
 
@@ -99,50 +98,65 @@ test("Custom promisify args", async function testPromisifyCustomArgs() {
   assertEquals(obj, { first: firstValue, second: secondValue });
 });
 
-test("Multiple callback args without custom promisify args", async function testPromisifyWithoutCustomArgs() {
-  function fn(callback: Function): void {
-    callback(null, "foo", "bar");
+Deno.test(
+  "Multiple callback args without custom promisify args",
+  async function testPromisifyWithoutCustomArgs() {
+    function fn(callback: Function): void {
+      callback(null, "foo", "bar");
+    }
+    const value = await promisify(fn)();
+    assertStrictEquals(value, "foo");
   }
-  const value = await promisify(fn)();
-  assertStrictEquals(value, "foo");
-});
+);
 
-test("Undefined resolved value", async function testPromisifyWithUndefinedResolvedValue() {
-  function fn(callback: Function): void {
-    callback(null);
+Deno.test(
+  "Undefined resolved value",
+  async function testPromisifyWithUndefinedResolvedValue() {
+    function fn(callback: Function): void {
+      callback(null);
+    }
+    const value = await promisify(fn)();
+    assertStrictEquals(value, undefined);
   }
-  const value = await promisify(fn)();
-  assertStrictEquals(value, undefined);
-});
+);
 
-test("Undefined resolved value II", async function testPromisifyWithUndefinedResolvedValueII() {
-  function fn(callback: Function): void {
-    callback();
+Deno.test(
+  "Undefined resolved value II",
+  async function testPromisifyWithUndefinedResolvedValueII() {
+    function fn(callback: Function): void {
+      callback();
+    }
+    const value = await promisify(fn)();
+    assertStrictEquals(value, undefined);
   }
-  const value = await promisify(fn)();
-  assertStrictEquals(value, undefined);
-});
+);
 
-test("Resolved value: number", async function testPromisifyWithNumberResolvedValue() {
-  function fn(err: Error | null, val: number, callback: Function): void {
-    callback(err, val);
+Deno.test(
+  "Resolved value: number",
+  async function testPromisifyWithNumberResolvedValue() {
+    function fn(err: Error | null, val: number, callback: Function): void {
+      callback(err, val);
+    }
+    const value = await promisify(fn)(null, 42);
+    assertStrictEquals(value, 42);
   }
-  const value = await promisify(fn)(null, 42);
-  assertStrictEquals(value, 42);
-});
+);
 
-test("Rejected value", async function testPromisifyWithNumberRejectedValue() {
-  function fn(err: Error | null, val: null, callback: Function): void {
-    callback(err, val);
+Deno.test(
+  "Rejected value",
+  async function testPromisifyWithNumberRejectedValue() {
+    function fn(err: Error | null, val: null, callback: Function): void {
+      callback(err, val);
+    }
+    await assertThrowsAsync(
+      () => promisify(fn)(new Error("oops"), null),
+      Error,
+      "oops"
+    );
   }
-  await assertThrowsAsync(
-    () => promisify(fn)(new Error("oops"), null),
-    Error,
-    "oops"
-  );
-});
+);
 
-test("Rejected value", async function testPromisifyWithAsObjectMethod() {
+Deno.test("Rejected value", async function testPromisifyWithAsObjectMethod() {
   const o: { fn?: Function } = {};
   const fn = promisify(function (cb: Function): void {
     // @ts-ignore TypeScript
@@ -155,21 +169,26 @@ test("Rejected value", async function testPromisifyWithAsObjectMethod() {
   assert(val);
 });
 
-test("Multiple callback", async function testPromisifyWithMultipleCallback() {
-  const err = new Error("Should not have called the callback with the error.");
-  const stack = err.stack;
+Deno.test(
+  "Multiple callback",
+  async function testPromisifyWithMultipleCallback() {
+    const err = new Error(
+      "Should not have called the callback with the error."
+    );
+    const stack = err.stack;
 
-  const fn = promisify(function (cb: Function): void {
-    cb(null);
-    cb(err);
-  });
+    const fn = promisify(function (cb: Function): void {
+      cb(null);
+      cb(err);
+    });
 
-  await fn();
-  await Promise.resolve();
-  return assertStrictEquals(stack, err.stack);
-});
+    await fn();
+    await Promise.resolve();
+    return assertStrictEquals(stack, err.stack);
+  }
+);
 
-test("Promisify a promise", function testPromisifyPromise() {
+Deno.test("Promisify a promise", function testPromisifyPromise() {
   function c(): void {}
   const a = promisify(function (): void {});
   const b = promisify(a);
@@ -177,7 +196,7 @@ test("Promisify a promise", function testPromisifyPromise() {
   assertStrictEquals(a, b);
 });
 
-test("Test error", async function testInvalidArguments() {
+Deno.test("Test error", async function testInvalidArguments() {
   let errToThrow;
 
   const thrower = promisify(function (
@@ -198,7 +217,7 @@ test("Test error", async function testInvalidArguments() {
   }
 });
 
-test("Test invalid arguments", function testInvalidArguments() {
+Deno.test("Test invalid arguments", function testInvalidArguments() {
   [undefined, null, true, 0, "str", {}, [], Symbol()].forEach((input) => {
     try {
       // @ts-ignore TypeScript

@@ -5,8 +5,6 @@ import { BufReader } from "../../io/bufio.ts";
 import { connectWebSocket, WebSocket } from "../../ws/mod.ts";
 import { delay } from "../../async/delay.ts";
 
-const { test } = Deno;
-
 async function startServer(): Promise<
   Deno.Process<Deno.RunOptions & { stdout: "piped" }>
 > {
@@ -36,7 +34,7 @@ async function startServer(): Promise<
   return server;
 }
 
-test({
+Deno.test({
   name: "[examples/chat] GET / should serve html",
   async fn() {
     const server = await startServer();
@@ -54,7 +52,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "[examples/chat] GET /ws should upgrade conn to ws",
   async fn() {
     const server = await startServer();

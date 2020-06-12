@@ -1,11 +1,10 @@
-const { test } = Deno;
 import { assert, assertThrows, assertEquals } from "../testing/asserts.ts";
 import { process } from "./process.ts";
 
 // NOTE: Deno.execPath() (and thus process.argv) currently requires --allow-env
 // (Also Deno.env.toObject() (and process.env) requires --allow-env but it's more obvious)
 
-test({
+Deno.test({
   name: "process.cwd and process.chdir success",
   fn() {
     // this should be run like other tests from directory up
@@ -17,7 +16,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "process.chdir failure",
   fn() {
     assertThrows(
@@ -33,7 +32,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "process.version",
   fn() {
     assertEquals(typeof process, "object");
@@ -43,14 +42,14 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "process.platform",
   fn() {
     assertEquals(typeof process.platform, "string");
   },
 });
 
-test({
+Deno.test({
   name: "process.arch",
   fn() {
     assertEquals(typeof process.arch, "string");
@@ -59,7 +58,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "process.pid",
   fn() {
     assertEquals(typeof process.pid, "number");
@@ -67,7 +66,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "process.on",
   fn() {
     assertEquals(typeof process.on, "function");
@@ -81,7 +80,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "process.argv",
   fn() {
     assert(Array.isArray(process.argv));
@@ -93,7 +92,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "process.env",
   fn() {
     assertEquals(typeof process.env.PATH, "string");

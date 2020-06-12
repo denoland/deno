@@ -1,5 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-const { test } = Deno;
 import { fail, assertEquals } from "../../testing/asserts.ts";
 import { chown, chownSync } from "./_fs_chown.ts";
 
@@ -7,7 +6,7 @@ import { chown, chownSync } from "./_fs_chown.ts";
 // id again
 const ignore = Deno.build.os == "windows";
 
-test({
+Deno.test({
   ignore,
   name: "ASYNC: setting existing uid/gid works as expected (non-Windows)",
   async fn() {
@@ -35,7 +34,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   ignore,
   name: "SYNC: setting existing uid/gid works as expected (non-Windows)",
   fn() {

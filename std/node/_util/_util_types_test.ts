@@ -20,8 +20,6 @@
 // DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-const { test } = Deno;
 import { assertStrictEquals } from "../../testing/asserts.ts";
 import {
   isDate,
@@ -68,19 +66,19 @@ import {
 import * as testModuleNamespaceOpbject from "./_util_types.ts";
 
 // isAnyArrayBuffer
-test("Should return true for valid ArrayBuffer types", () => {
+Deno.test("Should return true for valid ArrayBuffer types", () => {
   assertStrictEquals(isAnyArrayBuffer(new ArrayBuffer(0)), true);
   assertStrictEquals(isAnyArrayBuffer(new SharedArrayBuffer(0)), true);
 });
 
-test("Should return false for invalid ArrayBuffer types", () => {
+Deno.test("Should return false for invalid ArrayBuffer types", () => {
   assertStrictEquals(isAnyArrayBuffer({}), false);
   assertStrictEquals(isAnyArrayBuffer([]), false);
   assertStrictEquals(isAnyArrayBuffer(new Error()), false);
 });
 
 // isArrayBufferView
-test("Should return true for valid ArrayBufferView types", () => {
+Deno.test("Should return true for valid ArrayBufferView types", () => {
   assertStrictEquals(isArrayBufferView(new Int8Array(0)), true);
   assertStrictEquals(isArrayBufferView(new Uint8Array(0)), true);
   assertStrictEquals(isArrayBufferView(new Uint8ClampedArray(0)), true);
@@ -93,7 +91,7 @@ test("Should return true for valid ArrayBufferView types", () => {
   assertStrictEquals(isArrayBufferView(new DataView(new ArrayBuffer(0))), true);
 });
 
-test("Should return false for invalid ArrayBufferView types", () => {
+Deno.test("Should return false for invalid ArrayBufferView types", () => {
   assertStrictEquals(isArrayBufferView({}), false);
   assertStrictEquals(isArrayBufferView([]), false);
   assertStrictEquals(isArrayBufferView(new Error()), false);
@@ -103,18 +101,18 @@ test("Should return false for invalid ArrayBufferView types", () => {
 // isArgumentsObject
 // Note: not testable in TS
 
-test("Should return false for invalid Argument types", () => {
+Deno.test("Should return false for invalid Argument types", () => {
   assertStrictEquals(isArgumentsObject({}), false);
   assertStrictEquals(isArgumentsObject([]), false);
   assertStrictEquals(isArgumentsObject(new Error()), false);
 });
 
 // isArrayBuffer
-test("Should return true for valid ArrayBuffer types", () => {
+Deno.test("Should return true for valid ArrayBuffer types", () => {
   assertStrictEquals(isArrayBuffer(new ArrayBuffer(0)), true);
 });
 
-test("Should return false for invalid ArrayBuffer types", () => {
+Deno.test("Should return false for invalid ArrayBuffer types", () => {
   assertStrictEquals(isArrayBuffer(new SharedArrayBuffer(0)), false);
   assertStrictEquals(isArrayBuffer({}), false);
   assertStrictEquals(isArrayBuffer([]), false);
@@ -122,12 +120,12 @@ test("Should return false for invalid ArrayBuffer types", () => {
 });
 
 // isAsyncFunction
-test("Should return true for valid async function types", () => {
+Deno.test("Should return true for valid async function types", () => {
   const asyncFunction = async (): Promise<void> => {};
   assertStrictEquals(isAsyncFunction(asyncFunction), true);
 });
 
-test("Should return false for invalid async function types", () => {
+Deno.test("Should return false for invalid async function types", () => {
   const syncFunction = (): void => {};
   assertStrictEquals(isAsyncFunction(syncFunction), false);
   assertStrictEquals(isAsyncFunction({}), false);
@@ -136,34 +134,34 @@ test("Should return false for invalid async function types", () => {
 });
 
 // isBigInt64Array
-test("Should return true for valid BigInt64Array types", () => {
+Deno.test("Should return true for valid BigInt64Array types", () => {
   assertStrictEquals(isBigInt64Array(new BigInt64Array()), true);
 });
 
-test("Should return false for invalid BigInt64Array types", () => {
+Deno.test("Should return false for invalid BigInt64Array types", () => {
   assertStrictEquals(isBigInt64Array(new BigUint64Array()), false);
   assertStrictEquals(isBigInt64Array(new Float32Array()), false);
   assertStrictEquals(isBigInt64Array(new Int32Array()), false);
 });
 
 // isBigUint64Array
-test("Should return true for valid isBigUint64Array types", () => {
+Deno.test("Should return true for valid isBigUint64Array types", () => {
   assertStrictEquals(isBigUint64Array(new BigUint64Array()), true);
 });
 
-test("Should return false for invalid isBigUint64Array types", () => {
+Deno.test("Should return false for invalid isBigUint64Array types", () => {
   assertStrictEquals(isBigUint64Array(new BigInt64Array()), false);
   assertStrictEquals(isBigUint64Array(new Float32Array()), false);
   assertStrictEquals(isBigUint64Array(new Int32Array()), false);
 });
 
 // isBooleanObject
-test("Should return true for valid Boolean object types", () => {
+Deno.test("Should return true for valid Boolean object types", () => {
   assertStrictEquals(isBooleanObject(new Boolean(false)), true);
   assertStrictEquals(isBooleanObject(new Boolean(true)), true);
 });
 
-test("Should return false for invalid isBigUint64Array types", () => {
+Deno.test("Should return false for invalid isBigUint64Array types", () => {
   assertStrictEquals(isBooleanObject(false), false);
   assertStrictEquals(isBooleanObject(true), false);
   assertStrictEquals(isBooleanObject(Boolean(false)), false);
@@ -171,35 +169,35 @@ test("Should return false for invalid isBigUint64Array types", () => {
 });
 
 // isBoxedPrimitive
-test("Should return true for valid boxed primitive values", () => {
+Deno.test("Should return true for valid boxed primitive values", () => {
   assertStrictEquals(isBoxedPrimitive(new Boolean(false)), true);
   assertStrictEquals(isBoxedPrimitive(Object(Symbol("foo"))), true);
   assertStrictEquals(isBoxedPrimitive(Object(BigInt(5))), true);
   assertStrictEquals(isBoxedPrimitive(new String("foo")), true);
 });
 
-test("Should return false for invalid boxed primitive values", () => {
+Deno.test("Should return false for invalid boxed primitive values", () => {
   assertStrictEquals(isBoxedPrimitive(false), false);
   assertStrictEquals(isBoxedPrimitive(Symbol("foo")), false);
 });
 
 // isDateView
-test("Should return true for valid DataView types", () => {
+Deno.test("Should return true for valid DataView types", () => {
   assertStrictEquals(isDataView(new DataView(new ArrayBuffer(0))), true);
 });
 
-test("Should return false for invalid DataView types", () => {
+Deno.test("Should return false for invalid DataView types", () => {
   assertStrictEquals(isDataView(new Float64Array(0)), false);
 });
 
 // isDate
-test("Should return true for valid date types", () => {
+Deno.test("Should return true for valid date types", () => {
   assertStrictEquals(isDate(new Date()), true);
   assertStrictEquals(isDate(new Date(0)), true);
   assertStrictEquals(isDate(new (eval("Date"))()), true);
 });
 
-test("Should return false for invalid date types", () => {
+Deno.test("Should return false for invalid date types", () => {
   assertStrictEquals(isDate(Date()), false);
   assertStrictEquals(isDate({}), false);
   assertStrictEquals(isDate([]), false);
@@ -208,34 +206,34 @@ test("Should return false for invalid date types", () => {
 });
 
 // isFloat32Array
-test("Should return true for valid Float32Array types", () => {
+Deno.test("Should return true for valid Float32Array types", () => {
   assertStrictEquals(isFloat32Array(new Float32Array(0)), true);
 });
 
-test("Should return false for invalid Float32Array types", () => {
+Deno.test("Should return false for invalid Float32Array types", () => {
   assertStrictEquals(isFloat32Array(new ArrayBuffer(0)), false);
   assertStrictEquals(isFloat32Array(new Float64Array(0)), false);
 });
 
 // isFloat64Array
-test("Should return true for valid Float64Array types", () => {
+Deno.test("Should return true for valid Float64Array types", () => {
   assertStrictEquals(isFloat64Array(new Float64Array(0)), true);
 });
 
-test("Should return false for invalid Float64Array types", () => {
+Deno.test("Should return false for invalid Float64Array types", () => {
   assertStrictEquals(isFloat64Array(new ArrayBuffer(0)), false);
   assertStrictEquals(isFloat64Array(new Uint8Array(0)), false);
 });
 
 // isGeneratorFunction
-test("Should return true for valid generator functions", () => {
+Deno.test("Should return true for valid generator functions", () => {
   assertStrictEquals(
     isGeneratorFunction(function* foo() {}),
     true
   );
 });
 
-test("Should return false for invalid generator functions", () => {
+Deno.test("Should return false for invalid generator functions", () => {
   assertStrictEquals(
     isGeneratorFunction(function foo() {}),
     false
@@ -243,12 +241,12 @@ test("Should return false for invalid generator functions", () => {
 });
 
 // isGeneratorObject
-test("Should return true for valid generator object types", () => {
+Deno.test("Should return true for valid generator object types", () => {
   function* foo(): Iterator<void> {}
   assertStrictEquals(isGeneratorObject(foo()), true);
 });
 
-test("Should return false for invalid generation object types", () => {
+Deno.test("Should return false for invalid generation object types", () => {
   assertStrictEquals(
     isGeneratorObject(function* foo() {}),
     false
@@ -256,52 +254,52 @@ test("Should return false for invalid generation object types", () => {
 });
 
 // isInt8Array
-test("Should return true for valid Int8Array types", () => {
+Deno.test("Should return true for valid Int8Array types", () => {
   assertStrictEquals(isInt8Array(new Int8Array(0)), true);
 });
 
-test("Should return false for invalid Int8Array types", () => {
+Deno.test("Should return false for invalid Int8Array types", () => {
   assertStrictEquals(isInt8Array(new ArrayBuffer(0)), false);
   assertStrictEquals(isInt8Array(new Float64Array(0)), false);
 });
 
 // isInt16Array
-test("Should return true for valid Int16Array types", () => {
+Deno.test("Should return true for valid Int16Array types", () => {
   assertStrictEquals(isInt16Array(new Int16Array(0)), true);
 });
 
-test("Should return false for invalid Int16Array type", () => {
+Deno.test("Should return false for invalid Int16Array type", () => {
   assertStrictEquals(isInt16Array(new ArrayBuffer(0)), false);
   assertStrictEquals(isInt16Array(new Float64Array(0)), false);
 });
 
 // isInt32Array
-test("Should return true for valid isInt32Array types", () => {
+Deno.test("Should return true for valid isInt32Array types", () => {
   assertStrictEquals(isInt32Array(new Int32Array(0)), true);
 });
 
-test("Should return false for invalid isInt32Array type", () => {
+Deno.test("Should return false for invalid isInt32Array type", () => {
   assertStrictEquals(isInt32Array(new ArrayBuffer(0)), false);
   assertStrictEquals(isInt32Array(new Float64Array(0)), false);
 });
 
 // isStringObject
-test("Should return true for valid String types", () => {
+Deno.test("Should return true for valid String types", () => {
   assertStrictEquals(isStringObject(new String("")), true);
   assertStrictEquals(isStringObject(new String("Foo")), true);
 });
 
-test("Should return false for invalid String types", () => {
+Deno.test("Should return false for invalid String types", () => {
   assertStrictEquals(isStringObject(""), false);
   assertStrictEquals(isStringObject("Foo"), false);
 });
 
 // isMap
-test("Should return true for valid Map types", () => {
+Deno.test("Should return true for valid Map types", () => {
   assertStrictEquals(isMap(new Map()), true);
 });
 
-test("Should return false for invalid Map types", () => {
+Deno.test("Should return false for invalid Map types", () => {
   assertStrictEquals(isMap({}), false);
   assertStrictEquals(isMap([]), false);
   assertStrictEquals(isMap(new Date()), false);
@@ -309,7 +307,7 @@ test("Should return false for invalid Map types", () => {
 });
 
 // isMapIterator
-test("Should return true for valid Map Iterator types", () => {
+Deno.test("Should return true for valid Map Iterator types", () => {
   const map = new Map();
   assertStrictEquals(isMapIterator(map.keys()), true);
   assertStrictEquals(isMapIterator(map.values()), true);
@@ -317,7 +315,7 @@ test("Should return true for valid Map Iterator types", () => {
   assertStrictEquals(isMapIterator(map[Symbol.iterator]()), true);
 });
 
-test("Should return false for invalid Map iterator types", () => {
+Deno.test("Should return false for invalid Map iterator types", () => {
   assertStrictEquals(isMapIterator(new Map()), false);
   assertStrictEquals(isMapIterator([]), false);
   assertStrictEquals(isMapIterator(new Date()), false);
@@ -325,70 +323,70 @@ test("Should return false for invalid Map iterator types", () => {
 });
 
 // isModuleNamespaceObject
-test("Should return true for valid module namespace objects", () => {
+Deno.test("Should return true for valid module namespace objects", () => {
   assertStrictEquals(isModuleNamespaceObject(testModuleNamespaceOpbject), true);
 });
 
-test("Should return false for invalid  module namespace objects", () => {
+Deno.test("Should return false for invalid  module namespace objects", () => {
   assertStrictEquals(isModuleNamespaceObject(assertStrictEquals), false);
 });
 
 // isNativeError
-test("Should return true for valid Error types", () => {
+Deno.test("Should return true for valid Error types", () => {
   assertStrictEquals(isNativeError(new Error()), true);
   assertStrictEquals(isNativeError(new TypeError()), true);
   assertStrictEquals(isNativeError(new RangeError()), true);
 });
 
-test("Should return false for invalid Error types", () => {
+Deno.test("Should return false for invalid Error types", () => {
   assertStrictEquals(isNativeError(null), false);
   assertStrictEquals(isNativeError(NaN), false);
 });
 
 // isNumberObject
-test("Should return true for valid number objects", () => {
+Deno.test("Should return true for valid number objects", () => {
   assertStrictEquals(isNumberObject(new Number(0)), true);
 });
 
-test("Should return false for invalid number types", () => {
+Deno.test("Should return false for invalid number types", () => {
   assertStrictEquals(isNumberObject(0), false);
 });
 
 // isBigIntObject
-test("Should return true for valid number objects", () => {
+Deno.test("Should return true for valid number objects", () => {
   assertStrictEquals(isBigIntObject(new Object(BigInt(42))), true);
 });
 
-test("Should return false for invalid number types", () => {
+Deno.test("Should return false for invalid number types", () => {
   assertStrictEquals(isBigIntObject(BigInt(42)), false);
 });
 
 // isPromise
-test("Should return true for valid Promise types", () => {
+Deno.test("Should return true for valid Promise types", () => {
   assertStrictEquals(isPromise(Promise.resolve(42)), true);
 });
 
-test("Should return false for invalid Promise types", () => {
+Deno.test("Should return false for invalid Promise types", () => {
   assertStrictEquals(isPromise(new Object()), false);
 });
 
 // isRegExp
-test("Should return true for valid RegExp", () => {
+Deno.test("Should return true for valid RegExp", () => {
   assertStrictEquals(isRegExp(/abc/), true);
   assertStrictEquals(isRegExp(new RegExp("abc")), true);
 });
 
-test("Should return false for invalid RegExp types", () => {
+Deno.test("Should return false for invalid RegExp types", () => {
   assertStrictEquals(isRegExp({}), false);
   assertStrictEquals(isRegExp("/abc/"), false);
 });
 
 // isSet
-test("Should return true for valid Set types", () => {
+Deno.test("Should return true for valid Set types", () => {
   assertStrictEquals(isSet(new Set()), true);
 });
 
-test("Should return false for invalid Set types", () => {
+Deno.test("Should return false for invalid Set types", () => {
   assertStrictEquals(isSet({}), false);
   assertStrictEquals(isSet([]), false);
   assertStrictEquals(isSet(new Map()), false);
@@ -396,7 +394,7 @@ test("Should return false for invalid Set types", () => {
 });
 
 // isSetIterator
-test("Should return true for valid Set Iterator types", () => {
+Deno.test("Should return true for valid Set Iterator types", () => {
   const set = new Set();
   assertStrictEquals(isSetIterator(set.keys()), true);
   assertStrictEquals(isSetIterator(set.values()), true);
@@ -404,7 +402,7 @@ test("Should return true for valid Set Iterator types", () => {
   assertStrictEquals(isSetIterator(set[Symbol.iterator]()), true);
 });
 
-test("Should return false for invalid Set Iterator types", () => {
+Deno.test("Should return false for invalid Set Iterator types", () => {
   assertStrictEquals(isSetIterator(new Set()), false);
   assertStrictEquals(isSetIterator([]), false);
   assertStrictEquals(isSetIterator(new Map()), false);
@@ -412,100 +410,100 @@ test("Should return false for invalid Set Iterator types", () => {
 });
 
 // isSharedArrayBuffer
-test("Should return true for valid SharedArrayBuffer types", () => {
+Deno.test("Should return true for valid SharedArrayBuffer types", () => {
   assertStrictEquals(isSharedArrayBuffer(new SharedArrayBuffer(0)), true);
 });
 
-test("Should return false for invalid SharedArrayBuffer types", () => {
+Deno.test("Should return false for invalid SharedArrayBuffer types", () => {
   assertStrictEquals(isSharedArrayBuffer(new ArrayBuffer(0)), false);
 });
 
 // isStringObject
-test("Should return true for valid String Object types", () => {
+Deno.test("Should return true for valid String Object types", () => {
   assertStrictEquals(isStringObject(new String("")), true);
   assertStrictEquals(isStringObject(new String("Foo")), true);
 });
 
-test("Should return false for invalid String Object types", () => {
+Deno.test("Should return false for invalid String Object types", () => {
   assertStrictEquals(isStringObject(""), false);
   assertStrictEquals(isStringObject("Foo"), false);
 });
 
 // isSymbolObject
-test("Should return true for valid Symbol types", () => {
+Deno.test("Should return true for valid Symbol types", () => {
   assertStrictEquals(isSymbolObject(Object(Symbol("foo"))), true);
 });
 
-test("Should return false for invalid Symbol types", () => {
+Deno.test("Should return false for invalid Symbol types", () => {
   assertStrictEquals(isSymbolObject(Symbol("foo")), false);
 });
 
 // isTypedArray
-test("Should return true for valid TypedArray types", () => {
+Deno.test("Should return true for valid TypedArray types", () => {
   assertStrictEquals(isTypedArray(new Uint8Array(0)), true);
   assertStrictEquals(isTypedArray(new Float64Array(0)), true);
 });
 
-test("Should return false for invalid TypedArray types", () => {
+Deno.test("Should return false for invalid TypedArray types", () => {
   assertStrictEquals(isTypedArray(new ArrayBuffer(0)), false);
 });
 
 // isUint8Array
-test("Should return true for valid Uint8Array types", () => {
+Deno.test("Should return true for valid Uint8Array types", () => {
   assertStrictEquals(isUint8Array(new Uint8Array(0)), true);
 });
 
-test("Should return false for invalid Uint8Array types", () => {
+Deno.test("Should return false for invalid Uint8Array types", () => {
   assertStrictEquals(isUint8Array(new ArrayBuffer(0)), false);
   assertStrictEquals(isUint8Array(new Float64Array(0)), false);
 });
 
 // isUint8ClampedArray
-test("Should return true for valid Uint8ClampedArray types", () => {
+Deno.test("Should return true for valid Uint8ClampedArray types", () => {
   assertStrictEquals(isUint8ClampedArray(new Uint8ClampedArray(0)), true);
 });
 
-test("Should return false for invalid Uint8Array types", () => {
+Deno.test("Should return false for invalid Uint8Array types", () => {
   assertStrictEquals(isUint8ClampedArray(new ArrayBuffer(0)), false);
   assertStrictEquals(isUint8ClampedArray(new Float64Array(0)), false);
 });
 
 // isUint16Array
-test("Should return true for valid isUint16Array types", () => {
+Deno.test("Should return true for valid isUint16Array types", () => {
   assertStrictEquals(isUint16Array(new Uint16Array(0)), true);
 });
 
-test("Should return false for invalid Uint16Array types", () => {
+Deno.test("Should return false for invalid Uint16Array types", () => {
   assertStrictEquals(isUint16Array(new ArrayBuffer(0)), false);
   assertStrictEquals(isUint16Array(new Float64Array(0)), false);
 });
 
 // isUint32Array
-test("Should return true for valid Uint32Array types", () => {
+Deno.test("Should return true for valid Uint32Array types", () => {
   assertStrictEquals(isUint32Array(new Uint32Array(0)), true);
 });
 
-test("Should return false for invalid isUint16Array types", () => {
+Deno.test("Should return false for invalid isUint16Array types", () => {
   assertStrictEquals(isUint32Array(new ArrayBuffer(0)), false);
   assertStrictEquals(isUint32Array(new Float64Array(0)), false);
 });
 
 // isWeakMap
-test("Should return true for valid WeakMap types", () => {
+Deno.test("Should return true for valid WeakMap types", () => {
   assertStrictEquals(isWeakMap(new WeakMap()), true);
 });
 
-test("Should return false for invalid WeakMap types", () => {
+Deno.test("Should return false for invalid WeakMap types", () => {
   assertStrictEquals(isWeakMap(new Set()), false);
   assertStrictEquals(isWeakMap(new Map()), false);
 });
 
 // isWeakSet
-test("Should return true for valid WeakSet types", () => {
+Deno.test("Should return true for valid WeakSet types", () => {
   assertStrictEquals(isWeakSet(new WeakSet()), true);
 });
 
-test("Should return false for invalid WeakSet types", () => {
+Deno.test("Should return false for invalid WeakSet types", () => {
   assertStrictEquals(isWeakSet(new Set()), false);
   assertStrictEquals(isWeakSet(new Map()), false);
 });
