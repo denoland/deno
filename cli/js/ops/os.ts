@@ -72,7 +72,3 @@ export function dir(kind: DirKind): string | null {
 export function execPath(): string {
   return sendSync("op_exec_path");
 }
-
-export function osName(): string {
-  return sendSync("op_name");
-}
