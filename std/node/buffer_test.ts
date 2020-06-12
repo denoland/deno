@@ -23,7 +23,7 @@ test({
 test({
   name: "alloc allocates a buffer with the expected size",
   fn() {
-    let buffer: Buffer = Buffer.alloc(1);
+    const buffer: Buffer = Buffer.alloc(1);
     assertEquals(buffer.length, 1, "Buffer size should be 1");
     assertEquals(buffer[0], 0, "Content should be filled with 0");
   },
@@ -32,7 +32,7 @@ test({
 test({
   name: "alloc(0) creates an empty buffer",
   fn() {
-    let buffer: Buffer = Buffer.alloc(0);
+    const buffer: Buffer = Buffer.alloc(0);
     assertEquals(buffer.length, 0, "Buffer size should be 0");
   },
 });
@@ -62,9 +62,9 @@ test({
 test({
   name: "Two Buffers are concatenated",
   fn() {
-    let buffer1 = Buffer.alloc(1);
-    let buffer2 = Buffer.alloc(2);
-    let resultBuffer = Buffer.concat([buffer1, buffer2]);
+    const buffer1 = Buffer.alloc(1);
+    const buffer2 = Buffer.alloc(2);
+    const resultBuffer = Buffer.concat([buffer1, buffer2]);
     assertEquals(resultBuffer.length, 3, "Buffer length should be 3");
   },
 });
@@ -72,8 +72,8 @@ test({
 test({
   name: "A single buffer concatenates and return the same buffer",
   fn() {
-    let buffer1 = Buffer.alloc(1);
-    let resultBuffer = Buffer.concat([buffer1]);
+    const buffer1 = Buffer.alloc(1);
+    const resultBuffer = Buffer.concat([buffer1]);
     assertEquals(resultBuffer.length, 1, "Buffer length should be 1");
   },
 });
@@ -81,7 +81,7 @@ test({
 test({
   name: "No buffers concat returns an empty buffer",
   fn() {
-    let resultBuffer = Buffer.concat([]);
+    const resultBuffer = Buffer.concat([]);
     assertEquals(resultBuffer.length, 0, "Buffer length should be 0");
   },
 });
@@ -89,9 +89,9 @@ test({
 test({
   name: "concat respects totalLenght parameter",
   fn() {
-    let buffer1 = Buffer.alloc(2);
-    let buffer2 = Buffer.alloc(2);
-    let resultBuffer = Buffer.concat([buffer1, buffer2], 10);
+    const buffer1 = Buffer.alloc(2);
+    const buffer2 = Buffer.alloc(2);
+    const resultBuffer = Buffer.concat([buffer1, buffer2], 10);
     assertEquals(resultBuffer.length, 10, "Buffer length should be 10");
   },
 });
@@ -99,8 +99,8 @@ test({
 test({
   name: "concat totalLenght throws if is lower than the size of the buffers",
   fn() {
-    let buffer1 = Buffer.alloc(2);
-    let buffer2 = Buffer.alloc(2);
+    const buffer1 = Buffer.alloc(2);
+    const buffer2 = Buffer.alloc(2);
     assertThrows(
       () => {
         Buffer.concat([buffer1, buffer2], 3);
@@ -115,7 +115,7 @@ test({
 test({
   name: "Buffer from string creates a Buffer",
   fn() {
-    let buffer: Buffer = Buffer.from("test");
+    const buffer: Buffer = Buffer.from("test");
     assertEquals(buffer.length, 4, "Buffer length should be 4");
     assertEquals(buffer.toString(), "test", "Buffer to string should recover the string");
   },
@@ -124,7 +124,7 @@ test({
 test({
   name: "Buffer from another buffer creates a Buffer",
   fn() {
-    let buffer: Buffer = Buffer.from(Buffer.from("test"));
+    const buffer: Buffer = Buffer.from(Buffer.from("test"));
     assertEquals(buffer.length, 4, "Buffer length should be 4");
     assertEquals(buffer.toString(), "test", "Buffer to string should recover the string");
   },
