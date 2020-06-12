@@ -49,7 +49,8 @@ class AbstractBufReaderBase {
   // private lastByte: number;
   // private lastCharSize: number;
 
-  private _promiseIfAsync(a: any) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private _promiseIfAsync(a: any): any {
     return this._doSync ? a : Promise.resolve(a);
   }
 
@@ -90,7 +91,7 @@ class AbstractBufReaderBase {
           `No progress after ${MAX_CONSECUTIVE_EMPTY_READS} read() calls`
         );
       }
-      const checkRecur = (rr: number | null) => {
+      const checkRecur = (rr: number | null): void | Promise<void> => {
         if (rr === null) {
           this.eof = true;
           return;
@@ -112,8 +113,7 @@ class AbstractBufReaderBase {
         return rr.then(checkRecur);
       }
     };
-    let ret = loopRecur(MAX_CONSECUTIVE_EMPTY_READS);
-    return this._promiseIfAsync(ret);
+    return this._promiseIfAsync(loopRecur(MAX_CONSECUTIVE_EMPTY_READS));
   }
 
   /** Discards any buffered data, resets all state, and switches
@@ -136,10 +136,10 @@ class AbstractBufReaderBase {
   protected readMaybeSync(
     p: Uint8Array
   ): number | null | Promise<number | null> {
-    let rr: number | null = p.byteLength;
+    const rr: number | null = p.byteLength;
     if (p.byteLength === 0) return this._promiseIfAsync(rr);
 
-    const greedyCopy = () => {
+    const greedyCopy = (): number | Promise<number> => {
       // copy as much as we can
       const copied = copyBytes(
         this.buf.subarray(this.bufRdPos, this.bufWrtPos),
@@ -157,7 +157,9 @@ class AbstractBufReaderBase {
     } else if (p.byteLength >= this.buf.byteLength) {
       // Large read, empty buffer.
       // Read directly into p to avoid copy.
-      const checkRead = (rr: number | null) => {
+      const checkRead = (
+        rr: number | null
+      ): number | null | Promise<number | null> => {
         const nread = rr ?? 0;
         assert(nread >= 0, "negative read");
         // if (rr.nread > 0) {
@@ -179,7 +181,9 @@ class AbstractBufReaderBase {
       // Do not use this.fill, which will loop.
       this.bufRdPos = 0;
       this.bufWrtPos = 0;
-      const doOneRead = (rr: number | null) => {
+      const doOneRead = (
+        rr: number | null
+      ): number | null | Promise<number | null> => {
         if (rr === 0 || rr === null) {
           return this._promiseIfAsync(rr);
         } else {
@@ -217,12 +221,14 @@ class AbstractBufReaderBase {
     p: Uint8Array
   ): Uint8Array | null | Promise<Uint8Array | null> {
     let bytesRead = 0;
-    const handleRdErr = (err: any) => {
+    const handleRdErr = (err: PartialReadError): never => {
       err.partial = p.subarray(0, bytesRead);
       throw err;
     };
 
-    const chkRdRecur = (rr: number | null) => {
+    const chkRdRecur = (
+      rr: number | null
+    ): Uint8Array | null | Promise<Uint8Array | null> => {
       if (rr === null) {
         if (bytesRead === 0) {
           return null;
@@ -274,7 +280,7 @@ class AbstractBufReaderBase {
           this._fillMaybeSync(); // buffer is empty.
           return loopRecur();
         } else {
-          let prom = this._fillMaybeSync() as Promise<void>; // buffer is empty.
+          const prom = this._fillMaybeSync() as Promise<void>; // buffer is empty.
           return prom.then(loopRecur);
         }
       }
@@ -298,7 +304,9 @@ class AbstractBufReaderBase {
       throw new Error("Delimiter should be a single character");
     }
 
-    const checkRead = (buffer: Uint8Array | null) => {
+    const checkRead = (
+      buffer: Uint8Array | null
+    ): string | null | Promise<string | null> => {
       let ret;
       if (buffer === null) {
         ret = null;
@@ -347,11 +355,13 @@ class AbstractBufReaderBase {
     | ReadLineResult
     | null
     | Promise<ReadLineResult | null> {
-    const handleRdErr = (err: any) => {
+    const handleRdErr = (
+      err: PartialReadError
+    ): ReadLineResult | Promise<ReadLineResult> => {
       let { partial } = err;
       assert(
         partial instanceof Uint8Array,
-        "bufio: caught error from `readSlice()` without `partial` property"
+        "bufio: caught error from `readSliceMaybeSync()` without `partial` property"
       );
 
       // Don't throw if `readSliceMaybeSync()` failed with `BufferFullError`, instead we
@@ -379,7 +389,9 @@ class AbstractBufReaderBase {
       return this._promiseIfAsync({ line: partial, more: !this.eof });
     };
 
-    const rdLnRes = (line: Uint8Array | null) => {
+    const rdLnRes = (
+      line: Uint8Array | null
+    ): ReadLineResult | null | Promise<ReadLineResult | null> => {
       let ret;
       if (line === null) {
         ret = null;
@@ -407,7 +419,7 @@ class AbstractBufReaderBase {
       }
       return rdLnRes(line);
     } else {
-      let line = this.readSliceMaybeSync(LF) as Promise<Uint8Array | null>;
+      const line = this.readSliceMaybeSync(LF) as Promise<Uint8Array | null>;
       return line.then(rdLnRes, handleRdErr);
     }
   }
@@ -433,7 +445,7 @@ class AbstractBufReaderBase {
   ): Uint8Array | null | Promise<Uint8Array | null> {
     let s = 0; // search start index
     let slice: Uint8Array | undefined;
-    const handleRdErr = (err: any) => {
+    const handleRdErr = (err: PartialReadError): never => {
       err.partial = slice;
       throw err;
     };
@@ -481,7 +493,7 @@ class AbstractBufReaderBase {
         }
         return loopRecur();
       } else {
-        let rr = this._fillMaybeSync() as Promise<void>;
+        const rr = this._fillMaybeSync() as Promise<void>;
         return rr.then(loopRecur, handleRdErr);
       }
     };
@@ -515,7 +527,7 @@ class AbstractBufReaderBase {
       throw Error("negative count");
     }
 
-    const handleRdErr = (err: any) => {
+    const handleRdErr = (err: PartialReadError): never => {
       err.partial = this.buf.subarray(this.bufRdPos, this.bufWrtPos);
       throw err;
     };
@@ -545,7 +557,7 @@ class AbstractBufReaderBase {
         }
         return loopRecur();
       } else {
-        let rr = this._fillMaybeSync() as Promise<void>;
+        const rr = this._fillMaybeSync() as Promise<void>;
         return rr.then(loopRecur, handleRdErr);
       }
     };
@@ -555,7 +567,7 @@ class AbstractBufReaderBase {
 
 /** BufReader implements buffering for a Reader object. */
 export class BufReader extends AbstractBufReaderBase implements Reader {
-  protected _doSync: boolean = false;
+  protected _doSync = false;
 
   /** return new BufReader unless r is BufReader */
   static create(r: Reader, size: number = DEFAULT_BUF_SIZE): BufReader {
@@ -567,6 +579,7 @@ export class BufReader extends AbstractBufReaderBase implements Reader {
   }
 
   // Reads a new chunk into the buffer.
+  // eslint-disable-next-line require-await
   private async _fill(): Promise<void> {
     return super._fillMaybeSync();
   }
@@ -584,6 +597,7 @@ export class BufReader extends AbstractBufReaderBase implements Reader {
    * hence n may be less than len(p).
    * To read exactly len(p) bytes, use io.ReadFull(b, p).
    */
+  // eslint-disable-next-line require-await
   async read(p: Uint8Array): Promise<number | null> {
     return super.readMaybeSync(p);
   }
@@ -602,11 +616,13 @@ export class BufReader extends AbstractBufReaderBase implements Reader {
    *
    * Ported from https://golang.org/pkg/io/#ReadFull
    */
+  // eslint-disable-next-line require-await
   async readFull(p: Uint8Array): Promise<Uint8Array | null> {
     return super.readFullMaybeSync(p);
   }
 
   /** Returns the next byte [0, 255] or `null`. */
+  // eslint-disable-next-line require-await
   async readByte(): Promise<number | null> {
     return super.readByteMaybeSync();
   }
@@ -620,6 +636,7 @@ export class BufReader extends AbstractBufReaderBase implements Reader {
    * in delim.
    * For simple uses, a Scanner may be more convenient.
    */
+  // eslint-disable-next-line require-await
   async readString(delim: string): Promise<string | null> {
     return super.readStringMaybeSync(delim);
   }
@@ -646,6 +663,7 @@ export class BufReader extends AbstractBufReaderBase implements Reader {
    * read (possibly a character belonging to the line end) even if that byte is
    * not part of the line returned by `readLine()`.
    */
+  // eslint-disable-next-line require-await
   async readLine(): Promise<ReadLineResult | null> {
     return super.readLineMaybeSync();
   }
@@ -666,6 +684,7 @@ export class BufReader extends AbstractBufReaderBase implements Reader {
    * Because the data returned from `readSlice()` will be overwritten by the
    * next I/O operation, most clients should use `readString()` instead.
    */
+  // eslint-disable-next-line require-await
   async readSlice(delim: number): Promise<Uint8Array | null> {
     return super.readSliceMaybeSync(delim);
   }
@@ -681,6 +700,7 @@ export class BufReader extends AbstractBufReaderBase implements Reader {
    * an error with the `partial` property set to a slice of the buffer that
    * contains the bytes that were available before the error occurred.
    */
+  // eslint-disable-next-line require-await
   async peek(n: number): Promise<Uint8Array | null> {
     return super.peekMaybeSync(n);
   }
@@ -688,7 +708,7 @@ export class BufReader extends AbstractBufReaderBase implements Reader {
 
 /** BufReaderSync implements buffering for a ReaderSync object. */
 export class BufReaderSync extends AbstractBufReaderBase implements ReaderSync {
-  protected _doSync: boolean = true;
+  protected _doSync = true;
 
   /** return new BufReaderSync unless r is BufReaderSync */
   static create(r: ReaderSync, size: number = DEFAULT_BUF_SIZE): BufReaderSync {
