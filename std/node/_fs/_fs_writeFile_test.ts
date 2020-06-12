@@ -1,6 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-const { test } = Deno;
-
 import {
   assert,
   assertEquals,
@@ -13,7 +11,7 @@ import * as path from "../../path/mod.ts";
 const testDataDir = path.resolve(path.join("node", "_fs", "testdata"));
 const decoder = new TextDecoder("utf-8");
 
-test("Callback must be a function error", function fn() {
+Deno.test("Callback must be a function error", function fn() {
   assertThrows(
     () => {
       writeFile("some/path", "some data", "utf8");
@@ -23,7 +21,7 @@ test("Callback must be a function error", function fn() {
   );
 });
 
-test("Invalid encoding results in error()", function testEncodingErrors() {
+Deno.test("Invalid encoding results in error()", function testEncodingErrors() {
   assertThrows(
     () => {
       writeFile("some/path", "some data", "made-up-encoding", () => {});
@@ -66,82 +64,91 @@ test("Invalid encoding results in error()", function testEncodingErrors() {
   );
 });
 
-test("Unsupported encoding results in error()", function testUnsupportedEncoding() {
-  assertThrows(
-    () => {
-      writeFile("some/path", "some data", "hex", () => {});
-    },
-    Error,
-    `Not implemented: "hex" encoding`
-  );
+Deno.test(
+  "Unsupported encoding results in error()",
+  function testUnsupportedEncoding() {
+    assertThrows(
+      () => {
+        writeFile("some/path", "some data", "hex", () => {});
+      },
+      Error,
+      `Not implemented: "hex" encoding`
+    );
 
-  assertThrows(
-    () => {
-      writeFileSync("some/path", "some data", "hex");
-    },
-    Error,
-    `Not implemented: "hex" encoding`
-  );
+    assertThrows(
+      () => {
+        writeFileSync("some/path", "some data", "hex");
+      },
+      Error,
+      `Not implemented: "hex" encoding`
+    );
 
-  assertThrows(
-    () => {
-      writeFile(
-        "some/path",
-        "some data",
-        {
+    assertThrows(
+      () => {
+        writeFile(
+          "some/path",
+          "some data",
+          {
+            encoding: "base64",
+          },
+          () => {}
+        );
+      },
+      Error,
+      `Not implemented: "base64" encoding`
+    );
+
+    assertThrows(
+      () => {
+        writeFileSync("some/path", "some data", {
           encoding: "base64",
-        },
-        () => {}
-      );
-    },
-    Error,
-    `Not implemented: "base64" encoding`
-  );
+        });
+      },
+      Error,
+      `Not implemented: "base64" encoding`
+    );
+  }
+);
 
-  assertThrows(
-    () => {
-      writeFileSync("some/path", "some data", {
-        encoding: "base64",
-      });
-    },
-    Error,
-    `Not implemented: "base64" encoding`
-  );
-});
-
-test("Data is written to correct rid", async function testCorrectWriteUsingRid() {
-  const tempFile: string = await Deno.makeTempFile();
-  const file: Deno.File = await Deno.open(tempFile, {
-    create: true,
-    write: true,
-    read: true,
-  });
-
-  await new Promise((resolve, reject) => {
-    writeFile(file.rid, "hello world", (err) => {
-      if (err) return reject(err);
-      resolve();
+Deno.test(
+  "Data is written to correct rid",
+  async function testCorrectWriteUsingRid() {
+    const tempFile: string = await Deno.makeTempFile();
+    const file: Deno.File = await Deno.open(tempFile, {
+      create: true,
+      write: true,
+      read: true,
     });
-  });
-  Deno.close(file.rid);
 
-  const data = await Deno.readFile(tempFile);
-  await Deno.remove(tempFile);
-  assertEquals(decoder.decode(data), "hello world");
-});
+    await new Promise((resolve, reject) => {
+      writeFile(file.rid, "hello world", (err) => {
+        if (err) return reject(err);
+        resolve();
+      });
+    });
+    Deno.close(file.rid);
 
-test("Data is written to correct file", async function testCorrectWriteUsingPath() {
-  const res = await new Promise((resolve) => {
-    writeFile("_fs_writeFile_test_file.txt", "hello world", resolve);
-  });
+    const data = await Deno.readFile(tempFile);
+    await Deno.remove(tempFile);
+    assertEquals(decoder.decode(data), "hello world");
+  }
+);
 
-  const data = await Deno.readFile("_fs_writeFile_test_file.txt");
-  await Deno.remove("_fs_writeFile_test_file.txt");
-  assertEquals(res, null);
-  assertEquals(decoder.decode(data), "hello world");
-});
+Deno.test(
+  "Data is written to correct file",
+  async function testCorrectWriteUsingPath() {
+    const res = await new Promise((resolve) => {
+      writeFile("_fs_writeFile_test_file.txt", "hello world", resolve);
+    });
 
-test("Path can be an URL", async function testCorrectWriteUsingURL() {
+    const data = await Deno.readFile("_fs_writeFile_test_file.txt");
+    await Deno.remove("_fs_writeFile_test_file.txt");
+    assertEquals(res, null);
+    assertEquals(decoder.decode(data), "hello world");
+  }
+);
+
+Deno.test("Path can be an URL", async function testCorrectWriteUsingURL() {
   const url = new URL(
     Deno.build.os === "windows"
       ? "file:///" +
@@ -162,7 +169,7 @@ test("Path can be an URL", async function testCorrectWriteUsingURL() {
   assertEquals(decoder.decode(data), "hello world");
 });
 
-test("Mode is correctly set", async function testCorrectFileMode() {
+Deno.test("Mode is correctly set", async function testCorrectFileMode() {
   if (Deno.build.os === "windows") return;
   const filename = "_fs_writeFile_test_file.txt";
 
@@ -177,57 +184,66 @@ test("Mode is correctly set", async function testCorrectFileMode() {
   assertEquals(fileInfo.mode & 0o777, 0o777);
 });
 
-test("Mode is not set when rid is passed", async function testCorrectFileModeRid() {
-  if (Deno.build.os === "windows") return;
+Deno.test(
+  "Mode is not set when rid is passed",
+  async function testCorrectFileModeRid() {
+    if (Deno.build.os === "windows") return;
 
-  const filename: string = await Deno.makeTempFile();
-  const file: Deno.File = await Deno.open(filename, {
-    create: true,
-    write: true,
-    read: true,
-  });
-
-  await new Promise((resolve, reject) => {
-    writeFile(file.rid, "hello world", { mode: 0o777 }, (err) => {
-      if (err) return reject(err);
-      resolve();
+    const filename: string = await Deno.makeTempFile();
+    const file: Deno.File = await Deno.open(filename, {
+      create: true,
+      write: true,
+      read: true,
     });
-  });
-  Deno.close(file.rid);
 
-  const fileInfo = await Deno.stat(filename);
-  await Deno.remove(filename);
-  assert(fileInfo.mode);
-  assertNotEquals(fileInfo.mode & 0o777, 0o777);
-});
+    await new Promise((resolve, reject) => {
+      writeFile(file.rid, "hello world", { mode: 0o777 }, (err) => {
+        if (err) return reject(err);
+        resolve();
+      });
+    });
+    Deno.close(file.rid);
 
-test("Data is written synchronously to correct rid", function testCorrectWriteSyncUsingRid() {
-  const tempFile: string = Deno.makeTempFileSync();
-  const file: Deno.File = Deno.openSync(tempFile, {
-    create: true,
-    write: true,
-    read: true,
-  });
+    const fileInfo = await Deno.stat(filename);
+    await Deno.remove(filename);
+    assert(fileInfo.mode);
+    assertNotEquals(fileInfo.mode & 0o777, 0o777);
+  }
+);
 
-  writeFileSync(file.rid, "hello world");
-  Deno.close(file.rid);
+Deno.test(
+  "Data is written synchronously to correct rid",
+  function testCorrectWriteSyncUsingRid() {
+    const tempFile: string = Deno.makeTempFileSync();
+    const file: Deno.File = Deno.openSync(tempFile, {
+      create: true,
+      write: true,
+      read: true,
+    });
 
-  const data = Deno.readFileSync(tempFile);
-  Deno.removeSync(tempFile);
-  assertEquals(decoder.decode(data), "hello world");
-});
+    writeFileSync(file.rid, "hello world");
+    Deno.close(file.rid);
 
-test("Data is written synchronously to correct file", function testCorrectWriteSyncUsingPath() {
-  const file = "_fs_writeFileSync_test_file";
+    const data = Deno.readFileSync(tempFile);
+    Deno.removeSync(tempFile);
+    assertEquals(decoder.decode(data), "hello world");
+  }
+);
 
-  writeFileSync(file, "hello world");
+Deno.test(
+  "Data is written synchronously to correct file",
+  function testCorrectWriteSyncUsingPath() {
+    const file = "_fs_writeFileSync_test_file";
 
-  const data = Deno.readFileSync(file);
-  Deno.removeSync(file);
-  assertEquals(decoder.decode(data), "hello world");
-});
+    writeFileSync(file, "hello world");
 
-test("sync: Path can be an URL", function testCorrectWriteSyncUsingURL() {
+    const data = Deno.readFileSync(file);
+    Deno.removeSync(file);
+    assertEquals(decoder.decode(data), "hello world");
+  }
+);
+
+Deno.test("sync: Path can be an URL", function testCorrectWriteSyncUsingURL() {
   const filePath = path.join(
     testDataDir,
     "_fs_writeFileSync_test_file_url.txt"
@@ -244,14 +260,17 @@ test("sync: Path can be an URL", function testCorrectWriteSyncUsingURL() {
   assertEquals(decoder.decode(data), "hello world");
 });
 
-test("Mode is correctly set when writing synchronously", function testCorrectFileModeSync() {
-  if (Deno.build.os === "windows") return;
-  const filename = "_fs_writeFileSync_test_file.txt";
+Deno.test(
+  "Mode is correctly set when writing synchronously",
+  function testCorrectFileModeSync() {
+    if (Deno.build.os === "windows") return;
+    const filename = "_fs_writeFileSync_test_file.txt";
 
-  writeFileSync(filename, "hello world", { mode: 0o777 });
+    writeFileSync(filename, "hello world", { mode: 0o777 });
 
-  const fileInfo = Deno.statSync(filename);
-  Deno.removeSync(filename);
-  assert(fileInfo && fileInfo.mode);
-  assertEquals(fileInfo.mode & 0o777, 0o777);
-});
+    const fileInfo = Deno.statSync(filename);
+    Deno.removeSync(filename);
+    assert(fileInfo && fileInfo.mode);
+    assertEquals(fileInfo.mode & 0o777, 0o777);
+  }
+);

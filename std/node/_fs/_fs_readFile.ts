@@ -1,12 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-
 import { intoCallbackAPIWithIntercept, MaybeEmpty } from "../_utils.ts";
-
 import { getEncoding, FileOptions } from "./_fs_common.ts";
 import { Buffer } from "../buffer.ts";
 import { fromFileUrl } from "../path.ts";
-
-const { readFile: denoReadFile, readFileSync: denoReadFileSync } = Deno;
 
 type ReadFileCallback = (
   err: MaybeEmpty<Error>,
@@ -38,7 +34,7 @@ export function readFile(
   const encoding = getEncoding(optOrCallback);
 
   intoCallbackAPIWithIntercept<Uint8Array, string | Buffer>(
-    denoReadFile,
+    Deno.readFile,
     (data: Uint8Array): string | Buffer => maybeDecode(data, encoding),
     cb,
     path
@@ -50,5 +46,5 @@ export function readFileSync(
   opt?: FileOptions | string
 ): string | Buffer {
   path = path instanceof URL ? fromFileUrl(path) : path;
-  return maybeDecode(denoReadFileSync(path), getEncoding(opt));
+  return maybeDecode(Deno.readFileSync(path), getEncoding(opt));
 }

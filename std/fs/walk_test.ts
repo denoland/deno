@@ -1,5 +1,3 @@
-const { cwd, chdir, makeTempDir, mkdir, create, symlink } = Deno;
-const { remove } = Deno;
 import { walk, walkSync, WalkOptions, WalkEntry } from "./walk.ts";
 import { assert, assertEquals, assertThrowsAsync } from "../testing/asserts.ts";
 
@@ -10,15 +8,15 @@ export function testWalk(
 ): void {
   const name = t.name;
   async function fn(): Promise<void> {
-    const origCwd = cwd();
-    const d = await makeTempDir();
-    chdir(d);
+    const origCwd = Deno.cwd();
+    const d = await Deno.makeTempDir();
+    Deno.chdir(d);
     try {
       await setup(d);
       await t();
     } finally {
-      chdir(origCwd);
-      await remove(d, { recursive: true });
+      Deno.chdir(origCwd);
+      await Deno.remove(d, { recursive: true });
     }
   }
   Deno.test({ ignore, name: `[walk] ${name}`, fn });
@@ -44,7 +42,7 @@ export async function walkArray(
 }
 
 export async function touch(path: string): Promise<void> {
-  const f = await create(path);
+  const f = await Deno.create(path);
   f.close();
 }
 
@@ -56,7 +54,7 @@ function assertReady(expectedLength: number): void {
 
 testWalk(
   async (d: string): Promise<void> => {
-    await mkdir(d + "/empty");
+    await Deno.mkdir(d + "/empty");
   },
   async function emptyDir(): Promise<void> {
     const arr = await walkArray(".");
@@ -93,7 +91,7 @@ testWalk(
 
 testWalk(
   async (d: string): Promise<void> => {
-    await mkdir(d + "/a");
+    await Deno.mkdir(d + "/a");
     await touch(d + "/a/x");
   },
   async function nestedSingleFile(): Promise<void> {
@@ -104,7 +102,7 @@ testWalk(
 
 testWalk(
   async (d: string): Promise<void> => {
-    await mkdir(d + "/a/b/c/d", { recursive: true });
+    await Deno.mkdir(d + "/a/b/c/d", { recursive: true });
     await touch(d + "/a/b/c/d/x");
   },
   async function depth(): Promise<void> {
@@ -119,7 +117,7 @@ testWalk(
 testWalk(
   async (d: string): Promise<void> => {
     await touch(d + "/a");
-    await mkdir(d + "/b");
+    await Deno.mkdir(d + "/b");
     await touch(d + "/b/c");
   },
   async function includeDirs(): Promise<void> {
@@ -132,7 +130,7 @@ testWalk(
 testWalk(
   async (d: string): Promise<void> => {
     await touch(d + "/a");
-    await mkdir(d + "/b");
+    await Deno.mkdir(d + "/b");
     await touch(d + "/b/c");
   },
   async function includeFiles(): Promise<void> {
@@ -219,8 +217,8 @@ testWalk(
 
 testWalk(
   async (d: string): Promise<void> => {
-    await mkdir(d + "/a");
-    await mkdir(d + "/b");
+    await Deno.mkdir(d + "/a");
+    await Deno.mkdir(d + "/b");
     await touch(d + "/a/x");
     await touch(d + "/a/y");
     await touch(d + "/b/z");
@@ -244,13 +242,13 @@ testWalk(
 // TODO(ry) Re-enable followSymlinks
 testWalk(
   async (d: string): Promise<void> => {
-    await mkdir(d + "/a");
-    await mkdir(d + "/b");
+    await Deno.mkdir(d + "/a");
+    await Deno.mkdir(d + "/b");
     await touch(d + "/a/x");
     await touch(d + "/a/y");
     await touch(d + "/b/z");
     try {
-      await symlink(d + "/b", d + "/a/bb");
+      await Deno.symlink(d + "/b", d + "/a/bb");
     } catch (err) {
       assert(Deno.build.os == "windows");
       assertEquals(err.message, "Not implemented");

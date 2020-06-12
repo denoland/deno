@@ -3,8 +3,6 @@ import { Sha512, HmacSha512, Message } from "./sha512.ts";
 import { assertEquals } from "../testing/asserts.ts";
 import { join, resolve } from "../path/mod.ts";
 
-const { test } = Deno;
-
 const testdataDir = resolve("hash", "testdata");
 
 /** Handy function to convert an array/array buffer to a string of hex values. */
@@ -282,7 +280,7 @@ for (const method of methods) {
   for (const [name, tests] of Object.entries(fixtures.sha512bits224)) {
     let i = 1;
     for (const [expected, message] of Object.entries(tests)) {
-      test({
+      Deno.test({
         name: `sha512/224.${method}() - ${name} - #${i++}`,
         fn() {
           const algorithm = new Sha512(224);
@@ -302,7 +300,7 @@ for (const method of methods) {
   for (const [name, tests] of Object.entries(fixtures.sha512bits256)) {
     let i = 1;
     for (const [expected, message] of Object.entries(tests)) {
-      test({
+      Deno.test({
         name: `sha512/256.${method}() - ${name} - #${i++}`,
         fn() {
           const algorithm = new Sha512(256);
@@ -322,7 +320,7 @@ for (const method of methods) {
   for (const [name, tests] of Object.entries(fixtures.sha512)) {
     let i = 1;
     for (const [expected, message] of Object.entries(tests)) {
-      test({
+      Deno.test({
         name: `sha512.${method}() - ${name} - #${i++}`,
         fn() {
           const algorithm = new Sha512();
@@ -342,7 +340,7 @@ for (const method of methods) {
   for (const [name, tests] of Object.entries(fixtures.hmacSha512bits224)) {
     let i = 1;
     for (const [expected, [key, message]] of Object.entries(tests)) {
-      test({
+      Deno.test({
         name: `hmacSha512/224.${method}() - ${name} - #${i++}`,
         fn() {
           const algorithm = new HmacSha512(key, 224);
@@ -362,7 +360,7 @@ for (const method of methods) {
   for (const [name, tests] of Object.entries(fixtures.hmacSha512bits256)) {
     let i = 1;
     for (const [expected, [key, message]] of Object.entries(tests)) {
-      test({
+      Deno.test({
         name: `hmacSha512/256.${method}() - ${name} - #${i++}`,
         fn() {
           const algorithm = new HmacSha512(key, 256);
@@ -382,7 +380,7 @@ for (const method of methods) {
   for (const [name, tests] of Object.entries(fixtures.hmacSha512)) {
     let i = 1;
     for (const [expected, [key, message]] of Object.entries(tests)) {
-      test({
+      Deno.test({
         name: `hmacSha512.${method}() - ${name} - #${i++}`,
         fn() {
           const algorithm = new HmacSha512(key);
@@ -398,7 +396,7 @@ for (const method of methods) {
   }
 }
 
-test("[hash/sha512] test Uint8Array from Reader", async () => {
+Deno.test("[hash/sha512] test Uint8Array from Reader", async () => {
   const data = await Deno.readFile(join(testdataDir, "hashtest"));
   const hash = new Sha512().update(data).hex();
   assertEquals(

@@ -1,8 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { deepAssign } from "../_util/deep_assign.ts";
 
-const { noColor } = Deno;
-
 interface BenchmarkClock {
   start: number;
   stop: number;
@@ -98,11 +96,11 @@ export class BenchmarkRunError extends Error {
 }
 
 function red(text: string): string {
-  return noColor ? text : `\x1b[31m${text}\x1b[0m`;
+  return Deno.noColor ? text : `\x1b[31m${text}\x1b[0m`;
 }
 
 function blue(text: string): string {
-  return noColor ? text : `\x1b[34m${text}\x1b[0m`;
+  return Deno.noColor ? text : `\x1b[34m${text}\x1b[0m`;
 }
 
 function verifyOr1Run(runs?: number): number {

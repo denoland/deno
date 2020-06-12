@@ -1,5 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-const { test } = Deno;
 import {
   assert,
   assertEquals,
@@ -27,7 +26,7 @@ class TestHandler extends BaseHandler {
   }
 }
 
-test("simpleHandler", function (): void {
+Deno.test("simpleHandler", function (): void {
   const cases = new Map<number, string[]>([
     [
       LogLevels.DEBUG,
@@ -73,7 +72,7 @@ test("simpleHandler", function (): void {
   }
 });
 
-test("testFormatterAsString", function (): void {
+Deno.test("testFormatterAsString", function (): void {
   const handler = new TestHandler("DEBUG", {
     formatter: "test {levelName} {msg}",
   });
@@ -83,7 +82,7 @@ test("testFormatterAsString", function (): void {
   assertEquals(handler.messages, ["test DEBUG Hello, world!"]);
 });
 
-test("testFormatterAsFunction", function (): void {
+Deno.test("testFormatterAsFunction", function (): void {
   const handler = new TestHandler("DEBUG", {
     formatter: (logRecord): string =>
       `fn formatter ${logRecord.levelName} ${logRecord.msg}`,
@@ -94,7 +93,7 @@ test("testFormatterAsFunction", function (): void {
   assertEquals(handler.messages, ["fn formatter ERROR Hello, world!"]);
 });
 
-test({
+Deno.test({
   name: "FileHandler with mode 'w' will wipe clean existing log file",
   async fn() {
     const fileHandler = new FileHandler("WARNING", {
@@ -117,7 +116,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "FileHandler with mode 'x' will throw if log file already exists",
   async fn() {
     const fileHandler = new FileHandler("WARNING", {
@@ -136,7 +135,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name:
     "RotatingFileHandler with mode 'w' will wipe clean existing log file and remove others",
   async fn() {
@@ -172,7 +171,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name:
     "RotatingFileHandler with mode 'x' will throw if any log file already exists",
   async fn() {
@@ -200,7 +199,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "RotatingFileHandler with first rollover, monitor step by step",
   async fn() {
     const fileHandler = new RotatingFileHandler("WARNING", {
@@ -229,7 +228,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "RotatingFileHandler with first rollover, check all at once",
   async fn() {
     const fileHandler = new RotatingFileHandler("WARNING", {
@@ -254,7 +253,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "RotatingFileHandler with all backups rollover",
   async fn() {
     Deno.writeFileSync(LOG_FILE, new TextEncoder().encode("original log file"));
@@ -304,7 +303,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "RotatingFileHandler maxBytes cannot be less than 1",
   async fn() {
     await assertThrowsAsync(
@@ -323,7 +322,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "RotatingFileHandler maxBackupCount cannot be less than 1",
   async fn() {
     await assertThrowsAsync(
@@ -342,7 +341,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "Window unload flushes buffer",
   async fn() {
     const fileHandler = new FileHandler("WARNING", {
@@ -360,7 +359,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "RotatingFileHandler: rotate on byte length, not msg length",
   async fn() {
     const fileHandler = new RotatingFileHandler("WARNING", {
@@ -394,7 +393,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "FileHandler: Critical logs trigger immediate flush",
   async fn() {
     const fileHandler = new FileHandler("WARNING", {

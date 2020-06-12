@@ -20,8 +20,6 @@
 // DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-const { test } = Deno;
 import { assert, assertStrictEquals } from "../../testing/asserts.ts";
 import { callbackify } from "./_util_callbackify.ts";
 
@@ -76,159 +74,174 @@ class TestQueue {
   }
 }
 
-test("callbackify passes the resolution value as the second argument to the callback", async () => {
-  const testQueue = new TestQueue();
+Deno.test(
+  "callbackify passes the resolution value as the second argument to the callback",
+  async () => {
+    const testQueue = new TestQueue();
 
-  for (const value of values) {
-    // eslint-disable-next-line require-await
-    async function asyncFn(): Promise<typeof value> {
-      return value;
-    }
-    const cbAsyncFn = callbackify(asyncFn);
-    testQueue.enqueue((done) => {
-      cbAsyncFn((err: unknown, ret: unknown) => {
-        assertStrictEquals(err, null);
-        assertStrictEquals(ret, value);
-        done();
+    for (const value of values) {
+      // eslint-disable-next-line require-await
+      async function asyncFn(): Promise<typeof value> {
+        return value;
+      }
+      const cbAsyncFn = callbackify(asyncFn);
+      testQueue.enqueue((done) => {
+        cbAsyncFn((err: unknown, ret: unknown) => {
+          assertStrictEquals(err, null);
+          assertStrictEquals(ret, value);
+          done();
+        });
       });
-    });
 
-    function promiseFn(): Promise<typeof value> {
-      return Promise.resolve(value);
-    }
-    const cbPromiseFn = callbackify(promiseFn);
-    testQueue.enqueue((done) => {
-      cbPromiseFn((err: unknown, ret: unknown) => {
-        assertStrictEquals(err, null);
-        assertStrictEquals(ret, value);
-        done();
+      function promiseFn(): Promise<typeof value> {
+        return Promise.resolve(value);
+      }
+      const cbPromiseFn = callbackify(promiseFn);
+      testQueue.enqueue((done) => {
+        cbPromiseFn((err: unknown, ret: unknown) => {
+          assertStrictEquals(err, null);
+          assertStrictEquals(ret, value);
+          done();
+        });
       });
-    });
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    function thenableFn(): PromiseLike<any> {
-      return {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        then(onfulfilled): PromiseLike<any> {
-          assert(onfulfilled);
-          onfulfilled(value);
-          return this;
-        },
-      };
-    }
-    const cbThenableFn = callbackify(thenableFn);
-    testQueue.enqueue((done) => {
-      cbThenableFn((err: unknown, ret: unknown) => {
-        assertStrictEquals(err, null);
-        assertStrictEquals(ret, value);
-        done();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      function thenableFn(): PromiseLike<any> {
+        return {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          then(onfulfilled): PromiseLike<any> {
+            assert(onfulfilled);
+            onfulfilled(value);
+            return this;
+          },
+        };
+      }
+      const cbThenableFn = callbackify(thenableFn);
+      testQueue.enqueue((done) => {
+        cbThenableFn((err: unknown, ret: unknown) => {
+          assertStrictEquals(err, null);
+          assertStrictEquals(ret, value);
+          done();
+        });
       });
-    });
+    }
+
+    await testQueue.waitForCompletion();
   }
+);
 
-  await testQueue.waitForCompletion();
-});
+Deno.test(
+  "callbackify passes the rejection value as the first argument to the callback",
+  async () => {
+    const testQueue = new TestQueue();
 
-test("callbackify passes the rejection value as the first argument to the callback", async () => {
-  const testQueue = new TestQueue();
-
-  for (const value of values) {
-    // eslint-disable-next-line require-await
-    async function asyncFn(): Promise<never> {
-      return Promise.reject(value);
-    }
-    const cbAsyncFn = callbackify(asyncFn);
-    assertStrictEquals(cbAsyncFn.length, 1);
-    assertStrictEquals(cbAsyncFn.name, "asyncFnCallbackified");
-    testQueue.enqueue((done) => {
-      cbAsyncFn((err: unknown, ret: unknown) => {
-        assertStrictEquals(ret, undefined);
-        if (err instanceof Error) {
-          if ("reason" in err) {
-            assert(!value);
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            assertStrictEquals((err as any).code, "ERR_FALSY_VALUE_REJECTION");
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            assertStrictEquals((err as any).reason, value);
+    for (const value of values) {
+      // eslint-disable-next-line require-await
+      async function asyncFn(): Promise<never> {
+        return Promise.reject(value);
+      }
+      const cbAsyncFn = callbackify(asyncFn);
+      assertStrictEquals(cbAsyncFn.length, 1);
+      assertStrictEquals(cbAsyncFn.name, "asyncFnCallbackified");
+      testQueue.enqueue((done) => {
+        cbAsyncFn((err: unknown, ret: unknown) => {
+          assertStrictEquals(ret, undefined);
+          if (err instanceof Error) {
+            if ("reason" in err) {
+              assert(!value);
+              assertStrictEquals(
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                (err as any).code,
+                "ERR_FALSY_VALUE_REJECTION"
+              );
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              assertStrictEquals((err as any).reason, value);
+            } else {
+              assertStrictEquals(String(value).endsWith(err.message), true);
+            }
           } else {
-            assertStrictEquals(String(value).endsWith(err.message), true);
+            assertStrictEquals(err, value);
           }
-        } else {
-          assertStrictEquals(err, value);
-        }
-        done();
+          done();
+        });
       });
-    });
 
-    function promiseFn(): Promise<never> {
-      return Promise.reject(value);
-    }
-    const obj = {};
-    Object.defineProperty(promiseFn, "name", {
-      value: obj,
-      writable: false,
-      enumerable: false,
-      configurable: true,
-    });
+      function promiseFn(): Promise<never> {
+        return Promise.reject(value);
+      }
+      const obj = {};
+      Object.defineProperty(promiseFn, "name", {
+        value: obj,
+        writable: false,
+        enumerable: false,
+        configurable: true,
+      });
 
-    const cbPromiseFn = callbackify(promiseFn);
-    assertStrictEquals(promiseFn.name, obj);
-    testQueue.enqueue((done) => {
-      cbPromiseFn((err: unknown, ret: unknown) => {
-        assertStrictEquals(ret, undefined);
-        if (err instanceof Error) {
-          if ("reason" in err) {
-            assert(!value);
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            assertStrictEquals((err as any).code, "ERR_FALSY_VALUE_REJECTION");
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            assertStrictEquals((err as any).reason, value);
+      const cbPromiseFn = callbackify(promiseFn);
+      assertStrictEquals(promiseFn.name, obj);
+      testQueue.enqueue((done) => {
+        cbPromiseFn((err: unknown, ret: unknown) => {
+          assertStrictEquals(ret, undefined);
+          if (err instanceof Error) {
+            if ("reason" in err) {
+              assert(!value);
+              assertStrictEquals(
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                (err as any).code,
+                "ERR_FALSY_VALUE_REJECTION"
+              );
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              assertStrictEquals((err as any).reason, value);
+            } else {
+              assertStrictEquals(String(value).endsWith(err.message), true);
+            }
           } else {
-            assertStrictEquals(String(value).endsWith(err.message), true);
+            assertStrictEquals(err, value);
           }
-        } else {
-          assertStrictEquals(err, value);
-        }
-        done();
+          done();
+        });
       });
-    });
 
-    function thenableFn(): PromiseLike<never> {
-      return {
-        then(onfulfilled, onrejected): PromiseLike<never> {
-          assert(onrejected);
-          onrejected(value);
-          return this;
-        },
-      };
+      function thenableFn(): PromiseLike<never> {
+        return {
+          then(onfulfilled, onrejected): PromiseLike<never> {
+            assert(onrejected);
+            onrejected(value);
+            return this;
+          },
+        };
+      }
+
+      const cbThenableFn = callbackify(thenableFn);
+      testQueue.enqueue((done) => {
+        cbThenableFn((err: unknown, ret: unknown) => {
+          assertStrictEquals(ret, undefined);
+          if (err instanceof Error) {
+            if ("reason" in err) {
+              assert(!value);
+              assertStrictEquals(
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                (err as any).code,
+                "ERR_FALSY_VALUE_REJECTION"
+              );
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              assertStrictEquals((err as any).reason, value);
+            } else {
+              assertStrictEquals(String(value).endsWith(err.message), true);
+            }
+          } else {
+            assertStrictEquals(err, value);
+          }
+          done();
+        });
+      });
     }
 
-    const cbThenableFn = callbackify(thenableFn);
-    testQueue.enqueue((done) => {
-      cbThenableFn((err: unknown, ret: unknown) => {
-        assertStrictEquals(ret, undefined);
-        if (err instanceof Error) {
-          if ("reason" in err) {
-            assert(!value);
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            assertStrictEquals((err as any).code, "ERR_FALSY_VALUE_REJECTION");
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            assertStrictEquals((err as any).reason, value);
-          } else {
-            assertStrictEquals(String(value).endsWith(err.message), true);
-          }
-        } else {
-          assertStrictEquals(err, value);
-        }
-        done();
-      });
-    });
+    await testQueue.waitForCompletion();
   }
+);
 
-  await testQueue.waitForCompletion();
-});
-
-test("callbackify passes arguments to the original", async () => {
+Deno.test("callbackify passes arguments to the original", async () => {
   const testQueue = new TestQueue();
 
   for (const value of values) {
@@ -276,7 +289,7 @@ test("callbackify passes arguments to the original", async () => {
   await testQueue.waitForCompletion();
 });
 
-test("callbackify preserves the `this` binding", async () => {
+Deno.test("callbackify preserves the `this` binding", async () => {
   const testQueue = new TestQueue();
 
   for (const value of values) {
@@ -325,7 +338,7 @@ test("callbackify preserves the `this` binding", async () => {
   await testQueue.waitForCompletion();
 });
 
-test("callbackify throws with non-function inputs", () => {
+Deno.test("callbackify throws with non-function inputs", () => {
   ["foo", null, undefined, false, 0, {}, Symbol(), []].forEach((value) => {
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -344,31 +357,34 @@ test("callbackify throws with non-function inputs", () => {
   });
 });
 
-test("callbackify returns a function that throws if the last argument is not a function", () => {
-  // eslint-disable-next-line require-await
-  async function asyncFn(): Promise<number> {
-    return 42;
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const cb = callbackify(asyncFn) as any;
-  const args: unknown[] = [];
-
-  ["foo", null, undefined, false, 0, {}, Symbol(), []].forEach((value) => {
-    args.push(value);
-
-    try {
-      cb(...args);
-      throw Error("We should never reach this error");
-    } catch (err) {
-      assert(err instanceof TypeError);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      assertStrictEquals((err as any).code, "ERR_INVALID_ARG_TYPE");
-      assertStrictEquals(err.name, "TypeError");
-      assertStrictEquals(
-        err.message,
-        "The last argument must be of type function."
-      );
+Deno.test(
+  "callbackify returns a function that throws if the last argument is not a function",
+  () => {
+    // eslint-disable-next-line require-await
+    async function asyncFn(): Promise<number> {
+      return 42;
     }
-  });
-});
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const cb = callbackify(asyncFn) as any;
+    const args: unknown[] = [];
+
+    ["foo", null, undefined, false, 0, {}, Symbol(), []].forEach((value) => {
+      args.push(value);
+
+      try {
+        cb(...args);
+        throw Error("We should never reach this error");
+      } catch (err) {
+        assert(err instanceof TypeError);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        assertStrictEquals((err as any).code, "ERR_INVALID_ARG_TYPE");
+        assertStrictEquals(err.name, "TypeError");
+        assertStrictEquals(
+          err.message,
+          "The last argument must be of type function."
+        );
+      }
+    });
+  }
+);

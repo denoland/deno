@@ -1,7 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-const { mkdir, open } = Deno;
-type File = Deno.File;
-type Reader = Deno.Reader;
 import * as path from "../path/mod.ts";
 
 /**
@@ -36,13 +33,13 @@ export async function tempFile(
     prefix?: string;
     postfix?: string;
   } = { prefix: "", postfix: "" }
-): Promise<{ file: File; filepath: string }> {
+): Promise<{ file: Deno.File; filepath: string }> {
   const r = Math.floor(Math.random() * 1000000);
   const filepath = path.resolve(
     `${dir}/${opts.prefix || ""}${r}${opts.postfix || ""}`
   );
-  await mkdir(path.dirname(filepath), { recursive: true });
-  const file = await open(filepath, {
+  await Deno.mkdir(path.dirname(filepath), { recursive: true });
+  const file = await Deno.open(filepath, {
     create: true,
     read: true,
     write: true,

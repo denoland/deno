@@ -10,10 +10,6 @@ import {
   writeResponse,
   readRequest,
 } from "./_io.ts";
-import Listener = Deno.Listener;
-import Conn = Deno.Conn;
-import Reader = Deno.Reader;
-const { listen, listenTls } = Deno;
 
 export class ServerRequest {
   url!: string;
@@ -22,7 +18,7 @@ export class ServerRequest {
   protoMinor!: number;
   protoMajor!: number;
   headers!: Headers;
-  conn!: Conn;
+  conn!: Deno.Conn;
   r!: BufReader;
   w!: BufWriter;
   done: Deferred<Error | undefined> = deferred();
@@ -119,9 +115,9 @@ export class ServerRequest {
 
 export class Server implements AsyncIterable<ServerRequest> {
   private closing = false;
-  private connections: Conn[] = [];
+  private connections: Deno.Conn[] = [];
 
-  constructor(public listener: Listener) {}
+  constructor(public listener: Deno.Listener) {}
 
   close(): void {
     this.closing = true;
@@ -140,7 +136,7 @@ export class Server implements AsyncIterable<ServerRequest> {
 
   // Yields all HTTP requests on a single TCP connection.
   private async *iterateHttpRequests(
-    conn: Conn
+    conn: Deno.Conn
   ): AsyncIterableIterator<ServerRequest> {
     const reader = new BufReader(conn);
     const writer = new BufWriter(conn);
@@ -191,11 +187,11 @@ export class Server implements AsyncIterable<ServerRequest> {
     }
   }
 
-  private trackConnection(conn: Conn): void {
+  private trackConnection(conn: Deno.Conn): void {
     this.connections.push(conn);
   }
 
-  private untrackConnection(conn: Conn): void {
+  private untrackConnection(conn: Deno.Conn): void {
     const index = this.connections.indexOf(conn);
     if (index !== -1) {
       this.connections.splice(index, 1);
@@ -211,7 +207,7 @@ export class Server implements AsyncIterable<ServerRequest> {
   ): AsyncIterableIterator<ServerRequest> {
     if (this.closing) return;
     // Wait for a new connection.
-    let conn: Conn;
+    let conn: Deno.Conn;
     try {
       conn = await this.listener.accept();
     } catch (error) {
@@ -257,7 +253,7 @@ export function serve(addr: string | HTTPOptions): Server {
     addr = { hostname, port: Number(port) };
   }
 
-  const listener = listen(addr);
+  const listener = Deno.listen(addr);
   return new Server(listener);
 }
 
@@ -309,7 +305,7 @@ export function serveTLS(options: HTTPSOptions): Server {
     ...options,
     transport: "tcp",
   };
-  const listener = listenTls(tlsOptions);
+  const listener = Deno.listenTls(tlsOptions);
   return new Server(listener);
 }
 
@@ -349,6 +345,6 @@ export async function listenAndServeTLS(
 export interface Response {
   status?: number;
   headers?: Headers;
-  body?: Uint8Array | Reader | string;
+  body?: Uint8Array | Deno.Reader | string;
   trailers?: () => Promise<Headers> | Headers;
 }

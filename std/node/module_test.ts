@@ -1,6 +1,4 @@
 /* eslint-disable @typescript-eslint/no-var-requires */
-
-const { test } = Deno;
 import {
   assertEquals,
   assert,
@@ -10,7 +8,7 @@ import { createRequire } from "./module.ts";
 
 const require = createRequire(import.meta.url);
 
-test("requireSuccess", function () {
+Deno.test("requireSuccess", function () {
   // Relative to import.meta.url
   const result = require("./tests/cjs/cjs_a.js");
   assert("helloA" in result);
@@ -23,14 +21,14 @@ test("requireSuccess", function () {
   assertEquals(result.leftPad("pad", 4), " pad");
 });
 
-test("requireCycle", function () {
+Deno.test("requireCycle", function () {
   const resultA = require("./tests/cjs/cjs_cycle_a");
   const resultB = require("./tests/cjs/cjs_cycle_b");
   assert(resultA);
   assert(resultB);
 });
 
-test("requireBuiltin", function () {
+Deno.test("requireBuiltin", function () {
   const fs = require("fs");
   assert("readFileSync" in fs);
   const { readFileSync, isNull, extname } = require("./tests/cjs/cjs_builtin");
@@ -42,18 +40,18 @@ test("requireBuiltin", function () {
   assertEquals(extname("index.html"), ".html");
 });
 
-test("requireIndexJS", function () {
+Deno.test("requireIndexJS", function () {
   const { isIndex } = require("./tests/cjs");
   assert(isIndex);
 });
 
-test("requireNodeOs", function () {
+Deno.test("requireNodeOs", function () {
   const os = require("os");
   assert(os.arch);
   assert(typeof os.arch() == "string");
 });
 
-test("requireStack", function () {
+Deno.test("requireStack", function () {
   const { hello } = require("./tests/cjs/cjs_throw");
   try {
     hello();

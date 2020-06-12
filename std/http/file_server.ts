@@ -6,7 +6,6 @@
 // TODO Add tests like these:
 // https://github.com/indexzero/http-server/blob/master/test/http-server-test.js
 
-const { args, stat, readDir, open, exit } = Deno;
 import { posix, extname } from "../path/mod.ts";
 import { listenAndServe, ServerRequest, Response } from "./server.ts";
 import { parse } from "../flags/mod.ts";
@@ -33,7 +32,7 @@ interface FileServerArgs {
 
 const encoder = new TextEncoder();
 
-const serverArgs = parse(args) as FileServerArgs;
+const serverArgs = parse(Deno.args) as FileServerArgs;
 const target = posix.resolve(serverArgs._[0] ?? "");
 
 const MEDIA_TYPES: Record<string, string> = {
@@ -100,7 +99,10 @@ export async function serveFile(
   req: ServerRequest,
   filePath: string
 ): Promise<Response> {
-  const [file, fileInfo] = await Promise.all([open(filePath), stat(filePath)]);
+  const [file, fileInfo] = await Promise.all([
+    Deno.open(filePath),
+    Deno.stat(filePath),
+  ]);
   const headers = new Headers();
   headers.set("content-length", fileInfo.size.toString());
   const contentTypeValue = contentType(filePath);
@@ -124,7 +126,7 @@ async function serveDir(
 ): Promise<Response> {
   const dirUrl = `/${posix.relative(target, dirPath)}`;
   const listEntry: EntryInfo[] = [];
-  for await (const entry of readDir(dirPath)) {
+  for await (const entry of Deno.readDir(dirPath)) {
     const filePath = posix.join(dirPath, entry.name);
     const fileUrl = posix.join(dirUrl, entry.name);
     if (entry.name === "index.html" && entry.isFile) {
@@ -134,7 +136,7 @@ async function serveDir(
     // Yuck!
     let fileInfo = null;
     try {
-      fileInfo = await stat(filePath);
+      fileInfo = await Deno.stat(filePath);
     } catch (e) {
       // Pass
     }
@@ -307,18 +309,18 @@ function main(): void {
   if (serverArgs.h ?? serverArgs.help) {
     console.log(`Deno File Server
     Serves a local directory in HTTP.
-  
+
   INSTALL:
     deno install --allow-net --allow-read https://deno.land/std/http/file_server.ts
-  
+
   USAGE:
     file_server [path] [options]
-  
+
   OPTIONS:
     -h, --help          Prints help information
     -p, --port <PORT>   Set port
     --cors              Enable CORS via the "Access-Control-Allow-Origin" header`);
-    exit();
+    Deno.exit();
   }
 
   listenAndServe(
@@ -336,7 +338,7 @@ function main(): void {
 
       let response: Response | undefined;
       try {
-        const fileInfo = await stat(fsPath);
+        const fileInfo = await Deno.stat(fsPath);
         if (fileInfo.isDirectory) {
           response = await serveDir(req, fsPath);
         } else {

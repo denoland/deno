@@ -4,7 +4,6 @@ import { BufReader } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 import { ServerRequest } from "./server.ts";
 import { serveFile } from "./file_server.ts";
-const { test } = Deno;
 let fileServer: Deno.Process<Deno.RunOptions & { stdout: "piped" }>;
 
 type FileServerCfg = {
@@ -68,42 +67,48 @@ async function killFileServer(): Promise<void> {
   fileServer.stdout!.close();
 }
 
-test("file_server serveFile in ./", async (): Promise<void> => {
-  await startFileServer();
-  try {
-    const res = await fetch("http://localhost:4507/README.md");
-    assert(res.headers.has("access-control-allow-origin"));
-    assert(res.headers.has("access-control-allow-headers"));
-    assertEquals(res.headers.get("content-type"), "text/markdown");
-    const downloadedFile = await res.text();
-    const localFile = new TextDecoder().decode(
-      await Deno.readFile("README.md")
-    );
-    assertEquals(downloadedFile, localFile);
-  } finally {
-    await killFileServer();
+Deno.test(
+  "file_server serveFile in ./",
+  async (): Promise<void> => {
+    await startFileServer();
+    try {
+      const res = await fetch("http://localhost:4507/README.md");
+      assert(res.headers.has("access-control-allow-origin"));
+      assert(res.headers.has("access-control-allow-headers"));
+      assertEquals(res.headers.get("content-type"), "text/markdown");
+      const downloadedFile = await res.text();
+      const localFile = new TextDecoder().decode(
+        await Deno.readFile("README.md")
+      );
+      assertEquals(downloadedFile, localFile);
+    } finally {
+      await killFileServer();
+    }
   }
-});
+);
 
-test("file_server serveFile in ./http", async (): Promise<void> => {
-  await startFileServer({ target: "./http" });
-  try {
-    const res = await fetch("http://localhost:4507/README.md");
-    assert(res.headers.has("access-control-allow-origin"));
-    assert(res.headers.has("access-control-allow-headers"));
-    assertEquals(res.headers.get("content-type"), "text/markdown");
-    const downloadedFile = await res.text();
-    const localFile = new TextDecoder().decode(
-      await Deno.readFile("./http/README.md")
-    );
-    console.log(downloadedFile, localFile);
-    assertEquals(downloadedFile, localFile);
-  } finally {
-    await killFileServer();
+Deno.test(
+  "file_server serveFile in ./http",
+  async (): Promise<void> => {
+    await startFileServer({ target: "./http" });
+    try {
+      const res = await fetch("http://localhost:4507/README.md");
+      assert(res.headers.has("access-control-allow-origin"));
+      assert(res.headers.has("access-control-allow-headers"));
+      assertEquals(res.headers.get("content-type"), "text/markdown");
+      const downloadedFile = await res.text();
+      const localFile = new TextDecoder().decode(
+        await Deno.readFile("./http/README.md")
+      );
+      console.log(downloadedFile, localFile);
+      assertEquals(downloadedFile, localFile);
+    } finally {
+      await killFileServer();
+    }
   }
-});
+);
 
-test("serveDirectory", async function (): Promise<void> {
+Deno.test("serveDirectory", async function (): Promise<void> {
   await startFileServer();
   try {
     const res = await fetch("http://localhost:4507/");
@@ -125,7 +130,7 @@ test("serveDirectory", async function (): Promise<void> {
   }
 });
 
-test("serveFallback", async function (): Promise<void> {
+Deno.test("serveFallback", async function (): Promise<void> {
   await startFileServer();
   try {
     const res = await fetch("http://localhost:4507/badfile.txt");
@@ -138,7 +143,7 @@ test("serveFallback", async function (): Promise<void> {
   }
 });
 
-test("serveWithUnorthodoxFilename", async function (): Promise<void> {
+Deno.test("serveWithUnorthodoxFilename", async function (): Promise<void> {
   await startFileServer();
   try {
     let res = await fetch("http://localhost:4507/http/testdata/%");
@@ -156,7 +161,7 @@ test("serveWithUnorthodoxFilename", async function (): Promise<void> {
   }
 });
 
-test("printHelp", async function (): Promise<void> {
+Deno.test("printHelp", async function (): Promise<void> {
   const helpProcess = Deno.run({
     cmd: [
       Deno.execPath(),
@@ -177,7 +182,7 @@ test("printHelp", async function (): Promise<void> {
   helpProcess.stdout.close();
 });
 
-test("contentType", async () => {
+Deno.test("contentType", async () => {
   const request = new ServerRequest();
   const response = await serveFile(request, "http/testdata/hello.html");
   const contentType = response.headers!.get("content-type");
@@ -185,7 +190,7 @@ test("contentType", async () => {
   (response.body as Deno.File).close();
 });
 
-test("file_server running as library", async function (): Promise<void> {
+Deno.test("file_server running as library", async function (): Promise<void> {
   await startFileServerAsLibrary();
   try {
     const res = await fetch("http://localhost:8000");

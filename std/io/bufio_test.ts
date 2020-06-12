@@ -2,9 +2,6 @@
 // Copyright 2009 The Go Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
-
-const { Buffer } = Deno;
-type Reader = Deno.Reader;
 import { assert, assertEquals, fail } from "../testing/asserts.ts";
 import {
   BufReader,
@@ -47,11 +44,11 @@ Deno.test("bufioReaderSimple", async function (): Promise<void> {
 
 interface ReadMaker {
   name: string;
-  fn: (r: Reader) => Reader;
+  fn: (r: Deno.Reader) => Deno.Reader;
 }
 
 const readMakers: ReadMaker[] = [
-  { name: "full", fn: (r): Reader => r },
+  { name: "full", fn: (r): Deno.Reader => r },
   {
     name: "byte",
     fn: (r): iotest.OneByteReader => new iotest.OneByteReader(r),
@@ -190,7 +187,7 @@ const testInputrn = encoder.encode(
 const testOutput = encoder.encode("0123456789abcdefghijklmnopqrstuvwxy");
 
 // TestReader wraps a Uint8Array and returns reads of a specific length.
-class TestReader implements Reader {
+class TestReader implements Deno.Reader {
   constructor(private data: Uint8Array, private stride: number) {}
 
   read(buf: Uint8Array): Promise<number | null> {
@@ -337,7 +334,7 @@ Deno.test("bufioWriter", async function (): Promise<void> {
     data[i] = charCode(" ") + (i % (charCode("~") - charCode(" ")));
   }
 
-  const w = new Buffer();
+  const w = new Deno.Buffer();
   for (const nwrite of bufsizes) {
     for (const bs of bufsizes) {
       // Write nwrite bytes using buffer size bs.
@@ -371,7 +368,7 @@ Deno.test("bufioWriterSync", function (): void {
     data[i] = charCode(" ") + (i % (charCode("~") - charCode(" ")));
   }
 
-  const w = new Buffer();
+  const w = new Deno.Buffer();
   for (const nwrite of bufsizes) {
     for (const bs of bufsizes) {
       // Write nwrite bytes using buffer size bs.
@@ -401,7 +398,7 @@ Deno.test("bufReaderReadFull", async function (): Promise<void> {
   const enc = new TextEncoder();
   const dec = new TextDecoder();
   const text = "Hello World";
-  const data = new Buffer(enc.encode(text));
+  const data = new Deno.Buffer(enc.encode(text));
   const bufr = new BufReader(data, 3);
   {
     const buf = new Uint8Array(6);
@@ -426,7 +423,7 @@ Deno.test("bufReaderReadFull", async function (): Promise<void> {
 
 Deno.test("readStringDelimAndLines", async function (): Promise<void> {
   const enc = new TextEncoder();
-  const data = new Buffer(
+  const data = new Deno.Buffer(
     enc.encode("Hello World\tHello World 2\tHello World 3")
   );
   const chunks_ = [];
@@ -438,7 +435,7 @@ Deno.test("readStringDelimAndLines", async function (): Promise<void> {
   assertEquals(chunks_.length, 3);
   assertEquals(chunks_, ["Hello World", "Hello World 2", "Hello World 3"]);
 
-  const linesData = new Buffer(enc.encode("0\n1\n2\n3\n4\n5\n6\n7\n8\n9"));
+  const linesData = new Deno.Buffer(enc.encode("0\n1\n2\n3\n4\n5\n6\n7\n8\n9"));
   const lines_ = [];
 
   for await (const l of readLines(linesData)) {
