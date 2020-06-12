@@ -10,6 +10,7 @@
 use crate::colors;
 use crate::file_fetcher::map_file_extension;
 use crate::fmt::collect_files;
+use crate::fmt::run_parallelized;
 use crate::fmt_errors;
 use crate::swc_util;
 use deno_core::ErrBox;
@@ -18,27 +19,62 @@ use deno_lint::linter::Linter;
 use deno_lint::rules;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 
-pub fn lint_files(args: Vec<String>) -> Result<(), ErrBox> {
+pub async fn lint_files(args: Vec<String>) -> Result<(), ErrBox> {
   let target_files = collect_files(args)?;
+  debug!("Found {} files", target_files.len());
 
-  let mut error_counts = 0;
+  let error_count = Arc::new(AtomicUsize::new(0));
 
-  for file_path in target_files {
-    let file_diagnostics = lint_file(file_path)?;
-    error_counts += file_diagnostics.len();
-    for d in file_diagnostics.iter() {
-      let fmt_diagnostic = format_diagnostic(d);
-      eprintln!("{}\n", fmt_diagnostic);
+  // prevent threads outputting at the same time
+  let output_lock = Arc::new(Mutex::new(0));
+
+  run_parallelized(target_files, {
+    let error_count = error_count.clone();
+    move |file_path| {
+      let r = lint_file(file_path.clone());
+
+      match r {
+        Ok(file_diagnostics) => {
+          error_count.fetch_add(file_diagnostics.len(), Ordering::SeqCst);
+          let _g = output_lock.lock().unwrap();
+          for d in file_diagnostics.iter() {
+            let fmt_diagnostic = format_diagnostic(d);
+            eprintln!("{}\n", fmt_diagnostic);
+          }
+        }
+        Err(err) => {
+          eprintln!("Error linting: {}", file_path.to_string_lossy());
+          eprintln!("   {}", err);
+        }
+      }
+      Ok(())
     }
-  }
+  })
+  .await?;
 
-  if error_counts > 0 {
-    eprintln!("Found {} problems", error_counts);
+  let error_count = error_count.load(Ordering::SeqCst);
+  if error_count > 0 {
+    eprintln!("Found {} problems", error_count);
     std::process::exit(1);
   }
 
   Ok(())
+}
+
+fn create_linter() -> Linter {
+  Linter::new(
+    "deno-lint-ignore-file".to_string(),
+    vec![
+      "deno-lint-ignore".to_string(),
+      "eslint-disable-next-line".to_string(),
+    ],
+    // TODO(bartlomieju): switch to true, once
+    // https://github.com/denoland/deno_lint/issues/156 is fixed
+    false,
+  )
 }
 
 fn lint_file(file_path: PathBuf) -> Result<Vec<LintDiagnostic>, ErrBox> {
@@ -47,7 +83,7 @@ fn lint_file(file_path: PathBuf) -> Result<Vec<LintDiagnostic>, ErrBox> {
   let media_type = map_file_extension(&file_path);
   let syntax = swc_util::get_syntax_for_media_type(media_type);
 
-  let mut linter = Linter::default();
+  let mut linter = create_linter();
   let lint_rules = rules::get_recommended_rules();
 
   let file_diagnostics =

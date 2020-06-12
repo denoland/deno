@@ -1,26 +1,2 @@
-(ban-untagged-ignore) Ignore directive requires lint rule code
-// deno-lint-ignore
-~~~~~~~~~~~~~~~~~~~
-    at [WILDCARD]file1.js:1:0
-
-(no-empty) Empty block statement
-while (false) {}
-              ~~
-    at [WILDCARD]file1.js:2:14
-
-(no-empty) Empty block statement
-} catch (e) {}
-            ~~
-    at [WILDCARD]file2.ts:3:12
-
-(ban-unused-ignore) Ignore for code "require-await" was not used.
-// deno-lint-ignore no-explicit-any require-await
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    at [WILDCARD]file2.ts:5:0
-
-(no-empty-function) Empty functions are not allowed
-function foo(): any {}
-~~~~~~~~~~~~~~~~~~~~~~
-    at [WILDCARD]file2.ts:6:0
-
-Found 5 problems
+[WILDCARD]
+Found 3 problems
