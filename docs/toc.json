@@ -46,7 +46,8 @@
       "formatter": "Formatter",
       "bundler": "Bundler",
       "documentation_generator": "Documentation generator",
-      "dependency_inspector": "Dependency inspector"
+      "dependency_inspector": "Dependency inspector",
+      "linter": "Linter"
     }
   },
   "embedding_deno": {
