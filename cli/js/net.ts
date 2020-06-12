@@ -10,7 +10,7 @@ export { ShutdownMode, shutdown, NetAddr, UnixAddr } from "./ops/net.ts";
 export interface DatagramConn extends AsyncIterable<[Uint8Array, Addr]> {
   receive(p?: Uint8Array): Promise<[Uint8Array, Addr]>;
 
-  send(p: Uint8Array, addr: Addr): Promise<void>;
+  send(p: Uint8Array, addr: Addr): Promise<number>;
 
   close(): void;
 
@@ -109,11 +109,12 @@ export class DatagramImpl implements DatagramConn {
     return [sub, remoteAddr];
   }
 
-  async send(p: Uint8Array, addr: Addr): Promise<void> {
+  async send(p: Uint8Array, addr: Addr): Promise<number> {
     const remote = { hostname: "127.0.0.1", ...addr };
 
     const args = { ...remote, rid: this.rid };
-    await netOps.send(args as netOps.SendRequest, p);
+    const byteLength = await netOps.send(args as netOps.SendRequest, p);
+    return byteLength;
   }
 
   close(): void {
