@@ -6,6 +6,67 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### 1.1.0 / 2020.06.12
+
+Changes in the CLI:
+
+- feat: "deno eval -p" (#5682)
+- feat: "deno lint" subcommand (#6125, #6208, #6222, #6248, #6258, #6264)
+- feat: Add Deno.mainModule (#6180)
+- feat: Add Deno.env.delete() (#5859)
+- feat: Add TestDefinition::only (#5793)
+- feat: Allow reading the entry file from stdin (#6130)
+- feat: Handle .mjs files in "deno test" and "deno fmt" (#6134, #6122)
+- feat: URL support in Deno filesystem methods (#5990)
+- feat: make rid on Deno.Listener public (#5571)
+- feat(core): Add unregister op (#6214)
+- feat(doc): Display all overloads in cli details view (#6186)
+- feat(doc): Handle detail output for enum (#6078)
+- feat(fmt): Add diff for "deno fmt --check" (#5599)
+- fix: Handle @deno-types in export {} (#6202)
+- fix: Several regressions in TS compiler (#6177)
+- fix(cli): 'deno upgrade' doesn't work on Windows 8.1/PowerShell 4.0 (#6132)
+- fix(cli): WebAssembly runtime error propagation (#6137)
+- fix(cli/js/buffer): Remove try-catch from Buffer.readFrom, readFromSync
+  (#6161)
+- fix(cli/js/io): Deno.readSync on stdin (#6126)
+- fix(cli/js/net): UDP BorrowMutError (#6221)
+- fix(cli/js/process): Always return a code in ProcessStatus (#5244)
+- fix(cli/js/process): Strengthen socket types based on pipes (#4836)
+- fix(cli/js/web): IPv6 hostname support in URL (#5766)
+- fix(cli/js/web/worker): Disable relative module specifiers (#5266)
+- fix(cli/web/fetch): multipart/form-data request body support for binary files
+  (#5886)
+- fix(core): ES module snapshots (#6111)
+- revert: "feat: format deno bundle output (#5139)" (#6085)
+- upgrade: Rust 1.44.0 (#6113)
+- upgrade: swc_ecma_parser 0.24.5 (#6077)
+
+Changes in std version 0.57.0:
+
+- feat(std/encoding/binary): Add varnumBytes(), varbigBytes() (#5173)
+- feat(std/hash): Add sha3 (#5558)
+- feat(std/log): Inline and deferred statement resolution logging (#5192)
+- feat(std/node): Add util.promisify (#5540)
+- feat(std/node): Add util.types (#6159)
+- feat(std/node): Buffer (#5925)
+- feat(std/testing): Allow non-void promises in assertThrowsAsync (#6052)
+- fix(http/server): Flaky test on Windows (#6188)
+- fix(std/archive): Untar (#6217) cleanup std/tar (#6185)
+- fix(std/http): Don't use assert() for user input validation (#6092)
+- fix(std/http): Prevent crash on UnexpectedEof and InvalidData (#6155)
+- fix(std/http/file_server): Args handling only if invoked directly (#5989)
+- fix(std/io): StringReader implementation (#6148)
+- fix(std/log): Revert setInterval log flushing as it prevents process
+  completion (#6127)
+- fix(std/node): Emitter.removeAllListeners (#5583)
+- fix(std/testing/bench): Make progress callback async (#6175)
+- fix(std/testing/bench): Clock assertions without --allow-hrtime (#6069)
+- refactor(std): Remove testing dependencies from non-test code (#5838)
+- refactor(std/http): Rename delCookie to deleteCookie (#6088)
+- refactor(std/testing): Rename abbreviated assertions (#6118)
+- refactor(std/testing/bench): Remove differentiating on runs count (#6084)
+
 ### 1.0.5 / 2020.06.03
 
 Changes in the CLI:
