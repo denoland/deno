@@ -37,5 +37,5 @@ console.log(red("hello world"));
 Then:
 
 ```shell
-$ deno run --importmap=import-map.json --unstable color.ts
+$ deno run --importmap=import_map.json --unstable color.ts
 ```
