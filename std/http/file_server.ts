@@ -135,7 +135,9 @@ async function serveDir(
     let fileInfo = null;
     try {
       fileInfo = await stat(filePath);
-    } catch (e) {}
+    } catch (e) {
+      // Pass
+    }
     listEntry.push({
       mode: modeToString(entry.isDirectory, fileInfo?.mode ?? null),
       size: entry.isFile ? fileLenToString(fileInfo?.size ?? 0) : "",

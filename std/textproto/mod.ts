@@ -114,7 +114,9 @@ export class TextProtoReader {
       // example: "Audio Mode" => invalid due to space in the key
       try {
         m.append(key, value);
-      } catch {}
+      } catch {
+        // Pass
+      }
     }
   }
 

@@ -21,8 +21,6 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 const { test } = Deno;
 import { assert, assertStrictEquals } from "../../testing/asserts.ts";
 import { callbackify } from "./_util_callbackify.ts";
@@ -107,8 +105,10 @@ test("callbackify passes the resolution value as the second argument to the call
       });
     });
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     function thenableFn(): PromiseLike<any> {
       return {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         then(onfulfilled): PromiseLike<any> {
           assert(onfulfilled);
           onfulfilled(value);
@@ -146,7 +146,9 @@ test("callbackify passes the rejection value as the first argument to the callba
         if (err instanceof Error) {
           if ("reason" in err) {
             assert(!value);
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             assertStrictEquals((err as any).code, "ERR_FALSY_VALUE_REJECTION");
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             assertStrictEquals((err as any).reason, value);
           } else {
             assertStrictEquals(String(value).endsWith(err.message), true);
@@ -177,7 +179,9 @@ test("callbackify passes the rejection value as the first argument to the callba
         if (err instanceof Error) {
           if ("reason" in err) {
             assert(!value);
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             assertStrictEquals((err as any).code, "ERR_FALSY_VALUE_REJECTION");
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             assertStrictEquals((err as any).reason, value);
           } else {
             assertStrictEquals(String(value).endsWith(err.message), true);
@@ -206,7 +210,9 @@ test("callbackify passes the rejection value as the first argument to the callba
         if (err instanceof Error) {
           if ("reason" in err) {
             assert(!value);
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             assertStrictEquals((err as any).code, "ERR_FALSY_VALUE_REJECTION");
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             assertStrictEquals((err as any).reason, value);
           } else {
             assertStrictEquals(String(value).endsWith(err.message), true);
@@ -322,10 +328,12 @@ test("callbackify preserves the `this` binding", async () => {
 test("callbackify throws with non-function inputs", () => {
   ["foo", null, undefined, false, 0, {}, Symbol(), []].forEach((value) => {
     try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       callbackify(value as any);
       throw Error("We should never reach this error");
     } catch (err) {
       assert(err instanceof TypeError);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       assertStrictEquals((err as any).code, "ERR_INVALID_ARG_TYPE");
       assertStrictEquals(err.name, "TypeError");
       assertStrictEquals(
@@ -342,6 +350,7 @@ test("callbackify returns a function that throws if the last argument is not a f
     return 42;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const cb = callbackify(asyncFn) as any;
   const args: unknown[] = [];
 
@@ -353,6 +362,7 @@ test("callbackify returns a function that throws if the last argument is not a f
       throw Error("We should never reach this error");
     } catch (err) {
       assert(err instanceof TypeError);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       assertStrictEquals((err as any).code, "ERR_INVALID_ARG_TYPE");
       assertStrictEquals(err.name, "TypeError");
       assertStrictEquals(
