@@ -18,6 +18,7 @@ import {
 } from "./bufio.ts";
 import * as iotest from "./_iotest.ts";
 import { StringReader } from "./readers.ts";
+import { StringWriter } from "./writers.ts";
 import { charCode, copyBytes } from "./util.ts";
 
 const encoder = new TextEncoder();
@@ -469,3 +470,33 @@ Deno.test(
     );
   }
 );
+
+Deno.test({
+  name: "Reset buffer after flush",
+  async fn(): Promise<void> {
+    const stringWriter = new StringWriter();
+    const bufWriter = new BufWriter(stringWriter);
+    const encoder = new TextEncoder();
+    await bufWriter.write(encoder.encode("hello\nworld\nhow\nare\nyou?\n\n"));
+    await bufWriter.flush();
+    await bufWriter.write(encoder.encode("foobar\n\n"));
+    await bufWriter.flush();
+    const actual = stringWriter.toString();
+    assertEquals(actual, "hello\nworld\nhow\nare\nyou?\n\nfoobar\n\n");
+  },
+});
+
+Deno.test({
+  name: "Reset buffer after flush sync",
+  fn(): void {
+    const stringWriter = new StringWriter();
+    const bufWriter = new BufWriterSync(stringWriter);
+    const encoder = new TextEncoder();
+    bufWriter.writeSync(encoder.encode("hello\nworld\nhow\nare\nyou?\n\n"));
+    bufWriter.flush();
+    bufWriter.writeSync(encoder.encode("foobar\n\n"));
+    bufWriter.flush();
+    const actual = stringWriter.toString();
+    assertEquals(actual, "hello\nworld\nhow\nare\nyou?\n\nfoobar\n\n");
+  },
+});

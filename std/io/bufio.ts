@@ -486,6 +486,7 @@ export class BufWriter extends AbstractBufBase implements Writer {
 
     this.checkBytesWritten(numBytesWritten);
 
+    this.buf = new Uint8Array(this.buf.length);
     this.usedBufferBytes = 0;
   }
 
@@ -580,6 +581,7 @@ export class BufWriterSync extends AbstractBufBase implements WriterSync {
 
     this.checkBytesWritten(numBytesWritten);
 
+    this.buf = new Uint8Array(this.buf.length);
     this.usedBufferBytes = 0;
   }
 
