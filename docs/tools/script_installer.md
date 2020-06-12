@@ -55,7 +55,7 @@ You must specify permissions that will be used to run the script at installation
 time.
 
 ```shell
-deno install --allow-net --allow-read https://deno.land/std/http/file_server.ts 8080
+deno install --allow-net --allow-read https://deno.land/std/http/file_server.ts -p 8080
 ```
 
 The above command creates an executable called `file_server` that runs with
