@@ -64,6 +64,15 @@ pub async fn lint_files(args: Vec<String>) -> Result<(), ErrBox> {
   Ok(())
 }
 
+pub fn print_rules_list() {
+  let lint_rules = rules::get_recommended_rules();
+
+  println!("Available rules:");
+  for rule in lint_rules {
+    println!(" - {}", rule.code());
+  }
+}
+
 fn create_linter() -> Linter {
   Linter::new(
     "deno-lint-ignore-file".to_string(),
