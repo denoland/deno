@@ -38,7 +38,7 @@ applications.
 ```shell
 deno run main.ts
 deno run https://mydomain.com/main.ts
-cat main.ts | deno run - #this is not recomended but will work
+cat main.ts | deno run -
 ```
 
 ### Script arguments
