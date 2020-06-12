@@ -52,8 +52,8 @@ Before:
 After:
   - dispatched: ${post.opsDispatchedAsync}
   - completed: ${post.opsCompletedAsync}
-  
-Make sure to await all promises returned from Deno APIs before 
+
+Make sure to await all promises returned from Deno APIs before
 finishing test case.`
     );
   };
@@ -76,7 +76,7 @@ function assertResources(
 Before: ${preStr}
 After: ${postStr}
 
-Make sure to close all open resource handles returned from Deno APIs before 
+Make sure to close all open resource handles returned from Deno APIs before
 finishing test case.`;
     assert(preStr === postStr, msg);
   };
@@ -86,6 +86,7 @@ export interface TestDefinition {
   fn: () => void | Promise<void>;
   name: string;
   ignore?: boolean;
+  only?: boolean;
   sanitizeOps?: boolean;
   sanitizeResources?: boolean;
 }
@@ -103,6 +104,7 @@ export function test(
   let testDef: TestDefinition;
   const defaults = {
     ignore: false,
+    only: false,
     sanitizeOps: true,
     sanitizeResources: true,
   };
@@ -156,6 +158,7 @@ interface TestMessage {
     measured: number;
     passed: number;
     failed: number;
+    usedOnly: boolean;
     duration: number;
     results: Array<TestMessage["testEnd"] & {}>;
   };
@@ -218,6 +221,10 @@ function reportToConsole(message: TestMessage): void {
         `${message.end.filtered} filtered out ` +
         `${formatDuration(message.end.duration)}\n`
     );
+
+    if (message.end.usedOnly && message.end.failed == 0) {
+      log(`${RED_FAILED} because the "only" option was used\n`);
+    }
   }
 }
 
@@ -225,7 +232,7 @@ exposeForTest("reportToConsole", reportToConsole);
 
 // TODO: already implements AsyncGenerator<RunTestsMessage>, but add as "implements to class"
 // TODO: implements PromiseLike<RunTestsEndResult>
-class TestApi {
+class TestRunner {
   readonly testsToRun: TestDefinition[];
   readonly stats = {
     filtered: 0,
@@ -234,14 +241,18 @@ class TestApi {
     passed: 0,
     failed: 0,
   };
+  private usedOnly: boolean;
 
   constructor(
-    public tests: TestDefinition[],
+    tests: TestDefinition[],
     public filterFn: (def: TestDefinition) => boolean,
     public failFast: boolean
   ) {
-    this.testsToRun = tests.filter(filterFn);
-    this.stats.filtered = tests.length - this.testsToRun.length;
+    const onlyTests = tests.filter(({ only }) => only);
+    this.usedOnly = onlyTests.length > 0;
+    const unfilteredTests = this.usedOnly ? onlyTests : tests;
+    this.testsToRun = unfilteredTests.filter(filterFn);
+    this.stats.filtered = unfilteredTests.length - this.testsToRun.length;
   }
 
   async *[Symbol.asyncIterator](): AsyncIterator<TestMessage> {
@@ -280,7 +291,9 @@ class TestApi {
 
     const duration = +new Date() - suiteStart;
 
-    yield { end: { ...this.stats, duration, results } };
+    yield {
+      end: { ...this.stats, usedOnly: this.usedOnly, duration, results },
+    };
   }
 }
 
@@ -331,7 +344,7 @@ async function runTests({
   onMessage = undefined,
 }: RunTestsOptions = {}): Promise<TestMessage["end"] & {}> {
   const filterFn = createFilterFn(filter, skip);
-  const testApi = new TestApi(TEST_REGISTRY, filterFn, failFast);
+  const testRunner = new TestRunner(TEST_REGISTRY, filterFn, failFast);
 
   const originalConsole = globalThis.console;
 
@@ -342,7 +355,7 @@ async function runTests({
 
   let endMsg: TestMessage["end"];
 
-  for await (const message of testApi) {
+  for await (const message of testRunner) {
     if (onMessage != null) {
       await onMessage(message);
     }
@@ -358,7 +371,7 @@ async function runTests({
     globalThis.console = originalConsole;
   }
 
-  if (endMsg!.failed > 0 && exitOnFail) {
+  if ((endMsg!.failed > 0 || endMsg?.usedOnly) && exitOnFail) {
     exit(1);
   }
 

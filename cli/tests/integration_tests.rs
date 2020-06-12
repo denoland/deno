@@ -1272,16 +1272,22 @@ itest!(_026_redirect_javascript {
   http_server: true,
 });
 
+itest!(deno_test {
+  args: "test test_runner_test.ts",
+  exit_code: 1,
+  output: "deno_test.out",
+});
+
 itest!(deno_test_fail_fast {
   args: "test --failfast test_runner_test.ts",
   exit_code: 1,
   output: "deno_test_fail_fast.out",
 });
 
-itest!(deno_test {
-  args: "test test_runner_test.ts",
+itest!(deno_test_only {
+  args: "test deno_test_only.ts",
   exit_code: 1,
-  output: "deno_test.out",
+  output: "deno_test_only.ts.out",
 });
 
 #[test]
