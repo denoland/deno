@@ -7,11 +7,11 @@ import * as log from "https://deno.land/std/log/mod.ts";
 
 // Simple default logger out of the box. You can customize it
 // by overriding logger and handler named "default", or providing
-// additional logger configurations
+// additional logger configurations. You can log any data type.
 log.debug("Hello world");
-log.info("Hello world");
-log.warning("Hello world");
-log.error("Hello world");
+log.info(123456);
+log.warning(true);
+log.error({ foo: "bar", fizz: "bazz" });
 log.critical("500 Internal server error");
 
 // custom configuration with 2 loggers (the default and `tasks` loggers)
@@ -45,12 +45,12 @@ let logger;
 // get default logger
 logger = log.getLogger();
 logger.debug("fizz"); // logs to `console`, because `file` handler requires "WARNING" level
-logger.warning("buzz"); // logs to both `console` and `file` handlers
+logger.warning(41256); // logs to both `console` and `file` handlers
 
 // get custom logger
 logger = log.getLogger("tasks");
 logger.debug("fizz"); // won't get output because this logger has "ERROR" level
-logger.error("buzz"); // log to `console`
+logger.error({ productType: "book", value: "126.11" }); // log to `console`
 
 // if you try to use a logger that hasn't been configured
 // you're good to go, it gets created automatically with level set to 0
@@ -239,3 +239,53 @@ During setup async hooks `setup` and `destroy` are called, you can use them to
 open and close file/HTTP connection or any other action you might need.
 
 For examples check source code of `FileHandler` and `TestHandler`.
+
+### Inline Logging
+
+Log functions return the data passed in the `msg` parameter. Data is returned
+regardless if the logger actually logs it.
+
+```ts
+const stringData: string = logger.debug("hello world");
+const booleanData: boolean = logger.debug(true, 1, "abc");
+const fn = (): number => {
+  return 123;
+};
+const resolvedFunctionData: number = logger.debug(fn());
+console.log(stringData); // 'hello world'
+console.log(booleanData); // true
+console.log(resolvedFunctionData); // 123
+```
+
+### Lazy Log Evaluation
+
+Some log statements are expensive to compute. In these cases, you can use lazy
+log evaluation to prevent the computation taking place if the logger won't log
+the message.
+
+```ts
+// `expensiveFn(5)` is only evaluated if this logger is configured for debug logging
+logger.debug(() => `this is expensive: ${expensiveFn(5)}`);
+```
+
+NOTE: When using lazy log evaluation, `undefined` will be returned if the
+resolver function is not called because the logger won't log it. E.g.
+
+```ts
+await log.setup({
+  handlers: {
+    console: new log.handlers.ConsoleHandler("DEBUG"),
+  },
+
+  loggers: {
+    tasks: {
+      level: "ERROR",
+      handlers: ["console"],
+    },
+  },
+});
+
+// not logged, as debug < error
+const data: string | undefined = logger.debug(() => someExpenseFn(5, true));
+console.log(data); // undefined
+```
