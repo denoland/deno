@@ -2,15 +2,15 @@
 import { notImplemented } from "../util.ts";
 import { isTypedArray } from "./util.ts";
 import * as domTypes from "./dom_types.d.ts";
-import { TextDecoder, TextEncoder } from "./text_encoding.ts";
+import { TextEncoder } from "./text_encoding.ts";
 import { DenoBlob, bytesSymbol as blobBytesSymbol } from "./blob.ts";
 import { read } from "../ops/io.ts";
 import { close } from "../ops/resources.ts";
 import { fetch as opFetch, FetchResponse } from "../ops/fetch.ts";
 import * as Body from "./body.ts";
-import { DomFileImpl } from "./dom_file.ts";
 import { getHeaderValueParams } from "./util.ts";
 import { ReadableStreamImpl } from "./streams/readable_stream.ts";
+import { MultipartBuilder } from "./fetch/multipart.ts";
 
 const NULL_BODY_STATUS = [101, 204, 205, 304];
 const REDIRECT_STATUS = [301, 302, 303, 307, 308];
@@ -232,45 +232,14 @@ export async function fetch(
           body = init.body[blobBytesSymbol];
           contentType = init.body.type;
         } else if (init.body instanceof FormData) {
-          let boundary = "";
+          let boundary;
           if (headers.has("content-type")) {
             const params = getHeaderValueParams("content-type");
-            if (params.has("boundary")) {
-              boundary = params.get("boundary")!;
-            }
+            boundary = params.get("boundary")!;
           }
-          if (!boundary) {
-            boundary =
-              "----------" +
-              Array.from(Array(32))
-                .map(() => Math.random().toString(36)[2] || 0)
-                .join("");
-          }
-
-          let payload = "";
-          for (const [fieldName, fieldValue] of init.body.entries()) {
-            let part = `\r\n--${boundary}\r\n`;
-            part += `Content-Disposition: form-data; name=\"${fieldName}\"`;
-            if (fieldValue instanceof DomFileImpl) {
-              part += `; filename=\"${fieldValue.name}\"`;
-            }
-            part += "\r\n";
-            if (fieldValue instanceof DomFileImpl) {
-              part += `Content-Type: ${
-                fieldValue.type || "application/octet-stream"
-              }\r\n`;
-            }
-            part += "\r\n";
-            if (fieldValue instanceof DomFileImpl) {
-              part += new TextDecoder().decode(fieldValue[blobBytesSymbol]);
-            } else {
-              part += fieldValue;
-            }
-            payload += part;
-          }
-          payload += `\r\n--${boundary}--`;
-          body = new TextEncoder().encode(payload);
-          contentType = "multipart/form-data; boundary=" + boundary;
+          const multipartBuilder = new MultipartBuilder(init.body, boundary);
+          body = multipartBuilder.getBody();
+          contentType = multipartBuilder.getContentType();
         } else {
           // TODO: ReadableStream
           notImplemented();

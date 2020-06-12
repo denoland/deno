@@ -154,8 +154,8 @@ Iterate all files in a directory recursively.
 ```ts
 import { walk, walkSync } from "https://deno.land/std/fs/mod.ts";
 
-for (const fileInfo of walkSync(".")) {
-  console.log(fileInfo.filename);
+for (const entry of walkSync(".")) {
+  console.log(entry.path);
 }
 
 // Async

@@ -64,6 +64,11 @@ impl OpRegistry {
   pub fn get(&self, op_id: OpId) -> Option<Rc<OpDispatcher>> {
     self.dispatchers.get(op_id as usize).map(Rc::clone)
   }
+
+  pub fn unregister_op(&mut self, name: &str) {
+    let id = self.name_to_id.remove(name).unwrap();
+    drop(self.dispatchers.remove(id as usize));
+  }
 }
 
 #[test]
@@ -101,6 +106,10 @@ fn test_op_registry() {
   assert_eq!(c.load(atomic::Ordering::SeqCst), 1);
 
   assert!(op_registry.get(100).is_none());
+  op_registry.unregister_op("test");
+  expected.remove("test");
+  assert_eq!(op_registry.name_to_id, expected);
+  assert!(op_registry.get(1).is_none());
 }
 
 #[test]

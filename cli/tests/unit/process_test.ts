@@ -36,7 +36,7 @@ unitTest({ perms: { run: true } }, async function runSuccess(): Promise<void> {
   assertEquals(status.success, true);
   assertEquals(status.code, 0);
   assertEquals(status.signal, undefined);
-  p.stdout!.close();
+  p.stdout.close();
   p.close();
 });
 
@@ -66,7 +66,7 @@ unitTest(
     });
     const status = await p.status();
     assertEquals(status.success, false);
-    assertEquals(status.code, undefined);
+    assertEquals(status.code, 128 + 9);
     assertEquals(status.signal, 9);
     p.close();
   }
@@ -141,7 +141,7 @@ unitTest({ perms: { run: true } }, async function runStdinPiped(): Promise<
   const n = await p.stdin.write(msg);
   assertEquals(n, msg.byteLength);
 
-  p.stdin!.close();
+  p.stdin.close();
 
   const status = await p.status();
   assertEquals(status.success, true);
@@ -161,16 +161,16 @@ unitTest({ perms: { run: true } }, async function runStdoutPiped(): Promise<
   assert(!p.stderr);
 
   const data = new Uint8Array(10);
-  let r = await p.stdout!.read(data);
+  let r = await p.stdout.read(data);
   if (r === null) {
     throw new Error("p.stdout.read(...) should not be null");
   }
   assertEquals(r, 5);
   const s = new TextDecoder().decode(data.subarray(0, r));
   assertEquals(s, "hello");
-  r = await p.stdout!.read(data);
+  r = await p.stdout.read(data);
   assertEquals(r, null);
-  p.stdout!.close();
+  p.stdout.close();
 
   const status = await p.status();
   assertEquals(status.success, true);
@@ -190,14 +190,14 @@ unitTest({ perms: { run: true } }, async function runStderrPiped(): Promise<
   assert(!p.stdout);
 
   const data = new Uint8Array(10);
-  let r = await p.stderr!.read(data);
+  let r = await p.stderr.read(data);
   if (r === null) {
     throw new Error("p.stderr.read should not return null here");
   }
   assertEquals(r, 5);
   const s = new TextDecoder().decode(data.subarray(0, r));
   assertEquals(s, "hello");
-  r = await p.stderr!.read(data);
+  r = await p.stderr.read(data);
   assertEquals(r, null);
   p.stderr!.close();
 
@@ -320,9 +320,9 @@ unitTest({ perms: { run: true } }, async function runClose(): Promise<void> {
   p.close();
 
   const data = new Uint8Array(10);
-  const r = await p.stderr!.read(data);
+  const r = await p.stderr.read(data);
   assertEquals(r, null);
-  p.stderr!.close();
+  p.stderr.close();
 });
 
 unitTest(function signalNumbers(): void {
@@ -358,11 +358,15 @@ unitTest({ perms: { run: true } }, async function killSuccess(): Promise<void> {
   const status = await p.status();
 
   assertEquals(status.success, false);
-  // TODO(ry) On Linux, status.code is sometimes undefined and sometimes 1.
-  // The following assert is causing this test to be flaky. Investigate and
-  // re-enable when it can be made deterministic.
-  // assertEquals(status.code, 1);
-  // assertEquals(status.signal, Deno.Signal.SIGINT);
+  try {
+    assertEquals(status.code, 128 + Deno.Signal.SIGINT);
+    assertEquals(status.signal, Deno.Signal.SIGINT);
+  } catch {
+    // TODO(nayeemrmn): On Windows sometimes the following values are given
+    // instead. Investigate and remove this catch when fixed.
+    assertEquals(status.code, 1);
+    assertEquals(status.signal, undefined);
+  }
   p.close();
 });
 

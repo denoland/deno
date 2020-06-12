@@ -29,6 +29,28 @@ unitTest(function urlParsing(): void {
     JSON.stringify({ key: url }),
     `{"key":"https://foo:bar@baz.qat:8000/qux/quux?foo=bar&baz=12#qat"}`
   );
+
+  // IPv6 type hostname.
+  const urlv6 = new URL(
+    "https://foo:bar@[::1]:8000/qux/quux?foo=bar&baz=12#qat"
+  );
+  assertEquals(urlv6.origin, "https://[::1]:8000");
+  assertEquals(urlv6.password, "bar");
+  assertEquals(urlv6.pathname, "/qux/quux");
+  assertEquals(urlv6.port, "8000");
+  assertEquals(urlv6.protocol, "https:");
+  assertEquals(urlv6.search, "?foo=bar&baz=12");
+  assertEquals(urlv6.searchParams.getAll("foo"), ["bar"]);
+  assertEquals(urlv6.searchParams.getAll("baz"), ["12"]);
+  assertEquals(urlv6.username, "foo");
+  assertEquals(
+    String(urlv6),
+    "https://foo:bar@[::1]:8000/qux/quux?foo=bar&baz=12#qat"
+  );
+  assertEquals(
+    JSON.stringify({ key: urlv6 }),
+    `{"key":"https://foo:bar@[::1]:8000/qux/quux?foo=bar&baz=12#qat"}`
+  );
 });
 
 unitTest(function urlModifications(): void {

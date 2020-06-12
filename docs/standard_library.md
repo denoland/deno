@@ -48,7 +48,7 @@ TS2339 [ERROR]: Property 'utimeSync' does not exist on type 'typeof Deno'.
 Solution to that problem requires adding `--unstable` flag:
 
 ```shell
-$ deno run --allow-read --allow-write --unstable main.ts
+deno run --allow-read --allow-write --unstable main.ts
 ```
 
 To make sure that API producing error is unstable check

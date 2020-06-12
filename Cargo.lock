@@ -443,6 +443,7 @@ dependencies = [
  "bytes 0.5.4",
  "clap",
  "deno_core",
+ "deno_lint",
  "deno_typescript",
  "dirs",
  "dissimilar",
@@ -501,6 +502,21 @@ dependencies = [
  "serde_json",
  "tokio",
  "url 2.1.1",
+]
+
+[[package]]
+name = "deno_lint"
+version = "0.1.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dc10bb331262fd598e6925ab8b59f72b01cc9c3a5a818ce7d57652e4b23fe45a"
+dependencies = [
+ "lazy_static",
+ "regex",
+ "swc_atoms",
+ "swc_common",
+ "swc_ecma_ast",
+ "swc_ecma_parser",
+ "swc_ecma_visit",
 ]
 
 [[package]]

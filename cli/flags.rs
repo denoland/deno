@@ -50,6 +50,9 @@ pub enum DenoSubcommand {
     root: Option<PathBuf>,
     force: bool,
   },
+  Lint {
+    files: Vec<String>,
+  },
   Repl,
   Run {
     script: String,
@@ -180,7 +183,8 @@ static ENV_VARIABLES_HELP: &str = "ENVIRONMENT VARIABLES:
     NO_COLOR             Set to disable color
     HTTP_PROXY           Proxy address for HTTP requests
                          (module downloads, fetch)
-    HTTPS_PROXY          Same but for HTTPS";
+    HTTPS_PROXY          Proxy address for HTTPS requests
+                         (module downloads, fetch)";
 
 static DENO_HELP: &str = "A secure JavaScript and TypeScript runtime
 
@@ -260,6 +264,8 @@ pub fn flags_from_vec_safe(args: Vec<String>) -> clap::Result<Flags> {
     upgrade_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("doc") {
     doc_parse(&mut flags, m);
+  } else if let Some(m) = matches.subcommand_matches("lint") {
+    lint_parse(&mut flags, m);
   } else {
     repl_parse(&mut flags, &matches);
   }
@@ -302,18 +308,19 @@ If the flag is set, restrict these messages to errors.",
         .global(true),
     )
     .subcommand(bundle_subcommand())
-    .subcommand(completions_subcommand())
-    .subcommand(eval_subcommand())
     .subcommand(cache_subcommand())
+    .subcommand(completions_subcommand())
+    .subcommand(doc_subcommand())
+    .subcommand(eval_subcommand())
     .subcommand(fmt_subcommand())
     .subcommand(info_subcommand())
     .subcommand(install_subcommand())
+    .subcommand(lint_subcommand())
     .subcommand(repl_subcommand())
     .subcommand(run_subcommand())
     .subcommand(test_subcommand())
     .subcommand(types_subcommand())
     .subcommand(upgrade_subcommand())
-    .subcommand(doc_subcommand())
     .long_about(DENO_HELP)
     .after_help(ENV_VARIABLES_HELP)
 }
@@ -577,6 +584,15 @@ fn doc_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     json,
     filter,
   };
+}
+
+fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  unstable_arg_parse(flags, matches);
+  let files = match matches.values_of("files") {
+    Some(f) => f.map(String::from).collect(),
+    None => vec![],
+  };
+  flags.subcommand = DenoSubcommand::Lint { files };
 }
 
 fn types_subcommand<'a, 'b>() -> App<'a, 'b> {
@@ -886,6 +902,33 @@ Show documentation for runtime built-ins:
         .required(false)
         .conflicts_with("json")
         .conflicts_with("pretty"),
+    )
+}
+
+fn lint_subcommand<'a, 'b>() -> App<'a, 'b> {
+  SubCommand::with_name("lint")
+    .about("Lint source files")
+    .long_about(
+      "Lint JavaScript/TypeScript source code.
+  deno lint --unstable
+  deno lint --unstable myfile1.ts myfile2.js
+
+Ignore diagnostics on the next line by preceding it with an ignore comment and
+rule name:
+  // deno-lint-ignore no-explicit-any
+
+  // deno-lint-ignore require-await no-empty
+
+Ignore linting a file by adding an ignore comment at the top of the file:
+  // deno-lint-ignore-file
+",
+    )
+    .arg(unstable_arg())
+    .arg(
+      Arg::with_name("files")
+        .takes_value(true)
+        .multiple(true)
+        .required(false),
     )
 }
 
@@ -1592,6 +1635,37 @@ mod tests {
           check: false,
           files: vec![],
         },
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn lint() {
+    let r = flags_from_vec_safe(svec![
+      "deno",
+      "lint",
+      "--unstable",
+      "script_1.ts",
+      "script_2.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Lint {
+          files: vec!["script_1.ts".to_string(), "script_2.ts".to_string()]
+        },
+        unstable: true,
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec_safe(svec!["deno", "lint", "--unstable"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Lint { files: vec![] },
+        unstable: true,
         ..Flags::default()
       }
     );

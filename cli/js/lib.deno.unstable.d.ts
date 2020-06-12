@@ -32,6 +32,18 @@ declare namespace Deno {
    * Requires `allow-read` and `allow-write` permissions. */
   export function linkSync(oldpath: string, newpath: string): void;
 
+  /**
+   * Returns the os name.
+   *
+   * ```ts
+   * console.log(Deno.osName());  // e.g. "Linux"
+   * ```
+   *
+   */
+
+  export function osName(): string;
+
+  /** Creates `newpath` as a hard link to `oldpath`.
   /** **UNSTABLE**: This API needs a security review.
    *
    * Creates `newpath` as a hard link to `oldpath`.
@@ -1245,4 +1257,7 @@ declare namespace Deno {
    *  Requires `allow-env` permission.
    */
   export function hostname(): string;
+
+  /** **UNSTABLE**: The URL of the file that was originally executed from the command-line. */
+  export const mainModule: string;
 }
