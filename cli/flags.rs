@@ -1037,9 +1037,9 @@ fn run_subcommand<'a, 'b>() -> App<'a, 'b> {
   run_test_args(SubCommand::with_name("run"))
     .setting(AppSettings::TrailingVarArg)
     .arg(script_arg())
-    .about("Run a program given a filename or url to the module")
+    .about("Run a program given a filename or url to the module. Use '-' as a filename to read from stdin.")
     .long_about(
-      "Run a program given a filename or url to the module.
+	  "Run a program given a filename or url to the module.
 
 By default all programs are run in sandbox without access to disk, network or
 ability to spawn subprocesses.
@@ -1052,7 +1052,10 @@ Grant permission to read from disk and listen to network:
   deno run --allow-read --allow-net https://deno.land/std/http/file_server.ts
 
 Grant permission to read whitelisted files from disk:
-  deno run --allow-read=/etc https://deno.land/std/http/file_server.ts",
+  deno run --allow-read=/etc https://deno.land/std/http/file_server.ts
+  
+Deno allows specifying the filename '-' to read the file from stdin.
+  curl https://deno.land/std/examples/welcome.ts | target/debug/deno run -",
     )
 }
 
