@@ -1894,9 +1894,9 @@ declare namespace Deno {
    *      const inStringFormat = Deno.inspect(new A()); // "x=10, y=hello"
    *      console.log(inStringFormat);  // prints "x=10, y=hello"
    *
-   * Finally, a number of output options are also available.
+   * Finally, you can also specify the depth to which it will format.
    *
-   *      const out = Deno.inspect(obj, {showHidden: true, depth: 4, colors: true, indentLevel: 2});
+   *      Deno.inspect({a: {b: {c: {d: 'hello'}}}}, {depth: 2}); // { a: { b: [Object] } }
    *
    */
   export function inspect(value: unknown, options?: InspectOptions): string;
