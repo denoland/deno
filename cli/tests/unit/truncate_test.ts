@@ -58,7 +58,7 @@ unitTest(
 unitTest({ perms: { write: false } }, function truncateSyncPerm(): void {
   let err;
   try {
-    Deno.mkdirSync("/test_truncateSyncPermission.txt");
+    Deno.truncateSync("/test_truncateSyncPermission.txt");
   } catch (e) {
     err = e;
   }
@@ -71,7 +71,7 @@ unitTest({ perms: { write: false } }, async function truncatePerm(): Promise<
 > {
   let err;
   try {
-    await Deno.mkdir("/test_truncatePermission.txt");
+    await Deno.truncate("/test_truncatePermission.txt");
   } catch (e) {
     err = e;
   }
