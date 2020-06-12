@@ -32,18 +32,6 @@ declare namespace Deno {
    * Requires `allow-read` and `allow-write` permissions. */
   export function linkSync(oldpath: string, newpath: string): void;
 
-  /**
-   * Returns the os name.
-   *
-   * ```ts
-   * console.log(Deno.osName());  // e.g. "Linux"
-   * ```
-   *
-   */
-
-  export function osName(): string;
-
-  /** Creates `newpath` as a hard link to `oldpath`.
   /** **UNSTABLE**: This API needs a security review.
    *
    * Creates `newpath` as a hard link to `oldpath`.

@@ -190,9 +190,9 @@ export function totalmem(): number {
   notImplemented(SEE_GITHUB_ISSUE);
 }
 
-/** Returns the operating system name as returned by uname(3) */
+/** Not yet implemented */
 export function type(): string {
-  return Deno.osName();
+  notImplemented(SEE_GITHUB_ISSUE);
 }
 
 /** Not yet implemented */
