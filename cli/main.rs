@@ -316,7 +316,11 @@ async fn install_command(
     .map_err(ErrBox::from)
 }
 
-async fn lint_command(flags: Flags, files: Vec<String>) -> Result<(), ErrBox> {
+async fn lint_command(
+  flags: Flags,
+  files: Vec<String>,
+  list_rules: bool,
+) -> Result<(), ErrBox> {
   let global_state = GlobalState::new(flags)?;
 
   // TODO(bartlomieju): refactor, it's non-sense to create
@@ -331,6 +335,12 @@ async fn lint_command(flags: Flags, files: Vec<String>) -> Result<(), ErrBox> {
   )?;
 
   state.check_unstable("lint");
+
+  if list_rules {
+    lint::print_rules_list();
+    return Ok(());
+  }
+
   lint::lint_files(files).await
 }
 
@@ -708,7 +718,9 @@ pub fn main() {
     } => {
       install_command(flags, module_url, args, name, root, force).boxed_local()
     }
-    DenoSubcommand::Lint { files } => lint_command(flags, files).boxed_local(),
+    DenoSubcommand::Lint { files, rules } => {
+      lint_command(flags, files, rules).boxed_local()
+    }
     DenoSubcommand::Repl => run_repl(flags).boxed_local(),
     DenoSubcommand::Run { script } => run_command(flags, script).boxed_local(),
     DenoSubcommand::Test {

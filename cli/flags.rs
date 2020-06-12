@@ -52,6 +52,7 @@ pub enum DenoSubcommand {
   },
   Lint {
     files: Vec<String>,
+    rules: bool,
   },
   Repl,
   Run {
@@ -592,7 +593,8 @@ fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     Some(f) => f.map(String::from).collect(),
     None => vec![],
   };
-  flags.subcommand = DenoSubcommand::Lint { files };
+  let rules = matches.is_present("rules");
+  flags.subcommand = DenoSubcommand::Lint { files, rules };
 }
 
 fn types_subcommand<'a, 'b>() -> App<'a, 'b> {
@@ -913,6 +915,9 @@ fn lint_subcommand<'a, 'b>() -> App<'a, 'b> {
   deno lint --unstable
   deno lint --unstable myfile1.ts myfile2.js
 
+List available rules:
+  deno lint --unstable --rules
+
 Ignore diagnostics on the next line by preceding it with an ignore comment and
 rule name:
   // deno-lint-ignore no-explicit-any
@@ -929,6 +934,11 @@ Ignore linting a file by adding an ignore comment at the top of the file:
 ",
     )
     .arg(unstable_arg())
+    .arg(
+      Arg::with_name("rules")
+        .long("rules")
+        .help("List available rules"),
+    )
     .arg(
       Arg::with_name("files")
         .takes_value(true)
@@ -1658,7 +1668,8 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Lint {
-          files: vec!["script_1.ts".to_string(), "script_2.ts".to_string()]
+          files: vec!["script_1.ts".to_string(), "script_2.ts".to_string()],
+          rules: false,
         },
         unstable: true,
         ..Flags::default()
@@ -1669,7 +1680,23 @@ mod tests {
     assert_eq!(
       r.unwrap(),
       Flags {
-        subcommand: DenoSubcommand::Lint { files: vec![] },
+        subcommand: DenoSubcommand::Lint {
+          files: vec![],
+          rules: false,
+        },
+        unstable: true,
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec_safe(svec!["deno", "lint", "--unstable", "--rules"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Lint {
+          files: vec![],
+          rules: true
+        },
         unstable: true,
         ..Flags::default()
       }
