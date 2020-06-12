@@ -178,7 +178,7 @@ impl Flags {
 }
 
 static ENV_VARIABLES_HELP: &str = "ENVIRONMENT VARIABLES:
-    DENO_DIR             Set deno's base directory (defaults to $HOME/.deno)
+    DENO_DIR             Set the cache directory
     DENO_INSTALL_ROOT    Set deno install's output directory
                          (defaults to $HOME/.deno/bin)
     NO_COLOR             Set to disable color
