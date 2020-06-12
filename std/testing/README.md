@@ -226,7 +226,7 @@ runBenchmarks({ silent: true }, (p: BenchmarkRunProgress) => {
 
 Registers a benchmark that will be run once `runBenchmarks` is called.
 
-##### `runBenchmarks(opts?: BenchmarkRunOptions, progressCb?: (p: BenchmarkRunProgress) => void): Promise<BenchmarkRunResult>`
+##### `runBenchmarks(opts?: BenchmarkRunOptions, progressCb?: (p: BenchmarkRunProgress) => void | Promise<void>): Promise<BenchmarkRunResult>`
 
 Runs all registered benchmarks serially. Filtering can be applied by setting
 `BenchmarkRunOptions.only` and/or `BenchmarkRunOptions.skip` to regular

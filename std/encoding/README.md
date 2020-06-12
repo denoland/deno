@@ -77,6 +77,7 @@ function is as follows:
 ### Usage
 
 ```ts
+import { parse } from "https://deno.land/std/encoding/csv.ts";
 const string = "a,b,c\nd,e,f";
 
 console.log(
@@ -182,24 +183,10 @@ will output:
 }
 ```
 
-### Usage
-
-#### Parse
+### Basic usage
 
 ```ts
-import { parse } from "./parser.ts";
-import { readFileStrSync } from "../fs/read_file_str.ts";
-
-const tomlObject = parse(readFileStrSync("file.toml"));
-
-const tomlString = 'foo.bar = "Deno"';
-const tomlObject22 = parse(tomlString);
-```
-
-#### Stringify
-
-```ts
-import { stringify } from "./parser.ts";
+import { parse, stringify } from "https://deno.land/std/encoding/toml.ts";
 const obj = {
   bin: [
     { name: "deno", path: "cli/main.rs" },
@@ -208,6 +195,32 @@ const obj = {
   nib: [{ name: "node", path: "not_found" }],
 };
 const tomlString = stringify(obj);
+console.log(tomlString);
+
+// =>
+// [[bin]]
+// name = "deno"
+// path = "cli/main.rs"
+
+// [[bin]]
+// name = "deno_core"
+// path = "src/foo.rs"
+
+// [[nib]]
+// name = "node"
+// path = "not_found"
+
+const tomlObject = parse(tomlString);
+console.log(tomlObject);
+
+// =>
+// {
+//     bin: [
+//       { name: "deno", path: "cli/main.rs" },
+//       { name: "deno_core", path: "src/foo.rs" }
+//     ],
+//     nib: [ { name: "node", path: "not_found" } ]
+//   }
 ```
 
 ## YAML

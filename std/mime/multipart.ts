@@ -12,7 +12,7 @@ import { extname } from "../path/mod.ts";
 import { tempFile } from "../io/util.ts";
 import { BufReader, BufWriter } from "../io/bufio.ts";
 import { encoder } from "../encoding/utf8.ts";
-import { assertStrictEquals, assert } from "../testing/asserts.ts";
+import { assert } from "../_util/assert.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 import { hasOwnProperty } from "../_util/has_own_property.ts";
 
@@ -178,7 +178,7 @@ class PartReader implements Reader, Closer {
       );
       if (this.n === 0) {
         // Force buffered I/O to read more into buffer.
-        assertStrictEquals(eof, false);
+        assert(eof === false);
         peekLength++;
       }
     }
@@ -190,7 +190,7 @@ class PartReader implements Reader, Closer {
     const nread = min(p.length, this.n);
     const buf = p.subarray(0, nread);
     const r = await br.readFull(buf);
-    assertStrictEquals(r, buf);
+    assert(r === buf);
     this.n -= nread;
     this.total += nread;
     return nread;

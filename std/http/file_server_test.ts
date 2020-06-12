@@ -5,7 +5,7 @@ import { TextProtoReader } from "../textproto/mod.ts";
 import { ServerRequest } from "./server.ts";
 import { serveFile } from "./file_server.ts";
 const { test } = Deno;
-let fileServer: Deno.Process;
+let fileServer: Deno.Process<Deno.RunOptions & { stdout: "piped" }>;
 
 type FileServerCfg = {
   target?: string;

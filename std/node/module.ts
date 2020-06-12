@@ -21,6 +21,7 @@
 
 import "./global.ts";
 
+import * as nodeBuffer from "./buffer.ts";
 import * as nodeFS from "./fs.ts";
 import * as nodeUtil from "./util.ts";
 import * as nodePath from "./path.ts";
@@ -30,7 +31,7 @@ import * as nodeEvents from "./events.ts";
 import * as nodeQueryString from "./querystring.ts";
 
 import * as path from "../path/mod.ts";
-import { assert } from "../testing/asserts.ts";
+import { assert } from "../_util/assert.ts";
 import { pathToFileURL, fileURLToPath } from "./url.ts";
 
 const CHAR_FORWARD_SLASH = "/".charCodeAt(0);
@@ -595,6 +596,7 @@ function createNativeModule(id: string, exports: any): Module {
   return mod;
 }
 
+nativeModulePolyfill.set("buffer", createNativeModule("buffer", nodeBuffer));
 nativeModulePolyfill.set("fs", createNativeModule("fs", nodeFS));
 nativeModulePolyfill.set("events", createNativeModule("events", nodeEvents));
 nativeModulePolyfill.set("os", createNativeModule("os", nodeOs));

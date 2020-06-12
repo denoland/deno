@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { assert } from "../testing/asserts.ts";
+import { assert } from "../_util/assert.ts";
 
 export function deepAssign(
   target: Record<string, unknown>,

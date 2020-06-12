@@ -246,13 +246,6 @@ test({
     );
     assertThrows(
       () => {
-        os.type();
-      },
-      Error,
-      "Not implemented"
-    );
-    assertThrows(
-      () => {
         os.uptime();
       },
       Error,

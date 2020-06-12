@@ -34,23 +34,8 @@ pub async fn format(args: Vec<String>, check: bool) -> Result<(), ErrBox> {
     return format_stdin(check);
   }
 
-  let mut target_files: Vec<PathBuf> = vec![];
+  let target_files = collect_files(args)?;
 
-  if args.is_empty() {
-    target_files.extend(files_in_subtree(
-      std::env::current_dir().unwrap(),
-      is_supported,
-    ));
-  } else {
-    for arg in args {
-      let p = PathBuf::from(arg);
-      if p.is_dir() {
-        target_files.extend(files_in_subtree(p, is_supported));
-      } else {
-        target_files.push(p);
-      };
-    }
-  }
   let config = get_config();
   if check {
     check_source_files(config, target_files).await
@@ -222,6 +207,26 @@ fn is_supported(path: &Path) -> bool {
   }
 }
 
+pub fn collect_files(files: Vec<String>) -> Result<Vec<PathBuf>, ErrBox> {
+  let mut target_files: Vec<PathBuf> = vec![];
+
+  if files.is_empty() {
+    target_files
+      .extend(files_in_subtree(std::env::current_dir()?, is_supported));
+  } else {
+    for arg in files {
+      let p = PathBuf::from(arg);
+      if p.is_dir() {
+        target_files.extend(files_in_subtree(p, is_supported));
+      } else {
+        target_files.push(p);
+      };
+    }
+  }
+
+  Ok(target_files)
+}
+
 fn get_config() -> dprint::configuration::Configuration {
   use dprint::configuration::*;
   ConfigurationBuilder::new().deno().build()
@@ -259,7 +264,7 @@ fn write_file_contents(
   Ok(fs::write(file_path, file_text)?)
 }
 
-async fn run_parallelized<F>(
+pub async fn run_parallelized<F>(
   file_paths: Vec<PathBuf>,
   f: F,
 ) -> Result<(), ErrBox>

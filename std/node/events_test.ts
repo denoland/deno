@@ -246,6 +246,25 @@ test({
 });
 
 test({
+  name: "Provide a non-existent event to removeAllListeners will do nothing",
+  fn() {
+    const testEmitter = new EventEmitter();
+    testEmitter.on("event", shouldNeverBeEmitted);
+    testEmitter.on("event", shouldNeverBeEmitted);
+    testEmitter.on("other event", shouldNeverBeEmitted);
+    testEmitter.on("other event", shouldNeverBeEmitted);
+    testEmitter.once("other event", shouldNeverBeEmitted);
+    assertEquals(testEmitter.listenerCount("event"), 2);
+    assertEquals(testEmitter.listenerCount("other event"), 3);
+
+    testEmitter.removeAllListeners("non-existent");
+
+    assertEquals(testEmitter.listenerCount("event"), 2);
+    assertEquals(testEmitter.listenerCount("other event"), 3);
+  },
+});
+
+test({
   name: "Remove individual listeners, which can also be chained",
   fn() {
     const testEmitter = new EventEmitter();
