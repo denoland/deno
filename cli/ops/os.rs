@@ -15,10 +15,12 @@ pub fn init(i: &mut CoreIsolate, s: &State) {
   i.register_op("op_exec_path", s.stateful_json_op(op_exec_path));
   i.register_op("op_set_env", s.stateful_json_op(op_set_env));
   i.register_op("op_get_env", s.stateful_json_op(op_get_env));
+  i.register_op("op_delete_env", s.stateful_json_op(op_delete_env));
   i.register_op("op_get_dir", s.stateful_json_op(op_get_dir));
   i.register_op("op_hostname", s.stateful_json_op(op_hostname));
   i.register_op("op_loadavg", s.stateful_json_op(op_loadavg));
   i.register_op("op_os_release", s.stateful_json_op(op_os_release));
+  i.register_op("op_name", s.stateful_json_op(op_name));
 }
 
 #[derive(Deserialize)]
@@ -138,6 +140,22 @@ fn op_get_env(
 }
 
 #[derive(Deserialize)]
+struct DeleteEnv {
+  key: String,
+}
+
+fn op_delete_env(
+  state: &State,
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<JsonOp, OpError> {
+  let args: DeleteEnv = serde_json::from_value(args)?;
+  state.check_env()?;
+  env::remove_var(args.key);
+  Ok(JsonOp::Sync(json!({})))
+}
+
+#[derive(Deserialize)]
 struct Exit {
   code: i32,
 }
@@ -188,4 +206,15 @@ fn op_os_release(
   state.check_env()?;
   let release = sys_info::os_release().unwrap_or_else(|_| "".to_string());
   Ok(JsonOp::Sync(json!(release)))
+}
+
+fn op_name(
+  state: &State,
+  _args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<JsonOp, OpError> {
+  state.check_unstable("Deno.osName");
+  state.check_env()?;
+  let os_name = sys_info::os_type().unwrap_or_else(|_| "".to_string());
+  Ok(JsonOp::Sync(json!(os_name)))
 }

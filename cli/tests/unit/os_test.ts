@@ -20,6 +20,13 @@ unitTest({ perms: { env: true } }, function envNotFound(): void {
   assertEquals(r, undefined);
 });
 
+unitTest({ perms: { env: true } }, function deleteEnv(): void {
+  Deno.env.set("TEST_VAR", "A");
+  assertEquals(Deno.env.get("TEST_VAR"), "A");
+  assertEquals(Deno.env.delete("TEST_VAR"), undefined);
+  assertEquals(Deno.env.get("TEST_VAR"), undefined);
+});
+
 unitTest(function envPermissionDenied1(): void {
   let err;
   try {
@@ -311,6 +318,22 @@ unitTest({ perms: { env: false } }, function hostnamePerm(): void {
   let caughtError = false;
   try {
     Deno.hostname();
+  } catch (err) {
+    caughtError = true;
+    assert(err instanceof Deno.errors.PermissionDenied);
+    assertEquals(err.name, "PermissionDenied");
+  }
+  assert(caughtError);
+});
+
+unitTest({ perms: { env: true } }, function osName(): void {
+  assertNotEquals(Deno.osName(), "");
+});
+
+unitTest({ perms: { env: false } }, function osNamePerm(): void {
+  let caughtError = false;
+  try {
+    Deno.osName();
   } catch (err) {
     caughtError = true;
     assert(err instanceof Deno.errors.PermissionDenied);

@@ -35,6 +35,11 @@ export function getEncoding(
   const encoding =
     typeof optOrCallback === "string" ? optOrCallback : optOrCallback.encoding;
   if (!encoding) return null;
+  return encoding;
+}
+
+export function checkEncoding(encoding: string | null): string | null {
+  if (!encoding) return null;
   if (encoding === "utf8" || encoding === "utf-8") {
     return "utf8";
   }

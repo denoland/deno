@@ -161,6 +161,7 @@ fn receive_udp(
   Ok(JsonOp::Async(op.boxed_local()))
 }
 
+// TODO(ry) Rename to op_datagram_receive
 fn op_receive(
   isolate_state: &mut CoreIsolateState,
   state: &State,
@@ -191,6 +192,7 @@ struct SendArgs {
   transport_args: ArgsEnum,
 }
 
+// TODO(ry) Rename to op_datagram_send
 fn op_send(
   isolate_state: &mut CoreIsolateState,
   state: &State,
@@ -208,21 +210,21 @@ fn op_send(
       transport_args: ArgsEnum::Ip(args),
     } if transport == "udp" => {
       state.check_net(&args.hostname, args.port)?;
-
-      let op = async move {
+      let addr = resolve_addr(&args.hostname, args.port)?;
+      let f = poll_fn(move |cx| {
         let mut resource_table = resource_table.borrow_mut();
         let resource = resource_table
           .get_mut::<UdpSocketResource>(rid as u32)
           .ok_or_else(|| {
             OpError::bad_resource("Socket has been closed".to_string())
           })?;
-        let socket = &mut resource.socket;
-        let addr = resolve_addr(&args.hostname, args.port)?;
-        socket.send_to(&zero_copy, addr).await?;
-        Ok(json!({}))
-      };
-
-      Ok(JsonOp::Async(op.boxed_local()))
+        resource
+          .socket
+          .poll_send_to(cx, &zero_copy, &addr)
+          .map_err(OpError::from)
+          .map_ok(|_| json!({}))
+      });
+      Ok(JsonOp::Async(f.boxed_local()))
     }
     #[cfg(unix)]
     SendArgs {

@@ -127,6 +127,26 @@ if (Deno.build.os !== "windows") {
 
   unitTest(
     { perms: { run: true, write: true } },
+    async function chownSyncWithUrl(): Promise<void> {
+      // TODO: same as chownSyncSucceed
+      const { uid, gid } = await getUidAndGid();
+
+      const enc = new TextEncoder();
+      const dirPath = Deno.makeTempDirSync();
+      const fileUrl = new URL(`file://${dirPath}/chown_test_file.txt`);
+      const fileData = enc.encode("Hello");
+      Deno.writeFileSync(fileUrl, fileData);
+
+      // the test script creates this file with the same uid and gid,
+      // here chown is a noop so it succeeds under non-priviledged user
+      Deno.chownSync(fileUrl, uid, gid);
+
+      Deno.removeSync(dirPath, { recursive: true });
+    }
+  );
+
+  unitTest(
+    { perms: { run: true, write: true } },
     async function chownSucceed(): Promise<void> {
       // TODO: same as chownSyncSucceed
       const { uid, gid } = await getUidAndGid();
@@ -140,6 +160,26 @@ if (Deno.build.os !== "windows") {
       // the test script creates this file with the same uid and gid,
       // here chown is a noop so it succeeds under non-priviledged user
       await Deno.chown(filePath, uid, gid);
+
+      Deno.removeSync(dirPath, { recursive: true });
+    }
+  );
+
+  unitTest(
+    { perms: { run: true, write: true } },
+    async function chownWithUrl(): Promise<void> {
+      // TODO: same as chownSyncSucceed
+      const { uid, gid } = await getUidAndGid();
+
+      const enc = new TextEncoder();
+      const dirPath = await Deno.makeTempDir();
+      const fileUrl = new URL(`file://${dirPath}/chown_test_file.txt`);
+      const fileData = enc.encode("Hello");
+      await Deno.writeFile(fileUrl, fileData);
+
+      // the test script creates this file with the same uid and gid,
+      // here chown is a noop so it succeeds under non-priviledged user
+      await Deno.chown(fileUrl, uid, gid);
 
       Deno.removeSync(dirPath, { recursive: true });
     }

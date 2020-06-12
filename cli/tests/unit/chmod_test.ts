@@ -18,6 +18,25 @@ unitTest(
   }
 );
 
+unitTest(
+  { ignore: Deno.build.os === "windows", perms: { read: true, write: true } },
+  function chmodSyncUrl(): void {
+    const enc = new TextEncoder();
+    const data = enc.encode("Hello");
+    const tempDir = Deno.makeTempDirSync();
+    const fileUrl = new URL(`file://${tempDir}/test.txt`);
+    Deno.writeFileSync(fileUrl, data, { mode: 0o666 });
+
+    Deno.chmodSync(fileUrl, 0o777);
+
+    const fileInfo = Deno.statSync(fileUrl);
+    assert(fileInfo.mode);
+    assertEquals(fileInfo.mode & 0o777, 0o777);
+
+    Deno.removeSync(tempDir, { recursive: true });
+  }
+);
+
 // Check symlink when not on windows
 unitTest(
   {
@@ -86,6 +105,25 @@ unitTest(
     const fileInfo = Deno.statSync(filename);
     assert(fileInfo.mode);
     assertEquals(fileInfo.mode & 0o777, 0o777);
+  }
+);
+
+unitTest(
+  { ignore: Deno.build.os === "windows", perms: { read: true, write: true } },
+  async function chmodUrl(): Promise<void> {
+    const enc = new TextEncoder();
+    const data = enc.encode("Hello");
+    const tempDir = Deno.makeTempDirSync();
+    const fileUrl = new URL(`file://${tempDir}/test.txt`);
+    Deno.writeFileSync(fileUrl, data, { mode: 0o666 });
+
+    await Deno.chmod(fileUrl, 0o777);
+
+    const fileInfo = Deno.statSync(fileUrl);
+    assert(fileInfo.mode);
+    assertEquals(fileInfo.mode & 0o777, 0o777);
+
+    Deno.removeSync(tempDir, { recursive: true });
   }
 );
 

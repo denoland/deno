@@ -7,22 +7,12 @@
 
 type Reader = Deno.Reader;
 import { encode } from "../encoding/utf8.ts";
+const { Buffer } = Deno;
 
 /** Reader utility for strings */
-export class StringReader implements Reader {
-  private offs = 0;
-  private buf = new Uint8Array(encode(this.s));
-
-  constructor(private readonly s: string) {}
-
-  read(p: Uint8Array): Promise<number | null> {
-    const n = Math.min(p.byteLength, this.buf.byteLength - this.offs);
-    p.set(this.buf.slice(this.offs, this.offs + n));
-    this.offs += n;
-    if (n === 0) {
-      return Promise.resolve(null);
-    }
-    return Promise.resolve(n);
+export class StringReader extends Buffer {
+  constructor(private readonly s: string) {
+    super(encode(s).buffer);
   }
 }
 
