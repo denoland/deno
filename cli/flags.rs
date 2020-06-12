@@ -919,6 +919,11 @@ rule name:
 
   // deno-lint-ignore require-await no-empty
 
+Names of rules to ignore must be specified after ignore comment.
+
+ESLint ignore comments are also supported:
+  // eslint-ignore-next-line @typescrit-eslint/no-explicit-any no-empty
+
 Ignore linting a file by adding an ignore comment at the top of the file:
   // deno-lint-ignore-file
 ",
