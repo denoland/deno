@@ -174,6 +174,13 @@ declare namespace WebAssembly {
   }
 }
 
+/** Asserts that the condition argument is "truthy".  If the assertion fails,
+ * a `Deno.AssertionError` will be raised. */
+declare function assert(
+  condition: unknown,
+  message?: string
+): asserts condition;
+
 /** Sets a timer which executes a function once after the timer expires. Returns
  * an id which may be used to cancel the timeout.
  *

@@ -13,13 +13,14 @@
 // NOTE: this import has side effects!
 import "./ts_global.d.ts";
 
+import { assert } from "./assert.ts";
 import { bold, cyan, yellow } from "./colors.ts";
 import type { CompilerOptions } from "./compiler_options.ts";
 import type { Diagnostic, DiagnosticItem } from "./diagnostics.ts";
 import { fromTypeScriptDiagnostic } from "./diagnostics_util.ts";
 import type { TranspileOnlyResult } from "./ops/runtime_compiler.ts";
 import { bootstrapWorkerRuntime } from "./runtime_worker.ts";
-import { assert, log, notImplemented } from "./util.ts";
+import { log, notImplemented } from "./util.ts";
 import { core } from "./core.ts";
 
 // We really don't want to depend on JSON dispatch during snapshotting, so

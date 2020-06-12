@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+import { assert } from "../assert.ts";
 import * as util from "../util.ts";
 import { core } from "../core.ts";
 import { ErrorKind, getErrorClass } from "../errors.ts";
@@ -41,16 +42,16 @@ function unwrapResponse(res: JsonResponse): Ok {
   if (res.err != null) {
     throw new (getErrorClass(res.err.kind))(res.err.message);
   }
-  util.assert(res.ok != null);
+  assert(res.ok != null);
   return res.ok;
 }
 
 export function asyncMsgFromRust(resUi8: Uint8Array): void {
   const res = decode(resUi8);
-  util.assert(res.promiseId != null);
+  assert(res.promiseId != null);
 
   const promise = promiseTable[res.promiseId!];
-  util.assert(promise != null);
+  assert(promise != null);
   delete promiseTable[res.promiseId!];
   promise.resolve(res);
 }
@@ -63,9 +64,9 @@ export function sendSync(
   util.log("sendSync", opName);
   const argsUi8 = encode(args);
   const resUi8 = core.dispatchByName(opName, argsUi8, ...zeroCopy);
-  util.assert(resUi8 != null);
+  assert(resUi8 != null);
   const res = decode(resUi8);
-  util.assert(res.promiseId == null);
+  assert(res.promiseId == null);
   return unwrapResponse(res);
 }
 

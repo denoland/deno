@@ -8,6 +8,7 @@
 //   It sets up runtime by providing globals for `DedicatedWorkerScope`.
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { assert } from "./assert.ts";
 import {
   readOnly,
   writable,
@@ -21,7 +22,7 @@ import { unstableMethods, unstableProperties } from "./globals_unstable.ts";
 import * as denoNs from "./deno.ts";
 import * as denoUnstableNs from "./deno_unstable.ts";
 import * as webWorkerOps from "./ops/web_worker.ts";
-import { log, assert, immutableDefine } from "./util.ts";
+import { log, immutableDefine } from "./util.ts";
 import { ErrorEventImpl as ErrorEvent } from "./web/error_event.ts";
 import { MessageEvent } from "./web/workers.ts";
 import { TextEncoder } from "./web/text_encoding.ts";

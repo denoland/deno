@@ -4,8 +4,8 @@
 // Copyright 2009 The Go Authors. All rights reserved. BSD license.
 // https://github.com/golang/go/blob/master/LICENSE
 
+import { assert } from "./assert.ts";
 import type { Reader, Writer, ReaderSync, WriterSync } from "./io.ts";
-import { assert } from "./util.ts";
 
 // MIN_READ is the minimum ArrayBuffer size passed to a read call by
 // buffer.ReadFrom. As long as the Buffer has at least MIN_READ bytes beyond

@@ -20,7 +20,7 @@ import { WritableStreamImpl } from "./writable_stream.ts";
 import { AbortSignalImpl } from "../abort_signal.ts";
 import { DOMExceptionImpl as DOMException } from "../dom_exception.ts";
 import { cloneValue } from "../util.ts";
-import { assert, AssertionError } from "../../util.ts";
+import { assert, AssertionError } from "../../assert.ts";
 
 export type AbortAlgorithm = (reason?: any) => PromiseLike<void>;
 export interface AbortRequest {

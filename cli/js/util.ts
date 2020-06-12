@@ -22,21 +22,6 @@ export function log(...args: unknown[]): void {
   }
 }
 
-// @internal
-export class AssertionError extends Error {
-  constructor(msg?: string) {
-    super(msg);
-    this.name = "AssertionError";
-  }
-}
-
-// @internal
-export function assert(cond: unknown, msg = "Assertion failed."): asserts cond {
-  if (!cond) {
-    throw new AssertionError(msg);
-  }
-}
-
 export type ResolveFunction<T> = (value?: T | PromiseLike<T>) => void;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type RejectFunction = (reason?: any) => void;

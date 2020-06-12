@@ -18,7 +18,7 @@ import {
 import * as sym from "./symbols.ts";
 import type { WritableStreamImpl } from "./writable_stream.ts";
 import { customInspect } from "../console.ts";
-import { assert } from "../../util.ts";
+import { assert } from "../../assert.ts";
 
 export class WritableStreamDefaultWriterImpl<W>
   implements WritableStreamDefaultWriter<W> {

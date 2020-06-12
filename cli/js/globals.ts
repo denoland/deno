@@ -2,6 +2,7 @@
 
 import "./lib.deno.shared_globals.d.ts";
 
+import * as assert from "./assert.ts";
 import * as abortController from "./web/abort_controller.ts";
 import * as abortSignal from "./web/abort_signal.ts";
 import * as blob from "./web/blob.ts";
@@ -201,6 +202,7 @@ export function getterOnly(getter: () => any): PropertyDescriptor {
 
 // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
 export const windowOrWorkerGlobalScopeMethods = {
+  assert: writable(assert.assert),
   atob: writable(textEncoding.atob),
   btoa: writable(textEncoding.btoa),
   clearInterval: writable(timers.clearInterval),

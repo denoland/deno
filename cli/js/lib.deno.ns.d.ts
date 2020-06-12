@@ -42,6 +42,45 @@ declare namespace Deno {
     Busy: ErrorConstructor;
   };
 
+  /* eslint-disable @typescript-eslint/no-explicit-any */
+  export interface AssertionErrorOptions {
+    /** If provided, the error message is set to this value. */
+    message?: string;
+
+    /** The `actual` property on the error instance. */
+    actual?: any;
+
+    /** The `expected` property on the error instance. */
+    expected?: any;
+
+    /** The `operator` property on the error instance. */
+    operator?: string;
+
+    /** If provided, the generated stack trace omits frames before this
+     * function. */
+    stackStartFn?: Function;
+  }
+
+  /** A class of error that indicates a failure of an assertion.  It includes
+   * properties that make it possible to provide informative diagnostic
+   * information about the failure. */
+  export class AssertionError extends Error {
+    /** Set to the `actual` argument for assertions where there is an actual
+     * and expected arguments. */
+    actual?: any;
+
+    /** Set to the `expected` argument for assertions where there is an actual
+     * and expected arguments. */
+    expected?: any;
+
+    /** Set to the `operator` that was used to compare the actual and expected
+     * results. */
+    operator?: string;
+
+    constructor(options?: AssertionErrorOptions);
+  }
+  /* eslint-enable */
+
   /** The current process id of the runtime. */
   export const pid: number;
 

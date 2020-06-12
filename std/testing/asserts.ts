@@ -12,12 +12,7 @@ interface Constructor {
   new (...args: any[]): any;
 }
 
-export class AssertionError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "AssertionError";
-  }
-}
+export const AssertionError = Deno.AssertionError;
 
 function format(v: unknown): string {
   let string = globalThis.Deno ? Deno.inspect(v) : String(v);
@@ -54,9 +49,11 @@ function buildMessage(diffResult: ReadonlyArray<DiffResult<string>>): string[] {
   messages.push("");
   messages.push("");
   messages.push(
-    `    ${gray(bold("[Diff]"))} ${red(bold("Actual"))} / ${green(
-      bold("Expected")
-    )}`
+    `    ${gray(bold("[Diff]"))} ${red(bold("Actual"))} / ${
+      green(
+        bold("Expected"),
+      )
+    }`,
   );
   messages.push("");
   messages.push("");
@@ -135,12 +132,12 @@ export function equal(c: unknown, d: unknown): boolean {
   })(c, d);
 }
 
-/** Make an assertion, error will be thrown if `expr` does not have truthy value. */
-export function assert(expr: unknown, msg = ""): asserts expr {
-  if (!expr) {
-    throw new AssertionError(msg);
-  }
-}
+/** Make an assertion, error will be thrown if `conditions` does not have truthy
+ * value. */
+export const assert: (
+  condition: unknown,
+  message?: string | undefined,
+) => asserts condition = globalThis.assert;
 
 /**
  * Make an assertion that `actual` and `expected` are equal, deeply. If not
@@ -155,13 +152,13 @@ export function assert(expr: unknown, msg = ""): asserts expr {
 export function assertEquals(
   actual: unknown,
   expected: unknown,
-  msg?: string
+  msg?: string,
 ): void;
 export function assertEquals<T>(actual: T, expected: T, msg?: string): void;
 export function assertEquals(
   actual: unknown,
   expected: unknown,
-  msg?: string
+  msg?: string,
 ): void {
   if (equal(actual, expected)) {
     return;
@@ -172,7 +169,7 @@ export function assertEquals(
   try {
     const diffResult = diff(
       actualString.split("\n"),
-      expectedString.split("\n")
+      expectedString.split("\n"),
     );
     const diffMsg = buildMessage(diffResult).join("\n");
     message = `Values are not equal:\n${diffMsg}`;
@@ -182,7 +179,13 @@ export function assertEquals(
   if (msg) {
     message = msg;
   }
-  throw new AssertionError(message);
+  throw new AssertionError({
+    message,
+    actual,
+    expected,
+    operator: "equals",
+    stackStartFn: assertEquals,
+  });
 }
 
 /**
@@ -198,13 +201,13 @@ export function assertEquals(
 export function assertNotEquals(
   actual: unknown,
   expected: unknown,
-  msg?: string
+  message?: string,
 ): void;
 export function assertNotEquals<T>(actual: T, expected: T, msg?: string): void;
 export function assertNotEquals(
   actual: unknown,
   expected: unknown,
-  msg?: string
+  message?: string,
 ): void {
   if (!equal(actual, expected)) {
     return;
@@ -221,10 +224,16 @@ export function assertNotEquals(
   } catch (e) {
     expectedString = "[Cannot display]";
   }
-  if (!msg) {
-    msg = `actual: ${actualString} expected: ${expectedString}`;
+  if (!message) {
+    message = `actual: ${actualString} expected: ${expectedString}`;
   }
-  throw new AssertionError(msg);
+  throw new AssertionError({
+    message,
+    actual,
+    expected,
+    operator: "notEquals",
+    stackStartFn: assertNotEquals,
+  });
 }
 
 /**
@@ -237,7 +246,7 @@ export function assertNotEquals(
 export function assertStrictEquals<T>(
   actual: T,
   expected: T,
-  msg?: string
+  msg?: string,
 ): void {
   if (actual === expected) {
     return;
@@ -256,14 +265,17 @@ export function assertStrictEquals<T>(
         .split("\n")
         .map((l) => `     ${l}`)
         .join("\n");
-      message = `Values have the same structure but are not reference-equal:\n\n${red(
-        withOffset
-      )}\n`;
+      message =
+        `Values have the same structure but are not reference-equal:\n\n${
+          red(
+            withOffset,
+          )
+        }\n`;
     } else {
       try {
         const diffResult = diff(
           actualString.split("\n"),
-          expectedString.split("\n")
+          expectedString.split("\n"),
         );
         const diffMsg = buildMessage(diffResult).join("\n");
         message = `Values are not strictly equal:\n${diffMsg}`;
@@ -273,7 +285,13 @@ export function assertStrictEquals<T>(
     }
   }
 
-  throw new AssertionError(message);
+  throw new AssertionError({
+    message,
+    actual,
+    expected,
+    operator: "strictEquals",
+    stackStartFn: assertStrictEquals,
+  });
 }
 
 /**
@@ -283,13 +301,19 @@ export function assertStrictEquals<T>(
 export function assertStringContains(
   actual: string,
   expected: string,
-  msg?: string
+  message?: string,
 ): void {
   if (!actual.includes(expected)) {
-    if (!msg) {
-      msg = `actual: "${actual}" expected to contain: "${expected}"`;
+    if (!message) {
+      message = `actual: "${actual}" expected to contain: "${expected}"`;
     }
-    throw new AssertionError(msg);
+    throw new AssertionError({
+      message,
+      actual,
+      expected,
+      operator: "stringContains",
+      stackStartFn: assertStringContains,
+    });
   }
 }
 
@@ -306,17 +330,17 @@ export function assertStringContains(
 export function assertArrayContains(
   actual: ArrayLike<unknown>,
   expected: ArrayLike<unknown>,
-  msg?: string
+  message?: string,
 ): void;
 export function assertArrayContains<T>(
   actual: ArrayLike<T>,
   expected: ArrayLike<T>,
-  msg?: string
+  message?: string,
 ): void;
 export function assertArrayContains(
   actual: ArrayLike<unknown>,
   expected: ArrayLike<unknown>,
-  msg?: string
+  message?: string,
 ): void {
   const missing: unknown[] = [];
   for (let i = 0; i < expected.length; i++) {
@@ -334,12 +358,20 @@ export function assertArrayContains(
   if (missing.length === 0) {
     return;
   }
-  if (!msg) {
-    msg = `actual: "${format(actual)}" expected to contain: "${format(
-      expected
-    )}"\nmissing: ${format(missing)}`;
+  if (!message) {
+    message = `actual: "${format(actual)}" expected to contain: "${
+      format(
+        expected,
+      )
+    }"\nmissing: ${format(missing)}`;
   }
-  throw new AssertionError(msg);
+  throw new AssertionError({
+    message,
+    actual,
+    expected,
+    operator: "arrayContains",
+    stackStartFn: assertArrayContains,
+  });
 }
 
 /**
@@ -349,13 +381,19 @@ export function assertArrayContains(
 export function assertMatch(
   actual: string,
   expected: RegExp,
-  msg?: string
+  message?: string,
 ): void {
   if (!expected.test(actual)) {
-    if (!msg) {
-      msg = `actual: "${actual}" expected to match: "${expected}"`;
+    if (!message) {
+      message = `actual: "${actual}" expected to match: "${expected}"`;
     }
-    throw new AssertionError(msg);
+    throw new AssertionError({
+      message,
+      actual,
+      expected,
+      operator: "match",
+      stackStartFn: assertMatch,
+    });
   }
 }
 
@@ -376,7 +414,7 @@ export function assertThrows<T = void>(
   fn: () => T,
   ErrorClass?: Constructor,
   msgIncludes = "",
-  msg?: string
+  message?: string,
 ): Error {
   let doesThrow = false;
   let error = null;
@@ -387,26 +425,40 @@ export function assertThrows<T = void>(
       throw new AssertionError("A non-Error object was thrown.");
     }
     if (ErrorClass && !(Object.getPrototypeOf(e) === ErrorClass.prototype)) {
-      msg = `Expected error to be instance of "${ErrorClass.name}", but was "${
-        e.constructor.name
-      }"${msg ? `: ${msg}` : "."}`;
-      throw new AssertionError(msg);
+      message =
+        `Expected error to be instance of "${ErrorClass.name}", but was "${e.constructor.name}"${
+          message ? `: ${message}` : "."
+        }`;
+      throw new AssertionError({
+        message,
+        operator: "throws",
+        stackStartFn: assertThrows,
+      });
     }
     if (
       msgIncludes &&
       !stripColor(e.message).includes(stripColor(msgIncludes))
     ) {
-      msg = `Expected error message to include "${msgIncludes}", but got "${
-        e.message
-      }"${msg ? `: ${msg}` : "."}`;
-      throw new AssertionError(msg);
+      message =
+        `Expected error message to include "${msgIncludes}", but got "${e.message}"${
+          message ? `: ${message}` : "."
+        }`;
+      throw new AssertionError({
+        message,
+        operator: "throws",
+        stackStartFn: assertThrows,
+      });
     }
     doesThrow = true;
     error = e;
   }
   if (!doesThrow) {
-    msg = `Expected function to throw${msg ? `: ${msg}` : "."}`;
-    throw new AssertionError(msg);
+    message = `Expected function to throw${message ? `: ${message}` : "."}`;
+    throw new AssertionError({
+      message,
+      operator: "throws",
+      stackStartFn: assertThrows,
+    });
   }
   return error;
 }
@@ -420,7 +472,7 @@ export async function assertThrowsAsync<T = void>(
   fn: () => Promise<T>,
   ErrorClass?: Constructor,
   msgIncludes = "",
-  msg?: string
+  message?: string,
 ): Promise<Error> {
   let doesThrow = false;
   let error = null;
@@ -431,36 +483,50 @@ export async function assertThrowsAsync<T = void>(
       throw new AssertionError("A non-Error object was thrown or rejected.");
     }
     if (ErrorClass && !(Object.getPrototypeOf(e) === ErrorClass.prototype)) {
-      msg = `Expected error to be instance of "${ErrorClass.name}", but got "${
-        e.name
-      }"${msg ? `: ${msg}` : "."}`;
-      throw new AssertionError(msg);
+      message =
+        `Expected error to be instance of "${ErrorClass.name}", but got "${e.name}"${
+          message ? `: ${message}` : "."
+        }`;
+      throw new AssertionError({
+        message,
+        operator: "throws",
+        stackStartFn: assertThrowsAsync,
+      });
     }
     if (
       msgIncludes &&
       !stripColor(e.message).includes(stripColor(msgIncludes))
     ) {
-      msg = `Expected error message to include "${msgIncludes}", but got "${
-        e.message
-      }"${msg ? `: ${msg}` : "."}`;
-      throw new AssertionError(msg);
+      message =
+        `Expected error message to include "${msgIncludes}", but got "${e.message}"${
+          message ? `: ${message}` : "."
+        }`;
+      throw new AssertionError({
+        message,
+        operator: "throws",
+        stackStartFn: assertThrowsAsync,
+      });
     }
     doesThrow = true;
     error = e;
   }
   if (!doesThrow) {
-    msg = `Expected function to throw${msg ? `: ${msg}` : "."}`;
-    throw new AssertionError(msg);
+    message = `Expected function to throw${message ? `: ${message}` : "."}`;
+    throw new AssertionError({
+      message,
+      operator: "throws",
+      stackStartFn: assertThrowsAsync,
+    });
   }
   return error;
 }
 
 /** Use this to stub out methods that will throw when invoked. */
-export function unimplemented(msg?: string): never {
-  throw new AssertionError(msg || "unimplemented");
+export function unimplemented(message = "unimplemented"): never {
+  throw new AssertionError({ message });
 }
 
 /** Use this to assert unreachable code. */
 export function unreachable(): never {
-  throw new AssertionError("unreachable");
+  throw new AssertionError({ message: "unreachable" });
 }

@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+import { assert } from "../assert.ts";
 import { sendSync, sendAsync } from "./dispatch_json.ts";
-import { assert } from "../util.ts";
 
 export function kill(pid: number, signo: number): void {
   sendSync("op_kill", { pid, signo });

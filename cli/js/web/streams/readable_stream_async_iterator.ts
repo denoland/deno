@@ -9,7 +9,7 @@ import {
   readableStreamReaderGenericRelease,
   readableStreamDefaultReaderRead,
 } from "./internals.ts";
-import { assert } from "../../util.ts";
+import { assert } from "../../assert.ts";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const AsyncIteratorPrototype: AsyncIterableIterator<any> = Object.getPrototypeOf(

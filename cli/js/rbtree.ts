@@ -2,7 +2,7 @@
 
 // Derived from https://github.com/vadimg/js_bintrees. MIT Licensed.
 
-import { assert } from "./util.ts";
+import { assert } from "./assert.ts";
 
 class RBNode<T> {
   public left: this | null;
