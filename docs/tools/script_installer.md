@@ -6,7 +6,7 @@ Deno provides `deno install` to easily install and distribute executable code.
 available at `URL` under the name `EXE_NAME`.
 
 This command creates a thin, executable shell script which invokes `deno` using
-the specified CLI flags and main module. It is place in the installation root's
+the specified CLI flags and main module. It is placed in the installation root's
 `bin` directory.
 
 Example:
@@ -55,11 +55,11 @@ You must specify permissions that will be used to run the script at installation
 time.
 
 ```shell
-deno install --allow-net --allow-read https://deno.land/std/http/file_server.ts 8080
+deno install --allow-net --allow-read https://deno.land/std/http/file_server.ts -p 8080
 ```
 
 The above command creates an executable called `file_server` that runs with
-write and read permissions and binds to port 8080.
+network and read permissions and binds to port 8080.
 
 For good practice, use the [`import.meta.main`](../examples/testing_if_main.md)
 idiom to specify the entry point in an executable script.
