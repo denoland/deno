@@ -1051,7 +1051,7 @@ Grant all permissions:
 Grant permission to read from disk and listen to network:
   deno run --allow-read --allow-net https://deno.land/std/http/file_server.ts
 
-Grant permission to read allowlisted files from disk:
+Grant permission to read allow-listed files from disk:
   deno run --allow-read=/etc https://deno.land/std/http/file_server.ts
   
 Deno allows specifying the filename '-' to read the file from stdin.

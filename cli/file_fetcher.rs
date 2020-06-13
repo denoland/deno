@@ -426,10 +426,10 @@ impl SourceFileFetcher {
       return futures::future::err(e.into()).boxed_local();
     }
 
-    let is_blocklisted =
+    let is_blocked =
       check_cache_blocklist(module_url, self.cache_blocklist.as_ref());
     // First try local cache
-    if use_disk_cache && !is_blocklisted {
+    if use_disk_cache && !is_blocked {
       match self.fetch_cached_remote_source(&module_url) {
         Ok(Some(source_file)) => {
           return futures::future::ok(source_file).boxed_local();
