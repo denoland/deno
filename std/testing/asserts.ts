@@ -82,7 +82,8 @@ export function equal(c: unknown, d: unknown): boolean {
       a &&
       b &&
       ((a instanceof RegExp && b instanceof RegExp) ||
-        (a instanceof Date && b instanceof Date))
+        (a instanceof Date && b instanceof Date) ||
+        (a instanceof URL && b instanceof URL))
     ) {
       return String(a) === String(b);
     }
