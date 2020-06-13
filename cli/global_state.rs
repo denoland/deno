@@ -61,7 +61,7 @@ impl GlobalState {
     let file_fetcher = SourceFileFetcher::new(
       http_cache,
       !flags.reload,
-      flags.cache_blacklist.clone(),
+      flags.cache_blocklist.clone(),
       flags.no_remote,
       flags.cached_only,
       flags.ca_file.clone(),

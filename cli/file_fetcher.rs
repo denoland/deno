@@ -64,7 +64,7 @@ const SUPPORTED_URL_SCHEMES: [&str; 3] = ["http", "https", "file"];
 #[derive(Clone)]
 pub struct SourceFileFetcher {
   source_file_cache: SourceFileCache,
-  cache_blacklist: Vec<String>,
+  cache_blocklist: Vec<String>,
   use_disk_cache: bool,
   no_remote: bool,
   cached_only: bool,
@@ -77,7 +77,7 @@ impl SourceFileFetcher {
   pub fn new(
     http_cache: HttpCache,
     use_disk_cache: bool,
-    cache_blacklist: Vec<String>,
+    cache_blocklist: Vec<String>,
     no_remote: bool,
     cached_only: bool,
     ca_file: Option<String>,
@@ -85,7 +85,7 @@ impl SourceFileFetcher {
     let file_fetcher = Self {
       http_cache,
       source_file_cache: SourceFileCache::default(),
-      cache_blacklist,
+      cache_blocklist,
       use_disk_cache,
       no_remote,
       cached_only,
@@ -426,10 +426,10 @@ impl SourceFileFetcher {
       return futures::future::err(e.into()).boxed_local();
     }
 
-    let is_blacklisted =
-      check_cache_blacklist(module_url, self.cache_blacklist.as_ref());
+    let is_blocked =
+      check_cache_blocklist(module_url, self.cache_blocklist.as_ref());
     // First try local cache
-    if use_disk_cache && !is_blacklisted {
+    if use_disk_cache && !is_blocked {
       match self.fetch_cached_remote_source(&module_url) {
         Ok(Some(source_file)) => {
           return futures::future::ok(source_file).boxed_local();
@@ -655,7 +655,7 @@ fn filter_shebang(bytes: Vec<u8>) -> Vec<u8> {
   }
 }
 
-fn check_cache_blacklist(url: &Url, black_list: &[String]) -> bool {
+fn check_cache_blocklist(url: &Url, black_list: &[String]) -> bool {
   let mut url_without_fragmets = url.clone();
   url_without_fragmets.set_fragment(None);
   if black_list.contains(&String::from(url_without_fragmets.as_str())) {
@@ -725,7 +725,7 @@ mod tests {
   }
 
   #[test]
-  fn test_cache_blacklist() {
+  fn test_cache_blocklist() {
     let args = crate::flags::resolve_urls(vec![
       String::from("http://deno.land/std"),
       String::from("http://github.com/example/mod.ts"),
@@ -735,52 +735,52 @@ mod tests {
     ]);
 
     let u: Url = "http://deno.land/std/fs/mod.ts".parse().unwrap();
-    assert_eq!(check_cache_blacklist(&u, &args), true);
+    assert_eq!(check_cache_blocklist(&u, &args), true);
 
     let u: Url = "http://github.com/example/file.ts".parse().unwrap();
-    assert_eq!(check_cache_blacklist(&u, &args), false);
+    assert_eq!(check_cache_blocklist(&u, &args), false);
 
     let u: Url = "http://github.com/example/mod.ts".parse().unwrap();
-    assert_eq!(check_cache_blacklist(&u, &args), true);
+    assert_eq!(check_cache_blocklist(&u, &args), true);
 
     let u: Url = "http://github.com/example/mod.ts?foo=bar".parse().unwrap();
-    assert_eq!(check_cache_blacklist(&u, &args), true);
+    assert_eq!(check_cache_blocklist(&u, &args), true);
 
     let u: Url = "http://github.com/example/mod.ts#fragment".parse().unwrap();
-    assert_eq!(check_cache_blacklist(&u, &args), true);
+    assert_eq!(check_cache_blocklist(&u, &args), true);
 
     let u: Url = "http://fragment.com/mod.ts".parse().unwrap();
-    assert_eq!(check_cache_blacklist(&u, &args), true);
+    assert_eq!(check_cache_blocklist(&u, &args), true);
 
     let u: Url = "http://query.com/mod.ts".parse().unwrap();
-    assert_eq!(check_cache_blacklist(&u, &args), false);
+    assert_eq!(check_cache_blocklist(&u, &args), false);
 
     let u: Url = "http://fragment.com/mod.ts#fragment".parse().unwrap();
-    assert_eq!(check_cache_blacklist(&u, &args), true);
+    assert_eq!(check_cache_blocklist(&u, &args), true);
 
     let u: Url = "http://query.com/mod.ts?foo=bar".parse().unwrap();
-    assert_eq!(check_cache_blacklist(&u, &args), true);
+    assert_eq!(check_cache_blocklist(&u, &args), true);
 
     let u: Url = "http://queryandfragment.com/mod.ts".parse().unwrap();
-    assert_eq!(check_cache_blacklist(&u, &args), false);
+    assert_eq!(check_cache_blocklist(&u, &args), false);
 
     let u: Url = "http://queryandfragment.com/mod.ts?foo=bar"
       .parse()
       .unwrap();
-    assert_eq!(check_cache_blacklist(&u, &args), true);
+    assert_eq!(check_cache_blocklist(&u, &args), true);
 
     let u: Url = "http://queryandfragment.com/mod.ts#fragment"
       .parse()
       .unwrap();
-    assert_eq!(check_cache_blacklist(&u, &args), false);
+    assert_eq!(check_cache_blocklist(&u, &args), false);
 
     let u: Url = "http://query.com/mod.ts?foo=bar#fragment".parse().unwrap();
-    assert_eq!(check_cache_blacklist(&u, &args), true);
+    assert_eq!(check_cache_blocklist(&u, &args), true);
 
     let u: Url = "http://fragment.com/mod.ts?foo=bar#fragment"
       .parse()
       .unwrap();
-    assert_eq!(check_cache_blacklist(&u, &args), true);
+    assert_eq!(check_cache_blocklist(&u, &args), true);
   }
 
   #[test]
