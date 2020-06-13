@@ -73,7 +73,7 @@ export function receive(
   transport: string,
   zeroCopy: Uint8Array
 ): Promise<ReceiveResponse> {
-  return sendAsync("op_receive", { rid, transport }, zeroCopy);
+  return sendAsync("op_datagram_receive", { rid, transport }, zeroCopy);
 }
 
 export type SendRequest = {
@@ -83,6 +83,7 @@ export type SendRequest = {
 export async function send(
   args: SendRequest,
   zeroCopy: Uint8Array
-): Promise<void> {
-  await sendAsync("op_send", args, zeroCopy);
+): Promise<number> {
+  const byteLength = await sendAsync("op_datagram_send", args, zeroCopy);
+  return byteLength;
 }
