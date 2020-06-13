@@ -112,6 +112,15 @@ Deno.test("testingEqual", function (): void {
   assert(!equal([1, 2, 3, 4], [1, 4, 2, 3]));
   assert(equal(new Uint8Array([1, 2, 3, 4]), new Uint8Array([1, 2, 3, 4])));
   assert(!equal(new Uint8Array([1, 2, 3, 4]), new Uint8Array([2, 1, 4, 3])));
+  assert(
+    equal(new URL("https://example.test"), new URL("https://example.test"))
+  );
+  assert(
+    !equal(
+      new URL("https://example.test"),
+      new URL("https://example.test/with-path")
+    )
+  );
 });
 
 Deno.test("testingNotEquals", function (): void {
