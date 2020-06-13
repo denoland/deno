@@ -1,11 +1,13 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 #![cfg(test)]
+use futures_util::future::join;
 use std::path::PathBuf;
 use std::process::Child;
 use std::process::Command;
 use std::process::Stdio;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
+use warp::{http::Uri, Filter};
 
 lazy_static! {
   static ref GUARD: Mutex<()> = Mutex::new(());
@@ -84,4 +86,15 @@ pub fn http_server<'a>() -> HttpServerGuard<'a> {
   }
 
   HttpServerGuard { child, g }
+}
+
+pub async fn redirect_server() {
+  let route1 = warp::any().map(|| "Hello, World!");
+  let server1 = warp::serve(route1).run(([127, 0, 0, 1], 4545));
+
+  let route2 = warp::any()
+    .map(|| warp::redirect(Uri::from_static("http://localhost:4545/")));
+  let server2 = warp::serve(route2).run(([127, 0, 0, 1], 4546));
+
+  let _ret = join(server1, server2).await;
 }

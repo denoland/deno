@@ -450,6 +450,7 @@ dependencies = [
  "dlopen",
  "dprint-plugin-typescript",
  "futures 0.3.5",
+ "futures-util",
  "fwdansi",
  "glob",
  "http",
