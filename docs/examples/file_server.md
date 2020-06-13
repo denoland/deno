@@ -18,5 +18,5 @@ HTTP server listening on http://0.0.0.0:4500/
 And if you ever want to upgrade to the latest published version:
 
 ```shell
-$ file_server --reload
+file_server --reload
 ```

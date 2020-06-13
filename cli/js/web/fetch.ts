@@ -2,15 +2,18 @@
 import { notImplemented } from "../util.ts";
 import { isTypedArray } from "./util.ts";
 import * as domTypes from "./dom_types.d.ts";
-import { TextDecoder, TextEncoder } from "./text_encoding.ts";
+import { TextEncoder } from "./text_encoding.ts";
 import { DenoBlob, bytesSymbol as blobBytesSymbol } from "./blob.ts";
 import { read } from "../ops/io.ts";
 import { close } from "../ops/resources.ts";
 import { fetch as opFetch, FetchResponse } from "../ops/fetch.ts";
 import * as Body from "./body.ts";
-import { DomFileImpl } from "./dom_file.ts";
 import { getHeaderValueParams } from "./util.ts";
 import { ReadableStreamImpl } from "./streams/readable_stream.ts";
+import { MultipartBuilder } from "./fetch/multipart.ts";
+
+const NULL_BODY_STATUS = [101, 204, 205, 304];
+const REDIRECT_STATUS = [301, 302, 303, 307, 308];
 
 const responseData = new WeakMap();
 export class Response extends Body.Body implements domTypes.Response {
@@ -45,7 +48,7 @@ export class Response extends Body.Body implements domTypes.Response {
     }
 
     // null body status
-    if (body && [/* 101, */ 204, 205, 304].includes(status)) {
+    if (body && NULL_BODY_STATUS.includes(status)) {
       throw new TypeError("Response with null body status cannot have body");
     }
 
@@ -112,7 +115,7 @@ export class Response extends Body.Body implements domTypes.Response {
 
     this.url = url;
     this.statusText = statusText;
-    this.status = status;
+    this.status = extraInit.status || status;
     this.headers = headers;
     this.redirected = extraInit.redirected;
     this.type = type;
@@ -184,7 +187,7 @@ function sendFetchReq(
 }
 
 export async function fetch(
-  input: domTypes.Request | URL | string,
+  input: (domTypes.Request & { _bodySource?: unknown }) | URL | string,
   init?: domTypes.RequestInit
 ): Promise<Response> {
   let url: string;
@@ -229,45 +232,14 @@ export async function fetch(
           body = init.body[blobBytesSymbol];
           contentType = init.body.type;
         } else if (init.body instanceof FormData) {
-          let boundary = "";
+          let boundary;
           if (headers.has("content-type")) {
             const params = getHeaderValueParams("content-type");
-            if (params.has("boundary")) {
-              boundary = params.get("boundary")!;
-            }
+            boundary = params.get("boundary")!;
           }
-          if (!boundary) {
-            boundary =
-              "----------" +
-              Array.from(Array(32))
-                .map(() => Math.random().toString(36)[2] || 0)
-                .join("");
-          }
-
-          let payload = "";
-          for (const [fieldName, fieldValue] of init.body.entries()) {
-            let part = `\r\n--${boundary}\r\n`;
-            part += `Content-Disposition: form-data; name=\"${fieldName}\"`;
-            if (fieldValue instanceof DomFileImpl) {
-              part += `; filename=\"${fieldValue.name}\"`;
-            }
-            part += "\r\n";
-            if (fieldValue instanceof DomFileImpl) {
-              part += `Content-Type: ${
-                fieldValue.type || "application/octet-stream"
-              }\r\n`;
-            }
-            part += "\r\n";
-            if (fieldValue instanceof DomFileImpl) {
-              part += new TextDecoder().decode(fieldValue[blobBytesSymbol]);
-            } else {
-              part += fieldValue;
-            }
-            payload += part;
-          }
-          payload += `\r\n--${boundary}--`;
-          body = new TextEncoder().encode(payload);
-          contentType = "multipart/form-data; boundary=" + boundary;
+          const multipartBuilder = new MultipartBuilder(init.body, boundary);
+          body = multipartBuilder.getBody();
+          contentType = multipartBuilder.getContentType();
         } else {
           // TODO: ReadableStream
           notImplemented();
@@ -282,41 +254,51 @@ export async function fetch(
     method = input.method;
     headers = input.headers;
 
-    //@ts-expect-error
     if (input._bodySource) {
       body = new DataView(await input.arrayBuffer());
     }
   }
 
+  let responseBody;
   let responseInit: ResponseInit = {};
   while (remRedirectCount) {
     const fetchResponse = await sendFetchReq(url, method, headers, body);
 
-    const responseBody = new ReadableStreamImpl({
-      async pull(controller: ReadableStreamDefaultController): Promise<void> {
-        try {
-          const b = new Uint8Array(1024 * 32);
-          const result = await read(fetchResponse.bodyRid, b);
-          if (result === null) {
-            controller.close();
-            return close(fetchResponse.bodyRid);
-          }
+    if (
+      NULL_BODY_STATUS.includes(fetchResponse.status) ||
+      REDIRECT_STATUS.includes(fetchResponse.status)
+    ) {
+      // We won't use body of received response, so close it now
+      // otherwise it will be kept in resource table.
+      close(fetchResponse.bodyRid);
+      responseBody = null;
+    } else {
+      responseBody = new ReadableStreamImpl({
+        async pull(controller: ReadableStreamDefaultController): Promise<void> {
+          try {
+            const b = new Uint8Array(1024 * 32);
+            const result = await read(fetchResponse.bodyRid, b);
+            if (result === null) {
+              controller.close();
+              return close(fetchResponse.bodyRid);
+            }
 
-          controller.enqueue(b.subarray(0, result));
-        } catch (e) {
-          controller.error(e);
-          controller.close();
+            controller.enqueue(b.subarray(0, result));
+          } catch (e) {
+            controller.error(e);
+            controller.close();
+            close(fetchResponse.bodyRid);
+          }
+        },
+        cancel(): void {
+          // When reader.cancel() is called
           close(fetchResponse.bodyRid);
-        }
-      },
-      cancel(): void {
-        // When reader.cancel() is called
-        close(fetchResponse.bodyRid);
-      },
-    });
+        },
+      });
+    }
 
     responseInit = {
-      status: fetchResponse.status,
+      status: 200,
       statusText: fetchResponse.statusText,
       headers: fetchResponse.headers,
     };
@@ -324,15 +306,13 @@ export async function fetch(
     responseData.set(responseInit, {
       redirected,
       rid: fetchResponse.bodyRid,
+      status: fetchResponse.status,
       url,
     });
 
     const response = new Response(responseBody, responseInit);
 
-    if ([301, 302, 303, 307, 308].includes(fetchResponse.status)) {
-      // We won't use body of received response, so close it now
-      // otherwise it will be kept in resource table.
-      close(fetchResponse.bodyRid);
+    if (REDIRECT_STATUS.includes(fetchResponse.status)) {
       // We're in a redirect status
       switch ((init && init.redirect) || "follow") {
         case "error":

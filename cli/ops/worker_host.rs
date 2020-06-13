@@ -174,7 +174,7 @@ struct CreateWorkerArgs {
 fn op_create_worker(
   state: &State,
   args: Value,
-  _data: Option<ZeroCopyBuf>,
+  _data: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let args: CreateWorkerArgs = serde_json::from_value(args)?;
 
@@ -193,13 +193,11 @@ fn op_create_worker(
   let mut state = state.borrow_mut();
   let global_state = state.global_state.clone();
   let permissions = state.permissions.clone();
-  let referrer = state.main_module.to_string();
   let worker_id = state.next_worker_id;
   state.next_worker_id += 1;
   drop(state);
 
-  let module_specifier =
-    ModuleSpecifier::resolve_import(&specifier, &referrer)?;
+  let module_specifier = ModuleSpecifier::resolve_url(&specifier)?;
   let worker_name = args_name.unwrap_or_else(|| "".to_string());
 
   let (join_handle, worker_handle) = run_worker_thread(
@@ -230,7 +228,7 @@ struct WorkerArgs {
 fn op_host_terminate_worker(
   state: &State,
   args: Value,
-  _data: Option<ZeroCopyBuf>,
+  _data: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
@@ -296,7 +294,7 @@ fn serialize_worker_event(event: WorkerEvent) -> Value {
 fn op_host_get_message(
   state: &State,
   args: Value,
-  _data: Option<ZeroCopyBuf>,
+  _data: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
@@ -345,11 +343,12 @@ fn op_host_get_message(
 fn op_host_post_message(
   state: &State,
   args: Value,
-  data: Option<ZeroCopyBuf>,
+  data: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
+  assert_eq!(data.len(), 1, "Invalid number of arguments");
   let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
-  let msg = Vec::from(data.unwrap().as_ref()).into_boxed_slice();
+  let msg = Vec::from(&*data[0]).into_boxed_slice();
 
   debug!("post message to worker {}", id);
   let state = state.borrow();

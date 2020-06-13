@@ -9,6 +9,7 @@
 
 import * as denoNs from "./deno.ts";
 import * as denoUnstableNs from "./deno_unstable.ts";
+import { opMainModule } from "./ops/runtime.ts";
 import { exit } from "./ops/os.ts";
 import {
   readOnly,
@@ -30,8 +31,8 @@ import { log, immutableDefine } from "./util.ts";
 // TODO: factor out `Deno` global assignment to separate function
 // Add internal object to Deno object.
 // This is not exposed as part of the Deno types.
-// @ts-expect-error
-denoNs[internalSymbol] = internalObject;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+(denoNs as any)[internalSymbol] = internalObject;
 
 let windowIsClosing = false;
 
@@ -71,8 +72,8 @@ export function bootstrapMainRuntime(): void {
     throw new Error("Worker runtime already bootstrapped");
   }
   // Remove bootstrapping methods from global scope
-  // @ts-expect-error
-  globalThis.bootstrap = undefined;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (globalThis as any).bootstrap = undefined;
   log("bootstrapMainRuntime");
   hasBootstrapped = true;
   Object.defineProperties(globalThis, windowOrWorkerGlobalScopeMethods);
@@ -106,6 +107,7 @@ export function bootstrapMainRuntime(): void {
   if (unstableFlag) {
     Object.defineProperties(globalThis, unstableMethods);
     Object.defineProperties(globalThis, unstableProperties);
+    Object.defineProperty(denoNs, "mainModule", getterOnly(opMainModule));
     Object.assign(denoNs, denoUnstableNs);
   }
 

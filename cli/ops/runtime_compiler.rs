@@ -26,7 +26,7 @@ struct CompileArgs {
 fn op_compile(
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   state.check_unstable("Deno.compile");
   let args: CompileArgs = serde_json::from_value(args)?;
@@ -57,7 +57,7 @@ struct TranspileArgs {
 fn op_transpile(
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   state.check_unstable("Deno.transpile");
   let args: TranspileArgs = serde_json::from_value(args)?;

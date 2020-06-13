@@ -17,18 +17,18 @@ pub fn web_worker_op<D>(
 ) -> impl Fn(
   &mut CoreIsolateState,
   Value,
-  Option<ZeroCopyBuf>,
+  &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError>
 where
   D: Fn(
     &mpsc::Sender<WorkerEvent>,
     Value,
-    Option<ZeroCopyBuf>,
+    &mut [ZeroCopyBuf],
   ) -> Result<JsonOp, OpError>,
 {
   move |_isolate_state: &mut CoreIsolateState,
         args: Value,
-        zero_copy: Option<ZeroCopyBuf>|
+        zero_copy: &mut [ZeroCopyBuf]|
         -> Result<JsonOp, OpError> { dispatcher(&sender, args, zero_copy) }
 }
 
@@ -39,19 +39,19 @@ pub fn web_worker_op2<D>(
 ) -> impl Fn(
   &mut CoreIsolateState,
   Value,
-  Option<ZeroCopyBuf>,
+  &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError>
 where
   D: Fn(
     WebWorkerHandle,
     &mpsc::Sender<WorkerEvent>,
     Value,
-    Option<ZeroCopyBuf>,
+    &mut [ZeroCopyBuf],
   ) -> Result<JsonOp, OpError>,
 {
   move |_isolate_state: &mut CoreIsolateState,
         args: Value,
-        zero_copy: Option<ZeroCopyBuf>|
+        zero_copy: &mut [ZeroCopyBuf]|
         -> Result<JsonOp, OpError> {
     dispatcher(handle.clone(), &sender, args, zero_copy)
   }
@@ -84,9 +84,10 @@ pub fn init(
 fn op_worker_post_message(
   sender: &mpsc::Sender<WorkerEvent>,
   _args: Value,
-  data: Option<ZeroCopyBuf>,
+  data: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
-  let d = Vec::from(data.unwrap().as_ref()).into_boxed_slice();
+  assert_eq!(data.len(), 1, "Invalid number of arguments");
+  let d = Vec::from(&*data[0]).into_boxed_slice();
   let mut sender = sender.clone();
   sender
     .try_send(WorkerEvent::Message(d))
@@ -99,7 +100,7 @@ fn op_worker_close(
   handle: WebWorkerHandle,
   sender: &mpsc::Sender<WorkerEvent>,
   _args: Value,
-  _data: Option<ZeroCopyBuf>,
+  _data: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let mut sender = sender.clone();
   // Notify parent that we're finished

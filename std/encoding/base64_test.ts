@@ -1,6 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-
-const { test } = Deno;
 import { assertEquals } from "../testing/asserts.ts";
 import { encode, decode, decodeString } from "./base64.ts";
 
@@ -21,25 +19,25 @@ const testsetBinary = [
   [new TextEncoder().encode("\x00\x00\x00\x00"), "AAAAAA=="],
 ];
 
-test("[encoding/base64] testBase64EncodeString", () => {
+Deno.test("[encoding/base64] testBase64EncodeString", () => {
   for (const [input, output] of testsetString) {
     assertEquals(encode(input), output);
   }
 });
 
-test("[encoding/base64] testBase64DecodeString", () => {
+Deno.test("[encoding/base64] testBase64DecodeString", () => {
   for (const [input, output] of testsetString) {
     assertEquals(decodeString(output), input);
   }
 });
 
-test("[encoding/base64] testBase64EncodeBinary", () => {
+Deno.test("[encoding/base64] testBase64EncodeBinary", () => {
   for (const [input, output] of testsetBinary) {
     assertEquals(encode(input), output);
   }
 });
 
-test("[encoding/base64] testBase64DecodeBinary", () => {
+Deno.test("[encoding/base64] testBase64DecodeBinary", () => {
   for (const [input, output] of testsetBinary) {
     const outputBinary = new Uint8Array(decode(output as string));
     assertEquals(outputBinary, input as Uint8Array);

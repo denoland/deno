@@ -7,6 +7,7 @@ import {
   CallbackWithError,
   isFileOptions,
   getEncoding,
+  checkEncoding,
   getOpenOptions,
 } from "./_fs_common.ts";
 
@@ -35,7 +36,7 @@ export function writeFile(
     ? options.mode
     : undefined;
 
-  const encoding = getEncoding(options) || "utf8";
+  const encoding = checkEncoding(getEncoding(options)) || "utf8";
   const openOptions = getOpenOptions(flag || "w");
 
   if (typeof data === "string" && encoding === "utf8")
@@ -82,7 +83,7 @@ export function writeFileSync(
     ? options.mode
     : undefined;
 
-  const encoding = getEncoding(options) || "utf8";
+  const encoding = checkEncoding(getEncoding(options)) || "utf8";
   const openOptions = getOpenOptions(flag || "w");
 
   if (typeof data === "string" && encoding === "utf8")

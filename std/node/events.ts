@@ -22,7 +22,7 @@
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 import { validateIntegerRange } from "./util.ts";
-import { assert } from "../testing/asserts.ts";
+import { assert } from "../_util/assert.ts";
 
 export interface WrappedFunction extends Function {
   listener: Function;
@@ -226,7 +226,8 @@ export default class EventEmitter {
         rawListener: Function;
         context: EventEmitter;
       },
-      ...args: any[] // eslint-disable-line @typescript-eslint/no-explicit-any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ...args: any[]
     ): void {
       this.context.removeListener(this.eventName, this.rawListener);
       this.listener.apply(this.context, args);
@@ -279,13 +280,15 @@ export default class EventEmitter {
       return this;
     }
 
-    if (eventName && this._events.has(eventName)) {
-      const listeners = (this._events.get(eventName) as Array<
-        Function | WrappedFunction
-      >).slice(); // Create a copy; We use it AFTER it's deleted.
-      this._events.delete(eventName);
-      for (const listener of listeners) {
-        this.emit("removeListener", eventName, listener);
+    if (eventName) {
+      if (this._events.has(eventName)) {
+        const listeners = (this._events.get(eventName) as Array<
+          Function | WrappedFunction
+        >).slice(); // Create a copy; We use it AFTER it's deleted.
+        this._events.delete(eventName);
+        for (const listener of listeners) {
+          this.emit("removeListener", eventName, listener);
+        }
       }
     } else {
       const eventList: [string | symbol] = this.eventNames();
@@ -432,7 +435,6 @@ export function on(
   const unconsumedEventValues: any[] = [];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const unconsumedPromises: any[] = [];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let error: Error | null = null;
   let finished = false;
 

@@ -27,7 +27,7 @@ fn op_repl_start(
   isolate_state: &mut CoreIsolateState,
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let args: ReplStartArgs = serde_json::from_value(args)?;
   debug!("op_repl_start {}", args.history_file);
@@ -50,7 +50,7 @@ fn op_repl_readline(
   isolate_state: &mut CoreIsolateState,
   _state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let args: ReplReadlineArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;

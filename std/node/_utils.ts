@@ -16,10 +16,10 @@ export type MaybeDefined<T> = T | undefined;
 export type MaybeEmpty<T> = T | null | undefined;
 
 export function intoCallbackAPI<T>(
-  /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   func: (...args: any[]) => Promise<T>,
   cb: MaybeEmpty<(err: MaybeNull<Error>, value: MaybeEmpty<T>) => void>,
-  /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ...args: any[]
 ): void {
   func(...args)
@@ -28,11 +28,11 @@ export function intoCallbackAPI<T>(
 }
 
 export function intoCallbackAPIWithIntercept<T1, T2>(
-  /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   func: (...args: any[]) => Promise<T1>,
   interceptor: (v: T1) => T2,
   cb: MaybeEmpty<(err: MaybeNull<Error>, value: MaybeEmpty<T2>) => void>,
-  /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ...args: any[]
 ): void {
   func(...args)

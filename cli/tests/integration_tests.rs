@@ -8,7 +8,7 @@ extern crate pty;
 extern crate tempfile;
 
 use futures::prelude::*;
-use std::io::BufRead;
+use std::io::{BufRead, Write};
 use std::process::Command;
 use tempfile::TempDir;
 
@@ -24,6 +24,19 @@ fn std_tests() {
     .arg("--seed=86") // Some tests rely on specific random numbers.
     .arg("-A")
     // .arg("-Ldebug")
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(status.success());
+}
+
+#[test]
+fn std_lint() {
+  let status = util::deno_cmd()
+    .arg("lint")
+    .arg("--unstable")
+    .arg(util::root_path().join("std"))
     .spawn()
     .unwrap()
     .wait()
@@ -51,6 +64,67 @@ fn x_deno_warning() {
   assert_eq!("testing x-deno-warning header", stdout_str);
   assert!(util::strip_ansi_codes(stderr_str).contains("Warning foobar"));
   drop(g);
+}
+
+#[test]
+fn eval_p() {
+  let output = util::deno_cmd()
+    .arg("eval")
+    .arg("-p")
+    .arg("1+2")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  let stdout_str =
+    util::strip_ansi_codes(std::str::from_utf8(&output.stdout).unwrap().trim());
+  assert_eq!("3", stdout_str);
+}
+
+#[test]
+
+fn run_from_stdin() {
+  let mut deno = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("-")
+    .stdout(std::process::Stdio::piped())
+    .stdin(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  deno
+    .stdin
+    .as_mut()
+    .unwrap()
+    .write_all(b"console.log(\"Hello World\");")
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  assert!(output.status.success());
+
+  let deno_out = std::str::from_utf8(&output.stdout).unwrap().trim();
+  assert_eq!("Hello World", deno_out);
+
+  let mut deno = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("-")
+    .stdout(std::process::Stdio::piped())
+    .stdin(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  deno
+    .stdin
+    .as_mut()
+    .unwrap()
+    .write_all(b"console.log(\"Bye cached code\");")
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  assert!(output.status.success());
+
+  let deno_out = std::str::from_utf8(&output.stdout).unwrap().trim();
+  assert_eq!("Bye cached code", deno_out);
 }
 
 #[test]
@@ -135,8 +209,66 @@ pub fn test_raw_tty() {
 
 #[test]
 fn test_pattern_match() {
-  assert!(util::pattern_match("foo[BAR]baz", "foobarbaz", "[BAR]"));
-  assert!(!util::pattern_match("foo[BAR]baz", "foobazbar", "[BAR]"));
+  // foo, bar, baz, qux, quux, quuz, corge, grault, garply, waldo, fred, plugh, xyzzy
+
+  let wildcard = "[BAR]";
+  assert!(util::pattern_match("foo[BAR]baz", "foobarbaz", wildcard));
+  assert!(!util::pattern_match("foo[BAR]baz", "foobazbar", wildcard));
+
+  let multiline_pattern = "[BAR]
+foo:
+[BAR]baz[BAR]";
+
+  fn multi_line_builder(input: &str, leading_text: Option<&str>) -> String {
+    // If there is leading text add a newline so it's on it's own line
+    let head = match leading_text {
+      Some(v) => format!("{}\n", v),
+      None => "".to_string(),
+    };
+    format!(
+      "{}foo:
+quuz {} corge
+grault",
+      head, input
+    )
+  }
+
+  // Validate multi-line string builder
+  assert_eq!(
+    "QUUX=qux
+foo:
+quuz BAZ corge
+grault",
+    multi_line_builder("BAZ", Some("QUUX=qux"))
+  );
+
+  // Correct input & leading line
+  assert!(util::pattern_match(
+    multiline_pattern,
+    &multi_line_builder("baz", Some("QUX=quux")),
+    wildcard
+  ));
+
+  // Correct input & no leading line
+  assert!(util::pattern_match(
+    multiline_pattern,
+    &multi_line_builder("baz", None),
+    wildcard
+  ));
+
+  // Incorrect input & leading line
+  assert!(!util::pattern_match(
+    multiline_pattern,
+    &multi_line_builder("garply", Some("QUX=quux")),
+    wildcard
+  ));
+
+  // Incorrect input & no leading line
+  assert!(!util::pattern_match(
+    multiline_pattern,
+    &multi_line_builder("garply", None),
+    wildcard
+  ));
 }
 
 #[test]
@@ -425,7 +557,7 @@ fn ts_dependency_recompilation() {
     function print(str: string): void {
         console.log(str);
     }
-    
+
     print(foo);",
   )
   .unwrap();
@@ -742,6 +874,18 @@ fn repl_test_console_log() {
     false,
   );
   assert!(out.ends_with("hello\nundefined\nworld\n"));
+  assert!(err.is_empty());
+}
+
+#[test]
+fn repl_cwd() {
+  let (_out, err) = util::run_and_collect_output(
+    true,
+    "repl",
+    Some(vec!["Deno.cwd()"]),
+    Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+    false,
+  );
   assert!(err.is_empty());
 }
 
@@ -1128,16 +1272,22 @@ itest!(_026_redirect_javascript {
   http_server: true,
 });
 
+itest!(deno_test {
+  args: "test test_runner_test.ts",
+  exit_code: 1,
+  output: "deno_test.out",
+});
+
 itest!(deno_test_fail_fast {
   args: "test --failfast test_runner_test.ts",
   exit_code: 1,
   output: "deno_test_fail_fast.out",
 });
 
-itest!(deno_test {
-  args: "test test_runner_test.ts",
+itest!(deno_test_only {
+  args: "test deno_test_only.ts",
   exit_code: 1,
-  output: "deno_test.out",
+  output: "deno_test_only.ts.out",
 });
 
 #[test]
@@ -1330,6 +1480,11 @@ itest!(_059_fs_relative_path_perm {
   args: "run 059_fs_relative_path_perm.ts",
   output: "059_fs_relative_path_perm.ts.out",
   exit_code: 1,
+});
+
+itest!(_060_deno_doc_displays_all_overloads_in_details_view {
+  args: "doc 060_deno_doc_displays_all_overloads_in_details_view.ts NS.test",
+  output: "060_deno_doc_displays_all_overloads_in_details_view.ts.out",
 });
 
 itest!(js_import_detect {
@@ -1616,6 +1771,11 @@ itest!(import_meta {
   output: "import_meta.ts.out",
 });
 
+itest!(main_module {
+  args: "run --quiet --unstable --allow-read --reload main_module.ts",
+  output: "main_module.ts.out",
+});
+
 itest!(lib_ref {
   args: "run --quiet --unstable --reload lib_ref.ts",
   output: "lib_ref.ts.out",
@@ -1635,6 +1795,12 @@ itest!(seed_random {
 itest!(type_definitions {
   args: "run --reload type_definitions.ts",
   output: "type_definitions.ts.out",
+});
+
+itest!(type_definitions_for_export {
+  args: "run --reload type_definitions_for_export.ts",
+  output: "type_definitions_for_export.ts.out",
+  exit_code: 1,
 });
 
 itest!(type_directives_01 {
@@ -1723,6 +1889,12 @@ itest!(wasm {
 itest!(wasm_async {
   args: "run wasm_async.js",
   output: "wasm_async.out",
+});
+
+itest!(wasm_unreachable {
+  args: "run wasm_unreachable.js",
+  output: "wasm_unreachable.out",
+  exit_code: 1,
 });
 
 itest!(top_level_await {
@@ -1837,9 +2009,32 @@ itest!(cjs_imports {
   output: "cjs_imports.ts.out",
 });
 
+itest!(ts_import_from_js {
+  args: "run --quiet --reload ts_import_from_js.js",
+  output: "ts_import_from_js.js.out",
+  http_server: true,
+});
+
+itest!(single_compile_with_reload {
+  args: "run --reload --allow-read single_compile_with_reload.ts",
+  output: "single_compile_with_reload.ts.out",
+});
+
 itest!(proto_exploit {
   args: "run proto_exploit.js",
   output: "proto_exploit.js.out",
+});
+
+itest!(deno_lint {
+  args: "lint --unstable lint/file1.js lint/file2.ts lint/ignored_file.ts",
+  output: "lint/expected.out",
+  exit_code: 1,
+});
+
+itest!(deno_lint_glob {
+  args: "lint --unstable lint/",
+  output: "lint/expected_glob.out",
+  exit_code: 1,
 });
 
 #[test]
@@ -2770,7 +2965,7 @@ mod util {
   pub const PERMISSION_DENIED_PATTERN: &str = "PermissionDenied";
 
   lazy_static! {
-    static ref DENO_DIR: TempDir = { TempDir::new().expect("tempdir fail") };
+    static ref DENO_DIR: TempDir = TempDir::new().expect("tempdir fail");
 
     // STRIP_ANSI_RE and strip_ansi_codes are lifted from the "console" crate.
     // Copyright 2017 Armin Ronacher <armin.ronacher@active-4.com>. MIT License.
@@ -2962,6 +3157,8 @@ mod util {
       let (mut reader, writer) = pipe().unwrap();
       let tests_dir = root.join("cli").join("tests");
       let mut command = deno_cmd();
+      println!("deno_exe args {}", self.args);
+      println!("deno_exe tests path {:?}", &tests_dir);
       command.args(args);
       command.current_dir(&tests_dir);
       command.stdin(Stdio::piped());
@@ -3022,7 +3219,7 @@ mod util {
 
   pub fn pattern_match(pattern: &str, s: &str, wildcard: &str) -> bool {
     // Normalize line endings
-    let s = s.replace("\r\n", "\n");
+    let mut s = s.replace("\r\n", "\n");
     let pattern = pattern.replace("\r\n", "\n");
 
     if pattern == wildcard {
@@ -3036,6 +3233,13 @@ mod util {
 
     if !s.starts_with(parts[0]) {
       return false;
+    }
+
+    // If the first line of the pattern is just a wildcard the newline character
+    // needs to be pre-pended so it can safely match anything or nothing and
+    // continue matching.
+    if pattern.lines().next() == Some(wildcard) {
+      s.insert_str(0, "\n");
     }
 
     let mut t = s.split_at(parts[0].len());

@@ -21,6 +21,7 @@
 
 import "./global.ts";
 
+import * as nodeBuffer from "./buffer.ts";
 import * as nodeFS from "./fs.ts";
 import * as nodeUtil from "./util.ts";
 import * as nodePath from "./path.ts";
@@ -30,7 +31,7 @@ import * as nodeEvents from "./events.ts";
 import * as nodeQueryString from "./querystring.ts";
 
 import * as path from "../path/mod.ts";
-import { assert } from "../testing/asserts.ts";
+import { assert } from "../_util/assert.ts";
 import { pathToFileURL, fileURLToPath } from "./url.ts";
 
 const CHAR_FORWARD_SLASH = "/".charCodeAt(0);
@@ -262,10 +263,11 @@ class Module {
       if (requireStack.length > 0) {
         message = message + "\nRequire stack:\n- " + requireStack.join("\n- ");
       }
-      const err = new Error(message);
-      // @ts-expect-error
+      const err = new Error(message) as Error & {
+        code: string;
+        requireStack: string[];
+      };
       err.code = "MODULE_NOT_FOUND";
-      // @ts-expect-error
       err.requireStack = requireStack;
       throw err;
     }
@@ -594,6 +596,7 @@ function createNativeModule(id: string, exports: any): Module {
   return mod;
 }
 
+nativeModulePolyfill.set("buffer", createNativeModule("buffer", nodeBuffer));
 nativeModulePolyfill.set("fs", createNativeModule("fs", nodeFS));
 nativeModulePolyfill.set("events", createNativeModule("events", nodeEvents));
 nativeModulePolyfill.set("os", createNativeModule("os", nodeOs));
@@ -656,7 +659,9 @@ function readPackage(requestPath: string): PackageInfo | null {
     json = new TextDecoder().decode(
       Deno.readFileSync(path.toNamespacedPath(jsonPath))
     );
-  } catch {}
+  } catch {
+    // pass
+  }
 
   if (json === undefined) {
     packageJsonCache.set(jsonPath, null);
@@ -732,12 +737,10 @@ function tryPackage(
   if (actual === false) {
     actual = tryExtensions(path.resolve(requestPath, "index"), exts, isMain);
     if (!actual) {
-      // eslint-disable-next-line no-restricted-syntax
       const err = new Error(
         `Cannot find module '${filename}'. ` +
           'Please verify that the package.json has a valid "main" entry'
-      );
-      // @ts-expect-error
+      ) as Error & { code: string };
       err.code = "MODULE_NOT_FOUND";
       throw err;
     }
@@ -838,7 +841,7 @@ function applyExports(basePath: string, expansion: string): string {
   }
 
   if (typeof pkgExports === "object") {
-    if (pkgExports.hasOwnProperty(mappingKey)) {
+    if (Object.prototype.hasOwnProperty.call(pkgExports, mappingKey)) {
       const mapping = pkgExports[mappingKey];
       return resolveExportsTarget(
         pathToFileURL(basePath + "/"),
@@ -881,8 +884,7 @@ function applyExports(basePath: string, expansion: string): string {
   const e = new Error(
     `Package exports for '${basePath}' do not define ` +
       `a '${mappingKey}' subpath`
-  );
-  // @ts-expect-error
+  ) as Error & { code?: string };
   e.code = "MODULE_NOT_FOUND";
   throw e;
 }
@@ -910,7 +912,6 @@ function resolveExports(
   return path.resolve(nmPath, request);
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function resolveExportsTarget(
   pkgPath: URL,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -959,7 +960,7 @@ function resolveExportsTarget(
     }
   } else if (typeof target === "object" && target !== null) {
     // removed experimentalConditionalExports
-    if (target.hasOwnProperty("default")) {
+    if (Object.prototype.hasOwnProperty.call(target, "default")) {
       try {
         return resolveExportsTarget(
           pkgPath,
@@ -973,7 +974,7 @@ function resolveExportsTarget(
       }
     }
   }
-  let e: Error;
+  let e: Error & { code?: string };
   if (mappingKey !== ".") {
     e = new Error(
       `Package exports for '${basePath}' do not define a ` +
@@ -982,7 +983,6 @@ function resolveExportsTarget(
   } else {
     e = new Error(`No valid exports main found for '${basePath}'`);
   }
-  // @ts-expect-error
   e.code = "MODULE_NOT_FOUND";
   throw e;
 }
@@ -1006,15 +1006,14 @@ const CircularRequirePrototypeWarningProxy = new Proxy(
   {},
   {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    get(target, prop): any {
-      // @ts-expect-error
+    get(target: Record<string, any>, prop: string): any {
       if (prop in target) return target[prop];
       emitCircularRequireWarning(prop);
       return undefined;
     },
 
     getOwnPropertyDescriptor(target, prop): PropertyDescriptor | undefined {
-      if (target.hasOwnProperty(prop)) {
+      if (Object.prototype.hasOwnProperty.call(target, prop)) {
         return Object.getOwnPropertyDescriptor(target, prop);
       }
       emitCircularRequireWarning(prop);
@@ -1058,8 +1057,8 @@ type RequireWrapper = (
 function wrapSafe(filename: string, content: string): RequireWrapper {
   // TODO: fix this
   const wrapper = Module.wrap(content);
-  // @ts-expect-error
-  const [f, err] = Deno.core.evalContext(wrapper, filename);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [f, err] = (Deno as any).core.evalContext(wrapper, filename);
   if (err) {
     throw err;
   }
@@ -1116,7 +1115,6 @@ interface RequireResolveFunction extends RequireResolve {
 }
 
 interface RequireFunction extends Require {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   resolve: RequireResolveFunction;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   extensions: { [key: string]: (module: Module, filename: string) => any };

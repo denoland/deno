@@ -1,19 +1,22 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { unitTest, assert, assertEquals } from "./test_util.ts";
 
-function readFileString(filename: string): string {
+function readFileString(filename: string | URL): string {
   const dataRead = Deno.readFileSync(filename);
   const dec = new TextDecoder("utf-8");
   return dec.decode(dataRead);
 }
 
-function writeFileString(filename: string, s: string): void {
+function writeFileString(filename: string | URL, s: string): void {
   const enc = new TextEncoder();
   const data = enc.encode(s);
   Deno.writeFileSync(filename, data, { mode: 0o666 });
 }
 
-function assertSameContent(filename1: string, filename2: string): void {
+function assertSameContent(
+  filename1: string | URL,
+  filename2: string | URL
+): void {
   const data1 = Deno.readFileSync(filename1);
   const data2 = Deno.readFileSync(filename2);
   assertEquals(data1, data2);
@@ -31,6 +34,29 @@ unitTest(
     assertEquals(readFileString(fromFilename), "Hello world!");
     // Original == Dest
     assertSameContent(fromFilename, toFilename);
+
+    Deno.removeSync(tempDir, { recursive: true });
+  }
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  function copyFileSyncByUrl(): void {
+    const tempDir = Deno.makeTempDirSync();
+    const fromUrl = new URL(
+      `file://${Deno.build.os === "windows" ? "/" : ""}${tempDir}/from.txt`
+    );
+    const toUrl = new URL(
+      `file://${Deno.build.os === "windows" ? "/" : ""}${tempDir}/to.txt`
+    );
+    writeFileString(fromUrl, "Hello world!");
+    Deno.copyFileSync(fromUrl, toUrl);
+    // No change to original file
+    assertEquals(readFileString(fromUrl), "Hello world!");
+    // Original == Dest
+    assertSameContent(fromUrl, toUrl);
+
+    Deno.removeSync(tempDir, { recursive: true });
   }
 );
 
@@ -49,6 +75,8 @@ unitTest(
     }
     assert(!!err);
     assert(err instanceof Deno.errors.NotFound);
+
+    Deno.removeSync(tempDir, { recursive: true });
   }
 );
 
@@ -94,6 +122,8 @@ unitTest(
     assertEquals(readFileString(fromFilename), "Hello world!");
     // Original == Dest
     assertSameContent(fromFilename, toFilename);
+
+    Deno.removeSync(tempDir, { recursive: true });
   }
 );
 
@@ -109,6 +139,29 @@ unitTest(
     assertEquals(readFileString(fromFilename), "Hello world!");
     // Original == Dest
     assertSameContent(fromFilename, toFilename);
+
+    Deno.removeSync(tempDir, { recursive: true });
+  }
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  async function copyFileByUrl(): Promise<void> {
+    const tempDir = Deno.makeTempDirSync();
+    const fromUrl = new URL(
+      `file://${Deno.build.os === "windows" ? "/" : ""}${tempDir}/from.txt`
+    );
+    const toUrl = new URL(
+      `file://${Deno.build.os === "windows" ? "/" : ""}${tempDir}/to.txt`
+    );
+    writeFileString(fromUrl, "Hello world!");
+    await Deno.copyFile(fromUrl, toUrl);
+    // No change to original file
+    assertEquals(readFileString(fromUrl), "Hello world!");
+    // Original == Dest
+    assertSameContent(fromUrl, toUrl);
+
+    Deno.removeSync(tempDir, { recursive: true });
   }
 );
 
@@ -127,6 +180,8 @@ unitTest(
     }
     assert(!!err);
     assert(err instanceof Deno.errors.NotFound);
+
+    Deno.removeSync(tempDir, { recursive: true });
   }
 );
 
@@ -144,6 +199,8 @@ unitTest(
     assertEquals(readFileString(fromFilename), "Hello world!");
     // Original == Dest
     assertSameContent(fromFilename, toFilename);
+
+    Deno.removeSync(tempDir, { recursive: true });
   }
 );
 

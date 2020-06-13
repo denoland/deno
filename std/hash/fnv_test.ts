@@ -3,8 +3,6 @@
 // Copyright 2011 The Go Authors. All rights reserved. BSD license.
 // https://github.com/golang/go/blob/master/LICENSE
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-
-const { test } = Deno;
 import { assertEquals } from "../testing/asserts.ts";
 import { Fnv32, Fnv32a, Fnv64, Fnv64a } from "./fnv.ts";
 
@@ -40,7 +38,7 @@ const golden64a = [
   ["deno", [0xa5, 0xd9, 0xfb, 0x67, 0x42, 0x6e, 0x48, 0xb1]],
 ];
 
-test("[hash/fnv] testFnv32", () => {
+Deno.test("[hash/fnv] testFnv32", () => {
   for (const [input, output] of golden32) {
     const fnv = new Fnv32();
     fnv.write(new TextEncoder().encode(input as string));
@@ -48,7 +46,7 @@ test("[hash/fnv] testFnv32", () => {
   }
 });
 
-test("[hash/fnv] testFnv32a", () => {
+Deno.test("[hash/fnv] testFnv32a", () => {
   for (const [input, output] of golden32a) {
     const fnv = new Fnv32a();
     fnv.write(new TextEncoder().encode(input as string));
@@ -56,7 +54,7 @@ test("[hash/fnv] testFnv32a", () => {
   }
 });
 
-test("[hash/fnv] testFnv64", () => {
+Deno.test("[hash/fnv] testFnv64", () => {
   for (const [input, output] of golden64) {
     const fnv = new Fnv64();
     fnv.write(new TextEncoder().encode(input as string));
@@ -64,7 +62,7 @@ test("[hash/fnv] testFnv64", () => {
   }
 });
 
-test("[hash/fnv] testFnv64a", () => {
+Deno.test("[hash/fnv] testFnv64a", () => {
   for (const [input, output] of golden64a) {
     const fnv = new Fnv64a();
     fnv.write(new TextEncoder().encode(input as string));
@@ -72,7 +70,7 @@ test("[hash/fnv] testFnv64a", () => {
   }
 });
 
-test("[hash/fnv] testFnv32WriteChain", () => {
+Deno.test("[hash/fnv] testFnv32WriteChain", () => {
   const fnv = new Fnv32();
   fnv
     .write(new TextEncoder().encode("d"))
@@ -82,7 +80,7 @@ test("[hash/fnv] testFnv32WriteChain", () => {
   assertEquals(fnv.sum(), [0x6e, 0xd5, 0xa7, 0xa9]);
 });
 
-test("[hash/fnv] testFnv32aWriteChain", () => {
+Deno.test("[hash/fnv] testFnv32aWriteChain", () => {
   const fnv = new Fnv32a();
   fnv
     .write(new TextEncoder().encode("d"))
@@ -92,7 +90,7 @@ test("[hash/fnv] testFnv32aWriteChain", () => {
   assertEquals(fnv.sum(), [0x8e, 0xf6, 0x47, 0x11]);
 });
 
-test("[hash/fnv] testFnv64WriteChain", () => {
+Deno.test("[hash/fnv] testFnv64WriteChain", () => {
   const fnv = new Fnv64();
   fnv
     .write(new TextEncoder().encode("d"))
@@ -102,7 +100,7 @@ test("[hash/fnv] testFnv64WriteChain", () => {
   assertEquals(fnv.sum(), [0x14, 0xed, 0xb2, 0x7e, 0xec, 0xda, 0xad, 0xc9]);
 });
 
-test("[hash/fnv] testFnv64aWriteChain", () => {
+Deno.test("[hash/fnv] testFnv64aWriteChain", () => {
   const fnv = new Fnv64a();
   fnv
     .write(new TextEncoder().encode("d"))

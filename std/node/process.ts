@@ -1,32 +1,22 @@
 import { notImplemented } from "./_utils.ts";
 
-const version = `v${Deno.version.deno}`;
-
-const versions = {
-  node: Deno.version.deno,
-  ...Deno.version,
-};
-
-const platform = Deno.build.os === "windows" ? "win32" : Deno.build.os;
-
-const { arch } = Deno.build;
-
-const { pid, cwd, chdir, exit } = Deno;
-
 function on(_event: string, _callback: Function): void {
   // TODO(rsp): to be implemented
   notImplemented();
 }
 
 export const process = {
-  version,
-  versions,
-  platform,
-  arch,
-  pid,
-  cwd,
-  chdir,
-  exit,
+  version: `v${Deno.version.deno}`,
+  versions: {
+    node: Deno.version.deno,
+    ...Deno.version,
+  },
+  platform: Deno.build.os === "windows" ? "win32" : Deno.build.os,
+  arch: Deno.build.arch,
+  pid: Deno.pid,
+  cwd: Deno.cwd,
+  chdir: Deno.chdir,
+  exit: Deno.exit,
   on,
   get env(): { [index: string]: string } {
     // using getter to avoid --allow-env unless it's used

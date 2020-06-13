@@ -71,7 +71,7 @@ browsers could not consume modules that require top-level-await.
 
 In order to facilitate this, there are two functions that are in the scope of
 the module in addition to the `System.register()` method. `__instantiate(main)`
-will bootstrap everything synchronously and `__instantiate(main)` will do so
-asynchronously. When emitting a bundle that contains a module that requires
+will bootstrap everything synchronously and `__instantiateAsync(main)` will do
+so asynchronously. When emitting a bundle that contains a module that requires
 top-level-await, Deno will detect this and utilise
 `await __instantiateAsync(main)` instead.

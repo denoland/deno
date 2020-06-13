@@ -270,7 +270,7 @@ impl CoreIsolate {
   }
 
   /// Executes a bit of built-in JavaScript to provide Deno.sharedQueue.
-  fn shared_init(&mut self) {
+  pub(crate) fn shared_init(&mut self) {
     if self.needs_init {
       self.needs_init = false;
       js_check(self.execute("core.js", include_str!("core.js")));
@@ -315,7 +315,7 @@ impl CoreIsolate {
       match v8::Script::compile(scope, context, source, Some(&origin)) {
         Some(script) => script,
         None => {
-          let exception = tc.exception().unwrap();
+          let exception = tc.exception(scope).unwrap();
           return exception_to_err_result(scope, exception);
         }
       };
@@ -324,7 +324,7 @@ impl CoreIsolate {
       Some(_) => Ok(()),
       None => {
         assert!(tc.has_caught());
-        let exception = tc.exception().unwrap();
+        let exception = tc.exception(scope).unwrap();
         exception_to_err_result(scope, exception)
       }
     }
@@ -366,7 +366,7 @@ impl CoreIsolate {
   /// Requires runtime to explicitly ask for op ids before using any of the ops.
   pub fn register_op<F>(&mut self, name: &str, op: F) -> OpId
   where
-    F: Fn(&mut CoreIsolateState, &[u8], Option<ZeroCopyBuf>) -> Op + 'static,
+    F: Fn(&mut CoreIsolateState, &[u8], &mut [ZeroCopyBuf]) -> Op + 'static,
   {
     let state_rc = Self::state(self);
     let mut state = state_rc.borrow_mut();
@@ -484,7 +484,7 @@ impl CoreIsolateState {
   /// Requires runtime to explicitly ask for op ids before using any of the ops.
   pub fn register_op<F>(&mut self, name: &str, op: F) -> OpId
   where
-    F: Fn(&mut CoreIsolateState, &[u8], Option<ZeroCopyBuf>) -> Op + 'static,
+    F: Fn(&mut CoreIsolateState, &[u8], &mut [ZeroCopyBuf]) -> Op + 'static,
   {
     self.op_registry.register(name, op)
   }
@@ -504,10 +504,10 @@ impl CoreIsolateState {
     scope: &mut impl v8::ToLocal<'s>,
     op_id: OpId,
     control_buf: &[u8],
-    zero_copy_buf: Option<ZeroCopyBuf>,
+    zero_copy_bufs: &mut [ZeroCopyBuf],
   ) -> Option<(OpId, Box<[u8]>)> {
     let op = if let Some(dispatcher) = self.op_registry.get(op_id) {
-      dispatcher(self, control_buf, zero_copy_buf)
+      dispatcher(self, control_buf, zero_copy_bufs)
     } else {
       let message =
         v8::String::new(scope, &format!("Unknown op id: {}", op_id)).unwrap();
@@ -571,7 +571,7 @@ fn async_op_response<'s>(
     None => js_recv_cb.call(scope, context, global, &[]),
   };
 
-  match tc.exception() {
+  match tc.exception(scope) {
     None => Ok(()),
     Some(exception) => exception_to_err_result(scope, exception),
   }
@@ -602,7 +602,7 @@ fn drain_macrotasks<'s>(
 
     let is_done = js_macrotask_cb.call(scope, context, global, &[]);
 
-    if let Some(exception) = tc.exception() {
+    if let Some(exception) = tc.exception(scope) {
       return exception_to_err_result(scope, exception);
     }
 
@@ -718,6 +718,7 @@ pub mod tests {
   pub enum Mode {
     Async,
     AsyncUnref,
+    AsyncZeroCopy(u8),
     OverflowReqSync,
     OverflowResSync,
     OverflowReqAsync,
@@ -732,7 +733,7 @@ pub mod tests {
 
     let dispatcher = move |_state: &mut CoreIsolateState,
                            control: &[u8],
-                           _zero_copy: Option<ZeroCopyBuf>|
+                           zero_copy: &mut [ZeroCopyBuf]|
           -> Op {
       dispatch_count_.fetch_add(1, Ordering::Relaxed);
       match mode {
@@ -751,6 +752,18 @@ pub mod tests {
             vec![43u8].into_boxed_slice()
           };
           Op::AsyncUnref(fut.boxed())
+        }
+        Mode::AsyncZeroCopy(count) => {
+          assert_eq!(control.len(), 1);
+          assert_eq!(control[0], 24);
+          assert_eq!(zero_copy.len(), count as usize);
+          zero_copy.iter().enumerate().for_each(|(idx, buf)| {
+            assert_eq!(buf.len(), 1);
+            assert_eq!(idx, buf[0] as usize);
+          });
+
+          let buf = vec![43u8].into_boxed_slice();
+          Op::Async(futures::future::ready(buf).boxed())
         }
         Mode::OverflowReqSync => {
           assert_eq!(control.len(), 100 * 1024 * 1024);
@@ -814,6 +827,48 @@ pub mod tests {
         "#,
     ));
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 2);
+  }
+
+  #[test]
+  fn test_dispatch_no_zero_copy_buf() {
+    let (mut isolate, dispatch_count) = setup(Mode::AsyncZeroCopy(0));
+    js_check(isolate.execute(
+      "filename.js",
+      r#"
+        let control = new Uint8Array([24]);
+        Deno.core.send(1, control);
+        "#,
+    ));
+    assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
+  }
+
+  #[test]
+  fn test_dispatch_one_zero_copy_buf() {
+    let (mut isolate, dispatch_count) = setup(Mode::AsyncZeroCopy(1));
+    js_check(isolate.execute(
+      "filename.js",
+      r#"
+        let control = new Uint8Array([24]);
+        let zero_copy = new Uint8Array([0]);
+        Deno.core.send(1, control, zero_copy);
+        "#,
+    ));
+    assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
+  }
+
+  #[test]
+  fn test_dispatch_two_zero_copy_bufs() {
+    let (mut isolate, dispatch_count) = setup(Mode::AsyncZeroCopy(2));
+    js_check(isolate.execute(
+      "filename.js",
+      r#"
+        let control = new Uint8Array([24]);
+        let zero_copy_a = new Uint8Array([0]);
+        let zero_copy_b = new Uint8Array([1]);
+        Deno.core.send(1, control, zero_copy_a, zero_copy_b);
+        "#,
+    ));
+    assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
   }
 
   #[test]

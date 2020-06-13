@@ -12,6 +12,6 @@ and TypeScript:
 - [documentation generator (`deno doc`)](./tools/documentation_generator.md)
 - [formatter (`deno fmt`)](./tools/formatter.md)
 - [test runner (`deno test`)](./testing.md)
-- linter (`deno lint`) [coming soon](https://github.com/denoland/deno/issues/1880)
+- [linter (`deno lint`)](./tools/linter.md)
 
 <!-- prettier-ignore-end -->

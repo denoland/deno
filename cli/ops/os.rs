@@ -15,6 +15,7 @@ pub fn init(i: &mut CoreIsolate, s: &State) {
   i.register_op("op_exec_path", s.stateful_json_op(op_exec_path));
   i.register_op("op_set_env", s.stateful_json_op(op_set_env));
   i.register_op("op_get_env", s.stateful_json_op(op_get_env));
+  i.register_op("op_delete_env", s.stateful_json_op(op_delete_env));
   i.register_op("op_get_dir", s.stateful_json_op(op_get_dir));
   i.register_op("op_hostname", s.stateful_json_op(op_hostname));
   i.register_op("op_loadavg", s.stateful_json_op(op_loadavg));
@@ -29,7 +30,7 @@ struct GetDirArgs {
 fn op_get_dir(
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   state.check_unstable("Deno.dir");
   state.check_env()?;
@@ -80,7 +81,7 @@ fn op_get_dir(
 fn op_exec_path(
   state: &State,
   _args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let current_exe = env::current_exe().unwrap();
   state.check_read_blind(&current_exe, "exec_path")?;
@@ -100,7 +101,7 @@ struct SetEnv {
 fn op_set_env(
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let args: SetEnv = serde_json::from_value(args)?;
   state.check_env()?;
@@ -111,7 +112,7 @@ fn op_set_env(
 fn op_env(
   state: &State,
   _args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   state.check_env()?;
   let v = env::vars().collect::<HashMap<String, String>>();
@@ -126,7 +127,7 @@ struct GetEnv {
 fn op_get_env(
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let args: GetEnv = serde_json::from_value(args)?;
   state.check_env()?;
@@ -138,6 +139,22 @@ fn op_get_env(
 }
 
 #[derive(Deserialize)]
+struct DeleteEnv {
+  key: String,
+}
+
+fn op_delete_env(
+  state: &State,
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<JsonOp, OpError> {
+  let args: DeleteEnv = serde_json::from_value(args)?;
+  state.check_env()?;
+  env::remove_var(args.key);
+  Ok(JsonOp::Sync(json!({})))
+}
+
+#[derive(Deserialize)]
 struct Exit {
   code: i32,
 }
@@ -145,7 +162,7 @@ struct Exit {
 fn op_exit(
   _s: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let args: Exit = serde_json::from_value(args)?;
   std::process::exit(args.code)
@@ -154,7 +171,7 @@ fn op_exit(
 fn op_loadavg(
   state: &State,
   _args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   state.check_unstable("Deno.loadavg");
   state.check_env()?;
@@ -171,7 +188,7 @@ fn op_loadavg(
 fn op_hostname(
   state: &State,
   _args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   state.check_unstable("Deno.hostname");
   state.check_env()?;
@@ -182,7 +199,7 @@ fn op_hostname(
 fn op_os_release(
   state: &State,
   _args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   state.check_unstable("Deno.osRelease");
   state.check_env()?;

@@ -154,7 +154,11 @@ impl SourceFileFetcher {
     permissions: Permissions,
   ) -> Result<SourceFile, ErrBox> {
     let module_url = specifier.as_url().to_owned();
-    debug!("fetch_source_file specifier: {} ", &module_url);
+    debug!(
+      "fetch_source_file specifier: {} maybe_referrer: {:#?}",
+      &module_url,
+      maybe_referrer.as_ref()
+    );
 
     // Check if this file was already fetched and can be retrieved from in-process cache.
     let maybe_cached_file = self.source_file_cache.get(specifier.to_string());

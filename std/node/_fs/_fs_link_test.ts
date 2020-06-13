@@ -1,11 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-const { test } = Deno;
 import { fail, assertEquals } from "../../testing/asserts.ts";
 import { link, linkSync } from "./_fs_link.ts";
 import { assert } from "https://deno.land/std@v0.50.0/testing/asserts.ts";
+
 const isWindows = Deno.build.os === "windows";
 
-test({
+Deno.test({
   ignore: isWindows,
   name: "ASYNC: hard linking files works as expected",
   async fn() {
@@ -30,7 +30,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   ignore: isWindows,
   name: "ASYNC: hard linking files passes error to callback",
   async fn() {
@@ -52,7 +52,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   ignore: isWindows,
   name: "SYNC: hard linking files works as expected",
   fn() {

@@ -21,6 +21,10 @@ export function opStart(): Start {
   return sendSync("op_start");
 }
 
+export function opMainModule(): string {
+  return sendSync("op_main_module");
+}
+
 export interface Metrics {
   opsDispatched: number;
   opsDispatchedSync: number;
