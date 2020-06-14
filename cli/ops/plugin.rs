@@ -108,7 +108,7 @@ impl<'a> plugin_api::Interface for PluginInterface<'a> {
     dispatch_op_fn: plugin_api::DispatchOpFn,
   ) -> OpId {
     let plugin_lib = self.plugin_lib.clone();
-    self.isolate_state.op_registry.register(
+    self.isolate_state.op_registry.register_legacy(
       name,
       move |isolate_state, control, zero_copy| {
         let mut interface = PluginInterface::new(isolate_state, &plugin_lib);

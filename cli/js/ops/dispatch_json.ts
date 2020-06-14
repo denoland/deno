@@ -62,7 +62,7 @@ export function sendSync(
 ): Ok {
   util.log("sendSync", opName);
   const argsUi8 = encode(args);
-  const resUi8 = core.dispatchByName(opName, argsUi8, ...zeroCopy);
+  const resUi8 = core.dispatchByName("legacy", opName, argsUi8, ...zeroCopy);
   util.assert(resUi8 != null);
   const res = decode(resUi8);
   util.assert(res.promiseId == null);
@@ -79,7 +79,7 @@ export async function sendAsync(
   args = Object.assign(args, { promiseId });
   const promise = util.createResolvable<Ok>();
   const argsUi8 = encode(args);
-  const buf = core.dispatchByName(opName, argsUi8, ...zeroCopy);
+  const buf = core.dispatchByName("legacy", opName, argsUi8, ...zeroCopy);
   if (buf) {
     // Sync result.
     const res = decode(buf);

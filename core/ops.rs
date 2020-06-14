@@ -27,13 +27,15 @@ pub type OpDispatcher =
 #[derive(Default)]
 pub struct OpRegistry {
   dispatchers: Vec<Rc<OpDispatcher>>,
-  name_to_id: HashMap<String, OpId>,
+  name_to_id: HashMap<String, HashMap<String, OpId>>,
 }
+
+const LEGACY_NAMESPACE: &str = "legacy";
 
 impl OpRegistry {
   pub fn new() -> Self {
     let mut registry = Self::default();
-    let op_id = registry.register("ops", |state, _, _| {
+    let op_id = registry.register("core", "ops", |state, _, _| {
       let buf = state.op_registry.json_map();
       Op::Sync(buf)
     });
@@ -41,13 +43,37 @@ impl OpRegistry {
     registry
   }
 
-  pub fn register<F>(&mut self, name: &str, op: F) -> OpId
+  pub fn register<F>(&mut self, namespace: &str, name: &str, op: F) -> OpId
+  where
+    F: Fn(&mut CoreIsolateState, &[u8], &mut [ZeroCopyBuf]) -> Op + 'static,
+  {
+    self.register_inner(namespace, name, op)
+  }
+
+  pub fn register_legacy<F>(&mut self, name: &str, op: F) -> OpId
+  where
+    F: Fn(&mut CoreIsolateState, &[u8], &mut [ZeroCopyBuf]) -> Op + 'static,
+  {
+    // register new op with "default" legacy namespace
+    self.register_inner(LEGACY_NAMESPACE, name, op)
+  }
+
+  fn register_inner<F>(&mut self, namespace: &str, name: &str, op: F) -> OpId
   where
     F: Fn(&mut CoreIsolateState, &[u8], &mut [ZeroCopyBuf]) -> Op + 'static,
   {
     let op_id = self.dispatchers.len() as u32;
 
-    let existing = self.name_to_id.insert(name.to_string(), op_id);
+    let op_namespace = match self.name_to_id.get_mut(namespace) {
+      None => {
+        self
+          .name_to_id
+          .insert(namespace.to_string(), HashMap::new());
+        self.name_to_id.get_mut(namespace).unwrap()
+      }
+      Some(ns) => ns,
+    };
+    let existing = op_namespace.insert(name.to_string(), op_id);
     assert!(
       existing.is_none(),
       format!("Op already registered: {}", name)
@@ -65,10 +91,13 @@ impl OpRegistry {
     self.dispatchers.get(op_id as usize).map(Rc::clone)
   }
 
+  // TODO(afinch7) maybe reimplement this?
+  /*
   pub fn unregister_op(&mut self, name: &str) {
     let id = self.name_to_id.remove(name).unwrap();
     drop(self.dispatchers.remove(id as usize));
   }
+  */
 }
 
 #[test]
@@ -81,35 +110,67 @@ fn test_op_registry() {
   let c = Arc::new(atomic::AtomicUsize::new(0));
   let c_ = c.clone();
 
-  let test_id = op_registry.register("test", move |_, _, _| {
+  let test_id = op_registry.register_legacy("test", move |_, _, _| {
     c_.fetch_add(1, atomic::Ordering::SeqCst);
     Op::Sync(Box::new([]))
   });
   assert!(test_id != 0);
 
+  let c_ = c.clone();
+  let test_namespaced_id =
+    op_registry.register("test", "test", move |_, _, _| {
+      c_.fetch_add(1, atomic::Ordering::SeqCst);
+      Op::Sync(Box::new([]))
+    });
+  assert!(test_namespaced_id != 0);
+
+  let mut expected_core = HashMap::new();
+  expected_core.insert("ops".to_string(), 0);
+  let mut expected_legacy = HashMap::new();
+  expected_legacy.insert("test".to_string(), 1);
+  let mut expected_test = HashMap::new();
+  expected_test.insert("test".to_string(), 2);
   let mut expected = HashMap::new();
-  expected.insert("ops".to_string(), 0);
-  expected.insert("test".to_string(), 1);
+  expected.insert("core".to_string(), expected_core);
+  expected.insert(LEGACY_NAMESPACE.to_string(), expected_legacy);
+  expected.insert("test".to_string(), expected_test);
   assert_eq!(op_registry.name_to_id, expected);
 
   let isolate = CoreIsolate::new(crate::StartupData::None, false);
 
-  let dispatch = op_registry.get(test_id).unwrap();
-  let state_rc = CoreIsolate::state(&isolate);
-  let mut state = state_rc.borrow_mut();
-  let res = dispatch(&mut state, &[], &mut []);
-  if let Op::Sync(buf) = res {
-    assert_eq!(buf.len(), 0);
-  } else {
-    unreachable!();
+  {
+    let dispatch = op_registry.get(test_id).unwrap();
+    let state_rc = CoreIsolate::state(&isolate);
+    let mut state = state_rc.borrow_mut();
+    let res = dispatch(&mut state, &[], &mut []);
+    if let Op::Sync(buf) = res {
+      assert_eq!(buf.len(), 0);
+    } else {
+      unreachable!();
+    }
+    assert_eq!(c.load(atomic::Ordering::SeqCst), 1);
   }
-  assert_eq!(c.load(atomic::Ordering::SeqCst), 1);
+
+  {
+    let dispatch = op_registry.get(test_id).unwrap();
+    let state_rc = CoreIsolate::state(&isolate);
+    let mut state = state_rc.borrow_mut();
+    let res = dispatch(&mut state, &[], &mut []);
+    if let Op::Sync(buf) = res {
+      assert_eq!(buf.len(), 0);
+    } else {
+      unreachable!();
+    }
+    assert_eq!(c.load(atomic::Ordering::SeqCst), 2);
+  }
 
   assert!(op_registry.get(100).is_none());
+  /*
   op_registry.unregister_op("test");
   expected.remove("test");
   assert_eq!(op_registry.name_to_id, expected);
   assert!(op_registry.get(1).is_none());
+  */
 }
 
 #[test]
@@ -127,10 +188,10 @@ fn register_op_during_call() {
 
   let test_id = {
     let mut g = op_registry.lock().unwrap();
-    g.register("dynamic_register_op", move |_, _, _| {
+    g.register_legacy("dynamic_register_op", move |_, _, _| {
       let c__ = c_.clone();
       let mut g = op_registry_.lock().unwrap();
-      g.register("test", move |_, _, _| {
+      g.register("test", "test", move |_, _, _| {
         c__.fetch_add(1, atomic::Ordering::SeqCst);
         Op::Sync(Box::new([]))
       });
@@ -151,10 +212,16 @@ fn register_op_during_call() {
     dispatcher1(&mut state, &[], &mut []);
   }
 
+  let mut expected_core = HashMap::new();
+  expected_core.insert("ops".to_string(), 0);
+  let mut expected_legacy = HashMap::new();
+  expected_legacy.insert("dynamic_register_op".to_string(), 1);
+  let mut expected_test = HashMap::new();
+  expected_test.insert("test".to_string(), 2);
   let mut expected = HashMap::new();
-  expected.insert("ops".to_string(), 0);
-  expected.insert("dynamic_register_op".to_string(), 1);
-  expected.insert("test".to_string(), 2);
+  expected.insert("core".to_string(), expected_core);
+  expected.insert(LEGACY_NAMESPACE.to_string(), expected_legacy);
+  expected.insert("test".to_string(), expected_test);
   {
     let g = op_registry.lock().unwrap();
     assert_eq!(g.name_to_id, expected);

@@ -83,6 +83,7 @@ declare global {
       ...zeroCopy: ArrayBufferView[]
     ): Uint8Array | null;
     dispatchByName(
+      opNamespace: string,
       opName: string,
       control: Uint8Array,
       ...zeroCopy: ArrayBufferView[]

@@ -371,7 +371,7 @@ impl CoreIsolate {
   {
     let state_rc = Self::state(self);
     let mut state = state_rc.borrow_mut();
-    state.op_registry.register(name, op)
+    state.op_registry.register_legacy(name, op)
   }
 }
 
@@ -487,7 +487,7 @@ impl CoreIsolateState {
   where
     F: Fn(&mut CoreIsolateState, &[u8], &mut [ZeroCopyBuf]) -> Op + 'static,
   {
-    self.op_registry.register(name, op)
+    self.op_registry.register_legacy(name, op)
   }
 
   /// Allows a callback to be set whenever a V8 exception is made. This allows

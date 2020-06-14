@@ -58,12 +58,12 @@ SharedQueue Binary Layout
     recv(handleAsyncMsgFromRust);
   }
 
-  function ops() {
+  function ops(namespace = "legacy") {
     // op id 0 is a special value to retrieve the map of registered ops.
     const opsMapBytes = send(0, new Uint8Array([]));
     const opsMapJson = String.fromCharCode.apply(null, opsMapBytes);
     opsCache = JSON.parse(opsMapJson);
-    return { ...opsCache };
+    return opsCache[namespace];
   }
 
   function assert(cond) {
@@ -183,8 +183,8 @@ SharedQueue Binary Layout
     }
   }
 
-  function dispatch(opName, control, ...zeroCopy) {
-    return send(opsCache[opName], control, ...zeroCopy);
+  function dispatch(opNamespace, opName, control, ...zeroCopy) {
+    return send(opsCache[opNamespace][opName], control, ...zeroCopy);
   }
 
   Object.assign(window.Deno.core, {
