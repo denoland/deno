@@ -290,7 +290,8 @@ unitTest(
     assertEquals(bob.addr.path, filePath);
 
     const sent = new Uint8Array([1, 2, 3]);
-    await alice.send(sent, bob.addr);
+    const byteLength = await alice.send(sent, bob.addr);
+    assertEquals(byteLength, 3);
 
     const [recvd, remote] = await bob.receive();
     assert(remote.transport === "unixpacket");
