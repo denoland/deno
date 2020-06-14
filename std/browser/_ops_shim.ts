@@ -16,16 +16,14 @@ interface Resource {
   closed: boolean;
 }
 
+interface VirtualFile {
+  buf: ArrayBuffer;
+}
+
+const files = new Map<string, VirtualFile>();
+
 const resources = new Map<number, Resource>();
 let resourceId = 0;
-
-function resourcesIncludes(path: string): number | undefined {
-  for (const [rid, { name }] of resources.entries()) {
-    if (path === name) {
-      return rid;
-    }
-  }
-}
 
 function closeResource(rid: number): void {
   if (resources.has(rid)) {
@@ -35,12 +33,11 @@ function closeResource(rid: number): void {
 }
 
 function copyResource(from: string, to: string): void {
-  const fromRid = resourcesIncludes(from);
-  if (fromRid === undefined) {
+  if (!files.has(from)) {
     throw new errors.NotFound(`File does not exist: ${from}`);
   }
   const toRid = openResource(to, { write: true, create: true });
-  const data = new Uint8Array(resources.get(fromRid)!.buf);
+  const data = new Uint8Array(files.get(from)!.buf);
   writeResource(toRid, data);
   closeResource(toRid);
 }
@@ -54,13 +51,13 @@ export function getResources(): Deno.ResourceMap {
 }
 
 function openResource(name: string, options: Deno.OpenOptions): number {
-  const existingRid = resourcesIncludes(name);
+  const hasFile = files.has(name);
   let buf;
-  if (existingRid !== undefined) {
+  if (hasFile) {
     if (options.createNew) {
       throw new errors.AlreadyExists(`File already exists: ${name}`);
     }
-    buf = resources.get(existingRid)!.buf;
+    buf = files.get(name)!.buf;
   }
   const rid = resourceId++;
   if (!buf) {
@@ -78,14 +75,21 @@ function openResource(name: string, options: Deno.OpenOptions): number {
  * can be garbage collected.  The contents of the virtual files will be lost,
  * if there are no other resources that have the file open. */
 export function purgeResources(): void {
-  const toDelete = [];
+  const toDeleteResources: number[] = [];
+  const toDeleteFiles: string[] = [];
   for (const [key, resource] of resources) {
     if (resource.closed) {
-      toDelete.push(key);
+      toDeleteResources.push(key);
+      if (!toDeleteFiles.includes(resource.name)) {
+        toDeleteFiles.push(resource.name);
+      }
     }
   }
-  for (const key of toDelete) {
+  for (const key of toDeleteResources) {
     resources.delete(key);
+  }
+  for (const key of toDeleteFiles) {
+    files.delete(key);
   }
 }
 
@@ -140,11 +144,10 @@ function seekResource(rid: number, offset: number, whence: SeekMode): number {
 }
 
 function truncateResource(path: string, len = 0): void {
-  const rid = resourcesIncludes(path);
-  if (rid !== undefined) {
-    const item = resources.get(rid)!;
+  if (files.has(path)) {
+    const item = files.get(path)!;
     const ab = new Uint8Array(item.buf);
-    const nb = new Uint8Array(ab.slice(0, len));
+    const nb = new Uint8Array(item.buf.slice(0, len));
     ab.set(nb, 0);
   } else {
     throw new errors.NotFound(`File not found: ${path}`);
