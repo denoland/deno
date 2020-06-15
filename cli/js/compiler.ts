@@ -1049,7 +1049,7 @@ interface SourceFileMapEntry {
   typeHeaders: ReferenceDescriptor[];
 }
 
-interface CompilerRequestCompile {
+interface CompileRequest {
   type: CompilerRequestType.Compile;
   allowJs: boolean;
   target: CompilerHostTarget;
@@ -1062,7 +1062,7 @@ interface CompilerRequestCompile {
   sourceFileMap: Record<string, SourceFileMapEntry>;
 }
 
-interface CompilerRequestBundle {
+interface BundleRequest {
   type: CompilerRequestType.Bundle;
   target: CompilerHostTarget;
   rootNames: string[];
@@ -1074,7 +1074,7 @@ interface CompilerRequestBundle {
   sourceFileMap: Record<string, SourceFileMapEntry>;
 }
 
-interface CompilerRequestRuntimeCompile {
+interface RuntimeCompileRequest {
   type: CompilerRequestType.RuntimeCompile;
   target: CompilerHostTarget;
   rootNames: string[];
@@ -1083,7 +1083,7 @@ interface CompilerRequestRuntimeCompile {
   options?: string;
 }
 
-interface CompilerRequestRuntimeBundle {
+interface RuntimeBundleRequest {
   type: CompilerRequestType.RuntimeBundle;
   target: CompilerHostTarget;
   rootNames: string[];
@@ -1092,40 +1092,40 @@ interface CompilerRequestRuntimeBundle {
   options?: string;
 }
 
-interface CompilerRequestRuntimeTranspile {
+interface RuntimeTranspileRequest {
   type: CompilerRequestType.RuntimeTranspile;
   sources: Record<string, string>;
   options?: string;
 }
 
 type CompilerRequest =
-  | CompilerRequestCompile
-  | CompilerRequestBundle
-  | CompilerRequestRuntimeCompile
-  | CompilerRequestRuntimeBundle
-  | CompilerRequestRuntimeTranspile;
+  | CompileRequest
+  | BundleRequest
+  | RuntimeCompileRequest
+  | RuntimeBundleRequest
+  | RuntimeTranspileRequest;
 
-interface CompileResult {
+interface CompileResponse {
   emitMap: Record<string, EmittedSource>;
   diagnostics: Diagnostic;
 }
 
-interface BundleResult {
+interface BundleResponse {
   bundleOutput?: string;
   diagnostics: Diagnostic;
 }
 
-interface RuntimeCompileResult {
+interface RuntimeCompileResponse {
   emitMap: Record<string, EmittedSource>;
   diagnostics: DiagnosticItem[];
 }
 
-interface RuntimeBundleResult {
+interface RuntimeBundleResponse {
   output: string;
   diagnostics: DiagnosticItem[];
 }
 
-function compile(request: CompilerRequestCompile): CompileResult {
+function compile(request: CompileRequest): CompileResponse {
   const {
     allowJs,
     config,
@@ -1203,7 +1203,7 @@ function compile(request: CompilerRequestCompile): CompileResult {
   }
 
   assert(state.emitMap);
-  const result: CompileResult = {
+  const result: CompileResponse = {
     emitMap: state.emitMap,
     diagnostics: fromTypeScriptDiagnostic(diagnostics),
   };
@@ -1216,7 +1216,7 @@ function compile(request: CompilerRequestCompile): CompileResult {
   return result;
 }
 
-function bundle(request: CompilerRequestBundle): BundleResult {
+function bundle(request: BundleRequest): BundleResponse {
   const {
     config,
     configPath,
@@ -1293,7 +1293,7 @@ function bundle(request: CompilerRequestBundle): BundleResult {
     bundleOutput = state.bundleOutput;
   }
 
-  const result: BundleResult = {
+  const result: BundleResponse = {
     bundleOutput,
     diagnostics: fromTypeScriptDiagnostic(diagnostics),
   };
@@ -1307,8 +1307,8 @@ function bundle(request: CompilerRequestBundle): BundleResult {
 }
 
 function runtimeCompile(
-  request: CompilerRequestRuntimeCompile
-): RuntimeCompileResult {
+  request: RuntimeCompileRequest
+): RuntimeCompileResponse {
   const { options, rootNames, target, unstable, sourceFileMap } = request;
 
   log(">>> runtime compile start", {
@@ -1382,12 +1382,10 @@ function runtimeCompile(
   return {
     diagnostics: maybeDiagnostics,
     emitMap: state.emitMap,
-  } as RuntimeCompileResult;
+  } as RuntimeCompileResponse;
 }
 
-function runtimeBundle(
-  request: CompilerRequestRuntimeBundle
-): RuntimeBundleResult {
+function runtimeBundle(request: RuntimeBundleRequest): RuntimeBundleResponse {
   const { options, rootNames, target, unstable, sourceFileMap } = request;
 
   log(">>> runtime bundle start", {
@@ -1461,11 +1459,11 @@ function runtimeBundle(
   return {
     diagnostics: maybeDiagnostics,
     output: state.bundleOutput,
-  } as RuntimeBundleResult;
+  } as RuntimeBundleResponse;
 }
 
 function runtimeTranspile(
-  request: CompilerRequestRuntimeTranspile
+  request: RuntimeTranspileRequest
 ): Promise<Record<string, TranspileOnlyResult>> {
   const result: Record<string, TranspileOnlyResult> = {};
   const { sources, options } = request;
@@ -1497,29 +1495,27 @@ async function tsCompilerOnMessage({
 }): Promise<void> {
   switch (request.type) {
     case CompilerRequestType.Compile: {
-      const result = compile(request as CompilerRequestCompile);
+      const result = compile(request as CompileRequest);
       globalThis.postMessage(result);
       break;
     }
     case CompilerRequestType.Bundle: {
-      const result = bundle(request as CompilerRequestBundle);
+      const result = bundle(request as BundleRequest);
       globalThis.postMessage(result);
       break;
     }
     case CompilerRequestType.RuntimeCompile: {
-      const result = runtimeCompile(request as CompilerRequestRuntimeCompile);
+      const result = runtimeCompile(request as RuntimeCompileRequest);
       globalThis.postMessage(result);
       break;
     }
     case CompilerRequestType.RuntimeBundle: {
-      const result = runtimeBundle(request as CompilerRequestRuntimeBundle);
+      const result = runtimeBundle(request as RuntimeBundleRequest);
       globalThis.postMessage(result);
       break;
     }
     case CompilerRequestType.RuntimeTranspile: {
-      const result = await runtimeTranspile(
-        request as CompilerRequestRuntimeTranspile
-      );
+      const result = await runtimeTranspile(request as RuntimeTranspileRequest);
       globalThis.postMessage(result);
       break;
     }
