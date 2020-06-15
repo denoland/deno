@@ -380,7 +380,8 @@ impl SourceFileFetcher {
           return Err(e.into());
         }
       };
-      return self.fetch_cached_remote_source(&redirect_url, redirect_limit - 1);
+      return self
+        .fetch_cached_remote_source(&redirect_url, redirect_limit - 1);
     }
 
     let mut source_code = Vec::new();
@@ -1258,7 +1259,7 @@ mod tests {
       )
       .await;
     assert!(result.is_err());
-    
+
     // Test that redirections in cached files are limited as well
     let result = fetcher.fetch_cached_remote_source(&double_redirect_url, 2);
     assert!(result.is_ok());
