@@ -44,6 +44,7 @@ const unstableNames = [
   "permissions",
   "PermissionStatus",
   "hostname",
+  "mainModule",
 ];
 
 test({
@@ -90,5 +91,16 @@ test({
       assertEquals(desc.writable, false, "should be read only");
       assertEquals(desc.configurable, false, "should not be configurable");
     }
+  },
+});
+
+test({
+  name: "deno_shim - basic file system APIs",
+  async fn() {
+    const shim = await getDenoShim();
+    const tmpFile = await shim.makeTempFile();
+    await shim.writeTextFile(tmpFile, "hello world!");
+    const actual = await shim.readTextFile(tmpFile);
+    assertEquals(actual, "hello world!");
   },
 });

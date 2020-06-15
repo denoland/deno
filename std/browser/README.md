@@ -24,10 +24,18 @@ functions in a browser in a "virtual way".
 
 Specifically this is designed to be used when creating a bundle via
 `deno bundle` that uses `Deno` APIs that you want to run in the web. For
-example, you would want to put this in the root file of your bundle:
+example, you would want to put something like this in the main file of your
+bundle:
 
 ```ts
-import "https://deno.land/std/browsers/deno_shim.ts";
+import { init } from "https://deno.land/std/browsers/deno_shim.ts";
+
+async function main() {
+  await init(); // Deno namespace now available...
+  // bootstrap the rest of your workload
+}
+
+main();
 ```
 
 And if you were to generate a bundle, the shim would be included in your code,
@@ -39,6 +47,28 @@ should try to detect the environment you are running in and avoid using `Deno`
 APIs. One easy way to do that is that `Deno.build.target` will be set to
 `"browser"` when the shim is loaded.
 
+The shim, for a variety of reasons, has to be loaded asynchronously, but most
+browsers do not currently support top level await, and code needs to be able to
+detect when the `Deno` namespace is loaded. This is why there is an `init()`
+function made available. If the code you depend upon binds early to the `Deno`
+namespace you may need to load it after you perform the init, which can be done
+via a dynamic import, like this:
+
+```ts
+import { init } from "https://deno.land/std/browsers/deno_shim.ts";
+
+async function bootstrap() {
+  await init(); // Deno namespace now available...
+  await import("./main.ts");
+}
+
+bootstrap();
+```
+
+Now, when you run `deno bundle` the output bundle will detect the dynamic import
+and bring in the rest of your dependencies, but not instantiate the modules
+until after the shim has been loaded.
+
 #### Unstable APIs
 
 If you want to shim Deno's unstable APIs, like when using the `--unstable` flag
@@ -47,20 +77,15 @@ Import the `unstable()` function and await it, which will add the unstable APIs
 to the `Deno` namespace.
 
 ```ts
-import { unstable } from "https://deno.land/std/browsers/deno_shim.ts";
+import { init } from "https://deno.land/std/browsers/deno_shim.ts";
 
-await unstable();
-```
-
-If your target browser does not support top-level-await yet, you will need to
-avoid using it, even when bundling, by using an IIFE:
-
-```ts
-import { unstable } from "https://deno.land/std/browsers/deno_shim.ts";
-
-(async () => {
+async function main() {
+  await init(); // Deno namespace now available...
   await unstable();
-})();
+  // bootstrap the rest of your workload that requires unstable APIs.
+}
+
+main();
 ```
 
 ### Virtual File System and Resources

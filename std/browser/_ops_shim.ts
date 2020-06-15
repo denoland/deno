@@ -8,12 +8,32 @@ export enum SeekMode {
   End = 2,
 }
 
-interface Resource {
-  buf: ArrayBuffer;
-  pos: number;
+class Resource {
+  get buf(): ArrayBuffer {
+    if (files.has(this.name)) {
+      return files.get(this.name)!.buf;
+    }
+    const buf = new ArrayBuffer(0);
+    files.set(this.name, { buf });
+    return buf;
+  }
+
+  set buf(buf: ArrayBuffer) {
+    if (files.has(this.name)) {
+      files.get(this.name)!.buf = buf;
+    } else {
+      files.set(this.name, { buf });
+    }
+  }
+
+  pos = 0;
   name: string;
   options?: Deno.OpenOptions;
-  closed: boolean;
+  closed = false;
+
+  constructor(name: string) {
+    this.name = name;
+  }
 }
 
 interface VirtualFile {
@@ -28,6 +48,7 @@ let resourceId = 0;
 function closeResource(rid: number): void {
   if (resources.has(rid)) {
     resources.get(rid)!.closed = true;
+    return;
   }
   throw new errors.BadResource(`Bad Resource: ${rid}`);
 }
@@ -45,29 +66,27 @@ function copyResource(from: string, to: string): void {
 export function getResources(): Deno.ResourceMap {
   const result: Deno.ResourceMap = {};
   for (const [key, value] of resources) {
-    result[key] = value.name;
+    if (value.closed === false) {
+      result[key] = value.name;
+    }
   }
   return result;
 }
 
 function openResource(name: string, options: Deno.OpenOptions): number {
   const hasFile = files.has(name);
-  let buf;
   if (hasFile) {
     if (options.createNew) {
       throw new errors.AlreadyExists(`File already exists: ${name}`);
     }
-    buf = files.get(name)!.buf;
   }
   const rid = resourceId++;
-  if (!buf) {
-    buf = new ArrayBuffer(0);
-  }
+  const resource = new Resource(name);
+  resources.set(rid, resource);
   if (options.truncate) {
-    new Uint8Array(buf).set(new Uint8Array(0), 0);
+    new Uint8Array(resource.buf).set(new Uint8Array(0), 0);
   }
-  const pos = options.append ? new Uint8Array(buf).byteLength : 0;
-  resources.set(rid, { buf, pos, name, options, closed: false });
+  resource.pos = options.append ? resource.buf.byteLength : 0;
   return rid;
 }
 

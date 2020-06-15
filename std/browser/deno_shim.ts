@@ -34,8 +34,49 @@ function notImplemented(): never {
   throw new Error("This feature is not implemented in browsers.");
 }
 
+/** Intializes the `Deno` namespace in `window` if it does not exist.  Awaiting
+ * this function will allow client programs to be able to detect when the
+ * shim namespace is loaded.  If the namespace already exists, this is a noop.
+ *
+ * ```ts
+ * import { init } from "https:/deno.land/std/browser/deno_shim.ts";
+ *
+ * async function main() {
+ *    await init(); // Deno namespace now available
+ *    const tmpFile = await Deno.makeTempFile();
+ *    await Deno.writeTextFile(tmpFile, "hello world!");
+ *    const txt = await Deno.readTextFile(tmpFile);
+ *    console.log(txt);
+ * }
+ *
+ * main();
+ * ```
+ */
+export async function init(): Promise<void> {
+  if (window && !("Deno" in window)) {
+    Object.defineProperty(window, "Deno", {
+      value: await getDenoShim(),
+      writable: false,
+      enumerable: true,
+      configurable: true,
+    });
+  }
+}
+
 /** Adds `Deno` unstable APIs to the shim.  If the `Deno` namespace is being
- * provided by the shim, it will be redefined with the unstable APIs. */
+ * provided by the shim, it will be redefined with the unstable APIs.
+ *
+ * ```ts
+ * import { init, unstable } from "https:/deno.land/std/browser/deno_shim.ts";
+ *
+ * async function main() {
+ *    await init();
+ *    await unstable(); // Makes unstable APIs available
+ * }
+ *
+ * main();
+ * ```
+ */
 export async function unstable(): Promise<void> {
   if (!window || denoUnstableProperties) {
     return;
@@ -59,7 +100,7 @@ export async function unstable(): Promise<void> {
     return value;
   }
 
-  function dir(kind: Deno.DirKind): string {
+  function dir(kind: string): string {
     return `/${kind}`;
   }
 
@@ -92,7 +133,7 @@ export async function unstable(): Promise<void> {
   }
 
   class PermissionStatus {
-    constructor(public state: Deno.PermissionState) {}
+    constructor(public state: "granted" | "denied" | "prompt") {}
   }
 
   class Permissions {
@@ -148,6 +189,8 @@ export async function unstable(): Promise<void> {
     permissions: readOnly(permissions),
     PermissionStatus: readOnly(PermissionStatus),
     hostname: readOnly(hostname),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    mainModule: readOnly(String((window as any).location)),
   };
 
   Object.assign(denoProperties, denoUnstableProperties);
@@ -207,6 +250,9 @@ export async function getDenoShim(): Promise<DenoNamespace> {
   class Env implements DenoEnv {
     #env: Record<string, string> = {};
 
+    delete(key: string): void {
+      delete this.#env[key];
+    }
     get(key: string): string | undefined {
       return this.#env[key];
     }
@@ -263,7 +309,7 @@ export async function getDenoShim(): Promise<DenoNamespace> {
   }
 
   function checkOpenOptions(options: Deno.OpenOptions): void {
-    if (Object.values(options).some((val) => val === true)) {
+    if (!Object.values(options).some((val) => val === true)) {
       throw new Error("OpenOptions requires at least one option to be true");
     }
 
@@ -402,7 +448,7 @@ export async function getDenoShim(): Promise<DenoNamespace> {
 
   function makeTempFileSync(options?: Deno.MakeTempOptions): string {
     const str = makeTempDirSync(options);
-    opOpen(str, { read: true });
+    close(opOpen(str, { read: true }));
     return str;
   }
 
@@ -636,14 +682,3 @@ export async function getDenoShim(): Promise<DenoNamespace> {
   Object.freeze(shim);
   return shim;
 }
-
-(async (): Promise<void> => {
-  if (window && !("Deno" in window)) {
-    Object.defineProperty(window, "Deno", {
-      value: await getDenoShim(),
-      writable: false,
-      enumerable: true,
-      configurable: true,
-    });
-  }
-})();
