@@ -504,7 +504,6 @@ impl TsCompiler {
       TargetLib::Worker => "worker",
     };
     let root_names = vec![module_url.to_string()];
-    let bundle = false;
     let unstable = global_state.flags.unstable;
     let compiler_config = self.config.clone();
     let cwd = std::env::current_dir().unwrap();
@@ -514,7 +513,6 @@ impl TsCompiler {
         "allowJs": allow_js,
         "target": target,
         "rootNames": root_names,
-        "bundle": bundle,
         "unstable": unstable,
         "configPath": config_path,
         "config": str::from_utf8(&config_data).unwrap(),
@@ -526,7 +524,6 @@ impl TsCompiler {
         "allowJs": allow_js,
         "target": target,
         "rootNames": root_names,
-        "bundle": bundle,
         "unstable": unstable,
         "cwd": cwd,
         "sourceFileMap": module_graph_json,
@@ -953,7 +950,6 @@ pub async fn bundle(
     serde_json::to_value(module_graph).expect("Failed to serialize data");
 
   let root_names = vec![module_specifier.to_string()];
-  let bundle = true;
   let target = "main";
   let cwd = std::env::current_dir().unwrap();
 
@@ -961,10 +957,9 @@ pub async fn bundle(
   // be optional
   let j = match (compiler_config.path, compiler_config.content) {
     (Some(config_path), Some(config_data)) => json!({
-      "type": msg::CompilerRequestType::Compile as i32,
+      "type": msg::CompilerRequestType::Bundle as i32,
       "target": target,
       "rootNames": root_names,
-      "bundle": bundle,
       "unstable": unstable,
       "configPath": config_path,
       "config": str::from_utf8(&config_data).unwrap(),
@@ -972,10 +967,9 @@ pub async fn bundle(
       "sourceFileMap": module_graph_json,
     }),
     _ => json!({
-      "type": msg::CompilerRequestType::Compile as i32,
+      "type": msg::CompilerRequestType::Bundle as i32,
       "target": target,
       "rootNames": root_names,
-      "bundle": bundle,
       "unstable": unstable,
       "cwd": cwd,
       "sourceFileMap": module_graph_json,
@@ -1000,20 +994,18 @@ pub async fn bundle(
   Ok(output)
 }
 
-/// This function is used by `Deno.compile()` and `Deno.bundle()` APIs.
-pub async fn runtime_compile<S: BuildHasher>(
+async fn create_runtime_module_graph<S: BuildHasher>(
   global_state: GlobalState,
   permissions: Permissions,
   root_name: &str,
   sources: &Option<HashMap<String, String, S>>,
-  bundle: bool,
   maybe_options: &Option<String>,
-) -> Result<Value, OpError> {
+) -> Result<(Vec<String>, HashMap<String, ModuleGraphFile>), OpError> {
   let mut root_names = vec![];
   let mut module_graph_loader = ModuleGraphLoader::new(
     global_state.file_fetcher.clone(),
     None,
-    permissions.clone(),
+    permissions,
     false,
     false,
   );
@@ -1050,7 +1042,25 @@ pub async fn runtime_compile<S: BuildHasher>(
     }
   }
 
-  let module_graph = module_graph_loader.get_graph();
+  Ok((root_names, module_graph_loader.get_graph()))
+}
+
+/// This function is used by `Deno.compile()` API.
+pub async fn runtime_compile<S: BuildHasher>(
+  global_state: GlobalState,
+  permissions: Permissions,
+  root_name: &str,
+  sources: &Option<HashMap<String, String, S>>,
+  maybe_options: &Option<String>,
+) -> Result<Value, OpError> {
+  let (root_names, module_graph) = create_runtime_module_graph(
+    global_state.clone(),
+    permissions.clone(),
+    root_name,
+    sources,
+    maybe_options,
+  )
+  .await?;
   let module_graph_json =
     serde_json::to_value(module_graph).expect("Failed to serialize data");
 
@@ -1060,7 +1070,6 @@ pub async fn runtime_compile<S: BuildHasher>(
     "rootNames": root_names,
     "sourceFileMap": module_graph_json,
     "options": maybe_options,
-    "bundle": bundle,
     "unstable": global_state.flags.unstable,
   })
   .to_string()
@@ -1072,12 +1081,6 @@ pub async fn runtime_compile<S: BuildHasher>(
   let msg = execute_in_same_thread(global_state, permissions, req_msg).await?;
   let json_str = std::str::from_utf8(&msg).unwrap();
 
-  // TODO(bartlomieju): factor `bundle` path into separate function `runtime_bundle`
-  if bundle {
-    let _response: RuntimeBundleResponse = serde_json::from_str(json_str)?;
-    return Ok(serde_json::from_str::<Value>(json_str).unwrap());
-  }
-
   let response: RuntimeCompileResponse = serde_json::from_str(json_str)?;
 
   if response.diagnostics.is_empty() && sources.is_none() {
@@ -1086,6 +1089,46 @@ pub async fn runtime_compile<S: BuildHasher>(
 
   // We're returning `Ok()` instead of `Err()` because it's not runtime
   // error if there were diagnostics produces; we want to let user handle
+  // diagnostics in the runtime.
+  Ok(serde_json::from_str::<Value>(json_str).unwrap())
+}
+
+/// This function is used by `Deno.bundle()` API.
+pub async fn runtime_bundle<S: BuildHasher>(
+  global_state: GlobalState,
+  permissions: Permissions,
+  root_name: &str,
+  sources: &Option<HashMap<String, String, S>>,
+  maybe_options: &Option<String>,
+) -> Result<Value, OpError> {
+  let (root_names, module_graph) = create_runtime_module_graph(
+    global_state.clone(),
+    permissions.clone(),
+    root_name,
+    sources,
+    maybe_options,
+  )
+  .await?;
+  let module_graph_json =
+    serde_json::to_value(module_graph).expect("Failed to serialize data");
+
+  let req_msg = json!({
+    "type": msg::CompilerRequestType::RuntimeBundle as i32,
+    "target": "runtime",
+    "rootNames": root_names,
+    "sourceFileMap": module_graph_json,
+    "options": maybe_options,
+    "unstable": global_state.flags.unstable,
+  })
+  .to_string()
+  .into_boxed_str()
+  .into_boxed_bytes();
+
+  let msg = execute_in_same_thread(global_state, permissions, req_msg).await?;
+  let json_str = std::str::from_utf8(&msg).unwrap();
+  let _response: RuntimeBundleResponse = serde_json::from_str(json_str)?;
+  // We're returning `Ok()` instead of `Err()` because it's not runtime
+  // error if there were diagnostics produced; we want to let user handle
   // diagnostics in the runtime.
   Ok(serde_json::from_str::<Value>(json_str).unwrap())
 }
