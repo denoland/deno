@@ -9,6 +9,7 @@ use crate::module_graph::ModuleGraphFile;
 use crate::module_graph::ModuleGraphLoader;
 use crate::msg;
 use crate::msg::MediaType;
+use crate::op_error::OpError;
 use crate::permissions::Permissions;
 use crate::state::exit_unstable;
 use crate::tsc::CompiledModule;
@@ -203,7 +204,16 @@ impl GlobalState {
     };
 
     let compiled_module = if was_compiled {
-      state1.ts_compiler.get_compiled_module(&out.url)?
+      state1
+        .ts_compiler
+        .get_compiled_module(&out.url)
+        .map_err(|e| {
+          let msg = e.to_string();
+          OpError::other(format!(
+            "Failed to get compiled source code of {}.\nReason: {}",
+            out.url, msg
+          ))
+        })?
     } else {
       CompiledModule {
         code: String::from_utf8(out.source_code.clone())?,
@@ -245,12 +255,14 @@ impl GlobalState {
 }
 
 /// Determine if TS compiler should be run with `allowJs` setting on. This
-/// is the case when there's a JavaScript file with non-JavaScript import.
+/// is the case when there's either:
+///  - a JavaScript file with non-JavaScript import
+///  - JSX import
 fn should_allow_js(module_graph_files: &[&ModuleGraphFile]) -> bool {
   module_graph_files.iter().any(|module_file| {
-    if module_file.media_type != (MediaType::JavaScript as i32) {
-      false
-    } else {
+    if module_file.media_type == (MediaType::JSX as i32) {
+      true
+    } else if module_file.media_type == (MediaType::JavaScript as i32) {
       module_file.imports.iter().any(|import_desc| {
         let import_file = module_graph_files
           .iter()
@@ -263,6 +275,8 @@ fn should_allow_js(module_graph_files: &[&ModuleGraphFile]) -> bool {
           || media_type == (MediaType::TSX as i32)
           || media_type == (MediaType::JSX as i32)
       })
+    } else {
+      false
     }
   })
 }
@@ -341,6 +355,43 @@ fn test_should_allow_js() {
       source_code: "function foo() {}".to_string(),
     },
   ],));
+
+  assert!(should_allow_js(&[
+    &ModuleGraphFile {
+      specifier: "file:///some/file.jsx".to_string(),
+      url: "file:///some/file.jsx".to_string(),
+      redirect: None,
+      filename: "some/file.jsx".to_string(),
+      imports: vec![],
+      referenced_files: vec![],
+      lib_directives: vec![],
+      types_directives: vec![],
+      type_headers: vec![],
+      media_type: MediaType::JSX as i32,
+      source_code: "function foo() {}".to_string(),
+    },
+    &ModuleGraphFile {
+      specifier: "file:///some/file.ts".to_string(),
+      url: "file:///some/file.ts".to_string(),
+      redirect: None,
+      filename: "some/file.ts".to_string(),
+      imports: vec![ImportDescriptor {
+        specifier: "./file.jsx".to_string(),
+        resolved_specifier: ModuleSpecifier::resolve_url(
+          "file:///some/file.jsx",
+        )
+        .unwrap(),
+        type_directive: None,
+        resolved_type_directive: None,
+      }],
+      referenced_files: vec![],
+      lib_directives: vec![],
+      types_directives: vec![],
+      type_headers: vec![],
+      media_type: MediaType::TypeScript as i32,
+      source_code: "function foo() {}".to_string(),
+    },
+  ]));
 
   assert!(!should_allow_js(&[
     &ModuleGraphFile {
