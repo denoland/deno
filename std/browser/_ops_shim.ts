@@ -1,6 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import { errors } from "../../cli/js/errors.ts";
+import { errors } from "https://raw.githubusercontent.com/denoland/deno/v1.1.0/cli/js/errors.ts";
+export { errors } from "https://raw.githubusercontent.com/denoland/deno/v1.1.0/cli/js/errors.ts";
 
 export enum SeekMode {
   Start = 0,

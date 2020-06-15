@@ -233,13 +233,11 @@ export async function getDenoShim(): Promise<DenoNamespace> {
   const { Buffer, readAll, readAllSync, writeAll, writeAllSync } = await import(
     "https://raw.githubusercontent.com/denoland/deno/v1.1.0/cli/js/buffer.ts"
   );
-  const { errors } = await import(
-    "https://raw.githubusercontent.com/denoland/deno/v1.1.0/cli/js/errors.ts"
-  );
   const { copy, iter, iterSync } = await import(
     "https://raw.githubusercontent.com/denoland/deno/v1.1.0/cli/js/io.ts"
   );
   const {
+    errors,
     close,
     copyFile: opCopyFile,
     getResources: resources,
@@ -337,14 +335,14 @@ export async function getDenoShim(): Promise<DenoNamespace> {
 
     if (createOrCreateNewWithoutWriteOrAppend) {
       throw new Error(
-        "'create' or 'createNew' options require 'write' or 'append' option",
+        "'create' or 'createNew' options require 'write' or 'append' option"
       );
     }
   }
 
   function open(
     path: string,
-    options: Deno.OpenOptions = { read: true },
+    options: Deno.OpenOptions = { read: true }
   ): Promise<File> {
     try {
       checkOpenOptions(options);
@@ -357,7 +355,7 @@ export async function getDenoShim(): Promise<DenoNamespace> {
 
   function openSync(
     path: string,
-    options: Deno.OpenOptions = { read: true },
+    options: Deno.OpenOptions = { read: true }
   ): File {
     checkOpenOptions(options);
     const rid = opOpen(path, options);
@@ -514,7 +512,7 @@ export async function getDenoShim(): Promise<DenoNamespace> {
   function writeFileSync(
     path: string,
     data: Uint8Array,
-    options: Deno.WriteFileOptions,
+    options: Deno.WriteFileOptions
   ): void {
     const openOptions = !!options.append
       ? { write: true, create: true, append: true }
@@ -529,7 +527,7 @@ export async function getDenoShim(): Promise<DenoNamespace> {
   async function writeFile(
     path: string,
     data: Uint8Array,
-    options: Deno.WriteFileOptions,
+    options: Deno.WriteFileOptions
   ): Promise<void> {
     writeFileSync(path, data, options);
   }
