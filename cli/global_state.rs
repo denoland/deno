@@ -9,6 +9,7 @@ use crate::module_graph::ModuleGraphFile;
 use crate::module_graph::ModuleGraphLoader;
 use crate::msg;
 use crate::msg::MediaType;
+use crate::op_error::OpError;
 use crate::permissions::Permissions;
 use crate::state::exit_unstable;
 use crate::tsc::CompiledModule;
@@ -203,9 +204,16 @@ impl GlobalState {
     };
 
     let compiled_module = if was_compiled {
-      let r = state1.ts_compiler.get_compiled_module(&out.url);
-      eprintln!("{:?} {:#?}", module_specifier, r);
-      r?
+      state1
+        .ts_compiler
+        .get_compiled_module(&out.url)
+        .map_err(|e| {
+          let msg = e.to_string();
+          OpError::other(format!(
+            "Failed to get compiled source code of {}.\nReason: {}",
+            out.url, msg
+          ))
+        })?
     } else {
       CompiledModule {
         code: String::from_utf8(out.source_code.clone())?,
