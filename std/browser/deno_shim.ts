@@ -88,7 +88,15 @@ export async function unstable(): Promise<void> {
     await getDenoShim();
   }
 
-  const { DiagnosticCategory } = await import("../../cli/js/diagnostics.ts");
+  // from: cli/js/diagnostics.ts
+  enum DiagnosticCategory {
+    Log = 0,
+    Debug = 1,
+    Info = 2,
+    Error = 3,
+    Warning = 4,
+    Suggestion = 5,
+  }
 
   let umaskValue = 0o777;
 
@@ -220,11 +228,17 @@ export async function getDenoShim(): Promise<DenoNamespace> {
     return shim;
   }
 
+  // It would be great to update the version all in one go, but currently this
+  // would fail during the bundle dep analysis.
   const { Buffer, readAll, readAllSync, writeAll, writeAllSync } = await import(
-    "../../cli/js/buffer.ts"
+    "https://raw.githubusercontent.com/denoland/deno/v1.1.0/cli/js/buffer.ts"
   );
-  const { errors } = await import("../../cli/js/errors.ts");
-  const { copy, iter, iterSync } = await import("../../cli/js/io.ts");
+  const { errors } = await import(
+    "https://raw.githubusercontent.com/denoland/deno/v1.1.0/cli/js/errors.ts"
+  );
+  const { copy, iter, iterSync } = await import(
+    "https://raw.githubusercontent.com/denoland/deno/v1.1.0/cli/js/io.ts"
+  );
   const {
     close,
     copyFile: opCopyFile,
