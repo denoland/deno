@@ -42,6 +42,7 @@ Example (zsh):
 mkdir ~/.oh-my-zsh/custom/plugins/deno
 deno completions zsh > ~/.oh-my-zsh/custom/plugins/deno/_deno
 ```
+
 After this add `deno` plugin under plugins tag in `~/.zshrc` file.
 
 ### Editors and IDEs
