@@ -244,11 +244,11 @@ fn op_datagram_send(
           })?;
 
         let socket = &mut resource.socket;
-        socket
+        let byte_length = socket
           .send_to(&zero_copy, &resource.local_addr.as_pathname().unwrap())
           .await?;
 
-        Ok(json!({}))
+        Ok(json!(byte_length))
       };
 
       Ok(JsonOp::Async(op.boxed_local()))
