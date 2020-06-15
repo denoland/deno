@@ -125,7 +125,7 @@ these APIs will throw with an `Error` saying the feature isn't implemented:
 - `Deno.run`
 - `Deno.inspect`
 
-And there are some unstable:
+And there are some unstable APIs that are not implemented:
 
 - `Deno.openPlugin`
 - `Deno.formatDiagnostics`

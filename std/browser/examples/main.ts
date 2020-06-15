@@ -4,7 +4,7 @@
 // file, read it back in, and log its contents to the console.  If you wanted
 // to run the example in a browser, you would want to bundle it:
 //
-//     $ deno bundle https://deno.land/x/std/browsers/examples/main.ts example.js
+//     $ deno bundle https://deno.land/x/std/browser/examples/main.ts example.js
 //
 // You would then want to load the example as a module in a web page, like:
 //
