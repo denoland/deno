@@ -29,12 +29,21 @@ The supported shells are:
 - powershell
 - elvish
 
-Example:
+Example (bash):
 
 ```shell
 deno completions bash > /usr/local/etc/bash_completion.d/deno.bash
 source /usr/local/etc/bash_completion.d/deno.bash
 ```
+
+Example (zsh):
+
+```shell
+mkdir ~/.oh-my-zsh/custom/plugins/deno
+deno completions zsh > ~/.oh-my-zsh/custom/plugins/deno/_deno
+```
+
+After this add `deno` plugin under plugins tag in `~/.zshrc` file.
 
 ### Editors and IDEs
 
