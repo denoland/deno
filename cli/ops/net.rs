@@ -27,8 +27,11 @@ pub fn init(i: &mut CoreIsolate, s: &State) {
   i.register_op("op_connect", s.stateful_json_op2(op_connect));
   i.register_op("op_shutdown", s.stateful_json_op2(op_shutdown));
   i.register_op("op_listen", s.stateful_json_op2(op_listen));
-  i.register_op("op_receive", s.stateful_json_op2(op_receive));
-  i.register_op("op_send", s.stateful_json_op2(op_send));
+  i.register_op(
+    "op_datagram_receive",
+    s.stateful_json_op2(op_datagram_receive),
+  );
+  i.register_op("op_datagram_send", s.stateful_json_op2(op_datagram_send));
 }
 
 #[derive(Deserialize)]
@@ -161,8 +164,7 @@ fn receive_udp(
   Ok(JsonOp::Async(op.boxed_local()))
 }
 
-// TODO(ry) Rename to op_datagram_receive
-fn op_receive(
+fn op_datagram_receive(
   isolate_state: &mut CoreIsolateState,
   state: &State,
   args: Value,
@@ -192,8 +194,7 @@ struct SendArgs {
   transport_args: ArgsEnum,
 }
 
-// TODO(ry) Rename to op_datagram_send
-fn op_send(
+fn op_datagram_send(
   isolate_state: &mut CoreIsolateState,
   state: &State,
   args: Value,
@@ -222,7 +223,7 @@ fn op_send(
           .socket
           .poll_send_to(cx, &zero_copy, &addr)
           .map_err(OpError::from)
-          .map_ok(|_| json!({}))
+          .map_ok(|byte_length| json!(byte_length))
       });
       Ok(JsonOp::Async(f.boxed_local()))
     }

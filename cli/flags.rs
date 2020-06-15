@@ -93,7 +93,7 @@ pub struct Flags {
   pub allow_read: bool,
   pub allow_run: bool,
   pub allow_write: bool,
-  pub cache_blacklist: Vec<String>,
+  pub cache_blocklist: Vec<String>,
   pub ca_file: Option<String>,
   pub cached_only: bool,
   pub config_path: Option<String>,
@@ -103,20 +103,20 @@ pub struct Flags {
   pub lock: Option<String>,
   pub lock_write: bool,
   pub log_level: Option<Level>,
-  pub net_whitelist: Vec<String>,
+  pub net_allowlist: Vec<String>,
   pub no_prompts: bool,
   pub no_remote: bool,
-  pub read_whitelist: Vec<PathBuf>,
+  pub read_allowlist: Vec<PathBuf>,
   pub reload: bool,
   pub seed: Option<u64>,
   pub unstable: bool,
   pub v8_flags: Option<Vec<String>>,
   pub version: bool,
-  pub write_whitelist: Vec<PathBuf>,
+  pub write_allowlist: Vec<PathBuf>,
 }
 
-fn join_paths(whitelist: &[PathBuf], d: &str) -> String {
-  whitelist
+fn join_paths(allowlist: &[PathBuf], d: &str) -> String {
+  allowlist
     .iter()
     .map(|path| path.to_str().unwrap().to_string())
     .collect::<Vec<String>>()
@@ -129,8 +129,8 @@ impl Flags {
   pub fn to_permission_args(&self) -> Vec<String> {
     let mut args = vec![];
 
-    if !self.read_whitelist.is_empty() {
-      let s = format!("--allow-read={}", join_paths(&self.read_whitelist, ","));
+    if !self.read_allowlist.is_empty() {
+      let s = format!("--allow-read={}", join_paths(&self.read_allowlist, ","));
       args.push(s);
     }
 
@@ -138,9 +138,9 @@ impl Flags {
       args.push("--allow-read".to_string());
     }
 
-    if !self.write_whitelist.is_empty() {
+    if !self.write_allowlist.is_empty() {
       let s =
-        format!("--allow-write={}", join_paths(&self.write_whitelist, ","));
+        format!("--allow-write={}", join_paths(&self.write_allowlist, ","));
       args.push(s);
     }
 
@@ -148,8 +148,8 @@ impl Flags {
       args.push("--allow-write".to_string());
     }
 
-    if !self.net_whitelist.is_empty() {
-      let s = format!("--allow-net={}", self.net_whitelist.join(","));
+    if !self.net_allowlist.is_empty() {
+      let s = format!("--allow-net={}", self.net_allowlist.join(","));
       args.push(s);
     }
 
@@ -1051,7 +1051,7 @@ Grant all permissions:
 Grant permission to read from disk and listen to network:
   deno run --allow-read --allow-net https://deno.land/std/http/file_server.ts
 
-Grant permission to read whitelisted files from disk:
+Grant permission to read allow-listed files from disk:
   deno run --allow-read=/etc https://deno.land/std/http/file_server.ts
   
 Deno allows specifying the filename '-' to read the file from stdin.
@@ -1224,7 +1224,7 @@ fn reload_arg<'a, 'b>() -> Arg<'a, 'b> {
     .require_equals(true)
     .long("reload")
     .help("Reload source code cache (recompile TypeScript)")
-    .value_name("CACHE_BLACKLIST")
+    .value_name("CACHE_BLOCKLIST")
     .long_help(
       "Reload source code cache (recompile TypeScript)
 --reload
@@ -1238,13 +1238,13 @@ fn reload_arg<'a, 'b>() -> Arg<'a, 'b> {
 
 fn reload_arg_parse(flags: &mut Flags, matches: &ArgMatches) {
   if let Some(cache_bl) = matches.values_of("reload") {
-    let raw_cache_blacklist: Vec<String> =
+    let raw_cache_blocklist: Vec<String> =
       cache_bl.map(std::string::ToString::to_string).collect();
-    if raw_cache_blacklist.is_empty() {
+    if raw_cache_blocklist.is_empty() {
       flags.reload = true;
     } else {
-      flags.cache_blacklist = resolve_urls(raw_cache_blacklist);
-      debug!("cache blacklist: {:#?}", &flags.cache_blacklist);
+      flags.cache_blocklist = resolve_urls(raw_cache_blocklist);
+      debug!("cache blocklist: {:#?}", &flags.cache_blocklist);
       flags.reload = false;
     }
   }
@@ -1299,33 +1299,33 @@ fn no_remote_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
 fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   if let Some(read_wl) = matches.values_of("allow-read") {
-    let read_whitelist: Vec<PathBuf> = read_wl.map(PathBuf::from).collect();
+    let read_allowlist: Vec<PathBuf> = read_wl.map(PathBuf::from).collect();
 
-    if read_whitelist.is_empty() {
+    if read_allowlist.is_empty() {
       flags.allow_read = true;
     } else {
-      flags.read_whitelist = read_whitelist;
+      flags.read_allowlist = read_allowlist;
     }
   }
 
   if let Some(write_wl) = matches.values_of("allow-write") {
-    let write_whitelist: Vec<PathBuf> = write_wl.map(PathBuf::from).collect();
+    let write_allowlist: Vec<PathBuf> = write_wl.map(PathBuf::from).collect();
 
-    if write_whitelist.is_empty() {
+    if write_allowlist.is_empty() {
       flags.allow_write = true;
     } else {
-      flags.write_whitelist = write_whitelist;
+      flags.write_allowlist = write_allowlist;
     }
   }
 
   if let Some(net_wl) = matches.values_of("allow-net") {
-    let raw_net_whitelist: Vec<String> =
+    let raw_net_allowlist: Vec<String> =
       net_wl.map(std::string::ToString::to_string).collect();
-    if raw_net_whitelist.is_empty() {
+    if raw_net_allowlist.is_empty() {
       flags.allow_net = true;
     } else {
-      flags.net_whitelist = resolve_hosts(raw_net_whitelist);
-      debug!("net whitelist: {:#?}", &flags.net_whitelist);
+      flags.net_allowlist = resolve_hosts(raw_net_allowlist);
+      debug!("net allowlist: {:#?}", &flags.net_allowlist);
     }
   }
 
@@ -1974,7 +1974,7 @@ mod tests {
   }
 
   #[test]
-  fn allow_read_whitelist() {
+  fn allow_read_allowlist() {
     use tempfile::TempDir;
     let temp_dir = TempDir::new().expect("tempdir fail").path().to_path_buf();
 
@@ -1988,7 +1988,7 @@ mod tests {
       r.unwrap(),
       Flags {
         allow_read: false,
-        read_whitelist: vec![PathBuf::from("."), temp_dir],
+        read_allowlist: vec![PathBuf::from("."), temp_dir],
         subcommand: DenoSubcommand::Run {
           script: "script.ts".to_string(),
         },
@@ -1998,7 +1998,7 @@ mod tests {
   }
 
   #[test]
-  fn allow_write_whitelist() {
+  fn allow_write_allowlist() {
     use tempfile::TempDir;
     let temp_dir = TempDir::new().expect("tempdir fail").path().to_path_buf();
 
@@ -2012,7 +2012,7 @@ mod tests {
       r.unwrap(),
       Flags {
         allow_write: false,
-        write_whitelist: vec![PathBuf::from("."), temp_dir],
+        write_allowlist: vec![PathBuf::from("."), temp_dir],
         subcommand: DenoSubcommand::Run {
           script: "script.ts".to_string(),
         },
@@ -2022,7 +2022,7 @@ mod tests {
   }
 
   #[test]
-  fn allow_net_whitelist() {
+  fn allow_net_allowlist() {
     let r = flags_from_vec_safe(svec![
       "deno",
       "run",
@@ -2036,7 +2036,7 @@ mod tests {
           script: "script.ts".to_string(),
         },
         allow_net: false,
-        net_whitelist: svec!["127.0.0.1"],
+        net_allowlist: svec!["127.0.0.1"],
         ..Flags::default()
       }
     );
@@ -2454,7 +2454,7 @@ mod tests {
   }
 
   #[test]
-  fn allow_net_whitelist_with_ports() {
+  fn allow_net_allowlist_with_ports() {
     let r = flags_from_vec_safe(svec![
       "deno",
       "run",
@@ -2467,7 +2467,7 @@ mod tests {
         subcommand: DenoSubcommand::Run {
           script: "script.ts".to_string(),
         },
-        net_whitelist: svec![
+        net_allowlist: svec![
           "deno.land",
           "0.0.0.0:8000",
           "127.0.0.1:8000",
