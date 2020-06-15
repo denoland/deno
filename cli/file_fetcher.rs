@@ -242,7 +242,7 @@ impl SourceFileFetcher {
       return self.fetch_local_file(&module_url, permissions).map(Some);
     }
 
-    self.fetch_cached_remote_source(&module_url)
+    self.fetch_cached_remote_source(&module_url, 10)
   }
 
   /// This is main method that is responsible for fetching local or remote files.
@@ -347,7 +347,13 @@ impl SourceFileFetcher {
   fn fetch_cached_remote_source(
     &self,
     module_url: &Url,
+    redirect_limit: i64,
   ) -> Result<Option<SourceFile>, ErrBox> {
+    if redirect_limit < 0 {
+      let e = OpError::http("too many redirects".to_string());
+      return Err(e.into());
+    }
+
     let result = self.http_cache.get(&module_url);
     let result = match result {
       Err(e) => {
@@ -374,7 +380,8 @@ impl SourceFileFetcher {
           return Err(e.into());
         }
       };
-      return self.fetch_cached_remote_source(&redirect_url);
+      return self
+        .fetch_cached_remote_source(&redirect_url, redirect_limit - 1);
     }
 
     let mut source_code = Vec::new();
@@ -430,7 +437,7 @@ impl SourceFileFetcher {
       check_cache_blocklist(module_url, self.cache_blocklist.as_ref());
     // First try local cache
     if use_disk_cache && !is_blocked {
-      match self.fetch_cached_remote_source(&module_url) {
+      match self.fetch_cached_remote_source(&module_url, redirect_limit) {
         Ok(Some(source_file)) => {
           return futures::future::ok(source_file).boxed_local();
         }
@@ -479,7 +486,7 @@ impl SourceFileFetcher {
       {
         FetchOnceResult::NotModified => {
           let source_file =
-            dir.fetch_cached_remote_source(&module_url)?.unwrap();
+            dir.fetch_cached_remote_source(&module_url, 10)?.unwrap();
 
           Ok(source_file)
         }
@@ -1252,9 +1259,13 @@ mod tests {
       )
       .await;
     assert!(result.is_err());
-    // FIXME(bartlomieju):
-    // let err = result.err().unwrap();
-    // assert_eq!(err.kind(), ErrorKind::Http);
+
+    // Test that redirections in cached files are limited as well
+    let result = fetcher.fetch_cached_remote_source(&double_redirect_url, 2);
+    assert!(result.is_ok());
+
+    let result = fetcher.fetch_cached_remote_source(&double_redirect_url, 1);
+    assert!(result.is_err());
 
     drop(http_server_guard);
   }
@@ -1420,7 +1431,7 @@ mod tests {
       .insert("content-type".to_string(), "text/javascript".to_string());
     metadata.write(&cache_filename).unwrap();
 
-    let result2 = fetcher.fetch_cached_remote_source(&module_url);
+    let result2 = fetcher.fetch_cached_remote_source(&module_url, 1);
     assert!(result2.is_ok());
     let r2 = result2.unwrap().unwrap();
     assert_eq!(r2.source_code, b"export const loaded = true;\n");
