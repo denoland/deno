@@ -267,12 +267,12 @@ export async function getDenoShim(): Promise<DenoNamespace> {
   const env: DenoNamespace["env"] = new Env();
 
   function cwd(): string {
-    /* eslint-disable @typescript-eslint/no-explicit-any */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     if (window && (window as any).location) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const loc: URL = (window as any).location;
       return `${loc.origin}${loc.pathname}`;
     }
-    /* eslint-enable @typescript-eslint/no-explicit-any */
     return "";
   }
 
@@ -323,14 +323,14 @@ export async function getDenoShim(): Promise<DenoNamespace> {
 
     if (createOrCreateNewWithoutWriteOrAppend) {
       throw new Error(
-        "'create' or 'createNew' options require 'write' or 'append' option"
+        "'create' or 'createNew' options require 'write' or 'append' option",
       );
     }
   }
 
   function open(
     path: string,
-    options: Deno.OpenOptions = { read: true }
+    options: Deno.OpenOptions = { read: true },
   ): Promise<File> {
     try {
       checkOpenOptions(options);
@@ -343,7 +343,7 @@ export async function getDenoShim(): Promise<DenoNamespace> {
 
   function openSync(
     path: string,
-    options: Deno.OpenOptions = { read: true }
+    options: Deno.OpenOptions = { read: true },
   ): File {
     checkOpenOptions(options);
     const rid = opOpen(path, options);
@@ -500,7 +500,7 @@ export async function getDenoShim(): Promise<DenoNamespace> {
   function writeFileSync(
     path: string,
     data: Uint8Array,
-    options: Deno.WriteFileOptions
+    options: Deno.WriteFileOptions,
   ): void {
     const openOptions = !!options.append
       ? { write: true, create: true, append: true }
@@ -515,7 +515,7 @@ export async function getDenoShim(): Promise<DenoNamespace> {
   async function writeFile(
     path: string,
     data: Uint8Array,
-    options: Deno.WriteFileOptions
+    options: Deno.WriteFileOptions,
   ): Promise<void> {
     writeFileSync(path, data, options);
   }
@@ -672,6 +672,7 @@ export async function getDenoShim(): Promise<DenoNamespace> {
     args: readOnly([]),
     customInspect: readOnly(customInspect),
     // Intentionally not exposed in the types
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
     // @ts-expect-error
     internal: readOnly(Symbol.for("Deno internal")),
     core: readOnly({}),
