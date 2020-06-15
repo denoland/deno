@@ -2018,7 +2018,6 @@ itest!(ts_import_from_js {
 itest!(jsx_import_from_ts {
   args: "run --quiet --reload jsx_import_from_ts.ts",
   output: "jsx_import_from_ts.ts.out",
-  http_server: true,
 });
 
 itest!(single_compile_with_reload {
