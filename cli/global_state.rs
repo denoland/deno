@@ -367,7 +367,7 @@ fn test_should_allow_js() {
       lib_directives: vec![],
       types_directives: vec![],
       type_headers: vec![],
-      media_type: MediaType::JSX as i32,
+      media_type: MediaType::JSX,
       source_code: "function foo() {}".to_string(),
     },
     &ModuleGraphFile {
@@ -388,7 +388,7 @@ fn test_should_allow_js() {
       lib_directives: vec![],
       types_directives: vec![],
       type_headers: vec![],
-      media_type: MediaType::TypeScript as i32,
+      media_type: MediaType::TypeScript,
       source_code: "function foo() {}".to_string(),
     },
   ]));
