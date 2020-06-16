@@ -651,14 +651,14 @@ type WriteFileCallback = (
   sourceFiles?: readonly ts.SourceFile[]
 ) => void;
 
-interface WriteFileState {
-  type: CompilerRequestType;
-  bundle?: boolean;
-  bundleOutput?: string;
-  host?: Host;
+interface CompileWriteFileState {
   rootNames: string[];
-  emitMap?: Record<string, EmittedSource>;
-  sources?: Record<string, string>;
+  emitMap: Record<string, EmittedSource>;
+}
+
+interface BundleWriteFileState {
+  bundleOutput: undefined | string;
+  rootNames: string[];
 }
 
 // Warning! The values in this enum are duplicated in `cli/msg.rs`
@@ -671,17 +671,13 @@ enum CompilerRequestType {
   RuntimeTranspile = 4,
 }
 
-// TODO(bartlomieju): probably could be defined inline?
-function createBundleWriteFile(state: WriteFileState): WriteFileCallback {
+function createBundleWriteFile(state: BundleWriteFileState): WriteFileCallback {
   return function writeFile(
     _fileName: string,
     data: string,
     sourceFiles?: readonly ts.SourceFile[]
   ): void {
     assert(sourceFiles != null);
-    assert(state.host);
-    assert(state.emitMap);
-    assert(state.bundle);
     // we only support single root names for bundles
     assert(state.rootNames.length === 1);
     state.bundleOutput = buildBundle(state.rootNames[0], data, sourceFiles);
@@ -689,16 +685,15 @@ function createBundleWriteFile(state: WriteFileState): WriteFileCallback {
 }
 
 // TODO(bartlomieju): probably could be defined inline?
-function createCompileWriteFile(state: WriteFileState): WriteFileCallback {
+function createCompileWriteFile(
+  state: CompileWriteFileState
+): WriteFileCallback {
   return function writeFile(
     fileName: string,
     data: string,
     sourceFiles?: readonly ts.SourceFile[]
   ): void {
     assert(sourceFiles != null);
-    assert(state.host);
-    assert(state.emitMap);
-    assert(!state.bundle);
     assert(sourceFiles.length === 1);
     state.emitMap[fileName] = {
       filename: sourceFiles[0].fileName,
@@ -1048,6 +1043,7 @@ interface SourceFileMapEntry {
   typeHeaders: ReferenceDescriptor[];
 }
 
+/** Used when "deno run" is invoked */
 interface CompileRequest {
   type: CompilerRequestType.Compile;
   allowJs: boolean;
@@ -1061,6 +1057,7 @@ interface CompileRequest {
   sourceFileMap: Record<string, SourceFileMapEntry>;
 }
 
+/** Used when "deno bundle" is invoked */
 interface BundleRequest {
   type: CompilerRequestType.Bundle;
   target: CompilerHostTarget;
@@ -1073,6 +1070,7 @@ interface BundleRequest {
   sourceFileMap: Record<string, SourceFileMapEntry>;
 }
 
+/** Used when "Deno.compile()" API is called */
 interface RuntimeCompileRequest {
   type: CompilerRequestType.RuntimeCompile;
   target: CompilerHostTarget;
@@ -1082,6 +1080,7 @@ interface RuntimeCompileRequest {
   options?: string;
 }
 
+/** Used when "Deno.bundle()" API is called */
 interface RuntimeBundleRequest {
   type: CompilerRequestType.RuntimeBundle;
   target: CompilerHostTarget;
@@ -1091,6 +1090,7 @@ interface RuntimeBundleRequest {
   options?: string;
 }
 
+/** Used when "Deno.transpileOnly()" API is called */
 interface RuntimeTranspileRequest {
   type: CompilerRequestType.RuntimeTranspile;
   sources: Record<string, string>;
@@ -1120,7 +1120,7 @@ interface RuntimeCompileResponse {
 }
 
 interface RuntimeBundleResponse {
-  output: string;
+  output?: string;
   diagnostics: DiagnosticItem[];
 }
 
@@ -1144,21 +1144,16 @@ function compile(request: CompileRequest): CompileResponse {
   // each file that needs to be emitted.  The Deno compiler host delegates
   // this, to make it easier to perform the right actions, which vary
   // based a lot on the request.
-  const state: WriteFileState = {
-    type: request.type,
-    emitMap: {},
-    bundle: false,
-    host: undefined,
+  const state: CompileWriteFileState = {
     rootNames,
+    emitMap: {},
   };
-  const writeFile = createCompileWriteFile(state);
   const host = new Host({
     bundle: false,
     target,
-    writeFile,
     unstable,
+    writeFile: createCompileWriteFile(state),
   });
-  state.host = host;
   let diagnostics: readonly ts.Diagnostic[] = [];
 
   host.mergeOptions({ allowJs });
@@ -1202,18 +1197,15 @@ function compile(request: CompileRequest): CompileResponse {
     }
   }
 
-  assert(state.emitMap);
-  const result: CompileResponse = {
-    emitMap: state.emitMap,
-    diagnostics: fromTypeScriptDiagnostic(diagnostics),
-  };
-
   log("<<< compile end", {
     rootNames,
     type: CompilerRequestType[request.type],
   });
 
-  return result;
+  return {
+    emitMap: state.emitMap,
+    diagnostics: fromTypeScriptDiagnostic(diagnostics),
+  };
 }
 
 function bundle(request: BundleRequest): BundleResponse {
@@ -1235,21 +1227,16 @@ function bundle(request: BundleRequest): BundleResponse {
   // each file that needs to be emitted.  The Deno compiler host delegates
   // this, to make it easier to perform the right actions, which vary
   // based a lot on the request.
-  const state: WriteFileState = {
-    type: request.type,
-    emitMap: {},
-    bundle: true,
-    host: undefined,
+  const state: BundleWriteFileState = {
     rootNames,
+    bundleOutput: undefined,
   };
-  const writeFile = createBundleWriteFile(state);
   const host = new Host({
     bundle: true,
     target,
-    writeFile,
     unstable,
+    writeFile: createBundleWriteFile(state),
   });
-  state.host = host;
   let diagnostics: readonly ts.Diagnostic[] = [];
 
   // if there is a configuration supplied, we need to parse that
@@ -1325,21 +1312,15 @@ function runtimeCompile(
 
   buildLocalSourceFileCache(sourceFileMap);
 
-  const state: WriteFileState = {
-    type: request.type,
-    bundle: false,
-    host: undefined,
+  const state: CompileWriteFileState = {
     rootNames,
     emitMap: {},
-    bundleOutput: undefined,
   };
-  const writeFile = createCompileWriteFile(state);
-
-  const host = (state.host = new Host({
+  const host = new Host({
     bundle: false,
     target,
-    writeFile,
-  }));
+    writeFile: createCompileWriteFile(state),
+  });
   const compilerOptions = [DEFAULT_RUNTIME_COMPILE_OPTIONS];
   if (convertedOptions) {
     compilerOptions.push(convertedOptions);
@@ -1369,7 +1350,6 @@ function runtimeCompile(
 
   assert(emitResult.emitSkipped === false, "Unexpected skip of the emit.");
 
-  assert(state.emitMap);
   log("<<< runtime compile finish", {
     rootNames,
     emitMap: Object.keys(state.emitMap),
@@ -1382,7 +1362,7 @@ function runtimeCompile(
   return {
     diagnostics: maybeDiagnostics,
     emitMap: state.emitMap,
-  } as RuntimeCompileResponse;
+  };
 }
 
 function runtimeBundle(request: RuntimeBundleRequest): RuntimeBundleResponse {
@@ -1402,21 +1382,16 @@ function runtimeBundle(request: RuntimeBundleRequest): RuntimeBundleResponse {
 
   buildLocalSourceFileCache(sourceFileMap);
 
-  const state: WriteFileState = {
-    type: request.type,
-    bundle: true,
-    host: undefined,
+  const state: BundleWriteFileState = {
     rootNames,
-    emitMap: {},
     bundleOutput: undefined,
   };
-  const writeFile = createBundleWriteFile(state);
-
-  const host = (state.host = new Host({
+  const host = new Host({
     bundle: true,
     target,
-    writeFile,
-  }));
+    writeFile: createBundleWriteFile(state),
+  });
+
   const compilerOptions = [DEFAULT_RUNTIME_COMPILE_OPTIONS];
   if (convertedOptions) {
     compilerOptions.push(convertedOptions);
@@ -1447,7 +1422,6 @@ function runtimeBundle(request: RuntimeBundleRequest): RuntimeBundleResponse {
 
   assert(emitResult.emitSkipped === false, "Unexpected skip of the emit.");
 
-  assert(state.emitMap);
   log("<<< runtime bundle finish", {
     rootNames,
   });
@@ -1459,7 +1433,7 @@ function runtimeBundle(request: RuntimeBundleRequest): RuntimeBundleResponse {
   return {
     diagnostics: maybeDiagnostics,
     output: state.bundleOutput,
-  } as RuntimeBundleResponse;
+  };
 }
 
 function runtimeTranspile(
