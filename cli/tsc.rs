@@ -416,7 +416,6 @@ impl TsCompiler {
 
   /// Check if there is compiled source in cache that is valid
   /// and can be used again.
-  // TODO(bartlomieju): there should be check that cached file actually exists
   fn has_compiled_source(
     &self,
     file_fetcher: &SourceFileFetcher,
@@ -427,8 +426,7 @@ impl TsCompiler {
       .fetch_cached_source_file(&specifier, Permissions::allow_all())
     {
       if let Some(metadata) = self.get_metadata(&url) {
-        // 2. compare version hashes
-        // TODO: it would probably be good idea to make it method implemented on SourceFile
+        // Compare version hashes
         let version_hash_to_validate = source_code_version_hash(
           &source_file.source_code,
           version::DENO,
@@ -557,8 +555,6 @@ impl TsCompiler {
   }
 
   fn get_graph_metadata(&self, url: &Url) -> Option<GraphFileMetadata> {
-    // Try to load cached version:
-    // 1. check if there's 'meta' file
     let cache_key = self
       .disk_cache
       .get_cache_filename_with_extension(url, "graph");
@@ -701,7 +697,6 @@ impl TsCompiler {
       filename: compiled_code_filename,
       media_type: msg::MediaType::JavaScript,
       source_code: compiled_code,
-      types_url: None,
       types_header: None,
     };
 
@@ -786,7 +781,6 @@ impl TsCompiler {
       filename: source_map_filename,
       media_type: msg::MediaType::JavaScript,
       source_code,
-      types_url: None,
       types_header: None,
     };
 
@@ -1171,7 +1165,6 @@ mod tests {
       filename: PathBuf::from(p.to_str().unwrap().to_string()),
       media_type: msg::MediaType::TypeScript,
       source_code: include_bytes!("./tests/002_hello.ts").to_vec(),
-      types_url: None,
       types_header: None,
     };
     let mock_state =
