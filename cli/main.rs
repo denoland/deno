@@ -588,7 +588,6 @@ async fn run_command(flags: Flags, script: String) -> Result<(), ErrBox> {
     let source_file = SourceFile {
       filename: main_module_url.to_file_path().unwrap(),
       url: main_module_url,
-
       types_header: None,
       media_type: MediaType::TypeScript,
       source_code: source,

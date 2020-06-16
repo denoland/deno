@@ -319,7 +319,6 @@ impl SourceFileFetcher {
       filename: filepath,
       media_type,
       source_code,
-
       types_header: None,
     })
   }
