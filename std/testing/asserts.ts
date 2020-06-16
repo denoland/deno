@@ -380,11 +380,20 @@ export async function assertThrowsAsync<T = void>(
       throw new AssertionError(msg);
     }
     if (
-      msgIncludes &&
+      msgIncludes && typeof e.message !== "undefined" &&
       !stripColor(e.message).includes(stripColor(msgIncludes))
     ) {
       msg = `Expected error message to include "${msgIncludes}", but got "${
         e.message
+      }"${msg ? `: ${msg}` : "."}`;
+      throw new AssertionError(msg);
+    }
+    if (
+      msgIncludes && typeof e.message === "undefined" &&
+      !stripColor(String(e)).includes(stripColor(msgIncludes))
+    ) {
+      msg = `Expected error message to include "${msgIncludes}", but got "${
+        e
       }"${msg ? `: ${msg}` : "."}`;
       throw new AssertionError(msg);
     }
