@@ -248,7 +248,7 @@ impl GlobalState {
 /// is the case when there's a JavaScript file with non-JavaScript import.
 fn should_allow_js(module_graph_files: &[&ModuleGraphFile]) -> bool {
   module_graph_files.iter().any(|module_file| {
-    if module_file.media_type != (MediaType::JavaScript as i32) {
+    if module_file.media_type != MediaType::JavaScript {
       false
     } else {
       module_file.imports.iter().any(|import_desc| {
@@ -259,9 +259,9 @@ fn should_allow_js(module_graph_files: &[&ModuleGraphFile]) -> bool {
           })
           .expect("Failed to find imported file");
         let media_type = import_file.media_type;
-        media_type == (MediaType::TypeScript as i32)
-          || media_type == (MediaType::TSX as i32)
-          || media_type == (MediaType::JSX as i32)
+        media_type == MediaType::TypeScript
+          || media_type == MediaType::TSX
+          || media_type == MediaType::JSX
       })
     }
   })
@@ -287,9 +287,9 @@ fn needs_compilation(
   needs_compilation |= module_graph_files.iter().any(|module_file| {
     let media_type = module_file.media_type;
 
-    media_type == (MediaType::TypeScript as i32)
-      || media_type == (MediaType::TSX as i32)
-      || media_type == (MediaType::JSX as i32)
+    media_type == (MediaType::TypeScript)
+      || media_type == (MediaType::TSX)
+      || media_type == (MediaType::JSX)
   });
 
   needs_compilation
@@ -316,7 +316,7 @@ fn test_should_allow_js() {
       lib_directives: vec![],
       types_directives: vec![],
       type_headers: vec![],
-      media_type: MediaType::TypeScript as i32,
+      media_type: MediaType::TypeScript,
       source_code: "function foo() {}".to_string(),
     },
     &ModuleGraphFile {
@@ -337,7 +337,7 @@ fn test_should_allow_js() {
       lib_directives: vec![],
       types_directives: vec![],
       type_headers: vec![],
-      media_type: MediaType::JavaScript as i32,
+      media_type: MediaType::JavaScript,
       source_code: "function foo() {}".to_string(),
     },
   ],));
@@ -353,7 +353,7 @@ fn test_should_allow_js() {
       lib_directives: vec![],
       types_directives: vec![],
       type_headers: vec![],
-      media_type: MediaType::JavaScript as i32,
+      media_type: MediaType::JavaScript,
       source_code: "function foo() {}".to_string(),
     },
     &ModuleGraphFile {
@@ -374,7 +374,7 @@ fn test_should_allow_js() {
       lib_directives: vec![],
       types_directives: vec![],
       type_headers: vec![],
-      media_type: MediaType::JavaScript as i32,
+      media_type: MediaType::JavaScript,
       source_code: "function foo() {}".to_string(),
     },
   ],));
@@ -395,7 +395,7 @@ fn test_needs_compilation() {
       lib_directives: vec![],
       types_directives: vec![],
       type_headers: vec![],
-      media_type: MediaType::JavaScript as i32,
+      media_type: MediaType::JavaScript,
       source_code: "function foo() {}".to_string(),
     }],
   ));
@@ -419,7 +419,7 @@ fn test_needs_compilation() {
         lib_directives: vec![],
         types_directives: vec![],
         type_headers: vec![],
-        media_type: MediaType::TypeScript as i32,
+        media_type: MediaType::TypeScript,
         source_code: "function foo() {}".to_string(),
       },
       &ModuleGraphFile {
@@ -432,7 +432,7 @@ fn test_needs_compilation() {
         lib_directives: vec![],
         types_directives: vec![],
         type_headers: vec![],
-        media_type: MediaType::JavaScript as i32,
+        media_type: MediaType::JavaScript,
         source_code: "function foo() {}".to_string(),
       },
     ],

@@ -104,7 +104,7 @@ pub struct ModuleGraphFile {
   pub lib_directives: Vec<ReferenceDescriptor>,
   pub types_directives: Vec<ReferenceDescriptor>,
   pub type_headers: Vec<ReferenceDescriptor>,
-  pub media_type: i32,
+  pub media_type: MediaType,
   pub source_code: String,
 }
 
@@ -287,8 +287,7 @@ impl ModuleGraphLoader {
         specifier: specifier.to_string(),
         url: specifier.to_string(),
         redirect: None,
-        media_type: map_file_extension(&PathBuf::from(specifier.clone()))
-          as i32,
+        media_type: map_file_extension(&PathBuf::from(specifier.clone())),
         filename: specifier,
         source_code,
         imports,
@@ -390,7 +389,7 @@ impl ModuleGraphLoader {
           url: module_specifier.to_string(),
           redirect: Some(source_file.url.to_string()),
           filename: source_file.filename.to_str().unwrap().to_string(),
-          media_type: source_file.media_type as i32,
+          media_type: source_file.media_type,
           source_code: "".to_string(),
           imports: vec![],
           referenced_files: vec![],
@@ -526,7 +525,7 @@ impl ModuleGraphLoader {
         url: module_specifier.to_string(),
         redirect: None,
         filename: source_file.filename.to_str().unwrap().to_string(),
-        media_type: source_file.media_type as i32,
+        media_type: source_file.media_type,
         source_code,
         imports,
         referenced_files,

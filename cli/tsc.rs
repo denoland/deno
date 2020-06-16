@@ -504,7 +504,7 @@ impl TsCompiler {
     let cwd = std::env::current_dir().unwrap();
     let j = match (compiler_config.path, compiler_config.content) {
       (Some(config_path), Some(config_data)) => json!({
-        "type": msg::CompilerRequestType::Compile as i32,
+        "type": msg::CompilerRequestType::Compile,
         "allowJs": allow_js,
         "target": target,
         "rootNames": root_names,
@@ -515,7 +515,7 @@ impl TsCompiler {
         "sourceFileMap": module_graph_json,
       }),
       _ => json!({
-        "type": msg::CompilerRequestType::Compile as i32,
+        "type": msg::CompilerRequestType::Compile,
         "allowJs": allow_js,
         "target": target,
         "rootNames": root_names,
@@ -945,7 +945,7 @@ pub async fn bundle(
   // be optional
   let j = match (compiler_config.path, compiler_config.content) {
     (Some(config_path), Some(config_data)) => json!({
-      "type": msg::CompilerRequestType::Bundle as i32,
+      "type": msg::CompilerRequestType::Bundle,
       "target": target,
       "rootNames": root_names,
       "unstable": unstable,
@@ -955,7 +955,7 @@ pub async fn bundle(
       "sourceFileMap": module_graph_json,
     }),
     _ => json!({
-      "type": msg::CompilerRequestType::Bundle as i32,
+      "type": msg::CompilerRequestType::Bundle,
       "target": target,
       "rootNames": root_names,
       "unstable": unstable,
@@ -1053,7 +1053,7 @@ pub async fn runtime_compile(
     serde_json::to_value(module_graph).expect("Failed to serialize data");
 
   let req_msg = json!({
-    "type": msg::CompilerRequestType::RuntimeCompile as i32,
+    "type": msg::CompilerRequestType::RuntimeCompile,
     "target": "runtime",
     "rootNames": root_names,
     "sourceFileMap": module_graph_json,
@@ -1101,7 +1101,7 @@ pub async fn runtime_bundle(
     serde_json::to_value(module_graph).expect("Failed to serialize data");
 
   let req_msg = json!({
-    "type": msg::CompilerRequestType::RuntimeBundle as i32,
+    "type": msg::CompilerRequestType::RuntimeBundle,
     "target": "runtime",
     "rootNames": root_names,
     "sourceFileMap": module_graph_json,
@@ -1129,7 +1129,7 @@ pub async fn runtime_transpile(
   options: &Option<String>,
 ) -> Result<Value, OpError> {
   let req_msg = json!({
-    "type": msg::CompilerRequestType::RuntimeTranspile as i32,
+    "type": msg::CompilerRequestType::RuntimeTranspile,
     "sources": sources,
     "options": options,
   })
