@@ -6,7 +6,7 @@ TypeScript code.
 ## Writing tests
 
 To define a test you need to call `Deno.test` with a name and function to be
-tested. There are two style you can use.
+tested. There are two styles you can use.
 
 ```ts
 // Simple name and function, compact form, but not configurable
@@ -32,12 +32,15 @@ There are some useful assertion utilities at https://deno.land/std/testing#usage
 to make testing easier:
 
 ```ts
-import { assertEquals, assertArrayContains } from "https://deno.land/std/testing/asserts.ts";
+import {
+  assertEquals,
+  assertArrayContains,
+} from "https://deno.land/std/testing/asserts.ts";
 
 Deno.test("hello world", () => {
   const x = 1 + 2;
   assertEquals(x, 3);
-  assertArrayContains([1,2,3,4,5,6], [3], "Expected 3 to be in the array);
+  assertArrayContains([1, 2, 3, 4, 5, 6], [3], "Expected 3 to be in the array");
 });
 ```
 
