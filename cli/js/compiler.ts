@@ -437,7 +437,6 @@ class Host implements ts.CompilerHost {
         specifier,
         containingFile,
         maybeUrl,
-        sf: SourceFile.getCached(maybeUrl!),
       });
 
       let sourceFile: SourceFile | undefined = undefined;
@@ -1153,12 +1152,13 @@ function compile(request: CompileRequest): CompileResponse {
     rootNames,
   };
   const writeFile = createCompileWriteFile(state);
-  const host = (state.host = new Host({
+  const host = new Host({
     bundle: false,
     target,
     writeFile,
     unstable,
-  }));
+  });
+  state.host = host;
   let diagnostics: readonly ts.Diagnostic[] = [];
 
   host.mergeOptions({ allowJs });
@@ -1243,13 +1243,13 @@ function bundle(request: BundleRequest): BundleResponse {
     rootNames,
   };
   const writeFile = createBundleWriteFile(state);
-
-  const host = (state.host = new Host({
+  const host = new Host({
     bundle: true,
     target,
     writeFile,
     unstable,
-  }));
+  });
+  state.host = host;
   let diagnostics: readonly ts.Diagnostic[] = [];
 
   // if there is a configuration supplied, we need to parse that
