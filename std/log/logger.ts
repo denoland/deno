@@ -13,11 +13,13 @@ export class LogRecord {
   #datetime: Date;
   readonly level: number;
   readonly levelName: string;
+  readonly loggerName: string;
 
-  constructor(msg: string, args: unknown[], level: number) {
+  constructor(msg: string, args: unknown[], level: number, loggerName: string) {
     this.msg = msg;
     this.#args = [...args];
     this.level = level;
+    this.loggerName = loggerName;
     this.#datetime = new Date();
     this.levelName = getLevelName(level);
   }
@@ -34,8 +36,14 @@ export class Logger {
   levelName: LevelName;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   handlers: any[];
+  loggerName: string;
 
-  constructor(levelName: LevelName, handlers?: BaseHandler[]) {
+  constructor(
+    loggerName: string,
+    levelName: LevelName,
+    handlers?: BaseHandler[]
+  ) {
+    this.loggerName = loggerName;
     this.level = getLevelByName(levelName);
     this.levelName = levelName;
 
@@ -66,7 +74,12 @@ export class Logger {
     } else {
       logMessage = this.asString(msg);
     }
-    const record: LogRecord = new LogRecord(logMessage, args, level);
+    const record: LogRecord = new LogRecord(
+      logMessage,
+      args,
+      level,
+      this.loggerName
+    );
 
     this.handlers.forEach((handler): void => {
       handler.handle(record);

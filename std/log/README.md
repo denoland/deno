@@ -79,6 +79,7 @@ class LogRecord {
   readonly datetime: Date;
   readonly level: number;
   readonly levelName: string;
+  readonly loggerName: string;
 }
 ```
 
@@ -208,13 +209,21 @@ await log.setup({
         return msg;
       }
     }),
+
+    anotherFmt: new log.handlers.ConsoleHandler("DEBUG", {
+      formatter: "[{loggerName}] - {levelName} {msg}"
+    }),
   },
 
   loggers: {
      default: {
-         level: "DEBUG",
-         handlers: ["stringFmt", "functionFmt"],
+       level: "DEBUG",
+       handlers: ["stringFmt", "functionFmt"],
      },
+     dataLogger: {
+       level: "INFO",
+       handlers: ["anotherFmt"],
+     }
   }
 })
 
@@ -223,6 +232,11 @@ log.debug("Hello, world!", 1, "two", [3, 4, 5]);
 // results in:
 [DEBUG] Hello, world! // output from "stringFmt" handler
 10 Hello, world!, arg0: 1, arg1: two, arg3: [3, 4, 5] // output from "functionFmt" formatter
+
+// calling
+log.getLogger("dataLogger").error("oh no!");
+// results in:
+[dataLogger] - ERROR oh no! // output from anotherFmt handler
 ```
 
 #### Custom handlers
