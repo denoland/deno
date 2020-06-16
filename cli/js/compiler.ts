@@ -684,7 +684,6 @@ function createBundleWriteFile(state: BundleWriteFileState): WriteFileCallback {
   };
 }
 
-// TODO(bartlomieju): probably could be defined inline?
 function createCompileWriteFile(
   state: CompileWriteFileState
 ): WriteFileCallback {

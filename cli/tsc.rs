@@ -37,7 +37,6 @@ use sourcemap::SourceMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs;
-use std::hash::BuildHasher;
 use std::io;
 use std::ops::Deref;
 use std::ops::DerefMut;
@@ -989,11 +988,11 @@ pub async fn bundle(
   Ok(output)
 }
 
-async fn create_runtime_module_graph<S: BuildHasher>(
+async fn create_runtime_module_graph(
   global_state: GlobalState,
   permissions: Permissions,
   root_name: &str,
-  sources: &Option<HashMap<String, String, S>>,
+  sources: &Option<HashMap<String, String>>,
   maybe_options: &Option<String>,
 ) -> Result<(Vec<String>, HashMap<String, ModuleGraphFile>), OpError> {
   let mut root_names = vec![];
@@ -1041,11 +1040,11 @@ async fn create_runtime_module_graph<S: BuildHasher>(
 }
 
 /// This function is used by `Deno.compile()` API.
-pub async fn runtime_compile<S: BuildHasher>(
+pub async fn runtime_compile(
   global_state: GlobalState,
   permissions: Permissions,
   root_name: &str,
-  sources: &Option<HashMap<String, String, S>>,
+  sources: &Option<HashMap<String, String>>,
   maybe_options: &Option<String>,
 ) -> Result<Value, OpError> {
   let (root_names, module_graph) = create_runtime_module_graph(
@@ -1083,17 +1082,17 @@ pub async fn runtime_compile<S: BuildHasher>(
   }
 
   // We're returning `Ok()` instead of `Err()` because it's not runtime
-  // error if there were diagnostics produces; we want to let user handle
+  // error if there were diagnostics produced; we want to let user handle
   // diagnostics in the runtime.
   Ok(serde_json::from_str::<Value>(json_str).unwrap())
 }
 
 /// This function is used by `Deno.bundle()` API.
-pub async fn runtime_bundle<S: BuildHasher>(
+pub async fn runtime_bundle(
   global_state: GlobalState,
   permissions: Permissions,
   root_name: &str,
-  sources: &Option<HashMap<String, String, S>>,
+  sources: &Option<HashMap<String, String>>,
   maybe_options: &Option<String>,
 ) -> Result<Value, OpError> {
   let (root_names, module_graph) = create_runtime_module_graph(
@@ -1129,10 +1128,10 @@ pub async fn runtime_bundle<S: BuildHasher>(
 }
 
 /// This function is used by `Deno.transpileOnly()` API.
-pub async fn runtime_transpile<S: BuildHasher>(
+pub async fn runtime_transpile(
   global_state: GlobalState,
   permissions: Permissions,
-  sources: &HashMap<String, String, S>,
+  sources: &HashMap<String, String>,
   options: &Option<String>,
 ) -> Result<Value, OpError> {
   let req_msg = json!({
