@@ -26,10 +26,9 @@ Deno.test({
       formatter: "[{loggerName}] {levelName} {msg}",
     });
 
-    const logger = new Logger("config", "DEBUG", [
-      handlerNoName,
-      handlerWithLoggerName,
-    ]);
+    const logger = new Logger("config", "DEBUG", {
+      handlers: [handlerNoName, handlerWithLoggerName],
+    });
     logger.debug("hello");
     assertEquals(handlerNoName.messages[0], "DEBUG hello");
     assertEquals(handlerWithLoggerName.messages[0], "[config] DEBUG hello");
@@ -44,14 +43,14 @@ Deno.test("simpleLogger", function (): void {
   assertEquals(logger.levelName, "DEBUG");
   assertEquals(logger.handlers, []);
 
-  logger = new Logger("default", "DEBUG", [handler]);
+  logger = new Logger("default", "DEBUG", { handlers: [handler] });
 
   assertEquals(logger.handlers, [handler]);
 });
 
 Deno.test("customHandler", function (): void {
   const handler = new TestHandler("DEBUG");
-  const logger = new Logger("default", "DEBUG", [handler]);
+  const logger = new Logger("default", "DEBUG", { handlers: [handler] });
 
   const inlineData: string = logger.debug("foo", 1, 2);
 
@@ -68,7 +67,7 @@ Deno.test("customHandler", function (): void {
 Deno.test("logFunctions", function (): void {
   const doLog = (level: LevelName): TestHandler => {
     const handler = new TestHandler(level);
-    const logger = new Logger("default", level, [handler]);
+    const logger = new Logger("default", level, { handlers: [handler] });
     const debugData = logger.debug("foo");
     const infoData = logger.info("bar");
     const warningData = logger.warning("baz");
@@ -119,7 +118,7 @@ Deno.test(
   "String resolver fn will not execute if msg will not be logged",
   function (): void {
     const handler = new TestHandler("ERROR");
-    const logger = new Logger("default", "ERROR", [handler]);
+    const logger = new Logger("default", "ERROR", { handlers: [handler] });
     let called = false;
 
     const expensiveFunction = (): string => {
@@ -139,7 +138,7 @@ Deno.test(
 
 Deno.test("String resolver fn resolves as expected", function (): void {
   const handler = new TestHandler("ERROR");
-  const logger = new Logger("default", "ERROR", [handler]);
+  const logger = new Logger("default", "ERROR", { handlers: [handler] });
   const expensiveFunction = (x: number): string => {
     return "expensive function result " + x;
   };
@@ -154,7 +153,7 @@ Deno.test(
   "All types map correctly to log strings and are returned as is",
   function (): void {
     const handler = new TestHandler("DEBUG");
-    const logger = new Logger("default", "DEBUG", [handler]);
+    const logger = new Logger("default", "DEBUG", { handlers: [handler] });
     const sym = Symbol();
     const syma = Symbol("a");
     const fn = (): string => {

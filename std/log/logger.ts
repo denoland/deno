@@ -7,6 +7,13 @@ import {
 } from "./levels.ts";
 import { BaseHandler } from "./handlers.ts";
 
+export interface LogRecordOptions {
+  msg: string;
+  args: unknown[];
+  level: number;
+  loggerName: string;
+}
+
 export class LogRecord {
   readonly msg: string;
   #args: unknown[];
@@ -15,13 +22,13 @@ export class LogRecord {
   readonly levelName: string;
   readonly loggerName: string;
 
-  constructor(msg: string, args: unknown[], level: number, loggerName: string) {
-    this.msg = msg;
-    this.#args = [...args];
-    this.level = level;
-    this.loggerName = loggerName;
+  constructor(options: LogRecordOptions) {
+    this.msg = options.msg;
+    this.#args = [...options.args];
+    this.level = options.level;
+    this.loggerName = options.loggerName;
     this.#datetime = new Date();
-    this.levelName = getLevelName(level);
+    this.levelName = getLevelName(options.level);
   }
   get args(): unknown[] {
     return [...this.#args];
@@ -29,6 +36,10 @@ export class LogRecord {
   get datetime(): Date {
     return new Date(this.#datetime.getTime());
   }
+}
+
+export interface LoggerOptions {
+  handlers?: BaseHandler[];
 }
 
 export class Logger {
@@ -41,13 +52,13 @@ export class Logger {
   constructor(
     loggerName: string,
     levelName: LevelName,
-    handlers?: BaseHandler[]
+    options: LoggerOptions = {}
   ) {
     this.loggerName = loggerName;
     this.level = getLevelByName(levelName);
     this.levelName = levelName;
 
-    this.handlers = handlers || [];
+    this.handlers = options.handlers || [];
   }
 
   /** If the level of the logger is greater than the level to log, then nothing
@@ -74,12 +85,12 @@ export class Logger {
     } else {
       logMessage = this.asString(msg);
     }
-    const record: LogRecord = new LogRecord(
-      logMessage,
-      args,
-      level,
-      this.loggerName
-    );
+    const record: LogRecord = new LogRecord({
+      msg: logMessage,
+      args: args,
+      level: level,
+      loggerName: this.loggerName,
+    });
 
     this.handlers.forEach((handler): void => {
       handler.handle(record);
