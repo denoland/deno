@@ -415,7 +415,7 @@ Deno.test("async throws promise rejection with string", () => {
     return Promise.reject("Panic!");
   }, String, "Panic!");
 
-  assertThrowsAsync((): Promise<any> => {
+  assertThrowsAsync((): Promise<Error> => {
     return assertThrowsAsync((): Promise<string> => {
       return Promise.reject("Panic!");
     }, String, "Error!");
@@ -427,7 +427,7 @@ Deno.test("async throws promise rejection with number", () => {
     return Promise.reject(0);
   }, Number, "0");
 
-  assertThrowsAsync((): Promise<any> => {
+  assertThrowsAsync((): Promise<Error> => {
     return assertThrowsAsync((): Promise<number> => {
       return Promise.reject(0);
     }, Number, "1");
@@ -435,12 +435,12 @@ Deno.test("async throws promise rejection with number", () => {
 });
 
 Deno.test("async throws promise rejection with assertion error", () => {
-  assertThrowsAsync((): Promise<any> => {
+  assertThrowsAsync((): Promise<AssertionError> => {
     return Promise.reject(new AssertionError("Panic!"));
   }, AssertionError, "Panic!");
 
-  assertThrowsAsync((): Promise<any> => {
-    return assertThrowsAsync((): Promise<any> => {
+  assertThrowsAsync((): Promise<Error> => {
+    return assertThrowsAsync((): Promise<AssertionError> => {
       return Promise.reject(new AssertionError("Panic!"));
     }, AssertionError, "Error!");
   }, AssertionError, `Expected error message to include "Error!", but got "Panic!".`);
