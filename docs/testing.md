@@ -105,3 +105,13 @@ You can also omit the file name, in which case all tests in the current
 directory (recursively) that match the glob `{*_,*.,}test.{js,mjs,ts,jsx,tsx}`
 will be run. If you pass a directory, all files in the directory that match this
 glob will be run.
+
+Tests can be run individually or in groups using the command line `--filter`
+option.
+
+```shell
+deno test --filter "hello world" tests/
+```
+
+This command will run any test which contains the pattern "hello world" in its
+name stored within the `tests/` directory.
