@@ -411,37 +411,73 @@ Deno.test({
 });
 
 Deno.test("async throws promise rejection with string", () => {
-  assertThrowsAsync((): Promise<string> => {
-    return Promise.reject("Panic!");
-  }, String, "Panic!");
-
-  assertThrowsAsync((): Promise<Error> => {
-    return assertThrowsAsync((): Promise<string> => {
+  assertThrowsAsync(
+    (): Promise<string> => {
       return Promise.reject("Panic!");
-    }, String, "Error!");
-  }, AssertionError, `Expected error message to include "Error!", but got "Panic!".`);
+    },
+    String,
+    "Panic!"
+  );
+
+  assertThrowsAsync(
+    (): Promise<Error> => {
+      return assertThrowsAsync(
+        (): Promise<string> => {
+          return Promise.reject("Panic!");
+        },
+        String,
+        "Error!"
+      );
+    },
+    AssertionError,
+    `Expected error message to include "Error!", but got "Panic!".`
+  );
 });
 
 Deno.test("async throws promise rejection with number", () => {
-  assertThrowsAsync((): Promise<number> => {
-    return Promise.reject(0);
-  }, Number, "0");
-
-  assertThrowsAsync((): Promise<Error> => {
-    return assertThrowsAsync((): Promise<number> => {
+  assertThrowsAsync(
+    (): Promise<number> => {
       return Promise.reject(0);
-    }, Number, "1");
-  }, AssertionError, `Expected error message to include "1", but got "0".`);
+    },
+    Number,
+    "0"
+  );
+
+  assertThrowsAsync(
+    (): Promise<Error> => {
+      return assertThrowsAsync(
+        (): Promise<number> => {
+          return Promise.reject(0);
+        },
+        Number,
+        "1"
+      );
+    },
+    AssertionError,
+    `Expected error message to include "1", but got "0".`
+  );
 });
 
 Deno.test("async throws promise rejection with assertion error", () => {
-  assertThrowsAsync((): Promise<AssertionError> => {
-    return Promise.reject(new AssertionError("Panic!"));
-  }, AssertionError, "Panic!");
-
-  assertThrowsAsync((): Promise<Error> => {
-    return assertThrowsAsync((): Promise<AssertionError> => {
+  assertThrowsAsync(
+    (): Promise<AssertionError> => {
       return Promise.reject(new AssertionError("Panic!"));
-    }, AssertionError, "Error!");
-  }, AssertionError, `Expected error message to include "Error!", but got "Panic!".`);
+    },
+    AssertionError,
+    "Panic!"
+  );
+
+  assertThrowsAsync(
+    (): Promise<Error> => {
+      return assertThrowsAsync(
+        (): Promise<AssertionError> => {
+          return Promise.reject(new AssertionError("Panic!"));
+        },
+        AssertionError,
+        "Error!"
+      );
+    },
+    AssertionError,
+    `Expected error message to include "Error!", but got "Panic!".`
+  );
 });
