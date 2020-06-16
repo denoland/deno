@@ -127,14 +127,15 @@ There are a number of options to filter the tests you are running.
 
 ### Command line filtering
 
-You can use the `--filter` flag to specify a pattern to look for in the test
-name. Only those tests which include the pattern will be run. E.g.
+Tests can be run individually or in groups using the command line `--filter`
+option.
 
 ```shell
-deno test --filter=stress performance_test.ts
+deno test --filter "hello world" tests/
 ```
 
-Now, only tests whose name contains `stress` will be run.
+This command will run any test which contains the pattern "hello world" in its
+name stored within the `tests/` directory.
 
 ### Test definition filtering
 

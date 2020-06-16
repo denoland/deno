@@ -6,3 +6,6 @@ members = [
   "deno_typescript",
   "test_plugin"
 ]
+exclude = [
+  "std/hash/_wasm"
+]
