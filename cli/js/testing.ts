@@ -307,6 +307,9 @@ function createFilterFn(
     if (filter) {
       if (filter instanceof RegExp) {
         passes = passes && filter.test(def.name);
+      } else if (/^\/.*\/$/.test(filter)) {
+        const filterAsRegex = new RegExp(filter.replace(/^\/|\/$/g, ""));
+        passes = passes && filterAsRegex.test(def.name);
       } else {
         passes = passes && def.name.includes(filter);
       }
@@ -323,6 +326,8 @@ function createFilterFn(
     return passes;
   };
 }
+
+exposeForTest("createFilterFn", createFilterFn);
 
 interface RunTestsOptions {
   exitOnFail?: boolean;
