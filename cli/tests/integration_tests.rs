@@ -1539,6 +1539,12 @@ itest!(bundle {
   output: "bundle.test.out",
 });
 
+itest!(fmt_check_tests_dir {
+  args: "fmt --check ./",
+  output: "fmt_check_tests_dir.out",
+  exit_code: 1,
+});
+
 itest!(fmt_stdin {
   args: "fmt -",
   input: Some("const a = 1\n"),
