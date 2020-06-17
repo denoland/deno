@@ -8,8 +8,6 @@ use crate::import_map::ImportMap;
 use crate::msg::MediaType;
 use crate::op_error::OpError;
 use crate::permissions::Permissions;
-use crate::swc_util::analyze_dependencies_and_references;
-use crate::swc_util::TsReferenceKind;
 use crate::tsc::AVAILABLE_LIBS;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
@@ -25,30 +23,40 @@ use std::hash::BuildHasher;
 use std::path::PathBuf;
 use std::pin::Pin;
 
+pub mod analyzer;
+
+use analyzer::analyze_dependencies_and_references;
+use analyzer::TsReferenceKind;
+
 // TODO(bartlomieju): it'd be great if this function returned
 // more structured data and possibly format the same as TS diagnostics.
 /// Decorate error with location of import that caused the error.
-fn err_with_location(e: ErrBox, location: &Location) -> ErrBox {
-  let location_str = format!(
-    "\nImported from \"{}:{}\"",
-    location.filename, location.line
-  );
-  let err_str = e.to_string();
-  OpError::other(format!("{}{}", err_str, location_str)).into()
+fn err_with_location(e: ErrBox, maybe_location: Option<&Location>) -> ErrBox {
+  if let Some(location) = maybe_location {
+    let location_str = format!(
+      "\nImported from \"{}:{}\"",
+      location.filename, location.line
+    );
+    let err_str = e.to_string();
+    OpError::other(format!("{}{}", err_str, location_str)).into()
+  } else {
+    e
+  }
 }
 
 /// Disallow http:// imports from modules loaded over https://
 fn validate_no_downgrade(
   module_specifier: &ModuleSpecifier,
   maybe_referrer: Option<&ModuleSpecifier>,
-) -> Result<(), OpError> {
+  maybe_location: Option<&Location>,
+) -> Result<(), ErrBox> {
   if let Some(referrer) = maybe_referrer.as_ref() {
     if let "https" = referrer.as_url().scheme() {
       if let "http" = module_specifier.as_url().scheme() {
         let e = OpError::permission_denied(
           "Modules loaded over https:// are not allowed to import modules over http://".to_string()
         );
-        return Err(e);
+        return Err(err_with_location(e.into(), maybe_location));
       };
     };
   };
@@ -60,7 +68,8 @@ fn validate_no_downgrade(
 fn validate_no_file_from_remote(
   module_specifier: &ModuleSpecifier,
   maybe_referrer: Option<&ModuleSpecifier>,
-) -> Result<(), OpError> {
+  maybe_location: Option<&Location>,
+) -> Result<(), ErrBox> {
   if let Some(referrer) = maybe_referrer.as_ref() {
     let referrer_url = referrer.as_url();
     match referrer_url.scheme() {
@@ -72,7 +81,7 @@ fn validate_no_file_from_remote(
             let e = OpError::permission_denied(
               "Remote modules are not allowed to statically import local modules. Use dynamic import instead.".to_string()
             );
-            return Err(e);
+            return Err(err_with_location(e.into(), maybe_location));
           }
         }
       }
@@ -391,10 +400,18 @@ impl ModuleGraphLoader {
       return Ok(());
     }
 
-    validate_no_downgrade(&module_specifier, maybe_referrer.as_ref())?;
+    validate_no_downgrade(
+      &module_specifier,
+      maybe_referrer.as_ref(),
+      maybe_location.as_ref(),
+    )?;
 
     if !self.is_dyn_import {
-      validate_no_file_from_remote(&module_specifier, maybe_referrer.as_ref())?;
+      validate_no_file_from_remote(
+        &module_specifier,
+        maybe_referrer.as_ref(),
+        maybe_location.as_ref(),
+      )?;
     }
 
     self.has_downloaded.insert(module_specifier.clone());
@@ -404,15 +421,11 @@ impl ModuleGraphLoader {
 
     let load_future = async move {
       let spec_ = spec.clone();
-      let mut result = file_fetcher
+      let source_file = file_fetcher
         .fetch_source_file(&spec_, maybe_referrer, perms)
-        .await;
+        .await
+        .map_err(|e| err_with_location(e, maybe_location.as_ref()))?;
 
-      if let Some(location) = maybe_location {
-        result = result.map_err(|e| err_with_location(e, &location));
-      }
-
-      let source_file = result?;
       Ok((spec_.clone(), source_file))
     }
     .boxed_local();
