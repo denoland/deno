@@ -6,17 +6,14 @@
 
 // @ts-nocheck
 /* eslint-disable */
-let System, __instantiateAsync, __instantiate;
-
+let System, __instantiate;
 (() => {
-  const r = new Map();
-
+  const r = Object.create(null);
   System = {
     register(id, d, f) {
-      r.set(id, { d, f, exp: {} });
+      r[id] = { d, f, exp: {} };
     },
   };
-
   async function dI(mid, src) {
     let id = mid.replace(/\.\w+$/i, "");
     if (id.includes("./")) {
@@ -33,9 +30,8 @@ let System, __instantiateAsync, __instantiate;
       if (s < sa.length) oa.push(...sa.slice(s));
       id = oa.reverse().join("/");
     }
-    return r.has(id) ? gExpA(id) : import(mid);
+    return id in r ? gExpA(id) : import(mid);
   }
-
   function gC(id, main) {
     return {
       id,
@@ -43,7 +39,6 @@ let System, __instantiateAsync, __instantiate;
       meta: { url: id, main },
     };
   }
-
   function gE(exp) {
     return (id, v) => {
       v = typeof id === "string" ? { [id]: v } : id;
@@ -56,9 +51,10 @@ let System, __instantiateAsync, __instantiate;
       }
     };
   }
-
   function rF(main) {
-    for (const [id, m] of r.entries()) {
+    let m;
+    for (const id in r) {
+      m = r[id];
       const { f, exp } = m;
       const { execute: e, setters: s } = f(gE(exp), gC(id, id === main));
       delete m.f;
@@ -66,10 +62,9 @@ let System, __instantiateAsync, __instantiate;
       m.s = s;
     }
   }
-
   async function gExpA(id) {
-    if (!r.has(id)) return;
-    const m = r.get(id);
+    if (!(id in r)) return;
+    const m = r[id];
     if (m.s) {
       const { d, e, s } = m;
       delete m.s;
@@ -80,10 +75,9 @@ let System, __instantiateAsync, __instantiate;
     }
     return m.exp;
   }
-
   function gExp(id) {
-    if (!r.has(id)) return;
-    const m = r.get(id);
+    if (!(id in r)) return;
+    const m = r[id];
     if (m.s) {
       const { d, e, s } = m;
       delete m.s;
@@ -93,16 +87,9 @@ let System, __instantiateAsync, __instantiate;
     }
     return m.exp;
   }
-
-  __instantiateAsync = async (m) => {
-    System = __instantiateAsync = __instantiate = undefined;
+  __instantiate = (m, a) => {
+    System = __instantiate = undefined;
     rF(m);
-    return gExpA(m);
-  };
-
-  __instantiate = (m) => {
-    System = __instantiateAsync = __instantiate = undefined;
-    rF(m);
-    return gExp(m);
+    return a ? gExpA(m) : gExp(m);
   };
 })();

@@ -307,6 +307,10 @@ class Host implements ts.CompilerHost {
     }
   }
 
+  get options(): ts.CompilerOptions {
+    return this.#options;
+  }
+
   configure(
     cwd: string,
     path: string,
@@ -528,6 +532,7 @@ const _TS_SNAPSHOT_PROGRAM = ts.createProgram({
 
 // This function is called only during snapshotting process
 const SYSTEM_LOADER = getAsset("system_loader.js");
+const SYSTEM_LOADER_ES5 = getAsset("system_loader_es5.js");
 
 function buildLocalSourceFileCache(
   sourceFileMap: Record<string, SourceFileMapEntry>
@@ -683,7 +688,12 @@ function createBundleWriteFile(state: WriteFileState): WriteFileCallback {
     assert(state.bundle);
     // we only support single root names for bundles
     assert(state.rootNames.length === 1);
-    state.bundleOutput = buildBundle(state.rootNames[0], data, sourceFiles);
+    state.bundleOutput = buildBundle(
+      state.rootNames[0],
+      data,
+      sourceFiles,
+      state.host.options.target ?? ts.ScriptTarget.ESNext
+    );
   };
 }
 
@@ -949,7 +959,8 @@ function normalizeUrl(rootName: string): string {
 function buildBundle(
   rootName: string,
   data: string,
-  sourceFiles: readonly ts.SourceFile[]
+  sourceFiles: readonly ts.SourceFile[],
+  target: ts.ScriptTarget
 ): string {
   // when outputting to AMD and a single outfile, TypeScript makes up the module
   // specifiers which are used to define the modules, and doesn't expose them
@@ -967,8 +978,8 @@ function buildBundle(
   let instantiate: string;
   if (rootExports && rootExports.length) {
     instantiate = hasTla
-      ? `const __exp = await __instantiateAsync("${rootName}");\n`
-      : `const __exp = __instantiate("${rootName}");\n`;
+      ? `const __exp = await __instantiate("${rootName}", true);\n`
+      : `const __exp = __instantiate("${rootName}", false);\n`;
     for (const rootExport of rootExports) {
       if (rootExport === "default") {
         instantiate += `export default __exp["${rootExport}"];\n`;
@@ -978,10 +989,19 @@ function buildBundle(
     }
   } else {
     instantiate = hasTla
-      ? `await __instantiateAsync("${rootName}");\n`
-      : `__instantiate("${rootName}");\n`;
+      ? `await __instantiate("${rootName}", true);\n`
+      : `__instantiate("${rootName}", false);\n`;
   }
-  return `${SYSTEM_LOADER}\n${data}\n${instantiate}`;
+  const es5Bundle =
+    target === ts.ScriptTarget.ES3 ||
+    target === ts.ScriptTarget.ES5 ||
+    target === ts.ScriptTarget.ES2015 ||
+    target === ts.ScriptTarget.ES2016
+      ? true
+      : false;
+  return `${
+    es5Bundle ? SYSTEM_LOADER_ES5 : SYSTEM_LOADER
+  }\n${data}\n${instantiate}`;
 }
 
 function setRootExports(program: ts.Program, rootModule: string): void {
