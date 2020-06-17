@@ -1939,7 +1939,8 @@ itest!(unstable_enabled_js {
 });
 
 itest!(_053_import_compression {
-  args: "run --quiet --reload -Ldebug --allow-net 053_import_compression/main.ts",
+  args:
+    "run --quiet --reload -Ldebug --allow-net 053_import_compression/main.ts",
   output: "053_import_compression.out",
   http_server: true,
 });
