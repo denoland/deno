@@ -9,81 +9,6 @@ use crate::swc_util::SwcDiagnosticBuffer;
 use swc_ecma_visit::Node;
 use swc_ecma_visit::Visit;
 
-struct DependencyVisitor {
-  dependencies: Vec<String>,
-  analyze_dynamic_imports: bool,
-}
-
-impl Visit for DependencyVisitor {
-  fn visit_import_decl(
-    &mut self,
-    import_decl: &swc_ecma_ast::ImportDecl,
-    _parent: &dyn Node,
-  ) {
-    let src_str = import_decl.src.value.to_string();
-    self.dependencies.push(src_str);
-  }
-
-  fn visit_named_export(
-    &mut self,
-    named_export: &swc_ecma_ast::NamedExport,
-    _parent: &dyn Node,
-  ) {
-    if let Some(src) = &named_export.src {
-      let src_str = src.value.to_string();
-      self.dependencies.push(src_str);
-    }
-  }
-
-  fn visit_export_all(
-    &mut self,
-    export_all: &swc_ecma_ast::ExportAll,
-    _parent: &dyn Node,
-  ) {
-    let src_str = export_all.src.value.to_string();
-    self.dependencies.push(src_str);
-  }
-
-  fn visit_call_expr(
-    &mut self,
-    call_expr: &swc_ecma_ast::CallExpr,
-    _parent: &dyn Node,
-  ) {
-    if !self.analyze_dynamic_imports {
-      return;
-    }
-
-    use swc_ecma_ast::Expr::*;
-    use swc_ecma_ast::ExprOrSuper::*;
-
-    let boxed_expr = match call_expr.callee.clone() {
-      Super(_) => return,
-      Expr(boxed) => boxed,
-    };
-
-    match &*boxed_expr {
-      Ident(ident) => {
-        if &ident.sym.to_string() != "import" {
-          return;
-        }
-      }
-      _ => return,
-    };
-
-    if let Some(arg) = call_expr.args.get(0) {
-      match &*arg.expr {
-        Lit(lit) => {
-          if let swc_ecma_ast::Lit::Str(str_) = lit {
-            let src_str = str_.value.to_string();
-            self.dependencies.push(src_str);
-          }
-        }
-        _ => return,
-      }
-    }
-  }
-}
-
 #[derive(Clone, Debug, PartialEq)]
 enum DependencyKind {
   Import,
@@ -98,11 +23,11 @@ struct DependencyDescriptor {
   kind: DependencyKind,
 }
 
-struct NewDependencyVisitor {
+struct DependencyVisitor {
   dependencies: Vec<DependencyDescriptor>,
 }
 
-impl Visit for NewDependencyVisitor {
+impl Visit for DependencyVisitor {
   fn visit_import_decl(
     &mut self,
     import_decl: &swc_ecma_ast::ImportDecl,
@@ -261,7 +186,7 @@ pub fn analyze_dependencies_and_references(
   let parser = AstParser::new();
   parser.parse_module(file_name, media_type, source_code, |parse_result| {
     let module = parse_result?;
-    let mut collector = NewDependencyVisitor {
+    let mut collector = DependencyVisitor {
       dependencies: vec![],
     };
     let module_span = module.span;
