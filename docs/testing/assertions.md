@@ -1,8 +1,8 @@
 ## Assertions
 
 To help developers write tests the Deno standard library comes with a built in
-assertions module which can be imported from
-`https://deno.land/std/testing/asserts.ts`.
+[assertions module](https://deno.land/std/testing/asserts.ts) which can be
+imported from `https://deno.land/std/testing/asserts.ts`.
 
 ```js
 import { assert } from "https://deno.land/std/testing/asserts.ts";
@@ -72,7 +72,7 @@ Deno.test("Test Assert Not Equals", () => {
 });
 ```
 
-By contrast `assertStrictEquals()` provides a simpler stricter equality check
+By contrast `assertStrictEquals()` provides a simpler, stricter equality check
 based on the `===` operator. As a result it will not assert two instances of
 identical objects as they won't be referentially the same.
 
@@ -131,20 +131,22 @@ Deno.test("Test Assert Match", () => {
 
 There are two ways to assert whether something throws an error in Deno,
 `assertThrows()` and `assertAsyncThrows()`. Both assertions allow you to check
-an error has been thrown, the type of error thrown and what the message was.
+an
+[Error](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Error)
+has been thrown, the type of error thrown and what the message was.
 
 The difference between the two assertions is `assertThrows()` accepts a standard
 function and `assertAsyncThrows()` accepts a function which returns a
 [Promise](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise).
 
-The `assertThrows()` assertion will check an Error has been thrown, and
-optionally will check the thrown Error is of the correct type, and assert the
+The `assertThrows()` assertion will check an error has been thrown, and
+optionally will check the thrown error is of the correct type, and assert the
 error message is as expected.
 
 ```js
 Deno.test("Test Assert Throws", () => {
   assertThrows(
-    (): void => {
+    () => {
       throw new Error("Panic!");
     },
     Error,
@@ -155,27 +157,35 @@ Deno.test("Test Assert Throws", () => {
 
 The `assertAsyncThrows()` assertion is a little more complicated, mainly because
 it deals with Promises. But basically it will catch thrown errors or rejections
-in Promises. And again most of the complexity exists around the message checks.
+in Promises. You can also optionally check for the error type and error message.
 
 ```js
 Deno.test("Test Assert Throws Async", () => {
   assertThrowsAsync(
-    (): Promise<void> => {
-      return new Promise((): void => {
+    () => {
+      return new Promise(() => {
         throw new Error("Panic! Threw Error");
       });
     },
     Error,
     "Panic! Threw Error"
   );
+
+  assertThrowsAsync(
+    () => {
+      return Promise.reject(new Error("Panic! Reject Error"));
+    },
+    Error,
+    "Panic! Reject Error"
+  );
 });
 ```
 
 ### Custom Messages
 
-Each of Deno's built in assertions allow you to overwrite the standard CLI
-message if you want to. For instance this example will output "Values Don't
-Match!" rather than the standard CLI error message.
+Each of Deno's built in assertions allow you to overwrite the standard CLI error
+message if you wish. For instance this example will output "Values Don't Match!"
+rather than the standard CLI error message.
 
 ```js
 Deno.test("Test Assert Equal Fail Custom Message", () => {
