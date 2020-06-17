@@ -208,7 +208,7 @@ pub fn mksnapshot_bundle(
   js_check(
     isolate.execute(&bundle_filename.to_string_lossy(), bundle_source_code),
   );
-  let script = &format!("__instantiate(\"{}\", false);", main_module_name);
+  let script = &format!("__instantiate(\"{}\");", main_module_name);
   js_check(isolate.execute("anon", script));
   write_snapshot(isolate, snapshot_filename)?;
   Ok(())
@@ -252,7 +252,6 @@ pub fn get_asset(name: &str) -> Option<&'static str> {
   }
   match name {
     "system_loader.js" => Some(include_str!("system_loader.js")),
-    "system_loader_es5.js" => Some(include_str!("system_loader_es5.js")),
     "bootstrap.ts" => Some("console.log(\"hello deno\");"),
     "typescript.d.ts" => inc!("typescript.d.ts"),
     "lib.dom.d.ts" => inc!("lib.dom.d.ts"),

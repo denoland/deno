@@ -69,14 +69,9 @@ At the time of this writing, while V8 and other JavaScript engines have
 implemented top-level-await, no browsers have it implemented, meaning that most
 browsers could not consume modules that require top-level-await.
 
-In order to allow more browsers to consume bundles, there is an argument that is
-passed to the `__instantiate()` function which determines if the code is
-bootstrapped asynchronously or not. When emitting a bundle that contains a
-module that requires top-level-await, Deno will detect this and utilise
-`await __instantiate(main, true)`.
-
-The `system_loader_es5.js` is a transpiled version of `system_loader.js` that is
-designed to work with ES5 or later, and will be used when the bundle target is <
-ES2017. While ES3 is still a potential target which can be passed in a
-`tsconfig.json` to Deno, any resulting bundle will not be compatible, as there
-is a need to utilise items like `Object.defineProperty()`.
+In order to facilitate this, there are two functions that are in the scope of
+the module in addition to the `System.register()` method. `__instantiate(main)`
+will bootstrap everything synchronously and `__instantiateAsync(main)` will do
+so asynchronously. When emitting a bundle that contains a module that requires
+top-level-await, Deno will detect this and utilise
+`await __instantiateAsync(main)` instead.

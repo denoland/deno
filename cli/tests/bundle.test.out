@@ -1,5 +1,6 @@
 [WILDCARD]
-let System, __instantiate;
+let System, __instantiateAsync, __instantiate;
+[WILDCARD]
 (() => {
 [WILDCARD]
 })();
@@ -14,7 +15,7 @@ System.register("mod1", ["subdir2/mod2"], function (exports_3, context_3) {
 [WILDCARD]
 });
 
-const __exp = __instantiate("mod1", false);
+const __exp = __instantiate("mod1");
 export const returnsHi = __exp["returnsHi"];
 export const returnsFoo2 = __exp["returnsFoo2"];
 export const printHello3 = __exp["printHello3"];
