@@ -284,7 +284,7 @@ impl ModuleGraphLoader {
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
   ) -> Result<(), ErrBox> {
-    self.download_module(specifier.clone(), maybe_referrer)?;
+    self.download_module(specifier.clone(), maybe_referrer, None)?;
 
     loop {
       let (specifier, source_file) =
@@ -385,6 +385,7 @@ impl ModuleGraphLoader {
     &mut self,
     module_specifier: ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
+    maybe_location: Option<Location>,
   ) -> Result<(), ErrBox> {
     if self.has_downloaded.contains(&module_specifier) {
       return Ok(());
@@ -403,9 +404,15 @@ impl ModuleGraphLoader {
 
     let load_future = async move {
       let spec_ = spec.clone();
-      let source_file = file_fetcher
+      let mut result = file_fetcher
         .fetch_source_file(&spec_, maybe_referrer, perms)
-        .await?;
+        .await;
+
+      if let Some(location) = maybe_location {
+        result = result.map_err(|e| err_with_location(e, &location));
+      }
+
+      let source_file = result?;
       Ok((spec_.clone(), source_file))
     }
     .boxed_local();
@@ -474,6 +481,7 @@ impl ModuleGraphLoader {
         self.download_module(
           type_header.resolved_specifier.clone(),
           Some(module_specifier.clone()),
+          None,
         )?;
         type_headers.push(type_header);
       }
@@ -487,34 +495,31 @@ impl ModuleGraphLoader {
       )?;
 
       for import_descriptor in imports_ {
-        self
-          .download_module(
-            import_descriptor.resolved_specifier.clone(),
-            Some(module_specifier.clone()),
-          )
-          .map_err(|e| err_with_location(e, &import_descriptor.location))?;
+        self.download_module(
+          import_descriptor.resolved_specifier.clone(),
+          Some(module_specifier.clone()),
+          Some(import_descriptor.location.clone()),
+        )?;
 
         if let Some(type_dir_url) =
           import_descriptor.resolved_type_directive.as_ref()
         {
-          self
-            .download_module(
-              type_dir_url.clone(),
-              Some(module_specifier.clone()),
-            )
-            .map_err(|e| err_with_location(e, &import_descriptor.location))?;
+          self.download_module(
+            type_dir_url.clone(),
+            Some(module_specifier.clone()),
+            Some(import_descriptor.location.clone()),
+          )?;
         }
 
         imports.push(import_descriptor);
       }
 
       for ref_descriptor in references {
-        self
-          .download_module(
-            ref_descriptor.resolved_specifier.clone(),
-            Some(module_specifier.clone()),
-          )
-          .map_err(|e| err_with_location(e, &ref_descriptor.location))?;
+        self.download_module(
+          ref_descriptor.resolved_specifier.clone(),
+          Some(module_specifier.clone()),
+          Some(ref_descriptor.location.clone()),
+        )?;
 
         match ref_descriptor.kind {
           TsReferenceKind::Lib => {
