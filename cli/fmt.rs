@@ -324,11 +324,3 @@ fn test_is_supported() {
   assert!(is_supported(Path::new("foo.mjs")));
   assert!(!is_supported(Path::new("foo.mjsx")));
 }
-
-#[tokio::test]
-async fn check_tests_dir() {
-  // Because of cli/tests/error_syntax.js the following should fail but not
-  // crash.
-  let r = format(vec!["./tests".to_string()], true).await;
-  assert!(r.is_err());
-}
