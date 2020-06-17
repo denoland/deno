@@ -19,7 +19,6 @@ use serde::Serialize;
 use serde::Serializer;
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::hash::BuildHasher;
 use std::path::PathBuf;
 use std::pin::Pin;
 
@@ -93,6 +92,8 @@ fn validate_no_file_from_remote(
   Ok(())
 }
 
+// TODO(bartlomieju): handle imports/references in ambient contexts/TS modules
+// https://github.com/denoland/deno/issues/6133
 fn resolve_imports_and_references(
   referrer: ModuleSpecifier,
   maybe_import_map: Option<&ImportMap>,
@@ -193,8 +194,7 @@ const SUPPORTED_MEDIA_TYPES: [MediaType; 4] = [
   MediaType::TSX,
 ];
 
-#[derive(Debug, Serialize)]
-pub struct ModuleGraph(HashMap<String, ModuleGraphFile>);
+pub type ModuleGraph = HashMap<String, ModuleGraphFile>;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -248,7 +248,7 @@ pub struct ModuleGraphLoader {
   maybe_import_map: Option<ImportMap>,
   pending_downloads: FuturesUnordered<SourceFileFuture>,
   has_downloaded: HashSet<ModuleSpecifier>,
-  pub graph: ModuleGraph,
+  graph: ModuleGraph,
   is_dyn_import: bool,
   analyze_dynamic_imports: bool,
 }
@@ -267,7 +267,7 @@ impl ModuleGraphLoader {
       maybe_import_map,
       pending_downloads: FuturesUnordered::new(),
       has_downloaded: HashSet::new(),
-      graph: ModuleGraph(HashMap::new()),
+      graph: ModuleGraph::new(),
       is_dyn_import,
       analyze_dynamic_imports,
     }
@@ -301,10 +301,10 @@ impl ModuleGraphLoader {
   /// This method is used to create a graph from in-memory files stored in
   /// a hash map. Useful for creating module graph for code received from
   /// the runtime.
-  pub fn build_local_graph<S: BuildHasher>(
+  pub fn build_local_graph(
     &mut self,
     _root_name: &str,
-    source_map: &HashMap<String, String, S>,
+    source_map: &HashMap<String, String>,
   ) -> Result<(), ErrBox> {
     for (spec, source_code) in source_map.iter() {
       self.visit_memory_module(spec.to_string(), source_code.to_string())?;
@@ -314,8 +314,8 @@ impl ModuleGraphLoader {
   }
 
   /// Consumes the loader and returns created graph.
-  pub fn get_graph(self) -> HashMap<String, ModuleGraphFile> {
-    self.graph.0
+  pub fn get_graph(self) -> ModuleGraph {
+    self.graph
   }
 
   fn visit_memory_module(
@@ -365,7 +365,7 @@ impl ModuleGraphLoader {
       }
     }
 
-    self.graph.0.insert(
+    self.graph.insert(
       module_specifier.to_string(),
       ModuleGraphFile {
         specifier: specifier.to_string(),
@@ -449,7 +449,7 @@ impl ModuleGraphLoader {
     // for proper URL point to redirect target.
     if module_specifier.as_url() != &source_file.url {
       // TODO(bartlomieju): refactor, this is a band-aid
-      self.graph.0.insert(
+      self.graph.insert(
         module_specifier.to_string(),
         ModuleGraphFile {
           specifier: module_specifier.to_string(),
@@ -549,7 +549,7 @@ impl ModuleGraphLoader {
       }
     }
 
-    self.graph.0.insert(
+    self.graph.insert(
       module_specifier.to_string(),
       ModuleGraphFile {
         specifier: module_specifier.to_string(),
@@ -576,7 +576,7 @@ mod tests {
 
   async fn build_graph(
     module_specifier: &ModuleSpecifier,
-  ) -> Result<HashMap<String, ModuleGraphFile>, ErrBox> {
+  ) -> Result<ModuleGraph, ErrBox> {
     let global_state = GlobalState::new(Default::default()).unwrap();
     let mut graph_loader = ModuleGraphLoader::new(
       global_state.file_fetcher.clone(),

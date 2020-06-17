@@ -7,7 +7,7 @@ use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::global_state::GlobalState;
 use crate::import_map::ImportMap;
-use crate::module_graph::ModuleGraphFile;
+use crate::module_graph::ModuleGraph;
 use crate::module_graph::ModuleGraphLoader;
 use crate::msg;
 use crate::op_error::OpError;
@@ -457,7 +457,7 @@ impl TsCompiler {
     source_file: &SourceFile,
     target: TargetLib,
     permissions: Permissions,
-    module_graph: HashMap<String, ModuleGraphFile>,
+    module_graph: ModuleGraph,
     allow_js: bool,
   ) -> Result<(), ErrBox> {
     let mut has_cached_version = false;
@@ -988,7 +988,7 @@ async fn create_runtime_module_graph(
   root_name: &str,
   sources: &Option<HashMap<String, String>>,
   maybe_options: &Option<String>,
-) -> Result<(Vec<String>, HashMap<String, ModuleGraphFile>), OpError> {
+) -> Result<(Vec<String>, ModuleGraph), OpError> {
   let mut root_names = vec![];
   let mut module_graph_loader = ModuleGraphLoader::new(
     global_state.file_fetcher.clone(),
