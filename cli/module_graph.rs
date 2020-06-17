@@ -37,6 +37,131 @@ fn err_with_location(e: ErrBox, location: &Location) -> ErrBox {
   OpError::other(format!("{}{}", err_str, location_str)).into()
 }
 
+/// Disallow http:// imports from modules loaded over https://
+fn validate_no_downgrade(
+  module_specifier: &ModuleSpecifier,
+  maybe_referrer: Option<&ModuleSpecifier>,
+) -> Result<(), OpError> {
+  if let Some(referrer) = maybe_referrer.as_ref() {
+    if let "https" = referrer.as_url().scheme() {
+      if let "http" = module_specifier.as_url().scheme() {
+        let e = OpError::permission_denied(
+          "Modules loaded over https:// are not allowed to import modules over http://".to_string()
+        );
+        return Err(e);
+      };
+    };
+  };
+
+  Ok(())
+}
+
+/// Verify that remote file doesn't try to statically import local file.
+fn validate_no_file_from_remote(
+  module_specifier: &ModuleSpecifier,
+  maybe_referrer: Option<&ModuleSpecifier>,
+) -> Result<(), OpError> {
+  if let Some(referrer) = maybe_referrer.as_ref() {
+    let referrer_url = referrer.as_url();
+    match referrer_url.scheme() {
+      "http" | "https" => {
+        let specifier_url = module_specifier.as_url();
+        match specifier_url.scheme() {
+          "http" | "https" => {}
+          _ => {
+            let e = OpError::permission_denied(
+              "Remote modules are not allowed to statically import local modules. Use dynamic import instead.".to_string()
+            );
+            return Err(e);
+          }
+        }
+      }
+      _ => {}
+    }
+  }
+
+  Ok(())
+}
+
+/// This function is a port of `ts.preProcessFile()`
+fn pre_process_file(
+  module_specifier: &ModuleSpecifier,
+  media_type: MediaType,
+  source_code: &str,
+  analyze_dynamic_imports: bool,
+  maybe_import_map: Option<&ImportMap>,
+) -> Result<(Vec<ImportDescriptor>, Vec<ReferenceDescriptor>), ErrBox> {
+  let (import_descs, ref_descs) = analyze_dependencies_and_references(
+    &module_specifier.to_string(),
+    media_type,
+    source_code,
+    analyze_dynamic_imports,
+  )?;
+
+  let mut imports = vec![];
+  let mut references = vec![];
+
+  for import_desc in import_descs {
+    let maybe_resolved = if let Some(import_map) = maybe_import_map.as_ref() {
+      import_map
+        .resolve(&import_desc.specifier, &module_specifier.to_string())?
+    } else {
+      None
+    };
+
+    let resolved_specifier = if let Some(resolved) = maybe_resolved {
+      resolved
+    } else {
+      ModuleSpecifier::resolve_import(
+        &import_desc.specifier,
+        &module_specifier.to_string(),
+      )?
+    };
+
+    let resolved_type_directive =
+      if let Some(types_specifier) = import_desc.deno_types.as_ref() {
+        Some(ModuleSpecifier::resolve_import(
+          &types_specifier,
+          &module_specifier.to_string(),
+        )?)
+      } else {
+        None
+      };
+
+    let import_descriptor = ImportDescriptor {
+      specifier: import_desc.specifier.to_string(),
+      resolved_specifier,
+      type_directive: import_desc.deno_types.clone(),
+      resolved_type_directive,
+      location: import_desc.location,
+    };
+
+    imports.push(import_descriptor);
+  }
+
+  for ref_desc in ref_descs {
+    if AVAILABLE_LIBS.contains(&ref_desc.specifier.as_str()) {
+      continue;
+    }
+
+    let resolved_specifier = ModuleSpecifier::resolve_import(
+      &ref_desc.specifier,
+      &module_specifier.to_string(),
+    )?;
+
+    let reference_descriptor = ReferenceDescriptor {
+      specifier: ref_desc.specifier.to_string(),
+      resolved_specifier,
+      kind: ref_desc.kind,
+      location: ref_desc.location,
+    };
+
+    references.push(reference_descriptor);
+  }
+
+  Ok((imports, references))
+}
+
 fn serialize_module_specifier<S>(
   spec: &ModuleSpecifier,
   s: S,
@@ -82,6 +207,8 @@ pub struct ImportDescriptor {
   pub type_directive: Option<String>,
   #[serde(serialize_with = "serialize_option_module_specifier")]
   pub resolved_type_directive: Option<ModuleSpecifier>,
+  #[serde(skip)]
+  pub location: Location,
 }
 
 #[derive(Debug, Serialize)]
@@ -90,6 +217,10 @@ pub struct ReferenceDescriptor {
   pub specifier: String,
   #[serde(serialize_with = "serialize_module_specifier")]
   pub resolved_specifier: ModuleSpecifier,
+  #[serde(skip)]
+  pub kind: TsReferenceKind,
+  #[serde(skip)]
+  pub location: Location,
 }
 
 #[derive(Debug, Serialize)]
@@ -192,7 +323,6 @@ impl ModuleGraphLoader {
     specifier: String,
     source_code: String,
   ) -> Result<(), ErrBox> {
-    let mut imports = vec![];
     let mut referenced_files = vec![];
     let mut lib_directives = vec![];
     let mut types_directives = vec![];
@@ -208,75 +338,24 @@ impl ModuleGraphLoader {
         ModuleSpecifier::resolve_url(&format!("memory://{}", specifier))?
       };
 
-    let (import_descs, ref_descs) = analyze_dependencies_and_references(
-      &specifier,
+    let (imports, references) = pre_process_file(
+      &module_specifier,
       map_file_extension(&PathBuf::from(&specifier)),
       &source_code,
       self.analyze_dynamic_imports,
+      self.maybe_import_map.as_ref(),
     )?;
 
-    for import_desc in import_descs {
-      let maybe_resolved =
-        if let Some(import_map) = self.maybe_import_map.as_ref() {
-          import_map
-            .resolve(&import_desc.specifier, &module_specifier.to_string())?
-        } else {
-          None
-        };
-
-      let resolved_specifier = if let Some(resolved) = maybe_resolved {
-        resolved
-      } else {
-        ModuleSpecifier::resolve_import(
-          &import_desc.specifier,
-          &module_specifier.to_string(),
-        )?
-      };
-
-      let resolved_type_directive =
-        if let Some(types_specifier) = import_desc.deno_types.as_ref() {
-          Some(ModuleSpecifier::resolve_import(
-            &types_specifier,
-            &module_specifier.to_string(),
-          )?)
-        } else {
-          None
-        };
-
-      let import_descriptor = ImportDescriptor {
-        specifier: import_desc.specifier.to_string(),
-        resolved_specifier,
-        type_directive: import_desc.deno_types,
-        resolved_type_directive,
-      };
-
-      imports.push(import_descriptor);
-    }
-
-    for ref_desc in ref_descs {
-      if AVAILABLE_LIBS.contains(&ref_desc.specifier.as_str()) {
-        continue;
-      }
-
-      let resolved_specifier = ModuleSpecifier::resolve_import(
-        &ref_desc.specifier,
-        &module_specifier.to_string(),
-      )?;
-
-      let reference_descriptor = ReferenceDescriptor {
-        specifier: ref_desc.specifier.to_string(),
-        resolved_specifier,
-      };
-
-      match ref_desc.kind {
+    for ref_descriptor in references {
+      match ref_descriptor.kind {
         TsReferenceKind::Lib => {
-          lib_directives.push(reference_descriptor);
+          lib_directives.push(ref_descriptor);
         }
         TsReferenceKind::Types => {
-          types_directives.push(reference_descriptor);
+          types_directives.push(ref_descriptor);
         }
         TsReferenceKind::Path => {
-          referenced_files.push(reference_descriptor);
+          referenced_files.push(ref_descriptor);
         }
       }
     }
@@ -311,38 +390,10 @@ impl ModuleGraphLoader {
       return Ok(());
     }
 
-    // Disallow http:// imports from modules loaded over https://
-    if let Some(referrer) = maybe_referrer.as_ref() {
-      if let "https" = referrer.as_url().scheme() {
-        if let "http" = module_specifier.as_url().scheme() {
-          let e = OpError::permission_denied(
-            "Modules loaded over https:// are not allowed to import modules over http://".to_string()
-          );
-          return Err(e.into());
-        };
-      };
-    };
+    validate_no_downgrade(&module_specifier, maybe_referrer.as_ref())?;
 
     if !self.is_dyn_import {
-      // Verify that remote file doesn't try to statically import local file.
-      if let Some(referrer) = maybe_referrer.as_ref() {
-        let referrer_url = referrer.as_url();
-        match referrer_url.scheme() {
-          "http" | "https" => {
-            let specifier_url = module_specifier.as_url();
-            match specifier_url.scheme() {
-              "http" | "https" => {}
-              _ => {
-                let e = OpError::permission_denied(
-                  "Remote modules are not allowed to statically import local modules. Use dynamic import instead.".to_string()
-                );
-                return Err(e.into());
-              }
-            }
-          }
-          _ => {}
-        }
-      }
+      validate_no_file_from_remote(&module_specifier, maybe_referrer.as_ref())?;
     }
 
     self.has_downloaded.insert(module_specifier.clone());
@@ -411,6 +462,14 @@ impl ModuleGraphLoader {
             &types_specifier,
             &module_specifier.to_string(),
           )?,
+          kind: TsReferenceKind::Types,
+          // TODO(bartlomieju): location is not needed in here and constructing
+          // location by hand is bad
+          location: Location {
+            filename: module_specifier.to_string(),
+            line: 0,
+            col: 0,
+          },
         };
         self.download_module(
           type_header.resolved_specifier.clone(),
@@ -419,54 +478,21 @@ impl ModuleGraphLoader {
         type_headers.push(type_header);
       }
 
-      let (import_descs, ref_descs) = analyze_dependencies_and_references(
-        &module_specifier.to_string(),
+      let (imports_, references) = pre_process_file(
+        &module_specifier,
         source_file.media_type,
         &source_code,
         self.analyze_dynamic_imports,
+        self.maybe_import_map.as_ref(),
       )?;
 
-      for import_desc in import_descs {
-        let maybe_resolved =
-          if let Some(import_map) = self.maybe_import_map.as_ref() {
-            import_map
-              .resolve(&import_desc.specifier, &module_specifier.to_string())?
-          } else {
-            None
-          };
-
-        let resolved_specifier = if let Some(resolved) = maybe_resolved {
-          resolved
-        } else {
-          ModuleSpecifier::resolve_import(
-            &import_desc.specifier,
-            &module_specifier.to_string(),
-          )?
-        };
-
-        let resolved_type_directive =
-          if let Some(types_specifier) = import_desc.deno_types.as_ref() {
-            Some(ModuleSpecifier::resolve_import(
-              &types_specifier,
-              &module_specifier.to_string(),
-            )?)
-          } else {
-            None
-          };
-
-        let import_descriptor = ImportDescriptor {
-          specifier: import_desc.specifier.to_string(),
-          resolved_specifier,
-          type_directive: import_desc.deno_types.clone(),
-          resolved_type_directive,
-        };
-
+      for import_descriptor in imports_ {
         self
           .download_module(
             import_descriptor.resolved_specifier.clone(),
             Some(module_specifier.clone()),
           )
-          .map_err(|e| err_with_location(e, &import_desc.location))?;
+          .map_err(|e| err_with_location(e, &import_descriptor.location))?;
 
         if let Some(type_dir_url) =
           import_descriptor.resolved_type_directive.as_ref()
@@ -476,43 +502,29 @@ impl ModuleGraphLoader {
               type_dir_url.clone(),
               Some(module_specifier.clone()),
             )
-            .map_err(|e| err_with_location(e, &import_desc.location))?;
+            .map_err(|e| err_with_location(e, &import_descriptor.location))?;
         }
 
         imports.push(import_descriptor);
       }
 
-      for ref_desc in ref_descs {
-        if AVAILABLE_LIBS.contains(&ref_desc.specifier.as_str()) {
-          continue;
-        }
-
-        let resolved_specifier = ModuleSpecifier::resolve_import(
-          &ref_desc.specifier,
-          &module_specifier.to_string(),
-        )?;
-
-        let reference_descriptor = ReferenceDescriptor {
-          specifier: ref_desc.specifier.to_string(),
-          resolved_specifier,
-        };
-
+      for ref_descriptor in references {
         self
           .download_module(
-            reference_descriptor.resolved_specifier.clone(),
+            ref_descriptor.resolved_specifier.clone(),
             Some(module_specifier.clone()),
           )
-          .map_err(|e| err_with_location(e, &ref_desc.location))?;
+          .map_err(|e| err_with_location(e, &ref_descriptor.location))?;
 
-        match ref_desc.kind {
+        match ref_descriptor.kind {
           TsReferenceKind::Lib => {
-            lib_directives.push(reference_descriptor);
+            lib_directives.push(ref_descriptor);
           }
           TsReferenceKind::Types => {
-            types_directives.push(reference_descriptor);
+            types_directives.push(ref_descriptor);
           }
           TsReferenceKind::Path => {
-            referenced_files.push(reference_descriptor);
+            referenced_files.push(ref_descriptor);
           }
         }
       }

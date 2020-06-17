@@ -317,6 +317,7 @@ fn thread_safe() {
 
 #[test]
 fn test_should_allow_js() {
+  use crate::doc::Location;
   use crate::module_graph::ImportDescriptor;
 
   assert!(should_allow_js(&[
@@ -346,6 +347,11 @@ fn test_should_allow_js() {
         .unwrap(),
         type_directive: None,
         resolved_type_directive: None,
+        location: Location {
+          filename: "file:///some/file1.js".to_string(),
+          line: 0,
+          col: 0,
+        },
       }],
       referenced_files: vec![],
       lib_directives: vec![],
@@ -383,6 +389,11 @@ fn test_should_allow_js() {
         .unwrap(),
         type_directive: None,
         resolved_type_directive: None,
+        location: Location {
+          filename: "file:///some/file1.ts".to_string(),
+          line: 0,
+          col: 0,
+        },
       }],
       referenced_files: vec![],
       lib_directives: vec![],
@@ -420,6 +431,11 @@ fn test_should_allow_js() {
         .unwrap(),
         type_directive: None,
         resolved_type_directive: None,
+        location: Location {
+          filename: "file:///some/file.js".to_string(),
+          line: 0,
+          col: 0,
+        },
       }],
       referenced_files: vec![],
       lib_directives: vec![],
