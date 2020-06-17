@@ -25,7 +25,8 @@ use std::pin::Pin;
 
 pub mod analyzer;
 
-use analyzer::analyze_dependencies_and_references;
+use analyzer::pre_process_file;
+use analyzer::TsReferenceDescriptor;
 use analyzer::TsReferenceKind;
 
 // TODO(bartlomieju): it'd be great if this function returned
@@ -92,28 +93,18 @@ fn validate_no_file_from_remote(
   Ok(())
 }
 
-/// This function is a port of `ts.preProcessFile()`
-fn pre_process_file(
-  module_specifier: &ModuleSpecifier,
-  media_type: MediaType,
-  source_code: &str,
-  analyze_dynamic_imports: bool,
+fn resolve_imports_and_references(
+  referrer: ModuleSpecifier,
   maybe_import_map: Option<&ImportMap>,
+  import_descs: Vec<analyzer::ImportDescriptor>,
+  ref_descs: Vec<TsReferenceDescriptor>,
 ) -> Result<(Vec<ImportDescriptor>, Vec<ReferenceDescriptor>), ErrBox> {
-  let (import_descs, ref_descs) = analyze_dependencies_and_references(
-    &module_specifier.to_string(),
-    media_type,
-    source_code,
-    analyze_dynamic_imports,
-  )?;
-
   let mut imports = vec![];
   let mut references = vec![];
 
   for import_desc in import_descs {
     let maybe_resolved = if let Some(import_map) = maybe_import_map.as_ref() {
-      import_map
-        .resolve(&import_desc.specifier, &module_specifier.to_string())?
+      import_map.resolve(&import_desc.specifier, &referrer.to_string())?
     } else {
       None
     };
@@ -123,7 +114,7 @@ fn pre_process_file(
     } else {
       ModuleSpecifier::resolve_import(
         &import_desc.specifier,
-        &module_specifier.to_string(),
+        &referrer.to_string(),
       )?
     };
 
@@ -131,7 +122,7 @@ fn pre_process_file(
       if let Some(types_specifier) = import_desc.deno_types.as_ref() {
         Some(ModuleSpecifier::resolve_import(
           &types_specifier,
-          &module_specifier.to_string(),
+          &referrer.to_string(),
         )?)
       } else {
         None
@@ -155,7 +146,7 @@ fn pre_process_file(
 
     let resolved_specifier = ModuleSpecifier::resolve_import(
       &ref_desc.specifier,
-      &module_specifier.to_string(),
+      &referrer.to_string(),
     )?;
 
     let reference_descriptor = ReferenceDescriptor {
@@ -347,12 +338,17 @@ impl ModuleGraphLoader {
         ModuleSpecifier::resolve_url(&format!("memory://{}", specifier))?
       };
 
-    let (imports, references) = pre_process_file(
-      &module_specifier,
+    let (raw_imports, raw_references) = pre_process_file(
+      &module_specifier.to_string(),
       map_file_extension(&PathBuf::from(&specifier)),
       &source_code,
       self.analyze_dynamic_imports,
+    )?;
+    let (imports, references) = resolve_imports_and_references(
+      module_specifier.clone(),
       self.maybe_import_map.as_ref(),
+      raw_imports,
+      raw_references,
     )?;
 
     for ref_descriptor in references {
@@ -499,12 +495,17 @@ impl ModuleGraphLoader {
         type_headers.push(type_header);
       }
 
-      let (imports_, references) = pre_process_file(
-        &module_specifier,
+      let (raw_imports, raw_refs) = pre_process_file(
+        &module_specifier.to_string(),
         source_file.media_type,
         &source_code,
         self.analyze_dynamic_imports,
+      )?;
+      let (imports_, references) = resolve_imports_and_references(
+        module_specifier.clone(),
         self.maybe_import_map.as_ref(),
+        raw_imports,
+        raw_refs,
       )?;
 
       for import_descriptor in imports_ {

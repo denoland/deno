@@ -9,6 +9,9 @@ use crate::swc_util::SwcDiagnosticBuffer;
 use swc_ecma_visit::Node;
 use swc_ecma_visit::Visit;
 
+// TODO(bartlomieju): maybe should live in `tsc.rs`?
+// TODO(bartlomieju): handle imports in ambient contexts/TS modules
+
 #[derive(Clone, Debug, PartialEq)]
 enum DependencyKind {
   Import,
@@ -174,7 +177,11 @@ pub struct TsReferenceDescriptor {
   pub location: Location,
 }
 
-pub fn analyze_dependencies_and_references(
+/// This function is a port of `ts.preProcessFile()`
+///
+/// Additionally it captures `@deno-types` references directly
+/// preceeding `import .. from` and `export .. from` statements.
+pub fn pre_process_file(
   file_name: &str,
   media_type: MediaType,
   source_code: &str,
@@ -268,8 +275,10 @@ pub fn analyze_dependencies_and_references(
   })
 }
 
+// TODO(bartlomieju): use baseline tests from TSC to ensure
+// compatibility
 #[test]
-fn test_analyze_dependencies_and_directives() {
+fn test_pre_process_file() {
   let source = r#"
 // This comment is placed to make sure that directives are parsed
 // even when they start on non-first line
@@ -291,13 +300,9 @@ console.log(fizz);
 console.log(qat.qat);  
 "#;
 
-  let (imports, references) = analyze_dependencies_and_references(
-    "some/file.ts",
-    MediaType::TypeScript,
-    source,
-    true,
-  )
-  .expect("Failed to parse");
+  let (imports, references) =
+    pre_process_file("some/file.ts", MediaType::TypeScript, source, true)
+      .expect("Failed to parse");
 
   assert_eq!(
     imports,
