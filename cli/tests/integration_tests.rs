@@ -1467,7 +1467,7 @@ itest!(_056_make_temp_file_write_perm {
 
 // TODO(lucacasonato): remove --unstable when permissions goes stable
 itest!(_057_revoke_permissions {
-  args: "test -A --unstable 057_revoke_permissions.ts",
+  args: "test -A --unstable -Ldebug 057_revoke_permissions.ts",
   output: "057_revoke_permissions.out",
 });
 
@@ -1939,7 +1939,7 @@ itest!(unstable_enabled_js {
 });
 
 itest!(_053_import_compression {
-  args: "run --quiet --reload --allow-net 053_import_compression/main.ts",
+  args: "run --quiet --reload -Ldebug --allow-net 053_import_compression/main.ts",
   output: "053_import_compression.out",
   http_server: true,
 });
