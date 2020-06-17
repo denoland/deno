@@ -453,3 +453,58 @@ Deno.test("Assert Throws Non-Error Fail", () => {
     "Please throw a valid Error object."
   );
 });
+
+Deno.test("Assert Throws Async Non-Error Fail", () => {
+  assertThrowsAsync(
+    () => {
+      return Promise.reject(new Error("Panic!"));
+    },
+    Error,
+    "Panic!"
+  );
+
+  assertThrowsAsync(
+    () => {
+      return assertThrowsAsync(
+        () => {
+          return Promise.reject("Panic!");
+        },
+        String,
+        "Panic!"
+      );
+    },
+    AssertionError,
+    "Please throw or reject a valid Error object."
+  );
+
+  assertThrowsAsync(
+    () => {
+      return assertThrowsAsync(() => {
+        return Promise.reject(null);
+      });
+    },
+    AssertionError,
+    "Please throw or reject a valid Error object."
+  );
+
+  assertThrowsAsync(
+    () => {
+      return assertThrowsAsync(() => {
+        return Promise.reject(undefined);
+      });
+    },
+    AssertionError,
+    "Please throw or reject a valid Error object."
+  );
+
+  assertThrowsAsync(
+    () => {
+      return assertThrowsAsync(() => {
+        throw undefined;
+        return Promise.resolve("Ok!");
+      });
+    },
+    AssertionError,
+    "Please throw or reject a valid Error object."
+  );
+});

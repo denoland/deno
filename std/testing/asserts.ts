@@ -376,6 +376,9 @@ export async function assertThrowsAsync<T = void>(
   try {
     await fn();
   } catch (e) {
+    if (e === undefined || e === null || typeof e.message === "undefined") {
+      throw new AssertionError("Please throw or reject a valid Error object.");
+    }
     if (ErrorClass && !(Object.getPrototypeOf(e) === ErrorClass.prototype)) {
       msg = `Expected error to be instance of "${ErrorClass.name}", but got "${
         e.name
