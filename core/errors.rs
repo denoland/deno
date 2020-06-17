@@ -128,7 +128,7 @@ impl JSError {
     // handles below.
     let mut hs = v8::HandleScope::new(scope);
     let scope = hs.enter();
-    let context = { scope.get_current_context().unwrap() };
+    let context = scope.get_current_context().unwrap();
 
     let msg = v8::Exception::create_message(scope, exception);
 
