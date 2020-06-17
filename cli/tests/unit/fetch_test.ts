@@ -6,6 +6,7 @@ import {
   assertStringContains,
   assertThrows,
   fail,
+  noop,
 } from "./test_util.ts";
 
 unitTest({ perms: { net: true } }, async function fetchProtocolError(): Promise<
@@ -747,7 +748,9 @@ unitTest({ perms: { net: true } }, async function fetchBodyReadTwice(): Promise<
       fail(
         "Reading body multiple times should failed, the stream should've been locked."
       );
-    } catch {}
+    } catch {
+      noop();
+    }
   }
 });
 
@@ -768,7 +771,9 @@ unitTest(
     try {
       response.body.getReader();
       fail("The stream should've been locked.");
-    } catch {}
+    } catch {
+      noop();
+    }
   }
 );
 

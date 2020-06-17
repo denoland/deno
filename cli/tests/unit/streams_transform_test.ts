@@ -506,8 +506,9 @@ unitTest(async function transformStreamStartCalledOnce() {
 
 unitTest(function transformStreamReadableTypeThrows() {
   assertThrows(
-    // eslint-disable-next-line
-    () => new TransformStream({ readableType: "bytes" as any }),
+    // deno-lint-ignore no-explicit-any
+    () =>
+      new TransformStream({ readableType: ("bytes" as unknown) as undefined }),
     RangeError,
     undefined,
     "constructor should throw"
@@ -516,8 +517,9 @@ unitTest(function transformStreamReadableTypeThrows() {
 
 unitTest(function transformStreamWirtableTypeThrows() {
   assertThrows(
-    // eslint-disable-next-line
-    () => new TransformStream({ writableType: "bytes" as any }),
+    // deno-lint-ignore no-explicit-any
+    () =>
+      new TransformStream({ writableType: ("bytes" as unknown) as undefined }),
     RangeError,
     undefined,
     "constructor should throw"

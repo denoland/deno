@@ -13,6 +13,7 @@ import {
   reportToConn,
 } from "./test_util.ts";
 
+// deno-lint-ignore ban-ts-comment
 // @ts-expect-error
 const internalObj = Deno[Deno.internal];
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

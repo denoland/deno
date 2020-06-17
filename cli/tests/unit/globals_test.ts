@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { unitTest, assert } from "./test_util.ts";
+import { unitTest, assert, noop } from "./test_util.ts";
 
 unitTest(function globalThisExists(): void {
   assert(globalThis != null);
@@ -47,7 +47,9 @@ unitTest(function webAssemblyExists(): void {
 
 /* eslint-disable @typescript-eslint/no-namespace, @typescript-eslint/no-explicit-any,no-var */
 declare global {
+  // deno-lint-ignore no-namespace
   namespace Deno {
+    // deno-lint-ignore no-explicit-any
     var core: any;
   }
 }
@@ -58,37 +60,51 @@ unitTest(function DenoNamespaceImmutable(): void {
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (Deno as any) = 1;
-  } catch {}
+  } catch {
+    noop();
+  }
   assert(denoCopy === Deno);
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (window as any).Deno = 1;
-  } catch {}
+  } catch {
+    noop();
+  }
   assert(denoCopy === Deno);
   try {
     delete window.Deno;
-  } catch {}
+  } catch {
+    noop();
+  }
   assert(denoCopy === Deno);
 
   const { readFile } = Deno;
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (Deno as any).readFile = 1;
-  } catch {}
+  } catch {
+    noop();
+  }
   assert(readFile === Deno.readFile);
   try {
     delete window.Deno.readFile;
-  } catch {}
+  } catch {
+    noop();
+  }
   assert(readFile === Deno.readFile);
 
   const { print } = Deno.core;
   try {
     Deno.core.print = 1;
-  } catch {}
+  } catch {
+    noop();
+  }
   assert(print === Deno.core.print);
   try {
     delete Deno.core.print;
-  } catch {}
+  } catch {
+    noop();
+  }
   assert(print === Deno.core.print);
 });
 
