@@ -657,6 +657,7 @@ interface CompileWriteFileState {
 }
 
 interface BundleWriteFileState {
+  host?: Host,
   bundleOutput: undefined | string;
   rootNames: string[];
 }
@@ -678,6 +679,7 @@ function createBundleWriteFile(state: BundleWriteFileState): WriteFileCallback {
     sourceFiles?: readonly ts.SourceFile[]
   ): void {
     assert(sourceFiles != null);
+    assert(state.host);
     // we only support single root names for bundles
     assert(state.rootNames.length === 1);
     state.bundleOutput = buildBundle(state.rootNames[0], data, sourceFiles);
@@ -1236,6 +1238,7 @@ function bundle(request: BundleRequest): BundleResponse {
     unstable,
     writeFile: createBundleWriteFile(state),
   });
+  state.host = host;
   let diagnostics: readonly ts.Diagnostic[] = [];
 
   // if there is a configuration supplied, we need to parse that
@@ -1390,6 +1393,7 @@ function runtimeBundle(request: RuntimeBundleRequest): RuntimeBundleResponse {
     target,
     writeFile: createBundleWriteFile(state),
   });
+  state.host = host;
 
   const compilerOptions = [DEFAULT_RUNTIME_COMPILE_OPTIONS];
   if (convertedOptions) {
