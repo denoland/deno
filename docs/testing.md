@@ -134,8 +134,8 @@ option.
 deno test --filter "hello world" tests/
 ```
 
-This command will run any test which contains the pattern "hello world" in its
-name stored within the `tests/` directory.
+This command will run any test which contains the string "hello world" in its
+test name for tests found within files in the `tests/` directory.
 
 ### Test definition filtering
 
