@@ -337,6 +337,9 @@ export function assertThrows<T = void>(
   try {
     fn();
   } catch (e) {
+    if (e === undefined || e === null || typeof e.message === "undefined") {
+      throw new AssertionError("Please throw a valid Error object.");
+    }
     if (ErrorClass && !(Object.getPrototypeOf(e) === ErrorClass.prototype)) {
       msg = `Expected error to be instance of "${ErrorClass.name}", but was "${
         e.constructor.name

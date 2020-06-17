@@ -409,3 +409,47 @@ Deno.test({
     );
   },
 });
+
+Deno.test("Assert Throws Non-Error Fail", () => {
+  assertThrows(
+    () => {
+      throw new Error("Panic!");
+    },
+    Error,
+    "Panic!"
+  );
+
+  assertThrows(
+    () => {
+      assertThrows(
+        () => {
+          throw "Panic!";
+        },
+        String,
+        "Panic!"
+      );
+    },
+    AssertionError,
+    "Please throw a valid Error object."
+  );
+
+  assertThrows(
+    () => {
+      assertThrows(() => {
+        throw null;
+      });
+    },
+    AssertionError,
+    "Please throw a valid Error object."
+  );
+
+  assertThrows(
+    () => {
+      assertThrows(() => {
+        throw undefined;
+      });
+    },
+    AssertionError,
+    "Please throw a valid Error object."
+  );
+});
