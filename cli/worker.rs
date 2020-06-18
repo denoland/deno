@@ -394,7 +394,7 @@ mod tests {
 
   #[tokio::test]
   async fn execute_006_url_imports() {
-    let http_server_guard = crate::test_util::http_server();
+    let http_server_guard = test_util::http_server();
     let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
       .parent()
       .unwrap()
