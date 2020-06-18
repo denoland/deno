@@ -245,7 +245,6 @@ impl AsyncRead for HttpBody {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use test_util;
 
   #[tokio::test]
   async fn test_fetch_string() {

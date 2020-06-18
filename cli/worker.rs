@@ -331,7 +331,6 @@ mod tests {
   use crate::state::State;
   use crate::tokio_util;
   use std::sync::atomic::Ordering;
-  use test_util;
 
   #[test]
   fn execute_mod_esm_imports_a() {

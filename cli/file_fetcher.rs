@@ -702,7 +702,6 @@ pub struct SourceCodeHeaders {
 mod tests {
   use super::*;
   use tempfile::TempDir;
-  use test_util;
 
   fn setup_file_fetcher(dir_path: &Path) -> SourceFileFetcher {
     SourceFileFetcher::new(

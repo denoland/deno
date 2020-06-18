@@ -543,7 +543,6 @@ impl ModuleGraphLoader {
 mod tests {
   use super::*;
   use crate::GlobalState;
-  use test_util;
 
   async fn build_graph(
     module_specifier: &ModuleSpecifier,
