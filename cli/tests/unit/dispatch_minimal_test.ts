@@ -25,15 +25,13 @@ unitTest(async function sendAsyncStackTrace(): Promise<void> {
   }
 });
 
-/* eslint-disable @typescript-eslint/no-explicit-any,no-var */
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace Deno {
-    // deno-lint-ignore no-explicit-any
-    var core: any;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    var core: any; // eslint-disable-line no-var
   }
 }
-/* eslint-enable */
 
 unitTest(function malformedMinimalControlBuffer(): void {
   const readOpId = Deno.core.ops()["op_read"];
