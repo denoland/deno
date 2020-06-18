@@ -377,5 +377,3 @@ export function pathToAbsoluteFileUrl(path: string): URL {
 
   return new URL(`file://${Deno.build.os === "windows" ? "/" : ""}${path}`);
 }
-
-export function noop(): void {}

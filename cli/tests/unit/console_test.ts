@@ -8,7 +8,7 @@
 // std/fmt/colors auto determines whether to put colors in or not. We need
 // better infrastructure here so we can properly test the colors.
 
-import { assert, assertEquals, noop, unitTest } from "./test_util.ts";
+import { assert, assertEquals, unitTest } from "./test_util.ts";
 import { stripColor } from "../../../std/fmt/colors.ts";
 
 // Some of these APIs aren't exposed in the types and so we have to cast to any
@@ -609,7 +609,7 @@ unitTest(async function consoleTestStringifyPromises(): Promise<void> {
     });
     await rejectedPromise;
   } catch (err) {
-    noop();
+    // pass
   }
   const strLines = stringify(rejectedPromise).split("\n");
   assertEquals(strLines[0], "Promise {");

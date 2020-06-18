@@ -19,9 +19,9 @@ unitTest(
   }
 );
 
-/* eslint-disable @typescript-eslint/no-namespace, @typescript-eslint/no-explicit-any,no-var */
+/* eslint-disable @typescript-eslint/no-explicit-any,no-var */
 declare global {
-  // deno-lint-ignore no-namespace
+  // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace Deno {
     // deno-lint-ignore no-explicit-any
     var core: any;
