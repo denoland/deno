@@ -278,7 +278,6 @@ impl CompilerConfig {
 /// and could be used to remove stale file in cache.
 #[derive(Deserialize, Serialize)]
 pub struct CompiledFileMetadata {
-  pub source_path: PathBuf,
   pub version_hash: String,
 }
 
@@ -763,10 +762,7 @@ impl TsCompiler {
       &self.config.hash,
     );
 
-    let compiled_file_metadata = CompiledFileMetadata {
-      source_path: source_file.filename,
-      version_hash,
-    };
+    let compiled_file_metadata = CompiledFileMetadata { version_hash };
     let meta_key = self
       .disk_cache
       .get_cache_filename_with_extension(module_specifier.as_url(), "meta");
