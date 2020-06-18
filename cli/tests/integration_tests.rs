@@ -398,11 +398,7 @@ fn fmt_stdin_error() {
 #[test]
 fn upgrade_in_tmpdir() {
   let temp_dir = TempDir::new().unwrap();
-  let exe_path = if cfg!(windows) {
-    temp_dir.path().join("deno")
-  } else {
-    temp_dir.path().join("deno.exe")
-  };
+  let exe_path = temp_dir.path().join("deno");
   let _ = std::fs::copy(util::deno_exe_path(), &exe_path).unwrap();
   assert!(exe_path.exists());
   let _mtime1 = std::fs::metadata(&exe_path).unwrap().modified().unwrap();
@@ -422,11 +418,7 @@ fn upgrade_in_tmpdir() {
 #[test]
 fn upgrade_with_version_in_tmpdir() {
   let temp_dir = TempDir::new().unwrap();
-  let exe_path = if cfg!(windows) {
-    temp_dir.path().join("deno")
-  } else {
-    temp_dir.path().join("deno.exe")
-  };
+  let exe_path = temp_dir.path().join("deno");
   let _ = std::fs::copy(util::deno_exe_path(), &exe_path).unwrap();
   assert!(exe_path.exists());
   let _mtime1 = std::fs::metadata(&exe_path).unwrap().modified().unwrap();
@@ -453,16 +445,8 @@ fn upgrade_with_version_in_tmpdir() {
 #[test]
 fn upgrade_with_out_in_tmpdir() {
   let temp_dir = TempDir::new().unwrap();
-  let exe_path = if cfg!(windows) {
-    temp_dir.path().join("deno")
-  } else {
-    temp_dir.path().join("deno.exe")
-  };
-  let new_exe_path = if cfg!(windows) {
-    temp_dir.path().join("foo")
-  } else {
-    temp_dir.path().join("foo.exe")
-  };
+  let exe_path = temp_dir.path().join("deno");
+  let new_exe_path = temp_dir.path().join("foo");
   let _ = std::fs::copy(util::deno_exe_path(), &exe_path).unwrap();
   assert!(exe_path.exists());
   let _mtime1 = std::fs::metadata(&exe_path).unwrap().modified().unwrap();
