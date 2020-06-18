@@ -6,26 +6,41 @@ TypeScript code.
 ## Writing tests
 
 To define a test you need to call `Deno.test` with a name and function to be
-tested:
+tested. There are two styles you can use.
 
 ```ts
-Deno.test("hello world", () => {
+// Simple name and function, compact form, but not configurable
+Deno.test("hello world #1", () => {
   const x = 1 + 2;
-  if (x !== 3) {
-    throw Error("x should be equal to 3");
+  assertEquals(x, 3);
+});
+
+// Fully fledged test definition, longer form, but configurable (see below)
+Deno.test({
+  name: "hello world #2",
+  fn() => {
+    const x = 1 + 2;
+    assertEquals(x, 3);
   }
 });
+
 ```
 
-There are some useful assertion utilities at https://deno.land/std/testing to
-make testing easier:
+## Assertions
+
+There are some useful assertion utilities at https://deno.land/std/testing#usage
+to make testing easier:
 
 ```ts
-import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+import {
+  assertEquals,
+  assertArrayContains,
+} from "https://deno.land/std/testing/asserts.ts";
 
 Deno.test("hello world", () => {
   const x = 1 + 2;
   assertEquals(x, 3);
+  assertArrayContains([1, 2, 3, 4, 5, 6], [3], "Expected 3 to be in the array");
 });
 ```
 
@@ -55,7 +70,7 @@ Certain actions in Deno create resources in the resource table
 ([learn more here](./contributing/architecture.md)). These resources should be
 closed after you are done using them.
 
-For each test definition the test runner checks that all resources created in
+For each test definition, the test runner checks that all resources created in
 this test have been closed. This is to prevent resource 'leaks'. This is enabled
 by default for all tests, but can be disabled by setting the `sanitizeResources`
 boolean to false in the test definition.
@@ -76,7 +91,57 @@ Deno.test({
 });
 ```
 
-### Ignoring tests
+## Running tests
+
+To run the test, call `deno test` with the file that contains your test
+function. You can also omit the file name, in which case all tests in the
+current directory (recursively) that match the glob
+`{*_,*.,}test.{js,mjs,ts,jsx,tsx}` will be run. If you pass a directory, all
+files in the directory that match this glob will be run.
+
+```shell
+# Run all tests in the current directly and all sub-directories
+deno test
+
+# Run all tests in the util directory
+deno test util/
+
+# Run just my_test.ts
+deno test my_test.ts
+```
+
+`deno test` uses the same permission model as `deno run` and therefore will
+require, for example, `--allow-write` to write to the file system during
+testing.
+
+To see all runtime options with `deno test`, you can reference the command line
+help:
+
+```shell
+deno help test
+```
+
+## Filtering
+
+There are a number of options to filter the tests you are running.
+
+### Command line filtering
+
+Tests can be run individually or in groups using the command line `--filter`
+option.
+
+```shell
+deno test --filter "hello world" tests/
+```
+
+This command will run any test which contains the string "hello world" in its
+test name for tests found within files in the `tests/` directory.
+
+### Test definition filtering
+
+Within the tests themselves, you have two options for filtering.
+
+#### Filtering out (Ignoring these tests)
 
 Sometimes you want to ignore tests based on some sort of condition (for example
 you only want a test to run on Windows). For this you can use the `ignore`
@@ -92,26 +157,31 @@ Deno.test({
 });
 ```
 
-## Running tests
+#### Filtering in (Only run these tests)
 
-To run the test, call `deno test` with the file that contains your test
-function:
+Sometimes you may be in the middle of a problem within a large test class and
+you would like to focus on just that test and ignore the rest for now. For this
+you can use the `only` option to tell the test framework to only run tests with
+this set to true. Multiple tests can set this option. While the test run will
+report on the success or failure of each test, the overall test run will always
+fail if any test is flagged with `only`, as this is a temporary measure only
+which disables nearly all of your tests.
 
-```shell
-deno test my_test.ts
+```ts
+Deno.test({
+  name: "Focus on this test only",
+  only: true,
+  fn() {
+    testComplicatedStuff();
+  },
+});
 ```
 
-You can also omit the file name, in which case all tests in the current
-directory (recursively) that match the glob `{*_,*.,}test.{js,mjs,ts,jsx,tsx}`
-will be run. If you pass a directory, all files in the directory that match this
-glob will be run.
+## Failing fast
 
-Tests can be run individually or in groups using the command line `--filter`
-option.
+If you have a long running test suite and wish for it to stop on the first
+failure, you can specify the `--failfast` flag when running the suite.
 
 ```shell
-deno test --filter "hello world" tests/
+deno test --failfast
 ```
-
-This command will run any test which contains the pattern "hello world" in its
-name stored within the `tests/` directory.
