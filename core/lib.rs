@@ -14,7 +14,7 @@ mod errors;
 mod es_isolate;
 mod flags;
 mod module_specifier;
-mod modules;
+pub mod modules;
 mod ops;
 pub mod plugin_api;
 mod resources;
