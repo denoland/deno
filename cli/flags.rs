@@ -568,8 +568,8 @@ fn upgrade_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let force = matches.is_present("force");
   let version = matches.value_of("version").map(|s| s.to_string());
 
-  let out = if matches.is_present("output") {
-    let install_root = matches.value_of("output").unwrap();
+  let out = if matches.is_present("out") {
+    let install_root = matches.value_of("out").unwrap();
     Some(PathBuf::from(install_root))
   } else {
     None
@@ -855,7 +855,8 @@ The version is downloaded from
 https://github.com/denoland/deno/releases
 and is used to replace the current executable.
 
-If you want to not replace the current Deno executable but instead download an update to a different location, use the --out flag
+If you want to not replace the current Deno executable but instead download an
+update to a different location, use the --out flag
   deno upgrade --out $HOME/my_deno",
     )
     .arg(
