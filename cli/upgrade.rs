@@ -56,7 +56,7 @@ pub async fn upgrade_command(
   dry_run: bool,
   force: bool,
   version: Option<String>,
-  out: Option<PathBuf>,
+  output: Option<PathBuf>,
 ) -> Result<(), ErrBox> {
   let client = Client::builder().redirect(Policy::none()).build()?;
   let current_version = semver_parse(crate::version::DENO).unwrap();
@@ -104,7 +104,7 @@ pub async fn upgrade_command(
   check_exe(&new_exe_path, &install_version)?;
 
   if !dry_run {
-    match out {
+    match output {
       Some(path) => {
         fs::rename(&new_exe_path, &path)
           .or_else(|_| fs::copy(&new_exe_path, &path).map(|_| ()))?;

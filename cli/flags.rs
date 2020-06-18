@@ -70,7 +70,7 @@ pub enum DenoSubcommand {
     dry_run: bool,
     force: bool,
     version: Option<String>,
-    out: Option<PathBuf>,
+    output: Option<PathBuf>,
   },
 }
 
@@ -568,8 +568,8 @@ fn upgrade_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let force = matches.is_present("force");
   let version = matches.value_of("version").map(|s| s.to_string());
 
-  let out = if matches.is_present("out") {
-    let install_root = matches.value_of("out").unwrap();
+  let output = if matches.is_present("output") {
+    let install_root = matches.value_of("output").unwrap();
     Some(PathBuf::from(install_root))
   } else {
     None
@@ -579,7 +579,7 @@ fn upgrade_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     dry_run,
     force,
     version,
-    out,
+    output,
   };
 }
 
@@ -856,8 +856,8 @@ https://github.com/denoland/deno/releases
 and is used to replace the current executable.
 
 If you want to not replace the current Deno executable but instead download an
-update to a different location, use the --out flag
-  deno upgrade --out $HOME/my_deno",
+update to a different location, use the --output flag
+  deno upgrade --output $HOME/my_deno",
     )
     .arg(
       Arg::with_name("version")
@@ -866,8 +866,8 @@ update to a different location, use the --out flag
         .takes_value(true),
     )
     .arg(
-      Arg::with_name("out")
-        .long("out")
+      Arg::with_name("output")
+        .long("output")
         .help("The path to output the updated version to")
         .takes_value(true),
     )
@@ -1446,7 +1446,7 @@ mod tests {
           force: true,
           dry_run: true,
           version: None,
-          out: None
+          output: None
         },
         ..Flags::default()
       }

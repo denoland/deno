@@ -454,7 +454,7 @@ fn upgrade_with_out_in_tmpdir() {
     .arg("upgrade")
     .arg("--version")
     .arg("1.0.2")
-    .arg("--out")
+    .arg("--output")
     .arg(&new_exe_path.to_str().unwrap())
     .spawn()
     .unwrap()
