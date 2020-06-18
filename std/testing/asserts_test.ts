@@ -413,14 +413,6 @@ Deno.test({
 Deno.test("Assert Throws Non-Error Fail", () => {
   assertThrows(
     () => {
-      throw new Error("Panic!");
-    },
-    Error,
-    "Panic!"
-  );
-
-  assertThrows(
-    () => {
       assertThrows(
         () => {
           throw "Panic!";
@@ -455,14 +447,6 @@ Deno.test("Assert Throws Non-Error Fail", () => {
 });
 
 Deno.test("Assert Throws Async Non-Error Fail", () => {
-  assertThrowsAsync(
-    () => {
-      return Promise.reject(new Error("Panic!"));
-    },
-    Error,
-    "Panic!"
-  );
-
   assertThrowsAsync(
     () => {
       return assertThrowsAsync(
