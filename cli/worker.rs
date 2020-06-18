@@ -331,6 +331,7 @@ mod tests {
   use crate::state::State;
   use crate::tokio_util;
   use std::sync::atomic::Ordering;
+  use test_util;
 
   #[test]
   fn execute_mod_esm_imports_a() {
@@ -394,7 +395,7 @@ mod tests {
 
   #[tokio::test]
   async fn execute_006_url_imports() {
-    let http_server_guard = crate::test_util::http_server();
+    let http_server_guard = test_util::http_server();
     let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
       .parent()
       .unwrap()

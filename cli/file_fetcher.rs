@@ -702,6 +702,7 @@ pub struct SourceCodeHeaders {
 mod tests {
   use super::*;
   use tempfile::TempDir;
+  use test_util;
 
   fn setup_file_fetcher(dir_path: &Path) -> SourceFileFetcher {
     SourceFileFetcher::new(
@@ -810,7 +811,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_get_source_code_1() {
-    let http_server_guard = crate::test_util::http_server();
+    let http_server_guard = test_util::http_server();
     let (temp_dir, fetcher) = test_setup();
     let fetcher_1 = fetcher.clone();
     let fetcher_2 = fetcher.clone();
@@ -925,7 +926,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_get_source_code_2() {
-    let http_server_guard = crate::test_util::http_server();
+    let http_server_guard = test_util::http_server();
     let (temp_dir, fetcher) = test_setup();
     let module_url =
       Url::parse("http://localhost:4545/cli/tests/subdir/mismatch_ext.ts")
@@ -1010,7 +1011,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_get_source_code_multiple_downloads_of_same_file() {
-    let http_server_guard = crate::test_util::http_server();
+    let http_server_guard = test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
     let specifier = ModuleSpecifier::resolve_url(
       "http://localhost:4545/cli/tests/subdir/mismatch_ext.ts",
@@ -1056,7 +1057,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_get_source_code_3() {
-    let http_server_guard = crate::test_util::http_server();
+    let http_server_guard = test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
 
     let redirect_module_url = Url::parse(
@@ -1110,7 +1111,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_get_source_code_4() {
-    let http_server_guard = crate::test_util::http_server();
+    let http_server_guard = test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
     let double_redirect_url = Url::parse(
       "http://localhost:4548/cli/tests/subdir/redirects/redirect1.js",
@@ -1168,7 +1169,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_get_source_code_5() {
-    let http_server_guard = crate::test_util::http_server();
+    let http_server_guard = test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
 
     let double_redirect_url = Url::parse(
@@ -1230,7 +1231,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_get_source_code_6() {
-    let http_server_guard = crate::test_util::http_server();
+    let http_server_guard = test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
     let double_redirect_url = Url::parse(
       "http://localhost:4548/cli/tests/subdir/redirects/redirect1.js",
@@ -1272,7 +1273,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_get_source_code_7() {
-    let http_server_guard = crate::test_util::http_server();
+    let http_server_guard = test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
 
     // Testing redirect with Location set to absolute url.
@@ -1327,7 +1328,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_get_source_no_remote() {
-    let http_server_guard = crate::test_util::http_server();
+    let http_server_guard = test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
     let module_url =
       Url::parse("http://localhost:4545/cli/tests/002_hello.ts").unwrap();
@@ -1351,7 +1352,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_get_source_cached_only() {
-    let http_server_guard = crate::test_util::http_server();
+    let http_server_guard = test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
     let fetcher_1 = fetcher.clone();
     let fetcher_2 = fetcher.clone();
@@ -1402,7 +1403,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_fetch_source_0() {
-    let http_server_guard = crate::test_util::http_server();
+    let http_server_guard = test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
     let module_url =
       Url::parse("http://127.0.0.1:4545/cli/tests/subdir/mt_video_mp2t.t3.ts")
@@ -1443,7 +1444,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_fetch_source_2() {
-    let http_server_guard = crate::test_util::http_server();
+    let http_server_guard = test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
     let fetcher_1 = fetcher.clone();
     let fetcher_2 = fetcher.clone();
@@ -1815,7 +1816,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_fetch_with_etag() {
-    let http_server_guard = crate::test_util::http_server();
+    let http_server_guard = test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
     let module_url =
       Url::parse("http://127.0.0.1:4545/etag_script.ts").unwrap();
@@ -1949,7 +1950,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_fetch_with_types_header() {
-    let http_server_guard = crate::test_util::http_server();
+    let http_server_guard = test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
     let module_url =
       Url::parse("http://127.0.0.1:4545/xTypeScriptTypes.js").unwrap();
@@ -1975,7 +1976,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_fetch_with_types_reference() {
-    let http_server_guard = crate::test_util::http_server();
+    let http_server_guard = test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
     let module_url =
       Url::parse("http://127.0.0.1:4545/referenceTypes.js").unwrap();
