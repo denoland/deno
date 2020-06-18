@@ -90,7 +90,7 @@ function pathFromURLWin32(url: URL): string {
     return `\\\\${hostname}${pathname}`;
   }
 
-  const validPath = /^\/(?<driveLetter>[A-Za-z]):\//;
+  const validPath = /^\\(?<driveLetter>[A-Za-z]):\\/;
   const matches = validPath.exec(pathname);
 
   if (!matches?.groups?.driveLetter) {
