@@ -1077,7 +1077,7 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
       Arg::with_name("filter")
         .long("filter")
         .takes_value(true)
-        .help("A pattern to filter the tests to run by"),
+        .help("Run tests with this string in the test name"),
     )
     .arg(
       Arg::with_name("files")
