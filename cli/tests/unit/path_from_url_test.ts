@@ -17,7 +17,7 @@ unitTest(
   { ignore: Deno.build.os !== "windows" },
   function pathFromURLWin32(): void {
     assertEquals(pathFromURL("file:///c:/windows/test"), "c:\\windows\\test");
-    assertEquals(pathFromURL("file:///space_ .txt"), "\\space_ .txt");
+    assertEquals(pathFromURL("file:///c:/space_ .txt"), "c:\\space_ .txt");
     assertThrows(() => pathFromURL("file:///thing/test"));
     assertThrows(() => pathFromURL("https://deno.land/welcome.ts"));
     /* TODO(ry) Add tests for these situations
