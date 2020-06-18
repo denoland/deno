@@ -474,6 +474,7 @@ dependencies = [
  "sys-info",
  "tempfile",
  "termcolor",
+ "test_util",
  "tokio",
  "tokio-rustls",
  "tokio-tungstenite",
@@ -2514,6 +2515,17 @@ version = "0.0.1"
 dependencies = [
  "deno_core",
  "futures 0.3.5",
+ "test_util",
+]
+
+[[package]]
+name = "test_util"
+version = "0.1.0"
+dependencies = [
+ "lazy_static",
+ "os_pipe",
+ "regex",
+ "tempfile",
 ]
 
 [[package]]

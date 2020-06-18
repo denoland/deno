@@ -564,7 +564,7 @@ mod tests {
   #[ignore]
   #[tokio::test]
   async fn source_graph_fetch() {
-    let http_server_guard = crate::test_util::http_server();
+    let http_server_guard = test_util::http_server();
 
     let module_specifier = ModuleSpecifier::resolve_url_or_path(
       "http://localhost:4545/cli/tests/019_media_types.ts",
@@ -657,7 +657,7 @@ mod tests {
 
   #[tokio::test]
   async fn source_graph_type_references() {
-    let http_server_guard = crate::test_util::http_server();
+    let http_server_guard = test_util::http_server();
 
     let module_specifier = ModuleSpecifier::resolve_url_or_path(
       "http://localhost:4545/cli/tests/type_definitions.ts",
@@ -715,7 +715,7 @@ mod tests {
 
   #[tokio::test]
   async fn source_graph_type_references2() {
-    let http_server_guard = crate::test_util::http_server();
+    let http_server_guard = test_util::http_server();
 
     let module_specifier = ModuleSpecifier::resolve_url_or_path(
       "http://localhost:4545/cli/tests/type_directives_02.ts",
@@ -764,7 +764,7 @@ mod tests {
 
   #[tokio::test]
   async fn source_graph_type_references3() {
-    let http_server_guard = crate::test_util::http_server();
+    let http_server_guard = test_util::http_server();
 
     let module_specifier = ModuleSpecifier::resolve_url_or_path(
       "http://localhost:4545/cli/tests/type_directives_01.ts",
@@ -807,7 +807,7 @@ mod tests {
 
   #[tokio::test]
   async fn source_graph_different_langs() {
-    let http_server_guard = crate::test_util::http_server();
+    let http_server_guard = test_util::http_server();
 
     // ModuleGraphLoader was mistakenly parsing this file as TSX
     // https://github.com/denoland/deno/issues/5867
