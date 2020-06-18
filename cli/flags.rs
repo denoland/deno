@@ -70,6 +70,7 @@ pub enum DenoSubcommand {
     dry_run: bool,
     force: bool,
     version: Option<String>,
+    output: Option<PathBuf>,
   },
 }
 
@@ -566,10 +567,19 @@ fn upgrade_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let dry_run = matches.is_present("dry-run");
   let force = matches.is_present("force");
   let version = matches.value_of("version").map(|s| s.to_string());
+
+  let output = if matches.is_present("output") {
+    let install_root = matches.value_of("output").unwrap();
+    Some(PathBuf::from(install_root))
+  } else {
+    None
+  };
+
   flags.subcommand = DenoSubcommand::Upgrade {
     dry_run,
     force,
     version,
+    output,
   };
 }
 
@@ -852,6 +862,12 @@ and is used to replace the current executable.",
         .takes_value(true),
     )
     .arg(
+      Arg::with_name("output")
+        .long("output")
+        .help("The path to output the updated version to")
+        .takes_value(true),
+    )
+    .arg(
       Arg::with_name("dry-run")
         .long("dry-run")
         .help("Perform all checks without replacing old exe"),
@@ -1053,7 +1069,7 @@ Grant permission to read from disk and listen to network:
 
 Grant permission to read allow-listed files from disk:
   deno run --allow-read=/etc https://deno.land/std/http/file_server.ts
-  
+
 Deno allows specifying the filename '-' to read the file from stdin.
   curl https://deno.land/std/examples/welcome.ts | target/debug/deno run -",
     )
@@ -1425,7 +1441,8 @@ mod tests {
         subcommand: DenoSubcommand::Upgrade {
           force: true,
           dry_run: true,
-          version: None
+          version: None,
+          output: None
         },
         ..Flags::default()
       }

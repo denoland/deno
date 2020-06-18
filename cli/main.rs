@@ -750,7 +750,8 @@ pub fn main() {
       force,
       dry_run,
       version,
-    } => upgrade_command(dry_run, force, version).boxed_local(),
+      output,
+    } => upgrade_command(dry_run, force, version, output).boxed_local(),
     _ => unreachable!(),
   };
 
