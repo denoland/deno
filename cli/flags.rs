@@ -1053,7 +1053,7 @@ Grant permission to read from disk and listen to network:
 
 Grant permission to read allow-listed files from disk:
   deno run --allow-read=/etc https://deno.land/std/http/file_server.ts
-  
+
 Deno allows specifying the filename '-' to read the file from stdin.
   curl https://deno.land/std/examples/welcome.ts | target/debug/deno run -",
     )
@@ -1077,7 +1077,7 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
       Arg::with_name("filter")
         .long("filter")
         .takes_value(true)
-        .help("Run tests with this string in the test name"),
+        .help("Run tests with this string or pattern in the test name"),
     )
     .arg(
       Arg::with_name("files")

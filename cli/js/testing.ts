@@ -307,8 +307,8 @@ function createFilterFn(
     if (filter) {
       if (filter instanceof RegExp) {
         passes = passes && filter.test(def.name);
-      } else if (/^\/.*\/$/.test(filter)) {
-        const filterAsRegex = new RegExp(filter.replace(/^\/|\/$/g, ""));
+      } else if (filter.startsWith("/") && filter.endsWith("/")) {
+        const filterAsRegex = new RegExp(filter.slice(1, filter.length - 1));
         passes = passes && filterAsRegex.test(def.name);
       } else {
         passes = passes && def.name.includes(filter);

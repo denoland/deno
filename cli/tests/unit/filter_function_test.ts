@@ -15,9 +15,7 @@ unitTest(function filterAsString(): void {
       name: "other-test",
     },
   ];
-
   const filteredTests = tests.filter(filterFn);
-
   assertEquals(filteredTests.length, 1);
 });
 
@@ -33,9 +31,7 @@ unitTest(function filterAsREGEX(): void {
       name: "other-test",
     },
   ];
-
   const filteredTests = tests.filter(filterFn);
-
   assertEquals(filteredTests.length, 2);
 });
 
@@ -51,8 +47,6 @@ unitTest(function filterAsEscapedREGEX(): void {
       name: "other-test",
     },
   ];
-
   const filteredTests = tests.filter(filterFn);
-
   assertEquals(filteredTests.length, 2);
 });
