@@ -657,7 +657,7 @@ interface CompileWriteFileState {
 }
 
 interface BundleWriteFileState {
-  host?: Host,
+  host?: Host;
   bundleOutput: undefined | string;
   rootNames: string[];
 }
