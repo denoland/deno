@@ -8,10 +8,10 @@
 /* eslint-disable */
 let System, __instantiate;
 (() => {
-  const r = new Map();
+  const r = Object.create(null);
   System = {
     register(id, d, f) {
-      r.set(id, { d, f, exp: {} });
+      r[id] = { d, f, exp: {} };
     },
   };
   async function dI(mid, src) {
@@ -30,7 +30,7 @@ let System, __instantiate;
       if (s < sa.length) oa.push(...sa.slice(s));
       id = oa.reverse().join("/");
     }
-    return r.has(id) ? gExpA(id) : import(mid);
+    return id in r ? gExpA(id) : import(mid);
   }
   function gC(id, main) {
     return {
@@ -52,7 +52,9 @@ let System, __instantiate;
     };
   }
   function rF(main) {
-    for (const [id, m] of r.entries()) {
+    let m;
+    for (const id in r) {
+      m = r[id];
       const { f, exp } = m;
       const { execute: e, setters: s } = f(gE(exp), gC(id, id === main));
       delete m.f;
@@ -61,8 +63,8 @@ let System, __instantiate;
     }
   }
   async function gExpA(id) {
-    if (!r.has(id)) return;
-    const m = r.get(id);
+    if (!(id in r)) return;
+    const m = r[id];
     if (m.s) {
       const { d, e, s } = m;
       delete m.s;
@@ -74,8 +76,8 @@ let System, __instantiate;
     return m.exp;
   }
   function gExp(id) {
-    if (!r.has(id)) return;
-    const m = r.get(id);
+    if (!(id in r)) return;
+    const m = r[id];
     if (m.s) {
       const { d, e, s } = m;
       delete m.s;
