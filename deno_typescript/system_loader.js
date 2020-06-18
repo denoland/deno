@@ -9,7 +9,7 @@
 let System, __instantiateAsync, __instantiate;
 
 (() => {
-  const r = Object.create(null);
+  const r = {};
 
   System = {
     register(id, d, f) {
