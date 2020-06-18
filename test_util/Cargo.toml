@@ -1,8 +1,9 @@
 [package]
 name = "test_util"
 version = "0.1.0"
-authors = ["Bartek Iwańczuk <biwanczuk@gmail.com>"]
+authors = ["the Deno authors"]
 edition = "2018"
+publish = false
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

@@ -5,7 +5,7 @@ members = [
   "tools/hyper_hello",
   "deno_typescript",
   "test_plugin",
-    "test_util",
+  "test_util",
 ]
 exclude = [
   "std/hash/_wasm"

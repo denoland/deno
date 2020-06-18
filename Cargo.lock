@@ -2515,6 +2515,7 @@ version = "0.0.1"
 dependencies = [
  "deno_core",
  "futures 0.3.5",
+ "test_util",
 ]
 
 [[package]]
