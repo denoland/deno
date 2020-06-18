@@ -9,9 +9,6 @@ import { metrics } from "./ops/runtime.ts";
 import { resources } from "./ops/resources.ts";
 import { assert } from "./util.ts";
 
-const RED_FAILED = red("FAILED");
-const GREEN_OK = green("ok");
-const YELLOW_IGNORED = yellow("ignored");
 const disabledConsole = new Console((): void => {});
 
 function delay(n: number): Promise<void> {
@@ -178,6 +175,9 @@ function log(msg: string, noNewLine = false): void {
 }
 
 function reportToConsole(message: TestMessage): void {
+  const RED_FAILED = red("FAILED");
+  const GREEN_OK = green("ok");
+  const YELLOW_IGNORED = yellow("ignored");
   if (message.start != null) {
     log(`running ${message.start.tests.length} tests`);
   } else if (message.testStart != null) {
