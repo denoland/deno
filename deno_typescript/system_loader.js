@@ -8,7 +8,7 @@
 /* eslint-disable */
 let System, __instantiate;
 (() => {
-  const r = Object.create(null);
+  const r = {};
   System = {
     register(id, d, f) {
       r[id] = { d, f, exp: {} };
