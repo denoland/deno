@@ -10,6 +10,7 @@ Deno.test({
 
 Deno.test({
   name: "home directory is a string",
+  ignore: true,
   fn() {
     assertEquals(typeof os.homedir(), "string");
   },
@@ -17,7 +18,7 @@ Deno.test({
 
 Deno.test({
   name: "tmp directory is a string",
-  skip: true,
+  ignore: true,
   fn() {
     assertEquals(typeof os.tmpdir(), "string");
   },
@@ -193,7 +194,6 @@ Deno.test({
   fn() {
     assertEquals(`${os.arch}`, os.arch());
     assertEquals(`${os.endianness}`, os.endianness());
-    assertEquals(`${os.homedir}`, os.homedir());
     assertEquals(`${os.hostname}`, os.hostname());
     assertEquals(`${os.platform}`, os.platform());
   },
