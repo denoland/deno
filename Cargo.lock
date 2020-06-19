@@ -450,7 +450,7 @@ dependencies = [
  "serde",
  "serde_derive",
  "serde_json",
- "sourcemap 6.0.0",
+ "sourcemap",
  "swc_ecma_visit",
  "sys-info",
  "tempfile",
@@ -1079,12 +1079,6 @@ name = "if_chain"
 version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4bac95d9aa0624e7b78187d6fb8ab012b41d9f6f54b1bcb61e61c4845f8357ec"
-
-[[package]]
-name = "if_chain"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c3360c7b59e5ffa2653671fb74b4741a5d343c03f331c0a4aeda42b5c2b0ec7d"
 
 [[package]]
 name = "indexmap"
@@ -2273,29 +2267,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8fd57aa9e5cea41b4a3c26a61039fad5585e2154ffe057a2656540a21b03a2d2"
 dependencies = [
  "base64 0.10.1",
- "if_chain 0.1.3",
+ "if_chain",
  "lazy_static",
  "regex",
  "rustc_version",
  "serde",
  "serde_json",
  "url 1.7.2",
-]
-
-[[package]]
-name = "sourcemap"
-version = "6.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d7f42ca034bf301214458cf7f4dcbe7f680fd23d9e4c61193ed139684e2e3adc"
-dependencies = [
- "base64 0.11.0",
- "if_chain 1.0.0",
- "lazy_static",
- "regex",
- "rustc_version",
- "serde",
- "serde_json",
- "url 2.1.1",
 ]
 
 [[package]]
@@ -2387,7 +2365,7 @@ dependencies = [
  "parking_lot 0.7.1",
  "scoped-tls 1.0.0",
  "serde",
- "sourcemap 5.0.0",
+ "sourcemap",
  "string_cache",
  "termcolor",
  "unicode-width",
