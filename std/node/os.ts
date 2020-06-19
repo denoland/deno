@@ -136,7 +136,7 @@ export function getPriority(pid = 0): number {
 
 /** Returns the string path of the current user's home directory. */
 export function homedir(): string | null {
-  return Deno.dir("home");
+  return Deno.env.get("HOME");
 }
 
 /** Returns the host name of the operating system as a string. */
@@ -182,7 +182,8 @@ export function setPriority(pid: number, priority?: number): void {
 
 /** Returns the operating system's default directory for temporary files as a string. */
 export function tmpdir(): string | null {
-  return Deno.dir("tmp");
+  notImplemented("dirs crate removed. needs new implementation.");
+  return null;
 }
 
 /** Not yet implemented */
