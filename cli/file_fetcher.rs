@@ -11,7 +11,6 @@ use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
 use futures::future::FutureExt;
 use log::info;
-use regex::Regex;
 use std::collections::HashMap;
 use std::fs;
 use std::future::Future;
@@ -33,7 +32,6 @@ use url::Url;
 pub struct SourceFile {
   pub url: Url,
   pub filename: PathBuf,
-  pub types_url: Option<Url>,
   pub types_header: Option<String>,
   pub media_type: msg::MediaType,
   pub source_code: Vec<u8>,
@@ -316,18 +314,11 @@ impl SourceFileFetcher {
     };
 
     let media_type = map_content_type(&filepath, None);
-    let types_url = match media_type {
-      msg::MediaType::JavaScript | msg::MediaType::JSX => {
-        get_types_url(&module_url, &source_code, None)
-      }
-      _ => None,
-    };
     Ok(SourceFile {
       url: module_url.clone(),
       filename: filepath,
       media_type,
       source_code,
-      types_url,
       types_header: None,
     })
   }
@@ -394,20 +385,11 @@ impl SourceFileFetcher {
       headers.get("content-type").map(|e| e.as_str()),
     );
     let types_header = headers.get("x-typescript-types").map(|e| e.to_string());
-    let types_url = match media_type {
-      msg::MediaType::JavaScript | msg::MediaType::JSX => get_types_url(
-        &module_url,
-        &source_code,
-        headers.get("x-typescript-types").map(|e| e.as_str()),
-      ),
-      _ => None,
-    };
     Ok(Some(SourceFile {
       url: module_url.clone(),
       filename: cache_filename,
       media_type,
       source_code,
-      types_url,
       types_header,
     }))
   }
@@ -519,21 +501,12 @@ impl SourceFileFetcher {
 
           let types_header =
             headers.get("x-typescript-types").map(String::to_string);
-          let types_url = match media_type {
-            msg::MediaType::JavaScript | msg::MediaType::JSX => get_types_url(
-              &module_url,
-              &source,
-              headers.get("x-typescript-types").map(String::as_str),
-            ),
-            _ => None,
-          };
 
           let source_file = SourceFile {
             url: module_url.clone(),
             filename: cache_filepath,
             media_type,
             source_code: source,
-            types_url,
             types_header,
           };
 
@@ -613,41 +586,6 @@ fn map_js_like_extension(
       Some("jsx") => msg::MediaType::JSX,
       Some("tsx") => msg::MediaType::TSX,
       Some(_) => default,
-    },
-  }
-}
-
-/// Take a module URL and source code and determines if the source code contains
-/// a type directive, and if so, returns the parsed URL for that type directive.
-fn get_types_url(
-  module_url: &Url,
-  source_code: &[u8],
-  maybe_types_header: Option<&str>,
-) -> Option<Url> {
-  lazy_static! {
-    /// Matches reference type directives in strings, which provide
-    /// type files that should be used by the compiler instead of the
-    /// JavaScript file.
-    static ref DIRECTIVE_TYPES: Regex = Regex::new(
-      r#"(?m)^/{3}\s*<reference\s+types\s*=\s*["']([^"']+)["']\s*/>"#
-    )
-    .unwrap();
-  }
-
-  match maybe_types_header {
-    Some(types_header) => match Url::parse(&types_header) {
-      Ok(url) => Some(url),
-      _ => Some(module_url.join(&types_header).unwrap()),
-    },
-    _ => match DIRECTIVE_TYPES.captures(str::from_utf8(source_code).unwrap()) {
-      Some(cap) => {
-        let val = cap.get(1).unwrap().as_str();
-        match Url::parse(&val) {
-          Ok(url) => Some(url),
-          _ => Some(module_url.join(&val).unwrap()),
-        }
-      }
-      _ => None,
     },
   }
 }
@@ -1868,85 +1806,6 @@ mod tests {
     drop(http_server_guard);
   }
 
-  #[test]
-  fn test_get_types_url_1() {
-    let module_url = Url::parse("https://example.com/mod.js").unwrap();
-    let source_code = b"console.log(\"foo\");".to_owned();
-    let result = get_types_url(&module_url, &source_code, None);
-    assert_eq!(result, None);
-  }
-
-  #[test]
-  fn test_get_types_url_2() {
-    let module_url = Url::parse("https://example.com/mod.js").unwrap();
-    let source_code = r#"/// <reference types="./mod.d.ts" />
-    console.log("foo");"#
-      .as_bytes()
-      .to_owned();
-    let result = get_types_url(&module_url, &source_code, None);
-    assert_eq!(
-      result,
-      Some(Url::parse("https://example.com/mod.d.ts").unwrap())
-    );
-  }
-
-  #[test]
-  fn test_get_types_url_3() {
-    let module_url = Url::parse("https://example.com/mod.js").unwrap();
-    let source_code = r#"/// <reference types="https://deno.land/mod.d.ts" />
-    console.log("foo");"#
-      .as_bytes()
-      .to_owned();
-    let result = get_types_url(&module_url, &source_code, None);
-    assert_eq!(
-      result,
-      Some(Url::parse("https://deno.land/mod.d.ts").unwrap())
-    );
-  }
-
-  #[test]
-  fn test_get_types_url_4() {
-    let module_url = Url::parse("file:///foo/bar/baz.js").unwrap();
-    let source_code = r#"/// <reference types="../qat/baz.d.ts" />
-    console.log("foo");"#
-      .as_bytes()
-      .to_owned();
-    let result = get_types_url(&module_url, &source_code, None);
-    assert_eq!(
-      result,
-      Some(Url::parse("file:///foo/qat/baz.d.ts").unwrap())
-    );
-  }
-
-  #[test]
-  fn test_get_types_url_5() {
-    let module_url = Url::parse("https://example.com/mod.js").unwrap();
-    let source_code = b"console.log(\"foo\");".to_owned();
-    let result = get_types_url(&module_url, &source_code, Some("./mod.d.ts"));
-    assert_eq!(
-      result,
-      Some(Url::parse("https://example.com/mod.d.ts").unwrap())
-    );
-  }
-
-  #[test]
-  fn test_get_types_url_6() {
-    let module_url = Url::parse("https://example.com/mod.js").unwrap();
-    let source_code = r#"/// <reference types="./mod.d.ts" />
-    console.log("foo");"#
-      .as_bytes()
-      .to_owned();
-    let result = get_types_url(
-      &module_url,
-      &source_code,
-      Some("https://deno.land/mod.d.ts"),
-    );
-    assert_eq!(
-      result,
-      Some(Url::parse("https://deno.land/mod.d.ts").unwrap())
-    );
-  }
-
   #[tokio::test]
   async fn test_fetch_with_types_header() {
     let http_server_guard = test_util::http_server();
@@ -1967,33 +1826,8 @@ mod tests {
     assert_eq!(source.source_code, b"export const foo = 'foo';");
     assert_eq!(&(source.media_type), &msg::MediaType::JavaScript);
     assert_eq!(
-      source.types_url,
-      Some(Url::parse("http://127.0.0.1:4545/xTypeScriptTypes.d.ts").unwrap())
-    );
-    drop(http_server_guard);
-  }
-
-  #[tokio::test]
-  async fn test_fetch_with_types_reference() {
-    let http_server_guard = test_util::http_server();
-    let (_temp_dir, fetcher) = test_setup();
-    let module_url =
-      Url::parse("http://127.0.0.1:4545/referenceTypes.js").unwrap();
-    let source = fetcher
-      .fetch_remote_source(
-        &module_url,
-        false,
-        false,
-        1,
-        &Permissions::allow_all(),
-      )
-      .await;
-    assert!(source.is_ok());
-    let source = source.unwrap();
-    assert_eq!(&(source.media_type), &msg::MediaType::JavaScript);
-    assert_eq!(
-      source.types_url,
-      Some(Url::parse("http://127.0.0.1:4545/xTypeScriptTypes.d.ts").unwrap())
+      source.types_header,
+      Some("./xTypeScriptTypes.d.ts".to_string())
     );
     drop(http_server_guard);
   }

@@ -3,19 +3,26 @@ use crate::colors;
 use crate::diagnostics::Diagnostic;
 use crate::diagnostics::DiagnosticItem;
 use crate::disk_cache::DiskCache;
+use crate::doc::Location;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::global_state::GlobalState;
 use crate::import_map::ImportMap;
-use crate::module_graph::ModuleGraphFile;
+use crate::module_graph::ModuleGraph;
 use crate::module_graph::ModuleGraphLoader;
 use crate::msg;
+use crate::msg::MediaType;
 use crate::op_error::OpError;
 use crate::ops;
 use crate::permissions::Permissions;
 use crate::source_maps::SourceMapGetter;
 use crate::startup_data;
 use crate::state::State;
+use crate::swc_common::comments::CommentKind;
+use crate::swc_common::Span;
+use crate::swc_ecma_ast;
+use crate::swc_util::AstParser;
+use crate::swc_util::SwcDiagnosticBuffer;
 use crate::version;
 use crate::web_worker::WebWorker;
 use crate::worker::WorkerEvent;
@@ -37,7 +44,6 @@ use sourcemap::SourceMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs;
-use std::hash::BuildHasher;
 use std::io;
 use std::ops::Deref;
 use std::ops::DerefMut;
@@ -48,6 +54,8 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::task::Poll;
+use swc_ecma_visit::Node;
+use swc_ecma_visit::Visit;
 use url::Url;
 
 pub const AVAILABLE_LIBS: &[&str] = &[
@@ -273,12 +281,10 @@ impl CompilerConfig {
 }
 
 /// Information associated with compiled file in cache.
-/// Includes source code path and state hash.
 /// version_hash is used to validate versions of the file
 /// and could be used to remove stale file in cache.
 #[derive(Deserialize, Serialize)]
 pub struct CompiledFileMetadata {
-  pub source_path: PathBuf,
   pub version_hash: String,
 }
 
@@ -419,7 +425,6 @@ impl TsCompiler {
 
   /// Check if there is compiled source in cache that is valid
   /// and can be used again.
-  // TODO(bartlomieju): there should be check that cached file actually exists
   fn has_compiled_source(
     &self,
     file_fetcher: &SourceFileFetcher,
@@ -430,8 +435,7 @@ impl TsCompiler {
       .fetch_cached_source_file(&specifier, Permissions::allow_all())
     {
       if let Some(metadata) = self.get_metadata(&url) {
-        // 2. compare version hashes
-        // TODO: it would probably be good idea to make it method implemented on SourceFile
+        // Compare version hashes
         let version_hash_to_validate = source_code_version_hash(
           &source_file.source_code,
           version::DENO,
@@ -462,7 +466,7 @@ impl TsCompiler {
     source_file: &SourceFile,
     target: TargetLib,
     permissions: Permissions,
-    module_graph: HashMap<String, ModuleGraphFile>,
+    module_graph: ModuleGraph,
     allow_js: bool,
   ) -> Result<(), ErrBox> {
     let mut has_cached_version = false;
@@ -504,17 +508,15 @@ impl TsCompiler {
       TargetLib::Worker => "worker",
     };
     let root_names = vec![module_url.to_string()];
-    let bundle = false;
     let unstable = global_state.flags.unstable;
     let compiler_config = self.config.clone();
     let cwd = std::env::current_dir().unwrap();
     let j = match (compiler_config.path, compiler_config.content) {
       (Some(config_path), Some(config_data)) => json!({
-        "type": msg::CompilerRequestType::Compile as i32,
+        "type": msg::CompilerRequestType::Compile,
         "allowJs": allow_js,
         "target": target,
         "rootNames": root_names,
-        "bundle": bundle,
         "unstable": unstable,
         "configPath": config_path,
         "config": str::from_utf8(&config_data).unwrap(),
@@ -522,11 +524,10 @@ impl TsCompiler {
         "sourceFileMap": module_graph_json,
       }),
       _ => json!({
-        "type": msg::CompilerRequestType::Compile as i32,
+        "type": msg::CompilerRequestType::Compile,
         "allowJs": allow_js,
         "target": target,
         "rootNames": root_names,
-        "bundle": bundle,
         "unstable": unstable,
         "cwd": cwd,
         "sourceFileMap": module_graph_json,
@@ -563,8 +564,6 @@ impl TsCompiler {
   }
 
   fn get_graph_metadata(&self, url: &Url) -> Option<GraphFileMetadata> {
-    // Try to load cached version:
-    // 1. check if there's 'meta' file
     let cache_key = self
       .disk_cache
       .get_cache_filename_with_extension(url, "graph");
@@ -707,7 +706,6 @@ impl TsCompiler {
       filename: compiled_code_filename,
       media_type: msg::MediaType::JavaScript,
       source_code: compiled_code,
-      types_url: None,
       types_header: None,
     };
 
@@ -763,10 +761,7 @@ impl TsCompiler {
       &self.config.hash,
     );
 
-    let compiled_file_metadata = CompiledFileMetadata {
-      source_path: source_file.filename,
-      version_hash,
-    };
+    let compiled_file_metadata = CompiledFileMetadata { version_hash };
     let meta_key = self
       .disk_cache
       .get_cache_filename_with_extension(module_specifier.as_url(), "meta");
@@ -795,7 +790,6 @@ impl TsCompiler {
       filename: source_map_filename,
       media_type: msg::MediaType::JavaScript,
       source_code,
-      types_url: None,
       types_header: None,
     };
 
@@ -953,7 +947,6 @@ pub async fn bundle(
     serde_json::to_value(module_graph).expect("Failed to serialize data");
 
   let root_names = vec![module_specifier.to_string()];
-  let bundle = true;
   let target = "main";
   let cwd = std::env::current_dir().unwrap();
 
@@ -961,10 +954,9 @@ pub async fn bundle(
   // be optional
   let j = match (compiler_config.path, compiler_config.content) {
     (Some(config_path), Some(config_data)) => json!({
-      "type": msg::CompilerRequestType::Compile as i32,
+      "type": msg::CompilerRequestType::Bundle,
       "target": target,
       "rootNames": root_names,
-      "bundle": bundle,
       "unstable": unstable,
       "configPath": config_path,
       "config": str::from_utf8(&config_data).unwrap(),
@@ -972,10 +964,9 @@ pub async fn bundle(
       "sourceFileMap": module_graph_json,
     }),
     _ => json!({
-      "type": msg::CompilerRequestType::Compile as i32,
+      "type": msg::CompilerRequestType::Bundle,
       "target": target,
       "rootNames": root_names,
-      "bundle": bundle,
       "unstable": unstable,
       "cwd": cwd,
       "sourceFileMap": module_graph_json,
@@ -1000,20 +991,18 @@ pub async fn bundle(
   Ok(output)
 }
 
-/// This function is used by `Deno.compile()` and `Deno.bundle()` APIs.
-pub async fn runtime_compile<S: BuildHasher>(
+async fn create_runtime_module_graph(
   global_state: GlobalState,
   permissions: Permissions,
   root_name: &str,
-  sources: &Option<HashMap<String, String, S>>,
-  bundle: bool,
+  sources: &Option<HashMap<String, String>>,
   maybe_options: &Option<String>,
-) -> Result<Value, OpError> {
+) -> Result<(Vec<String>, ModuleGraph), OpError> {
   let mut root_names = vec![];
   let mut module_graph_loader = ModuleGraphLoader::new(
     global_state.file_fetcher.clone(),
     None,
-    permissions.clone(),
+    permissions,
     false,
     false,
   );
@@ -1050,17 +1039,34 @@ pub async fn runtime_compile<S: BuildHasher>(
     }
   }
 
-  let module_graph = module_graph_loader.get_graph();
+  Ok((root_names, module_graph_loader.get_graph()))
+}
+
+/// This function is used by `Deno.compile()` API.
+pub async fn runtime_compile(
+  global_state: GlobalState,
+  permissions: Permissions,
+  root_name: &str,
+  sources: &Option<HashMap<String, String>>,
+  maybe_options: &Option<String>,
+) -> Result<Value, OpError> {
+  let (root_names, module_graph) = create_runtime_module_graph(
+    global_state.clone(),
+    permissions.clone(),
+    root_name,
+    sources,
+    maybe_options,
+  )
+  .await?;
   let module_graph_json =
     serde_json::to_value(module_graph).expect("Failed to serialize data");
 
   let req_msg = json!({
-    "type": msg::CompilerRequestType::RuntimeCompile as i32,
+    "type": msg::CompilerRequestType::RuntimeCompile,
     "target": "runtime",
     "rootNames": root_names,
     "sourceFileMap": module_graph_json,
     "options": maybe_options,
-    "bundle": bundle,
     "unstable": global_state.flags.unstable,
   })
   .to_string()
@@ -1072,12 +1078,6 @@ pub async fn runtime_compile<S: BuildHasher>(
   let msg = execute_in_same_thread(global_state, permissions, req_msg).await?;
   let json_str = std::str::from_utf8(&msg).unwrap();
 
-  // TODO(bartlomieju): factor `bundle` path into separate function `runtime_bundle`
-  if bundle {
-    let _response: RuntimeBundleResponse = serde_json::from_str(json_str)?;
-    return Ok(serde_json::from_str::<Value>(json_str).unwrap());
-  }
-
   let response: RuntimeCompileResponse = serde_json::from_str(json_str)?;
 
   if response.diagnostics.is_empty() && sources.is_none() {
@@ -1085,20 +1085,60 @@ pub async fn runtime_compile<S: BuildHasher>(
   }
 
   // We're returning `Ok()` instead of `Err()` because it's not runtime
-  // error if there were diagnostics produces; we want to let user handle
+  // error if there were diagnostics produced; we want to let user handle
+  // diagnostics in the runtime.
+  Ok(serde_json::from_str::<Value>(json_str).unwrap())
+}
+
+/// This function is used by `Deno.bundle()` API.
+pub async fn runtime_bundle(
+  global_state: GlobalState,
+  permissions: Permissions,
+  root_name: &str,
+  sources: &Option<HashMap<String, String>>,
+  maybe_options: &Option<String>,
+) -> Result<Value, OpError> {
+  let (root_names, module_graph) = create_runtime_module_graph(
+    global_state.clone(),
+    permissions.clone(),
+    root_name,
+    sources,
+    maybe_options,
+  )
+  .await?;
+  let module_graph_json =
+    serde_json::to_value(module_graph).expect("Failed to serialize data");
+
+  let req_msg = json!({
+    "type": msg::CompilerRequestType::RuntimeBundle,
+    "target": "runtime",
+    "rootNames": root_names,
+    "sourceFileMap": module_graph_json,
+    "options": maybe_options,
+    "unstable": global_state.flags.unstable,
+  })
+  .to_string()
+  .into_boxed_str()
+  .into_boxed_bytes();
+
+  let msg = execute_in_same_thread(global_state, permissions, req_msg).await?;
+  let json_str = std::str::from_utf8(&msg).unwrap();
+  let _response: RuntimeBundleResponse = serde_json::from_str(json_str)?;
+  // We're returning `Ok()` instead of `Err()` because it's not runtime
+  // error if there were diagnostics produced; we want to let user handle
   // diagnostics in the runtime.
   Ok(serde_json::from_str::<Value>(json_str).unwrap())
 }
 
 /// This function is used by `Deno.transpileOnly()` API.
-pub async fn runtime_transpile<S: BuildHasher>(
+pub async fn runtime_transpile(
   global_state: GlobalState,
   permissions: Permissions,
-  sources: &HashMap<String, String, S>,
+  sources: &HashMap<String, String>,
   options: &Option<String>,
 ) -> Result<Value, OpError> {
   let req_msg = json!({
-    "type": msg::CompilerRequestType::RuntimeTranspile as i32,
+    "type": msg::CompilerRequestType::RuntimeTranspile,
     "sources": sources,
     "options": options,
   })
@@ -1113,6 +1153,278 @@ pub async fn runtime_transpile<S: BuildHasher>(
   Ok(v)
 }
 
+#[derive(Clone, Debug, PartialEq)]
+enum DependencyKind {
+  Import,
+  DynamicImport,
+  Export,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct DependencyDescriptor {
+  span: Span,
+  specifier: String,
+  kind: DependencyKind,
+}
+
+struct DependencyVisitor {
+  dependencies: Vec<DependencyDescriptor>,
+}
+
+impl Visit for DependencyVisitor {
+  fn visit_import_decl(
+    &mut self,
+    import_decl: &swc_ecma_ast::ImportDecl,
+    _parent: &dyn Node,
+  ) {
+    let src_str = import_decl.src.value.to_string();
+    self.dependencies.push(DependencyDescriptor {
+      specifier: src_str,
+      kind: DependencyKind::Import,
+      span: import_decl.span,
+    });
+  }
+
+  fn visit_named_export(
+    &mut self,
+    named_export: &swc_ecma_ast::NamedExport,
+    _parent: &dyn Node,
+  ) {
+    if let Some(src) = &named_export.src {
+      let src_str = src.value.to_string();
+      self.dependencies.push(DependencyDescriptor {
+        specifier: src_str,
+        kind: DependencyKind::Export,
+        span: named_export.span,
+      });
+    }
+  }
+
+  fn visit_export_all(
+    &mut self,
+    export_all: &swc_ecma_ast::ExportAll,
+    _parent: &dyn Node,
+  ) {
+    let src_str = export_all.src.value.to_string();
+    self.dependencies.push(DependencyDescriptor {
+      specifier: src_str,
+      kind: DependencyKind::Export,
+      span: export_all.span,
+    });
+  }
+
+  fn visit_ts_import_type(
+    &mut self,
+    ts_import_type: &swc_ecma_ast::TsImportType,
+    _parent: &dyn Node,
+  ) {
+    // TODO(bartlomieju): possibly add separate DependencyKind
+    let src_str = ts_import_type.arg.value.to_string();
+    self.dependencies.push(DependencyDescriptor {
+      specifier: src_str,
+      kind: DependencyKind::Import,
+      span: ts_import_type.arg.span,
+    });
+  }
+
+  fn visit_call_expr(
+    &mut self,
+    call_expr: &swc_ecma_ast::CallExpr,
+    parent: &dyn Node,
+  ) {
+    use swc_ecma_ast::Expr::*;
+    use swc_ecma_ast::ExprOrSuper::*;
+
+    swc_ecma_visit::visit_call_expr(self, call_expr, parent);
+    let boxed_expr = match call_expr.callee.clone() {
+      Super(_) => return,
+      Expr(boxed) => boxed,
+    };
+
+    match &*boxed_expr {
+      Ident(ident) => {
+        if &ident.sym.to_string() != "import" {
+          return;
+        }
+      }
+      _ => return,
+    };
+
+    if let Some(arg) = call_expr.args.get(0) {
+      match &*arg.expr {
+        Lit(lit) => {
+          if let swc_ecma_ast::Lit::Str(str_) = lit {
+            let src_str = str_.value.to_string();
+            self.dependencies.push(DependencyDescriptor {
+              specifier: src_str,
+              kind: DependencyKind::DynamicImport,
+              span: call_expr.span,
+            });
+          }
+        }
+        _ => return,
+      }
+    }
+  }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ImportDesc {
+  pub specifier: String,
+  pub deno_types: Option<String>,
+  pub location: Location,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum TsReferenceKind {
+  Lib,
+  Types,
+  Path,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct TsReferenceDesc {
+  pub kind: TsReferenceKind,
+  pub specifier: String,
+  pub location: Location,
+}
+
+// TODO(bartlomieju): handle imports in ambient contexts/TS modules
+/// This function is a port of `ts.preProcessFile()`
+///
+/// Additionally it captures `@deno-types` references directly
+/// preceeding `import .. from` and `export .. from` statements.
+pub fn pre_process_file(
+  file_name: &str,
+  media_type: MediaType,
+  source_code: &str,
+  analyze_dynamic_imports: bool,
+) -> Result<(Vec<ImportDesc>, Vec<TsReferenceDesc>), SwcDiagnosticBuffer> {
+  let parser = AstParser::new();
+  parser.parse_module(file_name, media_type, source_code, |parse_result| {
+    let module = parse_result?;
+    let mut collector = DependencyVisitor {
+      dependencies: vec![],
+    };
+    let module_span = module.span;
+    collector.visit_module(&module, &module);
+
+    let dependency_descriptors = collector.dependencies;
+
+    // for each import check if there's relevant @deno-types directive
+    let imports = dependency_descriptors
+      .iter()
+      .filter(|desc| {
+        if analyze_dynamic_imports {
+          return true;
+        }
+
+        desc.kind != DependencyKind::DynamicImport
+      })
+      .map(|desc| {
+        let location = parser.get_span_location(desc.span);
+        let deno_types = get_deno_types(&parser, desc.span);
+        ImportDesc {
+          specifier: desc.specifier.to_string(),
+          deno_types,
+          location: location.into(),
+        }
+      })
+      .collect();
+
+    // analyze comment from beginning of the file and find TS directives
+    let comments = parser
+      .comments
+      .take_leading_comments(module_span.lo())
+      .unwrap_or_else(Vec::new);
+
+    let mut references = vec![];
+    for comment in comments {
+      if comment.kind != CommentKind::Line {
+        continue;
+      }
+
+      let text = comment.text.to_string();
+      if let Some((kind, specifier)) = parse_ts_reference(text.trim()) {
+        let location = parser.get_span_location(comment.span);
+        references.push(TsReferenceDesc {
+          kind,
+          specifier,
+          location: location.into(),
+        });
+      }
+    }
+    Ok((imports, references))
+  })
+}
+
+fn get_deno_types(parser: &AstParser, span: Span) -> Option<String> {
+  let comments = parser.get_span_comments(span);
+
+  if comments.is_empty() {
+    return None;
+  }
+
+  // @deno-types must directly prepend import statement - hence
+  // checking last comment for span
+  let last = comments.last().unwrap();
+  let comment = last.text.trim_start();
+  parse_deno_types(&comment)
+}
+
+// TODO(bartlomieju): refactor
+fn parse_ts_reference(comment: &str) -> Option<(TsReferenceKind, String)> {
+  let (kind, specifier_in_quotes) = if comment.starts_with("/ <reference path=")
+  {
+    (
+      TsReferenceKind::Path,
+      comment.trim_start_matches("/ <reference path="),
+    )
+  } else if comment.starts_with("/ <reference lib=") {
+    (
+      TsReferenceKind::Lib,
+      comment.trim_start_matches("/ <reference lib="),
+    )
+  } else if comment.starts_with("/ <reference types=") {
+    (
+      TsReferenceKind::Types,
+      comment.trim_start_matches("/ <reference types="),
+    )
+  } else {
+    return None;
+  };
+
+  let specifier = specifier_in_quotes
+    .trim_end_matches("/>")
+    .trim_end()
+    .trim_start_matches('\"')
+    .trim_start_matches('\'')
+    .trim_end_matches('\"')
+    .trim_end_matches('\'')
+    .to_string();
+
+  Some((kind, specifier))
+}
+
+fn parse_deno_types(comment: &str) -> Option<String> {
+  if comment.starts_with("@deno-types") {
+    let split: Vec<String> =
+      comment.split('=').map(|s| s.to_string()).collect();
+    assert_eq!(split.len(), 2);
+    let specifier_in_quotes = split.get(1).unwrap().to_string();
+    let specifier = specifier_in_quotes
+      .trim()
+      .trim_start_matches('\"')
+      .trim_start_matches('\'')
+      .trim_end_matches('\"')
+      .trim_end_matches('\'')
+      .to_string();
+    return Some(specifier);
+  }
+
+  None
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -1120,6 +1432,44 @@ mod tests {
   use deno_core::ModuleSpecifier;
   use std::path::PathBuf;
   use tempfile::TempDir;
+
+  #[test]
+  fn test_parse_deno_types() {
+    assert_eq!(
+      parse_deno_types("@deno-types=./a/b/c.d.ts"),
+      Some("./a/b/c.d.ts".to_string())
+    );
+    assert_eq!(
+      parse_deno_types("@deno-types = https://dneo.land/x/some/package/a.d.ts"),
+      Some("https://dneo.land/x/some/package/a.d.ts".to_string())
+    );
+    assert_eq!(
+      parse_deno_types("@deno-types = ./a/b/c.d.ts"),
+      Some("./a/b/c.d.ts".to_string())
+    );
+    assert!(parse_deno_types("asdf").is_none());
+    assert!(parse_deno_types("// deno-types = fooo").is_none());
+  }
+
+  #[test]
+  fn test_parse_ts_reference() {
+    assert_eq!(
+      parse_ts_reference(r#"/ <reference lib="deno.shared_globals" />"#),
+      Some((TsReferenceKind::Lib, "deno.shared_globals".to_string()))
+    );
+    assert_eq!(
+      parse_ts_reference(r#"/ <reference path="./type/reference/dep.ts" />"#),
+      Some((TsReferenceKind::Path, "./type/reference/dep.ts".to_string()))
+    );
+    assert_eq!(
+      parse_ts_reference(r#"/ <reference types="./type/reference.d.ts" />"#),
+      Some((TsReferenceKind::Types, "./type/reference.d.ts".to_string()))
+    );
+    assert!(parse_ts_reference("asdf").is_none());
+    assert!(
+      parse_ts_reference(r#"/ <reference unknown="unknown" />"#).is_none()
+    );
+  }
 
   #[tokio::test]
   async fn test_compile() {
@@ -1134,7 +1484,6 @@ mod tests {
       filename: PathBuf::from(p.to_str().unwrap().to_string()),
       media_type: msg::MediaType::TypeScript,
       source_code: include_bytes!("./tests/002_hello.ts").to_vec(),
-      types_url: None,
       types_header: None,
     };
     let mock_state =
