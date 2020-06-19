@@ -119,7 +119,9 @@ export function currentDayOfYear(): number {
  */
 export function weekOfYear(date: Date): number {
   const firstJan = new Date(date.getFullYear(), 0, 1);
-  const numberOfDays = Math.floor((Number(date) - Number(firstJan)) / (24 * 60 * 60 * 1000));
+  const numberOfDays = Math.floor(
+    (Number(date) - Number(firstJan)) / (24 * 60 * 60 * 1000)
+  );
   return Math.ceil((date.getDay() + 1 + numberOfDays) / 7);
 }
 
