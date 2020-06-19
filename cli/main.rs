@@ -80,6 +80,7 @@ use crate::permissions::Permissions;
 use crate::tsc::TargetLib;
 use crate::worker::MainWorker;
 use deno_core::v8_set_flags;
+use deno_core::Deps;
 use deno_core::ErrBox;
 use deno_core::EsIsolate;
 use deno_core::ModuleSpecifier;
@@ -196,7 +197,7 @@ struct FileInfoOutput<'a> {
   file_type: &'a str,
   compiled: Option<String>,
   map: Option<String>,
-  deps: Option<deno_core::modules::Deps>,
+  deps: Option<Deps>,
 }
 
 // TODO(bartlomieju): this function de facto repeats
