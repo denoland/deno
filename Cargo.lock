@@ -426,7 +426,6 @@ dependencies = [
  "deno_core",
  "deno_lint",
  "deno_typescript",
- "dirs",
  "dissimilar",
  "dlopen",
  "dprint-plugin-typescript",

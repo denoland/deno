@@ -40,35 +40,6 @@ export const env = {
   delete: deleteEnv,
 };
 
-type DirKind =
-  | "home"
-  | "cache"
-  | "config"
-  | "executable"
-  | "data"
-  | "data_local"
-  | "audio"
-  | "desktop"
-  | "document"
-  | "download"
-  | "font"
-  | "picture"
-  | "public"
-  | "template"
-  | "tmp"
-  | "video";
-
-export function dir(kind: DirKind): string | null {
-  try {
-    return sendSync("op_get_dir", { kind });
-  } catch (error) {
-    if (error instanceof errors.PermissionDenied) {
-      throw error;
-    }
-    return null;
-  }
-}
-
 export function execPath(): string {
   return sendSync("op_exec_path");
 }
