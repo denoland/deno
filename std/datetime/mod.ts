@@ -114,6 +114,16 @@ export function currentDayOfYear(): number {
 }
 
 /**
+ * Get number of week in the year
+ * @returns Number of week in the year
+ */
+export function weekOfYear(date: Date): number {
+  const firstJan = new Date(date.getFullYear(), 0, 1);
+  const numberOfDays = Math.floor((Number(date) - Number(firstJan)) / (24 * 60 * 60 * 1000));
+  return Math.ceil((date.getDay() + 1 + numberOfDays) / 7);
+}
+
+/**
  * Parse a date to return a IMF formated string date
  * RFC: https://tools.ietf.org/html/rfc7231#section-7.1.1.1
  * IMF is the time format to use when generating times in HTTP
