@@ -15,13 +15,12 @@ pub struct DenoDir {
 impl DenoDir {
   pub fn new(maybe_custom_root: Option<PathBuf>) -> std::io::Result<Self> {
     // Only setup once.
-    let home_dir =
-      crate::dirs::home_dir().expect("Could not get home directory.");
+    let home_dir = dirs::home_dir().expect("Could not get home directory.");
     let fallback = home_dir.join(".deno");
     // We use the OS cache dir because all files deno writes are cache files
     // Once that changes we need to start using different roots if DENO_DIR
     // is not set, and keep a single one if it is.
-    let default = crate::dirs::cache_dir()
+    let default = dirs::cache_dir()
       .map(|d| d.join("deno"))
       .unwrap_or(fallback);
 
@@ -44,5 +43,64 @@ impl DenoDir {
     deno_dir.gen_cache.ensure_dir_exists(&gen_path)?;
 
     Ok(deno_dir)
+  }
+}
+
+/// To avoid the poorly managed dirs crate
+mod dirs {
+  // Unix
+
+  #[cfg(not(windows))]
+  pub fn cache_dir() -> Option<PathBuf> {
+    if cfg!(target_os = "macos") {
+      home_dir().map(|h| h.join("Library/Caches"))
+    } else {
+      std::env::var_os("XDG_CACHE_HOME")
+        .map(PathBuf::from)
+        .or_else(|| home_dir().map(|h| h.join(".cache")))
+    }
+  }
+
+  #[cfg(not(windows))]
+  pub fn home_dir() -> Option<PathBuf> {
+    std::env::var_os("HOME")
+      .and_then(|h| if h.is_empty() { None } else { Some(h) })
+      .map(PathBuf::from)
+  }
+
+  // Windows
+
+  #[cfg(windows)]
+  pub fn known_folder(
+    folder_id: winapi::um::shtypes::REFKNOWNFOLDERID,
+  ) -> Option<PathBuf> {
+    unsafe {
+      let mut path_ptr: winapi::um::winnt::PWSTR = std::ptr::null_mut();
+      let result = winapi::um::shlobj::SHGetKnownFolderPath(
+        folder_id,
+        0,
+        std::ptr::null_mut(),
+        &mut path_ptr,
+      );
+      if result == winapi::shared::winerror::S_OK {
+        let len = winapi::um::winbase::lstrlenW(path_ptr) as usize;
+        let path = slice::from_raw_parts(path_ptr, len);
+        let ostr: OsString = OsStringExt::from_wide(path);
+        combaseapi::CoTaskMemFree(path_ptr as *mut winapi::ctypes::c_void);
+        Some(PathBuf::from(ostr))
+      } else {
+        None
+      }
+    }
+  }
+
+  #[cfg(windows)]
+  pub fn cache_dir() -> Option<PathBuf> {
+    known_folder(&winapi::um::knownfolders::FOLDERID_LocalAppData)
+  }
+
+  #[cfg(windows)]
+  pub fn home_dir() -> Option<PathBuf> {
+    known_folder(&winapi::um::knownfolders::FOLDERID_Profile)
   }
 }

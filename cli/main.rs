@@ -27,7 +27,6 @@ pub mod colors;
 pub mod deno_dir;
 pub mod diagnostics;
 mod diff;
-mod dirs;
 mod disk_cache;
 mod doc;
 mod file_fetcher;
