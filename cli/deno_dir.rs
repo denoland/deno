@@ -48,6 +48,8 @@ impl DenoDir {
 
 /// To avoid the poorly managed dirs crate
 mod dirs {
+  use std::path::PathBuf;
+
   // Unix
 
   #[cfg(not(windows))]
