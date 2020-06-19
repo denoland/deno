@@ -337,7 +337,7 @@ export function assertThrows<T = void>(
   try {
     fn();
   } catch (e) {
-    if (e === undefined || e === null || typeof e.message === "undefined") {
+    if (e instanceof Error === false) {
       throw new AssertionError("Please throw a valid Error object.");
     }
     if (ErrorClass && !(Object.getPrototypeOf(e) === ErrorClass.prototype)) {
@@ -376,7 +376,7 @@ export async function assertThrowsAsync<T = void>(
   try {
     await fn();
   } catch (e) {
-    if (e === undefined || e === null || typeof e.message === "undefined") {
+    if (e instanceof Error === false) {
       throw new AssertionError("Please throw or reject a valid Error object.");
     }
     if (ErrorClass && !(Object.getPrototypeOf(e) === ErrorClass.prototype)) {
