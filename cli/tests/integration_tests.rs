@@ -1403,9 +1403,9 @@ itest!(_041_info_flag {
   output: "041_info_flag.out",
 });
 
-itest!(_041_2_info_json {
+itest!(info_json {
   args: "info --json",
-  output: "041_2_info_json.out",
+  output: "info_json.out",
 });
 
 itest!(_042_dyn_import_evalcontext {
