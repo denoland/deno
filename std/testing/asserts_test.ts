@@ -422,7 +422,7 @@ Deno.test("Assert Throws Non-Error Fail", () => {
       );
     },
     AssertionError,
-    "Please throw a valid Error object."
+    "A non-Error object was thrown."
   );
 
   assertThrows(
@@ -432,7 +432,7 @@ Deno.test("Assert Throws Non-Error Fail", () => {
       });
     },
     AssertionError,
-    "Please throw a valid Error object."
+    "A non-Error object was thrown."
   );
 
   assertThrows(
@@ -442,7 +442,7 @@ Deno.test("Assert Throws Non-Error Fail", () => {
       });
     },
     AssertionError,
-    "Please throw a valid Error object."
+    "A non-Error object was thrown."
   );
 });
 
@@ -458,7 +458,7 @@ Deno.test("Assert Throws Async Non-Error Fail", () => {
       );
     },
     AssertionError,
-    "Please throw or reject a valid Error object."
+    "A non-Error object was thrown or rejected."
   );
 
   assertThrowsAsync(
@@ -468,7 +468,7 @@ Deno.test("Assert Throws Async Non-Error Fail", () => {
       });
     },
     AssertionError,
-    "Please throw or reject a valid Error object."
+    "A non-Error object was thrown or rejected."
   );
 
   assertThrowsAsync(
@@ -478,7 +478,7 @@ Deno.test("Assert Throws Async Non-Error Fail", () => {
       });
     },
     AssertionError,
-    "Please throw or reject a valid Error object."
+    "A non-Error object was thrown or rejected."
   );
 
   assertThrowsAsync(
@@ -489,6 +489,6 @@ Deno.test("Assert Throws Async Non-Error Fail", () => {
       });
     },
     AssertionError,
-    "Please throw or reject a valid Error object."
+    "A non-Error object was thrown or rejected."
   );
 });

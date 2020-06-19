@@ -338,7 +338,7 @@ export function assertThrows<T = void>(
     fn();
   } catch (e) {
     if (e instanceof Error === false) {
-      throw new AssertionError("Please throw a valid Error object.");
+      throw new AssertionError("A non-Error object was thrown.");
     }
     if (ErrorClass && !(Object.getPrototypeOf(e) === ErrorClass.prototype)) {
       msg = `Expected error to be instance of "${ErrorClass.name}", but was "${
@@ -377,7 +377,7 @@ export async function assertThrowsAsync<T = void>(
     await fn();
   } catch (e) {
     if (e instanceof Error === false) {
-      throw new AssertionError("Please throw or reject a valid Error object.");
+      throw new AssertionError("A non-Error object was thrown or rejected.");
     }
     if (ErrorClass && !(Object.getPrototypeOf(e) === ErrorClass.prototype)) {
       msg = `Expected error to be instance of "${ErrorClass.name}", but got "${
