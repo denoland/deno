@@ -608,7 +608,9 @@ unitTest(async function consoleTestStringifyPromises(): Promise<void> {
       rej(Error("Whoops"));
     });
     await rejectedPromise;
-  } catch (err) {}
+  } catch (err) {
+    // pass
+  }
   const strLines = stringify(rejectedPromise).split("\n");
   assertEquals(strLines[0], "Promise {");
   assertEquals(strLines[1], "  <rejected> Error: Whoops");

@@ -37,6 +37,7 @@ fn std_lint() {
     .arg("lint")
     .arg("--unstable")
     .arg(util::root_path().join("std"))
+    .arg(util::root_path().join("cli/tests/unit"))
     .spawn()
     .unwrap()
     .wait()

@@ -747,7 +747,9 @@ unitTest({ perms: { net: true } }, async function fetchBodyReadTwice(): Promise<
       fail(
         "Reading body multiple times should failed, the stream should've been locked."
       );
-    } catch {}
+    } catch {
+      // pass
+    }
   }
 });
 
@@ -768,7 +770,9 @@ unitTest(
     try {
       response.body.getReader();
       fail("The stream should've been locked.");
-    } catch {}
+    } catch {
+      // pass
+    }
   }
 );
 
