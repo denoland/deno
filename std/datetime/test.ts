@@ -72,6 +72,12 @@ Deno.test("DayOfYear", function (): void {
   assertEquals(365, datetime.dayOfYear(new Date("2019-12-31T03:24:00")));
 });
 
+Deno.test("weekOfYear", function (): void {
+  assertEquals(1, datetime.weekOfYear(new Date("2019-01-01T03:24:00")));
+  assertEquals(53, datetime.weekOfYear(new Date("2015-12-30T03:24:00")));
+  assertEquals(262, datetime.weekOfYear(new Date("2020-06-19T03:24:00")));
+});
+
 Deno.test("currentDayOfYear", function (): void {
   assertEquals(datetime.currentDayOfYear(), datetime.dayOfYear(new Date()));
 });
