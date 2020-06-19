@@ -144,11 +144,7 @@ export function assert(expr: unknown, msg = ""): asserts expr {
  * Make an assertion that `actual` and `expected` are equal, deeply. If not
  * deeply equal, then throw.
  */
-export function assertEquals(
-  actual: unknown,
-  expected: unknown,
-  msg?: string
-): void {
+export function assertEquals<T>(actual: T, expected: T, msg?: string): void {
   if (equal(actual, expected)) {
     return;
   }
@@ -175,11 +171,7 @@ export function assertEquals(
  * Make an assertion that `actual` and `expected` are not equal, deeply.
  * If not then throw.
  */
-export function assertNotEquals(
-  actual: unknown,
-  expected: unknown,
-  msg?: string
-): void {
+export function assertNotEquals<T>(actual: T, expected: T, msg?: string): void {
   if (!equal(actual, expected)) {
     return;
   }
@@ -205,9 +197,9 @@ export function assertNotEquals(
  * Make an assertion that `actual` and `expected` are strictly equal.  If
  * not then throw.
  */
-export function assertStrictEquals(
-  actual: unknown,
-  expected: unknown,
+export function assertStrictEquals<T>(
+  actual: T,
+  expected: T,
   msg?: string
 ): void {
   if (actual === expected) {
@@ -268,9 +260,9 @@ export function assertStringContains(
  * Make an assertion that `actual` contains the `expected` values
  * If not then thrown.
  */
-export function assertArrayContains(
-  actual: unknown[],
-  expected: unknown[],
+export function assertArrayContains<T>(
+  actual: T[],
+  expected: T[],
   msg?: string
 ): void {
   const missing: unknown[] = [];
