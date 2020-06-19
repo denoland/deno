@@ -124,9 +124,9 @@ Deno.test("testingEqual", function (): void {
 });
 
 Deno.test("testingNotEquals", function (): void {
-  const a = { foo: "bar" };
-  const b = { bar: "foo" };
-  assertNotEquals(a, b as any);
+  const a = { foo: "bar" } as object;
+  const b = { bar: "foo" } as object;
+  assertNotEquals(a, b);
   assertNotEquals("Denosaurus", "Tyrannosaurus");
   let didThrow;
   try {
@@ -312,7 +312,7 @@ Deno.test({
   name: "failed with number vs string",
   fn(): void {
     assertThrows(
-      (): void => assertEquals(1, "1" as any),
+      (): void => assertEquals(1 as string | number, "1"),
       AssertionError,
       [
         "Values are not equal:",
