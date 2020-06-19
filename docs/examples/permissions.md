@@ -7,15 +7,15 @@ Sometimes a program may want to revoke previously granted permissions. When a
 program, at a later stage, needs those permissions, it will fail.
 
 ```ts
-// lookup a permission
-const status = await Deno.permissions.query({ name: "write" });
+// lookup a permission synchronously
+const status = Deno.permissions.querySync({ name: "write" });
 if (status.state !== "granted") {
   throw new Error("need write permission");
 }
 
 const log = await Deno.open("request.log", { write: true, append: true });
 
-// revoke some permissions
+// revoke some permissions asynchronously
 await Deno.permissions.revoke({ name: "read" });
 await Deno.permissions.revoke({ name: "write" });
 

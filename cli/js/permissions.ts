@@ -64,14 +64,29 @@ export class Permissions {
     return Promise.resolve(new PermissionStatus(state));
   }
 
+  querySync(desc: PermissionDescriptor): PermissionStatus {
+    const state = permissionsOps.query(desc);
+    return new PermissionStatus(state);
+  }
+
   revoke(desc: PermissionDescriptor): Promise<PermissionStatus> {
     const state = permissionsOps.revoke(desc);
     return Promise.resolve(new PermissionStatus(state));
   }
 
+  revokeSync(desc: PermissionDescriptor): PermissionStatus {
+    const state = permissionsOps.revoke(desc);
+    return new PermissionStatus(state);
+  }
+
   request(desc: PermissionDescriptor): Promise<PermissionStatus> {
     const state = permissionsOps.request(desc);
     return Promise.resolve(new PermissionStatus(state));
+  }
+
+  requestSync(desc: PermissionDescriptor): PermissionStatus {
+    const state = permissionsOps.request(desc);
+    return new PermissionStatus(state);
   }
 }
 

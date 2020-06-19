@@ -1201,12 +1201,30 @@ declare namespace Deno {
      */
     query(desc: PermissionDescriptor): Promise<PermissionStatus>;
 
+    /** Returns to the current status of a permission.
+     *
+     * ```ts
+     * const status = Deno.permissions.querySync({ name: "read", path: "/etc" });
+     * if (status.state === "granted") {
+     *   data = await Deno.readFile("/etc/passwd");
+     * }
+     * ```
+     */
+    querySync(desc: PermissionDescriptor): PermissionStatus;
+
     /** Revokes a permission, and resolves to the state of the permission.
      *
      *       const status = await Deno.permissions.revoke({ name: "run" });
      *       assert(status.state !== "granted")
      */
     revoke(desc: PermissionDescriptor): Promise<PermissionStatus>;
+
+    /** Revokes a permission, and returns the state of the permission.
+     *
+     *       const status = Deno.permissions.revokeSync({ name: "run" });
+     *       assert(status.state !== "granted")
+     */
+    revokeSync(desc: PermissionDescriptor): PermissionStatus;
 
     /** Requests the permission, and resolves to the state of the permission.
      *
@@ -1220,6 +1238,19 @@ declare namespace Deno {
      * ```
      */
     request(desc: PermissionDescriptor): Promise<PermissionStatus>;
+
+    /** Requests the permission, and returns the state of the permission.
+     *
+     * ```ts
+     * const status = Deno.permissions.requestSync({ name: "env" });
+     * if (status.state === "granted") {
+     *   console.log(Deno.dir("home");
+     * } else {
+     *   console.log("'env' permission is denied.");
+     * }
+     * ```
+     */
+    requestSync(desc: PermissionDescriptor): PermissionStatus;
   }
 
   /** **UNSTABLE**: Under consideration to move to `navigator.permissions` to
