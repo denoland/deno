@@ -1,8 +1,21 @@
 import { assert, assertThrows, assertEquals } from "../testing/asserts.ts";
-import process from "./process.ts";
+import * as all from "./process.ts";
+const process = globalThis.process;
 
 // NOTE: Deno.execPath() (and thus process.argv) currently requires --allow-env
 // (Also Deno.env.toObject() (and process.env) requires --allow-env but it's more obvious)
+
+Deno.test({
+  name: "process exports are as they should be",
+  fn() {
+    const keys = new Set<string>(Object.keys(all));
+    keys.delete("default");
+    const str = Array.from(keys).sort().join(" ");
+    assertEquals(Object.keys(all.default).sort().join(" "), str);
+    assertEquals(Object.keys(all.process).sort().join(" "), str);
+    assertEquals(Object.keys(process).sort().join(" "), str);
+  },
+});
 
 Deno.test({
   name: "process.cwd and process.chdir success",
@@ -82,8 +95,9 @@ Deno.test({
 
 Deno.test({
   name: "process.argv",
-  fn() {
+  async fn() {
     assert(Array.isArray(process.argv));
+    assert(Array.isArray(await all.argv));
     assert(
       process.argv[0].match(/[^/\\]*deno[^/\\]*$/),
       "deno included in the file name of argv[0]"
@@ -94,7 +108,8 @@ Deno.test({
 
 Deno.test({
   name: "process.env",
-  fn() {
+  async fn() {
     assertEquals(typeof process.env.PATH, "string");
+    assertEquals(typeof (await all.env).PATH, "string");
   },
 });
