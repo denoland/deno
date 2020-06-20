@@ -35,8 +35,7 @@ export const exit = Deno.exit;
 
 /**
  * https://nodejs.org/api/process.html#process_process
- * even though `import { process } from 'process'` is invalid node code
- * it is what deno used initially, so this functions as backwards compatibility
+ * @deprecated exported only for backwards compatibility with old deno versions
  */
 export const process = {
   on,
@@ -62,6 +61,9 @@ export const process = {
   },
 };
 
+/** use this for access to `process.env` and `process.argv` which cannot be exported directly */
+export default process;
+
 Object.defineProperty(process, Symbol.toStringTag, {
   enumerable: false,
   writable: true,
@@ -75,5 +77,3 @@ Object.defineProperty(globalThis, "process", {
   writable: true,
   configurable: true,
 });
-
-export default process;
