@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { sendSync } from "./dispatch_json.ts";
-import { errors } from "../errors.ts";
 
 export function loadavg(): number[] {
   return sendSync("op_loadavg");
