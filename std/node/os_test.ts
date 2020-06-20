@@ -26,6 +26,7 @@ Deno.test({
 
 Deno.test({
   name: "hostname is a string",
+  ignore: true,
   fn() {
     assertEquals(typeof os.hostname(), "string");
   },
@@ -194,7 +195,6 @@ Deno.test({
   fn() {
     assertEquals(`${os.arch}`, os.arch());
     assertEquals(`${os.endianness}`, os.endianness());
-    assertEquals(`${os.hostname}`, os.hostname());
     assertEquals(`${os.platform}`, os.platform());
   },
 });
