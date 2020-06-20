@@ -136,7 +136,7 @@ export function getPriority(pid = 0): number {
 
 /** Returns the string path of the current user's home directory. */
 export function homedir(): string | null {
-  return Deno.env.get("HOME");
+  notImplemented(SEE_GITHUB_ISSUE);
 }
 
 /** Returns the host name of the operating system as a string. */
