@@ -72,23 +72,24 @@ mod dirs {
 /// To avoid the poorly managed dirs crate
 #[cfg(windows)]
 mod dirs {
+  use std::ffi::OsString;
+  use std::os::windows::ffi::OsStringExt;
   use std::path::PathBuf;
-  use std::ptr;
   use winapi::shared::winerror;
   use winapi::um::{combaseapi, knownfolders, shlobj, shtypes, winbase, winnt};
 
   fn known_folder(folder_id: shtypes::REFKNOWNFOLDERID) -> Option<PathBuf> {
     unsafe {
-      let mut path_ptr: winnt::PWSTR = ptr::null_mut();
+      let mut path_ptr: winnt::PWSTR = std::ptr::null_mut();
       let result = shlobj::SHGetKnownFolderPath(
         folder_id,
         0,
-        ptr::null_mut(),
+        std::ptr::null_mut(),
         &mut path_ptr,
       );
       if result == winerror::S_OK {
         let len = winbase::lstrlenW(path_ptr) as usize;
-        let path = slice::from_raw_parts(path_ptr, len);
+        let path = std::slice::from_raw_parts(path_ptr, len);
         let ostr: OsString = OsStringExt::from_wide(path);
         combaseapi::CoTaskMemFree(path_ptr as *mut winapi::ctypes::c_void);
         Some(PathBuf::from(ostr))
