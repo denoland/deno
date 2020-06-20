@@ -159,6 +159,10 @@ Deno.test("testingArrayContains", function (): void {
   const fixtureObject = [{ deno: "luv" }, { deno: "Js" }];
   assertArrayContains(fixture, ["deno"]);
   assertArrayContains(fixtureObject, [{ deno: "luv" }]);
+  assertArrayContains(
+    Uint8Array.from([1, 2, 3, 4]),
+    Uint8Array.from([1, 2, 3])
+  );
   assertThrows(
     (): void => assertArrayContains(fixtureObject, [{ deno: "node" }]),
     AssertionError,

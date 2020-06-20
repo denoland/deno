@@ -269,8 +269,8 @@ export function assertStringContains(
  * If not then thrown.
  */
 export function assertArrayContains(
-  actual: unknown[],
-  expected: unknown[],
+  actual: ArrayLike<unknown>,
+  expected: ArrayLike<unknown>,
   msg?: string
 ): void {
   const missing: unknown[] = [];
