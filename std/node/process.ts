@@ -42,4 +42,4 @@ Object.defineProperty(globalThis, "process", {
   configurable: true,
 });
 
-export default process
+export default process;
