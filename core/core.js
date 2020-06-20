@@ -37,7 +37,7 @@ SharedQueue Binary Layout
   let asyncHandlers;
 
   let initialized = false;
-  const opsCache = {};
+  let opsCache = {};
 
   function maybeInit() {
     if (!initialized) {
@@ -62,7 +62,7 @@ SharedQueue Binary Layout
     // op id 0 is a special value to retrieve the map of registered ops.
     const opsMapBytes = send(0, new Uint8Array([]));
     const opsMapJson = String.fromCharCode.apply(null, opsMapBytes);
-    Object.assign(opsCache, JSON.parse(opsMapJson));
+    opsCache = JSON.parse(opsMapJson);
     return { ...opsCache };
   }
 
@@ -190,7 +190,7 @@ SharedQueue Binary Layout
   Object.assign(window.Deno.core, {
     setAsyncHandler,
     dispatch: send,
-    dispatchNew: dispatch,
+    dispatchByName: dispatch,
     ops,
     // sharedQueue is private but exposed for testing.
     sharedQueue: {
