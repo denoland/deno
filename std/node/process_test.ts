@@ -1,5 +1,5 @@
 import { assert, assertThrows, assertEquals } from "../testing/asserts.ts";
-import { process } from "./process.ts";
+import process from "./process.ts";
 
 // NOTE: Deno.execPath() (and thus process.argv) currently requires --allow-env
 // (Also Deno.env.toObject() (and process.env) requires --allow-env but it's more obvious)
