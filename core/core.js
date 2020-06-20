@@ -183,8 +183,8 @@ SharedQueue Binary Layout
     }
   }
 
-  function dispatch(opName, control, zeroCopy) {
-    return send(opsCache[opName], control, zeroCopy);
+  function dispatch(opName, control, ...zeroCopy) {
+    return send(opsCache[opName], control, ...zeroCopy);
   }
 
   Object.assign(window.Deno.core, {
