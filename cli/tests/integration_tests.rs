@@ -2049,6 +2049,29 @@ itest!(deno_lint_glob {
 });
 
 #[test]
+fn cafile_env_fetch() {
+  use url::Url;
+  let g = util::http_server();
+  let deno_dir = TempDir::new().expect("tempdir fail");
+  let module_url =
+    Url::parse("http://localhost:4545/cli/tests/cafile_url_imports.ts")
+      .unwrap();
+  let cafile = util::root_path().join("cli/tests/tls/RootCA.pem");
+  let output = Command::new(util::deno_exe_path())
+    .env("DENO_DIR", deno_dir.path())
+    .env("DENO_CERT", cafile)
+    .current_dir(util::root_path())
+    .arg("cache")
+    .arg(module_url.to_string())
+    .output()
+    .expect("Failed to spawn script");
+  assert!(output.status.success());
+  let out = std::str::from_utf8(&output.stdout).unwrap();
+  assert_eq!(out, "");
+  drop(g);
+}
+
+#[test]
 fn cafile_fetch() {
   use url::Url;
   let g = util::http_server();
