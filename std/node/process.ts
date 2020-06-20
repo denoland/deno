@@ -83,3 +83,8 @@ Object.defineProperty(globalThis, "process", {
   writable: true,
   configurable: true,
 });
+
+declare global {
+  // @ts-ignore
+  var process: typeof process;
+}

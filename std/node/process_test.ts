@@ -1,6 +1,5 @@
 import { assert, assertThrows, assertEquals } from "../testing/asserts.ts";
 import * as all from "./process.ts";
-const process = globalThis.process;
 
 // NOTE: Deno.execPath() (and thus process.argv) currently requires --allow-env
 // (Also Deno.env.toObject() (and process.env) requires --allow-env but it's more obvious)
@@ -100,6 +99,7 @@ Deno.test({
   name: "process.argv",
   async fn() {
     assert(Array.isArray(process.argv));
+    // @ts-ignore
     assert(Array.isArray(await all.argv));
     assert(
       process.argv[0].match(/[^/\\]*deno[^/\\]*$/),
@@ -113,6 +113,7 @@ Deno.test({
   name: "process.env",
   async fn() {
     assertEquals(typeof process.env.PATH, "string");
+    // @ts-ignore
     assertEquals(typeof (await all.env).PATH, "string");
   },
 });
