@@ -1,27 +1,61 @@
 import { notImplemented } from "./_utils.ts";
 
+/** https://nodejs.org/api/process.html#process_process_events */
 function on(_event: string, _callback: Function): void {
   // TODO(rsp): to be implemented
   notImplemented();
 }
 
-const process = {
-  version: `v${Deno.version.deno}`,
-  versions: {
-    node: Deno.version.deno,
-    ...Deno.version,
-  },
-  platform: Deno.build.os === "windows" ? "win32" : Deno.build.os,
-  arch: Deno.build.arch,
-  pid: Deno.pid,
-  cwd: Deno.cwd,
-  chdir: Deno.chdir,
-  exit: Deno.exit,
+/** https://nodejs.org/api/process.html#process_process_version */
+export const version = `v${Deno.version.deno}`;
+
+/** https://nodejs.org/api/process.html#process_process_versions */
+export const versions = {
+  node: Deno.version.deno,
+  ...Deno.version,
+};
+
+/** https://nodejs.org/api/process.html#process_process_platform */
+export const platform = Deno.build.os === "windows" ? "win32" : Deno.build.os;
+
+/** https://nodejs.org/api/process.html#process_process_arch */
+export const arch = Deno.build.arch;
+
+/** https://nodejs.org/api/process.html#process_process_pid */
+export const pid = Deno.pid;
+
+/** https://nodejs.org/api/process.html#process_process_cwd */
+export const cwd = Deno.cwd;
+
+/** https://nodejs.org/api/process.html#process_process_chdir_directory */
+export const chdir = Deno.chdir;
+
+/** https://nodejs.org/api/process.html#process_process_exit_code */
+export const exit = Deno.exit;
+
+/**
+ * https://nodejs.org/api/process.html#process_process
+ * even though `import { process } from 'process'` is invalid node code
+ * it is what deno used initially, so this functions as backwards compatibility
+ */
+export const process = {
   on,
+  version,
+  versions,
+  platform,
+  arch,
+  pid,
+  cwd,
+  chdir,
+  exit,
+
+  /** https://nodejs.org/api/process.html#process_process_env */
   get env(): { [index: string]: string } {
     // using getter to avoid --allow-env unless it's used
     return Deno.env.toObject();
   },
+
+  /** https://nodejs.org/api/process.html#process_process_argv */
   get argv(): string[] {
     // Deno.execPath() also requires --allow-env
     return [Deno.execPath(), ...Deno.args];
