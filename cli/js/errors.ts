@@ -26,8 +26,8 @@ export enum ErrorKind {
   Busy = 23,
 }
 
-export function getErrorClass(kind: ErrorKind): { new (msg: string): Error } {
-  switch (kind) {
+export function getErrorClass(kind: number): { new (msg: string): Error } {
+  switch (kind as ErrorKind) {
     case ErrorKind.TypeError:
       return TypeError;
     case ErrorKind.Other:

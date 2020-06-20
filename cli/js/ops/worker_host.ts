@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { sendAsync, sendSync } from "./dispatch_json.ts";
+import { core } from "../core.ts";
 
 export function createWorker(
   specifier: string,
@@ -9,7 +9,7 @@ export function createWorker(
   useDenoNamespace: boolean,
   name?: string
 ): { id: number } {
-  return sendSync("op_create_worker", {
+  return core.dispatchJson.sendSync("op_create_worker", {
     specifier,
     hasSourceCode,
     sourceCode,
@@ -19,13 +19,13 @@ export function createWorker(
 }
 
 export function hostTerminateWorker(id: number): void {
-  sendSync("op_host_terminate_worker", { id });
+  core.dispatchJson.sendSync("op_host_terminate_worker", { id });
 }
 
 export function hostPostMessage(id: number, data: Uint8Array): void {
-  sendSync("op_host_post_message", { id }, data);
+  core.dispatchJson.sendSync("op_host_post_message", { id }, data);
 }
 
 export function hostGetMessage(id: number): Promise<any> {
-  return sendAsync("op_host_get_message", { id });
+  return core.dispatchJson.sendAsync("op_host_get_message", { id });
 }

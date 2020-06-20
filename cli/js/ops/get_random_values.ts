@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { sendSync } from "./dispatch_json.ts";
+import { core } from "../core.ts";
 import { assert } from "../util.ts";
 
 export function getRandomValues<
@@ -19,6 +19,6 @@ export function getRandomValues<
     typedArray.byteOffset,
     typedArray.byteLength
   );
-  sendSync("op_get_random_values", {}, ui8);
+  core.dispatchJson.sendSync("op_get_random_values", {}, ui8);
   return typedArray;
 }

@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import { sendAsync } from "./dispatch_json.ts";
+import { core } from "../core.ts";
 
 interface FetchRequest {
   url: string;
@@ -24,5 +24,9 @@ export function fetch(
     zeroCopy = new Uint8Array(body.buffer, body.byteOffset, body.byteLength);
   }
 
-  return sendAsync("op_fetch", args, ...(zeroCopy ? [zeroCopy] : []));
+  return core.dispatchJson.sendAsync(
+    "op_fetch",
+    args,
+    ...(zeroCopy ? [zeroCopy] : [])
+  );
 }

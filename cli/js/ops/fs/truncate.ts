@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { sendSync, sendAsync } from "../dispatch_json.ts";
+import { core } from "../../core.ts";
 
 function coerceLen(len?: number): number {
   if (!len) {
@@ -14,9 +14,12 @@ function coerceLen(len?: number): number {
 }
 
 export function truncateSync(path: string, len?: number): void {
-  sendSync("op_truncate", { path, len: coerceLen(len) });
+  core.dispatchJson.sendSync("op_truncate", { path, len: coerceLen(len) });
 }
 
 export async function truncate(path: string, len?: number): Promise<void> {
-  await sendAsync("op_truncate", { path, len: coerceLen(len) });
+  await core.dispatchJson.sendAsync("op_truncate", {
+    path,
+    len: coerceLen(len),
+  });
 }

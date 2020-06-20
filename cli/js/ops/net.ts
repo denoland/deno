@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { sendSync, sendAsync } from "./dispatch_json.ts";
+import { core } from "../core.ts";
 
 export interface NetAddr {
   transport: "tcp" | "udp";
@@ -23,7 +23,7 @@ export enum ShutdownMode {
 }
 
 export function shutdown(rid: number, how: ShutdownMode): Promise<void> {
-  sendSync("op_shutdown", { rid, how });
+  core.dispatchJson.sendSync("op_shutdown", { rid, how });
   return Promise.resolve();
 }
 
@@ -37,7 +37,7 @@ export function accept(
   rid: number,
   transport: string
 ): Promise<AcceptResponse> {
-  return sendAsync("op_accept", { rid, transport });
+  return core.dispatchJson.sendAsync("op_accept", { rid, transport });
 }
 
 export type ListenRequest = Addr;
@@ -48,7 +48,7 @@ interface ListenResponse {
 }
 
 export function listen(args: ListenRequest): ListenResponse {
-  return sendSync("op_listen", args);
+  return core.dispatchJson.sendSync("op_listen", args);
 }
 
 interface ConnectResponse {
@@ -60,7 +60,7 @@ interface ConnectResponse {
 export type ConnectRequest = Addr;
 
 export function connect(args: ConnectRequest): Promise<ConnectResponse> {
-  return sendAsync("op_connect", args);
+  return core.dispatchJson.sendAsync("op_connect", args);
 }
 
 interface ReceiveResponse {
@@ -73,7 +73,11 @@ export function receive(
   transport: string,
   zeroCopy: Uint8Array
 ): Promise<ReceiveResponse> {
-  return sendAsync("op_datagram_receive", { rid, transport }, zeroCopy);
+  return core.dispatchJson.sendAsync(
+    "op_datagram_receive",
+    { rid, transport },
+    zeroCopy
+  );
 }
 
 export type SendRequest = {
@@ -84,6 +88,10 @@ export async function send(
   args: SendRequest,
   zeroCopy: Uint8Array
 ): Promise<number> {
-  const byteLength = await sendAsync("op_datagram_send", args, zeroCopy);
+  const byteLength = await core.dispatchJson.sendAsync(
+    "op_datagram_send",
+    args,
+    zeroCopy
+  );
   return byteLength;
 }

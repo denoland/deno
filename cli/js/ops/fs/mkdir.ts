@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { sendSync, sendAsync } from "../dispatch_json.ts";
+import { core } from "../../core.ts";
 
 type MkdirArgs = { path: string; recursive: boolean; mode?: number };
 
@@ -22,12 +22,12 @@ export interface MkdirOptions {
 }
 
 export function mkdirSync(path: string, options?: MkdirOptions): void {
-  sendSync("op_mkdir", mkdirArgs(path, options));
+  core.dispatchJson.sendSync("op_mkdir", mkdirArgs(path, options));
 }
 
 export async function mkdir(
   path: string,
   options?: MkdirOptions
 ): Promise<void> {
-  await sendAsync("op_mkdir", mkdirArgs(path, options));
+  await core.dispatchJson.sendAsync("op_mkdir", mkdirArgs(path, options));
 }

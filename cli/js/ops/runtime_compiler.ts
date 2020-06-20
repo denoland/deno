@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import { sendAsync } from "./dispatch_json.ts";
+import { core } from "../core.ts";
 import { DiagnosticItem } from "../diagnostics.ts";
 
 interface CompileRequest {
@@ -17,7 +17,7 @@ interface CompileResponse {
 }
 
 export function compile(request: CompileRequest): Promise<CompileResponse> {
-  return sendAsync("op_compile", request);
+  return core.dispatchJson.sendAsync("op_compile", request);
 }
 
 interface TranspileRequest {
@@ -33,5 +33,5 @@ export interface TranspileOnlyResult {
 export function transpile(
   request: TranspileRequest
 ): Promise<Record<string, TranspileOnlyResult>> {
-  return sendAsync("op_transpile", request);
+  return core.dispatchJson.sendAsync("op_transpile", request);
 }

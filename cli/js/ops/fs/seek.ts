@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { sendSync, sendAsync } from "../dispatch_json.ts";
+import { core } from "../../core.ts";
 import { SeekMode } from "../../io.ts";
 
 export function seekSync(
@@ -7,7 +7,7 @@ export function seekSync(
   offset: number,
   whence: SeekMode
 ): number {
-  return sendSync("op_seek", { rid, offset, whence });
+  return core.dispatchJson.sendSync("op_seek", { rid, offset, whence });
 }
 
 export function seek(
@@ -15,5 +15,5 @@ export function seek(
   offset: number,
   whence: SeekMode
 ): Promise<number> {
-  return sendAsync("op_seek", { rid, offset, whence });
+  return core.dispatchJson.sendAsync("op_seek", { rid, offset, whence });
 }

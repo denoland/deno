@@ -1,9 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { DiagnosticItem } from "../diagnostics.ts";
-import { sendSync } from "./dispatch_json.ts";
+import { core } from "../core.ts";
 
 export function formatDiagnostics(items: DiagnosticItem[]): string {
-  return sendSync("op_format_diagnostic", { items });
+  return core.dispatchJson.sendSync("op_format_diagnostic", { items });
 }
 
 export interface Location {
@@ -14,7 +14,7 @@ export interface Location {
 
 export function applySourceMap(location: Location): Location {
   const { fileName, lineNumber, columnNumber } = location;
-  const res = sendSync("op_apply_source_map", {
+  const res = core.dispatchJson.sendSync("op_apply_source_map", {
     fileName,
     lineNumber: lineNumber,
     columnNumber: columnNumber,

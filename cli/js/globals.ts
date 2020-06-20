@@ -109,6 +109,23 @@ declare global {
 
     setMacrotaskCallback(cb: () => boolean): void;
 
+    dispatchJson: {
+      sendSync(
+        opName: string,
+        args?: object,
+        ...zeroCopy: Uint8Array[]
+      ): // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      any;
+      sendAsync(
+        opName: string,
+        args?: object,
+        ...zeroCopy: Uint8Array[]
+      ): // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      Promise<any>;
+      asyncMsgFromRust(resUi8: Uint8Array): void;
+      setErrorCb(cb: (kind: number) => new (msg: string) => Error): void;
+    };
+
     shared: SharedArrayBuffer;
 
     evalContext(

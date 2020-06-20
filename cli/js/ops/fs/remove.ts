@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { sendSync, sendAsync } from "../dispatch_json.ts";
+import { core } from "../../core.ts";
 import { pathFromURL } from "../../util.ts";
 
 export interface RemoveOptions {
@@ -11,7 +11,10 @@ export function removeSync(
   options: RemoveOptions = {}
 ): void {
   path = pathFromURL(path);
-  sendSync("op_remove", { path, recursive: !!options.recursive });
+  core.dispatchJson.sendSync("op_remove", {
+    path,
+    recursive: !!options.recursive,
+  });
 }
 
 export async function remove(
@@ -19,5 +22,8 @@ export async function remove(
   options: RemoveOptions = {}
 ): Promise<void> {
   path = pathFromURL(path);
-  await sendAsync("op_remove", { path, recursive: !!options.recursive });
+  await core.dispatchJson.sendAsync("op_remove", {
+    path,
+    recursive: !!options.recursive,
+  });
 }

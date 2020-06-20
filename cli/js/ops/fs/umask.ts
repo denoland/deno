@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { sendSync } from "../dispatch_json.ts";
+import { core } from "../../core.ts";
 
 export function umask(mask?: number): number {
-  return sendSync("op_umask", { mask });
+  return core.dispatchJson.sendSync("op_umask", { mask });
 }

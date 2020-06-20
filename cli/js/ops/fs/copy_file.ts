@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { sendSync, sendAsync } from "../dispatch_json.ts";
+import { core } from "../../core.ts";
 import { pathFromURL } from "../../util.ts";
 
 export function copyFileSync(
@@ -9,7 +9,7 @@ export function copyFileSync(
   fromPath = pathFromURL(fromPath);
   toPath = pathFromURL(toPath);
 
-  sendSync("op_copy_file", { from: fromPath, to: toPath });
+  core.dispatchJson.sendSync("op_copy_file", { from: fromPath, to: toPath });
 }
 
 export async function copyFile(
@@ -19,5 +19,8 @@ export async function copyFile(
   fromPath = pathFromURL(fromPath);
   toPath = pathFromURL(toPath);
 
-  await sendAsync("op_copy_file", { from: fromPath, to: toPath });
+  await core.dispatchJson.sendAsync("op_copy_file", {
+    from: fromPath,
+    to: toPath,
+  });
 }

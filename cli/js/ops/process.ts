@@ -1,9 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { sendSync, sendAsync } from "./dispatch_json.ts";
+import { core } from "../core.ts";
 import { assert } from "../util.ts";
 
 export function kill(pid: number, signo: number): void {
-  sendSync("op_kill", { pid, signo });
+  core.dispatchJson.sendSync("op_kill", { pid, signo });
 }
 
 interface RunStatusResponse {
@@ -13,7 +13,7 @@ interface RunStatusResponse {
 }
 
 export function runStatus(rid: number): Promise<RunStatusResponse> {
-  return sendAsync("op_run_status", { rid });
+  return core.dispatchJson.sendAsync("op_run_status", { rid });
 }
 
 interface RunRequest {
@@ -38,5 +38,5 @@ interface RunResponse {
 
 export function run(request: RunRequest): RunResponse {
   assert(request.cmd.length > 0);
-  return sendSync("op_run", request);
+  return core.dispatchJson.sendSync("op_run", request);
 }

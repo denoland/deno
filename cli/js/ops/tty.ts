@@ -1,11 +1,11 @@
-import { sendSync } from "./dispatch_json.ts";
+import { core } from "../core.ts";
 
 export function isatty(rid: number): boolean {
-  return sendSync("op_isatty", { rid });
+  return core.dispatchJson.sendSync("op_isatty", { rid });
 }
 
 export function setRaw(rid: number, mode: boolean): void {
-  sendSync("op_set_raw", {
+  core.dispatchJson.sendSync("op_set_raw", {
     rid,
     mode,
   });

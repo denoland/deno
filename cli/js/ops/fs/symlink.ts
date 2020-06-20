@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { sendSync, sendAsync } from "../dispatch_json.ts";
+import { core } from "../../core.ts";
 
 export type symlinkOptions = {
   type: "file" | "dir";
@@ -10,7 +10,7 @@ export function symlinkSync(
   newpath: string,
   options?: symlinkOptions
 ): void {
-  sendSync("op_symlink", { oldpath, newpath, options });
+  core.dispatchJson.sendSync("op_symlink", { oldpath, newpath, options });
 }
 
 export async function symlink(
@@ -18,5 +18,9 @@ export async function symlink(
   newpath: string,
   options?: symlinkOptions
 ): Promise<void> {
-  await sendAsync("op_symlink", { oldpath, newpath, options });
+  await core.dispatchJson.sendAsync("op_symlink", {
+    oldpath,
+    newpath,
+    options,
+  });
 }

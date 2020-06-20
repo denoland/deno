@@ -1,6 +1,6 @@
-import { sendSync } from "./dispatch_json.ts";
+import { core } from "../core.ts";
 
 export function openPlugin(filename: string): number {
-  const rid = sendSync("op_open_plugin", { filename });
+  const rid = core.dispatchJson.sendSync("op_open_plugin", { filename });
   return rid;
 }

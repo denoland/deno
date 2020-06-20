@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import { sendSync } from "./dispatch_json.ts";
+import { core } from "../core.ts";
 
 export interface Start {
   args: string[];
@@ -18,11 +18,11 @@ export interface Start {
 }
 
 export function opStart(): Start {
-  return sendSync("op_start");
+  return core.dispatchJson.sendSync("op_start");
 }
 
 export function opMainModule(): string {
-  return sendSync("op_main_module");
+  return core.dispatchJson.sendSync("op_main_module");
 }
 
 export interface Metrics {
@@ -40,5 +40,5 @@ export interface Metrics {
 }
 
 export function metrics(): Metrics {
-  return sendSync("op_metrics");
+  return core.dispatchJson.sendSync("op_metrics");
 }

@@ -102,6 +102,7 @@ impl Worker {
   pub fn new(name: String, startup_data: StartupData, state: State) -> Self {
     let loader = Rc::new(state.clone());
     let mut isolate = deno_core::EsIsolate::new(loader, startup_data, false);
+    isolate.dispatch_json_init();
 
     {
       let global_state = state.borrow().global_state.clone();

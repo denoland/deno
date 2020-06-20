@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { sendSync, sendAsync } from "../dispatch_json.ts";
+import { core } from "../../core.ts";
 
 export interface MakeTempOptions {
   dir?: string;
@@ -8,17 +8,17 @@ export interface MakeTempOptions {
 }
 
 export function makeTempDirSync(options: MakeTempOptions = {}): string {
-  return sendSync("op_make_temp_dir", options);
+  return core.dispatchJson.sendSync("op_make_temp_dir", options);
 }
 
 export function makeTempDir(options: MakeTempOptions = {}): Promise<string> {
-  return sendAsync("op_make_temp_dir", options);
+  return core.dispatchJson.sendAsync("op_make_temp_dir", options);
 }
 
 export function makeTempFileSync(options: MakeTempOptions = {}): string {
-  return sendSync("op_make_temp_file", options);
+  return core.dispatchJson.sendSync("op_make_temp_file", options);
 }
 
 export function makeTempFile(options: MakeTempOptions = {}): Promise<string> {
-  return sendAsync("op_make_temp_file", options);
+  return core.dispatchJson.sendAsync("op_make_temp_file", options);
 }

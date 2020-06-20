@@ -1,5 +1,5 @@
 // Copyright 2019 the Deno authors. All rights reserved. MIT license.
-import { sendSync, sendAsync } from "./dispatch_json.ts";
+import { core } from "../core.ts";
 import { close } from "./resources.ts";
 
 export interface FsEvent {
@@ -12,11 +12,14 @@ class FsWatcher implements AsyncIterableIterator<FsEvent> {
 
   constructor(paths: string[], options: { recursive: boolean }) {
     const { recursive } = options;
-    this.rid = sendSync("op_fs_events_open", { recursive, paths });
+    this.rid = core.dispatchJson.sendSync("op_fs_events_open", {
+      recursive,
+      paths,
+    });
   }
 
   next(): Promise<IteratorResult<FsEvent>> {
-    return sendAsync("op_fs_events_poll", {
+    return core.dispatchJson.sendAsync("op_fs_events_poll", {
       rid: this.rid,
     });
   }

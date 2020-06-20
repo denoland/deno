@@ -281,6 +281,11 @@ impl CoreIsolate {
     }
   }
 
+  /// Executes a bit of built-in JavaScript to provide Deno.sharedQueue.
+  pub fn dispatch_json_init(&mut self) {
+    js_check(self.execute("dispatch_json.js", include_str!("dispatch_json.js")));
+  }
+
   /// Executes traditional JavaScript code (traditional = not ES modules)
   ///
   /// ErrBox can be downcast to a type that exposes additional information about

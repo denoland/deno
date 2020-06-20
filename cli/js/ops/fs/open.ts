@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { sendSync, sendAsync } from "../dispatch_json.ts";
+import { core } from "../../core.ts";
 import { pathFromURL } from "../../util.ts";
 
 export interface OpenOptions {
@@ -19,7 +19,7 @@ export interface OpenOptions {
 export function openSync(path: string | URL, options: OpenOptions): number {
   const mode: number | undefined = options?.mode;
   path = pathFromURL(path);
-  return sendSync("op_open", { path, options, mode });
+  return core.dispatchJson.sendSync("op_open", { path, options, mode });
 }
 
 export function open(
@@ -28,7 +28,7 @@ export function open(
 ): Promise<number> {
   const mode: number | undefined = options?.mode;
   path = pathFromURL(path);
-  return sendAsync("op_open", {
+  return core.dispatchJson.sendAsync("op_open", {
     path,
     options,
     mode,

@@ -1,13 +1,13 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { core } from "./core.ts";
 import * as dispatchMinimal from "./ops/dispatch_minimal.ts";
-import * as dispatchJson from "./ops/dispatch_json.ts";
 import * as util from "./util.ts";
 import { setBuildInfo } from "./build.ts";
 import { setVersions } from "./version.ts";
 import { setPrepareStackTrace } from "./error_stack.ts";
 import { Start, opStart } from "./ops/runtime.ts";
 import { handleTimerMacrotask } from "./web/timers.ts";
+import { getErrorClass } from "./errors.ts";
 
 function getAsyncHandler(opName: string): (msg: Uint8Array) => void {
   switch (opName) {
@@ -15,7 +15,7 @@ function getAsyncHandler(opName: string): (msg: Uint8Array) => void {
     case "op_read":
       return dispatchMinimal.asyncMsgFromRust;
     default:
-      return dispatchJson.asyncMsgFromRust;
+      return core.dispatchJson.asyncMsgFromRust;
   }
 }
 
@@ -23,6 +23,7 @@ function getAsyncHandler(opName: string): (msg: Uint8Array) => void {
 // dispatches to separate crates
 export function initOps(): void {
   const opsMap = core.ops();
+  core.dispatchJson.setErrorCb(getErrorClass);
   for (const [name, opId] of Object.entries(opsMap)) {
     core.setAsyncHandler(opId, getAsyncHandler(name));
   }

@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { sendSync, sendAsync } from "../dispatch_json.ts";
+import { core } from "../../core.ts";
 import { build } from "../../build.ts";
 import { pathFromURL } from "../../util.ts";
 
@@ -68,7 +68,7 @@ export function parseFileInfo(response: StatResponse): FileInfo {
 
 export async function lstat(path: string | URL): Promise<FileInfo> {
   path = pathFromURL(path);
-  const res = (await sendAsync("op_stat", {
+  const res = (await core.dispatchJson.sendAsync("op_stat", {
     path,
     lstat: true,
   })) as StatResponse;
@@ -77,7 +77,7 @@ export async function lstat(path: string | URL): Promise<FileInfo> {
 
 export function lstatSync(path: string | URL): FileInfo {
   path = pathFromURL(path);
-  const res = sendSync("op_stat", {
+  const res = core.dispatchJson.sendSync("op_stat", {
     path,
     lstat: true,
   }) as StatResponse;
@@ -86,7 +86,7 @@ export function lstatSync(path: string | URL): FileInfo {
 
 export async function stat(path: string | URL): Promise<FileInfo> {
   path = pathFromURL(path);
-  const res = (await sendAsync("op_stat", {
+  const res = (await core.dispatchJson.sendAsync("op_stat", {
     path,
     lstat: false,
   })) as StatResponse;
@@ -95,7 +95,7 @@ export async function stat(path: string | URL): Promise<FileInfo> {
 
 export function statSync(path: string | URL): FileInfo {
   path = pathFromURL(path);
-  const res = sendSync("op_stat", {
+  const res = core.dispatchJson.sendSync("op_stat", {
     path,
     lstat: false,
   }) as StatResponse;
