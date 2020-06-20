@@ -1,6 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
+  assertThrows,
   assertEquals,
   assertStringContains,
   unitTest,
@@ -29,6 +30,48 @@ unitTest({ perms: { run: true } }, async function runSuccess(): Promise<void> {
   assertEquals(status.signal, undefined);
   p.stdout.close();
   p.close();
+});
+unitTest({ perms: { run: true } }, async function runStdinRid0(): Promise<
+  void
+> {
+  const p = Deno.run({
+    cmd: ["python", "-c", "print('hello world')"],
+    stdin: 0,
+    stdout: "piped",
+    stderr: "null",
+  });
+  const status = await p.status();
+  assertEquals(status.success, true);
+  assertEquals(status.code, 0);
+  assertEquals(status.signal, undefined);
+  p.stdout.close();
+  p.close();
+});
+
+unitTest({ perms: { run: true } }, async function runInvalidStdio(): Promise<
+  void
+> {
+  assertThrows(() =>
+    Deno.run({
+      cmd: ["python", "-c", "print('hello world')"],
+      // @ts-ignore
+      stdin: "a",
+    })
+  );
+  assertThrows(() =>
+    Deno.run({
+      cmd: ["python", "-c", "print('hello world')"],
+      // @ts-ignore
+      stdout: "b",
+    })
+  );
+  assertThrows(() =>
+    Deno.run({
+      cmd: ["python", "-c", "print('hello world')"],
+      // @ts-ignore
+      stderr: "c",
+    })
+  );
 });
 
 unitTest(
