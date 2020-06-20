@@ -8,8 +8,11 @@ const process = globalThis.process;
 Deno.test({
   name: "process exports are as they should be",
   fn() {
+    // delete the aliases
     const keys = new Set<string>(Object.keys(all));
+    keys.delete("process");
     keys.delete("default");
+    // get into a consistent format for testing
     const str = Array.from(keys).sort().join(" ");
     assertEquals(Object.keys(all.default).sort().join(" "), str);
     assertEquals(Object.keys(all.process).sort().join(" "), str);
