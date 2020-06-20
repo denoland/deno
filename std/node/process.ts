@@ -5,7 +5,7 @@ function on(_event: string, _callback: Function): void {
   notImplemented();
 }
 
-export const process = {
+const process = {
   version: `v${Deno.version.deno}`,
   versions: {
     node: Deno.version.deno,
@@ -41,3 +41,5 @@ Object.defineProperty(globalThis, "process", {
   writable: true,
   configurable: true,
 });
+
+export default process
