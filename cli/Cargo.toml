@@ -63,7 +63,8 @@ uuid = { version = "0.8.1", features = ["v4"] }
 swc_ecma_visit = "0.5.1"
 
 [target.'cfg(windows)'.dependencies]
-winapi = "0.3.8"
+winapi = { version = "0.3.8", features = ["knownfolders", "objbase", "shlobj",
+"winbase", "winerror"] }
 fwdansi = "1.1.0"
 
 [target.'cfg(unix)'.dependencies]
