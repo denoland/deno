@@ -6,7 +6,7 @@ use std::path::PathBuf;
 /// in single directory that can be controlled with `$DENO_DIR` env variable.
 #[derive(Clone)]
 pub struct DenoDir {
-  // Example: /Users/rld/.deno/
+  /// Example: /Users/rld/.deno/
   pub root: PathBuf,
   /// Used by TsCompiler to cache compiler output.
   pub gen_cache: DiskCache,
@@ -61,7 +61,6 @@ mod dirs {
     }
   }
 
-  #[cfg(not(windows))]
   pub fn home_dir() -> Option<PathBuf> {
     std::env::var_os("HOME")
       .and_then(|h| if h.is_empty() { None } else { Some(h) })
