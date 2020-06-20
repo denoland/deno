@@ -61,7 +61,13 @@ export const process = {
   },
 };
 
-/** use this for access to `process.env` and `process.argv` which cannot be exported directly */
+/** requires the use of await for compatibility with deno */
+export const env = new Promise((resolve) => resolve(process.env));
+
+/** requires the use of await for compatibility with deno */
+export const argv = new Promise((resolve) => resolve(process.argv));
+
+/** use this for access to `process.env` and `process.argv` without the need for await */
 export default process;
 
 Object.defineProperty(process, Symbol.toStringTag, {
