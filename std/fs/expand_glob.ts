@@ -66,7 +66,7 @@ function comparePath(a: WalkEntry, b: WalkEntry): number {
  * Examples:
  *
  *     for await (const file of expandGlob("**\/*.ts")) {
- *       console.log(file.path);
+ *       console.log(file);
  *     }
  */
 export async function* expandGlob(
