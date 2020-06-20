@@ -1201,7 +1201,7 @@ declare namespace Deno {
      */
     query(desc: PermissionDescriptor): Promise<PermissionStatus>;
 
-    /** Returns to the current status of a permission.
+    /** Returns the current status of a permission.
      *
      * ```ts
      * const status = Deno.permissions.querySync({ name: "read", path: "/etc" });
