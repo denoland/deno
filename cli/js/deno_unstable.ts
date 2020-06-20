@@ -12,6 +12,7 @@ export { applySourceMap, formatDiagnostics } from "./ops/errors.ts";
 export { signal, signals, Signal, SignalStream } from "./signals.ts";
 export { setRaw } from "./ops/tty.ts";
 export { utimeSync, utime } from "./ops/fs/utime.ts";
+export { ftruncateSync, ftruncate } from "./ops/fs/truncate.ts";
 export { ShutdownMode, shutdown } from "./net.ts";
 export { listen, listenDatagram, connect } from "./net_unstable.ts";
 export { startTls } from "./tls.ts";
