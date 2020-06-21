@@ -33,12 +33,12 @@ fn clone_file(
   })
 }
 
-fn subprocess_stdio_map(s: &str) -> Option<std::process::Stdio> {
+fn subprocess_stdio_map(s: &str) -> Result<std::process::Stdio, OpError> {
   match s {
-    "inherit" => Some(std::process::Stdio::inherit()),
-    "piped" => Some(std::process::Stdio::piped()),
-    "null" => Some(std::process::Stdio::null()),
-    _ => None,
+    "inherit" => Ok(std::process::Stdio::inherit()),
+    "piped" => Ok(std::process::Stdio::piped()),
+    "null" => Ok(std::process::Stdio::null()),
+    _ => Err(OpError::other("Invalid resource for stdio".to_string())),
   }
 }
 
@@ -87,33 +87,21 @@ fn op_run(
 
   // TODO: make this work with other resources, eg. sockets
   if run_args.stdin != "" {
-    if let Some(stdin) = subprocess_stdio_map(run_args.stdin.as_ref()) {
-      c.stdin(stdin);
-    } else {
-      return Err(OpError::other("Invalid resource for stdin".to_string()));
-    }
+    c.stdin(subprocess_stdio_map(run_args.stdin.as_ref())?);
   } else {
     let file = clone_file(run_args.stdin_rid, &mut resource_table)?;
     c.stdin(file);
   }
 
   if run_args.stdout != "" {
-    if let Some(stdout) = subprocess_stdio_map(run_args.stdout.as_ref()) {
-      c.stdout(stdout);
-    } else {
-      return Err(OpError::other("Invalid resource for stdout".to_string()));
-    }
+    c.stdout(subprocess_stdio_map(run_args.stdout.as_ref())?);
   } else {
     let file = clone_file(run_args.stdout_rid, &mut resource_table)?;
     c.stdout(file);
   }
 
   if run_args.stderr != "" {
-    if let Some(stderr) = subprocess_stdio_map(run_args.stderr.as_ref()) {
-      c.stderr(stderr);
-    } else {
-      return Err(OpError::other("Invalid resource for stderr".to_string()));
-    }
+    c.stderr(subprocess_stdio_map(run_args.stderr.as_ref())?);
   } else {
     let file = clone_file(run_args.stderr_rid, &mut resource_table)?;
     c.stderr(file);
