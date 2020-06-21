@@ -94,7 +94,7 @@ const IGNORED_COMPILER_OPTIONS: readonly string[] = [
   "watch",
 ];
 
-const TS_BUILD_INFO = `${OUT_DIR}/tsbuildinfo.json`;
+const TS_BUILD_INFO = `./tsbuildinfo.json`;
 
 const DEFAULT_BUNDLER_OPTIONS: ts.CompilerOptions = {
   allowJs: true,
@@ -171,6 +171,7 @@ interface SourceFileJson {
   filename: string;
   mediaType: MediaType;
   sourceCode: string;
+  relativeFilename?: string;
 }
 
 function getExtension(fileName: string, mediaType: MediaType): ts.Extension {
@@ -411,7 +412,11 @@ class Host implements ts.CompilerHost {
     if (!ts.pathIsAbsolute(fileName)) {
       return fileName;
     }
-    return ts.getRelativePathFromDirectory(this.#rootPath, fileName, false);
+
+    console.warn("getrelative ", this.#rootPath, fileName);
+    const r = ts.getRelativePathFromDirectory(this.#rootPath, fileName, false);
+    console.warn("getrelative result", r);
+    return r
   }
 
   getSourceFile(
@@ -425,13 +430,13 @@ class Host implements ts.CompilerHost {
       assert(!shouldCreateNewSourceFile);
       const sourceFile = fileName.startsWith(ASSETS)
         ? getAssetInternal(fileName)
-        : SourceFile.getCached(fileName);
+        : SourceFile.getCached(this.getAbsolutePath(fileName));
       assert(sourceFile != null);
       if (!sourceFile.tsSourceFile) {
         assert(sourceFile.sourceCode != null);
         const tsSourceFileName = fileName.startsWith(ASSETS)
           ? sourceFile.filename
-          : fileName;
+          : this.getRelativePath(fileName);
 
         sourceFile.tsSourceFile = ts.createSourceFile(
           tsSourceFileName,
@@ -466,7 +471,9 @@ class Host implements ts.CompilerHost {
       return undefined;
     }
 
-    return SourceFile.getCached(fileName)?.tsSourceFile!.text;
+    const f = SourceFile.getCached(fileName);
+    console.warn("readFile", f?.filename);
+    return f?.tsSourceFile!.text;
   }
 
   resolveModuleNames(
@@ -478,7 +485,7 @@ class Host implements ts.CompilerHost {
       containingFile,
     });
     return moduleNames.map((specifier) => {
-      const maybeUrl = SourceFile.getResolvedUrl(specifier, containingFile);
+      const maybeUrl = SourceFile.getResolvedUrl(specifier, this.getAbsolutePath(containingFile));
 
       log("compiler::host.resolveModuleNames maybeUrl", {
         specifier,
@@ -498,8 +505,11 @@ class Host implements ts.CompilerHost {
         return undefined;
       }
 
+      const resolvedFileName = specifier.startsWith(ASSETS)
+        ? sourceFile.url
+        : this.getRelativePath(sourceFile.url);
       return {
-        resolvedFileName: sourceFile.url,
+        resolvedFileName,
         isExternalLibraryImport: specifier.startsWith(ASSETS),
         extension: sourceFile.extension,
       };
@@ -629,12 +639,16 @@ function buildLocalSourceFileCache(
 }
 
 function buildSourceFileCache(
-  sourceFileMap: Record<string, SourceFileMapEntry>
+  sourceFileMap: Record<string, SourceFileMapEntry>,
+  host?: Host,
 ): void {
   for (const entry of Object.values(sourceFileMap)) {
+
+    const relativeFilename = host ? host.getRelativePath(entry.url) : undefined;
     SourceFile.addToCache({
       url: entry.url,
       filename: entry.url,
+      relativeFilename,
       mediaType: entry.mediaType,
       sourceCode: entry.sourceCode,
     });
@@ -702,6 +716,7 @@ type WriteFileCallback = (
 interface CompileWriteFileState {
   rootNames: string[];
   emitMap: Record<string, EmittedSource>;
+  buildInfo?: string;
 }
 
 interface BundleWriteFileState {
@@ -742,15 +757,29 @@ function createBundleWriteFile(state: BundleWriteFileState): WriteFileCallback {
 function createCompileWriteFile(
   state: CompileWriteFileState
 ): WriteFileCallback {
+  const rootPath = state.rootNames[0].split("/").slice(0, -1).join("/");
   return function writeFile(
     fileName: string,
     data: string,
     sourceFiles?: readonly ts.SourceFile[]
   ): void {
-    assert(sourceFiles != null);
-    assert(sourceFiles.length === 1);
+    console.log("writeFile", fileName);
+    const isBuildInfo = fileName === TS_BUILD_INFO.replace(OUT_DIR, rootPath);
+    if (sourceFiles != null) {
+      assert(sourceFiles.length === 1);
+    } else {
+      assert(isBuildInfo);
+      console.warn("tsBuildInfo", data);
+      state.buildInfo = data;
+      return;
+    }
+    const filename = isBuildInfo
+      ? TS_BUILD_INFO.replace(OUT_DIR, rootPath)
+      : ts.resolvePath(rootPath, rootPath);
+    // assert(sourceFiles != null);
+    // assert(sourceFiles.length === 1);
     state.emitMap[fileName] = {
-      filename: sourceFiles[0].fileName,
+      filename,
       contents: data,
     };
   };
@@ -1171,6 +1200,7 @@ type CompilerRequest =
 interface CompileResponse {
   emitMap: Record<string, EmittedSource>;
   diagnostics: Diagnostic;
+  buildInfo: string;
 }
 
 interface BundleResponse {
@@ -1253,13 +1283,14 @@ function compile(request: CompileRequest): CompileResponse {
     diagnostics = processConfigureResponse(configResult, configPath) || [];
   }
 
-  buildSourceFileCache(sourceFileMap);
+  buildSourceFileCache(sourceFileMap, host);
   // if there was a configuration and no diagnostics with it, we will continue
   // to generate the program and possibly emit it.
   if (diagnostics.length === 0) {
+    const relativeRootNames = rootNames.map(host.getRelativePath.bind(host));
     const options = host.getCompilationSettings();
     const program = ts.createIncrementalProgram({
-      rootNames,
+      rootNames: relativeRootNames,
       options,
       host,
     });
@@ -1292,8 +1323,10 @@ function compile(request: CompileRequest): CompileResponse {
     type: CompilerRequestType[request.type],
   });
 
+  console.warn("emit map", Object.keys(state.emitMap));
   return {
     emitMap: state.emitMap,
+    buildInfo: state.buildInfo!,
     diagnostics: fromTypeScriptDiagnostic(diagnostics),
   };
 }

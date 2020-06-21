@@ -590,9 +590,9 @@ impl TsCompiler {
     let mut deps = vec![];
 
     for (_emitted_name, source) in emit_map.iter() {
+      eprintln!("specifier {} {:#?}", _emitted_name, source.filename);
       let specifier = ModuleSpecifier::resolve_url(&source.filename)
         .expect("Should be a valid module specifier");
-
       let source_file = self
         .file_fetcher
         .fetch_cached_source_file(&specifier, Permissions::allow_all())
