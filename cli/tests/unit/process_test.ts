@@ -48,7 +48,7 @@ unitTest({ perms: { run: true } }, async function runStdinRid0(): Promise<
   p.close();
 });
 
-unitTest({ perms: { run: true } }, function runInvalidStdio(): Promise<void> {
+unitTest({ perms: { run: true } }, function runInvalidStdio(): void {
   assertThrows(() =>
     Deno.run({
       cmd: ["python", "-c", "print('hello world')"],
