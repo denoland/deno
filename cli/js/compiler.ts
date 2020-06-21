@@ -146,6 +146,7 @@ interface CompilerHostOptions {
   target: CompilerHostTarget;
   unstable?: boolean;
   writeFile: WriteFileCallback;
+  rootNames?: string[]
 }
 
 interface ConfigureResponse {
@@ -286,7 +287,8 @@ class Host implements ts.CompilerHost {
   readonly #options = DEFAULT_COMPILE_OPTIONS;
   #target: CompilerHostTarget;
   #writeFile: WriteFileCallback;
-
+  #rootPath = ".";
+  #rootName = "";
   /* Deno specific APIs */
 
   constructor({
@@ -294,6 +296,7 @@ class Host implements ts.CompilerHost {
     target,
     unstable,
     writeFile,
+    rootNames,
   }: CompilerHostOptions) {
     this.#target = target;
     this.#writeFile = writeFile;
@@ -308,6 +311,10 @@ class Host implements ts.CompilerHost {
           : "lib.deno.window.d.ts",
         "lib.deno.unstable.d.ts",
       ];
+    }
+    if (rootNames) {
+      this.#rootName = rootNames[0];
+      this.#rootPath = this.#rootName.split("/").slice(0, -1).join("/");
     }
   }
 
@@ -389,6 +396,24 @@ class Host implements ts.CompilerHost {
     return "\n";
   }
 
+  getAbsolutePath(fileName: string): string {
+    return ts.resolvePath(this.#rootPath, fileName);
+  }
+
+  getModuleAbsolutePath(containingFile: string, specifier: string): string {
+    return ts.resolvePath(
+      ts.getDirectoryPath(this.getAbsolutePath(containingFile)),
+      specifier
+    );
+  }
+
+  getRelativePath(fileName: string): string {
+    if (!ts.pathIsAbsolute(fileName)) {
+      return fileName;
+    }
+    return ts.getRelativePathFromDirectory(this.#rootPath, fileName, false);
+  }
+
   getSourceFile(
     fileName: string,
     languageVersion: ts.ScriptTarget,
@@ -413,6 +438,10 @@ class Host implements ts.CompilerHost {
           sourceFile.sourceCode,
           languageVersion
         );
+        //@ts-ignore
+        sourceFile.tsSourceFile.version = this.createHash(
+          sourceFile.tsSourceFile.text
+        );
         delete sourceFile.sourceCode;
       }
       return sourceFile.tsSourceFile;
@@ -425,9 +454,19 @@ class Host implements ts.CompilerHost {
       return undefined;
     }
   }
+  
+  createHash(data: string): string {
+    return ts.generateDjb2Hash(data);
+  }
 
-  readFile(_fileName: string): string | undefined {
-    return notImplemented();
+  readFile(fileName: string): string | undefined {
+    console.warn("fileName", fileName);
+
+    if (fileName == TS_BUILD_INFO) {
+      return undefined;
+    }
+
+    return SourceFile.getCached(fileName)?.tsSourceFile!.text;
   }
 
   resolveModuleNames(
@@ -1201,6 +1240,7 @@ function compile(request: CompileRequest): CompileResponse {
     bundle: false,
     target,
     unstable,
+    rootNames,
     writeFile: createCompileWriteFile(state),
   });
   let diagnostics: readonly ts.Diagnostic[] = [];
