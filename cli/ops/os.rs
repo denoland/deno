@@ -18,6 +18,7 @@ pub fn init(i: &mut CoreIsolate, s: &State) {
   i.register_op("op_hostname", s.stateful_json_op(op_hostname));
   i.register_op("op_loadavg", s.stateful_json_op(op_loadavg));
   i.register_op("op_os_release", s.stateful_json_op(op_os_release));
+  i.register_op("op_freemem", s.stateful_json_op(op_freemem));
 }
 
 fn op_exec_path(
@@ -147,4 +148,17 @@ fn op_os_release(
   state.check_env()?;
   let release = sys_info::os_release().unwrap_or_else(|_| "".to_string());
   Ok(JsonOp::Sync(json!(release)))
+}
+
+fn op_freemem(
+  state: &State,
+  _args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<JsonOp, OpError> {
+  state.check_unstable("Deno.freemem");
+  state.check_env()?;
+  match sys_info::mem_info() {
+    Ok(info) => Ok(JsonOp::Sync(json!(info.free))),
+    Err(_) => Ok(JsonOp::Sync(json!(""))),
+  }
 }

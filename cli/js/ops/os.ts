@@ -5,6 +5,10 @@ export function loadavg(): number[] {
   return sendSync("op_loadavg");
 }
 
+export function freemem(): number {
+  return sendSync("op_freemem");
+}
+
 export function hostname(): string {
   return sendSync("op_hostname");
 }

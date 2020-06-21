@@ -6,7 +6,7 @@ export { umask } from "./ops/fs/umask.ts";
 export { linkSync, link } from "./ops/fs/link.ts";
 export { fsyncSync, fsync } from "./ops/fs/sync.ts";
 export { symlinkSync, symlink } from "./ops/fs/symlink.ts";
-export { loadavg, osRelease, hostname } from "./ops/os.ts";
+export { loadavg, osRelease, hostname, freemem } from "./ops/os.ts";
 export { openPlugin } from "./ops/plugins.ts";
 export { transpileOnly, compile, bundle } from "./compiler_api.ts";
 export { applySourceMap, formatDiagnostics } from "./ops/errors.ts";
