@@ -226,7 +226,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "Buffer to string not implemented encodings",
+  name: "Buffer to/from string not implemented encodings",
   fn() {
     const buffer: Buffer = Buffer.from("deno land");
     const notImplemented = ["ascii", "binary"];
@@ -236,6 +236,16 @@ Deno.test({
         () => {
           // @ts-ignore
           buffer.toString(encoding);
+        },
+        Error,
+        `"${encoding}" encoding`,
+        "Should throw on invalid encoding"
+      );
+
+      assertThrows(
+        () => {
+          // @ts-ignore
+          Buffer.from("", encoding);
         },
         Error,
         `"${encoding}" encoding`,
