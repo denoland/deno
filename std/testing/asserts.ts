@@ -150,7 +150,7 @@ export function assert(expr: unknown, msg = ""): asserts expr {
  *assertEquals<number>(1, 2)
  *```
  */
-export function assertEquals<T = unknown>(
+export function assertEquals<T = any>(
   actual: T,
   expected: T,
   msg?: string
@@ -187,7 +187,7 @@ export function assertEquals<T = unknown>(
  *assertNotEquals<number>(1, 2)
  *```
  */
-export function assertNotEquals<T = unknown>(
+export function assertNotEquals<T = any>(
   actual: T,
   expected: T,
   msg?: string
@@ -223,7 +223,7 @@ export function assertNotEquals<T = unknown>(
  *assertStrictEquals<number>(1, 2)
  *```
  */
-export function assertStrictEquals<T = unknown>(
+export function assertStrictEquals<T = any>(
   actual: T,
   expected: T,
   msg?: string
@@ -292,7 +292,7 @@ export function assertStringContains(
  *assertArrayContains<number>([1, 2], [2])
  *```
  */
-export function assertArrayContains<T = unknown>(
+export function assertArrayContains<T = any>(
   actual: T[],
   expected: T[],
   msg?: string
