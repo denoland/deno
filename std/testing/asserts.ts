@@ -150,9 +150,15 @@ export function assert(expr: unknown, msg = ""): asserts expr {
  *assertEquals<number>(1, 2)
  *```
  */
-export function assertEquals<T = any>(
-  actual: T,
-  expected: T,
+export function assertEquals(
+  actual: unknown,
+  expected: unknown,
+  msg?: string
+): void;
+export function assertEquals<T>(actual: T, expected: T, msg?: string): void;
+export function assertEquals(
+  actual: unknown,
+  expected: unknown,
   msg?: string
 ): void {
   if (equal(actual, expected)) {
@@ -187,9 +193,15 @@ export function assertEquals<T = any>(
  *assertNotEquals<number>(1, 2)
  *```
  */
-export function assertNotEquals<T = any>(
-  actual: T,
-  expected: T,
+export function assertNotEquals(
+  actual: unknown,
+  expected: unknown,
+  msg?: string
+): void;
+export function assertNotEquals<T>(actual: T, expected: T, msg?: string): void;
+export function assertNotEquals(
+  actual: unknown,
+  expected: unknown,
   msg?: string
 ): void {
   if (!equal(actual, expected)) {
@@ -223,9 +235,19 @@ export function assertNotEquals<T = any>(
  *assertStrictEquals<number>(1, 2)
  *```
  */
-export function assertStrictEquals<T = any>(
+export function assertStrictEquals(
+  actual: unknown,
+  expected: unknown,
+  msg?: string
+): void;
+export function assertStrictEquals<T>(
   actual: T,
   expected: T,
+  msg?: string
+): void;
+export function assertStrictEquals(
+  actual: unknown,
+  expected: unknown,
   msg?: string
 ): void {
   if (actual === expected) {
@@ -292,12 +314,22 @@ export function assertStringContains(
  *assertArrayContains<number>([1, 2], [2])
  *```
  */
-export function assertArrayContains<T = any>(
+export function assertArrayContains(
+  actual: unknown[],
+  expected: unknown[],
+  msg?: string
+): void;
+export function assertArrayContains<T>(
   actual: T[],
   expected: T[],
   msg?: string
+): void;
+export function assertArrayContains(
+  actual: unknown[],
+  expected: unknown[],
+  msg?: string
 ): void {
-  const missing: T[] = [];
+  const missing: unknown[] = [];
   for (let i = 0; i < expected.length; i++) {
     let found = false;
     for (let j = 0; j < actual.length; j++) {
