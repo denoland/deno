@@ -94,6 +94,8 @@ const IGNORED_COMPILER_OPTIONS: readonly string[] = [
   "watch",
 ];
 
+const TS_BUILD_INFO = `${OUT_DIR}/tsbuildinfo.json`;
+
 const DEFAULT_BUNDLER_OPTIONS: ts.CompilerOptions = {
   allowJs: true,
   inlineSourceMap: false,
@@ -109,6 +111,7 @@ const DEFAULT_COMPILE_OPTIONS: ts.CompilerOptions = {
   allowNonTsExtensions: true,
   checkJs: false,
   esModuleInterop: true,
+  incremental: true,
   jsx: ts.JsxEmit.React,
   module: ts.ModuleKind.ESNext,
   outDir: OUT_DIR,
@@ -117,6 +120,7 @@ const DEFAULT_COMPILE_OPTIONS: ts.CompilerOptions = {
   strict: true,
   stripComments: true,
   target: ts.ScriptTarget.ESNext,
+  tsBuildInfoFile: TS_BUILD_INFO,
 };
 
 const DEFAULT_RUNTIME_COMPILE_OPTIONS: ts.CompilerOptions = {
@@ -1145,6 +1149,30 @@ interface RuntimeBundleResponse {
   diagnostics: DiagnosticItem[];
 }
 
+function getPreEmitDiagnostics(
+  program: ts.EmitAndSemanticDiagnosticsBuilderProgram
+): readonly ts.Diagnostic[] {
+  const allDiagnostics = program.getConfigFileParsingDiagnostics().slice();
+  const configFileParsingDiagnosticsLength = allDiagnostics.length;
+  allDiagnostics.push(...program.getSyntacticDiagnostics());
+
+  // If we didn't have any syntactic errors, then also try getting the global and
+  // semantic errors.
+  if (allDiagnostics.length === configFileParsingDiagnosticsLength) {
+    allDiagnostics.push(
+      ...program.getOptionsDiagnostics(),
+      ...program.getGlobalDiagnostics()
+    );
+
+    if (allDiagnostics.length === configFileParsingDiagnosticsLength) {
+      allDiagnostics.push(...program.getSemanticDiagnostics());
+    }
+  }
+  return allDiagnostics.filter(
+    ({ code }) => !ignoredDiagnostics.includes(code)
+  );
+};
+
 function compile(request: CompileRequest): CompileResponse {
   const {
     allowJs,
@@ -1190,15 +1218,16 @@ function compile(request: CompileRequest): CompileResponse {
   // to generate the program and possibly emit it.
   if (diagnostics.length === 0) {
     const options = host.getCompilationSettings();
-    const program = ts.createProgram({
+    const program = ts.createIncrementalProgram({
       rootNames,
       options,
       host,
     });
 
-    diagnostics = ts
-      .getPreEmitDiagnostics(program)
-      .filter(({ code }) => !ignoredDiagnostics.includes(code));
+    diagnostics = getPreEmitDiagnostics(program);
+    // diagnostics = ts
+    //   .getPreEmitDiagnostics(program)
+    //   .filter(({ code }) => !ignoredDiagnostics.includes(code));
 
     // We will only proceed with the emit if there are no diagnostics.
     if (diagnostics.length === 0) {
