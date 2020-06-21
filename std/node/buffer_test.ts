@@ -190,6 +190,7 @@ Deno.test({
     for (const encoding of invalidEncodings) {
       assertThrows(
         () => {
+          // deno-lint-ignore ban-ts-comment
           // @ts-ignore
           buffer.toString(encoding);
         },
@@ -208,6 +209,7 @@ Deno.test({
     const invalidEncodings = ["deno", "base645"];
 
     for (const encoding of defaultToUtf8Encodings) {
+      // deno-lint-ignore ban-ts-comment
       // @ts-ignore
       assertEquals(Buffer.from("yes", encoding).toString(), "yes");
     }
@@ -215,6 +217,7 @@ Deno.test({
     for (const encoding of invalidEncodings) {
       assertThrows(
         () => {
+          // deno-lint-ignore ban-ts-comment
           // @ts-ignore
           Buffer.from("yes", encoding);
         },
@@ -234,6 +237,7 @@ Deno.test({
     for (const encoding of notImplemented) {
       assertThrows(
         () => {
+          // deno-lint-ignore ban-ts-comment
           // @ts-ignore
           buffer.toString(encoding);
         },
@@ -244,6 +248,7 @@ Deno.test({
 
       assertThrows(
         () => {
+          // deno-lint-ignore ban-ts-comment
           // @ts-ignore
           Buffer.from("", encoding);
         },
