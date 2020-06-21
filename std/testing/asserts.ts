@@ -143,6 +143,7 @@ export function assert(expr: unknown, msg = ""): asserts expr {
 /**
  * Make an assertion that `actual` and `expected` are equal, deeply. If not
  * deeply equal, then throw.
+ *
  * Type parameter can be specified to ensure values under comparison have the same type.
  * For example:
  *```ts
@@ -179,6 +180,7 @@ export function assertEquals<T = unknown>(
 /**
  * Make an assertion that `actual` and `expected` are not equal, deeply.
  * If not then throw.
+ *
  * Type parameter can be specified to ensure values under comparison have the same type.
  * For example:
  *```ts
@@ -214,6 +216,7 @@ export function assertNotEquals<T = unknown>(
 /**
  * Make an assertion that `actual` and `expected` are strictly equal.  If
  * not then throw.
+ *
  * Type parameter can be specified to ensure values under comparison have the same type.
  * For example:
  *```ts
@@ -280,8 +283,9 @@ export function assertStringContains(
 }
 
 /**
- * Make an assertion that `actual` contains the `expected` values
- * If not then thrown.  
+ * Make an assertion that `actual` contains the `expected` values.
+ * If not then an error will be thrown.
+ *
  * Type parameter can be specified to ensure values under comparison have the same type.
  * For example:
  *```ts
