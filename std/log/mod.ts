@@ -65,7 +65,7 @@ export function getLogger(name?: string): Logger {
   }
   const result = state.loggers.get(name);
   if (!result) {
-    const logger = new Logger("NOTSET", []);
+    const logger = new Logger(name, "NOTSET", { handlers: [] });
     state.loggers.set(name, logger);
     return logger;
   }
@@ -191,7 +191,7 @@ export async function setup(config: LogConfig): Promise<void> {
     });
 
     const levelName = loggerConfig.level || DEFAULT_LEVEL;
-    const logger = new Logger(levelName, handlers);
+    const logger = new Logger(loggerName, levelName, { handlers: handlers });
     state.loggers.set(loggerName, logger);
   }
 }

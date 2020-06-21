@@ -1,4 +1,4 @@
-## Setup your environment
+## Set up your environment
 
 To productively get going with Deno you should set up your environment. This
 means setting up shell autocomplete, environmental variables and your editor or
@@ -29,12 +29,21 @@ The supported shells are:
 - powershell
 - elvish
 
-Example:
+Example (bash):
 
 ```shell
 deno completions bash > /usr/local/etc/bash_completion.d/deno.bash
 source /usr/local/etc/bash_completion.d/deno.bash
 ```
+
+Example (zsh):
+
+```shell
+mkdir ~/.oh-my-zsh/custom/plugins/deno
+deno completions zsh > ~/.oh-my-zsh/custom/plugins/deno/_deno
+```
+
+After this add `deno` plugin under plugins tag in `~/.zshrc` file.
 
 ### Editors and IDEs
 

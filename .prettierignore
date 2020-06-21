@@ -6,3 +6,4 @@ cli/tests/swc_syntax_error.ts
 std/**/testdata
 std/**/vendor
 std/node_modules
+std/hash/_wasm

@@ -36,7 +36,10 @@
     "name": "Standard library"
   },
   "testing": {
-    "name": "Testing"
+    "name": "Testing",
+    "children": {
+      "assertions": "Assertions"
+    }
   },
   "tools": {
     "name": "Tools",
