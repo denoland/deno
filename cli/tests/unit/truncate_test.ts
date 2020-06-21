@@ -3,6 +3,50 @@ import { unitTest, assertEquals, assert } from "./test_util.ts";
 
 unitTest(
   { perms: { read: true, write: true } },
+  function ftruncateSyncSuccess(): void {
+    const filename = Deno.makeTempDirSync() + "/test_ftruncateSync.txt";
+    const file = Deno.openSync(filename, {
+      create: true,
+      read: true,
+      write: true,
+    });
+
+    Deno.ftruncateSync(file.rid, 20);
+    assertEquals(Deno.readFileSync(filename).byteLength, 20);
+    Deno.ftruncateSync(file.rid, 5);
+    assertEquals(Deno.readFileSync(filename).byteLength, 5);
+    Deno.ftruncateSync(file.rid, -5);
+    assertEquals(Deno.readFileSync(filename).byteLength, 0);
+
+    Deno.close(file.rid);
+    Deno.removeSync(filename);
+  }
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  async function ftruncateSuccess(): Promise<void> {
+    const filename = Deno.makeTempDirSync() + "/test_ftruncate.txt";
+    const file = await Deno.open(filename, {
+      create: true,
+      read: true,
+      write: true,
+    });
+
+    await Deno.ftruncate(file.rid, 20);
+    assertEquals((await Deno.readFile(filename)).byteLength, 20);
+    await Deno.ftruncate(file.rid, 5);
+    assertEquals((await Deno.readFile(filename)).byteLength, 5);
+    await Deno.ftruncate(file.rid, -5);
+    assertEquals((await Deno.readFile(filename)).byteLength, 0);
+
+    Deno.close(file.rid);
+    await Deno.remove(filename);
+  }
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
   function truncateSyncSuccess(): void {
     const filename = Deno.makeTempDirSync() + "/test_truncateSync.txt";
     Deno.writeFileSync(filename, new Uint8Array(5));

@@ -62,6 +62,12 @@ function comparePath(a: WalkEntry, b: WalkEntry): number {
 /**
  * Expand the glob string from the specified `root` directory and yield each
  * result as a `WalkEntry` object.
+ *
+ * Examples:
+ *
+ *     for await (const file of expandGlob("**\/*.ts")) {
+ *       console.log(file);
+ *     }
  */
 export async function* expandGlob(
   glob: string,
@@ -161,7 +167,15 @@ export async function* expandGlob(
   yield* currentMatches;
 }
 
-/** Synchronous version of `expandGlob()`. */
+/**
+ * Synchronous version of `expandGlob()`.
+ *
+ * Examples:
+ *
+ *     for (const file of expandGlobSync("**\/*.ts")) {
+ *       console.log(file);
+ *     }
+ */
 export function* expandGlobSync(
   glob: string,
   {
