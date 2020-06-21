@@ -186,7 +186,7 @@ unitTest({ perms: { env: false } }, function releasePerm(): void {
   assert(caughtError);
 });
 
-unitTest({ perms: { env: false } }, function freemem(): void {
+unitTest({ perms: { env: true } }, function freemem(): void {
   assertNotEquals(Deno.freemem(), "");
 });
 
