@@ -52,21 +52,21 @@ unitTest({ perms: { run: true } }, function runInvalidStdio(): void {
   assertThrows(() =>
     Deno.run({
       cmd: ["python", "-c", "print('hello world')"],
-      // @ts-ignore
+      // @ts-expect-error because Deno.run should throw on invalid stdin.
       stdin: "a",
     })
   );
   assertThrows(() =>
     Deno.run({
       cmd: ["python", "-c", "print('hello world')"],
-      // @ts-ignore
+      // @ts-expect-error because Deno.run should throw on invalid stdout.
       stdout: "b",
     })
   );
   assertThrows(() =>
     Deno.run({
       cmd: ["python", "-c", "print('hello world')"],
-      // @ts-ignore
+      // @ts-expect-error because Deno.run should throw on invalid stderr.
       stderr: "c",
     })
   );
