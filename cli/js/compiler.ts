@@ -161,8 +161,7 @@ interface CompilerHostOptions {
   target: CompilerHostTarget;
   unstable?: boolean;
   writeFile: WriteFileCallback;
-  rootNames?: string[];
-  buildInfo?: string;
+  incremental?: boolean;
 }
 
 interface IncrementalCompilerHostOptions extends CompilerHostOptions {
@@ -308,24 +307,22 @@ class Host implements ts.CompilerHost {
   protected _options = DEFAULT_COMPILE_OPTIONS;
   #target: CompilerHostTarget;
   #writeFile: WriteFileCallback;
-  rootPath = ".";
-  #rootName = "";
-  #buildInfo: undefined | string = undefined;
   /* Deno specific APIs */
 
   constructor({
     bundle = false,
+    incremental = false,
     target,
     unstable,
     writeFile,
-    rootNames,
-    buildInfo,
   }: CompilerHostOptions) {
     this.#target = target;
     this.#writeFile = writeFile;
     if (bundle) {
       // options we need to change when we are generating a bundle
       Object.assign(this._options, DEFAULT_BUNDLER_OPTIONS);
+    } else if (incremental) {
+      Object.assign(this._options, DEFAULT_INCREMENTAL_COMPILE_OPTIONS);
     }
     if (unstable) {
       this._options.lib = [
@@ -334,14 +331,6 @@ class Host implements ts.CompilerHost {
           : "lib.deno.window.d.ts",
         "lib.deno.unstable.d.ts",
       ];
-    }
-    if (rootNames) {
-      this.#rootName = rootNames[0];
-      this.rootPath = this.#rootName.split("/").slice(0, -1).join("/");
-    }
-    // console.error("rootPath", this.rootPath);
-    if (buildInfo) {
-      this.#buildInfo = buildInfo;
     }
   }
 
@@ -447,6 +436,8 @@ class Host implements ts.CompilerHost {
           sourceFile.sourceCode,
           languageVersion
         );
+        // TODO(bartlomieju): should be only done in case of
+        // incremental compile
         //@ts-ignore
         sourceFile.tsSourceFile.version = this.createHash(
           sourceFile.tsSourceFile.text
@@ -527,7 +518,6 @@ class Host implements ts.CompilerHost {
 }
 
 class IncrementalCompileHost extends Host {
-  _options = DEFAULT_INCREMENTAL_COMPILE_OPTIONS;
   rootPath = ".";
   #rootName = "";
   #buildInfo: undefined | string = undefined;
@@ -535,7 +525,6 @@ class IncrementalCompileHost extends Host {
   constructor(options: IncrementalCompilerHostOptions) {
     super(options);
     const { rootNames, buildInfo } = options;
-
     if (rootNames) {
       this.#rootName = rootNames[0];
       this.rootPath = this.#rootName.split("/").slice(0, -1).join("/");
@@ -1275,30 +1264,6 @@ interface RuntimeBundleResponse {
   diagnostics: DiagnosticItem[];
 }
 
-function getPreEmitDiagnostics(
-  program: ts.EmitAndSemanticDiagnosticsBuilderProgram
-): readonly ts.Diagnostic[] {
-  const allDiagnostics = program.getConfigFileParsingDiagnostics().slice();
-  const configFileParsingDiagnosticsLength = allDiagnostics.length;
-  allDiagnostics.push(...program.getSyntacticDiagnostics());
-
-  // If we didn't have any syntactic errors, then also try getting the global and
-  // semantic errors.
-  if (allDiagnostics.length === configFileParsingDiagnosticsLength) {
-    allDiagnostics.push(
-      ...program.getOptionsDiagnostics(),
-      ...program.getGlobalDiagnostics()
-    );
-
-    if (allDiagnostics.length === configFileParsingDiagnosticsLength) {
-      allDiagnostics.push(...program.getSemanticDiagnostics());
-    }
-  }
-  return allDiagnostics.filter(
-    ({ code }) => !ignoredDiagnostics.includes(code)
-  );
-}
-
 function compile(request: CompileRequest): CompileResponse {
   const {
     allowJs,
@@ -1353,9 +1318,19 @@ function compile(request: CompileRequest): CompileResponse {
       host,
     });
 
-    // TODO(bartlomieju): check if this function is ok
-    diagnostics = getPreEmitDiagnostics(program);
+    // TODO(bartlomieju): check if this is ok
+    diagnostics = [
+      ...program.getConfigFileParsingDiagnostics(),
+      ...program.getSyntacticDiagnostics(),
+      ...program.getOptionsDiagnostics(),
+      ...program.getGlobalDiagnostics(),
+      ...program.getSemanticDiagnostics(),
+    ];
+    diagnostics = diagnostics.filter(
+      ({ code }) => !ignoredDiagnostics.includes(code)
+    );
 
+    // console.warn("all diagnostics 5", diagnostics);
     // We will only proceed with the emit if there are no diagnostics.
     if (diagnostics.length === 0) {
       const emitResult = program.emit();
