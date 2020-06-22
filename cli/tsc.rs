@@ -375,6 +375,7 @@ struct BundleResponse {
 struct CompileResponse {
   diagnostics: Diagnostic,
   emit_map: HashMap<String, EmittedSource>,
+  build_info: String,
 }
 
 // TODO(bartlomieju): possible deduplicate once TS refactor is stabilized
@@ -511,6 +512,15 @@ impl TsCompiler {
     let unstable = global_state.flags.unstable;
     let compiler_config = self.config.clone();
     let cwd = std::env::current_dir().unwrap();
+
+    let build_info_key = self
+      .disk_cache
+      .get_cache_filename_with_extension(&module_url, "buildinfo");
+    let build_info = match self.disk_cache.get(&build_info_key) {
+      Ok(bytes) => Some(String::from_utf8(bytes)?),
+      Err(_) => None,
+    };
+
     let j = match (compiler_config.path, compiler_config.content) {
       (Some(config_path), Some(config_data)) => json!({
         "type": msg::CompilerRequestType::Compile,
@@ -522,6 +532,7 @@ impl TsCompiler {
         "config": str::from_utf8(&config_data).unwrap(),
         "cwd": cwd,
         "sourceFileMap": module_graph_json,
+        "buildInfo": build_info,
       }),
       _ => json!({
         "type": msg::CompilerRequestType::Compile,
@@ -531,6 +542,7 @@ impl TsCompiler {
         "unstable": unstable,
         "cwd": cwd,
         "sourceFileMap": module_graph_json,
+        "buildInfo": build_info,
       }),
     };
 
@@ -559,6 +571,7 @@ impl TsCompiler {
       source_file.url.clone(),
       &compile_response.emit_map,
     )?;
+    self.cache_build_info(&module_url, compile_response.build_info)?;
     self.cache_emitted_files(compile_response.emit_map)?;
     Ok(())
   }
@@ -590,7 +603,6 @@ impl TsCompiler {
     let mut deps = vec![];
 
     for (_emitted_name, source) in emit_map.iter() {
-      eprintln!("specifier {} {:#?}", _emitted_name, source.filename);
       let specifier = ModuleSpecifier::resolve_url(&source.filename)
         .expect("Should be a valid module specifier");
       let source_file = self
@@ -636,6 +648,19 @@ impl TsCompiler {
     }
 
     None
+  }
+
+  fn cache_build_info(
+    &self,
+    url: &Url,
+    build_info: String,
+  ) -> std::io::Result<()> {
+    let js_key = self
+      .disk_cache
+      .get_cache_filename_with_extension(url, "buildinfo");
+    self.disk_cache.set(&js_key, build_info.as_bytes())?;
+
+    Ok(())
   }
 
   fn cache_emitted_files(
