@@ -22,7 +22,7 @@ import * as timers from "./web/timers.ts";
 import * as url from "./web/url.ts";
 import * as urlSearchParams from "./web/url_search_params.ts";
 import * as workers from "./web/workers.ts";
-import * as performanceUtil from "./web/performance.ts";
+import * as performance from "./web/performance.ts";
 import * as request from "./web/request.ts";
 import * as readableStream from "./web/streams/readable_stream.ts";
 import * as transformStream from "./web/streams/transform_stream.ts";
@@ -238,7 +238,11 @@ export const windowOrWorkerGlobalScopeProperties = {
   TransformStream: nonEnumerable(transformStream.TransformStreamImpl),
   Request: nonEnumerable(request.Request),
   Response: nonEnumerable(fetchTypes.Response),
-  performance: writable(new performanceUtil.Performance()),
+  performance: writable(new performance.PerformanceImpl()),
+  Performance: nonEnumerable(performance.PerformanceImpl),
+  PerformanceEntry: nonEnumerable(performance.PerformanceEntryImpl),
+  PerformanceMark: nonEnumerable(performance.PerformanceMarkImpl),
+  PerformanceMeasure: nonEnumerable(performance.PerformanceMeasureImpl),
   Worker: nonEnumerable(workers.WorkerImpl),
   WritableStream: nonEnumerable(writableStream.WritableStreamImpl),
 };

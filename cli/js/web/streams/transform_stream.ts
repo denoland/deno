@@ -7,7 +7,6 @@ import {
   invokeOrNoop,
   isTransformStream,
   makeSizeAlgorithmFromSizeFunction,
-  setFunctionName,
   setUpTransformStreamDefaultControllerFromTransformer,
   validateAndNormalizeHighWaterMark,
 } from "./internals.ts";
@@ -16,6 +15,7 @@ import * as sym from "./symbols.ts";
 import type { TransformStreamDefaultControllerImpl } from "./transform_stream_default_controller.ts";
 import type { WritableStreamImpl } from "./writable_stream.ts";
 import { customInspect, inspect } from "../console.ts";
+import { setFunctionName } from "../util.ts";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export class TransformStreamImpl<I = any, O = any>

@@ -9,7 +9,6 @@ import {
   isWritableStream,
   isWritableStreamLocked,
   makeSizeAlgorithmFromSizeFunction,
-  setFunctionName,
   setPromiseIsHandledToTrue,
   readableStreamCancel,
   ReadableStreamGenericReader,
@@ -25,6 +24,7 @@ import type { ReadableStreamDefaultControllerImpl } from "./readable_stream_defa
 import * as sym from "./symbols.ts";
 import { customInspect } from "../console.ts";
 import { AbortSignalImpl } from "../abort_signal.ts";
+import { setFunctionName } from "../util.ts";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export class ReadableStreamImpl<R = any> implements ReadableStream<R> {

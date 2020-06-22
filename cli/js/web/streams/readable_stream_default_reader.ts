@@ -9,11 +9,11 @@ import {
   readableStreamReaderGenericCancel,
   readableStreamReaderGenericInitialize,
   readableStreamReaderGenericRelease,
-  setFunctionName,
 } from "./internals.ts";
 import type { ReadableStreamImpl } from "./readable_stream.ts";
 import * as sym from "./symbols.ts";
 import { customInspect } from "../console.ts";
+import { setFunctionName } from "../util.ts";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export class ReadableStreamDefaultReaderImpl<R = any>

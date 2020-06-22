@@ -6,7 +6,6 @@ import {
   isWritableStream,
   isWritableStreamDefaultWriter,
   isWritableStreamLocked,
-  setFunctionName,
   setPromiseIsHandledToTrue,
   writableStreamCloseQueuedOrInFlight,
   writableStreamDefaultWriterAbort,
@@ -19,6 +18,7 @@ import * as sym from "./symbols.ts";
 import type { WritableStreamImpl } from "./writable_stream.ts";
 import { customInspect } from "../console.ts";
 import { assert } from "../../util.ts";
+import { setFunctionName } from "../util.ts";
 
 export class WritableStreamDefaultWriterImpl<W>
   implements WritableStreamDefaultWriter<W> {
