@@ -186,14 +186,14 @@ unitTest({ perms: { env: false } }, function releasePerm(): void {
   assert(caughtError);
 });
 
-unitTest({ perms: { env: true } }, function freemem(): void {
-  assertNotEquals(Deno.freemem(), "");
+unitTest({ perms: { env: true } }, function memoryInfo(): void {
+  assertNotEquals(Deno.memoryInfo(), {});
 });
 
-unitTest({ perms: { env: false } }, function freememPerm(): void {
+unitTest({ perms: { env: false } }, function memoryInfoPerm(): void {
   let caughtError = false;
   try {
-    Deno.freemem();
+    Deno.memoryInfo();
   } catch (err) {
     caughtError = true;
     assert(err instanceof Deno.errors.PermissionDenied);

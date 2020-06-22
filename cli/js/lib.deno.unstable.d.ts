@@ -115,17 +115,27 @@ declare namespace Deno {
    */
   export function osRelease(): string;
 
+  export interface MemoryInfo {
+    total: number;
+    free: number;
+    avail: number;
+    buffers: number;
+    cached: number;
+    swap_total: number;
+    swap_free: number;
+  }
+
   /** **Unstable**  There are questions around which permission this needs.
    *
-   * Returns the amount of free system memory in bytes as an number.
+   * Returns the system memory info.
    *
    * ```ts
-   * console.log(Deno.freemem());  // e.g. 1364299776
+   * console.log(Deno.memoryInfo());
    * ```
    *
    * Requires `allow-env` permission.
    */
-  export function freemem(): number;
+  export function memoryInfo(): MemoryInfo;
 
   /** **UNSTABLE**: new API, yet to be vetted.
    *

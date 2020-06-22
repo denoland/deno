@@ -18,7 +18,7 @@ pub fn init(i: &mut CoreIsolate, s: &State) {
   i.register_op("op_hostname", s.stateful_json_op(op_hostname));
   i.register_op("op_loadavg", s.stateful_json_op(op_loadavg));
   i.register_op("op_os_release", s.stateful_json_op(op_os_release));
-  i.register_op("op_freemem", s.stateful_json_op(op_freemem));
+  i.register_op("op_memory_info", s.stateful_json_op(op_memory_info));
 }
 
 fn op_exec_path(
@@ -150,15 +150,23 @@ fn op_os_release(
   Ok(JsonOp::Sync(json!(release)))
 }
 
-fn op_freemem(
+fn op_memory_info(
   state: &State,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
-  state.check_unstable("Deno.freemem");
+  state.check_unstable("Deno.memoryInfo");
   state.check_env()?;
   match sys_info::mem_info() {
-    Ok(info) => Ok(JsonOp::Sync(json!(info.free))),
-    Err(_) => Ok(JsonOp::Sync(json!(""))),
+    Ok(info) => Ok(JsonOp::Sync(json!({
+      "total": info.total,
+      "free": info.free,
+      "avail": info.avail,
+      "buffers": info.buffers,
+      "cached": info.cached,
+      "swap_total": info.swap_total,
+      "swap_free": info.swap_free
+    }))),
+    Err(_) => Ok(JsonOp::Sync(json!({}))),
   }
 }

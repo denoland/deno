@@ -5,8 +5,18 @@ export function loadavg(): number[] {
   return sendSync("op_loadavg");
 }
 
-export function freemem(): number {
-  return sendSync("op_freemem");
+export interface MemoryInfo {
+  total: number;
+  free: number;
+  avail: number;
+  buffers: number;
+  cached: number;
+  swap_total: number;
+  swap_free: number;
+}
+
+export function memoryInfo(): MemoryInfo {
+  return sendSync("op_memory_info");
 }
 
 export function hostname(): string {
