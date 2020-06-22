@@ -114,6 +114,7 @@ const DEFAULT_COMPILE_OPTIONS: ts.CompilerOptions = {
   incremental: true,
   jsx: ts.JsxEmit.React,
   module: ts.ModuleKind.ESNext,
+  mapRoot: "$DENO_DIR",
   outDir: OUT_DIR,
   resolveJsonModule: true,
   sourceMap: true,

@@ -356,7 +356,7 @@ impl Deref for TsCompiler {
   }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 struct EmittedSource {
   filename: String,
@@ -574,6 +574,7 @@ impl TsCompiler {
     if let Some(build_info) = compile_response.build_info {
       self.cache_build_info(&module_url, build_info)?;
     }
+    eprintln!("emit map {:#?}", compile_response.emit_map);
     self.cache_emitted_files(compile_response.emit_map)?;
     Ok(())
   }
@@ -1546,6 +1547,7 @@ mod tests {
       .get_compiled_module(&out.url)
       .unwrap();
     let source_code = compiled_file.code;
+    eprintln!("source_code {}", source_code);
     assert!(source_code
       .as_bytes()
       .starts_with(b"\"use strict\";\nconsole.log(\"Hello World\");"));
