@@ -30,7 +30,6 @@ interface FileServerArgs {
   help: boolean;
 }
 
-console.log("hello");
 const encoder = new TextEncoder();
 
 const serverArgs = parse(Deno.args) as FileServerArgs;

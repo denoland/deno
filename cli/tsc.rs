@@ -375,7 +375,7 @@ struct BundleResponse {
 struct CompileResponse {
   diagnostics: Diagnostic,
   emit_map: HashMap<String, EmittedSource>,
-  build_info: String,
+  build_info: Option<String>,
 }
 
 // TODO(bartlomieju): possible deduplicate once TS refactor is stabilized
@@ -571,7 +571,9 @@ impl TsCompiler {
       source_file.url.clone(),
       &compile_response.emit_map,
     )?;
-    self.cache_build_info(&module_url, compile_response.build_info)?;
+    if let Some(build_info) = compile_response.build_info {
+      self.cache_build_info(&module_url, build_info)?;
+    }
     self.cache_emitted_files(compile_response.emit_map)?;
     Ok(())
   }

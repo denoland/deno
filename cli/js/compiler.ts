@@ -765,7 +765,6 @@ function createCompileWriteFile(
     data: string,
     sourceFiles?: readonly ts.SourceFile[]
   ): void {
-    // console.log("writeFile", fileName);
     const isBuildInfo = fileName === TS_BUILD_INFO;
 
     if (isBuildInfo) {
@@ -1200,7 +1199,7 @@ type CompilerRequest =
 interface CompileResponse {
   emitMap: Record<string, EmittedSource>;
   diagnostics: Diagnostic;
-  buildInfo: string;
+  buildInfo: undefined | string;
 }
 
 interface BundleResponse {
@@ -1328,7 +1327,7 @@ function compile(request: CompileRequest): CompileResponse {
   // console.warn("emit map", Object.keys(state.emitMap));
   return {
     emitMap: state.emitMap,
-    buildInfo: state.buildInfo!,
+    buildInfo: state.buildInfo,
     diagnostics: fromTypeScriptDiagnostic(diagnostics),
   };
 }
