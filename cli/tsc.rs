@@ -574,7 +574,7 @@ impl TsCompiler {
     if let Some(build_info) = compile_response.build_info {
       self.cache_build_info(&module_url, build_info)?;
     }
-    eprintln!("emit map {:#?}", compile_response.emit_map);
+    // eprintln!("emit map {:#?}", compile_response.emit_map);
     self.cache_emitted_files(compile_response.emit_map)?;
     Ok(())
   }
@@ -750,32 +750,32 @@ impl TsCompiler {
     source_file: SourceFile,
     contents: &str,
   ) -> std::io::Result<()> {
-    // By default TSC output source map url that is relative; we need
-    // to substitute it manually to correct file URL in DENO_DIR.
-    let mut content_lines = contents
-      .split('\n')
-      .map(|s| s.to_string())
-      .collect::<Vec<String>>();
+    // // By default TSC output source map url that is relative; we need
+    // // to substitute it manually to correct file URL in DENO_DIR.
+    // let mut content_lines = contents
+    //   .split('\n')
+    //   .map(|s| s.to_string())
+    //   .collect::<Vec<String>>();
 
-    if !content_lines.is_empty() {
-      let last_line = content_lines.pop().unwrap();
-      if last_line.starts_with("//# sourceMappingURL=") {
-        let source_map_key = self.disk_cache.get_cache_filename_with_extension(
-          module_specifier.as_url(),
-          "js.map",
-        );
-        let source_map_path = self.disk_cache.location.join(source_map_key);
-        let source_map_file_url = Url::from_file_path(source_map_path)
-          .expect("Bad file URL for source map");
-        let new_last_line =
-          format!("//# sourceMappingURL={}", source_map_file_url.to_string());
-        content_lines.push(new_last_line);
-      } else {
-        content_lines.push(last_line);
-      }
-    }
+    // if !content_lines.is_empty() {
+    //   let last_line = content_lines.pop().unwrap();
+    //   if last_line.starts_with("//# sourceMappingURL=") {
+    //     let source_map_key = self.disk_cache.get_cache_filename_with_extension(
+    //       module_specifier.as_url(),
+    //       "js.map",
+    //     );
+    //     let source_map_path = self.disk_cache.location.join(source_map_key);
+    //     let source_map_file_url = Url::from_file_path(source_map_path)
+    //       .expect("Bad file URL for source map");
+    //     let new_last_line =
+    //       format!("//# sourceMappingURL={}", source_map_file_url.to_string());
+    //     content_lines.push(new_last_line);
+    //   } else {
+    //     content_lines.push(last_line);
+    //   }
+    // }
 
-    let contents = content_lines.join("\n");
+    // let contents = content_lines.join("\n");
 
     let js_key = self
       .disk_cache
@@ -1541,6 +1541,7 @@ mod tests {
         false,
       )
       .await;
+    eprintln!("result {:#?}", result);
     assert!(result.is_ok());
     let compiled_file = mock_state
       .ts_compiler
@@ -1554,30 +1555,8 @@ mod tests {
     let mut lines: Vec<String> =
       source_code.split('\n').map(|s| s.to_string()).collect();
     let last_line = lines.pop().unwrap();
-    assert!(last_line.starts_with("//# sourceMappingURL=file://"));
-
-    // Get source map file and assert it has proper URLs
-    let source_map = mock_state
-      .ts_compiler
-      .get_source_map_file(&specifier)
-      .expect("Source map not found");
-    let source_str = String::from_utf8(source_map.source_code).unwrap();
-    let source_json: Value = serde_json::from_str(&source_str).unwrap();
-
-    let js_key = mock_state
-      .ts_compiler
-      .disk_cache
-      .get_cache_filename_with_extension(specifier.as_url(), "js");
-    let js_path = mock_state.ts_compiler.disk_cache.location.join(js_key);
-    let js_file_url = Url::from_file_path(js_path).unwrap();
-
-    let file_str = source_json.get("file").unwrap().as_str().unwrap();
-    assert_eq!(file_str, js_file_url.to_string());
-
-    let sources = source_json.get("sources").unwrap().as_array().unwrap();
-    assert_eq!(sources.len(), 1);
-    let source = sources.get(0).unwrap().as_str().unwrap();
-    assert_eq!(source, specifier.to_string());
+    assert!(last_line
+      .starts_with("//# sourceMappingURL=data:application/json;base64"));
   }
 
   #[tokio::test]
@@ -1604,6 +1583,7 @@ mod tests {
       false,
     )
     .await;
+    eprintln!("result {:#?}", result);
     assert!(result.is_ok());
   }
 

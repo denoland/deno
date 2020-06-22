@@ -106,22 +106,36 @@ const DEFAULT_BUNDLER_OPTIONS: ts.CompilerOptions = {
   sourceMap: false,
 };
 
-const DEFAULT_COMPILE_OPTIONS: ts.CompilerOptions = {
+const DEFAULT_INCREMENTAL_COMPILE_OPTIONS: ts.CompilerOptions = {
   allowJs: false,
   allowNonTsExtensions: true,
   checkJs: false,
   esModuleInterop: true,
   incremental: true,
+  inlineSourceMap: true,
   jsx: ts.JsxEmit.React,
   module: ts.ModuleKind.ESNext,
-  mapRoot: "$DENO_DIR",
+  outDir: OUT_DIR,
+  resolveJsonModule: true,
+  strict: true,
+  stripComments: true,
+  target: ts.ScriptTarget.ESNext,
+  tsBuildInfoFile: TS_BUILD_INFO,
+};
+
+const DEFAULT_COMPILE_OPTIONS: ts.CompilerOptions = {
+  allowJs: false,
+  allowNonTsExtensions: true,
+  checkJs: false,
+  esModuleInterop: true,
+  jsx: ts.JsxEmit.React,
+  module: ts.ModuleKind.ESNext,
   outDir: OUT_DIR,
   resolveJsonModule: true,
   sourceMap: true,
   strict: true,
   stripComments: true,
   target: ts.ScriptTarget.ESNext,
-  tsBuildInfoFile: TS_BUILD_INFO,
 };
 
 const DEFAULT_RUNTIME_COMPILE_OPTIONS: ts.CompilerOptions = {
@@ -147,6 +161,11 @@ interface CompilerHostOptions {
   target: CompilerHostTarget;
   unstable?: boolean;
   writeFile: WriteFileCallback;
+  rootNames?: string[];
+  buildInfo?: string;
+}
+
+interface IncrementalCompilerHostOptions extends CompilerHostOptions {
   rootNames?: string[];
   buildInfo?: string;
 }
@@ -286,7 +305,7 @@ function getAssetInternal(filename: string): SourceFile {
 }
 
 class Host implements ts.CompilerHost {
-  readonly #options = DEFAULT_COMPILE_OPTIONS;
+  protected _options = DEFAULT_COMPILE_OPTIONS;
   #target: CompilerHostTarget;
   #writeFile: WriteFileCallback;
   rootPath = ".";
@@ -306,10 +325,10 @@ class Host implements ts.CompilerHost {
     this.#writeFile = writeFile;
     if (bundle) {
       // options we need to change when we are generating a bundle
-      Object.assign(this.#options, DEFAULT_BUNDLER_OPTIONS);
+      Object.assign(this._options, DEFAULT_BUNDLER_OPTIONS);
     }
     if (unstable) {
-      this.#options.lib = [
+      this._options.lib = [
         target === CompilerHostTarget.Worker
           ? "lib.deno.worker.d.ts"
           : "lib.deno.window.d.ts",
@@ -327,7 +346,7 @@ class Host implements ts.CompilerHost {
   }
 
   get options(): ts.CompilerOptions {
-    return this.#options;
+    return this._options;
   }
 
   configure(
@@ -352,13 +371,13 @@ class Host implements ts.CompilerHost {
     for (const key of Object.keys(options)) {
       if (
         IGNORED_COMPILER_OPTIONS.includes(key) &&
-        (!(key in this.#options) || options[key] !== this.#options[key])
+        (!(key in this._options) || options[key] !== this._options[key])
       ) {
         ignoredOptions.push(key);
         delete options[key];
       }
     }
-    Object.assign(this.#options, options);
+    Object.assign(this._options, options);
     return {
       ignoredOptions: ignoredOptions.length ? ignoredOptions : undefined,
       diagnostics: errors.length ? errors : undefined,
@@ -366,8 +385,8 @@ class Host implements ts.CompilerHost {
   }
 
   mergeOptions(...options: ts.CompilerOptions[]): ts.CompilerOptions {
-    Object.assign(this.#options, ...options);
-    return Object.assign({}, this.#options);
+    Object.assign(this._options, ...options);
+    return Object.assign({}, this._options);
   }
 
   /* TypeScript CompilerHost APIs */
@@ -382,7 +401,7 @@ class Host implements ts.CompilerHost {
 
   getCompilationSettings(): ts.CompilerOptions {
     log("compiler::host.getCompilationSettings()");
-    return this.#options;
+    return this._options;
   }
 
   getCurrentDirectory(): string {
@@ -402,27 +421,6 @@ class Host implements ts.CompilerHost {
 
   getNewLine(): string {
     return "\n";
-  }
-
-  getAbsolutePath(fileName: string): string {
-    // console.error("getAbsolutePath", this.rootPath, fileName);
-    return ts.resolvePath(this.rootPath, fileName);
-  }
-
-  getModuleAbsolutePath(containingFile: string, specifier: string): string {
-    // console.error("getModuleAbsolutePath", containingFile, specifier);
-    return specifier;
-  }
-
-  getRelativePath(fileName: string): string {
-    // console.warn("getrelative ", this.rootPath, fileName);
-    if (!ts.pathIsAbsolute(fileName)) {
-      return fileName;
-    }
-
-    const r = ts.getRelativePathFromDirectory(this.rootPath, fileName, false);
-    // console.warn("getrelative result", r);
-    return r;
   }
 
   getSourceFile(
@@ -466,21 +464,8 @@ class Host implements ts.CompilerHost {
     }
   }
 
-  createHash(data: string): string {
-    return ts.generateDjb2Hash(data);
-  }
-
-  readFile(fileName: string): string | undefined {
-    // console.warn("fileName", fileName);
-
-    if (fileName == TS_BUILD_INFO) {
-      // console.warn("buildinfo ", this.#buildInfo);
-      return this.#buildInfo;
-    }
-
-    const f = SourceFile.getCached(fileName);
-    // console.warn("readFile", f?.filename);
-    return f?.tsSourceFile!.text;
+  readFile(_fileName: string): string | undefined {
+    return notImplemented();
   }
 
   resolveModuleNames(
@@ -492,10 +477,7 @@ class Host implements ts.CompilerHost {
       containingFile,
     });
     return moduleNames.map((specifier) => {
-      const maybeUrl = SourceFile.getResolvedUrl(
-        specifier,
-        this.getAbsolutePath(containingFile)
-      );
+      const maybeUrl = SourceFile.getResolvedUrl(specifier, containingFile);
 
       log("compiler::host.resolveModuleNames maybeUrl", {
         specifier,
@@ -523,6 +505,11 @@ class Host implements ts.CompilerHost {
     });
   }
 
+  // TODO(bartlomieju): remove
+  createHash(data: string): string {
+    return ts.generateDjb2Hash(data);
+  }
+
   useCaseSensitiveFileNames(): boolean {
     return true;
   }
@@ -536,6 +523,61 @@ class Host implements ts.CompilerHost {
   ): void {
     log("compiler::host.writeFile", fileName);
     this.#writeFile(fileName, data, sourceFiles);
+  }
+}
+
+class IncrementalCompileHost extends Host {
+  _options = DEFAULT_INCREMENTAL_COMPILE_OPTIONS;
+  rootPath = ".";
+  #rootName = "";
+  #buildInfo: undefined | string = undefined;
+
+  constructor(options: IncrementalCompilerHostOptions) {
+    super(options);
+    const { rootNames, buildInfo } = options;
+
+    if (rootNames) {
+      this.#rootName = rootNames[0];
+      this.rootPath = this.#rootName.split("/").slice(0, -1).join("/");
+    }
+    // console.error("rootPath", this.rootPath);
+    if (buildInfo) {
+      this.#buildInfo = buildInfo;
+    }
+  }
+
+  getAbsolutePath(fileName: string): string {
+    // console.error("getAbsolutePath", this.rootPath, fileName);
+    return ts.resolvePath(this.rootPath, fileName);
+  }
+
+  getModuleAbsolutePath(containingFile: string, specifier: string): string {
+    // console.error("getModuleAbsolutePath", containingFile, specifier);
+    return specifier;
+  }
+
+  getRelativePath(fileName: string): string {
+    // console.warn("getrelative ", this.rootPath, fileName);
+    if (!ts.pathIsAbsolute(fileName)) {
+      return fileName;
+    }
+
+    const r = ts.getRelativePathFromDirectory(this.rootPath, fileName, false);
+    // console.warn("getrelative result", r);
+    return r;
+  }
+
+  readFile(fileName: string): string | undefined {
+    // console.warn("fileName", fileName);
+
+    if (fileName == TS_BUILD_INFO) {
+      // console.warn("buildinfo ", this.#buildInfo);
+      return this.#buildInfo;
+    }
+
+    const f = SourceFile.getCached(fileName);
+    // console.warn("readFile", f?.filename);
+    return f?.tsSourceFile!.text;
   }
 }
 
@@ -720,7 +762,6 @@ interface CompileWriteFileState {
   rootNames: string[];
   emitMap: Record<string, EmittedSource>;
   buildInfo?: string;
-  host?: Host;
 }
 
 interface BundleWriteFileState {
@@ -784,6 +825,22 @@ function createCompileWriteFile(
   };
 }
 
+function createRuntimeCompileWriteFile(
+  state: CompileWriteFileState
+): WriteFileCallback {
+  return function writeFile(
+    fileName: string,
+    data: string,
+    sourceFiles?: readonly ts.SourceFile[]
+  ): void {
+    assert(sourceFiles);
+    assert(sourceFiles.length === 1);
+    state.emitMap[fileName] = {
+      filename: sourceFiles[0].fileName,
+      contents: data,
+    };
+  };
+}
 interface ConvertCompilerOptionsResult {
   files?: string[];
   options: ts.CompilerOptions;
@@ -1267,15 +1324,14 @@ function compile(request: CompileRequest): CompileResponse {
     rootNames,
     emitMap: {},
   };
-  const host = new Host({
+  const host = new IncrementalCompileHost({
     bundle: false,
     target,
     unstable,
-    rootNames,
     writeFile: createCompileWriteFile(state),
+    rootNames,
     buildInfo,
   });
-  state.host = host;
   let diagnostics: readonly ts.Diagnostic[] = [];
 
   host.mergeOptions({ allowJs });
@@ -1297,10 +1353,8 @@ function compile(request: CompileRequest): CompileResponse {
       host,
     });
 
+    // TODO(bartlomieju): check if this function is ok
     diagnostics = getPreEmitDiagnostics(program);
-    // diagnostics = ts
-    //   .getPreEmitDiagnostics(program)
-    //   .filter(({ code }) => !ignoredDiagnostics.includes(code));
 
     // We will only proceed with the emit if there are no diagnostics.
     if (diagnostics.length === 0) {
@@ -1445,7 +1499,7 @@ function runtimeCompile(
   const host = new Host({
     bundle: false,
     target,
-    writeFile: createCompileWriteFile(state),
+    writeFile: createRuntimeCompileWriteFile(state),
   });
   const compilerOptions = [DEFAULT_RUNTIME_COMPILE_OPTIONS];
   if (convertedOptions) {
