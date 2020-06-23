@@ -859,9 +859,7 @@ impl TsCompiler {
 
 impl SourceMapGetter for TsCompiler {
   fn get_source_map(&self, script_name: &str) -> Option<Vec<u8>> {
-    self
-      .try_to_resolve_and_get_source_map(script_name)
-      .map(|out| out.source_code)
+    self.try_to_resolve_and_get_source_map(script_name)
   }
 
   fn get_source_line(&self, script_name: &str, line: usize) -> Option<String> {
@@ -904,11 +902,40 @@ impl TsCompiler {
   fn try_to_resolve_and_get_source_map(
     &self,
     script_name: &str,
-  ) -> Option<SourceFile> {
+  ) -> Option<Vec<u8>> {
     if let Some(module_specifier) = self.try_to_resolve(script_name) {
       return match self.get_source_map_file(&module_specifier) {
-        Ok(out) => Some(out),
-        Err(_) => None,
+        Ok(out) => Some(out.source_code),
+        Err(_) => {
+          // Check if map is inlined
+          if let Ok(compiled_source) =
+            self.get_compiled_module(module_specifier.as_url())
+          {
+            // // By default TSC output source map url that is relative; we need
+            // // to substitute it manually to correct file URL in DENO_DIR.
+            let mut content_lines = compiled_source
+              .code
+              .split('\n')
+              .map(|s| s.to_string())
+              .collect::<Vec<String>>();
+
+            if !content_lines.is_empty() {
+              let last_line = content_lines.pop().unwrap();
+              if last_line.starts_with(
+                "//# sourceMappingURL=data:application/json;base64,",
+              ) {
+                let encoded = last_line.trim_start_matches(
+                  "//# sourceMappingURL=data:application/json;base64,",
+                );
+                let decoded_map =
+                  base64::decode(encoded).expect("failed to parse source map");
+                return Some(decoded_map);
+              }
+            }
+          }
+
+          None
+        }
       };
     }
 
