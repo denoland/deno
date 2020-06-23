@@ -1,6 +1,6 @@
+use std::net::IpAddr;
 use std::str::FromStr;
 use url::Url;
-use std::net::IpAddr;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct ParsePortError(String);
@@ -11,12 +11,15 @@ pub struct BarePort(u16);
 impl FromStr for BarePort {
   type Err = ParsePortError;
   fn from_str(s: &str) -> Result<BarePort, ParsePortError> {
-    match s.starts_with(":") {
-      true => match s.split_at(1).1.parse::<u16>() {
+    if s.starts_with(':') {
+      match s.split_at(1).1.parse::<u16>() {
         Ok(port) => Ok(BarePort(port)),
-        Err(e) => Err(ParsePortError(e.to_string()))
-      },
-      false => Err(ParsePortError("Bare Port doesn't start with ':'".to_string()))
+        Err(e) => Err(ParsePortError(e.to_string())),
+      }
+    } else {
+      Err(ParsePortError(
+        "Bare Port doesn't start with ':'".to_string(),
+      ))
     }
   }
 }
@@ -27,9 +30,9 @@ impl FromStr for BarePort {
 pub fn resolve_hosts(paths: Vec<String>) -> Vec<String> {
   let mut out: Vec<String> = vec![];
   for host_and_port in paths.iter() {
-    if Url::parse(&format!("deno://{}", host_and_port)).is_ok() {
-      out.push(host_and_port.to_owned())
-    } else if host_and_port.parse::<IpAddr>().is_ok() {
+    if Url::parse(&format!("deno://{}", host_and_port)).is_ok()
+      || host_and_port.parse::<IpAddr>().is_ok()
+    {
       out.push(host_and_port.to_owned())
     } else if let Ok(port) = host_and_port.parse::<BarePort>() {
       // we got bare port, let's add default hosts
@@ -56,7 +59,8 @@ mod bare_port_tests {
 
   #[test]
   fn bare_port_parse_error1() {
-    let expected = ParsePortError("Bare Port doesn't start with ':'".to_string());
+    let expected =
+      ParsePortError("Bare Port doesn't start with ':'".to_string());
     let actual = "8080".parse::<BarePort>();
     assert_eq!(actual, Err(expected));
   }
@@ -153,8 +157,10 @@ mod tests {
 
   #[test]
   fn resolve_hosts_ipv6() {
-    let entries = svec!["::", "::1", "[::1]", "[::]:5678", "[::1]:5678", "::cafe"];
-    let expected = svec!["::", "::1", "[::1]", "[::]:5678", "[::1]:5678", "::cafe"];
+    let entries =
+      svec!["::", "::1", "[::1]", "[::]:5678", "[::1]:5678", "::cafe"];
+    let expected =
+      svec!["::", "::1", "[::1]", "[::]:5678", "[::1]:5678", "::cafe"];
     let actual = resolve_hosts(entries);
     assert_eq!(actual, expected);
   }
