@@ -300,29 +300,6 @@ impl CompiledFileMetadata {
   }
 }
 
-/// Information associated with compilation of a "module graph",
-/// ie. entry point and all its dependencies.
-/// It's used to perform cache invalidation if content of any
-/// dependency changes.
-#[allow(unused)]
-#[derive(Deserialize, Serialize)]
-pub struct GraphFileMetadata {
-  pub deps: Vec<String>,
-  pub version_hash: String,
-}
-
-impl GraphFileMetadata {
-  pub fn from_json_string(
-    metadata_string: String,
-  ) -> Result<Self, serde_json::Error> {
-    serde_json::from_str::<Self>(&metadata_string)
-  }
-
-  pub fn to_json_string(&self) -> Result<String, serde_json::Error> {
-    serde_json::to_string(self)
-  }
-}
-
 /// Emit a SHA256 hash based on source code, deno version and TS config.
 /// Used to check if a recompilation for source code is needed.
 pub fn source_code_version_hash(
@@ -522,7 +499,6 @@ impl TsCompiler {
         }
       }
     }
-    // eprintln!("has cached version {}", has_cached_version);
     if has_cached_version {
       return Ok(());
     }
@@ -584,72 +560,11 @@ impl TsCompiler {
       return Err(ErrBox::from(compile_response.diagnostics));
     }
 
-    // self.set_graph_metadata(
-    //   source_file.url.clone(),
-    //   &compile_response.emit_map,
-    // )?;
     if let Some(build_info) = compile_response.build_info {
       self.cache_build_info(&module_url, build_info)?;
     }
-    // eprintln!("emit map {:#?}", compile_response.emit_map);
     self.cache_emitted_files(compile_response.emit_map)?;
     Ok(())
-  }
-
-  #[allow(unused)]
-  fn get_graph_metadata(&self, url: &Url) -> Option<GraphFileMetadata> {
-    let cache_key = self
-      .disk_cache
-      .get_cache_filename_with_extension(url, "graph");
-    if let Ok(metadata_bytes) = self.disk_cache.get(&cache_key) {
-      if let Ok(metadata) = std::str::from_utf8(&metadata_bytes) {
-        if let Ok(read_metadata) =
-          GraphFileMetadata::from_json_string(metadata.to_string())
-        {
-          return Some(read_metadata);
-        }
-      }
-    }
-
-    None
-  }
-
-  #[allow(unused)]
-  fn set_graph_metadata(
-    &self,
-    url: Url,
-    emit_map: &HashMap<String, EmittedSource>,
-  ) -> std::io::Result<()> {
-    let version_hash =
-      crate::checksum::gen(vec![version::DENO.as_bytes(), &self.config.hash]);
-    let mut deps = vec![];
-
-    for (_emitted_name, source) in emit_map.iter() {
-      let specifier = ModuleSpecifier::resolve_url(&source.filename)
-        .expect("Should be a valid module specifier");
-      let source_file = self
-        .file_fetcher
-        .fetch_cached_source_file(&specifier, Permissions::allow_all())
-        .expect("Source file not found");
-
-      // NOTE: JavaScript files are only cached to disk if `checkJs`
-      // option in on
-      if source_file.media_type == msg::MediaType::JavaScript
-        && !self.compile_js
-      {
-        continue;
-      }
-
-      deps.push(specifier.to_string());
-    }
-
-    let graph_metadata = GraphFileMetadata { deps, version_hash };
-    let meta_key = self
-      .disk_cache
-      .get_cache_filename_with_extension(&url, "graph");
-    self
-      .disk_cache
-      .set(&meta_key, graph_metadata.to_json_string()?.as_bytes())
   }
 
   /// Get associated `CompiledFileMetadata` for given module if it exists.
@@ -769,33 +684,6 @@ impl TsCompiler {
     source_file: SourceFile,
     contents: &str,
   ) -> std::io::Result<()> {
-    // // By default TSC output source map url that is relative; we need
-    // // to substitute it manually to correct file URL in DENO_DIR.
-    // let mut content_lines = contents
-    //   .split('\n')
-    //   .map(|s| s.to_string())
-    //   .collect::<Vec<String>>();
-
-    // if !content_lines.is_empty() {
-    //   let last_line = content_lines.pop().unwrap();
-    //   if last_line.starts_with("//# sourceMappingURL=") {
-    //     let source_map_key = self.disk_cache.get_cache_filename_with_extension(
-    //       module_specifier.as_url(),
-    //       "js.map",
-    //     );
-    //     let source_map_path = self.disk_cache.location.join(source_map_key);
-    //     let source_map_file_url = Url::from_file_path(source_map_path)
-    //       .expect("Bad file URL for source map");
-    //     let new_last_line =
-    //       format!("//# sourceMappingURL={}", source_map_file_url.to_string());
-    //     content_lines.push(new_last_line);
-    //   } else {
-    //     content_lines.push(last_line);
-    //   }
-    // }
-
-    // let contents = content_lines.join("\n");
-    // eprintln!("cache compiled file");
     let js_key = self
       .disk_cache
       .get_cache_filename_with_extension(module_specifier.as_url(), "js");
@@ -927,8 +815,6 @@ impl TsCompiler {
           if let Ok(compiled_source) =
             self.get_compiled_module(module_specifier.as_url())
           {
-            // // By default TSC output source map url that is relative; we need
-            // // to substitute it manually to correct file URL in DENO_DIR.
             let mut content_lines = compiled_source
               .code
               .split('\n')
@@ -1587,14 +1473,12 @@ mod tests {
         false,
       )
       .await;
-    eprintln!("result {:#?}", result);
     assert!(result.is_ok());
     let compiled_file = mock_state
       .ts_compiler
       .get_compiled_module(&out.url)
       .unwrap();
     let source_code = compiled_file.code;
-    eprintln!("source_code {}", source_code);
     assert!(source_code
       .as_bytes()
       .starts_with(b"\"use strict\";\nconsole.log(\"Hello World\");"));
@@ -1629,7 +1513,6 @@ mod tests {
       false,
     )
     .await;
-    eprintln!("result {:#?}", result);
     assert!(result.is_ok());
   }
 

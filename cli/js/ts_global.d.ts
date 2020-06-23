@@ -29,30 +29,6 @@ declare global {
       to: string,
       ignoreCase: boolean
     ): string;
-
-    export function generateDjb2Hash(data: string): string;
-
-    export interface IncrementalCompilationOptions {
-      rootNames: readonly string[];
-      options: ts.CompilerOptions;
-      configFileParsingDiagnostics?: readonly ts.Diagnostic[];
-      projectReferences?: readonly ts.ProjectReference[];
-      host?: ts.CompilerHost;
-      reportDiagnostic?: ts.DiagnosticReporter;
-      reportErrorSummary?: ts.ReportEmitErrorSummary;
-      afterProgramEmitAndDiagnostics?(
-        program: ts.EmitAndSemanticDiagnosticsBuilderProgram
-      ): void;
-      system?: ts.System;
-    }
-    export function performIncrementalCompilation(
-      input: ts.IncrementalCompilationOptions
-    ):
-      | ts.ExitStatus.Success
-      // eslint-disable-next-line @typescript-eslint/camelcase
-      | ts.ExitStatus.DiagnosticsPresent_OutputsSkipped
-      // eslint-disable-next-line @typescript-eslint/camelcase
-      | ts.ExitStatus.DiagnosticsPresent_OutputsGenerated;
   }
 
   namespace ts {

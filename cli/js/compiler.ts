@@ -439,8 +439,6 @@ class Host implements ts.CompilerHost {
           sourceFile.sourceCode,
           languageVersion
         );
-        // TODO(bartlomieju): should be only done in case of
-        // incremental compile
         //@ts-ignore
         sourceFile.tsSourceFile.version = sourceFile.versionHash;
         delete sourceFile.sourceCode;
@@ -521,48 +519,38 @@ class IncrementalCompileHost extends Host {
   constructor(options: IncrementalCompilerHostOptions) {
     super(options);
     const { rootNames, buildInfo } = options;
-    // console.warn("options", this.options);
     if (rootNames) {
       this.#rootName = rootNames[0];
       this.rootPath = this.#rootName.split("/").slice(0, -1).join("/");
     }
-    // console.error("rootPath", this.rootPath);
     if (buildInfo) {
       this.#buildInfo = buildInfo;
     }
   }
 
   getAbsolutePath(fileName: string): string {
-    // console.error("getAbsolutePath", this.rootPath, fileName);
     return ts.resolvePath(this.rootPath, fileName);
   }
 
   getModuleAbsolutePath(containingFile: string, specifier: string): string {
-    // console.error("getModuleAbsolutePath", containingFile, specifier);
     return specifier;
   }
 
   getRelativePath(fileName: string): string {
-    // console.warn("getrelative ", this.rootPath, fileName);
     if (!ts.pathIsAbsolute(fileName)) {
       return fileName;
     }
 
     const r = ts.getRelativePathFromDirectory(this.rootPath, fileName, false);
-    // console.warn("getrelative result", r);
     return r;
   }
 
   readFile(fileName: string): string | undefined {
-    // console.warn("fileName", fileName);
-
     if (fileName == TS_BUILD_INFO) {
-      // console.warn("buildinfo ", this.#buildInfo);
       return this.#buildInfo;
     }
 
     const f = SourceFile.getCached(fileName);
-    // console.warn("readFile", f?.filename);
     return f?.tsSourceFile!.text;
   }
 }
@@ -799,7 +787,6 @@ function createCompileWriteFile(
 
     if (isBuildInfo) {
       assert(isBuildInfo);
-      // console.warn("tsBuildInfo", data);
       state.buildInfo = data;
       return;
     }
@@ -960,7 +947,6 @@ const ignoredDiagnostics = [
 ];
 
 // TODO(Bartlomieju): this check should be done in Rust; there should be no
-// console.log here
 function processConfigureResponse(
   configResult: ConfigureResponse,
   configPath: string
@@ -1331,7 +1317,6 @@ function compile(request: CompileRequest): CompileResponse {
       ({ code }) => !ignoredDiagnostics.includes(code)
     );
 
-    // console.warn("all diagnostics 5", diagnostics);
     // We will only proceed with the emit if there are no diagnostics.
     if (diagnostics.length === 0) {
       const emitResult = program.emit();
@@ -1355,7 +1340,6 @@ function compile(request: CompileRequest): CompileResponse {
     type: CompilerRequestType[request.type],
   });
 
-  // console.warn("emit map", Object.keys(state.emitMap));
   return {
     emitMap: state.emitMap,
     buildInfo: state.buildInfo,
