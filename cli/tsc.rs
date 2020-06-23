@@ -304,6 +304,7 @@ impl CompiledFileMetadata {
 /// ie. entry point and all its dependencies.
 /// It's used to perform cache invalidation if content of any
 /// dependency changes.
+#[allow(unused)]
 #[derive(Deserialize, Serialize)]
 pub struct GraphFileMetadata {
   pub deps: Vec<String>,
@@ -476,24 +477,24 @@ impl TsCompiler {
     // this file has already been compiled during current process
     // lifetime.
     if self.use_disk_cache || self.has_compiled(&source_file.url) {
-      if let Some(metadata) = self.get_graph_metadata(&source_file.url) {
-        has_cached_version = true;
+      // if let Some(metadata) = self.get_graph_metadata(&source_file.url) {
+      has_cached_version = true;
 
-        let version_hash = crate::checksum::gen(vec![
-          version::DENO.as_bytes(),
-          &self.config.hash,
-        ]);
+      // let version_hash = crate::checksum::gen(vec![
+      //   version::DENO.as_bytes(),
+      //   &self.config.hash,
+      // ]);
 
-        has_cached_version &= metadata.version_hash == version_hash;
-        has_cached_version &= self
-          .has_compiled_source(&global_state.file_fetcher, &source_file.url);
+      // has_cached_version &= metadata.version_hash == version_hash;
+      has_cached_version &=
+        self.has_compiled_source(&global_state.file_fetcher, &source_file.url);
 
-        for dep in metadata.deps {
-          let url = Url::parse(&dep).expect("Dep is not a valid url");
-          has_cached_version &=
-            self.has_compiled_source(&global_state.file_fetcher, &url);
-        }
-      }
+      //   for dep in metadata.deps {
+      //     let url = Url::parse(&dep).expect("Dep is not a valid url");
+      //     has_cached_version &=
+      //       self.has_compiled_source(&global_state.file_fetcher, &url);
+      //   }
+      // }
     }
 
     if has_cached_version {
@@ -567,10 +568,10 @@ impl TsCompiler {
       return Err(ErrBox::from(compile_response.diagnostics));
     }
 
-    self.set_graph_metadata(
-      source_file.url.clone(),
-      &compile_response.emit_map,
-    )?;
+    // self.set_graph_metadata(
+    //   source_file.url.clone(),
+    //   &compile_response.emit_map,
+    // )?;
     if let Some(build_info) = compile_response.build_info {
       self.cache_build_info(&module_url, build_info)?;
     }
@@ -579,6 +580,7 @@ impl TsCompiler {
     Ok(())
   }
 
+  #[allow(unused)]
   fn get_graph_metadata(&self, url: &Url) -> Option<GraphFileMetadata> {
     let cache_key = self
       .disk_cache
@@ -596,6 +598,7 @@ impl TsCompiler {
     None
   }
 
+  #[allow(unused)]
   fn set_graph_metadata(
     &self,
     url: Url,
