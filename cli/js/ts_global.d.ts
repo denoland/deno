@@ -17,18 +17,6 @@ import * as ts_ from "$asset$/typescript.d.ts";
 declare global {
   namespace ts {
     export = ts_;
-
-    export function pathIsAbsolute(path: string): boolean;
-    export function resolvePath(
-      path: string,
-      ...paths: Array<string | undefined>
-    ): string;
-    export function getDirectoryPath(path: string): string;
-    export function getRelativePathFromDirectory(
-      from: string,
-      to: string,
-      ignoreCase: boolean
-    ): string;
   }
 
   namespace ts {

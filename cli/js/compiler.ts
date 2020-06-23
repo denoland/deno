@@ -512,46 +512,21 @@ class Host implements ts.CompilerHost {
 }
 
 class IncrementalCompileHost extends Host {
-  rootPath = ".";
-  #rootName = "";
   #buildInfo: undefined | string = undefined;
 
   constructor(options: IncrementalCompilerHostOptions) {
     super(options);
-    const { rootNames, buildInfo } = options;
-    if (rootNames) {
-      this.#rootName = rootNames[0];
-      this.rootPath = this.#rootName.split("/").slice(0, -1).join("/");
-    }
+    const { buildInfo } = options;
     if (buildInfo) {
       this.#buildInfo = buildInfo;
     }
-  }
-
-  getAbsolutePath(fileName: string): string {
-    return ts.resolvePath(this.rootPath, fileName);
-  }
-
-  getModuleAbsolutePath(containingFile: string, specifier: string): string {
-    return specifier;
-  }
-
-  getRelativePath(fileName: string): string {
-    if (!ts.pathIsAbsolute(fileName)) {
-      return fileName;
-    }
-
-    const r = ts.getRelativePathFromDirectory(this.rootPath, fileName, false);
-    return r;
   }
 
   readFile(fileName: string): string | undefined {
     if (fileName == TS_BUILD_INFO) {
       return this.#buildInfo;
     }
-
-    const f = SourceFile.getCached(fileName);
-    return f?.tsSourceFile!.text;
+    throw new Error("unreachable");
   }
 }
 
