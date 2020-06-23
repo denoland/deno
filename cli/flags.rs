@@ -1054,7 +1054,7 @@ Grant permission to read from disk and listen to network:
 
 Grant permission to read allow-listed files from disk:
   deno run --allow-read=/etc https://deno.land/std/http/file_server.ts
-  
+
 Deno allows specifying the filename '-' to read the file from stdin.
   curl https://deno.land/std/examples/welcome.ts | target/debug/deno run -",
     )
@@ -2450,7 +2450,7 @@ mod tests {
   }
 
   #[test]
-  fn allow_net_whitelist_with_ipv6_address() {
+  fn allow_net_allowlist_with_ipv6_address() {
     let r = flags_from_vec_safe(svec![
       "deno",
       "run",
@@ -2463,7 +2463,7 @@ mod tests {
         subcommand: DenoSubcommand::Run {
           script: "script.ts".to_string(),
         },
-        net_whitelist: svec![
+        net_allowlist: svec![
           "deno.land",
           "deno.land:80",
           "::",
