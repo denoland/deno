@@ -19,10 +19,13 @@ export class AssertionError extends Error {
   }
 }
 
-function format(v: unknown): string {
-  let string = globalThis.Deno ? Deno.inspect(v) : String(v);
-  if (typeof v == "string") {
-    string = `"${string.replace(/(?=["\\])/g, "\\")}"`;
+/**
+ * Format value to string for output to CLI on error.
+ */
+function format(value: unknown): string {
+  const string = globalThis.Deno ? Deno.inspect(value) : String(value);
+  if (typeof value == "string") {
+    return `"${string}"`;
   }
   return string;
 }

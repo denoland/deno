@@ -409,3 +409,24 @@ Deno.test({
     );
   },
 });
+
+Deno.test({
+  name: "failed with string contains quote",
+  fn(): void {
+    assertThrows(
+      (): void =>
+        assertEquals(
+          'John said, "Hello!" to Dave.',
+          'John said, "Hello" to Dave.'
+        ),
+      AssertionError,
+      [
+        "Values are not equal:",
+        ...createHeader(),
+        removed(`-   "John said, "Hello!" to Dave."`),
+        added(`+   "John said, "Hello" to Dave."`),
+        "",
+      ].join("\n")
+    );
+  },
+});
