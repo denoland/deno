@@ -16,9 +16,10 @@ pretty-printed diff of failing assertion.
   `expected` are not equal.
 - `assertNotEquals()` - Uses the `equal` comparison and throws if the `actual`
   and `expected` are equal.
-- `assertStrictEq()` - Compares `actual` and `expected` strictly, therefore for
-  non-primitives the values must reference the same instance.
-- `assertStrContains()` - Make an assertion that `actual` contains `expected`.
+- `assertStrictEquals()` - Compares `actual` and `expected` strictly, therefore
+  for non-primitives the values must reference the same instance.
+- `assertStringContains()` - Make an assertion that `actual` contains
+  `expected`.
 - `assertMatch()` - Make an assertion that `actual` match RegExp `expected`.
 - `assertArrayContains()` - Make an assertion that `actual` array contains the
   `expected` values.
@@ -57,20 +58,20 @@ Deno.test("example", function (): void {
 });
 ```
 
-Using `assertStrictEq()`:
+Using `assertStrictEquals()`:
 
 ```ts
 Deno.test("isStrictlyEqual", function (): void {
   const a = {};
   const b = a;
-  assertStrictEq(a, b);
+  assertStrictEquals(a, b);
 });
 
 // This test fails
 Deno.test("isNotStrictlyEqual", function (): void {
   const a = {};
   const b = {};
-  assertStrictEq(a, b);
+  assertStrictEquals(a, b);
 });
 ```
 
@@ -226,7 +227,7 @@ runBenchmarks({ silent: true }, (p: BenchmarkRunProgress) => {
 
 Registers a benchmark that will be run once `runBenchmarks` is called.
 
-##### `runBenchmarks(opts?: BenchmarkRunOptions, progressCb?: (p: BenchmarkRunProgress) => void): Promise<BenchmarkRunResult>`
+##### `runBenchmarks(opts?: BenchmarkRunOptions, progressCb?: (p: BenchmarkRunProgress) => void | Promise<void>): Promise<BenchmarkRunResult>`
 
 Runs all registered benchmarks serially. Filtering can be applied by setting
 `BenchmarkRunOptions.only` and/or `BenchmarkRunOptions.skip` to regular

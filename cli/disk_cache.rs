@@ -50,7 +50,7 @@ impl DiskCache {
     out.push(scheme);
 
     match scheme {
-      "http" | "https" => {
+      "http" | "https" | "wasm" => {
         let host = url.host_str().unwrap();
         let host_port = match url.port() {
           // Windows doesn't support ":" in filenames, so we represent port using a
@@ -196,6 +196,7 @@ mod tests {
         "https://deno.land/std/http/file_server.ts",
         "https/deno.land/std/http/file_server.ts",
       ),
+      ("wasm://wasm/d1c677ea", "wasm/wasm/d1c677ea"),
     ];
 
     if cfg!(target_os = "windows") {

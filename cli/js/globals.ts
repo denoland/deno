@@ -78,6 +78,10 @@ declare global {
   interface DenoCore {
     print(s: string, isErr?: boolean): void;
     dispatch(opId: number, ...zeroCopy: ArrayBufferView[]): Uint8Array | null;
+    dispatchByName(
+      opName: string,
+      ...zeroCopy: ArrayBufferView[]
+    ): Uint8Array | null;
     setAsyncHandler(opId: number, cb: (msg: Uint8Array) => void): void;
     sharedQueue: {
       head(): number;

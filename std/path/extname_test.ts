@@ -1,7 +1,5 @@
 // Copyright the Browserify authors. MIT License.
 // Ported from https://github.com/browserify/path-browserify/
-
-const { test } = Deno;
 import { assertEquals } from "../testing/asserts.ts";
 import * as path from "./mod.ts";
 
@@ -52,7 +50,7 @@ const pairs = [
   ["file.//", "."],
 ];
 
-test("extname", function () {
+Deno.test("extname", function () {
   pairs.forEach(function (p) {
     const input = p[0];
     const expected = p[1];
@@ -70,7 +68,7 @@ test("extname", function () {
   assertEquals(path.posix.extname("file.\\\\"), ".\\\\");
 });
 
-test("extnameWin32", function () {
+Deno.test("extnameWin32", function () {
   pairs.forEach(function (p) {
     const input = p[0].replace(slashRE, "\\");
     const expected = p[1];

@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { assertStrictEq } from "../../testing/asserts.ts";
+import { assertStrictEquals } from "../../testing/asserts.ts";
 
 Deno.test("[examples/catj] print an array", async () => {
   const decoder = new TextDecoder();
@@ -15,9 +15,9 @@ Deno.test("[examples/catj] print an array", async () => {
       '.[2].array[1] = "bar"',
     ].join("\n");
 
-    assertStrictEq(actual, expected);
+    assertStrictEquals(actual, expected);
   } finally {
-    process.stdin!.close();
+    process.stdin.close();
     process.close();
   }
 });
@@ -34,9 +34,9 @@ Deno.test("[examples/catj] print an object", async () => {
       '.array[0].message = "hello"',
     ].join("\n");
 
-    assertStrictEq(actual, expected);
+    assertStrictEquals(actual, expected);
   } finally {
-    process.stdin!.close();
+    process.stdin.close();
     process.close();
   }
 });
@@ -52,9 +52,9 @@ Deno.test("[examples/catj] print multiple files", async () => {
     const actual = decoder.decode(output).trim();
     const expected = ['.message = "hello"', ".[0] = 1", ".[1] = 2"].join("\n");
 
-    assertStrictEq(actual, expected);
+    assertStrictEquals(actual, expected);
   } finally {
-    process.stdin!.close();
+    process.stdin.close();
     process.close();
   }
 });
@@ -64,18 +64,20 @@ Deno.test("[examples/catj] read from stdin", async () => {
   const process = catj("-");
   const input = `{ "foo": "bar" }`;
   try {
-    await process.stdin!.write(new TextEncoder().encode(input));
-    process.stdin!.close();
+    await process.stdin.write(new TextEncoder().encode(input));
+    process.stdin.close();
     const output = await process.output();
     const actual = decoder.decode(output).trim();
 
-    assertStrictEq(actual, '.foo = "bar"');
+    assertStrictEquals(actual, '.foo = "bar"');
   } finally {
     process.close();
   }
 });
 
-function catj(...files: string[]): Deno.Process {
+function catj(
+  ...files: string[]
+): Deno.Process<Deno.RunOptions & { stdin: "piped"; stdout: "piped" }> {
   return Deno.run({
     cmd: [Deno.execPath(), "run", "--allow-read", "catj.ts", ...files],
     cwd: "examples",

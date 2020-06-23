@@ -1,11 +1,9 @@
 // Copyright the Browserify authors. MIT License.
 // Ported from https://github.com/browserify/path-browserify/
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TODO(kt3k): fix any types in this file
-
-const { test } = Deno;
 import { assertEquals } from "../testing/asserts.ts";
 import * as path from "./mod.ts";
+
+// TODO(kt3k): fix any types in this file
 
 const winPaths = [
   // [path, root]
@@ -80,6 +78,7 @@ const unixSpecialCaseFormatTests = [
   [{}, ""],
 ];
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function checkParseFormat(path: any, paths: any): void {
   paths.forEach(function (p: Array<Record<string, unknown>>) {
     const element = p[0];
@@ -96,6 +95,7 @@ function checkParseFormat(path: any, paths: any): void {
   });
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function checkSpecialCaseParseFormat(path: any, testCases: any): void {
   testCases.forEach(function (testCase: Array<Record<string, unknown>>) {
     const element = testCase[0];
@@ -107,26 +107,27 @@ function checkSpecialCaseParseFormat(path: any, testCases: any): void {
   });
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function checkFormat(path: any, testCases: unknown[][]): void {
   testCases.forEach(function (testCase) {
     assertEquals(path.format(testCase[0]), testCase[1]);
   });
 }
 
-test("parseWin32", function () {
+Deno.test("parseWin32", function () {
   checkParseFormat(path.win32, winPaths);
   checkSpecialCaseParseFormat(path.win32, winSpecialCaseParseTests);
 });
 
-test("parse", function () {
+Deno.test("parse", function () {
   checkParseFormat(path.posix, unixPaths);
 });
 
-test("formatWin32", function () {
+Deno.test("formatWin32", function () {
   checkFormat(path.win32, winSpecialCaseFormatTests);
 });
 
-test("format", function () {
+Deno.test("format", function () {
   checkFormat(path.posix, unixSpecialCaseFormatTests);
 });
 
@@ -162,7 +163,7 @@ const posixTrailingTests = [
   ],
 ];
 
-test("parseTrailingWin32", function () {
+Deno.test("parseTrailingWin32", function () {
   windowsTrailingTests.forEach(function (p) {
     const actual = path.win32.parse(p[0] as string);
     const expected = p[1];
@@ -170,7 +171,7 @@ test("parseTrailingWin32", function () {
   });
 });
 
-test("parseTrailing", function () {
+Deno.test("parseTrailing", function () {
   posixTrailingTests.forEach(function (p) {
     const actual = path.posix.parse(p[0] as string);
     const expected = p[1];

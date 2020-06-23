@@ -165,6 +165,7 @@ pub unsafe fn v8_init() {
     "".to_string(),
     "--no-wasm-async-compilation".to_string(),
     "--harmony-top-level-await".to_string(),
+    "--experimental-wasm-bigint".to_string(),
   ];
   v8::V8::set_flags_from_command_line(argv);
 }
@@ -270,7 +271,7 @@ impl CoreIsolate {
   }
 
   /// Executes a bit of built-in JavaScript to provide Deno.sharedQueue.
-  fn shared_init(&mut self) {
+  pub(crate) fn shared_init(&mut self) {
     if self.needs_init {
       self.needs_init = false;
       js_check(self.execute("core.js", include_str!("core.js")));

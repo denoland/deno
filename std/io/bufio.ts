@@ -7,7 +7,7 @@ type Reader = Deno.Reader;
 type Writer = Deno.Writer;
 type WriterSync = Deno.WriterSync;
 import { charCode, copyBytes } from "./util.ts";
-import { assert } from "../testing/asserts.ts";
+import { assert } from "../_util/assert.ts";
 
 const DEFAULT_BUF_SIZE = 4096;
 const MIN_BUF_SIZE = 16;
@@ -486,6 +486,7 @@ export class BufWriter extends AbstractBufBase implements Writer {
 
     this.checkBytesWritten(numBytesWritten);
 
+    this.buf = new Uint8Array(this.buf.length);
     this.usedBufferBytes = 0;
   }
 
@@ -580,6 +581,7 @@ export class BufWriterSync extends AbstractBufBase implements WriterSync {
 
     this.checkBytesWritten(numBytesWritten);
 
+    this.buf = new Uint8Array(this.buf.length);
     this.usedBufferBytes = 0;
   }
 

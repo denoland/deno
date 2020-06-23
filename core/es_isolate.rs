@@ -211,6 +211,7 @@ impl EsIsolate {
   /// the V8 exception. By default this type is JSError, however it may be a
   /// different type if CoreIsolate::set_js_error_create_fn() has been used.
   pub fn mod_evaluate(&mut self, id: ModuleId) -> Result<(), ErrBox> {
+    self.shared_init();
     let state_rc = Self::state(self);
     let state = state_rc.borrow();
 
@@ -553,6 +554,7 @@ impl EsIsolate {
     specifier: &ModuleSpecifier,
     code: Option<String>,
   ) -> Result<ModuleId, ErrBox> {
+    self.shared_init();
     let loader = {
       let state_rc = Self::state(self);
       let state = state_rc.borrow();
@@ -571,6 +573,12 @@ impl EsIsolate {
 
     let root_id = load.root_module_id.expect("Root module id empty");
     self.mod_instantiate(root_id).map(|_| root_id)
+  }
+
+  pub fn snapshot(&mut self) -> v8::StartupData {
+    let state_rc = Self::state(self);
+    std::mem::take(&mut state_rc.borrow_mut().modules);
+    CoreIsolate::snapshot(self)
   }
 
   pub fn state(isolate: &v8::Isolate) -> Rc<RefCell<EsIsolateState>> {
@@ -677,7 +685,7 @@ pub mod tests {
 
   #[test]
   fn test_mods() {
-    #[derive(Clone, Default)]
+    #[derive(Default)]
     struct ModsLoader {
       pub count: Arc<AtomicUsize>,
     }
@@ -965,5 +973,49 @@ pub mod tests {
       // Second poll triggers error
       let _ = isolate.poll_unpin(cx);
     })
+  }
+
+  #[test]
+  fn es_snapshot() {
+    #[derive(Default)]
+    struct ModsLoader;
+
+    impl ModuleLoader for ModsLoader {
+      fn resolve(
+        &self,
+        specifier: &str,
+        referrer: &str,
+        _is_main: bool,
+      ) -> Result<ModuleSpecifier, ErrBox> {
+        assert_eq!(specifier, "file:///main.js");
+        assert_eq!(referrer, ".");
+        let s = ModuleSpecifier::resolve_import(specifier, referrer).unwrap();
+        Ok(s)
+      }
+
+      fn load(
+        &self,
+        _module_specifier: &ModuleSpecifier,
+        _maybe_referrer: Option<ModuleSpecifier>,
+        _is_dyn_import: bool,
+      ) -> Pin<Box<ModuleSourceFuture>> {
+        unreachable!()
+      }
+    }
+
+    let loader = std::rc::Rc::new(ModsLoader::default());
+    let mut runtime_isolate = EsIsolate::new(loader, StartupData::None, true);
+
+    let specifier = ModuleSpecifier::resolve_url("file:///main.js").unwrap();
+    let source_code = "Deno.core.print('hello\\n')".to_string();
+
+    let module_id = futures::executor::block_on(
+      runtime_isolate.load_module(&specifier, Some(source_code)),
+    )
+    .unwrap();
+
+    js_check(runtime_isolate.mod_evaluate(module_id));
+
+    let _snapshot = runtime_isolate.snapshot();
   }
 }

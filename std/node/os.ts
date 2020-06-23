@@ -136,12 +136,12 @@ export function getPriority(pid = 0): number {
 
 /** Returns the string path of the current user's home directory. */
 export function homedir(): string | null {
-  return Deno.dir("home");
+  notImplemented(SEE_GITHUB_ISSUE);
 }
 
 /** Returns the host name of the operating system as a string. */
 export function hostname(): string {
-  return Deno.hostname();
+  notImplemented(SEE_GITHUB_ISSUE);
 }
 
 /** Returns an array containing the 1, 5, and 15 minute load averages */
@@ -182,7 +182,7 @@ export function setPriority(pid: number, priority?: number): void {
 
 /** Returns the operating system's default directory for temporary files as a string. */
 export function tmpdir(): string | null {
-  return Deno.dir("tmp");
+  notImplemented(SEE_GITHUB_ISSUE);
 }
 
 /** Not yet implemented */

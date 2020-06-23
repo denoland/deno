@@ -20,6 +20,13 @@ unitTest({ perms: { env: true } }, function envNotFound(): void {
   assertEquals(r, undefined);
 });
 
+unitTest({ perms: { env: true } }, function deleteEnv(): void {
+  Deno.env.set("TEST_VAR", "A");
+  assertEquals(Deno.env.get("TEST_VAR"), "A");
+  assertEquals(Deno.env.delete("TEST_VAR"), undefined);
+  assertEquals(Deno.env.get("TEST_VAR"), undefined);
+});
+
 unitTest(function envPermissionDenied1(): void {
   let err;
   try {
@@ -114,162 +121,6 @@ unitTest(
 
 unitTest(function osPid(): void {
   assert(Deno.pid > 0);
-});
-
-unitTest({ perms: { env: true } }, function getDir(): void {
-  type supportOS = "darwin" | "windows" | "linux";
-
-  interface Runtime {
-    os: supportOS;
-    shouldHaveValue: boolean;
-  }
-
-  interface Scenes {
-    kind: Deno.DirKind;
-    runtime: Runtime[];
-  }
-
-  const scenes: Scenes[] = [
-    {
-      kind: "config",
-      runtime: [
-        { os: "darwin", shouldHaveValue: true },
-        { os: "windows", shouldHaveValue: true },
-        { os: "linux", shouldHaveValue: true },
-      ],
-    },
-    {
-      kind: "cache",
-      runtime: [
-        { os: "darwin", shouldHaveValue: true },
-        { os: "windows", shouldHaveValue: true },
-        { os: "linux", shouldHaveValue: true },
-      ],
-    },
-    {
-      kind: "executable",
-      runtime: [
-        { os: "darwin", shouldHaveValue: false },
-        { os: "windows", shouldHaveValue: false },
-        { os: "linux", shouldHaveValue: true },
-      ],
-    },
-    {
-      kind: "data",
-      runtime: [
-        { os: "darwin", shouldHaveValue: true },
-        { os: "windows", shouldHaveValue: true },
-        { os: "linux", shouldHaveValue: true },
-      ],
-    },
-    {
-      kind: "data_local",
-      runtime: [
-        { os: "darwin", shouldHaveValue: true },
-        { os: "windows", shouldHaveValue: true },
-        { os: "linux", shouldHaveValue: true },
-      ],
-    },
-    {
-      kind: "audio",
-      runtime: [
-        { os: "darwin", shouldHaveValue: true },
-        { os: "windows", shouldHaveValue: true },
-        { os: "linux", shouldHaveValue: false },
-      ],
-    },
-    {
-      kind: "desktop",
-      runtime: [
-        { os: "darwin", shouldHaveValue: true },
-        { os: "windows", shouldHaveValue: true },
-        { os: "linux", shouldHaveValue: false },
-      ],
-    },
-    {
-      kind: "document",
-      runtime: [
-        { os: "darwin", shouldHaveValue: true },
-        { os: "windows", shouldHaveValue: true },
-        { os: "linux", shouldHaveValue: false },
-      ],
-    },
-    {
-      kind: "download",
-      runtime: [
-        { os: "darwin", shouldHaveValue: true },
-        { os: "windows", shouldHaveValue: true },
-        { os: "linux", shouldHaveValue: false },
-      ],
-    },
-    {
-      kind: "font",
-      runtime: [
-        { os: "darwin", shouldHaveValue: true },
-        { os: "windows", shouldHaveValue: false },
-        { os: "linux", shouldHaveValue: true },
-      ],
-    },
-    {
-      kind: "picture",
-      runtime: [
-        { os: "darwin", shouldHaveValue: true },
-        { os: "windows", shouldHaveValue: true },
-        { os: "linux", shouldHaveValue: false },
-      ],
-    },
-    {
-      kind: "public",
-      runtime: [
-        { os: "darwin", shouldHaveValue: true },
-        { os: "windows", shouldHaveValue: true },
-        { os: "linux", shouldHaveValue: false },
-      ],
-    },
-    {
-      kind: "template",
-      runtime: [
-        { os: "darwin", shouldHaveValue: false },
-        { os: "windows", shouldHaveValue: true },
-        { os: "linux", shouldHaveValue: false },
-      ],
-    },
-    {
-      kind: "tmp",
-      runtime: [
-        { os: "darwin", shouldHaveValue: true },
-        { os: "windows", shouldHaveValue: true },
-        { os: "linux", shouldHaveValue: true },
-      ],
-    },
-    {
-      kind: "video",
-      runtime: [
-        { os: "darwin", shouldHaveValue: true },
-        { os: "windows", shouldHaveValue: true },
-        { os: "linux", shouldHaveValue: false },
-      ],
-    },
-  ];
-
-  for (const s of scenes) {
-    for (const r of s.runtime) {
-      if (Deno.build.os !== r.os) continue;
-      if (r.shouldHaveValue) {
-        const d = Deno.dir(s.kind);
-        assert(d);
-        assert(d.length > 0);
-      }
-    }
-  }
-});
-
-unitTest(function getDirWithoutPermission(): void {
-  assertThrows(
-    () => Deno.dir("home"),
-    Deno.errors.PermissionDenied,
-    `run again with the --allow-env flag`
-  );
 });
 
 unitTest({ perms: { read: true } }, function execPath(): void {

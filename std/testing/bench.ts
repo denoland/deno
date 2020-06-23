@@ -1,8 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { deepAssign } from "../_util/deep_assign.ts";
 
-const { noColor } = Deno;
-
 interface BenchmarkClock {
   start: number;
   stop: number;
@@ -98,11 +96,11 @@ export class BenchmarkRunError extends Error {
 }
 
 function red(text: string): string {
-  return noColor ? text : `\x1b[31m${text}\x1b[0m`;
+  return Deno.noColor ? text : `\x1b[31m${text}\x1b[0m`;
 }
 
 function blue(text: string): string {
-  return noColor ? text : `\x1b[34m${text}\x1b[0m`;
+  return Deno.noColor ? text : `\x1b[34m${text}\x1b[0m`;
 }
 
 function verifyOr1Run(runs?: number): number {
@@ -187,7 +185,7 @@ export function clearBenchmarks({
  */
 export async function runBenchmarks(
   { only = /[^\s]/, skip = /^\s*$/, silent }: BenchmarkRunOptions = {},
-  progressCb?: (progress: BenchmarkRunProgress) => void
+  progressCb?: (progress: BenchmarkRunProgress) => void | Promise<void>
 ): Promise<BenchmarkRunResult> {
   // Filtering candidates by the "only" and "skip" constraint
   const benchmarks: BenchmarkDefinition[] = candidates.filter(
@@ -213,7 +211,7 @@ export async function runBenchmarks(
   };
 
   // Publish initial progress data
-  publishProgress(progress, ProgressState.BenchmarkingStart, progressCb);
+  await publishProgress(progress, ProgressState.BenchmarkingStart, progressCb);
 
   if (!silent) {
     console.log(
@@ -243,7 +241,7 @@ export async function runBenchmarks(
     // Init the progress of the running benchmark
     progress.running = { name, runsCount: runs, measuredRunsMs: [] };
     // Publish starting of a benchmark
-    publishProgress(progress, ProgressState.BenchStart, progressCb);
+    await publishProgress(progress, ProgressState.BenchStart, progressCb);
 
     // Trying benchmark.func
     let result = "";
@@ -267,7 +265,11 @@ export async function runBenchmarks(
         // Adding partial result
         progress.running.measuredRunsMs.push(measuredMs);
         // Publish partial benchmark results
-        publishProgress(progress, ProgressState.BenchPartialResult, progressCb);
+        await publishProgress(
+          progress,
+          ProgressState.BenchPartialResult,
+          progressCb
+        );
 
         // Resetting the benchmark clock
         clock.start = clock.stop = NaN;
@@ -288,7 +290,11 @@ export async function runBenchmarks(
           // Clear currently running
           delete progress.running;
           // Publish results of the benchmark
-          publishProgress(progress, ProgressState.BenchResult, progressCb);
+          await publishProgress(
+            progress,
+            ProgressState.BenchResult,
+            progressCb
+          );
           break;
         }
       }
@@ -317,7 +323,7 @@ export async function runBenchmarks(
   // Indicate finished running
   delete progress.queued;
   // Publish final result in Cb too
-  publishProgress(progress, ProgressState.BenchmarkingEnd, progressCb);
+  await publishProgress(progress, ProgressState.BenchmarkingEnd, progressCb);
 
   if (!silent) {
     // Closing results
@@ -340,12 +346,12 @@ export async function runBenchmarks(
   return benchmarkRunResult;
 }
 
-function publishProgress(
+async function publishProgress(
   progress: BenchmarkRunProgress,
   state: ProgressState,
-  progressCb?: (progress: BenchmarkRunProgress) => void
-): void {
-  progressCb && progressCb(cloneProgressWithState(progress, state));
+  progressCb?: (progress: BenchmarkRunProgress) => void | Promise<void>
+): Promise<void> {
+  progressCb && (await progressCb(cloneProgressWithState(progress, state)));
 }
 
 function cloneProgressWithState(

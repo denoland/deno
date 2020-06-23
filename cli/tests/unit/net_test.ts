@@ -4,6 +4,7 @@ import {
   assert,
   assertEquals,
   createResolvable,
+  assertNotEquals,
 } from "./test_util.ts";
 
 unitTest({ perms: { net: true } }, function netTcpListenClose(): void {
@@ -11,6 +12,7 @@ unitTest({ perms: { net: true } }, function netTcpListenClose(): void {
   assert(listener.addr.transport === "tcp");
   assertEquals(listener.addr.hostname, "127.0.0.1");
   assertEquals(listener.addr.port, 3500);
+  assertNotEquals(listener.rid, 0);
   listener.close();
 });
 
@@ -238,7 +240,9 @@ unitTest(
     assertEquals(bob.addr.hostname, "127.0.0.1");
 
     const sent = new Uint8Array([1, 2, 3]);
-    await alice.send(sent, bob.addr);
+    const byteLength = await alice.send(sent, bob.addr);
+
+    assertEquals(byteLength, 3);
 
     const [recvd, remote] = await bob.receive();
     assert(remote.transport === "udp");
@@ -249,6 +253,21 @@ unitTest(
     assertEquals(3, recvd[2]);
     alice.close();
     bob.close();
+  }
+);
+
+unitTest(
+  { ignore: Deno.build.os === "windows", perms: { net: true } },
+  async function netUdpBorrowMutError(): Promise<void> {
+    const socket = Deno.listenDatagram({
+      port: 4501,
+      transport: "udp",
+    });
+    // Panic happened on second send: BorrowMutError
+    const a = socket.send(new Uint8Array(), socket.addr);
+    const b = socket.send(new Uint8Array(), socket.addr);
+    await Promise.all([a, b]);
+    socket.close();
   }
 );
 
@@ -271,7 +290,8 @@ unitTest(
     assertEquals(bob.addr.path, filePath);
 
     const sent = new Uint8Array([1, 2, 3]);
-    await alice.send(sent, bob.addr);
+    const byteLength = await alice.send(sent, bob.addr);
+    assertEquals(byteLength, 3);
 
     const [recvd, remote] = await bob.receive();
     assert(remote.transport === "unixpacket");
