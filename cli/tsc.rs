@@ -34,7 +34,9 @@ use deno_core::StartupData;
 use futures::future::Either;
 use futures::future::Future;
 use futures::future::FutureExt;
+use log::debug;
 use log::info;
+use log::Level;
 use regex::Regex;
 use serde::Deserialize;
 use serde::Serialize;
@@ -332,6 +334,15 @@ pub fn source_code_version_hash(
   crate::checksum::gen(vec![source_code, version.as_bytes(), config_hash])
 }
 
+fn maybe_log_stats(maybe_stats: Option<Vec<Stat>>) {
+  if let Some(stats) = maybe_stats {
+    debug!("DEBUG - Compilation Statistics:");
+    for stat in stats {
+      debug!("{}: {}", stat.key, stat.value);
+    }
+  }
+}
+
 pub struct TsCompilerInner {
   pub file_fetcher: SourceFileFetcher,
   pub config: CompilerConfig,
@@ -358,6 +369,13 @@ impl Deref for TsCompiler {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct Stat {
+  key: String,
+  value: f64,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct EmittedSource {
   filename: String,
   contents: String,
@@ -368,6 +386,7 @@ struct EmittedSource {
 struct BundleResponse {
   diagnostics: Diagnostic,
   bundle_output: Option<String>,
+  stats: Option<Vec<Stat>>,
 }
 
 #[derive(Deserialize)]
@@ -375,6 +394,7 @@ struct BundleResponse {
 struct CompileResponse {
   diagnostics: Diagnostic,
   emit_map: HashMap<String, EmittedSource>,
+  stats: Option<Vec<Stat>>,
 }
 
 // TODO(bartlomieju): possible deduplicate once TS refactor is stabilized
@@ -509,6 +529,10 @@ impl TsCompiler {
     };
     let root_names = vec![module_url.to_string()];
     let unstable = global_state.flags.unstable;
+    let performance = match global_state.flags.log_level {
+      Some(Level::Debug) => true,
+      _ => false,
+    };
     let compiler_config = self.config.clone();
     let cwd = std::env::current_dir().unwrap();
     let j = match (compiler_config.path, compiler_config.content) {
@@ -518,6 +542,7 @@ impl TsCompiler {
         "target": target,
         "rootNames": root_names,
         "unstable": unstable,
+        "performance": performance,
         "configPath": config_path,
         "config": str::from_utf8(&config_data).unwrap(),
         "cwd": cwd,
@@ -529,6 +554,7 @@ impl TsCompiler {
         "target": target,
         "rootNames": root_names,
         "unstable": unstable,
+        "performance": performance,
         "cwd": cwd,
         "sourceFileMap": module_graph_json,
       }),
@@ -554,6 +580,8 @@ impl TsCompiler {
     if !compile_response.diagnostics.items.is_empty() {
       return Err(ErrBox::from(compile_response.diagnostics));
     }
+
+    maybe_log_stats(compile_response.stats);
 
     self.set_graph_metadata(
       source_file.url.clone(),
@@ -949,6 +977,10 @@ pub async fn bundle(
   let root_names = vec![module_specifier.to_string()];
   let target = "main";
   let cwd = std::env::current_dir().unwrap();
+  let performance = match global_state.flags.log_level {
+    Some(Level::Debug) => true,
+    _ => false,
+  };
 
   // TODO(bartlomieju): this is non-sense; CompilerConfig's `path` and `content` should
   // be optional
@@ -958,6 +990,7 @@ pub async fn bundle(
       "target": target,
       "rootNames": root_names,
       "unstable": unstable,
+      "performance": performance,
       "configPath": config_path,
       "config": str::from_utf8(&config_data).unwrap(),
       "cwd": cwd,
@@ -968,6 +1001,7 @@ pub async fn bundle(
       "target": target,
       "rootNames": root_names,
       "unstable": unstable,
+      "performance": performance,
       "cwd": cwd,
       "sourceFileMap": module_graph_json,
     }),
@@ -978,9 +1012,10 @@ pub async fn bundle(
   let msg =
     execute_in_same_thread(global_state.clone(), permissions, req_msg).await?;
   let json_str = std::str::from_utf8(&msg).unwrap();
-  debug!("Message: {}", json_str);
 
   let bundle_response: BundleResponse = serde_json::from_str(json_str)?;
+
+  maybe_log_stats(bundle_response.stats);
 
   if !bundle_response.diagnostics.items.is_empty() {
     return Err(ErrBox::from(bundle_response.diagnostics));

@@ -2048,6 +2048,11 @@ itest!(single_compile_with_reload {
   output: "single_compile_with_reload.ts.out",
 });
 
+itest!(performance_stats {
+  args: "run --reload --log-level debug 002_hello.ts",
+  output: "performance_stats.out",
+});
+
 itest!(proto_exploit {
   args: "run proto_exploit.js",
   output: "proto_exploit.js.out",
