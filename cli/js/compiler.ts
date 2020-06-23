@@ -32,8 +32,16 @@ function getAsset(name: string): string {
 // Constants used by `normalizeString` and `resolvePath`
 const CHAR_DOT = 46; /* . */
 const CHAR_FORWARD_SLASH = 47; /* / */
+// Using incremental compile APIs requires that all
+// paths must be either relative or absolute. Since
+// analysis in Rust operates on fully resolved URLs,
+// it makes sense to use the same scheme here.
 const ASSETS = "asset://";
 const OUT_DIR = "deno://";
+// This constant is passed to compiler settings when
+// doing incremental compiles. Contents of this
+// file are passed back to Rust and saved to $DENO_DIR.
+const TS_BUILD_INFO = "cache:///tsbuildinfo.json";
 
 // TODO(Bartlomieju): this check should be done in Rust
 const IGNORED_COMPILER_OPTIONS: readonly string[] = [
@@ -93,8 +101,6 @@ const IGNORED_COMPILER_OPTIONS: readonly string[] = [
   "version",
   "watch",
 ];
-
-const TS_BUILD_INFO = `cache:///tsbuildinfo.json`;
 
 const DEFAULT_BUNDLER_OPTIONS: ts.CompilerOptions = {
   allowJs: true,
