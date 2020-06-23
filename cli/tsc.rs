@@ -473,35 +473,59 @@ impl TsCompiler {
   ) -> Result<(), ErrBox> {
     let mut has_cached_version = false;
 
+    let module_url = source_file.url.clone();
+    let build_info_key = self
+      .disk_cache
+      .get_cache_filename_with_extension(&module_url, "buildinfo");
+
+    let build_info = match self.disk_cache.get(&build_info_key) {
+      Ok(bytes) => Some(String::from_utf8(bytes)?),
+      Err(_) => None,
+    };
+
+    let file_fetcher = global_state.file_fetcher.clone();
+
     // Only use disk cache if `--reload` flag was not used or
     // this file has already been compiled during current process
     // lifetime.
     if self.use_disk_cache || self.has_compiled(&source_file.url) {
-      // if let Some(metadata) = self.get_graph_metadata(&source_file.url) {
-      has_cached_version = true;
+      if let Some(build_info_str) = build_info.as_ref() {
+        let build_inf_json: Value = serde_json::from_str(build_info_str)?;
+        let program_val = build_inf_json["program"].as_object().unwrap();
+        let file_infos = program_val["fileInfos"].as_object().unwrap();
 
-      // let version_hash = crate::checksum::gen(vec![
-      //   version::DENO.as_bytes(),
-      //   &self.config.hash,
-      // ]);
+        has_cached_version = true;
 
-      // has_cached_version &= metadata.version_hash == version_hash;
-      has_cached_version &=
-        self.has_compiled_source(&global_state.file_fetcher, &source_file.url);
+        has_cached_version &= self
+          .has_compiled_source(&global_state.file_fetcher, &source_file.url);
 
-      //   for dep in metadata.deps {
-      //     let url = Url::parse(&dep).expect("Dep is not a valid url");
-      //     has_cached_version &=
-      //       self.has_compiled_source(&global_state.file_fetcher, &url);
-      //   }
-      // }
+        for (filename, file_info) in file_infos.iter() {
+          if filename.starts_with("asset://") {
+            continue;
+          }
+
+          let url = Url::parse(&filename).expect("Filename is not a valid url");
+          let specifier = ModuleSpecifier::from(url);
+          if let Some(source_file) = file_fetcher
+            .fetch_cached_source_file(&specifier, Permissions::allow_all())
+          {
+            let existing_hash = crate::checksum::gen(vec![
+              &source_file.source_code,
+              version::DENO.as_bytes(),
+            ]);
+            let expected_hash =
+              file_info["version"].as_str().unwrap().to_string();
+            has_cached_version &= existing_hash == expected_hash
+          } else {
+            has_cached_version &= false
+          }
+        }
+      }
     }
-
+    // eprintln!("has cached version {}", has_cached_version);
     if has_cached_version {
       return Ok(());
     }
-
-    let module_url = source_file.url.clone();
 
     let module_graph_json =
       serde_json::to_value(module_graph).expect("Failed to serialize data");
@@ -513,14 +537,6 @@ impl TsCompiler {
     let unstable = global_state.flags.unstable;
     let compiler_config = self.config.clone();
     let cwd = std::env::current_dir().unwrap();
-
-    let build_info_key = self
-      .disk_cache
-      .get_cache_filename_with_extension(&module_url, "buildinfo");
-    let build_info = match self.disk_cache.get(&build_info_key) {
-      Ok(bytes) => Some(String::from_utf8(bytes)?),
-      Err(_) => None,
-    };
 
     let j = match (compiler_config.path, compiler_config.content) {
       (Some(config_path), Some(config_data)) => json!({
@@ -779,7 +795,7 @@ impl TsCompiler {
     // }
 
     // let contents = content_lines.join("\n");
-
+    // eprintln!("cache compiled file");
     let js_key = self
       .disk_cache
       .get_cache_filename_with_extension(module_specifier.as_url(), "js");

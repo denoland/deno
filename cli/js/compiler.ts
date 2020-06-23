@@ -192,6 +192,7 @@ interface SourceFileJson {
   filename: string;
   mediaType: MediaType;
   sourceCode: string;
+  versionHash: string;
 }
 
 function getExtension(fileName: string, mediaType: MediaType): ts.Extension {
@@ -300,6 +301,7 @@ function getAssetInternal(filename: string): SourceFile {
     url,
     filename: `${ASSETS}/${name}`,
     mediaType: MediaType.TypeScript,
+    versionHash: "1",
     sourceCode,
   });
 }
@@ -440,9 +442,7 @@ class Host implements ts.CompilerHost {
         // TODO(bartlomieju): should be only done in case of
         // incremental compile
         //@ts-ignore
-        sourceFile.tsSourceFile.version = this.createHash(
-          sourceFile.tsSourceFile.text
-        );
+        sourceFile.tsSourceFile.version = sourceFile.versionHash;
         delete sourceFile.sourceCode;
       }
       return sourceFile.tsSourceFile;
@@ -495,11 +495,6 @@ class Host implements ts.CompilerHost {
         extension: sourceFile.extension,
       };
     });
-  }
-
-  // TODO(bartlomieju): remove
-  createHash(data: string): string {
-    return ts.generateDjb2Hash(data);
   }
 
   useCaseSensitiveFileNames(): boolean {
@@ -636,6 +631,7 @@ function buildLocalSourceFileCache(
       filename: entry.url,
       mediaType: entry.mediaType,
       sourceCode: entry.sourceCode,
+      versionHash: entry.versionHash,
     });
 
     for (const importDesc of entry.imports) {
@@ -687,6 +683,7 @@ function buildSourceFileCache(
       filename: entry.url,
       mediaType: entry.mediaType,
       sourceCode: entry.sourceCode,
+      versionHash: entry.versionHash,
     });
 
     for (const importDesc of entry.imports) {
@@ -1181,6 +1178,7 @@ interface SourceFileMapEntry {
   libDirectives: ReferenceDescriptor[];
   typesDirectives: ReferenceDescriptor[];
   typeHeaders: ReferenceDescriptor[];
+  versionHash: string;
 }
 
 /** Used when "deno run" is invoked */
