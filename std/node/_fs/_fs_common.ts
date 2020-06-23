@@ -4,10 +4,31 @@ import { notImplemented } from "../_utils.ts";
 
 export type CallbackWithError = (err?: Error | null) => void;
 
+export type TextEncodings =
+  | "ascii"
+  | "utf8"
+  | "utf-8"
+  | "utf16le"
+  | "ucs2"
+  | "ucs-2"
+  | "base64"
+  | "latin1"
+  | "hex";
+export type BinaryEncodings = "binary";
+export type Encodings = TextEncodings | BinaryEncodings;
+
 export interface FileOptions {
-  encoding?: string;
+  encoding?: Encodings;
   flag?: string;
 }
+
+export type TextOptionsArgument =
+  | TextEncodings
+  | ({ encoding: TextEncodings } & FileOptions);
+export type BinaryOptionsArgument =
+  | BinaryEncodings
+  | ({ encoding: BinaryEncodings } & FileOptions);
+export type FileOptionsArgument = Encodings | FileOptions;
 
 export interface WriteFileOptions extends FileOptions {
   mode?: number;
