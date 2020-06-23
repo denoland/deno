@@ -24,7 +24,7 @@ export class AssertionError extends Error {
  */
 function format(value: unknown): string {
   const string = globalThis.Deno ? Deno.inspect(value) : String(value);
-  if (typeof value == "string") {
+  if (typeof value === "string") {
     return `"${string}"`;
   }
   return string;
