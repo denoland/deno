@@ -117,6 +117,7 @@ const DEFAULT_INCREMENTAL_COMPILE_OPTIONS: ts.CompilerOptions = {
   module: ts.ModuleKind.ESNext,
   outDir: OUT_DIR,
   resolveJsonModule: true,
+  sourceMap: false,
   strict: true,
   stripComments: true,
   target: ts.ScriptTarget.ESNext,
@@ -525,6 +526,7 @@ class IncrementalCompileHost extends Host {
   constructor(options: IncrementalCompilerHostOptions) {
     super(options);
     const { rootNames, buildInfo } = options;
+    // console.warn("options", this.options);
     if (rootNames) {
       this.#rootName = rootNames[0];
       this.rootPath = this.#rootName.split("/").slice(0, -1).join("/");
@@ -1293,6 +1295,7 @@ function compile(request: CompileRequest): CompileResponse {
     bundle: false,
     target,
     unstable,
+    incremental: true,
     writeFile: createCompileWriteFile(state),
     rootNames,
     buildInfo,
