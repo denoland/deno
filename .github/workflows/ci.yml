@@ -70,6 +70,7 @@ jobs:
 
       - name: Install rust targets
         run: |
+          # Necessary for the std/wasi tests
           rustup target add wasm32-unknown-unknown
           rustup target add wasm32-wasi
 
