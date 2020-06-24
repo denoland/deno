@@ -1376,8 +1376,6 @@ pub fn resolve_urls(urls: Vec<String>) -> Vec<String> {
   out
 }
 
-
-
 #[cfg(test)]
 mod tests {
   use super::*;
