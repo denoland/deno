@@ -300,6 +300,24 @@ function stringify(
   }
 }
 
+// We can match Node's quoting behavior exactly by swapping the double quote and
+// single quote in this array. That would give preference to single quotes.
+// However, we prefer double quotes as the default.
+const QUOTES = ['"', "'", "`"];
+
+/** Surround the string in quotes.
+ *
+ * The quote symbol is chosen by taking the first of the `QUOTES` array which
+ * does not occur in the string. If they all occur, settle with `QUOTES[0]`.
+ *
+ * Insert a backslash before any occurrence of the chosen quote symbol and
+ * before any backslash. */
+function quoteString(string: string): string {
+  const quote = QUOTES.find((c) => !string.includes(c)) ?? QUOTES[0];
+  const escapePattern = new RegExp(`(?=[${quote}\\\\])`, "g");
+  return `${quote}${string.replace(escapePattern, "\\")}${quote}`;
+}
+
 // Print strings when they are inside of arrays or objects with quotes
 function stringifyWithQuotes(
   value: unknown,
@@ -313,7 +331,7 @@ function stringifyWithQuotes(
         value.length > STR_ABBREVIATE_SIZE
           ? value.slice(0, STR_ABBREVIATE_SIZE) + "..."
           : value;
-      return green(`"${trunc}"`); // Quoted strings are green
+      return green(quoteString(trunc)); // Quoted strings are green
     default:
       return stringify(value, ctx, level, maxLevel);
   }
