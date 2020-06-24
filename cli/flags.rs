@@ -106,6 +106,7 @@ pub struct Flags {
   pub lock_write: bool,
   pub log_level: Option<Level>,
   pub net_allowlist: Vec<String>,
+  pub no_check: bool,
   pub no_prompts: bool,
   pub no_remote: bool,
   pub read_allowlist: Vec<PathBuf>,
@@ -463,6 +464,7 @@ fn cache_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   lock_args_parse(flags, matches);
   importmap_arg_parse(flags, matches);
   config_arg_parse(flags, matches);
+  no_check_arg_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
   unstable_arg_parse(flags, matches);
@@ -491,6 +493,7 @@ fn run_test_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   importmap_arg_parse(flags, matches);
   config_arg_parse(flags, matches);
   v8_flags_arg_parse(flags, matches);
+  no_check_arg_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
   permission_args_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
@@ -826,6 +829,7 @@ fn cache_subcommand<'a, 'b>() -> App<'a, 'b> {
     .arg(importmap_arg())
     .arg(unstable_arg())
     .arg(config_arg())
+    .arg(no_check_arg())
     .arg(no_remote_arg())
     .arg(
       Arg::with_name("file")
@@ -1037,6 +1041,7 @@ fn run_test_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
     .arg(config_arg())
     .arg(lock_arg())
     .arg(lock_write_arg())
+    .arg(no_check_arg())
     .arg(no_remote_arg())
     .arg(v8_flags_arg())
     .arg(ca_file_arg())
@@ -1308,6 +1313,18 @@ fn v8_flags_arg_parse(flags: &mut Flags, matches: &ArgMatches) {
   if let Some(v8_flags) = matches.values_of("v8-flags") {
     let s: Vec<String> = v8_flags.map(String::from).collect();
     flags.v8_flags = Some(s);
+  }
+}
+
+fn no_check_arg<'a, 'b>() -> Arg<'a, 'b> {
+  Arg::with_name("no-check")
+    .long("no-check")
+    .help("Skip type checking modules")
+}
+
+fn no_check_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  if matches.is_present("no-check") {
+    flags.no_check = true;
   }
 }
 
@@ -2414,6 +2431,22 @@ mod tests {
     assert_eq!(argv, svec!["script.ts", "-", "foo", "bar"]);
   }
   */
+
+  #[test]
+  fn no_check() {
+    let r =
+      flags_from_vec_safe(svec!["deno", "run", "--no-check", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run {
+          script: "script.ts".to_string(),
+        },
+        no_check: true,
+        ..Flags::default()
+      }
+    );
+  }
 
   #[test]
   fn no_remote() {

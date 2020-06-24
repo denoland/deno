@@ -682,6 +682,80 @@ impl TsCompiler {
     Ok(output)
   }
 
+  pub async fn transpile_module_graph(
+    &self,
+    global_state: GlobalState,
+    source_file: &SourceFile,
+    permissions: Permissions,
+    module_graph: ModuleGraph,
+  ) -> Result<(), ErrBox> {
+    let module_url = source_file.url.clone();
+    let build_info_key = self
+      .disk_cache
+      .get_cache_filename_with_extension(&module_url, "buildinfo");
+    let build_info = match self.disk_cache.get(&build_info_key) {
+      Ok(bytes) => Some(String::from_utf8(bytes)?),
+      Err(_) => None,
+    };
+
+    // Only use disk cache if `--reload` flag was not used or this file has
+    // already been compiled during current process lifetime.
+    if self.use_disk_cache || self.has_compiled(&source_file.url) {
+      if self.has_valid_cache(
+        &source_file.url,
+        &build_info,
+      )? {
+        return Ok(());
+      }
+    }
+
+    let module_graph_json =
+      serde_json::to_value(module_graph).expect("Failed to serialize data");
+    let compiler_config = self.config.clone();
+    let cwd = std::env::current_dir().unwrap();
+    let performance = match global_state.flags.log_level {
+      Some(Level::Debug) => true,
+      _ => false,
+    };
+    let j = match (compiler_config.path, compiler_config.content) {
+      (Some(config_path), Some(config_data)) => json!({
+        "type": msg::CompilerRequestType::Transpile,
+        "configPath": config_path,
+        "config": str::from_utf8(&config_data).unwrap(),
+        "cwd": cwd,
+        "performance": performance,
+        "sourceFileMap": module_graph_json,
+      }),
+      _ => json!({
+        "type": msg::CompilerRequestType::Transpile,
+        "performance": performance,
+        "sourceFileMap": module_graph_json,
+      }),
+    };
+
+    let req_msg = j.to_string().into_boxed_str().into_boxed_bytes();
+
+    let msg =
+      execute_in_same_thread(global_state.clone(), permissions, req_msg)
+      .await?;
+
+    let json_str = std::str::from_utf8(&msg).unwrap();
+
+    let transpile_response: CompileResponse = serde_json::from_str(json_str)?;
+
+    if !transpile_response.diagnostics.items.is_empty() {
+      return Err(ErrBox::from(transpile_response.diagnostics));
+    }
+
+    maybe_log_stats(transpile_response.stats);
+
+    if let Some(build_info) = transpile_response.build_info {
+      self.cache_build_info(&module_url, build_info)?;
+    }
+    self.cache_emitted_files(transpile_response.emit_map)?;
+    Ok(())
+  }
+
   /// Get associated `CompiledFileMetadata` for given module if it exists.
   fn get_metadata(&self, url: &Url) -> Option<CompiledFileMetadata> {
     // Try to load cached version:
@@ -1432,6 +1506,7 @@ fn parse_deno_types(comment: &str) -> Option<String> {
 mod tests {
   use super::*;
   use crate::deno_dir;
+  use crate::flags;
   use crate::fs as deno_fs;
   use crate::http_cache;
   use deno_core::ModuleSpecifier;
@@ -1545,6 +1620,70 @@ mod tests {
     assert!(source_code
       .as_bytes()
       .starts_with(b"\"use strict\";\nconsole.log(\"Hello World\");"));
+    let mut lines: Vec<String> =
+      source_code.split('\n').map(|s| s.to_string()).collect();
+    let last_line = lines.pop().unwrap();
+    assert!(last_line
+      .starts_with("//# sourceMappingURL=data:application/json;base64"));
+  }
+
+  #[tokio::test]
+  async fn test_transpile() {
+    let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+      .parent()
+      .unwrap()
+      .join("cli/tests/004_set_timeout.ts");
+    let specifier =
+      ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
+    let out = SourceFile {
+      url: specifier.as_url().clone(),
+      filename: PathBuf::from(p.to_str().unwrap().to_string()),
+      media_type: msg::MediaType::TypeScript,
+      source_code: include_bytes!("./tests/004_set_timeout.ts").to_vec(),
+      types_header: None,
+    };
+    let mock_state = GlobalState::mock(
+      vec![
+        String::from("deno"),
+        String::from("run"),
+        String::from("hello.ts"),
+      ],
+      Some(flags::Flags {
+        reload: true,
+        no_check: true,
+        ..flags::Flags::default()
+      }),
+    );
+
+    let mut module_graph_loader = ModuleGraphLoader::new(
+      mock_state.file_fetcher.clone(),
+      None,
+      Permissions::allow_all(),
+      false,
+      false,
+    );
+    module_graph_loader
+      .add_to_graph(&specifier, None)
+      .await
+      .expect("Failed to create graph");
+    let module_graph = module_graph_loader.get_graph();
+
+    let result = mock_state
+      .ts_compiler
+      .transpile_module_graph(
+        mock_state.clone(),
+        &out,
+        Permissions::allow_all(),
+        module_graph,
+      )
+      .await;
+    assert!(result.is_ok());
+    let compiled_file = mock_state
+      .ts_compiler
+      .get_compiled_module(&out.url)
+      .unwrap();
+    let source_code = compiled_file.code;
+    assert!(source_code.as_bytes().starts_with(b"setTimeout(() => {"));
     let mut lines: Vec<String> =
       source_code.split('\n').map(|s| s.to_string()).collect();
     let last_line = lines.pop().unwrap();
