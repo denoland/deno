@@ -62,7 +62,7 @@ const wasi = new WASI({
   env: Deno.env,
 });
 
-const binary = Deno.readAll("path/to/your/module.wasm");
+const binary = await Deno.readFile("path/to/your/module.wasm");
 const module = await WebAssembly.compile(binary);
 const instance = await WebAssembly.instantiate(module, {
   wasi_snapshot_preview1: wasi.exports,
