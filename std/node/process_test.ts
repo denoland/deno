@@ -102,9 +102,9 @@ Deno.test({
 
 Deno.test({
   name: "process.argv",
-  async fn() {
+  fn() {
     assert(Array.isArray(process.argv));
-    assert(Array.isArray(await argv));
+    assert(Array.isArray(argv));
     assert(
       process.argv[0].match(/[^/\\]*deno[^/\\]*$/),
       "deno included in the file name of argv[0]"
@@ -115,8 +115,8 @@ Deno.test({
 
 Deno.test({
   name: "process.env",
-  async fn() {
+  fn() {
     assertEquals(typeof process.env.PATH, "string");
-    assertEquals(typeof (await env).PATH, "string");
+    assertEquals(typeof env.PATH, "string");
   },
 });
