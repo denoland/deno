@@ -1287,14 +1287,10 @@ function compile({
   rootNames,
   target,
   unstable,
-  performance,
   cwd,
   sourceFileMap,
   type,
 }: CompileRequest): CompileResponse {
-  if (performance) {
-    performanceStart();
-  }
   log(">>> compile start", { rootNames, type: CompilerRequestType[type] });
 
   // When a programme is emitted, TypeScript will call `writeFile` with
@@ -1363,19 +1359,14 @@ function compile({
       // without casting.
       diagnostics = emitResult.diagnostics;
     }
-    if (performance) {
-      performanceProgram(program);
-    }
   }
 
   log("<<< compile end", { rootNames, type: CompilerRequestType[type] });
-  const stats = performance ? performanceEnd() : undefined;
 
   return {
     emitMap: state.emitMap,
     buildInfo: state.buildInfo,
     diagnostics: fromTypeScriptDiagnostic(diagnostics),
-    stats,
   };
 }
 
