@@ -322,7 +322,8 @@ export function fail(msg?: string): void {
   assert(false, `Failed assertion${msg ? `: ${msg}` : "."}`);
 }
 
-/** Executes a function, expecting it to throw.  If it does not, then it
+/**
+ * Executes a function, expecting it to throw.  If it does not, then it
  * throws.  An error class and a string that should be included in the
  * error message can also be asserted.
  */
@@ -337,6 +338,9 @@ export function assertThrows<T = void>(
   try {
     fn();
   } catch (e) {
+    if (e instanceof Error === false) {
+      throw new AssertionError("A non-Error object was thrown.");
+    }
     if (ErrorClass && !(Object.getPrototypeOf(e) === ErrorClass.prototype)) {
       msg = `Expected error to be instance of "${ErrorClass.name}", but was "${
         e.constructor.name
@@ -362,6 +366,11 @@ export function assertThrows<T = void>(
   return error;
 }
 
+/**
+ * Executes a function which returns a promise, expecting it to throw or reject.
+ * If it does not, then it throws.  An error class and a string that should be
+ * included in the error message can also be asserted.
+ */
 export async function assertThrowsAsync<T = void>(
   fn: () => Promise<T>,
   ErrorClass?: Constructor,
@@ -373,6 +382,9 @@ export async function assertThrowsAsync<T = void>(
   try {
     await fn();
   } catch (e) {
+    if (e instanceof Error === false) {
+      throw new AssertionError("A non-Error object was thrown or rejected.");
+    }
     if (ErrorClass && !(Object.getPrototypeOf(e) === ErrorClass.prototype)) {
       msg = `Expected error to be instance of "${ErrorClass.name}", but got "${
         e.name

@@ -23,6 +23,7 @@ pub fn init(i: &mut CoreIsolate, s: &State) {
   i.register_op("op_open", s.stateful_json_op2(op_open));
   i.register_op("op_seek", s.stateful_json_op2(op_seek));
   i.register_op("op_fsync", s.stateful_json_op2(op_fsync));
+  i.register_op("op_fstat", s.stateful_json_op2(op_fstat));
   i.register_op("op_umask", s.stateful_json_op(op_umask));
   i.register_op("op_chdir", s.stateful_json_op(op_chdir));
   i.register_op("op_mkdir", s.stateful_json_op(op_mkdir));
@@ -245,6 +246,51 @@ fn op_fsync(
         )),
       })?;
       Ok(json!({}))
+    };
+    Ok(JsonOp::Async(fut.boxed_local()))
+  }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FstatArgs {
+  promise_id: Option<u64>,
+  rid: i32,
+}
+
+fn op_fstat(
+  isolate_state: &mut CoreIsolateState,
+  state: &State,
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<JsonOp, OpError> {
+  state.check_unstable("Deno.fstat");
+  let args: FstatArgs = serde_json::from_value(args)?;
+  let rid = args.rid as u32;
+
+  let resource_table = isolate_state.resource_table.clone();
+  let is_sync = args.promise_id.is_none();
+
+  if is_sync {
+    let mut resource_table = resource_table.borrow_mut();
+    let metadata = std_file_resource(&mut resource_table, rid, |r| match r {
+      Ok(std_file) => std_file.metadata().map_err(OpError::from),
+      Err(_) => Err(OpError::type_error(
+        "cannot stat this type of resource".to_string(),
+      )),
+    })?;
+    Ok(JsonOp::Sync(get_stat_json(metadata).unwrap()))
+  } else {
+    let fut = async move {
+      let mut resource_table = resource_table.borrow_mut();
+      let metadata =
+        std_file_resource(&mut resource_table, rid, |r| match r {
+          Ok(std_file) => std_file.metadata().map_err(OpError::from),
+          Err(_) => Err(OpError::type_error(
+            "cannot stat this type of resource".to_string(),
+          )),
+        })?;
+      Ok(get_stat_json(metadata).unwrap())
     };
     Ok(JsonOp::Async(fut.boxed_local()))
   }

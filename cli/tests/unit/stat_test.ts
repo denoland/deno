@@ -6,6 +6,36 @@ import {
   pathToAbsoluteFileUrl,
 } from "./test_util.ts";
 
+unitTest({ perms: { read: true } }, function fstatSyncSuccess(): void {
+  const file = Deno.openSync("README.md");
+  const fileInfo = Deno.fstatSync(file.rid);
+  assert(fileInfo.isFile);
+  assert(!fileInfo.isSymlink);
+  assert(!fileInfo.isDirectory);
+  assert(fileInfo.size);
+  assert(fileInfo.atime);
+  assert(fileInfo.mtime);
+  assert(fileInfo.birthtime);
+
+  Deno.close(file.rid);
+});
+
+unitTest({ perms: { read: true } }, async function fstatSuccess(): Promise<
+  void
+> {
+  const file = await Deno.open("README.md");
+  const fileInfo = await Deno.fstat(file.rid);
+  assert(fileInfo.isFile);
+  assert(!fileInfo.isSymlink);
+  assert(!fileInfo.isDirectory);
+  assert(fileInfo.size);
+  assert(fileInfo.atime);
+  assert(fileInfo.mtime);
+  assert(fileInfo.birthtime);
+
+  Deno.close(file.rid);
+});
+
 unitTest(
   { perms: { read: true, write: true } },
   function statSyncSuccess(): void {

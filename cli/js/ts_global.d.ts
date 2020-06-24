@@ -24,5 +24,10 @@ declare global {
     // there is a risk these could change in future versions of TypeScript
     export const libs: string[];
     export const libMap: Map<string, string>;
+    export const performance: {
+      enable(): void;
+      disable(): void;
+      getDuration(value: string): number;
+    };
   }
 }
