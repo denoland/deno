@@ -8,7 +8,6 @@ unitTest(
     const oldname = testDir + "/oldname";
     const newname = testDir + "/newname";
     Deno.mkdirSync(oldname);
-    // Just for now, until we implement symlink for Windows.
     Deno.symlinkSync(oldname, newname);
     const newNameInfoLStat = Deno.lstatSync(newname);
     const newNameInfoStat = Deno.statSync(newname);
