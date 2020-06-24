@@ -320,13 +320,13 @@ export function assertArrayContains(
   msg?: string
 ): void;
 export function assertArrayContains<T>(
-  actual: T[],
-  expected: T[],
+  actual: ArrayLike<T>,
+  expected: ArrayLike<T>,
   msg?: string
 ): void;
 export function assertArrayContains(
-  actual: unknown[],
-  expected: unknown[],
+  actual: ArrayLike<unknown>,
+  expected: ArrayLike<unknown>,
   msg?: string
 ): void {
   const missing: unknown[] = [];
