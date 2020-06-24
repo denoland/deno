@@ -434,12 +434,11 @@ class Host implements ts.CompilerHost {
       moduleNames,
       containingFile,
     });
-    return moduleNames.map((specifier) => {
+    const resolved = moduleNames.map((specifier) => {
       const maybeUrl = SourceFile.getResolvedUrl(specifier, containingFile);
 
       log("compiler::host.resolveModuleNames maybeUrl", {
         specifier,
-        containingFile,
         maybeUrl,
       });
 
@@ -461,6 +460,8 @@ class Host implements ts.CompilerHost {
         extension: sourceFile.extension,
       };
     });
+    log(resolved);
+    return resolved;
   }
 
   useCaseSensitiveFileNames(): boolean {
@@ -482,7 +483,7 @@ class Host implements ts.CompilerHost {
 // NOTE: target doesn't really matter here,
 // this is in fact a mock host created just to
 // load all type definitions and snapshot them.
-const SNAPSHOT_HOST = new Host({
+let SNAPSHOT_HOST: Host | undefined = new Host({
   target: CompilerHostTarget.Main,
   writeFile(): void {},
 });
@@ -528,6 +529,9 @@ const _TS_SNAPSHOT_PROGRAM = ts.createProgram({
   options: SNAPSHOT_COMPILER_OPTIONS,
   host: SNAPSHOT_HOST,
 });
+
+// Derference the snapshot host so it can be GCed
+SNAPSHOT_HOST = undefined;
 
 // This function is called only during snapshotting process
 const SYSTEM_LOADER = getAsset("system_loader.js");
@@ -843,6 +847,46 @@ const ignoredDiagnostics = [
   7016,
 ];
 
+type Stats = Array<{ key: string; value: number }>;
+
+const stats: Stats = [];
+let statsStart = 0;
+
+function performanceStart(): void {
+  stats.length = 0;
+  // TODO(kitsonk) replace with performance.mark() when landed
+  statsStart = performance.now();
+  ts.performance.enable();
+}
+
+function performanceProgram(program: ts.Program): void {
+  stats.push({ key: "Files", value: program.getSourceFiles().length });
+  stats.push({ key: "Nodes", value: program.getNodeCount() });
+  stats.push({ key: "Identifiers", value: program.getIdentifierCount() });
+  stats.push({ key: "Symbols", value: program.getSymbolCount() });
+  stats.push({ key: "Types", value: program.getTypeCount() });
+  stats.push({ key: "Instantiations", value: program.getInstantiationCount() });
+  const programTime = ts.performance.getDuration("Program");
+  const bindTime = ts.performance.getDuration("Bind");
+  const checkTime = ts.performance.getDuration("Check");
+  const emitTime = ts.performance.getDuration("Emit");
+  stats.push({ key: "Parse time", value: programTime });
+  stats.push({ key: "Bind time", value: bindTime });
+  stats.push({ key: "Check time", value: checkTime });
+  stats.push({ key: "Emit time", value: emitTime });
+  stats.push({
+    key: "Total TS time",
+    value: programTime + bindTime + checkTime + emitTime,
+  });
+}
+
+function performanceEnd(): Stats {
+  // TODO(kitsonk) replace with performance.measure() when landed
+  const duration = performance.now() - statsStart;
+  stats.push({ key: "Compile time", value: duration });
+  return stats;
+}
+
 // TODO(Bartlomieju): this check should be done in Rust; there should be no
 // console.log here
 function processConfigureResponse(
@@ -1073,6 +1117,7 @@ interface CompileRequest {
   configPath?: string;
   config?: string;
   unstable: boolean;
+  performance: boolean;
   cwd: string;
   // key value is fully resolved URL
   sourceFileMap: Record<string, SourceFileMapEntry>;
@@ -1086,6 +1131,7 @@ interface BundleRequest {
   configPath?: string;
   config?: string;
   unstable: boolean;
+  performance: boolean;
   cwd: string;
   // key value is fully resolved URL
   sourceFileMap: Record<string, SourceFileMapEntry>;
@@ -1128,11 +1174,13 @@ type CompilerRequest =
 interface CompileResponse {
   emitMap: Record<string, EmittedSource>;
   diagnostics: Diagnostic;
+  stats?: Stats;
 }
 
 interface BundleResponse {
   bundleOutput?: string;
   diagnostics: Diagnostic;
+  stats?: Stats;
 }
 
 interface RuntimeCompileResponse {
@@ -1145,21 +1193,22 @@ interface RuntimeBundleResponse {
   diagnostics: DiagnosticItem[];
 }
 
-function compile(request: CompileRequest): CompileResponse {
-  const {
-    allowJs,
-    config,
-    configPath,
-    rootNames,
-    target,
-    unstable,
-    cwd,
-    sourceFileMap,
-  } = request;
-  log(">>> compile start", {
-    rootNames,
-    type: CompilerRequestType[request.type],
-  });
+function compile({
+  allowJs,
+  config,
+  configPath,
+  rootNames,
+  target,
+  unstable,
+  performance,
+  cwd,
+  sourceFileMap,
+  type,
+}: CompileRequest): CompileResponse {
+  if (performance) {
+    performanceStart();
+  }
+  log(">>> compile start", { rootNames, type: CompilerRequestType[type] });
 
   // When a programme is emitted, TypeScript will call `writeFile` with
   // each file that needs to be emitted.  The Deno compiler host delegates
@@ -1216,32 +1265,38 @@ function compile(request: CompileRequest): CompileResponse {
       // without casting.
       diagnostics = emitResult.diagnostics;
     }
+    if (performance) {
+      performanceProgram(program);
+    }
   }
 
-  log("<<< compile end", {
-    rootNames,
-    type: CompilerRequestType[request.type],
-  });
+  log("<<< compile end", { rootNames, type: CompilerRequestType[type] });
+  const stats = performance ? performanceEnd() : undefined;
 
   return {
     emitMap: state.emitMap,
     diagnostics: fromTypeScriptDiagnostic(diagnostics),
+    stats,
   };
 }
 
-function bundle(request: BundleRequest): BundleResponse {
-  const {
-    config,
-    configPath,
-    rootNames,
-    target,
-    unstable,
-    cwd,
-    sourceFileMap,
-  } = request;
+function bundle({
+  type,
+  config,
+  configPath,
+  rootNames,
+  target,
+  unstable,
+  performance,
+  cwd,
+  sourceFileMap,
+}: BundleRequest): BundleResponse {
+  if (performance) {
+    performanceStart();
+  }
   log(">>> start start", {
     rootNames,
-    type: CompilerRequestType[request.type],
+    type: CompilerRequestType[type],
   });
 
   // When a programme is emitted, TypeScript will call `writeFile` with
@@ -1293,6 +1348,9 @@ function bundle(request: BundleRequest): BundleResponse {
       // without casting.
       diagnostics = emitResult.diagnostics;
     }
+    if (performance) {
+      performanceProgram(program);
+    }
   }
 
   let bundleOutput;
@@ -1302,14 +1360,17 @@ function bundle(request: BundleRequest): BundleResponse {
     bundleOutput = state.bundleOutput;
   }
 
+  const stats = performance ? performanceEnd() : undefined;
+
   const result: BundleResponse = {
     bundleOutput,
     diagnostics: fromTypeScriptDiagnostic(diagnostics),
+    stats,
   };
 
   log("<<< bundle end", {
     rootNames,
-    type: CompilerRequestType[request.type],
+    type: CompilerRequestType[type],
   });
 
   return result;
@@ -1492,27 +1553,27 @@ async function tsCompilerOnMessage({
 }): Promise<void> {
   switch (request.type) {
     case CompilerRequestType.Compile: {
-      const result = compile(request as CompileRequest);
+      const result = compile(request);
       globalThis.postMessage(result);
       break;
     }
     case CompilerRequestType.Bundle: {
-      const result = bundle(request as BundleRequest);
+      const result = bundle(request);
       globalThis.postMessage(result);
       break;
     }
     case CompilerRequestType.RuntimeCompile: {
-      const result = runtimeCompile(request as RuntimeCompileRequest);
+      const result = runtimeCompile(request);
       globalThis.postMessage(result);
       break;
     }
     case CompilerRequestType.RuntimeBundle: {
-      const result = runtimeBundle(request as RuntimeBundleRequest);
+      const result = runtimeBundle(request);
       globalThis.postMessage(result);
       break;
     }
     case CompilerRequestType.RuntimeTranspile: {
-      const result = await runtimeTranspile(request as RuntimeTranspileRequest);
+      const result = await runtimeTranspile(request);
       globalThis.postMessage(result);
       break;
     }

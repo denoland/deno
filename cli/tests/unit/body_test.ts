@@ -72,3 +72,10 @@ unitTest(
     assertEquals(formData.get("field_2")!.toString(), "<Deno>");
   }
 );
+
+unitTest({ perms: {} }, async function bodyURLSearchParams(): Promise<void> {
+  const body = buildBody(new URLSearchParams({ hello: "world" }));
+
+  const text = await body.text();
+  assertEquals(text, "hello=world");
+});
