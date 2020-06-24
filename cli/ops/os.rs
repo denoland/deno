@@ -164,8 +164,8 @@ fn op_memory_info(
       "avail": info.avail,
       "buffers": info.buffers,
       "cached": info.cached,
-      "swap_total": info.swap_total,
-      "swap_free": info.swap_free
+      "swapTotal": info.swap_total,
+      "swapFree": info.swap_free
     }))),
     Err(_) => Ok(JsonOp::Sync(json!({}))),
   }

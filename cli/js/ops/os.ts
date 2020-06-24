@@ -11,8 +11,8 @@ export interface MemoryInfo {
   avail: number;
   buffers: number;
   cached: number;
-  swap_total: number;
-  swap_free: number;
+  swapTotal: number;
+  swapFree: number;
 }
 
 export function memoryInfo(): MemoryInfo {
