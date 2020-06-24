@@ -302,28 +302,6 @@ impl CompiledFileMetadata {
   }
 }
 
-/// Information associated with compilation of a "module graph",
-/// ie. entry point and all its dependencies.
-/// It's used to perform cache invalidation if content of any
-/// dependency changes.
-#[derive(Deserialize, Serialize)]
-pub struct GraphFileMetadata {
-  pub deps: Vec<String>,
-  pub version_hash: String,
-}
-
-impl GraphFileMetadata {
-  pub fn from_json_string(
-    metadata_string: String,
-  ) -> Result<Self, serde_json::Error> {
-    serde_json::from_str::<Self>(&metadata_string)
-  }
-
-  pub fn to_json_string(&self) -> Result<String, serde_json::Error> {
-    serde_json::to_string(self)
-  }
-}
-
 /// Emit a SHA256 hash based on source code, deno version and TS config.
 /// Used to check if a recompilation for source code is needed.
 pub fn source_code_version_hash(
@@ -367,7 +345,7 @@ impl Deref for TsCompiler {
   }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 struct Stat {
   key: String,
@@ -394,6 +372,7 @@ struct BundleResponse {
 struct CompileResponse {
   diagnostics: Diagnostic,
   emit_map: HashMap<String, EmittedSource>,
+  build_info: Option<String>,
   stats: Option<Vec<Stat>>,
 }
 
@@ -491,35 +470,58 @@ impl TsCompiler {
   ) -> Result<(), ErrBox> {
     let mut has_cached_version = false;
 
+    let module_url = source_file.url.clone();
+    let build_info_key = self
+      .disk_cache
+      .get_cache_filename_with_extension(&module_url, "buildinfo");
+
+    let build_info = match self.disk_cache.get(&build_info_key) {
+      Ok(bytes) => Some(String::from_utf8(bytes)?),
+      Err(_) => None,
+    };
+
+    let file_fetcher = global_state.file_fetcher.clone();
+
     // Only use disk cache if `--reload` flag was not used or
     // this file has already been compiled during current process
     // lifetime.
     if self.use_disk_cache || self.has_compiled(&source_file.url) {
-      if let Some(metadata) = self.get_graph_metadata(&source_file.url) {
+      if let Some(build_info_str) = build_info.as_ref() {
+        let build_inf_json: Value = serde_json::from_str(build_info_str)?;
+        let program_val = build_inf_json["program"].as_object().unwrap();
+        let file_infos = program_val["fileInfos"].as_object().unwrap();
+
         has_cached_version = true;
 
-        let version_hash = crate::checksum::gen(vec![
-          version::DENO.as_bytes(),
-          &self.config.hash,
-        ]);
-
-        has_cached_version &= metadata.version_hash == version_hash;
         has_cached_version &= self
           .has_compiled_source(&global_state.file_fetcher, &source_file.url);
 
-        for dep in metadata.deps {
-          let url = Url::parse(&dep).expect("Dep is not a valid url");
-          has_cached_version &=
-            self.has_compiled_source(&global_state.file_fetcher, &url);
+        for (filename, file_info) in file_infos.iter() {
+          if filename.starts_with("asset://") {
+            continue;
+          }
+
+          let url = Url::parse(&filename).expect("Filename is not a valid url");
+          let specifier = ModuleSpecifier::from(url);
+          if let Some(source_file) = file_fetcher
+            .fetch_cached_source_file(&specifier, Permissions::allow_all())
+          {
+            let existing_hash = crate::checksum::gen(vec![
+              &source_file.source_code,
+              version::DENO.as_bytes(),
+            ]);
+            let expected_hash =
+              file_info["version"].as_str().unwrap().to_string();
+            has_cached_version &= existing_hash == expected_hash
+          } else {
+            has_cached_version &= false
+          }
         }
       }
     }
-
     if has_cached_version {
       return Ok(());
     }
-
-    let module_url = source_file.url.clone();
 
     let module_graph_json =
       serde_json::to_value(module_graph).expect("Failed to serialize data");
@@ -535,6 +537,7 @@ impl TsCompiler {
     };
     let compiler_config = self.config.clone();
     let cwd = std::env::current_dir().unwrap();
+
     let j = match (compiler_config.path, compiler_config.content) {
       (Some(config_path), Some(config_data)) => json!({
         "type": msg::CompilerRequestType::Compile,
@@ -547,6 +550,7 @@ impl TsCompiler {
         "config": str::from_utf8(&config_data).unwrap(),
         "cwd": cwd,
         "sourceFileMap": module_graph_json,
+        "buildInfo": build_info,
       }),
       _ => json!({
         "type": msg::CompilerRequestType::Compile,
@@ -557,6 +561,7 @@ impl TsCompiler {
         "performance": performance,
         "cwd": cwd,
         "sourceFileMap": module_graph_json,
+        "buildInfo": build_info,
       }),
     };
 
@@ -583,67 +588,11 @@ impl TsCompiler {
 
     maybe_log_stats(compile_response.stats);
 
-    self.set_graph_metadata(
-      source_file.url.clone(),
-      &compile_response.emit_map,
-    )?;
+    if let Some(build_info) = compile_response.build_info {
+      self.cache_build_info(&module_url, build_info)?;
+    }
     self.cache_emitted_files(compile_response.emit_map)?;
     Ok(())
-  }
-
-  fn get_graph_metadata(&self, url: &Url) -> Option<GraphFileMetadata> {
-    let cache_key = self
-      .disk_cache
-      .get_cache_filename_with_extension(url, "graph");
-    if let Ok(metadata_bytes) = self.disk_cache.get(&cache_key) {
-      if let Ok(metadata) = std::str::from_utf8(&metadata_bytes) {
-        if let Ok(read_metadata) =
-          GraphFileMetadata::from_json_string(metadata.to_string())
-        {
-          return Some(read_metadata);
-        }
-      }
-    }
-
-    None
-  }
-
-  fn set_graph_metadata(
-    &self,
-    url: Url,
-    emit_map: &HashMap<String, EmittedSource>,
-  ) -> std::io::Result<()> {
-    let version_hash =
-      crate::checksum::gen(vec![version::DENO.as_bytes(), &self.config.hash]);
-    let mut deps = vec![];
-
-    for (_emitted_name, source) in emit_map.iter() {
-      let specifier = ModuleSpecifier::resolve_url(&source.filename)
-        .expect("Should be a valid module specifier");
-
-      let source_file = self
-        .file_fetcher
-        .fetch_cached_source_file(&specifier, Permissions::allow_all())
-        .expect("Source file not found");
-
-      // NOTE: JavaScript files are only cached to disk if `checkJs`
-      // option in on
-      if source_file.media_type == msg::MediaType::JavaScript
-        && !self.compile_js
-      {
-        continue;
-      }
-
-      deps.push(specifier.to_string());
-    }
-
-    let graph_metadata = GraphFileMetadata { deps, version_hash };
-    let meta_key = self
-      .disk_cache
-      .get_cache_filename_with_extension(&url, "graph");
-    self
-      .disk_cache
-      .set(&meta_key, graph_metadata.to_json_string()?.as_bytes())
   }
 
   /// Get associated `CompiledFileMetadata` for given module if it exists.
@@ -664,6 +613,19 @@ impl TsCompiler {
     }
 
     None
+  }
+
+  fn cache_build_info(
+    &self,
+    url: &Url,
+    build_info: String,
+  ) -> std::io::Result<()> {
+    let js_key = self
+      .disk_cache
+      .get_cache_filename_with_extension(url, "buildinfo");
+    self.disk_cache.set(&js_key, build_info.as_bytes())?;
+
+    Ok(())
   }
 
   fn cache_emitted_files(
@@ -750,33 +712,6 @@ impl TsCompiler {
     source_file: SourceFile,
     contents: &str,
   ) -> std::io::Result<()> {
-    // By default TSC output source map url that is relative; we need
-    // to substitute it manually to correct file URL in DENO_DIR.
-    let mut content_lines = contents
-      .split('\n')
-      .map(|s| s.to_string())
-      .collect::<Vec<String>>();
-
-    if !content_lines.is_empty() {
-      let last_line = content_lines.pop().unwrap();
-      if last_line.starts_with("//# sourceMappingURL=") {
-        let source_map_key = self.disk_cache.get_cache_filename_with_extension(
-          module_specifier.as_url(),
-          "js.map",
-        );
-        let source_map_path = self.disk_cache.location.join(source_map_key);
-        let source_map_file_url = Url::from_file_path(source_map_path)
-          .expect("Bad file URL for source map");
-        let new_last_line =
-          format!("//# sourceMappingURL={}", source_map_file_url.to_string());
-        content_lines.push(new_last_line);
-      } else {
-        content_lines.push(last_line);
-      }
-    }
-
-    let contents = content_lines.join("\n");
-
     let js_key = self
       .disk_cache
       .get_cache_filename_with_extension(module_specifier.as_url(), "js");
@@ -856,9 +791,7 @@ impl TsCompiler {
 
 impl SourceMapGetter for TsCompiler {
   fn get_source_map(&self, script_name: &str) -> Option<Vec<u8>> {
-    self
-      .try_to_resolve_and_get_source_map(script_name)
-      .map(|out| out.source_code)
+    self.try_to_resolve_and_get_source_map(script_name)
   }
 
   fn get_source_line(&self, script_name: &str, line: usize) -> Option<String> {
@@ -901,11 +834,38 @@ impl TsCompiler {
   fn try_to_resolve_and_get_source_map(
     &self,
     script_name: &str,
-  ) -> Option<SourceFile> {
+  ) -> Option<Vec<u8>> {
     if let Some(module_specifier) = self.try_to_resolve(script_name) {
       return match self.get_source_map_file(&module_specifier) {
-        Ok(out) => Some(out),
-        Err(_) => None,
+        Ok(out) => Some(out.source_code),
+        Err(_) => {
+          // Check if map is inlined
+          if let Ok(compiled_source) =
+            self.get_compiled_module(module_specifier.as_url())
+          {
+            let mut content_lines = compiled_source
+              .code
+              .split('\n')
+              .map(|s| s.to_string())
+              .collect::<Vec<String>>();
+
+            if !content_lines.is_empty() {
+              let last_line = content_lines.pop().unwrap();
+              if last_line.starts_with(
+                "//# sourceMappingURL=data:application/json;base64,",
+              ) {
+                let encoded = last_line.trim_start_matches(
+                  "//# sourceMappingURL=data:application/json;base64,",
+                );
+                let decoded_map =
+                  base64::decode(encoded).expect("failed to parse source map");
+                return Some(decoded_map);
+              }
+            }
+          }
+
+          None
+        }
       };
     }
 
@@ -1560,30 +1520,8 @@ mod tests {
     let mut lines: Vec<String> =
       source_code.split('\n').map(|s| s.to_string()).collect();
     let last_line = lines.pop().unwrap();
-    assert!(last_line.starts_with("//# sourceMappingURL=file://"));
-
-    // Get source map file and assert it has proper URLs
-    let source_map = mock_state
-      .ts_compiler
-      .get_source_map_file(&specifier)
-      .expect("Source map not found");
-    let source_str = String::from_utf8(source_map.source_code).unwrap();
-    let source_json: Value = serde_json::from_str(&source_str).unwrap();
-
-    let js_key = mock_state
-      .ts_compiler
-      .disk_cache
-      .get_cache_filename_with_extension(specifier.as_url(), "js");
-    let js_path = mock_state.ts_compiler.disk_cache.location.join(js_key);
-    let js_file_url = Url::from_file_path(js_path).unwrap();
-
-    let file_str = source_json.get("file").unwrap().as_str().unwrap();
-    assert_eq!(file_str, js_file_url.to_string());
-
-    let sources = source_json.get("sources").unwrap().as_array().unwrap();
-    assert_eq!(sources.len(), 1);
-    let source = sources.get(0).unwrap().as_str().unwrap();
-    assert_eq!(source, specifier.to_string());
+    assert!(last_line
+      .starts_with("//# sourceMappingURL=data:application/json;base64"));
   }
 
   #[tokio::test]
