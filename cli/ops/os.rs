@@ -161,7 +161,7 @@ fn op_memory_info(
     Ok(info) => Ok(JsonOp::Sync(json!({
       "total": info.total,
       "free": info.free,
-      "avail": info.avail,
+      "available": info.avail,
       "buffers": info.buffers,
       "cached": info.cached,
       "swapTotal": info.swap_total,

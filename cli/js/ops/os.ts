@@ -8,7 +8,7 @@ export function loadavg(): number[] {
 export interface MemoryInfo {
   total: number;
   free: number;
-  avail: number;
+  available: number;
   buffers: number;
   cached: number;
   swapTotal: number;
