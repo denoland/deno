@@ -2054,7 +2054,7 @@ fn cafile_env_fetch() {
   let g = util::http_server();
   let deno_dir = TempDir::new().expect("tempdir fail");
   let module_url =
-    Url::parse("http://localhost:4545/cli/tests/cafile_url_imports.ts")
+    Url::parse("https://localhost:5545/cli/tests/cafile_url_imports.ts")
       .unwrap();
   let cafile = util::root_path().join("cli/tests/tls/RootCA.pem");
   let output = Command::new(util::deno_exe_path())
@@ -2066,8 +2066,6 @@ fn cafile_env_fetch() {
     .output()
     .expect("Failed to spawn script");
   assert!(output.status.success());
-  let out = std::str::from_utf8(&output.stdout).unwrap();
-  assert_eq!(out, "");
   drop(g);
 }
 
