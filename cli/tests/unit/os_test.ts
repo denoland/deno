@@ -191,13 +191,7 @@ unitTest({ perms: { env: true } }, function memoryInfo(): void {
 });
 
 unitTest({ perms: { env: false } }, function memoryInfoPerm(): void {
-  let caughtError = false;
-  try {
+  assertThrows(() => {
     Deno.memoryInfo();
-  } catch (err) {
-    caughtError = true;
-    assert(err instanceof Deno.errors.PermissionDenied);
-    assertEquals(err.name, "PermissionDenied");
-  }
-  assert(caughtError);
+  }, Deno.errors.PermissionDenied);
 });
