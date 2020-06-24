@@ -14,11 +14,7 @@ const test: { [key: string]: Function } = {
   },
   netListen(endpoints: string[]): void {
     endpoints.forEach((endpoint) => {
-      const index = endpoint.lastIndexOf(":");
-      const [hostname, port] = [
-        endpoint.substr(0, index),
-        endpoint.substr(index + 1),
-      ];
+      const [hostname, port] = endpoint.split(":");
       const listener = Deno.listen({
         transport: "tcp",
         hostname,
@@ -29,11 +25,7 @@ const test: { [key: string]: Function } = {
   },
   async netConnect(endpoints: string[]): Promise<void> {
     for (const endpoint of endpoints) {
-      const index = endpoint.lastIndexOf(":");
-      const [hostname, port] = [
-        endpoint.substr(0, index),
-        endpoint.substr(index + 1),
-      ];
+      const [hostname, port] = endpoint.split(":");
       const listener = await Deno.connect({
         transport: "tcp",
         hostname,

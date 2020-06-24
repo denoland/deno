@@ -52,7 +52,6 @@ pub mod ops;
 pub mod permissions;
 mod repl;
 pub mod resolve_addr;
-pub mod resolve_hosts;
 pub mod signal;
 pub mod source_maps;
 mod startup_data;
