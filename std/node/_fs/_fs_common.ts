@@ -47,8 +47,8 @@ export function isFileOptions(
 }
 
 export function getEncoding(
-  optOrCallback?: FileOptions | WriteFileOptions | Function | string
-): string | null {
+  optOrCallback?: FileOptions | WriteFileOptions | Function | Encodings | null
+): Encodings | null {
   if (!optOrCallback || typeof optOrCallback === "function") {
     return null;
   }
@@ -59,13 +59,15 @@ export function getEncoding(
   return encoding;
 }
 
-export function checkEncoding(encoding: string | null): string | null {
+export function checkEncoding(encoding: Encodings | null): Encodings | null {
   if (!encoding) return null;
   if (encoding === "utf8" || encoding === "utf-8") {
     return "utf8";
   }
-  if (encoding === "buffer") {
-    return "buffer";
+  if (encoding === "binary") {
+    return "binary";
+    // before this was buffer, however buffer is not used in Node
+    // node -e "require('fs').readFile('../world.txt', 'buffer', console.log)"
   }
 
   const notImplementedEncodings = [
@@ -74,7 +76,6 @@ export function checkEncoding(encoding: string | null): string | null {
     "base64",
     "hex",
     "ascii",
-    "binary",
     "ucs2",
   ];
 
