@@ -165,6 +165,7 @@ pub unsafe fn v8_init() {
     "".to_string(),
     "--no-wasm-async-compilation".to_string(),
     "--harmony-top-level-await".to_string(),
+    "--experimental-wasm-bigint".to_string(),
   ];
   v8::V8::set_flags_from_command_line(argv);
 }
