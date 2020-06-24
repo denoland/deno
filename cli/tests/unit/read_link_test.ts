@@ -1,5 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { unitTest, assert, assertEquals } from "./test_util.ts";
+import {
+  unitTest,
+  assertEquals,
+  assertThrows,
+  assertThrowsAsync,
+} from "./test_util.ts";
 
 unitTest(
   { perms: { write: true, read: true } },
@@ -19,27 +24,15 @@ unitTest(
 );
 
 unitTest({ perms: { read: false } }, function readLinkSyncPerm(): void {
-  let caughtError = false;
-  try {
+  assertThrows(() => {
     Deno.readLinkSync("/symlink");
-  } catch (e) {
-    caughtError = true;
-    assert(e instanceof Deno.errors.PermissionDenied);
-  }
-  assert(caughtError);
+  }, Deno.errors.PermissionDenied);
 });
 
 unitTest({ perms: { read: true } }, function readLinkSyncNotFound(): void {
-  let caughtError = false;
-  let data;
-  try {
-    data = Deno.readLinkSync("bad_filename");
-  } catch (e) {
-    caughtError = true;
-    assert(e instanceof Deno.errors.NotFound);
-  }
-  assert(caughtError);
-  assertEquals(data, undefined);
+  assertThrows(() => {
+    Deno.readLinkSync("bad_filename");
+  }, Deno.errors.NotFound);
 });
 
 unitTest(
@@ -62,12 +55,7 @@ unitTest(
 unitTest({ perms: { read: false } }, async function readLinkPerm(): Promise<
   void
 > {
-  let caughtError = false;
-  try {
+  await assertThrowsAsync(async () => {
     await Deno.readLink("/symlink");
-  } catch (e) {
-    caughtError = true;
-    assert(e instanceof Deno.errors.PermissionDenied);
-  }
-  assert(caughtError);
+  }, Deno.errors.PermissionDenied);
 });

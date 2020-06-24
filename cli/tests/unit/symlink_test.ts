@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { unitTest, assert, assertEquals } from "./test_util.ts";
+import { unitTest, assert, assertThrows } from "./test_util.ts";
 
 unitTest(
   { perms: { read: true, write: true } },
@@ -18,14 +18,9 @@ unitTest(
 );
 
 unitTest(function symlinkSyncPerm(): void {
-  let err;
-  try {
+  assertThrows(() => {
     Deno.symlinkSync("oldbaddir", "newbaddir");
-  } catch (e) {
-    err = e;
-  }
-  assert(err instanceof Deno.errors.PermissionDenied);
-  assertEquals(err.name, "PermissionDenied");
+  }, Deno.errors.PermissionDenied);
 });
 
 unitTest(
