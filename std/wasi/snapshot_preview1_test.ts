@@ -90,38 +90,32 @@ if (import.meta.main) {
         stderr: "piped",
       });
 
-      if (process.stdin) {
-        if (options.stdin) {
-          const stdin = new TextEncoder().encode(options.stdin);
-          await Deno.writeAll(process.stdin, stdin);
-        }
-
-        process.stdin.close();
+      if (options.stdin) {
+        const stdin = new TextEncoder().encode(options.stdin);
+        await Deno.writeAll(process.stdin, stdin);
       }
 
-      if (process.stdout) {
-        const stdout = await Deno.readAll(process.stdout);
+      process.stdin.close();
 
-        if (options.stdout) {
-          assertEquals(new TextDecoder().decode(stdout), options.stdout);
-        } else {
-          await Deno.writeAll(Deno.stdout, stdout);
-        }
+      const stdout = await Deno.readAll(process.stdout);
 
-        process.stdout.close();
+      if (options.stdout) {
+        assertEquals(new TextDecoder().decode(stdout), options.stdout);
+      } else {
+        await Deno.writeAll(Deno.stdout, stdout);
       }
 
-      if (process.stderr) {
-        const stderr = await Deno.readAll(process.stderr);
+      process.stdout.close();
 
-        if (options.stderr) {
-          assertEquals(new TextDecoder().decode(stderr), options.stderr);
-        } else {
-          await Deno.writeAll(Deno.stderr, stderr);
-        }
+      const stderr = await Deno.readAll(process.stderr);
 
-        process.stderr.close();
+      if (options.stderr) {
+        assertEquals(new TextDecoder().decode(stderr), options.stderr);
+      } else {
+        await Deno.writeAll(Deno.stderr, stderr);
       }
+
+      process.stderr.close();
 
       const status = await process.status();
       assertEquals(status.code, options.exitCode ? +options.exitCode : 0);
