@@ -25,6 +25,8 @@ function validateBodyType(owner: Body, bodySource: BodyInit | null): boolean {
     return true;
   } else if (bodySource instanceof FormData) {
     return true;
+  } else if (bodySource instanceof URLSearchParams) {
+    return true;
   } else if (!bodySource) {
     return true; // null body is fine
   }
@@ -193,7 +195,10 @@ export class Body implements domTypes.Body {
       );
     } else if (this._bodySource instanceof ReadableStreamImpl) {
       return bufferFromStream(this._bodySource.getReader());
-    } else if (this._bodySource instanceof FormData) {
+    } else if (
+      this._bodySource instanceof FormData ||
+      this._bodySource instanceof URLSearchParams
+    ) {
       const enc = new TextEncoder();
       return Promise.resolve(
         enc.encode(this._bodySource.toString()).buffer as ArrayBuffer
