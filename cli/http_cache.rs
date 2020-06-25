@@ -11,6 +11,7 @@ use serde::Serialize;
 use serde_derive::Deserialize;
 use std::fs;
 use std::fs::File;
+use std::io;
 use std::path::Path;
 use std::path::PathBuf;
 use url::Url;
@@ -101,12 +102,29 @@ impl Metadata {
 }
 
 impl HttpCache {
-  /// Returns error if unable to create directory
-  /// at specified location.
-  pub fn new(location: &Path) -> Result<Self, ErrBox> {
-    fs::create_dir_all(&location)?;
-    Ok(Self {
+  /// Returns a new instance.
+  ///
+  /// `location` must be an absolute path.
+  pub fn new(location: &Path) -> Self {
+    assert!(location.is_absolute());
+    Self {
       location: location.to_owned(),
+    }
+  }
+
+  /// Ensures the location of the cache.
+  fn ensure_dir_exists(&self, path: &Path) -> io::Result<()> {
+    if path.is_dir() {
+      return Ok(());
+    }
+    fs::create_dir_all(&path).map_err(|e| {
+      io::Error::new(
+        e.kind(),
+        format!(
+          "Could not create remote modules cache location: {:?}\nCheck the permission of the directory.",
+          path
+        ),
+      )
     })
   }
 
@@ -145,7 +163,7 @@ impl HttpCache {
     let parent_filename = cache_filename
       .parent()
       .expect("Cache filename should have a parent dir");
-    fs::create_dir_all(parent_filename)?;
+    self.ensure_dir_exists(parent_filename)?;
     // Cache content
     deno_fs::write_file(&cache_filename, content, 0o666)?;
 
@@ -169,15 +187,32 @@ mod tests {
     let dir = TempDir::new().unwrap();
     let mut cache_path = dir.path().to_owned();
     cache_path.push("foobar");
-    let r = HttpCache::new(&cache_path);
-    assert!(r.is_ok());
+    // HttpCache should be created lazily on first use:
+    // when zipping up a local project with no external dependencies
+    // "$DENO_DIR/deps" is empty. When unzipping such project
+    // "$DENO_DIR/deps" might not get restored and in situation
+    // when directory is owned by root we might not be able
+    // to create that directory. However if it's not needed it
+    // doesn't make sense to return error in such specific scenarios.
+    // For more details check issue:
+    // https://github.com/denoland/deno/issues/5688
+    let cache = HttpCache::new(&cache_path);
+    assert!(!cache.location.exists());
+    cache
+      .set(
+        &Url::parse("http://example.com/foo/bar.js").unwrap(),
+        HeadersMap::new(),
+        b"hello world",
+      )
+      .expect("Failed to add to cache");
+    assert!(cache.ensure_dir_exists(&cache.location).is_ok());
     assert!(cache_path.is_dir());
   }
 
   #[test]
   fn test_get_set() {
     let dir = TempDir::new().unwrap();
-    let cache = HttpCache::new(dir.path()).unwrap();
+    let cache = HttpCache::new(dir.path());
     let url = Url::parse("https://deno.land/x/welcome.ts").unwrap();
     let mut headers = HashMap::new();
     headers.insert(

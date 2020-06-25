@@ -17,16 +17,11 @@
 use crate::import_map::ImportMapError;
 use deno_core::ErrBox;
 use deno_core::ModuleResolutionError;
-use dlopen;
-use notify;
-use reqwest;
 use rustyline::error::ReadlineError;
-use std;
 use std::env::VarError;
 use std::error::Error;
 use std::fmt;
 use std::io;
-use url;
 
 // Warning! The values in this enum are duplicated in js/errors.ts
 // Update carefully!
@@ -55,6 +50,7 @@ pub enum ErrorKind {
   /// if no better context is available.
   /// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Error
   Other = 22,
+  Busy = 23,
 }
 
 #[derive(Debug)]
@@ -103,6 +99,17 @@ impl OpError {
   // BadResource usually needs no additional detail, hence this helper.
   pub fn bad_resource_id() -> OpError {
     Self::new(ErrorKind::BadResource, "Bad resource ID".to_string())
+  }
+
+  pub fn invalid_utf8() -> OpError {
+    Self::new(ErrorKind::InvalidData, "invalid utf8".to_string())
+  }
+
+  pub fn resource_unavailable() -> OpError {
+    Self::new(
+      ErrorKind::Busy,
+      "resource is unavailable because it is in use by a promise".to_string(),
+    )
   }
 }
 

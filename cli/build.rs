@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use deno_core::include_crate_modules;
-use deno_core::Isolate;
+use deno_core::CoreIsolate;
 use deno_core::StartupData;
 use std::collections::HashMap;
 use std::env;
@@ -18,6 +18,11 @@ fn main() {
   println!(
     "cargo:rustc-env=TS_VERSION={}",
     deno_typescript::ts_version()
+  );
+
+  println!(
+    "cargo:rustc-env=TARGET={}",
+    std::env::var("TARGET").unwrap()
   );
 
   let extern_crate_modules = include_crate_modules![deno_core];
@@ -48,10 +53,10 @@ fn main() {
   .expect("Bundle compilation failed");
   assert!(bundle_path.exists());
 
-  let runtime_isolate = &mut Isolate::new(StartupData::None, true);
+  let mut runtime_isolate = CoreIsolate::new(StartupData::None, true);
 
   deno_typescript::mksnapshot_bundle(
-    runtime_isolate,
+    &mut runtime_isolate,
     &snapshot_path,
     &bundle_path,
     &main_module_name,
@@ -71,7 +76,7 @@ fn main() {
   .expect("Bundle compilation failed");
   assert!(bundle_path.exists());
 
-  let runtime_isolate = &mut Isolate::new(StartupData::None, true);
+  let mut runtime_isolate = CoreIsolate::new(StartupData::None, true);
 
   let mut custom_libs: HashMap<String, PathBuf> = HashMap::new();
   custom_libs.insert(
@@ -90,13 +95,17 @@ fn main() {
     "lib.deno.ns.d.ts".to_string(),
     c.join("js/lib.deno.ns.d.ts"),
   );
+  custom_libs.insert(
+    "lib.deno.unstable.d.ts".to_string(),
+    c.join("js/lib.deno.unstable.d.ts"),
+  );
   runtime_isolate.register_op(
     "op_fetch_asset",
     deno_typescript::op_fetch_asset(custom_libs),
   );
 
   deno_typescript::mksnapshot_bundle_ts(
-    runtime_isolate,
+    &mut runtime_isolate,
     &snapshot_path,
     &bundle_path,
     &main_module_name,

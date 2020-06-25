@@ -1,12 +1,14 @@
-// Based on https://github.com/golang/go/blob/891682/src/net/textproto/
+// Based on https://github.com/golang/go/tree/master/src/net/textproto
 // Copyright 2009 The Go Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
 import { BufReader } from "../io/bufio.ts";
-import { charCode } from "../io/util.ts";
 import { concat } from "../bytes/mod.ts";
 import { decode } from "../encoding/utf8.ts";
+
+// FROM https://github.com/denoland/deno/blob/b34628a26ab0187a827aa4ebe256e23178e25d39/cli/js/web/headers.ts#L9
+const invalidHeaderCharRegex = /[^\t\x20-\x7e\x80-\xff]/g;
 
 function str(buf: Uint8Array | null | undefined): string {
   if (buf == null) {
@@ -16,15 +18,19 @@ function str(buf: Uint8Array | null | undefined): string {
   }
 }
 
+function charCode(s: string): number {
+  return s.charCodeAt(0);
+}
+
 export class TextProtoReader {
   constructor(readonly r: BufReader) {}
 
   /** readLine() reads a single line from the TextProtoReader,
    * eliding the final \n or \r\n from the returned string.
    */
-  async readLine(): Promise<string | Deno.EOF> {
+  async readLine(): Promise<string | null> {
     const s = await this.readLineSlice();
-    if (s === Deno.EOF) return Deno.EOF;
+    if (s === null) return null;
     return str(s);
   }
 
@@ -48,20 +54,20 @@ export class TextProtoReader {
    *		"Long-Key": {"Even Longer Value"},
    *	}
    */
-  async readMIMEHeader(): Promise<Headers | Deno.EOF> {
+  async readMIMEHeader(): Promise<Headers | null> {
     const m = new Headers();
     let line: Uint8Array | undefined;
 
     // The first line cannot start with a leading space.
     let buf = await this.r.peek(1);
-    if (buf === Deno.EOF) {
-      return Deno.EOF;
+    if (buf === null) {
+      return null;
     } else if (buf[0] == charCode(" ") || buf[0] == charCode("\t")) {
       line = (await this.readLineSlice()) as Uint8Array;
     }
 
     buf = await this.r.peek(1);
-    if (buf === Deno.EOF) {
+    if (buf === null) {
       throw new Deno.errors.UnexpectedEof();
     } else if (buf[0] == charCode(" ") || buf[0] == charCode("\t")) {
       throw new Deno.errors.InvalidData(
@@ -71,25 +77,19 @@ export class TextProtoReader {
 
     while (true) {
       const kv = await this.readLineSlice(); // readContinuedLineSlice
-      if (kv === Deno.EOF) throw new Deno.errors.UnexpectedEof();
+      if (kv === null) throw new Deno.errors.UnexpectedEof();
       if (kv.byteLength === 0) return m;
 
-      // Key ends at first colon; should not have trailing spaces
-      // but they appear in the wild, violating specs, so we remove
-      // them if present.
+      // Key ends at first colon
       let i = kv.indexOf(charCode(":"));
       if (i < 0) {
         throw new Deno.errors.InvalidData(
           `malformed MIME header line: ${str(kv)}`
         );
       }
-      let endKey = i;
-      while (endKey > 0 && kv[endKey - 1] == charCode(" ")) {
-        endKey--;
-      }
 
       //let key = canonicalMIMEHeaderKey(kv.subarray(0, endKey));
-      const key = str(kv.subarray(0, endKey));
+      const key = str(kv.subarray(0, i));
 
       // As per RFC 7230 field-name is a token,
       // tokens consist of one or more chars.
@@ -108,22 +108,27 @@ export class TextProtoReader {
       ) {
         i++;
       }
-      const value = str(kv.subarray(i));
+      const value = str(kv.subarray(i)).replace(
+        invalidHeaderCharRegex,
+        encodeURI
+      );
 
       // In case of invalid header we swallow the error
       // example: "Audio Mode" => invalid due to space in the key
       try {
         m.append(key, value);
-      } catch {}
+      } catch {
+        // Pass
+      }
     }
   }
 
-  async readLineSlice(): Promise<Uint8Array | Deno.EOF> {
+  async readLineSlice(): Promise<Uint8Array | null> {
     // this.closeDot();
     let line: Uint8Array | undefined;
     while (true) {
       const r = await this.r.readLine();
-      if (r === Deno.EOF) return Deno.EOF;
+      if (r === null) return null;
       const { line: l, more } = r;
 
       // Avoid the copy if the first call produced a full line.

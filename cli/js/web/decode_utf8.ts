@@ -1,6 +1,5 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-// The following code is based off:
-// https://github.com/inexorabletash/text-encoding
+// This module is based on Bjoern Hoehrmann's DFA UTF-8 decoder.
+// See http://bjoern.hoehrmann.de/utf-8/decoder/dfa/ for details.
 //
 // Copyright (c) 2008-2009 Bjoern Hoehrmann <bjoern@hoehrmann.de>
 //

@@ -1,18 +1,22 @@
 import { notImplemented } from "../_utils.ts";
 
 export default class Dirent {
-  constructor(private entry: Deno.FileInfo) {}
+  constructor(private entry: Deno.DirEntry) {}
 
   isBlockDevice(): boolean {
-    return this.entry.blocks != null;
+    notImplemented("Deno does not yet support identification of block devices");
+    return false;
   }
 
   isCharacterDevice(): boolean {
-    return this.entry.blocks == null;
+    notImplemented(
+      "Deno does not yet support identification of character devices"
+    );
+    return false;
   }
 
   isDirectory(): boolean {
-    return this.entry.isDirectory();
+    return this.entry.isDirectory;
   }
 
   isFIFO(): boolean {
@@ -23,7 +27,7 @@ export default class Dirent {
   }
 
   isFile(): boolean {
-    return this.entry.isFile();
+    return this.entry.isFile;
   }
 
   isSocket(): boolean {
@@ -32,7 +36,7 @@ export default class Dirent {
   }
 
   isSymbolicLink(): boolean {
-    return this.entry.isSymlink();
+    return this.entry.isSymlink;
   }
 
   get name(): string | null {

@@ -1,0 +1,2 @@
+[WILDCARD]error: Uncaught PermissionDenied: read access to "non-existent", run again with the --allow-read flag
+    at [WILDCARD]

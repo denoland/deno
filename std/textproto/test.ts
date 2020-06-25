@@ -2,23 +2,16 @@
 // Copyright 2009 The Go Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
-
 import { BufReader } from "../io/bufio.ts";
 import { TextProtoReader } from "./mod.ts";
-import { stringsReader } from "../io/util.ts";
-import {
-  assert,
-  assertEquals,
-  assertThrows,
-  assertNotEOF,
-} from "../testing/asserts.ts";
-const { test } = Deno;
+import { StringReader } from "../io/readers.ts";
+import { assert, assertEquals, assertThrows } from "../testing/asserts.ts";
 
 function reader(s: string): TextProtoReader {
-  return new TextProtoReader(new BufReader(stringsReader(s)));
+  return new TextProtoReader(new BufReader(new StringReader(s)));
 }
 
-test({
+Deno.test({
   ignore: true,
   name: "[textproto] Reader : DotBytes",
   fn(): Promise<void> {
@@ -28,13 +21,13 @@ test({
   },
 });
 
-test("[textproto] ReadEmpty", async () => {
+Deno.test("[textproto] ReadEmpty", async () => {
   const r = reader("");
   const m = await r.readMIMEHeader();
-  assertEquals(m, Deno.EOF);
+  assertEquals(m, null);
 });
 
-test("[textproto] Reader", async () => {
+Deno.test("[textproto] Reader", async () => {
   const r = reader("line1\nline2\n");
   let s = await r.readLine();
   assertEquals(s, "line1");
@@ -43,43 +36,46 @@ test("[textproto] Reader", async () => {
   assertEquals(s, "line2");
 
   s = await r.readLine();
-  assert(s === Deno.EOF);
+  assert(s === null);
 });
 
-test({
+Deno.test({
   name: "[textproto] Reader : MIME Header",
   async fn(): Promise<void> {
     const input =
       "my-key: Value 1  \r\nLong-key: Even Longer Value\r\nmy-Key: " +
       "Value 2\r\n\n";
     const r = reader(input);
-    const m = assertNotEOF(await r.readMIMEHeader());
+    const m = await r.readMIMEHeader();
+    assert(m !== null);
     assertEquals(m.get("My-Key"), "Value 1, Value 2");
     assertEquals(m.get("Long-key"), "Even Longer Value");
   },
 });
 
-test({
+Deno.test({
   name: "[textproto] Reader : MIME Header Single",
   async fn(): Promise<void> {
     const input = "Foo: bar\n\n";
     const r = reader(input);
-    const m = assertNotEOF(await r.readMIMEHeader());
+    const m = await r.readMIMEHeader();
+    assert(m !== null);
     assertEquals(m.get("Foo"), "bar");
   },
 });
 
-test({
+Deno.test({
   name: "[textproto] Reader : MIME Header No Key",
   async fn(): Promise<void> {
     const input = ": bar\ntest-1: 1\n\n";
     const r = reader(input);
-    const m = assertNotEOF(await r.readMIMEHeader());
+    const m = await r.readMIMEHeader();
+    assert(m !== null);
     assertEquals(m.get("Test-1"), "1");
   },
 });
 
-test({
+Deno.test({
   name: "[textproto] Reader : Large MIME Header",
   async fn(): Promise<void> {
     const data: string[] = [];
@@ -89,14 +85,15 @@ test({
     }
     const sdata = data.join("");
     const r = reader(`Cookie: ${sdata}\r\n\r\n`);
-    const m = assertNotEOF(await r.readMIMEHeader());
+    const m = await r.readMIMEHeader();
+    assert(m !== null);
     assertEquals(m.get("Cookie"), sdata);
   },
 });
 
-// Test that we read slightly-bogus MIME headers seen in the wild,
+// Test that we don't read MIME headers seen in the wild,
 // with spaces before colons, and spaces in keys.
-test({
+Deno.test({
   name: "[textproto] Reader : MIME Header Non compliant",
   async fn(): Promise<void> {
     const input =
@@ -106,19 +103,21 @@ test({
       "Audio Mode : None\r\n" +
       "Privilege : 127\r\n\r\n";
     const r = reader(input);
-    const m = assertNotEOF(await r.readMIMEHeader());
+    const m = await r.readMIMEHeader();
+    assert(m !== null);
     assertEquals(m.get("Foo"), "bar");
     assertEquals(m.get("Content-Language"), "en");
-    assertEquals(m.get("SID"), "0");
-    assertEquals(m.get("Privilege"), "127");
-    // Not a legal http header
+    // Make sure we drop headers with trailing whitespace
+    assertEquals(m.get("SID"), null);
+    assertEquals(m.get("Privilege"), null);
+    // Not legal http header
     assertThrows((): void => {
       assertEquals(m.get("Audio Mode"), "None");
     });
   },
 });
 
-test({
+Deno.test({
   name: "[textproto] Reader : MIME Header Malformed",
   async fn(): Promise<void> {
     const input = [
@@ -141,7 +140,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "[textproto] Reader : MIME Header Trim Continued",
   async fn(): Promise<void> {
     const input =
@@ -163,7 +162,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "[textproto] #409 issue : multipart form boundary",
   async fn(): Promise<void> {
     const input = [
@@ -173,8 +172,22 @@ test({
       "------WebKitFormBoundaryimeZ2Le9LjohiUiG--\r\n\n",
     ];
     const r = reader(input.join(""));
-    const m = assertNotEOF(await r.readMIMEHeader());
+    const m = await r.readMIMEHeader();
+    assert(m !== null);
     assertEquals(m.get("Accept"), "*/*");
     assertEquals(m.get("Content-Disposition"), 'form-data; name="test"');
+  },
+});
+
+Deno.test({
+  name: "[textproto] #4521 issue",
+  async fn() {
+    const input = "abcdefghijklmnopqrstuvwxyz";
+    const bufSize = 25;
+    const tp = new TextProtoReader(
+      new BufReader(new StringReader(input), bufSize)
+    );
+    const line = await tp.readLine();
+    assertEquals(line, input);
   },
 });

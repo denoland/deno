@@ -9,7 +9,7 @@ export interface NetAddr {
 
 export interface UnixAddr {
   transport: "unix" | "unixpacket";
-  address: string;
+  path: string;
 }
 
 export type Addr = NetAddr | UnixAddr;
@@ -22,8 +22,9 @@ export enum ShutdownMode {
   ReadWrite, // unused
 }
 
-export function shutdown(rid: number, how: ShutdownMode): void {
+export function shutdown(rid: number, how: ShutdownMode): Promise<void> {
   sendSync("op_shutdown", { rid, how });
+  return Promise.resolve();
 }
 
 interface AcceptResponse {
@@ -72,7 +73,7 @@ export function receive(
   transport: string,
   zeroCopy: Uint8Array
 ): Promise<ReceiveResponse> {
-  return sendAsync("op_receive", { rid, transport }, zeroCopy);
+  return sendAsync("op_datagram_receive", { rid, transport }, zeroCopy);
 }
 
 export type SendRequest = {
@@ -82,6 +83,7 @@ export type SendRequest = {
 export async function send(
   args: SendRequest,
   zeroCopy: Uint8Array
-): Promise<void> {
-  await sendAsync("op_send", args, zeroCopy);
+): Promise<number> {
+  const byteLength = await sendAsync("op_datagram_send", args, zeroCopy);
+  return byteLength;
 }

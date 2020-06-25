@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import { assert } from "../testing/asserts.ts";
+import { assert } from "../_util/assert.ts";
 
 export interface Args {
   /** Contains all the arguments that didn't have an option associated with
@@ -14,16 +14,12 @@ export interface ArgParsingOptions {
   /** When `true`, populate the result `_` with everything before the `--` and
    * the result `['--']` with everything after the `--`. Here's an example:
    *
-   *      const { args } = Deno;
+   *      // $ deno run example.ts -- a arg1
    *      import { parse } from "https://deno.land/std/flags/mod.ts";
-   *      // options['--'] is now set to false
-   *      console.dir(parse(args, { "--": false }));
-   *      // $ deno example.ts -- a arg1
-   *      // output: { _: [ "example.ts", "a", "arg1" ] }
-   *      // options['--'] is now set to true
-   *      console.dir(parse(args, { "--": true }));
-   *      // $ deno example.ts -- a arg1
-   *      // output: { _: [ "example.ts" ], --: [ "a", "arg1" ] }
+   *      console.dir(parse(Deno.args, { "--": false }));
+   *      // output: { _: [ "a", "arg1" ] }
+   *      console.dir(parse(Deno.args, { "--": true }));
+   *      // output: { _: [], --: [ "a", "arg1" ] }
    *
    * Defaults to `false`.
    */
@@ -51,13 +47,13 @@ export interface ArgParsingOptions {
   /** A function which is invoked with a command line parameter not defined in
    * the `options` configuration object. If the function returns `false`, the
    * unknown option is not added to `parsedArgs`. */
-  unknown?: (i: unknown) => unknown;
+  unknown?: (arg: string, key?: string, value?: unknown) => unknown;
 }
 
 interface Flags {
   bools: Record<string, boolean>;
   strings: Record<string, boolean>;
-  unknownFn: (i: unknown) => unknown;
+  unknownFn: (arg: string, key?: string, value?: unknown) => unknown;
   allBools: boolean;
 }
 
@@ -107,7 +103,7 @@ export function parse(
     default: defaults = {},
     stopEarly = false,
     string = [],
-    unknown = (i: unknown): unknown => i,
+    unknown = (i: string): unknown => i,
   }: ArgParsingOptions = {}
 ): Args {
   const flags: Flags = {
@@ -198,7 +194,7 @@ export function parse(
     arg: string | undefined = undefined
   ): void {
     if (arg && flags.unknownFn && !argDefined(key, arg)) {
-      if (flags.unknownFn(arg) === false) return;
+      if (flags.unknownFn(arg, key, val) === false) return;
     }
 
     const value = !get(flags.strings, key) && isNumber(val) ? Number(val) : val;

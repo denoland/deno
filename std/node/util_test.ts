@@ -1,8 +1,7 @@
-const { test } = Deno;
 import { assert } from "../testing/asserts.ts";
 import * as util from "./util.ts";
 
-test({
+Deno.test({
   name: "[util] isBoolean",
   fn() {
     assert(util.isBoolean(true));
@@ -14,7 +13,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "[util] isNull",
   fn() {
     let n;
@@ -25,7 +24,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "[util] isNullOrUndefined",
   fn() {
     let n;
@@ -36,7 +35,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "[util] isNumber",
   fn() {
     assert(util.isNumber(666));
@@ -46,7 +45,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "[util] isString",
   fn() {
     assert(util.isString("deno"));
@@ -55,7 +54,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "[util] isSymbol",
   fn() {
     assert(util.isSymbol(Symbol()));
@@ -64,7 +63,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "[util] isUndefined",
   fn() {
     let t;
@@ -74,7 +73,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "[util] isObject",
   fn() {
     const dio = { stand: "Za Warudo" };
@@ -84,7 +83,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "[util] isError",
   fn() {
     const java = new Error();
@@ -96,7 +95,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "[util] isFunction",
   fn() {
     const f = function (): void {};
@@ -106,7 +105,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "[util] isRegExp",
   fn() {
     assert(util.isRegExp(new RegExp(/f/)));
@@ -116,11 +115,61 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "[util] isArray",
   fn() {
     assert(util.isArray([]));
     assert(!util.isArray({ yaNo: "array" }));
     assert(!util.isArray(null));
+  },
+});
+
+Deno.test({
+  name: "[util] isPrimitive",
+  fn() {
+    const stringType = "hasti";
+    const booleanType = true;
+    const integerType = 2;
+    const symbolType = Symbol("anything");
+
+    const functionType = function doBest(): void {};
+    const objectType = { name: "ali" };
+    const arrayType = [1, 2, 3];
+
+    assert(util.isPrimitive(stringType));
+    assert(util.isPrimitive(booleanType));
+    assert(util.isPrimitive(integerType));
+    assert(util.isPrimitive(symbolType));
+    assert(util.isPrimitive(null));
+    assert(util.isPrimitive(undefined));
+    assert(!util.isPrimitive(functionType));
+    assert(!util.isPrimitive(arrayType));
+    assert(!util.isPrimitive(objectType));
+  },
+});
+
+Deno.test({
+  name: "[util] TextDecoder",
+  fn() {
+    assert(util.TextDecoder === TextDecoder);
+    const td: util.TextDecoder = new util.TextDecoder();
+    assert(td instanceof TextDecoder);
+  },
+});
+
+Deno.test({
+  name: "[util] TextEncoder",
+  fn() {
+    assert(util.TextEncoder === TextEncoder);
+    const te: util.TextEncoder = new util.TextEncoder();
+    assert(te instanceof TextEncoder);
+  },
+});
+
+Deno.test({
+  name: "[util] isDate",
+  fn() {
+    // Test verifies the method is exposed. See _util/_util_types_test for details
+    assert(util.types.isDate(new Date()));
   },
 });

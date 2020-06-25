@@ -1,8 +1,7 @@
-const { test } = Deno;
 import { assertEquals } from "../testing/asserts.ts";
 import { stringify, parse } from "./querystring.ts";
 
-test({
+Deno.test({
   name: "stringify",
   fn() {
     assertEquals(
@@ -17,7 +16,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "parse",
   fn() {
     assertEquals(parse("a=hello&b=5&c=true&d=foo&d=bar"), {

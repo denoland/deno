@@ -23,9 +23,9 @@
 // ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 // OTHER DEALINGS IN THE SOFTWARE.
 
+import { DOMExceptionImpl as DOMException } from "./dom_exception.ts";
 import * as base64 from "./base64.ts";
 import { decodeUtf8 } from "./decode_utf8.ts";
-import * as domTypes from "./dom_types.ts";
 import { core } from "../core.ts";
 
 const CONTINUE = null;
@@ -56,13 +56,13 @@ function stringToCodePoints(input: string): number[] {
 }
 
 class UTF8Encoder implements Encoder {
-  handler(codePoint: number): number | number[] {
+  handler(codePoint: number): "finished" | number[] {
     if (codePoint === END_OF_STREAM) {
-      return FINISHED;
+      return "finished";
     }
 
     if (inRange(codePoint, 0x00, 0x7f)) {
-      return codePoint;
+      return [codePoint];
     }
 
     let count: number;
@@ -102,8 +102,10 @@ export function atob(s: string): string {
 
   const rem = s.length % 4;
   if (rem === 1 || /[^+/0-9A-Za-z]/.test(s)) {
-    // TODO: throw `DOMException`
-    throw new TypeError("The string to be decoded is not correctly encoded");
+    throw new DOMException(
+      "The string to be decoded is not correctly encoded",
+      "DataDecodeError"
+    );
   }
 
   // base64-js requires length exactly times of 4
@@ -145,7 +147,7 @@ interface Decoder {
 }
 
 interface Encoder {
-  handler(codePoint: number): number | number[];
+  handler(codePoint: number): "finished" | number[];
 }
 
 class SingleByteDecoder implements Decoder {
@@ -348,7 +350,7 @@ encodingIndexes.set("windows-1252", [
   252,
   253,
   254,
-  255
+  255,
 ]);
 for (const [key, index] of encodingIndexes) {
   decoders.set(
@@ -449,7 +451,7 @@ export class TextDecoder {
   }
 
   decode(
-    input?: domTypes.BufferSource,
+    input?: BufferSource,
     options: TextDecodeOptions = { stream: false }
   ): string {
     if (options.stream) {
@@ -535,14 +537,10 @@ export class TextEncoder {
 
     while (true) {
       const result = encoder.handler(inputStream.read());
-      if (result === FINISHED) {
+      if (result === "finished") {
         break;
       }
-      if (Array.isArray(result)) {
-        output.push(...result);
-      } else {
-        output.push(result);
-      }
+      output.push(...result);
     }
 
     return new Uint8Array(output);
@@ -555,11 +553,11 @@ export class TextEncoder {
     let read = 0;
     while (true) {
       const result = encoder.handler(inputStream.read());
-      if (result === FINISHED) {
+      if (result === "finished") {
         break;
       }
-      read++;
-      if (Array.isArray(result)) {
+      if (dest.length - written >= result.length) {
+        read++;
         dest.set(result, written);
         written += result.length;
         if (result.length > 3) {
@@ -567,8 +565,7 @@ export class TextEncoder {
           read++;
         }
       } else {
-        dest[written] = result;
-        written++;
+        break;
       }
     }
 

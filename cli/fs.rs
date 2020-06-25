@@ -36,7 +36,6 @@ pub fn write_file_2<T: AsRef<[u8]>>(
     {
       use std::os::unix::fs::PermissionsExt;
       let mode = mode & 0o777;
-      debug!("set file mode to {:o}", mode);
       let permissions = PermissionsExt::from_mode(mode);
       file.set_permissions(permissions)?;
     }

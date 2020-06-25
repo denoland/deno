@@ -1,28 +1,30 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+use super::interface::expr_to_name;
+use super::params::ts_fn_param_to_param_def;
+use super::ts_type_param::maybe_type_param_decl_to_type_param_defs;
+use super::ts_type_param::TsTypeParamDef;
 use super::ParamDef;
+use crate::swc_ecma_ast;
+use crate::swc_ecma_ast::TsArrayType;
+use crate::swc_ecma_ast::TsConditionalType;
+use crate::swc_ecma_ast::TsFnOrConstructorType;
+use crate::swc_ecma_ast::TsIndexedAccessType;
+use crate::swc_ecma_ast::TsKeywordType;
+use crate::swc_ecma_ast::TsLit;
+use crate::swc_ecma_ast::TsLitType;
+use crate::swc_ecma_ast::TsOptionalType;
+use crate::swc_ecma_ast::TsParenthesizedType;
+use crate::swc_ecma_ast::TsRestType;
+use crate::swc_ecma_ast::TsThisType;
+use crate::swc_ecma_ast::TsTupleType;
+use crate::swc_ecma_ast::TsType;
+use crate::swc_ecma_ast::TsTypeAnn;
+use crate::swc_ecma_ast::TsTypeLit;
+use crate::swc_ecma_ast::TsTypeOperator;
+use crate::swc_ecma_ast::TsTypeQuery;
+use crate::swc_ecma_ast::TsTypeRef;
+use crate::swc_ecma_ast::TsUnionOrIntersectionType;
 use serde::Serialize;
-use swc_common::SourceMap;
-use swc_ecma_ast;
-use swc_ecma_ast::TsArrayType;
-use swc_ecma_ast::TsConditionalType;
-use swc_ecma_ast::TsFnOrConstructorType;
-use swc_ecma_ast::TsIndexedAccessType;
-use swc_ecma_ast::TsKeywordType;
-use swc_ecma_ast::TsLit;
-use swc_ecma_ast::TsLitType;
-use swc_ecma_ast::TsOptionalType;
-use swc_ecma_ast::TsParenthesizedType;
-use swc_ecma_ast::TsRestType;
-use swc_ecma_ast::TsThisType;
-use swc_ecma_ast::TsTupleType;
-use swc_ecma_ast::TsType;
-use swc_ecma_ast::TsTypeAnn;
-use swc_ecma_ast::TsTypeLit;
-use swc_ecma_ast::TsTypeOperator;
-use swc_ecma_ast::TsTypeQuery;
-use swc_ecma_ast::TsTypeRef;
-use swc_ecma_ast::TsUnionOrIntersectionType;
-
 // pub enum TsType {
 //  *      TsKeywordType(TsKeywordType),
 //  *      TsThisType(TsThisType),
@@ -36,12 +38,12 @@ use swc_ecma_ast::TsUnionOrIntersectionType;
 //  *      TsRestType(TsRestType),
 //  *      TsUnionOrIntersectionType(TsUnionOrIntersectionType),
 //  *      TsConditionalType(TsConditionalType),
-//     TsInferType(TsInferType),
 //  *      TsParenthesizedType(TsParenthesizedType),
 //  *      TsTypeOperator(TsTypeOperator),
 //  *      TsIndexedAccessType(TsIndexedAccessType),
-//     TsMappedType(TsMappedType),
 //  *      TsLitType(TsLitType),
+//     TsInferType(TsInferType),
+//     TsMappedType(TsMappedType),
 //     TsTypePredicate(TsTypePredicate),
 //     TsImportType(TsImportType),
 // }
@@ -67,6 +69,21 @@ impl Into<TsTypeDef> for &TsLitType {
           boolean: None,
         },
       ),
+      TsLit::Tpl(tpl) => {
+        // A template literal in a type is not allowed to have
+        // expressions, so there will only be one quasi.
+        let quasi = tpl.quasis.get(0).expect("Expected tpl to have a quasi.");
+        let text = quasi.raw.value.to_string();
+        (
+          text.clone(),
+          LiteralDef {
+            kind: LiteralDefKind::String, // semantically the same
+            number: None,
+            string: Some(text),
+            boolean: None,
+          },
+        )
+      }
       TsLit::Bool(bool_) => (
         bool_.value.to_string(),
         LiteralDef {
@@ -119,7 +136,7 @@ impl Into<TsTypeDef> for &TsTupleType {
 
 impl Into<TsTypeDef> for &TsUnionOrIntersectionType {
   fn into(self) -> TsTypeDef {
-    use swc_ecma_ast::TsUnionOrIntersectionType::*;
+    use crate::swc_ecma_ast::TsUnionOrIntersectionType::*;
 
     match self {
       TsUnionType(union_type) => {
@@ -158,7 +175,7 @@ impl Into<TsTypeDef> for &TsUnionOrIntersectionType {
 
 impl Into<TsTypeDef> for &TsKeywordType {
   fn into(self) -> TsTypeDef {
-    use swc_ecma_ast::TsKeywordTypeKind::*;
+    use crate::swc_ecma_ast::TsKeywordTypeKind::*;
 
     let keyword_str = match self.kind {
       TsAnyKeyword => "any",
@@ -250,7 +267,7 @@ impl Into<TsTypeDef> for &TsThisType {
 pub fn ts_entity_name_to_name(
   entity_name: &swc_ecma_ast::TsEntityName,
 ) -> String {
-  use swc_ecma_ast::TsEntityName::*;
+  use crate::swc_ecma_ast::TsEntityName::*;
 
   match entity_name {
     Ident(ident) => ident.sym.to_string(),
@@ -264,7 +281,7 @@ pub fn ts_entity_name_to_name(
 
 impl Into<TsTypeDef> for &TsTypeQuery {
   fn into(self) -> TsTypeDef {
-    use swc_ecma_ast::TsTypeQueryExpr::*;
+    use crate::swc_ecma_ast::TsTypeQueryExpr::*;
 
     let type_name = match &self.expr_name {
       TsEntityName(entity_name) => ts_entity_name_to_name(&*entity_name),
@@ -333,31 +350,14 @@ impl Into<TsTypeDef> for &TsTypeLit {
     let mut call_signatures = vec![];
 
     for type_element in &self.members {
-      use swc_ecma_ast::TsTypeElement::*;
+      use crate::swc_ecma_ast::TsTypeElement::*;
 
       match &type_element {
         TsMethodSignature(ts_method_sig) => {
           let mut params = vec![];
 
           for param in &ts_method_sig.params {
-            use swc_ecma_ast::TsFnParam::*;
-
-            let param_def = match param {
-              Ident(ident) => {
-                let ts_type =
-                  ident.type_ann.as_ref().map(|rt| (&*rt.type_ann).into());
-
-                ParamDef {
-                  name: ident.sym.to_string(),
-                  ts_type,
-                }
-              }
-              _ => ParamDef {
-                name: "<TODO>".to_string(),
-                ts_type: None,
-              },
-            };
-
+            let param_def = ts_fn_param_to_param_def(param);
             params.push(param_def);
           }
 
@@ -366,40 +366,25 @@ impl Into<TsTypeDef> for &TsTypeLit {
             .as_ref()
             .map(|rt| (&*rt.type_ann).into());
 
+          let type_params = maybe_type_param_decl_to_type_param_defs(
+            ts_method_sig.type_params.as_ref(),
+          );
+          let name = expr_to_name(&*ts_method_sig.key);
           let method_def = LiteralMethodDef {
-            name: "<TODO>".to_string(),
+            name,
             params,
             return_type: maybe_return_type,
+            type_params,
           };
           methods.push(method_def);
         }
         TsPropertySignature(ts_prop_sig) => {
-          let name = match &*ts_prop_sig.key {
-            swc_ecma_ast::Expr::Ident(ident) => ident.sym.to_string(),
-            _ => "TODO".to_string(),
-          };
+          let name = expr_to_name(&*ts_prop_sig.key);
 
           let mut params = vec![];
 
           for param in &ts_prop_sig.params {
-            use swc_ecma_ast::TsFnParam::*;
-
-            let param_def = match param {
-              Ident(ident) => {
-                let ts_type =
-                  ident.type_ann.as_ref().map(|rt| (&*rt.type_ann).into());
-
-                ParamDef {
-                  name: ident.sym.to_string(),
-                  ts_type,
-                }
-              }
-              _ => ParamDef {
-                name: "<TODO>".to_string(),
-                ts_type: None,
-              },
-            };
-
+            let param_def = ts_fn_param_to_param_def(param);
             params.push(param_def);
           }
 
@@ -408,36 +393,23 @@ impl Into<TsTypeDef> for &TsTypeLit {
             .as_ref()
             .map(|rt| (&*rt.type_ann).into());
 
+          let type_params = maybe_type_param_decl_to_type_param_defs(
+            ts_prop_sig.type_params.as_ref(),
+          );
           let prop_def = LiteralPropertyDef {
             name,
             params,
             ts_type,
             computed: ts_prop_sig.computed,
             optional: ts_prop_sig.optional,
+            type_params,
           };
           properties.push(prop_def);
         }
         TsCallSignatureDecl(ts_call_sig) => {
           let mut params = vec![];
           for param in &ts_call_sig.params {
-            use swc_ecma_ast::TsFnParam::*;
-
-            let param_def = match param {
-              Ident(ident) => {
-                let ts_type =
-                  ident.type_ann.as_ref().map(|rt| (&*rt.type_ann).into());
-
-                ParamDef {
-                  name: ident.sym.to_string(),
-                  ts_type,
-                }
-              }
-              _ => ParamDef {
-                name: "<TODO>".to_string(),
-                ts_type: None,
-              },
-            };
-
+            let param_def = ts_fn_param_to_param_def(param);
             params.push(param_def);
           }
 
@@ -446,7 +418,15 @@ impl Into<TsTypeDef> for &TsTypeLit {
             .as_ref()
             .map(|rt| (&*rt.type_ann).into());
 
-          let call_sig_def = LiteralCallSignatureDef { params, ts_type };
+          let type_params = maybe_type_param_decl_to_type_param_defs(
+            ts_call_sig.type_params.as_ref(),
+          );
+
+          let call_sig_def = LiteralCallSignatureDef {
+            params,
+            ts_type,
+            type_params,
+          };
           call_signatures.push(call_sig_def);
         }
         // TODO:
@@ -488,75 +468,44 @@ impl Into<TsTypeDef> for &TsConditionalType {
 
 impl Into<TsTypeDef> for &TsFnOrConstructorType {
   fn into(self) -> TsTypeDef {
-    use swc_ecma_ast::TsFnOrConstructorType::*;
+    use crate::swc_ecma_ast::TsFnOrConstructorType::*;
 
     let fn_def = match self {
       TsFnType(ts_fn_type) => {
         let mut params = vec![];
 
         for param in &ts_fn_type.params {
-          use swc_ecma_ast::TsFnParam::*;
-
-          let param_def = match param {
-            Ident(ident) => {
-              let ts_type: Option<TsTypeDef> =
-                ident.type_ann.as_ref().map(|rt| {
-                  let type_box = &*rt.type_ann;
-                  (&*type_box).into()
-                });
-
-              ParamDef {
-                name: ident.sym.to_string(),
-                ts_type,
-              }
-            }
-            _ => ParamDef {
-              name: "<TODO>".to_string(),
-              ts_type: None,
-            },
-          };
-
+          let param_def = ts_fn_param_to_param_def(param);
           params.push(param_def);
         }
 
+        let type_params = maybe_type_param_decl_to_type_param_defs(
+          ts_fn_type.type_params.as_ref(),
+        );
+
         TsFnOrConstructorDef {
           constructor: false,
-          ts_type: (&*ts_fn_type.type_ann.type_ann).into(),
+          ts_type: ts_type_ann_to_def(&ts_fn_type.type_ann),
           params,
+          type_params,
         }
       }
       TsConstructorType(ctor_type) => {
         let mut params = vec![];
 
         for param in &ctor_type.params {
-          use swc_ecma_ast::TsFnParam::*;
-
-          let param_def = match param {
-            Ident(ident) => {
-              let ts_type: Option<TsTypeDef> =
-                ident.type_ann.as_ref().map(|rt| {
-                  let type_box = &*rt.type_ann;
-                  (&*type_box).into()
-                });
-
-              ParamDef {
-                name: ident.sym.to_string(),
-                ts_type,
-              }
-            }
-            _ => ParamDef {
-              name: "<TODO>".to_string(),
-              ts_type: None,
-            },
-          };
-
+          let param_def = ts_fn_param_to_param_def(param);
           params.push(param_def);
         }
 
+        let type_params = maybe_type_param_decl_to_type_param_defs(
+          ctor_type.type_params.as_ref(),
+        );
         TsFnOrConstructorDef {
           constructor: true,
-          ts_type: (&*ctor_type.type_ann.type_ann).into(),
-          params: vec![],
+          ts_type: ts_type_ann_to_def(&ctor_type.type_ann),
+          params,
+          type_params,
         }
       }
     };
@@ -571,7 +520,7 @@ impl Into<TsTypeDef> for &TsFnOrConstructorType {
 
 impl Into<TsTypeDef> for &TsType {
   fn into(self) -> TsTypeDef {
-    use swc_ecma_ast::TsType::*;
+    use crate::swc_ecma_ast::TsType::*;
 
     match self {
       TsKeywordType(ref keyword_type) => keyword_type.into(),
@@ -638,10 +587,10 @@ pub struct TsTypeOperatorDef {
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct TsFnOrConstructorDef {
-  // TODO: type_params
   pub constructor: bool,
   pub ts_type: TsTypeDef,
   pub params: Vec<ParamDef>,
+  pub type_params: Vec<TsTypeParamDef>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -664,35 +613,29 @@ pub struct TsIndexedAccessDef {
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct LiteralMethodDef {
-  // TODO: type_params
   pub name: String,
-  // pub location: Location,
-  // pub js_doc: Option<String>,
   pub params: Vec<ParamDef>,
   pub return_type: Option<TsTypeDef>,
+  pub type_params: Vec<TsTypeParamDef>,
 }
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct LiteralPropertyDef {
-  // TODO: type_params
   pub name: String,
-  // pub location: Location,
-  // pub js_doc: Option<String>,
   pub params: Vec<ParamDef>,
   pub computed: bool,
   pub optional: bool,
   pub ts_type: Option<TsTypeDef>,
+  pub type_params: Vec<TsTypeParamDef>,
 }
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct LiteralCallSignatureDef {
-  // TODO: type_params
-  // pub location: Location,
-  // pub js_doc: Option<String>,
   pub params: Vec<ParamDef>,
   pub ts_type: Option<TsTypeDef>,
+  pub type_params: Vec<TsTypeParamDef>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -732,7 +675,6 @@ pub struct TsTypeDef {
 
   pub kind: Option<TsTypeDefKind>,
 
-  // TODO: make this struct more conrete
   #[serde(skip_serializing_if = "Option::is_none")]
   pub keyword: Option<String>,
 
@@ -785,11 +727,8 @@ pub struct TsTypeDef {
   pub type_literal: Option<TsTypeLiteralDef>,
 }
 
-pub fn ts_type_ann_to_def(
-  source_map: &SourceMap,
-  type_ann: &TsTypeAnn,
-) -> TsTypeDef {
-  use swc_ecma_ast::TsType::*;
+pub fn ts_type_ann_to_def(type_ann: &TsTypeAnn) -> TsTypeDef {
+  use crate::swc_ecma_ast::TsType::*;
 
   match &*type_ann.type_ann {
     TsKeywordType(keyword_type) => keyword_type.into(),
@@ -808,16 +747,9 @@ pub fn ts_type_ann_to_def(
     TsConditionalType(conditional_type) => conditional_type.into(),
     TsIndexedAccessType(indexed_access_type) => indexed_access_type.into(),
     TsTypeLit(type_literal) => type_literal.into(),
-    _ => {
-      let repr = source_map
-        .span_to_snippet(type_ann.span)
-        .expect("Class prop type not found");
-      let repr = repr.trim_start_matches(':').trim_start().to_string();
-
-      TsTypeDef {
-        repr,
-        ..Default::default()
-      }
-    }
+    _ => TsTypeDef {
+      repr: "<TODO>".to_string(),
+      ..Default::default()
+    },
   }
 }

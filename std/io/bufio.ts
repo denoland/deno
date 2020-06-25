@@ -5,14 +5,15 @@
 
 type Reader = Deno.Reader;
 type Writer = Deno.Writer;
-import { charCode, copyBytes } from "./util.ts";
-import { assert } from "../testing/asserts.ts";
+type WriterSync = Deno.WriterSync;
+import { copyBytes } from "../bytes/mod.ts";
+import { assert } from "../_util/assert.ts";
 
 const DEFAULT_BUF_SIZE = 4096;
 const MIN_BUF_SIZE = 16;
 const MAX_CONSECUTIVE_EMPTY_READS = 100;
-const CR = charCode("\r");
-const LF = charCode("\n");
+const CR = "\r".charCodeAt(0);
+const LF = "\n".charCodeAt(0);
 
 export class BufferFullError extends Error {
   name = "BufferFullError";
@@ -82,7 +83,7 @@ export class BufReader implements Reader {
     // Read new data: try a limited number of times.
     for (let i = MAX_CONSECUTIVE_EMPTY_READS; i > 0; i--) {
       const rr = await this.rd.read(this.buf.subarray(this.w));
-      if (rr === Deno.EOF) {
+      if (rr === null) {
         this.eof = true;
         return;
       }
@@ -119,8 +120,8 @@ export class BufReader implements Reader {
    * hence n may be less than len(p).
    * To read exactly len(p) bytes, use io.ReadFull(b, p).
    */
-  async read(p: Uint8Array): Promise<number | Deno.EOF> {
-    let rr: number | Deno.EOF = p.byteLength;
+  async read(p: Uint8Array): Promise<number | null> {
+    let rr: number | null = p.byteLength;
     if (p.byteLength === 0) return rr;
 
     if (this.r === this.w) {
@@ -128,7 +129,7 @@ export class BufReader implements Reader {
         // Large read, empty buffer.
         // Read directly into p to avoid copy.
         const rr = await this.rd.read(p);
-        const nread = rr === Deno.EOF ? 0 : rr;
+        const nread = rr ?? 0;
         assert(nread >= 0, "negative read");
         // if (rr.nread > 0) {
         //   this.lastByte = p[rr.nread - 1];
@@ -142,13 +143,13 @@ export class BufReader implements Reader {
       this.r = 0;
       this.w = 0;
       rr = await this.rd.read(this.buf);
-      if (rr === 0 || rr === Deno.EOF) return rr;
+      if (rr === 0 || rr === null) return rr;
       assert(rr >= 0, "negative read");
       this.w += rr;
     }
 
     // copy as much as we can
-    const copied = copyBytes(p, this.buf.subarray(this.r, this.w), 0);
+    const copied = copyBytes(this.buf.subarray(this.r, this.w), p, 0);
     this.r += copied;
     // this.lastByte = this.buf[this.r - 1];
     // this.lastCharSize = -1;
@@ -160,7 +161,7 @@ export class BufReader implements Reader {
    * If successful, `p` is returned.
    *
    * If the end of the underlying stream has been reached, and there are no more
-   * bytes available in the buffer, `readFull()` returns `EOF` instead.
+   * bytes available in the buffer, `readFull()` returns `null` instead.
    *
    * An error is thrown if some bytes could be read, but not enough to fill `p`
    * entirely before the underlying stream reported an error or EOF. Any error
@@ -169,14 +170,14 @@ export class BufReader implements Reader {
    *
    * Ported from https://golang.org/pkg/io/#ReadFull
    */
-  async readFull(p: Uint8Array): Promise<Uint8Array | Deno.EOF> {
+  async readFull(p: Uint8Array): Promise<Uint8Array | null> {
     let bytesRead = 0;
     while (bytesRead < p.length) {
       try {
         const rr = await this.read(p.subarray(bytesRead));
-        if (rr === Deno.EOF) {
+        if (rr === null) {
           if (bytesRead === 0) {
-            return Deno.EOF;
+            return null;
           } else {
             throw new PartialReadError();
           }
@@ -190,10 +191,10 @@ export class BufReader implements Reader {
     return p;
   }
 
-  /** Returns the next byte [0, 255] or `EOF`. */
-  async readByte(): Promise<number | Deno.EOF> {
+  /** Returns the next byte [0, 255] or `null`. */
+  async readByte(): Promise<number | null> {
     while (this.r === this.w) {
-      if (this.eof) return Deno.EOF;
+      if (this.eof) return null;
       await this._fill(); // buffer is empty.
     }
     const c = this.buf[this.r];
@@ -206,17 +207,17 @@ export class BufReader implements Reader {
    * returning a string containing the data up to and including the delimiter.
    * If ReadString encounters an error before finding a delimiter,
    * it returns the data read before the error and the error itself
-   * (often io.EOF).
+   * (often `null`).
    * ReadString returns err != nil if and only if the returned data does not end
    * in delim.
    * For simple uses, a Scanner may be more convenient.
    */
-  async readString(delim: string): Promise<string | Deno.EOF> {
+  async readString(delim: string): Promise<string | null> {
     if (delim.length !== 1) {
       throw new Error("Delimiter should be a single character");
     }
     const buffer = await this.readSlice(delim.charCodeAt(0));
-    if (buffer == Deno.EOF) return Deno.EOF;
+    if (buffer === null) return null;
     return new TextDecoder().decode(buffer);
   }
 
@@ -236,14 +237,14 @@ export class BufReader implements Reader {
    * When the end of the underlying stream is reached, the final bytes in the
    * stream are returned. No indication or error is given if the input ends
    * without a final line end. When there are no more trailing bytes to read,
-   * `readLine()` returns the `EOF` symbol.
+   * `readLine()` returns `null`.
    *
    * Calling `unreadByte()` after `readLine()` will always unread the last byte
    * read (possibly a character belonging to the line end) even if that byte is
    * not part of the line returned by `readLine()`.
    */
-  async readLine(): Promise<ReadLineResult | Deno.EOF> {
-    let line: Uint8Array | Deno.EOF;
+  async readLine(): Promise<ReadLineResult | null> {
+    let line: Uint8Array | null;
 
     try {
       line = await this.readSlice(LF);
@@ -276,8 +277,8 @@ export class BufReader implements Reader {
       return { line: partial, more: !this.eof };
     }
 
-    if (line === Deno.EOF) {
-      return Deno.EOF;
+    if (line === null) {
+      return null;
     }
 
     if (line.byteLength === 0) {
@@ -305,12 +306,12 @@ export class BufReader implements Reader {
    * If `readSlice()` encounters the end of the underlying stream and there are
    * any bytes left in the buffer, the rest of the buffer is returned. In other
    * words, EOF is always treated as a delimiter. Once the buffer is empty,
-   * it returns `EOF`.
+   * it returns `null`.
    *
    * Because the data returned from `readSlice()` will be overwritten by the
    * next I/O operation, most clients should use `readString()` instead.
    */
-  async readSlice(delim: number): Promise<Uint8Array | Deno.EOF> {
+  async readSlice(delim: number): Promise<Uint8Array | null> {
     let s = 0; // search start index
     let slice: Uint8Array | undefined;
 
@@ -327,7 +328,7 @@ export class BufReader implements Reader {
       // EOF?
       if (this.eof) {
         if (this.r === this.w) {
-          return Deno.EOF;
+          return null;
         }
         slice = this.buf.subarray(this.r, this.w);
         this.r = this.w;
@@ -337,7 +338,11 @@ export class BufReader implements Reader {
       // Buffer full?
       if (this.buffered() >= this.buf.byteLength) {
         this.r = this.w;
-        throw new BufferFullError(this.buf);
+        // #4521 The internal buffer should not be reused across reads because it causes corruption of data.
+        const oldbuf = this.buf;
+        const newbuf = this.buf.slice(0);
+        this.buf = newbuf;
+        throw new BufferFullError(oldbuf);
       }
 
       s = this.w - this.r; // do not rescan area we scanned before
@@ -366,13 +371,13 @@ export class BufReader implements Reader {
    *
    * When the end of the underlying stream is reached, but there are unread
    * bytes left in the buffer, those bytes are returned. If there are no bytes
-   * left in the buffer, it returns `EOF`.
+   * left in the buffer, it returns `null`.
    *
    * If an error is encountered before `n` bytes are available, `peek()` throws
    * an error with the `partial` property set to a slice of the buffer that
    * contains the bytes that were available before the error occurred.
    */
-  async peek(n: number): Promise<Uint8Array | Deno.EOF> {
+  async peek(n: number): Promise<Uint8Array | null> {
     if (n < 0) {
       throw Error("negative count");
     }
@@ -389,7 +394,7 @@ export class BufReader implements Reader {
     }
 
     if (avail === 0 && this.eof) {
-      return Deno.EOF;
+      return null;
     } else if (avail < n && this.eof) {
       return this.buf.subarray(this.r, this.r + avail);
     } else if (avail < n) {
@@ -400,6 +405,29 @@ export class BufReader implements Reader {
   }
 }
 
+abstract class AbstractBufBase {
+  buf!: Uint8Array;
+  usedBufferBytes = 0;
+  err: Error | null = null;
+
+  /** Size returns the size of the underlying buffer in bytes. */
+  size(): number {
+    return this.buf.byteLength;
+  }
+
+  /** Returns how many bytes are unused in the buffer. */
+  available(): number {
+    return this.buf.byteLength - this.usedBufferBytes;
+  }
+
+  /** buffered returns the number of bytes that have been written into the
+   * current buffer.
+   */
+  buffered(): number {
+    return this.usedBufferBytes;
+  }
+}
+
 /** BufWriter implements buffering for an deno.Writer object.
  * If an error occurs writing to a Writer, no more data will be
  * accepted and all subsequent writes, and flush(), will return the error.
@@ -407,106 +435,177 @@ export class BufReader implements Reader {
  * flush() method to guarantee all data has been forwarded to
  * the underlying deno.Writer.
  */
-export class BufWriter implements Writer {
-  buf: Uint8Array;
-  n = 0;
-  err: Error | null = null;
-
-  /** return new BufWriter unless w is BufWriter */
-  static create(w: Writer, size: number = DEFAULT_BUF_SIZE): BufWriter {
-    return w instanceof BufWriter ? w : new BufWriter(w, size);
+export class BufWriter extends AbstractBufBase implements Writer {
+  /** return new BufWriter unless writer is BufWriter */
+  static create(writer: Writer, size: number = DEFAULT_BUF_SIZE): BufWriter {
+    return writer instanceof BufWriter ? writer : new BufWriter(writer, size);
   }
 
-  constructor(private wr: Writer, size: number = DEFAULT_BUF_SIZE) {
+  constructor(private writer: Writer, size: number = DEFAULT_BUF_SIZE) {
+    super();
     if (size <= 0) {
       size = DEFAULT_BUF_SIZE;
     }
     this.buf = new Uint8Array(size);
   }
 
-  /** Size returns the size of the underlying buffer in bytes. */
-  size(): number {
-    return this.buf.byteLength;
-  }
-
   /** Discards any unflushed buffered data, clears any error, and
-   * resets b to write its output to w.
+   * resets buffer to write its output to w.
    */
   reset(w: Writer): void {
     this.err = null;
-    this.n = 0;
-    this.wr = w;
+    this.usedBufferBytes = 0;
+    this.writer = w;
   }
 
   /** Flush writes any buffered data to the underlying io.Writer. */
   async flush(): Promise<void> {
     if (this.err !== null) throw this.err;
-    if (this.n === 0) return;
+    if (this.usedBufferBytes === 0) return;
 
-    let n = 0;
     try {
-      n = await this.wr.write(this.buf.subarray(0, this.n));
+      await Deno.writeAll(
+        this.writer,
+        this.buf.subarray(0, this.usedBufferBytes)
+      );
     } catch (e) {
       this.err = e;
       throw e;
     }
 
-    if (n < this.n) {
-      if (n > 0) {
-        this.buf.copyWithin(0, n, this.n);
-        this.n -= n;
-      }
-      this.err = new Error("Short write");
-      throw this.err;
-    }
-
-    this.n = 0;
+    this.buf = new Uint8Array(this.buf.length);
+    this.usedBufferBytes = 0;
   }
 
-  /** Returns how many bytes are unused in the buffer. */
-  available(): number {
-    return this.buf.byteLength - this.n;
-  }
-
-  /** buffered returns the number of bytes that have been written into the
-   * current buffer.
+  /** Writes the contents of `data` into the buffer.  If the contents won't fully
+   * fit into the buffer, those bytes that can are copied into the buffer, the
+   * buffer is the flushed to the writer and the remaining bytes are copied into
+   * the now empty buffer.
+   *
+   * @return the number of bytes written to the buffer.
    */
-  buffered(): number {
-    return this.n;
-  }
-
-  /** Writes the contents of p into the buffer.
-   * Returns the number of bytes written.
-   */
-  async write(p: Uint8Array): Promise<number> {
+  async write(data: Uint8Array): Promise<number> {
     if (this.err !== null) throw this.err;
-    if (p.length === 0) return 0;
+    if (data.length === 0) return 0;
 
-    let nn = 0;
-    let n = 0;
-    while (p.byteLength > this.available()) {
+    let totalBytesWritten = 0;
+    let numBytesWritten = 0;
+    while (data.byteLength > this.available()) {
       if (this.buffered() === 0) {
         // Large write, empty buffer.
-        // Write directly from p to avoid copy.
+        // Write directly from data to avoid copy.
         try {
-          n = await this.wr.write(p);
+          numBytesWritten = await this.writer.write(data);
         } catch (e) {
           this.err = e;
           throw e;
         }
       } else {
-        n = copyBytes(this.buf, p, this.n);
-        this.n += n;
+        numBytesWritten = copyBytes(data, this.buf, this.usedBufferBytes);
+        this.usedBufferBytes += numBytesWritten;
         await this.flush();
       }
-      nn += n;
-      p = p.subarray(n);
+      totalBytesWritten += numBytesWritten;
+      data = data.subarray(numBytesWritten);
     }
 
-    n = copyBytes(this.buf, p, this.n);
-    this.n += n;
-    nn += n;
-    return nn;
+    numBytesWritten = copyBytes(data, this.buf, this.usedBufferBytes);
+    this.usedBufferBytes += numBytesWritten;
+    totalBytesWritten += numBytesWritten;
+    return totalBytesWritten;
+  }
+}
+
+/** BufWriterSync implements buffering for a deno.WriterSync object.
+ * If an error occurs writing to a WriterSync, no more data will be
+ * accepted and all subsequent writes, and flush(), will return the error.
+ * After all data has been written, the client should call the
+ * flush() method to guarantee all data has been forwarded to
+ * the underlying deno.WriterSync.
+ */
+export class BufWriterSync extends AbstractBufBase implements WriterSync {
+  /** return new BufWriterSync unless writer is BufWriterSync */
+  static create(
+    writer: WriterSync,
+    size: number = DEFAULT_BUF_SIZE
+  ): BufWriterSync {
+    return writer instanceof BufWriterSync
+      ? writer
+      : new BufWriterSync(writer, size);
+  }
+
+  constructor(private writer: WriterSync, size: number = DEFAULT_BUF_SIZE) {
+    super();
+    if (size <= 0) {
+      size = DEFAULT_BUF_SIZE;
+    }
+    this.buf = new Uint8Array(size);
+  }
+
+  /** Discards any unflushed buffered data, clears any error, and
+   * resets buffer to write its output to w.
+   */
+  reset(w: WriterSync): void {
+    this.err = null;
+    this.usedBufferBytes = 0;
+    this.writer = w;
+  }
+
+  /** Flush writes any buffered data to the underlying io.WriterSync. */
+  flush(): void {
+    if (this.err !== null) throw this.err;
+    if (this.usedBufferBytes === 0) return;
+
+    try {
+      Deno.writeAllSync(
+        this.writer,
+        this.buf.subarray(0, this.usedBufferBytes)
+      );
+    } catch (e) {
+      this.err = e;
+      throw e;
+    }
+
+    this.buf = new Uint8Array(this.buf.length);
+    this.usedBufferBytes = 0;
+  }
+
+  /** Writes the contents of `data` into the buffer.  If the contents won't fully
+   * fit into the buffer, those bytes that can are copied into the buffer, the
+   * buffer is the flushed to the writer and the remaining bytes are copied into
+   * the now empty buffer.
+   *
+   * @return the number of bytes written to the buffer.
+   */
+  writeSync(data: Uint8Array): number {
+    if (this.err !== null) throw this.err;
+    if (data.length === 0) return 0;
+
+    let totalBytesWritten = 0;
+    let numBytesWritten = 0;
+    while (data.byteLength > this.available()) {
+      if (this.buffered() === 0) {
+        // Large write, empty buffer.
+        // Write directly from data to avoid copy.
+        try {
+          numBytesWritten = this.writer.writeSync(data);
+        } catch (e) {
+          this.err = e;
+          throw e;
+        }
+      } else {
+        numBytesWritten = copyBytes(data, this.buf, this.usedBufferBytes);
+        this.usedBufferBytes += numBytesWritten;
+        this.flush();
+      }
+      totalBytesWritten += numBytesWritten;
+      data = data.subarray(numBytesWritten);
+    }
+
+    numBytesWritten = copyBytes(data, this.buf, this.usedBufferBytes);
+    this.usedBufferBytes += numBytesWritten;
+    totalBytesWritten += numBytesWritten;
+    return totalBytesWritten;
   }
 }
 
@@ -548,7 +647,7 @@ export async function* readDelim(
   let matchIndex = 0;
   while (true) {
     const result = await reader.read(inspectArr);
-    if (result === Deno.EOF) {
+    if (result === null) {
       // Yield last chunk.
       yield inputBuffer.bytes();
       return;

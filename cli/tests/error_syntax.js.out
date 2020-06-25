@@ -1,6 +1,1 @@
-error: Uncaught SyntaxError: Unexpected identifier
-[WILDCARD]tests/error_syntax.js:3:6
-
-3 (the following is a syntax error  ^^ ! )
-       ~~~~~~~~~
-
+error: Expected Comma, got Some(Word(following)) at [WILDCARD]tests/error_syntax.js:3:5

@@ -36,18 +36,18 @@ const scratchBytes = new Uint8Array(
 );
 assert(scratchBytes.byteLength === 3 * 4);
 
-function send(promiseId, opId, rid, zeroCopy = null) {
+function send(promiseId, opId, rid, ...zeroCopy) {
   scratch32[0] = promiseId;
   scratch32[1] = rid;
   scratch32[2] = -1;
-  return Deno.core.dispatch(opId, scratchBytes, zeroCopy);
+  return Deno.core.dispatch(opId, scratchBytes, ...zeroCopy);
 }
 
 /** Returns Promise<number> */
-function sendAsync(opId, rid, zeroCopy = null) {
+function sendAsync(opId, rid, ...zeroCopy) {
   const promiseId = nextPromiseId++;
   const p = createResolvable();
-  const buf = send(promiseId, opId, rid, zeroCopy);
+  const buf = send(promiseId, opId, rid, ...zeroCopy);
   if (buf) {
     const record = recordFromBuf(buf);
     // Sync result.

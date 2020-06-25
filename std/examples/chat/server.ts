@@ -5,6 +5,7 @@ import {
   WebSocket,
   isWebSocketCloseEvent,
 } from "../../ws/mod.ts";
+import { fromFileUrl } from "../../path/mod.ts";
 
 const clients = new Map<number, WebSocket>();
 let clientId = 0;
@@ -17,7 +18,7 @@ async function wsHandler(ws: WebSocket): Promise<void> {
   const id = ++clientId;
   clients.set(id, ws);
   dispatch(`Connected: [${id}]`);
-  for await (const msg of ws.receive()) {
+  for await (const msg of ws) {
     console.log(`msg:${id}`, msg);
     if (typeof msg === "string") {
       dispatch(`[${id}]: ${msg}`);
@@ -35,18 +36,19 @@ listenAndServe({ port: 8080 }, async (req) => {
     const u = new URL("./index.html", import.meta.url);
     if (u.protocol.startsWith("http")) {
       // server launched by deno run http(s)://.../server.ts,
-      fetch(u.href).then((resp) => {
+      fetch(u.href).then(async (resp) => {
+        const body = new Uint8Array(await resp.arrayBuffer());
         return req.respond({
           status: resp.status,
           headers: new Headers({
             "content-type": "text/html",
           }),
-          body: resp.body,
+          body,
         });
       });
     } else {
       // server launched by deno run ./server.ts
-      const file = await Deno.open(u.pathname);
+      const file = await Deno.open(fromFileUrl(u));
       req.respond({
         status: 200,
         headers: new Headers({

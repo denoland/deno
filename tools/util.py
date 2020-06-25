@@ -193,6 +193,23 @@ def git_ls_files(base_dir, patterns=None):
     return files
 
 
+# list all files staged for commit
+def git_staged(base_dir, patterns=None):
+    base_dir = os.path.abspath(base_dir)
+    args = [
+        "git", "-C", base_dir, "diff", "--staged", "--diff-filter=ACMR",
+        "--name-only", "-z"
+    ]
+    if patterns:
+        args += ["--"] + patterns
+    output = subprocess.check_output(args)
+    files = [
+        os.path.normpath(os.path.join(base_dir, f)) for f in output.split("\0")
+        if f != ""
+    ]
+    return files
+
+
 # The Python equivalent of `rm -rf`.
 def rmtree(directory):
     # On Windows, shutil.rmtree() won't delete files that have a readonly bit.
@@ -406,3 +423,8 @@ def tty_capture(cmd, bytes_input, timeout=5):
         os.close(fd)  # can't do it sooner: it leads to errno.EIO error
     p.wait()
     return p.returncode, res['stdout'], res['stderr']
+
+
+def print_command(cmd, files):
+    noun = "file" if len(files) == 1 else "files"
+    print "%s (%d %s)" % (cmd, len(files), noun)

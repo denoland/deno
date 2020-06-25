@@ -7,7 +7,7 @@
 import { BufReader } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 import { StringReader } from "../io/readers.ts";
-import { assert } from "../testing/asserts.ts";
+import { assert } from "../_util/assert.ts";
 
 const INVALID_RUNE = ["\r", "\n", '"'];
 
@@ -32,9 +32,9 @@ export class ParseError extends Error {
  * @property trimLeadingSpace - Flag to trim the leading space of the value.
  *           Default: 'false'
  * @property lazyQuotes - Allow unquoted quote in a quoted field or non double
- *           quoted quotes in quoted field Default: 'false'
+ *           quoted quotes in quoted field. Default: 'false'
  * @property fieldsPerRecord - Enabling the check of fields for each row.
- *           If == 0, first row is used as referal for the number of fields.
+ *           If == 0, first row is used as referral for the number of fields.
  */
 export interface ReadOptions {
   comma?: string;
@@ -64,12 +64,12 @@ async function readRecord(
   Startline: number,
   reader: BufReader,
   opt: ReadOptions = { comma: ",", trimLeadingSpace: false }
-): Promise<string[] | Deno.EOF> {
+): Promise<string[] | null> {
   const tp = new TextProtoReader(reader);
   const lineIndex = Startline;
   let line = await readLine(tp);
 
-  if (line === Deno.EOF) return Deno.EOF;
+  if (line === null) return null;
   if (line.length === 0) {
     return [];
   }
@@ -147,7 +147,7 @@ async function readRecord(
           // Hit end of line (copy all data so far).
           recordBuffer += line;
           const r = await readLine(tp);
-          if (r === Deno.EOF) {
+          if (r === null) {
             if (!opt.lazyQuotes) {
               quoteError = ERR_QUOTE;
               break parseField;
@@ -182,13 +182,13 @@ async function readRecord(
 }
 
 async function isEOF(tp: TextProtoReader): Promise<boolean> {
-  return (await tp.r.peek(0)) === Deno.EOF;
+  return (await tp.r.peek(0)) === null;
 }
 
-async function readLine(tp: TextProtoReader): Promise<string | Deno.EOF> {
+async function readLine(tp: TextProtoReader): Promise<string | null> {
   let line: string;
   const r = await tp.readLine();
-  if (r === Deno.EOF) return Deno.EOF;
+  if (r === null) return null;
   line = r;
 
   // For backwards compatibility, drop trailing \r before EOF.
@@ -209,6 +209,12 @@ async function readLine(tp: TextProtoReader): Promise<string | Deno.EOF> {
   return line;
 }
 
+/**
+ * Parse the CSV from the `reader` with the options provided and return `string[][]`.
+ *
+ * @param reader provides the CSV data to parse
+ * @param opt controls the parsing behavior
+ */
 export async function readMatrix(
   reader: BufReader,
   opt: ReadOptions = {
@@ -226,7 +232,7 @@ export async function readMatrix(
 
   for (;;) {
     const r = await readRecord(lineIndex, reader, opt);
-    if (r === Deno.EOF) break;
+    if (r === null) break;
     lineResult = r;
     lineIndex++;
     // If fieldsPerRecord is 0, Read sets it to
@@ -253,17 +259,45 @@ export async function readMatrix(
 }
 
 /**
+ * Parse the CSV string/buffer with the options provided.
+ *
  * HeaderOptions provides the column definition
  * and the parse function for each entry of the
  * column.
  */
 export interface HeaderOptions {
+  /**
+   * Name of the header to be used as property
+   */
   name: string;
+  /**
+   * Parse function for the column.
+   * This is executed on each entry of the header.
+   * This can be combined with the Parse function of the rows.
+   */
   parse?: (input: string) => unknown;
 }
 
 export interface ParseOptions extends ReadOptions {
+  /**
+   * If a boolean is provided, the first line will be used as Header definitions.
+   * If `string[]` or `HeaderOptions[]` those names will be used for header definition.
+   */
   header: boolean | string[] | HeaderOptions[];
+  /** Parse function for rows.
+   * Example:
+   *     const r = await parseFile('a,b,c\ne,f,g\n', {
+   *      header: ["this", "is", "sparta"],
+   *       parse: (e: Record<string, unknown>) => {
+   *         return { super: e.this, street: e.is, fighter: e.sparta };
+   *       }
+   *     });
+   * // output
+   * [
+   *   { super: "a", street: "b", fighter: "c" },
+   *   { super: "e", street: "f", fighter: "g" }
+   * ]
+   */
   parse?: (input: unknown) => unknown;
 }
 
@@ -273,20 +307,9 @@ export interface ParseOptions extends ReadOptions {
  * for columns and rows.
  * @param input Input to parse. Can be a string or BufReader.
  * @param opt options of the parser.
- * @param [opt.header=false] HeaderOptions
- * @param [opt.parse=null] Parse function for rows.
- * Example:
- *     const r = await parseFile('a,b,c\ne,f,g\n', {
- *      header: ["this", "is", "sparta"],
- *       parse: (e: Record<string, unknown>) => {
- *         return { super: e.this, street: e.is, fighter: e.sparta };
- *       }
- *     });
- * // output
- * [
- *   { super: "a", street: "b", fighter: "c" },
- *   { super: "e", street: "f", fighter: "g" }
- * ]
+ * @returns If you don't provide both `opt.header` and `opt.parse`, it returns `string[][]`.
+ *   If you provide `opt.header` but not `opt.parse`, it returns `object[]`.
+ *   If you provide `opt.parse`, it returns an array where each element is the value returned from `opt.parse`.
  */
 export async function parse(
   input: string | BufReader,

@@ -1,7 +1,5 @@
 import { parse } from "../flags/mod.ts";
 import { readStringDelim } from "../io/bufio.ts";
-const { args, exit, stdin } = Deno;
-type Reader = Deno.Reader;
 
 /* eslint-disable-next-line max-len */
 // See https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/AsyncFunction.
@@ -14,16 +12,16 @@ const HELP_MSG = `xeval
 Run a script for each new-line or otherwise delimited chunk of standard input.
 
 Print all the usernames in /etc/passwd:
-  cat /etc/passwd | deno -A https://deno.land/std/examples/xeval.ts "a = $.split(':'); if (a) console.log(a[0])"
+  cat /etc/passwd | deno run -A https://deno.land/std/examples/xeval.ts "a = $.split(':'); if (a) console.log(a[0])"
 
 A complicated way to print the current git branch:
-  git branch | deno -A https://deno.land/std/examples/xeval.ts -I 'line' "if (line.startsWith('*')) console.log(line.slice(2))"
+  git branch | deno run -A https://deno.land/std/examples/xeval.ts -I 'line' "if (line.startsWith('*')) console.log(line.slice(2))"
 
 Demonstrates breaking the input up by space delimiter instead of by lines:
-  cat LICENSE | deno -A https://deno.land/std/examples/xeval.ts -d " " "if ($ === 'MIT') console.log('MIT licensed')",
+  cat LICENSE | deno run -A https://deno.land/std/examples/xeval.ts -d " " "if ($ === 'MIT') console.log('MIT licensed')",
 
 USAGE:
-  deno -A https://deno.land/std/examples/xeval.ts [OPTIONS] <code>
+  deno run -A https://deno.land/std/examples/xeval.ts [OPTIONS] <code>
 OPTIONS:
   -d, --delim <delim>       Set delimiter, defaults to newline
   -I, --replvar <replvar>   Set variable name to be used in eval, defaults to $
@@ -40,7 +38,7 @@ export interface XevalOptions {
 const DEFAULT_DELIMITER = "\n";
 
 export async function xeval(
-  reader: Reader,
+  reader: Deno.Reader,
   xevalFunc: XevalFunc,
   { delimiter = DEFAULT_DELIMITER }: XevalOptions = {}
 ): Promise<void> {
@@ -53,7 +51,7 @@ export async function xeval(
 }
 
 async function main(): Promise<void> {
-  const parsedArgs = parse(args, {
+  const parsedArgs = parse(Deno.args, {
     boolean: ["help"],
     string: ["delim", "replvar"],
     alias: {
@@ -69,7 +67,7 @@ async function main(): Promise<void> {
   if (parsedArgs._.length != 1) {
     console.error(HELP_MSG);
     console.log(parsedArgs._);
-    exit(1);
+    Deno.exit(1);
   }
   if (parsedArgs.help) {
     return console.log(HELP_MSG);
@@ -82,12 +80,12 @@ async function main(): Promise<void> {
   // new AsyncFunction()'s error message for this particular case isn't great.
   if (!replVar.match(/^[_$A-z][_$A-z0-9]*$/)) {
     console.error(`Bad replvar identifier: "${replVar}"`);
-    exit(1);
+    Deno.exit(1);
   }
 
   const xEvalFunc = new AsyncFunction(replVar, code);
 
-  await xeval(stdin, xEvalFunc, { delimiter });
+  await xeval(Deno.stdin, xEvalFunc, { delimiter });
 }
 
 if (import.meta.main) {

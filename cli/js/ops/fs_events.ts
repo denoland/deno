@@ -7,7 +7,7 @@ export interface FsEvent {
   paths: string[];
 }
 
-class FsEvents implements AsyncIterableIterator<FsEvent> {
+class FsWatcher implements AsyncIterableIterator<FsEvent> {
   readonly rid: number;
 
   constructor(paths: string[], options: { recursive: boolean }) {
@@ -31,9 +31,9 @@ class FsEvents implements AsyncIterableIterator<FsEvent> {
   }
 }
 
-export function fsEvents(
+export function watchFs(
   paths: string | string[],
   options = { recursive: true }
 ): AsyncIterableIterator<FsEvent> {
-  return new FsEvents(Array.isArray(paths) ? paths : [paths], options);
+  return new FsWatcher(Array.isArray(paths) ? paths : [paths], options);
 }

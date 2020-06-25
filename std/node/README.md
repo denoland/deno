@@ -4,12 +4,12 @@ This module is meant to have a compatibility layer for the
 [NodeJS standard library](https://nodejs.org/docs/latest-v12.x/api/).
 
 **Warning**: Any function of this module should not be referred anywhere in the
-deno standard library as it's a compatiblity module.
+deno standard library as it's a compatibility module.
 
 ## Supported Builtins
 
 - [ ] assert
-- [ ] buffer
+- [x] buffer
 - [ ] child_process
 - [ ] cluster
 - [ ] console
@@ -69,16 +69,16 @@ they are stable:
 ## CommonJS Module Loading
 
 `createRequire(...)` is provided to create a `require` function for loading CJS
-modules.
+modules. It also sets supported globals.
 
 ```ts
 import { createRequire } from "https://deno.land/std/node/module.ts";
 
-const require_ = createRequire(import.meta.url);
+const require = createRequire(import.meta.url);
 // Loads native module polyfill.
-const path = require_("path");
+const path = require("path");
 // Loads extensionless module.
-const cjsModule = require_("./my_mod");
+const cjsModule = require("./my_mod");
 // Visits node_modules.
-const leftPad = require_("left-pad");
+const leftPad = require("left-pad");
 ```

@@ -1,42 +1,48 @@
-#[macro_use]
-extern crate deno_core;
-extern crate futures;
-
-use deno_core::CoreOp;
-use deno_core::Op;
-use deno_core::PluginInitContext;
-use deno_core::{Buf, ZeroCopyBuf};
+use deno_core::plugin_api::Buf;
+use deno_core::plugin_api::Interface;
+use deno_core::plugin_api::Op;
+use deno_core::plugin_api::ZeroCopyBuf;
 use futures::future::FutureExt;
 
-fn init(context: &mut dyn PluginInitContext) {
-  context.register_op("testSync", Box::new(op_test_sync));
-  context.register_op("testAsync", Box::new(op_test_async));
+#[no_mangle]
+pub fn deno_plugin_init(interface: &mut dyn Interface) {
+  interface.register_op("testSync", op_test_sync);
+  interface.register_op("testAsync", op_test_async);
 }
-init_fn!(init);
 
-pub fn op_test_sync(data: &[u8], zero_copy: Option<ZeroCopyBuf>) -> CoreOp {
-  if let Some(buf) = zero_copy {
-    let data_str = std::str::from_utf8(&data[..]).unwrap();
+fn op_test_sync(
+  _interface: &mut dyn Interface,
+  data: &[u8],
+  zero_copy: &mut [ZeroCopyBuf],
+) -> Op {
+  let data_str = std::str::from_utf8(&data[..]).unwrap();
+  let zero_copy = zero_copy.to_vec();
+  if !zero_copy.is_empty() {
+    println!("Hello from plugin. data: {}", data_str);
+  }
+  for (idx, buf) in zero_copy.iter().enumerate() {
     let buf_str = std::str::from_utf8(&buf[..]).unwrap();
-    println!(
-      "Hello from plugin. data: {} | zero_copy: {}",
-      data_str, buf_str
-    );
+    println!("zero_copy[{}]: {}", idx, buf_str);
   }
   let result = b"test";
   let result_box: Buf = Box::new(*result);
   Op::Sync(result_box)
 }
 
-pub fn op_test_async(data: &[u8], zero_copy: Option<ZeroCopyBuf>) -> CoreOp {
-  let data_str = std::str::from_utf8(&data[..]).unwrap().to_string();
+fn op_test_async(
+  _interface: &mut dyn Interface,
+  data: &[u8],
+  zero_copy: &mut [ZeroCopyBuf],
+) -> Op {
+  let zero_copy = zero_copy.to_vec();
+  if !zero_copy.is_empty() {
+    let data_str = std::str::from_utf8(&data[..]).unwrap().to_string();
+    println!("Hello from plugin. data: {}", data_str);
+  }
   let fut = async move {
-    if let Some(buf) = zero_copy {
+    for (idx, buf) in zero_copy.iter().enumerate() {
       let buf_str = std::str::from_utf8(&buf[..]).unwrap();
-      println!(
-        "Hello from plugin. data: {} | zero_copy: {}",
-        data_str, buf_str
-      );
+      println!("zero_copy[{}]: {}", idx, buf_str);
     }
     let (tx, rx) = futures::channel::oneshot::channel::<Result<(), ()>>();
     std::thread::spawn(move || {
@@ -46,7 +52,7 @@ pub fn op_test_async(data: &[u8], zero_copy: Option<ZeroCopyBuf>) -> CoreOp {
     assert!(rx.await.is_ok());
     let result = b"test";
     let result_box: Buf = Box::new(*result);
-    Ok(result_box)
+    result_box
   };
 
   Op::Async(fut.boxed())

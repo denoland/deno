@@ -2,7 +2,7 @@
 import { sendSync, sendAsync } from "../dispatch_json.ts";
 
 function toSecondsFromEpoch(v: number | Date): number {
-  return v instanceof Date ? v.valueOf() / 1000 : v;
+  return v instanceof Date ? Math.trunc(v.valueOf() / 1000) : v;
 }
 
 export function utimeSync(

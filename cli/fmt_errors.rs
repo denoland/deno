@@ -3,78 +3,65 @@
 use crate::colors;
 use crate::source_maps::apply_source_map;
 use crate::source_maps::SourceMapGetter;
-use deno_core;
 use deno_core::ErrBox;
-use deno_core::JSStackFrame;
 use std::error::Error;
 use std::fmt;
 use std::ops::Deref;
 
 const SOURCE_ABBREV_THRESHOLD: usize = 150;
 
-/// A trait which specifies parts of a diagnostic like item needs to be able to
-/// generate to conform its display to other diagnostic like items
-pub trait DisplayFormatter {
-  fn format_category_and_code(&self) -> String;
-  fn format_message(&self, level: usize) -> String;
-  fn format_related_info(&self) -> String;
-  fn format_source_line(&self, level: usize) -> String;
-  fn format_source_name(&self) -> String;
-}
-
-fn format_source_name(
-  script_name: String,
-  line_number: i64,
-  column: i64,
-  is_internal: bool,
-) -> String {
-  let line_number = line_number + 1;
-  let column = column + 1;
-  if is_internal {
-    format!("{}:{}:{}", script_name, line_number, column)
-  } else {
-    let script_name_c = colors::cyan(script_name);
-    let line_c = colors::yellow(line_number.to_string());
-    let column_c = colors::yellow(column.to_string());
-    format!("{}:{}:{}", script_name_c, line_c, column_c)
-  }
-}
-
-/// Formats optional source, line number and column into a single string.
-pub fn format_maybe_source_name(
-  script_name: Option<String>,
-  line_number: Option<i64>,
-  column: Option<i64>,
-) -> String {
-  if script_name.is_none() {
-    return "".to_string();
-  }
-
-  assert!(line_number.is_some());
-  assert!(column.is_some());
-  format_source_name(
-    script_name.unwrap(),
-    line_number.unwrap(),
-    column.unwrap(),
-    false,
+pub fn format_location(filename: String, line: i64, col: i64) -> String {
+  format!(
+    "{}:{}:{}",
+    colors::cyan(filename),
+    colors::yellow(line.to_string()),
+    colors::yellow(col.to_string())
   )
+}
+
+pub fn format_stack(
+  is_error: bool,
+  message_line: String,
+  source_line: Option<String>,
+  start_column: Option<i64>,
+  end_column: Option<i64>,
+  formatted_frames: &[String],
+  level: usize,
+) -> String {
+  let mut s = String::new();
+  s.push_str(&format!("{:indent$}{}", "", message_line, indent = level));
+  s.push_str(&format_maybe_source_line(
+    source_line,
+    start_column,
+    end_column,
+    is_error,
+    level,
+  ));
+  for formatted_frame in formatted_frames {
+    s.push_str(&format!(
+      "\n{:indent$}    at {}",
+      "",
+      formatted_frame,
+      indent = level
+    ));
+  }
+  s
 }
 
 /// Take an optional source line and associated information to format it into
 /// a pretty printed version of that line.
-pub fn format_maybe_source_line(
+fn format_maybe_source_line(
   source_line: Option<String>,
-  line_number: Option<i64>,
   start_column: Option<i64>,
   end_column: Option<i64>,
   is_error: bool,
   level: usize,
 ) -> String {
-  if source_line.is_none() || line_number.is_none() {
+  if source_line.is_none() || start_column.is_none() || end_column.is_none() {
     return "".to_string();
   }
 
-  let source_line = source_line.as_ref().unwrap();
+  let source_line = source_line.unwrap();
   // sometimes source_line gets set with an empty string, which then outputs
   // an empty source line when displayed, so need just short circuit here.
   // Also short-circuit on error line too long.
@@ -84,12 +71,6 @@ pub fn format_maybe_source_line(
 
   assert!(start_column.is_some());
   assert!(end_column.is_some());
-  let line_number = (1 + line_number.unwrap()).to_string();
-  let line_color = colors::black_on_white(line_number.to_string());
-  let line_number_len = line_number.len();
-  let line_padding =
-    colors::black_on_white(format!("{:indent$}", "", indent = line_number_len))
-      .to_string();
   let mut s = String::new();
   let start_column = start_column.unwrap();
   let end_column = end_column.unwrap();
@@ -101,12 +82,15 @@ pub fn format_maybe_source_line(
   } else {
     '~'
   };
-  for i in 0..end_column {
-    if i >= start_column {
-      s.push(underline_char);
+  for _i in 0..start_column {
+    if source_line.chars().nth(_i as usize).unwrap() == '\t' {
+      s.push('\t');
     } else {
       s.push(' ');
     }
+  }
+  for _i in 0..(end_column - start_column) {
+    s.push(underline_char);
   }
   let color_underline = if is_error {
     colors::red(s).to_string()
@@ -116,52 +100,7 @@ pub fn format_maybe_source_line(
 
   let indent = format!("{:indent$}", "", indent = level);
 
-  format!(
-    "\n\n{}{} {}\n{}{} {}\n",
-    indent, line_color, source_line, indent, line_padding, color_underline
-  )
-}
-
-/// Format a message to preface with `error: ` with ansi codes for red.
-pub fn format_error_message(msg: String) -> String {
-  let preamble = colors::red("error:".to_string());
-  format!("{} {}", preamble, msg)
-}
-
-fn format_stack_frame(frame: &JSStackFrame, is_internal_frame: bool) -> String {
-  // Note when we print to string, we change from 0-indexed to 1-indexed.
-  let function_name = if is_internal_frame {
-    colors::italic_bold_gray(frame.function_name.clone()).to_string()
-  } else {
-    colors::italic_bold(frame.function_name.clone()).to_string()
-  };
-  let mut source_loc = format_source_name(
-    frame.script_name.clone(),
-    frame.line_number,
-    frame.column,
-    is_internal_frame,
-  );
-
-  // Each chunk of styled text is auto-resetted on end,
-  // which make nesting not working.
-  // Explicitly specify color for each section.
-  let mut at_prefix = "    at".to_owned();
-  if is_internal_frame {
-    at_prefix = colors::gray(at_prefix).to_string();
-  }
-  if !frame.function_name.is_empty() || frame.is_eval {
-    source_loc = format!("({})", source_loc); // wrap then style
-  }
-  if is_internal_frame {
-    source_loc = colors::gray(source_loc).to_string();
-  }
-  if !frame.function_name.is_empty() {
-    format!("{} {} {}", at_prefix, function_name, source_loc)
-  } else if frame.is_eval {
-    format!("{} eval {}", at_prefix, source_loc)
-  } else {
-    format!("{} {}", at_prefix, source_loc)
-  }
+  format!("\n{}{}\n{}{}", indent, source_line, indent, color_underline)
 }
 
 /// Wrapper around deno_core::JSError which provides color to_string.
@@ -186,65 +125,47 @@ impl Deref for JSError {
   }
 }
 
-impl DisplayFormatter for JSError {
-  fn format_category_and_code(&self) -> String {
-    "".to_string()
-  }
-
-  fn format_message(&self, _level: usize) -> String {
-    format!(
-      "{}{}",
-      colors::red_bold("error: ".to_string()),
-      self.0.message.clone()
-    )
-  }
-
-  fn format_related_info(&self) -> String {
-    "".to_string()
-  }
-
-  fn format_source_line(&self, level: usize) -> String {
-    format_maybe_source_line(
-      self.0.source_line.clone(),
-      self.0.line_number,
-      self.0.start_column,
-      self.0.end_column,
-      true,
-      level,
-    )
-  }
-
-  fn format_source_name(&self) -> String {
-    let e = &self.0;
-    if e.script_resource_name.is_none() {
-      return "".to_string();
-    }
-
-    format!(
-      "\n► {}",
-      format_maybe_source_name(
-        e.script_resource_name.clone(),
-        e.line_number,
-        e.start_column,
-      )
-    )
-  }
-}
-
 impl fmt::Display for JSError {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    let mut formatted_frames = self.0.formatted_frames.clone();
+
+    // The formatted_frames passed from prepareStackTrace() are colored.
+    if !colors::use_color() {
+      formatted_frames = formatted_frames
+        .iter()
+        .map(|s| colors::strip_ansi_codes(s).to_string())
+        .collect();
+    }
+
+    // When the stack frame array is empty, but the source location given by
+    // (script_resource_name, line_number, start_column + 1) exists, this is
+    // likely a syntax error. For the sake of formatting we treat it like it was
+    // given as a single stack frame.
+    if formatted_frames.is_empty()
+      && self.0.script_resource_name.is_some()
+      && self.0.line_number.is_some()
+      && self.0.start_column.is_some()
+    {
+      formatted_frames = vec![format_location(
+        self.0.script_resource_name.clone().unwrap(),
+        self.0.line_number.unwrap(),
+        self.0.start_column.unwrap() + 1,
+      )]
+    };
+
     write!(
       f,
-      "{}{}{}",
-      self.format_message(0),
-      self.format_source_name(),
-      self.format_source_line(0),
+      "{}",
+      &format_stack(
+        true,
+        self.0.message.clone(),
+        self.0.source_line.clone(),
+        self.0.start_column,
+        self.0.end_column,
+        &formatted_frames,
+        0
+      )
     )?;
-
-    for frame in &self.0.frames {
-      let is_internal_frame = frame.script_name.starts_with("$deno$");
-      write!(f, "\n{}", format_stack_frame(&frame, is_internal_frame))?;
-    }
     Ok(())
   }
 }
@@ -257,66 +178,8 @@ mod tests {
   use crate::colors::strip_ansi_codes;
 
   #[test]
-  fn js_error_to_string() {
-    let core_js_error = deno_core::JSError {
-      message: "Error: foo bar".to_string(),
-      source_line: None,
-      script_resource_name: None,
-      line_number: None,
-      start_column: None,
-      end_column: None,
-      frames: vec![
-        JSStackFrame {
-          line_number: 4,
-          column: 16,
-          script_name: "foo_bar.ts".to_string(),
-          function_name: "foo".to_string(),
-          is_eval: false,
-          is_constructor: false,
-        },
-        JSStackFrame {
-          line_number: 5,
-          column: 20,
-          script_name: "bar_baz.ts".to_string(),
-          function_name: "qat".to_string(),
-          is_eval: false,
-          is_constructor: false,
-        },
-        JSStackFrame {
-          line_number: 1,
-          column: 1,
-          script_name: "deno_main.js".to_string(),
-          function_name: "".to_string(),
-          is_eval: false,
-          is_constructor: false,
-        },
-      ],
-    };
-    let formatted_error = JSError(core_js_error).to_string();
-    let actual = strip_ansi_codes(&formatted_error);
-    let expected = "error: Error: foo bar\n    at foo (foo_bar.ts:5:17)\n    at qat (bar_baz.ts:6:21)\n    at deno_main.js:2:2";
-    assert_eq!(actual, expected);
-  }
-
-  #[test]
-  fn test_format_none_source_name() {
-    let actual = format_maybe_source_name(None, None, None);
-    assert_eq!(actual, "");
-  }
-
-  #[test]
-  fn test_format_some_source_name() {
-    let actual = format_maybe_source_name(
-      Some("file://foo/bar.ts".to_string()),
-      Some(1),
-      Some(2),
-    );
-    assert_eq!(strip_ansi_codes(&actual), "file://foo/bar.ts:2:3");
-  }
-
-  #[test]
   fn test_format_none_source_line() {
-    let actual = format_maybe_source_line(None, None, None, None, false, 0);
+    let actual = format_maybe_source_line(None, None, None, false, 0);
     assert_eq!(actual, "");
   }
 
@@ -325,20 +188,13 @@ mod tests {
     let actual = format_maybe_source_line(
       Some("console.log('foo');".to_string()),
       Some(8),
-      Some(8),
       Some(11),
       true,
       0,
     );
     assert_eq!(
       strip_ansi_codes(&actual),
-      "\n\n9 console.log(\'foo\');\n          ~~~\n"
+      "\nconsole.log(\'foo\');\n        ~~~"
     );
-  }
-
-  #[test]
-  fn test_format_error_message() {
-    let actual = format_error_message("foo".to_string());
-    assert_eq!(strip_ansi_codes(&actual), "error: foo");
   }
 }

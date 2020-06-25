@@ -1,5 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import * as domTypes from "./dom_types.ts";
 import * as blob from "./blob.ts";
 import * as domFile from "./dom_file.ts";
 import { DomIterableMixin } from "./dom_iterable.ts";
@@ -8,15 +7,22 @@ import { requiredArguments } from "./util.ts";
 const dataSymbol = Symbol("data");
 
 class FormDataBase {
-  [dataSymbol]: Array<[string, domTypes.FormDataEntryValue]> = [];
+  [dataSymbol]: Array<[string, FormDataEntryValue]> = [];
 
   append(name: string, value: string): void;
+  append(name: string, value: domFile.DomFileImpl): void;
   append(name: string, value: blob.DenoBlob, filename?: string): void;
-  append(name: string, value: string | blob.DenoBlob, filename?: string): void {
+  append(
+    name: string,
+    value: string | blob.DenoBlob | domFile.DomFileImpl,
+    filename?: string
+  ): void {
     requiredArguments("FormData.append", arguments.length, 2);
     name = String(name);
-    if (value instanceof blob.DenoBlob) {
-      const dfile = new domFile.DomFileImpl([value], filename || name, {
+    if (value instanceof domFile.DomFileImpl) {
+      this[dataSymbol].push([name, value]);
+    } else if (value instanceof blob.DenoBlob) {
+      const dfile = new domFile.DomFileImpl([value], filename || "blob", {
         type: value.type,
       });
       this[dataSymbol].push([name, dfile]);
@@ -38,7 +44,7 @@ class FormDataBase {
     }
   }
 
-  getAll(name: string): domTypes.FormDataEntryValue[] {
+  getAll(name: string): FormDataEntryValue[] {
     requiredArguments("FormData.getAll", arguments.length, 1);
     name = String(name);
     const values = [];
@@ -51,7 +57,7 @@ class FormDataBase {
     return values;
   }
 
-  get(name: string): domTypes.FormDataEntryValue | null {
+  get(name: string): FormDataEntryValue | null {
     requiredArguments("FormData.get", arguments.length, 1);
     name = String(name);
     for (const entry of this[dataSymbol]) {
@@ -70,8 +76,13 @@ class FormDataBase {
   }
 
   set(name: string, value: string): void;
+  set(name: string, value: domFile.DomFileImpl): void;
   set(name: string, value: blob.DenoBlob, filename?: string): void;
-  set(name: string, value: string | blob.DenoBlob, filename?: string): void {
+  set(
+    name: string,
+    value: string | blob.DenoBlob | domFile.DomFileImpl,
+    filename?: string
+  ): void {
     requiredArguments("FormData.set", arguments.length, 2);
     name = String(name);
 
@@ -82,8 +93,10 @@ class FormDataBase {
     while (i < this[dataSymbol].length) {
       if (this[dataSymbol][i][0] === name) {
         if (!found) {
-          if (value instanceof blob.DenoBlob) {
-            const dfile = new domFile.DomFileImpl([value], filename || name, {
+          if (value instanceof domFile.DomFileImpl) {
+            this[dataSymbol][i][1] = value;
+          } else if (value instanceof blob.DenoBlob) {
+            const dfile = new domFile.DomFileImpl([value], filename || "blob", {
               type: value.type,
             });
             this[dataSymbol][i][1] = dfile;
@@ -101,8 +114,10 @@ class FormDataBase {
 
     // Otherwise, append entry to the context object’s entry list.
     if (!found) {
-      if (value instanceof blob.DenoBlob) {
-        const dfile = new domFile.DomFileImpl([value], filename || name, {
+      if (value instanceof domFile.DomFileImpl) {
+        this[dataSymbol].push([name, value]);
+      } else if (value instanceof blob.DenoBlob) {
+        const dfile = new domFile.DomFileImpl([value], filename || "blob", {
           type: value.type,
         });
         this[dataSymbol].push([name, dfile]);
@@ -117,8 +132,13 @@ class FormDataBase {
   }
 }
 
-export class FormData extends DomIterableMixin<
+export class FormDataImpl extends DomIterableMixin<
   string,
-  domTypes.FormDataEntryValue,
+  FormDataEntryValue,
   typeof FormDataBase
 >(FormDataBase, dataSymbol) {}
+
+Object.defineProperty(FormDataImpl, "name", {
+  value: "FormData",
+  configurable: true,
+});

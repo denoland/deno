@@ -1,23 +1,23 @@
 import { assert, assertEquals } from "../testing/asserts.ts";
 import { BufReader, BufWriter } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
-const { connect, run, test } = Deno;
 
-let server: Deno.Process;
+let server: Deno.Process<Deno.RunOptions & { stdout: "piped" }>;
 async function startServer(): Promise<void> {
-  server = run({
-    cmd: [Deno.execPath(), "run", "-A", "http/racing_server.ts"],
+  server = Deno.run({
+    // TODO(lucacasonato): remove unstable when stabilized
+    cmd: [Deno.execPath(), "run", "--unstable", "-A", "http/racing_server.ts"],
     stdout: "piped",
   });
   // Once racing server is ready it will write to its stdout.
   assert(server.stdout != null);
   const r = new TextProtoReader(new BufReader(server.stdout));
   const s = await r.readLine();
-  assert(s !== Deno.EOF && s.includes("Racing server listening..."));
+  assert(s !== null && s.includes("Racing server listening..."));
 }
 function killServer(): void {
   server.close();
-  server.stdout?.close();
+  server.stdout.close();
 }
 
 const input = [
@@ -58,10 +58,10 @@ content-length: 6
 Step7
 `;
 
-test(async function serverPipelineRace(): Promise<void> {
+Deno.test("serverPipelineRace", async function (): Promise<void> {
   await startServer();
 
-  const conn = await connect({ port: 4501 });
+  const conn = await Deno.connect({ port: 4501 });
   const r = new TextProtoReader(new BufReader(conn));
   const w = new BufWriter(conn);
   await w.write(new TextEncoder().encode(input));
