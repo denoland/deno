@@ -1,6 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
+  assertThrows,
   assertEquals,
   assertStringContains,
   assertThrows,
@@ -25,6 +26,46 @@ unitTest({ perms: { run: true } }, async function runSuccess(): Promise<void> {
   assertEquals(status.signal, undefined);
   p.stdout.close();
   p.close();
+});
+unitTest({ perms: { run: true } }, async function runStdinRid0(): Promise<
+  void
+> {
+  const p = Deno.run({
+    cmd: ["python", "-c", "print('hello world')"],
+    stdin: 0,
+    stdout: "piped",
+    stderr: "null",
+  });
+  const status = await p.status();
+  assertEquals(status.success, true);
+  assertEquals(status.code, 0);
+  assertEquals(status.signal, undefined);
+  p.stdout.close();
+  p.close();
+});
+
+unitTest({ perms: { run: true } }, function runInvalidStdio(): void {
+  assertThrows(() =>
+    Deno.run({
+      cmd: ["python", "-c", "print('hello world')"],
+      // @ts-expect-error because Deno.run should throw on invalid stdin.
+      stdin: "a",
+    })
+  );
+  assertThrows(() =>
+    Deno.run({
+      cmd: ["python", "-c", "print('hello world')"],
+      // @ts-expect-error because Deno.run should throw on invalid stdout.
+      stdout: "b",
+    })
+  );
+  assertThrows(() =>
+    Deno.run({
+      cmd: ["python", "-c", "print('hello world')"],
+      // @ts-expect-error because Deno.run should throw on invalid stderr.
+      stderr: "c",
+    })
+  );
 });
 
 unitTest(
