@@ -16,7 +16,8 @@ import {
 import * as iotest from "./_iotest.ts";
 import { StringReader } from "./readers.ts";
 import { StringWriter } from "./writers.ts";
-import { charCode, copyBytes } from "./util.ts";
+import { charCode } from "./util.ts";
+import { copyBytes } from "../bytes/mod.ts";
 
 const encoder = new TextEncoder();
 

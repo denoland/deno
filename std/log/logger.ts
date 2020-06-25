@@ -7,19 +7,28 @@ import {
 } from "./levels.ts";
 import { BaseHandler } from "./handlers.ts";
 
+export interface LogRecordOptions {
+  msg: string;
+  args: unknown[];
+  level: number;
+  loggerName: string;
+}
+
 export class LogRecord {
   readonly msg: string;
   #args: unknown[];
   #datetime: Date;
   readonly level: number;
   readonly levelName: string;
+  readonly loggerName: string;
 
-  constructor(msg: string, args: unknown[], level: number) {
-    this.msg = msg;
-    this.#args = [...args];
-    this.level = level;
+  constructor(options: LogRecordOptions) {
+    this.msg = options.msg;
+    this.#args = [...options.args];
+    this.level = options.level;
+    this.loggerName = options.loggerName;
     this.#datetime = new Date();
-    this.levelName = getLevelName(level);
+    this.levelName = getLevelName(options.level);
   }
   get args(): unknown[] {
     return [...this.#args];
@@ -29,17 +38,27 @@ export class LogRecord {
   }
 }
 
+export interface LoggerOptions {
+  handlers?: BaseHandler[];
+}
+
 export class Logger {
   level: number;
   levelName: LevelName;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   handlers: any[];
+  loggerName: string;
 
-  constructor(levelName: LevelName, handlers?: BaseHandler[]) {
+  constructor(
+    loggerName: string,
+    levelName: LevelName,
+    options: LoggerOptions = {}
+  ) {
+    this.loggerName = loggerName;
     this.level = getLevelByName(levelName);
     this.levelName = levelName;
 
-    this.handlers = handlers || [];
+    this.handlers = options.handlers || [];
   }
 
   /** If the level of the logger is greater than the level to log, then nothing
@@ -66,7 +85,12 @@ export class Logger {
     } else {
       logMessage = this.asString(msg);
     }
-    const record: LogRecord = new LogRecord(logMessage, args, level);
+    const record: LogRecord = new LogRecord({
+      msg: logMessage,
+      args: args,
+      level: level,
+      loggerName: this.loggerName,
+    });
 
     this.handlers.forEach((handler): void => {
       handler.handle(record);

@@ -23,6 +23,7 @@ Deno.test({
   fn() {
     assertThrows(
       () => {
+        // @ts-expect-error Type '"made-up-encoding"' is not assignable to type
         appendFile("some/path", "some data", "made-up-encoding", () => {});
       },
       Error,
@@ -33,6 +34,7 @@ Deno.test({
         appendFile(
           "some/path",
           "some data",
+          // @ts-expect-error Type '"made-up-encoding"' is not assignable to type
           { encoding: "made-up-encoding" },
           () => {}
         );
@@ -41,6 +43,7 @@ Deno.test({
       "Only 'utf8' encoding is currently supported"
     );
     assertThrows(
+      // @ts-expect-error Type '"made-up-encoding"' is not assignable to type
       () => appendFileSync("some/path", "some data", "made-up-encoding"),
       Error,
       "Only 'utf8' encoding is currently supported"
@@ -48,6 +51,7 @@ Deno.test({
     assertThrows(
       () =>
         appendFileSync("some/path", "some data", {
+          // @ts-expect-error Type '"made-up-encoding"' is not assignable to type
           encoding: "made-up-encoding",
         }),
       Error,

@@ -3,18 +3,14 @@ import {
   assert,
   assertEquals,
   assertStringContains,
+  assertThrows,
   unitTest,
 } from "./test_util.ts";
 
 unitTest(function runPermissions(): void {
-  let caughtError = false;
-  try {
+  assertThrows(() => {
     Deno.run({ cmd: ["python", "-c", "print('hello world')"] });
-  } catch (e) {
-    caughtError = true;
-    assert(e instanceof Deno.errors.PermissionDenied);
-  }
-  assert(caughtError);
+  }, Deno.errors.PermissionDenied);
 });
 
 unitTest({ perms: { run: true } }, async function runSuccess(): Promise<void> {
@@ -325,18 +321,13 @@ unitTest(function signalNumbers(): void {
 });
 
 unitTest(function killPermissions(): void {
-  let caughtError = false;
-  try {
+  assertThrows(() => {
     // Unlike the other test cases, we don't have permission to spawn a
     // subprocess we can safely kill. Instead we send SIGCONT to the current
     // process - assuming that Deno does not have a special handler set for it
     // and will just continue even if a signal is erroneously sent.
     Deno.kill(Deno.pid, Deno.Signal.SIGCONT);
-  } catch (e) {
-    caughtError = true;
-    assert(e instanceof Deno.errors.PermissionDenied);
-  }
-  assert(caughtError);
+  }, Deno.errors.PermissionDenied);
 });
 
 unitTest({ perms: { run: true } }, async function killSuccess(): Promise<void> {
@@ -368,14 +359,9 @@ unitTest({ perms: { run: true } }, function killFailed(): void {
   assert(!p.stdin);
   assert(!p.stdout);
 
-  let err;
-  try {
+  assertThrows(() => {
     Deno.kill(p.pid, 12345);
-  } catch (e) {
-    err = e;
-  }
-  assert(!!err);
-  assert(err instanceof TypeError);
+  }, TypeError);
 
   p.close();
 });

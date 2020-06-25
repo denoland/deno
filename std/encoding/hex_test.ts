@@ -63,7 +63,7 @@ Deno.test({
       const srcStr = "abc";
       const src = new TextEncoder().encode(srcStr);
       const dest = new Uint8Array(encodedLen(src.length));
-      const int = encode(dest, src);
+      const int = encode(src, dest);
       assertEquals(src, new Uint8Array([97, 98, 99]));
       assertEquals(int, 6);
     }
@@ -74,7 +74,7 @@ Deno.test({
       const dest = new Uint8Array(2); // out of index
       assertThrows(
         (): void => {
-          encode(dest, src);
+          encode(src, dest);
         },
         Error,
         "Out of index."
@@ -84,7 +84,7 @@ Deno.test({
     for (const [enc, dec] of testCases) {
       const dest = new Uint8Array(encodedLen(dec.length));
       const src = new Uint8Array(dec as number[]);
-      const n = encode(dest, src);
+      const n = encode(src, dest);
       assertEquals(dest.length, n);
       assertEquals(new TextDecoder().decode(dest), enc);
     }
@@ -125,7 +125,7 @@ Deno.test({
     for (const [enc, dec] of cases) {
       const dest = new Uint8Array(decodedLen(enc.length));
       const src = new TextEncoder().encode(enc as string);
-      const [, err] = decode(dest, src);
+      const [, err] = decode(src, dest);
       assertEquals(err, undefined);
       assertEquals(Array.from(dest), Array.from(dec as number[]));
     }
@@ -148,7 +148,7 @@ Deno.test({
   fn(): void {
     for (const [input, output, expectedErr] of errCases) {
       const out = new Uint8Array((input as string).length + 10);
-      const [n, err] = decode(out, new TextEncoder().encode(input as string));
+      const [n, err] = decode(new TextEncoder().encode(input as string), out);
       assertEquals(
         new TextDecoder("ascii").decode(out.slice(0, n)),
         output as string

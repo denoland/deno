@@ -126,11 +126,11 @@ In general, 'width' describes the minimum length of the output, while
 Numerical values for width and precision can be substituted for the `*` char, in
 which case the values are obtained from the next args, e.g.:
 
-    sprintf ("%*.*f", 9,8,456.0)
+    sprintf("%*.*f", 9, 8, 456.0)
 
 is equivalent to
 
-    sprintf ("%9.9f", 456.0)
+    sprintf("%9.8f", 456.0)
 
 ## Flags
 

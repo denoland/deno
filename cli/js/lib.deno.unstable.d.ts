@@ -83,175 +83,6 @@ declare namespace Deno {
     options?: SymlinkOptions
   ): Promise<void>;
 
-  /** **UNSTABLE** */
-  export type DirKind =
-    | "home"
-    | "cache"
-    | "config"
-    | "executable"
-    | "data"
-    | "data_local"
-    | "audio"
-    | "desktop"
-    | "document"
-    | "download"
-    | "font"
-    | "picture"
-    | "public"
-    | "template"
-    | "tmp"
-    | "video";
-
-  /**
-   * **UNSTABLE**: Currently under evaluation to decide if method name `dir` and
-   * parameter type alias name `DirKind` should be renamed.
-   *
-   * Returns the user and platform specific directories.
-   *
-   * ```ts
-   * const homeDirectory = Deno.dir("home");
-   * ```
-   *
-   * Requires `allow-env` permission.
-   *
-   * Returns `null` if there is no applicable directory or if any other error
-   * occurs.
-   *
-   * Argument values: `"home"`, `"cache"`, `"config"`, `"executable"`, `"data"`,
-   * `"data_local"`, `"audio"`, `"desktop"`, `"document"`, `"download"`,
-   * `"font"`, `"picture"`, `"public"`, `"template"`, `"tmp"`, `"video"`
-   *
-   * `"home"`
-   *
-   * |Platform | Value                                    | Example                |
-   * | ------- | -----------------------------------------| -----------------------|
-   * | Linux   | `$HOME`                                  | /home/alice            |
-   * | macOS   | `$HOME`                                  | /Users/alice           |
-   * | Windows | `{FOLDERID_Profile}`                     | C:\Users\Alice         |
-   *
-   * `"cache"`
-   *
-   * |Platform | Value                               | Example                      |
-   * | ------- | ----------------------------------- | ---------------------------- |
-   * | Linux   | `$XDG_CACHE_HOME` or `$HOME`/.cache | /home/alice/.cache           |
-   * | macOS   | `$HOME`/Library/Caches              | /Users/Alice/Library/Caches  |
-   * | Windows | `{FOLDERID_LocalAppData}`           | C:\Users\Alice\AppData\Local |
-   *
-   * `"config"`
-   *
-   * |Platform | Value                                 | Example                          |
-   * | ------- | ------------------------------------- | -------------------------------- |
-   * | Linux   | `$XDG_CONFIG_HOME` or `$HOME`/.config | /home/alice/.config              |
-   * | macOS   | `$HOME`/Library/Preferences           | /Users/Alice/Library/Preferences |
-   * | Windows | `{FOLDERID_RoamingAppData}`           | C:\Users\Alice\AppData\Roaming   |
-   *
-   * `"executable"`
-   *
-   * |Platform | Value                                                           | Example                |
-   * | ------- | --------------------------------------------------------------- | -----------------------|
-   * | Linux   | `XDG_BIN_HOME` or `$XDG_DATA_HOME`/../bin or `$HOME`/.local/bin | /home/alice/.local/bin |
-   * | macOS   | -                                                               | -                      |
-   * | Windows | -                                                               | -                      |
-   *
-   * `"data"`
-   *
-   * |Platform | Value                                    | Example                                  |
-   * | ------- | ---------------------------------------- | ---------------------------------------- |
-   * | Linux   | `$XDG_DATA_HOME` or `$HOME`/.local/share | /home/alice/.local/share                 |
-   * | macOS   | `$HOME`/Library/Application Support      | /Users/Alice/Library/Application Support |
-   * | Windows | `{FOLDERID_RoamingAppData}`              | C:\Users\Alice\AppData\Roaming           |
-   *
-   * `"data_local"`
-   *
-   * |Platform | Value                                    | Example                                  |
-   * | ------- | ---------------------------------------- | ---------------------------------------- |
-   * | Linux   | `$XDG_DATA_HOME` or `$HOME`/.local/share | /home/alice/.local/share                 |
-   * | macOS   | `$HOME`/Library/Application Support      | /Users/Alice/Library/Application Support |
-   * | Windows | `{FOLDERID_LocalAppData}`                | C:\Users\Alice\AppData\Local             |
-   *
-   * `"audio"`
-   *
-   * |Platform | Value              | Example              |
-   * | ------- | ------------------ | -------------------- |
-   * | Linux   | `XDG_MUSIC_DIR`    | /home/alice/Music    |
-   * | macOS   | `$HOME`/Music      | /Users/Alice/Music   |
-   * | Windows | `{FOLDERID_Music}` | C:\Users\Alice\Music |
-   *
-   * `"desktop"`
-   *
-   * |Platform | Value                | Example                |
-   * | ------- | -------------------- | ---------------------- |
-   * | Linux   | `XDG_DESKTOP_DIR`    | /home/alice/Desktop    |
-   * | macOS   | `$HOME`/Desktop      | /Users/Alice/Desktop   |
-   * | Windows | `{FOLDERID_Desktop}` | C:\Users\Alice\Desktop |
-   *
-   * `"document"`
-   *
-   * |Platform | Value                  | Example                  |
-   * | ------- | ---------------------- | ------------------------ |
-   * | Linux   | `XDG_DOCUMENTS_DIR`    | /home/alice/Documents    |
-   * | macOS   | `$HOME`/Documents      | /Users/Alice/Documents   |
-   * | Windows | `{FOLDERID_Documents}` | C:\Users\Alice\Documents |
-   *
-   * `"download"`
-   *
-   * |Platform | Value                  | Example                  |
-   * | ------- | ---------------------- | ------------------------ |
-   * | Linux   | `XDG_DOWNLOAD_DIR`     | /home/alice/Downloads    |
-   * | macOS   | `$HOME`/Downloads      | /Users/Alice/Downloads   |
-   * | Windows | `{FOLDERID_Downloads}` | C:\Users\Alice\Downloads |
-   *
-   * `"font"`
-   *
-   * |Platform | Value                                                | Example                        |
-   * | ------- | ---------------------------------------------------- | ------------------------------ |
-   * | Linux   | `$XDG_DATA_HOME`/fonts or `$HOME`/.local/share/fonts | /home/alice/.local/share/fonts |
-   * | macOS   | `$HOME/Library/Fonts`                                | /Users/Alice/Library/Fonts     |
-   * | Windows | –                                                    | –                              |
-   *
-   * `"picture"`
-   *
-   * |Platform | Value                 | Example                 |
-   * | ------- | --------------------- | ----------------------- |
-   * | Linux   | `XDG_PICTURES_DIR`    | /home/alice/Pictures    |
-   * | macOS   | `$HOME`/Pictures      | /Users/Alice/Pictures   |
-   * | Windows | `{FOLDERID_Pictures}` | C:\Users\Alice\Pictures |
-   *
-   * `"public"`
-   *
-   * |Platform | Value                 | Example             |
-   * | ------- | --------------------- | ------------------- |
-   * | Linux   | `XDG_PUBLICSHARE_DIR` | /home/alice/Public  |
-   * | macOS   | `$HOME`/Public        | /Users/Alice/Public |
-   * | Windows | `{FOLDERID_Public}`   | C:\Users\Public     |
-   *
-   * `"template"`
-   *
-   * |Platform | Value                  | Example                                                    |
-   * | ------- | ---------------------- | ---------------------------------------------------------- |
-   * | Linux   | `XDG_TEMPLATES_DIR`    | /home/alice/Templates                                      |
-   * | macOS   | –                      | –                                                          |
-   * | Windows | `{FOLDERID_Templates}` | C:\Users\Alice\AppData\Roaming\Microsoft\Windows\Templates |
-   *
-   * `"tmp"`
-   *
-   * |Platform | Value                  | Example                                                    |
-   * | ------- | ---------------------- | ---------------------------------------------------------- |
-   * | Linux   | `TMPDIR`               | /tmp                                                       |
-   * | macOS   | `TMPDIR`               | /tmp                                                       |
-   * | Windows | `{TMP}`                | C:\Users\Alice\AppData\Local\Temp                          |
-   *
-   * `"video"`
-   *
-   * |Platform | Value               | Example               |
-   * | ------- | ------------------- | --------------------- |
-   * | Linux   | `XDG_VIDEOS_DIR`    | /home/alice/Videos    |
-   * | macOS   | `$HOME`/Movies      | /Users/Alice/Movies   |
-   * | Windows | `{FOLDERID_Videos}` | C:\Users\Alice\Videos |
-   *
-   */
-  export function dir(kind: DirKind): string | null;
-
   /** **Unstable**  There are questions around which permission this needs. And
    * maybe should be renamed (loadAverage?)
    *
@@ -988,7 +819,7 @@ declare namespace Deno {
     /** UNSTABLE: new API, yet to be vetted.
      *
      * Sends a message to the target. */
-    send(p: Uint8Array, addr: Addr): Promise<void>;
+    send(p: Uint8Array, addr: Addr): Promise<number>;
     /** UNSTABLE: new API, yet to be vetted.
      *
      * Close closes the socket. Any pending message promises will be rejected
@@ -1248,4 +1079,89 @@ declare namespace Deno {
 
   /** **UNSTABLE**: The URL of the file that was originally executed from the command-line. */
   export const mainModule: string;
+
+  /** Synchronously truncates or extends the specified file stream, to reach the
+   * specified `len`.  If `len` is not specified then the entire file contents
+   * are truncated.
+   *
+   * ```ts
+   * // truncate the entire file
+   * const file = Deno.open("my_file.txt", { read: true, write: true, truncate: true, create: true });
+   * Deno.ftruncateSync(file.rid);
+   *
+   * // truncate part of the file
+   * const file = Deno.open("my_file.txt", { read: true, write: true, create: true });
+   * Deno.write(file.rid, new TextEncoder().encode("Hello World"));
+   * Deno.ftruncateSync(file.rid, 7);
+   * const data = new Uint8Array(32);
+   * Deno.readSync(file.rid, data);
+   * console.log(new TextDecoder().decode(data)); // Hello W
+   * ```
+   */
+  export function ftruncateSync(rid: number, len?: number): void;
+
+  /** Truncates or extends the specified file stream, to reach the specified `len`. If
+   * `len` is not specified then the entire file contents are truncated.
+   *
+   * ```ts
+   * // truncate the entire file
+   * const file = Deno.open("my_file.txt", { read: true, write: true, create: true });
+   * await Deno.ftruncate(file.rid);
+   *
+   * // truncate part of the file
+   * const file = Deno.open("my_file.txt", { read: true, write: true, create: true });
+   * await Deno.write(file.rid, new TextEncoder().encode("Hello World"));
+   * await Deno.ftruncate(file.rid, 7);
+   * const data = new Uint8Array(32);
+   * await Deno.read(file.rid, data);
+   * console.log(new TextDecoder().decode(data)); // Hello W
+   * ```
+   */
+  export function ftruncate(rid: number, len?: number): Promise<void>;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   * Synchronously flushes any pending data and metadata operations of the given file stream to disk.
+   *  ```ts
+   * const file = Deno.openSync("my_file.txt", { read: true, write: true, create: true });
+   * Deno.writeSync(file.rid, new TextEncoder().encode("Hello World"));
+   * Deno.ftruncateSync(file.rid, 1);
+   * Deno.fsyncSync(file.rid);
+   * console.log(new TextDecoder().decode(Deno.readFileSync("my_file.txt"))); // H
+   * ```
+   */
+  export function fsyncSync(rid: number): void;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   * Flushes any pending data and metadata operations of the given file stream to disk.
+   *  ```ts
+   * const file = await Deno.open("my_file.txt", { read: true, write: true, create: true });
+   * await Deno.write(file.rid, new TextEncoder().encode("Hello World"));
+   * await Deno.ftruncate(file.rid, 1);
+   * await Deno.fsync(file.rid);
+   * console.log(new TextDecoder().decode(await Deno.readFile("my_file.txt"))); // H
+   * ```
+   */
+  export function fsync(rid: number): Promise<void>;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   * Synchronously returns a `Deno.FileInfo` for the given file stream.
+   *
+   * ```ts
+   * const file = Deno.openSync("file.txt", { read: true });
+   * const fileInfo = Deno.fstatSync(file.rid);
+   * assert(fileInfo.isFile);
+   * ```
+   */
+  export function fstatSync(rid: number): FileInfo;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   * Returns a `Deno.FileInfo` for the given file stream.
+   *
+   * ```ts
+   * const file = await Deno.open("file.txt", { read: true });
+   * const fileInfo = await Deno.fstat(file.rid);
+   * assert(fileInfo.isFile);
+   * ```
+   */
+  export function fstat(rid: number): Promise<FileInfo>;
 }

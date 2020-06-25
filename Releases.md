@@ -6,6 +6,28 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### 1.1.1 / 2020.06.19
+
+- fix: "deno test" should respect NO_COLOR=true (#6371)
+- fix: Deno.bundle supports targets < ES2017 (#6346)
+- fix: decode path properly on win32 (#6351)
+- fix: improve failure message for deno upgrade (#6348)
+- fix: apply http redirection limit for cached files (#6308)
+- fix: JSX compilation bug and provide better error message (#6300)
+- fix: DatagramConn.send (unstable) should return bytes sent (#6265, #6291)
+- upgrade: v8 to 8.5.104, rusty_v8 0.5.1 (#6377)
+- upgrade: crates (#6378)
+
+Changes in std version 0.58.0:
+
+- feat(std/log): expose logger name to LogRecord (#6316)
+- fix(std/async): MuxAsyncIterator throws muxed errors (#6295)
+- fix(std/io): BufWriter/StringWriter bug (#6247)
+- fix(std/io): Use Deno.test in writers_test (#6273)
+- fix(std/node): added tests for static methods of Buffer (#6276)
+- fix(std/testing): assertEqual so that it handles URL objects (#6278)
+- perf(std/hash): reimplement all hashes in WASM (#6292)
+
 ### 1.1.0 / 2020.06.12
 
 Changes in the CLI:
