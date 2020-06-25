@@ -1094,36 +1094,6 @@ declare namespace Deno {
     gid: number | null
   ): Promise<void>;
 
-  /** **UNSTABLE**: needs investigation into high precision time.
-   *
-   * Synchronously changes the access (`atime`) and modification (`mtime`) times
-   * of a file system object referenced by `path`. Given times are either in
-   * seconds (UNIX epoch time) or as `Date` objects.
-   *
-   *       Deno.utimeSync("myfile.txt", 1556495550, new Date());
-   *
-   * Requires `allow-write` permission. */
-  export function utimeSync(
-    path: string,
-    atime: number | Date,
-    mtime: number | Date
-  ): void;
-
-  /** **UNSTABLE**: needs investigation into high precision time.
-   *
-   * Changes the access (`atime`) and modification (`mtime`) times of a file
-   * system object referenced by `path`. Given times are either in seconds
-   * (UNIX epoch time) or as `Date` objects.
-   *
-   *       await Deno.utime("myfile.txt", 1556495550, new Date());
-   *
-   * Requires `allow-write` permission. */
-  export function utime(
-    path: string,
-    atime: number | Date,
-    mtime: number | Date
-  ): Promise<void>;
-
   export interface RemoveOptions {
     /** Defaults to `false`. If set to `true`, path will be removed even if
      * it's a non-empty directory. */
