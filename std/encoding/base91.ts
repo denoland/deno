@@ -48,9 +48,9 @@ export function encode(uint8: Uint8Array): string {
  */
 export function decode(b91: string): Uint8Array {
   const output: number[] = [];
-  let queue = 0, numbits = 0, value = -1;
+  let queue = 0, numbits = 0, value = -1, d=0;
   for (let i = 0, len = b91.length; i < len; i++) {
-    let d = revLookup[b91.charCodeAt(i)];
+    d = revLookup[b91.charCodeAt(i)];
     if (d === undefined) continue;
     if (value == -1) {
       value = d;
