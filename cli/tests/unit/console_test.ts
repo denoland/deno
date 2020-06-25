@@ -64,6 +64,13 @@ unitTest(function consoleTestStringifyComplexObjects(): void {
   assertEquals(stringify({ foo: "bar" }), `{ foo: "bar" }`);
 });
 
+unitTest(function consoleTestStringifyQuotes(): void {
+  assertEquals(stringify(["\\"]), `[ "\\\\" ]`);
+  assertEquals(stringify(['\\,"']), `[ '\\\\,"' ]`);
+  assertEquals(stringify([`\\,",'`]), `[ \`\\\\,",'\` ]`);
+  assertEquals(stringify(["\\,\",',`"]), `[ "\\\\,\\",',\`" ]`);
+});
+
 unitTest(function consoleTestStringifyLongStrings(): void {
   const veryLongString = "a".repeat(200);
   // If we stringify an object containing the long string, it gets abbreviated.
@@ -608,7 +615,9 @@ unitTest(async function consoleTestStringifyPromises(): Promise<void> {
       rej(Error("Whoops"));
     });
     await rejectedPromise;
-  } catch (err) {}
+  } catch (err) {
+    // pass
+  }
   const strLines = stringify(rejectedPromise).split("\n");
   assertEquals(strLines[0], "Promise {");
   assertEquals(strLines[1], "  <rejected> Error: Whoops");

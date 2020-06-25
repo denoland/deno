@@ -221,7 +221,7 @@ class Printf {
               flags.width += val;
           } // switch c
           break;
-        case State.PRECISION:
+        case State.PRECISION: {
           if (c === "*") {
             this.handleWidthOrPrecisionRef(WorP.PRECISION);
             break;
@@ -236,6 +236,7 @@ class Printf {
           flags.precision *= 10;
           flags.precision += val;
           break;
+        }
         default:
           throw new Error("can't be here. bug.");
       } // switch state
@@ -627,8 +628,7 @@ class Printf {
     switch (typeof val) {
       case "number":
         return this.fmtNumber(val as number, 16, upper);
-        break;
-      case "string":
+      case "string": {
         const sharp = this.flags.sharp && val.length !== 0;
         let hex = sharp ? "0x" : "";
         const prec = this.flags.precision;
@@ -647,7 +647,7 @@ class Printf {
           hex = hex.toUpperCase();
         }
         return this.pad(hex);
-        break;
+      }
       default:
         throw new Error(
           "currently only number and string are implemented for hex"

@@ -2,6 +2,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import "./unit_tests.ts";
 import {
+  REGISTERED_UNIT_TESTS,
+  colors,
   readLines,
   permissionCombinations,
   Permissions,
@@ -11,7 +13,7 @@ import {
   reportToConn,
 } from "./test_util.ts";
 
-// @ts-expect-error
+// @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
 const internalObj = Deno[Deno.internal];
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const reportToConsole = internalObj.reportToConsole as (message: any) => void;
@@ -225,6 +227,13 @@ async function masterRunnerMain(
   }
 
   console.log("Unit tests passed");
+
+  if (REGISTERED_UNIT_TESTS.find(({ only }) => only)) {
+    console.error(
+      `\n${colors.red("FAILED")} because the "only" option was used`
+    );
+    Deno.exit(1);
+  }
 }
 
 const HELP = `Unit test runner

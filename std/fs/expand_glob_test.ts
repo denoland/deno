@@ -1,6 +1,9 @@
-const { cwd, execPath, run } = Deno;
 import { decode } from "../encoding/utf8.ts";
-import { assert, assertEquals, assertStrContains } from "../testing/asserts.ts";
+import {
+  assert,
+  assertEquals,
+  assertStringContains,
+} from "../testing/asserts.ts";
 import {
   join,
   joinGlobs,
@@ -28,7 +31,7 @@ async function expandGlobArray(
   );
   pathsSync.sort();
   assertEquals(paths, pathsSync);
-  const root = normalize(options.root || cwd());
+  const root = normalize(options.root || Deno.cwd());
   for (const path of paths) {
     assert(path.startsWith(root));
   }
@@ -114,15 +117,15 @@ Deno.test("expandGlobIncludeDirs", async function (): Promise<void> {
 
 Deno.test("expandGlobPermError", async function (): Promise<void> {
   const exampleUrl = new URL("testdata/expand_wildcard.js", import.meta.url);
-  const p = run({
-    cmd: [execPath(), "run", "--unstable", exampleUrl.toString()],
+  const p = Deno.run({
+    cmd: [Deno.execPath(), "run", "--unstable", exampleUrl.toString()],
     stdin: "null",
     stdout: "piped",
     stderr: "piped",
   });
   assertEquals(await p.status(), { code: 1, success: false });
   assertEquals(decode(await p.output()), "");
-  assertStrContains(
+  assertStringContains(
     decode(await p.stderrOutput()),
     "Uncaught PermissionDenied"
   );

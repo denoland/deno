@@ -9,9 +9,9 @@
 - If you are going to work on an issue, mention so in the issue comments
   _before_ you start working on the issue.
 
-- Please be professional in the forums. Don't know what professional means?
-  [Read Rust's code of conduct](https://www.rust-lang.org/policies/code-of-conduct).
-  Have a problem? Email ry@tinyclouds.org.
+- Please be professional in the forums. We follow
+  [Rust's code of conduct](https://www.rust-lang.org/policies/code-of-conduct)
+  (CoC) Have a problem? Email ry@tinyclouds.org.
 
 ## Development
 
@@ -25,7 +25,7 @@ Before submitting, please make sure the following is done:
 1. That there is a related issue and it is referenced in the PR text.
 2. There are tests that cover the changes.
 3. Ensure `cargo test` passes.
-4. Format your code with `tools/format.py`
+4. Format your code with `./tools/format.py`
 5. Make sure `./tools/lint.py` passes.
 
 ## Changes to `third_party`

@@ -40,6 +40,11 @@ Be explicit even when it means more code.
 There are some situations where it may make sense to use such techniques, but in
 the vast majority of cases it does not.
 
+## Inclusive code
+
+Please follow the guidelines for inclusive code outlined at
+https://chromium.googlesource.com/chromium/src/+/master/styleguide/inclusive_code.md.
+
 ## Rust
 
 Follow Rust conventions and be consistent with existing code.

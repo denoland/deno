@@ -154,8 +154,8 @@ Iterate all files in a directory recursively.
 ```ts
 import { walk, walkSync } from "https://deno.land/std/fs/mod.ts";
 
-for (const fileInfo of walkSync(".")) {
-  console.log(fileInfo.filename);
+for (const entry of walkSync(".")) {
+  console.log(entry.path);
 }
 
 // Async
@@ -195,4 +195,29 @@ import {
 
 writeFileStr("./target.dat", "file content"); // returns a promise
 writeFileStrSync("./target.dat", "file content"); // void
+```
+
+### expandGlob
+
+Expand the glob string from the specified `root` directory and yield each result
+as a `WalkEntry` object.
+
+```ts
+import { expandGlob } from "https://deno.land/std/fs/mod.ts";
+
+for await (const file of expandGlob("**/*.ts")) {
+  console.log(file);
+}
+```
+
+### expandGlobSync
+
+Synchronous version of `expandGlob()`.
+
+```ts
+import { expandGlobSync } from "https://deno.land/std/fs/mod.ts";
+
+for (const file of expandGlobSync("**/*.ts")) {
+  console.log(file);
+}
 ```

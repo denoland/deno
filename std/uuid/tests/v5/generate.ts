@@ -1,9 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { assert, assertEquals } from "../../../testing/asserts.ts";
-const { test } = Deno;
 import { generate, validate } from "../../v5.ts";
+
 const NAMESPACE = "1b671a64-40d5-491e-99b0-da01ff1f3341";
-test({
+
+Deno.test({
   name: "[UUID] test_uuid_v5",
   fn(): void {
     const u = generate({ value: "", namespace: NAMESPACE });
@@ -12,7 +13,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "[UUID] test_uuid_v5_format",
   fn(): void {
     for (let i = 0; i < 10000; i++) {
@@ -22,7 +23,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "[UUID] test_uuid_v5_option",
   fn(): void {
     const v5Options = {
@@ -34,7 +35,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "[UUID] test_uuid_v5_buf_offset",
   fn(): void {
     const buf = [

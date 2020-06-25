@@ -2,7 +2,7 @@
 /** This module is browser compatible. Do not rely on good formatting of values
  * for AssertionError messages in browsers. */
 
-import { red, green, white, gray, bold } from "../fmt/colors.ts";
+import { red, green, white, gray, bold, stripColor } from "../fmt/colors.ts";
 import diff, { DiffType, DiffResult } from "./diff.ts";
 
 const CAN_NOT_DISPLAY = "[Cannot display]";
@@ -82,7 +82,8 @@ export function equal(c: unknown, d: unknown): boolean {
       a &&
       b &&
       ((a instanceof RegExp && b instanceof RegExp) ||
-        (a instanceof Date && b instanceof Date))
+        (a instanceof Date && b instanceof Date) ||
+        (a instanceof URL && b instanceof URL))
     ) {
       return String(a) === String(b);
     }
@@ -204,7 +205,7 @@ export function assertNotEquals(
  * Make an assertion that `actual` and `expected` are strictly equal.  If
  * not then throw.
  */
-export function assertStrictEq(
+export function assertStrictEquals(
   actual: unknown,
   expected: unknown,
   msg?: string
@@ -250,7 +251,7 @@ export function assertStrictEq(
  * Make an assertion that actual contains expected. If not
  * then thrown.
  */
-export function assertStrContains(
+export function assertStringContains(
   actual: string,
   expected: string,
   msg?: string
@@ -268,8 +269,8 @@ export function assertStrContains(
  * If not then thrown.
  */
 export function assertArrayContains(
-  actual: unknown[],
-  expected: unknown[],
+  actual: ArrayLike<unknown>,
+  expected: ArrayLike<unknown>,
   msg?: string
 ): void {
   const missing: unknown[] = [];
@@ -289,9 +290,9 @@ export function assertArrayContains(
     return;
   }
   if (!msg) {
-    msg = `actual: "${actual}" expected to contain: "${expected}"`;
-    msg += "\n";
-    msg += `missing: ${missing}`;
+    msg = `actual: "${format(actual)}" expected to contain: "${format(
+      expected
+    )}"\nmissing: ${format(missing)}`;
   }
   throw new AssertionError(msg);
 }
@@ -379,12 +380,13 @@ export function fail(msg?: string): void {
   assert(false, `Failed assertion${msg ? `: ${msg}` : "."}`);
 }
 
-/** Executes a function, expecting it to throw.  If it does not, then it
+/**
+ * Executes a function, expecting it to throw.  If it does not, then it
  * throws.  An error class and a string that should be included in the
  * error message can also be asserted.
  */
-export function assertThrows(
-  fn: () => void,
+export function assertThrows<T = void>(
+  fn: () => T,
   ErrorClass?: Constructor,
   msgIncludes = "",
   msg?: string
@@ -394,13 +396,19 @@ export function assertThrows(
   try {
     fn();
   } catch (e) {
+    if (e instanceof Error === false) {
+      throw new AssertionError("A non-Error object was thrown.");
+    }
     if (ErrorClass && !(Object.getPrototypeOf(e) === ErrorClass.prototype)) {
       msg = `Expected error to be instance of "${ErrorClass.name}", but was "${
         e.constructor.name
       }"${msg ? `: ${msg}` : "."}`;
       throw new AssertionError(msg);
     }
-    if (msgIncludes && !e.message.includes(msgIncludes)) {
+    if (
+      msgIncludes &&
+      !stripColor(e.message).includes(stripColor(msgIncludes))
+    ) {
       msg = `Expected error message to include "${msgIncludes}", but got "${
         e.message
       }"${msg ? `: ${msg}` : "."}`;
@@ -416,8 +424,13 @@ export function assertThrows(
   return error;
 }
 
-export async function assertThrowsAsync(
-  fn: () => Promise<void>,
+/**
+ * Executes a function which returns a promise, expecting it to throw or reject.
+ * If it does not, then it throws.  An error class and a string that should be
+ * included in the error message can also be asserted.
+ */
+export async function assertThrowsAsync<T = void>(
+  fn: () => Promise<T>,
   ErrorClass?: Constructor,
   msgIncludes = "",
   msg?: string
@@ -427,13 +440,19 @@ export async function assertThrowsAsync(
   try {
     await fn();
   } catch (e) {
+    if (e instanceof Error === false) {
+      throw new AssertionError("A non-Error object was thrown or rejected.");
+    }
     if (ErrorClass && !(Object.getPrototypeOf(e) === ErrorClass.prototype)) {
       msg = `Expected error to be instance of "${ErrorClass.name}", but got "${
         e.name
       }"${msg ? `: ${msg}` : "."}`;
       throw new AssertionError(msg);
     }
-    if (msgIncludes && !e.message.includes(msgIncludes)) {
+    if (
+      msgIncludes &&
+      !stripColor(e.message).includes(stripColor(msgIncludes))
+    ) {
       msg = `Expected error message to include "${msgIncludes}", but got "${
         e.message
       }"${msg ? `: ${msg}` : "."}`;

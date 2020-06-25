@@ -27,8 +27,11 @@ pub fn init(i: &mut CoreIsolate, s: &State) {
   i.register_op("op_connect", s.stateful_json_op2(op_connect));
   i.register_op("op_shutdown", s.stateful_json_op2(op_shutdown));
   i.register_op("op_listen", s.stateful_json_op2(op_listen));
-  i.register_op("op_receive", s.stateful_json_op2(op_receive));
-  i.register_op("op_send", s.stateful_json_op2(op_send));
+  i.register_op(
+    "op_datagram_receive",
+    s.stateful_json_op2(op_datagram_receive),
+  );
+  i.register_op("op_datagram_send", s.stateful_json_op2(op_datagram_send));
 }
 
 #[derive(Deserialize)]
@@ -161,7 +164,7 @@ fn receive_udp(
   Ok(JsonOp::Async(op.boxed_local()))
 }
 
-fn op_receive(
+fn op_datagram_receive(
   isolate_state: &mut CoreIsolateState,
   state: &State,
   args: Value,
@@ -191,7 +194,7 @@ struct SendArgs {
   transport_args: ArgsEnum,
 }
 
-fn op_send(
+fn op_datagram_send(
   isolate_state: &mut CoreIsolateState,
   state: &State,
   args: Value,
@@ -208,21 +211,21 @@ fn op_send(
       transport_args: ArgsEnum::Ip(args),
     } if transport == "udp" => {
       state.check_net(&args.hostname, args.port)?;
-
-      let op = async move {
+      let addr = resolve_addr(&args.hostname, args.port)?;
+      let f = poll_fn(move |cx| {
         let mut resource_table = resource_table.borrow_mut();
         let resource = resource_table
           .get_mut::<UdpSocketResource>(rid as u32)
           .ok_or_else(|| {
             OpError::bad_resource("Socket has been closed".to_string())
           })?;
-        let socket = &mut resource.socket;
-        let addr = resolve_addr(&args.hostname, args.port)?;
-        socket.send_to(&zero_copy, addr).await?;
-        Ok(json!({}))
-      };
-
-      Ok(JsonOp::Async(op.boxed_local()))
+        resource
+          .socket
+          .poll_send_to(cx, &zero_copy, &addr)
+          .map_err(OpError::from)
+          .map_ok(|byte_length| json!(byte_length))
+      });
+      Ok(JsonOp::Async(f.boxed_local()))
     }
     #[cfg(unix)]
     SendArgs {
@@ -241,11 +244,11 @@ fn op_send(
           })?;
 
         let socket = &mut resource.socket;
-        socket
+        let byte_length = socket
           .send_to(&zero_copy, &resource.local_addr.as_pathname().unwrap())
           .await?;
 
-        Ok(json!({}))
+        Ok(json!(byte_length))
       };
 
       Ok(JsonOp::Async(op.boxed_local()))

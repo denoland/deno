@@ -6,6 +6,136 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### 1.1.1 / 2020.06.19
+
+- fix: "deno test" should respect NO_COLOR=true (#6371)
+- fix: Deno.bundle supports targets < ES2017 (#6346)
+- fix: decode path properly on win32 (#6351)
+- fix: improve failure message for deno upgrade (#6348)
+- fix: apply http redirection limit for cached files (#6308)
+- fix: JSX compilation bug and provide better error message (#6300)
+- fix: DatagramConn.send (unstable) should return bytes sent (#6265, #6291)
+- upgrade: v8 to 8.5.104, rusty_v8 0.5.1 (#6377)
+- upgrade: crates (#6378)
+
+Changes in std version 0.58.0:
+
+- feat(std/log): expose logger name to LogRecord (#6316)
+- fix(std/async): MuxAsyncIterator throws muxed errors (#6295)
+- fix(std/io): BufWriter/StringWriter bug (#6247)
+- fix(std/io): Use Deno.test in writers_test (#6273)
+- fix(std/node): added tests for static methods of Buffer (#6276)
+- fix(std/testing): assertEqual so that it handles URL objects (#6278)
+- perf(std/hash): reimplement all hashes in WASM (#6292)
+
+### 1.1.0 / 2020.06.12
+
+Changes in the CLI:
+
+- feat: "deno eval -p" (#5682)
+- feat: "deno lint" subcommand (#6125, #6208, #6222, #6248, #6258, #6264)
+- feat: Add Deno.mainModule (#6180)
+- feat: Add Deno.env.delete() (#5859)
+- feat: Add TestDefinition::only (#5793)
+- feat: Allow reading the entry file from stdin (#6130)
+- feat: Handle .mjs files in "deno test" and "deno fmt" (#6134, #6122)
+- feat: URL support in Deno filesystem methods (#5990)
+- feat: make rid on Deno.Listener public (#5571)
+- feat(core): Add unregister op (#6214)
+- feat(doc): Display all overloads in cli details view (#6186)
+- feat(doc): Handle detail output for enum (#6078)
+- feat(fmt): Add diff for "deno fmt --check" (#5599)
+- fix: Handle @deno-types in export {} (#6202)
+- fix: Several regressions in TS compiler (#6177)
+- fix(cli): 'deno upgrade' doesn't work on Windows 8.1/PowerShell 4.0 (#6132)
+- fix(cli): WebAssembly runtime error propagation (#6137)
+- fix(cli/js/buffer): Remove try-catch from Buffer.readFrom, readFromSync
+  (#6161)
+- fix(cli/js/io): Deno.readSync on stdin (#6126)
+- fix(cli/js/net): UDP BorrowMutError (#6221)
+- fix(cli/js/process): Always return a code in ProcessStatus (#5244)
+- fix(cli/js/process): Strengthen socket types based on pipes (#4836)
+- fix(cli/js/web): IPv6 hostname support in URL (#5766)
+- fix(cli/js/web/worker): Disable relative module specifiers (#5266)
+- fix(cli/web/fetch): multipart/form-data request body support for binary files
+  (#5886)
+- fix(core): ES module snapshots (#6111)
+- revert: "feat: format deno bundle output (#5139)" (#6085)
+- upgrade: Rust 1.44.0 (#6113)
+- upgrade: swc_ecma_parser 0.24.5 (#6077)
+
+Changes in std version 0.57.0:
+
+- feat(std/encoding/binary): Add varnumBytes(), varbigBytes() (#5173)
+- feat(std/hash): Add sha3 (#5558)
+- feat(std/log): Inline and deferred statement resolution logging (#5192)
+- feat(std/node): Add util.promisify (#5540)
+- feat(std/node): Add util.types (#6159)
+- feat(std/node): Buffer (#5925)
+- feat(std/testing): Allow non-void promises in assertThrowsAsync (#6052)
+- fix(http/server): Flaky test on Windows (#6188)
+- fix(std/archive): Untar (#6217) cleanup std/tar (#6185)
+- fix(std/http): Don't use assert() for user input validation (#6092)
+- fix(std/http): Prevent crash on UnexpectedEof and InvalidData (#6155)
+- fix(std/http/file_server): Args handling only if invoked directly (#5989)
+- fix(std/io): StringReader implementation (#6148)
+- fix(std/log): Revert setInterval log flushing as it prevents process
+  completion (#6127)
+- fix(std/node): Emitter.removeAllListeners (#5583)
+- fix(std/testing/bench): Make progress callback async (#6175)
+- fix(std/testing/bench): Clock assertions without --allow-hrtime (#6069)
+- refactor(std): Remove testing dependencies from non-test code (#5838)
+- refactor(std/http): Rename delCookie to deleteCookie (#6088)
+- refactor(std/testing): Rename abbreviated assertions (#6118)
+- refactor(std/testing/bench): Remove differentiating on runs count (#6084)
+
+### 1.0.5 / 2020.06.03
+
+Changes in the CLI:
+
+- fix(fetch): Support 101 status code (#6059)
+- fix: REPL BorrowMutError panic (#6055)
+- fix: dynamic import BorrowMutError (#6065)
+- upgrade: dprint 0.19.1 and swc_ecma_parser 0.24.3 (#6068)
+- upgrade: rusty_v8 0.5.0 (#6070)
+
+Changes in std version 0.56.0:
+
+- feat(std/testing): benching progress callback (#5941)
+- feat(std/encoding): add base64url module (#5976)
+- fix(std/testing/asserts): Format values in assertArrayContains() (#6060)
+
+### 1.0.4 / 2020.06.02
+
+Changes in the CLI:
+
+- feat(core): Ops can take several zero copy buffers (#4788)
+- fix(bundle): better size output (#5997)
+- fix(cli): Deno.remove() fails to remove unix socket (#5967)
+- fix(cli): compile TS dependencies of JS files (#6000)
+- fix(cli): ES private fields parsing in SWC (#5964)
+- fix(cli): Better use of @ts-expect-error (#6038)
+- fix(cli): media type for .cjs and application/node (#6005)
+- fix(doc): remove JSDoc comment truncation (#6031)
+- fix(cli/js/web): Body.bodyUsed should use IsReadableStreamDisturbed
+- fix(cli/js/web): formData parser for binary files in fetch() (#6015)
+- fix(cli/js/web): set null body for null-body status in fetch() (#5980)
+- fix(cli/js/web): network error on multiple redirects in fetch() (#5985)
+- fix(cli/js/web): Headers.name and FormData.name (#5994)
+- upgrade: Rust crates (#5959, #6032)
+
+Changes in std version 0.55.0:
+
+- feat(std/hash): add Sha512 and HmacSha512 (#6009)
+- feat(std/http) support code 103 Early Hints (#6021)
+- feat(std/http): add TooEarly status code (#5999)
+- feat(std/io): add LimitedReader (#6026)
+- feat(std/log): buffered file logging (#6014)
+- feat(std/mime/multipart): Added multiple FormFile input (#6027)
+- feat(std/node): add util.type.isDate (#6029)
+- fix(std/http): file server not closing files (#5952)
+- fix(std/path): support browsers (#6003)
+
 ### 1.0.3 / 2020.05.29
 
 Changes in the CLI:

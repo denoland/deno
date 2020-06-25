@@ -1,4 +1,4 @@
-## Setup your environment
+## Set up your environment
 
 To productively get going with Deno you should set up your environment. This
 means setting up shell autocomplete, environmental variables and your editor or
@@ -29,12 +29,21 @@ The supported shells are:
 - powershell
 - elvish
 
-Example:
+Example (bash):
 
 ```shell
 deno completions bash > /usr/local/etc/bash_completion.d/deno.bash
 source /usr/local/etc/bash_completion.d/deno.bash
 ```
+
+Example (zsh):
+
+```shell
+mkdir ~/.oh-my-zsh/custom/plugins/deno
+deno completions zsh > ~/.oh-my-zsh/custom/plugins/deno/_deno
+```
+
+After this add `deno` plugin under plugins tag in `~/.zshrc` file.
 
 ### Editors and IDEs
 
@@ -65,9 +74,13 @@ on YouTrack.
 
 Vim works fairly well for Deno/TypeScript if you install
 [CoC](https://github.com/neoclide/coc.nvim) (intellisense engine and language
-server protocol). After CoC itself is installed, from inside Vim, simply run
-`:CocInstall coc-deno`. From now on, things like `gd` (go to definition) and
-`gr` (goto/find references) should work.
+server protocol).
+
+After CoC is installed, from inside Vim, run`:CocInstall coc-tsserver` and
+`:CocInstall coc-deno`. To get autocompletion working for Deno type definitions
+run `:CocCommand deno.types`. Optionally restart the CoC server `:CocRestart`.
+From now on, things like `gd` (go to definition) and `gr` (goto/find references)
+should work.
 
 #### Emacs
 

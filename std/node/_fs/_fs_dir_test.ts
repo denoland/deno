@@ -1,9 +1,8 @@
-const { test } = Deno;
 import { assert, assertEquals, fail } from "../../testing/asserts.ts";
 import Dir from "./_fs_dir.ts";
 import Dirent from "./_fs_dirent.ts";
 
-test({
+Deno.test({
   name: "Closing current directory with callback is successful",
   fn() {
     let calledBack = false;
@@ -16,21 +15,21 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "Closing current directory without callback returns void Promise",
   async fn() {
     await new Dir(".").close();
   },
 });
 
-test({
+Deno.test({
   name: "Closing current directory synchronously works",
   fn() {
     new Dir(".").closeSync();
   },
 });
 
-test({
+Deno.test({
   name: "Path is correctly returned",
   fn() {
     assertEquals(new Dir("std/node").path, "std/node");
@@ -40,7 +39,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "read returns null for empty directory",
   async fn() {
     const testDir: string = Deno.makeTempDirSync();
@@ -67,7 +66,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "Async read returns one file at a time",
   async fn() {
     const testDir: string = Deno.makeTempDirSync();
@@ -108,7 +107,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "Sync read returns one file at a time",
   fn() {
     const testDir: string = Deno.makeTempDirSync();
@@ -139,7 +138,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "Async iteration over existing directory",
   async fn() {
     const testDir: string = Deno.makeTempDirSync();

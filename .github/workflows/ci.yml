@@ -66,7 +66,13 @@ jobs:
       - name: Install rust
         uses: hecrj/setup-rust-action@v1
         with:
-          rust-version: "1.43.0"
+          rust-version: 1.44.0
+
+      - name: Install rust targets
+        run: |
+          # Necessary for the std/wasi tests
+          rustup target add wasm32-unknown-unknown
+          rustup target add wasm32-wasi
 
       - name: Install clippy and rustfmt
         if: matrix.config.kind == 'lint'
@@ -104,7 +110,7 @@ jobs:
         run: echo "::set-env name=CARGO_HOME::$(pwd)/.cargo_home"
 
       - name: Cache
-        uses: denoland/github-actions-cache@stable-prerelease
+        uses: actions/cache@v2
         with:
           # Note: crates from the denoland/deno git repo always get rebuilt,
           # and their outputs ('deno', 'libdeno.rlib' etc.) are quite big,

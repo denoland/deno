@@ -193,13 +193,11 @@ fn op_create_worker(
   let mut state = state.borrow_mut();
   let global_state = state.global_state.clone();
   let permissions = state.permissions.clone();
-  let referrer = state.main_module.to_string();
   let worker_id = state.next_worker_id;
   state.next_worker_id += 1;
   drop(state);
 
-  let module_specifier =
-    ModuleSpecifier::resolve_import(&specifier, &referrer)?;
+  let module_specifier = ModuleSpecifier::resolve_url(&specifier)?;
   let worker_name = args_name.unwrap_or_else(|| "".to_string());
 
   let (join_handle, worker_handle) = run_worker_thread(

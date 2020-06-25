@@ -165,6 +165,7 @@ pub unsafe fn v8_init() {
     "".to_string(),
     "--no-wasm-async-compilation".to_string(),
     "--harmony-top-level-await".to_string(),
+    "--experimental-wasm-bigint".to_string(),
   ];
   v8::V8::set_flags_from_command_line(argv);
 }
@@ -270,7 +271,7 @@ impl CoreIsolate {
   }
 
   /// Executes a bit of built-in JavaScript to provide Deno.sharedQueue.
-  fn shared_init(&mut self) {
+  pub(crate) fn shared_init(&mut self) {
     if self.needs_init {
       self.needs_init = false;
       js_check(self.execute("core.js", include_str!("core.js")));
@@ -315,7 +316,7 @@ impl CoreIsolate {
       match v8::Script::compile(scope, context, source, Some(&origin)) {
         Some(script) => script,
         None => {
-          let exception = tc.exception().unwrap();
+          let exception = tc.exception(scope).unwrap();
           return exception_to_err_result(scope, exception);
         }
       };
@@ -324,7 +325,7 @@ impl CoreIsolate {
       Some(_) => Ok(()),
       None => {
         assert!(tc.has_caught());
-        let exception = tc.exception().unwrap();
+        let exception = tc.exception(scope).unwrap();
         exception_to_err_result(scope, exception)
       }
     }
@@ -571,7 +572,7 @@ fn async_op_response<'s>(
     None => js_recv_cb.call(scope, context, global, &[]),
   };
 
-  match tc.exception() {
+  match tc.exception(scope) {
     None => Ok(()),
     Some(exception) => exception_to_err_result(scope, exception),
   }
@@ -602,7 +603,7 @@ fn drain_macrotasks<'s>(
 
     let is_done = js_macrotask_cb.call(scope, context, global, &[]);
 
-    if let Some(exception) = tc.exception() {
+    if let Some(exception) = tc.exception(scope) {
       return exception_to_err_result(scope, exception);
     }
 
