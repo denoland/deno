@@ -58,7 +58,6 @@ mod startup_data;
 pub mod state;
 mod swc_util;
 mod test_runner;
-pub mod test_util;
 mod tokio_util;
 mod tsc;
 mod upgrade;
@@ -384,7 +383,6 @@ async fn eval_command(
   let source_file = SourceFile {
     filename: main_module_url.to_file_path().unwrap(),
     url: main_module_url,
-    types_url: None,
     types_header: None,
     media_type: if as_typescript {
       MediaType::TypeScript
@@ -430,7 +428,11 @@ async fn bundle_command(
 
   let global_state = GlobalState::new(flags)?;
 
-  info!("Bundling {}", module_specifier.to_string());
+  info!(
+    "{} {}",
+    colors::green("Bundle".to_string()),
+    module_specifier.to_string()
+  );
 
   let output = tsc::bundle(
     &global_state,
@@ -444,11 +446,15 @@ async fn bundle_command(
   debug!(">>>>> bundle END");
 
   if let Some(out_file_) = out_file.as_ref() {
-    info!("Emitting bundle to {:?}", out_file_);
     let output_bytes = output.as_bytes();
     let output_len = output_bytes.len();
     deno_fs::write_file(out_file_, output_bytes, 0o666)?;
-    info!("{} emitted.", human_size(output_len as f64));
+    info!(
+      "{} {:?} ({})",
+      colors::green("Emit".to_string()),
+      out_file_,
+      colors::gray(human_size(output_len as f64))
+    );
   } else {
     println!("{}", output);
   }
@@ -589,7 +595,6 @@ async fn run_command(flags: Flags, script: String) -> Result<(), ErrBox> {
     let source_file = SourceFile {
       filename: main_module_url.to_file_path().unwrap(),
       url: main_module_url,
-      types_url: None,
       types_header: None,
       media_type: MediaType::TypeScript,
       source_code: source,
@@ -647,7 +652,6 @@ async fn test_command(
   let source_file = SourceFile {
     filename: test_file_url.to_file_path().unwrap(),
     url: test_file_url,
-    types_url: None,
     types_header: None,
     media_type: MediaType::TypeScript,
     source_code: test_file.clone().into_bytes(),

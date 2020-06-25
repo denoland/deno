@@ -1,20 +1,16 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
+  assertThrows,
   assertEquals,
   assertStringContains,
   unitTest,
 } from "./test_util.ts";
 
 unitTest(function runPermissions(): void {
-  let caughtError = false;
-  try {
+  assertThrows(() => {
     Deno.run({ cmd: ["python", "-c", "print('hello world')"] });
-  } catch (e) {
-    caughtError = true;
-    assert(e instanceof Deno.errors.PermissionDenied);
-  }
-  assert(caughtError);
+  }, Deno.errors.PermissionDenied);
 });
 
 unitTest({ perms: { run: true } }, async function runSuccess(): Promise<void> {
@@ -29,6 +25,46 @@ unitTest({ perms: { run: true } }, async function runSuccess(): Promise<void> {
   assertEquals(status.signal, undefined);
   p.stdout.close();
   p.close();
+});
+unitTest({ perms: { run: true } }, async function runStdinRid0(): Promise<
+  void
+> {
+  const p = Deno.run({
+    cmd: ["python", "-c", "print('hello world')"],
+    stdin: 0,
+    stdout: "piped",
+    stderr: "null",
+  });
+  const status = await p.status();
+  assertEquals(status.success, true);
+  assertEquals(status.code, 0);
+  assertEquals(status.signal, undefined);
+  p.stdout.close();
+  p.close();
+});
+
+unitTest({ perms: { run: true } }, function runInvalidStdio(): void {
+  assertThrows(() =>
+    Deno.run({
+      cmd: ["python", "-c", "print('hello world')"],
+      // @ts-expect-error because Deno.run should throw on invalid stdin.
+      stdin: "a",
+    })
+  );
+  assertThrows(() =>
+    Deno.run({
+      cmd: ["python", "-c", "print('hello world')"],
+      // @ts-expect-error because Deno.run should throw on invalid stdout.
+      stdout: "b",
+    })
+  );
+  assertThrows(() =>
+    Deno.run({
+      cmd: ["python", "-c", "print('hello world')"],
+      // @ts-expect-error because Deno.run should throw on invalid stderr.
+      stderr: "c",
+    })
+  );
 });
 
 unitTest(
@@ -325,18 +361,13 @@ unitTest(function signalNumbers(): void {
 });
 
 unitTest(function killPermissions(): void {
-  let caughtError = false;
-  try {
+  assertThrows(() => {
     // Unlike the other test cases, we don't have permission to spawn a
     // subprocess we can safely kill. Instead we send SIGCONT to the current
     // process - assuming that Deno does not have a special handler set for it
     // and will just continue even if a signal is erroneously sent.
     Deno.kill(Deno.pid, Deno.Signal.SIGCONT);
-  } catch (e) {
-    caughtError = true;
-    assert(e instanceof Deno.errors.PermissionDenied);
-  }
-  assert(caughtError);
+  }, Deno.errors.PermissionDenied);
 });
 
 unitTest({ perms: { run: true } }, async function killSuccess(): Promise<void> {
@@ -368,14 +399,9 @@ unitTest({ perms: { run: true } }, function killFailed(): void {
   assert(!p.stdin);
   assert(!p.stdout);
 
-  let err;
-  try {
+  assertThrows(() => {
     Deno.kill(p.pid, 12345);
-  } catch (e) {
-    err = e;
-  }
-  assert(!!err);
-  assert(err instanceof TypeError);
+  }, TypeError);
 
   p.close();
 });

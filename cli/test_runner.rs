@@ -93,7 +93,6 @@ pub fn render_test_file(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::test_util;
 
   #[test]
   fn test_prepare_test_modules_urls() {

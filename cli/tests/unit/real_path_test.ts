@@ -1,5 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { unitTest, assert } from "./test_util.ts";
+import {
+  unitTest,
+  assert,
+  assertThrows,
+  assertThrowsAsync,
+} from "./test_util.ts";
 
 unitTest({ perms: { read: true } }, function realPathSyncSuccess(): void {
   const incompletePath = "cli/tests/fixture.json";
@@ -30,25 +35,15 @@ unitTest(
 );
 
 unitTest({ perms: { read: false } }, function realPathSyncPerm(): void {
-  let caughtError = false;
-  try {
+  assertThrows(() => {
     Deno.realPathSync("some_file");
-  } catch (e) {
-    caughtError = true;
-    assert(e instanceof Deno.errors.PermissionDenied);
-  }
-  assert(caughtError);
+  }, Deno.errors.PermissionDenied);
 });
 
 unitTest({ perms: { read: true } }, function realPathSyncNotFound(): void {
-  let caughtError = false;
-  try {
+  assertThrows(() => {
     Deno.realPathSync("bad_filename");
-  } catch (e) {
-    caughtError = true;
-    assert(e instanceof Deno.errors.NotFound);
-  }
-  assert(caughtError);
+  }, Deno.errors.NotFound);
 });
 
 unitTest({ perms: { read: true } }, async function realPathSuccess(): Promise<
@@ -84,25 +79,15 @@ unitTest(
 unitTest({ perms: { read: false } }, async function realPathPerm(): Promise<
   void
 > {
-  let caughtError = false;
-  try {
+  await assertThrowsAsync(async () => {
     await Deno.realPath("some_file");
-  } catch (e) {
-    caughtError = true;
-    assert(e instanceof Deno.errors.PermissionDenied);
-  }
-  assert(caughtError);
+  }, Deno.errors.PermissionDenied);
 });
 
 unitTest({ perms: { read: true } }, async function realPathNotFound(): Promise<
   void
 > {
-  let caughtError = false;
-  try {
+  await assertThrowsAsync(async () => {
     await Deno.realPath("bad_filename");
-  } catch (e) {
-    caughtError = true;
-    assert(e instanceof Deno.errors.NotFound);
-  }
-  assert(caughtError);
+  }, Deno.errors.NotFound);
 });

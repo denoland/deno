@@ -1,3 +1,38 @@
+import * as hex from "../encoding/hex.ts";
+import * as base64 from "../encoding/base64.ts";
+import { notImplemented } from "./_utils.ts";
+
+const validEncodings = ["utf8", "hex", "base64"];
+const notImplementedEncodings = [
+  "utf16le",
+  "latin1",
+  "ascii",
+  "binary",
+  "ucs2",
+];
+
+function checkEncoding(encoding = "utf8", strict = true): string {
+  if (typeof encoding !== "string" || (strict && encoding === "")) {
+    if (!strict) return "utf8";
+    throw new TypeError(`Unkown encoding: ${encoding}`);
+  }
+
+  encoding = encoding.toLowerCase();
+  if (encoding === "utf-8" || encoding === "") {
+    return "utf8";
+  }
+
+  if (notImplementedEncodings.includes(encoding)) {
+    notImplemented(`"${encoding}" encoding`);
+  }
+
+  if (!validEncodings.includes(encoding)) {
+    throw new TypeError(`Unkown encoding: ${encoding}`);
+  }
+
+  return encoding;
+}
+
 /**
  * See also https://nodejs.org/api/buffer.html
  */
@@ -66,11 +101,24 @@ export default class Buffer extends Uint8Array {
   /**
    * Creates a new Buffer containing string.
    */
-  static from(string: string): Buffer;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  static from(value: any, offset?: number, length?: number): Buffer {
-    if (typeof value == "string")
+  static from(string: string, encoding?: string): Buffer;
+  static from(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    value: any,
+    offsetOrEncoding?: number | string,
+    length?: number
+  ): Buffer {
+    const offset =
+      typeof offsetOrEncoding === "string" ? undefined : offsetOrEncoding;
+    let encoding =
+      typeof offsetOrEncoding === "string" ? offsetOrEncoding : undefined;
+
+    if (typeof value == "string") {
+      encoding = checkEncoding(encoding, false);
+      if (encoding === "hex") return new Buffer(hex.decodeString(value).buffer);
+      if (encoding === "base64") return new Buffer(base64.decode(value));
       return new Buffer(new TextEncoder().encode(value).buffer);
+    }
 
     // workaround for https://github.com/microsoft/TypeScript/issues/38446
     return new Buffer(value, offset!, length);
@@ -246,7 +294,13 @@ export default class Buffer extends Uint8Array {
    * encoding. start and end may be passed to decode only a subset of buf.
    */
   toString(encoding = "utf8", start = 0, end = this.length): string {
-    return new TextDecoder(encoding).decode(this.subarray(start, end));
+    encoding = checkEncoding(encoding);
+
+    const b = this.subarray(start, end);
+    if (encoding === "hex") return hex.encodeToString(b);
+    if (encoding === "base64") return base64.encode(b.buffer);
+
+    return new TextDecoder(encoding).decode(b);
   }
 
   /**

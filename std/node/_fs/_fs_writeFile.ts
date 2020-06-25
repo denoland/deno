@@ -3,6 +3,7 @@ import { notImplemented } from "../_utils.ts";
 import { fromFileUrl } from "../path.ts";
 
 import {
+  Encodings,
   WriteFileOptions,
   CallbackWithError,
   isFileOptions,
@@ -14,12 +15,12 @@ import {
 export function writeFile(
   pathOrRid: string | number | URL,
   data: string | Uint8Array,
-  optOrCallback: string | CallbackWithError | WriteFileOptions | undefined,
+  optOrCallback: Encodings | CallbackWithError | WriteFileOptions | undefined,
   callback?: CallbackWithError
 ): void {
   const callbackFn: CallbackWithError | undefined =
     optOrCallback instanceof Function ? optOrCallback : callback;
-  const options: string | WriteFileOptions | undefined =
+  const options: Encodings | WriteFileOptions | undefined =
     optOrCallback instanceof Function ? undefined : optOrCallback;
 
   if (!callbackFn) {
@@ -71,7 +72,7 @@ export function writeFile(
 export function writeFileSync(
   pathOrRid: string | number | URL,
   data: string | Uint8Array,
-  options?: string | WriteFileOptions
+  options?: Encodings | WriteFileOptions
 ): void {
   pathOrRid = pathOrRid instanceof URL ? fromFileUrl(pathOrRid) : pathOrRid;
 

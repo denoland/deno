@@ -62,7 +62,12 @@ Deno.test("simpleHandler", function (): void {
     for (const levelName of LogLevelNames) {
       const level = getLevelByName(levelName as LevelName);
       handler.handle(
-        new LogRecord(`${levelName.toLowerCase()}-test`, [], level)
+        new LogRecord({
+          msg: `${levelName.toLowerCase()}-test`,
+          args: [],
+          level: level,
+          loggerName: "default",
+        })
       );
     }
 
@@ -77,7 +82,14 @@ Deno.test("testFormatterAsString", function (): void {
     formatter: "test {levelName} {msg}",
   });
 
-  handler.handle(new LogRecord("Hello, world!", [], LogLevels.DEBUG));
+  handler.handle(
+    new LogRecord({
+      msg: "Hello, world!",
+      args: [],
+      level: LogLevels.DEBUG,
+      loggerName: "default",
+    })
+  );
 
   assertEquals(handler.messages, ["test DEBUG Hello, world!"]);
 });
@@ -88,7 +100,14 @@ Deno.test("testFormatterAsFunction", function (): void {
       `fn formatter ${logRecord.levelName} ${logRecord.msg}`,
   });
 
-  handler.handle(new LogRecord("Hello, world!", [], LogLevels.ERROR));
+  handler.handle(
+    new LogRecord({
+      msg: "Hello, world!",
+      args: [],
+      level: LogLevels.ERROR,
+      loggerName: "default",
+    })
+  );
 
   assertEquals(handler.messages, ["fn formatter ERROR Hello, world!"]);
 });
@@ -102,12 +121,26 @@ Deno.test({
     });
 
     await fileHandler.setup();
-    fileHandler.handle(new LogRecord("Hello World", [], LogLevels.WARNING));
+    fileHandler.handle(
+      new LogRecord({
+        msg: "Hello World",
+        args: [],
+        level: LogLevels.WARNING,
+        loggerName: "default",
+      })
+    );
     await fileHandler.destroy();
     const firstFileSize = (await Deno.stat(LOG_FILE)).size;
 
     await fileHandler.setup();
-    fileHandler.handle(new LogRecord("Hello World", [], LogLevels.WARNING));
+    fileHandler.handle(
+      new LogRecord({
+        msg: "Hello World",
+        args: [],
+        level: LogLevels.WARNING,
+        loggerName: "default",
+      })
+    );
     await fileHandler.destroy();
     const secondFileSize = (await Deno.stat(LOG_FILE)).size;
 
@@ -210,13 +243,34 @@ Deno.test({
     });
     await fileHandler.setup();
 
-    fileHandler.handle(new LogRecord("AAA", [], LogLevels.ERROR)); // 'ERROR AAA\n' = 10 bytes
+    fileHandler.handle(
+      new LogRecord({
+        msg: "AAA",
+        args: [],
+        level: LogLevels.ERROR,
+        loggerName: "default",
+      })
+    ); // 'ERROR AAA\n' = 10 bytes
     fileHandler.flush();
     assertEquals((await Deno.stat(LOG_FILE)).size, 10);
-    fileHandler.handle(new LogRecord("AAA", [], LogLevels.ERROR));
+    fileHandler.handle(
+      new LogRecord({
+        msg: "AAA",
+        args: [],
+        level: LogLevels.ERROR,
+        loggerName: "default",
+      })
+    );
     fileHandler.flush();
     assertEquals((await Deno.stat(LOG_FILE)).size, 20);
-    fileHandler.handle(new LogRecord("AAA", [], LogLevels.ERROR));
+    fileHandler.handle(
+      new LogRecord({
+        msg: "AAA",
+        args: [],
+        level: LogLevels.ERROR,
+        loggerName: "default",
+      })
+    );
     fileHandler.flush();
     // Rollover occurred. Log file now has 1 record, rollover file has the original 2
     assertEquals((await Deno.stat(LOG_FILE)).size, 10);
@@ -239,9 +293,30 @@ Deno.test({
     });
     await fileHandler.setup();
 
-    fileHandler.handle(new LogRecord("AAA", [], LogLevels.ERROR)); // 'ERROR AAA\n' = 10 bytes
-    fileHandler.handle(new LogRecord("AAA", [], LogLevels.ERROR));
-    fileHandler.handle(new LogRecord("AAA", [], LogLevels.ERROR));
+    fileHandler.handle(
+      new LogRecord({
+        msg: "AAA",
+        args: [],
+        level: LogLevels.ERROR,
+        loggerName: "default",
+      })
+    ); // 'ERROR AAA\n' = 10 bytes
+    fileHandler.handle(
+      new LogRecord({
+        msg: "AAA",
+        args: [],
+        level: LogLevels.ERROR,
+        loggerName: "default",
+      })
+    );
+    fileHandler.handle(
+      new LogRecord({
+        msg: "AAA",
+        args: [],
+        level: LogLevels.ERROR,
+        loggerName: "default",
+      })
+    );
 
     await fileHandler.destroy();
 
@@ -277,7 +352,14 @@ Deno.test({
       mode: "a",
     });
     await fileHandler.setup();
-    fileHandler.handle(new LogRecord("AAA", [], LogLevels.ERROR)); // 'ERROR AAA\n' = 10 bytes
+    fileHandler.handle(
+      new LogRecord({
+        msg: "AAA",
+        args: [],
+        level: LogLevels.ERROR,
+        loggerName: "default",
+      })
+    ); // 'ERROR AAA\n' = 10 bytes
     await fileHandler.destroy();
 
     const decoder = new TextDecoder();
@@ -349,7 +431,14 @@ Deno.test({
       mode: "w",
     });
     await fileHandler.setup();
-    fileHandler.handle(new LogRecord("AAA", [], LogLevels.ERROR)); // 'ERROR AAA\n' = 10 bytes
+    fileHandler.handle(
+      new LogRecord({
+        msg: "AAA",
+        args: [],
+        level: LogLevels.ERROR,
+        loggerName: "default",
+      })
+    ); // 'ERROR AAA\n' = 10 bytes
 
     assertEquals((await Deno.stat(LOG_FILE)).size, 0);
     dispatchEvent(new Event("unload"));
@@ -402,13 +491,27 @@ Deno.test({
     });
     await fileHandler.setup();
 
-    fileHandler.handle(new LogRecord("AAA", [], LogLevels.ERROR));
+    fileHandler.handle(
+      new LogRecord({
+        msg: "AAA",
+        args: [],
+        level: LogLevels.ERROR,
+        loggerName: "default",
+      })
+    );
 
     // ERROR won't trigger immediate flush
     const fileSize = (await Deno.stat(LOG_FILE)).size;
     assertEquals(fileSize, 0);
 
-    fileHandler.handle(new LogRecord("AAA", [], LogLevels.CRITICAL));
+    fileHandler.handle(
+      new LogRecord({
+        msg: "AAA",
+        args: [],
+        level: LogLevels.CRITICAL,
+        loggerName: "default",
+      })
+    );
 
     // CRITICAL will trigger immediate flush
     const fileSize2 = (await Deno.stat(LOG_FILE)).size;

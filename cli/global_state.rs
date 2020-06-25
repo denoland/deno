@@ -260,9 +260,9 @@ impl GlobalState {
 ///  - JSX import
 fn should_allow_js(module_graph_files: &[&ModuleGraphFile]) -> bool {
   module_graph_files.iter().any(|module_file| {
-    if module_file.media_type == (MediaType::JSX as i32) {
+    if module_file.media_type == MediaType::JSX {
       true
-    } else if module_file.media_type == (MediaType::JavaScript as i32) {
+    } else if module_file.media_type == MediaType::JavaScript {
       module_file.imports.iter().any(|import_desc| {
         let import_file = module_graph_files
           .iter()
@@ -271,9 +271,9 @@ fn should_allow_js(module_graph_files: &[&ModuleGraphFile]) -> bool {
           })
           .expect("Failed to find imported file");
         let media_type = import_file.media_type;
-        media_type == (MediaType::TypeScript as i32)
-          || media_type == (MediaType::TSX as i32)
-          || media_type == (MediaType::JSX as i32)
+        media_type == MediaType::TypeScript
+          || media_type == MediaType::TSX
+          || media_type == MediaType::JSX
       })
     } else {
       false
@@ -301,9 +301,9 @@ fn needs_compilation(
   needs_compilation |= module_graph_files.iter().any(|module_file| {
     let media_type = module_file.media_type;
 
-    media_type == (MediaType::TypeScript as i32)
-      || media_type == (MediaType::TSX as i32)
-      || media_type == (MediaType::JSX as i32)
+    media_type == (MediaType::TypeScript)
+      || media_type == (MediaType::TSX)
+      || media_type == (MediaType::JSX)
   });
 
   needs_compilation
@@ -317,6 +317,7 @@ fn thread_safe() {
 
 #[test]
 fn test_should_allow_js() {
+  use crate::doc::Location;
   use crate::module_graph::ImportDescriptor;
 
   assert!(should_allow_js(&[
@@ -326,11 +327,12 @@ fn test_should_allow_js() {
       redirect: None,
       filename: "some/file.ts".to_string(),
       imports: vec![],
+      version_hash: "1".to_string(),
       referenced_files: vec![],
       lib_directives: vec![],
       types_directives: vec![],
       type_headers: vec![],
-      media_type: MediaType::TypeScript as i32,
+      media_type: MediaType::TypeScript,
       source_code: "function foo() {}".to_string(),
     },
     &ModuleGraphFile {
@@ -338,6 +340,7 @@ fn test_should_allow_js() {
       url: "file:///some/file1.js".to_string(),
       redirect: None,
       filename: "some/file1.js".to_string(),
+      version_hash: "1".to_string(),
       imports: vec![ImportDescriptor {
         specifier: "./file.ts".to_string(),
         resolved_specifier: ModuleSpecifier::resolve_url(
@@ -346,12 +349,17 @@ fn test_should_allow_js() {
         .unwrap(),
         type_directive: None,
         resolved_type_directive: None,
+        location: Location {
+          filename: "file:///some/file1.js".to_string(),
+          line: 0,
+          col: 0,
+        },
       }],
       referenced_files: vec![],
       lib_directives: vec![],
       types_directives: vec![],
       type_headers: vec![],
-      media_type: MediaType::JavaScript as i32,
+      media_type: MediaType::JavaScript,
       source_code: "function foo() {}".to_string(),
     },
   ],));
@@ -363,11 +371,12 @@ fn test_should_allow_js() {
       redirect: None,
       filename: "some/file.jsx".to_string(),
       imports: vec![],
+      version_hash: "1".to_string(),
       referenced_files: vec![],
       lib_directives: vec![],
       types_directives: vec![],
       type_headers: vec![],
-      media_type: MediaType::JSX as i32,
+      media_type: MediaType::JSX,
       source_code: "function foo() {}".to_string(),
     },
     &ModuleGraphFile {
@@ -375,6 +384,7 @@ fn test_should_allow_js() {
       url: "file:///some/file.ts".to_string(),
       redirect: None,
       filename: "some/file.ts".to_string(),
+      version_hash: "1".to_string(),
       imports: vec![ImportDescriptor {
         specifier: "./file.jsx".to_string(),
         resolved_specifier: ModuleSpecifier::resolve_url(
@@ -383,12 +393,17 @@ fn test_should_allow_js() {
         .unwrap(),
         type_directive: None,
         resolved_type_directive: None,
+        location: Location {
+          filename: "file:///some/file1.ts".to_string(),
+          line: 0,
+          col: 0,
+        },
       }],
       referenced_files: vec![],
       lib_directives: vec![],
       types_directives: vec![],
       type_headers: vec![],
-      media_type: MediaType::TypeScript as i32,
+      media_type: MediaType::TypeScript,
       source_code: "function foo() {}".to_string(),
     },
   ]));
@@ -403,8 +418,9 @@ fn test_should_allow_js() {
       referenced_files: vec![],
       lib_directives: vec![],
       types_directives: vec![],
+      version_hash: "1".to_string(),
       type_headers: vec![],
-      media_type: MediaType::JavaScript as i32,
+      media_type: MediaType::JavaScript,
       source_code: "function foo() {}".to_string(),
     },
     &ModuleGraphFile {
@@ -420,12 +436,18 @@ fn test_should_allow_js() {
         .unwrap(),
         type_directive: None,
         resolved_type_directive: None,
+        location: Location {
+          filename: "file:///some/file.js".to_string(),
+          line: 0,
+          col: 0,
+        },
       }],
       referenced_files: vec![],
       lib_directives: vec![],
       types_directives: vec![],
+      version_hash: "1".to_string(),
       type_headers: vec![],
-      media_type: MediaType::JavaScript as i32,
+      media_type: MediaType::JavaScript,
       source_code: "function foo() {}".to_string(),
     },
   ],));
@@ -446,7 +468,8 @@ fn test_needs_compilation() {
       lib_directives: vec![],
       types_directives: vec![],
       type_headers: vec![],
-      media_type: MediaType::JavaScript as i32,
+      version_hash: "1".to_string(),
+      media_type: MediaType::JavaScript,
       source_code: "function foo() {}".to_string(),
     }],
   ));
@@ -470,7 +493,8 @@ fn test_needs_compilation() {
         lib_directives: vec![],
         types_directives: vec![],
         type_headers: vec![],
-        media_type: MediaType::TypeScript as i32,
+        media_type: MediaType::TypeScript,
+        version_hash: "1".to_string(),
         source_code: "function foo() {}".to_string(),
       },
       &ModuleGraphFile {
@@ -483,7 +507,8 @@ fn test_needs_compilation() {
         lib_directives: vec![],
         types_directives: vec![],
         type_headers: vec![],
-        media_type: MediaType::JavaScript as i32,
+        version_hash: "1".to_string(),
+        media_type: MediaType::JavaScript,
         source_code: "function foo() {}".to_string(),
       },
     ],
