@@ -67,11 +67,9 @@ unitTest(
 unitTest(
   { perms: { write: true }, ignore: Deno.build.os == "windows" },
   function chownSyncPermissionDenied(): void {
-    const enc = new TextEncoder();
     const dirPath = Deno.makeTempDirSync();
     const filePath = dirPath + "/chown_test_file.txt";
-    const fileData = enc.encode("Hello");
-    Deno.writeFileSync(filePath, fileData);
+    Deno.writeTextFileSync(filePath, "Hello");
 
     try {
       // try changing the file's owner to root
@@ -86,11 +84,9 @@ unitTest(
 unitTest(
   { perms: { write: true }, ignore: Deno.build.os == "windows" },
   async function chownPermissionDenied(): Promise<void> {
-    const enc = new TextEncoder();
     const dirPath = await Deno.makeTempDir();
     const filePath = dirPath + "/chown_test_file.txt";
-    const fileData = enc.encode("Hello");
-    await Deno.writeFile(filePath, fileData);
+    await Deno.writeTextFile(filePath, "Hello");
 
     try {
       // try changing the file's owner to root
@@ -110,11 +106,9 @@ unitTest(
     // The test script has no such privilege, so need to find a better way to test this case
     const { uid, gid } = await getUidAndGid();
 
-    const enc = new TextEncoder();
     const dirPath = Deno.makeTempDirSync();
     const filePath = dirPath + "/chown_test_file.txt";
-    const fileData = enc.encode("Hello");
-    Deno.writeFileSync(filePath, fileData);
+    Deno.writeTextFileSync(filePath, "Hello");
 
     // the test script creates this file with the same uid and gid,
     // here chown is a noop so it succeeds under non-priviledged user
@@ -127,19 +121,11 @@ unitTest(
 unitTest(
   { perms: { run: true, write: true }, ignore: Deno.build.os == "windows" },
   async function chownSyncWithUrl(): Promise<void> {
-    // TODO: same as chownSyncSucceed
     const { uid, gid } = await getUidAndGid();
-
-    const enc = new TextEncoder();
     const dirPath = Deno.makeTempDirSync();
     const fileUrl = new URL(`file://${dirPath}/chown_test_file.txt`);
-    const fileData = enc.encode("Hello");
-    Deno.writeFileSync(fileUrl, fileData);
-
-    // the test script creates this file with the same uid and gid,
-    // here chown is a noop so it succeeds under non-priviledged user
+    Deno.writeTextFileSync(fileUrl, "Hello");
     Deno.chownSync(fileUrl, uid, gid);
-
     Deno.removeSync(dirPath, { recursive: true });
   }
 );
@@ -147,19 +133,23 @@ unitTest(
 unitTest(
   { perms: { run: true, write: true }, ignore: Deno.build.os == "windows" },
   async function chownSucceed(): Promise<void> {
-    // TODO: same as chownSyncSucceed
     const { uid, gid } = await getUidAndGid();
-
-    const enc = new TextEncoder();
     const dirPath = await Deno.makeTempDir();
     const filePath = dirPath + "/chown_test_file.txt";
-    const fileData = enc.encode("Hello");
-    await Deno.writeFile(filePath, fileData);
-
-    // the test script creates this file with the same uid and gid,
-    // here chown is a noop so it succeeds under non-priviledged user
+    await Deno.writeTextFile(filePath, "Hello");
     await Deno.chown(filePath, uid, gid);
+    Deno.removeSync(dirPath, { recursive: true });
+  }
+);
 
+unitTest(
+  { perms: { run: true, write: true }, ignore: Deno.build.os == "windows" },
+  async function chownUidOnly(): Promise<void> {
+    const { uid, gid } = await getUidAndGid();
+    const dirPath = await Deno.makeTempDir();
+    const filePath = dirPath + "/chown_test_file.txt";
+    await Deno.writeTextFile(filePath, "Foo");
+    await Deno.chown(filePath, uid, null);
     Deno.removeSync(dirPath, { recursive: true });
   }
 );
