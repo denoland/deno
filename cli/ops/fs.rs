@@ -446,12 +446,7 @@ fn op_chown(
 
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
-    debug!(
-      "op_chown {} {} {}",
-      path.display(),
-      args.uid.unwrap_or(0xffff_ffff),
-      args.gid.unwrap_or(0xffff_ffff),
-    );
+    debug!("op_chown {} {:?} {:?}", path.display(), args.uid, args.gid,);
     #[cfg(unix)]
     {
       use nix::unistd::{chown, Gid, Uid};
@@ -463,8 +458,6 @@ fn op_chown(
     // TODO Implement chown for Windows
     #[cfg(not(unix))]
     {
-      // Still check file/dir exists on Windows
-      let _metadata = std::fs::metadata(&path)?;
       Err(OpError::not_implemented())
     }
   })
