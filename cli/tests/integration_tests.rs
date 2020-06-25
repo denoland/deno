@@ -2049,7 +2049,7 @@ itest!(single_compile_with_reload {
 });
 
 itest!(performance_stats {
-  args: "bundle --log-level debug 002_hello.ts",
+  args: "cache --reload --log-level debug 002_hello.ts",
   output: "performance_stats.out",
 });
 

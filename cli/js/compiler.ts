@@ -943,7 +943,10 @@ function performanceStart(): void {
   ts.performance.enable();
 }
 
-function performanceProgram(program: ts.Program): void {
+function performanceProgram(program: ts.Program | ts.BuilderProgram): void {
+  if ("getProgram" in program) {
+    program = program.getProgram();
+  }
   stats.push({ key: "Files", value: program.getSourceFiles().length });
   stats.push({ key: "Nodes", value: program.getNodeCount() });
   stats.push({ key: "Identifiers", value: program.getIdentifierCount() });
@@ -1259,7 +1262,7 @@ type CompilerRequest =
 interface CompileResponse {
   emitMap: Record<string, EmittedSource>;
   diagnostics: Diagnostic;
-  buildInfo: undefined | string;
+  buildInfo?: string;
   stats?: Stats;
 }
 
@@ -1290,7 +1293,11 @@ function compile({
   cwd,
   sourceFileMap,
   type,
+  performance,
 }: CompileRequest): CompileResponse {
+  if (performance) {
+    performanceStart();
+  }
   log(">>> compile start", { rootNames, type: CompilerRequestType[type] });
 
   // When a programme is emitted, TypeScript will call `writeFile` with
@@ -1359,14 +1366,17 @@ function compile({
       // without casting.
       diagnostics = emitResult.diagnostics;
     }
+    performanceProgram(program);
   }
 
   log("<<< compile end", { rootNames, type: CompilerRequestType[type] });
+  const stats = performance ? performanceEnd() : undefined;
 
   return {
     emitMap: state.emitMap,
     buildInfo: state.buildInfo,
     diagnostics: fromTypeScriptDiagnostic(diagnostics),
+    stats,
   };
 }
 
