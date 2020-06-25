@@ -426,17 +426,6 @@ abstract class AbstractBufBase {
   buffered(): number {
     return this.usedBufferBytes;
   }
-
-  checkBytesWritten(numBytesWritten: number): void {
-    if (numBytesWritten < this.usedBufferBytes) {
-      if (numBytesWritten > 0) {
-        this.buf.copyWithin(0, numBytesWritten, this.usedBufferBytes);
-        this.usedBufferBytes -= numBytesWritten;
-      }
-      this.err = new Error("Short write");
-      throw this.err;
-    }
-  }
 }
 
 /** BufWriter implements buffering for an deno.Writer object.
@@ -474,17 +463,15 @@ export class BufWriter extends AbstractBufBase implements Writer {
     if (this.err !== null) throw this.err;
     if (this.usedBufferBytes === 0) return;
 
-    let numBytesWritten = 0;
     try {
-      numBytesWritten = await this.writer.write(
+      await Deno.writeAll(
+        this.writer,
         this.buf.subarray(0, this.usedBufferBytes)
       );
     } catch (e) {
       this.err = e;
       throw e;
     }
-
-    this.checkBytesWritten(numBytesWritten);
 
     this.buf = new Uint8Array(this.buf.length);
     this.usedBufferBytes = 0;
@@ -569,17 +556,15 @@ export class BufWriterSync extends AbstractBufBase implements WriterSync {
     if (this.err !== null) throw this.err;
     if (this.usedBufferBytes === 0) return;
 
-    let numBytesWritten = 0;
     try {
-      numBytesWritten = this.writer.writeSync(
+      Deno.writeAllSync(
+        this.writer,
         this.buf.subarray(0, this.usedBufferBytes)
       );
     } catch (e) {
       this.err = e;
       throw e;
     }
-
-    this.checkBytesWritten(numBytesWritten);
 
     this.buf = new Uint8Array(this.buf.length);
     this.usedBufferBytes = 0;

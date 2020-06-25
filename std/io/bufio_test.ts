@@ -306,24 +306,24 @@ Deno.test("bufioPeek", async function (): Promise<void> {
   const r = await buf.peek(1);
   assert(r === null);
   /* TODO
-	Test for issue 3022, not exposing a reader's error on a successful Peek.
-	buf = NewReaderSize(dataAndEOFReader("abcd"), 32)
-	if s, err := buf.Peek(2); string(s) != "ab" || err != nil {
-		t.Errorf(`Peek(2) on "abcd", EOF = %q, %v; want "ab", nil`, string(s), err)
-	}
-	if s, err := buf.Peek(4); string(s) != "abcd" || err != nil {
-		t.Errorf(
+  Test for issue 3022, not exposing a reader's error on a successful Peek.
+  buf = NewReaderSize(dataAndEOFReader("abcd"), 32)
+  if s, err := buf.Peek(2); string(s) != "ab" || err != nil {
+    t.Errorf(`Peek(2) on "abcd", EOF = %q, %v; want "ab", nil`, string(s), err)
+  }
+  if s, err := buf.Peek(4); string(s) != "abcd" || err != nil {
+    t.Errorf(
       `Peek(4) on "abcd", EOF = %q, %v; want "abcd", nil`,
       string(s),
       err
     )
-	}
-	if n, err := buf.Read(p[0:5]); string(p[0:n]) != "abcd" || err != nil {
-		t.Fatalf("Read after peek = %q, %v; want abcd, EOF", p[0:n], err)
-	}
-	if n, err := buf.Read(p[0:1]); string(p[0:n]) != "" || err != io.EOF {
-		t.Fatalf(`second Read after peek = %q, %v; want "", EOF`, p[0:n], err)
-	}
+  }
+  if n, err := buf.Read(p[0:5]); string(p[0:n]) != "abcd" || err != nil {
+    t.Fatalf("Read after peek = %q, %v; want abcd, EOF", p[0:n], err)
+  }
+  if n, err := buf.Read(p[0:1]); string(p[0:n]) != "" || err != io.EOF {
+    t.Fatalf(`second Read after peek = %q, %v; want "", EOF`, p[0:n], err)
+  }
   */
 });
 
@@ -496,5 +496,60 @@ Deno.test({
     bufWriter.flush();
     const actual = stringWriter.toString();
     assertEquals(actual, "hello\nworld\nhow\nare\nyou?\n\nfoobar\n\n");
+  },
+});
+
+Deno.test({
+  name: "BufWriter.flush should write all bytes",
+  async fn(): Promise<void> {
+    const bufSize = 16 * 1024;
+    const data = new Uint8Array(bufSize);
+    data.fill("a".charCodeAt(0));
+
+    const cache: Uint8Array[] = [];
+    const writer: Deno.Writer = {
+      write(p: Uint8Array): Promise<number> {
+        cache.push(p.subarray(0, 1));
+
+        // Writer that only writes 1 byte at a time
+        return Promise.resolve(1);
+      },
+    };
+
+    const bufWriter = new BufWriter(writer);
+    await bufWriter.write(data);
+
+    await bufWriter.flush();
+    const buf = new Uint8Array(cache.length);
+    for (let i = 0; i < cache.length; i++) buf.set(cache[i], i);
+
+    assertEquals(data, buf);
+  },
+});
+
+Deno.test({
+  name: "BufWriterSync.flush should write all bytes",
+  fn(): void {
+    const bufSize = 16 * 1024;
+    const data = new Uint8Array(bufSize);
+    data.fill("a".charCodeAt(0));
+
+    const cache: Uint8Array[] = [];
+    const writer: Deno.WriterSync = {
+      writeSync(p: Uint8Array): number {
+        cache.push(p.subarray(0, 1));
+        // Writer that only writes 1 byte at a time
+        return 1;
+      },
+    };
+
+    const bufWriter = new BufWriterSync(writer);
+    bufWriter.writeSync(data);
+
+    bufWriter.flush();
+    const buf = new Uint8Array(cache.length);
+    for (let i = 0; i < cache.length; i++) buf.set(cache[i], i);
+
+    assertEquals(data, buf);
   },
 });
