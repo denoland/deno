@@ -66,7 +66,7 @@ pub async fn upgrade_command(
       Ok(ver) => {
         if !force && current_version == ver {
           println!("Version {} is already installed", &ver);
-          Ok(())
+          return Ok(());
         } else {
           ver
         }
@@ -84,7 +84,7 @@ pub async fn upgrade_command(
           "Local deno version {} is the most recent release",
           &crate::version::DENO
         );
-        Ok(())
+        return Ok(());
       } else {
         latest_version
       }
