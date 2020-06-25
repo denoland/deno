@@ -1,6 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // Some deserializer fields are only used on Unix and Windows build fails without it
 use super::dispatch_json::{blocking_json, Deserialize, JsonOp, Value};
+use crate::fs::resolve_from_cwd;
 use super::io::std_file_resource;
 use super::io::{FileMetadata, StreamResource, StreamResourceHolder};
 use crate::op_error::OpError;
@@ -1082,7 +1083,7 @@ fn op_utime(
   state.check_unstable("Deno.utime");
 
   let args: UtimeArgs = serde_json::from_value(args)?;
-  let path = resolve_from_cwd(Path::new(&args.path))?;
+  let path = resolve_from_cwd(&Path::new(&args.path))?;
   let atime = args.atime;
   let mtime = args.mtime;
 
