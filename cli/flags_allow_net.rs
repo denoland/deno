@@ -27,9 +27,8 @@ impl FromStr for BarePort {
 pub fn validator(host_and_port: String) -> Result<(), String> {
   if Url::parse(&format!("deno://{}", host_and_port)).is_ok()
     || host_and_port.parse::<IpAddr>().is_ok()
+    || host_and_port.parse::<BarePort>().is_ok()
   {
-    Ok(())
-  } else if let Ok(_) = host_and_port.parse::<BarePort>() {
     Ok(())
   } else {
     Err(format!("Bad host:port pair: {}", host_and_port))
