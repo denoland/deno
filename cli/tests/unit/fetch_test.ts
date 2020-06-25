@@ -3,35 +3,33 @@ import {
   unitTest,
   assert,
   assertEquals,
-  assertStringContains,
   assertThrows,
+  assertThrowsAsync,
   fail,
 } from "./test_util.ts";
 
 unitTest({ perms: { net: true } }, async function fetchProtocolError(): Promise<
   void
 > {
-  let err;
-  try {
-    await fetch("file:///");
-  } catch (err_) {
-    err = err_;
-  }
-  assert(err instanceof TypeError);
-  assertStringContains(err.message, "not supported");
+  await assertThrowsAsync(
+    async (): Promise<void> => {
+      await fetch("file:///");
+    },
+    TypeError,
+    "not supported"
+  );
 });
 
 unitTest(
   { perms: { net: true } },
   async function fetchConnectionError(): Promise<void> {
-    let err;
-    try {
-      await fetch("http://localhost:4000");
-    } catch (err_) {
-      err = err_;
-    }
-    assert(err instanceof Deno.errors.Http);
-    assertStringContains(err.message, "error trying to connect");
+    await assertThrowsAsync(
+      async (): Promise<void> => {
+        await fetch("http://localhost:4000");
+      },
+      Deno.errors.Http,
+      "error trying to connect"
+    );
   }
 );
 
@@ -44,14 +42,9 @@ unitTest({ perms: { net: true } }, async function fetchJsonSuccess(): Promise<
 });
 
 unitTest(async function fetchPerm(): Promise<void> {
-  let err;
-  try {
+  await assertThrowsAsync(async () => {
     await fetch("http://localhost:4545/cli/tests/fixture.json");
-  } catch (err_) {
-    err = err_;
-  }
-  assert(err instanceof Deno.errors.PermissionDenied);
-  assertEquals(err.name, "PermissionDenied");
+  }, Deno.errors.PermissionDenied);
 });
 
 unitTest({ perms: { net: true } }, async function fetchUrl(): Promise<void> {
@@ -208,13 +201,9 @@ unitTest({ perms: { net: true } }, async function responseClone(): Promise<
 unitTest({ perms: { net: true } }, async function fetchEmptyInvalid(): Promise<
   void
 > {
-  let err;
-  try {
+  await assertThrowsAsync(async () => {
     await fetch("");
-  } catch (err_) {
-    err = err_;
-  }
-  assert(err instanceof URIError);
+  }, URIError);
 });
 
 unitTest(

@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-
+use crate::checksum;
 use crate::doc::Location;
 use crate::file_fetcher::map_file_extension;
 use crate::file_fetcher::SourceFile;
@@ -13,6 +13,7 @@ use crate::tsc::ImportDesc;
 use crate::tsc::TsReferenceDesc;
 use crate::tsc::TsReferenceKind;
 use crate::tsc::AVAILABLE_LIBS;
+use crate::version;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
 use futures::stream::FuturesUnordered;
@@ -228,6 +229,7 @@ pub struct ModuleGraphFile {
   pub url: String,
   pub redirect: Option<String>,
   pub filename: String,
+  pub version_hash: String,
   pub imports: Vec<ImportDescriptor>,
   pub referenced_files: Vec<ReferenceDescriptor>,
   pub lib_directives: Vec<ReferenceDescriptor>,
@@ -369,6 +371,7 @@ impl ModuleGraphLoader {
         specifier: specifier.to_string(),
         url: specifier.to_string(),
         redirect: None,
+        version_hash: "".to_string(),
         media_type: map_file_extension(&PathBuf::from(specifier.clone())),
         filename: specifier,
         source_code,
@@ -454,6 +457,10 @@ impl ModuleGraphLoader {
           url: module_specifier.to_string(),
           redirect: Some(source_file.url.to_string()),
           filename: source_file.filename.to_str().unwrap().to_string(),
+          version_hash: checksum::gen(vec![
+            &source_file.source_code,
+            version::DENO.as_bytes(),
+          ]),
           media_type: source_file.media_type,
           source_code: "".to_string(),
           imports: vec![],
@@ -466,6 +473,8 @@ impl ModuleGraphLoader {
     }
 
     let module_specifier = ModuleSpecifier::from(source_file.url.clone());
+    let version_hash =
+      checksum::gen(vec![&source_file.source_code, version::DENO.as_bytes()]);
     let source_code = String::from_utf8(source_file.source_code)?;
 
     if SUPPORTED_MEDIA_TYPES.contains(&source_file.media_type) {
@@ -553,6 +562,7 @@ impl ModuleGraphLoader {
         specifier: module_specifier.to_string(),
         url: module_specifier.to_string(),
         redirect: None,
+        version_hash,
         filename: source_file.filename.to_str().unwrap().to_string(),
         media_type: source_file.media_type,
         source_code,

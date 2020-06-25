@@ -64,6 +64,13 @@ unitTest(function consoleTestStringifyComplexObjects(): void {
   assertEquals(stringify({ foo: "bar" }), `{ foo: "bar" }`);
 });
 
+unitTest(function consoleTestStringifyQuotes(): void {
+  assertEquals(stringify(["\\"]), `[ "\\\\" ]`);
+  assertEquals(stringify(['\\,"']), `[ '\\\\,"' ]`);
+  assertEquals(stringify([`\\,",'`]), `[ \`\\\\,",'\` ]`);
+  assertEquals(stringify(["\\,\",',`"]), `[ "\\\\,\\",',\`" ]`);
+});
+
 unitTest(function consoleTestStringifyLongStrings(): void {
   const veryLongString = "a".repeat(200);
   // If we stringify an object containing the long string, it gets abbreviated.

@@ -3,7 +3,7 @@ import {
   unitTest,
   assert,
   assertEquals,
-  assertStringContains,
+  assertThrowsAsync,
 } from "./test_util.ts";
 
 unitTest(function filesStdioFileDescriptors(): void {
@@ -251,63 +251,44 @@ unitTest(
     const filename = "tests/hello.txt";
     const openOptions: Deno.OpenOptions[] = [{ write: true }, { append: true }];
     for (const options of openOptions) {
-      let err;
-      try {
+      await assertThrowsAsync(async () => {
         await Deno.open(filename, options);
-      } catch (e) {
-        err = e;
-      }
-      assert(!!err);
-      assert(err instanceof Deno.errors.PermissionDenied);
-      assertEquals(err.name, "PermissionDenied");
+      }, Deno.errors.PermissionDenied);
     }
   }
 );
 
 unitTest(async function openOptions(): Promise<void> {
   const filename = "cli/tests/fixture.json";
-  let err;
-  try {
-    await Deno.open(filename, { write: false });
-  } catch (e) {
-    err = e;
-  }
-  assert(!!err);
-  assertStringContains(
-    err.message,
+  await assertThrowsAsync(
+    async (): Promise<void> => {
+      await Deno.open(filename, { write: false });
+    },
+    Error,
     "OpenOptions requires at least one option to be true"
   );
 
-  try {
-    await Deno.open(filename, { truncate: true, write: false });
-  } catch (e) {
-    err = e;
-  }
-  assert(!!err);
-  assertStringContains(
-    err.message,
+  await assertThrowsAsync(
+    async (): Promise<void> => {
+      await Deno.open(filename, { truncate: true, write: false });
+    },
+    Error,
     "'truncate' option requires 'write' option"
   );
 
-  try {
-    await Deno.open(filename, { create: true, write: false });
-  } catch (e) {
-    err = e;
-  }
-  assert(!!err);
-  assertStringContains(
-    err.message,
+  await assertThrowsAsync(
+    async (): Promise<void> => {
+      await Deno.open(filename, { create: true, write: false });
+    },
+    Error,
     "'create' or 'createNew' options require 'write' or 'append' option"
   );
 
-  try {
-    await Deno.open(filename, { createNew: true, append: false });
-  } catch (e) {
-    err = e;
-  }
-  assert(!!err);
-  assertStringContains(
-    err.message,
+  await assertThrowsAsync(
+    async (): Promise<void> => {
+      await Deno.open(filename, { createNew: true, append: false });
+    },
+    Error,
     "'create' or 'createNew' options require 'write' or 'append' option"
   );
 });
@@ -315,15 +296,9 @@ unitTest(async function openOptions(): Promise<void> {
 unitTest({ perms: { read: false } }, async function readPermFailure(): Promise<
   void
 > {
-  let caughtError = false;
-  try {
+  await assertThrowsAsync(async () => {
     await Deno.open("package.json", { read: true });
-    await Deno.open("cli/tests/fixture.json", { read: true });
-  } catch (e) {
-    caughtError = true;
-    assert(e instanceof Deno.errors.PermissionDenied);
-  }
-  assert(caughtError);
+  }, Deno.errors.PermissionDenied);
 });
 
 unitTest(
@@ -339,16 +314,12 @@ unitTest(
     const file = await Deno.open(filename, w);
 
     // writing null should throw an error
-    let err;
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await file.write(null as any);
-    } catch (e) {
-      err = e;
-    }
-    // TODO: Check error kind when dispatch_minimal pipes errors properly
-    assert(!!err);
-
+    await assertThrowsAsync(
+      async (): Promise<void> => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await file.write(null as any);
+      }
+    ); // TODO: Check error kind when dispatch_minimal pipes errors properly
     file.close();
     await Deno.remove(tempDir, { recursive: true });
   }
@@ -371,15 +342,11 @@ unitTest(
     assert(bytesRead === 0);
 
     // reading file into null buffer should throw an error
-    let err;
-    try {
+    await assertThrowsAsync(async () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await file.read(null as any);
-    } catch (e) {
-      err = e;
-    }
+    }, TypeError);
     // TODO: Check error kind when dispatch_minimal pipes errors properly
-    assert(!!err);
 
     file.close();
     await Deno.remove(tempDir, { recursive: true });
@@ -390,15 +357,9 @@ unitTest(
   { perms: { write: false, read: false } },
   async function readWritePermFailure(): Promise<void> {
     const filename = "tests/hello.txt";
-    let err;
-    try {
+    await assertThrowsAsync(async () => {
       await Deno.open(filename, { read: true });
-    } catch (e) {
-      err = e;
-    }
-    assert(!!err);
-    assert(err instanceof Deno.errors.PermissionDenied);
-    assertEquals(err.name, "PermissionDenied");
+    }, Deno.errors.PermissionDenied);
   }
 );
 
@@ -668,15 +629,13 @@ unitTest({ perms: { read: true } }, function seekSyncEnd(): void {
 unitTest({ perms: { read: true } }, async function seekMode(): Promise<void> {
   const filename = "cli/tests/hello.txt";
   const file = await Deno.open(filename);
-  let err;
-  try {
-    await file.seek(1, -1);
-  } catch (e) {
-    err = e;
-  }
-  assert(!!err);
-  assert(err instanceof TypeError);
-  assertStringContains(err.message, "Invalid seek mode");
+  await assertThrowsAsync(
+    async (): Promise<void> => {
+      await file.seek(1, -1);
+    },
+    TypeError,
+    "Invalid seek mode"
+  );
 
   // We should still be able to read the file
   // since it is still open.

@@ -24,6 +24,7 @@ Deno.test("Callback must be a function error", function fn() {
 Deno.test("Invalid encoding results in error()", function testEncodingErrors() {
   assertThrows(
     () => {
+      // @ts-expect-error Type '"made-up-encoding"' is not assignable to type
       writeFile("some/path", "some data", "made-up-encoding", () => {});
     },
     Error,
@@ -32,6 +33,7 @@ Deno.test("Invalid encoding results in error()", function testEncodingErrors() {
 
   assertThrows(
     () => {
+      // @ts-expect-error Type '"made-up-encoding"' is not assignable to type
       writeFileSync("some/path", "some data", "made-up-encoding");
     },
     Error,
@@ -44,6 +46,7 @@ Deno.test("Invalid encoding results in error()", function testEncodingErrors() {
         "some/path",
         "some data",
         {
+          // @ts-expect-error Type '"made-up-encoding"' is not assignable to type
           encoding: "made-up-encoding",
         },
         () => {}
@@ -56,6 +59,7 @@ Deno.test("Invalid encoding results in error()", function testEncodingErrors() {
   assertThrows(
     () => {
       writeFileSync("some/path", "some data", {
+        // @ts-expect-error Type '"made-up-encoding"' is not assignable to type
         encoding: "made-up-encoding",
       });
     },

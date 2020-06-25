@@ -1,5 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { unitTest, assert } from "./test_util.ts";
+import {
+  unitTest,
+  assert,
+  assertThrows,
+  assertThrowsAsync,
+} from "./test_util.ts";
 
 // Allow 10 second difference.
 // Note this might not be enough for FAT (but we are not testing on such fs).
@@ -99,14 +104,9 @@ unitTest(
     const atime = 1000;
     const mtime = 50000;
 
-    let caughtError = false;
-    try {
+    assertThrows(() => {
       Deno.utimeSync("/baddir", atime, mtime);
-    } catch (e) {
-      caughtError = true;
-      assert(e instanceof Deno.errors.NotFound);
-    }
-    assert(caughtError);
+    }, Deno.errors.NotFound);
   }
 );
 
@@ -116,14 +116,9 @@ unitTest(
     const atime = 1000;
     const mtime = 50000;
 
-    let caughtError = false;
-    try {
+    assertThrows(() => {
       Deno.utimeSync("/some_dir", atime, mtime);
-    } catch (e) {
-      caughtError = true;
-      assert(e instanceof Deno.errors.PermissionDenied);
-    }
-    assert(caughtError);
+    }, Deno.errors.PermissionDenied);
   }
 );
 
@@ -201,14 +196,9 @@ unitTest(
     const atime = 1000;
     const mtime = 50000;
 
-    let caughtError = false;
-    try {
+    await assertThrowsAsync(async () => {
       await Deno.utime("/baddir", atime, mtime);
-    } catch (e) {
-      caughtError = true;
-      assert(e instanceof Deno.errors.NotFound);
-    }
-    assert(caughtError);
+    }, Deno.errors.NotFound);
   }
 );
 
@@ -218,13 +208,8 @@ unitTest(
     const atime = 1000;
     const mtime = 50000;
 
-    let caughtError = false;
-    try {
+    await assertThrowsAsync(async () => {
       await Deno.utime("/some_dir", atime, mtime);
-    } catch (e) {
-      caughtError = true;
-      assert(e instanceof Deno.errors.PermissionDenied);
-    }
-    assert(caughtError);
+    }, Deno.errors.PermissionDenied);
   }
 );
