@@ -6,14 +6,14 @@
 type Reader = Deno.Reader;
 type Writer = Deno.Writer;
 type WriterSync = Deno.WriterSync;
-import { charCode, copyBytes } from "./util.ts";
+import { copyBytes } from "../bytes/mod.ts";
 import { assert } from "../_util/assert.ts";
 
 const DEFAULT_BUF_SIZE = 4096;
 const MIN_BUF_SIZE = 16;
 const MAX_CONSECUTIVE_EMPTY_READS = 100;
-const CR = charCode("\r");
-const LF = charCode("\n");
+const CR = "\r".charCodeAt(0);
+const LF = "\n".charCodeAt(0);
 
 export class BufferFullError extends Error {
   name = "BufferFullError";
