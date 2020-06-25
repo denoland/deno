@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use crate::resolve_hosts::resolve_hosts;
+use crate::parse_net_args::parse_net_args;
 use clap::App;
 use clap::AppSettings;
 use clap::Arg;
@@ -1325,7 +1325,7 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     if raw_net_allowlist.is_empty() {
       flags.allow_net = true;
     } else {
-      flags.net_allowlist = resolve_hosts(raw_net_allowlist);
+      flags.net_allowlist = parse_net_args(raw_net_allowlist).unwrap();
       debug!("net allowlist: {:#?}", &flags.net_allowlist);
     }
   }

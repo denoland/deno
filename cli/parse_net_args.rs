@@ -27,7 +27,7 @@ impl FromStr for BarePort {
 /// Expands "bare port" paths (eg. ":8080") into full paths with hosts. It
 /// expands to such paths into 3 paths with following hosts: `0.0.0.0:port`,
 /// `127.0.0.1:port` and `localhost:port`.
-pub fn resolve_hosts(paths: Vec<String>) -> Vec<String> {
+pub fn parse_net_args(paths: Vec<String>) -> clap::Result<Vec<String>> {
   let mut out: Vec<String> = vec![];
   for host_and_port in paths.iter() {
     if Url::parse(&format!("deno://{}", host_and_port)).is_ok()
@@ -40,10 +40,13 @@ pub fn resolve_hosts(paths: Vec<String>) -> Vec<String> {
         out.push(format!("{}:{}", host, port.0));
       }
     } else {
-      panic!("Bad host:port pair: {}", host_and_port)
+      return Err(clap::Error::with_description(
+        &format!("Bad host:port pair: {}", host_and_port),
+        clap::ErrorKind::InvalidValue,
+      ));
     }
   }
-  out
+  Ok(out)
 }
 
 #[cfg(test)]
@@ -92,7 +95,7 @@ mod bare_port_tests {
 
 #[cfg(test)]
 mod tests {
-  use super::resolve_hosts;
+  use super::parse_net_args;
 
   // Creates vector of strings, Vec<String>
   macro_rules! svec {
@@ -100,7 +103,7 @@ mod tests {
   }
 
   #[test]
-  fn resolve_hosts_() {
+  fn parse_net_args_() {
     let entries = svec![
       "deno.land",
       "deno.land:80",
@@ -143,46 +146,43 @@ mod tests {
       "127.0.0.1:4545",
       "999.0.88.1:80"
     ];
-    let actual = resolve_hosts(entries);
+    let actual = parse_net_args(entries).unwrap();
     assert_eq!(actual, expected);
   }
 
   #[test]
-  fn resolve_hosts_expansion() {
+  fn parse_net_args_expansion() {
     let entries = svec![":8080"];
     let expected = svec!["0.0.0.0:8080", "127.0.0.1:8080", "localhost:8080"];
-    let actual = resolve_hosts(entries);
+    let actual = parse_net_args(entries).unwrap();
     assert_eq!(actual, expected);
   }
 
   #[test]
-  fn resolve_hosts_ipv6() {
+  fn parse_net_args_ipv6() {
     let entries =
       svec!["::", "::1", "[::1]", "[::]:5678", "[::1]:5678", "::cafe"];
     let expected =
       svec!["::", "::1", "[::1]", "[::]:5678", "[::1]:5678", "::cafe"];
-    let actual = resolve_hosts(entries);
+    let actual = parse_net_args(entries).unwrap();
     assert_eq!(actual, expected);
   }
 
   #[test]
-  #[should_panic]
-  fn resolve_hosts_ipv6_error1() {
+  fn parse_net_args_ipv6_error1() {
     let entries = svec![":::"];
-    resolve_hosts(entries);
+    assert!(parse_net_args(entries).is_err());
   }
 
   #[test]
-  #[should_panic]
-  fn resolve_hosts_ipv6_error2() {
+  fn parse_net_args_ipv6_error2() {
     let entries = svec!["0123:4567:890a:bcde:fg::"];
-    resolve_hosts(entries);
+    assert!(parse_net_args(entries).is_err());
   }
 
   #[test]
-  #[should_panic]
-  fn resolve_hosts_ipv6_error3() {
+  fn parse_net_args_ipv6_error3() {
     let entries = svec!["[::q]:8080"];
-    resolve_hosts(entries);
+    assert!(parse_net_args(entries).is_err());
   }
 }
