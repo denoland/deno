@@ -1068,7 +1068,7 @@ declare namespace Deno {
    * @param gid group id (GID) of the new owner, or `null` for no change
    */
   export function chownSync(
-    path: string,
+    path: string | URL,
     uid: number | null,
     gid: number | null
   ): void;
@@ -1089,7 +1089,7 @@ declare namespace Deno {
    * @param gid group id (GID) of the new owner, or `null` for no change
    */
   export function chown(
-    path: string,
+    path: string | URL,
     uid: number | null,
     gid: number | null
   ): Promise<void>;
