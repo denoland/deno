@@ -3,7 +3,6 @@
 use crate::fs as deno_fs;
 use crate::installer::is_remote_url;
 use deno_core::ErrBox;
-use std;
 use std::path::Path;
 use std::path::PathBuf;
 use url::Url;
@@ -15,14 +14,17 @@ fn is_supported(p: &Path) -> bool {
     basename.ends_with("_test.ts")
       || basename.ends_with("_test.tsx")
       || basename.ends_with("_test.js")
+      || basename.ends_with("_test.mjs")
       || basename.ends_with("_test.jsx")
       || basename.ends_with(".test.ts")
       || basename.ends_with(".test.tsx")
       || basename.ends_with(".test.js")
+      || basename.ends_with(".test.mjs")
       || basename.ends_with(".test.jsx")
       || basename == "test.ts"
       || basename == "test.tsx"
       || basename == "test.js"
+      || basename == "test.mjs"
       || basename == "test.jsx"
   } else {
     false
@@ -64,6 +66,7 @@ pub fn prepare_test_modules_urls(
 pub fn render_test_file(
   modules: Vec<Url>,
   fail_fast: bool,
+  quiet: bool,
   filter: Option<String>,
 ) -> String {
   let mut test_file = "".to_string();
@@ -73,12 +76,15 @@ pub fn render_test_file(
   }
 
   let options = if let Some(filter) = filter {
-    json!({ "failFast": fail_fast, "filter": filter })
+    json!({ "failFast": fail_fast, "reportToConsole": !quiet, "disableLog": quiet, "filter": filter })
   } else {
-    json!({ "failFast": fail_fast })
+    json!({ "failFast": fail_fast, "reportToConsole": !quiet, "disableLog": quiet })
   };
 
-  let run_tests_cmd = format!("Deno.runTests({});\n", options);
+  let run_tests_cmd = format!(
+    "// @ts-ignore\nDeno[Deno.internal].runTests({});\n",
+    options
+  );
   test_file.push_str(&run_tests_cmd);
 
   test_file
@@ -87,7 +93,6 @@ pub fn render_test_file(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::test_util;
 
   #[test]
   fn test_prepare_test_modules_urls() {
@@ -150,9 +155,9 @@ mod tests {
     let root_url = Url::from_file_path(root).unwrap().to_string();
     println!("root_url {}", root_url);
     let expected: Vec<Url> = vec![
+      format!("{}/_io_test.ts", root_url),
       format!("{}/cookie_test.ts", root_url),
       format!("{}/file_server_test.ts", root_url),
-      format!("{}/io_test.ts", root_url),
       format!("{}/racing_server_test.ts", root_url),
       format!("{}/server_test.ts", root_url),
     ]

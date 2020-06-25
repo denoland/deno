@@ -3,6 +3,6 @@
 (async (): Promise<void> => {
   const currDirInfo = await Deno.stat(".");
   const parentDirInfo = await Deno.stat("..");
-  console.log(currDirInfo.isDirectory());
-  console.log(parentDirInfo.isFile());
+  console.log(currDirInfo.isDirectory);
+  console.log(parentDirInfo.isFile);
 })();

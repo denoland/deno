@@ -2,7 +2,7 @@
 import {
   assert,
   assertEquals,
-  assertStrContains,
+  assertStringContains,
   assertThrows,
   assertThrowsAsync,
 } from "../testing/asserts.ts";
@@ -11,7 +11,7 @@ import { emptyDir, emptyDirSync } from "./empty_dir.ts";
 
 const testdataDir = path.resolve("fs", "testdata");
 
-Deno.test(async function emptyDirIfItNotExist(): Promise<void> {
+Deno.test("emptyDirIfItNotExist", async function (): Promise<void> {
   const testDir = path.join(testdataDir, "empty_dir_test_1");
   const testNestDir = path.join(testDir, "nest");
   // empty a dir which not exist. then it will create new one
@@ -20,30 +20,30 @@ Deno.test(async function emptyDirIfItNotExist(): Promise<void> {
   try {
     // check the dir
     const stat = await Deno.stat(testNestDir);
-    assertEquals(stat.isDirectory(), true);
+    assertEquals(stat.isDirectory, true);
   } finally {
     // remove the test dir
     await Deno.remove(testDir, { recursive: true });
   }
 });
 
-Deno.test(function emptyDirSyncIfItNotExist(): void {
+Deno.test("emptyDirSyncIfItNotExist", function (): void {
   const testDir = path.join(testdataDir, "empty_dir_test_2");
   const testNestDir = path.join(testDir, "nest");
-  // empty a dir which not exist. then it will create new one
+  // empty a dir which does not exist, then it will a create new one.
   emptyDirSync(testNestDir);
 
   try {
     // check the dir
     const stat = Deno.statSync(testNestDir);
-    assertEquals(stat.isDirectory(), true);
+    assertEquals(stat.isDirectory, true);
   } finally {
     // remove the test dir
     Deno.removeSync(testDir, { recursive: true });
   }
 });
 
-Deno.test(async function emptyDirIfItExist(): Promise<void> {
+Deno.test("emptyDirIfItExist", async function (): Promise<void> {
   const testDir = path.join(testdataDir, "empty_dir_test_3");
   const testNestDir = path.join(testDir, "nest");
   // create test dir
@@ -54,27 +54,27 @@ Deno.test(async function emptyDirIfItExist(): Promise<void> {
 
   // before empty: make sure file/directory exist
   const beforeFileStat = await Deno.stat(testDirFile);
-  assertEquals(beforeFileStat.isFile(), true);
+  assertEquals(beforeFileStat.isFile, true);
 
   const beforeDirStat = await Deno.stat(testNestDir);
-  assertEquals(beforeDirStat.isDirectory(), true);
+  assertEquals(beforeDirStat.isDirectory, true);
 
   await emptyDir(testDir);
 
-  // after empty: file/directory have already remove
+  // after empty: file/directory have already been removed
   try {
     // test dir still there
     const stat = await Deno.stat(testDir);
-    assertEquals(stat.isDirectory(), true);
+    assertEquals(stat.isDirectory, true);
 
-    // nest directory have been remove
+    // nest directory have been removed
     await assertThrowsAsync(
       async (): Promise<void> => {
         await Deno.stat(testNestDir);
       }
     );
 
-    // test file have been remove
+    // test file have been removed
     await assertThrowsAsync(
       async (): Promise<void> => {
         await Deno.stat(testDirFile);
@@ -86,7 +86,7 @@ Deno.test(async function emptyDirIfItExist(): Promise<void> {
   }
 });
 
-Deno.test(function emptyDirSyncIfItExist(): void {
+Deno.test("emptyDirSyncIfItExist", function (): void {
   const testDir = path.join(testdataDir, "empty_dir_test_4");
   const testNestDir = path.join(testDir, "nest");
   // create test dir
@@ -97,25 +97,25 @@ Deno.test(function emptyDirSyncIfItExist(): void {
 
   // before empty: make sure file/directory exist
   const beforeFileStat = Deno.statSync(testDirFile);
-  assertEquals(beforeFileStat.isFile(), true);
+  assertEquals(beforeFileStat.isFile, true);
 
   const beforeDirStat = Deno.statSync(testNestDir);
-  assertEquals(beforeDirStat.isDirectory(), true);
+  assertEquals(beforeDirStat.isDirectory, true);
 
   emptyDirSync(testDir);
 
   // after empty: file/directory have already remove
   try {
-    // test dir still there
+    // test dir still present
     const stat = Deno.statSync(testDir);
-    assertEquals(stat.isDirectory(), true);
+    assertEquals(stat.isDirectory, true);
 
-    // nest directory have been remove
+    // nest directory have been removed
     assertThrows((): void => {
       Deno.statSync(testNestDir);
     });
 
-    // test file have been remove
+    // test file have been removed
     assertThrows((): void => {
       Deno.statSync(testDirFile);
     });
@@ -203,7 +203,8 @@ for (const s of scenes) {
       );
 
       try {
-        const args = [Deno.execPath(), "run"];
+        // TODO(lucacasonato): remove unstable when stabilized
+        const args = [Deno.execPath(), "run", "--unstable"];
 
         if (s.read) {
           args.push("--allow-read");
@@ -227,14 +228,14 @@ for (const s of scenes) {
         assert(p.stdout);
         const output = await p.output();
         p.close();
-        assertStrContains(new TextDecoder().decode(output), s.output);
+        assertStringContains(new TextDecoder().decode(output), s.output);
       } catch (err) {
         await Deno.remove(testfolder, { recursive: true });
         throw err;
       }
     } finally {
       // Make the test rerunnable
-      // Otherwise would throw error due to mkdir fail.
+      // Otherwise it would throw an error due to mkdir fail.
       await Deno.remove(testfolder, { recursive: true });
       // done
     }

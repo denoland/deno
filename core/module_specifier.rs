@@ -32,19 +32,15 @@ impl fmt::Display for ModuleResolutionError {
         write!(f, "invalid base URL for relative import: {}", err)
       }
       InvalidPath(ref path) => write!(f, "invalid module path: {:?}", path),
-      ImportPrefixMissing(ref specifier, ref maybe_referrer) => {
-        let msg = format!(
-          "relative import path \"{}\" not prefixed with / or ./ or ../",
-          specifier
-        );
-        let msg = if let Some(referrer) = maybe_referrer {
-          format!("{} Imported from \"{}\"", msg, referrer)
-        } else {
-          msg
-        };
-
-        write!(f, "{}", msg)
-      }
+      ImportPrefixMissing(ref specifier, ref maybe_referrer) => write!(
+        f,
+        "relative import path \"{}\" not prefixed with / or ./ or ../{}",
+        specifier,
+        match maybe_referrer {
+          Some(referrer) => format!(" Imported from \"{}\"", referrer),
+          None => format!(""),
+        }
+      ),
     }
   }
 }
@@ -213,7 +209,16 @@ mod tests {
 
   #[test]
   fn test_resolve_import() {
+    fn get_path(specifier: &str) -> Url {
+      let base_path = current_dir().unwrap().join("<unknown>");
+      let base_url = Url::from_file_path(base_path).unwrap();
+      base_url.join(specifier).unwrap()
+    }
+    let awesome = get_path("/awesome.ts");
+    let awesome_srv = get_path("/service/awesome.ts");
     let tests = vec![
+      ("/awesome.ts", "<unknown>", awesome.as_str()),
+      ("/service/awesome.ts", "<unknown>", awesome_srv.as_str()),
       (
         "./005_more_imports.ts",
         "http://deno.land/core/tests/006_url_imports.ts",
@@ -292,6 +297,14 @@ mod tests {
     use ModuleResolutionError::*;
 
     let tests = vec![
+      (
+        "awesome.ts",
+        "<unknown>",
+        ImportPrefixMissing(
+          "awesome.ts".to_string(),
+          Some("<unknown>".to_string()),
+        ),
+      ),
       (
         "005_more_imports.ts",
         "http://deno.land/core/tests/006_url_imports.ts",

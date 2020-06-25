@@ -1,9 +1,8 @@
-const { test } = Deno;
 import { assert, assertEquals, fail } from "../../testing/asserts.ts";
 import Dir from "./_fs_dir.ts";
 import Dirent from "./_fs_dirent.ts";
 
-test({
+Deno.test({
   name: "Closing current directory with callback is successful",
   fn() {
     let calledBack = false;
@@ -16,21 +15,21 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "Closing current directory without callback returns void Promise",
   async fn() {
     await new Dir(".").close();
   },
 });
 
-test({
+Deno.test({
   name: "Closing current directory synchronously works",
   fn() {
     new Dir(".").closeSync();
   },
 });
 
-test({
+Deno.test({
   name: "Path is correctly returned",
   fn() {
     assertEquals(new Dir("std/node").path, "std/node");
@@ -40,7 +39,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "read returns null for empty directory",
   async fn() {
     const testDir: string = Deno.makeTempDirSync();
@@ -67,7 +66,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "Async read returns one file at a time",
   async fn() {
     const testDir: string = Deno.makeTempDirSync();
@@ -90,6 +89,7 @@ test({
         }
       );
       const thirdRead: Dirent | null = await dir.read();
+      const fourthRead: Dirent | null = await dir.read();
 
       if (firstRead?.name === "foo.txt") {
         assertEquals(secondRead?.name, "bar.txt");
@@ -100,13 +100,14 @@ test({
       }
       assert(secondCallback);
       assert(thirdRead === null);
+      assert(fourthRead === null);
     } finally {
       Deno.removeSync(testDir, { recursive: true });
     }
   },
 });
 
-test({
+Deno.test({
   name: "Sync read returns one file at a time",
   fn() {
     const testDir: string = Deno.makeTempDirSync();
@@ -120,6 +121,7 @@ test({
       const firstRead: Dirent | null = dir.readSync();
       const secondRead: Dirent | null = dir.readSync();
       const thirdRead: Dirent | null = dir.readSync();
+      const fourthRead: Dirent | null = dir.readSync();
 
       if (firstRead?.name === "foo.txt") {
         assertEquals(secondRead?.name, "bar.txt");
@@ -129,13 +131,14 @@ test({
         fail("File not found during read");
       }
       assert(thirdRead === null);
+      assert(fourthRead === null);
     } finally {
       Deno.removeSync(testDir, { recursive: true });
     }
   },
 });
 
-test({
+Deno.test({
   name: "Async iteration over existing directory",
   async fn() {
     const testDir: string = Deno.makeTempDirSync();

@@ -1,18 +1,15 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+import { encode } from "../encoding/utf8.ts";
 import { BufReader, BufWriter } from "../io/bufio.ts";
-import { assert } from "../testing/asserts.ts";
-import { deferred, Deferred, MuxAsyncIterator } from "../util/async.ts";
+import { assert } from "../_util/assert.ts";
+import { deferred, Deferred, MuxAsyncIterator } from "../async/mod.ts";
 import {
   bodyReader,
   chunkedBodyReader,
   emptyReader,
   writeResponse,
   readRequest,
-} from "./io.ts";
-import Listener = Deno.Listener;
-import Conn = Deno.Conn;
-import Reader = Deno.Reader;
-const { listen, listenTLS } = Deno;
+} from "./_io.ts";
 
 export class ServerRequest {
   url!: string;
@@ -21,7 +18,7 @@ export class ServerRequest {
   protoMinor!: number;
   protoMajor!: number;
   headers!: Headers;
-  conn!: Conn;
+  conn!: Deno.Conn;
   r!: BufReader;
   w!: BufWriter;
   done: Deferred<Error | undefined> = deferred();
@@ -52,18 +49,9 @@ export class ServerRequest {
   private _body: Deno.Reader | null = null;
 
   /**
-   * Body of the request.
+   * Body of the request.  The easiest way to consume the body is:
    *
-   *     const buf = new Uint8Array(req.contentLength);
-   *     let bufSlice = buf;
-   *     let totRead = 0;
-   *     while (true) {
-   *       const nread = await req.body.read(bufSlice);
-   *       if (nread === Deno.EOF) break;
-   *       totRead += nread;
-   *       if (totRead >= req.contentLength) break;
-   *       bufSlice = bufSlice.subarray(nread);
-   *     }
+   *     const buf: Uint8Array = await Deno.readAll(req.body);
    */
   get body(): Deno.Reader {
     if (!this._body) {
@@ -98,7 +86,9 @@ export class ServerRequest {
       try {
         // Eagerly close on error.
         this.conn.close();
-      } catch {}
+      } catch {
+        // Pass
+      }
       err = e;
     }
     // Signal that this request has been processed and the next pipelined
@@ -116,16 +106,18 @@ export class ServerRequest {
     // Consume unread body
     const body = this.body;
     const buf = new Uint8Array(1024);
-    while ((await body.read(buf)) !== Deno.EOF) {}
+    while ((await body.read(buf)) !== null) {
+      // Pass
+    }
     this.finalized = true;
   }
 }
 
 export class Server implements AsyncIterable<ServerRequest> {
   private closing = false;
-  private connections: Conn[] = [];
+  private connections: Deno.Conn[] = [];
 
-  constructor(public listener: Listener) {}
+  constructor(public listener: Deno.Listener) {}
 
   close(): void {
     this.closing = true;
@@ -144,38 +136,47 @@ export class Server implements AsyncIterable<ServerRequest> {
 
   // Yields all HTTP requests on a single TCP connection.
   private async *iterateHttpRequests(
-    conn: Conn
+    conn: Deno.Conn
   ): AsyncIterableIterator<ServerRequest> {
-    const bufr = new BufReader(conn);
-    const w = new BufWriter(conn);
-    let req: ServerRequest | Deno.EOF = Deno.EOF;
-    let err: Error | undefined;
+    const reader = new BufReader(conn);
+    const writer = new BufWriter(conn);
 
     while (!this.closing) {
+      let request: ServerRequest | null;
       try {
-        req = await readRequest(conn, bufr);
-      } catch (e) {
-        err = e;
+        request = await readRequest(conn, reader);
+      } catch (error) {
+        if (
+          error instanceof Deno.errors.InvalidData ||
+          error instanceof Deno.errors.UnexpectedEof
+        ) {
+          // An error was thrown while parsing request headers.
+          await writeResponse(writer, {
+            status: 400,
+            body: encode(`${error.message}\r\n\r\n`),
+          });
+        }
+        break;
       }
-      if (err != null || req === Deno.EOF) {
+      if (request === null) {
         break;
       }
 
-      req.w = w;
-      yield req;
+      request.w = writer;
+      yield request;
 
       // Wait for the request to be processed before we accept a new request on
       // this connection.
-      const procError = await req.done;
-      if (procError) {
+      const responseError = await request.done;
+      if (responseError) {
         // Something bad happened during response.
         // (likely other side closed during pipelined req)
         // req.done implies this connection already closed, so we can just return.
-        this.untrackConnection(req.conn);
+        this.untrackConnection(request.conn);
         return;
       }
       // Consume unread body and trailers if receiver didn't consume those data
-      await req.finalize();
+      await request.finalize();
     }
 
     this.untrackConnection(conn);
@@ -186,11 +187,11 @@ export class Server implements AsyncIterable<ServerRequest> {
     }
   }
 
-  private trackConnection(conn: Conn): void {
+  private trackConnection(conn: Deno.Conn): void {
     this.connections.push(conn);
   }
 
-  private untrackConnection(conn: Conn): void {
+  private untrackConnection(conn: Deno.Conn): void {
     const index = this.connections.indexOf(conn);
     if (index !== -1) {
       this.connections.splice(index, 1);
@@ -206,12 +207,16 @@ export class Server implements AsyncIterable<ServerRequest> {
   ): AsyncIterableIterator<ServerRequest> {
     if (this.closing) return;
     // Wait for a new connection.
-    let conn: Conn;
+    let conn: Deno.Conn;
     try {
       conn = await this.listener.accept();
     } catch (error) {
-      if (error instanceof Deno.errors.BadResource) {
-        return;
+      if (
+        error instanceof Deno.errors.BadResource ||
+        error instanceof Deno.errors.InvalidData ||
+        error instanceof Deno.errors.UnexpectedEof
+      ) {
+        return mux.add(this.acceptConnAndIterateHttpRequests(mux));
       }
       throw error;
     }
@@ -237,8 +242,8 @@ export type HTTPOptions = Omit<Deno.ListenOptions, "transport">;
  *
  *     import { serve } from "https://deno.land/std/http/server.ts";
  *     const body = "Hello World\n";
- *     const s = serve({ port: 8000 });
- *     for await (const req of s) {
+ *     const server = serve({ port: 8000 });
+ *     for await (const req of server) {
  *       req.respond({ body });
  *     }
  */
@@ -248,7 +253,7 @@ export function serve(addr: string | HTTPOptions): Server {
     addr = { hostname, port: Number(port) };
   }
 
-  const listener = listen(addr);
+  const listener = Deno.listen(addr);
   return new Server(listener);
 }
 
@@ -257,7 +262,7 @@ export function serve(addr: string | HTTPOptions): Server {
  *
  *     const body = "Hello World\n";
  *     const options = { port: 8000 };
- *     listenAndServeTLS(options, (req) => {
+ *     listenAndServe(options, (req) => {
  *       req.respond({ body });
  *     });
  *
@@ -276,7 +281,7 @@ export async function listenAndServe(
 }
 
 /** Options for creating an HTTPS server. */
-export type HTTPSOptions = Omit<Deno.ListenTLSOptions, "transport">;
+export type HTTPSOptions = Omit<Deno.ListenTlsOptions, "transport">;
 
 /**
  * Create an HTTPS server with given options
@@ -296,11 +301,11 @@ export type HTTPSOptions = Omit<Deno.ListenTLSOptions, "transport">;
  * @return Async iterable server instance for incoming requests
  */
 export function serveTLS(options: HTTPSOptions): Server {
-  const tlsOptions: Deno.ListenTLSOptions = {
+  const tlsOptions: Deno.ListenTlsOptions = {
     ...options,
     transport: "tcp",
   };
-  const listener = listenTLS(tlsOptions);
+  const listener = Deno.listenTls(tlsOptions);
   return new Server(listener);
 }
 
@@ -340,6 +345,6 @@ export async function listenAndServeTLS(
 export interface Response {
   status?: number;
   headers?: Headers;
-  body?: Uint8Array | Reader | string;
+  body?: Uint8Array | Deno.Reader | string;
   trailers?: () => Promise<Headers> | Headers;
 }

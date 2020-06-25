@@ -1,14 +1,14 @@
 // Copyright the Browserify authors. MIT License.
 // Ported from https://github.com/browserify/path-browserify/
+/** This module is browser compatible. */
 
-const { cwd, env } = Deno;
-import { FormatInputPathObject, ParsedPath } from "./interface.ts";
+import { FormatInputPathObject, ParsedPath } from "./_interface.ts";
 import {
   CHAR_DOT,
   CHAR_BACKWARD_SLASH,
   CHAR_COLON,
   CHAR_QUESTION_MARK,
-} from "./constants.ts";
+} from "./_constants.ts";
 
 import {
   assertPath,
@@ -16,8 +16,8 @@ import {
   isWindowsDeviceRoot,
   normalizeString,
   _format,
-} from "./utils.ts";
-import { assert } from "../testing/asserts.ts";
+} from "./_util.ts";
+import { assert } from "../_util/assert.ts";
 
 export const sep = "\\";
 export const delimiter = ";";
@@ -32,14 +32,20 @@ export function resolve(...pathSegments: string[]): string {
     if (i >= 0) {
       path = pathSegments[i];
     } else if (!resolvedDevice) {
-      path = cwd();
+      if (globalThis.Deno == null) {
+        throw new TypeError("Resolved a drive-letter-less path without a CWD.");
+      }
+      path = Deno.cwd();
     } else {
+      if (globalThis.Deno == null) {
+        throw new TypeError("Resolved a relative path without a CWD.");
+      }
       // Windows has the concept of drive-specific current working
       // directories. If we've resolved a drive letter but not yet an
       // absolute path, get cwd for that drive, or the process cwd if
       // the drive cwd is not available. We're sure the device is not
       // a UNC path at this points, because UNC paths are always absolute.
-      path = env()[`=${resolvedDevice}`] || cwd();
+      path = Deno.env.get(`=${resolvedDevice}`) || Deno.cwd();
 
       // Verify that a cwd was found and that it actually points
       // to our drive. If not, default to the drive's root.
@@ -897,4 +903,18 @@ export function parse(path: string): ParsedPath {
   } else ret.dir = ret.root;
 
   return ret;
+}
+
+/** Converts a file URL to a path string.
+ *
+ *      fromFileUrl("file:///C:/Users/foo"); // "C:\\Users\\foo"
+ *      fromFileUrl("file:///home/foo"); // "\\home\\foo"
+ *
+ * Note that non-file URLs are treated as file URLs and irrelevant components
+ * are ignored.
+ */
+export function fromFileUrl(url: string | URL): string {
+  return new URL(url).pathname
+    .replace(/^\/*([A-Za-z]:)(\/|$)/, "$1/")
+    .replace(/\//g, "\\");
 }

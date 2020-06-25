@@ -14,6 +14,7 @@ use crate::colors;
 use crate::doc;
 use crate::doc::ts_type::TsTypeDefKind;
 use crate::doc::DocNodeKind;
+use crate::swc_ecma_ast;
 
 pub fn format(doc_nodes: Vec<doc::DocNode>) -> String {
   format_(doc_nodes, 0)
@@ -34,12 +35,13 @@ pub fn format_details(node: doc::DocNode) -> String {
 
   let js_doc = node.js_doc.clone();
   if let Some(js_doc) = js_doc {
-    details.push_str(&format_jsdoc(js_doc, false, 1));
+    details.push_str(&format_jsdoc(js_doc, 1));
   }
   details.push_str("\n");
 
   let maybe_extra = match node.kind {
     DocNodeKind::Class => Some(format_class_details(node)),
+    DocNodeKind::Enum => Some(format_enum_details(node)),
     DocNodeKind::Namespace => Some(format_namespace_details(node)),
     _ => None,
   };
@@ -91,7 +93,7 @@ fn format_(doc_nodes: Vec<doc::DocNode>, indent: i64) -> String {
   for node in sorted {
     output.push_str(&format_signature(&node, indent));
     if let Some(js_doc) = node.js_doc {
-      output.push_str(&format_jsdoc(js_doc, true, indent));
+      output.push_str(&format_jsdoc(js_doc, indent));
     }
     output.push_str("\n");
     if DocNodeKind::Namespace == node.kind {
@@ -111,6 +113,9 @@ fn render_params(params: Vec<doc::ParamDef>) -> String {
   if !params.is_empty() {
     for param in params {
       rendered += param.name.as_str();
+      if param.optional {
+        rendered += "?";
+      }
       if let Some(ts_type) = param.ts_type {
         rendered += ": ";
         rendered += render_ts_type(ts_type).as_str();
@@ -123,6 +128,9 @@ fn render_params(params: Vec<doc::ParamDef>) -> String {
 }
 
 fn render_ts_type(ts_type: doc::ts_type::TsTypeDef) -> String {
+  if ts_type.kind.is_none() {
+    return "<UNIMPLEMENTED>".to_string();
+  }
   let kind = ts_type.kind.unwrap();
   match kind {
     TsTypeDefKind::Array => {
@@ -186,7 +194,9 @@ fn render_ts_type(ts_type: doc::ts_type::TsTypeDef) -> String {
         }
       }
     }
-    TsTypeDefKind::Optional => "_optional_".to_string(),
+    TsTypeDefKind::Optional => {
+      format!("{}?", render_ts_type(*ts_type.optional.unwrap()))
+    }
     TsTypeDefKind::Parenthesized => {
       format!("({})", render_ts_type(*ts_type.parenthesized.unwrap()))
     }
@@ -299,19 +309,15 @@ fn add_indent(string: String, indent: i64) -> String {
 }
 
 // TODO: this should use some sort of markdown to console parser.
-fn format_jsdoc(jsdoc: String, truncated: bool, indent: i64) -> String {
-  let mut lines = jsdoc.split("\n\n").map(|line| line.replace("\n", " "));
+fn format_jsdoc(jsdoc: String, indent: i64) -> String {
+  let lines = jsdoc.split("\n\n").map(|line| line.replace("\n", " "));
 
   let mut js_doc = String::new();
 
-  if truncated {
-    let first_line = lines.next().unwrap_or_else(|| "".to_string());
-    js_doc.push_str(&add_indent(format!("{}\n", first_line), indent + 1));
-  } else {
-    for line in lines {
-      js_doc.push_str(&add_indent(format!("{}\n", line), indent + 1));
-    }
+  for line in lines {
+    js_doc.push_str(&add_indent(format!("{}\n", line), indent + 1));
   }
+
   format!("{}", colors::gray(js_doc))
 }
 
@@ -338,7 +344,7 @@ fn format_class_details(node: doc::DocNode) -> String {
   }) {
     details.push_str(&add_indent(
       format!(
-        "{}{}{}\n",
+        "{}{}{}{}\n",
         colors::magenta(
           match node
             .accessibility
@@ -349,6 +355,11 @@ fn format_class_details(node: doc::DocNode) -> String {
           }
         ),
         colors::bold(node.name.clone()),
+        if node.optional {
+          "?".to_string()
+        } else {
+          "".to_string()
+        },
         if let Some(ts_type) = node.ts_type.clone() {
           format!(": {}", render_ts_type(ts_type))
         } else {
@@ -367,7 +378,7 @@ fn format_class_details(node: doc::DocNode) -> String {
     let function_def = node.function_def.clone();
     details.push_str(&add_indent(
       format!(
-        "{}{}{}({}){}\n",
+        "{}{}{}{}({}){}\n",
         colors::magenta(
           match node
             .accessibility
@@ -383,6 +394,11 @@ fn format_class_details(node: doc::DocNode) -> String {
           _ => "".to_string(),
         }),
         colors::bold(node.name.clone()),
+        if node.optional {
+          "?".to_string()
+        } else {
+          "".to_string()
+        },
         render_params(function_def.params),
         if let Some(return_type) = function_def.return_type {
           format!(": {}", render_ts_type(return_type))
@@ -392,6 +408,17 @@ fn format_class_details(node: doc::DocNode) -> String {
       ),
       1,
     ));
+  }
+  details.push_str("\n");
+  details
+}
+
+fn format_enum_details(node: doc::DocNode) -> String {
+  let mut details = String::new();
+  let enum_def = node.enum_def.unwrap();
+  for member in enum_def.members {
+    details
+      .push_str(&add_indent(format!("{}\n", colors::bold(member.name)), 1));
   }
   details.push_str("\n");
   details
@@ -428,11 +455,11 @@ fn format_function_signature(node: &doc::DocNode, indent: i64) -> String {
 
 fn format_class_signature(node: &doc::DocNode, indent: i64) -> String {
   let class_def = node.class_def.clone().unwrap();
-  let super_suffix = if let Some(super_class) = class_def.super_class {
+  let extends_suffix = if let Some(extends) = class_def.extends {
     format!(
       " {} {}",
       colors::magenta("extends".to_string()),
-      colors::bold(super_class)
+      colors::bold(extends)
     )
   } else {
     String::from("")
@@ -454,7 +481,7 @@ fn format_class_signature(node: &doc::DocNode, indent: i64) -> String {
       "{} {}{}{}\n",
       colors::magenta("class".to_string()),
       colors::bold(node.name.clone()),
-      super_suffix,
+      extends_suffix,
       implements_suffix,
     ),
     indent,
@@ -494,11 +521,23 @@ fn format_enum_signature(node: &doc::DocNode, indent: i64) -> String {
 }
 
 fn format_interface_signature(node: &doc::DocNode, indent: i64) -> String {
+  let interface_def = node.interface_def.clone().unwrap();
+  let extends = &interface_def.extends;
+  let extends_suffix = if !extends.is_empty() {
+    format!(
+      " {} {}",
+      colors::magenta("extends".to_string()),
+      colors::bold(extends.join(", "))
+    )
+  } else {
+    String::from("")
+  };
   add_indent(
     format!(
-      "{} {}\n",
+      "{} {}{}\n",
       colors::magenta("interface".to_string()),
-      colors::bold(node.name.clone())
+      colors::bold(node.name.clone()),
+      extends_suffix
     ),
     indent,
   )

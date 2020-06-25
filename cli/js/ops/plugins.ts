@@ -1,12 +1,6 @@
 import { sendSync } from "./dispatch_json.ts";
 
-interface OpenPluginResponse {
-  rid: number;
-  ops: {
-    [name: string]: number;
-  };
-}
-
-export function openPlugin(filename: string): OpenPluginResponse {
-  return sendSync("op_open_plugin", { filename });
+export function openPlugin(filename: string): number {
+  const rid = sendSync("op_open_plugin", { filename });
+  return rid;
 }

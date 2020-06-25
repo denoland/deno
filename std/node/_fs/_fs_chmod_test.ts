@@ -1,11 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-const { test } = Deno;
 import { fail, assert } from "../../testing/asserts.ts";
 import { chmod, chmodSync } from "./_fs_chmod.ts";
 
-test({
+Deno.test({
   name: "ASYNC: Permissions are changed (non-Windows)",
-  ignore: Deno.build.os === "win",
+  ignore: Deno.build.os === "windows",
   async fn() {
     const tempFile: string = await Deno.makeTempFile();
     const originalFileMode: number | null = (await Deno.lstat(tempFile)).mode;
@@ -29,9 +28,9 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "SYNC: Permissions are changed (non-Windows)",
-  ignore: Deno.build.os === "win",
+  ignore: Deno.build.os === "windows",
   fn() {
     const tempFile: string = Deno.makeTempFileSync();
     const originalFileMode: number | null = Deno.lstatSync(tempFile).mode;

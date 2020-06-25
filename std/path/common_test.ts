@@ -1,11 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-
-const { test } = Deno;
 import { assertEquals } from "../testing/asserts.ts";
-
 import { common } from "./mod.ts";
 
-test({
+Deno.test({
   name: "path - common - basic usage",
   fn() {
     const actual = common(
@@ -20,7 +17,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "path - common - no shared",
   fn() {
     const actual = common(
@@ -31,7 +28,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "path - common - windows sep",
   fn() {
     const actual = common(

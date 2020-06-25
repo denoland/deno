@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+use crate::swc_ecma_ast;
 use serde::Serialize;
-use swc_ecma_ast;
 
 use super::parser::DocParser;
 use super::DocNode;
@@ -17,12 +17,12 @@ pub fn get_doc_for_ts_namespace_decl(
 ) -> DocNode {
   let js_doc = doc_parser.js_doc_for_span(ts_namespace_decl.span);
   let location = doc_parser
-    .source_map
-    .lookup_char_pos(ts_namespace_decl.span.lo())
+    .ast_parser
+    .get_span_location(ts_namespace_decl.span)
     .into();
   let namespace_name = ts_namespace_decl.id.sym.to_string();
 
-  use swc_ecma_ast::TsNamespaceBody::*;
+  use crate::swc_ecma_ast::TsNamespaceBody::*;
 
   let elements = match &*ts_namespace_decl.body {
     TsModuleBlock(ts_module_block) => {
@@ -54,14 +54,14 @@ pub fn get_doc_for_ts_module(
   doc_parser: &DocParser,
   ts_module_decl: &swc_ecma_ast::TsModuleDecl,
 ) -> (String, NamespaceDef) {
-  use swc_ecma_ast::TsModuleName;
+  use crate::swc_ecma_ast::TsModuleName;
   let namespace_name = match &ts_module_decl.id {
     TsModuleName::Ident(ident) => ident.sym.to_string(),
     TsModuleName::Str(str_) => str_.value.to_string(),
   };
 
   let elements = if let Some(body) = &ts_module_decl.body {
-    use swc_ecma_ast::TsNamespaceBody::*;
+    use crate::swc_ecma_ast::TsNamespaceBody::*;
 
     match &body {
       TsModuleBlock(ts_module_block) => {

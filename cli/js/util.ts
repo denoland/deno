@@ -1,4 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+import { build } from "./build.ts";
+import { exposeForTest } from "./internals.ts";
 
 let logDebug = false;
 let logSource = "JS";
@@ -20,9 +22,17 @@ export function log(...args: unknown[]): void {
 }
 
 // @internal
-export function assert(cond: unknown, msg = "assert"): asserts cond {
+export class AssertionError extends Error {
+  constructor(msg?: string) {
+    super(msg);
+    this.name = "AssertionError";
+  }
+}
+
+// @internal
+export function assert(cond: unknown, msg = "Assertion failed."): asserts cond {
   if (!cond) {
-    throw Error(msg);
+    throw new AssertionError(msg);
   }
 }
 
@@ -70,3 +80,51 @@ export function immutableDefine(
     writable: false,
   });
 }
+
+function pathFromURLWin32(url: URL): string {
+  const hostname = url.hostname;
+  const pathname = decodeURIComponent(url.pathname.replace(/\//g, "\\"));
+
+  if (hostname !== "") {
+    //TODO(actual-size) Node adds a punycode decoding step, we should consider adding this
+    return `\\\\${hostname}${pathname}`;
+  }
+
+  const validPath = /^\\(?<driveLetter>[A-Za-z]):\\/;
+  const matches = validPath.exec(pathname);
+
+  if (!matches?.groups?.driveLetter) {
+    throw new TypeError("A URL with the file schema must be absolute.");
+  }
+
+  // we don't want a leading slash on an absolute path in Windows
+  return pathname.slice(1);
+}
+
+function pathFromURLPosix(url: URL): string {
+  if (url.hostname !== "") {
+    throw new TypeError(`Host must be empty.`);
+  }
+
+  return decodeURIComponent(url.pathname);
+}
+
+export function pathFromURL(pathOrUrl: string | URL): string {
+  if (typeof pathOrUrl == "string") {
+    try {
+      pathOrUrl = new URL(pathOrUrl);
+    } catch {}
+  }
+  if (pathOrUrl instanceof URL) {
+    if (pathOrUrl.protocol != "file:") {
+      throw new TypeError("Must be a path string or file URL.");
+    }
+
+    return build.os == "windows"
+      ? pathFromURLWin32(pathOrUrl)
+      : pathFromURLPosix(pathOrUrl);
+  }
+  return pathOrUrl;
+}
+
+exposeForTest("pathFromURL", pathFromURL);

@@ -6,6 +6,508 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### 1.1.1 / 2020.06.19
+
+- fix: "deno test" should respect NO_COLOR=true (#6371)
+- fix: Deno.bundle supports targets < ES2017 (#6346)
+- fix: decode path properly on win32 (#6351)
+- fix: improve failure message for deno upgrade (#6348)
+- fix: apply http redirection limit for cached files (#6308)
+- fix: JSX compilation bug and provide better error message (#6300)
+- fix: DatagramConn.send (unstable) should return bytes sent (#6265, #6291)
+- upgrade: v8 to 8.5.104, rusty_v8 0.5.1 (#6377)
+- upgrade: crates (#6378)
+
+Changes in std version 0.58.0:
+
+- feat(std/log): expose logger name to LogRecord (#6316)
+- fix(std/async): MuxAsyncIterator throws muxed errors (#6295)
+- fix(std/io): BufWriter/StringWriter bug (#6247)
+- fix(std/io): Use Deno.test in writers_test (#6273)
+- fix(std/node): added tests for static methods of Buffer (#6276)
+- fix(std/testing): assertEqual so that it handles URL objects (#6278)
+- perf(std/hash): reimplement all hashes in WASM (#6292)
+
+### 1.1.0 / 2020.06.12
+
+Changes in the CLI:
+
+- feat: "deno eval -p" (#5682)
+- feat: "deno lint" subcommand (#6125, #6208, #6222, #6248, #6258, #6264)
+- feat: Add Deno.mainModule (#6180)
+- feat: Add Deno.env.delete() (#5859)
+- feat: Add TestDefinition::only (#5793)
+- feat: Allow reading the entry file from stdin (#6130)
+- feat: Handle .mjs files in "deno test" and "deno fmt" (#6134, #6122)
+- feat: URL support in Deno filesystem methods (#5990)
+- feat: make rid on Deno.Listener public (#5571)
+- feat(core): Add unregister op (#6214)
+- feat(doc): Display all overloads in cli details view (#6186)
+- feat(doc): Handle detail output for enum (#6078)
+- feat(fmt): Add diff for "deno fmt --check" (#5599)
+- fix: Handle @deno-types in export {} (#6202)
+- fix: Several regressions in TS compiler (#6177)
+- fix(cli): 'deno upgrade' doesn't work on Windows 8.1/PowerShell 4.0 (#6132)
+- fix(cli): WebAssembly runtime error propagation (#6137)
+- fix(cli/js/buffer): Remove try-catch from Buffer.readFrom, readFromSync
+  (#6161)
+- fix(cli/js/io): Deno.readSync on stdin (#6126)
+- fix(cli/js/net): UDP BorrowMutError (#6221)
+- fix(cli/js/process): Always return a code in ProcessStatus (#5244)
+- fix(cli/js/process): Strengthen socket types based on pipes (#4836)
+- fix(cli/js/web): IPv6 hostname support in URL (#5766)
+- fix(cli/js/web/worker): Disable relative module specifiers (#5266)
+- fix(cli/web/fetch): multipart/form-data request body support for binary files
+  (#5886)
+- fix(core): ES module snapshots (#6111)
+- revert: "feat: format deno bundle output (#5139)" (#6085)
+- upgrade: Rust 1.44.0 (#6113)
+- upgrade: swc_ecma_parser 0.24.5 (#6077)
+
+Changes in std version 0.57.0:
+
+- feat(std/encoding/binary): Add varnumBytes(), varbigBytes() (#5173)
+- feat(std/hash): Add sha3 (#5558)
+- feat(std/log): Inline and deferred statement resolution logging (#5192)
+- feat(std/node): Add util.promisify (#5540)
+- feat(std/node): Add util.types (#6159)
+- feat(std/node): Buffer (#5925)
+- feat(std/testing): Allow non-void promises in assertThrowsAsync (#6052)
+- fix(http/server): Flaky test on Windows (#6188)
+- fix(std/archive): Untar (#6217) cleanup std/tar (#6185)
+- fix(std/http): Don't use assert() for user input validation (#6092)
+- fix(std/http): Prevent crash on UnexpectedEof and InvalidData (#6155)
+- fix(std/http/file_server): Args handling only if invoked directly (#5989)
+- fix(std/io): StringReader implementation (#6148)
+- fix(std/log): Revert setInterval log flushing as it prevents process
+  completion (#6127)
+- fix(std/node): Emitter.removeAllListeners (#5583)
+- fix(std/testing/bench): Make progress callback async (#6175)
+- fix(std/testing/bench): Clock assertions without --allow-hrtime (#6069)
+- refactor(std): Remove testing dependencies from non-test code (#5838)
+- refactor(std/http): Rename delCookie to deleteCookie (#6088)
+- refactor(std/testing): Rename abbreviated assertions (#6118)
+- refactor(std/testing/bench): Remove differentiating on runs count (#6084)
+
+### 1.0.5 / 2020.06.03
+
+Changes in the CLI:
+
+- fix(fetch): Support 101 status code (#6059)
+- fix: REPL BorrowMutError panic (#6055)
+- fix: dynamic import BorrowMutError (#6065)
+- upgrade: dprint 0.19.1 and swc_ecma_parser 0.24.3 (#6068)
+- upgrade: rusty_v8 0.5.0 (#6070)
+
+Changes in std version 0.56.0:
+
+- feat(std/testing): benching progress callback (#5941)
+- feat(std/encoding): add base64url module (#5976)
+- fix(std/testing/asserts): Format values in assertArrayContains() (#6060)
+
+### 1.0.4 / 2020.06.02
+
+Changes in the CLI:
+
+- feat(core): Ops can take several zero copy buffers (#4788)
+- fix(bundle): better size output (#5997)
+- fix(cli): Deno.remove() fails to remove unix socket (#5967)
+- fix(cli): compile TS dependencies of JS files (#6000)
+- fix(cli): ES private fields parsing in SWC (#5964)
+- fix(cli): Better use of @ts-expect-error (#6038)
+- fix(cli): media type for .cjs and application/node (#6005)
+- fix(doc): remove JSDoc comment truncation (#6031)
+- fix(cli/js/web): Body.bodyUsed should use IsReadableStreamDisturbed
+- fix(cli/js/web): formData parser for binary files in fetch() (#6015)
+- fix(cli/js/web): set null body for null-body status in fetch() (#5980)
+- fix(cli/js/web): network error on multiple redirects in fetch() (#5985)
+- fix(cli/js/web): Headers.name and FormData.name (#5994)
+- upgrade: Rust crates (#5959, #6032)
+
+Changes in std version 0.55.0:
+
+- feat(std/hash): add Sha512 and HmacSha512 (#6009)
+- feat(std/http) support code 103 Early Hints (#6021)
+- feat(std/http): add TooEarly status code (#5999)
+- feat(std/io): add LimitedReader (#6026)
+- feat(std/log): buffered file logging (#6014)
+- feat(std/mime/multipart): Added multiple FormFile input (#6027)
+- feat(std/node): add util.type.isDate (#6029)
+- fix(std/http): file server not closing files (#5952)
+- fix(std/path): support browsers (#6003)
+
+### 1.0.3 / 2020.05.29
+
+Changes in the CLI:
+
+- fix: Add unstable checks for Deno.dir and Diagnostics (#5750)
+- fix: Add unstable checks for unix transport (#5818)
+- fix: Create HTTP cache lazily (#5795)
+- fix: Dependency analysis in TS compiler (#5817, #5785, #5870)
+- fix: Expose Error.captureStackTrace (#5254)
+- fix: Improved typechecking error for unstable props (#5503)
+- fix: REPL evaluates in strict mode (#5565)
+- fix: Write lock file before running any code (#5794)
+- fix(debugger): BorrowMutError when evaluating expression in inspector console
+  (#5822)
+- fix(doc): Handle comments at the top of the file (#5891)
+- fix(fmt): Handle formatting UTF-8 w/ BOM files (#5881)
+- fix(permissions): Fix CWD and exec path leaks (#5642)
+- fix(web/blob): DenoBlob name (#5879)
+- fix(web/console): Hide `values` for console.table if display not necessary
+  (#5914)
+- fix(web/console): Improve indentation when displaying objects with console.log
+  (#5909)
+- fix(web/encoding): atob should throw dom exception (#5730)
+- fix(web/fetch): Make Response constructor standard (#5787)
+- fix(web/fetch): Allow ArrayBuffer as Fetch request body (#5831)
+- fix(web/formData): Set default filename for Blob to <blob> (#5907)
+- upgrade: dprint to 0.19.0 (#5899)
+
+Changes in std version 0.54.0:
+
+- feat(std/encoding): Add base64 (#5811)
+- feat(std/http): Handle .wasm files in file_server (#5896)
+- feat(std/node): Add link/linkSync polyfill (#5930)
+- feat(std/node): fs.writeFile/sync path can now be an URL (#5652)
+- feat(std/testing): Return results in benchmark promise (#5842)
+- fix(std/http): readTrailer evaluates header names by case-insensitive (#4902)
+- fix(std/log): Improve the calculation of byte length (#5819)
+- fix(std/log): Fix FileHandler test with mode 'x' on non-English systems
+  (#5757)
+- fix(std/log): Use writeAllSync instead of writeSync (#5868)
+- fix(std/testing/asserts): Support browsers (#5847)
+
+### 1.0.2 / 2020.05.22
+
+Changes in the CLI:
+
+- fix: --inspect flag working like --inspect-brk (#5697)
+- fix: Disallow http imports for modules loaded over https (#5680)
+- fix: Redirects handling in module analysis (#5726)
+- fix: SWC lexer settings and silent errors (#5752)
+- fix: TS type imports (#5733)
+- fix(fmt): Do not panic on new expr with no parens. (#5734)
+- fix(cli/js/streams): High water mark validation (#5681)
+
+Changes in std version 0.53.0:
+
+- fix(std/http): file_server's target directory (#5695)
+- feat(std/hash): add md5 (#5719)
+- refactor: Move std/fmt/sprintf.ts to std/fmt/printf.ts (#4567)
+
+### 1.0.1 / 2020.05.20
+
+Changes in the CLI:
+
+- fix(doc): crash on formatting type predicate (#5651)
+- fix: Implement Deno.kill for windows (#5347)
+- fix: Implement Deno.symlink() for windows (#5533)
+- fix: Make Deno.remove() work with directory symlinks on windows (#5488)
+- fix: Mark Deno.pid and Deno.noColor as const (#5593)
+- fix: Remove debug prints introduced in e18aaf49c (#5356)
+- fix: Return error if more than one listener calls `WorkerHandle::get_event()`
+  (#5461)
+- fix: Simplify fmt::Display for ModuleResolutionError (#5550)
+- fix: URL utf8 encoding (#5557)
+- fix: don't panic on Deno.close invalid argument (#5320)
+- fix: panic if DENO_DIR is a relative path (#5375)
+- fix: setTimeout and friends have too strict types (#5412)
+- refactor: rewrite TS dependency analysis in Rust (#5029, #5603)
+- update: dprint 0.18.4 (#5671)
+
+Changes in std version 0.52.0:
+
+- feat(std/bytes): add hasSuffix and contains functions, update docs (#4801)
+- feat(std/fmt): rgb24 and bgRgb24 can use numbers for color (#5198)
+- feat(std/hash): add fnv implementation (#5403)
+- feat(std/node) Export TextDecoder and TextEncoder from util (#5663)
+- feat(std/node): Add fs.promises.readFile (#5656)
+- feat(std/node): add util.callbackify (#5415)
+- feat(std/node): first pass at url module (#4700)
+- feat(std/node): fs.writeFileSync polyfill (#5414)
+- fix(std/hash): SHA1 hash of Uint8Array (#5086)
+- fix(std/http): Add .css to the MEDIA_TYPES. (#5367)
+- fix(std/io): BufReader should not share the internal buffer across reads
+  (#4543)
+- fix(std/log): await default logger setup (#5341)
+- fix(std/node) improve fs.close compatibility (#5649)
+- fix(std/node): fs.readFile should take string as option (#5316)
+- fix(std/testing): Provide message and diff for assertStrictEq (#5417)
+
+### 1.0.0 / 2020.05.13
+
+Read more about this release at https://deno.land/v1
+
+- fix: default to 0.0.0.0 for Deno.listen (#5203)
+- fix: Make --inspect-brk pause on the first line of _user_ code (#5250)
+- fix: Source maps in inspector for local files (#5245)
+- upgrade: TypeScript 3.9 (#4510)
+
+### 1.0.0-rc3 / 2020.05.12
+
+- BREAKING: Remove public Rust API for the "deno" crate (#5226)
+- feat(core): Allow starting isolate from snapshot bytes on the heap (#5187)
+- fix: Check permissions in SourceFileFetcher (#5011)
+- fix: Expose ErrorEvent globally (#5222)
+- fix: Remove default --allow-read perm for deno test (#5208)
+- fix: Source maps in inspector (#5223)
+- fix(std/encoding/yaml): Correct exports (#5191)
+- fix(plugins): prevent segfaults on windows (#5210)
+- upgrade: dprint 0.17.2 (#5195)
+
+### 1.0.0-rc2 / 2020.05.09
+
+- BREAKING(std): Reorg modules, mark as unstable (#5087, #5177)
+- BREAKING(std): Revert "Make WebSocket Reader/Writer" (#5002, #5141)
+- BREAKING: Deno.execPath should require allow-read (#5109)
+- BREAKING: Make Deno.hostname unstable #5108
+- BREAKING: Make Worker with Deno namespace unstable (#5128)
+- BREAKING: Remove support for .wasm imports (#5135)
+- feat(bundle): Add --config flag (#5130)
+- feat(bundle): Format output (#5139)
+- feat(doc): Handle default exports (#4873)
+- feat(repl): Add hint on how to exit REPL (#5143)
+- feat(std/fmt): add 8bit and 24bit ANSI colors (#5168)
+- feat(std/node): add fs.writefile / fs.promises.writeFile (#5054)
+- feat(upgrade): Allow specifying a version (#5156)
+- feat(workers): "crypto" global accessible in Worker scope (#5121)
+- feat: Add support for X-Deno-Warning header (#5161)
+- fix(imports): Fix panic on unsupported scheme (#5131)
+- fix(inspector): Fix inspector hanging when task budget is exceeded (#5083)
+- fix: Allow multiple Set-Cookie headers (#5100)
+- fix: Better error message when DENO_DIR can't be created (#5120)
+- fix: Check destination length in encodeInto in TextEncoder (#5078)
+- fix: Correct type error text (#5150)
+- fix: Remove unnecessary ProcessStdio declaration (#5092)
+- fix: unify display of errors from Rust and JS (#5183)
+- upgrade: rust crates (#5104)
+- upgrade: to rusty_v8 0.4.2 / V8 8.4.300 (#5113)
+
+### v1.0.0-rc1 / 2020.05.04
+
+- BREAKING: make WebSocket directly implement AsyncIterable (#5045)
+- BREAKING: remove CLI 'deno script.ts' alias to 'deno run script.ts' (#5026)
+- BREAKING: remove support for JSON imports (#5037)
+- BREAKING: remove window.location and self.location (#5034)
+- BREAKING: reorder std/io/utils copyBytes arguments (#5022, #5021)
+- feat(URL): Support drive letters for file URLs on Windows (#5074)
+- feat(deno install): simplify CLI flags (#5036)
+- feat(deno fmt): Add `deno-fmt-ignore` and `deno-fmt-ignore-file` comment
+  support #5075
+- feat(std): Add sha256 and sha224 support (along with HMAC variants) (#5066)
+- feat(std/node): ability add to path argument to be URL type (#5055)
+- feat(std/node): make process global (#4985)
+- feat(std/node): toString for globals (#5013)
+- feat: Add WritableStreams, TransformStream, TransformStreamController (#5042,
+  #4980)
+- feat: Make WebSocket Reader/Writer (#5002)
+- feat: make Deno.cwd stable (#5068)
+- fix(console): Formatting misalignment on console.table (#5046)
+- fix(deno doc): Better repr for object literal types (#4998)
+- fix(deno fmt): Format `abstract async` as `abstract async` (#5020)
+- fix(std): Use fromFileUrl (#5005)
+- fix(std/http): Hang when content-length unhandled (#5024)
+- fix: Deno.chdir Should require allow-read not allow-write (#5033)
+- fix: Respect NO_COLOR for stack frames (#5051)
+- fix: URL constructor throws confusing error on invalid scheme (#5057)
+- fix: Disallow static import of local modules from remote modules (#5050)
+- fix: Misaligned error reporting on tab char (#5032)
+- refactor(core): Add "prepare_load" hook to ModuleLoader trait (#4866)
+- refactor: Don't expose unstable APIs to runtime (#5061 #4957)
+
+### v0.42.0 / 2020.04.29
+
+- BREAKING: "address" renamed to "path" in
+  UnixAddr/UnixConnectOptions/UnixListenOptions (#4959)
+- BREAKING: Change DirEntry to not require extra stat syscall (#4941)
+- BREAKING: Change order of args in Deno.copy() (#4885)
+- BREAKING: Change order of copyN arguments (#4900)
+- BREAKING: Change return type of Deno.resources() (#4893)
+- BREAKING: Deno.chdir() should require --allow-write (#4889)
+- BREAKING: Factor out Deno.listenDatagram(), mark as unstable (#4968)
+- BREAKING: Make shutdown unstable and async (#4940)
+- BREAKING: Make unix sockets require allow-write (#4939)
+- BREAKING: Map-like interface for Deno.env (#4942)
+- BREAKING: Mark --importmap as unstable (#4934)
+- BREAKING: Mark Deno.dir() unstable (#4924)
+- BREAKING: Mark Deno.kill() as unstable (#4950)
+- BREAKING: Mark Deno.loadavg() and osRelease() as unstable (#4938)
+- BREAKING: Mark Deno.setRaw() as unstable (#4925)
+- BREAKING: Mark Deno.umask() unstable (#4935)
+- BREAKING: Mark Deno.utime() as unstable (#4955)
+- BREAKING: Mark runtime compile ops as unstable (#4912)
+- BREAKING: Mark signal APIs as unstable (#4926)
+- BREAKING: Remove Conn.closeRead (#4970)
+- BREAKING: Remove Deno.EOF, use null instead (#4953)
+- BREAKING: Remove Deno.OpenMode (#4884)
+- BREAKING: Remove Deno.runTests() API (#4922)
+- BREAKING: Remove Deno.symbols namespace (#4936)
+- BREAKING: Remove combined io interface like ReadCloser (#4944)
+- BREAKING: Remove overload of Deno.test() taking named function (#4951)
+- BREAKING: Rename Deno.fsEvents() to Deno.watchFs() (#4886)
+- BREAKING: Rename Deno.toAsyncIterator() to Deno.iter() (#4848)
+- BREAKING: Rename FileInfo time fields and represent them as Date objects
+  (#4932)
+- BREAKING: Rename SeekMode variants to camelCase and stabilize (#4946)
+- BREAKING: Rename TLS APIs to camel case (#4888)
+- BREAKING: Use LLVM target triple for Deno.build (#4948)
+- BREAKING: introduce unstable flag; mark Deno.openPlugin, link, linkSync,
+  symlink, symlinkSync as unstable (#4892)
+- BREAKING: make camel case readDir, readLink, realPath (#4995)
+- BREAKING: remove custom implementation of Deno.Buffer.toString() (#4992)
+- BREAKING: std/node: require\_ -> require (#4828)
+- feat(fmt): parallelize formatting (#4823)
+- feat(installer): Add DENO_INSTALL_ROOT (#4787)
+- feat(std/http): Improve parseHTTPVersion (#4930)
+- feat(std/io): Increase copyN buffer size to match go implementation (#4904)
+- feat(std/io): synchronous buffered writer (#4693)
+- feat(std/path): Add fromFileUrl() (#4993)
+- feat(std/uuid): Implement uuid v5 (#4916)
+- feat(test): add quiet flag (#4894)
+- feat: Add Deno.readTextFile(), Deno.writeTextFile(), with sync counterparts
+  (#4901)
+- feat: Add buffer size argument to copy (#4907)
+- feat: Add close method to Plugin (#4670) (#4785)
+- feat: Change URL.port implementation to match WHATWG specifications (#4954)
+- feat: Deno.startTLS() (#4773, #4965)
+- feat: Make zero a valid port for URL (#4963)
+- feat: add help messages to Deno.test() sanitizers (#4887)
+- feat: support Deno namespace in Worker API (#4784)
+- fix(core): Op definitions (#4814)
+- fix(core): fix top-level-await error handling (#4911)
+- fix(core/js_errors): Get error's name and message from JS fields (#4808)
+- fix(format): stdin not formatting JSX (#4971)
+- fix(installer): handle case-insensitive uri (#4909)
+- fix(std): existsFile test
+- fix(std/fs): move dest if not exists and overwrite (#4910)
+- fix(std/io): Make std/io copyN write the whole read buffer (#4978)
+- fix(std/mime): MultipartReader for big files (#4865)
+- fix(std/node): bug fix and tests fs/mkdir (#4917)
+- fix: bug in Deno.copy (#4977)
+- fix: don't throw RangeError when an invalid date is passed (#4929)
+- fix: make URLSearchParams more standardized (#4695)
+- refactor(cli): Improve source line formatting (#4832)
+- refactor(cli): Move resource_table from deno::State to deno_core::Isolate
+  (#4834)
+- refactor(cli): Remove bootstrap methods from global scope after bootstrapping
+  (#4869)
+- refactor(cli/doc): Factor out AstParser from DocParser (#4923)
+- refactor(cli/inspector): Store debugger url on DenoInspector (#4793)
+- refactor(cli/js): Rewrite streams (#4842)
+- refactor(cli/js/io): Change type of stdio handles in JS api (#4891, #4952)
+- refactor(cli/js/io): Rename sync io interfaces (#4945)
+- refactor(cli/js/net): Deno.listener closes when breaking out of async iterator
+  (#4976)
+- refactor(cli/js/permissions): Split read and write permission descriptors
+  (#4774)
+- refactor(cli/js/testing): Rename disableOpSanitizer to sanitizeOps (#4854)
+- refactor(cli/js/web): Change InspectOptions, mark Deno.inspect as stable
+  (#4967)
+- refactor(cli/js/web): Decouple Console implementation from stdout (#4899)
+- refactor(cli/ops): Replace block_on in net interfaces (#4796)
+- refactor(cli|std): Add no-async-promise-executor lint rule (#4809)
+- refactor(core): Modify op dispatcher to include &mut Isolate argument (#4821)
+- refactor(core): Remove core/plugin.rs (#4824)
+- refactor(core): Rename deno_core::Isolate to deno_core::CoreIsolate (#4851)
+- refactor(core): add id field to RecursiveModuleLoad (#4905)
+- refactor(std/log): support enum log level (#4859)
+- refactor(std/node): proper Node polyfill directory iteration (#4783)
+- upgrade: Rust 1.43.0 (#4871)
+- upgrade: dprint 0.13.0 (#4816)
+- upgrade: dprint 0.13.1 (#4853)
+- upgrade: rusty_v8 v0.4.0 (#4856)
+- chore: Mark Deno.Metrics and Deno.RunOptions as stable (#4949)
+
+### v0.41.0 / 2020.04.16
+
+- BREAKING: Improve readdir() and FileInfo interfaces (#4763)
+- BREAKING: Remove depracated APIs for mkdir and mkdirSync (#4615)
+- BREAKING: Make fetch API more web compatible (#4687)
+- BREAKING: Remove std/testing/format.ts (#4749)
+- BREAKING: Migrate std/types to deno.land/x/types/ (#4713, #4771)
+- feat(doc): support for runtime built-ins (#4635)
+- feat(std/log): rotating handler, docs improvements (#4674)
+- feat(std/node): Add isPrimitive method (#4673)
+- feat(std/node/fs): Add copyFile and copyFileSync methods (#4726)
+- feat(std/signal): Add onSignal method (#4696)
+- feat(std/testing): Change output of diff (#4697)
+- feat(std/http): Verify cookie name (#4685)
+- feat(std/multipart): Make readForm() type safe (#4710)
+- feat(std/uuid): Add UUID v1 (#4758)
+- feat(install): Honor log level arg (#4714)
+- feat(workers): Make Worker API more web compatible (#4684, #4734, #4391,
+  #4737, #4746)
+- feat: Add AbortController and AbortSignal API (#4757)
+- fix(install): Clean up output on Windows (#4764)
+- fix(core): Handle SyntaxError during script compilation (#4770)
+- fix(cli): Async stack traces and stack formatting (#4690, #4706, #4715)
+- fix(cli): Remove unnecessary namespaces in "deno types" (#4683, #4698, #4718,
+  #4719, #4736, #4741)
+- fix(cli): Panic on invalid UTF-8 string (#4704)
+- fix(cli/js/net): Make generator return types iterable (#4661)
+- fix(doc): Handle optional and extends fields (#4738, #4739)
+- refactor: Event and EventTarget implementation (#4707)
+- refactor: Use synchronous syscalls where applicable (#4762)
+- refactor: Remove calls to futures::executor::block_on (#4760, #4775)
+- upgrade: Rust crates (#4742)
+
+### v0.40.0 / 2020.04.08
+
+- BREAKING: Rename 'deno fetch' subcommand to 'deno cache' (#4656)
+- BREAKING: Remove std/testing/runner.ts (#4649)
+- feat(std/flags): Pass key and value to unknown (#4637)
+- feat(std/http): Respond with 400 on request parse failure (#4614)
+- feat(std/node): Add exists and existsSync (#4655)
+- feat: Add File support in FormData (#4632)
+- feat: Expose ReadableStream and make Blob more standardized (#4581)
+- feat: add --importmap flag to deno bundle (#4651)
+- fix(#4546): Added Math.trunc to toSecondsFromEpoch to conform the result to
+  u64 (#4575)
+- fix(file_server): use text/typescript instead of application/typescript
+  (#4620)
+- fix(std/testing): format bigint (#4626)
+- fix: Drop headers with trailing whitespace in header name (#4642)
+- fix: Fetch reference types for JS files (#4652)
+- fix: Improve deno doc (#4672, #4625)
+- fix: On init create disk_cache directory if it doesn't already exists (#4617)
+- fix: Remove unnecessary namespaces in "deno types" (#4677, #4675, #4669,
+  #4668, #4665, #4663, #4662)
+- upgrade: Rust crates (#4679)
+
+### v0.39.0 / 2020.04.03
+
+- BREAKING CHANGE: Move encode, decode helpers to /std/encoding/utf8.ts, delete
+  /std/strings/ (#4565)
+- BREAKING CHANGE: Remove /std/media_types (#4594)
+- BREAKING CHANGE: Remove old release files (#4545)
+- BREAKING CHANGE: Remove std/strings/pad.ts because String.prototype.padStart
+  exists (#4564)
+- feat: Add common to std/path (#4527)
+- feat: Added colors to doc output (#4518)
+- feat: Expose global state publicly (#4572)
+- feat: Make inspector more robust, add --inspect-brk support (#4552)
+- feat: Publish deno types on release (#4583)
+- feat: Support dynamic import in bundles. (#4561)
+- feat: deno test --filter (#4570)
+- feat: improve console.log serialization (#4524, #4472)
+- fix(#4550): setCookie should append cookies (#4558)
+- fix(#4554): use --inspect in repl & eval (#4562)
+- fix(deno doc): handle 'declare' (#4573)
+- fix(deno doc): parse super-class names (#4595)
+- fix(deno doc): parse the "implements" clause of a class def (#4604)
+- fix(file_server): serve appropriate content-type header (#4555)
+- fix(inspector): proper error message on port collision (#4514)
+- fix: Add check to fail the benchmark test on server error (#4519)
+- fix: Properly handle invalid utf8 in paths (#4609)
+- fix: async ops sanitizer false positives in timers (#4602)
+- fix: invalid blob type (#4536)
+- fix: make Worker.poll private (#4603)
+- fix: remove `Send` trait requirement from the `Resource` trait (#4585)
+- refactor(testing): Reduce testing interfaces (#4451)
+- upgrade: dprint to 0.9.10 (#4601)
+- upgrade: rusty_v8 v0.3.10 (#4576)
+
 ### v0.38.0 / 2020.03.28
 
 - feat: Add "deno doc" subcommand (#4500)
@@ -415,7 +917,7 @@ https://github.com/denoland/deno_install
 - fix: Ensure DENO_DIR when saving the REPL history (#3106)
 - fix: Update echo_server to new listen API (denoland/deno_std#625)
 - fix: [prettier] deno fmt should format jsx/tsx files (#3118)
-- fix: [tls] op_dial_tls is not registerd and broken (#3121)
+- fix: [tls] op_dial_tls is not registered and broken (#3121)
 - fix: clearTimer bug (#3143)
 - fix: remote jsx/tsx files were compiled as js/ts (#3125)
 - perf: eager poll async ops in Isolate (#3046, #3128)
@@ -439,7 +941,7 @@ In deno:
 - fix: Implement ignoreBOM option of UTF8Decoder in text_encoding (#3040)
 - fix: Support top-level-await in TypeScript (#3024)
 - fix: iterators on UrlSearchParams (#3044)
-- fix: listenDefaults/dialDefaults may be overriden in some cases (#3027)
+- fix: listenDefaults/dialDefaults may be overridden in some cases (#3027)
 - upgrade: V8 to 7.9.218 (#3067)
 - upgrade: rust to 1.38.0 (#3030)
 - chore: Migrate CI to github actions (#3052, #3056, #3049, #3071, #3076, #3070,
@@ -1250,7 +1752,7 @@ Changes since v0.1.7:
 - Use constructor.name to print out function type #664
 - Rename deno.argv to deno.args
 - Add deno.trace() #795
-- Continuous benchmarks https://denoland.github.io/deno/
+- Continuous benchmarks
 
 ### v0.1.5 / 2018.09.21
 

@@ -1,4 +1,4 @@
-#!/usr/bin/env -S deno --allow-net
+#!/usr/bin/env -S deno run --allow-net --allow-read
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 // This program serves files in the current directory over HTTP.
@@ -6,13 +6,10 @@
 // TODO Add tests like these:
 // https://github.com/indexzero/http-server/blob/master/test/http-server-test.js
 
-const { args, stat, readdir, open, exit } = Deno;
-import { contentType } from "../media_types/mod.ts";
 import { posix, extname } from "../path/mod.ts";
 import { listenAndServe, ServerRequest, Response } from "./server.ts";
 import { parse } from "../flags/mod.ts";
-import { assert } from "../testing/asserts.ts";
-import { setContentLength } from "./io.ts";
+import { assert } from "../_util/assert.ts";
 
 interface EntryInfo {
   mode: string;
@@ -35,27 +32,28 @@ interface FileServerArgs {
 
 const encoder = new TextEncoder();
 
-const serverArgs = parse(args) as FileServerArgs;
+const serverArgs = parse(Deno.args) as FileServerArgs;
+const target = posix.resolve(serverArgs._[0] ?? "");
 
-const CORSEnabled = serverArgs.cors ? true : false;
-const target = posix.resolve(serverArgs._[1] ?? "");
-const addr = `0.0.0.0:${serverArgs.port ?? serverArgs.p ?? 4500}`;
+const MEDIA_TYPES: Record<string, string> = {
+  ".md": "text/markdown",
+  ".html": "text/html",
+  ".htm": "text/html",
+  ".json": "application/json",
+  ".map": "application/json",
+  ".txt": "text/plain",
+  ".ts": "text/typescript",
+  ".tsx": "text/tsx",
+  ".js": "application/javascript",
+  ".jsx": "text/jsx",
+  ".gz": "application/gzip",
+  ".css": "text/css",
+  ".wasm": "application/wasm",
+};
 
-if (serverArgs.h ?? serverArgs.help) {
-  console.log(`Deno File Server
-  Serves a local directory in HTTP.
-
-INSTALL:
-  deno install --allow-net --allow-read file_server https://deno.land/std/http/file_server.ts
-
-USAGE:
-  file_server [path] [options]
-
-OPTIONS:
-  -h, --help          Prints help information
-  -p, --port <PORT>   Set port
-  --cors              Enable CORS via the "Access-Control-Allow-Origin" header`);
-  exit();
+/** Returns the content-type based on the extension of a path. */
+function contentType(path: string): string | undefined {
+  return MEDIA_TYPES[extname(path)];
 }
 
 function modeToString(isDir: boolean, maybeMode: number | null): string {
@@ -101,13 +99,19 @@ export async function serveFile(
   req: ServerRequest,
   filePath: string
 ): Promise<Response> {
-  const [file, fileInfo] = await Promise.all([open(filePath), stat(filePath)]);
+  const [file, fileInfo] = await Promise.all([
+    Deno.open(filePath),
+    Deno.stat(filePath),
+  ]);
   const headers = new Headers();
   headers.set("content-length", fileInfo.size.toString());
-  const contentTypeValue = contentType(extname(filePath));
+  const contentTypeValue = contentType(filePath);
   if (contentTypeValue) {
     headers.set("content-type", contentTypeValue);
   }
+  req.done.then(() => {
+    file.close();
+  });
   return {
     status: 200,
     body: file,
@@ -115,30 +119,31 @@ export async function serveFile(
   };
 }
 
-// TODO: simplify this after deno.stat and deno.readdir are fixed
+// TODO: simplify this after deno.stat and deno.readDir are fixed
 async function serveDir(
   req: ServerRequest,
   dirPath: string
 ): Promise<Response> {
   const dirUrl = `/${posix.relative(target, dirPath)}`;
   const listEntry: EntryInfo[] = [];
-  const fileInfos = await readdir(dirPath);
-  for (const fileInfo of fileInfos) {
-    const filePath = posix.join(dirPath, fileInfo.name ?? "");
-    const fileUrl = posix.join(dirUrl, fileInfo.name ?? "");
-    if (fileInfo.name === "index.html" && fileInfo.isFile()) {
+  for await (const entry of Deno.readDir(dirPath)) {
+    const filePath = posix.join(dirPath, entry.name);
+    const fileUrl = posix.join(dirUrl, entry.name);
+    if (entry.name === "index.html" && entry.isFile) {
       // in case index.html as dir...
       return serveFile(req, filePath);
     }
     // Yuck!
-    let mode = null;
+    let fileInfo = null;
     try {
-      mode = (await stat(filePath)).mode;
-    } catch (e) {}
+      fileInfo = await Deno.stat(filePath);
+    } catch (e) {
+      // Pass
+    }
     listEntry.push({
-      mode: modeToString(fileInfo.isDirectory(), mode),
-      size: fileInfo.isFile() ? fileLenToString(fileInfo.size) : "",
-      name: fileInfo.name ?? "",
+      mode: modeToString(entry.isDirectory, fileInfo?.mode ?? null),
+      size: entry.isFile ? fileLenToString(fileInfo?.size ?? 0) : "",
+      name: entry.name,
       url: fileUrl,
     });
   }
@@ -156,7 +161,6 @@ async function serveDir(
     body: page,
     headers,
   };
-  setContentLength(res);
   return res;
 }
 
@@ -299,6 +303,26 @@ function html(strings: TemplateStringsArray, ...values: unknown[]): string {
 }
 
 function main(): void {
+  const CORSEnabled = serverArgs.cors ? true : false;
+  const addr = `0.0.0.0:${serverArgs.port ?? serverArgs.p ?? 4507}`;
+
+  if (serverArgs.h ?? serverArgs.help) {
+    console.log(`Deno File Server
+    Serves a local directory in HTTP.
+
+  INSTALL:
+    deno install --allow-net --allow-read https://deno.land/std/http/file_server.ts
+
+  USAGE:
+    file_server [path] [options]
+
+  OPTIONS:
+    -h, --help          Prints help information
+    -p, --port <PORT>   Set port
+    --cors              Enable CORS via the "Access-Control-Allow-Origin" header`);
+    Deno.exit();
+  }
+
   listenAndServe(
     addr,
     async (req): Promise<void> => {
@@ -314,8 +338,8 @@ function main(): void {
 
       let response: Response | undefined;
       try {
-        const info = await stat(fsPath);
-        if (info.isDirectory()) {
+        const fileInfo = await Deno.stat(fsPath);
+        if (fileInfo.isDirectory) {
           response = await serveDir(req, fsPath);
         } else {
           response = await serveFile(req, fsPath);

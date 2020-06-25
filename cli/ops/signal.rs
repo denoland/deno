@@ -2,23 +2,23 @@
 use super::dispatch_json::{JsonOp, Value};
 use crate::op_error::OpError;
 use crate::state::State;
-use deno_core::*;
+use deno_core::CoreIsolate;
+use deno_core::CoreIsolateState;
+use deno_core::ZeroCopyBuf;
 
 #[cfg(unix)]
 use super::dispatch_json::Deserialize;
 #[cfg(unix)]
 use futures::future::{poll_fn, FutureExt};
 #[cfg(unix)]
-use serde_json;
-#[cfg(unix)]
 use std::task::Waker;
 #[cfg(unix)]
 use tokio::signal::unix::{signal, Signal, SignalKind};
 
-pub fn init(i: &mut Isolate, s: &State) {
-  i.register_op("op_signal_bind", s.stateful_json_op(op_signal_bind));
-  i.register_op("op_signal_unbind", s.stateful_json_op(op_signal_unbind));
-  i.register_op("op_signal_poll", s.stateful_json_op(op_signal_poll));
+pub fn init(i: &mut CoreIsolate, s: &State) {
+  i.register_op("op_signal_bind", s.stateful_json_op2(op_signal_bind));
+  i.register_op("op_signal_unbind", s.stateful_json_op2(op_signal_unbind));
+  i.register_op("op_signal_poll", s.stateful_json_op2(op_signal_poll));
 }
 
 #[cfg(unix)]
@@ -40,13 +40,15 @@ struct SignalArgs {
 
 #[cfg(unix)]
 fn op_signal_bind(
+  isolate_state: &mut CoreIsolateState,
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
+  state.check_unstable("Deno.signal");
   let args: BindSignalArgs = serde_json::from_value(args)?;
-  let mut state = state.borrow_mut();
-  let rid = state.resource_table.add(
+  let mut resource_table = isolate_state.resource_table.borrow_mut();
+  let rid = resource_table.add(
     "signal",
     Box::new(SignalStreamResource(
       signal(SignalKind::from_raw(args.signo)).expect(""),
@@ -60,18 +62,20 @@ fn op_signal_bind(
 
 #[cfg(unix)]
 fn op_signal_poll(
+  isolate_state: &mut CoreIsolateState,
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
+  state.check_unstable("Deno.signal");
   let args: SignalArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
-  let state_ = state.clone();
+  let resource_table = isolate_state.resource_table.clone();
 
   let future = poll_fn(move |cx| {
-    let mut state = state_.borrow_mut();
+    let mut resource_table = resource_table.borrow_mut();
     if let Some(mut signal) =
-      state.resource_table.get_mut::<SignalStreamResource>(rid)
+      resource_table.get_mut::<SignalStreamResource>(rid)
     {
       signal.1 = Some(cx.waker().clone());
       return signal.0.poll_recv(cx);
@@ -85,14 +89,16 @@ fn op_signal_poll(
 
 #[cfg(unix)]
 pub fn op_signal_unbind(
+  isolate_state: &mut CoreIsolateState,
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
+  state.check_unstable("Deno.signal");
   let args: SignalArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
-  let mut state = state.borrow_mut();
-  let resource = state.resource_table.get::<SignalStreamResource>(rid);
+  let mut resource_table = isolate_state.resource_table.borrow_mut();
+  let resource = resource_table.get::<SignalStreamResource>(rid);
   if let Some(signal) = resource {
     if let Some(waker) = &signal.1 {
       // Wakes up the pending poll if exists.
@@ -100,8 +106,7 @@ pub fn op_signal_unbind(
       waker.clone().wake();
     }
   }
-  state
-    .resource_table
+  resource_table
     .close(rid)
     .ok_or_else(OpError::bad_resource_id)?;
   Ok(JsonOp::Sync(json!({})))
@@ -109,27 +114,30 @@ pub fn op_signal_unbind(
 
 #[cfg(not(unix))]
 pub fn op_signal_bind(
+  _isolate_state: &mut CoreIsolateState,
   _state: &State,
   _args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   unimplemented!();
 }
 
 #[cfg(not(unix))]
 fn op_signal_unbind(
+  _isolate_state: &mut CoreIsolateState,
   _state: &State,
   _args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   unimplemented!();
 }
 
 #[cfg(not(unix))]
 fn op_signal_poll(
+  _isolate_state: &mut CoreIsolateState,
   _state: &State,
   _args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   unimplemented!();
 }

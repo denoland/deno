@@ -24,5 +24,5 @@ export function fetch(
     zeroCopy = new Uint8Array(body.buffer, body.byteOffset, body.byteLength);
   }
 
-  return sendAsync("op_fetch", args, zeroCopy);
+  return sendAsync("op_fetch", args, ...(zeroCopy ? [zeroCopy] : []));
 }

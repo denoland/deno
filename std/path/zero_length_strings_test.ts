@@ -1,13 +1,11 @@
 // Copyright the Browserify authors. MIT License.
 // Ported from https://github.com/browserify/path-browserify/
-
-const { cwd, test } = Deno;
 import { assertEquals } from "../testing/asserts.ts";
 import * as path from "./mod.ts";
 
-const pwd = cwd();
+const pwd = Deno.cwd();
 
-test(function joinZeroLength() {
+Deno.test("joinZeroLength", function () {
   // join will internally ignore all the zero-length strings and it will return
   // '.' if the joined string is a zero-length string.
   assertEquals(path.posix.join(""), ".");
@@ -18,28 +16,28 @@ test(function joinZeroLength() {
   assertEquals(path.join(pwd, ""), pwd);
 });
 
-test(function normalizeZeroLength() {
+Deno.test("normalizeZeroLength", function () {
   // normalize will return '.' if the input is a zero-length string
   assertEquals(path.posix.normalize(""), ".");
   if (path.win32) assertEquals(path.win32.normalize(""), ".");
   assertEquals(path.normalize(pwd), pwd);
 });
 
-test(function isAbsoluteZeroLength() {
+Deno.test("isAbsoluteZeroLength", function () {
   // Since '' is not a valid path in any of the common environments,
   // return false
   assertEquals(path.posix.isAbsolute(""), false);
   if (path.win32) assertEquals(path.win32.isAbsolute(""), false);
 });
 
-test(function resolveZeroLength() {
+Deno.test("resolveZeroLength", function () {
   // resolve, internally ignores all the zero-length strings and returns the
   // current working directory
   assertEquals(path.resolve(""), pwd);
   assertEquals(path.resolve("", ""), pwd);
 });
 
-test(function relativeZeroLength() {
+Deno.test("relativeZeroLength", function () {
   // relative, internally calls resolve. So, '' is actually the current
   // directory
   assertEquals(path.relative("", pwd), "");

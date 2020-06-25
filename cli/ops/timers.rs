@@ -2,13 +2,13 @@
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::op_error::OpError;
 use crate::state::State;
-use deno_core::*;
+use deno_core::CoreIsolate;
+use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
-use std;
 use std::time::Duration;
 use std::time::Instant;
 
-pub fn init(i: &mut Isolate, s: &State) {
+pub fn init(i: &mut CoreIsolate, s: &State) {
   i.register_op(
     "op_global_timer_stop",
     s.stateful_json_op(op_global_timer_stop),
@@ -20,7 +20,7 @@ pub fn init(i: &mut Isolate, s: &State) {
 fn op_global_timer_stop(
   state: &State,
   _args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let mut state = state.borrow_mut();
   state.global_timer.cancel();
@@ -35,7 +35,7 @@ struct GlobalTimerArgs {
 fn op_global_timer(
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let args: GlobalTimerArgs = serde_json::from_value(args)?;
   let val = args.timeout;
@@ -57,7 +57,7 @@ fn op_global_timer(
 fn op_now(
   state: &State,
   _args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let state = state.borrow();
   let seconds = state.start_time.elapsed().as_secs();
