@@ -145,7 +145,7 @@ unitTest(
 unitTest(
   { perms: { run: true, write: true }, ignore: Deno.build.os == "windows" },
   async function chownUidOnly(): Promise<void> {
-    const { uid, gid } = await getUidAndGid();
+    const { uid, _gid } = await getUidAndGid();
     const dirPath = await Deno.makeTempDir();
     const filePath = dirPath + "/chown_test_file.txt";
     await Deno.writeTextFile(filePath, "Foo");
