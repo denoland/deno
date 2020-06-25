@@ -24,10 +24,22 @@ impl FromStr for BarePort {
   }
 }
 
+pub fn validator(host_and_port: String) -> Result<(), String> {
+  if Url::parse(&format!("deno://{}", host_and_port)).is_ok()
+    || host_and_port.parse::<IpAddr>().is_ok()
+  {
+    Ok(())
+  } else if let Ok(_) = host_and_port.parse::<BarePort>() {
+    Ok(())
+  } else {
+    Err(format!("Bad host:port pair: {}", host_and_port))
+  }
+}
+
 /// Expands "bare port" paths (eg. ":8080") into full paths with hosts. It
 /// expands to such paths into 3 paths with following hosts: `0.0.0.0:port`,
 /// `127.0.0.1:port` and `localhost:port`.
-pub fn parse_net_args(paths: Vec<String>) -> clap::Result<Vec<String>> {
+pub fn parse(paths: Vec<String>) -> clap::Result<Vec<String>> {
   let mut out: Vec<String> = vec![];
   for host_and_port in paths.iter() {
     if Url::parse(&format!("deno://{}", host_and_port)).is_ok()
@@ -95,7 +107,7 @@ mod bare_port_tests {
 
 #[cfg(test)]
 mod tests {
-  use super::parse_net_args;
+  use super::parse;
 
   // Creates vector of strings, Vec<String>
   macro_rules! svec {
@@ -146,7 +158,7 @@ mod tests {
       "127.0.0.1:4545",
       "999.0.88.1:80"
     ];
-    let actual = parse_net_args(entries).unwrap();
+    let actual = parse(entries).unwrap();
     assert_eq!(actual, expected);
   }
 
@@ -154,7 +166,7 @@ mod tests {
   fn parse_net_args_expansion() {
     let entries = svec![":8080"];
     let expected = svec!["0.0.0.0:8080", "127.0.0.1:8080", "localhost:8080"];
-    let actual = parse_net_args(entries).unwrap();
+    let actual = parse(entries).unwrap();
     assert_eq!(actual, expected);
   }
 
@@ -164,25 +176,25 @@ mod tests {
       svec!["::", "::1", "[::1]", "[::]:5678", "[::1]:5678", "::cafe"];
     let expected =
       svec!["::", "::1", "[::1]", "[::]:5678", "[::1]:5678", "::cafe"];
-    let actual = parse_net_args(entries).unwrap();
+    let actual = parse(entries).unwrap();
     assert_eq!(actual, expected);
   }
 
   #[test]
   fn parse_net_args_ipv6_error1() {
     let entries = svec![":::"];
-    assert!(parse_net_args(entries).is_err());
+    assert!(parse(entries).is_err());
   }
 
   #[test]
   fn parse_net_args_ipv6_error2() {
     let entries = svec!["0123:4567:890a:bcde:fg::"];
-    assert!(parse_net_args(entries).is_err());
+    assert!(parse(entries).is_err());
   }
 
   #[test]
   fn parse_net_args_ipv6_error3() {
     let entries = svec!["[::q]:8080"];
-    assert!(parse_net_args(entries).is_err());
+    assert!(parse(entries).is_err());
   }
 }

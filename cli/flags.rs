@@ -1,5 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use crate::parse_net_args::parse_net_args;
 use clap::App;
 use clap::AppSettings;
 use clap::Arg;
@@ -975,7 +974,8 @@ fn permission_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
         .takes_value(true)
         .use_delimiter(true)
         .require_equals(true)
-        .help("Allow network access"),
+        .help("Allow network access")
+        .validator(crate::flags_allow_net::validator),
     )
     .arg(
       Arg::with_name("allow-env")
@@ -1325,7 +1325,8 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     if raw_net_allowlist.is_empty() {
       flags.allow_net = true;
     } else {
-      flags.net_allowlist = parse_net_args(raw_net_allowlist).unwrap();
+      flags.net_allowlist =
+        crate::flags_allow_net::parse(raw_net_allowlist).unwrap();
       debug!("net allowlist: {:#?}", &flags.net_allowlist);
     }
   }
