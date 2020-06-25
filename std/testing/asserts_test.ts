@@ -260,14 +260,12 @@ Deno.test("testingAssertFailWithWrongErrorClass", function (): void {
 Deno.test("testingAssertThrowsWithReturnType", () => {
   assertThrows(() => {
     throw new Error();
-    return "a string";
   });
 });
 
 Deno.test("testingAssertThrowsAsyncWithReturnType", () => {
   assertThrowsAsync(() => {
     throw new Error();
-    return Promise.resolve("a Promise<string>");
   });
 });
 
@@ -489,7 +487,6 @@ Deno.test("Assert Throws Async Non-Error Fail", () => {
     () => {
       return assertThrowsAsync(() => {
         throw undefined;
-        return Promise.resolve("Ok!");
       });
     },
     AssertionError,
