@@ -9,6 +9,8 @@
 // deno_typescript/typescript/lib/typescript.d.ts. Ideally we could simply point
 // to that in this import specifier, but "cargo package" is very strict and
 // requires all files to be present in a crate's subtree.
+// to get proper editor intellisense, you can substitute "$asset$" with
+// "../../deno_typescript/typescript/lib" - remember to revert before committing
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import * as ts_ from "$asset$/typescript.d.ts";
 
@@ -22,5 +24,10 @@ declare global {
     // there is a risk these could change in future versions of TypeScript
     export const libs: string[];
     export const libMap: Map<string, string>;
+    export const performance: {
+      enable(): void;
+      disable(): void;
+      getDuration(value: string): number;
+    };
   }
 }

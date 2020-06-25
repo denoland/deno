@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+import { assert } from "../_util/assert.ts";
 
-import { assert } from "../testing/asserts.ts";
 export type DateFormat = "mm-dd-yyyy" | "dd-mm-yyyy" | "yyyy-mm-dd";
 
 export const SECOND = 1e3;

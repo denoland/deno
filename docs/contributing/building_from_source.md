@@ -8,7 +8,7 @@ Deno you can download a prebuilt executable (more information in the
 
 Clone on Linux or Mac:
 
-```bash
+```shell
 git clone --recurse-submodules https://github.com/denoland/deno.git
 ```
 
@@ -18,12 +18,30 @@ Extra steps for Windows users:
    (otherwise symlinks would require administrator privileges).
 2. Make sure you are using git version 2.19.2.windows.1 or newer.
 3. Set `core.symlinks=true` before the checkout:
-   ```bash
+   ```shell
    git config --global core.symlinks true
    git clone --recurse-submodules https://github.com/denoland/deno.git
    ```
 
 ### Prerequisites
+
+You will need to [install Rust](https://www.rust-lang.org/tools/install). Make
+sure to fetch the latest stable release as Deno does not support nightly builds.
+Check that you have the required tools:
+
+```
+rustc -V
+cargo -V
+```
+
+### Setup rust targets and components
+
+```shell
+rustup target add wasm32-unknown-unknown
+rustup target add wasm32-wasi
+```
+
+### Building Deno
 
 The easiest way to build Deno is by using a precompiled version of V8:
 
@@ -77,7 +95,7 @@ about the V8 build.
 
 Build with Cargo:
 
-```bash
+```shell
 # Build:
 cargo build -vv
 

@@ -4,7 +4,8 @@ fs module is made to provide helpers to manipulate the filesystem.
 
 ## Usage
 
-All the following modules are exposed in `mod.ts`
+All the following modules are exposed in `mod.ts` This feature is currently
+unstable. To enable it use `deno run --unstable`
 
 ### emptyDir
 
@@ -59,7 +60,7 @@ ensureSymlink("./folder/targetFile.dat", "./folder/targetFile.link.dat"); // ret
 ensureSymlinkSync("./folder/targetFile.dat", "./folder/targetFile.link.dat"); // void
 ```
 
-### eol
+### EOL
 
 Detects and format the passed string for the targeted End Of Line character.
 
@@ -89,21 +90,6 @@ import { exists, existsSync } from "https://deno.land/std/fs/mod.ts";
 
 exists("./foo"); // returns a Promise<boolean>
 existsSync("./foo"); // returns boolean
-```
-
-### globToRegExp
-
-Generate a regex based on glob pattern and options This was meant to be using
-the the `fs.walk` function but can be used anywhere else.
-
-```ts
-import { globToRegExp } from "https://deno.land/std/fs/mod.ts";
-
-globToRegExp("foo/**/*.json", {
-  flags: "g",
-  extended: true,
-  globstar: true,
-}); // returns the regex to find all .json files in the folder foo
 ```
 
 ### move
@@ -168,13 +154,13 @@ Iterate all files in a directory recursively.
 ```ts
 import { walk, walkSync } from "https://deno.land/std/fs/mod.ts";
 
-for (const fileInfo of walkSync(".")) {
-  console.log(fileInfo.filename);
+for (const entry of walkSync(".")) {
+  console.log(entry.path);
 }
 
 // Async
 async function printFilesNames() {
-  for await (const entry of walk()) {
+  for await (const entry of walk(".")) {
     console.log(entry.path);
   }
 }
@@ -209,4 +195,29 @@ import {
 
 writeFileStr("./target.dat", "file content"); // returns a promise
 writeFileStrSync("./target.dat", "file content"); // void
+```
+
+### expandGlob
+
+Expand the glob string from the specified `root` directory and yield each result
+as a `WalkEntry` object.
+
+```ts
+import { expandGlob } from "https://deno.land/std/fs/mod.ts";
+
+for await (const file of expandGlob("**/*.ts")) {
+  console.log(file);
+}
+```
+
+### expandGlobSync
+
+Synchronous version of `expandGlob()`.
+
+```ts
+import { expandGlobSync } from "https://deno.land/std/fs/mod.ts";
+
+for (const file of expandGlobSync("**/*.ts")) {
+  console.log(file);
+}
 ```

@@ -1,10 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
-use crate::compilers::runtime_compile;
-use crate::compilers::runtime_transpile;
 use crate::futures::FutureExt;
 use crate::op_error::OpError;
 use crate::state::State;
+use crate::tsc::runtime_bundle;
+use crate::tsc::runtime_compile;
+use crate::tsc::runtime_transpile;
 use deno_core::CoreIsolate;
 use deno_core::ZeroCopyBuf;
 use std::collections::HashMap;
@@ -26,20 +27,35 @@ struct CompileArgs {
 fn op_compile(
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   state.check_unstable("Deno.compile");
   let args: CompileArgs = serde_json::from_value(args)?;
-  let global_state = state.borrow().global_state.clone();
+  let s = state.borrow();
+  let global_state = s.global_state.clone();
+  let permissions = s.permissions.clone();
   let fut = async move {
-    runtime_compile(
-      global_state,
-      &args.root_name,
-      &args.sources,
-      args.bundle,
-      &args.options,
-    )
-    .await
+    let fut = if args.bundle {
+      runtime_bundle(
+        global_state,
+        permissions,
+        &args.root_name,
+        &args.sources,
+        &args.options,
+      )
+      .boxed_local()
+    } else {
+      runtime_compile(
+        global_state,
+        permissions,
+        &args.root_name,
+        &args.sources,
+        &args.options,
+      )
+      .boxed_local()
+    };
+
+    fut.await
   }
   .boxed_local();
   Ok(JsonOp::Async(fut))
@@ -54,13 +70,16 @@ struct TranspileArgs {
 fn op_transpile(
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   state.check_unstable("Deno.transpile");
   let args: TranspileArgs = serde_json::from_value(args)?;
-  let global_state = state.borrow().global_state.clone();
+  let s = state.borrow();
+  let global_state = s.global_state.clone();
+  let permissions = s.permissions.clone();
   let fut = async move {
-    runtime_transpile(global_state, &args.sources, &args.options).await
+    runtime_transpile(global_state, permissions, &args.sources, &args.options)
+      .await
   }
   .boxed_local();
   Ok(JsonOp::Async(fut))

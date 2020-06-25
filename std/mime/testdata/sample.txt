@@ -24,4 +24,12 @@ content-type: application/octet-stream
   }
 }
 
+----------------------------434049563556637648550474
+content-disposition: form-data; name="file2"; filename="中文.json"
+content-type: application/octet-stream
+
+{
+  "test": "filename"
+}
+
 ----------------------------434049563556637648550474--

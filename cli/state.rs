@@ -1,5 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use crate::compilers::TargetLib;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::global_state::GlobalState;
 use crate::global_timer::GlobalTimer;
@@ -9,6 +8,7 @@ use crate::op_error::OpError;
 use crate::ops::JsonOp;
 use crate::ops::MinimalOp;
 use crate::permissions::Permissions;
+use crate::tsc::TargetLib;
 use crate::web_worker::WebWorkerHandle;
 use deno_core::Buf;
 use deno_core::ErrBox;
@@ -31,15 +31,6 @@ use std::rc::Rc;
 use std::str;
 use std::thread::JoinHandle;
 use std::time::Instant;
-#[derive(Copy, Clone, Eq, PartialEq)]
-pub enum DebugType {
-  /// Can be debugged, will wait for debugger when --inspect-brk given.
-  Main,
-  /// Can be debugged, never waits for debugger.
-  Dependent,
-  /// No inspector instance is created.
-  Internal,
-}
 
 #[derive(Clone)]
 pub struct State(Rc<RefCell<StateInner>>);
@@ -66,16 +57,17 @@ pub struct StateInner {
   pub start_time: Instant,
   pub seeded_rng: Option<StdRng>,
   pub target_lib: TargetLib,
-  pub debug_type: DebugType,
+  pub is_main: bool,
+  pub is_internal: bool,
 }
 
 impl State {
   pub fn stateful_json_op<D>(
     &self,
     dispatcher: D,
-  ) -> impl Fn(&mut deno_core::CoreIsolate, &[u8], Option<ZeroCopyBuf>) -> Op
+  ) -> impl Fn(&mut deno_core::CoreIsolateState, &[u8], &mut [ZeroCopyBuf]) -> Op
   where
-    D: Fn(&State, Value, Option<ZeroCopyBuf>) -> Result<JsonOp, OpError>,
+    D: Fn(&State, Value, &mut [ZeroCopyBuf]) -> Result<JsonOp, OpError>,
   {
     use crate::ops::json_op;
     self.core_op(json_op(self.stateful_op(dispatcher)))
@@ -84,13 +76,13 @@ impl State {
   pub fn stateful_json_op2<D>(
     &self,
     dispatcher: D,
-  ) -> impl Fn(&mut deno_core::CoreIsolate, &[u8], Option<ZeroCopyBuf>) -> Op
+  ) -> impl Fn(&mut deno_core::CoreIsolateState, &[u8], &mut [ZeroCopyBuf]) -> Op
   where
     D: Fn(
-      &mut deno_core::CoreIsolate,
+      &mut deno_core::CoreIsolateState,
       &State,
       Value,
-      Option<ZeroCopyBuf>,
+      &mut [ZeroCopyBuf],
     ) -> Result<JsonOp, OpError>,
   {
     use crate::ops::json_op;
@@ -103,21 +95,21 @@ impl State {
   pub fn core_op<D>(
     &self,
     dispatcher: D,
-  ) -> impl Fn(&mut deno_core::CoreIsolate, &[u8], Option<ZeroCopyBuf>) -> Op
+  ) -> impl Fn(&mut deno_core::CoreIsolateState, &[u8], &mut [ZeroCopyBuf]) -> Op
   where
-    D: Fn(&mut deno_core::CoreIsolate, &[u8], Option<ZeroCopyBuf>) -> Op,
+    D: Fn(&mut deno_core::CoreIsolateState, &[u8], &mut [ZeroCopyBuf]) -> Op,
   {
     let state = self.clone();
 
-    move |isolate: &mut deno_core::CoreIsolate,
+    move |isolate_state: &mut deno_core::CoreIsolateState,
           control: &[u8],
-          zero_copy: Option<ZeroCopyBuf>|
+          zero_copy: &mut [ZeroCopyBuf]|
           -> Op {
       let bytes_sent_control = control.len() as u64;
       let bytes_sent_zero_copy =
-        zero_copy.as_ref().map(|b| b.len()).unwrap_or(0) as u64;
+        zero_copy.iter().map(|b| b.len()).sum::<usize>() as u64;
 
-      let op = dispatcher(isolate, control, zero_copy);
+      let op = dispatcher(isolate_state, control, zero_copy);
 
       match op {
         Op::Sync(buf) => {
@@ -163,24 +155,24 @@ impl State {
   pub fn stateful_minimal_op2<D>(
     &self,
     dispatcher: D,
-  ) -> impl Fn(&mut deno_core::CoreIsolate, &[u8], Option<ZeroCopyBuf>) -> Op
+  ) -> impl Fn(&mut deno_core::CoreIsolateState, &[u8], &mut [ZeroCopyBuf]) -> Op
   where
     D: Fn(
-      &mut deno_core::CoreIsolate,
+      &mut deno_core::CoreIsolateState,
       &State,
       bool,
       i32,
-      Option<ZeroCopyBuf>,
+      &mut [ZeroCopyBuf],
     ) -> MinimalOp,
   {
     let state = self.clone();
     self.core_op(crate::ops::minimal_op(
-      move |isolate: &mut deno_core::CoreIsolate,
+      move |isolate_state: &mut deno_core::CoreIsolateState,
             is_sync: bool,
             rid: i32,
-            zero_copy: Option<ZeroCopyBuf>|
+            zero_copy: &mut [ZeroCopyBuf]|
             -> MinimalOp {
-        dispatcher(isolate, &state, is_sync, rid, zero_copy)
+        dispatcher(isolate_state, &state, is_sync, rid, zero_copy)
       },
     ))
   }
@@ -194,17 +186,17 @@ impl State {
     &self,
     dispatcher: D,
   ) -> impl Fn(
-    &mut deno_core::CoreIsolate,
+    &mut deno_core::CoreIsolateState,
     Value,
-    Option<ZeroCopyBuf>,
+    &mut [ZeroCopyBuf],
   ) -> Result<JsonOp, OpError>
   where
-    D: Fn(&State, Value, Option<ZeroCopyBuf>) -> Result<JsonOp, OpError>,
+    D: Fn(&State, Value, &mut [ZeroCopyBuf]) -> Result<JsonOp, OpError>,
   {
     let state = self.clone();
-    move |_isolate: &mut deno_core::CoreIsolate,
+    move |_isolate_state: &mut deno_core::CoreIsolateState,
           args: Value,
-          zero_copy: Option<ZeroCopyBuf>|
+          zero_copy: &mut [ZeroCopyBuf]|
           -> Result<JsonOp, OpError> { dispatcher(&state, args, zero_copy) }
   }
 
@@ -212,24 +204,24 @@ impl State {
     &self,
     dispatcher: D,
   ) -> impl Fn(
-    &mut deno_core::CoreIsolate,
+    &mut deno_core::CoreIsolateState,
     Value,
-    Option<ZeroCopyBuf>,
+    &mut [ZeroCopyBuf],
   ) -> Result<JsonOp, OpError>
   where
     D: Fn(
-      &mut deno_core::CoreIsolate,
+      &mut deno_core::CoreIsolateState,
       &State,
       Value,
-      Option<ZeroCopyBuf>,
+      &mut [ZeroCopyBuf],
     ) -> Result<JsonOp, OpError>,
   {
     let state = self.clone();
-    move |isolate: &mut deno_core::CoreIsolate,
+    move |isolate_state: &mut deno_core::CoreIsolateState,
           args: Value,
-          zero_copy: Option<ZeroCopyBuf>|
+          zero_copy: &mut [ZeroCopyBuf]|
           -> Result<JsonOp, OpError> {
-      dispatcher(isolate, &state, args, zero_copy)
+      dispatcher(isolate_state, &state, args, zero_copy)
     }
   }
 
@@ -247,7 +239,7 @@ impl State {
   }
 }
 
-fn exit_unstable(api_name: &str) {
+pub fn exit_unstable(api_name: &str) {
   eprintln!(
     "Unstable API '{}'. The --unstable flag must be provided.",
     api_name
@@ -276,47 +268,23 @@ impl ModuleLoader for State {
     Ok(module_specifier)
   }
 
-  /// Given an absolute url, load its source code.
   fn load(
     &self,
     module_specifier: &ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
-    is_dyn_import: bool,
+    _is_dyn_import: bool,
   ) -> Pin<Box<deno_core::ModuleSourceFuture>> {
-    let module_specifier = module_specifier.clone();
-    if is_dyn_import {
-      if let Err(e) = self.check_dyn_import(&module_specifier) {
-        return async move { Err(e.into()) }.boxed_local();
-      }
-    } else {
-      // Verify that remote file doesn't try to statically import local file.
-      if let Some(referrer) = maybe_referrer.as_ref() {
-        let referrer_url = referrer.as_url();
-        match referrer_url.scheme() {
-          "http" | "https" => {
-            let specifier_url = module_specifier.as_url();
-            match specifier_url.scheme() {
-              "http" | "https" => {}
-              _ => {
-                let e = OpError::permission_denied("Remote module are not allowed to statically import local modules. Use dynamic import instead.".to_string());
-                return async move { Err(e.into()) }.boxed_local();
-              }
-            }
-          }
-          _ => {}
-        }
-      }
-    }
-
+    let module_specifier = module_specifier.to_owned();
     let mut state = self.borrow_mut();
     // TODO(bartlomieju): incrementing resolve_count here has no sense...
     state.metrics.resolve_count += 1;
     let module_url_specified = module_specifier.to_string();
     let global_state = state.global_state.clone();
-    let target_lib = state.target_lib.clone();
+
+    // TODO(bartlomieju): `fetch_compiled_module` should take `load_id` param
     let fut = async move {
       let compiled_module = global_state
-        .fetch_compiled_module(module_specifier, maybe_referrer, target_lib)
+        .fetch_compiled_module(module_specifier, maybe_referrer)
         .await?;
       Ok(deno_core::ModuleSource {
         // Real module name, might be different from initial specifier
@@ -333,22 +301,47 @@ impl ModuleLoader for State {
   fn prepare_load(
     &self,
     _load_id: ModuleLoadId,
-    _module_specifier: &ModuleSpecifier,
-    _maybe_referrer: Option<String>,
-    _is_dyn_import: bool,
+    module_specifier: &ModuleSpecifier,
+    maybe_referrer: Option<String>,
+    is_dyn_import: bool,
   ) -> Pin<Box<dyn Future<Output = Result<(), ErrBox>>>> {
-    // TODO(bartlomieju):
-    // 1. recursively:
-    //    a) resolve specifier
-    //    b) check permission if dynamic import
-    //    c) fetch/download source code
-    //    d) parse the source code and extract all import/exports (dependencies)
-    //    e) add discovered deps and loop algorithm until no new dependencies
-    //        are discovered
-    // 2. run through appropriate compiler giving it access only to
-    //     discovered files
+    let module_specifier = module_specifier.clone();
+    let state = self.borrow();
+    let target_lib = state.target_lib.clone();
+    let maybe_import_map = state.import_map.clone();
+    // Only "main" module is loaded without permission check,
+    // ie. module that is associated with "is_main" state
+    // and is not a dynamic import.
+    let permissions = if state.is_main && !is_dyn_import {
+      Permissions::allow_all()
+    } else {
+      state.permissions.clone()
+    };
+    let global_state = state.global_state.clone();
+    // TODO(bartlomieju): I'm not sure if it's correct to ignore
+    // bad referrer - this is the case for `Deno.core.evalContext()` where
+    // `ref_str` is `<unknown>`.
+    let maybe_referrer = if let Some(ref_str) = maybe_referrer {
+      ModuleSpecifier::resolve_url(&ref_str).ok()
+    } else {
+      None
+    };
+    drop(state);
 
-    async { Ok(()) }.boxed_local()
+    // TODO(bartlomieju): `prepare_module_load` should take `load_id` param
+    async move {
+      global_state
+        .prepare_module_load(
+          module_specifier,
+          maybe_referrer,
+          target_lib,
+          permissions,
+          is_dyn_import,
+          maybe_import_map,
+        )
+        .await
+    }
+    .boxed_local()
   }
 }
 
@@ -358,19 +351,9 @@ impl State {
     global_state: GlobalState,
     shared_permissions: Option<Permissions>,
     main_module: ModuleSpecifier,
-    debug_type: DebugType,
+    maybe_import_map: Option<ImportMap>,
+    is_internal: bool,
   ) -> Result<Self, ErrBox> {
-    let import_map: Option<ImportMap> =
-      match global_state.flags.import_map_path.as_ref() {
-        None => None,
-        Some(file_path) => {
-          if !global_state.flags.unstable {
-            exit_unstable("--importmap")
-          }
-          Some(ImportMap::load(file_path)?)
-        }
-      };
-
     let seeded_rng = match global_state.flags.seed {
       Some(seed) => Some(StdRng::seed_from_u64(seed)),
       None => None,
@@ -386,7 +369,7 @@ impl State {
       global_state,
       main_module,
       permissions,
-      import_map,
+      import_map: maybe_import_map,
       metrics: Metrics::default(),
       global_timer: GlobalTimer::new(),
       workers: HashMap::new(),
@@ -394,7 +377,8 @@ impl State {
       start_time: Instant::now(),
       seeded_rng,
       target_lib: TargetLib::Main,
-      debug_type,
+      is_main: true,
+      is_internal,
     }));
 
     Ok(Self(state))
@@ -429,7 +413,8 @@ impl State {
       start_time: Instant::now(),
       seeded_rng,
       target_lib: TargetLib::Worker,
-      debug_type: DebugType::Dependent,
+      is_main: false,
+      is_internal: false,
     }));
 
     Ok(Self(state))
@@ -438,6 +423,17 @@ impl State {
   #[inline]
   pub fn check_read(&self, path: &Path) -> Result<(), OpError> {
     self.borrow().permissions.check_read(path)
+  }
+
+  /// As `check_read()`, but permission error messages will anonymize the path
+  /// by replacing it with the given `display`.
+  #[inline]
+  pub fn check_read_blind(
+    &self,
+    path: &Path,
+    display: &str,
+  ) -> Result<(), OpError> {
+    self.borrow().permissions.check_read_blind(path, display)
   }
 
   #[inline]
@@ -506,7 +502,8 @@ impl State {
       GlobalState::mock(vec!["deno".to_string()]),
       None,
       module_specifier,
-      DebugType::Main,
+      None,
+      false,
     )
     .unwrap()
   }

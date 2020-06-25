@@ -32,7 +32,6 @@ impl DocFileLoader for TestLoader {
     &self,
     specifier: &str,
   ) -> Pin<Box<dyn Future<Output = Result<String, OpError>>>> {
-    eprintln!("specifier {:#?}", specifier);
     let res = match self.files.get(specifier) {
       Some(source_code) => Ok(source_code.to_string()),
       None => Err(OpError::other("not found".to_string())),
@@ -45,6 +44,10 @@ impl DocFileLoader for TestLoader {
 #[tokio::test]
 async fn export_fn() {
   let source_code = r#"/**
+* @module foo
+*/
+
+/**
 * Hello there, this is a multiline JSdoc.
 *
 * It has many lines
@@ -52,6 +55,9 @@ async fn export_fn() {
 * Or not that many?
 */
 export function foo(a: string, b?: number, cb: (...cbArgs: unknown[]) => void, ...args: unknown[]): void {
+    /**
+     * @todo document all the things.
+     */
     console.log("Hello world");
 }
 "#;
@@ -144,7 +150,7 @@ export function foo(a: string, b?: number, cb: (...cbArgs: unknown[]) => void, .
     "location": {
       "col": 0,
       "filename": "test.ts",
-      "line": 8,
+      "line": 12,
     },
     "name": "foo",
   });
@@ -160,6 +166,19 @@ export function foo(a: string, b?: number, cb: (...cbArgs: unknown[]) => void, .
     colors::strip_ansi_codes(super::printer::format(entries).as_str())
       .contains("b?: number")
   );
+}
+
+#[tokio::test]
+async fn format_type_predicate() {
+  let source_code = r#"
+export function isFish(pet: Fish | Bird): pet is Fish {
+    return (pet as Fish).swim !== undefined;
+}
+"#;
+  let loader =
+    TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
+  let entries = DocParser::new(loader).parse("test.ts").await.unwrap();
+  super::printer::format(entries);
 }
 
 #[tokio::test]
@@ -866,6 +885,10 @@ export enum Hello {
   assert_eq!(actual, expected_json);
 
   assert!(colors::strip_ansi_codes(
+    super::printer::format_details(entry.clone()).as_str()
+  )
+  .contains("World"));
+  assert!(colors::strip_ansi_codes(
     super::printer::format(entries.clone()).as_str()
   )
   .contains("Some enum for good measure"));
@@ -1435,4 +1458,150 @@ export function fooFn(a: number) {
     colors::strip_ansi_codes(super::printer::format(entries).as_str())
       .contains("function fooFn(a: number)")
   );
+}
+
+#[tokio::test]
+async fn ts_lit_types() {
+  let source_code = r#"
+export type boolLit = false;
+export type strLit = "text";
+export type tplLit = `text`;
+export type numLit = 5;
+"#;
+  let loader =
+    TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
+  let entries = DocParser::new(loader).parse("test.ts").await.unwrap();
+  let actual = serde_json::to_value(entries).unwrap();
+  let expected_json = json!([
+    {
+      "kind": "typeAlias",
+      "name": "boolLit",
+      "location": {
+        "filename": "test.ts",
+        "line": 2,
+        "col": 0
+      },
+      "jsDoc": null,
+      "typeAliasDef": {
+        "tsType": {
+          "repr": "false",
+          "kind": "literal",
+          "literal": {
+            "kind": "boolean",
+            "boolean": false
+          }
+        },
+        "typeParams": []
+      }
+    }, {
+      "kind": "typeAlias",
+      "name": "strLit",
+      "location": {
+        "filename": "test.ts",
+        "line": 3,
+        "col": 0
+      },
+      "jsDoc": null,
+      "typeAliasDef": {
+        "tsType": {
+          "repr": "text",
+          "kind": "literal",
+          "literal": {
+            "kind": "string",
+            "string": "text"
+          }
+        },
+        "typeParams": []
+      }
+    }, {
+      "kind": "typeAlias",
+      "name": "tplLit",
+      "location": {
+        "filename": "test.ts",
+        "line": 4,
+        "col": 0
+      },
+      "jsDoc": null,
+      "typeAliasDef": {
+        "tsType": {
+          "repr": "text",
+          "kind": "literal",
+          "literal": {
+            "kind": "string",
+            "string": "text"
+          }
+        },
+        "typeParams": []
+      }
+    }, {
+      "kind": "typeAlias",
+      "name": "numLit",
+      "location": {
+        "filename": "test.ts",
+        "line": 5,
+        "col": 0
+      },
+      "jsDoc": null,
+      "typeAliasDef": {
+        "tsType": {
+          "repr": "5",
+          "kind": "literal",
+          "literal": {
+            "kind": "number",
+            "number": 5.0
+          }
+        },
+        "typeParams": []
+      }
+    }
+  ]);
+  assert_eq!(actual, expected_json);
+}
+
+#[tokio::test]
+async fn filter_nodes_by_name() {
+  use super::find_nodes_by_name_recursively;
+  let source_code = r#"
+export namespace Deno {
+  export class Buffer {}
+  export function test(options: object): void;
+  export function test(name: string, fn: Function): void;
+  export function test(name: string | object, fn?: Function): void {}
+}
+
+export namespace Deno {
+  export namespace Inner {
+    export function a(): void {}
+    export const b = 100;
+  }
+}
+"#;
+  let loader =
+    TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
+  let entries = DocParser::new(loader).parse("test.ts").await.unwrap();
+
+  let found =
+    find_nodes_by_name_recursively(entries.clone(), "Deno".to_string());
+  assert_eq!(found.len(), 2);
+  assert_eq!(found[0].name, "Deno".to_string());
+  assert_eq!(found[1].name, "Deno".to_string());
+
+  let found =
+    find_nodes_by_name_recursively(entries.clone(), "Deno.test".to_string());
+  assert_eq!(found.len(), 3);
+  assert_eq!(found[0].name, "test".to_string());
+  assert_eq!(found[1].name, "test".to_string());
+  assert_eq!(found[2].name, "test".to_string());
+
+  let found =
+    find_nodes_by_name_recursively(entries.clone(), "Deno.Inner.a".to_string());
+  assert_eq!(found.len(), 1);
+  assert_eq!(found[0].name, "a".to_string());
+
+  let found =
+    find_nodes_by_name_recursively(entries.clone(), "Deno.test.a".to_string());
+  assert_eq!(found.len(), 0);
+
+  let found = find_nodes_by_name_recursively(entries, "a.b.c".to_string());
+  assert_eq!(found.len(), 0);
 }

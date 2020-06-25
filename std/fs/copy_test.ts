@@ -14,9 +14,6 @@ import { ensureSymlink, ensureSymlinkSync } from "./ensure_symlink.ts";
 
 const testdataDir = path.resolve("fs", "testdata");
 
-// TODO(axetroy): Add test for Windows once symlink is implemented for Windows.
-const isWindows = Deno.build.os === "windows";
-
 function testCopy(name: string, cb: (tempDir: string) => Promise<void>): void {
   Deno.test({
     name,
@@ -257,14 +254,6 @@ testCopy(
     const srcLink = path.join(dir, "0.txt");
     const destLink = path.join(tempDir, "0_copy.txt");
 
-    if (isWindows) {
-      await assertThrowsAsync(
-        // (): Promise<void> => copy(srcLink, destLink),
-        (): Promise<void> => ensureSymlink(srcLink, destLink)
-      );
-      return;
-    }
-
     assert(
       (await Deno.lstat(srcLink)).isSymlink,
       `'${srcLink}' should be symlink type`
@@ -284,14 +273,6 @@ testCopy(
     const srcDir = path.join(testdataDir, "copy_dir");
     const srcLink = path.join(tempDir, "copy_dir_link");
     const destLink = path.join(tempDir, "copy_dir_link_copy");
-
-    if (isWindows) {
-      await assertThrowsAsync(
-        // (): Promise<void> => copy(srcLink, destLink),
-        (): Promise<void> => ensureSymlink(srcLink, destLink)
-      );
-      return;
-    }
 
     await ensureSymlink(srcDir, srcLink);
 
@@ -497,14 +478,6 @@ testCopySync(
     const srcLink = path.join(dir, "0.txt");
     const destLink = path.join(tempDir, "0_copy.txt");
 
-    if (isWindows) {
-      assertThrows(
-        // (): void => copySync(srcLink, destLink),
-        (): void => ensureSymlinkSync(srcLink, destLink)
-      );
-      return;
-    }
-
     assert(
       Deno.lstatSync(srcLink).isSymlink,
       `'${srcLink}' should be symlink type`
@@ -524,14 +497,6 @@ testCopySync(
     const originDir = path.join(testdataDir, "copy_dir");
     const srcLink = path.join(tempDir, "copy_dir_link");
     const destLink = path.join(tempDir, "copy_dir_link_copy");
-
-    if (isWindows) {
-      assertThrows(
-        // (): void => copySync(srcLink, destLink),
-        (): void => ensureSymlinkSync(srcLink, destLink)
-      );
-      return;
-    }
 
     ensureSymlinkSync(originDir, srcLink);
 

@@ -1,23 +1,23 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-
 import {
   assert,
   assertNotEquals,
-  assertStrContains,
+  assertStringContains,
   assertArrayContains,
   assertMatch,
   assertEquals,
+  assertStrictEquals,
   assertThrows,
+  assertThrowsAsync,
   AssertionError,
   equal,
   fail,
   unimplemented,
   unreachable,
 } from "./asserts.ts";
-import { red, green, gray, bold } from "../fmt/colors.ts";
-const { test } = Deno;
+import { red, green, gray, bold, yellow } from "../fmt/colors.ts";
 
-test("testingEqual", function (): void {
+Deno.test("testingEqual", function (): void {
   assert(equal("world", "world"));
   assert(!equal("hello", "world"));
   assert(equal(5, 5));
@@ -112,9 +112,18 @@ test("testingEqual", function (): void {
   assert(!equal([1, 2, 3, 4], [1, 4, 2, 3]));
   assert(equal(new Uint8Array([1, 2, 3, 4]), new Uint8Array([1, 2, 3, 4])));
   assert(!equal(new Uint8Array([1, 2, 3, 4]), new Uint8Array([2, 1, 4, 3])));
+  assert(
+    equal(new URL("https://example.test"), new URL("https://example.test"))
+  );
+  assert(
+    !equal(
+      new URL("https://example.test"),
+      new URL("https://example.test/with-path")
+    )
+  );
 });
 
-test("testingNotEquals", function (): void {
+Deno.test("testingNotEquals", function (): void {
   const a = { foo: "bar" };
   const b = { bar: "foo" };
   assertNotEquals(a, b);
@@ -130,13 +139,13 @@ test("testingNotEquals", function (): void {
   assertEquals(didThrow, true);
 });
 
-test("testingAssertStringContains", function (): void {
-  assertStrContains("Denosaurus", "saur");
-  assertStrContains("Denosaurus", "Deno");
-  assertStrContains("Denosaurus", "rus");
+Deno.test("testingAssertStringContains", function (): void {
+  assertStringContains("Denosaurus", "saur");
+  assertStringContains("Denosaurus", "Deno");
+  assertStringContains("Denosaurus", "rus");
   let didThrow;
   try {
-    assertStrContains("Denosaurus", "Raptor");
+    assertStringContains("Denosaurus", "Raptor");
     didThrow = false;
   } catch (e) {
     assert(e instanceof AssertionError);
@@ -145,30 +154,30 @@ test("testingAssertStringContains", function (): void {
   assertEquals(didThrow, true);
 });
 
-test("testingArrayContains", function (): void {
+Deno.test("testingArrayContains", function (): void {
   const fixture = ["deno", "iz", "luv"];
   const fixtureObject = [{ deno: "luv" }, { deno: "Js" }];
   assertArrayContains(fixture, ["deno"]);
   assertArrayContains(fixtureObject, [{ deno: "luv" }]);
-  let didThrow;
-  try {
-    assertArrayContains(fixtureObject, [{ deno: "node" }]);
-    didThrow = false;
-  } catch (e) {
-    assert(e instanceof AssertionError);
-    didThrow = true;
-  }
-  assertEquals(didThrow, true);
+  assertArrayContains(
+    Uint8Array.from([1, 2, 3, 4]),
+    Uint8Array.from([1, 2, 3])
+  );
+  assertThrows(
+    (): void => assertArrayContains(fixtureObject, [{ deno: "node" }]),
+    AssertionError,
+    `actual: "[ { deno: "luv" }, { deno: "Js" } ]" expected to contain: "[ { deno: "node" } ]"\nmissing: [ { deno: "node" } ]`
+  );
 });
 
-test("testingAssertStringContainsThrow", function (): void {
+Deno.test("testingAssertStringContainsThrow", function (): void {
   let didThrow = false;
   try {
-    assertStrContains("Denosaurus from Jurassic", "Raptor");
+    assertStringContains("Denosaurus from Jurassic", "Raptor");
   } catch (e) {
     assert(
       e.message ===
-        `actual: "Denosaurus from Jurassic" expected to contains: "Raptor"`
+        `actual: "Denosaurus from Jurassic" expected to contain: "Raptor"`
     );
     assert(e instanceof AssertionError);
     didThrow = true;
@@ -176,11 +185,11 @@ test("testingAssertStringContainsThrow", function (): void {
   assert(didThrow);
 });
 
-test("testingAssertStringMatching", function (): void {
+Deno.test("testingAssertStringMatching", function (): void {
   assertMatch("foobar@deno.com", RegExp(/[a-zA-Z]+@[a-zA-Z]+.com/));
 });
 
-test("testingAssertStringMatchingThrows", function (): void {
+Deno.test("testingAssertStringMatchingThrows", function (): void {
   let didThrow = false;
   try {
     assertMatch("Denosaurus from Jurassic", RegExp(/Raptor/));
@@ -195,7 +204,7 @@ test("testingAssertStringMatchingThrows", function (): void {
   assert(didThrow);
 });
 
-test("testingAssertsUnimplemented", function (): void {
+Deno.test("testingAssertsUnimplemented", function (): void {
   let didThrow = false;
   try {
     unimplemented();
@@ -207,7 +216,7 @@ test("testingAssertsUnimplemented", function (): void {
   assert(didThrow);
 });
 
-test("testingAssertsUnreachable", function (): void {
+Deno.test("testingAssertsUnreachable", function (): void {
   let didThrow = false;
   try {
     unreachable();
@@ -219,7 +228,7 @@ test("testingAssertsUnreachable", function (): void {
   assert(didThrow);
 });
 
-test("testingAssertFail", function (): void {
+Deno.test("testingAssertFail", function (): void {
   assertThrows(fail, AssertionError, "Failed assertion.");
   assertThrows(
     (): void => {
@@ -230,7 +239,7 @@ test("testingAssertFail", function (): void {
   );
 });
 
-test("testingAssertFailWithWrongErrorClass", function (): void {
+Deno.test("testingAssertFailWithWrongErrorClass", function (): void {
   assertThrows(
     (): void => {
       //This next assertThrows will throw an AssertionError due to the wrong
@@ -248,6 +257,20 @@ test("testingAssertFailWithWrongErrorClass", function (): void {
   );
 });
 
+Deno.test("testingAssertThrowsWithReturnType", () => {
+  assertThrows(() => {
+    throw new Error();
+    return "a string";
+  });
+});
+
+Deno.test("testingAssertThrowsAsyncWithReturnType", () => {
+  assertThrowsAsync(() => {
+    throw new Error();
+    return Promise.resolve("a Promise<string>");
+  });
+});
+
 const createHeader = (): string[] => [
   "",
   "",
@@ -261,7 +284,7 @@ const createHeader = (): string[] => [
 const added: (s: string) => string = (s: string): string => green(bold(s));
 const removed: (s: string) => string = (s: string): string => red(bold(s));
 
-test({
+Deno.test({
   name: "pass case",
   fn(): void {
     assertEquals({ a: 10 }, { a: 10 });
@@ -272,56 +295,204 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "failed with number",
   fn(): void {
     assertThrows(
       (): void => assertEquals(1, 2),
       AssertionError,
-      [...createHeader(), removed(`-   1`), added(`+   2`), ""].join("\n")
+      [
+        "Values are not equal:",
+        ...createHeader(),
+        removed(`-   ${yellow("1")}`),
+        added(`+   ${yellow("2")}`),
+        "",
+      ].join("\n")
     );
   },
 });
 
-test({
+Deno.test({
   name: "failed with number vs string",
   fn(): void {
     assertThrows(
       (): void => assertEquals(1, "1"),
       AssertionError,
-      [...createHeader(), removed(`-   1`), added(`+   "1"`)].join("\n")
+      [
+        "Values are not equal:",
+        ...createHeader(),
+        removed(`-   ${yellow("1")}`),
+        added(`+   "1"`),
+      ].join("\n")
     );
   },
 });
 
-test({
+Deno.test({
   name: "failed with array",
   fn(): void {
     assertThrows(
       (): void => assertEquals([1, "2", 3], ["1", "2", 3]),
       AssertionError,
       [
+        "Values are not equal:",
         ...createHeader(),
-        removed(`-   [ 1, "2", 3 ]`),
-        added(`+   [ "1", "2", 3 ]`),
+        removed(`-   [ ${yellow("1")}, ${green('"2"')}, ${yellow("3")} ]`),
+        added(`+   [ ${green('"1"')}, ${green('"2"')}, ${yellow("3")} ]`),
         "",
       ].join("\n")
     );
   },
 });
 
-test({
+Deno.test({
   name: "failed with object",
   fn(): void {
     assertThrows(
       (): void => assertEquals({ a: 1, b: "2", c: 3 }, { a: 1, b: 2, c: [3] }),
       AssertionError,
       [
+        "Values are not equal:",
         ...createHeader(),
-        removed(`-   { a: 1, b: "2", c: 3 }`),
-        added(`+   { a: 1, b: 2, c: [ 3 ] }`),
+        removed(
+          `-   { a: ${yellow("1")}, b: ${green('"2"')}, c: ${yellow("3")} }`
+        ),
+        added(
+          `+   { a: ${yellow("1")}, b: ${yellow("2")}, c: [ ${yellow("3")} ] }`
+        ),
         "",
       ].join("\n")
     );
   },
+});
+
+Deno.test({
+  name: "strict pass case",
+  fn(): void {
+    assertStrictEquals(true, true);
+    assertStrictEquals(10, 10);
+    assertStrictEquals("abc", "abc");
+
+    const xs = [1, false, "foo"];
+    const ys = xs;
+    assertStrictEquals(xs, ys);
+
+    const x = { a: 1 };
+    const y = x;
+    assertStrictEquals(x, y);
+  },
+});
+
+Deno.test({
+  name: "strict failed with structure diff",
+  fn(): void {
+    assertThrows(
+      (): void => assertStrictEquals({ a: 1, b: 2 }, { a: 1, c: [3] }),
+      AssertionError,
+      [
+        "Values are not strictly equal:",
+        ...createHeader(),
+        removed(`-   { a: ${yellow("1")}, b: ${yellow("2")} }`),
+        added(`+   { a: ${yellow("1")}, c: [ ${yellow("3")} ] }`),
+        "",
+      ].join("\n")
+    );
+  },
+});
+
+Deno.test({
+  name: "strict failed with reference diff",
+  fn(): void {
+    assertThrows(
+      (): void => assertStrictEquals({ a: 1, b: 2 }, { a: 1, b: 2 }),
+      AssertionError,
+      [
+        "Values have the same structure but are not reference-equal:\n",
+        red(`     { a: ${yellow("1")}, b: ${yellow("2")} }`),
+      ].join("\n")
+    );
+  },
+});
+
+Deno.test("Assert Throws Non-Error Fail", () => {
+  assertThrows(
+    () => {
+      assertThrows(
+        () => {
+          throw "Panic!";
+        },
+        String,
+        "Panic!"
+      );
+    },
+    AssertionError,
+    "A non-Error object was thrown."
+  );
+
+  assertThrows(
+    () => {
+      assertThrows(() => {
+        throw null;
+      });
+    },
+    AssertionError,
+    "A non-Error object was thrown."
+  );
+
+  assertThrows(
+    () => {
+      assertThrows(() => {
+        throw undefined;
+      });
+    },
+    AssertionError,
+    "A non-Error object was thrown."
+  );
+});
+
+Deno.test("Assert Throws Async Non-Error Fail", () => {
+  assertThrowsAsync(
+    () => {
+      return assertThrowsAsync(
+        () => {
+          return Promise.reject("Panic!");
+        },
+        String,
+        "Panic!"
+      );
+    },
+    AssertionError,
+    "A non-Error object was thrown or rejected."
+  );
+
+  assertThrowsAsync(
+    () => {
+      return assertThrowsAsync(() => {
+        return Promise.reject(null);
+      });
+    },
+    AssertionError,
+    "A non-Error object was thrown or rejected."
+  );
+
+  assertThrowsAsync(
+    () => {
+      return assertThrowsAsync(() => {
+        return Promise.reject(undefined);
+      });
+    },
+    AssertionError,
+    "A non-Error object was thrown or rejected."
+  );
+
+  assertThrowsAsync(
+    () => {
+      return assertThrowsAsync(() => {
+        throw undefined;
+        return Promise.resolve("Ok!");
+      });
+    },
+    AssertionError,
+    "A non-Error object was thrown or rejected."
+  );
 });

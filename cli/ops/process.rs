@@ -5,6 +5,7 @@ use crate::op_error::OpError;
 use crate::signal::kill;
 use crate::state::State;
 use deno_core::CoreIsolate;
+use deno_core::CoreIsolateState;
 use deno_core::ResourceTable;
 use deno_core::ZeroCopyBuf;
 use futures::future::poll_fn;
@@ -60,15 +61,15 @@ struct ChildResource {
 }
 
 fn op_run(
-  isolate: &mut CoreIsolate,
+  isolate_state: &mut CoreIsolateState,
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let run_args: RunArgs = serde_json::from_value(args)?;
 
   state.check_run()?;
-  let mut resource_table = isolate.resource_table.borrow_mut();
+  let mut resource_table = isolate_state.resource_table.borrow_mut();
 
   let args = run_args.cmd;
   let env = run_args.env;
@@ -174,16 +175,16 @@ struct RunStatusArgs {
 }
 
 fn op_run_status(
-  isolate: &mut CoreIsolate,
+  isolate_state: &mut CoreIsolateState,
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let args: RunStatusArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
 
   state.check_run()?;
-  let resource_table = isolate.resource_table.clone();
+  let resource_table = isolate_state.resource_table.clone();
 
   let future = async move {
     let run_status = poll_fn(|cx| {
@@ -227,7 +228,7 @@ struct KillArgs {
 fn op_kill(
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   state.check_unstable("Deno.kill");
   state.check_run()?;

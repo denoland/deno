@@ -1,17 +1,9 @@
 // To run this test manually:
 //   cd test_plugin
-//   ../target/debug/deno --allow-plugin tests/test.js debug
+//   ../target/debug/deno run --unstable --allow-plugin tests/test.js debug
 
-// TODO(ry) Re-enable this test on windows. It is flaky for an unknown reason.
-#![cfg(not(windows))]
-
-use deno::test_util::*;
 use std::process::Command;
-
-fn deno_cmd() -> Command {
-  assert!(deno_exe_path().exists());
-  Command::new(deno_exe_path())
-}
+use test_util::deno_cmd;
 
 #[cfg(debug_assertions)]
 const BUILD_VARIANT: &str = "debug";
@@ -44,7 +36,7 @@ fn basic() {
     println!("stderr {}", stderr);
   }
   assert!(output.status.success());
-  let expected = "Hello from plugin. data: test | zero_copy: test\nPlugin Sync Response: test\nHello from plugin. data: test | zero_copy: test\nPlugin Async Response: test\n";
+  let expected = "Hello from plugin. data: test\nzero_copy[0]: test\nzero_copy[1]: 123\nzero_copy[2]: cba\nPlugin Sync Response: test\nHello from plugin. data: test\nzero_copy[0]: test\nzero_copy[1]: 123\nPlugin Async Response: test\n";
   assert_eq!(stdout, expected);
   assert_eq!(stderr, "");
 }

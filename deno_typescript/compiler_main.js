@@ -5,6 +5,8 @@
 // understood by the TypeScript language service, so it allows type safety
 // checking in VSCode.
 
+"use strict";
+
 const ASSETS = "$asset$";
 
 /**

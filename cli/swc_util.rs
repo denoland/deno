@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+use crate::msg::MediaType;
 use crate::swc_common;
 use crate::swc_common::comments::Comments;
 use crate::swc_common::errors::Diagnostic;
@@ -12,61 +13,118 @@ use crate::swc_common::SourceMap;
 use crate::swc_common::Span;
 use crate::swc_ecma_ast;
 use crate::swc_ecma_parser::lexer::Lexer;
+use crate::swc_ecma_parser::EsConfig;
 use crate::swc_ecma_parser::JscTarget;
 use crate::swc_ecma_parser::Parser;
 use crate::swc_ecma_parser::Session;
 use crate::swc_ecma_parser::SourceFileInput;
 use crate::swc_ecma_parser::Syntax;
 use crate::swc_ecma_parser::TsConfig;
-use swc_ecma_visit::Node;
-use swc_ecma_visit::Visit;
-
 use std::error::Error;
 use std::fmt;
 use std::sync::Arc;
 use std::sync::RwLock;
 
+fn get_default_es_config() -> EsConfig {
+  let mut config = EsConfig::default();
+  config.num_sep = true;
+  config.class_private_props = true;
+  config.class_private_methods = true;
+  config.class_props = true;
+  config.export_default_from = true;
+  config.export_namespace_from = true;
+  config.dynamic_import = true;
+  config.nullish_coalescing = true;
+  config.optional_chaining = true;
+  config.import_meta = true;
+  config.top_level_await = true;
+  config
+}
+
+fn get_default_ts_config() -> TsConfig {
+  let mut ts_config = TsConfig::default();
+  ts_config.dynamic_import = true;
+  ts_config.decorators = true;
+  ts_config
+}
+
+pub fn get_syntax_for_media_type(media_type: MediaType) -> Syntax {
+  match media_type {
+    MediaType::JavaScript => Syntax::Es(get_default_es_config()),
+    MediaType::JSX => {
+      let mut config = get_default_es_config();
+      config.jsx = true;
+      Syntax::Es(config)
+    }
+    MediaType::TypeScript => Syntax::Typescript(get_default_ts_config()),
+    MediaType::TSX => {
+      let mut config = get_default_ts_config();
+      config.tsx = true;
+      Syntax::Typescript(config)
+    }
+    _ => Syntax::Es(get_default_es_config()),
+  }
+}
+
 #[derive(Clone, Debug)]
 pub struct SwcDiagnosticBuffer {
-  pub diagnostics: Vec<Diagnostic>,
+  pub diagnostics: Vec<String>,
 }
 
 impl Error for SwcDiagnosticBuffer {}
 
 impl fmt::Display for SwcDiagnosticBuffer {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    let msg = self
-      .diagnostics
-      .iter()
-      .map(|d| d.message())
-      .collect::<Vec<String>>()
-      .join(",");
+    let msg = self.diagnostics.join(",");
 
     f.pad(&msg)
   }
 }
 
+impl SwcDiagnosticBuffer {
+  pub fn from_swc_error(
+    error_buffer: SwcErrorBuffer,
+    parser: &AstParser,
+  ) -> Self {
+    let s = error_buffer.0.read().unwrap().clone();
+
+    let diagnostics = s
+      .iter()
+      .map(|d| {
+        let mut msg = d.message();
+
+        if let Some(span) = d.span.primary_span() {
+          let location = parser.get_span_location(span);
+          let filename = match &location.file.name {
+            FileName::Custom(n) => n,
+            _ => unreachable!(),
+          };
+          msg = format!(
+            "{} at {}:{}:{}",
+            msg, filename, location.line, location.col_display
+          );
+        }
+
+        msg
+      })
+      .collect::<Vec<String>>();
+
+    Self { diagnostics }
+  }
+}
+
 #[derive(Clone)]
-pub struct SwcErrorBuffer(Arc<RwLock<SwcDiagnosticBuffer>>);
+pub struct SwcErrorBuffer(Arc<RwLock<Vec<Diagnostic>>>);
 
 impl SwcErrorBuffer {
   pub fn default() -> Self {
-    Self(Arc::new(RwLock::new(SwcDiagnosticBuffer {
-      diagnostics: vec![],
-    })))
+    Self(Arc::new(RwLock::new(vec![])))
   }
 }
 
 impl Emitter for SwcErrorBuffer {
   fn emit(&mut self, db: &DiagnosticBuilder) {
-    self.0.write().unwrap().diagnostics.push((**db).clone());
-  }
-}
-
-impl From<SwcErrorBuffer> for SwcDiagnosticBuffer {
-  fn from(buf: SwcErrorBuffer) -> Self {
-    let s = buf.0.read().unwrap();
-    s.clone()
+    self.0.write().unwrap().push((**db).clone());
   }
 }
 
@@ -107,6 +165,7 @@ impl AstParser {
   pub fn parse_module<F, R>(
     &self,
     file_name: &str,
+    media_type: MediaType,
     source_code: &str,
     callback: F,
   ) -> R
@@ -124,9 +183,7 @@ impl AstParser {
         handler: &self.handler,
       };
 
-      let mut ts_config = TsConfig::default();
-      ts_config.dynamic_import = true;
-      let syntax = Syntax::Typescript(ts_config);
+      let syntax = get_syntax_for_media_type(media_type);
 
       let lexer = Lexer::new(
         session,
@@ -142,8 +199,8 @@ impl AstParser {
         parser
           .parse_module()
           .map_err(move |mut err: DiagnosticBuilder| {
-            err.cancel();
-            SwcDiagnosticBuffer::from(buffered_err)
+            err.emit();
+            SwcDiagnosticBuffer::from_swc_error(buffered_err, self)
           });
 
       callback(parse_result)
@@ -158,162 +215,15 @@ impl AstParser {
     &self,
     span: Span,
   ) -> Vec<swc_common::comments::Comment> {
-    self
-      .comments
-      .take_leading_comments(span.lo())
-      .unwrap_or_else(|| vec![])
-  }
-}
+    let maybe_comments = self.comments.take_leading_comments(span.lo());
 
-struct DependencyVisitor {
-  dependencies: Vec<String>,
-  analyze_dynamic_imports: bool,
-}
-
-impl Visit for DependencyVisitor {
-  fn visit_import_decl(
-    &mut self,
-    import_decl: &swc_ecma_ast::ImportDecl,
-    _parent: &dyn Node,
-  ) {
-    let src_str = import_decl.src.value.to_string();
-    self.dependencies.push(src_str);
-  }
-
-  fn visit_named_export(
-    &mut self,
-    named_export: &swc_ecma_ast::NamedExport,
-    _parent: &dyn Node,
-  ) {
-    if let Some(src) = &named_export.src {
-      let src_str = src.value.to_string();
-      self.dependencies.push(src_str);
+    if let Some(comments) = maybe_comments {
+      // clone the comments and put them back in map
+      let to_return = comments.clone();
+      self.comments.add_leading(span.lo(), comments);
+      to_return
+    } else {
+      vec![]
     }
   }
-
-  fn visit_export_all(
-    &mut self,
-    export_all: &swc_ecma_ast::ExportAll,
-    _parent: &dyn Node,
-  ) {
-    let src_str = export_all.src.value.to_string();
-    self.dependencies.push(src_str);
-  }
-
-  fn visit_call_expr(
-    &mut self,
-    call_expr: &swc_ecma_ast::CallExpr,
-    _parent: &dyn Node,
-  ) {
-    if !self.analyze_dynamic_imports {
-      return;
-    }
-
-    use swc_ecma_ast::Expr::*;
-    use swc_ecma_ast::ExprOrSuper::*;
-
-    let boxed_expr = match call_expr.callee.clone() {
-      Super(_) => return,
-      Expr(boxed) => boxed,
-    };
-
-    match &*boxed_expr {
-      Ident(ident) => {
-        if &ident.sym.to_string() != "import" {
-          return;
-        }
-      }
-      _ => return,
-    };
-
-    if let Some(arg) = call_expr.args.get(0) {
-      match &*arg.expr {
-        Lit(lit) => {
-          if let swc_ecma_ast::Lit::Str(str_) = lit {
-            let src_str = str_.value.to_string();
-            self.dependencies.push(src_str);
-          }
-        }
-        _ => return,
-      }
-    }
-  }
-}
-
-/// Given file name and source code return vector
-/// of unresolved import specifiers.
-///
-/// Returned vector may contain duplicate entries.
-///
-/// Second argument allows to configure if dynamic
-/// imports should be analyzed.
-///
-/// NOTE: Only statically analyzable dynamic imports
-/// are considered; ie. the ones that have plain string specifier:
-///
-///    await import("./fizz.ts")
-///
-/// These imports will be ignored:
-///
-///    await import(`./${dir}/fizz.ts`)
-///    await import("./" + "fizz.ts")
-#[allow(unused)]
-pub fn analyze_dependencies(
-  source_code: &str,
-  analyze_dynamic_imports: bool,
-) -> Result<Vec<String>, SwcDiagnosticBuffer> {
-  let parser = AstParser::new();
-  parser.parse_module("root.ts", source_code, |parse_result| {
-    let module = parse_result?;
-    let mut collector = DependencyVisitor {
-      dependencies: vec![],
-      analyze_dynamic_imports,
-    };
-    collector.visit_module(&module, &module);
-    Ok(collector.dependencies)
-  })
-}
-
-#[test]
-fn test_analyze_dependencies() {
-  let source = r#"
-import { foo } from "./foo.ts";
-export { bar } from "./foo.ts";
-export * from "./bar.ts";
-"#;
-
-  let dependencies =
-    analyze_dependencies(source, false).expect("Failed to parse");
-  assert_eq!(
-    dependencies,
-    vec![
-      "./foo.ts".to_string(),
-      "./foo.ts".to_string(),
-      "./bar.ts".to_string(),
-    ]
-  );
-}
-
-#[test]
-fn test_analyze_dependencies_dyn_imports() {
-  let source = r#"
-import { foo } from "./foo.ts";
-export { bar } from "./foo.ts";
-export * from "./bar.ts";
-
-const a = await import("./fizz.ts");
-const a = await import("./" + "buzz.ts");
-"#;
-
-  let dependencies =
-    analyze_dependencies(source, true).expect("Failed to parse");
-  assert_eq!(
-    dependencies,
-    vec![
-      "./foo.ts".to_string(),
-      "./foo.ts".to_string(),
-      "./bar.ts".to_string(),
-      "./fizz.ts".to_string(),
-    ]
-  );
 }

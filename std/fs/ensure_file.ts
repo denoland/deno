@@ -1,8 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import * as path from "../path/mod.ts";
 import { ensureDir, ensureDirSync } from "./ensure_dir.ts";
-import { getFileInfoType } from "./utils.ts";
-const { lstat, lstatSync, writeFile, writeFileSync } = Deno;
+import { getFileInfoType } from "./_util.ts";
 
 /**
  * Ensures that the file exists.
@@ -10,12 +9,12 @@ const { lstat, lstatSync, writeFile, writeFileSync } = Deno;
  * exist.
  * these directories are created. If the file already exists,
  * it is NOTMODIFIED.
- * Requires the `--allow-read` and `--alow-write` flag.
+ * Requires the `--allow-read` and `--allow-write` flag.
  */
 export async function ensureFile(filePath: string): Promise<void> {
   try {
     // if file exists
-    const stat = await lstat(filePath);
+    const stat = await Deno.lstat(filePath);
     if (!stat.isFile) {
       throw new Error(
         `Ensure path exists, expected 'file', got '${getFileInfoType(stat)}'`
@@ -27,7 +26,7 @@ export async function ensureFile(filePath: string): Promise<void> {
       // ensure dir exists
       await ensureDir(path.dirname(filePath));
       // create file
-      await writeFile(filePath, new Uint8Array());
+      await Deno.writeFile(filePath, new Uint8Array());
       return;
     }
 
@@ -41,12 +40,12 @@ export async function ensureFile(filePath: string): Promise<void> {
  * exist,
  * these directories are created. If the file already exists,
  * it is NOT MODIFIED.
- * Requires the `--allow-read` and `--alow-write` flag.
+ * Requires the `--allow-read` and `--allow-write` flag.
  */
 export function ensureFileSync(filePath: string): void {
   try {
     // if file exists
-    const stat = lstatSync(filePath);
+    const stat = Deno.lstatSync(filePath);
     if (!stat.isFile) {
       throw new Error(
         `Ensure path exists, expected 'file', got '${getFileInfoType(stat)}'`
@@ -58,7 +57,7 @@ export function ensureFileSync(filePath: string): void {
       // ensure dir exists
       ensureDirSync(path.dirname(filePath));
       // create file
-      writeFileSync(filePath, new Uint8Array());
+      Deno.writeFileSync(filePath, new Uint8Array());
       return;
     }
     throw err;

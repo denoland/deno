@@ -1,11 +1,11 @@
 ## Import maps
 
 > This is an unstable feature. Learn more about
-> [unstable features](../../runtime/unstable).
+> [unstable features](../runtime/stability.md).
 
 Deno supports [import maps](https://github.com/WICG/import-maps).
 
-You can use import map with the `--importmap=<FILE>` CLI flag.
+You can use import maps with the `--importmap=<FILE>` CLI flag.
 
 Current limitations:
 
@@ -16,27 +16,26 @@ Current limitations:
 
 Example:
 
-```js
-// import_map.json
+**import_map.json**
 
+```js
 {
    "imports": {
-      "http/": "https://deno.land/std/http/"
+      "fmt/": "https://deno.land/std@0.55.0/fmt/"
    }
 }
 ```
 
+**color.ts**
+
 ```ts
-// hello_server.ts
+import { red } from "fmt/colors.ts";
 
-import { serve } from "http/server.ts";
-
-const body = new TextEncoder().encode("Hello World\n");
-for await (const req of serve(":8000")) {
-  req.respond({ body });
-}
+console.log(red("hello world"));
 ```
 
+Then:
+
 ```shell
-$ deno run --importmap=import_map.json hello_server.ts
+$ deno run --importmap=import_map.json --unstable color.ts
 ```

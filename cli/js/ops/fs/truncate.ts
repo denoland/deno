@@ -13,6 +13,14 @@ function coerceLen(len?: number): number {
   return len;
 }
 
+export function ftruncateSync(rid: number, len?: number): void {
+  sendSync("op_ftruncate", { rid, len: coerceLen(len) });
+}
+
+export async function ftruncate(rid: number, len?: number): Promise<void> {
+  await sendAsync("op_ftruncate", { rid, len: coerceLen(len) });
+}
+
 export function truncateSync(path: string, len?: number): void {
   sendSync("op_truncate", { path, len: coerceLen(len) });
 }

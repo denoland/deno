@@ -1,16 +1,16 @@
 // Copyright the Browserify authors. MIT License.
 // Ported from https://github.com/browserify/path-browserify/
+/** This module is browser compatible. */
 
-const { cwd } = Deno;
-import { FormatInputPathObject, ParsedPath } from "./interface.ts";
-import { CHAR_DOT, CHAR_FORWARD_SLASH } from "./constants.ts";
+import { FormatInputPathObject, ParsedPath } from "./_interface.ts";
+import { CHAR_DOT, CHAR_FORWARD_SLASH } from "./_constants.ts";
 
 import {
   assertPath,
   normalizeString,
   isPosixPathSeparator,
   _format,
-} from "./utils.ts";
+} from "./_util.ts";
 
 export const sep = "/";
 export const delimiter = ":";
@@ -24,7 +24,12 @@ export function resolve(...pathSegments: string[]): string {
     let path: string;
 
     if (i >= 0) path = pathSegments[i];
-    else path = cwd();
+    else {
+      if (globalThis.Deno == null) {
+        throw new TypeError("Resolved a relative path without a CWD.");
+      }
+      path = Deno.cwd();
+    }
 
     assertPath(path);
 

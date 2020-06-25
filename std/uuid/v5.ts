@@ -6,9 +6,9 @@ import {
   stringToBytes,
   uuidToBytes,
 } from "./_common.ts";
-import { Sha1 } from "../util/sha1.ts";
+import { Sha1 } from "../hash/sha1.ts";
 import { isString } from "../node/util.ts";
-import { assert } from "../testing/asserts.ts";
+import { assert } from "../_util/assert.ts";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 

@@ -1,4 +1,3 @@
-const { test } = Deno;
 import {
   assert,
   assertEquals,
@@ -11,7 +10,7 @@ const shouldNeverBeEmitted: Function = () => {
   fail("Should never be called");
 };
 
-test({
+Deno.test({
   name:
     'When adding a new event, "eventListener" event is fired before adding the listener',
   fn() {
@@ -32,7 +31,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name:
     'When removing a listenert, "removeListener" event is fired after removal',
   fn() {
@@ -52,7 +51,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name:
     "Default max listeners is 10, but can be changed by direct assignment only",
   fn() {
@@ -65,7 +64,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "addListener adds a listener, and listener count is correct",
   fn() {
     const testEmitter = new EventEmitter();
@@ -76,7 +75,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "Emitted events are called synchronously in the order they were added",
   fn() {
     const testEmitter = new EventEmitter();
@@ -103,7 +102,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "Registered event names are returned as strings or Sybols",
   fn() {
     const testEmitter = new EventEmitter();
@@ -115,7 +114,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "You can set and get max listeners",
   fn() {
     const testEmitter = new EventEmitter();
@@ -125,7 +124,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "You can retrieve registered functions for an event",
   fn() {
     const testEmitter = new EventEmitter();
@@ -140,7 +139,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "Off is alias for removeListener",
   fn() {
     const testEmitter = new EventEmitter();
@@ -151,7 +150,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "Event registration can be chained",
   fn() {
     const testEmitter = new EventEmitter();
@@ -162,7 +161,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "Events can be registered to only fire once",
   fn() {
     let eventsFired: string[] = [];
@@ -186,7 +185,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name:
     "You can inject a listener into the start of the stack, rather than at the end",
   fn() {
@@ -206,7 +205,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: 'You can prepend a "once" listener',
   fn() {
     const eventsFired: string[] = [];
@@ -226,7 +225,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "Remove all listeners, which can also be chained",
   fn() {
     const testEmitter = new EventEmitter();
@@ -245,7 +244,26 @@ test({
   },
 });
 
-test({
+Deno.test({
+  name: "Provide a non-existent event to removeAllListeners will do nothing",
+  fn() {
+    const testEmitter = new EventEmitter();
+    testEmitter.on("event", shouldNeverBeEmitted);
+    testEmitter.on("event", shouldNeverBeEmitted);
+    testEmitter.on("other event", shouldNeverBeEmitted);
+    testEmitter.on("other event", shouldNeverBeEmitted);
+    testEmitter.once("other event", shouldNeverBeEmitted);
+    assertEquals(testEmitter.listenerCount("event"), 2);
+    assertEquals(testEmitter.listenerCount("other event"), 3);
+
+    testEmitter.removeAllListeners("non-existent");
+
+    assertEquals(testEmitter.listenerCount("event"), 2);
+    assertEquals(testEmitter.listenerCount("other event"), 3);
+  },
+});
+
+Deno.test({
   name: "Remove individual listeners, which can also be chained",
   fn() {
     const testEmitter = new EventEmitter();
@@ -268,8 +286,8 @@ test({
   },
 });
 
-test({
-  name: "It is OK to try to remove non-existant listener",
+Deno.test({
+  name: "It is OK to try to remove non-existent listener",
   fn() {
     const testEmitter = new EventEmitter();
 
@@ -281,13 +299,13 @@ test({
     assertEquals(testEmitter.listenerCount("event"), 1);
 
     testEmitter.removeListener("event", madeUpEvent);
-    testEmitter.removeListener("non-existant event", madeUpEvent);
+    testEmitter.removeListener("non-existent event", madeUpEvent);
 
     assertEquals(testEmitter.listenerCount("event"), 1);
   },
 });
 
-test({
+Deno.test({
   name: "all listeners complete execution even if removed before execution",
   fn() {
     const testEmitter = new EventEmitter();
@@ -310,7 +328,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: 'Raw listener will return event listener or wrapped "once" function',
   fn() {
     const testEmitter = new EventEmitter();
@@ -333,7 +351,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name:
     "Once wrapped raw listeners may be executed multiple times, until the wrapper is executed",
   fn() {
@@ -356,7 +374,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "Can add once event listener to EventEmitter via standalone function",
   async fn() {
     const ee = new EventEmitter();
@@ -369,7 +387,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "Can add once event listener to EventTarget via standalone function",
   async fn() {
     const et: EventTarget = new EventTarget();
@@ -383,7 +401,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "Only valid integers are allowed for max listeners",
   fn() {
     const ee = new EventEmitter();
@@ -405,7 +423,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "ErrorMonitor can spy on error events without consuming them",
   fn() {
     const ee = new EventEmitter();
@@ -443,8 +461,8 @@ test({
   },
 });
 
-test({
-  name: "asyncronous iteration of events are handled as expected",
+Deno.test({
+  name: "asynchronous iteration of events are handled as expected",
   async fn() {
     const ee = new EventEmitter();
     setTimeout(() => {
@@ -471,8 +489,8 @@ test({
   },
 });
 
-test({
-  name: "asyncronous error handling of emitted events works as expected",
+Deno.test({
+  name: "asynchronous error handling of emitted events works as expected",
   async fn() {
     const ee = new EventEmitter();
     const _err = new Error("kaboom");
@@ -496,8 +514,8 @@ test({
   },
 });
 
-test({
-  name: "error thrown during asyncronous processing of events is handled",
+Deno.test({
+  name: "error thrown during asynchronous processing of events is handled",
   async fn() {
     const ee = new EventEmitter();
     const _err = new Error("kaboom");
@@ -525,9 +543,9 @@ test({
   },
 });
 
-test({
+Deno.test({
   name:
-    "error thrown in processing loop of asyncronous event prevents processing of additional events",
+    "error thrown in processing loop of asynchronous event prevents processing of additional events",
   async fn() {
     const ee = new EventEmitter();
     const _err = new Error("kaboom");
@@ -551,8 +569,8 @@ test({
   },
 });
 
-test({
-  name: "asyncronous iterator next() works as expected",
+Deno.test({
+  name: "asynchronous iterator next() works as expected",
   async fn() {
     const ee = new EventEmitter();
     const iterable = on(ee, "foo");
@@ -591,7 +609,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "async iterable throw handles various scenarios",
   async fn() {
     const ee = new EventEmitter();
