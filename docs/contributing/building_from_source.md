@@ -34,6 +34,15 @@ rustc -V
 cargo -V
 ```
 
+### Setup rust targets and components
+
+```shell
+rustup target add wasm32-unknown-unknown
+rustup target add wasm32-wasi
+```
+
+### Building Deno
+
 The easiest way to build Deno is by using a precompiled version of V8:
 
 ```

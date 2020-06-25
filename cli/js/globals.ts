@@ -82,6 +82,11 @@ declare global {
       control: Uint8Array,
       ...zeroCopy: ArrayBufferView[]
     ): Uint8Array | null;
+    dispatchByName(
+      opName: string,
+      control: Uint8Array,
+      ...zeroCopy: ArrayBufferView[]
+    ): Uint8Array | null;
     setAsyncHandler(opId: number, cb: (msg: Uint8Array) => void): void;
     sharedQueue: {
       head(): number;

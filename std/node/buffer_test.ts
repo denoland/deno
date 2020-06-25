@@ -117,6 +117,150 @@ Deno.test({
 });
 
 Deno.test({
+  name: "Buffer from string hex",
+  fn() {
+    for (const encoding of ["hex", "HEX"]) {
+      const buffer: Buffer = Buffer.from(
+        "7468697320697320612074c3a97374",
+        encoding
+      );
+      assertEquals(buffer.length, 15, "Buffer length should be 15");
+      assertEquals(
+        buffer.toString(),
+        "this is a tést",
+        "Buffer to string should recover the string"
+      );
+    }
+  },
+});
+
+Deno.test({
+  name: "Buffer from string base64",
+  fn() {
+    for (const encoding of ["base64", "BASE64"]) {
+      const buffer: Buffer = Buffer.from("dGhpcyBpcyBhIHTDqXN0", encoding);
+      assertEquals(buffer.length, 15, "Buffer length should be 15");
+      assertEquals(
+        buffer.toString(),
+        "this is a tést",
+        "Buffer to string should recover the string"
+      );
+    }
+  },
+});
+
+Deno.test({
+  name: "Buffer to string base64",
+  fn() {
+    for (const encoding of ["base64", "BASE64"]) {
+      const buffer: Buffer = Buffer.from("deno land");
+      assertEquals(
+        buffer.toString(encoding),
+        "ZGVubyBsYW5k",
+        "Buffer to string should recover the string in base64"
+      );
+    }
+    const b64 = "dGhpcyBpcyBhIHTDqXN0";
+    assertEquals(Buffer.from(b64, "base64").toString("base64"), b64);
+  },
+});
+
+Deno.test({
+  name: "Buffer to string hex",
+  fn() {
+    for (const encoding of ["hex", "HEX"]) {
+      const buffer: Buffer = Buffer.from("deno land");
+      assertEquals(
+        buffer.toString(encoding),
+        "64656e6f206c616e64",
+        "Buffer to string should recover the string"
+      );
+    }
+    const hex = "64656e6f206c616e64";
+    assertEquals(Buffer.from(hex, "hex").toString("hex"), hex);
+  },
+});
+
+Deno.test({
+  name: "Buffer to string invalid encoding",
+  fn() {
+    const buffer: Buffer = Buffer.from("deno land");
+    const invalidEncodings = [null, 5, {}, true, false, "foo", ""];
+
+    for (const encoding of invalidEncodings) {
+      assertThrows(
+        () => {
+          // deno-lint-ignore ban-ts-comment
+          // @ts-ignore
+          buffer.toString(encoding);
+        },
+        TypeError,
+        `Unkown encoding: ${encoding}`,
+        "Should throw on invalid encoding"
+      );
+    }
+  },
+});
+
+Deno.test({
+  name: "Buffer from string invalid encoding",
+  fn() {
+    const defaultToUtf8Encodings = [null, 5, {}, true, false, ""];
+    const invalidEncodings = ["deno", "base645"];
+
+    for (const encoding of defaultToUtf8Encodings) {
+      // deno-lint-ignore ban-ts-comment
+      // @ts-ignore
+      assertEquals(Buffer.from("yes", encoding).toString(), "yes");
+    }
+
+    for (const encoding of invalidEncodings) {
+      assertThrows(
+        () => {
+          // deno-lint-ignore ban-ts-comment
+          // @ts-ignore
+          Buffer.from("yes", encoding);
+        },
+        TypeError,
+        `Unkown encoding: ${encoding}`
+      );
+    }
+  },
+});
+
+Deno.test({
+  name: "Buffer to/from string not implemented encodings",
+  fn() {
+    const buffer: Buffer = Buffer.from("deno land");
+    const notImplemented = ["ascii", "binary"];
+
+    for (const encoding of notImplemented) {
+      assertThrows(
+        () => {
+          // deno-lint-ignore ban-ts-comment
+          // @ts-ignore
+          buffer.toString(encoding);
+        },
+        Error,
+        `"${encoding}" encoding`,
+        "Should throw on invalid encoding"
+      );
+
+      assertThrows(
+        () => {
+          // deno-lint-ignore ban-ts-comment
+          // @ts-ignore
+          Buffer.from("", encoding);
+        },
+        Error,
+        `"${encoding}" encoding`,
+        "Should throw on invalid encoding"
+      );
+    }
+  },
+});
+
+Deno.test({
   name: "Buffer from another buffer creates a Buffer",
   fn() {
     const buffer: Buffer = Buffer.from(Buffer.from("test"));

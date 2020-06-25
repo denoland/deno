@@ -1,5 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { unitTest, assert, assertEquals } from "./test_util.ts";
+import {
+  unitTest,
+  assertEquals,
+  assertThrows,
+  assertThrowsAsync,
+} from "./test_util.ts";
 
 unitTest(
   { perms: { read: true, write: true } },
@@ -39,14 +44,9 @@ unitTest({ perms: { write: true } }, function writeFileSyncFail(): void {
   const data = enc.encode("Hello");
   const filename = "/baddir/test.txt";
   // The following should fail because /baddir doesn't exist (hopefully).
-  let caughtError = false;
-  try {
+  assertThrows(() => {
     Deno.writeFileSync(filename, data);
-  } catch (e) {
-    caughtError = true;
-    assert(e instanceof Deno.errors.NotFound);
-  }
-  assert(caughtError);
+  }, Deno.errors.NotFound);
 });
 
 unitTest({ perms: { write: false } }, function writeFileSyncPerm(): void {
@@ -54,14 +54,9 @@ unitTest({ perms: { write: false } }, function writeFileSyncPerm(): void {
   const data = enc.encode("Hello");
   const filename = "/baddir/test.txt";
   // The following should fail due to no write permission
-  let caughtError = false;
-  try {
+  assertThrows(() => {
     Deno.writeFileSync(filename, data);
-  } catch (e) {
-    caughtError = true;
-    assert(e instanceof Deno.errors.PermissionDenied);
-  }
-  assert(caughtError);
+  }, Deno.errors.PermissionDenied);
 });
 
 unitTest(
@@ -85,15 +80,10 @@ unitTest(
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
     const filename = Deno.makeTempDirSync() + "/test.txt";
-    let caughtError = false;
     // if create turned off, the file won't be created
-    try {
+    assertThrows(() => {
       Deno.writeFileSync(filename, data, { create: false });
-    } catch (e) {
-      caughtError = true;
-      assert(e instanceof Deno.errors.NotFound);
-    }
-    assert(caughtError);
+    }, Deno.errors.NotFound);
 
     // Turn on create, should have no error
     Deno.writeFileSync(filename, data, { create: true });
@@ -170,14 +160,9 @@ unitTest(
     const data = enc.encode("Hello");
     const filename = "/baddir/test.txt";
     // The following should fail because /baddir doesn't exist (hopefully).
-    let caughtError = false;
-    try {
+    await assertThrowsAsync(async () => {
       await Deno.writeFile(filename, data);
-    } catch (e) {
-      caughtError = true;
-      assert(e instanceof Deno.errors.NotFound);
-    }
-    assert(caughtError);
+    }, Deno.errors.NotFound);
   }
 );
 
@@ -188,14 +173,9 @@ unitTest(
     const data = enc.encode("Hello");
     const filename = "/baddir/test.txt";
     // The following should fail due to no write permission
-    let caughtError = false;
-    try {
+    await assertThrowsAsync(async () => {
       await Deno.writeFile(filename, data);
-    } catch (e) {
-      caughtError = true;
-      assert(e instanceof Deno.errors.PermissionDenied);
-    }
-    assert(caughtError);
+    }, Deno.errors.PermissionDenied);
   }
 );
 
@@ -220,15 +200,10 @@ unitTest(
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
     const filename = Deno.makeTempDirSync() + "/test.txt";
-    let caughtError = false;
     // if create turned off, the file won't be created
-    try {
+    await assertThrowsAsync(async () => {
       await Deno.writeFile(filename, data, { create: false });
-    } catch (e) {
-      caughtError = true;
-      assert(e instanceof Deno.errors.NotFound);
-    }
-    assert(caughtError);
+    }, Deno.errors.NotFound);
 
     // Turn on create, should have no error
     await Deno.writeFile(filename, data, { create: true });

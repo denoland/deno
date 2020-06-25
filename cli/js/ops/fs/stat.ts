@@ -66,6 +66,14 @@ export function parseFileInfo(response: StatResponse): FileInfo {
   };
 }
 
+export function fstatSync(rid: number): FileInfo {
+  return parseFileInfo(sendSync("op_fstat", { rid }));
+}
+
+export async function fstat(rid: number): Promise<FileInfo> {
+  return parseFileInfo(await sendAsync("op_fstat", { rid }));
+}
+
 export async function lstat(path: string | URL): Promise<FileInfo> {
   path = pathFromURL(path);
   const res = (await sendAsync("op_stat", {

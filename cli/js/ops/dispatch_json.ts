@@ -1,7 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import * as util from "../util.ts";
 import { core } from "../core.ts";
-import { OPS_CACHE } from "../runtime.ts";
 import { ErrorKind, getErrorClass } from "../errors.ts";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -61,12 +60,10 @@ export function sendSync(
   args: object = {},
   ...zeroCopy: Uint8Array[]
 ): Ok {
-  const opId = OPS_CACHE[opName];
-  util.log("sendSync", opName, opId);
+  util.log("sendSync", opName);
   const argsUi8 = encode(args);
-  const resUi8 = core.dispatch(opId, argsUi8, ...zeroCopy);
+  const resUi8 = core.dispatchByName(opName, argsUi8, ...zeroCopy);
   util.assert(resUi8 != null);
-
   const res = decode(resUi8);
   util.assert(res.promiseId == null);
   return unwrapResponse(res);
@@ -77,14 +74,12 @@ export async function sendAsync(
   args: object = {},
   ...zeroCopy: Uint8Array[]
 ): Promise<Ok> {
-  const opId = OPS_CACHE[opName];
-  util.log("sendAsync", opName, opId);
+  util.log("sendAsync", opName);
   const promiseId = nextPromiseId();
   args = Object.assign(args, { promiseId });
   const promise = util.createResolvable<Ok>();
-
   const argsUi8 = encode(args);
-  const buf = core.dispatch(opId, argsUi8, ...zeroCopy);
+  const buf = core.dispatchByName(opName, argsUi8, ...zeroCopy);
   if (buf) {
     // Sync result.
     const res = decode(buf);
