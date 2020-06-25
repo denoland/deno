@@ -246,18 +246,18 @@ export function difference(
         differences.months = calculateMonthsDifference(bigger, smaller);
         break;
       case "quarters":
-        const quarters =
+        differences.quarters = Math.floor(
           (typeof differences.months !== "undefined" &&
             differences.months / 4) ||
-          calculateMonthsDifference(bigger, smaller) / 4;
-        differences.quarters = Math.floor(quarters);
+            calculateMonthsDifference(bigger, smaller) / 4
+        );
         break;
       case "years":
-        const years =
+        differences.years = Math.floor(
           (typeof differences.months !== "undefined" &&
             differences.months / 12) ||
-          calculateMonthsDifference(bigger, smaller) / 12;
-        differences.years = Math.floor(years);
+            calculateMonthsDifference(bigger, smaller) / 12
+        );
         break;
     }
   }
