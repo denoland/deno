@@ -17,7 +17,9 @@ for (let i = 0, len = code.length; i < len; ++i) {
  */
 export function encode(uint8: Uint8Array): string {
   let output = "";
-  let queue = 0, numbits = 0, value = 0;
+  let queue = 0,
+    numbits = 0,
+    value = 0;
   for (let i = 0, len = uint8.length; i < len; i++) {
     queue |= uint8[i] << numbits;
     numbits += 8;
@@ -48,7 +50,10 @@ export function encode(uint8: Uint8Array): string {
  */
 export function decode(b91: string): Uint8Array {
   const output: number[] = [];
-  let queue = 0, numbits = 0, value = -1, d=0;
+  let queue = 0,
+    numbits = 0,
+    value = -1,
+    d = 0;
   for (let i = 0, len = b91.length; i < len; i++) {
     d = revLookup[b91.charCodeAt(i)];
     if (d === undefined) continue;
@@ -67,7 +72,7 @@ export function decode(b91: string): Uint8Array {
     }
   }
   if (value != -1) {
-    output.push(queue | value << numbits);
+    output.push(queue | (value << numbits));
   }
   return new Uint8Array(output);
 }
