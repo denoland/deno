@@ -4,7 +4,6 @@ import {
   assertThrows,
   assertEquals,
   assertStringContains,
-  assertThrows,
   unitTest,
 } from "./test_util.ts";
 
