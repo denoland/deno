@@ -14,6 +14,14 @@ cargo test js_unit_tests
 
 Test `std/`:
 
+Before running `std` tests, you must first install the `wasm32-wasi` target:
+
+```shell
+rustup target add wasm32-wasi
+```
+
+Then you can run all the `std` tests:
+
 ```shell
 cargo test std_tests
 ```
