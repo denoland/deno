@@ -5,7 +5,6 @@ import {
   assertEquals,
   assertThrows,
   assertThrowsAsync,
-  pathToAbsoluteFileUrl,
 } from "./test_util.ts";
 
 function assertSameContent(files: Deno.DirEntry[]): void {
@@ -23,11 +22,6 @@ function assertSameContent(files: Deno.DirEntry[]): void {
 
 unitTest({ perms: { read: true } }, function readDirSyncSuccess(): void {
   const files = [...Deno.readDirSync("cli/tests/")];
-  assertSameContent(files);
-});
-
-unitTest({ perms: { read: true } }, function readDirSyncWithUrl(): void {
-  const files = [...Deno.readDirSync(pathToAbsoluteFileUrl("cli/tests"))];
   assertSameContent(files);
 });
 
@@ -54,18 +48,6 @@ unitTest({ perms: { read: true } }, async function readDirSuccess(): Promise<
 > {
   const files = [];
   for await (const dirEntry of Deno.readDir("cli/tests/")) {
-    files.push(dirEntry);
-  }
-  assertSameContent(files);
-});
-
-unitTest({ perms: { read: true } }, async function readDirWithUrl(): Promise<
-  void
-> {
-  const files = [];
-  for await (const dirEntry of Deno.readDir(
-    pathToAbsoluteFileUrl("cli/tests")
-  )) {
     files.push(dirEntry);
   }
   assertSameContent(files);

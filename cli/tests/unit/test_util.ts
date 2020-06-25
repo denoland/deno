@@ -3,7 +3,6 @@
 import { assert, assertEquals } from "../../../std/testing/asserts.ts";
 import * as colors from "../../../std/fmt/colors.ts";
 export { colors };
-import { resolve } from "../../../std/path/mod.ts";
 export {
   assert,
   assertThrows,
@@ -371,9 +370,3 @@ unitTest(
     });
   }
 );
-
-export function pathToAbsoluteFileUrl(path: string): URL {
-  path = resolve(path);
-
-  return new URL(`file://${Deno.build.os === "windows" ? "/" : ""}${path}`);
-}
