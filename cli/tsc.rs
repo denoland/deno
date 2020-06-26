@@ -461,10 +461,8 @@ impl TsCompiler {
       let program_val = build_inf_json["program"].as_object().unwrap();
       let file_infos = program_val["fileInfos"].as_object().unwrap();
 
-      let mut has_cached_version = self.has_compiled_source(file_fetcher, url);
-
-      if !has_cached_version {
-        return Ok(has_cached_version);
+      if !self.has_compiled_source(file_fetcher, url) {
+        return Ok(false);
       }
 
       for (filename, file_info) in file_infos.iter() {
@@ -484,14 +482,18 @@ impl TsCompiler {
           ]);
           let expected_hash =
             file_info["version"].as_str().unwrap().to_string();
-          has_cached_version &= existing_hash == expected_hash
+          if existing_hash != expected_hash {
+            // hashes don't match, somethings changed
+            return Ok(false);
+          }
         } else {
-          has_cached_version &= false
-        }
-        if !has_cached_version {
-          return Ok(has_cached_version);
+          // no cached source file
+          return Ok(false);
         }
       }
+    } else {
+      // no build info
+      return Ok(false);
     }
 
     Ok(true)
