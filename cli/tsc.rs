@@ -528,14 +528,14 @@ impl TsCompiler {
 
     // Only use disk cache if `--reload` flag was not used or this file has
     // already been compiled during current process lifetime.
-    if self.use_disk_cache || self.has_compiled(&source_file.url) {
-      if self.has_valid_cache(
+    if (self.use_disk_cache || self.has_compiled(&source_file.url))
+      && self.has_valid_cache(
         &global_state.file_fetcher,
         &source_file.url,
         &build_info,
-      )? {
-        return Ok(());
-      }
+      )?
+    {
+      return Ok(());
     }
 
     let module_graph_json =
