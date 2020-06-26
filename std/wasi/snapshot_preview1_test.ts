@@ -79,7 +79,6 @@ if (import.meta.main) {
           "run",
           "--quiet",
           "--unstable",
-          "--v8-flags=--experimental-wasm-bigint",
           "--allow-all",
           import.meta.url,
           prelude,
