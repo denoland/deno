@@ -242,7 +242,7 @@ Deno.test(
 
 Deno.test(
   "Data is written to correct file encodings",
-  async function testCorrectWriteSyncUsingDifferentEncodings() {
+  function testCorrectWriteSyncUsingDifferentEncodings() {
     const encodings = [
       ["hex", "68656c6c6f20776f726c64"],
       ["HEX", "68656c6c6f20776f726c64"],
