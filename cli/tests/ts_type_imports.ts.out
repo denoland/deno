@@ -1,4 +1,4 @@
-Compile [WILDCARD]ts_type_imports.ts
+Check [WILDCARD]ts_type_imports.ts
 error: TS2322 [ERROR]: Type 'Map<string, string>' is not assignable to type 'Foo'.
   Type 'string' is not assignable to type 'number'.
 const foo: Foo = new Map<string, string>();
