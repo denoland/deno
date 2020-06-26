@@ -611,6 +611,37 @@ fn ts_dependency_recompilation() {
 }
 
 #[test]
+fn ts_reload() {
+  let hello_ts = util::root_path().join("cli/tests/002_hello.ts");
+  assert!(hello_ts.is_file());
+  let mut initial = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("cache")
+    .arg("--reload")
+    .arg(hello_ts.clone())
+    .spawn()
+    .expect("failed to spawn script");
+  let status_initial =
+    initial.wait().expect("failed to wait for child process");
+  assert!(status_initial.success());
+
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("cache")
+    .arg("--reload")
+    .arg("-L")
+    .arg("debug")
+    .arg(hello_ts)
+    .output()
+    .expect("failed to spawn script");
+  // check the output of the the bundle program.
+  assert!(std::str::from_utf8(&output.stdout)
+    .unwrap()
+    .trim()
+    .contains("compiler::host.writeFile deno://002_hello.js"));
+}
+
+#[test]
 fn bundle_exports() {
   // First we have to generate a bundle of some module that has exports.
   let mod1 = util::root_path().join("cli/tests/subdir/mod1.ts");
