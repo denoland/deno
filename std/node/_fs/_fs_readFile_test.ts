@@ -29,7 +29,6 @@ Deno.test("readFileEncodeUtf8Success", async function () {
       res(data);
     });
   });
-  console.log(data);
   assertEquals(typeof data, "string");
   assertEquals(data as string, "hello world");
 });
