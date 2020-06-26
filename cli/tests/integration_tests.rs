@@ -583,7 +583,7 @@ fn ts_dependency_recompilation() {
   let stderr_output = std::str::from_utf8(&output.stderr).unwrap().trim();
 
   assert!(stdout_output.ends_with("foo"));
-  assert!(stderr_output.starts_with("Compile"));
+  assert!(stderr_output.starts_with("Check"));
 
   // Overwrite contents of b.ts and run again
   std::fs::write(

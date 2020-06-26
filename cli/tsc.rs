@@ -585,7 +585,7 @@ impl TsCompiler {
     // TODO(bartlomieju): lift this call up - TSC shouldn't print anything
     info!(
       "{} {}",
-      colors::green("Compile".to_string()),
+      colors::green("Check".to_string()),
       module_url.to_string()
     );
 
