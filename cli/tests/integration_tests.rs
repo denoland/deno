@@ -2070,6 +2070,11 @@ itest!(deno_lint_glob {
   exit_code: 1,
 });
 
+itest!(files {
+  args: "run --quiet --reload --allow-read files.ts",
+  output: "files.out",
+});
+
 #[test]
 fn cafile_fetch() {
   use url::Url;
