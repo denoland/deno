@@ -137,7 +137,7 @@ export function equal(c: unknown, d: unknown): boolean {
 export const assert: (
   condition: unknown,
   message?: string | undefined,
-) => asserts condition = globalThis.assert;
+) => asserts condition = Deno.assert;
 
 /**
  * Make an assertion that `actual` and `expected` are equal, deeply. If not
@@ -422,7 +422,7 @@ export function assertThrows<T = void>(
     fn();
   } catch (e) {
     if (e instanceof Error === false) {
-      throw new AssertionError("A non-Error object was thrown.");
+      throw new AssertionError({ message: "A non-Error object was thrown." });
     }
     if (ErrorClass && !(Object.getPrototypeOf(e) === ErrorClass.prototype)) {
       message =
@@ -480,7 +480,9 @@ export async function assertThrowsAsync<T = void>(
     await fn();
   } catch (e) {
     if (e instanceof Error === false) {
-      throw new AssertionError("A non-Error object was thrown or rejected.");
+      throw new AssertionError({
+        message: "A non-Error object was thrown or rejected.",
+      });
     }
     if (ErrorClass && !(Object.getPrototypeOf(e) === ErrorClass.prototype)) {
       message =

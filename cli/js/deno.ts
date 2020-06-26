@@ -2,7 +2,7 @@
 
 // This module exports stable Deno APIs.
 
-export { AssertionError } from "./assert.ts";
+export { assert, AssertionError } from "./assert.ts";
 export type { AssertionErrorOptions } from "./assert.ts";
 export {
   Buffer,

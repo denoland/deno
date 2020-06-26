@@ -81,6 +81,13 @@ declare namespace Deno {
   }
   /* eslint-enable */
 
+  /** Asserts that the condition argument is "truthy".  If the assertion fails,
+   * a `Deno.AssertionError` will be raised. */
+  export function assert(
+    condition: unknown,
+    message?: string
+  ): asserts condition;
+
   /** The current process id of the runtime. */
   export const pid: number;
 

@@ -1,11 +1,14 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import { assert, assertEquals } from "../../../std/testing/asserts.ts";
+import { assertEquals } from "../../../std/testing/asserts.ts";
 import * as colors from "../../../std/fmt/colors.ts";
 export { colors };
 import { resolve } from "../../../std/path/mod.ts";
+export const assert: (
+  condition: unknown,
+  message?: string | undefined
+) => asserts condition = Deno.assert;
 export {
-  assert,
   assertThrows,
   assertThrowsAsync,
   assertEquals,
@@ -150,7 +153,7 @@ export function unitTest(
   optionsOrFn: UnitTestOptions | TestFunction,
   maybeFn?: TestFunction
 ): void {
-  assert(optionsOrFn, "At least one argument is required");
+  Deno.assert(optionsOrFn, "At least one argument is required");
 
   let options: UnitTestOptions;
   let name: string;
@@ -163,14 +166,14 @@ export function unitTest(
     assert(name, "Missing test function name");
   } else {
     options = optionsOrFn;
-    assert(maybeFn, "Missing test function definition");
-    assert(
+    Deno.assert(maybeFn, "Missing test function definition");
+    Deno.assert(
       typeof maybeFn === "function",
       "Second argument should be test function definition"
     );
     fn = maybeFn;
     name = fn.name;
-    assert(name, "Missing test function name");
+    Deno.assert(name, "Missing test function name");
   }
 
   const normalizedPerms = normalizeTestPermissions(options.perms || {});
@@ -248,7 +251,7 @@ export async function reportToConn(
 }
 
 unitTest(function permissionsMatches(): void {
-  assert(
+  Deno.assert(
     permissionsMatch(
       {
         read: true,
@@ -263,7 +266,7 @@ unitTest(function permissionsMatches(): void {
     )
   );
 
-  assert(
+  Deno.assert(
     permissionsMatch(
       {
         read: false,
@@ -310,7 +313,7 @@ unitTest(function permissionsMatches(): void {
     false
   );
 
-  assert(
+  Deno.assert(
     permissionsMatch(
       {
         read: true,
