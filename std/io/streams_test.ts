@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 import { assertEquals, assert } from "../testing/asserts.ts";
-import { toReader, toWriter } from "./streams.ts";
+import { fromStreamWriter, fromStreamReader } from "./streams.ts";
 
 function repeat(c: string, bytes: number): Uint8Array {
   assertEquals(c.length, 1);
@@ -21,7 +21,7 @@ Deno.test("toWriterCheck", async function (): Promise<void> {
   });
 
   const encoder = new TextEncoder();
-  const writer = toWriter(writableStream.getWriter());
+  const writer = fromStreamWriter(writableStream.getWriter());
 
   for (const chunk of chunks) {
     const n = await writer.write(encoder.encode(chunk));
@@ -46,7 +46,7 @@ Deno.test("toReaderCheck", async function (): Promise<void> {
   });
 
   const decoder = new TextDecoder();
-  const reader = toReader(readableStream.getReader());
+  const reader = fromStreamReader(readableStream.getReader());
 
   let i = 0;
 
@@ -91,7 +91,7 @@ Deno.test("toReaderBigChunksCheck", async function (): Promise<void> {
     },
   });
 
-  const reader = toReader(readableStream.getReader());
+  const reader = fromStreamReader(readableStream.getReader());
   const n = await Deno.copy(reader, writer, { bufSize });
 
   const expectedWritten = chunkSize * expected.length;
@@ -126,7 +126,7 @@ Deno.test("toReaderBigIrregularChunksCheck", async function (): Promise<void> {
     },
   });
 
-  const reader = toReader(readableStream.getReader());
+  const reader = fromStreamReader(readableStream.getReader());
 
   const n = await Deno.copy(reader, writer, { bufSize });
   assertEquals(n, expected.length);

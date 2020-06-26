@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-export function toWriter(
+export function fromStreamWriter(
   streamWriter: WritableStreamDefaultWriter<Uint8Array>
 ): Deno.Writer {
   return {
@@ -12,7 +12,7 @@ export function toWriter(
   };
 }
 
-export function toReader(
+export function fromStreamReader(
   streamReader: ReadableStreamDefaultReader<Uint8Array>
 ): Deno.Reader {
   const buffer = new Deno.Buffer();
