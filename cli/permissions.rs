@@ -2,8 +2,6 @@
 use crate::colors;
 use crate::flags::Flags;
 use crate::fs::resolve_from_cwd;
-#[cfg(test)]
-use crate::op_error::ErrorKind;
 use crate::op_error::OpError;
 use serde::de;
 use serde::Deserialize;
@@ -859,7 +857,7 @@ mod tests {
         .request_net(&Some("localhost:8080"))
         .unwrap_err()
         .kind,
-      ErrorKind::URIError
+      crate::op_error::ErrorKind::URIError
     );
 
     let mut perms5 = Permissions::from_flags(&Flags {
@@ -869,7 +867,7 @@ mod tests {
     set_prompt_result(false);
     assert_eq!(
       perms5.request_net(&Some("file:/1.txt")).unwrap_err().kind,
-      ErrorKind::URIError
+      crate::op_error::ErrorKind::URIError
     );
 
     drop(guard);
