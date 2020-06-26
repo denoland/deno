@@ -39,6 +39,7 @@ Deno.test("testingEqual", function (): void {
       { hello: "world", hi: { there: "everyone else" } }
     )
   );
+
   assert(equal(/deno/, /deno/));
   assert(!equal(/deno/, /node/));
   assert(equal(new Date(2019, 0, 3), new Date(2019, 0, 3)));
@@ -523,4 +524,3 @@ Deno.test("Assert Throws Async Non-Error Fail", () => {
     "A non-Error object was thrown or rejected."
   );
 });
-
