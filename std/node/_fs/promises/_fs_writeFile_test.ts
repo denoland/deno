@@ -35,19 +35,10 @@ Deno.test(
   function testUnsupportedEncoding() {
     assertThrowsAsync(
       async () => {
-        await writeFile("some/path", "some data", "hex");
+        await writeFile("some/path", "some data", "utf16le");
       },
       Error,
-      `Not implemented: "hex" encoding`
-    );
-    assertThrowsAsync(
-      async () => {
-        await writeFile("some/path", "some data", {
-          encoding: "base64",
-        });
-      },
-      Error,
-      `Not implemented: "base64" encoding`
+      `Not implemented: "utf16le" encoding`
     );
   }
 );
