@@ -1,4 +1,3 @@
-/** This module is browser compatible. */
 // Based on http://base91.sourceforge.net/
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
