@@ -62,12 +62,15 @@ function parse(url: string, isBase = true): URLParts | undefined {
     parts.password = "";
     [parts.hostname, restUrl] = takePattern(restUrl, /^[/\\]{2}([^/\\?#]*)/);
     parts.port = "";
+    if (build.os == "windows" && parts.hostname == "") {
+      // UNC paths. e.g. "\\\\localhost\\foo\\bar" on Windows should be
+      // representable as `new URL("file:////localhost/foo/bar")` which is
+      // equivalent to: `new URL("file://localhost/foo/bar")`.
+      [parts.hostname, restUrl] = takePattern(restUrl, /^[/\\]{2,}([^/\\?#]*)/);
+    }
   } else if (specialSchemes.includes(parts.protocol)) {
     let restAuthority;
-    [restAuthority, restUrl] = takePattern(
-      restUrl,
-      /^[/\\]{2}[/\\]*([^/\\?#]+)/
-    );
+    [restAuthority, restUrl] = takePattern(restUrl, /^[/\\]{2,}([^/\\?#]+)/);
     if (isBase && restAuthority == "") {
       return undefined;
     }
