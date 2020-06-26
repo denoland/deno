@@ -462,7 +462,8 @@ impl TsCompiler {
         let program_val = build_inf_json["program"].as_object().unwrap();
         let file_infos = program_val["fileInfos"].as_object().unwrap();
 
-        let mut has_cached_version = self.has_compiled_source(file_fetcher, url);
+        let mut has_cached_version =
+          self.has_compiled_source(file_fetcher, url);
 
         if !has_cached_version {
           return Ok(has_cached_version);
