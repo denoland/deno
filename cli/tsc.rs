@@ -550,10 +550,7 @@ impl TsCompiler {
         "config": str::from_utf8(&config_data).unwrap(),
         "cwd": cwd,
         "sourceFileMap": module_graph_json,
-        "buildInfo": match self.use_disk_cache {
-          true => build_info,
-          _ => None,
-        },
+        "buildInfo": if self.use_disk_cache { build_info } else { None },
       }),
       _ => json!({
         "type": msg::CompilerRequestType::Compile,
@@ -564,10 +561,7 @@ impl TsCompiler {
         "performance": performance,
         "cwd": cwd,
         "sourceFileMap": module_graph_json,
-        "buildInfo": match self.use_disk_cache {
-          true => build_info,
-          _ => None,
-        },
+        "buildInfo": if self.use_disk_cache { build_info } else { None },
       }),
     };
 
