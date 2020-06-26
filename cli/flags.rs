@@ -974,7 +974,8 @@ fn permission_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
         .takes_value(true)
         .use_delimiter(true)
         .require_equals(true)
-        .help("Allow network access"),
+        .help("Allow network access")
+        .validator(crate::flags_allow_net::validator),
     )
     .arg(
       Arg::with_name("allow-env")
@@ -1053,7 +1054,7 @@ Grant permission to read from disk and listen to network:
 
 Grant permission to read allow-listed files from disk:
   deno run --allow-read=/etc https://deno.land/std/http/file_server.ts
-  
+
 Deno allows specifying the filename '-' to read the file from stdin.
   curl https://deno.land/std/examples/welcome.ts | target/debug/deno run -",
     )
@@ -1324,7 +1325,8 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     if raw_net_allowlist.is_empty() {
       flags.allow_net = true;
     } else {
-      flags.net_allowlist = resolve_hosts(raw_net_allowlist);
+      flags.net_allowlist =
+        crate::flags_allow_net::parse(raw_net_allowlist).unwrap();
       debug!("net allowlist: {:#?}", &flags.net_allowlist);
     }
   }
@@ -1372,41 +1374,6 @@ pub fn resolve_urls(urls: Vec<String>) -> Vec<String> {
     }
     out.push(full_url);
   }
-  out
-}
-
-/// Expands "bare port" paths (eg. ":8080") into full paths with hosts. It
-/// expands to such paths into 3 paths with following hosts: `0.0.0.0:port`,
-/// `127.0.0.1:port` and `localhost:port`.
-fn resolve_hosts(paths: Vec<String>) -> Vec<String> {
-  let mut out: Vec<String> = vec![];
-  for host_and_port in paths.iter() {
-    let parts = host_and_port.split(':').collect::<Vec<&str>>();
-
-    match parts.len() {
-      // host only
-      1 => {
-        out.push(host_and_port.to_owned());
-      }
-      // host and port (NOTE: host might be empty string)
-      2 => {
-        let host = parts[0];
-        let port = parts[1];
-
-        if !host.is_empty() {
-          out.push(host_and_port.to_owned());
-          continue;
-        }
-
-        // we got bare port, let's add default hosts
-        for host in ["0.0.0.0", "127.0.0.1", "localhost"].iter() {
-          out.push(format!("{}:{}", host, port));
-        }
-      }
-      _ => panic!("Bad host:port pair: {}", host_and_port),
-    }
-  }
-
   out
 }
 
@@ -2475,6 +2442,37 @@ mod tests {
           "0.0.0.0:4545",
           "127.0.0.1:4545",
           "localhost:4545"
+        ],
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn allow_net_allowlist_with_ipv6_address() {
+    let r = flags_from_vec_safe(svec![
+      "deno",
+      "run",
+      "--allow-net=deno.land,deno.land:80,::,127.0.0.1,[::1],1.2.3.4:5678,:5678,[::1]:8080",
+      "script.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run {
+          script: "script.ts".to_string(),
+        },
+        net_allowlist: svec![
+          "deno.land",
+          "deno.land:80",
+          "::",
+          "127.0.0.1",
+          "[::1]",
+          "1.2.3.4:5678",
+          "0.0.0.0:5678",
+          "127.0.0.1:5678",
+          "localhost:5678",
+          "[::1]:8080"
         ],
         ..Flags::default()
       }
