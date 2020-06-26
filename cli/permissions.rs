@@ -2,6 +2,8 @@
 use crate::colors;
 use crate::flags::Flags;
 use crate::fs::resolve_from_cwd;
+#[cfg(test)]
+use crate::op_error::ErrorKind;
 use crate::op_error::OpError;
 use serde::de;
 use serde::Deserialize;
@@ -283,6 +285,14 @@ impl Permissions {
     let url: &str = url.unwrap();
     // If url is invalid, then throw a TypeError.
     let parsed = Url::parse(url).map_err(OpError::from)?;
+    // The url may be parsed correctly but still lack a host, i.e. "localhost:235" or "mailto:someone@somewhere.com" or "file:/1.txt"
+    // Note that host:port combos are parsed as scheme:path
+    if parsed.host().is_none() {
+      return Err(OpError::uri_error(
+        "invalid url, expected format: <scheme>://<host>[:port][/subpath]"
+          .to_owned(),
+      ));
+    }
     Ok(
       self.get_state_net(&format!("{}", parsed.host().unwrap()), parsed.port()),
     )
@@ -833,11 +843,35 @@ mod tests {
     );
 
     let mut perms3 = Permissions::from_flags(&Flags {
-      net_allowlist: allowlist,
+      net_allowlist: allowlist.clone(),
       ..Default::default()
     });
     set_prompt_result(true);
     assert!(perms3.request_net(&Some(":")).is_err());
+
+    let mut perms4 = Permissions::from_flags(&Flags {
+      net_allowlist: allowlist.clone(),
+      ..Default::default()
+    });
+    set_prompt_result(false);
+    assert_eq!(
+      perms4
+        .request_net(&Some("localhost:8080"))
+        .unwrap_err()
+        .kind,
+      ErrorKind::URIError
+    );
+
+    let mut perms5 = Permissions::from_flags(&Flags {
+      net_allowlist: allowlist,
+      ..Default::default()
+    });
+    set_prompt_result(false);
+    assert_eq!(
+      perms5.request_net(&Some("file:/1.txt")).unwrap_err().kind,
+      ErrorKind::URIError
+    );
+
     drop(guard);
   }
 
