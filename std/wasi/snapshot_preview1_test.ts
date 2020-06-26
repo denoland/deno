@@ -72,54 +72,68 @@ if (import.meta.main) {
       const prelude = await Deno.readTextFile(path.resolve(outdir, basename));
       const options = JSON.parse(prelude);
 
-      const process = await Deno.run({
-        cwd: testdir,
-        cmd: [
-          `${Deno.execPath()}`,
-          "run",
-          "--quiet",
-          "--unstable",
-          "--allow-all",
-          import.meta.url,
-          prelude,
-          path.resolve(outdir, entry.name),
-        ],
-        stdin: "piped",
-        stdout: "piped",
-        stderr: "piped",
-      });
+      await Deno.mkdir(`${testdir}/scratch`);
 
-      if (options.stdin) {
-        const stdin = new TextEncoder().encode(options.stdin);
-        await Deno.writeAll(process.stdin, stdin);
+      try {
+        const process = await Deno.run({
+          cwd: testdir,
+          cmd: [
+            `${Deno.execPath()}`,
+            "run",
+            "--quiet",
+            "--unstable",
+            "--allow-all",
+            import.meta.url,
+            prelude,
+            path.resolve(outdir, entry.name),
+          ],
+          stdin: "piped",
+          stdout: "piped",
+          stderr: "piped",
+        });
+
+        if (options.stdin) {
+          const stdin = new TextEncoder().encode(options.stdin);
+          await Deno.writeAll(process.stdin, stdin);
+        }
+
+        process.stdin.close();
+
+        const stdout = await Deno.readAll(process.stdout);
+
+        if (options.stdout) {
+          assertEquals(new TextDecoder().decode(stdout), options.stdout);
+        } else {
+          await Deno.writeAll(Deno.stdout, stdout);
+        }
+
+        process.stdout.close();
+
+        const stderr = await Deno.readAll(process.stderr);
+
+        if (options.stderr) {
+          assertEquals(new TextDecoder().decode(stderr), options.stderr);
+        } else {
+          await Deno.writeAll(Deno.stderr, stderr);
+        }
+
+        process.stderr.close();
+
+        if (options.files) {
+          for (const [key, value] of Object.entries(options.files)) {
+            assertEquals(value, await Deno.readTextFile(`${testdir}/${key}`));
+          }
+        }
+
+        const status = await process.status();
+        assertEquals(status.code, options.exitCode ? +options.exitCode : 0);
+
+        process.close();
+      } catch (err) {
+        throw err;
+      } finally {
+        await Deno.remove(`${testdir}/scratch`, { recursive: true });
       }
-
-      process.stdin.close();
-
-      const stdout = await Deno.readAll(process.stdout);
-
-      if (options.stdout) {
-        assertEquals(new TextDecoder().decode(stdout), options.stdout);
-      } else {
-        await Deno.writeAll(Deno.stdout, stdout);
-      }
-
-      process.stdout.close();
-
-      const stderr = await Deno.readAll(process.stderr);
-
-      if (options.stderr) {
-        assertEquals(new TextDecoder().decode(stderr), options.stderr);
-      } else {
-        await Deno.writeAll(Deno.stderr, stderr);
-      }
-
-      process.stderr.close();
-
-      const status = await process.status();
-      assertEquals(status.code, options.exitCode ? +options.exitCode : 0);
-
-      process.close();
     });
   }
 }
