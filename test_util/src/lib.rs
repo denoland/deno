@@ -21,6 +21,8 @@ pub const PERMISSION_VARIANTS: [&str; 5] =
 pub const PERMISSION_DENIED_PATTERN: &str = "PermissionDenied";
 
 lazy_static! {
+  static ref DENO_DIR: TempDir = TempDir::new().expect("tempdir fail");
+
   // STRIP_ANSI_RE and strip_ansi_codes are lifted from the "console" crate.
   // Copyright 2017 Armin Ronacher <armin.ronacher@active-4.com>. MIT License.
   static ref STRIP_ANSI_RE: Regex = Regex::new(
@@ -157,23 +159,17 @@ pub fn run_and_collect_output(
   (stdout, stderr)
 }
 
-pub fn new_deno_dir() -> TempDir {
-  TempDir::new().expect("tempdir fail")
-}
-
 pub fn deno_cmd() -> Command {
   let e = deno_exe_path();
-  let deno_dir = new_deno_dir();
   assert!(e.exists());
   let mut c = Command::new(e);
-  c.env("DENO_DIR", deno_dir.path());
+  c.env("DENO_DIR", DENO_DIR.path());
   c
 }
 
 pub fn run_python_script(script: &str) {
-  let deno_dir = new_deno_dir();
   let output = Command::new("python")
-    .env("DENO_DIR", deno_dir.path())
+    .env("DENO_DIR", DENO_DIR.path())
     .current_dir(root_path())
     .arg(script)
     .arg(format!("--build-dir={}", target_dir().display()))
