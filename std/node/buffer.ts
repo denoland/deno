@@ -60,8 +60,9 @@ export default class Buffer extends Uint8Array {
       if (typeof fill === "string" && fill.length === 1 && encoding === "utf8")
         buf.fill(fill.charCodeAt(0));
       else bufFill = Buffer.from(fill, encoding);
-    } else if (typeof fill === "number") buf.fill(fill);
-    else if (fill instanceof Uint8Array) {
+    } else if (typeof fill === "number") {
+      buf.fill(fill);
+    } else if (fill instanceof Uint8Array) {
       if (fill.length === 0) {
         throw new TypeError(
           `The argument "value" is invalid. Received ${fill.constructor.name} []`
@@ -87,6 +88,10 @@ export default class Buffer extends Uint8Array {
     }
 
     return buf;
+  }
+
+  static allocUnsafe(size: number): Buffer {
+    return new Buffer(size);
   }
 
   /**
