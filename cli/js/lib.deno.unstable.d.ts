@@ -992,6 +992,12 @@ declare namespace Deno {
 
   export interface NetPermissionDescriptor {
     name: "net";
+    /** Optional url associated with this descriptor.
+     *
+     * If specified: must be a valid url. Expected format: <scheme>://<host_or_ip>[:port][/path]
+     * If the scheme is unknown, callers should specify some scheme, such as x:// na:// unknown://
+     *
+     * See: https://www.iana.org/assignments/uri-schemes/uri-schemes.xhtml */
     url?: string;
   }
 
