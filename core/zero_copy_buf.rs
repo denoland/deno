@@ -19,7 +19,7 @@ unsafe impl Send for ZeroCopyBuf {}
 
 impl ZeroCopyBuf {
   pub fn new<'s>(
-    scope: &mut impl v8::ToLocal<'s>,
+    scope: &mut v8::HandleScope<'s>,
     view: v8::Local<v8::ArrayBufferView>,
   ) -> Self {
     let backing_store = view.buffer(scope).unwrap().get_backing_store();

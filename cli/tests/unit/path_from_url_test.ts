@@ -6,20 +6,27 @@ const { pathFromURL } = Deno[Deno.internal];
 unitTest(
   { ignore: Deno.build.os === "windows" },
   function pathFromURLPosix(): void {
-    assertEquals(pathFromURL("file:///test/directory"), "/test/directory");
-    assertEquals(pathFromURL("file:///space_ .txt"), "/space_ .txt");
-    assertThrows(() => pathFromURL("file://host/test/directory"));
-    assertThrows(() => pathFromURL("https://deno.land/welcome.ts"));
+    assertEquals(
+      pathFromURL(new URL("file:///test/directory")),
+      "/test/directory"
+    );
+    assertEquals(pathFromURL(new URL("file:///space_ .txt")), "/space_ .txt");
+    assertThrows(() => pathFromURL(new URL("https://deno.land/welcome.ts")));
   }
 );
 
 unitTest(
   { ignore: Deno.build.os !== "windows" },
   function pathFromURLWin32(): void {
-    assertEquals(pathFromURL("file:///c:/windows/test"), "c:\\windows\\test");
-    assertEquals(pathFromURL("file:///c:/space_ .txt"), "c:\\space_ .txt");
-    assertThrows(() => pathFromURL("file:///thing/test"));
-    assertThrows(() => pathFromURL("https://deno.land/welcome.ts"));
+    assertEquals(
+      pathFromURL(new URL("file:///c:/windows/test")),
+      "c:\\windows\\test"
+    );
+    assertEquals(
+      pathFromURL(new URL("file:///c:/space_ .txt")),
+      "c:\\space_ .txt"
+    );
+    assertThrows(() => pathFromURL(new URL("https://deno.land/welcome.ts")));
     /* TODO(ry) Add tests for these situations
      * ampersand_&.tx                 file:///D:/weird_names/ampersand_&.txt
      * at_@.txt                       file:///D:/weird_names/at_@.txt

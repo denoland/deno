@@ -31,6 +31,7 @@ mod disk_cache;
 mod doc;
 mod file_fetcher;
 pub mod flags;
+mod flags_allow_net;
 mod fmt;
 pub mod fmt_errors;
 mod fs;
