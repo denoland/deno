@@ -1231,7 +1231,12 @@ interface TranspileRequest {
   configPath?: string;
   cwd?: string;
   performance: boolean;
-  sourceFileMap: Record<string, SourceFileMapEntry>;
+  sourceFiles: TranspileSourceFile[];
+}
+
+interface TranspileSourceFile {
+  sourceCode: string;
+  fileName: string;
 }
 
 /** Used when "deno bundle" is invoked */
@@ -1408,7 +1413,7 @@ function transpile({
   configPath,
   cwd,
   performance,
-  sourceFileMap,
+  sourceFiles,
 }: TranspileRequest): CompileResponse {
   if (performance) {
     performanceStart();
@@ -1448,10 +1453,10 @@ function transpile({
   }
   const emitMap: Record<string, EmittedSource> = {};
   let diagnostics: ts.Diagnostic[] = [];
-  for (const { sourceCode, url: filename } of Object.values(sourceFileMap)) {
-    if (filename.endsWith(".d.ts")) {
-      log("skip transpile", filename);
-      emitMap[`${filename}.js`] = { filename, contents: "" };
+  for (const { sourceCode, fileName } of sourceFiles) {
+    if (fileName.endsWith(".d.ts")) {
+      log("skip transpile", fileName);
+      emitMap[`${fileName}.js`] = { filename: fileName, contents: "" };
       continue;
     }
     const {
@@ -1459,16 +1464,21 @@ function transpile({
       sourceMapText,
       diagnostics: diags,
     } = ts.transpileModule(sourceCode, {
-      fileName: filename,
+      fileName,
       compilerOptions,
       reportDiagnostics: true,
     });
     if (diags) {
       diagnostics = diagnostics.concat(...diags);
     }
-    emitMap[`${filename}.js`] = { filename, contents: outputText };
+    emitMap[`${fileName}.js`] = { filename: fileName, contents: outputText };
+    // currently we inline source maps, but this is good logic to have if this
+    // ever changes
     if (sourceMapText) {
-      emitMap[`${filename}.map`] = { filename, contents: sourceMapText };
+      emitMap[`${fileName}.map`] = {
+        filename: fileName,
+        contents: sourceMapText,
+      };
     }
   }
   const stats = performance ? performanceEnd() : undefined;
