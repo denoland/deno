@@ -52,8 +52,9 @@ export default class Buffer extends Uint8Array {
     }
 
     const buf = new Buffer(size);
-    let bufFill;
+    if (size === 0) return buf;
 
+    let bufFill;
     if (typeof fill === "string") {
       encoding = checkEncoding(encoding);
       if (typeof fill === "string" && fill.length === 1 && encoding === "utf8")
@@ -61,6 +62,12 @@ export default class Buffer extends Uint8Array {
       else bufFill = Buffer.from(fill, encoding);
     } else if (typeof fill === "number") buf.fill(fill);
     else if (fill instanceof Uint8Array) {
+      if (fill.length === 0) {
+        throw new TypeError(
+          `The argument "value" is invalid. Received ${fill.constructor.name} []`
+        );
+      }
+
       bufFill = fill;
     }
 

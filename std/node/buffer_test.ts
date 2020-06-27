@@ -16,7 +16,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "alloc fails on if size is not a number",
+  name: "alloc fails if size is not a number",
   fn() {
     const invalidSizes = [{}, "1", "foo", []];
 
@@ -31,6 +31,38 @@ Deno.test({
         `The "size" argument must be of type number. Received type ${typeof size}`,
         "should throw on non-number size"
       );
+    }
+  },
+});
+
+Deno.test({
+  name: "alloc(>0) fails if value is an empty Buffer/Uint8Array",
+  fn() {
+    const invalidValues = [new Uint8Array(), Buffer.alloc(0)];
+
+    for (const value of invalidValues) {
+      assertThrows(
+        () => {
+          // deno-lint-ignore ban-ts-comment
+          // @ts-ignore
+          console.log(value.constructor.name);
+          Buffer.alloc(1, value);
+        },
+        TypeError,
+        `The argument "value" is invalid. Received ${value.constructor.name} []`,
+        "should throw for empty Buffer/Uint8Array"
+      );
+    }
+  },
+});
+
+Deno.test({
+  name: "alloc(0) doesn't fail if value is an empty Buffer/Uint8Array",
+  fn() {
+    const invalidValues = [new Uint8Array(), Buffer.alloc(0)];
+
+    for (const value of invalidValues) {
+      assertEquals(Buffer.alloc(0, value).length, 0);
     }
   },
 });
