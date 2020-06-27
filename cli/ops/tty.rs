@@ -38,6 +38,10 @@ fn get_windows_handle(
 pub fn init(i: &mut CoreIsolate, s: &State) {
   i.register_op("op_set_raw", s.stateful_json_op2(op_set_raw));
   i.register_op("op_isatty", s.stateful_json_op2(op_isatty));
+  i.register_op(
+    "op_get_console_size",
+    s.stateful_json_op2(op_get_console_size),
+  );
 }
 
 #[derive(Deserialize)]
@@ -249,4 +253,71 @@ pub fn op_isatty(
       _ => Ok(false),
     })?;
   Ok(JsonOp::Sync(json!(isatty)))
+}
+
+#[cfg(unix)]
+use libc::{c_int, c_ulong, winsize, TIOCGWINSZ};
+#[cfg(unix)]
+use std::mem::MaybeUninit;
+
+#[cfg(unix)]
+extern "C" {
+  fn ioctl(fd: c_int, request: c_ulong, ...) -> c_int;
+}
+
+#[cfg(unix)]
+pub fn get_dimensions_any(rid: i32) -> Result<winsize, std::io::Error> {
+  let mut count: u32 = 0;
+
+  loop {
+    count += 1;
+
+    let mut window = MaybeUninit::zeroed();
+    let result =
+      unsafe { ioctl(rid, TIOCGWINSZ, window.as_mut_ptr() as *mut _) };
+
+    if result == -1 {
+      if count > 3 {
+        break unsafe { MaybeUninit::zeroed().assume_init() };
+      }
+      continue;
+    } else {
+      let window = unsafe { window.assume_init() };
+      break Ok(window);
+    }
+  }
+}
+
+#[derive(Deserialize)]
+struct GetConsoleSizeArgs {
+  rid: u32,
+}
+
+pub fn op_get_console_size(
+  _isolate_state: &mut CoreIsolateState,
+  state: &State,
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<JsonOp, OpError> {
+  state.check_unstable("Deno.getConsoleSize");
+  let args: GetConsoleSizeArgs = serde_json::from_value(args)?;
+
+  // TODO implement winsize for Windows
+  // see https://docs.rs/crate/term_size/0.3.2/source/src/platform/windows.rs
+  #[cfg(not(unix))]
+  {
+    let _ = args.rid; // avoid unused warning.
+    Err(OpError::not_implemented())
+  }
+  #[cfg(unix)]
+  {
+    let console_size = get_dimensions_any(args.rid as i32)?;
+
+    Ok(JsonOp::Sync(json!({
+      "columns": console_size.ws_col,
+      "innerHeight": console_size.ws_ypixel,
+      "innerWidth": console_size.ws_xpixel,
+      "rows": console_size.ws_row,
+    })))
+  }
 }
