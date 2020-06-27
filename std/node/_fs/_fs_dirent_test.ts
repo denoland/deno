@@ -1,4 +1,3 @@
-const { test } = Deno;
 import { assert, assertEquals, assertThrows } from "../../testing/asserts.ts";
 import Dirent from "./_fs_dirent.ts";
 
@@ -9,7 +8,7 @@ class DirEntryMock implements Deno.DirEntry {
   isSymlink = false;
 }
 
-test({
+Deno.test({
   name: "Directories are correctly identified",
   fn() {
     const entry: DirEntryMock = new DirEntryMock();
@@ -22,7 +21,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "Files are correctly identified",
   fn() {
     const entry: DirEntryMock = new DirEntryMock();
@@ -35,7 +34,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "Symlinks are correctly identified",
   fn() {
     const entry: DirEntryMock = new DirEntryMock();
@@ -48,7 +47,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "File name is correct",
   fn() {
     const entry: DirEntryMock = new DirEntryMock();
@@ -57,7 +56,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "Socket and FIFO pipes aren't yet available",
   fn() {
     const entry: DirEntryMock = new DirEntryMock();

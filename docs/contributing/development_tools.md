@@ -139,7 +139,7 @@ Particularly useful ones:
 See our benchmarks [over here](https://deno.land/benchmarks)
 
 The benchmark chart supposes
-https://github.com/denoland/benchmark_data/data.json has the type
+https://github.com/denoland/benchmark_data/blob/gh-pages/data.json has the type
 `BenchmarkData[]` where `BenchmarkData` is defined like the below:
 
 ```ts

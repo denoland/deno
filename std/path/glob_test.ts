@@ -1,10 +1,9 @@
-const { mkdir, test } = Deno;
 import { assert, assertEquals } from "../testing/asserts.ts";
 import { testWalk, touch, walkArray } from "../fs/walk_test.ts";
 import { globToRegExp, isGlob, joinGlobs, normalizeGlob } from "./glob.ts";
 import { SEP, join } from "./mod.ts";
 
-test({
+Deno.test({
   name: "glob: glob to regex",
   fn(): void {
     assertEquals(globToRegExp("unicorn.*") instanceof RegExp, true);
@@ -47,8 +46,8 @@ test({
 
 testWalk(
   async (d: string): Promise<void> => {
-    await mkdir(d + "/a");
-    await mkdir(d + "/b");
+    await Deno.mkdir(d + "/a");
+    await Deno.mkdir(d + "/b");
     await touch(d + "/a/x.ts");
     await touch(d + "/b/z.ts");
     await touch(d + "/b/z.js");
@@ -65,8 +64,8 @@ testWalk(
 
 testWalk(
   async (d: string): Promise<void> => {
-    await mkdir(d + "/a");
-    await mkdir(d + "/a/yo");
+    await Deno.mkdir(d + "/a");
+    await Deno.mkdir(d + "/a/yo");
     await touch(d + "/a/yo/x.ts");
   },
   async function globInWalkFolderWildcard(): Promise<void> {
@@ -85,10 +84,10 @@ testWalk(
 
 testWalk(
   async (d: string): Promise<void> => {
-    await mkdir(d + "/a");
-    await mkdir(d + "/a/unicorn");
-    await mkdir(d + "/a/deno");
-    await mkdir(d + "/a/raptor");
+    await Deno.mkdir(d + "/a");
+    await Deno.mkdir(d + "/a/unicorn");
+    await Deno.mkdir(d + "/a/deno");
+    await Deno.mkdir(d + "/a/raptor");
     await touch(d + "/a/raptor/x.ts");
     await touch(d + "/a/deno/x.ts");
     await touch(d + "/a/unicorn/x.ts");
@@ -124,7 +123,7 @@ testWalk(
   }
 );
 
-test({
+Deno.test({
   name: "isGlob: pattern to test",
   fn(): void {
     // should be true if valid glob pattern
@@ -239,10 +238,10 @@ test({
   },
 });
 
-test("normalizeGlobGlobstar", function (): void {
+Deno.test("normalizeGlobGlobstar", function (): void {
   assertEquals(normalizeGlob(`**${SEP}..`, { globstar: true }), `**${SEP}..`);
 });
 
-test("joinGlobsGlobstar", function (): void {
+Deno.test("joinGlobsGlobstar", function (): void {
   assertEquals(joinGlobs(["**", ".."], { globstar: true }), `**${SEP}..`);
 });

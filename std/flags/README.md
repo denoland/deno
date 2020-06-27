@@ -5,10 +5,9 @@ Command line arguments parser for Deno based on minimist
 # Example
 
 ```ts
-const { args } = Deno;
 import { parse } from "https://deno.land/std/flags/mod.ts";
 
-console.dir(parse(args));
+console.dir(parse(Deno.args));
 ```
 
 ```
@@ -57,11 +56,10 @@ options can be:
   example:
   ```ts
   // $ deno run example.ts -- a arg1
-  const { args } = Deno;
   import { parse } from "https://deno.land/std/flags/mod.ts";
-  console.dir(parse(args, { "--": false }));
+  console.dir(parse(Deno.args, { "--": false }));
   // output: { _: [ "a", "arg1" ] }
-  console.dir(parse(args, { "--": true }));
+  console.dir(parse(Deno.args, { "--": true }));
   // output: { _: [], --: [ "a", "arg1" ] }
   ```
 - `options.unknown` - a function which is invoked with a command line parameter

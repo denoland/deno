@@ -39,7 +39,7 @@ export class Request extends body.Body implements domTypes.Request {
       init = {};
     }
 
-    let b: body.BodySource;
+    let b: BodyInit;
 
     // prefer body from init
     if (init.body) {

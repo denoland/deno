@@ -1,3 +1,3 @@
 [WILDCARD]
-fetch_source_file specifier: file:[WILDCARD]cli/tests/subdir/type_reference.d.ts 
+fetch_source_file specifier: file:[WILDCARD]cli/tests/subdir/type_reference.d.ts [WILDCARD]
 [WILDCARD]

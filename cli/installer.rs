@@ -85,22 +85,18 @@ fn get_installer_root() -> Result<PathBuf, Error> {
       return PathBuf::from(env_dir).canonicalize();
     }
   }
-  // In Windows's Powershell $HOME environmental variable maybe null
-  // if so use $USERPROFILE instead.
-  let home = env::var("HOME")
-    .map(String::into)
-    .unwrap_or_else(|_| "".to_string());
-  let user_profile = env::var("USERPROFILE")
-    .map(String::into)
-    .unwrap_or_else(|_| "".to_string());
-
-  if home.is_empty() && user_profile.is_empty() {
-    return Err(Error::new(ErrorKind::Other, "$HOME is not defined"));
-  }
-
-  let home_path = if !home.is_empty() { home } else { user_profile };
-
-  let mut home_path = PathBuf::from(home_path);
+  // Note: on Windows, the $HOME environment variable may be set by users or by
+  // third party software, but it is non-standard and should not be relied upon.
+  let home_env_var = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
+  let mut home_path =
+    env::var_os(home_env_var)
+      .map(PathBuf::from)
+      .ok_or_else(|| {
+        Error::new(
+          ErrorKind::NotFound,
+          format!("${} is not defined", home_env_var),
+        )
+      })?;
   home_path.push(".deno");
   Ok(home_path)
 }

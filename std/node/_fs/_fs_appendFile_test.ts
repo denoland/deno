@@ -1,12 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-const { test } = Deno;
 import { assertEquals, assertThrows, fail } from "../../testing/asserts.ts";
 import { appendFile, appendFileSync } from "./_fs_appendFile.ts";
 import { fromFileUrl } from "../path.ts";
 
 const decoder = new TextDecoder("utf-8");
 
-test({
+Deno.test({
   name: "No callback Fn results in Error",
   fn() {
     assertThrows(
@@ -19,11 +18,12 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "Unsupported encoding results in error()",
   fn() {
     assertThrows(
       () => {
+        // @ts-expect-error Type '"made-up-encoding"' is not assignable to type
         appendFile("some/path", "some data", "made-up-encoding", () => {});
       },
       Error,
@@ -34,6 +34,7 @@ test({
         appendFile(
           "some/path",
           "some data",
+          // @ts-expect-error Type '"made-up-encoding"' is not assignable to type
           { encoding: "made-up-encoding" },
           () => {}
         );
@@ -42,6 +43,7 @@ test({
       "Only 'utf8' encoding is currently supported"
     );
     assertThrows(
+      // @ts-expect-error Type '"made-up-encoding"' is not assignable to type
       () => appendFileSync("some/path", "some data", "made-up-encoding"),
       Error,
       "Only 'utf8' encoding is currently supported"
@@ -49,6 +51,7 @@ test({
     assertThrows(
       () =>
         appendFileSync("some/path", "some data", {
+          // @ts-expect-error Type '"made-up-encoding"' is not assignable to type
           encoding: "made-up-encoding",
         }),
       Error,
@@ -57,7 +60,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "Async: Data is written to passed in rid",
   async fn() {
     const tempFile: string = await Deno.makeTempFile();
@@ -86,7 +89,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "Async: Data is written to passed in file path",
   async fn() {
     const openResourcesBeforeAppend: Deno.ResourceMap = Deno.resources();
@@ -110,7 +113,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "Async: Data is written to passed in URL",
   async fn() {
     const openResourcesBeforeAppend: Deno.ResourceMap = Deno.resources();
@@ -135,7 +138,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name:
     "Async: Callback is made with error if attempting to append data to an existing file with 'ax' flag",
   async fn() {
@@ -159,7 +162,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "Sync: Data is written to passed in rid",
   fn() {
     const tempFile: string = Deno.makeTempFileSync();
@@ -176,7 +179,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "Sync: Data is written to passed in file path",
   fn() {
     const openResourcesBeforeAppend: Deno.ResourceMap = Deno.resources();
@@ -188,7 +191,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name:
     "Sync: error thrown if attempting to append data to an existing file with 'ax' flag",
   fn() {

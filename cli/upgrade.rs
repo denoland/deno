@@ -90,14 +90,12 @@ pub async fn upgrade_command(
     }
   };
 
-  println!(
-    "Version has been found\nDeno is upgrading to version {}",
-    &install_version
-  );
-
-  let archive_data =
-    download_package(&compose_url_to_exec(&install_version)?, client).await?;
-
+  let archive_data = download_package(
+    &compose_url_to_exec(&install_version)?,
+    client,
+    &install_version,
+  )
+  .await?;
   let old_exe_path = std::env::current_exe()?;
   let new_exe_path = unpack(archive_data)?;
   let permissions = fs::metadata(&old_exe_path)?.permissions();
@@ -116,15 +114,29 @@ pub async fn upgrade_command(
 fn download_package(
   url: &Url,
   client: Client,
+  version: &Version,
 ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, ErrBox>>>> {
   println!("downloading {}", url);
   let url = url.clone();
+  let version = version.clone();
   let fut = async move {
-    match fetch_once(client.clone(), &url, None).await? {
-      FetchOnceResult::Code(source, _) => Ok(source),
-      FetchOnceResult::NotModified => unreachable!(),
-      FetchOnceResult::Redirect(_url, _) => {
-        download_package(&_url, client).await
+    match fetch_once(client.clone(), &url, None).await {
+      Ok(result) => {
+        println!(
+          "Version has been found\nDeno is upgrading to version {}",
+          &version
+        );
+        match result {
+          FetchOnceResult::Code(source, _) => Ok(source),
+          FetchOnceResult::NotModified => unreachable!(),
+          FetchOnceResult::Redirect(_url, _) => {
+            download_package(&_url, client, &version).await
+          }
+        }
+      }
+      Err(_) => {
+        println!("Version has not been found, aborting");
+        std::process::exit(1)
       }
     }
   };
@@ -172,28 +184,40 @@ fn unpack(archive_data: Vec<u8>) -> Result<PathBuf, ErrBox> {
       cmd.stdin.as_mut().unwrap().write_all(&archive_data)?;
       cmd.wait()?
     }
+    "zip" if cfg!(windows) => {
+      let archive_path = temp_dir.join("deno.zip");
+      fs::write(&archive_path, &archive_data)?;
+      Command::new("powershell.exe")
+        .arg("-NoLogo")
+        .arg("-NoProfile")
+        .arg("-NonInteractive")
+        .arg("-Command")
+        .arg(
+          "& {
+            param($Path, $DestinationPath)
+            trap { $host.ui.WriteErrorLine($_.Exception); exit 1 }
+            Add-Type -AssemblyName System.IO.Compression.FileSystem
+            [System.IO.Compression.ZipFile]::ExtractToDirectory(
+              $Path,
+              $DestinationPath
+            );
+          }",
+        )
+        .arg("-Path")
+        .arg(&archive_path)
+        .arg("-DestinationPath")
+        .arg(&temp_dir)
+        .spawn()?
+        .wait()?
+    }
     "zip" => {
-      if cfg!(windows) {
-        let archive_path = temp_dir.join("deno.zip");
-        fs::write(&archive_path, &archive_data)?;
-        Command::new("powershell.exe")
-          .arg("-Command")
-          .arg("Expand-Archive")
-          .arg("-Path")
-          .arg(&archive_path)
-          .arg("-DestinationPath")
-          .arg(&temp_dir)
-          .spawn()?
-          .wait()?
-      } else {
-        let archive_path = temp_dir.join("deno.zip");
-        fs::write(&archive_path, &archive_data)?;
-        Command::new("unzip")
-          .current_dir(&temp_dir)
-          .arg(archive_path)
-          .spawn()?
-          .wait()?
-      }
+      let archive_path = temp_dir.join("deno.zip");
+      fs::write(&archive_path, &archive_data)?;
+      Command::new("unzip")
+        .current_dir(&temp_dir)
+        .arg(archive_path)
+        .spawn()?
+        .wait()?
     }
     ext => panic!("Unsupported archive type: '{}'", ext),
   };

@@ -33,8 +33,8 @@ import { setSignals } from "./signals.ts";
 // TODO: factor out `Deno` global assignment to separate function
 // Add internal object to Deno object.
 // This is not exposed as part of the Deno types.
-// @ts-ignore
-denoNs[internalSymbol] = internalObject;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+(denoNs as any)[internalSymbol] = internalObject;
 
 const encoder = new TextEncoder();
 
@@ -128,8 +128,8 @@ export function bootstrapWorkerRuntime(
     throw new Error("Worker runtime already bootstrapped");
   }
   // Remove bootstrapping methods from global scope
-  // @ts-ignore
-  globalThis.bootstrap = undefined;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (globalThis as any).bootstrap = undefined;
   log("bootstrapWorkerRuntime");
   hasBootstrapped = true;
   Object.defineProperties(globalThis, windowOrWorkerGlobalScopeMethods);

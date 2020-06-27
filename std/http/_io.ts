@@ -1,6 +1,6 @@
 import { BufReader, BufWriter } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
-import { assert } from "../testing/asserts.ts";
+import { assert } from "../_util/assert.ts";
 import { encoder } from "../encoding/utf8.ts";
 import { ServerRequest, Response } from "./server.ts";
 import { STATUS_TEXT } from "./http_status.ts";
@@ -113,50 +113,60 @@ export function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
   return { read };
 }
 
-const kProhibitedTrailerHeaders = [
-  "transfer-encoding",
-  "content-length",
-  "trailer",
-];
+function isProhibidedForTrailer(key: string): boolean {
+  const s = new Set(["transfer-encoding", "content-length", "trailer"]);
+  return s.has(key.toLowerCase());
+}
 
-/**
- * Read trailer headers from reader and append values to headers.
- * "trailer" field will be deleted.
- * */
+/** Read trailer headers from reader and append values to headers. "trailer"
+ * field will be deleted. */
 export async function readTrailers(
   headers: Headers,
   r: BufReader
 ): Promise<void> {
-  const keys = parseTrailer(headers.get("trailer"));
-  if (!keys) return;
+  const trailers = parseTrailer(headers.get("trailer"));
+  if (trailers == null) return;
+  const trailerNames = [...trailers.keys()];
   const tp = new TextProtoReader(r);
   const result = await tp.readMIMEHeader();
-  assert(result !== null, "trailer must be set");
+  if (result == null) {
+    throw new Deno.errors.InvalidData("Missing trailer header.");
+  }
+  const undeclared = [...result.keys()].filter(
+    (k) => !trailerNames.includes(k)
+  );
+  if (undeclared.length > 0) {
+    throw new Deno.errors.InvalidData(
+      `Undeclared trailers: ${Deno.inspect(undeclared)}.`
+    );
+  }
   for (const [k, v] of result) {
-    if (!keys.has(k)) {
-      throw new Error("Undeclared trailer field");
-    }
-    keys.delete(k);
     headers.append(k, v);
   }
-  assert(keys.size === 0, "Missing trailers");
+  const missingTrailers = trailerNames.filter((k) => !result.has(k));
+  if (missingTrailers.length > 0) {
+    throw new Deno.errors.InvalidData(
+      `Missing trailers: ${Deno.inspect(missingTrailers)}.`
+    );
+  }
   headers.delete("trailer");
 }
 
-function parseTrailer(field: string | null): Set<string> | undefined {
+function parseTrailer(field: string | null): Headers | undefined {
   if (field == null) {
     return undefined;
   }
-  const keys = field.split(",").map((v) => v.trim());
-  if (keys.length === 0) {
-    throw new Error("Empty trailer");
+  const trailerNames = field.split(",").map((v) => v.trim().toLowerCase());
+  if (trailerNames.length === 0) {
+    throw new Deno.errors.InvalidData("Empty trailer header.");
   }
-  for (const invalid of kProhibitedTrailerHeaders) {
-    if (keys.includes(invalid)) {
-      throw new Error(`Prohibited field for trailer`);
-    }
+  const prohibited = trailerNames.filter((k) => isProhibidedForTrailer(k));
+  if (prohibited.length > 0) {
+    throw new Deno.errors.InvalidData(
+      `Prohibited trailer names: ${Deno.inspect(prohibited)}.`
+    );
   }
-  return new Set(keys);
+  return new Headers(trailerNames.map((key) => [key, ""]));
 }
 
 export async function writeChunkedBody(
@@ -177,7 +187,8 @@ export async function writeChunkedBody(
   await writer.write(endChunk);
 }
 
-/** write trailer headers to writer. it mostly should be called after writeResponse */
+/** Write trailer headers to writer. It should mostly should be called after
+ * `writeResponse()`. */
 export async function writeTrailers(
   w: Deno.Writer,
   headers: Headers,
@@ -185,29 +196,31 @@ export async function writeTrailers(
 ): Promise<void> {
   const trailer = headers.get("trailer");
   if (trailer === null) {
-    throw new Error('response headers must have "trailer" header field');
+    throw new TypeError("Missing trailer header.");
   }
   const transferEncoding = headers.get("transfer-encoding");
   if (transferEncoding === null || !transferEncoding.match(/^chunked/)) {
-    throw new Error(
-      `trailer headers is only allowed for "transfer-encoding: chunked": got "${transferEncoding}"`
+    throw new TypeError(
+      `Trailers are only allowed for "transfer-encoding: chunked", got "transfer-encoding: ${transferEncoding}".`
     );
   }
   const writer = BufWriter.create(w);
-  const trailerHeaderFields = trailer
-    .split(",")
-    .map((s) => s.trim().toLowerCase());
-  for (const f of trailerHeaderFields) {
-    assert(
-      !kProhibitedTrailerHeaders.includes(f),
-      `"${f}" is prohibited for trailer header`
+  const trailerNames = trailer.split(",").map((s) => s.trim().toLowerCase());
+  const prohibitedTrailers = trailerNames.filter((k) =>
+    isProhibidedForTrailer(k)
+  );
+  if (prohibitedTrailers.length > 0) {
+    throw new TypeError(
+      `Prohibited trailer names: ${Deno.inspect(prohibitedTrailers)}.`
     );
   }
+  const undeclared = [...trailers.keys()].filter(
+    (k) => !trailerNames.includes(k)
+  );
+  if (undeclared.length > 0) {
+    throw new TypeError(`Undeclared trailers: ${Deno.inspect(undeclared)}.`);
+  }
   for (const [key, value] of trailers) {
-    assert(
-      trailerHeaderFields.includes(key),
-      `Not trailer header field: ${key}`
-    );
     await writer.write(encoder.encode(`${key}: ${value}\r\n`));
   }
   await writer.write(encoder.encode("\r\n"));

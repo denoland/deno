@@ -1,7 +1,10 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+/** This module is browser compatible. */
+
 import { SEP, SEP_PATTERN } from "./separator.ts";
 import { globrex } from "./_globrex.ts";
 import { join, normalize } from "./mod.ts";
-import { assert } from "../testing/asserts.ts";
+import { assert } from "../_util/assert.ts";
 
 export interface GlobOptions {
   extended?: boolean;
