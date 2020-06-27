@@ -46,6 +46,35 @@ fn std_lint() {
 }
 
 #[test]
+fn doc_tests() {
+  for file in util::root_path()
+    .join("cli/tests/doc")
+    .as_path()
+    .read_dir()
+    .unwrap()
+  {
+    let file = file.unwrap();
+    assert!(file.file_type().unwrap().is_file());
+
+    let name = file.file_name();
+    let name = name.to_str().unwrap();
+
+    if name.ends_with(".js") || name.ends_with(".ts") {
+      let doc_path = file.path();
+      let mut out_path = doc_path.clone();
+      out_path.set_extension("out");
+
+      (util::CheckOutputIntegrationTest {
+        args: &format!("doc {}", doc_path.to_str().unwrap()),
+        output: out_path.to_str().unwrap(),
+        ..Default::default()
+      })
+      .run();
+    }
+  }
+}
+
+#[test]
 fn x_deno_warning() {
   let g = util::http_server();
   let output = util::deno_cmd()
