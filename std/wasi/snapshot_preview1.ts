@@ -853,7 +853,10 @@ export default class Module {
         const view = new DataView(this.memory.buffer);
 
         try {
-          const info = Deno.statSync(path);
+          const info =
+            (flags & LOOKUPFLAGS_SYMLINK_FOLLOW) != 0
+              ? Deno.statSync(path)
+              : Deno.lstatSync(path);
 
           view.setBigUint64(buf_out, BigInt(info.dev ? info.dev : 0), true);
           buf_out += 8;
