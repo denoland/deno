@@ -864,27 +864,27 @@ export default class Module {
           switch (true) {
             case info.isFile:
               view.setUint8(buf_out, FILETYPE_REGULAR_FILE);
-              buf_out += 4;
+              buf_out += 8;
               break;
 
             case info.isDirectory:
               view.setUint8(buf_out, FILETYPE_DIRECTORY);
-              buf_out += 4;
+              buf_out += 8;
               break;
 
             case info.isSymlink:
               view.setUint8(buf_out, FILETYPE_SYMBOLIC_LINK);
-              buf_out += 4;
+              buf_out += 8;
               break;
 
             default:
               view.setUint8(buf_out, FILETYPE_UNKNOWN);
-              buf_out += 4;
+              buf_out += 8;
               break;
           }
 
           view.setUint32(buf_out, Number(info.nlink), true);
-          buf_out += 4;
+          buf_out += 8;
 
           view.setBigUint64(buf_out, BigInt(info.size), true);
           buf_out += 8;
