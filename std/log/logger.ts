@@ -52,7 +52,7 @@ export class Logger {
   constructor(
     loggerName: string,
     levelName: LevelName,
-    options: LoggerOptions = {}
+    options: LoggerOptions = {},
   ) {
     this.loggerName = loggerName;
     this.level = getLevelByName(levelName);

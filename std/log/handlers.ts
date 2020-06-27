@@ -195,7 +195,7 @@ export class RotatingFileHandler extends FileHandler {
         if (await exists(this._filename + "." + i)) {
           this.destroy();
           throw new Deno.errors.AlreadyExists(
-            "Backup log file " + this._filename + "." + i + " already exists"
+            "Backup log file " + this._filename + "." + i + " already exists",
           );
         }
       }
