@@ -42,9 +42,15 @@ lazy_static! {
     let stdin = unsafe { std::fs::File::from_raw_fd(0) };
     #[cfg(windows)]
     let stdin = unsafe {
-      std::fs::File::from_raw_handle(winapi::um::processenv::GetStdHandle(
+      let handle = winapi::um::processenv::GetStdHandle(
         winapi::um::winbase::STD_INPUT_HANDLE,
-      ))
+      );
+
+      if handle == std::ptr::null_mut() {
+        panic!("GetStdHandle returned null handle for STDIN, seems our process doesn't have this associated standard handle");
+      }
+
+      std::fs::File::from_raw_handle(handle)
     };
     stdin
   };
