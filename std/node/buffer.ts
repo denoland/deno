@@ -40,8 +40,53 @@ export default class Buffer extends Uint8Array {
   /**
    * Allocates a new Buffer of size bytes.
    */
-  static alloc(size: number): Buffer {
-    return new Buffer(size);
+  static alloc(
+    size: number,
+    fill?: number | string | Uint8Array | Buffer,
+    encoding = "utf8"
+  ): Buffer {
+    if (typeof size !== "number") {
+      throw new TypeError(
+        `The "size" argument must be of type number. Received type ${typeof size}`
+      );
+    }
+
+    const buf = new Buffer(size);
+    if (size === 0) return buf;
+
+    let bufFill;
+    if (typeof fill === "string") {
+      encoding = checkEncoding(encoding);
+      if (typeof fill === "string" && fill.length === 1 && encoding === "utf8")
+        buf.fill(fill.charCodeAt(0));
+      else bufFill = Buffer.from(fill, encoding);
+    } else if (typeof fill === "number") buf.fill(fill);
+    else if (fill instanceof Uint8Array) {
+      if (fill.length === 0) {
+        throw new TypeError(
+          `The argument "value" is invalid. Received ${fill.constructor.name} []`
+        );
+      }
+
+      bufFill = fill;
+    }
+
+    if (bufFill) {
+      if (bufFill.length > buf.length)
+        bufFill = bufFill.subarray(0, buf.length);
+
+      let offset = 0;
+      while (offset < size) {
+        buf.set(bufFill, offset);
+        offset += bufFill.length;
+        if (offset + bufFill.length >= size) break;
+      }
+      if (offset !== size) {
+        buf.set(bufFill.subarray(0, size - offset), offset);
+      }
+    }
+
+    return buf;
   }
 
   /**
