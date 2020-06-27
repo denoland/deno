@@ -6,6 +6,7 @@ import {
   assertThrows,
 } from "../../testing/asserts.ts";
 import { writeFile, writeFileSync } from "./_fs_writeFile.ts";
+import { TextEncodings } from "./_fs_common.ts";
 import * as path from "../../path/mod.ts";
 
 const testDataDir = path.resolve(path.join("node", "_fs", "testdata"));
@@ -73,43 +74,18 @@ Deno.test(
   function testUnsupportedEncoding() {
     assertThrows(
       () => {
-        writeFile("some/path", "some data", "hex", () => {});
+        writeFile("some/path", "some data", "utf16le", () => {});
       },
       Error,
-      `Not implemented: "hex" encoding`
+      `Not implemented: "utf16le" encoding`
     );
 
     assertThrows(
       () => {
-        writeFileSync("some/path", "some data", "hex");
+        writeFileSync("some/path", "some data", "utf16le");
       },
       Error,
-      `Not implemented: "hex" encoding`
-    );
-
-    assertThrows(
-      () => {
-        writeFile(
-          "some/path",
-          "some data",
-          {
-            encoding: "base64",
-          },
-          () => {}
-        );
-      },
-      Error,
-      `Not implemented: "base64" encoding`
-    );
-
-    assertThrows(
-      () => {
-        writeFileSync("some/path", "some data", {
-          encoding: "base64",
-        });
-      },
-      Error,
-      `Not implemented: "base64" encoding`
+      `Not implemented: "utf16le" encoding`
     );
   }
 );
@@ -149,6 +125,36 @@ Deno.test(
     await Deno.remove("_fs_writeFile_test_file.txt");
     assertEquals(res, null);
     assertEquals(decoder.decode(data), "hello world");
+  }
+);
+
+Deno.test(
+  "Data is written to correct file encodings",
+  async function testCorrectWriteUsingDifferentEncodings() {
+    const encodings = [
+      ["hex", "68656c6c6f20776f726c64"],
+      ["HEX", "68656c6c6f20776f726c64"],
+      ["base64", "aGVsbG8gd29ybGQ="],
+      ["BASE64", "aGVsbG8gd29ybGQ="],
+      ["utf8", "hello world"],
+      ["utf-8", "hello world"],
+    ];
+
+    for (const [encoding, value] of encodings) {
+      const res = await new Promise((resolve) => {
+        writeFile(
+          "_fs_writeFile_test_file.txt",
+          value,
+          encoding as TextEncodings,
+          resolve
+        );
+      });
+
+      const data = await Deno.readFile("_fs_writeFile_test_file.txt");
+      await Deno.remove("_fs_writeFile_test_file.txt");
+      assertEquals(res, null);
+      assertEquals(decoder.decode(data), "hello world");
+    }
   }
 );
 
@@ -231,6 +237,29 @@ Deno.test(
     const data = Deno.readFileSync(tempFile);
     Deno.removeSync(tempFile);
     assertEquals(decoder.decode(data), "hello world");
+  }
+);
+
+Deno.test(
+  "Data is written to correct file encodings",
+  function testCorrectWriteSyncUsingDifferentEncodings() {
+    const encodings = [
+      ["hex", "68656c6c6f20776f726c64"],
+      ["HEX", "68656c6c6f20776f726c64"],
+      ["base64", "aGVsbG8gd29ybGQ="],
+      ["BASE64", "aGVsbG8gd29ybGQ="],
+      ["utf8", "hello world"],
+      ["utf-8", "hello world"],
+    ];
+
+    for (const [encoding, value] of encodings) {
+      const file = "_fs_writeFileSync_test_file";
+      writeFileSync(file, value, encoding as TextEncodings);
+
+      const data = Deno.readFileSync(file);
+      Deno.removeSync(file);
+      assertEquals(decoder.decode(data), "hello world");
+    }
   }
 );
 
