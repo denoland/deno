@@ -46,11 +46,12 @@ To use staring directory for absolute imports:
 // import_map.json
 
 {
-    "imports": {
-        "/": "./"
-    }
+  "imports": {
+    "/": "./"
+  }
 }
 ```
+
 ```ts
 // main.ts
 
@@ -63,8 +64,8 @@ You may map a different directory: (eg. src)
 // import_map.json
 
 {
-    "imports": {
-        "/": "./src"
-    }
+  "imports": {
+    "/": "./src"
+  }
 }
 ```
