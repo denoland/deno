@@ -2,6 +2,18 @@ import { assert, assertEquals, assertThrows } from "../testing/asserts.ts";
 import Buffer from "./buffer.ts";
 
 Deno.test({
+  name: "Buffer global scope",
+  fn() {
+    // deno-lint-ignore ban-ts-comment
+    // @ts-ignore
+    assert(window.Buffer === Buffer);
+    // deno-lint-ignore ban-ts-comment
+    // @ts-ignore
+    assert(globalThis.Buffer === Buffer);
+  },
+});
+
+Deno.test({
   name: "alloc fails on negative numbers",
   fn() {
     assertThrows(
@@ -411,13 +423,35 @@ Deno.test({
 Deno.test({
   name: "isBuffer returns true if the object is a buffer",
   fn() {
-    assert(Buffer.isBuffer(Buffer.from("test")));
+    assertEquals(Buffer.isBuffer(Buffer.from("test")), true);
   },
 });
 
 Deno.test({
   name: "isBuffer returns false if the object is not a buffer",
   fn() {
-    assert(!Buffer.isBuffer({ test: 3 }));
+    assertEquals(Buffer.isBuffer({ test: 3 }), false);
+    assertEquals(Buffer.isBuffer(new Uint8Array()), false);
+  },
+});
+
+Deno.test({
+  name: "Buffer toJSON",
+  fn() {
+    assertEquals(
+      JSON.stringify(Buffer.from("deno")),
+      '{"type":"Buffer","data":[100,101,110,111]}'
+    );
+  },
+});
+
+Deno.test({
+  name: "buf.slice does not create a copy",
+  fn() {
+    const buf = Buffer.from("ceno");
+    // This method is not compatible with the Uint8Array.prototype.slice()
+    const slice = buf.slice();
+    slice[0]++;
+    assertEquals(slice.toString(), "deno");
   },
 });
