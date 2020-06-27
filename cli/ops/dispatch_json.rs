@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::op_error::OpError;
 use deno_core::Buf;
-use deno_core::CoreIsolate;
+use deno_core::CoreIsolateState;
 use deno_core::Op;
 use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
@@ -46,14 +46,17 @@ struct AsyncArgs {
 
 pub fn json_op<D>(
   d: D,
-) -> impl Fn(&mut CoreIsolate, &[u8], Option<ZeroCopyBuf>) -> Op
+) -> impl Fn(&mut CoreIsolateState, &[u8], &mut [ZeroCopyBuf]) -> Op
 where
-  D:
-    Fn(&mut CoreIsolate, Value, Option<ZeroCopyBuf>) -> Result<JsonOp, OpError>,
+  D: Fn(
+    &mut CoreIsolateState,
+    Value,
+    &mut [ZeroCopyBuf],
+  ) -> Result<JsonOp, OpError>,
 {
-  move |isolate: &mut CoreIsolate,
+  move |isolate_state: &mut CoreIsolateState,
         control: &[u8],
-        zero_copy: Option<ZeroCopyBuf>| {
+        zero_copy: &mut [ZeroCopyBuf]| {
     let async_args: AsyncArgs = match serde_json::from_slice(control) {
       Ok(args) => args,
       Err(e) => {
@@ -66,7 +69,7 @@ where
 
     let result = serde_json::from_slice(control)
       .map_err(OpError::from)
-      .and_then(|args| d(isolate, args, zero_copy));
+      .and_then(|args| d(isolate_state, args, zero_copy));
 
     // Convert to Op
     match result {

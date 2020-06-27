@@ -40,6 +40,11 @@ Be explicit even when it means more code.
 There are some situations where it may make sense to use such techniques, but in
 the vast majority of cases it does not.
 
+## Inclusive code
+
+Please follow the guidelines for inclusive code outlined at
+https://chromium.googlesource.com/chromium/src/+/master/styleguide/inclusive_code.md.
+
 ## Rust
 
 Follow Rust conventions and be consistent with existing code.
@@ -314,3 +319,16 @@ export function foo(): string {
 `https://deno.land/std/` is intended to be baseline functionality that all Deno
 programs can rely on. We want to guarantee to users that this code does not
 include potentially unreviewed third party code.
+
+#### Document and maintain browser compatiblity.
+
+If a module is browser compatible, include the following in the JSDoc at the top
+of the module:
+
+```ts
+/** This module is browser compatible. */
+```
+
+Maintain browser compatibility for such a module by either not using the global
+`Deno` namespace or feature-testing for it. Make sure any new dependencies are
+also browser compatible.

@@ -21,7 +21,9 @@ declare namespace Deno {
    */
   export function umask(mask?: number): number;
 
-  /** Synchronously creates `newpath` as a hard link to `oldpath`.
+  /** **UNSTABLE**: This API needs a security review.
+   *
+   * Synchronously creates `newpath` as a hard link to `oldpath`.
    *
    * ```ts
    * Deno.linkSync("old/name", "new/name");
@@ -30,9 +32,9 @@ declare namespace Deno {
    * Requires `allow-read` and `allow-write` permissions. */
   export function linkSync(oldpath: string, newpath: string): void;
 
-  /** Creates `newpath` as a hard link to `oldpath`.
+  /** **UNSTABLE**: This API needs a security review.
    *
-   *  **UNSTABLE**: needs security review.
+   * Creates `newpath` as a hard link to `oldpath`.
    *
    * ```ts
    * await Deno.link("old/name", "new/name");
@@ -45,7 +47,7 @@ declare namespace Deno {
     type: "file" | "dir";
   };
 
-  /** **UNSTABLE**: needs security review.
+  /** **UNSTABLE**: This API needs a security review.
    *
    * Creates `newpath` as a symbolic link to `oldpath`.
    *
@@ -63,7 +65,7 @@ declare namespace Deno {
     options?: SymlinkOptions
   ): void;
 
-  /** **UNSTABLE**: needs security review.
+  /** **UNSTABLE**: This API needs a security review.
    *
    * Creates `newpath` as a symbolic link to `oldpath`.
    *
@@ -81,176 +83,10 @@ declare namespace Deno {
     options?: SymlinkOptions
   ): Promise<void>;
 
-  /** **UNSTABLE** */
-  export type DirKind =
-    | "home"
-    | "cache"
-    | "config"
-    | "executable"
-    | "data"
-    | "data_local"
-    | "audio"
-    | "desktop"
-    | "document"
-    | "download"
-    | "font"
-    | "picture"
-    | "public"
-    | "template"
-    | "tmp"
-    | "video";
-
-  /**
-   * **UNSTABLE**: Currently under evaluation to decide if method name `dir` and
-   * parameter type alias name `DirKind` should be renamed.
+  /** **Unstable**  There are questions around which permission this needs. And
+   * maybe should be renamed (loadAverage?)
    *
-   * Returns the user and platform specific directories.
-   *
-   * ```ts
-   * const homeDirectory = Deno.dir("home");
-   * ```
-   *
-   * Requires `allow-env` permission.
-   *
-   * Returns `null` if there is no applicable directory or if any other error
-   * occurs.
-   *
-   * Argument values: `"home"`, `"cache"`, `"config"`, `"executable"`, `"data"`,
-   * `"data_local"`, `"audio"`, `"desktop"`, `"document"`, `"download"`,
-   * `"font"`, `"picture"`, `"public"`, `"template"`, `"tmp"`, `"video"`
-   *
-   * `"home"`
-   *
-   * |Platform | Value                                    | Example                |
-   * | ------- | -----------------------------------------| -----------------------|
-   * | Linux   | `$HOME`                                  | /home/alice            |
-   * | macOS   | `$HOME`                                  | /Users/alice           |
-   * | Windows | `{FOLDERID_Profile}`                     | C:\Users\Alice         |
-   *
-   * `"cache"`
-   *
-   * |Platform | Value                               | Example                      |
-   * | ------- | ----------------------------------- | ---------------------------- |
-   * | Linux   | `$XDG_CACHE_HOME` or `$HOME`/.cache | /home/alice/.cache           |
-   * | macOS   | `$HOME`/Library/Caches              | /Users/Alice/Library/Caches  |
-   * | Windows | `{FOLDERID_LocalAppData}`           | C:\Users\Alice\AppData\Local |
-   *
-   * `"config"`
-   *
-   * |Platform | Value                                 | Example                          |
-   * | ------- | ------------------------------------- | -------------------------------- |
-   * | Linux   | `$XDG_CONFIG_HOME` or `$HOME`/.config | /home/alice/.config              |
-   * | macOS   | `$HOME`/Library/Preferences           | /Users/Alice/Library/Preferences |
-   * | Windows | `{FOLDERID_RoamingAppData}`           | C:\Users\Alice\AppData\Roaming   |
-   *
-   * `"executable"`
-   *
-   * |Platform | Value                                                           | Example                |
-   * | ------- | --------------------------------------------------------------- | -----------------------|
-   * | Linux   | `XDG_BIN_HOME` or `$XDG_DATA_HOME`/../bin or `$HOME`/.local/bin | /home/alice/.local/bin |
-   * | macOS   | -                                                               | -                      |
-   * | Windows | -                                                               | -                      |
-   *
-   * `"data"`
-   *
-   * |Platform | Value                                    | Example                                  |
-   * | ------- | ---------------------------------------- | ---------------------------------------- |
-   * | Linux   | `$XDG_DATA_HOME` or `$HOME`/.local/share | /home/alice/.local/share                 |
-   * | macOS   | `$HOME`/Library/Application Support      | /Users/Alice/Library/Application Support |
-   * | Windows | `{FOLDERID_RoamingAppData}`              | C:\Users\Alice\AppData\Roaming           |
-   *
-   * `"data_local"`
-   *
-   * |Platform | Value                                    | Example                                  |
-   * | ------- | ---------------------------------------- | ---------------------------------------- |
-   * | Linux   | `$XDG_DATA_HOME` or `$HOME`/.local/share | /home/alice/.local/share                 |
-   * | macOS   | `$HOME`/Library/Application Support      | /Users/Alice/Library/Application Support |
-   * | Windows | `{FOLDERID_LocalAppData}`                | C:\Users\Alice\AppData\Local             |
-   *
-   * `"audio"`
-   *
-   * |Platform | Value              | Example              |
-   * | ------- | ------------------ | -------------------- |
-   * | Linux   | `XDG_MUSIC_DIR`    | /home/alice/Music    |
-   * | macOS   | `$HOME`/Music      | /Users/Alice/Music   |
-   * | Windows | `{FOLDERID_Music}` | C:\Users\Alice\Music |
-   *
-   * `"desktop"`
-   *
-   * |Platform | Value                | Example                |
-   * | ------- | -------------------- | ---------------------- |
-   * | Linux   | `XDG_DESKTOP_DIR`    | /home/alice/Desktop    |
-   * | macOS   | `$HOME`/Desktop      | /Users/Alice/Desktop   |
-   * | Windows | `{FOLDERID_Desktop}` | C:\Users\Alice\Desktop |
-   *
-   * `"document"`
-   *
-   * |Platform | Value                  | Example                  |
-   * | ------- | ---------------------- | ------------------------ |
-   * | Linux   | `XDG_DOCUMENTS_DIR`    | /home/alice/Documents    |
-   * | macOS   | `$HOME`/Documents      | /Users/Alice/Documents   |
-   * | Windows | `{FOLDERID_Documents}` | C:\Users\Alice\Documents |
-   *
-   * `"download"`
-   *
-   * |Platform | Value                  | Example                  |
-   * | ------- | ---------------------- | ------------------------ |
-   * | Linux   | `XDG_DOWNLOAD_DIR`     | /home/alice/Downloads    |
-   * | macOS   | `$HOME`/Downloads      | /Users/Alice/Downloads   |
-   * | Windows | `{FOLDERID_Downloads}` | C:\Users\Alice\Downloads |
-   *
-   * `"font"`
-   *
-   * |Platform | Value                                                | Example                        |
-   * | ------- | ---------------------------------------------------- | ------------------------------ |
-   * | Linux   | `$XDG_DATA_HOME`/fonts or `$HOME`/.local/share/fonts | /home/alice/.local/share/fonts |
-   * | macOS   | `$HOME/Library/Fonts`                                | /Users/Alice/Library/Fonts     |
-   * | Windows | –                                                    | –                              |
-   *
-   * `"picture"`
-   *
-   * |Platform | Value                 | Example                 |
-   * | ------- | --------------------- | ----------------------- |
-   * | Linux   | `XDG_PICTURES_DIR`    | /home/alice/Pictures    |
-   * | macOS   | `$HOME`/Pictures      | /Users/Alice/Pictures   |
-   * | Windows | `{FOLDERID_Pictures}` | C:\Users\Alice\Pictures |
-   *
-   * `"public"`
-   *
-   * |Platform | Value                 | Example             |
-   * | ------- | --------------------- | ------------------- |
-   * | Linux   | `XDG_PUBLICSHARE_DIR` | /home/alice/Public  |
-   * | macOS   | `$HOME`/Public        | /Users/Alice/Public |
-   * | Windows | `{FOLDERID_Public}`   | C:\Users\Public     |
-   *
-   * `"template"`
-   *
-   * |Platform | Value                  | Example                                                    |
-   * | ------- | ---------------------- | ---------------------------------------------------------- |
-   * | Linux   | `XDG_TEMPLATES_DIR`    | /home/alice/Templates                                      |
-   * | macOS   | –                      | –                                                          |
-   * | Windows | `{FOLDERID_Templates}` | C:\Users\Alice\AppData\Roaming\Microsoft\Windows\Templates |
-   *
-   * `"tmp"`
-   *
-   * |Platform | Value                  | Example                                                    |
-   * | ------- | ---------------------- | ---------------------------------------------------------- |
-   * | Linux   | `TMPDIR`               | /tmp                                                       |
-   * | macOS   | `TMPDIR`               | /tmp                                                       |
-   * | Windows | `{TMP}`                | C:\Users\Alice\AppData\Local\Temp                          |
-   *
-   * `"video"`
-   *
-   * |Platform | Value               | Example               |
-   * | ------- | ------------------- | --------------------- |
-   * | Linux   | `XDG_VIDEOS_DIR`    | /home/alice/Videos    |
-   * | macOS   | `$HOME`/Movies      | /Users/Alice/Movies   |
-   * | Windows | `{FOLDERID_Videos}` | C:\Users\Alice\Videos |
-   *
-   */
-  export function dir(kind: DirKind): string | null;
-
-  /** Returns an array containing the 1, 5, and 15 minute load averages. The
+   * Returns an array containing the 1, 5, and 15 minute load averages. The
    * load average is a measure of CPU and IO utilization of the last one, five,
    * and 15 minute periods expressed as a fractional number.  Zero means there
    * is no load. On Windows, the three values are always the same and represent
@@ -261,13 +97,14 @@ declare namespace Deno {
    * ```
    *
    * Requires `allow-env` permission.
-   *
-   * **Unstable**  There are questions around which permission this needs. And
-   * maybe should be renamed (loadAverage?)
    */
   export function loadavg(): number[];
 
-  /** Returns the release version of the Operating System.
+  /** **Unstable** new API. yet to be vetted. Under consideration to possibly move to
+   * Deno.build or Deno.versions and if it should depend sys-info, which may not
+   * be desireable.
+   *
+   * Returns the release version of the Operating System.
    *
    * ```ts
    * console.log(Deno.osRelease());
@@ -275,8 +112,6 @@ declare namespace Deno {
    *
    * Requires `allow-env` permission.
    *
-   * **Unstable** new API maybe move to Deno.build or Deno.versions? Depends on
-   * sys-info, which we don't necessarally want to depend on.
    */
   export function osRelease(): string;
 
@@ -699,7 +534,7 @@ declare namespace Deno {
     columnNumber: number;
   }
 
-  /** UNSTABLE: new API, yet to be vetted.
+  /** **UNSTABLE**: new API, yet to be vetted.
    *
    * Given a current location in a module, lookup the source location and return
    * it.
@@ -793,7 +628,7 @@ declare namespace Deno {
     SIGUSR2 = 31,
   }
 
-  /** **UNSTABLE**: make platform independent.
+  /** **UNSTABLE**: Further changes required to make platform independent.
    *
    * Signals numbers. This is platform dependent. */
   export const Signal: typeof MacOSSignal | typeof LinuxSignal;
@@ -947,7 +782,7 @@ declare namespace Deno {
     mtime: number | Date
   ): Promise<void>;
 
-  /** **UNSTABLE**: Maybe remove `ShutdownMode` entirely.
+  /** **UNSTABLE**: Under consideration to remove `ShutdownMode` entirely.
    *
    * Corresponds to `SHUT_RD`, `SHUT_WR`, `SHUT_RDWR` on POSIX-like systems.
    *
@@ -973,7 +808,7 @@ declare namespace Deno {
    */
   export function shutdown(rid: number, how: ShutdownMode): Promise<void>;
 
-  /** **UNSTABLE**:: new API, yet to be vetted.
+  /** **UNSTABLE**: new API, yet to be vetted.
    *
    * A generic transport listener for message-oriented protocols. */
   export interface DatagramConn extends AsyncIterable<[Uint8Array, Addr]> {
@@ -984,7 +819,7 @@ declare namespace Deno {
     /** UNSTABLE: new API, yet to be vetted.
      *
      * Sends a message to the target. */
-    send(p: Uint8Array, addr: Addr): Promise<void>;
+    send(p: Uint8Array, addr: Addr): Promise<number>;
     /** UNSTABLE: new API, yet to be vetted.
      *
      * Close closes the socket. Any pending message promises will be rejected
@@ -1013,7 +848,7 @@ declare namespace Deno {
     options: UnixListenOptions & { transport: "unix" }
   ): Listener;
 
-  /** **UNSTABLE**: new API
+  /** **UNSTABLE**: new API, yet to be vetted
    *
    * Listen announces on the local transport address.
    *
@@ -1034,7 +869,7 @@ declare namespace Deno {
     options: ListenOptions & { transport: "udp" }
   ): DatagramConn;
 
-  /** **UNSTABLE**: new API
+  /** **UNSTABLE**: new API, yet to be vetted
    *
    * Listen announces on the local transport address.
    *
@@ -1055,7 +890,9 @@ declare namespace Deno {
     path: string;
   }
 
-  /**
+  /** **UNSTABLE**:  The unix socket transport is unstable as a new API yet to
+   * be vetted.  The TCP transport is considered stable.
+   *
    * Connects to the hostname (default is "127.0.0.1") and port on the named
    * transport (default is "tcp"), and resolves to the connection (`Conn`).
    *
@@ -1067,7 +904,7 @@ declare namespace Deno {
    * const conn5 = await Deno.connect({ path: "/foo/bar.sock", transport: "unix" });
    * ```
    *
-   * Requires `allow-net` permission for "tcp" and `allow-read` for unix. */
+   * Requires `allow-net` permission for "tcp" and `allow-read` for "unix". */
   export function connect(
     options: ConnectOptions | UnixConnectOptions
   ): Promise<Conn>;
@@ -1155,6 +992,12 @@ declare namespace Deno {
 
   export interface NetPermissionDescriptor {
     name: "net";
+    /** Optional url associated with this descriptor.
+     *
+     * If specified: must be a valid url. Expected format: <scheme>://<host_or_ip>[:port][/path]
+     * If the scheme is unknown, callers should specify some scheme, such as x:// na:// unknown://
+     *
+     * See: https://www.iana.org/assignments/uri-schemes/uri-schemes.xhtml */
     url?: string;
   }
 
@@ -1207,7 +1050,7 @@ declare namespace Deno {
      * ```ts
      * const status = await Deno.permissions.request({ name: "env" });
      * if (status.state === "granted") {
-     *   console.log(Deno.homeDir());
+     *   console.log(Deno.dir("home");
      * } else {
      *   console.log("'env' permission is denied.");
      * }
@@ -1216,8 +1059,8 @@ declare namespace Deno {
     request(desc: PermissionDescriptor): Promise<PermissionStatus>;
   }
 
-  /** **UNSTABLE**: maybe move to `navigator.permissions` to match web API. It
-   * could look like `navigator.permissions.query({ name: Deno.symbols.read })`.
+  /** **UNSTABLE**: Under consideration to move to `navigator.permissions` to
+   * match web API. It could look like `navigator.permissions.query({ name: Deno.symbols.read })`.
    */
   export const permissions: Permissions;
 
@@ -1227,7 +1070,10 @@ declare namespace Deno {
     constructor(state: PermissionState);
   }
 
-  /** Get the `hostname` of the machine the Deno process is running on.
+  /**  **UNSTABLE**: New API, yet to be vetted.  Additional consideration is still
+   * necessary around the permissions required.
+   *
+   * Get the `hostname` of the machine the Deno process is running on.
    *
    * ```ts
    * console.log(Deno.hostname());
@@ -1236,4 +1082,114 @@ declare namespace Deno {
    *  Requires `allow-env` permission.
    */
   export function hostname(): string;
+
+  /** **UNSTABLE**: The URL of the file that was originally executed from the command-line. */
+  export const mainModule: string;
+
+  /** Synchronously truncates or extends the specified file stream, to reach the
+   * specified `len`.  If `len` is not specified then the entire file contents
+   * are truncated.
+   *
+   * ```ts
+   * // truncate the entire file
+   * const file = Deno.open("my_file.txt", { read: true, write: true, truncate: true, create: true });
+   * Deno.ftruncateSync(file.rid);
+   *
+   * // truncate part of the file
+   * const file = Deno.open("my_file.txt", { read: true, write: true, create: true });
+   * Deno.write(file.rid, new TextEncoder().encode("Hello World"));
+   * Deno.ftruncateSync(file.rid, 7);
+   * const data = new Uint8Array(32);
+   * Deno.readSync(file.rid, data);
+   * console.log(new TextDecoder().decode(data)); // Hello W
+   * ```
+   */
+  export function ftruncateSync(rid: number, len?: number): void;
+
+  /** Truncates or extends the specified file stream, to reach the specified `len`. If
+   * `len` is not specified then the entire file contents are truncated.
+   *
+   * ```ts
+   * // truncate the entire file
+   * const file = Deno.open("my_file.txt", { read: true, write: true, create: true });
+   * await Deno.ftruncate(file.rid);
+   *
+   * // truncate part of the file
+   * const file = Deno.open("my_file.txt", { read: true, write: true, create: true });
+   * await Deno.write(file.rid, new TextEncoder().encode("Hello World"));
+   * await Deno.ftruncate(file.rid, 7);
+   * const data = new Uint8Array(32);
+   * await Deno.read(file.rid, data);
+   * console.log(new TextDecoder().decode(data)); // Hello W
+   * ```
+   */
+  export function ftruncate(rid: number, len?: number): Promise<void>;
+
+  /* **UNSTABLE**: New API, yet to be vetted.
+   * Synchronously flushes any pending data operations of the given file stream to disk.
+   *  ```ts
+   * const file = Deno.openSync("my_file.txt", { read: true, write: true, create: true });
+   * Deno.writeSync(file.rid, new TextEncoder().encode("Hello World"));
+   * Deno.fdatasyncSync(file.rid);
+   * console.log(new TextDecoder().decode(Deno.readFileSync("my_file.txt"))); // Hello World
+   * ```
+   */
+  export function fdatasyncSync(rid: number): void;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   * Flushes any pending data operations of the given file stream to disk.
+   *  ```ts
+   * const file = await Deno.open("my_file.txt", { read: true, write: true, create: true });
+   * await Deno.write(file.rid, new TextEncoder().encode("Hello World"));
+   * await Deno.fdatasync(file.rid);
+   * console.log(new TextDecoder().decode(await Deno.readFile("my_file.txt"))); // Hello World
+   * ```
+   */
+  export function fdatasync(rid: number): Promise<void>;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   * Synchronously flushes any pending data and metadata operations of the given file stream to disk.
+   *  ```ts
+   * const file = Deno.openSync("my_file.txt", { read: true, write: true, create: true });
+   * Deno.writeSync(file.rid, new TextEncoder().encode("Hello World"));
+   * Deno.ftruncateSync(file.rid, 1);
+   * Deno.fsyncSync(file.rid);
+   * console.log(new TextDecoder().decode(Deno.readFileSync("my_file.txt"))); // H
+   * ```
+   */
+  export function fsyncSync(rid: number): void;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   * Flushes any pending data and metadata operations of the given file stream to disk.
+   *  ```ts
+   * const file = await Deno.open("my_file.txt", { read: true, write: true, create: true });
+   * await Deno.write(file.rid, new TextEncoder().encode("Hello World"));
+   * await Deno.ftruncate(file.rid, 1);
+   * await Deno.fsync(file.rid);
+   * console.log(new TextDecoder().decode(await Deno.readFile("my_file.txt"))); // H
+   * ```
+   */
+  export function fsync(rid: number): Promise<void>;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   * Synchronously returns a `Deno.FileInfo` for the given file stream.
+   *
+   * ```ts
+   * const file = Deno.openSync("file.txt", { read: true });
+   * const fileInfo = Deno.fstatSync(file.rid);
+   * assert(fileInfo.isFile);
+   * ```
+   */
+  export function fstatSync(rid: number): FileInfo;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   * Returns a `Deno.FileInfo` for the given file stream.
+   *
+   * ```ts
+   * const file = await Deno.open("file.txt", { read: true });
+   * const fileInfo = await Deno.fstat(file.rid);
+   * assert(fileInfo.isFile);
+   * ```
+   */
+  export function fstat(rid: number): Promise<FileInfo>;
 }

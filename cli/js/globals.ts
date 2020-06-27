@@ -80,7 +80,12 @@ declare global {
     dispatch(
       opId: number,
       control: Uint8Array,
-      zeroCopy?: ArrayBufferView | null
+      ...zeroCopy: ArrayBufferView[]
+    ): Uint8Array | null;
+    dispatchByName(
+      opName: string,
+      control: Uint8Array,
+      ...zeroCopy: ArrayBufferView[]
     ): Uint8Array | null;
     setAsyncHandler(opId: number, cb: (msg: Uint8Array) => void): void;
     sharedQueue: {
@@ -99,7 +104,7 @@ declare global {
     send(
       opId: number,
       control: null | ArrayBufferView,
-      data?: ArrayBufferView
+      ...data: ArrayBufferView[]
     ): null | Uint8Array;
 
     setMacrotaskCallback(cb: () => boolean): void;

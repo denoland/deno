@@ -1,15 +1,14 @@
 import diff from "./diff.ts";
 import { assertEquals } from "../testing/asserts.ts";
-const { test } = Deno;
 
-test({
+Deno.test({
   name: "empty",
   fn(): void {
     assertEquals(diff([], []), []);
   },
 });
 
-test({
+Deno.test({
   name: '"a" vs "b"',
   fn(): void {
     assertEquals(diff(["a"], ["b"]), [
@@ -19,28 +18,28 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: '"a" vs "a"',
   fn(): void {
     assertEquals(diff(["a"], ["a"]), [{ type: "common", value: "a" }]);
   },
 });
 
-test({
+Deno.test({
   name: '"a" vs ""',
   fn(): void {
     assertEquals(diff(["a"], []), [{ type: "removed", value: "a" }]);
   },
 });
 
-test({
+Deno.test({
   name: '"" vs "a"',
   fn(): void {
     assertEquals(diff([], ["a"]), [{ type: "added", value: "a" }]);
   },
 });
 
-test({
+Deno.test({
   name: '"a" vs "a, b"',
   fn(): void {
     assertEquals(diff(["a"], ["a", "b"]), [
@@ -50,7 +49,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: '"strength" vs "string"',
   fn(): void {
     assertEquals(diff(Array.from("strength"), Array.from("string")), [
@@ -67,7 +66,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: '"strength" vs ""',
   fn(): void {
     assertEquals(diff(Array.from("strength"), Array.from("")), [
@@ -83,7 +82,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: '"" vs "strength"',
   fn(): void {
     assertEquals(diff(Array.from(""), Array.from("strength")), [
@@ -99,7 +98,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: '"abc", "c" vs "abc", "bcd", "c"',
   fn(): void {
     assertEquals(diff(["abc", "c"], ["abc", "bcd", "c"]), [

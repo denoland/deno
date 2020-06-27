@@ -2,10 +2,8 @@
 
 use rusty_v8 as v8;
 
-use crate::any_error::ErrBox;
-use crate::es_isolate::ModuleId;
-use crate::es_isolate::ModuleLoadId;
 use crate::module_specifier::ModuleSpecifier;
+use crate::ErrBox;
 use futures::future::FutureExt;
 use futures::stream::FuturesUnordered;
 use futures::stream::Stream;
@@ -24,6 +22,9 @@ use std::task::Poll;
 lazy_static! {
   pub static ref NEXT_LOAD_ID: AtomicI32 = AtomicI32::new(0);
 }
+
+pub type ModuleId = i32;
+pub type ModuleLoadId = i32;
 
 /// EsModule source code that will be loaded into V8.
 ///
@@ -548,13 +549,20 @@ macro_rules! include_crate_modules {
 mod tests {
   use super::*;
   use crate::es_isolate::EsIsolate;
-  use crate::isolate::js_check;
+  use crate::js_check;
+  use crate::StartupData;
   use futures::future::FutureExt;
   use std::error::Error;
   use std::fmt;
   use std::future::Future;
   use std::sync::Arc;
   use std::sync::Mutex;
+
+  // TODO(ry) Sadly FuturesUnordered requires the current task to be set. So
+  // even though we are only using poll() in these tests and not Tokio, we must
+  // nevertheless run it in the tokio executor. Ideally run_in_task can be
+  // removed in the future.
+  use crate::core_isolate::tests::run_in_task;
 
   struct MockLoader {
     pub loads: Arc<Mutex<Vec<String>>>,
@@ -716,13 +724,6 @@ mod tests {
     if (import.meta.url != 'file:///d.js') throw Error();
   "#;
 
-  // TODO(ry) Sadly FuturesUnordered requires the current task to be set. So
-  // even though we are only using poll() in these tests and not Tokio, we must
-  // nevertheless run it in the tokio executor. Ideally run_in_task can be
-  // removed in the future.
-  use crate::isolate::tests::run_in_task;
-  use crate::isolate::StartupData;
-
   #[test]
   fn test_recursive_load() {
     let loader = MockLoader::new();
@@ -744,7 +745,9 @@ mod tests {
       ]
     );
 
-    let modules = &isolate.modules;
+    let state_rc = EsIsolate::state(&isolate);
+    let state = state_rc.borrow();
+    let modules = &state.modules;
     assert_eq!(modules.get_id("file:///a.js"), Some(a_id));
     let b_id = modules.get_id("file:///b.js").unwrap();
     let c_id = modules.get_id("file:///c.js").unwrap();
@@ -806,7 +809,9 @@ mod tests {
         ]
       );
 
-      let modules = &isolate.modules;
+      let state_rc = EsIsolate::state(&isolate);
+      let state = state_rc.borrow();
+      let modules = &state.modules;
 
       assert_eq!(modules.get_id("file:///circular1.js"), Some(circular1_id));
       let circular2_id = modules.get_id("file:///circular2.js").unwrap();
@@ -877,7 +882,9 @@ mod tests {
         ]
       );
 
-      let modules = &isolate.modules;
+      let state_rc = EsIsolate::state(&isolate);
+      let state = state_rc.borrow();
+      let modules = &state.modules;
 
       assert_eq!(modules.get_id("file:///redirect1.js"), Some(redirect1_id));
 
@@ -1015,7 +1022,9 @@ mod tests {
       vec!["file:///b.js", "file:///c.js", "file:///d.js"]
     );
 
-    let modules = &isolate.modules;
+    let state_rc = EsIsolate::state(&isolate);
+    let state = state_rc.borrow();
+    let modules = &state.modules;
 
     assert_eq!(modules.get_id("file:///main_with_code.js"), Some(main_id));
     let b_id = modules.get_id("file:///b.js").unwrap();
