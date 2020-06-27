@@ -45,7 +45,7 @@ lazy_static! {
       let handle = winapi::um::processenv::GetStdHandle(
         winapi::um::winbase::STD_INPUT_HANDLE,
       );
-      if handle == std::ptr::null_mut() {
+      if handle.is_null() {
         return None;
       }
       Some(std::fs::File::from_raw_handle(handle))
@@ -60,7 +60,7 @@ lazy_static! {
       let handle = winapi::um::processenv::GetStdHandle(
         winapi::um::winbase::STD_OUTPUT_HANDLE,
       );
-      if handle == std::ptr::null_mut() {
+      if handle.is_null() {
         return None;
       }
       Some(std::fs::File::from_raw_handle(handle))
@@ -75,7 +75,7 @@ lazy_static! {
       let handle = winapi::um::processenv::GetStdHandle(
         winapi::um::winbase::STD_ERROR_HANDLE,
       );
-      if handle == std::ptr::null_mut() {
+      if handle.is_null() {
         return None;
       }
       Some(std::fs::File::from_raw_handle(handle))
