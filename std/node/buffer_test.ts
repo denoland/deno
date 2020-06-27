@@ -16,6 +16,26 @@ Deno.test({
 });
 
 Deno.test({
+  name: "alloc fails on if size is not a number",
+  fn() {
+    const invalidSizes = [{}, "1", "foo", []];
+
+    for (const size of invalidSizes) {
+      assertThrows(
+        () => {
+          // deno-lint-ignore ban-ts-comment
+          // @ts-ignore
+          Buffer.alloc(size);
+        },
+        TypeError,
+        `The "size" argument must be of type number. Received type ${typeof size}`,
+        "should throw on non-number size"
+      );
+    }
+  },
+});
+
+Deno.test({
   name: "alloc allocates a buffer with the expected size",
   fn() {
     const buffer: Buffer = Buffer.alloc(1);
@@ -29,6 +49,89 @@ Deno.test({
   fn() {
     const buffer: Buffer = Buffer.alloc(0);
     assertEquals(buffer.length, 0, "Buffer size should be 0");
+  },
+});
+
+Deno.test({
+  name: "alloc filled correctly with integer",
+  fn() {
+    const buffer: Buffer = Buffer.alloc(3, 5);
+    assertEquals(buffer, new Uint8Array([5, 5, 5]));
+  },
+});
+
+Deno.test({
+  name: "alloc filled correctly with single character",
+  fn() {
+    assertEquals(Buffer.alloc(5, "a"), new Uint8Array([97, 97, 97, 97, 97]));
+  },
+});
+
+Deno.test({
+  name: "alloc filled correctly with base64 string",
+  fn() {
+    assertEquals(
+      Buffer.alloc(11, "aGVsbG8gd29ybGQ=", "base64"),
+      new Uint8Array([104, 101, 108, 108, 111, 32, 119, 111, 114, 108, 100])
+    );
+  },
+});
+
+Deno.test({
+  name: "alloc filled correctly with hex string",
+  fn() {
+    assertEquals(
+      Buffer.alloc(4, "64656e6f", "hex"),
+      new Uint8Array([100, 101, 110, 111])
+    );
+  },
+});
+
+Deno.test({
+  name: "alloc filled correctly with hex string smaller than alloc size",
+  fn() {
+    assertEquals(
+      Buffer.alloc(13, "64656e6f", "hex").toString(),
+      "denodenodenod"
+    );
+  },
+});
+
+Deno.test({
+  name: "alloc filled correctly with Uint8Array smaller than alloc size",
+  fn() {
+    assertEquals(
+      Buffer.alloc(7, new Uint8Array([100, 101])),
+      new Uint8Array([100, 101, 100, 101, 100, 101, 100])
+    );
+    assertEquals(
+      Buffer.alloc(6, new Uint8Array([100, 101])),
+      new Uint8Array([100, 101, 100, 101, 100, 101])
+    );
+  },
+});
+
+Deno.test({
+  name: "alloc filled correctly with Uint8Array bigger than alloc size",
+  fn() {
+    assertEquals(
+      Buffer.alloc(1, new Uint8Array([100, 101])),
+      new Uint8Array([100])
+    );
+  },
+});
+
+Deno.test({
+  name: "alloc filled correctly with Buffer",
+  fn() {
+    assertEquals(
+      Buffer.alloc(6, new Buffer([100, 101])),
+      new Uint8Array([100, 101, 100, 101, 100, 101])
+    );
+    assertEquals(
+      Buffer.alloc(7, new Buffer([100, 101])),
+      new Uint8Array([100, 101, 100, 101, 100, 101, 100])
+    );
   },
 });
 
