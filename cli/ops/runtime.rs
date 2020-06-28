@@ -104,7 +104,6 @@ fn ppid_win() -> Value {
   use winapi::shared::minwindef::DWORD;
   use winapi::um::handleapi::{CloseHandle, INVALID_HANDLE_VALUE};
   use winapi::um::processthreadsapi::GetCurrentProcessId;
-  use winapi::um::synchapi::WaitForSingleObject;
   use winapi::um::tlhelp32::{
     CreateToolhelp32Snapshot, Process32First, Process32Next, PROCESSENTRY32,
     TH32CS_SNAPPROCESS,
@@ -141,6 +140,6 @@ fn ppid_win() -> Value {
     // wherein the parent process already exited and the OS
     // reassigned its ID.
     let parent_id = entry.th32ParentProcessID;
-    serde_json::to_value(parent_id);
+    serde_json::to_value(parent_id)
   }
 }
