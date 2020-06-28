@@ -94,7 +94,7 @@ fn ppid() -> Value {
 
 #[cfg(not(unix))]
 fn ppid_win() -> Value {
-  // Adpoted from rustup:
+  // Adopted from rustup:
   // https://github.com/rust-lang/rustup/blob/1.21.1/src/cli/self_update.rs#L1036
   // Copyright Diggory Blake, the Mozilla Corporation, and rustup contributors.
   // Licensed under either of
