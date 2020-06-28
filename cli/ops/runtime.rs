@@ -10,6 +10,9 @@ use deno_core::ModuleSpecifier;
 use deno_core::ZeroCopyBuf;
 use std::env;
 
+#[cfg(unix)]
+use nix::unistd::getppid;
+
 pub fn init(i: &mut CoreIsolate, s: &State) {
   i.register_op("op_start", s.stateful_json_op(op_start));
   i.register_op("op_main_module", s.stateful_json_op(op_main_module));
@@ -33,7 +36,6 @@ fn op_start(
     "noColor": !colors::use_color(),
     "pid": std::process::id(),
     "ppid": if cfg!(unix) {
-      use nix::unistd::getppid;
       serde_json::to_value(getppid().as_raw())?
     } else {
       Value::Null
