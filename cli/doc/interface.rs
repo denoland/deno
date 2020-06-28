@@ -1,16 +1,19 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+use crate::colors;
+use crate::doc::display::{display_optional, SliceDisplayer};
 use crate::swc_ecma_ast;
 use serde::Serialize;
 
 use super::params::ts_fn_param_to_param_def;
 use super::parser::DocParser;
-use super::ts_type::ts_entity_name_to_name;
 use super::ts_type::ts_type_ann_to_def;
 use super::ts_type::TsTypeDef;
 use super::ts_type_param::maybe_type_param_decl_to_type_param_defs;
 use super::ts_type_param::TsTypeParamDef;
 use super::Location;
 use super::ParamDef;
+
+use std::fmt::{Display, Formatter, Result as FmtResult};
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -22,6 +25,22 @@ pub struct InterfaceMethodDef {
   pub params: Vec<ParamDef>,
   pub return_type: Option<TsTypeDef>,
   pub type_params: Vec<TsTypeParamDef>,
+}
+
+impl Display for InterfaceMethodDef {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+    write!(
+      f,
+      "{}{}({})",
+      colors::bold(&self.name),
+      display_optional(self.optional),
+      SliceDisplayer::new(&self.params, ", "),
+    )?;
+    if let Some(return_type) = &self.return_type {
+      write!(f, ": {}", return_type)?;
+    }
+    Ok(())
+  }
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -37,6 +56,21 @@ pub struct InterfacePropertyDef {
   pub type_params: Vec<TsTypeParamDef>,
 }
 
+impl Display for InterfacePropertyDef {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+    write!(
+      f,
+      "{}{}",
+      colors::bold(&self.name),
+      display_optional(self.optional),
+    )?;
+    if let Some(ts_type) = &self.ts_type {
+      write!(f, ": {}", ts_type)?;
+    }
+    Ok(())
+  }
+}
+
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct InterfaceCallSignatureDef {
@@ -50,7 +84,7 @@ pub struct InterfaceCallSignatureDef {
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct InterfaceDef {
-  pub extends: Vec<String>,
+  pub extends: Vec<TsTypeDef>,
   pub methods: Vec<InterfaceMethodDef>,
   pub properties: Vec<InterfacePropertyDef>,
   pub call_signatures: Vec<InterfaceCallSignatureDef>,
@@ -199,11 +233,11 @@ pub fn get_doc_for_ts_interface_decl(
     interface_decl.type_params.as_ref(),
   );
 
-  let extends: Vec<String> = interface_decl
+  let extends = interface_decl
     .extends
     .iter()
-    .map(|expr| ts_entity_name_to_name(&expr.expr))
-    .collect();
+    .map(|expr| expr.into())
+    .collect::<Vec<TsTypeDef>>();
 
   let interface_def = InterfaceDef {
     extends,

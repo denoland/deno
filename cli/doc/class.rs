@@ -1,4 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+use crate::colors;
+use crate::doc::display::{
+  display_abstract, display_accesibility, display_async, display_generator,
+  display_method, display_optional, display_readonly, display_static,
+  SliceDisplayer,
+};
 use crate::swc_common::SourceMap;
 use crate::swc_common::Spanned;
 use crate::swc_ecma_ast;
@@ -11,13 +17,15 @@ use super::params::assign_pat_to_param_def;
 use super::params::ident_to_param_def;
 use super::params::pat_to_param_def;
 use super::parser::DocParser;
-use super::ts_type::ts_entity_name_to_name;
-use super::ts_type::ts_type_ann_to_def;
-use super::ts_type::TsTypeDef;
+use super::ts_type::{
+  maybe_type_param_instantiation_to_type_defs, ts_type_ann_to_def, TsTypeDef,
+};
 use super::ts_type_param::maybe_type_param_decl_to_type_param_defs;
 use super::ts_type_param::TsTypeParamDef;
 use super::Location;
 use super::ParamDef;
+
+use std::fmt::{Display, Formatter, Result as FmtResult};
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -27,6 +35,18 @@ pub struct ClassConstructorDef {
   pub name: String,
   pub params: Vec<ParamDef>,
   pub location: Location,
+}
+
+impl Display for ClassConstructorDef {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+    write!(
+      f,
+      "{}{}({})",
+      display_accesibility(self.accessibility),
+      colors::magenta("constructor"),
+      SliceDisplayer::new(&self.params, ", "),
+    )
+  }
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -43,6 +63,25 @@ pub struct ClassPropertyDef {
   pub location: Location,
 }
 
+impl Display for ClassPropertyDef {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+    write!(
+      f,
+      "{}{}{}{}{}{}",
+      display_abstract(self.is_abstract),
+      display_accesibility(self.accessibility),
+      display_static(self.is_static),
+      display_readonly(self.readonly),
+      colors::bold(&self.name),
+      display_optional(self.optional),
+    )?;
+    if let Some(ts_type) = &self.ts_type {
+      write!(f, ": {}", ts_type)?;
+    }
+    Ok(())
+  }
+}
+
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ClassMethodDef {
@@ -57,17 +96,40 @@ pub struct ClassMethodDef {
   pub location: Location,
 }
 
+impl Display for ClassMethodDef {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+    write!(
+      f,
+      "{}{}{}{}{}{}{}{}({})",
+      display_abstract(self.is_abstract),
+      display_accesibility(self.accessibility),
+      display_static(self.is_static),
+      display_async(self.function_def.is_async),
+      display_method(self.kind),
+      display_generator(self.function_def.is_generator),
+      colors::bold(&self.name),
+      display_optional(self.optional),
+      SliceDisplayer::new(&self.function_def.params, ", "),
+    )?;
+    if let Some(return_type) = &self.function_def.return_type {
+      write!(f, ": {}", return_type)?;
+    }
+    Ok(())
+  }
+}
+
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ClassDef {
-  // TODO(bartlomieju): decorators, super_type_params
+  // TODO(bartlomieju): decorators
   pub is_abstract: bool,
   pub constructors: Vec<ClassConstructorDef>,
   pub properties: Vec<ClassPropertyDef>,
   pub methods: Vec<ClassMethodDef>,
   pub extends: Option<String>,
-  pub implements: Vec<String>,
+  pub implements: Vec<TsTypeDef>,
   pub type_params: Vec<TsTypeParamDef>,
+  pub super_type_params: Vec<TsTypeDef>,
 }
 
 fn prop_name_to_string(
@@ -105,11 +167,11 @@ pub fn class_to_class_def(
     None => None,
   };
 
-  let implements: Vec<String> = class
+  let implements = class
     .implements
     .iter()
-    .map(|expr| ts_entity_name_to_name(&expr.expr))
-    .collect();
+    .map(|expr| expr.into())
+    .collect::<Vec<TsTypeDef>>();
 
   for member in &class.body {
     use crate::swc_ecma_ast::ClassMember::*;
@@ -209,6 +271,10 @@ pub fn class_to_class_def(
   let type_params =
     maybe_type_param_decl_to_type_param_defs(class.type_params.as_ref());
 
+  let super_type_params = maybe_type_param_instantiation_to_type_defs(
+    class.super_type_params.as_ref(),
+  );
+
   ClassDef {
     is_abstract: class.is_abstract,
     extends,
@@ -217,6 +283,7 @@ pub fn class_to_class_def(
     properties,
     methods,
     type_params,
+    super_type_params,
   }
 }
 

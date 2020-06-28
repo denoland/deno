@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::DocParser;
+use super::DocPrinter;
 use crate::colors;
 use serde_json::json;
 
@@ -63,7 +64,10 @@ export function foo(a: string, b?: number, cb: (...cbArgs: unknown[]) => void, .
 "#;
   let loader =
     TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
-  let entries = DocParser::new(loader).parse("test.ts").await.unwrap();
+  let entries = DocParser::new(loader, false)
+    .parse("test.ts")
+    .await
+    .unwrap();
   assert_eq!(entries.len(), 1);
   let entry = &entries[0];
   let expected_json = json!({
@@ -159,15 +163,17 @@ export function foo(a: string, b?: number, cb: (...cbArgs: unknown[]) => void, .
   assert_eq!(actual, expected_json);
 
   assert!(colors::strip_ansi_codes(
-    super::printer::format(entries.clone()).as_str()
+    DocPrinter::new(&entries, false, false).to_string().as_str()
   )
   .contains("Hello there"));
-  assert!(
-    colors::strip_ansi_codes(super::printer::format(entries).as_str())
-      .contains("b?: number")
-  );
+  assert!(colors::strip_ansi_codes(
+    DocPrinter::new(&entries, false, false).to_string().as_str()
+  )
+  .contains("b?: number"));
 }
 
+// TODO(SyrupThinker) Not yet implemented
+#[ignore]
 #[tokio::test]
 async fn format_type_predicate() {
   let source_code = r#"
@@ -177,8 +183,14 @@ export function isFish(pet: Fish | Bird): pet is Fish {
 "#;
   let loader =
     TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
-  let entries = DocParser::new(loader).parse("test.ts").await.unwrap();
-  super::printer::format(entries);
+  let entries = DocParser::new(loader, false)
+    .parse("test.ts")
+    .await
+    .unwrap();
+  assert!(colors::strip_ansi_codes(
+    DocPrinter::new(&entries, false, false).to_string().as_str()
+  )
+  .contains("pet is Fish"));
 }
 
 #[tokio::test]
@@ -195,7 +207,10 @@ export function foo([e,,f, ...g]: number[], { c, d: asdf, i = "asdf", ...rest}, 
 "#;
   let loader =
     TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
-  let entries = DocParser::new(loader).parse("test.ts").await.unwrap();
+  let entries = DocParser::new(loader, false)
+    .parse("test.ts")
+    .await
+    .unwrap();
   assert_eq!(entries.len(), 1);
   let entry = &entries[0];
   let expected_json = json!({
@@ -257,10 +272,10 @@ export function foo([e,,f, ...g]: number[], { c, d: asdf, i = "asdf", ...rest}, 
   let actual = serde_json::to_value(entry).unwrap();
   assert_eq!(actual, expected_json);
 
-  assert!(
-    colors::strip_ansi_codes(super::printer::format(entries).as_str())
-      .contains("foo")
-  );
+  assert!(colors::strip_ansi_codes(
+    DocPrinter::new(&entries, false, false).to_string().as_str()
+  )
+  .contains("foo"));
 }
 
 #[tokio::test]
@@ -279,7 +294,10 @@ export const env: {
 "#;
   let loader =
     TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
-  let entries = DocParser::new(loader).parse("test.ts").await.unwrap();
+  let entries = DocParser::new(loader, false)
+    .parse("test.ts")
+    .await
+    .unwrap();
   assert_eq!(entries.len(), 2);
   let expected_json = json!([
   {
@@ -386,10 +404,10 @@ export const env: {
   let actual = serde_json::to_value(entries.clone()).unwrap();
   assert_eq!(actual, expected_json);
 
-  assert!(
-    colors::strip_ansi_codes(super::printer::format(entries).as_str())
-      .contains("Something about fizzBuzz")
-  );
+  assert!(colors::strip_ansi_codes(
+    DocPrinter::new(&entries, false, false).to_string().as_str()
+  )
+  .contains("Something about fizzBuzz"));
 }
 
 #[tokio::test]
@@ -418,7 +436,10 @@ export class Foobar extends Fizz implements Buzz, Aldrin {
 "#;
   let loader =
     TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
-  let entries = DocParser::new(loader).parse("test.ts").await.unwrap();
+  let entries = DocParser::new(loader, false)
+    .parse("test.ts")
+    .await
+    .unwrap();
   assert_eq!(entries.len(), 1);
   let expected_json = json!({
     "kind": "class",
@@ -432,8 +453,26 @@ export class Foobar extends Fizz implements Buzz, Aldrin {
     "classDef": {
       "isAbstract": false,
       "extends": "Fizz",
-      "implements": ["Buzz", "Aldrin"],
+      "implements": [
+        {
+          "repr": "Buzz",
+          "kind": "typeRef",
+          "typeRef": {
+            "typeParams": null,
+            "typeName": "Buzz"
+          }
+        },
+        {
+          "repr": "Aldrin",
+          "kind": "typeRef",
+          "typeRef": {
+            "typeParams": null,
+            "typeName": "Aldrin"
+          }
+        }
+      ],
       "typeParams": [],
+      "superTypeParams": [],
       "constructors": [
         {
           "jsDoc": "Constructor js doc",
@@ -624,14 +663,16 @@ export class Foobar extends Fizz implements Buzz, Aldrin {
   assert_eq!(actual, expected_json);
 
   assert!(colors::strip_ansi_codes(
-    super::printer::format_details(entry.clone()).as_str()
+    DocPrinter::new(&[entry.clone()], true, false)
+      .to_string()
+      .as_str()
   )
   .contains("bar?(): void"));
 
-  assert!(
-    colors::strip_ansi_codes(super::printer::format(entries).as_str())
-      .contains("class Foobar extends Fizz implements Buzz, Aldrin")
-  );
+  assert!(colors::strip_ansi_codes(
+    DocPrinter::new(&entries, false, false).to_string().as_str()
+  )
+  .contains("class Foobar extends Fizz implements Buzz, Aldrin"));
 }
 
 #[tokio::test]
@@ -653,7 +694,10 @@ export interface Reader extends Foo, Bar {
     "#;
   let loader =
     TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
-  let entries = DocParser::new(loader).parse("test.ts").await.unwrap();
+  let entries = DocParser::new(loader, false)
+    .parse("test.ts")
+    .await
+    .unwrap();
   assert_eq!(entries.len(), 1);
   let entry = &entries[0];
   let expected_json = json!({
@@ -666,7 +710,24 @@ export interface Reader extends Foo, Bar {
       },
       "jsDoc": "Interface js doc",
       "interfaceDef": {
-        "extends": ["Foo", "Bar"],
+        "extends": [
+          {
+            "repr": "Foo",
+            "kind": "typeRef",
+            "typeRef": {
+              "typeParams": null,
+              "typeName": "Foo"
+            }
+          },
+          {
+            "repr": "Bar",
+            "kind": "typeRef",
+            "typeRef": {
+              "typeParams": null,
+              "typeName": "Bar"
+            }
+          }
+        ],
         "methods": [
           {
             "name": "read",
@@ -727,10 +788,10 @@ export interface Reader extends Foo, Bar {
   let actual = serde_json::to_value(entry).unwrap();
   assert_eq!(actual, expected_json);
 
-  assert!(
-    colors::strip_ansi_codes(super::printer::format(entries).as_str())
-      .contains("interface Reader extends Foo, Bar")
-  );
+  assert!(colors::strip_ansi_codes(
+    DocPrinter::new(&entries, false, false).to_string().as_str()
+  )
+  .contains("interface Reader extends Foo, Bar"));
 }
 
 #[tokio::test]
@@ -742,7 +803,10 @@ export interface TypedIface<T> {
     "#;
   let loader =
     TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
-  let entries = DocParser::new(loader).parse("test.ts").await.unwrap();
+  let entries = DocParser::new(loader, false)
+    .parse("test.ts")
+    .await
+    .unwrap();
   assert_eq!(entries.len(), 1);
   let entry = &entries[0];
   let expected_json = json!({
@@ -788,10 +852,10 @@ export interface TypedIface<T> {
   let actual = serde_json::to_value(entry).unwrap();
   assert_eq!(actual, expected_json);
 
-  assert!(
-    colors::strip_ansi_codes(super::printer::format(entries).as_str())
-      .contains("interface TypedIface")
-  );
+  assert!(colors::strip_ansi_codes(
+    DocPrinter::new(&entries, false, false).to_string().as_str()
+  )
+  .contains("interface TypedIface"));
 }
 
 #[tokio::test]
@@ -802,7 +866,10 @@ export type NumberArray = Array<number>;
     "#;
   let loader =
     TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
-  let entries = DocParser::new(loader).parse("test.ts").await.unwrap();
+  let entries = DocParser::new(loader, false)
+    .parse("test.ts")
+    .await
+    .unwrap();
   assert_eq!(entries.len(), 1);
   let entry = &entries[0];
   let expected_json = json!({
@@ -835,10 +902,10 @@ export type NumberArray = Array<number>;
   let actual = serde_json::to_value(entry).unwrap();
   assert_eq!(actual, expected_json);
 
-  assert!(
-    colors::strip_ansi_codes(super::printer::format(entries).as_str())
-      .contains("Array holding numbers")
-  );
+  assert!(colors::strip_ansi_codes(
+    DocPrinter::new(&entries, false, false).to_string().as_str()
+  )
+  .contains("Array holding numbers"));
 }
 
 #[tokio::test]
@@ -855,7 +922,10 @@ export enum Hello {
     "#;
   let loader =
     TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
-  let entries = DocParser::new(loader).parse("test.ts").await.unwrap();
+  let entries = DocParser::new(loader, false)
+    .parse("test.ts")
+    .await
+    .unwrap();
   assert_eq!(entries.len(), 1);
   let entry = &entries[0];
   let expected_json = json!({
@@ -885,17 +955,19 @@ export enum Hello {
   assert_eq!(actual, expected_json);
 
   assert!(colors::strip_ansi_codes(
-    super::printer::format_details(entry.clone()).as_str()
+    DocPrinter::new(&[entry.clone()], true, false)
+      .to_string()
+      .as_str()
   )
   .contains("World"));
   assert!(colors::strip_ansi_codes(
-    super::printer::format(entries.clone()).as_str()
+    DocPrinter::new(&entries, true, false).to_string().as_str()
   )
   .contains("Some enum for good measure"));
-  assert!(
-    colors::strip_ansi_codes(super::printer::format(entries).as_str())
-      .contains("enum Hello")
-  );
+  assert!(colors::strip_ansi_codes(
+    DocPrinter::new(&entries, false, false).to_string().as_str()
+  )
+  .contains("enum Hello"));
 }
 
 #[tokio::test]
@@ -917,7 +989,10 @@ export namespace RootNs {
     "#;
   let loader =
     TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
-  let entries = DocParser::new(loader).parse("test.ts").await.unwrap();
+  let entries = DocParser::new(loader, false)
+    .parse("test.ts")
+    .await
+    .unwrap();
   assert_eq!(entries.len(), 1);
   let entry = &entries[0];
   let expected_json = json!({
@@ -987,10 +1062,10 @@ export namespace RootNs {
   });
   let actual = serde_json::to_value(entry).unwrap();
   assert_eq!(actual, expected_json);
-  assert!(
-    colors::strip_ansi_codes(super::printer::format(entries).as_str())
-      .contains("namespace RootNs")
-  );
+  assert!(colors::strip_ansi_codes(
+    DocPrinter::new(&entries, false, false).to_string().as_str()
+  )
+  .contains("namespace RootNs"));
 }
 
 #[tokio::test]
@@ -1012,7 +1087,10 @@ declare namespace RootNs {
     "#;
   let loader =
     TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
-  let entries = DocParser::new(loader).parse("test.ts").await.unwrap();
+  let entries = DocParser::new(loader, false)
+    .parse("test.ts")
+    .await
+    .unwrap();
   assert_eq!(entries.len(), 1);
   let entry = &entries[0];
   let expected_json = json!({
@@ -1082,10 +1160,10 @@ declare namespace RootNs {
   });
   let actual = serde_json::to_value(entry).unwrap();
   assert_eq!(actual, expected_json);
-  assert!(
-    colors::strip_ansi_codes(super::printer::format(entries).as_str())
-      .contains("namespace RootNs")
-  );
+  assert!(colors::strip_ansi_codes(
+    DocPrinter::new(&entries, false, false).to_string().as_str()
+  )
+  .contains("namespace RootNs"));
 }
 
 #[tokio::test]
@@ -1097,7 +1175,10 @@ export default function foo(a: number) {
     "#;
   let loader =
     TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
-  let entries = DocParser::new(loader).parse("test.ts").await.unwrap();
+  let entries = DocParser::new(loader, false)
+    .parse("test.ts")
+    .await
+    .unwrap();
   assert_eq!(entries.len(), 1);
   let entry = &entries[0];
   let expected_json = json!({
@@ -1131,10 +1212,10 @@ export default function foo(a: number) {
   let actual = serde_json::to_value(entry).unwrap();
   assert_eq!(actual, expected_json);
 
-  assert!(
-    colors::strip_ansi_codes(super::printer::format(entries).as_str())
-      .contains("function default(a: number)")
-  );
+  assert!(colors::strip_ansi_codes(
+    DocPrinter::new(&entries, false, false).to_string().as_str()
+  )
+  .contains("function default(a: number)"));
 }
 
 #[tokio::test]
@@ -1148,7 +1229,10 @@ export default class Foobar {
 "#;
   let loader =
     TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
-  let entries = DocParser::new(loader).parse("test.ts").await.unwrap();
+  let entries = DocParser::new(loader, false)
+    .parse("test.ts")
+    .await
+    .unwrap();
   assert_eq!(entries.len(), 1);
   let expected_json = json!({
     "kind": "class",
@@ -1164,6 +1248,7 @@ export default class Foobar {
       "extends": null,
       "implements": [],
       "typeParams": [],
+      "superTypeParams": [],
       "constructors": [
         {
           "jsDoc": "Constructor js doc",
@@ -1216,10 +1301,10 @@ export default class Foobar {
   let actual = serde_json::to_value(entry).unwrap();
   assert_eq!(actual, expected_json);
 
-  assert!(
-    colors::strip_ansi_codes(super::printer::format(entries).as_str())
-      .contains("class default")
-  );
+  assert!(colors::strip_ansi_codes(
+    DocPrinter::new(&entries, false, false).to_string().as_str()
+  )
+  .contains("class default"));
 }
 
 #[tokio::test]
@@ -1235,7 +1320,10 @@ export default interface Reader {
     "#;
   let loader =
     TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
-  let entries = DocParser::new(loader).parse("test.ts").await.unwrap();
+  let entries = DocParser::new(loader, false)
+    .parse("test.ts")
+    .await
+    .unwrap();
   assert_eq!(entries.len(), 1);
   let entry = &entries[0];
   let expected_json = json!({
@@ -1309,10 +1397,10 @@ export default interface Reader {
   let actual = serde_json::to_value(entry).unwrap();
   assert_eq!(actual, expected_json);
 
-  assert!(
-    colors::strip_ansi_codes(super::printer::format(entries).as_str())
-      .contains("interface default")
-  );
+  assert!(colors::strip_ansi_codes(
+    DocPrinter::new(&entries, false, false).to_string().as_str()
+  )
+  .contains("interface default"));
 }
 
 #[tokio::test]
@@ -1324,7 +1412,10 @@ async fn optional_return_type() {
     "#;
   let loader =
     TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
-  let entries = DocParser::new(loader).parse("test.ts").await.unwrap();
+  let entries = DocParser::new(loader, false)
+    .parse("test.ts")
+    .await
+    .unwrap();
   assert_eq!(entries.len(), 1);
   let entry = &entries[0];
   let expected_json = json!({
@@ -1358,10 +1449,10 @@ async fn optional_return_type() {
   let actual = serde_json::to_value(entry).unwrap();
   assert_eq!(actual, expected_json);
 
-  assert!(
-    colors::strip_ansi_codes(super::printer::format(entries).as_str())
-      .contains("function foo(a: number)")
-  );
+  assert!(colors::strip_ansi_codes(
+    DocPrinter::new(&entries, false, false).to_string().as_str()
+  )
+  .contains("function foo(a: number)"));
 }
 
 #[tokio::test]
@@ -1401,7 +1492,7 @@ export function fooFn(a: number) {
       nested_reexport_source_code.to_string(),
     ),
   ]);
-  let entries = DocParser::new(loader)
+  let entries = DocParser::new(loader, false)
     .parse_with_reexports("file:///test.ts")
     .await
     .unwrap();
@@ -1454,10 +1545,10 @@ export function fooFn(a: number) {
   let actual = serde_json::to_value(entries.clone()).unwrap();
   assert_eq!(actual, expected_json);
 
-  assert!(
-    colors::strip_ansi_codes(super::printer::format(entries).as_str())
-      .contains("function fooFn(a: number)")
-  );
+  assert!(colors::strip_ansi_codes(
+    DocPrinter::new(&entries, false, false).to_string().as_str()
+  )
+  .contains("function fooFn(a: number)"));
 }
 
 #[tokio::test]
@@ -1470,7 +1561,10 @@ export type numLit = 5;
 "#;
   let loader =
     TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
-  let entries = DocParser::new(loader).parse("test.ts").await.unwrap();
+  let entries = DocParser::new(loader, false)
+    .parse("test.ts")
+    .await
+    .unwrap();
   let actual = serde_json::to_value(entries).unwrap();
   let expected_json = json!([
     {
@@ -1578,7 +1672,10 @@ export namespace Deno {
 "#;
   let loader =
     TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
-  let entries = DocParser::new(loader).parse("test.ts").await.unwrap();
+  let entries = DocParser::new(loader, false)
+    .parse("test.ts")
+    .await
+    .unwrap();
 
   let found =
     find_nodes_by_name_recursively(entries.clone(), "Deno".to_string());
@@ -1615,10 +1712,13 @@ export function f(): Generic<[string, number]> { return {}; }
 
   let loader =
     TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
-  let entries = DocParser::new(loader).parse("test.ts").await.unwrap();
+  let entries = DocParser::new(loader, false)
+    .parse("test.ts")
+    .await
+    .unwrap();
 
   assert!(colors::strip_ansi_codes(
-    crate::doc::printer::format(entries).as_str()
+    DocPrinter::new(&entries, false, false).to_string().as_str()
   )
   .contains("Generic<[string, number]>"))
 }
