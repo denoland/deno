@@ -29,6 +29,10 @@ declare namespace Deno {
   /** The current process id of the runtime. */
   export const pid: number;
 
+  /** The pid of the current process's parent.
+   * Ignored on Windows. */
+  export const ppid: number | null;
+
   /** Reflects the `NO_COLOR` environment variable.
    *
    * See: https://no-color.org/ */

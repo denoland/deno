@@ -32,6 +32,12 @@ fn op_start(
     "denoVersion": version::DENO,
     "noColor": !colors::use_color(),
     "pid": std::process::id(),
+    "ppid": if cfg!(unix) {
+      use nix::unistd::getppid;
+      serde_json::to_value(getppid().as_raw())?
+    } else {
+      Value::Null
+    },
     "repl": gs.flags.subcommand == DenoSubcommand::Repl,
     "target": env!("TARGET"),
     "tsVersion": version::TYPESCRIPT,
