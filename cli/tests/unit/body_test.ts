@@ -83,8 +83,6 @@ unitTest({ perms: {} }, async function bodyURLSearchParams(): Promise<void> {
 unitTest(async function bodyArrayBufferMultipleParts(): Promise<void> {
   const parts: Uint8Array[] = [];
   let size = 0;
-  const encoder = new TextEncoder();
-
   for (let i = 0; i <= 150000; i++) {
     const part = new Uint8Array([1]);
     parts.push(part);
