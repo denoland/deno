@@ -1,8 +1,7 @@
 import * as hex from "../encoding/hex.ts";
 import * as base64 from "../encoding/base64.ts";
-import { notImplemented } from "./_utils.ts";
+import { notImplemented, normalizeEncoding } from "./_utils.ts";
 
-const validEncodings = ["utf8", "hex", "base64"];
 const notImplementedEncodings = [
   "utf16le",
   "latin1",
@@ -17,20 +16,16 @@ function checkEncoding(encoding = "utf8", strict = true): string {
     throw new TypeError(`Unkown encoding: ${encoding}`);
   }
 
-  encoding = encoding.toLowerCase();
-  if (encoding === "utf-8" || encoding === "") {
-    return "utf8";
-  }
+  const normalized = normalizeEncoding(encoding);
+
+  if (normalized === undefined)
+    throw new TypeError(`Unkown encoding: ${encoding}`);
 
   if (notImplementedEncodings.includes(encoding)) {
     notImplemented(`"${encoding}" encoding`);
   }
 
-  if (!validEncodings.includes(encoding)) {
-    throw new TypeError(`Unkown encoding: ${encoding}`);
-  }
-
-  return encoding;
+  return normalized;
 }
 
 /**
@@ -179,6 +174,15 @@ export default class Buffer extends Uint8Array {
    */
   static isBuffer(obj: object): obj is Buffer {
     return obj instanceof Buffer;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  static isEncoding(encoding: any): boolean {
+    return (
+      typeof encoding === "string" &&
+      encoding.length !== 0 &&
+      normalizeEncoding(encoding) !== undefined
+    );
   }
 
   /**

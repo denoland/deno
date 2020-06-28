@@ -471,3 +471,50 @@ Deno.test({
     assertEquals(slice.toString(), "deno");
   },
 });
+
+Deno.test({
+  name: "isEncoding returns true for valid encodings",
+  fn() {
+    [
+      "hex",
+      "HEX",
+      "HeX",
+      "utf8",
+      "utf-8",
+      "ascii",
+      "latin1",
+      "binary",
+      "base64",
+      "BASE64",
+      "BASe64",
+      "ucs2",
+      "ucs-2",
+      "utf16le",
+      "utf-16le",
+    ].forEach((enc) => {
+      assertEquals(Buffer.isEncoding(enc), true);
+    });
+  },
+});
+
+Deno.test({
+  name: "isEncoding returns false for invalid encodings",
+  fn() {
+    [
+      "utf9",
+      "utf-7",
+      "Unicode-FTW",
+      "new gnu gun",
+      false,
+      NaN,
+      {},
+      Infinity,
+      [],
+      1,
+      0,
+      -1,
+    ].forEach((enc) => {
+      assertEquals(Buffer.isEncoding(enc), false);
+    });
+  },
+});
