@@ -1454,11 +1454,6 @@ function transpile({
   const emitMap: Record<string, EmittedSource> = {};
   let diagnostics: ts.Diagnostic[] = [];
   for (const { sourceCode, fileName } of sourceFiles) {
-    if (fileName.endsWith(".d.ts")) {
-      log("skip transpile", fileName);
-      emitMap[`${fileName}.js`] = { filename: fileName, contents: "" };
-      continue;
-    }
     const {
       outputText,
       sourceMapText,

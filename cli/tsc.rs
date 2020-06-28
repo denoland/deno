@@ -698,8 +698,9 @@ impl TsCompiler {
     let mut source_files: Vec<TranspileSourceFile> = Vec::new();
     for (_, value) in module_graph.iter() {
       let url = Url::parse(&value.url).expect("Filename is not a valid url");
-      if !self.use_disk_cache
-        || !self.has_compiled_source(&global_state.file_fetcher, &url)
+      if !value.url.ends_with(".d.ts")
+        && (!self.use_disk_cache
+          || !self.has_compiled_source(&global_state.file_fetcher, &url))
       {
         source_files.push(TranspileSourceFile {
           source_code: value.source_code.clone(),
