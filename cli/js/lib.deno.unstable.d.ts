@@ -1192,4 +1192,9 @@ declare namespace Deno {
    * ```
    */
   export function fstat(rid: number): Promise<FileInfo>;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   * The pid of the current process's parent.
+   * Ignored on Windows. */
+  export const ppid: number | null;
 }
