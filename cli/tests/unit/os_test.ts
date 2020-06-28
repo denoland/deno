@@ -112,11 +112,7 @@ unitTest(function osPid(): void {
 });
 
 unitTest(function osPpid(): void {
-  if (Deno.build.os === "windows") {
-    assert(Deno.ppid == null);
-  } else {
-    assert(Deno.ppid! > 0);
-  }
+  assert(Deno.ppid! > 0);
 });
 
 unitTest({ perms: { read: true } }, function execPath(): void {
