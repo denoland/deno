@@ -12,6 +12,7 @@ import {
 } from "./test_util.ts";
 
 // N controls how many iterations of certain checks are performed.
+const MAX_SIZE = 2 ** 32 - 2;
 const N = 100;
 let testBytes: Uint8Array | null;
 let testString: string | null;
@@ -165,6 +166,43 @@ unitTest(async function bufferTooLargeByteWrites(): Promise<void> {
     Error,
     "grown beyond the maximum size"
   );
+});
+
+unitTest(function bufferGrowWriteMaxBuffer(): void {
+  const bufSize = 16 * 1024;
+  const capacities = [MAX_SIZE, MAX_SIZE - 1, MAX_SIZE - 512];
+  for (const capacity of capacities) {
+    let written = 0;
+    const buf = new Deno.Buffer();
+    const writes = Math.floor(capacity / bufSize);
+    for (let i = 0; i < writes; i++)
+      written += buf.writeSync(repeat("x", bufSize));
+
+    console.log(written, capacity, capacity - written);
+    if (written < capacity) {
+      written += buf.writeSync(repeat("x", capacity - written));
+    }
+
+    assertEquals(written, capacity);
+  }
+});
+
+unitTest(function bufferGrowReadSyncCloseToMaxBuffer(): void {
+  const capacities = [MAX_SIZE, MAX_SIZE - 1, MAX_SIZE - 512];
+  for (const capacity of capacities) {
+    const reader = new Deno.Buffer(new ArrayBuffer(capacity));
+    const buf = new Deno.Buffer();
+    buf.readFromSync(reader);
+  }
+});
+
+unitTest(async function bufferGrowReadCloseToMaxBuffer(): Promise<void> {
+  const capacities = [MAX_SIZE, MAX_SIZE - 1, MAX_SIZE - 512];
+  for (const capacity of capacities) {
+    const reader = new Deno.Buffer(new ArrayBuffer(capacity));
+    const buf = new Deno.Buffer();
+    await buf.readFrom(reader);
+  }
 });
 
 unitTest(async function bufferLargeByteReads(): Promise<void> {
