@@ -68,7 +68,6 @@ def eslint():
         ":!:std/**/node_modules/*",
         ":!:cli/compilers/wasm_wrap.js",
         ":!:cli/tests/error_syntax.js",
-        ":!:cli/tests/doc/**",
         ":!:cli/tests/lint/**",
     ])
     if source_files:

@@ -191,16 +191,16 @@ pub fn run_python_script(script: &str) {
 }
 
 #[derive(Debug, Default)]
-pub struct CheckOutputIntegrationTest<'a> {
-  pub args: &'a str,
-  pub output: &'a str,
-  pub input: Option<&'a str>,
-  pub output_str: Option<&'a str>,
+pub struct CheckOutputIntegrationTest {
+  pub args: &'static str,
+  pub output: &'static str,
+  pub input: Option<&'static str>,
+  pub output_str: Option<&'static str>,
   pub exit_code: i32,
   pub http_server: bool,
 }
 
-impl<'a> CheckOutputIntegrationTest<'a> {
+impl CheckOutputIntegrationTest {
   pub fn run(&self) {
     let args = self.args.split_whitespace();
     let root = root_path();
