@@ -206,7 +206,7 @@ fn render_ts_type(ts_type: doc::ts_type::TsTypeDef) -> String {
     TsTypeDefKind::This => "this".to_string(),
     TsTypeDefKind::Tuple => {
       let tuple = ts_type.tuple.unwrap();
-      let mut output = "".to_string();
+      let mut output = "[".to_string();
       if !tuple.is_empty() {
         for ts_type in tuple {
           output += render_ts_type(ts_type).as_str();
@@ -214,6 +214,7 @@ fn render_ts_type(ts_type: doc::ts_type::TsTypeDef) -> String {
         }
         output.truncate(output.len() - 2);
       }
+      output += "]";
       output
     }
     TsTypeDefKind::TypeLiteral => {
