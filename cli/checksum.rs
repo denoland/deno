@@ -1,6 +1,6 @@
-pub fn gen(v: Vec<&[u8]>) -> String {
+pub fn gen(v: &[&[u8]]) -> String {
   let mut ctx = ring::digest::Context::new(&ring::digest::SHA256);
-  for src in v.iter() {
+  for src in v {
     ctx.update(src);
   }
   let digest = ctx.finish();
