@@ -88,54 +88,59 @@ fn ppid() -> Value {
   }
   #[cfg(not(unix))]
   {
-    // Adpoted from rustup:
-    // https://github.com/rust-lang/rustup/blob/1.21.1/src/cli/self_update.rs#L1036
-    // Copyright Diggory Blake, the Mozilla Corporation, and rustup contributors.
-    // Licensed under either of
-    // - Apache License, Version 2.0
-    // - MIT license
-    use std::mem;
-    use winapi::shared::minwindef::DWORD;
-    use winapi::um::handleapi::{CloseHandle, INVALID_HANDLE_VALUE};
-    use winapi::um::processthreadsapi::{GetCurrentProcessId, OpenProcess};
-    use winapi::um::synchapi::WaitForSingleObject;
-    use winapi::um::tlhelp32::{
-      CreateToolhelp32Snapshot, Process32First, Process32Next, PROCESSENTRY32,
-      TH32CS_SNAPPROCESS,
-    };
-    unsafe {
-      // Take a snapshot of system processes, one of which is ours
-      // and contains our parent's pid
-      let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-      if snapshot == INVALID_HANDLE_VALUE {
-        return Value::Null;
-      }
+    ppid_win()
+  }
+}
 
-      let mut entry: PROCESSENTRY32 = mem::zeroed();
-      entry.dwSize = mem::size_of::<PROCESSENTRY32>() as DWORD;
+#[cfg(not(unix))]
+fn ppid_win() -> Value {
+  // Adpoted from rustup:
+  // https://github.com/rust-lang/rustup/blob/1.21.1/src/cli/self_update.rs#L1036
+  // Copyright Diggory Blake, the Mozilla Corporation, and rustup contributors.
+  // Licensed under either of
+  // - Apache License, Version 2.0
+  // - MIT license
+  use std::mem;
+  use winapi::shared::minwindef::DWORD;
+  use winapi::um::handleapi::{CloseHandle, INVALID_HANDLE_VALUE};
+  use winapi::um::processthreadsapi::GetCurrentProcessId;
+  use winapi::um::synchapi::WaitForSingleObject;
+  use winapi::um::tlhelp32::{
+    CreateToolhelp32Snapshot, Process32First, Process32Next, PROCESSENTRY32,
+    TH32CS_SNAPPROCESS,
+  };
+  unsafe {
+    // Take a snapshot of system processes, one of which is ours
+    // and contains our parent's pid
+    let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if snapshot == INVALID_HANDLE_VALUE {
+      return Value::Null;
+    }
 
-      // Iterate over system processes looking for ours
-      let success = Process32First(snapshot, &mut entry);
+    let mut entry: PROCESSENTRY32 = mem::zeroed();
+    entry.dwSize = mem::size_of::<PROCESSENTRY32>() as DWORD;
+
+    // Iterate over system processes looking for ours
+    let success = Process32First(snapshot, &mut entry);
+    if success == 0 {
+      CloseHandle(snapshot);
+      return Value::Null;
+    }
+
+    let this_pid = GetCurrentProcessId();
+    while entry.th32ProcessID != this_pid {
+      let success = Process32Next(snapshot, &mut entry);
       if success == 0 {
         CloseHandle(snapshot);
         return Value::Null;
       }
-
-      let this_pid = GetCurrentProcessId();
-      while entry.th32ProcessID != this_pid {
-        let success = Process32Next(snapshot, &mut entry);
-        if success == 0 {
-          CloseHandle(snapshot);
-          return Value::Null;
-        }
-      }
-      CloseHandle(snapshot);
-
-      // FIXME: Using the process ID exposes a race condition
-      // wherein the parent process already exited and the OS
-      // reassigned its ID.
-      let parent_id = entry.th32ParentProcessID;
-      serde_json::to_value(parent_id);
     }
+    CloseHandle(snapshot);
+
+    // FIXME: Using the process ID exposes a race condition
+    // wherein the parent process already exited and the OS
+    // reassigned its ID.
+    let parent_id = entry.th32ParentProcessID;
+    serde_json::to_value(parent_id);
   }
 }
