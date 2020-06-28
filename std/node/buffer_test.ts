@@ -97,6 +97,22 @@ Deno.test({
 });
 
 Deno.test({
+  name: "allocUnsafe allocates a buffer with the expected size",
+  fn() {
+    const buffer: Buffer = Buffer.allocUnsafe(1);
+    assertEquals(buffer.length, 1, "Buffer size should be 1");
+  },
+});
+
+Deno.test({
+  name: "allocUnsafe(0) creates an empty buffer",
+  fn() {
+    const buffer: Buffer = Buffer.allocUnsafe(0);
+    assertEquals(buffer.length, 0, "Buffer size should be 0");
+  },
+});
+
+Deno.test({
   name: "alloc filled correctly with integer",
   fn() {
     const buffer: Buffer = Buffer.alloc(3, 5);
