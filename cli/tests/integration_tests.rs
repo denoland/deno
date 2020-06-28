@@ -10,8 +10,6 @@ use test_util as util;
 use futures::prelude::*;
 use std::io::{BufRead, Write};
 use std::process::Command;
-#[cfg(windows)]
-use tempfile::Builder;
 use tempfile::TempDir;
 
 #[test]
@@ -422,30 +420,24 @@ fn upgrade_in_tmpdir() {
 }
 
 // Warning: this test requires internet access.
-#[cfg(windows)]
 #[test]
-fn upgrade_with_space_in_tmpdir_name() {
-  let temp_dir = TempDir::new().unwrap();
-  let exe_path = if cfg!(windows) {
-    temp_dir.path().join("deno")
-  } else {
-    temp_dir.path().join("deno.exe")
-  };
+fn upgrade_with_space_in_path() {
+  let temp_dir = tempfile::Builder::new()
+    .prefix("directory with spaces")
+    .tempdir()
+    .unwrap();
+  let exe_path = temp_dir.path().join("deno");
   let _ = std::fs::copy(util::deno_exe_path(), &exe_path).unwrap();
   assert!(exe_path.exists());
-  let env_tmp_dir = Builder::new().prefix("temp temp").tempdir().unwrap();
-  let _mtime1 = std::fs::metadata(&exe_path).unwrap().modified().unwrap();
   let status = Command::new(&exe_path)
     .arg("upgrade")
     .arg("--force")
-    .env("TMP", env_tmp_dir.path())
+    .env("TMP", temp_dir.path())
     .spawn()
     .unwrap()
     .wait()
     .unwrap();
   assert!(status.success());
-  let _mtime2 = std::fs::metadata(&exe_path).unwrap().modified().unwrap();
-  // TODO(ry) assert!(mtime1 < mtime2);
 }
 
 // Warning: this test requires internet access.
