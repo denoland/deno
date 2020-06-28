@@ -35,7 +35,7 @@ function validateBodyType(owner: Body, bodySource: BodyInit | null): boolean {
   );
 }
 
-function concatenate(...arrays: Uint8Array[]): ArrayBuffer {
+function concatenate(arrays: Uint8Array[]): ArrayBuffer {
   let totalLength = 0;
   for (const arr of arrays) {
     totalLength += arr.length;
@@ -73,7 +73,7 @@ async function bufferFromStream(
     }
   }
 
-  return concatenate(...parts);
+  return concatenate(parts);
 }
 
 export const BodyUsedError =
