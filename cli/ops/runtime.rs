@@ -35,11 +35,7 @@ fn op_start(
     "denoVersion": version::DENO,
     "noColor": !colors::use_color(),
     "pid": std::process::id(),
-    "ppid": if cfg!(unix) {
-      serde_json::to_value(getppid().as_raw())?
-    } else {
-      Value::Null
-    },
+    "ppid": ppid(),
     "repl": gs.flags.subcommand == DenoSubcommand::Repl,
     "target": env!("TARGET"),
     "tsVersion": version::TYPESCRIPT,
@@ -85,4 +81,15 @@ fn op_metrics(
     "bytesSentData": m.bytes_sent_data,
     "bytesReceived": m.bytes_received
   })))
+}
+
+fn ppid() -> Value {
+  #[cfg(unix)]
+  {
+    serde_json::to_value(getppid().as_raw()).unwrap()
+  }
+  #[cfg(not(unix))]
+  {
+    Value::Null
+  }
 }
