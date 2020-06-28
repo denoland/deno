@@ -140,6 +140,6 @@ fn ppid_win() -> Value {
     // wherein the parent process already exited and the OS
     // reassigned its ID.
     let parent_id = entry.th32ParentProcessID;
-    serde_json::to_value(parent_id)
+    serde_json::to_value(parent_id).unwrap()
   }
 }
