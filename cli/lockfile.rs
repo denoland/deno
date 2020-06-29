@@ -5,20 +5,22 @@ use std::io::Result;
 use url::Url;
 
 pub struct Lockfile {
-  need_read: bool,
   map: HashMap<String, String>,
   pub filename: String,
 }
 
 impl Lockfile {
-  pub fn new(filename: String) -> Lockfile {
-    Lockfile {
-      map: HashMap::new(),
+  pub fn new(filename: String) -> Result<Lockfile> {
+    debug!("lockfile read {}", filename);
+    let s = std::fs::read_to_string(&filename)?;
+    let map = serde_json::from_str(&s)?;
+    Ok(Lockfile {
+      map,
       filename,
-      need_read: true,
-    }
+    })
   }
 
+  // TODO(bartlomieju): write in alphabetical order
   pub fn write(&self) -> Result<()> {
     let j = json!(self.map);
     let s = serde_json::to_string_pretty(&j).unwrap();
@@ -33,14 +35,6 @@ impl Lockfile {
     Ok(())
   }
 
-  pub fn read(&mut self) -> Result<()> {
-    debug!("lockfile read {}", self.filename);
-    let s = std::fs::read_to_string(&self.filename)?;
-    self.map = serde_json::from_str(&s)?;
-    self.need_read = false;
-    Ok(())
-  }
-
   /// Lazily reads the filename, checks the given module is included.
   /// Returns Ok(true) if check passed
   pub fn check(&mut self, url: &Url, code: Vec<u8>) -> Result<bool> {
@@ -48,10 +42,6 @@ impl Lockfile {
     if url_str.starts_with("file:") {
       return Ok(true);
     }
-    if self.need_read {
-      self.read()?;
-    }
-    assert!(!self.need_read);
     Ok(if let Some(lockfile_checksum) = self.map.get(&url_str) {
       let compiled_checksum = crate::checksum::gen(&[&code]);
       lockfile_checksum == &compiled_checksum

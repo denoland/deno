@@ -75,9 +75,8 @@ impl GlobalState {
       flags.config_path.clone(),
     )?;
 
-    // Note: reads lazily from disk on first call to lockfile.check()
     let lockfile = if let Some(filename) = &flags.lock {
-      Some(Mutex::new(Lockfile::new(filename.to_string())))
+      Some(Mutex::new(Lockfile::new(filename.to_string())?))
     } else {
       None
     };
