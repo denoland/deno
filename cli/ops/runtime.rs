@@ -113,7 +113,7 @@ fn ppid_win() -> Value {
     // and contains our parent's pid
     let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if snapshot == INVALID_HANDLE_VALUE {
-      return serde_json::to_value(-1);
+      return serde_json::to_value(-1).unwrap();
     }
 
     let mut entry: PROCESSENTRY32 = mem::zeroed();
@@ -123,7 +123,7 @@ fn ppid_win() -> Value {
     let success = Process32First(snapshot, &mut entry);
     if success == 0 {
       CloseHandle(snapshot);
-      return serde_json::to_value(-1);
+      return serde_json::to_value(-1).unwrap();
     }
 
     let this_pid = GetCurrentProcessId();
@@ -131,7 +131,7 @@ fn ppid_win() -> Value {
       let success = Process32Next(snapshot, &mut entry);
       if success == 0 {
         CloseHandle(snapshot);
-        return serde_json::to_value(-1);
+        return serde_json::to_value(-1).unwrap();
       }
     }
     CloseHandle(snapshot);
