@@ -30,7 +30,7 @@ This module provides an implementation of the WebAssembly System Interface
 - [ ] fd_readdir
 - [x] fd_renumber
 - [x] fd_seek
-- [ ] fd_sync
+- [x] fd_sync
 - [x] fd_tell
 - [x] fd_write
 - [x] path_create_directory
