@@ -228,26 +228,10 @@ export function assertNotEquals(
 /**
  * Make an assertion that `actual` and `expected` are strictly equal.  If
  * not then throw.
- *
- * Type parameter can be specified to ensure values under comparison have the same type.
- * For example:
- *```ts
- *assertStrictEquals<number>(1, 2)
- *```
  */
-export function assertStrictEquals(
-  actual: unknown,
-  expected: unknown,
-  msg?: string
-): void;
 export function assertStrictEquals<T>(
   actual: T,
   expected: T,
-  msg?: string
-): void;
-export function assertStrictEquals(
-  actual: unknown,
-  expected: unknown,
   msg?: string
 ): void {
   if (actual === expected) {
