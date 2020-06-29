@@ -21,13 +21,25 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+declare const _CustomPromisifiedSymbol: unique symbol;
+declare const _CustomPromisifyArgsSymbol: unique symbol;
+
+declare let Symbol: SymbolConstructor;
+interface SymbolConstructor {
+  for(key: "nodejs.util.promisify.custom"): typeof _CustomPromisifiedSymbol;
+  for(
+    key: "nodejs.util.promisify.customArgs"
+  ): typeof _CustomPromisifyArgsSymbol;
+}
+
 // In addition to being accessible through util.promisify.custom,
-// this symbol is registered globally and can be accessed in any environment as Symbol.for('nodejs.util.promisify.custom')
+// this symbol is registered globally and can be accessed in any environment as
+// Symbol.for('nodejs.util.promisify.custom').
 const kCustomPromisifiedSymbol = Symbol.for("nodejs.util.promisify.custom");
-// This is an internal Node symbol used by functions returning multiple arguments
-// e.g. ['bytesRead', 'buffer'] for fs.read.
+// This is an internal Node symbol used by functions returning multiple
+// arguments, e.g. ['bytesRead', 'buffer'] for fs.read().
 const kCustomPromisifyArgsSymbol = Symbol.for(
-  "deno.nodejs.util.promisify.customArgs"
+  "nodejs.util.promisify.customArgs"
 );
 
 class NodeInvalidArgTypeError extends TypeError {
