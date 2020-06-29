@@ -140,27 +140,6 @@ export function assert(expr: unknown, msg = ""): asserts expr {
   }
 }
 
-type NumberArray = number[] | ArrayBuffer;
-
-/**
- * Check if a type is `any` type.
- * Refer https://stackoverflow.com/a/55541672/6587634
- */
-type IsAny<T> = T extends never ? true : never;
-type CheckNumberArray<T> = T extends NumberArray
-  ? NumberArray | undefined | null
-  : T | undefined | null;
-
-type ComparableType<T> = true extends IsAny<T> // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ? any
-  : T extends Array<infer ElementType>
-  ? true extends IsAny<ElementType> // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ? any[]
-    : CheckNumberArray<T>
-  : T extends symbol
-  ? symbol
-  : CheckNumberArray<T>;
-
 /**
  * Make an assertion that `actual` and `expected` are equal, deeply. If not
  * deeply equal, then throw.
@@ -171,12 +150,17 @@ type ComparableType<T> = true extends IsAny<T> // eslint-disable-next-line @type
  *assertEquals<number>(1, 2)
  *```
  */
-export function assertEquals<T>(
-  actual: ComparableType<T>,
-  expected: ComparableType<T>,
+export function assertEquals(
+  actual: unknown,
+  expected: unknown,
   msg?: string
 ): void;
-export function assertEquals<T>(actual: T, expected: T, msg?: string): void {
+export function assertEquals<T>(actual: T, expected: T, msg?: string): void;
+export function assertEquals(
+  actual: unknown,
+  expected: unknown,
+  msg?: string
+): void {
   if (equal(actual, expected)) {
     return;
   }
@@ -209,9 +193,15 @@ export function assertEquals<T>(actual: T, expected: T, msg?: string): void {
  *assertNotEquals<number>(1, 2)
  *```
  */
-export function assertNotEquals<T>(
-  actual: ComparableType<T>,
-  expected: ComparableType<T>,
+export function assertNotEquals(
+  actual: unknown,
+  expected: unknown,
+  msg?: string
+): void;
+export function assertNotEquals<T>(actual: T, expected: T, msg?: string): void;
+export function assertNotEquals(
+  actual: unknown,
+  expected: unknown,
   msg?: string
 ): void {
   if (!equal(actual, expected)) {
@@ -245,14 +235,19 @@ export function assertNotEquals<T>(
  *assertStrictEquals<number>(1, 2)
  *```
  */
-export function assertStrictEquals<T>(
-  actual: ComparableType<T>,
-  expected: ComparableType<T>,
+export function assertStrictEquals(
+  actual: unknown,
+  expected: unknown,
   msg?: string
 ): void;
 export function assertStrictEquals<T>(
   actual: T,
   expected: T,
+  msg?: string
+): void;
+export function assertStrictEquals(
+  actual: unknown,
+  expected: unknown,
   msg?: string
 ): void {
   if (actual === expected) {
@@ -319,9 +314,19 @@ export function assertStringContains(
  *assertArrayContains<number>([1, 2], [2])
  *```
  */
+export function assertArrayContains(
+  actual: ArrayLike<unknown>,
+  expected: ArrayLike<unknown>,
+  msg?: string
+): void;
 export function assertArrayContains<T>(
-  actual: ArrayLike<ComparableType<T>>,
-  expected: ArrayLike<ComparableType<T>>,
+  actual: ArrayLike<T>,
+  expected: ArrayLike<T>,
+  msg?: string
+): void;
+export function assertArrayContains(
+  actual: ArrayLike<unknown>,
+  expected: ArrayLike<unknown>,
   msg?: string
 ): void {
   const missing: unknown[] = [];

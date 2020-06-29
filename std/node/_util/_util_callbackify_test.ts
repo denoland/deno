@@ -35,7 +35,7 @@ const values = [
   function ok(): void {},
   ["array", "with", 4, "values"],
   new Error("boo"),
-] as const;
+];
 
 class TestQueue {
   #waitingPromise: Promise<void>;

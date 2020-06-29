@@ -43,7 +43,7 @@ const errCases = [
   ["00gg", "\x00", errInvalidByte(new TextEncoder().encode("g")[0])],
   ["0\x01", "", errInvalidByte(new TextEncoder().encode("\x01")[0])],
   ["ffeed", "\xff\xee", errLength()],
-] as const;
+];
 
 Deno.test({
   name: "[encoding.hex] encodedLen",
