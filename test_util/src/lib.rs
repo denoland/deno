@@ -16,6 +16,7 @@ use std::sync::Mutex;
 use std::sync::MutexGuard;
 use tempfile::TempDir;
 use warp::http::Uri;
+use warp::reply::with_header;
 use warp::reply::Reply;
 use warp::Filter;
 
@@ -124,9 +125,8 @@ pub async fn run_all_servers() {
       if if_none_match == Some("33a64df551425fcc55e".to_string()) {
         let r =
           warp::reply::with_status(warp::reply(), StatusCode::NOT_MODIFIED);
-        let r =
-          warp::reply::with_header(r, "Content-type", "application/typescript");
-        let r = warp::reply::with_header(r, "ETag", "33a64df551425fcc55e");
+        let r = with_header(r, "Content-type", "application/typescript");
+        let r = with_header(r, "ETag", "33a64df551425fcc55e");
         Box::new(r)
       } else {
         let mut res = Response::new(Body::from("console.log('etag')"));
@@ -231,17 +231,15 @@ fn custom_headers(path: warp::path::Peek, f: warp::fs::File) -> Box<dyn Reply> {
   let p = path.as_str();
 
   if p.ends_with("cli/tests/053_import_compression/brotli") {
-    let f = warp::reply::with_header(f, "Content-Encoding", "br");
-    let f =
-      warp::reply::with_header(f, "Content-Type", "application/javascript");
-    let f = warp::reply::with_header(f, "Content-Length", "26");
+    let f = with_header(f, "Content-Encoding", "br");
+    let f = with_header(f, "Content-Type", "application/javascript");
+    let f = with_header(f, "Content-Length", "26");
     return Box::new(f);
   }
   if p.ends_with("cli/tests/053_import_compression/gziped") {
-    let f = warp::reply::with_header(f, "Content-Encoding", "gzip");
-    let f =
-      warp::reply::with_header(f, "Content-Type", "application/javascript");
-    let f = warp::reply::with_header(f, "Content-Length", "39");
+    let f = with_header(f, "Content-Encoding", "gzip");
+    let f = with_header(f, "Content-Type", "application/javascript");
+    let f = with_header(f, "Content-Length", "39");
     return Box::new(f);
   }
 
@@ -280,7 +278,7 @@ fn custom_headers(path: warp::path::Peek, f: warp::fs::File) -> Box<dyn Reply> {
   };
 
   if let Some(t) = content_type {
-    Box::new(warp::reply::with_header(f, "Content-Type", t))
+    Box::new(with_header(f, "Content-Type", t))
   } else {
     Box::new(f)
   }
