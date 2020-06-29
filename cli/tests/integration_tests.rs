@@ -421,6 +421,27 @@ fn upgrade_in_tmpdir() {
 
 // Warning: this test requires internet access.
 #[test]
+fn upgrade_with_space_in_path() {
+  let temp_dir = tempfile::Builder::new()
+    .prefix("directory with spaces")
+    .tempdir()
+    .unwrap();
+  let exe_path = temp_dir.path().join("deno");
+  let _ = std::fs::copy(util::deno_exe_path(), &exe_path).unwrap();
+  assert!(exe_path.exists());
+  let status = Command::new(&exe_path)
+    .arg("upgrade")
+    .arg("--force")
+    .env("TMP", temp_dir.path())
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(status.success());
+}
+
+// Warning: this test requires internet access.
+#[test]
 fn upgrade_with_version_in_tmpdir() {
   let temp_dir = TempDir::new().unwrap();
   let exe_path = if cfg!(windows) {
