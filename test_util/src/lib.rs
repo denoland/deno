@@ -115,11 +115,13 @@ pub async fn run_all_servers() {
   let addr = ([127, 0, 0, 1], INF_REDIRECTS_PORT);
   tokio::spawn(warp::serve(routes).run(addr));
 
+  use warp::http::{HeaderValue, Response, StatusCode};
+  use warp::hyper::Body;
+
   let etag_script = warp::path!("etag_script.ts")
     .and(warp::header::optional::<String>("if-none-match"))
     .map(|if_none_match| -> Box<dyn Reply> {
       if if_none_match == Some("33a64df551425fcc55e".to_string()) {
-        use warp::http::StatusCode;
         let r =
           warp::reply::with_status(warp::reply(), StatusCode::NOT_MODIFIED);
         let r =
@@ -127,25 +129,98 @@ pub async fn run_all_servers() {
         let r = warp::reply::with_header(r, "ETag", "33a64df551425fcc55e");
         Box::new(r)
       } else {
-        use warp::http::{HeaderValue, Response};
-        use warp::hyper::Body;
         let mut res = Response::new(Body::from("console.log('etag')"));
-        res.headers_mut().insert(
+        let h = res.headers_mut();
+        h.insert(
           "Content-type",
           HeaderValue::from_static("application/typescript"),
         );
-        res
-          .headers_mut()
-          .insert("ETag", HeaderValue::from_static("33a64df551425fcc55e"));
+        h.insert("ETag", HeaderValue::from_static("33a64df551425fcc55e"));
         Box::new(res)
       }
     });
+  let xtypescripttypes = warp::path!("xTypeScriptTypes.js")
+    .map(|| {
+      let mut res = Response::new(Body::from("export const foo = 'foo';"));
+      let h = res.headers_mut();
+      h.insert(
+        "Content-type",
+        HeaderValue::from_static("application/javascript"),
+      );
+      h.insert(
+        "X-TypeScript-Types",
+        HeaderValue::from_static("./xTypeScriptTypes.d.ts"),
+      );
+      res
+    })
+    .or(warp::path!("xTypeScriptTypes.d.ts").map(|| {
+      let mut res = Response::new(Body::from("export const foo: 'foo';"));
+      res.headers_mut().insert(
+        "Content-type",
+        HeaderValue::from_static("application/typescript"),
+      );
+      res
+    }))
+    .or(warp::path!("type_directives_redirect.js").map(|| {
+      let mut res = Response::new(Body::from("export const foo = 'foo';"));
+      let h = res.headers_mut();
+      h.insert(
+        "Content-type",
+        HeaderValue::from_static("application/javascript"),
+      );
+      h.insert(
+        "X-TypeScript-Types",
+        HeaderValue::from_static(
+          "http://localhost:4547/xTypeScriptTypesRedirect.d.ts",
+        ),
+      );
+      res
+    }))
+    .or(warp::path!("xTypeScriptTypesRedirect.d.ts").map(|| {
+      let mut res = Response::new(Body::from(
+        "import './xTypeScriptTypesRedirected.d.ts';",
+      ));
+      let h = res.headers_mut();
+      h.insert(
+        "Content-type",
+        HeaderValue::from_static("application/typescript"),
+      );
+      res
+    }))
+    .or(warp::path!("xTypeScriptTypesRedirected.d.ts").map(|| {
+      let mut res = Response::new(Body::from("export const foo: 'foo';"));
+      let h = res.headers_mut();
+      h.insert(
+        "Content-type",
+        HeaderValue::from_static("application/typescript"),
+      );
+      res
+    }))
+    .or(warp::path!("referenceTypes.js").map(|| {
+      let mut res = Response::new(Body::from("/// <reference types=\"./xTypeScriptTypes.d.ts\" />\r\nexport const foo = \"foo\";\r\n"));
+      let h = res.headers_mut();
+      h.insert(
+        "Content-type",
+        HeaderValue::from_static("application/javascript"),
+      );
+      res
+    }))
+    .or(warp::path!("multipart_form_data.txt").map(|| {
+      let mut res = Response::new(Body::from("Preamble\r\n--boundary\t \r\nContent-Disposition: form-data; name=\"field_1\"\r\n\r\nvalue_1 \r\n\r\n--boundary\r\nContent-Disposition: form-data; name=\"field_2\"; filename=\"file.js\"\r\nContent-Type: text/javascript\r\n\r\nconsole.log(\"Hi\")\r\n--boundary--\r\nEpilogue"));
+      let h = res.headers_mut();
+      h.insert(
+        "Content-type",
+        HeaderValue::from_static("multipart/form-data;boundary=boundary"),
+      );
+      res
+    }));
 
   let routes = warp::any()
     .and(warp::path::peek())
     .and(warp::fs::dir(root_path()))
     .map(content_type_handler)
-    .or(etag_script);
+    .or(etag_script)
+    .or(xtypescripttypes);
   let addr = ([127, 0, 0, 1], PORT);
   println!("ready");
   // Note on the last one, we await instead of spawn.
@@ -157,54 +232,8 @@ fn content_type_handler(
   f: warp::fs::File,
 ) -> Box<dyn Reply> {
   let p = path.as_str();
-  println!("content_type_handler {}", p);
 
-  if p.ends_with("etag_script.ts") {
-    let r = f.into_response();
-    println!("etag_script.ts");
-    if Some("33a64df551425fcc55e")
-      == r
-        .headers()
-        .get("if-none-match")
-        .map(|v| v.to_str().unwrap())
-    {
-      println!("yoyoma");
-    } else {
-      println!("foobar");
-    }
-    /*
-       self.protocol_version = 'HTTP/1.1'
-        if_not_match = self.headers.getheader('if-none-match')
-        if if_not_match == "33a64df551425fcc55e":
-            self.send_response(304, 'Not Modified')
-            self.send_header('Content-type', 'application/typescript')
-            self.send_header('ETag', '33a64df551425fcc55e')
-            self.end_headers()
-        else:
-            self.send_response(200, 'OK')
-            self.send_header('Content-type', 'application/typescript')
-            self.send_header('ETag', '33a64df551425fcc55e')
-            self.end_headers()
-            self.wfile.write(bytes("console.log('etag')"))
-    */
-    return Box::new(r);
-  }
-
-  let content_type = if p.ends_with("xTypeScriptTypes.js") {
-    todo!()
-  } else if p.ends_with("type_directives_redirect.js") {
-    todo!()
-  } else if p.ends_with("xTypeScriptTypesRedirect.d.ts") {
-    todo!()
-  } else if p.ends_with("xTypeScriptTypesRedirected.d.ts") {
-    todo!()
-  } else if p.ends_with("xTypeScriptTypes.d.ts") {
-    todo!()
-  } else if p.ends_with("referenceTypes.js") {
-    todo!()
-  } else if p.ends_with("multipart_form_data.txt") {
-    todo!()
-  } else if p.contains(".t1.") {
+  let content_type = if p.contains(".t1.") {
     Some("text/typescript")
   } else if p.contains(".t2.") {
     Some("video/vnd.dlna.mpeg-tts")
