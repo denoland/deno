@@ -7,11 +7,6 @@
 import { Reader, Writer, ReaderSync, WriterSync } from "./io.ts";
 import { assert } from "./util.ts";
 
-// MIN_READ is the minimum ArrayBuffer size passed to a read call by
-// buffer.ReadFrom. As long as the Buffer has at least MIN_READ bytes beyond
-// what is required to hold the contents of r, readFrom() will not grow the
-// underlying buffer.
-const MIN_READ = 512;
 const MAX_SIZE = 2 ** 32 - 2;
 
 // `off` is the offset into `dst` where it will at which to begin writing values
