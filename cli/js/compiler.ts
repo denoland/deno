@@ -960,16 +960,29 @@ function performanceStart(): void {
   ts.performance.enable();
 }
 
-function performanceProgram(program: ts.Program | ts.BuilderProgram): void {
-  if ("getProgram" in program) {
-    program = program.getProgram();
+function performanceProgram({
+  program,
+  fileCount,
+}: {
+  program?: ts.Program | ts.BuilderProgram;
+  fileCount?: number;
+}): void {
+  if (program) {
+    if ("getProgram" in program) {
+      program = program.getProgram();
+    }
+    stats.push({ key: "Files", value: program.getSourceFiles().length });
+    stats.push({ key: "Nodes", value: program.getNodeCount() });
+    stats.push({ key: "Identifiers", value: program.getIdentifierCount() });
+    stats.push({ key: "Symbols", value: program.getSymbolCount() });
+    stats.push({ key: "Types", value: program.getTypeCount() });
+    stats.push({
+      key: "Instantiations",
+      value: program.getInstantiationCount(),
+    });
+  } else if (fileCount != null) {
+    stats.push({ key: "Files", value: fileCount });
   }
-  stats.push({ key: "Files", value: program.getSourceFiles().length });
-  stats.push({ key: "Nodes", value: program.getNodeCount() });
-  stats.push({ key: "Identifiers", value: program.getIdentifierCount() });
-  stats.push({ key: "Symbols", value: program.getSymbolCount() });
-  stats.push({ key: "Types", value: program.getTypeCount() });
-  stats.push({ key: "Instantiations", value: program.getInstantiationCount() });
   const programTime = ts.performance.getDuration("Program");
   const bindTime = ts.performance.getDuration("Bind");
   const checkTime = ts.performance.getDuration("Check");
@@ -1394,7 +1407,7 @@ function compile({
       // without casting.
       diagnostics = emitResult.diagnostics;
     }
-    performanceProgram(program);
+    performanceProgram({ program });
   }
 
   log("<<< compile end", { rootNames, type: CompilerRequestType[type] });
@@ -1476,6 +1489,7 @@ function transpile({
       };
     }
   }
+  performanceProgram({ fileCount: sourceFiles.length });
   const stats = performance ? performanceEnd() : undefined;
   log("<<< transpile end");
   return { diagnostics: fromTypeScriptDiagnostic(diagnostics), emitMap, stats };
@@ -1549,7 +1563,7 @@ function bundle({
       diagnostics = emitResult.diagnostics;
     }
     if (performance) {
-      performanceProgram(program);
+      performanceProgram({ program });
     }
   }
 
