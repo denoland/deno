@@ -115,7 +115,7 @@ export class Buffer implements Reader, ReaderSync, Writer, WriterSync {
     return Promise.resolve(n);
   }
 
-  #grow = (n: number): number => {
+  #grow = (n: number, exceedLimit = true): number => {
     const m = this.length;
     // If buffer is empty, reset to recover space.
     if (m === 0 && this.#off !== 0) {
@@ -133,17 +133,17 @@ export class Buffer implements Reader, ReaderSync, Writer, WriterSync {
       // we instead let capacity get twice as large so we
       // don't spend all our time copying.
       copyBytes(this.#buf.subarray(this.#off), this.#buf);
-    } else if (c > MAX_SIZE - c - n) {
+    } else if (c + n > MAX_SIZE && exceedLimit) {
       throw new Error("The buffer cannot be grown beyond the maximum size.");
     } else {
       // Not enough space anywhere, we need to allocate.
-      const buf = new Uint8Array(2 * c + n);
+      const buf = new Uint8Array(Math.min(2 * c + n, MAX_SIZE));
       copyBytes(this.#buf.subarray(this.#off), buf);
       this.#buf = buf;
     }
     // Restore this.#off and len(this.#buf).
     this.#off = 0;
-    this.#reslice(m + n);
+    this.#reslice(Math.min(m + n, MAX_SIZE));
     return m;
   };
 
@@ -158,30 +158,55 @@ export class Buffer implements Reader, ReaderSync, Writer, WriterSync {
   async readFrom(r: Reader): Promise<number> {
     let n = 0;
     while (true) {
-      const i = this.#grow(MIN_READ);
-      this.#reslice(i);
+      let i = this.length;
+
+      if (this.capacity < MAX_SIZE || i === MAX_SIZE) {
+        // We want to grow beyond MAX_SIZE only when the read bytes are MAX_SIZE
+        // so it will throw beyond MAX_SIZE error.
+        // Otherwise we want to keep reading without growing the buffer
+        i = this.#grow(MIN_READ, this.capacity === MAX_SIZE);
+        this.#reslice(i);
+      }
+
       const fub = new Uint8Array(this.#buf.buffer, i);
       const nread = await r.read(fub);
       if (nread === null) {
         return n;
       }
+
       this.#reslice(i + nread);
       n += nread;
+
+      if (n === MAX_SIZE) {
+        // Check if EOF is reached, else next iteration will throw since we reached MAX_SIZE
+        if ((await r.read(new Uint8Array(1))) === null) return n;
+      }
     }
   }
 
   readFromSync(r: ReaderSync): number {
     let n = 0;
     while (true) {
-      const i = this.#grow(MIN_READ);
-      this.#reslice(i);
+      let i = this.length;
+
+      if (this.capacity < MAX_SIZE || i === MAX_SIZE) {
+        i = this.#grow(MIN_READ, this.capacity === MAX_SIZE);
+        this.#reslice(i);
+      }
+
       const fub = new Uint8Array(this.#buf.buffer, i);
       const nread = r.readSync(fub);
       if (nread === null) {
         return n;
       }
+
       this.#reslice(i + nread);
       n += nread;
+
+      if (n === MAX_SIZE) {
+        // Check if EOF is reached, else next iteration will throw since we reached MAX_SIZE
+        if (r.readSync(new Uint8Array(1)) === null) return n;
+      }
     }
   }
 }
