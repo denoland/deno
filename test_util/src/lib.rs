@@ -78,7 +78,13 @@ impl<'a> Drop for HttpServerGuard<'a> {
 /// will be killed.
 pub fn http_server<'a>() -> HttpServerGuard<'a> {
   // TODO(bartlomieju) Allow tests to use the http server in parallel.
-  let g = GUARD.lock().unwrap();
+  let r = GUARD.lock();
+  let g = if let Err(poison_err) = r {
+    // If panics happened, ignore it. This is for tests.
+    poison_err.into_inner()
+  } else {
+    r.unwrap()
+  };
 
   println!("tools/http_server.py starting...");
   let mut child = Command::new("python")
