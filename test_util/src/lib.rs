@@ -25,7 +25,7 @@ const REDIRECT_PORT: u16 = 4546;
 const ANOTHER_REDIRECT_PORT: u16 = 4547;
 const DOUBLE_REDIRECTS_PORT: u16 = 4548;
 const INF_REDIRECTS_PORT: u16 = 4549;
-// REDIRECT_ABSOLUTE_PORT = 4550
+const REDIRECT_ABSOLUTE_PORT: u16 = 4550;
 // HTTPS_PORT = 5545
 
 pub const PERMISSION_VARIANTS: [&str; 5] =
@@ -114,6 +114,25 @@ pub async fn run_all_servers() {
     warp::redirect(u)
   });
   let addr = ([127, 0, 0, 1], INF_REDIRECTS_PORT);
+  tokio::spawn(warp::serve(routes).run(addr));
+
+  // redirect server that redirect to absolute paths under same host
+  // redirects /REDIRECT/file_name to /file_name
+  let routes = warp::path("REDIRECT")
+    .and(warp::path::peek())
+    .map(|path: warp::path::Peek| {
+      let p = path.as_str();
+      let url = format!("/{}", p);
+      let u = url.parse::<Uri>().unwrap();
+      warp::redirect(u)
+    })
+    .or(
+      warp::any()
+        .and(warp::path::peek())
+        .and(warp::fs::dir(root_path()))
+        .map(custom_headers),
+    );
+  let addr = ([127, 0, 0, 1], REDIRECT_ABSOLUTE_PORT);
   tokio::spawn(warp::serve(routes).run(addr));
 
   use warp::http::{HeaderValue, Response, StatusCode};
@@ -215,12 +234,11 @@ pub async fn run_all_servers() {
       res
     }));
 
-  let routes = warp::any()
+  let content_type_handler = warp::any()
     .and(warp::path::peek())
     .and(warp::fs::dir(root_path()))
-    .map(custom_headers)
-    .or(etag_script)
-    .or(xtypescripttypes);
+    .map(custom_headers);
+  let routes = content_type_handler.or(etag_script).or(xtypescripttypes);
   let addr = ([127, 0, 0, 1], PORT);
   println!("ready");
   // Note on the last one, we await instead of spawn.
