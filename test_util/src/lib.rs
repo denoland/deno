@@ -79,7 +79,7 @@ pub async fn run_all_servers() {
   let routes = warp::path::full().map(|path: warp::path::FullPath| {
     let p = path.as_str();
     assert_eq!(&p[0..1], "/");
-    let url = format!("http://127.0.0.1:{}{}", PORT, p);
+    let url = format!("http://localhost:{}{}", PORT, p);
     let u = url.parse::<Uri>().unwrap();
     warp::redirect(u)
   });
