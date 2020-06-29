@@ -218,7 +218,7 @@ pub async fn run_all_servers() {
   let routes = warp::any()
     .and(warp::path::peek())
     .and(warp::fs::dir(root_path()))
-    .map(content_type_handler)
+    .map(custom_headers)
     .or(etag_script)
     .or(xtypescripttypes);
   let addr = ([127, 0, 0, 1], PORT);
@@ -227,11 +227,23 @@ pub async fn run_all_servers() {
   warp::serve(routes).run(addr).await;
 }
 
-fn content_type_handler(
-  path: warp::path::Peek,
-  f: warp::fs::File,
-) -> Box<dyn Reply> {
+fn custom_headers(path: warp::path::Peek, f: warp::fs::File) -> Box<dyn Reply> {
   let p = path.as_str();
+
+  if p.ends_with("cli/tests/053_import_compression/brotli") {
+    let f = warp::reply::with_header(f, "Content-Encoding", "br");
+    let f =
+      warp::reply::with_header(f, "Content-Type", "application/javascript");
+    let f = warp::reply::with_header(f, "Content-Length", "26");
+    return Box::new(f);
+  }
+  if p.ends_with("cli/tests/053_import_compression/gziped") {
+    let f = warp::reply::with_header(f, "Content-Encoding", "gzip");
+    let f =
+      warp::reply::with_header(f, "Content-Type", "application/javascript");
+    let f = warp::reply::with_header(f, "Content-Length", "39");
+    return Box::new(f);
+  }
 
   let content_type = if p.contains(".t1.") {
     Some("text/typescript")
