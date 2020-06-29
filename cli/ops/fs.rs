@@ -22,6 +22,7 @@ use rand::{thread_rng, Rng};
 pub fn init(i: &mut CoreIsolate, s: &State) {
   i.register_op("op_open", s.stateful_json_op2(op_open));
   i.register_op("op_seek", s.stateful_json_op2(op_seek));
+  i.register_op("op_fdatasync", s.stateful_json_op2(op_fdatasync));
   i.register_op("op_fsync", s.stateful_json_op2(op_fsync));
   i.register_op("op_fstat", s.stateful_json_op2(op_fstat));
   i.register_op("op_umask", s.stateful_json_op(op_umask));
@@ -150,7 +151,7 @@ fn op_open(
 struct SeekArgs {
   promise_id: Option<u64>,
   rid: i32,
-  offset: i32,
+  offset: i64,
   whence: i32,
 }
 
@@ -168,8 +169,8 @@ fn op_seek(
   // Translate seek mode to Rust repr.
   let seek_from = match whence {
     0 => SeekFrom::Start(offset as u64),
-    1 => SeekFrom::Current(i64::from(offset)),
-    2 => SeekFrom::End(i64::from(offset)),
+    1 => SeekFrom::Current(offset),
+    2 => SeekFrom::End(offset),
     _ => {
       return Err(OpError::type_error(format!(
         "Invalid seek mode: {}",
@@ -202,6 +203,50 @@ fn op_seek(
         )),
       })?;
       Ok(json!(pos))
+    };
+    Ok(JsonOp::Async(fut.boxed_local()))
+  }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FdatasyncArgs {
+  promise_id: Option<u64>,
+  rid: i32,
+}
+
+fn op_fdatasync(
+  isolate_state: &mut CoreIsolateState,
+  state: &State,
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<JsonOp, OpError> {
+  state.check_unstable("Deno.fdatasync");
+  let args: FdatasyncArgs = serde_json::from_value(args)?;
+  let rid = args.rid as u32;
+
+  let resource_table = isolate_state.resource_table.clone();
+  let is_sync = args.promise_id.is_none();
+
+  if is_sync {
+    let mut resource_table = resource_table.borrow_mut();
+    std_file_resource(&mut resource_table, rid, |r| match r {
+      Ok(std_file) => std_file.sync_data().map_err(OpError::from),
+      Err(_) => Err(OpError::type_error(
+        "cannot sync this type of resource".to_string(),
+      )),
+    })?;
+    Ok(JsonOp::Sync(json!({})))
+  } else {
+    let fut = async move {
+      let mut resource_table = resource_table.borrow_mut();
+      std_file_resource(&mut resource_table, rid, |r| match r {
+        Ok(std_file) => std_file.sync_data().map_err(OpError::from),
+        Err(_) => Err(OpError::type_error(
+          "cannot sync this type of resource".to_string(),
+        )),
+      })?;
+      Ok(json!({}))
     };
     Ok(JsonOp::Async(fut.boxed_local()))
   }

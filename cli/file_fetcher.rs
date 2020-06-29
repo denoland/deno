@@ -448,11 +448,7 @@ impl SourceFileFetcher {
       .boxed_local();
     }
 
-    info!(
-      "{} {}",
-      colors::green("Download".to_string()),
-      module_url.to_string()
-    );
+    info!("{} {}", colors::green("Download"), module_url.to_string());
 
     let dir = self.clone();
     let module_url = module_url.clone();
@@ -1380,25 +1376,14 @@ mod tests {
   }
 
   #[tokio::test]
-  async fn test_fetch_source_2() {
-    let http_server_guard = test_util::http_server();
+  async fn fetch_remote_source_no_ext() {
+    let g = test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
-    let fetcher_1 = fetcher.clone();
-    let fetcher_2 = fetcher.clone();
     let module_url =
-      Url::parse("http://localhost:4545/cli/tests/subdir/no_ext").unwrap();
-    let module_url_2 =
-      Url::parse("http://localhost:4545/cli/tests/subdir/mismatch_ext.ts")
-        .unwrap();
-    let module_url_2_ = module_url_2.clone();
-    let module_url_3 =
-      Url::parse("http://localhost:4545/cli/tests/subdir/unknown_ext.deno")
-        .unwrap();
-    let module_url_3_ = module_url_3.clone();
-
+      &Url::parse("http://localhost:4545/cli/tests/subdir/no_ext").unwrap();
     let result = fetcher
       .fetch_remote_source(
-        &module_url,
+        module_url,
         false,
         false,
         10,
@@ -1409,11 +1394,21 @@ mod tests {
     let r = result.unwrap();
     assert_eq!(r.source_code, b"export const loaded = true;\n");
     assert_eq!(&(r.media_type), &msg::MediaType::TypeScript);
-    let (_, headers) = fetcher.http_cache.get(&module_url).unwrap();
+    let (_, headers) = fetcher.http_cache.get(module_url).unwrap();
     assert_eq!(headers.get("content-type").unwrap(), "text/typescript");
-    let result = fetcher_1
+    drop(g)
+  }
+
+  #[tokio::test]
+  async fn fetch_remote_source_mismatch_ext() {
+    let g = test_util::http_server();
+    let (_temp_dir, fetcher) = test_setup();
+    let module_url =
+      &Url::parse("http://localhost:4545/cli/tests/subdir/mismatch_ext.ts")
+        .unwrap();
+    let result = fetcher
       .fetch_remote_source(
-        &module_url_2,
+        module_url,
         false,
         false,
         10,
@@ -1424,13 +1419,21 @@ mod tests {
     let r2 = result.unwrap();
     assert_eq!(r2.source_code, b"export const loaded = true;\n");
     assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
-    let (_, headers) = fetcher.http_cache.get(&module_url_2_).unwrap();
+    let (_, headers) = fetcher.http_cache.get(module_url).unwrap();
     assert_eq!(headers.get("content-type").unwrap(), "text/javascript");
+    drop(g);
+  }
 
-    // test unknown extension
-    let result = fetcher_2
+  #[tokio::test]
+  async fn fetch_remote_source_unknown_ext() {
+    let g = test_util::http_server();
+    let (_temp_dir, fetcher) = test_setup();
+    let module_url =
+      &Url::parse("http://localhost:4545/cli/tests/subdir/unknown_ext.deno")
+        .unwrap();
+    let result = fetcher
       .fetch_remote_source(
-        &module_url_3,
+        module_url,
         false,
         false,
         10,
@@ -1441,10 +1444,9 @@ mod tests {
     let r3 = result.unwrap();
     assert_eq!(r3.source_code, b"export const loaded = true;\n");
     assert_eq!(&(r3.media_type), &msg::MediaType::TypeScript);
-    let (_, headers) = fetcher.http_cache.get(&module_url_3_).unwrap();
+    let (_, headers) = fetcher.http_cache.get(module_url).unwrap();
     assert_eq!(headers.get("content-type").unwrap(), "text/typescript");
-
-    drop(http_server_guard);
+    drop(g);
   }
 
   #[tokio::test]

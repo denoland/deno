@@ -28,27 +28,15 @@ unitTest({ perms: { env: true } }, function deleteEnv(): void {
 });
 
 unitTest(function envPermissionDenied1(): void {
-  let err;
-  try {
+  assertThrows(() => {
     Deno.env.toObject();
-  } catch (e) {
-    err = e;
-  }
-  assertNotEquals(err, undefined);
-  assert(err instanceof Deno.errors.PermissionDenied);
-  assertEquals(err.name, "PermissionDenied");
+  }, Deno.errors.PermissionDenied);
 });
 
 unitTest(function envPermissionDenied2(): void {
-  let err;
-  try {
+  assertThrows(() => {
     Deno.env.get("PATH");
-  } catch (e) {
-    err = e;
-  }
-  assertNotEquals(err, undefined);
-  assert(err instanceof Deno.errors.PermissionDenied);
-  assertEquals(err.name, "PermissionDenied");
+  }, Deno.errors.PermissionDenied);
 });
 
 // This test verifies that on Windows, environment variables are
@@ -143,15 +131,9 @@ unitTest({ perms: { env: true } }, function loadavgSuccess(): void {
 });
 
 unitTest({ perms: { env: false } }, function loadavgPerm(): void {
-  let caughtError = false;
-  try {
+  assertThrows(() => {
     Deno.loadavg();
-  } catch (err) {
-    caughtError = true;
-    assert(err instanceof Deno.errors.PermissionDenied);
-    assertEquals(err.name, "PermissionDenied");
-  }
-  assert(caughtError);
+  }, Deno.errors.PermissionDenied);
 });
 
 unitTest({ perms: { env: true } }, function hostnameDir(): void {
@@ -159,15 +141,9 @@ unitTest({ perms: { env: true } }, function hostnameDir(): void {
 });
 
 unitTest({ perms: { env: false } }, function hostnamePerm(): void {
-  let caughtError = false;
-  try {
+  assertThrows(() => {
     Deno.hostname();
-  } catch (err) {
-    caughtError = true;
-    assert(err instanceof Deno.errors.PermissionDenied);
-    assertEquals(err.name, "PermissionDenied");
-  }
-  assert(caughtError);
+  }, Deno.errors.PermissionDenied);
 });
 
 unitTest({ perms: { env: true } }, function releaseDir(): void {
@@ -175,13 +151,7 @@ unitTest({ perms: { env: true } }, function releaseDir(): void {
 });
 
 unitTest({ perms: { env: false } }, function releasePerm(): void {
-  let caughtError = false;
-  try {
+  assertThrows(() => {
     Deno.osRelease();
-  } catch (err) {
-    caughtError = true;
-    assert(err instanceof Deno.errors.PermissionDenied);
-    assertEquals(err.name, "PermissionDenied");
-  }
-  assert(caughtError);
+  }, Deno.errors.PermissionDenied);
 });

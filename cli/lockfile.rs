@@ -53,7 +53,7 @@ impl Lockfile {
     }
     assert!(!self.need_read);
     Ok(if let Some(lockfile_checksum) = self.map.get(&url_str) {
-      let compiled_checksum = crate::checksum::gen(vec![&code]);
+      let compiled_checksum = crate::checksum::gen(&[&code]);
       lockfile_checksum == &compiled_checksum
     } else {
       false
@@ -66,7 +66,7 @@ impl Lockfile {
     if url_str.starts_with("file:") {
       return false;
     }
-    let checksum = crate::checksum::gen(vec![&code]);
+    let checksum = crate::checksum::gen(&[&code]);
     self.map.insert(url_str, checksum).is_none()
   }
 }

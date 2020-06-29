@@ -28,7 +28,7 @@ export const versions = {
 };
 
 /** https://nodejs.org/api/process.html#process_process */
-// @deprecated exported only for backwards compatibility with old deno versions
+// @deprecated `import { process } from 'process'` for backwards compatibility with old deno versions
 export const process = {
   arch,
   chdir,
@@ -40,42 +40,47 @@ export const process = {
   versions,
 
   /** https://nodejs.org/api/process.html#process_process_events */
-  // node --input-type=module -e "import {on} from 'process'; console.log(on)"
-  // on is not exported by node, it is only available within process
+  // on is not exported by node, it is only available within process:
+  // node --input-type=module -e "import { on } from 'process'; console.log(on)"
   on(_event: string, _callback: Function): void {
     // TODO(rsp): to be implemented
     notImplemented();
   },
 
-  /** https://nodejs.org/api/process.html#process_process_env */
-  get env(): { [index: string]: string } {
-    // using getter to avoid --allow-env unless it's used
-    return Deno.env.toObject();
-  },
-
   /** https://nodejs.org/api/process.html#process_process_argv */
   get argv(): string[] {
-    // Deno.execPath() also requires --allow-env
+    // Getter delegates --allow-env and --allow-read until request
+    // Getter also allows the export Proxy instance to function as intended
     return [Deno.execPath(), ...Deno.args];
+  },
+
+  /** https://nodejs.org/api/process.html#process_process_env */
+  get env(): { [index: string]: string } {
+    // Getter delegates --allow-env and --allow-read until request
+    // Getter also allows the export Proxy instance to function as intended
+    return Deno.env.toObject();
   },
 };
 
-// define the type for configuring the env and argv promises
-// as well as for the global.process declaration
-type Process = typeof process;
+/**
+ * https://nodejs.org/api/process.html#process_process_argv
+ * @example `import { argv } from './std/node/process.ts'; console.log(argv)`
+ */
+// Proxy delegates --allow-env and --allow-read to request time, even for exports
+export const argv = new Proxy(process.argv, {});
 
-/** requires the use of await for compatibility with deno */
-export const env = new Promise<Process["env"]>((resolve) =>
-  resolve(process.env)
-);
+/**
+ * https://nodejs.org/api/process.html#process_process_env
+ * @example `import { env } from './std/node/process.ts'; console.log(env)`
+ */
+// Proxy delegates --allow-env and --allow-read to request time, even for exports
+export const env = new Proxy(process.env, {});
 
-/** requires the use of await for compatibility with deno */
-export const argv = new Promise<Process["argv"]>((resolve) =>
-  resolve(process.argv)
-);
-
-/** use this for access to `process.env` and `process.argv` without the need for await */
+// import process from './std/node/process.ts'
 export default process;
+
+// Define the type for the global declration
+type Process = typeof process;
 
 Object.defineProperty(process, Symbol.toStringTag, {
   enumerable: false,

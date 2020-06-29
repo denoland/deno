@@ -204,9 +204,9 @@ fn unpack(archive_data: Vec<u8>) -> Result<PathBuf, ErrBox> {
           }",
         )
         .arg("-Path")
-        .arg(&archive_path)
+        .arg(format!("'{}'", &archive_path.to_str().unwrap()))
         .arg("-DestinationPath")
-        .arg(&temp_dir)
+        .arg(format!("'{}'", &temp_dir.to_str().unwrap()))
         .spawn()?
         .wait()?
     }

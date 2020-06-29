@@ -12,9 +12,8 @@ use std::process::Child;
 use std::process::Command;
 use std::process::Output;
 use std::process::Stdio;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
 use std::sync::Mutex;
+use std::sync::MutexGuard;
 use tempfile::TempDir;
 
 pub const PERMISSION_VARIANTS: [&str; 5] =
@@ -22,16 +21,13 @@ pub const PERMISSION_VARIANTS: [&str; 5] =
 pub const PERMISSION_DENIED_PATTERN: &str = "PermissionDenied";
 
 lazy_static! {
-  static ref DENO_DIR: TempDir = TempDir::new().expect("tempdir fail");
-
   // STRIP_ANSI_RE and strip_ansi_codes are lifted from the "console" crate.
   // Copyright 2017 Armin Ronacher <armin.ronacher@active-4.com>. MIT License.
   static ref STRIP_ANSI_RE: Regex = Regex::new(
           r"[\x1b\x9b][\[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-PRZcf-nqry=><]"
   ).unwrap();
 
-  static ref SERVER: Mutex<Option<Child>> = Mutex::new(None);
-  static ref SERVER_COUNT: AtomicUsize = AtomicUsize::new(0);
+  static ref GUARD: Mutex<()> = Mutex::new(());
 }
 
 pub fn root_path() -> PathBuf {
@@ -58,68 +54,55 @@ pub fn deno_exe_path() -> PathBuf {
   p
 }
 
-pub struct HttpServerGuard {}
+pub struct HttpServerGuard<'a> {
+  #[allow(dead_code)]
+  g: MutexGuard<'a, ()>,
+  child: Child,
+}
 
-impl Drop for HttpServerGuard {
+impl<'a> Drop for HttpServerGuard<'a> {
   fn drop(&mut self) {
-    let count = SERVER_COUNT.fetch_sub(1, Ordering::SeqCst);
-    // If no more tests hold guard we can kill the server
-
-    if count == 1 {
-      kill_http_server();
-    }
-  }
-}
-
-fn kill_http_server() {
-  let mut server_guard = SERVER.lock().unwrap();
-  let mut child = server_guard
-    .take()
-    .expect("Trying to kill server but already killed");
-  match child.try_wait() {
-    Ok(None) => {
-      child.kill().expect("failed to kill http_server.py");
-    }
-    Ok(Some(status)) => panic!("http_server.py exited unexpectedly {}", status),
-    Err(e) => panic!("http_server.py error: {}", e),
-  }
-  drop(server_guard);
-}
-
-/// Starts tools/http_server.py when the returned guard is dropped and there are
-// no more guard being held, the server will be killed.
-pub fn http_server() -> HttpServerGuard {
-  SERVER_COUNT.fetch_add(1, Ordering::SeqCst);
-
-  {
-    let mut server_guard = SERVER.lock().unwrap();
-    if server_guard.is_none() {
-      println!("tools/http_server.py starting...");
-      let mut child = Command::new("python")
-        .current_dir(root_path())
-        .args(&["-u", "tools/http_server.py"])
-        .stdout(Stdio::piped())
-        .spawn()
-        .expect("failed to execute child");
-
-      let stdout = child.stdout.as_mut().unwrap();
-      use std::io::{BufRead, BufReader};
-      let lines = BufReader::new(stdout).lines();
-      // Wait for "ready" on stdout. See tools/http_server.py
-      for maybe_line in lines {
-        if let Ok(line) = maybe_line {
-          if line.starts_with("ready") {
-            break;
-          }
-        } else {
-          panic!(maybe_line.unwrap_err());
-        }
+    match self.child.try_wait() {
+      Ok(None) => {
+        self.child.kill().expect("failed to kill http_server.py");
       }
-      server_guard.replace(child);
+      Ok(Some(status)) => {
+        panic!("http_server.py exited unexpectedly {}", status)
+      }
+      Err(e) => panic!("http_server.py err {}", e),
+    }
+  }
+}
+
+/// Starts tools/http_server.py when the returned guard is dropped, the server
+/// will be killed.
+pub fn http_server<'a>() -> HttpServerGuard<'a> {
+  // TODO(bartlomieju) Allow tests to use the http server in parallel.
+  let g = GUARD.lock().unwrap();
+
+  println!("tools/http_server.py starting...");
+  let mut child = Command::new("python")
+    .current_dir(root_path())
+    .args(&["-u", "tools/http_server.py"])
+    .stdout(Stdio::piped())
+    .spawn()
+    .expect("failed to execute child");
+
+  let stdout = child.stdout.as_mut().unwrap();
+  use std::io::{BufRead, BufReader};
+  let lines = BufReader::new(stdout).lines();
+  // Wait for "ready" on stdout. See tools/http_server.py
+  for maybe_line in lines {
+    if let Ok(line) = maybe_line {
+      if line.starts_with("ready") {
+        break;
+      }
+    } else {
+      panic!(maybe_line.unwrap_err());
     }
   }
 
-  HttpServerGuard {}
+  HttpServerGuard { child, g }
 }
 
 /// Helper function to strip ansi codes.
@@ -174,17 +157,23 @@ pub fn run_and_collect_output(
   (stdout, stderr)
 }
 
+pub fn new_deno_dir() -> TempDir {
+  TempDir::new().expect("tempdir fail")
+}
+
 pub fn deno_cmd() -> Command {
   let e = deno_exe_path();
+  let deno_dir = new_deno_dir();
   assert!(e.exists());
   let mut c = Command::new(e);
-  c.env("DENO_DIR", DENO_DIR.path());
+  c.env("DENO_DIR", deno_dir.path());
   c
 }
 
 pub fn run_python_script(script: &str) {
+  let deno_dir = new_deno_dir();
   let output = Command::new("python")
-    .env("DENO_DIR", DENO_DIR.path())
+    .env("DENO_DIR", deno_dir.path())
     .current_dir(root_path())
     .arg(script)
     .arg(format!("--build-dir={}", target_dir().display()))

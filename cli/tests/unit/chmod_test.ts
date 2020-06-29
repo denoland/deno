@@ -1,5 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { unitTest, assert, assertEquals } from "./test_util.ts";
+import {
+  unitTest,
+  assert,
+  assertEquals,
+  assertThrows,
+  assertThrowsAsync,
+} from "./test_util.ts";
 
 unitTest(
   { ignore: Deno.build.os === "windows", perms: { read: true, write: true } },
@@ -70,25 +76,16 @@ unitTest(
 );
 
 unitTest({ perms: { write: true } }, function chmodSyncFailure(): void {
-  let err;
-  try {
+  assertThrows(() => {
     const filename = "/badfile.txt";
     Deno.chmodSync(filename, 0o777);
-  } catch (e) {
-    err = e;
-  }
-  assert(err instanceof Deno.errors.NotFound);
+  }, Deno.errors.NotFound);
 });
 
 unitTest({ perms: { write: false } }, function chmodSyncPerm(): void {
-  let err;
-  try {
+  assertThrows(() => {
     Deno.chmodSync("/somefile.txt", 0o777);
-  } catch (e) {
-    err = e;
-  }
-  assert(err instanceof Deno.errors.PermissionDenied);
-  assertEquals(err.name, "PermissionDenied");
+  }, Deno.errors.PermissionDenied);
 });
 
 unitTest(
@@ -163,25 +160,16 @@ unitTest(
 unitTest({ perms: { write: true } }, async function chmodFailure(): Promise<
   void
 > {
-  let err;
-  try {
+  await assertThrowsAsync(async () => {
     const filename = "/badfile.txt";
     await Deno.chmod(filename, 0o777);
-  } catch (e) {
-    err = e;
-  }
-  assert(err instanceof Deno.errors.NotFound);
+  }, Deno.errors.NotFound);
 });
 
 unitTest({ perms: { write: false } }, async function chmodPerm(): Promise<
   void
 > {
-  let err;
-  try {
+  await assertThrowsAsync(async () => {
     await Deno.chmod("/somefile.txt", 0o777);
-  } catch (e) {
-    err = e;
-  }
-  assert(err instanceof Deno.errors.PermissionDenied);
-  assertEquals(err.name, "PermissionDenied");
+  }, Deno.errors.PermissionDenied);
 });

@@ -1779,9 +1779,15 @@ declare namespace Deno {
   export class Process<T extends RunOptions = RunOptions> {
     readonly rid: number;
     readonly pid: number;
-    readonly stdin: T["stdin"] extends "piped" ? Writer & Closer : null;
-    readonly stdout: T["stdout"] extends "piped" ? Reader & Closer : null;
-    readonly stderr: T["stderr"] extends "piped" ? Reader & Closer : null;
+    readonly stdin: T["stdin"] extends "piped"
+      ? Writer & Closer
+      : (Writer & Closer) | null;
+    readonly stdout: T["stdout"] extends "piped"
+      ? Reader & Closer
+      : (Writer & Closer) | null;
+    readonly stderr: T["stderr"] extends "piped"
+      ? Reader & Closer
+      : (Writer & Closer) | null;
     /** Resolves to the current status of the process. */
     status(): Promise<ProcessStatus>;
     /** Buffer the stdout until EOF and return it as `Uint8Array`.

@@ -102,20 +102,17 @@ fn lint_file(file_path: PathBuf) -> Result<Vec<LintDiagnostic>, ErrBox> {
 }
 
 fn format_diagnostic(d: &LintDiagnostic) -> String {
-  let pretty_message = format!(
-    "({}) {}",
-    colors::gray(d.code.to_string()),
-    d.message.clone()
-  );
+  let pretty_message =
+    format!("({}) {}", colors::gray(&d.code), d.message.clone());
 
   fmt_errors::format_stack(
     true,
-    pretty_message,
-    Some(d.line_src.clone()),
+    &pretty_message,
+    Some(&d.line_src),
     Some(d.location.col as i64),
     Some((d.location.col + d.snippet_length) as i64),
     &[fmt_errors::format_location(
-      d.location.filename.clone(),
+      &d.location.filename,
       d.location.line as i64,
       d.location.col as i64,
     )],

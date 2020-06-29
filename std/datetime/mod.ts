@@ -3,6 +3,12 @@ import { assert } from "../_util/assert.ts";
 
 export type DateFormat = "mm-dd-yyyy" | "dd-mm-yyyy" | "yyyy-mm-dd";
 
+export const SECOND = 1e3;
+export const MINUTE = SECOND * 60;
+export const HOUR = MINUTE * 60;
+export const DAY = HOUR * 24;
+export const WEEK = DAY * 7;
+
 function execForce(reg: RegExp, pat: string): RegExpExecArray {
   const v = reg.exec(pat);
   assert(v != null);
@@ -96,13 +102,12 @@ export function parseDateTime(
  * @return Number of the day in year
  */
 export function dayOfYear(date: Date): number {
-  const dayMs = 1000 * 60 * 60 * 24;
   const yearStart = new Date(date.getFullYear(), 0, 0);
   const diff =
     date.getTime() -
     yearStart.getTime() +
     (yearStart.getTimezoneOffset() - date.getTimezoneOffset()) * 60 * 1000;
-  return Math.floor(diff / dayMs);
+  return Math.floor(diff / DAY);
 }
 
 /**
@@ -149,4 +154,129 @@ export function toIMF(date: Date): string {
   return `${days[date.getUTCDay()]}, ${d} ${
     months[date.getUTCMonth()]
   } ${y} ${h}:${min}:${s} GMT`;
+}
+
+/**
+ * Check given year is a leap year or not.
+ * based on : https://docs.microsoft.com/en-us/office/troubleshoot/excel/determine-a-leap-year
+ * @param year year in number or Date format
+ */
+export function isLeap(year: Date | number): boolean {
+  const yearNumber = year instanceof Date ? year.getFullYear() : year;
+  return (
+    (yearNumber % 4 === 0 && yearNumber % 100 !== 0) || yearNumber % 400 === 0
+  );
+}
+
+export type Unit =
+  | "miliseconds"
+  | "seconds"
+  | "minutes"
+  | "hours"
+  | "days"
+  | "weeks"
+  | "months"
+  | "quarters"
+  | "years";
+
+export type DifferenceFormat = Partial<Record<Unit, number>>;
+
+export type DifferenceOptions = {
+  units?: Unit[];
+};
+
+/**
+ * Calculate difference between two dates.
+ * @param from Year to calculate difference
+ * @param to Year to calculate difference with
+ * @param options Options for determining how to respond
+ *
+ * example :
+ *
+ * ```typescript
+ * datetime.difference(new Date("2020/1/1"),new Date("2020/2/2"),{ units : ["days","months"] })
+ * ```
+ */
+export function difference(
+  from: Date,
+  to: Date,
+  options?: DifferenceOptions
+): DifferenceFormat {
+  const uniqueUnits = options?.units
+    ? [...new Set(options?.units)]
+    : [
+        "miliseconds",
+        "seconds",
+        "minutes",
+        "hours",
+        "days",
+        "weeks",
+        "months",
+        "quarters",
+        "years",
+      ];
+
+  const bigger = Math.max(from.getTime(), to.getTime());
+  const smaller = Math.min(from.getTime(), to.getTime());
+  const differenceInMs = bigger - smaller;
+
+  const differences: DifferenceFormat = {};
+
+  for (const uniqueUnit of uniqueUnits) {
+    switch (uniqueUnit) {
+      case "miliseconds":
+        differences.miliseconds = differenceInMs;
+        break;
+      case "seconds":
+        differences.seconds = Math.floor(differenceInMs / SECOND);
+        break;
+      case "minutes":
+        differences.minutes = Math.floor(differenceInMs / MINUTE);
+        break;
+      case "hours":
+        differences.hours = Math.floor(differenceInMs / HOUR);
+        break;
+      case "days":
+        differences.days = Math.floor(differenceInMs / DAY);
+        break;
+      case "weeks":
+        differences.weeks = Math.floor(differenceInMs / WEEK);
+        break;
+      case "months":
+        differences.months = calculateMonthsDifference(bigger, smaller);
+        break;
+      case "quarters":
+        differences.quarters = Math.floor(
+          (typeof differences.months !== "undefined" &&
+            differences.months / 4) ||
+            calculateMonthsDifference(bigger, smaller) / 4
+        );
+        break;
+      case "years":
+        differences.years = Math.floor(
+          (typeof differences.months !== "undefined" &&
+            differences.months / 12) ||
+            calculateMonthsDifference(bigger, smaller) / 12
+        );
+        break;
+    }
+  }
+
+  return differences;
+}
+
+function calculateMonthsDifference(bigger: number, smaller: number): number {
+  const biggerDate = new Date(bigger);
+  const smallerDate = new Date(smaller);
+  const yearsDiff = biggerDate.getFullYear() - smallerDate.getFullYear();
+  const monthsDiff = biggerDate.getMonth() - smallerDate.getMonth();
+  const calendarDiffrences = Math.abs(yearsDiff * 12 + monthsDiff);
+  const compareResult = biggerDate > smallerDate ? 1 : -1;
+  biggerDate.setMonth(
+    biggerDate.getMonth() - compareResult * calendarDiffrences
+  );
+  const isLastMonthNotFull =
+    biggerDate > smallerDate ? 1 : -1 === -compareResult ? 1 : 0;
+  const months = compareResult * (calendarDiffrences - isLastMonthNotFull);
+  return months === 0 ? 0 : months;
 }

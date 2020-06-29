@@ -3,6 +3,8 @@ import {
   unitTest,
   assert,
   assertEquals,
+  assertThrows,
+  assertThrowsAsync,
   pathToAbsoluteFileUrl,
 } from "./test_util.ts";
 
@@ -98,29 +100,15 @@ unitTest(
 );
 
 unitTest({ perms: { read: false } }, function statSyncPerm(): void {
-  let caughtError = false;
-  try {
+  assertThrows(() => {
     Deno.statSync("README.md");
-  } catch (e) {
-    caughtError = true;
-    assert(e instanceof Deno.errors.PermissionDenied);
-  }
-  assert(caughtError);
+  }, Deno.errors.PermissionDenied);
 });
 
 unitTest({ perms: { read: true } }, function statSyncNotFound(): void {
-  let caughtError = false;
-  let badInfo;
-
-  try {
-    badInfo = Deno.statSync("bad_file_name");
-  } catch (err) {
-    caughtError = true;
-    assert(err instanceof Deno.errors.NotFound);
-  }
-
-  assert(caughtError);
-  assertEquals(badInfo, undefined);
+  assertThrows(() => {
+    Deno.statSync("bad_file_name");
+  }, Deno.errors.NotFound);
 });
 
 unitTest({ perms: { read: true } }, function lstatSyncSuccess(): void {
@@ -152,29 +140,15 @@ unitTest({ perms: { read: true } }, function lstatSyncSuccess(): void {
 });
 
 unitTest({ perms: { read: false } }, function lstatSyncPerm(): void {
-  let caughtError = false;
-  try {
+  assertThrows(() => {
     Deno.lstatSync("README.md");
-  } catch (e) {
-    caughtError = true;
-    assert(e instanceof Deno.errors.PermissionDenied);
-  }
-  assert(caughtError);
+  }, Deno.errors.PermissionDenied);
 });
 
 unitTest({ perms: { read: true } }, function lstatSyncNotFound(): void {
-  let caughtError = false;
-  let badInfo;
-
-  try {
-    badInfo = Deno.lstatSync("bad_file_name");
-  } catch (err) {
-    caughtError = true;
-    assert(err instanceof Deno.errors.NotFound);
-  }
-
-  assert(caughtError);
-  assertEquals(badInfo, undefined);
+  assertThrows(() => {
+    Deno.lstatSync("bad_file_name");
+  }, Deno.errors.NotFound);
 });
 
 unitTest(
@@ -242,31 +216,19 @@ unitTest(
 );
 
 unitTest({ perms: { read: false } }, async function statPerm(): Promise<void> {
-  let caughtError = false;
-  try {
+  await assertThrowsAsync(async () => {
     await Deno.stat("README.md");
-  } catch (e) {
-    caughtError = true;
-    assert(e instanceof Deno.errors.PermissionDenied);
-  }
-  assert(caughtError);
+  }, Deno.errors.PermissionDenied);
 });
 
 unitTest({ perms: { read: true } }, async function statNotFound(): Promise<
   void
 > {
-  let caughtError = false;
-  let badInfo;
-
-  try {
-    badInfo = await Deno.stat("bad_file_name");
-  } catch (err) {
-    caughtError = true;
-    assert(err instanceof Deno.errors.NotFound);
-  }
-
-  assert(caughtError);
-  assertEquals(badInfo, undefined);
+  await assertThrowsAsync(
+    async (): Promise<void> => {
+      await Deno.stat("bad_file_name"), Deno.errors.NotFound;
+    }
+  );
 });
 
 unitTest({ perms: { read: true } }, async function lstatSuccess(): Promise<
@@ -300,31 +262,17 @@ unitTest({ perms: { read: true } }, async function lstatSuccess(): Promise<
 });
 
 unitTest({ perms: { read: false } }, async function lstatPerm(): Promise<void> {
-  let caughtError = false;
-  try {
+  await assertThrowsAsync(async () => {
     await Deno.lstat("README.md");
-  } catch (e) {
-    caughtError = true;
-    assert(e instanceof Deno.errors.PermissionDenied);
-  }
-  assert(caughtError);
+  }, Deno.errors.PermissionDenied);
 });
 
 unitTest({ perms: { read: true } }, async function lstatNotFound(): Promise<
   void
 > {
-  let caughtError = false;
-  let badInfo;
-
-  try {
-    badInfo = await Deno.lstat("bad_file_name");
-  } catch (err) {
-    caughtError = true;
-    assert(err instanceof Deno.errors.NotFound);
-  }
-
-  assert(caughtError);
-  assertEquals(badInfo, undefined);
+  await assertThrowsAsync(async () => {
+    await Deno.lstat("bad_file_name");
+  }, Deno.errors.NotFound);
 });
 
 unitTest(

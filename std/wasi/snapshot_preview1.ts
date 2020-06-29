@@ -492,7 +492,18 @@ export default class Module {
       },
 
       fd_datasync: (fd: number): number => {
-        return ERRNO_NOSYS;
+        const entry = this.fds[fd];
+        if (!entry) {
+          return ERRNO_BADF;
+        }
+
+        try {
+          Deno.fdatasyncSync(entry.handle.rid);
+        } catch (err) {
+          return errno(err);
+        }
+
+        return ERRNO_SUCCESS;
       },
 
       fd_fdstat_get: (fd: number, stat_out: number): number => {
@@ -523,11 +534,91 @@ export default class Module {
       },
 
       fd_filestat_get: (fd: number, buf_out: number): number => {
-        return ERRNO_NOSYS;
+        const entry = this.fds[fd];
+        if (!entry) {
+          return ERRNO_BADF;
+        }
+
+        const view = new DataView(this.memory.buffer);
+
+        try {
+          const info = Deno.fstatSync(entry.handle.rid);
+
+          if (entry.type === undefined) {
+            switch (true) {
+              case info.isFile:
+                entry.type = FILETYPE_REGULAR_FILE;
+                break;
+
+              case info.isDirectory:
+                entry.type = FILETYPE_DIRECTORY;
+                break;
+
+              case info.isSymlink:
+                entry.type = FILETYPE_SYMBOLIC_LINK;
+                break;
+
+              default:
+                entry.type = FILETYPE_UNKNOWN;
+                break;
+            }
+          }
+
+          view.setBigUint64(buf_out, BigInt(info.dev ? info.dev : 0), true);
+          buf_out += 8;
+
+          view.setBigUint64(buf_out, BigInt(info.ino ? info.ino : 0), true);
+          buf_out += 8;
+
+          view.setUint8(buf_out, entry.type);
+          buf_out += 8;
+
+          view.setUint32(buf_out, Number(info.nlink), true);
+          buf_out += 8;
+
+          view.setBigUint64(buf_out, BigInt(info.size), true);
+          buf_out += 8;
+
+          view.setBigUint64(
+            buf_out,
+            BigInt(info.atime ? info.atime.getTime() * 1e6 : 0),
+            true
+          );
+          buf_out += 8;
+
+          view.setBigUint64(
+            buf_out,
+            BigInt(info.mtime ? info.mtime.getTime() * 1e6 : 0),
+            true
+          );
+          buf_out += 8;
+
+          view.setBigUint64(
+            buf_out,
+            BigInt(info.birthtime ? info.birthtime.getTime() * 1e6 : 0),
+            true
+          );
+          buf_out += 8;
+        } catch (err) {
+          return errno(err);
+        }
+
+        return ERRNO_SUCCESS;
       },
 
       fd_filestat_set_size: (fd: number, size: bigint): number => {
-        return ERRNO_NOSYS;
+        const entry = this.fds[fd];
+        if (!entry) {
+          return ERRNO_BADF;
+        }
+
+        try {
+          Deno.ftruncateSync(entry.handle.rid, Number(size));
+        } catch (err) {
+          return errno(err);
+        }
+
+        return ERRNO_SUCCESS;
       },
 
       fd_filestat_set_times: (
@@ -853,7 +944,10 @@ export default class Module {
         const view = new DataView(this.memory.buffer);
 
         try {
-          const info = Deno.statSync(path);
+          const info =
+            (flags & LOOKUPFLAGS_SYMLINK_FOLLOW) != 0
+              ? Deno.statSync(path)
+              : Deno.lstatSync(path);
 
           view.setBigUint64(buf_out, BigInt(info.dev ? info.dev : 0), true);
           buf_out += 8;
@@ -864,27 +958,27 @@ export default class Module {
           switch (true) {
             case info.isFile:
               view.setUint8(buf_out, FILETYPE_REGULAR_FILE);
-              buf_out += 4;
+              buf_out += 8;
               break;
 
             case info.isDirectory:
               view.setUint8(buf_out, FILETYPE_DIRECTORY);
-              buf_out += 4;
+              buf_out += 8;
               break;
 
             case info.isSymlink:
               view.setUint8(buf_out, FILETYPE_SYMBOLIC_LINK);
-              buf_out += 4;
+              buf_out += 8;
               break;
 
             default:
               view.setUint8(buf_out, FILETYPE_UNKNOWN);
-              buf_out += 4;
+              buf_out += 8;
               break;
           }
 
           view.setUint32(buf_out, Number(info.nlink), true);
-          buf_out += 4;
+          buf_out += 8;
 
           view.setBigUint64(buf_out, BigInt(info.size), true);
           buf_out += 8;
