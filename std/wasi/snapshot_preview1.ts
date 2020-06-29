@@ -492,7 +492,18 @@ export default class Module {
       },
 
       fd_datasync: (fd: number): number => {
-        return ERRNO_NOSYS;
+        const entry = this.fds[fd];
+        if (!entry) {
+          return ERRNO_BADF;
+        }
+
+        try {
+          Deno.fdatasyncSync(entry.handle.rid);
+        } catch (err) {
+          return errno(err);
+        }
+
+        return ERRNO_SUCCESS;
       },
 
       fd_fdstat_get: (fd: number, stat_out: number): number => {

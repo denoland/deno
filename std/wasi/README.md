@@ -15,7 +15,7 @@ This module provides an implementation of the WebAssembly System Interface
 - [ ] fd_advise
 - [ ] fd_allocate
 - [x] fd_close
-- [ ] fd_datasync
+- [x] fd_datasync
 - [x] fd_fdstat_get
 - [ ] fd_fdstat_set_flags
 - [ ] fd_fdstat_set_rights
