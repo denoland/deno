@@ -207,6 +207,32 @@ unitTest(async function bufferGrowReadCloseToMaxBuffer(): Promise<void> {
   }
 });
 
+unitTest(async function bufferGrowReadCloseMaxBufferPlus1(): Promise<void> {
+  const reader = new Deno.Buffer(new ArrayBuffer(MAX_SIZE + 1));
+  const buf = new Deno.Buffer();
+
+  await assertThrowsAsync(
+    async () => {
+      await buf.readFrom(reader);
+    },
+    Error,
+    "grown beyond the maximum size"
+  );
+});
+
+unitTest(function bufferGrowReadSyncCloseMaxBufferPlus1(): void {
+  const reader = new Deno.Buffer(new ArrayBuffer(MAX_SIZE + 1));
+  const buf = new Deno.Buffer();
+
+  assertThrows(
+    () => {
+      buf.readFromSync(reader);
+    },
+    Error,
+    "grown beyond the maximum size"
+  );
+});
+
 unitTest(async function bufferReadCloseToMaxBufferWithInitialGrow(): Promise<
   void
 > {
