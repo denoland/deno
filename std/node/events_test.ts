@@ -382,7 +382,7 @@ Deno.test({
       ee.emit("event", 42, "foo");
     }, 0);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const valueArr: any[] = await once(ee, "event");
+    const valueArr = (await once(ee, "event")) as [number, string];
     assertEquals(valueArr, [42, "foo"]);
   },
 });

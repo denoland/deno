@@ -141,26 +141,11 @@ export function assert(expr: unknown, msg = ""): asserts expr {
 }
 
 type NumberArray = number[] | ArrayBuffer;
-
-/**
- * Check if a type is `any` type.
- * Refer https://stackoverflow.com/a/55541672/6587634
- */
-type IsAny<T> = T extends never ? true : never;
-type CheckNumberArray<T> = T extends NumberArray
+type ComparableType<T> = T extends symbol
+  ? symbol
+  : T extends NumberArray
   ? NumberArray | undefined | null
   : T | undefined | null;
-
-type ComparableType<T> = true extends IsAny<T> // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ? any
-  : T extends Array<infer ElementType>
-  ? true extends IsAny<ElementType> // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ? any[]
-    : CheckNumberArray<T>
-  : T extends symbol
-  ? symbol
-  : CheckNumberArray<T>;
-
 /**
  * Make an assertion that `actual` and `expected` are equal, deeply. If not
  * deeply equal, then throw.
