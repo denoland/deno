@@ -16,6 +16,7 @@ use std::sync::Mutex;
 use std::sync::MutexGuard;
 use tempfile::TempDir;
 use warp::http::Uri;
+use warp::reply::Reply;
 use warp::Filter;
 
 const PORT: u16 = 4545;
@@ -114,95 +115,134 @@ pub async fn run_all_servers() {
   let addr = ([127, 0, 0, 1], INF_REDIRECTS_PORT);
   tokio::spawn(warp::serve(routes).run(addr));
 
+  let etag_script = warp::path!("etag_script.ts")
+    .and(warp::header::optional::<String>("if-none-match"))
+    .map(|if_none_match| -> Box<dyn Reply> {
+      if if_none_match == Some("33a64df551425fcc55e".to_string()) {
+        use warp::http::StatusCode;
+        let r =
+          warp::reply::with_status(warp::reply(), StatusCode::NOT_MODIFIED);
+        let r =
+          warp::reply::with_header(r, "Content-type", "application/typescript");
+        let r = warp::reply::with_header(r, "ETag", "33a64df551425fcc55e");
+        Box::new(r)
+      } else {
+        use warp::http::{HeaderValue, Response};
+        use warp::hyper::Body;
+        let mut res = Response::new(Body::from("console.log('etag')"));
+        res.headers_mut().insert(
+          "Content-type",
+          HeaderValue::from_static("application/typescript"),
+        );
+        res
+          .headers_mut()
+          .insert("ETag", HeaderValue::from_static("33a64df551425fcc55e"));
+        Box::new(res)
+      }
+    });
+
   let routes = warp::any()
     .and(warp::path::peek())
     .and(warp::fs::dir(root_path()))
-    .map(|path: warp::path::Peek, f: warp::fs::File| {
-      let p = path.as_str();
-      /*
-      let content_type = if p.ends_with("etag_script.ts") {
-        let r = f.into_response();
-        r.headers.get("if-none-match")
-      }
-      */
-
-      let content_type = if p.ends_with("etag_script.ts") {
-        /*
-           self.protocol_version = 'HTTP/1.1'
-            if_not_match = self.headers.getheader('if-none-match')
-            if if_not_match == "33a64df551425fcc55e":
-                self.send_response(304, 'Not Modified')
-                self.send_header('Content-type', 'application/typescript')
-                self.send_header('ETag', '33a64df551425fcc55e')
-                self.end_headers()
-            else:
-                self.send_response(200, 'OK')
-                self.send_header('Content-type', 'application/typescript')
-                self.send_header('ETag', '33a64df551425fcc55e')
-                self.end_headers()
-                self.wfile.write(bytes("console.log('etag')"))
-        */
-        todo!()
-      } else if p.ends_with("xTypeScriptTypes.js") {
-        todo!()
-      } else if p.ends_with("type_directives_redirect.js") {
-        todo!()
-      } else if p.ends_with("xTypeScriptTypesRedirect.d.ts") {
-        todo!()
-      } else if p.ends_with("xTypeScriptTypesRedirected.d.ts") {
-        todo!()
-      } else if p.ends_with("xTypeScriptTypes.d.ts") {
-        todo!()
-      } else if p.ends_with("referenceTypes.js") {
-        todo!()
-      } else if p.ends_with("multipart_form_data.txt") {
-        todo!()
-      } else if p.contains(".t1.") {
-        Some("text/typescript")
-      } else if p.contains(".t2.") {
-        Some("video/vnd.dlna.mpeg-tts")
-      } else if p.contains(".t3.") {
-        Some("video/mp2t")
-      } else if p.contains(".t4.") {
-        Some("application/x-typescript")
-      } else if p.contains(".j1.") {
-        Some("text/javascript")
-      } else if p.contains(".j2.") {
-        Some("application/ecmascript")
-      } else if p.contains(".j3.") {
-        Some("text/ecmascript")
-      } else if p.contains(".j4.") {
-        Some("application/x-javascript")
-      } else if p.contains("form_urlencoded") {
-        Some("application/x-www-form-urlencoded")
-      } else if p.contains("no_ext") {
-        Some("text/typescript")
-      } else if p.contains("unknown_ext") {
-        Some("text/typescript")
-      } else if p.contains("mismatch_ext") {
-        Some("text/javascript")
-      } else if p.ends_with(".ts") || p.ends_with(".tsx") {
-        Some("application/typescript")
-      } else if p.ends_with(".js") || p.ends_with(".jsx") {
-        Some("application/javascript")
-      } else if p.ends_with(".json") {
-        Some("application/json")
-      } else {
-        None
-      };
-
-      if let Some(t) = content_type {
-        warp::reply::with_header(f, "Content-Type", t)
-      } else {
-        // TODO(ry) I don't know how to pass f through as an identity.
-        // thus invoking this unnecessary call to with_header
-        warp::reply::with_header(f, "X-Foo", "bar")
-      }
-    });
+    .map(content_type_handler)
+    .or(etag_script);
   let addr = ([127, 0, 0, 1], PORT);
   println!("ready");
   // Note on the last one, we await instead of spawn.
   warp::serve(routes).run(addr).await;
+}
+
+fn content_type_handler(
+  path: warp::path::Peek,
+  f: warp::fs::File,
+) -> Box<dyn Reply> {
+  let p = path.as_str();
+  println!("content_type_handler {}", p);
+
+  if p.ends_with("etag_script.ts") {
+    let r = f.into_response();
+    println!("etag_script.ts");
+    if Some("33a64df551425fcc55e")
+      == r
+        .headers()
+        .get("if-none-match")
+        .map(|v| v.to_str().unwrap())
+    {
+      println!("yoyoma");
+    } else {
+      println!("foobar");
+    }
+    /*
+       self.protocol_version = 'HTTP/1.1'
+        if_not_match = self.headers.getheader('if-none-match')
+        if if_not_match == "33a64df551425fcc55e":
+            self.send_response(304, 'Not Modified')
+            self.send_header('Content-type', 'application/typescript')
+            self.send_header('ETag', '33a64df551425fcc55e')
+            self.end_headers()
+        else:
+            self.send_response(200, 'OK')
+            self.send_header('Content-type', 'application/typescript')
+            self.send_header('ETag', '33a64df551425fcc55e')
+            self.end_headers()
+            self.wfile.write(bytes("console.log('etag')"))
+    */
+    return Box::new(r);
+  }
+
+  let content_type = if p.ends_with("xTypeScriptTypes.js") {
+    todo!()
+  } else if p.ends_with("type_directives_redirect.js") {
+    todo!()
+  } else if p.ends_with("xTypeScriptTypesRedirect.d.ts") {
+    todo!()
+  } else if p.ends_with("xTypeScriptTypesRedirected.d.ts") {
+    todo!()
+  } else if p.ends_with("xTypeScriptTypes.d.ts") {
+    todo!()
+  } else if p.ends_with("referenceTypes.js") {
+    todo!()
+  } else if p.ends_with("multipart_form_data.txt") {
+    todo!()
+  } else if p.contains(".t1.") {
+    Some("text/typescript")
+  } else if p.contains(".t2.") {
+    Some("video/vnd.dlna.mpeg-tts")
+  } else if p.contains(".t3.") {
+    Some("video/mp2t")
+  } else if p.contains(".t4.") {
+    Some("application/x-typescript")
+  } else if p.contains(".j1.") {
+    Some("text/javascript")
+  } else if p.contains(".j2.") {
+    Some("application/ecmascript")
+  } else if p.contains(".j3.") {
+    Some("text/ecmascript")
+  } else if p.contains(".j4.") {
+    Some("application/x-javascript")
+  } else if p.contains("form_urlencoded") {
+    Some("application/x-www-form-urlencoded")
+  } else if p.contains("no_ext") {
+    Some("text/typescript")
+  } else if p.contains("unknown_ext") {
+    Some("text/typescript")
+  } else if p.contains("mismatch_ext") {
+    Some("text/javascript")
+  } else if p.ends_with(".ts") || p.ends_with(".tsx") {
+    Some("application/typescript")
+  } else if p.ends_with(".js") || p.ends_with(".jsx") {
+    Some("application/javascript")
+  } else if p.ends_with(".json") {
+    Some("application/json")
+  } else {
+    None
+  };
+
+  if let Some(t) = content_type {
+    Box::new(warp::reply::with_header(f, "Content-Type", t))
+  } else {
+    Box::new(f)
+  }
 }
 
 pub struct HttpServerGuard<'a> {
