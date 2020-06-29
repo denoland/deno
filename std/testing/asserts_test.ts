@@ -126,7 +126,7 @@ Deno.test("testingEqual", function (): void {
 Deno.test("testingNotEquals", function (): void {
   const a = { foo: "bar" };
   const b = { bar: "foo" };
-  assertNotEquals(a, b);
+  assertNotEquals<unknown>(a, b);
   assertNotEquals("Denosaurus", "Tyrannosaurus");
   let didThrow;
   try {
@@ -316,7 +316,7 @@ Deno.test({
   name: "failed with number vs string",
   fn(): void {
     assertThrows(
-      (): void => assertEquals(1, "1"),
+      (): void => assertEquals<unknown>(1, "1"),
       AssertionError,
       [
         "Values are not equal:",
@@ -349,7 +349,8 @@ Deno.test({
   name: "failed with object",
   fn(): void {
     assertThrows(
-      (): void => assertEquals({ a: 1, b: "2", c: 3 }, { a: 1, b: 2, c: [3] }),
+      (): void =>
+        assertEquals<unknown>({ a: 1, b: "2", c: 3 }, { a: 1, b: 2, c: [3] }),
       AssertionError,
       [
         "Values are not equal:",
@@ -411,17 +412,6 @@ Deno.test({
         red(`     { a: ${yellow("1")}, b: ${yellow("2")} }`),
       ].join("\n")
     );
-  },
-});
-
-Deno.test({
-  name: "assert* functions with specified type paratemeter",
-  fn(): void {
-    assertEquals<string>("hello", "hello");
-    assertNotEquals<number>(1, 2);
-    assertArrayContains<boolean>([true, false], [true]);
-    const value = { x: 1 };
-    assertStrictEquals<typeof value>(value, value);
   },
 });
 

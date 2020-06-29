@@ -45,8 +45,7 @@ export interface LoggerOptions {
 export class Logger {
   level: number;
   levelName: LevelName;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  handlers: any[];
+  handlers: Array<{ handle: (logRecord: LogRecord) => void }>;
   loggerName: string;
 
   constructor(

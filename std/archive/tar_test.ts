@@ -11,7 +11,7 @@
 import { assertEquals, assert } from "../testing/asserts.ts";
 
 import { resolve } from "../path/mod.ts";
-import { Tar, Untar } from "./tar.ts";
+import { Tar, Untar, TarMeta } from "./tar.ts";
 
 const filePath = resolve("archive", "testdata", "example.txt");
 
@@ -386,7 +386,7 @@ Deno.test("untarLinuxGeneratedTar", async function (): Promise<void> {
     const content = expected.content;
     delete expected.content;
 
-    assertEquals(entry, expected);
+    assertEquals<TarMeta>(entry, expected);
 
     if (content) {
       assertEquals(content, await Deno.readAll(entry));

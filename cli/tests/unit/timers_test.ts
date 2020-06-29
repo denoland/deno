@@ -178,7 +178,7 @@ unitTest(async function timeoutCallbackThis(): Promise<void> {
   const { promise, resolve } = deferred();
   const obj = {
     foo(): void {
-      assertEquals(this, window);
+      assertEquals<unknown>(this, window);
       resolve();
     },
   };
