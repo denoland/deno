@@ -1196,5 +1196,5 @@ declare namespace Deno {
   /** **UNSTABLE**: New API, yet to be vetted.
    * The pid of the current process's parent.
    */
-  export const ppid: number | null;
+  export const ppid: number;
 }

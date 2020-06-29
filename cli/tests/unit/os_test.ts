@@ -112,7 +112,7 @@ unitTest(function osPid(): void {
 });
 
 unitTest(function osPpid(): void {
-  assert(Deno.ppid! > 0);
+  assert(Deno.ppid > 0);
 });
 
 unitTest(
