@@ -15,6 +15,16 @@ use std::process::Stdio;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
 use tempfile::TempDir;
+use warp::http::Uri;
+use warp::Filter;
+
+const PORT: u16 = 4545;
+const REDIRECT_PORT: u16 = 4546;
+const ANOTHER_REDIRECT_PORT: u16 = 4547;
+const DOUBLE_REDIRECTS_PORT: u16 = 4548;
+const INF_REDIRECTS_PORT: u16 = 4549;
+// REDIRECT_ABSOLUTE_PORT = 4550
+// HTTPS_PORT = 5545
 
 pub const PERMISSION_VARIANTS: [&str; 5] =
   ["read", "write", "env", "net", "run"];
@@ -54,22 +64,178 @@ pub fn deno_exe_path() -> PathBuf {
   p
 }
 
+pub fn test_server_path() -> PathBuf {
+  let mut p = target_dir().join("test_server");
+  if cfg!(windows) {
+    p.set_extension("exe");
+  }
+  p
+}
+
+#[tokio::main]
+pub async fn run_all_servers() {
+  let routes = warp::path::full().map(|path: warp::path::FullPath| {
+    let p = path.as_str();
+    assert_eq!(&p[0..1], "/");
+    let url = format!("http://127.0.0.1:{}{}", PORT, p);
+    let u = url.parse::<Uri>().unwrap();
+    warp::redirect(u)
+  });
+  let addr = ([127, 0, 0, 1], REDIRECT_PORT);
+  tokio::spawn(warp::serve(routes).run(addr));
+
+  let routes = warp::path::full().map(|path: warp::path::FullPath| {
+    let p = path.as_str();
+    assert_eq!(&p[0..1], "/");
+    let url = format!("http://localhost:{}/cli/tests/subdir{}", PORT, p);
+    let u = url.parse::<Uri>().unwrap();
+    warp::redirect(u)
+  });
+  let addr = ([127, 0, 0, 1], ANOTHER_REDIRECT_PORT);
+  tokio::spawn(warp::serve(routes).run(addr));
+
+  let routes = warp::path::full().map(|path: warp::path::FullPath| {
+    let p = path.as_str();
+    assert_eq!(&p[0..1], "/");
+    let url = format!("http://localhost:{}{}", REDIRECT_PORT, p);
+    let u = url.parse::<Uri>().unwrap();
+    warp::redirect(u)
+  });
+  let addr = ([127, 0, 0, 1], DOUBLE_REDIRECTS_PORT);
+  tokio::spawn(warp::serve(routes).run(addr));
+
+  let routes = warp::path::full().map(|path: warp::path::FullPath| {
+    let p = path.as_str();
+    assert_eq!(&p[0..1], "/");
+    let url = format!("http://localhost:{}{}", INF_REDIRECTS_PORT, p);
+    let u = url.parse::<Uri>().unwrap();
+    warp::redirect(u)
+  });
+  let addr = ([127, 0, 0, 1], INF_REDIRECTS_PORT);
+  tokio::spawn(warp::serve(routes).run(addr));
+
+  let routes = warp::any()
+    .and(warp::path::peek())
+    .and(warp::fs::dir(root_path()))
+    .map(|path: warp::path::Peek, f: warp::fs::File| {
+      let p = path.as_str();
+      /*
+      let content_type = if p.ends_with("etag_script.ts") {
+        let r = f.into_response();
+        r.headers.get("if-none-match")
+      }
+      */
+
+      let content_type = if p.ends_with("etag_script.ts") {
+        /*
+           self.protocol_version = 'HTTP/1.1'
+            if_not_match = self.headers.getheader('if-none-match')
+            if if_not_match == "33a64df551425fcc55e":
+                self.send_response(304, 'Not Modified')
+                self.send_header('Content-type', 'application/typescript')
+                self.send_header('ETag', '33a64df551425fcc55e')
+                self.end_headers()
+            else:
+                self.send_response(200, 'OK')
+                self.send_header('Content-type', 'application/typescript')
+                self.send_header('ETag', '33a64df551425fcc55e')
+                self.end_headers()
+                self.wfile.write(bytes("console.log('etag')"))
+        */
+        todo!()
+      } else if p.ends_with("xTypeScriptTypes.js") {
+        todo!()
+      } else if p.ends_with("type_directives_redirect.js") {
+        todo!()
+      } else if p.ends_with("xTypeScriptTypesRedirect.d.ts") {
+        todo!()
+      } else if p.ends_with("xTypeScriptTypesRedirected.d.ts") {
+        todo!()
+      } else if p.ends_with("xTypeScriptTypes.d.ts") {
+        todo!()
+      } else if p.ends_with("referenceTypes.js") {
+        todo!()
+      } else if p.ends_with("multipart_form_data.txt") {
+        todo!()
+      } else if p.contains(".t1.") {
+        Some("text/typescript")
+      } else if p.contains(".t2.") {
+        Some("video/vnd.dlna.mpeg-tts")
+      } else if p.contains(".t3.") {
+        Some("video/mp2t")
+      } else if p.contains(".t4.") {
+        Some("application/x-typescript")
+      } else if p.contains(".j1.") {
+        Some("text/javascript")
+      } else if p.contains(".j2.") {
+        Some("application/ecmascript")
+      } else if p.contains(".j3.") {
+        Some("text/ecmascript")
+      } else if p.contains(".j4.") {
+        Some("application/x-javascript")
+      } else if p.contains("form_urlencoded") {
+        Some("application/x-www-form-urlencoded")
+      } else if p.contains("no_ext") {
+        Some("text/typescript")
+      } else if p.contains("unknown_ext") {
+        Some("text/typescript")
+      } else if p.contains("mismatch_ext") {
+        Some("text/javascript")
+      } else if p.ends_with(".ts") || p.ends_with(".tsx") {
+        Some("application/typescript")
+      } else if p.ends_with(".js") || p.ends_with(".jsx") {
+        Some("application/javascript")
+      } else if p.ends_with(".json") {
+        Some("application/json")
+      } else {
+        None
+      };
+
+      if let Some(t) = content_type {
+        warp::reply::with_header(f, "Content-Type", t)
+      } else {
+        // TODO(ry) I don't know how to pass f through as an identity.
+        // thus invoking this unnecessary call to with_header
+        warp::reply::with_header(f, "X-Foo", "bar")
+      }
+    });
+  let addr = ([127, 0, 0, 1], PORT);
+  println!("ready");
+  // Note on the last one, we await instead of spawn.
+  warp::serve(routes).run(addr).await;
+}
+
 pub struct HttpServerGuard<'a> {
   #[allow(dead_code)]
   g: MutexGuard<'a, ()>,
-  child: Child,
+  http_server_py: Child,
+  test_server: Child,
 }
 
 impl<'a> Drop for HttpServerGuard<'a> {
   fn drop(&mut self) {
-    match self.child.try_wait() {
+    match self.http_server_py.try_wait() {
       Ok(None) => {
-        self.child.kill().expect("failed to kill http_server.py");
+        self
+          .http_server_py
+          .kill()
+          .expect("failed to kill http_server.py");
       }
       Ok(Some(status)) => {
         panic!("http_server.py exited unexpectedly {}", status)
       }
-      Err(e) => panic!("http_server.py err {}", e),
+      Err(e) => panic!("http_server.py error: {}", e),
+    }
+
+    match self.test_server.try_wait() {
+      Ok(None) => {
+        self
+          .test_server
+          .kill()
+          .expect("failed to kill http_server.py");
+      }
+      Ok(Some(status)) => panic!("test_server exited unexpectedly {}", status),
+      Err(e) => panic!("test_server error: {}", e),
     }
   }
 }
@@ -81,14 +247,14 @@ pub fn http_server<'a>() -> HttpServerGuard<'a> {
   let g = GUARD.lock().unwrap();
 
   println!("tools/http_server.py starting...");
-  let mut child = Command::new("python")
+  let mut http_server_py = Command::new("python")
     .current_dir(root_path())
     .args(&["-u", "tools/http_server.py"])
     .stdout(Stdio::piped())
     .spawn()
     .expect("failed to execute child");
 
-  let stdout = child.stdout.as_mut().unwrap();
+  let stdout = http_server_py.stdout.as_mut().unwrap();
   use std::io::{BufRead, BufReader};
   let lines = BufReader::new(stdout).lines();
   // Wait for "ready" on stdout. See tools/http_server.py
@@ -102,7 +268,30 @@ pub fn http_server<'a>() -> HttpServerGuard<'a> {
     }
   }
 
-  HttpServerGuard { child, g }
+  println!("test_server starting...");
+  let mut test_server = Command::new(test_server_path())
+    .current_dir(root_path())
+    .stdout(Stdio::piped())
+    .spawn()
+    .expect("failed to execute test_server");
+
+  let stdout = test_server.stdout.as_mut().unwrap();
+  let lines = BufReader::new(stdout).lines();
+  for maybe_line in lines {
+    if let Ok(line) = maybe_line {
+      if line.starts_with("ready") {
+        break;
+      }
+    } else {
+      panic!(maybe_line.unwrap_err());
+    }
+  }
+
+  HttpServerGuard {
+    test_server,
+    http_server_py,
+    g,
+  }
 }
 
 /// Helper function to strip ansi codes.

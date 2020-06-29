@@ -16,11 +16,6 @@ import ssl
 import getopt
 import argparse
 
-PORT = 4545
-REDIRECT_PORT = 4546
-ANOTHER_REDIRECT_PORT = 4547
-DOUBLE_REDIRECTS_PORT = 4548
-INF_REDIRECTS_PORT = 4549
 REDIRECT_ABSOLUTE_PORT = 4550
 HTTPS_PORT = 5545
 
@@ -277,22 +272,6 @@ def get_socket(port, handler, use_https):
     return SocketServer.TCPServer(("", port), handler)
 
 
-def server():
-    os.chdir(root_path)  # Hopefully the main thread doesn't also chdir.
-    Handler = ContentTypeHandler
-    Handler.extensions_map.update({
-        ".ts": "application/typescript",
-        ".js": "application/javascript",
-        ".tsx": "application/typescript",
-        ".jsx": "application/javascript",
-        ".json": "application/json",
-    })
-    s = get_socket(PORT, Handler, False)
-    if not QUIET:
-        print "Deno test server http://localhost:%d/" % PORT
-    return RunningServer(s, start(s))
-
-
 def base_redirect_server(host_port, target_port, extra_path_segment=""):
     os.chdir(root_path)
     target_host = "http://localhost:%d" % target_port
@@ -309,28 +288,6 @@ def base_redirect_server(host_port, target_port, extra_path_segment=""):
         print "redirect server http://localhost:%d/ -> http://localhost:%d/" % (
             host_port, target_port)
     return RunningServer(s, start(s))
-
-
-# redirect server
-def redirect_server():
-    return base_redirect_server(REDIRECT_PORT, PORT)
-
-
-# another redirect server pointing to the same port as the one above
-# BUT with an extra subdir path
-def another_redirect_server():
-    return base_redirect_server(
-        ANOTHER_REDIRECT_PORT, PORT, extra_path_segment="/cli/tests/subdir")
-
-
-# redirect server that points to another redirect server
-def double_redirects_server():
-    return base_redirect_server(DOUBLE_REDIRECTS_PORT, REDIRECT_PORT)
-
-
-# redirect server that points to itself
-def inf_redirects_server():
-    return base_redirect_server(INF_REDIRECTS_PORT, INF_REDIRECTS_PORT)
 
 
 # redirect server that redirect to absolute paths under same host
@@ -381,9 +338,7 @@ def start(s):
 
 @contextmanager
 def spawn():
-    servers = (server(), redirect_server(), another_redirect_server(),
-               double_redirects_server(), https_server(),
-               absolute_redirect_server(), inf_redirects_server())
+    servers = (https_server(), absolute_redirect_server())
     # In order to wait for each of the servers to be ready, we try connecting to
     # them with a tcp socket.
     for running_server in servers:
