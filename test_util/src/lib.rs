@@ -261,9 +261,7 @@ fn custom_headers(path: warp::path::Peek, f: warp::fs::File) -> Box<dyn Reply> {
     Some("application/x-javascript")
   } else if p.contains("form_urlencoded") {
     Some("application/x-www-form-urlencoded")
-  } else if p.contains("no_ext") {
-    Some("text/typescript")
-  } else if p.contains("unknown_ext") {
+  } else if p.contains("unknown_ext") || p.contains("no_ext") {
     Some("text/typescript")
   } else if p.contains("mismatch_ext") {
     Some("text/javascript")
