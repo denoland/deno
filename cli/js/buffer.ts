@@ -133,17 +133,17 @@ export class Buffer implements Reader, ReaderSync, Writer, WriterSync {
       // we instead let capacity get twice as large so we
       // don't spend all our time copying.
       copyBytes(this.#buf.subarray(this.#off), this.#buf);
-    } else if (c > MAX_SIZE - c - n) {
+    } else if (c + n > MAX_SIZE) {
       throw new Error("The buffer cannot be grown beyond the maximum size.");
     } else {
       // Not enough space anywhere, we need to allocate.
-      const buf = new Uint8Array(2 * c + n);
+      const buf = new Uint8Array(Math.min(2 * c + n, MAX_SIZE));
       copyBytes(this.#buf.subarray(this.#off), buf);
       this.#buf = buf;
     }
     // Restore this.#off and len(this.#buf).
     this.#off = 0;
-    this.#reslice(m + n);
+    this.#reslice(Math.min(m + n, MAX_SIZE));
     return m;
   };
 
@@ -157,31 +157,27 @@ export class Buffer implements Reader, ReaderSync, Writer, WriterSync {
 
   async readFrom(r: Reader): Promise<number> {
     let n = 0;
+    const buf = new Uint8Array(32 * 1024);
     while (true) {
-      const i = this.#grow(MIN_READ);
-      this.#reslice(i);
-      const fub = new Uint8Array(this.#buf.buffer, i);
-      const nread = await r.read(fub);
+      const nread = await r.read(buf);
       if (nread === null) {
         return n;
       }
-      this.#reslice(i + nread);
       n += nread;
+      this.writeSync(buf.subarray(0, nread));
     }
   }
 
   readFromSync(r: ReaderSync): number {
     let n = 0;
+    const buf = new Uint8Array(32 * 1024);
     while (true) {
-      const i = this.#grow(MIN_READ);
-      this.#reslice(i);
-      const fub = new Uint8Array(this.#buf.buffer, i);
-      const nread = r.readSync(fub);
+      const nread = r.readSync(buf);
       if (nread === null) {
         return n;
       }
-      this.#reslice(i + nread);
       n += nread;
+      this.writeSync(buf.subarray(0, nread));
     }
   }
 }
