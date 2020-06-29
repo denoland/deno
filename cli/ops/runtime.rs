@@ -81,14 +81,14 @@ fn op_metrics(
 }
 
 fn ppid() -> Value {
-  #[cfg(unix)]
+  #[cfg(windows)]
+  {
+    ppid_win()
+  }
+  #[cfg(not(windows))]
   {
     use std::os::unix::process::parent_id;
     serde_json::to_value(parent_id()).unwrap()
-  }
-  #[cfg(not(unix))]
-  {
-    ppid_win()
   }
 }
 
