@@ -309,7 +309,7 @@ pub fn source_code_version_hash(
   version: &str,
   config_hash: &[u8],
 ) -> String {
-  crate::checksum::gen(vec![source_code, version.as_bytes(), config_hash])
+  crate::checksum::gen(&[source_code, version.as_bytes(), config_hash])
 }
 
 fn maybe_log_stats(maybe_stats: Option<Vec<Stat>>) {
@@ -476,7 +476,7 @@ impl TsCompiler {
         if let Some(source_file) = file_fetcher
           .fetch_cached_source_file(&specifier, Permissions::allow_all())
         {
-          let existing_hash = crate::checksum::gen(vec![
+          let existing_hash = crate::checksum::gen(&[
             &source_file.source_code,
             version::DENO.as_bytes(),
           ]);
@@ -583,11 +583,7 @@ impl TsCompiler {
     let req_msg = j.to_string().into_boxed_str().into_boxed_bytes();
 
     // TODO(bartlomieju): lift this call up - TSC shouldn't print anything
-    info!(
-      "{} {}",
-      colors::green("Check".to_string()),
-      module_url.to_string()
-    );
+    info!("{} {}", colors::green("Check"), module_url.to_string());
 
     let msg =
       execute_in_same_thread(global_state.clone(), permissions, req_msg)

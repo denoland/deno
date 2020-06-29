@@ -25,7 +25,7 @@ pub fn format_details(node: doc::DocNode) -> String {
 
   details.push_str(&format!(
     "{}",
-    colors::gray(format!(
+    colors::gray(&format!(
       "Defined in {}:{}:{} \n\n",
       node.location.filename, node.location.line, node.location.col
     ))
@@ -319,7 +319,7 @@ fn format_jsdoc(jsdoc: String, indent: i64) -> String {
     js_doc.push_str(&add_indent(format!("{}\n", line), indent + 1));
   }
 
-  format!("{}", colors::gray(js_doc))
+  format!("{}", colors::gray(&js_doc))
 }
 
 fn format_class_details(node: doc::DocNode) -> String {
@@ -330,8 +330,8 @@ fn format_class_details(node: doc::DocNode) -> String {
     details.push_str(&add_indent(
       format!(
         "{} {}({})\n",
-        colors::magenta("constructor".to_string()),
-        colors::bold(node.name),
+        colors::magenta("constructor"),
+        colors::bold(&node.name),
         render_params(node.params),
       ),
       1,
@@ -351,11 +351,11 @@ fn format_class_details(node: doc::DocNode) -> String {
             .accessibility
             .unwrap_or(swc_ecma_ast::Accessibility::Public)
           {
-            swc_ecma_ast::Accessibility::Protected => "protected ".to_string(),
-            _ => "".to_string(),
+            swc_ecma_ast::Accessibility::Protected => "protected ",
+            _ => "",
           }
         ),
-        colors::bold(node.name.clone()),
+        colors::bold(&node.name),
         if node.optional {
           "?".to_string()
         } else {
@@ -385,21 +385,17 @@ fn format_class_details(node: doc::DocNode) -> String {
             .accessibility
             .unwrap_or(swc_ecma_ast::Accessibility::Public)
           {
-            swc_ecma_ast::Accessibility::Protected => "protected ".to_string(),
-            _ => "".to_string(),
+            swc_ecma_ast::Accessibility::Protected => "protected ",
+            _ => "",
           }
         ),
         colors::magenta(match node.kind {
-          swc_ecma_ast::MethodKind::Getter => "get ".to_string(),
-          swc_ecma_ast::MethodKind::Setter => "set ".to_string(),
-          _ => "".to_string(),
+          swc_ecma_ast::MethodKind::Getter => "get ",
+          swc_ecma_ast::MethodKind::Setter => "set ",
+          _ => "",
         }),
-        colors::bold(node.name.clone()),
-        if node.optional {
-          "?".to_string()
-        } else {
-          "".to_string()
-        },
+        colors::bold(&node.name),
+        if node.optional { "?" } else { "" },
         render_params(function_def.params),
         if let Some(return_type) = function_def.return_type {
           format!(": {}", render_ts_type(return_type))
@@ -419,7 +415,7 @@ fn format_enum_details(node: doc::DocNode) -> String {
   let enum_def = node.enum_def.unwrap();
   for member in enum_def.members {
     details
-      .push_str(&add_indent(format!("{}\n", colors::bold(member.name)), 1));
+      .push_str(&add_indent(format!("{}\n", colors::bold(&member.name)), 1));
   }
   details.push_str("\n");
   details
@@ -441,8 +437,8 @@ fn format_function_signature(node: &doc::DocNode, indent: i64) -> String {
   add_indent(
     format!(
       "{} {}({}){}\n",
-      colors::magenta("function".to_string()),
-      colors::bold(node.name.clone()),
+      colors::magenta("function"),
+      colors::bold(&node.name),
       render_params(function_def.params),
       if let Some(return_type) = function_def.return_type {
         format!(": {}", render_ts_type(return_type).as_str())
@@ -457,11 +453,7 @@ fn format_function_signature(node: &doc::DocNode, indent: i64) -> String {
 fn format_class_signature(node: &doc::DocNode, indent: i64) -> String {
   let class_def = node.class_def.clone().unwrap();
   let extends_suffix = if let Some(extends) = class_def.extends {
-    format!(
-      " {} {}",
-      colors::magenta("extends".to_string()),
-      colors::bold(extends)
-    )
+    format!(" {} {}", colors::magenta("extends"), colors::bold(&extends))
   } else {
     String::from("")
   };
@@ -470,8 +462,8 @@ fn format_class_signature(node: &doc::DocNode, indent: i64) -> String {
   let implements_suffix = if !implements.is_empty() {
     format!(
       " {} {}",
-      colors::magenta("implements".to_string()),
-      colors::bold(implements.join(", "))
+      colors::magenta("implements"),
+      colors::bold(&implements.join(", "))
     )
   } else {
     String::from("")
@@ -480,8 +472,8 @@ fn format_class_signature(node: &doc::DocNode, indent: i64) -> String {
   add_indent(
     format!(
       "{} {}{}{}\n",
-      colors::magenta("class".to_string()),
-      colors::bold(node.name.clone()),
+      colors::magenta("class"),
+      colors::bold(&node.name),
       extends_suffix,
       implements_suffix,
     ),
@@ -495,11 +487,11 @@ fn format_variable_signature(node: &doc::DocNode, indent: i64) -> String {
     format!(
       "{} {}{}\n",
       colors::magenta(match variable_def.kind {
-        swc_ecma_ast::VarDeclKind::Const => "const".to_string(),
-        swc_ecma_ast::VarDeclKind::Let => "let".to_string(),
-        swc_ecma_ast::VarDeclKind::Var => "var".to_string(),
+        swc_ecma_ast::VarDeclKind::Const => "const",
+        swc_ecma_ast::VarDeclKind::Let => "let",
+        swc_ecma_ast::VarDeclKind::Var => "var",
       }),
-      colors::bold(node.name.clone()),
+      colors::bold(&node.name),
       if let Some(ts_type) = variable_def.ts_type {
         format!(": {}", render_ts_type(ts_type))
       } else {
@@ -512,11 +504,7 @@ fn format_variable_signature(node: &doc::DocNode, indent: i64) -> String {
 
 fn format_enum_signature(node: &doc::DocNode, indent: i64) -> String {
   add_indent(
-    format!(
-      "{} {}\n",
-      colors::magenta("enum".to_string()),
-      colors::bold(node.name.clone())
-    ),
+    format!("{} {}\n", colors::magenta("enum"), colors::bold(&node.name)),
     indent,
   )
 }
@@ -527,8 +515,8 @@ fn format_interface_signature(node: &doc::DocNode, indent: i64) -> String {
   let extends_suffix = if !extends.is_empty() {
     format!(
       " {} {}",
-      colors::magenta("extends".to_string()),
-      colors::bold(extends.join(", "))
+      colors::magenta("extends"),
+      colors::bold(&extends.join(", "))
     )
   } else {
     String::from("")
@@ -536,8 +524,8 @@ fn format_interface_signature(node: &doc::DocNode, indent: i64) -> String {
   add_indent(
     format!(
       "{} {}{}\n",
-      colors::magenta("interface".to_string()),
-      colors::bold(node.name.clone()),
+      colors::magenta("interface"),
+      colors::bold(&node.name),
       extends_suffix
     ),
     indent,
@@ -546,11 +534,7 @@ fn format_interface_signature(node: &doc::DocNode, indent: i64) -> String {
 
 fn format_type_alias_signature(node: &doc::DocNode, indent: i64) -> String {
   add_indent(
-    format!(
-      "{} {}\n",
-      colors::magenta("type".to_string()),
-      colors::bold(node.name.clone())
-    ),
+    format!("{} {}\n", colors::magenta("type"), colors::bold(&node.name)),
     indent,
   )
 }
@@ -559,8 +543,8 @@ fn format_namespace_signature(node: &doc::DocNode, indent: i64) -> String {
   add_indent(
     format!(
       "{} {}\n",
-      colors::magenta("namespace".to_string()),
-      colors::bold(node.name.clone())
+      colors::magenta("namespace"),
+      colors::bold(&node.name)
     ),
     indent,
   )

@@ -156,17 +156,17 @@ fn write_lockfile(global_state: GlobalState) -> Result<(), std::io::Error> {
 fn print_cache_info(state: &GlobalState) {
   println!(
     "{} {:?}",
-    colors::bold("DENO_DIR location:".to_string()),
+    colors::bold("DENO_DIR location:"),
     state.dir.root
   );
   println!(
     "{} {:?}",
-    colors::bold("Remote modules cache:".to_string()),
+    colors::bold("Remote modules cache:"),
     state.file_fetcher.http_cache.location
   );
   println!(
     "{} {:?}",
-    colors::bold("TypeScript compiler cache:".to_string()),
+    colors::bold("TypeScript compiler cache:"),
     state.dir.gen_cache.location
   );
 }
@@ -186,13 +186,13 @@ async fn print_file_info(
 
   println!(
     "{} {}",
-    colors::bold("local:".to_string()),
+    colors::bold("local:"),
     out.filename.to_str().unwrap()
   );
 
   println!(
     "{} {}",
-    colors::bold("type:".to_string()),
+    colors::bold("type:"),
     msg::enum_name_media_type(out.media_type)
   );
 
@@ -224,7 +224,7 @@ async fn print_file_info(
 
     println!(
       "{} {}",
-      colors::bold("compiled:".to_string()),
+      colors::bold("compiled:"),
       compiled_source_file.filename.to_str().unwrap(),
     );
   }
@@ -236,7 +236,7 @@ async fn print_file_info(
   {
     println!(
       "{} {}",
-      colors::bold("map:".to_string()),
+      colors::bold("map:"),
       source_map.filename.to_str().unwrap()
     );
   }
@@ -245,7 +245,7 @@ async fn print_file_info(
   let es_state = es_state_rc.borrow();
 
   if let Some(deps) = es_state.modules.deps(&module_specifier) {
-    println!("{}{}", colors::bold("deps:\n".to_string()), deps.name);
+    println!("{}{}", colors::bold("deps:\n"), deps.name);
     if let Some(ref depsdeps) = deps.deps {
       for d in depsdeps {
         println!("{}", d);
@@ -254,7 +254,7 @@ async fn print_file_info(
   } else {
     println!(
       "{} cannot retrieve full dependency graph",
-      colors::bold("deps:".to_string()),
+      colors::bold("deps:"),
     );
   }
 
@@ -431,7 +431,7 @@ async fn bundle_command(
 
   info!(
     "{} {}",
-    colors::green("Bundle".to_string()),
+    colors::green("Bundle"),
     module_specifier.to_string()
   );
 
@@ -452,9 +452,9 @@ async fn bundle_command(
     deno_fs::write_file(out_file_, output_bytes, 0o666)?;
     info!(
       "{} {:?} ({})",
-      colors::green("Emit".to_string()),
+      colors::green("Emit"),
       out_file_,
-      colors::gray(human_size(output_len as f64))
+      colors::gray(&human_size(output_len as f64))
     );
   } else {
     println!("{}", output);
@@ -761,11 +761,7 @@ pub fn main() {
 
   let result = tokio_util::run_basic(fut);
   if let Err(err) = result {
-    let msg = format!(
-      "{}: {}",
-      colors::red_bold("error".to_string()),
-      err.to_string(),
-    );
+    let msg = format!("{}: {}", colors::red_bold("error"), err.to_string(),);
     eprintln!("{}", msg);
     std::process::exit(1);
   }
