@@ -2,8 +2,8 @@
 /** This module is browser compatible. Do not rely on good formatting of values
  * for AssertionError messages in browsers. */
 
-import { red, green, white, gray, bold, stripColor } from "../fmt/colors.ts";
-import diff, { DiffType, DiffResult } from "./diff.ts";
+import { red, stripColor } from "../fmt/colors.ts";
+import { diffMessage } from "./diff_message.ts";
 
 const CAN_NOT_DISPLAY = "[Cannot display]";
 
@@ -25,48 +25,6 @@ function format(v: unknown): string {
     string = `"${string.replace(/(?=["\\])/g, "\\")}"`;
   }
   return string;
-}
-
-function createColor(diffType: DiffType): (s: string) => string {
-  switch (diffType) {
-    case DiffType.added:
-      return (s: string): string => green(bold(s));
-    case DiffType.removed:
-      return (s: string): string => red(bold(s));
-    default:
-      return white;
-  }
-}
-
-function createSign(diffType: DiffType): string {
-  switch (diffType) {
-    case DiffType.added:
-      return "+   ";
-    case DiffType.removed:
-      return "-   ";
-    default:
-      return "    ";
-  }
-}
-
-function buildMessage(diffResult: ReadonlyArray<DiffResult<string>>): string[] {
-  const messages: string[] = [];
-  messages.push("");
-  messages.push("");
-  messages.push(
-    `    ${gray(bold("[Diff]"))} ${red(bold("Actual"))} / ${green(
-      bold("Expected")
-    )}`
-  );
-  messages.push("");
-  messages.push("");
-  diffResult.forEach((result: DiffResult<string>): void => {
-    const c = createColor(result.type);
-    messages.push(c(`${createSign(result.type)}${result.value}`));
-  });
-  messages.push("");
-
-  return messages;
 }
 
 function isKeyedCollection(x: unknown): x is Set<unknown> {
@@ -153,14 +111,8 @@ export function assertEquals(
     return;
   }
   let message = "";
-  const actualString = format(actual);
-  const expectedString = format(expected);
   try {
-    const diffResult = diff(
-      actualString.split("\n"),
-      expectedString.split("\n")
-    );
-    const diffMsg = buildMessage(diffResult).join("\n");
+    const diffMsg = diffMessage(actual, expected);
     message = `Values are not equal:\n${diffMsg}`;
   } catch (e) {
     message = `\n${red(CAN_NOT_DISPLAY)} + \n\n`;
@@ -232,11 +184,7 @@ export function assertStrictEquals(
       )}\n`;
     } else {
       try {
-        const diffResult = diff(
-          actualString.split("\n"),
-          expectedString.split("\n")
-        );
-        const diffMsg = buildMessage(diffResult).join("\n");
+        const diffMsg = diffMessage(actual, expected);
         message = `Values are not strictly equal:\n${diffMsg}`;
       } catch (e) {
         message = `\n${red(CAN_NOT_DISPLAY)} + \n\n`;
