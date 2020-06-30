@@ -607,7 +607,18 @@ export default class Module {
       },
 
       fd_filestat_set_size: (fd: number, size: bigint): number => {
-        return ERRNO_NOSYS;
+        const entry = this.fds[fd];
+        if (!entry) {
+          return ERRNO_BADF;
+        }
+
+        try {
+          Deno.ftruncateSync(entry.handle.rid, Number(size));
+        } catch (err) {
+          return errno(err);
+        }
+
+        return ERRNO_SUCCESS;
       },
 
       fd_filestat_set_times: (
@@ -831,7 +842,18 @@ export default class Module {
       },
 
       fd_sync: (fd: number): number => {
-        return ERRNO_NOSYS;
+        const entry = this.fds[fd];
+        if (!entry) {
+          return ERRNO_BADF;
+        }
+
+        try {
+          Deno.fsyncSync(entry.handle.rid);
+        } catch (err) {
+          return errno(err);
+        }
+
+        return ERRNO_SUCCESS;
       },
 
       fd_tell: (fd: number, offset_out: number): number => {

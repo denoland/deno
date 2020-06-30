@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { fail, assertEquals } from "../../testing/asserts.ts";
 import { link, linkSync } from "./_fs_link.ts";
-import { assert } from "https://deno.land/std@v0.50.0/testing/asserts.ts";
+import { assert } from "../../testing/asserts.ts";
 
 const isWindows = Deno.build.os === "windows";
 

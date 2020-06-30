@@ -20,7 +20,7 @@ This module provides an implementation of the WebAssembly System Interface
 - [ ] fd_fdstat_set_flags
 - [ ] fd_fdstat_set_rights
 - [x] fd_filestat_get
-- [ ] fd_filestat_set_size
+- [x] fd_filestat_set_size
 - [x] fd_filestat_set_times
 - [x] fd_pread
 - [x] fd_prestat_get
@@ -30,7 +30,7 @@ This module provides an implementation of the WebAssembly System Interface
 - [ ] fd_readdir
 - [x] fd_renumber
 - [x] fd_seek
-- [ ] fd_sync
+- [x] fd_sync
 - [x] fd_tell
 - [x] fd_write
 - [x] path_create_directory
