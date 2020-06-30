@@ -109,7 +109,7 @@ Deno.test("testFormatterWithEmptyMsg", function () {
   );
 
   assertEquals(handler.messages, ["test DEBUG "]);
-})
+});
 
 Deno.test("testFormatterAsFunction", function (): void {
   const handler = new TestHandler("DEBUG", {
