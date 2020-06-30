@@ -18,6 +18,9 @@ unitTest({ perms: { read: true } }, function fstatSyncSuccess(): void {
   assert(fileInfo.atime);
   assert(fileInfo.mtime);
   assert(fileInfo.birthtime);
+  assert(fileInfo.dev);
+  assert(fileInfo.ino);
+  assert(fileInfo.nlink);
 
   Deno.close(file.rid);
 });
@@ -34,6 +37,9 @@ unitTest({ perms: { read: true } }, async function fstatSuccess(): Promise<
   assert(fileInfo.atime);
   assert(fileInfo.mtime);
   assert(fileInfo.birthtime);
+  assert(fileInfo.dev);
+  assert(fileInfo.ino);
+  assert(fileInfo.nlink);
 
   Deno.close(file.rid);
 });
@@ -284,10 +290,7 @@ unitTest(
     const filename = tempDir + "/test.txt";
     Deno.writeFileSync(filename, data, { mode: 0o666 });
     const s = Deno.statSync(filename);
-    assert(s.dev === null);
-    assert(s.ino === null);
     assert(s.mode === null);
-    assert(s.nlink === null);
     assert(s.uid === null);
     assert(s.gid === null);
     assert(s.rdev === null);

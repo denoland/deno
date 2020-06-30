@@ -617,45 +617,57 @@ fn to_msec(maybe_time: Result<SystemTime, io::Error>) -> serde_json::Value {
 
 #[inline(always)]
 fn get_stat_json(metadata: std::fs::Metadata) -> JsonResult {
-  // Unix stat member (number types only). 0 if not on unix.
-  macro_rules! usm {
-    ($member: ident) => {{
-      #[cfg(unix)]
-      {
-        metadata.$member()
-      }
-      #[cfg(not(unix))]
-      {
-        0
-      }
-    }};
+  #[cfg(unix)]
+  {
+    use std::os::unix::fs::MetadataExt;
+    let json_val = json!({
+        "isFile": metadata.is_file(),
+        "isDirectory": metadata.is_dir(),
+        "isSymlink": metadata.file_type().is_symlink(),
+        "size": metadata.len(),
+        "mtime": to_msec(metadata.modified()),
+        "atime": to_msec(metadata.accessed()),
+        "birthtime": to_msec(metadata.created()),
+        "dev": metadata.dev(),
+        "ino": metadata.ino(),
+        "mode": metadata.mode(),
+        "nlink": metadata.nlink(),
+        "uid": metadata.uid(),
+        "gid": metadata.gid(),
+        "rdev": metadata.rdev(),
+        // TODO(kevinkassimo): *time_nsec requires BigInt.
+        // Probably should be treated as String if we need to add them.
+        "blksize": metadata.blksize(),
+        "blocks": metadata.blocks(),
+    });
+
+    Ok(json_val)
   }
 
-  #[cfg(unix)]
-  use std::os::unix::fs::MetadataExt;
-  let json_val = json!({
-    "isFile": metadata.is_file(),
-    "isDirectory": metadata.is_dir(),
-    "isSymlink": metadata.file_type().is_symlink(),
-    "size": metadata.len(),
-    // In milliseconds, like JavaScript. Available on both Unix or Windows.
-    "mtime": to_msec(metadata.modified()),
-    "atime": to_msec(metadata.accessed()),
-    "birthtime": to_msec(metadata.created()),
-    // Following are only valid under Unix.
-    "dev": usm!(dev),
-    "ino": usm!(ino),
-    "mode": usm!(mode),
-    "nlink": usm!(nlink),
-    "uid": usm!(uid),
-    "gid": usm!(gid),
-    "rdev": usm!(rdev),
-    // TODO(kevinkassimo): *time_nsec requires BigInt.
-    // Probably should be treated as String if we need to add them.
-    "blksize": usm!(blksize),
-    "blocks": usm!(blocks),
-  });
-  Ok(json_val)
+  #[cfg(windows)]
+  {
+    use std::os::windows::fs::MetadataExt;
+    let json_val = json!({
+        "isFile": metadata.is_file(),
+        "isDirectory": metadata.is_dir(),
+        "isSymlink": metadata.file_type().is_symlink(),
+        "size": metadata.len(),
+        "mtime": to_msec(metadata.modified()),
+        "atime": to_msec(metadata.accessed()),
+        "birthtime": to_msec(metadata.created()),
+        "dev": metadata.volume_serial_number().unwrap_or(0),
+        "ino": metadata.file_index().unwrap_or(0),
+        "mode": 0,
+        "nlink": metadata.number_of_links().unwrap_or(0),
+        "uid": 0,
+        "gid": 0,
+        "rdev": 0,
+        "blksize": 0,
+        "blocks": 0,
+    });
+
+    Ok(json_val)
+  }
 }
 
 #[derive(Deserialize)]
