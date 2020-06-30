@@ -67,7 +67,6 @@ unitTest({ perms: { net: true } }, async function fetchHeaders(): Promise<
   const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
   const headers = response.headers;
   assertEquals(headers.get("Content-Type"), "application/json");
-  assert(headers.get("Server")!.startsWith("SimpleHTTP"));
   const _json = await response.json();
 });
 
