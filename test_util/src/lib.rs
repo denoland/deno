@@ -28,7 +28,7 @@ const ANOTHER_REDIRECT_PORT: u16 = 4547;
 const DOUBLE_REDIRECTS_PORT: u16 = 4548;
 const INF_REDIRECTS_PORT: u16 = 4549;
 const REDIRECT_ABSOLUTE_PORT: u16 = 4550;
-// HTTPS_PORT = 5545
+const HTTPS_PORT: u16 = 5545;
 
 pub const PERMISSION_VARIANTS: [&str; 5] =
   ["read", "write", "env", "net", "run"];
@@ -301,6 +301,15 @@ pub async fn run_all_servers() {
     .and(warp::path::peek())
     .and(warp::fs::dir(root_path()))
     .map(custom_headers);
+
+  tokio::spawn(
+    warp::serve(content_type_handler.clone())
+      .tls()
+      .cert_path("std/http/testdata/tls/localhost.crt")
+      .key_path("std/http/testdata/tls/localhost.key")
+      .run(([127, 0, 0, 1], HTTPS_PORT)),
+  );
+
   let routes = content_type_handler
     .or(etag_script)
     .or(xtypescripttypes)
@@ -371,31 +380,14 @@ fn custom_headers(path: warp::path::Peek, f: warp::fs::File) -> Box<dyn Reply> {
 pub struct HttpServerGuard<'a> {
   #[allow(dead_code)]
   g: MutexGuard<'a, ()>,
-  http_server_py: Child,
   test_server: Child,
 }
 
 impl<'a> Drop for HttpServerGuard<'a> {
   fn drop(&mut self) {
-    match self.http_server_py.try_wait() {
-      Ok(None) => {
-        self
-          .http_server_py
-          .kill()
-          .expect("failed to kill http_server.py");
-      }
-      Ok(Some(status)) => {
-        panic!("http_server.py exited unexpectedly {}", status)
-      }
-      Err(e) => panic!("http_server.py error: {}", e),
-    }
-
     match self.test_server.try_wait() {
       Ok(None) => {
-        self
-          .test_server
-          .kill()
-          .expect("failed to kill http_server.py");
+        self.test_server.kill().expect("failed to kill test_server");
       }
       Ok(Some(status)) => panic!("test_server exited unexpectedly {}", status),
       Err(e) => panic!("test_server error: {}", e),
@@ -403,7 +395,7 @@ impl<'a> Drop for HttpServerGuard<'a> {
   }
 }
 
-/// Starts tools/http_server.py when the returned guard is dropped, the server
+/// Starts target/debug/test_server when the returned guard is dropped, the server
 /// will be killed.
 pub fn http_server<'a>() -> HttpServerGuard<'a> {
   // TODO(bartlomieju) Allow tests to use the http server in parallel.
@@ -415,28 +407,6 @@ pub fn http_server<'a>() -> HttpServerGuard<'a> {
     r.unwrap()
   };
 
-  println!("tools/http_server.py starting...");
-  let mut http_server_py = Command::new("python")
-    .current_dir(root_path())
-    .args(&["-u", "tools/http_server.py"])
-    .stdout(Stdio::piped())
-    .spawn()
-    .expect("failed to execute child");
-
-  let stdout = http_server_py.stdout.as_mut().unwrap();
-  use std::io::{BufRead, BufReader};
-  let lines = BufReader::new(stdout).lines();
-  // Wait for "ready" on stdout. See tools/http_server.py
-  for maybe_line in lines {
-    if let Ok(line) = maybe_line {
-      if line.starts_with("ready") {
-        break;
-      }
-    } else {
-      panic!(maybe_line.unwrap_err());
-    }
-  }
-
   println!("test_server starting...");
   let mut test_server = Command::new(test_server_path())
     .current_dir(root_path())
@@ -445,6 +415,7 @@ pub fn http_server<'a>() -> HttpServerGuard<'a> {
     .expect("failed to execute test_server");
 
   let stdout = test_server.stdout.as_mut().unwrap();
+  use std::io::{BufRead, BufReader};
   let lines = BufReader::new(stdout).lines();
   for maybe_line in lines {
     if let Ok(line) = maybe_line {
@@ -456,11 +427,7 @@ pub fn http_server<'a>() -> HttpServerGuard<'a> {
     }
   }
 
-  HttpServerGuard {
-    test_server,
-    http_server_py,
-    g,
-  }
+  HttpServerGuard { test_server, g }
 }
 
 /// Helper function to strip ansi codes.
