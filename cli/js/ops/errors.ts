@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import { DiagnosticItem } from "../diagnostics.ts";
+import type { DiagnosticItem } from "../diagnostics.ts";
 import { sendSync } from "./dispatch_json.ts";
 
 export function formatDiagnostics(items: DiagnosticItem[]): string {

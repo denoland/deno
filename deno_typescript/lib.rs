@@ -148,6 +148,7 @@ pub fn compile_bundle(
   let config_json = serde_json::json!({
     "compilerOptions": {
       "declaration": true,
+      "importsNotUsedAsValues": "error",
       // Emit the source alongside the sourcemaps within a single file;
       // requires --inlineSourceMap or --sourceMap to be set.
       // "inlineSources": true,

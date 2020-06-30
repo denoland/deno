@@ -14,10 +14,10 @@
 import "./ts_global.d.ts";
 
 import { bold, cyan, yellow } from "./colors.ts";
-import { CompilerOptions } from "./compiler_options.ts";
-import { Diagnostic, DiagnosticItem } from "./diagnostics.ts";
+import type { CompilerOptions } from "./compiler_options.ts";
+import type { Diagnostic, DiagnosticItem } from "./diagnostics.ts";
 import { fromTypeScriptDiagnostic } from "./diagnostics_util.ts";
-import { TranspileOnlyResult } from "./ops/runtime_compiler.ts";
+import type { TranspileOnlyResult } from "./ops/runtime_compiler.ts";
 import { bootstrapWorkerRuntime } from "./runtime_worker.ts";
 import { assert, log, notImplemented } from "./util.ts";
 import { core } from "./core.ts";

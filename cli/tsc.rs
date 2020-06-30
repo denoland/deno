@@ -689,7 +689,7 @@ impl TsCompiler {
     Ok(output)
   }
 
-  pub async fn transpile_module_graph(
+  pub async fn transpile(
     &self,
     global_state: GlobalState,
     permissions: Permissions,
@@ -699,8 +699,7 @@ impl TsCompiler {
     for (_, value) in module_graph.iter() {
       let url = Url::parse(&value.url).expect("Filename is not a valid url");
       if !value.url.ends_with(".d.ts")
-        && (!self.use_disk_cache
-          || !self.has_compiled_source(&global_state.file_fetcher, &url))
+        && (!self.use_disk_cache || !self.has_compiled_source(&url))
       {
         source_files.push(TranspileSourceFile {
           source_code: value.source_code.clone(),
@@ -740,7 +739,7 @@ impl TsCompiler {
 
     let msg =
       execute_in_same_thread(global_state.clone(), permissions, req_msg)
-      .await?;
+        .await?;
 
     let json_str = std::str::from_utf8(&msg).unwrap();
 
@@ -1506,7 +1505,6 @@ fn parse_deno_types(comment: &str) -> Option<String> {
 mod tests {
   use super::*;
   use crate::deno_dir;
-  use crate::flags;
   use crate::fs as deno_fs;
   use crate::http_cache;
   use deno_core::ModuleSpecifier;
@@ -1627,68 +1625,74 @@ mod tests {
       .starts_with("//# sourceMappingURL=data:application/json;base64"));
   }
 
-  // #[tokio::test]
-  // async fn test_transpile() {
-  //   let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-  //     .parent()
-  //     .unwrap()
-  //     .join("cli/tests/004_set_timeout.ts");
-  //   let specifier =
-  //     ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
-  //   let out = SourceFile {
-  //     url: specifier.as_url().clone(),
-  //     filename: PathBuf::from(p.to_str().unwrap().to_string()),
-  //     media_type: msg::MediaType::TypeScript,
-  //     source_code: include_bytes!("./tests/004_set_timeout.ts").to_vec(),
-  //     types_header: None,
-  //   };
-  //   let mock_state = GlobalState::mock(
-  //     vec![
-  //       String::from("deno"),
-  //       String::from("run"),
-  //       String::from("hello.ts"),
-  //     ],
-  //     Some(flags::Flags {
-  //       reload: true,
-  //       no_check: true,
-  //       ..flags::Flags::default()
-  //     }),
-  //   );
+  #[tokio::test]
+  async fn test_transpile() {
+    let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+      .parent()
+      .unwrap()
+      .join("cli/tests/002_hello.ts");
+    let specifier =
+      ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
+    let out = SourceFile {
+      url: specifier.as_url().clone(),
+      filename: PathBuf::from(p.to_str().unwrap().to_string()),
+      media_type: msg::MediaType::TypeScript,
+      source_code: include_bytes!("./tests/002_hello.ts").to_vec(),
+      types_header: None,
+    };
+    let dir =
+      deno_dir::DenoDir::new(Some(test_util::new_deno_dir().path().to_owned()))
+        .unwrap();
+    let http_cache = http_cache::HttpCache::new(&dir.root.join("deps"));
+    let mock_state = GlobalState::mock(
+      vec![String::from("deno"), String::from("hello.ts")],
+      None,
+    );
+    let file_fetcher = SourceFileFetcher::new(
+      http_cache,
+      true,
+      mock_state.flags.cache_blocklist.clone(),
+      false,
+      false,
+      None,
+    )
+    .unwrap();
 
-  //   let mut module_graph_loader = ModuleGraphLoader::new(
-  //     mock_state.file_fetcher.clone(),
-  //     None,
-  //     Permissions::allow_all(),
-  //     false,
-  //     false,
-  //   );
-  //   module_graph_loader
-  //     .add_to_graph(&specifier, None)
-  //     .await
-  //     .expect("Failed to create graph");
-  //   let module_graph = module_graph_loader.get_graph();
+    let mut module_graph_loader = ModuleGraphLoader::new(
+      file_fetcher.clone(),
+      None,
+      Permissions::allow_all(),
+      false,
+      false,
+    );
+    module_graph_loader
+      .add_to_graph(&specifier, None)
+      .await
+      .expect("Failed to create graph");
+    let module_graph = module_graph_loader.get_graph();
 
-  //   let result = mock_state
-  //     .ts_compiler
-  //     .transpile_module_graph(
-  //       mock_state.clone(),
-  //       Permissions::allow_all(),
-  //       module_graph,
-  //     )
-  //     .await;
-  //   assert!(result.is_ok());
-  //   let compiled_file = mock_state
-  //     .ts_compiler
-  //     .get_compiled_module(&out.url)
-  //     .unwrap();
-  //   let source_code = compiled_file.code;
-  //   assert!(source_code.as_bytes().starts_with(b"setTimeout(() => {"));
-  //   let mut lines: Vec<String> =
-  //     source_code.split('\n').map(|s| s.to_string()).collect();
-  //   let last_line = lines.pop().unwrap();
-  //   assert!(last_line
-  //     .starts_with("//# sourceMappingURL=data:application/json;base64"));
-  // }
+    let ts_compiler = TsCompiler::new(
+      file_fetcher,
+      mock_state.flags.clone(),
+      dir.gen_cache.clone(),
+    )
+    .unwrap();
+
+    let result = ts_compiler
+      .transpile(mock_state.clone(), Permissions::allow_all(), module_graph)
+      .await;
+    assert!(result.is_ok());
+    let compiled_file = ts_compiler.get_compiled_module(&out.url).unwrap();
+    let source_code = compiled_file.code;
+    assert!(source_code
+      .as_bytes()
+      .starts_with(b"console.log(\"Hello World\");"));
+    let mut lines: Vec<String> =
+      source_code.split('\n').map(|s| s.to_string()).collect();
+    let last_line = lines.pop().unwrap();
+    assert!(last_line
+      .starts_with("//# sourceMappingURL=data:application/json;base64"));
+  }
 
   #[tokio::test]
   async fn test_bundle() {
