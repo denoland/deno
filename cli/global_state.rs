@@ -70,9 +70,8 @@ impl GlobalState {
 
     let ts_compiler = TsCompiler::new(
       file_fetcher.clone(),
+      flags.clone(),
       dir.gen_cache.clone(),
-      !flags.reload,
-      flags.config_path.clone(),
     )?;
 
     // Note: reads lazily from disk on first call to lockfile.check()
@@ -155,7 +154,7 @@ impl GlobalState {
     if should_compile {
       self
         .ts_compiler
-        .compile_module_graph(
+        .compile(
           self.clone(),
           &out,
           target_lib,
@@ -245,12 +244,19 @@ impl GlobalState {
   }
 
   #[cfg(test)]
-  pub fn mock(argv: Vec<String>) -> GlobalState {
-    GlobalState::new(flags::Flags {
-      argv,
-      ..flags::Flags::default()
-    })
-    .unwrap()
+  pub fn mock(
+    argv: Vec<String>,
+    maybe_flags: Option<flags::Flags>,
+  ) -> GlobalState {
+    if let Some(in_flags) = maybe_flags {
+      GlobalState::new(flags::Flags { argv, ..in_flags }).unwrap()
+    } else {
+      GlobalState::new(flags::Flags {
+        argv,
+        ..flags::Flags::default()
+      })
+      .unwrap()
+    }
   }
 }
 
@@ -312,7 +318,7 @@ fn needs_compilation(
 #[test]
 fn thread_safe() {
   fn f<S: Send + Sync>(_: S) {}
-  f(GlobalState::mock(vec![]));
+  f(GlobalState::mock(vec![], None));
 }
 
 #[test]
