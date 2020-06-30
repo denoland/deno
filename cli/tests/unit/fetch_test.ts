@@ -161,13 +161,10 @@ unitTest(
   { perms: { net: true } },
   async function fetchBodyReaderBigBody(): Promise<void> {
     const data = "a".repeat(10 << 10); // 10mb
-    const response = await fetch(
-      "http://localhost:4545/cli/tests/echo_server",
-      {
-        method: "POST",
-        body: data,
-      }
-    );
+    const response = await fetch("http://localhost:4545/echo_server", {
+      method: "POST",
+      body: data,
+    });
     assert(response.body !== null);
     const reader = await response.body.getReader();
     let total = 0;
@@ -768,13 +765,10 @@ unitTest(
   { perms: { net: true } },
   async function fetchBodyReaderWithCancelAndNewReader(): Promise<void> {
     const data = "a".repeat(1 << 10);
-    const response = await fetch(
-      "http://localhost:4545/cli/tests/echo_server",
-      {
-        method: "POST",
-        body: data,
-      }
-    );
+    const response = await fetch("http://localhost:4545/echo_server", {
+      method: "POST",
+      body: data,
+    });
     assert(response.body !== null);
     const firstReader = await response.body.getReader();
 
@@ -800,13 +794,10 @@ unitTest(
   async function fetchBodyReaderWithReadCancelAndNewReader(): Promise<void> {
     const data = "a".repeat(1 << 10);
 
-    const response = await fetch(
-      "http://localhost:4545/cli/tests/echo_server",
-      {
-        method: "POST",
-        body: data,
-      }
-    );
+    const response = await fetch("http://localhost:4545/echo_server", {
+      method: "POST",
+      body: data,
+    });
     assert(response.body !== null);
     const firstReader = await response.body.getReader();
 
@@ -847,7 +838,7 @@ unitTest(
 
     for (const status of nullBodyStatus) {
       const headers = new Headers([["x-status", String(status)]]);
-      const res = await fetch("http://localhost:4545/cli/tests/echo_server", {
+      const res = await fetch("http://localhost:4545/echo_server", {
         body: "deno",
         method: "POST",
         headers,
