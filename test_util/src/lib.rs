@@ -300,7 +300,12 @@ pub async fn run_all_servers() {
   let content_type_handler = warp::any()
     .and(warp::path::peek())
     .and(warp::fs::dir(root_path()))
-    .map(custom_headers);
+    .map(custom_headers)
+    .or(etag_script)
+    .or(xtypescripttypes)
+    .or(echo_server)
+    .or(echo_multipart_file)
+    .or(multipart_form_data);
 
   tokio::spawn(
     warp::serve(content_type_handler.clone())
@@ -310,16 +315,11 @@ pub async fn run_all_servers() {
       .run(([127, 0, 0, 1], HTTPS_PORT)),
   );
 
-  let routes = content_type_handler
-    .or(etag_script)
-    .or(xtypescripttypes)
-    .or(echo_server)
-    .or(echo_multipart_file)
-    .or(multipart_form_data);
-  let addr = ([127, 0, 0, 1], PORT);
   println!("ready");
   // Note on the last one, we await instead of spawn.
-  warp::serve(routes).run(addr).await;
+  warp::serve(content_type_handler)
+    .run(([127, 0, 0, 1], PORT))
+    .await;
 }
 
 fn custom_headers(path: warp::path::Peek, f: warp::fs::File) -> Box<dyn Reply> {
