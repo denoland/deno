@@ -1540,10 +1540,7 @@ mod tests {
       )
       .await;
     assert!(result.is_ok());
-    let compiled_file = mock_state
-      .ts_compiler
-      .get_compiled_module(&out.url)
-      .unwrap();
+    let compiled_file = ts_compiler.get_compiled_module(&out.url).unwrap();
     let source_code = compiled_file.code;
     assert!(source_code
       .as_bytes()
