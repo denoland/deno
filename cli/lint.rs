@@ -80,8 +80,8 @@ fn create_linter() -> Linter {
       "deno-lint-ignore".to_string(),
       "eslint-disable-next-line".to_string(),
     ],
-    // TODO(bartlomieju): switch to true, once
-    // https://github.com/denoland/deno_lint/issues/156 is fixed
+    true,
+    // TODO(bartlomieju): switch to true
     false,
   )
 }
