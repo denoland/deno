@@ -16,6 +16,8 @@ use std::sync::Mutex;
 use std::sync::MutexGuard;
 use tempfile::TempDir;
 use warp::http::Uri;
+use warp::http::{HeaderValue, Response, StatusCode};
+use warp::hyper::Body;
 use warp::reply::with_header;
 use warp::reply::Reply;
 use warp::Filter;
@@ -135,9 +137,6 @@ pub async fn run_all_servers() {
   let addr = ([127, 0, 0, 1], REDIRECT_ABSOLUTE_PORT);
   tokio::spawn(warp::serve(routes).run(addr));
 
-  use warp::http::{HeaderValue, Response, StatusCode};
-  use warp::hyper::Body;
-
   let echo_server = warp::path("echo_server")
     .and(warp::post())
     .and(warp::body::bytes())
@@ -250,15 +249,6 @@ pub async fn run_all_servers() {
         HeaderValue::from_static("application/javascript"),
       );
       res
-    }))
-    .or(warp::path!("multipart_form_data.txt").map(|| {
-      let mut res = Response::new(Body::from("Preamble\r\n--boundary\t \r\nContent-Disposition: form-data; name=\"field_1\"\r\n\r\nvalue_1 \r\n\r\n--boundary\r\nContent-Disposition: form-data; name=\"field_2\"; filename=\"file.js\"\r\nContent-Type: text/javascript\r\n\r\nconsole.log(\"Hi\")\r\n--boundary--\r\nEpilogue"));
-      let h = res.headers_mut();
-      h.insert(
-        "Content-type",
-        HeaderValue::from_static("multipart/form-data;boundary=boundary"),
-      );
-      res
     }));
 
   let content_type_handler = warp::any()
@@ -277,6 +267,30 @@ pub async fn run_all_servers() {
 
 fn custom_headers(path: warp::path::Peek, f: warp::fs::File) -> Box<dyn Reply> {
   let p = path.as_str();
+  println!("custom_headers {}", p);
+  if p.ends_with("multipart_form_data.txt") {
+    println!("multipart_form_data.txt");
+    let body = "Preamble\r\n\
+                  --boundary\t \r\n\
+                  Content-Disposition: form-data; name=\"field_1\"\r\n\
+                  \r\n\
+                  value_1 \r\n\
+                  \r\n--boundary\r\n\
+                  Content-Disposition: form-data; name=\"field_2\";\
+                  filename=\"file.js\"\r\n\
+                  Content-Type: text/javascript\r\n\
+                  \r\n\
+                  console.log(\"Hi\")\
+                  \r\n--boundary--\r\n\
+                  Epilogue";
+    let mut res = Response::new(Body::from(body));
+    let h = res.headers_mut();
+    h.insert(
+      "Content-type",
+      HeaderValue::from_static("multipart/form-data;boundary=boundary"),
+    );
+    return Box::new(res);
+  }
 
   if p.ends_with("cli/tests/053_import_compression/brotli") {
     let f = with_header(f, "Content-Encoding", "br");
