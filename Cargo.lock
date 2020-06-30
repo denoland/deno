@@ -123,15 +123,6 @@ checksum = "f8aac770f1885fd7e387acedd76065302551364496e46b3dd00860b2f8359b9d"
 
 [[package]]
 name = "base64"
-version = "0.10.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0b25d992356d2eb0ed82172f5248873db5560c4721f564b13cb5193bda5e668e"
-dependencies = [
- "byteorder",
-]
-
-[[package]]
-name = "base64"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b41b7ea54a0c9d92199de89e20e58d49f02f8e699814ef3fdf266f6f748d15c7"
@@ -410,7 +401,7 @@ dependencies = [
  "serde",
  "serde_derive",
  "serde_json",
- "sourcemap 5.0.0",
+ "sourcemap",
  "swc_ecma_visit",
  "sys-info",
  "tempfile",
@@ -419,7 +410,7 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "tokio-tungstenite",
- "url 2.1.1",
+ "url",
  "utime",
  "uuid",
  "walkdir",
@@ -442,7 +433,7 @@ dependencies = [
  "rusty_v8",
  "serde_json",
  "tokio",
- "url 2.1.1",
+ "url",
 ]
 
 [[package]]
@@ -972,17 +963,6 @@ checksum = "b9e0384b61958566e926dc50660321d12159025e767c18e043daf26b70104c39"
 
 [[package]]
 name = "idna"
-version = "0.1.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "38f09e0f0b1fb55fdee1f17470ad800da77af5186a1a76c026b679358b7e844e"
-dependencies = [
- "matches",
- "unicode-bidi",
- "unicode-normalization",
-]
-
-[[package]]
-name = "idna"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "02e2673c30ee86b5b96a9cb52ad15718aa1f966f5ab9ad54a8b95d5ca33120a9"
@@ -991,12 +971,6 @@ dependencies = [
  "unicode-bidi",
  "unicode-normalization",
 ]
-
-[[package]]
-name = "if_chain"
-version = "0.1.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4bac95d9aa0624e7b78187d6fb8ab012b41d9f6f54b1bcb61e61c4845f8357ec"
 
 [[package]]
 name = "if_chain"
@@ -1438,12 +1412,6 @@ dependencies = [
 
 [[package]]
 name = "percent-encoding"
-version = "1.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "31010dd2e1ac33d5b46a5b413495239882813e0369f8ed8a5e266f173602f831"
-
-[[package]]
-name = "percent-encoding"
 version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d4fd5641d01c8f18a23da7b6fe29298ff4b55afcccdf78973b24cf3175fee32e"
@@ -1845,14 +1813,14 @@ dependencies = [
  "log 0.4.8",
  "mime 0.3.16",
  "mime_guess 2.0.3",
- "percent-encoding 2.1.0",
+ "percent-encoding",
  "pin-project-lite",
  "rustls",
  "serde",
  "serde_urlencoded",
  "tokio",
  "tokio-rustls",
- "url 2.1.1",
+ "url",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -2045,7 +2013,7 @@ dependencies = [
  "dtoa",
  "itoa",
  "serde",
- "url 2.1.1",
+ "url",
 ]
 
 [[package]]
@@ -2117,34 +2085,18 @@ dependencies = [
 
 [[package]]
 name = "sourcemap"
-version = "5.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8fd57aa9e5cea41b4a3c26a61039fad5585e2154ffe057a2656540a21b03a2d2"
-dependencies = [
- "base64 0.10.1",
- "if_chain 0.1.3",
- "lazy_static",
- "regex",
- "rustc_version",
- "serde",
- "serde_json",
- "url 1.7.2",
-]
-
-[[package]]
-name = "sourcemap"
 version = "6.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d7f42ca034bf301214458cf7f4dcbe7f680fd23d9e4c61193ed139684e2e3adc"
 dependencies = [
  "base64 0.11.0",
- "if_chain 1.0.0",
+ "if_chain",
  "lazy_static",
  "regex",
  "rustc_version",
  "serde",
  "serde_json",
- "url 2.1.1",
+ "url",
 ]
 
 [[package]]
@@ -2236,7 +2188,7 @@ dependencies = [
  "parking_lot",
  "scoped-tls 1.0.0",
  "serde",
- "sourcemap 6.0.0",
+ "sourcemap",
  "string_cache",
  "termcolor",
  "unicode-width",
@@ -2569,7 +2521,7 @@ dependencies = [
  "log 0.4.8",
  "rand 0.7.3",
  "sha-1",
- "url 2.1.1",
+ "url",
  "utf-8",
 ]
 
@@ -2656,24 +2608,13 @@ checksum = "a156c684c91ea7d62626509bce3cb4e1d9ed5c4d978f7b4352658f96a4c26b4a"
 
 [[package]]
 name = "url"
-version = "1.7.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dd4e7c0d531266369519a4aa4f399d748bd37043b00bde1e4ff1f60a120b355a"
-dependencies = [
- "idna 0.1.5",
- "matches",
- "percent-encoding 1.0.1",
-]
-
-[[package]]
-name = "url"
 version = "2.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "829d4a8476c35c9bf0bbce5a3b23f4106f79728039b726d292bb93bc106787cb"
 dependencies = [
- "idna 0.2.0",
+ "idna",
  "matches",
- "percent-encoding 2.1.0",
+ "percent-encoding",
 ]
 
 [[package]]
