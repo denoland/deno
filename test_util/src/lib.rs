@@ -140,15 +140,17 @@ pub async fn run_all_servers() {
 
   let echo_server = warp::path("echo_server")
     .and(warp::post())
+    .and(warp::body::bytes())
     .and(warp::header::optional::<String>("x-status"))
     .and(warp::header::optional::<String>("content-type"))
     .and(warp::header::optional::<String>("user-agent"))
     .map(
-      |status: Option<String>,
+      |bytes: bytes::Bytes,
+       status: Option<String>,
        content_type: Option<String>,
        user_agent: Option<String>|
        -> Box<dyn Reply> {
-        let mut res = Response::new(Body::from("Hello World"));
+        let mut res = Response::new(Body::from(bytes));
         if let Some(v) = status {
           *res.status_mut() = StatusCode::from_bytes(v.as_bytes()).unwrap();
         }

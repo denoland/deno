@@ -2375,6 +2375,7 @@ dependencies = [
 name = "test_util"
 version = "0.1.0"
 dependencies = [
+ "bytes 0.5.5",
  "futures 0.3.5",
  "lazy_static",
  "os_pipe",
