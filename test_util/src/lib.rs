@@ -163,6 +163,30 @@ pub async fn run_all_servers() {
         Box::new(res)
       },
     );
+  let echo_multipart_file = warp::path("echo_multipart_file")
+    .and(warp::post())
+    .and(warp::body::bytes())
+    .map(|bytes: bytes::Bytes| -> Box<dyn Reply> {
+      let start = b"--boundary\t \r\n\
+                    Content-Disposition: form-data; name=\"field_1\"\r\n\
+                    \r\n\
+                    value_1 \r\n\
+                    \r\n--boundary\r\n\
+                    Content-Disposition: form-data; name=\"file\"; \
+                    filename=\"file.bin\"\r\n\
+                    Content-Type: application/octet-stream\r\n\
+                    \r\n";
+      let end = b"\r\n--boundary--\r\n";
+      let b = [start as &[u8], &bytes, end].concat();
+
+      let mut res = Response::new(Body::from(b));
+      let h = res.headers_mut();
+      h.insert(
+        "content-type",
+        HeaderValue::from_static("multipart/form-data;boundary=boundary"),
+      );
+      Box::new(res)
+    });
 
   let etag_script = warp::path!("etag_script.ts")
     .and(warp::header::optional::<String>("if-none-match"))
@@ -258,7 +282,8 @@ pub async fn run_all_servers() {
   let routes = content_type_handler
     .or(etag_script)
     .or(xtypescripttypes)
-    .or(echo_server);
+    .or(echo_server)
+    .or(echo_multipart_file);
   let addr = ([127, 0, 0, 1], PORT);
   println!("ready");
   // Note on the last one, we await instead of spawn.
