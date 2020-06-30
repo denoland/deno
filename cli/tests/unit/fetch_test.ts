@@ -311,12 +311,12 @@ unitTest(
     perms: { net: true },
   },
   async function fetchWithRedirection(): Promise<void> {
-    const response = await fetch("http://localhost:4546/"); // will redirect to http://localhost:4545/
+    const response = await fetch("http://localhost:4546/README.md");
     assertEquals(response.status, 200);
     assertEquals(response.statusText, "OK");
-    assertEquals(response.url, "http://localhost:4545/");
+    assertEquals(response.url, "http://localhost:4545/README.md");
     const body = await response.text();
-    assert(body.includes("<title>Directory listing for /</title>"));
+    assert(body.includes("Deno"));
   }
 );
 
@@ -325,11 +325,11 @@ unitTest(
     perms: { net: true },
   },
   async function fetchWithRelativeRedirection(): Promise<void> {
-    const response = await fetch("http://localhost:4545/cli/tests"); // will redirect to /cli/tests/
+    const response = await fetch("http://localhost:4545/cli/tests/001_hello.js");
     assertEquals(response.status, 200);
     assertEquals(response.statusText, "OK");
     const body = await response.text();
-    assert(body.includes("<title>Directory listing for /cli/tests/</title>"));
+    assert(body.includes("Hello"));
   }
 );
 
