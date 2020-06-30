@@ -92,7 +92,7 @@ fn ppid() -> Value {
   }
 }
 
-#[cfg(not(unix))]
+#[cfg(windows)]
 fn ppid_win() -> Value {
   // Adopted from rustup:
   // https://github.com/rust-lang/rustup/blob/1.21.1/src/cli/self_update.rs#L1036
