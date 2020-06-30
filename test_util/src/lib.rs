@@ -138,6 +138,31 @@ pub async fn run_all_servers() {
   use warp::http::{HeaderValue, Response, StatusCode};
   use warp::hyper::Body;
 
+  let echo_server = warp::path("echo_server")
+    .and(warp::post())
+    .and(warp::header::optional::<String>("x-status"))
+    .and(warp::header::optional::<String>("content-type"))
+    .and(warp::header::optional::<String>("user-agent"))
+    .map(
+      |status: Option<String>,
+       content_type: Option<String>,
+       user_agent: Option<String>|
+       -> Box<dyn Reply> {
+        let mut res = Response::new(Body::from("Hello World"));
+        if let Some(v) = status {
+          *res.status_mut() = StatusCode::from_bytes(v.as_bytes()).unwrap();
+        }
+        let h = res.headers_mut();
+        if let Some(v) = content_type {
+          h.insert("content-type", HeaderValue::from_str(&v).unwrap());
+        }
+        if let Some(v) = user_agent {
+          h.insert("user-agent", HeaderValue::from_str(&v).unwrap());
+        }
+        Box::new(res)
+      },
+    );
+
   let etag_script = warp::path!("etag_script.ts")
     .and(warp::header::optional::<String>("if-none-match"))
     .map(|if_none_match| -> Box<dyn Reply> {
@@ -238,7 +263,10 @@ pub async fn run_all_servers() {
     .and(warp::path::peek())
     .and(warp::fs::dir(root_path()))
     .map(custom_headers);
-  let routes = content_type_handler.or(etag_script).or(xtypescripttypes);
+  let routes = content_type_handler
+    .or(etag_script)
+    .or(xtypescripttypes)
+    .or(echo_server);
   let addr = ([127, 0, 0, 1], PORT);
   println!("ready");
   // Note on the last one, we await instead of spawn.
