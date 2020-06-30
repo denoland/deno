@@ -267,7 +267,7 @@ pub async fn run_all_servers() {
       );
       res
     }))
-    .or(warp::path!("xTypeScriptTypesRedirect.d.ts").map(|| {
+    .or(warp::path!("cli"/"tests"/"subdir"/"xTypeScriptTypesRedirect.d.ts").map(|| {
       let mut res = Response::new(Body::from(
         "import './xTypeScriptTypesRedirected.d.ts';",
       ));
@@ -278,7 +278,7 @@ pub async fn run_all_servers() {
       );
       res
     }))
-    .or(warp::path!("xTypeScriptTypesRedirected.d.ts").map(|| {
+    .or(warp::path!("cli"/"tests"/"subdir"/"xTypeScriptTypesRedirected.d.ts").map(|| {
       let mut res = Response::new(Body::from("export const foo: 'foo';"));
       let h = res.headers_mut();
       h.insert(
