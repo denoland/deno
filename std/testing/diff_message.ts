@@ -12,7 +12,7 @@ export function diffMessage(actual: unknown, expected: unknown): string {
     ...diffMessageBody(actual, expected, {
       add: (s: string): string => green(bold(s)),
       remove: (s: string): string => red(bold(s)),
-      common: (s: string): string => gray(bold(s)),
+      common: (s: string): string => gray(s),
     }).split("\n"),
     "",
   ]
