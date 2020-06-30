@@ -206,7 +206,7 @@ unitTest(
   { perms: { net: true } },
   async function fetchMultipartFormDataSuccess(): Promise<void> {
     const response = await fetch(
-      "http://localhost:4545/cli/tests/subdir/multipart_form_data.txt"
+      "http://localhost:4545/multipart_form_data.txt"
     );
     const formData = await response.formData();
     assert(formData.has("field_1"));
@@ -325,7 +325,9 @@ unitTest(
     perms: { net: true },
   },
   async function fetchWithRelativeRedirection(): Promise<void> {
-    const response = await fetch("http://localhost:4545/cli/tests/001_hello.js");
+    const response = await fetch(
+      "http://localhost:4545/cli/tests/001_hello.js"
+    );
     assertEquals(response.status, 200);
     assertEquals(response.statusText, "OK");
     const body = await response.text();

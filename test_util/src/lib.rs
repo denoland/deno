@@ -187,6 +187,28 @@ pub async fn run_all_servers() {
       );
       Box::new(res)
     });
+  let multipart_form_data =
+    warp::path("multipart_form_data.txt").map(|| -> Box<dyn Reply> {
+      let b = "Preamble\r\n\
+               --boundary\t \r\n\
+               Content-Disposition: form-data; name=\"field_1\"\r\n\
+               \r\n\
+               value_1 \r\n\
+               \r\n--boundary\r\n\
+               Content-Disposition: form-data; name=\"field_2\";\
+               filename=\"file.js\"\r\n\
+               Content-Type: text/javascript\r\n\
+               \r\n\
+               console.log(\"Hi\")\
+               \r\n--boundary--\r\n\
+               Epilogue";
+      let mut res = Response::new(Body::from(b));
+      res.headers_mut().insert(
+        "content-type",
+        HeaderValue::from_static("multipart/form-data;boundary=boundary"),
+      );
+      Box::new(res)
+    });
 
   let etag_script = warp::path!("etag_script.ts")
     .and(warp::header::optional::<String>("if-none-match"))
@@ -283,7 +305,8 @@ pub async fn run_all_servers() {
     .or(etag_script)
     .or(xtypescripttypes)
     .or(echo_server)
-    .or(echo_multipart_file);
+    .or(echo_multipart_file)
+    .or(multipart_form_data);
   let addr = ([127, 0, 0, 1], PORT);
   println!("ready");
   // Note on the last one, we await instead of spawn.
@@ -292,30 +315,6 @@ pub async fn run_all_servers() {
 
 fn custom_headers(path: warp::path::Peek, f: warp::fs::File) -> Box<dyn Reply> {
   let p = path.as_str();
-  println!("custom_headers {}", p);
-  if p.ends_with("multipart_form_data.txt") {
-    println!("multipart_form_data.txt");
-    let body = "Preamble\r\n\
-                  --boundary\t \r\n\
-                  Content-Disposition: form-data; name=\"field_1\"\r\n\
-                  \r\n\
-                  value_1 \r\n\
-                  \r\n--boundary\r\n\
-                  Content-Disposition: form-data; name=\"field_2\";\
-                  filename=\"file.js\"\r\n\
-                  Content-Type: text/javascript\r\n\
-                  \r\n\
-                  console.log(\"Hi\")\
-                  \r\n--boundary--\r\n\
-                  Epilogue";
-    let mut res = Response::new(Body::from(body));
-    let h = res.headers_mut();
-    h.insert(
-      "Content-type",
-      HeaderValue::from_static("multipart/form-data;boundary=boundary"),
-    );
-    return Box::new(res);
-  }
 
   if p.ends_with("cli/tests/053_import_compression/brotli") {
     let f = with_header(f, "Content-Encoding", "br");
