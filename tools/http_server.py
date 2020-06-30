@@ -314,7 +314,7 @@ def start(s):
 
 @contextmanager
 def spawn():
-    servers = (https_server(),)
+    servers = (https_server(), )
     # In order to wait for each of the servers to be ready, we try connecting to
     # them with a tcp socket.
     for running_server in servers:
