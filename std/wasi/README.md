@@ -50,7 +50,7 @@ This module provides an implementation of the WebAssembly System Interface
 - [x] random_get
 - [ ] sock_recv
 - [ ] sock_send
-- [ ] sock_shutdown
+- [x] sock_shutdown
 
 ## Usage
 

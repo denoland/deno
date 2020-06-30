@@ -1442,7 +1442,18 @@ export default class Module {
       },
 
       sock_shutdown: (fd: number, how: number): number => {
-        return ERRNO_NOSYS;
+        const entry = this.fds[fd];
+        if (!entry) {
+          return ERRNO_BADF;
+        }
+
+        try {
+          Deno.shutdown(entry.handle.rid, how);
+        } catch (err) {
+          return errno(err);
+        }
+
+        return ERRNO_SUCCESS;
       },
     };
   }
