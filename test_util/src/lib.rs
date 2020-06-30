@@ -325,6 +325,11 @@ pub async fn run_all_servers() {
 fn custom_headers(path: warp::path::Peek, f: warp::fs::File) -> Box<dyn Reply> {
   let p = path.as_str();
 
+  if p.ends_with("cli/tests/x_deno_warning.js") {
+    let f = with_header(f, "Content-Type", "application/javascript");
+    let f = with_header(f, "X-Deno-Warning", "foobar");
+    return Box::new(f);
+  }
   if p.ends_with("cli/tests/053_import_compression/brotli") {
     let f = with_header(f, "Content-Encoding", "br");
     let f = with_header(f, "Content-Type", "application/javascript");
