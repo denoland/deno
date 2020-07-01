@@ -166,7 +166,23 @@ Deno.test("testingArrayContains", function (): void {
   assertThrows(
     (): void => assertArrayContains(fixtureObject, [{ deno: "node" }]),
     AssertionError,
-    `actual: "[ { deno: "luv" }, { deno: "Js" } ]" expected to contain: "[ { deno: "node" } ]"\nmissing: [ { deno: "node" } ]`
+    `actual: "[
+  {
+    deno: "luv",
+  },
+  {
+    deno: "Js",
+  },
+]" expected to contain: "[
+  {
+    deno: "node",
+  },
+]"
+missing: [
+  {
+    deno: "node",
+  },
+]`
   );
 });
 
@@ -332,13 +348,13 @@ Deno.test({
     assertThrows(
       (): void => assertEquals([1, "2", 3], ["1", "2", 3]),
       AssertionError,
-      [
-        "Values are not equal:",
-        ...createHeader(),
-        removed(`-   [ ${yellow("1")}, ${green('"2"')}, ${yellow("3")} ]`),
-        added(`+   [ ${green('"1"')}, ${green('"2"')}, ${yellow("3")} ]`),
-        "",
-      ].join("\n")
+      `
+    [
+-     1,
++     "1",
+      "2",
+      3,
+    ]`
     );
   },
 });
@@ -404,10 +420,12 @@ Deno.test({
     assertThrows(
       (): void => assertStrictEquals({ a: 1, b: 2 }, { a: 1, b: 2 }),
       AssertionError,
-      [
-        "Values have the same structure but are not reference-equal:\n",
-        red(`     { a: ${yellow("1")}, b: ${yellow("2")} }`),
-      ].join("\n")
+      `Values have the same structure but are not reference-equal:
+
+    {
+      a: 1,
+      b: 2,
+    }`
     );
   },
 });

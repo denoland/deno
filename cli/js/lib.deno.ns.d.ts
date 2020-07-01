@@ -1878,6 +1878,8 @@ declare namespace Deno {
     sortKeys?: boolean;
     /** Add a trailing comma for multiline collections. Defaults to false. */
     trailingComma?: boolean;
+    /** Always break collections into multiple lines. Defaults to false. */
+    alwaysWrap?: boolean;
   }
 
   /** Converts the input into a string that has the same format as printed by

@@ -21,7 +21,7 @@ export class AssertionError extends Error {
 
 function format(v: unknown): string {
   let string = globalThis.Deno
-    ? Deno.inspect(v, { sortKeys: true, trailingComma: true })
+    ? Deno.inspect(v, { sortKeys: true, trailingComma: true, alwaysWrap: true })
     : String(v);
   if (typeof v == "string") {
     string = `"${string.replace(/(?=["\\])/g, "\\")}"`;
@@ -227,7 +227,7 @@ export function assertStrictEquals(
     if (actualString === expectedString) {
       const withOffset = actualString
         .split("\n")
-        .map((l) => `     ${l}`)
+        .map((l) => `    ${l}`)
         .join("\n");
       message = `Values have the same structure but are not reference-equal:\n\n${red(
         withOffset

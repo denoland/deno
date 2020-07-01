@@ -1244,3 +1244,13 @@ unitTest(function inspectTrailingComma(): void {
 }`
   );
 });
+
+unitTest(function inspectSortKeys(): void {
+  assertEquals(
+    Deno.inspect({ a: 1, b: 2 }, { alwaysWrap: true }),
+    `{
+  a: 1,
+  b: 2
+}`
+  );
+});

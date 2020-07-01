@@ -23,6 +23,7 @@ type InspectOptions = Partial<{
   indentLevel: number;
   sortKeys: boolean;
   trailingComma: boolean;
+  alwaysWrap: boolean;
 }>;
 
 const DEFAULT_INDENT = "  "; // Default indent string
@@ -100,7 +101,8 @@ function createIterableString<T>(
   maxLevel: number,
   config: IterablePrintConfig<T>,
   sort = false,
-  trailingComma = false
+  trailingComma = false,
+  alwaysWrap = false
 ): string {
   if (level >= maxLevel) {
     return cyan(`[${config.typeName}]`);
@@ -149,7 +151,7 @@ function createIterableString<T>(
     )}${closingIndentation}`;
   } else {
     iContent = entries.length === 0 ? "" : ` ${entries.join(", ")} `;
-    if (stripColor(iContent).length > LINE_BREAKING_LENGTH) {
+    if (stripColor(iContent).length > LINE_BREAKING_LENGTH || alwaysWrap) {
       iContent = `${initIndentation}${entries.join(
         entryIndentation
       )}${closingIndentation}`;
@@ -280,7 +282,8 @@ function stringify(
   level: number,
   maxLevel: number,
   sortKeys = false,
-  trailingComma = false
+  trailingComma = false,
+  alwaysWrap = false
 ): string {
   switch (typeof value) {
     case "string":
@@ -314,7 +317,8 @@ function stringify(
         level,
         maxLevel,
         sortKeys,
-        trailingComma
+        trailingComma,
+        alwaysWrap
       );
     default:
       // Not implemented is red
@@ -347,7 +351,8 @@ function stringifyWithQuotes(
   level: number,
   maxLevel: number,
   sortKeys = false,
-  trailingComma = false
+  trailingComma = false,
+  alwaysWrap = false
 ): string {
   switch (typeof value) {
     case "string":
@@ -357,7 +362,15 @@ function stringifyWithQuotes(
           : value;
       return green(quoteString(trunc)); // Quoted strings are green
     default:
-      return stringify(value, ctx, level, maxLevel, sortKeys, trailingComma);
+      return stringify(
+        value,
+        ctx,
+        level,
+        maxLevel,
+        sortKeys,
+        trailingComma,
+        alwaysWrap
+      );
   }
 }
 
@@ -367,7 +380,8 @@ function createArrayString(
   level: number,
   maxLevel: number,
   sortKeys = false,
-  trailingComma = false
+  trailingComma = false,
+  alwaysWrap = false
 ): string {
   const printConfig: IterablePrintConfig<unknown> = {
     typeName: "Array",
@@ -392,11 +406,12 @@ function createArrayString(
           level,
           maxLevel,
           sortKeys,
-          trailingComma
+          trailingComma,
+          alwaysWrap
         );
       }
     },
-    group: true,
+    group: !alwaysWrap,
   };
   return createIterableString(
     value,
@@ -405,7 +420,8 @@ function createArrayString(
     maxLevel,
     printConfig,
     false,
-    trailingComma
+    trailingComma,
+    alwaysWrap
   );
 }
 
@@ -416,7 +432,8 @@ function createTypedArrayString(
   level: number,
   maxLevel: number,
   sortKeys = false,
-  trailingComma = false
+  trailingComma = false,
+  alwaysWrap = false
 ): string {
   const valueLength = value.length;
   const printConfig: IterablePrintConfig<unknown> = {
@@ -431,10 +448,11 @@ function createTypedArrayString(
         level + 1,
         maxLevel,
         sortKeys,
-        trailingComma
+        trailingComma,
+        alwaysWrap
       );
     },
-    group: true,
+    group: !alwaysWrap,
   };
   return createIterableString(
     value,
@@ -443,7 +461,8 @@ function createTypedArrayString(
     maxLevel,
     printConfig,
     false,
-    trailingComma
+    trailingComma,
+    alwaysWrap
   );
 }
 
@@ -453,7 +472,8 @@ function createSetString(
   level: number,
   maxLevel: number,
   sortKeys = false,
-  trailingComma = false
+  trailingComma = false,
+  alwaysWrap = false
 ): string {
   const printConfig: IterablePrintConfig<unknown> = {
     typeName: "Set",
@@ -467,7 +487,8 @@ function createSetString(
         level + 1,
         maxLevel,
         sortKeys,
-        trailingComma
+        trailingComma,
+        alwaysWrap
       );
     },
     group: false,
@@ -479,7 +500,8 @@ function createSetString(
     maxLevel,
     printConfig,
     sortKeys,
-    trailingComma
+    trailingComma,
+    alwaysWrap
   );
 }
 
@@ -489,7 +511,8 @@ function createMapString(
   level: number,
   maxLevel: number,
   sortKeys = false,
-  trailingComma = false
+  trailingComma = false,
+  alwaysWrap = false
 ): string {
   const printConfig: IterablePrintConfig<[unknown]> = {
     typeName: "Map",
@@ -503,14 +526,16 @@ function createMapString(
         level + 1,
         maxLevel,
         sortKeys,
-        trailingComma
+        trailingComma,
+        alwaysWrap
       )} => ${stringifyWithQuotes(
         val,
         ctx,
         level + 1,
         maxLevel,
         sortKeys,
-        trailingComma
+        trailingComma,
+        alwaysWrap
       )}`;
     },
     group: false,
@@ -523,7 +548,8 @@ function createMapString(
     maxLevel,
     printConfig,
     sortKeys,
-    trailingComma
+    trailingComma,
+    alwaysWrap
   );
 }
 
@@ -597,7 +623,8 @@ function createRawObjectString(
   level: number,
   maxLevel: number,
   sortKeys = false,
-  trailingComma = false
+  trailingComma = false,
+  alwaysWrap = false
 ): string {
   if (level >= maxLevel) {
     return cyan("[Object]"); // wrappers are in cyan
@@ -635,7 +662,8 @@ function createRawObjectString(
         level + 1,
         maxLevel,
         sortKeys,
-        trailingComma
+        trailingComma,
+        alwaysWrap
       )}`
     );
   }
@@ -648,7 +676,8 @@ function createRawObjectString(
         level + 1,
         maxLevel,
         sortKeys,
-        trailingComma
+        trailingComma,
+        alwaysWrap
       )}`
     );
   }
@@ -660,7 +689,7 @@ function createRawObjectString(
 
   if (entries.length === 0) {
     baseString = "{}";
-  } else if (totalLength > LINE_BREAKING_LENGTH) {
+  } else if (totalLength > LINE_BREAKING_LENGTH || alwaysWrap) {
     const entryIndent = DEFAULT_INDENT.repeat(level + 1);
     const closingIndent = DEFAULT_INDENT.repeat(level);
     baseString = `{\n${entryIndent}${entries.join(`,\n${entryIndent}`)}${
@@ -683,7 +712,8 @@ function createObjectString(
   level: number,
   maxLevel: number,
   sortKeys = false,
-  trailingComma = false
+  trailingComma = false,
+  alwaysWrap = false
 ): string {
   if (customInspect in value && typeof value[customInspect] === "function") {
     try {
@@ -699,7 +729,8 @@ function createObjectString(
       level,
       maxLevel,
       sortKeys,
-      trailingComma
+      trailingComma,
+      alwaysWrap
     );
   } else if (value instanceof Number) {
     return createNumberWrapperString(value);
@@ -720,7 +751,8 @@ function createObjectString(
       level,
       maxLevel,
       sortKeys,
-      trailingComma
+      trailingComma,
+      alwaysWrap
     );
   } else if (value instanceof Map) {
     return createMapString(
@@ -729,7 +761,8 @@ function createObjectString(
       level,
       maxLevel,
       sortKeys,
-      trailingComma
+      trailingComma,
+      alwaysWrap
     );
   } else if (value instanceof WeakSet) {
     return createWeakSetString();
@@ -743,7 +776,8 @@ function createObjectString(
       level,
       maxLevel,
       sortKeys,
-      trailingComma
+      trailingComma,
+      alwaysWrap
     );
   } else {
     // Otherwise, default object formatting
@@ -753,7 +787,8 @@ function createObjectString(
       level,
       maxLevel,
       sortKeys,
-      trailingComma
+      trailingComma,
+      alwaysWrap
     );
   }
 }
@@ -765,6 +800,7 @@ export function stringifyArgs(
     indentLevel = 0,
     sortKeys = false,
     trailingComma = false,
+    alwaysWrap = false,
   }: InspectOptions = {}
 ): string {
   const first = args[0];
@@ -815,7 +851,8 @@ export function stringifyArgs(
                 0,
                 depth,
                 sortKeys,
-                trailingComma
+                trailingComma,
+                alwaysWrap
               );
               break;
             case CHAR_PERCENT:
@@ -865,7 +902,8 @@ export function stringifyArgs(
         0,
         depth,
         sortKeys,
-        trailingComma
+        trailingComma,
+        alwaysWrap
       );
     }
     join = " ";
@@ -1153,6 +1191,7 @@ export function inspect(
     depth = DEFAULT_MAX_DEPTH,
     sortKeys = false,
     trailingComma = false,
+    alwaysWrap = false,
   }: InspectOptions = {}
 ): string {
   if (typeof value === "string") {
@@ -1164,7 +1203,8 @@ export function inspect(
       0,
       depth,
       sortKeys,
-      trailingComma
+      trailingComma,
+      alwaysWrap
     );
   }
 }
