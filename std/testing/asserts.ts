@@ -19,7 +19,7 @@ export class AssertionError extends Error {
   }
 }
 
-function format(v: unknown): string {
+export function _format(v: unknown): string {
   let string = globalThis.Deno
     ? Deno.inspect(v, {
         sortKeys: true,
@@ -160,8 +160,8 @@ export function assertEquals(
     return;
   }
   let message = "";
-  const actualString = format(actual);
-  const expectedString = format(expected);
+  const actualString = _format(actual);
+  const expectedString = _format(expected);
   try {
     const diffResult = diff(
       actualString.split("\n"),
@@ -226,8 +226,8 @@ export function assertStrictEquals(
   if (msg) {
     message = msg;
   } else {
-    const actualString = format(actual);
-    const expectedString = format(expected);
+    const actualString = _format(actual);
+    const expectedString = _format(expected);
 
     if (actualString === expectedString) {
       const withOffset = actualString
@@ -297,9 +297,9 @@ export function assertArrayContains(
     return;
   }
   if (!msg) {
-    msg = `actual: "${format(actual)}" expected to contain: "${format(
+    msg = `actual: "${_format(actual)}" expected to contain: "${_format(
       expected
-    )}"\nmissing: ${format(missing)}`;
+    )}"\nmissing: ${_format(missing)}`;
   }
   throw new AssertionError(msg);
 }

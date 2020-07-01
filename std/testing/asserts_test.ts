@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
+  _format,
   assert,
   assertNotEquals,
   assertStringContains,
@@ -15,7 +16,7 @@ import {
   unimplemented,
   unreachable,
 } from "./asserts.ts";
-import { red, green, gray, bold, yellow } from "../fmt/colors.ts";
+import { red, green, gray, bold, yellow, stripColor } from "../fmt/colors.ts";
 
 Deno.test("testingEqual", function (): void {
   assert(equal("world", "world"));
@@ -536,5 +537,50 @@ Deno.test("assertEquals diff for differently ordered objects", () => {
 -     ccccccccccccccccccccccc: 0,
 +     ccccccccccccccccccccccc: 1,
     }`
+  );
+});
+
+// Check that the diff formatter overrides some default behaviours of
+// `Deno.inspect()` which are problematic for diffing.
+Deno.test("assert diff formatting", () => {
+  // Wraps objects into multiple lines even when they are small. Prints trailing
+  // commas.
+  assertEquals(
+    stripColor(_format({ a: 1, b: 2 })),
+    `{
+  a: 1,
+  b: 2,
+}`
+  );
+
+  // Same for nested small objects.
+  assertEquals(
+    stripColor(_format([{ x: { a: 1, b: 2 }, y: ["a", "b"] }])),
+    `[
+  {
+    x: {
+      a: 1,
+      b: 2,
+    },
+    y: [
+      "a",
+      "b",
+    ],
+  },
+]`
+  );
+
+  // Grouping is disabled.
+  assertEquals(
+    stripColor(_format(["i", "i", "i", "i", "i", "i", "i"])),
+    `[
+  "i",
+  "i",
+  "i",
+  "i",
+  "i",
+  "i",
+  "i",
+]`
   );
 });
