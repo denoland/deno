@@ -493,3 +493,30 @@ Deno.test("Assert Throws Async Non-Error Fail", () => {
     "A non-Error object was thrown or rejected."
   );
 });
+
+Deno.test("assertEquals diff for differently ordered objects", () => {
+  assertThrows(
+    () => {
+      assertEquals(
+        {
+          aaaaaaaaaaaaaaaaaaaaaaaa: 0,
+          bbbbbbbbbbbbbbbbbbbbbbbb: 0,
+          ccccccccccccccccccccccc: 0,
+        },
+        {
+          ccccccccccccccccccccccc: 1,
+          aaaaaaaaaaaaaaaaaaaaaaaa: 0,
+          bbbbbbbbbbbbbbbbbbbbbbbb: 0,
+        }
+      );
+    },
+    AssertionError,
+    `
+    {
+      aaaaaaaaaaaaaaaaaaaaaaaa: 0,
+      bbbbbbbbbbbbbbbbbbbbbbbb: 0,
+-     ccccccccccccccccccccccc: 0,
++     ccccccccccccccccccccccc: 1,
+    }`
+  );
+});
