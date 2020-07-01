@@ -1254,3 +1254,25 @@ unitTest(function inspectSortKeys(): void {
 }`
   );
 });
+
+unitTest(function inspectIterableLimit(): void {
+  assertEquals(
+    Deno.inspect(["a", "b", "c"], { iterableLimit: 2 }),
+    `[ "a", "b", ... 1 more items ]`
+  );
+  assertEquals(
+    Deno.inspect(new Set(["a", "b", "c"]), { iterableLimit: 2 }),
+    `Set { "a", "b", ... 1 more items }`
+  );
+  assertEquals(
+    Deno.inspect(
+      new Map([
+        ["a", 1],
+        ["b", 2],
+        ["c", 3],
+      ]),
+      { iterableLimit: 2 }
+    ),
+    `Map { "a" => 1, "b" => 2, ... 1 more items }`
+  );
+});

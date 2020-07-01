@@ -1880,6 +1880,8 @@ declare namespace Deno {
     trailingComma?: boolean;
     /** Always break collections into multiple lines. Defaults to false. */
     alwaysWrap?: boolean;
+    /** The maximum number of iterable entries to print. Defaults to 100. */
+    iterableLimit?: number;
   }
 
   /** Converts the input into a string that has the same format as printed by

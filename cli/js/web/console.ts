@@ -15,7 +15,7 @@ import {
 } from "../colors.ts";
 
 // TODO(nayeemrmn): Improve options handling in this module. Less positional
-// args.
+// args. Less repetition of defaults.
 
 type ConsoleContext = Set<unknown>;
 type InspectOptions = Partial<{
@@ -24,13 +24,13 @@ type InspectOptions = Partial<{
   sortKeys: boolean;
   trailingComma: boolean;
   alwaysWrap: boolean;
+  iterableLimit: number;
 }>;
 
 const DEFAULT_INDENT = "  "; // Default indent string
 
 const DEFAULT_MAX_DEPTH = 4; // Default depth of logging nested objects
 const LINE_BREAKING_LENGTH = 80;
-const MAX_ITERABLE_LENGTH = 100;
 const MIN_GROUP_LENGTH = 6;
 const STR_ABBREVIATE_SIZE = 100;
 // Char codes
@@ -102,7 +102,8 @@ function createIterableString<T>(
   config: IterablePrintConfig<T>,
   sort = false,
   trailingComma = false,
-  alwaysWrap = false
+  alwaysWrap = false,
+  iterableLimit = 100
 ): string {
   if (level >= maxLevel) {
     return cyan(`[${config.typeName}]`);
@@ -117,7 +118,7 @@ function createIterableString<T>(
     return iter.next();
   };
   for (const el of iter) {
-    if (entriesLength < MAX_ITERABLE_LENGTH) {
+    if (entriesLength < iterableLimit) {
       entries.push(
         config.entryHandler(el, ctx, level + 1, maxLevel, next.bind(iter))
       );
@@ -130,8 +131,8 @@ function createIterableString<T>(
     entries.sort();
   }
 
-  if (entriesLength > MAX_ITERABLE_LENGTH) {
-    const nmore = entriesLength - MAX_ITERABLE_LENGTH;
+  if (entriesLength > iterableLimit) {
+    const nmore = entriesLength - iterableLimit;
     entries.push(`... ${nmore} more items`);
   }
 
@@ -166,12 +167,13 @@ function createIterableString<T>(
 function groupEntries<T>(
   entries: string[],
   level: number,
-  value: Iterable<T>
+  value: Iterable<T>,
+  iterableLimit = 100
 ): string[] {
   let totalLength = 0;
   let maxLength = 0;
   let entriesLength = entries.length;
-  if (MAX_ITERABLE_LENGTH < entriesLength) {
+  if (iterableLimit < entriesLength) {
     // This makes sure the "... n more items" part is not taken into account.
     entriesLength--;
   }
@@ -268,7 +270,7 @@ function groupEntries<T>(
       }
       tmp.push(str);
     }
-    if (MAX_ITERABLE_LENGTH < entries.length) {
+    if (iterableLimit < entries.length) {
       tmp.push(entries[entriesLength]);
     }
     entries = tmp;
@@ -283,7 +285,8 @@ function stringify(
   maxLevel: number,
   sortKeys = false,
   trailingComma = false,
-  alwaysWrap = false
+  alwaysWrap = false,
+  iterableLimit = 100
 ): string {
   switch (typeof value) {
     case "string":
@@ -318,7 +321,8 @@ function stringify(
         maxLevel,
         sortKeys,
         trailingComma,
-        alwaysWrap
+        alwaysWrap,
+        iterableLimit
       );
     default:
       // Not implemented is red
@@ -352,7 +356,8 @@ function stringifyWithQuotes(
   maxLevel: number,
   sortKeys = false,
   trailingComma = false,
-  alwaysWrap = false
+  alwaysWrap = false,
+  iterableLimit = 100
 ): string {
   switch (typeof value) {
     case "string":
@@ -369,7 +374,8 @@ function stringifyWithQuotes(
         maxLevel,
         sortKeys,
         trailingComma,
-        alwaysWrap
+        alwaysWrap,
+        iterableLimit
       );
   }
 }
@@ -381,7 +387,8 @@ function createArrayString(
   maxLevel: number,
   sortKeys = false,
   trailingComma = false,
-  alwaysWrap = false
+  alwaysWrap = false,
+  iterableLimit = 100
 ): string {
   const printConfig: IterablePrintConfig<unknown> = {
     typeName: "Array",
@@ -407,7 +414,8 @@ function createArrayString(
           maxLevel,
           sortKeys,
           trailingComma,
-          alwaysWrap
+          alwaysWrap,
+          iterableLimit
         );
       }
     },
@@ -421,7 +429,8 @@ function createArrayString(
     printConfig,
     false,
     trailingComma,
-    alwaysWrap
+    alwaysWrap,
+    iterableLimit
   );
 }
 
@@ -433,7 +442,8 @@ function createTypedArrayString(
   maxLevel: number,
   sortKeys = false,
   trailingComma = false,
-  alwaysWrap = false
+  alwaysWrap = false,
+  iterableLimit = 100
 ): string {
   const valueLength = value.length;
   const printConfig: IterablePrintConfig<unknown> = {
@@ -449,7 +459,8 @@ function createTypedArrayString(
         maxLevel,
         sortKeys,
         trailingComma,
-        alwaysWrap
+        alwaysWrap,
+        iterableLimit
       );
     },
     group: !alwaysWrap,
@@ -462,7 +473,8 @@ function createTypedArrayString(
     printConfig,
     false,
     trailingComma,
-    alwaysWrap
+    alwaysWrap,
+    iterableLimit
   );
 }
 
@@ -473,7 +485,8 @@ function createSetString(
   maxLevel: number,
   sortKeys = false,
   trailingComma = false,
-  alwaysWrap = false
+  alwaysWrap = false,
+  iterableLimit = 100
 ): string {
   const printConfig: IterablePrintConfig<unknown> = {
     typeName: "Set",
@@ -488,7 +501,8 @@ function createSetString(
         maxLevel,
         sortKeys,
         trailingComma,
-        alwaysWrap
+        alwaysWrap,
+        iterableLimit
       );
     },
     group: false,
@@ -501,7 +515,8 @@ function createSetString(
     printConfig,
     sortKeys,
     trailingComma,
-    alwaysWrap
+    alwaysWrap,
+    iterableLimit
   );
 }
 
@@ -512,7 +527,8 @@ function createMapString(
   maxLevel: number,
   sortKeys = false,
   trailingComma = false,
-  alwaysWrap = false
+  alwaysWrap = false,
+  iterableLimit = 100
 ): string {
   const printConfig: IterablePrintConfig<[unknown]> = {
     typeName: "Map",
@@ -527,7 +543,8 @@ function createMapString(
         maxLevel,
         sortKeys,
         trailingComma,
-        alwaysWrap
+        alwaysWrap,
+        iterableLimit
       )} => ${stringifyWithQuotes(
         val,
         ctx,
@@ -535,7 +552,8 @@ function createMapString(
         maxLevel,
         sortKeys,
         trailingComma,
-        alwaysWrap
+        alwaysWrap,
+        iterableLimit
       )}`;
     },
     group: false,
@@ -549,7 +567,8 @@ function createMapString(
     printConfig,
     sortKeys,
     trailingComma,
-    alwaysWrap
+    alwaysWrap,
+    iterableLimit
   );
 }
 
@@ -624,7 +643,8 @@ function createRawObjectString(
   maxLevel: number,
   sortKeys = false,
   trailingComma = false,
-  alwaysWrap = false
+  alwaysWrap = false,
+  iterableLimit = 100
 ): string {
   if (level >= maxLevel) {
     return cyan("[Object]"); // wrappers are in cyan
@@ -663,7 +683,8 @@ function createRawObjectString(
         maxLevel,
         sortKeys,
         trailingComma,
-        alwaysWrap
+        alwaysWrap,
+        iterableLimit
       )}`
     );
   }
@@ -677,7 +698,8 @@ function createRawObjectString(
         maxLevel,
         sortKeys,
         trailingComma,
-        alwaysWrap
+        alwaysWrap,
+        iterableLimit
       )}`
     );
   }
@@ -713,7 +735,8 @@ function createObjectString(
   maxLevel: number,
   sortKeys = false,
   trailingComma = false,
-  alwaysWrap = false
+  alwaysWrap = false,
+  iterableLimit = 100
 ): string {
   if (customInspect in value && typeof value[customInspect] === "function") {
     try {
@@ -730,7 +753,8 @@ function createObjectString(
       maxLevel,
       sortKeys,
       trailingComma,
-      alwaysWrap
+      alwaysWrap,
+      iterableLimit
     );
   } else if (value instanceof Number) {
     return createNumberWrapperString(value);
@@ -752,7 +776,8 @@ function createObjectString(
       maxLevel,
       sortKeys,
       trailingComma,
-      alwaysWrap
+      alwaysWrap,
+      iterableLimit
     );
   } else if (value instanceof Map) {
     return createMapString(
@@ -762,7 +787,8 @@ function createObjectString(
       maxLevel,
       sortKeys,
       trailingComma,
-      alwaysWrap
+      alwaysWrap,
+      iterableLimit
     );
   } else if (value instanceof WeakSet) {
     return createWeakSetString();
@@ -777,7 +803,8 @@ function createObjectString(
       maxLevel,
       sortKeys,
       trailingComma,
-      alwaysWrap
+      alwaysWrap,
+      iterableLimit
     );
   } else {
     // Otherwise, default object formatting
@@ -788,7 +815,8 @@ function createObjectString(
       maxLevel,
       sortKeys,
       trailingComma,
-      alwaysWrap
+      alwaysWrap,
+      iterableLimit
     );
   }
 }
@@ -801,6 +829,7 @@ export function stringifyArgs(
     sortKeys = false,
     trailingComma = false,
     alwaysWrap = false,
+    iterableLimit = 100,
   }: InspectOptions = {}
 ): string {
   const first = args[0];
@@ -852,7 +881,8 @@ export function stringifyArgs(
                 depth,
                 sortKeys,
                 trailingComma,
-                alwaysWrap
+                alwaysWrap,
+                iterableLimit
               );
               break;
             case CHAR_PERCENT:
@@ -903,7 +933,8 @@ export function stringifyArgs(
         depth,
         sortKeys,
         trailingComma,
-        alwaysWrap
+        alwaysWrap,
+        iterableLimit
       );
     }
     join = " ";
@@ -1192,6 +1223,7 @@ export function inspect(
     sortKeys = false,
     trailingComma = false,
     alwaysWrap = false,
+    iterableLimit = 100,
   }: InspectOptions = {}
 ): string {
   if (typeof value === "string") {
@@ -1204,7 +1236,8 @@ export function inspect(
       depth,
       sortKeys,
       trailingComma,
-      alwaysWrap
+      alwaysWrap,
+      iterableLimit
     );
   }
 }
