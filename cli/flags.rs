@@ -1119,6 +1119,7 @@ fn lock_arg<'a, 'b>() -> Arg<'a, 'b> {
 fn lock_write_arg<'a, 'b>() -> Arg<'a, 'b> {
   Arg::with_name("lock-write")
     .long("lock-write")
+    .requires("lock")
     .help("Write lock file. Use with --lock.")
 }
 
