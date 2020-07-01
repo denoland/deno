@@ -8,7 +8,7 @@ use deno_core::CoreIsolateState;
 use deno_core::ZeroCopyBuf;
 #[cfg(unix)]
 use nix::sys::termios;
-use serde_derive::Deserialize;
+use serde_derive::{Deserialize, Serialize};
 use serde_json::Value;
 
 #[cfg(windows)]
@@ -255,26 +255,32 @@ pub fn op_isatty(
   Ok(JsonOp::Sync(json!(isatty)))
 }
 
+#[derive(Deserialize)]
+struct GetConsoleSizeArgs {
+  rid: u32,
+}
+
+#[derive(Serialize)]
+struct ConsoleSize {
+  columns: u32,
+  rows: u32,
+}
+
 #[cfg(unix)]
-use libc::{c_int, c_ulong, winsize, TIOCGWINSZ};
+use libc::{ioctl, winsize, TIOCGWINSZ};
 #[cfg(unix)]
 use std::mem::MaybeUninit;
 
 #[cfg(unix)]
-extern "C" {
-  fn ioctl(fd: c_int, request: c_ulong, ...) -> c_int;
-}
-
-#[cfg(unix)]
-pub fn get_dimensions_any(rid: i32) -> Result<winsize, std::io::Error> {
+fn get_console_size_ioctl(rid: i32) -> Result<ConsoleSize, std::io::Error> {
   let mut count: u32 = 0;
 
   loop {
     count += 1;
 
-    let mut window = MaybeUninit::zeroed();
+    let mut buffer = MaybeUninit::<winsize>::uninit();
     let result =
-      unsafe { ioctl(rid, TIOCGWINSZ, window.as_mut_ptr() as *mut _) };
+      unsafe { ioctl(rid, TIOCGWINSZ, buffer.as_mut_ptr() as *mut _) };
 
     if result == -1 {
       if count > 3 {
@@ -282,15 +288,74 @@ pub fn get_dimensions_any(rid: i32) -> Result<winsize, std::io::Error> {
       }
       continue;
     } else {
-      let window = unsafe { window.assume_init() };
-      break Ok(window);
+      let console_data = unsafe { buffer.assume_init() };
+      break Ok(ConsoleSize {
+        columns: console_data.ws_col as u32,
+        rows: console_data.ws_row as u32,
+      });
     }
   }
 }
 
-#[derive(Deserialize)]
-struct GetConsoleSizeArgs {
-  rid: u32,
+#[cfg(windows)]
+use winapi::um::winbase::STD_OUTPUT_HANDLE;
+#[cfg(windows)]
+use winapi::um::wincon::GetConsoleScreenBufferInfo;
+#[cfg(windows)]
+use winapi::um::wincon::{CONSOLE_SCREEN_BUFFER_INFO, COORD, SMALL_RECT};
+
+#[cfg(windows)]
+fn get_console_size_winapi(_rid: i32) -> Result<ConsoleSize, std::io::Error> {
+  let null_coord = COORD { X: 0, Y: 0 };
+  let null_smallrect = SMALL_RECT {
+    Left: 0,
+    Top: 0,
+    Right: 0,
+    Bottom: 0,
+  };
+
+  let mut console_data = CONSOLE_SCREEN_BUFFER_INFO {
+    dwSize: null_coord,
+    dwCursorPosition: null_coord,
+    wAttributes: 0,
+    srWindow: null_smallrect,
+    dwMaximumWindowSize: null_coord,
+  };
+
+  // let mut resource_table = isolate_state.resource_table.borrow_mut();
+  // let _result = std_file_resource(
+  //   &mut resource_table,
+  //   args.rid as u32,
+  //   move |r| match r {
+  //     Ok(std_file) => {
+  //       let handle = get_windows_handle(&std_file)
+  //         .expect("Could not get windows handle.");
+  //
+  //       // For testing purposes
+  //       assert!(
+  //         unsafe { winapi::um::processenv::GetStdHandle(STD_OUTPUT_HANDLE) }
+  //           == handle
+  //       );
+  //
+  //       Ok(true)
+  //     }
+  //     _ => Ok(false),
+  //   },
+  // )
+  // .expect("Could not get console screen buffer info.");
+
+  unsafe {
+    GetConsoleScreenBufferInfo(
+      winapi::um::processenv::GetStdHandle(STD_OUTPUT_HANDLE),
+      &mut console_data,
+    );
+  }
+
+  Ok(ConsoleSize {
+    columns: (console_data.srWindow.Right - console_data.srWindow.Left + 1)
+      as u32,
+    rows: (console_data.srWindow.Bottom - console_data.srWindow.Top + 1) as u32,
+  })
 }
 
 pub fn op_get_console_size(
@@ -301,23 +366,17 @@ pub fn op_get_console_size(
 ) -> Result<JsonOp, OpError> {
   state.check_unstable("Deno.getConsoleSize");
   let args: GetConsoleSizeArgs = serde_json::from_value(args)?;
+  let console_size;
 
-  // TODO implement winsize for Windows
-  // see https://docs.rs/crate/term_size/0.3.2/source/src/platform/windows.rs
-  #[cfg(not(unix))]
+  #[cfg(windows)]
   {
-    let _ = args.rid; // avoid unused warning.
-    Err(OpError::not_implemented())
+    let _ = args.rid;
+    console_size = get_console_size_winapi(args.rid as i32)?;
   }
   #[cfg(unix)]
   {
-    let console_size = get_dimensions_any(args.rid as i32)?;
-
-    Ok(JsonOp::Sync(json!({
-      "columns": console_size.ws_col,
-      "innerHeight": console_size.ws_ypixel,
-      "innerWidth": console_size.ws_xpixel,
-      "rows": console_size.ws_row,
-    })))
+    console_size = get_console_size_ioctl(args.rid as i32)?;
   }
+
+  Ok(JsonOp::Sync(json!(console_size)))
 }
