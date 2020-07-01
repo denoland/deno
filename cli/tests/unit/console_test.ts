@@ -1189,3 +1189,58 @@ unitTest(function inspectSortKeys(): void {
     `Map { "a" => 1, "b" => 2 }`
   );
 });
+
+unitTest(function inspectTrailingComma(): void {
+  assertEquals(
+    Deno.inspect(
+      [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      ],
+      { trailingComma: true }
+    ),
+    `[
+  "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+]`
+  );
+  assertEquals(
+    Deno.inspect(
+      {
+        aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa: 1,
+        bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb: 2,
+      },
+      { trailingComma: true }
+    ),
+    `{
+  aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa: 1,
+  bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb: 2,
+}`
+  );
+  assertEquals(
+    Deno.inspect(
+      new Set([
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      ]),
+      { trailingComma: true }
+    ),
+    `Set {
+  "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+}`
+  );
+  assertEquals(
+    Deno.inspect(
+      new Map([
+        ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", 1],
+        ["bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", 2],
+      ]),
+      { trailingComma: true }
+    ),
+    `Map {
+  "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" => 1,
+  "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" => 2,
+}`
+  );
+});

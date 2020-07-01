@@ -1876,6 +1876,8 @@ declare namespace Deno {
     depth?: number;
     /** Sort Object, Set and Map entries by key. Defaults to false. */
     sortKeys?: boolean;
+    /** Add a trailing comma for multiline collections. Defaults to false. */
+    trailingComma?: boolean;
   }
 
   /** Converts the input into a string that has the same format as printed by

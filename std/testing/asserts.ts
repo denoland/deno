@@ -21,7 +21,7 @@ export class AssertionError extends Error {
 
 function format(v: unknown): string {
   let string = globalThis.Deno
-    ? Deno.inspect(v, { sortKeys: true })
+    ? Deno.inspect(v, { sortKeys: true, trailingComma: true })
     : String(v);
   if (typeof v == "string") {
     string = `"${string.replace(/(?=["\\])/g, "\\")}"`;

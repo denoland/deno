@@ -14,11 +14,15 @@ import {
   bold,
 } from "../colors.ts";
 
+// TODO(nayeemrmn): Improve options handling in this module. Less positional
+// args.
+
 type ConsoleContext = Set<unknown>;
 type InspectOptions = Partial<{
   depth: number;
   indentLevel: number;
   sortKeys: boolean;
+  trailingComma: boolean;
 }>;
 
 const DEFAULT_INDENT = "  "; // Default indent string
@@ -95,7 +99,8 @@ function createIterableString<T>(
   level: number,
   maxLevel: number,
   config: IterablePrintConfig<T>,
-  sort = false
+  sort = false,
+  trailingComma = false
 ): string {
   if (level >= maxLevel) {
     return cyan(`[${config.typeName}]`);
@@ -132,7 +137,9 @@ function createIterableString<T>(
 
   const initIndentation = `\n${DEFAULT_INDENT.repeat(level + 1)}`;
   const entryIndentation = `,\n${DEFAULT_INDENT.repeat(level + 1)}`;
-  const closingIndentation = `\n${DEFAULT_INDENT.repeat(level)}`;
+  const closingIndentation = `${
+    trailingComma ? "," : ""
+  }\n${DEFAULT_INDENT.repeat(level)}`;
 
   let iContent: string;
   if (config.group && entries.length > MIN_GROUP_LENGTH) {
@@ -272,7 +279,8 @@ function stringify(
   ctx: ConsoleContext,
   level: number,
   maxLevel: number,
-  sortKeys = false
+  sortKeys = false,
+  trailingComma = false
 ): string {
   switch (typeof value) {
     case "string":
@@ -300,7 +308,14 @@ function stringify(
         return cyan("[Circular]");
       }
 
-      return createObjectString(value, ctx, level, maxLevel, sortKeys);
+      return createObjectString(
+        value,
+        ctx,
+        level,
+        maxLevel,
+        sortKeys,
+        trailingComma
+      );
     default:
       // Not implemented is red
       return red("[Not Implemented]");
@@ -348,7 +363,8 @@ function createArrayString(
   value: unknown[],
   ctx: ConsoleContext,
   level: number,
-  maxLevel: number
+  maxLevel: number,
+  trailingComma = false
 ): string {
   const printConfig: IterablePrintConfig<unknown> = {
     typeName: "Array",
@@ -372,7 +388,15 @@ function createArrayString(
     },
     group: true,
   };
-  return createIterableString(value, ctx, level, maxLevel, printConfig);
+  return createIterableString(
+    value,
+    ctx,
+    level,
+    maxLevel,
+    printConfig,
+    false,
+    trailingComma
+  );
 }
 
 function createTypedArrayString(
@@ -380,7 +404,8 @@ function createTypedArrayString(
   value: TypedArray,
   ctx: ConsoleContext,
   level: number,
-  maxLevel: number
+  maxLevel: number,
+  trailingComma = false
 ): string {
   const valueLength = value.length;
   const printConfig: IterablePrintConfig<unknown> = {
@@ -393,7 +418,15 @@ function createTypedArrayString(
     },
     group: true,
   };
-  return createIterableString(value, ctx, level, maxLevel, printConfig);
+  return createIterableString(
+    value,
+    ctx,
+    level,
+    maxLevel,
+    printConfig,
+    false,
+    trailingComma
+  );
 }
 
 function createSetString(
@@ -401,7 +434,8 @@ function createSetString(
   ctx: ConsoleContext,
   level: number,
   maxLevel: number,
-  sortKeys = false
+  sortKeys = false,
+  trailingComma = false
 ): string {
   const printConfig: IterablePrintConfig<unknown> = {
     typeName: "Set",
@@ -419,7 +453,8 @@ function createSetString(
     level,
     maxLevel,
     printConfig,
-    sortKeys
+    sortKeys,
+    trailingComma
   );
 }
 
@@ -428,7 +463,8 @@ function createMapString(
   ctx: ConsoleContext,
   level: number,
   maxLevel: number,
-  sortKeys = false
+  sortKeys = false,
+  trailingComma = false
 ): string {
   const printConfig: IterablePrintConfig<[unknown]> = {
     typeName: "Map",
@@ -452,7 +488,8 @@ function createMapString(
     level,
     maxLevel,
     printConfig,
-    sortKeys
+    sortKeys,
+    trailingComma
   );
 }
 
@@ -525,7 +562,8 @@ function createRawObjectString(
   ctx: ConsoleContext,
   level: number,
   maxLevel: number,
-  sortKeys = false
+  sortKeys = false,
+  trailingComma = false
 ): string {
   if (level >= maxLevel) {
     return cyan("[Object]"); // wrappers are in cyan
@@ -582,9 +620,9 @@ function createRawObjectString(
   } else if (totalLength > LINE_BREAKING_LENGTH) {
     const entryIndent = DEFAULT_INDENT.repeat(level + 1);
     const closingIndent = DEFAULT_INDENT.repeat(level);
-    baseString = `{\n${entryIndent}${entries.join(
-      `,\n${entryIndent}`
-    )}\n${closingIndent}}`;
+    baseString = `{\n${entryIndent}${entries.join(`,\n${entryIndent}`)}${
+      trailingComma ? "," : ""
+    }\n${closingIndent}}`;
   } else {
     baseString = `{ ${entries.join(", ")} }`;
   }
@@ -601,7 +639,8 @@ function createObjectString(
   consoleContext: ConsoleContext,
   level: number,
   maxLevel: number,
-  sortKeys = false
+  sortKeys = false,
+  trailingComma = false
 ): string {
   if (customInspect in value && typeof value[customInspect] === "function") {
     try {
@@ -611,7 +650,13 @@ function createObjectString(
   if (value instanceof Error) {
     return String(value.stack);
   } else if (Array.isArray(value)) {
-    return createArrayString(value, consoleContext, level, maxLevel);
+    return createArrayString(
+      value,
+      consoleContext,
+      level,
+      maxLevel,
+      trailingComma
+    );
   } else if (value instanceof Number) {
     return createNumberWrapperString(value);
   } else if (value instanceof Boolean) {
@@ -625,9 +670,23 @@ function createObjectString(
   } else if (value instanceof Date) {
     return createDateString(value);
   } else if (value instanceof Set) {
-    return createSetString(value, consoleContext, level, maxLevel, sortKeys);
+    return createSetString(
+      value,
+      consoleContext,
+      level,
+      maxLevel,
+      sortKeys,
+      trailingComma
+    );
   } else if (value instanceof Map) {
-    return createMapString(value, consoleContext, level, maxLevel, sortKeys);
+    return createMapString(
+      value,
+      consoleContext,
+      level,
+      maxLevel,
+      sortKeys,
+      trailingComma
+    );
   } else if (value instanceof WeakSet) {
     return createWeakSetString();
   } else if (value instanceof WeakMap) {
@@ -638,7 +697,8 @@ function createObjectString(
       value,
       consoleContext,
       level,
-      maxLevel
+      maxLevel,
+      trailingComma
     );
   } else {
     // Otherwise, default object formatting
@@ -647,7 +707,8 @@ function createObjectString(
       consoleContext,
       level,
       maxLevel,
-      sortKeys
+      sortKeys,
+      trailingComma
     );
   }
 }
@@ -658,6 +719,7 @@ export function stringifyArgs(
     depth = DEFAULT_MAX_DEPTH,
     indentLevel = 0,
     sortKeys = false,
+    trailingComma = false,
   }: InspectOptions = {}
 ): string {
   const first = args[0];
@@ -745,7 +807,14 @@ export function stringifyArgs(
       str += value;
     } else {
       // use default maximum depth for null or undefined argument
-      str += stringify(value, new Set<unknown>(), 0, depth, sortKeys);
+      str += stringify(
+        value,
+        new Set<unknown>(),
+        0,
+        depth,
+        sortKeys,
+        trailingComma
+      );
     }
     join = " ";
     a++;
@@ -1028,12 +1097,23 @@ export const customInspect = Symbol("Deno.customInspect");
 
 export function inspect(
   value: unknown,
-  { depth = DEFAULT_MAX_DEPTH, sortKeys = false }: InspectOptions = {}
+  {
+    depth = DEFAULT_MAX_DEPTH,
+    sortKeys = false,
+    trailingComma = false,
+  }: InspectOptions = {}
 ): string {
   if (typeof value === "string") {
     return value;
   } else {
-    return stringify(value, new Set<unknown>(), 0, depth, sortKeys);
+    return stringify(
+      value,
+      new Set<unknown>(),
+      0,
+      depth,
+      sortKeys,
+      trailingComma
+    );
   }
 }
 
