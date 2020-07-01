@@ -410,8 +410,6 @@ async fn bundle_command(
   }
 
   debug!(">>>>> bundle START");
-  let compiler_config = tsc::CompilerConfig::load(flags.config_path.clone())?;
-
   let global_state = GlobalState::new(flags)?;
 
   info!(
@@ -420,14 +418,10 @@ async fn bundle_command(
     module_specifier.to_string()
   );
 
-  let output = tsc::bundle(
-    &global_state,
-    compiler_config,
-    module_specifier,
-    global_state.maybe_import_map.clone(),
-    global_state.flags.unstable,
-  )
-  .await?;
+  let output = global_state
+    .ts_compiler
+    .bundle(global_state.clone(), module_specifier)
+    .await?;
 
   debug!(">>>>> bundle END");
 
