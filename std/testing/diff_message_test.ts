@@ -1,7 +1,6 @@
 import { assertEquals } from "./asserts.ts";
 import { diffMessageBody } from "./diff_message.ts";
 import { stripColor } from "../fmt/colors.ts";
-import diff from "./diff.ts";
 
 Deno.test("object with short keys", () => {
   const actual = diffMessageBody(
