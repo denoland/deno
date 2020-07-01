@@ -49,11 +49,11 @@ impl Lockfile {
 
   pub fn check_or_insert(&mut self, specifier: &str, code: &str) -> bool {
     if self.write {
-      self.insert(specifier, code)
-    } else {
-      self.check(specifier, code);
       // In case --lock-write is specified check always passes
+      self.insert(specifier, code);
       true
+    } else {
+      self.check(specifier, code)
     }
   }
 
