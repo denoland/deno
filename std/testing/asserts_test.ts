@@ -164,9 +164,10 @@ Deno.test("testingArrayContains", function (): void {
     Uint8Array.from([1, 2, 3])
   );
   assertThrows(
-    (): void => assertArrayContains(fixtureObject, [{ deno: "node" }]),
+    (): void =>
+      assertArrayContains(fixtureObject, [{ deno: "node" }, { deno: "luv" }]),
     AssertionError,
-    `actual: "[ { deno: "luv" }, { deno: "Js" } ]" expected to contain: "[ { deno: "node" } ]"\nmissing: [ { deno: "node" } ]`
+    `actual: "[ { deno: "luv" }, { deno: "Js" } ]" expected to contain: "[ { deno: "node" }, { deno: "luv" } ]"\nmissing: [ { deno: "node" } ]`
   );
 });
 
@@ -271,11 +272,9 @@ Deno.test("testingAssertThrowsAsyncWithReturnType", () => {
 
 const createHeader = (): string[] => [
   "",
-  "",
   `    ${gray(bold("[Diff]"))} ${red(bold("Actual"))} / ${green(
     bold("Expected")
   )}`,
-  "",
   "",
 ];
 
@@ -335,8 +334,12 @@ Deno.test({
       [
         "Values are not equal:",
         ...createHeader(),
-        removed(`-   [ ${yellow("1")}, ${green('"2"')}, ${yellow("3")} ]`),
-        added(`+   [ ${green('"1"')}, ${green('"2"')}, ${yellow("3")} ]`),
+        "    [",
+        removed(`-     ${yellow("1")},`),
+        added(`+     ${green('"1"')},`),
+        `      ${green('"2"')},`,
+        `      ${yellow("3")},`,
+        "    ]",
         "",
       ].join("\n")
     );
@@ -352,12 +355,15 @@ Deno.test({
       [
         "Values are not equal:",
         ...createHeader(),
-        removed(
-          `-   { a: ${yellow("1")}, b: ${green('"2"')}, c: ${yellow("3")} }`
-        ),
-        added(
-          `+   { a: ${yellow("1")}, b: ${yellow("2")}, c: [ ${yellow("3")} ] }`
-        ),
+        "    {",
+        `      a: ${yellow("1")},`,
+        added(`+     b: ${yellow("2")},`),
+        added(`+     c: [`),
+        added(`+       ${yellow("3")},`),
+        added(`+     ],`),
+        removed(`-     b: ${green('"2"')},`),
+        removed(`-     c: ${yellow("3")},`),
+        `    }`,
         "",
       ].join("\n")
     );
@@ -390,8 +396,12 @@ Deno.test({
       [
         "Values are not strictly equal:",
         ...createHeader(),
-        removed(`-   { a: ${yellow("1")}, b: ${yellow("2")} }`),
-        added(`+   { a: ${yellow("1")}, c: [ ${yellow("3")} ] }`),
+        `    {`,
+        `      a: ${yellow("1")},`,
+        added(`+     c: [`),
+        added(`+       ${yellow("3")},`),
+        added(`+     ],`),
+        removed(`-     b: ${yellow("2")},`),
         "",
       ].join("\n")
     );
@@ -406,7 +416,11 @@ Deno.test({
       AssertionError,
       [
         "Values have the same structure but are not reference-equal:\n",
-        red(`     { a: ${yellow("1")}, b: ${yellow("2")} }`),
+        red(`     {
+       a: ${yellow("1")},
+       b: ${yellow("2")},
+     }
+`),
       ].join("\n")
     );
   },

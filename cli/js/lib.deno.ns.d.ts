@@ -1874,6 +1874,7 @@ declare namespace Deno {
 
   interface InspectOptions {
     depth?: number;
+    pretty?: boolean;
   }
 
   /** Converts the input into a string that has the same format as printed by

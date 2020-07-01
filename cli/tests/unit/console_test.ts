@@ -64,6 +64,95 @@ unitTest(function consoleTestStringifyComplexObjects(): void {
   assertEquals(stringify({ foo: "bar" }), `{ foo: "bar" }`);
 });
 
+unitTest(function consoleTestPrettyInpsect(): void {
+  const prettyInspect = (o: unknown): string =>
+    stripColor(inspect(o, { depth: Number.MAX_SAFE_INTEGER, pretty: true }));
+  // Multiline even object has short keys
+  assertEquals(
+    prettyInspect({ x: { y: { z: 3 } } }),
+    `{
+  x: {
+    y: {
+      z: 3,
+    },
+  },
+}`
+  );
+
+  // Quote keys that is not a valid JS identifier
+  assertEquals(
+    prettyInspect({ "hello world": "ok" }),
+    `{
+  "hello world": "ok",
+}`
+  );
+
+  // Object entries should be sorted
+  assertEquals(
+    prettyInspect({ c: 1, a: 2, b: 3 }),
+    `{
+  a: 2,
+  b: 3,
+  c: 1,
+}`
+  );
+
+  // Entry with Symbol as keys should also be sorted
+  assertEquals(
+    prettyInspect({ [Symbol.for("b")]: 9, [Symbol.for("a")]: 2 }),
+    `{
+  Symbol(a): 2,
+  Symbol(b): 9,
+}`
+  );
+
+  // Array multiline
+  assertEquals(
+    prettyInspect([1, 2, 3]),
+    `[
+  1,
+  2,
+  3,
+]`
+  );
+
+  // Typed array multiline
+  assertEquals(
+    prettyInspect(new Uint8Array([1, 2, 3])),
+    `Uint8Array(3) [
+  1,
+  2,
+  3,
+]`
+  );
+
+  // Map entries should be sorted and printed over mutiple lines
+  assertEquals(
+    prettyInspect(
+      new Map([
+        ["z", 1],
+        ["y", 2],
+        ["x", 1],
+      ])
+    ),
+    `Map {
+  "x" => 1,
+  "y" => 2,
+  "z" => 1,
+}`
+  );
+
+  // Set value should be sorted and printed over multiple lines
+  assertEquals(
+    prettyInspect(new Set([3, 2, 1])),
+    `Set {
+  1,
+  2,
+  3,
+}`
+  );
+});
+
 unitTest(function consoleTestStringifyQuotes(): void {
   assertEquals(stringify(["\\"]), `[ "\\\\" ]`);
   assertEquals(stringify(['\\,"']), `[ '\\\\,"' ]`);

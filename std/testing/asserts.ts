@@ -3,7 +3,7 @@
  * for AssertionError messages in browsers. */
 
 import { red, stripColor } from "../fmt/colors.ts";
-import { diffMessage } from "./diff_message.ts";
+import { diffMessage, format } from "./diff_message.ts";
 
 const CAN_NOT_DISPLAY = "[Cannot display]";
 
@@ -17,14 +17,6 @@ export class AssertionError extends Error {
     super(message);
     this.name = "AssertionError";
   }
-}
-
-function format(v: unknown): string {
-  let string = globalThis.Deno ? Deno.inspect(v) : String(v);
-  if (typeof v == "string") {
-    string = `"${string.replace(/(?=["\\])/g, "\\")}"`;
-  }
-  return string;
 }
 
 function isKeyedCollection(x: unknown): x is Set<unknown> {
@@ -238,9 +230,11 @@ export function assertArrayContains(
     return;
   }
   if (!msg) {
-    msg = `actual: "${format(actual)}" expected to contain: "${format(
-      expected
-    )}"\nmissing: ${format(missing)}`;
+    msg = `actual: "${format(actual, {
+      pretty: false,
+    })}" expected to contain: "${format(expected, {
+      pretty: false,
+    })}"\nmissing: ${format(missing, { pretty: false })}`;
   }
   throw new AssertionError(msg);
 }
@@ -299,7 +293,7 @@ export function assertThrows<T = void>(
       msgIncludes &&
       !stripColor(e.message).includes(stripColor(msgIncludes))
     ) {
-      msg = `Expected error message to include "${msgIncludes}", but got "${
+      msg = `Expected error message to include:\n\n\t"${msgIncludes}"\n\n but got\n\n\t"${
         e.message
       }"${msg ? `: ${msg}` : "."}`;
       throw new AssertionError(msg);
