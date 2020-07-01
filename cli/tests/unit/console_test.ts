@@ -11,13 +11,6 @@
 import { assert, assertEquals, unitTest } from "./test_util.ts";
 import { stripColor } from "../../../std/fmt/colors.ts";
 
-// Some of these APIs aren't exposed in the types and so we have to cast to any
-// in order to "trick" TypeScript.
-const {
-  inspect,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-} = Deno as any;
-
 const customInspect = Deno.customInspect;
 const {
   Console,
@@ -238,7 +231,7 @@ unitTest(function consoleTestStringifyCircular(): void {
     'TAG { str: 1, Symbol(sym): 2, Symbol(Symbol.toStringTag): "TAG" }'
   );
   // test inspect is working the same
-  assertEquals(stripColor(inspect(nestedObj)), nestedObjExpected);
+  assertEquals(stripColor(Deno.inspect(nestedObj)), nestedObjExpected);
 });
 /* eslint-enable @typescript-eslint/explicit-function-return-type */
 
@@ -263,7 +256,7 @@ unitTest(function consoleTestStringifyWithDepth(): void {
   );
   // test inspect is working the same way
   assertEquals(
-    stripColor(inspect(nestedObj, { depth: 4 })),
+    stripColor(Deno.inspect(nestedObj, { depth: 4 })),
     "{ a: { b: { c: { d: [Object] } } } }"
   );
 });
@@ -653,7 +646,7 @@ unitTest(function consoleTestWithCustomInspectorError(): void {
   assertEquals(stringify(new B({ a: "a" })), "a");
   assertEquals(
     stringify(B.prototype),
-    "{ Symbol(Deno.symbols.customInspect): [Function: [Deno.symbols.customInspect]] }"
+    "{ Symbol(Deno.customInspect): [Function: [Deno.customInspect]] }"
   );
 });
 
@@ -1174,4 +1167,25 @@ unitTest(function consoleTrace(): void {
     assert(err);
     assert(err.toString().includes("Trace: custom message"));
   });
+});
+
+unitTest(function inspectSortKeys(): void {
+  assertEquals(
+    Deno.inspect({ b: 2, a: 1 }, { sortKeys: true }),
+    "{ a: 1, b: 2 }"
+  );
+  assertEquals(
+    Deno.inspect(new Set(["b", "a"]), { sortKeys: true }),
+    `Set { "a", "b" }`
+  );
+  assertEquals(
+    Deno.inspect(
+      new Map([
+        ["b", 2],
+        ["a", 1],
+      ]),
+      { sortKeys: true }
+    ),
+    `Map { "a" => 1, "b" => 2 }`
+  );
 });

@@ -18,6 +18,7 @@ type ConsoleContext = Set<unknown>;
 type InspectOptions = Partial<{
   depth: number;
   indentLevel: number;
+  sortKeys: boolean;
 }>;
 
 const DEFAULT_INDENT = "  "; // Default indent string
@@ -93,7 +94,8 @@ function createIterableString<T>(
   ctx: ConsoleContext,
   level: number,
   maxLevel: number,
-  config: IterablePrintConfig<T>
+  config: IterablePrintConfig<T>,
+  sort = false
 ): string {
   if (level >= maxLevel) {
     return cyan(`[${config.typeName}]`);
@@ -116,6 +118,10 @@ function createIterableString<T>(
     entriesLength++;
   }
   ctx.delete(value);
+
+  if (sort) {
+    entries.sort();
+  }
 
   if (entriesLength > MAX_ITERABLE_LENGTH) {
     const nmore = entriesLength - MAX_ITERABLE_LENGTH;
@@ -265,7 +271,8 @@ function stringify(
   value: unknown,
   ctx: ConsoleContext,
   level: number,
-  maxLevel: number
+  maxLevel: number,
+  sortKeys = false
 ): string {
   switch (typeof value) {
     case "string":
@@ -293,7 +300,7 @@ function stringify(
         return cyan("[Circular]");
       }
 
-      return createObjectString(value, ctx, level, maxLevel);
+      return createObjectString(value, ctx, level, maxLevel, sortKeys);
     default:
       // Not implemented is red
       return red("[Not Implemented]");
@@ -393,7 +400,8 @@ function createSetString(
   value: Set<unknown>,
   ctx: ConsoleContext,
   level: number,
-  maxLevel: number
+  maxLevel: number,
+  sortKeys = false
 ): string {
   const printConfig: IterablePrintConfig<unknown> = {
     typeName: "Set",
@@ -405,14 +413,22 @@ function createSetString(
     },
     group: false,
   };
-  return createIterableString(value, ctx, level, maxLevel, printConfig);
+  return createIterableString(
+    value,
+    ctx,
+    level,
+    maxLevel,
+    printConfig,
+    sortKeys
+  );
 }
 
 function createMapString(
   value: Map<unknown, unknown>,
   ctx: ConsoleContext,
   level: number,
-  maxLevel: number
+  maxLevel: number,
+  sortKeys = false
 ): string {
   const printConfig: IterablePrintConfig<[unknown]> = {
     typeName: "Map",
@@ -429,8 +445,15 @@ function createMapString(
     },
     group: false,
   };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return createIterableString(value as any, ctx, level, maxLevel, printConfig);
+  return createIterableString(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    value as any,
+    ctx,
+    level,
+    maxLevel,
+    printConfig,
+    sortKeys
+  );
 }
 
 function createWeakSetString(): string {
@@ -501,7 +524,8 @@ function createRawObjectString(
   value: Record<string, unknown>,
   ctx: ConsoleContext,
   level: number,
-  maxLevel: number
+  maxLevel: number,
+  sortKeys = false
 ): string {
   if (level >= maxLevel) {
     return cyan("[Object]"); // wrappers are in cyan
@@ -524,6 +548,12 @@ function createRawObjectString(
   const entries: string[] = [];
   const stringKeys = Object.keys(value);
   const symbolKeys = Object.getOwnPropertySymbols(value);
+  if (sortKeys) {
+    stringKeys.sort();
+    symbolKeys.sort((s1, s2) =>
+      (s1.description ?? "").localeCompare(s2.description ?? "")
+    );
+  }
 
   for (const key of stringKeys) {
     entries.push(
@@ -568,7 +598,10 @@ function createRawObjectString(
 
 function createObjectString(
   value: {},
-  ...args: [ConsoleContext, number, number]
+  consoleContext: ConsoleContext,
+  level: number,
+  maxLevel: number,
+  sortKeys = false
 ): string {
   if (customInspect in value && typeof value[customInspect] === "function") {
     try {
@@ -578,7 +611,7 @@ function createObjectString(
   if (value instanceof Error) {
     return String(value.stack);
   } else if (Array.isArray(value)) {
-    return createArrayString(value, ...args);
+    return createArrayString(value, consoleContext, level, maxLevel);
   } else if (value instanceof Number) {
     return createNumberWrapperString(value);
   } else if (value instanceof Boolean) {
@@ -586,15 +619,15 @@ function createObjectString(
   } else if (value instanceof String) {
     return createStringWrapperString(value);
   } else if (value instanceof Promise) {
-    return createPromiseString(value, ...args);
+    return createPromiseString(value, consoleContext, level, maxLevel);
   } else if (value instanceof RegExp) {
     return createRegExpString(value);
   } else if (value instanceof Date) {
     return createDateString(value);
   } else if (value instanceof Set) {
-    return createSetString(value, ...args);
+    return createSetString(value, consoleContext, level, maxLevel, sortKeys);
   } else if (value instanceof Map) {
-    return createMapString(value, ...args);
+    return createMapString(value, consoleContext, level, maxLevel, sortKeys);
   } else if (value instanceof WeakSet) {
     return createWeakSetString();
   } else if (value instanceof WeakMap) {
@@ -603,17 +636,29 @@ function createObjectString(
     return createTypedArrayString(
       Object.getPrototypeOf(value).constructor.name,
       value,
-      ...args
+      consoleContext,
+      level,
+      maxLevel
     );
   } else {
     // Otherwise, default object formatting
-    return createRawObjectString(value, ...args);
+    return createRawObjectString(
+      value,
+      consoleContext,
+      level,
+      maxLevel,
+      sortKeys
+    );
   }
 }
 
 export function stringifyArgs(
   args: unknown[],
-  { depth = DEFAULT_MAX_DEPTH, indentLevel = 0 }: InspectOptions = {}
+  {
+    depth = DEFAULT_MAX_DEPTH,
+    indentLevel = 0,
+    sortKeys = false,
+  }: InspectOptions = {}
 ): string {
   const first = args[0];
   let a = 0;
@@ -700,7 +745,7 @@ export function stringifyArgs(
       str += value;
     } else {
       // use default maximum depth for null or undefined argument
-      str += stringify(value, new Set<unknown>(), 0, depth);
+      str += stringify(value, new Set<unknown>(), 0, depth, sortKeys);
     }
     join = " ";
     a++;
@@ -979,16 +1024,16 @@ export class Console {
   }
 }
 
-export const customInspect = Symbol("Deno.symbols.customInspect");
+export const customInspect = Symbol("Deno.customInspect");
 
 export function inspect(
   value: unknown,
-  { depth = DEFAULT_MAX_DEPTH }: InspectOptions = {}
+  { depth = DEFAULT_MAX_DEPTH, sortKeys = false }: InspectOptions = {}
 ): string {
   if (typeof value === "string") {
     return value;
   } else {
-    return stringify(value, new Set<unknown>(), 0, depth);
+    return stringify(value, new Set<unknown>(), 0, depth, sortKeys);
   }
 }
 

@@ -1874,6 +1874,8 @@ declare namespace Deno {
 
   interface InspectOptions {
     depth?: number;
+    /** Sort Object, Set and Map entries by key. Defaults to false. */
+    sortKeys?: boolean;
   }
 
   /** Converts the input into a string that has the same format as printed by
