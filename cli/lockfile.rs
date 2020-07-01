@@ -51,7 +51,9 @@ impl Lockfile {
     if self.write {
       self.insert(specifier, code)
     } else {
-      self.check(specifier, code)
+      self.check(specifier, code);
+      // In case --lock-write is specified check always passes
+      true
     }
   }
 
@@ -69,12 +71,11 @@ impl Lockfile {
     }
   }
 
-  fn insert(&mut self, specifier: &str, code: &str) -> bool {
+  fn insert(&mut self, specifier: &str, code: &str) {
     if specifier.starts_with("file:") {
-      return true;
+      return;
     }
     let checksum = crate::checksum::gen(&[code.as_bytes()]);
     self.map.insert(specifier.to_string(), checksum);
-    true
   }
 }
