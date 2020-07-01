@@ -66,7 +66,7 @@ impl<'a> DocPrinter<'a> {
       self.format_signature(w, &node, indent)?;
 
       if let Some(js_doc) = &node.js_doc {
-        self.format_jsdoc(w, js_doc, indent + 1)?;
+        self.format_jsdoc(w, js_doc, indent + 1, self.details)?;
       }
 
       writeln!(w)?;
@@ -105,7 +105,7 @@ impl<'a> DocPrinter<'a> {
 
       let js_doc = &node.js_doc;
       if let Some(js_doc) = js_doc {
-        self.format_jsdoc(w, js_doc, indent + 1)?;
+        self.format_jsdoc(w, js_doc, indent + 1, self.details)?;
       }
       writeln!(w)?;
 
@@ -162,11 +162,12 @@ impl<'a> DocPrinter<'a> {
     w: &mut Formatter<'_>,
     jsdoc: &str,
     indent: i64,
+    details: bool,
   ) -> FmtResult {
     for line in jsdoc.lines() {
       // Only show the first paragraph when summarising
       // This should use the @summary JSDoc tag instead
-      if !self.details && line.is_empty() {
+      if !details && line.is_empty() {
         break;
       }
 
@@ -185,7 +186,7 @@ impl<'a> DocPrinter<'a> {
     for node in &class_def.constructors {
       writeln!(w, "{}{}", Indent(1), node,)?;
       if let Some(js_doc) = &node.js_doc {
-        self.format_jsdoc(w, &js_doc, 2)?;
+        self.format_jsdoc(w, &js_doc, 2, self.details)?;
       }
     }
     for node in class_def.properties.iter().filter(|node| {
@@ -197,7 +198,7 @@ impl<'a> DocPrinter<'a> {
     }) {
       writeln!(w, "{}{}", Indent(1), node,)?;
       if let Some(js_doc) = &node.js_doc {
-        self.format_jsdoc(w, &js_doc, 2)?;
+        self.format_jsdoc(w, &js_doc, 2, self.details)?;
       }
     }
     for node in class_def.methods.iter().filter(|node| {
@@ -209,7 +210,7 @@ impl<'a> DocPrinter<'a> {
     }) {
       writeln!(w, "{}{}", Indent(1), node,)?;
       if let Some(js_doc) = &node.js_doc {
-        self.format_jsdoc(w, js_doc, 2)?;
+        self.format_jsdoc(w, js_doc, 2, self.details)?;
       }
     }
     writeln!(w)
@@ -237,13 +238,13 @@ impl<'a> DocPrinter<'a> {
     for property_def in &interface_def.properties {
       writeln!(w, "{}{}", Indent(1), property_def)?;
       if let Some(js_doc) = &property_def.js_doc {
-        self.format_jsdoc(w, js_doc, 2)?;
+        self.format_jsdoc(w, js_doc, 2, self.details)?;
       }
     }
     for method_def in &interface_def.methods {
       writeln!(w, "{}{}", Indent(1), method_def)?;
       if let Some(js_doc) = &method_def.js_doc {
-        self.format_jsdoc(w, js_doc, 2)?;
+        self.format_jsdoc(w, js_doc, 2, self.details)?;
       }
     }
     writeln!(w)
@@ -257,6 +258,9 @@ impl<'a> DocPrinter<'a> {
     let elements = &node.namespace_def.as_ref().unwrap().elements;
     for node in elements {
       self.format_signature(w, &node, 1)?;
+      if let Some(js_doc) = &node.js_doc {
+        self.format_jsdoc(w, js_doc, 2, false)?;
+      }
     }
     writeln!(w)
   }
