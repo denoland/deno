@@ -349,17 +349,16 @@ Deno.test({
     assertThrows(
       (): void => assertEquals({ a: 1, b: "2", c: 3 }, { a: 1, b: 2, c: [3] }),
       AssertionError,
-      [
-        "Values are not equal:",
-        ...createHeader(),
-        removed(
-          `-   { a: ${yellow("1")}, b: ${green('"2"')}, c: ${yellow("3")} }`
-        ),
-        added(
-          `+   { a: ${yellow("1")}, b: ${yellow("2")}, c: [ ${yellow("3")} ] }`
-        ),
-        "",
-      ].join("\n")
+      `
+    {
+      a: 1,
++     b: 2,
++     c: [
++       3,
++     ],
+-     b: "2",
+-     c: 3,
+    }`
     );
   },
 });
@@ -387,13 +386,14 @@ Deno.test({
     assertThrows(
       (): void => assertStrictEquals({ a: 1, b: 2 }, { a: 1, c: [3] }),
       AssertionError,
-      [
-        "Values are not strictly equal:",
-        ...createHeader(),
-        removed(`-   { a: ${yellow("1")}, b: ${yellow("2")} }`),
-        added(`+   { a: ${yellow("1")}, c: [ ${yellow("3")} ] }`),
-        "",
-      ].join("\n")
+      `
+    {
+      a: 1,
++     c: [
++       3,
++     ],
+-     b: 2,
+    }`
     );
   },
 });

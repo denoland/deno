@@ -345,7 +345,9 @@ function stringifyWithQuotes(
   value: unknown,
   ctx: ConsoleContext,
   level: number,
-  maxLevel: number
+  maxLevel: number,
+  sortKeys = false,
+  trailingComma = false
 ): string {
   switch (typeof value) {
     case "string":
@@ -355,7 +357,7 @@ function stringifyWithQuotes(
           : value;
       return green(quoteString(trunc)); // Quoted strings are green
     default:
-      return stringify(value, ctx, level, maxLevel);
+      return stringify(value, ctx, level, maxLevel, sortKeys, trailingComma);
   }
 }
 
@@ -364,6 +366,7 @@ function createArrayString(
   ctx: ConsoleContext,
   level: number,
   maxLevel: number,
+  sortKeys = false,
   trailingComma = false
 ): string {
   const printConfig: IterablePrintConfig<unknown> = {
@@ -383,7 +386,14 @@ function createArrayString(
         const ending = emptyItems > 1 ? "s" : "";
         return dim(`<${emptyItems} empty item${ending}>`);
       } else {
-        return stringifyWithQuotes(val, ctx, level, maxLevel);
+        return stringifyWithQuotes(
+          val,
+          ctx,
+          level,
+          maxLevel,
+          sortKeys,
+          trailingComma
+        );
       }
     },
     group: true,
@@ -405,6 +415,7 @@ function createTypedArrayString(
   ctx: ConsoleContext,
   level: number,
   maxLevel: number,
+  sortKeys = false,
   trailingComma = false
 ): string {
   const valueLength = value.length;
@@ -414,7 +425,14 @@ function createTypedArrayString(
     delims: ["[", "]"],
     entryHandler: (entry, ctx, level, maxLevel): string => {
       const [_, val] = entry;
-      return stringifyWithQuotes(val, ctx, level + 1, maxLevel);
+      return stringifyWithQuotes(
+        val,
+        ctx,
+        level + 1,
+        maxLevel,
+        sortKeys,
+        trailingComma
+      );
     },
     group: true,
   };
@@ -443,7 +461,14 @@ function createSetString(
     delims: ["{", "}"],
     entryHandler: (entry, ctx, level, maxLevel): string => {
       const [_, val] = entry;
-      return stringifyWithQuotes(val, ctx, level + 1, maxLevel);
+      return stringifyWithQuotes(
+        val,
+        ctx,
+        level + 1,
+        maxLevel,
+        sortKeys,
+        trailingComma
+      );
     },
     group: false,
   };
@@ -476,8 +501,17 @@ function createMapString(
         key,
         ctx,
         level + 1,
-        maxLevel
-      )} => ${stringifyWithQuotes(val, ctx, level + 1, maxLevel)}`;
+        maxLevel,
+        sortKeys,
+        trailingComma
+      )} => ${stringifyWithQuotes(
+        val,
+        ctx,
+        level + 1,
+        maxLevel,
+        sortKeys,
+        trailingComma
+      )}`;
     },
     group: false,
   };
@@ -595,7 +629,14 @@ function createRawObjectString(
 
   for (const key of stringKeys) {
     entries.push(
-      `${key}: ${stringifyWithQuotes(value[key], ctx, level + 1, maxLevel)}`
+      `${key}: ${stringifyWithQuotes(
+        value[key],
+        ctx,
+        level + 1,
+        maxLevel,
+        sortKeys,
+        trailingComma
+      )}`
     );
   }
   for (const key of symbolKeys) {
@@ -605,7 +646,9 @@ function createRawObjectString(
         value[key as any],
         ctx,
         level + 1,
-        maxLevel
+        maxLevel,
+        sortKeys,
+        trailingComma
       )}`
     );
   }
@@ -655,6 +698,7 @@ function createObjectString(
       consoleContext,
       level,
       maxLevel,
+      sortKeys,
       trailingComma
     );
   } else if (value instanceof Number) {
@@ -698,6 +742,7 @@ function createObjectString(
       consoleContext,
       level,
       maxLevel,
+      sortKeys,
       trailingComma
     );
   } else {
@@ -764,7 +809,14 @@ export function stringifyArgs(
             case CHAR_LOWERCASE_O:
             case CHAR_UPPERCASE_O:
               // format as an object
-              tempStr = stringify(args[++a], new Set<unknown>(), 0, depth);
+              tempStr = stringify(
+                args[++a],
+                new Set<unknown>(),
+                0,
+                depth,
+                sortKeys,
+                trailingComma
+              );
               break;
             case CHAR_PERCENT:
               str += first.slice(lastPos, i);
