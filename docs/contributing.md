@@ -4,7 +4,7 @@
 
 - Please don't make [the benchmarks](https://deno.land/benchmarks.html) worse.
 
-- Ask for help in the [community chat room](https://discord.gg/TGMHGv6).
+- Ask for help in the [community chat room](https://discord.gg/deno).
 
 - If you are going to work on an issue, mention so in the issue comments
   _before_ you start working on the issue.
