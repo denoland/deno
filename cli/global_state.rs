@@ -75,10 +75,11 @@ impl GlobalState {
     )?;
 
     let lockfile = if let Some(filename) = &flags.lock {
-      Some(Mutex::new(Lockfile::new(
+      let lockfile = Lockfile::new(
         filename.to_string(),
         flags.lock_write,
-      )?))
+      )?;
+      Some(Mutex::new(lockfile))
     } else {
       None
     };
@@ -145,7 +146,7 @@ impl GlobalState {
       .expect("Source file not found");
 
     let module_graph_files = module_graph.values().collect::<Vec<_>>();
-    // Check integrity
+    // Check integrity of every file in module graph
     if let Some(ref lockfile) = self.lockfile {
       let mut g = lockfile.lock().unwrap();
 
