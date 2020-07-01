@@ -3,8 +3,8 @@ try {
 } catch {}
 
 const fetchProc = Deno.run({
-  stdout: "inherit",
-  stderr: "inherit",
+  stdout: "null",
+  stderr: "null",
   cmd: [
     Deno.execPath(),
     "cache",
@@ -19,8 +19,8 @@ const fetchCode = (await fetchProc.status()).code;
 console.log(`fetch code: ${fetchCode}`);
 
 const fetchCheckProc = Deno.run({
-  stdout: "inherit",
-  stderr: "inherit",
+  stdout: "null",
+  stderr: "null",
   cmd: [
     Deno.execPath(),
     "cache",
@@ -35,8 +35,8 @@ console.log(`fetch check code: ${fetchCheckProcCode}`);
 Deno.removeSync("./lock_write_fetch.json");
 
 const runProc = Deno.run({
-  stdout: "inherit",
-  stderr: "inherit",
+  stdout: "null",
+  stderr: "null",
   cmd: [
     Deno.execPath(),
     "run",

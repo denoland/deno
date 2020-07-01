@@ -76,7 +76,10 @@ impl GlobalState {
     )?;
 
     let lockfile = if let Some(filename) = &flags.lock {
-      Some(Mutex::new(Lockfile::new(filename.to_string())?))
+      Some(Mutex::new(Lockfile::new(
+        filename.to_string(),
+        flags.lock_write,
+      )?))
     } else {
       None
     };
@@ -224,20 +227,14 @@ impl GlobalState {
 
     if let Some(ref lockfile) = state2.lockfile {
       let mut g = lockfile.lock().unwrap();
-      if state2.flags.lock_write {
-        g.insert(&out.url, out.source_code);
-      } else {
-        let check = match g.check(&out.url, out.source_code) {
-          Err(e) => return Err(ErrBox::from(e)),
-          Ok(v) => v,
-        };
-        if !check {
-          eprintln!(
-            "Subresource integrity check failed --lock={}\n{}",
-            g.filename, compiled_module.name
-          );
-          std::process::exit(10);
-        }
+      let check_passed = g.check_or_insert(&out.url, out.source_code);
+
+      if !check_passed {
+        eprintln!(
+          "Subresource integrity check failed --lock={}\n{}",
+          g.filename, compiled_module.name
+        );
+        std::process::exit(10);
       }
     }
     Ok(compiled_module)
