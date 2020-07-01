@@ -121,7 +121,7 @@ impl Into<TsTypeDef> for &TsTupleType {
     let mut type_defs = vec![];
 
     for type_box in &self.elem_types {
-      let ts_type: &TsType = &(*type_box);
+      let ts_type: &TsType = &type_box.ty;
       let def: TsTypeDef = ts_type.into();
       type_defs.push(def)
     }

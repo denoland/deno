@@ -8,7 +8,6 @@ import {
 
 // Allow 10 second difference.
 // Note this might not be enough for FAT (but we are not testing on such fs).
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function assertFuzzyTimestampEquals(t1: Date | null, t2: Date): void {
   assert(t1 instanceof Date);
   assert(Math.abs(t1.valueOf() - t2.valueOf()) < 10_000);
