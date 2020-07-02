@@ -630,7 +630,8 @@ mod tests {
         "deno.land",
         "github.com:3000",
         "127.0.0.1",
-        "172.16.0.2:8000"
+        "172.16.0.2:8000",
+        "www.github.com:443"
       ],
       ..Default::default()
     });
@@ -693,6 +694,8 @@ mod tests {
       ("https://172.16.0.2:6000", false),
       ("tcp://172.16.0.1:8000", false),
       ("https://172.16.0.1:8000", false),
+      // Testing issue #6531 (Network permissions check doesn't account for well-known default ports) so we dont regress
+      ("https://www.github.com:443/robots.txt" , true)
     ];
 
     for (url_str, is_ok) in url_tests.iter() {
