@@ -2636,7 +2636,7 @@ mod tests {
           force: false,
           dry_run: false,
           version: None,
-          ca_file: None
+          ca_file: Some("example.crt".to_owned()),
         },
         ca_file: Some("example.crt".to_owned()),
         ..Flags::default()
