@@ -1,3 +1,5 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 import * as blob from "./blob.ts";
 import * as encoding from "./text_encoding.ts";
 import * as domTypes from "./dom_types.d.ts";

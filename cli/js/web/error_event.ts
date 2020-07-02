@@ -4,12 +4,12 @@ import { EventImpl as Event } from "./event.ts";
 import { defineEnumerableProps } from "./util.ts";
 
 export class ErrorEventImpl extends Event implements ErrorEvent {
-  #message: string;
-  #filename: string;
-  #lineno: number;
-  #colno: number;
+  readonly #message: string;
+  readonly #filename: string;
+  readonly #lineno: number;
+  readonly #colno: number;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  #error: any;
+  readonly #error: any;
 
   get message(): string {
     return this.#message;
