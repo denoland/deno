@@ -14,12 +14,12 @@ import { stripColor } from "../../../std/fmt/colors.ts";
 const customInspect = Deno.customInspect;
 const {
   Console,
-  stringifyArgs,
+  inspectArgs,
   // @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
 } = Deno[Deno.internal];
 
 function stringify(...args: unknown[]): string {
-  return stripColor(stringifyArgs(args).replace(/\n$/, ""));
+  return stripColor(inspectArgs(args).replace(/\n$/, ""));
 }
 
 // test cases from web-platform-tests
@@ -239,19 +239,16 @@ unitTest(function consoleTestStringifyWithDepth(): void {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const nestedObj: any = { a: { b: { c: { d: { e: { f: 42 } } } } } };
   assertEquals(
-    stripColor(stringifyArgs([nestedObj], { depth: 3 })),
+    stripColor(inspectArgs([nestedObj], { depth: 3 })),
     "{ a: { b: { c: [Object] } } }"
   );
   assertEquals(
-    stripColor(stringifyArgs([nestedObj], { depth: 4 })),
+    stripColor(inspectArgs([nestedObj], { depth: 4 })),
     "{ a: { b: { c: { d: [Object] } } } }"
   );
+  assertEquals(stripColor(inspectArgs([nestedObj], { depth: 0 })), "[Object]");
   assertEquals(
-    stripColor(stringifyArgs([nestedObj], { depth: 0 })),
-    "[Object]"
-  );
-  assertEquals(
-    stripColor(stringifyArgs([nestedObj])),
+    stripColor(inspectArgs([nestedObj])),
     "{ a: { b: { c: { d: [Object] } } } }"
   );
   // test inspect is working the same way
