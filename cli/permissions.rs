@@ -292,7 +292,8 @@ impl Permissions {
       ));
     }
     Ok(self.get_state_net(
-      &format!("{}", parsed.host().unwrap()), parsed.port_or_known_default(),
+      &format!("{}", parsed.host().unwrap()),
+      parsed.port_or_known_default(),
     ))
   }
 
