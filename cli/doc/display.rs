@@ -38,7 +38,7 @@ pub(crate) fn display_abstract(is_abstract: bool) -> impl Display {
   colors::magenta(if is_abstract { "abstract " } else { "" })
 }
 
-pub(crate) fn display_accesibility(
+pub(crate) fn display_accessibility(
   accessibility: Option<swc_ecma_ast::Accessibility>,
 ) -> impl Display {
   colors::magenta(

@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::colors;
 use crate::doc::display::{
-  display_abstract, display_accesibility, display_async, display_generator,
+  display_abstract, display_accessibility, display_async, display_generator,
   display_method, display_optional, display_readonly, display_static,
   SliceDisplayer,
 };
@@ -42,7 +42,7 @@ impl Display for ClassConstructorDef {
     write!(
       f,
       "{}{}({})",
-      display_accesibility(self.accessibility),
+      display_accessibility(self.accessibility),
       colors::magenta("constructor"),
       SliceDisplayer::new(&self.params, ", "),
     )
@@ -69,7 +69,7 @@ impl Display for ClassPropertyDef {
       f,
       "{}{}{}{}{}{}",
       display_abstract(self.is_abstract),
-      display_accesibility(self.accessibility),
+      display_accessibility(self.accessibility),
       display_static(self.is_static),
       display_readonly(self.readonly),
       colors::bold(&self.name),
@@ -102,7 +102,7 @@ impl Display for ClassMethodDef {
       f,
       "{}{}{}{}{}{}{}{}({})",
       display_abstract(self.is_abstract),
-      display_accesibility(self.accessibility),
+      display_accessibility(self.accessibility),
       display_static(self.is_static),
       display_async(self.function_def.is_async),
       display_method(self.kind),
