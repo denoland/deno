@@ -292,7 +292,7 @@ impl Permissions {
       ));
     }
     Ok(
-      self.get_state_net(&format!("{}", parsed.host().unwrap()), parsed.port()),
+      self.get_state_net(&format!("{}", parsed.host().unwrap()), parsed.port_or_known_default()),
     )
   }
 
@@ -308,7 +308,7 @@ impl Permissions {
       .host_str()
       .ok_or_else(|| OpError::uri_error("missing host".to_owned()))?;
     self
-      .get_state_net(host, url.port())
+      .get_state_net(host, url.port_or_known_default())
       .check(&format!("network access to \"{}\"", url), "--allow-net")
   }
 
