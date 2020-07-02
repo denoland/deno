@@ -75,10 +75,7 @@ impl GlobalState {
     )?;
 
     let lockfile = if let Some(filename) = &flags.lock {
-      let lockfile = Lockfile::new(
-        filename.to_string(),
-        flags.lock_write,
-      )?;
+      let lockfile = Lockfile::new(filename.to_string(), flags.lock_write)?;
       Some(Mutex::new(lockfile))
     } else {
       None
