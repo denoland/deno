@@ -1872,7 +1872,8 @@ declare namespace Deno {
    * Requires `allow-run` permission. */
   export function run<T extends RunOptions = RunOptions>(opt: T): Process<T>;
 
-  interface InspectOptions {
+  export interface InspectOptions {
+    /** Traversal depth for nested objects. Defaults to 4. */
     depth?: number;
     /** Sort Object, Set and Map entries by key. Defaults to false. */
     sortKeys?: boolean;
