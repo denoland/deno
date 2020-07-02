@@ -291,9 +291,9 @@ impl Permissions {
           .to_owned(),
       ));
     }
-    Ok(
-      self.get_state_net(&format!("{}", parsed.host().unwrap()), parsed.port_or_known_default()),
-    )
+    Ok(self.get_state_net(
+      &format!("{}", parsed.host().unwrap()), parsed.port_or_known_default(),
+    ))
   }
 
   pub fn check_net(&self, hostname: &str, port: u16) -> Result<(), OpError> {
