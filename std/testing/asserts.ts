@@ -22,6 +22,7 @@ export class AssertionError extends Error {
 export function _format(v: unknown): string {
   let string = globalThis.Deno
     ? Deno.inspect(v, {
+        depth: Infinity,
         sortKeys: true,
         trailingComma: true,
         alwaysWrap: true,
