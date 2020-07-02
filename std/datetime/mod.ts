@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { Tokenizer, Rule } from "./Tokenizer.ts";
 
-function digits(value: any, count = 2): string {
+function digits(value: string | number, count = 2): string {
   return String(value).padStart(count, "0");
 }
 
@@ -64,7 +64,7 @@ const defaultRules = [
     test: /^(')(?<value>\\.|[^\']*)\1/,
     fn: (match: RegExpExecArray) => ({
       type: "literal",
-      value: match.groups?.value,
+      value: match.groups!.value,
     }),
   },
   // literal
@@ -74,7 +74,8 @@ const defaultRules = [
   },
 ];
 
-type Format = { type: DateTimeFormatPartTypes; value: any }[];
+type FormatPart = { type: DateTimeFormatPartTypes; value: string | number };
+type Format = FormatPart[];
 
 export class DateTimeFormatter {
   #format: Format;
@@ -84,14 +85,14 @@ export class DateTimeFormatter {
     this.#format = tokenizer.tokenize(
       formatString,
       ({ type, value }) => ({ type, value }),
-    );
+    ) as Format;
   }
 
-  format(date: Date, options: Options = {}) {
+  format(date: Date, options: Options = {}): string {
     let string = "";
 
     const utc = options.timeZone === "UTC";
-    const hour12 = this.#format.find((token: any) =>
+    const hour12 = this.#format.find((token: FormatPart) =>
       token.type === "dayPeriod"
     );
 
@@ -212,7 +213,7 @@ export class DateTimeFormatter {
           const value = utc
             ? date.getUTCMilliseconds()
             : date.getMilliseconds();
-          string += digits(value, token.value);
+          string += digits(value, Number(token.value));
           break;
         }
         case "timeZoneName": {
@@ -236,22 +237,22 @@ export class DateTimeFormatter {
     return string;
   }
 
-  parseToParts(string: string) {
+  parseToParts(string: string): DateTimeFormatPart[] {
     const parts: DateTimeFormatPart[] = [];
 
     for (const token of this.#format) {
       const type = token.type;
 
-      let value;
+      let value: string = "";
       switch (token.type) {
         case "year": {
           switch (token.value) {
             case "numeric": {
-              value = /^\d{1,4}/.exec(string)?.[0];
+              value = /^\d{1,4}/.exec(string)?.[0] as string;
               break;
             }
             case "2-digit": {
-              value = /^\d{1,2}/.exec(string)?.[0];
+              value = /^\d{1,2}/.exec(string)?.[0] as string;
               break;
             }
           }
@@ -260,23 +261,23 @@ export class DateTimeFormatter {
         case "month": {
           switch (token.value) {
             case "numeric": {
-              value = /^\d{1,2}/.exec(string)?.[0];
+              value = /^\d{1,2}/.exec(string)?.[0] as string;
               break;
             }
             case "2-digit": {
-              value = /^\d{2}/.exec(string)?.[0];
+              value = /^\d{2}/.exec(string)?.[0] as string;
               break;
             }
             case "narrow": {
-              value = /^[a-zA-Z]+/.exec(string)?.[0];
+              value = /^[a-zA-Z]+/.exec(string)?.[0] as string;
               break;
             }
             case "short": {
-              value = /^[a-zA-Z]+/.exec(string)?.[0];
+              value = /^[a-zA-Z]+/.exec(string)?.[0] as string;
               break;
             }
             case "long": {
-              value = /^[a-zA-Z]+/.exec(string)?.[0];
+              value = /^[a-zA-Z]+/.exec(string)?.[0] as string;
               break;
             }
             default:
@@ -289,11 +290,11 @@ export class DateTimeFormatter {
         case "day": {
           switch (token.value) {
             case "numeric": {
-              value = /^\d{1,2}/.exec(string)?.[0];
+              value = /^\d{1,2}/.exec(string)?.[0] as string;
               break;
             }
             case "2-digit": {
-              value = /^\d{2}/.exec(string)?.[0];
+              value = /^\d{2}/.exec(string)?.[0] as string;
               break;
             }
             default:
@@ -306,11 +307,11 @@ export class DateTimeFormatter {
         case "hour": {
           switch (token.value) {
             case "numeric": {
-              value = /^\d{1,2}/.exec(string)?.[0];
+              value = /^\d{1,2}/.exec(string)?.[0] as string;
               break;
             }
             case "2-digit": {
-              value = /^\d{2}/.exec(string)?.[0];
+              value = /^\d{2}/.exec(string)?.[0] as string;
               break;
             }
             default:
@@ -323,11 +324,11 @@ export class DateTimeFormatter {
         case "minute": {
           switch (token.value) {
             case "numeric": {
-              value = /^\d{1,2}/.exec(string)?.[0];
+              value = /^\d{1,2}/.exec(string)?.[0] as string;
               break;
             }
             case "2-digit": {
-              value = /^\d{2}/.exec(string)?.[0];
+              value = /^\d{2}/.exec(string)?.[0] as string;
               break;
             }
             default:
@@ -340,11 +341,11 @@ export class DateTimeFormatter {
         case "second": {
           switch (token.value) {
             case "numeric": {
-              value = /^\d{1,2}/.exec(string)?.[0];
+              value = /^\d{1,2}/.exec(string)?.[0] as string;
               break;
             }
             case "2-digit": {
-              value = /^\d{2}/.exec(string)?.[0];
+              value = /^\d{2}/.exec(string)?.[0] as string;
               break;
             }
             default:
@@ -355,24 +356,25 @@ export class DateTimeFormatter {
           break;
         }
         case "fractionalSecond": {
-          value = new RegExp(`^\\d{${token.value}}`).exec(string)?.[0];
+          value = new RegExp(`^\\d{${token.value}}`).exec(string)
+            ?.[0] as string;
           break;
         }
         case "timeZoneName": {
-          value = token.value;
+          value = token.value as string;
           break;
         }
         case "dayPeriod": {
-          value = /^(A|P)M/.exec(string)?.[0];
+          value = /^(A|P)M/.exec(string)?.[0] as string;
           break;
         }
         case "literal": {
-          if (!string.startsWith(token.value)) {
+          if (!string.startsWith(token.value as string)) {
             throw Error(
               `Literal "${token.value}" not found "${string.slice(0, 25)}"`,
             );
           }
-          value = token.value;
+          value = token.value as string;
           break;
         }
 
@@ -380,7 +382,6 @@ export class DateTimeFormatter {
           throw Error(`${token.type} ${token.value}`);
       }
 
-      parts.push({ type, value });
       if (!value) {
         throw Error(
           `value not valid for token { ${type} ${value} } ${
@@ -388,6 +389,7 @@ export class DateTimeFormatter {
           }`,
         );
       }
+      parts.push({ type, value });
       string = string.slice(value.length);
     }
 
@@ -400,7 +402,7 @@ export class DateTimeFormatter {
     return parts;
   }
 
-  partsToDate(parts: DateTimeFormatPart[]) {
+  partsToDate(parts: DateTimeFormatPart[]): Date {
     const date = new Date();
     const utc = parts.find((part) =>
       part.type === "timeZoneName" && part.value === "UTC"
@@ -426,7 +428,7 @@ export class DateTimeFormatter {
         }
         case "hour": {
           let value = Number(part.value);
-          const dayPeriod = parts.find((part: any) =>
+          const dayPeriod = parts.find((part: DateTimeFormatPart) =>
             part.type === "dayPeriod"
           );
           if (dayPeriod?.value === "PM") value += 12;
@@ -453,7 +455,7 @@ export class DateTimeFormatter {
     return date;
   }
 
-  parse(string: string) {
+  parse(string: string): Date {
     const parts = this.parseToParts(string);
     return this.partsToDate(parts);
   }

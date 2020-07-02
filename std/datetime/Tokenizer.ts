@@ -1,11 +1,16 @@
-export type CallbackFunction = (match: RegExpExecArray) => any;
-
-export interface Token {
+export type Token = {
   type: string;
-  value: any;
+  value: string | number;
   input: string;
   index: number;
+};
+
+interface ReceiverResult {
+  [name: string]: string | number;
 }
+type CallbackFunction = (
+  match: RegExpExecArray,
+) => { type: string; value: string | number };
 
 export interface Rule {
   test: RegExp;
@@ -24,7 +29,10 @@ export class Tokenizer {
     return this;
   }
 
-  tokenize(string: string, receiver = (token: Token): any => token): any[] {
+  tokenize(
+    string: string,
+    receiver = (token: Token): { [name: string]: string | number } => token,
+  ): ReceiverResult[] {
     let index = 0;
 
     const next = () => {
@@ -34,14 +42,17 @@ export class Tokenizer {
           const value = match[0];
           index += value.length;
           string = string.slice(match[0].length);
-          return receiver({ ...rule.fn(match), input: value, index });
+          const token = { ...rule.fn(match), input: value, index };
+          return receiver(token);
         }
       }
+      return null;
     };
 
     const tokens = [];
 
-    for (let token; token = next();) tokens.push(token);
+    let token;
+    while (!!(token = next())) tokens.push(token);
 
     if (string.length) {
       throw new Error(
