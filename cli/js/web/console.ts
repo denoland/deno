@@ -105,11 +105,11 @@ function inspectIterable<T>(
   value: IterableEntries<T>,
   ctx: ConsoleContext,
   level: number,
-  config: InspectIterableOptions<T>,
+  options: InspectIterableOptions<T>,
   inspectOptions: Required<InspectOptions>
 ): string {
   if (level >= inspectOptions.depth) {
-    return cyan(`[${config.typeName}]`);
+    return cyan(`[${options.typeName}]`);
   }
   ctx.add(value);
 
@@ -123,15 +123,20 @@ function inspectIterable<T>(
   for (const el of iter) {
     if (entriesLength < inspectOptions.iterableLimit) {
       entries.push(
-        // FIXME
-        config.entryHandler(el, ctx, level + 1, inspectOptions, next.bind(iter))
+        options.entryHandler(
+          el,
+          ctx,
+          level + 1,
+          inspectOptions,
+          next.bind(iter)
+        )
       );
     }
     entriesLength++;
   }
   ctx.delete(value);
 
-  if (config.sort) {
+  if (options.sort) {
     entries.sort();
   }
 
@@ -140,7 +145,7 @@ function inspectIterable<T>(
     entries.push(`... ${nmore} more items`);
   }
 
-  const iPrefix = `${config.displayName ? config.displayName + " " : ""}`;
+  const iPrefix = `${options.displayName ? options.displayName + " " : ""}`;
 
   const initIndentation = `\n${DEFAULT_INDENT.repeat(level + 1)}`;
   const entryIndentation = `,\n${DEFAULT_INDENT.repeat(level + 1)}`;
@@ -149,7 +154,7 @@ function inspectIterable<T>(
   }\n${DEFAULT_INDENT.repeat(level)}`;
 
   let iContent: string;
-  if (config.group && entries.length > MIN_GROUP_LENGTH) {
+  if (options.group && entries.length > MIN_GROUP_LENGTH) {
     const groups = groupEntries(entries, level, value);
     iContent = `${initIndentation}${groups.join(
       entryIndentation
@@ -166,7 +171,7 @@ function inspectIterable<T>(
     }
   }
 
-  return `${iPrefix}${config.delims[0]}${iContent}${config.delims[1]}`;
+  return `${iPrefix}${options.delims[0]}${iContent}${options.delims[1]}`;
 }
 
 // Ported from Node.js
@@ -367,7 +372,7 @@ function inspectArray(
   level: number,
   inspectOptions: Required<InspectOptions>
 ): string {
-  const printConfig: InspectIterableOptions<unknown> = {
+  const options: InspectIterableOptions<unknown> = {
     typeName: "Array",
     displayName: "",
     delims: ["[", "]"],
@@ -390,7 +395,7 @@ function inspectArray(
     group: !inspectOptions.alwaysWrap,
     sort: false,
   };
-  return inspectIterable(value, ctx, level, printConfig, inspectOptions);
+  return inspectIterable(value, ctx, level, options, inspectOptions);
 }
 
 function inspectTypedArray(
@@ -401,7 +406,7 @@ function inspectTypedArray(
   inspectOptions: Required<InspectOptions>
 ): string {
   const valueLength = value.length;
-  const printConfig: InspectIterableOptions<unknown> = {
+  const options: InspectIterableOptions<unknown> = {
     typeName: typedArrayName,
     displayName: `${typedArrayName}(${valueLength})`,
     delims: ["[", "]"],
@@ -412,7 +417,7 @@ function inspectTypedArray(
     group: !inspectOptions.alwaysWrap,
     sort: false,
   };
-  return inspectIterable(value, ctx, level, printConfig, inspectOptions);
+  return inspectIterable(value, ctx, level, options, inspectOptions);
 }
 
 function inspectSet(
@@ -421,7 +426,7 @@ function inspectSet(
   level: number,
   inspectOptions: Required<InspectOptions>
 ): string {
-  const printConfig: InspectIterableOptions<unknown> = {
+  const options: InspectIterableOptions<unknown> = {
     typeName: "Set",
     displayName: "Set",
     delims: ["{", "}"],
@@ -432,7 +437,7 @@ function inspectSet(
     group: false,
     sort: inspectOptions.sortKeys,
   };
-  return inspectIterable(value, ctx, level, printConfig, inspectOptions);
+  return inspectIterable(value, ctx, level, options, inspectOptions);
 }
 
 function inspectMap(
@@ -441,7 +446,7 @@ function inspectMap(
   level: number,
   inspectOptions: Required<InspectOptions>
 ): string {
-  const printConfig: InspectIterableOptions<[unknown]> = {
+  const options: InspectIterableOptions<[unknown]> = {
     typeName: "Map",
     displayName: "Map",
     delims: ["{", "}"],
@@ -462,7 +467,7 @@ function inspectMap(
     value as any,
     ctx,
     level,
-    printConfig,
+    options,
     inspectOptions
   );
 }
