@@ -133,7 +133,7 @@ export function equal(c: unknown, d: unknown): boolean {
   })(c, d);
 }
 
-/** Make an assertion, if not `true`, then throw. */
+/** Make an assertion, error will be thrown if `expr` does not have truthy value. */
 export function assert(expr: unknown, msg = ""): asserts expr {
   if (!expr) {
     throw new AssertionError(msg);
@@ -143,7 +143,19 @@ export function assert(expr: unknown, msg = ""): asserts expr {
 /**
  * Make an assertion that `actual` and `expected` are equal, deeply. If not
  * deeply equal, then throw.
+ *
+ * Type parameter can be specified to ensure values under comparison have the same type.
+ * For example:
+ *```ts
+ *assertEquals<number>(1, 2)
+ *```
  */
+export function assertEquals(
+  actual: unknown,
+  expected: unknown,
+  msg?: string
+): void;
+export function assertEquals<T>(actual: T, expected: T, msg?: string): void;
 export function assertEquals(
   actual: unknown,
   expected: unknown,
@@ -174,7 +186,19 @@ export function assertEquals(
 /**
  * Make an assertion that `actual` and `expected` are not equal, deeply.
  * If not then throw.
+ *
+ * Type parameter can be specified to ensure values under comparison have the same type.
+ * For example:
+ *```ts
+ *assertNotEquals<number>(1, 2)
+ *```
  */
+export function assertNotEquals(
+  actual: unknown,
+  expected: unknown,
+  msg?: string
+): void;
+export function assertNotEquals<T>(actual: T, expected: T, msg?: string): void;
 export function assertNotEquals(
   actual: unknown,
   expected: unknown,
@@ -204,10 +228,13 @@ export function assertNotEquals(
 /**
  * Make an assertion that `actual` and `expected` are strictly equal.  If
  * not then throw.
+ * ```ts
+ * assertStrictEquals(1, 2)
+ * ```
  */
-export function assertStrictEquals(
-  actual: unknown,
-  expected: unknown,
+export function assertStrictEquals<T>(
+  actual: T,
+  expected: T,
   msg?: string
 ): void {
   if (actual === expected) {
@@ -265,9 +292,25 @@ export function assertStringContains(
 }
 
 /**
- * Make an assertion that `actual` contains the `expected` values
- * If not then thrown.
+ * Make an assertion that `actual` contains the `expected` values.
+ * If not then an error will be thrown.
+ *
+ * Type parameter can be specified to ensure values under comparison have the same type.
+ * For example:
+ *```ts
+ *assertArrayContains<number>([1, 2], [2])
+ *```
  */
+export function assertArrayContains(
+  actual: ArrayLike<unknown>,
+  expected: ArrayLike<unknown>,
+  msg?: string
+): void;
+export function assertArrayContains<T>(
+  actual: ArrayLike<T>,
+  expected: ArrayLike<T>,
+  msg?: string
+): void;
 export function assertArrayContains(
   actual: ArrayLike<unknown>,
   expected: ArrayLike<unknown>,
