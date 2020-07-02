@@ -1562,6 +1562,12 @@ itest!(js_import_detect {
   exit_code: 0,
 });
 
+itest!(lock_write_requires_lock {
+  args: "run --lock-write some_file.ts",
+  output: "lock_write_requires_lock.out",
+  exit_code: 1,
+});
+
 itest!(lock_write_fetch {
   args:
     "run --quiet --allow-read --allow-write --allow-env --allow-run lock_write_fetch.ts",
@@ -1579,6 +1585,13 @@ itest!(lock_check_ok {
 itest_ignore!(lock_check_ok2 {
   args: "run 019_media_types.ts --lock=lock_check_ok2.json",
   output: "019_media_types.ts.out",
+  http_server: true,
+});
+
+itest!(lock_dynamic_imports {
+  args: "run --lock=lock_dynamic_imports.json --allow-read --allow-net http://127.0.0.1:4545/cli/tests/013_dynamic_import.ts",
+  output: "lock_dynamic_imports.out",
+  exit_code: 10,
   http_server: true,
 });
 
