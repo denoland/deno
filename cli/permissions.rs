@@ -695,7 +695,7 @@ mod tests {
       ("tcp://172.16.0.1:8000", false),
       ("https://172.16.0.1:8000", false),
       // Testing issue #6531 (Network permissions check doesn't account for well-known default ports) so we dont regress
-      ("https://www.github.com:443/robots.txt" , true)
+      ("https://www.github.com:443/robots.txt", true),
     ];
 
     for (url_str, is_ok) in url_tests.iter() {
