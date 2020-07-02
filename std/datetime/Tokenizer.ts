@@ -8,9 +8,10 @@ export type Token = {
 interface ReceiverResult {
   [name: string]: string | number;
 }
+export type CallbackResult = { type: string; value: string | number };
 type CallbackFunction = (
   match: RegExpExecArray,
-) => { type: string; value: string | number };
+) => CallbackResult;
 
 export interface Rule {
   test: RegExp;
@@ -24,7 +25,7 @@ export class Tokenizer {
     this.rules = rules;
   }
 
-  addRule(test: RegExp, fn: CallbackFunction) {
+  addRule(test: RegExp, fn: CallbackFunction): Tokenizer {
     this.rules.push({ test, fn });
     return this;
   }
@@ -35,7 +36,7 @@ export class Tokenizer {
   ): ReceiverResult[] {
     let index = 0;
 
-    const next = () => {
+    const next = (): ReceiverResult | null => {
       for (const rule of this.rules) {
         const match = rule.test.exec(string);
         if (match) {

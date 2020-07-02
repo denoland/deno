@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { Tokenizer, Rule } from "./Tokenizer.ts";
+import { Tokenizer, Rule, CallbackResult } from "./Tokenizer.ts";
 
 function digits(value: string | number, count = 2): string {
   return String(value).padStart(count, "0");
@@ -33,36 +33,78 @@ export interface Options {
 
 // according to unicode symbols (http://userguide.icu-project.org/formatparse/datetime)
 const defaultRules = [
-  { test: /^yyyy/, fn: () => ({ type: "year", value: "numeric" }) },
-  { test: /^yy/, fn: () => ({ type: "year", value: "2-digit" }) },
+  {
+    test: /^yyyy/,
+    fn: (): CallbackResult => ({ type: "year", value: "numeric" }),
+  },
+  {
+    test: /^yy/,
+    fn: (): CallbackResult => ({ type: "year", value: "2-digit" }),
+  },
 
-  { test: /^MM/, fn: () => ({ type: "month", value: "2-digit" }) },
-  { test: /^M/, fn: () => ({ type: "month", value: "numeric" }) },
-  { test: /^dd/, fn: () => ({ type: "day", value: "2-digit" }) },
-  { test: /^d/, fn: () => ({ type: "day", value: "numeric" }) },
+  {
+    test: /^MM/,
+    fn: (): CallbackResult => ({ type: "month", value: "2-digit" }),
+  },
+  {
+    test: /^M/,
+    fn: (): CallbackResult => ({ type: "month", value: "numeric" }),
+  },
+  {
+    test: /^dd/,
+    fn: (): CallbackResult => ({ type: "day", value: "2-digit" }),
+  },
+  { test: /^d/, fn: (): CallbackResult => ({ type: "day", value: "numeric" }) },
 
-  { test: /^hh/, fn: () => ({ type: "hour", value: "2-digit" }) },
-  { test: /^h/, fn: () => ({ type: "hour", value: "numeric" }) },
-  { test: /^mm/, fn: () => ({ type: "minute", value: "2-digit" }) },
-  { test: /^m/, fn: () => ({ type: "minute", value: "numeric" }) },
-  { test: /^ss/, fn: () => ({ type: "second", value: "2-digit" }) },
-  { test: /^s/, fn: () => ({ type: "second", value: "numeric" }) },
+  {
+    test: /^hh/,
+    fn: (): CallbackResult => ({ type: "hour", value: "2-digit" }),
+  },
+  {
+    test: /^h/,
+    fn: (): CallbackResult => ({ type: "hour", value: "numeric" }),
+  },
+  {
+    test: /^mm/,
+    fn: (): CallbackResult => ({ type: "minute", value: "2-digit" }),
+  },
+  {
+    test: /^m/,
+    fn: (): CallbackResult => ({ type: "minute", value: "numeric" }),
+  },
+  {
+    test: /^ss/,
+    fn: (): CallbackResult => ({ type: "second", value: "2-digit" }),
+  },
+  {
+    test: /^s/,
+    fn: (): CallbackResult => ({ type: "second", value: "numeric" }),
+  },
   {
     test: /^SSS/,
-    fn: () => ({ type: "fractionalSecond", value: 3 }),
+    fn: (): CallbackResult => ({ type: "fractionalSecond", value: 3 }),
   },
-  { test: /^SS/, fn: () => ({ type: "fractionalSecond", value: 2 }) },
-  { test: /^S/, fn: () => ({ type: "fractionalSecond", value: 1 }) },
+  {
+    test: /^SS/,
+    fn: (): CallbackResult => ({ type: "fractionalSecond", value: 2 }),
+  },
+  {
+    test: /^S/,
+    fn: (): CallbackResult => ({ type: "fractionalSecond", value: 1 }),
+  },
 
   {
     test: /^a/,
-    fn: (match: RegExpExecArray) => ({ type: "dayPeriod", value: match[0] }),
+    fn: (match: RegExpExecArray): CallbackResult => ({
+      type: "dayPeriod",
+      value: match[0],
+    }),
   },
 
   // quoted literal
   {
     test: /^(')(?<value>\\.|[^\']*)\1/,
-    fn: (match: RegExpExecArray) => ({
+    fn: (match: RegExpExecArray): CallbackResult => ({
       type: "literal",
       value: match.groups!.value,
     }),
@@ -70,7 +112,10 @@ const defaultRules = [
   // literal
   {
     test: /^.+?\s*/,
-    fn: (match: RegExpExecArray) => ({ type: "literal", value: match[0] }),
+    fn: (match: RegExpExecArray): CallbackResult => ({
+      type: "literal",
+      value: match[0],
+    }),
   },
 ];
 
@@ -243,7 +288,7 @@ export class DateTimeFormatter {
     for (const token of this.#format) {
       const type = token.type;
 
-      let value: string = "";
+      let value = "";
       switch (token.type) {
         case "year": {
           switch (token.value) {
