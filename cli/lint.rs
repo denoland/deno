@@ -12,11 +12,14 @@ use crate::file_fetcher::map_file_extension;
 use crate::fmt::collect_files;
 use crate::fmt::run_parallelized;
 use crate::fmt_errors;
+use crate::swc_ecma_parser::Syntax;
 use crate::swc_util;
 use deno_core::ErrBox;
 use deno_lint::diagnostic::LintDiagnostic;
 use deno_lint::linter::Linter;
+use deno_lint::linter::LinterBuilder;
 use deno_lint::rules;
+use deno_lint::rules::LintRule;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -73,17 +76,19 @@ pub fn print_rules_list() {
   }
 }
 
-fn create_linter() -> Linter {
-  Linter::new(
-    "deno-lint-ignore-file".to_string(),
-    vec![
-      "deno-lint-ignore".to_string(),
-      "eslint-disable-next-line".to_string(),
-    ],
-    // TODO(bartlomieju): switch to true, once
-    // https://github.com/denoland/deno_lint/issues/156 is fixed
-    false,
-  )
+fn create_linter(syntax: Syntax, rules: Vec<Box<dyn LintRule>>) -> Linter {
+  LinterBuilder::default()
+    .ignore_file_directives(vec!["deno-lint-ignore-file"])
+    .ignore_diagnostic_directives(vec![
+      "deno-lint-ignore",
+      "eslint-disable-next-line",
+    ])
+    .lint_unused_ignore_directives(true)
+    // TODO(bartlomieju): switch to true
+    .lint_unknown_rules(false)
+    .syntax(syntax)
+    .rules(rules)
+    .build()
 }
 
 fn lint_file(file_path: PathBuf) -> Result<Vec<LintDiagnostic>, ErrBox> {
@@ -92,11 +97,10 @@ fn lint_file(file_path: PathBuf) -> Result<Vec<LintDiagnostic>, ErrBox> {
   let media_type = map_file_extension(&file_path);
   let syntax = swc_util::get_syntax_for_media_type(media_type);
 
-  let mut linter = create_linter();
   let lint_rules = rules::get_recommended_rules();
+  let mut linter = create_linter(syntax, lint_rules);
 
-  let file_diagnostics =
-    linter.lint(file_name, source_code, syntax, lint_rules)?;
+  let file_diagnostics = linter.lint(file_name, source_code)?;
 
   Ok(file_diagnostics)
 }

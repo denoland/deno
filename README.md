@@ -24,6 +24,6 @@ specifics.
 
 [Releases](Releases.md)
 
-[Chat](https://discord.gg/TGMHGv6)
+[Chat](https://discord.gg/deno)
 
 [More links](https://github.com/denolib/awesome-deno)
