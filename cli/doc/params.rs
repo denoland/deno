@@ -21,7 +21,7 @@ pub fn ident_to_param_def(ident: &swc_ecma_ast::Ident) -> ParamDef {
 fn rest_pat_to_param_def(rest_pat: &swc_ecma_ast::RestPat) -> ParamDef {
   let name = match &*rest_pat.arg {
     Pat::Ident(ident) => ident.sym.to_string(),
-    _ => "<TODO>".to_string(),
+    _ => "<UNIMPLEMENTED>".to_string(),
   };
   let ts_type = rest_pat.type_ann.as_ref().map(|rt| ts_type_ann_to_def(rt));
 
@@ -40,7 +40,7 @@ fn object_pat_to_param_def(object_pat: &swc_ecma_ast::ObjectPat) -> ParamDef {
     .map(|rt| ts_type_ann_to_def(rt));
 
   ParamDef {
-    name: "".to_string(),
+    name: "<UNIMPLEMENTED>".to_string(),
     kind: ParamKind::Object,
     optional: object_pat.optional,
     ts_type,
@@ -51,7 +51,7 @@ fn array_pat_to_param_def(array_pat: &swc_ecma_ast::ArrayPat) -> ParamDef {
   let ts_type = array_pat.type_ann.as_ref().map(|rt| ts_type_ann_to_def(rt));
 
   ParamDef {
-    name: "".to_string(),
+    name: "<UNIMPLEMENTED>".to_string(),
     kind: ParamKind::Array,
     optional: array_pat.optional,
     ts_type,
