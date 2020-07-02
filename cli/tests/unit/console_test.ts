@@ -1242,7 +1242,7 @@ unitTest(function inspectTrailingComma(): void {
   );
 });
 
-unitTest(function inspectSortKeys(): void {
+unitTest(function inspectAlwaysWrap(): void {
   assertEquals(
     Deno.inspect({ a: 1, b: 2 }, { alwaysWrap: true }),
     `{
