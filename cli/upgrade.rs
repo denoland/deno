@@ -17,6 +17,7 @@ use reqwest::{redirect::Policy, Client};
 use semver_parser::version::parse as semver_parse;
 use semver_parser::version::Version;
 use std::fs;
+use std::fs::File;
 use std::future::Future;
 use std::io::prelude::*;
 use std::path::Path;
@@ -56,8 +57,20 @@ pub async fn upgrade_command(
   dry_run: bool,
   force: bool,
   version: Option<String>,
+  ca_file: Option<String>,
 ) -> Result<(), ErrBox> {
-  let client = Client::builder().redirect(Policy::none()).build()?;
+  let mut client_builder = Client::builder().redirect(Policy::none());
+
+  // If we have been provided a CA Certificate, add it into the HTTP client
+  if let Some(ca_file) = ca_file {
+    let mut buf = Vec::new();
+    File::open(ca_file)?.read_to_end(&mut buf)?;
+    let cert = reqwest::Certificate::from_pem(&buf)?;
+    client_builder = client_builder.add_root_certificate(cert);
+  }
+
+  let client = client_builder.build()?;
+
   let current_version = semver_parse(crate::version::DENO).unwrap();
 
   let install_version = match version {
