@@ -8,8 +8,8 @@ import {
   error,
   critical,
   setup,
+  Logger,
 } from "./mod.ts";
-import { Logger } from "./logger.ts";
 import { BaseHandler } from "./handlers.ts";
 
 class TestHandler extends BaseHandler {
