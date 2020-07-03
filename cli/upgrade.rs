@@ -17,7 +17,6 @@ use reqwest::{redirect::Policy, Client};
 use semver_parser::version::parse as semver_parse;
 use semver_parser::version::Version;
 use std::fs;
-use std::fs::File;
 use std::future::Future;
 use std::io::prelude::*;
 use std::path::Path;
@@ -63,9 +62,8 @@ pub async fn upgrade_command(
 
   // If we have been provided a CA Certificate, add it into the HTTP client
   if let Some(ca_file) = ca_file {
-    let mut buf = Vec::new();
-    File::open(ca_file)?.read_to_end(&mut buf)?;
-    let cert = reqwest::Certificate::from_pem(&buf)?;
+    let buf = std::fs::read(ca_file);
+    let cert = reqwest::Certificate::from_pem(&buf.unwrap())?;
     client_builder = client_builder.add_root_certificate(cert);
   }
 
