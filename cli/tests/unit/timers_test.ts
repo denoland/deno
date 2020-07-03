@@ -367,23 +367,27 @@ unitTest(function testQueueMicrotask() {
   assertEquals(typeof queueMicrotask, "function");
 });
 
-unitTest(async function testTimerIgnoresDateOverride(): Promise<void> {
+unitTest(async function timerIgnoresDateOverride(): Promise<void> {
   const OriginalDate = Date;
   const { promise, resolve, reject } = deferred();
   let hasThrown = 0;
   try {
-    globalThis.Date = {
-      now: () => {
-        reject("global Date override used over original Date object");
-        return 0;
-      },
-    } as DateConstructor;
-    setTimeout(() => resolve(), 1);
+    const overrideCalled: () => number = () => {
+      reject("global Date override used over original Date object");
+      return 0;
+    };
+    function DateOverride(): void {
+      overrideCalled();
+    }
+    globalThis.Date = DateOverride as DateConstructor;
+    globalThis.Date.now = overrideCalled;
+    globalThis.Date.UTC = overrideCalled;
+    globalThis.Date.parse = overrideCalled;
+    queueMicrotask(resolve);
     await promise;
     hasThrown = 1;
   } catch (err) {
     if (typeof err === "string") {
-      globalThis.Date = OriginalDate;
       assertEquals(err, "global Date override used over original Date object");
       hasThrown = 2;
     } else if (err instanceof TypeError) {
