@@ -4,22 +4,63 @@ Simple helper to help parse date strings into `Date`, with additional functions.
 
 ## Usage
 
-### parseDate / parseDateTime
+The following symbols are supported:
 
-- `parseDate()` - Take an input string and a format to parse the date. Supported
-  formats are exported in `DateFormat`.
-- `parseDateTime()` - Take an input string and a format to parse the dateTime.
-  Supported formats are exported in `DateTimeFormat`.
+- `yyyy` - numeric year
+- `yy` - 2-digit year
+- `M` - numeric month
+- `MM` - 2-digit month
+- `d` - numeric day
+- `dd` - 2-digit day
+
+- `h` - numeric hour
+- `hh` - 2-digit hour
+- `m` - numeric minute
+- `mm` - 2-digit minute
+- `s` - numeric second
+- `ss` - 2-digit second
+- `S` - 1-digit fractionalSecond
+- `SS` - 2-digit fractionalSecond
+- `SSS` - 3-digit fractionalSecond
+
+- `a` - dayPeriod, either `AM` or `PM`
+
+- `'foo'` - quoted literal
+- `./-` - unquoted literal
+
+### parse
+
+Takes an input `string` and a `formatString` to parse to a `date`.
 
 ```ts
-import { parseDate, parseDateTime } from 'https://deno.land/std/datetime/mod.ts'
+import { parse } from 'https://deno.land/std/datetime/mod.ts'
 
-parseDate("20-01-2019", "dd-mm-yyyy") // output : new Date(2019, 0, 20)
-parseDate("2019-01-20", "yyyy-mm-dd") // output : new Date(2019, 0, 20)
+parse("20-01-2019", "dd-MM-yyyy") // output : new Date(2019, 0, 20)
+parse("2019-01-20", "yyyy-MM-dd") // output : new Date(2019, 0, 20)
+parse("2019-01-20", "dd.MM.yyyy") // output : new Date(2019, 0, 20)
+parse("01-20-2019 16:34", "MM-dd-yyyy hh:mm") // output : new Date(2019, 0, 20, 16, 34)
+parse("01-20-2019 04:34 PM", "MM-dd-yyyy hh:mm a") // output : new Date(2019, 0, 20, 16, 34)
+parse("16:34 01-20-2019", "hh:mm MM-dd-yyyy") // output : new Date(2019, 0, 20, 16, 34)
+parse("01-20-2019 16:34:23.123", "MM-dd-yyyy hh:mm:ss.SSS") // output : new Date(2019, 0, 20, 16, 34, 23, 123)
 ...
+```
 
-parseDateTime("01-20-2019 16:34", "mm-dd-yyyy hh:mm") // output : new Date(2019, 0, 20, 16, 34)
-parseDateTime("16:34 01-20-2019", "hh:mm mm-dd-yyyy") // output : new Date(2019, 0, 20, 16, 34)
+### format
+
+Takes an input `date` and a `formatString` to format to a `string`.
+
+```ts
+import { format } from 'https://deno.land/std/datetime/mod.ts'
+
+format(new Date(2019, 0, 20), "dd-MM-yyyy") // output : "20-01-2019"
+format(new Date(2019, 0, 20), "yyyy-MM-dd") // output : "2019-01-20"
+format(new Date(2019, 0, 20), "dd.MM.yyyy") // output : "2019-01-20"
+format(new Date(2019, 0, 20, 16, 34), "MM-dd-yyyy hh:mm") // output : "01-20-2019 16:34"
+format(new Date(2019, 0, 20, 16, 34), "MM-dd-yyyy hh:mm a") // output : "01-20-2019 04:34 PM"
+format(new Date(2019, 0, 20, 16, 34), "hh:mm MM-dd-yyyy") // output : "16:34 01-20-2019"
+format(new Date(2019, 0, 20, 16, 34, 23, 123), "MM-dd-yyyy hh:mm:ss.SSS") // output : "01-20-2019 16:34:23.123"
+format(new Date(2019, 0, 20), "'today:' yyyy-MM-dd") // output : "today: 2019-01-20"
+
 ...
 ```
 
