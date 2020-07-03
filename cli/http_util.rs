@@ -351,6 +351,7 @@ mod tests {
     let client = create_http_client(None).unwrap();
     let result = fetch_once(client, &url, None).await;
     if let Ok(FetchOnceResult::Redirect(url, _)) = result {
+      eprintln!("redirect url {:#?}", url);
       assert_eq!(url, target_url);
     } else {
       panic!();
