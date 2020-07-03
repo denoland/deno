@@ -140,19 +140,6 @@ fn write_to_stdout_ignore_sigpipe(bytes: &[u8]) -> Result<(), std::io::Error> {
   }
 }
 
-fn write_lockfile(global_state: GlobalState) -> Result<(), std::io::Error> {
-  if global_state.flags.lock_write {
-    if let Some(ref lockfile) = global_state.lockfile {
-      let g = lockfile.lock().unwrap();
-      g.write()?;
-    } else {
-      eprintln!("--lock flag must be specified when using --lock-write");
-      std::process::exit(11);
-    }
-  }
-  Ok(())
-}
-
 fn print_cache_info(state: &GlobalState) {
   println!(
     "{} {:?}",
@@ -355,8 +342,6 @@ async fn cache_command(flags: Flags, files: Vec<String>) -> Result<(), ErrBox> {
     let specifier = ModuleSpecifier::resolve_url_or_path(&file)?;
     worker.preload_module(&specifier).await.map(|_| ())?;
   }
-
-  write_lockfile(global_state)?;
 
   Ok(())
 }
@@ -606,7 +591,6 @@ async fn run_command(flags: Flags, script: String) -> Result<(), ErrBox> {
 
   debug!("main_module {}", main_module);
   worker.execute_module(&main_module).await?;
-  write_lockfile(global_state)?;
   worker.execute("window.dispatchEvent(new Event('load'))")?;
   (&mut *worker).await?;
   worker.execute("window.dispatchEvent(new Event('unload'))")?;

@@ -74,9 +74,9 @@ impl GlobalState {
       dir.gen_cache.clone(),
     )?;
 
-    // Note: reads lazily from disk on first call to lockfile.check()
     let lockfile = if let Some(filename) = &flags.lock {
-      Some(Mutex::new(Lockfile::new(filename.to_string())))
+      let lockfile = Lockfile::new(filename.to_string(), flags.lock_write)?;
+      Some(Mutex::new(lockfile))
     } else {
       None
     };
@@ -142,8 +142,26 @@ impl GlobalState {
       .fetch_cached_source_file(&module_specifier, permissions.clone())
       .expect("Source file not found");
 
-    // Check if we need to compile files.
     let module_graph_files = module_graph.values().collect::<Vec<_>>();
+    // Check integrity of every file in module graph
+    if let Some(ref lockfile) = self.lockfile {
+      let mut g = lockfile.lock().unwrap();
+
+      for graph_file in &module_graph_files {
+        let check_passed =
+          g.check_or_insert(&graph_file.url, &graph_file.source_code);
+
+        if !check_passed {
+          eprintln!(
+            "Subresource integrity check failed --lock={}\n{}",
+            g.filename, graph_file.url
+          );
+          std::process::exit(10);
+        }
+      }
+    }
+
+    // Check if we need to compile files.
     let should_compile = needs_compilation(
       self.ts_compiler.compile_js,
       out.media_type,
@@ -165,6 +183,11 @@ impl GlobalState {
         .await?;
     }
 
+    if let Some(ref lockfile) = self.lockfile {
+      let g = lockfile.lock().unwrap();
+      g.write()?;
+    }
+
     drop(compile_lock);
 
     Ok(())
@@ -181,7 +204,6 @@ impl GlobalState {
     _maybe_referrer: Option<ModuleSpecifier>,
   ) -> Result<CompiledModule, ErrBox> {
     let state1 = self.clone();
-    let state2 = self.clone();
     let module_specifier = module_specifier.clone();
 
     let out = self
@@ -222,24 +244,6 @@ impl GlobalState {
 
     drop(compile_lock);
 
-    if let Some(ref lockfile) = state2.lockfile {
-      let mut g = lockfile.lock().unwrap();
-      if state2.flags.lock_write {
-        g.insert(&out.url, out.source_code);
-      } else {
-        let check = match g.check(&out.url, out.source_code) {
-          Err(e) => return Err(ErrBox::from(e)),
-          Ok(v) => v,
-        };
-        if !check {
-          eprintln!(
-            "Subresource integrity check failed --lock={}\n{}",
-            g.filename, compiled_module.name
-          );
-          std::process::exit(10);
-        }
-      }
-    }
     Ok(compiled_module)
   }
 

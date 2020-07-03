@@ -412,6 +412,17 @@ Deno.test({
   },
 });
 
+Deno.test({
+  name: "assert* functions with specified type paratemeter",
+  fn(): void {
+    assertEquals<string>("hello", "hello");
+    assertNotEquals<number>(1, 2);
+    assertArrayContains<boolean>([true, false], [true]);
+    const value = { x: 1 };
+    assertStrictEquals<typeof value>(value, value);
+  },
+});
+
 Deno.test("Assert Throws Non-Error Fail", () => {
   assertThrows(
     () => {
