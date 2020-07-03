@@ -48,6 +48,7 @@ def tcp(deno_exe, megs):
         return end - start
     finally:
         echo_server.kill()
+        echo_server.wait()
 
 
 def main():
