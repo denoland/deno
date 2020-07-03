@@ -11,6 +11,7 @@ import { assert } from "../_util/assert.ts";
 import { LevelName } from "./levels.ts";
 
 export { LogLevels } from "./levels.ts";
+export { Logger } from "./logger.ts";
 
 export class LoggerConfig {
   level?: LevelName;
