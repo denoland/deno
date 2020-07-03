@@ -12,11 +12,10 @@ import json
 import time
 import tempfile
 import subprocess
-from util import build_path, executable_suffix, root_path, run, run_output
+from util import build_path, executable_suffix, root_path, run, run_output, build_mode
 import third_party
 from http_benchmark import http_benchmark
 import throughput_benchmark
-import http_server
 
 # The list of the tuples of the benchmark name, arguments and return code
 exec_time_benchmarks = [
@@ -239,7 +238,8 @@ def main():
     build_dir = build_path()
     sha1 = run_output(["git", "rev-parse", "HEAD"],
                       exit_on_fail=True).out.strip()
-    http_server.spawn()
+    server_cmd = os.path.join("target", build_mode(), "test_server")
+    p = subprocess.Popen([server_cmd])
 
     deno_exe = os.path.join(build_dir, "deno")
 
@@ -273,6 +273,8 @@ def main():
     print "===== </BENCHMARK RESULTS>"
 
     write_json(os.path.join(build_dir, "bench.json"), new_data)
+    p.kill()
+    p.wait()
 
 
 if __name__ == '__main__':
