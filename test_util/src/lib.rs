@@ -393,6 +393,7 @@ impl<'a> Drop for HttpServerGuard<'a> {
     match self.test_server.try_wait() {
       Ok(None) => {
         self.test_server.kill().expect("failed to kill test_server");
+        let _ = self.test_server.wait();
       }
       Ok(Some(status)) => panic!("test_server exited unexpectedly {}", status),
       Err(e) => panic!("test_server error: {}", e),
