@@ -42,7 +42,6 @@ lazy_static! {
   ).unwrap();
 
   static ref GUARD: Mutex<()> = Mutex::new(());
-  static ref SERVER_GUARD: Mutex<Option<Child>> = Mutex::new(None);
 }
 
 pub fn root_path() -> PathBuf {
@@ -386,60 +385,32 @@ fn custom_headers(path: warp::path::Peek, f: warp::fs::File) -> Box<dyn Reply> {
 pub struct HttpServerGuard<'a> {
   #[allow(dead_code)]
   g: MutexGuard<'a, ()>,
-  // test_server: Child,
-}
-
-fn kill_test_server(test_server: &mut Child) {
-  match test_server.try_wait() {
-    Ok(None) => {
-      test_server.kill().expect("failed to kill test_server");
-    }
-    Ok(Some(status)) => panic!("test_server exited unexpectedly {}", status),
-    Err(e) => panic!("test_server error: {}", e),
-  }
+  test_server: Child,
 }
 
 impl<'a> Drop for HttpServerGuard<'a> {
   fn drop(&mut self) {
-    let r = SERVER_GUARD.lock();
-    let mut maybe_test_server = if let Err(poison_err) = r {
-      // If panics happened, ignore it. This is for tests.
-      poison_err.into_inner()
-    } else {
-      r.unwrap()
-    };
-
-    let test_server = maybe_test_server
-      .as_mut()
-      .expect("SERVER_GUARD should hold Some(child)");
-    kill_test_server(test_server);
-    *maybe_test_server = None;
+    match self.test_server.try_wait() {
+      Ok(None) => {
+        self.test_server.kill().expect("failed to kill test_server");
+      }
+      Ok(Some(status)) => panic!("test_server exited unexpectedly {}", status),
+      Err(e) => panic!("test_server error: {}", e),
+    }
   }
 }
 
 /// Starts target/debug/test_server when the returned guard is dropped, the server
 /// will be killed.
 pub fn http_server<'a>() -> HttpServerGuard<'a> {
+  // TODO(bartlomieju) Allow tests to use the http server in parallel.
   let r = GUARD.lock();
-
   let g = if let Err(poison_err) = r {
     // If panics happened, ignore it. This is for tests.
     poison_err.into_inner()
   } else {
     r.unwrap()
   };
-
-  let r = SERVER_GUARD.lock();
-  let mut maybe_test_server = if let Err(poison_err) = r {
-    // If panics happened, ignore it. This is for tests.
-    poison_err.into_inner()
-  } else {
-    r.unwrap()
-  };
-
-  if let Some(test_server) = maybe_test_server.as_mut() {
-    kill_test_server(test_server);
-  }
 
   println!("test_server starting...");
   let mut test_server = Command::new(test_server_path())
@@ -461,8 +432,7 @@ pub fn http_server<'a>() -> HttpServerGuard<'a> {
     }
   }
 
-  *maybe_test_server = Some(test_server);
-  HttpServerGuard { g }
+  HttpServerGuard { test_server, g }
 }
 
 /// Helper function to strip ansi codes.
