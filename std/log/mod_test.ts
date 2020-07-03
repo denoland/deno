@@ -9,6 +9,8 @@ import {
   critical,
   setup,
   Logger,
+  LogLevels,
+  LevelName,
 } from "./mod.ts";
 import { BaseHandler } from "./handlers.ts";
 
@@ -87,5 +89,59 @@ Deno.test({
     getLogger("tasks").error("world");
     assertEquals(consoleHandler.messages[0], "DEBUG hello");
     assertEquals(anotherConsoleHandler.messages[0], "[tasks] ERROR world");
+  },
+});
+
+Deno.test({
+  name: "Loggers have level and levelName to get/set loglevels",
+  async fn() {
+    const testHandler = new TestHandler("DEBUG");
+    await setup({
+      handlers: {
+        test: testHandler,
+      },
+
+      loggers: {
+        // configure default logger available via short-hand methods above
+        default: {
+          level: "DEBUG",
+          handlers: ["test"],
+        },
+      },
+    });
+    const logger: Logger = getLogger();
+    assertEquals(logger.levelName, "DEBUG");
+    assertEquals(logger.level, LogLevels.DEBUG);
+
+    logger.debug("debug");
+    logger.error("error");
+    logger.critical("critical");
+    assertEquals(testHandler.messages.length, 3);
+    assertEquals(testHandler.messages[0], "DEBUG debug");
+    assertEquals(testHandler.messages[1], "ERROR error");
+    assertEquals(testHandler.messages[2], "CRITICAL critical");
+
+    testHandler.messages = [];
+    logger.level = LogLevels.WARNING;
+    assertEquals(logger.levelName, "WARNING");
+    assertEquals(logger.level, LogLevels.WARNING);
+
+    logger.debug("debug2");
+    logger.error("error2");
+    logger.critical("critical2");
+    assertEquals(testHandler.messages.length, 2);
+    assertEquals(testHandler.messages[0], "ERROR error2");
+    assertEquals(testHandler.messages[1], "CRITICAL critical2");
+
+    testHandler.messages = [];
+    logger.levelName = "CRITICAL";
+    assertEquals(logger.levelName, "CRITICAL");
+    assertEquals(logger.level, LogLevels.CRITICAL);
+
+    logger.debug("debug3");
+    logger.error("error3");
+    logger.critical("critical3");
+    assertEquals(testHandler.messages.length, 1);
+    assertEquals(testHandler.messages[0], "CRITICAL critical3");
   },
 });
