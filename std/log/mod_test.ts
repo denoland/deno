@@ -145,3 +145,31 @@ Deno.test({
     assertEquals(testHandler.messages[0], "CRITICAL critical3");
   },
 });
+
+Deno.test({
+  name: "Loggers have loggerName to get logger name",
+  async fn() {
+    const testHandler = new TestHandler("DEBUG");
+    await setup({
+      handlers: {
+        test: testHandler,
+      },
+
+      loggers: {
+        namedA: {
+          level: "DEBUG",
+          handlers: ["test"],
+        },
+        namedB: {
+          level: "DEBUG",
+          handlers: ["test"],
+        },
+      },
+    });
+
+    assertEquals(getLogger("namedA").loggerName, "namedA");
+    assertEquals(getLogger("namedB").loggerName, "namedB");
+    assertEquals(getLogger().loggerName, "default");
+    assertEquals(getLogger("nonsetupname").loggerName, "nonsetupname");
+  },
+});
