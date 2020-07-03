@@ -1,26 +1,40 @@
 use serde_json::json;
 pub use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::io::Result;
-use url::Url;
 
 pub struct Lockfile {
-  need_read: bool,
-  map: HashMap<String, String>,
+  write: bool,
+  map: BTreeMap<String, String>,
   pub filename: String,
 }
 
 impl Lockfile {
-  pub fn new(filename: String) -> Lockfile {
-    Lockfile {
-      map: HashMap::new(),
+  pub fn new(filename: String, write: bool) -> Result<Lockfile> {
+    debug!("lockfile \"{}\", write: {}", filename, write);
+
+    let map = if write {
+      BTreeMap::new()
+    } else {
+      let s = std::fs::read_to_string(&filename)?;
+      serde_json::from_str(&s)?
+    };
+
+    Ok(Lockfile {
+      write,
+      map,
       filename,
-      need_read: true,
-    }
+    })
   }
 
+  // Synchronize lock file to disk - noop if --lock-write file is not specified.
   pub fn write(&self) -> Result<()> {
-    let j = json!(self.map);
+    if !self.write {
+      return Ok(());
+    }
+    // Will perform sort so output is deterministic
+    let map: BTreeMap<_, _> = self.map.iter().collect();
+    let j = json!(map);
     let s = serde_json::to_string_pretty(&j).unwrap();
     let mut f = std::fs::OpenOptions::new()
       .write(true)
@@ -33,40 +47,35 @@ impl Lockfile {
     Ok(())
   }
 
-  pub fn read(&mut self) -> Result<()> {
-    debug!("lockfile read {}", self.filename);
-    let s = std::fs::read_to_string(&self.filename)?;
-    self.map = serde_json::from_str(&s)?;
-    self.need_read = false;
-    Ok(())
+  pub fn check_or_insert(&mut self, specifier: &str, code: &str) -> bool {
+    if self.write {
+      // In case --lock-write is specified check always passes
+      self.insert(specifier, code);
+      true
+    } else {
+      self.check(specifier, code)
+    }
   }
 
-  /// Lazily reads the filename, checks the given module is included.
-  /// Returns Ok(true) if check passed
-  pub fn check(&mut self, url: &Url, code: Vec<u8>) -> Result<bool> {
-    let url_str = url.to_string();
-    if url_str.starts_with("file:") {
-      return Ok(true);
+  /// Checks the given module is included.
+  /// Returns Ok(true) if check passed.
+  fn check(&mut self, specifier: &str, code: &str) -> bool {
+    if specifier.starts_with("file:") {
+      return true;
     }
-    if self.need_read {
-      self.read()?;
-    }
-    assert!(!self.need_read);
-    Ok(if let Some(lockfile_checksum) = self.map.get(&url_str) {
-      let compiled_checksum = crate::checksum::gen(vec![&code]);
+    if let Some(lockfile_checksum) = self.map.get(specifier) {
+      let compiled_checksum = crate::checksum::gen(&[code.as_bytes()]);
       lockfile_checksum == &compiled_checksum
     } else {
       false
-    })
+    }
   }
 
-  // Returns true if module was not already inserted.
-  pub fn insert(&mut self, url: &Url, code: Vec<u8>) -> bool {
-    let url_str = url.to_string();
-    if url_str.starts_with("file:") {
-      return false;
+  fn insert(&mut self, specifier: &str, code: &str) {
+    if specifier.starts_with("file:") {
+      return;
     }
-    let checksum = crate::checksum::gen(vec![&code]);
-    self.map.insert(url_str, checksum).is_none()
+    let checksum = crate::checksum::gen(&[code.as_bytes()]);
+    self.map.insert(specifier.to_string(), checksum);
   }
 }

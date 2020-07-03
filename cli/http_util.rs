@@ -121,7 +121,7 @@ pub fn fetch_once(
     if let Some(warning) = headers.get("X-Deno-Warning") {
       eprintln!(
         "{} {}",
-        crate::colors::yellow("Warning".to_string()),
+        crate::colors::yellow("Warning"),
         warning.to_str().unwrap()
       );
     }

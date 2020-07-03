@@ -21,7 +21,7 @@
 import { notImplemented } from "./_utils.ts";
 import { validateIntegerRange } from "./util.ts";
 import { EOL as fsEOL } from "../fs/eol.ts";
-import { process } from "./process.ts";
+import process from "./process.ts";
 
 const SEE_GITHUB_ISSUE = "See https://github.com/denoland/deno/issues/3802";
 

@@ -328,13 +328,13 @@ export async function runBenchmarks(
   if (!silent) {
     // Closing results
     console.log(
-      `benchmark result: ${!!failError ? red("FAIL") : blue("DONE")}. ` +
+      `benchmark result: ${failError ? red("FAIL") : blue("DONE")}. ` +
         `${progress.results.length} measured; ${filtered} filtered`
     );
   }
 
   // Throw error if there was a failing benchmark
-  if (!!failError) {
+  if (failError) {
     throw failError;
   }
 

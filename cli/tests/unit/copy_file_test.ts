@@ -1,5 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { unitTest, assert, assertEquals } from "./test_util.ts";
+import {
+  unitTest,
+  assertEquals,
+  assertThrows,
+  assertThrowsAsync,
+} from "./test_util.ts";
 
 function readFileString(filename: string | URL): string {
   const dataRead = Deno.readFileSync(filename);
@@ -67,14 +72,9 @@ unitTest(
     const fromFilename = tempDir + "/from.txt";
     const toFilename = tempDir + "/to.txt";
     // We skip initial writing here, from.txt does not exist
-    let err;
-    try {
+    assertThrows(() => {
       Deno.copyFileSync(fromFilename, toFilename);
-    } catch (e) {
-      err = e;
-    }
-    assert(!!err);
-    assert(err instanceof Deno.errors.NotFound);
+    }, Deno.errors.NotFound);
 
     Deno.removeSync(tempDir, { recursive: true });
   }
@@ -83,28 +83,18 @@ unitTest(
 unitTest(
   { perms: { write: true, read: false } },
   function copyFileSyncPerm1(): void {
-    let caughtError = false;
-    try {
+    assertThrows(() => {
       Deno.copyFileSync("/from.txt", "/to.txt");
-    } catch (e) {
-      caughtError = true;
-      assert(e instanceof Deno.errors.PermissionDenied);
-    }
-    assert(caughtError);
+    }, Deno.errors.PermissionDenied);
   }
 );
 
 unitTest(
   { perms: { write: false, read: true } },
   function copyFileSyncPerm2(): void {
-    let caughtError = false;
-    try {
+    assertThrows(() => {
       Deno.copyFileSync("/from.txt", "/to.txt");
-    } catch (e) {
-      caughtError = true;
-      assert(e instanceof Deno.errors.PermissionDenied);
-    }
-    assert(caughtError);
+    }, Deno.errors.PermissionDenied);
   }
 );
 
@@ -172,14 +162,9 @@ unitTest(
     const fromFilename = tempDir + "/from.txt";
     const toFilename = tempDir + "/to.txt";
     // We skip initial writing here, from.txt does not exist
-    let err;
-    try {
+    await assertThrowsAsync(async () => {
       await Deno.copyFile(fromFilename, toFilename);
-    } catch (e) {
-      err = e;
-    }
-    assert(!!err);
-    assert(err instanceof Deno.errors.NotFound);
+    }, Deno.errors.NotFound);
 
     Deno.removeSync(tempDir, { recursive: true });
   }
@@ -207,27 +192,17 @@ unitTest(
 unitTest(
   { perms: { read: false, write: true } },
   async function copyFilePerm1(): Promise<void> {
-    let caughtError = false;
-    try {
+    await assertThrowsAsync(async () => {
       await Deno.copyFile("/from.txt", "/to.txt");
-    } catch (e) {
-      caughtError = true;
-      assert(e instanceof Deno.errors.PermissionDenied);
-    }
-    assert(caughtError);
+    }, Deno.errors.PermissionDenied);
   }
 );
 
 unitTest(
   { perms: { read: true, write: false } },
   async function copyFilePerm2(): Promise<void> {
-    let caughtError = false;
-    try {
+    await assertThrowsAsync(async () => {
       await Deno.copyFile("/from.txt", "/to.txt");
-    } catch (e) {
-      caughtError = true;
-      assert(e instanceof Deno.errors.PermissionDenied);
-    }
-    assert(caughtError);
+    }, Deno.errors.PermissionDenied);
   }
 );

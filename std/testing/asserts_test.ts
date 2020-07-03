@@ -159,6 +159,10 @@ Deno.test("testingArrayContains", function (): void {
   const fixtureObject = [{ deno: "luv" }, { deno: "Js" }];
   assertArrayContains(fixture, ["deno"]);
   assertArrayContains(fixtureObject, [{ deno: "luv" }]);
+  assertArrayContains(
+    Uint8Array.from([1, 2, 3, 4]),
+    Uint8Array.from([1, 2, 3])
+  );
   assertThrows(
     (): void => assertArrayContains(fixtureObject, [{ deno: "node" }]),
     AssertionError,
@@ -256,14 +260,12 @@ Deno.test("testingAssertFailWithWrongErrorClass", function (): void {
 Deno.test("testingAssertThrowsWithReturnType", () => {
   assertThrows(() => {
     throw new Error();
-    return "a string";
   });
 });
 
 Deno.test("testingAssertThrowsAsyncWithReturnType", () => {
   assertThrowsAsync(() => {
     throw new Error();
-    return Promise.resolve("a Promise<string>");
   });
 });
 
@@ -410,6 +412,17 @@ Deno.test({
   },
 });
 
+Deno.test({
+  name: "assert* functions with specified type paratemeter",
+  fn(): void {
+    assertEquals<string>("hello", "hello");
+    assertNotEquals<number>(1, 2);
+    assertArrayContains<boolean>([true, false], [true]);
+    const value = { x: 1 };
+    assertStrictEquals<typeof value>(value, value);
+  },
+});
+
 Deno.test("Assert Throws Non-Error Fail", () => {
   assertThrows(
     () => {
@@ -485,7 +498,6 @@ Deno.test("Assert Throws Async Non-Error Fail", () => {
     () => {
       return assertThrowsAsync(() => {
         throw undefined;
-        return Promise.resolve("Ok!");
       });
     },
     AssertionError,

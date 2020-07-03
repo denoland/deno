@@ -2,6 +2,18 @@ import { assert, assertEquals, assertThrows } from "../testing/asserts.ts";
 import Buffer from "./buffer.ts";
 
 Deno.test({
+  name: "Buffer global scope",
+  fn() {
+    // deno-lint-ignore ban-ts-comment
+    // @ts-ignore
+    assert(window.Buffer === Buffer);
+    // deno-lint-ignore ban-ts-comment
+    // @ts-ignore
+    assert(globalThis.Buffer === Buffer);
+  },
+});
+
+Deno.test({
   name: "alloc fails on negative numbers",
   fn() {
     assertThrows(
@@ -12,6 +24,58 @@ Deno.test({
       "Invalid typed array length: -1",
       "should throw on negative numbers"
     );
+  },
+});
+
+Deno.test({
+  name: "alloc fails if size is not a number",
+  fn() {
+    const invalidSizes = [{}, "1", "foo", []];
+
+    for (const size of invalidSizes) {
+      assertThrows(
+        () => {
+          // deno-lint-ignore ban-ts-comment
+          // @ts-ignore
+          Buffer.alloc(size);
+        },
+        TypeError,
+        `The "size" argument must be of type number. Received type ${typeof size}`,
+        "should throw on non-number size"
+      );
+    }
+  },
+});
+
+Deno.test({
+  name: "alloc(>0) fails if value is an empty Buffer/Uint8Array",
+  fn() {
+    const invalidValues = [new Uint8Array(), Buffer.alloc(0)];
+
+    for (const value of invalidValues) {
+      assertThrows(
+        () => {
+          // deno-lint-ignore ban-ts-comment
+          // @ts-ignore
+          console.log(value.constructor.name);
+          Buffer.alloc(1, value);
+        },
+        TypeError,
+        `The argument "value" is invalid. Received ${value.constructor.name} []`,
+        "should throw for empty Buffer/Uint8Array"
+      );
+    }
+  },
+});
+
+Deno.test({
+  name: "alloc(0) doesn't fail if value is an empty Buffer/Uint8Array",
+  fn() {
+    const invalidValues = [new Uint8Array(), Buffer.alloc(0)];
+
+    for (const value of invalidValues) {
+      assertEquals(Buffer.alloc(0, value).length, 0);
+    }
   },
 });
 
@@ -29,6 +93,105 @@ Deno.test({
   fn() {
     const buffer: Buffer = Buffer.alloc(0);
     assertEquals(buffer.length, 0, "Buffer size should be 0");
+  },
+});
+
+Deno.test({
+  name: "allocUnsafe allocates a buffer with the expected size",
+  fn() {
+    const buffer: Buffer = Buffer.allocUnsafe(1);
+    assertEquals(buffer.length, 1, "Buffer size should be 1");
+  },
+});
+
+Deno.test({
+  name: "allocUnsafe(0) creates an empty buffer",
+  fn() {
+    const buffer: Buffer = Buffer.allocUnsafe(0);
+    assertEquals(buffer.length, 0, "Buffer size should be 0");
+  },
+});
+
+Deno.test({
+  name: "alloc filled correctly with integer",
+  fn() {
+    const buffer: Buffer = Buffer.alloc(3, 5);
+    assertEquals(buffer, new Uint8Array([5, 5, 5]));
+  },
+});
+
+Deno.test({
+  name: "alloc filled correctly with single character",
+  fn() {
+    assertEquals(Buffer.alloc(5, "a"), new Uint8Array([97, 97, 97, 97, 97]));
+  },
+});
+
+Deno.test({
+  name: "alloc filled correctly with base64 string",
+  fn() {
+    assertEquals(
+      Buffer.alloc(11, "aGVsbG8gd29ybGQ=", "base64"),
+      new Uint8Array([104, 101, 108, 108, 111, 32, 119, 111, 114, 108, 100])
+    );
+  },
+});
+
+Deno.test({
+  name: "alloc filled correctly with hex string",
+  fn() {
+    assertEquals(
+      Buffer.alloc(4, "64656e6f", "hex"),
+      new Uint8Array([100, 101, 110, 111])
+    );
+  },
+});
+
+Deno.test({
+  name: "alloc filled correctly with hex string smaller than alloc size",
+  fn() {
+    assertEquals(
+      Buffer.alloc(13, "64656e6f", "hex").toString(),
+      "denodenodenod"
+    );
+  },
+});
+
+Deno.test({
+  name: "alloc filled correctly with Uint8Array smaller than alloc size",
+  fn() {
+    assertEquals(
+      Buffer.alloc(7, new Uint8Array([100, 101])),
+      new Uint8Array([100, 101, 100, 101, 100, 101, 100])
+    );
+    assertEquals(
+      Buffer.alloc(6, new Uint8Array([100, 101])),
+      new Uint8Array([100, 101, 100, 101, 100, 101])
+    );
+  },
+});
+
+Deno.test({
+  name: "alloc filled correctly with Uint8Array bigger than alloc size",
+  fn() {
+    assertEquals(
+      Buffer.alloc(1, new Uint8Array([100, 101])),
+      new Uint8Array([100])
+    );
+  },
+});
+
+Deno.test({
+  name: "alloc filled correctly with Buffer",
+  fn() {
+    assertEquals(
+      Buffer.alloc(6, new Buffer([100, 101])),
+      new Uint8Array([100, 101, 100, 101, 100, 101])
+    );
+    assertEquals(
+      Buffer.alloc(7, new Buffer([100, 101])),
+      new Uint8Array([100, 101, 100, 101, 100, 101, 100])
+    );
   },
 });
 
@@ -276,13 +439,82 @@ Deno.test({
 Deno.test({
   name: "isBuffer returns true if the object is a buffer",
   fn() {
-    assert(Buffer.isBuffer(Buffer.from("test")));
+    assertEquals(Buffer.isBuffer(Buffer.from("test")), true);
   },
 });
 
 Deno.test({
   name: "isBuffer returns false if the object is not a buffer",
   fn() {
-    assert(!Buffer.isBuffer({ test: 3 }));
+    assertEquals(Buffer.isBuffer({ test: 3 }), false);
+    assertEquals(Buffer.isBuffer(new Uint8Array()), false);
+  },
+});
+
+Deno.test({
+  name: "Buffer toJSON",
+  fn() {
+    assertEquals(
+      JSON.stringify(Buffer.from("deno")),
+      '{"type":"Buffer","data":[100,101,110,111]}'
+    );
+  },
+});
+
+Deno.test({
+  name: "buf.slice does not create a copy",
+  fn() {
+    const buf = Buffer.from("ceno");
+    // This method is not compatible with the Uint8Array.prototype.slice()
+    const slice = buf.slice();
+    slice[0]++;
+    assertEquals(slice.toString(), "deno");
+  },
+});
+
+Deno.test({
+  name: "isEncoding returns true for valid encodings",
+  fn() {
+    [
+      "hex",
+      "HEX",
+      "HeX",
+      "utf8",
+      "utf-8",
+      "ascii",
+      "latin1",
+      "binary",
+      "base64",
+      "BASE64",
+      "BASe64",
+      "ucs2",
+      "ucs-2",
+      "utf16le",
+      "utf-16le",
+    ].forEach((enc) => {
+      assertEquals(Buffer.isEncoding(enc), true);
+    });
+  },
+});
+
+Deno.test({
+  name: "isEncoding returns false for invalid encodings",
+  fn() {
+    [
+      "utf9",
+      "utf-7",
+      "Unicode-FTW",
+      "new gnu gun",
+      false,
+      NaN,
+      {},
+      Infinity,
+      [],
+      1,
+      0,
+      -1,
+    ].forEach((enc) => {
+      assertEquals(Buffer.isEncoding(enc), false);
+    });
   },
 });

@@ -1,5 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { unitTest, assertEquals, assert } from "./test_util.ts";
+import {
+  unitTest,
+  assertEquals,
+  assertThrows,
+  assertThrowsAsync,
+} from "./test_util.ts";
 
 unitTest(
   { perms: { read: true, write: true } },
@@ -76,25 +81,15 @@ unitTest(
 );
 
 unitTest({ perms: { write: false } }, function truncateSyncPerm(): void {
-  let err;
-  try {
+  assertThrows(() => {
     Deno.truncateSync("/test_truncateSyncPermission.txt");
-  } catch (e) {
-    err = e;
-  }
-  assert(err instanceof Deno.errors.PermissionDenied);
-  assertEquals(err.name, "PermissionDenied");
+  }, Deno.errors.PermissionDenied);
 });
 
 unitTest({ perms: { write: false } }, async function truncatePerm(): Promise<
   void
 > {
-  let err;
-  try {
+  await assertThrowsAsync(async () => {
     await Deno.truncate("/test_truncatePermission.txt");
-  } catch (e) {
-    err = e;
-  }
-  assert(err instanceof Deno.errors.PermissionDenied);
-  assertEquals(err.name, "PermissionDenied");
+  }, Deno.errors.PermissionDenied);
 });

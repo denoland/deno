@@ -1,4 +1,9 @@
-import { unitTest, assert, assertEquals } from "./test_util.ts";
+import {
+  unitTest,
+  assertEquals,
+  assertThrows,
+  assertThrowsAsync,
+} from "./test_util.ts";
 
 unitTest(
   { perms: { read: true, write: true } },
@@ -28,27 +33,17 @@ unitTest(
 unitTest({ perms: { write: true } }, function writeTextFileSyncFail(): void {
   const filename = "/baddir/test.txt";
   // The following should fail because /baddir doesn't exist (hopefully).
-  let caughtError = false;
-  try {
+  assertThrows(() => {
     Deno.writeTextFileSync(filename, "hello");
-  } catch (e) {
-    caughtError = true;
-    assert(e instanceof Deno.errors.NotFound);
-  }
-  assert(caughtError);
+  }, Deno.errors.NotFound);
 });
 
 unitTest({ perms: { write: false } }, function writeTextFileSyncPerm(): void {
   const filename = "/baddir/test.txt";
   // The following should fail due to no write permission
-  let caughtError = false;
-  try {
+  assertThrows(() => {
     Deno.writeTextFileSync(filename, "Hello");
-  } catch (e) {
-    caughtError = true;
-    assert(e instanceof Deno.errors.PermissionDenied);
-  }
-  assert(caughtError);
+  }, Deno.errors.PermissionDenied);
 });
 
 unitTest(
@@ -81,14 +76,9 @@ unitTest(
   async function writeTextFileNotFound(): Promise<void> {
     const filename = "/baddir/test.txt";
     // The following should fail because /baddir doesn't exist (hopefully).
-    let caughtError = false;
-    try {
+    await assertThrowsAsync(async () => {
       await Deno.writeTextFile(filename, "Hello");
-    } catch (e) {
-      caughtError = true;
-      assert(e instanceof Deno.errors.NotFound);
-    }
-    assert(caughtError);
+    }, Deno.errors.NotFound);
   }
 );
 
@@ -97,13 +87,8 @@ unitTest(
   async function writeTextFilePerm(): Promise<void> {
     const filename = "/baddir/test.txt";
     // The following should fail due to no write permission
-    let caughtError = false;
-    try {
+    await assertThrowsAsync(async () => {
       await Deno.writeTextFile(filename, "Hello");
-    } catch (e) {
-      caughtError = true;
-      assert(e instanceof Deno.errors.PermissionDenied);
-    }
-    assert(caughtError);
+    }, Deno.errors.PermissionDenied);
   }
 );

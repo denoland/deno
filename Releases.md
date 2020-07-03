@@ -6,6 +6,45 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### 1.1.2 / 2020.06.26
+
+Changes in the CLI:
+
+- fix(web/console): Improve string quoting behaviour (#6457)
+- fix(web/url): Support UNC paths on Windows (#6418)
+- fix(web/url): Support URLSearchParam as Body (#6416)
+- fix: 'Compile' messages changed to 'Check' messages (#6504)
+- fix: Panic when process stdio rid is 0 or invalid (#6405)
+- fix: enable experimental-wasm-bigint (#6443)
+- fix: ipv6 parsing for --allow-net params (#6453, #6472)
+- fix: panic when demanding permissions for hostless URLs (#6500)
+- fix: strings shouldn't be interpreted as file URLs (#6412)
+- refactor: Add ability to output compiler performance information (#6434)
+- refactor: Incremental compilation for TypeScript (#6428, #6489)
+- upgrade: rusty_v8 0.4.2 / V8 8.5.216 (#6503)
+
+Changes in unstable APIs:
+
+- Add Deno.fdatasyncSync and fdatasync (#6403)
+- Add Deno.fstatSync and fstat (#6425)
+- Add Deno.fsyncSync and fsync (#6411)
+- Add Deno.ftruncate and ftruncateSync (#6243)
+- Remove Deno.dir (#6385)
+
+Changes in std version 0.59.0:
+
+- BREAKING(std/encoding/hex): reorder encode & decode arguments (#6410)
+- feat(std/node): support hex / base64 encoding in Buffer (#6414)
+- feat(std/wasi): add wasi_snapshot_preview1 (#6441)
+- fix(std/io): Make BufWriter/BufWriterSync.flush write all chunks (#6269)
+- fix(std/node): fix readFile types, add encoding types (#6451)
+- fix(std/node): global process should usable (#6392)
+- fix(std/node/process): env, argv exports (#6455)
+- fix(std/testing) assertArrayContains should work with any array-like (#6402)
+- fix(std/testing): assertThrows gracefully fails if non-Error thrown (#6330)
+- refactor(std/testing): Remove unuseful statement (#6486)
+- refactor: shift copyBytes and tweak deps to reduce dependencies (#6469)
+
 ### 1.1.1 / 2020.06.19
 
 - fix: "deno test" should respect NO_COLOR=true (#6371)
