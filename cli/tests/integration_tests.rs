@@ -16,6 +16,7 @@ use tempfile::TempDir;
 fn std_tests() {
   let dir = TempDir::new().expect("tempdir fail");
   let std_path = util::root_path().join("std");
+  let std_config = std_path.join("tsconfig_test.json");
   let status = util::deno_cmd()
     .env("DENO_DIR", dir.path())
     .current_dir(std_path) // TODO(ry) change this to root_path
@@ -23,6 +24,8 @@ fn std_tests() {
     .arg("--unstable")
     .arg("--seed=86") // Some tests rely on specific random numbers.
     .arg("-A")
+    .arg("--config")
+    .arg(std_config.to_str().unwrap())
     // .arg("-Ldebug")
     .spawn()
     .unwrap()

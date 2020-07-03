@@ -69,7 +69,6 @@ const IGNORED_COMPILER_OPTIONS: readonly string[] = [
   "inlineSourceMap",
   "inlineSources",
   "init",
-  "isolatedModules",
   "listEmittedFiles",
   "listFiles",
   "mapRoot",
