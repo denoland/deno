@@ -1350,7 +1350,6 @@ mod tests {
         &Permissions::allow_all(),
       )
       .await;
-    eprintln!("result {:#?}", result);
     assert!(result.is_ok());
     let r = result.unwrap();
     assert_eq!(r.source_code, b"export const loaded = true;\n");
