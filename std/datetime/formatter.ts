@@ -137,7 +137,7 @@ export class DateTimeFormatter {
 
     const utc = options.timeZone === "UTC";
     const hour12 = this.#format.find(
-      (token: FormatPart) => token.type === "dayPeriod"
+      (token: FormatPart) => token.type === "dayPeriod",
     );
 
     for (const token of this.#format) {
@@ -157,7 +157,7 @@ export class DateTimeFormatter {
             }
             default:
               throw Error(
-                `FormatterError: value "${token.value}" is not supported`
+                `FormatterError: value "${token.value}" is not supported`,
               );
           }
           break;
@@ -175,7 +175,7 @@ export class DateTimeFormatter {
             }
             default:
               throw Error(
-                `FormatterError: value "${token.value}" is not supported`
+                `FormatterError: value "${token.value}" is not supported`,
               );
           }
           break;
@@ -193,7 +193,7 @@ export class DateTimeFormatter {
             }
             default:
               throw Error(
-                `FormatterError: value "${token.value}" is not supported`
+                `FormatterError: value "${token.value}" is not supported`,
               );
           }
           break;
@@ -212,7 +212,7 @@ export class DateTimeFormatter {
             }
             default:
               throw Error(
-                `FormatterError: value "${token.value}" is not supported`
+                `FormatterError: value "${token.value}" is not supported`,
               );
           }
           break;
@@ -230,7 +230,7 @@ export class DateTimeFormatter {
             }
             default:
               throw Error(
-                `FormatterError: value "${token.value}" is not supported`
+                `FormatterError: value "${token.value}" is not supported`,
               );
           }
           break;
@@ -248,7 +248,7 @@ export class DateTimeFormatter {
             }
             default:
               throw Error(
-                `FormatterError: value "${token.value}" is not supported`
+                `FormatterError: value "${token.value}" is not supported`,
               );
           }
           break;
@@ -326,7 +326,7 @@ export class DateTimeFormatter {
             }
             default:
               throw Error(
-                `ParserError: value "${token.value}" is not supported`
+                `ParserError: value "${token.value}" is not supported`,
               );
           }
           break;
@@ -343,7 +343,7 @@ export class DateTimeFormatter {
             }
             default:
               throw Error(
-                `ParserError: value "${token.value}" is not supported`
+                `ParserError: value "${token.value}" is not supported`,
               );
           }
           break;
@@ -360,7 +360,7 @@ export class DateTimeFormatter {
             }
             default:
               throw Error(
-                `ParserError: value "${token.value}" is not supported`
+                `ParserError: value "${token.value}" is not supported`,
               );
           }
           break;
@@ -377,7 +377,7 @@ export class DateTimeFormatter {
             }
             default:
               throw Error(
-                `ParserError: value "${token.value}" is not supported`
+                `ParserError: value "${token.value}" is not supported`,
               );
           }
           break;
@@ -394,14 +394,14 @@ export class DateTimeFormatter {
             }
             default:
               throw Error(
-                `ParserError: value "${token.value}" is not supported`
+                `ParserError: value "${token.value}" is not supported`,
               );
           }
           break;
         }
         case "fractionalSecond": {
           value = new RegExp(`^\\d{${token.value}}`).exec(
-            string
+            string,
           )?.[0] as string;
           break;
         }
@@ -416,7 +416,7 @@ export class DateTimeFormatter {
         case "literal": {
           if (!string.startsWith(token.value as string)) {
             throw Error(
-              `Literal "${token.value}" not found "${string.slice(0, 25)}"`
+              `Literal "${token.value}" not found "${string.slice(0, 25)}"`,
             );
           }
           value = token.value as string;
@@ -429,10 +429,12 @@ export class DateTimeFormatter {
 
       if (!value) {
         throw Error(
-          `value not valid for token { ${type} ${value} } ${string.slice(
-            0,
-            25
-          )}`
+          `value not valid for token { ${type} ${value} } ${
+            string.slice(
+              0,
+              25,
+            )
+          }`,
         );
       }
       parts.push({ type, value });
@@ -441,7 +443,7 @@ export class DateTimeFormatter {
 
     if (string.length) {
       throw Error(
-        `datetime string was not fully parsed! ${string.slice(0, 25)}`
+        `datetime string was not fully parsed! ${string.slice(0, 25)}`,
       );
     }
 
@@ -451,7 +453,7 @@ export class DateTimeFormatter {
   partsToDate(parts: DateTimeFormatPart[]): Date {
     const date = new Date();
     const utc = parts.find(
-      (part) => part.type === "timeZoneName" && part.value === "UTC"
+      (part) => part.type === "timeZoneName" && part.value === "UTC",
     );
 
     utc ? date.setUTCHours(0, 0, 0, 0) : date.setHours(0, 0, 0, 0);
@@ -475,7 +477,7 @@ export class DateTimeFormatter {
         case "hour": {
           let value = Number(part.value);
           const dayPeriod = parts.find(
-            (part: DateTimeFormatPart) => part.type === "dayPeriod"
+            (part: DateTimeFormatPart) => part.type === "dayPeriod",
           );
           if (dayPeriod?.value === "PM") value += 12;
           utc ? date.setUTCHours(value) : date.setHours(value);

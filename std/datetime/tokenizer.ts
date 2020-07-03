@@ -30,7 +30,7 @@ export class Tokenizer {
 
   tokenize(
     string: string,
-    receiver = (token: Token): { [name: string]: string | number } => token
+    receiver = (token: Token): { [name: string]: string | number } => token,
   ): ReceiverResult[] {
     let index = 0;
 
@@ -55,7 +55,7 @@ export class Tokenizer {
 
     if (string.length) {
       throw new Error(
-        `parser error: string not fully parsed! ${string.slice(0, 25)}`
+        `parser error: string not fully parsed! ${string.slice(0, 25)}`,
       );
     }
 
