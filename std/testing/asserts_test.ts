@@ -504,3 +504,23 @@ Deno.test("Assert Throws Async Non-Error Fail", () => {
     "A non-Error object was thrown or rejected."
   );
 });
+
+Deno.test("Assert Throws Parent Error", () => {
+  assertThrows(
+    () => {
+      throw new AssertionError("Fail!");
+    },
+    Error,
+    "Fail!"
+  );
+});
+
+Deno.test("Assert Throws Async Parent Error", () => {
+  assertThrowsAsync(
+    () => {
+      throw new AssertionError("Fail!");
+    },
+    Error,
+    "Fail!"
+  );
+});
