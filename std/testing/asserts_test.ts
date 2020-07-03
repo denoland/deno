@@ -248,12 +248,12 @@ Deno.test("testingAssertFailWithWrongErrorClass", function (): void {
         (): void => {
           fail("foo");
         },
-        Error,
+        TypeError,
         "Failed assertion: foo"
       );
     },
     AssertionError,
-    `Expected error to be instance of "Error", but was "AssertionError"`
+    `Expected error to be instance of "TypeError", but was "AssertionError"`
   );
 });
 
