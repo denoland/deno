@@ -12,7 +12,8 @@ import json
 import time
 import tempfile
 import subprocess
-from util import build_path, executable_suffix, root_path, run, run_output, build_mode
+from util import (build_path, executable_suffix, root_path, run, run_output,
+                  build_mode)
 import third_party
 from http_benchmark import http_benchmark
 import throughput_benchmark
