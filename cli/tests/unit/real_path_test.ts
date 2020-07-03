@@ -19,7 +19,6 @@ unitTest({ perms: { read: true } }, function realPathSyncSuccess(): void {
 
 unitTest(
   {
-    ignore: Deno.build.os === "windows",
     perms: { read: true, write: true },
   },
   function realPathSyncSymlink(): void {
@@ -29,7 +28,11 @@ unitTest(
     Deno.mkdirSync(target);
     Deno.symlinkSync(target, symlink);
     const targetPath = Deno.realPathSync(symlink);
-    assert(targetPath.startsWith("/"));
+    if (Deno.build.os !== "windows") {
+      assert(targetPath.startsWith("/"));
+    } else {
+      assert(/^[A-Z]/.test(targetPath));
+    }
     assert(targetPath.endsWith("/target"));
   }
 );
@@ -61,7 +64,6 @@ unitTest({ perms: { read: true } }, async function realPathSuccess(): Promise<
 
 unitTest(
   {
-    ignore: Deno.build.os === "windows",
     perms: { read: true, write: true },
   },
   async function realPathSymlink(): Promise<void> {
@@ -71,7 +73,11 @@ unitTest(
     Deno.mkdirSync(target);
     Deno.symlinkSync(target, symlink);
     const targetPath = await Deno.realPath(symlink);
-    assert(targetPath.startsWith("/"));
+    if (Deno.build.os !== "windows") {
+      assert(targetPath.startsWith("/"));
+    } else {
+      assert(/^[A-Z]/.test(targetPath));
+    }
     assert(targetPath.endsWith("/target"));
   }
 );
