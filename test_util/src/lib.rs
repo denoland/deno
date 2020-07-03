@@ -3,10 +3,12 @@
 #[macro_use]
 extern crate lazy_static;
 
+use futures::future::{self, FutureExt};
 use os_pipe::pipe;
 use regex::Regex;
 use std::io::Read;
 use std::io::Write;
+use std::mem::replace;
 use std::path::PathBuf;
 use std::process::Child;
 use std::process::Command;
@@ -307,19 +309,24 @@ pub async fn run_all_servers() {
     .or(echo_multipart_file)
     .or(multipart_form_data);
 
-  tokio::spawn(
-    warp::serve(content_type_handler.clone())
-      .tls()
-      .cert_path("std/http/testdata/tls/localhost.crt")
-      .key_path("std/http/testdata/tls/localhost.key")
-      .run(([127, 0, 0, 1], HTTPS_PORT)),
-  );
+  let http_fut =
+    warp::serve(content_type_handler.clone()).bind(([127, 0, 0, 1], PORT));
+  let https_fut = warp::serve(content_type_handler.clone())
+    .tls()
+    .cert_path("std/http/testdata/tls/localhost.crt")
+    .key_path("std/http/testdata/tls/localhost.key")
+    .bind(([127, 0, 0, 1], HTTPS_PORT));
+  let mut server_fut = future::join(http_fut, https_fut).boxed();
 
-  println!("ready");
-  // Note on the last one, we await instead of spawn.
-  warp::serve(content_type_handler)
-    .run(([127, 0, 0, 1], PORT))
-    .await;
+  let mut did_print_ready = false;
+  future::poll_fn(move |cx| {
+    let poll_result = server_fut.poll_unpin(cx);
+    if !replace(&mut did_print_ready, true) {
+      println!("ready");
+    }
+    poll_result
+  })
+  .await;
 }
 
 fn custom_headers(path: warp::path::Peek, f: warp::fs::File) -> Box<dyn Reply> {
