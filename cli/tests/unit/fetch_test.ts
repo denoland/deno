@@ -67,7 +67,6 @@ unitTest({ perms: { net: true } }, async function fetchHeaders(): Promise<
   const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
   const headers = response.headers;
   assertEquals(headers.get("Content-Type"), "application/json");
-  assert(headers.get("Server")!.startsWith("SimpleHTTP"));
   const _json = await response.json();
 });
 
@@ -162,13 +161,10 @@ unitTest(
   { perms: { net: true } },
   async function fetchBodyReaderBigBody(): Promise<void> {
     const data = "a".repeat(10 << 10); // 10mb
-    const response = await fetch(
-      "http://localhost:4545/cli/tests/echo_server",
-      {
-        method: "POST",
-        body: data,
-      }
-    );
+    const response = await fetch("http://localhost:4545/echo_server", {
+      method: "POST",
+      body: data,
+    });
     assert(response.body !== null);
     const reader = await response.body.getReader();
     let total = 0;
@@ -210,7 +206,7 @@ unitTest(
   { perms: { net: true } },
   async function fetchMultipartFormDataSuccess(): Promise<void> {
     const response = await fetch(
-      "http://localhost:4545/cli/tests/subdir/multipart_form_data.txt"
+      "http://localhost:4545/multipart_form_data.txt"
     );
     const formData = await response.formData();
     assert(formData.has("field_1"));
@@ -315,12 +311,12 @@ unitTest(
     perms: { net: true },
   },
   async function fetchWithRedirection(): Promise<void> {
-    const response = await fetch("http://localhost:4546/"); // will redirect to http://localhost:4545/
+    const response = await fetch("http://localhost:4546/README.md");
     assertEquals(response.status, 200);
     assertEquals(response.statusText, "OK");
-    assertEquals(response.url, "http://localhost:4545/");
+    assertEquals(response.url, "http://localhost:4545/README.md");
     const body = await response.text();
-    assert(body.includes("<title>Directory listing for /</title>"));
+    assert(body.includes("Deno"));
   }
 );
 
@@ -329,11 +325,13 @@ unitTest(
     perms: { net: true },
   },
   async function fetchWithRelativeRedirection(): Promise<void> {
-    const response = await fetch("http://localhost:4545/cli/tests"); // will redirect to /cli/tests/
+    const response = await fetch(
+      "http://localhost:4545/cli/tests/001_hello.js"
+    );
     assertEquals(response.status, 200);
     assertEquals(response.statusText, "OK");
     const body = await response.text();
-    assert(body.includes("<title>Directory listing for /cli/tests/</title>"));
+    assert(body.includes("Hello"));
   }
 );
 
@@ -769,13 +767,10 @@ unitTest(
   { perms: { net: true } },
   async function fetchBodyReaderWithCancelAndNewReader(): Promise<void> {
     const data = "a".repeat(1 << 10);
-    const response = await fetch(
-      "http://localhost:4545/cli/tests/echo_server",
-      {
-        method: "POST",
-        body: data,
-      }
-    );
+    const response = await fetch("http://localhost:4545/echo_server", {
+      method: "POST",
+      body: data,
+    });
     assert(response.body !== null);
     const firstReader = await response.body.getReader();
 
@@ -801,13 +796,10 @@ unitTest(
   async function fetchBodyReaderWithReadCancelAndNewReader(): Promise<void> {
     const data = "a".repeat(1 << 10);
 
-    const response = await fetch(
-      "http://localhost:4545/cli/tests/echo_server",
-      {
-        method: "POST",
-        body: data,
-      }
-    );
+    const response = await fetch("http://localhost:4545/echo_server", {
+      method: "POST",
+      body: data,
+    });
     assert(response.body !== null);
     const firstReader = await response.body.getReader();
 
@@ -848,7 +840,7 @@ unitTest(
 
     for (const status of nullBodyStatus) {
       const headers = new Headers([["x-status", String(status)]]);
-      const res = await fetch("http://localhost:4545/cli/tests/echo_server", {
+      const res = await fetch("http://localhost:4545/echo_server", {
         body: "deno",
         method: "POST",
         headers,
