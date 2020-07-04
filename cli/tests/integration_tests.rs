@@ -2600,7 +2600,8 @@ fn test_permissions_net_listen_allow_localhost_4555_fail() {
 
 #[test]
 fn test_permissions_net_listen_allow_localhost() {
-  // Port 4600 is chosen to not colide with those used by tools/http_server.py
+  // Port 4600 is chosen to not colide with those used by
+  // target/debug/test_server
   let (_, err) = util::run_and_collect_output(
     true,
 			"run --allow-net=localhost complex_permissions_test.ts netListen localhost:4600",
