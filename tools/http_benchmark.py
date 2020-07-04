@@ -14,54 +14,40 @@ import third_party
 #   "deno_http" was once called "deno_net_http"
 
 DURATION = "20s"
-NEXT_PORT = 4544
-
-
-def server_addr(port):
-    return "0.0.0.0:%s" % port
-
-
-def get_port():
-    global NEXT_PORT
-    port = NEXT_PORT
-    NEXT_PORT += 1
-    # Return port as str because all usages below are as a str and having it an
-    # integer just adds complexity.
-    return str(port)
 
 
 def deno_tcp(deno_exe):
-    port = get_port()
+    port = util.get_port()
     deno_cmd = [
         # TODO(lucacasonato): remove unstable when stabilized
         deno_exe,
         "run",
         "--allow-net",
         "tools/deno_tcp.ts",
-        server_addr(port)
+        util.server_addr(port)
     ]
     print "http_benchmark testing DENO tcp."
     return run(deno_cmd, port)
 
 
 def deno_http(deno_exe):
-    port = get_port()
+    port = util.get_port()
     deno_cmd = [
         deno_exe, "run", "--allow-net", "--reload", "--unstable",
         "std/http/http_bench.ts",
-        server_addr(port)
+        util.server_addr(port)
     ]
     print "http_benchmark testing DENO using net/http."
     return run(deno_cmd, port)
 
 
 def deno_tcp_proxy(deno_exe, hyper_hello_exe):
-    port = get_port()
-    origin_port = get_port()
+    port = util.get_port()
+    origin_port = util.get_port()
     deno_cmd = [
         deno_exe, "run", "--allow-net", "tools/deno_tcp_proxy.ts",
-        server_addr(port),
-        server_addr(origin_port)
+        util.server_addr(port),
+        util.server_addr(origin_port)
     ]
     print "http_proxy_benchmark testing DENO using net/tcp."
     return run(
@@ -71,12 +57,12 @@ def deno_tcp_proxy(deno_exe, hyper_hello_exe):
 
 
 def deno_http_proxy(deno_exe, hyper_hello_exe):
-    port = get_port()
-    origin_port = get_port()
+    port = util.get_port()
+    origin_port = util.get_port()
     deno_cmd = [
         deno_exe, "run", "--allow-net", "tools/deno_http_proxy.ts",
-        server_addr(port),
-        server_addr(origin_port)
+        util.server_addr(port),
+        util.server_addr(origin_port)
     ]
     print "http_proxy_benchmark testing DENO using net/http."
     return run(
@@ -91,15 +77,15 @@ def deno_core_http_bench(exe):
 
 
 def node_http():
-    port = get_port()
+    port = util.get_port()
     node_cmd = ["node", "tools/node_http.js", port]
     print "http_benchmark testing NODE."
     return run(node_cmd, port)
 
 
 def node_http_proxy(hyper_hello_exe):
-    port = get_port()
-    origin_port = get_port()
+    port = util.get_port()
+    origin_port = util.get_port()
     node_cmd = ["node", "tools/node_http_proxy.js", port, origin_port]
     print "http_proxy_benchmark testing NODE."
     return run(node_cmd, port, None,
@@ -107,8 +93,8 @@ def node_http_proxy(hyper_hello_exe):
 
 
 def node_tcp_proxy(hyper_hello_exe):
-    port = get_port()
-    origin_port = get_port()
+    port = util.get_port()
+    origin_port = util.get_port()
     node_cmd = ["node", "tools/node_tcp_proxy.js", port, origin_port]
     print "http_proxy_benchmark testing NODE tcp."
     return run(node_cmd, port, None,
@@ -116,7 +102,7 @@ def node_tcp_proxy(hyper_hello_exe):
 
 
 def node_tcp():
-    port = get_port()
+    port = util.get_port()
     node_cmd = ["node", "tools/node_tcp.js", port]
     print "http_benchmark testing node_tcp.js"
     return run(node_cmd, port)
@@ -127,7 +113,7 @@ def http_proxy_origin(hyper_hello_exe, port):
 
 
 def hyper_http(hyper_hello_exe):
-    port = get_port()
+    port = util.get_port()
     hyper_cmd = [hyper_hello_exe, port]
     print "http_benchmark testing RUST hyper."
     return run(hyper_cmd, port)
