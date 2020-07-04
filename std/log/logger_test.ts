@@ -41,11 +41,11 @@ Deno.test("simpleLogger", function (): void {
 
   assertEquals(logger.level, LogLevels.DEBUG);
   assertEquals(logger.levelName, "DEBUG");
-  assertEquals(logger._handlers, []);
+  assertEquals(logger.handlers, []);
 
   logger = new Logger("default", "DEBUG", { handlers: [handler] });
 
-  assertEquals(logger._handlers, [handler]);
+  assertEquals(logger.handlers, [handler]);
 });
 
 Deno.test("customHandler", function (): void {

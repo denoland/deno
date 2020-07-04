@@ -63,14 +63,23 @@ export class Logger {
   set level(level: LogLevels) {
     this.#level = level;
   }
+
   get levelName(): LevelName {
     return getLevelName(this.#level);
   }
   set levelName(levelName: LevelName) {
     this.#level = getLevelByName(levelName);
   }
+
   get loggerName(): string {
     return this.#loggerName;
+  }
+
+  set handlers(hndls: BaseHandler[]) {
+    this.#handlers = hndls;
+  }
+  get handlers(): BaseHandler[] {
+    return this.#handlers;
   }
 
   /** If the level of the logger is greater than the level to log, then nothing
@@ -172,9 +181,5 @@ export class Logger {
     ...args: unknown[]
   ): T | undefined {
     return this._log(LogLevels.CRITICAL, msg, ...args);
-  }
-
-  get _handlers(): BaseHandler[] {
-    return this.#handlers;
   }
 }

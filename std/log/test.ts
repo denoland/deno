@@ -72,7 +72,7 @@ Deno.test("getLogger", async function (): Promise<void> {
   const logger = log.getLogger();
 
   assertEquals(logger.levelName, "DEBUG");
-  assertEquals(logger._handlers, [handler]);
+  assertEquals(logger.handlers, [handler]);
 });
 
 Deno.test("getLoggerWithName", async function (): Promise<void> {
@@ -93,7 +93,7 @@ Deno.test("getLoggerWithName", async function (): Promise<void> {
   const logger = log.getLogger("bar");
 
   assertEquals(logger.levelName, "INFO");
-  assertEquals(logger._handlers, [fooHandler]);
+  assertEquals(logger.handlers, [fooHandler]);
 });
 
 Deno.test("getLoggerUnknown", async function (): Promise<void> {
@@ -105,7 +105,7 @@ Deno.test("getLoggerUnknown", async function (): Promise<void> {
   const logger = log.getLogger("nonexistent");
 
   assertEquals(logger.levelName, "NOTSET");
-  assertEquals(logger._handlers, []);
+  assertEquals(logger.handlers, []);
 });
 
 Deno.test("getInvalidLoggerLevels", function (): void {

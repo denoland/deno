@@ -174,3 +174,49 @@ Deno.test({
     assertEquals(getLogger("nonsetupname").loggerName, "nonsetupname");
   },
 });
+
+Deno.test({
+  name: "Logger has mutable handlers",
+  async fn() {
+    const testHandlerA = new TestHandler("DEBUG");
+    const testHandlerB = new TestHandler("DEBUG");
+    await setup({
+      handlers: {
+        testA: testHandlerA,
+        testB: testHandlerB,
+      },
+
+      loggers: {
+        default: {
+          level: "DEBUG",
+          handlers: ["testA"],
+        },
+      },
+    });
+    const logger: Logger = getLogger();
+    logger.info("msg1");
+    assertEquals(testHandlerA.messages.length, 1);
+    assertEquals(testHandlerA.messages[0], "INFO msg1");
+    assertEquals(testHandlerB.messages.length, 0);
+
+    logger.handlers = [testHandlerA, testHandlerB];
+
+    logger.info("msg2");
+    assertEquals(testHandlerA.messages.length, 2);
+    assertEquals(testHandlerA.messages[1], "INFO msg2");
+    assertEquals(testHandlerB.messages.length, 1);
+    assertEquals(testHandlerB.messages[0], "INFO msg2");
+
+    logger.handlers = [testHandlerB];
+
+    logger.info("msg3");
+    assertEquals(testHandlerA.messages.length, 2);
+    assertEquals(testHandlerB.messages.length, 2);
+    assertEquals(testHandlerB.messages[1], "INFO msg3");
+
+    logger.handlers = [];
+    logger.info("msg4");
+    assertEquals(testHandlerA.messages.length, 2);
+    assertEquals(testHandlerB.messages.length, 2);
+  },
+});
