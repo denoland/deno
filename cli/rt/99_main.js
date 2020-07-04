@@ -30,6 +30,7 @@ delete Object.prototype.__proto__;
   const blob = window.__bootstrap.blob;
   const domFile = window.__bootstrap.domFile;
   const progressEvent = window.__bootstrap.progressEvent;
+  const fileReader = window.__bootstrap.fileReader;
   const formData = window.__bootstrap.formData;
   const request = window.__bootstrap.request;
   const fetch = window.__bootstrap.fetch;
@@ -202,6 +203,7 @@ delete Object.prototype.__proto__;
     ),
     crypto: util.readOnly(crypto),
     File: util.nonEnumerable(domFile.DomFile),
+    FileReader: util.nonEnumerable(fileReader.FileReader),
     CustomEvent: util.nonEnumerable(CustomEvent),
     DOMException: util.nonEnumerable(DOMException),
     ErrorEvent: util.nonEnumerable(ErrorEvent),
