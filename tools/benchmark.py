@@ -259,6 +259,10 @@ def main():
     new_data["binary_size"] = get_binary_sizes(build_dir)
     new_data["bundle_size"] = bundle_benchmark(deno_exe)
 
+    # http_benchmark doesn't want test_server running.
+    p.kill()
+    p.wait()
+
     # Cannot run throughput benchmark on windows because they don't have nc or
     # pipe.
     if os.name != 'nt':
@@ -274,8 +278,6 @@ def main():
     print "===== </BENCHMARK RESULTS>"
 
     write_json(os.path.join(build_dir, "bench.json"), new_data)
-    p.kill()
-    p.wait()
 
 
 if __name__ == '__main__':
