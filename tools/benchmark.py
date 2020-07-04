@@ -239,8 +239,6 @@ def main():
     build_dir = build_path()
     sha1 = run_output(["git", "rev-parse", "HEAD"],
                       exit_on_fail=True).out.strip()
-    server_cmd = os.path.join("target", build_mode(), "test_server")
-    p = subprocess.Popen([server_cmd])
 
     deno_exe = os.path.join(build_dir, "deno")
 
@@ -254,14 +252,14 @@ def main():
     # TODO(ry) The "benchmark" benchmark should actually be called "exec_time".
     # When this is changed, the historical data in gh-pages branch needs to be
     # changed too.
+    server_cmd = os.path.join("target", build_mode(), "test_server")
+    p = subprocess.Popen([server_cmd])
     new_data["benchmark"] = run_exec_time(deno_exe, build_dir)
+    p.kill()
+    p.wait()
 
     new_data["binary_size"] = get_binary_sizes(build_dir)
     new_data["bundle_size"] = bundle_benchmark(deno_exe)
-
-    # http_benchmark doesn't want test_server running.
-    p.kill()
-    p.wait()
 
     # Cannot run throughput benchmark on windows because they don't have nc or
     # pipe.
