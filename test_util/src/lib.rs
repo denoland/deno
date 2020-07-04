@@ -87,8 +87,9 @@ pub async fn run_all_servers() {
     let u = url.parse::<Uri>().unwrap();
     warp::redirect(u)
   });
-  let addr = ([127, 0, 0, 1], REDIRECT_PORT);
-  tokio::spawn(warp::serve(routes).run(addr));
+  let redirect_server_fut = warp::serve(routes)
+    .bind(([127, 0, 0, 1], REDIRECT_PORT))
+    .boxed();
 
   let routes = warp::path::full().map(|path: warp::path::FullPath| {
     let p = path.as_str();
@@ -97,8 +98,9 @@ pub async fn run_all_servers() {
     let u = url.parse::<Uri>().unwrap();
     warp::redirect(u)
   });
-  let addr = ([127, 0, 0, 1], ANOTHER_REDIRECT_PORT);
-  tokio::spawn(warp::serve(routes).run(addr));
+  let another_redirect_server_fut = warp::serve(routes)
+    .bind(([127, 0, 0, 1], ANOTHER_REDIRECT_PORT))
+    .boxed();
 
   let routes = warp::path::full().map(|path: warp::path::FullPath| {
     let p = path.as_str();
@@ -107,8 +109,9 @@ pub async fn run_all_servers() {
     let u = url.parse::<Uri>().unwrap();
     warp::redirect(u)
   });
-  let addr = ([127, 0, 0, 1], DOUBLE_REDIRECTS_PORT);
-  tokio::spawn(warp::serve(routes).run(addr));
+  let double_redirect_server_fut = warp::serve(routes)
+    .bind(([127, 0, 0, 1], DOUBLE_REDIRECTS_PORT))
+    .boxed();
 
   let routes = warp::path::full().map(|path: warp::path::FullPath| {
     let p = path.as_str();
@@ -117,8 +120,9 @@ pub async fn run_all_servers() {
     let u = url.parse::<Uri>().unwrap();
     warp::redirect(u)
   });
-  let addr = ([127, 0, 0, 1], INF_REDIRECTS_PORT);
-  tokio::spawn(warp::serve(routes).run(addr));
+  let inf_redirect_server_fut = warp::serve(routes)
+    .bind(([127, 0, 0, 1], INF_REDIRECTS_PORT))
+    .boxed();
 
   // redirect server that redirect to absolute paths under same host
   // redirects /REDIRECT/file_name to /file_name
@@ -136,8 +140,9 @@ pub async fn run_all_servers() {
         .and(warp::fs::dir(root_path()))
         .map(custom_headers),
     );
-  let addr = ([127, 0, 0, 1], REDIRECT_ABSOLUTE_PORT);
-  tokio::spawn(warp::serve(routes).run(addr));
+  let absolute_redirect_server_fut = warp::serve(routes)
+    .bind(([127, 0, 0, 1], REDIRECT_ABSOLUTE_PORT))
+    .boxed();
 
   let echo_server = warp::path("echo_server")
     .and(warp::post())
@@ -309,15 +314,27 @@ pub async fn run_all_servers() {
     .or(echo_multipart_file)
     .or(multipart_form_data);
 
-  let http_fut =
-    warp::serve(content_type_handler.clone()).bind(([127, 0, 0, 1], PORT));
+  let http_fut = warp::serve(content_type_handler.clone())
+    .bind(([127, 0, 0, 1], PORT))
+    .boxed();
+
   let https_fut = warp::serve(content_type_handler.clone())
     .tls()
     .cert_path("std/http/testdata/tls/localhost.crt")
     .key_path("std/http/testdata/tls/localhost.key")
-    .bind(([127, 0, 0, 1], HTTPS_PORT));
-  let mut server_fut = future::join(http_fut, https_fut).boxed();
+    .bind(([127, 0, 0, 1], HTTPS_PORT))
+    .boxed();
 
+  let mut server_fut = future::join_all(vec![
+    http_fut,
+    https_fut,
+    redirect_server_fut,
+    another_redirect_server_fut,
+    inf_redirect_server_fut,
+    double_redirect_server_fut,
+    absolute_redirect_server_fut,
+  ])
+  .boxed();
   let mut did_print_ready = false;
   future::poll_fn(move |cx| {
     let poll_result = server_fut.poll_unpin(cx);
