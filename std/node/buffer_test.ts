@@ -195,10 +195,55 @@ Deno.test({
   },
 });
 
+// tests from:
+// https://github.com/nodejs/node/blob/56dbe466fdbc598baea3bfce289bf52b97b8b8f7/test/parallel/test-buffer-bytelength.js#L70
 Deno.test({
   name: "Byte length is the expected for strings",
   fn() {
-    assertEquals(Buffer.byteLength("test"), 4, "Byte lenght differs on string");
+    // Special case: zero length string
+    assertEquals(Buffer.byteLength("", "ascii"), 0);
+    assertEquals(Buffer.byteLength("", "HeX"), 0);
+
+    // utf8
+    assertEquals(Buffer.byteLength("∑éllö wørl∂!", "utf-8"), 19);
+    assertEquals(Buffer.byteLength("κλμνξο", "utf8"), 12);
+    assertEquals(Buffer.byteLength("挵挶挷挸挹", "utf-8"), 15);
+    assertEquals(Buffer.byteLength("𠝹𠱓𠱸", "UTF8"), 12);
+    // Without an encoding, utf8 should be assumed
+    assertEquals(Buffer.byteLength("hey there"), 9);
+    assertEquals(Buffer.byteLength("𠱸挶νξ#xx :)"), 17);
+    assertEquals(Buffer.byteLength("hello world", ""), 11);
+    // It should also be assumed with unrecognized encoding
+    assertEquals(Buffer.byteLength("hello world", "abc"), 11);
+    assertEquals(Buffer.byteLength("ßœ∑≈", "unkn0wn enc0ding"), 10);
+
+    // base64
+    assertEquals(Buffer.byteLength("aGVsbG8gd29ybGQ=", "base64"), 11);
+    assertEquals(Buffer.byteLength("aGVsbG8gd29ybGQ=", "BASE64"), 11);
+    assertEquals(Buffer.byteLength("bm9kZS5qcyByb2NrcyE=", "base64"), 14);
+    assertEquals(Buffer.byteLength("aGkk", "base64"), 3);
+    assertEquals(
+      Buffer.byteLength("bHNrZGZsa3NqZmtsc2xrZmFqc2RsZmtqcw==", "base64"),
+      25
+    );
+    // special padding
+    assertEquals(Buffer.byteLength("aaa=", "base64"), 2);
+    assertEquals(Buffer.byteLength("aaaa==", "base64"), 3);
+
+    assertEquals(Buffer.byteLength("Il était tué"), 14);
+    assertEquals(Buffer.byteLength("Il était tué", "utf8"), 14);
+
+    ["ascii", "latin1", "binary"]
+      .reduce((es: string[], e: string) => es.concat(e, e.toUpperCase()), [])
+      .forEach((encoding: string) => {
+        assertEquals(Buffer.byteLength("Il était tué", encoding), 12);
+      });
+
+    ["ucs2", "ucs-2", "utf16le", "utf-16le"]
+      .reduce((es: string[], e: string) => es.concat(e, e.toUpperCase()), [])
+      .forEach((encoding: string) => {
+        assertEquals(Buffer.byteLength("Il était tué", encoding), 24);
+      });
   },
 });
 
