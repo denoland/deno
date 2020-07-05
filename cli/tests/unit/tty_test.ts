@@ -23,7 +23,7 @@ unitTest(function isattyError(): void {
 });
 
 unitTest(
-  { perms: { read: true, run: true } },
+  { perms: { read: true, run: true }, ignore: Deno.build.os === "windows" },
   async function setRawShouldNotPanicOnNoTTYContext(): Promise<void> {
     // issue #6604
     const decoder = new TextDecoder();
