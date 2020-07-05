@@ -32,7 +32,7 @@ To browse documentation for modules:
 
 - Go to https://deno.land/std/.
 - Navigate to any module of interest.
-- Click the "DOCUMENTATION" link.
+- Click "View Documentation".
 
 ## Contributing
 
