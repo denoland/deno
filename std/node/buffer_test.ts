@@ -518,3 +518,33 @@ Deno.test({
     });
   },
 });
+
+// ported from:
+// https://github.com/nodejs/node/blob/56dbe466fdbc598baea3bfce289bf52b97b8b8f7/test/parallel/test-buffer-equals.js#L6
+Deno.test({
+  name: "buf.equals",
+  fn() {
+    const b = Buffer.from("abcdf");
+    const c = Buffer.from("abcdf");
+    const d = Buffer.from("abcde");
+    const e = Buffer.from("abcdef");
+
+    assertEquals(b.equals(c), true);
+    assertEquals(d.equals(d), true);
+    assertEquals(
+      d.equals(new Uint8Array([0x61, 0x62, 0x63, 0x64, 0x65])),
+      true
+    );
+
+    assertEquals(c.equals(d), false);
+    assertEquals(d.equals(e), false);
+
+    assertThrows(
+      // deno-lint-ignore ban-ts-comment
+      // @ts-ignore
+      () => Buffer.alloc(1).equals("abc"),
+      TypeError,
+      `The "otherBuffer" argument must be an instance of Buffer or Uint8Array. Received type string`
+    );
+  },
+});
