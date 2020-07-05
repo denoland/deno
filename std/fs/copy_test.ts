@@ -14,7 +14,11 @@ import { ensureSymlink, ensureSymlinkSync } from "./ensure_symlink.ts";
 
 const testdataDir = path.resolve("fs", "testdata");
 
-function testCopy(name: string, cb: (tempDir: string) => Promise<void>): void {
+function testCopy(
+  name: string,
+  cb: (tempDir: string) => Promise<void>,
+  ignore = false
+): void {
   Deno.test({
     name,
     async fn(): Promise<void> {
@@ -24,7 +28,15 @@ function testCopy(name: string, cb: (tempDir: string) => Promise<void>): void {
       await cb(tempDir);
       await Deno.remove(tempDir, { recursive: true });
     },
+    ignore,
   });
+}
+
+function testCopyIgnore(
+  name: string,
+  cb: (tempDir: string) => Promise<void>
+): void {
+  testCopy(name, cb, true);
 }
 
 function testCopySync(name: string, cb: (tempDir: string) => void): void {
@@ -132,7 +144,8 @@ testCopy(
   }
 );
 
-testCopy(
+// TODO(#6644) This case is ignored because of the issue #5065.
+testCopyIgnore(
   "[fs] copy with preserve timestamps",
   async (tempDir: string): Promise<void> => {
     const srcFile = path.join(testdataDir, "copy_file.txt");
