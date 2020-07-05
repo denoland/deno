@@ -1576,7 +1576,7 @@ itest!(lock_check_ok {
 });
 
 itest!(lock_check_ok2 {
-  args: "run 019_media_types.ts --lock=lock_check_ok2.json",
+  args: "run --lock=lock_check_ok2.json 019_media_types.ts",
   output: "019_media_types.ts.out",
   http_server: true,
 });
