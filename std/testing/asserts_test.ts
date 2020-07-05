@@ -41,6 +41,7 @@ Deno.test("testingEqual", function (): void {
   assert(!equal(/deno/, /node/));
   assert(equal(new Date(2019, 0, 3), new Date(2019, 0, 3)));
   assert(!equal(new Date(2019, 0, 3), new Date(2019, 1, 3)));
+  assert(!equal(new Date(2019, 0, 3, 4, 20, 1, 10), new Date(2019, 0, 3, 4, 20, 1, 20)));
   assert(equal(new Set([1]), new Set([1])));
   assert(!equal(new Set([1]), new Set([2])));
   assert(equal(new Set([1, 2, 3]), new Set([3, 2, 1])));
@@ -128,6 +129,7 @@ Deno.test("testingNotEquals", function (): void {
   const b = { bar: "foo" };
   assertNotEquals(a, b);
   assertNotEquals("Denosaurus", "Tyrannosaurus");
+  assertNotEquals(new Date(2019, 0, 3, 4, 20, 1, 10), new Date(2019, 0, 3, 4, 20, 1, 20));
   let didThrow;
   try {
     assertNotEquals("Raptor", "Raptor");
@@ -357,6 +359,27 @@ Deno.test({
         ),
         added(
           `+   { a: ${yellow("1")}, b: ${yellow("2")}, c: [ ${yellow("3")} ] }`
+        ),
+        "",
+      ].join("\n")
+    );
+  },
+});
+
+Deno.test({
+  name: "failed with date",
+  fn(): void {
+    assertThrows(
+      (): void => assertEquals(new Date(2019, 0, 3, 4, 20, 1, 10), new Date(2019, 0, 3, 4, 20, 1, 20)),
+      AssertionError,
+      [
+        "Values are not equal:",
+        ...createHeader(),
+        removed(
+          `-   ${new Date(2019, 0, 3, 4, 20, 1, 10).toISOString()}`
+        ),
+        added(
+          `+   ${new Date(2019, 0, 3, 4, 20, 1, 20).toISOString()}`
         ),
         "",
       ].join("\n")
