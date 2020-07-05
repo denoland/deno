@@ -200,6 +200,26 @@ export default class Buffer extends Uint8Array {
     return sourceBuffer.length;
   }
 
+  /*
+   * Returns true if both buf and otherBuffer have exactly the same bytes, false otherwise.
+   */
+  equals(otherBuffer: Uint8Array | Buffer): boolean {
+    if (!(otherBuffer instanceof Uint8Array)) {
+      throw new TypeError(
+        `The "otherBuffer" argument must be an instance of Buffer or Uint8Array. Received type ${typeof otherBuffer}`
+      );
+    }
+
+    if (this === otherBuffer) return true;
+    if (this.byteLength !== otherBuffer.byteLength) return false;
+
+    for (let i = 0; i < this.length; i++) {
+      if (this[i] !== otherBuffer[i]) return false;
+    }
+
+    return true;
+  }
+
   readBigInt64BE(offset = 0): bigint {
     return new DataView(
       this.buffer,
