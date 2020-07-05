@@ -24,7 +24,7 @@
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 import { Buffer } from "./buffer.ts";
 
-var isEncoding =
+const isEncoding =
   Buffer.isEncoding ||
   function (encoding) {
     encoding = "" + encoding;
@@ -42,7 +42,7 @@ var isEncoding =
 
 function _normalizeEncoding(enc) {
   if (!enc) return "utf8";
-  var retried;
+  let retried;
   while (true) {
     switch (enc) {
       case "utf8":
@@ -62,7 +62,7 @@ function _normalizeEncoding(enc) {
 // Do not cache `Buffer.isEncoding` when checking encoding names as some
 // modules monkey-patch it to support additional encodings
 function normalizeEncoding(enc) {
-  var nenc = _normalizeEncoding(enc);
+  const nenc = _normalizeEncoding(enc);
   if (
     typeof nenc !== "string" &&
     (Buffer.isEncoding === isEncoding || !isEncoding(enc))
@@ -76,7 +76,7 @@ function normalizeEncoding(enc) {
 // characters.
 export function StringDecoder(encoding) {
   this.encoding = normalizeEncoding(encoding);
-  var nb;
+  let nb;
   switch (this.encoding) {
     case "utf8":
       this.fillLast = utf8FillLast;
@@ -99,8 +99,8 @@ export function StringDecoder(encoding) {
 
 StringDecoder.prototype.write = function (buf) {
   if (buf.length === 0) return "";
-  var r;
-  var i;
+  let r;
+  let i;
   if (this.lastNeed) {
     r = this.fillLast(buf);
     if (r === undefined) return "";
@@ -142,9 +142,9 @@ function utf8CheckByte(byte) {
 // incomplete multi-byte UTF-8 character. The total number of bytes (2, 3, or 4)
 // needed to complete the UTF-8 character (if applicable) are returned.
 function utf8CheckIncomplete(self, buf, i) {
-  var j = buf.length - 1;
+  let j = buf.length - 1;
   if (j < i) return 0;
-  var nb = utf8CheckByte(buf[j]);
+  let nb = utf8CheckByte(buf[j]);
   if (nb >= 0) {
     if (nb > 0) self.lastNeed = nb - 1;
     return nb;
@@ -175,7 +175,7 @@ function utf8CheckIncomplete(self, buf, i) {
 // where all of the continuation bytes for a character exist in the same buffer.
 // It is also done this way as a slight performance increase instead of using a
 // loop.
-function utf8CheckExtraBytes(self, buf, p) {
+function utf8CheckExtraBytes(self, buf) {
   if ((buf[0] & 0xc0) !== 0x80) {
     self.lastNeed = 0;
     return "\ufffd";
@@ -196,8 +196,8 @@ function utf8CheckExtraBytes(self, buf, p) {
 
 // Attempts to complete a multi-byte UTF-8 character using bytes from a Buffer.
 function utf8FillLast(buf) {
-  var p = this.lastTotal - this.lastNeed;
-  var r = utf8CheckExtraBytes(this, buf, p);
+  const p = this.lastTotal - this.lastNeed;
+  const r = utf8CheckExtraBytes(this, buf, p);
   if (r !== undefined) return r;
   if (this.lastNeed <= buf.length) {
     buf.copy(this.lastChar, p, 0, this.lastNeed);
@@ -211,10 +211,10 @@ function utf8FillLast(buf) {
 // partial character, the character's bytes are buffered until the required
 // number of bytes are available.
 function utf8Text(buf, i) {
-  var total = utf8CheckIncomplete(this, buf, i);
+  const total = utf8CheckIncomplete(this, buf, i);
   if (!this.lastNeed) return buf.toString("utf8", i);
   this.lastTotal = total;
-  var end = buf.length - (total - this.lastNeed);
+  const end = buf.length - (total - this.lastNeed);
   buf.copy(this.lastChar, 0, end);
   return buf.toString("utf8", i, end);
 }
@@ -222,13 +222,13 @@ function utf8Text(buf, i) {
 // For UTF-8, a replacement character is added when ending on a partial
 // character.
 function utf8End(buf) {
-  var r = buf && buf.length ? this.write(buf) : "";
+  const r = buf && buf.length ? this.write(buf) : "";
   if (this.lastNeed) return r + "\ufffd";
   return r;
 }
 
 function base64Text(buf, i) {
-  var n = (buf.length - i) % 3;
+  const n = (buf.length - i) % 3;
   if (n === 0) return buf.toString("base64", i);
   this.lastNeed = 3 - n;
   this.lastTotal = 3;
@@ -242,7 +242,7 @@ function base64Text(buf, i) {
 }
 
 function base64End(buf) {
-  var r = buf && buf.length ? this.write(buf) : "";
+  const r = buf && buf.length ? this.write(buf) : "";
   if (this.lastNeed)
     return r + this.lastChar.toString("base64", 0, 3 - this.lastNeed);
   return r;
