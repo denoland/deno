@@ -3,11 +3,11 @@ import * as base64 from "../encoding/base64.ts";
 import { notImplemented, normalizeEncoding } from "./_utils.ts";
 
 const notImplementedEncodings = [
-  "utf16le",
-  "latin1",
   "ascii",
   "binary",
+  "latin1",
   "ucs2",
+  "utf16le",
 ];
 
 function checkEncoding(encoding = "utf8", strict = true): string {
