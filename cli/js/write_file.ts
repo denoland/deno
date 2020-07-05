@@ -12,7 +12,7 @@ export interface WriteFileOptions {
 }
 
 export function writeFileSync(
-  path: string,
+  path: string | URL,
   data: Uint8Array,
   options: WriteFileOptions = {}
 ): void {
@@ -42,7 +42,7 @@ export function writeFileSync(
 }
 
 export async function writeFile(
-  path: string,
+  path: string | URL,
   data: Uint8Array,
   options: WriteFileOptions = {}
 ): Promise<void> {

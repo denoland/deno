@@ -1417,7 +1417,7 @@ function readAlias(state: LoaderState): boolean {
   const alias = state.input.slice(_position, state.position);
   if (
     typeof state.anchorMap !== "undefined" &&
-    !state.anchorMap.hasOwnProperty(alias)
+    !Object.prototype.hasOwnProperty.call(state.anchorMap, alias)
   ) {
     return throwError(state, `unidentified alias "${alias}"`);
   }

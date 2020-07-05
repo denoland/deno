@@ -82,7 +82,8 @@ export function equal(c: unknown, d: unknown): boolean {
       a &&
       b &&
       ((a instanceof RegExp && b instanceof RegExp) ||
-        (a instanceof Date && b instanceof Date))
+        (a instanceof Date && b instanceof Date) ||
+        (a instanceof URL && b instanceof URL))
     ) {
       return String(a) === String(b);
     }
@@ -132,7 +133,7 @@ export function equal(c: unknown, d: unknown): boolean {
   })(c, d);
 }
 
-/** Make an assertion, if not `true`, then throw. */
+/** Make an assertion, error will be thrown if `expr` does not have truthy value. */
 export function assert(expr: unknown, msg = ""): asserts expr {
   if (!expr) {
     throw new AssertionError(msg);
@@ -142,7 +143,19 @@ export function assert(expr: unknown, msg = ""): asserts expr {
 /**
  * Make an assertion that `actual` and `expected` are equal, deeply. If not
  * deeply equal, then throw.
+ *
+ * Type parameter can be specified to ensure values under comparison have the same type.
+ * For example:
+ *```ts
+ *assertEquals<number>(1, 2)
+ *```
  */
+export function assertEquals(
+  actual: unknown,
+  expected: unknown,
+  msg?: string
+): void;
+export function assertEquals<T>(actual: T, expected: T, msg?: string): void;
 export function assertEquals(
   actual: unknown,
   expected: unknown,
@@ -173,7 +186,19 @@ export function assertEquals(
 /**
  * Make an assertion that `actual` and `expected` are not equal, deeply.
  * If not then throw.
+ *
+ * Type parameter can be specified to ensure values under comparison have the same type.
+ * For example:
+ *```ts
+ *assertNotEquals<number>(1, 2)
+ *```
  */
+export function assertNotEquals(
+  actual: unknown,
+  expected: unknown,
+  msg?: string
+): void;
+export function assertNotEquals<T>(actual: T, expected: T, msg?: string): void;
 export function assertNotEquals(
   actual: unknown,
   expected: unknown,
@@ -203,10 +228,13 @@ export function assertNotEquals(
 /**
  * Make an assertion that `actual` and `expected` are strictly equal.  If
  * not then throw.
+ * ```ts
+ * assertStrictEquals(1, 2)
+ * ```
  */
-export function assertStrictEquals(
-  actual: unknown,
-  expected: unknown,
+export function assertStrictEquals<T>(
+  actual: T,
+  expected: T,
   msg?: string
 ): void {
   if (actual === expected) {
@@ -264,12 +292,28 @@ export function assertStringContains(
 }
 
 /**
- * Make an assertion that `actual` contains the `expected` values
- * If not then thrown.
+ * Make an assertion that `actual` contains the `expected` values.
+ * If not then an error will be thrown.
+ *
+ * Type parameter can be specified to ensure values under comparison have the same type.
+ * For example:
+ *```ts
+ *assertArrayContains<number>([1, 2], [2])
+ *```
  */
 export function assertArrayContains(
-  actual: unknown[],
-  expected: unknown[],
+  actual: ArrayLike<unknown>,
+  expected: ArrayLike<unknown>,
+  msg?: string
+): void;
+export function assertArrayContains<T>(
+  actual: ArrayLike<T>,
+  expected: ArrayLike<T>,
+  msg?: string
+): void;
+export function assertArrayContains(
+  actual: ArrayLike<unknown>,
+  expected: ArrayLike<unknown>,
   msg?: string
 ): void {
   const missing: unknown[] = [];
@@ -321,7 +365,8 @@ export function fail(msg?: string): void {
   assert(false, `Failed assertion${msg ? `: ${msg}` : "."}`);
 }
 
-/** Executes a function, expecting it to throw.  If it does not, then it
+/**
+ * Executes a function, expecting it to throw.  If it does not, then it
  * throws.  An error class and a string that should be included in the
  * error message can also be asserted.
  */
@@ -336,6 +381,9 @@ export function assertThrows<T = void>(
   try {
     fn();
   } catch (e) {
+    if (e instanceof Error === false) {
+      throw new AssertionError("A non-Error object was thrown.");
+    }
     if (ErrorClass && !(Object.getPrototypeOf(e) === ErrorClass.prototype)) {
       msg = `Expected error to be instance of "${ErrorClass.name}", but was "${
         e.constructor.name
@@ -361,6 +409,11 @@ export function assertThrows<T = void>(
   return error;
 }
 
+/**
+ * Executes a function which returns a promise, expecting it to throw or reject.
+ * If it does not, then it throws.  An error class and a string that should be
+ * included in the error message can also be asserted.
+ */
 export async function assertThrowsAsync<T = void>(
   fn: () => Promise<T>,
   ErrorClass?: Constructor,
@@ -372,6 +425,9 @@ export async function assertThrowsAsync<T = void>(
   try {
     await fn();
   } catch (e) {
+    if (e instanceof Error === false) {
+      throw new AssertionError("A non-Error object was thrown or rejected.");
+    }
     if (ErrorClass && !(Object.getPrototypeOf(e) === ErrorClass.prototype)) {
       msg = `Expected error to be instance of "${ErrorClass.name}", but got "${
         e.name

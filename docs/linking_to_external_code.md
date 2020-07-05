@@ -4,13 +4,15 @@ In the [Getting Started](./getting_started.md) section, we saw Deno could
 execute scripts from URLs. Like browser JavaScript, Deno can import libraries
 directly from URLs. This example uses a URL to import an assertion library:
 
+**test.ts**
+
 ```ts
 import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
 
 assertEquals("hello", "hello");
 assertEquals("world", "world");
 
-console.log("Asserted! 🎉");
+console.log("Asserted! ✓");
 ```
 
 Try running this:
@@ -21,15 +23,15 @@ Compile file:///mnt/f9/Projects/github.com/denoland/deno/docs/test.ts
 Download https://deno.land/std/testing/asserts.ts
 Download https://deno.land/std/fmt/colors.ts
 Download https://deno.land/std/testing/diff.ts
-Asserted! 🎉
+Asserted! ✓
 ```
 
 Note that we did not have to provide the `--allow-net` flag for this program,
 and yet it accessed the network. The runtime has special access to download
 imports and cache them to disk.
 
-Deno caches remote imports in a special directory specified by the `$DENO_DIR`
-environment variable. It defaults to the system's cache directory if `$DENO_DIR`
+Deno caches remote imports in a special directory specified by the `DENO_DIR`
+environment variable. It defaults to the system's cache directory if `DENO_DIR`
 is not specified. The next time you run the program, no downloads will be made.
 If the program hasn't changed, it won't be recompiled either. The default
 directory is:
@@ -57,6 +59,8 @@ The solution is to import and re-export your external libraries in a central
 For example, let's say you were using the above assertion library across a large
 project. Rather than importing `"https://deno.land/std/testing/asserts.ts"`
 everywhere, you could create a `deps.ts` file that exports the third-party code:
+
+**deps.ts**
 
 ```ts
 export {

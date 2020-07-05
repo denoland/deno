@@ -3,7 +3,11 @@ import * as encoding from "./text_encoding.ts";
 import * as domTypes from "./dom_types.d.ts";
 import { ReadableStreamImpl } from "./streams/readable_stream.ts";
 import { isReadableStreamDisturbed } from "./streams/internals.ts";
-import { getHeaderValueParams, hasHeaderValueOf } from "./util.ts";
+import {
+  getHeaderValueParams,
+  hasHeaderValueOf,
+  isTypedArray,
+} from "./util.ts";
 import { MultipartParser } from "./fetch/multipart.ts";
 
 // only namespace imports work for now, plucking out what we need
@@ -11,17 +15,7 @@ const { TextEncoder, TextDecoder } = encoding;
 const DenoBlob = blob.DenoBlob;
 
 function validateBodyType(owner: Body, bodySource: BodyInit | null): boolean {
-  if (
-    bodySource instanceof Int8Array ||
-    bodySource instanceof Int16Array ||
-    bodySource instanceof Int32Array ||
-    bodySource instanceof Uint8Array ||
-    bodySource instanceof Uint16Array ||
-    bodySource instanceof Uint32Array ||
-    bodySource instanceof Uint8ClampedArray ||
-    bodySource instanceof Float32Array ||
-    bodySource instanceof Float64Array
-  ) {
+  if (isTypedArray(bodySource)) {
     return true;
   } else if (bodySource instanceof ArrayBuffer) {
     return true;
@@ -31,6 +25,8 @@ function validateBodyType(owner: Body, bodySource: BodyInit | null): boolean {
     return true;
   } else if (bodySource instanceof FormData) {
     return true;
+  } else if (bodySource instanceof URLSearchParams) {
+    return true;
   } else if (!bodySource) {
     return true; // null body is fine
   }
@@ -39,7 +35,7 @@ function validateBodyType(owner: Body, bodySource: BodyInit | null): boolean {
   );
 }
 
-function concatenate(...arrays: Uint8Array[]): ArrayBuffer {
+function concatenate(arrays: Uint8Array[]): ArrayBuffer {
   let totalLength = 0;
   for (const arr of arrays) {
     totalLength += arr.length;
@@ -77,7 +73,7 @@ async function bufferFromStream(
     }
   }
 
-  return concatenate(...parts);
+  return concatenate(parts);
 }
 
 export const BodyUsedError =
@@ -188,17 +184,7 @@ export class Body implements domTypes.Body {
   }
 
   public arrayBuffer(): Promise<ArrayBuffer> {
-    if (
-      this._bodySource instanceof Int8Array ||
-      this._bodySource instanceof Int16Array ||
-      this._bodySource instanceof Int32Array ||
-      this._bodySource instanceof Uint8Array ||
-      this._bodySource instanceof Uint16Array ||
-      this._bodySource instanceof Uint32Array ||
-      this._bodySource instanceof Uint8ClampedArray ||
-      this._bodySource instanceof Float32Array ||
-      this._bodySource instanceof Float64Array
-    ) {
+    if (isTypedArray(this._bodySource)) {
       return Promise.resolve(this._bodySource.buffer as ArrayBuffer);
     } else if (this._bodySource instanceof ArrayBuffer) {
       return Promise.resolve(this._bodySource);
@@ -209,7 +195,10 @@ export class Body implements domTypes.Body {
       );
     } else if (this._bodySource instanceof ReadableStreamImpl) {
       return bufferFromStream(this._bodySource.getReader());
-    } else if (this._bodySource instanceof FormData) {
+    } else if (
+      this._bodySource instanceof FormData ||
+      this._bodySource instanceof URLSearchParams
+    ) {
       const enc = new TextEncoder();
       return Promise.resolve(
         enc.encode(this._bodySource.toString()).buffer as ArrayBuffer

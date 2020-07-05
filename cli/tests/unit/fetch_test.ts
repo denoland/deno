@@ -3,35 +3,33 @@ import {
   unitTest,
   assert,
   assertEquals,
-  assertStringContains,
   assertThrows,
+  assertThrowsAsync,
   fail,
 } from "./test_util.ts";
 
 unitTest({ perms: { net: true } }, async function fetchProtocolError(): Promise<
   void
 > {
-  let err;
-  try {
-    await fetch("file:///");
-  } catch (err_) {
-    err = err_;
-  }
-  assert(err instanceof TypeError);
-  assertStringContains(err.message, "not supported");
+  await assertThrowsAsync(
+    async (): Promise<void> => {
+      await fetch("file:///");
+    },
+    TypeError,
+    "not supported"
+  );
 });
 
 unitTest(
   { perms: { net: true } },
   async function fetchConnectionError(): Promise<void> {
-    let err;
-    try {
-      await fetch("http://localhost:4000");
-    } catch (err_) {
-      err = err_;
-    }
-    assert(err instanceof Deno.errors.Http);
-    assertStringContains(err.message, "error trying to connect");
+    await assertThrowsAsync(
+      async (): Promise<void> => {
+        await fetch("http://localhost:4000");
+      },
+      Deno.errors.Http,
+      "error trying to connect"
+    );
   }
 );
 
@@ -44,14 +42,9 @@ unitTest({ perms: { net: true } }, async function fetchJsonSuccess(): Promise<
 });
 
 unitTest(async function fetchPerm(): Promise<void> {
-  let err;
-  try {
+  await assertThrowsAsync(async () => {
     await fetch("http://localhost:4545/cli/tests/fixture.json");
-  } catch (err_) {
-    err = err_;
-  }
-  assert(err instanceof Deno.errors.PermissionDenied);
-  assertEquals(err.name, "PermissionDenied");
+  }, Deno.errors.PermissionDenied);
 });
 
 unitTest({ perms: { net: true } }, async function fetchUrl(): Promise<void> {
@@ -74,7 +67,6 @@ unitTest({ perms: { net: true } }, async function fetchHeaders(): Promise<
   const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
   const headers = response.headers;
   assertEquals(headers.get("Content-Type"), "application/json");
-  assert(headers.get("Server")!.startsWith("SimpleHTTP"));
   const _json = await response.json();
 });
 
@@ -169,13 +161,10 @@ unitTest(
   { perms: { net: true } },
   async function fetchBodyReaderBigBody(): Promise<void> {
     const data = "a".repeat(10 << 10); // 10mb
-    const response = await fetch(
-      "http://localhost:4545/cli/tests/echo_server",
-      {
-        method: "POST",
-        body: data,
-      }
-    );
+    const response = await fetch("http://localhost:4545/echo_server", {
+      method: "POST",
+      body: data,
+    });
     assert(response.body !== null);
     const reader = await response.body.getReader();
     let total = 0;
@@ -208,20 +197,16 @@ unitTest({ perms: { net: true } }, async function responseClone(): Promise<
 unitTest({ perms: { net: true } }, async function fetchEmptyInvalid(): Promise<
   void
 > {
-  let err;
-  try {
+  await assertThrowsAsync(async () => {
     await fetch("");
-  } catch (err_) {
-    err = err_;
-  }
-  assert(err instanceof URIError);
+  }, URIError);
 });
 
 unitTest(
   { perms: { net: true } },
   async function fetchMultipartFormDataSuccess(): Promise<void> {
     const response = await fetch(
-      "http://localhost:4545/cli/tests/subdir/multipart_form_data.txt"
+      "http://localhost:4545/multipart_form_data.txt"
     );
     const formData = await response.formData();
     assert(formData.has("field_1"));
@@ -268,16 +253,70 @@ unitTest(
 );
 
 unitTest(
+  { perms: { net: true } },
+  async function fetchInitFormDataMultipleFilesBody(): Promise<void> {
+    const files = [
+      {
+        // prettier-ignore
+        content: new Uint8Array([137,80,78,71,13,10,26,10, 137, 1, 25]),
+        type: "image/png",
+        name: "image",
+        fileName: "some-image.png",
+      },
+      {
+        // prettier-ignore
+        content: new Uint8Array([108,2,0,0,145,22,162,61,157,227,166,77,138,75,180,56,119,188,177,183]),
+        name: "file",
+        fileName: "file.bin",
+        expectedType: "application/octet-stream",
+      },
+      {
+        content: new TextEncoder().encode("deno land"),
+        type: "text/plain",
+        name: "text",
+        fileName: "deno.txt",
+      },
+    ];
+    const form = new FormData();
+    form.append("field", "value");
+    for (const file of files) {
+      form.append(
+        file.name,
+        new Blob([file.content], { type: file.type }),
+        file.fileName
+      );
+    }
+    const response = await fetch("http://localhost:4545/echo_server", {
+      method: "POST",
+      body: form,
+    });
+    const resultForm = await response.formData();
+    assertEquals(form.get("field"), resultForm.get("field"));
+    for (const file of files) {
+      const inputFile = form.get(file.name) as File;
+      const resultFile = resultForm.get(file.name) as File;
+      assertEquals(inputFile.size, resultFile.size);
+      assertEquals(inputFile.name, resultFile.name);
+      assertEquals(file.expectedType || file.type, resultFile.type);
+      assertEquals(
+        new Uint8Array(await resultFile.arrayBuffer()),
+        file.content
+      );
+    }
+  }
+);
+
+unitTest(
   {
     perms: { net: true },
   },
   async function fetchWithRedirection(): Promise<void> {
-    const response = await fetch("http://localhost:4546/"); // will redirect to http://localhost:4545/
+    const response = await fetch("http://localhost:4546/README.md");
     assertEquals(response.status, 200);
     assertEquals(response.statusText, "OK");
-    assertEquals(response.url, "http://localhost:4545/");
+    assertEquals(response.url, "http://localhost:4545/README.md");
     const body = await response.text();
-    assert(body.includes("<title>Directory listing for /</title>"));
+    assert(body.includes("Deno"));
   }
 );
 
@@ -286,11 +325,13 @@ unitTest(
     perms: { net: true },
   },
   async function fetchWithRelativeRedirection(): Promise<void> {
-    const response = await fetch("http://localhost:4545/cli/tests"); // will redirect to /cli/tests/
+    const response = await fetch(
+      "http://localhost:4545/cli/tests/001_hello.js"
+    );
     assertEquals(response.status, 200);
     assertEquals(response.statusText, "OK");
     const body = await response.text();
-    assert(body.includes("<title>Directory listing for /cli/tests/</title>"));
+    assert(body.includes("Hello"));
   }
 );
 
@@ -424,6 +465,36 @@ unitTest(
     const file = resultForm.get("file");
     assert(file instanceof File);
     assertEquals(file.name, "blob");
+  }
+);
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchInitFormDataTextFileBody(): Promise<void> {
+    const fileContent = "deno land";
+    const form = new FormData();
+    form.append("field", "value");
+    form.append(
+      "file",
+      new Blob([new TextEncoder().encode(fileContent)], {
+        type: "text/plain",
+      }),
+      "deno.txt"
+    );
+    const response = await fetch("http://localhost:4545/echo_server", {
+      method: "POST",
+      body: form,
+    });
+    const resultForm = await response.formData();
+    assertEquals(form.get("field"), resultForm.get("field"));
+
+    const file = form.get("file") as File;
+    const resultFile = resultForm.get("file") as File;
+
+    assertEquals(file.size, resultFile.size);
+    assertEquals(file.name, resultFile.name);
+    assertEquals(file.type, resultFile.type);
+    assertEquals(await file.text(), await resultFile.text());
   }
 );
 
@@ -663,7 +734,9 @@ unitTest({ perms: { net: true } }, async function fetchBodyReadTwice(): Promise<
       fail(
         "Reading body multiple times should failed, the stream should've been locked."
       );
-    } catch {}
+    } catch {
+      // pass
+    }
   }
 });
 
@@ -684,7 +757,9 @@ unitTest(
     try {
       response.body.getReader();
       fail("The stream should've been locked.");
-    } catch {}
+    } catch {
+      // pass
+    }
   }
 );
 
@@ -692,13 +767,10 @@ unitTest(
   { perms: { net: true } },
   async function fetchBodyReaderWithCancelAndNewReader(): Promise<void> {
     const data = "a".repeat(1 << 10);
-    const response = await fetch(
-      "http://localhost:4545/cli/tests/echo_server",
-      {
-        method: "POST",
-        body: data,
-      }
-    );
+    const response = await fetch("http://localhost:4545/echo_server", {
+      method: "POST",
+      body: data,
+    });
     assert(response.body !== null);
     const firstReader = await response.body.getReader();
 
@@ -724,13 +796,10 @@ unitTest(
   async function fetchBodyReaderWithReadCancelAndNewReader(): Promise<void> {
     const data = "a".repeat(1 << 10);
 
-    const response = await fetch(
-      "http://localhost:4545/cli/tests/echo_server",
-      {
-        method: "POST",
-        body: data,
-      }
-    );
+    const response = await fetch("http://localhost:4545/echo_server", {
+      method: "POST",
+      body: data,
+    });
     assert(response.body !== null);
     const firstReader = await response.body.getReader();
 
@@ -771,7 +840,7 @@ unitTest(
 
     for (const status of nullBodyStatus) {
       const headers = new Headers([["x-status", String(status)]]);
-      const res = await fetch("http://localhost:4545/cli/tests/echo_server", {
+      const res = await fetch("http://localhost:4545/echo_server", {
         body: "deno",
         method: "POST",
         headers,

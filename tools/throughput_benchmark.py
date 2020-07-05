@@ -3,7 +3,7 @@
 # Performs benchmark and append data to //website/data.json.
 # If //website/data.json doesn't exist, this script tries to import it from
 # gh-pages branch.
-# To view the results locally run ./tools/http_server.py and visit
+# To view the results locally run target/debug/test_server and visit
 # http://localhost:4545/website
 
 import os

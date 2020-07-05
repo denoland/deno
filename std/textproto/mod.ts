@@ -4,7 +4,6 @@
 // license that can be found in the LICENSE file.
 
 import { BufReader } from "../io/bufio.ts";
-import { charCode } from "../io/util.ts";
 import { concat } from "../bytes/mod.ts";
 import { decode } from "../encoding/utf8.ts";
 
@@ -17,6 +16,10 @@ function str(buf: Uint8Array | null | undefined): string {
   } else {
     return decode(buf);
   }
+}
+
+function charCode(s: string): number {
+  return s.charCodeAt(0);
 }
 
 export class TextProtoReader {
@@ -114,7 +117,9 @@ export class TextProtoReader {
       // example: "Audio Mode" => invalid due to space in the key
       try {
         m.append(key, value);
-      } catch {}
+      } catch {
+        // Pass
+      }
     }
   }
 

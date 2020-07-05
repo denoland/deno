@@ -61,9 +61,14 @@ def eslint():
                           "eslint")
     # Find all *directories* in the main repo that contain .ts/.js files.
     source_files = get_sources(root_path, [
-        "*.js", "*.ts", ":!:cli/tests/swc_syntax_error.ts",
-        ":!:std/**/testdata/*", ":!:std/**/node_modules/*",
-        ":!:cli/compilers/wasm_wrap.js", ":!:cli/tests/error_syntax.js"
+        "*.js",
+        "*.ts",
+        ":!:cli/tests/swc_syntax_error.ts",
+        ":!:std/**/testdata/*",
+        ":!:std/**/node_modules/*",
+        ":!:cli/compilers/wasm_wrap.js",
+        ":!:cli/tests/error_syntax.js",
+        ":!:cli/tests/lint/**",
     ])
     if source_files:
         print_command("eslint", source_files)

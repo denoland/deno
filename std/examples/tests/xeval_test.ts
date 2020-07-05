@@ -7,7 +7,6 @@ import {
   assertStringContains,
   assert,
 } from "../../testing/asserts.ts";
-const { execPath, run } = Deno;
 
 Deno.test("xevalSuccess", async function (): Promise<void> {
   const chunks: string[] = [];
@@ -32,8 +31,14 @@ const xevalPath = "examples/xeval.ts";
 Deno.test({
   name: "xevalCliReplvar",
   fn: async function (): Promise<void> {
-    const p = run({
-      cmd: [execPath(), "run", xevalPath, "--replvar=abc", "console.log(abc)"],
+    const p = Deno.run({
+      cmd: [
+        Deno.execPath(),
+        "run",
+        xevalPath,
+        "--replvar=abc",
+        "console.log(abc)",
+      ],
       stdin: "piped",
       stdout: "piped",
       stderr: "null",
@@ -48,8 +53,8 @@ Deno.test({
 });
 
 Deno.test("xevalCliSyntaxError", async function (): Promise<void> {
-  const p = run({
-    cmd: [execPath(), "run", xevalPath, "("],
+  const p = Deno.run({
+    cmd: [Deno.execPath(), "run", xevalPath, "("],
     stdin: "null",
     stdout: "piped",
     stderr: "piped",

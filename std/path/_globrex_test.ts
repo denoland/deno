@@ -1,8 +1,6 @@
 // This file is ported from globrex@0.1.2
 // MIT License
 // Copyright (c) 2018 Terkel Gjervig Nielsen
-
-const { test } = Deno;
 import { assertEquals } from "../testing/asserts.ts";
 import { GlobrexOptions, globrex } from "./_globrex.ts";
 
@@ -27,7 +25,7 @@ function match(
   return !!match;
 }
 
-test({
+Deno.test({
   name: "globrex: standard",
   fn(): void {
     const res = globrex("*.js");
@@ -37,7 +35,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "globrex: Standard * matching",
   fn(): void {
     t.equal(match("*", "foo"), true, "match everything");
@@ -67,7 +65,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "globrex: advance * matching",
   fn(): void {
     t.equal(
@@ -178,7 +176,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "globrex: ? match one character, no more and no less",
   fn(): void {
     t.equal(match("f?o", "foo", { extended: true }), true);
@@ -218,7 +216,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "globrex: [] match a character range",
   fn(): void {
     t.equal(match("fo[oz]", "foo", { extended: true }), true);
@@ -249,7 +247,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "globrex: [] extended character ranges",
   fn(): void {
     t.equal(
@@ -307,7 +305,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "globrex: {} match a choice of different substrings",
   fn(): void {
     t.equal(match("foo{bar,baaz}", "foobaaz", { extended: true }), true);
@@ -355,7 +353,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "globrex: complex extended matches",
   fn(): void {
     t.equal(
@@ -447,7 +445,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "globrex: standard globstar",
   fn(): void {
     const tester = (globstar: boolean): void => {
@@ -482,7 +480,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "globrex: remaining chars should match themself",
   fn(): void {
     const tester = (globstar: boolean): void => {
@@ -499,7 +497,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "globrex: globstar advance testing",
   fn(): void {
     t.equal(match("/foo/*", "/foo/bar.txt", { globstar: true }), true);
@@ -639,7 +637,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "globrex: extended extglob ?",
   fn(): void {
     t.equal(match("(foo).txt", "(foo).txt", { extended: true }), true);
@@ -692,7 +690,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "globrex: extended extglob *",
   fn(): void {
     t.equal(match("*(foo).txt", "foo.txt", { extended: true }), true);
@@ -729,7 +727,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "globrex: extended extglob +",
   fn(): void {
     t.equal(match("+(foo).txt", "foo.txt", { extended: true }), true);
@@ -739,7 +737,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "globrex: extended extglob @",
   fn(): void {
     t.equal(match("@(foo).txt", "foo.txt", { extended: true }), true);
@@ -760,7 +758,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "globrex: extended extglob !",
   fn(): void {
     t.equal(match("!(boo).txt", "foo.txt", { extended: true }), true);
@@ -777,7 +775,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "globrex: strict",
   fn(): void {
     t.equal(match("foo//bar.txt", "foo/bar.txt"), true);
@@ -786,7 +784,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "globrex: stress testing",
   fn(): void {
     t.equal(

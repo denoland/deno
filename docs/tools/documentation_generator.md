@@ -2,7 +2,7 @@
 
 `deno doc` followed by a list of one or more source files will print the JSDoc
 documentation for each of the module's **exported** members. Currently, only
-exports in the style `export <declaration>` and `export ... from ...` are are
+exports in the style `export <declaration>` and `export ... from ...` are
 supported.
 
 For example, given a file `add.ts` with the contents:
