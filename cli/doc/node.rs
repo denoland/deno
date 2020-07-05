@@ -1,7 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::swc_common;
 use serde::Serialize;
-use std::fmt::{Display, Formatter, Result as FmtResult};
 
 #[derive(Debug, PartialEq, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -13,36 +12,6 @@ pub enum DocNodeKind {
   Interface,
   TypeAlias,
   Namespace,
-}
-
-#[derive(Debug, Serialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub enum ParamKind {
-  Identifier,
-  Rest,
-  Array,
-  Object,
-}
-
-#[derive(Debug, Serialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct ParamDef {
-  pub name: String,
-  pub kind: ParamKind,
-  pub optional: bool,
-  pub ts_type: Option<super::ts_type::TsTypeDef>,
-}
-
-impl Display for ParamDef {
-  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-    write!(f, "{}{}", self.name, if self.optional { "?" } else { "" })?;
-
-    if let Some(ts_type) = &self.ts_type {
-      write!(f, ": {}", ts_type)?;
-    }
-
-    Ok(())
-  }
 }
 
 #[derive(Debug, Serialize, Clone, PartialEq)]

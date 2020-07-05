@@ -5,7 +5,6 @@ use crate::doc::display::{
   display_method, display_optional, display_readonly, display_static,
   SliceDisplayer,
 };
-use crate::swc_common::SourceMap;
 use crate::swc_common::Spanned;
 use crate::swc_ecma_ast;
 use serde::Serialize;
@@ -13,9 +12,10 @@ use serde::Serialize;
 use super::function::function_to_function_def;
 use super::function::FunctionDef;
 use super::interface::expr_to_name;
-use super::params::assign_pat_to_param_def;
-use super::params::ident_to_param_def;
-use super::params::pat_to_param_def;
+use super::params::{
+  assign_pat_to_param_def, ident_to_param_def, pat_to_param_def,
+  prop_name_to_string,
+};
 use super::parser::DocParser;
 use super::ts_type::{
   maybe_type_param_instantiation_to_type_defs, ts_type_ann_to_def, TsTypeDef,
@@ -132,21 +132,6 @@ pub struct ClassDef {
   pub super_type_params: Vec<TsTypeDef>,
 }
 
-fn prop_name_to_string(
-  source_map: &SourceMap,
-  prop_name: &swc_ecma_ast::PropName,
-) -> String {
-  use crate::swc_ecma_ast::PropName;
-  match prop_name {
-    PropName::Ident(ident) => ident.sym.to_string(),
-    PropName::Str(str_) => str_.value.to_string(),
-    PropName::Num(num) => num.value.to_string(),
-    PropName::Computed(comp_prop_name) => {
-      source_map.span_to_snippet(comp_prop_name.span).unwrap()
-    }
-  }
-}
-
 pub fn class_to_class_def(
   doc_parser: &DocParser,
   class: &swc_ecma_ast::Class,
@@ -179,8 +164,10 @@ pub fn class_to_class_def(
     match member {
       Constructor(ctor) => {
         let ctor_js_doc = doc_parser.js_doc_for_span(ctor.span());
-        let constructor_name =
-          prop_name_to_string(&doc_parser.ast_parser.source_map, &ctor.key);
+        let constructor_name = prop_name_to_string(
+          &ctor.key,
+          Some(&doc_parser.ast_parser.source_map),
+        );
 
         let mut params = vec![];
 
@@ -188,14 +175,23 @@ pub fn class_to_class_def(
           use crate::swc_ecma_ast::ParamOrTsParamProp::*;
 
           let param_def = match param {
-            Param(param) => pat_to_param_def(&param.pat),
+            Param(param) => pat_to_param_def(
+              &param.pat,
+              Some(&doc_parser.ast_parser.source_map),
+            ),
             TsParamProp(ts_param_prop) => {
               use swc_ecma_ast::TsParamPropParam;
 
               match &ts_param_prop.param {
-                TsParamPropParam::Ident(ident) => ident_to_param_def(ident),
+                TsParamPropParam::Ident(ident) => ident_to_param_def(
+                  ident,
+                  Some(&doc_parser.ast_parser.source_map),
+                ),
                 TsParamPropParam::Assign(assign_pat) => {
-                  assign_pat_to_param_def(assign_pat)
+                  assign_pat_to_param_def(
+                    assign_pat,
+                    Some(&doc_parser.ast_parser.source_map),
+                  )
                 }
               }
             }
@@ -215,10 +211,11 @@ pub fn class_to_class_def(
       Method(class_method) => {
         let method_js_doc = doc_parser.js_doc_for_span(class_method.span());
         let method_name = prop_name_to_string(
-          &doc_parser.ast_parser.source_map,
           &class_method.key,
+          Some(&doc_parser.ast_parser.source_map),
         );
-        let fn_def = function_to_function_def(&class_method.function);
+        let fn_def =
+          function_to_function_def(&doc_parser, &class_method.function);
         let method_def = ClassMethodDef {
           js_doc: method_js_doc,
           accessibility: class_method.accessibility,

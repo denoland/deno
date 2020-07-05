@@ -380,7 +380,7 @@ impl Into<TsTypeDef> for &TsTypeLit {
           let mut params = vec![];
 
           for param in &ts_method_sig.params {
-            let param_def = ts_fn_param_to_param_def(param);
+            let param_def = ts_fn_param_to_param_def(param, None);
             params.push(param_def);
           }
 
@@ -407,7 +407,7 @@ impl Into<TsTypeDef> for &TsTypeLit {
           let mut params = vec![];
 
           for param in &ts_prop_sig.params {
-            let param_def = ts_fn_param_to_param_def(param);
+            let param_def = ts_fn_param_to_param_def(param, None);
             params.push(param_def);
           }
 
@@ -432,7 +432,7 @@ impl Into<TsTypeDef> for &TsTypeLit {
         TsCallSignatureDecl(ts_call_sig) => {
           let mut params = vec![];
           for param in &ts_call_sig.params {
-            let param_def = ts_fn_param_to_param_def(param);
+            let param_def = ts_fn_param_to_param_def(param, None);
             params.push(param_def);
           }
 
@@ -498,7 +498,7 @@ impl Into<TsTypeDef> for &TsFnOrConstructorType {
         let mut params = vec![];
 
         for param in &ts_fn_type.params {
-          let param_def = ts_fn_param_to_param_def(param);
+          let param_def = ts_fn_param_to_param_def(param, None);
           params.push(param_def);
         }
 
@@ -517,7 +517,7 @@ impl Into<TsTypeDef> for &TsFnOrConstructorType {
         let mut params = vec![];
 
         for param in &ctor_type.params {
-          let param_def = ts_fn_param_to_param_def(param);
+          let param_def = ts_fn_param_to_param_def(param, None);
           params.push(param_def);
         }
 

@@ -129,7 +129,10 @@ pub fn get_doc_for_ts_interface_decl(
         let mut params = vec![];
 
         for param in &ts_method_sig.params {
-          let param_def = ts_fn_param_to_param_def(param);
+          let param_def = ts_fn_param_to_param_def(
+            param,
+            Some(&doc_parser.ast_parser.source_map),
+          );
           params.push(param_def);
         }
 
@@ -165,7 +168,10 @@ pub fn get_doc_for_ts_interface_decl(
         let mut params = vec![];
 
         for param in &ts_prop_sig.params {
-          let param_def = ts_fn_param_to_param_def(param);
+          let param_def = ts_fn_param_to_param_def(
+            param,
+            Some(&doc_parser.ast_parser.source_map),
+          );
           params.push(param_def);
         }
 
@@ -198,7 +204,10 @@ pub fn get_doc_for_ts_interface_decl(
 
         let mut params = vec![];
         for param in &ts_call_sig.params {
-          let param_def = ts_fn_param_to_param_def(param);
+          let param_def = ts_fn_param_to_param_def(
+            param,
+            Some(&doc_parser.ast_parser.source_map),
+          );
           params.push(param_def);
         }
 

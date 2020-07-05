@@ -233,8 +233,10 @@ impl DocParser {
             }
           }
           DefaultDecl::Fn(fn_expr) => {
-            let function_def =
-              crate::doc::function::function_to_function_def(&fn_expr.function);
+            let function_def = crate::doc::function::function_to_function_def(
+              self,
+              &fn_expr.function,
+            );
             DocNode {
               kind: DocNodeKind::Function,
               name,
@@ -319,7 +321,7 @@ impl DocParser {
           return None;
         }
         let (name, function_def) =
-          super::function::get_doc_for_fn_decl(fn_decl);
+          super::function::get_doc_for_fn_decl(self, fn_decl);
         let (js_doc, location) = self.details_for_span(fn_decl.function.span);
         Some(DocNode {
           kind: DocNodeKind::Function,

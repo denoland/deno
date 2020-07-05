@@ -1006,9 +1006,13 @@ export function foo(a: string, b?: number, cb: (...cbArgs: unknown[]) => void, .
                   },
                   "typeParams": [],
                   "params": [{
+                    "arg": {
+                      "name": "cbArgs",
+                      "kind": "identifier",
+                      "optional": false,
+                      "tsType": null
+                    },
                     "kind": "rest",
-                    "name": "cbArgs",
-                    "optional": false,
                     "tsType": {
                       "repr": "",
                       "kind": "array",
@@ -1023,17 +1027,21 @@ export function foo(a: string, b?: number, cb: (...cbArgs: unknown[]) => void, .
               },
             },
             {
-              "name": "args",
+              "arg": {
+                "name": "args",
+                "kind": "identifier",
+                "optional": false,
+                "tsType": null
+              },
               "kind": "rest",
-              "optional": false,
               "tsType": {
-                "repr": "",
-                "kind": "array",
                 "array": {
-                    "repr": "unknown",
-                    "kind": "keyword",
-                    "keyword": "unknown"
-                }
+                  "keyword": "unknown",
+                  "kind": "keyword",
+                  "repr": "unknown"
+                },
+                "kind": "array",
+                "repr": ""
               }
             }
         ],
@@ -1071,7 +1079,31 @@ export function foo([e,,f, ...g]: number[], { c, d: asdf, i = "asdf", ...rest}, 
       "typeParams": [],
       "params": [
         {
-          "name": "<UNIMPLEMENTED>", // TODO(SyrupThinker) NYI
+          "elements": [
+            {
+              "name": "e",
+              "kind": "identifier",
+              "optional": false,
+              "tsType": null
+            },
+            null,
+            {
+              "name": "f",
+              "kind": "identifier",
+              "optional": false,
+              "tsType": null
+            },
+            {
+              "arg": {
+                "name": "g",
+                "kind": "identifier",
+                "optional": false,
+                "tsType": null
+              },
+              "kind": "rest",
+              "tsType": null
+            }
+          ],
           "kind": "array",
           "optional": false,
           "tsType": {
@@ -1085,24 +1117,59 @@ export function foo([e,,f, ...g]: number[], { c, d: asdf, i = "asdf", ...rest}, 
           }
         },
         {
-          "name": "<UNIMPLEMENTED>", // TODO(SyrupThinker) NYI
           "kind": "object",
           "optional": false,
+          "props": [
+            {
+              "kind": "assign",
+              "key": "c",
+              "value": null
+            },
+            {
+              "kind": "keyValue",
+              "key": "d",
+              "value": {
+                "name": "asdf",
+                "kind": "identifier",
+                "optional": false,
+                "tsType": null
+              }
+            },
+            {
+              "kind": "assign",
+              "key": "i",
+              "value": "<UNIMPLEMENTED>"
+            },
+            {
+              "arg": {
+                "name": "rest",
+                "kind": "identifier",
+                "optional": false,
+                "tsType": null
+              },
+              "kind": "rest"
+            }
+          ],
           "tsType": null
         },
         {
-          "name": "ops",
-          "kind": "identifier",
-          "optional": false,
-          "tsType": {
-            "repr": "AssignOpts",
-            "kind": "typeRef",
-            "typeRef": {
-              "typeName": "AssignOpts",
-              "typeParams": null,
+          "kind": "assign",
+          "left": {
+            "name": "ops",
+            "kind": "identifier",
+            "optional": false,
+            "tsType": {
+              "repr": "AssignOpts",
+              "kind": "typeRef",
+              "typeRef": {
+                "typeName": "AssignOpts",
+                "typeParams": null,
+              }
             }
-          }
-        },
+          },
+          "right": "<UNIMPLEMENTED>",
+          "tsType": null
+        }
       ],
       "returnType": {
         "keyword": "void",
@@ -1748,12 +1815,10 @@ namespace H {}
     "async function a()"
   );
 
-  /* TODO(SyrupThinker) NYI
   contains_test!(function_array_deconstruction,
-    "export function f([a, b]) {}";
-    "function f([a, b])"
+    "export function f([a, b, ...c]) {}";
+    "function f([a, b, ...c])"
   );
-  */
 
   contains_test!(function_async_generator,
     "export async function* ag() {}";
@@ -1775,12 +1840,10 @@ namespace H {}
     "function add<T>(a: T, b: T)"
   );
 
-  /* TODO(SyrupThinker) NYI
   contains_test!(function_object_deconstruction,
-    "export function f({ a, b }) {}";
-    "function f({ a, b })"
+    "export function f({ a, b, ...c }) {}";
+    "function f({a, b, ...c})"
   );
-  */
 
   /* TODO(SyrupThinker) NYI
   contains_test!(function_type_predicate,
