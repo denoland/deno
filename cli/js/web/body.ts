@@ -3,6 +3,8 @@ import * as encoding from "./text_encoding.ts";
 import * as domTypes from "./dom_types.d.ts";
 import { ReadableStreamImpl } from "./streams/readable_stream.ts";
 import { isReadableStreamDisturbed } from "./streams/internals.ts";
+import { Buffer } from "../buffer.ts";
+
 import {
   getHeaderValueParams,
   hasHeaderValueOf,
@@ -35,25 +37,11 @@ function validateBodyType(owner: Body, bodySource: BodyInit | null): boolean {
   );
 }
 
-function concatenate(arrays: Uint8Array[]): ArrayBuffer {
-  let totalLength = 0;
-  for (const arr of arrays) {
-    totalLength += arr.length;
-  }
-  const result = new Uint8Array(totalLength);
-  let offset = 0;
-  for (const arr of arrays) {
-    result.set(arr, offset);
-    offset += arr.length;
-  }
-  return result.buffer as ArrayBuffer;
-}
-
 async function bufferFromStream(
   stream: ReadableStreamReader
 ): Promise<ArrayBuffer> {
-  const parts: Uint8Array[] = [];
   const encoder = new TextEncoder();
+  const buffer = new Buffer();
 
   while (true) {
     const { done, value } = await stream.read();
@@ -61,11 +49,11 @@ async function bufferFromStream(
     if (done) break;
 
     if (typeof value === "string") {
-      parts.push(encoder.encode(value));
+      buffer.writeSync(encoder.encode(value));
     } else if (value instanceof ArrayBuffer) {
-      parts.push(new Uint8Array(value));
+      buffer.writeSync(new Uint8Array(value));
     } else if (value instanceof Uint8Array) {
-      parts.push(value);
+      buffer.writeSync(value);
     } else if (!value) {
       // noop for undefined
     } else {
@@ -73,7 +61,7 @@ async function bufferFromStream(
     }
   }
 
-  return concatenate(parts);
+  return buffer.bytes().buffer;
 }
 
 export const BodyUsedError =
