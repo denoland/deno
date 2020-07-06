@@ -13,8 +13,8 @@ export function chownSync(
 
 export async function chown(
   path: string | URL,
-  uid: number,
-  gid: number
+  uid: number | null,
+  gid: number | null
 ): Promise<void> {
   await sendAsync("op_chown", { path: pathFromURL(path), uid, gid });
 }
