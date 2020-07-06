@@ -1434,7 +1434,7 @@ itest!(_034_onload {
 
 itest!(_035_cached_only_flag {
   args:
-    "--reload --cached-only http://127.0.0.1:4545/cli/tests/019_media_types.ts",
+    "run --reload --cached-only http://127.0.0.1:4545/cli/tests/019_media_types.ts",
   output: "035_cached_only_flag.out",
   exit_code: 1,
   http_server: true,
