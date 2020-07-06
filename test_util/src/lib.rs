@@ -1,4 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Usage: provide a port as argument to run hyper_hello benchmark server
+// otherwise this starts multiple servers on many ports for test endpoints.
 
 #[macro_use]
 extern crate lazy_static;
@@ -6,6 +8,8 @@ extern crate lazy_static;
 use futures::future::{self, FutureExt};
 use os_pipe::pipe;
 use regex::Regex;
+use std::convert::Infallible;
+use std::env;
 use std::io::Read;
 use std::io::Write;
 use std::mem::replace;
@@ -17,12 +21,19 @@ use std::process::Stdio;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
 use tempfile::TempDir;
+use warp::http::HeaderValue;
+use warp::http::Response;
+use warp::http::StatusCode;
 use warp::http::Uri;
-use warp::http::{HeaderValue, Response, StatusCode};
+use warp::hyper::service::{make_service_fn, service_fn};
 use warp::hyper::Body;
+//use warp::hyper::Response;
+use warp::hyper::Server;
 use warp::reply::with_header;
 use warp::reply::Reply;
 use warp::Filter;
+
+type Just<T> = Result<T, Infallible>;
 
 const PORT: u16 = 4545;
 const REDIRECT_PORT: u16 = 4546;
@@ -80,6 +91,10 @@ pub fn test_server_path() -> PathBuf {
 
 #[tokio::main]
 pub async fn run_all_servers() {
+  if let Some(port) = env::args().nth(1) {
+    return hyper_hello(port.parse::<u16>().unwrap()).await;
+  }
+
   let routes = warp::path::full().map(|path: warp::path::FullPath| {
     let p = path.as_str();
     assert_eq!(&p[0..1], "/");
@@ -718,4 +733,25 @@ fn test_wildcard_match() {
     dbg!(pattern, string, expected);
     assert_eq!(actual, expected);
   }
+}
+
+async fn hyper_hello(port: u16) {
+  println!("hyper hello");
+  let addr = ([127, 0, 0, 1], port).into();
+  // For every connection, we must make a `Service` to handle all
+  // incoming HTTP requests on said connection.
+  let new_service = make_service_fn(|_| {
+    // This is the `Service` that will handle the connection.
+    // `service_fn` is a helper to convert a function that
+    // returns a Response into a `Service`.
+    async {
+      Just::Ok(service_fn(|_req| async {
+        Just::Ok(Response::new(Body::from(&b"Hello World!"[..])))
+      }))
+    }
+  });
+
+  let server = Server::bind(&addr).tcp_nodelay(true).serve(new_service);
+  println!("Listening on http://{}", addr);
+  let _ = server.await;
 }
