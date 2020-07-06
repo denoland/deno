@@ -851,42 +851,50 @@ unitTest(
   }
 );
 
-unitTest(
-  { perms: { net: true } },
-  function fetchResponseConstructorNullBody(): void {
-    const nullBodyStatus = [204, 205, 304];
+unitTest(function fetchResponseConstructorNullBody(): void {
+  const nullBodyStatus = [204, 205, 304];
 
-    for (const status of nullBodyStatus) {
-      try {
-        new Response("deno", { status });
-        fail("Response with null body status cannot have body");
-      } catch (e) {
-        assert(e instanceof TypeError);
-        assertEquals(
-          e.message,
-          "Response with null body status cannot have body"
-        );
-      }
+  for (const status of nullBodyStatus) {
+    try {
+      new Response("deno", { status });
+      fail("Response with null body status cannot have body");
+    } catch (e) {
+      assert(e instanceof TypeError);
+      assertEquals(
+        e.message,
+        "Response with null body status cannot have body"
+      );
     }
   }
-);
+});
 
-unitTest(
-  { perms: { net: true } },
-  function fetchResponseConstructorInvalidStatus(): void {
-    const invalidStatus = [101, 600, 199];
+unitTest(function fetchResponseConstructorInvalidStatus(): void {
+  const invalidStatus = [101, 600, 199, null, "", NaN];
 
-    for (const status of invalidStatus) {
-      try {
-        new Response("deno", { status });
-        fail("Invalid status");
-      } catch (e) {
-        assert(e instanceof RangeError);
-        assertEquals(
-          e.message,
-          `The status provided (${status}) is outside the range [200, 599]`
-        );
-      }
+  for (const status of invalidStatus) {
+    try {
+      // deno-lint-ignore ban-ts-comment
+      // @ts-ignore
+      new Response("deno", { status });
+      fail(`Invalid status: ${status}`);
+    } catch (e) {
+      assert(e instanceof RangeError);
+      assertEquals(
+        e.message,
+        `The status provided (${status}) is outside the range [200, 599]`
+      );
     }
   }
-);
+});
+
+unitTest(function fetchResponseEmptyConstructor(): void {
+  const response = new Response();
+  assertEquals(response.status, 200);
+  assertEquals(response.body, null);
+  assertEquals(response.type, "default");
+  assertEquals(response.url, "");
+  assertEquals(response.redirected, false);
+  assertEquals(response.ok, true);
+  assertEquals(response.bodyUsed, false);
+  assertEquals([...response.headers], []);
+});
