@@ -450,7 +450,7 @@ fn upgrade_with_out_in_tmpdir() {
   let new_exe_path = temp_dir.path().join("foo");
   let _ = std::fs::copy(util::deno_exe_path(), &exe_path).unwrap();
   assert!(exe_path.exists());
-  let _mtime1 = std::fs::metadata(&exe_path).unwrap().modified().unwrap();
+  let mtime1 = std::fs::metadata(&exe_path).unwrap().modified().unwrap();
   let status = Command::new(&exe_path)
     .arg("upgrade")
     .arg("--version")
@@ -463,9 +463,18 @@ fn upgrade_with_out_in_tmpdir() {
     .unwrap();
   assert!(status.success());
   assert!(new_exe_path.exists());
+  let mtime2 = std::fs::metadata(&exe_path).unwrap().modified().unwrap();
+  assert_eq!(mtime1, mtime2); // Original exe_path was not changed.
 
-  let _mtime2 = std::fs::metadata(&exe_path).unwrap().modified().unwrap();
-  // TODO(ry) assert!(mtime1 < mtime2);
+  let v = String::from_utf8(
+    Command::new(&new_exe_path)
+      .arg("-V")
+      .output()
+      .unwrap()
+      .stdout,
+  )
+  .unwrap();
+  assert!(.contains("1.0.2"));
 }
 
 #[test]
