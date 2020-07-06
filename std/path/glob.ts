@@ -4,7 +4,7 @@
 import { SEP, SEP_PATTERN } from "./separator.ts";
 import { globrex } from "./_globrex.ts";
 import { join, normalize } from "./mod.ts";
-import { assert } from "../testing/asserts.ts";
+import { assert } from "../_util/assert.ts";
 
 export interface GlobOptions {
   extended?: boolean;
@@ -91,7 +91,7 @@ export function normalizeGlob(
   glob: string,
   { globstar = false }: GlobOptions = {}
 ): string {
-  if (!!glob.match(/\0/g)) {
+  if (glob.match(/\0/g)) {
     throw new Error(`Glob contains invalid characters: "${glob}"`);
   }
   if (!globstar) {

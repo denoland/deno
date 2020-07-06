@@ -48,7 +48,7 @@ export function encodedLen(n: number): number {
  * @param dst
  * @param src
  */
-export function encode(dst: Uint8Array, src: Uint8Array): number {
+export function encode(src: Uint8Array, dst: Uint8Array): number {
   const srcLength = encodedLen(src.length);
   if (dst.length !== srcLength) {
     throw new Error("Out of index.");
@@ -67,7 +67,7 @@ export function encode(dst: Uint8Array, src: Uint8Array): number {
  */
 export function encodeToString(src: Uint8Array): string {
   const dest = new Uint8Array(encodedLen(src.length));
-  encode(dest, src);
+  encode(src, dest);
   return new TextDecoder().decode(dest);
 }
 
@@ -82,8 +82,8 @@ export function encodeToString(src: Uint8Array): string {
  * @param src
  */
 export function decode(
-  dst: Uint8Array,
-  src: Uint8Array
+  src: Uint8Array,
+  dst: Uint8Array
 ): [number, Error | void] {
   let i = 0;
   for (; i < Math.floor(src.length / 2); i++) {

@@ -1,9 +1,13 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 import { assert, assertEquals } from "../../../std/testing/asserts.ts";
+import * as colors from "../../../std/fmt/colors.ts";
+export { colors };
+import { resolve } from "../../../std/path/mod.ts";
 export {
   assert,
   assertThrows,
+  assertThrowsAsync,
   assertEquals,
   assertMatch,
   assertNotEquals,
@@ -91,7 +95,9 @@ function registerPermCombination(perms: Permissions): void {
 export async function registerUnitTests(): Promise<void> {
   const processPerms = await getProcessPermissions();
 
-  for (const unitTestDefinition of REGISTERED_UNIT_TESTS) {
+  const onlyTests = REGISTERED_UNIT_TESTS.filter(({ only }) => only);
+  const unitTests = onlyTests.length > 0 ? onlyTests : REGISTERED_UNIT_TESTS;
+  for (const unitTestDefinition of unitTests) {
     if (!permissionsMatch(processPerms, unitTestDefinition.perms)) {
       continue;
     }
@@ -124,11 +130,13 @@ interface UnitTestPermissions {
 
 interface UnitTestOptions {
   ignore?: boolean;
+  only?: boolean;
   perms?: UnitTestPermissions;
 }
 
 interface UnitTestDefinition extends Deno.TestDefinition {
   ignore: boolean;
+  only: boolean;
   perms: Permissions;
 }
 
@@ -172,6 +180,7 @@ export function unitTest(
     name,
     fn,
     ignore: !!options.ignore,
+    only: !!options.only,
     perms: normalizedPerms,
   };
 
@@ -362,3 +371,9 @@ unitTest(
     });
   }
 );
+
+export function pathToAbsoluteFileUrl(path: string): URL {
+  path = resolve(path);
+
+  return new URL(`file://${Deno.build.os === "windows" ? "/" : ""}${path}`);
+}

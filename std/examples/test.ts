@@ -1,5 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-const { run } = Deno;
 import { assertEquals } from "../testing/asserts.ts";
 
 /** Example of how to do basic tests */
@@ -13,7 +12,7 @@ Deno.test("t2", function (): void {
 
 /** A more complicated test that runs a subprocess. */
 Deno.test("catSmoke", async function (): Promise<void> {
-  const p = run({
+  const p = Deno.run({
     cmd: [
       Deno.execPath(),
       "run",

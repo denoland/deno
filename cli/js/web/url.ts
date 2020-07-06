@@ -39,7 +39,7 @@ const MAX_PORT = 2 ** 16 - 1;
 // (LHS). e.g.
 //      takePattern("https://deno.land:80", /^([a-z]+):[/]{2}/)
 //        = ["http", "deno.land:80"]
-//      takePattern("deno.land:80", /^([^:]+):)
+//      takePattern("deno.land:80", /^(\[[0-9a-fA-F.:]{2,}\]|[^:]+)/)
 //        = ["deno.land", "80"]
 function takePattern(string: string, pattern: RegExp): [string, string] {
   let capture = "";
@@ -62,12 +62,15 @@ function parse(url: string, isBase = true): URLParts | undefined {
     parts.password = "";
     [parts.hostname, restUrl] = takePattern(restUrl, /^[/\\]{2}([^/\\?#]*)/);
     parts.port = "";
+    if (build.os == "windows" && parts.hostname == "") {
+      // UNC paths. e.g. "\\\\localhost\\foo\\bar" on Windows should be
+      // representable as `new URL("file:////localhost/foo/bar")` which is
+      // equivalent to: `new URL("file://localhost/foo/bar")`.
+      [parts.hostname, restUrl] = takePattern(restUrl, /^[/\\]{2,}([^/\\?#]*)/);
+    }
   } else if (specialSchemes.includes(parts.protocol)) {
     let restAuthority;
-    [restAuthority, restUrl] = takePattern(
-      restUrl,
-      /^[/\\]{2}[/\\]*([^/\\?#]+)/
-    );
+    [restAuthority, restUrl] = takePattern(restUrl, /^[/\\]{2,}([^/\\?#]+)/);
     if (isBase && restAuthority == "") {
       return undefined;
     }
@@ -80,7 +83,10 @@ function parse(url: string, isBase = true): URLParts | undefined {
     parts.username = encodeUserinfo(parts.username);
     [parts.password] = takePattern(restAuthentication, /^:(.*)/);
     parts.password = encodeUserinfo(parts.password);
-    [parts.hostname, restAuthority] = takePattern(restAuthority, /^([^:]+)/);
+    [parts.hostname, restAuthority] = takePattern(
+      restAuthority,
+      /^(\[[0-9a-fA-F.:]{2,}\]|[^:]+)/
+    );
     [parts.port] = takePattern(restAuthority, /^:(.*)/);
     if (!isValidPort(parts.port)) {
       return undefined;
@@ -92,7 +98,11 @@ function parse(url: string, isBase = true): URLParts | undefined {
     parts.port = "";
   }
   try {
-    parts.hostname = encodeHostname(parts.hostname).toLowerCase();
+    const IPv6re = /^\[[0-9a-fA-F.:]{2,}\]$/;
+    if (!IPv6re.test(parts.hostname)) {
+      parts.hostname = encodeHostname(parts.hostname); // Non-IPv6 URLs
+    }
+    parts.hostname = parts.hostname.toLowerCase();
   } catch {
     return undefined;
   }

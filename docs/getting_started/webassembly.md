@@ -1,6 +1,6 @@
-## WASM support
+## WebAssembly support
 
-Deno can execute [wasm](https://webassembly.org/) binaries.
+Deno can execute [WebAssembly](https://webassembly.org/) binaries.
 
 <!-- prettier-ignore-start -->
 ```js

@@ -2,7 +2,7 @@
 import { BufReader } from "./bufio.ts";
 type Reader = Deno.Reader;
 type Writer = Deno.Writer;
-import { assert } from "../testing/asserts.ts";
+import { assert } from "../_util/assert.ts";
 
 const DEFAULT_BUFFER_SIZE = 32 * 1024;
 

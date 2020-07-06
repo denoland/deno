@@ -1,4 +1,3 @@
-const { test } = Deno;
 import {
   bench,
   runBenchmarks,
@@ -14,7 +13,7 @@ import {
   assertThrowsAsync,
 } from "./asserts.ts";
 
-test({
+Deno.test({
   name: "benching",
 
   fn: async function (): Promise<void> {
@@ -101,7 +100,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "Bench without name should throw",
   fn() {
     assertThrows(
@@ -114,7 +113,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "Bench without stop should throw",
   fn: async function (): Promise<void> {
     await assertThrowsAsync(
@@ -131,7 +130,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "Bench without start should throw",
   fn: async function (): Promise<void> {
     await assertThrowsAsync(
@@ -148,7 +147,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "Bench with stop before start should throw",
   fn: async function (): Promise<void> {
     await assertThrowsAsync(
@@ -166,7 +165,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "clearBenchmarks should clear all candidates",
   fn: async function (): Promise<void> {
     dummyBench("test");
@@ -179,7 +178,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "clearBenchmarks with only as option",
   fn: async function (): Promise<void> {
     // to reset candidates
@@ -197,7 +196,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "clearBenchmarks with skip as option",
   fn: async function (): Promise<void> {
     // to reset candidates
@@ -215,7 +214,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "clearBenchmarks with only and skip as option",
   fn: async function (): Promise<void> {
     // to reset candidates
@@ -236,7 +235,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "progressCallback of runBenchmarks",
   fn: async function (): Promise<void> {
     clearBenchmarks();
@@ -335,6 +334,27 @@ test({
     assertEquals(progress.state, ProgressState.BenchmarkingEnd);
     delete progress.state;
     assertEquals(progress, benchingResults);
+  },
+});
+
+Deno.test({
+  name: "async progressCallback",
+  fn: async function (): Promise<void> {
+    clearBenchmarks();
+    dummyBench("single");
+
+    const asyncCallbacks = [];
+
+    await runBenchmarks({ silent: true }, (progress) => {
+      return new Promise((resolve) => {
+        queueMicrotask(() => {
+          asyncCallbacks.push(progress);
+          resolve();
+        });
+      });
+    });
+
+    assertEquals(asyncCallbacks.length, 5);
   },
 });
 

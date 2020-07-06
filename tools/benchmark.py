@@ -3,7 +3,7 @@
 # Performs benchmark and append data to //website/data.json.
 # If //website/data.json doesn't exist, this script tries to import it from
 # gh-pages branch.
-# To view the results locally run ./tools/http_server.py and visit
+# To view the results locally run target/debug/test_server and visit
 # http://localhost:4545/website
 
 import os
@@ -16,7 +16,6 @@ from util import build_path, executable_suffix, root_path, run, run_output
 import third_party
 from http_benchmark import http_benchmark
 import throughput_benchmark
-import http_server
 
 # The list of the tuples of the benchmark name, arguments and return code
 exec_time_benchmarks = [
@@ -239,7 +238,6 @@ def main():
     build_dir = build_path()
     sha1 = run_output(["git", "rev-parse", "HEAD"],
                       exit_on_fail=True).out.strip()
-    http_server.spawn()
 
     deno_exe = os.path.join(build_dir, "deno")
 

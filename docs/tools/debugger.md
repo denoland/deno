@@ -1,24 +1,24 @@
 ## Debugger
 
-Deno supports [V8 Inspector Protocol](https://v8.dev/docs/inspector).
+Deno supports the [V8 Inspector Protocol](https://v8.dev/docs/inspector).
 
-It is possible to debug Deno programs using Chrome Devtools or other clients
-that support the protocol (eg. VSCode).
+It's possible to debug Deno programs using Chrome Devtools or other clients that
+support the protocol (eg. VSCode).
 
-To activate debugging capabilities run Deno with `--inspect` or `--inspect-brk`
-flag.
+To activate debugging capabilities run Deno with the `--inspect` or
+`--inspect-brk` flags.
 
-`--inspect` flag allows to attach debugger at any point in time, while
-`--inspect-brk` will wait for debugger being attached and pause execution on the
-first line of code.
+The `--inspect` flag allows attaching the debugger at any point in time, while
+`--inspect-brk` will wait for the debugger to attach and will pause execution on
+the first line of code.
 
 ### Chrome Devtools
 
-Let's try debugging a program using Chrome Devtools; for this purpose we'll use
-[file_server.ts](https://deno.land/std@v0.50.0/http/file_server.ts) from `std`;
+Let's try debugging a program using Chrome Devtools. For this, we'll use
+[file_server.ts](https://deno.land/std@v0.50.0/http/file_server.ts) from `std`,
 a static file server.
 
-Use `--inspect-brk` flag to break execution on the first line.
+Use the `--inspect-brk` flag to break execution on the first line:
 
 ```shell
 $ deno run --inspect-brk --allow-read --allow-net https://deno.land/std@v0.50.0/http/file_server.ts
@@ -37,7 +37,7 @@ It might take a few seconds after opening the devtools to load all modules.
 ![Devtools opened](../images/debugger2.jpg)
 
 You might notice that Devtools paused execution on the first line of
-`_constants.ts` instead of `file_server.ts`. This is an expected behavior and is
+`_constants.ts` instead of `file_server.ts`. This is expected behavior and is
 caused by the way ES modules are evaluated by V8 (`_constants.ts` is left-most,
 bottom-most dependency of `file_server.ts` so it is evaluated first).
 
@@ -48,17 +48,17 @@ tree:
 ![Open file_server.ts](../images/debugger3.jpg)
 
 _Looking closely you'll find duplicate entries for each file; one written
-regularly and one in italics. The former is compiled source file (so in case of
-`.ts` files it will be emitted JavaScript source), while the latter is a source
-map for the file._
+regularly and one in italics. The former is compiled source file (so in the case
+of `.ts` files it will be emitted JavaScript source), while the latter is a
+source map for the file._
 
-Add a breakpoint in `listenAndServe` method:
+Next, add a breakpoint in the `listenAndServe` method:
 
 ![Break in file_server.ts](../images/debugger4.jpg)
 
-As soon as we've added the breakpoint Devtools automatically opened up source
-map file, which allows us step through the actual source code that includes
-types.
+As soon as we've added the breakpoint Devtools automatically opened up the
+source map file, which allows us step through the actual source code that
+includes types.
 
 Now that we have our breakpoints set, we can resume the execution of our script
 so that we might inspect an incoming request. Hit the Resume script execution
@@ -73,17 +73,19 @@ $ curl http://0.0.0.0:4500/
 
 ![Break in request handling](../images/debugger5.jpg)
 
-At this point we can introspect contents of the request and go step-by-step to
-debug the code.
+At this point we can introspect the contents of the request and go step-by-step
+to debug the code.
 
 ### VSCode
 
 Deno can be debugged using VSCode.
 
-Official support in plugin is being worked on -
+Official support via the plugin is being worked on -
 https://github.com/denoland/vscode_deno/issues/12
 
-We can still attach debugger by manually providing a `launch.json` config:
+We can still attach the debugger by manually providing a
+[`launch.json`](https://code.visualstudio.com/docs/editor/debugging#_launch-configurations)
+config:
 
 ```json
 {
@@ -95,16 +97,17 @@ We can still attach debugger by manually providing a `launch.json` config:
       "request": "launch",
       "cwd": "${workspaceFolder}",
       "runtimeExecutable": "deno",
-      "runtimeArgs": ["run", "--inspect-brk", "-A", "<entry_point>"],
+      "runtimeArgs": ["run", "--inspect-brk", "-A", "${file}"],
       "port": 9229
     }
   ]
 }
 ```
 
-**NOTE**: Replace `<entry_point>` with actual script name.
+**NOTE**: This uses the file you have open as the entry point; replace `${file}`
+with a script name if you want a fixed entry point.
 
-This time let's try with local source file, create `server.ts`:
+Let's try out debugging a local source file. Create `server.ts`:
 
 ```ts
 import { serve } from "https://deno.land/std@v0.50.0/http/server.ts";
@@ -116,9 +119,7 @@ for await (const req of server) {
 }
 ```
 
-Change `<entry_point>` to `server.ts` and run created configuration:
-
-![VSCode debugger](../images/debugger6.jpg)
+Then we can set a breakpoint, and run the created configuration:
 
 ![VSCode debugger](../images/debugger7.jpg)
 
@@ -126,19 +127,19 @@ Change `<entry_point>` to `server.ts` and run created configuration:
 
 You can debug Deno using your JetBrains IDE by right-clicking the file you want
 to debug and selecting the `Debug 'Deno: <file name>'` option. This will create
-a run/debug configuration which has no permission flags set, so to change that
-you need to modify the run/debug configuration and change the `Arguments` field
-with the required flags.
+a run/debug configuration with no permission flags set. To configure these flags
+edit the run/debug configuration and modify the `Arguments` field with the
+required flags.
 
 ### Other
 
-Any client that implements Devtools protocol should be able to connect to Deno
-process.
+Any client that implements the Devtools protocol should be able to connect to a
+Deno process.
 
 ### Limitations
 
-Devtools support is still immature, there are some functionalities that are
-known to be missing/buggy:
+Devtools support is still immature. There is some functionality that is known to
+be missing or buggy:
 
-- autocomplete in Devtools' Console causes Deno process to exit
+- autocomplete in Devtools' console causes the Deno process to exit
 - profiling and memory dumps might not work correctly

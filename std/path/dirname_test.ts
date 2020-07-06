@@ -1,11 +1,9 @@
 // Copyright the Browserify authors. MIT License.
 // Ported from https://github.com/browserify/path-browserify/
-
-const { test } = Deno;
 import { assertEquals } from "../testing/asserts.ts";
 import * as path from "./mod.ts";
 
-test("dirname", function () {
+Deno.test("dirname", function () {
   assertEquals(path.posix.dirname("/a/b/"), "/a");
   assertEquals(path.posix.dirname("/a/b"), "/a");
   assertEquals(path.posix.dirname("/a"), "/");
@@ -16,7 +14,7 @@ test("dirname", function () {
   assertEquals(path.posix.dirname("foo"), ".");
 });
 
-test("dirnameWin32", function () {
+Deno.test("dirnameWin32", function () {
   assertEquals(path.win32.dirname("c:\\"), "c:\\");
   assertEquals(path.win32.dirname("c:\\foo"), "c:\\");
   assertEquals(path.win32.dirname("c:\\foo\\"), "c:\\");

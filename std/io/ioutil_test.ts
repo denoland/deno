@@ -1,6 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-const { Buffer } = Deno;
-type Reader = Deno.Reader;
 import { assertEquals } from "../testing/asserts.ts";
 import {
   copyN,
@@ -14,7 +12,7 @@ import { BufReader } from "./bufio.ts";
 import { tempFile } from "./util.ts";
 import * as path from "../path/mod.ts";
 
-class BinaryReader implements Reader {
+class BinaryReader implements Deno.Reader {
   index = 0;
 
   constructor(private bytes: Uint8Array = new Uint8Array(0)) {}
@@ -73,7 +71,7 @@ Deno.test("testSliceLongToBytes2", function (): void {
 });
 
 Deno.test("testCopyN1", async function (): Promise<void> {
-  const w = new Buffer();
+  const w = new Deno.Buffer();
   const r = new StringReader("abcdefghij");
   const n = await copyN(r, w, 3);
   assertEquals(n, 3);
@@ -81,7 +79,7 @@ Deno.test("testCopyN1", async function (): Promise<void> {
 });
 
 Deno.test("testCopyN2", async function (): Promise<void> {
-  const w = new Buffer();
+  const w = new Deno.Buffer();
   const r = new StringReader("abcdefghij");
   const n = await copyN(r, w, 11);
   assertEquals(n, 10);

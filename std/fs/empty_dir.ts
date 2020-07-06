@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { join } from "../path/mod.ts";
-const { readDir, readDirSync, mkdir, mkdirSync, remove, removeSync } = Deno;
+
 /**
  * Ensures that a directory is empty.
  * Deletes directory contents if the directory is not empty.
@@ -11,7 +11,7 @@ const { readDir, readDirSync, mkdir, mkdirSync, remove, removeSync } = Deno;
 export async function emptyDir(dir: string): Promise<void> {
   try {
     const items = [];
-    for await (const dirEntry of readDir(dir)) {
+    for await (const dirEntry of Deno.readDir(dir)) {
       items.push(dirEntry);
     }
 
@@ -19,7 +19,7 @@ export async function emptyDir(dir: string): Promise<void> {
       const item = items.shift();
       if (item && item.name) {
         const filepath = join(dir, item.name);
-        await remove(filepath, { recursive: true });
+        await Deno.remove(filepath, { recursive: true });
       }
     }
   } catch (err) {
@@ -28,7 +28,7 @@ export async function emptyDir(dir: string): Promise<void> {
     }
 
     // if not exist. then create it
-    await mkdir(dir, { recursive: true });
+    await Deno.mkdir(dir, { recursive: true });
   }
 }
 
@@ -41,14 +41,14 @@ export async function emptyDir(dir: string): Promise<void> {
  */
 export function emptyDirSync(dir: string): void {
   try {
-    const items = [...readDirSync(dir)];
+    const items = [...Deno.readDirSync(dir)];
 
     // If the directory exists, remove all entries inside it.
     while (items.length) {
       const item = items.shift();
       if (item && item.name) {
         const filepath = join(dir, item.name);
-        removeSync(filepath, { recursive: true });
+        Deno.removeSync(filepath, { recursive: true });
       }
     }
   } catch (err) {
@@ -56,7 +56,7 @@ export function emptyDirSync(dir: string): void {
       throw err;
     }
     // if not exist. then create it
-    mkdirSync(dir, { recursive: true });
+    Deno.mkdirSync(dir, { recursive: true });
     return;
   }
 }
