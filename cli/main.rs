@@ -78,7 +78,6 @@ use crate::global_state::GlobalState;
 use crate::msg::MediaType;
 use crate::op_error::OpError;
 use crate::ops::fs_events::file_watcher;
-use crate::ops::io::get_stdio;
 use crate::permissions::Permissions;
 use crate::tsc::TargetLib;
 use crate::worker::MainWorker;
@@ -283,11 +282,7 @@ where
   async fn error_handling(func: WatchFuture) {
     let result = func.await;
     if let Err(err) = result {
-      let msg = format!(
-        "{}: {}",
-        colors::red_bold("error".to_string()),
-        err.to_string(),
-      );
+      let msg = format!("{}: {}", colors::red_bold("error"), err.to_string(),);
       eprintln!("{}", msg);
     }
   }
