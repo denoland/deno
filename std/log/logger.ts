@@ -43,22 +43,43 @@ export interface LoggerOptions {
 }
 
 export class Logger {
-  level: number;
-  levelName: LevelName;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  handlers: any[];
-  loggerName: string;
+  #level: LogLevels;
+  #handlers: BaseHandler[];
+  readonly #loggerName: string;
 
   constructor(
     loggerName: string,
     levelName: LevelName,
     options: LoggerOptions = {}
   ) {
-    this.loggerName = loggerName;
-    this.level = getLevelByName(levelName);
-    this.levelName = levelName;
+    this.#loggerName = loggerName;
+    this.#level = getLevelByName(levelName);
+    this.#handlers = options.handlers || [];
+  }
 
-    this.handlers = options.handlers || [];
+  get level(): LogLevels {
+    return this.#level;
+  }
+  set level(level: LogLevels) {
+    this.#level = level;
+  }
+
+  get levelName(): LevelName {
+    return getLevelName(this.#level);
+  }
+  set levelName(levelName: LevelName) {
+    this.#level = getLevelByName(levelName);
+  }
+
+  get loggerName(): string {
+    return this.#loggerName;
+  }
+
+  set handlers(hndls: BaseHandler[]) {
+    this.#handlers = hndls;
+  }
+  get handlers(): BaseHandler[] {
+    return this.#handlers;
   }
 
   /** If the level of the logger is greater than the level to log, then nothing
@@ -68,7 +89,7 @@ export class Logger {
    * function, not the function itself, unless the function isn't called, in which
    * case undefined is returned.  All types are coerced to strings for logging.
    */
-  _log<T>(
+  private _log<T>(
     level: number,
     msg: (T extends Function ? never : T) | (() => T),
     ...args: unknown[]
@@ -92,7 +113,7 @@ export class Logger {
       loggerName: this.loggerName,
     });
 
-    this.handlers.forEach((handler): void => {
+    this.#handlers.forEach((handler): void => {
       handler.handle(record);
     });
 
