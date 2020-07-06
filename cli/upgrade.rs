@@ -56,8 +56,19 @@ pub async fn upgrade_command(
   dry_run: bool,
   force: bool,
   version: Option<String>,
+  ca_file: Option<String>,
 ) -> Result<(), ErrBox> {
-  let client = Client::builder().redirect(Policy::none()).build()?;
+  let mut client_builder = Client::builder().redirect(Policy::none());
+
+  // If we have been provided a CA Certificate, add it into the HTTP client
+  if let Some(ca_file) = ca_file {
+    let buf = std::fs::read(ca_file);
+    let cert = reqwest::Certificate::from_pem(&buf.unwrap())?;
+    client_builder = client_builder.add_root_certificate(cert);
+  }
+
+  let client = client_builder.build()?;
+
   let current_version = semver_parse(crate::version::DENO).unwrap();
 
   let install_version = match version {
