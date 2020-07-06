@@ -934,7 +934,7 @@ export default class Module {
           return ERRNO_INVAL;
         }
 
-        return ERRNO_NOSYS;
+        return ERRNO_SUCCESS;
       },
 
       fd_write: (
