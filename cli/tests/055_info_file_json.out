@@ -2,7 +2,7 @@
   "local": "[WILDCARD]005_more_imports.ts",
   "file_type": "TypeScript",
   "compiled": "[WILDCARD]005_more_imports.ts.js",
-  "map": "[WILDCARD]005_more_imports.ts.js.map",
+  "map": null,
   "deps": [
     "file://[WILDCARD]/005_more_imports.ts",
     [
