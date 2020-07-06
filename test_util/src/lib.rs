@@ -90,7 +90,7 @@ async fn hyper_hello(port: u16) {
   warp::serve(route).bind(([127, 0, 0, 1], port)).await;
 }
 
-#[tokio::main]
+#[tokio::main(max_threads = 1)]
 pub async fn run_all_servers() {
   if let Some(port) = env::args().nth(1) {
     return hyper_hello(port.parse::<u16>().unwrap()).await;
