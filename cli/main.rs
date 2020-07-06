@@ -252,7 +252,7 @@ async fn print_file_info(
   if json {
     let output = json!({
       "local": output.local,
-      "file_type": output.file_type,
+      "fileType": output.file_type,
       "compiled": output.compiled,
       "map": output.map,
       "deps": output.deps.map(|x| x.to_json())
