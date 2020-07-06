@@ -29,5 +29,9 @@ declare global {
       disable(): void;
       getDuration(value: string): number;
     };
+
+    interface SourceFile {
+      version?: string;
+    }
   }
 }
