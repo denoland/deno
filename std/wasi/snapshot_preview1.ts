@@ -317,15 +317,12 @@ export default class Module {
 
     if (options.preopens) {
       for (const [vpath, path] of Object.entries(options.preopens)) {
-        const info = Deno.statSync(path);
-        if (!info.isDirectory) {
-          throw new TypeError(`${path} is not a directory`);
-        }
-
         const type = FILETYPE_DIRECTORY;
+        const entries = Array.from(Deno.readDirSync(path));
 
         const entry = {
           type,
+          entries,
           path,
           vpath,
         };
@@ -485,14 +482,28 @@ export default class Module {
           return ERRNO_BADF;
         }
 
-        entry.handle.close();
+        if (entry.handle) {
+          entry.handle.close();
+        }
+
         delete this.fds[fd];
 
         return ERRNO_SUCCESS;
       },
 
       fd_datasync: (fd: number): number => {
-        return ERRNO_NOSYS;
+        const entry = this.fds[fd];
+        if (!entry) {
+          return ERRNO_BADF;
+        }
+
+        try {
+          Deno.fdatasyncSync(entry.handle.rid);
+        } catch (err) {
+          return errno(err);
+        }
+
+        return ERRNO_SUCCESS;
       },
 
       fd_fdstat_get: (fd: number, stat_out: number): number => {
@@ -523,11 +534,91 @@ export default class Module {
       },
 
       fd_filestat_get: (fd: number, buf_out: number): number => {
-        return ERRNO_NOSYS;
+        const entry = this.fds[fd];
+        if (!entry) {
+          return ERRNO_BADF;
+        }
+
+        const view = new DataView(this.memory.buffer);
+
+        try {
+          const info = Deno.fstatSync(entry.handle.rid);
+
+          if (entry.type === undefined) {
+            switch (true) {
+              case info.isFile:
+                entry.type = FILETYPE_REGULAR_FILE;
+                break;
+
+              case info.isDirectory:
+                entry.type = FILETYPE_DIRECTORY;
+                break;
+
+              case info.isSymlink:
+                entry.type = FILETYPE_SYMBOLIC_LINK;
+                break;
+
+              default:
+                entry.type = FILETYPE_UNKNOWN;
+                break;
+            }
+          }
+
+          view.setBigUint64(buf_out, BigInt(info.dev ? info.dev : 0), true);
+          buf_out += 8;
+
+          view.setBigUint64(buf_out, BigInt(info.ino ? info.ino : 0), true);
+          buf_out += 8;
+
+          view.setUint8(buf_out, entry.type);
+          buf_out += 8;
+
+          view.setUint32(buf_out, Number(info.nlink), true);
+          buf_out += 8;
+
+          view.setBigUint64(buf_out, BigInt(info.size), true);
+          buf_out += 8;
+
+          view.setBigUint64(
+            buf_out,
+            BigInt(info.atime ? info.atime.getTime() * 1e6 : 0),
+            true
+          );
+          buf_out += 8;
+
+          view.setBigUint64(
+            buf_out,
+            BigInt(info.mtime ? info.mtime.getTime() * 1e6 : 0),
+            true
+          );
+          buf_out += 8;
+
+          view.setBigUint64(
+            buf_out,
+            BigInt(info.birthtime ? info.birthtime.getTime() * 1e6 : 0),
+            true
+          );
+          buf_out += 8;
+        } catch (err) {
+          return errno(err);
+        }
+
+        return ERRNO_SUCCESS;
       },
 
       fd_filestat_set_size: (fd: number, size: bigint): number => {
-        return ERRNO_NOSYS;
+        const entry = this.fds[fd];
+        if (!entry) {
+          return ERRNO_BADF;
+        }
+
+        try {
+          Deno.ftruncateSync(entry.handle.rid, Number(size));
+        } catch (err) {
+          return errno(err);
+        }
+
+        return ERRNO_SUCCESS;
       },
 
       fd_filestat_set_times: (
@@ -706,7 +797,70 @@ export default class Module {
         cookie: bigint,
         bufused_out: number
       ): number => {
-        return ERRNO_NOSYS;
+        const entry = this.fds[fd];
+        if (!entry) {
+          return ERRNO_BADF;
+        }
+
+        const heap = new Uint8Array(this.memory.buffer);
+        const view = new DataView(this.memory.buffer);
+
+        let bufused = 0;
+
+        try {
+          const entries = Array.from(Deno.readDirSync(entry.path));
+          for (let i = Number(cookie); i < entries.length; i++) {
+            const name_data = new TextEncoder().encode(entries[i].name);
+
+            const entry_info = Deno.statSync(
+              resolve(entry.path, entries[i].name)
+            );
+            const entry_data = new Uint8Array(24 + name_data.byteLength);
+            const entry_view = new DataView(entry_data.buffer);
+
+            entry_view.setBigUint64(0, BigInt(i + 1), true);
+            entry_view.setBigUint64(
+              8,
+              BigInt(entry_info.ino ? entry_info.ino : 0),
+              true
+            );
+            entry_view.setUint32(16, name_data.byteLength, true);
+
+            switch (true) {
+              case entries[i].isFile:
+                var type = FILETYPE_REGULAR_FILE;
+                break;
+
+              case entries[i].isDirectory:
+                var type = FILETYPE_REGULAR_FILE;
+                break;
+
+              case entries[i].isSymlink:
+                var type = FILETYPE_SYMBOLIC_LINK;
+                break;
+
+              default:
+                var type = FILETYPE_REGULAR_FILE;
+                break;
+            }
+
+            entry_view.setUint8(20, type);
+            entry_data.set(name_data, 24);
+
+            const data = entry_data.slice(
+              0,
+              Math.min(entry_data.length, buf_len - bufused)
+            );
+            heap.set(data, buf_ptr + bufused);
+            bufused += data.byteLength;
+          }
+        } catch (err) {
+          return errno(err);
+        }
+
+        view.setUint32(bufused_out, bufused, true);
+
+        return ERRNO_SUCCESS;
       },
 
       fd_renumber: (fd: number, to: number): number => {
@@ -751,7 +905,18 @@ export default class Module {
       },
 
       fd_sync: (fd: number): number => {
-        return ERRNO_NOSYS;
+        const entry = this.fds[fd];
+        if (!entry) {
+          return ERRNO_BADF;
+        }
+
+        try {
+          Deno.fsyncSync(entry.handle.rid);
+        } catch (err) {
+          return errno(err);
+        }
+
+        return ERRNO_SUCCESS;
       },
 
       fd_tell: (fd: number, offset_out: number): number => {
@@ -769,7 +934,7 @@ export default class Module {
           return ERRNO_INVAL;
         }
 
-        return ERRNO_NOSYS;
+        return ERRNO_SUCCESS;
       },
 
       fd_write: (
@@ -1024,6 +1189,28 @@ export default class Module {
         const data = new Uint8Array(this.memory.buffer, path_ptr, path_len);
         const path = resolve(entry.path, text.decode(data));
 
+        if ((oflags & OFLAGS_DIRECTORY) !== 0) {
+          // XXX (caspervonb) this isn't ideal as we can't get a rid for the
+          // directory this way so there's no native fstat but Deno.open
+          // doesn't work with directories on windows so we'll have to work
+          // around it for now.
+          try {
+            const entries = Array.from(Deno.readDirSync(path));
+            const opened_fd =
+              this.fds.push({
+                entries,
+                path,
+              }) - 1;
+
+            const view = new DataView(this.memory.buffer);
+            view.setUint32(opened_fd_out, opened_fd, true);
+          } catch (err) {
+            return errno(err);
+          }
+
+          return ERRNO_SUCCESS;
+        }
+
         const options = {
           read: false,
           write: false,
@@ -1036,12 +1223,6 @@ export default class Module {
         if ((oflags & OFLAGS_CREAT) !== 0) {
           options.create = true;
           options.write = true;
-        }
-
-        if ((oflags & OFLAGS_DIRECTORY) !== 0) {
-          // TODO (caspervonb) review if we can
-          // emulate this; unix supports opening
-          // directories, windows does not.
         }
 
         if ((oflags & OFLAGS_EXCL) !== 0) {

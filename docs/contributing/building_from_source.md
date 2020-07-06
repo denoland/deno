@@ -64,7 +64,9 @@ When building V8 from source, there are more dependencies:
 For Linux users glib-2.0 development files must also be installed. (On Ubuntu,
 run `apt install libglib2.0-dev`.)
 
-Mac users must have [XCode](https://developer.apple.com/xcode/) installed.
+Mac users must have Command Line Tools installed.
+([XCode](https://developer.apple.com/xcode/) already includes CLT. Run
+`xcode-select --install` to install it without XCode.)
 
 For Windows users:
 

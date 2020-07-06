@@ -448,11 +448,7 @@ impl SourceFileFetcher {
       .boxed_local();
     }
 
-    info!(
-      "{} {}",
-      colors::green("Download".to_string()),
-      module_url.to_string()
-    );
+    info!("{} {}", colors::green("Download"), module_url.to_string());
 
     let dir = self.clone();
     let module_url = module_url.clone();

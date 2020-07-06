@@ -1086,7 +1086,8 @@ declare namespace Deno {
   /** **UNSTABLE**: The URL of the file that was originally executed from the command-line. */
   export const mainModule: string;
 
-  /** Synchronously truncates or extends the specified file stream, to reach the
+  /** **UNSTABLE**: new API, yet to be vetted.
+   * Synchronously truncates or extends the specified file stream, to reach the
    * specified `len`.  If `len` is not specified then the entire file contents
    * are truncated.
    *
@@ -1106,7 +1107,8 @@ declare namespace Deno {
    */
   export function ftruncateSync(rid: number, len?: number): void;
 
-  /** Truncates or extends the specified file stream, to reach the specified `len`. If
+  /** **UNSTABLE**: new API, yet to be vetted.
+   * Truncates or extends the specified file stream, to reach the specified `len`. If
    * `len` is not specified then the entire file contents are truncated.
    *
    * ```ts

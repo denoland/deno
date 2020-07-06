@@ -36,7 +36,7 @@ unitTest(
   { perms: { net: true } },
   async function bodyMultipartFormData(): Promise<void> {
     const response = await fetch(
-      "http://localhost:4545/cli/tests/subdir/multipart_form_data.txt"
+      "http://localhost:4545/multipart_form_data.txt"
     );
     const text = await response.text();
 
@@ -78,4 +78,27 @@ unitTest({ perms: {} }, async function bodyURLSearchParams(): Promise<void> {
 
   const text = await body.text();
   assertEquals(text, "hello=world");
+});
+
+unitTest(async function bodyArrayBufferMultipleParts(): Promise<void> {
+  const parts: Uint8Array[] = [];
+  let size = 0;
+  for (let i = 0; i <= 150000; i++) {
+    const part = new Uint8Array([1]);
+    parts.push(part);
+    size += part.length;
+  }
+
+  let offset = 0;
+  const stream = new ReadableStream({
+    pull(controller): void {
+      // parts.shift() takes forever: https://github.com/denoland/deno/issues/5259
+      const chunk = parts[offset++];
+      if (!chunk) return controller.close();
+      controller.enqueue(chunk);
+    },
+  });
+
+  const body = buildBody(stream);
+  assertEquals((await body.arrayBuffer()).byteLength, size);
 });
