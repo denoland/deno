@@ -63,6 +63,7 @@ mod tokio_util;
 mod tsc;
 mod upgrade;
 pub mod version;
+mod watch;
 mod web_worker;
 pub mod worker;
 
@@ -77,9 +78,9 @@ use crate::fs as deno_fs;
 use crate::global_state::GlobalState;
 use crate::msg::MediaType;
 use crate::op_error::OpError;
-use crate::ops::fs_events::file_watcher;
 use crate::permissions::Permissions;
 use crate::tsc::TargetLib;
+use crate::watch::watch_func;
 use crate::worker::MainWorker;
 use deno_core::v8_set_flags;
 use deno_core::ErrBox;
@@ -97,7 +98,6 @@ use std::io::Read;
 use std::io::Write;
 use std::path::PathBuf;
 use std::pin::Pin;
-use tokio::select;
 use upgrade::upgrade_command;
 use url::Url;
 
@@ -267,48 +267,6 @@ fn get_types(unstable: bool) -> String {
       crate::js::WINDOW_LIB,
     )
   }
-}
-
-type WatchFuture =
-  Pin<Box<dyn Future<Output = std::result::Result<(), deno_core::ErrBox>>>>;
-
-async fn watch_func<F>(
-  watch_paths: &[PathBuf],
-  closure: F,
-) -> Result<(), ErrBox>
-where
-  F: Fn() -> WatchFuture,
-{
-  async fn error_handling(func: WatchFuture) {
-    let result = func.await;
-    if let Err(err) = result {
-      let msg = format!("{}: {}", colors::red_bold("error"), err.to_string(),);
-      eprintln!("{}", msg);
-    }
-  }
-
-  if watch_paths.is_empty() {
-    let func = closure();
-    func.await?;
-  } else {
-    loop {
-      let func = error_handling(closure());
-      let mut is_file_changed = false;
-      select! {
-        _ = file_watcher(watch_paths) => {
-            is_file_changed = true;
-            println!("File change detected! Restarting!");
-          },
-        _ = func => { },
-      };
-      if !is_file_changed {
-        println!("Process terminated! Restarting on file change...");
-        file_watcher(watch_paths).await?;
-        println!("File change detected! Restarting!");
-      }
-    }
-  }
-  Ok(())
 }
 
 async fn info_command(

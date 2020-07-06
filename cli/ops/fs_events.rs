@@ -24,10 +24,10 @@ pub fn init(i: &mut CoreIsolate, s: &State) {
   i.register_op("op_fs_events_poll", s.stateful_json_op2(op_fs_events_poll));
 }
 
-struct FsEventsResource {
+pub struct FsEventsResource {
   #[allow(unused)]
   watcher: RecommendedWatcher,
-  receiver: mpsc::Receiver<Result<FsEvent, ErrBox>>,
+  pub receiver: mpsc::Receiver<Result<FsEvent, ErrBox>>,
 }
 
 /// Represents a file system event.
@@ -39,7 +39,7 @@ struct FsEventsResource {
 /// Feel free to expand this struct as long as you can add tests to demonstrate
 /// the complexity.
 #[derive(Serialize, Debug)]
-struct FsEvent {
+pub struct FsEvent {
   kind: String,
   paths: Vec<PathBuf>,
 }
@@ -62,7 +62,7 @@ impl From<NotifyEvent> for FsEvent {
   }
 }
 
-fn create_resource(
+pub fn create_resource(
   paths: &[PathBuf],
   recursive_mode: RecursiveMode,
   state: Option<&State>,
@@ -140,33 +140,4 @@ pub fn op_fs_events_poll(
       })
   });
   Ok(JsonOp::Async(f.boxed_local()))
-}
-
-pub async fn file_watcher(
-  paths: &[PathBuf],
-) -> Result<serde_json::Value, deno_core::ErrBox> {
-  loop {
-    let mut resource =
-      create_resource(paths, RecursiveMode::Recursive, None::<&State>)?;
-    let f = poll_fn(move |cx| {
-      resource
-        .receiver
-        .poll_recv(cx)
-        .map(|maybe_result| match maybe_result {
-          Some(Ok(value)) => {
-            println!("{:?}", value);
-            Ok(json!({ "value": value, "done": false }))
-          }
-          Some(Err(err)) => Err(err),
-          None => Ok(json!({ "done": true })),
-        })
-    });
-    let res = f.await?;
-    if res["value"].is_object() && res["value"]["kind"].is_string() {
-      let kind = &res["value"]["kind"];
-      if kind == "create" || kind == "modify" || kind == "remove" {
-        return Ok(res);
-      }
-    }
-  }
 }
