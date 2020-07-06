@@ -161,19 +161,15 @@ fn print_cache_info(state: &GlobalState, json: bool) -> Result<(), ErrBox> {
     });
     write_json_to_stdout(&output)
   } else {
+    println!("{} {:?}", colors::bold("DENO_DIR location:"), deno_dir);
     println!(
       "{} {:?}",
-      colors::bold("DENO_DIR location:".to_string()),
-      deno_dir
-    );
-    println!(
-      "{} {:?}",
-      colors::bold("Remote modules cache:".to_string()),
+      colors::bold("Remote modules cache:"),
       modules_cache
     );
     println!(
       "{} {:?}",
-      colors::bold("TypeScript compiler cache:".to_string()),
+      colors::bold("TypeScript compiler cache:"),
       typescript_cache
     );
     Ok(())
@@ -263,16 +259,16 @@ async fn print_file_info(
     });
     write_json_to_stdout(&output)
   } else {
-    println!("{} {}", colors::bold("local:".to_string()), output.local);
-    println!("{} {}", colors::bold("type:".to_string()), output.file_type);
+    println!("{} {}", colors::bold("local:"), output.local);
+    println!("{} {}", colors::bold("type:"), output.file_type);
     if let Some(compiled) = output.compiled {
-      println!("{} {}", colors::bold("compiled:".to_string()), compiled);
+      println!("{} {}", colors::bold("compiled:"), compiled);
     }
     if let Some(map) = output.map {
-      println!("{} {}", colors::bold("map:".to_string()), map);
+      println!("{} {}", colors::bold("map:"), map);
     }
     if let Some(deps) = output.deps {
-      println!("{}{}", colors::bold("deps:\n".to_string()), deps.name);
+      println!("{}{}", colors::bold("deps:\n"), deps.name);
       if let Some(ref depsdeps) = deps.deps {
         for d in depsdeps {
           println!("{}", d);
@@ -281,7 +277,7 @@ async fn print_file_info(
     } else {
       println!(
         "{} cannot retrieve full dependency graph",
-        colors::bold("deps:".to_string()),
+        colors::bold("deps:"),
       );
     }
     Ok(())
