@@ -412,17 +412,6 @@ async fn bundle_command(
   debug!(">>>>> bundle START");
   let global_state = GlobalState::new(flags)?;
 
-  global_state
-    .prepare_module_load(
-      module_specifier.clone(),
-      None,
-      TargetLib::Main,
-      Permissions::allow_all(),
-      false,
-      global_state.maybe_import_map.clone(),
-    )
-    .await?;
-
   info!(
     "{} {}",
     colors::green("Bundle"),
