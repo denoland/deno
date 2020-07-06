@@ -1510,7 +1510,7 @@ itest!(_049_info_flag_script_jsx {
 
 itest!(_052_no_remote_flag {
   args:
-    "--reload --no-remote http://127.0.0.1:4545/cli/tests/019_media_types.ts",
+    "run --reload --no-remote http://127.0.0.1:4545/cli/tests/019_media_types.ts",
   output: "052_no_remote_flag.out",
   exit_code: 1,
   http_server: true,
