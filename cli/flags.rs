@@ -70,6 +70,7 @@ pub enum DenoSubcommand {
     dry_run: bool,
     force: bool,
     version: Option<String>,
+    ca_file: Option<String>,
   },
 }
 
@@ -563,13 +564,17 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 }
 
 fn upgrade_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  ca_file_arg_parse(flags, matches);
+
   let dry_run = matches.is_present("dry-run");
   let force = matches.is_present("force");
   let version = matches.value_of("version").map(|s| s.to_string());
+  let ca_file = matches.value_of("cert").map(|s| s.to_string());
   flags.subcommand = DenoSubcommand::Upgrade {
     dry_run,
     force,
     version,
+    ca_file,
   };
 }
 
@@ -862,6 +867,7 @@ and is used to replace the current executable.",
         .short("f")
         .help("Replace current exe even if not out-of-date"),
     )
+    .arg(ca_file_arg())
 }
 
 fn doc_subcommand<'a, 'b>() -> App<'a, 'b> {
@@ -1393,7 +1399,8 @@ mod tests {
         subcommand: DenoSubcommand::Upgrade {
           force: true,
           dry_run: true,
-          version: None
+          version: None,
+          ca_file: None
         },
         ..Flags::default()
       }
@@ -2614,6 +2621,25 @@ mod tests {
         allow_write: true,
         allow_plugin: true,
         allow_hrtime: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn upgrade_with_ca_file() {
+    let r =
+      flags_from_vec_safe(svec!["deno", "upgrade", "--cert", "example.crt"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Upgrade {
+          force: false,
+          dry_run: false,
+          version: None,
+          ca_file: Some("example.crt".to_owned()),
+        },
+        ca_file: Some("example.crt".to_owned()),
         ..Flags::default()
       }
     );
