@@ -1,4 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Usage: provide a port as argument to run hyper_hello benchmark server
+// otherwise this starts multiple servers on many ports for test endpoints.
 
 #[macro_use]
 extern crate lazy_static;
@@ -6,6 +8,7 @@ extern crate lazy_static;
 use futures::future::{self, FutureExt};
 use os_pipe::pipe;
 use regex::Regex;
+use std::env;
 use std::io::Read;
 use std::io::Write;
 use std::mem::replace;
@@ -17,8 +20,10 @@ use std::process::Stdio;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
 use tempfile::TempDir;
+use warp::http::HeaderValue;
+use warp::http::Response;
+use warp::http::StatusCode;
 use warp::http::Uri;
-use warp::http::{HeaderValue, Response, StatusCode};
 use warp::hyper::Body;
 use warp::reply::with_header;
 use warp::reply::Reply;
@@ -78,8 +83,19 @@ pub fn test_server_path() -> PathBuf {
   p
 }
 
+/// Benchmark server that just serves "hello world" responses.
+async fn hyper_hello(port: u16) {
+  println!("hyper hello");
+  let route = warp::any().map(|| "Hello World!");
+  warp::serve(route).bind(([127, 0, 0, 1], port)).await;
+}
+
 #[tokio::main]
 pub async fn run_all_servers() {
+  if let Some(port) = env::args().nth(1) {
+    return hyper_hello(port.parse::<u16>().unwrap()).await;
+  }
+
   let routes = warp::path::full().map(|path: warp::path::FullPath| {
     let p = path.as_str();
     assert_eq!(&p[0..1], "/");
