@@ -40,6 +40,7 @@ declare interface Performance {
 
 declare interface PerformanceMarkOptions {
   /** Metadata to be included in the mark. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   detail?: any;
 
   /** Timestamp to be used as the mark time. */
@@ -48,6 +49,7 @@ declare interface PerformanceMarkOptions {
 
 declare interface PerformanceMeasureOptions {
   /** Metadata to be included in the measure. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   detail?: any;
 
   /** Timestamp to be used as the start time or string to be used as start
