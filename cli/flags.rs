@@ -1418,8 +1418,8 @@ mod tests {
           force: true,
           dry_run: true,
           version: None,
-          output: None
-          ca_file: None
+          output: None,
+          ca_file: None,
         },
         ..Flags::default()
       }
@@ -2656,6 +2656,7 @@ mod tests {
           force: false,
           dry_run: false,
           version: None,
+          output: None,
           ca_file: Some("example.crt".to_owned()),
         },
         ca_file: Some("example.crt".to_owned()),
