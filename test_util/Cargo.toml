@@ -10,7 +10,7 @@ name = "test_server"
 path = "src/test_server.rs"
 
 [dependencies]
-tokio = { version = "0.2.21", features = ["rt-core", "tcp", "udp", "uds", "process", "fs", "blocking", "sync", "io-std", "macros", "time"] }
+tokio = { version = "0.2.21", features = ["full"] }
 futures = { version = "0.3.5", features = ["compat", "io-compat"] }
 bytes = "0.5.5"
 lazy_static = "1.4.0"
