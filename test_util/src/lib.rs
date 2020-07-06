@@ -481,8 +481,9 @@ impl Drop for HttpServerGuard {
   }
 }
 
-/// Starts target/debug/test_server when the returned guard is dropped, the server
-/// will be killed.
+/// Adds a reference to a shared target/debug/test_server subprocess. When the
+/// last instance of the HttpServerGuard is dropped, the subprocess will be
+/// killed.
 pub fn http_server() -> HttpServerGuard {
   let mut g = lock_http_server();
   g.inc();
