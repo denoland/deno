@@ -3037,7 +3037,7 @@ fn exec_path() {
   assert_eq!(expected, actual);
 }
 
-#[cfg(unix)]
+#[cfg(not(windows))]
 #[test]
 fn set_raw_should_not_panic_on_no_tty() {
   let output = util::deno_cmd()
