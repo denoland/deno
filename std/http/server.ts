@@ -238,6 +238,34 @@ export class Server implements AsyncIterable<ServerRequest> {
 export type HTTPOptions = Omit<Deno.ListenOptions, "transport">;
 
 /**
+ * Parse addr from string
+ *
+ *     const addr = "::1:8000";
+ *     parseAddrFromString(addr);
+ *
+ * @param addr Address string
+ */
+export function _parseAddrFromStr(addr: string): HTTPOptions {
+  let url: URL;
+  try {
+    url = new URL(`http://${addr}`);
+  } catch {
+    throw new TypeError("Invalid address.");
+  }
+  if (
+    url.username ||
+    url.password ||
+    url.pathname != "/" ||
+    url.search ||
+    url.hash
+  ) {
+    throw new TypeError("Invalid address.");
+  }
+
+  return { hostname: url.hostname, port: Number(url.port) };
+}
+
+/**
  * Create a HTTP server
  *
  *     import { serve } from "https://deno.land/std/http/server.ts";
@@ -249,8 +277,7 @@ export type HTTPOptions = Omit<Deno.ListenOptions, "transport">;
  */
 export function serve(addr: string | HTTPOptions): Server {
   if (typeof addr === "string") {
-    const [hostname, port] = addr.split(":");
-    addr = { hostname, port: Number(port) };
+    addr = _parseAddrFromStr(addr);
   }
 
   const listener = Deno.listen(addr);

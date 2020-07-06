@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { unitTest, assert, assertEquals } from "./test_util.ts";
+import { unitTest, assert, assertThrows } from "./test_util.ts";
 
 unitTest(
   { perms: { read: true, write: true } },
@@ -8,7 +8,6 @@ unitTest(
     const oldname = testDir + "/oldname";
     const newname = testDir + "/newname";
     Deno.mkdirSync(oldname);
-    // Just for now, until we implement symlink for Windows.
     Deno.symlinkSync(oldname, newname);
     const newNameInfoLStat = Deno.lstatSync(newname);
     const newNameInfoStat = Deno.statSync(newname);
@@ -18,14 +17,9 @@ unitTest(
 );
 
 unitTest(function symlinkSyncPerm(): void {
-  let err;
-  try {
+  assertThrows(() => {
     Deno.symlinkSync("oldbaddir", "newbaddir");
-  } catch (e) {
-    err = e;
-  }
-  assert(err instanceof Deno.errors.PermissionDenied);
-  assertEquals(err.name, "PermissionDenied");
+  }, Deno.errors.PermissionDenied);
 });
 
 unitTest(

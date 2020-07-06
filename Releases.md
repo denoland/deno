@@ -6,6 +6,107 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### 1.1.3 / 2020.07.03
+
+Changes in the CLI:
+
+- fix(cli): Change seek offset type from i32 to i64 (#6518)
+- fix(cli/body): Maximum call stack size exceeded error (#6537)
+- fix(cli/doc): Doc printer missing [] around tuple type (#6523)
+- fix(cli/js): Buffer.bytes() ArrayBuffer size (#6511)
+- fix(cli/js): Fix conditional types for process sockets (#6275)
+- fix(cli/upgrade): Upgrade fails on Windows with space in temp path (#6522)
+- fix: Lock file for dynamic imports (#6569)
+- fix: Move ImportMeta to deno.ns lib (#6588)
+- fix: Net permissions didn't account for default ports (#6606)
+- refactor: Improvements to TsCompiler and its tests (#6576)
+- upgrade: deno_lint 0.1.15 (#6580, #6614)
+- upgrade: dprint-plugin-typescript 0.19.5 (#6527, #6614)
+
+Changes in std version 0.60.0:
+
+- feat(std/asserts): Allow assert functions to specify type parameter (#6413)
+- feat(std/datetime): Add is leap and difference functions (#4857)
+- feat(std/io): Add fromStreamReader, fromStreamWriter (#5789, #6535)
+- feat(std/node): Add Buffer.allocUnsafe (#6533)
+- feat(std/node): Add Buffer.isEncoding (#6521)
+- feat(std/node): Support hex/base64 encoding in fs.readFile/fs.writeFile
+  (#6512)
+- feat(std/wasi) Implement fd_filestat_get (#6555)
+- feat(std/wasi) Implement fd_filestat_set_size (#6558)
+- feat(std/wasi): Implement fd_datasync (#6556)
+- feat(std/wasi): Implement fd_sync (#6560)
+- fix(std/http): Catch errors on file_server response.send (#6285)
+- fix(std/http): Support ipv6 parsing (#5263)
+- fix(std/log): Print "{msg}" when log an empty line (#6381)
+- fix(std/node): Add fill & encoding args to Buffer.alloc (#6526)
+- fix(std/node): Do not use absolute urls (#6562)
+- fix(std/wasi): path_filestat_get padding (#6509)
+- fix(std/wasi): Use lookupflags for path_filestat_get (#6530)
+- refactor(std/http): Cookie types to not require full ServerRequest object
+  (#6577)
+
+### 1.1.2 / 2020.06.26
+
+Changes in the CLI:
+
+- fix(web/console): Improve string quoting behaviour (#6457)
+- fix(web/url): Support UNC paths on Windows (#6418)
+- fix(web/url): Support URLSearchParam as Body (#6416)
+- fix: 'Compile' messages changed to 'Check' messages (#6504)
+- fix: Panic when process stdio rid is 0 or invalid (#6405)
+- fix: enable experimental-wasm-bigint (#6443)
+- fix: ipv6 parsing for --allow-net params (#6453, #6472)
+- fix: panic when demanding permissions for hostless URLs (#6500)
+- fix: strings shouldn't be interpreted as file URLs (#6412)
+- refactor: Add ability to output compiler performance information (#6434)
+- refactor: Incremental compilation for TypeScript (#6428, #6489)
+- upgrade: rusty_v8 0.4.2 / V8 8.5.216 (#6503)
+
+Changes in unstable APIs:
+
+- Add Deno.fdatasyncSync and fdatasync (#6403)
+- Add Deno.fstatSync and fstat (#6425)
+- Add Deno.fsyncSync and fsync (#6411)
+- Add Deno.ftruncate and ftruncateSync (#6243)
+- Remove Deno.dir (#6385)
+
+Changes in std version 0.59.0:
+
+- BREAKING(std/encoding/hex): reorder encode & decode arguments (#6410)
+- feat(std/node): support hex / base64 encoding in Buffer (#6414)
+- feat(std/wasi): add wasi_snapshot_preview1 (#6441)
+- fix(std/io): Make BufWriter/BufWriterSync.flush write all chunks (#6269)
+- fix(std/node): fix readFile types, add encoding types (#6451)
+- fix(std/node): global process should usable (#6392)
+- fix(std/node/process): env, argv exports (#6455)
+- fix(std/testing) assertArrayContains should work with any array-like (#6402)
+- fix(std/testing): assertThrows gracefully fails if non-Error thrown (#6330)
+- refactor(std/testing): Remove unuseful statement (#6486)
+- refactor: shift copyBytes and tweak deps to reduce dependencies (#6469)
+
+### 1.1.1 / 2020.06.19
+
+- fix: "deno test" should respect NO_COLOR=true (#6371)
+- fix: Deno.bundle supports targets < ES2017 (#6346)
+- fix: decode path properly on win32 (#6351)
+- fix: improve failure message for deno upgrade (#6348)
+- fix: apply http redirection limit for cached files (#6308)
+- fix: JSX compilation bug and provide better error message (#6300)
+- fix: DatagramConn.send (unstable) should return bytes sent (#6265, #6291)
+- upgrade: v8 to 8.5.104, rusty_v8 0.5.1 (#6377)
+- upgrade: crates (#6378)
+
+Changes in std version 0.58.0:
+
+- feat(std/log): expose logger name to LogRecord (#6316)
+- fix(std/async): MuxAsyncIterator throws muxed errors (#6295)
+- fix(std/io): BufWriter/StringWriter bug (#6247)
+- fix(std/io): Use Deno.test in writers_test (#6273)
+- fix(std/node): added tests for static methods of Buffer (#6276)
+- fix(std/testing): assertEqual so that it handles URL objects (#6278)
+- perf(std/hash): reimplement all hashes in WASM (#6292)
+
 ### 1.1.0 / 2020.06.12
 
 Changes in the CLI:

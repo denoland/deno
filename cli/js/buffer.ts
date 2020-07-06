@@ -40,7 +40,7 @@ export class Buffer implements Reader, ReaderSync, Writer, WriterSync {
   }
 
   bytes(): Uint8Array {
-    return this.#buf.subarray(this.#off);
+    return this.#buf.slice(this.#off);
   }
 
   empty(): boolean {

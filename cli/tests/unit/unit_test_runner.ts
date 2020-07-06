@@ -13,7 +13,7 @@ import {
   reportToConn,
 } from "./test_util.ts";
 
-// @ts-expect-error
+// @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
 const internalObj = Deno[Deno.internal];
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const reportToConsole = internalObj.reportToConsole as (message: any) => void;

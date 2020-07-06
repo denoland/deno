@@ -1,5 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { unitTest, assert, assertEquals, assertThrows } from "./test_util.ts";
+import {
+  unitTest,
+  assert,
+  assertEquals,
+  assertThrows,
+  assertThrowsAsync,
+} from "./test_util.ts";
 
 function assertDirectory(path: string, mode?: number): void {
   const info = Deno.lstatSync(path);
@@ -28,14 +34,9 @@ unitTest(
 );
 
 unitTest({ perms: { write: false } }, function mkdirSyncPerm(): void {
-  let err;
-  try {
+  assertThrows(() => {
     Deno.mkdirSync("/baddir");
-  } catch (e) {
-    err = e;
-  }
-  assert(err instanceof Deno.errors.PermissionDenied);
-  assertEquals(err.name, "PermissionDenied");
+  }, Deno.errors.PermissionDenied);
 });
 
 unitTest(
@@ -57,25 +58,17 @@ unitTest(
 );
 
 unitTest({ perms: { write: true } }, function mkdirErrSyncIfExists(): void {
-  let err;
-  try {
+  assertThrows(() => {
     Deno.mkdirSync(".");
-  } catch (e) {
-    err = e;
-  }
-  assert(err instanceof Deno.errors.AlreadyExists);
+  }, Deno.errors.AlreadyExists);
 });
 
 unitTest({ perms: { write: true } }, async function mkdirErrIfExists(): Promise<
   void
 > {
-  let err;
-  try {
+  await assertThrowsAsync(async () => {
     await Deno.mkdir(".");
-  } catch (e) {
-    err = e;
-  }
-  assert(err instanceof Deno.errors.AlreadyExists);
+  }, Deno.errors.AlreadyExists);
 });
 
 unitTest(

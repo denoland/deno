@@ -34,14 +34,14 @@ export class Response extends Body.Body implements domTypes.Response {
     const extraInit = responseData.get(init) || {};
     let { type = "default", url = "" } = extraInit;
 
-    let status = (Number(init.status) || 0) ?? 200;
+    let status = init.status === undefined ? 200 : Number(init.status || 0);
     let statusText = init.statusText ?? "";
     let headers =
       init.headers instanceof Headers
         ? init.headers
         : new Headers(init.headers);
 
-    if (init.status && (status < 200 || status > 599)) {
+    if (init.status !== undefined && (status < 200 || status > 599)) {
       throw new RangeError(
         `The status provided (${init.status}) is outside the range [200, 599]`
       );
@@ -117,7 +117,7 @@ export class Response extends Body.Body implements domTypes.Response {
     this.statusText = statusText;
     this.status = extraInit.status || status;
     this.headers = headers;
-    this.redirected = extraInit.redirected;
+    this.redirected = extraInit.redirected || false;
     this.type = type;
   }
 

@@ -191,6 +191,21 @@ unitTest(function urlDriveLetter() {
   assertEquals(new URL("http://example.com/C:").href, "http://example.com/C:");
 });
 
+unitTest(function urlUncHostname() {
+  assertEquals(
+    new URL("file:////").href,
+    Deno.build.os == "windows" ? "file:///" : "file:////"
+  );
+  assertEquals(
+    new URL("file:////server").href,
+    Deno.build.os == "windows" ? "file://server/" : "file:////server"
+  );
+  assertEquals(
+    new URL("file:////server/file").href,
+    Deno.build.os == "windows" ? "file://server/file" : "file:////server/file"
+  );
+});
+
 unitTest(function urlHostnameUpperCase() {
   assertEquals(new URL("https://EXAMPLE.COM").href, "https://example.com/");
 });

@@ -41,6 +41,12 @@ Deno.test("testingEqual", function (): void {
   assert(!equal(/deno/, /node/));
   assert(equal(new Date(2019, 0, 3), new Date(2019, 0, 3)));
   assert(!equal(new Date(2019, 0, 3), new Date(2019, 1, 3)));
+  assert(
+    !equal(
+      new Date(2019, 0, 3, 4, 20, 1, 10),
+      new Date(2019, 0, 3, 4, 20, 1, 20)
+    )
+  );
   assert(equal(new Set([1]), new Set([1])));
   assert(!equal(new Set([1]), new Set([2])));
   assert(equal(new Set([1, 2, 3]), new Set([3, 2, 1])));
@@ -128,6 +134,10 @@ Deno.test("testingNotEquals", function (): void {
   const b = { bar: "foo" };
   assertNotEquals(a, b);
   assertNotEquals("Denosaurus", "Tyrannosaurus");
+  assertNotEquals(
+    new Date(2019, 0, 3, 4, 20, 1, 10),
+    new Date(2019, 0, 3, 4, 20, 1, 20)
+  );
   let didThrow;
   try {
     assertNotEquals("Raptor", "Raptor");
@@ -159,6 +169,10 @@ Deno.test("testingArrayContains", function (): void {
   const fixtureObject = [{ deno: "luv" }, { deno: "Js" }];
   assertArrayContains(fixture, ["deno"]);
   assertArrayContains(fixtureObject, [{ deno: "luv" }]);
+  assertArrayContains(
+    Uint8Array.from([1, 2, 3, 4]),
+    Uint8Array.from([1, 2, 3])
+  );
   assertThrows(
     (): void => assertArrayContains(fixtureObject, [{ deno: "node" }]),
     AssertionError,
@@ -256,14 +270,12 @@ Deno.test("testingAssertFailWithWrongErrorClass", function (): void {
 Deno.test("testingAssertThrowsWithReturnType", () => {
   assertThrows(() => {
     throw new Error();
-    return "a string";
   });
 });
 
 Deno.test("testingAssertThrowsAsyncWithReturnType", () => {
   assertThrowsAsync(() => {
     throw new Error();
-    return Promise.resolve("a Promise<string>");
   });
 });
 
@@ -363,6 +375,27 @@ Deno.test({
 });
 
 Deno.test({
+  name: "failed with date",
+  fn(): void {
+    assertThrows(
+      (): void =>
+        assertEquals(
+          new Date(2019, 0, 3, 4, 20, 1, 10),
+          new Date(2019, 0, 3, 4, 20, 1, 20)
+        ),
+      AssertionError,
+      [
+        "Values are not equal:",
+        ...createHeader(),
+        removed(`-   ${new Date(2019, 0, 3, 4, 20, 1, 10).toISOString()}`),
+        added(`+   ${new Date(2019, 0, 3, 4, 20, 1, 20).toISOString()}`),
+        "",
+      ].join("\n")
+    );
+  },
+});
+
+Deno.test({
   name: "strict pass case",
   fn(): void {
     assertStrictEquals(true, true);
@@ -408,4 +441,97 @@ Deno.test({
       ].join("\n")
     );
   },
+});
+
+Deno.test({
+  name: "assert* functions with specified type paratemeter",
+  fn(): void {
+    assertEquals<string>("hello", "hello");
+    assertNotEquals<number>(1, 2);
+    assertArrayContains<boolean>([true, false], [true]);
+    const value = { x: 1 };
+    assertStrictEquals<typeof value>(value, value);
+  },
+});
+
+Deno.test("Assert Throws Non-Error Fail", () => {
+  assertThrows(
+    () => {
+      assertThrows(
+        () => {
+          throw "Panic!";
+        },
+        String,
+        "Panic!"
+      );
+    },
+    AssertionError,
+    "A non-Error object was thrown."
+  );
+
+  assertThrows(
+    () => {
+      assertThrows(() => {
+        throw null;
+      });
+    },
+    AssertionError,
+    "A non-Error object was thrown."
+  );
+
+  assertThrows(
+    () => {
+      assertThrows(() => {
+        throw undefined;
+      });
+    },
+    AssertionError,
+    "A non-Error object was thrown."
+  );
+});
+
+Deno.test("Assert Throws Async Non-Error Fail", () => {
+  assertThrowsAsync(
+    () => {
+      return assertThrowsAsync(
+        () => {
+          return Promise.reject("Panic!");
+        },
+        String,
+        "Panic!"
+      );
+    },
+    AssertionError,
+    "A non-Error object was thrown or rejected."
+  );
+
+  assertThrowsAsync(
+    () => {
+      return assertThrowsAsync(() => {
+        return Promise.reject(null);
+      });
+    },
+    AssertionError,
+    "A non-Error object was thrown or rejected."
+  );
+
+  assertThrowsAsync(
+    () => {
+      return assertThrowsAsync(() => {
+        return Promise.reject(undefined);
+      });
+    },
+    AssertionError,
+    "A non-Error object was thrown or rejected."
+  );
+
+  assertThrowsAsync(
+    () => {
+      return assertThrowsAsync(() => {
+        throw undefined;
+      });
+    },
+    AssertionError,
+    "A non-Error object was thrown or rejected."
+  );
 });
