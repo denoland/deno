@@ -435,5 +435,5 @@ export function parse(path: string): ParsedPath {
  * are ignored.
  */
 export function fromFileUrl(url: string | URL): string {
-  return new URL(url.toString()).pathname;
+  return new URL(String(url)).pathname;
 }
