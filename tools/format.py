@@ -17,7 +17,7 @@ def get_cmd_args():
         return cmd_args
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--js", help="run prettier", action="store_true")
+    parser.add_argument("--js", help="run dprint", action="store_true")
     parser.add_argument("--py", help="run yapf", action="store_true")
     parser.add_argument("--rs", help="run rustfmt", action="store_true")
     parser.add_argument(
@@ -38,7 +38,7 @@ def main():
 
     did_fmt = False
     if args.js:
-        prettier()
+        dprint()
         did_fmt = True
     if args.py:
         yapf()
@@ -48,19 +48,18 @@ def main():
         did_fmt = True
 
     if not did_fmt:
-        prettier()
+        dprint()
         yapf()
         rustfmt()
 
 
-def prettier():
-    script = os.path.join(third_party_path, "node_modules", "prettier",
-                          "bin-prettier.js")
+def dprint():
+    script = os.path.join(get_prebuilt_path(), "dprint")
     source_files = get_sources(root_path, ["*.js", "*.json", "*.ts", "*.md"])
     if source_files:
         max_command_length = 24000
         while len(source_files) > 0:
-            command = ["node", script, "--write", "--loglevel=error", "--"]
+            command = [script, "fmt", "--"]
             while len(source_files) > 0:
                 command.append(source_files.pop())
                 if len(" ".join(command)) > max_command_length:
@@ -92,6 +91,15 @@ def rustfmt():
         ] + source_files,
             shell=False,
             quiet=True)
+
+
+def get_prebuilt_path():
+    prebuilt_path = os.path.join(third_party_path, "prebuilt")
+    if sys.platform.startswith("darwin"):
+        return os.path.join(prebuilt_path, "mac")
+    elif sys.platform.startswith("win32"):
+        return os.path.join(prebuilt_path, "win")
+    return os.path.join(prebuilt_path, "linux64")
 
 
 if __name__ == "__main__":

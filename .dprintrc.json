@@ -4,14 +4,15 @@
   "lineWidth": 80,
   "indentWidth": 2,
   "typescript": {
-    "deno": true
+    "deno": true,
+    // todo: remove
+    "parameters.trailingCommas": "never",
+    "arguments.trailingCommas": "never"
   },
   "markdown": {
     "textWrap": "always"
   },
-  "includes": [
-    "**/*.{ts,tsx,js,jsx,json,md}"
-  ],
+  "includes": ["**/*.{ts,tsx,js,jsx,json,md}"],
   "excludes": [
     "cli/compilers/wasm_wrap.js",
     "cli/tests/error_syntax.js",
@@ -26,8 +27,8 @@
     "third_party"
   ],
   "plugins": [
-    "https://plugins.dprint.dev/typescript-0.19.6.wasm",
+    "https://plugins.dprint.dev/typescript-0.19.8.wasm",
     "https://plugins.dprint.dev/json-0.4.1.wasm",
-    "https://plugins.dprint.dev/markdown-0.2.0.wasm"
+    "https://plugins.dprint.dev/markdown-0.2.2.wasm"
   ]
 }
