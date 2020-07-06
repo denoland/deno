@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { unitTest, assert, assertStringContains } from "./test_util.ts";
+import { unitTest, assert } from "./test_util.ts";
 
 // Note tests for Deno.setRaw is in integration tests.
 
