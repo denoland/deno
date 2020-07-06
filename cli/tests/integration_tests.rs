@@ -3045,8 +3045,7 @@ fn set_raw_should_not_panic_on_no_tty() {
     .arg("Deno.setRaw(Deno.stdin.rid, true)")
     // stdin set to piped so it certainly does not refer to TTY
     .stdin(std::process::Stdio::piped())
-    // stdout and stderr are piped so we can capture output.
-    .stdout(std::process::Stdio::piped())
+    // stderr is piped so we can capture output.
     .stderr(std::process::Stdio::piped())
     .spawn()
     .unwrap()
@@ -3054,5 +3053,5 @@ fn set_raw_should_not_panic_on_no_tty() {
     .unwrap();
   assert!(!output.status.success());
   let stderr = std::str::from_utf8(&output.stderr).unwrap().trim();
-  assert!(stderr.contains("BadResource");
+  assert!(stderr.contains("BadResource"));
 }
