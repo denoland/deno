@@ -70,6 +70,7 @@ pub enum DenoSubcommand {
     dry_run: bool,
     force: bool,
     version: Option<String>,
+    output: Option<PathBuf>,
     ca_file: Option<String>,
   },
 }
@@ -569,11 +570,18 @@ fn upgrade_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let dry_run = matches.is_present("dry-run");
   let force = matches.is_present("force");
   let version = matches.value_of("version").map(|s| s.to_string());
+  let output = if matches.is_present("output") {
+    let install_root = matches.value_of("output").unwrap();
+    Some(PathBuf::from(install_root))
+  } else {
+    None
+  };
   let ca_file = matches.value_of("cert").map(|s| s.to_string());
   flags.subcommand = DenoSubcommand::Upgrade {
     dry_run,
     force,
     version,
+    output,
     ca_file,
   };
 }
@@ -848,12 +856,22 @@ Defaults to latest.
 
 The version is downloaded from
 https://github.com/denoland/deno/releases
-and is used to replace the current executable.",
+and is used to replace the current executable.
+
+If you want to not replace the current Deno executable but instead download an
+update to a different location, use the --output flag
+  deno upgrade --output $HOME/my_deno",
     )
     .arg(
       Arg::with_name("version")
         .long("version")
         .help("The version to upgrade to")
+        .takes_value(true),
+    )
+    .arg(
+      Arg::with_name("output")
+        .long("output")
+        .help("The path to output the updated version to")
         .takes_value(true),
     )
     .arg(
@@ -1400,7 +1418,8 @@ mod tests {
           force: true,
           dry_run: true,
           version: None,
-          ca_file: None
+          output: None,
+          ca_file: None,
         },
         ..Flags::default()
       }
@@ -2637,6 +2656,7 @@ mod tests {
           force: false,
           dry_run: false,
           version: None,
+          output: None,
           ca_file: Some("example.crt".to_owned()),
         },
         ca_file: Some("example.crt".to_owned()),
