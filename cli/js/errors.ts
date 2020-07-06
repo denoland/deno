@@ -24,7 +24,6 @@ export enum ErrorKind {
   TypeError = 21,
   Other = 22,
   Busy = 23,
-  NoTTY = 24,
 }
 
 export function getErrorClass(kind: ErrorKind): { new (msg: string): Error } {
@@ -71,8 +70,6 @@ export function getErrorClass(kind: ErrorKind): { new (msg: string): Error } {
       return Http;
     case ErrorKind.Busy:
       return Busy;
-    case ErrorKind.NoTTY:
-      return NoTTY;
   }
 }
 
@@ -185,13 +182,6 @@ class Busy extends Error {
   }
 }
 
-class NoTTY extends Error {
-  constructor(msg: string) {
-    super(msg);
-    this.name = "NoTTY";
-  }
-}
-
 export const errors = {
   NotFound: NotFound,
   PermissionDenied: PermissionDenied,
@@ -211,5 +201,4 @@ export const errors = {
   BadResource: BadResource,
   Http: Http,
   Busy: Busy,
-  NoTTY: NoTTY,
 };

@@ -4,6 +4,6 @@ try {
   Deno.setRaw(0, true);
   console.log("No error occurs");
 } catch (err) {
-  assert(err instanceof Deno.errors.NoTTY);
+  assert(err instanceof Deno.errors.BadResource);
   console.error(err);
 }

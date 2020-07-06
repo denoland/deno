@@ -40,6 +40,6 @@ unitTest(
     const output = await p.stderrOutput();
     p.stdin!.close();
     p.close();
-    assertStringContains(decoder.decode(output), "NoTTY");
+    assertStringContains(decoder.decode(output), "ENOTTY");
   }
 );

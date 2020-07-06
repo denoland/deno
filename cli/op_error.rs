@@ -51,7 +51,6 @@ pub enum ErrorKind {
   /// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Error
   Other = 22,
   Busy = 23,
-  NoTTY = 24,
 }
 
 #[derive(Debug)]
@@ -320,7 +319,7 @@ impl From<nix::Error> for OpError {
       nix::Error::Sys(EPERM) => ErrorKind::PermissionDenied,
       nix::Error::Sys(EINVAL) => ErrorKind::TypeError,
       nix::Error::Sys(ENOENT) => ErrorKind::NotFound,
-      nix::Error::Sys(ENOTTY) => ErrorKind::NoTTY,
+      nix::Error::Sys(ENOTTY) => ErrorKind::BadResource,
       nix::Error::Sys(UnknownErrno) => unreachable!(),
       nix::Error::Sys(_) => unreachable!(),
       nix::Error::InvalidPath => ErrorKind::TypeError,
