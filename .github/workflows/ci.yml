@@ -126,6 +126,13 @@ jobs:
           restore-keys: |
             ${{ matrix.config.os }}-${{ matrix.config.kind }}-
 
+      - name: Cache dprint plugins
+        uses: actions/cache@v1
+        if: matrix.config.kind == 'lint'
+        with:
+          path: ~/.cache/Dprint
+          key: ${{ runner.os }}-dprint-plugins-${{ hashFiles('**/dprint.config.json') }}
+
       - name: lint.py
         if: matrix.config.kind == 'lint'
         run: python ./tools/lint.py
