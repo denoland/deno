@@ -1892,11 +1892,12 @@ declare namespace Deno {
     /** Traversal depth for nested objects. Defaults to 4. */
     depth?: number;
     /** Sort Object, Set and Map entries by key. Defaults to false. */
-    sortKeys?: boolean;
+    sorted?: boolean;
     /** Add a trailing comma for multiline collections. Defaults to false. */
     trailingComma?: boolean;
-    /** Always break collections into multiple lines. Defaults to false. */
-    alwaysWrap?: boolean;
+    /** Try to fit more than one entry of a collection on the same line.
+     * Defaults to true. */
+    compact?: boolean;
     /** The maximum number of iterable entries to print. Defaults to 100. */
     iterableLimit?: number;
   }

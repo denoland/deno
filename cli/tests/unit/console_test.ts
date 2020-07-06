@@ -1166,13 +1166,13 @@ unitTest(function consoleTrace(): void {
   });
 });
 
-unitTest(function inspectSortKeys(): void {
+unitTest(function inspectSorted(): void {
   assertEquals(
-    Deno.inspect({ b: 2, a: 1 }, { sortKeys: true }),
+    Deno.inspect({ b: 2, a: 1 }, { sorted: true }),
     "{ a: 1, b: 2 }"
   );
   assertEquals(
-    Deno.inspect(new Set(["b", "a"]), { sortKeys: true }),
+    Deno.inspect(new Set(["b", "a"]), { sorted: true }),
     `Set { "a", "b" }`
   );
   assertEquals(
@@ -1181,7 +1181,7 @@ unitTest(function inspectSortKeys(): void {
         ["b", 2],
         ["a", 1],
       ]),
-      { sortKeys: true }
+      { sorted: true }
     ),
     `Map { "a" => 1, "b" => 2 }`
   );
@@ -1242,9 +1242,9 @@ unitTest(function inspectTrailingComma(): void {
   );
 });
 
-unitTest(function inspectAlwaysWrap(): void {
+unitTest(function inspectCompact(): void {
   assertEquals(
-    Deno.inspect({ a: 1, b: 2 }, { alwaysWrap: true }),
+    Deno.inspect({ a: 1, b: 2 }, { compact: false }),
     `{
   a: 1,
   b: 2

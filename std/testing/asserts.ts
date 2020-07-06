@@ -23,9 +23,9 @@ export function _format(v: unknown): string {
   let string = globalThis.Deno
     ? Deno.inspect(v, {
         depth: Infinity,
-        sortKeys: true,
+        sorted: true,
         trailingComma: true,
-        alwaysWrap: true,
+        compact: false,
         iterableLimit: Infinity,
       })
     : String(v);

@@ -19,18 +19,18 @@ type ConsoleContext = Set<unknown>;
 export interface InspectOptions {
   depth?: number;
   indentLevel?: number;
-  sortKeys?: boolean;
+  sorted?: boolean;
   trailingComma?: boolean;
-  alwaysWrap?: boolean;
+  compact?: boolean;
   iterableLimit?: number;
 }
 
 const DEFAULT_INSPECT_OPTIONS: Required<InspectOptions> = {
   depth: 4,
   indentLevel: 0,
-  sortKeys: false,
+  sorted: false,
   trailingComma: false,
-  alwaysWrap: false,
+  compact: true,
   iterableLimit: 100,
 };
 
@@ -163,7 +163,7 @@ function inspectIterable<T>(
     iContent = entries.length === 0 ? "" : ` ${entries.join(", ")} `;
     if (
       stripColor(iContent).length > LINE_BREAKING_LENGTH ||
-      inspectOptions.alwaysWrap
+      !inspectOptions.compact
     ) {
       iContent = `${initIndentation}${entries.join(
         entryIndentation
@@ -392,7 +392,7 @@ function inspectArray(
         return inspectValueWithQuotes(val, ctx, level, inspectOptions);
       }
     },
-    group: !inspectOptions.alwaysWrap,
+    group: inspectOptions.compact,
     sort: false,
   };
   return inspectIterable(value, ctx, level, options, inspectOptions);
@@ -414,7 +414,7 @@ function inspectTypedArray(
       const [_, val] = entry;
       return inspectValueWithQuotes(val, ctx, level + 1, inspectOptions);
     },
-    group: !inspectOptions.alwaysWrap,
+    group: inspectOptions.compact,
     sort: false,
   };
   return inspectIterable(value, ctx, level, options, inspectOptions);
@@ -435,7 +435,7 @@ function inspectSet(
       return inspectValueWithQuotes(val, ctx, level + 1, inspectOptions);
     },
     group: false,
-    sort: inspectOptions.sortKeys,
+    sort: inspectOptions.sorted,
   };
   return inspectIterable(value, ctx, level, options, inspectOptions);
 }
@@ -460,7 +460,7 @@ function inspectMap(
       )} => ${inspectValueWithQuotes(val, ctx, level + 1, inspectOptions)}`;
     },
     group: false,
-    sort: inspectOptions.sortKeys,
+    sort: inspectOptions.sorted,
   };
   return inspectIterable(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -563,7 +563,7 @@ function inspectRawObject(
   const entries: string[] = [];
   const stringKeys = Object.keys(value);
   const symbolKeys = Object.getOwnPropertySymbols(value);
-  if (inspectOptions.sortKeys) {
+  if (inspectOptions.sorted) {
     stringKeys.sort();
     symbolKeys.sort((s1, s2) =>
       (s1.description ?? "").localeCompare(s2.description ?? "")
@@ -599,7 +599,7 @@ function inspectRawObject(
 
   if (entries.length === 0) {
     baseString = "{}";
-  } else if (totalLength > LINE_BREAKING_LENGTH || inspectOptions.alwaysWrap) {
+  } else if (totalLength > LINE_BREAKING_LENGTH || !inspectOptions.compact) {
     const entryIndent = DEFAULT_INDENT.repeat(level + 1);
     const closingIndent = DEFAULT_INDENT.repeat(level);
     baseString = `{\n${entryIndent}${entries.join(`,\n${entryIndent}`)}${
