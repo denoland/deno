@@ -21,25 +21,3 @@ unitTest(function isattyError(): void {
   }
   assert(caught);
 });
-
-unitTest(
-  { perms: { read: true, run: true }, ignore: Deno.build.os === "windows" },
-  async function setRawShouldNotPanicOnNoTTYContext(): Promise<void> {
-    // issue #6604
-    const decoder = new TextDecoder();
-    const p = Deno.run({
-      cmd: [
-        Deno.execPath(),
-        "run",
-        "--unstable",
-        "cli/tests/raw_mode_on_notty.ts",
-      ],
-      stdin: "piped",
-      stderr: "piped",
-    });
-    const output = await p.stderrOutput();
-    p.stdin!.close();
-    p.close();
-    assertStringContains(decoder.decode(output), "ENOTTY");
-  }
-);
