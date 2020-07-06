@@ -219,6 +219,10 @@ declare function clearInterval(id?: number): void;
  */
 declare function clearTimeout(id?: number): void;
 
+interface VoidFunction {
+  (): void;
+}
+
 /** A microtask is a short function which is executed after the function or
  * module which created it exits and only if the JavaScript execution stack is
  * empty, but before returning control to the event loop being used to drive the
@@ -227,7 +231,7 @@ declare function clearTimeout(id?: number): void;
  *
  *     queueMicrotask(() => { console.log('This event loop stack is complete'); });
  */
-declare function queueMicrotask(func: Function): void;
+declare function queueMicrotask(func: VoidFunction): void;
 
 declare var console: Console;
 declare var crypto: Crypto;
@@ -265,11 +269,6 @@ declare function removeEventListener(
   callback: EventListenerOrEventListenerObject | null,
   options?: boolean | EventListenerOptions | undefined
 ): void;
-
-declare interface ImportMeta {
-  url: string;
-  main: boolean;
-}
 
 interface DomIterable<K, V> {
   keys(): IterableIterator<K>;

@@ -43,32 +43,22 @@ unitTest(
 unitTest(
   { perms: { read: false, write: true } },
   function renameSyncReadPerm(): void {
-    let err;
-    try {
+    assertThrows(() => {
       const oldpath = "/oldbaddir";
       const newpath = "/newbaddir";
       Deno.renameSync(oldpath, newpath);
-    } catch (e) {
-      err = e;
-    }
-    assert(err instanceof Deno.errors.PermissionDenied);
-    assertEquals(err.name, "PermissionDenied");
+    }, Deno.errors.PermissionDenied);
   }
 );
 
 unitTest(
   { perms: { read: true, write: false } },
   function renameSyncWritePerm(): void {
-    let err;
-    try {
+    assertThrows(() => {
       const oldpath = "/oldbaddir";
       const newpath = "/newbaddir";
       Deno.renameSync(oldpath, newpath);
-    } catch (e) {
-      err = e;
-    }
-    assert(err instanceof Deno.errors.PermissionDenied);
-    assertEquals(err.name, "PermissionDenied");
+    }, Deno.errors.PermissionDenied);
   }
 );
 

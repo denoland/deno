@@ -83,7 +83,7 @@ export function asyncMsgFromRust(ui8: Uint8Array): void {
 }
 
 export async function sendAsyncMinimal(
-  opId: number,
+  opName: string,
   arg: number,
   zeroCopy: Uint8Array
 ): Promise<number> {
@@ -92,7 +92,7 @@ export async function sendAsyncMinimal(
   scratch32[1] = arg;
   scratch32[2] = 0; // result
   const promise = util.createResolvable<RecordMinimal>();
-  const buf = core.dispatch(opId, scratchBytes, zeroCopy);
+  const buf = core.dispatchByName(opName, scratchBytes, zeroCopy);
   if (buf) {
     const record = recordFromBufMinimal(buf);
     // Sync result.
@@ -107,13 +107,13 @@ export async function sendAsyncMinimal(
 }
 
 export function sendSyncMinimal(
-  opId: number,
+  opName: string,
   arg: number,
   zeroCopy: Uint8Array
 ): number {
   scratch32[0] = 0; // promiseId 0 indicates sync
   scratch32[1] = arg;
-  const res = core.dispatch(opId, scratchBytes, zeroCopy)!;
+  const res = core.dispatchByName(opName, scratchBytes, zeroCopy)!;
   const resRecord = recordFromBufMinimal(res);
   return unwrapResponse(resRecord);
 }

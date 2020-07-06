@@ -6,7 +6,6 @@
 import {
   assertEquals,
   assert,
-  assertStringContains,
   assertThrows,
   assertThrowsAsync,
   unitTest,
@@ -159,15 +158,13 @@ unitTest(async function bufferTooLargeByteWrites(): Promise<void> {
   const buf = new Deno.Buffer(xBytes.buffer as ArrayBuffer);
   await buf.read(tmp);
 
-  let err;
-  try {
-    buf.grow(growLen);
-  } catch (e) {
-    err = e;
-  }
-
-  assert(err instanceof Error);
-  assertStringContains(err.message, "grown beyond the maximum size");
+  assertThrows(
+    () => {
+      buf.grow(growLen);
+    },
+    Error,
+    "grown beyond the maximum size"
+  );
 });
 
 unitTest(async function bufferLargeByteReads(): Promise<void> {
@@ -300,4 +297,17 @@ unitTest(function testWriteAllSync(): void {
   for (let i = 0; i < testBytes.length; ++i) {
     assertEquals(testBytes[i], actualBytes[i]);
   }
+});
+
+unitTest(function testBufferBytesArrayBufferLength(): void {
+  const bytes = new TextEncoder().encode("a");
+  const reader = new Deno.Buffer();
+  Deno.writeAllSync(reader, bytes);
+
+  const writer = new Deno.Buffer();
+  writer.readFromSync(reader);
+  const actualBytes = writer.bytes();
+
+  assertEquals(bytes.byteLength, 1);
+  assertEquals(bytes.byteLength, actualBytes.buffer.byteLength);
 });

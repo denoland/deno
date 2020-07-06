@@ -499,7 +499,7 @@ impl State {
     let module_specifier = ModuleSpecifier::resolve_url_or_path(main_module)
       .expect("Invalid entry module");
     State::new(
-      GlobalState::mock(vec!["deno".to_string()]),
+      GlobalState::mock(vec!["deno".to_string()], None),
       None,
       module_specifier,
       None,

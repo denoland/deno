@@ -13,7 +13,14 @@ import {
   assertStringContains,
   assertThrowsAsync,
 } from "../testing/asserts.ts";
-import { Response, ServerRequest, Server, serve, serveTLS } from "./server.ts";
+import {
+  Response,
+  ServerRequest,
+  Server,
+  serve,
+  serveTLS,
+  _parseAddrFromStr,
+} from "./server.ts";
 import { BufReader, BufWriter } from "../io/bufio.ts";
 import { delay } from "../async/delay.ts";
 import { encode, decode } from "../encoding/utf8.ts";
@@ -610,5 +617,45 @@ Deno.test({
       server.close();
       await p;
     }
+  },
+});
+
+Deno.test({
+  name: "server.serve() should be able to parse IPV4 address",
+  fn: (): void => {
+    const server = serve("127.0.0.1:8124");
+    const expected = {
+      hostname: "127.0.0.1",
+      port: 8124,
+      transport: "tcp",
+    };
+    assertEquals(expected, server.listener.addr);
+    server.close();
+  },
+});
+
+Deno.test({
+  name: "server.parseAddrFromStr() should be able to parse IPV6 address",
+  fn: (): void => {
+    const addr = _parseAddrFromStr("[::1]:8124");
+    const expected = {
+      hostname: "[::1]",
+      port: 8124,
+    };
+    assertEquals(expected, addr);
+  },
+});
+
+Deno.test({
+  name: "server.serve() should be able to parse IPV6 address",
+  fn: (): void => {
+    const server = serve("[::1]:8124");
+    const expected = {
+      hostname: "::1",
+      port: 8124,
+      transport: "tcp",
+    };
+    assertEquals(expected, server.listener.addr);
+    server.close();
   },
 });

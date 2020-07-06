@@ -2,29 +2,8 @@
 //   cd test_plugin
 //   ../target/debug/deno run --unstable --allow-plugin tests/test.js debug
 
-use std::path::PathBuf;
 use std::process::Command;
-
-fn target_dir() -> PathBuf {
-  let current_exe = std::env::current_exe().unwrap();
-  let target_dir = current_exe.parent().unwrap().parent().unwrap();
-  println!("target_dir {}", target_dir.display());
-  target_dir.into()
-}
-
-fn deno_exe_path() -> PathBuf {
-  // Something like /Users/rld/src/deno/target/debug/deps/deno
-  let mut p = target_dir().join("deno");
-  if cfg!(windows) {
-    p.set_extension("exe");
-  }
-  p
-}
-
-fn deno_cmd() -> Command {
-  assert!(deno_exe_path().exists());
-  Command::new(deno_exe_path())
-}
+use test_util::deno_cmd;
 
 #[cfg(debug_assertions)]
 const BUILD_VARIANT: &str = "debug";

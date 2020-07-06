@@ -32,9 +32,15 @@ async function runStatus(rid: number): Promise<ProcessStatus> {
 export class Process<T extends RunOptions = RunOptions> {
   readonly rid: number;
   readonly pid: number;
-  readonly stdin!: T["stdin"] extends "piped" ? Writer & Closer : null;
-  readonly stdout!: T["stdout"] extends "piped" ? Reader & Closer : null;
-  readonly stderr!: T["stderr"] extends "piped" ? Reader & Closer : null;
+  readonly stdin!: T["stdin"] extends "piped"
+    ? Writer & Closer
+    : (Writer & Closer) | null;
+  readonly stdout!: T["stdout"] extends "piped"
+    ? Reader & Closer
+    : (Writer & Closer) | null;
+  readonly stderr!: T["stderr"] extends "piped"
+    ? Reader & Closer
+    : (Writer & Closer) | null;
 
   // @internal
   constructor(res: RunResponse) {

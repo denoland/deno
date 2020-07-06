@@ -9,9 +9,6 @@ import { metrics } from "./ops/runtime.ts";
 import { resources } from "./ops/resources.ts";
 import { assert } from "./util.ts";
 
-const RED_FAILED = red("FAILED");
-const GREEN_OK = green("ok");
-const YELLOW_IGNORED = yellow("ignored");
 const disabledConsole = new Console((): void => {});
 
 function delay(n: number): Promise<void> {
@@ -178,6 +175,9 @@ function log(msg: string, noNewLine = false): void {
 }
 
 function reportToConsole(message: TestMessage): void {
+  const redFailed = red("FAILED");
+  const greenOk = green("ok");
+  const yellowIgnored = yellow("ignored");
   if (message.start != null) {
     log(`running ${message.start.tests.length} tests`);
   } else if (message.testStart != null) {
@@ -188,13 +188,13 @@ function reportToConsole(message: TestMessage): void {
   } else if (message.testEnd != null) {
     switch (message.testEnd.status) {
       case "passed":
-        log(`${GREEN_OK} ${formatDuration(message.testEnd.duration)}`);
+        log(`${greenOk} ${formatDuration(message.testEnd.duration)}`);
         break;
       case "failed":
-        log(`${RED_FAILED} ${formatDuration(message.testEnd.duration)}`);
+        log(`${redFailed} ${formatDuration(message.testEnd.duration)}`);
         break;
       case "ignored":
-        log(`${YELLOW_IGNORED} ${formatDuration(message.testEnd.duration)}`);
+        log(`${yellowIgnored} ${formatDuration(message.testEnd.duration)}`);
         break;
     }
   } else if (message.end != null) {
@@ -215,7 +215,7 @@ function reportToConsole(message: TestMessage): void {
       }
     }
     log(
-      `\ntest result: ${message.end.failed ? RED_FAILED : GREEN_OK}. ` +
+      `\ntest result: ${message.end.failed ? redFailed : greenOk}. ` +
         `${message.end.passed} passed; ${message.end.failed} failed; ` +
         `${message.end.ignored} ignored; ${message.end.measured} measured; ` +
         `${message.end.filtered} filtered out ` +
@@ -223,7 +223,7 @@ function reportToConsole(message: TestMessage): void {
     );
 
     if (message.end.usedOnly && message.end.failed == 0) {
-      log(`${RED_FAILED} because the "only" option was used\n`);
+      log(`${redFailed} because the "only" option was used\n`);
     }
   }
 }
