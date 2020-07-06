@@ -48,7 +48,7 @@ lazy_static! {
           r"[\x1b\x9b][\[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-PRZcf-nqry=><]"
   ).unwrap();
 
-  static ref GUARD: Mutex<()> = Mutex::new(());
+  static ref GUARD: Mutex<HttpServerCount> = Mutex::new(HttpServerCount::default());
 }
 
 pub fn root_path() -> PathBuf {
@@ -418,58 +418,92 @@ fn custom_headers(path: warp::path::Peek, f: warp::fs::File) -> Box<dyn Reply> {
   }
 }
 
-pub struct HttpServerGuard<'a> {
-  #[allow(dead_code)]
-  g: MutexGuard<'a, ()>,
-  test_server: Child,
+#[derive(Default)]
+struct HttpServerCount {
+  count: usize,
+  test_server: Option<Child>,
 }
 
-impl<'a> Drop for HttpServerGuard<'a> {
-  fn drop(&mut self) {
-    match self.test_server.try_wait() {
-      Ok(None) => {
-        self.test_server.kill().expect("failed to kill test_server");
-        let _ = self.test_server.wait();
+impl HttpServerCount {
+  fn inc(&mut self) {
+    self.count += 1;
+    if self.test_server.is_none() {
+      assert_eq!(self.count, 1);
+
+      println!("test_server starting...");
+      let mut test_server = Command::new(test_server_path())
+        .current_dir(root_path())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("failed to execute test_server");
+      let stdout = test_server.stdout.as_mut().unwrap();
+      use std::io::{BufRead, BufReader};
+      let lines = BufReader::new(stdout).lines();
+      for maybe_line in lines {
+        if let Ok(line) = maybe_line {
+          if line.starts_with("ready") {
+            break;
+          }
+        } else {
+          panic!(maybe_line.unwrap_err());
+        }
       }
-      Ok(Some(status)) => panic!("test_server exited unexpectedly {}", status),
-      Err(e) => panic!("test_server error: {}", e),
+      self.test_server = Some(test_server);
+    }
+  }
+
+  fn dec(&mut self) {
+    assert!(self.count > 0);
+    self.count -= 1;
+    if self.count == 0 {
+      let mut test_server = self.test_server.take().unwrap();
+      match test_server.try_wait() {
+        Ok(None) => {
+          test_server.kill().expect("failed to kill test_server");
+          let _ = test_server.wait();
+        }
+        Ok(Some(status)) => {
+          panic!("test_server exited unexpectedly {}", status)
+        }
+        Err(e) => panic!("test_server error: {}", e),
+      }
     }
   }
 }
 
-/// Starts target/debug/test_server when the returned guard is dropped, the server
-/// will be killed.
-pub fn http_server<'a>() -> HttpServerGuard<'a> {
-  // TODO(bartlomieju) Allow tests to use the http server in parallel.
+impl Drop for HttpServerCount {
+  fn drop(&mut self) {
+    assert_eq!(self.count, 0);
+    assert!(self.test_server.is_none());
+  }
+}
+
+fn lock_http_server<'a>() -> MutexGuard<'a, HttpServerCount> {
   let r = GUARD.lock();
-  let g = if let Err(poison_err) = r {
+  if let Err(poison_err) = r {
     // If panics happened, ignore it. This is for tests.
     poison_err.into_inner()
   } else {
     r.unwrap()
-  };
-
-  println!("test_server starting...");
-  let mut test_server = Command::new(test_server_path())
-    .current_dir(root_path())
-    .stdout(Stdio::piped())
-    .spawn()
-    .expect("failed to execute test_server");
-
-  let stdout = test_server.stdout.as_mut().unwrap();
-  use std::io::{BufRead, BufReader};
-  let lines = BufReader::new(stdout).lines();
-  for maybe_line in lines {
-    if let Ok(line) = maybe_line {
-      if line.starts_with("ready") {
-        break;
-      }
-    } else {
-      panic!(maybe_line.unwrap_err());
-    }
   }
+}
 
-  HttpServerGuard { test_server, g }
+pub struct HttpServerGuard {}
+
+impl Drop for HttpServerGuard {
+  fn drop(&mut self) {
+    let mut g = lock_http_server();
+    g.dec();
+  }
+}
+
+/// Adds a reference to a shared target/debug/test_server subprocess. When the
+/// last instance of the HttpServerGuard is dropped, the subprocess will be
+/// killed.
+pub fn http_server() -> HttpServerGuard {
+  let mut g = lock_http_server();
+  g.inc();
+  HttpServerGuard {}
 }
 
 /// Helper function to strip ansi codes.
