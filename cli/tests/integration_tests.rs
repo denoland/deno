@@ -495,7 +495,7 @@ fn upgrade_with_out_in_tmpdir() {
       .stdout,
   )
   .unwrap();
-  assert!(.contains("1.0.2"));
+  assert!(v.contains("1.0.2"));
 }
 
 #[test]
