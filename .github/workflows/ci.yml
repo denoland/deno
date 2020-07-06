@@ -13,27 +13,27 @@ jobs:
     strategy:
       matrix:
         config:
-          - os: macOS-latest
-            kind: test_release
-          - os: windows-2019
-            kind: test_release
+          #- os: macOS-latest
+          #  kind: test_release
+          #- os: windows-2019
+          #  kind: test_release
           - os: ubuntu-16.04
             kind: test_release
-          - os: ubuntu-16.04
-            kind: test_debug
-          - os: ubuntu-16.04
-            kind: bench
-          - os: ubuntu-16.04
-            kind: lint
+          #- os: ubuntu-16.04
+          #  kind: test_debug
+          #- os: ubuntu-16.04
+          #  kind: bench
+          #- os: ubuntu-16.04
+          #  kind: lint
 
       # Always run master branch builds to completion. This allows the cache to
       # stay mostly up-to-date in situations where a single job fails due to
       # e.g. a flaky test.
       # Don't fast-fail on tag build because publishing binaries shouldn't be
       # prevented if 'cargo publish' fails (which can be a false negative).
-      fail-fast:
-        ${{ github.event_name == 'pull_request' || (github.ref !=
-        'refs/heads/master' && !startsWith(github.ref, 'refs/tags/')) }}
+      fail-fast: false
+      # ${{ github.event_name == 'pull_request' || (github.ref !=
+      # 'refs/heads/master' && !startsWith(github.ref, 'refs/tags/')) }}
 
     env:
       CARGO_INCREMENTAL: 0
@@ -143,6 +143,17 @@ jobs:
       - name: Build debug
         if: matrix.config.kind == 'test_debug'
         run: cargo build --locked --all-targets
+
+      - name: Debug segfault
+        run: |-
+          cargo test --release --locked --no-run -p deno --test integration_tests
+          cd target/release
+          ulimit -c unlimited
+          ./deps/integration_tests-dc0ee918cce11c5e --test-threads=1 --nocapture
+          if [[ $? -eq 139 ]]; then
+            printf "backtrace\nquit\n" > backtrace
+            gdb -q ./deps/integration_tests-dc0ee918cce11c5e core -x ./backtrace
+          fi
 
       - name: Test release
         if: matrix.config.kind == 'test_release'
