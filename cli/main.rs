@@ -733,7 +733,8 @@ pub fn main() {
       force,
       dry_run,
       version,
-    } => upgrade_command(dry_run, force, version).boxed_local(),
+      ca_file,
+    } => upgrade_command(dry_run, force, version, ca_file).boxed_local(),
     _ => unreachable!(),
   };
 

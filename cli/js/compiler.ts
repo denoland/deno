@@ -245,6 +245,7 @@ class SourceFile {
   processed = false;
   sourceCode?: string;
   tsSourceFile?: ts.SourceFile;
+  versionHash!: string;
   url!: string;
 
   constructor(json: SourceFileJson) {
@@ -445,7 +446,6 @@ class Host implements ts.CompilerHost {
           sourceFile.sourceCode,
           languageVersion
         );
-        //@ts-ignore
         sourceFile.tsSourceFile.version = sourceFile.versionHash;
         delete sourceFile.sourceCode;
       }

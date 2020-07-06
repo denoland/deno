@@ -27,7 +27,7 @@ This module provides an implementation of the WebAssembly System Interface
 - [x] fd_prestat_dir_name
 - [x] fd_pwrite
 - [x] fd_read
-- [ ] fd_readdir
+- [x] fd_readdir
 - [x] fd_renumber
 - [x] fd_seek
 - [x] fd_sync

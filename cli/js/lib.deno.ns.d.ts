@@ -1080,10 +1080,14 @@ declare namespace Deno {
    * Throws Error (not implemented) if executed on Windows
    *
    * @param path path to the file
-   * @param uid user id (UID) of the new owner
-   * @param gid group id (GID) of the new owner
+   * @param uid user id (UID) of the new owner, or `null` for no change
+   * @param gid group id (GID) of the new owner, or `null` for no change
    */
-  export function chownSync(path: string | URL, uid: number, gid: number): void;
+  export function chownSync(
+    path: string | URL,
+    uid: number | null,
+    gid: number | null
+  ): void;
 
   /** Change owner of a regular file or directory. This functionality
    * is not available on Windows.
@@ -1097,13 +1101,13 @@ declare namespace Deno {
    * Throws Error (not implemented) if executed on Windows
    *
    * @param path path to the file
-   * @param uid user id (UID) of the new owner
-   * @param gid group id (GID) of the new owner
+   * @param uid user id (UID) of the new owner, or `null` for no change
+   * @param gid group id (GID) of the new owner, or `null` for no change
    */
   export function chown(
     path: string | URL,
-    uid: number,
-    gid: number
+    uid: number | null,
+    gid: number | null
   ): Promise<void>;
 
   export interface RemoveOptions {

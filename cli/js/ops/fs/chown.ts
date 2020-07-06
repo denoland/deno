@@ -2,15 +2,19 @@
 import { sendSync, sendAsync } from "../dispatch_json.ts";
 import { pathFromURL } from "../../util.ts";
 
-export function chownSync(path: string | URL, uid: number, gid: number): void {
+export function chownSync(
+  path: string | URL,
+  uid: number | null,
+  gid: number | null
+): void {
   path = pathFromURL(path);
   sendSync("op_chown", { path, uid, gid });
 }
 
 export async function chown(
   path: string | URL,
-  uid: number,
-  gid: number
+  uid: number | null,
+  gid: number | null
 ): Promise<void> {
   path = pathFromURL(path);
   await sendAsync("op_chown", { path, uid, gid });

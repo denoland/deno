@@ -957,14 +957,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "hyper_hello"
-version = "0.0.1"
-dependencies = [
- "hyper",
- "tokio",
-]
-
-[[package]]
 name = "ident_case"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2451,7 +2443,6 @@ dependencies = [
  "mio",
  "mio-named-pipes",
  "mio-uds",
- "num_cpus",
  "pin-project-lite",
  "signal-hook-registry",
  "slab",
