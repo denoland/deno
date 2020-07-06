@@ -1339,7 +1339,7 @@ declare class Worker extends EventTarget {
 
 declare type PerformanceEntryList = PerformanceEntry[];
 
-declare class Performance {
+declare interface Performance {
   /** Removes the stored timestamp with the associated name. */
   clearMarks(markName?: string): void;
 
@@ -1359,6 +1359,8 @@ declare class Performance {
     measureName: string,
     options?: PerformanceMeasureOptions
   ): PerformanceMeasure;
+  /** Stores the `DOMHighResTimeStamp` duration between two marks along with the
+   * associated name (a "measure"). */
   measure(
     measureName: string,
     startMark?: string,
@@ -1376,6 +1378,11 @@ declare class Performance {
    */
   now(): number;
 }
+
+declare const Performance: {
+  prototype: Performance;
+  new (): Performance;
+};
 
 declare const performance: Performance;
 
