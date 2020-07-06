@@ -57,8 +57,19 @@ pub async fn upgrade_command(
   force: bool,
   version: Option<String>,
   output: Option<PathBuf>,
+  ca_file: Option<String>,
 ) -> Result<(), ErrBox> {
-  let client = Client::builder().redirect(Policy::none()).build()?;
+  let mut client_builder = Client::builder().redirect(Policy::none());
+
+  // If we have been provided a CA Certificate, add it into the HTTP client
+  if let Some(ca_file) = ca_file {
+    let buf = std::fs::read(ca_file);
+    let cert = reqwest::Certificate::from_pem(&buf.unwrap())?;
+    client_builder = client_builder.add_root_certificate(cert);
+  }
+
+  let client = client_builder.build()?;
+
   let current_version = semver_parse(crate::version::DENO).unwrap();
 
   let install_version = match version {
@@ -211,9 +222,9 @@ fn unpack(archive_data: Vec<u8>) -> Result<PathBuf, ErrBox> {
           }",
         )
         .arg("-Path")
-        .arg(&archive_path)
+        .arg(format!("'{}'", &archive_path.to_str().unwrap()))
         .arg("-DestinationPath")
-        .arg(&temp_dir)
+        .arg(format!("'{}'", &temp_dir.to_str().unwrap()))
         .spawn()?
         .wait()?
     }

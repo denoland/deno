@@ -4,6 +4,7 @@ import { startGlobalTimer, stopGlobalTimer } from "../ops/timers.ts";
 import { RBTree } from "../rbtree.ts";
 
 const { console } = globalThis;
+const OriginalDate = Date;
 
 interface Timer {
   id: number;
@@ -71,7 +72,7 @@ async function setGlobalTimeout(due: number, now: number): Promise<void> {
 }
 
 function prepareReadyTimers(): void {
-  const now = Date.now();
+  const now = OriginalDate.now();
   // Bail out if we're not expecting the global timer to fire.
   if (globalTimeoutDue === null || pendingEvents > 0) {
     return;
@@ -145,7 +146,10 @@ function unschedule(timer: Timer): void {
     // still exists is due, and update the global alarm accordingly.
     if (timer.due === globalTimeoutDue) {
       const nextDueNode: DueNode | null = dueTree.min();
-      setOrClearGlobalTimeout(nextDueNode && nextDueNode.due, Date.now());
+      setOrClearGlobalTimeout(
+        nextDueNode && nextDueNode.due,
+        OriginalDate.now()
+      );
     }
   } else {
     // Multiple timers that are due at the same point in time.
@@ -169,7 +173,7 @@ function fire(timer: Timer): void {
   } else {
     // Interval timer: compute when timer was supposed to fire next.
     // However make sure to never schedule the next interval in the past.
-    const now = Date.now();
+    const now = OriginalDate.now();
     timer.due = Math.max(now, timer.due + timer.delay);
     schedule(timer, now);
   }
@@ -205,7 +209,7 @@ function setTimer(
   // In the browser, the delay value must be coercible to an integer between 0
   // and INT32_MAX. Any other value will cause the timer to fire immediately.
   // We emulate this behavior.
-  const now = Date.now();
+  const now = OriginalDate.now();
   if (delay > TIMEOUT_MAX) {
     console.warn(
       `${delay} does not fit into` +

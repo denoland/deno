@@ -992,6 +992,12 @@ declare namespace Deno {
 
   export interface NetPermissionDescriptor {
     name: "net";
+    /** Optional url associated with this descriptor.
+     *
+     * If specified: must be a valid url. Expected format: <scheme>://<host_or_ip>[:port][/path]
+     * If the scheme is unknown, callers should specify some scheme, such as x:// na:// unknown://
+     *
+     * See: https://www.iana.org/assignments/uri-schemes/uri-schemes.xhtml */
     url?: string;
   }
 
@@ -1080,7 +1086,8 @@ declare namespace Deno {
   /** **UNSTABLE**: The URL of the file that was originally executed from the command-line. */
   export const mainModule: string;
 
-  /** Synchronously truncates or extends the specified file stream, to reach the
+  /** **UNSTABLE**: new API, yet to be vetted.
+   * Synchronously truncates or extends the specified file stream, to reach the
    * specified `len`.  If `len` is not specified then the entire file contents
    * are truncated.
    *
@@ -1100,7 +1107,8 @@ declare namespace Deno {
    */
   export function ftruncateSync(rid: number, len?: number): void;
 
-  /** Truncates or extends the specified file stream, to reach the specified `len`. If
+  /** **UNSTABLE**: new API, yet to be vetted.
+   * Truncates or extends the specified file stream, to reach the specified `len`. If
    * `len` is not specified then the entire file contents are truncated.
    *
    * ```ts
@@ -1118,6 +1126,28 @@ declare namespace Deno {
    * ```
    */
   export function ftruncate(rid: number, len?: number): Promise<void>;
+
+  /* **UNSTABLE**: New API, yet to be vetted.
+   * Synchronously flushes any pending data operations of the given file stream to disk.
+   *  ```ts
+   * const file = Deno.openSync("my_file.txt", { read: true, write: true, create: true });
+   * Deno.writeSync(file.rid, new TextEncoder().encode("Hello World"));
+   * Deno.fdatasyncSync(file.rid);
+   * console.log(new TextDecoder().decode(Deno.readFileSync("my_file.txt"))); // Hello World
+   * ```
+   */
+  export function fdatasyncSync(rid: number): void;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   * Flushes any pending data operations of the given file stream to disk.
+   *  ```ts
+   * const file = await Deno.open("my_file.txt", { read: true, write: true, create: true });
+   * await Deno.write(file.rid, new TextEncoder().encode("Hello World"));
+   * await Deno.fdatasync(file.rid);
+   * console.log(new TextDecoder().decode(await Deno.readFile("my_file.txt"))); // Hello World
+   * ```
+   */
+  export function fdatasync(rid: number): Promise<void>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    * Synchronously flushes any pending data and metadata operations of the given file stream to disk.

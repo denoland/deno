@@ -3,6 +3,22 @@
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 
+declare interface ImportMeta {
+  /** A string representation of the fully qualified module URL. */
+  url: string;
+
+  /** A flag that indicates if the current module is the main module that was
+   * called when starting the program under Deno.
+   *
+   * ```ts
+   * if (import.meta.main) {
+   *   // this was loaded as the main module, maybe do some bootstrapping
+   * }
+   * ```
+   */
+  main: boolean;
+}
+
 declare namespace Deno {
   /** A set of error constructors that are raised by Deno APIs. */
   export const errors: {
@@ -1064,10 +1080,14 @@ declare namespace Deno {
    * Throws Error (not implemented) if executed on Windows
    *
    * @param path path to the file
-   * @param uid user id (UID) of the new owner
-   * @param gid group id (GID) of the new owner
+   * @param uid user id (UID) of the new owner, or `null` for no change
+   * @param gid group id (GID) of the new owner, or `null` for no change
    */
-  export function chownSync(path: string | URL, uid: number, gid: number): void;
+  export function chownSync(
+    path: string | URL,
+    uid: number | null,
+    gid: number | null
+  ): void;
 
   /** Change owner of a regular file or directory. This functionality
    * is not available on Windows.
@@ -1081,13 +1101,13 @@ declare namespace Deno {
    * Throws Error (not implemented) if executed on Windows
    *
    * @param path path to the file
-   * @param uid user id (UID) of the new owner
-   * @param gid group id (GID) of the new owner
+   * @param uid user id (UID) of the new owner, or `null` for no change
+   * @param gid group id (GID) of the new owner, or `null` for no change
    */
   export function chown(
     path: string | URL,
-    uid: number,
-    gid: number
+    uid: number | null,
+    gid: number | null
   ): Promise<void>;
 
   export interface RemoveOptions {
@@ -1779,9 +1799,15 @@ declare namespace Deno {
   export class Process<T extends RunOptions = RunOptions> {
     readonly rid: number;
     readonly pid: number;
-    readonly stdin: T["stdin"] extends "piped" ? Writer & Closer : null;
-    readonly stdout: T["stdout"] extends "piped" ? Reader & Closer : null;
-    readonly stderr: T["stderr"] extends "piped" ? Reader & Closer : null;
+    readonly stdin: T["stdin"] extends "piped"
+      ? Writer & Closer
+      : (Writer & Closer) | null;
+    readonly stdout: T["stdout"] extends "piped"
+      ? Reader & Closer
+      : (Writer & Closer) | null;
+    readonly stderr: T["stderr"] extends "piped"
+      ? Reader & Closer
+      : (Writer & Closer) | null;
     /** Resolves to the current status of the process. */
     status(): Promise<ProcessStatus>;
     /** Buffer the stdout until EOF and return it as `Uint8Array`.

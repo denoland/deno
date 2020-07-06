@@ -71,6 +71,7 @@ pub enum DenoSubcommand {
     force: bool,
     version: Option<String>,
     output: Option<PathBuf>,
+    ca_file: Option<String>,
   },
 }
 
@@ -564,22 +565,24 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 }
 
 fn upgrade_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  ca_file_arg_parse(flags, matches);
+
   let dry_run = matches.is_present("dry-run");
   let force = matches.is_present("force");
   let version = matches.value_of("version").map(|s| s.to_string());
-
   let output = if matches.is_present("output") {
     let install_root = matches.value_of("output").unwrap();
     Some(PathBuf::from(install_root))
   } else {
     None
   };
-
+  let ca_file = matches.value_of("cert").map(|s| s.to_string());
   flags.subcommand = DenoSubcommand::Upgrade {
     dry_run,
     force,
     version,
     output,
+    ca_file,
   };
 }
 
@@ -882,6 +885,7 @@ update to a different location, use the --output flag
         .short("f")
         .help("Replace current exe even if not out-of-date"),
     )
+    .arg(ca_file_arg())
 }
 
 fn doc_subcommand<'a, 'b>() -> App<'a, 'b> {
@@ -994,7 +998,8 @@ fn permission_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
         .takes_value(true)
         .use_delimiter(true)
         .require_equals(true)
-        .help("Allow network access"),
+        .help("Allow network access")
+        .validator(crate::flags_allow_net::validator),
     )
     .arg(
       Arg::with_name("allow-env")
@@ -1138,6 +1143,7 @@ fn lock_arg<'a, 'b>() -> Arg<'a, 'b> {
 fn lock_write_arg<'a, 'b>() -> Arg<'a, 'b> {
   Arg::with_name("lock-write")
     .long("lock-write")
+    .requires("lock")
     .help("Write lock file. Use with --lock.")
 }
 
@@ -1344,7 +1350,8 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     if raw_net_allowlist.is_empty() {
       flags.allow_net = true;
     } else {
-      flags.net_allowlist = resolve_hosts(raw_net_allowlist);
+      flags.net_allowlist =
+        crate::flags_allow_net::parse(raw_net_allowlist).unwrap();
       debug!("net allowlist: {:#?}", &flags.net_allowlist);
     }
   }
@@ -1395,41 +1402,6 @@ pub fn resolve_urls(urls: Vec<String>) -> Vec<String> {
   out
 }
 
-/// Expands "bare port" paths (eg. ":8080") into full paths with hosts. It
-/// expands to such paths into 3 paths with following hosts: `0.0.0.0:port`,
-/// `127.0.0.1:port` and `localhost:port`.
-fn resolve_hosts(paths: Vec<String>) -> Vec<String> {
-  let mut out: Vec<String> = vec![];
-  for host_and_port in paths.iter() {
-    let parts = host_and_port.split(':').collect::<Vec<&str>>();
-
-    match parts.len() {
-      // host only
-      1 => {
-        out.push(host_and_port.to_owned());
-      }
-      // host and port (NOTE: host might be empty string)
-      2 => {
-        let host = parts[0];
-        let port = parts[1];
-
-        if !host.is_empty() {
-          out.push(host_and_port.to_owned());
-          continue;
-        }
-
-        // we got bare port, let's add default hosts
-        for host in ["0.0.0.0", "127.0.0.1", "localhost"].iter() {
-          out.push(format!("{}:{}", host, port));
-        }
-      }
-      _ => panic!("Bad host:port pair: {}", host_and_port),
-    }
-  }
-
-  out
-}
-
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -1447,6 +1419,7 @@ mod tests {
           dry_run: true,
           version: None,
           output: None
+          ca_file: None
         },
         ..Flags::default()
       }
@@ -2503,6 +2476,37 @@ mod tests {
   }
 
   #[test]
+  fn allow_net_allowlist_with_ipv6_address() {
+    let r = flags_from_vec_safe(svec![
+      "deno",
+      "run",
+      "--allow-net=deno.land,deno.land:80,::,127.0.0.1,[::1],1.2.3.4:5678,:5678,[::1]:8080",
+      "script.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run {
+          script: "script.ts".to_string(),
+        },
+        net_allowlist: svec![
+          "deno.land",
+          "deno.land:80",
+          "::",
+          "127.0.0.1",
+          "[::1]",
+          "1.2.3.4:5678",
+          "0.0.0.0:5678",
+          "127.0.0.1:5678",
+          "localhost:5678",
+          "[::1]:8080"
+        ],
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
   fn lock_write() {
     let r = flags_from_vec_safe(svec![
       "deno",
@@ -2636,6 +2640,25 @@ mod tests {
         allow_write: true,
         allow_plugin: true,
         allow_hrtime: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn upgrade_with_ca_file() {
+    let r =
+      flags_from_vec_safe(svec!["deno", "upgrade", "--cert", "example.crt"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Upgrade {
+          force: false,
+          dry_run: false,
+          version: None,
+          ca_file: Some("example.crt".to_owned()),
+        },
+        ca_file: Some("example.crt".to_owned()),
         ..Flags::default()
       }
     );

@@ -69,7 +69,7 @@ async fn check_source_files(
                 println!();
                 println!(
                   "{} {}:",
-                  colors::bold("from".to_string()),
+                  colors::bold("from"),
                   file_path.display().to_string()
                 );
                 println!("{}", diff);
