@@ -115,7 +115,7 @@ export function dayOfYear(date: Date): number {
  * @return Number of the week in year
  */
 export function weekOfYear(date: Date): number{
-  let workingDate = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const workingDate = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
 
   // Set to nearest Thursday: current date + 4 - current day number
   // Make Sunday's day number 7
