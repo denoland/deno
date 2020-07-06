@@ -36,7 +36,7 @@ unitTest(
   { perms: { net: true } },
   async function bodyMultipartFormData(): Promise<void> {
     const response = await fetch(
-      "http://localhost:4545/cli/tests/subdir/multipart_form_data.txt"
+      "http://localhost:4545/multipart_form_data.txt"
     );
     const text = await response.text();
 

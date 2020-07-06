@@ -3,10 +3,12 @@
 #[macro_use]
 extern crate lazy_static;
 
+use futures::future::{self, FutureExt};
 use os_pipe::pipe;
 use regex::Regex;
 use std::io::Read;
 use std::io::Write;
+use std::mem::replace;
 use std::path::PathBuf;
 use std::process::Child;
 use std::process::Command;
@@ -15,6 +17,20 @@ use std::process::Stdio;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
 use tempfile::TempDir;
+use warp::http::Uri;
+use warp::http::{HeaderValue, Response, StatusCode};
+use warp::hyper::Body;
+use warp::reply::with_header;
+use warp::reply::Reply;
+use warp::Filter;
+
+const PORT: u16 = 4545;
+const REDIRECT_PORT: u16 = 4546;
+const ANOTHER_REDIRECT_PORT: u16 = 4547;
+const DOUBLE_REDIRECTS_PORT: u16 = 4548;
+const INF_REDIRECTS_PORT: u16 = 4549;
+const REDIRECT_ABSOLUTE_PORT: u16 = 4550;
+const HTTPS_PORT: u16 = 5545;
 
 pub const PERMISSION_VARIANTS: [&str; 5] =
   ["read", "write", "env", "net", "run"];
@@ -54,27 +70,358 @@ pub fn deno_exe_path() -> PathBuf {
   p
 }
 
+pub fn test_server_path() -> PathBuf {
+  let mut p = target_dir().join("test_server");
+  if cfg!(windows) {
+    p.set_extension("exe");
+  }
+  p
+}
+
+#[tokio::main]
+pub async fn run_all_servers() {
+  let routes = warp::path::full().map(|path: warp::path::FullPath| {
+    let p = path.as_str();
+    assert_eq!(&p[0..1], "/");
+    let url = format!("http://localhost:{}{}", PORT, p);
+    let u = url.parse::<Uri>().unwrap();
+    warp::redirect(u)
+  });
+  let redirect_server_fut =
+    warp::serve(routes).bind(([127, 0, 0, 1], REDIRECT_PORT));
+
+  let routes = warp::path::full().map(|path: warp::path::FullPath| {
+    let p = path.as_str();
+    assert_eq!(&p[0..1], "/");
+    let url = format!("http://localhost:{}/cli/tests/subdir{}", PORT, p);
+    let u = url.parse::<Uri>().unwrap();
+    warp::redirect(u)
+  });
+  let another_redirect_server_fut =
+    warp::serve(routes).bind(([127, 0, 0, 1], ANOTHER_REDIRECT_PORT));
+
+  let routes = warp::path::full().map(|path: warp::path::FullPath| {
+    let p = path.as_str();
+    assert_eq!(&p[0..1], "/");
+    let url = format!("http://localhost:{}{}", REDIRECT_PORT, p);
+    let u = url.parse::<Uri>().unwrap();
+    warp::redirect(u)
+  });
+  let double_redirect_server_fut =
+    warp::serve(routes).bind(([127, 0, 0, 1], DOUBLE_REDIRECTS_PORT));
+
+  let routes = warp::path::full().map(|path: warp::path::FullPath| {
+    let p = path.as_str();
+    assert_eq!(&p[0..1], "/");
+    let url = format!("http://localhost:{}{}", INF_REDIRECTS_PORT, p);
+    let u = url.parse::<Uri>().unwrap();
+    warp::redirect(u)
+  });
+  let inf_redirect_server_fut =
+    warp::serve(routes).bind(([127, 0, 0, 1], INF_REDIRECTS_PORT));
+
+  // redirect server that redirect to absolute paths under same host
+  // redirects /REDIRECT/file_name to /file_name
+  let routes = warp::path("REDIRECT")
+    .and(warp::path::peek())
+    .map(|path: warp::path::Peek| {
+      let p = path.as_str();
+      let url = format!("/{}", p);
+      let u = url.parse::<Uri>().unwrap();
+      warp::redirect(u)
+    })
+    .or(
+      warp::any()
+        .and(warp::path::peek())
+        .and(warp::fs::dir(root_path()))
+        .map(custom_headers),
+    );
+  let absolute_redirect_server_fut =
+    warp::serve(routes).bind(([127, 0, 0, 1], REDIRECT_ABSOLUTE_PORT));
+
+  let echo_server = warp::path("echo_server")
+    .and(warp::post())
+    .and(warp::body::bytes())
+    .and(warp::header::optional::<String>("x-status"))
+    .and(warp::header::optional::<String>("content-type"))
+    .and(warp::header::optional::<String>("user-agent"))
+    .map(
+      |bytes: bytes::Bytes,
+       status: Option<String>,
+       content_type: Option<String>,
+       user_agent: Option<String>|
+       -> Box<dyn Reply> {
+        let mut res = Response::new(Body::from(bytes));
+        if let Some(v) = status {
+          *res.status_mut() = StatusCode::from_bytes(v.as_bytes()).unwrap();
+        }
+        let h = res.headers_mut();
+        if let Some(v) = content_type {
+          h.insert("content-type", HeaderValue::from_str(&v).unwrap());
+        }
+        if let Some(v) = user_agent {
+          h.insert("user-agent", HeaderValue::from_str(&v).unwrap());
+        }
+        Box::new(res)
+      },
+    );
+  let echo_multipart_file = warp::path("echo_multipart_file")
+    .and(warp::post())
+    .and(warp::body::bytes())
+    .map(|bytes: bytes::Bytes| -> Box<dyn Reply> {
+      let start = b"--boundary\t \r\n\
+                    Content-Disposition: form-data; name=\"field_1\"\r\n\
+                    \r\n\
+                    value_1 \r\n\
+                    \r\n--boundary\r\n\
+                    Content-Disposition: form-data; name=\"file\"; \
+                    filename=\"file.bin\"\r\n\
+                    Content-Type: application/octet-stream\r\n\
+                    \r\n";
+      let end = b"\r\n--boundary--\r\n";
+      let b = [start as &[u8], &bytes, end].concat();
+
+      let mut res = Response::new(Body::from(b));
+      let h = res.headers_mut();
+      h.insert(
+        "content-type",
+        HeaderValue::from_static("multipart/form-data;boundary=boundary"),
+      );
+      Box::new(res)
+    });
+  let multipart_form_data =
+    warp::path("multipart_form_data.txt").map(|| -> Box<dyn Reply> {
+      let b = "Preamble\r\n\
+               --boundary\t \r\n\
+               Content-Disposition: form-data; name=\"field_1\"\r\n\
+               \r\n\
+               value_1 \r\n\
+               \r\n--boundary\r\n\
+               Content-Disposition: form-data; name=\"field_2\";\
+               filename=\"file.js\"\r\n\
+               Content-Type: text/javascript\r\n\
+               \r\n\
+               console.log(\"Hi\")\
+               \r\n--boundary--\r\n\
+               Epilogue";
+      let mut res = Response::new(Body::from(b));
+      res.headers_mut().insert(
+        "content-type",
+        HeaderValue::from_static("multipart/form-data;boundary=boundary"),
+      );
+      Box::new(res)
+    });
+
+  let etag_script = warp::path!("etag_script.ts")
+    .and(warp::header::optional::<String>("if-none-match"))
+    .map(|if_none_match| -> Box<dyn Reply> {
+      if if_none_match == Some("33a64df551425fcc55e".to_string()) {
+        let r =
+          warp::reply::with_status(warp::reply(), StatusCode::NOT_MODIFIED);
+        let r = with_header(r, "Content-type", "application/typescript");
+        let r = with_header(r, "ETag", "33a64df551425fcc55e");
+        Box::new(r)
+      } else {
+        let mut res = Response::new(Body::from("console.log('etag')"));
+        let h = res.headers_mut();
+        h.insert(
+          "Content-type",
+          HeaderValue::from_static("application/typescript"),
+        );
+        h.insert("ETag", HeaderValue::from_static("33a64df551425fcc55e"));
+        Box::new(res)
+      }
+    });
+  let xtypescripttypes = warp::path!("xTypeScriptTypes.js")
+    .map(|| {
+      let mut res = Response::new(Body::from("export const foo = 'foo';"));
+      let h = res.headers_mut();
+      h.insert(
+        "Content-type",
+        HeaderValue::from_static("application/javascript"),
+      );
+      h.insert(
+        "X-TypeScript-Types",
+        HeaderValue::from_static("./xTypeScriptTypes.d.ts"),
+      );
+      res
+    })
+    .or(warp::path!("xTypeScriptTypes.d.ts").map(|| {
+      let mut res = Response::new(Body::from("export const foo: 'foo';"));
+      res.headers_mut().insert(
+        "Content-type",
+        HeaderValue::from_static("application/typescript"),
+      );
+      res
+    }))
+    .or(warp::path!("type_directives_redirect.js").map(|| {
+      let mut res = Response::new(Body::from("export const foo = 'foo';"));
+      let h = res.headers_mut();
+      h.insert(
+        "Content-type",
+        HeaderValue::from_static("application/javascript"),
+      );
+      h.insert(
+        "X-TypeScript-Types",
+        HeaderValue::from_static(
+          "http://localhost:4547/xTypeScriptTypesRedirect.d.ts",
+        ),
+      );
+      res
+    }))
+    .or(warp::path!("cli"/"tests"/"subdir"/"xTypeScriptTypesRedirect.d.ts").map(|| {
+      let mut res = Response::new(Body::from(
+        "import './xTypeScriptTypesRedirected.d.ts';",
+      ));
+      let h = res.headers_mut();
+      h.insert(
+        "Content-type",
+        HeaderValue::from_static("application/typescript"),
+      );
+      res
+    }))
+    .or(warp::path!("cli"/"tests"/"subdir"/"xTypeScriptTypesRedirected.d.ts").map(|| {
+      let mut res = Response::new(Body::from("export const foo: 'foo';"));
+      let h = res.headers_mut();
+      h.insert(
+        "Content-type",
+        HeaderValue::from_static("application/typescript"),
+      );
+      res
+    }))
+    .or(warp::path!("referenceTypes.js").map(|| {
+      let mut res = Response::new(Body::from("/// <reference types=\"./xTypeScriptTypes.d.ts\" />\r\nexport const foo = \"foo\";\r\n"));
+      let h = res.headers_mut();
+      h.insert(
+        "Content-type",
+        HeaderValue::from_static("application/javascript"),
+      );
+      res
+    }));
+
+  let content_type_handler = warp::any()
+    .and(warp::path::peek())
+    .and(warp::fs::dir(root_path()))
+    .map(custom_headers)
+    .or(etag_script)
+    .or(xtypescripttypes)
+    .or(echo_server)
+    .or(echo_multipart_file)
+    .or(multipart_form_data);
+
+  let http_fut =
+    warp::serve(content_type_handler.clone()).bind(([127, 0, 0, 1], PORT));
+
+  let https_fut = warp::serve(content_type_handler.clone())
+    .tls()
+    .cert_path("std/http/testdata/tls/localhost.crt")
+    .key_path("std/http/testdata/tls/localhost.key")
+    .bind(([127, 0, 0, 1], HTTPS_PORT));
+
+  let mut server_fut = async {
+    futures::join!(
+      http_fut,
+      https_fut,
+      redirect_server_fut,
+      another_redirect_server_fut,
+      inf_redirect_server_fut,
+      double_redirect_server_fut,
+      absolute_redirect_server_fut,
+    )
+  }
+  .boxed();
+
+  let mut did_print_ready = false;
+  future::poll_fn(move |cx| {
+    let poll_result = server_fut.poll_unpin(cx);
+    if !replace(&mut did_print_ready, true) {
+      println!("ready");
+    }
+    poll_result
+  })
+  .await;
+}
+
+fn custom_headers(path: warp::path::Peek, f: warp::fs::File) -> Box<dyn Reply> {
+  let p = path.as_str();
+
+  if p.ends_with("cli/tests/x_deno_warning.js") {
+    let f = with_header(f, "Content-Type", "application/javascript");
+    let f = with_header(f, "X-Deno-Warning", "foobar");
+    return Box::new(f);
+  }
+  if p.ends_with("cli/tests/053_import_compression/brotli") {
+    let f = with_header(f, "Content-Encoding", "br");
+    let f = with_header(f, "Content-Type", "application/javascript");
+    let f = with_header(f, "Content-Length", "26");
+    return Box::new(f);
+  }
+  if p.ends_with("cli/tests/053_import_compression/gziped") {
+    let f = with_header(f, "Content-Encoding", "gzip");
+    let f = with_header(f, "Content-Type", "application/javascript");
+    let f = with_header(f, "Content-Length", "39");
+    return Box::new(f);
+  }
+
+  let content_type = if p.contains(".t1.") {
+    Some("text/typescript")
+  } else if p.contains(".t2.") {
+    Some("video/vnd.dlna.mpeg-tts")
+  } else if p.contains(".t3.") {
+    Some("video/mp2t")
+  } else if p.contains(".t4.") {
+    Some("application/x-typescript")
+  } else if p.contains(".j1.") {
+    Some("text/javascript")
+  } else if p.contains(".j2.") {
+    Some("application/ecmascript")
+  } else if p.contains(".j3.") {
+    Some("text/ecmascript")
+  } else if p.contains(".j4.") {
+    Some("application/x-javascript")
+  } else if p.contains("form_urlencoded") {
+    Some("application/x-www-form-urlencoded")
+  } else if p.contains("unknown_ext") || p.contains("no_ext") {
+    Some("text/typescript")
+  } else if p.contains("mismatch_ext") {
+    Some("text/javascript")
+  } else if p.ends_with(".ts") || p.ends_with(".tsx") {
+    Some("application/typescript")
+  } else if p.ends_with(".js") || p.ends_with(".jsx") {
+    Some("application/javascript")
+  } else if p.ends_with(".json") {
+    Some("application/json")
+  } else {
+    None
+  };
+
+  if let Some(t) = content_type {
+    Box::new(with_header(f, "Content-Type", t))
+  } else {
+    Box::new(f)
+  }
+}
+
 pub struct HttpServerGuard<'a> {
   #[allow(dead_code)]
   g: MutexGuard<'a, ()>,
-  child: Child,
+  test_server: Child,
 }
 
 impl<'a> Drop for HttpServerGuard<'a> {
   fn drop(&mut self) {
-    match self.child.try_wait() {
+    match self.test_server.try_wait() {
       Ok(None) => {
-        self.child.kill().expect("failed to kill http_server.py");
+        self.test_server.kill().expect("failed to kill test_server");
+        let _ = self.test_server.wait();
       }
-      Ok(Some(status)) => {
-        panic!("http_server.py exited unexpectedly {}", status)
-      }
-      Err(e) => panic!("http_server.py err {}", e),
+      Ok(Some(status)) => panic!("test_server exited unexpectedly {}", status),
+      Err(e) => panic!("test_server error: {}", e),
     }
   }
 }
 
-/// Starts tools/http_server.py when the returned guard is dropped, the server
+/// Starts target/debug/test_server when the returned guard is dropped, the server
 /// will be killed.
 pub fn http_server<'a>() -> HttpServerGuard<'a> {
   // TODO(bartlomieju) Allow tests to use the http server in parallel.
@@ -86,18 +433,16 @@ pub fn http_server<'a>() -> HttpServerGuard<'a> {
     r.unwrap()
   };
 
-  println!("tools/http_server.py starting...");
-  let mut child = Command::new("python")
+  println!("test_server starting...");
+  let mut test_server = Command::new(test_server_path())
     .current_dir(root_path())
-    .args(&["-u", "tools/http_server.py"])
     .stdout(Stdio::piped())
     .spawn()
-    .expect("failed to execute child");
+    .expect("failed to execute test_server");
 
-  let stdout = child.stdout.as_mut().unwrap();
+  let stdout = test_server.stdout.as_mut().unwrap();
   use std::io::{BufRead, BufReader};
   let lines = BufReader::new(stdout).lines();
-  // Wait for "ready" on stdout. See tools/http_server.py
   for maybe_line in lines {
     if let Ok(line) = maybe_line {
       if line.starts_with("ready") {
@@ -108,7 +453,7 @@ pub fn http_server<'a>() -> HttpServerGuard<'a> {
     }
   }
 
-  HttpServerGuard { child, g }
+  HttpServerGuard { test_server, g }
 }
 
 /// Helper function to strip ansi codes.

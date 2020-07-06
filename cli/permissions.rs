@@ -291,9 +291,10 @@ impl Permissions {
           .to_owned(),
       ));
     }
-    Ok(
-      self.get_state_net(&format!("{}", parsed.host().unwrap()), parsed.port()),
-    )
+    Ok(self.get_state_net(
+      &format!("{}", parsed.host().unwrap()),
+      parsed.port_or_known_default(),
+    ))
   }
 
   pub fn check_net(&self, hostname: &str, port: u16) -> Result<(), OpError> {
@@ -308,7 +309,7 @@ impl Permissions {
       .host_str()
       .ok_or_else(|| OpError::uri_error("missing host".to_owned()))?;
     self
-      .get_state_net(host, url.port())
+      .get_state_net(host, url.port_or_known_default())
       .check(&format!("network access to \"{}\"", url), "--allow-net")
   }
 
@@ -629,7 +630,8 @@ mod tests {
         "deno.land",
         "github.com:3000",
         "127.0.0.1",
-        "172.16.0.2:8000"
+        "172.16.0.2:8000",
+        "www.github.com:443"
       ],
       ..Default::default()
     });
@@ -692,6 +694,8 @@ mod tests {
       ("https://172.16.0.2:6000", false),
       ("tcp://172.16.0.1:8000", false),
       ("https://172.16.0.1:8000", false),
+      // Testing issue #6531 (Network permissions check doesn't account for well-known default ports) so we dont regress
+      ("https://www.github.com:443/robots.txt", true),
     ];
 
     for (url_str, is_ok) in url_tests.iter() {
