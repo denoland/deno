@@ -239,7 +239,6 @@ testWalk(
   }
 );
 
-// TODO(ry) Re-enable followSymlinks
 testWalk(
   async (d: string): Promise<void> => {
     await Deno.mkdir(d + "/a");
@@ -247,19 +246,9 @@ testWalk(
     await touch(d + "/a/x");
     await touch(d + "/a/y");
     await touch(d + "/b/z");
-    try {
-      await Deno.symlink(d + "/b", d + "/a/bb");
-    } catch (err) {
-      assert(Deno.build.os == "windows");
-      assertEquals(err.message, "Not implemented");
-    }
+    await Deno.symlink(d + "/b", d + "/a/bb");
   },
   async function symlink(): Promise<void> {
-    // symlink is not yet implemented on Windows.
-    if (Deno.build.os == "windows") {
-      return;
-    }
-
     assertReady(6);
     const files = await walkArray("a");
     assertEquals(files.length, 2);

@@ -151,7 +151,7 @@ fn op_open(
 struct SeekArgs {
   promise_id: Option<u64>,
   rid: i32,
-  offset: i32,
+  offset: i64,
   whence: i32,
 }
 
@@ -169,8 +169,8 @@ fn op_seek(
   // Translate seek mode to Rust repr.
   let seek_from = match whence {
     0 => SeekFrom::Start(offset as u64),
-    1 => SeekFrom::Current(i64::from(offset)),
-    2 => SeekFrom::End(i64::from(offset)),
+    1 => SeekFrom::Current(offset),
+    2 => SeekFrom::End(offset),
     _ => {
       return Err(OpError::type_error(format!(
         "Invalid seek mode: {}",

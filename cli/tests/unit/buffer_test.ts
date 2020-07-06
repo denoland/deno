@@ -298,3 +298,16 @@ unitTest(function testWriteAllSync(): void {
     assertEquals(testBytes[i], actualBytes[i]);
   }
 });
+
+unitTest(function testBufferBytesArrayBufferLength(): void {
+  const bytes = new TextEncoder().encode("a");
+  const reader = new Deno.Buffer();
+  Deno.writeAllSync(reader, bytes);
+
+  const writer = new Deno.Buffer();
+  writer.readFromSync(reader);
+  const actualBytes = writer.bytes();
+
+  assertEquals(bytes.byteLength, 1);
+  assertEquals(bytes.byteLength, actualBytes.buffer.byteLength);
+});

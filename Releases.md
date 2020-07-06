@@ -6,6 +6,46 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### 1.1.3 / 2020.07.03
+
+Changes in the CLI:
+
+- fix(cli): Change seek offset type from i32 to i64 (#6518)
+- fix(cli/body): Maximum call stack size exceeded error (#6537)
+- fix(cli/doc): Doc printer missing [] around tuple type (#6523)
+- fix(cli/js): Buffer.bytes() ArrayBuffer size (#6511)
+- fix(cli/js): Fix conditional types for process sockets (#6275)
+- fix(cli/upgrade): Upgrade fails on Windows with space in temp path (#6522)
+- fix: Lock file for dynamic imports (#6569)
+- fix: Move ImportMeta to deno.ns lib (#6588)
+- fix: Net permissions didn't account for default ports (#6606)
+- refactor: Improvements to TsCompiler and its tests (#6576)
+- upgrade: deno_lint 0.1.15 (#6580, #6614)
+- upgrade: dprint-plugin-typescript 0.19.5 (#6527, #6614)
+
+Changes in std version 0.60.0:
+
+- feat(std/asserts): Allow assert functions to specify type parameter (#6413)
+- feat(std/datetime): Add is leap and difference functions (#4857)
+- feat(std/io): Add fromStreamReader, fromStreamWriter (#5789, #6535)
+- feat(std/node): Add Buffer.allocUnsafe (#6533)
+- feat(std/node): Add Buffer.isEncoding (#6521)
+- feat(std/node): Support hex/base64 encoding in fs.readFile/fs.writeFile
+  (#6512)
+- feat(std/wasi) Implement fd_filestat_get (#6555)
+- feat(std/wasi) Implement fd_filestat_set_size (#6558)
+- feat(std/wasi): Implement fd_datasync (#6556)
+- feat(std/wasi): Implement fd_sync (#6560)
+- fix(std/http): Catch errors on file_server response.send (#6285)
+- fix(std/http): Support ipv6 parsing (#5263)
+- fix(std/log): Print "{msg}" when log an empty line (#6381)
+- fix(std/node): Add fill & encoding args to Buffer.alloc (#6526)
+- fix(std/node): Do not use absolute urls (#6562)
+- fix(std/wasi): path_filestat_get padding (#6509)
+- fix(std/wasi): Use lookupflags for path_filestat_get (#6530)
+- refactor(std/http): Cookie types to not require full ServerRequest object
+  (#6577)
+
 ### 1.1.2 / 2020.06.26
 
 Changes in the CLI:

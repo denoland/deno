@@ -75,6 +75,6 @@ RUST_BACKTRACE=1 cargo run -- run --unstable --allow-read --allow-write cli/test
 
 ### Http server
 
-`tools/http_server.py` is required to run when one's running unit tests. During
-CI it's spawned automatically, but if you want to run tests manually make sure
-that server is spawned otherwise there'll be cascade of test failures.
+`target/debug/test_server` is required to run when one's running unit tests.
+During CI it's spawned automatically, but if you want to run tests manually make
+sure that server is spawned otherwise there'll be cascade of test failures.

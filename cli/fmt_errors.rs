@@ -10,19 +10,19 @@ use std::ops::Deref;
 
 const SOURCE_ABBREV_THRESHOLD: usize = 150;
 
-pub fn format_location(filename: String, line: i64, col: i64) -> String {
+pub fn format_location(filename: &str, line: i64, col: i64) -> String {
   format!(
     "{}:{}:{}",
     colors::cyan(filename),
-    colors::yellow(line.to_string()),
-    colors::yellow(col.to_string())
+    colors::yellow(&line.to_string()),
+    colors::yellow(&col.to_string())
   )
 }
 
 pub fn format_stack(
   is_error: bool,
-  message_line: String,
-  source_line: Option<String>,
+  message_line: &str,
+  source_line: Option<&str>,
   start_column: Option<i64>,
   end_column: Option<i64>,
   formatted_frames: &[String],
@@ -51,7 +51,7 @@ pub fn format_stack(
 /// Take an optional source line and associated information to format it into
 /// a pretty printed version of that line.
 fn format_maybe_source_line(
-  source_line: Option<String>,
+  source_line: Option<&str>,
   start_column: Option<i64>,
   end_column: Option<i64>,
   is_error: bool,
@@ -93,9 +93,9 @@ fn format_maybe_source_line(
     s.push(underline_char);
   }
   let color_underline = if is_error {
-    colors::red(s).to_string()
+    colors::red(&s).to_string()
   } else {
-    colors::cyan(s).to_string()
+    colors::cyan(&s).to_string()
   };
 
   let indent = format!("{:indent$}", "", indent = level);
@@ -147,7 +147,7 @@ impl fmt::Display for JSError {
       && self.0.start_column.is_some()
     {
       formatted_frames = vec![format_location(
-        self.0.script_resource_name.clone().unwrap(),
+        self.0.script_resource_name.as_ref().unwrap(),
         self.0.line_number.unwrap(),
         self.0.start_column.unwrap() + 1,
       )]
@@ -158,8 +158,8 @@ impl fmt::Display for JSError {
       "{}",
       &format_stack(
         true,
-        self.0.message.clone(),
-        self.0.source_line.clone(),
+        &self.0.message,
+        self.0.source_line.as_deref(),
         self.0.start_column,
         self.0.end_column,
         &formatted_frames,
@@ -186,7 +186,7 @@ mod tests {
   #[test]
   fn test_format_some_source_line() {
     let actual = format_maybe_source_line(
-      Some("console.log('foo');".to_string()),
+      Some("console.log('foo');"),
       Some(8),
       Some(11),
       true,

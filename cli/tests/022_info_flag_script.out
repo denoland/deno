@@ -1,7 +1,7 @@
+[WILDCARD]
 local: [WILDCARD]http[WILDCARD]127.0.0.1_PORT4545[WILDCARD]
 type: TypeScript
 compiled: [WILDCARD].js
-map: [WILDCARD].js.map
 deps:
 http://127.0.0.1:4545/cli/tests/019_media_types.ts
   ├── http://localhost:4545/cli/tests/subdir/mt_text_typescript.t1.ts
