@@ -8,7 +8,6 @@ extern crate lazy_static;
 use futures::future::{self, FutureExt};
 use os_pipe::pipe;
 use regex::Regex;
-use std::convert::Infallible;
 use std::env;
 use std::io::Read;
 use std::io::Write;
@@ -25,15 +24,10 @@ use warp::http::HeaderValue;
 use warp::http::Response;
 use warp::http::StatusCode;
 use warp::http::Uri;
-use warp::hyper::service::{make_service_fn, service_fn};
 use warp::hyper::Body;
-//use warp::hyper::Response;
-use warp::hyper::Server;
 use warp::reply::with_header;
 use warp::reply::Reply;
 use warp::Filter;
-
-type Just<T> = Result<T, Infallible>;
 
 const PORT: u16 = 4545;
 const REDIRECT_PORT: u16 = 4546;
@@ -87,6 +81,13 @@ pub fn test_server_path() -> PathBuf {
     p.set_extension("exe");
   }
   p
+}
+
+/// Benchmark server that just serves "hello world" responses.
+async fn hyper_hello(port: u16) {
+  println!("hyper hello");
+  let route = warp::any().map(|| "Hello World!");
+  warp::serve(route).bind(([127, 0, 0, 1], port)).await;
 }
 
 #[tokio::main]
@@ -733,25 +734,4 @@ fn test_wildcard_match() {
     dbg!(pattern, string, expected);
     assert_eq!(actual, expected);
   }
-}
-
-async fn hyper_hello(port: u16) {
-  println!("hyper hello");
-  let addr = ([127, 0, 0, 1], port).into();
-  // For every connection, we must make a `Service` to handle all
-  // incoming HTTP requests on said connection.
-  let new_service = make_service_fn(|_| {
-    // This is the `Service` that will handle the connection.
-    // `service_fn` is a helper to convert a function that
-    // returns a Response into a `Service`.
-    async {
-      Just::Ok(service_fn(|_req| async {
-        Just::Ok(Response::new(Body::from(&b"Hello World!"[..])))
-      }))
-    }
-  });
-
-  let server = Server::bind(&addr).tcp_nodelay(true).serve(new_service);
-  println!("Listening on http://{}", addr);
-  let _ = server.await;
 }
