@@ -1,5 +1,6 @@
 import {
   unitTest,
+  assert,
   assertEquals,
   assertThrows,
   assertThrowsAsync,
