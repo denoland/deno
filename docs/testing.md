@@ -156,9 +156,6 @@ deno test --filter "/test-*\d/" tests/
 _To let Deno know that you want to use a pattern, wrap your filter with
 forward-slashes like the JavaScript syntactic sugar for a REGEX._
 
-This command will run any test which contains the string "hello world" in its
-test name for tests found within files in the `tests/` directory.
-
 ### Test definition filtering
 
 Within the tests themselves, you have two options for filtering.
