@@ -1629,6 +1629,13 @@ itest!(lock_check_err2 {
   http_server: true,
 });
 
+itest!(lock_check_err_with_bundle {
+  args: "bundle --lock=lock_check_err_with_bundle.json http://127.0.0.1:4545/cli/tests/subdir/mod1.ts",
+  output: "lock_check_err_with_bundle.out",
+  exit_code: 10,
+  http_server: true,
+});
+
 itest!(async_error {
   exit_code: 1,
   args: "run --reload async_error.ts",
