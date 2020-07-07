@@ -241,7 +241,7 @@ export class Md5 {
         for (let i = 0; i < data.length; ++i) {
           dataString += String.fromCharCode(data[i]);
         }
-        return window.btoa(dataString);
+        return btoa(dataString);
       }
       default:
         throw new Error("md5: invalid format");

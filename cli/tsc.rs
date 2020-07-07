@@ -625,6 +625,28 @@ impl TsCompiler {
       .add_to_graph(&module_specifier, None)
       .await?;
     let module_graph = module_graph_loader.get_graph();
+    let module_graph_files = module_graph.values().collect::<Vec<_>>();
+    // Check integrity of every file in module graph
+    if let Some(ref lockfile) = global_state.lockfile {
+      let mut g = lockfile.lock().unwrap();
+
+      for graph_file in &module_graph_files {
+        let check_passed =
+          g.check_or_insert(&graph_file.url, &graph_file.source_code);
+
+        if !check_passed {
+          eprintln!(
+            "Subresource integrity check failed --lock={}\n{}",
+            g.filename, graph_file.url
+          );
+          std::process::exit(10);
+        }
+      }
+    }
+    if let Some(ref lockfile) = global_state.lockfile {
+      let g = lockfile.lock().unwrap();
+      g.write()?;
+    }
     let module_graph_json =
       serde_json::to_value(module_graph).expect("Failed to serialize data");
 

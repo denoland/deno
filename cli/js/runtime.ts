@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 import { core } from "./core.ts";
 import * as dispatchMinimal from "./ops/dispatch_minimal.ts";
 import * as dispatchJson from "./ops/dispatch_json.ts";

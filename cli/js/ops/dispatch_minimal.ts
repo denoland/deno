@@ -1,13 +1,15 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 import * as util from "../util.ts";
 import { core } from "../core.ts";
 import { TextDecoder } from "../web/text_encoding.ts";
 import { ErrorKind, errors, getErrorClass } from "../errors.ts";
 
 // Using an object without a prototype because `Map` was causing GC problems.
-const promiseTableMin: {
-  [key: number]: util.Resolvable<RecordMinimal>;
-} = Object.create(null);
+const promiseTableMin: Record<
+  number,
+  util.Resolvable<RecordMinimal>
+> = Object.create(null);
 
 // Note it's important that promiseId starts at 1 instead of 0, because sync
 // messages are indicated with promiseId 0. If we ever add wrap around logic for
@@ -93,7 +95,7 @@ export async function sendAsyncMinimal(
   scratch32[2] = 0; // result
   const promise = util.createResolvable<RecordMinimal>();
   const buf = core.dispatchByName(opName, scratchBytes, zeroCopy);
-  if (buf) {
+  if (buf != null) {
     const record = recordFromBufMinimal(buf);
     // Sync result.
     promise.resolve(record);

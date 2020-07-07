@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 import { gray, green, italic, red, yellow } from "./colors.ts";
 import { exit } from "./ops/os.ts";
 import { Console, stringifyArgs } from "./web/console.ts";
@@ -11,9 +12,9 @@ import { assert } from "./util.ts";
 
 const disabledConsole = new Console((): void => {});
 
-function delay(n: number): Promise<void> {
-  return new Promise((resolve: () => void, _) => {
-    setTimeout(resolve, n);
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve: () => void) => {
+    setTimeout(resolve, ms);
   });
 }
 
@@ -241,7 +242,7 @@ class TestRunner {
     passed: 0,
     failed: 0,
   };
-  private usedOnly: boolean;
+  readonly #usedOnly: boolean;
 
   constructor(
     tests: TestDefinition[],
@@ -249,8 +250,8 @@ class TestRunner {
     public failFast: boolean
   ) {
     const onlyTests = tests.filter(({ only }) => only);
-    this.usedOnly = onlyTests.length > 0;
-    const unfilteredTests = this.usedOnly ? onlyTests : tests;
+    this.#usedOnly = onlyTests.length > 0;
+    const unfilteredTests = this.#usedOnly ? onlyTests : tests;
     this.testsToRun = unfilteredTests.filter(filterFn);
     this.stats.filtered = unfilteredTests.length - this.testsToRun.length;
   }
@@ -292,7 +293,7 @@ class TestRunner {
     const duration = +new Date() - suiteStart;
 
     yield {
-      end: { ...this.stats, usedOnly: this.usedOnly, duration, results },
+      end: { ...this.stats, usedOnly: this.#usedOnly, duration, results },
     };
   }
 }
