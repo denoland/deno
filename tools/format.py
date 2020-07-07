@@ -3,7 +3,7 @@
 import os
 import sys
 import argparse
-from third_party import python_env
+from third_party import python_env, get_prebuilt_tool_path
 from util import git_ls_files, git_staged, third_party_path, root_path
 from util import print_command, run
 
@@ -54,7 +54,7 @@ def main():
 
 
 def dprint():
-    script = os.path.join(get_prebuilt_path(), "dprint")
+    script = get_prebuilt_tool_path("dprint")
     command = [script, "fmt"]
     run(command, shell=False, quiet=True)
 
@@ -83,15 +83,6 @@ def rustfmt():
         ] + source_files,
             shell=False,
             quiet=True)
-
-
-def get_prebuilt_path():
-    prebuilt_path = os.path.join(third_party_path, "prebuilt")
-    if sys.platform.startswith("darwin"):
-        return os.path.join(prebuilt_path, "mac")
-    elif sys.platform.startswith("win32"):
-        return os.path.join(prebuilt_path, "win")
-    return os.path.join(prebuilt_path, "linux64")
 
 
 if __name__ == "__main__":
