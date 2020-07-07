@@ -146,13 +146,13 @@ jobs:
 
       - name: Debug segfault
         run: |-
-          cargo test --release --locked -p deno integration_tests
+          cargo test --no-run --release --locked -p deno integration_tests
           cd target/release
           ulimit -c unlimited
-          ./deps/integration_tests-dc0ee918cce11c5e --test-threads=1 --nocapture
+          ./deps/integration_tests-6be0370e7fc01a5d --test-threads=1 --nocapture
           if [[ $? -eq 139 ]]; then
             printf "backtrace\nquit\n" > backtrace
-            gdb -q ./deps/integration_tests-dc0ee918cce11c5e core -x ./backtrace
+            gdb -q ./deps/integration_tests-6be0370e7fc01a5d core -x ./backtrace
           fi
 
       - name: Test release
