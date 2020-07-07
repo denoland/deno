@@ -92,6 +92,7 @@ use futures::Future;
 use log::Level;
 use log::Metadata;
 use log::Record;
+use state::exit_unstable;
 use std::env;
 use std::io::Read;
 use std::io::Write;
@@ -308,6 +309,9 @@ async fn info_command(
   file: Option<String>,
   json: bool,
 ) -> Result<(), ErrBox> {
+  if json && !flags.unstable {
+    exit_unstable("--json");
+  }
   let global_state = GlobalState::new(flags)?;
   // If it was just "deno info" print location of caches and exit
   if file.is_none() {

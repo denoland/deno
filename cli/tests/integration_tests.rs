@@ -1470,8 +1470,14 @@ itest!(_041_info_flag {
 });
 
 itest!(info_json {
-  args: "info --json",
+  args: "info --json --unstable",
   output: "info_json.out",
+});
+
+itest!(info_json_no_unstable {
+  args: "info --json",
+  output: "info_json_no_unstable.out",
+  exit_code: 70,
 });
 
 itest!(_042_dyn_import_evalcontext {
@@ -1528,9 +1534,15 @@ itest!(_054_info_local_imports {
 });
 
 itest!(_055_info_file_json {
-  args: "info --quiet --json 005_more_imports.ts",
+  args: "info --quiet --json --unstable 005_more_imports.ts",
   output: "055_info_file_json.out",
   exit_code: 0,
+});
+
+itest!(info_file_json_no_unstable {
+  args: "info --quiet --json 005_more_imports.ts",
+  output: "info_json_no_unstable.out",
+  exit_code: 70,
 });
 
 itest!(_056_make_temp_file_write_perm {
