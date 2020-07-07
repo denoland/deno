@@ -146,7 +146,7 @@ jobs:
 
       - name: Debug segfault
         run: |-
-          cargo test --release --locked --no-run -p deno --test integration_tests
+          cargo test --release --locked -p deno integration_tests
           cd target/release
           ulimit -c unlimited
           ./deps/integration_tests-dc0ee918cce11c5e --test-threads=1 --nocapture
