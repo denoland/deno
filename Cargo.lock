@@ -446,6 +446,8 @@ dependencies = [
 [[package]]
 name = "deno_lint"
 version = "0.1.16"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c9215a4316612e7535f104a7cbc0a3ef535d7eb49c963a3c48433759d7f04bb5"
 dependencies = [
  "dprint-plugin-typescript",
  "lazy_static",

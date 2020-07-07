@@ -20,7 +20,7 @@ deno_typescript = { path = "../deno_typescript", version = "0.48.3" }
 
 [dependencies]
 deno_core = { path = "../core", version = "0.48.3" }
-deno_lint = { path = "../../dlint", version = "0.1.16" }
+deno_lint = "0.1.16"
 deno_typescript = { path = "../deno_typescript", version = "0.48.3" }
 
 atty = "0.2.14"
