@@ -56,8 +56,9 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::task::Poll;
-use swc_ecma_visit::Node;
-use swc_ecma_visit::Visit;
+use crate::swc_ecma_visit;
+use crate::swc_ecma_visit::Node;
+use crate::swc_ecma_visit::Visit;
 use url::Url;
 
 pub const AVAILABLE_LIBS: &[&str] = &[

@@ -389,7 +389,6 @@ dependencies = [
  "deno_typescript",
  "dissimilar",
  "dlopen",
- "dprint-plugin-typescript",
  "futures 0.3.5",
  "fwdansi",
  "http",
@@ -411,7 +410,6 @@ dependencies = [
  "serde_derive",
  "serde_json",
  "sourcemap",
- "swc_ecma_visit",
  "sys-info",
  "tempfile",
  "termcolor",
@@ -447,16 +445,12 @@ dependencies = [
 
 [[package]]
 name = "deno_lint"
-version = "0.1.15"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cf648623425f63f748afac53cbfaf93292d04451cb7e162a5251ea402e634dbe"
+version = "0.1.16"
 dependencies = [
+ "dprint-plugin-typescript",
  "lazy_static",
  "regex",
  "swc_atoms",
- "swc_common",
- "swc_ecma_ast",
- "swc_ecma_parser",
  "swc_ecma_visit",
 ]
 
@@ -526,18 +520,18 @@ checksum = "9ea835d29036a4087793836fa931b08837ad5e957da9e23886b29586fb9b6650"
 
 [[package]]
 name = "dprint-core"
-version = "0.22.0"
+version = "0.24.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7c249f8079061863984673e2e5e455217dc6df8924edf474389820fe89727670"
+checksum = "fb13f434a98b4fc4f35ae52d5130c9bbe2a514f56c3d6529df11df91080fbd8f"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "dprint-plugin-typescript"
-version = "0.19.5"
+version = "0.19.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c6568808dd49005745fa5061c8f1faff0bc38fae3bb3cd2c737e8b480fa7b5a1"
+checksum = "c227beb41f4c0e3be999c17f9a292765c7d3cfea3186ae55325907e046ad5fc9"
 dependencies = [
  "dprint-core",
  "serde",
@@ -2195,9 +2189,9 @@ dependencies = [
 
 [[package]]
 name = "swc_common"
-version = "0.6.1"
+version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3f4e030b00e19415ce63321a994cdabe87661f4210858715ffea22a1da921de5"
+checksum = "79e97fcbda03677da4d57519548082bd8ed30d6afcef8e18053ad829e290d252"
 dependencies = [
  "ast_node",
  "atty",
@@ -2218,9 +2212,9 @@ dependencies = [
 
 [[package]]
 name = "swc_ecma_ast"
-version = "0.22.0"
+version = "0.23.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9ea8a035c2a77f4034266f19f6129a2146f3871ce4503a9baf8c069135bc43ba"
+checksum = "47b0fe7f603d4ddef115f7efe72e9c0823f90d9adae5dd4d754fe1a08686b021"
 dependencies = [
  "enum_kind",
  "num-bigint",
@@ -2232,9 +2226,9 @@ dependencies = [
 
 [[package]]
 name = "swc_ecma_parser"
-version = "0.26.1"
+version = "0.27.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2a7acfce58d7bbadd2e6dcb8e914c9d0fd0e6f8717a0ec40fd37e4ba2437aefc"
+checksum = "00871b8900ab4c64b66c81787c95e511e46fb25b54db481a98ab1905160e1edd"
 dependencies = [
  "either",
  "enum_kind",
@@ -2266,9 +2260,9 @@ dependencies = [
 
 [[package]]
 name = "swc_ecma_visit"
-version = "0.7.0"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "571731480f3d9c6aa9d1f76563bd923823f28eb38e2e49822e1ffe9db3959c12"
+checksum = "d9ce020872b2c0e6b4b65edbb39f523377a67c4532cdde68efbeaa27fade1e44"
 dependencies = [
  "num-bigint",
  "swc_atoms",
