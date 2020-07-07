@@ -383,6 +383,13 @@ struct CompileResponse {
   build_info: Option<String>,
   stats: Option<Vec<Stat>>,
 }
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TranspileResponse {
+  diagnostics: Diagnostic,
+  emit_map: HashMap<String, EmittedSource>,
+  stats: Option<Vec<Stat>>,
+}
 
 // TODO(bartlomieju): possible deduplicate once TS refactor is stabilized
 #[derive(Deserialize)]
@@ -721,17 +728,17 @@ impl TsCompiler {
     };
     let j = match (compiler_config.path, compiler_config.content) {
       (Some(config_path), Some(config_data)) => json!({
-        "type": msg::CompilerRequestType::Transpile,
-        "configPath": config_path,
         "config": str::from_utf8(&config_data).unwrap(),
+        "configPath": config_path,
         "cwd": cwd,
         "performance": performance,
         "sourceFiles": source_files_json,
+        "type": msg::CompilerRequestType::Transpile,
       }),
       _ => json!({
-        "type": msg::CompilerRequestType::Transpile,
         "performance": performance,
         "sourceFiles": source_files_json,
+        "type": msg::CompilerRequestType::Transpile,
       }),
     };
 
@@ -743,7 +750,7 @@ impl TsCompiler {
 
     let json_str = std::str::from_utf8(&msg).unwrap();
 
-    let transpile_response: CompileResponse = serde_json::from_str(json_str)?;
+    let transpile_response: TranspileResponse = serde_json::from_str(json_str)?;
 
     if !transpile_response.diagnostics.items.is_empty() {
       return Err(ErrBox::from(transpile_response.diagnostics));

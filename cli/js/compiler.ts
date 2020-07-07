@@ -182,19 +182,21 @@ interface CompilerHostOptions {
   incremental?: boolean;
 }
 
-type IncrementalCompilerHostOptions =
-  & Omit<
-    CompilerHostOptions,
-    "incremental"
-  >
-  & {
-    rootNames?: string[];
-    buildInfo?: string;
-  };
+type IncrementalCompilerHostOptions = Omit<
+  CompilerHostOptions,
+  "incremental"
+> & {
+  rootNames?: string[];
+  buildInfo?: string;
+};
 
-interface ConfigureResponse {
+interface HostConfigureResponse {
   ignoredOptions?: string[];
   diagnostics?: ts.Diagnostic[];
+}
+
+interface ConfigureResponse extends HostConfigureResponse {
+  options: ts.CompilerOptions;
 }
 
 // Warning! The values in this enum are duplicated in `cli/msg.rs`
@@ -233,9 +235,7 @@ function getExtension(fileName: string, mediaType: MediaType): ts.Extension {
     case MediaType.Unknown:
     default:
       throw TypeError(
-        `Cannot resolve extension for "${fileName}" with mediaType "${
-          MediaType[mediaType]
-        }".`,
+        `Cannot resolve extension for "${fileName}" with mediaType "${MediaType[mediaType]}".`
       );
   }
 }
@@ -254,6 +254,37 @@ const SOURCE_FILE_CACHE: Map<string, SourceFile> = new Map();
  * Second map's value is resolved import URL ("file:///a/b/c/foo.ts")
  */
 const RESOLVED_SPECIFIER_CACHE: Map<string, Map<string, string>> = new Map();
+
+function configure(
+  defaultOptions: ts.CompilerOptions,
+  source: string,
+  path: string,
+  cwd: string
+): ConfigureResponse {
+  const { config, error } = ts.parseConfigFileTextToJson(path, source);
+  if (error) {
+    return { diagnostics: [error], options: defaultOptions };
+  }
+  const { options, errors } = ts.convertCompilerOptionsFromJson(
+    config.compilerOptions,
+    cwd
+  );
+  const ignoredOptions: string[] = [];
+  for (const key of Object.keys(options)) {
+    if (
+      IGNORED_COMPILER_OPTIONS.includes(key) &&
+      (!(key in defaultOptions) || options[key] !== defaultOptions[key])
+    ) {
+      ignoredOptions.push(key);
+      delete options[key];
+    }
+  }
+  return {
+    options: Object.assign({}, defaultOptions, options),
+    ignoredOptions: ignoredOptions.length ? ignoredOptions : undefined,
+    diagnostics: errors.length ? errors : undefined,
+  };
+}
 
 class SourceFile {
   extension!: ts.Extension;
@@ -287,7 +318,7 @@ class SourceFile {
   static cacheResolvedUrl(
     resolvedUrl: string,
     rawModuleSpecifier: string,
-    containingFile?: string,
+    containingFile?: string
   ): void {
     containingFile = containingFile || "";
     let innerCache = RESOLVED_SPECIFIER_CACHE.get(containingFile);
@@ -300,7 +331,7 @@ class SourceFile {
 
   static getResolvedUrl(
     moduleSpecifier: string,
-    containingFile: string,
+    containingFile: string
   ): string | undefined {
     const containingCache = RESOLVED_SPECIFIER_CACHE.get(containingFile);
     if (containingCache) {
@@ -368,36 +399,17 @@ class Host implements ts.CompilerHost {
   configure(
     cwd: string,
     path: string,
-    configurationText: string,
-  ): ConfigureResponse {
+    configurationText: string
+  ): HostConfigureResponse {
     log("compiler::host.configure", path);
-    assert(configurationText);
-    const { config, error } = ts.parseConfigFileTextToJson(
-      path,
+    const { options, ...result } = configure(
+      this.#options,
       configurationText,
+      path,
+      cwd
     );
-    if (error) {
-      return { diagnostics: [error] };
-    }
-    const { options, errors } = ts.convertCompilerOptionsFromJson(
-      config.compilerOptions,
-      cwd,
-    );
-    const ignoredOptions: string[] = [];
-    for (const key of Object.keys(options)) {
-      if (
-        IGNORED_COMPILER_OPTIONS.includes(key) &&
-        (!(key in this.#options) || options[key] !== this.#options[key])
-      ) {
-        ignoredOptions.push(key);
-        delete options[key];
-      }
-    }
-    Object.assign(this.#options, options);
-    return {
-      ignoredOptions: ignoredOptions.length ? ignoredOptions : undefined,
-      diagnostics: errors.length ? errors : undefined,
-    };
+    this.#options = options;
+    return result;
   }
 
   mergeOptions(...options: ts.CompilerOptions[]): ts.CompilerOptions {
@@ -443,7 +455,7 @@ class Host implements ts.CompilerHost {
     fileName: string,
     languageVersion: ts.ScriptTarget,
     onError?: (message: string) => void,
-    shouldCreateNewSourceFile?: boolean,
+    shouldCreateNewSourceFile?: boolean
   ): ts.SourceFile | undefined {
     log("compiler::host.getSourceFile", fileName);
     try {
@@ -461,7 +473,7 @@ class Host implements ts.CompilerHost {
         sourceFile.tsSourceFile = ts.createSourceFile(
           tsSourceFileName,
           sourceFile.sourceCode,
-          languageVersion,
+          languageVersion
         );
         sourceFile.tsSourceFile.version = sourceFile.versionHash;
         delete sourceFile.sourceCode;
@@ -483,7 +495,7 @@ class Host implements ts.CompilerHost {
 
   resolveModuleNames(
     moduleNames: string[],
-    containingFile: string,
+    containingFile: string
   ): Array<ts.ResolvedModuleFull | undefined> {
     log("compiler::host.resolveModuleNames", {
       moduleNames,
@@ -528,7 +540,7 @@ class Host implements ts.CompilerHost {
     data: string,
     _writeByteOrderMark: boolean,
     _onError?: (message: string) => void,
-    sourceFiles?: readonly ts.SourceFile[],
+    sourceFiles?: readonly ts.SourceFile[]
   ): void {
     log("compiler::host.writeFile", fileName);
     this.#writeFile(fileName, data, sourceFiles);
@@ -576,23 +588,23 @@ ts.libMap.set("deno.unstable", "lib.deno.unstable.d.ts");
 // are available in the future when needed.
 SNAPSHOT_HOST.getSourceFile(
   `${ASSETS}/lib.deno.ns.d.ts`,
-  ts.ScriptTarget.ESNext,
+  ts.ScriptTarget.ESNext
 );
 SNAPSHOT_HOST.getSourceFile(
   `${ASSETS}/lib.deno.window.d.ts`,
-  ts.ScriptTarget.ESNext,
+  ts.ScriptTarget.ESNext
 );
 SNAPSHOT_HOST.getSourceFile(
   `${ASSETS}/lib.deno.worker.d.ts`,
-  ts.ScriptTarget.ESNext,
+  ts.ScriptTarget.ESNext
 );
 SNAPSHOT_HOST.getSourceFile(
   `${ASSETS}/lib.deno.shared_globals.d.ts`,
-  ts.ScriptTarget.ESNext,
+  ts.ScriptTarget.ESNext
 );
 SNAPSHOT_HOST.getSourceFile(
   `${ASSETS}/lib.deno.unstable.d.ts`,
-  ts.ScriptTarget.ESNext,
+  ts.ScriptTarget.ESNext
 );
 
 // We never use this program; it's only created
@@ -612,7 +624,7 @@ const SYSTEM_LOADER = getAsset("system_loader.js");
 const SYSTEM_LOADER_ES5 = getAsset("system_loader_es5.js");
 
 function buildLocalSourceFileCache(
-  sourceFileMap: Record<string, SourceFileMapEntry>,
+  sourceFileMap: Record<string, SourceFileMapEntry>
 ): void {
   for (const entry of Object.values(sourceFileMap)) {
     assert(entry.sourceCode.length > 0);
@@ -628,7 +640,8 @@ function buildLocalSourceFileCache(
       let mappedUrl = importDesc.resolvedSpecifier;
       const importedFile = sourceFileMap[importDesc.resolvedSpecifier];
       assert(importedFile);
-      const isJsOrJsx = importedFile.mediaType === MediaType.JavaScript ||
+      const isJsOrJsx =
+        importedFile.mediaType === MediaType.JavaScript ||
         importedFile.mediaType === MediaType.JSX;
       // If JS or JSX perform substitution for types if available
       if (isJsOrJsx) {
@@ -650,21 +663,21 @@ function buildLocalSourceFileCache(
       SourceFile.cacheResolvedUrl(
         fileRef.resolvedSpecifier.replace("memory://", ""),
         fileRef.specifier,
-        entry.url,
+        entry.url
       );
     }
     for (const fileRef of entry.libDirectives) {
       SourceFile.cacheResolvedUrl(
         fileRef.resolvedSpecifier.replace("memory://", ""),
         fileRef.specifier,
-        entry.url,
+        entry.url
       );
     }
   }
 }
 
 function buildSourceFileCache(
-  sourceFileMap: Record<string, SourceFileMapEntry>,
+  sourceFileMap: Record<string, SourceFileMapEntry>
 ): void {
   for (const entry of Object.values(sourceFileMap)) {
     SourceFile.addToCache({
@@ -687,7 +700,8 @@ function buildSourceFileCache(
       if (importedFile.redirect) {
         mappedUrl = importedFile.redirect;
       }
-      const isJsOrJsx = importedFile.mediaType === MediaType.JavaScript ||
+      const isJsOrJsx =
+        importedFile.mediaType === MediaType.JavaScript ||
         importedFile.mediaType === MediaType.JSX;
       // If JS or JSX perform substitution for types if available
       if (isJsOrJsx) {
@@ -708,14 +722,14 @@ function buildSourceFileCache(
       SourceFile.cacheResolvedUrl(
         fileRef.resolvedSpecifier,
         fileRef.specifier,
-        entry.url,
+        entry.url
       );
     }
     for (const fileRef of entry.libDirectives) {
       SourceFile.cacheResolvedUrl(
         fileRef.resolvedSpecifier,
         fileRef.specifier,
-        entry.url,
+        entry.url
       );
     }
   }
@@ -731,7 +745,7 @@ interface EmittedSource {
 type WriteFileCallback = (
   fileName: string,
   data: string,
-  sourceFiles?: readonly ts.SourceFile[],
+  sourceFiles?: readonly ts.SourceFile[]
 ) => void;
 
 interface CompileWriteFileState {
@@ -761,7 +775,7 @@ function createBundleWriteFile(state: BundleWriteFileState): WriteFileCallback {
   return function writeFile(
     _fileName: string,
     data: string,
-    sourceFiles?: readonly ts.SourceFile[],
+    sourceFiles?: readonly ts.SourceFile[]
   ): void {
     assert(sourceFiles != null);
     assert(state.host);
@@ -771,18 +785,18 @@ function createBundleWriteFile(state: BundleWriteFileState): WriteFileCallback {
       state.rootNames[0],
       data,
       sourceFiles,
-      state.host.options.target ?? ts.ScriptTarget.ESNext,
+      state.host.options.target ?? ts.ScriptTarget.ESNext
     );
   };
 }
 
 function createCompileWriteFile(
-  state: CompileWriteFileState,
+  state: CompileWriteFileState
 ): WriteFileCallback {
   return function writeFile(
     fileName: string,
     data: string,
-    sourceFiles?: readonly ts.SourceFile[],
+    sourceFiles?: readonly ts.SourceFile[]
   ): void {
     const isBuildInfo = fileName === TS_BUILD_INFO;
 
@@ -802,12 +816,12 @@ function createCompileWriteFile(
 }
 
 function createRuntimeCompileWriteFile(
-  state: CompileWriteFileState,
+  state: CompileWriteFileState
 ): WriteFileCallback {
   return function writeFile(
     fileName: string,
     data: string,
-    sourceFiles?: readonly ts.SourceFile[],
+    sourceFiles?: readonly ts.SourceFile[]
   ): void {
     assert(sourceFiles);
     assert(sourceFiles.length === 1);
@@ -1005,15 +1019,15 @@ function performanceEnd(): Stats {
 
 // TODO(Bartlomieju): this check should be done in Rust; there should be no
 function processConfigureResponse(
-  configResult: ConfigureResponse,
-  configPath: string,
+  configResult: HostConfigureResponse,
+  configPath: string
 ): ts.Diagnostic[] | undefined {
   const { ignoredOptions, diagnostics } = configResult;
   if (ignoredOptions) {
     console.warn(
       yellow(`Unsupported compiler options in "${configPath}"\n`) +
         cyan(`  The following options were ignored:\n`) +
-        `    ${ignoredOptions.map((value): string => bold(value)).join(", ")}`,
+        `    ${ignoredOptions.map((value): string => bold(value)).join(", ")}`
     );
   }
   return diagnostics;
@@ -1116,7 +1130,7 @@ function buildBundle(
   rootName: string,
   data: string,
   sourceFiles: readonly ts.SourceFile[],
-  target: ts.ScriptTarget,
+  target: ts.ScriptTarget
 ): string {
   // when outputting to AMD and a single outfile, TypeScript makes up the module
   // specifiers which are used to define the modules, and doesn't expose them
@@ -1148,7 +1162,8 @@ function buildBundle(
       ? `await __instantiate("${rootName}", true);\n`
       : `__instantiate("${rootName}", false);\n`;
   }
-  const es5Bundle = target === ts.ScriptTarget.ES3 ||
+  const es5Bundle =
+    target === ts.ScriptTarget.ES3 ||
     target === ts.ScriptTarget.ES5 ||
     target === ts.ScriptTarget.ES2015 ||
     target === ts.ScriptTarget.ES2016;
@@ -1190,7 +1205,7 @@ function setRootExports(program: ts.Program, rootModule: string): void {
           sym.flags & ts.SymbolFlags.InterfaceExcludes ||
           sym.flags & ts.SymbolFlags.TypeParameterExcludes ||
           sym.flags & ts.SymbolFlags.TypeAliasExcludes
-        ),
+        )
     )
     .map((sym) => sym.getName());
 }
@@ -1307,6 +1322,12 @@ interface CompileResponse {
   stats?: Stats;
 }
 
+interface TranspileResponse {
+  emitMap: Record<string, EmittedSource>;
+  diagnostics: Diagnostic;
+  stats?: Stats;
+}
+
 interface BundleResponse {
   bundleOutput?: string;
   diagnostics: Diagnostic;
@@ -1387,7 +1408,7 @@ function compile({
       ...program.getSemanticDiagnostics(),
     ];
     diagnostics = diagnostics.filter(
-      ({ code }) => !ignoredDiagnostics.includes(code),
+      ({ code }) => !ignoredDiagnostics.includes(code)
     );
 
     // We will only proceed with the emit if there are no diagnostics.
@@ -1399,7 +1420,7 @@ function compile({
       if (options.checkJs) {
         assert(
           emitResult.emitSkipped === false,
-          "Unexpected skip of the emit.",
+          "Unexpected skip of the emit."
         );
       }
       // emitResult.diagnostics is `readonly` in TS3.5+ and can't be assigned
@@ -1426,42 +1447,29 @@ function transpile({
   cwd,
   performance,
   sourceFiles,
-}: TranspileRequest): CompileResponse {
+}: TranspileRequest): TranspileResponse {
   if (performance) {
     performanceStart();
   }
   log(">>> transpile start");
-  const compilerOptions: ts.CompilerOptions = Object.assign(
-    {},
-    DEFAULT_TRANSPILE_OPTIONS,
-  );
+  let compilerOptions: ts.CompilerOptions;
   if (configText && configPath && cwd) {
-    const { config, error } = ts.parseConfigFileTextToJson(
-      configPath,
+    const { options, ...response } = configure(
+      DEFAULT_TRANSPILE_OPTIONS,
       configText,
+      configPath,
+      cwd
     );
-    if (error) {
-      return { diagnostics: fromTypeScriptDiagnostic([error]), emitMap: {} };
+    const diagnostics = processConfigureResponse(response, configPath);
+    if (diagnostics && diagnostics.length) {
+      return {
+        diagnostics: fromTypeScriptDiagnostic(diagnostics),
+        emitMap: {},
+      };
     }
-    const { options, errors } = ts.convertCompilerOptionsFromJson(
-      config.compilerOptions,
-      cwd,
-    );
-    if (errors) {
-      return { diagnostics: fromTypeScriptDiagnostic(errors), emitMap: {} };
-    }
-
-    const ignoredOptions: string[] = [];
-    for (const key of Object.keys(options)) {
-      if (
-        IGNORED_COMPILER_OPTIONS.includes(key) &&
-        (!(key in compilerOptions) || options[key] !== compilerOptions[key])
-      ) {
-        ignoredOptions.push(key);
-        delete options[key];
-      }
-    }
-    Object.assign(compilerOptions, options);
+    compilerOptions = options;
+  } else {
+    compilerOptions = Object.assign({}, DEFAULT_TRANSPILE_OPTIONS);
   }
   const emitMap: Record<string, EmittedSource> = {};
   let diagnostics: ts.Diagnostic[] = [];
@@ -1590,7 +1598,7 @@ function bundle({
 }
 
 function runtimeCompile(
-  request: RuntimeCompileRequest,
+  request: RuntimeCompileRequest
 ): RuntimeCompileResponse {
   const { options, rootNames, target, unstable, sourceFileMap } = request;
 
@@ -1734,16 +1742,16 @@ function runtimeBundle(request: RuntimeBundleRequest): RuntimeBundleResponse {
 }
 
 function runtimeTranspile(
-  request: RuntimeTranspileRequest,
+  request: RuntimeTranspileRequest
 ): Promise<Record<string, TranspileOnlyResult>> {
   const result: Record<string, TranspileOnlyResult> = {};
   const { sources, options } = request;
   const compilerOptions = options
     ? Object.assign(
-      {},
-      DEFAULT_RUNTIME_TRANSPILE_OPTIONS,
-      convertCompilerOptions(options).options,
-    )
+        {},
+        DEFAULT_RUNTIME_TRANSPILE_OPTIONS,
+        convertCompilerOptions(options).options
+      )
     : DEFAULT_RUNTIME_TRANSPILE_OPTIONS;
 
   for (const [fileName, inputText] of Object.entries(sources)) {
@@ -1752,7 +1760,7 @@ function runtimeTranspile(
       {
         fileName,
         compilerOptions,
-      },
+      }
     );
     result[fileName] = { source, map };
   }
@@ -1799,7 +1807,7 @@ async function tsCompilerOnMessage({
       log(
         `!!! unhandled CompilerRequestType: ${
           (request as CompilerRequest).type
-        } (${CompilerRequestType[(request as CompilerRequest).type]})`,
+        } (${CompilerRequestType[(request as CompilerRequest).type]})`
       );
   }
   // Shutdown after single request
