@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 import { sendSync, sendAsync } from "../dispatch_json.ts";
 import { pathFromURL } from "../../util.ts";
 
@@ -18,13 +19,13 @@ function res(response: ReadDirResponse): DirEntry[] {
 }
 
 export function readDirSync(path: string | URL): Iterable<DirEntry> {
-  path = pathFromURL(path);
-  return res(sendSync("op_read_dir", { path }))[Symbol.iterator]();
+  return res(sendSync("op_read_dir", { path: pathFromURL(path) }))[
+    Symbol.iterator
+  ]();
 }
 
 export function readDir(path: string | URL): AsyncIterable<DirEntry> {
-  path = pathFromURL(path);
-  const array = sendAsync("op_read_dir", { path }).then(res);
+  const array = sendAsync("op_read_dir", { path: pathFromURL(path) }).then(res);
   return {
     async *[Symbol.asyncIterator](): AsyncIterableIterator<DirEntry> {
       yield* await array;

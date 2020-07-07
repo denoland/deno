@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 // TODO(ry) Combine this implementation with //deno_typescript/compiler_main.js
 
 // This module is the entry point for "compiler" isolate, ie. the one
@@ -286,8 +287,7 @@ class SourceFile {
   ): string | undefined {
     const containingCache = RESOLVED_SPECIFIER_CACHE.get(containingFile);
     if (containingCache) {
-      const resolvedUrl = containingCache.get(moduleSpecifier);
-      return resolvedUrl;
+      return containingCache.get(moduleSpecifier);
     }
     return undefined;
   }
@@ -315,8 +315,8 @@ function getAssetInternal(filename: string): SourceFile {
 
 class Host implements ts.CompilerHost {
   protected _options = DEFAULT_COMPILE_OPTIONS;
-  #target: CompilerHostTarget;
-  #writeFile: WriteFileCallback;
+  readonly #target: CompilerHostTarget;
+  readonly #writeFile: WriteFileCallback;
   /* Deno specific APIs */
 
   constructor({
@@ -519,7 +519,7 @@ class Host implements ts.CompilerHost {
 }
 
 class IncrementalCompileHost extends Host {
-  #buildInfo: undefined | string = undefined;
+  readonly #buildInfo?: string;
 
   constructor(options: IncrementalCompilerHostOptions) {
     super(options);
@@ -1123,9 +1123,7 @@ function buildBundle(
     target === ts.ScriptTarget.ES3 ||
     target === ts.ScriptTarget.ES5 ||
     target === ts.ScriptTarget.ES2015 ||
-    target === ts.ScriptTarget.ES2016
-      ? true
-      : false;
+    target === ts.ScriptTarget.ES2016;
   return `${
     es5Bundle ? SYSTEM_LOADER_ES5 : SYSTEM_LOADER
   }\n${data}\n${instantiate}`;

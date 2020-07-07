@@ -1,6 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-// Public deno module.
+// This module exports stable Deno APIs.
+
 export {
   Buffer,
   readAll,

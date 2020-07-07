@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 import { DomIterableMixin } from "./dom_iterable.ts";
 import { requiredArguments } from "./util.ts";
 import { customInspect } from "./console.ts";

@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 import { File } from "./files.ts";
 import { close } from "./ops/resources.ts";
 import { Closer, Reader, Writer } from "./io.ts";
@@ -10,7 +11,7 @@ import { kill, runStatus as runStatusOp, run as runOp } from "./ops/process.ts";
 export interface RunOptions {
   cmd: string[];
   cwd?: string;
-  env?: { [key: string]: string };
+  env?: Record<string, string>;
   stdout?: "inherit" | "piped" | "null" | number;
   stderr?: "inherit" | "piped" | "null" | number;
   stdin?: "inherit" | "piped" | "null" | number;
@@ -100,16 +101,8 @@ export class Process<T extends RunOptions = RunOptions> {
 }
 
 export type ProcessStatus =
-  | {
-      success: true;
-      code: 0;
-      signal?: undefined;
-    }
-  | {
-      success: false;
-      code: number;
-      signal?: number;
-    };
+  | { success: true; code: 0; signal?: undefined }
+  | { success: false; code: number; signal?: number };
 
 function isRid(arg: unknown): arg is number {
   return !isNaN(arg as number);

@@ -1,3 +1,5 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 import * as netOps from "./ops/net.ts";
 import {
   Listener,
@@ -19,6 +21,11 @@ export interface ListenOptions {
 
 export interface UnixListenOptions {
   transport: "unix" | "unixpacket";
+  path: string;
+}
+
+export interface UnixConnectOptions {
+  transport: "unix";
   path: string;
 }
 
@@ -60,13 +67,6 @@ export function listenDatagram(
   return new DatagramImpl(res.rid, res.localAddr);
 }
 
-export interface UnixConnectOptions {
-  transport: "unix";
-  path: string;
-}
-
-export async function connect(options: UnixConnectOptions): Promise<Conn>;
-export async function connect(options: ConnectOptions): Promise<Conn>;
 export async function connect(
   options: ConnectOptions | UnixConnectOptions
 ): Promise<Conn> {
