@@ -70,6 +70,8 @@ pub enum DenoSubcommand {
     dry_run: bool,
     force: bool,
     version: Option<String>,
+    output: Option<PathBuf>,
+    ca_file: Option<String>,
   },
 }
 
@@ -93,7 +95,7 @@ pub struct Flags {
   pub allow_read: bool,
   pub allow_run: bool,
   pub allow_write: bool,
-  pub cache_blacklist: Vec<String>,
+  pub cache_blocklist: Vec<String>,
   pub ca_file: Option<String>,
   pub cached_only: bool,
   pub config_path: Option<String>,
@@ -103,20 +105,20 @@ pub struct Flags {
   pub lock: Option<String>,
   pub lock_write: bool,
   pub log_level: Option<Level>,
-  pub net_whitelist: Vec<String>,
+  pub net_allowlist: Vec<String>,
   pub no_prompts: bool,
   pub no_remote: bool,
-  pub read_whitelist: Vec<PathBuf>,
+  pub read_allowlist: Vec<PathBuf>,
   pub reload: bool,
   pub seed: Option<u64>,
   pub unstable: bool,
   pub v8_flags: Option<Vec<String>>,
   pub version: bool,
-  pub write_whitelist: Vec<PathBuf>,
+  pub write_allowlist: Vec<PathBuf>,
 }
 
-fn join_paths(whitelist: &[PathBuf], d: &str) -> String {
-  whitelist
+fn join_paths(allowlist: &[PathBuf], d: &str) -> String {
+  allowlist
     .iter()
     .map(|path| path.to_str().unwrap().to_string())
     .collect::<Vec<String>>()
@@ -129,8 +131,8 @@ impl Flags {
   pub fn to_permission_args(&self) -> Vec<String> {
     let mut args = vec![];
 
-    if !self.read_whitelist.is_empty() {
-      let s = format!("--allow-read={}", join_paths(&self.read_whitelist, ","));
+    if !self.read_allowlist.is_empty() {
+      let s = format!("--allow-read={}", join_paths(&self.read_allowlist, ","));
       args.push(s);
     }
 
@@ -138,9 +140,9 @@ impl Flags {
       args.push("--allow-read".to_string());
     }
 
-    if !self.write_whitelist.is_empty() {
+    if !self.write_allowlist.is_empty() {
       let s =
-        format!("--allow-write={}", join_paths(&self.write_whitelist, ","));
+        format!("--allow-write={}", join_paths(&self.write_allowlist, ","));
       args.push(s);
     }
 
@@ -148,8 +150,8 @@ impl Flags {
       args.push("--allow-write".to_string());
     }
 
-    if !self.net_whitelist.is_empty() {
-      let s = format!("--allow-net={}", self.net_whitelist.join(","));
+    if !self.net_allowlist.is_empty() {
+      let s = format!("--allow-net={}", self.net_allowlist.join(","));
       args.push(s);
     }
 
@@ -178,7 +180,7 @@ impl Flags {
 }
 
 static ENV_VARIABLES_HELP: &str = "ENVIRONMENT VARIABLES:
-    DENO_DIR             Set deno's base directory (defaults to $HOME/.deno)
+    DENO_DIR             Set the cache directory
     DENO_INSTALL_ROOT    Set deno install's output directory
                          (defaults to $HOME/.deno/bin)
     NO_COLOR             Set to disable color
@@ -379,6 +381,7 @@ fn bundle_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   config_arg_parse(flags, matches);
   importmap_arg_parse(flags, matches);
   unstable_arg_parse(flags, matches);
+  lock_args_parse(flags, matches);
 
   let source_file = matches.value_of("source_file").unwrap().to_string();
 
@@ -563,13 +566,24 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 }
 
 fn upgrade_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  ca_file_arg_parse(flags, matches);
+
   let dry_run = matches.is_present("dry-run");
   let force = matches.is_present("force");
   let version = matches.value_of("version").map(|s| s.to_string());
+  let output = if matches.is_present("output") {
+    let install_root = matches.value_of("output").unwrap();
+    Some(PathBuf::from(install_root))
+  } else {
+    None
+  };
+  let ca_file = matches.value_of("cert").map(|s| s.to_string());
   flags.subcommand = DenoSubcommand::Upgrade {
     dry_run,
     force,
     version,
+    output,
+    ca_file,
   };
 }
 
@@ -707,6 +721,8 @@ These must be added to the path manually if required.")
 
 fn bundle_subcommand<'a, 'b>() -> App<'a, 'b> {
   SubCommand::with_name("bundle")
+    .arg(lock_arg())
+    .arg(lock_write_arg())
     .arg(
       Arg::with_name("source_file")
         .takes_value(true)
@@ -843,12 +859,22 @@ Defaults to latest.
 
 The version is downloaded from
 https://github.com/denoland/deno/releases
-and is used to replace the current executable.",
+and is used to replace the current executable.
+
+If you want to not replace the current Deno executable but instead download an
+update to a different location, use the --output flag
+  deno upgrade --output $HOME/my_deno",
     )
     .arg(
       Arg::with_name("version")
         .long("version")
         .help("The version to upgrade to")
+        .takes_value(true),
+    )
+    .arg(
+      Arg::with_name("output")
+        .long("output")
+        .help("The path to output the updated version to")
         .takes_value(true),
     )
     .arg(
@@ -862,6 +888,7 @@ and is used to replace the current executable.",
         .short("f")
         .help("Replace current exe even if not out-of-date"),
     )
+    .arg(ca_file_arg())
 }
 
 fn doc_subcommand<'a, 'b>() -> App<'a, 'b> {
@@ -974,7 +1001,8 @@ fn permission_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
         .takes_value(true)
         .use_delimiter(true)
         .require_equals(true)
-        .help("Allow network access"),
+        .help("Allow network access")
+        .validator(crate::flags_allow_net::validator),
     )
     .arg(
       Arg::with_name("allow-env")
@@ -1051,9 +1079,9 @@ Grant all permissions:
 Grant permission to read from disk and listen to network:
   deno run --allow-read --allow-net https://deno.land/std/http/file_server.ts
 
-Grant permission to read whitelisted files from disk:
+Grant permission to read allow-listed files from disk:
   deno run --allow-read=/etc https://deno.land/std/http/file_server.ts
-  
+
 Deno allows specifying the filename '-' to read the file from stdin.
   curl https://deno.land/std/examples/welcome.ts | target/debug/deno run -",
     )
@@ -1077,7 +1105,7 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
       Arg::with_name("filter")
         .long("filter")
         .takes_value(true)
-        .help("A pattern to filter the tests to run by"),
+        .help("Run tests with this string in the test name"),
     )
     .arg(
       Arg::with_name("files")
@@ -1118,6 +1146,7 @@ fn lock_arg<'a, 'b>() -> Arg<'a, 'b> {
 fn lock_write_arg<'a, 'b>() -> Arg<'a, 'b> {
   Arg::with_name("lock-write")
     .long("lock-write")
+    .requires("lock")
     .help("Write lock file. Use with --lock.")
 }
 
@@ -1224,7 +1253,7 @@ fn reload_arg<'a, 'b>() -> Arg<'a, 'b> {
     .require_equals(true)
     .long("reload")
     .help("Reload source code cache (recompile TypeScript)")
-    .value_name("CACHE_BLACKLIST")
+    .value_name("CACHE_BLOCKLIST")
     .long_help(
       "Reload source code cache (recompile TypeScript)
 --reload
@@ -1238,13 +1267,13 @@ fn reload_arg<'a, 'b>() -> Arg<'a, 'b> {
 
 fn reload_arg_parse(flags: &mut Flags, matches: &ArgMatches) {
   if let Some(cache_bl) = matches.values_of("reload") {
-    let raw_cache_blacklist: Vec<String> =
+    let raw_cache_blocklist: Vec<String> =
       cache_bl.map(std::string::ToString::to_string).collect();
-    if raw_cache_blacklist.is_empty() {
+    if raw_cache_blocklist.is_empty() {
       flags.reload = true;
     } else {
-      flags.cache_blacklist = resolve_urls(raw_cache_blacklist);
-      debug!("cache blacklist: {:#?}", &flags.cache_blacklist);
+      flags.cache_blocklist = resolve_urls(raw_cache_blocklist);
+      debug!("cache blocklist: {:#?}", &flags.cache_blocklist);
       flags.reload = false;
     }
   }
@@ -1299,33 +1328,34 @@ fn no_remote_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
 fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   if let Some(read_wl) = matches.values_of("allow-read") {
-    let read_whitelist: Vec<PathBuf> = read_wl.map(PathBuf::from).collect();
+    let read_allowlist: Vec<PathBuf> = read_wl.map(PathBuf::from).collect();
 
-    if read_whitelist.is_empty() {
+    if read_allowlist.is_empty() {
       flags.allow_read = true;
     } else {
-      flags.read_whitelist = read_whitelist;
+      flags.read_allowlist = read_allowlist;
     }
   }
 
   if let Some(write_wl) = matches.values_of("allow-write") {
-    let write_whitelist: Vec<PathBuf> = write_wl.map(PathBuf::from).collect();
+    let write_allowlist: Vec<PathBuf> = write_wl.map(PathBuf::from).collect();
 
-    if write_whitelist.is_empty() {
+    if write_allowlist.is_empty() {
       flags.allow_write = true;
     } else {
-      flags.write_whitelist = write_whitelist;
+      flags.write_allowlist = write_allowlist;
     }
   }
 
   if let Some(net_wl) = matches.values_of("allow-net") {
-    let raw_net_whitelist: Vec<String> =
+    let raw_net_allowlist: Vec<String> =
       net_wl.map(std::string::ToString::to_string).collect();
-    if raw_net_whitelist.is_empty() {
+    if raw_net_allowlist.is_empty() {
       flags.allow_net = true;
     } else {
-      flags.net_whitelist = resolve_hosts(raw_net_whitelist);
-      debug!("net whitelist: {:#?}", &flags.net_whitelist);
+      flags.net_allowlist =
+        crate::flags_allow_net::parse(raw_net_allowlist).unwrap();
+      debug!("net allowlist: {:#?}", &flags.net_allowlist);
     }
   }
 
@@ -1375,41 +1405,6 @@ pub fn resolve_urls(urls: Vec<String>) -> Vec<String> {
   out
 }
 
-/// Expands "bare port" paths (eg. ":8080") into full paths with hosts. It
-/// expands to such paths into 3 paths with following hosts: `0.0.0.0:port`,
-/// `127.0.0.1:port` and `localhost:port`.
-fn resolve_hosts(paths: Vec<String>) -> Vec<String> {
-  let mut out: Vec<String> = vec![];
-  for host_and_port in paths.iter() {
-    let parts = host_and_port.split(':').collect::<Vec<&str>>();
-
-    match parts.len() {
-      // host only
-      1 => {
-        out.push(host_and_port.to_owned());
-      }
-      // host and port (NOTE: host might be empty string)
-      2 => {
-        let host = parts[0];
-        let port = parts[1];
-
-        if !host.is_empty() {
-          out.push(host_and_port.to_owned());
-          continue;
-        }
-
-        // we got bare port, let's add default hosts
-        for host in ["0.0.0.0", "127.0.0.1", "localhost"].iter() {
-          out.push(format!("{}:{}", host, port));
-        }
-      }
-      _ => panic!("Bad host:port pair: {}", host_and_port),
-    }
-  }
-
-  out
-}
-
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -1425,7 +1420,9 @@ mod tests {
         subcommand: DenoSubcommand::Upgrade {
           force: true,
           dry_run: true,
-          version: None
+          version: None,
+          output: None,
+          ca_file: None,
         },
         ..Flags::default()
       }
@@ -1974,7 +1971,7 @@ mod tests {
   }
 
   #[test]
-  fn allow_read_whitelist() {
+  fn allow_read_allowlist() {
     use tempfile::TempDir;
     let temp_dir = TempDir::new().expect("tempdir fail").path().to_path_buf();
 
@@ -1988,7 +1985,7 @@ mod tests {
       r.unwrap(),
       Flags {
         allow_read: false,
-        read_whitelist: vec![PathBuf::from("."), temp_dir],
+        read_allowlist: vec![PathBuf::from("."), temp_dir],
         subcommand: DenoSubcommand::Run {
           script: "script.ts".to_string(),
         },
@@ -1998,7 +1995,7 @@ mod tests {
   }
 
   #[test]
-  fn allow_write_whitelist() {
+  fn allow_write_allowlist() {
     use tempfile::TempDir;
     let temp_dir = TempDir::new().expect("tempdir fail").path().to_path_buf();
 
@@ -2012,7 +2009,7 @@ mod tests {
       r.unwrap(),
       Flags {
         allow_write: false,
-        write_whitelist: vec![PathBuf::from("."), temp_dir],
+        write_allowlist: vec![PathBuf::from("."), temp_dir],
         subcommand: DenoSubcommand::Run {
           script: "script.ts".to_string(),
         },
@@ -2022,7 +2019,7 @@ mod tests {
   }
 
   #[test]
-  fn allow_net_whitelist() {
+  fn allow_net_allowlist() {
     let r = flags_from_vec_safe(svec![
       "deno",
       "run",
@@ -2036,7 +2033,7 @@ mod tests {
           script: "script.ts".to_string(),
         },
         allow_net: false,
-        net_whitelist: svec!["127.0.0.1"],
+        net_allowlist: svec!["127.0.0.1"],
         ..Flags::default()
       }
     );
@@ -2110,6 +2107,29 @@ mod tests {
           out_file: Some(PathBuf::from("bundle.js")),
         },
         allow_write: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn bundle_with_lock() {
+    let r = flags_from_vec_safe(svec![
+      "deno",
+      "bundle",
+      "--lock-write",
+      "--lock=lock.json",
+      "source.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Bundle {
+          source_file: "source.ts".to_string(),
+          out_file: None,
+        },
+        lock_write: true,
+        lock: Some("lock.json".to_string()),
         ..Flags::default()
       }
     );
@@ -2454,7 +2474,7 @@ mod tests {
   }
 
   #[test]
-  fn allow_net_whitelist_with_ports() {
+  fn allow_net_allowlist_with_ports() {
     let r = flags_from_vec_safe(svec![
       "deno",
       "run",
@@ -2467,7 +2487,7 @@ mod tests {
         subcommand: DenoSubcommand::Run {
           script: "script.ts".to_string(),
         },
-        net_whitelist: svec![
+        net_allowlist: svec![
           "deno.land",
           "0.0.0.0:8000",
           "127.0.0.1:8000",
@@ -2475,6 +2495,37 @@ mod tests {
           "0.0.0.0:4545",
           "127.0.0.1:4545",
           "localhost:4545"
+        ],
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn allow_net_allowlist_with_ipv6_address() {
+    let r = flags_from_vec_safe(svec![
+      "deno",
+      "run",
+      "--allow-net=deno.land,deno.land:80,::,127.0.0.1,[::1],1.2.3.4:5678,:5678,[::1]:8080",
+      "script.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run {
+          script: "script.ts".to_string(),
+        },
+        net_allowlist: svec![
+          "deno.land",
+          "deno.land:80",
+          "::",
+          "127.0.0.1",
+          "[::1]",
+          "1.2.3.4:5678",
+          "0.0.0.0:5678",
+          "127.0.0.1:5678",
+          "localhost:5678",
+          "[::1]:8080"
         ],
         ..Flags::default()
       }
@@ -2615,6 +2666,26 @@ mod tests {
         allow_write: true,
         allow_plugin: true,
         allow_hrtime: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn upgrade_with_ca_file() {
+    let r =
+      flags_from_vec_safe(svec!["deno", "upgrade", "--cert", "example.crt"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Upgrade {
+          force: false,
+          dry_run: false,
+          version: None,
+          output: None,
+          ca_file: Some("example.crt".to_owned()),
+        },
+        ca_file: Some("example.crt".to_owned()),
         ..Flags::default()
       }
     );

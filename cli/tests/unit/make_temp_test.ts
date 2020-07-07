@@ -1,5 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { unitTest, assert, assertEquals } from "./test_util.ts";
+import {
+  unitTest,
+  assert,
+  assertEquals,
+  assertThrows,
+  assertThrowsAsync,
+} from "./test_util.ts";
 
 unitTest({ perms: { write: true } }, function makeTempDirSyncSuccess(): void {
   const dir1 = Deno.makeTempDirSync({ prefix: "hello", suffix: "world" });
@@ -17,13 +23,9 @@ unitTest({ perms: { write: true } }, function makeTempDirSyncSuccess(): void {
   assert(dir3.startsWith(dir1));
   assert(/^[\\\/]/.test(dir3.slice(dir1.length)));
   // Check that creating a temp dir inside a nonexisting directory fails.
-  let err;
-  try {
+  assertThrows(() => {
     Deno.makeTempDirSync({ dir: "/baddir" });
-  } catch (err_) {
-    err = err_;
-  }
-  assert(err instanceof Deno.errors.NotFound);
+  }, Deno.errors.NotFound);
 });
 
 unitTest(
@@ -39,14 +41,9 @@ unitTest(
 
 unitTest(function makeTempDirSyncPerm(): void {
   // makeTempDirSync should require write permissions (for now).
-  let err;
-  try {
+  assertThrows(() => {
     Deno.makeTempDirSync({ dir: "/baddir" });
-  } catch (err_) {
-    err = err_;
-  }
-  assert(err instanceof Deno.errors.PermissionDenied);
-  assertEquals(err.name, "PermissionDenied");
+  }, Deno.errors.PermissionDenied);
 });
 
 unitTest(
@@ -67,13 +64,9 @@ unitTest(
     assert(dir3.startsWith(dir1));
     assert(/^[\\\/]/.test(dir3.slice(dir1.length)));
     // Check that creating a temp dir inside a nonexisting directory fails.
-    let err;
-    try {
+    await assertThrowsAsync(async () => {
       await Deno.makeTempDir({ dir: "/baddir" });
-    } catch (err_) {
-      err = err_;
-    }
-    assert(err instanceof Deno.errors.NotFound);
+    }, Deno.errors.NotFound);
   }
 );
 
@@ -105,13 +98,9 @@ unitTest({ perms: { write: true } }, function makeTempFileSyncSuccess(): void {
   assert(file3.startsWith(dir));
   assert(/^[\\\/]/.test(file3.slice(dir.length)));
   // Check that creating a temp file inside a nonexisting directory fails.
-  let err;
-  try {
+  assertThrows(() => {
     Deno.makeTempFileSync({ dir: "/baddir" });
-  } catch (err_) {
-    err = err_;
-  }
-  assert(err instanceof Deno.errors.NotFound);
+  }, Deno.errors.NotFound);
 });
 
 unitTest(
@@ -127,14 +116,9 @@ unitTest(
 
 unitTest(function makeTempFileSyncPerm(): void {
   // makeTempFileSync should require write permissions (for now).
-  let err;
-  try {
+  assertThrows(() => {
     Deno.makeTempFileSync({ dir: "/baddir" });
-  } catch (err_) {
-    err = err_;
-  }
-  assert(err instanceof Deno.errors.PermissionDenied);
-  assertEquals(err.name, "PermissionDenied");
+  }, Deno.errors.PermissionDenied);
 });
 
 unitTest(
@@ -156,13 +140,9 @@ unitTest(
     assert(file3.startsWith(dir));
     assert(/^[\\\/]/.test(file3.slice(dir.length)));
     // Check that creating a temp file inside a nonexisting directory fails.
-    let err;
-    try {
+    await assertThrowsAsync(async () => {
       await Deno.makeTempFile({ dir: "/baddir" });
-    } catch (err_) {
-      err = err_;
-    }
-    assert(err instanceof Deno.errors.NotFound);
+    }, Deno.errors.NotFound);
   }
 );
 

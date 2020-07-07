@@ -146,13 +146,13 @@ pub struct Permissions {
   // Keep in sync with cli/js/permissions.ts
   #[serde(deserialize_with = "deserialize_permission_state")]
   pub allow_read: PermissionState,
-  pub read_whitelist: HashSet<PathBuf>,
+  pub read_allowlist: HashSet<PathBuf>,
   #[serde(deserialize_with = "deserialize_permission_state")]
   pub allow_write: PermissionState,
-  pub write_whitelist: HashSet<PathBuf>,
+  pub write_allowlist: HashSet<PathBuf>,
   #[serde(deserialize_with = "deserialize_permission_state")]
   pub allow_net: PermissionState,
-  pub net_whitelist: HashSet<String>,
+  pub net_allowlist: HashSet<String>,
   #[serde(deserialize_with = "deserialize_permission_state")]
   pub allow_env: PermissionState,
   #[serde(deserialize_with = "deserialize_permission_state")]
@@ -163,8 +163,8 @@ pub struct Permissions {
   pub allow_hrtime: PermissionState,
 }
 
-fn resolve_fs_whitelist(whitelist: &[PathBuf]) -> HashSet<PathBuf> {
-  whitelist
+fn resolve_fs_allowlist(allowlist: &[PathBuf]) -> HashSet<PathBuf> {
+  allowlist
     .iter()
     .map(|raw_path| resolve_from_cwd(Path::new(&raw_path)).unwrap())
     .collect()
@@ -174,11 +174,11 @@ impl Permissions {
   pub fn from_flags(flags: &Flags) -> Self {
     Self {
       allow_read: PermissionState::from(flags.allow_read),
-      read_whitelist: resolve_fs_whitelist(&flags.read_whitelist),
+      read_allowlist: resolve_fs_allowlist(&flags.read_allowlist),
       allow_write: PermissionState::from(flags.allow_write),
-      write_whitelist: resolve_fs_whitelist(&flags.write_whitelist),
+      write_allowlist: resolve_fs_allowlist(&flags.write_allowlist),
       allow_net: PermissionState::from(flags.allow_net),
-      net_whitelist: flags.net_whitelist.iter().cloned().collect(),
+      net_allowlist: flags.net_allowlist.iter().cloned().collect(),
       allow_env: PermissionState::from(flags.allow_env),
       allow_run: PermissionState::from(flags.allow_run),
       allow_plugin: PermissionState::from(flags.allow_plugin),
@@ -224,7 +224,7 @@ impl Permissions {
   }
 
   fn get_state_read(&self, path: &Option<&Path>) -> PermissionState {
-    if path.map_or(false, |f| check_path_white_list(f, &self.read_whitelist)) {
+    if path.map_or(false, |f| check_path_white_list(f, &self.read_allowlist)) {
       return PermissionState::Allow;
     }
     self.allow_read
@@ -252,7 +252,7 @@ impl Permissions {
   }
 
   fn get_state_write(&self, path: &Option<&Path>) -> PermissionState {
-    if path.map_or(false, |f| check_path_white_list(f, &self.write_whitelist)) {
+    if path.map_or(false, |f| check_path_white_list(f, &self.write_allowlist)) {
       return PermissionState::Allow;
     }
     self.allow_write
@@ -267,7 +267,7 @@ impl Permissions {
   }
 
   fn get_state_net(&self, host: &str, port: Option<u16>) -> PermissionState {
-    if check_host_and_port_whitelist(host, port, &self.net_whitelist) {
+    if check_host_and_port_allowlist(host, port, &self.net_allowlist) {
       return PermissionState::Allow;
     }
     self.allow_net
@@ -283,9 +283,18 @@ impl Permissions {
     let url: &str = url.unwrap();
     // If url is invalid, then throw a TypeError.
     let parsed = Url::parse(url).map_err(OpError::from)?;
-    Ok(
-      self.get_state_net(&format!("{}", parsed.host().unwrap()), parsed.port()),
-    )
+    // The url may be parsed correctly but still lack a host, i.e. "localhost:235" or "mailto:someone@somewhere.com" or "file:/1.txt"
+    // Note that host:port combos are parsed as scheme:path
+    if parsed.host().is_none() {
+      return Err(OpError::uri_error(
+        "invalid url, expected format: <scheme>://<host>[:port][/subpath]"
+          .to_owned(),
+      ));
+    }
+    Ok(self.get_state_net(
+      &format!("{}", parsed.host().unwrap()),
+      parsed.port_or_known_default(),
+    ))
   }
 
   pub fn check_net(&self, hostname: &str, port: u16) -> Result<(), OpError> {
@@ -300,7 +309,7 @@ impl Permissions {
       .host_str()
       .ok_or_else(|| OpError::uri_error("missing host".to_owned()))?;
     self
-      .get_state_net(host, url.port())
+      .get_state_net(host, url.port_or_known_default())
       .check(&format!("network access to \"{}\"", url), "--allow-net")
   }
 
@@ -327,7 +336,7 @@ impl Permissions {
   pub fn request_read(&mut self, path: &Option<&Path>) -> PermissionState {
     let paths = path.map(|p| self.resolved_and_display_path(p));
     if let Some((p, _)) = paths.as_ref() {
-      if check_path_white_list(&p, &self.read_whitelist) {
+      if check_path_white_list(&p, &self.read_allowlist) {
         return PermissionState::Allow;
       }
     };
@@ -343,7 +352,7 @@ impl Permissions {
   pub fn request_write(&mut self, path: &Option<&Path>) -> PermissionState {
     let paths = path.map(|p| self.resolved_and_display_path(p));
     if let Some((p, _)) = paths.as_ref() {
-      if check_path_white_list(&p, &self.write_whitelist) {
+      if check_path_white_list(&p, &self.write_allowlist) {
         return PermissionState::Allow;
       }
     };
@@ -409,11 +418,11 @@ impl Permissions {
   pub fn fork(
     &self,
     allow_read: bool,
-    read_whitelist: HashSet<PathBuf>,
+    read_allowlist: HashSet<PathBuf>,
     allow_write: bool,
-    write_whitelist: HashSet<PathBuf>,
+    write_allowlist: HashSet<PathBuf>,
     allow_net: bool,
-    net_whitelist: HashSet<String>,
+    net_allowlist: HashSet<String>,
     allow_env: bool,
     allow_run: bool,
     allow_plugin: bool,
@@ -426,29 +435,29 @@ impl Permissions {
     let allow_run = self.allow_run.fork(allow_run)?;
     let allow_plugin = self.allow_plugin.fork(allow_plugin)?;
     let allow_hrtime = self.allow_hrtime.fork(allow_hrtime)?;
-    if !(read_whitelist.is_subset(&self.read_whitelist)) {
+    if !(read_allowlist.is_subset(&self.read_allowlist)) {
       Err(OpError::permission_denied(format!(
-        "Arguments escalate parent permissions. Parent Permissions have only {:?} in `read_whitelist`",
-        self.read_whitelist
+        "Arguments escalate parent permissions. Parent Permissions have only {:?} in `read_allowlist`",
+        self.read_allowlist
       )))
-    } else if !(write_whitelist.is_subset(&self.write_whitelist)) {
+    } else if !(write_allowlist.is_subset(&self.write_allowlist)) {
       Err(OpError::permission_denied(format!(
-        "Arguments escalate parent permissions. Parent Permissions have only {:?} in `write_whitelist`",
-        self.write_whitelist
+        "Arguments escalate parent permissions. Parent Permissions have only {:?} in `write_allowlist`",
+        self.write_allowlist
       )))
-    } else if !(net_whitelist.is_subset(&self.net_whitelist)) {
+    } else if !(net_allowlist.is_subset(&self.net_allowlist)) {
       Err(OpError::permission_denied(format!(
-        "Arguments escalate parent permissions. Parent Permissions have only {:?} in `net_whitelist`",
-        self.net_whitelist
+        "Arguments escalate parent permissions. Parent Permissions have only {:?} in `net_allowlist`",
+        self.net_allowlist
       )))
     } else {
       Ok(Permissions {
         allow_read,
-        read_whitelist,
+        read_allowlist,
         allow_write,
-        write_whitelist,
+        write_allowlist,
         allow_net,
-        net_whitelist,
+        net_allowlist,
         allow_env,
         allow_run,
         allow_plugin,
@@ -470,7 +479,7 @@ fn permission_prompt(message: &str) -> bool {
     PERMISSION_EMOJI, message
   );
   // print to stderr so that if deno is > to a file this is still displayed.
-  eprint!("{}", colors::bold(msg));
+  eprint!("{}", colors::bold(&msg));
   loop {
     let mut input = String::new();
     let stdin = io::stdin();
@@ -486,7 +495,7 @@ fn permission_prompt(message: &str) -> bool {
         // If we don't get a recognized option try again.
         let msg_again =
           format!("Unrecognized option '{}' [g/d (g = grant, d = deny)] ", ch);
-        eprint!("{}", colors::bold(msg_again));
+        eprint!("{}", colors::bold(&msg_again));
       }
     };
   }
@@ -516,7 +525,7 @@ fn permission_prompt(_message: &str) -> bool {
 fn log_perm_access(message: &str) {
   debug!(
     "{}",
-    colors::bold(format!("{}️  Granted {}", PERMISSION_EMOJI, message))
+    colors::bold(&format!("{}️  Granted {}", PERMISSION_EMOJI, message))
   );
 }
 
@@ -533,14 +542,14 @@ fn check_path_white_list(path: &Path, white_list: &HashSet<PathBuf>) -> bool {
   false
 }
 
-fn check_host_and_port_whitelist(
+fn check_host_and_port_allowlist(
   host: &str,
   port: Option<u16>,
-  whitelist: &HashSet<String>,
+  allowlist: &HashSet<String>,
 ) -> bool {
-  whitelist.contains(host)
+  allowlist.contains(host)
     || (port.is_some()
-      && whitelist.contains(&format!("{}:{}", host, port.unwrap())))
+      && allowlist.contains(&format!("{}:{}", host, port.unwrap())))
 }
 
 #[cfg(test)]
@@ -554,15 +563,15 @@ mod tests {
 
   #[test]
   fn check_paths() {
-    let whitelist = vec![
+    let allowlist = vec![
       PathBuf::from("/a/specific/dir/name"),
       PathBuf::from("/a/specific"),
       PathBuf::from("/b/c"),
     ];
 
     let perms = Permissions::from_flags(&Flags {
-      read_whitelist: whitelist.clone(),
-      write_whitelist: whitelist,
+      read_allowlist: allowlist.clone(),
+      write_allowlist: allowlist,
       ..Default::default()
     });
 
@@ -616,12 +625,13 @@ mod tests {
   #[test]
   fn test_check_net() {
     let perms = Permissions::from_flags(&Flags {
-      net_whitelist: svec![
+      net_allowlist: svec![
         "localhost",
         "deno.land",
         "github.com:3000",
         "127.0.0.1",
-        "172.16.0.2:8000"
+        "172.16.0.2:8000",
+        "www.github.com:443"
       ],
       ..Default::default()
     });
@@ -684,6 +694,8 @@ mod tests {
       ("https://172.16.0.2:6000", false),
       ("tcp://172.16.0.1:8000", false),
       ("https://172.16.0.1:8000", false),
+      // Testing issue #6531 (Network permissions check doesn't account for well-known default ports) so we dont regress
+      ("https://www.github.com:443/robots.txt", true),
     ];
 
     for (url_str, is_ok) in url_tests.iter() {
@@ -716,13 +728,13 @@ mod tests {
   #[test]
   fn test_permissions_request_read() {
     let guard = PERMISSION_PROMPT_GUARD.lock().unwrap();
-    let whitelist = vec![PathBuf::from("/foo/bar")];
+    let allowlist = vec![PathBuf::from("/foo/bar")];
     let mut perms0 = Permissions::from_flags(&Flags {
-      read_whitelist: whitelist.clone(),
+      read_allowlist: allowlist.clone(),
       ..Default::default()
     });
     set_prompt_result(false);
-    // If the whitelist contains the path, then the result is `allow`
+    // If the allowlist contains the path, then the result is `allow`
     // regardless of prompt result
     assert_eq!(
       perms0.request_read(&Some(Path::new("/foo/bar"))),
@@ -730,7 +742,7 @@ mod tests {
     );
 
     let mut perms1 = Permissions::from_flags(&Flags {
-      read_whitelist: whitelist.clone(),
+      read_allowlist: allowlist.clone(),
       ..Default::default()
     });
     set_prompt_result(true);
@@ -740,7 +752,7 @@ mod tests {
     );
 
     let mut perms2 = Permissions::from_flags(&Flags {
-      read_whitelist: whitelist,
+      read_allowlist: allowlist,
       ..Default::default()
     });
     set_prompt_result(false);
@@ -754,13 +766,13 @@ mod tests {
   #[test]
   fn test_permissions_request_write() {
     let guard = PERMISSION_PROMPT_GUARD.lock().unwrap();
-    let whitelist = vec![PathBuf::from("/foo/bar")];
+    let allowlist = vec![PathBuf::from("/foo/bar")];
     let mut perms0 = Permissions::from_flags(&Flags {
-      write_whitelist: whitelist.clone(),
+      write_allowlist: allowlist.clone(),
       ..Default::default()
     });
     set_prompt_result(false);
-    // If the whitelist contains the path, then the result is `allow`
+    // If the allowlist contains the path, then the result is `allow`
     // regardless of prompt result
     assert_eq!(
       perms0.request_write(&Some(Path::new("/foo/bar"))),
@@ -768,7 +780,7 @@ mod tests {
     );
 
     let mut perms1 = Permissions::from_flags(&Flags {
-      write_whitelist: whitelist.clone(),
+      write_allowlist: allowlist.clone(),
       ..Default::default()
     });
     set_prompt_result(true);
@@ -778,7 +790,7 @@ mod tests {
     );
 
     let mut perms2 = Permissions::from_flags(&Flags {
-      write_whitelist: whitelist,
+      write_allowlist: allowlist,
       ..Default::default()
     });
     set_prompt_result(false);
@@ -792,14 +804,14 @@ mod tests {
   #[test]
   fn test_permission_request_net() {
     let guard = PERMISSION_PROMPT_GUARD.lock().unwrap();
-    let whitelist = svec!["localhost:8080"];
+    let allowlist = svec!["localhost:8080"];
 
     let mut perms0 = Permissions::from_flags(&Flags {
-      net_whitelist: whitelist.clone(),
+      net_allowlist: allowlist.clone(),
       ..Default::default()
     });
     set_prompt_result(false);
-    // If the url matches the whitelist item, then the result is `allow`
+    // If the url matches the allowlist item, then the result is `allow`
     // regardless of prompt result
     assert_eq!(
       perms0
@@ -809,7 +821,7 @@ mod tests {
     );
 
     let mut perms1 = Permissions::from_flags(&Flags {
-      net_whitelist: whitelist.clone(),
+      net_allowlist: allowlist.clone(),
       ..Default::default()
     });
     set_prompt_result(true);
@@ -821,7 +833,7 @@ mod tests {
     );
 
     let mut perms2 = Permissions::from_flags(&Flags {
-      net_whitelist: whitelist.clone(),
+      net_allowlist: allowlist.clone(),
       ..Default::default()
     });
     set_prompt_result(false);
@@ -833,11 +845,35 @@ mod tests {
     );
 
     let mut perms3 = Permissions::from_flags(&Flags {
-      net_whitelist: whitelist,
+      net_allowlist: allowlist.clone(),
       ..Default::default()
     });
     set_prompt_result(true);
     assert!(perms3.request_net(&Some(":")).is_err());
+
+    let mut perms4 = Permissions::from_flags(&Flags {
+      net_allowlist: allowlist.clone(),
+      ..Default::default()
+    });
+    set_prompt_result(false);
+    assert_eq!(
+      perms4
+        .request_net(&Some("localhost:8080"))
+        .unwrap_err()
+        .kind,
+      crate::op_error::ErrorKind::URIError
+    );
+
+    let mut perms5 = Permissions::from_flags(&Flags {
+      net_allowlist: allowlist,
+      ..Default::default()
+    });
+    set_prompt_result(false);
+    assert_eq!(
+      perms5.request_net(&Some("file:/1.txt")).unwrap_err().kind,
+      crate::op_error::ErrorKind::URIError
+    );
+
     drop(guard);
   }
 
@@ -897,11 +933,11 @@ mod tests {
     let json_perms = r#"
     {
       "allow_read": true,
-      "read_whitelist": [],
+      "read_allowlist": [],
       "allow_write": true,
-      "write_whitelist": [],
+      "write_allowlist": [],
       "allow_net": true,
-      "net_whitelist": [],
+      "net_allowlist": [],
       "allow_env": true,
       "allow_run": true,
       "allow_plugin": true,
@@ -916,9 +952,9 @@ mod tests {
       allow_env: PermissionState::Allow,
       allow_plugin: PermissionState::Allow,
       allow_run: PermissionState::Allow,
-      read_whitelist: HashSet::new(),
-      write_whitelist: HashSet::new(),
-      net_whitelist: HashSet::new(),
+      read_allowlist: HashSet::new(),
+      write_allowlist: HashSet::new(),
+      net_allowlist: HashSet::new(),
     };
     let deserialized_perms: Permissions =
       serde_json::from_str(json_perms).unwrap();
@@ -949,11 +985,11 @@ mod tests {
         .expect("Testing expect"),
       Permissions {
         allow_read: PermissionState::Allow,
-        read_whitelist: HashSet::new(),
+        read_allowlist: HashSet::new(),
         allow_write: PermissionState::Allow,
-        write_whitelist: HashSet::new(),
+        write_allowlist: HashSet::new(),
         allow_net: PermissionState::Allow,
-        net_whitelist: HashSet::new(),
+        net_allowlist: HashSet::new(),
         allow_env: PermissionState::Allow,
         allow_run: PermissionState::Allow,
         allow_plugin: PermissionState::Deny,
@@ -978,11 +1014,11 @@ mod tests {
         .expect("Testing expect"),
       Permissions {
         allow_read: PermissionState::Allow,
-        read_whitelist: HashSet::new(),
+        read_allowlist: HashSet::new(),
         allow_write: PermissionState::Allow,
-        write_whitelist: HashSet::new(),
+        write_allowlist: HashSet::new(),
         allow_net: PermissionState::Allow,
-        net_whitelist: HashSet::new(),
+        net_allowlist: HashSet::new(),
         allow_env: PermissionState::Allow,
         allow_run: PermissionState::Allow,
         allow_plugin: PermissionState::Deny,

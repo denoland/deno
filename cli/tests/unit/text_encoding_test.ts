@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { unitTest, assert, assertEquals } from "./test_util.ts";
+import { unitTest, assert, assertEquals, assertThrows } from "./test_util.ts";
 
 unitTest(function btoaSuccess(): void {
   const text = "hello world";
@@ -52,14 +52,9 @@ unitTest(function atobThrows2(): void {
 
 unitTest(function btoaFailed(): void {
   const text = "你好";
-  let err;
-  try {
+  assertThrows(() => {
     btoa(text);
-  } catch (e) {
-    err = e;
-  }
-  assert(!!err);
-  assert(err instanceof TypeError);
+  }, TypeError);
 });
 
 unitTest(function textDecoder2(): void {

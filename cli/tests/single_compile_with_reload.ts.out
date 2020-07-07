@@ -1,5 +1,5 @@
-Compile [WILDCARD]single_compile_with_reload.ts
-Compile [WILDCARD]005_more_imports.ts
+Check [WILDCARD]single_compile_with_reload.ts
+Check [WILDCARD]single_compile_with_reload_dyn.ts
 Hello
 1
 2

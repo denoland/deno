@@ -3,6 +3,8 @@ import {
   unitTest,
   assert,
   assertEquals,
+  assertThrows,
+  assertThrowsAsync,
   createResolvable,
   assertNotEquals,
 } from "./test_util.ts";
@@ -71,15 +73,13 @@ unitTest(
     const listener = Deno.listen({ port: 4501 });
     const p = listener.accept();
     listener.close();
-    let err;
-    try {
-      await p;
-    } catch (e) {
-      err = e;
-    }
-    assert(!!err);
-    assert(err instanceof Error);
-    assertEquals(err.message, "Listener has been closed");
+    await assertThrowsAsync(
+      async (): Promise<void> => {
+        await p;
+      },
+      Deno.errors.BadResource,
+      "Listener has been closed"
+    );
   }
 );
 
@@ -93,15 +93,13 @@ unitTest(
     });
     const p = listener.accept();
     listener.close();
-    let err;
-    try {
-      await p;
-    } catch (e) {
-      err = e;
-    }
-    assert(!!err);
-    assert(err instanceof Error);
-    assertEquals(err.message, "Listener has been closed");
+    await assertThrowsAsync(
+      async (): Promise<void> => {
+        await p;
+      },
+      Deno.errors.BadResource,
+      "Listener has been closed"
+    );
   }
 );
 
@@ -240,7 +238,9 @@ unitTest(
     assertEquals(bob.addr.hostname, "127.0.0.1");
 
     const sent = new Uint8Array([1, 2, 3]);
-    await alice.send(sent, bob.addr);
+    const byteLength = await alice.send(sent, bob.addr);
+
+    assertEquals(byteLength, 3);
 
     const [recvd, remote] = await bob.receive();
     assert(remote.transport === "udp");
@@ -288,7 +288,8 @@ unitTest(
     assertEquals(bob.addr.path, filePath);
 
     const sent = new Uint8Array([1, 2, 3]);
-    await alice.send(sent, bob.addr);
+    const byteLength = await alice.send(sent, bob.addr);
+    assertEquals(byteLength, 3);
 
     const [recvd, remote] = await bob.receive();
     assert(remote.transport === "unixpacket");
@@ -455,14 +456,9 @@ unitTest(
     assertEquals(2, buf[1]);
     assertEquals(3, buf[2]);
     // Check write should be closed
-    let err;
-    try {
+    await assertThrowsAsync(async () => {
       await conn.write(new Uint8Array([1, 2, 3]));
-    } catch (e) {
-      err = e;
-    }
-    assert(!!err);
-    assert(err instanceof Deno.errors.BrokenPipe);
+    }, Deno.errors.BrokenPipe);
     closeDeferred.resolve();
     listener.close();
     conn.close();
@@ -485,15 +481,10 @@ unitTest(
     });
     const conn = await Deno.connect(addr);
     conn.closeWrite(); // closing write
-    let err;
-    try {
+    assertThrows(() => {
       // Duplicated close should throw error
       conn.closeWrite();
-    } catch (e) {
-      err = e;
-    }
-    assert(!!err);
-    assert(err instanceof Deno.errors.NotConnected);
+    }, Deno.errors.NotConnected);
     closeDeferred.resolve();
     listener.close();
     conn.close();

@@ -111,14 +111,11 @@ impl EsIsolate {
     source: &str,
   ) -> Result<ModuleId, ErrBox> {
     let state_rc = Self::state(self);
-
     let core_state_rc = CoreIsolate::state(self);
     let core_state = core_state_rc.borrow();
-    let mut hs = v8::HandleScope::new(&mut self.0);
-    let scope = hs.enter();
+    let scope = &mut v8::HandleScope::new(&mut *self.0);
     let context = core_state.global_context.get(scope).unwrap();
-    let mut cs = v8::ContextScope::new(scope, context);
-    let scope = cs.enter();
+    let scope = &mut v8::ContextScope::new(scope, context);
 
     let name_str = v8::String::new(scope, name).unwrap();
     let source_str = v8::String::new(scope, source).unwrap();
@@ -126,15 +123,14 @@ impl EsIsolate {
     let origin = bindings::module_origin(scope, name_str);
     let source = v8::script_compiler::Source::new(source_str, &origin);
 
-    let mut try_catch = v8::TryCatch::new(scope);
-    let tc = try_catch.enter();
+    let tc_scope = &mut v8::TryCatch::new(scope);
 
-    let maybe_module = v8::script_compiler::compile_module(scope, source);
+    let maybe_module = v8::script_compiler::compile_module(tc_scope, source);
 
-    if tc.has_caught() {
+    if tc_scope.has_caught() {
       assert!(maybe_module.is_none());
-      let e = tc.exception(scope).unwrap();
-      return exception_to_err_result(scope, e);
+      let e = tc_scope.exception().unwrap();
+      return exception_to_err_result(tc_scope, e);
     }
 
     let module = maybe_module.unwrap();
@@ -143,7 +139,7 @@ impl EsIsolate {
     let mut import_specifiers: Vec<ModuleSpecifier> = vec![];
     for i in 0..module.get_module_requests_length() {
       let import_specifier =
-        module.get_module_request(i).to_rust_string_lossy(scope);
+        module.get_module_request(i).to_rust_string_lossy(tc_scope);
       let state = state_rc.borrow();
       let module_specifier =
         state.loader.resolve(&import_specifier, name, false)?;
@@ -151,7 +147,7 @@ impl EsIsolate {
     }
 
     let mut handle = v8::Global::<v8::Module>::new();
-    handle.set(scope, module);
+    handle.set(tc_scope, module);
 
     {
       let mut state = state_rc.borrow_mut();
@@ -173,34 +169,30 @@ impl EsIsolate {
 
     let core_state_rc = CoreIsolate::state(self);
     let core_state = core_state_rc.borrow();
-    let mut hs = v8::HandleScope::new(&mut self.0);
-    let scope = hs.enter();
+    let scope = &mut v8::HandleScope::new(&mut *self.0);
     let context = core_state.global_context.get(scope).unwrap();
-    let mut cs = v8::ContextScope::new(scope, context);
-    let scope = cs.enter();
-
-    let mut try_catch = v8::TryCatch::new(scope);
-    let tc = try_catch.enter();
+    let scope = &mut v8::ContextScope::new(scope, context);
+    let tc_scope = &mut v8::TryCatch::new(scope);
 
     let module_info = match state.modules.get_info(id) {
       Some(info) => info,
       None if id == 0 => return Ok(()),
       _ => panic!("module id {} not found in module table", id),
     };
-    let mut module = module_info.handle.get(scope).unwrap();
+    let module = module_info.handle.get(tc_scope).unwrap();
     drop(state);
 
     if module.get_status() == v8::ModuleStatus::Errored {
-      exception_to_err_result(scope, module.get_exception())?
+      exception_to_err_result(tc_scope, module.get_exception())?
     }
 
     let result =
-      module.instantiate_module(context, bindings::module_resolve_callback);
+      module.instantiate_module(tc_scope, bindings::module_resolve_callback);
     match result {
       Some(_) => Ok(()),
       None => {
-        let exception = tc.exception(scope).unwrap();
-        exception_to_err_result(scope, exception)
+        let exception = tc_scope.exception().unwrap();
+        exception_to_err_result(tc_scope, exception)
       }
     }
   }
@@ -217,14 +209,12 @@ impl EsIsolate {
 
     let core_state_rc = CoreIsolate::state(self);
 
-    let mut hs = v8::HandleScope::new(&mut self.0);
-    let scope = hs.enter();
+    let scope = &mut v8::HandleScope::new(&mut *self.0);
     let context = {
       let core_state = core_state_rc.borrow();
       core_state.global_context.get(scope).unwrap()
     };
-    let mut cs = v8::ContextScope::new(scope, context);
-    let scope = cs.enter();
+    let scope = &mut v8::ContextScope::new(scope, context);
 
     let info = state.modules.get_info(id).expect("ModuleInfo not found");
     let module = info.handle.get(scope).expect("Empty module handle");
@@ -247,7 +237,7 @@ impl EsIsolate {
       // For more details see:
       // https://github.com/denoland/deno/issues/4908
       // https://v8.dev/features/top-level-await#module-execution-order
-      let maybe_value = module.evaluate(scope, context);
+      let maybe_value = module.evaluate(scope);
 
       // Update status after evaluating.
       status = module.get_status();
@@ -293,11 +283,9 @@ impl EsIsolate {
     let core_state_rc = CoreIsolate::state(self);
     let core_state = core_state_rc.borrow();
 
-    let mut hs = v8::HandleScope::new(&mut self.0);
-    let scope = hs.enter();
+    let scope = &mut v8::HandleScope::new(&mut *self.0);
     let context = core_state.global_context.get(scope).unwrap();
-    let mut cs = v8::ContextScope::new(scope, context);
-    let scope = cs.enter();
+    let scope = &mut v8::ContextScope::new(scope, context);
 
     drop(core_state);
 
@@ -319,8 +307,8 @@ impl EsIsolate {
         v8::Exception::type_error(scope, message)
       });
 
-    resolver.reject(context, exception).unwrap();
-    scope.isolate().run_microtasks();
+    resolver.reject(scope, exception).unwrap();
+    scope.run_microtasks();
     Ok(())
   }
 
@@ -335,14 +323,12 @@ impl EsIsolate {
 
     debug!("dyn_import_done {} {:?}", id, mod_id);
     assert!(mod_id != 0);
-    let mut hs = v8::HandleScope::new(&mut self.0);
-    let scope = hs.enter();
+    let scope = &mut v8::HandleScope::new(&mut *self.0);
     let context = {
       let core_state = core_state_rc.borrow();
       core_state.global_context.get(scope).unwrap()
     };
-    let mut cs = v8::ContextScope::new(scope, context);
-    let scope = cs.enter();
+    let scope = &mut v8::ContextScope::new(scope, context);
 
     let mut resolver_handle = {
       let mut state = state_rc.borrow_mut();
@@ -366,8 +352,8 @@ impl EsIsolate {
     assert_eq!(module.get_status(), v8::ModuleStatus::Evaluated);
 
     let module_namespace = module.get_module_namespace();
-    resolver.resolve(context, module_namespace).unwrap();
-    scope.isolate().run_microtasks();
+    resolver.resolve(scope, module_namespace).unwrap();
+    scope.run_microtasks();
     Ok(())
   }
 

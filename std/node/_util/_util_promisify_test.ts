@@ -30,7 +30,7 @@ import { promisify } from "./_util_promisify.ts";
 import * as fs from "../fs.ts";
 
 const readFile = promisify(fs.readFile);
-const customPromisifyArgs = Symbol.for("deno.nodejs.util.promisify.customArgs");
+const customPromisifyArgs = Symbol.for("nodejs.util.promisify.customArgs");
 
 Deno.test(
   "Errors should reject the promise",

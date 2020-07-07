@@ -1,13 +1,15 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 import * as util from "../util.ts";
 import { core } from "../core.ts";
 import { TextDecoder } from "../web/text_encoding.ts";
 import { ErrorKind, errors, getErrorClass } from "../errors.ts";
 
 // Using an object without a prototype because `Map` was causing GC problems.
-const promiseTableMin: {
-  [key: number]: util.Resolvable<RecordMinimal>;
-} = Object.create(null);
+const promiseTableMin: Record<
+  number,
+  util.Resolvable<RecordMinimal>
+> = Object.create(null);
 
 // Note it's important that promiseId starts at 1 instead of 0, because sync
 // messages are indicated with promiseId 0. If we ever add wrap around logic for
@@ -83,7 +85,7 @@ export function asyncMsgFromRust(ui8: Uint8Array): void {
 }
 
 export async function sendAsyncMinimal(
-  opId: number,
+  opName: string,
   arg: number,
   zeroCopy: Uint8Array
 ): Promise<number> {
@@ -92,8 +94,8 @@ export async function sendAsyncMinimal(
   scratch32[1] = arg;
   scratch32[2] = 0; // result
   const promise = util.createResolvable<RecordMinimal>();
-  const buf = core.dispatch(opId, scratchBytes, zeroCopy);
-  if (buf) {
+  const buf = core.dispatchByName(opName, scratchBytes, zeroCopy);
+  if (buf != null) {
     const record = recordFromBufMinimal(buf);
     // Sync result.
     promise.resolve(record);
@@ -107,13 +109,13 @@ export async function sendAsyncMinimal(
 }
 
 export function sendSyncMinimal(
-  opId: number,
+  opName: string,
   arg: number,
   zeroCopy: Uint8Array
 ): number {
   scratch32[0] = 0; // promiseId 0 indicates sync
   scratch32[1] = arg;
-  const res = core.dispatch(opId, scratchBytes, zeroCopy)!;
+  const res = core.dispatchByName(opName, scratchBytes, zeroCopy)!;
   const resRecord = recordFromBufMinimal(res);
   return unwrapResponse(resRecord);
 }

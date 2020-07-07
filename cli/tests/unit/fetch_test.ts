@@ -3,35 +3,33 @@ import {
   unitTest,
   assert,
   assertEquals,
-  assertStringContains,
   assertThrows,
+  assertThrowsAsync,
   fail,
 } from "./test_util.ts";
 
 unitTest({ perms: { net: true } }, async function fetchProtocolError(): Promise<
   void
 > {
-  let err;
-  try {
-    await fetch("file:///");
-  } catch (err_) {
-    err = err_;
-  }
-  assert(err instanceof TypeError);
-  assertStringContains(err.message, "not supported");
+  await assertThrowsAsync(
+    async (): Promise<void> => {
+      await fetch("file:///");
+    },
+    TypeError,
+    "not supported"
+  );
 });
 
 unitTest(
   { perms: { net: true } },
   async function fetchConnectionError(): Promise<void> {
-    let err;
-    try {
-      await fetch("http://localhost:4000");
-    } catch (err_) {
-      err = err_;
-    }
-    assert(err instanceof Deno.errors.Http);
-    assertStringContains(err.message, "error trying to connect");
+    await assertThrowsAsync(
+      async (): Promise<void> => {
+        await fetch("http://localhost:4000");
+      },
+      Deno.errors.Http,
+      "error trying to connect"
+    );
   }
 );
 
@@ -44,14 +42,9 @@ unitTest({ perms: { net: true } }, async function fetchJsonSuccess(): Promise<
 });
 
 unitTest(async function fetchPerm(): Promise<void> {
-  let err;
-  try {
+  await assertThrowsAsync(async () => {
     await fetch("http://localhost:4545/cli/tests/fixture.json");
-  } catch (err_) {
-    err = err_;
-  }
-  assert(err instanceof Deno.errors.PermissionDenied);
-  assertEquals(err.name, "PermissionDenied");
+  }, Deno.errors.PermissionDenied);
 });
 
 unitTest({ perms: { net: true } }, async function fetchUrl(): Promise<void> {
@@ -74,7 +67,6 @@ unitTest({ perms: { net: true } }, async function fetchHeaders(): Promise<
   const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
   const headers = response.headers;
   assertEquals(headers.get("Content-Type"), "application/json");
-  assert(headers.get("Server")!.startsWith("SimpleHTTP"));
   const _json = await response.json();
 });
 
@@ -169,13 +161,10 @@ unitTest(
   { perms: { net: true } },
   async function fetchBodyReaderBigBody(): Promise<void> {
     const data = "a".repeat(10 << 10); // 10mb
-    const response = await fetch(
-      "http://localhost:4545/cli/tests/echo_server",
-      {
-        method: "POST",
-        body: data,
-      }
-    );
+    const response = await fetch("http://localhost:4545/echo_server", {
+      method: "POST",
+      body: data,
+    });
     assert(response.body !== null);
     const reader = await response.body.getReader();
     let total = 0;
@@ -208,20 +197,16 @@ unitTest({ perms: { net: true } }, async function responseClone(): Promise<
 unitTest({ perms: { net: true } }, async function fetchEmptyInvalid(): Promise<
   void
 > {
-  let err;
-  try {
+  await assertThrowsAsync(async () => {
     await fetch("");
-  } catch (err_) {
-    err = err_;
-  }
-  assert(err instanceof URIError);
+  }, URIError);
 });
 
 unitTest(
   { perms: { net: true } },
   async function fetchMultipartFormDataSuccess(): Promise<void> {
     const response = await fetch(
-      "http://localhost:4545/cli/tests/subdir/multipart_form_data.txt"
+      "http://localhost:4545/multipart_form_data.txt"
     );
     const formData = await response.formData();
     assert(formData.has("field_1"));
@@ -326,12 +311,12 @@ unitTest(
     perms: { net: true },
   },
   async function fetchWithRedirection(): Promise<void> {
-    const response = await fetch("http://localhost:4546/"); // will redirect to http://localhost:4545/
+    const response = await fetch("http://localhost:4546/README.md");
     assertEquals(response.status, 200);
     assertEquals(response.statusText, "OK");
-    assertEquals(response.url, "http://localhost:4545/");
+    assertEquals(response.url, "http://localhost:4545/README.md");
     const body = await response.text();
-    assert(body.includes("<title>Directory listing for /</title>"));
+    assert(body.includes("Deno"));
   }
 );
 
@@ -340,11 +325,13 @@ unitTest(
     perms: { net: true },
   },
   async function fetchWithRelativeRedirection(): Promise<void> {
-    const response = await fetch("http://localhost:4545/cli/tests"); // will redirect to /cli/tests/
+    const response = await fetch(
+      "http://localhost:4545/cli/tests/001_hello.js"
+    );
     assertEquals(response.status, 200);
     assertEquals(response.statusText, "OK");
     const body = await response.text();
-    assert(body.includes("<title>Directory listing for /cli/tests/</title>"));
+    assert(body.includes("Hello"));
   }
 );
 
@@ -747,7 +734,9 @@ unitTest({ perms: { net: true } }, async function fetchBodyReadTwice(): Promise<
       fail(
         "Reading body multiple times should failed, the stream should've been locked."
       );
-    } catch {}
+    } catch {
+      // pass
+    }
   }
 });
 
@@ -768,7 +757,9 @@ unitTest(
     try {
       response.body.getReader();
       fail("The stream should've been locked.");
-    } catch {}
+    } catch {
+      // pass
+    }
   }
 );
 
@@ -776,13 +767,10 @@ unitTest(
   { perms: { net: true } },
   async function fetchBodyReaderWithCancelAndNewReader(): Promise<void> {
     const data = "a".repeat(1 << 10);
-    const response = await fetch(
-      "http://localhost:4545/cli/tests/echo_server",
-      {
-        method: "POST",
-        body: data,
-      }
-    );
+    const response = await fetch("http://localhost:4545/echo_server", {
+      method: "POST",
+      body: data,
+    });
     assert(response.body !== null);
     const firstReader = await response.body.getReader();
 
@@ -808,13 +796,10 @@ unitTest(
   async function fetchBodyReaderWithReadCancelAndNewReader(): Promise<void> {
     const data = "a".repeat(1 << 10);
 
-    const response = await fetch(
-      "http://localhost:4545/cli/tests/echo_server",
-      {
-        method: "POST",
-        body: data,
-      }
-    );
+    const response = await fetch("http://localhost:4545/echo_server", {
+      method: "POST",
+      body: data,
+    });
     assert(response.body !== null);
     const firstReader = await response.body.getReader();
 
@@ -855,7 +840,7 @@ unitTest(
 
     for (const status of nullBodyStatus) {
       const headers = new Headers([["x-status", String(status)]]);
-      const res = await fetch("http://localhost:4545/cli/tests/echo_server", {
+      const res = await fetch("http://localhost:4545/echo_server", {
         body: "deno",
         method: "POST",
         headers,
@@ -866,42 +851,50 @@ unitTest(
   }
 );
 
-unitTest(
-  { perms: { net: true } },
-  function fetchResponseConstructorNullBody(): void {
-    const nullBodyStatus = [204, 205, 304];
+unitTest(function fetchResponseConstructorNullBody(): void {
+  const nullBodyStatus = [204, 205, 304];
 
-    for (const status of nullBodyStatus) {
-      try {
-        new Response("deno", { status });
-        fail("Response with null body status cannot have body");
-      } catch (e) {
-        assert(e instanceof TypeError);
-        assertEquals(
-          e.message,
-          "Response with null body status cannot have body"
-        );
-      }
+  for (const status of nullBodyStatus) {
+    try {
+      new Response("deno", { status });
+      fail("Response with null body status cannot have body");
+    } catch (e) {
+      assert(e instanceof TypeError);
+      assertEquals(
+        e.message,
+        "Response with null body status cannot have body"
+      );
     }
   }
-);
+});
 
-unitTest(
-  { perms: { net: true } },
-  function fetchResponseConstructorInvalidStatus(): void {
-    const invalidStatus = [101, 600, 199];
+unitTest(function fetchResponseConstructorInvalidStatus(): void {
+  const invalidStatus = [101, 600, 199, null, "", NaN];
 
-    for (const status of invalidStatus) {
-      try {
-        new Response("deno", { status });
-        fail("Invalid status");
-      } catch (e) {
-        assert(e instanceof RangeError);
-        assertEquals(
-          e.message,
-          `The status provided (${status}) is outside the range [200, 599]`
-        );
-      }
+  for (const status of invalidStatus) {
+    try {
+      // deno-lint-ignore ban-ts-comment
+      // @ts-ignore
+      new Response("deno", { status });
+      fail(`Invalid status: ${status}`);
+    } catch (e) {
+      assert(e instanceof RangeError);
+      assertEquals(
+        e.message,
+        `The status provided (${status}) is outside the range [200, 599]`
+      );
     }
   }
-);
+});
+
+unitTest(function fetchResponseEmptyConstructor(): void {
+  const response = new Response();
+  assertEquals(response.status, 200);
+  assertEquals(response.body, null);
+  assertEquals(response.type, "default");
+  assertEquals(response.url, "");
+  assertEquals(response.redirected, false);
+  assertEquals(response.ok, true);
+  assertEquals(response.bodyUsed, false);
+  assertEquals([...response.headers], []);
+});

@@ -35,7 +35,7 @@ export function isFormFile(x: any): x is FormFile {
 function randomBoundary(): string {
   let boundary = "--------------------------";
   for (let i = 0; i < 24; i++) {
-    boundary += Math.floor(Math.random() * 10).toString(16);
+    boundary += Math.floor(Math.random() * 16).toString(16);
   }
   return boundary;
 }

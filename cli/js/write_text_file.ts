@@ -1,3 +1,4 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { writeFileSync, writeFile, WriteFileOptions } from "./write_file.ts";
 
 export function writeTextFileSync(

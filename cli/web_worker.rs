@@ -212,7 +212,6 @@ impl Future for WebWorker {
       match r {
         Some(msg) => {
           let msg = String::from_utf8(msg.to_vec()).unwrap();
-          debug!("received message from host: {}", msg);
           let script = format!("workerMessageRecvCallback({})", msg);
 
           if let Err(e) = worker.execute(&script) {
