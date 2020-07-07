@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 import { notImplemented } from "../util.ts";
 import { isTypedArray } from "./util.ts";
 import * as domTypes from "./dom_types.d.ts";
@@ -34,14 +35,14 @@ export class Response extends Body.Body implements domTypes.Response {
     const extraInit = responseData.get(init) || {};
     let { type = "default", url = "" } = extraInit;
 
-    let status = (Number(init.status) || 0) ?? 200;
+    let status = init.status === undefined ? 200 : Number(init.status || 0);
     let statusText = init.statusText ?? "";
     let headers =
       init.headers instanceof Headers
         ? init.headers
         : new Headers(init.headers);
 
-    if (init.status && (status < 200 || status > 599)) {
+    if (init.status !== undefined && (status < 200 || status > 599)) {
       throw new RangeError(
         `The status provided (${init.status}) is outside the range [200, 599]`
       );
@@ -55,7 +56,6 @@ export class Response extends Body.Body implements domTypes.Response {
     if (!type) {
       type = "default";
     } else {
-      type = type;
       if (type == "error") {
         // spec: https://fetch.spec.whatwg.org/#concept-network-error
         status = 0;
@@ -117,7 +117,7 @@ export class Response extends Body.Body implements domTypes.Response {
     this.statusText = statusText;
     this.status = extraInit.status || status;
     this.headers = headers;
-    this.redirected = extraInit.redirected;
+    this.redirected = extraInit.redirected || false;
     this.type = type;
   }
 
@@ -144,12 +144,11 @@ export class Response extends Body.Body implements domTypes.Response {
       resBody = tees[1];
     }
 
-    const cloned = new Response(resBody, {
+    return new Response(resBody, {
       status: this.status,
       statusText: this.statusText,
       headers: new Headers(headersList),
     });
-    return cloned;
   }
 
   static redirect(url: URL | string, status: number): domTypes.Response {
@@ -260,7 +259,7 @@ export async function fetch(
   }
 
   let responseBody;
-  let responseInit: ResponseInit = {};
+  let responseInit: domTypes.ResponseInit = {};
   while (remRedirectCount) {
     const fetchResponse = await sendFetchReq(url, method, headers, body);
 

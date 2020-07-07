@@ -5,7 +5,6 @@
 //
 // There are some parts that are not fully implemented, and there are some
 // comments which point to steps of the specification that are not implemented.
-//
 
 /* eslint-disable @typescript-eslint/no-explicit-any,require-await */
 import { ReadableByteStreamControllerImpl } from "./readable_byte_stream_controller.ts";
@@ -62,7 +61,7 @@ export interface ReadableStreamGenericReader<R = any>
 export interface ReadableStreamAsyncIterator<T = any> extends AsyncIterator<T> {
   [sym.asyncIteratorReader]: ReadableStreamDefaultReaderImpl<T>;
   [sym.preventCancel]: boolean;
-  return(value?: any | PromiseLike<any>): Promise<IteratorResult<T, any>>;
+  return(value?: any | PromiseLike<any>): Promise<IteratorResult<T>>;
 }
 
 export function acquireReadableStreamDefaultReader<T>(
@@ -97,6 +96,7 @@ function createAlgorithmFromUnderlyingMethod<
   algoArgCount: 0,
   ...extraArgs: any[]
 ): () => Promise<void>;
+
 function createAlgorithmFromUnderlyingMethod<
   O extends UnderlyingByteSource | UnderlyingSource | Transformer,
   P extends keyof O
@@ -317,79 +317,72 @@ function isFiniteNonNegativeNumber(v: unknown): v is number {
 export function isReadableByteStreamController(
   x: unknown
 ): x is ReadableByteStreamControllerImpl {
-  return typeof x !== "object" ||
+  return !(
+    typeof x !== "object" ||
     x === null ||
     !(sym.controlledReadableByteStream in x)
-    ? false
-    : true;
+  );
 }
 
 export function isReadableStream(x: unknown): x is ReadableStreamImpl {
-  return typeof x !== "object" ||
+  return !(
+    typeof x !== "object" ||
     x === null ||
     !(sym.readableStreamController in x)
-    ? false
-    : true;
+  );
 }
 
 export function isReadableStreamAsyncIterator(
   x: unknown
-): x is ReadableStreamAsyncIterator<any> {
+): x is ReadableStreamAsyncIterator {
   if (typeof x !== "object" || x === null) {
     return false;
   }
-  if (!(sym.asyncIteratorReader in x)) {
-    return false;
-  }
-  return true;
+  return sym.asyncIteratorReader in x;
 }
 
 export function isReadableStreamDefaultController(
   x: unknown
 ): x is ReadableStreamDefaultControllerImpl {
-  return typeof x !== "object" ||
+  return !(
+    typeof x !== "object" ||
     x === null ||
     !(sym.controlledReadableStream in x)
-    ? false
-    : true;
+  );
 }
 
 export function isReadableStreamDefaultReader<T>(
   x: unknown
 ): x is ReadableStreamDefaultReaderImpl<T> {
-  return typeof x !== "object" || x === null || !(sym.readRequests in x)
-    ? false
-    : true;
+  return !(typeof x !== "object" || x === null || !(sym.readRequests in x));
 }
 
 export function isReadableStreamLocked(stream: ReadableStreamImpl): boolean {
   assert(isReadableStream(stream));
-  return stream[sym.reader] ? true : false;
+  return !!stream[sym.reader];
 }
 
 export function isReadableStreamDisturbed(stream: ReadableStream): boolean {
   assert(isReadableStream(stream));
-  return stream[sym.disturbed] ? true : false;
+  return !!stream[sym.disturbed];
 }
 
-export function isTransformStream(
-  x: unknown
-): x is TransformStreamImpl<any, any> {
-  return typeof x !== "object" ||
+export function isTransformStream(x: unknown): x is TransformStreamImpl {
+  return !(
+    typeof x !== "object" ||
     x === null ||
     !(sym.transformStreamController in x)
-    ? false
-    : true;
+  );
 }
 
 export function isTransformStreamDefaultController(
   x: unknown
-): x is TransformStreamDefaultControllerImpl<any, any> {
-  return typeof x !== "object" ||
+): x is TransformStreamDefaultControllerImpl {
+  return !(
+    typeof x !== "object" ||
     x === null ||
     !(sym.controlledTransformStream in x)
-    ? false
-    : true;
+  );
 }
 
 export function isUnderlyingByteSource(
@@ -401,37 +394,36 @@ export function isUnderlyingByteSource(
 }
 
 export function isWritableStream(x: unknown): x is WritableStreamImpl {
-  return typeof x !== "object" ||
+  return !(
+    typeof x !== "object" ||
     x === null ||
     !(sym.writableStreamController in x)
-    ? false
-    : true;
+  );
 }
 
 export function isWritableStreamDefaultController(
   x: unknown
 ): x is WritableStreamDefaultControllerImpl<any> {
-  return typeof x !== "object" ||
+  return !(
+    typeof x !== "object" ||
     x === null ||
     !(sym.controlledWritableStream in x)
-    ? false
-    : true;
+  );
 }
 
 export function isWritableStreamDefaultWriter(
   x: unknown
 ): x is WritableStreamDefaultWriterImpl<any> {
-  return typeof x !== "object" || x === null || !(sym.ownerWritableStream in x)
-    ? false
-    : true;
+  return !(
+    typeof x !== "object" ||
+    x === null ||
+    !(sym.ownerWritableStream in x)
+  );
 }
 
 export function isWritableStreamLocked(stream: WritableStreamImpl): boolean {
   assert(isWritableStream(stream));
-  if (stream[sym.writer] === undefined) {
-    return false;
-  }
-  return true;
+  return stream[sym.writer] !== undefined;
 }
 
 export function makeSizeAlgorithmFromSizeFunction<T>(
@@ -476,10 +468,7 @@ function readableByteStreamControllerShouldCallPull(
   //            ReadableStreamGetNumReadIntoRequests(stream) > 0, return true.
   const desiredSize = readableByteStreamControllerGetDesiredSize(controller);
   assert(desiredSize !== null);
-  if (desiredSize > 0) {
-    return true;
-  }
-  return false;
+  return desiredSize > 0;
 }
 
 export function readableByteStreamControllerCallPullIfNeeded(
@@ -730,10 +719,7 @@ export function readableStreamDefaultControllerCanCloseOrEnqueue<T>(
   controller: ReadableStreamDefaultControllerImpl<T>
 ): boolean {
   const state = controller[sym.controlledReadableStream][sym.state];
-  if (!controller[sym.closeRequested] && state === "readable") {
-    return true;
-  }
-  return false;
+  return !controller[sym.closeRequested] && state === "readable";
 }
 
 export function readableStreamDefaultControllerClearAlgorithms<T>(
@@ -813,9 +799,7 @@ export function readableStreamDefaultControllerError<T>(
 function readableStreamDefaultControllerHasBackpressure<T>(
   controller: ReadableStreamDefaultControllerImpl<T>
 ): boolean {
-  return readableStreamDefaultControllerShouldCallPull(controller)
-    ? true
-    : false;
+  return readableStreamDefaultControllerShouldCallPull(controller);
 }
 
 function readableStreamDefaultControllerShouldCallPull<T>(
@@ -836,10 +820,7 @@ function readableStreamDefaultControllerShouldCallPull<T>(
   }
   const desiredSize = readableStreamDefaultControllerGetDesiredSize(controller);
   assert(desiredSize !== null);
-  if (desiredSize > 0) {
-    return true;
-  }
-  return false;
+  return desiredSize > 0;
 }
 
 export function readableStreamDefaultReaderRead<R>(
@@ -914,9 +895,7 @@ export function readableStreamHasDefaultReader(
   stream: ReadableStreamImpl
 ): boolean {
   const reader = stream[sym.reader];
-  return reader === undefined || !isReadableStreamDefaultReader(reader)
-    ? false
-    : true;
+  return !(reader === undefined || !isReadableStreamDefaultReader(reader));
 }
 
 export function readableStreamPipeTo<T>(
@@ -1927,13 +1906,10 @@ export function writableStreamClose<W>(
 export function writableStreamCloseQueuedOrInFlight<W>(
   stream: WritableStreamImpl<W>
 ): boolean {
-  if (
+  return !(
     stream[sym.closeRequest] === undefined &&
     stream[sym.inFlightCloseRequest] === undefined
-  ) {
-    return false;
-  }
-  return true;
+  );
 }
 
 function writableStreamDealWithRejection<W>(
@@ -2348,13 +2324,10 @@ function writableStreamFinishInFlightWriteWithError<W>(
 function writableStreamHasOperationMarkedInFlight<W>(
   stream: WritableStreamImpl<W>
 ): boolean {
-  if (
+  return !(
     stream[sym.inFlightWriteRequest] === undefined &&
     stream[sym.inFlightCloseRequest] === undefined
-  ) {
-    return false;
-  }
-  return true;
+  );
 }
 
 function writableStreamMarkCloseRequestInFlight<W>(

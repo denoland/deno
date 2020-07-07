@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 // The following code is based off of text-encoding at:
 // https://github.com/inexorabletash/text-encoding
 //
@@ -151,8 +152,8 @@ interface Encoder {
 }
 
 class SingleByteDecoder implements Decoder {
-  #index: number[];
-  #fatal: boolean;
+  readonly #index: number[];
+  readonly #fatal: boolean;
 
   constructor(
     index: number[],
@@ -422,7 +423,7 @@ function isEitherArrayBuffer(x: any): x is EitherArrayBuffer {
 }
 
 export class TextDecoder {
-  #encoding: string;
+  readonly #encoding: string;
 
   get encoding(): string {
     return this.#encoding;
