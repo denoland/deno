@@ -55,16 +55,8 @@ def main():
 
 def dprint():
     script = os.path.join(get_prebuilt_path(), "dprint")
-    source_files = get_sources(root_path, ["*.js", "*.json", "*.ts", "*.md"])
-    if source_files:
-        max_command_length = 24000
-        while len(source_files) > 0:
-            command = [script, "fmt", "--"]
-            while len(source_files) > 0:
-                command.append(source_files.pop())
-                if len(" ".join(command)) > max_command_length:
-                    break
-            run(command, shell=False, quiet=True)
+    command = [script, "fmt"]
+    run(command, shell=False, quiet=True)
 
 
 def yapf():
