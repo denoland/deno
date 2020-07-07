@@ -23,7 +23,11 @@ let globalTimeoutDue: number | null = null;
 
 let nextTimerId = 1;
 const idMap = new Map<number, Timer>();
-type DueNode = { due: number; timers: Timer[] };
+
+interface DueNode {
+  due: number;
+  timers: Timer[];
+}
 const dueTree = new RBTree<DueNode>((a, b) => a.due - b.due);
 
 function clearGlobalTimeout(): void {

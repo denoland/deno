@@ -16,7 +16,7 @@ export async function connectTls({
   port,
   hostname = "127.0.0.1",
   transport = "tcp",
-  certFile = undefined,
+  certFile,
 }: ConnectTlsOptions): Promise<Conn> {
   const res = await tlsOps.connectTls({
     port,
@@ -44,10 +44,10 @@ export interface ListenTlsOptions {
 
 export function listenTls({
   port,
-  certFile,
-  keyFile,
   hostname = "0.0.0.0",
   transport = "tcp",
+  certFile,
+  keyFile,
 }: ListenTlsOptions): Listener {
   const res = tlsOps.listenTls({
     port,

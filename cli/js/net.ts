@@ -69,11 +69,11 @@ export class ListenerImpl implements Listener {
     let conn: Conn;
     try {
       conn = await this.accept();
-    } catch (error) {
-      if (error instanceof errors.BadResource) {
+    } catch (err) {
+      if (err instanceof errors.BadResource) {
         return { value: undefined, done: true };
       }
-      throw error;
+      throw err;
     }
     return { value: conn!, done: false };
   }
@@ -96,7 +96,7 @@ export class DatagramImpl implements DatagramConn {
   constructor(
     readonly rid: number,
     readonly addr: Addr,
-    public bufSize: number = 1024
+    readonly bufSize: number = 1024
   ) {}
 
   async receive(p?: Uint8Array): Promise<[Uint8Array, Addr]> {

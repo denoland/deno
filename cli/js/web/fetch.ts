@@ -13,6 +13,8 @@ import { getHeaderValueParams } from "./util.ts";
 import { ReadableStreamImpl } from "./streams/readable_stream.ts";
 import { MultipartBuilder } from "./fetch/multipart.ts";
 
+const encoder = new TextEncoder();
+
 const NULL_BODY_STATUS = [101, 204, 205, 304];
 const REDIRECT_STATUS = [301, 302, 303, 307, 308];
 
@@ -125,7 +127,7 @@ export class Response extends Body.Body implements domTypes.Response {
     return 200 <= this.status && this.status < 300;
   }
 
-  public clone(): domTypes.Response {
+  clone(): domTypes.Response {
     if (this.bodyUsed) {
       throw TypeError(Body.BodyUsedError);
     }
@@ -218,14 +220,14 @@ export async function fetch(
         }
         let contentType = "";
         if (typeof init.body === "string") {
-          body = new TextEncoder().encode(init.body);
+          body = encoder.encode(init.body);
           contentType = "text/plain;charset=UTF-8";
         } else if (isTypedArray(init.body)) {
           body = init.body;
         } else if (init.body instanceof ArrayBuffer) {
           body = new Uint8Array(init.body);
         } else if (init.body instanceof URLSearchParams) {
-          body = new TextEncoder().encode(init.body.toString());
+          body = encoder.encode(init.body.toString());
           contentType = "application/x-www-form-urlencoded;charset=UTF-8";
         } else if (init.body instanceof DenoBlob) {
           body = init.body[blobBytesSymbol];
@@ -283,8 +285,8 @@ export async function fetch(
             }
 
             controller.enqueue(b.subarray(0, result));
-          } catch (e) {
-            controller.error(e);
+          } catch (err) {
+            controller.error(err);
             controller.close();
             close(fetchResponse.bodyRid);
           }

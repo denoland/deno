@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import * as blob from "./blob.ts";
-import * as encoding from "./text_encoding.ts";
+import { DenoBlob } from "./blob.ts";
+import { TextEncoder, TextDecoder } from "./text_encoding.ts";
 import * as domTypes from "./dom_types.d.ts";
 import { ReadableStreamImpl } from "./streams/readable_stream.ts";
 import { isReadableStreamDisturbed } from "./streams/internals.ts";
@@ -14,9 +14,8 @@ import {
 } from "./util.ts";
 import { MultipartParser } from "./fetch/multipart.ts";
 
-// only namespace imports work for now, plucking out what we need
-const { TextEncoder, TextDecoder } = encoding;
-const DenoBlob = blob.DenoBlob;
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
 
 function validateBodyType(owner: Body, bodySource: BodyInit | null): boolean {
   if (isTypedArray(bodySource)) {
@@ -42,7 +41,6 @@ function validateBodyType(owner: Body, bodySource: BodyInit | null): boolean {
 async function bufferFromStream(
   stream: ReadableStreamReader
 ): Promise<ArrayBuffer> {
-  const encoder = new TextEncoder();
   const buffer = new Buffer();
 
   while (true) {
@@ -103,21 +101,17 @@ export class Body implements domTypes.Body {
   }
 
   get bodyUsed(): boolean {
-    if (this.body && isReadableStreamDisturbed(this.body)) {
-      return true;
-    }
-    return false;
+    return !!(this.body && isReadableStreamDisturbed(this.body));
   }
 
-  public async blob(): Promise<Blob> {
-    return new DenoBlob([await this.arrayBuffer()], {
-      type: this.contentType,
-    });
+  async blob(): Promise<Blob> {
+    return new DenoBlob([await this.arrayBuffer()], { type: this.contentType });
   }
 
   // ref: https://fetch.spec.whatwg.org/#body-mixin
-  public async formData(): Promise<FormData> {
+  async formData(): Promise<FormData> {
     const formData = new FormData();
+
     if (hasHeaderValueOf(this.contentType, "multipart/form-data")) {
       const params = getHeaderValueParams(this.contentType);
 
@@ -132,6 +126,7 @@ export class Body implements domTypes.Body {
     ) {
       // From https://github.com/github/fetch/blob/master/fetch.js
       // Copyright (c) 2014-2016 GitHub, Inc. MIT License
+
       const body = await this.text();
       try {
         body
@@ -148,7 +143,7 @@ export class Body implements domTypes.Body {
               );
             }
           });
-      } catch (e) {
+      } catch {
         throw new TypeError("Invalid form urlencoded format");
       }
       return formData;
@@ -157,31 +152,26 @@ export class Body implements domTypes.Body {
     }
   }
 
-  public async text(): Promise<string> {
+  async text(): Promise<string> {
     if (typeof this._bodySource === "string") {
       return this._bodySource;
     }
-
-    const ab = await this.arrayBuffer();
-    const decoder = new TextDecoder("utf-8");
-    return decoder.decode(ab);
+    return decoder.decode(await this.arrayBuffer());
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  public async json(): Promise<any> {
-    const raw = await this.text();
-    return JSON.parse(raw);
+  async json(): Promise<any> {
+    return JSON.parse(await this.text());
   }
 
-  public arrayBuffer(): Promise<ArrayBuffer> {
+  arrayBuffer(): Promise<ArrayBuffer> {
     if (isTypedArray(this._bodySource)) {
       return Promise.resolve(this._bodySource.buffer as ArrayBuffer);
     } else if (this._bodySource instanceof ArrayBuffer) {
       return Promise.resolve(this._bodySource);
     } else if (typeof this._bodySource === "string") {
-      const enc = new TextEncoder();
       return Promise.resolve(
-        enc.encode(this._bodySource).buffer as ArrayBuffer
+        encoder.encode(this._bodySource).buffer as ArrayBuffer
       );
     } else if (this._bodySource instanceof ReadableStreamImpl) {
       return bufferFromStream(this._bodySource.getReader());
@@ -189,9 +179,8 @@ export class Body implements domTypes.Body {
       this._bodySource instanceof FormData ||
       this._bodySource instanceof URLSearchParams
     ) {
-      const enc = new TextEncoder();
       return Promise.resolve(
-        enc.encode(this._bodySource.toString()).buffer as ArrayBuffer
+        encoder.encode(this._bodySource.toString()).buffer as ArrayBuffer
       );
     } else if (!this._bodySource) {
       return Promise.resolve(new ArrayBuffer(0));

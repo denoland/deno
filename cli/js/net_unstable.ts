@@ -39,9 +39,9 @@ export function listen(options: ListenOptions | UnixListenOptions): Listener {
   if (options.transport === "unix") {
     const res = netOps.listen(options);
     return new ListenerImpl(res.rid, res.localAddr);
-  } else {
-    return stableListen(options as ListenOptions & { transport?: "tcp" });
   }
+
+  return stableListen(options as ListenOptions & { transport?: "tcp" });
 }
 
 export function listenDatagram(
@@ -73,7 +73,7 @@ export async function connect(
   if (options.transport === "unix") {
     const res = await netOps.connect(options);
     return new ConnImpl(res.rid, res.remoteAddr!, res.localAddr!);
-  } else {
-    return stableConnect(options as ConnectOptions);
   }
+
+  return stableConnect(options as ConnectOptions);
 }

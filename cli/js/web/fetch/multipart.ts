@@ -9,6 +9,7 @@ import { getHeaderValueParams } from "../util.ts";
 
 const decoder = new TextDecoder();
 const encoder = new TextEncoder();
+
 const CR = "\r".charCodeAt(0);
 const LF = "\n".charCodeAt(0);
 
@@ -95,14 +96,12 @@ export class MultipartBuilder {
 export class MultipartParser {
   readonly boundary: string;
   readonly boundaryChars: Uint8Array;
-  readonly body: Uint8Array;
-  constructor(body: Uint8Array, boundary: string) {
-    if (!boundary) {
+  constructor(readonly body: Uint8Array, boundary: string) {
+    if (boundary == null) {
       throw new TypeError("multipart/form-data must provide a boundary");
     }
 
     this.boundary = `--${boundary}`;
-    this.body = body;
     this.boundaryChars = encoder.encode(this.boundary);
   }
 
@@ -137,23 +136,23 @@ export class MultipartParser {
     for (let i = 0; i < this.body.length; i++) {
       const byte = this.body[i];
       const prevByte = this.body[i - 1];
-      const isNewLine = byte === LF && prevByte === CR;
+      const newLine = byte === LF && prevByte === CR;
 
       if (state === 1 || state === 2 || state == 3) {
         headerText += String.fromCharCode(byte);
       }
-      if (state === 0 && isNewLine) {
+      if (state === 0 && newLine) {
         state = 1;
-      } else if (state === 1 && isNewLine) {
+      } else if (state === 1 && newLine) {
         state = 2;
         const headersDone = this.body[i + 1] === CR && this.body[i + 2] === LF;
 
         if (headersDone) {
           state = 3;
         }
-      } else if (state === 2 && isNewLine) {
+      } else if (state === 2 && newLine) {
         state = 3;
-      } else if (state === 3 && isNewLine) {
+      } else if (state === 3 && newLine) {
         state = 4;
         fileStart = i + 1;
       } else if (state === 4) {
@@ -175,7 +174,7 @@ export class MultipartParser {
           boundaryIndex = 0;
           headerText = "";
 
-          if (!name) {
+          if (name === undefined) {
             continue; // Skip, unknown name
           }
 
@@ -188,7 +187,7 @@ export class MultipartParser {
             formData.append(name, decoder.decode(content));
           }
         }
-      } else if (state === 5 && isNewLine) {
+      } else if (state === 5 && newLine) {
         state = 1;
       }
     }

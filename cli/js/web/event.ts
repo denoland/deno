@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import * as domTypes from "./dom_types.d.ts";
+import { FocusEvent, MouseEvent } from "./dom_types.d.ts";
 import { defineEnumerableProps, requiredArguments } from "./util.ts";
 import { assert } from "../util.ts";
 
@@ -112,7 +112,7 @@ export function setStopImmediatePropagation(
 
 export function hasRelatedTarget(
   event: Event
-): event is domTypes.FocusEvent | domTypes.MouseEvent {
+): event is FocusEvent | MouseEvent {
   return "relatedTarget" in event;
 }
 

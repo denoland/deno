@@ -170,7 +170,7 @@ declare namespace Deno {
      * ```
      *
      * Requires `allow-env` permission. */
-    toObject(): { [index: string]: string };
+    toObject(): Record<string, string>;
   };
 
   /**
@@ -330,6 +330,14 @@ declare namespace Deno {
     seekSync(offset: number, whence: SeekMode): number;
   }
 
+  export interface CopyOptions {
+    bufSize?: number;
+  }
+
+  export interface IterOptions {
+    bufSize?: number;
+  }
+
   /** Copies from `src` to `dst` until either EOF (`null`) is read from `src` or
    * an error occurs. It resolves to the number of bytes copied or rejects with
    * the first error encountered while copying.
@@ -348,9 +356,7 @@ declare namespace Deno {
   export function copy(
     src: Reader,
     dst: Writer,
-    options?: {
-      bufSize?: number;
-    }
+    options?: CopyOptions
   ): Promise<number>;
 
   /** Turns a Reader, `r`, into an async iterator.
@@ -384,9 +390,7 @@ declare namespace Deno {
    */
   export function iter(
     r: Reader,
-    options?: {
-      bufSize?: number;
-    }
+    options?: IterOptions
   ): AsyncIterableIterator<Uint8Array>;
 
   /** Turns a ReaderSync, `r`, into an iterator.
@@ -420,9 +424,7 @@ declare namespace Deno {
    */
   export function iterSync(
     r: ReaderSync,
-    options?: {
-      bufSize?: number;
-    }
+    options?: IterOptions
   ): IterableIterator<Uint8Array>;
 
   /** Synchronously open a file and return an instance of `Deno.File`.  The
@@ -1804,10 +1806,10 @@ declare namespace Deno {
       : (Writer & Closer) | null;
     readonly stdout: T["stdout"] extends "piped"
       ? Reader & Closer
-      : (Writer & Closer) | null;
+      : (Reader & Closer) | null;
     readonly stderr: T["stderr"] extends "piped"
       ? Reader & Closer
-      : (Writer & Closer) | null;
+      : (Reader & Closer) | null;
     /** Resolves to the current status of the process. */
     status(): Promise<ProcessStatus>;
     /** Buffer the stdout until EOF and return it as `Uint8Array`.

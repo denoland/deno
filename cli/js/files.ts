@@ -158,10 +158,10 @@ function checkOpenOptions(options: OpenOptions): void {
     throw new Error("'truncate' option requires 'write' option");
   }
 
-  const createOrCreateNewWithoutWriteOrAppend =
-    (options.create || options.createNew) && !(options.write || options.append);
-
-  if (createOrCreateNewWithoutWriteOrAppend) {
+  if (
+    (options.create || options.createNew) &&
+    !(options.write || options.append)
+  ) {
     throw new Error(
       "'create' or 'createNew' options require 'write' or 'append' option"
     );

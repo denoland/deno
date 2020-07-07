@@ -4,13 +4,16 @@ import { TextDecoder, TextEncoder } from "./text_encoding.ts";
 import { build } from "../build.ts";
 import { ReadableStreamImpl } from "./streams/readable_stream.ts";
 
+const decoder = new TextDecoder();
+const encoder = new TextEncoder();
+
 export const bytesSymbol = Symbol("bytes");
 
-export function containsOnlyASCII(str: string): boolean {
-  if (typeof str !== "string") {
+export function containsOnlyASCII(s: string): boolean {
+  if (typeof s !== "string") {
     return false;
   }
-  return /^[\x00-\x7F]*$/.test(str);
+  return /^[\x00-\x7F]*$/.test(s);
 }
 
 function convertLineEndingsToNative(s: string): string {
@@ -67,14 +70,13 @@ function toUint8Arrays(
   doNormalizeLineEndingsToNative: boolean
 ): Uint8Array[] {
   const ret: Uint8Array[] = [];
-  const enc = new TextEncoder();
   for (const element of blobParts) {
     if (typeof element === "string") {
       let str = element;
       if (doNormalizeLineEndingsToNative) {
         str = convertLineEndingsToNative(element);
       }
-      ret.push(enc.encode(str));
+      ret.push(encoder.encode(str));
       // eslint-disable-next-line @typescript-eslint/no-use-before-define
     } else if (element instanceof DenoBlob) {
       ret.push(element[bytesSymbol]);
@@ -95,7 +97,7 @@ function toUint8Arrays(
       const uint8 = new Uint8Array(element);
       ret.push(uint8);
     } else {
-      ret.push(enc.encode(String(element)));
+      ret.push(encoder.encode(String(element)));
     }
   }
   return ret;
@@ -209,7 +211,6 @@ class DenoBlob implements Blob {
 
   async text(): Promise<string> {
     const reader = getStream(this[bytesSymbol]).getReader();
-    const decoder = new TextDecoder();
     return decoder.decode(await readBytes(reader));
   }
 

@@ -20,9 +20,7 @@ const headersData = Symbol("headers data");
 // TODO: headerGuard? Investigate if it is needed
 // node-fetch did not implement this but it is in the spec
 function normalizeParams(name: string, value?: string): string[] {
-  name = String(name).toLowerCase();
-  value = String(value).trim();
-  return [name, value];
+  return [String(name).toLowerCase(), String(value).trim()];
 }
 
 // The following name/value validations are copied from
@@ -100,7 +98,6 @@ function dataGet(
   if (setCookieValues.length) {
     return setCookieValues.join(", ");
   }
-  return undefined;
 }
 
 /** Sets a value of a key in the headers list.
@@ -167,32 +164,35 @@ class HeadersBase {
   [headersData]: Array<[string, string]>;
 
   constructor(init?: HeadersInit) {
-    if (init === null) {
+    if (init == null) {
       throw new TypeError(
         "Failed to construct 'Headers'; The provided value was not valid"
       );
-    } else if (isHeaders(init)) {
-      this[headersData] = [...init];
-    } else {
-      this[headersData] = [];
-      if (Array.isArray(init)) {
-        for (const tuple of init) {
-          // If header does not contain exactly two items,
-          // then throw a TypeError.
-          // ref: https://fetch.spec.whatwg.org/#concept-headers-fill
-          requiredArguments(
-            "Headers.constructor tuple array argument",
-            tuple.length,
-            2
-          );
+    }
 
-          this.append(tuple[0], tuple[1]);
-        }
-      } else if (init) {
-        for (const [rawName, rawValue] of Object.entries(init)) {
-          this.append(rawName, rawValue);
-        }
+    if (isHeaders(init)) {
+      this[headersData] = [...init];
+    }
+
+    this[headersData] = [];
+
+    if (Array.isArray(init)) {
+      for (const tuple of init) {
+        // If header does not contain exactly two items,
+        // then throw a TypeError.
+        // ref: https://fetch.spec.whatwg.org/#concept-headers-fill
+        requiredArguments(
+          "Headers.constructor tuple array argument",
+          tuple.length,
+          2
+        );
+
+        this.append(tuple[0], tuple[1]);
       }
+    }
+
+    for (const [key, value] of Object.entries(init)) {
+      this.append(key, value);
     }
   }
 
@@ -211,39 +211,39 @@ class HeadersBase {
   // ref: https://fetch.spec.whatwg.org/#concept-headers-append
   append(name: string, value: string): void {
     requiredArguments("Headers.append", arguments.length, 2);
-    const [newname, newvalue] = normalizeParams(name, value);
-    validateName(newname);
-    validateValue(newvalue);
-    dataAppend(this[headersData], newname, newvalue);
+    const [newName, newValue] = normalizeParams(name, value);
+    validateName(newName);
+    validateValue(newValue);
+    dataAppend(this[headersData], newName, newValue);
   }
 
   delete(name: string): void {
     requiredArguments("Headers.delete", arguments.length, 1);
-    const [newname] = normalizeParams(name);
-    validateName(newname);
-    dataDelete(this[headersData], newname);
+    const newName = normalizeParams(name)[0];
+    validateName(newName);
+    dataDelete(this[headersData], newName);
   }
 
   get(name: string): string | null {
     requiredArguments("Headers.get", arguments.length, 1);
-    const [newname] = normalizeParams(name);
-    validateName(newname);
-    return dataGet(this[headersData], newname) ?? null;
+    const newName = normalizeParams(name)[0];
+    validateName(newName);
+    return dataGet(this[headersData], newName) ?? null;
   }
 
   has(name: string): boolean {
     requiredArguments("Headers.has", arguments.length, 1);
-    const [newname] = normalizeParams(name);
-    validateName(newname);
-    return dataHas(this[headersData], newname);
+    const newName = normalizeParams(name)[0];
+    validateName(newName);
+    return dataHas(this[headersData], newName);
   }
 
   set(name: string, value: string): void {
     requiredArguments("Headers.set", arguments.length, 2);
-    const [newname, newvalue] = normalizeParams(name, value);
-    validateName(newname);
-    validateValue(newvalue);
-    dataSet(this[headersData], newname, newvalue);
+    const [newName, newValue] = normalizeParams(name, value);
+    validateName(newName);
+    validateValue(newValue);
+    dataSet(this[headersData], newName, newValue);
   }
 
   get [Symbol.toStringTag](): string {

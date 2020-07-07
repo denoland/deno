@@ -77,7 +77,7 @@ util.assert(scratchBytes.byteLength === scratch32.length * 4);
 
 export function asyncMsgFromRust(ui8: Uint8Array): void {
   const record = recordFromBufMinimal(ui8);
-  const { promiseId } = record;
+  const promiseId = record.promiseId;
   const promise = promiseTableMin[promiseId];
   delete promiseTableMin[promiseId];
   util.assert(promise);

@@ -80,7 +80,7 @@ function evaluate(code: string): boolean {
 
 // @internal
 export async function replLoop(): Promise<void> {
-  const { console } = globalThis;
+  const console = globalThis.console;
 
   const historyFile = "deno_history.txt";
   const rid = startRepl(historyFile);

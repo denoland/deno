@@ -38,21 +38,21 @@ export class Process<T extends RunOptions = RunOptions> {
     : (Writer & Closer) | null;
   readonly stdout!: T["stdout"] extends "piped"
     ? Reader & Closer
-    : (Writer & Closer) | null;
+    : (Reader & Closer) | null;
   readonly stderr!: T["stderr"] extends "piped"
     ? Reader & Closer
-    : (Writer & Closer) | null;
+    : (Reader & Closer) | null;
 
   // @internal
   constructor(res: RunResponse) {
     this.rid = res.rid;
     this.pid = res.pid;
 
-    if (res.stdinRid && res.stdinRid > 0) {
+    if (res.stdinRid != null && res.stdinRid > 0) {
       this.stdin = (new File(res.stdinRid) as unknown) as Process<T>["stdin"];
     }
 
-    if (res.stdoutRid && res.stdoutRid > 0) {
+    if (res.stdoutRid != null && res.stdoutRid > 0) {
       this.stdout = (new File(res.stdoutRid) as unknown) as Process<
         T
       >["stdout"];
@@ -70,7 +70,7 @@ export class Process<T extends RunOptions = RunOptions> {
   }
 
   async output(): Promise<Uint8Array> {
-    if (!this.stdout) {
+    if (this.stdout == null) {
       throw new TypeError("stdout was not piped");
     }
     try {
@@ -81,7 +81,7 @@ export class Process<T extends RunOptions = RunOptions> {
   }
 
   async stderrOutput(): Promise<Uint8Array> {
-    if (!this.stderr) {
+    if (this.stderr == null) {
       throw new TypeError("stderr was not piped");
     }
     try {
@@ -118,7 +118,7 @@ interface RunResponse {
 
 export function run<T extends RunOptions = RunOptions>({
   cmd,
-  cwd = undefined,
+  cwd,
   env = {},
   stdout = "inherit",
   stderr = "inherit",

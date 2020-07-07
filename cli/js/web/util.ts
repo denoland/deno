@@ -30,10 +30,11 @@ export function requiredArguments(
   required: number
 ): void {
   if (length < required) {
-    const errMsg = `${name} requires at least ${required} argument${
-      required === 1 ? "" : "s"
-    }, but only ${length} present`;
-    throw new TypeError(errMsg);
+    throw new TypeError(
+      `${name} requires at least ${required} argument${
+        required === 1 ? "" : "s"
+      }, but only ${length} present`
+    );
   }
 }
 
@@ -53,11 +54,11 @@ export function immutableDefine(
 }
 
 // @internal
-export function hasOwnProperty(obj: unknown, v: PropertyKey): boolean {
-  if (obj == null) {
+export function hasOwnProperty(o: unknown, v: PropertyKey): boolean {
+  if (o == null) {
     return false;
   }
-  return Object.prototype.hasOwnProperty.call(obj, v);
+  return Object.prototype.hasOwnProperty.call(o, v);
 }
 
 /** Returns whether o is iterable.

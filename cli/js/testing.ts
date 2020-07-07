@@ -182,9 +182,7 @@ function reportToConsole(message: TestMessage): void {
   if (message.start != null) {
     log(`running ${message.start.tests.length} tests`);
   } else if (message.testStart != null) {
-    const { name } = message.testStart;
-
-    log(`test ${name} ... `, true);
+    log(`test ${message.testStart.name} ... `, true);
     return;
   } else if (message.testEnd != null) {
     switch (message.testEnd.status) {
@@ -246,8 +244,8 @@ class TestRunner {
 
   constructor(
     tests: TestDefinition[],
-    public filterFn: (def: TestDefinition) => boolean,
-    public failFast: boolean
+    readonly filterFn: (def: TestDefinition) => boolean,
+    readonly failFast: boolean
   ) {
     const onlyTests = tests.filter(({ only }) => only);
     this.#usedOnly = onlyTests.length > 0;

@@ -30,11 +30,7 @@ export function writeFileSync(
     : { write: true, create: true, truncate: true };
   const file = openSync(path, openOptions);
 
-  if (
-    options.mode !== undefined &&
-    options.mode !== null &&
-    build.os !== "windows"
-  ) {
+  if (options.mode !== undefined && build.os !== "windows") {
     chmodSync(path, options.mode);
   }
 
@@ -60,11 +56,7 @@ export async function writeFile(
     : { write: true, create: true, truncate: true };
   const file = await open(path, openOptions);
 
-  if (
-    options.mode !== undefined &&
-    options.mode !== null &&
-    build.os !== "windows"
-  ) {
+  if (options.mode !== undefined && build.os !== "windows") {
     await chmod(path, options.mode);
   }
 

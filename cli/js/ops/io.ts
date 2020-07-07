@@ -2,12 +2,12 @@
 
 import { sendAsyncMinimal, sendSyncMinimal } from "./dispatch_minimal.ts";
 
-export function readSync(rid: number, buffer: Uint8Array): number | null {
-  if (buffer.length === 0) {
+export function readSync(rid: number, buf: Uint8Array): number | null {
+  if (buf.length === 0) {
     return 0;
   }
 
-  const nread = sendSyncMinimal("op_read", rid, buffer);
+  const nread = sendSyncMinimal("op_read", rid, buf);
   if (nread < 0) {
     throw new Error("read error");
   }
@@ -17,13 +17,13 @@ export function readSync(rid: number, buffer: Uint8Array): number | null {
 
 export async function read(
   rid: number,
-  buffer: Uint8Array
+  buf: Uint8Array
 ): Promise<number | null> {
-  if (buffer.length === 0) {
+  if (buf.length === 0) {
     return 0;
   }
 
-  const nread = await sendAsyncMinimal("op_read", rid, buffer);
+  const nread = await sendAsyncMinimal("op_read", rid, buf);
   if (nread < 0) {
     throw new Error("read error");
   }

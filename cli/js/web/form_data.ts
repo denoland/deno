@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import * as blob from "./blob.ts";
-import * as domFile from "./dom_file.ts";
+import { DenoBlob } from "./blob.ts";
+import { DomFileImpl as DomFile } from "./dom_file.ts";
 import { DomIterableMixin } from "./dom_iterable.ts";
 import { requiredArguments } from "./util.ts";
 
@@ -10,23 +10,20 @@ const dataSymbol = Symbol("data");
 class FormDataBase {
   [dataSymbol]: Array<[string, FormDataEntryValue]> = [];
 
-  append(name: string, value: string): void;
-  append(name: string, value: domFile.DomFileImpl): void;
-  append(name: string, value: blob.DenoBlob, filename?: string): void;
   append(
     name: string,
-    value: string | blob.DenoBlob | domFile.DomFileImpl,
+    value: string | DenoBlob | DomFile,
     filename?: string
   ): void {
     requiredArguments("FormData.append", arguments.length, 2);
     name = String(name);
-    if (value instanceof domFile.DomFileImpl) {
+    if (value instanceof DomFile) {
       this[dataSymbol].push([name, value]);
-    } else if (value instanceof blob.DenoBlob) {
-      const dfile = new domFile.DomFileImpl([value], filename || "blob", {
+    } else if (value instanceof DenoBlob) {
+      const domFile = new DomFile([value], filename || "blob", {
         type: value.type,
       });
-      this[dataSymbol].push([name, dfile]);
+      this[dataSymbol].push([name, domFile]);
     } else {
       this[dataSymbol].push([name, String(value)]);
     }
@@ -76,12 +73,9 @@ class FormDataBase {
     return this[dataSymbol].some((entry): boolean => entry[0] === name);
   }
 
-  set(name: string, value: string): void;
-  set(name: string, value: domFile.DomFileImpl): void;
-  set(name: string, value: blob.DenoBlob, filename?: string): void;
   set(
     name: string,
-    value: string | blob.DenoBlob | domFile.DomFileImpl,
+    value: string | DenoBlob | DomFile,
     filename?: string
   ): void {
     requiredArguments("FormData.set", arguments.length, 2);
@@ -94,16 +88,12 @@ class FormDataBase {
     while (i < this[dataSymbol].length) {
       if (this[dataSymbol][i][0] === name) {
         if (!found) {
-          if (value instanceof domFile.DomFileImpl) {
+          if (value instanceof DomFile) {
             this[dataSymbol][i][1] = value;
-          } else if (value instanceof blob.DenoBlob) {
-            this[dataSymbol][i][1] = new domFile.DomFileImpl(
-              [value],
-              filename || "blob",
-              {
-                type: value.type,
-              }
-            );
+          } else if (value instanceof DenoBlob) {
+            this[dataSymbol][i][1] = new DomFile([value], filename || "blob", {
+              type: value.type,
+            });
           } else {
             this[dataSymbol][i][1] = String(value);
           }
@@ -118,13 +108,13 @@ class FormDataBase {
 
     // Otherwise, append entry to the context object’s entry list.
     if (!found) {
-      if (value instanceof domFile.DomFileImpl) {
+      if (value instanceof DomFile) {
         this[dataSymbol].push([name, value]);
-      } else if (value instanceof blob.DenoBlob) {
-        const dfile = new domFile.DomFileImpl([value], filename || "blob", {
+      } else if (value instanceof DenoBlob) {
+        const domFile = new DomFile([value], filename || "blob", {
           type: value.type,
         });
-        this[dataSymbol].push([name, dfile]);
+        this[dataSymbol].push([name, domFile]);
       } else {
         this[dataSymbol].push([name, String(value)]);
       }

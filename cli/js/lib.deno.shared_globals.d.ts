@@ -85,7 +85,7 @@ declare namespace WebAssembly {
     static imports(moduleObject: Module): ModuleImportDescriptor[];
   }
 
-  class Instance<T extends object = { [key: string]: any }> {
+  class Instance<T extends object = Record<string, any>> {
     constructor(module: Module, importObject?: object);
 
     /** An object containing as its members all the functions exported from the

@@ -40,12 +40,12 @@ function decoderError(fatal: boolean): number | never {
   return 0xfffd; // default code point
 }
 
-function inRange(a: number, min: number, max: number): boolean {
-  return min <= a && a <= max;
+function inRange(x: number, min: number, max: number): boolean {
+  return min <= x && x <= max;
 }
 
-function isASCIIByte(a: number): boolean {
-  return inRange(a, 0x00, 0x7f);
+function isASCIIByte(x: number): boolean {
+  return inRange(x, 0x00, 0x7f);
 }
 
 function stringToCodePoints(input: string): number[] {
@@ -134,8 +134,7 @@ export function btoa(s: string): string {
     }
     byteArray.push(charCode);
   }
-  const result = base64.fromByteArray(Uint8Array.from(byteArray));
-  return result;
+  return base64.fromByteArray(Uint8Array.from(byteArray));
 }
 
 interface DecoderOptions {
@@ -184,7 +183,7 @@ class SingleByteDecoder implements Decoder {
 
 // The encodingMap is a hash of labels that are indexed by the conical
 // encoding.
-const encodingMap: { [key: string]: string[] } = {
+const encodingMap: Record<string, string[]> = {
   "windows-1252": [
     "ansi_x3.4-1968",
     "ascii",
@@ -424,10 +423,6 @@ function isEitherArrayBuffer(x: any): x is EitherArrayBuffer {
 
 export class TextDecoder {
   readonly #encoding: string;
-
-  get encoding(): string {
-    return this.#encoding;
-  }
   readonly fatal: boolean = false;
   readonly ignoreBOM: boolean = false;
 
@@ -440,7 +435,7 @@ export class TextDecoder {
     }
     label = String(label).trim().toLowerCase();
     const encoding = encodings.get(label);
-    if (!encoding) {
+    if (encoding === undefined) {
       throw new RangeError(
         `The encoding label provided ('${label}') is invalid.`
       );
@@ -449,6 +444,10 @@ export class TextDecoder {
       throw new TypeError(`Internal decoder ('${encoding}') not found.`);
     }
     this.#encoding = encoding;
+  }
+
+  get encoding(): string {
+    return this.#encoding;
   }
 
   decode(
@@ -526,6 +525,7 @@ interface TextEncoderEncodeIntoResult {
 
 export class TextEncoder {
   readonly encoding = "utf-8";
+
   encode(input = ""): Uint8Array {
     // Deno.core.encode() provides very efficient utf-8 encoding
     if (this.encoding === "utf-8") {
@@ -546,7 +546,8 @@ export class TextEncoder {
 
     return new Uint8Array(output);
   }
-  encodeInto(input: string, dest: Uint8Array): TextEncoderEncodeIntoResult {
+
+  encodeInto(input: string, dst: Uint8Array): TextEncoderEncodeIntoResult {
     const encoder = new UTF8Encoder();
     const inputStream = new Stream(stringToCodePoints(input));
 
@@ -557,9 +558,9 @@ export class TextEncoder {
       if (result === "finished") {
         break;
       }
-      if (dest.length - written >= result.length) {
+      if (dst.length - written >= result.length) {
         read++;
-        dest.set(result, written);
+        dst.set(result, written);
         written += result.length;
         if (result.length > 3) {
           // increment read a second time if greater than U+FFFF
@@ -570,10 +571,7 @@ export class TextEncoder {
       }
     }
 
-    return {
-      read,
-      written,
-    };
+    return { read, written };
   }
   get [Symbol.toStringTag](): string {
     return "TextEncoder";

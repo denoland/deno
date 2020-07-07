@@ -450,11 +450,11 @@ class Host implements ts.CompilerHost {
         delete sourceFile.sourceCode;
       }
       return sourceFile.tsSourceFile;
-    } catch (e) {
+    } catch (err) {
       if (onError) {
-        onError(String(e));
+        onError(String(err));
       } else {
-        throw e;
+        throw err;
       }
       return undefined;
     }
@@ -523,7 +523,7 @@ class IncrementalCompileHost extends Host {
 
   constructor(options: IncrementalCompilerHostOptions) {
     super(options);
-    const { buildInfo } = options;
+    const buildInfo = options.buildInfo;
     if (buildInfo) {
       this.#buildInfo = buildInfo;
     }
@@ -979,7 +979,8 @@ function processConfigureResponse(
   configResult: ConfigureResponse,
   configPath: string
 ): ts.Diagnostic[] | undefined {
-  const { ignoredOptions, diagnostics } = configResult;
+  const ignoredOptions = configResult.ignoredOptions;
+  const diagnostics = configResult.diagnostics;
   if (ignoredOptions) {
     console.warn(
       yellow(`Unsupported compiler options in "${configPath}"\n`) +
@@ -997,9 +998,13 @@ function normalizeString(path: string): string {
   let dots = 0;
   let code: number;
   for (let i = 0, len = path.length; i <= len; ++i) {
-    if (i < len) code = path.charCodeAt(i);
-    else if (code! === CHAR_FORWARD_SLASH) break;
-    else code = CHAR_FORWARD_SLASH;
+    if (i < len) {
+      code = path.charCodeAt(i);
+    } else if (code! === CHAR_FORWARD_SLASH) {
+      break;
+    } else {
+      code = CHAR_FORWARD_SLASH;
+    }
 
     if (code === CHAR_FORWARD_SLASH) {
       if (lastSlash === i - 1 || dots === 1) {
@@ -1622,7 +1627,8 @@ function runtimeTranspile(
   request: RuntimeTranspileRequest
 ): Promise<Record<string, TranspileOnlyResult>> {
   const result: Record<string, TranspileOnlyResult> = {};
-  const { sources, options } = request;
+  const sources = request.sources;
+  const options = request.options;
   const compilerOptions = options
     ? Object.assign(
         {},

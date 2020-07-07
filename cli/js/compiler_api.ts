@@ -21,11 +21,10 @@ export function transpileOnly(
   options: CompilerOptions = {}
 ): Promise<Record<string, TranspileOnlyResult>> {
   util.log("Deno.transpileOnly", { sources: Object.keys(sources), options });
-  const payload = {
+  return runtimeCompilerOps.transpile({
     sources,
     options: JSON.stringify(options),
-  };
-  return runtimeCompilerOps.transpile(payload);
+  });
 }
 
 // TODO(bartlomieju): change return type to interface?

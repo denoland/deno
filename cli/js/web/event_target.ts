@@ -487,7 +487,7 @@ export class EventTargetImpl implements EventTarget {
     eventTargetData.set(this, getDefaultTargetData());
   }
 
-  public addEventListener(
+  addEventListener(
     type: string,
     callback: EventListenerOrEventListenerObject | null,
     options?: AddEventListenerOptions | boolean
@@ -519,7 +519,7 @@ export class EventTargetImpl implements EventTarget {
     listeners[type].push({ callback, options });
   }
 
-  public removeEventListener(
+  removeEventListener(
     type: string,
     callback: EventListenerOrEventListenerObject | null,
     options?: EventListenerOptions | boolean
@@ -552,7 +552,7 @@ export class EventTargetImpl implements EventTarget {
     }
   }
 
-  public dispatchEvent(event: Event): boolean {
+  dispatchEvent(event: Event): boolean {
     requiredArguments("EventTarget.dispatchEvent", arguments.length, 1);
     const self = this ?? globalThis;
 

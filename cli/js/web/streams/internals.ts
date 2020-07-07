@@ -899,26 +899,26 @@ export function readableStreamHasDefaultReader(
 }
 
 export function readableStreamPipeTo<T>(
-  source: ReadableStreamImpl<T>,
-  dest: WritableStreamImpl<T>,
+  src: ReadableStreamImpl<T>,
+  dst: WritableStreamImpl<T>,
   preventClose: boolean,
   preventAbort: boolean,
   preventCancel: boolean,
-  signal: AbortSignalImpl | undefined
+  signal?: AbortSignalImpl
 ): Promise<void> {
-  assert(isReadableStream(source));
-  assert(isWritableStream(dest));
+  assert(isReadableStream(src));
+  assert(isWritableStream(dst));
   assert(
     typeof preventClose === "boolean" &&
       typeof preventAbort === "boolean" &&
       typeof preventCancel === "boolean"
   );
   assert(signal === undefined || signal instanceof AbortSignalImpl);
-  assert(!isReadableStreamLocked(source));
-  assert(!isWritableStreamLocked(dest));
-  const reader = acquireReadableStreamDefaultReader(source);
-  const writer = acquireWritableStreamDefaultWriter(dest);
-  source[sym.disturbed] = true;
+  assert(!isReadableStreamLocked(src));
+  assert(!isWritableStreamLocked(dst));
+  const reader = acquireReadableStreamDefaultReader(src);
+  const writer = acquireWritableStreamDefaultWriter(dst);
+  src[sym.disturbed] = true;
   let shuttingDown = false;
   const promise = getDeferred<void>();
   let abortAlgorithm: () => void;
@@ -928,8 +928,8 @@ export function readableStreamPipeTo<T>(
       const actions: Array<() => Promise<void>> = [];
       if (!preventAbort) {
         actions.push(() => {
-          if (dest[sym.state] === "writable") {
-            return writableStreamAbort(dest, error);
+          if (dst[sym.state] === "writable") {
+            return writableStreamAbort(dst, error);
           } else {
             return Promise.resolve(undefined);
           }
@@ -937,8 +937,8 @@ export function readableStreamPipeTo<T>(
       }
       if (!preventCancel) {
         actions.push(() => {
-          if (source[sym.state] === "readable") {
-            return readableStreamCancel(source, error);
+          if (src[sym.state] === "readable") {
+            return readableStreamCancel(src, error);
           } else {
             return Promise.resolve(undefined);
           }
@@ -1029,8 +1029,8 @@ export function readableStreamPipeTo<T>(
     shuttingDown = true;
 
     if (
-      dest[sym.state] === "writable" &&
-      writableStreamCloseQueuedOrInFlight(dest) === false
+      dst[sym.state] === "writable" &&
+      writableStreamCloseQueuedOrInFlight(dst) === false
     ) {
       setPromiseIsHandledToTrue(waitForWritesToFinish().then(doTheRest));
     } else {
@@ -1045,8 +1045,8 @@ export function readableStreamPipeTo<T>(
     shuttingDown = true;
 
     if (
-      dest[sym.state] === "writable" &&
-      !writableStreamCloseQueuedOrInFlight(dest)
+      dst[sym.state] === "writable" &&
+      !writableStreamCloseQueuedOrInFlight(dst)
     ) {
       setPromiseIsHandledToTrue(
         waitForWritesToFinish().then(() => finalize(isError, error))
@@ -1086,26 +1086,10 @@ export function readableStreamPipeTo<T>(
     });
   }
 
-  isOrBecomesErrored(
-    source,
-    reader[sym.closedPromise].promise,
-    (storedError) => {
-      if (!preventAbort) {
-        shutdownWithAction(
-          () => writableStreamAbort(dest, storedError),
-          true,
-          storedError
-        );
-      } else {
-        shutdown(true, storedError);
-      }
-    }
-  );
-
-  isOrBecomesErrored(dest, writer[sym.closedPromise].promise, (storedError) => {
-    if (!preventCancel) {
+  isOrBecomesErrored(src, reader[sym.closedPromise].promise, (storedError) => {
+    if (!preventAbort) {
       shutdownWithAction(
-        () => readableStreamCancel(source, storedError),
+        () => writableStreamAbort(dst, storedError),
         true,
         storedError
       );
@@ -1114,7 +1098,19 @@ export function readableStreamPipeTo<T>(
     }
   });
 
-  isOrBecomesClosed(source, reader[sym.closedPromise].promise, () => {
+  isOrBecomesErrored(dst, writer[sym.closedPromise].promise, (storedError) => {
+    if (!preventCancel) {
+      shutdownWithAction(
+        () => readableStreamCancel(src, storedError),
+        true,
+        storedError
+      );
+    } else {
+      shutdown(true, storedError);
+    }
+  });
+
+  isOrBecomesClosed(src, reader[sym.closedPromise].promise, () => {
     if (!preventClose) {
       shutdownWithAction(() =>
         writableStreamDefaultWriterCloseWithErrorPropagation(writer)
@@ -1122,16 +1118,13 @@ export function readableStreamPipeTo<T>(
     }
   });
 
-  if (
-    writableStreamCloseQueuedOrInFlight(dest) ||
-    dest[sym.state] === "closed"
-  ) {
+  if (writableStreamCloseQueuedOrInFlight(dst) || dst[sym.state] === "closed") {
     const destClosed = new TypeError(
       "The destination writable stream closed before all data could be piped to it."
     );
     if (!preventCancel) {
       shutdownWithAction(
-        () => readableStreamCancel(source, destClosed),
+        () => readableStreamCancel(src, destClosed),
         true,
         destClosed
       );
@@ -1525,8 +1518,8 @@ export function setUpTransformStreamDefaultControllerFromTransformer<I, O>(
         // it defaults to no tranformation, so I is assumed to be O
         (chunk as unknown) as O
       );
-    } catch (e) {
-      return Promise.reject(e);
+    } catch (err) {
+      return Promise.reject(err);
     }
     return Promise.resolve();
   };
@@ -1666,8 +1659,8 @@ export function transformStreamDefaultControllerEnqueue<I, O>(
   }
   try {
     readableStreamDefaultControllerEnqueue(readableController, chunk);
-  } catch (e) {
-    transformStreamErrorWritableAndUnblockWrite(stream, e);
+  } catch (err) {
+    transformStreamErrorWritableAndUnblockWrite(stream, err);
     throw stream[sym.readable][sym.storedError];
   }
   const backpressure = readableStreamDefaultControllerHasBackpressure(
@@ -2001,8 +1994,8 @@ function writableStreamDefaultControllerGetChunkSize<W>(
   let returnValue: number;
   try {
     returnValue = controller[sym.strategySizeAlgorithm](chunk);
-  } catch (e) {
-    writableStreamDefaultControllerErrorIfNeeded(controller, e);
+  } catch (err) {
+    writableStreamDefaultControllerErrorIfNeeded(controller, err);
     return 1;
   }
   return returnValue;
@@ -2078,8 +2071,8 @@ function writableStreamDefaultControllerWrite<W>(
   const writeRecord = { chunk };
   try {
     enqueueValueWithSize(controller, writeRecord, chunkSize);
-  } catch (e) {
-    writableStreamDefaultControllerErrorIfNeeded(controller, e);
+  } catch (err) {
+    writableStreamDefaultControllerErrorIfNeeded(controller, err);
     return;
   }
   const stream = controller[sym.controlledWritableStream];

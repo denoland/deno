@@ -35,13 +35,11 @@ export const ReadableStreamAsyncIteratorPrototype: ReadableStreamAsyncIterator =
       }
       return readableStreamDefaultReaderRead(reader).then((result) => {
         assert(typeof result === "object");
-        const { done } = result;
-        assert(typeof done === "boolean");
-        if (done) {
+        assert(typeof result.done === "boolean");
+        if (result.done) {
           readableStreamReaderGenericRelease(reader);
         }
-        const { value } = result;
-        return readableStreamCreateReadResult(value, done, true);
+        return readableStreamCreateReadResult(result.value, result.done, true);
       });
     },
     return(

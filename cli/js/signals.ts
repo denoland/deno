@@ -73,14 +73,10 @@ enum MacOSSignal {
   SIGUSR2 = 31,
 }
 
-export const Signal: { [key: string]: number } = {};
+export const Signal: Record<string, number> = {};
 
 export function setSignals(): void {
-  if (build.os === "darwin") {
-    Object.assign(Signal, MacOSSignal);
-  } else {
-    Object.assign(Signal, LinuxSignal);
-  }
+  Object.assign(Signal, build.os === "darwin" ? MacOSSignal : LinuxSignal);
 }
 
 export function signal(signo: number): SignalStream {

@@ -23,6 +23,7 @@ const promiseTable: Record<
   number,
   util.Resolvable<JsonResponse>
 > = Object.create(null);
+
 let _nextPromiseId = 1;
 
 function nextPromiseId(): number {

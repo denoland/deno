@@ -50,25 +50,31 @@ export interface SeekerSync {
   seekSync(offset: number, whence: SeekMode): number;
 }
 
+export interface CopyOptions {
+  bufSize?: number;
+}
+
+export interface IterOptions {
+  bufSize?: number;
+}
+
 export async function copy(
   src: Reader,
   dst: Writer,
-  options?: {
-    bufSize?: number;
-  }
+  options?: CopyOptions
 ): Promise<number> {
   let n = 0;
   const bufSize = options?.bufSize ?? DEFAULT_BUFFER_SIZE;
-  const b = new Uint8Array(bufSize);
+  const buf = new Uint8Array(bufSize);
   let gotEOF = false;
   while (gotEOF === false) {
-    const result = await src.read(b);
+    const result = await src.read(buf);
     if (result === null) {
       gotEOF = true;
     } else {
       let nwritten = 0;
       while (nwritten < result) {
-        nwritten += await dst.write(b.subarray(nwritten, result));
+        nwritten += await dst.write(buf.subarray(nwritten, result));
       }
       n += nwritten;
     }
@@ -78,36 +84,32 @@ export async function copy(
 
 export async function* iter(
   r: Reader,
-  options?: {
-    bufSize?: number;
-  }
+  options?: IterOptions
 ): AsyncIterableIterator<Uint8Array> {
   const bufSize = options?.bufSize ?? DEFAULT_BUFFER_SIZE;
-  const b = new Uint8Array(bufSize);
+  const buf = new Uint8Array(bufSize);
   while (true) {
-    const result = await r.read(b);
+    const result = await r.read(buf);
     if (result === null) {
       break;
     }
 
-    yield b.subarray(0, result);
+    yield buf.subarray(0, result);
   }
 }
 
 export function* iterSync(
   r: ReaderSync,
-  options?: {
-    bufSize?: number;
-  }
+  options?: IterOptions
 ): IterableIterator<Uint8Array> {
   const bufSize = options?.bufSize ?? DEFAULT_BUFFER_SIZE;
-  const b = new Uint8Array(bufSize);
+  const buf = new Uint8Array(bufSize);
   while (true) {
-    const result = r.readSync(b);
+    const result = r.readSync(buf);
     if (result === null) {
       break;
     }
 
-    yield b.subarray(0, result);
+    yield buf.subarray(0, result);
   }
 }

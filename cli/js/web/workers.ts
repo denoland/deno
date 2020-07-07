@@ -2,9 +2,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import {
   createWorker,
-  hostTerminateWorker,
-  hostPostMessage,
   hostGetMessage,
+  hostPostMessage,
+  hostTerminateWorker,
 } from "../ops/worker_host.ts";
 import { log } from "../util.ts";
 import { TextDecoder, TextEncoder } from "./text_encoding.ts";
@@ -42,14 +42,12 @@ export class MessageEvent extends Event {
   }
 }
 
-function encodeMessage(data: any): Uint8Array {
-  const dataJson = JSON.stringify(data);
-  return encoder.encode(dataJson);
+function encodeMessage(data: unknown): Uint8Array {
+  return encoder.encode(JSON.stringify(data));
 }
 
 function decodeMessage(dataIntArray: Uint8Array): any {
-  const dataJson = decoder.decode(dataIntArray);
-  return JSON.parse(dataJson);
+  return JSON.parse(decoder.decode(dataIntArray));
 }
 
 interface WorkerHostError {
@@ -84,9 +82,9 @@ export class WorkerImpl extends EventTarget implements Worker {
   readonly #name: string;
   #terminated = false;
 
-  public onerror?: (e: ErrorEvent) => void;
-  public onmessage?: (e: MessageEvent) => void;
-  public onmessageerror?: (e: MessageEvent) => void;
+  onerror?: (e: ErrorEvent) => void;
+  onmessage?: (e: MessageEvent) => void;
+  onmessageerror?: (e: MessageEvent) => void;
 
   constructor(specifier: string, options?: WorkerOptions) {
     super();
@@ -99,6 +97,7 @@ export class WorkerImpl extends EventTarget implements Worker {
     }
 
     this.#name = name;
+
     const hasSourceCode = false;
     const sourceCode = decoder.decode(new Uint8Array());
 
@@ -120,14 +119,15 @@ export class WorkerImpl extends EventTarget implements Worker {
 
     const useDenoNamespace = options ? !!options.deno : false;
 
-    const { id } = createWorker(
+    const worker = createWorker(
       specifier,
       hasSourceCode,
       sourceCode,
       useDenoNamespace,
       options?.name
     );
-    this.#id = id;
+    this.#id = worker.id;
+
     this.#poll();
   }
 
@@ -135,12 +135,12 @@ export class WorkerImpl extends EventTarget implements Worker {
     let data;
     try {
       data = decodeMessage(new Uint8Array(msgData));
-    } catch (e) {
+    } catch {
       const msgErrorEvent = new MessageEvent("messageerror", {
         cancelable: false,
         data,
       });
-      if (this.onmessageerror) {
+      if (this.onmessageerror !== undefined) {
         this.onmessageerror(msgErrorEvent);
       }
       return;
@@ -151,25 +151,25 @@ export class WorkerImpl extends EventTarget implements Worker {
       data,
     });
 
-    if (this.onmessage) {
+    if (this.onmessage !== undefined) {
       this.onmessage(msgEvent);
     }
 
     this.dispatchEvent(msgEvent);
   };
 
-  #handleError = (e: WorkerHostError): boolean => {
+  #handleError = (err: WorkerHostError): boolean => {
     const event = new ErrorEvent("error", {
       cancelable: true,
-      message: e.message,
-      lineno: e.lineNumber ? e.lineNumber + 1 : undefined,
-      colno: e.columnNumber ? e.columnNumber + 1 : undefined,
-      filename: e.fileName,
+      message: err.message,
+      lineno: err.lineNumber ? err.lineNumber + 1 : undefined,
+      colno: err.columnNumber ? err.columnNumber + 1 : undefined,
+      filename: err.fileName,
       error: null,
     });
 
     let handled = false;
-    if (this.onerror) {
+    if (this.onerror !== undefined) {
       this.onerror(event);
     }
 

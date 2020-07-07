@@ -32,6 +32,7 @@ const schemePorts: Record<string, string> = {
   ws: "80",
   wss: "443",
 };
+
 const MAX_PORT = 2 ** 16 - 1;
 
 // Remove the part of the string that matches the pattern and return the
@@ -43,18 +44,18 @@ const MAX_PORT = 2 ** 16 - 1;
 //        = ["deno.land", "80"]
 function takePattern(string: string, pattern: RegExp): [string, string] {
   let capture = "";
-  const rest = string.replace(pattern, (_, capture_) => {
-    capture = capture_;
+  const rest = string.replace(pattern, (_, _capture) => {
+    capture = _capture;
     return "";
   });
   return [capture, rest];
 }
 
-function parse(url: string, isBase = true): URLParts | undefined {
+function parse(url: string, base = true): URLParts | undefined {
   const parts: Partial<URLParts> = {};
   let restUrl;
   [parts.protocol, restUrl] = takePattern(url.trim(), /^([a-z]+):/);
-  if (isBase && parts.protocol == "") {
+  if (base && parts.protocol == "") {
     return undefined;
   }
   if (parts.protocol == "file") {
@@ -71,7 +72,7 @@ function parse(url: string, isBase = true): URLParts | undefined {
   } else if (specialSchemes.includes(parts.protocol)) {
     let restAuthority;
     [restAuthority, restUrl] = takePattern(restUrl, /^[/\\]{2,}([^/\\?#]+)/);
-    if (isBase && restAuthority == "") {
+    if (base && restAuthority == "") {
       return undefined;
     }
     let restAuthentication;
@@ -388,7 +389,7 @@ export class URLImpl implements URL {
 
   set search(value: string) {
     value = String(value);
-    const query = value == "" || value.charAt(0) == "?" ? value : `?${value}`;
+    const query = value === "" || value.charAt(0) === "?" ? value : `?${value}`;
     parts.get(this)!.query = encodeSearch(query);
     this.#updateSearchParams();
   }
@@ -408,7 +409,7 @@ export class URLImpl implements URL {
 
   constructor(url: string | URL, base?: string | URL) {
     let baseParts: URLParts | undefined;
-    if (base) {
+    if (base != null) {
       baseParts = typeof base === "string" ? parse(base) : parts.get(base);
       if (baseParts === undefined) {
         throw new TypeError("Invalid base URL.");
@@ -417,12 +418,15 @@ export class URLImpl implements URL {
 
     const urlParts =
       typeof url === "string" ? parse(url, !baseParts) : parts.get(url);
-    if (urlParts == undefined) {
+    if (urlParts === undefined) {
       throw new TypeError("Invalid URL.");
     }
 
     if (urlParts.protocol) {
-      urlParts.path = normalizePath(urlParts.path, urlParts.protocol == "file");
+      urlParts.path = normalizePath(
+        urlParts.path,
+        urlParts.protocol === "file"
+      );
       parts.set(this, urlParts);
     } else if (baseParts) {
       parts.set(this, {
@@ -434,7 +438,7 @@ export class URLImpl implements URL {
         path: resolvePathFromBase(
           urlParts.path,
           baseParts.path || "/",
-          baseParts.protocol == "file"
+          baseParts.protocol === "file"
         ),
         query: urlParts.query,
         hash: urlParts.hash,

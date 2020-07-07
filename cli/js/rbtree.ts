@@ -5,9 +5,9 @@
 import { assert } from "./util.ts";
 
 class RBNode<T> {
-  public left: this | null;
-  public right: this | null;
-  public red: boolean;
+  left: this | null;
+  right: this | null;
+  red: boolean;
 
   constructor(public data: T) {
     this.left = null;

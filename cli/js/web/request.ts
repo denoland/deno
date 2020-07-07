@@ -26,10 +26,10 @@ function normalizeMethod(m: string): string {
 }
 
 export class Request extends body.Body implements domTypes.Request {
-  public method: string;
-  public url: string;
-  public credentials?: "omit" | "same-origin" | "include";
-  public headers: Headers;
+  method: string;
+  url: string;
+  credentials?: "omit" | "same-origin" | "include";
+  headers: Headers;
 
   constructor(input: domTypes.RequestInfo, init?: domTypes.RequestInit) {
     if (arguments.length < 1) {
@@ -110,7 +110,7 @@ export class Request extends body.Body implements domTypes.Request {
     }
   }
 
-  public clone(): domTypes.Request {
+  clone(): domTypes.Request {
     if (this.bodyUsed) {
       throw TypeError(body.BodyUsedError);
     }
@@ -121,16 +121,16 @@ export class Request extends body.Body implements domTypes.Request {
       headersList.push(header);
     }
 
-    let body2 = this._bodySource;
+    let _body = this._bodySource;
 
     if (this._bodySource instanceof ReadableStreamImpl) {
       const tees = this._bodySource.tee();
       this._stream = this._bodySource = tees[0];
-      body2 = tees[1];
+      _body = tees[1];
     }
 
     return new Request(this.url, {
-      body: body2,
+      body: _body,
       method: this.method,
       headers: new Headers(headersList),
       credentials: this.credentials,

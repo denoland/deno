@@ -1,6 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 import { EventImpl } from "./event.ts";
 import { EventTargetImpl } from "./event_target.ts";
+
+type AbortAlgorithm = () => void;
 
 export const add = Symbol("add");
 export const signalAbort = Symbol("signalAbort");
@@ -8,10 +11,10 @@ export const remove = Symbol("remove");
 
 export class AbortSignalImpl extends EventTargetImpl implements AbortSignal {
   #aborted?: boolean;
-  #abortAlgorithms = new Set<() => void>();
+  #abortAlgorithms = new Set<AbortAlgorithm>();
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  onabort: ((this: AbortSignal, ev: Event) => any) | null = null;
+  onabort: ((this: AbortSignal, e: Event) => any) | null = null;
 
   [add](algorithm: () => void): void {
     this.#abortAlgorithms.add(algorithm);
@@ -35,6 +38,7 @@ export class AbortSignalImpl extends EventTargetImpl implements AbortSignal {
 
   constructor() {
     super();
+
     this.addEventListener("abort", (evt: Event) => {
       const { onabort } = this;
       if (typeof onabort === "function") {

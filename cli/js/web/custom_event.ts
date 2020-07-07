@@ -10,8 +10,7 @@ export class CustomEventImpl<T = any> extends Event implements CustomEvent {
   constructor(type: string, eventInitDict: CustomEventInit<T> = {}) {
     super(type, eventInitDict);
     requiredArguments("CustomEvent", arguments.length, 1);
-    const { detail } = eventInitDict;
-    this.#detail = detail as T;
+    this.#detail = eventInitDict.detail as T;
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

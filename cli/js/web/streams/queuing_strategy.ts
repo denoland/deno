@@ -3,10 +3,14 @@
 import { setFunctionName } from "./internals.ts";
 import { customInspect } from "../console.ts";
 
+interface QueuingStrategyOptions {
+  highWaterMark: number;
+}
+
 export class CountQueuingStrategyImpl implements CountQueuingStrategy {
   highWaterMark: number;
 
-  constructor({ highWaterMark }: { highWaterMark: number }) {
+  constructor({ highWaterMark }: QueuingStrategyOptions) {
     this.highWaterMark = highWaterMark;
   }
 
@@ -31,7 +35,7 @@ export class ByteLengthQueuingStrategyImpl
   implements ByteLengthQueuingStrategy {
   highWaterMark: number;
 
-  constructor({ highWaterMark }: { highWaterMark: number }) {
+  constructor({ highWaterMark }: QueuingStrategyOptions) {
     this.highWaterMark = highWaterMark;
   }
 

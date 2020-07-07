@@ -17,7 +17,11 @@ class FsWatcher implements AsyncIterableIterator<FsEvent> {
 
   constructor(paths: string[], options: FsWatcherOptions) {
     const { recursive } = options;
-    this.rid = sendSync("op_fs_events_open", { recursive, paths });
+
+    this.rid = sendSync("op_fs_events_open", {
+      recursive,
+      paths,
+    });
   }
 
   next(): Promise<IteratorResult<FsEvent>> {

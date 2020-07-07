@@ -75,25 +75,25 @@ export async function workerMessageRecvCallback(data: string): Promise<void> {
       }
     }
     globalThis.dispatchEvent(msgEvent);
-  } catch (e) {
+  } catch (err) {
     let handled = false;
 
     const errorEvent = new ErrorEvent("error", {
       cancelable: true,
-      message: e.message,
-      lineno: e.lineNumber ? e.lineNumber + 1 : undefined,
-      colno: e.columnNumber ? e.columnNumber + 1 : undefined,
-      filename: e.fileName,
+      message: err.message,
+      lineno: err.lineNumber ? err.lineNumber + 1 : undefined,
+      colno: err.columnNumber ? err.columnNumber + 1 : undefined,
+      filename: err.fileName,
       error: null,
     });
 
     if (globalThis["onerror"]) {
       const ret = globalThis.onerror(
-        e.message,
-        e.fileName,
-        e.lineNumber,
-        e.columnNumber,
-        e
+        err.message,
+        err.fileName,
+        err.lineNumber,
+        err.columnNumber,
+        err
       );
       handled = ret === true;
     }
@@ -104,7 +104,7 @@ export async function workerMessageRecvCallback(data: string): Promise<void> {
     }
 
     if (!handled) {
-      throw e;
+      throw err;
     }
   }
 }

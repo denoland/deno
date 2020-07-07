@@ -83,14 +83,14 @@ export function bootstrapMainRuntime(): void {
   setEventTargetData(globalThis);
   // Registers the handler for window.onload function.
   globalThis.addEventListener("load", (e) => {
-    const { onload } = globalThis;
+    const onload = globalThis.onload;
     if (typeof onload === "function") {
       onload(e);
     }
   });
   // Registers the handler for window.onunload function.
   globalThis.addEventListener("unload", (e) => {
-    const { onunload } = globalThis;
+    const onunload = globalThis.onunload;
     if (typeof onunload === "function") {
       onunload(e);
     }

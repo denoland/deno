@@ -26,13 +26,21 @@ import * as sym from "./symbols.ts";
 import { customInspect } from "../console.ts";
 import { AbortSignalImpl } from "../abort_signal.ts";
 
+interface GetIteratorOptions {
+  preventCancel?: boolean;
+}
+
+interface GetReaderOptions {
+  mode?: string;
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export class ReadableStreamImpl<R = any> implements ReadableStream<R> {
   [sym.disturbed]: boolean;
   [sym.readableStreamController]:
     | ReadableStreamDefaultControllerImpl<R>
     | ReadableByteStreamControllerImpl;
-  [sym.reader]: ReadableStreamGenericReader<R> | undefined;
+  [sym.reader]?: ReadableStreamGenericReader<R>;
   [sym.state]: "readable" | "closed" | "errored";
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   [sym.storedError]: any;
@@ -101,18 +109,19 @@ export class ReadableStreamImpl<R = any> implements ReadableStream<R> {
 
   getIterator({
     preventCancel,
-  }: { preventCancel?: boolean } = {}): AsyncIterableIterator<R> {
+  }: GetIteratorOptions = {}): AsyncIterableIterator<R> {
     if (!isReadableStream(this)) {
       throw new TypeError("Invalid ReadableStream.");
     }
-    const reader = acquireReadableStreamDefaultReader(this);
     const iterator = Object.create(ReadableStreamAsyncIteratorPrototype);
-    iterator[sym.asyncIteratorReader] = reader;
+    iterator[sym.asyncIteratorReader] = acquireReadableStreamDefaultReader(
+      this
+    );
     iterator[sym.preventCancel] = Boolean(preventCancel);
     return iterator;
   }
 
-  getReader({ mode }: { mode?: string } = {}): ReadableStreamDefaultReader<R> {
+  getReader({ mode }: GetReaderOptions = {}): ReadableStreamDefaultReader<R> {
     if (!isReadableStream(this)) {
       throw new TypeError("Invalid ReadableStream.");
     }
@@ -155,43 +164,42 @@ export class ReadableStreamImpl<R = any> implements ReadableStream<R> {
     if (isWritableStreamLocked(writable)) {
       throw new TypeError("writable is locked.");
     }
-    const promise = readableStreamPipeTo(
-      this,
-      writable,
-      preventClose,
-      preventAbort,
-      preventCancel,
-      signal
+    setPromiseIsHandledToTrue(
+      readableStreamPipeTo(
+        this,
+        writable,
+        preventClose,
+        preventAbort,
+        preventCancel,
+        signal
+      )
     );
-    setPromiseIsHandledToTrue(promise);
     return readable;
   }
 
-  pipeTo(
+  async pipeTo(
     dest: WritableStream<R>,
     { preventClose, preventAbort, preventCancel, signal }: PipeOptions = {}
   ): Promise<void> {
     if (!isReadableStream(this)) {
-      return Promise.reject(new TypeError("Invalid ReadableStream."));
+      throw new TypeError("Invalid ReadableStream.");
     }
     if (!isWritableStream(dest)) {
-      return Promise.reject(
-        new TypeError("dest is not a valid WritableStream.")
-      );
+      throw new TypeError("dest is not a valid WritableStream.");
     }
     preventClose = Boolean(preventClose);
     preventAbort = Boolean(preventAbort);
     preventCancel = Boolean(preventCancel);
     if (signal && !(signal instanceof AbortSignalImpl)) {
-      return Promise.reject(new TypeError("Invalid signal."));
+      throw new TypeError("Invalid signal.");
     }
     if (isReadableStreamLocked(this)) {
-      return Promise.reject(new TypeError("ReadableStream is locked."));
+      throw new TypeError("ReadableStream is locked.");
     }
     if (isWritableStreamLocked(dest)) {
-      return Promise.reject(new TypeError("dest is locked."));
+      throw new TypeError("dest is locked.");
     }
-    return readableStreamPipeTo(
+    const r = await readableStreamPipeTo(
       this,
       dest,
       preventClose,
@@ -199,6 +207,7 @@ export class ReadableStreamImpl<R = any> implements ReadableStream<R> {
       preventCancel,
       signal
     );
+    return r;
   }
 
   tee(): [ReadableStreamImpl<R>, ReadableStreamImpl<R>] {

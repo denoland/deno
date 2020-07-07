@@ -9,9 +9,7 @@ let logSource = "JS";
 // @internal
 export function setLogDebug(debug: boolean, source?: string): void {
   logDebug = debug;
-  if (source) {
-    logSource = source;
-  }
+  logSource = source ?? logSource;
 }
 
 export function log(...args: unknown[]): void {
@@ -112,11 +110,11 @@ function pathFromURLPosix(url: URL): string {
 
 export function pathFromURL(pathOrUrl: string | URL): string {
   if (pathOrUrl instanceof URL) {
-    if (pathOrUrl.protocol != "file:") {
+    if (pathOrUrl.protocol !== "file:") {
       throw new TypeError("Must be a file URL.");
     }
 
-    return build.os == "windows"
+    return build.os === "windows"
       ? pathFromURLWin32(pathOrUrl)
       : pathFromURLPosix(pathOrUrl);
   }

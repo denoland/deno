@@ -1,10 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import * as blob from "./blob.ts";
+import { DenoBlob } from "./blob.ts";
 
-export class DomFileImpl extends blob.DenoBlob implements File {
-  lastModified: number;
-  name: string;
+export class DomFileImpl extends DenoBlob implements File {
+  readonly lastModified: number;
+  readonly name: string;
 
   constructor(
     fileBits: BlobPart[],

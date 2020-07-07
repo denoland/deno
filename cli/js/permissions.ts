@@ -55,7 +55,7 @@ export type PermissionDescriptor =
   | HrtimePermissionDescriptor;
 
 export class PermissionStatus {
-  constructor(public state: PermissionState) {}
+  constructor(readonly state: PermissionState) {}
   // TODO(kt3k): implement onchange handler
 }
 

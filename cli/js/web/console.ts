@@ -16,6 +16,7 @@ import {
 } from "../colors.ts";
 
 type ConsoleContext = Set<unknown>;
+
 type InspectOptions = Partial<{
   depth: number;
   indentLevel: number;
@@ -827,7 +828,7 @@ export class Console {
       return this.log(data);
     }
 
-    const objectValues: { [key: string]: string[] } = {};
+    const objectValues: Record<string, string[]> = {};
     const indexKeys: string[] = [];
     const values: string[] = [];
 
@@ -871,7 +872,7 @@ export class Console {
         hasPrimitives = true;
         values.push(stringifyValue(value));
       } else {
-        const valueObj = (value as { [key: string]: unknown }) || {};
+        const valueObj = (value as Record<string, unknown>) || {};
         const keys = properties || Object.keys(valueObj);
         for (const k of keys) {
           if (primitive || !valueObj.hasOwnProperty(k)) {
