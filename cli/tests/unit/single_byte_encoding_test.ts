@@ -473,7 +473,7 @@ for (let i = 0, l = singleByteEncodings.length; i < l; i++) {
           const data = decoder.decode(view);
 
           assertEquals(decoder.encoding, encoding.name.toLowerCase());
-          // @ts-ignore
+          // @ts-ignore pass
           assertDecode(data, encoding.name);
         },
       }[label]
