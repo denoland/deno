@@ -52,8 +52,8 @@ export async function compile(
 
   const emitMap: Record<string, string> = {};
 
-  for (const [key, emmitedSource] of Object.entries(result.emitMap)) {
-    emitMap[key] = emmitedSource.contents;
+  for (const [key, emittedSource] of Object.entries(result.emitMap)) {
+    emitMap[key] = emittedSource.contents;
   }
 
   return [maybeDiagnostics, emitMap];

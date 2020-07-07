@@ -1,9 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { sendSync } from "./dispatch_json.ts";
 
-// TODO(bartlomieju): duplicated in `cli/js/permissions.ts` as
-// `PermissionState
-export type PermissionResponse = "granted" | "denied" | "prompt";
+import { sendSync } from "./dispatch_json.ts";
+import { PermissionState } from "../permissions.ts";
 
 interface PermissionRequest {
   name: string;
@@ -11,14 +9,14 @@ interface PermissionRequest {
   path?: string;
 }
 
-export function query(desc: PermissionRequest): PermissionResponse {
+export function query(desc: PermissionRequest): PermissionState {
   return sendSync("op_query_permission", desc).state;
 }
 
-export function revoke(desc: PermissionRequest): PermissionResponse {
+export function revoke(desc: PermissionRequest): PermissionState {
   return sendSync("op_revoke_permission", desc).state;
 }
 
-export function request(desc: PermissionRequest): PermissionResponse {
+export function request(desc: PermissionRequest): PermissionState {
   return sendSync("op_request_permission", desc).state;
 }
