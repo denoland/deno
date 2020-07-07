@@ -1804,10 +1804,10 @@ declare namespace Deno {
       : (Writer & Closer) | null;
     readonly stdout: T["stdout"] extends "piped"
       ? Reader & Closer
-      : (Writer & Closer) | null;
+      : (Reader & Closer) | null;
     readonly stderr: T["stderr"] extends "piped"
       ? Reader & Closer
-      : (Writer & Closer) | null;
+      : (Reader & Closer) | null;
     /** Resolves to the current status of the process. */
     status(): Promise<ProcessStatus>;
     /** Buffer the stdout until EOF and return it as `Uint8Array`.
