@@ -18,6 +18,11 @@ import { MultipartParser } from "./fetch/multipart.ts";
 const { TextEncoder, TextDecoder } = encoding;
 const DenoBlob = blob.DenoBlob;
 
+interface BodyMeta {
+  contentType: string;
+  size?: number;
+}
+
 function validateBodyType(owner: Body, bodySource: BodyInit | null): boolean {
   if (isTypedArray(bodySource)) {
     return true;
@@ -40,10 +45,16 @@ function validateBodyType(owner: Body, bodySource: BodyInit | null): boolean {
 }
 
 async function bufferFromStream(
-  stream: ReadableStreamReader
+  stream: ReadableStreamReader,
+  size?: number
 ): Promise<ArrayBuffer> {
   const encoder = new TextEncoder();
   const buffer = new Buffer();
+
+  if (size) {
+    // grow to avoid unnecessary allocations & copies
+    buffer.grow(size);
+  }
 
   while (true) {
     const { done, value } = await stream.read();
@@ -71,14 +82,13 @@ export const BodyUsedError =
 
 export class Body implements domTypes.Body {
   protected _stream: ReadableStreamImpl<string | ArrayBuffer> | null;
-
-  constructor(
-    protected _bodySource: BodyInit | null,
-    readonly contentType: string
-  ) {
+  #contentType: string;
+  #size: number | undefined;
+  constructor(protected _bodySource: BodyInit | null, meta: BodyMeta) {
     validateBodyType(this, _bodySource);
     this._bodySource = _bodySource;
-    this.contentType = contentType;
+    this.#contentType = meta.contentType;
+    this.#size = meta.size;
     this._stream = null;
   }
 
@@ -111,15 +121,15 @@ export class Body implements domTypes.Body {
 
   public async blob(): Promise<Blob> {
     return new DenoBlob([await this.arrayBuffer()], {
-      type: this.contentType,
+      type: this.#contentType,
     });
   }
 
   // ref: https://fetch.spec.whatwg.org/#body-mixin
   public async formData(): Promise<FormData> {
     const formData = new FormData();
-    if (hasHeaderValueOf(this.contentType, "multipart/form-data")) {
-      const params = getHeaderValueParams(this.contentType);
+    if (hasHeaderValueOf(this.#contentType, "multipart/form-data")) {
+      const params = getHeaderValueParams(this.#contentType);
 
       // ref: https://tools.ietf.org/html/rfc2046#section-5.1
       const boundary = params.get("boundary")!;
@@ -128,7 +138,7 @@ export class Body implements domTypes.Body {
 
       return multipartParser.parse();
     } else if (
-      hasHeaderValueOf(this.contentType, "application/x-www-form-urlencoded")
+      hasHeaderValueOf(this.#contentType, "application/x-www-form-urlencoded")
     ) {
       // From https://github.com/github/fetch/blob/master/fetch.js
       // Copyright (c) 2014-2016 GitHub, Inc. MIT License
@@ -184,7 +194,7 @@ export class Body implements domTypes.Body {
         enc.encode(this._bodySource).buffer as ArrayBuffer
       );
     } else if (this._bodySource instanceof ReadableStreamImpl) {
-      return bufferFromStream(this._bodySource.getReader());
+      return bufferFromStream(this._bodySource.getReader(), this.#size);
     } else if (
       this._bodySource instanceof FormData ||
       this._bodySource instanceof URLSearchParams

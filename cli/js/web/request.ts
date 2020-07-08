@@ -71,7 +71,7 @@ export class Request extends body.Body implements domTypes.Request {
     }
 
     const contentType = headers.get("content-type") || "";
-    super(b, contentType);
+    super(b, { contentType });
     this.headers = headers;
 
     // readonly attribute ByteString method;

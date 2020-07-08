@@ -38,10 +38,10 @@ export class Process<T extends RunOptions = RunOptions> {
     : (Writer & Closer) | null;
   readonly stdout!: T["stdout"] extends "piped"
     ? Reader & Closer
-    : (Writer & Closer) | null;
+    : (Reader & Closer) | null;
   readonly stderr!: T["stderr"] extends "piped"
     ? Reader & Closer
-    : (Writer & Closer) | null;
+    : (Reader & Closer) | null;
 
   // @internal
   constructor(res: RunResponse) {

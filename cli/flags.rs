@@ -382,6 +382,7 @@ fn bundle_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   config_arg_parse(flags, matches);
   importmap_arg_parse(flags, matches);
   unstable_arg_parse(flags, matches);
+  lock_args_parse(flags, matches);
 
   let source_file = matches.value_of("source_file").unwrap().to_string();
 
@@ -724,6 +725,8 @@ These must be added to the path manually if required.")
 
 fn bundle_subcommand<'a, 'b>() -> App<'a, 'b> {
   SubCommand::with_name("bundle")
+    .arg(lock_arg())
+    .arg(lock_write_arg())
     .arg(
       Arg::with_name("source_file")
         .takes_value(true)
@@ -1109,7 +1112,7 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
       Arg::with_name("filter")
         .long("filter")
         .takes_value(true)
-        .help("Run tests with this string in the test name"),
+        .help("Run tests with this string or pattern in the test name"),
     )
     .arg(
       Arg::with_name("files")
@@ -2123,6 +2126,29 @@ mod tests {
           out_file: Some(PathBuf::from("bundle.js")),
         },
         allow_write: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn bundle_with_lock() {
+    let r = flags_from_vec_safe(svec![
+      "deno",
+      "bundle",
+      "--lock-write",
+      "--lock=lock.json",
+      "source.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Bundle {
+          source_file: "source.ts".to_string(),
+          out_file: None,
+        },
+        lock_write: true,
+        lock: Some("lock.json".to_string()),
         ..Flags::default()
       }
     );
