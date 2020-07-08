@@ -5,7 +5,7 @@ import {
   getLevelName,
   LevelName,
 } from "./levels.ts";
-import { BaseHandler } from "./handlers.ts";
+import type { BaseHandler } from "./handlers.ts";
 
 export interface LogRecordOptions {
   msg: string;

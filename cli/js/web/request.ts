@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 import * as body from "./body.ts";
-import * as domTypes from "./dom_types.d.ts";
+import type * as domTypes from "./dom_types.d.ts";
 import { ReadableStreamImpl } from "./streams/readable_stream.ts";
 
 function byteUpperCase(s: string): string {
