@@ -19,9 +19,9 @@ import {
   setUpReadableStreamDefaultControllerFromUnderlyingSource,
   validateAndNormalizeHighWaterMark,
 } from "./internals.ts";
-import { ReadableByteStreamControllerImpl } from "./readable_byte_stream_controller.ts";
+import type { ReadableByteStreamControllerImpl } from "./readable_byte_stream_controller.ts";
 import { ReadableStreamAsyncIteratorPrototype } from "./readable_stream_async_iterator.ts";
-import { ReadableStreamDefaultControllerImpl } from "./readable_stream_default_controller.ts";
+import type { ReadableStreamDefaultControllerImpl } from "./readable_stream_default_controller.ts";
 import * as sym from "./symbols.ts";
 import { customInspect } from "../console.ts";
 import { AbortSignalImpl } from "../abort_signal.ts";

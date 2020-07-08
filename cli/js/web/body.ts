@@ -1,8 +1,12 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 import * as blob from "./blob.ts";
 import * as encoding from "./text_encoding.ts";
-import * as domTypes from "./dom_types.d.ts";
+import type * as domTypes from "./dom_types.d.ts";
 import { ReadableStreamImpl } from "./streams/readable_stream.ts";
 import { isReadableStreamDisturbed } from "./streams/internals.ts";
+import { Buffer } from "../buffer.ts";
+
 import {
   getHeaderValueParams,
   hasHeaderValueOf,
@@ -13,6 +17,11 @@ import { MultipartParser } from "./fetch/multipart.ts";
 // only namespace imports work for now, plucking out what we need
 const { TextEncoder, TextDecoder } = encoding;
 const DenoBlob = blob.DenoBlob;
+
+interface BodyMeta {
+  contentType: string;
+  size?: number;
+}
 
 function validateBodyType(owner: Body, bodySource: BodyInit | null): boolean {
   if (isTypedArray(bodySource)) {
@@ -35,25 +44,17 @@ function validateBodyType(owner: Body, bodySource: BodyInit | null): boolean {
   );
 }
 
-function concatenate(arrays: Uint8Array[]): ArrayBuffer {
-  let totalLength = 0;
-  for (const arr of arrays) {
-    totalLength += arr.length;
-  }
-  const result = new Uint8Array(totalLength);
-  let offset = 0;
-  for (const arr of arrays) {
-    result.set(arr, offset);
-    offset += arr.length;
-  }
-  return result.buffer as ArrayBuffer;
-}
-
 async function bufferFromStream(
-  stream: ReadableStreamReader
+  stream: ReadableStreamReader,
+  size?: number
 ): Promise<ArrayBuffer> {
-  const parts: Uint8Array[] = [];
   const encoder = new TextEncoder();
+  const buffer = new Buffer();
+
+  if (size) {
+    // grow to avoid unnecessary allocations & copies
+    buffer.grow(size);
+  }
 
   while (true) {
     const { done, value } = await stream.read();
@@ -61,11 +62,11 @@ async function bufferFromStream(
     if (done) break;
 
     if (typeof value === "string") {
-      parts.push(encoder.encode(value));
+      buffer.writeSync(encoder.encode(value));
     } else if (value instanceof ArrayBuffer) {
-      parts.push(new Uint8Array(value));
+      buffer.writeSync(new Uint8Array(value));
     } else if (value instanceof Uint8Array) {
-      parts.push(value);
+      buffer.writeSync(value);
     } else if (!value) {
       // noop for undefined
     } else {
@@ -73,7 +74,7 @@ async function bufferFromStream(
     }
   }
 
-  return concatenate(parts);
+  return buffer.bytes().buffer;
 }
 
 export const BodyUsedError =
@@ -81,14 +82,13 @@ export const BodyUsedError =
 
 export class Body implements domTypes.Body {
   protected _stream: ReadableStreamImpl<string | ArrayBuffer> | null;
-
-  constructor(
-    protected _bodySource: BodyInit | null,
-    readonly contentType: string
-  ) {
+  #contentType: string;
+  #size: number | undefined;
+  constructor(protected _bodySource: BodyInit | null, meta: BodyMeta) {
     validateBodyType(this, _bodySource);
     this._bodySource = _bodySource;
-    this.contentType = contentType;
+    this.#contentType = meta.contentType;
+    this.#size = meta.size;
     this._stream = null;
   }
 
@@ -121,15 +121,15 @@ export class Body implements domTypes.Body {
 
   public async blob(): Promise<Blob> {
     return new DenoBlob([await this.arrayBuffer()], {
-      type: this.contentType,
+      type: this.#contentType,
     });
   }
 
   // ref: https://fetch.spec.whatwg.org/#body-mixin
   public async formData(): Promise<FormData> {
     const formData = new FormData();
-    if (hasHeaderValueOf(this.contentType, "multipart/form-data")) {
-      const params = getHeaderValueParams(this.contentType);
+    if (hasHeaderValueOf(this.#contentType, "multipart/form-data")) {
+      const params = getHeaderValueParams(this.#contentType);
 
       // ref: https://tools.ietf.org/html/rfc2046#section-5.1
       const boundary = params.get("boundary")!;
@@ -138,7 +138,7 @@ export class Body implements domTypes.Body {
 
       return multipartParser.parse();
     } else if (
-      hasHeaderValueOf(this.contentType, "application/x-www-form-urlencoded")
+      hasHeaderValueOf(this.#contentType, "application/x-www-form-urlencoded")
     ) {
       // From https://github.com/github/fetch/blob/master/fetch.js
       // Copyright (c) 2014-2016 GitHub, Inc. MIT License
@@ -194,7 +194,7 @@ export class Body implements domTypes.Body {
         enc.encode(this._bodySource).buffer as ArrayBuffer
       );
     } else if (this._bodySource instanceof ReadableStreamImpl) {
-      return bufferFromStream(this._bodySource.getReader());
+      return bufferFromStream(this._bodySource.getReader(), this.#size);
     } else if (
       this._bodySource instanceof FormData ||
       this._bodySource instanceof URLSearchParams

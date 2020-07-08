@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 import { sendSync, sendAsync } from "./dispatch_json.ts";
 
 export interface NetAddr {
@@ -18,7 +19,7 @@ export enum ShutdownMode {
   // See http://man7.org/linux/man-pages/man2/shutdown.2.html
   // Corresponding to SHUT_RD, SHUT_WR, SHUT_RDWR
   Read = 0,
-  Write,
+  Write = 1,
   ReadWrite, // unused
 }
 
@@ -80,10 +81,6 @@ export type SendRequest = {
   rid: number;
 } & Addr;
 
-export async function send(
-  args: SendRequest,
-  zeroCopy: Uint8Array
-): Promise<number> {
-  const byteLength = await sendAsync("op_datagram_send", args, zeroCopy);
-  return byteLength;
+export function send(args: SendRequest, zeroCopy: Uint8Array): Promise<number> {
+  return sendAsync("op_datagram_send", args, zeroCopy);
 }

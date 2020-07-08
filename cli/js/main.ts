@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 import { bootstrapMainRuntime } from "./runtime_main.ts";
 import { bootstrapWorkerRuntime } from "./runtime_worker.ts";
 

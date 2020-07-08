@@ -38,10 +38,7 @@ fn get_windows_handle(
 pub fn init(i: &mut CoreIsolate, s: &State) {
   i.register_op("op_set_raw", s.stateful_json_op2(op_set_raw));
   i.register_op("op_isatty", s.stateful_json_op2(op_isatty));
-  i.register_op(
-    "op_get_console_size",
-    s.stateful_json_op2(op_get_console_size),
-  );
+  i.register_op("op_console_size", s.stateful_json_op2(op_console_size));
 }
 
 #[derive(Deserialize)]
@@ -256,8 +253,8 @@ pub fn op_isatty(
 }
 
 #[derive(Deserialize)]
-struct GetConsoleSizeArgs {
-  rid: u32,
+struct ConsoleSizeArgs {
+    rid: u32,
 }
 
 #[derive(Serialize)]
@@ -266,14 +263,14 @@ struct ConsoleSize {
   rows: u32,
 }
 
-pub fn op_get_console_size(
+pub fn op_console_size(
   isolate_state: &mut CoreIsolateState,
   state: &State,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
-  state.check_unstable("Deno.getConsoleSize");
-  let args: GetConsoleSizeArgs = serde_json::from_value(args)?;
+  state.check_unstable("Deno.consoleSize");
+  let args: ConsoleSizeArgs = serde_json::from_value(args)?;
   let rid = args.rid;
 
   let mut resource_table = isolate_state.resource_table.borrow_mut();

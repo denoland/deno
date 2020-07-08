@@ -2,7 +2,7 @@
 // Ported from https://github.com/browserify/path-browserify/
 /** This module is browser compatible. */
 
-import { FormatInputPathObject, ParsedPath } from "./_interface.ts";
+import type { FormatInputPathObject, ParsedPath } from "./_interface.ts";
 import { CHAR_DOT, CHAR_FORWARD_SLASH } from "./_constants.ts";
 
 import {
@@ -435,5 +435,5 @@ export function parse(path: string): ParsedPath {
  * are ignored.
  */
 export function fromFileUrl(url: string | URL): string {
-  return new URL(url).pathname;
+  return new URL(String(url)).pathname;
 }
