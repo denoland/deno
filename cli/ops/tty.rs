@@ -287,7 +287,7 @@ fn console_size(rid: i32) -> Result<ConsoleSize, std::io::Error> {
 }
 
 #[cfg(windows)]
-fn console_size(_rid: i32) -> Result<ConsoleSize, std::io::Error> {
+fn console_size(rid: i32) -> Result<ConsoleSize, std::io::Error> {
   use winapi::um::winbase::STD_OUTPUT_HANDLE;
   use winapi::um::wincon::GetConsoleScreenBufferInfo;
   use winapi::um::wincon::{CONSOLE_SCREEN_BUFFER_INFO, COORD, SMALL_RECT};
@@ -308,27 +308,7 @@ fn console_size(_rid: i32) -> Result<ConsoleSize, std::io::Error> {
     dwMaximumWindowSize: null_coord,
   };
 
-  // let mut resource_table = isolate_state.resource_table.borrow_mut();
-  // let _result = std_file_resource(
-  //   &mut resource_table,
-  //   args.rid as u32,
-  //   move |r| match r {
-  //     Ok(std_file) => {
-  //       let handle = get_windows_handle(&std_file)
-  //         .expect("Could not get windows handle.");
-  //
-  //       // For testing purposes
-  //       assert!(
-  //         unsafe { winapi::um::processenv::GetStdHandle(STD_OUTPUT_HANDLE) }
-  //           == handle
-  //       );
-  //
-  //       Ok(true)
-  //     }
-  //     _ => Ok(false),
-  //   },
-  // )
-  // .expect("Could not get console screen buffer info.");
+  assert!(rid == 1, "Cannot get the size of an arbitrary console");
 
   unsafe {
     GetConsoleScreenBufferInfo(
