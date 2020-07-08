@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 import { sendSync } from "./dispatch_json.ts";
 
 export function loadavg(): number[] {
@@ -32,7 +33,7 @@ function deleteEnv(key: string): void {
 
 export const env = {
   get: getEnv,
-  toObject(): { [key: string]: string } {
+  toObject(): Record<string, string> {
     return sendSync("op_env");
   },
   set: setEnv,

@@ -16,8 +16,8 @@ import {
   validateAndNormalizeHighWaterMark,
 } from "./internals.ts";
 import * as sym from "./symbols.ts";
-import { WritableStreamDefaultControllerImpl } from "./writable_stream_default_controller.ts";
-import { WritableStreamDefaultWriterImpl } from "./writable_stream_default_writer.ts";
+import type { WritableStreamDefaultControllerImpl } from "./writable_stream_default_controller.ts";
+import type { WritableStreamDefaultWriterImpl } from "./writable_stream_default_writer.ts";
 import { customInspect } from "../console.ts";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

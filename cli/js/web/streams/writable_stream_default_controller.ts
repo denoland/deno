@@ -13,7 +13,7 @@ import {
   writableStreamDefaultControllerError,
 } from "./internals.ts";
 import * as sym from "./symbols.ts";
-import { WritableStreamImpl } from "./writable_stream.ts";
+import type { WritableStreamImpl } from "./writable_stream.ts";
 import { customInspect } from "../console.ts";
 
 export class WritableStreamDefaultControllerImpl<W>
