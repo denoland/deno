@@ -104,7 +104,8 @@ impl State {
     move |isolate_state: &mut deno_core::CoreIsolateState,
           zero_copy: &mut [ZeroCopyBuf]|
           -> Op {
-      let bytes_sent_control = zero_copy[0].len() as u64;
+      let bytes_sent_control =
+        zero_copy.get(0).map(|s| s.len()).unwrap_or(0) as u64;
       let bytes_sent_zero_copy =
         zero_copy[1..].iter().map(|b| b.len()).sum::<usize>() as u64;
 
