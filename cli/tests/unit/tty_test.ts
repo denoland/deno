@@ -3,11 +3,11 @@ import { unitTest, assert } from "./test_util.ts";
 
 // Note tests for Deno.setRaw is in integration tests.
 
-unitTest(function getConsoleSize(): void {
-  const consoleSize = Deno.getConsoleSize(Deno.stdout.rid);
-
-  assert(consoleSize.columns >= 0);
-  assert(consoleSize.rows >= 0);
+unitTest(function getConsoleSizeFile(): void {
+  const file = Deno.openSync("cli/tests/hello.txt");
+  assertThrows(() => {
+    Deno.getConsoleSize(file.rid);
+  }, Deno.errors.Other);
 });
 
 unitTest(function getConsoleSizeError(): void {
