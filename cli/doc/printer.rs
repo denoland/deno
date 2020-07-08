@@ -201,6 +201,9 @@ impl<'a> DocPrinter<'a> {
         self.format_jsdoc(w, &js_doc, 2, self.details)?;
       }
     }
+    for index_sign_def in &class_def.index_signatures {
+      writeln!(w, "{}{}", Indent(1), index_sign_def)?;
+    }
     for node in class_def.methods.iter().filter(|node| {
       self.private
         || node
@@ -247,6 +250,9 @@ impl<'a> DocPrinter<'a> {
         self.format_jsdoc(w, js_doc, 2, self.details)?;
       }
     }
+    for index_sign_def in &interface_def.index_signatures {
+      writeln!(w, "{}{}", Indent(1), index_sign_def)?;
+    }
     writeln!(w)
   }
 
@@ -281,7 +287,11 @@ impl<'a> DocPrinter<'a> {
       colors::bold(&node.name),
     )?;
     if !class_def.type_params.is_empty() {
-      write!(w, "<{}>", SliceDisplayer::new(&class_def.type_params, ", "))?;
+      write!(
+        w,
+        "<{}>",
+        SliceDisplayer::new(&class_def.type_params, ", ", false)
+      )?;
     }
 
     if let Some(extends) = &class_def.extends {
@@ -291,7 +301,7 @@ impl<'a> DocPrinter<'a> {
       write!(
         w,
         "<{}>",
-        SliceDisplayer::new(&class_def.super_type_params, ", ")
+        SliceDisplayer::new(&class_def.super_type_params, ", ", false)
       )?;
     }
 
@@ -300,7 +310,7 @@ impl<'a> DocPrinter<'a> {
         w,
         " {} {}",
         colors::magenta("implements"),
-        SliceDisplayer::new(&class_def.implements, ", ")
+        SliceDisplayer::new(&class_def.implements, ", ", false)
       )?;
     }
 
@@ -342,10 +352,14 @@ impl<'a> DocPrinter<'a> {
       write!(
         w,
         "<{}>",
-        SliceDisplayer::new(&function_def.type_params, ", ")
+        SliceDisplayer::new(&function_def.type_params, ", ", false)
       )?;
     }
-    write!(w, "({})", SliceDisplayer::new(&function_def.params, ", "))?;
+    write!(
+      w,
+      "({})",
+      SliceDisplayer::new(&function_def.params, ", ", false)
+    )?;
     if let Some(return_type) = &function_def.return_type {
       write!(w, ": {}", return_type)?;
     }
@@ -371,7 +385,7 @@ impl<'a> DocPrinter<'a> {
       write!(
         w,
         "<{}>",
-        SliceDisplayer::new(&interface_def.type_params, ", ")
+        SliceDisplayer::new(&interface_def.type_params, ", ", false)
       )?;
     }
 
@@ -380,7 +394,7 @@ impl<'a> DocPrinter<'a> {
         w,
         " {} {}",
         colors::magenta("extends"),
-        SliceDisplayer::new(&interface_def.extends, ", ")
+        SliceDisplayer::new(&interface_def.extends, ", ", false)
       )?;
     }
 
@@ -406,7 +420,7 @@ impl<'a> DocPrinter<'a> {
       write!(
         w,
         "<{}>",
-        SliceDisplayer::new(&type_alias_def.type_params, ", ")
+        SliceDisplayer::new(&type_alias_def.type_params, ", ", false)
       )?;
     }
 

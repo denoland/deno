@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use super::display::SliceDisplayer;
+use super::display::{display_readonly, SliceDisplayer};
 use super::interface::expr_to_name;
 use super::params::ts_fn_param_to_param_def;
 use super::ts_type_param::maybe_type_param_decl_to_type_param_defs;
@@ -371,6 +371,7 @@ impl Into<TsTypeDef> for &TsTypeLit {
     let mut methods = vec![];
     let mut properties = vec![];
     let mut call_signatures = vec![];
+    let mut index_signatures = vec![];
 
     for type_element in &self.members {
       use crate::swc_ecma_ast::TsTypeElement::*;
@@ -452,9 +453,27 @@ impl Into<TsTypeDef> for &TsTypeLit {
           };
           call_signatures.push(call_sig_def);
         }
+        TsIndexSignature(ts_index_sig) => {
+          let mut params = vec![];
+          for param in &ts_index_sig.params {
+            let param_def = ts_fn_param_to_param_def(param, None);
+            params.push(param_def);
+          }
+
+          let ts_type = ts_index_sig
+            .type_ann
+            .as_ref()
+            .map(|rt| (&*rt.type_ann).into());
+
+          let index_sig_def = LiteralIndexSignatureDef {
+            readonly: ts_index_sig.readonly,
+            params,
+            ts_type,
+          };
+          index_signatures.push(index_sig_def);
+        }
         // TODO:
         TsConstructSignatureDecl(_) => {}
-        TsIndexSignature(_) => {}
       }
     }
 
@@ -462,6 +481,7 @@ impl Into<TsTypeDef> for &TsTypeLit {
       methods,
       properties,
       call_signatures,
+      index_signatures,
     };
 
     TsTypeDef {
@@ -648,7 +668,7 @@ impl Display for LiteralMethodDef {
       f,
       "{}({})",
       self.name,
-      SliceDisplayer::new(&self.params, ", ")
+      SliceDisplayer::new(&self.params, ", ", false)
     )?;
     if let Some(return_type) = &self.return_type {
       write!(f, ": {}", return_type)?;
@@ -687,7 +707,30 @@ pub struct LiteralCallSignatureDef {
 
 impl Display for LiteralCallSignatureDef {
   fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-    write!(f, "({})", SliceDisplayer::new(&self.params, ", "))?;
+    write!(f, "({})", SliceDisplayer::new(&self.params, ", ", false))?;
+    if let Some(ts_type) = &self.ts_type {
+      write!(f, ": {}", ts_type)?;
+    }
+    Ok(())
+  }
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct LiteralIndexSignatureDef {
+  pub readonly: bool,
+  pub params: Vec<ParamDef>,
+  pub ts_type: Option<TsTypeDef>,
+}
+
+impl Display for LiteralIndexSignatureDef {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+    write!(
+      f,
+      "{}[{}]",
+      display_readonly(self.readonly),
+      SliceDisplayer::new(&self.params, ", ", false)
+    )?;
     if let Some(ts_type) = &self.ts_type {
       write!(f, ": {}", ts_type)?;
     }
@@ -701,6 +744,7 @@ pub struct TsTypeLiteralDef {
   pub methods: Vec<LiteralMethodDef>,
   pub properties: Vec<LiteralPropertyDef>,
   pub call_signatures: Vec<LiteralCallSignatureDef>,
+  pub index_signatures: Vec<LiteralIndexSignatureDef>,
 }
 
 #[derive(Debug, PartialEq, Serialize, Clone)]
@@ -842,7 +886,7 @@ impl Display for TsTypeDef {
           } else {
             ""
           }),
-          SliceDisplayer::new(&fn_or_constructor.params, ", "),
+          SliceDisplayer::new(&fn_or_constructor.params, ", ", false),
           &fn_or_constructor.ts_type,
         )
       }
@@ -856,7 +900,7 @@ impl Display for TsTypeDef {
       }
       TsTypeDefKind::Intersection => {
         let intersection = self.intersection.as_ref().unwrap();
-        write!(f, "{}", SliceDisplayer::new(&intersection, " & "))
+        write!(f, "{}", SliceDisplayer::new(&intersection, " & ", false))
       }
       TsTypeDefKind::Keyword => {
         write!(f, "{}", colors::cyan(self.keyword.as_ref().unwrap()))
@@ -891,16 +935,17 @@ impl Display for TsTypeDef {
       TsTypeDefKind::This => write!(f, "this"),
       TsTypeDefKind::Tuple => {
         let tuple = self.tuple.as_ref().unwrap();
-        write!(f, "[{}]", SliceDisplayer::new(&tuple, ", "))
+        write!(f, "[{}]", SliceDisplayer::new(&tuple, ", ", false))
       }
       TsTypeDefKind::TypeLiteral => {
         let type_literal = self.type_literal.as_ref().unwrap();
         write!(
           f,
-          "{{ {}{}{} }}",
-          SliceDisplayer::new(&type_literal.call_signatures, ", "),
-          SliceDisplayer::new(&type_literal.methods, ", "),
-          SliceDisplayer::new(&type_literal.properties, ", "),
+          "{{ {}{}{}{}}}",
+          SliceDisplayer::new(&type_literal.call_signatures, "; ", true),
+          SliceDisplayer::new(&type_literal.methods, "; ", true),
+          SliceDisplayer::new(&type_literal.properties, "; ", true),
+          SliceDisplayer::new(&type_literal.index_signatures, "; ", true),
         )
       }
       TsTypeDefKind::TypeOperator => {
@@ -914,13 +959,13 @@ impl Display for TsTypeDef {
         let type_ref = self.type_ref.as_ref().unwrap();
         write!(f, "{}", colors::intense_blue(&type_ref.type_name))?;
         if let Some(type_params) = &type_ref.type_params {
-          write!(f, "<{}>", SliceDisplayer::new(type_params, ", "))?;
+          write!(f, "<{}>", SliceDisplayer::new(type_params, ", ", false))?;
         }
         Ok(())
       }
       TsTypeDefKind::Union => {
         let union = self.union.as_ref().unwrap();
-        write!(f, "{}", SliceDisplayer::new(union, " | "))
+        write!(f, "{}", SliceDisplayer::new(union, " | ", false))
       }
     }
   }

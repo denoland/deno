@@ -97,7 +97,7 @@ impl Display for ParamDef {
         write!(
           f,
           "{{{}}}{}",
-          SliceDisplayer::new(&props, ", "),
+          SliceDisplayer::new(&props, ", ", false),
           display_optional(*optional)
         )?;
         if let Some(ts_type) = ts_type {

@@ -545,6 +545,7 @@ export class Foobar extends Fizz implements Buzz, Aldrin {
           }
         }
       ],
+      "indexSignatures": [],
       "methods": [
         {
           "jsDoc": "Async foo method",
@@ -715,7 +716,8 @@ export const env: {
             }
             ],
             "properties":[],
-            "callSignatures":[]
+            "callSignatures":[],
+            "indexSignatures": []
           }
         },
         "kind":"const"
@@ -792,6 +794,7 @@ export default class Foobar {
           }
         ],
         "properties": [],
+        "indexSignatures": [],
         "methods": []
       }
   }]);
@@ -906,7 +909,8 @@ export default interface Reader {
         ],
         "properties": [],
         "callSignatures": [],
-        "typeParams": [],
+        "indexSignatures": [],
+        "typeParams": []
     }
   }]);
 
@@ -1285,6 +1289,7 @@ export interface Reader extends Foo, Bar {
         ],
         "properties": [],
         "callSignatures": [],
+        "indexSignatures": [],
         "typeParams": [],
     }
   }]);
@@ -1330,6 +1335,7 @@ export interface TypedIface<T> {
         ],
         "properties": [],
         "callSignatures": [],
+        "indexSignatures": [],
         "typeParams": [
           { "name": "T" }
         ],
@@ -1694,6 +1700,16 @@ export class Class {
     "set b(_v: void)"
   );
 
+  contains_test!(class_index_signature,
+    r#"
+export class C {
+  [key: string]: number;
+}
+    "#,
+    details;
+    "[key: string]: number"
+  );
+
   contains_test!(class_implements,
     "export class Class implements Iterator {}";
     "class Class implements Iterator"
@@ -1724,6 +1740,16 @@ export class Class {
     details;
     "someproperty: bool",
     "optproperty: bigint"
+  );
+
+  contains_test!(class_readonly_index_signature,
+    r#"
+export class C {
+  readonly [key: string]: number;
+}
+    "#,
+    details;
+    "readonly [key: string]: number"
   );
 
   contains_test!(class_static_property,
@@ -1864,6 +1890,21 @@ export function f(): Generic<[string, number]> { return {}; }
     "Generic<[string, number]>"
   );
 
+  contains_test!(type_literal_declaration,
+    "export type T = {}";
+    "{ }"
+  );
+
+  contains_test!(type_literal_index_signature,
+    "export type T = { [key: string]: number; }";
+    "[key: string]: number"
+  );
+
+  contains_test!(type_literal_readonly_index_signature,
+    "export type T = { readonly [key: string]: number; }";
+    "readonly [key: string]: number"
+  );
+
   contains_test!(interface_declaration,
   "export interface Interface {}";
     "interface Interface"
@@ -1889,6 +1930,16 @@ export function f(): Generic<[string, number]> { return {}; }
     "interface Interface<V> extends Iterable<V>"
   );
 
+  contains_test!(interface_index_signature,
+    r#"
+export interface Interface {
+  [index: number]: Interface;
+}
+    "#,
+    details;
+    "[index: number]: Interface"
+  );
+
   contains_test!(interface_method,
     r#"
 export interface I {
@@ -1911,6 +1962,16 @@ export interface I {
     details;
     "p: string",
     "po?: number"
+  );
+
+  contains_test!(interface_readonly_index_signature,
+    r#"
+export interface Interface {
+  readonly [index: number]: Interface;
+}
+    "#,
+    details;
+    "readonly [index: number]: Interface"
   );
 
   const JSDOC_SOURCE: &str = r#"

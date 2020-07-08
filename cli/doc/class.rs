@@ -14,7 +14,7 @@ use super::function::FunctionDef;
 use super::interface::expr_to_name;
 use super::params::{
   assign_pat_to_param_def, ident_to_param_def, pat_to_param_def,
-  prop_name_to_string,
+  prop_name_to_string, ts_fn_param_to_param_def,
 };
 use super::parser::DocParser;
 use super::ts_type::{
@@ -44,7 +44,7 @@ impl Display for ClassConstructorDef {
       "{}{}({})",
       display_accessibility(self.accessibility),
       colors::magenta("constructor"),
-      SliceDisplayer::new(&self.params, ", "),
+      SliceDisplayer::new(&self.params, ", ", false),
     )
   }
 }
@@ -84,6 +84,29 @@ impl Display for ClassPropertyDef {
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
+pub struct ClassIndexSignatureDef {
+  pub readonly: bool,
+  pub params: Vec<ParamDef>,
+  pub ts_type: Option<TsTypeDef>,
+}
+
+impl Display for ClassIndexSignatureDef {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+    write!(
+      f,
+      "{}[{}]",
+      display_readonly(self.readonly),
+      SliceDisplayer::new(&self.params, ", ", false)
+    )?;
+    if let Some(ts_type) = &self.ts_type {
+      write!(f, ": {}", ts_type)?;
+    }
+    Ok(())
+  }
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct ClassMethodDef {
   pub js_doc: Option<String>,
   pub accessibility: Option<swc_ecma_ast::Accessibility>,
@@ -109,7 +132,7 @@ impl Display for ClassMethodDef {
       display_generator(self.function_def.is_generator),
       colors::bold(&self.name),
       display_optional(self.optional),
-      SliceDisplayer::new(&self.function_def.params, ", "),
+      SliceDisplayer::new(&self.function_def.params, ", ", false),
     )?;
     if let Some(return_type) = &self.function_def.return_type {
       write!(f, ": {}", return_type)?;
@@ -125,6 +148,7 @@ pub struct ClassDef {
   pub is_abstract: bool,
   pub constructors: Vec<ClassConstructorDef>,
   pub properties: Vec<ClassPropertyDef>,
+  pub index_signatures: Vec<ClassIndexSignatureDef>,
   pub methods: Vec<ClassMethodDef>,
   pub extends: Option<String>,
   pub implements: Vec<TsTypeDef>,
@@ -139,6 +163,7 @@ pub fn class_to_class_def(
   let mut constructors = vec![];
   let mut methods = vec![];
   let mut properties = vec![];
+  let mut index_signatures = vec![];
 
   let extends: Option<String> = match &class.super_class {
     Some(boxed) => {
@@ -258,8 +283,26 @@ pub fn class_to_class_def(
         };
         properties.push(prop_def);
       }
+      TsIndexSignature(ts_index_sig) => {
+        let mut params = vec![];
+        for param in &ts_index_sig.params {
+          let param_def = ts_fn_param_to_param_def(param, None);
+          params.push(param_def);
+        }
+
+        let ts_type = ts_index_sig
+          .type_ann
+          .as_ref()
+          .map(|rt| (&*rt.type_ann).into());
+
+        let index_sig_def = ClassIndexSignatureDef {
+          readonly: ts_index_sig.readonly,
+          params,
+          ts_type,
+        };
+        index_signatures.push(index_sig_def);
+      }
       // TODO(bartlomieju):
-      TsIndexSignature(_) => {}
       PrivateMethod(_) => {}
       PrivateProp(_) => {}
     }
@@ -278,6 +321,7 @@ pub fn class_to_class_def(
     implements,
     constructors,
     properties,
+    index_signatures,
     methods,
     type_params,
     super_type_params,

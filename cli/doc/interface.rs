@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::colors;
-use crate::doc::display::{display_optional, SliceDisplayer};
+use crate::doc::display::{display_optional, display_readonly, SliceDisplayer};
 use crate::swc_ecma_ast;
 use serde::Serialize;
 
@@ -34,7 +34,7 @@ impl Display for InterfaceMethodDef {
       "{}{}({})",
       colors::bold(&self.name),
       display_optional(self.optional),
-      SliceDisplayer::new(&self.params, ", "),
+      SliceDisplayer::new(&self.params, ", ", false),
     )?;
     if let Some(return_type) = &self.return_type {
       write!(f, ": {}", return_type)?;
@@ -73,6 +73,29 @@ impl Display for InterfacePropertyDef {
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
+pub struct InterfaceIndexSignatureDef {
+  pub readonly: bool,
+  pub params: Vec<ParamDef>,
+  pub ts_type: Option<TsTypeDef>,
+}
+
+impl Display for InterfaceIndexSignatureDef {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+    write!(
+      f,
+      "{}[{}]",
+      display_readonly(self.readonly),
+      SliceDisplayer::new(&self.params, ", ", false)
+    )?;
+    if let Some(ts_type) = &self.ts_type {
+      write!(f, ": {}", ts_type)?;
+    }
+    Ok(())
+  }
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct InterfaceCallSignatureDef {
   pub location: Location,
   pub js_doc: Option<String>,
@@ -88,6 +111,7 @@ pub struct InterfaceDef {
   pub methods: Vec<InterfaceMethodDef>,
   pub properties: Vec<InterfacePropertyDef>,
   pub call_signatures: Vec<InterfaceCallSignatureDef>,
+  pub index_signatures: Vec<InterfaceIndexSignatureDef>,
   pub type_params: Vec<TsTypeParamDef>,
 }
 
@@ -118,6 +142,7 @@ pub fn get_doc_for_ts_interface_decl(
   let mut methods = vec![];
   let mut properties = vec![];
   let mut call_signatures = vec![];
+  let mut index_signatures = vec![];
 
   for type_element in &interface_decl.body.body {
     use crate::swc_ecma_ast::TsTypeElement::*;
@@ -232,9 +257,27 @@ pub fn get_doc_for_ts_interface_decl(
         };
         call_signatures.push(call_sig_def);
       }
+      TsIndexSignature(ts_index_sig) => {
+        let mut params = vec![];
+        for param in &ts_index_sig.params {
+          let param_def = ts_fn_param_to_param_def(param, None);
+          params.push(param_def);
+        }
+
+        let ts_type = ts_index_sig
+          .type_ann
+          .as_ref()
+          .map(|rt| (&*rt.type_ann).into());
+
+        let index_sig_def = InterfaceIndexSignatureDef {
+          readonly: ts_index_sig.readonly,
+          params,
+          ts_type,
+        };
+        index_signatures.push(index_sig_def);
+      }
       // TODO:
       TsConstructSignatureDecl(_) => {}
-      TsIndexSignature(_) => {}
     }
   }
 
@@ -253,6 +296,7 @@ pub fn get_doc_for_ts_interface_decl(
     methods,
     properties,
     call_signatures,
+    index_signatures,
     type_params,
   };
 

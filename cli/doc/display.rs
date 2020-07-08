@@ -14,21 +14,31 @@ impl Display for Indent {
   }
 }
 
-pub(crate) struct SliceDisplayer<'a, T: Display>(&'a [T], &'a str);
+pub(crate) struct SliceDisplayer<'a, T: Display>(&'a [T], &'a str, bool);
 
 impl<'a, T: Display> SliceDisplayer<'a, T> {
-  pub fn new(slice: &'a [T], separator: &'a str) -> SliceDisplayer<'a, T> {
-    SliceDisplayer(slice, separator)
+  pub fn new(
+    slice: &'a [T],
+    separator: &'a str,
+    trailing: bool,
+  ) -> SliceDisplayer<'a, T> {
+    SliceDisplayer(slice, separator, trailing)
   }
 }
 
 impl<T: Display> Display for SliceDisplayer<'_, T> {
   fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-    if !self.0.is_empty() {
-      write!(f, "{}", self.0[0])?;
-      for v in &self.0[1..] {
-        write!(f, "{}{}", self.1, v)?;
-      }
+    if self.0.is_empty() {
+      return Ok(());
+    }
+
+    write!(f, "{}", self.0[0])?;
+    for v in &self.0[1..] {
+      write!(f, "{}{}", self.1, v)?;
+    }
+
+    if self.2 {
+      write!(f, "{}", self.1)?;
     }
 
     Ok(())
@@ -71,8 +81,8 @@ pub(crate) fn display_optional(is_optional: bool) -> impl Display {
   colors::magenta(if is_optional { "?" } else { "" })
 }
 
-pub(crate) fn display_readonly(is_static: bool) -> impl Display {
-  colors::magenta(if is_static { "readonly " } else { "" })
+pub(crate) fn display_readonly(is_readonly: bool) -> impl Display {
+  colors::magenta(if is_readonly { "readonly " } else { "" })
 }
 
 pub(crate) fn display_static(is_static: bool) -> impl Display {
