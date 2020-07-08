@@ -77,14 +77,9 @@ declare global {
 
   interface DenoCore {
     print(s: string, isErr?: boolean): void;
-    dispatch(
-      opId: number,
-      control: Uint8Array,
-      ...zeroCopy: ArrayBufferView[]
-    ): Uint8Array | null;
+    dispatch(opId: number, ...zeroCopy: ArrayBufferView[]): Uint8Array | null;
     dispatchByName(
       opName: string,
-      control: Uint8Array,
       ...zeroCopy: ArrayBufferView[]
     ): Uint8Array | null;
     setAsyncHandler(opId: number, cb: (msg: Uint8Array) => void): void;
@@ -101,11 +96,7 @@ declare global {
 
     recv(cb: (opId: number, msg: Uint8Array) => void): void;
 
-    send(
-      opId: number,
-      control: null | ArrayBufferView,
-      ...data: ArrayBufferView[]
-    ): null | Uint8Array;
+    send(opId: number, ...data: ArrayBufferView[]): null | Uint8Array;
 
     setMacrotaskCallback(cb: () => boolean): void;
 

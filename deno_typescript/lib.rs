@@ -50,17 +50,16 @@ pub struct TSState {
 fn compiler_op<D>(
   ts_state: Arc<Mutex<TSState>>,
   dispatcher: D,
-) -> impl Fn(&mut CoreIsolateState, &[u8], &mut [ZeroCopyBuf]) -> Op
+) -> impl Fn(&mut CoreIsolateState, &mut [ZeroCopyBuf]) -> Op
 where
   D: Fn(&mut TSState, &[u8]) -> Op,
 {
   move |_state: &mut CoreIsolateState,
-        control: &[u8],
         zero_copy_bufs: &mut [ZeroCopyBuf]|
         -> Op {
-    assert!(zero_copy_bufs.is_empty()); // zero_copy_bufs unused in compiler.
+    assert_eq!(zero_copy_bufs.len(), 1, "Invalid number of arguments");
     let mut s = ts_state.lock().unwrap();
-    dispatcher(&mut s, control)
+    dispatcher(&mut s, &zero_copy_bufs[0])
   }
 }
 
@@ -338,16 +337,15 @@ pub fn trace_serializer() {
 /// CoreIsolate.
 pub fn op_fetch_asset<S: ::std::hash::BuildHasher>(
   custom_assets: HashMap<String, PathBuf, S>,
-) -> impl Fn(&mut CoreIsolateState, &[u8], &mut [ZeroCopyBuf]) -> Op {
+) -> impl Fn(&mut CoreIsolateState, &mut [ZeroCopyBuf]) -> Op {
   for (_, path) in custom_assets.iter() {
     println!("cargo:rerun-if-changed={}", path.display());
   }
   move |_state: &mut CoreIsolateState,
-        control: &[u8],
         zero_copy_bufs: &mut [ZeroCopyBuf]|
         -> Op {
-    assert!(zero_copy_bufs.is_empty()); // zero_copy_bufs unused in this op.
-    let name = std::str::from_utf8(control).unwrap();
+    assert_eq!(zero_copy_bufs.len(), 1, "Invalid number of arguments");
+    let name = std::str::from_utf8(&zero_copy_bufs[0]).unwrap();
 
     let asset_code = if let Some(source_code) = get_asset(name) {
       source_code.to_string()

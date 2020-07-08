@@ -441,6 +441,7 @@ dependencies = [
  "log 0.4.8",
  "rusty_v8",
  "serde_json",
+ "smallvec 1.4.0",
  "tokio",
  "url",
 ]
