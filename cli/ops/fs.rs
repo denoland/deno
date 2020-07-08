@@ -475,8 +475,8 @@ fn op_chmod(
 struct ChownArgs {
   promise_id: Option<u64>,
   path: String,
-  uid: u32,
-  gid: u32,
+  uid: Option<u32>,
+  gid: Option<u32>,
 }
 
 fn op_chown(
@@ -491,20 +491,18 @@ fn op_chown(
 
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
-    debug!("op_chown {} {} {}", path.display(), args.uid, args.gid);
+    debug!("op_chown {} {:?} {:?}", path.display(), args.uid, args.gid,);
     #[cfg(unix)]
     {
       use nix::unistd::{chown, Gid, Uid};
-      let nix_uid = Uid::from_raw(args.uid);
-      let nix_gid = Gid::from_raw(args.gid);
-      chown(&path, Option::Some(nix_uid), Option::Some(nix_gid))?;
+      let nix_uid = args.uid.map(Uid::from_raw);
+      let nix_gid = args.gid.map(Gid::from_raw);
+      chown(&path, nix_uid, nix_gid)?;
       Ok(json!({}))
     }
     // TODO Implement chown for Windows
     #[cfg(not(unix))]
     {
-      // Still check file/dir exists on Windows
-      let _metadata = std::fs::metadata(&path)?;
       Err(OpError::not_implemented())
     }
   })

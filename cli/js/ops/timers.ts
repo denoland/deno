@@ -1,5 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 import { sendSync, sendAsync } from "./dispatch_json.ts";
+
+interface NowResponse {
+  seconds: number;
+  subsecNanos: number;
+}
 
 export function stopGlobalTimer(): void {
   sendSync("op_global_timer_stop");
@@ -7,11 +13,6 @@ export function stopGlobalTimer(): void {
 
 export async function startGlobalTimer(timeout: number): Promise<void> {
   await sendAsync("op_global_timer", { timeout });
-}
-
-interface NowResponse {
-  seconds: number;
-  subsecNanos: number;
 }
 
 export function now(): NowResponse {

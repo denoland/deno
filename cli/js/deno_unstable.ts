@@ -15,20 +15,16 @@ export { signal, signals, Signal, SignalStream } from "./signals.ts";
 export { setRaw } from "./ops/tty.ts";
 export { utimeSync, utime } from "./ops/fs/utime.ts";
 export { ftruncateSync, ftruncate } from "./ops/fs/truncate.ts";
-export { ShutdownMode, shutdown } from "./net.ts";
+export { shutdown, ShutdownMode } from "./net.ts";
 export { listen, listenDatagram, connect } from "./net_unstable.ts";
 export { startTls } from "./tls.ts";
 export { kill } from "./ops/process.ts";
-export {
-  permissions,
-  PermissionName,
-  PermissionState,
-  PermissionStatus,
-  Permissions,
-} from "./permissions.ts";
-export {
+export { permissions, Permissions } from "./permissions.ts";
+export { PermissionStatus } from "./permissions.ts";
+export type { PermissionName, PermissionState } from "./permissions.ts";
+export { DiagnosticCategory } from "./diagnostics.ts";
+export type {
   Diagnostic,
-  DiagnosticCategory,
   DiagnosticItem,
   DiagnosticMessageChain,
 } from "./diagnostics.ts";

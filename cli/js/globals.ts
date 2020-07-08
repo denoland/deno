@@ -7,7 +7,7 @@ import * as abortSignal from "./web/abort_signal.ts";
 import * as blob from "./web/blob.ts";
 import * as consoleTypes from "./web/console.ts";
 import * as csprng from "./ops/get_random_values.ts";
-import * as promiseTypes from "./web/promise.ts";
+import type * as promiseTypes from "./web/promise.ts";
 import * as customEvent from "./web/custom_event.ts";
 import * as domException from "./web/dom_exception.ts";
 import * as domFile from "./web/dom_file.ts";
