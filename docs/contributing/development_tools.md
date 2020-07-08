@@ -86,19 +86,8 @@ To learn more about `d8` and profiling, check out the following links:
 
 ### Debugging with LLDB
 
-We can use LLDB to debug Deno.
-
-```shell
-$ lldb -- target/debug/deno run tests/worker.js
-> run
-> bt
-> up
-> up
-> l
-```
-
-To debug Rust code, we can use `rust-lldb`. It should come with `rustc` and is a
-wrapper around LLDB.
+To debug the deno binary, we can use `rust-lldb`. It should come with `rustc`
+and is a wrapper around LLDB.
 
 ```shell
 $ rust-lldb -- ./target/debug/deno run --allow-net tests/http_bench.ts
@@ -1028,7 +1017,7 @@ Options:
   --use-external-strings (Use external strings for source code)
         type: bool  default: false
   --map-counters (Map counters to a file)
-        type: string  default: 
+        type: string  default:
   --mock-arraybuffer-allocator (Use a mock ArrayBuffer allocator for testing.)
         type: bool  default: false
   --mock-arraybuffer-allocator-limit (Memory limit for mock ArrayBuffer allocator used to simulate OOM for testing.)
@@ -1040,7 +1029,7 @@ Options:
   --gdbjit-dump (dump elf objects with debug info to disk)
         type: bool  default: false
   --gdbjit-dump-filter (dump only objects containing this substring)
-        type: string  default: 
+        type: string  default:
   --log (Minimal logging (no API, code, GC, suspect, or handles samples).)
         type: bool  default: false
   --log-all (Log all events to the log file.)
