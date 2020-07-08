@@ -110,8 +110,9 @@ export class Response extends Body.Body implements domTypes.Response {
     }
 
     const contentType = headers.get("content-type") || "";
+    const size = Number(headers.get("content-length")) || undefined;
 
-    super(body, contentType);
+    super(body, { contentType, size });
 
     this.url = url;
     this.statusText = statusText;
