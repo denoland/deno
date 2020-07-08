@@ -81,6 +81,7 @@ use crate::permissions::Permissions;
 use crate::tsc::TargetLib;
 use crate::worker::MainWorker;
 use deno_core::v8_set_flags;
+use deno_core::Deps;
 use deno_core::ErrBox;
 use deno_core::EsIsolate;
 use deno_core::ModuleSpecifier;
@@ -91,6 +92,7 @@ use futures::Future;
 use log::Level;
 use log::Metadata;
 use log::Record;
+use state::exit_unstable;
 use std::env;
 use std::io::Read;
 use std::io::Write;
@@ -140,22 +142,47 @@ fn write_to_stdout_ignore_sigpipe(bytes: &[u8]) -> Result<(), std::io::Error> {
   }
 }
 
-fn print_cache_info(state: &GlobalState) {
-  println!(
-    "{} {:?}",
-    colors::bold("DENO_DIR location:"),
-    state.dir.root
-  );
-  println!(
-    "{} {:?}",
-    colors::bold("Remote modules cache:"),
-    state.file_fetcher.http_cache.location
-  );
-  println!(
-    "{} {:?}",
-    colors::bold("TypeScript compiler cache:"),
-    state.dir.gen_cache.location
-  );
+fn write_json_to_stdout<T>(value: &T) -> Result<(), ErrBox>
+where
+  T: ?Sized + serde::ser::Serialize,
+{
+  let writer = std::io::BufWriter::new(std::io::stdout());
+  serde_json::to_writer_pretty(writer, value).map_err(ErrBox::from)
+}
+
+fn print_cache_info(state: &GlobalState, json: bool) -> Result<(), ErrBox> {
+  let deno_dir = &state.dir.root;
+  let modules_cache = &state.file_fetcher.http_cache.location;
+  let typescript_cache = &state.dir.gen_cache.location;
+  if json {
+    let output = json!({
+        "denoDir": deno_dir,
+        "modulesCache": modules_cache,
+        "typescriptCache": typescript_cache,
+    });
+    write_json_to_stdout(&output)
+  } else {
+    println!("{} {:?}", colors::bold("DENO_DIR location:"), deno_dir);
+    println!(
+      "{} {:?}",
+      colors::bold("Remote modules cache:"),
+      modules_cache
+    );
+    println!(
+      "{} {:?}",
+      colors::bold("TypeScript compiler cache:"),
+      typescript_cache
+    );
+    Ok(())
+  }
+}
+
+struct FileInfoOutput<'a> {
+  local: &'a str,
+  file_type: &'a str,
+  compiled: Option<String>,
+  map: Option<String>,
+  deps: Option<Deps>,
 }
 
 // TODO(bartlomieju): this function de facto repeats
@@ -163,6 +190,7 @@ fn print_cache_info(state: &GlobalState) {
 async fn print_file_info(
   worker: &MainWorker,
   module_specifier: ModuleSpecifier,
+  json: bool,
 ) -> Result<(), ErrBox> {
   let global_state = worker.state.borrow().global_state.clone();
 
@@ -171,17 +199,13 @@ async fn print_file_info(
     .fetch_source_file(&module_specifier, None, Permissions::allow_all())
     .await?;
 
-  println!(
-    "{} {}",
-    colors::bold("local:"),
-    out.filename.to_str().unwrap()
-  );
-
-  println!(
-    "{} {}",
-    colors::bold("type:"),
-    msg::enum_name_media_type(out.media_type)
-  );
+  let mut output = FileInfoOutput {
+    local: out.filename.to_str().unwrap(),
+    file_type: msg::enum_name_media_type(out.media_type),
+    compiled: None,
+    map: None,
+    deps: None,
+  };
 
   let module_specifier_ = module_specifier.clone();
 
@@ -208,12 +232,8 @@ async fn print_file_info(
       .ts_compiler
       .get_compiled_source_file(&out.url)
       .unwrap();
-
-    println!(
-      "{} {}",
-      colors::bold("compiled:"),
-      compiled_source_file.filename.to_str().unwrap(),
-    );
+    output.compiled =
+      compiled_source_file.filename.to_str().map(|s| s.to_owned());
   }
 
   if let Ok(source_map) = global_state
@@ -221,31 +241,48 @@ async fn print_file_info(
     .ts_compiler
     .get_source_map_file(&module_specifier)
   {
-    println!(
-      "{} {}",
-      colors::bold("map:"),
-      source_map.filename.to_str().unwrap()
-    );
+    output.map = source_map.filename.to_str().map(|s| s.to_owned());
   }
-
   let es_state_rc = EsIsolate::state(&worker.isolate);
   let es_state = es_state_rc.borrow();
 
   if let Some(deps) = es_state.modules.deps(&module_specifier) {
-    println!("{}{}", colors::bold("deps:\n"), deps.name);
-    if let Some(ref depsdeps) = deps.deps {
-      for d in depsdeps {
-        println!("{}", d);
-      }
-    }
-  } else {
-    println!(
-      "{} cannot retrieve full dependency graph",
-      colors::bold("deps:"),
-    );
+    output.deps = Some(deps);
   }
 
-  Ok(())
+  if json {
+    let output = json!({
+      "local": output.local,
+      "fileType": output.file_type,
+      "compiled": output.compiled,
+      "map": output.map,
+      "deps": output.deps.map(|x| x.to_json())
+    });
+    write_json_to_stdout(&output)
+  } else {
+    println!("{} {}", colors::bold("local:"), output.local);
+    println!("{} {}", colors::bold("type:"), output.file_type);
+    if let Some(compiled) = output.compiled {
+      println!("{} {}", colors::bold("compiled:"), compiled);
+    }
+    if let Some(map) = output.map {
+      println!("{} {}", colors::bold("map:"), map);
+    }
+    if let Some(deps) = output.deps {
+      println!("{}{}", colors::bold("deps:\n"), deps.name);
+      if let Some(ref depsdeps) = deps.deps {
+        for d in depsdeps {
+          println!("{}", d);
+        }
+      }
+    } else {
+      println!(
+        "{} cannot retrieve full dependency graph",
+        colors::bold("deps:"),
+      );
+    }
+    Ok(())
+  }
 }
 
 fn get_types(unstable: bool) -> String {
@@ -270,18 +307,21 @@ fn get_types(unstable: bool) -> String {
 async fn info_command(
   flags: Flags,
   file: Option<String>,
+  json: bool,
 ) -> Result<(), ErrBox> {
+  if json && !flags.unstable {
+    exit_unstable("--json");
+  }
   let global_state = GlobalState::new(flags)?;
   // If it was just "deno info" print location of caches and exit
   if file.is_none() {
-    print_cache_info(&global_state);
-    return Ok(());
+    print_cache_info(&global_state, json)
+  } else {
+    let main_module = ModuleSpecifier::resolve_url_or_path(&file.unwrap())?;
+    let mut worker = MainWorker::create(global_state, main_module.clone())?;
+    worker.preload_module(&main_module).await?;
+    print_file_info(&worker, main_module.clone(), json).await
   }
-
-  let main_module = ModuleSpecifier::resolve_url_or_path(&file.unwrap())?;
-  let mut worker = MainWorker::create(global_state, main_module.clone())?;
-  worker.preload_module(&main_module).await?;
-  print_file_info(&worker, main_module.clone()).await
 }
 
 async fn install_command(
@@ -525,8 +565,7 @@ async fn doc_command(
   };
 
   if json {
-    let writer = std::io::BufWriter::new(std::io::stdout());
-    serde_json::to_writer_pretty(writer, &doc_nodes).map_err(ErrBox::from)
+    write_json_to_stdout(&doc_nodes)
   } else {
     let details = if let Some(filter) = maybe_filter {
       let nodes =
@@ -691,7 +730,9 @@ pub fn main() {
     DenoSubcommand::Fmt { check, files } => {
       fmt::format(files, check).boxed_local()
     }
-    DenoSubcommand::Info { file } => info_command(flags, file).boxed_local(),
+    DenoSubcommand::Info { file, json } => {
+      info_command(flags, file, json).boxed_local()
+    }
     DenoSubcommand::Install {
       module_url,
       args,

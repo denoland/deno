@@ -1499,6 +1499,11 @@ itest!(_041_info_flag {
   output: "041_info_flag.out",
 });
 
+itest!(info_json {
+  args: "info --json --unstable",
+  output: "info_json.out",
+});
+
 itest!(_042_dyn_import_evalcontext {
   args: "run --quiet --allow-read --reload 042_dyn_import_evalcontext.ts",
   output: "042_dyn_import_evalcontext.ts.out",
@@ -1549,6 +1554,12 @@ itest!(_052_no_remote_flag {
 itest!(_054_info_local_imports {
   args: "info --quiet 005_more_imports.ts",
   output: "054_info_local_imports.out",
+  exit_code: 0,
+});
+
+itest!(_055_info_file_json {
+  args: "info --quiet --json --unstable 005_more_imports.ts",
+  output: "055_info_file_json.out",
   exit_code: 0,
 });
 
