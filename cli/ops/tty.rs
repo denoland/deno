@@ -38,10 +38,7 @@ fn get_windows_handle(
 pub fn init(i: &mut CoreIsolate, s: &State) {
   i.register_op("op_set_raw", s.stateful_json_op2(op_set_raw));
   i.register_op("op_isatty", s.stateful_json_op2(op_isatty));
-  i.register_op(
-    "op_get_console_size",
-    s.stateful_json_op2(op_get_console_size),
-  );
+  i.register_op("op_console_size", s.stateful_json_op2(op_console_size));
 }
 
 #[derive(Deserialize)]
@@ -255,11 +252,6 @@ pub fn op_isatty(
   Ok(JsonOp::Sync(json!(isatty)))
 }
 
-#[derive(Deserialize)]
-struct GetConsoleSizeArgs {
-  rid: u32,
-}
-
 #[derive(Serialize)]
 struct ConsoleSize {
   columns: u32,
@@ -267,14 +259,11 @@ struct ConsoleSize {
 }
 
 #[cfg(unix)]
-use libc::{ioctl, winsize, TIOCGWINSZ};
-#[cfg(unix)]
-use std::mem::MaybeUninit;
+fn console_size(rid: i32) -> Result<ConsoleSize, std::io::Error> {
+  use libc::{ioctl, winsize, TIOCGWINSZ};
+  use std::mem::MaybeUninit;
 
-#[cfg(unix)]
-fn get_console_size_ioctl(rid: i32) -> Result<ConsoleSize, std::io::Error> {
   let mut count: u32 = 0;
-
   loop {
     count += 1;
 
@@ -298,14 +287,11 @@ fn get_console_size_ioctl(rid: i32) -> Result<ConsoleSize, std::io::Error> {
 }
 
 #[cfg(windows)]
-use winapi::um::winbase::STD_OUTPUT_HANDLE;
-#[cfg(windows)]
-use winapi::um::wincon::GetConsoleScreenBufferInfo;
-#[cfg(windows)]
-use winapi::um::wincon::{CONSOLE_SCREEN_BUFFER_INFO, COORD, SMALL_RECT};
+fn console_size(_rid: i32) -> Result<ConsoleSize, std::io::Error> {
+  use winapi::um::winbase::STD_OUTPUT_HANDLE;
+  use winapi::um::wincon::GetConsoleScreenBufferInfo;
+  use winapi::um::wincon::{CONSOLE_SCREEN_BUFFER_INFO, COORD, SMALL_RECT};
 
-#[cfg(windows)]
-fn get_console_size_winapi(_rid: i32) -> Result<ConsoleSize, std::io::Error> {
   let null_coord = COORD { X: 0, Y: 0 };
   let null_smallrect = SMALL_RECT {
     Left: 0,
@@ -358,25 +344,20 @@ fn get_console_size_winapi(_rid: i32) -> Result<ConsoleSize, std::io::Error> {
   })
 }
 
-pub fn op_get_console_size(
+pub fn op_console_size(
   _isolate_state: &mut CoreIsolateState,
   state: &State,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
-  state.check_unstable("Deno.getConsoleSize");
-  let args: GetConsoleSizeArgs = serde_json::from_value(args)?;
-  let console_size;
+  state.check_unstable("Deno.consoleSize");
 
-  #[cfg(windows)]
-  {
-    let _ = args.rid;
-    console_size = get_console_size_winapi(args.rid as i32)?;
-  }
-  #[cfg(unix)]
-  {
-    console_size = get_console_size_ioctl(args.rid as i32)?;
+  #[derive(Deserialize)]
+  struct ConsoleSizeArgs {
+    rid: u32,
   }
 
+  let args: ConsoleSizeArgs = serde_json::from_value(args)?;
+  let console_size = console_size(args.rid as i32)?;
   Ok(JsonOp::Sync(json!(console_size)))
 }

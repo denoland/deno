@@ -48,10 +48,10 @@ declare namespace Deno {
    * Gets the size of the console as columns/rows.
    *
    * ```ts
-   * const { columns, rows } = await Deno.getConsoleSize(Deno.stdout.rid);
+   * const { columns, rows } = await Deno.consoleSize(Deno.stdout.rid);
    * ```
    */
-  export function getConsoleSize(
+  export function consoleSize(
     rid: number
   ): {
     columns: number;
