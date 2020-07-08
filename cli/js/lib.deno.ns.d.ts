@@ -1524,7 +1524,11 @@ declare namespace Deno {
    *
    * Requires `allow-write` permission, and `allow-read` if `options.create` is `false`.
    */
-  export function writeTextFileSync(path: string | URL, data: string): void;
+  export function writeTextFileSync(
+    path: string | URL,
+    data: string,
+    options?: WriteFileOptions
+  ): void;
 
   /** Asynchronously write string `data` to the given `path`, by default creating a new file if needed,
    * else overwriting.
@@ -1537,7 +1541,8 @@ declare namespace Deno {
    */
   export function writeTextFile(
     path: string | URL,
-    data: string
+    data: string,
+    options?: WriteFileOptions
   ): Promise<void>;
 
   /** Synchronously truncates or extends the specified file, to reach the

@@ -1,23 +1,20 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+import { writeFileSync, writeFile, WriteFileOptions } from "./write_file.ts";
 
-import { open, openSync } from "./files.ts";
-import { writeAll, writeAllSync } from "./buffer.ts";
-
-export function writeTextFileSync(path: string | URL, data: string): void {
-  const file = openSync(path, { write: true, create: true, truncate: true });
+export function writeTextFileSync(
+  path: string | URL,
+  data: string,
+  options: WriteFileOptions = {}
+): void {
   const encoder = new TextEncoder();
-  const contents = encoder.encode(data);
-  writeAllSync(file, contents);
-  file.close();
+  return writeFileSync(path, encoder.encode(data), options);
 }
 
-export async function writeTextFile(
+export function writeTextFile(
   path: string | URL,
-  data: string
+  data: string,
+  options: WriteFileOptions = {}
 ): Promise<void> {
-  const file = await open(path, { write: true, create: true, truncate: true });
   const encoder = new TextEncoder();
-  const contents = encoder.encode(data);
-  await writeAll(file, contents);
-  file.close();
+  return writeFile(path, encoder.encode(data), options);
 }
