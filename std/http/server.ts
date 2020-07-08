@@ -262,7 +262,10 @@ export function _parseAddrFromStr(addr: string): HTTPOptions {
     throw new TypeError("Invalid address.");
   }
 
-  return { hostname: url.hostname, port: Number(url.port) };
+  return {
+    hostname: url.hostname,
+    port: url.port === "" ? 80 : Number(url.port),
+  };
 }
 
 /**
