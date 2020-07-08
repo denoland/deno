@@ -148,6 +148,11 @@ pub fn compile_bundle(
   let config_json = serde_json::json!({
     "compilerOptions": {
       "declaration": true,
+      // In order to help ensure there are no type directed emits in the code
+      // which interferes with transpiling only, the setting
+      // `"importsNotUsedAsValues"` set to `"error"` will help ensure that items
+      // that are written as `import type` are caught and are treated as errors.
+      "importsNotUsedAsValues": "error",
       // Emit the source alongside the sourcemaps within a single file;
       // requires --inlineSourceMap or --sourceMap to be set.
       // "inlineSources": true,

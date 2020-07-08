@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import {
+
+import type {
   Reader,
   Writer,
   Seeker,
@@ -18,7 +19,7 @@ import {
   openSync as opOpenSync,
   OpenOptions,
 } from "./ops/fs/open.ts";
-export { OpenOptions } from "./ops/fs/open.ts";
+export type { OpenOptions } from "./ops/fs/open.ts";
 
 export function openSync(
   path: string | URL,
@@ -97,10 +98,7 @@ export class File
 }
 
 class Stdin implements Reader, ReaderSync, Closer {
-  readonly rid: number;
-  constructor() {
-    this.rid = 0;
-  }
+  readonly rid = 0;
 
   read(p: Uint8Array): Promise<number | null> {
     return read(this.rid, p);
@@ -116,10 +114,7 @@ class Stdin implements Reader, ReaderSync, Closer {
 }
 
 class Stdout implements Writer, WriterSync, Closer {
-  readonly rid: number;
-  constructor() {
-    this.rid = 1;
-  }
+  readonly rid = 1;
 
   write(p: Uint8Array): Promise<number> {
     return write(this.rid, p);
@@ -135,10 +130,7 @@ class Stdout implements Writer, WriterSync, Closer {
 }
 
 export class Stderr implements Writer, WriterSync, Closer {
-  readonly rid: number;
-  constructor() {
-    this.rid = 2;
-  }
+  readonly rid = 2;
 
   write(p: Uint8Array): Promise<number> {
     return write(this.rid, p);

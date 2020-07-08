@@ -6,7 +6,7 @@ import { isIterable, requiredArguments } from "./util.ts";
 export const urls = new WeakMap<URLSearchParams, URL | null>();
 
 export class URLSearchParamsImpl implements URLSearchParams {
-  #params: Array<[string, string]> = [];
+  readonly #params: Array<[string, string]> = [];
 
   constructor(init: string | string[][] | Record<string, string> = "") {
     if (typeof init === "string") {

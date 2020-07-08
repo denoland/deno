@@ -11,10 +11,10 @@ import {
   setUpTransformStreamDefaultControllerFromTransformer,
   validateAndNormalizeHighWaterMark,
 } from "./internals.ts";
-import { ReadableStreamImpl } from "./readable_stream.ts";
+import type { ReadableStreamImpl } from "./readable_stream.ts";
 import * as sym from "./symbols.ts";
-import { TransformStreamDefaultControllerImpl } from "./transform_stream_default_controller.ts";
-import { WritableStreamImpl } from "./writable_stream.ts";
+import type { TransformStreamDefaultControllerImpl } from "./transform_stream_default_controller.ts";
+import type { WritableStreamImpl } from "./writable_stream.ts";
 import { customInspect, inspect } from "../console.ts";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -24,7 +24,7 @@ const searchParamsMethods: Array<keyof URLSearchParams> = [
 const specialSchemes = ["ftp", "file", "http", "https", "ws", "wss"];
 
 // https://url.spec.whatwg.org/#special-scheme
-const schemePorts: { [key: string]: string } = {
+const schemePorts: Record<string, string> = {
   ftp: "21",
   file: "",
   http: "80",
@@ -179,8 +179,8 @@ function resolvePathFromBase(
 
   let driveLetterPrefix = "";
   if (build.os == "windows" && isFilePath) {
-    let driveLetter = "";
-    let baseDriveLetter = "";
+    let driveLetter: string;
+    let baseDriveLetter: string;
     [driveLetter, normalizedPath] = takePattern(
       normalizedPath,
       /^(\/[A-Za-z]:)(?=\/)/
@@ -214,7 +214,8 @@ function resolvePathFromBase(
 
 function isValidPort(value: string): boolean {
   // https://url.spec.whatwg.org/#port-state
-  if (value === "") true;
+  if (value === "") return true;
+
   const port = Number(value);
   return Number.isInteger(port) && port >= 0 && port <= MAX_PORT;
 }
@@ -409,7 +410,7 @@ export class URLImpl implements URL {
     let baseParts: URLParts | undefined;
     if (base) {
       baseParts = typeof base === "string" ? parse(base) : parts.get(base);
-      if (baseParts == undefined) {
+      if (baseParts === undefined) {
         throw new TypeError("Invalid base URL.");
       }
     }

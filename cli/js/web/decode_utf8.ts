@@ -1,3 +1,5 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 // This module is based on Bjoern Hoehrmann's DFA UTF-8 decoder.
 // See http://bjoern.hoehrmann.de/utf-8/decoder/dfa/ for details.
 //
