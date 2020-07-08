@@ -266,37 +266,6 @@ struct ConsoleSize {
   rows: u32,
 }
 
-#[cfg(unix)]
-use libc::{ioctl, winsize, TIOCGWINSZ};
-#[cfg(unix)]
-use std::mem::MaybeUninit;
-
-#[cfg(unix)]
-fn get_console_size_ioctl(rid: i32) -> Result<ConsoleSize, std::io::Error> {
-  let mut count: u32 = 0;
-
-  loop {
-    count += 1;
-
-    let mut buffer = MaybeUninit::<winsize>::uninit();
-    let result =
-      unsafe { ioctl(rid, TIOCGWINSZ, buffer.as_mut_ptr() as *mut _) };
-
-    if result == -1 {
-      if count > 3 {
-        break unsafe { MaybeUninit::zeroed().assume_init() };
-      }
-      continue;
-    } else {
-      let console_data = unsafe { buffer.assume_init() };
-      break Ok(ConsoleSize {
-        columns: console_data.ws_col as u32,
-        rows: console_data.ws_row as u32,
-      });
-    }
-  }
-}
-
 #[cfg(windows)]
 use winapi::um::winbase::STD_OUTPUT_HANDLE;
 #[cfg(windows)]
@@ -359,24 +328,48 @@ fn get_console_size_winapi(_rid: i32) -> Result<ConsoleSize, std::io::Error> {
 }
 
 pub fn op_get_console_size(
-  _isolate_state: &mut CoreIsolateState,
+  isolate_state: &mut CoreIsolateState,
   state: &State,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   state.check_unstable("Deno.getConsoleSize");
   let args: GetConsoleSizeArgs = serde_json::from_value(args)?;
-  let console_size;
+  let rid = args.rid;
 
-  #[cfg(windows)]
-  {
-    let _ = args.rid;
-    console_size = get_console_size_winapi(args.rid as i32)?;
-  }
-  #[cfg(unix)]
-  {
-    console_size = get_console_size_ioctl(args.rid as i32)?;
-  }
+  let mut resource_table = isolate_state.resource_table.borrow_mut();
+  let size =
+    std_file_resource(&mut resource_table, rid as u32, move |r| match r {
+      Ok(std_file) => {
+        #[cfg(windows)]
+        {
+          let console_size = get_console_size_winapi(args.rid as i32)?;
+          Ok(console_size)
+        }
 
-  Ok(JsonOp::Sync(json!(console_size)))
+        #[cfg(unix)]
+        {
+          use std::os::unix::io::AsRawFd;
+
+          let fd = std_file.as_raw_fd();
+          unsafe {
+            let mut size: libc::winsize = std::mem::zeroed();
+            if libc::ioctl(fd, libc::TIOCGWINSZ, &mut size as *mut _) != 0 {
+              // TODO(caspervonb) this should just be OpError::from(errno)
+              // but libc does not provide errno.
+              return Err(OpError::other("ioctl error".to_owned()));
+            }
+
+            // TODO (caspervonb) return a tuple instead
+            Ok(ConsoleSize {
+              columns: size.ws_col as u32,
+              rows: size.ws_row as u32,
+            })
+          }
+        }
+      }
+      Err(_) => Err(OpError::bad_resource_id()),
+    })?;
+
+  Ok(JsonOp::Sync(json!(size)))
 }
