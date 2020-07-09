@@ -591,6 +591,37 @@ pub fn run_python_script(script: &str) {
   }
 }
 
+pub fn run_powershell_script_file(
+  script_file_path: &str,
+  args: Vec<&str>,
+) -> Result<(), i64> {
+  let deno_dir = new_deno_dir();
+  let mut command = Command::new("powershell.exe");
+
+  command
+    .env("DENO_DIR", deno_dir.path())
+    .current_dir(root_path())
+    .arg("-file")
+    .arg(script_file_path);
+
+  for arg in args {
+    command.arg(arg);
+  }
+
+  let output = command.output().expect("failed to spawn script");
+  let stdout = String::from_utf8(output.stdout).unwrap();
+  let stderr = String::from_utf8(output.stderr).unwrap();
+  println!("{}", stdout);
+  if !output.status.success() {
+    panic!(
+      "{} executed with failing error code\n{}{}",
+      script_file_path, stdout, stderr
+    );
+  }
+
+  Ok(())
+}
+
 #[derive(Debug, Default)]
 pub struct CheckOutputIntegrationTest {
   pub args: &'static str,
