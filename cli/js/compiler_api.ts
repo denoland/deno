@@ -19,7 +19,7 @@ function checkRelative(specifier: string): string {
 // TODO(bartlomieju): change return type to interface?
 export function transpileOnly(
   sources: Record<string, string>,
-  options: CompilerOptions = {},
+  options: CompilerOptions = {}
 ): Promise<Record<string, TranspileOnlyResult>> {
   util.log("Deno.transpileOnly", { sources: Object.keys(sources), options });
   const payload = {
@@ -33,7 +33,7 @@ export function transpileOnly(
 export async function compile(
   rootName: string,
   sources?: Record<string, string>,
-  options: CompilerOptions = {},
+  options: CompilerOptions = {}
 ): Promise<[DiagnosticItem[] | undefined, Record<string, string>]> {
   const payload = {
     rootName: sources ? rootName : checkRelative(rootName),
@@ -48,9 +48,8 @@ export async function compile(
   });
   const result = await runtimeCompilerOps.compile(payload);
   assert(result.emitMap);
-  const maybeDiagnostics = result.diagnostics.length === 0
-    ? undefined
-    : result.diagnostics;
+  const maybeDiagnostics =
+    result.diagnostics.length === 0 ? undefined : result.diagnostics;
 
   const emitMap: Record<string, string> = {};
 
@@ -65,7 +64,7 @@ export async function compile(
 export async function bundle(
   rootName: string,
   sources?: Record<string, string>,
-  options: CompilerOptions = {},
+  options: CompilerOptions = {}
 ): Promise<[DiagnosticItem[] | undefined, string]> {
   const payload = {
     rootName: sources ? rootName : checkRelative(rootName),
@@ -80,8 +79,7 @@ export async function bundle(
   });
   const result = await runtimeCompilerOps.compile(payload);
   assert(result.output);
-  const maybeDiagnostics = result.diagnostics.length === 0
-    ? undefined
-    : result.diagnostics;
+  const maybeDiagnostics =
+    result.diagnostics.length === 0 ? undefined : result.diagnostics;
   return [maybeDiagnostics, result.output];
 }
