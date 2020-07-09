@@ -8,13 +8,12 @@ Contributions are welcome!
 
 ## How to use
 
-These modules are tagged in accordance with Deno releases. So, for example, the
-v0.3.0 tag is guaranteed to work with deno v0.3.0. You can link to v0.3.0 using
-the URL `https://deno.land/std@v0.3.0/`. Not specifying a tag will link to the
-master branch.
+These modules will eventually be tagged in accordance with Deno releases but as
+of today we do not yet consider them stable and so we version the standard
+modules differently from the Deno runtime to reflect this.
 
 It is strongly recommended that you link to tagged releases to avoid unintended
-updates.
+updates and breaking changes.
 
 Don't link to / import any module whose path:
 

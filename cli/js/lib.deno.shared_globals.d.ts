@@ -219,6 +219,10 @@ declare function clearInterval(id?: number): void;
  */
 declare function clearTimeout(id?: number): void;
 
+interface VoidFunction {
+  (): void;
+}
+
 /** A microtask is a short function which is executed after the function or
  * module which created it exits and only if the JavaScript execution stack is
  * empty, but before returning control to the event loop being used to drive the
@@ -227,7 +231,7 @@ declare function clearTimeout(id?: number): void;
  *
  *     queueMicrotask(() => { console.log('This event loop stack is complete'); });
  */
-declare function queueMicrotask(func: Function): void;
+declare function queueMicrotask(func: VoidFunction): void;
 
 declare var console: Console;
 declare var crypto: Crypto;
@@ -265,11 +269,6 @@ declare function removeEventListener(
   callback: EventListenerOrEventListenerObject | null,
   options?: boolean | EventListenerOptions | undefined
 ): void;
-
-declare interface ImportMeta {
-  url: string;
-  main: boolean;
-}
 
 interface DomIterable<K, V> {
   keys(): IterableIterator<K>;
@@ -1237,7 +1236,7 @@ interface URL {
 
 declare const URL: {
   prototype: URL;
-  new (url: string | URL, base?: string | URL): URL;
+  new (url: string, base?: string | URL): URL;
   createObjectURL(object: any): string;
   revokeObjectURL(url: string): void;
 };
@@ -1556,6 +1555,60 @@ declare const AbortSignal: {
   prototype: AbortSignal;
   new (): AbortSignal;
 };
+
+type PermissionState = "denied" | "granted" | "prompt";
+
+interface PermissionStatusEventMap {
+  change: Event;
+}
+
+interface PermissionStatus extends EventTarget {
+  onchange: ((this: PermissionStatus, ev: Event) => any) | null;
+  readonly state: PermissionState;
+  addEventListener<K extends keyof PermissionStatusEventMap>(
+    type: K,
+    listener: (this: PermissionStatus, ev: PermissionStatusEventMap[K]) => any,
+    options?: boolean | AddEventListenerOptions
+  ): void;
+  addEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | AddEventListenerOptions
+  ): void;
+  removeEventListener<K extends keyof PermissionStatusEventMap>(
+    type: K,
+    listener: (this: PermissionStatus, ev: PermissionStatusEventMap[K]) => any,
+    options?: boolean | EventListenerOptions
+  ): void;
+  removeEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | EventListenerOptions
+  ): void;
+}
+
+/** Deno does not currently support any of the browser permissions, and so the
+ * `name` property of the global types is `undefined`.  The Deno permissions
+ * that are supported are defined in the `lib.deno.ns.d.ts` and pull from the
+ * `Deno` namespace. */
+declare interface PermissionDescriptor {
+  name: undefined;
+}
+
+declare interface Permissions {
+  query(permissionDesc: PermissionDescriptor): Promise<PermissionStatus>;
+}
+
+declare const Permissions: {
+  prototype: Permissions;
+  new (): Permissions;
+};
+
+declare class Navigator {
+  readonly permissions: Permissions;
+}
+
+declare const navigator: Navigator;
 
 interface ErrorConstructor {
   /** See https://v8.dev/docs/stack-trace-api#stack-trace-collection-for-custom-exceptions. */

@@ -1,7 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 // Interfaces 100% copied from Go.
 // Documentation liberally lifted from them too.
-// Thank you! We love Go!
+// Thank you! We love Go! <3
 
 const DEFAULT_BUFFER_SIZE = 32 * 1024;
 

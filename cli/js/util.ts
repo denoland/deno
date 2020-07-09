@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 import { build } from "./build.ts";
 import { exposeForTest } from "./internals.ts";
 
@@ -110,14 +111,9 @@ function pathFromURLPosix(url: URL): string {
 }
 
 export function pathFromURL(pathOrUrl: string | URL): string {
-  if (typeof pathOrUrl == "string") {
-    try {
-      pathOrUrl = new URL(pathOrUrl);
-    } catch {}
-  }
   if (pathOrUrl instanceof URL) {
     if (pathOrUrl.protocol != "file:") {
-      throw new TypeError("Must be a path string or file URL.");
+      throw new TypeError("Must be a file URL.");
     }
 
     return build.os == "windows"

@@ -353,7 +353,11 @@ function main(): void {
           setCORS(response);
         }
         serverLog(req, response!);
-        req.respond(response!);
+        try {
+          await req.respond(response!);
+        } catch (e) {
+          console.error(e.message);
+        }
       }
     }
   );

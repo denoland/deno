@@ -1,0 +1,3 @@
+[WILDCARD]
+Subresource integrity check failed --lock=lock_dynamic_imports.json
+http://127.0.0.1:4545/cli/tests/subdir/subdir2/mod2.ts

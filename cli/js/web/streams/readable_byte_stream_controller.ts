@@ -20,7 +20,7 @@ import {
   readableStreamCreateReadResult,
   setFunctionName,
 } from "./internals.ts";
-import { ReadableStreamImpl } from "./readable_stream.ts";
+import type { ReadableStreamImpl } from "./readable_stream.ts";
 import * as sym from "./symbols.ts";
 import { assert } from "../../util.ts";
 import { customInspect } from "../console.ts";

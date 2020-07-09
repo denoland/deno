@@ -94,6 +94,23 @@ Deno.test("testFormatterAsString", function (): void {
   assertEquals(handler.messages, ["test DEBUG Hello, world!"]);
 });
 
+Deno.test("testFormatterWithEmptyMsg", function () {
+  const handler = new TestHandler("DEBUG", {
+    formatter: "test {levelName} {msg}",
+  });
+
+  handler.handle(
+    new LogRecord({
+      msg: "",
+      args: [],
+      level: LogLevels.DEBUG,
+      loggerName: "default",
+    })
+  );
+
+  assertEquals(handler.messages, ["test DEBUG "]);
+});
+
 Deno.test("testFormatterAsFunction", function (): void {
   const handler = new TestHandler("DEBUG", {
     formatter: (logRecord): string =>

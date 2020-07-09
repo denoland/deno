@@ -1,11 +1,13 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 import { errors } from "./errors.ts";
-import { Reader, Writer, Closer } from "./io.ts";
+import type { Reader, Writer, Closer } from "./io.ts";
 import { read, write } from "./ops/io.ts";
 import { close } from "./ops/resources.ts";
 import * as netOps from "./ops/net.ts";
-import { Addr } from "./ops/net.ts";
-export { ShutdownMode, shutdown, NetAddr, UnixAddr } from "./ops/net.ts";
+import type { Addr } from "./ops/net.ts";
+export type { ShutdownMode, NetAddr, UnixAddr } from "./ops/net.ts";
+export { shutdown } from "./ops/net.ts";
 
 export interface DatagramConn extends AsyncIterable<[Uint8Array, Addr]> {
   receive(p?: Uint8Array): Promise<[Uint8Array, Addr]>;
@@ -109,12 +111,11 @@ export class DatagramImpl implements DatagramConn {
     return [sub, remoteAddr];
   }
 
-  async send(p: Uint8Array, addr: Addr): Promise<number> {
+  send(p: Uint8Array, addr: Addr): Promise<number> {
     const remote = { hostname: "127.0.0.1", ...addr };
 
     const args = { ...remote, rid: this.rid };
-    const byteLength = await netOps.send(args as netOps.SendRequest, p);
-    return byteLength;
+    return netOps.send(args as netOps.SendRequest, p);
   }
 
   close(): void {
@@ -125,11 +126,11 @@ export class DatagramImpl implements DatagramConn {
     while (true) {
       try {
         yield await this.receive();
-      } catch (error) {
-        if (error instanceof errors.BadResource) {
+      } catch (err) {
+        if (err instanceof errors.BadResource) {
           break;
         }
-        throw error;
+        throw err;
       }
     }
   }

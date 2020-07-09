@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import {
+import type {
   FileOptionsArgument,
   BinaryOptionsArgument,
   TextOptionsArgument,
@@ -21,8 +21,9 @@ export function readFile(
   return new Promise((resolve, reject) => {
     readFileCallback(path, options, (err, data): void => {
       if (err) return reject(err);
-      if (data == null)
+      if (data == null) {
         return reject(new Error("Invalid state: data missing, but no error"));
+      }
       resolve(data);
     });
   });
