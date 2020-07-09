@@ -34,14 +34,14 @@ const testCases = [
 
 const errCases = [
   // encoded(hex) / error
-  ["0", "", errLength()],
-  ["zd4aa", "", errInvalidByte(toByte("z"))],
-  ["d4aaz", "\xd4\xaa", errInvalidByte(toByte("z"))],
-  ["30313", "01", errLength()],
-  ["0g", "", errInvalidByte(new TextEncoder().encode("g")[0])],
-  ["00gg", "\x00", errInvalidByte(new TextEncoder().encode("g")[0])],
-  ["0\x01", "", errInvalidByte(new TextEncoder().encode("\x01")[0])],
-  ["ffeed", "\xff\xee", errLength()],
+  ["0", errLength()],
+  ["zd4aa", errInvalidByte(toByte("z"))],
+  ["d4aaz", errInvalidByte(toByte("z"))],
+  ["30313", errLength()],
+  ["0g", errInvalidByte(new TextEncoder().encode("g")[0])],
+  ["00gg", errInvalidByte(new TextEncoder().encode("g")[0])],
+  ["0\x01", errInvalidByte(new TextEncoder().encode("\x01")[0])],
+  ["ffeed", errLength()],
 ];
 
 Deno.test({
@@ -128,7 +128,7 @@ Deno.test({
 Deno.test({
   name: "[encoding.hex] decode error",
   fn(): void {
-    for (const [input, output, expectedErr] of errCases) {
+    for (const [input, expectedErr] of errCases) {
       assertThrows(
         () => decode(new TextEncoder().encode(input as string)),
         Error,
@@ -141,7 +141,7 @@ Deno.test({
 Deno.test({
   name: "[encoding.hex] decodeString error",
   fn(): void {
-    for (const [input, output, expectedErr] of errCases) {
+    for (const [input, expectedErr] of errCases) {
       assertThrows(
         (): void => {
           decodeString(input as string);
