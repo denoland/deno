@@ -393,6 +393,7 @@ dependencies = [
  "futures 0.3.5",
  "fwdansi",
  "http",
+ "idna",
  "indexmap",
  "lazy_static",
  "libc",

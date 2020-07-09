@@ -1,9 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { build } from "../build.ts";
 import { getRandomValues } from "../ops/get_random_values.ts";
+import { domainToAscii } from "../ops/idna.ts";
 import { customInspect } from "./console.ts";
 import { TextEncoder } from "./text_encoding.ts";
-import * as tr46 from "./url/tr46.ts";
 import { urls } from "./url_search_params.ts";
 
 interface URLParts {
@@ -563,19 +563,8 @@ function encodeHostname(s: string, isSpecial = true): string {
     String.fromCodePoint(Number(`0x${hex}`))
   );
 
-  // Domain to ASCII.
-  const ascii = tr46.toASCII(result, {
-    useSTD3ASCIIRules: false,
-    checkHyphens: false,
-    checkBidi: true,
-    checkJoiners: true,
-    processingOption: "nontransitional",
-    verifyDNSLength: false,
-  });
-  if (ascii == null) {
-    throw new TypeError("Invalid hostname.");
-  }
-  result = ascii;
+  // IDNA domain to ASCII.
+  result = domainToAscii(result);
 
   // Check against forbidden host code points.
   for (const c of result) {
