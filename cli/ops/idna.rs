@@ -37,7 +37,6 @@ fn op_domain_to_ascii(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let args: DomainToAscii = serde_json::from_value(args)?;
-  // TODO(nayeemrmn)
   let domain = if args.be_strict {
     domain_to_ascii_strict(args.domain.as_str())
       .map_err(|_| invalid_domain_error())?
@@ -58,7 +57,6 @@ fn op_domain_to_unicode(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let args: DomainToUnicode = serde_json::from_value(args)?;
-  // TODO(nayeemrmn)
   let (domain, result) = domain_to_unicode(args.domain.as_str());
   result.map_err(|_| invalid_domain_error())?;
   Ok(JsonOp::Sync(json!(domain)))
