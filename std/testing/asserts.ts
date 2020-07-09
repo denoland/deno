@@ -135,7 +135,13 @@ export function equal(c: unknown, d: unknown): boolean {
 export const assert: (
   condition: unknown,
   message?: string | undefined
-) => asserts condition = Deno.assert;
+) => asserts condition = globalThis.Deno
+  ? Deno.assert
+  : (condition, message = "Assertion failed"): asserts condition => {
+      if (!condition) {
+        throw new AssertionError({ message, stackStartFn: assert });
+      }
+    };
 
 /**
  * Make an assertion that `actual` and `expected` are equal, deeply. If not
