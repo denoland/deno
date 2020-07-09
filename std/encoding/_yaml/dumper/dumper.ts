@@ -6,7 +6,7 @@
 /* eslint-disable max-len */
 
 import { YAMLError } from "../error.ts";
-import { RepresentFn, StyleVariant, Type } from "../type.ts";
+import type { RepresentFn, StyleVariant, Type } from "../type.ts";
 import * as common from "../utils.ts";
 import { DumperState, DumperStateOptions } from "./dumper_state.ts";
 

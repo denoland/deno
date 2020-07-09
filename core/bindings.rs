@@ -8,6 +8,7 @@ use crate::ZeroCopyBuf;
 use rusty_v8 as v8;
 use v8::MapFnTo;
 
+use smallvec::SmallVec;
 use std::cell::Cell;
 use std::convert::TryFrom;
 use std::option::Option;
@@ -388,24 +389,11 @@ fn send(
     }
   };
 
-  let control_backing_store: v8::SharedRef<v8::BackingStore>;
-  let control = match v8::Local::<v8::ArrayBufferView>::try_from(args.get(1)) {
-    Ok(view) => unsafe {
-      control_backing_store = view.buffer(scope).unwrap().get_backing_store();
-      get_backing_store_slice(
-        &control_backing_store,
-        view.byte_offset(),
-        view.byte_length(),
-      )
-    },
-    Err(_) => &[],
-  };
-
   let state_rc = CoreIsolate::state(scope);
   let mut state = state_rc.borrow_mut();
   assert!(!state.global_context.is_empty());
 
-  let mut buf_iter = (2..args.length()).map(|idx| {
+  let buf_iter = (1..args.length()).map(|idx| {
     v8::Local::<v8::ArrayBufferView>::try_from(args.get(idx))
       .map(|view| ZeroCopyBuf::new(scope, view))
       .map_err(|err| {
@@ -415,36 +403,15 @@ fn send(
       })
   });
 
-  let mut buf_one: ZeroCopyBuf;
-  let mut buf_vec: Vec<ZeroCopyBuf>;
-
-  // Collect all ArrayBufferView's
-  let buf_iter_result = match buf_iter.len() {
-    0 => Ok(&mut [][..]),
-    1 => match buf_iter.next().unwrap() {
-      Ok(buf) => {
-        buf_one = buf;
-        Ok(std::slice::from_mut(&mut buf_one))
+  // If response is empty then it's either async op or exception was thrown.
+  let maybe_response =
+    match buf_iter.collect::<Result<SmallVec<[ZeroCopyBuf; 2]>, _>>() {
+      Ok(mut bufs) => state.dispatch_op(scope, op_id, &mut bufs),
+      Err(exc) => {
+        scope.throw_exception(exc);
+        return;
       }
-      Err(err) => Err(err),
-    },
-    _ => match buf_iter.collect::<Result<Vec<_>, _>>() {
-      Ok(v) => {
-        buf_vec = v;
-        Ok(&mut buf_vec[..])
-      }
-      Err(err) => Err(err),
-    },
-  };
-
-  // If response is empty then it's either async op or exception was thrown
-  let maybe_response = match buf_iter_result {
-    Ok(bufs) => state.dispatch_op(scope, op_id, control, bufs),
-    Err(exc) => {
-      scope.throw_exception(exc);
-      return;
-    }
-  };
+    };
 
   if let Some(response) = maybe_response {
     // Synchronous response.
