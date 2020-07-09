@@ -292,7 +292,9 @@ pub fn op_console_size(
             ) == 0
             {
               // TODO (caspervonb) use GetLastError
-              return Err(OpError::other("windows error".to_owned()));
+              return Err(OpError::other(
+                winapi::um::errhandlingapi::GetLastError().to_string(),
+              ));
             }
 
             Ok(ConsoleSize {
@@ -312,7 +314,7 @@ pub fn op_console_size(
             if libc::ioctl(fd, libc::TIOCGWINSZ, &mut size as *mut _) != 0 {
               // TODO(caspervonb) this should just be OpError::from(errno)
               // but libc does not provide errno.
-              return Err(OpError::other("ioctl error".to_owned()));
+              return Err(OpError::from(std::io::Error::last_os_error()));
             }
 
             // TODO (caspervonb) return a tuple instead
