@@ -19,9 +19,6 @@ export { shutdown, ShutdownMode } from "./net.ts";
 export { listen, listenDatagram, connect } from "./net_unstable.ts";
 export { startTls } from "./tls.ts";
 export { kill } from "./ops/process.ts";
-export { permissions, Permissions } from "./permissions.ts";
-export { PermissionStatus } from "./permissions.ts";
-export type { PermissionName, PermissionState } from "./permissions.ts";
 export { DiagnosticCategory } from "./diagnostics.ts";
 export type {
   Diagnostic,

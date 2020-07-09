@@ -1556,6 +1556,60 @@ declare const AbortSignal: {
   new (): AbortSignal;
 };
 
+type PermissionState = "denied" | "granted" | "prompt";
+
+interface PermissionStatusEventMap {
+  change: Event;
+}
+
+interface PermissionStatus extends EventTarget {
+  onchange: ((this: PermissionStatus, ev: Event) => any) | null;
+  readonly state: PermissionState;
+  addEventListener<K extends keyof PermissionStatusEventMap>(
+    type: K,
+    listener: (this: PermissionStatus, ev: PermissionStatusEventMap[K]) => any,
+    options?: boolean | AddEventListenerOptions
+  ): void;
+  addEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | AddEventListenerOptions
+  ): void;
+  removeEventListener<K extends keyof PermissionStatusEventMap>(
+    type: K,
+    listener: (this: PermissionStatus, ev: PermissionStatusEventMap[K]) => any,
+    options?: boolean | EventListenerOptions
+  ): void;
+  removeEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | EventListenerOptions
+  ): void;
+}
+
+/** Deno does not currently support any of the browser permissions, and so the
+ * `name` property of the global types is `undefined`.  The Deno permissions
+ * that are supported are defined in the `lib.deno.ns.d.ts` and pull from the
+ * `Deno` namespace. */
+declare interface PermissionDescriptor {
+  name: undefined;
+}
+
+declare interface Permissions {
+  query(permissionDesc: PermissionDescriptor): Promise<PermissionStatus>;
+}
+
+declare const Permissions: {
+  prototype: Permissions;
+  new (): Permissions;
+};
+
+declare class Navigator {
+  readonly permissions: Permissions;
+}
+
+declare const navigator: Navigator;
+
 interface ErrorConstructor {
   /** See https://v8.dev/docs/stack-trace-api#stack-trace-collection-for-custom-exceptions. */
   // eslint-disable-next-line @typescript-eslint/ban-types
