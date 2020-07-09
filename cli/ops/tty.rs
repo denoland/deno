@@ -312,8 +312,6 @@ pub fn op_console_size(
           unsafe {
             let mut size: libc::winsize = std::mem::zeroed();
             if libc::ioctl(fd, libc::TIOCGWINSZ, &mut size as *mut _) != 0 {
-              // TODO(caspervonb) this should just be OpError::from(errno)
-              // but libc does not provide errno.
               return Err(OpError::from(std::io::Error::last_os_error()));
             }
 
