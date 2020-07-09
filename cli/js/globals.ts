@@ -235,7 +235,6 @@ export const windowOrWorkerGlobalScopeProperties = {
   Headers: nonEnumerable(headers.HeadersImpl),
   navigator: nonEnumerable(new navigator.NavigatorImpl()),
   Navigator: nonEnumerable(navigator.NavigatorImpl),
-  performance: writable(new performanceUtil.Performance()),
   Permissions: nonEnumerable(permissions.PermissionsImpl),
   PermissionStatus: nonEnumerable(permissions.PermissionStatusImpl),
   ReadableStream: nonEnumerable(readableStream.ReadableStreamImpl),
