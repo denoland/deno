@@ -252,92 +252,79 @@ pub fn op_isatty(
   Ok(JsonOp::Sync(json!(isatty)))
 }
 
+#[derive(Deserialize)]
+struct ConsoleSizeArgs {
+  rid: u32,
+}
+
 #[derive(Serialize)]
 struct ConsoleSize {
   columns: u32,
   rows: u32,
 }
 
-#[cfg(unix)]
-fn console_size(rid: i32) -> Result<ConsoleSize, std::io::Error> {
-  use libc::{ioctl, winsize, TIOCGWINSZ};
-  use std::mem::MaybeUninit;
-
-  let mut count: u32 = 0;
-  loop {
-    count += 1;
-
-    let mut buffer = MaybeUninit::<winsize>::uninit();
-    let result =
-      unsafe { ioctl(rid, TIOCGWINSZ, buffer.as_mut_ptr() as *mut _) };
-
-    if result == -1 {
-      if count > 3 {
-        break unsafe { MaybeUninit::zeroed().assume_init() };
-      }
-      continue;
-    } else {
-      let console_data = unsafe { buffer.assume_init() };
-      break Ok(ConsoleSize {
-        columns: console_data.ws_col as u32,
-        rows: console_data.ws_row as u32,
-      });
-    }
-  }
-}
-
-#[cfg(windows)]
-fn console_size(rid: i32) -> Result<ConsoleSize, std::io::Error> {
-  use winapi::um::winbase::STD_OUTPUT_HANDLE;
-  use winapi::um::wincon::GetConsoleScreenBufferInfo;
-  use winapi::um::wincon::{CONSOLE_SCREEN_BUFFER_INFO, COORD, SMALL_RECT};
-
-  let null_coord = COORD { X: 0, Y: 0 };
-  let null_smallrect = SMALL_RECT {
-    Left: 0,
-    Top: 0,
-    Right: 0,
-    Bottom: 0,
-  };
-
-  let mut console_data = CONSOLE_SCREEN_BUFFER_INFO {
-    dwSize: null_coord,
-    dwCursorPosition: null_coord,
-    wAttributes: 0,
-    srWindow: null_smallrect,
-    dwMaximumWindowSize: null_coord,
-  };
-
-  assert!(rid == 1, "Cannot get the size of an arbitrary console");
-
-  unsafe {
-    GetConsoleScreenBufferInfo(
-      winapi::um::processenv::GetStdHandle(STD_OUTPUT_HANDLE),
-      &mut console_data,
-    );
-  }
-
-  Ok(ConsoleSize {
-    columns: (console_data.srWindow.Right - console_data.srWindow.Left + 1)
-      as u32,
-    rows: (console_data.srWindow.Bottom - console_data.srWindow.Top + 1) as u32,
-  })
-}
-
 pub fn op_console_size(
-  _isolate_state: &mut CoreIsolateState,
+  isolate_state: &mut CoreIsolateState,
   state: &State,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   state.check_unstable("Deno.consoleSize");
-
-  #[derive(Deserialize)]
-  struct ConsoleSizeArgs {
-    rid: u32,
-  }
-
   let args: ConsoleSizeArgs = serde_json::from_value(args)?;
-  let console_size = console_size(args.rid as i32)?;
-  Ok(JsonOp::Sync(json!(console_size)))
+  let rid = args.rid;
+
+  let mut resource_table = isolate_state.resource_table.borrow_mut();
+  let size =
+    std_file_resource(&mut resource_table, rid as u32, move |r| match r {
+      Ok(std_file) => {
+        #[cfg(windows)]
+        {
+          use std::os::windows::io::AsRawHandle;
+          let handle = std_file.as_raw_handle();
+
+          unsafe {
+            let mut bufinfo: winapi::um::wincon::CONSOLE_SCREEN_BUFFER_INFO =
+              std::mem::zeroed();
+
+            if winapi::um::wincon::GetConsoleScreenBufferInfo(
+              handle,
+              &mut bufinfo,
+            ) == 0
+            {
+              // TODO (caspervonb) use GetLastError
+              return Err(OpError::other("windows error".to_owned()));
+            }
+
+            Ok(ConsoleSize {
+              columns: bufinfo.dwSize.X as u32,
+              rows: bufinfo.dwSize.Y as u32,
+            })
+          }
+        }
+
+        #[cfg(unix)]
+        {
+          use std::os::unix::io::AsRawFd;
+
+          let fd = std_file.as_raw_fd();
+          unsafe {
+            let mut size: libc::winsize = std::mem::zeroed();
+            if libc::ioctl(fd, libc::TIOCGWINSZ, &mut size as *mut _) != 0 {
+              // TODO(caspervonb) this should just be OpError::from(errno)
+              // but libc does not provide errno.
+              return Err(OpError::other("ioctl error".to_owned()));
+            }
+
+            // TODO (caspervonb) return a tuple instead
+            Ok(ConsoleSize {
+              columns: size.ws_col as u32,
+              rows: size.ws_row as u32,
+            })
+          }
+        }
+      }
+      Err(_) => Err(OpError::bad_resource_id()),
+    })?;
+
+  Ok(JsonOp::Sync(json!(size)))
 }
