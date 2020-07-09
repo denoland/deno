@@ -11,7 +11,7 @@ import { assert } from "./util.ts";
 // buffer.ReadFrom. As long as the Buffer has at least MIN_READ bytes beyond
 // what is required to hold the contents of r, readFrom() will not grow the
 // underlying buffer.
-const MIN_READ = 512;
+const MIN_READ = 32 * 1024;
 const MAX_SIZE = 2 ** 32 - 2;
 
 // `off` is the offset into `dst` where it will at which to begin writing values
@@ -115,7 +115,7 @@ export class Buffer implements Reader, ReaderSync, Writer, WriterSync {
     return Promise.resolve(n);
   }
 
-  #grow = (n: number, exceedLimit = true): number => {
+  #grow = (n: number): number => {
     const m = this.length;
     // If buffer is empty, reset to recover space.
     if (m === 0 && this.#off !== 0) {
@@ -133,7 +133,7 @@ export class Buffer implements Reader, ReaderSync, Writer, WriterSync {
       // we instead let capacity get twice as large so we
       // don't spend all our time copying.
       copyBytes(this.#buf.subarray(this.#off), this.#buf);
-    } else if (c + n > MAX_SIZE && exceedLimit) {
+    } else if (c + n > MAX_SIZE) {
       throw new Error("The buffer cannot be grown beyond the maximum size.");
     } else {
       // Not enough space anywhere, we need to allocate.
@@ -157,56 +157,49 @@ export class Buffer implements Reader, ReaderSync, Writer, WriterSync {
 
   async readFrom(r: Reader): Promise<number> {
     let n = 0;
+    const tmp = new Uint8Array(MIN_READ);
     while (true) {
-      let i = this.length;
+      const shouldGrow = this.capacity - this.length < MIN_READ;
+      // read into tmp buffer if there's not enough room
+      // otherwise read directly into the internal buffer
+      const buf = shouldGrow
+        ? tmp
+        : new Uint8Array(this.#buf.buffer, this.length);
 
-      if (this.capacity < MAX_SIZE || i === MAX_SIZE) {
-        // We want to grow beyond MAX_SIZE only when the read bytes are MAX_SIZE
-        // so it will throw beyond MAX_SIZE error.
-        // Otherwise we want to keep reading without growing the buffer
-        i = this.#grow(MIN_READ, this.capacity === MAX_SIZE);
-        this.#reslice(i);
-      }
-
-      const fub = new Uint8Array(this.#buf.buffer, i);
-      const nread = await r.read(fub);
+      const nread = await r.read(buf);
       if (nread === null) {
         return n;
       }
 
-      this.#reslice(i + nread);
-      n += nread;
+      // write will grow if needed
+      if (shouldGrow) this.writeSync(buf.subarray(0, nread));
+      else this.#reslice(this.length + nread);
 
-      if (n === MAX_SIZE) {
-        // Check if EOF is reached, else next iteration will throw since we reached MAX_SIZE
-        if ((await r.read(new Uint8Array(1))) === null) return n;
-      }
+      n += nread;
     }
   }
 
   readFromSync(r: ReaderSync): number {
     let n = 0;
+    const tmp = new Uint8Array(MIN_READ);
     while (true) {
-      let i = this.length;
+      const shouldGrow = this.capacity - this.length < MIN_READ;
+      // read into tmp buffer if there's not enough room
+      // otherwise read directly into the internal buffer
+      const buf = shouldGrow
+        ? tmp
+        : new Uint8Array(this.#buf.buffer, this.length);
 
-      if (this.capacity < MAX_SIZE || i === MAX_SIZE) {
-        i = this.#grow(MIN_READ, this.capacity === MAX_SIZE);
-        this.#reslice(i);
-      }
-
-      const fub = new Uint8Array(this.#buf.buffer, i);
-      const nread = r.readSync(fub);
+      const nread = r.readSync(buf);
       if (nread === null) {
         return n;
       }
 
-      this.#reslice(i + nread);
-      n += nread;
+      // write will grow if needed
+      if (shouldGrow) this.writeSync(buf.subarray(0, nread));
+      else this.#reslice(this.length + nread);
 
-      if (n === MAX_SIZE) {
-        // Check if EOF is reached, else next iteration will throw since we reached MAX_SIZE
-        if (r.readSync(new Uint8Array(1)) === null) return n;
-      }
+      n += nread;
     }
   }
 }
