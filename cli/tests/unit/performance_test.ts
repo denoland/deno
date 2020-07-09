@@ -35,17 +35,25 @@ unitTest(function performanceMark() {
 
 unitTest(function performanceMeasure() {
   const mark = performance.mark("test");
-  const measure = performance.measure("test", "test");
-  assert(measure instanceof PerformanceMeasure);
-  assertEquals(measure.detail, null);
-  assertEquals(measure.name, "test");
-  assertEquals(measure.entryType, "measure");
-  assert(measure.startTime > 0);
-  console.log(mark);
-  console.log(measure);
-  assertEquals(measure.duration, mark.startTime - measure.startTime);
-  const entries = performance.getEntries();
-  assert(entries[entries.length - 1] === measure);
-  const measureEntries = performance.getEntriesByName("test", "measure");
-  assert(measureEntries[measureEntries.length - 1] === measure);
+  return new Promise((resolve, reject) => {
+    setTimeout(() => {
+      try {
+        const measure = performance.measure("test", "test");
+        assert(measure instanceof PerformanceMeasure);
+        assertEquals(measure.detail, null);
+        assertEquals(measure.name, "test");
+        assertEquals(measure.entryType, "measure");
+        assert(measure.startTime > 0);
+        assertEquals(mark.startTime, measure.startTime);
+        assert(measure.duration > 100 && measure.duration < 200);
+        const entries = performance.getEntries();
+        assert(entries[entries.length - 1] === measure);
+        const measureEntries = performance.getEntriesByName("test", "measure");
+        assert(measureEntries[measureEntries.length - 1] === measure);
+      } catch (e) {
+        return reject(e);
+      }
+      resolve();
+    }, 100);
+  });
 });
