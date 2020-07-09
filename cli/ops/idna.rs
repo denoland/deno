@@ -7,14 +7,10 @@ use crate::op_error::{ErrorKind, OpError};
 use crate::state::State;
 use deno_core::CoreIsolate;
 use deno_core::ZeroCopyBuf;
-use idna::{domain_to_ascii, domain_to_ascii_strict, domain_to_unicode};
+use idna::{domain_to_ascii, domain_to_ascii_strict};
 
 pub fn init(i: &mut CoreIsolate, s: &State) {
   i.register_op("op_domain_to_ascii", s.stateful_json_op(op_domain_to_ascii));
-  i.register_op(
-    "op_domain_to_unicode",
-    s.stateful_json_op(op_domain_to_unicode),
-  );
 }
 
 fn invalid_domain_error() -> OpError {
@@ -43,21 +39,5 @@ fn op_domain_to_ascii(
   } else {
     domain_to_ascii(args.domain.as_str()).map_err(|_| invalid_domain_error())?
   };
-  Ok(JsonOp::Sync(json!(domain)))
-}
-
-#[derive(Deserialize)]
-struct DomainToUnicode {
-  domain: String,
-}
-
-fn op_domain_to_unicode(
-  _state: &State,
-  args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
-  let args: DomainToUnicode = serde_json::from_value(args)?;
-  let (domain, result) = domain_to_unicode(args.domain.as_str());
-  result.map_err(|_| invalid_domain_error())?;
   Ok(JsonOp::Sync(json!(domain)))
 }

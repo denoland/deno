@@ -10,7 +10,3 @@ export function domainToAscii(
 ): string {
   return sendSync("op_domain_to_ascii", { domain, beStrict });
 }
-
-export function domainToUnicode(domain: string): string {
-  return sendSync("op_domain_to_unicode", { domain });
-}
