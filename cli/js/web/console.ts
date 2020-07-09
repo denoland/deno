@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 import { isInvalidDate, isTypedArray, TypedArray } from "./util.ts";
 import { cliTable } from "./console_table.ts";
 import { exposeForTest } from "../internals.ts";
@@ -381,7 +382,7 @@ function createTypedArrayString(
     displayName: `${typedArrayName}(${valueLength})`,
     delims: ["[", "]"],
     entryHandler: (entry, ctx, level, maxLevel): string => {
-      const [_, val] = entry;
+      const val = entry[1];
       return stringifyWithQuotes(val, ctx, level + 1, maxLevel);
     },
     group: true,
@@ -400,7 +401,7 @@ function createSetString(
     displayName: "Set",
     delims: ["{", "}"],
     entryHandler: (entry, ctx, level, maxLevel): string => {
-      const [_, val] = entry;
+      const val = entry[1];
       return stringifyWithQuotes(val, ctx, level + 1, maxLevel);
     },
     group: false,
@@ -508,7 +509,7 @@ function createRawObjectString(
   }
   ctx.add(value);
 
-  let baseString = "";
+  let baseString: string;
 
   let shouldShowDisplayName = false;
   let displayName = (value as { [Symbol.toStringTag]: string })[
@@ -724,7 +725,7 @@ const timerMap = new Map<string, number>();
 const isConsoleInstance = Symbol("isConsoleInstance");
 
 export class Console {
-  #printFunc: PrintFunc;
+  readonly #printFunc: PrintFunc;
   indentLevel: number;
   [isConsoleInstance] = false;
 

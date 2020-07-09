@@ -441,6 +441,7 @@ dependencies = [
  "log 0.4.8",
  "rusty_v8",
  "serde_json",
+ "smallvec 1.4.0",
  "tokio",
  "url",
 ]
@@ -954,14 +955,6 @@ dependencies = [
  "tokio",
  "tokio-rustls 0.13.1",
  "webpki",
-]
-
-[[package]]
-name = "hyper_hello"
-version = "0.0.1"
-dependencies = [
- "hyper",
- "tokio",
 ]
 
 [[package]]

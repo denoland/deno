@@ -319,6 +319,7 @@ impl From<nix::Error> for OpError {
       nix::Error::Sys(EPERM) => ErrorKind::PermissionDenied,
       nix::Error::Sys(EINVAL) => ErrorKind::TypeError,
       nix::Error::Sys(ENOENT) => ErrorKind::NotFound,
+      nix::Error::Sys(ENOTTY) => ErrorKind::BadResource,
       nix::Error::Sys(UnknownErrno) => unreachable!(),
       nix::Error::Sys(_) => unreachable!(),
       nix::Error::InvalidPath => ErrorKind::TypeError,

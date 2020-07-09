@@ -31,6 +31,10 @@ exec_time_benchmarks = [
      ["run", "--allow-read", "cli/tests/workers_round_robin_bench.ts"], None),
     ("text_decoder", ["run", "cli/tests/text_decoder_perf.js"], None),
     ("text_encoder", ["run", "cli/tests/text_encoder_perf.js"], None),
+    ("check", ["cache", "--reload", "std/examples/chat/server_test.ts"], None),
+    ("no_check",
+     ["cache", "--reload", "--no-check",
+      "std/examples/chat/server_test.ts"], None),
 ]
 
 

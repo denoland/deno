@@ -19,6 +19,40 @@ declare interface ImportMeta {
   main: boolean;
 }
 
+declare interface Permissions {
+  /** Resolves to the current status of a permission.
+   *
+   * ```ts
+   * const status = await navigator.permissions.query({ name: "read", path: "/etc" });
+   * if (status.state === "granted") {
+   *   data = await Deno.readFile("/etc/passwd");
+   * }
+   * ```
+   */
+  query(permissionDesc: Deno.PermissionDescriptor): Promise<PermissionStatus>;
+
+  /** Requests the permission, and resolves to the state of the permission.
+   *
+   * ```ts
+   * const status = await navigator.permissions.request({ name: "env" });
+   * if (status.state === "granted") {
+   *   console.log(Deno.dir("home");
+   * } else {
+   *   console.log("'env' permission is denied.");
+   * }
+   * ```
+   */
+  request(permissionDesc: Deno.PermissionDescriptor): Promise<PermissionStatus>;
+
+  /** Revokes a permission, and resolves to the state of the permission.
+   *
+   * ```ts
+   * const status = await Deno.revoke({ name: "run" });
+   * ```
+   */
+  revoke(permissionDesc: Deno.PermissionDescriptor): Promise<PermissionStatus>;
+}
+
 declare namespace Deno {
   /** A set of error constructors that are raised by Deno APIs. */
   export const errors: {
@@ -1080,10 +1114,14 @@ declare namespace Deno {
    * Throws Error (not implemented) if executed on Windows
    *
    * @param path path to the file
-   * @param uid user id (UID) of the new owner
-   * @param gid group id (GID) of the new owner
+   * @param uid user id (UID) of the new owner, or `null` for no change
+   * @param gid group id (GID) of the new owner, or `null` for no change
    */
-  export function chownSync(path: string | URL, uid: number, gid: number): void;
+  export function chownSync(
+    path: string | URL,
+    uid: number | null,
+    gid: number | null
+  ): void;
 
   /** Change owner of a regular file or directory. This functionality
    * is not available on Windows.
@@ -1097,13 +1135,13 @@ declare namespace Deno {
    * Throws Error (not implemented) if executed on Windows
    *
    * @param path path to the file
-   * @param uid user id (UID) of the new owner
-   * @param gid group id (GID) of the new owner
+   * @param uid user id (UID) of the new owner, or `null` for no change
+   * @param gid group id (GID) of the new owner, or `null` for no change
    */
   export function chown(
     path: string | URL,
-    uid: number,
-    gid: number
+    uid: number | null,
+    gid: number | null
   ): Promise<void>;
 
   export interface RemoveOptions {
@@ -1520,7 +1558,11 @@ declare namespace Deno {
    *
    * Requires `allow-write` permission, and `allow-read` if `options.create` is `false`.
    */
-  export function writeTextFileSync(path: string | URL, data: string): void;
+  export function writeTextFileSync(
+    path: string | URL,
+    data: string,
+    options?: WriteFileOptions
+  ): void;
 
   /** Asynchronously write string `data` to the given `path`, by default creating a new file if needed,
    * else overwriting.
@@ -1533,7 +1575,8 @@ declare namespace Deno {
    */
   export function writeTextFile(
     path: string | URL,
-    data: string
+    data: string,
+    options?: WriteFileOptions
   ): Promise<void>;
 
   /** Synchronously truncates or extends the specified file, to reach the
@@ -1800,10 +1843,10 @@ declare namespace Deno {
       : (Writer & Closer) | null;
     readonly stdout: T["stdout"] extends "piped"
       ? Reader & Closer
-      : (Writer & Closer) | null;
+      : (Reader & Closer) | null;
     readonly stderr: T["stderr"] extends "piped"
       ? Reader & Closer
-      : (Writer & Closer) | null;
+      : (Reader & Closer) | null;
     /** Resolves to the current status of the process. */
     status(): Promise<ProcessStatus>;
     /** Buffer the stdout until EOF and return it as `Uint8Array`.
@@ -1887,6 +1930,65 @@ declare namespace Deno {
    *
    * Requires `allow-run` permission. */
   export function run<T extends RunOptions = RunOptions>(opt: T): Process<T>;
+
+  /** The name of a "powerful feature" which needs permission.
+   *
+   * See: https://w3c.github.io/permissions/#permission-registry
+   *
+   * Note that the definition of `PermissionName` in the above spec is swapped
+   * out for a set of Deno permissions which are not web-compatible. */
+  export type PermissionName =
+    | "run"
+    | "read"
+    | "write"
+    | "net"
+    | "env"
+    | "plugin"
+    | "hrtime";
+
+  export interface RunPermissionDescriptor {
+    name: "run";
+  }
+
+  export interface ReadPermissionDescriptor {
+    name: "read";
+    path?: string;
+  }
+
+  export interface WritePermissionDescriptor {
+    name: "write";
+    path?: string;
+  }
+
+  export interface NetPermissionDescriptor {
+    name: "net";
+    url?: string;
+  }
+
+  export interface EnvPermissionDescriptor {
+    name: "env";
+  }
+
+  export interface PluginPermissionDescriptor {
+    name: "plugin";
+  }
+
+  export interface HrtimePermissionDescriptor {
+    name: "hrtime";
+  }
+
+  /** Permission descriptors which define a permission and can be queried,
+   * requested, or revoked.
+   *
+   * See: https://w3c.github.io/permissions/#permission-descriptor */
+  export type PermissionDescriptor =
+    | RunPermissionDescriptor
+    | ReadPermissionDescriptor
+    | WritePermissionDescriptor
+    | NetPermissionDescriptor
+    | EnvPermissionDescriptor
+    | PluginPermissionDescriptor
+    | HrtimePermissionDescriptor;
 
   interface InspectOptions {
     depth?: number;

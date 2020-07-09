@@ -116,14 +116,13 @@ fn test_parse_min_record() {
 
 pub fn minimal_op<D>(
   d: D,
-) -> impl Fn(&mut CoreIsolateState, &[u8], &mut [ZeroCopyBuf]) -> Op
+) -> impl Fn(&mut CoreIsolateState, &mut [ZeroCopyBuf]) -> Op
 where
   D: Fn(&mut CoreIsolateState, bool, i32, &mut [ZeroCopyBuf]) -> MinimalOp,
 {
-  move |isolate_state: &mut CoreIsolateState,
-        control: &[u8],
-        zero_copy: &mut [ZeroCopyBuf]| {
-    let mut record = match parse_min_record(control) {
+  move |isolate_state: &mut CoreIsolateState, zero_copy: &mut [ZeroCopyBuf]| {
+    assert!(!zero_copy.is_empty(), "Expected record at position 0");
+    let mut record = match parse_min_record(&zero_copy[0]) {
       Some(r) => r,
       None => {
         let e = OpError::type_error("Unparsable control buffer".to_string());
@@ -138,7 +137,7 @@ where
     };
     let is_sync = record.promise_id == 0;
     let rid = record.arg;
-    let min_op = d(isolate_state, is_sync, rid, zero_copy);
+    let min_op = d(isolate_state, is_sync, rid, &mut zero_copy[1..]);
 
     match min_op {
       MinimalOp::Sync(sync_result) => Op::Sync(match sync_result {

@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 import { exit } from "./ops/os.ts";
 import { core } from "./core.ts";
 import { version } from "./version.ts";
