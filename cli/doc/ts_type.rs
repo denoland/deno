@@ -121,7 +121,7 @@ impl Into<TsTypeDef> for &TsTupleType {
     let mut type_defs = vec![];
 
     for type_box in &self.elem_types {
-      let ts_type: &TsType = &(*type_box);
+      let ts_type: &TsType = &type_box.ty;
       let def: TsTypeDef = ts_type.into();
       type_defs.push(def)
     }
@@ -529,7 +529,7 @@ impl Into<TsTypeDef> for &TsType {
       TsUnionOrIntersectionType(union_or_inter) => union_or_inter.into(),
       TsArrayType(array_type) => array_type.into(),
       TsTupleType(tuple_type) => tuple_type.into(),
-      TsTypeOperator(type_op_name) => type_op_name.into(),
+      TsTypeOperator(type_op_type) => type_op_type.into(),
       TsParenthesizedType(paren_type) => paren_type.into(),
       TsRestType(rest_type) => rest_type.into(),
       TsOptionalType(optional_type) => optional_type.into(),
@@ -737,7 +737,7 @@ pub fn ts_type_ann_to_def(type_ann: &TsTypeAnn) -> TsTypeDef {
     TsUnionOrIntersectionType(union_or_inter) => union_or_inter.into(),
     TsArrayType(array_type) => array_type.into(),
     TsTupleType(tuple_type) => tuple_type.into(),
-    TsTypeOperator(type_op_name) => type_op_name.into(),
+    TsTypeOperator(type_op_type) => type_op_type.into(),
     TsParenthesizedType(paren_type) => paren_type.into(),
     TsRestType(rest_type) => rest_type.into(),
     TsOptionalType(optional_type) => optional_type.into(),

@@ -1,4 +1,3 @@
-const { cwd, execPath, run } = Deno;
 import { decode } from "../encoding/utf8.ts";
 import {
   assert,
@@ -32,7 +31,7 @@ async function expandGlobArray(
   );
   pathsSync.sort();
   assertEquals(paths, pathsSync);
-  const root = normalize(options.root || cwd());
+  const root = normalize(options.root || Deno.cwd());
   for (const path of paths) {
     assert(path.startsWith(root));
   }
@@ -118,8 +117,8 @@ Deno.test("expandGlobIncludeDirs", async function (): Promise<void> {
 
 Deno.test("expandGlobPermError", async function (): Promise<void> {
   const exampleUrl = new URL("testdata/expand_wildcard.js", import.meta.url);
-  const p = run({
-    cmd: [execPath(), "run", "--unstable", exampleUrl.toString()],
+  const p = Deno.run({
+    cmd: [Deno.execPath(), "run", "--unstable", exampleUrl.toString()],
     stdin: "null",
     stdout: "piped",
     stderr: "piped",

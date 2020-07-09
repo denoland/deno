@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 import * as tlsOps from "./ops/tls.ts";
 import { Listener, Conn, ConnImpl, ListenerImpl } from "./net.ts";
 
@@ -65,7 +66,7 @@ interface StartTlsOptions {
 
 export async function startTls(
   conn: Conn,
-  { hostname = "127.0.0.1", certFile = undefined }: StartTlsOptions = {}
+  { hostname = "127.0.0.1", certFile }: StartTlsOptions = {}
 ): Promise<Conn> {
   const res = await tlsOps.startTls({
     rid: conn.rid,

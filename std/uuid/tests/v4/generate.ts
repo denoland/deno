@@ -1,9 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { assert, assertEquals } from "../../../testing/asserts.ts";
-const { test } = Deno;
 import { generate, validate } from "../../v4.ts";
 
-test({
+Deno.test({
   name: "[UUID] test_uuid_v4",
   fn(): void {
     const u = generate();
@@ -12,7 +11,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "[UUID] test_uuid_v4_format",
   fn(): void {
     for (let i = 0; i < 10000; i++) {

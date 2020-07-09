@@ -1,5 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-const { test } = Deno;
 import { assertEquals } from "../testing/asserts.ts";
 import { Sha1, Message } from "./sha1.ts";
 import { join, resolve } from "../path/mod.ts";
@@ -70,7 +69,7 @@ for (const method of methods) {
   for (const [name, tests] of Object.entries(fixtures.sha1)) {
     let i = 1;
     for (const [expected, message] of Object.entries(tests)) {
-      test({
+      Deno.test({
         name: `sha1.${method}() - ${name} - #${i++}`,
         fn() {
           const algorithm = new Sha1();
@@ -90,7 +89,7 @@ for (const method of methods) {
   for (const [name, tests] of Object.entries(fixtures.sha1)) {
     let i = 1;
     for (const [expected, message] of Object.entries(tests)) {
-      test({
+      Deno.test({
         name: `sha1.${method}() - ${name} - #${i++}`,
         fn() {
           const algorithm = new Sha1(true);
@@ -106,7 +105,7 @@ for (const method of methods) {
   }
 }
 
-test("[hash/sha1] test Uint8Array from Reader", async () => {
+Deno.test("[hash/sha1] test Uint8Array from Reader", async () => {
   const data = await Deno.readFile(join(testdataDir, "hashtest"));
 
   const hash = new Sha1().update(data).hex();

@@ -24,7 +24,7 @@ const searchParamsMethods: Array<keyof URLSearchParams> = [
 const specialSchemes = ["ftp", "file", "http", "https", "ws", "wss"];
 
 // https://url.spec.whatwg.org/#special-scheme
-const schemePorts: { [key: string]: string } = {
+const schemePorts: Record<string, string> = {
   ftp: "21",
   file: "",
   http: "80",
@@ -62,12 +62,15 @@ function parse(url: string, isBase = true): URLParts | undefined {
     parts.password = "";
     [parts.hostname, restUrl] = takePattern(restUrl, /^[/\\]{2}([^/\\?#]*)/);
     parts.port = "";
+    if (build.os == "windows" && parts.hostname == "") {
+      // UNC paths. e.g. "\\\\localhost\\foo\\bar" on Windows should be
+      // representable as `new URL("file:////localhost/foo/bar")` which is
+      // equivalent to: `new URL("file://localhost/foo/bar")`.
+      [parts.hostname, restUrl] = takePattern(restUrl, /^[/\\]{2,}([^/\\?#]*)/);
+    }
   } else if (specialSchemes.includes(parts.protocol)) {
     let restAuthority;
-    [restAuthority, restUrl] = takePattern(
-      restUrl,
-      /^[/\\]{2}[/\\]*([^/\\?#]+)/
-    );
+    [restAuthority, restUrl] = takePattern(restUrl, /^[/\\]{2,}([^/\\?#]+)/);
     if (isBase && restAuthority == "") {
       return undefined;
     }
@@ -176,8 +179,8 @@ function resolvePathFromBase(
 
   let driveLetterPrefix = "";
   if (build.os == "windows" && isFilePath) {
-    let driveLetter = "";
-    let baseDriveLetter = "";
+    let driveLetter: string;
+    let baseDriveLetter: string;
     [driveLetter, normalizedPath] = takePattern(
       normalizedPath,
       /^(\/[A-Za-z]:)(?=\/)/
@@ -211,7 +214,8 @@ function resolvePathFromBase(
 
 function isValidPort(value: string): boolean {
   // https://url.spec.whatwg.org/#port-state
-  if (value === "") true;
+  if (value === "") return true;
+
   const port = Number(value);
   return Number.isInteger(port) && port >= 0 && port <= MAX_PORT;
 }
@@ -406,7 +410,7 @@ export class URLImpl implements URL {
     let baseParts: URLParts | undefined;
     if (base) {
       baseParts = typeof base === "string" ? parse(base) : parts.get(base);
-      if (baseParts == undefined) {
+      if (baseParts === undefined) {
         throw new TypeError("Invalid base URL.");
       }
     }

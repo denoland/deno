@@ -2,11 +2,8 @@
 // Copyright 2011-2015 by Vitaly Puzrin. All rights reserved. MIT license.
 // https://github.com/nodeca/js-yaml/commit/665aadda42349dcae869f12040d9b10ef18d12da
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-
 import { Type } from "../type.ts";
-import { Any } from "../utils.ts";
-
-const { Buffer } = Deno;
+import type { Any } from "../utils.ts";
 
 // [ 64, 65, 66 ] -> [ padding, CR, LF ]
 const BASE64_MAP =
@@ -72,7 +69,7 @@ function constructYamlBinary(data: string): Deno.Buffer {
     result.push((bits >> 4) & 0xff);
   }
 
-  return new Buffer(new Uint8Array(result));
+  return new Deno.Buffer(new Uint8Array(result));
 }
 
 function representYamlBinary(object: Uint8Array): string {
@@ -119,7 +116,7 @@ function representYamlBinary(object: Uint8Array): string {
 }
 
 function isBinary(obj: Any): obj is Deno.Buffer {
-  const buf = new Buffer();
+  const buf = new Deno.Buffer();
   try {
     if (0 > buf.readFromSync(obj as Deno.Buffer)) return true;
     return false;

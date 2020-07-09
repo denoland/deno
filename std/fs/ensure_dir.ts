@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { getFileInfoType } from "./_util.ts";
-const { lstat, lstatSync, mkdir, mkdirSync } = Deno;
 
 /**
  * Ensures that the directory exists.
@@ -9,7 +8,7 @@ const { lstat, lstatSync, mkdir, mkdirSync } = Deno;
  */
 export async function ensureDir(dir: string): Promise<void> {
   try {
-    const fileInfo = await lstat(dir);
+    const fileInfo = await Deno.lstat(dir);
     if (!fileInfo.isDirectory) {
       throw new Error(
         `Ensure path exists, expected 'dir', got '${getFileInfoType(fileInfo)}'`
@@ -18,7 +17,7 @@ export async function ensureDir(dir: string): Promise<void> {
   } catch (err) {
     if (err instanceof Deno.errors.NotFound) {
       // if dir not exists. then create it.
-      await mkdir(dir, { recursive: true });
+      await Deno.mkdir(dir, { recursive: true });
       return;
     }
     throw err;
@@ -32,7 +31,7 @@ export async function ensureDir(dir: string): Promise<void> {
  */
 export function ensureDirSync(dir: string): void {
   try {
-    const fileInfo = lstatSync(dir);
+    const fileInfo = Deno.lstatSync(dir);
     if (!fileInfo.isDirectory) {
       throw new Error(
         `Ensure path exists, expected 'dir', got '${getFileInfoType(fileInfo)}'`
@@ -41,7 +40,7 @@ export function ensureDirSync(dir: string): void {
   } catch (err) {
     if (err instanceof Deno.errors.NotFound) {
       // if dir not exists. then create it.
-      mkdirSync(dir, { recursive: true });
+      Deno.mkdirSync(dir, { recursive: true });
       return;
     }
     throw err;

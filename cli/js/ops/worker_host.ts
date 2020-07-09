@@ -1,6 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { sendAsync, sendSync } from "./dispatch_json.ts";
+
+interface CreateWorkerResponse {
+  id: number;
+}
 
 export function createWorker(
   specifier: string,
@@ -8,7 +13,7 @@ export function createWorker(
   sourceCode: string,
   useDenoNamespace: boolean,
   name?: string
-): { id: number } {
+): CreateWorkerResponse {
   return sendSync("op_create_worker", {
     specifier,
     hasSourceCode,

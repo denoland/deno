@@ -20,11 +20,10 @@ would be good to be able to query the system for how many open resources there
 are.
 
 ```ts
-const { resources, close } = Deno;
-console.log(resources());
+console.log(Deno.resources());
 // { 0: "stdin", 1: "stdout", 2: "stderr" }
-close(0);
-console.log(resources());
+Deno.close(0);
+console.log(Deno.resources());
 // { 1: "stdout", 2: "stderr" }
 ```
 

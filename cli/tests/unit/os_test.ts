@@ -28,27 +28,15 @@ unitTest({ perms: { env: true } }, function deleteEnv(): void {
 });
 
 unitTest(function envPermissionDenied1(): void {
-  let err;
-  try {
+  assertThrows(() => {
     Deno.env.toObject();
-  } catch (e) {
-    err = e;
-  }
-  assertNotEquals(err, undefined);
-  assert(err instanceof Deno.errors.PermissionDenied);
-  assertEquals(err.name, "PermissionDenied");
+  }, Deno.errors.PermissionDenied);
 });
 
 unitTest(function envPermissionDenied2(): void {
-  let err;
-  try {
+  assertThrows(() => {
     Deno.env.get("PATH");
-  } catch (e) {
-    err = e;
-  }
-  assertNotEquals(err, undefined);
-  assert(err instanceof Deno.errors.PermissionDenied);
-  assertEquals(err.name, "PermissionDenied");
+  }, Deno.errors.PermissionDenied);
 });
 
 // This test verifies that on Windows, environment variables are
@@ -123,161 +111,27 @@ unitTest(function osPid(): void {
   assert(Deno.pid > 0);
 });
 
-unitTest({ perms: { env: true } }, function getDir(): void {
-  type supportOS = "darwin" | "windows" | "linux";
-
-  interface Runtime {
-    os: supportOS;
-    shouldHaveValue: boolean;
-  }
-
-  interface Scenes {
-    kind: Deno.DirKind;
-    runtime: Runtime[];
-  }
-
-  const scenes: Scenes[] = [
-    {
-      kind: "config",
-      runtime: [
-        { os: "darwin", shouldHaveValue: true },
-        { os: "windows", shouldHaveValue: true },
-        { os: "linux", shouldHaveValue: true },
-      ],
-    },
-    {
-      kind: "cache",
-      runtime: [
-        { os: "darwin", shouldHaveValue: true },
-        { os: "windows", shouldHaveValue: true },
-        { os: "linux", shouldHaveValue: true },
-      ],
-    },
-    {
-      kind: "executable",
-      runtime: [
-        { os: "darwin", shouldHaveValue: false },
-        { os: "windows", shouldHaveValue: false },
-        { os: "linux", shouldHaveValue: true },
-      ],
-    },
-    {
-      kind: "data",
-      runtime: [
-        { os: "darwin", shouldHaveValue: true },
-        { os: "windows", shouldHaveValue: true },
-        { os: "linux", shouldHaveValue: true },
-      ],
-    },
-    {
-      kind: "data_local",
-      runtime: [
-        { os: "darwin", shouldHaveValue: true },
-        { os: "windows", shouldHaveValue: true },
-        { os: "linux", shouldHaveValue: true },
-      ],
-    },
-    {
-      kind: "audio",
-      runtime: [
-        { os: "darwin", shouldHaveValue: true },
-        { os: "windows", shouldHaveValue: true },
-        { os: "linux", shouldHaveValue: false },
-      ],
-    },
-    {
-      kind: "desktop",
-      runtime: [
-        { os: "darwin", shouldHaveValue: true },
-        { os: "windows", shouldHaveValue: true },
-        { os: "linux", shouldHaveValue: false },
-      ],
-    },
-    {
-      kind: "document",
-      runtime: [
-        { os: "darwin", shouldHaveValue: true },
-        { os: "windows", shouldHaveValue: true },
-        { os: "linux", shouldHaveValue: false },
-      ],
-    },
-    {
-      kind: "download",
-      runtime: [
-        { os: "darwin", shouldHaveValue: true },
-        { os: "windows", shouldHaveValue: true },
-        { os: "linux", shouldHaveValue: false },
-      ],
-    },
-    {
-      kind: "font",
-      runtime: [
-        { os: "darwin", shouldHaveValue: true },
-        { os: "windows", shouldHaveValue: false },
-        { os: "linux", shouldHaveValue: true },
-      ],
-    },
-    {
-      kind: "picture",
-      runtime: [
-        { os: "darwin", shouldHaveValue: true },
-        { os: "windows", shouldHaveValue: true },
-        { os: "linux", shouldHaveValue: false },
-      ],
-    },
-    {
-      kind: "public",
-      runtime: [
-        { os: "darwin", shouldHaveValue: true },
-        { os: "windows", shouldHaveValue: true },
-        { os: "linux", shouldHaveValue: false },
-      ],
-    },
-    {
-      kind: "template",
-      runtime: [
-        { os: "darwin", shouldHaveValue: false },
-        { os: "windows", shouldHaveValue: true },
-        { os: "linux", shouldHaveValue: false },
-      ],
-    },
-    {
-      kind: "tmp",
-      runtime: [
-        { os: "darwin", shouldHaveValue: true },
-        { os: "windows", shouldHaveValue: true },
-        { os: "linux", shouldHaveValue: true },
-      ],
-    },
-    {
-      kind: "video",
-      runtime: [
-        { os: "darwin", shouldHaveValue: true },
-        { os: "windows", shouldHaveValue: true },
-        { os: "linux", shouldHaveValue: false },
-      ],
-    },
-  ];
-
-  for (const s of scenes) {
-    for (const r of s.runtime) {
-      if (Deno.build.os !== r.os) continue;
-      if (r.shouldHaveValue) {
-        const d = Deno.dir(s.kind);
-        assert(d);
-        assert(d.length > 0);
-      }
-    }
-  }
+unitTest(function osPpid(): void {
+  assert(Deno.ppid > 0);
 });
 
-unitTest(function getDirWithoutPermission(): void {
-  assertThrows(
-    () => Deno.dir("home"),
-    Deno.errors.PermissionDenied,
-    `run again with the --allow-env flag`
-  );
-});
+unitTest(
+  { perms: { run: true, read: true } },
+  async function osPpidIsEqualToPidOfParentProcess(): Promise<void> {
+    const decoder = new TextDecoder();
+    const process = Deno.run({
+      cmd: [Deno.execPath(), "eval", "-p", "--unstable", "Deno.ppid"],
+      stdout: "piped",
+      env: { NO_COLOR: "true" },
+    });
+    const output = await process.output();
+    process.close();
+
+    const expected = Deno.pid;
+    const actual = parseInt(decoder.decode(output));
+    assertEquals(actual, expected);
+  }
+);
 
 unitTest({ perms: { read: true } }, function execPath(): void {
   assertNotEquals(Deno.execPath(), "");
@@ -299,15 +153,9 @@ unitTest({ perms: { env: true } }, function loadavgSuccess(): void {
 });
 
 unitTest({ perms: { env: false } }, function loadavgPerm(): void {
-  let caughtError = false;
-  try {
+  assertThrows(() => {
     Deno.loadavg();
-  } catch (err) {
-    caughtError = true;
-    assert(err instanceof Deno.errors.PermissionDenied);
-    assertEquals(err.name, "PermissionDenied");
-  }
-  assert(caughtError);
+  }, Deno.errors.PermissionDenied);
 });
 
 unitTest({ perms: { env: true } }, function hostnameDir(): void {
@@ -315,31 +163,9 @@ unitTest({ perms: { env: true } }, function hostnameDir(): void {
 });
 
 unitTest({ perms: { env: false } }, function hostnamePerm(): void {
-  let caughtError = false;
-  try {
+  assertThrows(() => {
     Deno.hostname();
-  } catch (err) {
-    caughtError = true;
-    assert(err instanceof Deno.errors.PermissionDenied);
-    assertEquals(err.name, "PermissionDenied");
-  }
-  assert(caughtError);
-});
-
-unitTest({ perms: { env: true } }, function osName(): void {
-  assertNotEquals(Deno.osName(), "");
-});
-
-unitTest({ perms: { env: false } }, function osNamePerm(): void {
-  let caughtError = false;
-  try {
-    Deno.osName();
-  } catch (err) {
-    caughtError = true;
-    assert(err instanceof Deno.errors.PermissionDenied);
-    assertEquals(err.name, "PermissionDenied");
-  }
-  assert(caughtError);
+  }, Deno.errors.PermissionDenied);
 });
 
 unitTest({ perms: { env: true } }, function releaseDir(): void {
@@ -347,13 +173,7 @@ unitTest({ perms: { env: true } }, function releaseDir(): void {
 });
 
 unitTest({ perms: { env: false } }, function releasePerm(): void {
-  let caughtError = false;
-  try {
+  assertThrows(() => {
     Deno.osRelease();
-  } catch (err) {
-    caughtError = true;
-    assert(err instanceof Deno.errors.PermissionDenied);
-    assertEquals(err.name, "PermissionDenied");
-  }
-  assert(caughtError);
+  }, Deno.errors.PermissionDenied);
 });

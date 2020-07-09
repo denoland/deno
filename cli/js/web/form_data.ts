@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 import * as blob from "./blob.ts";
 import * as domFile from "./dom_file.ts";
 import { DomIterableMixin } from "./dom_iterable.ts";
@@ -96,10 +97,13 @@ class FormDataBase {
           if (value instanceof domFile.DomFileImpl) {
             this[dataSymbol][i][1] = value;
           } else if (value instanceof blob.DenoBlob) {
-            const dfile = new domFile.DomFileImpl([value], filename || "blob", {
-              type: value.type,
-            });
-            this[dataSymbol][i][1] = dfile;
+            this[dataSymbol][i][1] = new domFile.DomFileImpl(
+              [value],
+              filename || "blob",
+              {
+                type: value.type,
+              }
+            );
           } else {
             this[dataSymbol][i][1] = String(value);
           }

@@ -4,7 +4,7 @@
 // Copyright 2009 The Go Authors. All rights reserved. BSD license.
 // https://github.com/golang/go/blob/master/LICENSE
 
-import { Reader, Writer, ReaderSync, WriterSync } from "./io.ts";
+import type { Reader, Writer, ReaderSync, WriterSync } from "./io.ts";
 import { assert } from "./util.ts";
 
 // MIN_READ is the minimum ArrayBuffer size passed to a read call by
@@ -40,7 +40,7 @@ export class Buffer implements Reader, ReaderSync, Writer, WriterSync {
   }
 
   bytes(): Uint8Array {
-    return this.#buf.subarray(this.#off);
+    return this.#buf.slice(this.#off);
   }
 
   empty(): boolean {

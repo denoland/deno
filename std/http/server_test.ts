@@ -13,13 +13,18 @@ import {
   assertStringContains,
   assertThrowsAsync,
 } from "../testing/asserts.ts";
-import { Response, ServerRequest, Server, serve, serveTLS } from "./server.ts";
+import {
+  Response,
+  ServerRequest,
+  Server,
+  serve,
+  serveTLS,
+  _parseAddrFromStr,
+} from "./server.ts";
 import { BufReader, BufWriter } from "../io/bufio.ts";
 import { delay } from "../async/delay.ts";
 import { encode, decode } from "../encoding/utf8.ts";
 import { mockConn } from "./_mock_conn.ts";
-
-const { Buffer, test } = Deno;
 
 interface ResponseTest {
   response: Response;
@@ -43,7 +48,7 @@ const responseTests: ResponseTest[] = [
   {
     response: {
       status: 200,
-      body: new Buffer(new TextEncoder().encode("abcdef")),
+      body: new Deno.Buffer(new TextEncoder().encode("abcdef")),
     },
 
     raw:
@@ -53,9 +58,9 @@ const responseTests: ResponseTest[] = [
   },
 ];
 
-test("responseWrite", async function (): Promise<void> {
+Deno.test("responseWrite", async function (): Promise<void> {
   for (const testCase of responseTests) {
-    const buf = new Buffer();
+    const buf = new Deno.Buffer();
     const bufw = new BufWriter(buf);
     const request = new ServerRequest();
     request.w = bufw;
@@ -68,13 +73,13 @@ test("responseWrite", async function (): Promise<void> {
   }
 });
 
-test("requestContentLength", function (): void {
+Deno.test("requestContentLength", function (): void {
   // Has content length
   {
     const req = new ServerRequest();
     req.headers = new Headers();
     req.headers.set("content-length", "5");
-    const buf = new Buffer(encode("Hello"));
+    const buf = new Deno.Buffer(encode("Hello"));
     req.r = new BufReader(buf);
     assertEquals(req.contentLength, 5);
   }
@@ -96,7 +101,7 @@ test("requestContentLength", function (): void {
       chunkOffset += chunkSize;
     }
     chunksData += "0\r\n\r\n";
-    const buf = new Buffer(encode(chunksData));
+    const buf = new Deno.Buffer(encode(chunksData));
     req.r = new BufReader(buf);
     assertEquals(req.contentLength, null);
   }
@@ -121,12 +126,12 @@ function totalReader(r: Deno.Reader): TotalReader {
     },
   };
 }
-test("requestBodyWithContentLength", async function (): Promise<void> {
+Deno.test("requestBodyWithContentLength", async function (): Promise<void> {
   {
     const req = new ServerRequest();
     req.headers = new Headers();
     req.headers.set("content-length", "5");
-    const buf = new Buffer(encode("Hello"));
+    const buf = new Deno.Buffer(encode("Hello"));
     req.r = new BufReader(buf);
     const body = decode(await Deno.readAll(req.body));
     assertEquals(body, "Hello");
@@ -138,59 +143,65 @@ test("requestBodyWithContentLength", async function (): Promise<void> {
     const req = new ServerRequest();
     req.headers = new Headers();
     req.headers.set("Content-Length", "5000");
-    const buf = new Buffer(encode(longText));
+    const buf = new Deno.Buffer(encode(longText));
     req.r = new BufReader(buf);
     const body = decode(await Deno.readAll(req.body));
     assertEquals(body, longText);
   }
   // Handler ignored to consume body
 });
-test("ServerRequest.finalize() should consume unread body / content-length", async () => {
-  const text = "deno.land";
-  const req = new ServerRequest();
-  req.headers = new Headers();
-  req.headers.set("content-length", "" + text.length);
-  const tr = totalReader(new Buffer(encode(text)));
-  req.r = new BufReader(tr);
-  req.w = new BufWriter(new Buffer());
-  await req.respond({ status: 200, body: "ok" });
-  assertEquals(tr.total, 0);
-  await req.finalize();
-  assertEquals(tr.total, text.length);
-});
-test("ServerRequest.finalize() should consume unread body / chunked, trailers", async () => {
-  const text = [
-    "5",
-    "Hello",
-    "4",
-    "Deno",
-    "0",
-    "",
-    "deno: land",
-    "node: js",
-    "",
-    "",
-  ].join("\r\n");
-  const req = new ServerRequest();
-  req.headers = new Headers();
-  req.headers.set("transfer-encoding", "chunked");
-  req.headers.set("trailer", "deno,node");
-  const body = encode(text);
-  const tr = totalReader(new Buffer(body));
-  req.r = new BufReader(tr);
-  req.w = new BufWriter(new Buffer());
-  await req.respond({ status: 200, body: "ok" });
-  assertEquals(tr.total, 0);
-  assertEquals(req.headers.has("trailer"), true);
-  assertEquals(req.headers.has("deno"), false);
-  assertEquals(req.headers.has("node"), false);
-  await req.finalize();
-  assertEquals(tr.total, body.byteLength);
-  assertEquals(req.headers.has("trailer"), false);
-  assertEquals(req.headers.get("deno"), "land");
-  assertEquals(req.headers.get("node"), "js");
-});
-test("requestBodyWithTransferEncoding", async function (): Promise<void> {
+Deno.test(
+  "ServerRequest.finalize() should consume unread body / content-length",
+  async () => {
+    const text = "deno.land";
+    const req = new ServerRequest();
+    req.headers = new Headers();
+    req.headers.set("content-length", "" + text.length);
+    const tr = totalReader(new Deno.Buffer(encode(text)));
+    req.r = new BufReader(tr);
+    req.w = new BufWriter(new Deno.Buffer());
+    await req.respond({ status: 200, body: "ok" });
+    assertEquals(tr.total, 0);
+    await req.finalize();
+    assertEquals(tr.total, text.length);
+  }
+);
+Deno.test(
+  "ServerRequest.finalize() should consume unread body / chunked, trailers",
+  async () => {
+    const text = [
+      "5",
+      "Hello",
+      "4",
+      "Deno",
+      "0",
+      "",
+      "deno: land",
+      "node: js",
+      "",
+      "",
+    ].join("\r\n");
+    const req = new ServerRequest();
+    req.headers = new Headers();
+    req.headers.set("transfer-encoding", "chunked");
+    req.headers.set("trailer", "deno,node");
+    const body = encode(text);
+    const tr = totalReader(new Deno.Buffer(body));
+    req.r = new BufReader(tr);
+    req.w = new BufWriter(new Deno.Buffer());
+    await req.respond({ status: 200, body: "ok" });
+    assertEquals(tr.total, 0);
+    assertEquals(req.headers.has("trailer"), true);
+    assertEquals(req.headers.has("deno"), false);
+    assertEquals(req.headers.has("node"), false);
+    await req.finalize();
+    assertEquals(tr.total, body.byteLength);
+    assertEquals(req.headers.has("trailer"), false);
+    assertEquals(req.headers.get("deno"), "land");
+    assertEquals(req.headers.get("node"), "js");
+  }
+);
+Deno.test("requestBodyWithTransferEncoding", async function (): Promise<void> {
   {
     const shortText = "Hello";
     const req = new ServerRequest();
@@ -208,7 +219,7 @@ test("requestBodyWithTransferEncoding", async function (): Promise<void> {
       chunkOffset += chunkSize;
     }
     chunksData += "0\r\n\r\n";
-    const buf = new Buffer(encode(chunksData));
+    const buf = new Deno.Buffer(encode(chunksData));
     req.r = new BufReader(buf);
     const body = decode(await Deno.readAll(req.body));
     assertEquals(body, shortText);
@@ -232,20 +243,22 @@ test("requestBodyWithTransferEncoding", async function (): Promise<void> {
       chunkOffset += chunkSize;
     }
     chunksData += "0\r\n\r\n";
-    const buf = new Buffer(encode(chunksData));
+    const buf = new Deno.Buffer(encode(chunksData));
     req.r = new BufReader(buf);
     const body = decode(await Deno.readAll(req.body));
     assertEquals(body, longText);
   }
 });
 
-test("requestBodyReaderWithContentLength", async function (): Promise<void> {
+Deno.test("requestBodyReaderWithContentLength", async function (): Promise<
+  void
+> {
   {
     const shortText = "Hello";
     const req = new ServerRequest();
     req.headers = new Headers();
     req.headers.set("content-length", "" + shortText.length);
-    const buf = new Buffer(encode(shortText));
+    const buf = new Deno.Buffer(encode(shortText));
     req.r = new BufReader(buf);
     const readBuf = new Uint8Array(6);
     let offset = 0;
@@ -266,7 +279,7 @@ test("requestBodyReaderWithContentLength", async function (): Promise<void> {
     const req = new ServerRequest();
     req.headers = new Headers();
     req.headers.set("Content-Length", "5000");
-    const buf = new Buffer(encode(longText));
+    const buf = new Deno.Buffer(encode(longText));
     req.r = new BufReader(buf);
     const readBuf = new Uint8Array(1000);
     let offset = 0;
@@ -282,7 +295,9 @@ test("requestBodyReaderWithContentLength", async function (): Promise<void> {
   }
 });
 
-test("requestBodyReaderWithTransferEncoding", async function (): Promise<void> {
+Deno.test("requestBodyReaderWithTransferEncoding", async function (): Promise<
+  void
+> {
   {
     const shortText = "Hello";
     const req = new ServerRequest();
@@ -300,7 +315,7 @@ test("requestBodyReaderWithTransferEncoding", async function (): Promise<void> {
       chunkOffset += chunkSize;
     }
     chunksData += "0\r\n\r\n";
-    const buf = new Buffer(encode(chunksData));
+    const buf = new Deno.Buffer(encode(chunksData));
     req.r = new BufReader(buf);
     const readBuf = new Uint8Array(6);
     let offset = 0;
@@ -333,7 +348,7 @@ test("requestBodyReaderWithTransferEncoding", async function (): Promise<void> {
       chunkOffset += chunkSize;
     }
     chunksData += "0\r\n\r\n";
-    const buf = new Buffer(encode(chunksData));
+    const buf = new Deno.Buffer(encode(chunksData));
     req.r = new BufReader(buf);
     const readBuf = new Uint8Array(1000);
     let offset = 0;
@@ -349,7 +364,7 @@ test("requestBodyReaderWithTransferEncoding", async function (): Promise<void> {
   }
 });
 
-test({
+Deno.test({
   name: "destroyed connection",
   fn: async (): Promise<void> => {
     // Runs a simple server as another process
@@ -393,7 +408,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "serveTLS",
   fn: async (): Promise<void> => {
     // Runs a simple server as another process
@@ -450,17 +465,20 @@ test({
   },
 });
 
-test("close server while iterating", async (): Promise<void> => {
-  const server = serve(":8123");
-  const nextWhileClosing = server[Symbol.asyncIterator]().next();
-  server.close();
-  assertEquals(await nextWhileClosing, { value: undefined, done: true });
+Deno.test(
+  "close server while iterating",
+  async (): Promise<void> => {
+    const server = serve(":8123");
+    const nextWhileClosing = server[Symbol.asyncIterator]().next();
+    server.close();
+    assertEquals(await nextWhileClosing, { value: undefined, done: true });
 
-  const nextAfterClosing = server[Symbol.asyncIterator]().next();
-  assertEquals(await nextAfterClosing, { value: undefined, done: true });
-});
+    const nextAfterClosing = server[Symbol.asyncIterator]().next();
+    assertEquals(await nextAfterClosing, { value: undefined, done: true });
+  }
+);
 
-test({
+Deno.test({
   name: "[http] close server while connection is open",
   async fn(): Promise<void> {
     async function iteratorReq(server: Server): Promise<void> {
@@ -491,7 +509,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "respond error closes connection",
   async fn(): Promise<void> {
     const serverRoutine = async (): Promise<void> => {
@@ -522,7 +540,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "[http] request error gets 400 response",
   async fn(): Promise<void> {
     const server = serve(":8124");
@@ -546,7 +564,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "serveTLS Invalid Cert",
   fn: async (): Promise<void> => {
     async function iteratorReq(server: Server): Promise<void> {
@@ -599,5 +617,45 @@ test({
       server.close();
       await p;
     }
+  },
+});
+
+Deno.test({
+  name: "server.serve() should be able to parse IPV4 address",
+  fn: (): void => {
+    const server = serve("127.0.0.1:8124");
+    const expected = {
+      hostname: "127.0.0.1",
+      port: 8124,
+      transport: "tcp",
+    };
+    assertEquals(expected, server.listener.addr);
+    server.close();
+  },
+});
+
+Deno.test({
+  name: "server.parseAddrFromStr() should be able to parse IPV6 address",
+  fn: (): void => {
+    const addr = _parseAddrFromStr("[::1]:8124");
+    const expected = {
+      hostname: "[::1]",
+      port: 8124,
+    };
+    assertEquals(expected, addr);
+  },
+});
+
+Deno.test({
+  name: "server.serve() should be able to parse IPV6 address",
+  fn: (): void => {
+    const server = serve("[::1]:8124");
+    const expected = {
+      hostname: "::1",
+      port: 8124,
+      transport: "tcp",
+    };
+    assertEquals(expected, server.listener.addr);
+    server.close();
   },
 });

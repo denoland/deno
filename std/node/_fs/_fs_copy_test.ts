@@ -1,13 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+import { assert } from "../../testing/asserts.ts";
 import { copyFile, copyFileSync } from "./_fs_copy.ts";
 import { existsSync } from "./_fs_exists.ts";
 
-import { assert } from "../../testing/asserts.ts";
-const { test } = Deno;
-
 const destFile = "./destination.txt";
 
-test({
+Deno.test({
   name: "[std/node/fs] copy file",
   fn: async () => {
     const sourceFile = Deno.makeTempFileSync();
@@ -21,7 +19,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "[std/node/fs] copy file sync",
   fn: () => {
     const sourceFile = Deno.makeTempFileSync();

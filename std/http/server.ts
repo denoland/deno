@@ -10,10 +10,6 @@ import {
   writeResponse,
   readRequest,
 } from "./_io.ts";
-import Listener = Deno.Listener;
-import Conn = Deno.Conn;
-import Reader = Deno.Reader;
-const { listen, listenTls } = Deno;
 
 export class ServerRequest {
   url!: string;
@@ -22,7 +18,7 @@ export class ServerRequest {
   protoMinor!: number;
   protoMajor!: number;
   headers!: Headers;
-  conn!: Conn;
+  conn!: Deno.Conn;
   r!: BufReader;
   w!: BufWriter;
   done: Deferred<Error | undefined> = deferred();
@@ -90,7 +86,9 @@ export class ServerRequest {
       try {
         // Eagerly close on error.
         this.conn.close();
-      } catch {}
+      } catch {
+        // Pass
+      }
       err = e;
     }
     // Signal that this request has been processed and the next pipelined
@@ -108,16 +106,18 @@ export class ServerRequest {
     // Consume unread body
     const body = this.body;
     const buf = new Uint8Array(1024);
-    while ((await body.read(buf)) !== null) {}
+    while ((await body.read(buf)) !== null) {
+      // Pass
+    }
     this.finalized = true;
   }
 }
 
 export class Server implements AsyncIterable<ServerRequest> {
   private closing = false;
-  private connections: Conn[] = [];
+  private connections: Deno.Conn[] = [];
 
-  constructor(public listener: Listener) {}
+  constructor(public listener: Deno.Listener) {}
 
   close(): void {
     this.closing = true;
@@ -136,7 +136,7 @@ export class Server implements AsyncIterable<ServerRequest> {
 
   // Yields all HTTP requests on a single TCP connection.
   private async *iterateHttpRequests(
-    conn: Conn
+    conn: Deno.Conn
   ): AsyncIterableIterator<ServerRequest> {
     const reader = new BufReader(conn);
     const writer = new BufWriter(conn);
@@ -187,11 +187,11 @@ export class Server implements AsyncIterable<ServerRequest> {
     }
   }
 
-  private trackConnection(conn: Conn): void {
+  private trackConnection(conn: Deno.Conn): void {
     this.connections.push(conn);
   }
 
-  private untrackConnection(conn: Conn): void {
+  private untrackConnection(conn: Deno.Conn): void {
     const index = this.connections.indexOf(conn);
     if (index !== -1) {
       this.connections.splice(index, 1);
@@ -207,7 +207,7 @@ export class Server implements AsyncIterable<ServerRequest> {
   ): AsyncIterableIterator<ServerRequest> {
     if (this.closing) return;
     // Wait for a new connection.
-    let conn: Conn;
+    let conn: Deno.Conn;
     try {
       conn = await this.listener.accept();
     } catch (error) {
@@ -238,6 +238,34 @@ export class Server implements AsyncIterable<ServerRequest> {
 export type HTTPOptions = Omit<Deno.ListenOptions, "transport">;
 
 /**
+ * Parse addr from string
+ *
+ *     const addr = "::1:8000";
+ *     parseAddrFromString(addr);
+ *
+ * @param addr Address string
+ */
+export function _parseAddrFromStr(addr: string): HTTPOptions {
+  let url: URL;
+  try {
+    url = new URL(`http://${addr}`);
+  } catch {
+    throw new TypeError("Invalid address.");
+  }
+  if (
+    url.username ||
+    url.password ||
+    url.pathname != "/" ||
+    url.search ||
+    url.hash
+  ) {
+    throw new TypeError("Invalid address.");
+  }
+
+  return { hostname: url.hostname, port: Number(url.port) };
+}
+
+/**
  * Create a HTTP server
  *
  *     import { serve } from "https://deno.land/std/http/server.ts";
@@ -249,11 +277,10 @@ export type HTTPOptions = Omit<Deno.ListenOptions, "transport">;
  */
 export function serve(addr: string | HTTPOptions): Server {
   if (typeof addr === "string") {
-    const [hostname, port] = addr.split(":");
-    addr = { hostname, port: Number(port) };
+    addr = _parseAddrFromStr(addr);
   }
 
-  const listener = listen(addr);
+  const listener = Deno.listen(addr);
   return new Server(listener);
 }
 
@@ -305,7 +332,7 @@ export function serveTLS(options: HTTPSOptions): Server {
     ...options,
     transport: "tcp",
   };
-  const listener = listenTls(tlsOptions);
+  const listener = Deno.listenTls(tlsOptions);
   return new Server(listener);
 }
 
@@ -345,6 +372,6 @@ export async function listenAndServeTLS(
 export interface Response {
   status?: number;
   headers?: Headers;
-  body?: Uint8Array | Reader | string;
+  body?: Uint8Array | Deno.Reader | string;
   trailers?: () => Promise<Headers> | Headers;
 }

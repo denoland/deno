@@ -29,6 +29,18 @@ deno bundle --help
 
 Detailed guides to each subcommand can be found [here](../tools.md).
 
+### Script source
+
+Deno can grab the scripts from multiple sources, a filename, a url, and '-' to
+read the file from stdin. The later is useful for integration with other
+applications.
+
+```shell
+deno run main.ts
+deno run https://mydomain.com/main.ts
+cat main.ts | deno run -
+```
+
 ### Script arguments
 
 Separately from the Deno runtime flags, you can pass user-space arguments to the
@@ -98,7 +110,7 @@ resolution, compilation configuration etc.
 --config <FILE>               Load tsconfig.json configuration file
 --importmap <FILE>            UNSTABLE: Load import map file
 --no-remote                   Do not resolve remote modules
---reload=<CACHE_BLACKLIST>    Reload source code cache (recompile TypeScript)
+--reload=<CACHE_BLOCKLIST>    Reload source code cache (recompile TypeScript)
 --unstable                    Enable unstable APIs
 ```
 

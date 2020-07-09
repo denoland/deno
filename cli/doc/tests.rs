@@ -1605,3 +1605,20 @@ export namespace Deno {
   let found = find_nodes_by_name_recursively(entries, "a.b.c".to_string());
   assert_eq!(found.len(), 0);
 }
+
+#[tokio::test]
+async fn generic_instantiated_with_tuple_type() {
+  let source_code = r#"
+interface Generic<T> {}
+export function f(): Generic<[string, number]> { return {}; }
+  "#;
+
+  let loader =
+    TestLoader::new(vec![("test.ts".to_string(), source_code.to_string())]);
+  let entries = DocParser::new(loader).parse("test.ts").await.unwrap();
+
+  assert!(colors::strip_ansi_codes(
+    crate::doc::printer::format(entries).as_str()
+  )
+  .contains("Generic<[string, number]>"))
+}

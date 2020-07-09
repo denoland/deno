@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 import { AbortSignalImpl, signalAbort } from "./abort_signal.ts";
 
 export class AbortControllerImpl implements AbortController {
