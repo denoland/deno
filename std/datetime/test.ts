@@ -97,7 +97,7 @@ Deno.test({
 Deno.test({
   name: "[std/datetime] WeekOfYear",
   fn: () => {
-    assertEquals(datetime.weekOfYear(new Date("2020-01-05T03:24:00")),1);
+    assertEquals(datetime.weekOfYear(new Date("2020-01-05T03:24:00")), 1);
     assertEquals(datetime.weekOfYear(new Date("2020-12-28T03:24:00")), 53); // 53 weeks in 2020
     assertEquals(datetime.weekOfYear(new Date("2020-06-28T03:24:00")), 26);
   },

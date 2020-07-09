@@ -39,13 +39,11 @@ currentDayOfYear(); // output: ** depends on when you run it :) **
 ```
 
 ### weekOfYear
+
 - `weekOfYear(date: Date)` - Returns the week number of the provided date (1-53)
 
 ```ts
-import {
-    weekOfYear
-} from "https://deno.land/std/datetime/mod.ts"
+import { weekOfYear } from "https://deno.land/std/datetime/mod.ts";
 
 weekOfYear(new Date("2020-12-28T03:24:00")); // Returns 53
-
 ```
