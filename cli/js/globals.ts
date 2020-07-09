@@ -18,7 +18,6 @@ import * as fetchTypes from "./web/fetch.ts";
 import * as headers from "./web/headers.ts";
 import * as navigator from "./web/navigator.ts";
 import * as permissions from "./web/permissions.ts";
-import * as performanceUtil from "./web/performance.ts";
 import type * as promiseTypes from "./web/promise.ts";
 import * as queuingStrategy from "./web/streams/queuing_strategy.ts";
 import * as readableStream from "./web/streams/readable_stream.ts";
