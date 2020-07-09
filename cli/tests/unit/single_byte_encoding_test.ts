@@ -1,23 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { unitTest, assertEquals } from "./test_util.ts";
 
-// a fake test
-// import { TextDecoder } from "../../js/web/text_encoding.ts";
-
-// function assertEquals(x: any, y: any, msg?: string) {
-//   if (x !== y) throw new Error("x !== y " + msg || "");
-// }
-
-// function unitTest(func: Function) {
-//   try {
-//     func();
-//     console.log(`(success) test ${func.name}`);
-//   } catch (error) {
-//     // prettier-ignore
-//     console.log(`(fail)    test ${func.name}${" ".repeat(12 - func.name.length)}  ${error.message}`);
-//   }
-// }
-
 // Straight from https://encoding.spec.whatwg.org/encodings.json
 const encodingsTable = [
   {
