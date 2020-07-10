@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
 
-#[cfg(windows)]
+#[cfg(target_os = "windows")]
 extern crate winres;
 
 fn main() {
@@ -118,6 +118,8 @@ fn main() {
   if cfg!(target_os = "windows") {
     let mut res = winres::WindowsResource::new();
     res.set_icon("deno.ico");
-    res.compile().unwrap();
+    if let Err(e) = res.compile() {
+      println!("Failure copiling Windows resource: {:?}", e);
+    }
   }
 }
