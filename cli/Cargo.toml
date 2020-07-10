@@ -85,6 +85,6 @@ pty = "0.2.2"
 [package.metadata.winres]
 # On Windows, this section defines the metadata that appears in the deno.exe Portable Executable header
 OriginalFilename = "deno.exe"
-LegalCopyright = "Copyright © 2018-2020 the Deno authors. All rights reserved. MIT license."
+LegalCopyright = "The Deno authors. All rights reserved. MIT license."
 ProductName = "Deno"
 FileDescription = "Deno is a simple, modern and secure runtime for JavaScript and TypeScript that uses V8 and is built in Rust."
