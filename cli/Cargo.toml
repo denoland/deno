@@ -64,7 +64,7 @@ swc_ecma_visit = "0.7.0"
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3.8", features = ["knownfolders", "objbase", "shlobj",
-"winbase", "winerror"] }
+"winbase", "winerror", "tlhelp32"] }
 fwdansi = "1.1.0"
 
 [target.'cfg(unix)'.dependencies]

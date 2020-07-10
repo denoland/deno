@@ -12,7 +12,7 @@ import { ReadableStreamDefaultControllerImpl } from "./readable_stream_default_c
 import { ReadableStreamDefaultReaderImpl } from "./readable_stream_default_reader.ts";
 import { ReadableStreamImpl } from "./readable_stream.ts";
 import * as sym from "./symbols.ts";
-import { TransformStreamImpl } from "./transform_stream.ts";
+import type { TransformStreamImpl } from "./transform_stream.ts";
 import { TransformStreamDefaultControllerImpl } from "./transform_stream_default_controller.ts";
 import { WritableStreamDefaultControllerImpl } from "./writable_stream_default_controller.ts";
 import { WritableStreamDefaultWriterImpl } from "./writable_stream_default_writer.ts";

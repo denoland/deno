@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 import { sendSync, sendAsync } from "../dispatch_json.ts";
-import { SeekMode } from "../../io.ts";
+import type { SeekMode } from "../../io.ts";
 
 export function seekSync(
   rid: number,

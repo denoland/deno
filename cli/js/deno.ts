@@ -27,16 +27,15 @@ export {
   stderr,
   seek,
   seekSync,
-  OpenOptions,
 } from "./files.ts";
+export type { OpenOptions } from "./files.ts";
 export { read, readSync, write, writeSync } from "./ops/io.ts";
-export { FsEvent, watchFs } from "./ops/fs_events.ts";
+export { watchFs } from "./ops/fs_events.ts";
+export type { FsEvent } from "./ops/fs_events.ts";
 export { internalSymbol as internal } from "./internals.ts";
-export {
-  copy,
-  iter,
-  iterSync,
-  SeekMode,
+export { copy, iter, iterSync } from "./io.ts";
+export { SeekMode } from "./io.ts";
+export type {
   Reader,
   ReaderSync,
   Writer,
@@ -49,30 +48,39 @@ export {
   makeTempDir,
   makeTempFileSync,
   makeTempFile,
-  MakeTempOptions,
 } from "./ops/fs/make_temp.ts";
-export { metrics, Metrics } from "./ops/runtime.ts";
-export { mkdirSync, mkdir, MkdirOptions } from "./ops/fs/mkdir.ts";
-export { connect, listen, Listener, Conn } from "./net.ts";
+export type { MakeTempOptions } from "./ops/fs/make_temp.ts";
+export { metrics } from "./ops/runtime.ts";
+export type { Metrics } from "./ops/runtime.ts";
+export { mkdirSync, mkdir } from "./ops/fs/mkdir.ts";
+export type { MkdirOptions } from "./ops/fs/mkdir.ts";
+export { connect, listen } from "./net.ts";
+export type { Listener, Conn } from "./net.ts";
 export { env, exit, execPath } from "./ops/os.ts";
-export { run, RunOptions, Process, ProcessStatus } from "./process.ts";
-export { DirEntry, readDirSync, readDir } from "./ops/fs/read_dir.ts";
+export { Process, run } from "./process.ts";
+export type { RunOptions, ProcessStatus } from "./process.ts";
+export { readDirSync, readDir } from "./ops/fs/read_dir.ts";
+export type { DirEntry } from "./ops/fs/read_dir.ts";
 export { readFileSync, readFile } from "./read_file.ts";
 export { readTextFileSync, readTextFile } from "./read_text_file.ts";
 export { readLinkSync, readLink } from "./ops/fs/read_link.ts";
 export { realPathSync, realPath } from "./ops/fs/real_path.ts";
-export { removeSync, remove, RemoveOptions } from "./ops/fs/remove.ts";
+export { removeSync, remove } from "./ops/fs/remove.ts";
+export type { RemoveOptions } from "./ops/fs/remove.ts";
 export { renameSync, rename } from "./ops/fs/rename.ts";
 export { resources, close } from "./ops/resources.ts";
-export { FileInfo, statSync, lstatSync, stat, lstat } from "./ops/fs/stat.ts";
+export { statSync, lstatSync, stat, lstat } from "./ops/fs/stat.ts";
+export type { FileInfo } from "./ops/fs/stat.ts";
 export { connectTls, listenTls } from "./tls.ts";
 export { truncateSync, truncate } from "./ops/fs/truncate.ts";
 export { isatty } from "./ops/tty.ts";
 export { version } from "./version.ts";
-export { writeFileSync, writeFile, WriteFileOptions } from "./write_file.ts";
+export { writeFileSync, writeFile } from "./write_file.ts";
+export type { WriteFileOptions } from "./write_file.ts";
 export { writeTextFileSync, writeTextFile } from "./write_text_file.ts";
 export const args: string[] = [];
-export { TestDefinition, test } from "./testing.ts";
+export { test } from "./testing.ts";
+export type { TestDefinition } from "./testing.ts";
 
 // These are internal Deno APIs.  We are marking them as internal so they do not
 // appear in the runtime type library.

@@ -2,7 +2,7 @@
 
 import { File } from "./files.ts";
 import { close } from "./ops/resources.ts";
-import { Closer, Reader, Writer } from "./io.ts";
+import type { Closer, Reader, Writer } from "./io.ts";
 import { readAll } from "./buffer.ts";
 import { kill, runStatus as runStatusOp, run as runOp } from "./ops/process.ts";
 

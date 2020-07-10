@@ -9,6 +9,7 @@ export interface Start {
   denoVersion: string;
   noColor: boolean;
   pid: number;
+  ppid: number;
   repl: boolean;
   target: string;
   tsVersion: string;

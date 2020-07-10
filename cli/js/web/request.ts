@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 import * as body from "./body.ts";
-import * as domTypes from "./dom_types.d.ts";
+import type * as domTypes from "./dom_types.d.ts";
 import { ReadableStreamImpl } from "./streams/readable_stream.ts";
 
 function byteUpperCase(s: string): string {
@@ -71,7 +71,7 @@ export class Request extends body.Body implements domTypes.Request {
     }
 
     const contentType = headers.get("content-type") || "";
-    super(b, contentType);
+    super(b, { contentType });
     this.headers = headers;
 
     // readonly attribute ByteString method;

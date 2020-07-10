@@ -629,20 +629,20 @@ Deno.test({
       port: 8124,
       transport: "tcp",
     };
-    assertEquals(expected, server.listener.addr);
+    assertEquals(server.listener.addr, expected);
     server.close();
   },
 });
 
 Deno.test({
-  name: "server.parseAddrFromStr() should be able to parse IPV6 address",
+  name: "server._parseAddrFromStr() should be able to parse IPV6 address",
   fn: (): void => {
     const addr = _parseAddrFromStr("[::1]:8124");
     const expected = {
       hostname: "[::1]",
       port: 8124,
     };
-    assertEquals(expected, addr);
+    assertEquals(addr, expected);
   },
 });
 
@@ -655,7 +655,15 @@ Deno.test({
       port: 8124,
       transport: "tcp",
     };
-    assertEquals(expected, server.listener.addr);
+    assertEquals(server.listener.addr, expected);
     server.close();
+  },
+});
+
+Deno.test({
+  name: "server._parseAddrFromStr() port 80",
+  fn: (): void => {
+    const addr = _parseAddrFromStr(":80");
+    assertEquals(addr.port, 80);
   },
 });

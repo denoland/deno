@@ -170,17 +170,24 @@ impl GlobalState {
     let allow_js = should_allow_js(&module_graph_files);
 
     if should_compile {
-      self
-        .ts_compiler
-        .compile(
-          self.clone(),
-          &out,
-          target_lib,
-          permissions,
-          module_graph,
-          allow_js,
-        )
-        .await?;
+      if self.flags.no_check {
+        self
+          .ts_compiler
+          .transpile(self.clone(), permissions, module_graph)
+          .await?;
+      } else {
+        self
+          .ts_compiler
+          .compile(
+            self.clone(),
+            &out,
+            target_lib,
+            permissions,
+            module_graph,
+            allow_js,
+          )
+          .await?;
+      }
     }
 
     if let Some(ref lockfile) = self.lockfile {

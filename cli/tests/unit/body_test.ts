@@ -3,9 +3,10 @@ import { unitTest, assertEquals, assert } from "./test_util.ts";
 
 // just a hack to get a body object
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function buildBody(body: any): Body {
+function buildBody(body: any, headers?: Headers): Body {
   const stub = new Request("", {
     body: body,
+    headers,
   });
   return stub as Body;
 }
@@ -40,10 +41,7 @@ unitTest(
     );
     const text = await response.text();
 
-    const body = buildBody(text);
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (body as any).contentType = "multipart/form-data;boundary=boundary";
+    const body = buildBody(text, response.headers);
 
     const formData = await body.formData();
     assert(formData.has("field_1"));
@@ -60,10 +58,7 @@ unitTest(
     );
     const text = await response.text();
 
-    const body = buildBody(text);
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (body as any).contentType = "application/x-www-form-urlencoded";
+    const body = buildBody(text, response.headers);
 
     const formData = await body.formData();
     assert(formData.has("field_1"));
