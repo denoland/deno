@@ -263,7 +263,7 @@ export function _parseAddrFromStr(addr: string): HTTPOptions {
   }
 
   return {
-    hostname: url.hostname,
+    hostname: url.hostname == "" ? "0.0.0.0" : url.hostname,
     port: url.port === "" ? 80 : Number(url.port),
   };
 }
