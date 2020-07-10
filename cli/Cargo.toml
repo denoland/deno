@@ -83,7 +83,7 @@ test_util = { path = "../test_util" }
 pty = "0.2.2"
 
 [package.metadata.winres]
-# On Windows, this section defines the metadata that appears in the Deno.exe Portable Executable header
+# On Windows, this section defines the metadata that appears in the deno.exe Portable Executable header
 OriginalFilename = "deno.exe"
 LegalCopyright = "Copyright © 2018-2020 the Deno authors. All rights reserved. MIT license."
 ProductName = "Deno"
