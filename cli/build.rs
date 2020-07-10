@@ -7,6 +7,8 @@ use std::env;
 use std::path::PathBuf;
 
 #[cfg(target_os = "windows")]
+extern crate winapi;
+#[cfg(target_os = "windows")]
 extern crate winres;
 
 fn main() {
@@ -122,6 +124,10 @@ fn main() {
 fn set_binary_metadata() {
   let mut res = winres::WindowsResource::new();
   res.set_icon("deno.ico");
+  res.set_language(winapi::um::winnt::MAKELANGID(
+    winapi::um::winnt::LANG_ENGLISH,
+    winapi::um::winnt::SUBLANG_ENGLISH_US,
+  ));
   if let Err(e) = res.compile() {
     println!("Failure copiling Windows resource: {:?}", e);
   }
