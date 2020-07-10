@@ -115,11 +115,17 @@ fn main() {
   )
   .expect("Failed to create snapshot");
 
-  if cfg!(target_os = "windows") {
-    let mut res = winres::WindowsResource::new();
-    res.set_icon("deno.ico");
-    if let Err(e) = res.compile() {
-      println!("Failure copiling Windows resource: {:?}", e);
-    }
+  set_binary_metadata();
+}
+
+#[cfg(target_os = "windows")]
+fn set_binary_metadata() {
+  let mut res = winres::WindowsResource::new();
+  res.set_icon("deno.ico");
+  if let Err(e) = res.compile() {
+    println!("Failure copiling Windows resource: {:?}", e);
   }
 }
+
+#[cfg(not(target_os = "windows"))]
+fn set_binary_metadata() {}
