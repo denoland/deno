@@ -18,6 +18,9 @@ path = "main.rs"
 deno_core = { path = "../core", version = "0.48.3" }
 deno_typescript = { path = "../deno_typescript", version = "0.48.3" }
 
+[target.'cfg(windows)'.build-dependencies]
+winres = "0.1"
+
 [dependencies]
 deno_core = { path = "../core", version = "0.48.3" }
 deno_lint = "0.1.15"
@@ -78,3 +81,10 @@ test_util = { path = "../test_util" }
 
 [target.'cfg(unix)'.dev-dependencies]
 pty = "0.2.2"
+
+[package.metadata.winres]
+# On Windows, this section defines the metadata that appears in the Deno.exe Portable Executable header
+OriginalFilename = "Deno.exe"
+LegalCopyright = "Copyright © 2018-2020 the Deno authors. All rights reserved. MIT license."
+ProductName = "Deno"
+FileDescription = "Deno is a simple, modern and secure runtime for JavaScript and TypeScript that uses V8 and is built in Rust."
