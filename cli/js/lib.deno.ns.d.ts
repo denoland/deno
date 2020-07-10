@@ -776,10 +776,12 @@ declare namespace Deno {
      *
      * The slice is valid for use only until the next buffer modification (that
      * is, only until the next call to a method like `read()`, `write()`,
-     * `reset()`, or `truncate()`). The slice aliases the buffer content at
+     * `reset()`, or `truncate()`). If `copy` is false the slice aliases the buffer content at
      * least until the next buffer modification, so immediate changes to the
-     * slice will affect the result of future reads. */
-    bytes(copy: boolean): Uint8Array;
+     * slice will affect the result of future reads.
+     * @param copy Whether a copy is created or not. Defaults to `true`
+     */
+    bytes(copy?: boolean): Uint8Array;
     /** Returns whether the unread portion of the buffer is empty. */
     empty(): boolean;
     /** A read only number of bytes of the unread portion of the buffer. */
