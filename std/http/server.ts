@@ -239,14 +239,14 @@ export type HTTPOptions = Omit<Deno.ListenOptions, "transport">;
 
 /**
  * Parse addr from string
- *
- *     const addr = "::1:8000";
- *     parseAddrFromString(addr);
- *
- * @param addr Address string
+ *     const addr = "[::1]:8000";
+ *     _parseAddrFromStr(addr);
  */
 export function _parseAddrFromStr(addr: string): HTTPOptions {
   let url: URL;
+  if (addr.startsWith(":")) {
+    addr = `0.0.0.0${addr}`;
+  }
   try {
     url = new URL(`http://${addr}`);
   } catch {
@@ -263,7 +263,7 @@ export function _parseAddrFromStr(addr: string): HTTPOptions {
   }
 
   return {
-    hostname: url.hostname == "" ? "0.0.0.0" : url.hostname,
+    hostname: url.hostname,
     port: url.port === "" ? 80 : Number(url.port),
   };
 }
