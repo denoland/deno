@@ -43,6 +43,21 @@ declare namespace Deno {
    * Requires `allow-read` and `allow-write` permissions. */
   export function link(oldpath: string, newpath: string): Promise<void>;
 
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Gets the size of the console as columns/rows.
+   *
+   * ```ts
+   * const { columns, rows } = await Deno.consoleSize(Deno.stdout.rid);
+   * ```
+   */
+  export function consoleSize(
+    rid: number
+  ): {
+    columns: number;
+    rows: number;
+  };
+
   export type SymlinkOptions = {
     type: "file" | "dir";
   };
