@@ -1,0 +1,8 @@
+{
+  "files": {
+    "scratch/file": "file"
+  },
+  "preopens": {
+    "/scratch": "scratch"
+  }
+}

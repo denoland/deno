@@ -1,0 +1,6 @@
+{
+  "preopens": {
+    "/fixture": "fixture",
+    "/scratch": "scratch"
+  }
+}

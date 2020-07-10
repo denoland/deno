@@ -1,6 +1,7 @@
 /* eslint-disable */
 
 import { assert, assertEquals } from "../testing/asserts.ts";
+import { walk } from "../fs/mod.ts";
 import * as path from "../path/mod.ts";
 import WASI from "./snapshot_preview1.ts";
 
@@ -27,48 +28,13 @@ if (import.meta.main) {
   const testdir = path.join(rootdir, "testdata");
   const outdir = path.join(testdir, "snapshot_preview1");
 
-  for await (const entry of Deno.readDir(testdir)) {
-    if (!entry.name.endsWith(".rs")) {
-      continue;
-    }
+  const entries = walk(outdir, {
+    exts: ["wasm"],
+  });
 
-    const process = Deno.run({
-      cmd: [
-        "rustc",
-        "--target",
-        "wasm32-wasi",
-        "--out-dir",
-        outdir,
-        path.join(testdir, entry.name),
-      ],
-      stdout: "inherit",
-      stderr: "inherit",
-    });
-
-    const status = await process.status();
-    assert(status.success);
-
-    process.close();
-
-    // TODO(caspervonb) allow the prelude to span multiple lines
-    const source = await Deno.readTextFile(path.join(testdir, entry.name));
-    const prelude = source.match(/^\/\/\s*\{.*/);
-    if (prelude) {
-      const basename = entry.name.replace(/.rs$/, ".json");
-      await Deno.writeTextFile(
-        path.join(outdir, basename),
-        prelude[0].slice(2)
-      );
-    }
-  }
-
-  for await (const entry of Deno.readDir(outdir)) {
-    if (!entry.name.endsWith(".wasm")) {
-      continue;
-    }
-
-    Deno.test(entry.name, async function () {
-      const basename = entry.name.replace(/\.wasm$/, ".json");
+  for await (const entry of entries) {
+    Deno.test(path.relative(testdir, entry.path), async function () {
+      const basename = entry.path.replace(/\.wasm$/, ".json");
       const prelude = await Deno.readTextFile(path.resolve(outdir, basename));
       const options = JSON.parse(prelude);
 
@@ -85,7 +51,7 @@ if (import.meta.main) {
             "--allow-all",
             import.meta.url,
             prelude,
-            path.resolve(outdir, entry.name),
+            entry.path,
           ],
           stdin: "piped",
           stdout: "piped",
