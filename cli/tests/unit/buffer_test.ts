@@ -402,7 +402,8 @@ unitTest(function testWriteAllSync(): void {
 });
 
 unitTest(function testBufferBytesArrayBufferLength(): void {
-  const bytes = new TextEncoder().encode("a");
+  const bufSize = 64 * 1024;
+  const bytes = new TextEncoder().encode("a".repeat(bufSize));
   const reader = new Deno.Buffer();
   Deno.writeAllSync(reader, bytes);
 
@@ -410,6 +411,35 @@ unitTest(function testBufferBytesArrayBufferLength(): void {
   writer.readFromSync(reader);
   const actualBytes = writer.bytes();
 
-  assertEquals(bytes.byteLength, 1);
-  assertEquals(bytes.byteLength, actualBytes.buffer.byteLength);
+  assertEquals(actualBytes.byteLength, bufSize);
+  assertEquals(actualBytes.byteLength, actualBytes.buffer.byteLength);
+});
+
+unitTest(function testBufferBytesCopyFalse(): void {
+  const bufSize = 64 * 1024;
+  const bytes = new TextEncoder().encode("a".repeat(bufSize));
+  const reader = new Deno.Buffer();
+  Deno.writeAllSync(reader, bytes);
+
+  const writer = new Deno.Buffer();
+  writer.readFromSync(reader);
+  const actualBytes = writer.bytes(false);
+
+  assertEquals(actualBytes.byteLength, bufSize);
+  assert(actualBytes.buffer.byteLength > actualBytes.byteLength);
+});
+
+unitTest(function testBufferBytesCopyFalseGrowExactBytes(): void {
+  const bufSize = 64 * 1024;
+  const bytes = new TextEncoder().encode("a".repeat(bufSize));
+  const reader = new Deno.Buffer();
+  Deno.writeAllSync(reader, bytes);
+
+  const writer = new Deno.Buffer();
+  writer.grow(bufSize);
+  writer.readFromSync(reader);
+  const actualBytes = writer.bytes(false);
+
+  assertEquals(actualBytes.byteLength, bufSize);
+  assertEquals(actualBytes.buffer.byteLength, actualBytes.byteLength);
 });

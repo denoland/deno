@@ -779,7 +779,7 @@ declare namespace Deno {
      * `reset()`, or `truncate()`). The slice aliases the buffer content at
      * least until the next buffer modification, so immediate changes to the
      * slice will affect the result of future reads. */
-    bytes(): Uint8Array;
+    bytes(copy: boolean): Uint8Array;
     /** Returns whether the unread portion of the buffer is empty. */
     empty(): boolean;
     /** A read only number of bytes of the unread portion of the buffer. */

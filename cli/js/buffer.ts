@@ -39,8 +39,9 @@ export class Buffer implements Reader, ReaderSync, Writer, WriterSync {
     this.#buf = new Uint8Array(ab);
   }
 
-  bytes(): Uint8Array {
-    return this.#buf.slice(this.#off);
+  bytes(copy = true): Uint8Array {
+    if (copy) return this.#buf.slice(this.#off);
+    return this.#buf.subarray(this.#off);
   }
 
   empty(): boolean {
