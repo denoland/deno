@@ -310,9 +310,13 @@ export class URLImpl implements URL {
       this.username || this.password
         ? `${this.username}${this.password ? ":" + this.password : ""}@`
         : "";
-    return `${this.protocol}${parts.get(this)!.slashes}${authentication}${
-      this.host
-    }${this.pathname}${this.search}${this.hash}`;
+    const host = this.host;
+    const slashes = host ? "//" : parts.get(this)!.slashes;
+    let pathname = this.pathname;
+    if (pathname.charAt(0) != "/" && pathname != "" && host != "") {
+      pathname = `/${pathname}`;
+    }
+    return `${this.protocol}${slashes}${authentication}${host}${pathname}${this.search}${this.hash}`;
   }
 
   set href(value: string) {
@@ -341,16 +345,17 @@ export class URLImpl implements URL {
   }
 
   get pathname(): string {
-    return parts.get(this)?.path || "/";
+    let path = parts.get(this)!.path;
+    if (specialSchemes.includes(parts.get(this)!.protocol)) {
+      if (path.charAt(0) != "/") {
+        path = `/${path}`;
+      }
+    }
+    return path;
   }
 
   set pathname(value: string) {
-    value = unescape(String(value));
-    if (!value || value.charAt(0) !== "/") {
-      value = `/${value}`;
-    }
-    // paths can contain % unescaped
-    parts.get(this)!.path = encodePathname(value);
+    parts.get(this)!.path = encodePathname(String(value));
   }
 
   get port(): string {

@@ -228,12 +228,18 @@ unitTest(function urlUncHostname() {
 });
 
 unitTest(function urlHostnameUpperCase() {
-  assertEquals(new URL("https://EXAMPLE.COM").href, "https://example.com/");
-  assertEquals(new URL("abcde://EXAMPLE.COM").href, "abcde://EXAMPLE.COM/");
+  assertEquals(new URL("http://EXAMPLE.COM").href, "http://example.com/");
+  assertEquals(new URL("abcd://EXAMPLE.COM").href, "abcd://EXAMPLE.COM");
+});
+
+unitTest(function urlEmptyPath() {
+  assertEquals(new URL("http://foo").pathname, "/");
+  assertEquals(new URL("file://foo").pathname, "/");
+  assertEquals(new URL("abcd://foo").pathname, "");
 });
 
 unitTest(function urlTrim() {
-  assertEquals(new URL(" https://example.com  ").href, "https://example.com/");
+  assertEquals(new URL(" http://example.com  ").href, "http://example.com/");
 });
 
 unitTest(function urlEncoding() {
