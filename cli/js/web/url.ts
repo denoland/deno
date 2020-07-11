@@ -73,12 +73,14 @@ function parse(url: string, isBase = true): URLParts | undefined {
       // equivalent to: `new URL("file://localhost/foo/bar")`.
       [parts.hostname, restUrl] = takePattern(restUrl, /^[/\\]{2,}([^/\\?#]*)/);
     }
-  } else if (isSpecial) {
-    parts.slashes = "//";
+  } else {
     let restAuthority;
-    [restAuthority, restUrl] = takePattern(restUrl, /^[/\\]{2,}([^/\\?#]+)/);
-    if (isBase && restAuthority == "") {
-      return undefined;
+    if (isSpecial) {
+      parts.slashes = "//";
+      [restAuthority, restUrl] = takePattern(restUrl, /^[/\\]{2,}([^/\\?#]*)/);
+    } else {
+      parts.slashes = restUrl.match(/^[/\\]{2}/) ? "//" : "";
+      [restAuthority, restUrl] = takePattern(restUrl, /^[/\\]{2}([^/\\?#]*)/);
     }
     let restAuthentication;
     [restAuthentication, restAuthority] = takePattern(restAuthority, /^(.*)@/);
@@ -97,16 +99,9 @@ function parse(url: string, isBase = true): URLParts | undefined {
     if (!isValidPort(parts.port)) {
       return undefined;
     }
-  } else {
-    [parts.slashes, restUrl] = takePattern(restUrl, /^([/\\]{2})/);
-    parts.username = "";
-    parts.password = "";
-    if (parts.slashes) {
-      [parts.hostname, restUrl] = takePattern(restUrl, /^([^/\\?#]*)/);
-    } else {
-      parts.hostname = "";
+    if (parts.hostname == "" && isSpecial && isBase) {
+      return undefined;
     }
-    parts.port = "";
   }
   try {
     parts.hostname = encodeHostname(parts.hostname, isSpecial);
