@@ -1,6 +1,3 @@
-//TODO@Soremwar
-//Enable ts check
-//@ts-nocheck
 import { assertEquals } from "../testing/asserts.ts";
 import Buffer from "./buffer.ts";
 import { StringDecoder } from "./string_decoder.ts";
