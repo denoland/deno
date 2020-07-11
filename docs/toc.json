@@ -33,7 +33,10 @@
     }
   },
   "standard_library": {
-    "name": "Standard library"
+    "name": "Standard library",
+    "children": {
+      "modules": "Modules"
+    }
   },
   "testing": {
     "name": "Testing",
