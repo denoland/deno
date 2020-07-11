@@ -326,7 +326,7 @@ Deno.test({
       {
         type: "module",
         deno: {
-          importMap: "./cli/tests/subdir/test_import_map.json",
+          importMap: "subdir/test_import_map.json",
         },
       }
     );
