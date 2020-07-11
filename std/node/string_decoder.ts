@@ -52,7 +52,11 @@ function utf8CheckByte(byte: number): number {
  * incomplete multi-byte UTF-8 character. The total number of bytes (2, 3, or 4)
  * needed to complete the UTF-8 character (if applicable) are returned.
  * */
-function utf8CheckIncomplete(self: StringDecoderBase, buf: Buffer, i: number): number {
+function utf8CheckIncomplete(
+  self: StringDecoderBase,
+  buf: Buffer,
+  i: number
+): number {
   let j = buf.length - 1;
   if (j < i) return 0;
   let nb = utf8CheckByte(buf[j]);
@@ -88,7 +92,10 @@ function utf8CheckIncomplete(self: StringDecoderBase, buf: Buffer, i: number): n
  * It is also done this way as a slight performance increase instead of using a
  * loop.
  * */
-function utf8CheckExtraBytes(self: StringDecoderBase, buf: Buffer): string | undefined {
+function utf8CheckExtraBytes(
+  self: StringDecoderBase,
+  buf: Buffer
+): string | undefined {
   if ((buf[0] & 0xc0) !== 0x80) {
     self.lastNeed = 0;
     return "\ufffd";
