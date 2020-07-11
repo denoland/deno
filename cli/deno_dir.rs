@@ -14,24 +14,22 @@ pub struct DenoDir {
 
 impl DenoDir {
   pub fn new(maybe_custom_root: Option<PathBuf>) -> std::io::Result<Self> {
-    // Only setup once.
-    let home_dir = dirs::home_dir().expect("Could not get home directory.");
-    let fallback = home_dir.join(".deno");
-    // We use the OS cache dir because all files deno writes are cache files
-    // Once that changes we need to start using different roots if DENO_DIR
-    // is not set, and keep a single one if it is.
-    let default = dirs::cache_dir()
-      .map(|d| d.join("deno"))
-      .unwrap_or(fallback);
-
     let root: PathBuf = if let Some(root) = maybe_custom_root {
       if root.is_absolute() {
         root
       } else {
         std::env::current_dir()?.join(root)
       }
+    } else if let Some(cache_dir) = dirs::cache_dir() {
+      // We use the OS cache dir because all files deno writes are cache files
+      // Once that changes we need to start using different roots if DENO_DIR
+      // is not set, and keep a single one if it is.
+      cache_dir.join("deno")
+    } else if let Some(home_dir) = dirs::home_dir() {
+      // fallback path
+      home_dir.join(".deno")
     } else {
-      default
+      panic!("Could not set the Deno root directory")
     };
     assert!(root.is_absolute());
     let gen_path = root.join("gen");
