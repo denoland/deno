@@ -21,6 +21,9 @@ use crate::state::State;
 use crate::swc_common::comments::CommentKind;
 use crate::swc_common::Span;
 use crate::swc_ecma_ast;
+use crate::swc_ecma_visit;
+use crate::swc_ecma_visit::Node;
+use crate::swc_ecma_visit::Visit;
 use crate::swc_util::AstParser;
 use crate::swc_util::SwcDiagnosticBuffer;
 use crate::version;
@@ -56,8 +59,6 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::task::Poll;
-use swc_ecma_visit::Node;
-use swc_ecma_visit::Visit;
 use url::Url;
 
 pub const AVAILABLE_LIBS: &[&str] = &[

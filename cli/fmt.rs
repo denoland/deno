@@ -9,10 +9,10 @@
 
 use crate::colors;
 use crate::diff::diff;
+use crate::dprint_plugin_typescript as dprint;
 use crate::fs::files_in_subtree;
 use crate::op_error::OpError;
 use deno_core::ErrBox;
-use dprint_plugin_typescript as dprint;
 use std::fs;
 use std::io::stdin;
 use std::io::stdout;
