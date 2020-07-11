@@ -2034,8 +2034,18 @@ declare namespace Deno {
     | PluginPermissionDescriptor
     | HrtimePermissionDescriptor;
 
-  interface InspectOptions {
+  export interface InspectOptions {
+    /** Traversal depth for nested objects. Defaults to 4. */
     depth?: number;
+    /** Sort Object, Set and Map entries by key. Defaults to false. */
+    sorted?: boolean;
+    /** Add a trailing comma for multiline collections. Defaults to false. */
+    trailingComma?: boolean;
+    /** Try to fit more than one entry of a collection on the same line.
+     * Defaults to true. */
+    compact?: boolean;
+    /** The maximum number of iterable entries to print. Defaults to 100. */
+    iterableLimit?: number;
   }
 
   /** Converts the input into a string that has the same format as printed by
