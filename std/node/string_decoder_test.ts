@@ -75,7 +75,7 @@ Deno.test({
 
     decoder = new StringDecoder("base64");
     assertEquals(decoder.text(Buffer.from([0x41]), 2), "QQ==");
-  }
+  },
 });
 
 Deno.test({
@@ -113,5 +113,5 @@ Deno.test({
 
     decoder = new StringDecoder("hex");
     assertEquals(decoder.text(Buffer.from([0x41]), 2), "");
-  }
+  },
 });

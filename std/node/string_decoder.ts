@@ -20,10 +20,7 @@
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 import { Buffer } from "./buffer.ts";
-import {
-  normalizeEncoding as castEncoding,
-  notImplemented
-} from "./_utils.ts";
+import { normalizeEncoding as castEncoding, notImplemented } from "./_utils.ts";
 
 enum NotImplemented {
   "ascii",
@@ -33,14 +30,15 @@ enum NotImplemented {
 
 function normalizeEncoding(enc?: string): string {
   const encoding = castEncoding(enc ?? null);
-  if(encoding && encoding in NotImplemented) notImplemented(encoding);
-  if (!encoding &&  typeof enc === "string" && enc.toLowerCase() !== "raw") throw new Error(`Unknown encoding: ${enc}`);
+  if (encoding && encoding in NotImplemented) notImplemented(encoding);
+  if (!encoding && typeof enc === "string" && enc.toLowerCase() !== "raw")
+    throw new Error(`Unknown encoding: ${enc}`);
   return String(encoding);
 }
 /*
-* Checks the type of a UTF-8 byte, whether it's ASCII, a leading byte, or a
-* continuation byte. If an invalid byte is detected, -2 is returned.
-* */
+ * Checks the type of a UTF-8 byte, whether it's ASCII, a leading byte, or a
+ * continuation byte. If an invalid byte is detected, -2 is returned.
+ * */
 function utf8CheckByte(byte: number): number {
   if (byte <= 0x7f) return 0;
   else if (byte >> 5 === 0x06) return 2;
@@ -50,11 +48,11 @@ function utf8CheckByte(byte: number): number {
 }
 
 /*
-* Checks at most 3 bytes at the end of a Buffer in order to detect an
-* incomplete multi-byte UTF-8 character. The total number of bytes (2, 3, or 4)
-* needed to complete the UTF-8 character (if applicable) are returned.
-* */
-function utf8CheckIncomplete(self: StringDecoderBase, buf: Buffer, i: number) {
+ * Checks at most 3 bytes at the end of a Buffer in order to detect an
+ * incomplete multi-byte UTF-8 character. The total number of bytes (2, 3, or 4)
+ * needed to complete the UTF-8 character (if applicable) are returned.
+ * */
+function utf8CheckIncomplete(self: StringDecoderBase, buf: Buffer, i: number): number {
   let j = buf.length - 1;
   if (j < i) return 0;
   let nb = utf8CheckByte(buf[j]);
@@ -81,16 +79,16 @@ function utf8CheckIncomplete(self: StringDecoderBase, buf: Buffer, i: number) {
 }
 
 /*
-* Validates as many continuation bytes for a multi-byte UTF-8 character as
-* needed or are available. If we see a non-continuation byte where we expect
-* one, we "replace" the validated continuation bytes we've seen so far with
-* a single UTF-8 replacement character ('\ufffd'), to match v8's UTF-8 decoding
-* behavior. The continuation byte check is included three times in the case
-* where all of the continuation bytes for a character exist in the same buffer.
-* It is also done this way as a slight performance increase instead of using a
-* loop.
-* */
-function utf8CheckExtraBytes(self: StringDecoderBase, buf: Buffer) {
+ * Validates as many continuation bytes for a multi-byte UTF-8 character as
+ * needed or are available. If we see a non-continuation byte where we expect
+ * one, we "replace" the validated continuation bytes we've seen so far with
+ * a single UTF-8 replacement character ('\ufffd'), to match v8's UTF-8 decoding
+ * behavior. The continuation byte check is included three times in the case
+ * where all of the continuation bytes for a character exist in the same buffer.
+ * It is also done this way as a slight performance increase instead of using a
+ * loop.
+ * */
+function utf8CheckExtraBytes(self: StringDecoderBase, buf: Buffer): string | undefined {
   if ((buf[0] & 0xc0) !== 0x80) {
     self.lastNeed = 0;
     return "\ufffd";
@@ -110,9 +108,12 @@ function utf8CheckExtraBytes(self: StringDecoderBase, buf: Buffer) {
 }
 
 /*
-* Attempts to complete a multi-byte UTF-8 character using bytes from a Buffer.
-* */
-function utf8FillLastComplete(this: StringDecoderBase, buf: Buffer): string | undefined {
+ * Attempts to complete a multi-byte UTF-8 character using bytes from a Buffer.
+ * */
+function utf8FillLastComplete(
+  this: StringDecoderBase,
+  buf: Buffer
+): string | undefined {
   const p = this.lastTotal - this.lastNeed;
   const r = utf8CheckExtraBytes(this, buf);
   if (r !== undefined) return r;
@@ -125,22 +126,25 @@ function utf8FillLastComplete(this: StringDecoderBase, buf: Buffer): string | un
 }
 
 /*
-* Attempts to complete a partial non-UTF-8 character using bytes from a Buffer
-* */
-function utf8FillLastIncomplete(this: StringDecoderBase, buf: Buffer): string | undefined {
+ * Attempts to complete a partial non-UTF-8 character using bytes from a Buffer
+ * */
+function utf8FillLastIncomplete(
+  this: StringDecoderBase,
+  buf: Buffer
+): string | undefined {
   if (this.lastNeed <= buf.length) {
     buf.copy(this.lastChar, this.lastTotal - this.lastNeed, 0, this.lastNeed);
     return this.lastChar.toString(this.encoding, 0, this.lastTotal);
   }
   buf.copy(this.lastChar, this.lastTotal - this.lastNeed, 0, buf.length);
   this.lastNeed -= buf.length;
-};
+}
 
 /*
-* Returns all complete UTF-8 characters in a Buffer. If the Buffer ended on a
-* partial character, the character's bytes are buffered until the required
-* number of bytes are available.
-* */
+ * Returns all complete UTF-8 characters in a Buffer. If the Buffer ended on a
+ * partial character, the character's bytes are buffered until the required
+ * number of bytes are available.
+ * */
 function utf8Text(this: StringDecoderBase, buf: Buffer, i: number): string {
   const total = utf8CheckIncomplete(this, buf, i);
   if (!this.lastNeed) return buf.toString("utf8", i);
@@ -151,16 +155,16 @@ function utf8Text(this: StringDecoderBase, buf: Buffer, i: number): string {
 }
 
 /*
-* For UTF-8, a replacement character is added when ending on a partial
-* character.
-* */
+ * For UTF-8, a replacement character is added when ending on a partial
+ * character.
+ * */
 function utf8End(this: Utf8Decoder, buf?: Buffer): string {
   const r = buf && buf.length ? this.write(buf) : "";
   if (this.lastNeed) return r + "\ufffd";
   return r;
 }
 
-function utf8Write (this: Utf8Decoder | Base64Decoder, buf: Buffer) {
+function utf8Write(this: Utf8Decoder | Base64Decoder, buf: Buffer): string {
   if (buf.length === 0) return "";
   let r;
   let i;
@@ -207,14 +211,14 @@ function simpleEnd(this: GenericDecoder, buf?: Buffer): string {
 
 class StringDecoderBase {
   public lastChar: Buffer;
-  public lastNeed: number = 0;
-  public lastTotal: number = 0;
+  public lastNeed = 0;
+  public lastTotal = 0;
   constructor(public encoding: string, nb: number) {
     this.lastChar = Buffer.allocUnsafe(nb);
   }
 }
 
-class Base64Decoder extends StringDecoderBase{
+class Base64Decoder extends StringDecoderBase {
   public end = base64End;
   public fillLast = utf8FillLastIncomplete;
   public text = base64Text;
@@ -225,7 +229,7 @@ class Base64Decoder extends StringDecoderBase{
   }
 }
 
-class GenericDecoder extends StringDecoderBase{
+class GenericDecoder extends StringDecoderBase {
   public end = simpleEnd;
   public fillLast = undefined;
   public text = utf8Text;
@@ -236,7 +240,7 @@ class GenericDecoder extends StringDecoderBase{
   }
 }
 
-class Utf8Decoder extends StringDecoderBase{
+class Utf8Decoder extends StringDecoderBase {
   public end = utf8End;
   public fillLast = utf8FillLastComplete;
   public text = utf8Text;
@@ -248,10 +252,10 @@ class Utf8Decoder extends StringDecoderBase{
 }
 
 /*
-* StringDecoder provides an interface for efficiently splitting a series of
-* buffers into a series of JS strings without breaking apart multi-byte
-* characters.
-* */
+ * StringDecoder provides an interface for efficiently splitting a series of
+ * buffers into a series of JS strings without breaking apart multi-byte
+ * characters.
+ * */
 export class StringDecoder {
   public encoding: string;
   public end: (buf?: Buffer) => string;
