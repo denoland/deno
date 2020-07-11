@@ -1,4 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Usage: provide a port as argument to run hyper_hello benchmark server
+// otherwise this starts multiple servers on many ports for test endpoints.
 
 #[macro_use]
 extern crate lazy_static;
@@ -6,6 +8,7 @@ extern crate lazy_static;
 use futures::future::{self, FutureExt};
 use os_pipe::pipe;
 use regex::Regex;
+use std::env;
 use std::io::Read;
 use std::io::Write;
 use std::mem::replace;
@@ -17,8 +20,10 @@ use std::process::Stdio;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
 use tempfile::TempDir;
+use warp::http::HeaderValue;
+use warp::http::Response;
+use warp::http::StatusCode;
 use warp::http::Uri;
-use warp::http::{HeaderValue, Response, StatusCode};
 use warp::hyper::Body;
 use warp::reply::with_header;
 use warp::reply::Reply;
@@ -43,7 +48,7 @@ lazy_static! {
           r"[\x1b\x9b][\[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-PRZcf-nqry=><]"
   ).unwrap();
 
-  static ref GUARD: Mutex<()> = Mutex::new(());
+  static ref GUARD: Mutex<HttpServerCount> = Mutex::new(HttpServerCount::default());
 }
 
 pub fn root_path() -> PathBuf {
@@ -78,8 +83,19 @@ pub fn test_server_path() -> PathBuf {
   p
 }
 
+/// Benchmark server that just serves "hello world" responses.
+async fn hyper_hello(port: u16) {
+  println!("hyper hello");
+  let route = warp::any().map(|| "Hello World!");
+  warp::serve(route).bind(([127, 0, 0, 1], port)).await;
+}
+
 #[tokio::main]
 pub async fn run_all_servers() {
+  if let Some(port) = env::args().nth(1) {
+    return hyper_hello(port.parse::<u16>().unwrap()).await;
+  }
+
   let routes = warp::path::full().map(|path: warp::path::FullPath| {
     let p = path.as_str();
     assert_eq!(&p[0..1], "/");
@@ -402,58 +418,92 @@ fn custom_headers(path: warp::path::Peek, f: warp::fs::File) -> Box<dyn Reply> {
   }
 }
 
-pub struct HttpServerGuard<'a> {
-  #[allow(dead_code)]
-  g: MutexGuard<'a, ()>,
-  test_server: Child,
+#[derive(Default)]
+struct HttpServerCount {
+  count: usize,
+  test_server: Option<Child>,
 }
 
-impl<'a> Drop for HttpServerGuard<'a> {
-  fn drop(&mut self) {
-    match self.test_server.try_wait() {
-      Ok(None) => {
-        self.test_server.kill().expect("failed to kill test_server");
-        let _ = self.test_server.wait();
+impl HttpServerCount {
+  fn inc(&mut self) {
+    self.count += 1;
+    if self.test_server.is_none() {
+      assert_eq!(self.count, 1);
+
+      println!("test_server starting...");
+      let mut test_server = Command::new(test_server_path())
+        .current_dir(root_path())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("failed to execute test_server");
+      let stdout = test_server.stdout.as_mut().unwrap();
+      use std::io::{BufRead, BufReader};
+      let lines = BufReader::new(stdout).lines();
+      for maybe_line in lines {
+        if let Ok(line) = maybe_line {
+          if line.starts_with("ready") {
+            break;
+          }
+        } else {
+          panic!(maybe_line.unwrap_err());
+        }
       }
-      Ok(Some(status)) => panic!("test_server exited unexpectedly {}", status),
-      Err(e) => panic!("test_server error: {}", e),
+      self.test_server = Some(test_server);
+    }
+  }
+
+  fn dec(&mut self) {
+    assert!(self.count > 0);
+    self.count -= 1;
+    if self.count == 0 {
+      let mut test_server = self.test_server.take().unwrap();
+      match test_server.try_wait() {
+        Ok(None) => {
+          test_server.kill().expect("failed to kill test_server");
+          let _ = test_server.wait();
+        }
+        Ok(Some(status)) => {
+          panic!("test_server exited unexpectedly {}", status)
+        }
+        Err(e) => panic!("test_server error: {}", e),
+      }
     }
   }
 }
 
-/// Starts target/debug/test_server when the returned guard is dropped, the server
-/// will be killed.
-pub fn http_server<'a>() -> HttpServerGuard<'a> {
-  // TODO(bartlomieju) Allow tests to use the http server in parallel.
+impl Drop for HttpServerCount {
+  fn drop(&mut self) {
+    assert_eq!(self.count, 0);
+    assert!(self.test_server.is_none());
+  }
+}
+
+fn lock_http_server<'a>() -> MutexGuard<'a, HttpServerCount> {
   let r = GUARD.lock();
-  let g = if let Err(poison_err) = r {
+  if let Err(poison_err) = r {
     // If panics happened, ignore it. This is for tests.
     poison_err.into_inner()
   } else {
     r.unwrap()
-  };
-
-  println!("test_server starting...");
-  let mut test_server = Command::new(test_server_path())
-    .current_dir(root_path())
-    .stdout(Stdio::piped())
-    .spawn()
-    .expect("failed to execute test_server");
-
-  let stdout = test_server.stdout.as_mut().unwrap();
-  use std::io::{BufRead, BufReader};
-  let lines = BufReader::new(stdout).lines();
-  for maybe_line in lines {
-    if let Ok(line) = maybe_line {
-      if line.starts_with("ready") {
-        break;
-      }
-    } else {
-      panic!(maybe_line.unwrap_err());
-    }
   }
+}
 
-  HttpServerGuard { test_server, g }
+pub struct HttpServerGuard {}
+
+impl Drop for HttpServerGuard {
+  fn drop(&mut self) {
+    let mut g = lock_http_server();
+    g.dec();
+  }
+}
+
+/// Adds a reference to a shared target/debug/test_server subprocess. When the
+/// last instance of the HttpServerGuard is dropped, the subprocess will be
+/// killed.
+pub fn http_server() -> HttpServerGuard {
+  let mut g = lock_http_server();
+  g.inc();
+  HttpServerGuard {}
 }
 
 /// Helper function to strip ansi codes.
@@ -539,6 +589,37 @@ pub fn run_python_script(script: &str) {
       script, stdout, stderr
     );
   }
+}
+
+pub fn run_powershell_script_file(
+  script_file_path: &str,
+  args: Vec<&str>,
+) -> Result<(), i64> {
+  let deno_dir = new_deno_dir();
+  let mut command = Command::new("powershell.exe");
+
+  command
+    .env("DENO_DIR", deno_dir.path())
+    .current_dir(root_path())
+    .arg("-file")
+    .arg(script_file_path);
+
+  for arg in args {
+    command.arg(arg);
+  }
+
+  let output = command.output().expect("failed to spawn script");
+  let stdout = String::from_utf8(output.stdout).unwrap();
+  let stderr = String::from_utf8(output.stderr).unwrap();
+  println!("{}", stdout);
+  if !output.status.success() {
+    panic!(
+      "{} executed with failing error code\n{}{}",
+      script_file_path, stdout, stderr
+    );
+  }
+
+  Ok(())
 }
 
 #[derive(Debug, Default)]

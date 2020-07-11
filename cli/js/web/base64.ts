@@ -1,3 +1,5 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 // Forked from https://github.com/beatgammit/base64-js
 // Copyright (c) 2014 Jameson Little. MIT License.
 

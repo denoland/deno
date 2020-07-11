@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import { setFunctionName } from "./internals.ts";
 import { customInspect } from "../console.ts";
+import { setFunctionName } from "../util.ts";
 
 export class CountQueuingStrategyImpl implements CountQueuingStrategy {
   highWaterMark: number;

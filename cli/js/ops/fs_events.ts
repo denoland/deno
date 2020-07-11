@@ -1,4 +1,5 @@
-// Copyright 2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 import { sendSync, sendAsync } from "./dispatch_json.ts";
 import { close } from "./resources.ts";
 
@@ -7,10 +8,14 @@ export interface FsEvent {
   paths: string[];
 }
 
+interface FsWatcherOptions {
+  recursive: boolean;
+}
+
 class FsWatcher implements AsyncIterableIterator<FsEvent> {
   readonly rid: number;
 
-  constructor(paths: string[], options: { recursive: boolean }) {
+  constructor(paths: string[], options: FsWatcherOptions) {
     const { recursive } = options;
     this.rid = sendSync("op_fs_events_open", { recursive, paths });
   }
@@ -33,7 +38,7 @@ class FsWatcher implements AsyncIterableIterator<FsEvent> {
 
 export function watchFs(
   paths: string | string[],
-  options = { recursive: true }
+  options: FsWatcherOptions = { recursive: true }
 ): AsyncIterableIterator<FsEvent> {
   return new FsWatcher(Array.isArray(paths) ? paths : [paths], options);
 }

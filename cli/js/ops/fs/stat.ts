@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 import { sendSync, sendAsync } from "../dispatch_json.ts";
 import { build } from "../../build.ts";
 import { pathFromURL } from "../../util.ts";
@@ -44,7 +45,7 @@ export interface StatResponse {
 
 // @internal
 export function parseFileInfo(response: StatResponse): FileInfo {
-  const isUnix = build.os === "darwin" || build.os === "linux";
+  const unix = build.os === "darwin" || build.os === "linux";
   return {
     isFile: response.isFile,
     isDirectory: response.isDirectory,
@@ -54,15 +55,15 @@ export function parseFileInfo(response: StatResponse): FileInfo {
     atime: response.atime != null ? new Date(response.atime) : null,
     birthtime: response.birthtime != null ? new Date(response.birthtime) : null,
     // Only non-null if on Unix
-    dev: isUnix ? response.dev : null,
-    ino: isUnix ? response.ino : null,
-    mode: isUnix ? response.mode : null,
-    nlink: isUnix ? response.nlink : null,
-    uid: isUnix ? response.uid : null,
-    gid: isUnix ? response.gid : null,
-    rdev: isUnix ? response.rdev : null,
-    blksize: isUnix ? response.blksize : null,
-    blocks: isUnix ? response.blocks : null,
+    dev: unix ? response.dev : null,
+    ino: unix ? response.ino : null,
+    mode: unix ? response.mode : null,
+    nlink: unix ? response.nlink : null,
+    uid: unix ? response.uid : null,
+    gid: unix ? response.gid : null,
+    rdev: unix ? response.rdev : null,
+    blksize: unix ? response.blksize : null,
+    blocks: unix ? response.blocks : null,
   };
 }
 
@@ -75,37 +76,33 @@ export async function fstat(rid: number): Promise<FileInfo> {
 }
 
 export async function lstat(path: string | URL): Promise<FileInfo> {
-  path = pathFromURL(path);
-  const res = (await sendAsync("op_stat", {
-    path,
+  const res = await sendAsync("op_stat", {
+    path: pathFromURL(path),
     lstat: true,
-  })) as StatResponse;
+  });
   return parseFileInfo(res);
 }
 
 export function lstatSync(path: string | URL): FileInfo {
-  path = pathFromURL(path);
   const res = sendSync("op_stat", {
-    path,
+    path: pathFromURL(path),
     lstat: true,
-  }) as StatResponse;
+  });
   return parseFileInfo(res);
 }
 
 export async function stat(path: string | URL): Promise<FileInfo> {
-  path = pathFromURL(path);
-  const res = (await sendAsync("op_stat", {
-    path,
+  const res = await sendAsync("op_stat", {
+    path: pathFromURL(path),
     lstat: false,
-  })) as StatResponse;
+  });
   return parseFileInfo(res);
 }
 
 export function statSync(path: string | URL): FileInfo {
-  path = pathFromURL(path);
   const res = sendSync("op_stat", {
-    path,
+    path: pathFromURL(path),
     lstat: false,
-  }) as StatResponse;
+  });
   return parseFileInfo(res);
 }

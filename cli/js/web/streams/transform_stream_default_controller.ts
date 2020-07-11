@@ -4,16 +4,16 @@ import {
   FlushAlgorithm,
   isTransformStreamDefaultController,
   readableStreamDefaultControllerGetDesiredSize,
-  setFunctionName,
   TransformAlgorithm,
   transformStreamDefaultControllerEnqueue,
   transformStreamDefaultControllerError,
   transformStreamDefaultControllerTerminate,
 } from "./internals.ts";
-import { ReadableStreamDefaultControllerImpl } from "./readable_stream_default_controller.ts";
+import type { ReadableStreamDefaultControllerImpl } from "./readable_stream_default_controller.ts";
 import * as sym from "./symbols.ts";
-import { TransformStreamImpl } from "./transform_stream.ts";
+import type { TransformStreamImpl } from "./transform_stream.ts";
 import { customInspect } from "../console.ts";
+import { setFunctionName } from "../util.ts";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export class TransformStreamDefaultControllerImpl<I = any, O = any>

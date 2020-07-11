@@ -1236,7 +1236,7 @@ interface URL {
 
 declare const URL: {
   prototype: URL;
-  new (url: string | URL, base?: string | URL): URL;
+  new (url: string, base?: string | URL): URL;
   createObjectURL(object: any): string;
   revokeObjectURL(url: string): void;
 };
@@ -1337,7 +1337,36 @@ declare class Worker extends EventTarget {
   terminate(): void;
 }
 
-declare namespace performance {
+declare type PerformanceEntryList = PerformanceEntry[];
+
+declare interface Performance {
+  /** Removes the stored timestamp with the associated name. */
+  clearMarks(markName?: string): void;
+
+  /** Removes stored timestamp with the associated name. */
+  clearMeasures(measureName?: string): void;
+
+  getEntries(): PerformanceEntryList;
+  getEntriesByName(name: string, type?: string): PerformanceEntryList;
+  getEntriesByType(type: string): PerformanceEntryList;
+
+  /** Stores a timestamp with the associated name (a "mark"). */
+  mark(markName: string, options?: PerformanceMarkOptions): PerformanceMark;
+
+  /** Stores the `DOMHighResTimeStamp` duration between two marks along with the
+   * associated name (a "measure"). */
+  measure(
+    measureName: string,
+    options?: PerformanceMeasureOptions
+  ): PerformanceMeasure;
+  /** Stores the `DOMHighResTimeStamp` duration between two marks along with the
+   * associated name (a "measure"). */
+  measure(
+    measureName: string,
+    startMark?: string,
+    endMark?: string
+  ): PerformanceMeasure;
+
   /** Returns a current time from Deno's start in milliseconds.
    *
    * Use the permission flag `--allow-hrtime` return a precise value.
@@ -1347,7 +1376,68 @@ declare namespace performance {
    * console.log(`${t} ms since start!`);
    * ```
    */
-  export function now(): number;
+  now(): number;
+}
+
+declare const Performance: {
+  prototype: Performance;
+  new (): Performance;
+};
+
+declare const performance: Performance;
+
+declare interface PerformanceMarkOptions {
+  /** Metadata to be included in the mark. */
+  detail?: any;
+
+  /** Timestamp to be used as the mark time. */
+  startTime?: number;
+}
+
+declare interface PerformanceMeasureOptions {
+  /** Metadata to be included in the measure. */
+  detail?: any;
+
+  /** Timestamp to be used as the start time or string to be used as start
+   * mark.*/
+  start?: string | number;
+
+  /** Duration between the start and end times. */
+  duration?: number;
+
+  /** Timestamp to be used as the end time or string to be used as end mark. */
+  end?: string | number;
+}
+
+/** Encapsulates a single performance metric that is part of the performance
+ * timeline. A performance entry can be directly created by making a performance
+ * mark or measure (for example by calling the `.mark()` method) at an explicit
+ * point in an application. */
+declare class PerformanceEntry {
+  readonly duration: number;
+  readonly entryType: string;
+  readonly name: string;
+  readonly startTime: number;
+  toJSON(): any;
+}
+
+/** `PerformanceMark` is an abstract interface for `PerformanceEntry` objects
+ * with an entryType of `"mark"`. Entries of this type are created by calling
+ * `performance.mark()` to add a named `DOMHighResTimeStamp` (the mark) to the
+ * performance timeline. */
+declare class PerformanceMark extends PerformanceEntry {
+  readonly detail: any;
+  readonly entryType: "mark";
+  constructor(name: string, options?: PerformanceMarkOptions);
+}
+
+/** `PerformanceMeasure` is an abstract interface for `PerformanceEntry` objects
+ * with an entryType of `"measure"`. Entries of this type are created by calling
+ * `performance.measure()` to add a named `DOMHighResTimeStamp` (the measure)
+ * between two marks to the performance timeline. */
+declare class PerformanceMeasure extends PerformanceEntry {
+  readonly detail: any;
+  readonly entryType: "measure";
 }
 
 interface EventInit {
@@ -1555,6 +1645,60 @@ declare const AbortSignal: {
   prototype: AbortSignal;
   new (): AbortSignal;
 };
+
+type PermissionState = "denied" | "granted" | "prompt";
+
+interface PermissionStatusEventMap {
+  change: Event;
+}
+
+interface PermissionStatus extends EventTarget {
+  onchange: ((this: PermissionStatus, ev: Event) => any) | null;
+  readonly state: PermissionState;
+  addEventListener<K extends keyof PermissionStatusEventMap>(
+    type: K,
+    listener: (this: PermissionStatus, ev: PermissionStatusEventMap[K]) => any,
+    options?: boolean | AddEventListenerOptions
+  ): void;
+  addEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | AddEventListenerOptions
+  ): void;
+  removeEventListener<K extends keyof PermissionStatusEventMap>(
+    type: K,
+    listener: (this: PermissionStatus, ev: PermissionStatusEventMap[K]) => any,
+    options?: boolean | EventListenerOptions
+  ): void;
+  removeEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | EventListenerOptions
+  ): void;
+}
+
+/** Deno does not currently support any of the browser permissions, and so the
+ * `name` property of the global types is `undefined`.  The Deno permissions
+ * that are supported are defined in the `lib.deno.ns.d.ts` and pull from the
+ * `Deno` namespace. */
+declare interface PermissionDescriptor {
+  name: undefined;
+}
+
+declare interface Permissions {
+  query(permissionDesc: PermissionDescriptor): Promise<PermissionStatus>;
+}
+
+declare const Permissions: {
+  prototype: Permissions;
+  new (): Permissions;
+};
+
+declare class Navigator {
+  readonly permissions: Permissions;
+}
+
+declare const navigator: Navigator;
 
 interface ErrorConstructor {
   /** See https://v8.dev/docs/stack-trace-api#stack-trace-collection-for-custom-exceptions. */
