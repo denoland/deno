@@ -756,6 +756,12 @@ declare namespace Deno {
    */
   export function isatty(rid: number): boolean;
 
+  export interface BytesOptions {
+    /** Defaults to `true`. Whether a copy or a view of the unread portion of the buffer is returned
+     */
+    copy?: boolean;
+  }
+
   /** A variable-sized buffer of bytes with `read()` and `write()` methods.
    *
    * Deno.Buffer is almost always used with some I/O like files and sockets. It
@@ -776,12 +782,11 @@ declare namespace Deno {
      *
      * The slice is valid for use only until the next buffer modification (that
      * is, only until the next call to a method like `read()`, `write()`,
-     * `reset()`, or `truncate()`). If `copy` is false the slice aliases the buffer content at
+     * `reset()`, or `truncate()`). If `options.copy` is false the slice aliases the buffer content at
      * least until the next buffer modification, so immediate changes to the
      * slice will affect the result of future reads.
-     * @param copy Whether a copy is created or not. Defaults to `true`
      */
-    bytes(copy?: boolean): Uint8Array;
+    bytes(options?: BytesOptions): Uint8Array;
     /** Returns whether the unread portion of the buffer is empty. */
     empty(): boolean;
     /** A read only number of bytes of the unread portion of the buffer. */

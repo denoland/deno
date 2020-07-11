@@ -402,17 +402,22 @@ unitTest(function testWriteAllSync(): void {
 });
 
 unitTest(function testBufferBytesArrayBufferLength(): void {
-  const bufSize = 64 * 1024;
-  const bytes = new TextEncoder().encode("a".repeat(bufSize));
-  const reader = new Deno.Buffer();
-  Deno.writeAllSync(reader, bytes);
+  // defaults to copy
+  const args = [{}, { copy: undefined }, undefined, { copy: true }];
+  for (const arg of args) {
+    const bufSize = 64 * 1024;
+    const bytes = new TextEncoder().encode("a".repeat(bufSize));
+    const reader = new Deno.Buffer();
+    Deno.writeAllSync(reader, bytes);
 
-  const writer = new Deno.Buffer();
-  writer.readFromSync(reader);
-  const actualBytes = writer.bytes();
+    const writer = new Deno.Buffer();
+    writer.readFromSync(reader);
+    const actualBytes = writer.bytes(arg);
 
-  assertEquals(actualBytes.byteLength, bufSize);
-  assertEquals(actualBytes.byteLength, actualBytes.buffer.byteLength);
+    assertEquals(actualBytes.byteLength, bufSize);
+    assert(actualBytes.buffer !== writer.bytes(arg).buffer);
+    assertEquals(actualBytes.byteLength, actualBytes.buffer.byteLength);
+  }
 });
 
 unitTest(function testBufferBytesCopyFalse(): void {
@@ -423,9 +428,10 @@ unitTest(function testBufferBytesCopyFalse(): void {
 
   const writer = new Deno.Buffer();
   writer.readFromSync(reader);
-  const actualBytes = writer.bytes(false);
+  const actualBytes = writer.bytes({ copy: false });
 
   assertEquals(actualBytes.byteLength, bufSize);
+  assertEquals(actualBytes.buffer, writer.bytes({ copy: false }).buffer);
   assert(actualBytes.buffer.byteLength > actualBytes.byteLength);
 });
 
@@ -438,7 +444,7 @@ unitTest(function testBufferBytesCopyFalseGrowExactBytes(): void {
   const writer = new Deno.Buffer();
   writer.grow(bufSize);
   writer.readFromSync(reader);
-  const actualBytes = writer.bytes(false);
+  const actualBytes = writer.bytes({ copy: false });
 
   assertEquals(actualBytes.byteLength, bufSize);
   assertEquals(actualBytes.buffer.byteLength, actualBytes.byteLength);

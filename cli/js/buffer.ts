@@ -26,6 +26,10 @@ function copyBytes(src: Uint8Array, dst: Uint8Array, off = 0): number {
   return src.byteLength;
 }
 
+export interface BytesOptions {
+  copy?: boolean;
+}
+
 export class Buffer implements Reader, ReaderSync, Writer, WriterSync {
   #buf: Uint8Array; // contents are the bytes buf[off : len(buf)]
   #off = 0; // read at buf[off], write at buf[buf.byteLength]
@@ -39,9 +43,9 @@ export class Buffer implements Reader, ReaderSync, Writer, WriterSync {
     this.#buf = new Uint8Array(ab);
   }
 
-  bytes(copy = true): Uint8Array {
-    if (copy === true) return this.#buf.slice(this.#off);
-    return this.#buf.subarray(this.#off);
+  bytes(options: BytesOptions = { copy: true }): Uint8Array {
+    if (options.copy === false) return this.#buf.subarray(this.#off);
+    return this.#buf.slice(this.#off);
   }
 
   empty(): boolean {
