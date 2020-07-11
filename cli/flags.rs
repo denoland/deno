@@ -41,6 +41,7 @@ pub enum DenoSubcommand {
   },
   Help,
   Info {
+    json: bool,
     file: Option<String>,
   },
   Install {
@@ -106,6 +107,7 @@ pub struct Flags {
   pub lock_write: bool,
   pub log_level: Option<Level>,
   pub net_allowlist: Vec<String>,
+  pub no_check: bool,
   pub no_prompts: bool,
   pub no_remote: bool,
   pub read_allowlist: Vec<PathBuf>,
@@ -453,9 +455,11 @@ fn eval_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 fn info_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   ca_file_arg_parse(flags, matches);
   unstable_arg_parse(flags, matches);
-
+  let json = matches.is_present("json");
+  no_check_arg_parse(flags, matches);
   flags.subcommand = DenoSubcommand::Info {
     file: matches.value_of("file").map(|f| f.to_string()),
+    json,
   };
 }
 
@@ -464,6 +468,7 @@ fn cache_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   lock_args_parse(flags, matches);
   importmap_arg_parse(flags, matches);
   config_arg_parse(flags, matches);
+  no_check_arg_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
   unstable_arg_parse(flags, matches);
@@ -492,6 +497,7 @@ fn run_test_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   importmap_arg_parse(flags, matches);
   config_arg_parse(flags, matches);
   v8_flags_arg_parse(flags, matches);
+  no_check_arg_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
   permission_args_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
@@ -818,7 +824,14 @@ TypeScript compiler cache: Subdirectory containing TS compiler output.",
     )
     .arg(Arg::with_name("file").takes_value(true).required(false))
     .arg(ca_file_arg())
+    .arg(no_check_arg())
     .arg(unstable_arg())
+    .arg(
+      Arg::with_name("json")
+        .long("json")
+        .help("Outputs the information in JSON format")
+        .takes_value(false),
+    )
 }
 
 fn cache_subcommand<'a, 'b>() -> App<'a, 'b> {
@@ -829,6 +842,7 @@ fn cache_subcommand<'a, 'b>() -> App<'a, 'b> {
     .arg(importmap_arg())
     .arg(unstable_arg())
     .arg(config_arg())
+    .arg(no_check_arg())
     .arg(no_remote_arg())
     .arg(
       Arg::with_name("file")
@@ -1040,6 +1054,7 @@ fn run_test_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
     .arg(config_arg())
     .arg(lock_arg())
     .arg(lock_write_arg())
+    .arg(no_check_arg())
     .arg(no_remote_arg())
     .arg(v8_flags_arg())
     .arg(ca_file_arg())
@@ -1311,6 +1326,18 @@ fn v8_flags_arg_parse(flags: &mut Flags, matches: &ArgMatches) {
   if let Some(v8_flags) = matches.values_of("v8-flags") {
     let s: Vec<String> = v8_flags.map(String::from).collect();
     flags.v8_flags = Some(s);
+  }
+}
+
+fn no_check_arg<'a, 'b>() -> Arg<'a, 'b> {
+  Arg::with_name("no-check")
+    .long("no-check")
+    .help("Skip type checking modules")
+}
+
+fn no_check_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  if matches.is_present("no-check") {
+    flags.no_check = true;
   }
 }
 
@@ -1765,6 +1792,19 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Info {
+          json: false,
+          file: Some("script.ts".to_string()),
+        },
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec_safe(svec!["deno", "info", "--json", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Info {
+          json: true,
           file: Some("script.ts".to_string()),
         },
         ..Flags::default()
@@ -1775,7 +1815,22 @@ mod tests {
     assert_eq!(
       r.unwrap(),
       Flags {
-        subcommand: DenoSubcommand::Info { file: None },
+        subcommand: DenoSubcommand::Info {
+          json: false,
+          file: None
+        },
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec_safe(svec!["deno", "info", "--json"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Info {
+          json: true,
+          file: None
+        },
         ..Flags::default()
       }
     );
@@ -2442,6 +2497,22 @@ mod tests {
   */
 
   #[test]
+  fn no_check() {
+    let r =
+      flags_from_vec_safe(svec!["deno", "run", "--no-check", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run {
+          script: "script.ts".to_string(),
+        },
+        no_check: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
   fn no_remote() {
     let r =
       flags_from_vec_safe(svec!["deno", "run", "--no-remote", "script.ts"]);
@@ -2755,6 +2826,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Info {
+          json: false,
           file: Some("https://example.com".to_string()),
         },
         ca_file: Some("example.crt".to_owned()),

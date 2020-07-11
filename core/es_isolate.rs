@@ -708,12 +708,12 @@ pub mod tests {
     let mut isolate = EsIsolate::new(loader, StartupData::None, false);
 
     let dispatcher = move |_state: &mut CoreIsolateState,
-                           control: &[u8],
-                           _zero_copy: &mut [ZeroCopyBuf]|
+                           zero_copy: &mut [ZeroCopyBuf]|
           -> Op {
       dispatch_count_.fetch_add(1, Ordering::Relaxed);
-      assert_eq!(control.len(), 1);
-      assert_eq!(control[0], 42);
+      assert_eq!(zero_copy.len(), 1);
+      assert_eq!(zero_copy[0].len(), 1);
+      assert_eq!(zero_copy[0][0], 42);
       let buf = vec![43u8, 0, 0, 0].into_boxed_slice();
       Op::Async(futures::future::ready(buf).boxed())
     };

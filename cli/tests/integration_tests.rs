@@ -16,6 +16,7 @@ use tempfile::TempDir;
 fn std_tests() {
   let dir = TempDir::new().expect("tempdir fail");
   let std_path = util::root_path().join("std");
+  let std_config = std_path.join("tsconfig_test.json");
   let status = util::deno_cmd()
     .env("DENO_DIR", dir.path())
     .current_dir(std_path) // TODO(ry) change this to root_path
@@ -23,6 +24,8 @@ fn std_tests() {
     .arg("--unstable")
     .arg("--seed=86") // Some tests rely on specific random numbers.
     .arg("-A")
+    .arg("--config")
+    .arg(std_config.to_str().unwrap())
     // .arg("-Ldebug")
     .spawn()
     .unwrap()
@@ -1234,6 +1237,7 @@ macro_rules! itest(
 );
 
 // Unfortunately #[ignore] doesn't work with itest!
+#[allow(unused)]
 macro_rules! itest_ignore(
   ($name:ident {$( $key:ident: $value:expr,)*})  => {
     #[ignore]
@@ -1341,12 +1345,6 @@ itest!(_022_info_flag_script {
 itest!(_023_no_ext_with_headers {
   args: "run --reload 023_no_ext_with_headers",
   output: "023_no_ext_with_headers.out",
-});
-
-// FIXME(bartlomieju): this test should use remote file
-itest_ignore!(_024_import_no_ext_with_headers {
-  args: "run --reload 024_import_no_ext_with_headers.ts",
-  output: "024_import_no_ext_with_headers.ts.out",
 });
 
 // TODO(lucacasonato): remove --unstable when permissions goes stable
@@ -1496,6 +1494,11 @@ itest!(_041_info_flag {
   output: "041_info_flag.out",
 });
 
+itest!(info_json {
+  args: "info --json --unstable",
+  output: "info_json.out",
+});
+
 itest!(_042_dyn_import_evalcontext {
   args: "run --quiet --allow-read --reload 042_dyn_import_evalcontext.ts",
   output: "042_dyn_import_evalcontext.ts.out",
@@ -1507,8 +1510,8 @@ itest!(_044_bad_resource {
   exit_code: 1,
 });
 
-itest_ignore!(_045_proxy {
-  args: "run --allow-net --allow-env --allow-run --reload 045_proxy_test.ts",
+itest!(_045_proxy {
+  args: "run --allow-net --allow-env --allow-run --allow-read --reload --quiet 045_proxy_test.ts",
   output: "045_proxy_test.ts.out",
   http_server: true,
 });
@@ -1546,6 +1549,12 @@ itest!(_052_no_remote_flag {
 itest!(_054_info_local_imports {
   args: "info --quiet 005_more_imports.ts",
   output: "054_info_local_imports.out",
+  exit_code: 0,
+});
+
+itest!(_055_info_file_json {
+  args: "info --quiet --json --unstable 005_more_imports.ts",
+  output: "055_info_file_json.out",
   exit_code: 0,
 });
 
@@ -1832,6 +1841,12 @@ itest!(error_025_tab_indent {
   exit_code: 1,
 });
 
+itest!(error_no_check {
+  args: "run --reload --no-check error_no_check.ts",
+  output: "error_no_check.ts.out",
+  exit_code: 1,
+});
+
 itest!(error_syntax {
   args: "run --reload error_syntax.js",
   exit_code: 1,
@@ -1888,6 +1903,12 @@ itest!(import_meta {
 itest!(main_module {
   args: "run --quiet --unstable --allow-read --reload main_module.ts",
   output: "main_module.ts.out",
+});
+
+itest!(no_check {
+  args: "run --quiet --reload --no-check 006_url_imports.ts",
+  output: "006_url_imports.ts.out",
+  http_server: true,
 });
 
 itest!(lib_ref {
@@ -2077,9 +2098,9 @@ itest!(cafile_eval {
   http_server: true,
 });
 
-itest_ignore!(cafile_info {
+itest!(cafile_info {
   args:
-    "info --cert tls/RootCA.pem https://localhost:5545/cli/tests/cafile_info.ts",
+    "info --quiet --cert tls/RootCA.pem https://localhost:5545/cli/tests/cafile_info.ts",
   output: "cafile_info.ts.out",
   http_server: true,
 });
@@ -3089,4 +3110,63 @@ fn set_raw_should_not_panic_on_no_tty() {
   assert!(!output.status.success());
   let stderr = std::str::from_utf8(&output.stderr).unwrap().trim();
   assert!(stderr.contains("BadResource"));
+}
+
+#[cfg(windows)]
+enum WinProcConstraints {
+  NoStdIn,
+  NoStdOut,
+  NoStdErr,
+}
+
+#[cfg(windows)]
+fn run_deno_script_constrained(
+  script_path: std::path::PathBuf,
+  constraints: WinProcConstraints,
+) -> Result<(), i64> {
+  let file_path = "cli/tests/DenoWinRunner.ps1";
+  let constraints = match constraints {
+    WinProcConstraints::NoStdIn => "1",
+    WinProcConstraints::NoStdOut => "2",
+    WinProcConstraints::NoStdErr => "4",
+  };
+  let deno_exe_path = util::deno_exe_path()
+    .into_os_string()
+    .into_string()
+    .unwrap();
+
+  let deno_script_path = script_path.into_os_string().into_string().unwrap();
+
+  let args = vec![&deno_exe_path[..], &deno_script_path[..], constraints];
+  util::run_powershell_script_file(file_path, args)
+}
+
+#[cfg(windows)]
+#[test]
+fn should_not_panic_on_no_stdin() {
+  let output = run_deno_script_constrained(
+    util::tests_path().join("echo.ts"),
+    WinProcConstraints::NoStdIn,
+  );
+  output.unwrap();
+}
+
+#[cfg(windows)]
+#[test]
+fn should_not_panic_on_no_stdout() {
+  let output = run_deno_script_constrained(
+    util::tests_path().join("echo.ts"),
+    WinProcConstraints::NoStdOut,
+  );
+  output.unwrap();
+}
+
+#[cfg(windows)]
+#[test]
+fn should_not_panic_on_no_stderr() {
+  let output = run_deno_script_constrained(
+    util::tests_path().join("echo.ts"),
+    WinProcConstraints::NoStdErr,
+  );
+  output.unwrap();
 }

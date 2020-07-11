@@ -12,14 +12,14 @@ import { ReadableStreamDefaultControllerImpl } from "./readable_stream_default_c
 import { ReadableStreamDefaultReaderImpl } from "./readable_stream_default_reader.ts";
 import { ReadableStreamImpl } from "./readable_stream.ts";
 import * as sym from "./symbols.ts";
-import { TransformStreamImpl } from "./transform_stream.ts";
+import type { TransformStreamImpl } from "./transform_stream.ts";
 import { TransformStreamDefaultControllerImpl } from "./transform_stream_default_controller.ts";
 import { WritableStreamDefaultControllerImpl } from "./writable_stream_default_controller.ts";
 import { WritableStreamDefaultWriterImpl } from "./writable_stream_default_writer.ts";
 import { WritableStreamImpl } from "./writable_stream.ts";
 import { AbortSignalImpl } from "../abort_signal.ts";
 import { DOMExceptionImpl as DOMException } from "../dom_exception.ts";
-import { cloneValue } from "../util.ts";
+import { cloneValue, setFunctionName } from "../util.ts";
 import { assert, AssertionError } from "../../util.ts";
 
 export type AbortAlgorithm = (reason?: any) => PromiseLike<void>;
@@ -1318,12 +1318,6 @@ export function resetQueue<R>(container: Container<R>): void {
   assert(sym.queue in container && sym.queueTotalSize in container);
   container[sym.queue] = [];
   container[sym.queueTotalSize] = 0;
-}
-
-/** An internal function which provides a function name for some generated
- * functions, so stack traces are a bit more readable. */
-export function setFunctionName(fn: Function, value: string): void {
-  Object.defineProperty(fn, "name", { value, configurable: true });
 }
 
 /** An internal function which mimics the behavior of setting the promise to

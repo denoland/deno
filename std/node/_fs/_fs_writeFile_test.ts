@@ -6,7 +6,7 @@ import {
   assertThrows,
 } from "../../testing/asserts.ts";
 import { writeFile, writeFileSync } from "./_fs_writeFile.ts";
-import { TextEncodings } from "./_fs_common.ts";
+import type { TextEncodings } from "./_fs_common.ts";
 import * as path from "../../path/mod.ts";
 
 const testDataDir = path.resolve(path.join("node", "_fs", "testdata"));

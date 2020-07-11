@@ -2,12 +2,13 @@
 
 import { notImplemented } from "../util.ts";
 import { isTypedArray } from "./util.ts";
-import * as domTypes from "./dom_types.d.ts";
+import type * as domTypes from "./dom_types.d.ts";
 import { TextEncoder } from "./text_encoding.ts";
 import { DenoBlob, bytesSymbol as blobBytesSymbol } from "./blob.ts";
 import { read } from "../ops/io.ts";
 import { close } from "../ops/resources.ts";
-import { fetch as opFetch, FetchResponse } from "../ops/fetch.ts";
+import { fetch as opFetch } from "../ops/fetch.ts";
+import type { FetchResponse } from "../ops/fetch.ts";
 import * as Body from "./body.ts";
 import { getHeaderValueParams } from "./util.ts";
 import { ReadableStreamImpl } from "./streams/readable_stream.ts";
@@ -110,8 +111,9 @@ export class Response extends Body.Body implements domTypes.Response {
     }
 
     const contentType = headers.get("content-type") || "";
+    const size = Number(headers.get("content-length")) || undefined;
 
-    super(body, contentType);
+    super(body, { contentType, size });
 
     this.url = url;
     this.statusText = statusText;

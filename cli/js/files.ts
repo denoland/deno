@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import {
+import type {
   Reader,
   Writer,
   Seeker,
@@ -19,7 +19,7 @@ import {
   openSync as opOpenSync,
   OpenOptions,
 } from "./ops/fs/open.ts";
-export { OpenOptions } from "./ops/fs/open.ts";
+export type { OpenOptions } from "./ops/fs/open.ts";
 
 export function openSync(
   path: string | URL,

@@ -21,6 +21,9 @@ use crate::state::State;
 use crate::swc_common::comments::CommentKind;
 use crate::swc_common::Span;
 use crate::swc_ecma_ast;
+use crate::swc_ecma_visit;
+use crate::swc_ecma_visit::Node;
+use crate::swc_ecma_visit::Visit;
 use crate::swc_util::AstParser;
 use crate::swc_util::SwcDiagnosticBuffer;
 use crate::version;
@@ -56,8 +59,6 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::task::Poll;
-use swc_ecma_visit::Node;
-use swc_ecma_visit::Visit;
 use url::Url;
 
 pub const AVAILABLE_LIBS: &[&str] = &[
@@ -164,10 +165,22 @@ impl Future for CompilerWorker {
   }
 }
 
-// TODO(bartlomieju): use JSONC parser from dprint instead of Regex
 lazy_static! {
+  // TODO(bartlomieju): use JSONC parser from dprint instead of Regex
   static ref CHECK_JS_RE: Regex =
     Regex::new(r#""checkJs"\s*?:\s*?true"#).unwrap();
+  static ref DENO_TYPES_RE: Regex =
+    Regex::new(r"^\s*@deno-types\s?=\s?(\S+)\s*(.*)\s*$").unwrap();
+  // These regexes were adapted from TypeScript
+  // https://github.com/microsoft/TypeScript/blob/87fd1827f2f2f3dafa76c14f13b9defc69481766/src/compiler/parser.ts#L8780-L8781
+  static ref XML_COMMENT_START_RE: Regex =
+    Regex::new(r"^/\s*<(\S+)\s.*?/>").unwrap();
+  static ref PATH_REFERENCE_RE: Regex =
+    Regex::new(r#"(\spath\s*=\s*)('|")(.+?)('|")"#).unwrap();
+  static ref TYPES_REFERENCE_RE: Regex =
+    Regex::new(r#"(\stypes\s*=\s*)('|")(.+?)('|")"#).unwrap();
+  static ref LIB_REFERENCE_RE: Regex =
+    Regex::new(r#"(\slib\s*=\s*)('|")(.+?)('|")"#).unwrap();
 }
 
 /// Create a new worker with snapshot of TS compiler and setup compiler's
@@ -302,6 +315,13 @@ impl CompiledFileMetadata {
   }
 }
 
+#[derive(Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+struct TranspileSourceFile {
+  pub source_code: String,
+  pub file_name: String,
+}
+
 /// Emit a SHA256 hash based on source code, deno version and TS config.
 /// Used to check if a recompilation for source code is needed.
 fn source_code_version_hash(
@@ -374,6 +394,13 @@ struct CompileResponse {
   diagnostics: Diagnostic,
   emit_map: HashMap<String, EmittedSource>,
   build_info: Option<String>,
+  stats: Option<Vec<Stat>>,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TranspileResponse {
+  diagnostics: Diagnostic,
+  emit_map: HashMap<String, EmittedSource>,
   stats: Option<Vec<Stat>>,
 }
 
@@ -702,6 +729,72 @@ impl TsCompiler {
     assert!(bundle_response.bundle_output.is_some());
     let output = bundle_response.bundle_output.unwrap();
     Ok(output)
+  }
+
+  pub async fn transpile(
+    &self,
+    global_state: GlobalState,
+    permissions: Permissions,
+    module_graph: ModuleGraph,
+  ) -> Result<(), ErrBox> {
+    let mut source_files: Vec<TranspileSourceFile> = Vec::new();
+    for (_, value) in module_graph.iter() {
+      let url = Url::parse(&value.url).expect("Filename is not a valid url");
+      if !value.url.ends_with(".d.ts")
+        && (!self.use_disk_cache || !self.has_compiled_source(&url))
+      {
+        source_files.push(TranspileSourceFile {
+          source_code: value.source_code.clone(),
+          file_name: value.url.clone(),
+        });
+      }
+    }
+    if source_files.is_empty() {
+      return Ok(());
+    }
+
+    let source_files_json =
+      serde_json::to_value(source_files).expect("Filed to serialize data");
+    let compiler_config = self.config.clone();
+    let cwd = std::env::current_dir().unwrap();
+    let performance = match global_state.flags.log_level {
+      Some(Level::Debug) => true,
+      _ => false,
+    };
+    let j = match (compiler_config.path, compiler_config.content) {
+      (Some(config_path), Some(config_data)) => json!({
+        "config": str::from_utf8(&config_data).unwrap(),
+        "configPath": config_path,
+        "cwd": cwd,
+        "performance": performance,
+        "sourceFiles": source_files_json,
+        "type": msg::CompilerRequestType::Transpile,
+      }),
+      _ => json!({
+        "performance": performance,
+        "sourceFiles": source_files_json,
+        "type": msg::CompilerRequestType::Transpile,
+      }),
+    };
+
+    let req_msg = j.to_string().into_boxed_str().into_boxed_bytes();
+
+    let msg =
+      execute_in_same_thread(global_state.clone(), permissions, req_msg)
+        .await?;
+
+    let json_str = std::str::from_utf8(&msg).unwrap();
+
+    let transpile_response: TranspileResponse = serde_json::from_str(json_str)?;
+
+    if !transpile_response.diagnostics.items.is_empty() {
+      return Err(ErrBox::from(transpile_response.diagnostics));
+    }
+
+    maybe_log_stats(transpile_response.stats);
+
+    self.cache_emitted_files(transpile_response.emit_map)?;
+    Ok(())
   }
 
   /// Get associated `CompiledFileMetadata` for given module if it exists.
@@ -1397,54 +1490,37 @@ fn get_deno_types(parser: &AstParser, span: Span) -> Option<String> {
   parse_deno_types(&comment)
 }
 
-// TODO(bartlomieju): refactor
 fn parse_ts_reference(comment: &str) -> Option<(TsReferenceKind, String)> {
-  let (kind, specifier_in_quotes) = if comment.starts_with("/ <reference path=")
-  {
-    (
-      TsReferenceKind::Path,
-      comment.trim_start_matches("/ <reference path="),
-    )
-  } else if comment.starts_with("/ <reference lib=") {
-    (
-      TsReferenceKind::Lib,
-      comment.trim_start_matches("/ <reference lib="),
-    )
-  } else if comment.starts_with("/ <reference types=") {
-    (
-      TsReferenceKind::Types,
-      comment.trim_start_matches("/ <reference types="),
-    )
-  } else {
+  if !XML_COMMENT_START_RE.is_match(comment) {
     return None;
-  };
+  }
 
-  let specifier = specifier_in_quotes
-    .trim_end_matches("/>")
-    .trim_end()
-    .trim_start_matches('\"')
-    .trim_start_matches('\'')
-    .trim_end_matches('\"')
-    .trim_end_matches('\'')
-    .to_string();
+  let (kind, specifier) =
+    if let Some(capture_groups) = PATH_REFERENCE_RE.captures(comment) {
+      (TsReferenceKind::Path, capture_groups.get(3).unwrap())
+    } else if let Some(capture_groups) = TYPES_REFERENCE_RE.captures(comment) {
+      (TsReferenceKind::Types, capture_groups.get(3).unwrap())
+    } else if let Some(capture_groups) = LIB_REFERENCE_RE.captures(comment) {
+      (TsReferenceKind::Lib, capture_groups.get(3).unwrap())
+    } else {
+      return None;
+    };
 
-  Some((kind, specifier))
+  Some((kind, specifier.as_str().to_string()))
 }
 
 fn parse_deno_types(comment: &str) -> Option<String> {
-  if comment.starts_with("@deno-types") {
-    let split: Vec<String> =
-      comment.split('=').map(|s| s.to_string()).collect();
-    assert_eq!(split.len(), 2);
-    let specifier_in_quotes = split.get(1).unwrap().to_string();
-    let specifier = specifier_in_quotes
-      .trim()
-      .trim_start_matches('\"')
-      .trim_start_matches('\'')
-      .trim_end_matches('\"')
-      .trim_end_matches('\'')
-      .to_string();
-    return Some(specifier);
+  if let Some(capture_groups) = DENO_TYPES_RE.captures(comment) {
+    if let Some(specifier) = capture_groups.get(1) {
+      let s = specifier
+        .as_str()
+        .trim_start_matches('\"')
+        .trim_start_matches('\'')
+        .trim_end_matches('\"')
+        .trim_end_matches('\'')
+        .to_string();
+      return Some(s);
+    }
   }
 
   None
@@ -1467,6 +1543,10 @@ mod tests {
       Some("./a/b/c.d.ts".to_string())
     );
     assert_eq!(
+      parse_deno_types("@deno-types=\"./a/b/c.d.ts\""),
+      Some("./a/b/c.d.ts".to_string())
+    );
+    assert_eq!(
       parse_deno_types("@deno-types = https://dneo.land/x/some/package/a.d.ts"),
       Some("https://dneo.land/x/some/package/a.d.ts".to_string())
     );
@@ -1476,6 +1556,16 @@ mod tests {
     );
     assert!(parse_deno_types("asdf").is_none());
     assert!(parse_deno_types("// deno-types = fooo").is_none());
+    assert_eq!(
+      parse_deno_types("@deno-types=./a/b/c.d.ts some comment"),
+      Some("./a/b/c.d.ts".to_string())
+    );
+    assert_eq!(
+      parse_deno_types(
+        "@deno-types=./a/b/c.d.ts // some comment after slashes"
+      ),
+      Some("./a/b/c.d.ts".to_string())
+    );
   }
 
   #[test]
@@ -1567,6 +1657,75 @@ mod tests {
     assert!(source_code
       .as_bytes()
       .starts_with(b"\"use strict\";\nconsole.log(\"Hello World\");"));
+    let mut lines: Vec<String> =
+      source_code.split('\n').map(|s| s.to_string()).collect();
+    let last_line = lines.pop().unwrap();
+    assert!(last_line
+      .starts_with("//# sourceMappingURL=data:application/json;base64"));
+  }
+
+  #[tokio::test]
+  async fn test_transpile() {
+    let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+      .parent()
+      .unwrap()
+      .join("cli/tests/002_hello.ts");
+    let specifier =
+      ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
+    let out = SourceFile {
+      url: specifier.as_url().clone(),
+      filename: PathBuf::from(p.to_str().unwrap().to_string()),
+      media_type: msg::MediaType::TypeScript,
+      source_code: include_bytes!("./tests/002_hello.ts").to_vec(),
+      types_header: None,
+    };
+    let dir =
+      deno_dir::DenoDir::new(Some(test_util::new_deno_dir().path().to_owned()))
+        .unwrap();
+    let http_cache = http_cache::HttpCache::new(&dir.root.join("deps"));
+    let mock_state = GlobalState::mock(
+      vec![String::from("deno"), String::from("hello.ts")],
+      None,
+    );
+    let file_fetcher = SourceFileFetcher::new(
+      http_cache,
+      true,
+      mock_state.flags.cache_blocklist.clone(),
+      false,
+      false,
+      None,
+    )
+    .unwrap();
+
+    let mut module_graph_loader = ModuleGraphLoader::new(
+      file_fetcher.clone(),
+      None,
+      Permissions::allow_all(),
+      false,
+      false,
+    );
+    module_graph_loader
+      .add_to_graph(&specifier, None)
+      .await
+      .expect("Failed to create graph");
+    let module_graph = module_graph_loader.get_graph();
+
+    let ts_compiler = TsCompiler::new(
+      file_fetcher,
+      mock_state.flags.clone(),
+      dir.gen_cache.clone(),
+    )
+    .unwrap();
+
+    let result = ts_compiler
+      .transpile(mock_state.clone(), Permissions::allow_all(), module_graph)
+      .await;
+    assert!(result.is_ok());
+    let compiled_file = ts_compiler.get_compiled_module(&out.url).unwrap();
+    let source_code = compiled_file.code;
+    assert!(source_code
+      .as_bytes()
+      .starts_with(b"console.log(\"Hello World\");"));
     let mut lines: Vec<String> =
       source_code.split('\n').map(|s| s.to_string()).collect();
     let last_line = lines.pop().unwrap();
