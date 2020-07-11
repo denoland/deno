@@ -1495,12 +1495,12 @@ fn parse_ts_reference(comment: &str) -> Option<(TsReferenceKind, String)> {
   }
 
   let (kind, specifier) =
-    if let Some(match_) = PATH_REFERENCE_RE.captures(comment) {
-      (TsReferenceKind::Path, match_.get(3).unwrap())
-    } else if let Some(match_) = TYPES_REFERENCE_RE.captures(comment) {
-      (TsReferenceKind::Types, match_.get(3).unwrap())
-    } else if let Some(match_) = LIB_REFERENCE_RE.captures(comment) {
-      (TsReferenceKind::Lib, match_.get(3).unwrap())
+    if let Some(capture_groups) = PATH_REFERENCE_RE.captures(comment) {
+      (TsReferenceKind::Path, capture_groups.get(3).unwrap())
+    } else if let Some(capture_groups) = TYPES_REFERENCE_RE.captures(comment) {
+      (TsReferenceKind::Types, capture_groups.get(3).unwrap())
+    } else if let Some(capture_groups) = LIB_REFERENCE_RE.captures(comment) {
+      (TsReferenceKind::Lib, capture_groups.get(3).unwrap())
     } else {
       return None;
     };
