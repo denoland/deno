@@ -354,6 +354,7 @@ It's possible to use a different encoding by specifying it in `options` object a
 Similarly, it's possible to make `encode` add a delimeter (`<~` and `~>` for Adobe, `xbtoa Begin` and `xbtoa End` with newlines between the delimeters and encoded data for btoa. Checksums for btoa are not supported. Delimeters are not supported by other encodings.)
 
 encoding examples:
+
 ```ts
 import { encode, decode } from "https://deno.land/std/encoding/ascii85.ts";
 const binaryData = new Uint8Array([136, 180, 79, 24]);
