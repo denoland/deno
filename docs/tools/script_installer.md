@@ -66,6 +66,8 @@ idiom to specify the entry point in an executable script.
 
 Example:
 
+<!-- dprint-ignore -->
+
 ```ts
 // https://example.com/awesome/cli.ts
 async function myAwesomeCli(): Promise<void> {

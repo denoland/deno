@@ -14,8 +14,9 @@ It's built on V8, Rust, and Tokio.
 - Has built-in utilities like a dependency inspector (`deno info`) and a code
   formatter (`deno fmt`).
 - Has
-  [a set of reviewed (audited) standard modules](https://github.com/denoland/deno/tree/master/std)
-  that are guaranteed to work with Deno.
+  [a set of reviewed (audited) standard
+  modules](https://github.com/denoland/deno/tree/master/std) that are guaranteed
+  to work with Deno.
 - Scripts can be bundled into a single JavaScript file.
 
 ## Philosophy
