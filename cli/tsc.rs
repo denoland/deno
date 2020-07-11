@@ -1511,7 +1511,14 @@ fn parse_ts_reference(comment: &str) -> Option<(TsReferenceKind, String)> {
 fn parse_deno_types(comment: &str) -> Option<String> {
   if let Some(capture_groups) = DENO_TYPES_RE.captures(comment) {
     if let Some(specifier) = capture_groups.get(1) {
-      return Some(specifier.as_str().to_string());
+      let s = specifier
+        .as_str()
+        .trim_start_matches('\"')
+        .trim_start_matches('\'')
+        .trim_end_matches('\"')
+        .trim_end_matches('\'')
+        .to_string();
+      return Some(s);
     }
   }
 
@@ -1532,6 +1539,10 @@ mod tests {
   fn test_parse_deno_types() {
     assert_eq!(
       parse_deno_types("@deno-types=./a/b/c.d.ts"),
+      Some("./a/b/c.d.ts".to_string())
+    );
+    assert_eq!(
+      parse_deno_types("@deno-types=\"./a/b/c.d.ts\""),
       Some("./a/b/c.d.ts".to_string())
     );
     assert_eq!(
