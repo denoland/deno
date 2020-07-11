@@ -164,10 +164,12 @@ impl Future for CompilerWorker {
   }
 }
 
-// TODO(bartlomieju): use JSONC parser from dprint instead of Regex
 lazy_static! {
+  // TODO(bartlomieju): use JSONC parser from dprint instead of Regex
   static ref CHECK_JS_RE: Regex =
     Regex::new(r#""checkJs"\s*?:\s*?true"#).unwrap();
+  static ref DENO_TYPES_RE: Regex =
+    Regex::new(r"^\s*@deno-types=(\S+)\s*(.*)\s*$").unwrap();
 }
 
 /// Create a new worker with snapshot of TS compiler and setup compiler's
@@ -1512,19 +1514,10 @@ fn parse_ts_reference(comment: &str) -> Option<(TsReferenceKind, String)> {
 }
 
 fn parse_deno_types(comment: &str) -> Option<String> {
-  if comment.starts_with("@deno-types") {
-    let split: Vec<String> =
-      comment.split('=').map(|s| s.to_string()).collect();
-    assert_eq!(split.len(), 2);
-    let specifier_in_quotes = split.get(1).unwrap().to_string();
-    let specifier = specifier_in_quotes
-      .trim()
-      .trim_start_matches('\"')
-      .trim_start_matches('\'')
-      .trim_end_matches('\"')
-      .trim_end_matches('\'')
-      .to_string();
-    return Some(specifier);
+  if let Some(capture_groups) = DENO_TYPES_RE.captures(comment) {
+    if let Some(specifier) = capture_groups.get(1) {
+      return Some(specifier.as_str().to_string());
+    }
   }
 
   None
@@ -1547,15 +1540,26 @@ mod tests {
       Some("./a/b/c.d.ts".to_string())
     );
     assert_eq!(
-      parse_deno_types("@deno-types = https://dneo.land/x/some/package/a.d.ts"),
+      parse_deno_types("@deno-types=https://dneo.land/x/some/package/a.d.ts"),
       Some("https://dneo.land/x/some/package/a.d.ts".to_string())
     );
     assert_eq!(
-      parse_deno_types("@deno-types = ./a/b/c.d.ts"),
+      parse_deno_types("@deno-types=./a/b/c.d.ts"),
       Some("./a/b/c.d.ts".to_string())
     );
+    assert_eq!(parse_deno_types("@deno-types = ./a/b/c.d.ts"), None);
     assert!(parse_deno_types("asdf").is_none());
     assert!(parse_deno_types("// deno-types = fooo").is_none());
+    assert_eq!(
+      parse_deno_types("@deno-types=./a/b/c.d.ts some comment"),
+      Some("./a/b/c.d.ts".to_string())
+    );
+    assert_eq!(
+      parse_deno_types(
+        "@deno-types=./a/b/c.d.ts // some comment after slashes"
+      ),
+      Some("./a/b/c.d.ts".to_string())
+    );
   }
 
   #[test]
