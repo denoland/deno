@@ -7,20 +7,15 @@ interface CreateWorkerResponse {
   id: number;
 }
 
-export function createWorker(
-  specifier: string,
-  hasSourceCode: boolean,
-  sourceCode: string,
-  useDenoNamespace: boolean,
-  name?: string
-): CreateWorkerResponse {
-  return sendSync("op_create_worker", {
-    specifier,
-    hasSourceCode,
-    sourceCode,
-    name,
-    useDenoNamespace,
-  });
+export function createWorker(args: {
+  specifier: string;
+  hasSourceCode: boolean;
+  sourceCode: string;
+  useDenoNamespace: boolean;
+  name?: string;
+  importMap?: string;
+}): CreateWorkerResponse {
+  return sendSync("op_create_worker", args);
 }
 
 export function hostTerminateWorker(id: number): void {

@@ -277,7 +277,7 @@ Deno.test({
     );
     const denoWorker = new Worker(
       new URL("subdir/deno_worker.ts", import.meta.url).href,
-      { type: "module", deno: true }
+      { type: "module", deno: {} }
     );
 
     regularWorker.onmessage = (e): void => {
@@ -312,6 +312,28 @@ Deno.test({
       promise.resolve();
     };
     w.postMessage(null);
+    await promise;
+    w.terminate();
+  },
+});
+
+Deno.test({
+  name: "worker with import map",
+  fn: async function (): Promise<void> {
+    const promise = createResolvable();
+    const w = new Worker(
+      new URL("subdir/test_import_map_worker.ts", import.meta.url).href,
+      {
+        type: "module",
+        deno: {
+          importMap: "./cli/tests/subdir/test_import_map.json",
+        },
+      }
+    );
+    w.onmessage = (e): void => {
+      assertEquals(e.data, "hello world");
+      promise.resolve();
+    };
     await promise;
     w.terminate();
   },

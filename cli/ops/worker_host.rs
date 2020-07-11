@@ -2,6 +2,7 @@
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::fmt_errors::JSError;
 use crate::global_state::GlobalState;
+use crate::import_map::ImportMap;
 use crate::op_error::OpError;
 use crate::ops::io::get_stdio;
 use crate::permissions::Permissions;
@@ -42,9 +43,19 @@ fn create_web_worker(
   permissions: Permissions,
   specifier: ModuleSpecifier,
   has_deno_namespace: bool,
+  import_map_path: Option<String>,
 ) -> Result<WebWorker, ErrBox> {
-  let state =
-    State::new_for_worker(global_state, Some(permissions), specifier)?;
+  let maybe_import_map = match import_map_path.as_ref() {
+    None => None,
+    Some(file_path) => Some(ImportMap::load(file_path)?),
+  };
+
+  let state = State::new_for_worker(
+    global_state,
+    Some(permissions),
+    specifier,
+    maybe_import_map,
+  )?;
 
   let mut worker = WebWorker::new(
     name.clone(),
@@ -80,8 +91,7 @@ fn create_web_worker(
   Ok(worker)
 }
 
-// TODO(bartlomieju): check if order of actions is aligned to Worker spec
-fn run_worker_thread(
+pub struct RunWorkerThreadArgs {
   worker_id: u32,
   name: String,
   global_state: GlobalState,
@@ -89,24 +99,30 @@ fn run_worker_thread(
   specifier: ModuleSpecifier,
   has_deno_namespace: bool,
   maybe_source_code: Option<String>,
+  import_map: Option<String>,
+}
+// TODO(bartlomieju): check if order of actions is aligned to Worker spec
+fn run_worker_thread(
+  args: RunWorkerThreadArgs,
 ) -> Result<(JoinHandle<()>, WebWorkerHandle), ErrBox> {
   let (handle_sender, handle_receiver) =
     std::sync::mpsc::sync_channel::<Result<WebWorkerHandle, ErrBox>>(1);
 
   let builder =
-    std::thread::Builder::new().name(format!("deno-worker-{}", worker_id));
+    std::thread::Builder::new().name(format!("deno-worker-{}", args.worker_id));
   let join_handle = builder.spawn(move || {
     // Any error inside this block is terminal:
     // - JS worker is useless - meaning it throws an exception and can't do anything else,
     //  all action done upon it should be noops
     // - newly spawned thread exits
     let result = create_web_worker(
-      worker_id,
-      name,
-      global_state,
-      permissions,
-      specifier.clone(),
-      has_deno_namespace,
+      args.worker_id,
+      args.name,
+      args.global_state,
+      args.permissions,
+      args.specifier.clone(),
+      args.has_deno_namespace,
+      args.import_map,
     );
 
     if let Err(err) = result {
@@ -135,12 +151,12 @@ fn run_worker_thread(
     // TODO: run with using select with terminate
 
     // Execute provided source code immediately
-    let result = if let Some(source_code) = maybe_source_code {
+    let result = if let Some(source_code) = args.maybe_source_code {
       worker.execute(&source_code)
     } else {
       // TODO(bartlomieju): add "type": "classic", ie. ability to load
       // script instead of module
-      let load_future = worker.execute_module(&specifier).boxed_local();
+      let load_future = worker.execute_module(&args.specifier).boxed_local();
 
       rt.block_on(load_future)
     };
@@ -174,6 +190,7 @@ struct CreateWorkerArgs {
   has_source_code: bool,
   source_code: String,
   use_deno_namespace: bool,
+  import_map: Option<String>,
 }
 
 /// Create worker as the host
@@ -195,6 +212,7 @@ fn op_create_worker(
   if use_deno_namespace {
     state.check_unstable("Worker.deno");
   }
+  let import_map = args.import_map;
   let parent_state = state.clone();
   let mut state = state.borrow_mut();
   let global_state = state.global_state.clone();
@@ -206,15 +224,16 @@ fn op_create_worker(
   let module_specifier = ModuleSpecifier::resolve_url(&specifier)?;
   let worker_name = args_name.unwrap_or_else(|| "".to_string());
 
-  let (join_handle, worker_handle) = run_worker_thread(
+  let (join_handle, worker_handle) = run_worker_thread(RunWorkerThreadArgs {
     worker_id,
-    worker_name,
+    name: worker_name,
     global_state,
     permissions,
-    module_specifier,
-    use_deno_namespace,
+    specifier: module_specifier,
+    has_deno_namespace: use_deno_namespace,
     maybe_source_code,
-  )
+    import_map,
+  })
   .map_err(|e| OpError::other(e.to_string()))?;
   // At this point all interactions with worker happen using thread
   // safe handler returned from previous function call

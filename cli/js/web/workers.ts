@@ -76,7 +76,9 @@ export interface Worker {
 export interface WorkerOptions {
   type?: "classic" | "module";
   name?: string;
-  deno?: boolean;
+  deno?: {
+    importMap?: string;
+  };
 }
 
 export class WorkerImpl extends EventTarget implements Worker {
@@ -118,15 +120,16 @@ export class WorkerImpl extends EventTarget implements Worker {
     }
     */
 
-    const useDenoNamespace = options ? !!options.deno : false;
+    const useDenoNamespace = Boolean(options?.deno);
 
-    const { id } = createWorker(
+    const { id } = createWorker({
       specifier,
       hasSourceCode,
       sourceCode,
       useDenoNamespace,
-      options?.name
-    );
+      name: options?.name,
+      importMap: options?.deno?.importMap,
+    });
     this.#id = id;
     this.#poll();
   }

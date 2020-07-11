@@ -389,6 +389,7 @@ impl State {
     global_state: GlobalState,
     shared_permissions: Option<Permissions>,
     main_module: ModuleSpecifier,
+    import_map: Option<ImportMap>,
   ) -> Result<Self, ErrBox> {
     let seeded_rng = match global_state.flags.seed {
       Some(seed) => Some(StdRng::seed_from_u64(seed)),
@@ -405,7 +406,7 @@ impl State {
       global_state,
       main_module,
       permissions,
-      import_map: None,
+      import_map,
       metrics: Metrics::default(),
       global_timer: GlobalTimer::new(),
       workers: HashMap::new(),

@@ -1,0 +1,5 @@
+{
+  "imports": {
+    "module_x": "./test_import_map_worker_module.ts"
+  }
+}

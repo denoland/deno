@@ -1288,7 +1288,7 @@ declare class Worker extends EventTarget {
        * field will be made into an object for more granular
        * configuration of worker thread (permissions, import map, etc.).
        *
-       * Set to `true` to make `Deno` namespace and all of its methods
+       * Set to `{}` to make `Deno` namespace and all of its methods
        * available to worker thread.
        *
        * Currently worker inherits permissions from main thread (permissions
@@ -1301,7 +1301,7 @@ declare class Worker extends EventTarget {
        * // mod.ts
        * const worker = new Worker(
        *   new URL("deno_worker.ts", import.meta.url).href,
-       *   { type: "module", deno: true }
+       *   { type: "module", deno: {} }
        * );
        * worker.postMessage({ cmd: "readFile", fileName: "./log.txt" });
        *
@@ -1329,7 +1329,15 @@ declare class Worker extends EventTarget {
        * hello world2
        *
        */
-      deno?: boolean;
+      deno?: {
+        /**
+         * Relative or absolute path to the import map that will be used
+         * by the script to be executed as worker thread.
+         *
+         * For example: `./src/import_map.json`
+         */
+        importMap?: string;
+      };
     }
   );
   postMessage(message: any, transfer: ArrayBuffer[]): void;
