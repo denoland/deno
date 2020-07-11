@@ -665,5 +665,6 @@ Deno.test({
   fn: (): void => {
     const addr = _parseAddrFromStr(":80");
     assertEquals(addr.port, 80);
+    assertEquals(addr.hostname, "0.0.0.0");
   },
 });
