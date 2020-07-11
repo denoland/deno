@@ -3,6 +3,9 @@
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 
+/** Deno provides extra properties on `import.meta`.  These are included here
+ * to ensure that these are still available when using the Deno namepsace in
+ * conjunction with other type libs, like `dom`. */
 declare interface ImportMeta {
   /** A string representation of the fully qualified module URL. */
   url: string;
@@ -17,6 +20,47 @@ declare interface ImportMeta {
    * ```
    */
   main: boolean;
+}
+
+/** Deno supports user timing Level 3 (see: https://w3c.github.io/user-timing)
+ * which is not widely supported yet in other runtimes.  These types are here
+ * so that these features are still available when using the Deno namespace
+ * in conjunction with other type libs, like `dom`. */
+declare interface Performance {
+  /** Stores a timestamp with the associated name (a "mark"). */
+  mark(markName: string, options?: PerformanceMarkOptions): PerformanceMark;
+
+  /** Stores the `DOMHighResTimeStamp` duration between two marks along with the
+   * associated name (a "measure"). */
+  measure(
+    measureName: string,
+    options?: PerformanceMeasureOptions
+  ): PerformanceMeasure;
+}
+
+declare interface PerformanceMarkOptions {
+  /** Metadata to be included in the mark. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  detail?: any;
+
+  /** Timestamp to be used as the mark time. */
+  startTime?: number;
+}
+
+declare interface PerformanceMeasureOptions {
+  /** Metadata to be included in the measure. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  detail?: any;
+
+  /** Timestamp to be used as the start time or string to be used as start
+   * mark.*/
+  start?: string | number;
+
+  /** Duration between the start and end times. */
+  duration?: number;
+
+  /** Timestamp to be used as the end time or string to be used as end mark. */
+  end?: string | number;
 }
 
 declare interface Permissions {

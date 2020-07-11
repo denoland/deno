@@ -8,7 +8,6 @@ import {
   isWritableStream,
   isWritableStreamLocked,
   makeSizeAlgorithmFromSizeFunction,
-  setFunctionName,
   setUpWritableStreamDefaultControllerFromUnderlyingSink,
   writableStreamAbort,
   writableStreamClose,
@@ -19,6 +18,7 @@ import * as sym from "./symbols.ts";
 import type { WritableStreamDefaultControllerImpl } from "./writable_stream_default_controller.ts";
 import type { WritableStreamDefaultWriterImpl } from "./writable_stream_default_writer.ts";
 import { customInspect } from "../console.ts";
+import { setFunctionName } from "../util.ts";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export class WritableStreamImpl<W = any> implements WritableStream<W> {

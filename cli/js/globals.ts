@@ -18,7 +18,6 @@ import * as fetchTypes from "./web/fetch.ts";
 import * as headers from "./web/headers.ts";
 import * as navigator from "./web/navigator.ts";
 import * as permissions from "./web/permissions.ts";
-import * as performanceUtil from "./web/performance.ts";
 import type * as promiseTypes from "./web/promise.ts";
 import * as queuingStrategy from "./web/streams/queuing_strategy.ts";
 import * as readableStream from "./web/streams/readable_stream.ts";
@@ -29,6 +28,7 @@ import * as transformStream from "./web/streams/transform_stream.ts";
 import * as url from "./web/url.ts";
 import * as urlSearchParams from "./web/url_search_params.ts";
 import * as workers from "./web/workers.ts";
+import * as performance from "./web/performance.ts";
 import * as writableStream from "./web/streams/writable_stream.ts";
 
 // These imports are not exposed and therefore are fine to just import the
@@ -234,12 +234,16 @@ export const windowOrWorkerGlobalScopeProperties = {
   Headers: nonEnumerable(headers.HeadersImpl),
   navigator: nonEnumerable(new navigator.NavigatorImpl()),
   Navigator: nonEnumerable(navigator.NavigatorImpl),
-  performance: writable(new performanceUtil.Performance()),
   Permissions: nonEnumerable(permissions.PermissionsImpl),
   PermissionStatus: nonEnumerable(permissions.PermissionStatusImpl),
   ReadableStream: nonEnumerable(readableStream.ReadableStreamImpl),
   Request: nonEnumerable(request.Request),
   Response: nonEnumerable(fetchTypes.Response),
+  performance: writable(new performance.PerformanceImpl()),
+  Performance: nonEnumerable(performance.PerformanceImpl),
+  PerformanceEntry: nonEnumerable(performance.PerformanceEntryImpl),
+  PerformanceMark: nonEnumerable(performance.PerformanceMarkImpl),
+  PerformanceMeasure: nonEnumerable(performance.PerformanceMeasureImpl),
   TextDecoder: nonEnumerable(textEncoding.TextDecoder),
   TextEncoder: nonEnumerable(textEncoding.TextEncoder),
   TransformStream: nonEnumerable(transformStream.TransformStreamImpl),
