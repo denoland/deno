@@ -162,12 +162,7 @@ pub async fn run_all_servers() {
       let uri: Uri = token.parse().unwrap();
       warp::redirect(uri)
     })
-    .or(
-      warp::any()
-      .map(|| {
-        "Hello, World!"
-      })
-    );
+    .or(warp::any().map(|| "Hello, World!"));
 
   let relative_redirect_server_fut =
     warp::serve(routes).bind(([127, 0, 0, 1], REDIRECT_RELATIVE_PORT));
