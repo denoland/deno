@@ -1237,6 +1237,7 @@ macro_rules! itest(
 );
 
 // Unfortunately #[ignore] doesn't work with itest!
+#[allow(unused)]
 macro_rules! itest_ignore(
   ($name:ident {$( $key:ident: $value:expr,)*})  => {
     #[ignore]
@@ -1344,12 +1345,6 @@ itest!(_022_info_flag_script {
 itest!(_023_no_ext_with_headers {
   args: "run --reload 023_no_ext_with_headers",
   output: "023_no_ext_with_headers.out",
-});
-
-// FIXME(bartlomieju): this test should use remote file
-itest_ignore!(_024_import_no_ext_with_headers {
-  args: "run --reload 024_import_no_ext_with_headers.ts",
-  output: "024_import_no_ext_with_headers.ts.out",
 });
 
 // TODO(lucacasonato): remove --unstable when permissions goes stable
@@ -1515,8 +1510,8 @@ itest!(_044_bad_resource {
   exit_code: 1,
 });
 
-itest_ignore!(_045_proxy {
-  args: "run --allow-net --allow-env --allow-run --reload 045_proxy_test.ts",
+itest!(_045_proxy {
+  args: "run --allow-net --allow-env --allow-run --allow-read --reload --quiet 045_proxy_test.ts",
   output: "045_proxy_test.ts.out",
   http_server: true,
 });
@@ -2103,9 +2098,9 @@ itest!(cafile_eval {
   http_server: true,
 });
 
-itest_ignore!(cafile_info {
+itest!(cafile_info {
   args:
-    "info --cert tls/RootCA.pem https://localhost:5545/cli/tests/cafile_info.ts",
+    "info --quiet --cert tls/RootCA.pem https://localhost:5545/cli/tests/cafile_info.ts",
   output: "cafile_info.ts.out",
   http_server: true,
 });

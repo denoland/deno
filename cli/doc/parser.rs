@@ -44,13 +44,15 @@ pub trait DocFileLoader {
 pub struct DocParser {
   pub ast_parser: AstParser,
   pub loader: Box<dyn DocFileLoader>,
+  pub private: bool,
 }
 
 impl DocParser {
-  pub fn new(loader: Box<dyn DocFileLoader>) -> Self {
+  pub fn new(loader: Box<dyn DocFileLoader>, private: bool) -> Self {
     DocParser {
       loader,
       ast_parser: AstParser::new(),
+      private,
     }
   }
 
@@ -70,7 +72,7 @@ impl DocParser {
           self.get_doc_nodes_for_module_body(module.body.clone());
         let reexports = self.get_reexports_for_module_body(module.body);
         let module_doc = ModuleDoc {
-          exports: doc_entries,
+          definitions: doc_entries,
           reexports,
         };
         Ok(module_doc)
@@ -90,7 +92,7 @@ impl DocParser {
     source_code: &str,
   ) -> Result<Vec<DocNode>, ErrBox> {
     let module_doc = self.parse_module(file_name, &source_code)?;
-    Ok(module_doc.exports)
+    Ok(module_doc.definitions)
   }
 
   async fn flatten_reexports(
@@ -187,10 +189,10 @@ impl DocParser {
       let mut flattenned_reexports = self
         .flatten_reexports(&module_doc.reexports, file_name)
         .await?;
-      flattenned_reexports.extend(module_doc.exports);
+      flattenned_reexports.extend(module_doc.definitions);
       flattenned_reexports
     } else {
-      module_doc.exports
+      module_doc.definitions
     };
 
     Ok(flattened_docs)
@@ -231,8 +233,10 @@ impl DocParser {
             }
           }
           DefaultDecl::Fn(fn_expr) => {
-            let function_def =
-              crate::doc::function::function_to_function_def(&fn_expr.function);
+            let function_def = crate::doc::function::function_to_function_def(
+              self,
+              &fn_expr.function,
+            );
             DocNode {
               kind: DocNodeKind::Function,
               name,
@@ -292,7 +296,7 @@ impl DocParser {
   pub fn get_doc_node_for_decl(&self, decl: &Decl) -> Option<DocNode> {
     match decl {
       Decl::Class(class_decl) => {
-        if !class_decl.declare {
+        if !self.private && !class_decl.declare {
           return None;
         }
         let (name, class_def) =
@@ -313,11 +317,11 @@ impl DocParser {
         })
       }
       Decl::Fn(fn_decl) => {
-        if !fn_decl.declare {
+        if !self.private && !fn_decl.declare {
           return None;
         }
         let (name, function_def) =
-          super::function::get_doc_for_fn_decl(fn_decl);
+          super::function::get_doc_for_fn_decl(self, fn_decl);
         let (js_doc, location) = self.details_for_span(fn_decl.function.span);
         Some(DocNode {
           kind: DocNodeKind::Function,
@@ -334,7 +338,7 @@ impl DocParser {
         })
       }
       Decl::Var(var_decl) => {
-        if !var_decl.declare {
+        if !self.private && !var_decl.declare {
           return None;
         }
         let (name, var_def) = super::variable::get_doc_for_var_decl(var_decl);
@@ -354,7 +358,7 @@ impl DocParser {
         })
       }
       Decl::TsInterface(ts_interface_decl) => {
-        if !ts_interface_decl.declare {
+        if !self.private && !ts_interface_decl.declare {
           return None;
         }
         let (name, interface_def) =
@@ -378,7 +382,7 @@ impl DocParser {
         })
       }
       Decl::TsTypeAlias(ts_type_alias) => {
-        if !ts_type_alias.declare {
+        if !self.private && !ts_type_alias.declare {
           return None;
         }
         let (name, type_alias_def) =
@@ -402,7 +406,7 @@ impl DocParser {
         })
       }
       Decl::TsEnum(ts_enum) => {
-        if !ts_enum.declare {
+        if !self.private && !ts_enum.declare {
           return None;
         }
         let (name, enum_def) =
@@ -423,7 +427,7 @@ impl DocParser {
         })
       }
       Decl::TsModule(ts_module) => {
-        if !ts_module.declare {
+        if !self.private && !ts_module.declare {
           return None;
         }
         let (name, namespace_def) =
