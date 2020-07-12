@@ -42,7 +42,7 @@ export class ReadableStreamDefaultReaderImpl<R = any>
     }
     return (
       this[sym.closedPromise].promise ??
-      Promise.reject(new TypeError("Invalid reader."))
+        Promise.reject(new TypeError("Invalid reader."))
     );
   }
 

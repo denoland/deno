@@ -127,8 +127,7 @@ function parse(url: string, isBase = true): URLParts | undefined {
 function generateUUID(): string {
   return "00000000-0000-4000-8000-000000000000".replace(/[0]/g, (): string =>
     // random integer from 0 to 15 as a hex digit.
-    (getRandomValues(new Uint8Array(1))[0] % 16).toString(16)
-  );
+    (getRandomValues(new Uint8Array(1))[0] % 16).toString(16));
 }
 
 // Keep it outside of URL to avoid any attempts of access.
@@ -311,13 +310,12 @@ export class URLImpl implements URL {
   }
 
   get href(): string {
-    const authentication =
-      this.username || this.password
-        ? `${this.username}${this.password ? ":" + this.password : ""}@`
-        : "";
-    return `${this.protocol}${parts.get(this)!.slashes}${authentication}${
-      this.host
-    }${this.pathname}${this.search}${this.hash}`;
+    const authentication = this.username || this.password
+      ? `${this.username}${this.password ? ":" + this.password : ""}@`
+      : "";
+    return `${this.protocol}${
+      parts.get(this)!.slashes
+    }${authentication}${this.host}${this.pathname}${this.search}${this.hash}`;
   }
 
   set href(value: string) {
@@ -421,8 +419,9 @@ export class URLImpl implements URL {
       }
     }
 
-    const urlParts =
-      typeof url === "string" ? parse(url, !baseParts) : parts.get(url);
+    const urlParts = typeof url === "string"
+      ? parse(url, !baseParts)
+      : parts.get(url);
     if (urlParts == undefined) {
       throw new TypeError("Invalid URL.");
     }
@@ -559,8 +558,9 @@ function encodeHostname(s: string, isSpecial = true): string {
   if (result.match(/%(?![0-9A-Fa-f]{2})/) != null) {
     throw new TypeError("Invalid hostname.");
   }
-  result = result.replace(/%(.{2})/g, (_, hex) =>
-    String.fromCodePoint(Number(`0x${hex}`))
+  result = result.replace(
+    /%(.{2})/g,
+    (_, hex) => String.fromCodePoint(Number(`0x${hex}`))
   );
 
   // IDNA domain to ASCII.

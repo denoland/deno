@@ -48,10 +48,12 @@ export class Mark {
     }
 
     const snippet = this.buffer.slice(start, end);
-    return `${repeat(" ", indent)}${head}${snippet}${tail}\n${repeat(
-      " ",
-      indent + this.position - start + head.length
-    )}^`;
+    return `${repeat(" ", indent)}${head}${snippet}${tail}\n${
+      repeat(
+        " ",
+        indent + this.position - start + head.length
+      )
+    }^`;
   }
 
   public toString(compact?: boolean): string {

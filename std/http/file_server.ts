@@ -263,9 +263,10 @@ function dirViewerTemplate(dirname: string, entries: EntryInfo[]): string {
               <th>Size</th>
               <th>Name</th>
             </tr>
-            ${entries.map(
-              (entry) =>
-                html`
+            ${
+    entries.map(
+      (entry) =>
+        html`
                   <tr>
                     <td class="mode">
                       ${entry.mode}
@@ -278,7 +279,8 @@ function dirViewerTemplate(dirname: string, entries: EntryInfo[]): string {
                     </td>
                   </tr>
                 `
-            )}
+    )
+  }
           </table>
         </main>
       </body>

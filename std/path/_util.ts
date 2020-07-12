@@ -109,8 +109,8 @@ export function _format(
   pathObject: FormatInputPathObject
 ): string {
   const dir: string | undefined = pathObject.dir || pathObject.root;
-  const base: string =
-    pathObject.base || (pathObject.name || "") + (pathObject.ext || "");
+  const base: string = pathObject.base ||
+    (pathObject.name || "") + (pathObject.ext || "");
   if (!dir) return base;
   if (dir === pathObject.root) return dir + base;
   return dir + sep + base;

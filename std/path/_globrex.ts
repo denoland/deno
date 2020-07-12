@@ -279,8 +279,7 @@ export function globrex(
         add(".*");
       } else {
         // globstar is enabled, so determine if this is a globstar segment
-        const isGlobstar =
-          starCount > 1 && // multiple "*"'s
+        const isGlobstar = starCount > 1 && // multiple "*"'s
           // from the start of the segment
           [SEP_RAW, "/", undefined].includes(prevChar) &&
           // to the end of the segment

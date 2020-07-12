@@ -83,7 +83,8 @@ Deno.test({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (err: any, secondResult: Dirent) => {
           assert(
-            secondResult.name === "bar.txt" || secondResult.name === "foo.txt"
+            secondResult.name === "bar.txt" ||
+              secondResult.name === "foo.txt"
           );
           secondCallback = true;
         }

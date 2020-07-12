@@ -361,7 +361,8 @@ Deno.test({
     testEmitter.once("once-event", listenerA);
 
     const rawListenersForOnceEvent = testEmitter.rawListeners("once-event");
-    const wrappedFn: WrappedFunction = rawListenersForOnceEvent[0] as WrappedFunction;
+    const wrappedFn: WrappedFunction =
+      rawListenersForOnceEvent[0] as WrappedFunction;
     wrappedFn.listener();
     wrappedFn.listener();
     wrappedFn.listener();

@@ -218,8 +218,7 @@ class Module {
 
     if (typeof options === "object" && options !== null) {
       if (Array.isArray(options.paths)) {
-        const isRelative =
-          request.startsWith("./") ||
+        const isRelative = request.startsWith("./") ||
           request.startsWith("../") ||
           (isWindows && request.startsWith(".\\")) ||
           request.startsWith("..\\");
@@ -286,16 +285,15 @@ class Module {
       return false;
     }
 
-    const cacheKey =
-      request + "\x00" + (paths.length === 1 ? paths[0] : paths.join("\x00"));
+    const cacheKey = request + "\x00" +
+      (paths.length === 1 ? paths[0] : paths.join("\x00"));
     const entry = Module._pathCache[cacheKey];
     if (entry) {
       return entry;
     }
 
     let exts;
-    let trailingSlash =
-      request.length > 0 &&
+    let trailingSlash = request.length > 0 &&
       request.charCodeAt(request.length - 1) === CHAR_FORWARD_SLASH;
     if (!trailingSlash) {
       trailingSlash = /(?:^|\/)\.?\.$/.test(request);
@@ -730,8 +728,7 @@ function tryPackage(
   }
 
   const filename = path.resolve(requestPath, pkg);
-  let actual =
-    tryFile(filename, isMain) ||
+  let actual = tryFile(filename, isMain) ||
     tryExtensions(filename, exts, isMain) ||
     tryExtensions(path.resolve(filename, "index"), exts, isMain);
   if (actual === false) {
@@ -994,9 +991,9 @@ const nmLen = nmChars.length;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function emitCircularRequireWarning(prop: any): void {
   console.error(
-    `Accessing non-existent property '${String(
-      prop
-    )}' of module exports inside circular dependency`
+    `Accessing non-existent property '${
+      String(prop)
+    }' of module exports inside circular dependency`
   );
 }
 
@@ -1094,8 +1091,8 @@ Module._extensions[".json"] = (module: Module, filename: string): void => {
 
 function createRequireFromPath(filename: string): RequireFunction {
   // Allow a directory to be passed as the filename
-  const trailingSlash =
-    filename.endsWith("/") || (isWindows && filename.endsWith("\\"));
+  const trailingSlash = filename.endsWith("/") ||
+    (isWindows && filename.endsWith("\\"));
 
   const proxyPath = trailingSlash ? path.join(filename, "noop.js") : filename;
 

@@ -354,8 +354,8 @@ export class Tar {
       info = await Deno.stat(opts.filePath);
     }
 
-    const mode =
-        opts.fileMode || (info && info.mode) || parseInt("777", 8) & 0xfff,
+    const mode = opts.fileMode || (info && info.mode) ||
+        parseInt("777", 8) & 0xfff,
       mtime = Math.floor(
         opts.mtime ?? (info?.mtime ?? new Date()).valueOf() / 1000
       ),
@@ -576,7 +576,7 @@ export class Untar {
       "fileMode",
       "mtime",
       "uid",
-      "gid"
+      "gid",
     ]).forEach((key): void => {
       const arr = trim(header[key]);
       if (arr.byteLength > 0) {

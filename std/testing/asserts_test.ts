@@ -299,9 +299,9 @@ Deno.test("testingAssertThrowsAsyncWithReturnType", () => {
 const createHeader = (): string[] => [
   "",
   "",
-  `    ${gray(bold("[Diff]"))} ${red(bold("Actual"))} / ${green(
-    bold("Expected")
-  )}`,
+  `    ${gray(bold("[Diff]"))} ${red(bold("Actual"))} / ${
+    green(bold("Expected"))
+  }`,
   "",
   "",
 ];

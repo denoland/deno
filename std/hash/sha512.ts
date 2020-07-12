@@ -747,8 +747,7 @@ export class HmacSha512 extends Sha512 {
           bytes[index++] = 0x80 | ((code >> 6) & 0x3f);
           bytes[index++] = 0x80 | (code & 0x3f);
         } else {
-          code =
-            0x10000 +
+          code = 0x10000 +
             (((code & 0x3ff) << 10) | (secretKey.charCodeAt(++i) & 0x3ff));
           bytes[index++] = 0xf0 | (code >> 18);
           bytes[index++] = 0x80 | ((code >> 12) & 0x3f);

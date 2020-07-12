@@ -28,8 +28,8 @@ function isFullWidthCodePoint(code: number): boolean {
   return (
     code >= 0x1100 &&
     (code <= 0x115f || // Hangul Jamo
-    code === 0x2329 || // LEFT-POINTING ANGLE BRACKET
-    code === 0x232a || // RIGHT-POINTING ANGLE BRACKET
+      code === 0x2329 || // LEFT-POINTING ANGLE BRACKET
+      code === 0x232a || // RIGHT-POINTING ANGLE BRACKET
       // CJK Radicals Supplement .. Enclosed CJK Letters and Months
       (code >= 0x2e80 && code <= 0x3247 && code !== 0x303f) ||
       // Enclosed CJK Letters and Months .. CJK Unified Ideographs Extension A
@@ -114,8 +114,7 @@ export function cliTable(head: string[], columns: string[][]): string {
     tableChars.middleMiddle.repeat(i + 2)
   );
 
-  let result =
-    `${tableChars.topLeft}${divider.join(tableChars.topMiddle)}` +
+  let result = `${tableChars.topLeft}${divider.join(tableChars.topMiddle)}` +
     `${tableChars.topRight}\n${renderRow(head, columnWidths)}\n` +
     `${tableChars.leftMiddle}${divider.join(tableChars.rowMiddle)}` +
     `${tableChars.rightMiddle}\n`;
@@ -124,8 +123,7 @@ export function cliTable(head: string[], columns: string[][]): string {
     result += `${renderRow(row, columnWidths)}\n`;
   }
 
-  result +=
-    `${tableChars.bottomLeft}${divider.join(tableChars.bottomMiddle)}` +
+  result += `${tableChars.bottomLeft}${divider.join(tableChars.bottomMiddle)}` +
     tableChars.bottomRight;
 
   return result;

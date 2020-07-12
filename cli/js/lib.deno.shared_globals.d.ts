@@ -428,9 +428,11 @@ interface WritableStreamDefaultControllerStartCallback {
 }
 
 interface WritableStreamDefaultControllerWriteCallback<W> {
-  (chunk: W, controller: WritableStreamDefaultController): void | PromiseLike<
-    void
-  >;
+  (chunk: W, controller: WritableStreamDefaultController):
+    | void
+    | PromiseLike<
+      void
+    >;
 }
 
 interface WritableStreamErrorCallback {

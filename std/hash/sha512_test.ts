@@ -284,10 +284,9 @@ for (const method of methods) {
         fn() {
           const algorithm = new Sha512(224);
           algorithm.update(message);
-          const actual =
-            method === "hex"
-              ? algorithm[method]()
-              : toHexString(algorithm[method]());
+          const actual = method === "hex"
+            ? algorithm[method]()
+            : toHexString(algorithm[method]());
           assertEquals(actual, expected);
         },
       });
@@ -304,10 +303,9 @@ for (const method of methods) {
         fn() {
           const algorithm = new Sha512(256);
           algorithm.update(message);
-          const actual =
-            method === "hex"
-              ? algorithm[method]()
-              : toHexString(algorithm[method]());
+          const actual = method === "hex"
+            ? algorithm[method]()
+            : toHexString(algorithm[method]());
           assertEquals(actual, expected);
         },
       });
@@ -324,10 +322,9 @@ for (const method of methods) {
         fn() {
           const algorithm = new Sha512();
           algorithm.update(message);
-          const actual =
-            method === "hex"
-              ? algorithm[method]()
-              : toHexString(algorithm[method]());
+          const actual = method === "hex"
+            ? algorithm[method]()
+            : toHexString(algorithm[method]());
           assertEquals(actual, expected);
         },
       });
@@ -344,10 +341,9 @@ for (const method of methods) {
         fn() {
           const algorithm = new HmacSha512(key, 224);
           algorithm.update(message);
-          const actual =
-            method === "hex"
-              ? algorithm[method]()
-              : toHexString(algorithm[method]());
+          const actual = method === "hex"
+            ? algorithm[method]()
+            : toHexString(algorithm[method]());
           assertEquals(actual, expected);
         },
       });
@@ -364,10 +360,9 @@ for (const method of methods) {
         fn() {
           const algorithm = new HmacSha512(key, 256);
           algorithm.update(message);
-          const actual =
-            method === "hex"
-              ? algorithm[method]()
-              : toHexString(algorithm[method]());
+          const actual = method === "hex"
+            ? algorithm[method]()
+            : toHexString(algorithm[method]());
           assertEquals(actual, expected);
         },
       });
@@ -384,10 +379,9 @@ for (const method of methods) {
         fn() {
           const algorithm = new HmacSha512(key);
           algorithm.update(message);
-          const actual =
-            method === "hex"
-              ? algorithm[method]()
-              : toHexString(algorithm[method]());
+          const actual = method === "hex"
+            ? algorithm[method]()
+            : toHexString(algorithm[method]());
           assertEquals(actual, expected);
         },
       });

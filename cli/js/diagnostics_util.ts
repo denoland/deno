@@ -103,7 +103,9 @@ function fromDiagnosticCategory(
       return DiagnosticCategory.Warning;
     default:
       throw new Error(
-        `Unexpected DiagnosticCategory: "${category}"/"${ts.DiagnosticCategory[category]}"`
+        `Unexpected DiagnosticCategory: "${category}"/"${
+          ts.DiagnosticCategory[category]
+        }"`
       );
   }
 }
@@ -119,16 +121,16 @@ function getSourceInformation(
     character: startColumn,
   } = sourceFile.getLineAndCharacterOfPosition(start);
   const endPosition = sourceFile.getLineAndCharacterOfPosition(start + length);
-  const endColumn =
-    lineNumber === endPosition.line ? endPosition.character : startColumn;
+  const endColumn = lineNumber === endPosition.line
+    ? endPosition.character
+    : startColumn;
   const lastLineInFile = sourceFile.getLineAndCharacterOfPosition(
     sourceFile.text.length
   ).line;
   const lineStart = sourceFile.getPositionOfLineAndCharacter(lineNumber, 0);
-  const lineEnd =
-    lineNumber < lastLineInFile
-      ? sourceFile.getPositionOfLineAndCharacter(lineNumber + 1, 0)
-      : sourceFile.text.length;
+  const lineEnd = lineNumber < lastLineInFile
+    ? sourceFile.getPositionOfLineAndCharacter(lineNumber + 1, 0)
+    : sourceFile.text.length;
   const sourceLine = sourceFile.text
     .slice(lineStart, lineEnd)
     .replace(/\s+$/g, "")
@@ -171,12 +173,12 @@ function parseDiagnostic(
     start: startPosition,
     length,
   } = item;
-  const sourceInfo =
-    file && startPosition && length
-      ? getSourceInformation(file, startPosition, length)
-      : undefined;
-  const endPosition =
-    startPosition && length ? startPosition + length : undefined;
+  const sourceInfo = file && startPosition && length
+    ? getSourceInformation(file, startPosition, length)
+    : undefined;
+  const endPosition = startPosition && length
+    ? startPosition + length
+    : undefined;
   const category = fromDiagnosticCategory(sourceCategory);
 
   let message: string;

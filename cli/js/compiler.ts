@@ -182,13 +182,15 @@ interface CompilerHostOptions {
   incremental?: boolean;
 }
 
-type IncrementalCompilerHostOptions = Omit<
-  CompilerHostOptions,
-  "incremental"
-> & {
-  rootNames?: string[];
-  buildInfo?: string;
-};
+type IncrementalCompilerHostOptions =
+  & Omit<
+    CompilerHostOptions,
+    "incremental"
+  >
+  & {
+    rootNames?: string[];
+    buildInfo?: string;
+  };
 
 interface HostConfigureResponse {
   ignoredOptions?: string[];
@@ -235,7 +237,9 @@ function getExtension(fileName: string, mediaType: MediaType): ts.Extension {
     case MediaType.Unknown:
     default:
       throw TypeError(
-        `Cannot resolve extension for "${fileName}" with mediaType "${MediaType[mediaType]}".`
+        `Cannot resolve extension for "${fileName}" with mediaType "${
+          MediaType[mediaType]
+        }".`
       );
   }
 }
@@ -640,8 +644,7 @@ function buildLocalSourceFileCache(
       let mappedUrl = importDesc.resolvedSpecifier;
       const importedFile = sourceFileMap[importDesc.resolvedSpecifier];
       assert(importedFile);
-      const isJsOrJsx =
-        importedFile.mediaType === MediaType.JavaScript ||
+      const isJsOrJsx = importedFile.mediaType === MediaType.JavaScript ||
         importedFile.mediaType === MediaType.JSX;
       // If JS or JSX perform substitution for types if available
       if (isJsOrJsx) {
@@ -700,8 +703,7 @@ function buildSourceFileCache(
       if (importedFile.redirect) {
         mappedUrl = importedFile.redirect;
       }
-      const isJsOrJsx =
-        importedFile.mediaType === MediaType.JavaScript ||
+      const isJsOrJsx = importedFile.mediaType === MediaType.JavaScript ||
         importedFile.mediaType === MediaType.JSX;
       // If JS or JSX perform substitution for types if available
       if (isJsOrJsx) {
@@ -1162,8 +1164,7 @@ function buildBundle(
       ? `await __instantiate("${rootName}", true);\n`
       : `__instantiate("${rootName}", false);\n`;
   }
-  const es5Bundle =
-    target === ts.ScriptTarget.ES3 ||
+  const es5Bundle = target === ts.ScriptTarget.ES3 ||
     target === ts.ScriptTarget.ES5 ||
     target === ts.ScriptTarget.ES2015 ||
     target === ts.ScriptTarget.ES2016;
@@ -1748,10 +1749,10 @@ function runtimeTranspile(
   const { sources, options } = request;
   const compilerOptions = options
     ? Object.assign(
-        {},
-        DEFAULT_RUNTIME_TRANSPILE_OPTIONS,
-        convertCompilerOptions(options).options
-      )
+      {},
+      DEFAULT_RUNTIME_TRANSPILE_OPTIONS,
+      convertCompilerOptions(options).options
+    )
     : DEFAULT_RUNTIME_TRANSPILE_OPTIONS;
 
   for (const [fileName, inputText] of Object.entries(sources)) {

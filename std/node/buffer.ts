@@ -18,8 +18,9 @@ function checkEncoding(encoding = "utf8", strict = true): string {
 
   const normalized = normalizeEncoding(encoding);
 
-  if (normalized === undefined)
+  if (normalized === undefined) {
     throw new TypeError(`Unkown encoding: ${encoding}`);
+  }
 
   if (notImplementedEncodings.includes(encoding)) {
     notImplemented(`"${encoding}" encoding`);
@@ -92,9 +93,11 @@ export default class Buffer extends Uint8Array {
     let bufFill;
     if (typeof fill === "string") {
       encoding = checkEncoding(encoding);
-      if (typeof fill === "string" && fill.length === 1 && encoding === "utf8")
+      if (
+        typeof fill === "string" && fill.length === 1 && encoding === "utf8"
+      ) {
         buf.fill(fill.charCodeAt(0));
-      else bufFill = Buffer.from(fill, encoding);
+      } else bufFill = Buffer.from(fill, encoding);
     } else if (typeof fill === "number") {
       buf.fill(fill);
     } else if (fill instanceof Uint8Array) {
@@ -108,8 +111,9 @@ export default class Buffer extends Uint8Array {
     }
 
     if (bufFill) {
-      if (bufFill.length > buf.length)
+      if (bufFill.length > buf.length) {
         bufFill = bufFill.subarray(0, buf.length);
+      }
 
       let offset = 0;
       while (offset < size) {
@@ -196,10 +200,12 @@ export default class Buffer extends Uint8Array {
     offsetOrEncoding?: number | string,
     length?: number
   ): Buffer {
-    const offset =
-      typeof offsetOrEncoding === "string" ? undefined : offsetOrEncoding;
-    let encoding =
-      typeof offsetOrEncoding === "string" ? offsetOrEncoding : undefined;
+    const offset = typeof offsetOrEncoding === "string"
+      ? undefined
+      : offsetOrEncoding;
+    let encoding = typeof offsetOrEncoding === "string"
+      ? offsetOrEncoding
+      : undefined;
 
     if (typeof value == "string") {
       encoding = checkEncoding(encoding, false);

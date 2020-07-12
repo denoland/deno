@@ -25,12 +25,14 @@ const CHOMPING_CLIP = 1;
 const CHOMPING_STRIP = 2;
 const CHOMPING_KEEP = 3;
 
-const PATTERN_NON_PRINTABLE = /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x84\x86-\x9F\uFFFE\uFFFF]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?:[^\uD800-\uDBFF]|^)[\uDC00-\uDFFF]/;
+const PATTERN_NON_PRINTABLE =
+  /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x84\x86-\x9F\uFFFE\uFFFF]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?:[^\uD800-\uDBFF]|^)[\uDC00-\uDFFF]/;
 const PATTERN_NON_ASCII_LINE_BREAKS = /[\x85\u2028\u2029]/;
 const PATTERN_FLOW_INDICATORS = /[,\[\]\{\}]/;
 const PATTERN_TAG_HANDLE = /^(?:!|!!|![a-z\-]+!)$/i;
 /* eslint-disable-next-line max-len */
-const PATTERN_TAG_URI = /^(?:!|[^,\[\]\{\}])(?:%[0-9a-f]{2}|[0-9a-z\-#;\/\?:@&=\+\$,_\.!~\*'\(\)\[\]])*$/i;
+const PATTERN_TAG_URI =
+  /^(?:!|[^,\[\]\{\}])(?:%[0-9a-f]{2}|[0-9a-z\-#;\/\?:@&=\+\$,_\.!~\*'\(\)\[\]])*$/i;
 
 function _class(obj: unknown): string {
   return Object.prototype.toString.call(obj);
@@ -1454,8 +1456,9 @@ function composeNode(
   state.kind = null;
   state.result = null;
 
-  const allowBlockStyles = (allowBlockScalars = allowBlockCollections =
-    CONTEXT_BLOCK_OUT === nodeContext || CONTEXT_BLOCK_IN === nodeContext);
+  const allowBlockStyles =
+    (allowBlockScalars = allowBlockCollections =
+      CONTEXT_BLOCK_OUT === nodeContext || CONTEXT_BLOCK_IN === nodeContext);
 
   if (allowToSeek) {
     if (skipSeparationSpace(state, true, -1)) {
@@ -1495,8 +1498,8 @@ function composeNode(
   }
 
   if (indentStatus === 1 || CONTEXT_BLOCK_OUT === nodeContext) {
-    const cond =
-      CONTEXT_FLOW_IN === nodeContext || CONTEXT_FLOW_OUT === nodeContext;
+    const cond = CONTEXT_FLOW_IN === nodeContext ||
+      CONTEXT_FLOW_OUT === nodeContext;
     flowIndent = cond ? parentIndent : parentIndent + 1;
 
     blockIndent = state.position - state.lineStart;
@@ -1542,8 +1545,8 @@ function composeNode(
     } else if (indentStatus === 0) {
       // Special case: block sequences are allowed to have same indentation level as the parent.
       // http://www.yaml.org/spec/1.2/spec.html#id2799784
-      hasContent =
-        allowBlockCollections && readBlockSequence(state, blockIndent);
+      hasContent = allowBlockCollections &&
+        readBlockSequence(state, blockIndent);
     }
   }
 

@@ -275,10 +275,9 @@ export async function runBenchmarks(
         clock.start = clock.stop = NaN;
         // Once all ran
         if (!--pendingRuns) {
-          result =
-            runs == 1
-              ? `${totalMs}ms`
-              : `${runs} runs avg: ${totalMs / runs}ms`;
+          result = runs == 1
+            ? `${totalMs}ms`
+            : `${runs} runs avg: ${totalMs / runs}ms`;
           // Adding results
           progress.results.push({
             name,

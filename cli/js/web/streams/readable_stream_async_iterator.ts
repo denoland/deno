@@ -12,12 +12,11 @@ import {
 import { assert } from "../../util.ts";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const AsyncIteratorPrototype: AsyncIterableIterator<any> = Object.getPrototypeOf(
-  Object.getPrototypeOf(async function* () {}).prototype
-);
+const AsyncIteratorPrototype: AsyncIterableIterator<any> = Object
+  .getPrototypeOf(Object.getPrototypeOf(async function* () {}).prototype);
 
-export const ReadableStreamAsyncIteratorPrototype: ReadableStreamAsyncIterator = Object.setPrototypeOf(
-  {
+export const ReadableStreamAsyncIteratorPrototype: ReadableStreamAsyncIterator =
+  Object.setPrototypeOf({
     next(
       this: ReadableStreamAsyncIterator
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -74,8 +73,8 @@ export const ReadableStreamAsyncIteratorPrototype: ReadableStreamAsyncIterator =
         );
       }
       readableStreamReaderGenericRelease(reader);
-      return Promise.resolve(readableStreamCreateReadResult(value, true, true));
+      return Promise.resolve(
+        readableStreamCreateReadResult(value, true, true)
+      );
     },
-  },
-  AsyncIteratorPrototype
-);
+  }, AsyncIteratorPrototype);

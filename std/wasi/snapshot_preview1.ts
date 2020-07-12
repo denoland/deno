@@ -1018,10 +1018,9 @@ export default class Module {
         const view = new DataView(this.memory.buffer);
 
         try {
-          const info =
-            (flags & LOOKUPFLAGS_SYMLINK_FOLLOW) != 0
-              ? Deno.statSync(path)
-              : Deno.lstatSync(path);
+          const info = (flags & LOOKUPFLAGS_SYMLINK_FOLLOW) != 0
+            ? Deno.statSync(path)
+            : Deno.lstatSync(path);
 
           view.setBigUint64(buf_out, BigInt(info.dev ? info.dev : 0), true);
           buf_out += 8;
@@ -1196,11 +1195,10 @@ export default class Module {
           // around it for now.
           try {
             const entries = Array.from(Deno.readDirSync(path));
-            const opened_fd =
-              this.fds.push({
-                entries,
-                path,
-              }) - 1;
+            const opened_fd = this.fds.push({
+              entries,
+              path,
+            }) - 1;
 
             const view = new DataView(this.memory.buffer);
             view.setUint32(opened_fd_out, opened_fd, true);
@@ -1237,7 +1235,7 @@ export default class Module {
         if (
           (BigInt(fs_rights_base) &
             BigInt(RIGHTS_FD_READ | RIGHTS_FD_READDIR)) !=
-          0n
+            0n
         ) {
           options.read = true;
         }
@@ -1250,7 +1248,7 @@ export default class Module {
                 RIGHTS_FD_ALLOCATE |
                 RIGHTS_FD_FILESTAT_SET_SIZE
             )) !=
-          0n
+            0n
         ) {
           options.write = true;
         }
@@ -1281,11 +1279,10 @@ export default class Module {
 
         try {
           const handle = Deno.openSync(path, options);
-          const opened_fd =
-            this.fds.push({
-              handle,
-              path,
-            }) - 1;
+          const opened_fd = this.fds.push({
+            handle,
+            path,
+          }) - 1;
 
           const view = new DataView(this.memory.buffer);
           view.setUint32(opened_fd_out, opened_fd, true);

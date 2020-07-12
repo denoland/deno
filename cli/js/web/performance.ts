@@ -133,11 +133,9 @@ export class PerformanceMarkImpl extends PerformanceEntryImpl
 
   [customInspect](): string {
     return this.detail
-      ? `${this.constructor.name} {\n  detail: ${inspect(this.detail, {
-          depth: 3,
-        })},\n  name: "${this.name}",\n  entryType: "${
-          this.entryType
-        }",\n  startTime: ${this.startTime},\n  duration: ${this.duration}\n}`
+      ? `${this.constructor.name} {\n  detail: ${
+        inspect(this.detail, { depth: 3 })
+      },\n  name: "${this.name}",\n  entryType: "${this.entryType}",\n  startTime: ${this.startTime},\n  duration: ${this.duration}\n}`
       : `${this.constructor.name} { detail: ${this.detail}, name: "${this.name}", entryType: "${this.entryType}", startTime: ${this.startTime}, duration: ${this.duration} }`;
   }
 }
@@ -180,11 +178,9 @@ export class PerformanceMeasureImpl extends PerformanceEntryImpl
 
   [customInspect](): string {
     return this.detail
-      ? `${this.constructor.name} {\n  detail: ${inspect(this.detail, {
-          depth: 3,
-        })},\n  name: "${this.name}",\n  entryType: "${
-          this.entryType
-        }",\n  startTime: ${this.startTime},\n  duration: ${this.duration}\n}`
+      ? `${this.constructor.name} {\n  detail: ${
+        inspect(this.detail, { depth: 3 })
+      },\n  name: "${this.name}",\n  entryType: "${this.entryType}",\n  startTime: ${this.startTime},\n  duration: ${this.duration}\n}`
       : `${this.constructor.name} { detail: ${this.detail}, name: "${this.name}", entryType: "${this.entryType}", startTime: ${this.startTime}, duration: ${this.duration} }`;
   }
 }

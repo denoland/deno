@@ -625,9 +625,9 @@ Deno.test("flagLessThan", function (): void {
   const aArray = [a, a, a];
   assertEquals(
     S("%<#.1v", aArray),
-    `[ { a: ${cyan("[Object]")} }, { a: ${cyan("[Object]")} }, { a: ${cyan(
-      "[Object]"
-    )} } ]`
+    `[ { a: ${cyan("[Object]")} }, { a: ${cyan("[Object]")} }, { a: ${
+      cyan("[Object]")
+    } } ]`
   );
   const fArray = [1.2345, 0.98765, 123456789.5678];
   assertEquals(S("%<.2f", fArray), "[ 1.23, 0.99, 123456789.57 ]");

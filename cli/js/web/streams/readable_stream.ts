@@ -41,9 +41,9 @@ export class ReadableStreamImpl<R = any> implements ReadableStream<R> {
     underlyingSource: UnderlyingByteSource | UnderlyingSource<R> = {},
     strategy:
       | {
-          highWaterMark?: number;
-          size?: undefined;
-        }
+        highWaterMark?: number;
+        size?: undefined;
+      }
       | QueuingStrategy<R> = {}
   ) {
     initializeReadableStream(this);

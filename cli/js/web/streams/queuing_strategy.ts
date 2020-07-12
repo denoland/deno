@@ -15,9 +15,9 @@ export class CountQueuingStrategyImpl implements CountQueuingStrategy {
   }
 
   [customInspect](): string {
-    return `${this.constructor.name} { highWaterMark: ${String(
-      this.highWaterMark
-    )}, size: f }`;
+    return `${this.constructor.name} { highWaterMark: ${
+      String(this.highWaterMark)
+    }, size: f }`;
   }
 }
 
@@ -40,9 +40,9 @@ export class ByteLengthQueuingStrategyImpl
   }
 
   [customInspect](): string {
-    return `${this.constructor.name} { highWaterMark: ${String(
-      this.highWaterMark
-    )}, size: f }`;
+    return `${this.constructor.name} { highWaterMark: ${
+      String(this.highWaterMark)
+    }, size: f }`;
   }
 }
 

@@ -122,8 +122,7 @@ Deno.test("bufioBufReader", async function (): Promise<void> {
           const read = readmaker.fn(new StringReader(text));
           const buf = new BufReader(read, bufsize);
           const s = await bufreader.fn(buf);
-          const debugStr =
-            `reader=${readmaker.name} ` +
+          const debugStr = `reader=${readmaker.name} ` +
             `fn=${bufreader.name} bufsize=${bufsize} want=${text} got=${s}`;
           assertEquals(s, text, debugStr);
         }

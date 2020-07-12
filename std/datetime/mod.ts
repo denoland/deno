@@ -103,8 +103,7 @@ export function parseDateTime(
  */
 export function dayOfYear(date: Date): number {
   const yearStart = new Date(date.getFullYear(), 0, 0);
-  const diff =
-    date.getTime() -
+  const diff = date.getTime() -
     yearStart.getTime() +
     (yearStart.getTimezoneOffset() - date.getTimezoneOffset()) * 60 * 1000;
   return Math.floor(diff / DAY);
@@ -226,19 +225,17 @@ export function difference(
   to: Date,
   options?: DifferenceOptions
 ): DifferenceFormat {
-  const uniqueUnits = options?.units
-    ? [...new Set(options?.units)]
-    : [
-        "miliseconds",
-        "seconds",
-        "minutes",
-        "hours",
-        "days",
-        "weeks",
-        "months",
-        "quarters",
-        "years",
-      ];
+  const uniqueUnits = options?.units ? [...new Set(options?.units)] : [
+    "miliseconds",
+    "seconds",
+    "minutes",
+    "hours",
+    "days",
+    "weeks",
+    "months",
+    "quarters",
+    "years",
+  ];
 
   const bigger = Math.max(from.getTime(), to.getTime());
   const smaller = Math.min(from.getTime(), to.getTime());
@@ -299,8 +296,11 @@ function calculateMonthsDifference(bigger: number, smaller: number): number {
   biggerDate.setMonth(
     biggerDate.getMonth() - compareResult * calendarDiffrences
   );
-  const isLastMonthNotFull =
-    biggerDate > smallerDate ? 1 : -1 === -compareResult ? 1 : 0;
+  const isLastMonthNotFull = biggerDate > smallerDate
+    ? 1
+    : -1 === -compareResult
+    ? 1
+    : 0;
   const months = compareResult * (calendarDiffrences - isLastMonthNotFull);
   return months === 0 ? 0 : months;
 }

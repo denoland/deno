@@ -38,9 +38,9 @@ export class TransformStreamImpl<I = any, O = any>
     const writableType = transformer.writableType;
     if (writableType !== undefined) {
       throw new RangeError(
-        `Expected transformer writableType to be undefined, received "${String(
-          writableType
-        )}"`
+        `Expected transformer writableType to be undefined, received "${
+          String(writableType)
+        }"`
       );
     }
     const writableSizeAlgorithm = makeSizeAlgorithmFromSizeFunction(
@@ -55,9 +55,9 @@ export class TransformStreamImpl<I = any, O = any>
     const readableType = transformer.readableType;
     if (readableType !== undefined) {
       throw new RangeError(
-        `Expected transformer readableType to be undefined, received "${String(
-          readableType
-        )}"`
+        `Expected transformer readableType to be undefined, received "${
+          String(readableType)
+        }"`
       );
     }
     const readableSizeAlgorithm = makeSizeAlgorithmFromSizeFunction(
@@ -109,9 +109,9 @@ export class TransformStreamImpl<I = any, O = any>
   }
 
   [customInspect](): string {
-    return `${this.constructor.name} {\n  readable: ${inspect(
-      this.readable
-    )}\n  writable: ${inspect(this.writable)}\n}`;
+    return `${this.constructor.name} {\n  readable: ${
+      inspect(this.readable)
+    }\n  writable: ${inspect(this.writable)}\n}`;
   }
 }
 

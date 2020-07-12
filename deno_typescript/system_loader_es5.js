@@ -75,11 +75,9 @@ var System, __instantiate;
         }
         return [
           2,
-          id in r
-            ? gExpA(id)
-            : Promise.resolve().then(function () {
-                return require(mid);
-              }),
+          id in r ? gExpA(id) : Promise.resolve().then(function () {
+            return require(mid);
+          }),
         ];
       });
     });

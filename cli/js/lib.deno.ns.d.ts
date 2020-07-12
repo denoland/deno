@@ -1918,15 +1918,15 @@ declare namespace Deno {
 
   export type ProcessStatus =
     | {
-        success: true;
-        code: 0;
-        signal?: undefined;
-      }
+      success: true;
+      code: 0;
+      signal?: undefined;
+    }
     | {
-        success: false;
-        code: number;
-        signal?: number;
-      };
+      success: false;
+      code: number;
+      signal?: number;
+    };
 
   export interface RunOptions {
     /** Arguments to pass. Note, the first element needs to be a path to the

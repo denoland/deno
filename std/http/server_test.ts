@@ -51,8 +51,7 @@ const responseTests: ResponseTest[] = [
       body: new Deno.Buffer(new TextEncoder().encode("abcdef")),
     },
 
-    raw:
-      "HTTP/1.1 200 OK\r\n" +
+    raw: "HTTP/1.1 200 OK\r\n" +
       "transfer-encoding: chunked\r\n\r\n" +
       "6\r\nabcdef\r\n0\r\n\r\n",
   },
@@ -94,10 +93,9 @@ Deno.test("requestContentLength", function (): void {
     const maxChunkSize = 70;
     while (chunkOffset < shortText.length) {
       const chunkSize = Math.min(maxChunkSize, shortText.length - chunkOffset);
-      chunksData += `${chunkSize.toString(16)}\r\n${shortText.substr(
-        chunkOffset,
-        chunkSize
-      )}\r\n`;
+      chunksData += `${chunkSize.toString(16)}\r\n${
+        shortText.substr(chunkOffset, chunkSize)
+      }\r\n`;
       chunkOffset += chunkSize;
     }
     chunksData += "0\r\n\r\n";
@@ -212,10 +210,9 @@ Deno.test("requestBodyWithTransferEncoding", async function (): Promise<void> {
     const maxChunkSize = 70;
     while (chunkOffset < shortText.length) {
       const chunkSize = Math.min(maxChunkSize, shortText.length - chunkOffset);
-      chunksData += `${chunkSize.toString(16)}\r\n${shortText.substr(
-        chunkOffset,
-        chunkSize
-      )}\r\n`;
+      chunksData += `${chunkSize.toString(16)}\r\n${
+        shortText.substr(chunkOffset, chunkSize)
+      }\r\n`;
       chunkOffset += chunkSize;
     }
     chunksData += "0\r\n\r\n";
@@ -236,10 +233,9 @@ Deno.test("requestBodyWithTransferEncoding", async function (): Promise<void> {
     const maxChunkSize = 70;
     while (chunkOffset < longText.length) {
       const chunkSize = Math.min(maxChunkSize, longText.length - chunkOffset);
-      chunksData += `${chunkSize.toString(16)}\r\n${longText.substr(
-        chunkOffset,
-        chunkSize
-      )}\r\n`;
+      chunksData += `${chunkSize.toString(16)}\r\n${
+        longText.substr(chunkOffset, chunkSize)
+      }\r\n`;
       chunkOffset += chunkSize;
     }
     chunksData += "0\r\n\r\n";
@@ -308,10 +304,9 @@ Deno.test("requestBodyReaderWithTransferEncoding", async function (): Promise<
     const maxChunkSize = 70;
     while (chunkOffset < shortText.length) {
       const chunkSize = Math.min(maxChunkSize, shortText.length - chunkOffset);
-      chunksData += `${chunkSize.toString(16)}\r\n${shortText.substr(
-        chunkOffset,
-        chunkSize
-      )}\r\n`;
+      chunksData += `${chunkSize.toString(16)}\r\n${
+        shortText.substr(chunkOffset, chunkSize)
+      }\r\n`;
       chunkOffset += chunkSize;
     }
     chunksData += "0\r\n\r\n";
@@ -341,10 +336,9 @@ Deno.test("requestBodyReaderWithTransferEncoding", async function (): Promise<
     const maxChunkSize = 70;
     while (chunkOffset < longText.length) {
       const chunkSize = Math.min(maxChunkSize, longText.length - chunkOffset);
-      chunksData += `${chunkSize.toString(16)}\r\n${longText.substr(
-        chunkOffset,
-        chunkSize
-      )}\r\n`;
+      chunksData += `${chunkSize.toString(16)}\r\n${
+        longText.substr(chunkOffset, chunkSize)
+      }\r\n`;
       chunkOffset += chunkSize;
     }
     chunksData += "0\r\n\r\n";

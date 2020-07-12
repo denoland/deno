@@ -40,8 +40,7 @@ export function generate(
 
   if (node == null || clockseq == null) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const seedBytes: any =
-      options.random ||
+    const seedBytes: any = options.random ||
       options.rng ||
       crypto.getRandomValues(new Uint8Array(16));
     if (node == null) {
@@ -58,8 +57,9 @@ export function generate(
       clockseq = _clockseq = ((seedBytes[6] << 8) | seedBytes[7]) & 0x3fff;
     }
   }
-  let msecs =
-    options.msecs !== undefined ? options.msecs : new Date().getTime();
+  let msecs = options.msecs !== undefined
+    ? options.msecs
+    : new Date().getTime();
 
   let nsecs = options.nsecs !== undefined ? options.nsecs : _lastNSecs + 1;
 

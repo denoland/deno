@@ -152,12 +152,12 @@ declare global {
 
   var onerror:
     | ((
-        msg: string,
-        source: string,
-        lineno: number,
-        colno: number,
-        e: Event
-      ) => boolean | void)
+      msg: string,
+      source: string,
+      lineno: number,
+      colno: number,
+      e: Event
+    ) => boolean | void)
     | undefined;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

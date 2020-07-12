@@ -419,20 +419,17 @@ Deno.test("testReadRequestError", async function (): Promise<void> {
     // deduplicated if same or reject otherwise
     // See Issue 16490.
     {
-      in:
-        "POST / HTTP/1.1\r\nContent-Length: 10\r\nContent-Length: 0\r\n\r\n" +
+      in: "POST / HTTP/1.1\r\nContent-Length: 10\r\nContent-Length: 0\r\n\r\n" +
         "Gopher hey\r\n",
       err: "cannot contain multiple Content-Length headers",
     },
     {
-      in:
-        "POST / HTTP/1.1\r\nContent-Length: 10\r\nContent-Length: 6\r\n\r\n" +
+      in: "POST / HTTP/1.1\r\nContent-Length: 10\r\nContent-Length: 6\r\n\r\n" +
         "Gopher\r\n",
       err: "cannot contain multiple Content-Length headers",
     },
     {
-      in:
-        "PUT / HTTP/1.1\r\nContent-Length: 6 \r\nContent-Length: 6\r\n" +
+      in: "PUT / HTTP/1.1\r\nContent-Length: 6 \r\nContent-Length: 6\r\n" +
         "Content-Length:6\r\n\r\nGopher\r\n",
       headers: [{ key: "Content-Length", value: "6" }],
     },
@@ -451,8 +448,7 @@ Deno.test("testReadRequestError", async function (): Promise<void> {
       headers: [{ key: "Content-Length", value: "0" }],
     },
     {
-      in:
-        "POST / HTTP/1.1\r\nContent-Length:0\r\ntransfer-encoding: " +
+      in: "POST / HTTP/1.1\r\nContent-Length:0\r\ntransfer-encoding: " +
         "chunked\r\n\r\n",
       headers: [],
       err: "http: Transfer-Encoding and Content-Length cannot be send together",

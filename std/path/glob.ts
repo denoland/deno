@@ -57,7 +57,8 @@ export function globToRegExp(
 export function isGlob(str: string): boolean {
   const chars: Record<string, string> = { "{": "}", "(": ")", "[": "]" };
   /* eslint-disable-next-line max-len */
-  const regex = /\\(.)|(^!|\*|[\].+)]\?|\[[^\\\]]+\]|\{[^\\}]+\}|\(\?[:!=][^\\)]+\)|\([^|]+\|[^\\)]+\))/;
+  const regex =
+    /\\(.)|(^!|\*|[\].+)]\?|\[[^\\\]]+\]|\{[^\\}]+\}|\(\?[:!=][^\\)]+\)|\([^|]+\|[^\\)]+\))/;
 
   if (str === "") {
     return false;

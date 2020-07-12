@@ -86,7 +86,8 @@ async function readRecord(
   const commaLen = opt.comma.length;
   let recordBuffer = "";
   const fieldIndexes = [] as number[];
-  parseField: for (;;) {
+  parseField:
+  for (;;) {
     if (opt.trimLeadingSpace) {
       line = line.trimLeft();
     }

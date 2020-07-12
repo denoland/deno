@@ -248,8 +248,7 @@ function chooseScalarStyle(
   let hasLineBreak = false,
     hasFoldableLine = false, // only checked if shouldTrackWidth
     previousLineBreak = -1, // count the first line correctly
-    plain =
-      isPlainSafeFirst(string.charCodeAt(0)) &&
+    plain = isPlainSafeFirst(string.charCodeAt(0)) &&
       !isWhitespace(string.charCodeAt(string.length - 1));
 
   let char: number, i: number;
@@ -271,8 +270,7 @@ function chooseScalarStyle(
         hasLineBreak = true;
         // Check if any line can be folded.
         if (shouldTrackWidth) {
-          hasFoldableLine =
-            hasFoldableLine ||
+          hasFoldableLine = hasFoldableLine ||
             // Foldable line = too long, and not more-indented.
             (i - previousLineBreak - 1 > lineWidth &&
               string[previousLineBreak + 1] !== " ");
@@ -284,8 +282,7 @@ function chooseScalarStyle(
       plain = plain && isPlainSafe(char);
     }
     // in case the end is missing a \n
-    hasFoldableLine =
-      hasFoldableLine ||
+    hasFoldableLine = hasFoldableLine ||
       (shouldTrackWidth &&
         i - previousLineBreak - 1 > lineWidth &&
         string[previousLineBreak + 1] !== " ");
@@ -387,8 +384,7 @@ function foldString(string: string, width: number): string {
     const prefix = match[1],
       line = match[2];
     moreIndented = line[0] === " ";
-    result +=
-      prefix +
+    result += prefix +
       (!prevMoreIndented && !moreIndented && line !== "" ? "\n" : "") +
       // eslint-disable-next-line @typescript-eslint/no-use-before-define
       foldLine(line, width);
@@ -420,10 +416,9 @@ function escapeString(string: string): string {
       }
     }
     escapeSeq = ESCAPE_SEQUENCES[char];
-    result +=
-      !escapeSeq && isPrintable(char)
-        ? string[i]
-        : escapeSeq || encodeHex(char);
+    result += !escapeSeq && isPrintable(char)
+      ? string[i]
+      : escapeSeq || encodeHex(char);
   }
 
   return result;
@@ -476,15 +471,13 @@ function writeScalar(
     // This behaves better than a constant minimum width which disallows
     // narrower options, or an indent threshold which causes the width
     // to suddenly increase.
-    const lineWidth =
-      state.lineWidth === -1
-        ? -1
-        : Math.max(Math.min(state.lineWidth, 40), state.lineWidth - indent);
+    const lineWidth = state.lineWidth === -1
+      ? -1
+      : Math.max(Math.min(state.lineWidth, 40), state.lineWidth - indent);
 
     // Without knowing if keys are implicit/explicit,
     // assume implicit for safety.
-    const singleLineOnly =
-      iskey ||
+    const singleLineOnly = iskey ||
       // No block styles in flow mode.
       (state.flowLevel > -1 && level >= state.flowLevel);
     function testAmbiguity(str: string): boolean {
@@ -505,13 +498,15 @@ function writeScalar(
       case STYLE_SINGLE:
         return `'${string.replace(/'/g, "''")}'`;
       case STYLE_LITERAL:
-        return `|${blockHeader(string, state.indent)}${dropEndingNewline(
-          indentString(string, indent)
-        )}`;
+        return `|${blockHeader(string, state.indent)}${
+          dropEndingNewline(indentString(string, indent))
+        }`;
       case STYLE_FOLDED:
-        return `>${blockHeader(string, state.indent)}${dropEndingNewline(
-          indentString(foldString(string, lineWidth), indent)
-        )}`;
+        return `>${blockHeader(string, state.indent)}${
+          dropEndingNewline(
+            indentString(foldString(string, lineWidth), indent)
+          )
+        }`;
       case STYLE_DOUBLE:
         return `"${escapeString(string)}"`;
       default:
@@ -665,8 +660,7 @@ function writeBlockMapping(
       continue; // Skip this pair because of invalid key.
     }
 
-    explicitPair =
-      (state.tag !== null && state.tag !== "?") ||
+    explicitPair = (state.tag !== null && state.tag !== "?") ||
       (state.dump && state.dump.length > 1024);
 
     if (explicitPair) {

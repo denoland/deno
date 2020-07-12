@@ -149,8 +149,9 @@ function dispatch(
     }
 
     let slotInClosedTree = false;
-    let slotable =
-      isSlotable(targetImpl) && getAssignedSlot(targetImpl) ? targetImpl : null;
+    let slotable = isSlotable(targetImpl) && getAssignedSlot(targetImpl)
+      ? targetImpl
+      : null;
     let parent = getParent(targetImpl);
 
     // Populate event path
@@ -226,9 +227,8 @@ function dispatch(
     }
     const clearTargetsTuple = path[clearTargetsTupleIndex];
 
-    clearTargets =
-      (isNode(clearTargetsTuple.target) &&
-        isShadowRoot(getRoot(clearTargetsTuple.target))) ||
+    clearTargets = (isNode(clearTargetsTuple.target) &&
+      isShadowRoot(getRoot(clearTargetsTuple.target))) ||
       (isNode(clearTargetsTuple.relatedTarget) &&
         isShadowRoot(getRoot(clearTargetsTuple.relatedTarget)));
 

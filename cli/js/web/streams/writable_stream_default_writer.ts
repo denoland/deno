@@ -155,9 +155,9 @@ export class WritableStreamDefaultWriterImpl<W>
   }
 
   [customInspect](): string {
-    return `${this.constructor.name} { closed: Promise, desiredSize: ${String(
-      this.desiredSize
-    )}, ready: Promise }`;
+    return `${this.constructor.name} { closed: Promise, desiredSize: ${
+      String(this.desiredSize)
+    }, ready: Promise }`;
   }
 }
 

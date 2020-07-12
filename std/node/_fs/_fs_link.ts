@@ -12,8 +12,9 @@ export function link(
   newPath: string | URL,
   callback: CallbackWithError
 ): void {
-  existingPath =
-    existingPath instanceof URL ? fromFileUrl(existingPath) : existingPath;
+  existingPath = existingPath instanceof URL
+    ? fromFileUrl(existingPath)
+    : existingPath;
   newPath = newPath instanceof URL ? fromFileUrl(newPath) : newPath;
 
   Deno.link(existingPath, newPath)
@@ -29,8 +30,9 @@ export function linkSync(
   existingPath: string | URL,
   newPath: string | URL
 ): void {
-  existingPath =
-    existingPath instanceof URL ? fromFileUrl(existingPath) : existingPath;
+  existingPath = existingPath instanceof URL
+    ? fromFileUrl(existingPath)
+    : existingPath;
   newPath = newPath instanceof URL ? fromFileUrl(newPath) : newPath;
 
   Deno.linkSync(existingPath, newPath);

@@ -137,9 +137,9 @@ export class ReadableByteStreamControllerImpl
   }
 
   [customInspect](): string {
-    return `${this.constructor.name} { byobRequest: ${String(
-      this.byobRequest
-    )}, desiredSize: ${String(this.desiredSize)} }`;
+    return `${this.constructor.name} { byobRequest: ${
+      String(this.byobRequest)
+    }, desiredSize: ${String(this.desiredSize)} }`;
   }
 }
 

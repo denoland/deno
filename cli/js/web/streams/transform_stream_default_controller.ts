@@ -63,9 +63,9 @@ export class TransformStreamDefaultControllerImpl<I = any, O = any>
   }
 
   [customInspect](): string {
-    return `${this.constructor.name} { desiredSize: ${String(
-      this.desiredSize
-    )} }`;
+    return `${this.constructor.name} { desiredSize: ${
+      String(this.desiredSize)
+    } }`;
   }
 }
 

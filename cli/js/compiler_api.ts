@@ -47,8 +47,9 @@ export async function compile(
   });
   const result = await runtimeCompilerOps.compile(payload);
   util.assert(result.emitMap);
-  const maybeDiagnostics =
-    result.diagnostics.length === 0 ? undefined : result.diagnostics;
+  const maybeDiagnostics = result.diagnostics.length === 0
+    ? undefined
+    : result.diagnostics;
 
   const emitMap: Record<string, string> = {};
 
@@ -78,7 +79,8 @@ export async function bundle(
   });
   const result = await runtimeCompilerOps.compile(payload);
   util.assert(result.output);
-  const maybeDiagnostics =
-    result.diagnostics.length === 0 ? undefined : result.diagnostics;
+  const maybeDiagnostics = result.diagnostics.length === 0
+    ? undefined
+    : result.diagnostics;
   return [maybeDiagnostics, result.output];
 }

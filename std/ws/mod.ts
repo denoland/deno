@@ -312,8 +312,9 @@ class WebSocketImpl implements WebSocket {
   }
 
   send(data: WebSocketMessage): Promise<void> {
-    const opcode =
-      typeof data === "string" ? OpCode.TextFrame : OpCode.BinaryFrame;
+    const opcode = typeof data === "string"
+      ? OpCode.TextFrame
+      : OpCode.BinaryFrame;
     const payload = typeof data === "string" ? encode(data) : data;
     const isLastFrame = true;
     const frame = {

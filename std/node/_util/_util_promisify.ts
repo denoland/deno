@@ -57,8 +57,9 @@ class NodeInvalidArgTypeError extends TypeError {
 }
 
 export function promisify(original: Function): Function {
-  if (typeof original !== "function")
+  if (typeof original !== "function") {
     throw new NodeInvalidArgTypeError("original", "Function", original);
+  }
 
   // @ts-ignore TypeScript (as of 3.7) does not support indexing namespaces by symbol
   if (original[kCustomPromisifiedSymbol]) {
