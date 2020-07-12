@@ -5,6 +5,8 @@ are guaranteed to work with Deno.
 
 Standard library is available at: https://deno.land/std/
 
+To learn more about the modules and functionality available in the standard library please read the [modules documentation](./standard_library/modules).
+
 ## Versioning and stability
 
 Standard library is not yet stable and therefore it is versioned differently
