@@ -105,7 +105,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "[std/datetime] DayOfYear",
+  name: "[std/datetime] dayOfYear",
   fn: () => {
     assertEquals(1, datetime.dayOfYear(new Date("2019-01-01T03:24:00")));
     assertEquals(70, datetime.dayOfYear(new Date("2019-03-11T03:24:00")));
@@ -149,7 +149,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "[std/datetime] Difference",
+  name: "[std/datetime] difference",
   fn(): void {
     const denoInit = new Date("2018/5/14");
     const denoRelaseV1 = new Date("2020/5/13");

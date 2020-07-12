@@ -30,28 +30,29 @@ export class Tokenizer {
 
   tokenize(
     string: string,
-    receiver = (token: Token): { [name: string]: string | number } => token
+    receiver = (token: Token): ReceiverResult => token
   ): ReceiverResult[] {
-    let index = 0;
-
-    const next = (): ReceiverResult | null => {
-      for (const rule of this.rules) {
+    function* generator(rules: Rule[]): IterableIterator<ReceiverResult> {
+      let index = 0;
+      for (const rule of rules) {
         const match = rule.test.exec(string);
         if (match) {
           const value = match[0];
           index += value.length;
           string = string.slice(match[0].length);
           const token = { ...rule.fn(match), input: value, index };
-          return receiver(token);
+          yield receiver(token);
+          yield* generator(rules);
         }
       }
-      return null;
-    };
+    }
+    const tokenGenerator = generator(this.rules);
 
-    const tokens = [];
+    const tokens: ReceiverResult[] = [];
 
-    let token;
-    while (!!(token = next())) tokens.push(token);
+    for (const token of tokenGenerator) {
+      tokens.push(token);
+    }
 
     if (string.length) {
       throw new Error(
