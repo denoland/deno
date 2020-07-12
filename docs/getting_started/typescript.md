@@ -35,6 +35,10 @@ To export a type in a different file use
 example `tsconfig.json` with this option
 [in the standard library](https://github.com/denoland/deno/blob/master/std/tsconfig_test.json).
 
+Because there is no type information when using `--no-check`, `const enum` is
+not supported because it is are type-directed. `--no-check` also does not
+support the legacy `import =` and `export =` syntax.
+
 ### Using external type definitions
 
 The out of the box TypeScript compiler though relies on both extension-less
