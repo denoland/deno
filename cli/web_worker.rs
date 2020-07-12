@@ -121,6 +121,7 @@ impl WebWorker {
         handle,
       );
       ops::worker_host::init(isolate, &state);
+      ops::idna::init(isolate, &state);
       ops::io::init(isolate, &state);
       ops::resources::init(isolate, &state);
       ops::errors::init(isolate, &state);

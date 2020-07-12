@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 import * as blob from "./blob.ts";
 
 export class DomFileImpl extends blob.DenoBlob implements File {

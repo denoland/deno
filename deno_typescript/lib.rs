@@ -50,17 +50,16 @@ pub struct TSState {
 fn compiler_op<D>(
   ts_state: Arc<Mutex<TSState>>,
   dispatcher: D,
-) -> impl Fn(&mut CoreIsolateState, &[u8], &mut [ZeroCopyBuf]) -> Op
+) -> impl Fn(&mut CoreIsolateState, &mut [ZeroCopyBuf]) -> Op
 where
   D: Fn(&mut TSState, &[u8]) -> Op,
 {
   move |_state: &mut CoreIsolateState,
-        control: &[u8],
         zero_copy_bufs: &mut [ZeroCopyBuf]|
         -> Op {
-    assert!(zero_copy_bufs.is_empty()); // zero_copy_bufs unused in compiler.
+    assert_eq!(zero_copy_bufs.len(), 1, "Invalid number of arguments");
     let mut s = ts_state.lock().unwrap();
-    dispatcher(&mut s, control)
+    dispatcher(&mut s, &zero_copy_bufs[0])
   }
 }
 
@@ -148,6 +147,11 @@ pub fn compile_bundle(
   let config_json = serde_json::json!({
     "compilerOptions": {
       "declaration": true,
+      // In order to help ensure there are no type directed emits in the code
+      // which interferes with transpiling only, the setting
+      // `"importsNotUsedAsValues"` set to `"error"` will help ensure that items
+      // that are written as `import type` are caught and are treated as errors.
+      "importsNotUsedAsValues": "error",
       // Emit the source alongside the sourcemaps within a single file;
       // requires --inlineSourceMap or --sourceMap to be set.
       // "inlineSources": true,
@@ -333,16 +337,15 @@ pub fn trace_serializer() {
 /// CoreIsolate.
 pub fn op_fetch_asset<S: ::std::hash::BuildHasher>(
   custom_assets: HashMap<String, PathBuf, S>,
-) -> impl Fn(&mut CoreIsolateState, &[u8], &mut [ZeroCopyBuf]) -> Op {
+) -> impl Fn(&mut CoreIsolateState, &mut [ZeroCopyBuf]) -> Op {
   for (_, path) in custom_assets.iter() {
     println!("cargo:rerun-if-changed={}", path.display());
   }
   move |_state: &mut CoreIsolateState,
-        control: &[u8],
         zero_copy_bufs: &mut [ZeroCopyBuf]|
         -> Op {
-    assert!(zero_copy_bufs.is_empty()); // zero_copy_bufs unused in this op.
-    let name = std::str::from_utf8(control).unwrap();
+    assert_eq!(zero_copy_bufs.len(), 1, "Invalid number of arguments");
+    let name = std::str::from_utf8(&zero_copy_bufs[0]).unwrap();
 
     let asset_code = if let Some(source_code) = get_asset(name) {
       source_code.to_string()

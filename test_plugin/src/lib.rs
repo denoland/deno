@@ -12,14 +12,12 @@ pub fn deno_plugin_init(interface: &mut dyn Interface) {
 
 fn op_test_sync(
   _interface: &mut dyn Interface,
-  data: &[u8],
   zero_copy: &mut [ZeroCopyBuf],
 ) -> Op {
-  let data_str = std::str::from_utf8(&data[..]).unwrap();
-  let zero_copy = zero_copy.to_vec();
   if !zero_copy.is_empty() {
-    println!("Hello from plugin. data: {}", data_str);
+    println!("Hello from plugin.");
   }
+  let zero_copy = zero_copy.to_vec();
   for (idx, buf) in zero_copy.iter().enumerate() {
     let buf_str = std::str::from_utf8(&buf[..]).unwrap();
     println!("zero_copy[{}]: {}", idx, buf_str);
@@ -31,14 +29,12 @@ fn op_test_sync(
 
 fn op_test_async(
   _interface: &mut dyn Interface,
-  data: &[u8],
   zero_copy: &mut [ZeroCopyBuf],
 ) -> Op {
-  let zero_copy = zero_copy.to_vec();
   if !zero_copy.is_empty() {
-    let data_str = std::str::from_utf8(&data[..]).unwrap().to_string();
-    println!("Hello from plugin. data: {}", data_str);
+    println!("Hello from plugin.");
   }
+  let zero_copy = zero_copy.to_vec();
   let fut = async move {
     for (idx, buf) in zero_copy.iter().enumerate() {
       let buf_str = std::str::from_utf8(&buf[..]).unwrap();

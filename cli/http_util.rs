@@ -249,7 +249,7 @@ mod tests {
   #[tokio::test]
   async fn test_fetch_string() {
     let http_server_guard = test_util::http_server();
-    // Relies on external http server. See tools/http_server.py
+    // Relies on external http server. See target/debug/test_server
     let url =
       Url::parse("http://127.0.0.1:4545/cli/tests/fixture.json").unwrap();
     let client = create_http_client(None).unwrap();
@@ -268,7 +268,7 @@ mod tests {
   #[tokio::test]
   async fn test_fetch_gzip() {
     let http_server_guard = test_util::http_server();
-    // Relies on external http server. See tools/http_server.py
+    // Relies on external http server. See target/debug/test_server
     let url = Url::parse(
       "http://127.0.0.1:4545/cli/tests/053_import_compression/gziped",
     )
@@ -317,7 +317,7 @@ mod tests {
   #[tokio::test]
   async fn test_fetch_brotli() {
     let http_server_guard = test_util::http_server();
-    // Relies on external http server. See tools/http_server.py
+    // Relies on external http server. See target/debug/test_server
     let url = Url::parse(
       "http://127.0.0.1:4545/cli/tests/053_import_compression/brotli",
     )
@@ -342,7 +342,7 @@ mod tests {
   #[tokio::test]
   async fn test_fetch_once_with_redirect() {
     let http_server_guard = test_util::http_server();
-    // Relies on external http server. See tools/http_server.py
+    // Relies on external http server. See target/debug/test_server
     let url =
       Url::parse("http://127.0.0.1:4546/cli/tests/fixture.json").unwrap();
     // Dns resolver substitutes `127.0.0.1` with `localhost`
@@ -399,7 +399,7 @@ mod tests {
   #[tokio::test]
   async fn test_fetch_with_cafile_string() {
     let http_server_guard = test_util::http_server();
-    // Relies on external http server. See tools/http_server.py
+    // Relies on external http server. See target/debug/test_server
     let url =
       Url::parse("https://localhost:5545/cli/tests/fixture.json").unwrap();
 
@@ -425,7 +425,7 @@ mod tests {
   #[tokio::test]
   async fn test_fetch_with_cafile_gzip() {
     let http_server_guard = test_util::http_server();
-    // Relies on external http server. See tools/http_server.py
+    // Relies on external http server. See target/debug/test_server
     let url = Url::parse(
       "https://localhost:5545/cli/tests/053_import_compression/gziped",
     )
@@ -487,7 +487,7 @@ mod tests {
   #[tokio::test]
   async fn test_fetch_with_cafile_brotli() {
     let http_server_guard = test_util::http_server();
-    // Relies on external http server. See tools/http_server.py
+    // Relies on external http server. See target/debug/test_server
     let url = Url::parse(
       "https://localhost:5545/cli/tests/053_import_compression/brotli",
     )

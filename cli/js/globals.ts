@@ -7,7 +7,6 @@ import * as abortSignal from "./web/abort_signal.ts";
 import * as blob from "./web/blob.ts";
 import * as consoleTypes from "./web/console.ts";
 import * as csprng from "./ops/get_random_values.ts";
-import * as promiseTypes from "./web/promise.ts";
 import * as customEvent from "./web/custom_event.ts";
 import * as domException from "./web/dom_exception.ts";
 import * as domFile from "./web/dom_file.ts";
@@ -17,16 +16,19 @@ import * as eventTarget from "./web/event_target.ts";
 import * as formData from "./web/form_data.ts";
 import * as fetchTypes from "./web/fetch.ts";
 import * as headers from "./web/headers.ts";
+import * as navigator from "./web/navigator.ts";
+import * as permissions from "./web/permissions.ts";
+import type * as promiseTypes from "./web/promise.ts";
+import * as queuingStrategy from "./web/streams/queuing_strategy.ts";
+import * as readableStream from "./web/streams/readable_stream.ts";
+import * as request from "./web/request.ts";
 import * as textEncoding from "./web/text_encoding.ts";
 import * as timers from "./web/timers.ts";
+import * as transformStream from "./web/streams/transform_stream.ts";
 import * as url from "./web/url.ts";
 import * as urlSearchParams from "./web/url_search_params.ts";
 import * as workers from "./web/workers.ts";
-import * as performanceUtil from "./web/performance.ts";
-import * as request from "./web/request.ts";
-import * as readableStream from "./web/streams/readable_stream.ts";
-import * as transformStream from "./web/streams/transform_stream.ts";
-import * as queuingStrategy from "./web/streams/queuing_strategy.ts";
+import * as performance from "./web/performance.ts";
 import * as writableStream from "./web/streams/writable_stream.ts";
 
 // These imports are not exposed and therefore are fine to just import the
@@ -77,14 +79,9 @@ declare global {
 
   interface DenoCore {
     print(s: string, isErr?: boolean): void;
-    dispatch(
-      opId: number,
-      control: Uint8Array,
-      ...zeroCopy: ArrayBufferView[]
-    ): Uint8Array | null;
+    dispatch(opId: number, ...zeroCopy: ArrayBufferView[]): Uint8Array | null;
     dispatchByName(
       opName: string,
-      control: Uint8Array,
       ...zeroCopy: ArrayBufferView[]
     ): Uint8Array | null;
     setAsyncHandler(opId: number, cb: (msg: Uint8Array) => void): void;
@@ -101,11 +98,7 @@ declare global {
 
     recv(cb: (opId: number, msg: Uint8Array) => void): void;
 
-    send(
-      opId: number,
-      control: null | ArrayBufferView,
-      ...data: ArrayBufferView[]
-    ): null | Uint8Array;
+    send(opId: number, ...data: ArrayBufferView[]): null | Uint8Array;
 
     setMacrotaskCallback(cb: () => boolean): void;
 
@@ -230,24 +223,32 @@ export const windowOrWorkerGlobalScopeProperties = {
     queuingStrategy.ByteLengthQueuingStrategyImpl
   ),
   CountQueuingStrategy: nonEnumerable(queuingStrategy.CountQueuingStrategyImpl),
-  crypto: readOnly(csprng),
-  File: nonEnumerable(domFile.DomFileImpl),
   CustomEvent: nonEnumerable(customEvent.CustomEventImpl),
+  crypto: readOnly(csprng),
   DOMException: nonEnumerable(domException.DOMExceptionImpl),
   ErrorEvent: nonEnumerable(errorEvent.ErrorEventImpl),
   Event: nonEnumerable(event.EventImpl),
   EventTarget: nonEnumerable(eventTarget.EventTargetImpl),
-  URL: nonEnumerable(url.URLImpl),
-  URLSearchParams: nonEnumerable(urlSearchParams.URLSearchParamsImpl),
-  Headers: nonEnumerable(headers.HeadersImpl),
+  File: nonEnumerable(domFile.DomFileImpl),
   FormData: nonEnumerable(formData.FormDataImpl),
-  TextEncoder: nonEnumerable(textEncoding.TextEncoder),
-  TextDecoder: nonEnumerable(textEncoding.TextDecoder),
+  Headers: nonEnumerable(headers.HeadersImpl),
+  navigator: nonEnumerable(new navigator.NavigatorImpl()),
+  Navigator: nonEnumerable(navigator.NavigatorImpl),
+  Permissions: nonEnumerable(permissions.PermissionsImpl),
+  PermissionStatus: nonEnumerable(permissions.PermissionStatusImpl),
   ReadableStream: nonEnumerable(readableStream.ReadableStreamImpl),
-  TransformStream: nonEnumerable(transformStream.TransformStreamImpl),
   Request: nonEnumerable(request.Request),
   Response: nonEnumerable(fetchTypes.Response),
-  performance: writable(new performanceUtil.Performance()),
+  performance: writable(new performance.PerformanceImpl()),
+  Performance: nonEnumerable(performance.PerformanceImpl),
+  PerformanceEntry: nonEnumerable(performance.PerformanceEntryImpl),
+  PerformanceMark: nonEnumerable(performance.PerformanceMarkImpl),
+  PerformanceMeasure: nonEnumerable(performance.PerformanceMeasureImpl),
+  TextDecoder: nonEnumerable(textEncoding.TextDecoder),
+  TextEncoder: nonEnumerable(textEncoding.TextEncoder),
+  TransformStream: nonEnumerable(transformStream.TransformStreamImpl),
+  URL: nonEnumerable(url.URLImpl),
+  URLSearchParams: nonEnumerable(urlSearchParams.URLSearchParamsImpl),
   Worker: nonEnumerable(workers.WorkerImpl),
   WritableStream: nonEnumerable(writableStream.WritableStreamImpl),
 };

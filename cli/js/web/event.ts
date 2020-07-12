@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import * as domTypes from "./dom_types.d.ts";
+import type * as domTypes from "./dom_types.d.ts";
 import { defineEnumerableProps, requiredArguments } from "./util.ts";
 import { assert } from "../util.ts";
 

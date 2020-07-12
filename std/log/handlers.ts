@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { getLevelByName, LevelName, LogLevels } from "./levels.ts";
-import { LogRecord } from "./logger.ts";
+import type { LogRecord } from "./logger.ts";
 import { red, yellow, blue, bold } from "../fmt/colors.ts";
 import { existsSync, exists } from "../fs/exists.ts";
 import { BufWriterSync } from "../io/bufio.ts";

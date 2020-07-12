@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 import { sendAsync } from "./dispatch_json.ts";
-import { DiagnosticItem } from "../diagnostics.ts";
+import type { DiagnosticItem } from "../diagnostics.ts";
 
 interface CompileRequest {
   rootName: string;

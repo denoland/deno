@@ -1,11 +1,20 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 import { sendSync, sendAsync } from "./dispatch_json.ts";
 
-export function bindSignal(signo: number): { rid: number } {
+interface BindSignalResponse {
+  rid: number;
+}
+
+interface PollSignalResponse {
+  done: boolean;
+}
+
+export function bindSignal(signo: number): BindSignalResponse {
   return sendSync("op_signal_bind", { signo });
 }
 
-export function pollSignal(rid: number): Promise<{ done: boolean }> {
+export function pollSignal(rid: number): Promise<PollSignalResponse> {
   return sendAsync("op_signal_poll", { rid });
 }
 

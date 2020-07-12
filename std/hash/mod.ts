@@ -1,9 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 import { Hash } from "./_wasm/hash.ts";
-import { Hasher } from "./hasher.ts";
+import type { Hasher } from "./hasher.ts";
 
-export { Hasher } from "./hasher.ts";
+export type { Hasher } from "./hasher.ts";
 export type SupportedAlgorithm =
   | "md2"
   | "md4"
