@@ -27,7 +27,7 @@ export function _format(v: unknown): string {
         trailingComma: true,
         compact: false,
         iterableLimit: Infinity,
-      })
+      } as Deno.InspectOptions)
     : String(v);
   if (typeof v == "string") {
     string = `"${string.replace(/(?=["\\])/g, "\\")}"`;
