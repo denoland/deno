@@ -1115,14 +1115,15 @@ async fn create_runtime_module_graph(
   root_name: &str,
   sources: &Option<HashMap<String, String>>,
   maybe_options: &Option<String>,
+  is_bundle: bool,
 ) -> Result<(Vec<String>, ModuleGraph), OpError> {
   let mut root_names = vec![];
   let mut module_graph_loader = ModuleGraphLoader::new(
     global_state.file_fetcher.clone(),
-    None,
+    global_state.maybe_import_map.clone(),
     permissions,
     false,
-    false,
+    is_bundle,
   );
 
   if let Some(s_map) = sources {
@@ -1174,6 +1175,7 @@ pub async fn runtime_compile(
     root_name,
     sources,
     maybe_options,
+    false,
   )
   .await?;
   let module_graph_json =
@@ -1222,6 +1224,7 @@ pub async fn runtime_bundle(
     root_name,
     sources,
     maybe_options,
+    true,
   )
   .await?;
   let module_graph_json =

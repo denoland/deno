@@ -948,6 +948,43 @@ fn bundle_import_map() {
 }
 
 #[test]
+fn runtime_bundle_import_map() {
+  let import = util::root_path().join("cli/tests/bundle_im.ts");
+  let import_map_path = util::root_path().join("cli/tests/bundle_im.json");
+  assert!(import.is_file());
+  let t = TempDir::new().expect("tempdir fail");
+  let test = t.path().join("test.js");
+  std::fs::write(
+    &test,
+    format!(
+      "
+      const [diagnostics, _] = await Deno.bundle(\"{}\")
+
+      if (diagnostics != null) {{
+        diagnostics.forEach(d => console.log(d))
+        Deno.exit(1)
+      }}
+      ",
+      import.to_str().expect("non-unicode in file path")
+    ),
+  )
+  .expect("error writing file");
+
+  let mut deno = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("--allow-read")
+    .arg("--importmap")
+    .arg(import_map_path)
+    .arg("--unstable")
+    .arg(&test)
+    .spawn()
+    .expect("failed to spawn script");
+  let status = deno.wait().expect("failed to wait for the child process");
+  assert!(status.success());
+}
+
+#[test]
 fn repl_test_console_log() {
   let (out, err) = util::run_and_collect_output(
     true,
