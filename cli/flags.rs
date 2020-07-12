@@ -23,6 +23,7 @@ pub enum DenoSubcommand {
     buf: Box<[u8]>,
   },
   Doc {
+    private: bool,
     json: bool,
     source_file: Option<String>,
     filter: Option<String>,
@@ -598,12 +599,14 @@ fn doc_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   unstable_arg_parse(flags, matches);
 
   let source_file = matches.value_of("source_file").map(String::from);
+  let private = matches.is_present("private");
   let json = matches.is_present("json");
   let filter = matches.value_of("filter").map(String::from);
   flags.subcommand = DenoSubcommand::Doc {
     source_file,
     json,
     filter,
+    private,
   };
 }
 
@@ -915,6 +918,9 @@ fn doc_subcommand<'a, 'b>() -> App<'a, 'b> {
 Output documentation to standard output:
     deno doc ./path/to/module.ts
 
+Output private documentation to standard output:
+    deno doc --private ./path/to/module.ts
+
 Output documentation in JSON format:
     deno doc --json ./path/to/module.ts
 
@@ -930,6 +936,12 @@ Show documentation for runtime built-ins:
       Arg::with_name("json")
         .long("json")
         .help("Output documentation in JSON format.")
+        .takes_value(false),
+    )
+    .arg(
+      Arg::with_name("private")
+        .long("private")
+        .help("Output private documentation")
         .takes_value(false),
     )
     // TODO(nayeemrmn): Make `--builtin` a proper option. Blocked by
@@ -2910,6 +2922,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Doc {
+          private: false,
           json: true,
           source_file: Some("path/to/module.ts".to_string()),
           filter: None,
@@ -2928,6 +2941,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Doc {
+          private: false,
           json: false,
           source_file: Some("path/to/module.ts".to_string()),
           filter: Some("SomeClass.someField".to_string()),
@@ -2941,6 +2955,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Doc {
+          private: false,
           json: false,
           source_file: None,
           filter: None,
@@ -2955,9 +2970,29 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Doc {
+          private: false,
           json: false,
           source_file: Some("--builtin".to_string()),
           filter: Some("Deno.Listener".to_string()),
+        },
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec_safe(svec![
+      "deno",
+      "doc",
+      "--private",
+      "path/to/module.js"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Doc {
+          private: true,
+          json: false,
+          source_file: Some("path/to/module.js".to_string()),
+          filter: None,
         },
         ..Flags::default()
       }
