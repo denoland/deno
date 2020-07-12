@@ -2,7 +2,7 @@
 
 import { gray, green, italic, red, yellow } from "./colors.ts";
 import { exit } from "./ops/os.ts";
-import { Console, stringifyArgs } from "./web/console.ts";
+import { Console, inspectArgs } from "./web/console.ts";
 import { stdout } from "./files.ts";
 import { exposeForTest } from "./internals.ts";
 import { TextEncoder } from "./web/text_encoding.ts";
@@ -205,7 +205,7 @@ function reportToConsole(message: TestMessage): void {
 
       for (const { name, error } of failures) {
         log(name);
-        log(stringifyArgs([error!]));
+        log(inspectArgs([error!]));
         log("");
       }
 

@@ -42,7 +42,7 @@ export function fmtPerms(perms: Permissions): string {
 }
 
 const isGranted = async (name: Deno.PermissionName): Promise<boolean> =>
-  (await Deno.permissions.query({ name })).state === "granted";
+  (await navigator.permissions.query({ name })).state === "granted";
 
 export async function getProcessPermissions(): Promise<Permissions> {
   return {

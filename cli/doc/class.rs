@@ -203,6 +203,7 @@ pub fn class_to_class_def(
       TsIndexSignature(_) => {}
       PrivateMethod(_) => {}
       PrivateProp(_) => {}
+      _ => {}
     }
   }
 

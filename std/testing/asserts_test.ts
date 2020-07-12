@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
+  _format,
   assert,
   assertNotEquals,
   assertStringContains,
@@ -15,7 +16,7 @@ import {
   unimplemented,
   unreachable,
 } from "./asserts.ts";
-import { red, green, gray, bold, yellow } from "../fmt/colors.ts";
+import { red, green, gray, bold, yellow, stripColor } from "../fmt/colors.ts";
 
 Deno.test("testingEqual", function (): void {
   assert(equal("world", "world"));
@@ -176,7 +177,23 @@ Deno.test("testingArrayContains", function (): void {
   assertThrows(
     (): void => assertArrayContains(fixtureObject, [{ deno: "node" }]),
     AssertionError,
-    `actual: "[ { deno: "luv" }, { deno: "Js" } ]" expected to contain: "[ { deno: "node" } ]"\nmissing: [ { deno: "node" } ]`
+    `actual: "[
+  {
+    deno: "luv",
+  },
+  {
+    deno: "Js",
+  },
+]" expected to contain: "[
+  {
+    deno: "node",
+  },
+]"
+missing: [
+  {
+    deno: "node",
+  },
+]`
   );
 });
 
@@ -342,13 +359,13 @@ Deno.test({
     assertThrows(
       (): void => assertEquals([1, "2", 3], ["1", "2", 3]),
       AssertionError,
-      [
-        "Values are not equal:",
-        ...createHeader(),
-        removed(`-   [ ${yellow("1")}, ${green('"2"')}, ${yellow("3")} ]`),
-        added(`+   [ ${green('"1"')}, ${green('"2"')}, ${yellow("3")} ]`),
-        "",
-      ].join("\n")
+      `
+    [
+-     1,
++     "1",
+      "2",
+      3,
+    ]`
     );
   },
 });
@@ -359,17 +376,16 @@ Deno.test({
     assertThrows(
       (): void => assertEquals({ a: 1, b: "2", c: 3 }, { a: 1, b: 2, c: [3] }),
       AssertionError,
-      [
-        "Values are not equal:",
-        ...createHeader(),
-        removed(
-          `-   { a: ${yellow("1")}, b: ${green('"2"')}, c: ${yellow("3")} }`
-        ),
-        added(
-          `+   { a: ${yellow("1")}, b: ${yellow("2")}, c: [ ${yellow("3")} ] }`
-        ),
-        "",
-      ].join("\n")
+      `
+    {
+      a: 1,
++     b: 2,
++     c: [
++       3,
++     ],
+-     b: "2",
+-     c: 3,
+    }`
     );
   },
 });
@@ -418,13 +434,14 @@ Deno.test({
     assertThrows(
       (): void => assertStrictEquals({ a: 1, b: 2 }, { a: 1, c: [3] }),
       AssertionError,
-      [
-        "Values are not strictly equal:",
-        ...createHeader(),
-        removed(`-   { a: ${yellow("1")}, b: ${yellow("2")} }`),
-        added(`+   { a: ${yellow("1")}, c: [ ${yellow("3")} ] }`),
-        "",
-      ].join("\n")
+      `
+    {
+      a: 1,
++     c: [
++       3,
++     ],
+-     b: 2,
+    }`
     );
   },
 });
@@ -435,10 +452,12 @@ Deno.test({
     assertThrows(
       (): void => assertStrictEquals({ a: 1, b: 2 }, { a: 1, b: 2 }),
       AssertionError,
-      [
-        "Values have the same structure but are not reference-equal:\n",
-        red(`     { a: ${yellow("1")}, b: ${yellow("2")} }`),
-      ].join("\n")
+      `Values have the same structure but are not reference-equal:
+
+    {
+      a: 1,
+      b: 2,
+    }`
     );
   },
 });
@@ -533,5 +552,77 @@ Deno.test("Assert Throws Async Non-Error Fail", () => {
     },
     AssertionError,
     "A non-Error object was thrown or rejected."
+  );
+});
+
+Deno.test("assertEquals diff for differently ordered objects", () => {
+  assertThrows(
+    () => {
+      assertEquals(
+        {
+          aaaaaaaaaaaaaaaaaaaaaaaa: 0,
+          bbbbbbbbbbbbbbbbbbbbbbbb: 0,
+          ccccccccccccccccccccccc: 0,
+        },
+        {
+          ccccccccccccccccccccccc: 1,
+          aaaaaaaaaaaaaaaaaaaaaaaa: 0,
+          bbbbbbbbbbbbbbbbbbbbbbbb: 0,
+        }
+      );
+    },
+    AssertionError,
+    `
+    {
+      aaaaaaaaaaaaaaaaaaaaaaaa: 0,
+      bbbbbbbbbbbbbbbbbbbbbbbb: 0,
+-     ccccccccccccccccccccccc: 0,
++     ccccccccccccccccccccccc: 1,
+    }`
+  );
+});
+
+// Check that the diff formatter overrides some default behaviours of
+// `Deno.inspect()` which are problematic for diffing.
+Deno.test("assert diff formatting", () => {
+  // Wraps objects into multiple lines even when they are small. Prints trailing
+  // commas.
+  assertEquals(
+    stripColor(_format({ a: 1, b: 2 })),
+    `{
+  a: 1,
+  b: 2,
+}`
+  );
+
+  // Same for nested small objects.
+  assertEquals(
+    stripColor(_format([{ x: { a: 1, b: 2 }, y: ["a", "b"] }])),
+    `[
+  {
+    x: {
+      a: 1,
+      b: 2,
+    },
+    y: [
+      "a",
+      "b",
+    ],
+  },
+]`
+  );
+
+  // Grouping is disabled.
+  assertEquals(
+    stripColor(_format(["i", "i", "i", "i", "i", "i", "i"])),
+    `[
+  "i",
+  "i",
+  "i",
+  "i",
+  "i",
+  "i",
+  "i",
+]`
   );
 });

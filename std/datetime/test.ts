@@ -81,16 +81,25 @@ Deno.test({
 Deno.test({
   name: "[std/datetime] DayOfYear",
   fn: () => {
-    assertEquals(1, datetime.dayOfYear(new Date("2019-01-01T03:24:00")));
-    assertEquals(70, datetime.dayOfYear(new Date("2019-03-11T03:24:00")));
-    assertEquals(365, datetime.dayOfYear(new Date("2019-12-31T03:24:00")));
+    assertEquals(datetime.dayOfYear(new Date("2019-01-01T03:24:00")), 1);
+    assertEquals(datetime.dayOfYear(new Date("2019-03-11T03:24:00")), 70);
+    assertEquals(datetime.dayOfYear(new Date("2019-12-31T03:24:00")), 365);
   },
 });
 
 Deno.test({
   name: "[std/datetime] currentDayOfYear",
   fn: () => {
-    assertEquals(datetime.currentDayOfYear(), datetime.dayOfYear(new Date()));
+    assertEquals(datetime.dayOfYear(new Date()), datetime.currentDayOfYear());
+  },
+});
+
+Deno.test({
+  name: "[std/datetime] WeekOfYear",
+  fn: () => {
+    assertEquals(datetime.weekOfYear(new Date("2020-01-05T03:24:00")), 1);
+    assertEquals(datetime.weekOfYear(new Date("2020-12-28T03:24:00")), 53); // 53 weeks in 2020
+    assertEquals(datetime.weekOfYear(new Date("2020-06-28T03:24:00")), 26);
   },
 });
 

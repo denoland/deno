@@ -6,7 +6,6 @@ import {
   isWritableStreamDefaultController,
   Pair,
   resetQueue,
-  setFunctionName,
   SizeAlgorithm,
   WriteAlgorithm,
   writableStreamDefaultControllerClearAlgorithms,
@@ -15,6 +14,7 @@ import {
 import * as sym from "./symbols.ts";
 import type { WritableStreamImpl } from "./writable_stream.ts";
 import { customInspect } from "../console.ts";
+import { setFunctionName } from "../util.ts";
 
 export class WritableStreamDefaultControllerImpl<W>
   implements WritableStreamDefaultController {

@@ -1237,6 +1237,7 @@ macro_rules! itest(
 );
 
 // Unfortunately #[ignore] doesn't work with itest!
+#[allow(unused)]
 macro_rules! itest_ignore(
   ($name:ident {$( $key:ident: $value:expr,)*})  => {
     #[ignore]
@@ -1344,12 +1345,6 @@ itest!(_022_info_flag_script {
 itest!(_023_no_ext_with_headers {
   args: "run --reload 023_no_ext_with_headers",
   output: "023_no_ext_with_headers.out",
-});
-
-// FIXME(bartlomieju): this test should use remote file
-itest_ignore!(_024_import_no_ext_with_headers {
-  args: "run --reload 024_import_no_ext_with_headers.ts",
-  output: "024_import_no_ext_with_headers.ts.out",
 });
 
 // TODO(lucacasonato): remove --unstable when permissions goes stable
@@ -1515,8 +1510,8 @@ itest!(_044_bad_resource {
   exit_code: 1,
 });
 
-itest_ignore!(_045_proxy {
-  args: "run --allow-net --allow-env --allow-run --reload 045_proxy_test.ts",
+itest!(_045_proxy {
+  args: "run --allow-net --allow-env --allow-run --allow-read --reload --quiet 045_proxy_test.ts",
   output: "045_proxy_test.ts.out",
   http_server: true,
 });
@@ -2103,9 +2098,9 @@ itest!(cafile_eval {
   http_server: true,
 });
 
-itest_ignore!(cafile_info {
+itest!(cafile_info {
   args:
-    "info --cert tls/RootCA.pem https://localhost:5545/cli/tests/cafile_info.ts",
+    "info --quiet --cert tls/RootCA.pem https://localhost:5545/cli/tests/cafile_info.ts",
   output: "cafile_info.ts.out",
   http_server: true,
 });
@@ -3115,4 +3110,63 @@ fn set_raw_should_not_panic_on_no_tty() {
   assert!(!output.status.success());
   let stderr = std::str::from_utf8(&output.stderr).unwrap().trim();
   assert!(stderr.contains("BadResource"));
+}
+
+#[cfg(windows)]
+enum WinProcConstraints {
+  NoStdIn,
+  NoStdOut,
+  NoStdErr,
+}
+
+#[cfg(windows)]
+fn run_deno_script_constrained(
+  script_path: std::path::PathBuf,
+  constraints: WinProcConstraints,
+) -> Result<(), i64> {
+  let file_path = "cli/tests/DenoWinRunner.ps1";
+  let constraints = match constraints {
+    WinProcConstraints::NoStdIn => "1",
+    WinProcConstraints::NoStdOut => "2",
+    WinProcConstraints::NoStdErr => "4",
+  };
+  let deno_exe_path = util::deno_exe_path()
+    .into_os_string()
+    .into_string()
+    .unwrap();
+
+  let deno_script_path = script_path.into_os_string().into_string().unwrap();
+
+  let args = vec![&deno_exe_path[..], &deno_script_path[..], constraints];
+  util::run_powershell_script_file(file_path, args)
+}
+
+#[cfg(windows)]
+#[test]
+fn should_not_panic_on_no_stdin() {
+  let output = run_deno_script_constrained(
+    util::tests_path().join("echo.ts"),
+    WinProcConstraints::NoStdIn,
+  );
+  output.unwrap();
+}
+
+#[cfg(windows)]
+#[test]
+fn should_not_panic_on_no_stdout() {
+  let output = run_deno_script_constrained(
+    util::tests_path().join("echo.ts"),
+    WinProcConstraints::NoStdOut,
+  );
+  output.unwrap();
+}
+
+#[cfg(windows)]
+#[test]
+fn should_not_panic_on_no_stderr() {
+  let output = run_deno_script_constrained(
+    util::tests_path().join("echo.ts"),
+    WinProcConstraints::NoStdErr,
+  );
+  output.unwrap();
 }
