@@ -1,6 +1,7 @@
 ## File watcher
 
-Deno ships with a built in file watcher that works with other subcommands.
+Deno ships with a built in file watcher that works with various Deno
+subcommands.
 
 ```shell
 # watch current directory recursively
