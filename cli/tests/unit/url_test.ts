@@ -25,32 +25,25 @@ unitTest(function urlParsing(): void {
     String(url),
     "https://foo:bar@baz.qat:8000/qux/quux?foo=bar&baz=12#qat"
   );
-  assertEquals(
-    JSON.stringify({ key: url }),
-    `{"key":"https://foo:bar@baz.qat:8000/qux/quux?foo=bar&baz=12#qat"}`
-  );
+});
 
-  // IPv6 type hostname.
-  const urlv6 = new URL(
-    "https://foo:bar@[::1]:8000/qux/quux?foo=bar&baz=12#qat"
-  );
-  assertEquals(urlv6.origin, "https://[::1]:8000");
-  assertEquals(urlv6.password, "bar");
-  assertEquals(urlv6.pathname, "/qux/quux");
-  assertEquals(urlv6.port, "8000");
-  assertEquals(urlv6.protocol, "https:");
-  assertEquals(urlv6.search, "?foo=bar&baz=12");
-  assertEquals(urlv6.searchParams.getAll("foo"), ["bar"]);
-  assertEquals(urlv6.searchParams.getAll("baz"), ["12"]);
-  assertEquals(urlv6.username, "foo");
-  assertEquals(
-    String(urlv6),
-    "https://foo:bar@[::1]:8000/qux/quux?foo=bar&baz=12#qat"
-  );
-  assertEquals(
-    JSON.stringify({ key: urlv6 }),
-    `{"key":"https://foo:bar@[::1]:8000/qux/quux?foo=bar&baz=12#qat"}`
-  );
+unitTest(function urlHostParsing(): void {
+  // IPv6.
+  assertEquals(new URL("https://foo:bar@[::1]:8000").hostname, "[::1]");
+
+  // Forbidden host code point.
+  assertThrows(() => new URL("https:// a"), TypeError, "Invalid URL.");
+  assertThrows(() => new URL("abcde:// a"), TypeError, "Invalid URL.");
+  assertThrows(() => new URL("https://%"), TypeError, "Invalid URL.");
+  assertEquals(new URL("abcde://%").hostname, "%");
+
+  // Percent-decode.
+  assertEquals(new URL("https://%21").hostname, "!");
+  assertEquals(new URL("abcde://%21").hostname, "%21");
+
+  // TODO(nayeemrmn): IPv4 parsing.
+  // assertEquals(new URL("https://260").hostname, "0.0.1.4");
+  assertEquals(new URL("abcde://260").hostname, "260");
 });
 
 unitTest(function urlModifications(): void {
@@ -208,6 +201,7 @@ unitTest(function urlUncHostname() {
 
 unitTest(function urlHostnameUpperCase() {
   assertEquals(new URL("https://EXAMPLE.COM").href, "https://example.com/");
+  assertEquals(new URL("abcde://EXAMPLE.COM").href, "abcde://EXAMPLE.COM/");
 });
 
 unitTest(function urlTrim() {
@@ -223,11 +217,9 @@ unitTest(function urlEncoding() {
     new URL("https://:a !$&*()=,;+'\"@example.com").password,
     "a%20!$&*()%3D,%3B+%27%22"
   );
-  // FIXME: https://url.spec.whatwg.org/#idna
-  // assertEquals(
-  //   new URL("https://a !$&*()=,+'\"").hostname,
-  //   "a%20%21%24%26%2A%28%29%3D%2C+%27%22"
-  // );
+  assertEquals(new URL("abcde://mañana/c?d#e").hostname, "ma%C3%B1ana");
+  // https://url.spec.whatwg.org/#idna
+  assertEquals(new URL("https://mañana/c?d#e").hostname, "xn--maana-pta");
   assertEquals(
     new URL("https://example.com/a ~!@$&*()=:/,;+'\"\\").pathname,
     "/a%20~!@$&*()=:/,;+'%22/"

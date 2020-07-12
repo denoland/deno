@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 import * as util from "../util.ts";
 import { core } from "../core.ts";
 import { ErrorKind, getErrorClass } from "../errors.ts";
@@ -18,9 +19,10 @@ interface JsonResponse {
 }
 
 // Using an object without a prototype because `Map` was causing GC problems.
-const promiseTable: {
-  [key: number]: util.Resolvable<JsonResponse>;
-} = Object.create(null);
+const promiseTable: Record<
+  number,
+  util.Resolvable<JsonResponse>
+> = Object.create(null);
 let _nextPromiseId = 1;
 
 function nextPromiseId(): number {
@@ -28,13 +30,11 @@ function nextPromiseId(): number {
 }
 
 function decode(ui8: Uint8Array): JsonResponse {
-  const s = core.decode(ui8);
-  return JSON.parse(s) as JsonResponse;
+  return JSON.parse(core.decode(ui8));
 }
 
 function encode(args: object): Uint8Array {
-  const s = JSON.stringify(args);
-  return core.encode(s);
+  return core.encode(JSON.stringify(args));
 }
 
 function unwrapResponse(res: JsonResponse): Ok {
@@ -80,7 +80,7 @@ export async function sendAsync(
   const promise = util.createResolvable<Ok>();
   const argsUi8 = encode(args);
   const buf = core.dispatchByName(opName, argsUi8, ...zeroCopy);
-  if (buf) {
+  if (buf != null) {
     // Sync result.
     const res = decode(buf);
     promise.resolve(res);

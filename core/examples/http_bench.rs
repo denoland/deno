@@ -117,18 +117,19 @@ impl Isolate {
   {
     let state = self.state.clone();
     let core_handler = move |_isolate_state: &mut CoreIsolateState,
-                             control_buf: &[u8],
                              zero_copy_bufs: &mut [ZeroCopyBuf]|
           -> Op {
+      assert!(!zero_copy_bufs.is_empty());
       let state = state.clone();
-      let record = Record::from(control_buf);
+      let record = Record::from(zero_copy_bufs[0].as_ref());
       let is_sync = record.promise_id == 0;
       assert!(is_sync);
 
-      let result: i32 = match handler(state, record.rid, zero_copy_bufs) {
-        Ok(r) => r as i32,
-        Err(_) => -1,
-      };
+      let result: i32 =
+        match handler(state, record.rid, &mut zero_copy_bufs[1..]) {
+          Ok(r) => r as i32,
+          Err(_) => -1,
+        };
       let buf = RecordBuf::from(Record { result, ..record })[..].into();
       Op::Sync(buf)
     };
@@ -147,15 +148,15 @@ impl Isolate {
   {
     let state = self.state.clone();
     let core_handler = move |_isolate_state: &mut CoreIsolateState,
-                             control_buf: &[u8],
                              zero_copy_bufs: &mut [ZeroCopyBuf]|
           -> Op {
+      assert!(!zero_copy_bufs.is_empty());
       let state = state.clone();
-      let record = Record::from(control_buf);
+      let record = Record::from(zero_copy_bufs[0].as_ref());
       let is_sync = record.promise_id == 0;
       assert!(!is_sync);
 
-      let mut zero_copy = zero_copy_bufs.to_vec();
+      let mut zero_copy = zero_copy_bufs[1..].to_vec();
       let fut = async move {
         let op = handler(state, record.rid, &mut zero_copy);
         let result = op

@@ -19,8 +19,16 @@ export class AssertionError extends Error {
   }
 }
 
-function format(v: unknown): string {
-  let string = globalThis.Deno ? Deno.inspect(v) : String(v);
+export function _format(v: unknown): string {
+  let string = globalThis.Deno
+    ? Deno.inspect(v, {
+        depth: Infinity,
+        sorted: true,
+        trailingComma: true,
+        compact: false,
+        iterableLimit: Infinity,
+      })
+    : String(v);
   if (typeof v == "string") {
     string = `"${string.replace(/(?=["\\])/g, "\\")}"`;
   }
@@ -167,8 +175,8 @@ export function assertEquals(
     return;
   }
   let message = "";
-  const actualString = format(actual);
-  const expectedString = format(expected);
+  const actualString = _format(actual);
+  const expectedString = _format(expected);
   try {
     const diffResult = diff(
       actualString.split("\n"),
@@ -248,13 +256,13 @@ export function assertStrictEquals<T>(
   if (msg) {
     message = msg;
   } else {
-    const actualString = format(actual);
-    const expectedString = format(expected);
+    const actualString = _format(actual);
+    const expectedString = _format(expected);
 
     if (actualString === expectedString) {
       const withOffset = actualString
         .split("\n")
-        .map((l) => `     ${l}`)
+        .map((l) => `    ${l}`)
         .join("\n");
       message = `Values have the same structure but are not reference-equal:\n\n${red(
         withOffset
@@ -335,9 +343,9 @@ export function assertArrayContains(
     return;
   }
   if (!msg) {
-    msg = `actual: "${format(actual)}" expected to contain: "${format(
+    msg = `actual: "${_format(actual)}" expected to contain: "${_format(
       expected
-    )}"\nmissing: ${format(missing)}`;
+    )}"\nmissing: ${_format(missing)}`;
   }
   throw new AssertionError(msg);
 }

@@ -851,6 +851,25 @@ unitTest(
   }
 );
 
+unitTest(
+  { perms: { net: true } },
+  async function fetchResponseContentLength(): Promise<void> {
+    const body = new Uint8Array(2 ** 16);
+    const headers = new Headers([["content-type", "application/octet-stream"]]);
+    const res = await fetch("http://localhost:4545/echo_server", {
+      body: body,
+      method: "POST",
+      headers,
+    });
+    assertEquals(Number(res.headers.get("content-length")), body.byteLength);
+
+    const blob = await res.blob();
+    // Make sure Body content-type is correctly set
+    assertEquals(blob.type, "application/octet-stream");
+    assertEquals(blob.size, body.byteLength);
+  }
+);
+
 unitTest(function fetchResponseConstructorNullBody(): void {
   const nullBodyStatus = [204, 205, 304];
 

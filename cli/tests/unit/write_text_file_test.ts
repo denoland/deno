@@ -1,5 +1,6 @@
 import {
   unitTest,
+  assert,
   assertEquals,
   assertThrows,
   assertThrowsAsync,
@@ -48,6 +49,59 @@ unitTest({ perms: { write: false } }, function writeTextFileSyncPerm(): void {
 
 unitTest(
   { perms: { read: true, write: true } },
+  function writeTextFileSyncUpdateMode(): void {
+    if (Deno.build.os !== "windows") {
+      const data = "Hello";
+      const filename = Deno.makeTempDirSync() + "/test.txt";
+      Deno.writeTextFileSync(filename, data, { mode: 0o755 });
+      assertEquals(Deno.statSync(filename).mode! & 0o777, 0o755);
+      Deno.writeTextFileSync(filename, data, { mode: 0o666 });
+      assertEquals(Deno.statSync(filename).mode! & 0o777, 0o666);
+    }
+  }
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  function writeTextFileSyncCreate(): void {
+    const data = "Hello";
+    const filename = Deno.makeTempDirSync() + "/test.txt";
+    let caughtError = false;
+    // if create turned off, the file won't be created
+    try {
+      Deno.writeTextFileSync(filename, data, { create: false });
+    } catch (e) {
+      caughtError = true;
+      assert(e instanceof Deno.errors.NotFound);
+    }
+    assert(caughtError);
+
+    // Turn on create, should have no error
+    Deno.writeTextFileSync(filename, data, { create: true });
+    Deno.writeTextFileSync(filename, data, { create: false });
+    assertEquals("Hello", Deno.readTextFileSync(filename));
+  }
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  function writeTextFileSyncAppend(): void {
+    const data = "Hello";
+    const filename = Deno.makeTempDirSync() + "/test.txt";
+    Deno.writeTextFileSync(filename, data);
+    Deno.writeTextFileSync(filename, data, { append: true });
+    assertEquals("HelloHello", Deno.readTextFileSync(filename));
+    // Now attempt overwrite
+    Deno.writeTextFileSync(filename, data, { append: false });
+    assertEquals("Hello", Deno.readTextFileSync(filename));
+    // append not set should also overwrite
+    Deno.writeTextFileSync(filename, data);
+    assertEquals("Hello", Deno.readTextFileSync(filename));
+  }
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
   async function writeTextFileSuccess(): Promise<void> {
     const filename = Deno.makeTempDirSync() + "/test.txt";
     await Deno.writeTextFile(filename, "Hello");
@@ -90,5 +144,58 @@ unitTest(
     await assertThrowsAsync(async () => {
       await Deno.writeTextFile(filename, "Hello");
     }, Deno.errors.PermissionDenied);
+  }
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  async function writeTextFileUpdateMode(): Promise<void> {
+    if (Deno.build.os !== "windows") {
+      const data = "Hello";
+      const filename = Deno.makeTempDirSync() + "/test.txt";
+      await Deno.writeTextFile(filename, data, { mode: 0o755 });
+      assertEquals(Deno.statSync(filename).mode! & 0o777, 0o755);
+      await Deno.writeTextFile(filename, data, { mode: 0o666 });
+      assertEquals(Deno.statSync(filename).mode! & 0o777, 0o666);
+    }
+  }
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  async function writeTextFileCreate(): Promise<void> {
+    const data = "Hello";
+    const filename = Deno.makeTempDirSync() + "/test.txt";
+    let caughtError = false;
+    // if create turned off, the file won't be created
+    try {
+      await Deno.writeTextFile(filename, data, { create: false });
+    } catch (e) {
+      caughtError = true;
+      assert(e instanceof Deno.errors.NotFound);
+    }
+    assert(caughtError);
+
+    // Turn on create, should have no error
+    await Deno.writeTextFile(filename, data, { create: true });
+    await Deno.writeTextFile(filename, data, { create: false });
+    assertEquals("Hello", Deno.readTextFileSync(filename));
+  }
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  async function writeTextFileAppend(): Promise<void> {
+    const data = "Hello";
+    const filename = Deno.makeTempDirSync() + "/test.txt";
+    await Deno.writeTextFile(filename, data);
+    await Deno.writeTextFile(filename, data, { append: true });
+    assertEquals("HelloHello", Deno.readTextFileSync(filename));
+    // Now attempt overwrite
+    await Deno.writeTextFile(filename, data, { append: false });
+    assertEquals("Hello", Deno.readTextFileSync(filename));
+    // append not set should also overwrite
+    await Deno.writeTextFile(filename, data);
+    assertEquals("Hello", Deno.readTextFileSync(filename));
   }
 );
