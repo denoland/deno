@@ -131,7 +131,7 @@ jobs:
         if: matrix.config.kind == 'lint'
         with:
           path: ~/.cache/dprint
-          key: ${{ runner.os }}-dprint-plugins-${{ hashFiles('.dprintrc.json') }}
+          key: ${{ matrix.config.os }}-dprint-plugins-${{ hashFiles('.dprintrc.json') }}
 
       - name: lint.py
         if: matrix.config.kind == 'lint'
