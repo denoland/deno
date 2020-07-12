@@ -84,8 +84,7 @@ fn generate_config_file(
   config_file_name: Option<String>,
 ) -> Result<(), Error> {
   if let Some(config_file_name) = config_file_name {
-    let mut config_file_copy_path = file_path;
-    config_file_copy_path.set_extension("tsconfig.json");
+    let config_file_copy_path = get_config_file_path(&file_path);
     let cwd = std::env::current_dir().unwrap();
     let config_file_path = cwd.join(config_file_name);
     fs::copy(config_file_path, config_file_copy_path)?;
@@ -225,6 +224,13 @@ pub fn install(
     executable_args.push("--unstable".to_string());
   }
 
+  let config_file_path = get_config_file_path(&file_path);
+  let config_file_path_option = config_file_path.to_str();
+  if let Some(config_file_path_string) = config_file_path_option {
+    executable_args.push("--config".to_string());
+    executable_args.push(format!("{}", config_file_path_string));
+  }
+
   executable_args.push(module_url.to_string());
   executable_args.extend_from_slice(&args);
 
@@ -256,6 +262,12 @@ fn is_in_path(dir: &PathBuf) -> bool {
     }
   }
   false
+}
+
+fn get_config_file_path(file_path: &PathBuf) -> PathBuf {
+  let mut config_file_copy_path = PathBuf::from(file_path);
+  config_file_copy_path.set_extension("tsconfig.json");
+  config_file_copy_path
 }
 
 #[cfg(test)]
