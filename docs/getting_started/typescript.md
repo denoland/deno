@@ -23,6 +23,18 @@ useful when type checking is provided by your editor and you want startup time
 to be as fast as possible (for example when restarting the program automatically
 with a file watcher).
 
+Because `--no-check` does not do TypeScript type checking we can not
+automatically remove type only imports and exports as this would require type
+information. For this purpose TypeScript provides the
+[`import type` and `export type` syntax](https://www.typescriptlang.org/docs/handbook/release-notes/typescript-3-8.html#type-only-imports-and-exports).
+To export a type in a different file use
+`export type { AnInterface } from "./mod.ts";`. To import a type use
+`import type { AnInterface } from "./mod.ts";`. You can check that you are using
+`import type` and `export type` where necessary by setting the
+`importsNotUsedAsValues` TypeScript compiler option to `"error"`. You can see an
+example `tsconfig.json` with this option
+[in the standard library](https://github.com/denoland/deno/blob/master/std/tsconfig_test.json).
+
 ### Using external type definitions
 
 The out of the box TypeScript compiler though relies on both extension-less
