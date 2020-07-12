@@ -18,6 +18,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
 use std::convert::From;
+use std::path::Path;
 use std::thread::JoinHandle;
 
 pub fn init(i: &mut CoreIsolate, s: &State) {
@@ -47,7 +48,10 @@ fn create_web_worker(
 ) -> Result<WebWorker, ErrBox> {
   let maybe_import_map = match import_map_path.as_ref() {
     None => None,
-    Some(file_path) => Some(ImportMap::load(file_path)?),
+    Some(file_path) => {
+      permissions.check_read(Path::new(file_path))?;
+      Some(ImportMap::load(file_path)?)
+    }
   };
 
   let state = State::new_for_worker(
