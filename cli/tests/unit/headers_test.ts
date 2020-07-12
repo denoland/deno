@@ -6,7 +6,7 @@ import {
   assertStringContains,
 } from "./test_util.ts";
 const {
-  stringifyArgs,
+  inspectArgs,
   // @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
 } = Deno[Deno.internal];
 
@@ -402,7 +402,7 @@ unitTest(function toStringShouldBeWebCompatibility(): void {
 });
 
 function stringify(...args: unknown[]): string {
-  return stringifyArgs(args).replace(/\n$/, "");
+  return inspectArgs(args).replace(/\n$/, "");
 }
 
 unitTest(function customInspectReturnsCorrectHeadersFormat(): void {

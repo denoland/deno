@@ -3,6 +3,100 @@
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 
+/** Deno provides extra properties on `import.meta`.  These are included here
+ * to ensure that these are still available when using the Deno namepsace in
+ * conjunction with other type libs, like `dom`. */
+declare interface ImportMeta {
+  /** A string representation of the fully qualified module URL. */
+  url: string;
+
+  /** A flag that indicates if the current module is the main module that was
+   * called when starting the program under Deno.
+   *
+   * ```ts
+   * if (import.meta.main) {
+   *   // this was loaded as the main module, maybe do some bootstrapping
+   * }
+   * ```
+   */
+  main: boolean;
+}
+
+/** Deno supports user timing Level 3 (see: https://w3c.github.io/user-timing)
+ * which is not widely supported yet in other runtimes.  These types are here
+ * so that these features are still available when using the Deno namespace
+ * in conjunction with other type libs, like `dom`. */
+declare interface Performance {
+  /** Stores a timestamp with the associated name (a "mark"). */
+  mark(markName: string, options?: PerformanceMarkOptions): PerformanceMark;
+
+  /** Stores the `DOMHighResTimeStamp` duration between two marks along with the
+   * associated name (a "measure"). */
+  measure(
+    measureName: string,
+    options?: PerformanceMeasureOptions
+  ): PerformanceMeasure;
+}
+
+declare interface PerformanceMarkOptions {
+  /** Metadata to be included in the mark. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  detail?: any;
+
+  /** Timestamp to be used as the mark time. */
+  startTime?: number;
+}
+
+declare interface PerformanceMeasureOptions {
+  /** Metadata to be included in the measure. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  detail?: any;
+
+  /** Timestamp to be used as the start time or string to be used as start
+   * mark.*/
+  start?: string | number;
+
+  /** Duration between the start and end times. */
+  duration?: number;
+
+  /** Timestamp to be used as the end time or string to be used as end mark. */
+  end?: string | number;
+}
+
+declare interface Permissions {
+  /** Resolves to the current status of a permission.
+   *
+   * ```ts
+   * const status = await navigator.permissions.query({ name: "read", path: "/etc" });
+   * if (status.state === "granted") {
+   *   data = await Deno.readFile("/etc/passwd");
+   * }
+   * ```
+   */
+  query(permissionDesc: Deno.PermissionDescriptor): Promise<PermissionStatus>;
+
+  /** Requests the permission, and resolves to the state of the permission.
+   *
+   * ```ts
+   * const status = await navigator.permissions.request({ name: "env" });
+   * if (status.state === "granted") {
+   *   console.log(Deno.dir("home");
+   * } else {
+   *   console.log("'env' permission is denied.");
+   * }
+   * ```
+   */
+  request(permissionDesc: Deno.PermissionDescriptor): Promise<PermissionStatus>;
+
+  /** Revokes a permission, and resolves to the state of the permission.
+   *
+   * ```ts
+   * const status = await Deno.revoke({ name: "run" });
+   * ```
+   */
+  revoke(permissionDesc: Deno.PermissionDescriptor): Promise<PermissionStatus>;
+}
+
 declare namespace Deno {
   /** A set of error constructors that are raised by Deno APIs. */
   export const errors: {
@@ -1064,10 +1158,14 @@ declare namespace Deno {
    * Throws Error (not implemented) if executed on Windows
    *
    * @param path path to the file
-   * @param uid user id (UID) of the new owner
-   * @param gid group id (GID) of the new owner
+   * @param uid user id (UID) of the new owner, or `null` for no change
+   * @param gid group id (GID) of the new owner, or `null` for no change
    */
-  export function chownSync(path: string | URL, uid: number, gid: number): void;
+  export function chownSync(
+    path: string | URL,
+    uid: number | null,
+    gid: number | null
+  ): void;
 
   /** Change owner of a regular file or directory. This functionality
    * is not available on Windows.
@@ -1081,13 +1179,13 @@ declare namespace Deno {
    * Throws Error (not implemented) if executed on Windows
    *
    * @param path path to the file
-   * @param uid user id (UID) of the new owner
-   * @param gid group id (GID) of the new owner
+   * @param uid user id (UID) of the new owner, or `null` for no change
+   * @param gid group id (GID) of the new owner, or `null` for no change
    */
   export function chown(
     path: string | URL,
-    uid: number,
-    gid: number
+    uid: number | null,
+    gid: number | null
   ): Promise<void>;
 
   export interface RemoveOptions {
@@ -1504,7 +1602,11 @@ declare namespace Deno {
    *
    * Requires `allow-write` permission, and `allow-read` if `options.create` is `false`.
    */
-  export function writeTextFileSync(path: string | URL, data: string): void;
+  export function writeTextFileSync(
+    path: string | URL,
+    data: string,
+    options?: WriteFileOptions
+  ): void;
 
   /** Asynchronously write string `data` to the given `path`, by default creating a new file if needed,
    * else overwriting.
@@ -1517,7 +1619,8 @@ declare namespace Deno {
    */
   export function writeTextFile(
     path: string | URL,
-    data: string
+    data: string,
+    options?: WriteFileOptions
   ): Promise<void>;
 
   /** Synchronously truncates or extends the specified file, to reach the
@@ -1779,9 +1882,15 @@ declare namespace Deno {
   export class Process<T extends RunOptions = RunOptions> {
     readonly rid: number;
     readonly pid: number;
-    readonly stdin: T["stdin"] extends "piped" ? Writer & Closer : null;
-    readonly stdout: T["stdout"] extends "piped" ? Reader & Closer : null;
-    readonly stderr: T["stderr"] extends "piped" ? Reader & Closer : null;
+    readonly stdin: T["stdin"] extends "piped"
+      ? Writer & Closer
+      : (Writer & Closer) | null;
+    readonly stdout: T["stdout"] extends "piped"
+      ? Reader & Closer
+      : (Reader & Closer) | null;
+    readonly stderr: T["stderr"] extends "piped"
+      ? Reader & Closer
+      : (Reader & Closer) | null;
     /** Resolves to the current status of the process. */
     status(): Promise<ProcessStatus>;
     /** Buffer the stdout until EOF and return it as `Uint8Array`.
@@ -1866,8 +1975,77 @@ declare namespace Deno {
    * Requires `allow-run` permission. */
   export function run<T extends RunOptions = RunOptions>(opt: T): Process<T>;
 
-  interface InspectOptions {
+  /** The name of a "powerful feature" which needs permission.
+   *
+   * See: https://w3c.github.io/permissions/#permission-registry
+   *
+   * Note that the definition of `PermissionName` in the above spec is swapped
+   * out for a set of Deno permissions which are not web-compatible. */
+  export type PermissionName =
+    | "run"
+    | "read"
+    | "write"
+    | "net"
+    | "env"
+    | "plugin"
+    | "hrtime";
+
+  export interface RunPermissionDescriptor {
+    name: "run";
+  }
+
+  export interface ReadPermissionDescriptor {
+    name: "read";
+    path?: string;
+  }
+
+  export interface WritePermissionDescriptor {
+    name: "write";
+    path?: string;
+  }
+
+  export interface NetPermissionDescriptor {
+    name: "net";
+    url?: string;
+  }
+
+  export interface EnvPermissionDescriptor {
+    name: "env";
+  }
+
+  export interface PluginPermissionDescriptor {
+    name: "plugin";
+  }
+
+  export interface HrtimePermissionDescriptor {
+    name: "hrtime";
+  }
+
+  /** Permission descriptors which define a permission and can be queried,
+   * requested, or revoked.
+   *
+   * See: https://w3c.github.io/permissions/#permission-descriptor */
+  export type PermissionDescriptor =
+    | RunPermissionDescriptor
+    | ReadPermissionDescriptor
+    | WritePermissionDescriptor
+    | NetPermissionDescriptor
+    | EnvPermissionDescriptor
+    | PluginPermissionDescriptor
+    | HrtimePermissionDescriptor;
+
+  export interface InspectOptions {
+    /** Traversal depth for nested objects. Defaults to 4. */
     depth?: number;
+    /** Sort Object, Set and Map entries by key. Defaults to false. */
+    sorted?: boolean;
+    /** Add a trailing comma for multiline collections. Defaults to false. */
+    trailingComma?: boolean;
+    /** Try to fit more than one entry of a collection on the same line.
+     * Defaults to true. */
+    compact?: boolean;
+    /** The maximum number of iterable entries to print. Defaults to 100. */
+    iterableLimit?: number;
   }
 
   /** Converts the input into a string that has the same format as printed by

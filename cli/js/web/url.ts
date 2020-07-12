@@ -1,11 +1,14 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { build } from "../build.ts";
 import { getRandomValues } from "../ops/get_random_values.ts";
+import { domainToAscii } from "../ops/idna.ts";
 import { customInspect } from "./console.ts";
+import { TextEncoder } from "./text_encoding.ts";
 import { urls } from "./url_search_params.ts";
 
 interface URLParts {
   protocol: string;
+  slashes: string;
   username: string;
   password: string;
   hostname: string;
@@ -24,7 +27,7 @@ const searchParamsMethods: Array<keyof URLSearchParams> = [
 const specialSchemes = ["ftp", "file", "http", "https", "ws", "wss"];
 
 // https://url.spec.whatwg.org/#special-scheme
-const schemePorts: { [key: string]: string } = {
+const schemePorts: Record<string, string> = {
   ftp: "21",
   file: "",
   http: "80",
@@ -57,17 +60,23 @@ function parse(url: string, isBase = true): URLParts | undefined {
   if (isBase && parts.protocol == "") {
     return undefined;
   }
+  const isSpecial = specialSchemes.includes(parts.protocol);
   if (parts.protocol == "file") {
+    parts.slashes = "//";
     parts.username = "";
     parts.password = "";
     [parts.hostname, restUrl] = takePattern(restUrl, /^[/\\]{2}([^/\\?#]*)/);
     parts.port = "";
-  } else if (specialSchemes.includes(parts.protocol)) {
+    if (build.os == "windows" && parts.hostname == "") {
+      // UNC paths. e.g. "\\\\localhost\\foo\\bar" on Windows should be
+      // representable as `new URL("file:////localhost/foo/bar")` which is
+      // equivalent to: `new URL("file://localhost/foo/bar")`.
+      [parts.hostname, restUrl] = takePattern(restUrl, /^[/\\]{2,}([^/\\?#]*)/);
+    }
+  } else if (isSpecial) {
+    parts.slashes = "//";
     let restAuthority;
-    [restAuthority, restUrl] = takePattern(
-      restUrl,
-      /^[/\\]{2}[/\\]*([^/\\?#]+)/
-    );
+    [restAuthority, restUrl] = takePattern(restUrl, /^[/\\]{2,}([^/\\?#]+)/);
     if (isBase && restAuthority == "") {
       return undefined;
     }
@@ -89,17 +98,18 @@ function parse(url: string, isBase = true): URLParts | undefined {
       return undefined;
     }
   } else {
+    [parts.slashes, restUrl] = takePattern(restUrl, /^([/\\]{2})/);
     parts.username = "";
     parts.password = "";
-    parts.hostname = "";
+    if (parts.slashes) {
+      [parts.hostname, restUrl] = takePattern(restUrl, /^([^/\\?#]*)/);
+    } else {
+      parts.hostname = "";
+    }
     parts.port = "";
   }
   try {
-    const IPv6re = /^\[[0-9a-fA-F.:]{2,}\]$/;
-    if (!IPv6re.test(parts.hostname)) {
-      parts.hostname = encodeHostname(parts.hostname); // Non-IPv6 URLs
-    }
-    parts.hostname = parts.hostname.toLowerCase();
+    parts.hostname = encodeHostname(parts.hostname, isSpecial);
   } catch {
     return undefined;
   }
@@ -176,8 +186,8 @@ function resolvePathFromBase(
 
   let driveLetterPrefix = "";
   if (build.os == "windows" && isFilePath) {
-    let driveLetter = "";
-    let baseDriveLetter = "";
+    let driveLetter: string;
+    let baseDriveLetter: string;
     [driveLetter, normalizedPath] = takePattern(
       normalizedPath,
       /^(\/[A-Za-z]:)(?=\/)/
@@ -211,7 +221,8 @@ function resolvePathFromBase(
 
 function isValidPort(value: string): boolean {
   // https://url.spec.whatwg.org/#port-state
-  if (value === "") true;
+  if (value === "") return true;
+
   const port = Number(value);
   return Number.isInteger(port) && port >= 0 && port <= MAX_PORT;
 }
@@ -294,7 +305,8 @@ export class URLImpl implements URL {
   set hostname(value: string) {
     value = String(value);
     try {
-      parts.get(this)!.hostname = encodeHostname(value);
+      const isSpecial = specialSchemes.includes(parts.get(this)!.protocol);
+      parts.get(this)!.hostname = encodeHostname(value, isSpecial);
     } catch {}
   }
 
@@ -303,11 +315,9 @@ export class URLImpl implements URL {
       this.username || this.password
         ? `${this.username}${this.password ? ":" + this.password : ""}@`
         : "";
-    let slash = "";
-    if (this.host || this.protocol === "file:") {
-      slash = "//";
-    }
-    return `${this.protocol}${slash}${authentication}${this.host}${this.pathname}${this.search}${this.hash}`;
+    return `${this.protocol}${parts.get(this)!.slashes}${authentication}${
+      this.host
+    }${this.pathname}${this.search}${this.hash}`;
   }
 
   set href(value: string) {
@@ -406,7 +416,7 @@ export class URLImpl implements URL {
     let baseParts: URLParts | undefined;
     if (base) {
       baseParts = typeof base === "string" ? parse(base) : parts.get(base);
-      if (baseParts == undefined) {
+      if (baseParts === undefined) {
         throw new TypeError("Invalid base URL.");
       }
     }
@@ -423,6 +433,7 @@ export class URLImpl implements URL {
     } else if (baseParts) {
       parts.set(this, {
         protocol: baseParts.protocol,
+        slashes: baseParts.slashes,
         username: baseParts.username,
         password: baseParts.password,
         hostname: baseParts.hostname,
@@ -475,7 +486,7 @@ export class URLImpl implements URL {
 }
 
 function charInC0ControlSet(c: string): boolean {
-  return c >= "\u0000" && c <= "\u001F";
+  return (c >= "\u0000" && c <= "\u001F") || c > "\u007E";
 }
 
 function charInSearchSet(c: string): boolean {
@@ -499,20 +510,72 @@ function charInUserinfoSet(c: string): boolean {
   return charInPathSet(c) || ["\u0027", "\u002F", "\u003A", "\u003B", "\u003D", "\u0040", "\u005B", "\u005C", "\u005D", "\u005E", "\u007C"].includes(c);
 }
 
+function charIsForbiddenInHost(c: string): boolean {
+  // prettier-ignore
+  return ["\u0000", "\u0009", "\u000A", "\u000D", "\u0020", "\u0023", "\u0025", "\u002F", "\u003A", "\u003C", "\u003E", "\u003F", "\u0040", "\u005B", "\u005C", "\u005D", "\u005E"].includes(c);
+}
+
+const encoder = new TextEncoder();
+
 function encodeChar(c: string): string {
-  return `%${c.charCodeAt(0).toString(16)}`.toUpperCase();
+  return [...encoder.encode(c)]
+    .map((n) => `%${n.toString(16)}`)
+    .join("")
+    .toUpperCase();
 }
 
 function encodeUserinfo(s: string): string {
   return [...s].map((c) => (charInUserinfoSet(c) ? encodeChar(c) : c)).join("");
 }
 
-function encodeHostname(s: string): string {
-  // FIXME: https://url.spec.whatwg.org/#idna
-  if (s.includes(":")) {
+function encodeHostname(s: string, isSpecial = true): string {
+  // IPv6 parsing.
+  if (s.startsWith("[") && s.endsWith("]")) {
+    if (!s.match(/^\[[0-9A-Fa-f.:]{2,}\]$/)) {
+      throw new TypeError("Invalid hostname.");
+    }
+    return s.toLowerCase();
+  }
+
+  let result = s;
+
+  if (!isSpecial) {
+    // Check against forbidden host code points except for "%".
+    for (const c of result) {
+      if (charIsForbiddenInHost(c) && c != "\u0025") {
+        throw new TypeError("Invalid hostname.");
+      }
+    }
+
+    // Percent-encode C0 control set.
+    result = [...result]
+      .map((c) => (charInC0ControlSet(c) ? encodeChar(c) : c))
+      .join("");
+
+    return result;
+  }
+
+  // Percent-decode.
+  if (result.match(/%(?![0-9A-Fa-f]{2})/) != null) {
     throw new TypeError("Invalid hostname.");
   }
-  return encodeURIComponent(s);
+  result = result.replace(/%(.{2})/g, (_, hex) =>
+    String.fromCodePoint(Number(`0x${hex}`))
+  );
+
+  // IDNA domain to ASCII.
+  result = domainToAscii(result);
+
+  // Check against forbidden host code points.
+  for (const c of result) {
+    if (charIsForbiddenInHost(c)) {
+      throw new TypeError("Invalid hostname.");
+    }
+  }
+
+  // TODO(nayeemrmn): IPv4 parsing.
+
+  return result;
 }
 
 function encodePathname(s: string): string {

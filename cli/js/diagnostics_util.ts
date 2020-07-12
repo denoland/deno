@@ -16,8 +16,6 @@ const unstableDenoGlobalProperties = [
   "link",
   "symlinkSync",
   "symlink",
-  "DirKind",
-  "dir",
   "loadavg",
   "osRelease",
   "openPlugin",

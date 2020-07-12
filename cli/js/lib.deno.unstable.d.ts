@@ -43,6 +43,21 @@ declare namespace Deno {
    * Requires `allow-read` and `allow-write` permissions. */
   export function link(oldpath: string, newpath: string): Promise<void>;
 
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Gets the size of the console as columns/rows.
+   *
+   * ```ts
+   * const { columns, rows } = await Deno.consoleSize(Deno.stdout.rid);
+   * ```
+   */
+  export function consoleSize(
+    rid: number
+  ): {
+    columns: number;
+    rows: number;
+  };
+
   export type SymlinkOptions = {
     type: "file" | "dir";
   };
@@ -82,175 +97,6 @@ declare namespace Deno {
     newpath: string,
     options?: SymlinkOptions
   ): Promise<void>;
-
-  /** **UNSTABLE** */
-  export type DirKind =
-    | "home"
-    | "cache"
-    | "config"
-    | "executable"
-    | "data"
-    | "data_local"
-    | "audio"
-    | "desktop"
-    | "document"
-    | "download"
-    | "font"
-    | "picture"
-    | "public"
-    | "template"
-    | "tmp"
-    | "video";
-
-  /**
-   * **UNSTABLE**: Currently under evaluation to decide if method name `dir` and
-   * parameter type alias name `DirKind` should be renamed.
-   *
-   * Returns the user and platform specific directories.
-   *
-   * ```ts
-   * const homeDirectory = Deno.dir("home");
-   * ```
-   *
-   * Requires `allow-env` permission.
-   *
-   * Returns `null` if there is no applicable directory or if any other error
-   * occurs.
-   *
-   * Argument values: `"home"`, `"cache"`, `"config"`, `"executable"`, `"data"`,
-   * `"data_local"`, `"audio"`, `"desktop"`, `"document"`, `"download"`,
-   * `"font"`, `"picture"`, `"public"`, `"template"`, `"tmp"`, `"video"`
-   *
-   * `"home"`
-   *
-   * |Platform | Value                                    | Example                |
-   * | ------- | -----------------------------------------| -----------------------|
-   * | Linux   | `$HOME`                                  | /home/alice            |
-   * | macOS   | `$HOME`                                  | /Users/alice           |
-   * | Windows | `{FOLDERID_Profile}`                     | C:\Users\Alice         |
-   *
-   * `"cache"`
-   *
-   * |Platform | Value                               | Example                      |
-   * | ------- | ----------------------------------- | ---------------------------- |
-   * | Linux   | `$XDG_CACHE_HOME` or `$HOME`/.cache | /home/alice/.cache           |
-   * | macOS   | `$HOME`/Library/Caches              | /Users/Alice/Library/Caches  |
-   * | Windows | `{FOLDERID_LocalAppData}`           | C:\Users\Alice\AppData\Local |
-   *
-   * `"config"`
-   *
-   * |Platform | Value                                 | Example                          |
-   * | ------- | ------------------------------------- | -------------------------------- |
-   * | Linux   | `$XDG_CONFIG_HOME` or `$HOME`/.config | /home/alice/.config              |
-   * | macOS   | `$HOME`/Library/Preferences           | /Users/Alice/Library/Preferences |
-   * | Windows | `{FOLDERID_RoamingAppData}`           | C:\Users\Alice\AppData\Roaming   |
-   *
-   * `"executable"`
-   *
-   * |Platform | Value                                                           | Example                |
-   * | ------- | --------------------------------------------------------------- | -----------------------|
-   * | Linux   | `XDG_BIN_HOME` or `$XDG_DATA_HOME`/../bin or `$HOME`/.local/bin | /home/alice/.local/bin |
-   * | macOS   | -                                                               | -                      |
-   * | Windows | -                                                               | -                      |
-   *
-   * `"data"`
-   *
-   * |Platform | Value                                    | Example                                  |
-   * | ------- | ---------------------------------------- | ---------------------------------------- |
-   * | Linux   | `$XDG_DATA_HOME` or `$HOME`/.local/share | /home/alice/.local/share                 |
-   * | macOS   | `$HOME`/Library/Application Support      | /Users/Alice/Library/Application Support |
-   * | Windows | `{FOLDERID_RoamingAppData}`              | C:\Users\Alice\AppData\Roaming           |
-   *
-   * `"data_local"`
-   *
-   * |Platform | Value                                    | Example                                  |
-   * | ------- | ---------------------------------------- | ---------------------------------------- |
-   * | Linux   | `$XDG_DATA_HOME` or `$HOME`/.local/share | /home/alice/.local/share                 |
-   * | macOS   | `$HOME`/Library/Application Support      | /Users/Alice/Library/Application Support |
-   * | Windows | `{FOLDERID_LocalAppData}`                | C:\Users\Alice\AppData\Local             |
-   *
-   * `"audio"`
-   *
-   * |Platform | Value              | Example              |
-   * | ------- | ------------------ | -------------------- |
-   * | Linux   | `XDG_MUSIC_DIR`    | /home/alice/Music    |
-   * | macOS   | `$HOME`/Music      | /Users/Alice/Music   |
-   * | Windows | `{FOLDERID_Music}` | C:\Users\Alice\Music |
-   *
-   * `"desktop"`
-   *
-   * |Platform | Value                | Example                |
-   * | ------- | -------------------- | ---------------------- |
-   * | Linux   | `XDG_DESKTOP_DIR`    | /home/alice/Desktop    |
-   * | macOS   | `$HOME`/Desktop      | /Users/Alice/Desktop   |
-   * | Windows | `{FOLDERID_Desktop}` | C:\Users\Alice\Desktop |
-   *
-   * `"document"`
-   *
-   * |Platform | Value                  | Example                  |
-   * | ------- | ---------------------- | ------------------------ |
-   * | Linux   | `XDG_DOCUMENTS_DIR`    | /home/alice/Documents    |
-   * | macOS   | `$HOME`/Documents      | /Users/Alice/Documents   |
-   * | Windows | `{FOLDERID_Documents}` | C:\Users\Alice\Documents |
-   *
-   * `"download"`
-   *
-   * |Platform | Value                  | Example                  |
-   * | ------- | ---------------------- | ------------------------ |
-   * | Linux   | `XDG_DOWNLOAD_DIR`     | /home/alice/Downloads    |
-   * | macOS   | `$HOME`/Downloads      | /Users/Alice/Downloads   |
-   * | Windows | `{FOLDERID_Downloads}` | C:\Users\Alice\Downloads |
-   *
-   * `"font"`
-   *
-   * |Platform | Value                                                | Example                        |
-   * | ------- | ---------------------------------------------------- | ------------------------------ |
-   * | Linux   | `$XDG_DATA_HOME`/fonts or `$HOME`/.local/share/fonts | /home/alice/.local/share/fonts |
-   * | macOS   | `$HOME/Library/Fonts`                                | /Users/Alice/Library/Fonts     |
-   * | Windows | –                                                    | –                              |
-   *
-   * `"picture"`
-   *
-   * |Platform | Value                 | Example                 |
-   * | ------- | --------------------- | ----------------------- |
-   * | Linux   | `XDG_PICTURES_DIR`    | /home/alice/Pictures    |
-   * | macOS   | `$HOME`/Pictures      | /Users/Alice/Pictures   |
-   * | Windows | `{FOLDERID_Pictures}` | C:\Users\Alice\Pictures |
-   *
-   * `"public"`
-   *
-   * |Platform | Value                 | Example             |
-   * | ------- | --------------------- | ------------------- |
-   * | Linux   | `XDG_PUBLICSHARE_DIR` | /home/alice/Public  |
-   * | macOS   | `$HOME`/Public        | /Users/Alice/Public |
-   * | Windows | `{FOLDERID_Public}`   | C:\Users\Public     |
-   *
-   * `"template"`
-   *
-   * |Platform | Value                  | Example                                                    |
-   * | ------- | ---------------------- | ---------------------------------------------------------- |
-   * | Linux   | `XDG_TEMPLATES_DIR`    | /home/alice/Templates                                      |
-   * | macOS   | –                      | –                                                          |
-   * | Windows | `{FOLDERID_Templates}` | C:\Users\Alice\AppData\Roaming\Microsoft\Windows\Templates |
-   *
-   * `"tmp"`
-   *
-   * |Platform | Value                  | Example                                                    |
-   * | ------- | ---------------------- | ---------------------------------------------------------- |
-   * | Linux   | `TMPDIR`               | /tmp                                                       |
-   * | macOS   | `TMPDIR`               | /tmp                                                       |
-   * | Windows | `{TMP}`                | C:\Users\Alice\AppData\Local\Temp                          |
-   *
-   * `"video"`
-   *
-   * |Platform | Value               | Example               |
-   * | ------- | ------------------- | --------------------- |
-   * | Linux   | `XDG_VIDEOS_DIR`    | /home/alice/Videos    |
-   * | macOS   | `$HOME`/Movies      | /Users/Alice/Movies   |
-   * | Windows | `{FOLDERID_Videos}` | C:\Users\Alice\Videos |
-   *
-   */
-  export function dir(kind: DirKind): string | null;
 
   /** **Unstable**  There are questions around which permission this needs. And
    * maybe should be renamed (loadAverage?)
@@ -1125,114 +971,6 @@ declare namespace Deno {
    * Requires `allow-run` permission. */
   export function kill(pid: number, signo: number): void;
 
-  /** The name of a "powerful feature" which needs permission.
-   *
-   * See: https://w3c.github.io/permissions/#permission-registry
-   *
-   * Note that the definition of `PermissionName` in the above spec is swapped
-   * out for a set of Deno permissions which are not web-compatible. */
-  export type PermissionName =
-    | "run"
-    | "read"
-    | "write"
-    | "net"
-    | "env"
-    | "plugin"
-    | "hrtime";
-
-  /** The current status of the permission.
-   *
-   * See: https://w3c.github.io/permissions/#status-of-a-permission */
-  export type PermissionState = "granted" | "denied" | "prompt";
-
-  export interface RunPermissionDescriptor {
-    name: "run";
-  }
-
-  export interface ReadPermissionDescriptor {
-    name: "read";
-    path?: string;
-  }
-
-  export interface WritePermissionDescriptor {
-    name: "write";
-    path?: string;
-  }
-
-  export interface NetPermissionDescriptor {
-    name: "net";
-    url?: string;
-  }
-
-  export interface EnvPermissionDescriptor {
-    name: "env";
-  }
-
-  export interface PluginPermissionDescriptor {
-    name: "plugin";
-  }
-
-  export interface HrtimePermissionDescriptor {
-    name: "hrtime";
-  }
-
-  /** Permission descriptors which define a permission and can be queried,
-   * requested, or revoked.
-   *
-   * See: https://w3c.github.io/permissions/#permission-descriptor */
-  export type PermissionDescriptor =
-    | RunPermissionDescriptor
-    | ReadPermissionDescriptor
-    | WritePermissionDescriptor
-    | NetPermissionDescriptor
-    | EnvPermissionDescriptor
-    | PluginPermissionDescriptor
-    | HrtimePermissionDescriptor;
-
-  export class Permissions {
-    /** Resolves to the current status of a permission.
-     *
-     * ```ts
-     * const status = await Deno.permissions.query({ name: "read", path: "/etc" });
-     * if (status.state === "granted") {
-     *   data = await Deno.readFile("/etc/passwd");
-     * }
-     * ```
-     */
-    query(desc: PermissionDescriptor): Promise<PermissionStatus>;
-
-    /** Revokes a permission, and resolves to the state of the permission.
-     *
-     *       const status = await Deno.permissions.revoke({ name: "run" });
-     *       assert(status.state !== "granted")
-     */
-    revoke(desc: PermissionDescriptor): Promise<PermissionStatus>;
-
-    /** Requests the permission, and resolves to the state of the permission.
-     *
-     * ```ts
-     * const status = await Deno.permissions.request({ name: "env" });
-     * if (status.state === "granted") {
-     *   console.log(Deno.dir("home");
-     * } else {
-     *   console.log("'env' permission is denied.");
-     * }
-     * ```
-     */
-    request(desc: PermissionDescriptor): Promise<PermissionStatus>;
-  }
-
-  /** **UNSTABLE**: Under consideration to move to `navigator.permissions` to
-   * match web API. It could look like `navigator.permissions.query({ name: Deno.symbols.read })`.
-   */
-  export const permissions: Permissions;
-
-  /** see: https://w3c.github.io/permissions/#permissionstatus */
-  export class PermissionStatus {
-    state: PermissionState;
-    constructor(state: PermissionState);
-  }
-
   /**  **UNSTABLE**: New API, yet to be vetted.  Additional consideration is still
    * necessary around the permissions required.
    *
@@ -1248,4 +986,118 @@ declare namespace Deno {
 
   /** **UNSTABLE**: The URL of the file that was originally executed from the command-line. */
   export const mainModule: string;
+
+  /** **UNSTABLE**: new API, yet to be vetted.
+   * Synchronously truncates or extends the specified file stream, to reach the
+   * specified `len`.  If `len` is not specified then the entire file contents
+   * are truncated.
+   *
+   * ```ts
+   * // truncate the entire file
+   * const file = Deno.open("my_file.txt", { read: true, write: true, truncate: true, create: true });
+   * Deno.ftruncateSync(file.rid);
+   *
+   * // truncate part of the file
+   * const file = Deno.open("my_file.txt", { read: true, write: true, create: true });
+   * Deno.write(file.rid, new TextEncoder().encode("Hello World"));
+   * Deno.ftruncateSync(file.rid, 7);
+   * const data = new Uint8Array(32);
+   * Deno.readSync(file.rid, data);
+   * console.log(new TextDecoder().decode(data)); // Hello W
+   * ```
+   */
+  export function ftruncateSync(rid: number, len?: number): void;
+
+  /** **UNSTABLE**: new API, yet to be vetted.
+   * Truncates or extends the specified file stream, to reach the specified `len`. If
+   * `len` is not specified then the entire file contents are truncated.
+   *
+   * ```ts
+   * // truncate the entire file
+   * const file = Deno.open("my_file.txt", { read: true, write: true, create: true });
+   * await Deno.ftruncate(file.rid);
+   *
+   * // truncate part of the file
+   * const file = Deno.open("my_file.txt", { read: true, write: true, create: true });
+   * await Deno.write(file.rid, new TextEncoder().encode("Hello World"));
+   * await Deno.ftruncate(file.rid, 7);
+   * const data = new Uint8Array(32);
+   * await Deno.read(file.rid, data);
+   * console.log(new TextDecoder().decode(data)); // Hello W
+   * ```
+   */
+  export function ftruncate(rid: number, len?: number): Promise<void>;
+
+  /* **UNSTABLE**: New API, yet to be vetted.
+   * Synchronously flushes any pending data operations of the given file stream to disk.
+   *  ```ts
+   * const file = Deno.openSync("my_file.txt", { read: true, write: true, create: true });
+   * Deno.writeSync(file.rid, new TextEncoder().encode("Hello World"));
+   * Deno.fdatasyncSync(file.rid);
+   * console.log(new TextDecoder().decode(Deno.readFileSync("my_file.txt"))); // Hello World
+   * ```
+   */
+  export function fdatasyncSync(rid: number): void;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   * Flushes any pending data operations of the given file stream to disk.
+   *  ```ts
+   * const file = await Deno.open("my_file.txt", { read: true, write: true, create: true });
+   * await Deno.write(file.rid, new TextEncoder().encode("Hello World"));
+   * await Deno.fdatasync(file.rid);
+   * console.log(new TextDecoder().decode(await Deno.readFile("my_file.txt"))); // Hello World
+   * ```
+   */
+  export function fdatasync(rid: number): Promise<void>;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   * Synchronously flushes any pending data and metadata operations of the given file stream to disk.
+   *  ```ts
+   * const file = Deno.openSync("my_file.txt", { read: true, write: true, create: true });
+   * Deno.writeSync(file.rid, new TextEncoder().encode("Hello World"));
+   * Deno.ftruncateSync(file.rid, 1);
+   * Deno.fsyncSync(file.rid);
+   * console.log(new TextDecoder().decode(Deno.readFileSync("my_file.txt"))); // H
+   * ```
+   */
+  export function fsyncSync(rid: number): void;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   * Flushes any pending data and metadata operations of the given file stream to disk.
+   *  ```ts
+   * const file = await Deno.open("my_file.txt", { read: true, write: true, create: true });
+   * await Deno.write(file.rid, new TextEncoder().encode("Hello World"));
+   * await Deno.ftruncate(file.rid, 1);
+   * await Deno.fsync(file.rid);
+   * console.log(new TextDecoder().decode(await Deno.readFile("my_file.txt"))); // H
+   * ```
+   */
+  export function fsync(rid: number): Promise<void>;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   * Synchronously returns a `Deno.FileInfo` for the given file stream.
+   *
+   * ```ts
+   * const file = Deno.openSync("file.txt", { read: true });
+   * const fileInfo = Deno.fstatSync(file.rid);
+   * assert(fileInfo.isFile);
+   * ```
+   */
+  export function fstatSync(rid: number): FileInfo;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   * Returns a `Deno.FileInfo` for the given file stream.
+   *
+   * ```ts
+   * const file = await Deno.open("file.txt", { read: true });
+   * const fileInfo = await Deno.fstat(file.rid);
+   * assert(fileInfo.isFile);
+   * ```
+   */
+  export function fstat(rid: number): Promise<FileInfo>;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   * The pid of the current process's parent.
+   */
+  export const ppid: number;
 }

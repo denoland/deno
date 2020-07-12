@@ -6,7 +6,7 @@
 // and impossible logic branches based on what Deno currently supports.
 
 import { DOMExceptionImpl as DOMException } from "./dom_exception.ts";
-import * as domTypes from "./dom_types.d.ts";
+import type * as domTypes from "./dom_types.d.ts";
 import {
   EventImpl as Event,
   EventPath,

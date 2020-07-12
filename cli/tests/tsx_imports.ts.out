@@ -1,2 +1,2 @@
-Compile [WILDCARD]tsx_imports.ts
+Check [WILDCARD]tsx_imports.ts
 { factory: [Function: View], props: null, children: [] }

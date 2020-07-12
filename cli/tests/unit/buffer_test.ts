@@ -6,16 +6,23 @@
 import {
   assertEquals,
   assert,
-  assertStringContains,
   assertThrows,
   assertThrowsAsync,
   unitTest,
 } from "./test_util.ts";
 
+const MAX_SIZE = 2 ** 32 - 2;
 // N controls how many iterations of certain checks are performed.
 const N = 100;
 let testBytes: Uint8Array | null;
 let testString: string | null;
+
+let ignoreMaxSizeTests = false;
+try {
+  new ArrayBuffer(MAX_SIZE);
+} catch (e) {
+  ignoreMaxSizeTests = true;
+}
 
 function init(): void {
   if (testBytes == null) {
@@ -159,16 +166,108 @@ unitTest(async function bufferTooLargeByteWrites(): Promise<void> {
   const buf = new Deno.Buffer(xBytes.buffer as ArrayBuffer);
   await buf.read(tmp);
 
-  let err;
-  try {
-    buf.grow(growLen);
-  } catch (e) {
-    err = e;
-  }
-
-  assert(err instanceof Error);
-  assertStringContains(err.message, "grown beyond the maximum size");
+  assertThrows(
+    () => {
+      buf.grow(growLen);
+    },
+    Error,
+    "grown beyond the maximum size"
+  );
 });
+
+unitTest(
+  { ignore: ignoreMaxSizeTests },
+  function bufferGrowWriteMaxBuffer(): void {
+    const bufSize = 16 * 1024;
+    const capacities = [MAX_SIZE, MAX_SIZE - 1];
+    for (const capacity of capacities) {
+      let written = 0;
+      const buf = new Deno.Buffer();
+      const writes = Math.floor(capacity / bufSize);
+      for (let i = 0; i < writes; i++)
+        written += buf.writeSync(repeat("x", bufSize));
+
+      if (written < capacity) {
+        written += buf.writeSync(repeat("x", capacity - written));
+      }
+
+      assertEquals(written, capacity);
+    }
+  }
+);
+
+unitTest(
+  { ignore: ignoreMaxSizeTests },
+  async function bufferGrowReadCloseMaxBufferPlus1(): Promise<void> {
+    const reader = new Deno.Buffer(new ArrayBuffer(MAX_SIZE + 1));
+    const buf = new Deno.Buffer();
+
+    await assertThrowsAsync(
+      async () => {
+        await buf.readFrom(reader);
+      },
+      Error,
+      "grown beyond the maximum size"
+    );
+  }
+);
+
+unitTest(
+  { ignore: ignoreMaxSizeTests },
+  function bufferGrowReadSyncCloseMaxBufferPlus1(): void {
+    const reader = new Deno.Buffer(new ArrayBuffer(MAX_SIZE + 1));
+    const buf = new Deno.Buffer();
+
+    assertThrows(
+      () => {
+        buf.readFromSync(reader);
+      },
+      Error,
+      "grown beyond the maximum size"
+    );
+  }
+);
+
+unitTest(
+  { ignore: ignoreMaxSizeTests },
+  function bufferGrowReadSyncCloseToMaxBuffer(): void {
+    const capacities = [MAX_SIZE, MAX_SIZE - 1];
+    for (const capacity of capacities) {
+      const reader = new Deno.Buffer(new ArrayBuffer(capacity));
+      const buf = new Deno.Buffer();
+      buf.readFromSync(reader);
+
+      assertEquals(buf.length, capacity);
+    }
+  }
+);
+
+unitTest(
+  { ignore: ignoreMaxSizeTests },
+  async function bufferGrowReadCloseToMaxBuffer(): Promise<void> {
+    const capacities = [MAX_SIZE, MAX_SIZE - 1];
+    for (const capacity of capacities) {
+      const reader = new Deno.Buffer(new ArrayBuffer(capacity));
+      const buf = new Deno.Buffer();
+      await buf.readFrom(reader);
+      assertEquals(buf.length, capacity);
+    }
+  }
+);
+
+unitTest(
+  { ignore: ignoreMaxSizeTests },
+  async function bufferReadCloseToMaxBufferWithInitialGrow(): Promise<void> {
+    const capacities = [MAX_SIZE, MAX_SIZE - 1, MAX_SIZE - 512];
+    for (const capacity of capacities) {
+      const reader = new Deno.Buffer(new ArrayBuffer(capacity));
+      const buf = new Deno.Buffer();
+      buf.grow(MAX_SIZE);
+      await buf.readFrom(reader);
+      assertEquals(buf.length, capacity);
+    }
+  }
+);
 
 unitTest(async function bufferLargeByteReads(): Promise<void> {
   init();
@@ -300,4 +399,17 @@ unitTest(function testWriteAllSync(): void {
   for (let i = 0; i < testBytes.length; ++i) {
     assertEquals(testBytes[i], actualBytes[i]);
   }
+});
+
+unitTest(function testBufferBytesArrayBufferLength(): void {
+  const bytes = new TextEncoder().encode("a");
+  const reader = new Deno.Buffer();
+  Deno.writeAllSync(reader, bytes);
+
+  const writer = new Deno.Buffer();
+  writer.readFromSync(reader);
+  const actualBytes = writer.bytes();
+
+  assertEquals(bytes.byteLength, 1);
+  assertEquals(bytes.byteLength, actualBytes.buffer.byteLength);
 });

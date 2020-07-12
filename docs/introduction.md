@@ -69,16 +69,3 @@ have been historically written with bash or python.
   airplane.)
 - Modules/files loaded from remote URLs are intended to be immutable and
   cacheable.
-
-## Logos
-
-These Deno logos, like the Deno software, are distributed under the MIT license
-(public domain and free for use)
-
-- [A hand drawn one by @ry](https://deno.land/images/deno_logo.png)
-
-- [An animated one by @hashrock](https://github.com/denolib/animated-deno-logo/)
-
-- [A high resolution SVG one by @kevinkassimo](https://github.com/denolib/high-res-deno-logo)
-
-- [A pixelated animation one by @tanakaworld](https://deno.land/images/deno_logo_4.gif)

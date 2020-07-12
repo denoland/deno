@@ -1,37 +1,28 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-import { unitTest, assert } from "./test_util.ts";
+import { unitTest, assert, assertThrows } from "./test_util.ts";
 
 // TODO(ry) Add more tests to specify format.
 
 unitTest({ perms: { read: false } }, function watchFsPermissions() {
-  let thrown = false;
-  try {
+  assertThrows(() => {
     Deno.watchFs(".");
-  } catch (err) {
-    assert(err instanceof Deno.errors.PermissionDenied);
-    thrown = true;
-  }
-  assert(thrown);
+  }, Deno.errors.PermissionDenied);
 });
 
 unitTest({ perms: { read: true } }, function watchFsInvalidPath() {
-  let thrown = false;
-  try {
-    Deno.watchFs("non-existant.file");
-  } catch (err) {
-    console.error(err);
-    if (Deno.build.os === "windows") {
-      assert(
-        err.message.includes(
-          "Input watch path is neither a file nor a directory"
-        )
-      );
-    } else {
-      assert(err instanceof Deno.errors.NotFound);
-    }
-    thrown = true;
+  if (Deno.build.os === "windows") {
+    assertThrows(
+      () => {
+        Deno.watchFs("non-existant.file");
+      },
+      Error,
+      "Input watch path is neither a file nor a directory"
+    );
+  } else {
+    assertThrows(() => {
+      Deno.watchFs("non-existant.file");
+    }, Deno.errors.NotFound);
   }
-  assert(thrown);
 });
 
 async function getTwoEvents(

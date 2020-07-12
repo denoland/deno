@@ -68,6 +68,12 @@ jobs:
         with:
           rust-version: 1.44.0
 
+      - name: Install rust targets
+        run: |
+          # Necessary for the std/wasi tests
+          rustup target add wasm32-unknown-unknown
+          rustup target add wasm32-wasi
+
       - name: Install clippy and rustfmt
         if: matrix.config.kind == 'lint'
         run: |

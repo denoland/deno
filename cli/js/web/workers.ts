@@ -81,7 +81,7 @@ export interface WorkerOptions {
 
 export class WorkerImpl extends EventTarget implements Worker {
   readonly #id: number;
-  #name: string;
+  readonly #name: string;
   #terminated = false;
 
   public onerror?: (e: ErrorEvent) => void;

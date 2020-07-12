@@ -8,9 +8,10 @@ import {
   RotatingFileHandler,
 } from "./handlers.ts";
 import { assert } from "../_util/assert.ts";
-import { LevelName } from "./levels.ts";
+import type { LevelName } from "./levels.ts";
 
-export { LogLevels } from "./levels.ts";
+export { LogLevels, LevelName } from "./levels.ts";
+export { Logger } from "./logger.ts";
 
 export class LoggerConfig {
   level?: LevelName;

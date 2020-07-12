@@ -1,0 +1,3 @@
+error: The following required arguments were not provided:
+    --lock <FILE>
+[WILDCARD]
