@@ -21,7 +21,7 @@ you can specify the `--no-check` flag to disable TypeScript type checking. This
 can significantly reduce the time that program startup takes. This can be very
 useful when type checking is provided by your editor and you want startup time
 to be as fast as possible (for example when restarting the program automatically
-on code changes).
+with a file watcher).
 
 ### Using external type definitions
 
