@@ -35,6 +35,7 @@ const ANOTHER_REDIRECT_PORT: u16 = 4547;
 const DOUBLE_REDIRECTS_PORT: u16 = 4548;
 const INF_REDIRECTS_PORT: u16 = 4549;
 const REDIRECT_ABSOLUTE_PORT: u16 = 4550;
+const REDIRECT_RELATIVE_PORT: u16 = 4551;
 const HTTPS_PORT: u16 = 5545;
 
 pub const PERMISSION_VARIANTS: [&str; 5] =
@@ -154,6 +155,22 @@ pub async fn run_all_servers() {
     );
   let absolute_redirect_server_fut =
     warp::serve(routes).bind(([127, 0, 0, 1], REDIRECT_ABSOLUTE_PORT));
+
+  let routes = warp::path!("a" / "b" / "c")
+    .and(warp::header::<String>("x-location"))
+    .map(|token: String| {
+      let uri: Uri = token.parse().unwrap();
+      warp::redirect(uri)
+    })
+    .or(
+      warp::any()
+      .map(|| {
+        "Hello, World!"
+      })
+    );
+
+  let relative_redirect_server_fut =
+    warp::serve(routes).bind(([127, 0, 0, 1], REDIRECT_RELATIVE_PORT));
 
   let echo_server = warp::path("echo_server")
     .and(warp::post())
@@ -343,6 +360,7 @@ pub async fn run_all_servers() {
       inf_redirect_server_fut,
       double_redirect_server_fut,
       absolute_redirect_server_fut,
+      relative_redirect_server_fut
     )
   }
   .boxed();
