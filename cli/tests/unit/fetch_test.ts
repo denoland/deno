@@ -341,17 +341,17 @@ unitTest(
   },
   async function fetchWithRelativeRedirectionUrl(): Promise<void> {
     const cases = [
-      ["end", "http://localhost:4551/a/b/end"],
-      ["/end", "http://localhost:4551/end"],
+      ["end", "http://localhost:4550/a/b/end"],
+      ["/end", "http://localhost:4550/end"],
     ];
     for (const [loc, redUrl] of cases) {
-      const response = await fetch("http://localhost:4551/a/b/c", {
+      const response = await fetch("http://localhost:4550/a/b/c", {
         headers: new Headers([["x-location", loc]]),
       });
       assertEquals(response.url, redUrl);
       assertEquals(response.redirected, true);
-      assertEquals(response.ok, true);
-      assertEquals(await response.text(), "Hello, World!");
+      assertEquals(response.status, 404);
+      assertEquals(await response.text(), "");
     }
   }
 );
