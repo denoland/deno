@@ -305,6 +305,7 @@ pub fn class_to_class_def(
       // TODO(bartlomieju):
       PrivateMethod(_) => {}
       PrivateProp(_) => {}
+      _ => {}
     }
   }
 

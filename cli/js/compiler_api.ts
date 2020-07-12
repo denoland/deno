@@ -3,11 +3,11 @@
 // This file contains the runtime APIs which will dispatch work to the internal
 // compiler within Deno.
 
-import { DiagnosticItem } from "./diagnostics.ts";
+import type { DiagnosticItem } from "./diagnostics.ts";
 import * as util from "./util.ts";
 import * as runtimeCompilerOps from "./ops/runtime_compiler.ts";
-import { TranspileOnlyResult } from "./ops/runtime_compiler.ts";
-import { CompilerOptions } from "./compiler_options.ts";
+import type { TranspileOnlyResult } from "./ops/runtime_compiler.ts";
+import type { CompilerOptions } from "./compiler_options.ts";
 
 function checkRelative(specifier: string): string {
   return specifier.match(/^([\.\/\\]|https?:\/{2}|file:\/{2})/)
@@ -52,8 +52,8 @@ export async function compile(
 
   const emitMap: Record<string, string> = {};
 
-  for (const [key, emmitedSource] of Object.entries(result.emitMap)) {
-    emitMap[key] = emmitedSource.contents;
+  for (const [key, emittedSource] of Object.entries(result.emitMap)) {
+    emitMap[key] = emittedSource.contents;
   }
 
   return [maybeDiagnostics, emitMap];

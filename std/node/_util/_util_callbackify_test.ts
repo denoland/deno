@@ -246,7 +246,7 @@ Deno.test("callbackify passes arguments to the original", async () => {
 
   for (const value of values) {
     // eslint-disable-next-line require-await
-    async function asyncFn<T>(arg: T): Promise<T> {
+    async function asyncFn(arg: typeof value): Promise<typeof value> {
       assertStrictEquals(arg, value);
       return arg;
     }
@@ -263,7 +263,7 @@ Deno.test("callbackify passes arguments to the original", async () => {
       });
     });
 
-    function promiseFn<T>(arg: T): Promise<T> {
+    function promiseFn<T>(arg: typeof value): Promise<typeof value> {
       assertStrictEquals(arg, value);
       return Promise.resolve(arg);
     }

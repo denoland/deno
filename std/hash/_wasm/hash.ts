@@ -10,7 +10,7 @@ import init, {
 
 import * as hex from "../../encoding/hex.ts";
 import * as base64 from "../../encoding/base64.ts";
-import { Hasher, Message, OutputFormat } from "../hasher.ts";
+import type { Hasher, Message, OutputFormat } from "../hasher.ts";
 
 await init(source);
 

@@ -43,6 +43,21 @@ declare namespace Deno {
    * Requires `allow-read` and `allow-write` permissions. */
   export function link(oldpath: string, newpath: string): Promise<void>;
 
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Gets the size of the console as columns/rows.
+   *
+   * ```ts
+   * const { columns, rows } = await Deno.consoleSize(Deno.stdout.rid);
+   * ```
+   */
+  export function consoleSize(
+    rid: number
+  ): {
+    columns: number;
+    rows: number;
+  };
+
   export type SymlinkOptions = {
     type: "file" | "dir";
   };
@@ -956,120 +971,6 @@ declare namespace Deno {
    * Requires `allow-run` permission. */
   export function kill(pid: number, signo: number): void;
 
-  /** The name of a "powerful feature" which needs permission.
-   *
-   * See: https://w3c.github.io/permissions/#permission-registry
-   *
-   * Note that the definition of `PermissionName` in the above spec is swapped
-   * out for a set of Deno permissions which are not web-compatible. */
-  export type PermissionName =
-    | "run"
-    | "read"
-    | "write"
-    | "net"
-    | "env"
-    | "plugin"
-    | "hrtime";
-
-  /** The current status of the permission.
-   *
-   * See: https://w3c.github.io/permissions/#status-of-a-permission */
-  export type PermissionState = "granted" | "denied" | "prompt";
-
-  export interface RunPermissionDescriptor {
-    name: "run";
-  }
-
-  export interface ReadPermissionDescriptor {
-    name: "read";
-    path?: string;
-  }
-
-  export interface WritePermissionDescriptor {
-    name: "write";
-    path?: string;
-  }
-
-  export interface NetPermissionDescriptor {
-    name: "net";
-    /** Optional url associated with this descriptor.
-     *
-     * If specified: must be a valid url. Expected format: <scheme>://<host_or_ip>[:port][/path]
-     * If the scheme is unknown, callers should specify some scheme, such as x:// na:// unknown://
-     *
-     * See: https://www.iana.org/assignments/uri-schemes/uri-schemes.xhtml */
-    url?: string;
-  }
-
-  export interface EnvPermissionDescriptor {
-    name: "env";
-  }
-
-  export interface PluginPermissionDescriptor {
-    name: "plugin";
-  }
-
-  export interface HrtimePermissionDescriptor {
-    name: "hrtime";
-  }
-
-  /** Permission descriptors which define a permission and can be queried,
-   * requested, or revoked.
-   *
-   * See: https://w3c.github.io/permissions/#permission-descriptor */
-  export type PermissionDescriptor =
-    | RunPermissionDescriptor
-    | ReadPermissionDescriptor
-    | WritePermissionDescriptor
-    | NetPermissionDescriptor
-    | EnvPermissionDescriptor
-    | PluginPermissionDescriptor
-    | HrtimePermissionDescriptor;
-
-  export class Permissions {
-    /** Resolves to the current status of a permission.
-     *
-     * ```ts
-     * const status = await Deno.permissions.query({ name: "read", path: "/etc" });
-     * if (status.state === "granted") {
-     *   data = await Deno.readFile("/etc/passwd");
-     * }
-     * ```
-     */
-    query(desc: PermissionDescriptor): Promise<PermissionStatus>;
-
-    /** Revokes a permission, and resolves to the state of the permission.
-     *
-     *       const status = await Deno.permissions.revoke({ name: "run" });
-     *       assert(status.state !== "granted")
-     */
-    revoke(desc: PermissionDescriptor): Promise<PermissionStatus>;
-
-    /** Requests the permission, and resolves to the state of the permission.
-     *
-     * ```ts
-     * const status = await Deno.permissions.request({ name: "env" });
-     * if (status.state === "granted") {
-     *   console.log(Deno.dir("home");
-     * } else {
-     *   console.log("'env' permission is denied.");
-     * }
-     * ```
-     */
-    request(desc: PermissionDescriptor): Promise<PermissionStatus>;
-  }
-
-  /** **UNSTABLE**: Under consideration to move to `navigator.permissions` to
-   * match web API. It could look like `navigator.permissions.query({ name: Deno.symbols.read })`.
-   */
-  export const permissions: Permissions;
-
-  /** see: https://w3c.github.io/permissions/#permissionstatus */
-  export class PermissionStatus {
-    state: PermissionState;
-    constructor(state: PermissionState);
-  }
-
   /**  **UNSTABLE**: New API, yet to be vetted.  Additional consideration is still
    * necessary around the permissions required.
    *
@@ -1086,7 +987,8 @@ declare namespace Deno {
   /** **UNSTABLE**: The URL of the file that was originally executed from the command-line. */
   export const mainModule: string;
 
-  /** Synchronously truncates or extends the specified file stream, to reach the
+  /** **UNSTABLE**: new API, yet to be vetted.
+   * Synchronously truncates or extends the specified file stream, to reach the
    * specified `len`.  If `len` is not specified then the entire file contents
    * are truncated.
    *
@@ -1106,7 +1008,8 @@ declare namespace Deno {
    */
   export function ftruncateSync(rid: number, len?: number): void;
 
-  /** Truncates or extends the specified file stream, to reach the specified `len`. If
+  /** **UNSTABLE**: new API, yet to be vetted.
+   * Truncates or extends the specified file stream, to reach the specified `len`. If
    * `len` is not specified then the entire file contents are truncated.
    *
    * ```ts
@@ -1192,4 +1095,9 @@ declare namespace Deno {
    * ```
    */
   export function fstat(rid: number): Promise<FileInfo>;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   * The pid of the current process's parent.
+   */
+  export const ppid: number;
 }

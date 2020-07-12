@@ -1,3 +1,5 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 // Derived from https://github.com/vadimg/js_bintrees. MIT Licensed.
 
 import { assert } from "./util.ts";
@@ -27,7 +29,7 @@ class RBNode<T> {
 }
 
 export class RBTree<T> {
-  #comparator: (a: T, b: T) => number;
+  readonly #comparator: (a: T, b: T) => number;
   #root: RBNode<T> | null;
 
   constructor(comparator: (a: T, b: T) => number) {

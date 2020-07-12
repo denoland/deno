@@ -19,8 +19,16 @@ export class AssertionError extends Error {
   }
 }
 
-function format(v: unknown): string {
-  let string = globalThis.Deno ? Deno.inspect(v) : String(v);
+export function _format(v: unknown): string {
+  let string = globalThis.Deno
+    ? Deno.inspect(v, {
+        depth: Infinity,
+        sorted: true,
+        trailingComma: true,
+        compact: false,
+        iterableLimit: Infinity,
+      })
+    : String(v);
   if (typeof v == "string") {
     string = `"${string.replace(/(?=["\\])/g, "\\")}"`;
   }
@@ -82,10 +90,12 @@ export function equal(c: unknown, d: unknown): boolean {
       a &&
       b &&
       ((a instanceof RegExp && b instanceof RegExp) ||
-        (a instanceof Date && b instanceof Date) ||
         (a instanceof URL && b instanceof URL))
     ) {
       return String(a) === String(b);
+    }
+    if (a instanceof Date && b instanceof Date) {
+      return a.getTime() === b.getTime();
     }
     if (Object.is(a, b)) {
       return true;
@@ -133,7 +143,7 @@ export function equal(c: unknown, d: unknown): boolean {
   })(c, d);
 }
 
-/** Make an assertion, if not `true`, then throw. */
+/** Make an assertion, error will be thrown if `expr` does not have truthy value. */
 export function assert(expr: unknown, msg = ""): asserts expr {
   if (!expr) {
     throw new AssertionError(msg);
@@ -143,7 +153,19 @@ export function assert(expr: unknown, msg = ""): asserts expr {
 /**
  * Make an assertion that `actual` and `expected` are equal, deeply. If not
  * deeply equal, then throw.
+ *
+ * Type parameter can be specified to ensure values under comparison have the same type.
+ * For example:
+ *```ts
+ *assertEquals<number>(1, 2)
+ *```
  */
+export function assertEquals(
+  actual: unknown,
+  expected: unknown,
+  msg?: string
+): void;
+export function assertEquals<T>(actual: T, expected: T, msg?: string): void;
 export function assertEquals(
   actual: unknown,
   expected: unknown,
@@ -153,8 +175,8 @@ export function assertEquals(
     return;
   }
   let message = "";
-  const actualString = format(actual);
-  const expectedString = format(expected);
+  const actualString = _format(actual);
+  const expectedString = _format(expected);
   try {
     const diffResult = diff(
       actualString.split("\n"),
@@ -174,7 +196,19 @@ export function assertEquals(
 /**
  * Make an assertion that `actual` and `expected` are not equal, deeply.
  * If not then throw.
+ *
+ * Type parameter can be specified to ensure values under comparison have the same type.
+ * For example:
+ *```ts
+ *assertNotEquals<number>(1, 2)
+ *```
  */
+export function assertNotEquals(
+  actual: unknown,
+  expected: unknown,
+  msg?: string
+): void;
+export function assertNotEquals<T>(actual: T, expected: T, msg?: string): void;
 export function assertNotEquals(
   actual: unknown,
   expected: unknown,
@@ -204,10 +238,13 @@ export function assertNotEquals(
 /**
  * Make an assertion that `actual` and `expected` are strictly equal.  If
  * not then throw.
+ * ```ts
+ * assertStrictEquals(1, 2)
+ * ```
  */
-export function assertStrictEquals(
-  actual: unknown,
-  expected: unknown,
+export function assertStrictEquals<T>(
+  actual: T,
+  expected: T,
   msg?: string
 ): void {
   if (actual === expected) {
@@ -219,13 +256,13 @@ export function assertStrictEquals(
   if (msg) {
     message = msg;
   } else {
-    const actualString = format(actual);
-    const expectedString = format(expected);
+    const actualString = _format(actual);
+    const expectedString = _format(expected);
 
     if (actualString === expectedString) {
       const withOffset = actualString
         .split("\n")
-        .map((l) => `     ${l}`)
+        .map((l) => `    ${l}`)
         .join("\n");
       message = `Values have the same structure but are not reference-equal:\n\n${red(
         withOffset
@@ -265,9 +302,25 @@ export function assertStringContains(
 }
 
 /**
- * Make an assertion that `actual` contains the `expected` values
- * If not then thrown.
+ * Make an assertion that `actual` contains the `expected` values.
+ * If not then an error will be thrown.
+ *
+ * Type parameter can be specified to ensure values under comparison have the same type.
+ * For example:
+ *```ts
+ *assertArrayContains<number>([1, 2], [2])
+ *```
  */
+export function assertArrayContains(
+  actual: ArrayLike<unknown>,
+  expected: ArrayLike<unknown>,
+  msg?: string
+): void;
+export function assertArrayContains<T>(
+  actual: ArrayLike<T>,
+  expected: ArrayLike<T>,
+  msg?: string
+): void;
 export function assertArrayContains(
   actual: ArrayLike<unknown>,
   expected: ArrayLike<unknown>,
@@ -290,9 +343,9 @@ export function assertArrayContains(
     return;
   }
   if (!msg) {
-    msg = `actual: "${format(actual)}" expected to contain: "${format(
+    msg = `actual: "${_format(actual)}" expected to contain: "${_format(
       expected
-    )}"\nmissing: ${format(missing)}`;
+    )}"\nmissing: ${_format(missing)}`;
   }
   throw new AssertionError(msg);
 }
