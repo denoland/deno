@@ -184,8 +184,9 @@ unitTest(
       let written = 0;
       const buf = new Deno.Buffer();
       const writes = Math.floor(capacity / bufSize);
-      for (let i = 0; i < writes; i++)
+      for (let i = 0; i < writes; i++) {
         written += buf.writeSync(repeat("x", bufSize));
+      }
 
       if (written < capacity) {
         written += buf.writeSync(repeat("x", capacity - written));

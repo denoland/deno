@@ -63,7 +63,7 @@ export function permissionsMatch(
   for (const permName in processPerms) {
     if (
       processPerms[permName as keyof Permissions] !==
-      requiredPerms[permName as keyof Permissions]
+        requiredPerms[permName as keyof Permissions]
     ) {
       return false;
     }
