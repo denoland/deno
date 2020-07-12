@@ -237,7 +237,7 @@ unitTest(
   { perms: { net: true } },
   async function fetchInitFormDataBinaryFileBody(): Promise<void> {
     // Some random bytes
-    // prettier-ignore
+    // deno-fmt-ignore
     const binaryFile = new Uint8Array([108,2,0,0,145,22,162,61,157,227,166,77,138,75,180,56,119,188,177,183]);
     const response = await fetch("http://localhost:4545/echo_multipart_file", {
       method: "POST",
@@ -257,14 +257,14 @@ unitTest(
   async function fetchInitFormDataMultipleFilesBody(): Promise<void> {
     const files = [
       {
-        // prettier-ignore
+        // deno-fmt-ignore
         content: new Uint8Array([137,80,78,71,13,10,26,10, 137, 1, 25]),
         type: "image/png",
         name: "image",
         fileName: "some-image.png",
       },
       {
-        // prettier-ignore
+        // deno-fmt-ignore
         content: new Uint8Array([108,2,0,0,145,22,162,61,157,227,166,77,138,75,180,56,119,188,177,183]),
         name: "file",
         fileName: "file.bin",

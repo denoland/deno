@@ -222,7 +222,7 @@ const decoders = new Map<string, (options: DecoderOptions) => Decoder>();
 
 // Single byte decoders are an array of code point lookups
 const encodingIndexes = new Map<string, number[]>();
-// prettier-ignore
+// deno-fmt-ignore
 encodingIndexes.set("windows-1252", [
   8364,
   129,

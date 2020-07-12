@@ -16,7 +16,6 @@ function toHexString(value: number[] | ArrayBuffer): string {
   return hex;
 }
 
-// prettier-ignore
 // deno-fmt-ignore
 const fixtures: {
   sha512bits224: Record<string, Record<string, Message>>,
