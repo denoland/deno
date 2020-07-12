@@ -228,7 +228,7 @@ pub fn install(
   let config_file_path_option = config_file_path.to_str();
   if let Some(config_file_path_string) = config_file_path_option {
     executable_args.push("--config".to_string());
-    executable_args.push(format!("{}", config_file_path_string));
+    executable_args.push(config_file_path_string.to_string());
   }
 
   executable_args.push(module_url.to_string());
