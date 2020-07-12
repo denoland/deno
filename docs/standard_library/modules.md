@@ -1,8 +1,10 @@
 # Modules
 
-The Deno Standard Library contains numerous modules which expose features and functionality to make a developer's work easier.
+The Deno Standard Library contains numerous modules which expose features and
+functionality to make a developer's work easier.
 
-Please note the Standard Library is currently unstable and some documentation is yet to be completed.
+Please note the Standard Library is currently unstable and some documentation is
+yet to be completed.
 
 - [Archive](/std/archive)
 - Async
