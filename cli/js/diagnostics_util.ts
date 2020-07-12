@@ -64,15 +64,19 @@ const unstableDenoGlobalProperties = [
   "Permissions",
   "PermissionStatus",
   "hostname",
+  "ppid",
 ];
 
 function transformMessageText(messageText: string, code: number): string {
-  if (code === 2339) {
+  if (code === 2339 || code === 2551) {
     const property = messageText
       .replace(/^Property '/, "")
-      .replace(/' does not exist on type 'typeof Deno'\.$/, "");
+      .replace(/' does not exist on type 'typeof Deno'\./, "")
+      .replace(/ Did you mean '.+'\?$/, "");
+
     if (
-      messageText.endsWith("on type 'typeof Deno'.") &&
+      (messageText.endsWith("on type 'typeof Deno'.") ||
+        /on type 'typeof Deno'\. Did you mean '.+'\?$/.test(messageText)) &&
       unstableDenoGlobalProperties.includes(property)
     ) {
       return `${messageText} 'Deno.${property}' is an unstable API. Did you forget to run with the '--unstable' flag?`;

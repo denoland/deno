@@ -1,0 +1,10 @@
+[WILDCARD]
+error: TS2551 [ERROR]: Property 'ppid' does not exist on type 'typeof Deno'. Did you mean 'pid'? 'Deno.ppid' is an unstable API. Did you forget to run with the '--unstable' flag?
+console.log(Deno.ppid);
+                 ~~~~
+    at [WILDCARD]cli/tests/unstable_ts2551.ts:1:18
+
+    'pid' is declared here.
+      export const pid: number;
+                   ~~~
+        at asset:///lib.deno.ns.d.ts:[WILDCARD]
