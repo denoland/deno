@@ -81,14 +81,12 @@ deno {} "$@"
 
 fn generate_config_file(
   file_path: PathBuf,
-  config_file_name: Option<String>,
+  config_file_name: String,
 ) -> Result<(), Error> {
-  if let Some(config_file_name) = config_file_name {
-    let config_file_copy_path = get_config_file_path(&file_path);
-    let cwd = std::env::current_dir().unwrap();
-    let config_file_path = cwd.join(config_file_name);
-    fs::copy(config_file_path, config_file_copy_path)?;
-  }
+  let config_file_copy_path = get_config_file_path(&file_path);
+  let cwd = std::env::current_dir().unwrap();
+  let config_file_path = cwd.join(config_file_name);
+  fs::copy(config_file_path, config_file_copy_path)?;
   Ok(())
 }
 
@@ -224,18 +222,22 @@ pub fn install(
     executable_args.push("--unstable".to_string());
   }
 
-  let config_file_path = get_config_file_path(&file_path);
-  let config_file_path_option = config_file_path.to_str();
-  if let Some(config_file_path_string) = config_file_path_option {
-    executable_args.push("--config".to_string());
-    executable_args.push(config_file_path_string.to_string());
+  if flags.config_path.is_some() {
+    let config_file_path = get_config_file_path(&file_path);
+    let config_file_path_option = config_file_path.to_str();
+    if let Some(config_file_path_string) = config_file_path_option {
+      executable_args.push("--config".to_string());
+      executable_args.push(config_file_path_string.to_string());
+    }
   }
 
   executable_args.push(module_url.to_string());
   executable_args.extend_from_slice(&args);
 
   generate_executable_file(file_path.to_owned(), executable_args)?;
-  generate_config_file(file_path.to_owned(), flags.config_path)?;
+  if let Some(config_path) = flags.config_path {
+    generate_config_file(file_path.to_owned(), config_path)?;
+  }
 
   println!("✅ Successfully installed {}", name);
   println!("{}", file_path.to_string_lossy());
@@ -661,8 +663,7 @@ mod tests {
   fn install_with_config() {
     let temp_dir = TempDir::new().expect("tempdir fail");
     let bin_dir = temp_dir.path().join("bin");
-    let cwd = std::env::current_dir().unwrap();
-    let config_file_path = cwd.join("tsconfig.json");
+    let config_file_path = temp_dir.path().join("test_tsconfig.json");
     let config = "{}";
     let mut config_file = File::create(&config_file_path).unwrap();
     let result = config_file.write_all(config.as_bytes());
@@ -670,7 +671,7 @@ mod tests {
 
     let result = install(
       Flags {
-        config_path: Some("tsconfig.json".to_string()),
+        config_path: Some(config_file_path.to_string_lossy().to_string()),
         ..Flags::default()
       },
       "http://localhost:4545/cli/tests/cat.ts",
@@ -679,7 +680,7 @@ mod tests {
       Some(temp_dir.path().to_path_buf()),
       true,
     );
-
+    eprintln!("result {:?}", result);
     assert!(result.is_ok());
 
     let config_file_name = "echo_test.tsconfig.json";
