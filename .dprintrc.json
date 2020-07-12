@@ -15,6 +15,7 @@
   },
   "includes": ["**/*.{ts,tsx,js,jsx,json,md}"],
   "excludes": [
+    ".cargo_home",
     "deno_typescript/typescript",
     "std/**/testdata",
     "std/**/vendor",

@@ -5,7 +5,7 @@ import sys
 import argparse
 from third_party import python_env, get_prebuilt_tool_path
 from util import git_ls_files, git_staged, third_party_path, root_path
-from util import print_command, run
+from util import print_command, run, chmod_executable
 
 cmd_args = None
 
@@ -54,8 +54,9 @@ def main():
 
 
 def dprint():
-    script = get_prebuilt_tool_path("dprint")
-    command = [script, "fmt"]
+    executable_path = get_prebuilt_tool_path("dprint")
+    chmod_executable(executable_path)
+    command = [executable_path, "fmt"]
     run(command, shell=False, quiet=True)
 
 
