@@ -58,10 +58,24 @@ unitTest(function urlHostnameParsing(): void {
   assertEquals(new URL("file://%21").hostname, "!");
   assertEquals(new URL("abcd://%21").hostname, "%21");
 
-  // TODO(nayeemrmn): IPv4 parsing.
-  // assertEquals(new URL("https://260").hostname, "0.0.1.4");
-  // assertEquals(new URL("file://260").hostname, "0.0.1.4");
+  // IPv4 parsing.
+  assertEquals(new URL("http://260").hostname, "0.0.1.4");
+  assertEquals(new URL("file://260").hostname, "0.0.1.4");
   assertEquals(new URL("abcd://260").hostname, "260");
+  assertEquals(new URL("http://255.0.0.0").hostname, "255.0.0.0");
+  assertThrows(() => new URL("http://256.0.0.0"), TypeError, "Invalid URL.");
+  assertEquals(new URL("http://0.255.0.0").hostname, "0.255.0.0");
+  assertThrows(() => new URL("http://0.256.0.0"), TypeError, "Invalid URL.");
+  assertEquals(new URL("http://0.0.255.0").hostname, "0.0.255.0");
+  assertThrows(() => new URL("http://0.0.256.0"), TypeError, "Invalid URL.");
+  assertEquals(new URL("http://0.0.0.255").hostname, "0.0.0.255");
+  assertThrows(() => new URL("http://0.0.0.256"), TypeError, "Invalid URL.");
+  assertEquals(new URL("http://0.0.65535").hostname, "0.0.255.255");
+  assertThrows(() => new URL("http://0.0.65536"), TypeError, "Invalid URL.");
+  assertEquals(new URL("http://0.16777215").hostname, "0.255.255.255");
+  assertThrows(() => new URL("http://0.16777216"), TypeError, "Invalid URL.");
+  assertEquals(new URL("http://4294967295").hostname, "255.255.255.255");
+  assertThrows(() => new URL("http://4294967296"), TypeError, "Invalid URL.");
 });
 
 unitTest(function urlPortParsing(): void {
