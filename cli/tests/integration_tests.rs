@@ -347,7 +347,7 @@ fn fmt_test() {
   let t = TempDir::new().expect("tempdir fail");
   let fixed = util::root_path().join("cli/tests/badly_formatted_fixed.js");
   let badly_formatted_original =
-    util::root_path().join("cli/tests/badly_formatted.js");
+    util::root_path().join("cli/tests/badly_formatted.mjs");
   let badly_formatted = t.path().join("badly_formatted.js");
   let badly_formatted_str = badly_formatted.to_str().unwrap();
   std::fs::copy(&badly_formatted_original, &badly_formatted)

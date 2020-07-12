@@ -15,16 +15,12 @@
   },
   "includes": ["**/*.{ts,tsx,js,jsx,json,md}"],
   "excludes": [
-    "cli/compilers/wasm_wrap.js",
-    "cli/tests/error_syntax.js",
-    "cli/tests/badly_formatted.js",
-    "cli/tests/top_level_for_await.js",
-    "cli/tests/swc_syntax_error.ts",
     "deno_typescript/typescript",
     "std/**/testdata",
     "std/**/vendor",
     "std/node_modules",
     "std/hash/_wasm",
+    "target",
     "third_party"
   ],
   "plugins": [
