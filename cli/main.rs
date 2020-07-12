@@ -347,7 +347,7 @@ async fn install_command(
     .map_err(ErrBox::from)
 }
 
-async fn lint_command(
+async fn lint_command_exec(
   flags: Flags,
   files: Vec<String>,
   list_rules: bool,
@@ -373,6 +373,18 @@ async fn lint_command(
   }
 
   lint::lint_files(files).await
+}
+
+async fn lint_command(
+  flags: Flags,
+  files: Vec<String>,
+  list_rules: bool,
+) -> Result<(), ErrBox> {
+  watch_func(&flags.watch_paths, || {
+    lint_command_exec(flags.clone(), files.clone(), list_rules).boxed_local()
+  })
+  .await?;
+  Ok(())
 }
 
 async fn cache_command(flags: Flags, files: Vec<String>) -> Result<(), ErrBox> {

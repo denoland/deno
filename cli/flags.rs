@@ -615,6 +615,7 @@ fn doc_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
 fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   unstable_arg_parse(flags, matches);
+  watch_arg_parse(flags, matches);
   let files = match matches.values_of("files") {
     Some(f) => f.map(String::from).collect(),
     None => vec![],
@@ -991,6 +992,7 @@ Ignore linting a file by adding an ignore comment at the top of the file:
 ",
     )
     .arg(unstable_arg())
+    .arg(watch_arg())
     .arg(
       Arg::with_name("rules")
         .long("rules")
@@ -1434,7 +1436,7 @@ fn watch_arg<'a, 'b>() -> Arg<'a, 'b> {
     .takes_value(true)
     .use_delimiter(true)
     .require_equals(true)
-    .help("Restart the server on file change")
+    .help("Restart process on file change")
 }
 
 fn watch_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
@@ -3037,6 +3039,76 @@ mod tests {
           script: "foo.js".to_string(),
         },
         inspect: Some("127.0.0.1:9229".parse().unwrap()),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn test_watch_arg() {
+    let r = flags_from_vec_safe(svec!["deno", "run", "--watch", "gist.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run {
+          script: "gist.ts".to_string(),
+        },
+        watch_paths: vec![PathBuf::from(".")],
+        ..Flags::default()
+      }
+    );
+    let r = flags_from_vec_safe(svec![
+      "deno",
+      "run",
+      "--watch=./foo,./bar.ts",
+      "gist.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run {
+          script: "gist.ts".to_string(),
+        },
+        watch_paths: vec![PathBuf::from("./foo"), PathBuf::from("./bar.ts")],
+        ..Flags::default()
+      }
+    );
+    let r = flags_from_vec_safe(svec!["deno", "bundle", "--watch", "gist.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Bundle {
+          source_file: "gist.ts".to_string(),
+          out_file: None,
+        },
+        watch_paths: vec![PathBuf::from(".")],
+        ..Flags::default()
+      }
+    );
+    let r = flags_from_vec_safe(svec!["deno", "lint", "--watch"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Lint {
+          files: vec![],
+          rules: false,
+        },
+        watch_paths: vec![PathBuf::from(".")],
+        ..Flags::default()
+      }
+    );
+    let r = flags_from_vec_safe(svec!["deno", "test", "--watch"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Test {
+          fail_fast: false,
+          quiet: false,
+          allow_none: false,
+          include: None,
+          filter: None,
+        },
+        watch_paths: vec![PathBuf::from(".")],
         ..Flags::default()
       }
     );
