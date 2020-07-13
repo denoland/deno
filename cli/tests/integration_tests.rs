@@ -8,6 +8,7 @@ extern crate tempfile;
 use test_util as util;
 
 use futures::prelude::*;
+use std::fs;
 use std::io::{BufRead, Write};
 use std::process::Command;
 use tempfile::TempDir;
@@ -966,7 +967,10 @@ fn runtime_bundle_import_map() {
       }}
       ",
       if cfg!(windows) { "/" } else { "" },
-      import.to_str().expect("non-unicode in file path"),
+      fs::canonicalize(&import)
+        .expect("canonicalize failed")
+        .to_str()
+        .expect("non-unicode in file path"),
     ),
   )
   .expect("error writing file");
