@@ -7,6 +7,7 @@ import * as abortSignal from "./web/abort_signal.ts";
 import * as blob from "./web/blob.ts";
 import * as consoleTypes from "./web/console.ts";
 import * as csprng from "./ops/get_random_values.ts";
+import type * as promiseTypes from "./web/promise.ts";
 import * as customEvent from "./web/custom_event.ts";
 import * as domException from "./web/dom_exception.ts";
 import * as domFile from "./web/dom_file.ts";
@@ -16,19 +17,16 @@ import * as eventTarget from "./web/event_target.ts";
 import * as formData from "./web/form_data.ts";
 import * as fetchTypes from "./web/fetch.ts";
 import * as headers from "./web/headers.ts";
-import * as navigator from "./web/navigator.ts";
-import * as permissions from "./web/permissions.ts";
-import type * as promiseTypes from "./web/promise.ts";
-import * as queuingStrategy from "./web/streams/queuing_strategy.ts";
-import * as readableStream from "./web/streams/readable_stream.ts";
-import * as request from "./web/request.ts";
 import * as textEncoding from "./web/text_encoding.ts";
 import * as timers from "./web/timers.ts";
-import * as transformStream from "./web/streams/transform_stream.ts";
 import * as url from "./web/url.ts";
 import * as urlSearchParams from "./web/url_search_params.ts";
 import * as workers from "./web/workers.ts";
 import * as performance from "./web/performance.ts";
+import * as request from "./web/request.ts";
+import * as readableStream from "./web/streams/readable_stream.ts";
+import * as transformStream from "./web/streams/transform_stream.ts";
+import * as queuingStrategy from "./web/streams/queuing_strategy.ts";
 import * as writableStream from "./web/streams/writable_stream.ts";
 
 // These imports are not exposed and therefore are fine to just import the
@@ -223,19 +221,15 @@ export const windowOrWorkerGlobalScopeProperties = {
     queuingStrategy.ByteLengthQueuingStrategyImpl
   ),
   CountQueuingStrategy: nonEnumerable(queuingStrategy.CountQueuingStrategyImpl),
-  CustomEvent: nonEnumerable(customEvent.CustomEventImpl),
   crypto: readOnly(csprng),
+  File: nonEnumerable(domFile.DomFileImpl),
+  CustomEvent: nonEnumerable(customEvent.CustomEventImpl),
   DOMException: nonEnumerable(domException.DOMExceptionImpl),
   ErrorEvent: nonEnumerable(errorEvent.ErrorEventImpl),
   Event: nonEnumerable(event.EventImpl),
   EventTarget: nonEnumerable(eventTarget.EventTargetImpl),
-  File: nonEnumerable(domFile.DomFileImpl),
-  FormData: nonEnumerable(formData.FormDataImpl),
   Headers: nonEnumerable(headers.HeadersImpl),
-  navigator: nonEnumerable(new navigator.NavigatorImpl()),
-  Navigator: nonEnumerable(navigator.NavigatorImpl),
-  Permissions: nonEnumerable(permissions.PermissionsImpl),
-  PermissionStatus: nonEnumerable(permissions.PermissionStatusImpl),
+  FormData: nonEnumerable(formData.FormDataImpl),
   ReadableStream: nonEnumerable(readableStream.ReadableStreamImpl),
   Request: nonEnumerable(request.Request),
   Response: nonEnumerable(fetchTypes.Response),

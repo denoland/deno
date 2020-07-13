@@ -49,7 +49,7 @@ async function dropWorkerPermissions(
   });
 
   for (const perm of permsToDrop) {
-    await navigator.permissions.revoke({ name: perm });
+    await Deno.permissions.revoke({ name: perm });
   }
 }
 
