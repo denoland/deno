@@ -88,13 +88,13 @@ function transformMessageText(messageText: string, code: number): string {
         .replace(/^Property '/, "")
         .replace(/' does not exist on type 'typeof Deno'\./, "")
         .replace(suggestionMessagePattern, "");
-      const match = messageText.match(suggestionMessagePattern);
+      const suggestion = messageText.match(suggestionMessagePattern);
       const replacedMessageText = messageText.replace(
         suggestionMessagePattern,
         ""
       );
-      if (match && unstableDenoGlobalProperties.includes(property)) {
-        const suggestedProperty = match[1];
+      if (suggestion && unstableDenoGlobalProperties.includes(property)) {
+        const suggestedProperty = suggestion[1];
         return `${replacedMessageText} 'Deno.${property}' is an unstable API. Did you forget to run with the '--unstable' flag, or did you mean '${suggestedProperty}'?`;
       }
       break;
