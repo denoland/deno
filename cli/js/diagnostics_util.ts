@@ -68,20 +68,39 @@ const unstableDenoGlobalProperties = [
 ];
 
 function transformMessageText(messageText: string, code: number): string {
-  if (code === 2339 || code === 2551) {
-    const property = messageText
-      .replace(/^Property '/, "")
-      .replace(/' does not exist on type 'typeof Deno'\./, "")
-      .replace(/ Did you mean '.+'\?$/, "");
+  switch (code) {
+    case 2339: {
+      const property = messageText
+        .replace(/^Property '/, "")
+        .replace(/' does not exist on type 'typeof Deno'\./, "");
 
-    if (
-      (messageText.endsWith("on type 'typeof Deno'.") ||
-        /on type 'typeof Deno'\. Did you mean '.+'\?$/.test(messageText)) &&
-      unstableDenoGlobalProperties.includes(property)
-    ) {
-      return `${messageText} 'Deno.${property}' is an unstable API. Did you forget to run with the '--unstable' flag?`;
+      if (
+        messageText.endsWith("on type 'typeof Deno'.") &&
+        unstableDenoGlobalProperties.includes(property)
+      ) {
+        return `${messageText} 'Deno.${property}' is an unstable API. Did you forget to run with the '--unstable' flag?`;
+      }
+      break;
+    }
+    case 2551: {
+      const suggestionMessagePattern = / Did you mean '(.+)'\?$/;
+      const property = messageText
+        .replace(/^Property '/, "")
+        .replace(/' does not exist on type 'typeof Deno'\./, "")
+        .replace(suggestionMessagePattern, "");
+      const match = messageText.match(suggestionMessagePattern);
+      const replacedMessageText = messageText.replace(
+        suggestionMessagePattern,
+        ""
+      );
+      if (match && unstableDenoGlobalProperties.includes(property)) {
+        const suggestedProperty = match[1];
+        return `${replacedMessageText} 'Deno.${property}' is an unstable API. Did you forget to run with the '--unstable' flag, or did you mean '${suggestedProperty}'?`;
+      }
+      break;
     }
   }
+
   return messageText;
 }
 
