@@ -29,6 +29,7 @@ export {
   seekSync,
 } from "./files.ts";
 export type { OpenOptions } from "./files.ts";
+export { HttpClient } from "./http_client.ts";
 export { read, readSync, write, writeSync } from "./ops/io.ts";
 export { watchFs } from "./ops/fs_events.ts";
 export type { FsEvent } from "./ops/fs_events.ts";
