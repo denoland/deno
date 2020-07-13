@@ -63,40 +63,6 @@ declare interface PerformanceMeasureOptions {
   end?: string | number;
 }
 
-declare interface Permissions {
-  /** Resolves to the current status of a permission.
-   *
-   * ```ts
-   * const status = await navigator.permissions.query({ name: "read", path: "/etc" });
-   * if (status.state === "granted") {
-   *   data = await Deno.readFile("/etc/passwd");
-   * }
-   * ```
-   */
-  query(permissionDesc: Deno.PermissionDescriptor): Promise<PermissionStatus>;
-
-  /** Requests the permission, and resolves to the state of the permission.
-   *
-   * ```ts
-   * const status = await navigator.permissions.request({ name: "env" });
-   * if (status.state === "granted") {
-   *   console.log(Deno.dir("home");
-   * } else {
-   *   console.log("'env' permission is denied.");
-   * }
-   * ```
-   */
-  request(permissionDesc: Deno.PermissionDescriptor): Promise<PermissionStatus>;
-
-  /** Revokes a permission, and resolves to the state of the permission.
-   *
-   * ```ts
-   * const status = await Deno.revoke({ name: "run" });
-   * ```
-   */
-  revoke(permissionDesc: Deno.PermissionDescriptor): Promise<PermissionStatus>;
-}
-
 declare namespace Deno {
   /** A set of error constructors that are raised by Deno APIs. */
   export const errors: {

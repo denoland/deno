@@ -1,5 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+const { PermissionDenied } = Deno.errors;
+
 function getPermissionString(descriptors: Deno.PermissionDescriptor[]): string {
   return descriptors.length
     ? `  ${descriptors
@@ -61,9 +63,9 @@ export async function grant(
     ? descriptor
     : [descriptor, ...descriptors];
   for (const descriptor of descriptors) {
-    let state = (await navigator.permissions.query(descriptor)).state;
+    let state = (await Deno.permissions.query(descriptor)).state;
     if (state === "prompt") {
-      state = (await navigator.permissions.request(descriptor)).state;
+      state = (await Deno.permissions.request(descriptor)).state;
     }
     if (state === "granted") {
       result.push(descriptor);
@@ -103,13 +105,13 @@ export async function grantOrThrow(
     ? descriptor
     : [descriptor, ...descriptors];
   for (const descriptor of descriptors) {
-    const { state } = await navigator.permissions.request(descriptor);
+    const { state } = await Deno.permissions.request(descriptor);
     if (state !== "granted") {
       denied.push(descriptor);
     }
   }
   if (denied.length) {
-    throw new Deno.errors.PermissionDenied(
+    throw new PermissionDenied(
       `The following permissions have not been granted:\n${getPermissionString(
         denied
       )}`
