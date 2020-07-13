@@ -3192,7 +3192,6 @@ fn should_not_panic_on_undefined_home_environment_variable() {
   assert!(output.status.success());
 }
 
-#[cfg(not(windows))]
 #[test]
 fn should_not_panic_on_undefined_deno_dir_environment_variable() {
   let output = util::deno_cmd()
