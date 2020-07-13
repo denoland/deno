@@ -240,6 +240,19 @@ unitTest(function urlBaseURL(): void {
   );
   const url = new URL("/foo/bar?baz=foo#qux", base);
   assertEquals(url.href, "https://foo:bar@baz.qat:8000/foo/bar?baz=foo#qux");
+
+  assertEquals(
+    new URL("D", "https://foo.bar/path/a/b/c/d").href,
+    "https://foo.bar/path/a/b/c/D"
+  );
+
+  assertEquals(new URL("D", "https://foo.bar").href, "https://foo.bar/D");
+  assertEquals(new URL("D", "https://foo.bar/").href, "https://foo.bar/D");
+
+  assertEquals(
+    new URL("/d", "https://foo.bar/path/a/b/c/d").href,
+    "https://foo.bar/d"
+  );
 });
 
 unitTest(function urlBaseString(): void {
