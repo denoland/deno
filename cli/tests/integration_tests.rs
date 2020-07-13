@@ -958,14 +958,15 @@ fn runtime_bundle_import_map() {
     &test,
     format!(
       "
-      const [diagnostics, _] = await Deno.bundle(\"file://{}\")
+      const [diagnostics, _] = await Deno.bundle(\"file://{}{}\")
 
       if (diagnostics != null) {{
         diagnostics.forEach(d => console.log(d))
         Deno.exit(1)
       }}
       ",
-      import.to_str().expect("non-unicode in file path")
+      if cfg!(windows) { "/" } else { "" },
+      import.to_str().expect("non-unicode in file path"),
     ),
   )
   .expect("error writing file");
