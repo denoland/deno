@@ -302,9 +302,10 @@ impl SourceFileFetcher {
     permissions: &Permissions,
   ) -> Result<SourceFile, ErrBox> {
     let filepath = module_url.to_file_path().map_err(|()| {
-      ErrBox::from(OpError::uri_error(
-        "File URL contains invalid path".to_owned(),
-      ))
+      ErrBox::from(OpError::uri_error(format!(
+        "File URL contains invalid path: {:?}",
+        module_url
+      )))
     })?;
 
     permissions.check_read(&filepath)?;
