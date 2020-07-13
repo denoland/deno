@@ -348,10 +348,11 @@ impl CoreIsolate {
   /// corresponds to the second argument of Deno.core.dispatch().
   ///
   /// Requires runtime to explicitly ask for op ids before using any of the ops.
-  pub fn register_op<F>(&mut self, name: &str, op: F) -> OpId
-  where
-    F: Fn(&mut CoreIsolateState, &mut [ZeroCopyBuf]) -> Op + 'static,
-  {
+  pub fn register_op(
+    &mut self,
+    name: &str,
+    op: impl OpDispatcher + 'static,
+  ) -> OpId {
     let state_rc = Self::state(self);
     let mut state = state_rc.borrow_mut();
     state.op_registry.register(name, op)
@@ -466,7 +467,7 @@ impl CoreIsolateState {
   /// Requires runtime to explicitly ask for op ids before using any of the ops.
   pub fn register_op<F>(&mut self, name: &str, op: F) -> OpId
   where
-    F: Fn(&mut CoreIsolateState, &mut [ZeroCopyBuf]) -> Op + 'static,
+    F: OpDispatcher + 'static,
   {
     self.op_registry.register(name, op)
   }
@@ -488,7 +489,7 @@ impl CoreIsolateState {
     zero_copy_bufs: &mut [ZeroCopyBuf],
   ) -> Option<(OpId, Box<[u8]>)> {
     let op = if let Some(dispatcher) = self.op_registry.get(op_id) {
-      dispatcher(self, zero_copy_bufs)
+      dispatcher.dispatch(self, zero_copy_bufs)
     } else {
       let message =
         v8::String::new(scope, &format!("Unknown op id: {}", op_id)).unwrap();
