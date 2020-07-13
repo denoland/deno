@@ -38,9 +38,10 @@ export class Response extends Body.Body implements domTypes.Response {
 
     let status = init.status === undefined ? 200 : Number(init.status || 0);
     let statusText = init.statusText ?? "";
-    let headers = init.headers instanceof Headers
-      ? init.headers
-      : new Headers(init.headers);
+    let headers =
+      init.headers instanceof Headers
+        ? init.headers
+        : new Headers(init.headers);
 
     if (init.status !== undefined && (status < 200 || status > 599)) {
       throw new RangeError(
@@ -202,9 +203,10 @@ export async function fetch(
     if (init != null) {
       method = init.method || null;
       if (init.headers) {
-        headers = init.headers instanceof Headers
-          ? init.headers
-          : new Headers(init.headers);
+        headers =
+          init.headers instanceof Headers
+            ? init.headers
+            : new Headers(init.headers);
       } else {
         headers = null;
       }
@@ -340,10 +342,7 @@ export async function fetch(
             !redirectUrl.startsWith("http://") &&
             !redirectUrl.startsWith("https://")
           ) {
-            redirectUrl = url.split("//")[0] +
-              "//" +
-              url.split("//")[1].split("/")[0] +
-              redirectUrl; // TODO: handle relative redirection more gracefully
+            redirectUrl = new URL(redirectUrl, url).href;
           }
           url = redirectUrl;
           redirected = true;

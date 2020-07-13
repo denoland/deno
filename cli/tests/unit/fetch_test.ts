@@ -339,6 +339,27 @@ unitTest(
   {
     perms: { net: true },
   },
+  async function fetchWithRelativeRedirectionUrl(): Promise<void> {
+    const cases = [
+      ["end", "http://localhost:4550/a/b/end"],
+      ["/end", "http://localhost:4550/end"],
+    ];
+    for (const [loc, redUrl] of cases) {
+      const response = await fetch("http://localhost:4550/a/b/c", {
+        headers: new Headers([["x-location", loc]]),
+      });
+      assertEquals(response.url, redUrl);
+      assertEquals(response.redirected, true);
+      assertEquals(response.status, 404);
+      assertEquals(await response.text(), "");
+    }
+  }
+);
+
+unitTest(
+  {
+    perms: { net: true },
+  },
   async function fetchWithInfRedirection(): Promise<void> {
     const response = await fetch("http://localhost:4549/cli/tests"); // will redirect to the same place
     assertEquals(response.status, 0); // network error

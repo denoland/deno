@@ -73,12 +73,14 @@ function parse(url: string, isBase = true): URLParts | undefined {
       // equivalent to: `new URL("file://localhost/foo/bar")`.
       [parts.hostname, restUrl] = takePattern(restUrl, /^[/\\]{2,}([^/\\?#]*)/);
     }
-  } else if (isSpecial) {
-    parts.slashes = "//";
+  } else {
     let restAuthority;
-    [restAuthority, restUrl] = takePattern(restUrl, /^[/\\]{2,}([^/\\?#]+)/);
-    if (isBase && restAuthority == "") {
-      return undefined;
+    if (isSpecial) {
+      parts.slashes = "//";
+      [restAuthority, restUrl] = takePattern(restUrl, /^[/\\]{2,}([^/\\?#]*)/);
+    } else {
+      parts.slashes = restUrl.match(/^[/\\]{2}/) ? "//" : "";
+      [restAuthority, restUrl] = takePattern(restUrl, /^[/\\]{2}([^/\\?#]*)/);
     }
     let restAuthentication;
     [restAuthentication, restAuthority] = takePattern(restAuthority, /^(.*)@/);
@@ -97,16 +99,9 @@ function parse(url: string, isBase = true): URLParts | undefined {
     if (!isValidPort(parts.port)) {
       return undefined;
     }
-  } else {
-    [parts.slashes, restUrl] = takePattern(restUrl, /^([/\\]{2})/);
-    parts.username = "";
-    parts.password = "";
-    if (parts.slashes) {
-      [parts.hostname, restUrl] = takePattern(restUrl, /^([^/\\?#]*)/);
-    } else {
-      parts.hostname = "";
+    if (parts.hostname == "" && isSpecial && isBase) {
+      return undefined;
     }
-    parts.port = "";
   }
   try {
     parts.hostname = encodeHostname(parts.hostname, isSpecial);
@@ -127,7 +122,8 @@ function parse(url: string, isBase = true): URLParts | undefined {
 function generateUUID(): string {
   return "00000000-0000-4000-8000-000000000000".replace(/[0]/g, (): string =>
     // random integer from 0 to 15 as a hex digit.
-    (getRandomValues(new Uint8Array(1))[0] % 16).toString(16));
+    (getRandomValues(new Uint8Array(1))[0] % 16).toString(16)
+  );
 }
 
 // Keep it outside of URL to avoid any attempts of access.
@@ -310,12 +306,17 @@ export class URLImpl implements URL {
   }
 
   get href(): string {
-    const authentication = this.username || this.password
-      ? `${this.username}${this.password ? ":" + this.password : ""}@`
-      : "";
-    return `${this.protocol}${
-      parts.get(this)!.slashes
-    }${authentication}${this.host}${this.pathname}${this.search}${this.hash}`;
+    const authentication =
+      this.username || this.password
+        ? `${this.username}${this.password ? ":" + this.password : ""}@`
+        : "";
+    const host = this.host;
+    const slashes = host ? "//" : parts.get(this)!.slashes;
+    let pathname = this.pathname;
+    if (pathname.charAt(0) != "/" && pathname != "" && host != "") {
+      pathname = `/${pathname}`;
+    }
+    return `${this.protocol}${slashes}${authentication}${host}${pathname}${this.search}${this.hash}`;
   }
 
   set href(value: string) {
@@ -344,16 +345,17 @@ export class URLImpl implements URL {
   }
 
   get pathname(): string {
-    return parts.get(this)?.path || "/";
+    let path = parts.get(this)!.path;
+    if (specialSchemes.includes(parts.get(this)!.protocol)) {
+      if (path.charAt(0) != "/") {
+        path = `/${path}`;
+      }
+    }
+    return path;
   }
 
   set pathname(value: string) {
-    value = unescape(String(value));
-    if (!value || value.charAt(0) !== "/") {
-      value = `/${value}`;
-    }
-    // paths can contain % unescaped
-    parts.get(this)!.path = encodePathname(value);
+    parts.get(this)!.path = encodePathname(String(value));
   }
 
   get port(): string {
@@ -419,9 +421,8 @@ export class URLImpl implements URL {
       }
     }
 
-    const urlParts = typeof url === "string"
-      ? parse(url, !baseParts)
-      : parts.get(url);
+    const urlParts =
+      typeof url === "string" ? parse(url, !baseParts) : parts.get(url);
     if (urlParts == undefined) {
       throw new TypeError("Invalid URL.");
     }
@@ -484,33 +485,65 @@ export class URLImpl implements URL {
   }
 }
 
+function parseIpv4Number(s: string): number {
+  if (s.match(/^(0[Xx])[0-9A-Za-z]+$/)) {
+    return Number(s);
+  }
+  if (s.match(/^[0-9]+$/)) {
+    return Number(s.startsWith("0") ? `0o${s}` : s);
+  }
+  return NaN;
+}
+
+function parseIpv4(s: string): string {
+  const parts = s.split(".");
+  if (parts[parts.length - 1] == "" && parts.length > 1) {
+    parts.pop();
+  }
+  if (parts.includes("") || parts.length > 4) {
+    return s;
+  }
+  const numbers = parts.map(parseIpv4Number);
+  if (numbers.includes(NaN)) {
+    return s;
+  }
+  const last = numbers.pop()!;
+  if (last >= 256 ** (4 - numbers.length) || numbers.find((n) => n >= 256)) {
+    throw new TypeError("Invalid hostname.");
+  }
+  const ipv4 = numbers.reduce((sum, n, i) => sum + n * 256 ** (3 - i), last);
+  const ipv4Hex = ipv4.toString(16).padStart(8, "0");
+  const ipv4HexParts = ipv4Hex.match(/(..)(..)(..)(..)$/)!.slice(1);
+  return ipv4HexParts.map((s) => String(Number(`0x${s}`))).join(".");
+}
+
 function charInC0ControlSet(c: string): boolean {
   return (c >= "\u0000" && c <= "\u001F") || c > "\u007E";
 }
 
 function charInSearchSet(c: string): boolean {
-  // deno-fmt-ignore
+  // prettier-ignore
   return charInC0ControlSet(c) || ["\u0020", "\u0022", "\u0023", "\u0027", "\u003C", "\u003E"].includes(c) || c > "\u007E";
 }
 
 function charInFragmentSet(c: string): boolean {
-  // deno-fmt-ignore
+  // prettier-ignore
   return charInC0ControlSet(c) || ["\u0020", "\u0022", "\u003C", "\u003E", "\u0060"].includes(c);
 }
 
 function charInPathSet(c: string): boolean {
-  // deno-fmt-ignore
+  // prettier-ignore
   return charInFragmentSet(c) || ["\u0023", "\u003F", "\u007B", "\u007D"].includes(c);
 }
 
 function charInUserinfoSet(c: string): boolean {
   // "\u0027" ("'") seemingly isn't in the spec, but matches Chrome and Firefox.
-  // deno-fmt-ignore
+  // prettier-ignore
   return charInPathSet(c) || ["\u0027", "\u002F", "\u003A", "\u003B", "\u003D", "\u0040", "\u005B", "\u005C", "\u005D", "\u005E", "\u007C"].includes(c);
 }
 
 function charIsForbiddenInHost(c: string): boolean {
-  // deno-fmt-ignore
+  // prettier-ignore
   return ["\u0000", "\u0009", "\u000A", "\u000D", "\u0020", "\u0023", "\u0025", "\u002F", "\u003A", "\u003C", "\u003E", "\u003F", "\u0040", "\u005B", "\u005C", "\u005D", "\u005E"].includes(c);
 }
 
@@ -558,9 +591,8 @@ function encodeHostname(s: string, isSpecial = true): string {
   if (result.match(/%(?![0-9A-Fa-f]{2})/) != null) {
     throw new TypeError("Invalid hostname.");
   }
-  result = result.replace(
-    /%(.{2})/g,
-    (_, hex) => String.fromCodePoint(Number(`0x${hex}`))
+  result = result.replace(/%(.{2})/g, (_, hex) =>
+    String.fromCodePoint(Number(`0x${hex}`))
   );
 
   // IDNA domain to ASCII.
@@ -573,7 +605,10 @@ function encodeHostname(s: string, isSpecial = true): string {
     }
   }
 
-  // TODO(nayeemrmn): IPv4 parsing.
+  // IPv4 parsing.
+  if (isSpecial) {
+    result = parseIpv4(result);
+  }
 
   return result;
 }
