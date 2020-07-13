@@ -428,8 +428,3 @@ def tty_capture(cmd, bytes_input, timeout=5):
 def print_command(cmd, files):
     noun = "file" if len(files) == 1 else "files"
     print "%s (%d %s)" % (cmd, len(files), noun)
-
-
-def chmod_executable(executable_path):
-    st = os.stat(executable_path)
-    os.chmod(executable_path, st.st_mode | stat.S_IEXEC)

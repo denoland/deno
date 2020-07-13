@@ -5,7 +5,7 @@ import sys
 import argparse
 from third_party import python_env, get_prebuilt_tool_path
 from util import git_ls_files, git_staged, third_party_path, root_path
-from util import print_command, run, chmod_executable
+from util import print_command, run
 
 cmd_args = None
 
@@ -55,8 +55,6 @@ def main():
 
 def dprint():
     executable_path = get_prebuilt_tool_path("dprint")
-    # allow it to run on the CI
-    chmod_executable(executable_path)
     command = [executable_path, "fmt"]
     run(command, shell=False, quiet=True)
 
