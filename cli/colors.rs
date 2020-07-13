@@ -3,7 +3,7 @@ use regex::Regex;
 use std::env;
 use std::fmt;
 use std::io::Write;
-use termcolor::Color::{Ansi256, Black, Magenta, Red, White};
+use termcolor::Color::{Ansi256, Black, Blue, Green, Magenta, Red, White};
 use termcolor::{Ansi, ColorSpec, WriteColor};
 
 #[cfg(windows)]
@@ -54,7 +54,10 @@ pub fn red_bold(s: &str) -> impl fmt::Display {
 
 pub fn green_bold(s: &str) -> impl fmt::Display {
   let mut style_spec = ColorSpec::new();
-  style_spec.set_fg(Some(Ansi256(10))).set_bold(true);
+  style_spec
+    .set_fg(Some(Green))
+    .set_bold(true)
+    .set_intense(true);
   style(&s, style_spec)
 }
 
@@ -102,7 +105,7 @@ pub fn red(s: &str) -> impl fmt::Display {
 
 pub fn green(s: &str) -> impl fmt::Display {
   let mut style_spec = ColorSpec::new();
-  style_spec.set_fg(Some(Ansi256(10)));
+  style_spec.set_fg(Some(Green)).set_intense(true);
   style(&s, style_spec)
 }
 
@@ -124,11 +127,23 @@ pub fn gray(s: &str) -> impl fmt::Display {
   style(&s, style_spec)
 }
 
+pub fn italic_gray(s: &str) -> impl fmt::Display {
+  let mut style_spec = ColorSpec::new();
+  style_spec.set_fg(Some(Ansi256(8))).set_italic(true);
+  style(&s, style_spec)
+}
+
 pub fn italic_bold_gray(s: &str) -> impl fmt::Display {
   let mut style_spec = ColorSpec::new();
   style_spec
     .set_fg(Some(Ansi256(8)))
     .set_bold(true)
     .set_italic(true);
+  style(&s, style_spec)
+}
+
+pub fn intense_blue(s: &str) -> impl fmt::Display {
+  let mut style_spec = ColorSpec::new();
+  style_spec.set_fg(Some(Blue)).set_intense(true);
   style(&s, style_spec)
 }

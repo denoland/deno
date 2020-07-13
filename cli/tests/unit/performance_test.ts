@@ -45,7 +45,14 @@ unitTest(function performanceMeasure() {
         assertEquals(measure.entryType, "measure");
         assert(measure.startTime > 0);
         assertEquals(mark.startTime, measure.startTime);
-        assert(measure.duration >= 100 && measure.duration < 200);
+        assert(
+          measure.duration >= 100,
+          `duration below 100ms: ${measure.duration}`
+        );
+        assert(
+          measure.duration < 500,
+          `duration exceeds 500ms: ${measure.duration}`
+        );
         const entries = performance.getEntries();
         assert(entries[entries.length - 1] === measure);
         const measureEntries = performance.getEntriesByName("test", "measure");
