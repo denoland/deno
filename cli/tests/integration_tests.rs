@@ -958,7 +958,7 @@ fn runtime_bundle_import_map() {
     &test,
     format!(
       "
-      const [diagnostics, _] = await Deno.bundle(\"{}\")
+      const [diagnostics, _] = await Deno.bundle(\"file://{}\")
 
       if (diagnostics != null) {{
         diagnostics.forEach(d => console.log(d))
