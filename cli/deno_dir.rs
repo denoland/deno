@@ -14,24 +14,22 @@ pub struct DenoDir {
 
 impl DenoDir {
   pub fn new(maybe_custom_root: Option<PathBuf>) -> std::io::Result<Self> {
-    // Only setup once.
-    let home_dir = dirs::home_dir().expect("Could not get home directory.");
-    let fallback = home_dir.join(".deno");
-    // We use the OS cache dir because all files deno writes are cache files
-    // Once that changes we need to start using different roots if DENO_DIR
-    // is not set, and keep a single one if it is.
-    let default = dirs::cache_dir()
-      .map(|d| d.join("deno"))
-      .unwrap_or(fallback);
-
     let root: PathBuf = if let Some(root) = maybe_custom_root {
       if root.is_absolute() {
         root
       } else {
         std::env::current_dir()?.join(root)
       }
+    } else if let Some(cache_dir) = dirs::cache_dir() {
+      // We use the OS cache dir because all files deno writes are cache files
+      // Once that changes we need to start using different roots if DENO_DIR
+      // is not set, and keep a single one if it is.
+      cache_dir.join("deno")
+    } else if let Some(home_dir) = dirs::home_dir() {
+      // fallback path
+      home_dir.join(".deno")
     } else {
-      default
+      panic!("Could not set the Deno root directory")
     };
     assert!(root.is_absolute());
     let gen_path = root.join("gen");
@@ -64,7 +62,34 @@ mod dirs {
   pub fn home_dir() -> Option<PathBuf> {
     std::env::var_os("HOME")
       .and_then(|h| if h.is_empty() { None } else { Some(h) })
+      .or_else(|| unsafe { fallback() })
       .map(PathBuf::from)
+  }
+
+  // This piece of code is taken from the deprecated home_dir() function in Rust's standard library: https://github.com/rust-lang/rust/blob/master/src/libstd/sys/unix/os.rs#L579
+  // The same code is used by the dirs crate
+  unsafe fn fallback() -> Option<std::ffi::OsString> {
+    let amt = match libc::sysconf(libc::_SC_GETPW_R_SIZE_MAX) {
+      n if n < 0 => 512 as usize,
+      n => n as usize,
+    };
+    let mut buf = Vec::with_capacity(amt);
+    let mut passwd: libc::passwd = std::mem::zeroed();
+    let mut result = std::ptr::null_mut();
+    match libc::getpwuid_r(
+      libc::getuid(),
+      &mut passwd,
+      buf.as_mut_ptr(),
+      buf.capacity(),
+      &mut result,
+    ) {
+      0 if !result.is_null() => {
+        let ptr = passwd.pw_dir as *const _;
+        let bytes = std::ffi::CStr::from_ptr(ptr).to_bytes().to_vec();
+        Some(std::os::unix::ffi::OsStringExt::from_vec(bytes))
+      }
+      _ => None,
+    }
   }
 }
 
