@@ -8,7 +8,6 @@ extern crate tempfile;
 use test_util as util;
 
 use futures::prelude::*;
-use std::fs;
 use std::io::{BufRead, Write};
 use std::process::Command;
 use tempfile::TempDir;
@@ -950,16 +949,14 @@ fn bundle_import_map() {
 
 #[test]
 fn runtime_bundle_import_map() {
-  let import = util::root_path().join("cli/tests/bundle_im.ts");
   let import_map_path = util::root_path().join("cli/tests/bundle_im.json");
-  assert!(import.is_file());
   let t = TempDir::new().expect("tempdir fail");
   let test = t.path().join("test.js");
   std::fs::write(
     &test,
     format!(
       "
-      const [diagnostics, _] = await Deno.bundle(\"file://{}{}\")
+      const [diagnostics, _] = await Deno.bundle(\"file://{}{}/{}\")
 
       if (diagnostics != null) {{
         diagnostics.forEach(d => console.log(d))
@@ -967,10 +964,10 @@ fn runtime_bundle_import_map() {
       }}
       ",
       if cfg!(windows) { "/" } else { "" },
-      fs::canonicalize(&import)
-        .expect("canonicalize failed")
+      util::root_path()
         .to_str()
         .expect("non-unicode in file path"),
+      "cli/tests/bundle_im.ts",
     ),
   )
   .expect("error writing file");
