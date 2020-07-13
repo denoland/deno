@@ -55,6 +55,7 @@ def main():
 
 def dprint():
     executable_path = get_prebuilt_tool_path("dprint")
+    # allow it to run on the CI
     chmod_executable(executable_path)
     command = [executable_path, "fmt"]
     run(command, shell=False, quiet=True)

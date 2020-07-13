@@ -521,28 +521,28 @@ function charInC0ControlSet(c: string): boolean {
 }
 
 function charInSearchSet(c: string): boolean {
-  // dprint-ignore
+  // deno-fmt-ignore
   return charInC0ControlSet(c) || ["\u0020", "\u0022", "\u0023", "\u0027", "\u003C", "\u003E"].includes(c) || c > "\u007E";
 }
 
 function charInFragmentSet(c: string): boolean {
-  // dprint-ignore
+  // deno-fmt-ignore
   return charInC0ControlSet(c) || ["\u0020", "\u0022", "\u003C", "\u003E", "\u0060"].includes(c);
 }
 
 function charInPathSet(c: string): boolean {
-  // dprint-ignore
+  // deno-fmt-ignore
   return charInFragmentSet(c) || ["\u0023", "\u003F", "\u007B", "\u007D"].includes(c);
 }
 
 function charInUserinfoSet(c: string): boolean {
   // "\u0027" ("'") seemingly isn't in the spec, but matches Chrome and Firefox.
-  // dprint-ignore
+  // deno-fmt-ignore
   return charInPathSet(c) || ["\u0027", "\u002F", "\u003A", "\u003B", "\u003D", "\u0040", "\u005B", "\u005C", "\u005D", "\u005E", "\u007C"].includes(c);
 }
 
 function charIsForbiddenInHost(c: string): boolean {
-  // dprint-ignore
+  // deno-fmt-ignore
   return ["\u0000", "\u0009", "\u000A", "\u000D", "\u0020", "\u0023", "\u0025", "\u002F", "\u003A", "\u003C", "\u003E", "\u003F", "\u0040", "\u005B", "\u005C", "\u005D", "\u005E"].includes(c);
 }
 
