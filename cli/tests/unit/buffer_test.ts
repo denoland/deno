@@ -17,12 +17,7 @@ const N = 100;
 let testBytes: Uint8Array | null;
 let testString: string | null;
 
-let ignoreMaxSizeTests = false;
-try {
-  new ArrayBuffer(MAX_SIZE);
-} catch (e) {
-  ignoreMaxSizeTests = true;
-}
+const ignoreMaxSizeTests = true;
 
 function init(): void {
   if (testBytes == null) {
