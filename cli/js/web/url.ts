@@ -73,12 +73,14 @@ function parse(url: string, isBase = true): URLParts | undefined {
       // equivalent to: `new URL("file://localhost/foo/bar")`.
       [parts.hostname, restUrl] = takePattern(restUrl, /^[/\\]{2,}([^/\\?#]*)/);
     }
-  } else if (isSpecial) {
-    parts.slashes = "//";
+  } else {
     let restAuthority;
-    [restAuthority, restUrl] = takePattern(restUrl, /^[/\\]{2,}([^/\\?#]+)/);
-    if (isBase && restAuthority == "") {
-      return undefined;
+    if (isSpecial) {
+      parts.slashes = "//";
+      [restAuthority, restUrl] = takePattern(restUrl, /^[/\\]{2,}([^/\\?#]*)/);
+    } else {
+      parts.slashes = restUrl.match(/^[/\\]{2}/) ? "//" : "";
+      [restAuthority, restUrl] = takePattern(restUrl, /^[/\\]{2}([^/\\?#]*)/);
     }
     let restAuthentication;
     [restAuthentication, restAuthority] = takePattern(restAuthority, /^(.*)@/);
@@ -97,16 +99,9 @@ function parse(url: string, isBase = true): URLParts | undefined {
     if (!isValidPort(parts.port)) {
       return undefined;
     }
-  } else {
-    [parts.slashes, restUrl] = takePattern(restUrl, /^([/\\]{2})/);
-    parts.username = "";
-    parts.password = "";
-    if (parts.slashes) {
-      [parts.hostname, restUrl] = takePattern(restUrl, /^([^/\\?#]*)/);
-    } else {
-      parts.hostname = "";
+    if (parts.hostname == "" && isSpecial && isBase) {
+      return undefined;
     }
-    parts.port = "";
   }
   try {
     parts.hostname = encodeHostname(parts.hostname, isSpecial);
@@ -315,9 +310,13 @@ export class URLImpl implements URL {
       this.username || this.password
         ? `${this.username}${this.password ? ":" + this.password : ""}@`
         : "";
-    return `${this.protocol}${parts.get(this)!.slashes}${authentication}${
-      this.host
-    }${this.pathname}${this.search}${this.hash}`;
+    const host = this.host;
+    const slashes = host ? "//" : parts.get(this)!.slashes;
+    let pathname = this.pathname;
+    if (pathname.charAt(0) != "/" && pathname != "" && host != "") {
+      pathname = `/${pathname}`;
+    }
+    return `${this.protocol}${slashes}${authentication}${host}${pathname}${this.search}${this.hash}`;
   }
 
   set href(value: string) {
@@ -346,16 +345,17 @@ export class URLImpl implements URL {
   }
 
   get pathname(): string {
-    return parts.get(this)?.path || "/";
+    let path = parts.get(this)!.path;
+    if (specialSchemes.includes(parts.get(this)!.protocol)) {
+      if (path.charAt(0) != "/") {
+        path = `/${path}`;
+      }
+    }
+    return path;
   }
 
   set pathname(value: string) {
-    value = unescape(String(value));
-    if (!value || value.charAt(0) !== "/") {
-      value = `/${value}`;
-    }
-    // paths can contain % unescaped
-    parts.get(this)!.path = encodePathname(value);
+    parts.get(this)!.path = encodePathname(String(value));
   }
 
   get port(): string {
@@ -485,6 +485,38 @@ export class URLImpl implements URL {
   }
 }
 
+function parseIpv4Number(s: string): number {
+  if (s.match(/^(0[Xx])[0-9A-Za-z]+$/)) {
+    return Number(s);
+  }
+  if (s.match(/^[0-9]+$/)) {
+    return Number(s.startsWith("0") ? `0o${s}` : s);
+  }
+  return NaN;
+}
+
+function parseIpv4(s: string): string {
+  const parts = s.split(".");
+  if (parts[parts.length - 1] == "" && parts.length > 1) {
+    parts.pop();
+  }
+  if (parts.includes("") || parts.length > 4) {
+    return s;
+  }
+  const numbers = parts.map(parseIpv4Number);
+  if (numbers.includes(NaN)) {
+    return s;
+  }
+  const last = numbers.pop()!;
+  if (last >= 256 ** (4 - numbers.length) || numbers.find((n) => n >= 256)) {
+    throw new TypeError("Invalid hostname.");
+  }
+  const ipv4 = numbers.reduce((sum, n, i) => sum + n * 256 ** (3 - i), last);
+  const ipv4Hex = ipv4.toString(16).padStart(8, "0");
+  const ipv4HexParts = ipv4Hex.match(/(..)(..)(..)(..)$/)!.slice(1);
+  return ipv4HexParts.map((s) => String(Number(`0x${s}`))).join(".");
+}
+
 function charInC0ControlSet(c: string): boolean {
   return (c >= "\u0000" && c <= "\u001F") || c > "\u007E";
 }
@@ -573,7 +605,10 @@ function encodeHostname(s: string, isSpecial = true): string {
     }
   }
 
-  // TODO(nayeemrmn): IPv4 parsing.
+  // IPv4 parsing.
+  if (isSpecial) {
+    result = parseIpv4(result);
+  }
 
   return result;
 }

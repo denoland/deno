@@ -1237,6 +1237,7 @@ macro_rules! itest(
 );
 
 // Unfortunately #[ignore] doesn't work with itest!
+#[allow(unused)]
 macro_rules! itest_ignore(
   ($name:ident {$( $key:ident: $value:expr,)*})  => {
     #[ignore]
@@ -1344,12 +1345,6 @@ itest!(_022_info_flag_script {
 itest!(_023_no_ext_with_headers {
   args: "run --reload 023_no_ext_with_headers",
   output: "023_no_ext_with_headers.out",
-});
-
-// FIXME(bartlomieju): this test should use remote file
-itest_ignore!(_024_import_no_ext_with_headers {
-  args: "run --reload 024_import_no_ext_with_headers.ts",
-  output: "024_import_no_ext_with_headers.ts.out",
 });
 
 // TODO(lucacasonato): remove --unstable when permissions goes stable
@@ -1515,8 +1510,8 @@ itest!(_044_bad_resource {
   exit_code: 1,
 });
 
-itest_ignore!(_045_proxy {
-  args: "run --allow-net --allow-env --allow-run --reload 045_proxy_test.ts",
+itest!(_045_proxy {
+  args: "run --allow-net --allow-env --allow-run --allow-read --reload --quiet 045_proxy_test.ts",
   output: "045_proxy_test.ts.out",
   http_server: true,
 });
@@ -2078,6 +2073,12 @@ itest!(unstable_enabled_js {
   output: "unstable_enabled_js.out",
 });
 
+itest!(unstable_disabled_ts2551 {
+  args: "run --reload unstable_ts2551.ts",
+  exit_code: 1,
+  output: "unstable_disabled_ts2551.out",
+});
+
 itest!(_053_import_compression {
   args: "run --quiet --reload --allow-net 053_import_compression/main.ts",
   output: "053_import_compression.out",
@@ -2103,9 +2104,9 @@ itest!(cafile_eval {
   http_server: true,
 });
 
-itest_ignore!(cafile_info {
+itest!(cafile_info {
   args:
-    "info --cert tls/RootCA.pem https://localhost:5545/cli/tests/cafile_info.ts",
+    "info --quiet --cert tls/RootCA.pem https://localhost:5545/cli/tests/cafile_info.ts",
   output: "cafile_info.ts.out",
   http_server: true,
 });
@@ -2186,6 +2187,27 @@ itest!(deno_lint_glob {
   output: "lint/expected_glob.out",
   exit_code: 1,
 });
+
+#[test]
+fn cafile_env_fetch() {
+  use url::Url;
+  let g = util::http_server();
+  let deno_dir = TempDir::new().expect("tempdir fail");
+  let module_url =
+    Url::parse("https://localhost:5545/cli/tests/cafile_url_imports.ts")
+      .unwrap();
+  let cafile = util::root_path().join("cli/tests/tls/RootCA.pem");
+  let output = Command::new(util::deno_exe_path())
+    .env("DENO_DIR", deno_dir.path())
+    .env("DENO_CERT", cafile)
+    .current_dir(util::root_path())
+    .arg("cache")
+    .arg(module_url.to_string())
+    .output()
+    .expect("Failed to spawn script");
+  assert!(output.status.success());
+  drop(g);
+}
 
 #[test]
 fn cafile_fetch() {

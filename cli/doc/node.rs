@@ -14,24 +14,6 @@ pub enum DocNodeKind {
   Namespace,
 }
 
-#[derive(Debug, Serialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub enum ParamKind {
-  Identifier,
-  Rest,
-  Array,
-  Object,
-}
-
-#[derive(Debug, Serialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct ParamDef {
-  pub name: String,
-  pub kind: ParamKind,
-  pub optional: bool,
-  pub ts_type: Option<super::ts_type::TsTypeDef>,
-}
-
 #[derive(Debug, Serialize, Clone, PartialEq)]
 pub struct Location {
   pub filename: String,
@@ -82,7 +64,7 @@ pub struct Reexport {
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ModuleDoc {
-  pub exports: Vec<DocNode>,
+  pub definitions: Vec<DocNode>,
   pub reexports: Vec<Reexport>,
 }
 
