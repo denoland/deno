@@ -62,7 +62,34 @@ mod dirs {
   pub fn home_dir() -> Option<PathBuf> {
     std::env::var_os("HOME")
       .and_then(|h| if h.is_empty() { None } else { Some(h) })
+      .or_else(|| unsafe { fallback() })
       .map(PathBuf::from)
+  }
+
+  // This piece of code is taken from the deprecated home_dir() function in Rust's standard library: https://github.com/rust-lang/rust/blob/master/src/libstd/sys/unix/os.rs#L579
+  // The same code is used by the dirs crate
+  unsafe fn fallback() -> Option<std::ffi::OsString> {
+    let amt = match libc::sysconf(libc::_SC_GETPW_R_SIZE_MAX) {
+      n if n < 0 => 512 as usize,
+      n => n as usize,
+    };
+    let mut buf = Vec::with_capacity(amt);
+    let mut passwd: libc::passwd = std::mem::zeroed();
+    let mut result = std::ptr::null_mut();
+    match libc::getpwuid_r(
+      libc::getuid(),
+      &mut passwd,
+      buf.as_mut_ptr(),
+      buf.capacity(),
+      &mut result,
+    ) {
+      0 if !result.is_null() => {
+        let ptr = passwd.pw_dir as *const _;
+        let bytes = std::ffi::CStr::from_ptr(ptr).to_bytes().to_vec();
+        Some(std::os::unix::ffi::OsStringExt::from_vec(bytes))
+      }
+      _ => None,
+    }
   }
 }
 
