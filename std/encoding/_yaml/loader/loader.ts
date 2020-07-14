@@ -7,7 +7,7 @@
 
 import { YAMLError } from "../error.ts";
 import { Mark } from "../mark.ts";
-import { Type } from "../type.ts";
+import type { Type } from "../type.ts";
 import * as common from "../utils.ts";
 import { LoaderState, LoaderStateOptions, ResultType } from "./loader_state.ts";
 

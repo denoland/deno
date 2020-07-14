@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 import { sendSync, sendAsync } from "../dispatch_json.ts";
 
 function toSecondsFromEpoch(v: number | Date): number {

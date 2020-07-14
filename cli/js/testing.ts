@@ -1,7 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 import { gray, green, italic, red, yellow } from "./colors.ts";
 import { exit } from "./ops/os.ts";
-import { Console, stringifyArgs } from "./web/console.ts";
+import { Console, inspectArgs } from "./web/console.ts";
 import { stdout } from "./files.ts";
 import { exposeForTest } from "./internals.ts";
 import { TextEncoder } from "./web/text_encoding.ts";
@@ -11,9 +12,9 @@ import { assert } from "./util.ts";
 
 const disabledConsole = new Console((): void => {});
 
-function delay(n: number): Promise<void> {
-  return new Promise((resolve: () => void, _) => {
-    setTimeout(resolve, n);
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve: () => void) => {
+    setTimeout(resolve, ms);
   });
 }
 
@@ -204,7 +205,7 @@ function reportToConsole(message: TestMessage): void {
 
       for (const { name, error } of failures) {
         log(name);
-        log(stringifyArgs([error!]));
+        log(inspectArgs([error!]));
         log("");
       }
 
@@ -241,7 +242,7 @@ class TestRunner {
     passed: 0,
     failed: 0,
   };
-  private usedOnly: boolean;
+  readonly #usedOnly: boolean;
 
   constructor(
     tests: TestDefinition[],
@@ -249,8 +250,8 @@ class TestRunner {
     public failFast: boolean
   ) {
     const onlyTests = tests.filter(({ only }) => only);
-    this.usedOnly = onlyTests.length > 0;
-    const unfilteredTests = this.usedOnly ? onlyTests : tests;
+    this.#usedOnly = onlyTests.length > 0;
+    const unfilteredTests = this.#usedOnly ? onlyTests : tests;
     this.testsToRun = unfilteredTests.filter(filterFn);
     this.stats.filtered = unfilteredTests.length - this.testsToRun.length;
   }
@@ -292,7 +293,7 @@ class TestRunner {
     const duration = +new Date() - suiteStart;
 
     yield {
-      end: { ...this.stats, usedOnly: this.usedOnly, duration, results },
+      end: { ...this.stats, usedOnly: this.#usedOnly, duration, results },
     };
   }
 }
@@ -307,6 +308,9 @@ function createFilterFn(
     if (filter) {
       if (filter instanceof RegExp) {
         passes = passes && filter.test(def.name);
+      } else if (filter.startsWith("/") && filter.endsWith("/")) {
+        const filterAsRegex = new RegExp(filter.slice(1, filter.length - 1));
+        passes = passes && filterAsRegex.test(def.name);
       } else {
         passes = passes && def.name.includes(filter);
       }
@@ -323,6 +327,8 @@ function createFilterFn(
     return passes;
   };
 }
+
+exposeForTest("createFilterFn", createFilterFn);
 
 interface RunTestsOptions {
   exitOnFail?: boolean;

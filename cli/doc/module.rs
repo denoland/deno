@@ -35,7 +35,8 @@ pub fn get_doc_node_for_export_decl(
       }
     }
     Decl::Fn(fn_decl) => {
-      let (name, function_def) = super::function::get_doc_for_fn_decl(fn_decl);
+      let (name, function_def) =
+        super::function::get_doc_for_fn_decl(doc_parser, fn_decl);
       DocNode {
         kind: DocNodeKind::Function,
         name,

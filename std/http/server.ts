@@ -248,7 +248,8 @@ export type HTTPOptions = Omit<Deno.ListenOptions, "transport">;
 export function _parseAddrFromStr(addr: string): HTTPOptions {
   let url: URL;
   try {
-    url = new URL(`http://${addr}`);
+    const host = addr.startsWith(":") ? `0.0.0.0${addr}` : addr;
+    url = new URL(`http://${host}`);
   } catch {
     throw new TypeError("Invalid address.");
   }
@@ -262,7 +263,10 @@ export function _parseAddrFromStr(addr: string): HTTPOptions {
     throw new TypeError("Invalid address.");
   }
 
-  return { hostname: url.hostname, port: Number(url.port) };
+  return {
+    hostname: url.hostname,
+    port: url.port === "" ? 80 : Number(url.port),
+  };
 }
 
 /**
