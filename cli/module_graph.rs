@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::checksum;
+use crate::decoding::source_to_string;
 use crate::doc::Location;
 use crate::file_fetcher::map_file_extension;
 use crate::file_fetcher::SourceFile;
@@ -475,7 +476,7 @@ impl ModuleGraphLoader {
     let module_specifier = ModuleSpecifier::from(source_file.url.clone());
     let version_hash =
       checksum::gen(&[&source_file.source_code, version::DENO.as_bytes()]);
-    let source_code = String::from_utf8(source_file.source_code)?;
+    let source_code = source_to_string(&source_file.source_code).unwrap();
 
     if SUPPORTED_MEDIA_TYPES.contains(&source_file.media_type) {
       if let Some(types_specifier) = source_file.types_header {

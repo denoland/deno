@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::colors;
+use crate::decoding::source_to_string;
 use crate::diagnostics::Diagnostic;
 use crate::diagnostics::DiagnosticItem;
 use crate::disk_cache::DiskCache;
@@ -870,7 +871,7 @@ impl TsCompiler {
     let compiled_source_file = self.get_compiled_source_file(module_url)?;
 
     let compiled_module = CompiledModule {
-      code: str::from_utf8(&compiled_source_file.source_code)
+      code: source_to_string(&compiled_source_file.source_code)
         .unwrap()
         .to_string(),
       name: module_url.to_string(),
@@ -1000,7 +1001,7 @@ impl SourceMapGetter for TsCompiler {
     self
       .try_resolve_and_get_source_file(script_name)
       .and_then(|out| {
-        str::from_utf8(&out.source_code).ok().map(|v| {
+        source_to_string(&out.source_code).ok().map(|v| {
           // Do NOT use .lines(): it skips the terminating empty line.
           // (due to internally using .split_terminator() instead of .split())
           let lines: Vec<&str> = v.split('\n').collect();

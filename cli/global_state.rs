@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+use crate::decoding::source_to_string;
 use crate::deno_dir;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::flags;
@@ -248,7 +249,7 @@ impl GlobalState {
         })?
     } else {
       CompiledModule {
-        code: String::from_utf8(out.source_code.clone())?,
+        code: source_to_string(&out.source_code).unwrap(),
         name: out.url.to_string(),
       }
     };

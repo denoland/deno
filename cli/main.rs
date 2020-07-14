@@ -9,8 +9,10 @@ extern crate log;
 extern crate futures;
 #[macro_use]
 extern crate serde_json;
+extern crate chardet;
 extern crate clap;
 extern crate deno_core;
+extern crate encoding;
 extern crate indexmap;
 #[cfg(unix)]
 extern crate nix;
@@ -24,6 +26,7 @@ extern crate url;
 
 mod checksum;
 pub mod colors;
+pub mod decoding;
 pub mod deno_dir;
 pub mod diagnostics;
 mod diff;
@@ -72,6 +75,7 @@ pub use deno_lint::swc_ecma_ast;
 pub use deno_lint::swc_ecma_parser;
 pub use deno_lint::swc_ecma_visit;
 
+use crate::decoding::source_to_string;
 use crate::doc::parser::DocFileLoader;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
@@ -539,7 +543,7 @@ async fn doc_command(
         let source_file = fetcher
           .fetch_source_file(&specifier, None, Permissions::allow_all())
           .await?;
-        String::from_utf8(source_file.source_code)
+        source_to_string(&source_file.source_code)
           .map_err(|_| OpError::other("failed to parse".to_string()))
       }
       .boxed_local()
