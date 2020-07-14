@@ -3,7 +3,6 @@ use crate::op_error::OpError;
 use crate::ops::dispatch_json::Deserialize;
 use crate::ops::dispatch_json::JsonOp;
 use crate::ops::dispatch_json::Value;
-use crate::ops::json_op;
 use crate::state::State;
 use deno_core::plugin_api;
 use deno_core::CoreIsolate;
@@ -21,10 +20,7 @@ use std::task::Context;
 use std::task::Poll;
 
 pub fn init(i: &mut CoreIsolate, s: &State) {
-  i.register_op(
-    "op_open_plugin",
-    s.core_op(json_op(s.stateful_op2(op_open_plugin))),
-  );
+  i.register_op("op_open_plugin", s.stateful_json_op2(op_open_plugin));
 }
 
 #[derive(Deserialize)]
