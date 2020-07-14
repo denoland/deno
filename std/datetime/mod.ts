@@ -8,6 +8,17 @@ export const MINUTE = SECOND * 60;
 export const HOUR = MINUTE * 60;
 export const DAY = HOUR * 24;
 export const WEEK = DAY * 7;
+const DAYS_PER_WEEK = 7;
+
+enum Day {
+  Sun,
+  Mon,
+  Tue,
+  Wed,
+  Thu,
+  Fri,
+  Sat,
+}
 
 function execForce(reg: RegExp, pat: string): RegExpExecArray {
   const v = reg.exec(pat);
@@ -111,6 +122,14 @@ export function dayOfYear(date: Date): number {
 }
 
 /**
+ * Get number of current day in year
+ * @return Number of current day in year
+ */
+export function currentDayOfYear(): number {
+  return dayOfYear(new Date());
+}
+
+/**
  * Get number of the week in the year (ISO-8601)
  * @return Number of the week in year
  */
@@ -119,27 +138,20 @@ export function weekOfYear(date: Date): number {
     Date.UTC(date.getFullYear(), date.getMonth(), date.getDate())
   );
 
-  // Set to nearest Thursday: current date + 4 - current day number
-  // Make Sunday's day number 7
-  workingDate.setUTCDate(
-    workingDate.getUTCDate() + 4 - (workingDate.getUTCDay() || 7)
-  );
+  const day = workingDate.getUTCDay();
+
+  const nearestThursday =
+    workingDate.getUTCDate() +
+    Day.Thu -
+    (day === Day.Sun ? DAYS_PER_WEEK : day);
+
+  workingDate.setUTCDate(nearestThursday);
 
   // Get first day of year
   const yearStart = new Date(Date.UTC(workingDate.getUTCFullYear(), 0, 1));
 
   // return the calculated full weeks to nearest Thursday
-  return Math.ceil(
-    ((workingDate.valueOf() - yearStart.valueOf()) / 86400000 + 1) / 7
-  );
-}
-
-/**
- * Get number of current day in year
- * @return Number of current day in year
- */
-export function currentDayOfYear(): number {
-  return dayOfYear(new Date());
+  return Math.ceil((workingDate.getTime() - yearStart.getTime() + DAY) / WEEK);
 }
 
 /**
