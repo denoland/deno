@@ -275,12 +275,12 @@ Deno.test("testingAssertFailWithWrongErrorClass", function (): void {
         (): void => {
           fail("foo");
         },
-        Error,
+        TypeError,
         "Failed assertion: foo"
       );
     },
     AssertionError,
-    `Expected error to be instance of "Error", but was "AssertionError"`
+    `Expected error to be instance of "TypeError", but was "AssertionError"`
   );
 });
 
@@ -624,5 +624,25 @@ Deno.test("assert diff formatting", () => {
   "i",
   "i",
 ]`
+  );
+});
+
+Deno.test("Assert Throws Parent Error", () => {
+  assertThrows(
+    () => {
+      throw new AssertionError("Fail!");
+    },
+    Error,
+    "Fail!"
+  );
+});
+
+Deno.test("Assert Throws Async Parent Error", () => {
+  assertThrowsAsync(
+    () => {
+      throw new AssertionError("Fail!");
+    },
+    Error,
+    "Fail!"
   );
 });
