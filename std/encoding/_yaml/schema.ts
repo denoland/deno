@@ -4,8 +4,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 import { YAMLError } from "./error.ts";
-import { KindType, Type } from "./type.ts";
-import { ArrayObject, Any } from "./utils.ts";
+import type { KindType, Type } from "./type.ts";
+import type { ArrayObject, Any } from "./utils.ts";
 
 function compileList(
   schema: Schema,

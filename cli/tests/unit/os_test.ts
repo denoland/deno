@@ -111,6 +111,28 @@ unitTest(function osPid(): void {
   assert(Deno.pid > 0);
 });
 
+unitTest(function osPpid(): void {
+  assert(Deno.ppid > 0);
+});
+
+unitTest(
+  { perms: { run: true, read: true } },
+  async function osPpidIsEqualToPidOfParentProcess(): Promise<void> {
+    const decoder = new TextDecoder();
+    const process = Deno.run({
+      cmd: [Deno.execPath(), "eval", "-p", "--unstable", "Deno.ppid"],
+      stdout: "piped",
+      env: { NO_COLOR: "true" },
+    });
+    const output = await process.output();
+    process.close();
+
+    const expected = Deno.pid;
+    const actual = parseInt(decoder.decode(output));
+    assertEquals(actual, expected);
+  }
+);
+
 unitTest({ perms: { read: true } }, function execPath(): void {
   assertNotEquals(Deno.execPath(), "");
 });

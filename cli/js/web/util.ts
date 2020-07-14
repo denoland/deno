@@ -208,3 +208,11 @@ export function getHeaderValueParams(value: string): Map<string, string> {
 export function hasHeaderValueOf(s: string, value: string): boolean {
   return new RegExp(`^${value}[\t\s]*;?`).test(s);
 }
+
+/** An internal function which provides a function name for some generated
+ * functions, so stack traces are a bit more readable.
+ *
+ * @internal */
+export function setFunctionName(fn: Function, value: string): void {
+  Object.defineProperty(fn, "name", { value, configurable: true });
+}

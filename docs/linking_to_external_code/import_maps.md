@@ -39,3 +39,33 @@ Then:
 ```shell
 $ deno run --importmap=import_map.json --unstable color.ts
 ```
+
+To use staring directory for absolute imports:
+
+```json
+// import_map.json
+
+{
+  "imports": {
+    "/": "./"
+  }
+}
+```
+
+```ts
+// main.ts
+
+import { MyUtil } from "/util.ts";
+```
+
+You may map a different directory: (eg. src)
+
+```json
+// import_map.json
+
+{
+  "imports": {
+    "/": "./src"
+  }
+}
+```

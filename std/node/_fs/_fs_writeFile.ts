@@ -1,6 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { notImplemented } from "../_utils.ts";
 import { fromFileUrl } from "../path.ts";
+import { Buffer } from "../buffer.ts";
 
 import {
   Encodings,
@@ -40,8 +41,7 @@ export function writeFile(
   const encoding = checkEncoding(getEncoding(options)) || "utf8";
   const openOptions = getOpenOptions(flag || "w");
 
-  if (typeof data === "string" && encoding === "utf8")
-    data = new TextEncoder().encode(data) as Uint8Array;
+  if (typeof data === "string") data = Buffer.from(data, encoding);
 
   const isRid = typeof pathOrRid === "number";
   let file;
@@ -87,8 +87,7 @@ export function writeFileSync(
   const encoding = checkEncoding(getEncoding(options)) || "utf8";
   const openOptions = getOpenOptions(flag || "w");
 
-  if (typeof data === "string" && encoding === "utf8")
-    data = new TextEncoder().encode(data) as Uint8Array;
+  if (typeof data === "string") data = Buffer.from(data, encoding);
 
   const isRid = typeof pathOrRid === "number";
   let file;

@@ -1,13 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // Structured similarly to Go's cookie.go
 // https://github.com/golang/go/blob/master/src/net/http/cookie.go
-import { ServerRequest, Response } from "./server.ts";
 import { assert } from "../_util/assert.ts";
 import { toIMF } from "../datetime/mod.ts";
 
-export interface Cookies {
-  [key: string]: string;
-}
+export type Cookies = Record<string, string>;
 
 export interface Cookie {
   /** Name of the cookie. */
@@ -84,9 +81,9 @@ function toString(cookie: Cookie): string {
 
 /**
  * Parse the cookies of the Server Request
- * @param req Server Request
+ * @param req An object which has a `headers` property
  */
-export function getCookies(req: ServerRequest): Cookies {
+export function getCookies(req: { headers: Headers }): Cookies {
   const cookie = req.headers.get("Cookie");
   if (cookie != null) {
     const out: Cookies = {};
@@ -104,14 +101,17 @@ export function getCookies(req: ServerRequest): Cookies {
 
 /**
  * Set the cookie header properly in the Response
- * @param res Server Response
+ * @param res An object which has a headers property
  * @param cookie Cookie to set
+ *
  * Example:
  *
- *     setCookie(response, { name: 'deno', value: 'runtime',
- *        httpOnly: true, secure: true, maxAge: 2, domain: "deno.land" });
+ * ```ts
+ * setCookie(response, { name: 'deno', value: 'runtime',
+ *   httpOnly: true, secure: true, maxAge: 2, domain: "deno.land" });
+ * ```
  */
-export function setCookie(res: Response, cookie: Cookie): void {
+export function setCookie(res: { headers?: Headers }, cookie: Cookie): void {
   if (!res.headers) {
     res.headers = new Headers();
   }
@@ -132,7 +132,7 @@ export function setCookie(res: Response, cookie: Cookie): void {
  *
  *     deleteCookie(res,'foo');
  */
-export function deleteCookie(res: Response, name: string): void {
+export function deleteCookie(res: { headers?: Headers }, name: string): void {
   setCookie(res, {
     name: name,
     value: "",

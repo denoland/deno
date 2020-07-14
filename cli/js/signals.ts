@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 import { bindSignal, pollSignal, unbindSignal } from "./ops/signal.ts";
 import { build } from "./build.ts";
 
@@ -129,7 +130,7 @@ export class SignalStream
   implements AsyncIterableIterator<void>, PromiseLike<void> {
   #disposed = false;
   #pollingPromise: Promise<boolean> = Promise.resolve(false);
-  #rid: number;
+  readonly #rid: number;
 
   constructor(signo: number) {
     this.#rid = bindSignal(signo).rid;

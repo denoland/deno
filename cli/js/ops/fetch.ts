@@ -17,10 +17,10 @@ export interface FetchResponse {
 
 export function fetch(
   args: FetchRequest,
-  body: ArrayBufferView | undefined
+  body?: ArrayBufferView
 ): Promise<FetchResponse> {
-  let zeroCopy = undefined;
-  if (body) {
+  let zeroCopy;
+  if (body != null) {
     zeroCopy = new Uint8Array(body.buffer, body.byteOffset, body.byteLength);
   }
 

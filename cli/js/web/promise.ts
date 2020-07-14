@@ -1,7 +1,9 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 export enum PromiseState {
-  Pending = 0,
-  Fulfilled = 1,
-  Rejected = 2,
+  Pending,
+  Fulfilled,
+  Rejected,
 }
 
 export type PromiseDetails<T> = [PromiseState, T | undefined];
