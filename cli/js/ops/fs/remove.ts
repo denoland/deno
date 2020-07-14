@@ -9,7 +9,7 @@ export interface RemoveOptions {
 
 export function removeSync(
   path: string | URL,
-  options: RemoveOptions = {}
+  options: RemoveOptions = {},
 ): void {
   sendSync("op_remove", {
     path: pathFromURL(path),
@@ -19,7 +19,7 @@ export function removeSync(
 
 export async function remove(
   path: string | URL,
-  options: RemoveOptions = {}
+  options: RemoveOptions = {},
 ): Promise<void> {
   await sendAsync("op_remove", {
     path: pathFromURL(path),

@@ -92,7 +92,7 @@ function encodeHex(character: number): string {
     length = 8;
   } else {
     throw new YAMLError(
-      "code point within a string may not be greater than 0xFFFFFFFF"
+      "code point within a string may not be greater than 0xFFFFFFFF",
     );
   }
 
@@ -242,7 +242,7 @@ function chooseScalarStyle(
   singleLineOnly: boolean,
   indentPerLevel: number,
   lineWidth: number,
-  testAmbiguousType: (...args: Any[]) => Any
+  testAmbiguousType: (...args: Any[]) => Any,
 ): number {
   const shouldTrackWidth = lineWidth !== -1;
   let hasLineBreak = false,
@@ -408,7 +408,7 @@ function escapeString(string: string): string {
       if (nextChar >= 0xdc00 && nextChar <= 0xdfff /* low surrogate */) {
         // Combine the surrogate pair and store it escaped.
         result += encodeHex(
-          (char - 0xd800) * 0x400 + nextChar - 0xdc00 + 0x10000
+          (char - 0xd800) * 0x400 + nextChar - 0xdc00 + 0x10000,
         );
         // Advance index one extra since we already used that char here.
         i++;
@@ -448,7 +448,7 @@ function writeScalar(
   state: DumperState,
   string: string,
   level: number,
-  iskey: boolean
+  iskey: boolean,
 ): void {
   state.dump = ((): string => {
     if (string.length === 0) {
@@ -490,7 +490,7 @@ function writeScalar(
         singleLineOnly,
         state.indent,
         lineWidth,
-        testAmbiguity
+        testAmbiguity,
       )
     ) {
       case STYLE_PLAIN:
@@ -504,7 +504,7 @@ function writeScalar(
       case STYLE_FOLDED:
         return `>${blockHeader(string, state.indent)}${
           dropEndingNewline(
-            indentString(foldString(string, lineWidth), indent)
+            indentString(foldString(string, lineWidth), indent),
           )
         }`;
       case STYLE_DOUBLE:
@@ -518,7 +518,7 @@ function writeScalar(
 function writeFlowSequence(
   state: DumperState,
   level: number,
-  object: Any
+  object: Any,
 ): void {
   let _result = "";
   const _tag = state.tag;
@@ -540,7 +540,7 @@ function writeBlockSequence(
   state: DumperState,
   level: number,
   object: Any,
-  compact = false
+  compact = false,
 ): void {
   let _result = "";
   const _tag = state.tag;
@@ -570,7 +570,7 @@ function writeBlockSequence(
 function writeFlowMapping(
   state: DumperState,
   level: number,
-  object: Any
+  object: Any,
 ): void {
   let _result = "";
   const _tag = state.tag,
@@ -619,7 +619,7 @@ function writeBlockMapping(
   state: DumperState,
   level: number,
   object: Any,
-  compact = false
+  compact = false,
 ): void {
   const _tag = state.tag,
     objectKeyList = Object.keys(object);
@@ -701,7 +701,7 @@ function writeBlockMapping(
 function detectType(
   state: DumperState,
   object: Any,
-  explicit = false
+  explicit = false,
 ): boolean {
   const typeList = explicit ? state.explicitTypes : state.implicitTypes;
 
@@ -727,11 +727,11 @@ function detectType(
         } else if (_hasOwnProperty.call(type.represent, style)) {
           _result = (type.represent as ArrayObject<RepresentFn>)[style](
             object,
-            style
+            style,
           );
         } else {
           throw new YAMLError(
-            `!<${type.tag}> tag resolver accepts not "${style}" style`
+            `!<${type.tag}> tag resolver accepts not "${style}" style`,
           );
         }
 
@@ -754,7 +754,7 @@ function writeNode(
   object: Any,
   block: boolean,
   compact: boolean,
-  iskey = false
+  iskey = false,
 ): boolean {
   state.tag = null;
   state.dump = object;
@@ -837,7 +837,7 @@ function writeNode(
 function inspectNode(
   object: Any,
   objects: Any[],
-  duplicatesIndexes: number[]
+  duplicatesIndexes: number[],
 ): void {
   if (object !== null && typeof object === "object") {
     const index = objects.indexOf(object);

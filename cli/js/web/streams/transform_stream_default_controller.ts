@@ -24,7 +24,7 @@ export class TransformStreamDefaultControllerImpl<I = any, O = any>
 
   private constructor() {
     throw new TypeError(
-      "TransformStreamDefaultController's constructor cannot be called."
+      "TransformStreamDefaultController's constructor cannot be called.",
     );
   }
 
@@ -36,7 +36,7 @@ export class TransformStreamDefaultControllerImpl<I = any, O = any>
       sym.readable
     ][sym.readableStreamController];
     return readableStreamDefaultControllerGetDesiredSize(
-      readableController as ReadableStreamDefaultControllerImpl<O>
+      readableController as ReadableStreamDefaultControllerImpl<O>,
     );
   }
 
@@ -71,5 +71,5 @@ export class TransformStreamDefaultControllerImpl<I = any, O = any>
 
 setFunctionName(
   TransformStreamDefaultControllerImpl,
-  "TransformStreamDefaultController"
+  "TransformStreamDefaultController",
 );

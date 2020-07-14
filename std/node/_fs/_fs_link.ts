@@ -10,7 +10,7 @@ import { fromFileUrl } from "../path.ts";
 export function link(
   existingPath: string | URL,
   newPath: string | URL,
-  callback: CallbackWithError
+  callback: CallbackWithError,
 ): void {
   existingPath = existingPath instanceof URL
     ? fromFileUrl(existingPath)
@@ -28,7 +28,7 @@ export function link(
  */
 export function linkSync(
   existingPath: string | URL,
-  newPath: string | URL
+  newPath: string | URL,
 ): void {
   existingPath = existingPath instanceof URL
     ? fromFileUrl(existingPath)

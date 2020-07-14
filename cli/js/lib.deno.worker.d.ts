@@ -26,7 +26,7 @@ declare let onerror:
     source: string,
     lineno: number,
     colno: number,
-    e: Event
+    e: Event,
   ) => boolean | void)
   | undefined;
 declare const close: typeof __workerMain.close;

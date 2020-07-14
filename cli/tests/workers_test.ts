@@ -34,11 +34,11 @@ Deno.test({
 
     const jsWorker = new Worker(
       new URL("subdir/test_worker.js", import.meta.url).href,
-      { type: "module" }
+      { type: "module" },
     );
     const tsWorker = new Worker(
       new URL("subdir/test_worker.ts", import.meta.url).href,
-      { type: "module", name: "tsWorker" }
+      { type: "module", name: "tsWorker" },
     );
 
     tsWorker.onmessage = (e): void => {
@@ -70,7 +70,7 @@ Deno.test({
 
     const nestedWorker = new Worker(
       new URL("subdir/nested_worker.js", import.meta.url).href,
-      { type: "module", name: "nested" }
+      { type: "module", name: "nested" },
     );
 
     nestedWorker.onmessage = (e): void => {
@@ -90,7 +90,7 @@ Deno.test({
     const promise = createResolvable();
     const throwingWorker = new Worker(
       new URL("subdir/throwing_worker.js", import.meta.url).href,
-      { type: "module" }
+      { type: "module" },
     );
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -112,7 +112,7 @@ Deno.test({
 
     const fetchingWorker = new Worker(
       new URL("subdir/fetching_worker.js", import.meta.url).href,
-      { type: "module" }
+      { type: "module" },
     );
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -139,7 +139,7 @@ Deno.test({
 
     const busyWorker = new Worker(
       new URL("subdir/busy_worker.js", import.meta.url).href,
-      { type: "module" }
+      { type: "module" },
     );
 
     let testResult = 0;
@@ -172,7 +172,7 @@ Deno.test({
 
     const racyWorker = new Worker(
       new URL("subdir/racy_worker.js", import.meta.url).href,
-      { type: "module" }
+      { type: "module" },
     );
 
     racyWorker.onmessage = (e): void => {
@@ -200,7 +200,7 @@ Deno.test({
 
     const worker = new Worker(
       new URL("subdir/event_worker.js", import.meta.url).href,
-      { type: "module" }
+      { type: "module" },
     );
 
     worker.onmessage = (_e: Event): void => {
@@ -244,7 +244,7 @@ Deno.test({
 
     const worker = new Worker(
       new URL("subdir/event_worker_scope.js", import.meta.url).href,
-      { type: "module" }
+      { type: "module" },
     );
 
     worker.onmessage = (e: MessageEvent): void => {
@@ -273,11 +273,11 @@ Deno.test({
 
     const regularWorker = new Worker(
       new URL("subdir/non_deno_worker.js", import.meta.url).href,
-      { type: "module" }
+      { type: "module" },
     );
     const denoWorker = new Worker(
       new URL("subdir/deno_worker.ts", import.meta.url).href,
-      { type: "module", deno: true }
+      { type: "module", deno: true },
     );
 
     regularWorker.onmessage = (e): void => {
@@ -305,7 +305,7 @@ Deno.test({
     const promise = createResolvable();
     const w = new Worker(
       new URL("subdir/worker_crypto.js", import.meta.url).href,
-      { type: "module" }
+      { type: "module" },
     );
     w.onmessage = (e): void => {
       assertEquals(e.data, true);

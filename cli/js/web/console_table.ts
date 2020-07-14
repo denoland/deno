@@ -94,7 +94,7 @@ export function cliTable(head: string[], columns: string[][]): string {
   const columnWidths = head.map((h: string): number => getStringWidth(h));
   const longestColumn = columns.reduce(
     (n: number, a: string[]): number => Math.max(n, a.length),
-    0
+    0,
   );
 
   for (let i = 0; i < head.length; i++) {

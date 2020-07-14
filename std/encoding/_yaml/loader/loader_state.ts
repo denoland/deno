@@ -57,7 +57,7 @@ export class LoaderState extends State {
       legacy = false,
       json = false,
       listener = null,
-    }: LoaderStateOptions
+    }: LoaderStateOptions,
   ) {
     super(schema);
     this.filename = filename;

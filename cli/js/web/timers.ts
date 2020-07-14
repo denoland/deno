@@ -149,7 +149,7 @@ function unschedule(timer: Timer): void {
       const nextDueNode: DueNode | null = dueTree.min();
       setOrClearGlobalTimeout(
         nextDueNode && nextDueNode.due,
-        OriginalDate.now()
+        OriginalDate.now(),
       );
     }
   } else {
@@ -203,7 +203,7 @@ function setTimer(
   cb: (...args: Args) => void,
   delay: number,
   args: Args,
-  repeat: boolean
+  repeat: boolean,
 ): number {
   // Bind `args` to the callback and bind `this` to globalThis(global).
   const callback: () => void = cb.bind(globalThis, ...args);
@@ -215,7 +215,7 @@ function setTimer(
     console.warn(
       `${delay} does not fit into` +
         " a 32-bit signed integer." +
-        "\nTimeout duration was set to 1."
+        "\nTimeout duration was set to 1.",
     );
     delay = 1;
   }

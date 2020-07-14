@@ -435,7 +435,7 @@ export class Sha256 {
         (h7 >> 24) & 0xff,
         (h7 >> 16) & 0xff,
         (h7 >> 8) & 0xff,
-        h7 & 0xff
+        h7 & 0xff,
       );
     }
     return arr;

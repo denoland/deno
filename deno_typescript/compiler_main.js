@@ -52,7 +52,7 @@ function main(configText, rootNames) {
       // TS5009: Cannot find the common subdirectory path for the input files.
       if (code === 5009) return false;
       return true;
-    })
+    }),
   );
 
   const emitResult = program.emit();
@@ -60,7 +60,7 @@ function main(configText, rootNames) {
 
   dispatch(
     "op_set_emit_result",
-    Object.assign(emitResult, { tsVersion: ts.version })
+    Object.assign(emitResult, { tsVersion: ts.version }),
   );
 }
 
@@ -176,7 +176,7 @@ class Host {
     fileName,
     languageVersion,
     _onError,
-    shouldCreateNewSourceFile
+    shouldCreateNewSourceFile,
   ) {
     assert(!shouldCreateNewSourceFile); // We haven't yet encountered this.
 
@@ -204,7 +204,7 @@ class Host {
     const sourceFile = ts.createSourceFile(
       fileName,
       sourceCode,
-      languageVersion
+      languageVersion,
     );
     sourceFile.moduleName = fileName;
     return sourceFile;
@@ -222,7 +222,7 @@ class Host {
     data,
     _writeByteOrderMark,
     _onError = null,
-    sourceFiles = null
+    sourceFiles = null,
   ) {
     if (sourceFiles == null) {
       return;
@@ -243,7 +243,7 @@ class Host {
     _path,
     _languageVersion,
     _onError,
-    _shouldCreateNewSourceFile
+    _shouldCreateNewSourceFile,
   ) {
     unreachable();
   }
@@ -301,14 +301,14 @@ class Host {
 function configure(configurationText) {
   const { config, error } = ts.parseConfigFileTextToJson(
     "tsconfig.json",
-    configurationText
+    configurationText,
   );
   if (error) {
     return { options: {}, diagnostics: [error] };
   }
   const { options, errors } = ts.convertCompilerOptionsFromJson(
     config.compilerOptions,
-    ""
+    "",
   );
   return {
     options,

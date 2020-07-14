@@ -11,7 +11,7 @@ export class Mark {
     public buffer: string,
     public position: number,
     public line: number,
-    public column: number
+    public column: number,
   ) {}
 
   public getSnippet(indent = 4, maxLength = 75): string | null {
@@ -51,7 +51,7 @@ export class Mark {
     return `${repeat(" ", indent)}${head}${snippet}${tail}\n${
       repeat(
         " ",
-        indent + this.position - start + head.length
+        indent + this.position - start + head.length,
       )
     }^`;
   }

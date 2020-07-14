@@ -4,11 +4,7 @@
   "lineWidth": 80,
   "indentWidth": 2,
   "typescript": {
-    "deno": true,
-    // todo: remove
-    "parameters.trailingCommas": "never",
-    "arguments.trailingCommas": "never",
-    "typeParameters.trailingCommas": "never"
+    "deno": true
   },
   "markdown": {
     "textWrap": "always"

@@ -86,14 +86,14 @@ function parse(url: string, isBase = true): URLParts | undefined {
     [restAuthentication, restAuthority] = takePattern(restAuthority, /^(.*)@/);
     [parts.username, restAuthentication] = takePattern(
       restAuthentication,
-      /^([^:]*)/
+      /^([^:]*)/,
     );
     parts.username = encodeUserinfo(parts.username);
     [parts.password] = takePattern(restAuthentication, /^:(.*)/);
     parts.password = encodeUserinfo(parts.password);
     [parts.hostname, restAuthority] = takePattern(
       restAuthority,
-      /^(\[[0-9a-fA-F.:]{2,}\]|[^:]+)/
+      /^(\[[0-9a-fA-F.:]{2,}\]|[^:]+)/,
     );
     [parts.port] = takePattern(restAuthority, /^:(.*)/);
     if (!isValidPort(parts.port)) {
@@ -173,7 +173,7 @@ function normalizePath(path: string, isFilePath = false): string {
 function resolvePathFromBase(
   path: string,
   basePath: string,
-  isFilePath = false
+  isFilePath = false,
 ): string {
   let normalizedPath = normalizePath(path, isFilePath);
   let normalizedBasePath = normalizePath(basePath, isFilePath);
@@ -184,11 +184,11 @@ function resolvePathFromBase(
     let baseDriveLetter: string;
     [driveLetter, normalizedPath] = takePattern(
       normalizedPath,
-      /^(\/[A-Za-z]:)(?=\/)/
+      /^(\/[A-Za-z]:)(?=\/)/,
     );
     [baseDriveLetter, normalizedBasePath] = takePattern(
       normalizedBasePath,
-      /^(\/[A-Za-z]:)(?=\/)/
+      /^(\/[A-Za-z]:)(?=\/)/,
     );
     driveLetterPrefix = driveLetter || baseDriveLetter;
   }
@@ -440,7 +440,7 @@ export class URLImpl implements URL {
         path: resolvePathFromBase(
           urlParts.path,
           baseParts.path || "/",
-          baseParts.protocol == "file"
+          baseParts.protocol == "file",
         ),
         query: urlParts.query,
         hash: urlParts.hash,
@@ -592,7 +592,7 @@ function encodeHostname(s: string, isSpecial = true): string {
   }
   result = result.replace(
     /%(.{2})/g,
-    (_, hex) => String.fromCodePoint(Number(`0x${hex}`))
+    (_, hex) => String.fromCodePoint(Number(`0x${hex}`)),
   );
 
   // IDNA domain to ASCII.

@@ -94,7 +94,7 @@ interface InspectIterableOptions<T> {
     ctx: ConsoleContext,
     level: number,
     inspectOptions: Required<InspectOptions>,
-    next: () => IteratorResult<[unknown, T], unknown>
+    next: () => IteratorResult<[unknown, T], unknown>,
   ) => string;
   group: boolean;
   sort: boolean;
@@ -107,7 +107,7 @@ function inspectIterable<T>(
   ctx: ConsoleContext,
   level: number,
   options: InspectIterableOptions<T>,
-  inspectOptions: Required<InspectOptions>
+  inspectOptions: Required<InspectOptions>,
 ): string {
   if (level >= inspectOptions.depth) {
     return cyan(`[${options.typeName}]`);
@@ -129,8 +129,8 @@ function inspectIterable<T>(
           ctx,
           level + 1,
           inspectOptions,
-          next.bind(iter)
-        )
+          next.bind(iter),
+        ),
       );
     }
     entriesLength++;
@@ -181,7 +181,7 @@ function groupEntries<T>(
   entries: string[],
   level: number,
   value: Iterable<T>,
-  iterableLimit = 100
+  iterableLimit = 100,
 ): string[] {
   let totalLength = 0;
   let maxLength = 0;
@@ -225,12 +225,12 @@ function groupEntries<T>(
       // Divide that by `actualMax` to receive the correct number of columns.
       // The added bias increases the columns for short entries.
       Math.round(
-        Math.sqrt(approxCharHeights * biasedMax * entriesLength) / biasedMax
+        Math.sqrt(approxCharHeights * biasedMax * entriesLength) / biasedMax,
       ),
       // Do not exceed the breakLength.
       Math.floor((LINE_BREAKING_LENGTH - (level + 1)) / actualMax),
       // Limit the columns to a maximum of fifteen.
-      15
+      15,
     );
     // Return with the original output if no grouping should happen.
     if (columns <= 1) {
@@ -294,7 +294,7 @@ function inspectValue(
   value: unknown,
   ctx: ConsoleContext,
   level: number,
-  inspectOptions: Required<InspectOptions>
+  inspectOptions: Required<InspectOptions>,
 ): string {
   switch (typeof value) {
     case "string":
@@ -352,7 +352,7 @@ function inspectValueWithQuotes(
   value: unknown,
   ctx: ConsoleContext,
   level: number,
-  inspectOptions: Required<InspectOptions>
+  inspectOptions: Required<InspectOptions>,
 ): string {
   switch (typeof value) {
     case "string":
@@ -369,7 +369,7 @@ function inspectArray(
   value: unknown[],
   ctx: ConsoleContext,
   level: number,
-  inspectOptions: Required<InspectOptions>
+  inspectOptions: Required<InspectOptions>,
 ): string {
   const options: InspectIterableOptions<unknown> = {
     typeName: "Array",
@@ -402,7 +402,7 @@ function inspectTypedArray(
   value: TypedArray,
   ctx: ConsoleContext,
   level: number,
-  inspectOptions: Required<InspectOptions>
+  inspectOptions: Required<InspectOptions>,
 ): string {
   const valueLength = value.length;
   const options: InspectIterableOptions<unknown> = {
@@ -423,7 +423,7 @@ function inspectSet(
   value: Set<unknown>,
   ctx: ConsoleContext,
   level: number,
-  inspectOptions: Required<InspectOptions>
+  inspectOptions: Required<InspectOptions>,
 ): string {
   const options: InspectIterableOptions<unknown> = {
     typeName: "Set",
@@ -443,7 +443,7 @@ function inspectMap(
   value: Map<unknown, unknown>,
   ctx: ConsoleContext,
   level: number,
-  inspectOptions: Required<InspectOptions>
+  inspectOptions: Required<InspectOptions>,
 ): string {
   const options: InspectIterableOptions<[unknown]> = {
     typeName: "Map",
@@ -456,7 +456,7 @@ function inspectMap(
           key,
           ctx,
           level + 1,
-          inspectOptions
+          inspectOptions,
         )
       } => ${inspectValueWithQuotes(val, ctx, level + 1, inspectOptions)}`;
     },
@@ -469,7 +469,7 @@ function inspectMap(
     ctx,
     level,
     options,
-    inspectOptions
+    inspectOptions,
   );
 }
 
@@ -510,7 +510,7 @@ function inspectPromise(
   value: Promise<unknown>,
   ctx: ConsoleContext,
   level: number,
-  inspectOptions: Required<InspectOptions>
+  inspectOptions: Required<InspectOptions>,
 ): string {
   const [state, result] = Deno.core.getPromiseDetails(value);
 
@@ -527,7 +527,7 @@ function inspectPromise(
       result,
       ctx,
       level + 1,
-      inspectOptions
+      inspectOptions,
     )
   }`;
 
@@ -544,7 +544,7 @@ function inspectRawObject(
   value: Record<string, unknown>,
   ctx: ConsoleContext,
   level: number,
-  inspectOptions: Required<InspectOptions>
+  inspectOptions: Required<InspectOptions>,
 ): string {
   if (level >= inspectOptions.depth) {
     return cyan("[Object]"); // wrappers are in cyan
@@ -581,9 +581,9 @@ function inspectRawObject(
           value[key],
           ctx,
           level + 1,
-          inspectOptions
+          inspectOptions,
         )
-      }`
+      }`,
     );
   }
   for (const key of symbolKeys) {
@@ -594,9 +594,9 @@ function inspectRawObject(
           value[key as any],
           ctx,
           level + 1,
-          inspectOptions
+          inspectOptions,
         )
-      }`
+      }`,
     );
   }
   // Making sure color codes are ignored when calculating the total length
@@ -628,7 +628,7 @@ function inspectObject(
   value: {},
   consoleContext: ConsoleContext,
   level: number,
-  inspectOptions: Required<InspectOptions>
+  inspectOptions: Required<InspectOptions>,
 ): string {
   if (customInspect in value && typeof value[customInspect] === "function") {
     try {
@@ -665,7 +665,7 @@ function inspectObject(
       value,
       consoleContext,
       level,
-      inspectOptions
+      inspectOptions,
     );
   } else {
     // Otherwise, default object formatting
@@ -675,7 +675,7 @@ function inspectObject(
 
 export function inspectArgs(
   args: unknown[],
-  inspectOptions: InspectOptions = {}
+  inspectOptions: InspectOptions = {},
 ): string {
   const rInspectOptions = { ...DEFAULT_INSPECT_OPTIONS, ...inspectOptions };
   const first = args[0];
@@ -724,7 +724,7 @@ export function inspectArgs(
                 args[++a],
                 new Set<unknown>(),
                 0,
-                rInspectOptions
+                rInspectOptions,
               );
               break;
             case CHAR_PERCENT:
@@ -815,7 +815,7 @@ export class Console {
       inspectArgs(args, {
         indentLevel: this.indentLevel,
       }) + "\n",
-      false
+      false,
     );
   };
 
@@ -833,7 +833,7 @@ export class Console {
       inspectArgs(args, {
         indentLevel: this.indentLevel,
       }) + "\n",
-      true
+      true,
     );
   };
 
@@ -886,7 +886,7 @@ export class Console {
     if (properties !== undefined && !Array.isArray(properties)) {
       throw new Error(
         "The 'properties' argument must be of type Array. " +
-          "Received type string"
+          "Received type string",
       );
     }
 
@@ -1053,7 +1053,7 @@ export const customInspect = Symbol("Deno.customInspect");
 
 export function inspect(
   value: unknown,
-  inspectOptions: InspectOptions = {}
+  inspectOptions: InspectOptions = {},
 ): string {
   if (typeof value === "string") {
     return value;

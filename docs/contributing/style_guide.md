@@ -101,7 +101,7 @@ When designing function interfaces, stick to the following rules.
 export function resolve(
   hostname: string,
   family?: "ipv4" | "ipv6",
-  timeout?: number
+  timeout?: number,
 ): IPAddress[] {}
 
 // GOOD.
@@ -111,7 +111,7 @@ export interface ResolveOptions {
 }
 export function resolve(
   hostname: string,
-  options: ResolveOptions = {}
+  options: ResolveOptions = {},
 ): IPAddress[] {}
 ```
 
@@ -130,7 +130,7 @@ export interface RunShellOptions {
 }
 export function runShellWithEnv(
   cmdline: string,
-  options: RunShellOptions
+  options: RunShellOptions,
 ): string {}
 ```
 
@@ -140,7 +140,7 @@ export function renameSync(
   oldname: string,
   newname: string,
   replaceExisting?: boolean,
-  followLinks?: boolean
+  followLinks?: boolean,
 ) {}
 
 // GOOD.
@@ -151,7 +151,7 @@ interface RenameOptions {
 export function renameSync(
   oldname: string,
   newname: string,
-  options: RenameOptions = {}
+  options: RenameOptions = {},
 ) {}
 ```
 
@@ -162,7 +162,7 @@ export function pwrite(
   buffer: TypedArray,
   offset: number,
   length: number,
-  position: number
+  position: number,
 ) {}
 
 // BETTER.

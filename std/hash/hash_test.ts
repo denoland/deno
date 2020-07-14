@@ -311,6 +311,6 @@ Deno.test("[hash/double_digest] testDoubleDigest", () => {
       assertEquals(h1, h2);
     },
     Error,
-    "hash: already digested"
+    "hash: already digested",
   );
 });

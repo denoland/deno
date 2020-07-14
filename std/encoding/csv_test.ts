@@ -488,7 +488,7 @@ for (const t of testCases) {
               trimLeadingSpace: trim,
               fieldsPerRecord: fieldsPerRec,
               lazyQuotes: lazyquote,
-            }
+            },
           );
         } catch (e) {
           err = e;
@@ -504,7 +504,7 @@ for (const t of testCases) {
             trimLeadingSpace: trim,
             fieldsPerRecord: fieldsPerRec,
             lazyQuotes: lazyquote,
-          }
+          },
         );
         const expected = t.Output;
         assertEquals(actual, expected);

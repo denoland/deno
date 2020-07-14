@@ -17,7 +17,7 @@ const YAML_FLOAT_PATTERN = new RegExp(
     // .inf
     "|[-+]?\\.(?:inf|Inf|INF)" +
     // .nan
-    "|\\.(?:nan|NaN|NAN))$"
+    "|\\.(?:nan|NaN|NAN))$",
 );
 
 function resolveYamlFloat(data: string): boolean {

@@ -18,7 +18,7 @@ unitTest(
     Deno.symlinkSync(target, symlink);
     const targetPath = Deno.readLinkSync(symlink);
     assertEquals(targetPath, target);
-  }
+  },
 );
 
 unitTest({ perms: { read: false } }, function readLinkSyncPerm(): void {
@@ -45,7 +45,7 @@ unitTest(
     Deno.symlinkSync(target, symlink);
     const targetPath = await Deno.readLink(symlink);
     assertEquals(targetPath, target);
-  }
+  },
 );
 
 unitTest({ perms: { read: false } }, async function readLinkPerm(): Promise<

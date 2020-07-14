@@ -22,7 +22,7 @@ Deno.test({
     decoder = new StringDecoder("utf8");
     assertEquals(
       decoder.write(Buffer.from("\ufffd\ufffd\ufffd")),
-      "\ufffd\ufffd\ufffd"
+      "\ufffd\ufffd\ufffd",
     );
     assertEquals(decoder.end(), "");
 
@@ -60,7 +60,7 @@ Deno.test({
     decoder = new StringDecoder("base64");
     assertEquals(
       decoder.write(Buffer.from("\ufffd\ufffd\ufffd")),
-      "77+977+977+9"
+      "77+977+977+9",
     );
     assertEquals(decoder.end(), "");
 
@@ -98,7 +98,7 @@ Deno.test({
     decoder = new StringDecoder("hex");
     assertEquals(
       decoder.write(Buffer.from("\ufffd\ufffd\ufffd")),
-      "efbfbdefbfbdefbfbd"
+      "efbfbdefbfbdefbfbd",
     );
     assertEquals(decoder.end(), "");
 

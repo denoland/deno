@@ -47,11 +47,11 @@ unitTest(function performanceMeasure() {
         assertEquals(mark.startTime, measure.startTime);
         assert(
           measure.duration >= 100,
-          `duration below 100ms: ${measure.duration}`
+          `duration below 100ms: ${measure.duration}`,
         );
         assert(
           measure.duration < 500,
-          `duration exceeds 500ms: ${measure.duration}`
+          `duration exceeds 500ms: ${measure.duration}`,
         );
         const entries = performance.getEntries();
         assert(entries[entries.length - 1] === measure);

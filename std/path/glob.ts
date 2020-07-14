@@ -41,7 +41,7 @@ export interface GlobToRegExpOptions extends GlobOptions {
  */
 export function globToRegExp(
   glob: string,
-  { extended = false, globstar = true }: GlobToRegExpOptions = {}
+  { extended = false, globstar = true }: GlobToRegExpOptions = {},
 ): RegExp {
   const result = globrex(glob, {
     extended,
@@ -90,7 +90,7 @@ export function isGlob(str: string): boolean {
 /** Like normalize(), but doesn't collapse "**\/.." when `globstar` is true. */
 export function normalizeGlob(
   glob: string,
-  { globstar = false }: GlobOptions = {}
+  { globstar = false }: GlobOptions = {},
 ): string {
   if (glob.match(/\0/g)) {
     throw new Error(`Glob contains invalid characters: "${glob}"`);
@@ -101,7 +101,7 @@ export function normalizeGlob(
   const s = SEP_PATTERN.source;
   const badParentPattern = new RegExp(
     `(?<=(${s}|^)\\*\\*${s})\\.\\.(?=${s}|$)`,
-    "g"
+    "g",
   );
   return normalize(glob.replace(badParentPattern, "\0")).replace(/\0/g, "..");
 }
@@ -109,7 +109,7 @@ export function normalizeGlob(
 /** Like join(), but doesn't collapse "**\/.." when `globstar` is true. */
 export function joinGlobs(
   globs: string[],
-  { extended = false, globstar = false }: GlobOptions = {}
+  { extended = false, globstar = false }: GlobOptions = {},
 ): string {
   if (!globstar || globs.length == 0) {
     return join(...globs);

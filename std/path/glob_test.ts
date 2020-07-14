@@ -13,33 +13,33 @@ Deno.test({
     assertEquals(globToRegExp("*.ts").test("unicorn.js"), false);
     assertEquals(
       globToRegExp(join("unicorn", "**", "cathedral.ts")).test(
-        join("unicorn", "in", "the", "cathedral.ts")
+        join("unicorn", "in", "the", "cathedral.ts"),
       ),
-      true
+      true,
     );
     assertEquals(
       globToRegExp(join("unicorn", "**", "cathedral.ts")).test(
-        join("unicorn", "in", "the", "kitchen.ts")
+        join("unicorn", "in", "the", "kitchen.ts"),
       ),
-      false
+      false,
     );
     assertEquals(
       globToRegExp(join("unicorn", "**", "bathroom.*")).test(
-        join("unicorn", "sleeping", "in", "bathroom.py")
+        join("unicorn", "sleeping", "in", "bathroom.py"),
       ),
-      true
+      true,
     );
     assertEquals(
       globToRegExp(join("unicorn", "!(sleeping)", "bathroom.ts"), {
         extended: true,
       }).test(join("unicorn", "flying", "bathroom.ts")),
-      true
+      true,
     );
     assertEquals(
       globToRegExp(join("unicorn", "(!sleeping)", "bathroom.ts"), {
         extended: true,
       }).test(join("unicorn", "sleeping", "bathroom.ts")),
-      false
+      false,
     );
   },
 });
@@ -59,7 +59,7 @@ testWalk(
     assertEquals(arr.length, 2);
     assertEquals(arr[0], "a/x.ts");
     assertEquals(arr[1], "b/z.ts");
-  }
+  },
 );
 
 testWalk(
@@ -79,7 +79,7 @@ testWalk(
     });
     assertEquals(arr.length, 1);
     assertEquals(arr[0], "a/yo/x.ts");
-  }
+  },
 );
 
 testWalk(
@@ -104,7 +104,7 @@ testWalk(
     assertEquals(arr.length, 2);
     assertEquals(arr[0], "a/deno/x.ts");
     assertEquals(arr[1], "a/raptor/x.ts");
-  }
+  },
 );
 
 testWalk(
@@ -120,7 +120,7 @@ testWalk(
     assertEquals(arr.length, 2);
     assertEquals(arr[0], "x.js");
     assertEquals(arr[1], "x.ts");
-  }
+  },
 );
 
 Deno.test({

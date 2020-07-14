@@ -97,7 +97,7 @@ function fileLenToString(len: number): string {
 
 export async function serveFile(
   req: ServerRequest,
-  filePath: string
+  filePath: string,
 ): Promise<Response> {
   const [file, fileInfo] = await Promise.all([
     Deno.open(filePath),
@@ -122,7 +122,7 @@ export async function serveFile(
 // TODO: simplify this after deno.stat and deno.readDir are fixed
 async function serveDir(
   req: ServerRequest,
-  dirPath: string
+  dirPath: string,
 ): Promise<Response> {
   const dirUrl = `/${posix.relative(target, dirPath)}`;
   const listEntry: EntryInfo[] = [];
@@ -192,7 +192,7 @@ function setCORS(res: Response): void {
   res.headers.append("access-control-allow-origin", "*");
   res.headers.append(
     "access-control-allow-headers",
-    "Origin, X-Requested-With, Content-Type, Accept, Range"
+    "Origin, X-Requested-With, Content-Type, Accept, Range",
   );
 }
 
@@ -278,7 +278,7 @@ function dirViewerTemplate(dirname: string, entries: EntryInfo[]): string {
                       <a href="${entry.url}">${entry.name}</a>
                     </td>
                   </tr>
-                `
+                `,
     )
   }
           </table>
@@ -361,7 +361,7 @@ function main(): void {
           console.error(e.message);
         }
       }
-    }
+    },
   );
 
   console.log(`HTTP server listening on http://${addr}/`);

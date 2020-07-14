@@ -33,7 +33,7 @@ function main() {
   assertArrayEquals(Array.from(Deno.core.encode("𝓽𝓮𝔁𝓽")), fixture1);
   assertArrayEquals(
     Array.from(Deno.core.encode("Hello \udc12\ud834 World")),
-    fixture2
+    fixture2,
   );
 
   const emptyBuf = Deno.core.decode(new Uint8Array(0));

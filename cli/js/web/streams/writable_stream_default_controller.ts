@@ -30,7 +30,7 @@ export class WritableStreamDefaultControllerImpl<W>
 
   private constructor() {
     throw new TypeError(
-      "WritableStreamDefaultController's constructor cannot be called."
+      "WritableStreamDefaultController's constructor cannot be called.",
     );
   }
 
@@ -64,5 +64,5 @@ export class WritableStreamDefaultControllerImpl<W>
 
 setFunctionName(
   WritableStreamDefaultControllerImpl,
-  "WritableStreamDefaultController"
+  "WritableStreamDefaultController",
 );

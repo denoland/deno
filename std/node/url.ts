@@ -40,7 +40,7 @@ export function fileURLToPath(path: string | URL): string {
   if (typeof path === "string") path = new URL(path);
   else if (!(path instanceof URL)) {
     throw new Deno.errors.InvalidData(
-      "invalid argument path , must be a string or URL"
+      "invalid argument path , must be a string or URL",
     );
   }
   if (path.protocol !== "file:") {
@@ -61,7 +61,7 @@ function getPathFromURLWin(url: URL): string {
       ) {
         // 5c 5C \
         throw new Deno.errors.InvalidData(
-          "must not include encoded \\ or / characters"
+          "must not include encoded \\ or / characters",
         );
       }
     }
@@ -97,7 +97,7 @@ function getPathFromURLPosix(url: URL): string {
       const third = pathname.codePointAt(n + 2) || 0x20;
       if (pathname[n + 1] === "2" && third === 102) {
         throw new Deno.errors.InvalidData(
-          "must not include encoded / characters"
+          "must not include encoded / characters",
         );
       }
     }

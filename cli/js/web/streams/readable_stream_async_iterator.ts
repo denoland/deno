@@ -18,18 +18,18 @@ const AsyncIteratorPrototype: AsyncIterableIterator<any> = Object
 export const ReadableStreamAsyncIteratorPrototype: ReadableStreamAsyncIterator =
   Object.setPrototypeOf({
     next(
-      this: ReadableStreamAsyncIterator
+      this: ReadableStreamAsyncIterator,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ): Promise<ReadableStreamReadResult<any>> {
       if (!isReadableStreamAsyncIterator(this)) {
         return Promise.reject(
-          new TypeError("invalid ReadableStreamAsyncIterator.")
+          new TypeError("invalid ReadableStreamAsyncIterator."),
         );
       }
       const reader = this[sym.asyncIteratorReader];
       if (!reader[sym.ownerReadableStream]) {
         return Promise.reject(
-          new TypeError("reader owner ReadableStream is undefined.")
+          new TypeError("reader owner ReadableStream is undefined."),
         );
       }
       return readableStreamDefaultReaderRead(reader).then((result) => {
@@ -46,23 +46,23 @@ export const ReadableStreamAsyncIteratorPrototype: ReadableStreamAsyncIterator =
     return(
       this: ReadableStreamAsyncIterator,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      value?: any | PromiseLike<any>
+      value?: any | PromiseLike<any>,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ): Promise<ReadableStreamReadResult<any>> {
       if (!isReadableStreamAsyncIterator(this)) {
         return Promise.reject(
-          new TypeError("invalid ReadableStreamAsyncIterator.")
+          new TypeError("invalid ReadableStreamAsyncIterator."),
         );
       }
       const reader = this[sym.asyncIteratorReader];
       if (!reader[sym.ownerReadableStream]) {
         return Promise.reject(
-          new TypeError("reader owner ReadableStream is undefined.")
+          new TypeError("reader owner ReadableStream is undefined."),
         );
       }
       if (reader[sym.readRequests].length) {
         return Promise.reject(
-          new TypeError("reader has outstanding read requests.")
+          new TypeError("reader has outstanding read requests."),
         );
       }
       if (!this[sym.preventCancel]) {
@@ -74,7 +74,7 @@ export const ReadableStreamAsyncIteratorPrototype: ReadableStreamAsyncIterator =
       }
       readableStreamReaderGenericRelease(reader);
       return Promise.resolve(
-        readableStreamCreateReadResult(value, true, true)
+        readableStreamCreateReadResult(value, true, true),
       );
     },
   }, AsyncIteratorPrototype);

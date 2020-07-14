@@ -12,7 +12,7 @@ const allowedModes = /^[0-7]{3}/;
 export function chmod(
   path: string | URL,
   mode: string | number,
-  callback: CallbackWithError
+  callback: CallbackWithError,
 ): void {
   path = path instanceof URL ? fromFileUrl(path) : path;
 

@@ -182,7 +182,7 @@ Deno.test({
     const input = "abcdefghijklmnopqrstuvwxyz";
     const bufSize = 25;
     const tp = new TextProtoReader(
-      new BufReader(new StringReader(input), bufSize)
+      new BufReader(new StringReader(input), bufSize),
     );
     const line = await tp.readLine();
     assertEquals(line, input);

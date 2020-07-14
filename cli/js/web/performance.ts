@@ -8,7 +8,7 @@ let performanceEntries: PerformanceEntryList = [];
 
 function findMostRecent(
   name: string,
-  type: "mark" | "measure"
+  type: "mark" | "measure",
 ): PerformanceEntry | undefined {
   return performanceEntries
     .slice()
@@ -32,12 +32,12 @@ function convertMarkToTimestamp(mark: string | number): number {
 
 function filterByNameType(
   name?: string,
-  type?: "mark" | "measure"
+  type?: "mark" | "measure",
 ): PerformanceEntryList {
   return performanceEntries.filter(
     (entry) =>
       (name ? entry.name === name : true) &&
-      (type ? entry.entryType === type : true)
+      (type ? entry.entryType === type : true),
   );
 }
 
@@ -72,7 +72,7 @@ export class PerformanceEntryImpl implements PerformanceEntry {
     name: string,
     entryType: string,
     startTime: number,
-    duration: number
+    duration: number,
   ) {
     this.#name = name;
     this.#entryType = entryType;
@@ -111,7 +111,7 @@ export class PerformanceMarkImpl extends PerformanceEntryImpl
 
   constructor(
     name: string,
-    { detail = null, startTime = now() }: PerformanceMarkOptions = {}
+    { detail = null, startTime = now() }: PerformanceMarkOptions = {},
   ) {
     super(name, "mark", startTime, 0);
     if (startTime < 0) {
@@ -159,7 +159,7 @@ export class PerformanceMeasureImpl extends PerformanceEntryImpl
     startTime: number,
     duration: number,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    detail: any = null
+    detail: any = null,
   ) {
     super(name, "measure", startTime, duration);
     this.#detail = cloneValue(detail);
@@ -189,11 +189,11 @@ export class PerformanceImpl implements Performance {
   clearMarks(markName?: string): void {
     if (markName == null) {
       performanceEntries = performanceEntries.filter(
-        (entry) => entry.entryType !== "mark"
+        (entry) => entry.entryType !== "mark",
       );
     } else {
       performanceEntries = performanceEntries.filter(
-        (entry) => !(entry.name === markName && entry.entryType === "mark")
+        (entry) => !(entry.name === markName && entry.entryType === "mark"),
       );
     }
   }
@@ -201,12 +201,12 @@ export class PerformanceImpl implements Performance {
   clearMeasures(measureName?: string): void {
     if (measureName == null) {
       performanceEntries = performanceEntries.filter(
-        (entry) => entry.entryType !== "measure"
+        (entry) => entry.entryType !== "measure",
       );
     } else {
       performanceEntries = performanceEntries.filter(
         (entry) =>
-          !(entry.name === measureName && entry.entryType === "measure")
+          !(entry.name === measureName && entry.entryType === "measure"),
       );
     }
   }
@@ -216,7 +216,7 @@ export class PerformanceImpl implements Performance {
   }
   getEntriesByName(
     name: string,
-    type?: "mark" | "measure"
+    type?: "mark" | "measure",
   ): PerformanceEntryList {
     return filterByNameType(name, type);
   }
@@ -226,7 +226,7 @@ export class PerformanceImpl implements Performance {
 
   mark(
     markName: string,
-    options: PerformanceMarkOptions = {}
+    options: PerformanceMarkOptions = {},
   ): PerformanceMark {
     // 3.1.1.1 If the global object is a Window object and markName uses the
     // same name as a read only attribute in the PerformanceTiming interface,
@@ -239,17 +239,17 @@ export class PerformanceImpl implements Performance {
 
   measure(
     measureName: string,
-    options?: PerformanceMeasureOptions
+    options?: PerformanceMeasureOptions,
   ): PerformanceMeasure;
   measure(
     measureName: string,
     startMark?: string,
-    endMark?: string
+    endMark?: string,
   ): PerformanceMeasure;
   measure(
     measureName: string,
     startOrMeasureOptions: string | PerformanceMeasureOptions = {},
-    endMark?: string
+    endMark?: string,
   ): PerformanceMeasure {
     if (startOrMeasureOptions && typeof startOrMeasureOptions === "object") {
       if (endMark) {
@@ -267,7 +267,7 @@ export class PerformanceImpl implements Performance {
         "end" in startOrMeasureOptions
       ) {
         throw new TypeError(
-          "Cannot specify start, end, and duration together in options."
+          "Cannot specify start, end, and duration together in options.",
         );
       }
     }
@@ -315,7 +315,7 @@ export class PerformanceImpl implements Performance {
       endTime - startTime,
       typeof startOrMeasureOptions === "object"
         ? startOrMeasureOptions.detail ?? null
-        : null
+        : null,
     );
     performanceEntries.push(entry);
     return entry;

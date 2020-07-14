@@ -64,7 +64,7 @@ function buildMessage(diffResult: ReadonlyArray<DiffResult<string>>): string[] {
   messages.push(
     `    ${gray(bold("[Diff]"))} ${red(bold("Actual"))} / ${
       green(bold("Expected"))
-    }`
+    }`,
   );
   messages.push("");
   messages.push("");
@@ -163,13 +163,13 @@ export function assert(expr: unknown, msg = ""): asserts expr {
 export function assertEquals(
   actual: unknown,
   expected: unknown,
-  msg?: string
+  msg?: string,
 ): void;
 export function assertEquals<T>(actual: T, expected: T, msg?: string): void;
 export function assertEquals(
   actual: unknown,
   expected: unknown,
-  msg?: string
+  msg?: string,
 ): void {
   if (equal(actual, expected)) {
     return;
@@ -180,7 +180,7 @@ export function assertEquals(
   try {
     const diffResult = diff(
       actualString.split("\n"),
-      expectedString.split("\n")
+      expectedString.split("\n"),
     );
     const diffMsg = buildMessage(diffResult).join("\n");
     message = `Values are not equal:\n${diffMsg}`;
@@ -206,13 +206,13 @@ export function assertEquals(
 export function assertNotEquals(
   actual: unknown,
   expected: unknown,
-  msg?: string
+  msg?: string,
 ): void;
 export function assertNotEquals<T>(actual: T, expected: T, msg?: string): void;
 export function assertNotEquals(
   actual: unknown,
   expected: unknown,
-  msg?: string
+  msg?: string,
 ): void {
   if (!equal(actual, expected)) {
     return;
@@ -245,7 +245,7 @@ export function assertNotEquals(
 export function assertStrictEquals<T>(
   actual: T,
   expected: T,
-  msg?: string
+  msg?: string,
 ): void {
   if (actual === expected) {
     return;
@@ -272,7 +272,7 @@ export function assertStrictEquals<T>(
       try {
         const diffResult = diff(
           actualString.split("\n"),
-          expectedString.split("\n")
+          expectedString.split("\n"),
         );
         const diffMsg = buildMessage(diffResult).join("\n");
         message = `Values are not strictly equal:\n${diffMsg}`;
@@ -292,7 +292,7 @@ export function assertStrictEquals<T>(
 export function assertStringContains(
   actual: string,
   expected: string,
-  msg?: string
+  msg?: string,
 ): void {
   if (!actual.includes(expected)) {
     if (!msg) {
@@ -315,17 +315,17 @@ export function assertStringContains(
 export function assertArrayContains(
   actual: ArrayLike<unknown>,
   expected: ArrayLike<unknown>,
-  msg?: string
+  msg?: string,
 ): void;
 export function assertArrayContains<T>(
   actual: ArrayLike<T>,
   expected: ArrayLike<T>,
-  msg?: string
+  msg?: string,
 ): void;
 export function assertArrayContains(
   actual: ArrayLike<unknown>,
   expected: ArrayLike<unknown>,
-  msg?: string
+  msg?: string,
 ): void {
   const missing: unknown[] = [];
   for (let i = 0; i < expected.length; i++) {
@@ -358,7 +358,7 @@ export function assertArrayContains(
 export function assertMatch(
   actual: string,
   expected: RegExp,
-  msg?: string
+  msg?: string,
 ): void {
   if (!expected.test(actual)) {
     if (!msg) {
@@ -385,7 +385,7 @@ export function assertThrows<T = void>(
   fn: () => T,
   ErrorClass?: Constructor,
   msgIncludes = "",
-  msg?: string
+  msg?: string,
 ): Error {
   let doesThrow = false;
   let error = null;
@@ -431,7 +431,7 @@ export async function assertThrowsAsync<T = void>(
   fn: () => Promise<T>,
   ErrorClass?: Constructor,
   msgIncludes = "",
-  msg?: string
+  msg?: string,
 ): Promise<Error> {
   let doesThrow = false;
   let error = null;

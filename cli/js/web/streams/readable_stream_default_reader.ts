@@ -37,7 +37,7 @@ export class ReadableStreamDefaultReaderImpl<R = any>
   get closed(): Promise<void> {
     if (!isReadableStreamDefaultReader(this)) {
       return Promise.reject(
-        new TypeError("Invalid ReadableStreamDefaultReader.")
+        new TypeError("Invalid ReadableStreamDefaultReader."),
       );
     }
     return (
@@ -50,7 +50,7 @@ export class ReadableStreamDefaultReaderImpl<R = any>
   cancel(reason?: any): Promise<void> {
     if (!isReadableStreamDefaultReader(this)) {
       return Promise.reject(
-        new TypeError("Invalid ReadableStreamDefaultReader.")
+        new TypeError("Invalid ReadableStreamDefaultReader."),
       );
     }
     if (!this[sym.ownerReadableStream]) {
@@ -62,7 +62,7 @@ export class ReadableStreamDefaultReaderImpl<R = any>
   read(): Promise<ReadableStreamReadResult<R>> {
     if (!isReadableStreamDefaultReader(this)) {
       return Promise.reject(
-        new TypeError("Invalid ReadableStreamDefaultReader.")
+        new TypeError("Invalid ReadableStreamDefaultReader."),
       );
     }
     if (!this[sym.ownerReadableStream]) {

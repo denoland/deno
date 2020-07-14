@@ -654,7 +654,7 @@ class Printf {
       }
       default:
         throw new Error(
-          "currently only number and string are implemented for hex"
+          "currently only number and string are implemented for hex",
         );
     }
   }

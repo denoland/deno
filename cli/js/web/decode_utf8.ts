@@ -31,7 +31,7 @@ declare global {
     apply<T, R>(
       this: (this: T, ...args: number[]) => R,
       thisArg: T,
-      args: Uint16Array
+      args: Uint16Array,
     ): R;
   }
 }
@@ -39,7 +39,7 @@ declare global {
 export function decodeUtf8(
   input: Uint8Array,
   fatal: boolean,
-  ignoreBOM: boolean
+  ignoreBOM: boolean,
 ): string {
   let outString = "";
 
@@ -63,7 +63,7 @@ export function decodeUtf8(
     if (state === 12 || (state !== 0 && (input[i] & 0xc0) !== 0x80)) {
       if (fatal) {
         throw new TypeError(
-          `Decoder error. Invalid byte in sequence at position ${i} in data.`
+          `Decoder error. Invalid byte in sequence at position ${i} in data.`,
         );
       }
       outBuffer[outIndex++] = 0xfffd; // Replacement character

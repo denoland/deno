@@ -25,7 +25,7 @@ interface V5Options {
 export function generate(
   options: V5Options,
   buf?: number[],
-  offset?: number
+  offset?: number,
 ): string | number[] {
   const i = (buf && offset) || 0;
 
@@ -34,7 +34,7 @@ export function generate(
   if (isString(namespace)) namespace = uuidToBytes(namespace as string);
   assert(
     namespace.length === 16,
-    "namespace must be uuid string or an Array of 16 byte values"
+    "namespace must be uuid string or an Array of 16 byte values",
   );
 
   const content = (namespace as number[]).concat(value as number[]);

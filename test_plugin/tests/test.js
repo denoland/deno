@@ -36,7 +36,7 @@ function runTestSync() {
     testSync,
     new Uint8Array([116, 101, 115, 116]),
     new Uint8Array([49, 50, 51]),
-    new Uint8Array([99, 98, 97])
+    new Uint8Array([99, 98, 97]),
   );
 
   console.log(`Plugin Sync Response: ${textDecoder.decode(response)}`);
@@ -50,7 +50,7 @@ function runTestAsync() {
   const response = Deno.core.dispatch(
     testAsync,
     new Uint8Array([116, 101, 115, 116]),
-    new Uint8Array([49, 50, 51])
+    new Uint8Array([49, 50, 51]),
   );
 
   if (response != null || response != undefined) {
@@ -86,7 +86,7 @@ function runTestPluginClose() {
     throw new Error(
       `Difference in open resources before openPlugin and after Plugin.close():
 Before: ${preStr}
-After: ${postStr}`
+After: ${postStr}`,
     );
   }
 }

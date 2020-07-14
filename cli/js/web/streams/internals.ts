@@ -66,7 +66,7 @@ export interface ReadableStreamAsyncIterator<T = any> extends AsyncIterator<T> {
 
 export function acquireReadableStreamDefaultReader<T>(
   stream: ReadableStreamImpl<T>,
-  forAuthorCode = false
+  forAuthorCode = false,
 ): ReadableStreamDefaultReaderImpl<T> {
   const reader = new ReadableStreamDefaultReaderImpl(stream);
   reader[sym.forAuthorCode] = forAuthorCode;
@@ -74,7 +74,7 @@ export function acquireReadableStreamDefaultReader<T>(
 }
 
 export function acquireWritableStreamDefaultWriter<W>(
-  stream: WritableStreamImpl<W>
+  stream: WritableStreamImpl<W>,
 ): WritableStreamDefaultWriterImpl<W> {
   return new WritableStreamDefaultWriterImpl(stream);
 }
@@ -82,14 +82,14 @@ export function acquireWritableStreamDefaultWriter<W>(
 export function call<F extends (...args: any[]) => any>(
   fn: F,
   v: ThisType<F>,
-  args: Parameters<F>
+  args: Parameters<F>,
 ): ReturnType<F> {
   return Function.prototype.apply.call(fn, v, args);
 }
 
 function createAlgorithmFromUnderlyingMethod<
   O extends UnderlyingByteSource | UnderlyingSource | Transformer,
-  P extends keyof O
+  P extends keyof O,
 >(
   underlyingObject: O,
   methodName: P,
@@ -99,7 +99,7 @@ function createAlgorithmFromUnderlyingMethod<
 
 function createAlgorithmFromUnderlyingMethod<
   O extends UnderlyingByteSource | UnderlyingSource | Transformer,
-  P extends keyof O
+  P extends keyof O,
 >(
   underlyingObject: O,
   methodName: P,
@@ -108,7 +108,7 @@ function createAlgorithmFromUnderlyingMethod<
 ): (arg: any) => Promise<void>;
 function createAlgorithmFromUnderlyingMethod<
   O extends UnderlyingByteSource | UnderlyingSource | Transformer,
-  P extends keyof O
+  P extends keyof O,
 >(
   underlyingObject: O,
   methodName: P,
@@ -138,15 +138,15 @@ function createReadableStream<T>(
   pullAlgorithm: PullAlgorithm,
   cancelAlgorithm: CancelAlgorithm,
   highWaterMark = 1,
-  sizeAlgorithm: SizeAlgorithm<T> = (): number => 1
+  sizeAlgorithm: SizeAlgorithm<T> = (): number => 1,
 ): ReadableStreamImpl<T> {
   highWaterMark = validateAndNormalizeHighWaterMark(highWaterMark);
   const stream: ReadableStreamImpl<T> = Object.create(
-    ReadableStreamImpl.prototype
+    ReadableStreamImpl.prototype,
   );
   initializeReadableStream(stream);
   const controller: ReadableStreamDefaultControllerImpl<T> = Object.create(
-    ReadableStreamDefaultControllerImpl.prototype
+    ReadableStreamDefaultControllerImpl.prototype,
   );
   setUpReadableStreamDefaultController(
     stream,
@@ -155,7 +155,7 @@ function createReadableStream<T>(
     pullAlgorithm,
     cancelAlgorithm,
     highWaterMark,
-    sizeAlgorithm
+    sizeAlgorithm,
   );
   return stream;
 }
@@ -166,13 +166,13 @@ function createWritableStream<W>(
   closeAlgorithm: CloseAlgorithm,
   abortAlgorithm: AbortAlgorithm,
   highWaterMark = 1,
-  sizeAlgorithm: SizeAlgorithm<W> = (): number => 1
+  sizeAlgorithm: SizeAlgorithm<W> = (): number => 1,
 ): WritableStreamImpl<W> {
   highWaterMark = validateAndNormalizeHighWaterMark(highWaterMark);
   const stream = Object.create(WritableStreamImpl.prototype);
   initializeWritableStream(stream);
   const controller = Object.create(
-    WritableStreamDefaultControllerImpl.prototype
+    WritableStreamDefaultControllerImpl.prototype,
   );
   setUpWritableStreamDefaultController(
     stream,
@@ -182,7 +182,7 @@ function createWritableStream<W>(
     closeAlgorithm,
     abortAlgorithm,
     highWaterMark,
-    sizeAlgorithm
+    sizeAlgorithm,
   );
   return stream;
 }
@@ -201,7 +201,7 @@ export function dequeueValue<R>(container: Container<R>): R {
 function enqueueValueWithSize<R>(
   container: Container<R>,
   value: R,
-  size: number
+  size: number,
 ): void {
   assert(sym.queue in container && sym.queueTotalSize in container);
   size = Number(size);
@@ -225,7 +225,7 @@ export function getDeferred<T>(): Required<Deferred<T>> {
 }
 
 export function initializeReadableStream<R>(
-  stream: ReadableStreamImpl<R>
+  stream: ReadableStreamImpl<R>,
 ): void {
   stream[sym.state] = "readable";
   stream[sym.reader] = stream[sym.storedError] = undefined;
@@ -238,7 +238,7 @@ export function initializeTransformStream<I, O>(
   writableHighWaterMark: number,
   writableSizeAlgorithm: SizeAlgorithm<I>,
   readableHighWaterMark: number,
-  readableSizeAlgorithm: SizeAlgorithm<O>
+  readableSizeAlgorithm: SizeAlgorithm<O>,
 ): void {
   const startAlgorithm = (): Promise<void> => startPromise;
   const writeAlgorithm = (chunk: any): Promise<void> =>
@@ -253,7 +253,7 @@ export function initializeTransformStream<I, O>(
     closeAlgorithm,
     abortAlgorithm,
     writableHighWaterMark,
-    writableSizeAlgorithm
+    writableSizeAlgorithm,
   );
   const pullAlgorithm = (): PromiseLike<void> =>
     transformStreamDefaultSourcePullAlgorithm(stream);
@@ -266,7 +266,7 @@ export function initializeTransformStream<I, O>(
     pullAlgorithm,
     cancelAlgorithm,
     readableHighWaterMark,
-    readableSizeAlgorithm
+    readableSizeAlgorithm,
   );
   stream[sym.backpressure] = stream[sym.backpressureChangePromise] = undefined;
   transformStreamSetBackpressure(stream, true);
@@ -277,7 +277,7 @@ export function initializeTransformStream<I, O>(
 }
 
 export function initializeWritableStream<W>(
-  stream: WritableStreamImpl<W>
+  stream: WritableStreamImpl<W>,
 ): void {
   stream[sym.state] = "writable";
   stream[sym.storedError] = stream[sym.writer] = stream[
@@ -315,7 +315,7 @@ function isFiniteNonNegativeNumber(v: unknown): v is number {
 }
 
 export function isReadableByteStreamController(
-  x: unknown
+  x: unknown,
 ): x is ReadableByteStreamControllerImpl {
   return !(
     typeof x !== "object" ||
@@ -333,7 +333,7 @@ export function isReadableStream(x: unknown): x is ReadableStreamImpl {
 }
 
 export function isReadableStreamAsyncIterator(
-  x: unknown
+  x: unknown,
 ): x is ReadableStreamAsyncIterator {
   if (typeof x !== "object" || x === null) {
     return false;
@@ -342,7 +342,7 @@ export function isReadableStreamAsyncIterator(
 }
 
 export function isReadableStreamDefaultController(
-  x: unknown
+  x: unknown,
 ): x is ReadableStreamDefaultControllerImpl {
   return !(
     typeof x !== "object" ||
@@ -352,7 +352,7 @@ export function isReadableStreamDefaultController(
 }
 
 export function isReadableStreamDefaultReader<T>(
-  x: unknown
+  x: unknown,
 ): x is ReadableStreamDefaultReaderImpl<T> {
   return !(typeof x !== "object" || x === null || !(sym.readRequests in x));
 }
@@ -376,7 +376,7 @@ export function isTransformStream(x: unknown): x is TransformStreamImpl {
 }
 
 export function isTransformStreamDefaultController(
-  x: unknown
+  x: unknown,
 ): x is TransformStreamDefaultControllerImpl {
   return !(
     typeof x !== "object" ||
@@ -386,7 +386,7 @@ export function isTransformStreamDefaultController(
 }
 
 export function isUnderlyingByteSource(
-  underlyingSource: UnderlyingByteSource | UnderlyingSource
+  underlyingSource: UnderlyingByteSource | UnderlyingSource,
 ): underlyingSource is UnderlyingByteSource {
   const { type } = underlyingSource;
   const typeString = String(type);
@@ -402,7 +402,7 @@ export function isWritableStream(x: unknown): x is WritableStreamImpl {
 }
 
 export function isWritableStreamDefaultController(
-  x: unknown
+  x: unknown,
 ): x is WritableStreamDefaultControllerImpl<any> {
   return !(
     typeof x !== "object" ||
@@ -412,7 +412,7 @@ export function isWritableStreamDefaultController(
 }
 
 export function isWritableStreamDefaultWriter(
-  x: unknown
+  x: unknown,
 ): x is WritableStreamDefaultWriterImpl<any> {
   return !(
     typeof x !== "object" ||
@@ -427,7 +427,7 @@ export function isWritableStreamLocked(stream: WritableStreamImpl): boolean {
 }
 
 export function makeSizeAlgorithmFromSizeFunction<T>(
-  size: QueuingStrategySizeCallback<T> | undefined
+  size: QueuingStrategySizeCallback<T> | undefined,
 ): SizeAlgorithm<T> {
   if (size === undefined) {
     return (): number => 1;
@@ -448,7 +448,7 @@ function peekQueueValue<T>(container: Container<T>): T | "close" {
 }
 
 function readableByteStreamControllerShouldCallPull(
-  controller: ReadableByteStreamControllerImpl
+  controller: ReadableByteStreamControllerImpl,
 ): boolean {
   const stream = controller[sym.controlledReadableByteStream];
   if (
@@ -472,7 +472,7 @@ function readableByteStreamControllerShouldCallPull(
 }
 
 export function readableByteStreamControllerCallPullIfNeeded(
-  controller: ReadableByteStreamControllerImpl
+  controller: ReadableByteStreamControllerImpl,
 ): void {
   const shouldPull = readableByteStreamControllerShouldCallPull(controller);
   if (!shouldPull) {
@@ -496,20 +496,20 @@ export function readableByteStreamControllerCallPullIfNeeded(
       },
       (e) => {
         readableByteStreamControllerError(controller, e);
-      }
-    )
+      },
+    ),
   );
 }
 
 export function readableByteStreamControllerClearAlgorithms(
-  controller: ReadableByteStreamControllerImpl
+  controller: ReadableByteStreamControllerImpl,
 ): void {
   (controller as any)[sym.pullAlgorithm] = undefined;
   (controller as any)[sym.cancelAlgorithm] = undefined;
 }
 
 export function readableByteStreamControllerClose(
-  controller: ReadableByteStreamControllerImpl
+  controller: ReadableByteStreamControllerImpl,
 ): void {
   const stream = controller[sym.controlledReadableByteStream];
   if (controller[sym.closeRequested] || stream[sym.state] !== "readable") {
@@ -526,7 +526,7 @@ export function readableByteStreamControllerClose(
 
 export function readableByteStreamControllerEnqueue(
   controller: ReadableByteStreamControllerImpl,
-  chunk: ArrayBufferView
+  chunk: ArrayBufferView,
 ): void {
   const stream = controller[sym.controlledReadableByteStream];
   if (controller[sym.closeRequested] || stream[sym.state] !== "readable") {
@@ -540,14 +540,14 @@ export function readableByteStreamControllerEnqueue(
         controller,
         transferredBuffer,
         byteOffset,
-        byteLength
+        byteLength,
       );
     } else {
       assert(controller[sym.queue].length === 0);
       const transferredView = new Uint8Array(
         transferredBuffer,
         byteOffset,
-        byteLength
+        byteLength,
       );
       readableStreamFulfillReadRequest(stream, transferredView, false);
     }
@@ -558,7 +558,7 @@ export function readableByteStreamControllerEnqueue(
       controller,
       transferredBuffer,
       byteOffset,
-      byteLength
+      byteLength,
     );
   }
   readableByteStreamControllerCallPullIfNeeded(controller);
@@ -568,7 +568,7 @@ function readableByteStreamControllerEnqueueChunkToQueue(
   controller: ReadableByteStreamControllerImpl,
   buffer: ArrayBuffer | SharedArrayBuffer,
   byteOffset: number,
-  byteLength: number
+  byteLength: number,
 ): void {
   controller[sym.queue].push({
     value: buffer,
@@ -580,7 +580,7 @@ function readableByteStreamControllerEnqueueChunkToQueue(
 
 export function readableByteStreamControllerError(
   controller: ReadableByteStreamControllerImpl,
-  e: any
+  e: any,
 ): void {
   const stream = controller[sym.controlledReadableByteStream];
   if (stream[sym.state] !== "readable") {
@@ -593,7 +593,7 @@ export function readableByteStreamControllerError(
 }
 
 export function readableByteStreamControllerGetDesiredSize(
-  controller: ReadableByteStreamControllerImpl
+  controller: ReadableByteStreamControllerImpl,
 ): number | null {
   const stream = controller[sym.controlledReadableByteStream];
   const state = stream[sym.state];
@@ -607,10 +607,10 @@ export function readableByteStreamControllerGetDesiredSize(
 }
 
 export function readableByteStreamControllerHandleQueueDrain(
-  controller: ReadableByteStreamControllerImpl
+  controller: ReadableByteStreamControllerImpl,
 ): void {
   assert(
-    controller[sym.controlledReadableByteStream][sym.state] === "readable"
+    controller[sym.controlledReadableByteStream][sym.state] === "readable",
   );
   if (controller[sym.queueTotalSize] === 0 && controller[sym.closeRequested]) {
     readableByteStreamControllerClearAlgorithms(controller);
@@ -621,7 +621,7 @@ export function readableByteStreamControllerHandleQueueDrain(
 }
 
 export function readableStreamAddReadRequest<R>(
-  stream: ReadableStreamImpl<R>
+  stream: ReadableStreamImpl<R>,
 ): Promise<ReadableStreamReadResult<R>> {
   assert(isReadableStreamDefaultReader(stream[sym.reader]));
   assert(stream[sym.state] === "readable");
@@ -632,7 +632,7 @@ export function readableStreamAddReadRequest<R>(
 
 export function readableStreamCancel<T>(
   stream: ReadableStreamImpl<T>,
-  reason: any
+  reason: any,
 ): Promise<void> {
   stream[sym.disturbed] = true;
   if (stream[sym.state] === "closed") {
@@ -643,7 +643,7 @@ export function readableStreamCancel<T>(
   }
   readableStreamClose(stream);
   return stream[sym.readableStreamController]![sym.cancelSteps](reason).then(
-    () => undefined
+    () => undefined,
   ) as Promise<void>;
 }
 
@@ -661,8 +661,8 @@ export function readableStreamClose<T>(stream: ReadableStreamImpl<T>): void {
         readableStreamCreateReadResult<T>(
           undefined,
           true,
-          reader[sym.forAuthorCode]
-        )
+          reader[sym.forAuthorCode],
+        ),
       );
     }
     reader[sym.readRequests] = [];
@@ -675,7 +675,7 @@ export function readableStreamClose<T>(stream: ReadableStreamImpl<T>): void {
 export function readableStreamCreateReadResult<T>(
   value: T | undefined,
   done: boolean,
-  forAuthorCode: boolean
+  forAuthorCode: boolean,
 ): ReadableStreamReadResult<T> {
   const prototype = forAuthorCode ? Object.prototype : null;
   assert(typeof done === "boolean");
@@ -688,7 +688,7 @@ export function readableStreamCreateReadResult<T>(
 }
 
 export function readableStreamDefaultControllerCallPullIfNeeded<T>(
-  controller: ReadableStreamDefaultControllerImpl<T>
+  controller: ReadableStreamDefaultControllerImpl<T>,
 ): void {
   const shouldPull = readableStreamDefaultControllerShouldCallPull(controller);
   if (!shouldPull) {
@@ -711,19 +711,19 @@ export function readableStreamDefaultControllerCallPullIfNeeded<T>(
     },
     (e) => {
       readableStreamDefaultControllerError(controller, e);
-    }
+    },
   );
 }
 
 export function readableStreamDefaultControllerCanCloseOrEnqueue<T>(
-  controller: ReadableStreamDefaultControllerImpl<T>
+  controller: ReadableStreamDefaultControllerImpl<T>,
 ): boolean {
   const state = controller[sym.controlledReadableStream][sym.state];
   return !controller[sym.closeRequested] && state === "readable";
 }
 
 export function readableStreamDefaultControllerClearAlgorithms<T>(
-  controller: ReadableStreamDefaultControllerImpl<T>
+  controller: ReadableStreamDefaultControllerImpl<T>,
 ): void {
   (controller as any)[sym.pullAlgorithm] = undefined;
   (controller as any)[sym.cancelAlgorithm] = undefined;
@@ -731,7 +731,7 @@ export function readableStreamDefaultControllerClearAlgorithms<T>(
 }
 
 export function readableStreamDefaultControllerClose<T>(
-  controller: ReadableStreamDefaultControllerImpl<T>
+  controller: ReadableStreamDefaultControllerImpl<T>,
 ): void {
   if (!readableStreamDefaultControllerCanCloseOrEnqueue(controller)) {
     return;
@@ -746,7 +746,7 @@ export function readableStreamDefaultControllerClose<T>(
 
 export function readableStreamDefaultControllerEnqueue<T>(
   controller: ReadableStreamDefaultControllerImpl<T>,
-  chunk: T
+  chunk: T,
 ): void {
   if (!readableStreamDefaultControllerCanCloseOrEnqueue(controller)) {
     return;
@@ -770,7 +770,7 @@ export function readableStreamDefaultControllerEnqueue<T>(
 }
 
 export function readableStreamDefaultControllerGetDesiredSize<T>(
-  controller: ReadableStreamDefaultControllerImpl<T>
+  controller: ReadableStreamDefaultControllerImpl<T>,
 ): number | null {
   const stream = controller[sym.controlledReadableStream];
   const state = stream[sym.state];
@@ -785,7 +785,7 @@ export function readableStreamDefaultControllerGetDesiredSize<T>(
 
 export function readableStreamDefaultControllerError<T>(
   controller: ReadableStreamDefaultControllerImpl<T>,
-  e: any
+  e: any,
 ): void {
   const stream = controller[sym.controlledReadableStream];
   if (stream[sym.state] !== "readable") {
@@ -797,13 +797,13 @@ export function readableStreamDefaultControllerError<T>(
 }
 
 function readableStreamDefaultControllerHasBackpressure<T>(
-  controller: ReadableStreamDefaultControllerImpl<T>
+  controller: ReadableStreamDefaultControllerImpl<T>,
 ): boolean {
   return readableStreamDefaultControllerShouldCallPull(controller);
 }
 
 function readableStreamDefaultControllerShouldCallPull<T>(
-  controller: ReadableStreamDefaultControllerImpl<T>
+  controller: ReadableStreamDefaultControllerImpl<T>,
 ): boolean {
   const stream = controller[sym.controlledReadableStream];
   if (
@@ -824,7 +824,7 @@ function readableStreamDefaultControllerShouldCallPull<T>(
 }
 
 export function readableStreamDefaultReaderRead<R>(
-  reader: ReadableStreamDefaultReaderImpl<R>
+  reader: ReadableStreamDefaultReaderImpl<R>,
 ): Promise<ReadableStreamReadResult<R>> {
   const stream = reader[sym.ownerReadableStream];
   assert(stream);
@@ -834,8 +834,8 @@ export function readableStreamDefaultReaderRead<R>(
       readableStreamCreateReadResult<R>(
         undefined,
         true,
-        reader[sym.forAuthorCode]
-      )
+        reader[sym.forAuthorCode],
+      ),
     );
   }
   if (stream[sym.state] === "errored") {
@@ -875,24 +875,24 @@ export function readableStreamError(stream: ReadableStreamImpl, e: any): void {
 export function readableStreamFulfillReadRequest<R>(
   stream: ReadableStreamImpl<R>,
   chunk: R,
-  done: boolean
+  done: boolean,
 ): void {
   const reader = stream[sym.reader]!;
   const readRequest = reader[sym.readRequests].shift()!;
   assert(readRequest.resolve);
   readRequest.resolve(
-    readableStreamCreateReadResult(chunk, done, reader[sym.forAuthorCode])
+    readableStreamCreateReadResult(chunk, done, reader[sym.forAuthorCode]),
   );
 }
 
 export function readableStreamGetNumReadRequests(
-  stream: ReadableStreamImpl
+  stream: ReadableStreamImpl,
 ): number {
   return stream[sym.reader]?.[sym.readRequests].length ?? 0;
 }
 
 export function readableStreamHasDefaultReader(
-  stream: ReadableStreamImpl
+  stream: ReadableStreamImpl,
 ): boolean {
   const reader = stream[sym.reader];
   return !(reader === undefined || !isReadableStreamDefaultReader(reader));
@@ -904,14 +904,14 @@ export function readableStreamPipeTo<T>(
   preventClose: boolean,
   preventAbort: boolean,
   preventCancel: boolean,
-  signal: AbortSignalImpl | undefined
+  signal: AbortSignalImpl | undefined,
 ): Promise<void> {
   assert(isReadableStream(source));
   assert(isWritableStream(dest));
   assert(
     typeof preventClose === "boolean" &&
       typeof preventAbort === "boolean" &&
-      typeof preventCancel === "boolean"
+      typeof preventCancel === "boolean",
   );
   assert(signal === undefined || signal instanceof AbortSignalImpl);
   assert(!isReadableStreamLocked(source));
@@ -947,7 +947,7 @@ export function readableStreamPipeTo<T>(
       shutdownWithAction(
         () => Promise.all(actions.map((action) => action())),
         true,
-        error
+        error,
       );
     };
     if (signal.aborted) {
@@ -967,7 +967,7 @@ export function readableStreamPipeTo<T>(
   function isOrBecomesClosed(
     stream: ReadableStreamImpl | WritableStreamImpl,
     promise: Promise<void>,
-    action: () => void
+    action: () => void,
   ): void {
     if (stream[sym.state] === "closed") {
       action();
@@ -979,7 +979,7 @@ export function readableStreamPipeTo<T>(
   function isOrBecomesErrored(
     stream: ReadableStreamImpl | WritableStreamImpl,
     promise: Promise<void>,
-    action: (error: any) => void
+    action: (error: any) => void,
   ): void {
     if (stream[sym.state] === "errored") {
       action(stream[sym.storedError]);
@@ -1012,14 +1012,14 @@ export function readableStreamPipeTo<T>(
   function shutdownWithAction(
     action: () => Promise<any>,
     originalIsError?: boolean,
-    originalError?: any
+    originalError?: any,
   ): void {
     function doTheRest(): void {
       setPromiseIsHandledToTrue(
         action().then(
           () => finalize(originalIsError, originalError),
-          (newError) => finalize(true, newError)
-        )
+          (newError) => finalize(true, newError),
+        ),
       );
     }
 
@@ -1049,7 +1049,7 @@ export function readableStreamPipeTo<T>(
       !writableStreamCloseQueuedOrInFlight(dest)
     ) {
       setPromiseIsHandledToTrue(
-        waitForWritesToFinish().then(() => finalize(isError, error))
+        waitForWritesToFinish().then(() => finalize(isError, error)),
       );
     }
     finalize(isError, error);
@@ -1066,7 +1066,7 @@ export function readableStreamPipeTo<T>(
         }
         currentWrite = writableStreamDefaultWriterWrite(
           writer,
-          value!
+          value!,
         ).then(undefined, () => {});
         return false;
       });
@@ -1094,12 +1094,12 @@ export function readableStreamPipeTo<T>(
         shutdownWithAction(
           () => writableStreamAbort(dest, storedError),
           true,
-          storedError
+          storedError,
         );
       } else {
         shutdown(true, storedError);
       }
-    }
+    },
   );
 
   isOrBecomesErrored(dest, writer[sym.closedPromise].promise, (storedError) => {
@@ -1107,7 +1107,7 @@ export function readableStreamPipeTo<T>(
       shutdownWithAction(
         () => readableStreamCancel(source, storedError),
         true,
-        storedError
+        storedError,
       );
     } else {
       shutdown(true, storedError);
@@ -1127,13 +1127,13 @@ export function readableStreamPipeTo<T>(
     dest[sym.state] === "closed"
   ) {
     const destClosed = new TypeError(
-      "The destination writable stream closed before all data could be piped to it."
+      "The destination writable stream closed before all data could be piped to it.",
     );
     if (!preventCancel) {
       shutdownWithAction(
         () => readableStreamCancel(source, destClosed),
         true,
-        destClosed
+        destClosed,
       );
     } else {
       shutdown(true, destClosed);
@@ -1146,7 +1146,7 @@ export function readableStreamPipeTo<T>(
 
 export function readableStreamReaderGenericCancel<R = any>(
   reader: ReadableStreamGenericReader<R>,
-  reason: any
+  reason: any,
 ): Promise<void> {
   const stream = reader[sym.ownerReadableStream];
   assert(stream);
@@ -1155,7 +1155,7 @@ export function readableStreamReaderGenericCancel<R = any>(
 
 export function readableStreamReaderGenericInitialize<R = any>(
   reader: ReadableStreamGenericReader<R>,
-  stream: ReadableStreamImpl<R>
+  stream: ReadableStreamImpl<R>,
 ): void {
   reader[sym.forAuthorCode] = true;
   reader[sym.ownerReadableStream] = stream;
@@ -1174,7 +1174,7 @@ export function readableStreamReaderGenericInitialize<R = any>(
 }
 
 export function readableStreamReaderGenericRelease<R = any>(
-  reader: ReadableStreamGenericReader<R>
+  reader: ReadableStreamGenericReader<R>,
 ): void {
   assert(reader[sym.ownerReadableStream]);
   assert(reader[sym.ownerReadableStream][sym.reader] === reader);
@@ -1194,7 +1194,7 @@ export function readableStreamReaderGenericRelease<R = any>(
 
 export function readableStreamTee<T>(
   stream: ReadableStreamImpl<T>,
-  cloneForBranch2: boolean
+  cloneForBranch2: boolean,
 ): [ReadableStreamImpl<T>, ReadableStreamImpl<T>] {
   assert(isReadableStream(stream));
   assert(typeof cloneForBranch2 === "boolean");
@@ -1225,14 +1225,14 @@ export function readableStreamTee<T>(
             readableStreamDefaultControllerClose(
               branch1[
                 sym.readableStreamController
-              ] as ReadableStreamDefaultControllerImpl
+              ] as ReadableStreamDefaultControllerImpl,
             );
           }
           if (!canceled2) {
             readableStreamDefaultControllerClose(
               branch2[
                 sym.readableStreamController
-              ] as ReadableStreamDefaultControllerImpl
+              ] as ReadableStreamDefaultControllerImpl,
             );
           }
           return;
@@ -1248,7 +1248,7 @@ export function readableStreamTee<T>(
             branch1[
               sym.readableStreamController
             ] as ReadableStreamDefaultControllerImpl,
-            value1
+            value1,
           );
         }
         if (!canceled2) {
@@ -1256,10 +1256,10 @@ export function readableStreamTee<T>(
             branch2[
               sym.readableStreamController
             ] as ReadableStreamDefaultControllerImpl,
-            value2
+            value2,
           );
         }
-      }
+      },
     );
     setPromiseIsHandledToTrue(readPromise);
     return Promise.resolve();
@@ -1288,12 +1288,12 @@ export function readableStreamTee<T>(
   branch1 = createReadableStream(
     startAlgorithm,
     pullAlgorithm,
-    cancel1Algorithm
+    cancel1Algorithm,
   );
   branch2 = createReadableStream(
     startAlgorithm,
     pullAlgorithm,
-    cancel2Algorithm
+    cancel2Algorithm,
   );
   setPromiseIsHandledToTrue(
     reader[sym.closedPromise].promise.catch((r) => {
@@ -1301,15 +1301,15 @@ export function readableStreamTee<T>(
         branch1[
           sym.readableStreamController
         ] as ReadableStreamDefaultControllerImpl,
-        r
+        r,
       );
       readableStreamDefaultControllerError(
         branch2[
           sym.readableStreamController
         ] as ReadableStreamDefaultControllerImpl,
-        r
+        r,
       );
-    })
+    }),
   );
   return [branch1, branch2];
 }
@@ -1340,7 +1340,7 @@ function setUpReadableByteStreamController(
   pullAlgorithm: PullAlgorithm,
   cancelAlgorithm: CancelAlgorithm,
   highWaterMark: number,
-  autoAllocateChunkSize: number | undefined
+  autoAllocateChunkSize: number | undefined,
 ): void {
   assert(stream[sym.readableStreamController] === undefined);
   if (autoAllocateChunkSize !== undefined) {
@@ -1354,7 +1354,7 @@ function setUpReadableByteStreamController(
   controller[sym.queueTotalSize] = 0;
   controller[sym.closeRequested] = controller[sym.started] = false;
   controller[sym.strategyHWM] = validateAndNormalizeHighWaterMark(
-    highWaterMark
+    highWaterMark,
   );
   controller[sym.pullAlgorithm] = pullAlgorithm;
   controller[sym.cancelAlgorithm] = cancelAlgorithm;
@@ -1373,19 +1373,19 @@ function setUpReadableByteStreamController(
       },
       (r) => {
         readableByteStreamControllerError(controller, r);
-      }
-    )
+      },
+    ),
   );
 }
 
 export function setUpReadableByteStreamControllerFromUnderlyingSource(
   stream: ReadableStreamImpl,
   underlyingByteSource: UnderlyingByteSource,
-  highWaterMark: number
+  highWaterMark: number,
 ): void {
   assert(underlyingByteSource);
   const controller: ReadableByteStreamControllerImpl = Object.create(
-    ReadableByteStreamControllerImpl.prototype
+    ReadableByteStreamControllerImpl.prototype,
   );
   const startAlgorithm: StartAlgorithm = () => {
     return invokeOrNoop(underlyingByteSource, "start", controller);
@@ -1394,13 +1394,13 @@ export function setUpReadableByteStreamControllerFromUnderlyingSource(
     underlyingByteSource,
     "pull",
     0,
-    controller
+    controller,
   );
   setFunctionName(pullAlgorithm, "[[pullAlgorithm]]");
   const cancelAlgorithm = createAlgorithmFromUnderlyingMethod(
     underlyingByteSource,
     "cancel",
-    1
+    1,
   );
   setFunctionName(cancelAlgorithm, "[[cancelAlgorithm]]");
   // 3.13.27.6 Let autoAllocateChunkSize be ? GetV(underlyingByteSource, "autoAllocateChunkSize").
@@ -1412,7 +1412,7 @@ export function setUpReadableByteStreamControllerFromUnderlyingSource(
     pullAlgorithm,
     cancelAlgorithm,
     highWaterMark,
-    autoAllocateChunkSize
+    autoAllocateChunkSize,
   );
 }
 
@@ -1423,7 +1423,7 @@ function setUpReadableStreamDefaultController<T>(
   pullAlgorithm: PullAlgorithm,
   cancelAlgorithm: CancelAlgorithm,
   highWaterMark: number,
-  sizeAlgorithm: SizeAlgorithm<T>
+  sizeAlgorithm: SizeAlgorithm<T>,
 ): void {
   assert(stream[sym.readableStreamController] === undefined);
   controller[sym.controlledReadableStream] = stream;
@@ -1449,8 +1449,8 @@ function setUpReadableStreamDefaultController<T>(
       },
       (r) => {
         readableStreamDefaultControllerError(controller, r);
-      }
-    )
+      },
+    ),
   );
 }
 
@@ -1458,11 +1458,11 @@ export function setUpReadableStreamDefaultControllerFromUnderlyingSource<T>(
   stream: ReadableStreamImpl<T>,
   underlyingSource: UnderlyingSource<T>,
   highWaterMark: number,
-  sizeAlgorithm: SizeAlgorithm<T>
+  sizeAlgorithm: SizeAlgorithm<T>,
 ): void {
   assert(underlyingSource);
   const controller: ReadableStreamDefaultControllerImpl<T> = Object.create(
-    ReadableStreamDefaultControllerImpl.prototype
+    ReadableStreamDefaultControllerImpl.prototype,
   );
   const startAlgorithm: StartAlgorithm = (): void | PromiseLike<void> =>
     invokeOrNoop(underlyingSource, "start", controller);
@@ -1470,13 +1470,13 @@ export function setUpReadableStreamDefaultControllerFromUnderlyingSource<T>(
     underlyingSource,
     "pull",
     0,
-    controller
+    controller,
   );
   setFunctionName(pullAlgorithm, "[[pullAlgorithm]]");
   const cancelAlgorithm: CancelAlgorithm = createAlgorithmFromUnderlyingMethod(
     underlyingSource,
     "cancel",
-    1
+    1,
   );
   setFunctionName(cancelAlgorithm, "[[cancelAlgorithm]]");
   setUpReadableStreamDefaultController(
@@ -1486,7 +1486,7 @@ export function setUpReadableStreamDefaultControllerFromUnderlyingSource<T>(
     pullAlgorithm,
     cancelAlgorithm,
     highWaterMark,
-    sizeAlgorithm
+    sizeAlgorithm,
   );
 }
 
@@ -1494,7 +1494,7 @@ function setUpTransformStreamDefaultController<I, O>(
   stream: TransformStreamImpl<I, O>,
   controller: TransformStreamDefaultControllerImpl<I, O>,
   transformAlgorithm: TransformAlgorithm<I>,
-  flushAlgorithm: FlushAlgorithm
+  flushAlgorithm: FlushAlgorithm,
 ): void {
   assert(isTransformStream(stream));
   assert(stream[sym.transformStreamController] === undefined);
@@ -1506,18 +1506,18 @@ function setUpTransformStreamDefaultController<I, O>(
 
 export function setUpTransformStreamDefaultControllerFromTransformer<I, O>(
   stream: TransformStreamImpl<I, O>,
-  transformer: Transformer<I, O>
+  transformer: Transformer<I, O>,
 ): void {
   assert(transformer);
   const controller = Object.create(
-    TransformStreamDefaultControllerImpl.prototype
+    TransformStreamDefaultControllerImpl.prototype,
   ) as TransformStreamDefaultControllerImpl<I, O>;
   let transformAlgorithm: TransformAlgorithm<I> = (chunk) => {
     try {
       transformStreamDefaultControllerEnqueue(
         controller,
         // it defaults to no tranformation, so I is assumed to be O
-        (chunk as unknown) as O
+        (chunk as unknown) as O,
       );
     } catch (e) {
       return Promise.reject(e);
@@ -1536,13 +1536,13 @@ export function setUpTransformStreamDefaultControllerFromTransformer<I, O>(
     transformer,
     "flush",
     0,
-    controller
+    controller,
   );
   setUpTransformStreamDefaultController(
     stream,
     controller,
     transformAlgorithm,
-    flushAlgorithm
+    flushAlgorithm,
   );
 }
 
@@ -1554,7 +1554,7 @@ function setUpWritableStreamDefaultController<W>(
   closeAlgorithm: CloseAlgorithm,
   abortAlgorithm: AbortAlgorithm,
   highWaterMark: number,
-  sizeAlgorithm: SizeAlgorithm<W>
+  sizeAlgorithm: SizeAlgorithm<W>,
 ): void {
   assert(isWritableStream(stream));
   assert(stream[sym.writableStreamController] === undefined);
@@ -1569,7 +1569,7 @@ function setUpWritableStreamDefaultController<W>(
   controller[sym.closeAlgorithm] = closeAlgorithm;
   controller[sym.abortAlgorithm] = abortAlgorithm;
   const backpressure = writableStreamDefaultControllerGetBackpressure(
-    controller
+    controller,
   );
   writableStreamUpdateBackpressure(stream, backpressure);
   const startResult = startAlgorithm();
@@ -1578,19 +1578,19 @@ function setUpWritableStreamDefaultController<W>(
     startPromise.then(
       () => {
         assert(
-          stream[sym.state] === "writable" || stream[sym.state] === "erroring"
+          stream[sym.state] === "writable" || stream[sym.state] === "erroring",
         );
         controller[sym.started] = true;
         writableStreamDefaultControllerAdvanceQueueIfNeeded(controller);
       },
       (r) => {
         assert(
-          stream[sym.state] === "writable" || stream[sym.state] === "erroring"
+          stream[sym.state] === "writable" || stream[sym.state] === "erroring",
         );
         controller[sym.started] = true;
         writableStreamDealWithRejection(stream, r);
-      }
-    )
+      },
+    ),
   );
 }
 
@@ -1598,11 +1598,11 @@ export function setUpWritableStreamDefaultControllerFromUnderlyingSink<W>(
   stream: WritableStreamImpl<W>,
   underlyingSink: UnderlyingSink<W>,
   highWaterMark: number,
-  sizeAlgorithm: SizeAlgorithm<W>
+  sizeAlgorithm: SizeAlgorithm<W>,
 ): void {
   assert(underlyingSink);
   const controller = Object.create(
-    WritableStreamDefaultControllerImpl.prototype
+    WritableStreamDefaultControllerImpl.prototype,
   );
   const startAlgorithm = (): void | PromiseLike<void> => {
     return invokeOrNoop(underlyingSink, "start", controller);
@@ -1611,19 +1611,19 @@ export function setUpWritableStreamDefaultControllerFromUnderlyingSink<W>(
     underlyingSink,
     "write",
     1,
-    controller
+    controller,
   );
   setFunctionName(writeAlgorithm, "[[writeAlgorithm]]");
   const closeAlgorithm = createAlgorithmFromUnderlyingMethod(
     underlyingSink,
     "close",
-    0
+    0,
   );
   setFunctionName(closeAlgorithm, "[[closeAlgorithm]]");
   const abortAlgorithm = createAlgorithmFromUnderlyingMethod(
     underlyingSink,
     "abort",
-    1
+    1,
   );
   setFunctionName(abortAlgorithm, "[[abortAlgorithm]]");
   setUpWritableStreamDefaultController(
@@ -1634,12 +1634,12 @@ export function setUpWritableStreamDefaultControllerFromUnderlyingSink<W>(
     closeAlgorithm,
     abortAlgorithm,
     highWaterMark,
-    sizeAlgorithm
+    sizeAlgorithm,
   );
 }
 
 function transformStreamDefaultControllerClearAlgorithms<I, O>(
-  controller: TransformStreamDefaultControllerImpl<I, O>
+  controller: TransformStreamDefaultControllerImpl<I, O>,
 ): void {
   (controller as any)[sym.transformAlgorithm] = undefined;
   (controller as any)[sym.flushAlgorithm] = undefined;
@@ -1647,7 +1647,7 @@ function transformStreamDefaultControllerClearAlgorithms<I, O>(
 
 export function transformStreamDefaultControllerEnqueue<I, O>(
   controller: TransformStreamDefaultControllerImpl<I, O>,
-  chunk: O
+  chunk: O,
 ): void {
   const stream = controller[sym.controlledTransformStream];
   const readableController = stream[sym.readable][
@@ -1655,7 +1655,7 @@ export function transformStreamDefaultControllerEnqueue<I, O>(
   ] as ReadableStreamDefaultControllerImpl<O>;
   if (!readableStreamDefaultControllerCanCloseOrEnqueue(readableController)) {
     throw new TypeError(
-      "TransformStream's readable controller cannot be closed or enqueued."
+      "TransformStream's readable controller cannot be closed or enqueued.",
     );
   }
   try {
@@ -1665,7 +1665,7 @@ export function transformStreamDefaultControllerEnqueue<I, O>(
     throw stream[sym.readable][sym.storedError];
   }
   const backpressure = readableStreamDefaultControllerHasBackpressure(
-    readableController
+    readableController,
   );
   if (backpressure) {
     transformStreamSetBackpressure(stream, true);
@@ -1674,14 +1674,14 @@ export function transformStreamDefaultControllerEnqueue<I, O>(
 
 export function transformStreamDefaultControllerError<I, O>(
   controller: TransformStreamDefaultControllerImpl<I, O>,
-  e: any
+  e: any,
 ): void {
   transformStreamError(controller[sym.controlledTransformStream], e);
 }
 
 function transformStreamDefaultControllerPerformTransform<I, O>(
   controller: TransformStreamDefaultControllerImpl<I, O>,
-  chunk: I
+  chunk: I,
 ): Promise<void> {
   const transformPromise = controller[sym.transformAlgorithm](chunk);
   return transformPromise.then(undefined, (r) => {
@@ -1692,14 +1692,14 @@ function transformStreamDefaultControllerPerformTransform<I, O>(
 
 function transformStreamDefaultSinkAbortAlgorithm<I, O>(
   stream: TransformStreamImpl<I, O>,
-  reason: any
+  reason: any,
 ): Promise<void> {
   transformStreamError(stream, reason);
   return Promise.resolve(undefined);
 }
 
 function transformStreamDefaultSinkCloseAlgorithm<I, O>(
-  stream: TransformStreamImpl<I, O>
+  stream: TransformStreamImpl<I, O>,
 ): Promise<void> {
   const readable = stream[sym.readable];
   const controller = stream[sym.transformStreamController];
@@ -1722,13 +1722,13 @@ function transformStreamDefaultSinkCloseAlgorithm<I, O>(
     (r) => {
       transformStreamError(stream, r);
       throw readable[sym.storedError];
-    }
+    },
   );
 }
 
 function transformStreamDefaultSinkWriteAlgorithm<I, O>(
   stream: TransformStreamImpl<I, O>,
-  chunk: I
+  chunk: I,
 ): Promise<void> {
   assert(stream[sym.writable][sym.state] === "writable");
   const controller = stream[sym.transformStreamController];
@@ -1744,7 +1744,7 @@ function transformStreamDefaultSinkWriteAlgorithm<I, O>(
       assert(state === "writable");
       return transformStreamDefaultControllerPerformTransform(
         controller,
-        chunk
+        chunk,
       );
     });
   }
@@ -1752,7 +1752,7 @@ function transformStreamDefaultSinkWriteAlgorithm<I, O>(
 }
 
 function transformStreamDefaultSourcePullAlgorithm<I, O>(
-  stream: TransformStreamImpl<I, O>
+  stream: TransformStreamImpl<I, O>,
 ): Promise<void> {
   assert(stream[sym.backpressure] === true);
   assert(stream[sym.backpressureChangePromise] !== undefined);
@@ -1762,19 +1762,19 @@ function transformStreamDefaultSourcePullAlgorithm<I, O>(
 
 function transformStreamError<I, O>(
   stream: TransformStreamImpl<I, O>,
-  e: any
+  e: any,
 ): void {
   readableStreamDefaultControllerError(
     stream[sym.readable][
       sym.readableStreamController
     ] as ReadableStreamDefaultControllerImpl<O>,
-    e
+    e,
   );
   transformStreamErrorWritableAndUnblockWrite(stream, e);
 }
 
 export function transformStreamDefaultControllerTerminate<I, O>(
-  controller: TransformStreamDefaultControllerImpl<I, O>
+  controller: TransformStreamDefaultControllerImpl<I, O>,
 ): void {
   const stream = controller[sym.controlledTransformStream];
   const readableController = stream[sym.readable][
@@ -1787,14 +1787,14 @@ export function transformStreamDefaultControllerTerminate<I, O>(
 
 function transformStreamErrorWritableAndUnblockWrite<I, O>(
   stream: TransformStreamImpl<I, O>,
-  e: any
+  e: any,
 ): void {
   transformStreamDefaultControllerClearAlgorithms(
-    stream[sym.transformStreamController]
+    stream[sym.transformStreamController],
   );
   writableStreamDefaultControllerErrorIfNeeded(
     stream[sym.writable][sym.writableStreamController]!,
-    e
+    e,
   );
   if (stream[sym.backpressure]) {
     transformStreamSetBackpressure(stream, false);
@@ -1803,7 +1803,7 @@ function transformStreamErrorWritableAndUnblockWrite<I, O>(
 
 function transformStreamSetBackpressure<I, O>(
   stream: TransformStreamImpl<I, O>,
-  backpressure: boolean
+  backpressure: boolean,
 ): void {
   assert(stream[sym.backpressure] !== backpressure);
   if (stream[sym.backpressureChangePromise] !== undefined) {
@@ -1828,12 +1828,12 @@ function transferArrayBuffer(buffer: ArrayBuffer): ArrayBuffer {
 }
 
 export function validateAndNormalizeHighWaterMark(
-  highWaterMark: number
+  highWaterMark: number,
 ): number {
   highWaterMark = Number(highWaterMark);
   if (Number.isNaN(highWaterMark) || highWaterMark < 0) {
     throw new RangeError(
-      `highWaterMark must be a positive number or Infinity.  Received: ${highWaterMark}.`
+      `highWaterMark must be a positive number or Infinity.  Received: ${highWaterMark}.`,
     );
   }
   return highWaterMark;
@@ -1841,7 +1841,7 @@ export function validateAndNormalizeHighWaterMark(
 
 export function writableStreamAbort<W>(
   stream: WritableStreamImpl<W>,
-  reason: any
+  reason: any,
 ): Promise<void> {
   const state = stream[sym.state];
   if (state === "closed" || state === "errored") {
@@ -1866,7 +1866,7 @@ export function writableStreamAbort<W>(
 }
 
 function writableStreamAddWriteRequest<W>(
-  stream: WritableStreamImpl<W>
+  stream: WritableStreamImpl<W>,
 ): Promise<void> {
   assert(isWritableStream(stream));
   assert(stream[sym.state] === "writable");
@@ -1876,12 +1876,14 @@ function writableStreamAddWriteRequest<W>(
 }
 
 export function writableStreamClose<W>(
-  stream: WritableStreamImpl<W>
+  stream: WritableStreamImpl<W>,
 ): Promise<void> {
   const state = stream[sym.state];
   if (state === "closed" || state === "errored") {
     return Promise.reject(
-      new TypeError("Cannot close an already closed or errored WritableStream.")
+      new TypeError(
+        "Cannot close an already closed or errored WritableStream.",
+      ),
     );
   }
   assert(!writableStreamCloseQueuedOrInFlight(stream));
@@ -1898,7 +1900,7 @@ export function writableStreamClose<W>(
 }
 
 export function writableStreamCloseQueuedOrInFlight<W>(
-  stream: WritableStreamImpl<W>
+  stream: WritableStreamImpl<W>,
 ): boolean {
   return !(
     stream[sym.closeRequest] === undefined &&
@@ -1908,7 +1910,7 @@ export function writableStreamCloseQueuedOrInFlight<W>(
 
 function writableStreamDealWithRejection<W>(
   stream: WritableStreamImpl<W>,
-  error: any
+  error: any,
 ): void {
   const state = stream[sym.state];
   if (state === "writable") {
@@ -1920,7 +1922,7 @@ function writableStreamDealWithRejection<W>(
 }
 
 function writableStreamDefaultControllerAdvanceQueueIfNeeded<W>(
-  controller: WritableStreamDefaultControllerImpl<W>
+  controller: WritableStreamDefaultControllerImpl<W>,
 ): void {
   const stream = controller[sym.controlledWritableStream];
   if (!controller[sym.started]) {
@@ -1947,7 +1949,7 @@ function writableStreamDefaultControllerAdvanceQueueIfNeeded<W>(
 }
 
 export function writableStreamDefaultControllerClearAlgorithms<W>(
-  controller: WritableStreamDefaultControllerImpl<W>
+  controller: WritableStreamDefaultControllerImpl<W>,
 ): void {
   (controller as any)[sym.writeAlgorithm] = undefined;
   (controller as any)[sym.closeAlgorithm] = undefined;
@@ -1956,7 +1958,7 @@ export function writableStreamDefaultControllerClearAlgorithms<W>(
 }
 
 function writableStreamDefaultControllerClose<W>(
-  controller: WritableStreamDefaultControllerImpl<W>
+  controller: WritableStreamDefaultControllerImpl<W>,
 ): void {
   enqueueValueWithSize(controller, "close", 0);
   writableStreamDefaultControllerAdvanceQueueIfNeeded(controller);
@@ -1964,7 +1966,7 @@ function writableStreamDefaultControllerClose<W>(
 
 export function writableStreamDefaultControllerError<W>(
   controller: WritableStreamDefaultControllerImpl<W>,
-  error: any
+  error: any,
 ): void {
   const stream = controller[sym.controlledWritableStream];
   assert(stream[sym.state] === "writable");
@@ -1974,7 +1976,7 @@ export function writableStreamDefaultControllerError<W>(
 
 function writableStreamDefaultControllerErrorIfNeeded<W>(
   controller: WritableStreamDefaultControllerImpl<W>,
-  error: any
+  error: any,
 ): void {
   if (controller[sym.controlledWritableStream][sym.state] === "writable") {
     writableStreamDefaultControllerError(controller, error);
@@ -1982,7 +1984,7 @@ function writableStreamDefaultControllerErrorIfNeeded<W>(
 }
 
 function writableStreamDefaultControllerGetBackpressure<W>(
-  controller: WritableStreamDefaultControllerImpl<W>
+  controller: WritableStreamDefaultControllerImpl<W>,
 ): boolean {
   const desiredSize = writableStreamDefaultControllerGetDesiredSize(controller);
   return desiredSize <= 0;
@@ -1990,7 +1992,7 @@ function writableStreamDefaultControllerGetBackpressure<W>(
 
 function writableStreamDefaultControllerGetChunkSize<W>(
   controller: WritableStreamDefaultControllerImpl<W>,
-  chunk: W
+  chunk: W,
 ): number {
   let returnValue: number;
   try {
@@ -2003,13 +2005,13 @@ function writableStreamDefaultControllerGetChunkSize<W>(
 }
 
 function writableStreamDefaultControllerGetDesiredSize<W>(
-  controller: WritableStreamDefaultControllerImpl<W>
+  controller: WritableStreamDefaultControllerImpl<W>,
 ): number {
   return controller[sym.strategyHWM] - controller[sym.queueTotalSize];
 }
 
 function writableStreamDefaultControllerProcessClose<W>(
-  controller: WritableStreamDefaultControllerImpl<W>
+  controller: WritableStreamDefaultControllerImpl<W>,
 ): void {
   const stream = controller[sym.controlledWritableStream];
   writableStreamMarkCloseRequestInFlight(stream);
@@ -2024,14 +2026,14 @@ function writableStreamDefaultControllerProcessClose<W>(
       },
       (reason) => {
         writableStreamFinishInFlightCloseWithError(stream, reason);
-      }
-    )
+      },
+    ),
   );
 }
 
 function writableStreamDefaultControllerProcessWrite<W>(
   controller: WritableStreamDefaultControllerImpl<W>,
-  chunk: W
+  chunk: W,
 ): void {
   const stream = controller[sym.controlledWritableStream];
   writableStreamMarkFirstWriteRequestInFlight(stream);
@@ -2048,7 +2050,7 @@ function writableStreamDefaultControllerProcessWrite<W>(
           state === "writable"
         ) {
           const backpressure = writableStreamDefaultControllerGetBackpressure(
-            controller
+            controller,
           );
           writableStreamUpdateBackpressure(stream, backpressure);
         }
@@ -2059,15 +2061,15 @@ function writableStreamDefaultControllerProcessWrite<W>(
           writableStreamDefaultControllerClearAlgorithms(controller);
         }
         writableStreamFinishInFlightWriteWithError(stream, reason);
-      }
-    )
+      },
+    ),
   );
 }
 
 function writableStreamDefaultControllerWrite<W>(
   controller: WritableStreamDefaultControllerImpl<W>,
   chunk: W,
-  chunkSize: number
+  chunkSize: number,
 ): void {
   const writeRecord = { chunk };
   try {
@@ -2082,7 +2084,7 @@ function writableStreamDefaultControllerWrite<W>(
     stream[sym.state] === "writable"
   ) {
     const backpressure = writableStreamDefaultControllerGetBackpressure(
-      controller
+      controller,
     );
     writableStreamUpdateBackpressure(stream, backpressure);
   }
@@ -2091,7 +2093,7 @@ function writableStreamDefaultControllerWrite<W>(
 
 export function writableStreamDefaultWriterAbort<W>(
   writer: WritableStreamDefaultWriterImpl<W>,
-  reason: any
+  reason: any,
 ): Promise<void> {
   const stream = writer[sym.ownerWritableStream];
   assert(stream);
@@ -2099,7 +2101,7 @@ export function writableStreamDefaultWriterAbort<W>(
 }
 
 export function writableStreamDefaultWriterClose<W>(
-  writer: WritableStreamDefaultWriterImpl<W>
+  writer: WritableStreamDefaultWriterImpl<W>,
 ): Promise<void> {
   const stream = writer[sym.ownerWritableStream];
   assert(stream);
@@ -2107,7 +2109,7 @@ export function writableStreamDefaultWriterClose<W>(
 }
 
 function writableStreamDefaultWriterCloseWithErrorPropagation<W>(
-  writer: WritableStreamDefaultWriterImpl<W>
+  writer: WritableStreamDefaultWriterImpl<W>,
 ): Promise<void> {
   const stream = writer[sym.ownerWritableStream];
   assert(stream);
@@ -2124,7 +2126,7 @@ function writableStreamDefaultWriterCloseWithErrorPropagation<W>(
 
 function writableStreamDefaultWriterEnsureClosePromiseRejected<W>(
   writer: WritableStreamDefaultWriterImpl<W>,
-  error: any
+  error: any,
 ): void {
   if (writer[sym.closedPromise].reject) {
     writer[sym.closedPromise].reject!(error);
@@ -2138,7 +2140,7 @@ function writableStreamDefaultWriterEnsureClosePromiseRejected<W>(
 
 function writableStreamDefaultWriterEnsureReadyPromiseRejected<W>(
   writer: WritableStreamDefaultWriterImpl<W>,
-  error: any
+  error: any,
 ): void {
   if (writer[sym.readyPromise].reject) {
     writer[sym.readyPromise].reject!(error);
@@ -2154,7 +2156,7 @@ function writableStreamDefaultWriterEnsureReadyPromiseRejected<W>(
 
 export function writableStreamDefaultWriterWrite<W>(
   writer: WritableStreamDefaultWriterImpl<W>,
-  chunk: W
+  chunk: W,
 ): Promise<void> {
   const stream = writer[sym.ownerWritableStream];
   assert(stream);
@@ -2162,7 +2164,7 @@ export function writableStreamDefaultWriterWrite<W>(
   assert(controller);
   const chunkSize = writableStreamDefaultControllerGetChunkSize(
     controller,
-    chunk
+    chunk,
   );
   if (stream !== writer[sym.ownerWritableStream]) {
     return Promise.reject("Writer has incorrect WritableStream.");
@@ -2184,7 +2186,7 @@ export function writableStreamDefaultWriterWrite<W>(
 }
 
 export function writableStreamDefaultWriterGetDesiredSize<W>(
-  writer: WritableStreamDefaultWriterImpl<W>
+  writer: WritableStreamDefaultWriterImpl<W>,
 ): number | null {
   const stream = writer[sym.ownerWritableStream];
   const state = stream[sym.state];
@@ -2195,18 +2197,18 @@ export function writableStreamDefaultWriterGetDesiredSize<W>(
     return 0;
   }
   return writableStreamDefaultControllerGetDesiredSize(
-    stream[sym.writableStreamController]!
+    stream[sym.writableStreamController]!,
   );
 }
 
 export function writableStreamDefaultWriterRelease<W>(
-  writer: WritableStreamDefaultWriterImpl<W>
+  writer: WritableStreamDefaultWriterImpl<W>,
 ): void {
   const stream = writer[sym.ownerWritableStream];
   assert(stream);
   assert(stream[sym.writer] === writer);
   const releasedError = new TypeError(
-    "Writer was released and can no longer be used to monitor the stream's closedness."
+    "Writer was released and can no longer be used to monitor the stream's closedness.",
   );
   writableStreamDefaultWriterEnsureReadyPromiseRejected(writer, releasedError);
   writableStreamDefaultWriterEnsureClosePromiseRejected(writer, releasedError);
@@ -2239,7 +2241,7 @@ function writableStreamFinishErroring<W>(stream: WritableStreamImpl<W>): void {
     return;
   }
   const promise = stream[sym.writableStreamController]![sym.abortSteps](
-    abortRequest.reason
+    abortRequest.reason,
   );
   setPromiseIsHandledToTrue(
     promise.then(
@@ -2252,13 +2254,13 @@ function writableStreamFinishErroring<W>(stream: WritableStreamImpl<W>): void {
         assert(abortRequest.promise.reject);
         abortRequest.promise.reject(reason);
         writableStreamRejectCloseAndClosedPromiseIfNeeded(stream);
-      }
-    )
+      },
+    ),
   );
 }
 
 function writableStreamFinishInFlightClose<W>(
-  stream: WritableStreamImpl<W>
+  stream: WritableStreamImpl<W>,
 ): void {
   assert(stream[sym.inFlightCloseRequest]);
   stream[sym.inFlightCloseRequest]?.resolve!();
@@ -2283,7 +2285,7 @@ function writableStreamFinishInFlightClose<W>(
 
 function writableStreamFinishInFlightCloseWithError<W>(
   stream: WritableStreamImpl<W>,
-  error: any
+  error: any,
 ): void {
   assert(stream[sym.inFlightCloseRequest]);
   stream[sym.inFlightCloseRequest]?.reject!(error);
@@ -2297,7 +2299,7 @@ function writableStreamFinishInFlightCloseWithError<W>(
 }
 
 function writableStreamFinishInFlightWrite<W>(
-  stream: WritableStreamImpl<W>
+  stream: WritableStreamImpl<W>,
 ): void {
   assert(stream[sym.inFlightWriteRequest]);
   stream[sym.inFlightWriteRequest]!.resolve();
@@ -2306,7 +2308,7 @@ function writableStreamFinishInFlightWrite<W>(
 
 function writableStreamFinishInFlightWriteWithError<W>(
   stream: WritableStreamImpl<W>,
-  error: any
+  error: any,
 ): void {
   assert(stream[sym.inFlightWriteRequest]);
   stream[sym.inFlightWriteRequest]!.reject!(error);
@@ -2316,7 +2318,7 @@ function writableStreamFinishInFlightWriteWithError<W>(
 }
 
 function writableStreamHasOperationMarkedInFlight<W>(
-  stream: WritableStreamImpl<W>
+  stream: WritableStreamImpl<W>,
 ): boolean {
   return !(
     stream[sym.inFlightWriteRequest] === undefined &&
@@ -2325,7 +2327,7 @@ function writableStreamHasOperationMarkedInFlight<W>(
 }
 
 function writableStreamMarkCloseRequestInFlight<W>(
-  stream: WritableStreamImpl<W>
+  stream: WritableStreamImpl<W>,
 ): void {
   assert(stream[sym.inFlightCloseRequest] === undefined);
   assert(stream[sym.closeRequest] !== undefined);
@@ -2334,7 +2336,7 @@ function writableStreamMarkCloseRequestInFlight<W>(
 }
 
 function writableStreamMarkFirstWriteRequestInFlight<W>(
-  stream: WritableStreamImpl<W>
+  stream: WritableStreamImpl<W>,
 ): void {
   assert(stream[sym.inFlightWriteRequest] === undefined);
   assert(stream[sym.writeRequests].length);
@@ -2343,7 +2345,7 @@ function writableStreamMarkFirstWriteRequestInFlight<W>(
 }
 
 function writableStreamRejectCloseAndClosedPromiseIfNeeded<W>(
-  stream: WritableStreamImpl<W>
+  stream: WritableStreamImpl<W>,
 ): void {
   assert(stream[sym.state] === "errored");
   if (stream[sym.closeRequest]) {
@@ -2360,7 +2362,7 @@ function writableStreamRejectCloseAndClosedPromiseIfNeeded<W>(
 
 function writableStreamStartErroring<W>(
   stream: WritableStreamImpl<W>,
-  reason: any
+  reason: any,
 ): void {
   assert(stream[sym.storedError] === undefined);
   assert(stream[sym.state] === "writable");
@@ -2382,7 +2384,7 @@ function writableStreamStartErroring<W>(
 
 function writableStreamUpdateBackpressure<W>(
   stream: WritableStreamImpl<W>,
-  backpressure: boolean
+  backpressure: boolean,
 ): void {
   assert(stream[sym.state] === "writable");
   assert(!writableStreamCloseQueuedOrInFlight(stream));

@@ -63,7 +63,7 @@ function chkOptions(opt: ReadOptions): void {
 async function readRecord(
   Startline: number,
   reader: BufReader,
-  opt: ReadOptions = { comma: ",", trimLeadingSpace: false }
+  opt: ReadOptions = { comma: ",", trimLeadingSpace: false },
 ): Promise<string[] | null> {
   const tp = new TextProtoReader(reader);
   const lineIndex = Startline;
@@ -222,7 +222,7 @@ export async function readMatrix(
     comma: ",",
     trimLeadingSpace: false,
     lazyQuotes: false,
-  }
+  },
 ): Promise<string[][]> {
   const result: string[][] = [];
   let _nbFields: number | undefined;
@@ -316,7 +316,7 @@ export async function parse(
   input: string | BufReader,
   opt: ParseOptions = {
     header: false,
-  }
+  },
 ): Promise<unknown[]> {
   let r: string[][];
   if (input instanceof BufReader) {
@@ -337,7 +337,7 @@ export async function parse(
             return {
               name: e,
             };
-          }
+          },
         );
       }
     } else {
@@ -348,7 +348,7 @@ export async function parse(
           return {
             name: e,
           };
-        }
+        },
       );
       i++;
     }

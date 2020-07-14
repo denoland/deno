@@ -11,7 +11,7 @@ const readErrorStackPattern = new RegExp(
     at unwrapResponse \\(.*dispatch_minimal\\.ts:.*\\)
     at Object.sendAsyncMinimal \\(.*dispatch_minimal\\.ts:.*\\)
     at async Object\\.read \\(.*io\\.ts:.*\\).*$`,
-  "ms"
+  "ms",
 );
 
 unitTest(async function sendAsyncStackTrace(): Promise<void> {
@@ -40,7 +40,7 @@ unitTest(function malformedMinimalControlBuffer(): void {
   const buf32 = new Int32Array(
     header.buffer,
     header.byteOffset,
-    header.byteLength / 4
+    header.byteLength / 4,
   );
   const arg = buf32[1];
   const message = new TextDecoder().decode(res.slice(12)).trim();

@@ -41,7 +41,7 @@ export class ReadableStreamDefaultControllerImpl<R = any>
 
   private constructor() {
     throw new TypeError(
-      "ReadableStreamDefaultController's constructor cannot be called."
+      "ReadableStreamDefaultController's constructor cannot be called.",
     );
   }
 
@@ -58,7 +58,7 @@ export class ReadableStreamDefaultControllerImpl<R = any>
     }
     if (!readableStreamDefaultControllerCanCloseOrEnqueue(this)) {
       throw new TypeError(
-        "ReadableStreamDefaultController cannot close or enqueue."
+        "ReadableStreamDefaultController cannot close or enqueue.",
       );
     }
     readableStreamDefaultControllerClose(this);
@@ -104,8 +104,8 @@ export class ReadableStreamDefaultControllerImpl<R = any>
         readableStreamCreateReadResult(
           chunk,
           false,
-          stream[sym.reader]![sym.forAuthorCode]
-        )
+          stream[sym.reader]![sym.forAuthorCode],
+        ),
       );
     }
     const pendingPromise = readableStreamAddReadRequest(stream);
@@ -122,5 +122,5 @@ export class ReadableStreamDefaultControllerImpl<R = any>
 
 setFunctionName(
   ReadableStreamDefaultControllerImpl,
-  "ReadableStreamDefaultController"
+  "ReadableStreamDefaultController",
 );

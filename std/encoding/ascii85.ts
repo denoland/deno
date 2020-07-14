@@ -103,13 +103,13 @@ export function decode(ascii85: string, options?: Ascii85Options): Uint8Array {
     case "RFC 1924":
       ascii85 = ascii85.replaceAll(
         /./g,
-        (match) => String.fromCharCode(rfc1924.indexOf(match) + 33)
+        (match) => String.fromCharCode(rfc1924.indexOf(match) + 33),
       );
       break;
     case "Z85":
       ascii85 = ascii85.replaceAll(
         /./g,
-        (match) => String.fromCharCode(Z85.indexOf(match) + 33)
+        (match) => String.fromCharCode(Z85.indexOf(match) + 33),
       );
       break;
   }

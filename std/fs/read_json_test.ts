@@ -15,7 +15,7 @@ Deno.test("readJsonFileNotExists", async function (): Promise<void> {
   await assertThrowsAsync(
     async (): Promise<void> => {
       await readJson(emptyJsonFile);
-    }
+    },
   );
 });
 
@@ -25,7 +25,7 @@ Deno.test("readEmptyJsonFile", async function (): Promise<void> {
   await assertThrowsAsync(
     async (): Promise<void> => {
       await readJson(emptyJsonFile);
-    }
+    },
   );
 });
 
@@ -35,7 +35,7 @@ Deno.test("readInvalidJsonFile", async function (): Promise<void> {
   await assertThrowsAsync(
     async (): Promise<void> => {
       await readJson(invalidJsonFile);
-    }
+    },
   );
 });
 

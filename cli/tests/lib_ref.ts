@@ -7,7 +7,7 @@ const [errors, program] = await Deno.compile(
   {
     target: "es2018",
     lib: ["es2018", "deno.ns"],
-  }
+  },
 );
 
 console.log(errors);

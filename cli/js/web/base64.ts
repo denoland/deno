@@ -45,7 +45,7 @@ export function byteLength(b64: string): number {
 function _byteLength(
   b64: string,
   validLen: number,
-  placeHoldersLen: number
+  placeHoldersLen: number,
 ): number {
   return ((validLen + placeHoldersLen) * 3) / 4 - placeHoldersLen;
 }
@@ -125,8 +125,8 @@ export function fromByteArray(uint8: Uint8Array): string {
       encodeChunk(
         uint8,
         i,
-        i + maxChunkLength > len2 ? len2 : i + maxChunkLength
-      )
+        i + maxChunkLength > len2 ? len2 : i + maxChunkLength,
+      ),
     );
   }
 
@@ -140,7 +140,7 @@ export function fromByteArray(uint8: Uint8Array): string {
       lookup[tmp >> 10] +
         lookup[(tmp >> 4) & 0x3f] +
         lookup[(tmp << 2) & 0x3f] +
-        "="
+        "=",
     );
   }
 

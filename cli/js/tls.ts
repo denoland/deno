@@ -66,7 +66,7 @@ interface StartTlsOptions {
 
 export async function startTls(
   conn: Conn,
-  { hostname = "127.0.0.1", certFile }: StartTlsOptions = {}
+  { hostname = "127.0.0.1", certFile }: StartTlsOptions = {},
 ): Promise<Conn> {
   const res = await tlsOps.startTls({
     rid: conn.rid,

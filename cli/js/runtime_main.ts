@@ -48,7 +48,7 @@ function windowClose(): void {
           // This should be fine, since only Window/MainWorker has .close()
           exit(0);
         },
-        0
+        0,
       )
     );
   }

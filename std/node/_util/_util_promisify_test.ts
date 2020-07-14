@@ -36,7 +36,7 @@ Deno.test(
   "Errors should reject the promise",
   async function testPromiseRejection() {
     await assertThrowsAsync(() => readFile("/dontexist"), Deno.errors.NotFound);
-  }
+  },
 );
 
 Deno.test("Promisify.custom", async function testPromisifyCustom() {
@@ -106,7 +106,7 @@ Deno.test(
     }
     const value = await promisify(fn)();
     assertStrictEquals(value, "foo");
-  }
+  },
 );
 
 Deno.test(
@@ -117,7 +117,7 @@ Deno.test(
     }
     const value = await promisify(fn)();
     assertStrictEquals(value, undefined);
-  }
+  },
 );
 
 Deno.test(
@@ -128,7 +128,7 @@ Deno.test(
     }
     const value = await promisify(fn)();
     assertStrictEquals(value, undefined);
-  }
+  },
 );
 
 Deno.test(
@@ -139,7 +139,7 @@ Deno.test(
     }
     const value = await promisify(fn)(null, 42);
     assertStrictEquals(value, 42);
-  }
+  },
 );
 
 Deno.test(
@@ -151,9 +151,9 @@ Deno.test(
     await assertThrowsAsync(
       () => promisify(fn)(new Error("oops"), null),
       Error,
-      "oops"
+      "oops",
     );
-  }
+  },
 );
 
 Deno.test("Rejected value", async function testPromisifyWithAsObjectMethod() {
@@ -173,7 +173,7 @@ Deno.test(
   "Multiple callback",
   async function testPromisifyWithMultipleCallback() {
     const err = new Error(
-      "Should not have called the callback with the error."
+      "Should not have called the callback with the error.",
     );
     const stack = err.stack;
 
@@ -185,7 +185,7 @@ Deno.test(
     await fn();
     await Promise.resolve();
     return assertStrictEquals(stack, err.stack);
-  }
+  },
 );
 
 Deno.test("Promisify a promise", function testPromisifyPromise() {
@@ -203,7 +203,7 @@ Deno.test("Test error", async function testInvalidArguments() {
     a: number,
     b: number,
     c: number,
-    cb: Function
+    cb: Function,
   ): void {
     errToThrow = new Error(`${a}-${b}-${c}-${cb}`);
     throw errToThrow;
@@ -227,7 +227,7 @@ Deno.test("Test invalid arguments", function testInvalidArguments() {
       assert(e instanceof TypeError);
       assertEquals(
         e.message,
-        `The "original" argument must be of type Function. Received ${typeof input}`
+        `The "original" argument must be of type Function. Received ${typeof input}`,
       );
     }
   });

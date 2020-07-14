@@ -160,8 +160,8 @@ export function encode(uint8: Uint8Array): string {
       encodeChunk(
         uint8,
         i,
-        i + maxChunkLength > len2 ? len2 : i + maxChunkLength
-      )
+        i + maxChunkLength > len2 ? len2 : i + maxChunkLength,
+      ),
     );
   }
 

@@ -13,7 +13,7 @@ export function parse(
   str: string,
   sep = "&",
   eq = "=",
-  { decodeURIComponent = unescape, maxKeys = 1000 }: ParseOptions = {}
+  { decodeURIComponent = unescape, maxKeys = 1000 }: ParseOptions = {},
 ): { [key: string]: string[] | string } {
   const entries = str
     .split(sep)
@@ -50,7 +50,7 @@ interface StringifyOptions {
 export function encodeStr(
   str: string,
   noEscapeTable: number[],
-  hexTable: string[]
+  hexTable: string[],
 ): string {
   const len = str.length;
   if (len === 0) return "";
@@ -110,7 +110,7 @@ export function stringify(
   obj: object,
   sep = "&",
   eq = "=",
-  { encodeURIComponent = escape }: StringifyOptions = {}
+  { encodeURIComponent = escape }: StringifyOptions = {},
 ): string {
   const final = [];
 

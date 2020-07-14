@@ -44,7 +44,7 @@ export class Response extends Body.Body implements domTypes.Response {
 
     if (init.status !== undefined && (status < 200 || status > 599)) {
       throw new RangeError(
-        `The status provided (${init.status}) is outside the range [200, 599]`
+        `The status provided (${init.status}) is outside the range [200, 599]`,
       );
     }
 
@@ -155,7 +155,7 @@ export class Response extends Body.Body implements domTypes.Response {
   static redirect(url: URL | string, status: number): domTypes.Response {
     if (![301, 302, 303, 307, 308].includes(status)) {
       throw new RangeError(
-        "The redirection status must be one of 301, 302, 303, 307 and 308."
+        "The redirection status must be one of 301, 302, 303, 307 and 308.",
       );
     }
     return new Response(null, {
@@ -170,7 +170,7 @@ function sendFetchReq(
   url: string,
   method: string | null,
   headers: Headers | null,
-  body: ArrayBufferView | undefined
+  body: ArrayBufferView | undefined,
 ): Promise<FetchResponse> {
   let headerArray: Array<[string, string]> = [];
   if (headers) {
@@ -188,7 +188,7 @@ function sendFetchReq(
 
 export async function fetch(
   input: (domTypes.Request & { _bodySource?: unknown }) | URL | string,
-  init?: domTypes.RequestInit
+  init?: domTypes.RequestInit,
 ): Promise<Response> {
   let url: string;
   let method: string | null = null;
