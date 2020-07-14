@@ -7,7 +7,7 @@ import { encode } from "../encoding/utf8.ts";
 
 /** Reader utility for strings */
 export class StringReader extends Deno.Buffer {
-  constructor(private readonly s: string) {
+  constructor(s: string) {
     super(encode(s).buffer);
   }
 }
