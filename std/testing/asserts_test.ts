@@ -633,7 +633,7 @@ Deno.test("Assert Throws Parent Error", () => {
       throw new AssertionError("Fail!");
     },
     Error,
-    "Fail!"
+    "Fail!",
   );
 });
 
@@ -643,6 +643,6 @@ Deno.test("Assert Throws Async Parent Error", () => {
       throw new AssertionError("Fail!");
     },
     Error,
-    "Fail!"
+    "Fail!",
   );
 });
