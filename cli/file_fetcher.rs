@@ -43,14 +43,17 @@ impl SourceFile {
     let coder = encoding::label::encoding_from_whatwg_label(
       chardet::charset2encoding(&result.0),
     );
-    if coder.is_some() {
-      let utf8reader = coder
-        .unwrap()
-        .decode(&self.source_code, encoding::DecoderTrap::Ignore)
-        .expect("Error");
-      Ok(utf8reader.to_string())
-    } else {
-      Err(std::io::ErrorKind::InvalidData.into())
+    match coder {
+      Some(coder) => {
+        let result =
+          coder.decode(&self.source_code, encoding::DecoderTrap::Ignore);
+
+        match result {
+          Ok(source) => Ok(source),
+          Err(_e) => Err(std::io::ErrorKind::InvalidData.into()),
+        }
+      }
+      None => Err(std::io::ErrorKind::InvalidData.into()),
     }
   }
 
