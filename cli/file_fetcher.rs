@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::colors;
-use crate::decoding;
 use crate::http_cache::HttpCache;
 use crate::http_util;
 use crate::http_util::create_http_client;
@@ -40,7 +39,19 @@ pub struct SourceFile {
 
 impl SourceFile {
   pub fn source_code_utf8(&self) -> Result<String, std::io::Error> {
-    decoding::source_to_string(&self.source_code)
+    let result = chardet::detect(&self.source_code);
+    let coder = encoding::label::encoding_from_whatwg_label(
+      chardet::charset2encoding(&result.0),
+    );
+    if coder.is_some() {
+      let utf8reader = coder
+        .unwrap()
+        .decode(&self.source_code, encoding::DecoderTrap::Ignore)
+        .expect("Error");
+      Ok(utf8reader.to_string())
+    } else {
+      Err(std::io::ErrorKind::InvalidData.into())
+    }
   }
 
   pub fn source_code_bytes(&self) -> &Vec<u8> {

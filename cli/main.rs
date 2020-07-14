@@ -26,7 +26,6 @@ extern crate url;
 
 mod checksum;
 pub mod colors;
-mod decoding;
 pub mod deno_dir;
 pub mod diagnostics;
 mod diff;
