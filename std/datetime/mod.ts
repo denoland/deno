@@ -134,15 +134,14 @@ export function currentDayOfYear(): number {
  * @return Number of the week in year
  */
 export function weekOfYear(date: Date): number {
-  const workingDate = new Date(Date.UTC(
-    date.getFullYear(),
-    date.getMonth(),
-    date.getDate(),
-  ));
+  const workingDate = new Date(
+    Date.UTC(date.getFullYear(), date.getMonth(), date.getDate())
+  );
 
   const day = workingDate.getUTCDay();
 
-  const nearestThursday = workingDate.getUTCDate() +
+  const nearestThursday =
+    workingDate.getUTCDate() +
     Day.Thu -
     (day === Day.Sun ? DAYS_PER_WEEK : day);
 
