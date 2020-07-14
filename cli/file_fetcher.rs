@@ -35,13 +35,21 @@ pub struct SourceFile {
   pub types_header: Option<String>,
   pub media_type: msg::MediaType,
   pub source_code: Vec<u8>,
+  pub charset: Option<String>,
 }
 
 impl SourceFile {
   pub fn source_code_utf8(&self) -> Result<String, std::io::Error> {
-    let result = chardet::detect(&self.source_code);
+    let detected_set: String;
+    let charset = match &self.charset {
+      Some(charset) => charset,
+      None => {
+        detected_set = chardet::detect(&self.source_code).0;
+        &detected_set
+      }
+    };
     let coder = encoding::label::encoding_from_whatwg_label(
-      chardet::charset2encoding(&result.0),
+      chardet::charset2encoding(&charset),
     );
     match coder {
       Some(coder) => {
@@ -342,13 +350,14 @@ impl SourceFileFetcher {
       Err(e) => return Err(e.into()),
     };
 
-    let (media_type, _charset) = map_content_type(&filepath, None);
+    let (media_type, charset) = map_content_type(&filepath, None);
     Ok(SourceFile {
       url: module_url.clone(),
       filename: filepath,
       media_type,
       source_code,
       types_header: None,
+      charset,
     })
   }
 
@@ -409,7 +418,7 @@ impl SourceFileFetcher {
 
     let cache_filename = self.http_cache.get_cache_filename(module_url);
     let fake_filepath = PathBuf::from(module_url.path());
-    let (media_type, _charset) = map_content_type(
+    let (media_type, charset) = map_content_type(
       &fake_filepath,
       headers.get("content-type").map(|e| e.as_str()),
     );
@@ -420,6 +429,7 @@ impl SourceFileFetcher {
       media_type,
       source_code,
       types_header,
+      charset,
     }))
   }
 
@@ -519,7 +529,7 @@ impl SourceFileFetcher {
           let cache_filepath = dir.http_cache.get_cache_filename(&module_url);
           // Used to sniff out content type from file extension - probably to be removed
           let fake_filepath = PathBuf::from(module_url.path());
-          let (media_type, _charset) = map_content_type(
+          let (media_type, charset) = map_content_type(
             &fake_filepath,
             headers.get("content-type").map(String::as_str),
           );
@@ -533,6 +543,7 @@ impl SourceFileFetcher {
             media_type,
             source_code: source,
             types_header,
+            charset,
           };
 
           Ok(source_file)

@@ -420,6 +420,7 @@ async fn eval_command(
       MediaType::JavaScript
     },
     source_code,
+    charset: None,
   };
   // Save our fake file into file fetcher cache
   // to allow module access by TS compiler (e.g. op_fetch_source_files)
@@ -619,6 +620,7 @@ async fn run_command(flags: Flags, script: String) -> Result<(), ErrBox> {
       types_header: None,
       media_type: MediaType::TypeScript,
       source_code: source,
+      charset: None,
     };
     // Save our fake file into file fetcher cache
     // to allow module access by TS compiler (e.g. op_fetch_source_files)
@@ -675,6 +677,7 @@ async fn test_command(
     types_header: None,
     media_type: MediaType::TypeScript,
     source_code: test_file.clone().into_bytes(),
+    charset: None,
   };
   // Save our fake file into file fetcher cache
   // to allow module access by TS compiler (e.g. op_fetch_source_files)

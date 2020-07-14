@@ -897,6 +897,7 @@ impl TsCompiler {
       media_type: msg::MediaType::JavaScript,
       source_code: compiled_code,
       types_header: None,
+      charset: None,
     };
 
     Ok(compiled_module)
@@ -954,6 +955,7 @@ impl TsCompiler {
       media_type: msg::MediaType::JavaScript,
       source_code,
       types_header: None,
+      charset: None,
     };
 
     Ok(source_map_file)
@@ -1600,6 +1602,7 @@ mod tests {
       media_type: msg::MediaType::TypeScript,
       source_code: include_bytes!("./tests/002_hello.ts").to_vec(),
       types_header: None,
+      charset: None,
     };
     let dir =
       deno_dir::DenoDir::new(Some(test_util::new_deno_dir().path().to_owned()))
@@ -1676,6 +1679,7 @@ mod tests {
       media_type: msg::MediaType::TypeScript,
       source_code: include_bytes!("./tests/002_hello.ts").to_vec(),
       types_header: None,
+      charset: None,
     };
     let dir =
       deno_dir::DenoDir::new(Some(test_util::new_deno_dir().path().to_owned()))
