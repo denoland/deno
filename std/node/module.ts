@@ -22,13 +22,14 @@
 import "./global.ts";
 
 import * as nodeBuffer from "./buffer.ts";
+import * as nodeEvents from "./events.ts";
 import * as nodeFS from "./fs.ts";
-import * as nodeUtil from "./util.ts";
+import * as nodeOs from "./os.ts";
 import * as nodePath from "./path.ts";
 import * as nodeTimers from "./timers.ts";
-import * as nodeOs from "./os.ts";
-import * as nodeEvents from "./events.ts";
 import * as nodeQueryString from "./querystring.ts";
+import * as nodeStringDecoder from "./string_decoder.ts";
+import * as nodeUtil from "./util.ts";
 
 import * as path from "../path/mod.ts";
 import { assert } from "../_util/assert.ts";
@@ -171,11 +172,13 @@ class Module {
     return result;
   }
 
+  /*
+   * Check for node modules paths.
+   * */
   static _resolveLookupPaths(
     request: string,
     parent: Module | null
   ): string[] | null {
-    // Check for node modules paths.
     if (
       request.charAt(0) !== "." ||
       (request.length > 1 &&
@@ -195,12 +198,10 @@ class Module {
     if (!parent || !parent.id || !parent.filename) {
       // Make require('./path/to/foo') work - normally the path is taken
       // from realpath(__filename) but with eval there is no filename
-      const mainPaths = ["."].concat(Module._nodeModulePaths("."), modulePaths);
-      return mainPaths;
+      return ["."].concat(Module._nodeModulePaths("."), modulePaths);
     }
-
-    const parentDir = [path.dirname(parent.filename)];
-    return parentDir;
+    // Returns the parent path of the file
+    return [path.dirname(parent.filename)];
   }
 
   static _resolveFilename(
@@ -597,16 +598,20 @@ function createNativeModule(id: string, exports: any): Module {
 }
 
 nativeModulePolyfill.set("buffer", createNativeModule("buffer", nodeBuffer));
-nativeModulePolyfill.set("fs", createNativeModule("fs", nodeFS));
 nativeModulePolyfill.set("events", createNativeModule("events", nodeEvents));
+nativeModulePolyfill.set("fs", createNativeModule("fs", nodeFS));
 nativeModulePolyfill.set("os", createNativeModule("os", nodeOs));
 nativeModulePolyfill.set("path", createNativeModule("path", nodePath));
-nativeModulePolyfill.set("timers", createNativeModule("timers", nodeTimers));
-nativeModulePolyfill.set("util", createNativeModule("util", nodeUtil));
 nativeModulePolyfill.set(
   "querystring",
   createNativeModule("querystring", nodeQueryString)
 );
+nativeModulePolyfill.set(
+  "string_decoder",
+  createNativeModule("string_decoder", nodeStringDecoder)
+);
+nativeModulePolyfill.set("timers", createNativeModule("timers", nodeTimers));
+nativeModulePolyfill.set("util", createNativeModule("util", nodeUtil));
 
 function loadNativeModule(
   _filename: string,

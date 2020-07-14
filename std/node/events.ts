@@ -524,3 +524,4 @@ export function on(
     iterator.return();
   }
 }
+export const captureRejectionSymbol = Symbol.for("nodejs.rejection");
