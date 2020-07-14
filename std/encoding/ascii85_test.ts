@@ -126,7 +126,7 @@ for (const [standard, tests] of Object.entries(testCasesNoDelimeter)) {
           encode(utf8encoder.encode(bin), {
             standard: standard as Ascii85Standard,
           }),
-          b85
+          b85,
         );
       }
     },
@@ -138,7 +138,7 @@ for (const [standard, tests] of Object.entries(testCasesNoDelimeter)) {
       for (const [bin, b85] of tests) {
         assertEquals(
           decode(b85, { standard: standard as Ascii85Standard }),
-          utf8encoder.encode(bin)
+          utf8encoder.encode(bin),
         );
       }
     },
@@ -155,7 +155,7 @@ for (const [standard, tests] of Object.entries(testCasesDelimeter)) {
             standard: standard as Ascii85Standard,
             delimiter: true,
           }),
-          b85
+          b85,
         );
       }
     },
@@ -170,7 +170,7 @@ for (const [standard, tests] of Object.entries(testCasesDelimeter)) {
             standard: standard as Ascii85Standard,
             delimiter: true,
           }),
-          utf8encoder.encode(bin)
+          utf8encoder.encode(bin),
         );
       }
     },

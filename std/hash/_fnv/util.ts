@@ -45,7 +45,7 @@ export function mul32(a: number, b: number): number {
  */
 export function mul64(
   [ah, al]: [number, number],
-  [bh, bl]: [number, number]
+  [bh, bl]: [number, number],
 ): [number, number] {
   const [n, c] = mul32WithCarry(al, bl);
   return [n32(mul32(al, bh) + mul32(ah, bl) + c), n];

@@ -94,7 +94,7 @@ export class WorkerImpl extends EventTarget implements Worker {
 
     if (type !== "module") {
       throw new Error(
-        'Not yet implemented: only "module" type workers are supported'
+        'Not yet implemented: only "module" type workers are supported',
       );
     }
 
@@ -125,7 +125,7 @@ export class WorkerImpl extends EventTarget implements Worker {
       hasSourceCode,
       sourceCode,
       useDenoNamespace,
-      options?.name
+      options?.name,
     );
     this.#id = id;
     this.#poll();
@@ -225,7 +225,7 @@ export class WorkerImpl extends EventTarget implements Worker {
   postMessage(message: any, transferOrOptions?: any): void {
     if (transferOrOptions) {
       throw new Error(
-        "Not yet implemented: `transfer` and `options` are not supported."
+        "Not yet implemented: `transfer` and `options` are not supported.",
       );
     }
 

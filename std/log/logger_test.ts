@@ -129,11 +129,11 @@ Deno.test(
     const inlineData: string | undefined = logger.debug(
       expensiveFunction,
       1,
-      2
+      2,
     );
     assert(!called);
     assertEquals(inlineData, undefined);
-  }
+  },
 );
 
 Deno.test("String resolver fn resolves as expected", function (): void {
@@ -235,7 +235,7 @@ Deno.test(
     });
     const data18: { payload: string; other: number } = logger.error(
       { payload: "data", other: 123 },
-      1
+      1,
     );
     assertEquals(data18, {
       payload: "data",
@@ -243,5 +243,5 @@ Deno.test(
     });
     assertEquals(handler.messages[16], 'ERROR {"payload":"data","other":123}');
     assertEquals(handler.messages[17], 'ERROR {"payload":"data","other":123}');
-  }
+  },
 );

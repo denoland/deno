@@ -17,7 +17,7 @@ export function appendFile(
   pathOrRid: string | number | URL,
   data: string,
   optionsOrCallback: Encodings | WriteFileOptions | CallbackWithError,
-  callback?: CallbackWithError
+  callback?: CallbackWithError,
 ): void {
   pathOrRid = pathOrRid instanceof URL ? fromFileUrl(pathOrRid) : pathOrRid;
   const callbackFn: CallbackWithError | undefined =
@@ -80,7 +80,7 @@ function closeRidIfNecessary(isPathString: boolean, rid: number): void {
 export function appendFileSync(
   pathOrRid: string | number | URL,
   data: string,
-  options?: Encodings | WriteFileOptions
+  options?: Encodings | WriteFileOptions,
 ): void {
   let rid = -1;
 
@@ -116,7 +116,7 @@ export function appendFileSync(
 }
 
 function validateEncoding(
-  encodingOption: Encodings | WriteFileOptions | undefined
+  encodingOption: Encodings | WriteFileOptions | undefined,
 ): void {
   if (!encodingOption) return;
 

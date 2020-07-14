@@ -37,7 +37,7 @@ export function recordFromBufMinimal(ui8: Uint8Array): RecordMinimal {
   const buf32 = new Int32Array(
     header.buffer,
     header.byteOffset,
-    header.byteLength / 4
+    header.byteLength / 4,
   );
   const promiseId = buf32[0];
   const arg = buf32[1];
@@ -71,7 +71,7 @@ const scratch32 = new Int32Array(3);
 const scratchBytes = new Uint8Array(
   scratch32.buffer,
   scratch32.byteOffset,
-  scratch32.byteLength
+  scratch32.byteLength,
 );
 util.assert(scratchBytes.byteLength === scratch32.length * 4);
 
@@ -87,7 +87,7 @@ export function asyncMsgFromRust(ui8: Uint8Array): void {
 export async function sendAsyncMinimal(
   opName: string,
   arg: number,
-  zeroCopy: Uint8Array
+  zeroCopy: Uint8Array,
 ): Promise<number> {
   const promiseId = nextPromiseId(); // AKA cmdId
   scratch32[0] = promiseId;
@@ -111,7 +111,7 @@ export async function sendAsyncMinimal(
 export function sendSyncMinimal(
   opName: string,
   arg: number,
-  zeroCopy: Uint8Array
+  zeroCopy: Uint8Array,
 ): number {
   scratch32[0] = 0; // promiseId 0 indicates sync
   scratch32[1] = arg;

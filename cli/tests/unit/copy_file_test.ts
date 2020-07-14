@@ -20,7 +20,7 @@ function writeFileString(filename: string | URL, s: string): void {
 
 function assertSameContent(
   filename1: string | URL,
-  filename2: string | URL
+  filename2: string | URL,
 ): void {
   const data1 = Deno.readFileSync(filename1);
   const data2 = Deno.readFileSync(filename2);
@@ -41,7 +41,7 @@ unitTest(
     assertSameContent(fromFilename, toFilename);
 
     Deno.removeSync(tempDir, { recursive: true });
-  }
+  },
 );
 
 unitTest(
@@ -49,10 +49,10 @@ unitTest(
   function copyFileSyncByUrl(): void {
     const tempDir = Deno.makeTempDirSync();
     const fromUrl = new URL(
-      `file://${Deno.build.os === "windows" ? "/" : ""}${tempDir}/from.txt`
+      `file://${Deno.build.os === "windows" ? "/" : ""}${tempDir}/from.txt`,
     );
     const toUrl = new URL(
-      `file://${Deno.build.os === "windows" ? "/" : ""}${tempDir}/to.txt`
+      `file://${Deno.build.os === "windows" ? "/" : ""}${tempDir}/to.txt`,
     );
     writeFileString(fromUrl, "Hello world!");
     Deno.copyFileSync(fromUrl, toUrl);
@@ -62,7 +62,7 @@ unitTest(
     assertSameContent(fromUrl, toUrl);
 
     Deno.removeSync(tempDir, { recursive: true });
-  }
+  },
 );
 
 unitTest(
@@ -77,7 +77,7 @@ unitTest(
     }, Deno.errors.NotFound);
 
     Deno.removeSync(tempDir, { recursive: true });
-  }
+  },
 );
 
 unitTest(
@@ -86,7 +86,7 @@ unitTest(
     assertThrows(() => {
       Deno.copyFileSync("/from.txt", "/to.txt");
     }, Deno.errors.PermissionDenied);
-  }
+  },
 );
 
 unitTest(
@@ -95,7 +95,7 @@ unitTest(
     assertThrows(() => {
       Deno.copyFileSync("/from.txt", "/to.txt");
     }, Deno.errors.PermissionDenied);
-  }
+  },
 );
 
 unitTest(
@@ -114,7 +114,7 @@ unitTest(
     assertSameContent(fromFilename, toFilename);
 
     Deno.removeSync(tempDir, { recursive: true });
-  }
+  },
 );
 
 unitTest(
@@ -131,7 +131,7 @@ unitTest(
     assertSameContent(fromFilename, toFilename);
 
     Deno.removeSync(tempDir, { recursive: true });
-  }
+  },
 );
 
 unitTest(
@@ -139,10 +139,10 @@ unitTest(
   async function copyFileByUrl(): Promise<void> {
     const tempDir = Deno.makeTempDirSync();
     const fromUrl = new URL(
-      `file://${Deno.build.os === "windows" ? "/" : ""}${tempDir}/from.txt`
+      `file://${Deno.build.os === "windows" ? "/" : ""}${tempDir}/from.txt`,
     );
     const toUrl = new URL(
-      `file://${Deno.build.os === "windows" ? "/" : ""}${tempDir}/to.txt`
+      `file://${Deno.build.os === "windows" ? "/" : ""}${tempDir}/to.txt`,
     );
     writeFileString(fromUrl, "Hello world!");
     await Deno.copyFile(fromUrl, toUrl);
@@ -152,7 +152,7 @@ unitTest(
     assertSameContent(fromUrl, toUrl);
 
     Deno.removeSync(tempDir, { recursive: true });
-  }
+  },
 );
 
 unitTest(
@@ -167,7 +167,7 @@ unitTest(
     }, Deno.errors.NotFound);
 
     Deno.removeSync(tempDir, { recursive: true });
-  }
+  },
 );
 
 unitTest(
@@ -186,7 +186,7 @@ unitTest(
     assertSameContent(fromFilename, toFilename);
 
     Deno.removeSync(tempDir, { recursive: true });
-  }
+  },
 );
 
 unitTest(
@@ -195,7 +195,7 @@ unitTest(
     await assertThrowsAsync(async () => {
       await Deno.copyFile("/from.txt", "/to.txt");
     }, Deno.errors.PermissionDenied);
-  }
+  },
 );
 
 unitTest(
@@ -204,5 +204,5 @@ unitTest(
     await assertThrowsAsync(async () => {
       await Deno.copyFile("/from.txt", "/to.txt");
     }, Deno.errors.PermissionDenied);
-  }
+  },
 );

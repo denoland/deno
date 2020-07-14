@@ -77,7 +77,7 @@ export async function* expandGlob(
     includeDirs = true,
     extended = false,
     globstar = false,
-  }: ExpandGlobOptions = {}
+  }: ExpandGlobOptions = {},
 ): AsyncIterableIterator<WalkEntry> {
   const globOptions: GlobOptions = { extended, globstar };
   const absRoot = isAbsolute(root)
@@ -110,7 +110,7 @@ export async function* expandGlob(
 
   async function* advanceMatch(
     walkInfo: WalkEntry,
-    globSegment: string
+    globSegment: string,
   ): AsyncIterableIterator<WalkEntry> {
     if (!walkInfo.isDirectory) {
       return;
@@ -135,7 +135,7 @@ export async function* expandGlob(
       match: [
         globToRegExp(
           joinGlobs([walkInfo.path, globSegment], globOptions),
-          globOptions
+          globOptions,
         ),
       ],
       skip: excludePatterns,
@@ -156,12 +156,12 @@ export async function* expandGlob(
   }
   if (hasTrailingSep) {
     currentMatches = currentMatches.filter(
-      (entry: WalkEntry): boolean => entry.isDirectory
+      (entry: WalkEntry): boolean => entry.isDirectory,
     );
   }
   if (!includeDirs) {
     currentMatches = currentMatches.filter(
-      (entry: WalkEntry): boolean => !entry.isDirectory
+      (entry: WalkEntry): boolean => !entry.isDirectory,
     );
   }
   yield* currentMatches;
@@ -184,7 +184,7 @@ export function* expandGlobSync(
     includeDirs = true,
     extended = false,
     globstar = false,
-  }: ExpandGlobOptions = {}
+  }: ExpandGlobOptions = {},
 ): IterableIterator<WalkEntry> {
   const globOptions: GlobOptions = { extended, globstar };
   const absRoot = isAbsolute(root)
@@ -217,7 +217,7 @@ export function* expandGlobSync(
 
   function* advanceMatch(
     walkInfo: WalkEntry,
-    globSegment: string
+    globSegment: string,
   ): IterableIterator<WalkEntry> {
     if (!walkInfo.isDirectory) {
       return;
@@ -242,7 +242,7 @@ export function* expandGlobSync(
       match: [
         globToRegExp(
           joinGlobs([walkInfo.path, globSegment], globOptions),
-          globOptions
+          globOptions,
         ),
       ],
       skip: excludePatterns,
@@ -263,12 +263,12 @@ export function* expandGlobSync(
   }
   if (hasTrailingSep) {
     currentMatches = currentMatches.filter(
-      (entry: WalkEntry): boolean => entry.isDirectory
+      (entry: WalkEntry): boolean => entry.isDirectory,
     );
   }
   if (!includeDirs) {
     currentMatches = currentMatches.filter(
-      (entry: WalkEntry): boolean => !entry.isDirectory
+      (entry: WalkEntry): boolean => !entry.isDirectory,
     );
   }
   yield* currentMatches;

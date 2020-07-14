@@ -150,7 +150,7 @@ export class SignalStream
 
   then<T, S>(
     f: (v: void) => T | Promise<T>,
-    g?: (v: Error) => S | Promise<S>
+    g?: (v: Error) => S | Promise<S>,
   ): Promise<T | S> {
     return this.#pollingPromise.then(() => {}).then(f, g);
   }

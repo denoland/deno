@@ -86,14 +86,14 @@ function parse(url: string, isBase = true): URLParts | undefined {
     [restAuthentication, restAuthority] = takePattern(restAuthority, /^(.*)@/);
     [parts.username, restAuthentication] = takePattern(
       restAuthentication,
-      /^([^:]*)/
+      /^([^:]*)/,
     );
     parts.username = encodeUserinfo(parts.username);
     [parts.password] = takePattern(restAuthentication, /^:(.*)/);
     parts.password = encodeUserinfo(parts.password);
     [parts.hostname, restAuthority] = takePattern(
       restAuthority,
-      /^(\[[0-9a-fA-F.:]{2,}\]|[^:]+)/
+      /^(\[[0-9a-fA-F.:]{2,}\]|[^:]+)/,
     );
     [parts.port] = takePattern(restAuthority, /^:(.*)/);
     if (!isValidPort(parts.port)) {
@@ -122,8 +122,7 @@ function parse(url: string, isBase = true): URLParts | undefined {
 function generateUUID(): string {
   return "00000000-0000-4000-8000-000000000000".replace(/[0]/g, (): string =>
     // random integer from 0 to 15 as a hex digit.
-    (getRandomValues(new Uint8Array(1))[0] % 16).toString(16)
-  );
+    (getRandomValues(new Uint8Array(1))[0] % 16).toString(16));
 }
 
 // Keep it outside of URL to avoid any attempts of access.
@@ -174,7 +173,7 @@ function normalizePath(path: string, isFilePath = false): string {
 function resolvePathFromBase(
   path: string,
   basePath: string,
-  isFilePath = false
+  isFilePath = false,
 ): string {
   let normalizedPath = normalizePath(path, isFilePath);
   let normalizedBasePath = normalizePath(basePath, isFilePath);
@@ -185,11 +184,11 @@ function resolvePathFromBase(
     let baseDriveLetter: string;
     [driveLetter, normalizedPath] = takePattern(
       normalizedPath,
-      /^(\/[A-Za-z]:)(?=\/)/
+      /^(\/[A-Za-z]:)(?=\/)/,
     );
     [baseDriveLetter, normalizedBasePath] = takePattern(
       normalizedBasePath,
-      /^(\/[A-Za-z]:)(?=\/)/
+      /^(\/[A-Za-z]:)(?=\/)/,
     );
     driveLetterPrefix = driveLetter || baseDriveLetter;
   }
@@ -306,10 +305,9 @@ export class URLImpl implements URL {
   }
 
   get href(): string {
-    const authentication =
-      this.username || this.password
-        ? `${this.username}${this.password ? ":" + this.password : ""}@`
-        : "";
+    const authentication = this.username || this.password
+      ? `${this.username}${this.password ? ":" + this.password : ""}@`
+      : "";
     const host = this.host;
     const slashes = host ? "//" : parts.get(this)!.slashes;
     let pathname = this.pathname;
@@ -421,8 +419,9 @@ export class URLImpl implements URL {
       }
     }
 
-    const urlParts =
-      typeof url === "string" ? parse(url, !baseParts) : parts.get(url);
+    const urlParts = typeof url === "string"
+      ? parse(url, !baseParts)
+      : parts.get(url);
     if (urlParts == undefined) {
       throw new TypeError("Invalid URL.");
     }
@@ -441,7 +440,7 @@ export class URLImpl implements URL {
         path: resolvePathFromBase(
           urlParts.path,
           baseParts.path || "/",
-          baseParts.protocol == "file"
+          baseParts.protocol == "file",
         ),
         query: urlParts.query,
         hash: urlParts.hash,
@@ -522,28 +521,28 @@ function charInC0ControlSet(c: string): boolean {
 }
 
 function charInSearchSet(c: string): boolean {
-  // prettier-ignore
+  // deno-fmt-ignore
   return charInC0ControlSet(c) || ["\u0020", "\u0022", "\u0023", "\u0027", "\u003C", "\u003E"].includes(c) || c > "\u007E";
 }
 
 function charInFragmentSet(c: string): boolean {
-  // prettier-ignore
+  // deno-fmt-ignore
   return charInC0ControlSet(c) || ["\u0020", "\u0022", "\u003C", "\u003E", "\u0060"].includes(c);
 }
 
 function charInPathSet(c: string): boolean {
-  // prettier-ignore
+  // deno-fmt-ignore
   return charInFragmentSet(c) || ["\u0023", "\u003F", "\u007B", "\u007D"].includes(c);
 }
 
 function charInUserinfoSet(c: string): boolean {
   // "\u0027" ("'") seemingly isn't in the spec, but matches Chrome and Firefox.
-  // prettier-ignore
+  // deno-fmt-ignore
   return charInPathSet(c) || ["\u0027", "\u002F", "\u003A", "\u003B", "\u003D", "\u0040", "\u005B", "\u005C", "\u005D", "\u005E", "\u007C"].includes(c);
 }
 
 function charIsForbiddenInHost(c: string): boolean {
-  // prettier-ignore
+  // deno-fmt-ignore
   return ["\u0000", "\u0009", "\u000A", "\u000D", "\u0020", "\u0023", "\u0025", "\u002F", "\u003A", "\u003C", "\u003E", "\u003F", "\u0040", "\u005B", "\u005C", "\u005D", "\u005E"].includes(c);
 }
 
@@ -591,8 +590,9 @@ function encodeHostname(s: string, isSpecial = true): string {
   if (result.match(/%(?![0-9A-Fa-f]{2})/) != null) {
     throw new TypeError("Invalid hostname.");
   }
-  result = result.replace(/%(.{2})/g, (_, hex) =>
-    String.fromCodePoint(Number(`0x${hex}`))
+  result = result.replace(
+    /%(.{2})/g,
+    (_, hex) => String.fromCodePoint(Number(`0x${hex}`)),
   );
 
   // IDNA domain to ASCII.

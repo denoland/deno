@@ -53,7 +53,7 @@ export function getStopImmediatePropagation(event: Event): boolean {
 
 export function setCurrentTarget(
   event: Event,
-  value: EventTarget | null
+  value: EventTarget | null,
 ): void {
   (event as EventImpl).currentTarget = value;
 }
@@ -85,7 +85,7 @@ export function setPath(event: Event, value: EventPath[]): void {
 
 export function setRelatedTarget<T extends Event>(
   event: T,
-  value: EventTarget | null
+  value: EventTarget | null,
 ): void {
   if ("relatedTarget" in event) {
     (event as T & {
@@ -100,7 +100,7 @@ export function setTarget(event: Event, value: EventTarget | null): void {
 
 export function setStopImmediatePropagation(
   event: Event,
-  value: boolean
+  value: boolean,
 ): void {
   const data = eventData.get(event as Event);
   if (data) {
@@ -111,7 +111,7 @@ export function setStopImmediatePropagation(
 // Type guards that widen the event type
 
 export function hasRelatedTarget(
-  event: Event
+  event: Event,
 ): event is domTypes.FocusEvent | domTypes.MouseEvent {
   return "relatedTarget" in event;
 }

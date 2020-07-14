@@ -31,7 +31,7 @@ declare namespace WebAssembly {
    * its first `WebAssembly.Instance`. */
   function instantiate(
     bufferSource: BufferSource,
-    importObject?: object
+    importObject?: object,
   ): Promise<WebAssemblyInstantiatedSource>;
 
   /** Takes an already-compiled `WebAssembly.Module` and returns a `Promise`
@@ -39,7 +39,7 @@ declare namespace WebAssembly {
    * the `Module` has already been compiled. */
   function instantiate(
     module: Module,
-    importObject?: object
+    importObject?: object,
   ): Promise<Instance>;
 
   /** Compiles and instantiates a WebAssembly module directly from a streamed
@@ -47,7 +47,7 @@ declare namespace WebAssembly {
    * code. */
   function instantiateStreaming(
     source: Promise<Response>,
-    importObject?: object
+    importObject?: object,
   ): Promise<WebAssemblyInstantiatedSource>;
 
   /** Validates a given typed array of WebAssembly binary code, returning
@@ -73,7 +73,7 @@ declare namespace WebAssembly {
      * custom sections in the module with the given string name. */
     static customSections(
       moduleObject: Module,
-      sectionName: string
+      sectionName: string,
     ): ArrayBuffer;
 
     /** Given a `Module`, returns an array containing descriptions of all the
@@ -246,7 +246,7 @@ declare var crypto: Crypto;
 declare function addEventListener(
   type: string,
   callback: EventListenerOrEventListenerObject | null,
-  options?: boolean | AddEventListenerOptions | undefined
+  options?: boolean | AddEventListenerOptions | undefined,
 ): void;
 
 /** Dispatches an event in the global scope, synchronously invoking any
@@ -267,7 +267,7 @@ declare function dispatchEvent(event: Event): boolean;
 declare function removeEventListener(
   type: string,
   callback: EventListenerOrEventListenerObject | null,
-  options?: boolean | EventListenerOptions | undefined
+  options?: boolean | EventListenerOptions | undefined,
 ): void;
 
 interface DomIterable<K, V> {
@@ -277,7 +277,7 @@ interface DomIterable<K, V> {
   [Symbol.iterator](): IterableIterator<[K, V]>;
   forEach(
     callback: (value: V, key: K, parent: this) => void,
-    thisArg?: any
+    thisArg?: any,
   ): void;
 }
 
@@ -398,7 +398,7 @@ interface ReadableStream<R = any> {
       writable: WritableStream<R>;
       readable: ReadableStream<T>;
     },
-    options?: PipeOptions
+    options?: PipeOptions,
   ): ReadableStream<T>;
   pipeTo(dest: WritableStream<R>, options?: PipeOptions): Promise<void>;
   tee(): [ReadableStream<R>, ReadableStream<R>];
@@ -411,11 +411,11 @@ declare var ReadableStream: {
   prototype: ReadableStream;
   new (
     underlyingSource: UnderlyingByteSource,
-    strategy?: { highWaterMark?: number; size?: undefined }
+    strategy?: { highWaterMark?: number; size?: undefined },
   ): ReadableStream<Uint8Array>;
   new <R = any>(
     underlyingSource?: UnderlyingSource<R>,
-    strategy?: QueuingStrategy<R>
+    strategy?: QueuingStrategy<R>,
   ): ReadableStream<R>;
 };
 
@@ -428,9 +428,11 @@ interface WritableStreamDefaultControllerStartCallback {
 }
 
 interface WritableStreamDefaultControllerWriteCallback<W> {
-  (chunk: W, controller: WritableStreamDefaultController): void | PromiseLike<
-    void
-  >;
+  (chunk: W, controller: WritableStreamDefaultController):
+    | void
+    | PromiseLike<
+      void
+    >;
 }
 
 interface WritableStreamErrorCallback {
@@ -451,7 +453,7 @@ interface UnderlyingSink<W = any> {
 declare class WritableStream<W = any> {
   constructor(
     underlyingSink?: UnderlyingSink<W>,
-    strategy?: QueuingStrategy<W>
+    strategy?: QueuingStrategy<W>,
   );
   readonly locked: boolean;
   abort(reason?: any): Promise<void>;
@@ -485,7 +487,7 @@ declare class TransformStream<I = any, O = any> {
   constructor(
     transformer?: Transformer<I, O>,
     writableStrategy?: QueuingStrategy<I>,
-    readableStrategy?: QueuingStrategy<O>
+    readableStrategy?: QueuingStrategy<O>,
   );
   readonly readable: ReadableStream<O>;
   readonly writable: WritableStream<I>;
@@ -513,7 +515,7 @@ interface TransformStreamDefaultControllerCallback<O> {
 interface TransformStreamDefaultControllerTransformCallback<I, O> {
   (
     chunk: I,
-    controller: TransformStreamDefaultController<O>
+    controller: TransformStreamDefaultController<O>,
   ): void | PromiseLike<void>;
 }
 
@@ -589,7 +591,7 @@ declare class Console {
     options?: Partial<{
       depth: number;
       indentLevel: number;
-    }>
+    }>,
   ) => void;
 
   /** From MDN:
@@ -609,7 +611,7 @@ declare class Console {
       depth: number;
       colors: boolean;
       indentLevel: number;
-    }>
+    }>,
   ) => void;
 
   /** Writes the arguments to stdout */
@@ -650,9 +652,9 @@ declare interface Crypto {
       | Float32Array
       | Float64Array
       | DataView
-      | null
+      | null,
   >(
-    array: T
+    array: T,
   ): T;
 }
 
@@ -724,7 +726,7 @@ interface Headers {
   set(name: string, value: string): void;
   forEach(
     callbackfn: (value: string, key: string, parent: Headers) => void,
-    thisArg?: any
+    thisArg?: any,
   ): void;
 }
 
@@ -762,7 +764,7 @@ interface Headers extends DomIterable<string, string> {
   values(): IterableIterator<string>;
   forEach(
     callbackfn: (value: string, key: string, parent: this) => void,
-    thisArg?: any
+    thisArg?: any,
   ): void;
   /** The Symbol.iterator well-known symbol specifies the default
    * iterator for this Headers object
@@ -1023,7 +1025,7 @@ declare const Response: {
  */
 declare function fetch(
   input: Request | URL | string,
-  init?: RequestInit
+  init?: RequestInit,
 ): Promise<Response>;
 
 /** Decodes a string of data which has been encoded using base-64 encoding.
@@ -1047,7 +1049,7 @@ declare class TextDecoder {
   readonly ignoreBOM = false;
   constructor(
     label?: string,
-    options?: { fatal?: boolean; ignoreBOM?: boolean }
+    options?: { fatal?: boolean; ignoreBOM?: boolean },
   );
   /** Returns the result of running encoding's decoder. */
   decode(input?: BufferSource, options?: { stream?: false }): string;
@@ -1061,7 +1063,7 @@ declare class TextEncoder {
   encode(input?: string): Uint8Array;
   encodeInto(
     input: string,
-    dest: Uint8Array
+    dest: Uint8Array,
   ): { read: number; written: number };
   readonly [Symbol.toStringTag]: string;
 }
@@ -1148,7 +1150,7 @@ interface URLSearchParams {
    */
   forEach(
     callbackfn: (value: string, key: string, parent: this) => void,
-    thisArg?: any
+    thisArg?: any,
   ): void;
 
   /** Returns an iterator allowing to go through all keys contained
@@ -1211,7 +1213,7 @@ interface URLSearchParams {
 declare const URLSearchParams: {
   prototype: URLSearchParams;
   new (
-    init?: string[][] | Record<string, string> | string | URLSearchParams
+    init?: string[][] | Record<string, string> | string | URLSearchParams,
   ): URLSearchParams;
   toString(): string;
 };
@@ -1330,7 +1332,7 @@ declare class Worker extends EventTarget {
        *
        */
       deno?: boolean;
-    }
+    },
   );
   postMessage(message: any, transfer: ArrayBuffer[]): void;
   postMessage(message: any, options?: PostMessageOptions): void;
@@ -1357,14 +1359,14 @@ declare interface Performance {
    * associated name (a "measure"). */
   measure(
     measureName: string,
-    options?: PerformanceMeasureOptions
+    options?: PerformanceMeasureOptions,
   ): PerformanceMeasure;
   /** Stores the `DOMHighResTimeStamp` duration between two marks along with the
    * associated name (a "measure"). */
   measure(
     measureName: string,
     startMark?: string,
-    endMark?: string
+    endMark?: string,
   ): PerformanceMeasure;
 
   /** Returns a current time from Deno's start in milliseconds.
@@ -1540,7 +1542,7 @@ declare class EventTarget {
   addEventListener(
     type: string,
     listener: EventListenerOrEventListenerObject | null,
-    options?: boolean | AddEventListenerOptions
+    options?: boolean | AddEventListenerOptions,
   ): void;
   /** Dispatches a synthetic event event to target and returns true if either
    * event's cancelable attribute value is false or its preventDefault() method
@@ -1551,7 +1553,7 @@ declare class EventTarget {
   removeEventListener(
     type: string,
     callback: EventListenerOrEventListenerObject | null,
-    options?: EventListenerOptions | boolean
+    options?: EventListenerOptions | boolean,
   ): void;
   [Symbol.toStringTag]: string;
 }
@@ -1622,22 +1624,22 @@ interface AbortSignal extends EventTarget {
   addEventListener<K extends keyof AbortSignalEventMap>(
     type: K,
     listener: (this: AbortSignal, ev: AbortSignalEventMap[K]) => any,
-    options?: boolean | AddEventListenerOptions
+    options?: boolean | AddEventListenerOptions,
   ): void;
   addEventListener(
     type: string,
     listener: EventListenerOrEventListenerObject,
-    options?: boolean | AddEventListenerOptions
+    options?: boolean | AddEventListenerOptions,
   ): void;
   removeEventListener<K extends keyof AbortSignalEventMap>(
     type: K,
     listener: (this: AbortSignal, ev: AbortSignalEventMap[K]) => any,
-    options?: boolean | EventListenerOptions
+    options?: boolean | EventListenerOptions,
   ): void;
   removeEventListener(
     type: string,
     listener: EventListenerOrEventListenerObject,
-    options?: boolean | EventListenerOptions
+    options?: boolean | EventListenerOptions,
   ): void;
 }
 

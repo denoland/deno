@@ -51,7 +51,7 @@ function convertLineEndingsToNative(s: string): string {
 
 function collectSequenceNotCRLF(
   s: string,
-  position: number
+  position: number,
 ): { collected: string; newPosition: number } {
   const start = position;
   for (
@@ -64,7 +64,7 @@ function collectSequenceNotCRLF(
 
 function toUint8Arrays(
   blobParts: BlobPart[],
-  doNormalizeLineEndingsToNative: boolean
+  doNormalizeLineEndingsToNative: boolean,
 ): Uint8Array[] {
   const ret: Uint8Array[] = [];
   const enc = new TextEncoder();
@@ -103,7 +103,7 @@ function toUint8Arrays(
 
 function processBlobParts(
   blobParts: BlobPart[],
-  options: BlobPropertyBag
+  options: BlobPropertyBag,
 ): Uint8Array {
   const normalizeLineEndingsToNative = options.ending === "native";
   // ArrayBuffer.transfer is not yet implemented in V8, so we just have to
@@ -136,7 +136,7 @@ function getStream(blobBytes: Uint8Array): ReadableStream<ArrayBufferView> {
 }
 
 async function readBytes(
-  reader: ReadableStreamReader<ArrayBufferView>
+  reader: ReadableStreamReader<ArrayBufferView>,
 ): Promise<ArrayBuffer> {
   const chunks: Uint8Array[] = [];
   while (true) {

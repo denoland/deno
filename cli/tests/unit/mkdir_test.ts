@@ -21,7 +21,7 @@ unitTest(
     const path = Deno.makeTempDirSync() + "/dir";
     Deno.mkdirSync(path);
     assertDirectory(path);
-  }
+  },
 );
 
 unitTest(
@@ -30,7 +30,7 @@ unitTest(
     const path = Deno.makeTempDirSync() + "/dir";
     Deno.mkdirSync(path, { mode: 0o737 });
     assertDirectory(path, 0o737);
-  }
+  },
 );
 
 unitTest({ perms: { write: false } }, function mkdirSyncPerm(): void {
@@ -45,7 +45,7 @@ unitTest(
     const path = Deno.makeTempDirSync() + "/dir";
     await Deno.mkdir(path);
     assertDirectory(path);
-  }
+  },
 );
 
 unitTest(
@@ -54,7 +54,7 @@ unitTest(
     const path = Deno.makeTempDirSync() + "/dir";
     await Deno.mkdir(path, { mode: 0o737 });
     assertDirectory(path, 0o737);
-  }
+  },
 );
 
 unitTest({ perms: { write: true } }, function mkdirErrSyncIfExists(): void {
@@ -77,7 +77,7 @@ unitTest(
     const path = Deno.makeTempDirSync() + "/nested/directory";
     Deno.mkdirSync(path, { recursive: true });
     assertDirectory(path);
-  }
+  },
 );
 
 unitTest(
@@ -86,7 +86,7 @@ unitTest(
     const path = Deno.makeTempDirSync() + "/nested/directory";
     await Deno.mkdir(path, { recursive: true });
     assertDirectory(path);
-  }
+  },
 );
 
 unitTest(
@@ -97,7 +97,7 @@ unitTest(
     Deno.mkdirSync(path, { mode: 0o737, recursive: true });
     assertDirectory(path, 0o737);
     assertDirectory(nested, 0o737);
-  }
+  },
 );
 
 unitTest(
@@ -108,7 +108,7 @@ unitTest(
     await Deno.mkdir(path, { mode: 0o737, recursive: true });
     assertDirectory(path, 0o737);
     assertDirectory(nested, 0o737);
-  }
+  },
 );
 
 unitTest(
@@ -126,7 +126,7 @@ unitTest(
       Deno.mkdirSync(pathLink, { recursive: true, mode: 0o731 });
       assertDirectory(path, 0o737);
     }
-  }
+  },
 );
 
 unitTest(
@@ -144,7 +144,7 @@ unitTest(
       await Deno.mkdir(pathLink, { recursive: true, mode: 0o731 });
       assertDirectory(path, 0o737);
     }
-  }
+  },
 );
 
 unitTest(
@@ -195,5 +195,5 @@ unitTest(
         Deno.mkdirSync(danglingLink, { recursive: true });
       }, Deno.errors.AlreadyExists);
     }
-  }
+  },
 );

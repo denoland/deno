@@ -25,7 +25,7 @@ unitTest(
 
     Deno.close(file.rid);
     Deno.removeSync(filename);
-  }
+  },
 );
 
 unitTest(
@@ -47,7 +47,7 @@ unitTest(
 
     Deno.close(file.rid);
     await Deno.remove(filename);
-  }
+  },
 );
 
 unitTest(
@@ -62,7 +62,7 @@ unitTest(
     Deno.truncateSync(filename, -5);
     assertEquals(Deno.readFileSync(filename).byteLength, 0);
     Deno.removeSync(filename);
-  }
+  },
 );
 
 unitTest(
@@ -77,7 +77,7 @@ unitTest(
     await Deno.truncate(filename, -5);
     assertEquals((await Deno.readFile(filename)).byteLength, 0);
     await Deno.remove(filename);
-  }
+  },
 );
 
 unitTest({ perms: { write: false } }, function truncateSyncPerm(): void {

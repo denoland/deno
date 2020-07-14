@@ -6,7 +6,7 @@ import { writeFile as writeFileCallback } from "../_fs_writeFile.ts";
 export function writeFile(
   pathOrRid: string | number | URL,
   data: string | Uint8Array,
-  options?: Encodings | WriteFileOptions
+  options?: Encodings | WriteFileOptions,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     writeFileCallback(pathOrRid, data, options, (err?: Error | null) => {

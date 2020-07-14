@@ -91,7 +91,7 @@ function transformMessageText(messageText: string, code: number): string {
       const suggestion = messageText.match(suggestionMessagePattern);
       const replacedMessageText = messageText.replace(
         suggestionMessagePattern,
-        ""
+        "",
       );
       if (suggestion && unstableDenoGlobalProperties.includes(property)) {
         const suggestedProperty = suggestion[1];
@@ -113,7 +113,7 @@ interface SourceInformation {
 }
 
 function fromDiagnosticCategory(
-  category: ts.DiagnosticCategory
+  category: ts.DiagnosticCategory,
 ): DiagnosticCategory {
   switch (category) {
     case ts.DiagnosticCategory.Error:
@@ -126,7 +126,9 @@ function fromDiagnosticCategory(
       return DiagnosticCategory.Warning;
     default:
       throw new Error(
-        `Unexpected DiagnosticCategory: "${category}"/"${ts.DiagnosticCategory[category]}"`
+        `Unexpected DiagnosticCategory: "${category}"/"${
+          ts.DiagnosticCategory[category]
+        }"`,
       );
   }
 }
@@ -134,7 +136,7 @@ function fromDiagnosticCategory(
 function getSourceInformation(
   sourceFile: ts.SourceFile,
   start: number,
-  length: number
+  length: number,
 ): SourceInformation {
   const scriptResourceName = sourceFile.fileName;
   const {
@@ -142,16 +144,16 @@ function getSourceInformation(
     character: startColumn,
   } = sourceFile.getLineAndCharacterOfPosition(start);
   const endPosition = sourceFile.getLineAndCharacterOfPosition(start + length);
-  const endColumn =
-    lineNumber === endPosition.line ? endPosition.character : startColumn;
+  const endColumn = lineNumber === endPosition.line
+    ? endPosition.character
+    : startColumn;
   const lastLineInFile = sourceFile.getLineAndCharacterOfPosition(
-    sourceFile.text.length
+    sourceFile.text.length,
   ).line;
   const lineStart = sourceFile.getPositionOfLineAndCharacter(lineNumber, 0);
-  const lineEnd =
-    lineNumber < lastLineInFile
-      ? sourceFile.getPositionOfLineAndCharacter(lineNumber + 1, 0)
-      : sourceFile.text.length;
+  const lineEnd = lineNumber < lastLineInFile
+    ? sourceFile.getPositionOfLineAndCharacter(lineNumber + 1, 0)
+    : sourceFile.text.length;
   const sourceLine = sourceFile.text
     .slice(lineStart, lineEnd)
     .replace(/\s+$/g, "")
@@ -166,7 +168,7 @@ function getSourceInformation(
 }
 
 function fromDiagnosticMessageChain(
-  messageChain: ts.DiagnosticMessageChain[] | undefined
+  messageChain: ts.DiagnosticMessageChain[] | undefined,
 ): DiagnosticMessageChain[] | undefined {
   if (!messageChain) {
     return undefined;
@@ -184,7 +186,7 @@ function fromDiagnosticMessageChain(
 }
 
 function parseDiagnostic(
-  item: ts.Diagnostic | ts.DiagnosticRelatedInformation
+  item: ts.Diagnostic | ts.DiagnosticRelatedInformation,
 ): DiagnosticItem {
   const {
     messageText,
@@ -194,12 +196,12 @@ function parseDiagnostic(
     start: startPosition,
     length,
   } = item;
-  const sourceInfo =
-    file && startPosition && length
-      ? getSourceInformation(file, startPosition, length)
-      : undefined;
-  const endPosition =
-    startPosition && length ? startPosition + length : undefined;
+  const sourceInfo = file && startPosition && length
+    ? getSourceInformation(file, startPosition, length)
+    : undefined;
+  const endPosition = startPosition && length
+    ? startPosition + length
+    : undefined;
   const category = fromDiagnosticCategory(sourceCategory);
 
   let message: string;
@@ -224,7 +226,7 @@ function parseDiagnostic(
 }
 
 function parseRelatedInformation(
-  relatedInformation: readonly ts.DiagnosticRelatedInformation[]
+  relatedInformation: readonly ts.DiagnosticRelatedInformation[],
 ): DiagnosticItem[] {
   const result: DiagnosticItem[] = [];
   for (const item of relatedInformation) {
@@ -234,14 +236,14 @@ function parseRelatedInformation(
 }
 
 export function fromTypeScriptDiagnostic(
-  diagnostics: readonly ts.Diagnostic[]
+  diagnostics: readonly ts.Diagnostic[],
 ): Diagnostic {
   const items: DiagnosticItem[] = [];
   for (const sourceDiagnostic of diagnostics) {
     const item: DiagnosticItem = parseDiagnostic(sourceDiagnostic);
     if (sourceDiagnostic.relatedInformation) {
       item.relatedInformation = parseRelatedInformation(
-        sourceDiagnostic.relatedInformation
+        sourceDiagnostic.relatedInformation,
       );
     }
     items.push(item);

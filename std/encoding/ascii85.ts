@@ -65,9 +65,11 @@ export function encode(uint8: Uint8Array, options?: Ascii85Options): string {
       break;
     case "btoa":
       if (options?.delimiter) {
-        return `xbtoa Begin\n${output
-          .slice(0, output.length - difference)
-          .join("")}\nxbtoa End`;
+        return `xbtoa Begin\n${
+          output
+            .slice(0, output.length - difference)
+            .join("")
+        }\nxbtoa End`;
       }
       break;
     case "RFC 1924":
@@ -99,13 +101,15 @@ export function decode(ascii85: string, options?: Ascii85Options): Uint8Array {
         .replaceAll("y", "+<VdL");
       break;
     case "RFC 1924":
-      ascii85 = ascii85.replaceAll(/./g, (match) =>
-        String.fromCharCode(rfc1924.indexOf(match) + 33)
+      ascii85 = ascii85.replaceAll(
+        /./g,
+        (match) => String.fromCharCode(rfc1924.indexOf(match) + 33),
       );
       break;
     case "Z85":
-      ascii85 = ascii85.replaceAll(/./g, (match) =>
-        String.fromCharCode(Z85.indexOf(match) + 33)
+      ascii85 = ascii85.replaceAll(
+        /./g,
+        (match) => String.fromCharCode(Z85.indexOf(match) + 33),
       );
       break;
   }
@@ -117,7 +121,7 @@ export function decode(ascii85: string, options?: Ascii85Options): Uint8Array {
   let v = 0,
     n = 0,
     max = 0;
-  for (let i = 0; i < len; ) {
+  for (let i = 0; i < len;) {
     for (max += 5; i < max; i++) {
       v = v * 85 + (i < len ? ascii85.charCodeAt(i) : 117) - 33;
     }

@@ -56,10 +56,9 @@ function evaluate(code: string): boolean {
   if (!errInfo) {
     // when a function is eval'ed with just "use strict" sometimes the result
     // is "use strict" which should be discarded
-    lastEvalResult =
-      typeof result === "string" && result === "use strict"
-        ? undefined
-        : result;
+    lastEvalResult = typeof result === "string" && result === "use strict"
+      ? undefined
+      : result;
     if (!isCloseCalled()) {
       replLog(lastEvalResult);
     }

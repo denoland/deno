@@ -6,7 +6,7 @@ import { sendSync } from "./dispatch_json.ts";
 
 export function domainToAscii(
   domain: string,
-  { beStrict = false }: { beStrict?: boolean } = {}
+  { beStrict = false }: { beStrict?: boolean } = {},
 ): string {
   return sendSync("op_domain_to_ascii", { domain, beStrict });
 }

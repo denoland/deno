@@ -19,7 +19,7 @@ unitTest({ perms: { read: true } }, function readFileSyncSuccess(): void {
 
 unitTest({ perms: { read: true } }, function readFileSyncUrl(): void {
   const data = Deno.readFileSync(
-    pathToAbsoluteFileUrl("cli/tests/fixture.json")
+    pathToAbsoluteFileUrl("cli/tests/fixture.json"),
   );
   assert(data.byteLength > 0);
   const decoder = new TextDecoder("utf-8");
@@ -44,7 +44,7 @@ unitTest({ perms: { read: true } }, async function readFileUrl(): Promise<
   void
 > {
   const data = await Deno.readFile(
-    pathToAbsoluteFileUrl("cli/tests/fixture.json")
+    pathToAbsoluteFileUrl("cli/tests/fixture.json"),
   );
   assert(data.byteLength > 0);
   const decoder = new TextDecoder("utf-8");

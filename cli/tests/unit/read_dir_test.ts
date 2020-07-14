@@ -63,9 +63,9 @@ unitTest({ perms: { read: true } }, async function readDirWithUrl(): Promise<
   void
 > {
   const files = [];
-  for await (const dirEntry of Deno.readDir(
-    pathToAbsoluteFileUrl("cli/tests")
-  )) {
+  for await (
+    const dirEntry of Deno.readDir(pathToAbsoluteFileUrl("cli/tests"))
+  ) {
     files.push(dirEntry);
   }
   assertSameContent(files);

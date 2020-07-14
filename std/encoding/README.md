@@ -84,7 +84,7 @@ const string = "a,b,c\nd,e,f";
 console.log(
   await parse(string, {
     header: false,
-  })
+  }),
 );
 // output:
 // [["a", "b", "c"], ["d", "e", "f"]]

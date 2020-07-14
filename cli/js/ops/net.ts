@@ -36,7 +36,7 @@ interface AcceptResponse {
 
 export function accept(
   rid: number,
-  transport: string
+  transport: string,
 ): Promise<AcceptResponse> {
   return sendAsync("op_accept", { rid, transport });
 }
@@ -72,7 +72,7 @@ interface ReceiveResponse {
 export function receive(
   rid: number,
   transport: string,
-  zeroCopy: Uint8Array
+  zeroCopy: Uint8Array,
 ): Promise<ReceiveResponse> {
   return sendAsync("op_datagram_receive", { rid, transport }, zeroCopy);
 }

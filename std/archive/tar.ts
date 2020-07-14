@@ -42,7 +42,7 @@ const initialChecksum = 8 * 32;
 
 async function readBlock(
   reader: Deno.Reader,
-  p: Uint8Array
+  p: Uint8Array,
 ): Promise<number | null> {
   let bytesRead = 0;
   while (bytesRead < p.length) {
@@ -354,21 +354,21 @@ export class Tar {
       info = await Deno.stat(opts.filePath);
     }
 
-    const mode =
-        opts.fileMode || (info && info.mode) || parseInt("777", 8) & 0xfff,
+    const mode = opts.fileMode || (info && info.mode) ||
+        parseInt("777", 8) & 0xfff,
       mtime = Math.floor(
-        opts.mtime ?? (info?.mtime ?? new Date()).valueOf() / 1000
+        opts.mtime ?? (info?.mtime ?? new Date()).valueOf() / 1000,
       ),
       uid = opts.uid || 0,
       gid = opts.gid || 0;
     if (typeof opts.owner === "string" && opts.owner.length >= 32) {
       throw new Error(
-        "ustar format does not allow owner name length >= 32 bytes"
+        "ustar format does not allow owner name length >= 32 bytes",
       );
     }
     if (typeof opts.group === "string" && opts.group.length >= 32) {
       throw new Error(
-        "ustar format does not allow group name length >= 32 bytes"
+        "ustar format does not allow group name length >= 32 bytes",
       );
     }
 
@@ -428,9 +428,9 @@ export class Tar {
         new Deno.Buffer(
           clean(
             recordSize -
-              (parseInt(tarData.fileSize, 8) % recordSize || recordSize)
-          )
-        )
+              (parseInt(tarData.fileSize, 8) % recordSize || recordSize),
+          ),
+        ),
       );
     });
 
@@ -450,7 +450,7 @@ class TarEntry implements Reader {
   constructor(
     meta: TarMeta,
     header: TarHeader,
-    reader: Reader | (Reader & Deno.Seeker)
+    reader: Reader | (Reader & Deno.Seeker),
   ) {
     Object.assign(this, meta);
     this.#header = header;
@@ -473,7 +473,7 @@ class TarEntry implements Reader {
     const bufSize = Math.min(
       // bufSize can't be greater than p.length nor bytes left in the entry
       p.length,
-      entryBytesLeft
+      entryBytesLeft,
     );
 
     if (entryBytesLeft <= 0) return null;
@@ -503,7 +503,7 @@ class TarEntry implements Reader {
     if (typeof (this.#reader as Seeker).seek === "function") {
       await (this.#reader as Seeker).seek(
         this.#entrySize - this.#read,
-        Deno.SeekMode.Current
+        Deno.SeekMode.Current,
       );
       this.#read = this.#entrySize;
     } else {
@@ -576,7 +576,7 @@ export class Untar {
       "fileMode",
       "mtime",
       "uid",
-      "gid"
+      "gid",
     ]).forEach((key): void => {
       const arr = trim(header[key]);
       if (arr.byteLength > 0) {
@@ -589,7 +589,7 @@ export class Untar {
         if (arr.byteLength > 0) {
           meta[key] = decoder.decode(arr);
         }
-      }
+      },
     );
 
     meta.fileSize = parseInt(decoder.decode(header.fileSize), 8);

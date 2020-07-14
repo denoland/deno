@@ -31,7 +31,7 @@ export interface TranspileOnlyResult {
 }
 
 export function transpile(
-  request: TranspileRequest
+  request: TranspileRequest,
 ): Promise<Record<string, TranspileOnlyResult>> {
   return sendAsync("op_transpile", request);
 }

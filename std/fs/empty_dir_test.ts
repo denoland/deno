@@ -71,14 +71,14 @@ Deno.test("emptyDirIfItExist", async function (): Promise<void> {
     await assertThrowsAsync(
       async (): Promise<void> => {
         await Deno.stat(testNestDir);
-      }
+      },
     );
 
     // test file have been removed
     await assertThrowsAsync(
       async (): Promise<void> => {
         await Deno.stat(testDirFile);
-      }
+      },
     );
   } finally {
     // remote test dir
@@ -199,7 +199,7 @@ for (const s of scenes) {
 
       await Deno.writeFile(
         path.join(testfolder, "child.txt"),
-        new TextEncoder().encode("hello world")
+        new TextEncoder().encode("hello world"),
       );
 
       try {
@@ -215,7 +215,10 @@ for (const s of scenes) {
         }
 
         args.push(
-          path.join(testdataDir, s.async ? "empty_dir.ts" : "empty_dir_sync.ts")
+          path.join(
+            testdataDir,
+            s.async ? "empty_dir.ts" : "empty_dir_sync.ts",
+          ),
         );
         args.push("testfolder");
 

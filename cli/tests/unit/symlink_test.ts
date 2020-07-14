@@ -13,7 +13,7 @@ unitTest(
     const newNameInfoStat = Deno.statSync(newname);
     assert(newNameInfoLStat.isSymlink);
     assert(newNameInfoStat.isDirectory);
-  }
+  },
 );
 
 unitTest(function symlinkSyncPerm(): void {
@@ -34,5 +34,5 @@ unitTest(
     const newNameInfoStat = Deno.statSync(newname);
     assert(newNameInfoLStat.isSymlink, "NOT SYMLINK");
     assert(newNameInfoStat.isDirectory, "NOT DIRECTORY");
-  }
+  },
 );

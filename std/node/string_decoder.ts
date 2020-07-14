@@ -31,8 +31,9 @@ enum NotImplemented {
 function normalizeEncoding(enc?: string): string {
   const encoding = castEncoding(enc ?? null);
   if (encoding && encoding in NotImplemented) notImplemented(encoding);
-  if (!encoding && typeof enc === "string" && enc.toLowerCase() !== "raw")
+  if (!encoding && typeof enc === "string" && enc.toLowerCase() !== "raw") {
     throw new Error(`Unknown encoding: ${enc}`);
+  }
   return String(encoding);
 }
 /*
@@ -55,7 +56,7 @@ function utf8CheckByte(byte: number): number {
 function utf8CheckIncomplete(
   self: StringDecoderBase,
   buf: Buffer,
-  i: number
+  i: number,
 ): number {
   let j = buf.length - 1;
   if (j < i) return 0;
@@ -94,7 +95,7 @@ function utf8CheckIncomplete(
  * */
 function utf8CheckExtraBytes(
   self: StringDecoderBase,
-  buf: Buffer
+  buf: Buffer,
 ): string | undefined {
   if ((buf[0] & 0xc0) !== 0x80) {
     self.lastNeed = 0;
@@ -119,7 +120,7 @@ function utf8CheckExtraBytes(
  * */
 function utf8FillLastComplete(
   this: StringDecoderBase,
-  buf: Buffer
+  buf: Buffer,
 ): string | undefined {
   const p = this.lastTotal - this.lastNeed;
   const r = utf8CheckExtraBytes(this, buf);
@@ -137,7 +138,7 @@ function utf8FillLastComplete(
  * */
 function utf8FillLastIncomplete(
   this: StringDecoderBase,
-  buf: Buffer
+  buf: Buffer,
 ): string | undefined {
   if (this.lastNeed <= buf.length) {
     buf.copy(this.lastChar, this.lastTotal - this.lastNeed, 0, this.lastNeed);
@@ -203,8 +204,9 @@ function base64Text(this: StringDecoderBase, buf: Buffer, i: number): string {
 
 function base64End(this: Base64Decoder, buf?: Buffer): string {
   const r = buf && buf.length ? this.write(buf) : "";
-  if (this.lastNeed)
+  if (this.lastNeed) {
     return r + this.lastChar.toString("base64", 0, 3 - this.lastNeed);
+  }
   return r;
 }
 

@@ -11,5 +11,5 @@ unitTest(
     const finalMask = Deno.umask();
     assertEquals(newMask, 0o020);
     assertEquals(finalMask, prevMask);
-  }
+  },
 );

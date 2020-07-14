@@ -25,7 +25,7 @@ export function createResolvable<T>(): Resolvable<T> {
 
 function handleAsyncMsgFromWorker(
   promiseTable: Map<number, Resolvable<string>>,
-  msg: { cmdId: number; data: string }
+  msg: { cmdId: number; data: string },
 ): void {
   const promise = promiseTable.get(msg.cmdId);
   if (promise === null) {
@@ -39,7 +39,7 @@ async function main(): Promise<void> {
   for (let i = 1; i <= workerCount; ++i) {
     const worker = new Worker(
       new URL("subdir/bench_worker.ts", import.meta.url).href,
-      { type: "module" }
+      { type: "module" },
     );
     const promise = createResolvable<void>();
     worker.onmessage = (e): void => {

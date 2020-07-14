@@ -44,7 +44,7 @@ Deno.test({
         process.chdir("non-existent-directory-name");
       },
       Deno.errors.NotFound,
-      "file"
+      "file",
       // On every OS Deno returns: "No such file" except for Windows, where it's:
       // "The system cannot find the file specified. (os error 2)" so "file" is
       // the only common string here.
@@ -95,7 +95,7 @@ Deno.test({
         process.on("uncaughtException", (_err: Error) => {});
       },
       Error,
-      "implemented"
+      "implemented",
     );
   },
 });
@@ -107,7 +107,7 @@ Deno.test({
     assert(Array.isArray(argv));
     assert(
       process.argv[0].match(/[^/\\]*deno[^/\\]*$/),
-      "deno included in the file name of argv[0]"
+      "deno included in the file name of argv[0]",
     );
     // we cannot test for anything else (we see test runner arguments here)
   },

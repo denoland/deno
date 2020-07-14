@@ -157,7 +157,7 @@ unitTest(function formDataParamsArgumentsCheck(): void {
     assertEquals(hasThrown, 2);
     assertStringContains(
       errMsg,
-      `${method} requires at least 1 argument, but only 0 present`
+      `${method} requires at least 1 argument, but only 0 present`,
     );
   });
 
@@ -181,7 +181,7 @@ unitTest(function formDataParamsArgumentsCheck(): void {
     assertEquals(hasThrown, 2);
     assertStringContains(
       errMsg,
-      `${method} requires at least 2 arguments, but only 0 present`
+      `${method} requires at least 2 arguments, but only 0 present`,
     );
 
     hasThrown = 0;
@@ -201,7 +201,7 @@ unitTest(function formDataParamsArgumentsCheck(): void {
     assertEquals(hasThrown, 2);
     assertStringContains(
       errMsg,
-      `${method} requires at least 2 arguments, but only 1 present`
+      `${method} requires at least 2 arguments, but only 1 present`,
     );
   });
 });
