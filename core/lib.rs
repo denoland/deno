@@ -46,6 +46,7 @@ pub use crate::modules::RecursiveModuleLoad;
 pub use crate::ops::Buf;
 pub use crate::ops::Op;
 pub use crate::ops::OpAsyncFuture;
+pub use crate::ops::OpDispatcher;
 pub use crate::ops::OpId;
 pub use crate::resources::ResourceTable;
 pub use crate::zero_copy_buf::ZeroCopyBuf;

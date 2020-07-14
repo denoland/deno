@@ -2,6 +2,7 @@
 
 Helper module for dealing with external data structures.
 
+- [`ascii85`](#ascii85)
 - [`base32`](#base32)
 - [`binary`](#binary)
 - [`csv`](#csv)
@@ -321,4 +322,59 @@ console.log(binaryData);
 
 console.log(encode(binaryData));
 // => RC2E6GA=
+```
+
+## ascii85
+
+Ascii85/base85 encoder and decoder with support for multiple standards
+
+### Basic usage
+
+`encode` encodes a `Uint8Array` to a ascii85 representation, and `decode`
+decodes the given ascii85 representation to a `Uint8Array`.
+
+```ts
+import { encode, decode } from "https://deno.land/std/encoding/ascii85.ts";
+
+const a85Repr = "LpTqp";
+
+const binaryData = decode(a85Repr);
+console.log(binaryData);
+// => Uint8Array [ 136, 180, 79, 24 ]
+
+console.log(encode(binaryData));
+// => LpTqp
+```
+
+### Specifying a standard and delimeter
+
+By default all functions are using the most popular Adobe version of ascii85 and
+not adding any delimeter. However, there are three more standards supported -
+btoa (different delimeter and additional compression of 4 bytes equal to 32),
+[Z85](https://rfc.zeromq.org/spec/32/) and
+[RFC 1924](https://tools.ietf.org/html/rfc1924). It's possible to use a
+different encoding by specifying it in `options` object as a second parameter.
+
+Similarly, it's possible to make `encode` add a delimeter (`<~` and `~>` for
+Adobe, `xbtoa Begin` and `xbtoa End` with newlines between the delimeters and
+encoded data for btoa. Checksums for btoa are not supported. Delimeters are not
+supported by other encodings.)
+
+encoding examples:
+
+```ts
+import { encode, decode } from "https://deno.land/std/encoding/ascii85.ts";
+const binaryData = new Uint8Array([136, 180, 79, 24]);
+console.log(encode(binaryData));
+// => LpTqp
+console.log(encode(binaryData, { standard: "Adobe", delimeter: true }));
+// => <~LpTqp~>
+console.log(encode(binaryData, { standard: "btoa", delimeter: true }));
+/* => xbtoa Begin
+LpTqp
+xbtoa End */
+console.log(encode(binaryData, { standard: "RFC 1924" }));
+// => h_p`_
+console.log(encode(binaryData, { standard: "Z85" }));
+// => H{P}{
 ```
