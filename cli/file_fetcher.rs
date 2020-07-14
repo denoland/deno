@@ -342,7 +342,7 @@ impl SourceFileFetcher {
       Err(e) => return Err(e.into()),
     };
 
-    let media_type = map_content_type(&filepath, None);
+    let (media_type, _charset) = map_content_type(&filepath, None);
     Ok(SourceFile {
       url: module_url.clone(),
       filename: filepath,
@@ -409,7 +409,7 @@ impl SourceFileFetcher {
 
     let cache_filename = self.http_cache.get_cache_filename(module_url);
     let fake_filepath = PathBuf::from(module_url.path());
-    let media_type = map_content_type(
+    let (media_type, _charset) = map_content_type(
       &fake_filepath,
       headers.get("content-type").map(|e| e.as_str()),
     );
@@ -519,7 +519,7 @@ impl SourceFileFetcher {
           let cache_filepath = dir.http_cache.get_cache_filename(&module_url);
           // Used to sniff out content type from file extension - probably to be removed
           let fake_filepath = PathBuf::from(module_url.path());
-          let media_type = map_content_type(
+          let (media_type, _charset) = map_content_type(
             &fake_filepath,
             headers.get("content-type").map(String::as_str),
           );
@@ -561,8 +561,11 @@ pub fn map_file_extension(path: &Path) -> msg::MediaType {
   }
 }
 
-// convert a ContentType string into a enumerated MediaType
-fn map_content_type(path: &Path, content_type: Option<&str>) -> msg::MediaType {
+// convert a ContentType string into a enumerated MediaType + optional charset
+fn map_content_type(
+  path: &Path,
+  content_type: Option<&str>,
+) -> (msg::MediaType, Option<String>) {
   match content_type {
     Some(content_type) => {
       // sometimes there is additional data after the media type in
@@ -570,7 +573,7 @@ fn map_content_type(path: &Path, content_type: Option<&str>) -> msg::MediaType {
       // dealing with the actual media type
       let ct_vector: Vec<&str> = content_type.split(';').collect();
       let ct: &str = ct_vector.first().unwrap();
-      match ct.to_lowercase().as_ref() {
+      let media_type = match ct.to_lowercase().as_ref() {
         "application/typescript"
         | "text/typescript"
         | "video/vnd.dlna.mpeg-tts"
@@ -594,9 +597,20 @@ fn map_content_type(path: &Path, content_type: Option<&str>) -> msg::MediaType {
           debug!("unknown content type: {}", content_type);
           msg::MediaType::Unknown
         }
+      };
+
+      let mut charset: Option<String> = None;
+      for i in 1..ct_vector.len() {
+        let trimmed_part = ct_vector[i].trim_start();
+        if trimmed_part.starts_with("charset=") {
+          charset = Some(trimmed_part.split_at(8).1.trim_end().to_owned());
+          break;
+        }
       }
+
+      (media_type, charset)
     }
-    None => map_file_extension(path),
+    None => (map_file_extension(path), None),
   }
 }
 
@@ -1600,43 +1614,43 @@ mod tests {
   fn test_map_content_type_extension_only() {
     // Extension only
     assert_eq!(
-      map_content_type(Path::new("foo/bar.ts"), None),
+      map_content_type(Path::new("foo/bar.ts"), None).0,
       msg::MediaType::TypeScript
     );
     assert_eq!(
-      map_content_type(Path::new("foo/bar.tsx"), None),
+      map_content_type(Path::new("foo/bar.tsx"), None).0,
       msg::MediaType::TSX
     );
     assert_eq!(
-      map_content_type(Path::new("foo/bar.d.ts"), None),
+      map_content_type(Path::new("foo/bar.d.ts"), None).0,
       msg::MediaType::TypeScript
     );
     assert_eq!(
-      map_content_type(Path::new("foo/bar.js"), None),
+      map_content_type(Path::new("foo/bar.js"), None).0,
       msg::MediaType::JavaScript
     );
     assert_eq!(
-      map_content_type(Path::new("foo/bar.txt"), None),
+      map_content_type(Path::new("foo/bar.txt"), None).0,
       msg::MediaType::Unknown
     );
     assert_eq!(
-      map_content_type(Path::new("foo/bar.jsx"), None),
+      map_content_type(Path::new("foo/bar.jsx"), None).0,
       msg::MediaType::JSX
     );
     assert_eq!(
-      map_content_type(Path::new("foo/bar.json"), None),
+      map_content_type(Path::new("foo/bar.json"), None).0,
       msg::MediaType::Json
     );
     assert_eq!(
-      map_content_type(Path::new("foo/bar.wasm"), None),
+      map_content_type(Path::new("foo/bar.wasm"), None).0,
       msg::MediaType::Wasm
     );
     assert_eq!(
-      map_content_type(Path::new("foo/bar.cjs"), None),
+      map_content_type(Path::new("foo/bar.cjs"), None).0,
       msg::MediaType::JavaScript
     );
     assert_eq!(
-      map_content_type(Path::new("foo/bar"), None),
+      map_content_type(Path::new("foo/bar"), None).0,
       msg::MediaType::Unknown
     );
   }
@@ -1645,131 +1659,145 @@ mod tests {
   fn test_map_content_type_media_type_with_no_extension() {
     // Media Type
     assert_eq!(
-      map_content_type(Path::new("foo/bar"), Some("application/typescript")),
+      map_content_type(Path::new("foo/bar"), Some("application/typescript")).0,
       msg::MediaType::TypeScript
     );
     assert_eq!(
-      map_content_type(Path::new("foo/bar"), Some("text/typescript")),
+      map_content_type(Path::new("foo/bar"), Some("text/typescript")).0,
       msg::MediaType::TypeScript
     );
     assert_eq!(
-      map_content_type(Path::new("foo/bar"), Some("video/vnd.dlna.mpeg-tts")),
+      map_content_type(Path::new("foo/bar"), Some("video/vnd.dlna.mpeg-tts")).0,
       msg::MediaType::TypeScript
     );
     assert_eq!(
-      map_content_type(Path::new("foo/bar"), Some("video/mp2t")),
+      map_content_type(Path::new("foo/bar"), Some("video/mp2t")).0,
       msg::MediaType::TypeScript
     );
     assert_eq!(
-      map_content_type(Path::new("foo/bar"), Some("application/x-typescript")),
+      map_content_type(Path::new("foo/bar"), Some("application/x-typescript"))
+        .0,
       msg::MediaType::TypeScript
     );
     assert_eq!(
-      map_content_type(Path::new("foo/bar"), Some("application/javascript")),
+      map_content_type(Path::new("foo/bar"), Some("application/javascript")).0,
       msg::MediaType::JavaScript
     );
     assert_eq!(
-      map_content_type(Path::new("foo/bar"), Some("text/javascript")),
+      map_content_type(Path::new("foo/bar"), Some("text/javascript")).0,
       msg::MediaType::JavaScript
     );
     assert_eq!(
-      map_content_type(Path::new("foo/bar"), Some("application/ecmascript")),
+      map_content_type(Path::new("foo/bar"), Some("application/ecmascript")).0,
       msg::MediaType::JavaScript
     );
     assert_eq!(
-      map_content_type(Path::new("foo/bar"), Some("text/ecmascript")),
+      map_content_type(Path::new("foo/bar"), Some("text/ecmascript")).0,
       msg::MediaType::JavaScript
     );
     assert_eq!(
-      map_content_type(Path::new("foo/bar"), Some("application/x-javascript")),
+      map_content_type(Path::new("foo/bar"), Some("application/x-javascript"))
+        .0,
       msg::MediaType::JavaScript
     );
     assert_eq!(
-      map_content_type(Path::new("foo/bar"), Some("application/json")),
+      map_content_type(Path::new("foo/bar"), Some("application/json")).0,
       msg::MediaType::Json
     );
     assert_eq!(
-      map_content_type(Path::new("foo/bar"), Some("application/node")),
+      map_content_type(Path::new("foo/bar"), Some("application/node")).0,
       msg::MediaType::JavaScript
     );
     assert_eq!(
-      map_content_type(Path::new("foo/bar"), Some("text/json")),
+      map_content_type(Path::new("foo/bar"), Some("text/json")).0,
       msg::MediaType::Json
+    );
+    assert_eq!(
+      map_content_type(Path::new("foo/bar"), Some("text/json; charset=utf-8 ")),
+      (msg::MediaType::Json, Some("utf-8".to_owned()))
     );
   }
 
   #[test]
   fn test_map_file_extension_media_type_with_extension() {
     assert_eq!(
-      map_content_type(Path::new("foo/bar.ts"), Some("text/plain")),
+      map_content_type(Path::new("foo/bar.ts"), Some("text/plain")).0,
       msg::MediaType::TypeScript
     );
     assert_eq!(
-      map_content_type(Path::new("foo/bar.ts"), Some("foo/bar")),
+      map_content_type(Path::new("foo/bar.ts"), Some("foo/bar")).0,
       msg::MediaType::Unknown
     );
     assert_eq!(
       map_content_type(
         Path::new("foo/bar.tsx"),
         Some("application/typescript"),
-      ),
+      )
+      .0,
       msg::MediaType::TSX
     );
     assert_eq!(
       map_content_type(
         Path::new("foo/bar.tsx"),
         Some("application/javascript"),
-      ),
+      )
+      .0,
       msg::MediaType::TSX
     );
     assert_eq!(
       map_content_type(
         Path::new("foo/bar.tsx"),
         Some("application/x-typescript"),
-      ),
+      )
+      .0,
       msg::MediaType::TSX
     );
     assert_eq!(
       map_content_type(
         Path::new("foo/bar.tsx"),
         Some("video/vnd.dlna.mpeg-tts"),
-      ),
+      )
+      .0,
       msg::MediaType::TSX
     );
     assert_eq!(
-      map_content_type(Path::new("foo/bar.tsx"), Some("video/mp2t")),
+      map_content_type(Path::new("foo/bar.tsx"), Some("video/mp2t")).0,
       msg::MediaType::TSX
     );
     assert_eq!(
       map_content_type(
         Path::new("foo/bar.jsx"),
         Some("application/javascript"),
-      ),
+      )
+      .0,
       msg::MediaType::JSX
     );
     assert_eq!(
       map_content_type(
         Path::new("foo/bar.jsx"),
         Some("application/x-typescript"),
-      ),
+      )
+      .0,
       msg::MediaType::JSX
     );
     assert_eq!(
       map_content_type(
         Path::new("foo/bar.jsx"),
         Some("application/ecmascript"),
-      ),
+      )
+      .0,
       msg::MediaType::JSX
     );
     assert_eq!(
-      map_content_type(Path::new("foo/bar.jsx"), Some("text/ecmascript")),
+      map_content_type(Path::new("foo/bar.jsx"), Some("text/ecmascript")).0,
       msg::MediaType::JSX
     );
     assert_eq!(
       map_content_type(
         Path::new("foo/bar.jsx"),
         Some("application/x-javascript"),
-      ),
+      )
+      .0,
       msg::MediaType::JSX
     );
   }
