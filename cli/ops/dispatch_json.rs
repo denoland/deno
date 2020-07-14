@@ -45,14 +45,36 @@ struct AsyncArgs {
   promise_id: Option<u64>,
 }
 
-pub fn json_op<D>(d: D) -> impl OpDispatcher
+/// Like OpDispatcher but with additional json `Value` parameter
+/// and return a result of `JsonOp` instead of `Op`.
+pub trait JsonOpDispatcher {
+  fn dispatch(
+    &self,
+    isolate_state: &mut CoreIsolateState,
+    json: Value,
+    zero_copy: &mut [ZeroCopyBuf],
+  ) -> Result<JsonOp, OpError>;
+}
+
+impl<F> JsonOpDispatcher for F
 where
-  D: Fn(
+  F: Fn(
     &mut CoreIsolateState,
     Value,
     &mut [ZeroCopyBuf],
   ) -> Result<JsonOp, OpError>,
 {
+  fn dispatch(
+    &self,
+    isolate_state: &mut CoreIsolateState,
+    json: Value,
+    zero_copy: &mut [ZeroCopyBuf],
+  ) -> Result<JsonOp, OpError> {
+    self(isolate_state, json, zero_copy)
+  }
+}
+
+pub fn json_op(d: impl JsonOpDispatcher) -> impl OpDispatcher {
   move |isolate_state: &mut CoreIsolateState, zero_copy: &mut [ZeroCopyBuf]| {
     assert!(!zero_copy.is_empty(), "Expected JSON string at position 0");
     let async_args: AsyncArgs = match serde_json::from_slice(&zero_copy[0]) {
@@ -67,7 +89,7 @@ where
 
     let result = serde_json::from_slice(&zero_copy[0])
       .map_err(OpError::from)
-      .and_then(|args| d(isolate_state, args, &mut zero_copy[1..]));
+      .and_then(|args| d.dispatch(isolate_state, args, &mut zero_copy[1..]));
 
     // Convert to Op
     match result {

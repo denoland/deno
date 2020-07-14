@@ -20,11 +20,12 @@ pub enum Op {
   AsyncUnref(OpAsyncFuture),
 }
 
+/// Main type describing Op
 pub trait OpDispatcher {
   fn dispatch(
     &self,
-    isolate: &mut CoreIsolateState,
-    buf: &mut [ZeroCopyBuf],
+    isolate_state: &mut CoreIsolateState,
+    zero_copy: &mut [ZeroCopyBuf],
   ) -> Op;
 }
 
@@ -34,10 +35,10 @@ where
 {
   fn dispatch(
     &self,
-    isolate: &mut CoreIsolateState,
-    buf: &mut [ZeroCopyBuf],
+    isolate_state: &mut CoreIsolateState,
+    zero_copy: &mut [ZeroCopyBuf],
   ) -> Op {
-    self(isolate, buf)
+    self(isolate_state, zero_copy)
   }
 }
 
