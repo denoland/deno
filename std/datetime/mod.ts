@@ -139,8 +139,7 @@ export function weekOfYear(date: Date): number {
 
   const day = workingDate.getUTCDay();
 
-  const nearestThursday =
-    workingDate.getUTCDate() +
+  const nearestThursday = workingDate.getUTCDate() +
     Day.Thu -
     (day === Day.Sun ? DAYS_PER_WEEK : day);
 

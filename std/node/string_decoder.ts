@@ -31,8 +31,9 @@ enum NotImplemented {
 function normalizeEncoding(enc?: string): string {
   const encoding = castEncoding(enc ?? null);
   if (encoding && encoding in NotImplemented) notImplemented(encoding);
-  if (!encoding && typeof enc === "string" && enc.toLowerCase() !== "raw")
+  if (!encoding && typeof enc === "string" && enc.toLowerCase() !== "raw") {
     throw new Error(`Unknown encoding: ${enc}`);
+  }
   return String(encoding);
 }
 /*
@@ -203,8 +204,9 @@ function base64Text(this: StringDecoderBase, buf: Buffer, i: number): string {
 
 function base64End(this: Base64Decoder, buf?: Buffer): string {
   const r = buf && buf.length ? this.write(buf) : "";
-  if (this.lastNeed)
+  if (this.lastNeed) {
     return r + this.lastChar.toString("base64", 0, 3 - this.lastNeed);
+  }
   return r;
 }
 
