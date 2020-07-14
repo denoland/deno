@@ -22,12 +22,12 @@ declare const self: DedicatedWorkerGlobalScope & typeof globalThis;
 declare let onmessage: ((e: { data: any }) => Promise<void> | void) | undefined;
 declare let onerror:
   | ((
-      msg: string,
-      source: string,
-      lineno: number,
-      colno: number,
-      e: Event
-    ) => boolean | void)
+    msg: string,
+    source: string,
+    lineno: number,
+    colno: number,
+    e: Event,
+  ) => boolean | void)
   | undefined;
 declare const close: typeof __workerMain.close;
 declare const name: typeof __workerMain.name;

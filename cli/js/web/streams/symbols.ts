@@ -20,7 +20,7 @@ export const closedPromise = Symbol("closedPromise");
 export const closeRequest = Symbol("closeRequest");
 export const closeRequested = Symbol("closeRequested");
 export const controlledReadableByteStream = Symbol(
-  "controlledReadableByteStream"
+  "controlledReadableByteStream",
 );
 export const controlledReadableStream = Symbol("controlledReadableStream");
 export const controlledTransformStream = Symbol("controlledTransformStream");

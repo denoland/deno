@@ -182,13 +182,15 @@ interface CompilerHostOptions {
   incremental?: boolean;
 }
 
-type IncrementalCompilerHostOptions = Omit<
-  CompilerHostOptions,
-  "incremental"
-> & {
-  rootNames?: string[];
-  buildInfo?: string;
-};
+type IncrementalCompilerHostOptions =
+  & Omit<
+    CompilerHostOptions,
+    "incremental"
+  >
+  & {
+    rootNames?: string[];
+    buildInfo?: string;
+  };
 
 interface HostConfigureResponse {
   ignoredOptions?: string[];
@@ -235,7 +237,9 @@ function getExtension(fileName: string, mediaType: MediaType): ts.Extension {
     case MediaType.Unknown:
     default:
       throw TypeError(
-        `Cannot resolve extension for "${fileName}" with mediaType "${MediaType[mediaType]}".`
+        `Cannot resolve extension for "${fileName}" with mediaType "${
+          MediaType[mediaType]
+        }".`,
       );
   }
 }
@@ -259,7 +263,7 @@ function configure(
   defaultOptions: ts.CompilerOptions,
   source: string,
   path: string,
-  cwd: string
+  cwd: string,
 ): ConfigureResponse {
   const { config, error } = ts.parseConfigFileTextToJson(path, source);
   if (error) {
@@ -267,7 +271,7 @@ function configure(
   }
   const { options, errors } = ts.convertCompilerOptionsFromJson(
     config.compilerOptions,
-    cwd
+    cwd,
   );
   const ignoredOptions: string[] = [];
   for (const key of Object.keys(options)) {
@@ -318,7 +322,7 @@ class SourceFile {
   static cacheResolvedUrl(
     resolvedUrl: string,
     rawModuleSpecifier: string,
-    containingFile?: string
+    containingFile?: string,
   ): void {
     containingFile = containingFile || "";
     let innerCache = RESOLVED_SPECIFIER_CACHE.get(containingFile);
@@ -331,7 +335,7 @@ class SourceFile {
 
   static getResolvedUrl(
     moduleSpecifier: string,
-    containingFile: string
+    containingFile: string,
   ): string | undefined {
     const containingCache = RESOLVED_SPECIFIER_CACHE.get(containingFile);
     if (containingCache) {
@@ -399,14 +403,14 @@ class Host implements ts.CompilerHost {
   configure(
     cwd: string,
     path: string,
-    configurationText: string
+    configurationText: string,
   ): HostConfigureResponse {
     log("compiler::host.configure", path);
     const { options, ...result } = configure(
       this.#options,
       configurationText,
       path,
-      cwd
+      cwd,
     );
     this.#options = options;
     return result;
@@ -455,7 +459,7 @@ class Host implements ts.CompilerHost {
     fileName: string,
     languageVersion: ts.ScriptTarget,
     onError?: (message: string) => void,
-    shouldCreateNewSourceFile?: boolean
+    shouldCreateNewSourceFile?: boolean,
   ): ts.SourceFile | undefined {
     log("compiler::host.getSourceFile", fileName);
     try {
@@ -473,7 +477,7 @@ class Host implements ts.CompilerHost {
         sourceFile.tsSourceFile = ts.createSourceFile(
           tsSourceFileName,
           sourceFile.sourceCode,
-          languageVersion
+          languageVersion,
         );
         sourceFile.tsSourceFile.version = sourceFile.versionHash;
         delete sourceFile.sourceCode;
@@ -495,7 +499,7 @@ class Host implements ts.CompilerHost {
 
   resolveModuleNames(
     moduleNames: string[],
-    containingFile: string
+    containingFile: string,
   ): Array<ts.ResolvedModuleFull | undefined> {
     log("compiler::host.resolveModuleNames", {
       moduleNames,
@@ -540,7 +544,7 @@ class Host implements ts.CompilerHost {
     data: string,
     _writeByteOrderMark: boolean,
     _onError?: (message: string) => void,
-    sourceFiles?: readonly ts.SourceFile[]
+    sourceFiles?: readonly ts.SourceFile[],
   ): void {
     log("compiler::host.writeFile", fileName);
     this.#writeFile(fileName, data, sourceFiles);
@@ -588,23 +592,23 @@ ts.libMap.set("deno.unstable", "lib.deno.unstable.d.ts");
 // are available in the future when needed.
 SNAPSHOT_HOST.getSourceFile(
   `${ASSETS}/lib.deno.ns.d.ts`,
-  ts.ScriptTarget.ESNext
+  ts.ScriptTarget.ESNext,
 );
 SNAPSHOT_HOST.getSourceFile(
   `${ASSETS}/lib.deno.window.d.ts`,
-  ts.ScriptTarget.ESNext
+  ts.ScriptTarget.ESNext,
 );
 SNAPSHOT_HOST.getSourceFile(
   `${ASSETS}/lib.deno.worker.d.ts`,
-  ts.ScriptTarget.ESNext
+  ts.ScriptTarget.ESNext,
 );
 SNAPSHOT_HOST.getSourceFile(
   `${ASSETS}/lib.deno.shared_globals.d.ts`,
-  ts.ScriptTarget.ESNext
+  ts.ScriptTarget.ESNext,
 );
 SNAPSHOT_HOST.getSourceFile(
   `${ASSETS}/lib.deno.unstable.d.ts`,
-  ts.ScriptTarget.ESNext
+  ts.ScriptTarget.ESNext,
 );
 
 // We never use this program; it's only created
@@ -624,7 +628,7 @@ const SYSTEM_LOADER = getAsset("system_loader.js");
 const SYSTEM_LOADER_ES5 = getAsset("system_loader_es5.js");
 
 function buildLocalSourceFileCache(
-  sourceFileMap: Record<string, SourceFileMapEntry>
+  sourceFileMap: Record<string, SourceFileMapEntry>,
 ): void {
   for (const entry of Object.values(sourceFileMap)) {
     assert(entry.sourceCode.length > 0);
@@ -640,8 +644,7 @@ function buildLocalSourceFileCache(
       let mappedUrl = importDesc.resolvedSpecifier;
       const importedFile = sourceFileMap[importDesc.resolvedSpecifier];
       assert(importedFile);
-      const isJsOrJsx =
-        importedFile.mediaType === MediaType.JavaScript ||
+      const isJsOrJsx = importedFile.mediaType === MediaType.JavaScript ||
         importedFile.mediaType === MediaType.JSX;
       // If JS or JSX perform substitution for types if available
       if (isJsOrJsx) {
@@ -663,21 +666,21 @@ function buildLocalSourceFileCache(
       SourceFile.cacheResolvedUrl(
         fileRef.resolvedSpecifier.replace("memory://", ""),
         fileRef.specifier,
-        entry.url
+        entry.url,
       );
     }
     for (const fileRef of entry.libDirectives) {
       SourceFile.cacheResolvedUrl(
         fileRef.resolvedSpecifier.replace("memory://", ""),
         fileRef.specifier,
-        entry.url
+        entry.url,
       );
     }
   }
 }
 
 function buildSourceFileCache(
-  sourceFileMap: Record<string, SourceFileMapEntry>
+  sourceFileMap: Record<string, SourceFileMapEntry>,
 ): void {
   for (const entry of Object.values(sourceFileMap)) {
     SourceFile.addToCache({
@@ -700,8 +703,7 @@ function buildSourceFileCache(
       if (importedFile.redirect) {
         mappedUrl = importedFile.redirect;
       }
-      const isJsOrJsx =
-        importedFile.mediaType === MediaType.JavaScript ||
+      const isJsOrJsx = importedFile.mediaType === MediaType.JavaScript ||
         importedFile.mediaType === MediaType.JSX;
       // If JS or JSX perform substitution for types if available
       if (isJsOrJsx) {
@@ -722,14 +724,14 @@ function buildSourceFileCache(
       SourceFile.cacheResolvedUrl(
         fileRef.resolvedSpecifier,
         fileRef.specifier,
-        entry.url
+        entry.url,
       );
     }
     for (const fileRef of entry.libDirectives) {
       SourceFile.cacheResolvedUrl(
         fileRef.resolvedSpecifier,
         fileRef.specifier,
-        entry.url
+        entry.url,
       );
     }
   }
@@ -745,7 +747,7 @@ interface EmittedSource {
 type WriteFileCallback = (
   fileName: string,
   data: string,
-  sourceFiles?: readonly ts.SourceFile[]
+  sourceFiles?: readonly ts.SourceFile[],
 ) => void;
 
 interface CompileWriteFileState {
@@ -775,7 +777,7 @@ function createBundleWriteFile(state: BundleWriteFileState): WriteFileCallback {
   return function writeFile(
     _fileName: string,
     data: string,
-    sourceFiles?: readonly ts.SourceFile[]
+    sourceFiles?: readonly ts.SourceFile[],
   ): void {
     assert(sourceFiles != null);
     assert(state.host);
@@ -785,18 +787,18 @@ function createBundleWriteFile(state: BundleWriteFileState): WriteFileCallback {
       state.rootNames[0],
       data,
       sourceFiles,
-      state.host.options.target ?? ts.ScriptTarget.ESNext
+      state.host.options.target ?? ts.ScriptTarget.ESNext,
     );
   };
 }
 
 function createCompileWriteFile(
-  state: CompileWriteFileState
+  state: CompileWriteFileState,
 ): WriteFileCallback {
   return function writeFile(
     fileName: string,
     data: string,
-    sourceFiles?: readonly ts.SourceFile[]
+    sourceFiles?: readonly ts.SourceFile[],
   ): void {
     const isBuildInfo = fileName === TS_BUILD_INFO;
 
@@ -816,12 +818,12 @@ function createCompileWriteFile(
 }
 
 function createRuntimeCompileWriteFile(
-  state: CompileWriteFileState
+  state: CompileWriteFileState,
 ): WriteFileCallback {
   return function writeFile(
     fileName: string,
     data: string,
-    sourceFiles?: readonly ts.SourceFile[]
+    sourceFiles?: readonly ts.SourceFile[],
   ): void {
     assert(sourceFiles);
     assert(sourceFiles.length === 1);
@@ -1020,14 +1022,14 @@ function performanceEnd(): Stats {
 // TODO(Bartlomieju): this check should be done in Rust; there should be no
 function processConfigureResponse(
   configResult: HostConfigureResponse,
-  configPath: string
+  configPath: string,
 ): ts.Diagnostic[] | undefined {
   const { ignoredOptions, diagnostics } = configResult;
   if (ignoredOptions) {
     console.warn(
       yellow(`Unsupported compiler options in "${configPath}"\n`) +
         cyan(`  The following options were ignored:\n`) +
-        `    ${ignoredOptions.map((value): string => bold(value)).join(", ")}`
+        `    ${ignoredOptions.map((value): string => bold(value)).join(", ")}`,
     );
   }
   return diagnostics;
@@ -1130,7 +1132,7 @@ function buildBundle(
   rootName: string,
   data: string,
   sourceFiles: readonly ts.SourceFile[],
-  target: ts.ScriptTarget
+  target: ts.ScriptTarget,
 ): string {
   // when outputting to AMD and a single outfile, TypeScript makes up the module
   // specifiers which are used to define the modules, and doesn't expose them
@@ -1162,8 +1164,7 @@ function buildBundle(
       ? `await __instantiate("${rootName}", true);\n`
       : `__instantiate("${rootName}", false);\n`;
   }
-  const es5Bundle =
-    target === ts.ScriptTarget.ES3 ||
+  const es5Bundle = target === ts.ScriptTarget.ES3 ||
     target === ts.ScriptTarget.ES5 ||
     target === ts.ScriptTarget.ES2015 ||
     target === ts.ScriptTarget.ES2016;
@@ -1205,7 +1206,7 @@ function setRootExports(program: ts.Program, rootModule: string): void {
           sym.flags & ts.SymbolFlags.InterfaceExcludes ||
           sym.flags & ts.SymbolFlags.TypeParameterExcludes ||
           sym.flags & ts.SymbolFlags.TypeAliasExcludes
-        )
+        ),
     )
     .map((sym) => sym.getName());
 }
@@ -1408,7 +1409,7 @@ function compile({
       ...program.getSemanticDiagnostics(),
     ];
     diagnostics = diagnostics.filter(
-      ({ code }) => !ignoredDiagnostics.includes(code)
+      ({ code }) => !ignoredDiagnostics.includes(code),
     );
 
     // We will only proceed with the emit if there are no diagnostics.
@@ -1420,7 +1421,7 @@ function compile({
       if (options.checkJs) {
         assert(
           emitResult.emitSkipped === false,
-          "Unexpected skip of the emit."
+          "Unexpected skip of the emit.",
         );
       }
       // emitResult.diagnostics is `readonly` in TS3.5+ and can't be assigned
@@ -1458,7 +1459,7 @@ function transpile({
       DEFAULT_TRANSPILE_OPTIONS,
       configText,
       configPath,
-      cwd
+      cwd,
     );
     const diagnostics = processConfigureResponse(response, configPath);
     if (diagnostics && diagnostics.length) {
@@ -1598,7 +1599,7 @@ function bundle({
 }
 
 function runtimeCompile(
-  request: RuntimeCompileRequest
+  request: RuntimeCompileRequest,
 ): RuntimeCompileResponse {
   const { options, rootNames, target, unstable, sourceFileMap } = request;
 
@@ -1742,16 +1743,16 @@ function runtimeBundle(request: RuntimeBundleRequest): RuntimeBundleResponse {
 }
 
 function runtimeTranspile(
-  request: RuntimeTranspileRequest
+  request: RuntimeTranspileRequest,
 ): Promise<Record<string, TranspileOnlyResult>> {
   const result: Record<string, TranspileOnlyResult> = {};
   const { sources, options } = request;
   const compilerOptions = options
     ? Object.assign(
-        {},
-        DEFAULT_RUNTIME_TRANSPILE_OPTIONS,
-        convertCompilerOptions(options).options
-      )
+      {},
+      DEFAULT_RUNTIME_TRANSPILE_OPTIONS,
+      convertCompilerOptions(options).options,
+    )
     : DEFAULT_RUNTIME_TRANSPILE_OPTIONS;
 
   for (const [fileName, inputText] of Object.entries(sources)) {
@@ -1760,7 +1761,7 @@ function runtimeTranspile(
       {
         fileName,
         compilerOptions,
-      }
+      },
     );
     result[fileName] = { source, map };
   }
@@ -1807,7 +1808,7 @@ async function tsCompilerOnMessage({
       log(
         `!!! unhandled CompilerRequestType: ${
           (request as CompilerRequest).type
-        } (${CompilerRequestType[(request as CompilerRequest).type]})`
+        } (${CompilerRequestType[(request as CompilerRequest).type]})`,
       );
   }
   // Shutdown after single request

@@ -37,7 +37,7 @@ export class ConnImpl implements Conn {
   constructor(
     readonly rid: number,
     readonly remoteAddr: Addr,
-    readonly localAddr: Addr
+    readonly localAddr: Addr,
   ) {}
 
   write(p: Uint8Array): Promise<number> {
@@ -97,7 +97,7 @@ export class DatagramImpl implements DatagramConn {
   constructor(
     readonly rid: number,
     readonly addr: Addr,
-    public bufSize: number = 1024
+    public bufSize: number = 1024,
   ) {}
 
   async receive(p?: Uint8Array): Promise<[Uint8Array, Addr]> {
@@ -105,7 +105,7 @@ export class DatagramImpl implements DatagramConn {
     const { size, remoteAddr } = await netOps.receive(
       this.rid,
       this.addr.transport,
-      buf
+      buf,
     );
     const sub = buf.subarray(0, size);
     return [sub, remoteAddr];
@@ -150,7 +150,7 @@ export interface ListenOptions {
 }
 
 export function listen(
-  options: ListenOptions & { transport?: "tcp" }
+  options: ListenOptions & { transport?: "tcp" },
 ): Listener;
 export function listen(options: ListenOptions): Listener {
   const res = netOps.listen({
@@ -174,7 +174,7 @@ export interface UnixConnectOptions {
 export async function connect(options: UnixConnectOptions): Promise<Conn>;
 export async function connect(options: ConnectOptions): Promise<Conn>;
 export async function connect(
-  options: ConnectOptions | UnixConnectOptions
+  options: ConnectOptions | UnixConnectOptions,
 ): Promise<Conn> {
   let res;
 

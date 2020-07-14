@@ -17,7 +17,7 @@ Deno.test("Invalid encoding results in error()", function testEncodingErrors() {
       await writeFile("some/path", "some data", "made-up-encoding");
     },
     Error,
-    `The value "made-up-encoding" is invalid for option "encoding"`
+    `The value "made-up-encoding" is invalid for option "encoding"`,
   );
   assertThrowsAsync(
     async () => {
@@ -27,7 +27,7 @@ Deno.test("Invalid encoding results in error()", function testEncodingErrors() {
       });
     },
     Error,
-    `The value "made-up-encoding" is invalid for option "encoding"`
+    `The value "made-up-encoding" is invalid for option "encoding"`,
   );
 });
 
@@ -39,9 +39,9 @@ Deno.test(
         await writeFile("some/path", "some data", "utf16le");
       },
       Error,
-      `Not implemented: "utf16le" encoding`
+      `Not implemented: "utf16le" encoding`,
     );
-  }
+  },
 );
 
 Deno.test(
@@ -60,7 +60,7 @@ Deno.test(
     const data = await Deno.readFile(tempFile);
     await Deno.remove(tempFile);
     assertEquals(decoder.decode(data), "hello world");
-  }
+  },
 );
 
 Deno.test(
@@ -74,7 +74,7 @@ Deno.test(
     const data = await Deno.readFile("_fs_writeFile_test_file.txt");
     await Deno.remove("_fs_writeFile_test_file.txt");
     assertEquals(decoder.decode(data), "hello world");
-  }
+  },
 );
 
 Deno.test(
@@ -93,14 +93,14 @@ Deno.test(
       await writeFile(
         "_fs_writeFile_test_file.txt",
         value,
-        encoding as TextEncodings
+        encoding as TextEncodings,
       );
 
       const data = await Deno.readFile("_fs_writeFile_test_file.txt");
       await Deno.remove("_fs_writeFile_test_file.txt");
       assertEquals(decoder.decode(data), "hello world");
     }
-  }
+  },
 );
 
 Deno.test("Mode is correctly set", async function testCorrectFileMode() {
@@ -133,5 +133,5 @@ Deno.test(
     await Deno.remove(filename);
     assert(fileInfo.mode);
     assertNotEquals(fileInfo.mode & 0o777, 0o777);
-  }
+  },
 );

@@ -24,7 +24,7 @@ async function ensureValidCopy(
   src: string,
   dest: string,
   options: CopyOptions,
-  isCopyFolder = false
+  isCopyFolder = false,
 ): Promise<Deno.FileInfo | undefined> {
   let destStat: Deno.FileInfo;
 
@@ -39,7 +39,7 @@ async function ensureValidCopy(
 
   if (isCopyFolder && !destStat.isDirectory) {
     throw new Error(
-      `Cannot overwrite non-directory '${dest}' with directory '${src}'.`
+      `Cannot overwrite non-directory '${dest}' with directory '${src}'.`,
     );
   }
   if (!options.overwrite) {
@@ -53,7 +53,7 @@ function ensureValidCopySync(
   src: string,
   dest: string,
   options: CopyOptions,
-  isCopyFolder = false
+  isCopyFolder = false,
 ): Deno.FileInfo | undefined {
   let destStat: Deno.FileInfo;
   try {
@@ -67,7 +67,7 @@ function ensureValidCopySync(
 
   if (isCopyFolder && !destStat.isDirectory) {
     throw new Error(
-      `Cannot overwrite non-directory '${dest}' with directory '${src}'.`
+      `Cannot overwrite non-directory '${dest}' with directory '${src}'.`,
     );
   }
   if (!options.overwrite) {
@@ -81,7 +81,7 @@ function ensureValidCopySync(
 async function copyFile(
   src: string,
   dest: string,
-  options: CopyOptions
+  options: CopyOptions,
 ): Promise<void> {
   await ensureValidCopy(src, dest, options);
   await Deno.copyFile(src, dest);
@@ -108,7 +108,7 @@ function copyFileSync(src: string, dest: string, options: CopyOptions): void {
 async function copySymLink(
   src: string,
   dest: string,
-  options: CopyOptions
+  options: CopyOptions,
 ): Promise<void> {
   await ensureValidCopy(src, dest, options);
   const originSrcFilePath = await Deno.readLink(src);
@@ -132,7 +132,7 @@ async function copySymLink(
 function copySymlinkSync(
   src: string,
   dest: string,
-  options: CopyOptions
+  options: CopyOptions,
 ): void {
   ensureValidCopySync(src, dest, options);
   const originSrcFilePath = Deno.readLinkSync(src);
@@ -157,7 +157,7 @@ function copySymlinkSync(
 async function copyDir(
   src: string,
   dest: string,
-  options: CopyOptions
+  options: CopyOptions,
 ): Promise<void> {
   const destStat = await ensureValidCopy(src, dest, options, true);
 
@@ -227,7 +227,7 @@ function copyDirSync(src: string, dest: string, options: CopyOptions): void {
 export async function copy(
   src: string,
   dest: string,
-  options: CopyOptions = {}
+  options: CopyOptions = {},
 ): Promise<void> {
   src = path.resolve(src);
   dest = path.resolve(dest);
@@ -240,7 +240,7 @@ export async function copy(
 
   if (srcStat.isDirectory && isSubdir(src, dest)) {
     throw new Error(
-      `Cannot copy '${src}' to a subdirectory of itself, '${dest}'.`
+      `Cannot copy '${src}' to a subdirectory of itself, '${dest}'.`,
     );
   }
 
@@ -266,7 +266,7 @@ export async function copy(
 export function copySync(
   src: string,
   dest: string,
-  options: CopyOptions = {}
+  options: CopyOptions = {},
 ): void {
   src = path.resolve(src);
   dest = path.resolve(dest);
@@ -279,7 +279,7 @@ export function copySync(
 
   if (srcStat.isDirectory && isSubdir(src, dest)) {
     throw new Error(
-      `Cannot copy '${src}' to a subdirectory of itself, '${dest}'.`
+      `Cannot copy '${src}' to a subdirectory of itself, '${dest}'.`,
     );
   }
 

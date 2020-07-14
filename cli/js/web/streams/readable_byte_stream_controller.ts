@@ -42,7 +42,7 @@ export class ReadableByteStreamControllerImpl
 
   private constructor() {
     throw new TypeError(
-      "ReadableByteStreamController's constructor cannot be called."
+      "ReadableByteStreamController's constructor cannot be called.",
     );
   }
 
@@ -66,7 +66,7 @@ export class ReadableByteStreamControllerImpl
     }
     if (this[sym.controlledReadableByteStream][sym.state] !== "readable") {
       throw new TypeError(
-        "ReadableByteStreamController's stream is not in a readable state."
+        "ReadableByteStreamController's stream is not in a readable state.",
       );
     }
     readableByteStreamControllerClose(this);
@@ -81,12 +81,12 @@ export class ReadableByteStreamControllerImpl
     }
     if (this[sym.controlledReadableByteStream][sym.state] !== "readable") {
       throw new TypeError(
-        "ReadableByteStreamController's stream is not in a readable state."
+        "ReadableByteStreamController's stream is not in a readable state.",
       );
     }
     if (!ArrayBuffer.isView(chunk)) {
       throw new TypeError(
-        "You can only enqueue array buffer views when using a ReadableByteStreamController"
+        "You can only enqueue array buffer views when using a ReadableByteStreamController",
       );
     }
     if (isDetachedBuffer(chunk.buffer)) {
@@ -126,8 +126,8 @@ export class ReadableByteStreamControllerImpl
         readableStreamCreateReadResult(
           view,
           false,
-          stream[sym.reader]![sym.forAuthorCode]
-        )
+          stream[sym.reader]![sym.forAuthorCode],
+        ),
       );
     }
     // 3.11.5.2.5 If autoAllocateChunkSize is not undefined,
@@ -137,13 +137,13 @@ export class ReadableByteStreamControllerImpl
   }
 
   [customInspect](): string {
-    return `${this.constructor.name} { byobRequest: ${String(
-      this.byobRequest
-    )}, desiredSize: ${String(this.desiredSize)} }`;
+    return `${this.constructor.name} { byobRequest: ${
+      String(this.byobRequest)
+    }, desiredSize: ${String(this.desiredSize)} }`;
   }
 }
 
 setFunctionName(
   ReadableByteStreamControllerImpl,
-  "ReadableByteStreamController"
+  "ReadableByteStreamController",
 );

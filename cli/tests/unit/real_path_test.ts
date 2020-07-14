@@ -34,7 +34,7 @@ unitTest(
       assert(/^[A-Z]/.test(targetPath));
     }
     assert(targetPath.endsWith("/target"));
-  }
+  },
 );
 
 unitTest({ perms: { read: false } }, function realPathSyncPerm(): void {
@@ -79,7 +79,7 @@ unitTest(
       assert(/^[A-Z]/.test(targetPath));
     }
     assert(targetPath.endsWith("/target"));
-  }
+  },
 );
 
 unitTest({ perms: { read: false } }, async function realPathPerm(): Promise<

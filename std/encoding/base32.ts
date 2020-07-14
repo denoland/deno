@@ -65,8 +65,7 @@ export function decode(b32: string): Uint8Array {
 
   let i: number;
   for (i = 0; i < len; i += 8) {
-    tmp =
-      (revLookup[b32.charCodeAt(i)] << 20) |
+    tmp = (revLookup[b32.charCodeAt(i)] << 20) |
       (revLookup[b32.charCodeAt(i + 1)] << 15) |
       (revLookup[b32.charCodeAt(i + 2)] << 10) |
       (revLookup[b32.charCodeAt(i + 3)] << 5) |
@@ -75,8 +74,7 @@ export function decode(b32: string): Uint8Array {
     arr[curByte++] = (tmp >> 9) & 0xff;
     arr[curByte++] = (tmp >> 1) & 0xff;
 
-    tmp =
-      ((tmp & 1) << 15) |
+    tmp = ((tmp & 1) << 15) |
       (revLookup[b32.charCodeAt(i + 5)] << 10) |
       (revLookup[b32.charCodeAt(i + 6)] << 5) |
       revLookup[b32.charCodeAt(i + 7)];
@@ -85,8 +83,7 @@ export function decode(b32: string): Uint8Array {
   }
 
   if (placeHoldersLen === 1) {
-    tmp =
-      (revLookup[b32.charCodeAt(i)] << 20) |
+    tmp = (revLookup[b32.charCodeAt(i)] << 20) |
       (revLookup[b32.charCodeAt(i + 1)] << 15) |
       (revLookup[b32.charCodeAt(i + 2)] << 10) |
       (revLookup[b32.charCodeAt(i + 3)] << 5) |
@@ -94,14 +91,12 @@ export function decode(b32: string): Uint8Array {
     arr[curByte++] = (tmp >> 17) & 0xff;
     arr[curByte++] = (tmp >> 9) & 0xff;
     arr[curByte++] = (tmp >> 1) & 0xff;
-    tmp =
-      ((tmp & 1) << 7) |
+    tmp = ((tmp & 1) << 7) |
       (revLookup[b32.charCodeAt(i + 5)] << 2) |
       (revLookup[b32.charCodeAt(i + 6)] >> 3);
     arr[curByte++] = tmp & 0xff;
   } else if (placeHoldersLen === 3) {
-    tmp =
-      (revLookup[b32.charCodeAt(i)] << 19) |
+    tmp = (revLookup[b32.charCodeAt(i)] << 19) |
       (revLookup[b32.charCodeAt(i + 1)] << 14) |
       (revLookup[b32.charCodeAt(i + 2)] << 9) |
       (revLookup[b32.charCodeAt(i + 3)] << 4) |
@@ -110,16 +105,14 @@ export function decode(b32: string): Uint8Array {
     arr[curByte++] = (tmp >> 8) & 0xff;
     arr[curByte++] = tmp & 0xff;
   } else if (placeHoldersLen === 4) {
-    tmp =
-      (revLookup[b32.charCodeAt(i)] << 11) |
+    tmp = (revLookup[b32.charCodeAt(i)] << 11) |
       (revLookup[b32.charCodeAt(i + 1)] << 6) |
       (revLookup[b32.charCodeAt(i + 2)] << 1) |
       (revLookup[b32.charCodeAt(i + 3)] >> 4);
     arr[curByte++] = (tmp >> 8) & 0xff;
     arr[curByte++] = tmp & 0xff;
   } else if (placeHoldersLen === 6) {
-    tmp =
-      (revLookup[b32.charCodeAt(i)] << 3) |
+    tmp = (revLookup[b32.charCodeAt(i)] << 3) |
       (revLookup[b32.charCodeAt(i + 1)] >> 2);
     arr[curByte++] = tmp & 0xff;
   }
@@ -131,16 +124,14 @@ function encodeChunk(uint8: Uint8Array, start: number, end: number): string {
   let tmp: number;
   const output = [];
   for (let i = start; i < end; i += 5) {
-    tmp =
-      ((uint8[i] << 16) & 0xff0000) |
+    tmp = ((uint8[i] << 16) & 0xff0000) |
       ((uint8[i + 1] << 8) & 0xff00) |
       (uint8[i + 2] & 0xff);
     output.push(lookup[(tmp >> 19) & 0x1f]);
     output.push(lookup[(tmp >> 14) & 0x1f]);
     output.push(lookup[(tmp >> 9) & 0x1f]);
     output.push(lookup[(tmp >> 4) & 0x1f]);
-    tmp =
-      ((tmp & 0xf) << 16) |
+    tmp = ((tmp & 0xf) << 16) |
       ((uint8[i + 3] << 8) & 0xff00) |
       (uint8[i + 4] & 0xff);
     output.push(lookup[(tmp >> 15) & 0x1f]);
@@ -169,15 +160,14 @@ export function encode(uint8: Uint8Array): string {
       encodeChunk(
         uint8,
         i,
-        i + maxChunkLength > len2 ? len2 : i + maxChunkLength
-      )
+        i + maxChunkLength > len2 ? len2 : i + maxChunkLength,
+      ),
     );
   }
 
   // pad the end with zeros, but make sure to not forget the extra bytes
   if (extraBytes === 4) {
-    tmp =
-      ((uint8[len2] & 0xff) << 16) |
+    tmp = ((uint8[len2] & 0xff) << 16) |
       ((uint8[len2 + 1] & 0xff) << 8) |
       (uint8[len2 + 2] & 0xff);
     parts.push(lookup[(tmp >> 19) & 0x1f]);
@@ -190,8 +180,7 @@ export function encode(uint8: Uint8Array): string {
     parts.push(lookup[tmp & 0x1f]);
     parts.push("=");
   } else if (extraBytes === 3) {
-    tmp =
-      ((uint8[len2] & 0xff) << 17) |
+    tmp = ((uint8[len2] & 0xff) << 17) |
       ((uint8[len2 + 1] & 0xff) << 9) |
       ((uint8[len2 + 2] & 0xff) << 1);
     parts.push(lookup[(tmp >> 20) & 0x1f]);

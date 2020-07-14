@@ -34,7 +34,7 @@ Deno.test("requireBuiltin", function () {
   const { readFileSync, isNull, extname } = require("./tests/cjs/cjs_builtin");
   assertEquals(
     readFileSync("./node/_fs/testdata/hello.txt", { encoding: "utf8" }),
-    "hello world"
+    "hello world",
   );
   assert(isNull(null));
   assertEquals(extname("index.html"), ".html");

@@ -220,7 +220,7 @@ interface NodeList {
   item(index: number): Node | null;
   forEach(
     callbackfn: (value: Node, key: number, parent: NodeList) => void,
-    thisArg?: any
+    thisArg?: any,
   ): void;
   [index: number]: Node;
   [Symbol.iterator](): IterableIterator<Node>;
@@ -234,7 +234,7 @@ interface NodeListOf<TNode extends Node> extends NodeList {
   item(index: number): TNode;
   forEach(
     callbackfn: (value: TNode, key: number, parent: NodeListOf<TNode>) => void,
-    thisArg?: any
+    thisArg?: any,
   ): void;
   [index: number]: TNode;
   [Symbol.iterator](): IterableIterator<TNode>;

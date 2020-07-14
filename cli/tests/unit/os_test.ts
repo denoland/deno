@@ -54,7 +54,7 @@ unitTest(
     // It is then verified that these match with the values of `expectedEnv`.
     const checkChildEnv = async (
       inputEnv: Record<string, string>,
-      expectedEnv: Record<string, string>
+      expectedEnv: Record<string, string>,
     ): Promise<void> => {
       const src = `
       console.log(
@@ -69,7 +69,7 @@ unitTest(
       assertEquals(status.success, true);
       const expectedValues = Object.values(expectedEnv);
       const actualValues = JSON.parse(
-        new TextDecoder().decode(await proc.output())
+        new TextDecoder().decode(await proc.output()),
       );
       assertEquals(actualValues, expectedValues);
       proc.close();
@@ -87,7 +87,7 @@ unitTest(
     assertNotEquals(lc1, uc1);
     await checkChildEnv(
       { [lc1]: "mu", [uc1]: "MU" },
-      { [lc1]: "mu", [uc1]: "MU" }
+      { [lc1]: "mu", [uc1]: "MU" },
     );
 
     // Check that 'ǆ' and 'Ǆ' are folded, but 'ǅ' is preserved.
@@ -98,13 +98,13 @@ unitTest(
     assertNotEquals(c2, uc2);
     await checkChildEnv(
       { [c2]: "Dz", [lc2]: "dz" },
-      { [c2]: "Dz", [lc2]: "dz", [uc2]: "dz" }
+      { [c2]: "Dz", [lc2]: "dz", [uc2]: "dz" },
     );
     await checkChildEnv(
       { [c2]: "Dz", [uc2]: "DZ" },
-      { [c2]: "Dz", [uc2]: "DZ", [lc2]: "DZ" }
+      { [c2]: "Dz", [uc2]: "DZ", [lc2]: "DZ" },
     );
-  }
+  },
 );
 
 unitTest(function osPid(): void {
@@ -130,7 +130,7 @@ unitTest(
     const expected = Deno.pid;
     const actual = parseInt(decoder.decode(output));
     assertEquals(actual, expected);
-  }
+  },
 );
 
 unitTest({ perms: { read: true } }, function execPath(): void {
@@ -143,7 +143,7 @@ unitTest({ perms: { read: false } }, function execPathPerm(): void {
       Deno.execPath();
     },
     Deno.errors.PermissionDenied,
-    "read access to <exec_path>, run again with the --allow-read flag"
+    "read access to <exec_path>, run again with the --allow-read flag",
   );
 });
 

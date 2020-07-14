@@ -64,7 +64,7 @@ export class MultipartBuilder {
   #writeFileHeaders = (
     field: string,
     filename: string,
-    type?: string
+    type?: string,
   ): void => {
     const headers = [
       [
@@ -122,7 +122,7 @@ export class MultipartParser {
     return {
       headers,
       disposition: getHeaderValueParams(
-        headers.get("Content-Disposition") ?? ""
+        headers.get("Content-Disposition") ?? "",
       ),
     };
   };

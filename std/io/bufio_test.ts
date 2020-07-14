@@ -122,8 +122,7 @@ Deno.test("bufioBufReader", async function (): Promise<void> {
           const read = readmaker.fn(new StringReader(text));
           const buf = new BufReader(read, bufsize);
           const s = await bufreader.fn(buf);
-          const debugStr =
-            `reader=${readmaker.name} ` +
+          const debugStr = `reader=${readmaker.name} ` +
             `fn=${bufreader.name} bufsize=${bufsize} want=${text} got=${s}`;
           assertEquals(s, text, debugStr);
         }
@@ -179,11 +178,11 @@ Deno.test("bufioReadString", async function (): Promise<void> {
 });
 
 const testInput = encoder.encode(
-  "012\n345\n678\n9ab\ncde\nfgh\nijk\nlmn\nopq\nrst\nuvw\nxy"
+  "012\n345\n678\n9ab\ncde\nfgh\nijk\nlmn\nopq\nrst\nuvw\nxy",
 );
 const testInputrn = encoder.encode(
   "012\r\n345\r\n678\r\n9ab\r\ncde\r\nfgh\r\nijk\r\nlmn\r\nopq\r\nrst\r\n" +
-    "uvw\r\nxy\r\n\n\r\n"
+    "uvw\r\nxy\r\n\n\r\n",
 );
 const testOutput = encoder.encode("0123456789abcdefghijklmnopqrstuvwxy");
 
@@ -225,7 +224,7 @@ async function testReadLine(input: Uint8Array): Promise<void> {
       assertEquals(
         line,
         want,
-        `Bad line at stride ${stride}: want: ${want} got: ${line}`
+        `Bad line at stride ${stride}: want: ${want} got: ${line}`,
       );
       done += line.byteLength;
     }
@@ -233,7 +232,7 @@ async function testReadLine(input: Uint8Array): Promise<void> {
       done,
       testOutput.byteLength,
       `readLine didn't return everything: got: ${done}, ` +
-        `want: ${testOutput} (stride: ${stride})`
+        `want: ${testOutput} (stride: ${stride})`,
     );
   }
 }
@@ -249,7 +248,7 @@ Deno.test("bufioPeek", async function (): Promise<void> {
   // string is 16 (minReadBufferSize) long.
   const buf = new BufReader(
     new StringReader("abcdefghijklmnop"),
-    MIN_READ_BUFFER_SIZE
+    MIN_READ_BUFFER_SIZE,
   );
 
   let actual = await buf.peek(1);
@@ -425,7 +424,7 @@ Deno.test("bufReaderReadFull", async function (): Promise<void> {
 Deno.test("readStringDelimAndLines", async function (): Promise<void> {
   const enc = new TextEncoder();
   const data = new Deno.Buffer(
-    enc.encode("Hello World\tHello World 2\tHello World 3")
+    enc.encode("Hello World\tHello World 2\tHello World 3"),
   );
   const chunks_ = [];
 
@@ -464,9 +463,9 @@ Deno.test(
     assertEquals(decoder.decode(r2.line), "z");
     assert(
       r1.line.buffer !== r2.line.buffer,
-      "array buffer should not be shared across reads"
+      "array buffer should not be shared across reads",
     );
-  }
+  },
 );
 
 Deno.test({

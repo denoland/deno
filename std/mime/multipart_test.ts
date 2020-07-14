@@ -28,7 +28,7 @@ Deno.test("multipartScanUntilBoundary1", function (): void {
     dashBoundary,
     nlDashBoundary,
     0,
-    true
+    true,
   );
   assertEquals(n, null);
 });
@@ -40,7 +40,7 @@ Deno.test("multipartScanUntilBoundary2", function (): void {
     dashBoundary,
     nlDashBoundary,
     0,
-    true
+    true,
   );
   assertEquals(n, 3);
 });
@@ -52,7 +52,7 @@ Deno.test("multipartScanUntilBoundary3", function (): void {
     dashBoundary,
     nlDashBoundary,
     0,
-    false
+    false,
   );
   assertEquals(n, data.length);
 });
@@ -64,7 +64,7 @@ Deno.test("multipartScanUntilBoundary4", function (): void {
     dashBoundary,
     nlDashBoundary,
     0,
-    false
+    false,
   );
   assertEquals(n, 3);
 });
@@ -105,27 +105,27 @@ Deno.test("multipartMultipartWriter2", function (): void {
   assertThrows(
     (): MultipartWriter => new MultipartWriter(w, ""),
     Error,
-    "invalid boundary length"
+    "invalid boundary length",
   );
   assertThrows(
     (): MultipartWriter =>
       new MultipartWriter(
         w,
         "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" +
-          "aaaaaaaa"
+          "aaaaaaaa",
       ),
     Error,
-    "invalid boundary length"
+    "invalid boundary length",
   );
   assertThrows(
     (): MultipartWriter => new MultipartWriter(w, "aaa aaa"),
     Error,
-    "invalid boundary character"
+    "invalid boundary character",
   );
   assertThrows(
     (): MultipartWriter => new MultipartWriter(w, "boundary¥¥"),
     Error,
-    "invalid boundary character"
+    "invalid boundary character",
   );
 });
 
@@ -139,7 +139,7 @@ Deno.test("multipartMultipartWriter3", async function (): Promise<void> {
       await mw.close();
     },
     Error,
-    "closed"
+    "closed",
   );
   await assertThrowsAsync(
     async (): Promise<void> => {
@@ -147,28 +147,28 @@ Deno.test("multipartMultipartWriter3", async function (): Promise<void> {
       await mw.writeFile("bar", "file", null as any);
     },
     Error,
-    "closed"
+    "closed",
   );
   await assertThrowsAsync(
     async (): Promise<void> => {
       await mw.writeField("bar", "bar");
     },
     Error,
-    "closed"
+    "closed",
   );
   assertThrows(
     (): void => {
       mw.createFormField("bar");
     },
     Error,
-    "closed"
+    "closed",
   );
   assertThrows(
     (): void => {
       mw.createFormFile("bar", "file");
     },
     Error,
-    "closed"
+    "closed",
   );
 });
 
@@ -178,7 +178,7 @@ Deno.test({
     const o = await Deno.open(path.resolve("./mime/testdata/sample.txt"));
     const mr = new MultipartReader(
       o,
-      "--------------------------434049563556637648550474"
+      "--------------------------434049563556637648550474",
     );
     const form = await mr.readForm();
     assertEquals(form.value("foo"), "foo");
@@ -250,7 +250,7 @@ Deno.test({
     const o = await Deno.open(path.resolve("./mime/testdata/sample.txt"));
     const mr = new MultipartReader(
       o,
-      "--------------------------434049563556637648550474"
+      "--------------------------434049563556637648550474",
     );
     const form = await mr.readForm(20);
     let file = form.file("file");
@@ -277,7 +277,7 @@ Deno.test({
     const o = await Deno.open(path.resolve("./mime/testdata/sample.txt"));
     const mr = new MultipartReader(
       o,
-      "--------------------------434049563556637648550474"
+      "--------------------------434049563556637648550474",
     );
     const form = await mr.readForm();
     const map = new Map(form.entries());

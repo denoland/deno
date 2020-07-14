@@ -95,7 +95,7 @@ export class BufReader implements Reader {
     }
 
     throw new Error(
-      `No progress after ${MAX_CONSECUTIVE_EMPTY_READS} read() calls`
+      `No progress after ${MAX_CONSECUTIVE_EMPTY_READS} read() calls`,
     );
   }
 
@@ -252,7 +252,7 @@ export class BufReader implements Reader {
       let { partial } = err;
       assert(
         partial instanceof Uint8Array,
-        "bufio: caught error from `readSlice()` without `partial` property"
+        "bufio: caught error from `readSlice()` without `partial` property",
       );
 
       // Don't throw if `readSlice()` failed with `BufferFullError`, instead we
@@ -466,7 +466,7 @@ export class BufWriter extends AbstractBufBase implements Writer {
     try {
       await Deno.writeAll(
         this.writer,
-        this.buf.subarray(0, this.usedBufferBytes)
+        this.buf.subarray(0, this.usedBufferBytes),
       );
     } catch (e) {
       this.err = e;
@@ -527,7 +527,7 @@ export class BufWriterSync extends AbstractBufBase implements WriterSync {
   /** return new BufWriterSync unless writer is BufWriterSync */
   static create(
     writer: WriterSync,
-    size: number = DEFAULT_BUF_SIZE
+    size: number = DEFAULT_BUF_SIZE,
   ): BufWriterSync {
     return writer instanceof BufWriterSync
       ? writer
@@ -559,7 +559,7 @@ export class BufWriterSync extends AbstractBufBase implements WriterSync {
     try {
       Deno.writeAllSync(
         this.writer,
-        this.buf.subarray(0, this.usedBufferBytes)
+        this.buf.subarray(0, this.usedBufferBytes),
       );
     } catch (e) {
       this.err = e;
@@ -633,7 +633,7 @@ function createLPS(pat: Uint8Array): Uint8Array {
 /** Read delimited bytes from a Reader. */
 export async function* readDelim(
   reader: Reader,
-  delim: Uint8Array
+  delim: Uint8Array,
 ): AsyncIterableIterator<Uint8Array> {
   // Avoid unicode problems
   const delimLen = delim.length;
@@ -692,7 +692,7 @@ export async function* readDelim(
 /** Read delimited strings from a Reader. */
 export async function* readStringDelim(
   reader: Reader,
-  delim: string
+  delim: string,
 ): AsyncIterableIterator<string> {
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
@@ -704,7 +704,7 @@ export async function* readStringDelim(
 /** Read strings line-by-line from a Reader. */
 // eslint-disable-next-line require-await
 export async function* readLines(
-  reader: Reader
+  reader: Reader,
 ): AsyncIterableIterator<string> {
   yield* readStringDelim(reader, "\n");
 }

@@ -93,7 +93,7 @@ export async function workerMessageRecvCallback(data: string): Promise<void> {
         e.fileName,
         e.lineNumber,
         e.columnNumber,
-        e
+        e,
       );
       handled = ret === true;
     }
@@ -122,7 +122,7 @@ export const workerRuntimeGlobalProperties = {
 export function bootstrapWorkerRuntime(
   name: string,
   useDenoNamespace: boolean,
-  internalName?: string
+  internalName?: string,
 ): void {
   if (hasBootstrapped) {
     throw new Error("Worker runtime already bootstrapped");
@@ -139,7 +139,7 @@ export function bootstrapWorkerRuntime(
   Object.defineProperties(globalThis, { name: readOnly(name) });
   setEventTargetData(globalThis);
   const { unstableFlag, pid, noColor, args } = runtime.start(
-    internalName ?? name
+    internalName ?? name,
   );
 
   if (unstableFlag) {

@@ -54,14 +54,14 @@ Deno.test({
         os.getPriority(3.15);
       },
       Error,
-      "pid must be 'an integer'"
+      "pid must be 'an integer'",
     );
     assertThrows(
       () => {
         os.getPriority(9999999999);
       },
       Error,
-      "must be >= -2147483648 && <= 2147483647"
+      "must be >= -2147483648 && <= 2147483647",
     );
   },
 });
@@ -74,14 +74,14 @@ Deno.test({
         os.setPriority(3.15, 0);
       },
       Error,
-      "pid must be 'an integer'"
+      "pid must be 'an integer'",
     );
     assertThrows(
       () => {
         os.setPriority(9999999999, 0);
       },
       Error,
-      "pid must be >= -2147483648 && <= 2147483647"
+      "pid must be >= -2147483648 && <= 2147483647",
     );
   },
 });
@@ -94,28 +94,28 @@ Deno.test({
         os.setPriority(0, 3.15);
       },
       Error,
-      "priority must be 'an integer'"
+      "priority must be 'an integer'",
     );
     assertThrows(
       () => {
         os.setPriority(0, -21);
       },
       Error,
-      "priority must be >= -20 && <= 19"
+      "priority must be >= -20 && <= 19",
     );
     assertThrows(
       () => {
         os.setPriority(0, 20);
       },
       Error,
-      "priority must be >= -20 && <= 19"
+      "priority must be >= -20 && <= 19",
     );
     assertThrows(
       () => {
         os.setPriority(0, 9999999999);
       },
       Error,
-      "priority must be >= -20 && <= 19"
+      "priority must be >= -20 && <= 19",
     );
   },
 });
@@ -129,28 +129,28 @@ Deno.test({
         os.setPriority(3.15);
       },
       Error,
-      "priority must be 'an integer'"
+      "priority must be 'an integer'",
     );
     assertThrows(
       () => {
         os.setPriority(-21);
       },
       Error,
-      "priority must be >= -20 && <= 19"
+      "priority must be >= -20 && <= 19",
     );
     assertThrows(
       () => {
         os.setPriority(20);
       },
       Error,
-      "priority must be >= -20 && <= 19"
+      "priority must be >= -20 && <= 19",
     );
     assertThrows(
       () => {
         os.setPriority(9999999999);
       },
       Error,
-      "priority must be >= -20 && <= 19"
+      "priority must be >= -20 && <= 19",
     );
   },
 });
@@ -207,63 +207,63 @@ Deno.test({
         os.cpus();
       },
       Error,
-      "Not implemented"
+      "Not implemented",
     );
     assertThrows(
       () => {
         os.freemem();
       },
       Error,
-      "Not implemented"
+      "Not implemented",
     );
     assertThrows(
       () => {
         os.getPriority();
       },
       Error,
-      "Not implemented"
+      "Not implemented",
     );
     assertThrows(
       () => {
         os.networkInterfaces();
       },
       Error,
-      "Not implemented"
+      "Not implemented",
     );
     assertThrows(
       () => {
         os.setPriority(0);
       },
       Error,
-      "Not implemented"
+      "Not implemented",
     );
     assertThrows(
       () => {
         os.totalmem();
       },
       Error,
-      "Not implemented"
+      "Not implemented",
     );
     assertThrows(
       () => {
         os.type();
       },
       Error,
-      "Not implemented"
+      "Not implemented",
     );
     assertThrows(
       () => {
         os.uptime();
       },
       Error,
-      "Not implemented"
+      "Not implemented",
     );
     assertThrows(
       () => {
         os.userInfo();
       },
       Error,
-      "Not implemented"
+      "Not implemented",
     );
   },
 });

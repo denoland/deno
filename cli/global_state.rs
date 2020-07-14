@@ -58,6 +58,10 @@ impl GlobalState {
     let dir = deno_dir::DenoDir::new(custom_root)?;
     let deps_cache_location = dir.root.join("deps");
     let http_cache = http_cache::HttpCache::new(&deps_cache_location);
+    let ca_file = flags
+      .ca_file
+      .clone()
+      .or_else(|| env::var("DENO_CERT").map(String::into).ok());
 
     let file_fetcher = SourceFileFetcher::new(
       http_cache,
@@ -65,7 +69,7 @@ impl GlobalState {
       flags.cache_blocklist.clone(),
       flags.no_remote,
       flags.cached_only,
-      flags.ca_file.clone(),
+      ca_file,
     )?;
 
     let ts_compiler = TsCompiler::new(

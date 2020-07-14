@@ -23,7 +23,7 @@ unitTest(
         Deno.statSync(path);
       }, Deno.errors.NotFound);
     }
-  }
+  },
 );
 
 unitTest(
@@ -43,7 +43,7 @@ unitTest(
         Deno.statSync(filename);
       }, Deno.errors.NotFound);
     }
-  }
+  },
 );
 
 unitTest(
@@ -56,7 +56,7 @@ unitTest(
 
       const tempDir = Deno.makeTempDirSync();
       const fileUrl = new URL(
-        `file://${Deno.build.os === "windows" ? "/" : ""}${tempDir}/test.txt`
+        `file://${Deno.build.os === "windows" ? "/" : ""}${tempDir}/test.txt`,
       );
 
       Deno.writeFileSync(fileUrl, data, { mode: 0o666 });
@@ -68,7 +68,7 @@ unitTest(
         Deno.statSync(fileUrl);
       }, Deno.errors.NotFound);
     }
-  }
+  },
 );
 
 unitTest(
@@ -95,7 +95,7 @@ unitTest(
         await Deno[method]("/baddir");
       }, Deno.errors.NotFound);
     }
-  }
+  },
 );
 
 unitTest(
@@ -117,7 +117,7 @@ unitTest(
         Deno.lstatSync(danglingSymlinkPath);
       }, Deno.errors.NotFound);
     }
-  }
+  },
 );
 
 unitTest(
@@ -143,7 +143,7 @@ unitTest(
       }, Deno.errors.NotFound);
       await Deno[method](filePath);
     }
-  }
+  },
 );
 
 unitTest({ perms: { write: false } }, async function removePerm(): Promise<
@@ -171,7 +171,7 @@ unitTest(
         () => {
           Deno.statSync(path);
         }, // Directory is gone
-        Deno.errors.NotFound
+        Deno.errors.NotFound,
       );
 
       // REMOVE NON-EMPTY DIRECTORY
@@ -190,7 +190,7 @@ unitTest(
       }, Deno.errors.NotFound);
       // Directory is gone
     }
-  }
+  },
 );
 
 unitTest(
@@ -211,7 +211,7 @@ unitTest(
       }, Deno.errors.NotFound);
       // File is gone
     }
-  }
+  },
 );
 
 unitTest({ perms: { write: true } }, async function removeAllFail(): Promise<
@@ -254,7 +254,7 @@ unitTest(
         Deno.statSync(path);
       }, Deno.errors.NotFound);
     }
-  }
+  },
 );
 
 if (Deno.build.os === "windows") {
@@ -272,7 +272,7 @@ if (Deno.build.os === "windows") {
       await assertThrowsAsync(async () => {
         await Deno.lstat("file_link");
       }, Deno.errors.NotFound);
-    }
+    },
   );
 
   unitTest(
@@ -290,6 +290,6 @@ if (Deno.build.os === "windows") {
       await assertThrowsAsync(async () => {
         await Deno.lstat("dir_link");
       }, Deno.errors.NotFound);
-    }
+    },
   );
 }

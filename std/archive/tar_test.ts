@@ -212,7 +212,7 @@ Deno.test(
     reader.close();
     await Deno.remove(outputFile);
     assertEquals(entries.length, 0);
-  }
+  },
 );
 
 Deno.test("untarAsyncIteratorFromFileReader", async function (): Promise<void> {
@@ -299,7 +299,7 @@ Deno.test(
 
       assertEquals(entries.length, 0);
     }
-  }
+  },
 );
 
 Deno.test("untarLinuxGeneratedTar", async function (): Promise<void> {

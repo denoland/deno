@@ -381,8 +381,8 @@ x,,,
    */
   {
     Name: "HugeLines",
-    Input:
-      "#ignore\n".repeat(10000) + "@".repeat(5000) + "," + "*".repeat(5000),
+    Input: "#ignore\n".repeat(10000) + "@".repeat(5000) + "," +
+      "*".repeat(5000),
     Output: [["@".repeat(5000), "*".repeat(5000)]],
     Comment: "#",
   },
@@ -488,7 +488,7 @@ for (const t of testCases) {
               trimLeadingSpace: trim,
               fieldsPerRecord: fieldsPerRec,
               lazyQuotes: lazyquote,
-            }
+            },
           );
         } catch (e) {
           err = e;
@@ -504,7 +504,7 @@ for (const t of testCases) {
             trimLeadingSpace: trim,
             fieldsPerRecord: fieldsPerRec,
             lazyQuotes: lazyquote,
-          }
+          },
         );
         const expected = t.Output;
         assertEquals(actual, expected);

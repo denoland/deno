@@ -6,7 +6,7 @@ import { fromFileUrl } from "../path.ts";
 export function copyFile(
   source: string | URL,
   destination: string,
-  callback: CallbackWithError
+  callback: CallbackWithError,
 ): void {
   source = source instanceof URL ? fromFileUrl(source) : source;
 

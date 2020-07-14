@@ -347,7 +347,7 @@ fn fmt_test() {
   let t = TempDir::new().expect("tempdir fail");
   let fixed = util::root_path().join("cli/tests/badly_formatted_fixed.js");
   let badly_formatted_original =
-    util::root_path().join("cli/tests/badly_formatted.js");
+    util::root_path().join("cli/tests/badly_formatted.mjs");
   let badly_formatted = t.path().join("badly_formatted.js");
   let badly_formatted_str = badly_formatted.to_str().unwrap();
   std::fs::copy(&badly_formatted_original, &badly_formatted)
@@ -2073,6 +2073,12 @@ itest!(unstable_enabled_js {
   output: "unstable_enabled_js.out",
 });
 
+itest!(unstable_disabled_ts2551 {
+  args: "run --reload unstable_ts2551.ts",
+  exit_code: 1,
+  output: "unstable_disabled_ts2551.out",
+});
+
 itest!(_053_import_compression {
   args: "run --quiet --reload --allow-net 053_import_compression/main.ts",
   output: "053_import_compression.out",
@@ -2181,6 +2187,27 @@ itest!(deno_lint_glob {
   output: "lint/expected_glob.out",
   exit_code: 1,
 });
+
+#[test]
+fn cafile_env_fetch() {
+  use url::Url;
+  let g = util::http_server();
+  let deno_dir = TempDir::new().expect("tempdir fail");
+  let module_url =
+    Url::parse("https://localhost:5545/cli/tests/cafile_url_imports.ts")
+      .unwrap();
+  let cafile = util::root_path().join("cli/tests/tls/RootCA.pem");
+  let output = Command::new(util::deno_exe_path())
+    .env("DENO_DIR", deno_dir.path())
+    .env("DENO_CERT", cafile)
+    .current_dir(util::root_path())
+    .arg("cache")
+    .arg(module_url.to_string())
+    .output()
+    .expect("Failed to spawn script");
+  assert!(output.status.success());
+  drop(g);
+}
 
 #[test]
 fn cafile_fetch() {
@@ -3169,4 +3196,52 @@ fn should_not_panic_on_no_stderr() {
     WinProcConstraints::NoStdErr,
   );
   output.unwrap();
+}
+
+#[cfg(not(windows))]
+#[test]
+fn should_not_panic_on_undefined_home_environment_variable() {
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("cli/tests/echo.ts")
+    .env_remove("HOME")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+}
+
+#[test]
+fn should_not_panic_on_undefined_deno_dir_environment_variable() {
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("cli/tests/echo.ts")
+    .env_remove("DENO_DIR")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+}
+
+#[cfg(not(windows))]
+#[test]
+fn should_not_panic_on_undefined_deno_dir_and_home_environment_variables() {
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("cli/tests/echo.ts")
+    .env_remove("DENO_DIR")
+    .env_remove("HOME")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
 }

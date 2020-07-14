@@ -36,7 +36,7 @@ export class WritableStreamImpl<W = any> implements WritableStream<W> {
 
   constructor(
     underlyingSink: UnderlyingSink = {},
-    strategy: QueuingStrategy = {}
+    strategy: QueuingStrategy = {},
   ) {
     initializeWritableStream(this);
     const size = strategy.size;
@@ -51,7 +51,7 @@ export class WritableStreamImpl<W = any> implements WritableStream<W> {
       this,
       underlyingSink,
       highWaterMark,
-      sizeAlgorithm
+      sizeAlgorithm,
     );
   }
 
@@ -69,7 +69,7 @@ export class WritableStreamImpl<W = any> implements WritableStream<W> {
     }
     if (isWritableStreamLocked(this)) {
       return Promise.reject(
-        new TypeError("Cannot abort a locked WritableStream.")
+        new TypeError("Cannot abort a locked WritableStream."),
       );
     }
     return writableStreamAbort(this, reason);
@@ -81,12 +81,12 @@ export class WritableStreamImpl<W = any> implements WritableStream<W> {
     }
     if (isWritableStreamLocked(this)) {
       return Promise.reject(
-        new TypeError("Cannot abort a locked WritableStream.")
+        new TypeError("Cannot abort a locked WritableStream."),
       );
     }
     if (writableStreamCloseQueuedOrInFlight(this)) {
       return Promise.reject(
-        new TypeError("Cannot close an already closing WritableStream.")
+        new TypeError("Cannot close an already closing WritableStream."),
       );
     }
     return writableStreamClose(this);

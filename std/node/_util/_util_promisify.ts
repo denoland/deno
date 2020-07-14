@@ -32,7 +32,7 @@ declare let Symbol: SymbolConstructor;
 interface SymbolConstructor {
   for(key: "nodejs.util.promisify.custom"): typeof _CustomPromisifiedSymbol;
   for(
-    key: "nodejs.util.promisify.customArgs"
+    key: "nodejs.util.promisify.customArgs",
   ): typeof _CustomPromisifyArgsSymbol;
 }
 // End hack.
@@ -44,21 +44,22 @@ const kCustomPromisifiedSymbol = Symbol.for("nodejs.util.promisify.custom");
 // This is an internal Node symbol used by functions returning multiple
 // arguments, e.g. ['bytesRead', 'buffer'] for fs.read().
 const kCustomPromisifyArgsSymbol = Symbol.for(
-  "nodejs.util.promisify.customArgs"
+  "nodejs.util.promisify.customArgs",
 );
 
 class NodeInvalidArgTypeError extends TypeError {
   public code = "ERR_INVALID_ARG_TYPE";
   constructor(argumentName: string, type: string, received: unknown) {
     super(
-      `The "${argumentName}" argument must be of type ${type}. Received ${typeof received}`
+      `The "${argumentName}" argument must be of type ${type}. Received ${typeof received}`,
     );
   }
 }
 
 export function promisify(original: Function): Function {
-  if (typeof original !== "function")
+  if (typeof original !== "function") {
     throw new NodeInvalidArgTypeError("original", "Function", original);
+  }
 
   // @ts-ignore TypeScript (as of 3.7) does not support indexing namespaces by symbol
   if (original[kCustomPromisifiedSymbol]) {
@@ -68,7 +69,7 @@ export function promisify(original: Function): Function {
       throw new NodeInvalidArgTypeError(
         "util.promisify.custom",
         "Function",
-        fn
+        fn,
       );
     }
     return Object.defineProperty(fn, kCustomPromisifiedSymbol, {
@@ -115,7 +116,7 @@ export function promisify(original: Function): Function {
   });
   return Object.defineProperties(
     fn,
-    Object.getOwnPropertyDescriptors(original)
+    Object.getOwnPropertyDescriptors(original),
   );
 }
 

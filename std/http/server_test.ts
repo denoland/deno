@@ -51,8 +51,7 @@ const responseTests: ResponseTest[] = [
       body: new Deno.Buffer(new TextEncoder().encode("abcdef")),
     },
 
-    raw:
-      "HTTP/1.1 200 OK\r\n" +
+    raw: "HTTP/1.1 200 OK\r\n" +
       "transfer-encoding: chunked\r\n\r\n" +
       "6\r\nabcdef\r\n0\r\n\r\n",
   },
@@ -94,10 +93,9 @@ Deno.test("requestContentLength", function (): void {
     const maxChunkSize = 70;
     while (chunkOffset < shortText.length) {
       const chunkSize = Math.min(maxChunkSize, shortText.length - chunkOffset);
-      chunksData += `${chunkSize.toString(16)}\r\n${shortText.substr(
-        chunkOffset,
-        chunkSize
-      )}\r\n`;
+      chunksData += `${chunkSize.toString(16)}\r\n${
+        shortText.substr(chunkOffset, chunkSize)
+      }\r\n`;
       chunkOffset += chunkSize;
     }
     chunksData += "0\r\n\r\n";
@@ -164,7 +162,7 @@ Deno.test(
     assertEquals(tr.total, 0);
     await req.finalize();
     assertEquals(tr.total, text.length);
-  }
+  },
 );
 Deno.test(
   "ServerRequest.finalize() should consume unread body / chunked, trailers",
@@ -199,7 +197,7 @@ Deno.test(
     assertEquals(req.headers.has("trailer"), false);
     assertEquals(req.headers.get("deno"), "land");
     assertEquals(req.headers.get("node"), "js");
-  }
+  },
 );
 Deno.test("requestBodyWithTransferEncoding", async function (): Promise<void> {
   {
@@ -212,10 +210,9 @@ Deno.test("requestBodyWithTransferEncoding", async function (): Promise<void> {
     const maxChunkSize = 70;
     while (chunkOffset < shortText.length) {
       const chunkSize = Math.min(maxChunkSize, shortText.length - chunkOffset);
-      chunksData += `${chunkSize.toString(16)}\r\n${shortText.substr(
-        chunkOffset,
-        chunkSize
-      )}\r\n`;
+      chunksData += `${chunkSize.toString(16)}\r\n${
+        shortText.substr(chunkOffset, chunkSize)
+      }\r\n`;
       chunkOffset += chunkSize;
     }
     chunksData += "0\r\n\r\n";
@@ -236,10 +233,9 @@ Deno.test("requestBodyWithTransferEncoding", async function (): Promise<void> {
     const maxChunkSize = 70;
     while (chunkOffset < longText.length) {
       const chunkSize = Math.min(maxChunkSize, longText.length - chunkOffset);
-      chunksData += `${chunkSize.toString(16)}\r\n${longText.substr(
-        chunkOffset,
-        chunkSize
-      )}\r\n`;
+      chunksData += `${chunkSize.toString(16)}\r\n${
+        longText.substr(chunkOffset, chunkSize)
+      }\r\n`;
       chunkOffset += chunkSize;
     }
     chunksData += "0\r\n\r\n";
@@ -308,10 +304,9 @@ Deno.test("requestBodyReaderWithTransferEncoding", async function (): Promise<
     const maxChunkSize = 70;
     while (chunkOffset < shortText.length) {
       const chunkSize = Math.min(maxChunkSize, shortText.length - chunkOffset);
-      chunksData += `${chunkSize.toString(16)}\r\n${shortText.substr(
-        chunkOffset,
-        chunkSize
-      )}\r\n`;
+      chunksData += `${chunkSize.toString(16)}\r\n${
+        shortText.substr(chunkOffset, chunkSize)
+      }\r\n`;
       chunkOffset += chunkSize;
     }
     chunksData += "0\r\n\r\n";
@@ -341,10 +336,9 @@ Deno.test("requestBodyReaderWithTransferEncoding", async function (): Promise<
     const maxChunkSize = 70;
     while (chunkOffset < longText.length) {
       const chunkSize = Math.min(maxChunkSize, longText.length - chunkOffset);
-      chunksData += `${chunkSize.toString(16)}\r\n${longText.substr(
-        chunkOffset,
-        chunkSize
-      )}\r\n`;
+      chunksData += `${chunkSize.toString(16)}\r\n${
+        longText.substr(chunkOffset, chunkSize)
+      }\r\n`;
       chunkOffset += chunkSize;
     }
     chunksData += "0\r\n\r\n";
@@ -436,7 +430,7 @@ Deno.test({
       const s = await r.readLine();
       assert(
         s !== null && s.includes("server listening"),
-        "server must be started"
+        "server must be started",
       );
       // Requests to the server and immediately closes the connection
       const conn = await Deno.connectTls({
@@ -446,7 +440,7 @@ Deno.test({
       });
       await Deno.writeAll(
         conn,
-        new TextEncoder().encode("GET / HTTP/1.0\r\n\r\n")
+        new TextEncoder().encode("GET / HTTP/1.0\r\n\r\n"),
       );
       const res = new Uint8Array(100);
       const nread = await conn.read(res);
@@ -475,7 +469,7 @@ Deno.test(
 
     const nextAfterClosing = server[Symbol.asyncIterator]().next();
     assertEquals(await nextAfterClosing, { value: undefined, done: true });
-  }
+  },
 );
 
 Deno.test({
@@ -492,7 +486,7 @@ Deno.test({
     const conn = await Deno.connect({ hostname: "127.0.0.1", port: 8123 });
     await Deno.writeAll(
       conn,
-      new TextEncoder().encode("GET /hello HTTP/1.1\r\n\r\n")
+      new TextEncoder().encode("GET /hello HTTP/1.1\r\n\r\n"),
     );
     const res = new Uint8Array(100);
     const nread = await conn.read(res);
@@ -533,7 +527,7 @@ Deno.test({
     });
     await Deno.writeAll(
       conn,
-      new TextEncoder().encode("GET / HTTP/1.1\r\n\r\n")
+      new TextEncoder().encode("GET / HTTP/1.1\r\n\r\n"),
     );
     conn.close();
     await p;
@@ -551,12 +545,12 @@ Deno.test({
     });
     await Deno.writeAll(
       conn,
-      encode("GET / HTTP/1.1\r\nmalformedHeader\r\n\r\n\r\n\r\n")
+      encode("GET / HTTP/1.1\r\nmalformedHeader\r\n\r\n\r\n\r\n"),
     );
     const responseString = decode(await Deno.readAll(conn));
     assertMatch(
       responseString,
-      /^HTTP\/1\.1 400 Bad Request\r\ncontent-length: \d+\r\n\r\n.*\r\n\r\n$/ms
+      /^HTTP\/1\.1 400 Bad Request\r\ncontent-length: \d+\r\n\r\n.*\r\n\r\n$/ms,
     );
     conn.close();
     server.close();
@@ -592,7 +586,7 @@ Deno.test({
             port,
             // certFile
           }),
-        Deno.errors.InvalidData
+        Deno.errors.InvalidData,
       );
 
       // Valid request after invalid
@@ -604,7 +598,7 @@ Deno.test({
 
       await Deno.writeAll(
         conn,
-        new TextEncoder().encode("GET / HTTP/1.0\r\n\r\n")
+        new TextEncoder().encode("GET / HTTP/1.0\r\n\r\n"),
       );
       const res = new Uint8Array(100);
       const nread = await conn.read(res);

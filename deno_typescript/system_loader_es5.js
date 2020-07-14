@@ -8,7 +8,7 @@
 /* eslint-disable */
 var System, __instantiate;
 (function () {
-  // prettier-ignore
+  // deno-fmt-ignore
   var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
     return new (P || (P = Promise))(function (resolve, reject) {
@@ -18,7 +18,7 @@ var System, __instantiate;
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
   };
-  // prettier-ignore
+  // deno-fmt-ignore
   var __generator = (this && this.__generator) || function (thisArg, body) {
     var _ = { label: 0, sent: function() { if (t[0] & 1) throw t[1]; return t[1]; }, trys: [], ops: [] }, f, y, t, g;
     return g = { next: verb(0), "throw": verb(1), "return": verb(2) }, typeof Symbol === "function" && (g[Symbol.iterator] = function() { return this; }), g;
@@ -75,11 +75,9 @@ var System, __instantiate;
         }
         return [
           2,
-          id in r
-            ? gExpA(id)
-            : Promise.resolve().then(function () {
-                return require(mid);
-              }),
+          id in r ? gExpA(id) : Promise.resolve().then(function () {
+            return require(mid);
+          }),
         ];
       });
     });

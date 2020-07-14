@@ -31,7 +31,7 @@ declare global {
     apply<T, R>(
       this: (this: T, ...args: number[]) => R,
       thisArg: T,
-      args: Uint16Array
+      args: Uint16Array,
     ): R;
   }
 }
@@ -39,7 +39,7 @@ declare global {
 export function decodeUtf8(
   input: Uint8Array,
   fatal: boolean,
-  ignoreBOM: boolean
+  ignoreBOM: boolean,
 ): string {
   let outString = "";
 
@@ -61,10 +61,11 @@ export function decodeUtf8(
   for (; i < input.length; ++i) {
     // Encoding error handling
     if (state === 12 || (state !== 0 && (input[i] & 0xc0) !== 0x80)) {
-      if (fatal)
+      if (fatal) {
         throw new TypeError(
-          `Decoder error. Invalid byte in sequence at position ${i} in data.`
+          `Decoder error. Invalid byte in sequence at position ${i} in data.`,
         );
+      }
       outBuffer[outIndex++] = 0xfffd; // Replacement character
       if (outIndex === outBufferLength) {
         outString += String.fromCharCode.apply(null, outBuffer);
@@ -73,7 +74,7 @@ export function decodeUtf8(
       state = 0;
     }
 
-    // prettier-ignore
+    // deno-fmt-ignore
     type = [
        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
@@ -84,11 +85,10 @@ export function decodeUtf8(
        8,8,2,2,2,2,2,2,2,2,2,2,2,2,2,2,  2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,
       10,3,3,3,3,3,3,3,3,3,3,3,3,4,3,3, 11,6,6,6,5,8,8,8,8,8,8,8,8,8,8,8
     ][input[i]];
-    codepoint =
-      state !== 0
-        ? (input[i] & 0x3f) | (codepoint << 6)
-        : (0xff >> type) & input[i];
-    // prettier-ignore
+    codepoint = state !== 0
+      ? (input[i] & 0x3f) | (codepoint << 6)
+      : (0xff >> type) & input[i];
+    // deno-fmt-ignore
     state = [
        0,12,24,36,60,96,84,12,12,12,48,72, 12,12,12,12,12,12,12,12,12,12,12,12,
       12, 0,12,12,12,12,12, 0,12, 0,12,12, 12,24,12,12,12,12,12,24,12,24,12,12,

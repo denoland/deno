@@ -9,6 +9,7 @@ use byteorder::{LittleEndian, WriteBytesExt};
 use deno_core::Buf;
 use deno_core::CoreIsolateState;
 use deno_core::Op;
+use deno_core::OpDispatcher;
 use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
 use std::future::Future;
@@ -114,9 +115,7 @@ fn test_parse_min_record() {
   assert_eq!(parse_min_record(&buf), None);
 }
 
-pub fn minimal_op<D>(
-  d: D,
-) -> impl Fn(&mut CoreIsolateState, &mut [ZeroCopyBuf]) -> Op
+pub fn minimal_op<D>(d: D) -> impl OpDispatcher
 where
   D: Fn(&mut CoreIsolateState, bool, i32, &mut [ZeroCopyBuf]) -> MinimalOp,
 {
