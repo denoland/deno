@@ -521,6 +521,7 @@ async fn doc_command(
   source_file: Option<String>,
   json: bool,
   maybe_filter: Option<String>,
+  private: bool,
 ) -> Result<(), ErrBox> {
   let global_state = GlobalState::new(flags.clone())?;
   let source_file = source_file.unwrap_or_else(|| "--builtin".to_string());
@@ -546,7 +547,7 @@ async fn doc_command(
   }
 
   let loader = Box::new(global_state.file_fetcher.clone());
-  let doc_parser = doc::DocParser::new(loader);
+  let doc_parser = doc::DocParser::new(loader, private);
 
   let parse_result = if source_file == "--builtin" {
     doc_parser.parse_source("lib.deno.d.ts", get_types(flags.unstable).as_str())
@@ -576,13 +577,9 @@ async fn doc_command(
         eprintln!("Node {} was not found!", filter);
         std::process::exit(1);
       }
-      let mut details = String::new();
-      for node in nodes {
-        details.push_str(doc::printer::format_details(node).as_str());
-      }
-      details
+      format!("{}", doc::DocPrinter::new(&nodes, true, private))
     } else {
-      doc::printer::format(doc_nodes)
+      format!("{}", doc::DocPrinter::new(&doc_nodes, false, private))
     };
 
     write_to_stdout_ignore_sigpipe(details.as_bytes()).map_err(ErrBox::from)
@@ -720,7 +717,8 @@ pub fn main() {
       source_file,
       json,
       filter,
-    } => doc_command(flags, source_file, json, filter).boxed_local(),
+      private,
+    } => doc_command(flags, source_file, json, filter, private).boxed_local(),
     DenoSubcommand::Eval {
       print,
       code,

@@ -342,11 +342,7 @@ export async function fetch(
             !redirectUrl.startsWith("http://") &&
             !redirectUrl.startsWith("https://")
           ) {
-            redirectUrl =
-              url.split("//")[0] +
-              "//" +
-              url.split("//")[1].split("/")[0] +
-              redirectUrl; // TODO: handle relative redirection more gracefully
+            redirectUrl = new URL(redirectUrl, url).href;
           }
           url = redirectUrl;
           redirected = true;

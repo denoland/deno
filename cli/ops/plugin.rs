@@ -110,7 +110,8 @@ impl<'a> plugin_api::Interface for PluginInterface<'a> {
     let plugin_lib = self.plugin_lib.clone();
     self.isolate_state.op_registry.register(
       name,
-      move |isolate_state, zero_copy| {
+      move |isolate_state: &mut CoreIsolateState,
+            zero_copy: &mut [ZeroCopyBuf]| {
         let mut interface = PluginInterface::new(isolate_state, &plugin_lib);
         let op = dispatch_op_fn(&mut interface, zero_copy);
         match op {

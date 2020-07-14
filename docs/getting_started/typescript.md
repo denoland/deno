@@ -14,6 +14,31 @@ import { Response } from "https://deno.land/std@0.53.0/http/server.ts";
 import { queue } from "./collections.ts";
 ```
 
+### `--no-check` option
+
+When using `deno run`, `deno test`, `deno cache`,`deno info`, or `deno bundle`
+you can specify the `--no-check` flag to disable TypeScript type checking. This
+can significantly reduce the time that program startup takes. This can be very
+useful when type checking is provided by your editor and you want startup time
+to be as fast as possible (for example when restarting the program automatically
+with a file watcher).
+
+Because `--no-check` does not do TypeScript type checking we can not
+automatically remove type only imports and exports as this would require type
+information. For this purpose TypeScript provides the
+[`import type` and `export type` syntax](https://www.typescriptlang.org/docs/handbook/release-notes/typescript-3-8.html#type-only-imports-and-exports).
+To export a type in a different file use
+`export type { AnInterface } from "./mod.ts";`. To import a type use
+`import type { AnInterface } from "./mod.ts";`. You can check that you are using
+`import type` and `export type` where necessary by setting the
+`importsNotUsedAsValues` TypeScript compiler option to `"error"`. You can see an
+example `tsconfig.json` with this option
+[in the standard library](https://github.com/denoland/deno/blob/master/std/tsconfig_test.json).
+
+Because there is no type information when using `--no-check`, `const enum` is
+not supported because it is are type-directed. `--no-check` also does not
+support the legacy `import =` and `export =` syntax.
+
 ### Using external type definitions
 
 The out of the box TypeScript compiler though relies on both extension-less

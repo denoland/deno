@@ -3,6 +3,7 @@ use crate::op_error::OpError;
 use deno_core::Buf;
 use deno_core::CoreIsolateState;
 use deno_core::Op;
+use deno_core::OpDispatcher;
 use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
 pub use serde_derive::Deserialize;
@@ -44,9 +45,7 @@ struct AsyncArgs {
   promise_id: Option<u64>,
 }
 
-pub fn json_op<D>(
-  d: D,
-) -> impl Fn(&mut CoreIsolateState, &mut [ZeroCopyBuf]) -> Op
+pub fn json_op<D>(d: D) -> impl OpDispatcher
 where
   D: Fn(
     &mut CoreIsolateState,

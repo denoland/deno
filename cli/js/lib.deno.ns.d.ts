@@ -63,40 +63,6 @@ declare interface PerformanceMeasureOptions {
   end?: string | number;
 }
 
-declare interface Permissions {
-  /** Resolves to the current status of a permission.
-   *
-   * ```ts
-   * const status = await navigator.permissions.query({ name: "read", path: "/etc" });
-   * if (status.state === "granted") {
-   *   data = await Deno.readFile("/etc/passwd");
-   * }
-   * ```
-   */
-  query(permissionDesc: Deno.PermissionDescriptor): Promise<PermissionStatus>;
-
-  /** Requests the permission, and resolves to the state of the permission.
-   *
-   * ```ts
-   * const status = await navigator.permissions.request({ name: "env" });
-   * if (status.state === "granted") {
-   *   console.log(Deno.dir("home");
-   * } else {
-   *   console.log("'env' permission is denied.");
-   * }
-   * ```
-   */
-  request(permissionDesc: Deno.PermissionDescriptor): Promise<PermissionStatus>;
-
-  /** Revokes a permission, and resolves to the state of the permission.
-   *
-   * ```ts
-   * const status = await Deno.revoke({ name: "run" });
-   * ```
-   */
-  revoke(permissionDesc: Deno.PermissionDescriptor): Promise<PermissionStatus>;
-}
-
 declare namespace Deno {
   /** A set of error constructors that are raised by Deno APIs. */
   export const errors: {
@@ -820,10 +786,12 @@ declare namespace Deno {
      *
      * The slice is valid for use only until the next buffer modification (that
      * is, only until the next call to a method like `read()`, `write()`,
-     * `reset()`, or `truncate()`). The slice aliases the buffer content at
+     * `reset()`, or `truncate()`). If `options.copy` is false the slice aliases the buffer content at
      * least until the next buffer modification, so immediate changes to the
-     * slice will affect the result of future reads. */
-    bytes(): Uint8Array;
+     * slice will affect the result of future reads.
+     * @param options Defaults to `{ copy: true }`
+     */
+    bytes(options?: { copy?: boolean }): Uint8Array;
     /** Returns whether the unread portion of the buffer is empty. */
     empty(): boolean;
     /** A read only number of bytes of the unread portion of the buffer. */
@@ -1974,65 +1942,6 @@ declare namespace Deno {
    *
    * Requires `allow-run` permission. */
   export function run<T extends RunOptions = RunOptions>(opt: T): Process<T>;
-
-  /** The name of a "powerful feature" which needs permission.
-   *
-   * See: https://w3c.github.io/permissions/#permission-registry
-   *
-   * Note that the definition of `PermissionName` in the above spec is swapped
-   * out for a set of Deno permissions which are not web-compatible. */
-  export type PermissionName =
-    | "run"
-    | "read"
-    | "write"
-    | "net"
-    | "env"
-    | "plugin"
-    | "hrtime";
-
-  export interface RunPermissionDescriptor {
-    name: "run";
-  }
-
-  export interface ReadPermissionDescriptor {
-    name: "read";
-    path?: string;
-  }
-
-  export interface WritePermissionDescriptor {
-    name: "write";
-    path?: string;
-  }
-
-  export interface NetPermissionDescriptor {
-    name: "net";
-    url?: string;
-  }
-
-  export interface EnvPermissionDescriptor {
-    name: "env";
-  }
-
-  export interface PluginPermissionDescriptor {
-    name: "plugin";
-  }
-
-  export interface HrtimePermissionDescriptor {
-    name: "hrtime";
-  }
-
-  /** Permission descriptors which define a permission and can be queried,
-   * requested, or revoked.
-   *
-   * See: https://w3c.github.io/permissions/#permission-descriptor */
-  export type PermissionDescriptor =
-    | RunPermissionDescriptor
-    | ReadPermissionDescriptor
-    | WritePermissionDescriptor
-    | NetPermissionDescriptor
-    | EnvPermissionDescriptor
-    | PluginPermissionDescriptor
-    | HrtimePermissionDescriptor;
 
   export interface InspectOptions {
     /** Traversal depth for nested objects. Defaults to 4. */
