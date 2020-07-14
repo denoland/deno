@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::colors;
+use crate::decoding;
 use crate::http_cache::HttpCache;
 use crate::http_util;
 use crate::http_util::create_http_client;
@@ -35,6 +36,20 @@ pub struct SourceFile {
   pub types_header: Option<String>,
   pub media_type: msg::MediaType,
   pub source_code: Vec<u8>,
+}
+
+impl SourceFile {
+  pub fn source_code_utf8(&self) -> Result<String, std::io::Error> {
+    decoding::source_to_string(&self.source_code)
+  }
+
+  pub fn source_code_bytes(&self) -> &Vec<u8> {
+    &self.source_code
+  }
+
+  pub fn to_owned_bytes(self) -> Vec<u8> {
+    self.source_code
+  }
 }
 
 /// Simple struct implementing in-process caching to prevent multiple

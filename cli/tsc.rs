@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::colors;
-use crate::decoding::source_to_string;
 use crate::diagnostics::Diagnostic;
 use crate::diagnostics::DiagnosticItem;
 use crate::disk_cache::DiskCache;
@@ -464,7 +463,7 @@ impl TsCompiler {
       if let Some(metadata) = self.get_metadata(&url) {
         // Compare version hashes
         let version_hash_to_validate = source_code_version_hash(
-          &source_file.source_code,
+          &source_file.source_code_bytes(),
           version::DENO,
           &self.config.hash,
         );
@@ -505,7 +504,7 @@ impl TsCompiler {
           .fetch_cached_source_file(&specifier, Permissions::allow_all())
         {
           let existing_hash = crate::checksum::gen(&[
-            &source_file.source_code,
+            &source_file.source_code_bytes(),
             version::DENO.as_bytes(),
           ]);
           let expected_hash =
@@ -871,9 +870,7 @@ impl TsCompiler {
     let compiled_source_file = self.get_compiled_source_file(module_url)?;
 
     let compiled_module = CompiledModule {
-      code: source_to_string(&compiled_source_file.source_code)
-        .unwrap()
-        .to_string(),
+      code: compiled_source_file.source_code_utf8()?,
       name: module_url.to_string(),
     };
 
@@ -922,7 +919,7 @@ impl TsCompiler {
     self.mark_compiled(module_specifier.as_url());
 
     let version_hash = source_code_version_hash(
-      &source_file.source_code,
+      &source_file.source_code_bytes(),
       version::DENO,
       &self.config.hash,
     );
@@ -1001,7 +998,7 @@ impl SourceMapGetter for TsCompiler {
     self
       .try_resolve_and_get_source_file(script_name)
       .and_then(|out| {
-        source_to_string(&out.source_code).ok().map(|v| {
+        out.source_code_utf8().ok().map(|v| {
           // Do NOT use .lines(): it skips the terminating empty line.
           // (due to internally using .split_terminator() instead of .split())
           let lines: Vec<&str> = v.split('\n').collect();
@@ -1040,7 +1037,7 @@ impl TsCompiler {
   ) -> Option<Vec<u8>> {
     if let Some(module_specifier) = self.try_to_resolve(script_name) {
       return match self.get_source_map_file(&module_specifier) {
-        Ok(out) => Some(out.source_code),
+        Ok(out) => Some(out.to_owned_bytes()),
         Err(_) => {
           // Check if map is inlined
           if let Ok(compiled_source) =

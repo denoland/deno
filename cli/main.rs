@@ -26,7 +26,7 @@ extern crate url;
 
 mod checksum;
 pub mod colors;
-pub mod decoding;
+mod decoding;
 pub mod deno_dir;
 pub mod diagnostics;
 mod diff;
@@ -75,7 +75,6 @@ pub use deno_lint::swc_ecma_ast;
 pub use deno_lint::swc_ecma_parser;
 pub use deno_lint::swc_ecma_visit;
 
-use crate::decoding::source_to_string;
 use crate::doc::parser::DocFileLoader;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
@@ -543,7 +542,8 @@ async fn doc_command(
         let source_file = fetcher
           .fetch_source_file(&specifier, None, Permissions::allow_all())
           .await?;
-        source_to_string(&source_file.source_code)
+        source_file
+          .source_code_utf8()
           .map_err(|_| OpError::other("failed to parse".to_string()))
       }
       .boxed_local()
