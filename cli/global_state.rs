@@ -236,16 +236,27 @@ impl GlobalState {
     };
 
     let compiled_module = if was_compiled {
-      state1
-        .ts_compiler
-        .get_compiled_module(&out.url)
-        .map_err(|e| {
-          let msg = e.to_string();
-          OpError::other(format!(
-            "Failed to get compiled source code of {}.\nReason: {}",
-            out.url, msg
-          ))
-        })?
+      let r = state1.ts_compiler.get_compiled_module(&out.url);
+
+      match r {
+        Ok(module) => Ok(module),
+        Err(e) => {
+          if out.media_type == MediaType::TypeScript
+            && out.url.to_string().ends_with(".d.ts")
+          {
+            Ok(CompiledModule {
+              code: "".to_string(),
+              name: out.url.to_string(),
+            })
+          } else {
+            let msg = e.to_string();
+            Err(OpError::other(format!(
+              "Failed to get compiled source code of {}.\nReason: {}",
+              out.url, msg
+            )))
+          }
+        }
+      }?
     } else {
       CompiledModule {
         code: String::from_utf8(out.source_code.clone())?,
