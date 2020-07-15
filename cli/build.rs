@@ -128,9 +128,7 @@ fn set_binary_metadata() {
     winapi::um::winnt::LANG_ENGLISH,
     winapi::um::winnt::SUBLANG_ENGLISH_US,
   ));
-  if let Err(e) = res.compile() {
-    println!("Failure copiling Windows resource: {:?}", e);
-  }
+  res.compile().unwrap();
 }
 
 #[cfg(not(target_os = "windows"))]
