@@ -43,6 +43,14 @@ impl SourceCode {
       None => Err(std::io::ErrorKind::InvalidData.into()),
     }
   }
+
+  pub fn as_bytes(&self) -> &Vec<u8> {
+    &self.bytes
+  }
+
+  pub fn into_bytes(self) -> Vec<u8> {
+    self.bytes
+  }
 }
 
 impl From<Vec<u8>> for SourceCode {
@@ -80,11 +88,11 @@ impl SourceFile {
   }
 
   pub fn source_code_bytes(&self) -> &Vec<u8> {
-    &self.source_code.bytes
+    &self.source_code.as_bytes()
   }
 
   pub fn to_owned_bytes(self) -> Vec<u8> {
-    self.source_code.bytes
+    self.source_code.into_bytes()
   }
 }
 
