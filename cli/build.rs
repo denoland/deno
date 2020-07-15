@@ -6,6 +6,11 @@ use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
 
+#[cfg(target_os = "windows")]
+extern crate winapi;
+#[cfg(target_os = "windows")]
+extern crate winres;
+
 fn main() {
   // Don't build V8 if "cargo doc" is being run. This is to support docs.rs.
   if env::var_os("RUSTDOCFLAGS").is_some() {
@@ -111,4 +116,20 @@ fn main() {
     &main_module_name,
   )
   .expect("Failed to create snapshot");
+
+  set_binary_metadata();
 }
+
+#[cfg(target_os = "windows")]
+fn set_binary_metadata() {
+  let mut res = winres::WindowsResource::new();
+  res.set_icon("deno.ico");
+  res.set_language(winapi::um::winnt::MAKELANGID(
+    winapi::um::winnt::LANG_ENGLISH,
+    winapi::um::winnt::SUBLANG_ENGLISH_US,
+  ));
+  res.compile().unwrap();
+}
+
+#[cfg(not(target_os = "windows"))]
+fn set_binary_metadata() {}
