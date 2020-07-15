@@ -58,7 +58,7 @@ unitTest(function btoaFailed(): void {
 });
 
 unitTest(function textDecoder2(): void {
-  // prettier-ignore
+  // deno-fmt-ignore
   const fixture = new Uint8Array([
     0xf0, 0x9d, 0x93, 0xbd,
     0xf0, 0x9d, 0x93, 0xae,
@@ -70,7 +70,7 @@ unitTest(function textDecoder2(): void {
 });
 
 unitTest(function textDecoderIgnoreBOM(): void {
-  // prettier-ignore
+  // deno-fmt-ignore
   const fixture = new Uint8Array([
     0xef, 0xbb, 0xbf,
     0xf0, 0x9d, 0x93, 0xbd,
@@ -83,7 +83,7 @@ unitTest(function textDecoderIgnoreBOM(): void {
 });
 
 unitTest(function textDecoderNotBOM(): void {
-  // prettier-ignore
+  // deno-fmt-ignore
   const fixture = new Uint8Array([
     0xef, 0xbb, 0x89,
     0xf0, 0x9d, 0x93, 0xbd,
@@ -115,7 +115,7 @@ unitTest(function textDecoderErrorEncoding(): void {
 unitTest(function textEncoder(): void {
   const fixture = "𝓽𝓮𝔁𝓽";
   const encoder = new TextEncoder();
-  // prettier-ignore
+  // deno-fmt-ignore
   assertEquals(Array.from(encoder.encode(fixture)), [
     0xf0, 0x9d, 0x93, 0xbd,
     0xf0, 0x9d, 0x93, 0xae,
@@ -131,7 +131,7 @@ unitTest(function textEncodeInto(): void {
   const result = encoder.encodeInto(fixture, bytes);
   assertEquals(result.read, 4);
   assertEquals(result.written, 4);
-  // prettier-ignore
+  // deno-fmt-ignore
   assertEquals(Array.from(bytes), [
     0x74, 0x65, 0x78, 0x74, 0x00,
   ]);
@@ -144,7 +144,7 @@ unitTest(function textEncodeInto2(): void {
   const result = encoder.encodeInto(fixture, bytes);
   assertEquals(result.read, 8);
   assertEquals(result.written, 16);
-  // prettier-ignore
+  // deno-fmt-ignore
   assertEquals(Array.from(bytes), [
     0xf0, 0x9d, 0x93, 0xbd,
     0xf0, 0x9d, 0x93, 0xae,
@@ -160,7 +160,7 @@ unitTest(function textEncodeInto3(): void {
   const result = encoder.encodeInto(fixture, bytes);
   assertEquals(result.read, 2);
   assertEquals(result.written, 4);
-  // prettier-ignore
+  // deno-fmt-ignore
   assertEquals(Array.from(bytes), [
     0xf0, 0x9d, 0x93, 0xbd, 0x00,
   ]);

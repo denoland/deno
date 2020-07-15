@@ -42,21 +42,21 @@ const PERMISSIONS: Deno.PermissionName[] = [
  * Take a list of permissions and revoke missing permissions.
  */
 async function dropWorkerPermissions(
-  requiredPermissions: Deno.PermissionName[]
+  requiredPermissions: Deno.PermissionName[],
 ): Promise<void> {
   const permsToDrop = PERMISSIONS.filter((p): boolean => {
     return !requiredPermissions.includes(p);
   });
 
   for (const perm of permsToDrop) {
-    await navigator.permissions.revoke({ name: perm });
+    await Deno.permissions.revoke({ name: perm });
   }
 }
 
 async function workerRunnerMain(
   addrStr: string,
   permsStr: string,
-  filter?: string
+  filter?: string,
 ): Promise<void> {
   const [hostname, port] = addrStr.split(":");
   const addr = { hostname, port: Number(port) };
@@ -84,7 +84,7 @@ function spawnWorkerRunner(
   verbose: boolean,
   addr: string,
   perms: Permissions,
-  filter?: string
+  filter?: string,
 ): Deno.Process {
   // run subsequent tests using same deno executable
   const permStr = Object.keys(perms)
@@ -126,7 +126,7 @@ async function runTestsForPermissionSet(
   addrStr: string,
   verbose: boolean,
   perms: Permissions,
-  filter?: string
+  filter?: string,
 ): Promise<PermissionSetTestResult> {
   const permsFmt = fmtPerms(perms);
   console.log(`Running tests for: ${permsFmt}`);
@@ -165,7 +165,7 @@ async function runTestsForPermissionSet(
   const workerStatus = await workerProcess.status();
   if (!workerStatus.success) {
     throw new Error(
-      `Worker runner exited with status code: ${workerStatus.code}`
+      `Worker runner exited with status code: ${workerStatus.code}`,
     );
   }
 
@@ -183,11 +183,11 @@ async function runTestsForPermissionSet(
 
 async function masterRunnerMain(
   verbose: boolean,
-  filter?: string
+  filter?: string,
 ): Promise<void> {
   console.log(
     "Discovered permission combinations for tests:",
-    permissionCombinations.size
+    permissionCombinations.size,
   );
 
   for (const perms of permissionCombinations.values()) {
@@ -205,7 +205,7 @@ async function masterRunnerMain(
       addrStr,
       verbose,
       perms,
-      filter
+      filter,
     );
     testResults.add(result);
   }
@@ -230,7 +230,7 @@ async function masterRunnerMain(
 
   if (REGISTERED_UNIT_TESTS.find(({ only }) => only)) {
     console.error(
-      `\n${colors.red("FAILED")} because the "only" option was used`
+      `\n${colors.red("FAILED")} because the "only" option was used`,
     );
     Deno.exit(1);
   }

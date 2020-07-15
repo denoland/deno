@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 export function fromStreamWriter(
-  streamWriter: WritableStreamDefaultWriter<Uint8Array>
+  streamWriter: WritableStreamDefaultWriter<Uint8Array>,
 ): Deno.Writer {
   return {
     async write(p: Uint8Array): Promise<number> {
@@ -13,7 +13,7 @@ export function fromStreamWriter(
 }
 
 export function fromStreamReader(
-  streamReader: ReadableStreamDefaultReader<Uint8Array>
+  streamReader: ReadableStreamDefaultReader<Uint8Array>,
 ): Deno.Reader {
   const buffer = new Deno.Buffer();
 

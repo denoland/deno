@@ -7,27 +7,27 @@ Deno.test({
   fn: () => {
     assertEquals(
       datetime.parseDateTime("01-03-2019 16:30", "mm-dd-yyyy hh:mm"),
-      new Date(2019, 0, 3, 16, 30)
+      new Date(2019, 0, 3, 16, 30),
     );
     assertEquals(
       datetime.parseDateTime("03-01-2019 16:31", "dd-mm-yyyy hh:mm"),
-      new Date(2019, 0, 3, 16, 31)
+      new Date(2019, 0, 3, 16, 31),
     );
     assertEquals(
       datetime.parseDateTime("2019-01-03 16:32", "yyyy-mm-dd hh:mm"),
-      new Date(2019, 0, 3, 16, 32)
+      new Date(2019, 0, 3, 16, 32),
     );
     assertEquals(
       datetime.parseDateTime("16:33 01-03-2019", "hh:mm mm-dd-yyyy"),
-      new Date(2019, 0, 3, 16, 33)
+      new Date(2019, 0, 3, 16, 33),
     );
     assertEquals(
       datetime.parseDateTime("16:34 03-01-2019", "hh:mm dd-mm-yyyy"),
-      new Date(2019, 0, 3, 16, 34)
+      new Date(2019, 0, 3, 16, 34),
     );
     assertEquals(
       datetime.parseDateTime("16:35 2019-01-03", "hh:mm yyyy-mm-dd"),
-      new Date(2019, 0, 3, 16, 35)
+      new Date(2019, 0, 3, 16, 35),
     );
   },
 });
@@ -41,7 +41,7 @@ Deno.test({
         (datetime as any).parseDateTime("2019-01-01 00:00", "x-y-z");
       },
       Error,
-      "Invalid datetime format!"
+      "Invalid datetime format!",
     );
   },
 });
@@ -51,15 +51,15 @@ Deno.test({
   fn: () => {
     assertEquals(
       datetime.parseDate("01-03-2019", "mm-dd-yyyy"),
-      new Date(2019, 0, 3)
+      new Date(2019, 0, 3),
     );
     assertEquals(
       datetime.parseDate("03-01-2019", "dd-mm-yyyy"),
-      new Date(2019, 0, 3)
+      new Date(2019, 0, 3),
     );
     assertEquals(
       datetime.parseDate("2019-01-03", "yyyy-mm-dd"),
-      new Date(2019, 0, 3)
+      new Date(2019, 0, 3),
     );
   },
 });
@@ -73,24 +73,87 @@ Deno.test({
         (datetime as any).parseDate("2019-01-01", "x-y-z");
       },
       Error,
-      "Invalid date format!"
+      "Invalid date format!",
     );
   },
 });
 
 Deno.test({
-  name: "[std/datetime] DayOfYear",
+  name: "[std/datetime] dayOfYear",
   fn: () => {
-    assertEquals(1, datetime.dayOfYear(new Date("2019-01-01T03:24:00")));
-    assertEquals(70, datetime.dayOfYear(new Date("2019-03-11T03:24:00")));
-    assertEquals(365, datetime.dayOfYear(new Date("2019-12-31T03:24:00")));
+    assertEquals(datetime.dayOfYear(new Date("2019-01-01T03:24:00")), 1);
+    assertEquals(datetime.dayOfYear(new Date("2019-03-11T03:24:00")), 70);
+    assertEquals(datetime.dayOfYear(new Date("2019-12-31T03:24:00")), 365);
   },
 });
 
 Deno.test({
   name: "[std/datetime] currentDayOfYear",
   fn: () => {
-    assertEquals(datetime.currentDayOfYear(), datetime.dayOfYear(new Date()));
+    assertEquals(datetime.dayOfYear(new Date()), datetime.currentDayOfYear());
+  },
+});
+
+Deno.test({
+  name: "[std/datetime] weekOfYear",
+  fn: () => {
+    assertEquals(datetime.weekOfYear(new Date("2020-01-05T03:24:00")), 1);
+    assertEquals(datetime.weekOfYear(new Date("2020-12-28T03:24:00")), 53); // 53 weeks in 2020
+    assertEquals(datetime.weekOfYear(new Date("2020-06-28T03:24:00")), 26);
+
+    // iso weeks year starting sunday
+    assertEquals(datetime.weekOfYear(new Date(2012, 0, 1)), 52);
+    assertEquals(datetime.weekOfYear(new Date(2012, 0, 2)), 1);
+    assertEquals(datetime.weekOfYear(new Date(2012, 0, 8)), 1);
+    assertEquals(datetime.weekOfYear(new Date(2012, 0, 9)), 2);
+    assertEquals(datetime.weekOfYear(new Date(2012, 0, 15)), 2);
+
+    // iso weeks year starting monday
+    assertEquals(datetime.weekOfYear(new Date(2007, 0, 1)), 1);
+    assertEquals(datetime.weekOfYear(new Date(2007, 0, 7)), 1);
+    assertEquals(datetime.weekOfYear(new Date(2007, 0, 8)), 2);
+    assertEquals(datetime.weekOfYear(new Date(2007, 0, 14)), 2);
+    assertEquals(datetime.weekOfYear(new Date(2007, 0, 15)), 3);
+
+    // iso weeks year starting tuesday
+    assertEquals(datetime.weekOfYear(new Date(2007, 11, 31)), 1);
+    assertEquals(datetime.weekOfYear(new Date(2008, 0, 1)), 1);
+    assertEquals(datetime.weekOfYear(new Date(2008, 0, 6)), 1);
+    assertEquals(datetime.weekOfYear(new Date(2008, 0, 7)), 2);
+    assertEquals(datetime.weekOfYear(new Date(2008, 0, 13)), 2);
+    assertEquals(datetime.weekOfYear(new Date(2008, 0, 14)), 3);
+
+    // iso weeks year starting wednesday
+    assertEquals(datetime.weekOfYear(new Date(2002, 11, 30)), 1);
+    assertEquals(datetime.weekOfYear(new Date(2003, 0, 1)), 1);
+    assertEquals(datetime.weekOfYear(new Date(2003, 0, 5)), 1);
+    assertEquals(datetime.weekOfYear(new Date(2003, 0, 6)), 2);
+    assertEquals(datetime.weekOfYear(new Date(2003, 0, 12)), 2);
+    assertEquals(datetime.weekOfYear(new Date(2003, 0, 13)), 3);
+
+    // iso weeks year starting thursday
+    assertEquals(datetime.weekOfYear(new Date(2008, 11, 29)), 1);
+    assertEquals(datetime.weekOfYear(new Date(2009, 0, 1)), 1);
+    assertEquals(datetime.weekOfYear(new Date(2009, 0, 4)), 1);
+    assertEquals(datetime.weekOfYear(new Date(2009, 0, 5)), 2);
+    assertEquals(datetime.weekOfYear(new Date(2009, 0, 11)), 2);
+    assertEquals(datetime.weekOfYear(new Date(2009, 0, 13)), 3);
+
+    // iso weeks year starting friday
+    assertEquals(datetime.weekOfYear(new Date(2009, 11, 28)), 53);
+    assertEquals(datetime.weekOfYear(new Date(2010, 0, 1)), 53);
+    assertEquals(datetime.weekOfYear(new Date(2010, 0, 3)), 53);
+    assertEquals(datetime.weekOfYear(new Date(2010, 0, 4)), 1);
+    assertEquals(datetime.weekOfYear(new Date(2010, 0, 10)), 1);
+    assertEquals(datetime.weekOfYear(new Date(2010, 0, 11)), 2);
+
+    // iso weeks year starting saturday
+    assertEquals(datetime.weekOfYear(new Date(2010, 11, 27)), 52);
+    assertEquals(datetime.weekOfYear(new Date(2011, 0, 1)), 52);
+    assertEquals(datetime.weekOfYear(new Date(2011, 0, 2)), 52);
+    assertEquals(datetime.weekOfYear(new Date(2011, 0, 3)), 1);
+    assertEquals(datetime.weekOfYear(new Date(2011, 0, 9)), 1);
+    assertEquals(datetime.weekOfYear(new Date(2011, 0, 10)), 2);
   },
 });
 

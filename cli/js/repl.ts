@@ -3,16 +3,16 @@
 import { exit } from "./ops/os.ts";
 import { core } from "./core.ts";
 import { version } from "./version.ts";
-import { stringifyArgs } from "./web/console.ts";
+import { inspectArgs } from "./web/console.ts";
 import { startRepl, readline } from "./ops/repl.ts";
 import { close } from "./ops/resources.ts";
 
 function replLog(...args: unknown[]): void {
-  core.print(stringifyArgs(args) + "\n");
+  core.print(inspectArgs(args) + "\n");
 }
 
 function replError(...args: unknown[]): void {
-  core.print(stringifyArgs(args) + "\n", true);
+  core.print(inspectArgs(args) + "\n", true);
 }
 
 // Error messages that allow users to continue input
@@ -56,10 +56,9 @@ function evaluate(code: string): boolean {
   if (!errInfo) {
     // when a function is eval'ed with just "use strict" sometimes the result
     // is "use strict" which should be discarded
-    lastEvalResult =
-      typeof result === "string" && result === "use strict"
-        ? undefined
-        : result;
+    lastEvalResult = typeof result === "string" && result === "use strict"
+      ? undefined
+      : result;
     if (!isCloseCalled()) {
       replLog(lastEvalResult);
     }

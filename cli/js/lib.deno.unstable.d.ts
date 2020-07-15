@@ -43,6 +43,21 @@ declare namespace Deno {
    * Requires `allow-read` and `allow-write` permissions. */
   export function link(oldpath: string, newpath: string): Promise<void>;
 
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Gets the size of the console as columns/rows.
+   *
+   * ```ts
+   * const { columns, rows } = await Deno.consoleSize(Deno.stdout.rid);
+   * ```
+   */
+  export function consoleSize(
+    rid: number,
+  ): {
+    columns: number;
+    rows: number;
+  };
+
   export type SymlinkOptions = {
     type: "file" | "dir";
   };
@@ -62,7 +77,7 @@ declare namespace Deno {
   export function symlinkSync(
     oldpath: string,
     newpath: string,
-    options?: SymlinkOptions
+    options?: SymlinkOptions,
   ): void;
 
   /** **UNSTABLE**: This API needs a security review.
@@ -80,7 +95,7 @@ declare namespace Deno {
   export function symlink(
     oldpath: string,
     newpath: string,
-    options?: SymlinkOptions
+    options?: SymlinkOptions,
   ): Promise<void>;
 
   /** **Unstable**  There are questions around which permission this needs. And
@@ -439,7 +454,7 @@ declare namespace Deno {
    */
   export function transpileOnly(
     sources: Record<string, string>,
-    options?: CompilerOptions
+    options?: CompilerOptions,
   ): Promise<Record<string, TranspileOnlyResult>>;
 
   /** **UNSTABLE**: new API, yet to be vetted.
@@ -477,7 +492,7 @@ declare namespace Deno {
   export function compile(
     rootName: string,
     sources?: Record<string, string>,
-    options?: CompilerOptions
+    options?: CompilerOptions,
   ): Promise<[DiagnosticItem[] | undefined, Record<string, string>]>;
 
   /** **UNSTABLE**: new API, yet to be vetted.
@@ -520,7 +535,7 @@ declare namespace Deno {
   export function bundle(
     rootName: string,
     sources?: Record<string, string>,
-    options?: CompilerOptions
+    options?: CompilerOptions,
   ): Promise<[DiagnosticItem[] | undefined, string]>;
 
   /** **UNSTABLE**: Should not have same name as `window.location` type. */
@@ -642,7 +657,7 @@ declare namespace Deno {
     constructor(signal: typeof Deno.Signal);
     then<T, S>(
       f: (v: void) => T | Promise<T>,
-      g?: (v: void) => S | Promise<S>
+      g?: (v: void) => S | Promise<S>,
     ): Promise<T | S>;
     next(): Promise<IteratorResult<void>>;
     [Symbol.asyncIterator](): AsyncIterableIterator<void>;
@@ -762,7 +777,7 @@ declare namespace Deno {
   export function utimeSync(
     path: string,
     atime: number | Date,
-    mtime: number | Date
+    mtime: number | Date,
   ): void;
 
   /** **UNSTABLE**: needs investigation into high precision time.
@@ -779,7 +794,7 @@ declare namespace Deno {
   export function utime(
     path: string,
     atime: number | Date,
-    mtime: number | Date
+    mtime: number | Date,
   ): Promise<void>;
 
   /** **UNSTABLE**: Under consideration to remove `ShutdownMode` entirely.
@@ -845,7 +860,7 @@ declare namespace Deno {
    *
    * Requires `allow-read` and `allow-write` permission. */
   export function listen(
-    options: UnixListenOptions & { transport: "unix" }
+    options: UnixListenOptions & { transport: "unix" },
   ): Listener;
 
   /** **UNSTABLE**: new API, yet to be vetted
@@ -866,7 +881,7 @@ declare namespace Deno {
    *
    * Requires `allow-net` permission. */
   export function listenDatagram(
-    options: ListenOptions & { transport: "udp" }
+    options: ListenOptions & { transport: "udp" },
   ): DatagramConn;
 
   /** **UNSTABLE**: new API, yet to be vetted
@@ -882,7 +897,7 @@ declare namespace Deno {
    *
    * Requires `allow-read` and `allow-write` permission. */
   export function listenDatagram(
-    options: UnixListenOptions & { transport: "unixpacket" }
+    options: UnixListenOptions & { transport: "unixpacket" },
   ): DatagramConn;
 
   export interface UnixConnectOptions {
@@ -906,7 +921,7 @@ declare namespace Deno {
    *
    * Requires `allow-net` permission for "tcp" and `allow-read` for "unix". */
   export function connect(
-    options: ConnectOptions | UnixConnectOptions
+    options: ConnectOptions | UnixConnectOptions,
   ): Promise<Conn>;
 
   export interface StartTlsOptions {
@@ -935,7 +950,7 @@ declare namespace Deno {
    */
   export function startTls(
     conn: Conn,
-    options?: StartTlsOptions
+    options?: StartTlsOptions,
   ): Promise<Conn>;
 
   /** **UNSTABLE**: The `signo` argument may change to require the Deno.Signal
@@ -955,6 +970,120 @@ declare namespace Deno {
    *
    * Requires `allow-run` permission. */
   export function kill(pid: number, signo: number): void;
+
+  /** The name of a "powerful feature" which needs permission.
+   *
+   * See: https://w3c.github.io/permissions/#permission-registry
+   *
+   * Note that the definition of `PermissionName` in the above spec is swapped
+   * out for a set of Deno permissions which are not web-compatible. */
+  export type PermissionName =
+    | "run"
+    | "read"
+    | "write"
+    | "net"
+    | "env"
+    | "plugin"
+    | "hrtime";
+
+  /** The current status of the permission.
+   *
+   * See: https://w3c.github.io/permissions/#status-of-a-permission */
+  export type PermissionState = "granted" | "denied" | "prompt";
+
+  export interface RunPermissionDescriptor {
+    name: "run";
+  }
+
+  export interface ReadPermissionDescriptor {
+    name: "read";
+    path?: string;
+  }
+
+  export interface WritePermissionDescriptor {
+    name: "write";
+    path?: string;
+  }
+
+  export interface NetPermissionDescriptor {
+    name: "net";
+    /** Optional url associated with this descriptor.
+     *
+     * If specified: must be a valid url. Expected format: <scheme>://<host_or_ip>[:port][/path]
+     * If the scheme is unknown, callers should specify some scheme, such as x:// na:// unknown://
+     *
+     * See: https://www.iana.org/assignments/uri-schemes/uri-schemes.xhtml */
+    url?: string;
+  }
+
+  export interface EnvPermissionDescriptor {
+    name: "env";
+  }
+
+  export interface PluginPermissionDescriptor {
+    name: "plugin";
+  }
+
+  export interface HrtimePermissionDescriptor {
+    name: "hrtime";
+  }
+
+  /** Permission descriptors which define a permission and can be queried,
+   * requested, or revoked.
+   *
+   * See: https://w3c.github.io/permissions/#permission-descriptor */
+  export type PermissionDescriptor =
+    | RunPermissionDescriptor
+    | ReadPermissionDescriptor
+    | WritePermissionDescriptor
+    | NetPermissionDescriptor
+    | EnvPermissionDescriptor
+    | PluginPermissionDescriptor
+    | HrtimePermissionDescriptor;
+
+  export class Permissions {
+    /** Resolves to the current status of a permission.
+     *
+     * ```ts
+     * const status = await Deno.permissions.query({ name: "read", path: "/etc" });
+     * if (status.state === "granted") {
+     *   data = await Deno.readFile("/etc/passwd");
+     * }
+     * ```
+     */
+    query(desc: PermissionDescriptor): Promise<PermissionStatus>;
+
+    /** Revokes a permission, and resolves to the state of the permission.
+     *
+     *       const status = await Deno.permissions.revoke({ name: "run" });
+     *       assert(status.state !== "granted")
+     */
+    revoke(desc: PermissionDescriptor): Promise<PermissionStatus>;
+
+    /** Requests the permission, and resolves to the state of the permission.
+     *
+     * ```ts
+     * const status = await Deno.permissions.request({ name: "env" });
+     * if (status.state === "granted") {
+     *   console.log(Deno.dir("home");
+     * } else {
+     *   console.log("'env' permission is denied.");
+     * }
+     * ```
+     */
+    request(desc: PermissionDescriptor): Promise<PermissionStatus>;
+  }
+
+  /** **UNSTABLE**: Under consideration to move to `navigator.permissions` to
+   * match web API. It could look like `navigator.permissions.query({ name: Deno.symbols.read })`.
+   */
+  export const permissions: Permissions;
+
+  /** see: https://w3c.github.io/permissions/#permissionstatus */
+  export class PermissionStatus {
+    state: PermissionState;
+    constructor(state: PermissionState);
+  }
 
   /**  **UNSTABLE**: New API, yet to be vetted.  Additional consideration is still
    * necessary around the permissions required.

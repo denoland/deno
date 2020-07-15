@@ -17,7 +17,7 @@ Deno.test("ensureSymlinkIfItNotExist", async function (): Promise<void> {
   await assertThrowsAsync(
     async (): Promise<void> => {
       await ensureSymlink(testFile, path.join(testDir, "test1.txt"));
-    }
+    },
   );
 
   await assertThrowsAsync(
@@ -25,7 +25,7 @@ Deno.test("ensureSymlinkIfItNotExist", async function (): Promise<void> {
       await Deno.stat(testFile).then((): void => {
         throw new Error("test file should exists.");
       });
-    }
+    },
   );
 });
 

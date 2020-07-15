@@ -8,6 +8,17 @@ export const MINUTE = SECOND * 60;
 export const HOUR = MINUTE * 60;
 export const DAY = HOUR * 24;
 export const WEEK = DAY * 7;
+const DAYS_PER_WEEK = 7;
+
+enum Day {
+  Sun,
+  Mon,
+  Tue,
+  Wed,
+  Thu,
+  Fri,
+  Sat,
+}
 
 function execForce(reg: RegExp, pat: string): RegExpExecArray {
   const v = reg.exec(pat);
@@ -60,7 +71,7 @@ export type DateTimeFormat =
  */
 export function parseDateTime(
   datetimeStr: string,
-  format: DateTimeFormat
+  format: DateTimeFormat,
 ): Date {
   let m, d, y, ho, mi: string;
   let datePattern: RegExp;
@@ -103,8 +114,7 @@ export function parseDateTime(
  */
 export function dayOfYear(date: Date): number {
   const yearStart = new Date(date.getFullYear(), 0, 0);
-  const diff =
-    date.getTime() -
+  const diff = date.getTime() -
     yearStart.getTime() +
     (yearStart.getTimezoneOffset() - date.getTimezoneOffset()) * 60 * 1000;
   return Math.floor(diff / DAY);
@@ -116,6 +126,30 @@ export function dayOfYear(date: Date): number {
  */
 export function currentDayOfYear(): number {
   return dayOfYear(new Date());
+}
+
+/**
+ * Get number of the week in the year (ISO-8601)
+ * @return Number of the week in year
+ */
+export function weekOfYear(date: Date): number {
+  const workingDate = new Date(
+    Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()),
+  );
+
+  const day = workingDate.getUTCDay();
+
+  const nearestThursday = workingDate.getUTCDate() +
+    Day.Thu -
+    (day === Day.Sun ? DAYS_PER_WEEK : day);
+
+  workingDate.setUTCDate(nearestThursday);
+
+  // Get first day of year
+  const yearStart = new Date(Date.UTC(workingDate.getUTCFullYear(), 0, 1));
+
+  // return the calculated full weeks to nearest Thursday
+  return Math.ceil((workingDate.getTime() - yearStart.getTime() + DAY) / WEEK);
 }
 
 /**
@@ -200,21 +234,19 @@ export type DifferenceOptions = {
 export function difference(
   from: Date,
   to: Date,
-  options?: DifferenceOptions
+  options?: DifferenceOptions,
 ): DifferenceFormat {
-  const uniqueUnits = options?.units
-    ? [...new Set(options?.units)]
-    : [
-        "miliseconds",
-        "seconds",
-        "minutes",
-        "hours",
-        "days",
-        "weeks",
-        "months",
-        "quarters",
-        "years",
-      ];
+  const uniqueUnits = options?.units ? [...new Set(options?.units)] : [
+    "miliseconds",
+    "seconds",
+    "minutes",
+    "hours",
+    "days",
+    "weeks",
+    "months",
+    "quarters",
+    "years",
+  ];
 
   const bigger = Math.max(from.getTime(), to.getTime());
   const smaller = Math.min(from.getTime(), to.getTime());
@@ -249,14 +281,14 @@ export function difference(
         differences.quarters = Math.floor(
           (typeof differences.months !== "undefined" &&
             differences.months / 4) ||
-            calculateMonthsDifference(bigger, smaller) / 4
+            calculateMonthsDifference(bigger, smaller) / 4,
         );
         break;
       case "years":
         differences.years = Math.floor(
           (typeof differences.months !== "undefined" &&
             differences.months / 12) ||
-            calculateMonthsDifference(bigger, smaller) / 12
+            calculateMonthsDifference(bigger, smaller) / 12,
         );
         break;
     }
@@ -273,10 +305,13 @@ function calculateMonthsDifference(bigger: number, smaller: number): number {
   const calendarDiffrences = Math.abs(yearsDiff * 12 + monthsDiff);
   const compareResult = biggerDate > smallerDate ? 1 : -1;
   biggerDate.setMonth(
-    biggerDate.getMonth() - compareResult * calendarDiffrences
+    biggerDate.getMonth() - compareResult * calendarDiffrences,
   );
-  const isLastMonthNotFull =
-    biggerDate > smallerDate ? 1 : -1 === -compareResult ? 1 : 0;
+  const isLastMonthNotFull = biggerDate > smallerDate
+    ? 1
+    : -1 === -compareResult
+    ? 1
+    : 0;
   const months = compareResult * (calendarDiffrences - isLastMonthNotFull);
   return months === 0 ? 0 : months;
 }

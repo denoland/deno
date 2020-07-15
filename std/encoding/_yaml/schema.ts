@@ -10,7 +10,7 @@ import type { ArrayObject, Any } from "./utils.ts";
 function compileList(
   schema: Schema,
   name: "implicit" | "explicit",
-  result: Type[]
+  result: Type[],
 ): Type[] {
   const exclude: number[] = [];
 
@@ -78,7 +78,7 @@ export class Schema implements SchemaDefinition {
       if (type.loadKind && type.loadKind !== "scalar") {
         throw new YAMLError(
           // eslint-disable-next-line max-len
-          "There is a non-scalar type in the implicit list of a schema. Implicit resolving of such types is not supported."
+          "There is a non-scalar type in the implicit list of a schema. Implicit resolving of such types is not supported.",
         );
       }
     }
@@ -87,7 +87,7 @@ export class Schema implements SchemaDefinition {
     this.compiledExplicit = compileList(this, "explicit", []);
     this.compiledTypeMap = compileMap(
       this.compiledImplicit,
-      this.compiledExplicit
+      this.compiledExplicit,
     );
   }
 

@@ -40,15 +40,15 @@ Deno.test("dirnameWin32", function () {
   assertEquals(path.win32.dirname("\\\\unc\\share\\foo\\"), "\\\\unc\\share\\");
   assertEquals(
     path.win32.dirname("\\\\unc\\share\\foo\\bar"),
-    "\\\\unc\\share\\foo"
+    "\\\\unc\\share\\foo",
   );
   assertEquals(
     path.win32.dirname("\\\\unc\\share\\foo\\bar\\"),
-    "\\\\unc\\share\\foo"
+    "\\\\unc\\share\\foo",
   );
   assertEquals(
     path.win32.dirname("\\\\unc\\share\\foo\\bar\\baz"),
-    "\\\\unc\\share\\foo\\bar"
+    "\\\\unc\\share\\foo\\bar",
   );
   assertEquals(path.win32.dirname("/a/b/"), "/a");
   assertEquals(path.win32.dirname("/a/b"), "/a");

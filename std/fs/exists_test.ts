@@ -8,7 +8,7 @@ const testdataDir = path.resolve("fs", "testdata");
 Deno.test("[fs] existsFile", async function (): Promise<void> {
   assertEquals(
     await exists(path.join(testdataDir, "not_exist_file.ts")),
-    false
+    false,
   );
   assertEquals(await existsSync(path.join(testdataDir, "0.ts")), true);
 });
@@ -21,7 +21,7 @@ Deno.test("[fs] existsFileSync", function (): void {
 Deno.test("[fs] existsDirectory", async function (): Promise<void> {
   assertEquals(
     await exists(path.join(testdataDir, "not_exist_directory")),
-    false
+    false,
   );
   assertEquals(existsSync(testdataDir), true);
 });
@@ -29,7 +29,7 @@ Deno.test("[fs] existsDirectory", async function (): Promise<void> {
 Deno.test("[fs] existsDirectorySync", function (): void {
   assertEquals(
     existsSync(path.join(testdataDir, "not_exist_directory")),
-    false
+    false,
   );
   assertEquals(existsSync(testdataDir), true);
 });

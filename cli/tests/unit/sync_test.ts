@@ -16,7 +16,7 @@ unitTest(
     assertEquals(Deno.readFileSync(filename), data);
     Deno.close(file.rid);
     Deno.removeSync(filename);
-  }
+  },
 );
 
 unitTest(
@@ -34,7 +34,7 @@ unitTest(
     assertEquals(await Deno.readFile(filename), data);
     Deno.close(file.rid);
     await Deno.remove(filename);
-  }
+  },
 );
 
 unitTest(
@@ -52,7 +52,7 @@ unitTest(
     assertEquals(Deno.statSync(filename).size, size);
     Deno.close(file.rid);
     Deno.removeSync(filename);
-  }
+  },
 );
 
 unitTest(
@@ -70,5 +70,5 @@ unitTest(
     assertEquals((await Deno.stat(filename)).size, size);
     Deno.close(file.rid);
     await Deno.remove(filename);
-  }
+  },
 );

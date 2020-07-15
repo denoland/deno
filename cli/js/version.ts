@@ -15,7 +15,7 @@ export const version: Version = {
 export function setVersions(
   denoVersion: string,
   v8Version: string,
-  tsVersion: string
+  tsVersion: string,
 ): void {
   version.deno = denoVersion;
   version.v8 = v8Version;

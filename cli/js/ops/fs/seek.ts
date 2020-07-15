@@ -6,7 +6,7 @@ import type { SeekMode } from "../../io.ts";
 export function seekSync(
   rid: number,
   offset: number,
-  whence: SeekMode
+  whence: SeekMode,
 ): number {
   return sendSync("op_seek", { rid, offset, whence });
 }
@@ -14,7 +14,7 @@ export function seekSync(
 export function seek(
   rid: number,
   offset: number,
-  whence: SeekMode
+  whence: SeekMode,
 ): Promise<number> {
   return sendAsync("op_seek", { rid, offset, whence });
 }

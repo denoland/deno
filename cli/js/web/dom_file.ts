@@ -9,7 +9,7 @@ export class DomFileImpl extends blob.DenoBlob implements File {
   constructor(
     fileBits: BlobPart[],
     fileName: string,
-    options?: FilePropertyBag
+    options?: FilePropertyBag,
   ) {
     const { lastModified = Date.now(), ...blobPropertyBag } = options ?? {};
     super(fileBits, blobPropertyBag);

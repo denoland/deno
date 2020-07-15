@@ -38,7 +38,7 @@ Deno.test("testReadInt", async function (): Promise<void> {
 
 Deno.test("testReadLong", async function (): Promise<void> {
   const r = new BinaryReader(
-    new Uint8Array([0x00, 0x00, 0x00, 0x78, 0x12, 0x34, 0x56, 0x78])
+    new Uint8Array([0x00, 0x00, 0x00, 0x78, 0x12, 0x34, 0x56, 0x78]),
   );
   const long = await readLong(new BufReader(r));
   assertEquals(long, 0x7812345678);
@@ -46,7 +46,7 @@ Deno.test("testReadLong", async function (): Promise<void> {
 
 Deno.test("testReadLong2", async function (): Promise<void> {
   const r = new BinaryReader(
-    new Uint8Array([0, 0, 0, 0, 0x12, 0x34, 0x56, 0x78])
+    new Uint8Array([0, 0, 0, 0, 0x12, 0x34, 0x56, 0x78]),
   );
   const long = await readLong(new BufReader(r));
   assertEquals(long, 0x12345678);
@@ -58,9 +58,9 @@ Deno.test("testSliceLongToBytes", function (): void {
   const expected = readLong(
     new BufReader(
       new BinaryReader(
-        new Uint8Array([0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef])
-      )
-    )
+        new Uint8Array([0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef]),
+      ),
+    ),
   );
   assertEquals(actual, expected);
 });

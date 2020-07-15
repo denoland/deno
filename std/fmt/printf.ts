@@ -153,8 +153,9 @@ class Printf {
           break;
         case State.POSITIONAL: // either a verb or * only verb for now, TODO
           if (c === "*") {
-            const worp =
-              this.flags.precision === -1 ? WorP.WIDTH : WorP.PRECISION;
+            const worp = this.flags.precision === -1
+              ? WorP.WIDTH
+              : WorP.PRECISION;
             this.handleWidthOrPrecisionRef(worp);
             this.state = State.PERCENT;
             break;
@@ -503,8 +504,9 @@ class Printf {
     }
 
     let fractional = m[F.fractional];
-    const precision =
-      this.flags.precision !== -1 ? this.flags.precision : DEFAULT_PRECISION;
+    const precision = this.flags.precision !== -1
+      ? this.flags.precision
+      : DEFAULT_PRECISION;
     fractional = this.roundFractionToPrecision(fractional, precision);
 
     let e = m[F.exponent];
@@ -553,8 +555,9 @@ class Printf {
     const dig = arr[0];
     let fractional = arr[1];
 
-    const precision =
-      this.flags.precision !== -1 ? this.flags.precision : DEFAULT_PRECISION;
+    const precision = this.flags.precision !== -1
+      ? this.flags.precision
+      : DEFAULT_PRECISION;
     fractional = this.roundFractionToPrecision(fractional, precision);
 
     return this.padNum(`${dig}.${fractional}`, n < 0);
@@ -589,8 +592,9 @@ class Printf {
     // converted in the style of an f or F conversion specifier.
     // https://pubs.opengroup.org/onlinepubs/9699919799/functions/fprintf.html
 
-    let P =
-      this.flags.precision !== -1 ? this.flags.precision : DEFAULT_PRECISION;
+    let P = this.flags.precision !== -1
+      ? this.flags.precision
+      : DEFAULT_PRECISION;
     P = P === 0 ? 1 : P;
 
     const m = n.toExponential().match(FLOAT_REGEXP);
@@ -650,15 +654,16 @@ class Printf {
       }
       default:
         throw new Error(
-          "currently only number and string are implemented for hex"
+          "currently only number and string are implemented for hex",
         );
     }
   }
 
   fmtV(val: object): string {
     if (this.flags.sharp) {
-      const options =
-        this.flags.precision !== -1 ? { depth: this.flags.precision } : {};
+      const options = this.flags.precision !== -1
+        ? { depth: this.flags.precision }
+        : {};
       return this.pad(Deno.inspect(val, options));
     } else {
       const p = this.flags.precision;

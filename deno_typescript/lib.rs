@@ -13,6 +13,7 @@ use deno_core::CoreIsolateState;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
 use deno_core::Op;
+use deno_core::OpDispatcher;
 use deno_core::StartupData;
 use deno_core::ZeroCopyBuf;
 pub use ops::EmitResult;
@@ -50,7 +51,7 @@ pub struct TSState {
 fn compiler_op<D>(
   ts_state: Arc<Mutex<TSState>>,
   dispatcher: D,
-) -> impl Fn(&mut CoreIsolateState, &mut [ZeroCopyBuf]) -> Op
+) -> impl OpDispatcher
 where
   D: Fn(&mut TSState, &[u8]) -> Op,
 {
@@ -337,7 +338,7 @@ pub fn trace_serializer() {
 /// CoreIsolate.
 pub fn op_fetch_asset<S: ::std::hash::BuildHasher>(
   custom_assets: HashMap<String, PathBuf, S>,
-) -> impl Fn(&mut CoreIsolateState, &mut [ZeroCopyBuf]) -> Op {
+) -> impl OpDispatcher {
   for (_, path) in custom_assets.iter() {
     println!("cargo:rerun-if-changed={}", path.display());
   }

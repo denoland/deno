@@ -60,7 +60,7 @@ unitTest(function fileVariousFileBits(): void {
       new Uint16Array([0x5353]),
       new Uint32Array([0x53534150]),
     ],
-    16
+    16,
   );
 });
 

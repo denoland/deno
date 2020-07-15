@@ -17,7 +17,7 @@ export interface FetchResponse {
 
 export function fetch(
   args: FetchRequest,
-  body?: ArrayBufferView
+  body?: ArrayBufferView,
 ): Promise<FetchResponse> {
   let zeroCopy;
   if (body != null) {

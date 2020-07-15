@@ -19,14 +19,14 @@ unitTest(
     Deno.writeFileSync(newName, new TextEncoder().encode(newData2));
     assertEquals(
       newData2,
-      new TextDecoder().decode(Deno.readFileSync(oldName))
+      new TextDecoder().decode(Deno.readFileSync(oldName)),
     );
     // Writing to oldname also affects newname.
     const newData3 = "ModifiedAgain";
     Deno.writeFileSync(oldName, new TextEncoder().encode(newData3));
     assertEquals(
       newData3,
-      new TextDecoder().decode(Deno.readFileSync(newName))
+      new TextDecoder().decode(Deno.readFileSync(newName)),
     );
     // Remove oldname. File still accessible through newname.
     Deno.removeSync(oldName);
@@ -35,9 +35,9 @@ unitTest(
     assert(!newNameStat.isSymlink); // Not a symlink.
     assertEquals(
       newData3,
-      new TextDecoder().decode(Deno.readFileSync(newName))
+      new TextDecoder().decode(Deno.readFileSync(newName)),
     );
-  }
+  },
 );
 
 unitTest(
@@ -53,7 +53,7 @@ unitTest(
     assertThrows(() => {
       Deno.linkSync(oldName, newName);
     }, Deno.errors.AlreadyExists);
-  }
+  },
 );
 
 unitTest(
@@ -66,7 +66,7 @@ unitTest(
     assertThrows(() => {
       Deno.linkSync(oldName, newName);
     }, Deno.errors.NotFound);
-  }
+  },
 );
 
 unitTest(
@@ -75,7 +75,7 @@ unitTest(
     assertThrows(() => {
       Deno.linkSync("oldbaddir", "newbaddir");
     }, Deno.errors.PermissionDenied);
-  }
+  },
 );
 
 unitTest(
@@ -84,7 +84,7 @@ unitTest(
     assertThrows(() => {
       Deno.linkSync("oldbaddir", "newbaddir");
     }, Deno.errors.PermissionDenied);
-  }
+  },
 );
 
 unitTest(
@@ -105,14 +105,14 @@ unitTest(
     Deno.writeFileSync(newName, new TextEncoder().encode(newData2));
     assertEquals(
       newData2,
-      new TextDecoder().decode(Deno.readFileSync(oldName))
+      new TextDecoder().decode(Deno.readFileSync(oldName)),
     );
     // Writing to oldname also affects newname.
     const newData3 = "ModifiedAgain";
     Deno.writeFileSync(oldName, new TextEncoder().encode(newData3));
     assertEquals(
       newData3,
-      new TextDecoder().decode(Deno.readFileSync(newName))
+      new TextDecoder().decode(Deno.readFileSync(newName)),
     );
     // Remove oldname. File still accessible through newname.
     Deno.removeSync(oldName);
@@ -121,7 +121,7 @@ unitTest(
     assert(!newNameStat.isSymlink); // Not a symlink.
     assertEquals(
       newData3,
-      new TextDecoder().decode(Deno.readFileSync(newName))
+      new TextDecoder().decode(Deno.readFileSync(newName)),
     );
-  }
+  },
 );

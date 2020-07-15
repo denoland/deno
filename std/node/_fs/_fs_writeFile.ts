@@ -17,7 +17,7 @@ export function writeFile(
   pathOrRid: string | number | URL,
   data: string | Uint8Array,
   optOrCallback: Encodings | CallbackWithError | WriteFileOptions | undefined,
-  callback?: CallbackWithError
+  callback?: CallbackWithError,
 ): void {
   const callbackFn: CallbackWithError | undefined =
     optOrCallback instanceof Function ? optOrCallback : callback;
@@ -72,7 +72,7 @@ export function writeFile(
 export function writeFileSync(
   pathOrRid: string | number | URL,
   data: string | Uint8Array,
-  options?: Encodings | WriteFileOptions
+  options?: Encodings | WriteFileOptions,
 ): void {
   pathOrRid = pathOrRid instanceof URL ? fromFileUrl(pathOrRid) : pathOrRid;
 

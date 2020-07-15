@@ -38,7 +38,7 @@ class FsWatcher implements AsyncIterableIterator<FsEvent> {
 
 export function watchFs(
   paths: string | string[],
-  options: FsWatcherOptions = { recursive: true }
+  options: FsWatcherOptions = { recursive: true },
 ): AsyncIterableIterator<FsEvent> {
   return new FsWatcher(Array.isArray(paths) ? paths : [paths], options);
 }

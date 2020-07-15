@@ -147,6 +147,14 @@ pub async fn run_all_servers() {
       warp::redirect(u)
     })
     .or(
+      warp::path!("a" / "b" / "c")
+        .and(warp::header::<String>("x-location"))
+        .map(|token: String| {
+          let uri: Uri = token.parse().unwrap();
+          warp::redirect(uri)
+        }),
+    )
+    .or(
       warp::any()
         .and(warp::path::peek())
         .and(warp::fs::dir(root_path()))

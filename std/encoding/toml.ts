@@ -110,7 +110,7 @@ class Parser {
               .join("\n")
               .replace(/"""/g, '"')
               .replace(/'''/g, `'`)
-              .replace(/\n/g, "\\n")
+              .replace(/\n/g, "\\n"),
           );
           isLiteral = false;
         } else {
@@ -321,7 +321,7 @@ class Parser {
           this.context.currentGroup.type === "array"
         ) {
           this.context.currentGroup.arrValues.push(
-            this.context.currentGroup.objValues
+            this.context.currentGroup.objValues,
           );
           this.context.currentGroup.objValues = {};
         }
@@ -350,7 +350,7 @@ class Parser {
     if (this.context.currentGroup) {
       if (this.context.currentGroup.type === "array") {
         this.context.currentGroup.arrValues.push(
-          this.context.currentGroup.objValues
+          this.context.currentGroup.objValues,
         );
       }
       this._groupToOutput();

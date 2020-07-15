@@ -10,7 +10,7 @@ unitTest(function streamReadableHwmError() {
         new ReadableStream<number>(undefined, { highWaterMark });
       },
       RangeError,
-      "highWaterMark must be a positive number or Infinity.  Received:"
+      "highWaterMark must be a positive number or Infinity.  Received:",
     );
   }
 
@@ -18,7 +18,7 @@ unitTest(function streamReadableHwmError() {
     new ReadableStream<number>(
       undefined,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      { highWaterMark: Symbol("hwk") as any }
+      { highWaterMark: Symbol("hwk") as any },
     );
   }, TypeError);
 });
@@ -31,11 +31,11 @@ unitTest(function streamWriteableHwmError() {
       () => {
         new WritableStream(
           undefined,
-          new CountQueuingStrategy({ highWaterMark })
+          new CountQueuingStrategy({ highWaterMark }),
         );
       },
       RangeError,
-      "highWaterMark must be a positive number or Infinity.  Received:"
+      "highWaterMark must be a positive number or Infinity.  Received:",
     );
   }
 
@@ -43,7 +43,7 @@ unitTest(function streamWriteableHwmError() {
     new WritableStream(
       undefined,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      new CountQueuingStrategy({ highWaterMark: Symbol("hwmk") as any })
+      new CountQueuingStrategy({ highWaterMark: Symbol("hwmk") as any }),
     );
   }, TypeError);
 });
@@ -57,7 +57,7 @@ unitTest(function streamTransformHwmError() {
         new TransformStream(undefined, undefined, { highWaterMark });
       },
       RangeError,
-      "highWaterMark must be a positive number or Infinity.  Received:"
+      "highWaterMark must be a positive number or Infinity.  Received:",
     );
   }
 
@@ -66,7 +66,7 @@ unitTest(function streamTransformHwmError() {
       undefined,
       undefined,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      { highWaterMark: Symbol("hwmk") as any }
+      { highWaterMark: Symbol("hwmk") as any },
     );
   }, TypeError);
 });

@@ -14,7 +14,7 @@ type MkdirOptions =
 export function mkdir(
   path: string | URL,
   options?: MkdirOptions | CallbackWithError,
-  callback?: CallbackWithError
+  callback?: CallbackWithError,
 ): void {
   path = path instanceof URL ? fromFileUrl(path) : path;
 
@@ -33,7 +33,7 @@ export function mkdir(
   }
   if (typeof recursive !== "boolean") {
     throw new Deno.errors.InvalidData(
-      "invalid recursive option , must be a boolean"
+      "invalid recursive option , must be a boolean",
     );
   }
   Deno.mkdir(path, { recursive, mode })
@@ -64,7 +64,7 @@ export function mkdirSync(path: string | URL, options?: MkdirOptions): void {
   }
   if (typeof recursive !== "boolean") {
     throw new Deno.errors.InvalidData(
-      "invalid recursive option , must be a boolean"
+      "invalid recursive option , must be a boolean",
     );
   }
 

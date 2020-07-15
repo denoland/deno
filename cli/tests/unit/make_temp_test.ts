@@ -36,7 +36,7 @@ unitTest(
     if (Deno.build.os !== "windows") {
       assertEquals(pathInfo.mode! & 0o777, 0o700 & ~Deno.umask());
     }
-  }
+  },
 );
 
 unitTest(function makeTempDirSyncPerm(): void {
@@ -67,7 +67,7 @@ unitTest(
     await assertThrowsAsync(async () => {
       await Deno.makeTempDir({ dir: "/baddir" });
     }, Deno.errors.NotFound);
-  }
+  },
 );
 
 unitTest(
@@ -78,7 +78,7 @@ unitTest(
     if (Deno.build.os !== "windows") {
       assertEquals(pathInfo.mode! & 0o777, 0o700 & ~Deno.umask());
     }
-  }
+  },
 );
 
 unitTest({ perms: { write: true } }, function makeTempFileSyncSuccess(): void {
@@ -111,7 +111,7 @@ unitTest(
     if (Deno.build.os !== "windows") {
       assertEquals(pathInfo.mode! & 0o777, 0o600 & ~Deno.umask());
     }
-  }
+  },
 );
 
 unitTest(function makeTempFileSyncPerm(): void {
@@ -143,7 +143,7 @@ unitTest(
     await assertThrowsAsync(async () => {
       await Deno.makeTempFile({ dir: "/baddir" });
     }, Deno.errors.NotFound);
-  }
+  },
 );
 
 unitTest(
@@ -154,5 +154,5 @@ unitTest(
     if (Deno.build.os !== "windows") {
       assertEquals(pathInfo.mode! & 0o777, 0o600 & ~Deno.umask());
     }
-  }
+  },
 );

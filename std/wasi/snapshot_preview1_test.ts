@@ -57,7 +57,7 @@ if (import.meta.main) {
       const basename = entry.name.replace(/.rs$/, ".json");
       await Deno.writeTextFile(
         path.join(outdir, basename),
-        prelude[0].slice(2)
+        prelude[0].slice(2),
       );
     }
   }

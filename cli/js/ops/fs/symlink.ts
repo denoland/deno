@@ -9,7 +9,7 @@ export interface SymlinkOptions {
 export function symlinkSync(
   oldpath: string,
   newpath: string,
-  options?: SymlinkOptions
+  options?: SymlinkOptions,
 ): void {
   sendSync("op_symlink", { oldpath, newpath, options });
 }
@@ -17,7 +17,7 @@ export function symlinkSync(
 export async function symlink(
   oldpath: string,
   newpath: string,
-  options?: SymlinkOptions
+  options?: SymlinkOptions,
 ): Promise<void> {
   await sendAsync("op_symlink", { oldpath, newpath, options });
 }

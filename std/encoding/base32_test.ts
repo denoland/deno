@@ -112,7 +112,7 @@ Deno.test({
       decode("OOOO==");
     } catch (e) {
       assert(
-        e.message.includes("Invalid string. Length must be a multiple of 8")
+        e.message.includes("Invalid string. Length must be a multiple of 8"),
       );
       errorCaught = true;
     }

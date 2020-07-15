@@ -24,7 +24,7 @@ export function openSync(path: string | URL, options: OpenOptions): number {
 
 export function open(
   path: string | URL,
-  options: OpenOptions
+  options: OpenOptions,
 ): Promise<number> {
   const mode: number | undefined = options?.mode;
   return sendAsync("op_open", { path: pathFromURL(path), options, mode });

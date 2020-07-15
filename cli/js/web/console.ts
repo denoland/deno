@@ -16,16 +16,28 @@ import {
 } from "../colors.ts";
 
 type ConsoleContext = Set<unknown>;
-type InspectOptions = Partial<{
-  depth: number;
-  indentLevel: number;
-}>;
+
+export interface InspectOptions {
+  depth?: number;
+  indentLevel?: number;
+  sorted?: boolean;
+  trailingComma?: boolean;
+  compact?: boolean;
+  iterableLimit?: number;
+}
+
+const DEFAULT_INSPECT_OPTIONS: Required<InspectOptions> = {
+  depth: 4,
+  indentLevel: 0,
+  sorted: false,
+  trailingComma: false,
+  compact: true,
+  iterableLimit: 100,
+};
 
 const DEFAULT_INDENT = "  "; // Default indent string
 
-const DEFAULT_MAX_DEPTH = 4; // Default depth of logging nested objects
 const LINE_BREAKING_LENGTH = 80;
-const MAX_ITERABLE_LENGTH = 100;
 const MIN_GROUP_LENGTH = 6;
 const STR_ABBREVIATE_SIZE = 100;
 // Char codes
@@ -63,7 +75,7 @@ function getClassInstanceName(instance: unknown): string {
   return "";
 }
 
-function createFunctionString(value: Function, _ctx: ConsoleContext): string {
+function inspectFunction(value: Function, _ctx: ConsoleContext): string {
   // Might be Function/AsyncFunction/GeneratorFunction
   const cstrName = Object.getPrototypeOf(value).constructor.name;
   if (value.name && value.name !== "anonymous") {
@@ -73,7 +85,7 @@ function createFunctionString(value: Function, _ctx: ConsoleContext): string {
   return `[${cstrName}]`;
 }
 
-interface IterablePrintConfig<T> {
+interface InspectIterableOptions<T> {
   typeName: string;
   displayName: string;
   delims: [string, string];
@@ -81,23 +93,24 @@ interface IterablePrintConfig<T> {
     entry: [unknown, T],
     ctx: ConsoleContext,
     level: number,
-    maxLevel: number,
-    next: () => IteratorResult<[unknown, T], unknown>
+    inspectOptions: Required<InspectOptions>,
+    next: () => IteratorResult<[unknown, T], unknown>,
   ) => string;
   group: boolean;
+  sort: boolean;
 }
 type IterableEntries<T> = Iterable<T> & {
   entries(): IterableIterator<[unknown, T]>;
 };
-function createIterableString<T>(
+function inspectIterable<T>(
   value: IterableEntries<T>,
   ctx: ConsoleContext,
   level: number,
-  maxLevel: number,
-  config: IterablePrintConfig<T>
+  options: InspectIterableOptions<T>,
+  inspectOptions: Required<InspectOptions>,
 ): string {
-  if (level >= maxLevel) {
-    return cyan(`[${config.typeName}]`);
+  if (level >= inspectOptions.depth) {
+    return cyan(`[${options.typeName}]`);
   }
   ctx.add(value);
 
@@ -109,42 +122,57 @@ function createIterableString<T>(
     return iter.next();
   };
   for (const el of iter) {
-    if (entriesLength < MAX_ITERABLE_LENGTH) {
+    if (entriesLength < inspectOptions.iterableLimit) {
       entries.push(
-        config.entryHandler(el, ctx, level + 1, maxLevel, next.bind(iter))
+        options.entryHandler(
+          el,
+          ctx,
+          level + 1,
+          inspectOptions,
+          next.bind(iter),
+        ),
       );
     }
     entriesLength++;
   }
   ctx.delete(value);
 
-  if (entriesLength > MAX_ITERABLE_LENGTH) {
-    const nmore = entriesLength - MAX_ITERABLE_LENGTH;
+  if (options.sort) {
+    entries.sort();
+  }
+
+  if (entriesLength > inspectOptions.iterableLimit) {
+    const nmore = entriesLength - inspectOptions.iterableLimit;
     entries.push(`... ${nmore} more items`);
   }
 
-  const iPrefix = `${config.displayName ? config.displayName + " " : ""}`;
+  const iPrefix = `${options.displayName ? options.displayName + " " : ""}`;
 
   const initIndentation = `\n${DEFAULT_INDENT.repeat(level + 1)}`;
   const entryIndentation = `,\n${DEFAULT_INDENT.repeat(level + 1)}`;
-  const closingIndentation = `\n${DEFAULT_INDENT.repeat(level)}`;
+  const closingIndentation = `${inspectOptions.trailingComma ? "," : ""}\n${
+    DEFAULT_INDENT.repeat(level)
+  }`;
 
   let iContent: string;
-  if (config.group && entries.length > MIN_GROUP_LENGTH) {
+  if (options.group && entries.length > MIN_GROUP_LENGTH) {
     const groups = groupEntries(entries, level, value);
-    iContent = `${initIndentation}${groups.join(
-      entryIndentation
-    )}${closingIndentation}`;
+    iContent = `${initIndentation}${
+      groups.join(entryIndentation)
+    }${closingIndentation}`;
   } else {
     iContent = entries.length === 0 ? "" : ` ${entries.join(", ")} `;
-    if (stripColor(iContent).length > LINE_BREAKING_LENGTH) {
-      iContent = `${initIndentation}${entries.join(
-        entryIndentation
-      )}${closingIndentation}`;
+    if (
+      stripColor(iContent).length > LINE_BREAKING_LENGTH ||
+      !inspectOptions.compact
+    ) {
+      iContent = `${initIndentation}${
+        entries.join(entryIndentation)
+      }${closingIndentation}`;
     }
   }
 
-  return `${iPrefix}${config.delims[0]}${iContent}${config.delims[1]}`;
+  return `${iPrefix}${options.delims[0]}${iContent}${options.delims[1]}`;
 }
 
 // Ported from Node.js
@@ -152,12 +180,13 @@ function createIterableString<T>(
 function groupEntries<T>(
   entries: string[],
   level: number,
-  value: Iterable<T>
+  value: Iterable<T>,
+  iterableLimit = 100,
 ): string[] {
   let totalLength = 0;
   let maxLength = 0;
   let entriesLength = entries.length;
-  if (MAX_ITERABLE_LENGTH < entriesLength) {
+  if (iterableLimit < entriesLength) {
     // This makes sure the "... n more items" part is not taken into account.
     entriesLength--;
   }
@@ -196,12 +225,12 @@ function groupEntries<T>(
       // Divide that by `actualMax` to receive the correct number of columns.
       // The added bias increases the columns for short entries.
       Math.round(
-        Math.sqrt(approxCharHeights * biasedMax * entriesLength) / biasedMax
+        Math.sqrt(approxCharHeights * biasedMax * entriesLength) / biasedMax,
       ),
       // Do not exceed the breakLength.
       Math.floor((LINE_BREAKING_LENGTH - (level + 1)) / actualMax),
       // Limit the columns to a maximum of fifteen.
-      15
+      15,
     );
     // Return with the original output if no grouping should happen.
     if (columns <= 1) {
@@ -243,8 +272,7 @@ function groupEntries<T>(
         str += `${entries[j]}, `[order](padding, " ");
       }
       if (order === "padStart") {
-        const padding =
-          maxLineLength[j - i] +
+        const padding = maxLineLength[j - i] +
           entries[j].length -
           dataLen[j] -
           separatorSpace;
@@ -254,7 +282,7 @@ function groupEntries<T>(
       }
       tmp.push(str);
     }
-    if (MAX_ITERABLE_LENGTH < entries.length) {
+    if (iterableLimit < entries.length) {
       tmp.push(entries[entriesLength]);
     }
     entries = tmp;
@@ -262,11 +290,11 @@ function groupEntries<T>(
   return entries;
 }
 
-function stringify(
+function inspectValue(
   value: unknown,
   ctx: ConsoleContext,
   level: number,
-  maxLevel: number
+  inspectOptions: Required<InspectOptions>,
 ): string {
   switch (typeof value) {
     case "string":
@@ -283,7 +311,7 @@ function stringify(
     case "bigint": // Bigints are yellow
       return yellow(`${value}n`);
     case "function": // Function string is cyan
-      return cyan(createFunctionString(value as Function, ctx));
+      return cyan(inspectFunction(value as Function, ctx));
     case "object": // null is bold
       if (value === null) {
         return bold("null");
@@ -294,7 +322,7 @@ function stringify(
         return cyan("[Circular]");
       }
 
-      return createObjectString(value, ctx, level, maxLevel);
+      return inspectObject(value, ctx, level, inspectOptions);
     default:
       // Not implemented is red
       return red("[Not Implemented]");
@@ -320,35 +348,34 @@ function quoteString(string: string): string {
 }
 
 // Print strings when they are inside of arrays or objects with quotes
-function stringifyWithQuotes(
+function inspectValueWithQuotes(
   value: unknown,
   ctx: ConsoleContext,
   level: number,
-  maxLevel: number
+  inspectOptions: Required<InspectOptions>,
 ): string {
   switch (typeof value) {
     case "string":
-      const trunc =
-        value.length > STR_ABBREVIATE_SIZE
-          ? value.slice(0, STR_ABBREVIATE_SIZE) + "..."
-          : value;
+      const trunc = value.length > STR_ABBREVIATE_SIZE
+        ? value.slice(0, STR_ABBREVIATE_SIZE) + "..."
+        : value;
       return green(quoteString(trunc)); // Quoted strings are green
     default:
-      return stringify(value, ctx, level, maxLevel);
+      return inspectValue(value, ctx, level, inspectOptions);
   }
 }
 
-function createArrayString(
+function inspectArray(
   value: unknown[],
   ctx: ConsoleContext,
   level: number,
-  maxLevel: number
+  inspectOptions: Required<InspectOptions>,
 ): string {
-  const printConfig: IterablePrintConfig<unknown> = {
+  const options: InspectIterableOptions<unknown> = {
     typeName: "Array",
     displayName: "",
     delims: ["[", "]"],
-    entryHandler: (entry, ctx, level, maxLevel, next): string => {
+    entryHandler: (entry, ctx, level, inspectOptions, next): string => {
       const [index, val] = entry as [number, unknown];
       let i = index;
       if (!value.hasOwnProperty(i)) {
@@ -361,117 +388,129 @@ function createArrayString(
         const ending = emptyItems > 1 ? "s" : "";
         return dim(`<${emptyItems} empty item${ending}>`);
       } else {
-        return stringifyWithQuotes(val, ctx, level, maxLevel);
+        return inspectValueWithQuotes(val, ctx, level, inspectOptions);
       }
     },
-    group: true,
+    group: inspectOptions.compact,
+    sort: false,
   };
-  return createIterableString(value, ctx, level, maxLevel, printConfig);
+  return inspectIterable(value, ctx, level, options, inspectOptions);
 }
 
-function createTypedArrayString(
+function inspectTypedArray(
   typedArrayName: string,
   value: TypedArray,
   ctx: ConsoleContext,
   level: number,
-  maxLevel: number
+  inspectOptions: Required<InspectOptions>,
 ): string {
   const valueLength = value.length;
-  const printConfig: IterablePrintConfig<unknown> = {
+  const options: InspectIterableOptions<unknown> = {
     typeName: typedArrayName,
     displayName: `${typedArrayName}(${valueLength})`,
     delims: ["[", "]"],
-    entryHandler: (entry, ctx, level, maxLevel): string => {
+    entryHandler: (entry, ctx, level, inspectOptions): string => {
       const val = entry[1];
-      return stringifyWithQuotes(val, ctx, level + 1, maxLevel);
+      return inspectValueWithQuotes(val, ctx, level + 1, inspectOptions);
     },
-    group: true,
+    group: inspectOptions.compact,
+    sort: false,
   };
-  return createIterableString(value, ctx, level, maxLevel, printConfig);
+  return inspectIterable(value, ctx, level, options, inspectOptions);
 }
 
-function createSetString(
+function inspectSet(
   value: Set<unknown>,
   ctx: ConsoleContext,
   level: number,
-  maxLevel: number
+  inspectOptions: Required<InspectOptions>,
 ): string {
-  const printConfig: IterablePrintConfig<unknown> = {
+  const options: InspectIterableOptions<unknown> = {
     typeName: "Set",
     displayName: "Set",
     delims: ["{", "}"],
-    entryHandler: (entry, ctx, level, maxLevel): string => {
+    entryHandler: (entry, ctx, level, inspectOptions): string => {
       const val = entry[1];
-      return stringifyWithQuotes(val, ctx, level + 1, maxLevel);
+      return inspectValueWithQuotes(val, ctx, level + 1, inspectOptions);
     },
     group: false,
+    sort: inspectOptions.sorted,
   };
-  return createIterableString(value, ctx, level, maxLevel, printConfig);
+  return inspectIterable(value, ctx, level, options, inspectOptions);
 }
 
-function createMapString(
+function inspectMap(
   value: Map<unknown, unknown>,
   ctx: ConsoleContext,
   level: number,
-  maxLevel: number
+  inspectOptions: Required<InspectOptions>,
 ): string {
-  const printConfig: IterablePrintConfig<[unknown]> = {
+  const options: InspectIterableOptions<[unknown]> = {
     typeName: "Map",
     displayName: "Map",
     delims: ["{", "}"],
-    entryHandler: (entry, ctx, level, maxLevel): string => {
+    entryHandler: (entry, ctx, level, inspectOptions): string => {
       const [key, val] = entry;
-      return `${stringifyWithQuotes(
-        key,
-        ctx,
-        level + 1,
-        maxLevel
-      )} => ${stringifyWithQuotes(val, ctx, level + 1, maxLevel)}`;
+      return `${
+        inspectValueWithQuotes(
+          key,
+          ctx,
+          level + 1,
+          inspectOptions,
+        )
+      } => ${inspectValueWithQuotes(val, ctx, level + 1, inspectOptions)}`;
     },
     group: false,
+    sort: inspectOptions.sorted,
   };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return createIterableString(value as any, ctx, level, maxLevel, printConfig);
+  return inspectIterable(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    value as any,
+    ctx,
+    level,
+    options,
+    inspectOptions,
+  );
 }
 
-function createWeakSetString(): string {
+function inspectWeakSet(): string {
   return `WeakSet { ${cyan("[items unknown]")} }`; // as seen in Node, with cyan color
 }
 
-function createWeakMapString(): string {
+function inspectWeakMap(): string {
   return `WeakMap { ${cyan("[items unknown]")} }`; // as seen in Node, with cyan color
 }
 
-function createDateString(value: Date): string {
+function inspectDate(value: Date): string {
   // without quotes, ISO format, in magenta like before
   return magenta(isInvalidDate(value) ? "Invalid Date" : value.toISOString());
 }
 
-function createRegExpString(value: RegExp): string {
+function inspectRegExp(value: RegExp): string {
   return red(value.toString()); // RegExps are red
 }
 
 /* eslint-disable @typescript-eslint/ban-types */
 
-function createStringWrapperString(value: String): string {
+function inspectStringObject(value: String): string {
   return cyan(`[String: "${value.toString()}"]`); // wrappers are in cyan
 }
 
-function createBooleanWrapperString(value: Boolean): string {
+function inspectBooleanObject(value: Boolean): string {
   return cyan(`[Boolean: ${value.toString()}]`); // wrappers are in cyan
 }
 
-function createNumberWrapperString(value: Number): string {
+function inspectNumberObject(value: Number): string {
   return cyan(`[Number: ${value.toString()}]`); // wrappers are in cyan
 }
 
 /* eslint-enable @typescript-eslint/ban-types */
 
-function createPromiseString(
+function inspectPromise(
   value: Promise<unknown>,
   ctx: ConsoleContext,
   level: number,
-  maxLevel: number
+  inspectOptions: Required<InspectOptions>,
 ): string {
   const [state, result] = Deno.core.getPromiseDetails(value);
 
@@ -479,15 +518,18 @@ function createPromiseString(
     return `Promise { ${cyan("<pending>")} }`;
   }
 
-  const prefix =
-    state === PromiseState.Fulfilled ? "" : `${red("<rejected>")} `;
+  const prefix = state === PromiseState.Fulfilled
+    ? ""
+    : `${red("<rejected>")} `;
 
-  const str = `${prefix}${stringifyWithQuotes(
-    result,
-    ctx,
-    level + 1,
-    maxLevel
-  )}`;
+  const str = `${prefix}${
+    inspectValueWithQuotes(
+      result,
+      ctx,
+      level + 1,
+      inspectOptions,
+    )
+  }`;
 
   if (str.length + PROMISE_STRING_BASE_LENGTH > LINE_BREAKING_LENGTH) {
     return `Promise {\n${DEFAULT_INDENT.repeat(level + 1)}${str}\n}`;
@@ -498,13 +540,13 @@ function createPromiseString(
 
 // TODO: Proxy
 
-function createRawObjectString(
+function inspectRawObject(
   value: Record<string, unknown>,
   ctx: ConsoleContext,
   level: number,
-  maxLevel: number
+  inspectOptions: Required<InspectOptions>,
 ): string {
-  if (level >= maxLevel) {
+  if (level >= inspectOptions.depth) {
     return cyan("[Object]"); // wrappers are in cyan
   }
   ctx.add(value);
@@ -525,37 +567,52 @@ function createRawObjectString(
   const entries: string[] = [];
   const stringKeys = Object.keys(value);
   const symbolKeys = Object.getOwnPropertySymbols(value);
+  if (inspectOptions.sorted) {
+    stringKeys.sort();
+    symbolKeys.sort((s1, s2) =>
+      (s1.description ?? "").localeCompare(s2.description ?? "")
+    );
+  }
 
   for (const key of stringKeys) {
     entries.push(
-      `${key}: ${stringifyWithQuotes(value[key], ctx, level + 1, maxLevel)}`
+      `${key}: ${
+        inspectValueWithQuotes(
+          value[key],
+          ctx,
+          level + 1,
+          inspectOptions,
+        )
+      }`,
     );
   }
   for (const key of symbolKeys) {
     entries.push(
-      `${key.toString()}: ${stringifyWithQuotes(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        value[key as any],
-        ctx,
-        level + 1,
-        maxLevel
-      )}`
+      `${key.toString()}: ${
+        inspectValueWithQuotes(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          value[key as any],
+          ctx,
+          level + 1,
+          inspectOptions,
+        )
+      }`,
     );
   }
   // Making sure color codes are ignored when calculating the total length
-  const totalLength =
-    entries.length + level + stripColor(entries.join("")).length;
+  const totalLength = entries.length + level +
+    stripColor(entries.join("")).length;
 
   ctx.delete(value);
 
   if (entries.length === 0) {
     baseString = "{}";
-  } else if (totalLength > LINE_BREAKING_LENGTH) {
+  } else if (totalLength > LINE_BREAKING_LENGTH || !inspectOptions.compact) {
     const entryIndent = DEFAULT_INDENT.repeat(level + 1);
     const closingIndent = DEFAULT_INDENT.repeat(level);
-    baseString = `{\n${entryIndent}${entries.join(
-      `,\n${entryIndent}`
-    )}\n${closingIndent}}`;
+    baseString = `{\n${entryIndent}${entries.join(`,\n${entryIndent}`)}${
+      inspectOptions.trailingComma ? "," : ""
+    }\n${closingIndent}}`;
   } else {
     baseString = `{ ${entries.join(", ")} }`;
   }
@@ -567,9 +624,11 @@ function createRawObjectString(
   return baseString;
 }
 
-function createObjectString(
+function inspectObject(
   value: {},
-  ...args: [ConsoleContext, number, number]
+  consoleContext: ConsoleContext,
+  level: number,
+  inspectOptions: Required<InspectOptions>,
 ): string {
   if (customInspect in value && typeof value[customInspect] === "function") {
     try {
@@ -579,43 +638,46 @@ function createObjectString(
   if (value instanceof Error) {
     return String(value.stack);
   } else if (Array.isArray(value)) {
-    return createArrayString(value, ...args);
+    return inspectArray(value, consoleContext, level, inspectOptions);
   } else if (value instanceof Number) {
-    return createNumberWrapperString(value);
+    return inspectNumberObject(value);
   } else if (value instanceof Boolean) {
-    return createBooleanWrapperString(value);
+    return inspectBooleanObject(value);
   } else if (value instanceof String) {
-    return createStringWrapperString(value);
+    return inspectStringObject(value);
   } else if (value instanceof Promise) {
-    return createPromiseString(value, ...args);
+    return inspectPromise(value, consoleContext, level, inspectOptions);
   } else if (value instanceof RegExp) {
-    return createRegExpString(value);
+    return inspectRegExp(value);
   } else if (value instanceof Date) {
-    return createDateString(value);
+    return inspectDate(value);
   } else if (value instanceof Set) {
-    return createSetString(value, ...args);
+    return inspectSet(value, consoleContext, level, inspectOptions);
   } else if (value instanceof Map) {
-    return createMapString(value, ...args);
+    return inspectMap(value, consoleContext, level, inspectOptions);
   } else if (value instanceof WeakSet) {
-    return createWeakSetString();
+    return inspectWeakSet();
   } else if (value instanceof WeakMap) {
-    return createWeakMapString();
+    return inspectWeakMap();
   } else if (isTypedArray(value)) {
-    return createTypedArrayString(
+    return inspectTypedArray(
       Object.getPrototypeOf(value).constructor.name,
       value,
-      ...args
+      consoleContext,
+      level,
+      inspectOptions,
     );
   } else {
     // Otherwise, default object formatting
-    return createRawObjectString(value, ...args);
+    return inspectRawObject(value, consoleContext, level, inspectOptions);
   }
 }
 
-export function stringifyArgs(
+export function inspectArgs(
   args: unknown[],
-  { depth = DEFAULT_MAX_DEPTH, indentLevel = 0 }: InspectOptions = {}
+  inspectOptions: InspectOptions = {},
 ): string {
+  const rInspectOptions = { ...DEFAULT_INSPECT_OPTIONS, ...inspectOptions };
   const first = args[0];
   let a = 0;
   let str = "";
@@ -658,7 +720,12 @@ export function stringifyArgs(
             case CHAR_LOWERCASE_O:
             case CHAR_UPPERCASE_O:
               // format as an object
-              tempStr = stringify(args[++a], new Set<unknown>(), 0, depth);
+              tempStr = inspectValue(
+                args[++a],
+                new Set<unknown>(),
+                0,
+                rInspectOptions,
+              );
               break;
             case CHAR_PERCENT:
               str += first.slice(lastPos, i);
@@ -701,14 +768,14 @@ export function stringifyArgs(
       str += value;
     } else {
       // use default maximum depth for null or undefined argument
-      str += stringify(value, new Set<unknown>(), 0, depth);
+      str += inspectValue(value, new Set<unknown>(), 0, rInspectOptions);
     }
     join = " ";
     a++;
   }
 
-  if (indentLevel > 0) {
-    const groupIndent = DEFAULT_INDENT.repeat(indentLevel);
+  if (rInspectOptions.indentLevel > 0) {
+    const groupIndent = DEFAULT_INDENT.repeat(rInspectOptions.indentLevel);
     if (str.indexOf("\n") !== -1) {
       str = str.replace(/\n/g, `\n${groupIndent}`);
     }
@@ -745,10 +812,10 @@ export class Console {
 
   log = (...args: unknown[]): void => {
     this.#printFunc(
-      stringifyArgs(args, {
+      inspectArgs(args, {
         indentLevel: this.indentLevel,
       }) + "\n",
-      false
+      false,
     );
   };
 
@@ -756,17 +823,17 @@ export class Console {
   info = this.log;
 
   dir = (obj: unknown, options: InspectOptions = {}): void => {
-    this.#printFunc(stringifyArgs([obj], options) + "\n", false);
+    this.#printFunc(inspectArgs([obj], options) + "\n", false);
   };
 
   dirxml = this.dir;
 
   warn = (...args: unknown[]): void => {
     this.#printFunc(
-      stringifyArgs(args, {
+      inspectArgs(args, {
         indentLevel: this.indentLevel,
       }) + "\n",
-      true
+      true,
     );
   };
 
@@ -819,7 +886,7 @@ export class Console {
     if (properties !== undefined && !Array.isArray(properties)) {
       throw new Error(
         "The 'properties' argument must be of type Array. " +
-          "Received type string"
+          "Received type string",
       );
     }
 
@@ -832,7 +899,10 @@ export class Console {
     const values: string[] = [];
 
     const stringifyValue = (value: unknown): string =>
-      stringifyWithQuotes(value, new Set<unknown>(), 0, 1);
+      inspectValueWithQuotes(value, new Set<unknown>(), 0, {
+        ...DEFAULT_INSPECT_OPTIONS,
+        depth: 1,
+      });
     const toTable = (header: string[], body: string[][]): void =>
       this.log(cliTable(header, body));
     const createColumn = (value: unknown, shift?: number): string[] => [
@@ -864,8 +934,7 @@ export class Console {
     let hasPrimitives = false;
     Object.keys(resultData).forEach((k, idx): void => {
       const value: unknown = resultData[k]!;
-      const primitive =
-        value === null ||
+      const primitive = value === null ||
         (typeof value !== "function" && typeof value !== "object");
       if (properties === undefined && primitive) {
         hasPrimitives = true;
@@ -966,7 +1035,7 @@ export class Console {
   };
 
   trace = (...args: unknown[]): void => {
-    const message = stringifyArgs(args, { indentLevel: 0 });
+    const message = inspectArgs(args, { indentLevel: 0 });
     const err = {
       name: "Trace",
       message,
@@ -980,19 +1049,24 @@ export class Console {
   }
 }
 
-export const customInspect = Symbol("Deno.symbols.customInspect");
+export const customInspect = Symbol("Deno.customInspect");
 
 export function inspect(
   value: unknown,
-  { depth = DEFAULT_MAX_DEPTH }: InspectOptions = {}
+  inspectOptions: InspectOptions = {},
 ): string {
   if (typeof value === "string") {
     return value;
   } else {
-    return stringify(value, new Set<unknown>(), 0, depth);
+    return inspectValue(value, new Set<unknown>(), 0, {
+      ...DEFAULT_INSPECT_OPTIONS,
+      ...inspectOptions,
+      // TODO(nayeemrmn): Indent level is not supported.
+      indentLevel: 0,
+    });
   }
 }
 
 // Expose these fields to internalObject for tests.
 exposeForTest("Console", Console);
-exposeForTest("stringifyArgs", stringifyArgs);
+exposeForTest("inspectArgs", inspectArgs);

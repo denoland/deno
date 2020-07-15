@@ -85,28 +85,23 @@ When designing function interfaces, stick to the following rules.
    there is only one, and it seems inconceivable that we would add more optional
    parameters in the future.
 
-<!-- prettier-ignore-start -->
-<!-- see https://github.com/prettier/prettier/issues/3679 -->
-
 3. The 'options' argument is the only argument that is a regular 'Object'.
 
    Other arguments can be objects, but they must be distinguishable from a
    'plain' Object runtime, by having either:
 
-    - a distinguishing prototype (e.g. `Array`, `Map`, `Date`, `class MyThing`)
-    - a well-known symbol property (e.g. an iterable with `Symbol.iterator`).
+   - a distinguishing prototype (e.g. `Array`, `Map`, `Date`, `class MyThing`)
+   - a well-known symbol property (e.g. an iterable with `Symbol.iterator`).
 
    This allows the API to evolve in a backwards compatible way, even when the
    position of the options object changes.
-
-<!-- prettier-ignore-end -->
 
 ```ts
 // BAD: optional parameters not part of options object. (#2)
 export function resolve(
   hostname: string,
   family?: "ipv4" | "ipv6",
-  timeout?: number
+  timeout?: number,
 ): IPAddress[] {}
 
 // GOOD.
@@ -116,7 +111,7 @@ export interface ResolveOptions {
 }
 export function resolve(
   hostname: string,
-  options: ResolveOptions = {}
+  options: ResolveOptions = {},
 ): IPAddress[] {}
 ```
 
@@ -135,7 +130,7 @@ export interface RunShellOptions {
 }
 export function runShellWithEnv(
   cmdline: string,
-  options: RunShellOptions
+  options: RunShellOptions,
 ): string {}
 ```
 
@@ -145,7 +140,7 @@ export function renameSync(
   oldname: string,
   newname: string,
   replaceExisting?: boolean,
-  followLinks?: boolean
+  followLinks?: boolean,
 ) {}
 
 // GOOD.
@@ -156,7 +151,7 @@ interface RenameOptions {
 export function renameSync(
   oldname: string,
   newname: string,
-  options: RenameOptions = {}
+  options: RenameOptions = {},
 ) {}
 ```
 
@@ -167,7 +162,7 @@ export function pwrite(
   buffer: TypedArray,
   offset: number,
   length: number,
-  position: number
+  position: number,
 ) {}
 
 // BETTER.

@@ -21,7 +21,10 @@ Don't link to / import any module whose path:
 - Is that of a test module or test data: `test.ts`, `foo_test.ts`,
   `testdata/bar.txt`.
 
-No stability is guaranteed for these files.
+Don't import any symbol with an underscore prefix: `export function _baz() {}`.
+
+These elements are not considered part of the public API, thus no stability is
+guaranteed for them.
 
 ## Documentation
 
@@ -29,7 +32,7 @@ To browse documentation for modules:
 
 - Go to https://deno.land/std/.
 - Navigate to any module of interest.
-- Click the "DOCUMENTATION" link.
+- Click "View Documentation".
 
 ## Contributing
 
@@ -41,5 +44,4 @@ building Go. We generally welcome direct ports of Go's code.
 
 Please ensure the copyright headers cite the code's origin.
 
-Follow the
-[style guide](https://github.com/denoland/deno/blob/master/docs/contributing/style_guide.md).
+Follow the [style guide](https://deno.land/manual/contributing/style_guide).

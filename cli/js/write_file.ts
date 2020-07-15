@@ -15,7 +15,7 @@ export interface WriteFileOptions {
 export function writeFileSync(
   path: string | URL,
   data: Uint8Array,
-  options: WriteFileOptions = {}
+  options: WriteFileOptions = {},
 ): void {
   if (options.create !== undefined) {
     const create = !!options.create;
@@ -45,7 +45,7 @@ export function writeFileSync(
 export async function writeFile(
   path: string | URL,
   data: Uint8Array,
-  options: WriteFileOptions = {}
+  options: WriteFileOptions = {},
 ): Promise<void> {
   if (options.create !== undefined) {
     const create = !!options.create;

@@ -26,7 +26,7 @@ interface CallSite {
 function getMockCallSite(
   fileName: string,
   lineNumber: number | null,
-  columnNumber: number | null
+  columnNumber: number | null,
 ): CallSite {
   return {
     getThis(): unknown {
@@ -87,7 +87,7 @@ unitTest(function prepareStackTrace(): void {
   assert(typeof MockError.prepareStackTrace === "function");
   const prepareStackTrace: (
     error: Error,
-    structuredStackTrace: CallSite[]
+    structuredStackTrace: CallSite[],
   ) => string = MockError.prepareStackTrace;
   const result = prepareStackTrace(new Error("foo"), [
     getMockCallSite("CLI_SNAPSHOT.js", 23, 0),

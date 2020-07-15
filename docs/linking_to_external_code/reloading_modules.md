@@ -10,7 +10,6 @@ usage is described below:
 
 ```ts
 deno cache --reload my_module.ts
-
 ```
 
 ### To reload specific modules
