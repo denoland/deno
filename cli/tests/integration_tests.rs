@@ -2188,6 +2188,12 @@ itest!(deno_lint_glob {
   exit_code: 1,
 });
 
+itest!(compiler_js_error {
+  args: "run --unstable compiler_js_error.ts",
+  output: "compiler_js_error.ts.out",
+  exit_code: 1,
+});
+
 #[test]
 fn cafile_env_fetch() {
   use url::Url;
