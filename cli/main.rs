@@ -440,7 +440,7 @@ async fn bundle_command(
   source_file: String,
   out_file: Option<PathBuf>,
 ) -> Result<(), ErrBox> {
-  let mut module_specifier =
+  let module_specifier =
     ModuleSpecifier::resolve_url_or_path(&source_file)?;
   let url = module_specifier.as_url();
 
