@@ -11,9 +11,9 @@ Deno.test("[path] fromFileUrl", function () {
   // run on Windows (matching the underlying URL class), but
   // `posix.fromFileUrl()` should not support them under any circumstance.
   if (Deno.build.os != "windows") {
-    assertEquals(posix.fromFileUrl("file:////"), "//");
-    assertEquals(posix.fromFileUrl("file:////server"), "//server");
-    assertEquals(posix.fromFileUrl("file:////server/file"), "//server/file");
+    assertEquals(posix.fromFileUrl("file:////"), "/");
+    assertEquals(posix.fromFileUrl("file:////server"), "/server");
+    assertEquals(posix.fromFileUrl("file:////server/file"), "/server/file");
   }
 });
 

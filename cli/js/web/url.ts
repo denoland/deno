@@ -77,6 +77,7 @@ function parse(url: string, isBase = true): URLParts | undefined {
       // equivalent to: `new URL("file://localhost/foo/bar")`.
       [parts.hostname, restUrl] = takePattern(restUrl, /^[/\\]{2,}([^/\\?#]*)/);
     }
+    [, restUrl] = takePattern(restUrl, /(?<=[/\\])[/\\]+/);
   } else {
     let restAuthority;
     if (isSpecial) {

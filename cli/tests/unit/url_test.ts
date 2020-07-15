@@ -245,17 +245,14 @@ unitTest(function urlDriveLetter() {
 });
 
 unitTest(function urlUncHostname() {
-  assertEquals(
-    new URL("file:////").href,
-    Deno.build.os == "windows" ? "file:///" : "file:////",
-  );
+  assertEquals(new URL("file:////").href, "file:///");
   assertEquals(
     new URL("file:////server").href,
-    Deno.build.os == "windows" ? "file://server/" : "file:////server",
+    Deno.build.os == "windows" ? "file://server/" : "file:///server",
   );
   assertEquals(
     new URL("file:////server/file").href,
-    Deno.build.os == "windows" ? "file://server/file" : "file:////server/file",
+    Deno.build.os == "windows" ? "file://server/file" : "file:///server/file",
   );
 });
 
@@ -268,6 +265,12 @@ unitTest(function urlEmptyPath() {
   assertEquals(new URL("http://foo").pathname, "/");
   assertEquals(new URL("file://foo").pathname, "/");
   assertEquals(new URL("abcd://foo").pathname, "");
+});
+
+unitTest(function urlPathRepeatedSlashes() {
+  assertEquals(new URL("http://foo//bar//").pathname, "//bar//");
+  assertEquals(new URL("file://foo///bar//").pathname, "/bar//");
+  assertEquals(new URL("abcd://foo//bar//").pathname, "//bar//");
 });
 
 unitTest(function urlTrim() {
@@ -350,7 +353,7 @@ unitTest(function urlDriveLetterBase() {
   );
 });
 
-unitTest(function emptyBasePath(): void {
+unitTest(function urlEmptyBasePath(): void {
   assertEquals(new URL("", "http://example.com").href, "http://example.com/");
 });
 
