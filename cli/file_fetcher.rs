@@ -29,6 +29,22 @@ pub struct SourceCode {
   bytes: Vec<u8>,
 }
 
+impl SourceCode {
+  fn to_utf8(&self, charset: &String) -> Result<String, std::io::Error> {
+    match encoding::label::encoding_from_whatwg_label(
+      chardet::charset2encoding(charset),
+    ) {
+      Some(coder) => {
+        match coder.decode(&self.bytes, encoding::DecoderTrap::Ignore) {
+          Ok(text) => Ok(text),
+          Err(_e) => Err(std::io::ErrorKind::InvalidData.into()),
+        }
+      }
+      None => Err(std::io::ErrorKind::InvalidData.into()),
+    }
+  }
+}
+
 impl From<Vec<u8>> for SourceCode {
   fn from(bytes: Vec<u8>) -> Self {
     SourceCode { bytes }
@@ -60,19 +76,7 @@ impl SourceFile {
       }
     };
 
-    match encoding::label::encoding_from_whatwg_label(
-      chardet::charset2encoding(&charset),
-    ) {
-      Some(coder) => {
-        match coder
-          .decode(&self.source_code.bytes, encoding::DecoderTrap::Ignore)
-        {
-          Ok(text) => Ok(text),
-          Err(_e) => Err(std::io::ErrorKind::InvalidData.into()),
-        }
-      }
-      None => Err(std::io::ErrorKind::InvalidData.into()),
-    }
+    self.source_code.to_utf8(charset)
   }
 
   pub fn source_code_bytes(&self) -> &Vec<u8> {
