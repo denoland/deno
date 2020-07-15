@@ -1,1 +1,3 @@
-export interface HelloWorld {}
+export interface HelloWorld {
+  a: string;
+}

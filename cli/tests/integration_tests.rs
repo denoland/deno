@@ -1974,7 +1974,7 @@ itest!(ts_decorators {
 
 itest!(ts_type_only_import {
   args: "run --reload ts_type_only_import.ts",
-  output: "ts_type_only_import.ts",
+  output: "ts_type_only_import.ts.out",
 });
 
 itest!(swc_syntax_error {
