@@ -56,7 +56,11 @@ function takePattern(string: string, pattern: RegExp): [string, string] {
 function parse(url: string, isBase = true): URLParts | undefined {
   const parts: Partial<URLParts> = {};
   let restUrl;
-  [parts.protocol, restUrl] = takePattern(url.trim(), /^([a-z]+):/);
+  [parts.protocol, restUrl] = takePattern(
+    url.trim(),
+    /^([A-Za-z][+-.0-9A-Za-z]*):/,
+  );
+  parts.protocol = parts.protocol.toLowerCase();
   if (isBase && parts.protocol == "") {
     return undefined;
   }
@@ -77,7 +81,7 @@ function parse(url: string, isBase = true): URLParts | undefined {
     let restAuthority;
     if (isSpecial) {
       parts.slashes = "//";
-      [restAuthority, restUrl] = takePattern(restUrl, /^[/\\]{2,}([^/\\?#]*)/);
+      [restAuthority, restUrl] = takePattern(restUrl, /^[/\\]*([^/\\?#]*)/);
     } else {
       parts.slashes = restUrl.match(/^[/\\]{2}/) ? "//" : "";
       [restAuthority, restUrl] = takePattern(restUrl, /^[/\\]{2}([^/\\?#]*)/);

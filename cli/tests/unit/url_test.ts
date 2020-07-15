@@ -27,6 +27,23 @@ unitTest(function urlParsing(): void {
   );
 });
 
+unitTest(function urlProtocolParsing(): void {
+  assertEquals(new URL("Aa+-.1://foo").protocol, "aa+-.1:");
+  assertEquals(new URL("aA+-.1://foo").protocol, "aa+-.1:");
+  assertThrows(() => new URL("1://foo"), TypeError, "Invalid URL.");
+  assertThrows(() => new URL("+://foo"), TypeError, "Invalid URL.");
+  assertThrows(() => new URL("-://foo"), TypeError, "Invalid URL.");
+  assertThrows(() => new URL(".://foo"), TypeError, "Invalid URL.");
+  assertThrows(() => new URL("_://foo"), TypeError, "Invalid URL.");
+  assertThrows(() => new URL("=://foo"), TypeError, "Invalid URL.");
+  assertThrows(() => new URL("!://foo"), TypeError, "Invalid URL.");
+  assertThrows(() => new URL(`"://foo`), TypeError, "Invalid URL.");
+  assertThrows(() => new URL("$://foo"), TypeError, "Invalid URL.");
+  assertThrows(() => new URL("%://foo"), TypeError, "Invalid URL.");
+  assertThrows(() => new URL("^://foo"), TypeError, "Invalid URL.");
+  assertThrows(() => new URL("*://foo"), TypeError, "Invalid URL.");
+});
+
 unitTest(function urlAuthenticationParsing(): void {
   const specialUrl = new URL("http://foo:bar@baz");
   assertEquals(specialUrl.username, "foo");
@@ -201,23 +218,22 @@ unitTest(function urlBackSlashes(): void {
   );
 });
 
+unitTest(function urlProtocolSlashes(): void {
+  assertEquals(new URL("http:foo").href, "http://foo/");
+  assertEquals(new URL("http://foo").href, "http://foo/");
+  assertEquals(new URL("file:foo").href, "file:///foo");
+  assertEquals(new URL("file://foo").href, "file://foo/");
+  assertEquals(new URL("abcd:foo").href, "abcd:foo");
+  assertEquals(new URL("abcd://foo").href, "abcd://foo");
+});
+
 unitTest(function urlRequireHost(): void {
   assertEquals(new URL("file:///").href, "file:///");
-  assertThrows(() => {
-    new URL("ftp:///");
-  });
-  assertThrows(() => {
-    new URL("http:///");
-  });
-  assertThrows(() => {
-    new URL("https:///");
-  });
-  assertThrows(() => {
-    new URL("ws:///");
-  });
-  assertThrows(() => {
-    new URL("wss:///");
-  });
+  assertThrows(() => new URL("ftp:///"), TypeError, "Invalid URL.");
+  assertThrows(() => new URL("http:///"), TypeError, "Invalid URL.");
+  assertThrows(() => new URL("https:///"), TypeError, "Invalid URL.");
+  assertThrows(() => new URL("ws:///"), TypeError, "Invalid URL.");
+  assertThrows(() => new URL("wss:///"), TypeError, "Invalid URL.");
 });
 
 unitTest(function urlDriveLetter() {
@@ -329,16 +345,8 @@ unitTest(function urlDriveLetterBase() {
     Deno.build.os == "windows" ? "file:///C:/b" : "file:///b",
   );
   assertEquals(
-    new URL("D:", "file:///C:/a/b").href,
-    Deno.build.os == "windows" ? "file:///D:/" : "file:///C:/a/D:",
-  );
-  assertEquals(
     new URL("/D:", "file:///C:/a/b").href,
     Deno.build.os == "windows" ? "file:///D:/" : "file:///D:",
-  );
-  assertEquals(
-    new URL("D:/b", "file:///C:/a/b").href,
-    Deno.build.os == "windows" ? "file:///D:/b" : "file:///C:/a/D:/b",
   );
 });
 
@@ -391,12 +399,6 @@ unitTest(function protocolNotHttpOrFile() {
   assertEquals(url.origin, "null");
 });
 
-unitTest(function createBadUrl(): void {
-  assertThrows(() => {
-    new URL("0.0.0.0:8080");
-  });
-});
-
 unitTest(function throwForInvalidPortConstructor(): void {
   const urls = [
     // If port is greater than 2^16 − 1, validation error, return failure.
@@ -414,14 +416,6 @@ unitTest(function throwForInvalidPortConstructor(): void {
   // Do not throw for 0 & 65535
   new URL("https://baz.qat:65535");
   new URL("https://baz.qat:0");
-});
-
-unitTest(function throwForInvalidSchemeConstructor(): void {
-  assertThrows(
-    () => new URL("invalid_scheme://baz.qat"),
-    TypeError,
-    "Invalid URL.",
-  );
 });
 
 unitTest(function doNotOverridePortIfInvalid(): void {
