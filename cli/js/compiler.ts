@@ -648,11 +648,13 @@ function buildLocalSourceFileCache(
         importedFile.mediaType === MediaType.JSX;
       // If JS or JSX perform substitution for types if available
       if (isJsOrJsx) {
-        if (importedFile.typeHeaders.length > 0) {
+        // @deno-types has highest precedence, followed by
+        // X-TypeScript-Types header
+        if (importDesc.resolvedTypeDirective) {
+          mappedUrl = importDesc.resolvedTypeDirective;
+        } else if (importedFile.typeHeaders.length > 0) {
           const typeHeaders = importedFile.typeHeaders[0];
           mappedUrl = typeHeaders.resolvedSpecifier;
-        } else if (importDesc.resolvedTypeDirective) {
-          mappedUrl = importDesc.resolvedTypeDirective;
         } else if (importedFile.typesDirectives.length > 0) {
           const typeDirective = importedFile.typesDirectives[0];
           mappedUrl = typeDirective.resolvedSpecifier;
@@ -707,11 +709,13 @@ function buildSourceFileCache(
         importedFile.mediaType === MediaType.JSX;
       // If JS or JSX perform substitution for types if available
       if (isJsOrJsx) {
-        if (importedFile.typeHeaders.length > 0) {
+        // @deno-types has highest precedence, followed by
+        // X-TypeScript-Types header
+        if (importDesc.resolvedTypeDirective) {
+          mappedUrl = importDesc.resolvedTypeDirective;
+        } else if (importedFile.typeHeaders.length > 0) {
           const typeHeaders = importedFile.typeHeaders[0];
           mappedUrl = typeHeaders.resolvedSpecifier;
-        } else if (importDesc.resolvedTypeDirective) {
-          mappedUrl = importDesc.resolvedTypeDirective;
         } else if (importedFile.typesDirectives.length > 0) {
           const typeDirective = importedFile.typesDirectives[0];
           mappedUrl = typeDirective.resolvedSpecifier;
