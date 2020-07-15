@@ -463,7 +463,7 @@ impl TsCompiler {
       if let Some(metadata) = self.get_metadata(&url) {
         // Compare version hashes
         let version_hash_to_validate = source_code_version_hash(
-          &source_file.source_code_bytes(),
+          &source_file.source_code.as_bytes(),
           version::DENO,
           &self.config.hash,
         );
@@ -504,7 +504,7 @@ impl TsCompiler {
           .fetch_cached_source_file(&specifier, Permissions::allow_all())
         {
           let existing_hash = crate::checksum::gen(&[
-            &source_file.source_code_bytes(),
+            &source_file.source_code.as_bytes(),
             version::DENO.as_bytes(),
           ]);
           let expected_hash =
@@ -920,7 +920,7 @@ impl TsCompiler {
     self.mark_compiled(module_specifier.as_url());
 
     let version_hash = source_code_version_hash(
-      &source_file.source_code_bytes(),
+      &source_file.source_code.as_bytes(),
       version::DENO,
       &self.config.hash,
     );
@@ -1039,7 +1039,7 @@ impl TsCompiler {
   ) -> Option<Vec<u8>> {
     if let Some(module_specifier) = self.try_to_resolve(script_name) {
       return match self.get_source_map_file(&module_specifier) {
-        Ok(out) => Some(out.to_owned_bytes()),
+        Ok(out) => Some(out.source_code.into_bytes()),
         Err(_) => {
           // Check if map is inlined
           if let Ok(compiled_source) =

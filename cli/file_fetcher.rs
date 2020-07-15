@@ -86,14 +86,6 @@ impl SourceFile {
 
     self.source_code.to_utf8(charset)
   }
-
-  pub fn source_code_bytes(&self) -> &Vec<u8> {
-    &self.source_code.as_bytes()
-  }
-
-  pub fn to_owned_bytes(self) -> Vec<u8> {
-    self.source_code.into_bytes()
-  }
 }
 
 /// Simple struct implementing in-process caching to prevent multiple
@@ -240,7 +232,8 @@ impl SourceFileFetcher {
       Ok(mut file) => {
         // TODO: move somewhere?
         if file.source_code.bytes.starts_with(b"#!") {
-          file.source_code = filter_shebang(file.source_code.bytes).into();
+          file.source_code =
+            filter_shebang(&file.source_code_utf8().unwrap()[..]).into();
         }
 
         // Cache in-process for subsequent access.
@@ -662,8 +655,7 @@ fn map_js_like_extension(
   }
 }
 
-fn filter_shebang(bytes: Vec<u8>) -> Vec<u8> {
-  let string = str::from_utf8(&bytes).unwrap();
+fn filter_shebang(string: &str) -> Vec<u8> {
   if let Some(i) = string.find('\n') {
     let (_, rest) = string.split_at(i);
     rest.as_bytes().to_owned()
@@ -1837,9 +1829,9 @@ mod tests {
 
   #[test]
   fn test_filter_shebang() {
-    assert_eq!(filter_shebang(b"#!"[..].to_owned()), b"");
-    assert_eq!(filter_shebang(b"#!\n\n"[..].to_owned()), b"\n\n");
-    let code = b"#!/usr/bin/env deno\nconsole.log('hello');\n"[..].to_owned();
+    assert_eq!(filter_shebang("#!"), b"");
+    assert_eq!(filter_shebang("#!\n\n"), b"\n\n");
+    let code = "#!/usr/bin/env deno\nconsole.log('hello');\n";
     assert_eq!(filter_shebang(code), b"\nconsole.log('hello');\n");
   }
 

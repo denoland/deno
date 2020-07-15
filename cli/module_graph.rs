@@ -458,7 +458,7 @@ impl ModuleGraphLoader {
           redirect: Some(source_file.url.to_string()),
           filename: source_file.filename.to_str().unwrap().to_string(),
           version_hash: checksum::gen(&[
-            &source_file.source_code_bytes(),
+            &source_file.source_code.as_bytes(),
             version::DENO.as_bytes(),
           ]),
           media_type: source_file.media_type,
@@ -474,7 +474,7 @@ impl ModuleGraphLoader {
 
     let module_specifier = ModuleSpecifier::from(source_file.url.clone());
     let version_hash = checksum::gen(&[
-      &source_file.source_code_bytes(),
+      &source_file.source_code.as_bytes(),
       version::DENO.as_bytes(),
     ]);
     let source_code = source_file.source_code_utf8()?;
