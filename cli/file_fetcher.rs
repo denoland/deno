@@ -40,24 +40,21 @@ pub struct SourceFile {
 
 impl SourceFile {
   pub fn source_code_utf8(&self) -> Result<String, std::io::Error> {
-    let detected_set: String;
+    let detected_charset: String;
     let charset = match &self.charset {
       Some(charset) => charset,
       None => {
-        detected_set = chardet::detect(&self.source_code).0;
-        &detected_set
+        detected_charset = chardet::detect(&self.source_code).0;
+        &detected_charset
       }
     };
-    let coder = encoding::label::encoding_from_whatwg_label(
-      chardet::charset2encoding(&charset),
-    );
-    match coder {
-      Some(coder) => {
-        let result =
-          coder.decode(&self.source_code, encoding::DecoderTrap::Ignore);
 
-        match result {
-          Ok(source) => Ok(source),
+    match encoding::label::encoding_from_whatwg_label(
+      chardet::charset2encoding(&charset),
+    ) {
+      Some(coder) => {
+        match coder.decode(&self.source_code, encoding::DecoderTrap::Ignore) {
+          Ok(text) => Ok(text),
           Err(_e) => Err(std::io::ErrorKind::InvalidData.into()),
         }
       }
