@@ -440,8 +440,7 @@ async fn bundle_command(
   source_file: String,
   out_file: Option<PathBuf>,
 ) -> Result<(), ErrBox> {
-  let module_specifier =
-    ModuleSpecifier::resolve_url_or_path(&source_file)?;
+  let module_specifier = ModuleSpecifier::resolve_url_or_path(&source_file)?;
 
   debug!(">>>>> bundle START");
   let global_state = GlobalState::new(flags)?;
