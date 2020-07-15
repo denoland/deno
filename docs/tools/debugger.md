@@ -83,6 +83,10 @@ Deno can be debugged using VSCode.
 Official support via the plugin is being worked on -
 https://github.com/denoland/vscode_deno/issues/12
 
+**NOTE**: Until the July release of VS Code (1.48), you will need to use the
+[nightly build](https://github.com/microsoft/vscode-js-debug/#nightly-extension)
+of their debugger extension.
+
 We can still attach the debugger by manually providing a
 [`launch.json`](https://code.visualstudio.com/docs/editor/debugging#_launch-configurations)
 config:
@@ -93,12 +97,12 @@ config:
   "configurations": [
     {
       "name": "Deno",
-      "type": "node",
+      "type": "pwa-node",
       "request": "launch",
       "cwd": "${workspaceFolder}",
       "runtimeExecutable": "deno",
       "runtimeArgs": ["run", "--inspect-brk", "-A", "${file}"],
-      "port": 9229
+      "attachSimplePort": 9229
     }
   ]
 }
