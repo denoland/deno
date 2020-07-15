@@ -1170,8 +1170,8 @@ export default class Module {
         path_ptr: number,
         path_len: number,
         oflags: number,
-        fs_rights_base: number | bigint,
-        fs_rights_inherting: number | bigint,
+        fs_rights_base: bigint,
+        fs_rights_inherting: bigint,
         fdflags: number,
         opened_fd_out: number,
       ): number => {
@@ -1232,24 +1232,23 @@ export default class Module {
           options.write = true;
         }
 
-        if (
-          (BigInt(fs_rights_base) &
-            BigInt(RIGHTS_FD_READ | RIGHTS_FD_READDIR)) !=
-            0n
-        ) {
+        const read = (
+          RIGHTS_FD_READ |
+          RIGHTS_FD_READDIR
+        );
+
+        if ((fs_rights_base & read) != 0n) {
           options.read = true;
         }
 
-        if (
-          (BigInt(fs_rights_base) &
-            BigInt(
-              RIGHTS_FD_DATASYNC |
-                RIGHTS_FD_WRITE |
-                RIGHTS_FD_ALLOCATE |
-                RIGHTS_FD_FILESTAT_SET_SIZE,
-            )) !=
-            0n
-        ) {
+        const write = (
+          RIGHTS_FD_DATASYNC |
+          RIGHTS_FD_WRITE |
+          RIGHTS_FD_ALLOCATE |
+          RIGHTS_FD_FILESTAT_SET_SIZE
+        );
+
+        if ((fs_rights_base & write) != 0n) {
           options.write = true;
         }
 
