@@ -1,0 +1,1844 @@
+{
+  "program": {
+    "fileInfos": {
+      "asset:///lib.es5.d.ts": {
+        "version": "7efeb0941d94eacc7ab430c75b70271a120ee295c0c8d7e54c7b10640c467f0e",
+        "signature": "7efeb0941d94eacc7ab430c75b70271a120ee295c0c8d7e54c7b10640c467f0e",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.es2015.d.ts": {
+        "version": "e8d2e50f9e8fdd312d31f97571b4c7295b8f29f7f8363498edae2a9eb113ee36",
+        "signature": "e8d2e50f9e8fdd312d31f97571b4c7295b8f29f7f8363498edae2a9eb113ee36",
+        "affectsGlobalScope": false
+      },
+      "asset:///lib.es2016.d.ts": {
+        "version": "4b1854aec637e8e041eff02899e16fd3c0c78685c622336aadfd67e6604bbe1b",
+        "signature": "4b1854aec637e8e041eff02899e16fd3c0c78685c622336aadfd67e6604bbe1b",
+        "affectsGlobalScope": false
+      },
+      "asset:///lib.es2017.d.ts": {
+        "version": "d6f7d47355a0167969e9a8eedfb0994f21e038d360965ec06c30f6871038900b",
+        "signature": "d6f7d47355a0167969e9a8eedfb0994f21e038d360965ec06c30f6871038900b",
+        "affectsGlobalScope": false
+      },
+      "asset:///lib.es2018.d.ts": {
+        "version": "4735756aff7c5857de387f321633f272e2daba4950c427ab200de954340c7c13",
+        "signature": "4735756aff7c5857de387f321633f272e2daba4950c427ab200de954340c7c13",
+        "affectsGlobalScope": false
+      },
+      "asset:///lib.es2019.d.ts": {
+        "version": "4cac3201303b24c71d334bcdab63aee38b7424f51ba9f8884515705b7cba7606",
+        "signature": "4cac3201303b24c71d334bcdab63aee38b7424f51ba9f8884515705b7cba7606",
+        "affectsGlobalScope": false
+      },
+      "asset:///lib.es2020.d.ts": {
+        "version": "40c2cbcb08802e3a600f1aae8efc6fddf62a69617bfac67b582a4196e99b586e",
+        "signature": "40c2cbcb08802e3a600f1aae8efc6fddf62a69617bfac67b582a4196e99b586e",
+        "affectsGlobalScope": false
+      },
+      "asset:///lib.esnext.d.ts": {
+        "version": "feafcdd6f11ac9c4af7a20bb4420b3a98b37036c9290b19a413d4cb5244b1093",
+        "signature": "feafcdd6f11ac9c4af7a20bb4420b3a98b37036c9290b19a413d4cb5244b1093",
+        "affectsGlobalScope": false
+      },
+      "asset:///lib.es2015.core.d.ts": {
+        "version": "07b086119a8aab9ddf59ea610e811b84399e63dc70bdc60853012a0c9d5fc991",
+        "signature": "07b086119a8aab9ddf59ea610e811b84399e63dc70bdc60853012a0c9d5fc991",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.es2015.collection.d.ts": {
+        "version": "5a8c535851f6cb0d376f135a2a6640dec8070d48d03072c2f1ab70528d7cb4fe",
+        "signature": "5a8c535851f6cb0d376f135a2a6640dec8070d48d03072c2f1ab70528d7cb4fe",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.es2015.generator.d.ts": {
+        "version": "28065193ddf88bf697915b9236d2d00a27e85726563e88474f166790376e10d8",
+        "signature": "28065193ddf88bf697915b9236d2d00a27e85726563e88474f166790376e10d8",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.es2015.iterable.d.ts": {
+        "version": "841d95749d40a85708dd0419aa5c312702e493dfb27bdde405ea567289e41b26",
+        "signature": "841d95749d40a85708dd0419aa5c312702e493dfb27bdde405ea567289e41b26",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.es2015.promise.d.ts": {
+        "version": "e65130331c5ec60e3a9857cfd3ddacc31f7dacbb6676090bc1d49118fb922603",
+        "signature": "e65130331c5ec60e3a9857cfd3ddacc31f7dacbb6676090bc1d49118fb922603",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.es2015.proxy.d.ts": {
+        "version": "5d198e9dff9dee7a362a8fa4ec1c8a6ea842fafa2c882a64dab3b5c71f33b19e",
+        "signature": "5d198e9dff9dee7a362a8fa4ec1c8a6ea842fafa2c882a64dab3b5c71f33b19e",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.es2015.reflect.d.ts": {
+        "version": "378046398977a38b534922c0ce8f5adcb9fdadca2979c2f3f83b0030f1357ee7",
+        "signature": "378046398977a38b534922c0ce8f5adcb9fdadca2979c2f3f83b0030f1357ee7",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.es2015.symbol.d.ts": {
+        "version": "e5d8d715990d96a37f3521a3f1460679507b261eec1b42dc84d4de835997b794",
+        "signature": "e5d8d715990d96a37f3521a3f1460679507b261eec1b42dc84d4de835997b794",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.es2015.symbol.wellknown.d.ts": {
+        "version": "4283d30a69dd45500e6c201e3d7bf25b88470929388e3efefd54051a277cefd9",
+        "signature": "4283d30a69dd45500e6c201e3d7bf25b88470929388e3efefd54051a277cefd9",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.es2016.array.include.d.ts": {
+        "version": "a003a6051b48dc64eaa8ad83789e4c2a540f3482bed821053b6770969bd598fb",
+        "signature": "a003a6051b48dc64eaa8ad83789e4c2a540f3482bed821053b6770969bd598fb",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.es2017.object.d.ts": {
+        "version": "e90857fa86cecc3bc964a2d7db9d95a0c406bebfadeb4853a01a0079936f12f7",
+        "signature": "e90857fa86cecc3bc964a2d7db9d95a0c406bebfadeb4853a01a0079936f12f7",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.es2017.sharedmemory.d.ts": {
+        "version": "eb40c84c2cfc4dc7f834a88f0c6382987c26c4069243fd952ac9a447da96971f",
+        "signature": "eb40c84c2cfc4dc7f834a88f0c6382987c26c4069243fd952ac9a447da96971f",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.es2017.string.d.ts": {
+        "version": "5044747370afee4b4c247e8a14c2969d245bbcf8396295dc5a60c659d796a71f",
+        "signature": "5044747370afee4b4c247e8a14c2969d245bbcf8396295dc5a60c659d796a71f",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.es2017.intl.d.ts": {
+        "version": "d42841f3fb4fc368f35cba018a81bd0b38f1d00ae9b0449a63ab47ac1bcaba10",
+        "signature": "d42841f3fb4fc368f35cba018a81bd0b38f1d00ae9b0449a63ab47ac1bcaba10",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.es2017.typedarrays.d.ts": {
+        "version": "a894424c7058bcc77c1a3c92fe289c0ff93792e583e064c683d021879479f7b8",
+        "signature": "a894424c7058bcc77c1a3c92fe289c0ff93792e583e064c683d021879479f7b8",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.es2018.asyncgenerator.d.ts": {
+        "version": "8f03386d697248c5d356fd53f2729b920ea124cd1414a6c22de03c5d24729277",
+        "signature": "8f03386d697248c5d356fd53f2729b920ea124cd1414a6c22de03c5d24729277",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.es2018.asynciterable.d.ts": {
+        "version": "939977970c14d9ee2e52b722896e1279a7ba955d6f561e671e4f9d91a0ff6aa4",
+        "signature": "939977970c14d9ee2e52b722896e1279a7ba955d6f561e671e4f9d91a0ff6aa4",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.es2018.intl.d.ts": {
+        "version": "e9174c5ffd9983fd688f9c2374412de678459c33161f4990a1fe171552705263",
+        "signature": "e9174c5ffd9983fd688f9c2374412de678459c33161f4990a1fe171552705263",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.es2018.promise.d.ts": {
+        "version": "fe7acdc1039eca904399190766d1c8766b7d2621413f972c8542dddd69612097",
+        "signature": "fe7acdc1039eca904399190766d1c8766b7d2621413f972c8542dddd69612097",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.es2018.regexp.d.ts": {
+        "version": "c25aa843b930662d62f0e853dd1f347d08b66cdec09bd760151d4ba6ce220fe6",
+        "signature": "c25aa843b930662d62f0e853dd1f347d08b66cdec09bd760151d4ba6ce220fe6",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.es2019.array.d.ts": {
+        "version": "3e47477f297e4fa0d556c40a872c2c45bddefa487fd054bf1f80bceb527a682b",
+        "signature": "3e47477f297e4fa0d556c40a872c2c45bddefa487fd054bf1f80bceb527a682b",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.es2019.object.d.ts": {
+        "version": "a902be9f4116b449dbac07ffe3f4d69abb664f8eddfaeb892225612469213788",
+        "signature": "a902be9f4116b449dbac07ffe3f4d69abb664f8eddfaeb892225612469213788",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.es2019.string.d.ts": {
+        "version": "55964e13f8243acb182025dbf3fb64a4dc63ebb88095506568e551de287333c2",
+        "signature": "55964e13f8243acb182025dbf3fb64a4dc63ebb88095506568e551de287333c2",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.es2019.symbol.d.ts": {
+        "version": "5b30b81cdeb239772daf44e6c0d5bf6adec9dbf8d534ed25c9a0e8a43b9abfff",
+        "signature": "5b30b81cdeb239772daf44e6c0d5bf6adec9dbf8d534ed25c9a0e8a43b9abfff",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.es2020.bigint.d.ts": {
+        "version": "a5e25d9579ce8582f7b0c07aaa739784f355eb3734fceacaecc2ea6abf9069b7",
+        "signature": "a5e25d9579ce8582f7b0c07aaa739784f355eb3734fceacaecc2ea6abf9069b7",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.es2020.promise.d.ts": {
+        "version": "ea2d62f611bbe855ee8a66ea7972198718da7f0da955f5750100c18b819984b6",
+        "signature": "ea2d62f611bbe855ee8a66ea7972198718da7f0da955f5750100c18b819984b6",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.es2020.string.d.ts": {
+        "version": "1c4e64dc374ea5922d7632a52b167187ba7c7e35b34d3c1e22625be66ca1576d",
+        "signature": "1c4e64dc374ea5922d7632a52b167187ba7c7e35b34d3c1e22625be66ca1576d",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.es2020.symbol.wellknown.d.ts": {
+        "version": "1f3170660a9a4d18283bc3c43139994ec6e1089f28982a21d1e8b2cf9785427a",
+        "signature": "1f3170660a9a4d18283bc3c43139994ec6e1089f28982a21d1e8b2cf9785427a",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.esnext.intl.d.ts": {
+        "version": "f7b5f5a0faa894afd5d132a7d283672b50080423ebd8517eaf7700f6e482576a",
+        "signature": "f7b5f5a0faa894afd5d132a7d283672b50080423ebd8517eaf7700f6e482576a",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.esnext.string.d.ts": {
+        "version": "cebef4c7f9b6afb02cd08e7288fab05d0be3e3c898c720775b8aa286e9f7cfed",
+        "signature": "cebef4c7f9b6afb02cd08e7288fab05d0be3e3c898c720775b8aa286e9f7cfed",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.esnext.promise.d.ts": {
+        "version": "5f0738e96b305d1d844c9b6346fef2b196647e41a194c0fac3bc6535fc792227",
+        "signature": "5f0738e96b305d1d844c9b6346fef2b196647e41a194c0fac3bc6535fc792227",
+        "affectsGlobalScope": true
+      },
+      "asset:///typescript.d.ts": {
+        "version": "58548d902fa4c94ff0e78e0fb393afb300cb070128994a1d78529e4a10f858d8",
+        "signature": "58548d902fa4c94ff0e78e0fb393afb300cb070128994a1d78529e4a10f858d8",
+        "affectsGlobalScope": false
+      },
+      "internal:///ts_global.d.ts": {
+        "version": "0ed86e866930d7fe054c2303cfd6812241e63b8646cffef204bce9d4b144c17e",
+        "signature": "0ed86e866930d7fe054c2303cfd6812241e63b8646cffef204bce9d4b144c17e",
+        "affectsGlobalScope": true
+      },
+      "internal:///colors.ts": {
+        "version": "3d59a918a75d1a647d9a359a2f292924a29c696b0c329c6d9c5df3352e3b3052",
+        "signature": "78533fc295312bc40764d11ea0b327f41e14f3961d958389342ef3a08c8a6ced",
+        "affectsGlobalScope": false
+      },
+      "internal:///compiler_options.ts": {
+        "version": "d67a3599b793164c27154ed42cadff369458eccb7d9f445e3665ea90f0330c34",
+        "signature": "93198d72c110a224f485d2b5eff417aa91886fba04efb85893db3000db26691c",
+        "affectsGlobalScope": false
+      },
+      "internal:///diagnostics.ts": {
+        "version": "d7ade65174cb3238fc3129d5db838024d65a5b8ed4c50ff8638841e8bc2842b2",
+        "signature": "c68d9975b6f349fd38c222968127808ad284cc006611cbe0d5a3600b8da1a49a",
+        "affectsGlobalScope": false
+      },
+      "internal:///diagnostics_util.ts": {
+        "version": "fe1c104cf8f3c84da6705dd8fa9ad200694b996086dffa5612d79cc690991668",
+        "signature": "f507fe38734d58215fc6f23cbafaed4adeb4ed517105914204224ad2fefa75a4",
+        "affectsGlobalScope": false
+      },
+      "internal:///build.ts": {
+        "version": "deaf67aec6301f5a8bd51a89d51c0b2157af36ac259104a5c968040e889b1164",
+        "signature": "bb3ea63a069dd0c2a0caa2156d7435e261e7059df06e83f50b825709838136c3",
+        "affectsGlobalScope": false
+      },
+      "internal:///internals.ts": {
+        "version": "3053791621e8ecd927ef37e8ecd55c5a0fc107908edc10cc4f328fad4c3f447a",
+        "signature": "a5fce194c2144d3de429c989694492cb9a905d0a4236e67dd783c94ffc9b62f4",
+        "affectsGlobalScope": false
+      },
+      "internal:///util.ts": {
+        "version": "b898c85f68afcbbeb1ce78cb7229e8d0db4e176ef0b5397a9b13e774e812f65d",
+        "signature": "0ca61f3689ab236b1cd2ef077298dc907e7f887afad5941f8f451fd94c810362",
+        "affectsGlobalScope": false
+      },
+      "internal:///core.ts": {
+        "version": "521bb219d49bcb69cbed2752ca8dc90c067262fd8b9e85639053771db278fad3",
+        "signature": "548e96d714430c1189c2e843df5443cdc37a2e5c0ab7aebc87dc220b4df22ff2",
+        "affectsGlobalScope": false
+      },
+      "internal:///errors.ts": {
+        "version": "86c47ff955ce1c4e60ff740868bd09af050162883264c7f0c7a5fb9f99958c29",
+        "signature": "7254d7ab641f0e6ec3109758bd1b257fccf977b4491e066bc0935af3a820b913",
+        "affectsGlobalScope": false
+      },
+      "internal:///ops/dispatch_json.ts": {
+        "version": "d3c91aa888209bfde4b5b585200ab41fbf928bea3f64d3974d234d1df815dd04",
+        "signature": "44d11e13b7c51c789772f50dd32a295778f33a426346da5aa083fca96eeb1caf",
+        "affectsGlobalScope": false
+      },
+      "internal:///ops/runtime_compiler.ts": {
+        "version": "646266e4fc4b08f1e50c4b77563a37b29ffd41c8f55b4d43c511c2452bdec307",
+        "signature": "582279ff8666ca1f32f423d99af8eb2e51df74dde5d9f7ae0bc40620cb3b3ea2",
+        "affectsGlobalScope": false
+      },
+      "internal:///lib.deno.shared_globals.d.ts": {
+        "version": "ae20ff25e5a62d4c5210f66df4ff02d13636ae11ef51e98335270dcdfe498adf",
+        "signature": "ae20ff25e5a62d4c5210f66df4ff02d13636ae11ef51e98335270dcdfe498adf",
+        "affectsGlobalScope": true
+      },
+      "internal:///web/dom_types.d.ts": {
+        "version": "136bf911bd1120523c27dedc41f39fedc1e90eff0834704b25649098ac28aed5",
+        "signature": "136bf911bd1120523c27dedc41f39fedc1e90eff0834704b25649098ac28aed5",
+        "affectsGlobalScope": false
+      },
+      "internal:///web/dom_exception.ts": {
+        "version": "faf9f8cf21de610be0e837dced1ec185d085b3acdc379d18138376a8d03c5653",
+        "signature": "7f00994c2e7a8a0ed531e530aad2347aa4d9ce6513e08b5b85565831dd18916d",
+        "affectsGlobalScope": false
+      },
+      "internal:///web/util.ts": {
+        "version": "fbd9c64515723cd0dec8d5199a4c2b3f5ad60d352f70a28faad8380398e0f929",
+        "signature": "3ab9f2d21eb3133c3f89f1c92f89b39afe792074c7dab8ec54a6a0bd6e5572e6",
+        "affectsGlobalScope": false
+      },
+      "internal:///web/event.ts": {
+        "version": "03b7145fea5578480732f8a3ee2087fcffe2f03a21993ffa3938ab1244db45a1",
+        "signature": "e7b9e5f199e7d8a04654d9e97a36db503e20cf49cc2eb4ac245e405163564738",
+        "affectsGlobalScope": false
+      },
+      "internal:///web/event_target.ts": {
+        "version": "ab5cfa919bde5582594c88b74c930a00bf1c08f4958ca13888483c8502a1186d",
+        "signature": "9142dddc250c23b650758d454dd433bb3e5facfb5fa72f7e2851af729dd50360",
+        "affectsGlobalScope": false
+      },
+      "internal:///web/abort_signal.ts": {
+        "version": "d54329a20f76c15c1e9a8050b3bdcae6f18b9b12341015a3845ab3cd90f19064",
+        "signature": "56b6025711e1fba1e8c6c77fa47572b773ee3456cc4c38ba02fe762c40dbec6b",
+        "affectsGlobalScope": false
+      },
+      "internal:///web/abort_controller.ts": {
+        "version": "cc629425960cf9990733760773048ef711fd61bc21ecc51571a8b0ab5508ccbd",
+        "signature": "30c06298e18a6533dff1c42acd2f973d5e91ab090ae614b8929dbc402eaac825",
+        "affectsGlobalScope": false
+      },
+      "internal:///web/base64.ts": {
+        "version": "3560c572830aabdfb2e55b7927167a3f0a93b0e209b4f22da818ba975727480d",
+        "signature": "9b56bc3a46eeed426606e1246a295fb3b5f589a940f4000a6cb9412d63bd1726",
+        "affectsGlobalScope": false
+      },
+      "internal:///web/decode_utf8.ts": {
+        "version": "c15b72c76389c39f81dac9a852c93b8b603fdb1c689326bb15779cdf927a4e75",
+        "signature": "be7587f19932865e8c7ddce719adc0824640749dbfb66736f6e1bf60ff9f9840",
+        "affectsGlobalScope": true
+      },
+      "internal:///web/text_encoding.ts": {
+        "version": "caeac315e8391db40e8a037b9668cc3c0d28cf1c901826744f6da7fe6132036c",
+        "signature": "fdabd7b0a2502d8c1344eb3e9778ee9aec54aee3116707700114886118eacc84",
+        "affectsGlobalScope": false
+      },
+      "internal:///web/streams/symbols.ts": {
+        "version": "466093badb6954d8c5d0a60f8e1cea212daccf0dd27946bec6b6f998a11c43aa",
+        "signature": "25ffd9c745a7e47ebbf456ee37221c7bafe3b69a6dd807dd15c7972f689fbe2a",
+        "affectsGlobalScope": false
+      },
+      "internal:///web/console_table.ts": {
+        "version": "62b41cbf3c7e1bb6c49e1176536ccc068d4457ca2a57e39f3ac86935b6670126",
+        "signature": "f66c5e9424b2dcd229b396bee4174193b30851a8adeeae6ea8ea92281b6d00d1",
+        "affectsGlobalScope": false
+      },
+      "internal:///web/promise.ts": {
+        "version": "0afac3fd1086a2aacda9a42f675c5091aab452aed96914c888aa73a16626d27b",
+        "signature": "13638ab1d6b7f50c6d63f2c8f9ae69ef546e88fbc01c517dbb6347a2454c3620",
+        "affectsGlobalScope": false
+      },
+      "internal:///web/console.ts": {
+        "version": "dc4371ff4d346999c16dd656f2a1e1cb8f30a99fe2fb4f4d053b6aab658c7477",
+        "signature": "46597aad30d48c0329db17b75297849318ba657f48728f1d925961a3850eec5b",
+        "affectsGlobalScope": false
+      },
+      "internal:///web/streams/readable_byte_stream_controller.ts": {
+        "version": "8e65a5d0d35c531154d631d40ac97d2645b6a8c26e1a68998db338d5268fa1ef",
+        "signature": "a1d4877247b7b8a61d32e7fb0885bd8f35133fb28502d2bc99db30e83867f078",
+        "affectsGlobalScope": false
+      },
+      "internal:///web/streams/readable_stream_default_controller.ts": {
+        "version": "5946f9f97814830024cd326646845d10b753e3ed95f41f5d5e5f7ac094247cfe",
+        "signature": "a4cf5d25d8657777a8818a53937c6289800d61582baff8115e9e969404dcf07c",
+        "affectsGlobalScope": false
+      },
+      "internal:///web/streams/readable_stream_default_reader.ts": {
+        "version": "41f714112ce4d921df34f022bd414a76eca910288f1c52a75f3cc7ac26cd0ffc",
+        "signature": "524db020ee5be162cacfe054231bb1ba9836485734546033d24ad599ae8f440c",
+        "affectsGlobalScope": false
+      },
+      "internal:///web/streams/transform_stream_default_controller.ts": {
+        "version": "65350c0cd2ee183440e43564234a4ad7c71b176cd5747e972bf7c2dc2147a9ba",
+        "signature": "aed0d1680a1227a3be83ee5aae0d1f99d36b2f58032f99e8c98cd19011e047de",
+        "affectsGlobalScope": false
+      },
+      "internal:///web/streams/writable_stream_default_controller.ts": {
+        "version": "4edf0fcc26f7f20aa1fcc79cfde6abf1883d80b2e742d0cb8ec9030d2bed49ed",
+        "signature": "160c1997f025be5509e215c6285a1956123fb7375aa6245bb63ca7e1297c1d81",
+        "affectsGlobalScope": false
+      },
+      "internal:///web/streams/writable_stream_default_writer.ts": {
+        "version": "96358b4c90484a5eba8dbf5c205bf30e361c5475f91ffcfa64487f1c5cce3a5b",
+        "signature": "67380e005d0a86e87eee20cc3a826fa276001f38fff4af26a62298e5624e1096",
+        "affectsGlobalScope": false
+      },
+      "internal:///web/streams/writable_stream.ts": {
+        "version": "758ad26a5ffee76d61c05463f832b59e021a811661653ba1826596350ae9c434",
+        "signature": "c4fd985f594082baaf033525e626ba2a376d7b9e7a17365cb17243b464f139a8",
+        "affectsGlobalScope": false
+      },
+      "internal:///web/streams/transform_stream.ts": {
+        "version": "796c6352faee6efb10ff4abe6de2fc49a934f693374b33868d577a8c6128375f",
+        "signature": "dfe397d0189064c66a7dde54f12fd08a173d5d14cb725ba900c6b57a26d1889a",
+        "affectsGlobalScope": false
+      },
+      "internal:///web/streams/internals.ts": {
+        "version": "040b40afbb29f2ab2c3bc4d4df42650ec8dc6726a1170399c6c127875c9b028b",
+        "signature": "f025a00b765331dc07ef883b6a8bee1dbc04e480a9f44f4d8938f0027ba074c5",
+        "affectsGlobalScope": false
+      },
+      "internal:///web/streams/readable_stream_async_iterator.ts": {
+        "version": "e34a80d1da73d3830be64d128111ebe0cb15e97db7d40b79cd60e9b1a3dfb81f",
+        "signature": "6d8aae7543fa7dfdffc857f11caf85bf0d9cd1e2456a5ebaa1304cb595a47a81",
+        "affectsGlobalScope": false
+      },
+      "internal:///web/streams/readable_stream.ts": {
+        "version": "5b5e91af63c32278b087ffe2f9d1f2992a0bbf3838ff7c5c29761bebd2c422af",
+        "signature": "041a108dc7e795368f0c0ac34c21b62b7e1ba6fdb1f6b77a5b70b21957d9922e",
+        "affectsGlobalScope": false
+      },
+      "internal:///web/blob.ts": {
+        "version": "01a9b29e47294d796fd788e13006bbb0da745406cd02e1460a0d7f1696234857",
+        "signature": "b5a832f001a0eec28e53d555d61546822346c1b1231030de6ef5402712acad2e",
+        "affectsGlobalScope": false
+      },
+      "internal:///ops/get_random_values.ts": {
+        "version": "50115528f587c035295ee1a4a9c557b5b473eeaeb4343aedb5f253e125638fd3",
+        "signature": "4922938170fb2de4ac39cbef90a856b2c0f852b1bebe9ed4442e7c48a4e82410",
+        "affectsGlobalScope": false
+      },
+      "internal:///web/custom_event.ts": {
+        "version": "bd203985591797a0175a3beafe2a711e716bb16a9bd62ca9d8e6dcf701732772",
+        "signature": "a2ef16e9d86f0020d7939412df4f2dc4be8c252f42717f189347d64165f0f9cd",
+        "affectsGlobalScope": false
+      },
+      "internal:///web/dom_file.ts": {
+        "version": "d72af6d6dfd5c0272df566e0e33cb179694d85ee018ab8751905a39ab2104091",
+        "signature": "9a3f46a1342e11d531e16e46ff74432b4b7793d71f201278869eca31a03644da",
+        "affectsGlobalScope": false
+      },
+      "internal:///web/error_event.ts": {
+        "version": "71a8dd4663c314801ca9c16564d590fe78d4826cba21bf3ef290b64648d5607e",
+        "signature": "91aaec85db5440c218198de4e12785b73394265f0a2869d93bae005fcb54b485",
+        "affectsGlobalScope": false
+      },
+      "internal:///web/dom_iterable.ts": {
+        "version": "cb75c4ea33c445fd65267c066d39d0a520b3260d93b3ea78d13662bfca75919b",
+        "signature": "e9a5b021833ac155b10d4c5debad03fb4376cc4da0e90e8582823c9e4d9f6834",
+        "affectsGlobalScope": false
+      },
+      "internal:///web/form_data.ts": {
+        "version": "2ea3e4bcf122df4cdd21e262efd054ad70f1e29641af8595e101fe920094806d",
+        "signature": "11c39343a1396a4c4674e0121e9d39eae4f16b482827d689f8021b5af7df6d42",
+        "affectsGlobalScope": false
+      },
+      "internal:///ops/dispatch_minimal.ts": {
+        "version": "7ac732816eeb29e655b5ae9ead5cfe29113ae2893ef1849862de7b0ff4444aa6",
+        "signature": "4bb0abe9395756cba8bdf9349cb9076a3e717659dfc7171429c6f884ed65f24c",
+        "affectsGlobalScope": false
+      },
+      "internal:///ops/io.ts": {
+        "version": "7968b9a6568a1f7748681011ee279f2bab5c5422ddbd07f2ad97c25e47ef817c",
+        "signature": "bfbd70b85c616c7bbce2f3124b11a5a782daba0a1e5277a01f03dfde3e712562",
+        "affectsGlobalScope": false
+      },
+      "internal:///ops/resources.ts": {
+        "version": "7d59fcfb9d276cfbde51eca5dade38ac7199743f6f8233117b41176038b4bac4",
+        "signature": "d517de34aff04aea014a280e8ee92ca4bcb7899f430f51428eedd62110c4f91c",
+        "affectsGlobalScope": false
+      },
+      "internal:///ops/fetch.ts": {
+        "version": "99384c2cb5e7106e2568981a22a2dfb6fa42c808aca62a95c5b71bf76c488343",
+        "signature": "041a8bc67bf426ad6a896db1a4b823dca391b93fc842b1d752e843ae03efbfdf",
+        "affectsGlobalScope": false
+      },
+      "internal:///io.ts": {
+        "version": "9877cdcc9dcafc50ad3345ccf10c63f8f4df0775e530a4d9326a2b8eba9390e1",
+        "signature": "154981158c3f836d0d457fd59eefc7a2328d2bd69014b80820aa2b8b89bc9b07",
+        "affectsGlobalScope": false
+      },
+      "internal:///buffer.ts": {
+        "version": "592e4fa9113396e1144f06bb1fc75d2613f73ab36b273e820e089b5b497e30bc",
+        "signature": "65e454a42a8465043354fdbdf3606ca8da377d454faac94d91716d8f616255e6",
+        "affectsGlobalScope": false
+      },
+      "internal:///web/fetch/multipart.ts": {
+        "version": "2c53206a8321c51e0fe943566f888149364ed99ca4305a846b82378f2532816d",
+        "signature": "1e10aa62ae98fed6c6d561e471c165c90cfeb7add9fcd66676bf0181de21b9f2",
+        "affectsGlobalScope": false
+      },
+      "internal:///web/body.ts": {
+        "version": "182d520d32b0c58f6bfc652eefb551a40b84956cc3df275d0028b06ff0a51cf8",
+        "signature": "37065ed22d0999f2470b6ed7f67c812b67204eeb6e1652efa2b99e2e2f292b04",
+        "affectsGlobalScope": false
+      },
+      "internal:///web/fetch.ts": {
+        "version": "02030445612b0cd96544c4e1e96bfb154bd56d4f4dc3324378c5ad1952f688b8",
+        "signature": "9bd46a2595bf62ce847e7c7646142a57522b5303e27fcbf1e88e0a071419ad8d",
+        "affectsGlobalScope": false
+      },
+      "internal:///web/headers.ts": {
+        "version": "5c62225f64c4c5d835bde073af7a3f29a2bd23c013d62300409e7fd7181dc18e",
+        "signature": "4bb12b7bffbe6cb8cb56ddc5c22af48759dcb302c24ffafa32e184012abb97c8",
+        "affectsGlobalScope": false
+      },
+      "internal:///ops/timers.ts": {
+        "version": "52a38eadffb7d0e3fe9bd25200696d4ddf7b21295733038147621dc16d353e58",
+        "signature": "152206c3db9c4c93d4e4545b97da0d041fc79265481b2cb97f037db23376dd26",
+        "affectsGlobalScope": false
+      },
+      "internal:///rbtree.ts": {
+        "version": "30cec220243cd4975ae9990095c4d21e3ad9205f18e61d4e4018f0515fb48c2c",
+        "signature": "66cf42b146c7b10bd9d6c61e735f44b811201c8ae0f4be2e2cbc322b5cd3ddb3",
+        "affectsGlobalScope": false
+      },
+      "internal:///web/timers.ts": {
+        "version": "679aa2537a5d4d66bf5b1bf9c32963d4168dec49b39f5e36daa87881b60f6ad7",
+        "signature": "2641b3a786d3778a6a8f6fec7122f59d356d1be8aae98b76f96afea770f3f29e",
+        "affectsGlobalScope": false
+      },
+      "internal:///ops/idna.ts": {
+        "version": "c8213d94f12cc1855395c6e810b4f0c4101620cf666abce2ece51d38ebe4fb20",
+        "signature": "33e08ef4f3e8072c0d7443c0b7d5d8a124be98f964caeca97fe04b067eecae3a",
+        "affectsGlobalScope": false
+      },
+      "internal:///web/url_search_params.ts": {
+        "version": "3d8624a2c9205f6ac1b9812b2d8e8f33cf0d41a61bf0bb84877d9c8c8c987066",
+        "signature": "31d17be333aef523a0ad71f401fbc77f352d426698d64f343bf8fe1b56f37cac",
+        "affectsGlobalScope": false
+      },
+      "internal:///web/url.ts": {
+        "version": "8e2000d19a56ccd9540993c2aa7776336a67fd2772100e65bb4cf9d7a345738a",
+        "signature": "7d081092be57c353b200c96e9a1f1fbdc32a177f9310eadb3e4a1a707afaf693",
+        "affectsGlobalScope": false
+      },
+      "internal:///ops/worker_host.ts": {
+        "version": "11b1bf248472bf7f50e6c70deea51efb79822afd83844f3949cbacbbcac22f9c",
+        "signature": "f1c7c186e885c0008ebee72ceffac39b53960a9dfd481e1743dc451eeda3a08a",
+        "affectsGlobalScope": false
+      },
+      "internal:///web/workers.ts": {
+        "version": "bc6b753c35273b03a08bd020a0195e5104f98a0ae1e3cd509917f992ceb37642",
+        "signature": "958f7015ca7086ac5c636cfe163c35eeda005670cd059999dd49e8895e63f95d",
+        "affectsGlobalScope": false
+      },
+      "internal:///web/performance.ts": {
+        "version": "abfc8de200328292cf9b970d3697b47d79ae419abd9e8446ed832089228b39dd",
+        "signature": "909ef8afc313651901906fab2b589a34612fe7018a9b40d2e25e051404bf324b",
+        "affectsGlobalScope": false
+      },
+      "internal:///web/request.ts": {
+        "version": "5c0d21ebb14621d2d227b57ff20bf4f39fdc12cfc4965c88c37a2ce4690c2307",
+        "signature": "40cd6915fd4467637c17fdb1df686c26b0de19bce5f690fccbf534732e4efacf",
+        "affectsGlobalScope": false
+      },
+      "internal:///web/streams/queuing_strategy.ts": {
+        "version": "c9146b13d2fad3e4c2a60e841c4bed3802f0328594f3dcf6ff9996b22607495e",
+        "signature": "ede346b57db39c750d84b507f88c80d22ad3b574c706ae58d95532ed1a46c1f0",
+        "affectsGlobalScope": false
+      },
+      "internal:///globals.ts": {
+        "version": "649bb0edfa0b1af4fd479484f6ab556a415b1fc4bf410d2af66cc4710f793734",
+        "signature": "384ef23e151c85ac33f24f05ce6552babcb8b2c5daa4e7b79e1082aa4ffae317",
+        "affectsGlobalScope": true
+      },
+      "internal:///globals_unstable.ts": {
+        "version": "071566fa78f5e8669d7b24c345d8b43b4bb3f6c08d91fdbb83cb235657709478",
+        "signature": "04cee0f6d4e523205c4f8ba43a2c42a25787533b0de4dddac44142a99a82c1e7",
+        "affectsGlobalScope": false
+      },
+      "internal:///ops/fs/chmod.ts": {
+        "version": "dff642464aa6f460d31bc3ae874c546d1edc0504ec62472289f6eb57f836d84b",
+        "signature": "d06b9f631a9e902a52b941dad0c9a1b98dbd782ac52ed97f0c596d67dfbed719",
+        "affectsGlobalScope": false
+      },
+      "internal:///ops/fs/chown.ts": {
+        "version": "048672c904358e24bde141b7e30a4a764c47b8dde4ae1f509d845efab4f027f6",
+        "signature": "012d97f2907be16716165a428a979e18b02dbd52c3d9bb2baa416c62066519fb",
+        "affectsGlobalScope": false
+      },
+      "internal:///ops/fs/copy_file.ts": {
+        "version": "603026c4e014a8bff2b96f9ac1deb866d00de57881856f0c9567442ff11f288b",
+        "signature": "b9df4602de665df3e719a9621662059df6f2292c20788d9139510ce1276d55ba",
+        "affectsGlobalScope": false
+      },
+      "internal:///ops/fs/dir.ts": {
+        "version": "44140108ccfae2e59170ef5cb6f275a6f5bfa7e347aff3ba2a4dfeb68c3ae1b9",
+        "signature": "36d7286dbe4bb66dce22a05c79546707370f70ba5cecdd6c98bb3c7dc5d75f5b",
+        "affectsGlobalScope": false
+      },
+      "internal:///ops/fs/seek.ts": {
+        "version": "08fec43e7ef3937c0e5d8c3187a8f4e046b41e68d2f5f4c601270d4882fff614",
+        "signature": "372e2ee32665d9c65051c54741d7df295d47eb967917d7dd35992d1112db89a1",
+        "affectsGlobalScope": false
+      },
+      "internal:///ops/fs/open.ts": {
+        "version": "c69f228009ed37929c563d3f343517777be097e8948a5b3bb7e69e4679551bf0",
+        "signature": "ba626f9cef25aca1af1854ee4bb2e3f6c007a25b9c767a818af9178ab6a997ff",
+        "affectsGlobalScope": false
+      },
+      "internal:///files.ts": {
+        "version": "6d816bdc3c79f59e8b92f686c2213a43d6198ce61ea6488fdbbe82e3d28f69c4",
+        "signature": "28473519dcd4626dc55f3b6c4a5980eb871a6c353e7839f78fea4a3ef83b2850",
+        "affectsGlobalScope": false
+      },
+      "internal:///ops/fs_events.ts": {
+        "version": "e269de18ce7df695b9ec4218192b252c65b486d6335ae54195b85e0e731c1c0f",
+        "signature": "aad71b85ea4c9834ea30d24666c219dcb51101427664953b871aae79922873ec",
+        "affectsGlobalScope": false
+      },
+      "internal:///ops/fs/make_temp.ts": {
+        "version": "9bedf8ccc6b8645f68e96f1e16f8da9d3e04bd672f8a68e8fc06d0a7aa716374",
+        "signature": "c34e8909121aeed7a6738a2ed49ca9550f7e8be3baca144629fa8c069aa91310",
+        "affectsGlobalScope": false
+      },
+      "internal:///ops/runtime.ts": {
+        "version": "bda76e57220bb61455c5ef896697b8796c35c91ca2c31fbc8434fdddde13a1cf",
+        "signature": "46263ea8a1b11231e8559f67138528c9be2b9abde3f21e22fa91afe8737d22ee",
+        "affectsGlobalScope": false
+      },
+      "internal:///ops/fs/mkdir.ts": {
+        "version": "f07c1d6720a60dd623ba4ecab337e1ddcdca04bcdc34a3b47073a1610f7280b1",
+        "signature": "919d158849d11c9cc2811292c0e0a5ded5cdc9e16c6713d796d5a7cfd2b29a0a",
+        "affectsGlobalScope": false
+      },
+      "internal:///ops/net.ts": {
+        "version": "9433ae9d845673cba53de0096172070122d9fb42bc04bbf4886a7ee5b015d52e",
+        "signature": "04cf752c191552a2d78b0191c4fa3982dc169d955e2e6b19b58c38251fe1e3f1",
+        "affectsGlobalScope": false
+      },
+      "internal:///net.ts": {
+        "version": "458ba46b80a738fc3101d32f26583d10a3dd0910bb11cab520c18aaeaa71dcd4",
+        "signature": "259d909f101b997bde6995eb222ad444087064942925ffb691e8ab7aa2ec8550",
+        "affectsGlobalScope": false
+      },
+      "internal:///ops/os.ts": {
+        "version": "5cd2803154b47afa374eba70f109ab71f560b4304793c3ec1cf8de2eb45cd986",
+        "signature": "579ee05a4e751c55f0ce13c59db673564ca0bf77758815d50cc583a7a06e091b",
+        "affectsGlobalScope": false
+      },
+      "internal:///ops/process.ts": {
+        "version": "0851dcd2f7634ff4ba21bc015e13c4dbf23b677011fbfc42695075cbf024cd36",
+        "signature": "958c60156e5abf99f7267f9c5112fb071e8cb082e3d071ef6c6d0aae43465374",
+        "affectsGlobalScope": false
+      },
+      "internal:///process.ts": {
+        "version": "79c3c70e65d1179dc5a8194cf261f79015d14c18017bcd512a3f8336e1551044",
+        "signature": "5f5b1e82befb0944784300802d14276565807418e39ff262ab60bf95cd5fd86c",
+        "affectsGlobalScope": false
+      },
+      "internal:///ops/fs/read_dir.ts": {
+        "version": "0c096914a8ba5e434227d0f59e91a781af6d890a2fb710661606fe6b24ed0beb",
+        "signature": "18046ab1ecd609626f04a0ed4e7db75ed53de83d1436cf27b4bd93c5ce14f252",
+        "affectsGlobalScope": false
+      },
+      "internal:///read_file.ts": {
+        "version": "3c1221d8d88226d722d6bb716fb226d013508d52d262fe4b2126062eb4887d10",
+        "signature": "5ce28dedc428bd8649792ea002719a8a8ae137641f158539f0a1ccf30bc7b7b8",
+        "affectsGlobalScope": false
+      },
+      "internal:///read_text_file.ts": {
+        "version": "ee4664e84dce8a4a8bf7891857894ba90e0ffbbaa7aadc536f86ce75a120b7ef",
+        "signature": "a792fccccd7dd037cbd4b88cf3111b96b236203b93cf8e8ca42638f0989c67f9",
+        "affectsGlobalScope": false
+      },
+      "internal:///ops/fs/read_link.ts": {
+        "version": "d574feb3e33dc802f020a0d6d6d6bdca90df49a173a0173f2b9e740abfb4061b",
+        "signature": "1148e3cea6f3d45f524cb225e91fcf318192543e71d7eef6ca0ca67a75bbaf82",
+        "affectsGlobalScope": false
+      },
+      "internal:///ops/fs/real_path.ts": {
+        "version": "15eae3e0d05c24af005a1ebe71b35a0122cd0c74454596b32d53a37b19cda88a",
+        "signature": "fdea743a0a2749737ccd1e9ac5d30f2d7a0e77e661419e89be344d81d0ffb04d",
+        "affectsGlobalScope": false
+      },
+      "internal:///ops/fs/remove.ts": {
+        "version": "379410cccecfd6889eb5664b97258da368d26442e6d4df9ff65355abf84832fd",
+        "signature": "4f722cc3ee376b93e39ceabeda628ff61b9b843c96c040b6d6307782b0761b24",
+        "affectsGlobalScope": false
+      },
+      "internal:///ops/fs/rename.ts": {
+        "version": "2ea4128655d1cb84db2be180e15757ccc70be1796f0171d9d24e49cf1596d0e1",
+        "signature": "f7ce632c8383fc22d942f44431c6494780548553173e43803da5a67c18a09af3",
+        "affectsGlobalScope": false
+      },
+      "internal:///ops/fs/stat.ts": {
+        "version": "1d2b259fd0a5b8707749ddaaa8beb155f64c2f9b940edd542b0344321605260d",
+        "signature": "a87405a4ac0c60bd92debfe55079f4d749c15987eabf7feca9d5fe61a1644bf7",
+        "affectsGlobalScope": false
+      },
+      "internal:///ops/tls.ts": {
+        "version": "ab9e7e95fe39ac8326c4758d7c18e70963133a4e0431efca857997c76d27d290",
+        "signature": "85afbfbfe2d10f377f1615ed5bee935c0c3734ec6c49e91f0532fed820e4d1d4",
+        "affectsGlobalScope": false
+      },
+      "internal:///tls.ts": {
+        "version": "55e16fd634b429e7513ac879d7d54796ac2f63026dc36eca2a180f8e323ae91c",
+        "signature": "ecaa88718d2582d2c1699661fec79ec0c81f2977988969f843783639fc379d76",
+        "affectsGlobalScope": false
+      },
+      "internal:///ops/fs/truncate.ts": {
+        "version": "8f259df04cfd6c41927e95f8eb79d34d9f50fa53b6f6e8f13baeab54ac575f7e",
+        "signature": "bf14ded1f7fb600f4cc7a4c744ccf0a6aeb513bfc7956ba5dfdd2690582a6934",
+        "affectsGlobalScope": false
+      },
+      "internal:///ops/tty.ts": {
+        "version": "0771bb6bbc6f2fd1e214a74299a440f7eff7fe5eeddef7f63775923be8607259",
+        "signature": "3c1979b413021cec1791326f4bf2c9125043d60739c1690c8fb1ea58c885b2fe",
+        "affectsGlobalScope": false
+      },
+      "internal:///version.ts": {
+        "version": "bb8cef104e7671ae6ddb36c9b723b3393ef249b935699ad456b1fb3c331490a6",
+        "signature": "dd1abbf31f04e98e806ab9f7730c11325a434f5c93b28b1c9ad271160ae22546",
+        "affectsGlobalScope": false
+      },
+      "internal:///write_file.ts": {
+        "version": "be5d5a54bfc64c2617dc9c683e2c4decf7d4d6baf21c53033521387bf3b7127d",
+        "signature": "679c5674fd542013f653e2a8d72cabf9c4b6de038e5f2fa89ea529e1bc2ef5c1",
+        "affectsGlobalScope": false
+      },
+      "internal:///write_text_file.ts": {
+        "version": "50923b8dade5ca499b6339a1635425a60128e35421266d7d10d410eba5b841bd",
+        "signature": "0b517ee19fa5c1786a2c8dffee25df1f0dde39725d75151a6eb7f6a569f3e5f3",
+        "affectsGlobalScope": false
+      },
+      "internal:///testing.ts": {
+        "version": "e604b10147d73840a4006a5a5576c1469f082d4df78236b16ef671713a2d8cd0",
+        "signature": "91520f3e027ac3309a851485f144ba304b898b5d04a7b52ce16554d89e489ae5",
+        "affectsGlobalScope": false
+      },
+      "internal:///deno.ts": {
+        "version": "f271c2ffe614d358568be226fd01e55abcc837e8d75d92ab53fee0e6e5e27107",
+        "signature": "28307447e1123860d67cb72834033722368f5cfb1ad6e06098f7bb25d735c274",
+        "affectsGlobalScope": false
+      },
+      "internal:///ops/fs/umask.ts": {
+        "version": "8b2dff72f65bdd9bebc6ff0c1b76476e3858b3c27d874c6c63d11d599c593c79",
+        "signature": "e351fa207c0dd4dd82a328a928e0d4657f16b432179d1b500801a67eb8c7f660",
+        "affectsGlobalScope": false
+      },
+      "internal:///ops/fs/link.ts": {
+        "version": "3b214a05c6d4ab549568ef2743a04e85b28e8011d803536d0b1799049a76a00d",
+        "signature": "60c79da64a3876c938e6c792fa80dd83b63c4aa8228d82b7d2d653777aed7af8",
+        "affectsGlobalScope": false
+      },
+      "internal:///ops/fs/sync.ts": {
+        "version": "5ff20fc1863fe6dbb5e9707e5eeca94155aed47e4a0d780f8743f3a9e788babd",
+        "signature": "b72f5c26a2b7a00091726a14f596461714260377ee4c93b37ea8a5a3bca54d2f",
+        "affectsGlobalScope": false
+      },
+      "internal:///ops/fs/symlink.ts": {
+        "version": "bb27bec9101dccac5f09baab929447c79dd3a8b2eee6a06e3eee73038b3fb324",
+        "signature": "3460aa411ac9f65323f37467243f6eb138b5e9bcac7534043b3e4cd2088fcacf",
+        "affectsGlobalScope": false
+      },
+      "internal:///ops/plugins.ts": {
+        "version": "f81468e73296cd58d3f421bdf7e58d501568534ceb82694904e2521e8b769629",
+        "signature": "c692dec69308c99980efa67c54656d2975fed09d272cbd3eb36fadcfb10abf39",
+        "affectsGlobalScope": false
+      },
+      "internal:///compiler_api.ts": {
+        "version": "cbbc807e66ef56e6237524560ac822b52e14e3a6d8bf5e263741beca7c681ffb",
+        "signature": "5fafbf275d0c9f64015bae1e6852cf26dcce81678fc416c595eb1fb4bb2ab52c",
+        "affectsGlobalScope": false
+      },
+      "internal:///ops/errors.ts": {
+        "version": "cc0134f9bb862c98a995504375e21fb01b898157e37e5a03b4298f0bc8d01a4c",
+        "signature": "8adc77000aa24a5fd58e175adc580911c14adb380a1b9cf80d9ea4ed3a0040a6",
+        "affectsGlobalScope": false
+      },
+      "internal:///ops/signal.ts": {
+        "version": "da8b35e442254eed34b0fe2aae1e60fa2e045fbdac4978e1d47f310f46b115e1",
+        "signature": "8e23a1bcf35a6029da77598b4ca3501809cc7368e6eb71fcb77baf8e8ecbd89b",
+        "affectsGlobalScope": false
+      },
+      "internal:///signals.ts": {
+        "version": "5420ee5736cea39b272c9007e956fd7323aa43486acabd11a1505c18d74eaf09",
+        "signature": "84c7704a9e87eeeb107af088a04c71c7a6c36b39a9955985525eeedbb5b05c23",
+        "affectsGlobalScope": false
+      },
+      "internal:///ops/fs/utime.ts": {
+        "version": "33b96493d1a0b20bf7229c58c07e4bf469d0c01ce4f2d57f57a22329e629faed",
+        "signature": "8a3a235b71d6eb2fb9c99b5b41f9e581159cbdd19c86fedb88788e89beb85bde",
+        "affectsGlobalScope": false
+      },
+      "internal:///net_unstable.ts": {
+        "version": "6ef2c9a96cc3106e26d36016a5cc3e159a56f11eb2f4865cdecb7cba4dcf54b4",
+        "signature": "12091cb24ddde1a91b8a9ef6348d0012caabe5e7e114217fa40ed8996f03b8f0",
+        "affectsGlobalScope": false
+      },
+      "internal:///ops/permissions.ts": {
+        "version": "4edfbef63a6d52528805532fe0618debaab6f51972414f096de73038858a5dcb",
+        "signature": "97d48762eb7bc801731c71ff96985fbee852efce7502253c98a23a8595b85757",
+        "affectsGlobalScope": false
+      },
+      "internal:///permissions.ts": {
+        "version": "c28a10740e60de7da80eb4ca9c9b16fcb5da0f75ffb7d13d518533af054f1e3c",
+        "signature": "2ae24a2d3d4da158b0972b39eb353d6ab63817f38d660f2504cfa10423017353",
+        "affectsGlobalScope": false
+      },
+      "internal:///deno_unstable.ts": {
+        "version": "32d6b37029e111e39d1e2704270e16efad86007d4d92a235c9c68582836611de",
+        "signature": "c13dfae19eb1f4123cc18ce29d1e42d829241e6488a2803e54e49ede0415843f",
+        "affectsGlobalScope": false
+      },
+      "internal:///ops/web_worker.ts": {
+        "version": "d48396dd634123f4b4bbbb9580cb43ad621b5e676c367e34744f279581a0416e",
+        "signature": "529518e80194bf7ada063652df9bbc2074ab78d303fe30ff5dd4854c5e29fbeb",
+        "affectsGlobalScope": false
+      },
+      "internal:///error_stack.ts": {
+        "version": "6876f1624f656b302ff8a1bd857ee381687dde971e335e987fd855561c1c9abe",
+        "signature": "eb6d1283e085bcfaceb209f07f95e8a5df0824e45da1b2b8667ba2ba6895c495",
+        "affectsGlobalScope": false
+      },
+      "internal:///runtime.ts": {
+        "version": "2f16ff22e4443d726d640b14ddfc050d0c8ab597df6497120500ce9653c248d6",
+        "signature": "8f628444471fab4e05f4332675e951242a818e85d2b82d5d81e968594ef546fa",
+        "affectsGlobalScope": false
+      },
+      "internal:///runtime_worker.ts": {
+        "version": "740e9e3f5900829f907d18512467ea5044d92ac21b2e86efe3ae533777774c84",
+        "signature": "55b0e016709ac37362c6e444bff3ef23540661d57edf2b8e3a3e683066b8e584",
+        "affectsGlobalScope": false
+      },
+      "internal:///compiler.ts": {
+        "version": "715e5b9964608a8e38f432ed3eb7989ab7de491f03f5441950224b8a675d969f",
+        "signature": "e8c7f313764d225487774cc7101dcba296b52173d2ada2fd9f4a5ac1148615db",
+        "affectsGlobalScope": false
+      }
+    },
+    "options": {
+      "importsNotUsedAsValues": 2,
+      "incremental": true,
+      "lib": [
+        "lib.esnext.d.ts"
+      ],
+      "listEmittedFiles": true,
+      "module": 4,
+      "removeComments": true,
+      "sourceMap": true,
+      "strict": true,
+      "target": 99,
+      "tsBuildInfoFile": "./compiler.tsbuildinfo",
+      "configFilePath": "cache:///tsconfig.json"
+    },
+    "referencedMap": {
+      "internal:///buffer.ts": [
+        "internal:///io.ts",
+        "internal:///util.ts"
+      ],
+      "internal:///compiler.ts": [
+        "internal:///colors.ts",
+        "internal:///compiler_options.ts",
+        "internal:///core.ts",
+        "internal:///diagnostics.ts",
+        "internal:///diagnostics_util.ts",
+        "internal:///ops/runtime_compiler.ts",
+        "internal:///runtime_worker.ts",
+        "internal:///ts_global.d.ts",
+        "internal:///util.ts"
+      ],
+      "internal:///compiler_api.ts": [
+        "internal:///compiler_options.ts",
+        "internal:///diagnostics.ts",
+        "internal:///ops/runtime_compiler.ts",
+        "internal:///util.ts"
+      ],
+      "internal:///deno.ts": [
+        "internal:///buffer.ts",
+        "internal:///build.ts",
+        "internal:///core.ts",
+        "internal:///errors.ts",
+        "internal:///files.ts",
+        "internal:///internals.ts",
+        "internal:///io.ts",
+        "internal:///net.ts",
+        "internal:///ops/fs/chmod.ts",
+        "internal:///ops/fs/chown.ts",
+        "internal:///ops/fs/copy_file.ts",
+        "internal:///ops/fs/dir.ts",
+        "internal:///ops/fs/make_temp.ts",
+        "internal:///ops/fs/mkdir.ts",
+        "internal:///ops/fs/read_dir.ts",
+        "internal:///ops/fs/read_link.ts",
+        "internal:///ops/fs/real_path.ts",
+        "internal:///ops/fs/remove.ts",
+        "internal:///ops/fs/rename.ts",
+        "internal:///ops/fs/stat.ts",
+        "internal:///ops/fs/truncate.ts",
+        "internal:///ops/fs_events.ts",
+        "internal:///ops/io.ts",
+        "internal:///ops/os.ts",
+        "internal:///ops/resources.ts",
+        "internal:///ops/runtime.ts",
+        "internal:///ops/tty.ts",
+        "internal:///process.ts",
+        "internal:///read_file.ts",
+        "internal:///read_text_file.ts",
+        "internal:///testing.ts",
+        "internal:///tls.ts",
+        "internal:///version.ts",
+        "internal:///web/console.ts",
+        "internal:///write_file.ts",
+        "internal:///write_text_file.ts"
+      ],
+      "internal:///deno_unstable.ts": [
+        "internal:///compiler_api.ts",
+        "internal:///diagnostics.ts",
+        "internal:///net.ts",
+        "internal:///net_unstable.ts",
+        "internal:///ops/errors.ts",
+        "internal:///ops/fs/link.ts",
+        "internal:///ops/fs/stat.ts",
+        "internal:///ops/fs/symlink.ts",
+        "internal:///ops/fs/sync.ts",
+        "internal:///ops/fs/truncate.ts",
+        "internal:///ops/fs/umask.ts",
+        "internal:///ops/fs/utime.ts",
+        "internal:///ops/os.ts",
+        "internal:///ops/plugins.ts",
+        "internal:///ops/process.ts",
+        "internal:///ops/tty.ts",
+        "internal:///permissions.ts",
+        "internal:///signals.ts",
+        "internal:///tls.ts"
+      ],
+      "internal:///diagnostics_util.ts": [
+        "internal:///diagnostics.ts"
+      ],
+      "internal:///error_stack.ts": [
+        "internal:///colors.ts",
+        "internal:///internals.ts",
+        "internal:///ops/errors.ts",
+        "internal:///util.ts"
+      ],
+      "internal:///files.ts": [
+        "internal:///io.ts",
+        "internal:///ops/fs/open.ts",
+        "internal:///ops/fs/seek.ts",
+        "internal:///ops/io.ts",
+        "internal:///ops/resources.ts"
+      ],
+      "internal:///globals.ts": [
+        "internal:///core.ts",
+        "internal:///ops/get_random_values.ts",
+        "internal:///web/abort_controller.ts",
+        "internal:///web/abort_signal.ts",
+        "internal:///web/blob.ts",
+        "internal:///web/console.ts",
+        "internal:///web/custom_event.ts",
+        "internal:///web/dom_exception.ts",
+        "internal:///web/dom_file.ts",
+        "internal:///web/error_event.ts",
+        "internal:///web/event.ts",
+        "internal:///web/event_target.ts",
+        "internal:///web/fetch.ts",
+        "internal:///web/form_data.ts",
+        "internal:///web/headers.ts",
+        "internal:///web/performance.ts",
+        "internal:///web/promise.ts",
+        "internal:///web/request.ts",
+        "internal:///web/streams/queuing_strategy.ts",
+        "internal:///web/streams/readable_stream.ts",
+        "internal:///web/streams/transform_stream.ts",
+        "internal:///web/streams/writable_stream.ts",
+        "internal:///web/text_encoding.ts",
+        "internal:///web/timers.ts",
+        "internal:///web/url.ts",
+        "internal:///web/url_search_params.ts",
+        "internal:///web/workers.ts"
+      ],
+      "internal:///net.ts": [
+        "internal:///errors.ts",
+        "internal:///io.ts",
+        "internal:///ops/io.ts",
+        "internal:///ops/net.ts",
+        "internal:///ops/resources.ts"
+      ],
+      "internal:///net_unstable.ts": [
+        "internal:///net.ts",
+        "internal:///ops/net.ts"
+      ],
+      "internal:///ops/dispatch_json.ts": [
+        "internal:///core.ts",
+        "internal:///errors.ts",
+        "internal:///util.ts"
+      ],
+      "internal:///ops/dispatch_minimal.ts": [
+        "internal:///core.ts",
+        "internal:///errors.ts",
+        "internal:///util.ts",
+        "internal:///web/text_encoding.ts"
+      ],
+      "internal:///ops/errors.ts": [
+        "internal:///diagnostics.ts",
+        "internal:///ops/dispatch_json.ts"
+      ],
+      "internal:///ops/fetch.ts": [
+        "internal:///ops/dispatch_json.ts"
+      ],
+      "internal:///ops/fs/chmod.ts": [
+        "internal:///ops/dispatch_json.ts",
+        "internal:///util.ts"
+      ],
+      "internal:///ops/fs/chown.ts": [
+        "internal:///ops/dispatch_json.ts",
+        "internal:///util.ts"
+      ],
+      "internal:///ops/fs/copy_file.ts": [
+        "internal:///ops/dispatch_json.ts",
+        "internal:///util.ts"
+      ],
+      "internal:///ops/fs/dir.ts": [
+        "internal:///ops/dispatch_json.ts"
+      ],
+      "internal:///ops/fs/link.ts": [
+        "internal:///ops/dispatch_json.ts"
+      ],
+      "internal:///ops/fs/make_temp.ts": [
+        "internal:///ops/dispatch_json.ts"
+      ],
+      "internal:///ops/fs/mkdir.ts": [
+        "internal:///ops/dispatch_json.ts"
+      ],
+      "internal:///ops/fs/open.ts": [
+        "internal:///ops/dispatch_json.ts",
+        "internal:///util.ts"
+      ],
+      "internal:///ops/fs/read_dir.ts": [
+        "internal:///ops/dispatch_json.ts",
+        "internal:///util.ts"
+      ],
+      "internal:///ops/fs/read_link.ts": [
+        "internal:///ops/dispatch_json.ts"
+      ],
+      "internal:///ops/fs/real_path.ts": [
+        "internal:///ops/dispatch_json.ts"
+      ],
+      "internal:///ops/fs/remove.ts": [
+        "internal:///ops/dispatch_json.ts",
+        "internal:///util.ts"
+      ],
+      "internal:///ops/fs/rename.ts": [
+        "internal:///ops/dispatch_json.ts"
+      ],
+      "internal:///ops/fs/seek.ts": [
+        "internal:///io.ts",
+        "internal:///ops/dispatch_json.ts"
+      ],
+      "internal:///ops/fs/stat.ts": [
+        "internal:///build.ts",
+        "internal:///ops/dispatch_json.ts",
+        "internal:///util.ts"
+      ],
+      "internal:///ops/fs/symlink.ts": [
+        "internal:///ops/dispatch_json.ts"
+      ],
+      "internal:///ops/fs/sync.ts": [
+        "internal:///ops/dispatch_json.ts"
+      ],
+      "internal:///ops/fs/truncate.ts": [
+        "internal:///ops/dispatch_json.ts"
+      ],
+      "internal:///ops/fs/umask.ts": [
+        "internal:///ops/dispatch_json.ts"
+      ],
+      "internal:///ops/fs/utime.ts": [
+        "internal:///ops/dispatch_json.ts"
+      ],
+      "internal:///ops/fs_events.ts": [
+        "internal:///ops/dispatch_json.ts",
+        "internal:///ops/resources.ts"
+      ],
+      "internal:///ops/get_random_values.ts": [
+        "internal:///ops/dispatch_json.ts",
+        "internal:///util.ts"
+      ],
+      "internal:///ops/idna.ts": [
+        "internal:///ops/dispatch_json.ts"
+      ],
+      "internal:///ops/io.ts": [
+        "internal:///ops/dispatch_minimal.ts"
+      ],
+      "internal:///ops/net.ts": [
+        "internal:///ops/dispatch_json.ts"
+      ],
+      "internal:///ops/os.ts": [
+        "internal:///ops/dispatch_json.ts"
+      ],
+      "internal:///ops/permissions.ts": [
+        "internal:///ops/dispatch_json.ts",
+        "internal:///permissions.ts"
+      ],
+      "internal:///ops/plugins.ts": [
+        "internal:///ops/dispatch_json.ts"
+      ],
+      "internal:///ops/process.ts": [
+        "internal:///ops/dispatch_json.ts",
+        "internal:///util.ts"
+      ],
+      "internal:///ops/resources.ts": [
+        "internal:///ops/dispatch_json.ts"
+      ],
+      "internal:///ops/runtime.ts": [
+        "internal:///ops/dispatch_json.ts"
+      ],
+      "internal:///ops/runtime_compiler.ts": [
+        "internal:///diagnostics.ts",
+        "internal:///ops/dispatch_json.ts"
+      ],
+      "internal:///ops/signal.ts": [
+        "internal:///ops/dispatch_json.ts"
+      ],
+      "internal:///ops/timers.ts": [
+        "internal:///ops/dispatch_json.ts"
+      ],
+      "internal:///ops/tls.ts": [
+        "internal:///ops/dispatch_json.ts"
+      ],
+      "internal:///ops/tty.ts": [
+        "internal:///ops/dispatch_json.ts"
+      ],
+      "internal:///ops/web_worker.ts": [
+        "internal:///ops/dispatch_json.ts"
+      ],
+      "internal:///ops/worker_host.ts": [
+        "internal:///ops/dispatch_json.ts"
+      ],
+      "internal:///permissions.ts": [
+        "internal:///ops/permissions.ts"
+      ],
+      "internal:///process.ts": [
+        "internal:///buffer.ts",
+        "internal:///files.ts",
+        "internal:///io.ts",
+        "internal:///ops/process.ts",
+        "internal:///ops/resources.ts"
+      ],
+      "internal:///rbtree.ts": [
+        "internal:///util.ts"
+      ],
+      "internal:///read_file.ts": [
+        "internal:///buffer.ts",
+        "internal:///files.ts"
+      ],
+      "internal:///read_text_file.ts": [
+        "internal:///buffer.ts",
+        "internal:///files.ts"
+      ],
+      "internal:///runtime.ts": [
+        "internal:///build.ts",
+        "internal:///core.ts",
+        "internal:///error_stack.ts",
+        "internal:///ops/dispatch_json.ts",
+        "internal:///ops/dispatch_minimal.ts",
+        "internal:///ops/runtime.ts",
+        "internal:///util.ts",
+        "internal:///version.ts",
+        "internal:///web/timers.ts"
+      ],
+      "internal:///runtime_worker.ts": [
+        "internal:///deno.ts",
+        "internal:///deno_unstable.ts",
+        "internal:///globals.ts",
+        "internal:///globals_unstable.ts",
+        "internal:///internals.ts",
+        "internal:///ops/web_worker.ts",
+        "internal:///runtime.ts",
+        "internal:///signals.ts",
+        "internal:///util.ts",
+        "internal:///web/error_event.ts",
+        "internal:///web/text_encoding.ts",
+        "internal:///web/workers.ts"
+      ],
+      "internal:///signals.ts": [
+        "internal:///build.ts",
+        "internal:///ops/signal.ts"
+      ],
+      "internal:///testing.ts": [
+        "internal:///colors.ts",
+        "internal:///files.ts",
+        "internal:///internals.ts",
+        "internal:///ops/os.ts",
+        "internal:///ops/resources.ts",
+        "internal:///ops/runtime.ts",
+        "internal:///util.ts",
+        "internal:///web/console.ts",
+        "internal:///web/text_encoding.ts"
+      ],
+      "internal:///tls.ts": [
+        "internal:///net.ts",
+        "internal:///ops/tls.ts"
+      ],
+      "internal:///ts_global.d.ts": [
+        "asset:///typescript.d.ts"
+      ],
+      "internal:///util.ts": [
+        "internal:///build.ts",
+        "internal:///internals.ts"
+      ],
+      "internal:///web/abort_controller.ts": [
+        "internal:///web/abort_signal.ts"
+      ],
+      "internal:///web/abort_signal.ts": [
+        "internal:///web/event.ts",
+        "internal:///web/event_target.ts"
+      ],
+      "internal:///web/blob.ts": [
+        "internal:///build.ts",
+        "internal:///web/streams/readable_stream.ts",
+        "internal:///web/text_encoding.ts"
+      ],
+      "internal:///web/body.ts": [
+        "internal:///buffer.ts",
+        "internal:///web/blob.ts",
+        "internal:///web/dom_types.d.ts",
+        "internal:///web/fetch/multipart.ts",
+        "internal:///web/streams/internals.ts",
+        "internal:///web/streams/readable_stream.ts",
+        "internal:///web/text_encoding.ts",
+        "internal:///web/util.ts"
+      ],
+      "internal:///web/console.ts": [
+        "internal:///colors.ts",
+        "internal:///internals.ts",
+        "internal:///web/console_table.ts",
+        "internal:///web/promise.ts",
+        "internal:///web/util.ts"
+      ],
+      "internal:///web/console_table.ts": [
+        "internal:///colors.ts",
+        "internal:///web/util.ts"
+      ],
+      "internal:///web/custom_event.ts": [
+        "internal:///web/event.ts",
+        "internal:///web/util.ts"
+      ],
+      "internal:///web/dom_file.ts": [
+        "internal:///web/blob.ts"
+      ],
+      "internal:///web/dom_iterable.ts": [
+        "internal:///internals.ts",
+        "internal:///web/util.ts"
+      ],
+      "internal:///web/error_event.ts": [
+        "internal:///web/event.ts",
+        "internal:///web/util.ts"
+      ],
+      "internal:///web/event.ts": [
+        "internal:///util.ts",
+        "internal:///web/dom_types.d.ts",
+        "internal:///web/util.ts"
+      ],
+      "internal:///web/event_target.ts": [
+        "internal:///web/dom_exception.ts",
+        "internal:///web/dom_types.d.ts",
+        "internal:///web/event.ts",
+        "internal:///web/util.ts"
+      ],
+      "internal:///web/fetch.ts": [
+        "internal:///ops/fetch.ts",
+        "internal:///ops/io.ts",
+        "internal:///ops/resources.ts",
+        "internal:///util.ts",
+        "internal:///web/blob.ts",
+        "internal:///web/body.ts",
+        "internal:///web/dom_types.d.ts",
+        "internal:///web/fetch/multipart.ts",
+        "internal:///web/streams/readable_stream.ts",
+        "internal:///web/text_encoding.ts",
+        "internal:///web/util.ts"
+      ],
+      "internal:///web/fetch/multipart.ts": [
+        "internal:///buffer.ts",
+        "internal:///web/blob.ts",
+        "internal:///web/dom_file.ts",
+        "internal:///web/text_encoding.ts",
+        "internal:///web/util.ts"
+      ],
+      "internal:///web/form_data.ts": [
+        "internal:///web/blob.ts",
+        "internal:///web/dom_file.ts",
+        "internal:///web/dom_iterable.ts",
+        "internal:///web/util.ts"
+      ],
+      "internal:///web/headers.ts": [
+        "internal:///web/console.ts",
+        "internal:///web/dom_iterable.ts",
+        "internal:///web/util.ts"
+      ],
+      "internal:///web/performance.ts": [
+        "internal:///ops/timers.ts",
+        "internal:///web/console.ts",
+        "internal:///web/util.ts"
+      ],
+      "internal:///web/request.ts": [
+        "internal:///web/body.ts",
+        "internal:///web/dom_types.d.ts",
+        "internal:///web/streams/readable_stream.ts"
+      ],
+      "internal:///web/streams/internals.ts": [
+        "internal:///util.ts",
+        "internal:///web/abort_signal.ts",
+        "internal:///web/dom_exception.ts",
+        "internal:///web/streams/readable_byte_stream_controller.ts",
+        "internal:///web/streams/readable_stream.ts",
+        "internal:///web/streams/readable_stream_default_controller.ts",
+        "internal:///web/streams/readable_stream_default_reader.ts",
+        "internal:///web/streams/symbols.ts",
+        "internal:///web/streams/transform_stream.ts",
+        "internal:///web/streams/transform_stream_default_controller.ts",
+        "internal:///web/streams/writable_stream.ts",
+        "internal:///web/streams/writable_stream_default_controller.ts",
+        "internal:///web/streams/writable_stream_default_writer.ts",
+        "internal:///web/util.ts"
+      ],
+      "internal:///web/streams/queuing_strategy.ts": [
+        "internal:///web/console.ts",
+        "internal:///web/util.ts"
+      ],
+      "internal:///web/streams/readable_byte_stream_controller.ts": [
+        "internal:///util.ts",
+        "internal:///web/console.ts",
+        "internal:///web/streams/internals.ts",
+        "internal:///web/streams/readable_stream.ts",
+        "internal:///web/streams/symbols.ts",
+        "internal:///web/util.ts"
+      ],
+      "internal:///web/streams/readable_stream.ts": [
+        "internal:///web/abort_signal.ts",
+        "internal:///web/console.ts",
+        "internal:///web/streams/internals.ts",
+        "internal:///web/streams/readable_byte_stream_controller.ts",
+        "internal:///web/streams/readable_stream_async_iterator.ts",
+        "internal:///web/streams/readable_stream_default_controller.ts",
+        "internal:///web/streams/symbols.ts",
+        "internal:///web/util.ts"
+      ],
+      "internal:///web/streams/readable_stream_async_iterator.ts": [
+        "internal:///util.ts",
+        "internal:///web/streams/internals.ts",
+        "internal:///web/streams/symbols.ts"
+      ],
+      "internal:///web/streams/readable_stream_default_controller.ts": [
+        "internal:///web/console.ts",
+        "internal:///web/streams/internals.ts",
+        "internal:///web/streams/readable_stream.ts",
+        "internal:///web/streams/symbols.ts",
+        "internal:///web/util.ts"
+      ],
+      "internal:///web/streams/readable_stream_default_reader.ts": [
+        "internal:///web/console.ts",
+        "internal:///web/streams/internals.ts",
+        "internal:///web/streams/readable_stream.ts",
+        "internal:///web/streams/symbols.ts",
+        "internal:///web/util.ts"
+      ],
+      "internal:///web/streams/transform_stream.ts": [
+        "internal:///web/console.ts",
+        "internal:///web/streams/internals.ts",
+        "internal:///web/streams/readable_stream.ts",
+        "internal:///web/streams/symbols.ts",
+        "internal:///web/streams/transform_stream_default_controller.ts",
+        "internal:///web/streams/writable_stream.ts",
+        "internal:///web/util.ts"
+      ],
+      "internal:///web/streams/transform_stream_default_controller.ts": [
+        "internal:///web/console.ts",
+        "internal:///web/streams/internals.ts",
+        "internal:///web/streams/readable_stream_default_controller.ts",
+        "internal:///web/streams/symbols.ts",
+        "internal:///web/streams/transform_stream.ts",
+        "internal:///web/util.ts"
+      ],
+      "internal:///web/streams/writable_stream.ts": [
+        "internal:///web/console.ts",
+        "internal:///web/streams/internals.ts",
+        "internal:///web/streams/symbols.ts",
+        "internal:///web/streams/writable_stream_default_controller.ts",
+        "internal:///web/streams/writable_stream_default_writer.ts",
+        "internal:///web/util.ts"
+      ],
+      "internal:///web/streams/writable_stream_default_controller.ts": [
+        "internal:///web/console.ts",
+        "internal:///web/streams/internals.ts",
+        "internal:///web/streams/symbols.ts",
+        "internal:///web/streams/writable_stream.ts",
+        "internal:///web/util.ts"
+      ],
+      "internal:///web/streams/writable_stream_default_writer.ts": [
+        "internal:///util.ts",
+        "internal:///web/console.ts",
+        "internal:///web/streams/internals.ts",
+        "internal:///web/streams/symbols.ts",
+        "internal:///web/streams/writable_stream.ts",
+        "internal:///web/util.ts"
+      ],
+      "internal:///web/text_encoding.ts": [
+        "internal:///core.ts",
+        "internal:///web/base64.ts",
+        "internal:///web/decode_utf8.ts",
+        "internal:///web/dom_exception.ts"
+      ],
+      "internal:///web/timers.ts": [
+        "internal:///ops/timers.ts",
+        "internal:///rbtree.ts",
+        "internal:///util.ts"
+      ],
+      "internal:///web/url.ts": [
+        "internal:///build.ts",
+        "internal:///ops/get_random_values.ts",
+        "internal:///ops/idna.ts",
+        "internal:///web/console.ts",
+        "internal:///web/text_encoding.ts",
+        "internal:///web/url_search_params.ts"
+      ],
+      "internal:///web/url_search_params.ts": [
+        "internal:///web/url.ts",
+        "internal:///web/util.ts"
+      ],
+      "internal:///web/util.ts": [
+        "internal:///web/dom_exception.ts"
+      ],
+      "internal:///web/workers.ts": [
+        "internal:///ops/worker_host.ts",
+        "internal:///util.ts",
+        "internal:///web/error_event.ts",
+        "internal:///web/event.ts",
+        "internal:///web/event_target.ts",
+        "internal:///web/text_encoding.ts"
+      ],
+      "internal:///write_file.ts": [
+        "internal:///buffer.ts",
+        "internal:///build.ts",
+        "internal:///files.ts",
+        "internal:///ops/fs/chmod.ts",
+        "internal:///ops/fs/stat.ts"
+      ],
+      "internal:///write_text_file.ts": [
+        "internal:///write_file.ts"
+      ]
+    },
+    "exportedModulesMap": {
+      "internal:///buffer.ts": [
+        "internal:///io.ts"
+      ],
+      "internal:///compiler.ts": [
+        "internal:///ts_global.d.ts"
+      ],
+      "internal:///compiler_api.ts": [
+        "internal:///compiler_options.ts",
+        "internal:///diagnostics.ts",
+        "internal:///ops/runtime_compiler.ts"
+      ],
+      "internal:///deno.ts": [
+        "internal:///buffer.ts",
+        "internal:///build.ts",
+        "internal:///core.ts",
+        "internal:///errors.ts",
+        "internal:///files.ts",
+        "internal:///internals.ts",
+        "internal:///io.ts",
+        "internal:///net.ts",
+        "internal:///ops/fs/chmod.ts",
+        "internal:///ops/fs/chown.ts",
+        "internal:///ops/fs/copy_file.ts",
+        "internal:///ops/fs/dir.ts",
+        "internal:///ops/fs/make_temp.ts",
+        "internal:///ops/fs/mkdir.ts",
+        "internal:///ops/fs/read_dir.ts",
+        "internal:///ops/fs/read_link.ts",
+        "internal:///ops/fs/real_path.ts",
+        "internal:///ops/fs/remove.ts",
+        "internal:///ops/fs/rename.ts",
+        "internal:///ops/fs/stat.ts",
+        "internal:///ops/fs/truncate.ts",
+        "internal:///ops/fs_events.ts",
+        "internal:///ops/io.ts",
+        "internal:///ops/os.ts",
+        "internal:///ops/resources.ts",
+        "internal:///ops/runtime.ts",
+        "internal:///ops/tty.ts",
+        "internal:///process.ts",
+        "internal:///read_file.ts",
+        "internal:///read_text_file.ts",
+        "internal:///testing.ts",
+        "internal:///tls.ts",
+        "internal:///version.ts",
+        "internal:///web/console.ts",
+        "internal:///write_file.ts",
+        "internal:///write_text_file.ts"
+      ],
+      "internal:///deno_unstable.ts": [
+        "internal:///compiler_api.ts",
+        "internal:///diagnostics.ts",
+        "internal:///net.ts",
+        "internal:///net_unstable.ts",
+        "internal:///ops/errors.ts",
+        "internal:///ops/fs/link.ts",
+        "internal:///ops/fs/stat.ts",
+        "internal:///ops/fs/symlink.ts",
+        "internal:///ops/fs/sync.ts",
+        "internal:///ops/fs/truncate.ts",
+        "internal:///ops/fs/umask.ts",
+        "internal:///ops/fs/utime.ts",
+        "internal:///ops/os.ts",
+        "internal:///ops/plugins.ts",
+        "internal:///ops/process.ts",
+        "internal:///ops/tty.ts",
+        "internal:///permissions.ts",
+        "internal:///signals.ts",
+        "internal:///tls.ts"
+      ],
+      "internal:///diagnostics_util.ts": [
+        "internal:///diagnostics.ts"
+      ],
+      "internal:///files.ts": [
+        "internal:///io.ts",
+        "internal:///ops/fs/open.ts",
+        "internal:///ops/fs/seek.ts"
+      ],
+      "internal:///globals.ts": [
+        "internal:///web/console.ts",
+        "internal:///web/promise.ts"
+      ],
+      "internal:///net.ts": [
+        "internal:///io.ts",
+        "internal:///ops/net.ts"
+      ],
+      "internal:///net_unstable.ts": [
+        "internal:///net.ts"
+      ],
+      "internal:///ops/dispatch_minimal.ts": [
+        "internal:///errors.ts"
+      ],
+      "internal:///ops/errors.ts": [
+        "internal:///diagnostics.ts"
+      ],
+      "internal:///ops/fs/seek.ts": [
+        "internal:///io.ts"
+      ],
+      "internal:///ops/permissions.ts": [
+        "internal:///permissions.ts"
+      ],
+      "internal:///ops/runtime_compiler.ts": [
+        "internal:///diagnostics.ts"
+      ],
+      "internal:///process.ts": [
+        "internal:///io.ts"
+      ],
+      "internal:///runtime.ts": [
+        "internal:///ops/runtime.ts"
+      ],
+      "internal:///tls.ts": [
+        "internal:///net.ts"
+      ],
+      "internal:///ts_global.d.ts": [
+        "asset:///typescript.d.ts"
+      ],
+      "internal:///web/abort_signal.ts": [
+        "internal:///web/event_target.ts"
+      ],
+      "internal:///web/body.ts": [
+        "internal:///web/dom_types.d.ts",
+        "internal:///web/streams/readable_stream.ts"
+      ],
+      "internal:///web/custom_event.ts": [
+        "internal:///web/event.ts"
+      ],
+      "internal:///web/dom_file.ts": [
+        "internal:///web/blob.ts"
+      ],
+      "internal:///web/error_event.ts": [
+        "internal:///web/event.ts"
+      ],
+      "internal:///web/event.ts": [
+        "internal:///web/dom_types.d.ts"
+      ],
+      "internal:///web/event_target.ts": [
+        "internal:///web/event.ts"
+      ],
+      "internal:///web/fetch.ts": [
+        "internal:///web/body.ts",
+        "internal:///web/dom_types.d.ts"
+      ],
+      "internal:///web/fetch/multipart.ts": [
+        "internal:///buffer.ts"
+      ],
+      "internal:///web/form_data.ts": [
+        "internal:///web/blob.ts",
+        "internal:///web/dom_file.ts",
+        "internal:///web/dom_iterable.ts"
+      ],
+      "internal:///web/headers.ts": [
+        "internal:///web/console.ts",
+        "internal:///web/dom_iterable.ts"
+      ],
+      "internal:///web/performance.ts": [
+        "internal:///web/console.ts"
+      ],
+      "internal:///web/request.ts": [
+        "internal:///web/body.ts",
+        "internal:///web/dom_types.d.ts"
+      ],
+      "internal:///web/streams/internals.ts": [
+        "internal:///web/abort_signal.ts",
+        "internal:///web/streams/readable_byte_stream_controller.ts",
+        "internal:///web/streams/readable_stream.ts",
+        "internal:///web/streams/readable_stream_default_controller.ts",
+        "internal:///web/streams/readable_stream_default_reader.ts",
+        "internal:///web/streams/symbols.ts",
+        "internal:///web/streams/transform_stream.ts",
+        "internal:///web/streams/transform_stream_default_controller.ts",
+        "internal:///web/streams/writable_stream.ts",
+        "internal:///web/streams/writable_stream_default_controller.ts",
+        "internal:///web/streams/writable_stream_default_writer.ts"
+      ],
+      "internal:///web/streams/queuing_strategy.ts": [
+        "internal:///web/console.ts"
+      ],
+      "internal:///web/streams/readable_byte_stream_controller.ts": [
+        "internal:///web/console.ts",
+        "internal:///web/streams/internals.ts",
+        "internal:///web/streams/readable_stream.ts",
+        "internal:///web/streams/symbols.ts"
+      ],
+      "internal:///web/streams/readable_stream.ts": [
+        "internal:///web/console.ts",
+        "internal:///web/streams/internals.ts",
+        "internal:///web/streams/readable_byte_stream_controller.ts",
+        "internal:///web/streams/readable_stream_default_controller.ts",
+        "internal:///web/streams/symbols.ts"
+      ],
+      "internal:///web/streams/readable_stream_async_iterator.ts": [
+        "internal:///web/streams/internals.ts"
+      ],
+      "internal:///web/streams/readable_stream_default_controller.ts": [
+        "internal:///web/console.ts",
+        "internal:///web/streams/internals.ts",
+        "internal:///web/streams/readable_stream.ts",
+        "internal:///web/streams/symbols.ts"
+      ],
+      "internal:///web/streams/readable_stream_default_reader.ts": [
+        "internal:///web/console.ts",
+        "internal:///web/streams/internals.ts",
+        "internal:///web/streams/readable_stream.ts",
+        "internal:///web/streams/symbols.ts"
+      ],
+      "internal:///web/streams/transform_stream.ts": [
+        "internal:///web/console.ts",
+        "internal:///web/streams/internals.ts",
+        "internal:///web/streams/readable_stream.ts",
+        "internal:///web/streams/symbols.ts",
+        "internal:///web/streams/transform_stream_default_controller.ts",
+        "internal:///web/streams/writable_stream.ts"
+      ],
+      "internal:///web/streams/transform_stream_default_controller.ts": [
+        "internal:///web/console.ts",
+        "internal:///web/streams/internals.ts",
+        "internal:///web/streams/symbols.ts",
+        "internal:///web/streams/transform_stream.ts"
+      ],
+      "internal:///web/streams/writable_stream.ts": [
+        "internal:///web/console.ts",
+        "internal:///web/streams/internals.ts",
+        "internal:///web/streams/symbols.ts",
+        "internal:///web/streams/writable_stream_default_controller.ts",
+        "internal:///web/streams/writable_stream_default_writer.ts"
+      ],
+      "internal:///web/streams/writable_stream_default_controller.ts": [
+        "internal:///web/console.ts",
+        "internal:///web/streams/internals.ts",
+        "internal:///web/streams/symbols.ts",
+        "internal:///web/streams/writable_stream.ts"
+      ],
+      "internal:///web/streams/writable_stream_default_writer.ts": [
+        "internal:///web/console.ts",
+        "internal:///web/streams/internals.ts",
+        "internal:///web/streams/symbols.ts",
+        "internal:///web/streams/writable_stream.ts"
+      ],
+      "internal:///web/url.ts": [
+        "internal:///web/console.ts"
+      ],
+      "internal:///web/workers.ts": [
+        "internal:///web/error_event.ts",
+        "internal:///web/event.ts",
+        "internal:///web/event_target.ts"
+      ],
+      "internal:///write_text_file.ts": [
+        "internal:///write_file.ts"
+      ]
+    },
+    "semanticDiagnosticsPerFile": [
+      "asset:///lib.es2015.collection.d.ts",
+      "asset:///lib.es2015.core.d.ts",
+      "asset:///lib.es2015.d.ts",
+      "asset:///lib.es2015.generator.d.ts",
+      "asset:///lib.es2015.iterable.d.ts",
+      "asset:///lib.es2015.promise.d.ts",
+      "asset:///lib.es2015.proxy.d.ts",
+      "asset:///lib.es2015.reflect.d.ts",
+      "asset:///lib.es2015.symbol.d.ts",
+      "asset:///lib.es2015.symbol.wellknown.d.ts",
+      "asset:///lib.es2016.array.include.d.ts",
+      "asset:///lib.es2016.d.ts",
+      "asset:///lib.es2017.d.ts",
+      "asset:///lib.es2017.intl.d.ts",
+      "asset:///lib.es2017.object.d.ts",
+      "asset:///lib.es2017.sharedmemory.d.ts",
+      "asset:///lib.es2017.string.d.ts",
+      "asset:///lib.es2017.typedarrays.d.ts",
+      "asset:///lib.es2018.asyncgenerator.d.ts",
+      "asset:///lib.es2018.asynciterable.d.ts",
+      "asset:///lib.es2018.d.ts",
+      "asset:///lib.es2018.intl.d.ts",
+      "asset:///lib.es2018.promise.d.ts",
+      "asset:///lib.es2018.regexp.d.ts",
+      "asset:///lib.es2019.array.d.ts",
+      "asset:///lib.es2019.d.ts",
+      "asset:///lib.es2019.object.d.ts",
+      "asset:///lib.es2019.string.d.ts",
+      "asset:///lib.es2019.symbol.d.ts",
+      "asset:///lib.es2020.bigint.d.ts",
+      "asset:///lib.es2020.d.ts",
+      "asset:///lib.es2020.promise.d.ts",
+      "asset:///lib.es2020.string.d.ts",
+      "asset:///lib.es2020.symbol.wellknown.d.ts",
+      "asset:///lib.es5.d.ts",
+      "asset:///lib.esnext.d.ts",
+      "asset:///lib.esnext.intl.d.ts",
+      "asset:///lib.esnext.promise.d.ts",
+      "asset:///lib.esnext.string.d.ts",
+      "asset:///typescript.d.ts",
+      "internal:///buffer.ts",
+      "internal:///build.ts",
+      "internal:///colors.ts",
+      "internal:///compiler.ts",
+      "internal:///compiler_api.ts",
+      "internal:///compiler_options.ts",
+      "internal:///core.ts",
+      "internal:///deno.ts",
+      "internal:///deno_unstable.ts",
+      "internal:///diagnostics.ts",
+      "internal:///diagnostics_util.ts",
+      "internal:///error_stack.ts",
+      "internal:///errors.ts",
+      "internal:///files.ts",
+      "internal:///globals.ts",
+      "internal:///globals_unstable.ts",
+      "internal:///internals.ts",
+      "internal:///io.ts",
+      "internal:///lib.deno.shared_globals.d.ts",
+      "internal:///net.ts",
+      "internal:///net_unstable.ts",
+      "internal:///ops/dispatch_json.ts",
+      "internal:///ops/dispatch_minimal.ts",
+      "internal:///ops/errors.ts",
+      "internal:///ops/fetch.ts",
+      "internal:///ops/fs/chmod.ts",
+      "internal:///ops/fs/chown.ts",
+      "internal:///ops/fs/copy_file.ts",
+      "internal:///ops/fs/dir.ts",
+      "internal:///ops/fs/link.ts",
+      "internal:///ops/fs/make_temp.ts",
+      "internal:///ops/fs/mkdir.ts",
+      "internal:///ops/fs/open.ts",
+      "internal:///ops/fs/read_dir.ts",
+      "internal:///ops/fs/read_link.ts",
+      "internal:///ops/fs/real_path.ts",
+      "internal:///ops/fs/remove.ts",
+      "internal:///ops/fs/rename.ts",
+      "internal:///ops/fs/seek.ts",
+      "internal:///ops/fs/stat.ts",
+      "internal:///ops/fs/symlink.ts",
+      "internal:///ops/fs/sync.ts",
+      "internal:///ops/fs/truncate.ts",
+      "internal:///ops/fs/umask.ts",
+      "internal:///ops/fs/utime.ts",
+      "internal:///ops/fs_events.ts",
+      "internal:///ops/get_random_values.ts",
+      "internal:///ops/idna.ts",
+      "internal:///ops/io.ts",
+      "internal:///ops/net.ts",
+      "internal:///ops/os.ts",
+      "internal:///ops/permissions.ts",
+      "internal:///ops/plugins.ts",
+      "internal:///ops/process.ts",
+      "internal:///ops/resources.ts",
+      "internal:///ops/runtime.ts",
+      "internal:///ops/runtime_compiler.ts",
+      "internal:///ops/signal.ts",
+      "internal:///ops/timers.ts",
+      "internal:///ops/tls.ts",
+      "internal:///ops/tty.ts",
+      "internal:///ops/web_worker.ts",
+      "internal:///ops/worker_host.ts",
+      "internal:///permissions.ts",
+      "internal:///process.ts",
+      "internal:///rbtree.ts",
+      "internal:///read_file.ts",
+      "internal:///read_text_file.ts",
+      "internal:///runtime.ts",
+      "internal:///runtime_worker.ts",
+      "internal:///signals.ts",
+      "internal:///testing.ts",
+      "internal:///tls.ts",
+      [
+        "internal:///ts_global.d.ts",
+        [
+          {
+            "file": "internal:///ts_global.d.ts",
+            "start": 904,
+            "length": 13,
+            "messageText": "An export assignment cannot be used in a namespace.",
+            "category": 1,
+            "code": 1063
+          }
+        ]
+      ],
+      "internal:///util.ts",
+      "internal:///version.ts",
+      "internal:///web/abort_controller.ts",
+      "internal:///web/abort_signal.ts",
+      "internal:///web/base64.ts",
+      "internal:///web/blob.ts",
+      "internal:///web/body.ts",
+      "internal:///web/console.ts",
+      "internal:///web/console_table.ts",
+      "internal:///web/custom_event.ts",
+      "internal:///web/decode_utf8.ts",
+      "internal:///web/dom_exception.ts",
+      "internal:///web/dom_file.ts",
+      "internal:///web/dom_iterable.ts",
+      "internal:///web/dom_types.d.ts",
+      "internal:///web/error_event.ts",
+      "internal:///web/event.ts",
+      "internal:///web/event_target.ts",
+      "internal:///web/fetch.ts",
+      "internal:///web/fetch/multipart.ts",
+      "internal:///web/form_data.ts",
+      "internal:///web/headers.ts",
+      "internal:///web/performance.ts",
+      "internal:///web/promise.ts",
+      "internal:///web/request.ts",
+      "internal:///web/streams/internals.ts",
+      "internal:///web/streams/queuing_strategy.ts",
+      "internal:///web/streams/readable_byte_stream_controller.ts",
+      "internal:///web/streams/readable_stream.ts",
+      "internal:///web/streams/readable_stream_async_iterator.ts",
+      "internal:///web/streams/readable_stream_default_controller.ts",
+      "internal:///web/streams/readable_stream_default_reader.ts",
+      "internal:///web/streams/symbols.ts",
+      "internal:///web/streams/transform_stream.ts",
+      "internal:///web/streams/transform_stream_default_controller.ts",
+      "internal:///web/streams/writable_stream.ts",
+      "internal:///web/streams/writable_stream_default_controller.ts",
+      "internal:///web/streams/writable_stream_default_writer.ts",
+      "internal:///web/text_encoding.ts",
+      "internal:///web/timers.ts",
+      "internal:///web/url.ts",
+      "internal:///web/url_search_params.ts",
+      "internal:///web/util.ts",
+      "internal:///web/workers.ts",
+      "internal:///write_file.ts",
+      "internal:///write_text_file.ts"
+    ]
+  },
+  "version": "3.9.2"
+}

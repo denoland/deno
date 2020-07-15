@@ -213,6 +213,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e3b5ca7a04898ad4bcd41c90c5285445ff5b791899bb1b0abdd2a2aa791211d7"
 
 [[package]]
+name = "bytecount"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b0017894339f586ccb943b01b9555de56770c11cda818e7e3d8bd93f4ed7f46e"
+
+[[package]]
 name = "byteorder"
 version = "1.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -463,9 +469,14 @@ dependencies = [
 name = "deno_typescript"
 version = "0.49.0"
 dependencies = [
+ "bytecount",
  "deno_core",
+ "regex",
+ "ring",
  "serde",
  "serde_json",
+ "sourcemap",
+ "tempfile",
 ]
 
 [[package]]

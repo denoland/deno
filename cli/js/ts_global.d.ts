@@ -12,7 +12,7 @@
 // to get proper editor intellisense, you can substitute "$asset$" with
 // "../../deno_typescript/typescript/lib" - remember to revert before committing
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import * as ts_ from "$asset$/typescript.d.ts";
+import * as ts_ from "asset:///typescript.d.ts";
 
 declare global {
   namespace ts {

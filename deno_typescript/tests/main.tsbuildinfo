@@ -1,0 +1,306 @@
+{
+  "program": {
+    "fileInfos": {
+      "asset:///lib.es5.d.ts": {
+        "version": "7efeb0941d94eacc7ab430c75b70271a120ee295c0c8d7e54c7b10640c467f0e",
+        "signature": "7efeb0941d94eacc7ab430c75b70271a120ee295c0c8d7e54c7b10640c467f0e",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.es2015.d.ts": {
+        "version": "e8d2e50f9e8fdd312d31f97571b4c7295b8f29f7f8363498edae2a9eb113ee36",
+        "signature": "e8d2e50f9e8fdd312d31f97571b4c7295b8f29f7f8363498edae2a9eb113ee36",
+        "affectsGlobalScope": false
+      },
+      "asset:///lib.es2016.d.ts": {
+        "version": "4b1854aec637e8e041eff02899e16fd3c0c78685c622336aadfd67e6604bbe1b",
+        "signature": "4b1854aec637e8e041eff02899e16fd3c0c78685c622336aadfd67e6604bbe1b",
+        "affectsGlobalScope": false
+      },
+      "asset:///lib.es2017.d.ts": {
+        "version": "d6f7d47355a0167969e9a8eedfb0994f21e038d360965ec06c30f6871038900b",
+        "signature": "d6f7d47355a0167969e9a8eedfb0994f21e038d360965ec06c30f6871038900b",
+        "affectsGlobalScope": false
+      },
+      "asset:///lib.es2018.d.ts": {
+        "version": "4735756aff7c5857de387f321633f272e2daba4950c427ab200de954340c7c13",
+        "signature": "4735756aff7c5857de387f321633f272e2daba4950c427ab200de954340c7c13",
+        "affectsGlobalScope": false
+      },
+      "asset:///lib.es2019.d.ts": {
+        "version": "4cac3201303b24c71d334bcdab63aee38b7424f51ba9f8884515705b7cba7606",
+        "signature": "4cac3201303b24c71d334bcdab63aee38b7424f51ba9f8884515705b7cba7606",
+        "affectsGlobalScope": false
+      },
+      "asset:///lib.es2020.d.ts": {
+        "version": "40c2cbcb08802e3a600f1aae8efc6fddf62a69617bfac67b582a4196e99b586e",
+        "signature": "40c2cbcb08802e3a600f1aae8efc6fddf62a69617bfac67b582a4196e99b586e",
+        "affectsGlobalScope": false
+      },
+      "asset:///lib.esnext.d.ts": {
+        "version": "feafcdd6f11ac9c4af7a20bb4420b3a98b37036c9290b19a413d4cb5244b1093",
+        "signature": "feafcdd6f11ac9c4af7a20bb4420b3a98b37036c9290b19a413d4cb5244b1093",
+        "affectsGlobalScope": false
+      },
+      "asset:///lib.es2015.core.d.ts": {
+        "version": "07b086119a8aab9ddf59ea610e811b84399e63dc70bdc60853012a0c9d5fc991",
+        "signature": "07b086119a8aab9ddf59ea610e811b84399e63dc70bdc60853012a0c9d5fc991",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.es2015.collection.d.ts": {
+        "version": "5a8c535851f6cb0d376f135a2a6640dec8070d48d03072c2f1ab70528d7cb4fe",
+        "signature": "5a8c535851f6cb0d376f135a2a6640dec8070d48d03072c2f1ab70528d7cb4fe",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.es2015.generator.d.ts": {
+        "version": "28065193ddf88bf697915b9236d2d00a27e85726563e88474f166790376e10d8",
+        "signature": "28065193ddf88bf697915b9236d2d00a27e85726563e88474f166790376e10d8",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.es2015.iterable.d.ts": {
+        "version": "841d95749d40a85708dd0419aa5c312702e493dfb27bdde405ea567289e41b26",
+        "signature": "841d95749d40a85708dd0419aa5c312702e493dfb27bdde405ea567289e41b26",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.es2015.promise.d.ts": {
+        "version": "e65130331c5ec60e3a9857cfd3ddacc31f7dacbb6676090bc1d49118fb922603",
+        "signature": "e65130331c5ec60e3a9857cfd3ddacc31f7dacbb6676090bc1d49118fb922603",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.es2015.proxy.d.ts": {
+        "version": "5d198e9dff9dee7a362a8fa4ec1c8a6ea842fafa2c882a64dab3b5c71f33b19e",
+        "signature": "5d198e9dff9dee7a362a8fa4ec1c8a6ea842fafa2c882a64dab3b5c71f33b19e",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.es2015.reflect.d.ts": {
+        "version": "378046398977a38b534922c0ce8f5adcb9fdadca2979c2f3f83b0030f1357ee7",
+        "signature": "378046398977a38b534922c0ce8f5adcb9fdadca2979c2f3f83b0030f1357ee7",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.es2015.symbol.d.ts": {
+        "version": "e5d8d715990d96a37f3521a3f1460679507b261eec1b42dc84d4de835997b794",
+        "signature": "e5d8d715990d96a37f3521a3f1460679507b261eec1b42dc84d4de835997b794",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.es2015.symbol.wellknown.d.ts": {
+        "version": "4283d30a69dd45500e6c201e3d7bf25b88470929388e3efefd54051a277cefd9",
+        "signature": "4283d30a69dd45500e6c201e3d7bf25b88470929388e3efefd54051a277cefd9",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.es2016.array.include.d.ts": {
+        "version": "a003a6051b48dc64eaa8ad83789e4c2a540f3482bed821053b6770969bd598fb",
+        "signature": "a003a6051b48dc64eaa8ad83789e4c2a540f3482bed821053b6770969bd598fb",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.es2017.object.d.ts": {
+        "version": "e90857fa86cecc3bc964a2d7db9d95a0c406bebfadeb4853a01a0079936f12f7",
+        "signature": "e90857fa86cecc3bc964a2d7db9d95a0c406bebfadeb4853a01a0079936f12f7",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.es2017.sharedmemory.d.ts": {
+        "version": "eb40c84c2cfc4dc7f834a88f0c6382987c26c4069243fd952ac9a447da96971f",
+        "signature": "eb40c84c2cfc4dc7f834a88f0c6382987c26c4069243fd952ac9a447da96971f",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.es2017.string.d.ts": {
+        "version": "5044747370afee4b4c247e8a14c2969d245bbcf8396295dc5a60c659d796a71f",
+        "signature": "5044747370afee4b4c247e8a14c2969d245bbcf8396295dc5a60c659d796a71f",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.es2017.intl.d.ts": {
+        "version": "d42841f3fb4fc368f35cba018a81bd0b38f1d00ae9b0449a63ab47ac1bcaba10",
+        "signature": "d42841f3fb4fc368f35cba018a81bd0b38f1d00ae9b0449a63ab47ac1bcaba10",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.es2017.typedarrays.d.ts": {
+        "version": "a894424c7058bcc77c1a3c92fe289c0ff93792e583e064c683d021879479f7b8",
+        "signature": "a894424c7058bcc77c1a3c92fe289c0ff93792e583e064c683d021879479f7b8",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.es2018.asyncgenerator.d.ts": {
+        "version": "8f03386d697248c5d356fd53f2729b920ea124cd1414a6c22de03c5d24729277",
+        "signature": "8f03386d697248c5d356fd53f2729b920ea124cd1414a6c22de03c5d24729277",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.es2018.asynciterable.d.ts": {
+        "version": "939977970c14d9ee2e52b722896e1279a7ba955d6f561e671e4f9d91a0ff6aa4",
+        "signature": "939977970c14d9ee2e52b722896e1279a7ba955d6f561e671e4f9d91a0ff6aa4",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.es2018.intl.d.ts": {
+        "version": "e9174c5ffd9983fd688f9c2374412de678459c33161f4990a1fe171552705263",
+        "signature": "e9174c5ffd9983fd688f9c2374412de678459c33161f4990a1fe171552705263",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.es2018.promise.d.ts": {
+        "version": "fe7acdc1039eca904399190766d1c8766b7d2621413f972c8542dddd69612097",
+        "signature": "fe7acdc1039eca904399190766d1c8766b7d2621413f972c8542dddd69612097",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.es2018.regexp.d.ts": {
+        "version": "c25aa843b930662d62f0e853dd1f347d08b66cdec09bd760151d4ba6ce220fe6",
+        "signature": "c25aa843b930662d62f0e853dd1f347d08b66cdec09bd760151d4ba6ce220fe6",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.es2019.array.d.ts": {
+        "version": "3e47477f297e4fa0d556c40a872c2c45bddefa487fd054bf1f80bceb527a682b",
+        "signature": "3e47477f297e4fa0d556c40a872c2c45bddefa487fd054bf1f80bceb527a682b",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.es2019.object.d.ts": {
+        "version": "a902be9f4116b449dbac07ffe3f4d69abb664f8eddfaeb892225612469213788",
+        "signature": "a902be9f4116b449dbac07ffe3f4d69abb664f8eddfaeb892225612469213788",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.es2019.string.d.ts": {
+        "version": "55964e13f8243acb182025dbf3fb64a4dc63ebb88095506568e551de287333c2",
+        "signature": "55964e13f8243acb182025dbf3fb64a4dc63ebb88095506568e551de287333c2",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.es2019.symbol.d.ts": {
+        "version": "5b30b81cdeb239772daf44e6c0d5bf6adec9dbf8d534ed25c9a0e8a43b9abfff",
+        "signature": "5b30b81cdeb239772daf44e6c0d5bf6adec9dbf8d534ed25c9a0e8a43b9abfff",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.es2020.bigint.d.ts": {
+        "version": "a5e25d9579ce8582f7b0c07aaa739784f355eb3734fceacaecc2ea6abf9069b7",
+        "signature": "a5e25d9579ce8582f7b0c07aaa739784f355eb3734fceacaecc2ea6abf9069b7",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.es2020.promise.d.ts": {
+        "version": "ea2d62f611bbe855ee8a66ea7972198718da7f0da955f5750100c18b819984b6",
+        "signature": "ea2d62f611bbe855ee8a66ea7972198718da7f0da955f5750100c18b819984b6",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.es2020.string.d.ts": {
+        "version": "1c4e64dc374ea5922d7632a52b167187ba7c7e35b34d3c1e22625be66ca1576d",
+        "signature": "1c4e64dc374ea5922d7632a52b167187ba7c7e35b34d3c1e22625be66ca1576d",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.es2020.symbol.wellknown.d.ts": {
+        "version": "1f3170660a9a4d18283bc3c43139994ec6e1089f28982a21d1e8b2cf9785427a",
+        "signature": "1f3170660a9a4d18283bc3c43139994ec6e1089f28982a21d1e8b2cf9785427a",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.esnext.intl.d.ts": {
+        "version": "f7b5f5a0faa894afd5d132a7d283672b50080423ebd8517eaf7700f6e482576a",
+        "signature": "f7b5f5a0faa894afd5d132a7d283672b50080423ebd8517eaf7700f6e482576a",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.esnext.string.d.ts": {
+        "version": "cebef4c7f9b6afb02cd08e7288fab05d0be3e3c898c720775b8aa286e9f7cfed",
+        "signature": "cebef4c7f9b6afb02cd08e7288fab05d0be3e3c898c720775b8aa286e9f7cfed",
+        "affectsGlobalScope": true
+      },
+      "asset:///lib.esnext.promise.d.ts": {
+        "version": "5f0738e96b305d1d844c9b6346fef2b196647e41a194c0fac3bc6535fc792227",
+        "signature": "5f0738e96b305d1d844c9b6346fef2b196647e41a194c0fac3bc6535fc792227",
+        "affectsGlobalScope": true
+      },
+      "internal:///util.ts": {
+        "version": "bd51bba2528459925bd05117f78198187e9b05535964b538b2df8d4b17a53f4e",
+        "signature": "c96472a359456131c35239e687eb4d4ae854b1afd9ed247b483d4f6d1da546cf",
+        "affectsGlobalScope": false
+      },
+      "internal:///types.ts": {
+        "version": "59b8d9384a23292005378f1be6bd0b33fe9792e3d53906b5235c748a16d9f695",
+        "signature": "fa2eae94390adb2ded76d5a7a52994e955c0116074620b7e033e873895005f0a",
+        "affectsGlobalScope": false
+      },
+      "internal:///ops/dispatch.ts": {
+        "version": "c9c2d195481e3cafc377871f326c29e8b459b59b28342511d7703470dc939f6a",
+        "signature": "a73a9fec16f1a741d7544af8cec4e3d87124c5200177ff92e02f8a9f0ce3b5af",
+        "affectsGlobalScope": false
+      },
+      "internal:///ops/fs.ts": {
+        "version": "3e49743652c447877a21c402e145a351c2b95b2dfd49f686e6b100ff7fc71b1a",
+        "signature": "249c962b345cf09ce97bf5356fd22e8fe0cd4e6f2a6da21cdbebca9a7024529f",
+        "affectsGlobalScope": false
+      },
+      "internal:///main.ts": {
+        "version": "28886f721b86e54cd251365ef547113d5146f63db1e42a76d80aac0591c35603",
+        "signature": "75d3efa29a4389bae863001216efa1dd3e8119fa0e1ad5ef719a1200ef278fb5",
+        "affectsGlobalScope": false
+      }
+    },
+    "options": {
+      "importsNotUsedAsValues": 2,
+      "incremental": true,
+      "lib": [
+        "lib.esnext.d.ts"
+      ],
+      "listEmittedFiles": true,
+      "module": 4,
+      "removeComments": true,
+      "sourceMap": true,
+      "strict": true,
+      "target": 99,
+      "tsBuildInfoFile": "./main.tsbuildinfo",
+      "configFilePath": "cache:///tsconfig.json"
+    },
+    "referencedMap": {
+      "internal:///main.ts": [
+        "internal:///ops/fs.ts",
+        "internal:///util.ts"
+      ],
+      "internal:///ops/dispatch.ts": [
+        "internal:///types.ts"
+      ],
+      "internal:///ops/fs.ts": [
+        "internal:///ops/dispatch.ts",
+        "internal:///util.ts"
+      ]
+    },
+    "exportedModulesMap": {
+      "internal:///ops/dispatch.ts": [
+        "internal:///types.ts"
+      ]
+    },
+    "semanticDiagnosticsPerFile": [
+      "asset:///lib.es2015.collection.d.ts",
+      "asset:///lib.es2015.core.d.ts",
+      "asset:///lib.es2015.d.ts",
+      "asset:///lib.es2015.generator.d.ts",
+      "asset:///lib.es2015.iterable.d.ts",
+      "asset:///lib.es2015.promise.d.ts",
+      "asset:///lib.es2015.proxy.d.ts",
+      "asset:///lib.es2015.reflect.d.ts",
+      "asset:///lib.es2015.symbol.d.ts",
+      "asset:///lib.es2015.symbol.wellknown.d.ts",
+      "asset:///lib.es2016.array.include.d.ts",
+      "asset:///lib.es2016.d.ts",
+      "asset:///lib.es2017.d.ts",
+      "asset:///lib.es2017.intl.d.ts",
+      "asset:///lib.es2017.object.d.ts",
+      "asset:///lib.es2017.sharedmemory.d.ts",
+      "asset:///lib.es2017.string.d.ts",
+      "asset:///lib.es2017.typedarrays.d.ts",
+      "asset:///lib.es2018.asyncgenerator.d.ts",
+      "asset:///lib.es2018.asynciterable.d.ts",
+      "asset:///lib.es2018.d.ts",
+      "asset:///lib.es2018.intl.d.ts",
+      "asset:///lib.es2018.promise.d.ts",
+      "asset:///lib.es2018.regexp.d.ts",
+      "asset:///lib.es2019.array.d.ts",
+      "asset:///lib.es2019.d.ts",
+      "asset:///lib.es2019.object.d.ts",
+      "asset:///lib.es2019.string.d.ts",
+      "asset:///lib.es2019.symbol.d.ts",
+      "asset:///lib.es2020.bigint.d.ts",
+      "asset:///lib.es2020.d.ts",
+      "asset:///lib.es2020.promise.d.ts",
+      "asset:///lib.es2020.string.d.ts",
+      "asset:///lib.es2020.symbol.wellknown.d.ts",
+      "asset:///lib.es5.d.ts",
+      "asset:///lib.esnext.d.ts",
+      "asset:///lib.esnext.intl.d.ts",
+      "asset:///lib.esnext.promise.d.ts",
+      "asset:///lib.esnext.string.d.ts",
+      "internal:///main.ts",
+      "internal:///ops/dispatch.ts",
+      "internal:///ops/fs.ts",
+      "internal:///types.ts",
+      "internal:///util.ts"
+    ]
+  },
+  "version": "3.9.2"
+}

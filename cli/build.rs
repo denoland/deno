@@ -36,40 +36,48 @@ fn main() {
   let o = PathBuf::from(env::var_os("OUT_DIR").unwrap());
 
   // Main snapshot
-  let root_names = vec![c.join("js/main.ts")];
-  let bundle_path = o.join("CLI_SNAPSHOT.js");
+  let root_name = c.join("js/main.ts");
+  let maybe_build_info = Some(c.join("js/main.tsbuildinfo"));
+  let maybe_cache = Some(c.join("js/main.cache"));
+  let bundle_filename = o.join("CLI_SNAPSHOT.js");
   let snapshot_path = o.join("CLI_SNAPSHOT.bin");
 
   let main_module_name = deno_typescript::compile_bundle(
-    &bundle_path,
-    root_names,
+    &root_name,
+    &bundle_filename,
     Some(extern_crate_modules.clone()),
+    maybe_build_info,
+    maybe_cache,
   )
   .expect("Bundle compilation failed");
-  assert!(bundle_path.exists());
+  assert!(bundle_filename.is_file());
 
   let mut runtime_isolate = CoreIsolate::new(StartupData::None, true);
 
   deno_typescript::mksnapshot_bundle(
     &mut runtime_isolate,
     &snapshot_path,
-    &bundle_path,
+    &bundle_filename,
     &main_module_name,
   )
   .expect("Failed to create snapshot");
 
   // Compiler snapshot
-  let root_names = vec![c.join("js/compiler.ts")];
-  let bundle_path = o.join("COMPILER_SNAPSHOT.js");
+  let root_name = c.join("js/compiler.ts");
+  let maybe_build_info = Some(c.join("js/compiler.tsbuildinfo"));
+  let maybe_cache = Some(c.join("js/compiler.cache"));
+  let bundle_filename = o.join("COMPILER_SNAPSHOT.js");
   let snapshot_path = o.join("COMPILER_SNAPSHOT.bin");
 
   let main_module_name = deno_typescript::compile_bundle(
-    &bundle_path,
-    root_names,
+    &root_name,
+    &bundle_filename,
     Some(extern_crate_modules),
+    maybe_build_info,
+    maybe_cache,
   )
   .expect("Bundle compilation failed");
-  assert!(bundle_path.exists());
+  assert!(bundle_filename.is_file());
 
   let mut runtime_isolate = CoreIsolate::new(StartupData::None, true);
 
@@ -102,7 +110,7 @@ fn main() {
   deno_typescript::mksnapshot_bundle_ts(
     &mut runtime_isolate,
     &snapshot_path,
-    &bundle_path,
+    &bundle_filename,
     &main_module_name,
   )
   .expect("Failed to create snapshot");

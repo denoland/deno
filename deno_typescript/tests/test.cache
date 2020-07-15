@@ -1,0 +1,1 @@
+{"internal:///main.ts":{"source":"import * as a from \"./a.ts\";\n\nconsole.log(\"hello world\");\n","map":"{}"},"internal:///a.ts":{"source":"export const b = \"b\";\n","map":"{}"}}
