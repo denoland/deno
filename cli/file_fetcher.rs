@@ -1591,6 +1591,54 @@ mod tests {
     }
   }
 
+  async fn test_fetch_source_file_nonstandard_encoding(
+    file_path: &str,
+    expected_content: String,
+  ) {
+    let (_temp_dir, fetcher) = test_setup();
+
+    let p =
+      std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(file_path);
+    let specifier =
+      ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
+    let r = fetcher
+      .fetch_source_file(&specifier, None, Permissions::allow_all())
+      .await;
+    assert!(r.is_ok());
+    let fetched_file = r.unwrap();
+    let source_code = fetched_file.source_code_utf8();
+    assert!(source_code.is_ok());
+    let actual = source_code.unwrap();
+    assert_eq!(expected_content, actual);
+  }
+
+  #[tokio::test]
+  async fn test_fetch_source_file_utf_16_be() {
+    test_fetch_source_file_nonstandard_encoding(
+      "tests/062_encoding_utf_16_big_endian.ts",
+      r#"console.log("Hello World");"#.to_owned(),
+    )
+    .await;
+  }
+
+  #[tokio::test]
+  async fn test_fetch_source_file_utf_16_le() {
+    test_fetch_source_file_nonstandard_encoding(
+      "tests/061_encoding_utf_16_little_endian.ts",
+      r#"console.log("Hello World");"#.to_owned(),
+    )
+    .await;
+  }
+
+  #[tokio::test]
+  async fn test_fetch_source_file_utf_8_with_bom() {
+    test_fetch_source_file_nonstandard_encoding(
+      "tests/063_encoding_utf_8_with_bom.ts",
+      r#"console.log("Hello World");"#.to_owned(),
+    )
+    .await;
+  }
+
   #[test]
   fn test_map_file_extension() {
     assert_eq!(
