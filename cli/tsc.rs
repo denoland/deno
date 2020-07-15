@@ -7,6 +7,7 @@ use crate::doc::Location;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::flags::Flags;
+use crate::fmt_errors::JSError;
 use crate::global_state::GlobalState;
 use crate::module_graph::ModuleGraph;
 use crate::module_graph::ModuleGraphLoader;
@@ -1096,8 +1097,27 @@ async fn execute_in_same_thread(
 
         let buf = match event {
           WorkerEvent::Message(buf) => Ok(buf),
-          WorkerEvent::Error(error) => Err(error),
-          WorkerEvent::TerminalError(error) => Err(error),
+          WorkerEvent::Error(error) => {
+            let e = match error.downcast::<JSError>() {
+              Ok(js_error) => {
+                let msg = format!("Error in TS compiler:\n{}", js_error);
+                OpError::other(msg).into()
+              }
+              Err(error) => error,
+            };
+            Err(e)
+          }
+          WorkerEvent::TerminalError(error) => {
+            eprintln!("terminal error {:#?}", error);
+            let e = match error.downcast::<JSError>() {
+              Ok(js_error) => {
+                let msg = format!("Error in TS compiler:\n{}", js_error);
+                OpError::other(msg).into()
+              }
+              Err(error) => error,
+            };
+            Err(e)
+          }
         }?;
         return Ok(buf);
       }
