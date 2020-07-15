@@ -895,7 +895,7 @@ impl TsCompiler {
       url: module_url.clone(),
       filename: compiled_code_filename,
       media_type: msg::MediaType::JavaScript,
-      source_code: compiled_code,
+      source_code: compiled_code.into(),
       types_header: None,
       charset: None,
     };
@@ -953,7 +953,7 @@ impl TsCompiler {
       url: module_specifier.as_url().to_owned(),
       filename: source_map_filename,
       media_type: msg::MediaType::JavaScript,
-      source_code,
+      source_code: source_code.into(),
       types_header: None,
       charset: None,
     };

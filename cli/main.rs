@@ -419,7 +419,7 @@ async fn eval_command(
     } else {
       MediaType::JavaScript
     },
-    source_code,
+    source_code: source_code.into(),
     charset: None,
   };
   // Save our fake file into file fetcher cache
@@ -619,7 +619,7 @@ async fn run_command(flags: Flags, script: String) -> Result<(), ErrBox> {
       url: main_module_url,
       types_header: None,
       media_type: MediaType::TypeScript,
-      source_code: source,
+      source_code: source.into(),
       charset: None,
     };
     // Save our fake file into file fetcher cache
@@ -676,7 +676,7 @@ async fn test_command(
     url: test_file_url,
     types_header: None,
     media_type: MediaType::TypeScript,
-    source_code: test_file.clone().into_bytes(),
+    source_code: test_file.clone().into_bytes().into(),
     charset: None,
   };
   // Save our fake file into file fetcher cache
