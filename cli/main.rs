@@ -444,13 +444,6 @@ async fn bundle_command(
     ModuleSpecifier::resolve_url_or_path(&source_file)?;
   let url = module_specifier.as_url();
 
-  // TODO(bartlomieju): fix this hack in ModuleSpecifier
-  if url.scheme() == "file" {
-    let a = deno_fs::normalize_path(&url.to_file_path().unwrap());
-    let u = Url::from_file_path(a).unwrap();
-    module_specifier = ModuleSpecifier::from(u)
-  }
-
   debug!(">>>>> bundle START");
   let global_state = GlobalState::new(flags)?;
 
