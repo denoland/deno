@@ -7,51 +7,51 @@ Deno.test({
   fn: () => {
     assertEquals(
       datetime.parse("01-03-2019 16:30", "MM-dd-yyyy hh:mm"),
-      new Date(2019, 0, 3, 16, 30)
+      new Date(2019, 0, 3, 16, 30),
     );
     assertEquals(
       datetime.parse("01.03.2019 16:30", "MM.dd.yyyy hh:mm"),
-      new Date(2019, 0, 3, 16, 30)
+      new Date(2019, 0, 3, 16, 30),
     );
     assertEquals(
       datetime.parse("03-01-2019 16:31", "dd-MM-yyyy hh:mm"),
-      new Date(2019, 0, 3, 16, 31)
+      new Date(2019, 0, 3, 16, 31),
     );
     assertEquals(
       datetime.parse("2019-01-03 16:32", "yyyy-MM-dd hh:mm"),
-      new Date(2019, 0, 3, 16, 32)
+      new Date(2019, 0, 3, 16, 32),
     );
     assertEquals(
       datetime.parse("16:33 01-03-2019", "hh:mm MM-dd-yyyy"),
-      new Date(2019, 0, 3, 16, 33)
+      new Date(2019, 0, 3, 16, 33),
     );
     assertEquals(
       datetime.parse("01-03-2019 16:33:23.123", "MM-dd-yyyy hh:mm:ss.SSS"),
-      new Date(2019, 0, 3, 16, 33, 23, 123)
+      new Date(2019, 0, 3, 16, 33, 23, 123),
     );
     assertEquals(
       datetime.parse("01-03-2019 09:33 PM", "MM-dd-yyyy hh:mm a"),
-      new Date(2019, 0, 3, 21, 33)
+      new Date(2019, 0, 3, 21, 33),
     );
     assertEquals(
       datetime.parse("16:34 03-01-2019", "hh:mm dd-MM-yyyy"),
-      new Date(2019, 0, 3, 16, 34)
+      new Date(2019, 0, 3, 16, 34),
     );
     assertEquals(
       datetime.parse("16:35 2019-01-03", "hh:mm yyyy-MM-dd"),
-      new Date(2019, 0, 3, 16, 35)
+      new Date(2019, 0, 3, 16, 35),
     );
     assertEquals(
       datetime.parse("01-03-2019", "MM-dd-yyyy"),
-      new Date(2019, 0, 3)
+      new Date(2019, 0, 3),
     );
     assertEquals(
       datetime.parse("03-01-2019", "dd-MM-yyyy"),
-      new Date(2019, 0, 3)
+      new Date(2019, 0, 3),
     );
     assertEquals(
       datetime.parse("2019-01-03", "yyyy-MM-dd"),
-      new Date(2019, 0, 3)
+      new Date(2019, 0, 3),
     );
   },
 });
@@ -75,31 +75,31 @@ Deno.test({
   fn: () => {
     assertEquals(
       "2019-01-01",
-      datetime.format(new Date("2019-01-01T03:24:00"), "yyyy-MM-dd")
+      datetime.format(new Date("2019-01-01T03:24:00"), "yyyy-MM-dd"),
     );
     assertEquals(
       "01.01.2019",
-      datetime.format(new Date("2019-01-01T03:24:00"), "dd.MM.yyyy")
+      datetime.format(new Date("2019-01-01T03:24:00"), "dd.MM.yyyy"),
     );
     assertEquals(
       "03:24:00",
-      datetime.format(new Date("2019-01-01T03:24:00"), "hh:mm:ss")
+      datetime.format(new Date("2019-01-01T03:24:00"), "hh:mm:ss"),
     );
     assertEquals(
       "03:24:00.532",
-      datetime.format(new Date("2019-01-01T03:24:00.532"), "hh:mm:ss.SSS")
+      datetime.format(new Date("2019-01-01T03:24:00.532"), "hh:mm:ss.SSS"),
     );
     assertEquals(
       "03:24:00 AM",
-      datetime.format(new Date("2019-01-01T03:24:00"), "hh:mm:ss a")
+      datetime.format(new Date("2019-01-01T03:24:00"), "hh:mm:ss a"),
     );
     assertEquals(
       "09:24:00 PM",
-      datetime.format(new Date("2019-01-01T21:24:00"), "hh:mm:ss a")
+      datetime.format(new Date("2019-01-01T21:24:00"), "hh:mm:ss a"),
     );
     assertEquals(
       datetime.format(new Date(2019, 0, 20), "'today:' yyyy-MM-dd"),
-      "today: 2019-01-20"
+      "today: 2019-01-20",
     );
   },
 });

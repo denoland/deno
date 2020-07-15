@@ -30,7 +30,7 @@ export class Tokenizer {
 
   tokenize(
     string: string,
-    receiver = (token: Token): ReceiverResult => token
+    receiver = (token: Token): ReceiverResult => token,
   ): ReceiverResult[] {
     function* generator(rules: Rule[]): IterableIterator<ReceiverResult> {
       let index = 0;
@@ -56,7 +56,7 @@ export class Tokenizer {
 
     if (string.length) {
       throw new Error(
-        `parser error: string not fully parsed! ${string.slice(0, 25)}`
+        `parser error: string not fully parsed! ${string.slice(0, 25)}`,
       );
     }
 
