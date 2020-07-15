@@ -554,7 +554,7 @@ Deno.test("[hash/sha3] testSha3-256Chain", () => {
 
   assertEquals(
     output,
-    "3a985da74fe225b2045c172d6bd390bd855f086e3e9d525b46bfe24511431532"
+    "3a985da74fe225b2045c172d6bd390bd855f086e3e9d525b46bfe24511431532",
   );
 });
 
@@ -567,6 +567,6 @@ Deno.test("[hash/sha3] testSha3UpdateFinalized", () => {
       assertEquals(hash, hash2);
     },
     Error,
-    "sha3: cannot update already finalized hash"
+    "sha3: cannot update already finalized hash",
   );
 });

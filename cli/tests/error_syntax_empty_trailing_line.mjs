@@ -1,2 +1,2 @@
-// Deliberately using .mjs to avoid triggering prettier
+// Deliberately using .mjs to avoid triggering dprint
 setTimeout(() => {}),

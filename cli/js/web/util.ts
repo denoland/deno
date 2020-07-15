@@ -27,7 +27,7 @@ export function isInvalidDate(x: Date): boolean {
 export function requiredArguments(
   name: string,
   length: number,
-  required: number
+  required: number,
 ): void {
   if (length < required) {
     const errMsg = `${name} requires at least ${required} argument${
@@ -43,7 +43,7 @@ export function immutableDefine(
   o: any,
   p: string | number | symbol,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  value: any
+  value: any,
 ): void {
   Object.defineProperty(o, p, {
     value,
@@ -64,7 +64,7 @@ export function hasOwnProperty(obj: unknown, v: PropertyKey): boolean {
  *
  * @internal */
 export function isIterable<T, P extends keyof T, K extends T[P]>(
-  o: T
+  o: T,
 ): o is T & Iterable<[P, K]> {
   // checks for null and undefined
   if (o == null) {
@@ -81,12 +81,12 @@ function cloneArrayBuffer(
   srcBuffer: ArrayBufferLike,
   srcByteOffset: number,
   srcLength: number,
-  cloneConstructor: ArrayBufferConstructor | SharedArrayBufferConstructor
+  cloneConstructor: ArrayBufferConstructor | SharedArrayBufferConstructor,
 ): InstanceType<typeof cloneConstructor> {
   // this function fudges the return type but SharedArrayBuffer is disabled for a while anyway
   return srcBuffer.slice(
     srcByteOffset,
-    srcByteOffset + srcLength
+    srcByteOffset + srcLength,
   ) as InstanceType<typeof cloneConstructor>;
 }
 
@@ -122,7 +122,7 @@ export function cloneValue(value: any): any {
           value,
           0,
           value.byteLength,
-          ArrayBuffer
+          ArrayBuffer,
         );
         objectCloneMemo.set(value, cloned);
         return cloned;
@@ -142,7 +142,7 @@ export function cloneValue(value: any): any {
         return new (value.constructor as DataViewConstructor)(
           clonedBuffer,
           value.byteOffset,
-          length
+          length,
         );
       }
       if (value instanceof Map) {
@@ -183,7 +183,7 @@ interface GenericConstructor<T = any> {
  * are not. */
 export function defineEnumerableProps(
   Ctor: GenericConstructor,
-  props: string[]
+  props: string[],
 ): void {
   for (const prop of props) {
     Reflect.defineProperty(Ctor.prototype, prop, { enumerable: true });

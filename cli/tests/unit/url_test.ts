@@ -3,14 +3,14 @@ import { unitTest, assert, assertEquals, assertThrows } from "./test_util.ts";
 
 unitTest(function urlParsing(): void {
   const url = new URL(
-    "https://foo:bar@baz.qat:8000/qux/quux?foo=bar&baz=12#qat"
+    "https://foo:bar@baz.qat:8000/qux/quux?foo=bar&baz=12#qat",
   );
   assertEquals(url.hash, "#qat");
   assertEquals(url.host, "baz.qat:8000");
   assertEquals(url.hostname, "baz.qat");
   assertEquals(
     url.href,
-    "https://foo:bar@baz.qat:8000/qux/quux?foo=bar&baz=12#qat"
+    "https://foo:bar@baz.qat:8000/qux/quux?foo=bar&baz=12#qat",
   );
   assertEquals(url.origin, "https://baz.qat:8000");
   assertEquals(url.password, "bar");
@@ -23,7 +23,7 @@ unitTest(function urlParsing(): void {
   assertEquals(url.username, "foo");
   assertEquals(
     String(url),
-    "https://foo:bar@baz.qat:8000/qux/quux?foo=bar&baz=12#qat"
+    "https://foo:bar@baz.qat:8000/qux/quux?foo=bar&baz=12#qat",
   );
 });
 
@@ -90,32 +90,32 @@ unitTest(function urlPortParsing(): void {
 
 unitTest(function urlModifications(): void {
   const url = new URL(
-    "https://foo:bar@baz.qat:8000/qux/quux?foo=bar&baz=12#qat"
+    "https://foo:bar@baz.qat:8000/qux/quux?foo=bar&baz=12#qat",
   );
   url.hash = "";
   assertEquals(
     url.href,
-    "https://foo:bar@baz.qat:8000/qux/quux?foo=bar&baz=12"
+    "https://foo:bar@baz.qat:8000/qux/quux?foo=bar&baz=12",
   );
   url.host = "qat.baz:8080";
   assertEquals(
     url.href,
-    "https://foo:bar@qat.baz:8080/qux/quux?foo=bar&baz=12"
+    "https://foo:bar@qat.baz:8080/qux/quux?foo=bar&baz=12",
   );
   url.hostname = "foo.bar";
   assertEquals(
     url.href,
-    "https://foo:bar@foo.bar:8080/qux/quux?foo=bar&baz=12"
+    "https://foo:bar@foo.bar:8080/qux/quux?foo=bar&baz=12",
   );
   url.password = "qux";
   assertEquals(
     url.href,
-    "https://foo:qux@foo.bar:8080/qux/quux?foo=bar&baz=12"
+    "https://foo:qux@foo.bar:8080/qux/quux?foo=bar&baz=12",
   );
   url.pathname = "/foo/bar%qat";
   assertEquals(
     url.href,
-    "https://foo:qux@foo.bar:8080/foo/bar%qat?foo=bar&baz=12"
+    "https://foo:qux@foo.bar:8080/foo/bar%qat?foo=bar&baz=12",
   );
   url.port = "";
   assertEquals(url.href, "https://foo:qux@foo.bar/foo/bar%qat?foo=bar&baz=12");
@@ -127,19 +127,19 @@ unitTest(function urlModifications(): void {
   url.username = "foo@bar";
   assertEquals(
     url.href,
-    "http://foo%40bar:qux@foo.bar/foo/bar%qat?foo=bar&foo=baz"
+    "http://foo%40bar:qux@foo.bar/foo/bar%qat?foo=bar&foo=baz",
   );
   url.searchParams.set("bar", "qat");
   assertEquals(
     url.href,
-    "http://foo%40bar:qux@foo.bar/foo/bar%qat?foo=bar&foo=baz&bar=qat"
+    "http://foo%40bar:qux@foo.bar/foo/bar%qat?foo=bar&foo=baz&bar=qat",
   );
   url.searchParams.delete("foo");
   assertEquals(url.href, "http://foo%40bar:qux@foo.bar/foo/bar%qat?bar=qat");
   url.searchParams.append("foo", "bar");
   assertEquals(
     url.href,
-    "http://foo%40bar:qux@foo.bar/foo/bar%qat?bar=qat&foo=bar"
+    "http://foo%40bar:qux@foo.bar/foo/bar%qat?bar=qat&foo=bar",
   );
 });
 
@@ -182,7 +182,7 @@ unitTest(function urlModifyHash(): void {
 
 unitTest(function urlSearchParamsReuse(): void {
   const url = new URL(
-    "https://foo:bar@baz.qat:8000/qux/quux?foo=bar&baz=12#qat"
+    "https://foo:bar@baz.qat:8000/qux/quux?foo=bar&baz=12#qat",
   );
   const sp = url.searchParams;
   url.host = "baz.qat";
@@ -191,11 +191,11 @@ unitTest(function urlSearchParamsReuse(): void {
 
 unitTest(function urlBackSlashes(): void {
   const url = new URL(
-    "https:\\\\foo:bar@baz.qat:8000\\qux\\quux?foo=bar&baz=12#qat"
+    "https:\\\\foo:bar@baz.qat:8000\\qux\\quux?foo=bar&baz=12#qat",
   );
   assertEquals(
     url.href,
-    "https://foo:bar@baz.qat:8000/qux/quux?foo=bar&baz=12#qat"
+    "https://foo:bar@baz.qat:8000/qux/quux?foo=bar&baz=12#qat",
   );
 });
 
@@ -221,7 +221,7 @@ unitTest(function urlRequireHost(): void {
 unitTest(function urlDriveLetter() {
   assertEquals(
     new URL("file:///C:").href,
-    Deno.build.os == "windows" ? "file:///C:/" : "file:///C:"
+    Deno.build.os == "windows" ? "file:///C:/" : "file:///C:",
   );
   assertEquals(new URL("http://example.com/C:").href, "http://example.com/C:");
 });
@@ -229,15 +229,15 @@ unitTest(function urlDriveLetter() {
 unitTest(function urlUncHostname() {
   assertEquals(
     new URL("file:////").href,
-    Deno.build.os == "windows" ? "file:///" : "file:////"
+    Deno.build.os == "windows" ? "file:///" : "file:////",
   );
   assertEquals(
     new URL("file:////server").href,
-    Deno.build.os == "windows" ? "file://server/" : "file:////server"
+    Deno.build.os == "windows" ? "file://server/" : "file:////server",
   );
   assertEquals(
     new URL("file:////server/file").href,
-    Deno.build.os == "windows" ? "file://server/file" : "file:////server/file"
+    Deno.build.os == "windows" ? "file://server/file" : "file:////server/file",
   );
 });
 
@@ -259,39 +259,39 @@ unitTest(function urlTrim() {
 unitTest(function urlEncoding() {
   assertEquals(
     new URL("https://a !$&*()=,;+'\"@example.com").username,
-    "a%20!$&*()%3D,%3B+%27%22"
+    "a%20!$&*()%3D,%3B+%27%22",
   );
   assertEquals(
     new URL("https://:a !$&*()=,;+'\"@example.com").password,
-    "a%20!$&*()%3D,%3B+%27%22"
+    "a%20!$&*()%3D,%3B+%27%22",
   );
   assertEquals(new URL("abcde://mañana/c?d#e").hostname, "ma%C3%B1ana");
   // https://url.spec.whatwg.org/#idna
   assertEquals(new URL("https://mañana/c?d#e").hostname, "xn--maana-pta");
   assertEquals(
     new URL("https://example.com/a ~!@$&*()=:/,;+'\"\\").pathname,
-    "/a%20~!@$&*()=:/,;+'%22/"
+    "/a%20~!@$&*()=:/,;+'%22/",
   );
   assertEquals(
     new URL("https://example.com?a ~!@$&*()=:/,;?+'\"\\").search,
-    "?a%20~!@$&*()=:/,;?+%27%22\\"
+    "?a%20~!@$&*()=:/,;?+%27%22\\",
   );
   assertEquals(
     new URL("https://example.com#a ~!@#$&*()=:/,;?+'\"\\").hash,
-    "#a%20~!@#$&*()=:/,;?+'%22\\"
+    "#a%20~!@#$&*()=:/,;?+'%22\\",
   );
 });
 
 unitTest(function urlBaseURL(): void {
   const base = new URL(
-    "https://foo:bar@baz.qat:8000/qux/quux?foo=bar&baz=12#qat"
+    "https://foo:bar@baz.qat:8000/qux/quux?foo=bar&baz=12#qat",
   );
   const url = new URL("/foo/bar?baz=foo#qux", base);
   assertEquals(url.href, "https://foo:bar@baz.qat:8000/foo/bar?baz=foo#qux");
 
   assertEquals(
     new URL("D", "https://foo.bar/path/a/b/c/d").href,
-    "https://foo.bar/path/a/b/c/D"
+    "https://foo.bar/path/a/b/c/D",
   );
 
   assertEquals(new URL("D", "https://foo.bar").href, "https://foo.bar/D");
@@ -299,14 +299,14 @@ unitTest(function urlBaseURL(): void {
 
   assertEquals(
     new URL("/d", "https://foo.bar/path/a/b/c/d").href,
-    "https://foo.bar/d"
+    "https://foo.bar/d",
   );
 });
 
 unitTest(function urlBaseString(): void {
   const url = new URL(
     "/foo/bar?baz=foo#qux",
-    "https://foo:bar@baz.qat:8000/qux/quux?foo=bar&baz=12#qat"
+    "https://foo:bar@baz.qat:8000/qux/quux?foo=bar&baz=12#qat",
   );
   assertEquals(url.href, "https://foo:bar@baz.qat:8000/foo/bar?baz=foo#qux");
 });
@@ -324,19 +324,19 @@ unitTest(function urlRelativeWithBase(): void {
 unitTest(function urlDriveLetterBase() {
   assertEquals(
     new URL("/b", "file:///C:/a/b").href,
-    Deno.build.os == "windows" ? "file:///C:/b" : "file:///b"
+    Deno.build.os == "windows" ? "file:///C:/b" : "file:///b",
   );
   assertEquals(
     new URL("D:", "file:///C:/a/b").href,
-    Deno.build.os == "windows" ? "file:///D:/" : "file:///C:/a/D:"
+    Deno.build.os == "windows" ? "file:///D:/" : "file:///C:/a/D:",
   );
   assertEquals(
     new URL("/D:", "file:///C:/a/b").href,
-    Deno.build.os == "windows" ? "file:///D:/" : "file:///D:"
+    Deno.build.os == "windows" ? "file:///D:/" : "file:///D:",
   );
   assertEquals(
     new URL("D:/b", "file:///C:/a/b").href,
-    Deno.build.os == "windows" ? "file:///D:/b" : "file:///C:/a/D:/b"
+    Deno.build.os == "windows" ? "file:///D:/b" : "file:///C:/a/D:/b",
   );
 });
 
@@ -377,9 +377,9 @@ unitTest(
     const url = new URL("http://example.com/?");
     assertEquals(
       Deno.inspect(url),
-      'URL { href: "http://example.com/?", origin: "http://example.com", protocol: "http:", username: "", password: "", host: "example.com", hostname: "example.com", port: "", pathname: "/", hash: "", search: "?" }'
+      'URL { href: "http://example.com/?", origin: "http://example.com", protocol: "http:", username: "", password: "", host: "example.com", hostname: "example.com", port: "", pathname: "/", hash: "", search: "?" }',
     );
-  }
+  },
 );
 
 unitTest(function protocolNotHttpOrFile() {
@@ -418,7 +418,7 @@ unitTest(function throwForInvalidSchemeConstructor(): void {
   assertThrows(
     () => new URL("invalid_scheme://baz.qat"),
     TypeError,
-    "Invalid URL."
+    "Invalid URL.",
   );
 });
 

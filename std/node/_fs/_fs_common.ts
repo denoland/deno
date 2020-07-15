@@ -35,7 +35,7 @@ export interface WriteFileOptions extends FileOptions {
 }
 
 export function isFileOptions(
-  fileOptions: string | WriteFileOptions | undefined
+  fileOptions: string | WriteFileOptions | undefined,
 ): fileOptions is FileOptions {
   if (!fileOptions) return false;
 
@@ -47,14 +47,15 @@ export function isFileOptions(
 }
 
 export function getEncoding(
-  optOrCallback?: FileOptions | WriteFileOptions | Function | Encodings | null
+  optOrCallback?: FileOptions | WriteFileOptions | Function | Encodings | null,
 ): Encodings | null {
   if (!optOrCallback || typeof optOrCallback === "function") {
     return null;
   }
 
-  const encoding =
-    typeof optOrCallback === "string" ? optOrCallback : optOrCallback.encoding;
+  const encoding = typeof optOrCallback === "string"
+    ? optOrCallback
+    : optOrCallback.encoding;
   if (!encoding) return null;
   return encoding;
 }

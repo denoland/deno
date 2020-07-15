@@ -29,7 +29,7 @@ unitTest(
     const fileInfo = Deno.statSync(filename);
     assertFuzzyTimestampEquals(fileInfo.atime, new Date(atime * 1000));
     assertFuzzyTimestampEquals(fileInfo.mtime, new Date(mtime * 1000));
-  }
+  },
 );
 
 unitTest(
@@ -44,7 +44,7 @@ unitTest(
     const dirInfo = Deno.statSync(testDir);
     assertFuzzyTimestampEquals(dirInfo.atime, new Date(atime * 1000));
     assertFuzzyTimestampEquals(dirInfo.mtime, new Date(mtime * 1000));
-  }
+  },
 );
 
 unitTest(
@@ -59,7 +59,7 @@ unitTest(
     const dirInfo = Deno.statSync(testDir);
     assertFuzzyTimestampEquals(dirInfo.atime, atime);
     assertFuzzyTimestampEquals(dirInfo.mtime, mtime);
-  }
+  },
 );
 
 unitTest(
@@ -77,7 +77,7 @@ unitTest(
     const fileInfo = Deno.statSync(filename);
     assertFuzzyTimestampEquals(fileInfo.atime, atime);
     assertFuzzyTimestampEquals(fileInfo.mtime, mtime);
-  }
+  },
 );
 
 unitTest(
@@ -94,7 +94,7 @@ unitTest(
     const dirInfo = Deno.statSync(testDir);
     assertFuzzyTimestampEquals(dirInfo.atime, new Date(atime * 1000));
     assertFuzzyTimestampEquals(dirInfo.mtime, new Date(mtime * 1000));
-  }
+  },
 );
 
 unitTest(
@@ -106,7 +106,7 @@ unitTest(
     assertThrows(() => {
       Deno.utimeSync("/baddir", atime, mtime);
     }, Deno.errors.NotFound);
-  }
+  },
 );
 
 unitTest(
@@ -118,7 +118,7 @@ unitTest(
     assertThrows(() => {
       Deno.utimeSync("/some_dir", atime, mtime);
     }, Deno.errors.PermissionDenied);
-  }
+  },
 );
 
 unitTest(
@@ -137,7 +137,7 @@ unitTest(
     const fileInfo = Deno.statSync(filename);
     assertFuzzyTimestampEquals(fileInfo.atime, new Date(atime * 1000));
     assertFuzzyTimestampEquals(fileInfo.mtime, new Date(mtime * 1000));
-  }
+  },
 );
 
 unitTest(
@@ -152,7 +152,7 @@ unitTest(
     const dirInfo = Deno.statSync(testDir);
     assertFuzzyTimestampEquals(dirInfo.atime, new Date(atime * 1000));
     assertFuzzyTimestampEquals(dirInfo.mtime, new Date(mtime * 1000));
-  }
+  },
 );
 
 unitTest(
@@ -167,7 +167,7 @@ unitTest(
     const dirInfo = Deno.statSync(testDir);
     assertFuzzyTimestampEquals(dirInfo.atime, atime);
     assertFuzzyTimestampEquals(dirInfo.mtime, mtime);
-  }
+  },
 );
 
 unitTest(
@@ -186,7 +186,7 @@ unitTest(
     const fileInfo = Deno.statSync(filename);
     assertFuzzyTimestampEquals(fileInfo.atime, atime);
     assertFuzzyTimestampEquals(fileInfo.mtime, mtime);
-  }
+  },
 );
 
 unitTest(
@@ -198,7 +198,7 @@ unitTest(
     await assertThrowsAsync(async () => {
       await Deno.utime("/baddir", atime, mtime);
     }, Deno.errors.NotFound);
-  }
+  },
 );
 
 unitTest(
@@ -210,5 +210,5 @@ unitTest(
     await assertThrowsAsync(async () => {
       await Deno.utime("/some_dir", atime, mtime);
     }, Deno.errors.PermissionDenied);
-  }
+  },
 );

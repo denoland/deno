@@ -132,7 +132,7 @@ Deno.test({
       assertThrows(
         () => decode(new TextEncoder().encode(input as string)),
         Error,
-        (expectedErr as Error).message
+        (expectedErr as Error).message,
       );
     }
   },
@@ -147,7 +147,7 @@ Deno.test({
           decodeString(input as string);
         },
         Error,
-        (expectedErr as Error).message
+        (expectedErr as Error).message,
       );
     }
   },

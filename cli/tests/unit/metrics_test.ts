@@ -39,7 +39,7 @@ unitTest(
     const metrics = Deno.metrics();
     assert(metrics.opsDispatched === metrics.opsCompleted);
     assert(metrics.opsDispatchedSync === metrics.opsCompletedSync);
-  }
+  },
 );
 
 unitTest(
@@ -54,5 +54,5 @@ unitTest(
     assert(metrics.opsDispatched === metrics.opsCompleted);
     assert(metrics.opsDispatchedSync === metrics.opsCompletedSync);
     assert(metrics.opsDispatchedAsync === metrics.opsCompletedAsync);
-  }
+  },
 );

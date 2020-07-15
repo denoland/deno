@@ -17,7 +17,7 @@ export function readSync(rid: number, buffer: Uint8Array): number | null {
 
 export async function read(
   rid: number,
-  buffer: Uint8Array
+  buffer: Uint8Array,
 ): Promise<number | null> {
   if (buffer.length === 0) {
     return 0;

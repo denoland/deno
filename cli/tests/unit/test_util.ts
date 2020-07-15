@@ -58,12 +58,12 @@ export async function getProcessPermissions(): Promise<Permissions> {
 
 export function permissionsMatch(
   processPerms: Permissions,
-  requiredPerms: Permissions
+  requiredPerms: Permissions,
 ): boolean {
   for (const permName in processPerms) {
     if (
       processPerms[permName as keyof Permissions] !==
-      requiredPerms[permName as keyof Permissions]
+        requiredPerms[permName as keyof Permissions]
     ) {
       return false;
     }
@@ -148,7 +148,7 @@ export function unitTest(fn: TestFunction): void;
 export function unitTest(options: UnitTestOptions, fn: TestFunction): void;
 export function unitTest(
   optionsOrFn: UnitTestOptions | TestFunction,
-  maybeFn?: TestFunction
+  maybeFn?: TestFunction,
 ): void {
   assert(optionsOrFn, "At least one argument is required");
 
@@ -166,7 +166,7 @@ export function unitTest(
     assert(maybeFn, "Missing test function definition");
     assert(
       typeof maybeFn === "function",
-      "Second argument should be test function definition"
+      "Second argument should be test function definition",
     );
     fn = maybeFn;
     name = fn.name;
@@ -237,7 +237,7 @@ function serializeTestMessage(message: any): string {
 export async function reportToConn(
   conn: Deno.Conn,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  message: any
+  message: any,
 ): Promise<void> {
   const line = serializeTestMessage(message);
   const encodedMsg = encoder.encode(line + (message.end == null ? "\n" : ""));
@@ -259,8 +259,8 @@ unitTest(function permissionsMatches(): void {
         plugin: false,
         hrtime: false,
       },
-      normalizeTestPermissions({ read: true })
-    )
+      normalizeTestPermissions({ read: true }),
+    ),
   );
 
   assert(
@@ -274,8 +274,8 @@ unitTest(function permissionsMatches(): void {
         plugin: false,
         hrtime: false,
       },
-      normalizeTestPermissions({})
-    )
+      normalizeTestPermissions({}),
+    ),
   );
 
   assertEquals(
@@ -289,9 +289,9 @@ unitTest(function permissionsMatches(): void {
         plugin: true,
         hrtime: true,
       },
-      normalizeTestPermissions({ read: true })
+      normalizeTestPermissions({ read: true }),
     ),
-    false
+    false,
   );
 
   assertEquals(
@@ -305,9 +305,9 @@ unitTest(function permissionsMatches(): void {
         plugin: false,
         hrtime: false,
       },
-      normalizeTestPermissions({ read: true })
+      normalizeTestPermissions({ read: true }),
     ),
-    false
+    false,
   );
 
   assert(
@@ -329,8 +329,8 @@ unitTest(function permissionsMatches(): void {
         run: true,
         plugin: true,
         hrtime: true,
-      }
-    )
+      },
+    ),
   );
 });
 
@@ -348,28 +348,28 @@ unitTest(
           file!.endsWith(".ts") &&
           !file!.endsWith("unit_tests.ts") &&
           !file!.endsWith("test_util.ts") &&
-          !file!.endsWith("unit_test_runner.ts")
+          !file!.endsWith("unit_test_runner.ts"),
       );
     const unitTestsFile: Uint8Array = Deno.readFileSync(
-      "./cli/tests/unit/unit_tests.ts"
+      "./cli/tests/unit/unit_tests.ts",
     );
     const importLines = new TextDecoder("utf-8")
       .decode(unitTestsFile)
       .split("\n")
       .filter((line) => line.startsWith("import"));
     const importedTestFiles = importLines.map(
-      (relativeFilePath) => relativeFilePath.match(/\/([^\/]+)";/)![1]
+      (relativeFilePath) => relativeFilePath.match(/\/([^\/]+)";/)![1],
     );
 
     directoryTestFiles.forEach((dirFile) => {
       if (!importedTestFiles.includes(dirFile!)) {
         throw new Error(
           "cil/tests/unit/unit_tests.ts is missing import of test file: cli/js/" +
-            dirFile
+            dirFile,
         );
       }
     });
-  }
+  },
 );
 
 export function pathToAbsoluteFileUrl(path: string): URL {

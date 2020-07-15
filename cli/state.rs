@@ -6,6 +6,7 @@ use crate::import_map::ImportMap;
 use crate::metrics::Metrics;
 use crate::op_error::OpError;
 use crate::ops::JsonOp;
+use crate::ops::JsonOpDispatcher;
 use crate::ops::MinimalOp;
 use crate::permissions::Permissions;
 use crate::tsc::TargetLib;
@@ -168,14 +169,7 @@ impl State {
   /// NOTE: This only works with JSON dispatcher.
   /// This is a band-aid for transition to `CoreIsolate.register_op` API as most of our
   /// ops require `state` argument.
-  pub fn stateful_op<D>(
-    &self,
-    dispatcher: D,
-  ) -> impl Fn(
-    &mut deno_core::CoreIsolateState,
-    Value,
-    &mut [ZeroCopyBuf],
-  ) -> Result<JsonOp, OpError>
+  pub fn stateful_op<D>(&self, dispatcher: D) -> impl JsonOpDispatcher
   where
     D: Fn(&State, Value, &mut [ZeroCopyBuf]) -> Result<JsonOp, OpError>,
   {
@@ -186,14 +180,7 @@ impl State {
           -> Result<JsonOp, OpError> { dispatcher(&state, args, zero_copy) }
   }
 
-  pub fn stateful_op2<D>(
-    &self,
-    dispatcher: D,
-  ) -> impl Fn(
-    &mut deno_core::CoreIsolateState,
-    Value,
-    &mut [ZeroCopyBuf],
-  ) -> Result<JsonOp, OpError>
+  pub fn stateful_op2<D>(&self, dispatcher: D) -> impl JsonOpDispatcher
   where
     D: Fn(
       &mut deno_core::CoreIsolateState,

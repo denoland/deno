@@ -56,7 +56,7 @@ unitTest(async function timeoutArgs(): Promise<void> {
     10,
     arg,
     arg.toString(),
-    [arg]
+    [arg],
   );
   await promise;
 });

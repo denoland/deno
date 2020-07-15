@@ -3,7 +3,7 @@ import * as path from "../../../path/mod.ts";
 import { assertEquals, assert } from "../../../testing/asserts.ts";
 
 const testData = path.resolve(
-  path.join("node", "_fs", "testdata", "hello.txt")
+  path.join("node", "_fs", "testdata", "hello.txt"),
 );
 
 Deno.test("readFileSuccess", async function () {

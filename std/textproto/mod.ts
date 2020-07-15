@@ -71,7 +71,7 @@ export class TextProtoReader {
       throw new Deno.errors.UnexpectedEof();
     } else if (buf[0] == charCode(" ") || buf[0] == charCode("\t")) {
       throw new Deno.errors.InvalidData(
-        `malformed MIME header initial line: ${str(line)}`
+        `malformed MIME header initial line: ${str(line)}`,
       );
     }
 
@@ -84,7 +84,7 @@ export class TextProtoReader {
       let i = kv.indexOf(charCode(":"));
       if (i < 0) {
         throw new Deno.errors.InvalidData(
-          `malformed MIME header line: ${str(kv)}`
+          `malformed MIME header line: ${str(kv)}`,
         );
       }
 
@@ -110,7 +110,7 @@ export class TextProtoReader {
       }
       const value = str(kv.subarray(i)).replace(
         invalidHeaderCharRegex,
-        encodeURI
+        encodeURI,
       );
 
       // In case of invalid header we swallow the error

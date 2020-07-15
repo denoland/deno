@@ -1,11 +1,11 @@
 const React = {
-  createElement() {}
-}
+  createElement() {},
+};
 
 export default function app() {
-    return (
-        <div>
-            <h2>asdf</h2>
-        </div>
-    );
+  return (
+    <div>
+      <h2>asdf</h2>
+    </div>
+  );
 }

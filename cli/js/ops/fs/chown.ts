@@ -6,7 +6,7 @@ import { pathFromURL } from "../../util.ts";
 export function chownSync(
   path: string | URL,
   uid: number | null,
-  gid: number | null
+  gid: number | null,
 ): void {
   sendSync("op_chown", { path: pathFromURL(path), uid, gid });
 }
@@ -14,7 +14,7 @@ export function chownSync(
 export async function chown(
   path: string | URL,
   uid: number | null,
-  gid: number | null
+  gid: number | null,
 ): Promise<void> {
   await sendAsync("op_chown", { path: pathFromURL(path), uid, gid });
 }

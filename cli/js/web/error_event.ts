@@ -39,7 +39,7 @@ export class ErrorEventImpl extends Event implements ErrorEvent {
       lineno = 0,
       colno = 0,
       error = null,
-    }: ErrorEventInit = {}
+    }: ErrorEventInit = {},
   ) {
     super(type, {
       bubbles: bubbles,

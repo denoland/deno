@@ -10,7 +10,7 @@ import { notImplemented } from "../_utils.ts";
 export function access(
   path: string | URL, // eslint-disable-line @typescript-eslint/no-unused-vars
   modeOrCallback: number | Function, // eslint-disable-line @typescript-eslint/no-unused-vars
-  callback?: CallbackWithError // eslint-disable-line @typescript-eslint/no-unused-vars
+  callback?: CallbackWithError, // eslint-disable-line @typescript-eslint/no-unused-vars
 ): void {
   notImplemented("Not yet available");
 }

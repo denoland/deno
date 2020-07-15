@@ -78,7 +78,7 @@ unitTest(
     assertEquals(status.code, 42);
     assertEquals(status.signal, undefined);
     p.close();
-  }
+  },
 );
 
 unitTest(
@@ -96,7 +96,7 @@ unitTest(
     assertEquals(status.code, 128 + 9);
     assertEquals(status.signal, 9);
     p.close();
-  }
+  },
 );
 
 unitTest({ perms: { run: true } }, function runNotFound(): void {
@@ -150,7 +150,7 @@ while True:
     assertEquals(status.code, code);
     assertEquals(status.signal, undefined);
     p.close();
-  }
+  },
 );
 
 unitTest({ perms: { run: true } }, async function runStdinPiped(): Promise<
@@ -289,7 +289,7 @@ unitTest(
 
     assertStringContains(text, "error");
     assertStringContains(text, "output");
-  }
+  },
 );
 
 unitTest(
@@ -310,7 +310,7 @@ unitTest(
     assertEquals(status.code, 0);
     p.close();
     file.close();
-  }
+  },
 );
 
 unitTest({ perms: { run: true } }, async function runEnv(): Promise<void> {

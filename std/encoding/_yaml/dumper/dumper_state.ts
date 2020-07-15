@@ -12,7 +12,7 @@ const _hasOwnProperty = Object.prototype.hasOwnProperty;
 
 function compileStyleMap(
   schema: Schema,
-  map?: ArrayObject<StyleVariant> | null
+  map?: ArrayObject<StyleVariant> | null,
 ): ArrayObject<StyleVariant> {
   if (typeof map === "undefined" || map === null) return {};
 

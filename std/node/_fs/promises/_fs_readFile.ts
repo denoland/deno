@@ -8,15 +8,15 @@ import { readFile as readFileCallback } from "../_fs_readFile.ts";
 
 export function readFile(
   path: string | URL,
-  options: TextOptionsArgument
+  options: TextOptionsArgument,
 ): Promise<string>;
 export function readFile(
   path: string | URL,
-  options?: BinaryOptionsArgument
+  options?: BinaryOptionsArgument,
 ): Promise<Uint8Array>;
 export function readFile(
   path: string | URL,
-  options?: FileOptionsArgument
+  options?: FileOptionsArgument,
 ): Promise<string | Uint8Array> {
   return new Promise((resolve, reject) => {
     readFileCallback(path, options, (err, data): void => {

@@ -40,7 +40,7 @@ currentDayOfYear(); // output: ** depends on when you run it :) **
 
 ### weekOfYear
 
-- `weekOfYear(date: Date)` - Returns the week number of the provided date (1-53)
+Returns the ISO week number of the provided date (1-53)
 
 ```ts
 import { weekOfYear } from "https://deno.land/std/datetime/mod.ts";

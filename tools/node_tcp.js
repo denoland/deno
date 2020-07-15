@@ -5,7 +5,7 @@ const port = process.argv[2] || "4544";
 console.log("port", port);
 
 const response = Buffer.from(
-  "HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\nHello World\n"
+  "HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\nHello World\n",
 );
 
 Server((socket) => {

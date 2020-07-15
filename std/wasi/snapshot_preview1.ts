@@ -361,7 +361,7 @@ export default class Module {
           args.reduce(function (acc, arg) {
             return acc + text.encode(`${arg}\0`).length;
           }, 0),
-          true
+          true,
         );
 
         return ERRNO_SUCCESS;
@@ -387,7 +387,7 @@ export default class Module {
 
       environ_sizes_get: (
         environc_out: number,
-        environ_buf_size_out: number
+        environ_buf_size_out: number,
       ): number => {
         const entries = Object.entries(this.env);
         const text = new TextEncoder();
@@ -399,7 +399,7 @@ export default class Module {
           entries.reduce(function (acc, [key, value]) {
             return acc + text.encode(`${key}=${value}\0`).length;
           }, 0),
-          true
+          true,
         );
 
         return ERRNO_SUCCESS;
@@ -435,7 +435,7 @@ export default class Module {
       clock_time_get: (
         id: number,
         precision: bigint,
-        time_out: number
+        time_out: number,
       ): number => {
         const view = new DataView(this.memory.buffer);
 
@@ -467,7 +467,7 @@ export default class Module {
         fd: number,
         offset: bigint,
         len: bigint,
-        advice: number
+        advice: number,
       ): number => {
         return ERRNO_NOSYS;
       },
@@ -528,7 +528,7 @@ export default class Module {
       fd_fdstat_set_rights: (
         fd: number,
         fs_rights_base: bigint,
-        fs_rights_inheriting: bigint
+        fs_rights_inheriting: bigint,
       ): number => {
         return ERRNO_NOSYS;
       },
@@ -582,21 +582,21 @@ export default class Module {
           view.setBigUint64(
             buf_out,
             BigInt(info.atime ? info.atime.getTime() * 1e6 : 0),
-            true
+            true,
           );
           buf_out += 8;
 
           view.setBigUint64(
             buf_out,
             BigInt(info.mtime ? info.mtime.getTime() * 1e6 : 0),
-            true
+            true,
           );
           buf_out += 8;
 
           view.setBigUint64(
             buf_out,
             BigInt(info.birthtime ? info.birthtime.getTime() * 1e6 : 0),
-            true
+            true,
           );
           buf_out += 8;
         } catch (err) {
@@ -625,7 +625,7 @@ export default class Module {
         fd: number,
         atim: bigint,
         mtim: bigint,
-        fst_flags: number
+        fst_flags: number,
       ): number => {
         const entry = this.fds[fd];
         if (!entry) {
@@ -658,7 +658,7 @@ export default class Module {
         iovs_ptr: number,
         iovs_len: number,
         offset: bigint,
-        nread_out: number
+        nread_out: number,
       ): number => {
         const entry = this.fds[fd];
         if (!entry) {
@@ -701,7 +701,7 @@ export default class Module {
         view.setUint32(
           buf_out + 4,
           new TextEncoder().encode(entry.vpath).byteLength,
-          true
+          true,
         );
 
         return ERRNO_SUCCESS;
@@ -710,7 +710,7 @@ export default class Module {
       fd_prestat_dir_name: (
         fd: number,
         path_ptr: number,
-        path_len: number
+        path_len: number,
       ): number => {
         const entry = this.fds[fd];
         if (!entry) {
@@ -732,7 +732,7 @@ export default class Module {
         iovs_ptr: number,
         iovs_len: number,
         offset: bigint,
-        nwritten_out: number
+        nwritten_out: number,
       ): number => {
         const entry = this.fds[fd];
         if (!entry) {
@@ -764,7 +764,7 @@ export default class Module {
         fd: number,
         iovs_ptr: number,
         iovs_len: number,
-        nread_out: number
+        nread_out: number,
       ): number => {
         const entry = this.fds[fd];
         if (!entry) {
@@ -795,7 +795,7 @@ export default class Module {
         buf_ptr: number,
         buf_len: number,
         cookie: bigint,
-        bufused_out: number
+        bufused_out: number,
       ): number => {
         const entry = this.fds[fd];
         if (!entry) {
@@ -813,7 +813,7 @@ export default class Module {
             const name_data = new TextEncoder().encode(entries[i].name);
 
             const entry_info = Deno.statSync(
-              resolve(entry.path, entries[i].name)
+              resolve(entry.path, entries[i].name),
             );
             const entry_data = new Uint8Array(24 + name_data.byteLength);
             const entry_view = new DataView(entry_data.buffer);
@@ -822,7 +822,7 @@ export default class Module {
             entry_view.setBigUint64(
               8,
               BigInt(entry_info.ino ? entry_info.ino : 0),
-              true
+              true,
             );
             entry_view.setUint32(16, name_data.byteLength, true);
 
@@ -849,7 +849,7 @@ export default class Module {
 
             const data = entry_data.slice(
               0,
-              Math.min(entry_data.length, buf_len - bufused)
+              Math.min(entry_data.length, buf_len - bufused),
             );
             heap.set(data, buf_ptr + bufused);
             bufused += data.byteLength;
@@ -883,7 +883,7 @@ export default class Module {
         fd: number,
         offset: bigint,
         whence: number,
-        newoffset_out: number
+        newoffset_out: number,
       ): number => {
         const entry = this.fds[fd];
         if (!entry) {
@@ -941,7 +941,7 @@ export default class Module {
         fd: number,
         iovs_ptr: number,
         iovs_len: number,
-        nwritten_out: number
+        nwritten_out: number,
       ): number => {
         const entry = this.fds[fd];
         if (!entry) {
@@ -959,7 +959,7 @@ export default class Module {
           iovs_ptr += 4;
 
           nwritten += entry.handle.writeSync(
-            new Uint8Array(this.memory.buffer, data_ptr, data_len)
+            new Uint8Array(this.memory.buffer, data_ptr, data_len),
           );
         }
 
@@ -971,7 +971,7 @@ export default class Module {
       path_create_directory: (
         fd: number,
         path_ptr: number,
-        path_len: number
+        path_len: number,
       ): number => {
         const entry = this.fds[fd];
         if (!entry) {
@@ -1000,7 +1000,7 @@ export default class Module {
         flags: number,
         path_ptr: number,
         path_len: number,
-        buf_out: number
+        buf_out: number,
       ): number => {
         const entry = this.fds[fd];
         if (!entry) {
@@ -1018,10 +1018,9 @@ export default class Module {
         const view = new DataView(this.memory.buffer);
 
         try {
-          const info =
-            (flags & LOOKUPFLAGS_SYMLINK_FOLLOW) != 0
-              ? Deno.statSync(path)
-              : Deno.lstatSync(path);
+          const info = (flags & LOOKUPFLAGS_SYMLINK_FOLLOW) != 0
+            ? Deno.statSync(path)
+            : Deno.lstatSync(path);
 
           view.setBigUint64(buf_out, BigInt(info.dev ? info.dev : 0), true);
           buf_out += 8;
@@ -1060,21 +1059,21 @@ export default class Module {
           view.setBigUint64(
             buf_out,
             BigInt(info.atime ? info.atime.getTime() * 1e6 : 0),
-            true
+            true,
           );
           buf_out += 8;
 
           view.setBigUint64(
             buf_out,
             BigInt(info.mtime ? info.mtime.getTime() * 1e6 : 0),
-            true
+            true,
           );
           buf_out += 8;
 
           view.setBigUint64(
             buf_out,
             BigInt(info.birthtime ? info.birthtime.getTime() * 1e6 : 0),
-            true
+            true,
           );
           buf_out += 8;
         } catch (err) {
@@ -1091,7 +1090,7 @@ export default class Module {
         path_len: number,
         atim: bigint,
         mtim: bigint,
-        fst_flags: number
+        fst_flags: number,
       ): number => {
         const entry = this.fds[fd];
         if (!entry) {
@@ -1130,7 +1129,7 @@ export default class Module {
         old_path_len: number,
         new_fd: number,
         new_path_ptr: number,
-        new_path_len: number
+        new_path_len: number,
       ): number => {
         const old_entry = this.fds[old_fd];
         const new_entry = this.fds[new_fd];
@@ -1146,13 +1145,13 @@ export default class Module {
         const old_data = new Uint8Array(
           this.memory.buffer,
           old_path_ptr,
-          old_path_len
+          old_path_len,
         );
         const old_path = resolve(old_entry.path, text.decode(old_data));
         const new_data = new Uint8Array(
           this.memory.buffer,
           new_path_ptr,
-          new_path_len
+          new_path_len,
         );
         const new_path = resolve(new_entry.path, text.decode(new_data));
 
@@ -1174,7 +1173,7 @@ export default class Module {
         fs_rights_base: number | bigint,
         fs_rights_inherting: number | bigint,
         fdflags: number,
-        opened_fd_out: number
+        opened_fd_out: number,
       ): number => {
         const entry = this.fds[fd];
         if (!entry) {
@@ -1196,11 +1195,10 @@ export default class Module {
           // around it for now.
           try {
             const entries = Array.from(Deno.readDirSync(path));
-            const opened_fd =
-              this.fds.push({
-                entries,
-                path,
-              }) - 1;
+            const opened_fd = this.fds.push({
+              entries,
+              path,
+            }) - 1;
 
             const view = new DataView(this.memory.buffer);
             view.setUint32(opened_fd_out, opened_fd, true);
@@ -1237,7 +1235,7 @@ export default class Module {
         if (
           (BigInt(fs_rights_base) &
             BigInt(RIGHTS_FD_READ | RIGHTS_FD_READDIR)) !=
-          0n
+            0n
         ) {
           options.read = true;
         }
@@ -1248,9 +1246,9 @@ export default class Module {
               RIGHTS_FD_DATASYNC |
                 RIGHTS_FD_WRITE |
                 RIGHTS_FD_ALLOCATE |
-                RIGHTS_FD_FILESTAT_SET_SIZE
+                RIGHTS_FD_FILESTAT_SET_SIZE,
             )) !=
-          0n
+            0n
         ) {
           options.write = true;
         }
@@ -1281,11 +1279,10 @@ export default class Module {
 
         try {
           const handle = Deno.openSync(path, options);
-          const opened_fd =
-            this.fds.push({
-              handle,
-              path,
-            }) - 1;
+          const opened_fd = this.fds.push({
+            handle,
+            path,
+          }) - 1;
 
           const view = new DataView(this.memory.buffer);
           view.setUint32(opened_fd_out, opened_fd, true);
@@ -1302,7 +1299,7 @@ export default class Module {
         path_len: number,
         buf_ptr: number,
         buf_len: number,
-        bufused_out: number
+        bufused_out: number,
       ): number => {
         const entry = this.fds[fd];
         if (!entry) {
@@ -1336,7 +1333,7 @@ export default class Module {
       path_remove_directory: (
         fd: number,
         path_ptr: number,
-        path_len: number
+        path_len: number,
       ): number => {
         const entry = this.fds[fd];
         if (!entry) {
@@ -1370,7 +1367,7 @@ export default class Module {
         old_path_len: number,
         new_fd: number,
         new_path_ptr: number,
-        new_path_len: number
+        new_path_len: number,
       ): number => {
         const old_entry = this.fds[fd];
         const new_entry = this.fds[new_fd];
@@ -1386,13 +1383,13 @@ export default class Module {
         const old_data = new Uint8Array(
           this.memory.buffer,
           old_path_ptr,
-          old_path_len
+          old_path_len,
         );
         const old_path = resolve(old_entry.path, text.decode(old_data));
         const new_data = new Uint8Array(
           this.memory.buffer,
           new_path_ptr,
-          new_path_len
+          new_path_len,
         );
         const new_path = resolve(new_entry.path, text.decode(new_data));
 
@@ -1410,7 +1407,7 @@ export default class Module {
         old_path_len: number,
         fd: number,
         new_path_ptr: number,
-        new_path_len: number
+        new_path_len: number,
       ): number => {
         const entry = this.fds[fd];
         if (!entry) {
@@ -1425,13 +1422,13 @@ export default class Module {
         const old_data = new Uint8Array(
           this.memory.buffer,
           old_path_ptr,
-          old_path_len
+          old_path_len,
         );
         const old_path = text.decode(old_data);
         const new_data = new Uint8Array(
           this.memory.buffer,
           new_path_ptr,
-          new_path_len
+          new_path_len,
         );
         const new_path = resolve(entry.path, text.decode(new_data));
 
@@ -1447,7 +1444,7 @@ export default class Module {
       path_unlink_file: (
         fd: number,
         path_ptr: number,
-        path_len: number
+        path_len: number,
       ): number => {
         const entry = this.fds[fd];
         if (!entry) {
@@ -1475,7 +1472,7 @@ export default class Module {
         in_ptr: number,
         out_ptr: number,
         nsubscriptions: number,
-        nevents_out: number
+        nevents_out: number,
       ): number => {
         return ERRNO_NOSYS;
       },
@@ -1505,7 +1502,7 @@ export default class Module {
         ri_data_len: number,
         ri_flags: number,
         ro_datalen_out: number,
-        ro_flags_out: number
+        ro_flags_out: number,
       ): number => {
         return ERRNO_NOSYS;
       },
@@ -1515,7 +1512,7 @@ export default class Module {
         si_data_ptr: number,
         si_data_len: number,
         si_flags: number,
-        so_datalen_out: number
+        so_datalen_out: number,
       ): number => {
         return ERRNO_NOSYS;
       },

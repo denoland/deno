@@ -7,5 +7,5 @@ listener.accept().then(
     await Deno.copy(conn, conn);
     conn.close();
     listener.close();
-  }
+  },
 );
