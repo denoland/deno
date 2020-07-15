@@ -442,7 +442,6 @@ async fn bundle_command(
 ) -> Result<(), ErrBox> {
   let module_specifier =
     ModuleSpecifier::resolve_url_or_path(&source_file)?;
-  let url = module_specifier.as_url();
 
   debug!(">>>>> bundle START");
   let global_state = GlobalState::new(flags)?;
