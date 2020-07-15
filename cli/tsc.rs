@@ -1600,7 +1600,7 @@ mod tests {
       url: specifier.as_url().clone(),
       filename: PathBuf::from(p.to_str().unwrap().to_string()),
       media_type: msg::MediaType::TypeScript,
-      source_code: include_bytes!("./tests/002_hello.ts").to_vec(),
+      source_code: include_bytes!("./tests/002_hello.ts").to_vec().into(),
       types_header: None,
       charset: None,
     };
@@ -1677,7 +1677,7 @@ mod tests {
       url: specifier.as_url().clone(),
       filename: PathBuf::from(p.to_str().unwrap().to_string()),
       media_type: msg::MediaType::TypeScript,
-      source_code: include_bytes!("./tests/002_hello.ts").to_vec(),
+      source_code: include_bytes!("./tests/002_hello.ts").to_vec().into(),
       types_header: None,
       charset: None,
     };
