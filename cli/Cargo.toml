@@ -88,3 +88,6 @@ OriginalFilename = "deno.exe"
 LegalCopyright = "© Deno contributors & Deno Land Inc. MIT licensed."
 ProductName = "Deno"
 FileDescription = "A secure JavaScript/TypeScript runtime, built on V8 and Rust."
+
+[profile.release]
+strip = "symbols"

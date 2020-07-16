@@ -185,7 +185,6 @@ jobs:
           matrix.config.kind == 'test_release'
         run: |
           cd target/release
-          strip deno
           zip -r deno-x86_64-unknown-linux-gnu.zip deno
           ./deno types > lib.deno.d.ts
 
@@ -195,7 +194,6 @@ jobs:
           matrix.config.kind == 'test_release'
         run: |
           cd target/release
-          strip deno
           zip -r deno-x86_64-apple-darwin.zip deno
 
       - name: Pre-release (windows)
