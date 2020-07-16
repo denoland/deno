@@ -14,12 +14,14 @@ class FormDataBase {
   append(name: string, value: string | blob.DenoBlob, filename?: string): void {
     requiredArguments("FormData.append", arguments.length, 2);
     name = String(name);
-    if (value instanceof domFile.DomFileImpl) {
-      this[dataSymbol].push([name, value]);
-    } else if (value instanceof blob.DenoBlob) {
-      const dfile = new domFile.DomFileImpl([value], filename || name, {
-        type: value.type,
-      });
+    if (value instanceof blob.DenoBlob) {
+      const dfile = new domFile.DomFileImpl(
+        [value],
+        filename || value.name || name,
+        {
+          type: value.type,
+        }
+      );
       this[dataSymbol].push([name, dfile]);
     } else {
       this[dataSymbol].push([name, String(value)]);
@@ -83,12 +85,14 @@ class FormDataBase {
     while (i < this[dataSymbol].length) {
       if (this[dataSymbol][i][0] === name) {
         if (!found) {
-          if (value instanceof domFile.DomFileImpl) {
-            this[dataSymbol][i][1] = value;
-          } else if (value instanceof blob.DenoBlob) {
-            const dfile = new domFile.DomFileImpl([value], filename || name, {
-              type: value.type,
-            });
+          if (value instanceof blob.DenoBlob) {
+            const dfile = new domFile.DomFileImpl(
+              [value],
+              filename || value.name || name,
+              {
+                type: value.type,
+              }
+            );
             this[dataSymbol][i][1] = dfile;
           } else {
             this[dataSymbol][i][1] = String(value);
