@@ -9,7 +9,6 @@ use crate::module_graph::ModuleGraphFile;
 use crate::module_graph::ModuleGraphLoader;
 use crate::msg;
 use crate::msg::MediaType;
-use crate::op_error::OpError;
 use crate::permissions::Permissions;
 use crate::state::exit_unstable;
 use crate::tsc::CompiledModule;
@@ -236,36 +235,22 @@ impl GlobalState {
     };
 
     let compiled_module = if was_compiled {
-      let r = state1.ts_compiler.get_compiled_module(&out.url);
-
-      match r {
-        Ok(module) => Ok(module),
+      match state1.ts_compiler.get_compiled_module(&out.url) {
+        Ok(module) => module,
         Err(e) => {
-          if out.media_type == MediaType::TypeScript
-            && out.url.to_string().ends_with(".d.ts")
-          {
-            info!(
-              "{} {}",
-              crate::colors::yellow("Warning"),
-              format!(
-                "Compiled source file for \"{}\" was not found, using empty source instead.\n\
-                Declaration files are not emitted during type checking, prefer to use \"import type\" or \"export type\" syntax instead.", 
-                out.url.to_string()
-              )
-            );
-            Ok(CompiledModule {
-              code: "".to_string(),
-              name: out.url.to_string(),
-            })
-          } else {
-            let msg = e.to_string();
-            Err(OpError::other(format!(
-              "Failed to get compiled source code of {}.\nReason: {}",
-              out.url, msg
-            )))
+          let msg = format!(
+            "Failed to get compiled source code of \"{}\".\nReason: {}\n\
+            If the source file provides only type exports, prefer to use \"import type\" or \"export type\" syntax instead.",
+            out.url, e.to_string()
+          );
+          info!("{} {}", crate::colors::yellow("Warning"), msg);
+
+          CompiledModule {
+            code: "".to_string(),
+            name: out.url.to_string(),
           }
         }
-      }?
+      }
     } else {
       CompiledModule {
         code: String::from_utf8(out.source_code.clone())?,
