@@ -75,6 +75,7 @@ pub use deno_lint::swc_ecma_parser;
 pub use deno_lint::swc_ecma_visit;
 
 use crate::doc::parser::DocFileLoader;
+use crate::file_fetcher::SourceCode;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::fs as deno_fs;
@@ -419,8 +420,7 @@ async fn eval_command(
     } else {
       MediaType::JavaScript
     },
-    source_code: source_code.into(),
-    charset: Some("utf-8".to_owned()),
+    source_code: SourceCode::new(source_code, Some("utf-8".to_owned())),
   };
   // Save our fake file into file fetcher cache
   // to allow module access by TS compiler (e.g. op_fetch_source_files)
@@ -543,7 +543,8 @@ async fn doc_command(
           .fetch_source_file(&specifier, None, Permissions::allow_all())
           .await?;
         source_file
-          .source_code_utf8()
+          .source_code
+          .to_utf8()
           .map_err(|_| OpError::other("failed to parse".to_string()))
       }
       .boxed_local()
@@ -620,7 +621,6 @@ async fn run_command(flags: Flags, script: String) -> Result<(), ErrBox> {
       types_header: None,
       media_type: MediaType::TypeScript,
       source_code: source.into(),
-      charset: None,
     };
     // Save our fake file into file fetcher cache
     // to allow module access by TS compiler (e.g. op_fetch_source_files)
@@ -676,8 +676,10 @@ async fn test_command(
     url: test_file_url,
     types_header: None,
     media_type: MediaType::TypeScript,
-    source_code: test_file.clone().into_bytes().into(),
-    charset: Some("utf-8".to_owned()),
+    source_code: SourceCode::new(
+      test_file.clone().into_bytes().into(),
+      Some("utf-8".to_owned()),
+    ),
   };
   // Save our fake file into file fetcher cache
   // to allow module access by TS compiler (e.g. op_fetch_source_files)

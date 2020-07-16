@@ -870,7 +870,7 @@ impl TsCompiler {
     let compiled_source_file = self.get_compiled_source_file(module_url)?;
 
     let compiled_module = CompiledModule {
-      code: compiled_source_file.source_code_utf8()?,
+      code: compiled_source_file.source_code.to_utf8()?,
       name: module_url.to_string(),
     };
 
@@ -897,7 +897,6 @@ impl TsCompiler {
       media_type: msg::MediaType::JavaScript,
       source_code: compiled_code.into(),
       types_header: None,
-      charset: None,
     };
 
     Ok(compiled_module)
@@ -955,7 +954,6 @@ impl TsCompiler {
       media_type: msg::MediaType::JavaScript,
       source_code: source_code.into(),
       types_header: None,
-      charset: None,
     };
 
     Ok(source_map_file)
@@ -1000,7 +998,7 @@ impl SourceMapGetter for TsCompiler {
     self
       .try_resolve_and_get_source_file(script_name)
       .and_then(|out| {
-        out.source_code_utf8().ok().map(|v| {
+        out.source_code.to_utf8().ok().map(|v| {
           // Do NOT use .lines(): it skips the terminating empty line.
           // (due to internally using .split_terminator() instead of .split())
           let lines: Vec<&str> = v.split('\n').collect();
@@ -1602,7 +1600,6 @@ mod tests {
       media_type: msg::MediaType::TypeScript,
       source_code: include_bytes!("./tests/002_hello.ts").to_vec().into(),
       types_header: None,
-      charset: None,
     };
     let dir =
       deno_dir::DenoDir::new(Some(test_util::new_deno_dir().path().to_owned()))
@@ -1679,7 +1676,6 @@ mod tests {
       media_type: msg::MediaType::TypeScript,
       source_code: include_bytes!("./tests/002_hello.ts").to_vec().into(),
       types_header: None,
-      charset: None,
     };
     let dir =
       deno_dir::DenoDir::new(Some(test_util::new_deno_dir().path().to_owned()))
