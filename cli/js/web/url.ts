@@ -109,6 +109,10 @@ function parse(url: string, isBase = true): URLParts | undefined {
   }
   [parts.path, restUrl] = takePattern(restUrl, /^([^?#]*)/);
   parts.path = encodePathname(parts.path.replace(/\\/g, "/"));
+  // Drop the hostname if a drive letter is parsed.
+  if (parts.protocol == "file" && parts.path.match(/^\/+[A-Za-z]:(\/|$)/)) {
+    parts.hostname = "";
+  }
   [parts.query, restUrl] = takePattern(restUrl, /^(\?[^#]*)/);
   parts.query = encodeSearch(parts.query);
   [parts.hash] = takePattern(restUrl, /^(#.*)/);

@@ -239,6 +239,8 @@ unitTest(function urlRequireHost(): void {
 unitTest(function urlDriveLetter() {
   assertEquals(new URL("file:///C:").href, "file:///C:/");
   assertEquals(new URL("http://example.com/C:").href, "http://example.com/C:");
+  // Drop the hostname if a drive letter is parsed.
+  assertEquals(new URL("file://foo/C:").href, "file:///C:/");
 });
 
 unitTest(function urlHostnameUpperCase() {
