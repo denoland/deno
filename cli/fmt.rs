@@ -12,6 +12,7 @@ use crate::diff::diff;
 use crate::dprint_plugin_typescript as dprint;
 use crate::fs::files_in_subtree;
 use crate::op_error::OpError;
+use crate::text_encoding;
 use deno_core::ErrBox;
 use std::fs;
 use std::io::stdin;
@@ -238,7 +239,9 @@ struct FileContents {
 }
 
 fn read_file_contents(file_path: &PathBuf) -> Result<FileContents, ErrBox> {
-  let file_text = fs::read_to_string(&file_path)?;
+  let file_bytes = fs::read(&file_path)?;
+  let charset = text_encoding::detect_charset(&file_bytes);
+  let file_text = text_encoding::to_utf8(&file_bytes, charset)?;
   let had_bom = file_text.starts_with(BOM_CHAR);
   let text = if had_bom {
     // remove the BOM
