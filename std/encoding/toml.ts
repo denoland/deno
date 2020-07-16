@@ -263,20 +263,20 @@ class Parser {
     const isString = dataString.startsWith('"') || dataString.startsWith("'");
     if (isString) {
       const [quote] = dataString;
-      let nextIndexOfQuote = 0;
+      let indexOfNextQuote = 0;
       while (
-        (nextIndexOfQuote = dataString.indexOf(quote, nextIndexOfQuote + 1)) !==
+        (indexOfNextQuote = dataString.indexOf(quote, indexOfNextQuote + 1)) !==
           -1
       ) {
-        const isEscaped = dataString[nextIndexOfQuote - 1] === "\\";
+        const isEscaped = dataString[indexOfNextQuote - 1] === "\\";
         if (!isEscaped) {
           break;
         }
       }
-      if (nextIndexOfQuote === -1) {
+      if (indexOfNextQuote === -1) {
         throw new TOMLError("imcomplete string literal");
       }
-      const endOfString = nextIndexOfQuote + 1;
+      const endOfString = indexOfNextQuote + 1;
       return dataString.slice(0, endOfString);
     }
 
