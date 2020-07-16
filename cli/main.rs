@@ -60,6 +60,7 @@ mod startup_data;
 pub mod state;
 mod swc_util;
 mod test_runner;
+mod text_encoding;
 mod tokio_util;
 mod tsc;
 mod upgrade;

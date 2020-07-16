@@ -7,6 +7,7 @@ use crate::http_util::FetchOnceResult;
 use crate::msg;
 use crate::op_error::OpError;
 use crate::permissions::Permissions;
+use crate::text_encoding;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
 use futures::future::FutureExt;
@@ -30,35 +31,6 @@ pub struct SourceCode {
 }
 
 impl SourceCode {
-  fn detect_charset(&self) -> &str {
-    const UTF8_BOM: &'static [u8] = b"\xEF\xBB\xBF";
-    const UTF16_LE_BOM: &'static [u8] = b"\xFF\xFE";
-    const UTF16_BE_BOM: &'static [u8] = b"\xFE\xFF";
-
-    if self.bytes.starts_with(UTF8_BOM) {
-      "utf-8"
-    } else if self.bytes.starts_with(UTF16_LE_BOM) {
-      "utf-16le"
-    } else if self.bytes.starts_with(UTF16_BE_BOM) {
-      "utf-16be"
-    } else {
-      // Assume everything else is utf-8
-      "utf-8"
-    }
-  }
-
-  fn to_utf8(&self, charset: &str) -> Result<String, std::io::Error> {
-    match encoding::label::encoding_from_whatwg_label(charset) {
-      Some(coder) => {
-        match coder.decode(&self.bytes, encoding::DecoderTrap::Ignore) {
-          Ok(text) => Ok(text),
-          Err(_e) => Err(std::io::ErrorKind::InvalidData.into()),
-        }
-      }
-      None => Err(std::io::ErrorKind::InvalidData.into()),
-    }
-  }
-
   pub fn as_bytes(&self) -> &Vec<u8> {
     &self.bytes
   }
@@ -92,10 +64,10 @@ impl SourceFile {
   pub fn source_code_utf8(&self) -> Result<String, std::io::Error> {
     let charset = match &self.charset {
       Some(charset) => charset,
-      None => self.source_code.detect_charset(),
+      None => text_encoding::detect_charset(self.source_code.as_bytes()),
     };
 
-    self.source_code.to_utf8(charset)
+    text_encoding::to_utf8(self.source_code.as_bytes(), charset)
   }
 }
 
