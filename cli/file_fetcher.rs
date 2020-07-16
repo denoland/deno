@@ -1615,7 +1615,7 @@ mod tests {
   #[tokio::test]
   async fn test_fetch_source_file_utf_16_be() {
     test_fetch_source_file_nonstandard_encoding(
-      "tests/062_encoding_utf_16_big_endian.ts",
+      "tests/encoding/utf_16_big_endian.ts",
       String::from_utf8(b"\xEF\xBB\xBFconsole.log(\"Hello World\");".to_vec())
         .unwrap(),
     )
@@ -1625,7 +1625,7 @@ mod tests {
   #[tokio::test]
   async fn test_fetch_source_file_utf_16_le() {
     test_fetch_source_file_nonstandard_encoding(
-      "tests/061_encoding_utf_16_little_endian.ts",
+      "tests/encoding/utf_16_little_endian.ts",
       String::from_utf8(b"\xEF\xBB\xBFconsole.log(\"Hello World\");".to_vec())
         .unwrap(),
     )
@@ -1635,7 +1635,7 @@ mod tests {
   #[tokio::test]
   async fn test_fetch_source_file_utf_8_with_bom() {
     test_fetch_source_file_nonstandard_encoding(
-      "tests/063_encoding_utf_8_with_bom.ts",
+      "tests/encoding/utf_8_with_bom.ts",
       String::from_utf8(b"\xEF\xBB\xBFconsole.log(\"Hello World\");".to_vec())
         .unwrap(),
     )
