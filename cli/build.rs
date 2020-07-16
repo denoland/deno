@@ -1,5 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
+#![allow(unused)]
+
 use deno_core::include_crate_modules;
+use deno_core::js_check;
 use deno_core::CoreIsolate;
 use deno_core::StartupData;
 use std::collections::HashMap;
@@ -36,76 +40,28 @@ fn main() {
   let o = PathBuf::from(env::var_os("OUT_DIR").unwrap());
 
   // Main snapshot
-  let root_names = vec![c.join("js/main.ts")];
-  let bundle_path = o.join("CLI_SNAPSHOT.js");
   let snapshot_path = o.join("CLI_SNAPSHOT.bin");
 
-  let main_module_name = deno_typescript::compile_bundle(
-    &bundle_path,
-    root_names,
-    Some(extern_crate_modules.clone()),
-  )
-  .expect("Bundle compilation failed");
-  assert!(bundle_path.exists());
-
   let mut runtime_isolate = CoreIsolate::new(StartupData::None, true);
 
-  deno_typescript::mksnapshot_bundle(
-    &mut runtime_isolate,
-    &snapshot_path,
-    &bundle_path,
-    &main_module_name,
-  )
-  .expect("Failed to create snapshot");
+  for dir_entry in std::fs::read_dir("js2/").unwrap() {
+    let file = dir_entry.unwrap();
+    let filename = file.file_name().to_string_lossy().to_string();
 
-  // Compiler snapshot
-  let root_names = vec![c.join("js/compiler.ts")];
-  let bundle_path = o.join("COMPILER_SNAPSHOT.js");
-  let snapshot_path = o.join("COMPILER_SNAPSHOT.bin");
+    if !filename.ends_with(".js") {
+      continue;
+    }
 
-  let main_module_name = deno_typescript::compile_bundle(
-    &bundle_path,
-    root_names,
-    Some(extern_crate_modules),
-  )
-  .expect("Bundle compilation failed");
-  assert!(bundle_path.exists());
-
-  let mut runtime_isolate = CoreIsolate::new(StartupData::None, true);
-
-  let mut custom_libs: HashMap<String, PathBuf> = HashMap::new();
-  custom_libs.insert(
-    "lib.deno.window.d.ts".to_string(),
-    c.join("js/lib.deno.window.d.ts"),
-  );
-  custom_libs.insert(
-    "lib.deno.worker.d.ts".to_string(),
-    c.join("js/lib.deno.worker.d.ts"),
-  );
-  custom_libs.insert(
-    "lib.deno.shared_globals.d.ts".to_string(),
-    c.join("js/lib.deno.shared_globals.d.ts"),
-  );
-  custom_libs.insert(
-    "lib.deno.ns.d.ts".to_string(),
-    c.join("js/lib.deno.ns.d.ts"),
-  );
-  custom_libs.insert(
-    "lib.deno.unstable.d.ts".to_string(),
-    c.join("js/lib.deno.unstable.d.ts"),
-  );
-  runtime_isolate.register_op(
-    "op_fetch_asset",
-    deno_typescript::op_fetch_asset(custom_libs),
-  );
-
-  deno_typescript::mksnapshot_bundle_ts(
-    &mut runtime_isolate,
-    &snapshot_path,
-    &bundle_path,
-    &main_module_name,
-  )
-  .expect("Failed to create snapshot");
+    js_check(
+      runtime_isolate
+        .execute(&filename, &std::fs::read_to_string(file.path()).unwrap()),
+    );
+  }
+  let snapshot = runtime_isolate.snapshot();
+  let snapshot_slice: &[u8] = &*snapshot;
+  println!("Snapshot size: {}", snapshot_slice.len());
+  std::fs::write(&snapshot_path, snapshot_slice).unwrap();
+  println!("Snapshot written to: {} ", snapshot_path.display());
 
   set_binary_metadata();
 }
