@@ -172,6 +172,7 @@ pub fn compile_bundle(
         "module": "system",
         "removeComments": true,
         "sourceMap": true,
+        "sourceRoot": "$deno$",
         "strict": true,
         "target": "esnext",
         "tsBuildInfoFile": build_info,
@@ -190,6 +191,7 @@ pub fn compile_bundle(
         "module": "system",
         "removeComments": true,
         "sourceMap": true,
+        "sourceRoot": "$deno$",
         "strict": true,
         "target": "esnext",
       }

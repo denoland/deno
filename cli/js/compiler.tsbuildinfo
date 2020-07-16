@@ -812,6 +812,7 @@
       "module": 4,
       "removeComments": true,
       "sourceMap": true,
+      "sourceRoot": "$deno$",
       "strict": true,
       "target": 99,
       "tsBuildInfoFile": "./compiler.tsbuildinfo",
