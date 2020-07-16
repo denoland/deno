@@ -142,7 +142,7 @@ function isAbsolutePath(path: string): boolean {
 // On Windows, drive letter paths will be given a leading slash, and also a
 // trailing slash if there are no other components e.g. "C:" -> "/C:/".
 function normalizePath(path: string, isFilePath = false): string {
-  if (build.os == "windows" && isFilePath) {
+  if (isFilePath) {
     path = path.replace(/^\/*([A-Za-z]:)(\/|$)/, "/$1/");
   }
   const isAbsolute = isAbsolutePath(path);
@@ -184,7 +184,7 @@ function resolvePathFromBase(
   let normalizedBasePath = normalizePath(basePath, isFilePath);
 
   let driveLetterPrefix = "";
-  if (build.os == "windows" && isFilePath) {
+  if (isFilePath) {
     let driveLetter: string;
     let baseDriveLetter: string;
     [driveLetter, normalizedPath] = takePattern(

@@ -237,10 +237,7 @@ unitTest(function urlRequireHost(): void {
 });
 
 unitTest(function urlDriveLetter() {
-  assertEquals(
-    new URL("file:///C:").href,
-    Deno.build.os == "windows" ? "file:///C:/" : "file:///C:",
-  );
+  assertEquals(new URL("file:///C:").href, "file:///C:/");
   assertEquals(new URL("http://example.com/C:").href, "http://example.com/C:");
 });
 
@@ -343,14 +340,8 @@ unitTest(function urlRelativeWithBase(): void {
 });
 
 unitTest(function urlDriveLetterBase() {
-  assertEquals(
-    new URL("/b", "file:///C:/a/b").href,
-    Deno.build.os == "windows" ? "file:///C:/b" : "file:///b",
-  );
-  assertEquals(
-    new URL("/D:", "file:///C:/a/b").href,
-    Deno.build.os == "windows" ? "file:///D:/" : "file:///D:",
-  );
+  assertEquals(new URL("/b", "file:///C:/a/b").href, "file:///C:/b");
+  assertEquals(new URL("/D:", "file:///C:/a/b").href, "file:///D:/");
 });
 
 unitTest(function urlEmptyBasePath(): void {
