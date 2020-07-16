@@ -70,14 +70,8 @@ function parse(url: string, isBase = true): URLParts | undefined {
     parts.username = "";
     parts.password = "";
     [parts.hostname, restUrl] = takePattern(restUrl, /^[/\\]{2}([^/\\?#]*)/);
-    parts.port = "";
-    if (build.os == "windows" && parts.hostname == "") {
-      // UNC paths. e.g. "\\\\localhost\\foo\\bar" on Windows should be
-      // representable as `new URL("file:////localhost/foo/bar")` which is
-      // equivalent to: `new URL("file://localhost/foo/bar")`.
-      [parts.hostname, restUrl] = takePattern(restUrl, /^[/\\]{2,}([^/\\?#]*)/);
-    }
     [, restUrl] = takePattern(restUrl, /(?<=[/\\])[/\\]+/);
+    parts.port = "";
   } else {
     let restAuthority;
     if (isSpecial) {
