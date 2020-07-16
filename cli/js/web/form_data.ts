@@ -11,11 +11,7 @@ class FormDataBase {
 
   append(name: string, value: string): void;
   append(name: string, value: blob.DenoBlob, filename?: string): void;
-  append(
-    name: string,
-    value: string | blob.DenoBlob,
-    filename?: string
-  ): void {
+  append(name: string, value: string | blob.DenoBlob, filename?: string): void {
     requiredArguments("FormData.append", arguments.length, 2);
     name = String(name);
     if (value instanceof domFile.DomFileImpl) {
@@ -76,11 +72,7 @@ class FormDataBase {
 
   set(name: string, value: string): void;
   set(name: string, value: blob.DenoBlob, filename?: string): void;
-  set(
-    name: string,
-    value: string | blob.DenoBlob,
-    filename?: string
-  ): void {
+  set(name: string, value: string | blob.DenoBlob, filename?: string): void {
     requiredArguments("FormData.set", arguments.length, 2);
     name = String(name);
 
