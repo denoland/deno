@@ -82,7 +82,7 @@ hello world
 
 By default the `Deno` namespace is not available in worker scope.
 
-To add the `Deno` namespace pass `deno: {}` option when creating new worker:
+To add the `Deno` namespace pass `deno: {namespace: true}` option when creating new worker:
 
 **main.js**
 
@@ -90,6 +90,8 @@ To add the `Deno` namespace pass `deno: {}` option when creating new worker:
 const worker = new Worker(new URL("worker.js", import.meta.url).href, {
   type: "module",
   deno: {
+    namespace: true,
+
     // Import map can be optionally specified
     importMap: "./import_map.json",
   },
