@@ -77,6 +77,7 @@ export interface WorkerOptions {
   type?: "classic" | "module";
   name?: string;
   deno?: {
+    namespace?: boolean;
     importMap?: string;
   };
 }
@@ -120,13 +121,11 @@ export class WorkerImpl extends EventTarget implements Worker {
     }
     */
 
-    const useDenoNamespace = Boolean(options?.deno);
-
     const { id } = createWorker({
       specifier,
       hasSourceCode,
       sourceCode,
-      useDenoNamespace,
+      useDenoNamespace: Boolean(options?.deno?.namespace),
       name: options?.name,
       importMap: options?.deno?.importMap,
     });

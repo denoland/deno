@@ -1284,12 +1284,16 @@ declare class Worker extends EventTarget {
     options?: {
       type?: "classic" | "module";
       name?: string;
-      /** UNSTABLE: New API. Expect many changes; most likely this
-       * field will be made into an object for more granular
-       * configuration of worker thread (permissions, import map, etc.).
+      /** UNSTABLE: New API. Expect many changes;
+       * This option is only applicable to Deno environment,
+       * it won't work on other environments such as browser.
        *
-       * Set to `{}` to make `Deno` namespace and all of its methods
+       * Set `{namespace: true}` to make `Deno` namespace and all of its methods
        * available to worker thread.
+       *
+       * Set `{importMap: 'import_map.json'}` to allow the worker thread to
+       * resolve modules based on import map. This options requires the `--unstable` flag.
+       *
        *
        * Currently worker inherits permissions from main thread (permissions
        * given using `--allow-*` flags).
@@ -1300,8 +1304,12 @@ declare class Worker extends EventTarget {
        * ```ts
        * // mod.ts
        * const worker = new Worker(
-       *   new URL("deno_worker.ts", import.meta.url).href,
-       *   { type: "module", deno: {} }
+       *   new URL("deno_worker.ts", import.meta.url).href, {
+       *    type: "module",
+       *    deno: {
+       *      namespace: true,
+       *    }
+       *   }
        * );
        * worker.postMessage({ cmd: "readFile", fileName: "./log.txt" });
        *
@@ -1315,21 +1323,28 @@ declare class Worker extends EventTarget {
        *     }
        *     const buf = await Deno.readFile(fileName);
        *     const fileContents = new TextDecoder().decode(buf);
-       *     console.log(fileContents);
+       *     console.log(`The file content is: "${fileContents}""`);
        * }
        * ```
        *
+       * ```
        * // log.txt
        * hello world
-       * hello world 2
+       * ```
        *
+       * ```
        * // run program
        * $ deno run --allow-read mod.ts
-       * hello world
-       * hello world2
+       * The file content is "hello world"
+       * ```
        *
        */
       deno?: {
+        /**
+         * Set to `true` to allow `Deno` namespace to be used in worker thread.
+         */
+        namespace?: boolean;
+
         /**
          * Relative or absolute path to the import map that will be used
          * by the script to be executed as worker thread.
