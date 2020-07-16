@@ -14,11 +14,11 @@ import { fromFileUrl } from "../path.ts";
 function maybeDecode(data: Uint8Array, encoding: TextEncodings): string;
 function maybeDecode(
   data: Uint8Array,
-  encoding: BinaryEncodings | null
+  encoding: BinaryEncodings | null,
 ): Buffer;
 function maybeDecode(
   data: Uint8Array,
-  encoding: Encodings | null
+  encoding: Encodings | null,
 ): string | Buffer {
   const buffer = new Buffer(data.buffer, data.byteOffset, data.byteLength);
   if (encoding && encoding !== "binary") return buffer.toString(encoding);
@@ -33,23 +33,23 @@ type Callback = TextCallback | BinaryCallback | GenericCallback;
 export function readFile(
   path: string | URL,
   options: TextOptionsArgument,
-  callback: TextCallback
+  callback: TextCallback,
 ): void;
 export function readFile(
   path: string | URL,
   options: BinaryOptionsArgument,
-  callback: BinaryCallback
+  callback: BinaryCallback,
 ): void;
 export function readFile(
   path: string | URL,
   options: null | undefined | FileOptionsArgument,
-  callback: BinaryCallback
+  callback: BinaryCallback,
 ): void;
 export function readFile(path: string | URL, callback: BinaryCallback): void;
 export function readFile(
   path: string | URL,
   optOrCallback?: FileOptionsArgument | Callback | null | undefined,
-  callback?: Callback
+  callback?: Callback,
 ): void {
   path = path instanceof URL ? fromFileUrl(path) : path;
   let cb: Callback | undefined;
@@ -77,15 +77,15 @@ export function readFile(
 
 export function readFileSync(
   path: string | URL,
-  opt: TextOptionsArgument
+  opt: TextOptionsArgument,
 ): string;
 export function readFileSync(
   path: string | URL,
-  opt?: BinaryOptionsArgument
+  opt?: BinaryOptionsArgument,
 ): Buffer;
 export function readFileSync(
   path: string | URL,
-  opt?: FileOptionsArgument
+  opt?: FileOptionsArgument,
 ): string | Buffer {
   path = path instanceof URL ? fromFileUrl(path) : path;
   const data = Deno.readFileSync(path);

@@ -65,8 +65,9 @@ function slowCases(enc: string): string | undefined {
       if (enc === "ucs2") return "utf16le";
       break;
     case 3:
-      if (enc === "hex" || enc === "HEX" || `${enc}`.toLowerCase() === "hex")
+      if (enc === "hex" || enc === "HEX" || `${enc}`.toLowerCase() === "hex") {
         return "hex";
+      }
       break;
     case 5:
       if (enc === "ascii") return "ascii";
@@ -93,16 +94,18 @@ function slowCases(enc: string): string | undefined {
         enc === "utf16le" ||
         enc === "UTF16LE" ||
         `${enc}`.toLowerCase() === "utf16le"
-      )
+      ) {
         return "utf16le";
+      }
       break;
     case 8:
       if (
         enc === "utf-16le" ||
         enc === "UTF-16LE" ||
         `${enc}`.toLowerCase() === "utf-16le"
-      )
+      ) {
         return "utf16le";
+      }
       break;
     default:
       if (enc === "") return "utf8";

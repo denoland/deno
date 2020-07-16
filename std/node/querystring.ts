@@ -5,14 +5,15 @@ interface ParseOptions {
   maxKeys?: number;
 }
 export const hexTable = new Array(256);
-for (let i = 0; i < 256; ++i)
+for (let i = 0; i < 256; ++i) {
   hexTable[i] = "%" + ((i < 16 ? "0" : "") + i.toString(16)).toUpperCase();
+}
 
 export function parse(
   str: string,
   sep = "&",
   eq = "=",
-  { decodeURIComponent = unescape, maxKeys = 1000 }: ParseOptions = {}
+  { decodeURIComponent = unescape, maxKeys = 1000 }: ParseOptions = {},
 ): { [key: string]: string[] | string } {
   const entries = str
     .split(sep)
@@ -49,7 +50,7 @@ interface StringifyOptions {
 export function encodeStr(
   str: string,
   noEscapeTable: number[],
-  hexTable: string[]
+  hexTable: string[],
 ): string {
   const len = str.length;
   if (len === 0) return "";
@@ -78,8 +79,7 @@ export function encodeStr(
     }
     if (c < 0xd800 || c >= 0xe000) {
       lastPos = i + 1;
-      out +=
-        hexTable[0xe0 | (c >> 12)] +
+      out += hexTable[0xe0 | (c >> 12)] +
         hexTable[0x80 | ((c >> 6) & 0x3f)] +
         hexTable[0x80 | (c & 0x3f)];
       continue;
@@ -96,8 +96,7 @@ export function encodeStr(
 
     lastPos = i + 1;
     c = 0x10000 + (((c & 0x3ff) << 10) | c2);
-    out +=
-      hexTable[0xf0 | (c >> 18)] +
+    out += hexTable[0xf0 | (c >> 18)] +
       hexTable[0x80 | ((c >> 12) & 0x3f)] +
       hexTable[0x80 | ((c >> 6) & 0x3f)] +
       hexTable[0x80 | (c & 0x3f)];
@@ -111,7 +110,7 @@ export function stringify(
   obj: object,
   sep = "&",
   eq = "=",
-  { encodeURIComponent = escape }: StringifyOptions = {}
+  { encodeURIComponent = escape }: StringifyOptions = {},
 ): string {
   const final = [];
 

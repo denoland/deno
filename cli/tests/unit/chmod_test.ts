@@ -21,7 +21,7 @@ unitTest(
     const fileInfo = Deno.statSync(filename);
     assert(fileInfo.mode);
     assertEquals(fileInfo.mode & 0o777, 0o777);
-  }
+  },
 );
 
 unitTest(
@@ -40,7 +40,7 @@ unitTest(
     assertEquals(fileInfo.mode & 0o777, 0o777);
 
     Deno.removeSync(tempDir, { recursive: true });
-  }
+  },
 );
 
 // Check symlink when not on windows
@@ -72,7 +72,7 @@ unitTest(
     symlinkInfo = Deno.lstatSync(symlinkName);
     assert(symlinkInfo.mode);
     assertEquals(symlinkInfo.mode & 0o777, symlinkMode);
-  }
+  },
 );
 
 unitTest({ perms: { write: true } }, function chmodSyncFailure(): void {
@@ -102,7 +102,7 @@ unitTest(
     const fileInfo = Deno.statSync(filename);
     assert(fileInfo.mode);
     assertEquals(fileInfo.mode & 0o777, 0o777);
-  }
+  },
 );
 
 unitTest(
@@ -121,7 +121,7 @@ unitTest(
     assertEquals(fileInfo.mode & 0o777, 0o777);
 
     Deno.removeSync(tempDir, { recursive: true });
-  }
+  },
 );
 
 // Check symlink when not on windows
@@ -154,7 +154,7 @@ unitTest(
     symlinkInfo = Deno.lstatSync(symlinkName);
     assert(symlinkInfo.mode);
     assertEquals(symlinkInfo.mode & 0o777, symlinkMode);
-  }
+  },
 );
 
 unitTest({ perms: { write: true } }, async function chmodFailure(): Promise<

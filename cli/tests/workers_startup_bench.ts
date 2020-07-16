@@ -6,7 +6,7 @@ async function bench(): Promise<void> {
   for (let i = 1; i <= workerCount; ++i) {
     const worker = new Worker(
       new URL("subdir/bench_worker.ts", import.meta.url).href,
-      { type: "module" }
+      { type: "module" },
     );
     const promise = new Promise((resolve): void => {
       worker.onmessage = (e): void => {

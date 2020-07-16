@@ -7,6 +7,7 @@ use crate::doc::Location;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::flags::Flags;
+use crate::fmt_errors::JSError;
 use crate::global_state::GlobalState;
 use crate::module_graph::ModuleGraph;
 use crate::module_graph::ModuleGraphLoader;
@@ -165,10 +166,22 @@ impl Future for CompilerWorker {
   }
 }
 
-// TODO(bartlomieju): use JSONC parser from dprint instead of Regex
 lazy_static! {
+  // TODO(bartlomieju): use JSONC parser from dprint instead of Regex
   static ref CHECK_JS_RE: Regex =
     Regex::new(r#""checkJs"\s*?:\s*?true"#).unwrap();
+  static ref DENO_TYPES_RE: Regex =
+    Regex::new(r"^\s*@deno-types\s?=\s?(\S+)\s*(.*)\s*$").unwrap();
+  // These regexes were adapted from TypeScript
+  // https://github.com/microsoft/TypeScript/blob/87fd1827f2f2f3dafa76c14f13b9defc69481766/src/compiler/parser.ts#L8780-L8781
+  static ref XML_COMMENT_START_RE: Regex =
+    Regex::new(r"^/\s*<(\S+)\s.*?/>").unwrap();
+  static ref PATH_REFERENCE_RE: Regex =
+    Regex::new(r#"(\spath\s*=\s*)('|")(.+?)('|")"#).unwrap();
+  static ref TYPES_REFERENCE_RE: Regex =
+    Regex::new(r#"(\stypes\s*=\s*)('|")(.+?)('|")"#).unwrap();
+  static ref LIB_REFERENCE_RE: Regex =
+    Regex::new(r#"(\slib\s*=\s*)('|")(.+?)('|")"#).unwrap();
 }
 
 /// Create a new worker with snapshot of TS compiler and setup compiler's
@@ -1148,6 +1161,18 @@ async fn create_runtime_module_graph(
   Ok((root_names, module_graph_loader.get_graph()))
 }
 
+/// Because TS compiler can raise runtime error, we need to
+/// manually convert formatted JSError into and OpError.
+fn js_error_to_op_error(error: ErrBox) -> OpError {
+  match error.downcast::<JSError>() {
+    Ok(js_error) => {
+      let msg = format!("Error in TS compiler:\n{}", js_error);
+      OpError::other(msg)
+    }
+    Err(error) => error.into(),
+  }
+}
+
 /// This function is used by `Deno.compile()` API.
 pub async fn runtime_compile(
   global_state: GlobalState,
@@ -1181,7 +1206,9 @@ pub async fn runtime_compile(
 
   let compiler = global_state.ts_compiler.clone();
 
-  let msg = execute_in_same_thread(global_state, permissions, req_msg).await?;
+  let msg = execute_in_same_thread(global_state, permissions, req_msg)
+    .await
+    .map_err(js_error_to_op_error)?;
   let json_str = std::str::from_utf8(&msg).unwrap();
 
   let response: RuntimeCompileResponse = serde_json::from_str(json_str)?;
@@ -1227,7 +1254,9 @@ pub async fn runtime_bundle(
   .into_boxed_str()
   .into_boxed_bytes();
 
-  let msg = execute_in_same_thread(global_state, permissions, req_msg).await?;
+  let msg = execute_in_same_thread(global_state, permissions, req_msg)
+    .await
+    .map_err(js_error_to_op_error)?;
   let json_str = std::str::from_utf8(&msg).unwrap();
   let _response: RuntimeBundleResponse = serde_json::from_str(json_str)?;
   // We're returning `Ok()` instead of `Err()` because it's not runtime
@@ -1252,7 +1281,9 @@ pub async fn runtime_transpile(
   .into_boxed_str()
   .into_boxed_bytes();
 
-  let msg = execute_in_same_thread(global_state, permissions, req_msg).await?;
+  let msg = execute_in_same_thread(global_state, permissions, req_msg)
+    .await
+    .map_err(js_error_to_op_error)?;
   let json_str = std::str::from_utf8(&msg).unwrap();
   let v = serde_json::from_str::<serde_json::Value>(json_str)
     .expect("Error decoding JSON string.");
@@ -1478,54 +1509,37 @@ fn get_deno_types(parser: &AstParser, span: Span) -> Option<String> {
   parse_deno_types(&comment)
 }
 
-// TODO(bartlomieju): refactor
 fn parse_ts_reference(comment: &str) -> Option<(TsReferenceKind, String)> {
-  let (kind, specifier_in_quotes) = if comment.starts_with("/ <reference path=")
-  {
-    (
-      TsReferenceKind::Path,
-      comment.trim_start_matches("/ <reference path="),
-    )
-  } else if comment.starts_with("/ <reference lib=") {
-    (
-      TsReferenceKind::Lib,
-      comment.trim_start_matches("/ <reference lib="),
-    )
-  } else if comment.starts_with("/ <reference types=") {
-    (
-      TsReferenceKind::Types,
-      comment.trim_start_matches("/ <reference types="),
-    )
-  } else {
+  if !XML_COMMENT_START_RE.is_match(comment) {
     return None;
-  };
+  }
 
-  let specifier = specifier_in_quotes
-    .trim_end_matches("/>")
-    .trim_end()
-    .trim_start_matches('\"')
-    .trim_start_matches('\'')
-    .trim_end_matches('\"')
-    .trim_end_matches('\'')
-    .to_string();
+  let (kind, specifier) =
+    if let Some(capture_groups) = PATH_REFERENCE_RE.captures(comment) {
+      (TsReferenceKind::Path, capture_groups.get(3).unwrap())
+    } else if let Some(capture_groups) = TYPES_REFERENCE_RE.captures(comment) {
+      (TsReferenceKind::Types, capture_groups.get(3).unwrap())
+    } else if let Some(capture_groups) = LIB_REFERENCE_RE.captures(comment) {
+      (TsReferenceKind::Lib, capture_groups.get(3).unwrap())
+    } else {
+      return None;
+    };
 
-  Some((kind, specifier))
+  Some((kind, specifier.as_str().to_string()))
 }
 
 fn parse_deno_types(comment: &str) -> Option<String> {
-  if comment.starts_with("@deno-types") {
-    let split: Vec<String> =
-      comment.split('=').map(|s| s.to_string()).collect();
-    assert_eq!(split.len(), 2);
-    let specifier_in_quotes = split.get(1).unwrap().to_string();
-    let specifier = specifier_in_quotes
-      .trim()
-      .trim_start_matches('\"')
-      .trim_start_matches('\'')
-      .trim_end_matches('\"')
-      .trim_end_matches('\'')
-      .to_string();
-    return Some(specifier);
+  if let Some(capture_groups) = DENO_TYPES_RE.captures(comment) {
+    if let Some(specifier) = capture_groups.get(1) {
+      let s = specifier
+        .as_str()
+        .trim_start_matches('\"')
+        .trim_start_matches('\'')
+        .trim_end_matches('\"')
+        .trim_end_matches('\'')
+        .to_string();
+      return Some(s);
+    }
   }
 
   None
@@ -1548,6 +1562,10 @@ mod tests {
       Some("./a/b/c.d.ts".to_string())
     );
     assert_eq!(
+      parse_deno_types("@deno-types=\"./a/b/c.d.ts\""),
+      Some("./a/b/c.d.ts".to_string())
+    );
+    assert_eq!(
       parse_deno_types("@deno-types = https://dneo.land/x/some/package/a.d.ts"),
       Some("https://dneo.land/x/some/package/a.d.ts".to_string())
     );
@@ -1557,6 +1575,16 @@ mod tests {
     );
     assert!(parse_deno_types("asdf").is_none());
     assert!(parse_deno_types("// deno-types = fooo").is_none());
+    assert_eq!(
+      parse_deno_types("@deno-types=./a/b/c.d.ts some comment"),
+      Some("./a/b/c.d.ts".to_string())
+    );
+    assert_eq!(
+      parse_deno_types(
+        "@deno-types=./a/b/c.d.ts // some comment after slashes"
+      ),
+      Some("./a/b/c.d.ts".to_string())
+    );
   }
 
   #[test]

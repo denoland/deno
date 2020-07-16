@@ -30,10 +30,10 @@ export interface UnixConnectOptions {
 }
 
 export function listen(
-  options: ListenOptions & { transport?: "tcp" }
+  options: ListenOptions & { transport?: "tcp" },
 ): Listener;
 export function listen(
-  options: UnixListenOptions & { transport: "unix" }
+  options: UnixListenOptions & { transport: "unix" },
 ): Listener;
 export function listen(options: ListenOptions | UnixListenOptions): Listener {
   if (options.transport === "unix") {
@@ -45,13 +45,13 @@ export function listen(options: ListenOptions | UnixListenOptions): Listener {
 }
 
 export function listenDatagram(
-  options: ListenOptions & { transport: "udp" }
+  options: ListenOptions & { transport: "udp" },
 ): DatagramConn;
 export function listenDatagram(
-  options: UnixListenOptions & { transport: "unixpacket" }
+  options: UnixListenOptions & { transport: "unixpacket" },
 ): DatagramConn;
 export function listenDatagram(
-  options: ListenOptions | UnixListenOptions
+  options: ListenOptions | UnixListenOptions,
 ): DatagramConn {
   let res;
   if (options.transport === "unixpacket") {
@@ -68,7 +68,7 @@ export function listenDatagram(
 }
 
 export async function connect(
-  options: ConnectOptions | UnixConnectOptions
+  options: ConnectOptions | UnixConnectOptions,
 ): Promise<Conn> {
   if (options.transport === "unix") {
     const res = await netOps.connect(options);

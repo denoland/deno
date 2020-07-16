@@ -6,6 +6,7 @@ use crate::import_map::ImportMap;
 use crate::metrics::Metrics;
 use crate::op_error::OpError;
 use crate::ops::JsonOp;
+use crate::ops::JsonOpDispatcher;
 use crate::ops::MinimalOp;
 use crate::permissions::Permissions;
 use crate::tsc::TargetLib;
@@ -16,6 +17,7 @@ use deno_core::ModuleLoadId;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::Op;
+use deno_core::OpDispatcher;
 use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
 use futures::Future;
@@ -62,10 +64,7 @@ pub struct StateInner {
 }
 
 impl State {
-  pub fn stateful_json_op<D>(
-    &self,
-    dispatcher: D,
-  ) -> impl Fn(&mut deno_core::CoreIsolateState, &mut [ZeroCopyBuf]) -> Op
+  pub fn stateful_json_op<D>(&self, dispatcher: D) -> impl OpDispatcher
   where
     D: Fn(&State, Value, &mut [ZeroCopyBuf]) -> Result<JsonOp, OpError>,
   {
@@ -73,10 +72,7 @@ impl State {
     self.core_op(json_op(self.stateful_op(dispatcher)))
   }
 
-  pub fn stateful_json_op2<D>(
-    &self,
-    dispatcher: D,
-  ) -> impl Fn(&mut deno_core::CoreIsolateState, &mut [ZeroCopyBuf]) -> Op
+  pub fn stateful_json_op2<D>(&self, dispatcher: D) -> impl OpDispatcher
   where
     D: Fn(
       &mut deno_core::CoreIsolateState,
@@ -92,13 +88,7 @@ impl State {
   /// Wrap core `OpDispatcher` to collect metrics.
   // TODO(ry) this should be private. Is called by stateful_json_op or
   // stateful_minimal_op
-  pub fn core_op<D>(
-    &self,
-    dispatcher: D,
-  ) -> impl Fn(&mut deno_core::CoreIsolateState, &mut [ZeroCopyBuf]) -> Op
-  where
-    D: Fn(&mut deno_core::CoreIsolateState, &mut [ZeroCopyBuf]) -> Op,
-  {
+  pub fn core_op(&self, dispatcher: impl OpDispatcher) -> impl OpDispatcher {
     let state = self.clone();
 
     move |isolate_state: &mut deno_core::CoreIsolateState,
@@ -109,7 +99,7 @@ impl State {
       let bytes_sent_zero_copy =
         zero_copy[1..].iter().map(|b| b.len()).sum::<usize>() as u64;
 
-      let op = dispatcher(isolate_state, zero_copy);
+      let op = dispatcher.dispatch(isolate_state, zero_copy);
 
       match op {
         Op::Sync(buf) => {
@@ -152,10 +142,7 @@ impl State {
     }
   }
 
-  pub fn stateful_minimal_op2<D>(
-    &self,
-    dispatcher: D,
-  ) -> impl Fn(&mut deno_core::CoreIsolateState, &mut [ZeroCopyBuf]) -> Op
+  pub fn stateful_minimal_op2<D>(&self, dispatcher: D) -> impl OpDispatcher
   where
     D: Fn(
       &mut deno_core::CoreIsolateState,
@@ -182,14 +169,7 @@ impl State {
   /// NOTE: This only works with JSON dispatcher.
   /// This is a band-aid for transition to `CoreIsolate.register_op` API as most of our
   /// ops require `state` argument.
-  pub fn stateful_op<D>(
-    &self,
-    dispatcher: D,
-  ) -> impl Fn(
-    &mut deno_core::CoreIsolateState,
-    Value,
-    &mut [ZeroCopyBuf],
-  ) -> Result<JsonOp, OpError>
+  pub fn stateful_op<D>(&self, dispatcher: D) -> impl JsonOpDispatcher
   where
     D: Fn(&State, Value, &mut [ZeroCopyBuf]) -> Result<JsonOp, OpError>,
   {
@@ -200,14 +180,7 @@ impl State {
           -> Result<JsonOp, OpError> { dispatcher(&state, args, zero_copy) }
   }
 
-  pub fn stateful_op2<D>(
-    &self,
-    dispatcher: D,
-  ) -> impl Fn(
-    &mut deno_core::CoreIsolateState,
-    Value,
-    &mut [ZeroCopyBuf],
-  ) -> Result<JsonOp, OpError>
+  pub fn stateful_op2<D>(&self, dispatcher: D) -> impl JsonOpDispatcher
   where
     D: Fn(
       &mut deno_core::CoreIsolateState,

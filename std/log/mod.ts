@@ -60,7 +60,7 @@ export function getLogger(name?: string): Logger {
     const d = state.loggers.get("default");
     assert(
       d != null,
-      `"default" logger must be set for getting logger without name`
+      `"default" logger must be set for getting logger without name`,
     );
     return d;
   }

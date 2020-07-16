@@ -10,7 +10,7 @@ const hextable = new TextEncoder().encode("0123456789abcdef");
 export function errInvalidByte(byte: number): Error {
   return new Error(
     "encoding/hex: invalid byte: " +
-      new TextDecoder().decode(new Uint8Array([byte]))
+      new TextDecoder().decode(new Uint8Array([byte])),
   );
 }
 

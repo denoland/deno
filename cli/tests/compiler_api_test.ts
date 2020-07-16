@@ -43,7 +43,7 @@ Deno.test({
       {
         module: "amd",
         sourceMap: false,
-      }
+      },
     );
     assert(diagnostics == null);
     assert(actual);
@@ -63,7 +63,7 @@ Deno.test({
       },
       {
         lib: ["dom", "es2018", "deno.ns"],
-      }
+      },
     );
     assert(diagnostics == null);
     assert(actual);
@@ -81,7 +81,7 @@ Deno.test({
       },
       {
         types: ["./subdir/foo_types.d.ts"],
-      }
+      },
     );
     assert(diagnostics == null);
     assert(actual);
@@ -112,7 +112,7 @@ Deno.test({
       {
         sourceMap: false,
         module: "amd",
-      }
+      },
     );
     assert(actual);
     assertEquals(Object.keys(actual), ["foo.ts"]);
@@ -155,7 +155,7 @@ Deno.test({
       },
       {
         removeComments: true,
-      }
+      },
     );
     assert(diagnostics == null);
     assert(!actual.includes(`random`));
@@ -182,7 +182,7 @@ Deno.test({
       {
         "/foo.ts": `console.log("hello world!")\n`,
       },
-      { target: "es2015" }
+      { target: "es2015" },
     );
     assert(diagnostics == null);
     assert(actual.includes(`var __awaiter = `));

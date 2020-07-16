@@ -52,7 +52,7 @@ unitTest(
         keyFile: "./non/existent/file",
       });
     }, Deno.errors.NotFound);
-  }
+  },
 );
 
 unitTest({ perms: { net: true } }, function listenTLSNoReadPerm(): void {
@@ -90,7 +90,7 @@ unitTest(
         keyFile: keyFilename,
       });
     }, Error);
-  }
+  },
 );
 
 unitTest(
@@ -115,7 +115,7 @@ unitTest(
         certFile: certFilename,
       });
     }, Error);
-  }
+  },
 );
 
 unitTest(
@@ -133,7 +133,7 @@ unitTest(
     });
 
     const response = encoder.encode(
-      "HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\nHello World\n"
+      "HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\nHello World\n",
     );
 
     listener.accept().then(
@@ -146,7 +146,7 @@ unitTest(
           conn.close();
           resolvable.resolve();
         }, 0);
-      }
+      },
     );
 
     const conn = await Deno.connectTls({
@@ -179,7 +179,7 @@ unitTest(
     conn.close();
     listener.close();
     await resolvable;
-  }
+  },
 );
 
 unitTest(
@@ -230,5 +230,5 @@ unitTest(
     }
 
     conn.close();
-  }
+  },
 );

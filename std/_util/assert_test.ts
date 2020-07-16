@@ -24,7 +24,7 @@ Deno.test({
         assert(false, "Oops! Should be true");
       },
       DenoStdInternalError,
-      "Oops! Should be true"
+      "Oops! Should be true",
     );
   },
 });

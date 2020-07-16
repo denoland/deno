@@ -38,7 +38,7 @@ import * as path from "https://deno.land/std/path/mod.ts";
 Read reader`[like file]` chunk by chunk, splitting based on delimiter.
 
 ```ts title="readStringDelim"
-import { readLines } from "https://deno.land/std/io/mod.ts";
+import { readStringDelim } from "https://deno.land/std/io/mod.ts";
 import * as path from "https://deno.land/std/path/mod.ts";
 
 const filename = path.join(Deno.cwd(), "std/io/README.md");

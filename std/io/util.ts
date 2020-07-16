@@ -13,11 +13,11 @@ export async function tempFile(
   opts: {
     prefix?: string;
     postfix?: string;
-  } = { prefix: "", postfix: "" }
+  } = { prefix: "", postfix: "" },
 ): Promise<{ file: Deno.File; filepath: string }> {
   const r = Math.floor(Math.random() * 1000000);
   const filepath = path.resolve(
-    `${dir}/${opts.prefix || ""}${r}${opts.postfix || ""}`
+    `${dir}/${opts.prefix || ""}${r}${opts.postfix || ""}`,
   );
   await Deno.mkdir(path.dirname(filepath), { recursive: true });
   const file = await Deno.open(filepath, {

@@ -64,7 +64,7 @@ Deno.test("toReaderCheck", async function (): Promise<void> {
 
   assertEquals(
     expected,
-    readChunks.map((chunk) => decoder.decode(chunk))
+    readChunks.map((chunk) => decoder.decode(chunk)),
   );
 });
 
@@ -115,7 +115,7 @@ Deno.test("toReaderBigIrregularChunksCheck", async function (): Promise<void> {
     chunks
       .slice()
       .map((chunk) => [...chunk])
-      .flat()
+      .flat(),
   );
   const readableStream = new ReadableStream({
     pull(controller): void {

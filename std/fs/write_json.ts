@@ -12,7 +12,7 @@ export async function writeJson(
   filePath: string,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   object: any,
-  options: WriteJsonOptions = {}
+  options: WriteJsonOptions = {},
 ): Promise<void> {
   let contentRaw = "";
 
@@ -20,7 +20,7 @@ export async function writeJson(
     contentRaw = JSON.stringify(
       object,
       options.replacer as string[],
-      options.spaces
+      options.spaces,
     );
   } catch (err) {
     err.message = `${filePath}: ${err.message}`;
@@ -35,7 +35,7 @@ export function writeJsonSync(
   filePath: string,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   object: any,
-  options: WriteJsonOptions = {}
+  options: WriteJsonOptions = {},
 ): void {
   let contentRaw = "";
 
@@ -43,7 +43,7 @@ export function writeJsonSync(
     contentRaw = JSON.stringify(
       object,
       options.replacer as string[],
-      options.spaces
+      options.spaces,
     );
   } catch (err) {
     err.message = `${filePath}: ${err.message}`;

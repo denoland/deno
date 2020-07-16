@@ -37,7 +37,7 @@ unitTest(
     Deno.renameSync(oldpath, newpath);
     assertDirectory(newpath);
     assertMissing(oldpath);
-  }
+  },
 );
 
 unitTest(
@@ -48,7 +48,7 @@ unitTest(
       const newpath = "/newbaddir";
       Deno.renameSync(oldpath, newpath);
     }, Deno.errors.PermissionDenied);
-  }
+  },
 );
 
 unitTest(
@@ -59,7 +59,7 @@ unitTest(
       const newpath = "/newbaddir";
       Deno.renameSync(oldpath, newpath);
     }, Deno.errors.PermissionDenied);
-  }
+  },
 );
 
 unitTest(
@@ -72,7 +72,7 @@ unitTest(
     await Deno.rename(oldpath, newpath);
     assertDirectory(newpath);
     assertMissing(oldpath);
-  }
+  },
 );
 
 function readFileString(filename: string): string {
@@ -107,21 +107,21 @@ unitTest(
         Deno.renameSync(oldfile, emptydir);
       },
       Error,
-      "Is a directory"
+      "Is a directory",
     );
     assertThrows(
       (): void => {
         Deno.renameSync(olddir, fulldir);
       },
       Error,
-      "Directory not empty"
+      "Directory not empty",
     );
     assertThrows(
       (): void => {
         Deno.renameSync(olddir, file);
       },
       Error,
-      "Not a directory"
+      "Not a directory",
     );
 
     const fileLink = testDir + "/fileLink";
@@ -136,21 +136,21 @@ unitTest(
         Deno.renameSync(olddir, fileLink);
       },
       Error,
-      "Not a directory"
+      "Not a directory",
     );
     assertThrows(
       (): void => {
         Deno.renameSync(olddir, dirLink);
       },
       Error,
-      "Not a directory"
+      "Not a directory",
     );
     assertThrows(
       (): void => {
         Deno.renameSync(olddir, danglingLink);
       },
       Error,
-      "Not a directory"
+      "Not a directory",
     );
 
     // should succeed on Unix
@@ -159,7 +159,7 @@ unitTest(
     Deno.renameSync(dirLink, danglingLink);
     assertFile(danglingLink);
     assertEquals("Hello", readFileString(danglingLink));
-  }
+  },
 );
 
 unitTest(
@@ -182,25 +182,25 @@ unitTest(
         Deno.renameSync(oldfile, emptydir);
       },
       Deno.errors.PermissionDenied,
-      "Access is denied"
+      "Access is denied",
     );
     assertThrows(
       (): void => {
         Deno.renameSync(olddir, fulldir);
       },
       Deno.errors.PermissionDenied,
-      "Access is denied"
+      "Access is denied",
     );
     assertThrows(
       (): void => {
         Deno.renameSync(olddir, emptydir);
       },
       Deno.errors.PermissionDenied,
-      "Access is denied"
+      "Access is denied",
     );
 
     // should succeed on Windows
     Deno.renameSync(olddir, file);
     assertDirectory(file);
-  }
+  },
 );

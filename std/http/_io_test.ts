@@ -23,7 +23,7 @@ Deno.test("bodyReader", async () => {
   const text = "Hello, Deno";
   const r = bodyReader(
     text.length,
-    new BufReader(new Deno.Buffer(encode(text)))
+    new BufReader(new Deno.Buffer(encode(text))),
   );
   assertEquals(decode(await Deno.readAll(r)), text);
 });
@@ -108,14 +108,14 @@ Deno.test(
         async () => {
           await readTrailers(
             h,
-            new BufReader(new Deno.Buffer(encode(trailer)))
+            new BufReader(new Deno.Buffer(encode(trailer))),
           );
         },
         Deno.errors.InvalidData,
-        `Undeclared trailers: [ "`
+        `Undeclared trailers: [ "`,
       );
     }
-  }
+  },
 );
 
 Deno.test(
@@ -130,10 +130,10 @@ Deno.test(
           await readTrailers(h, new BufReader(new Deno.Buffer()));
         },
         Deno.errors.InvalidData,
-        `Prohibited trailer names: [ "`
+        `Prohibited trailer names: [ "`,
       );
     }
-  }
+  },
 );
 
 Deno.test("writeTrailer", async () => {
@@ -141,11 +141,11 @@ Deno.test("writeTrailer", async () => {
   await writeTrailers(
     w,
     new Headers({ "transfer-encoding": "chunked", trailer: "deno,node" }),
-    new Headers({ deno: "land", node: "js" })
+    new Headers({ deno: "land", node: "js" }),
   );
   assertEquals(
     new TextDecoder().decode(w.bytes()),
-    "deno: land\r\nnode: js\r\n\r\n"
+    "deno: land\r\nnode: js\r\n\r\n",
   );
 });
 
@@ -156,14 +156,14 @@ Deno.test("writeTrailer should throw", async () => {
       return writeTrailers(w, new Headers(), new Headers());
     },
     TypeError,
-    "Missing trailer header."
+    "Missing trailer header.",
   );
   await assertThrowsAsync(
     () => {
       return writeTrailers(w, new Headers({ trailer: "deno" }), new Headers());
     },
     TypeError,
-    `Trailers are only allowed for "transfer-encoding: chunked", got "transfer-encoding: null".`
+    `Trailers are only allowed for "transfer-encoding: chunked", got "transfer-encoding: null".`,
   );
   for (const f of ["content-length", "trailer", "transfer-encoding"]) {
     await assertThrowsAsync(
@@ -171,11 +171,11 @@ Deno.test("writeTrailer should throw", async () => {
         return writeTrailers(
           w,
           new Headers({ "transfer-encoding": "chunked", trailer: f }),
-          new Headers({ [f]: "1" })
+          new Headers({ [f]: "1" }),
         );
       },
       TypeError,
-      `Prohibited trailer names: [ "`
+      `Prohibited trailer names: [ "`,
     );
   }
   await assertThrowsAsync(
@@ -183,11 +183,11 @@ Deno.test("writeTrailer should throw", async () => {
       return writeTrailers(
         w,
         new Headers({ "transfer-encoding": "chunked", trailer: "deno" }),
-        new Headers({ node: "js" })
+        new Headers({ node: "js" }),
       );
     },
     TypeError,
-    `Undeclared trailers: [ "node" ].`
+    `Undeclared trailers: [ "node" ].`,
   );
 });
 
@@ -419,20 +419,17 @@ Deno.test("testReadRequestError", async function (): Promise<void> {
     // deduplicated if same or reject otherwise
     // See Issue 16490.
     {
-      in:
-        "POST / HTTP/1.1\r\nContent-Length: 10\r\nContent-Length: 0\r\n\r\n" +
+      in: "POST / HTTP/1.1\r\nContent-Length: 10\r\nContent-Length: 0\r\n\r\n" +
         "Gopher hey\r\n",
       err: "cannot contain multiple Content-Length headers",
     },
     {
-      in:
-        "POST / HTTP/1.1\r\nContent-Length: 10\r\nContent-Length: 6\r\n\r\n" +
+      in: "POST / HTTP/1.1\r\nContent-Length: 10\r\nContent-Length: 6\r\n\r\n" +
         "Gopher\r\n",
       err: "cannot contain multiple Content-Length headers",
     },
     {
-      in:
-        "PUT / HTTP/1.1\r\nContent-Length: 6 \r\nContent-Length: 6\r\n" +
+      in: "PUT / HTTP/1.1\r\nContent-Length: 6 \r\nContent-Length: 6\r\n" +
         "Content-Length:6\r\n\r\nGopher\r\n",
       headers: [{ key: "Content-Length", value: "6" }],
     },
@@ -451,8 +448,7 @@ Deno.test("testReadRequestError", async function (): Promise<void> {
       headers: [{ key: "Content-Length", value: "0" }],
     },
     {
-      in:
-        "POST / HTTP/1.1\r\nContent-Length:0\r\ntransfer-encoding: " +
+      in: "POST / HTTP/1.1\r\nContent-Length:0\r\ntransfer-encoding: " +
         "chunked\r\n\r\n",
       headers: [],
       err: "http: Transfer-Encoding and Content-Length cannot be send together",

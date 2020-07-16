@@ -26,7 +26,7 @@ export function parse(content: string, options?: ParseOptions): unknown {
 export function parseAll(
   content: string,
   iterator?: CbFunction,
-  options?: ParseOptions
+  options?: ParseOptions,
 ): unknown {
   return loadAll(content, iterator, options);
 }

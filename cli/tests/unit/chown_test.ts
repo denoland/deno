@@ -33,7 +33,7 @@ unitTest(
     } catch (e) {
       assert(e instanceof Deno.errors.PermissionDenied);
     }
-  }
+  },
 );
 
 unitTest(
@@ -47,7 +47,7 @@ unitTest(
     } catch (e) {
       assert(e instanceof Deno.errors.NotFound);
     }
-  }
+  },
 );
 
 unitTest(
@@ -61,7 +61,7 @@ unitTest(
     } catch (e) {
       assert(e instanceof Deno.errors.NotFound);
     }
-  }
+  },
 );
 
 unitTest(
@@ -78,7 +78,7 @@ unitTest(
       assert(e instanceof Deno.errors.PermissionDenied);
     }
     Deno.removeSync(dirPath, { recursive: true });
-  }
+  },
 );
 
 unitTest(
@@ -95,7 +95,7 @@ unitTest(
       assert(e instanceof Deno.errors.PermissionDenied);
     }
     await Deno.remove(dirPath, { recursive: true });
-  }
+  },
 );
 
 unitTest(
@@ -115,7 +115,7 @@ unitTest(
     Deno.chownSync(filePath, uid, gid);
 
     Deno.removeSync(dirPath, { recursive: true });
-  }
+  },
 );
 
 unitTest(
@@ -127,7 +127,7 @@ unitTest(
     Deno.writeTextFileSync(fileUrl, "Hello");
     Deno.chownSync(fileUrl, uid, gid);
     Deno.removeSync(dirPath, { recursive: true });
-  }
+  },
 );
 
 unitTest(
@@ -139,7 +139,7 @@ unitTest(
     await Deno.writeTextFile(filePath, "Hello");
     await Deno.chown(filePath, uid, gid);
     Deno.removeSync(dirPath, { recursive: true });
-  }
+  },
 );
 
 unitTest(
@@ -151,7 +151,7 @@ unitTest(
     await Deno.writeTextFile(filePath, "Foo");
     await Deno.chown(filePath, uid, null);
     Deno.removeSync(dirPath, { recursive: true });
-  }
+  },
 );
 
 unitTest(
@@ -171,5 +171,5 @@ unitTest(
     await Deno.chown(fileUrl, uid, gid);
 
     Deno.removeSync(dirPath, { recursive: true });
-  }
+  },
 );

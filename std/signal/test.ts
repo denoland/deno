@@ -12,7 +12,7 @@ Deno.test({
         (signal as any)();
       },
       Error,
-      "No signals are given. You need to specify at least one signal to create a signal stream."
+      "No signals are given. You need to specify at least one signal to create a signal stream.",
     );
   },
 });
@@ -28,7 +28,7 @@ Deno.test({
     const sig = signal(
       Deno.Signal.SIGUSR1,
       Deno.Signal.SIGUSR2,
-      Deno.Signal.SIGINT
+      Deno.Signal.SIGINT,
     );
 
     setTimeout(async () => {

@@ -11,14 +11,14 @@ export function getRandomValues<
     | Int16Array
     | Uint16Array
     | Int32Array
-    | Uint32Array
+    | Uint32Array,
 >(typedArray: T): T {
   assert(typedArray !== null, "Input must not be null");
   assert(typedArray.length <= 65536, "Input must not be longer than 65536");
   const ui8 = new Uint8Array(
     typedArray.buffer,
     typedArray.byteOffset,
-    typedArray.byteLength
+    typedArray.byteLength,
   );
   sendSync("op_get_random_values", {}, ui8);
   return typedArray;

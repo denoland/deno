@@ -11,7 +11,7 @@ export function chown(
   path: string | URL,
   uid: number,
   gid: number,
-  callback: CallbackWithError
+  callback: CallbackWithError,
 ): void {
   path = path instanceof URL ? fromFileUrl(path) : path;
 

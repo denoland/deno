@@ -8,11 +8,11 @@ unitTest(
   function pathFromURLPosix(): void {
     assertEquals(
       pathFromURL(new URL("file:///test/directory")),
-      "/test/directory"
+      "/test/directory",
     );
     assertEquals(pathFromURL(new URL("file:///space_ .txt")), "/space_ .txt");
     assertThrows(() => pathFromURL(new URL("https://deno.land/welcome.ts")));
-  }
+  },
 );
 
 unitTest(
@@ -20,11 +20,11 @@ unitTest(
   function pathFromURLWin32(): void {
     assertEquals(
       pathFromURL(new URL("file:///c:/windows/test")),
-      "c:\\windows\\test"
+      "c:\\windows\\test",
     );
     assertEquals(
       pathFromURL(new URL("file:///c:/space_ .txt")),
-      "c:\\space_ .txt"
+      "c:\\space_ .txt",
     );
     assertThrows(() => pathFromURL(new URL("https://deno.land/welcome.ts")));
     /* TODO(ry) Add tests for these situations
@@ -35,5 +35,5 @@ unitTest(
      * pound_#.txt                    file:///D:/weird_names/pound_%23.txt
      * swapped_surrogate_pair_��.txt  file:///D:/weird_names/swapped_surrogate_pair_%EF%BF%BD%EF%BF%BD.txt
      */
-  }
+  },
 );

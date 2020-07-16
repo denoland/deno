@@ -11,7 +11,7 @@ Deno.test({
         "file://deno/std/path/mod.ts",
         "file://deno/cli/js/main.ts",
       ],
-      "/"
+      "/",
     );
     assertEquals(actual, "file://deno/");
   },
@@ -22,7 +22,7 @@ Deno.test({
   fn() {
     const actual = common(
       ["file://deno/cli/js/deno.ts", "https://deno.land/std/path/mod.ts"],
-      "/"
+      "/",
     );
     assertEquals(actual, "");
   },
@@ -37,7 +37,7 @@ Deno.test({
         "c:\\deno\\std\\path\\mod.ts",
         "c:\\deno\\cli\\js\\main.ts",
       ],
-      "\\"
+      "\\",
     );
     assertEquals(actual, "c:\\deno\\");
   },

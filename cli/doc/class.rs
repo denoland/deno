@@ -1,5 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use crate::swc_common::SourceMap;
+use crate::colors;
+use crate::doc::display::{
+  display_abstract, display_accessibility, display_async, display_generator,
+  display_method, display_optional, display_readonly, display_static,
+  SliceDisplayer,
+};
 use crate::swc_common::Spanned;
 use crate::swc_ecma_ast;
 use serde::Serialize;
@@ -7,17 +12,20 @@ use serde::Serialize;
 use super::function::function_to_function_def;
 use super::function::FunctionDef;
 use super::interface::expr_to_name;
-use super::params::assign_pat_to_param_def;
-use super::params::ident_to_param_def;
-use super::params::pat_to_param_def;
+use super::params::{
+  assign_pat_to_param_def, ident_to_param_def, pat_to_param_def,
+  prop_name_to_string, ts_fn_param_to_param_def,
+};
 use super::parser::DocParser;
-use super::ts_type::ts_entity_name_to_name;
-use super::ts_type::ts_type_ann_to_def;
-use super::ts_type::TsTypeDef;
+use super::ts_type::{
+  maybe_type_param_instantiation_to_type_defs, ts_type_ann_to_def, TsTypeDef,
+};
 use super::ts_type_param::maybe_type_param_decl_to_type_param_defs;
 use super::ts_type_param::TsTypeParamDef;
 use super::Location;
 use super::ParamDef;
+
+use std::fmt::{Display, Formatter, Result as FmtResult};
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -27,6 +35,18 @@ pub struct ClassConstructorDef {
   pub name: String,
   pub params: Vec<ParamDef>,
   pub location: Location,
+}
+
+impl Display for ClassConstructorDef {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+    write!(
+      f,
+      "{}{}({})",
+      display_accessibility(self.accessibility),
+      colors::magenta("constructor"),
+      SliceDisplayer::new(&self.params, ", ", false),
+    )
+  }
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -43,6 +63,48 @@ pub struct ClassPropertyDef {
   pub location: Location,
 }
 
+impl Display for ClassPropertyDef {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+    write!(
+      f,
+      "{}{}{}{}{}{}",
+      display_abstract(self.is_abstract),
+      display_accessibility(self.accessibility),
+      display_static(self.is_static),
+      display_readonly(self.readonly),
+      colors::bold(&self.name),
+      display_optional(self.optional),
+    )?;
+    if let Some(ts_type) = &self.ts_type {
+      write!(f, ": {}", ts_type)?;
+    }
+    Ok(())
+  }
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ClassIndexSignatureDef {
+  pub readonly: bool,
+  pub params: Vec<ParamDef>,
+  pub ts_type: Option<TsTypeDef>,
+}
+
+impl Display for ClassIndexSignatureDef {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+    write!(
+      f,
+      "{}[{}]",
+      display_readonly(self.readonly),
+      SliceDisplayer::new(&self.params, ", ", false)
+    )?;
+    if let Some(ts_type) = &self.ts_type {
+      write!(f, ": {}", ts_type)?;
+    }
+    Ok(())
+  }
+}
+
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ClassMethodDef {
@@ -57,32 +119,41 @@ pub struct ClassMethodDef {
   pub location: Location,
 }
 
+impl Display for ClassMethodDef {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+    write!(
+      f,
+      "{}{}{}{}{}{}{}{}({})",
+      display_abstract(self.is_abstract),
+      display_accessibility(self.accessibility),
+      display_static(self.is_static),
+      display_async(self.function_def.is_async),
+      display_method(self.kind),
+      display_generator(self.function_def.is_generator),
+      colors::bold(&self.name),
+      display_optional(self.optional),
+      SliceDisplayer::new(&self.function_def.params, ", ", false),
+    )?;
+    if let Some(return_type) = &self.function_def.return_type {
+      write!(f, ": {}", return_type)?;
+    }
+    Ok(())
+  }
+}
+
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ClassDef {
-  // TODO(bartlomieju): decorators, super_type_params
+  // TODO(bartlomieju): decorators
   pub is_abstract: bool,
   pub constructors: Vec<ClassConstructorDef>,
   pub properties: Vec<ClassPropertyDef>,
+  pub index_signatures: Vec<ClassIndexSignatureDef>,
   pub methods: Vec<ClassMethodDef>,
   pub extends: Option<String>,
-  pub implements: Vec<String>,
+  pub implements: Vec<TsTypeDef>,
   pub type_params: Vec<TsTypeParamDef>,
-}
-
-fn prop_name_to_string(
-  source_map: &SourceMap,
-  prop_name: &swc_ecma_ast::PropName,
-) -> String {
-  use crate::swc_ecma_ast::PropName;
-  match prop_name {
-    PropName::Ident(ident) => ident.sym.to_string(),
-    PropName::Str(str_) => str_.value.to_string(),
-    PropName::Num(num) => num.value.to_string(),
-    PropName::Computed(comp_prop_name) => {
-      source_map.span_to_snippet(comp_prop_name.span).unwrap()
-    }
-  }
+  pub super_type_params: Vec<TsTypeDef>,
 }
 
 pub fn class_to_class_def(
@@ -92,6 +163,7 @@ pub fn class_to_class_def(
   let mut constructors = vec![];
   let mut methods = vec![];
   let mut properties = vec![];
+  let mut index_signatures = vec![];
 
   let extends: Option<String> = match &class.super_class {
     Some(boxed) => {
@@ -105,11 +177,11 @@ pub fn class_to_class_def(
     None => None,
   };
 
-  let implements: Vec<String> = class
+  let implements = class
     .implements
     .iter()
-    .map(|expr| ts_entity_name_to_name(&expr.expr))
-    .collect();
+    .map(|expr| expr.into())
+    .collect::<Vec<TsTypeDef>>();
 
   for member in &class.body {
     use crate::swc_ecma_ast::ClassMember::*;
@@ -117,8 +189,10 @@ pub fn class_to_class_def(
     match member {
       Constructor(ctor) => {
         let ctor_js_doc = doc_parser.js_doc_for_span(ctor.span());
-        let constructor_name =
-          prop_name_to_string(&doc_parser.ast_parser.source_map, &ctor.key);
+        let constructor_name = prop_name_to_string(
+          &ctor.key,
+          Some(&doc_parser.ast_parser.source_map),
+        );
 
         let mut params = vec![];
 
@@ -126,14 +200,23 @@ pub fn class_to_class_def(
           use crate::swc_ecma_ast::ParamOrTsParamProp::*;
 
           let param_def = match param {
-            Param(param) => pat_to_param_def(&param.pat),
+            Param(param) => pat_to_param_def(
+              &param.pat,
+              Some(&doc_parser.ast_parser.source_map),
+            ),
             TsParamProp(ts_param_prop) => {
               use swc_ecma_ast::TsParamPropParam;
 
               match &ts_param_prop.param {
-                TsParamPropParam::Ident(ident) => ident_to_param_def(ident),
+                TsParamPropParam::Ident(ident) => ident_to_param_def(
+                  ident,
+                  Some(&doc_parser.ast_parser.source_map),
+                ),
                 TsParamPropParam::Assign(assign_pat) => {
-                  assign_pat_to_param_def(assign_pat)
+                  assign_pat_to_param_def(
+                    assign_pat,
+                    Some(&doc_parser.ast_parser.source_map),
+                  )
                 }
               }
             }
@@ -153,10 +236,11 @@ pub fn class_to_class_def(
       Method(class_method) => {
         let method_js_doc = doc_parser.js_doc_for_span(class_method.span());
         let method_name = prop_name_to_string(
-          &doc_parser.ast_parser.source_map,
           &class_method.key,
+          Some(&doc_parser.ast_parser.source_map),
         );
-        let fn_def = function_to_function_def(&class_method.function);
+        let fn_def =
+          function_to_function_def(&doc_parser, &class_method.function);
         let method_def = ClassMethodDef {
           js_doc: method_js_doc,
           accessibility: class_method.accessibility,
@@ -199,8 +283,26 @@ pub fn class_to_class_def(
         };
         properties.push(prop_def);
       }
+      TsIndexSignature(ts_index_sig) => {
+        let mut params = vec![];
+        for param in &ts_index_sig.params {
+          let param_def = ts_fn_param_to_param_def(param, None);
+          params.push(param_def);
+        }
+
+        let ts_type = ts_index_sig
+          .type_ann
+          .as_ref()
+          .map(|rt| (&*rt.type_ann).into());
+
+        let index_sig_def = ClassIndexSignatureDef {
+          readonly: ts_index_sig.readonly,
+          params,
+          ts_type,
+        };
+        index_signatures.push(index_sig_def);
+      }
       // TODO(bartlomieju):
-      TsIndexSignature(_) => {}
       PrivateMethod(_) => {}
       PrivateProp(_) => {}
       _ => {}
@@ -210,14 +312,20 @@ pub fn class_to_class_def(
   let type_params =
     maybe_type_param_decl_to_type_param_defs(class.type_params.as_ref());
 
+  let super_type_params = maybe_type_param_instantiation_to_type_defs(
+    class.super_type_params.as_ref(),
+  );
+
   ClassDef {
     is_abstract: class.is_abstract,
     extends,
     implements,
     constructors,
     properties,
+    index_signatures,
     methods,
     type_params,
+    super_type_params,
   }
 }
 

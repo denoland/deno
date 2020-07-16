@@ -16,7 +16,7 @@ class FormDataBase {
   append(
     name: string,
     value: string | blob.DenoBlob | domFile.DomFileImpl,
-    filename?: string
+    filename?: string,
   ): void {
     requiredArguments("FormData.append", arguments.length, 2);
     name = String(name);
@@ -82,7 +82,7 @@ class FormDataBase {
   set(
     name: string,
     value: string | blob.DenoBlob | domFile.DomFileImpl,
-    filename?: string
+    filename?: string,
   ): void {
     requiredArguments("FormData.set", arguments.length, 2);
     name = String(name);
@@ -102,7 +102,7 @@ class FormDataBase {
               filename || "blob",
               {
                 type: value.type,
-              }
+              },
             );
           } else {
             this[dataSymbol][i][1] = String(value);

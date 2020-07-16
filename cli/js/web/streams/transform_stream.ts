@@ -29,7 +29,7 @@ export class TransformStreamImpl<I = any, O = any>
   constructor(
     transformer: Transformer<I, O> = {},
     writableStrategy: QueuingStrategy<I> = {},
-    readableStrategy: QueuingStrategy<O> = {}
+    readableStrategy: QueuingStrategy<O> = {},
   ) {
     const writableSizeFunction = writableStrategy.size;
     let writableHighWaterMark = writableStrategy.highWaterMark;
@@ -38,36 +38,36 @@ export class TransformStreamImpl<I = any, O = any>
     const writableType = transformer.writableType;
     if (writableType !== undefined) {
       throw new RangeError(
-        `Expected transformer writableType to be undefined, received "${String(
-          writableType
-        )}"`
+        `Expected transformer writableType to be undefined, received "${
+          String(writableType)
+        }"`,
       );
     }
     const writableSizeAlgorithm = makeSizeAlgorithmFromSizeFunction(
-      writableSizeFunction
+      writableSizeFunction,
     );
     if (writableHighWaterMark === undefined) {
       writableHighWaterMark = 1;
     }
     writableHighWaterMark = validateAndNormalizeHighWaterMark(
-      writableHighWaterMark
+      writableHighWaterMark,
     );
     const readableType = transformer.readableType;
     if (readableType !== undefined) {
       throw new RangeError(
-        `Expected transformer readableType to be undefined, received "${String(
-          readableType
-        )}"`
+        `Expected transformer readableType to be undefined, received "${
+          String(readableType)
+        }"`,
       );
     }
     const readableSizeAlgorithm = makeSizeAlgorithmFromSizeFunction(
-      readableSizeFunction
+      readableSizeFunction,
     );
     if (readableHighWaterMark === undefined) {
       readableHighWaterMark = 1;
     }
     readableHighWaterMark = validateAndNormalizeHighWaterMark(
-      readableHighWaterMark
+      readableHighWaterMark,
     );
     const startPromise = getDeferred<void>();
     initializeTransformStream(
@@ -76,7 +76,7 @@ export class TransformStreamImpl<I = any, O = any>
       writableHighWaterMark,
       writableSizeAlgorithm,
       readableHighWaterMark,
-      readableSizeAlgorithm
+      readableSizeAlgorithm,
     );
     // the brand check expects this, and the brand check occurs in the following
     // but the property hasn't been defined.
@@ -89,7 +89,7 @@ export class TransformStreamImpl<I = any, O = any>
     const startResult: void | PromiseLike<void> = invokeOrNoop(
       transformer,
       "start",
-      this[sym.transformStreamController]
+      this[sym.transformStreamController],
     );
     startPromise.resolve(startResult);
   }
@@ -109,9 +109,9 @@ export class TransformStreamImpl<I = any, O = any>
   }
 
   [customInspect](): string {
-    return `${this.constructor.name} {\n  readable: ${inspect(
-      this.readable
-    )}\n  writable: ${inspect(this.writable)}\n}`;
+    return `${this.constructor.name} {\n  readable: ${
+      inspect(this.readable)
+    }\n  writable: ${inspect(this.writable)}\n}`;
   }
 }
 

@@ -32,7 +32,7 @@ export function mkdirSync(path: string, options?: MkdirOptions): void {
 
 export async function mkdir(
   path: string,
-  options?: MkdirOptions
+  options?: MkdirOptions,
 ): Promise<void> {
   await sendAsync("op_mkdir", mkdirArgs(path, options));
 }
