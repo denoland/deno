@@ -28,9 +28,19 @@ use url::Url;
 #[derive(Debug, Clone)]
 pub struct SourceCode {
   bytes: Vec<u8>,
+  charset: String,
 }
 
 impl SourceCode {
+  pub fn new(bytes: Vec<u8>, charset: Option<String>) -> SourceCode {
+    let charset = match charset {
+      Some(value) => value,
+      None => text_encoding::detect_charset(&bytes).to_owned(),
+    };
+
+    SourceCode { bytes, charset }
+  }
+
   pub fn as_bytes(&self) -> &Vec<u8> {
     &self.bytes
   }
@@ -38,11 +48,15 @@ impl SourceCode {
   pub fn into_bytes(self) -> Vec<u8> {
     self.bytes
   }
+
+  pub fn to_utf8(&self) -> Result<String, std::io::Error> {
+    text_encoding::to_utf8(&self.bytes, &self.charset)
+  }
 }
 
 impl From<Vec<u8>> for SourceCode {
   fn from(bytes: Vec<u8>) -> Self {
-    SourceCode { bytes }
+    SourceCode::new(bytes, None)
   }
 }
 
@@ -57,18 +71,6 @@ pub struct SourceFile {
   pub types_header: Option<String>,
   pub media_type: msg::MediaType,
   pub source_code: SourceCode,
-  pub charset: Option<String>,
-}
-
-impl SourceFile {
-  pub fn source_code_utf8(&self) -> Result<String, std::io::Error> {
-    let charset = match &self.charset {
-      Some(charset) => charset,
-      None => text_encoding::detect_charset(self.source_code.as_bytes()),
-    };
-
-    text_encoding::to_utf8(self.source_code.as_bytes(), charset)
-  }
 }
 
 /// Simple struct implementing in-process caching to prevent multiple
@@ -216,7 +218,7 @@ impl SourceFileFetcher {
         // TODO: move somewhere?
         if file.source_code.bytes.starts_with(b"#!") {
           file.source_code =
-            filter_shebang(&file.source_code_utf8().unwrap()[..]).into();
+            filter_shebang(&file.source_code.to_utf8().unwrap()[..]).into();
         }
 
         // Cache in-process for subsequent access.
@@ -353,9 +355,8 @@ impl SourceFileFetcher {
       url: module_url.clone(),
       filename: filepath,
       media_type,
-      source_code: source_code.into(),
+      source_code: SourceCode::new(source_code, charset),
       types_header: None,
-      charset,
     })
   }
 
@@ -425,9 +426,8 @@ impl SourceFileFetcher {
       url: module_url.clone(),
       filename: cache_filename,
       media_type,
-      source_code: source_code.into(),
+      source_code: SourceCode::new(source_code, charset),
       types_header,
-      charset,
     }))
   }
 
@@ -539,9 +539,8 @@ impl SourceFileFetcher {
             url: module_url.clone(),
             filename: cache_filepath,
             media_type,
-            source_code: source.into(),
+            source_code: SourceCode::new(source, charset),
             types_header,
-            charset,
           };
 
           Ok(source_file)
@@ -1589,7 +1588,7 @@ mod tests {
       .await;
     assert!(r.is_ok());
     let fetched_file = r.unwrap();
-    let source_code = fetched_file.source_code_utf8();
+    let source_code = fetched_file.source_code.to_utf8();
     assert!(source_code.is_ok());
     let actual = source_code.unwrap();
     assert_eq!(expected_content, actual);
