@@ -256,12 +256,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4785bdd1c96b2a846b2bd7cc02e86b6b3dbf14e7e53446c4f54c92a361040822"
 
 [[package]]
-name = "chardet"
-version = "0.2.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1a48563284b67c003ba0fb7243c87fab68885e1532c605704228a80238512e31"
-
-[[package]]
 name = "clap"
 version = "2.33.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -389,7 +383,6 @@ dependencies = [
  "base64 0.12.3",
  "byteorder",
  "bytes 0.5.5",
- "chardet",
  "clap",
  "deno_core",
  "deno_lint",
