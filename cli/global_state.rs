@@ -244,6 +244,15 @@ impl GlobalState {
           if out.media_type == MediaType::TypeScript
             && out.url.to_string().ends_with(".d.ts")
           {
+            info!(
+              "{} {}",
+              crate::colors::yellow("Warning"),
+              format!(
+                "Compiled source file for \"{}\" was not found, using empty source instead.\n\
+                Declaration files are not emitted during type checking, prefer to use \"import type\" or \"export type\" syntax instead.", 
+                out.url.to_string()
+              )
+            );
             Ok(CompiledModule {
               code: "".to_string(),
               name: out.url.to_string(),
