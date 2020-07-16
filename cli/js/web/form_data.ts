@@ -10,11 +10,10 @@ class FormDataBase {
   [dataSymbol]: Array<[string, FormDataEntryValue]> = [];
 
   append(name: string, value: string): void;
-  append(name: string, value: domFile.DomFileImpl): void;
   append(name: string, value: blob.DenoBlob, filename?: string): void;
   append(
     name: string,
-    value: string | blob.DenoBlob | domFile.DomFileImpl,
+    value: string | blob.DenoBlob,
     filename?: string
   ): void {
     requiredArguments("FormData.append", arguments.length, 2);
@@ -76,11 +75,10 @@ class FormDataBase {
   }
 
   set(name: string, value: string): void;
-  set(name: string, value: domFile.DomFileImpl): void;
   set(name: string, value: blob.DenoBlob, filename?: string): void;
   set(
     name: string,
-    value: string | blob.DenoBlob | domFile.DomFileImpl,
+    value: string | blob.DenoBlob,
     filename?: string
   ): void {
     requiredArguments("FormData.set", arguments.length, 2);
