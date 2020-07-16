@@ -1355,7 +1355,7 @@ declare class Worker extends EventTarget {
          */
         importMap?: string;
       };
-    }
+    },
   );
   postMessage(message: any, transfer: ArrayBuffer[]): void;
   postMessage(message: any, options?: PostMessageOptions): void;

@@ -277,7 +277,7 @@ Deno.test({
     );
     const denoWorker = new Worker(
       new URL("subdir/deno_worker.ts", import.meta.url).href,
-      { type: "module", deno: { namespace: true } }
+      { type: "module", deno: { namespace: true } },
     );
 
     regularWorker.onmessage = (e): void => {
@@ -328,7 +328,7 @@ Deno.test({
         deno: {
           importMap: "subdir/test_import_map.json",
         },
-      }
+      },
     );
     w.onmessage = (e): void => {
       assertEquals(e.data, "hello world");

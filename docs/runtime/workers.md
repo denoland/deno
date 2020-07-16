@@ -82,7 +82,8 @@ hello world
 
 By default the `Deno` namespace is not available in worker scope.
 
-To add the `Deno` namespace pass `deno: {namespace: true}` option when creating new worker:
+To add the `Deno` namespace pass `deno: {namespace: true}` option when creating
+new worker:
 
 **main.js**
 
