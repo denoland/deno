@@ -30,10 +30,25 @@ pub struct SourceCode {
 }
 
 impl SourceCode {
-  fn to_utf8(&self, charset: &String) -> Result<String, std::io::Error> {
-    match encoding::label::encoding_from_whatwg_label(
-      chardet::charset2encoding(charset),
-    ) {
+  fn detect_charset(&self) -> &str {
+    const UTF8_BOM: &'static [u8] = b"\xEF\xBB\xBF";
+    const UTF16_LE_BOM: &'static [u8] = b"\xFF\xFE";
+    const UTF16_BE_BOM: &'static [u8] = b"\xFE\xFF";
+
+    if self.bytes.starts_with(UTF8_BOM) {
+      "utf-8"
+    } else if self.bytes.starts_with(UTF16_LE_BOM) {
+      "utf-16le"
+    } else if self.bytes.starts_with(UTF16_BE_BOM) {
+      "utf-16be"
+    } else {
+      // Assume everything else is utf-8
+      "utf-8"
+    }
+  }
+
+  fn to_utf8(&self, charset: &str) -> Result<String, std::io::Error> {
+    match encoding::label::encoding_from_whatwg_label(charset) {
       Some(coder) => {
         match coder.decode(&self.bytes, encoding::DecoderTrap::Ignore) {
           Ok(text) => Ok(text),
@@ -75,13 +90,9 @@ pub struct SourceFile {
 
 impl SourceFile {
   pub fn source_code_utf8(&self) -> Result<String, std::io::Error> {
-    let detected_charset: String;
     let charset = match &self.charset {
       Some(charset) => charset,
-      None => {
-        detected_charset = chardet::detect(&self.source_code.bytes).0;
-        &detected_charset
-      }
+      None => self.source_code.detect_charset(),
     };
 
     self.source_code.to_utf8(charset)

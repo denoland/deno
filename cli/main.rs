@@ -9,7 +9,6 @@ extern crate log;
 extern crate futures;
 #[macro_use]
 extern crate serde_json;
-extern crate chardet;
 extern crate clap;
 extern crate deno_core;
 extern crate encoding;
