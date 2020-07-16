@@ -1,7 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-// @ts-check
-
 const ASSETS = "asset:///";
 const INTERNAL = "internal:///";
 const CACHE = "cache:///";
@@ -55,7 +53,7 @@ function dispatch(opName, args) {
 
 /** @param {number} code */
 function exit(code) {
-  dispatch("op_exit2", { code });
+  dispatch("op_exit", { code });
   return unreachable();
 }
 
@@ -244,9 +242,11 @@ function handleDiagnostics(host, diagnostics = []) {
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 function main(configText, rootNames) {
+  const start = Date.now();
   ops = Deno.core.ops();
   println(`>>> ts version ${ts.version}`);
   println(`>>> rootNames ${rootNames}`);
+  ts.performance.enable();
 
   assert(rootNames.length === 1, "only single root names supported");
   const [rootName] = rootNames;
@@ -255,7 +255,7 @@ function main(configText, rootNames) {
     configText,
   );
 
-  const program = ts.createIncrementalProgram({
+  let program = ts.createIncrementalProgram({
     rootNames: [rootSpecifier],
     options,
     host,
@@ -272,6 +272,26 @@ function main(configText, rootNames) {
   handleDiagnostics(host, preEmitDiagnostics);
 
   const emitResult = program.emit();
+
+  program = "getProgram" in program ? program.getProgram() : program;
+  println("  Files:         ", program.getSourceFiles().length);
+  println("  Nodes:         ", program.getNodeCount());
+  println("  Identifiers:   ", program.getIdentifierCount());
+  println("  Symbols:       ", program.getSymbolCount());
+  println("  Types:         ", program.getTypeCount());
+  println("  Instantiations:", program.getInstantiationCount());
+  const programTime = ts.performance.getDuration("Program");
+  const bindTime = ts.performance.getDuration("Bind");
+  const checkTime = ts.performance.getDuration("Check");
+  const emitTime = ts.performance.getDuration("Emit");
+  println("  Parse time:    ", programTime);
+  println("  Bind time:     ", bindTime);
+  println("  Check time:    ", checkTime);
+  println("  Emit time:     ", emitTime);
+  println("  Total TS time: ", programTime + bindTime + checkTime + emitTime);
+  ts.performance.disable();
+
+  println(`>>> Duration ${Date.now() - start}ms`);
 
   dispatch("op_set_emit_result", Object.assign(emitResult, { rootSpecifier }));
 }

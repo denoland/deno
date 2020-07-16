@@ -1,4 +1,6 @@
-use crate::source_map::SourceMapBundler;
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
+use crate::source_map_bundler::SourceMapBundler;
 use crate::WrittenFile;
 
 use deno_core::ErrBox;
@@ -6,6 +8,7 @@ use regex::Regex;
 use serde::Deserialize;
 use serde::Serialize;
 use std::collections::HashMap;
+use std::path::Path;
 use std::path::PathBuf;
 use std::result;
 
@@ -19,7 +22,6 @@ pub struct Module {
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct Bundle {
-  pub file_name: PathBuf,
   pub modules: HashMap<String, Module>,
   pub cache_dirty: bool,
   pub maybe_cache: Option<PathBuf>,
@@ -30,9 +32,8 @@ fn count_newlines(s: &str) -> usize {
 }
 
 impl Bundle {
-  pub fn new(file_name: PathBuf, maybe_cache: Option<PathBuf>) -> Self {
+  pub fn new(maybe_cache: Option<PathBuf>) -> Self {
     let mut bundle = Bundle {
-      file_name,
       modules: HashMap::new(),
       cache_dirty: false,
       maybe_cache,
@@ -41,6 +42,8 @@ impl Bundle {
     bundle
   }
 
+  /// Enumerate the written files in a vector and add them to the internal
+  /// cache, which is then used to generate the bundle
   pub fn insert_written(&mut self, written_files: Vec<WrittenFile>) {
     for file in written_files.iter() {
       let source_map_pragma_re =
@@ -66,6 +69,7 @@ impl Bundle {
     }
   }
 
+  /// Read the cache from file into memory, it one is supplied and it exists.
   fn read_cache(&mut self) -> Result<()> {
     if let Some(path) = self.maybe_cache.clone() {
       if path.is_file() {
@@ -77,6 +81,7 @@ impl Bundle {
     Ok(())
   }
 
+  /// If a cache file name is supplied, write the cache to disk.
   fn write_cache(self) -> Result<()> {
     if self.cache_dirty {
       if let Some(path) = self.maybe_cache.clone() {
@@ -89,11 +94,19 @@ impl Bundle {
 
   /// Write out the bundle modules to a single JavaScript file and a single
   /// source map file.
-  pub fn write_bundle(self) -> Result<()> {
+  pub fn write_bundle(
+    self,
+    file_name: &Path,
+    maybe_preamble: Option<&str>,
+    maybe_postscript: Option<&str>,
+  ) -> Result<()> {
     let mut source_code = String::new();
-    let mut line_offset: u32 = 0;
+    if let Some(preamble) = maybe_preamble {
+      source_code.push_str(preamble);
+    }
+    let mut line_offset = count_newlines(&source_code);
     let mut source_map_bundle =
-      SourceMapBundler::new(self.file_name.file_name().unwrap().to_str());
+      SourceMapBundler::new(file_name.file_name().unwrap().to_str());
     for (module_name, module) in self.modules.iter() {
       if let Some(source) = &module.source {
         source_code.push_str(source);
@@ -110,16 +123,19 @@ impl Bundle {
           module_name
         ));
       }
-      line_offset = count_newlines(&source_code) as u32;
+      line_offset = count_newlines(&source_code);
     }
-    let mut map_file_name = self.file_name.clone();
+    if let Some(postscript) = maybe_postscript {
+      source_code.push_str(postscript);
+    }
+    let mut map_file_name = file_name.to_path_buf();
     map_file_name.set_extension("js.map");
     let source_map_pragma = format!(
       "\n//# sourceMappingURL={}\n",
       map_file_name.file_name().unwrap().to_string_lossy()
     );
     source_code.push_str(&source_map_pragma);
-    std::fs::write(self.file_name.clone(), source_code)
+    std::fs::write(file_name, source_code)
       .expect("unable to write bundle source");
     let mut contents: Vec<u8> = vec![];
     source_map_bundle
@@ -141,10 +157,7 @@ mod test {
 
   #[test]
   fn test_bundle_insert_written() {
-    let temp_dir = TempDir::new().unwrap();
-    let o = temp_dir.path().to_owned();
-    let file_name = o.join("TEST_BUNDLE.js");
-    let mut bundle = Bundle::new(file_name, None);
+    let mut bundle = Bundle::new(None);
     bundle.insert_written(vec![
       WrittenFile {
         module_name: "internal:///main.ts".to_string(),
@@ -174,7 +187,7 @@ mod test {
     let temp_dir = TempDir::new().unwrap();
     let o = temp_dir.path().to_owned();
     let file_name = o.join("TEST_BUNDLE.js");
-    let mut bundle = Bundle::new(file_name.clone(), None);
+    let mut bundle = Bundle::new(None);
     bundle.insert_written(vec![
       WrittenFile {
         module_name: "internal:///main.ts".to_string(),
@@ -199,7 +212,7 @@ mod test {
         url: "internal:///a.js.map".to_string(),
       },
     ]);
-    bundle.write_bundle().unwrap();
+    bundle.write_bundle(&file_name, None, None).unwrap();
     let mut map_file_name = file_name.clone();
     map_file_name.set_extension("js.map");
     assert!(file_name.is_file());
@@ -208,12 +221,9 @@ mod test {
 
   #[test]
   fn test_bundle_with_cache() {
-    let temp_dir = TempDir::new().unwrap();
-    let o = temp_dir.path().to_owned();
     let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
-    let file_name = o.join("TEST_BUNDLE.js");
     let maybe_cache = Some(c.join("tests/test.cache"));
-    let bundle = Bundle::new(file_name, maybe_cache);
+    let bundle = Bundle::new(maybe_cache);
     assert_eq!(bundle.modules.len(), 2);
     assert!(bundle.modules.contains_key("internal:///main.ts"));
     assert!(bundle.modules.contains_key("internal:///a.ts"));

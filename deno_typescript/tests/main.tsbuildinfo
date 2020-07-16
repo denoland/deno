@@ -207,7 +207,7 @@
         "affectsGlobalScope": false
       },
       "internal:///ops/dispatch.ts": {
-        "version": "c9c2d195481e3cafc377871f326c29e8b459b59b28342511d7703470dc939f6a",
+        "version": "738293067369222f4708bb749fa41f330d30e8c2fb32f2e8b77c4e6a28fd4860",
         "signature": "a73a9fec16f1a741d7544af8cec4e3d87124c5200177ff92e02f8a9f0ce3b5af",
         "affectsGlobalScope": false
       },
@@ -232,6 +232,7 @@
       "module": 4,
       "removeComments": true,
       "sourceMap": true,
+      "sourceRoot": "$deno$",
       "strict": true,
       "target": 99,
       "tsBuildInfoFile": "./main.tsbuildinfo",

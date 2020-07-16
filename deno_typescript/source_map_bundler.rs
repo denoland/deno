@@ -3,8 +3,6 @@
 use sourcemap::Error;
 use sourcemap::SourceMap;
 use sourcemap::SourceMapBuilder;
-use std::io::Read;
-use std::io::Write;
 use std::str;
 
 pub struct SourceMapBundler {
@@ -18,7 +16,8 @@ impl SourceMapBundler {
     }
   }
 
-  pub fn append(&mut self, sm: SourceMap, line_offset: u32) {
+  /// Append a source map to the bundle, starting at line offset.
+  pub fn append(&mut self, sm: SourceMap, line_offset: usize) {
     for (idx, src) in sm.sources().enumerate() {
       let src_id = self.builder.add_source(src);
       self
@@ -27,7 +26,7 @@ impl SourceMapBundler {
     }
     for token in sm.tokens() {
       self.builder.add(
-        token.get_dst_line() + line_offset,
+        token.get_dst_line() + line_offset as u32,
         token.get_dst_col(),
         token.get_src_line(),
         token.get_src_col(),
@@ -37,30 +36,12 @@ impl SourceMapBundler {
     }
   }
 
-  pub fn append_from_reader<R: Read>(
-    &mut self,
-    rdr: R,
-    line_offset: u32,
-  ) -> Result<(), Error> {
-    let sm = SourceMap::from_reader(rdr)?;
-    self.append(sm, line_offset);
-    Ok(())
-  }
-
-  pub fn append_from_slice(
-    &mut self,
-    slice: &[u8],
-    line_offset: u32,
-  ) -> Result<(), Error> {
-    let sm = SourceMap::from_slice(slice)?;
-    self.append(sm, line_offset);
-    Ok(())
-  }
-
+  /// Append a string to the source map, starting at the line provided in the
+  /// offset.
   pub fn append_from_str(
     &mut self,
     s: &str,
-    line_offset: u32,
+    line_offset: usize,
   ) -> Result<(), Error> {
     let sm = SourceMap::from_reader(s.as_bytes())?;
     self.append(sm, line_offset);
@@ -70,11 +51,6 @@ impl SourceMapBundler {
   pub fn into_sourcemap(self) -> SourceMap {
     self.builder.into_sourcemap()
   }
-
-  pub fn into_writer<W: Write>(self, w: W) -> Result<(), Error> {
-    self.into_sourcemap().to_writer(w)?;
-    Ok(())
-  }
 }
 
 #[cfg(test)]
@@ -82,30 +58,16 @@ mod tests {
   use super::*;
 
   #[test]
-  fn test_source_map_append_from_reader() {
+  fn test_source_map_append_from_str() {
     let mut smb = SourceMapBundler::new(None);
-    let input: &[_] = b"{
+    let input = "{
       \"version\":3,
       \"sources\":[\"coolstuff.js\"],
       \"names\":[\"x\",\"alert\"],
       \"mappings\":\"AAAA,GAAIA,GAAI,EACR,IAAIA,GAAK,EAAG,CACVC,MAAM\"
     }";
-    smb.append_from_reader(input, 10).unwrap();
-    let mut actual: Vec<u8> = vec![];
-    smb.into_writer(&mut actual).unwrap();
-  }
-
-  #[test]
-  fn test_source_map_append_from_slice() {
-    let mut smb = SourceMapBundler::new(None);
-    let input: &[_] = b"{
-      \"version\":3,
-      \"sources\":[\"coolstuff.js\"],
-      \"names\":[\"x\",\"alert\"],
-      \"mappings\":\"AAAA,GAAIA,GAAI,EACR,IAAIA,GAAK,EAAG,CACVC,MAAM\"
-    }";
-    smb.append_from_slice(input, 10).unwrap();
-    let mut actual: Vec<u8> = vec![];
-    smb.into_writer(&mut actual).unwrap();
+    smb.append_from_str(input, 10).unwrap();
+    let sm = smb.into_sourcemap();
+    assert_eq!(sm.sources().count(), 1);
   }
 }

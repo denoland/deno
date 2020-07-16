@@ -1,3 +1,5 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 use crate::TSState;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
@@ -133,6 +135,9 @@ pub fn op_write_file(s: &mut TSState, v: Value) -> OpResult {
   let v: WriteFile = serde_json::from_value(v)?;
   let module_specifier = ModuleSpecifier::resolve_url_or_path(&v.file_name)?;
   let module_url = module_specifier.as_url();
+  // the only file that should be written with the `file` scheme is potentially
+  // TypeScript build info.  Everything else should be a module and have a
+  // source module name.
   if module_url.scheme() == "file" {
     std::fs::write(&v.file_name, &v.data)?;
   }
@@ -185,7 +190,7 @@ struct Exit {
   code: i32,
 }
 
-pub fn op_exit2(s: &mut TSState, v: Value) -> OpResult {
+pub fn op_exit(s: &mut TSState, v: Value) -> OpResult {
   let v: Exit = serde_json::from_value(v)?;
   s.exit_code = v.code;
   std::process::exit(v.code)

@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 #![deny(warnings)]
 
 extern crate bytecount;
@@ -11,7 +12,7 @@ extern crate sourcemap;
 
 mod bundle;
 mod ops;
-pub mod source_map;
+mod source_map_bundler;
 
 use deno_core::js_check;
 pub use deno_core::v8_set_flags;
@@ -96,8 +97,8 @@ impl TSIsolate {
       compiler_op(state.clone(), ops::json_op(ops::op_load_module)),
     );
     isolate.register_op(
-      "op_exit2",
-      compiler_op(state.clone(), ops::json_op(ops::op_exit2)),
+      "op_exit",
+      compiler_op(state.clone(), ops::json_op(ops::op_exit)),
     );
     isolate.register_op(
       "op_read_file",
@@ -145,10 +146,15 @@ impl TSIsolate {
 ///
 /// This function writes compiled bundle to disk at provided path.
 ///
-/// Source map file and type declaration file are emitted
-/// alongside the bundle.
+/// To create an incremental build, provide paths to the `maybe_build_info` and
+/// `maybe_cache`, which will cache the outputs of previous bundle operations
+/// and only re-compile those files that have changed.  The function will update
+/// both files as required.
 ///
-/// To instantiate bundle use returned `module_name`.
+/// Source map file is emitted alongside the bundle.
+///
+/// To instantiate bundle use resulting `String` which represents the main.
+/// module specifier in the bundle.
 pub fn compile_bundle(
   root_name: &Path,
   bundle_filename: &Path,
@@ -207,10 +213,11 @@ pub fn compile_bundle(
   let state = locked_state.lock().unwrap();
   let main_module_name = state.emit_result.clone().unwrap().root_specifier;
 
-  let mut out_bundle =
-    bundle::Bundle::new(bundle_filename.to_owned(), maybe_cache);
+  let mut out_bundle = bundle::Bundle::new(maybe_cache);
   out_bundle.insert_written(state.written_files.clone());
-  out_bundle.write_bundle().expect("could not write bundle");
+  out_bundle
+    .write_bundle(bundle_filename, None, None)
+    .expect("could not write bundle");
 
   Ok(main_module_name)
 }
