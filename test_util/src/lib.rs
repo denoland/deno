@@ -386,21 +386,16 @@ fn custom_headers(path: warp::path::Peek, f: warp::fs::File) -> Box<dyn Reply> {
     let f = with_header(f, "Content-Length", "39");
     return Box::new(f);
   }
-  if p.ends_with("cli/tests/encoding/utf_16_little_endian.ts") {
-    let f =
-      with_header(f, "Content-Type", "application/typescript;charset=utf-16le");
-    return Box::new(f);
-  }
-  if p.ends_with("cli/tests/encoding/utf_16_big_endian.ts") {
-    let f =
-      with_header(f, "Content-Type", "application/typescript;charset=utf-16be");
-    return Box::new(f);
-  }
-  if p.ends_with("cli/tests/encoding/windows_1255.ts") {
+  if p.contains("cli/tests/encoding/") {
+    let charset = p
+      .split_terminator("/")
+      .last()
+      .unwrap()
+      .trim_end_matches(".ts");
     let f = with_header(
       f,
       "Content-Type",
-      "application/typescript;charset=windows-1255",
+      &format!("application/typescript;charset={}", charset)[..],
     );
     return Box::new(f);
   }

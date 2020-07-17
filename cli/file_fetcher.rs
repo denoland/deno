@@ -1574,13 +1574,13 @@ mod tests {
   }
 
   async fn test_fetch_source_file_from_disk_nonstandard_encoding(
-    file_path: &str,
+    charset: &str,
     expected_content: String,
   ) {
     let (_temp_dir, fetcher) = test_setup();
 
-    let p =
-      std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(file_path);
+    let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+      .join(format!("tests/encoding/{}.ts", charset));
     let specifier =
       ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
     let r = fetcher
@@ -1597,7 +1597,7 @@ mod tests {
   #[tokio::test]
   async fn test_fetch_source_file_from_disk_utf_16_be() {
     test_fetch_source_file_from_disk_nonstandard_encoding(
-      "tests/encoding/utf_16_big_endian.ts",
+      "utf-16be",
       String::from_utf8(b"\xEF\xBB\xBFconsole.log(\"Hello World\");".to_vec())
         .unwrap(),
     )
@@ -1607,7 +1607,7 @@ mod tests {
   #[tokio::test]
   async fn test_fetch_source_file_from_disk_utf_16_le() {
     test_fetch_source_file_from_disk_nonstandard_encoding(
-      "tests/encoding/utf_16_little_endian.ts",
+      "utf-16le",
       String::from_utf8(b"\xEF\xBB\xBFconsole.log(\"Hello World\");".to_vec())
         .unwrap(),
     )
@@ -1617,7 +1617,7 @@ mod tests {
   #[tokio::test]
   async fn test_fetch_source_file_from_disk_utf_8_with_bom() {
     test_fetch_source_file_from_disk_nonstandard_encoding(
-      "tests/encoding/utf_8_with_bom.ts",
+      "utf-8",
       String::from_utf8(b"\xEF\xBB\xBFconsole.log(\"Hello World\");".to_vec())
         .unwrap(),
     )
@@ -1954,12 +1954,7 @@ mod tests {
     let content =
       std::str::from_utf8(b"\xEF\xBB\xBFconsole.log(\"Hello World\");")
         .unwrap();
-    test_fetch_non_utf8_source_file_from_net(
-      "cli/tests/encoding/utf_16_little_endian.ts",
-      "utf-16le",
-      content,
-    )
-    .await;
+    test_fetch_non_utf8_source_file_from_net("utf-16le", content).await;
   }
 
   #[tokio::test]
@@ -1967,34 +1962,26 @@ mod tests {
     let content =
       std::str::from_utf8(b"\xEF\xBB\xBFconsole.log(\"Hello World\");")
         .unwrap();
-    test_fetch_non_utf8_source_file_from_net(
-      "cli/tests/encoding/utf_16_big_endian.ts",
-      "utf-16be",
-      content,
-    )
-    .await;
+    test_fetch_non_utf8_source_file_from_net("utf-16be", content).await;
   }
 
   #[tokio::test]
   async fn test_fetch_source_file_from_net_windows_1255() {
     let content = "console.log(\"\u{5E9}\u{5DC}\u{5D5}\u{5DD} \u{5E2}\u{5D5}\u{5DC}\u{5DD}\");";
-    test_fetch_non_utf8_source_file_from_net(
-      "cli/tests/encoding/windows_1255.ts",
-      "windows-1255",
-      content,
-    )
-    .await;
+    test_fetch_non_utf8_source_file_from_net("windows-1255", content).await;
   }
 
   async fn test_fetch_non_utf8_source_file_from_net(
-    subpath: &str,
     charset: &str,
     expected_content: &str,
   ) {
     let http_server_guard = test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
-    let module_url =
-      Url::parse(&format!("http://127.0.0.1:4545/{}", subpath)).unwrap();
+    let module_url = Url::parse(&format!(
+      "http://127.0.0.1:4545/cli/tests/encoding/{}.ts",
+      charset
+    ))
+    .unwrap();
 
     let source = fetcher
       .fetch_remote_source(
