@@ -1573,7 +1573,7 @@ mod tests {
     }
   }
 
-  async fn test_fetch_source_file_nonstandard_encoding(
+  async fn test_fetch_source_file_from_disk_nonstandard_encoding(
     file_path: &str,
     expected_content: String,
   ) {
@@ -1595,8 +1595,8 @@ mod tests {
   }
 
   #[tokio::test]
-  async fn test_fetch_source_file_utf_16_be() {
-    test_fetch_source_file_nonstandard_encoding(
+  async fn test_fetch_source_file_from_disk_utf_16_be() {
+    test_fetch_source_file_from_disk_nonstandard_encoding(
       "tests/encoding/utf_16_big_endian.ts",
       String::from_utf8(b"\xEF\xBB\xBFconsole.log(\"Hello World\");".to_vec())
         .unwrap(),
@@ -1605,8 +1605,8 @@ mod tests {
   }
 
   #[tokio::test]
-  async fn test_fetch_source_file_utf_16_le() {
-    test_fetch_source_file_nonstandard_encoding(
+  async fn test_fetch_source_file_from_disk_utf_16_le() {
+    test_fetch_source_file_from_disk_nonstandard_encoding(
       "tests/encoding/utf_16_little_endian.ts",
       String::from_utf8(b"\xEF\xBB\xBFconsole.log(\"Hello World\");".to_vec())
         .unwrap(),
@@ -1615,8 +1615,8 @@ mod tests {
   }
 
   #[tokio::test]
-  async fn test_fetch_source_file_utf_8_with_bom() {
-    test_fetch_source_file_nonstandard_encoding(
+  async fn test_fetch_source_file_from_disk_utf_8_with_bom() {
+    test_fetch_source_file_from_disk_nonstandard_encoding(
       "tests/encoding/utf_8_with_bom.ts",
       String::from_utf8(b"\xEF\xBB\xBFconsole.log(\"Hello World\");".to_vec())
         .unwrap(),
@@ -1946,6 +1946,69 @@ mod tests {
       source.types_header,
       Some("./xTypeScriptTypes.d.ts".to_string())
     );
+    drop(http_server_guard);
+  }
+
+  #[tokio::test]
+  async fn test_fetch_source_file_from_net_utf16_le() {
+    let content =
+      std::str::from_utf8(b"\xEF\xBB\xBFconsole.log(\"Hello World\");")
+        .unwrap();
+    test_fetch_non_utf8_source_file_from_net(
+      "cli/tests/encoding/utf_16_little_endian.ts",
+      "utf-16le",
+      content,
+    )
+    .await;
+  }
+
+  #[tokio::test]
+  async fn test_fetch_source_file_from_net_utf16_be() {
+    let content =
+      std::str::from_utf8(b"\xEF\xBB\xBFconsole.log(\"Hello World\");")
+        .unwrap();
+    test_fetch_non_utf8_source_file_from_net(
+      "cli/tests/encoding/utf_16_big_endian.ts",
+      "utf-16be",
+      content,
+    )
+    .await;
+  }
+
+  async fn test_fetch_non_utf8_source_file_from_net(
+    subpath: &str,
+    charset: &str,
+    expected_content: &str,
+  ) {
+    let http_server_guard = test_util::http_server();
+    let (_temp_dir, fetcher) = test_setup();
+    let module_url =
+      Url::parse(&format!("http://127.0.0.1:4545/{}", subpath)).unwrap();
+
+    let source = fetcher
+      .fetch_remote_source(
+        &module_url,
+        false,
+        false,
+        1,
+        &Permissions::allow_all(),
+      )
+      .await;
+    assert!(source.is_ok());
+    let source = source.unwrap();
+    assert_eq!(
+      &source.source_code.charset.to_owned().to_lowercase()[..],
+      charset
+    );
+    assert_eq!(&source.source_code.to_utf8().unwrap(), expected_content);
+    assert_eq!(&(source.media_type), &msg::MediaType::TypeScript);
+
+    let (_, headers) = fetcher.http_cache.get(&module_url).unwrap();
+    assert_eq!(
+      headers.get("content-type").unwrap(),
+      &format!("application/typescript;charset={}", charset)
+    );
+
     drop(http_server_guard);
   }
 }
