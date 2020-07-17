@@ -75,10 +75,10 @@ use crate::file_fetcher::SourceFileFetcher;
 use crate::file_fetcher::TextDocument;
 use crate::fs as deno_fs;
 use crate::global_state::GlobalState;
+use crate::module_graph::ModuleGraphLoader;
 use crate::msg::MediaType;
 use crate::op_error::OpError;
 use crate::permissions::Permissions;
-use crate::tsc::TargetLib;
 use crate::worker::MainWorker;
 use deno_core::v8_set_flags;
 use deno_core::Deps;
@@ -98,9 +98,10 @@ use std::io::Read;
 use std::io::Write;
 use std::iter::once;
 use std::path::PathBuf;
-use std::pin::Pin;
+use std::{collections::HashSet, pin::Pin};
 use upgrade::upgrade_command;
 use url::Url;
+use module_graph::ModuleGraph;
 
 static LOGGER: Logger = Logger;
 
@@ -194,9 +195,10 @@ async fn print_file_info(
   json: bool,
 ) -> Result<(), ErrBox> {
   let global_state = worker.state.borrow().global_state.clone();
+  let ts_compiler = &global_state.ts_compiler;
+  let file_fetcher = &global_state.file_fetcher;
 
-  let out = global_state
-    .file_fetcher
+  let out = file_fetcher
     .fetch_source_file(&module_specifier, None, Permissions::allow_all())
     .await?;
 
@@ -208,50 +210,24 @@ async fn print_file_info(
     deps: None,
   };
 
-  let module_specifier_ = module_specifier.clone();
+  output.compiled = ts_compiler
+    .get_compiled_source_file(&out.url)
+    .ok()
+    .and_then(get_source_filename);
 
-  global_state
-    .prepare_module_load(
-      module_specifier_.clone(),
-      None,
-      TargetLib::Main,
-      Permissions::allow_all(),
-      false,
-      global_state.maybe_import_map.clone(),
-    )
-    .await?;
-  global_state
-    .clone()
-    .fetch_compiled_module(module_specifier_, None)
-    .await?;
-
-  if out.media_type == msg::MediaType::TypeScript
-    || (out.media_type == msg::MediaType::JavaScript
-      && global_state.ts_compiler.compile_js)
-  {
-    let compiled_source_file = global_state
-      .ts_compiler
-      .get_compiled_source_file(&out.url)
-      .unwrap();
-    output.compiled =
-      compiled_source_file.filename.to_str().map(|s| s.to_owned());
-  }
-
-  if let Ok(source_map) = global_state
-    .clone()
-    .ts_compiler
+  output.map = ts_compiler
     .get_source_map_file(&module_specifier)
-  {
-    output.map = source_map.filename.to_str().map(|s| s.to_owned());
-  }
-  let es_state_rc = EsIsolate::state(&worker.isolate);
-  let es_state = es_state_rc.borrow();
-
-  if let Some(deps) = es_state.modules.deps(&module_specifier) {
-    output.deps = Some(deps);
-  }
+    .ok()
+    .and_then(get_source_filename);
 
   if json {
+    let es_state_rc = EsIsolate::state(&worker.isolate);
+    let es_state = es_state_rc.borrow();
+  
+      if let Some(deps) = es_state.modules.deps(&module_specifier) {
+      output.deps = Some(deps);
+    }
+
     let output = json!({
       "local": output.local,
       "fileType": output.file_type,
@@ -261,6 +237,9 @@ async fn print_file_info(
     });
     write_json_to_stdout(&output)
   } else {
+    let module_graph = get_module_graph(&global_state, &module_specifier).await?;
+    let top = module_graph.get(&module_specifier.to_string());
+
     println!("{} {}", colors::bold("local:"), output.local);
     println!("{} {}", colors::bold("type:"), output.file_type);
     if let Some(compiled) = output.compiled {
@@ -269,21 +248,137 @@ async fn print_file_info(
     if let Some(map) = output.map {
       println!("{} {}", colors::bold("map:"), map);
     }
-    if let Some(deps) = output.deps {
-      println!("{}{}", colors::bold("deps:\n"), deps.name);
-      if let Some(ref depsdeps) = deps.deps {
-        for d in depsdeps {
-          println!("{}", d);
+    if let Some(file) = top {
+      let imports = file
+        .imports.iter()
+        .map(|import| import.resolved_specifier.to_string())
+        .collect::<Vec<_>>();
+          
+      println!("{} {} unique\n{} ({}, total = {})", colors::bold("deps:"), &module_graph.len(), file.specifier, human_size(file.size_in_bytes() as f64), human_size(0 as f64));
+      let mut seen: HashSet<String> = HashSet::new();
+      seen.insert(file.specifier.to_string());
+        
+        for (idx, dep) in imports.iter().enumerate() {
+          print_dependencies(&mut seen, "", idx == imports.len() - 1, &module_graph, &dep);
         }
-      }
-    } else {
-      println!(
-        "{} cannot retrieve full dependency graph",
-        colors::bold("deps:"),
-      );
     }
+
     Ok(())
   }
+}
+
+/// Prints all dependencies of the module with the provided name.
+fn print_dependencies(
+  seen: &mut HashSet<String>,
+  prefix: &str,
+  is_last: bool,
+  graph: &ModuleGraph,
+  name: &String
+) {
+  let file = graph.get(name).unwrap();
+  let size = file.size_in_bytes();
+  if seen.contains(name) {
+    print_line(prefix, is_last, false, name, size as f64, 0f64);
+  } else {
+    
+    let children: Vec<String> = file
+      .imports
+      .iter()        
+      .map(|import| import.resolved_specifier.to_string())
+      .collect();
+
+    seen.insert(name.to_string());
+
+    let child_count = children.len();
+    let has_children = child_count > 0;
+
+    print_line(prefix, is_last, has_children, name, size as f64,0f64);
+
+    children
+      .iter()
+      .enumerate()
+      .for_each(move |(idx, dep_specifier)| {
+        let prefix = &get_new_prefix(&prefix, is_last);
+        let is_last = idx == child_count - 1;
+        print_dependencies(seen, prefix, is_last, graph, dep_specifier)
+      });
+  }
+}
+
+/// Prints a line of the dependency tree to stdout.
+fn print_line(
+  prefix: &str,
+  is_last: bool,
+  has_children: bool,
+  name: &String,
+  size: f64,
+  total_size: f64
+) {
+  println!("{}{}─{} {} ({}, total = {})",
+    prefix,
+    if is_last { "└" } else { "├" },
+    if has_children { "┬" } else { "─" },
+    name,
+    human_size(size as f64),
+    human_size(total_size as f64)
+  );
+}
+
+/// Creates a new prefix for a dependency tree item.
+fn get_new_prefix(
+  prefix: &str,
+  is_last: bool
+) -> String {
+  let mut prefix = prefix.to_string();
+  if is_last {
+    prefix.push(' ');
+  } else {
+    prefix.push('│');
+  }
+
+  prefix.push(' ');
+
+  prefix
+}
+
+#[test]
+fn get_new_prefix_adds_spaces_if_is_last() {
+  let prefix = get_new_prefix("", true);
+
+  assert_eq!(prefix, "  ".to_string());
+}
+
+#[test]
+fn get_new_prefix_adds_a_vertial_bar_if_not_is_last() {
+  let prefix = get_new_prefix("", false);
+
+  assert_eq!(prefix, "│ ".to_string());
+}
+
+/// Gets the full filename of the SourceFile.
+fn get_source_filename(file: SourceFile) -> Option<String> {
+  file.filename
+      .to_str()
+      .map(|s| s.to_owned())
+}
+
+/// Constructs a ModuleGraph for the module with the provided name.
+async fn get_module_graph(
+  global_state: &GlobalState,
+  module_specifier: &ModuleSpecifier
+) -> Result<ModuleGraph, ErrBox> {
+  let mut module_graph_loader = ModuleGraphLoader::new(
+    global_state.file_fetcher.clone(),
+    global_state.maybe_import_map.clone(),
+    Permissions::allow_all(),
+    false,
+    false,
+  );
+  module_graph_loader
+    .add_to_graph(&module_specifier, None)
+    .await?;
+  
+    Ok(module_graph_loader.get_graph())
 }
 
 fn get_types(unstable: bool) -> String {
