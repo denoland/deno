@@ -20,6 +20,8 @@ delete Object.prototype.__proto__;
   const core = Deno.core;
   const { bold, cyan, yellow } = window.__colors;
   const { assert, log, notImplemented } = window.__util;
+  const { DiagnosticCategory } = window.__diagnostics;
+
   const unstableDenoGlobalProperties = [
     "umask",
     "linkSync",

@@ -18,6 +18,7 @@ delete Object.prototype.__proto__;
   const replLoop = window.__repl.replLoop;
   const Console = window.__console.Console;
   const worker = window.__worker;
+  const { internalSymbol, internalObject } = window.__internals;
 
   let windowIsClosing = false;
 
@@ -277,6 +278,7 @@ delete Object.prototype.__proto__;
 
     const denoNs = {
       core,
+      [internalSymbol]: internalObject,
     };
     Object.defineProperties(denoNs, {
       pid: util.readOnly(pid),
@@ -286,8 +288,6 @@ delete Object.prototype.__proto__;
     });
 
     if (unstableFlag) {
-      //   Object.defineProperties(globalThis, unstableMethods);
-      //   Object.defineProperties(globalThis, unstableProperties);
       Object.defineProperty(
         denoNs,
         "mainModule",
@@ -330,12 +330,9 @@ delete Object.prototype.__proto__;
       internalName ?? name,
     );
 
-    if (unstableFlag) {
-      // Object.defineProperties(globalThis, unstableMethods);
-      // Object.defineProperties(globalThis, unstableProperties);
-    }
     const denoNs = {
       core,
+      [internalSymbol]: internalObject,
     };
     if (useDenoNamespace) {
       if (unstableFlag) {
