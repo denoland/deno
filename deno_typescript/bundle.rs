@@ -85,7 +85,7 @@ impl Bundle {
   fn write_cache(self) -> Result<()> {
     if self.cache_dirty {
       if let Some(path) = self.maybe_cache.clone() {
-        let contents = serde_json::to_vec(&self.modules)?;
+        let contents = serde_json::to_string_pretty(&self.modules)?;
         std::fs::write(path, contents)?;
       }
     }

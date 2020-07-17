@@ -502,7 +502,7 @@
         "affectsGlobalScope": false
       },
       "internal:///web/url.ts": {
-        "version": "8e2000d19a56ccd9540993c2aa7776336a67fd2772100e65bb4cf9d7a345738a",
+        "version": "b4c22fea8a60fd50f1c9d676d4a416807ade76a487c69340823c73b941062335",
         "signature": "7d081092be57c353b200c96e9a1f1fbdc32a177f9310eadb3e4a1a707afaf693",
         "affectsGlobalScope": false
       },
