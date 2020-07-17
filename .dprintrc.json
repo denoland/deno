@@ -13,6 +13,7 @@
   "excludes": [
     ".cargo_home",
     "deno_typescript/typescript",
+    "gh-pages",
     "std/**/testdata",
     "std/**/vendor",
     "std/node_modules",

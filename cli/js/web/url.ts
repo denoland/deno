@@ -565,7 +565,8 @@ function encodeHostname(s: string, isSpecial = true): string {
     if (!s.match(/^\[[0-9A-Fa-f.:]{2,}\]$/)) {
       throw new TypeError("Invalid hostname.");
     }
-    return s.toLowerCase();
+    // IPv6 address compress
+    return s.toLowerCase().replace(/\b:?(?:0+:?){2,}/, "::");
   }
 
   let result = s;

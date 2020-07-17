@@ -29,6 +29,8 @@ Deno.test({
         str6: "The quick brown\nfox jumps over\nthe lazy dog.",
         lines: "The first newline is\ntrimmed in raw strings.\n   All other " +
           "whitespace\n   is preserved.",
+        withApostrophe: "What if it's not?",
+        withSemicolon: `const message = 'hello world';`,
       },
     };
     const actual = parseFile(path.join(testFilesDir, "string.toml"));

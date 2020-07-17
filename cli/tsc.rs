@@ -7,6 +7,7 @@ use crate::doc::Location;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::flags::Flags;
+use crate::fmt_errors::JSError;
 use crate::global_state::GlobalState;
 use crate::module_graph::ModuleGraph;
 use crate::module_graph::ModuleGraphLoader;
@@ -1160,6 +1161,18 @@ async fn create_runtime_module_graph(
   Ok((root_names, module_graph_loader.get_graph()))
 }
 
+/// Because TS compiler can raise runtime error, we need to
+/// manually convert formatted JSError into and OpError.
+fn js_error_to_op_error(error: ErrBox) -> OpError {
+  match error.downcast::<JSError>() {
+    Ok(js_error) => {
+      let msg = format!("Error in TS compiler:\n{}", js_error);
+      OpError::other(msg)
+    }
+    Err(error) => error.into(),
+  }
+}
+
 /// This function is used by `Deno.compile()` API.
 pub async fn runtime_compile(
   global_state: GlobalState,
@@ -1193,7 +1206,9 @@ pub async fn runtime_compile(
 
   let compiler = global_state.ts_compiler.clone();
 
-  let msg = execute_in_same_thread(global_state, permissions, req_msg).await?;
+  let msg = execute_in_same_thread(global_state, permissions, req_msg)
+    .await
+    .map_err(js_error_to_op_error)?;
   let json_str = std::str::from_utf8(&msg).unwrap();
 
   let response: RuntimeCompileResponse = serde_json::from_str(json_str)?;
@@ -1239,7 +1254,9 @@ pub async fn runtime_bundle(
   .into_boxed_str()
   .into_boxed_bytes();
 
-  let msg = execute_in_same_thread(global_state, permissions, req_msg).await?;
+  let msg = execute_in_same_thread(global_state, permissions, req_msg)
+    .await
+    .map_err(js_error_to_op_error)?;
   let json_str = std::str::from_utf8(&msg).unwrap();
   let _response: RuntimeBundleResponse = serde_json::from_str(json_str)?;
   // We're returning `Ok()` instead of `Err()` because it's not runtime
@@ -1264,7 +1281,9 @@ pub async fn runtime_transpile(
   .into_boxed_str()
   .into_boxed_bytes();
 
-  let msg = execute_in_same_thread(global_state, permissions, req_msg).await?;
+  let msg = execute_in_same_thread(global_state, permissions, req_msg)
+    .await
+    .map_err(js_error_to_op_error)?;
   let json_str = std::str::from_utf8(&msg).unwrap();
   let v = serde_json::from_str::<serde_json::Value>(json_str)
     .expect("Error decoding JSON string.");

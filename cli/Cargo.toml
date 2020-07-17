@@ -18,6 +18,10 @@ path = "main.rs"
 deno_core = { path = "../core", version = "0.49.0" }
 deno_typescript = { path = "../deno_typescript", version = "0.49.0" }
 
+[target.'cfg(windows)'.build-dependencies]
+winres = "0.1"
+winapi = "0.3.8"
+
 [dependencies]
 deno_core = { path = "../core", version = "0.49.0" }
 deno_lint = "0.1.16"
@@ -77,3 +81,10 @@ test_util = { path = "../test_util" }
 
 [target.'cfg(unix)'.dev-dependencies]
 pty = "0.2.2"
+
+[package.metadata.winres]
+# This section defines the metadata that appears in the deno.exe PE header.
+OriginalFilename = "deno.exe"
+LegalCopyright = "© Deno contributors & Deno Land Inc. MIT licensed."
+ProductName = "Deno"
+FileDescription = "A secure JavaScript/TypeScript runtime, built on V8 and Rust."
