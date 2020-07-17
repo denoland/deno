@@ -3,18 +3,23 @@
 // This module exports stable Deno APIs.
 
 ((window) => {
-  // export { watchFs } from "./ops/fs_events.ts";
-  // export { Process, run } from "./process.ts";
-  // export { readFileSync, readFile } from "./read_file.ts";
-  // export { readTextFileSync, readTextFile } from "./read_text_file.ts";
-  // export { isatty } from "./ops/tty.ts";
-  // export { writeFileSync, writeFile } from "./write_file.ts";
-  // export { writeTextFileSync, writeTextFile } from "./write_text_file.ts";
-  // export { test } from "./testing.ts";
-
   window.Deno = {
     ...window.Deno,
     ...{
+      test: window.__testing.test,
+      metrics: window.__metrics.metrics,
+      Process: window.__process.Process,
+      run: window.__process.run,
+      isatty: window.__tty.isatty,
+      writeFileSync: window.__writeFile.writeFileSync,
+      writeFile: window.__writeFile.writeFile,
+      writeTextFileSync: window.__writeFile.writeTextFileSync,
+      writeTextFile: window.__writeFile.writeTextFile,
+      readTextFile: window.__readFile.readTextFile,
+      readTextFileSync: window.__readFile.readTextFileSync,
+      readFile: window.__readFile.readFile,
+      readFileSync: window.__readFile.readFileSync,
+      watchFs: window.__fsEvents.watchFs,
       chmodSync: window.__fs.chmodSync,
       chmod: window.__fs.chmod,
       chown: window.__fs.chown,

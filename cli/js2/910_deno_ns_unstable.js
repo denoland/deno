@@ -2,17 +2,23 @@
 
 // This module exports unstable Deno APIs.
 ((window) => {
-  // export { openPlugin } from "./ops/plugins.ts";
-  // export { transpileOnly, compile, bundle } from "./compiler_api.ts";
-  // export { signal, signals, Signal, SignalStream } from "./signals.ts";
-  // export { setRaw, consoleSize } from "./ops/tty.ts";
-  // export { kill } from "./ops/process.ts";
-  // export { permissions, Permissions } from "./permissions.ts";
-  // export { PermissionStatus } from "./permissions.ts";
-
   window.Deno = {
     ...window.Deno,
     ...{
+      signal: window.__signals.signal,
+      signals: window.__signals.signals,
+      Signal: window.__signals.Signal,
+      SignalStream: window.__signals.SignalStream,
+      transpileOnly: window.__compilerApi.transpileOnly,
+      compile: window.__compilerApi.compile,
+      bundle: window.__compilerApi.bundle,
+      permissions: window.__permissions.permissions,
+      Permissions: window.__permissions.Permissions,
+      PermissionStatus: window.__permissions.PermissionStatus,
+      openPlugin: window.__plugins.openPlugin,
+      kill: window.__process.kill,
+      setRaw: window.__tty.setRaw,
+      consoleSize: window.__tty.consoleSize,
       DiagnosticCategory: window.__diagnostics.DiagnosticCategory,
       loadavg: window.__os.loadavg,
       hostname: window.__os.hostname,

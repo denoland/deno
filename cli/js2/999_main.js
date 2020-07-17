@@ -18,6 +18,7 @@ delete Object.prototype.__proto__;
   const replLoop = window.__repl.replLoop;
   const Console = window.__console.Console;
   const worker = window.__worker;
+  const signals = window.__signals;
   const { internalSymbol, internalObject } = window.__internals;
 
   let windowIsClosing = false;
@@ -125,10 +126,6 @@ delete Object.prototype.__proto__;
 
   function opMainModule() {
     return dispatchJson.sendSync("op_main_module");
-  }
-
-  function opMetrics() {
-    return dispatchJson.sendSync("op_metrics");
   }
 
   function getAsyncHandler(opName) {
@@ -280,7 +277,6 @@ delete Object.prototype.__proto__;
       ...window.Deno,
       core,
       [internalSymbol]: internalObject,
-      metrics: opMetrics,
     };
     Object.defineProperties(denoNs, {
       pid: util.readOnly(pid),
@@ -304,7 +300,7 @@ delete Object.prototype.__proto__;
     Object.freeze(globalThis.Deno);
     Object.freeze(globalThis.Deno.core);
     Object.freeze(globalThis.Deno.core.sharedQueue);
-    // setSignals();
+    signals.setSignals();
 
     util.log("cwd", cwd);
     util.log("args", args);
@@ -336,7 +332,6 @@ delete Object.prototype.__proto__;
       ...window.Deno,
       core,
       [internalSymbol]: internalObject,
-      metrics: opMetrics,
     };
     if (useDenoNamespace) {
       if (unstableFlag) {
@@ -353,7 +348,7 @@ delete Object.prototype.__proto__;
       Object.freeze(globalThis.Deno);
       Object.freeze(globalThis.Deno.core);
       Object.freeze(globalThis.Deno.core.sharedQueue);
-      // setSignals();
+      signals.setSignals();
     } else {
       delete globalThis.Deno;
       util.assert(globalThis.Deno === undefined);
