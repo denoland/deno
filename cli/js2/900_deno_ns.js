@@ -3,28 +3,10 @@
 // This module exports stable Deno APIs.
 
 ((window) => {
-  // export { chmodSync, chmod } from "./ops/fs/chmod.ts";
-  // export { chownSync, chown } from "./ops/fs/chown.ts";
-  // export { copyFileSync, copyFile } from "./ops/fs/copy_file.ts";
-  // export { chdir, cwd } from "./ops/fs/dir.ts";
   // export { watchFs } from "./ops/fs_events.ts";
-  // export {
-  //   makeTempDirSync,
-  //   makeTempDir,
-  //   makeTempFileSync,
-  //   makeTempFile,
-  // } from "./ops/fs/make_temp.ts";
-  // export { mkdirSync, mkdir } from "./ops/fs/mkdir.ts";
   // export { Process, run } from "./process.ts";
-  // export { readDirSync, readDir } from "./ops/fs/read_dir.ts";
   // export { readFileSync, readFile } from "./read_file.ts";
   // export { readTextFileSync, readTextFile } from "./read_text_file.ts";
-  // export { readLinkSync, readLink } from "./ops/fs/read_link.ts";
-  // export { realPathSync, realPath } from "./ops/fs/real_path.ts";
-  // export { removeSync, remove } from "./ops/fs/remove.ts";
-  // export { renameSync, rename } from "./ops/fs/rename.ts";
-  // export { statSync, lstatSync, stat, lstat } from "./ops/fs/stat.ts";
-  // export { truncateSync, truncate } from "./ops/fs/truncate.ts";
   // export { isatty } from "./ops/tty.ts";
   // export { writeFileSync, writeFile } from "./write_file.ts";
   // export { writeTextFileSync, writeTextFile } from "./write_text_file.ts";
@@ -33,8 +15,38 @@
   window.Deno = {
     ...window.Deno,
     ...{
+      chmodSync: window.__fs.chmodSync,
+      chmod: window.__fs.chmod,
+      chown: window.__fs.chown,
+      chownSync: window.__fs.chownSync,
+      copyFileSync: window.__fs.copyFileSync,
+      cwd: window.__fs.cwd,
+      makeTempDirSync: window.__fs.makeTempDirSync,
+      makeTempDir: window.__fs.makeTempDir,
+      makeTempFileSync: window.__fs.makeTempFileSync,
+      makeTempFile: window.__fs.makeTempFile,
+      mkdirSync: window.__fs.mkdirSync,
+      mkdir: window.__fs.mkdir,
+      chdir: window.__fs.chdir,
+      copyFile: window.__fs.copyFile,
+      readDirSync: window.__fs.readDirSync,
+      readDir: window.__fs.readDir,
+      readLinkSync: window.__fs.readLinkSync,
+      readLink: window.__fs.readLink,
+      realPathSync: window.__fs.realPathSync,
+      realPath: window.__fs.realPath,
+      removeSync: window.__fs.removeSync,
+      remove: window.__fs.remove,
+      renameSync: window.__fs.renameSync,
+      rename: window.__fs.rename,
       version: window.__version.version,
       build: window.__build.build,
+      statSync: window.__fs.statSync,
+      lstatSync: window.__fs.lstatSync,
+      stat: window.__fs.stat,
+      lstat: window.__fs.lstat,
+      truncateSync: window.__fs.truncateSync,
+      truncate: window.__fs.truncate,
       errors: window.__errors.errors,
       customInspect: window.__console.customInspect,
       inspect: window.__console.inspect,

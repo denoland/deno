@@ -2,17 +2,10 @@
 
 // This module exports unstable Deno APIs.
 ((window) => {
-  // export { umask } from "./ops/fs/umask.ts";
-  // export { linkSync, link } from "./ops/fs/link.ts";
-  // export { fstatSync, fstat } from "./ops/fs/stat.ts";
-  // export { fdatasyncSync, fdatasync, fsyncSync, fsync } from "./ops/fs/sync.ts";
-  // export { symlinkSync, symlink } from "./ops/fs/symlink.ts";
   // export { openPlugin } from "./ops/plugins.ts";
   // export { transpileOnly, compile, bundle } from "./compiler_api.ts";
   // export { signal, signals, Signal, SignalStream } from "./signals.ts";
   // export { setRaw, consoleSize } from "./ops/tty.ts";
-  // export { utimeSync, utime } from "./ops/fs/utime.ts";
-  // export { ftruncateSync, ftruncate } from "./ops/fs/truncate.ts";
   // export { kill } from "./ops/process.ts";
   // export { permissions, Permissions } from "./permissions.ts";
   // export { PermissionStatus } from "./permissions.ts";
@@ -32,6 +25,21 @@
       connect: window.__netUnstable.connect,
       listenDatagram: window.__netUnstable.listenDatagram,
       startTls: window.__tls.startTls,
+      fstatSync: window.__fs.fstatSync,
+      fstat: window.__fs.fstat,
+      ftruncateSync: window.__fs.ftruncateSync,
+      ftruncate: window.__fs.ftruncate,
+      umask: window.__fs.umask,
+      link: window.__fs.link,
+      linkSync: window.__fs.linkSync,
+      utime: window.__fs.utime,
+      utimeSync: window.__fs.utimeSync,
+      symlink: window.__fs.symlink,
+      symlinkSync: window.__fs.symlinkSync,
+      fdatasyncSync: window.__fs.fdatasyncSync,
+      fdatasync: window.__fs.fdatasync,
+      fsyncSync: window.__fs.fsyncSync,
+      fsync: window.__fs.fsync,
     },
   };
 })(this);
