@@ -5,6 +5,7 @@
 delete Object.prototype.__proto__;
 
 ((window) => {
+  const core = Deno.core;
   const util = window.__util;
   const eventTarget = window.__eventTarget;
   const dispatchJson = window.__dispatchJson;
@@ -12,6 +13,8 @@ delete Object.prototype.__proto__;
   const build = window.__build;
   const version = window.__version;
   const errorStack = window.__errorStack;
+  const os = window.__os;
+  const timers = window.__timers;
 
   let windowIsClosing = false;
 
@@ -21,21 +24,17 @@ delete Object.prototype.__proto__;
       // Push a macrotask to exit after a promise resolve.
       // This is not perfect, but should be fine for first pass.
       Promise.resolve().then(() =>
-        setTimeout.call(
+        timers.setTimeout.call(
           null,
           () => {
             // This should be fine, since only Window/MainWorker has .close()
-            // TODO:
-            // exit(0);
-            throw new Error("close not implemented");
+            os.exit(0);
           },
           0,
         )
       );
     }
   }
-
-  const core = Deno.core;
 
   function opStart() {
     return dispatchJson.sendSync("op_start");
@@ -66,8 +65,7 @@ delete Object.prototype.__proto__;
     for (const [name, opId] of Object.entries(opsMap)) {
       core.setAsyncHandler(opId, getAsyncHandler(name));
     }
-    // TODO:
-    // core.setMacrotaskCallback(handleTimerMacrotask);
+    core.setMacrotaskCallback(timers.handleTimerMacrotask);
   }
 
   function runtimeStart(source) {
@@ -88,12 +86,12 @@ delete Object.prototype.__proto__;
   const windowOrWorkerGlobalScopeMethods = {
     atob: util.writable(atob),
     btoa: util.writable(btoa),
-    // clearInterval: util.writable(timers.clearInterval),
-    // clearTimeout: util.writable(timers.clearTimeout),
+    clearInterval: util.writable(timers.clearInterval),
+    clearTimeout: util.writable(timers.clearTimeout),
     // fetch: util.writable(fetchTypes.fetch),
     // queueMicrotask is bound in Rust
-    // setInterval: util.writable(timers.setInterval),
-    // setTimeout: util.writable(timers.setTimeout),
+    setInterval: util.writable(timers.setInterval),
+    setTimeout: util.writable(timers.setTimeout),
   };
 
   // Other properties shared between WindowScope and WorkerGlobalScope
@@ -123,8 +121,8 @@ delete Object.prototype.__proto__;
     // PerformanceEntry: util.nonEnumerable(performance.PerformanceEntryImpl),
     // PerformanceMark: util.nonEnumerable(performance.PerformanceMarkImpl),
     // PerformanceMeasure: util.nonEnumerable(performance.PerformanceMeasureImpl),
-    // TextDecoder: util.nonEnumerable(textEncoding.TextDecoder),
-    // TextEncoder: util.nonEnumerable(textEncoding.TextEncoder),
+    TextDecoder: util.nonEnumerable(TextDecoder),
+    TextEncoder: util.nonEnumerable(TextEncoder),
     // TransformStream: util.nonEnumerable(transformStream.TransformStreamImpl),
     // URL: util.nonEnumerable(url.URLImpl),
     // URLSearchParams: util.nonEnumerable(urlSearchParams.URLSearchParamsImpl),
