@@ -9,7 +9,6 @@ use crate::module_graph::ModuleGraphFile;
 use crate::module_graph::ModuleGraphLoader;
 use crate::msg;
 use crate::msg::MediaType;
-use crate::op_error::OpError;
 use crate::permissions::Permissions;
 use crate::state::exit_unstable;
 use crate::tsc::CompiledModule;
@@ -236,16 +235,22 @@ impl GlobalState {
     };
 
     let compiled_module = if was_compiled {
-      state1
-        .ts_compiler
-        .get_compiled_module(&out.url)
-        .map_err(|e| {
-          let msg = e.to_string();
-          OpError::other(format!(
-            "Failed to get compiled source code of {}.\nReason: {}",
-            out.url, msg
-          ))
-        })?
+      match state1.ts_compiler.get_compiled_module(&out.url) {
+        Ok(module) => module,
+        Err(e) => {
+          let msg = format!(
+            "Failed to get compiled source code of \"{}\".\nReason: {}\n\
+            If the source file provides only type exports, prefer to use \"import type\" or \"export type\" syntax instead.",
+            out.url, e.to_string()
+          );
+          info!("{} {}", crate::colors::yellow("Warning"), msg);
+
+          CompiledModule {
+            code: "".to_string(),
+            name: out.url.to_string(),
+          }
+        }
+      }
     } else {
       CompiledModule {
         code: String::from_utf8(out.source_code.clone())?,

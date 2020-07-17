@@ -1972,6 +1972,11 @@ itest!(ts_decorators {
   output: "ts_decorators.ts.out",
 });
 
+itest!(ts_type_only_import {
+  args: "run --reload ts_type_only_import.ts",
+  output: "ts_type_only_import.ts.out",
+});
+
 itest!(swc_syntax_error {
   args: "run --reload swc_syntax_error.ts",
   output: "swc_syntax_error.ts.out",
