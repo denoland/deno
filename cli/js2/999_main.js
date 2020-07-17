@@ -11,6 +11,7 @@ delete Object.prototype.__proto__;
   const dispatchMinimal = window.__dispatchMinimal;
   const build = window.__build;
   const version = window.__version;
+  const errorStack = window.__errorStack;
 
   let windowIsClosing = false;
 
@@ -81,7 +82,7 @@ delete Object.prototype.__proto__;
     version.setVersions(s.denoVersion, s.v8Version, s.tsVersion);
     build.setBuildInfo(s.target);
     util.setLogDebug(s.debugFlag, source);
-    // setPrepareStackTrace(Error);
+    errorStack.setPrepareStackTrace(Error);
     Deno.core.print(`startup ${JSON.stringify(s, null, 2)}\n`, true);
     return s;
   }
