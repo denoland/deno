@@ -396,6 +396,14 @@ fn custom_headers(path: warp::path::Peek, f: warp::fs::File) -> Box<dyn Reply> {
       with_header(f, "Content-Type", "application/typescript;charset=utf-16be");
     return Box::new(f);
   }
+  if p.ends_with("cli/tests/encoding/windows_1255.ts") {
+    let f = with_header(
+      f,
+      "Content-Type",
+      "application/typescript;charset=windows-1255",
+    );
+    return Box::new(f);
+  }
 
   let content_type = if p.contains(".t1.") {
     Some("text/typescript")

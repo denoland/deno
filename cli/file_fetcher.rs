@@ -1975,6 +1975,17 @@ mod tests {
     .await;
   }
 
+  #[tokio::test]
+  async fn test_fetch_source_file_from_net_windows_1255() {
+    let content = "console.log(\"\u{5E9}\u{5DC}\u{5D5}\u{5DD} \u{5E2}\u{5D5}\u{5DC}\u{5DD}\");";
+    test_fetch_non_utf8_source_file_from_net(
+      "cli/tests/encoding/windows_1255.ts",
+      "windows-1255",
+      content,
+    )
+    .await;
+  }
+
   async fn test_fetch_non_utf8_source_file_from_net(
     subpath: &str,
     charset: &str,
@@ -2000,7 +2011,8 @@ mod tests {
       &source.source_code.charset.to_owned().to_lowercase()[..],
       charset
     );
-    assert_eq!(&source.source_code.to_utf8().unwrap(), expected_content);
+    let text = &source.source_code.to_utf8().unwrap();
+    assert_eq!(text, expected_content);
     assert_eq!(&(source.media_type), &msg::MediaType::TypeScript);
 
     let (_, headers) = fetcher.http_cache.get(&module_url).unwrap();
