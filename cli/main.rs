@@ -205,7 +205,7 @@ impl FileInfoDepTree {
       .get(&name)
       .unwrap();
     
-    let size = file.size_in_bytes();
+    let size = file.size;
 
     let deps = if never_seen {
       file

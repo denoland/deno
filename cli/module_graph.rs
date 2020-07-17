@@ -237,12 +237,7 @@ pub struct ModuleGraphFile {
   pub type_headers: Vec<ReferenceDescriptor>,
   pub media_type: MediaType,
   pub source_code: String,
-}
-
-impl ModuleGraphFile {
-  pub fn size_in_bytes(&self) -> usize {
-    self.source_code.as_bytes().len()
-  }
+  pub size: usize,
 }
 
 type SourceFileFuture =
@@ -371,6 +366,8 @@ impl ModuleGraphLoader {
       }
     }
 
+    let size = source_code.as_bytes().len();
+
     self.graph.insert(
       module_specifier.to_string(),
       ModuleGraphFile {
@@ -386,6 +383,7 @@ impl ModuleGraphLoader {
         lib_directives,
         types_directives,
         type_headers: vec![],
+        size,
       },
     );
     Ok(())
@@ -474,6 +472,7 @@ impl ModuleGraphLoader {
           lib_directives: vec![],
           types_directives: vec![],
           type_headers: vec![],
+          size: 0,
         },
       );
     }
@@ -484,6 +483,7 @@ impl ModuleGraphLoader {
       version::DENO.as_bytes(),
     ]);
     let source_code = source_file.source_code.to_string()?;
+    let size = source_file.source_code.as_bytes().len();
 
     if SUPPORTED_MEDIA_TYPES.contains(&source_file.media_type) {
       if let Some(types_specifier) = source_file.types_header {
@@ -579,6 +579,7 @@ impl ModuleGraphLoader {
         lib_directives,
         types_directives,
         type_headers,
+        size,
       },
     );
     Ok(())
