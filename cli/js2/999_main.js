@@ -277,8 +277,10 @@ delete Object.prototype.__proto__;
       runtimeStart();
 
     const denoNs = {
+      ...window.Deno,
       core,
       [internalSymbol]: internalObject,
+      metrics: opMetrics,
     };
     Object.defineProperties(denoNs, {
       pid: util.readOnly(pid),
@@ -331,8 +333,10 @@ delete Object.prototype.__proto__;
     );
 
     const denoNs = {
+      ...window.Deno,
       core,
       [internalSymbol]: internalObject,
+      metrics: opMetrics,
     };
     if (useDenoNamespace) {
       if (unstableFlag) {
