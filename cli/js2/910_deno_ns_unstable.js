@@ -13,9 +13,6 @@
   // export { setRaw, consoleSize } from "./ops/tty.ts";
   // export { utimeSync, utime } from "./ops/fs/utime.ts";
   // export { ftruncateSync, ftruncate } from "./ops/fs/truncate.ts";
-  // export { shutdown, ShutdownMode } from "./net.ts";
-  // export { listen, listenDatagram, connect } from "./net_unstable.ts";
-  // export { startTls } from "./tls.ts";
   // export { kill } from "./ops/process.ts";
   // export { permissions, Permissions } from "./permissions.ts";
   // export { PermissionStatus } from "./permissions.ts";
@@ -29,6 +26,12 @@
       osRelease: window.__os.osRelease,
       applySourceMap: window.__errorStack.opApplySourceMap,
       formatDiagnostics: window.__errorStack.opFormatDiagnostics,
+      shutdown: window.__net.shutdown,
+      ShutdownMode: window.__net.ShutdownMode,
+      listen: window.__netUnstable.listen,
+      connect: window.__netUnstable.connect,
+      listenDatagram: window.__netUnstable.listenDatagram,
+      startTls: window.__tls.startTls,
     },
   };
 })(this);

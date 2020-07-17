@@ -3,40 +3,11 @@
 // This module exports stable Deno APIs.
 
 ((window) => {
-  // export {
-  //   Buffer,
-  //   readAll,
-  //   readAllSync,
-  //   writeAll,
-  //   writeAllSync,
-  // } from "./buffer.ts";
   // export { chmodSync, chmod } from "./ops/fs/chmod.ts";
   // export { chownSync, chown } from "./ops/fs/chown.ts";
   // export { copyFileSync, copyFile } from "./ops/fs/copy_file.ts";
   // export { chdir, cwd } from "./ops/fs/dir.ts";
-  // export {
-  //   File,
-  //   open,
-  //   openSync,
-  //   create,
-  //   createSync,
-  //   stdin,
-  //   stdout,
-  //   stderr,
-  //   seek,
-  //   seekSync,
-  // } from "./files.ts";
-  // export { read, readSync, write, writeSync } from "./ops/io.ts";
   // export { watchFs } from "./ops/fs_events.ts";
-  // export { copy, iter, iterSync } from "./io.ts";
-  // export { SeekMode } from "./io.ts";
-  //   Reader,
-  //   ReaderSync,
-  //   Writer,
-  //   WriterSync,
-  //   Closer,
-  //   Seeker,
-  // } from "./io.ts";
   // export {
   //   makeTempDirSync,
   //   makeTempDir,
@@ -44,7 +15,6 @@
   //   makeTempFile,
   // } from "./ops/fs/make_temp.ts";
   // export { mkdirSync, mkdir } from "./ops/fs/mkdir.ts";
-  // export { connect, listen } from "./net.ts";
   // export { Process, run } from "./process.ts";
   // export { readDirSync, readDir } from "./ops/fs/read_dir.ts";
   // export { readFileSync, readFile } from "./read_file.ts";
@@ -54,7 +24,6 @@
   // export { removeSync, remove } from "./ops/fs/remove.ts";
   // export { renameSync, rename } from "./ops/fs/rename.ts";
   // export { statSync, lstatSync, stat, lstat } from "./ops/fs/stat.ts";
-  // export { connectTls, listenTls } from "./tls.ts";
   // export { truncateSync, truncate } from "./ops/fs/truncate.ts";
   // export { isatty } from "./ops/tty.ts";
   // export { writeFileSync, writeFile } from "./write_file.ts";
@@ -74,6 +43,33 @@
       execPath: window.__os.execPath,
       resources: window.__resources.resources,
       close: window.__resources.close,
+      Buffer: window.__buffer.Buffer,
+      readAll: window.__buffer.readAll,
+      readAllSync: window.__buffer.readAllSync,
+      writeAll: window.__buffer.writeAll,
+      writeAllSync: window.__buffer.writeAllSync,
+      copy: window.__io.copy,
+      iter: window.__io.iter,
+      iterSync: window.__io.iterSync,
+      SeekMode: window.__io.SeekMode,
+      read: window.__io.read,
+      readSync: window.__io.readSync,
+      write: window.__io.write,
+      writeSync: window.__io.writeSync,
+      File: window.__files.File,
+      open: window.__files.open,
+      openSync: window.__files.openSync,
+      create: window.__files.create,
+      createSync: window.__files.createSync,
+      stdin: window.__files.stdin,
+      stdout: window.__files.stdout,
+      stderr: window.__files.stderr,
+      seek: window.__files.seek,
+      seekSync: window.__files.seekSync,
+      connect: window.__net.connect,
+      listen: window.__net.listen,
+      connectTls: window.__tls.connectTls,
+      listenTls: window.__tls.listenTls,
     },
   };
 })(this);
