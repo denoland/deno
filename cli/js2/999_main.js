@@ -15,6 +15,8 @@ delete Object.prototype.__proto__;
   const errorStack = window.__errorStack;
   const os = window.__os;
   const timers = window.__timers;
+  const replLoop = window.__repl.replLoop;
+  const Console = window.__console.Console;
 
   let windowIsClosing = false;
 
@@ -96,7 +98,7 @@ delete Object.prototype.__proto__;
 
   // Other properties shared between WindowScope and WorkerGlobalScope
   const windowOrWorkerGlobalScopeProperties = {
-    // console: util.writable(new consoleTypes.Console(core.print)),
+    console: util.writable(new Console(core.print)),
     // AbortController: util.nonEnumerable(abortController.AbortControllerImpl),
     // AbortSignal: util.nonEnumerable(abortSignal.AbortSignalImpl),
     // Blob: util.nonEnumerable(blob.DenoBlob),
@@ -217,8 +219,7 @@ delete Object.prototype.__proto__;
     util.log("args", args);
 
     if (repl) {
-      // replLoop();
-      throw new Error("repl not implemented");
+      replLoop();
     }
   }
 
