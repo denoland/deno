@@ -81,7 +81,6 @@ use crate::op_error::OpError;
 use crate::permissions::Permissions;
 use crate::worker::MainWorker;
 use deno_core::v8_set_flags;
-use deno_core::Deps;
 use deno_core::ErrBox;
 use deno_core::EsIsolate;
 use deno_core::ModuleSpecifier;
@@ -179,24 +178,20 @@ fn print_cache_info(state: &GlobalState, json: bool) -> Result<(), ErrBox> {
   }
 }
 
-#[allow(dead_code)]
-struct FileInfoOutput<'a> {
-  local: &'a str,
-  file_type: &'a str,
-  compiled: Option<String>,
-  map: Option<String>,
-  deps: Option<Deps>,
-}
-
-struct FileDepInfo {
+/// A dependency tree of the basic module information.
+///
+/// Constructed from a `ModuleGraph` and `ModuleSpecifier` that 
+/// acts as the root of the tree.
+struct FileInfoDepTree {
   name: String,
   size: usize,
   total_size: usize,
-  deps: Vec<FileDepInfo>
+  deps: Vec<FileInfoDepTree>
 }
 
-impl FileDepInfo {
-  pub fn from_graph(module_graph: &ModuleGraph, root_specifier: &ModuleSpecifier) -> Self {
+impl FileInfoDepTree {
+  /// Create a `FileInfoDepTree` tree from a `ModuleGraph` and the root `ModuleSpecifier`.
+  pub fn new(module_graph: &ModuleGraph, root_specifier: &ModuleSpecifier) -> Self {
     let mut seen = HashSet::new();
     let mut total_sizes = HashMap::new();
 
@@ -248,8 +243,7 @@ impl FileDepInfo {
   }
 }
 
-// TODO(bartlomieju): this function de facto repeats
-// whole compilation stack. Can this be done better somehow?
+/// Prints the provided `ModuleSpecifier` file info.
 async fn print_file_info(
   worker: &MainWorker,
   module_specifier: ModuleSpecifier,
@@ -265,17 +259,17 @@ async fn print_file_info(
 
   let local = out.filename.to_str().unwrap();
   let file_type = msg::enum_name_media_type(out.media_type);
-  let compiled = ts_compiler
+  let compiled: Option<String> = ts_compiler
     .get_compiled_source_file(&out.url)
     .ok()
     .and_then(get_source_filename);
-  let map = ts_compiler
+  let map: Option<String> = ts_compiler
     .get_source_map_file(&module_specifier)
     .ok()
     .and_then(get_source_filename);
 
   let module_graph = get_module_graph(&global_state, &module_specifier).await?;
-  let file_info = FileDepInfo::from_graph(&module_graph, &module_specifier);
+  let file_info = FileInfoDepTree::new(&module_graph, &module_specifier);
 
   if json {
     let es_state_rc = EsIsolate::state(&worker.isolate);
@@ -313,8 +307,9 @@ async fn print_file_info(
   }
 }
 
+/// Prints the `FileInfoDepTree` tree to stdout.
 fn print_file_dep_info(
-  info: &FileDepInfo,
+  info: &FileInfoDepTree,
   prefix: &str,
   is_last: bool
 ) {
@@ -327,10 +322,11 @@ fn print_file_dep_info(
   }
 }
 
+/// Prints a single `FileInfoDepTree` to stdout.
 fn print_dep (
   prefix: &str,
   is_last: bool,
-  info: &FileDepInfo,
+  info: &FileInfoDepTree,
 ) {
   let has_children = !info.deps.is_empty();
   println!("{}{}─{} {} ({}, total = {})",
@@ -392,7 +388,7 @@ fn get_new_prefix_adds_a_vertial_bar_if_not_is_last() {
   assert_eq!(prefix, "│ ".to_string());
 }
 
-/// Gets the full filename of the SourceFile.
+/// Gets the full filename of a `SourceFile`.
 fn get_source_filename(file: SourceFile) -> Option<String> {
   file.filename
       .to_str()
