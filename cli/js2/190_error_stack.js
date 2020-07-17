@@ -5,7 +5,7 @@
   // style license available here: https://github.com/v8/v8/blob/24886f2d1c565287d33d71e4109a53bf0b54b75c/LICENSE.v8
   const colors = window.__colors;
   const assert = window.__util.assert;
-
+  const internals = window.__internals;
   const dispatchJson = window.__dispatchJson;
 
   function opFormatDiagnostics(items) {
@@ -257,7 +257,7 @@
     ErrorConstructor.prepareStackTrace = prepareStackTrace;
   }
 
-  // exposeForTest("setPrepareStackTrace", setPrepareStackTrace);
+  internals.exposeForTest("setPrepareStackTrace", setPrepareStackTrace);
 
   window.__errorStack = {
     setPrepareStackTrace,

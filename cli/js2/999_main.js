@@ -49,9 +49,6 @@ delete Object.prototype.__proto__;
     return dispatchJson.sendSync("op_metrics");
   }
 
-  // import { setPrepareStackTrace } from "./error_stack.ts";
-  // import { Start, opStart } from "./ops/runtime.ts";
-
   function getAsyncHandler(opName) {
     switch (opName) {
       case "op_write":

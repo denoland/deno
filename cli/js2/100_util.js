@@ -2,6 +2,7 @@
 
 ((window) => {
   const build = window.__build;
+  const internals = window.__internals;
   let logDebug = false;
   let logSource = "JS";
 
@@ -103,7 +104,7 @@
     return pathOrUrl;
   }
 
-  //   exposeForTest("pathFromURL", pathFromURL);
+  internals.exposeForTest("pathFromURL", pathFromURL);
 
   function writable(value) {
     return {
