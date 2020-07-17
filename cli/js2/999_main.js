@@ -17,6 +17,7 @@ delete Object.prototype.__proto__;
   const timers = window.__timers;
   const replLoop = window.__repl.replLoop;
   const Console = window.__console.Console;
+  const worker = window.__worker;
 
   let windowIsClosing = false;
 
@@ -36,6 +37,85 @@ delete Object.prototype.__proto__;
         )
       );
     }
+  }
+
+  const encoder = new TextEncoder();
+
+  function workerClose() {
+    if (isClosing) {
+      return;
+    }
+
+    isClosing = true;
+    opCloseWorker();
+  }
+
+  // TODO(bartlomieju): remove these funtions
+  // Stuff for workers
+  const onmessage = () => {};
+  const onerror = () => {};
+
+  function postMessage(data) {
+    const dataJson = JSON.stringify(data);
+    const dataIntArray = encoder.encode(dataJson);
+    opPostMessage(dataIntArray);
+  }
+
+  let isClosing = false;
+  async function workerMessageRecvCallback(data) {
+    const msgEvent = new worker.MessageEvent("message", {
+      cancelable: false,
+      data,
+    });
+
+    try {
+      if (globalThis["onmessage"]) {
+        const result = globalThis.onmessage(msgEvent);
+        if (result && "then" in result) {
+          await result;
+        }
+      }
+      globalThis.dispatchEvent(msgEvent);
+    } catch (e) {
+      let handled = false;
+
+      const errorEvent = new ErrorEvent("error", {
+        cancelable: true,
+        message: e.message,
+        lineno: e.lineNumber ? e.lineNumber + 1 : undefined,
+        colno: e.columnNumber ? e.columnNumber + 1 : undefined,
+        filename: e.fileName,
+        error: null,
+      });
+
+      if (globalThis["onerror"]) {
+        const ret = globalThis.onerror(
+          e.message,
+          e.fileName,
+          e.lineNumber,
+          e.columnNumber,
+          e,
+        );
+        handled = ret === true;
+      }
+
+      globalThis.dispatchEvent(errorEvent);
+      if (errorEvent.defaultPrevented) {
+        handled = true;
+      }
+
+      if (!handled) {
+        throw e;
+      }
+    }
+  }
+
+  function opPostMessage(data) {
+    dispatchJson.sendSync("op_worker_post_message", {}, data);
+  }
+
+  function opCloseWorker() {
+    dispatchJson.sendSync("op_worker_close");
   }
 
   function opStart() {
@@ -80,7 +160,6 @@ delete Object.prototype.__proto__;
     build.setBuildInfo(s.target);
     util.setLogDebug(s.debugFlag, source);
     errorStack.setPrepareStackTrace(Error);
-    Deno.core.print(`startup ${JSON.stringify(s, null, 2)}\n`, true);
     return s;
   }
 
@@ -128,7 +207,7 @@ delete Object.prototype.__proto__;
     // TransformStream: util.nonEnumerable(transformStream.TransformStreamImpl),
     // URL: util.nonEnumerable(url.URLImpl),
     // URLSearchParams: util.nonEnumerable(urlSearchParams.URLSearchParamsImpl),
-    // Worker: util.nonEnumerable(workers.WorkerImpl),
+    Worker: util.nonEnumerable(worker.Worker),
     // WritableStream: util.nonEnumerable(writableStream.WritableStreamImpl),
   };
 
@@ -151,6 +230,16 @@ delete Object.prototype.__proto__;
     onunload: util.writable(null),
     close: util.writable(windowClose),
     closed: util.getterOnly(() => windowIsClosing),
+  };
+
+  const workerRuntimeGlobalProperties = {
+    self: util.readOnly(globalThis),
+    onmessage: util.writable(onmessage),
+    onerror: util.writable(onerror),
+    // TODO: should be readonly?
+    close: util.nonEnumerable(workerClose),
+    postMessage: util.writable(postMessage),
+    workerMessageRecvCallback: util.nonEnumerable(workerMessageRecvCallback),
   };
 
   let hasBootstrapped = false;
@@ -223,8 +312,51 @@ delete Object.prototype.__proto__;
     }
   }
 
-  function bootstrapWorkerRuntime() {
-    Deno.core.print("hello\n");
+  function bootstrapWorkerRuntime(name, useDenoNamespace, internalName) {
+    if (hasBootstrapped) {
+      throw new Error("Worker runtime already bootstrapped");
+    }
+    // Remove bootstrapping methods from global scope
+    globalThis.bootstrap = undefined;
+    util.log("bootstrapWorkerRuntime");
+    hasBootstrapped = true;
+    Object.defineProperties(globalThis, windowOrWorkerGlobalScopeMethods);
+    Object.defineProperties(globalThis, windowOrWorkerGlobalScopeProperties);
+    Object.defineProperties(globalThis, workerRuntimeGlobalProperties);
+    Object.defineProperties(globalThis, eventTargetProperties);
+    Object.defineProperties(globalThis, { name: util.readOnly(name) });
+    eventTarget.setEventTargetData(globalThis);
+    const { unstableFlag, pid, noColor, args } = runtimeStart(
+      internalName ?? name,
+    );
+
+    if (unstableFlag) {
+      // Object.defineProperties(globalThis, unstableMethods);
+      // Object.defineProperties(globalThis, unstableProperties);
+    }
+    const denoNs = {
+      core,
+    };
+    if (useDenoNamespace) {
+      if (unstableFlag) {
+        // Object.assign(denoNs, denoUnstableNs);
+      }
+      Object.defineProperties(denoNs, {
+        pid: util.readOnly(pid),
+        noColor: util.readOnly(noColor),
+        args: util.readOnly(Object.freeze(args)),
+      });
+      // Setup `Deno` global - we're actually overriding already
+      // existing global `Deno` with `Deno` namespace from "./deno.ts".
+      util.immutableDefine(globalThis, "Deno", denoNs);
+      Object.freeze(globalThis.Deno);
+      Object.freeze(globalThis.Deno.core);
+      Object.freeze(globalThis.Deno.core.sharedQueue);
+      // setSignals();
+    } else {
+      delete globalThis.Deno;
+      util.assert(globalThis.Deno === undefined);
+    }
   }
 
   Object.defineProperties(globalThis, {

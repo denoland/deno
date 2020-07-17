@@ -25,7 +25,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-static TYPESCRIPT_CODE: &str = include_str!("typescript/lib/typescript.js");
+pub static TYPESCRIPT_CODE: &str = include_str!("typescript/lib/typescript.js");
 static COMPILER_CODE: &str = include_str!("compiler_main.js");
 static SYSTEM_LOADER: &str = include_str!("system_loader.js");
 
