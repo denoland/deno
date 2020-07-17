@@ -44,19 +44,25 @@ fn main() {
 
   let mut runtime_isolate = CoreIsolate::new(StartupData::None, true);
 
-  for dir_entry in std::fs::read_dir("js2/").unwrap() {
-    let file = dir_entry.unwrap();
-    let filename = file.file_name().to_string_lossy().to_string();
+  let mut sorted_files = std::fs::read_dir("js2/").unwrap()
+    .map(|dir_entry| {
+      let file = dir_entry.unwrap();
+      let filename = file.path().to_string_lossy().to_string();  
+      filename
+    })
+    .filter(|filename| filename.ends_with(".js"))
+    .collect::<Vec<String>>();
 
-    if !filename.ends_with(".js") {
-      continue;
-    }
+  sorted_files.sort();
 
+  eprintln!("sorted files {:#?}", sorted_files);
+  for file in sorted_files {
     js_check(
       runtime_isolate
-        .execute(&filename, &std::fs::read_to_string(file.path()).unwrap()),
+        .execute(&file, &std::fs::read_to_string(&file).unwrap()),
     );
   }
+
   let snapshot = runtime_isolate.snapshot();
   let snapshot_slice: &[u8] = &*snapshot;
   println!("Snapshot size: {}", snapshot_slice.len());

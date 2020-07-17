@@ -808,6 +808,10 @@
 
   const eventTargetData = new WeakMap();
 
+  function setEventTargetData(value) {
+    eventTargetData.set(value, getDefaultTargetData());
+  }
+
   function getAssignedSlot(target) {
     return Boolean(eventTargetData.get(target)?.assignedSlot);
   }
@@ -1034,4 +1038,7 @@
   window.EventTarget = EventTarget;
   window.ErrorEvent = ErrorEvent;
   window.CustomEvent = CustomEvent;
+  window.__eventTarget = {
+    setEventTargetData,
+  };
 })(this);
