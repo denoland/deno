@@ -82,7 +82,6 @@ use crate::permissions::Permissions;
 use crate::worker::MainWorker;
 use deno_core::v8_set_flags;
 use deno_core::ErrBox;
-use deno_core::EsIsolate;
 use deno_core::ModuleSpecifier;
 use flags::DenoSubcommand;
 use flags::Flags;
@@ -91,6 +90,7 @@ use futures::Future;
 use log::Level;
 use log::Metadata;
 use log::Record;
+use serde::Serialize;
 use state::exit_unstable;
 use std::env;
 use std::io::Read;
@@ -182,6 +182,7 @@ fn print_cache_info(state: &GlobalState, json: bool) -> Result<(), ErrBox> {
 ///
 /// Constructed from a `ModuleGraph` and `ModuleSpecifier` that 
 /// acts as the root of the tree.
+#[derive(Serialize)]
 struct FileInfoDepTree {
   name: String,
   size: usize,
@@ -272,16 +273,13 @@ async fn print_file_info(
   let file_info = FileInfoDepTree::new(&module_graph, &module_specifier);
 
   if json {
-    let es_state_rc = EsIsolate::state(&worker.isolate);
-    let es_state = es_state_rc.borrow();
-    let deps = es_state.modules.deps(&module_specifier);
 
     let output = json!({
       "local": local,
       "fileType": file_type,
       "compiled": compiled,
       "map": map,
-      "deps": deps.map(|x| x.to_json())
+      "deps": file_info
     });
 
     write_json_to_stdout(&output)
