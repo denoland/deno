@@ -138,6 +138,9 @@
 
   window.__util = {
     log,
+    setLogDebug,
+    notImplemented,
+    createResolvable,
     assert,
     immutableDefine,
     pathFromURL,

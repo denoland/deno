@@ -7,6 +7,10 @@ delete Object.prototype.__proto__;
 ((window) => {
   const util = window.__util;
   const eventTarget = window.__eventTarget;
+  const dispatchJson = window.__dispatchJson;
+  const dispatchMinimal = window.__dispatchMinimal;
+  const build = window.__build;
+  const version = window.__version;
 
   let windowIsClosing = false;
 
@@ -32,10 +36,18 @@ delete Object.prototype.__proto__;
 
   const core = Deno.core;
 
-  // import * as dispatchMinimal from "./ops/dispatch_minimal.ts";
-  // import * as dispatchJson from "./ops/dispatch_json.ts";
-  // import { setBuildInfo } from "./build.ts";
-  // import { setVersions } from "./version.ts";
+  function opStart() {
+    return dispatchJson.sendSync("op_start");
+  }
+
+  function opMainModule() {
+    return dispatchJson.sendSync("op_main_module");
+  }
+
+  function opMetrics() {
+    return dispatchJson.sendSync("op_metrics");
+  }
+
   // import { setPrepareStackTrace } from "./error_stack.ts";
   // import { Start, opStart } from "./ops/runtime.ts";
 
@@ -43,9 +55,9 @@ delete Object.prototype.__proto__;
     switch (opName) {
       case "op_write":
       case "op_read":
-        return window.__dispatchMinimal.asyncMsgFromRust;
+        return dispatchMinimal.asyncMsgFromRust;
       default:
-        return window.__dispatchJson.asyncMsgFromRust;
+        return dispatchJson.asyncMsgFromRust;
     }
   }
 
@@ -65,13 +77,13 @@ delete Object.prototype.__proto__;
     // First we send an empty `Start` message to let the privileged side know we
     // are ready. The response should be a `StartRes` message containing the CLI
     // args and other info.
-    // const s = opStart();
-    // setVersions(s.denoVersion, s.v8Version, s.tsVersion);
-    // setBuildInfo(s.target);
-    // util.setLogDebug(s.debugFlag, source);
+    const s = opStart();
+    version.setVersions(s.denoVersion, s.v8Version, s.tsVersion);
+    build.setBuildInfo(s.target);
+    util.setLogDebug(s.debugFlag, source);
     // setPrepareStackTrace(Error);
-    // return s;
-    return {};
+    Deno.core.print(`startup ${JSON.stringify(s, null, 2)}\n`, true);
+    return s;
   }
 
   // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
@@ -186,12 +198,16 @@ delete Object.prototype.__proto__;
       args: util.readOnly(Object.freeze(args)),
     });
 
-    // if (unstableFlag) {
-    //   Object.defineProperties(globalThis, unstableMethods);
-    //   Object.defineProperties(globalThis, unstableProperties);
-    //   Object.defineProperty(denoNs, "mainModule", getterOnly(opMainModule));
-    //   Object.assign(denoNs, denoUnstableNs);
-    // }
+    if (unstableFlag) {
+      //   Object.defineProperties(globalThis, unstableMethods);
+      //   Object.defineProperties(globalThis, unstableProperties);
+      Object.defineProperty(
+        denoNs,
+        "mainModule",
+        util.getterOnly(opMainModule),
+      );
+      //   Object.assign(denoNs, denoUnstableNs);
+    }
 
     // Setup `Deno` global - we're actually overriding already
     // existing global `Deno` with `Deno` namespace from "./deno.ts".
