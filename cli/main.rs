@@ -98,7 +98,7 @@ use std::io::Read;
 use std::io::Write;
 use std::iter::once;
 use std::path::PathBuf;
-use std::{collections::HashSet, pin::Pin};
+use std::{collections::{HashMap, HashSet}, pin::Pin};
 use upgrade::upgrade_command;
 use url::Url;
 use module_graph::ModuleGraph;
@@ -179,12 +179,73 @@ fn print_cache_info(state: &GlobalState, json: bool) -> Result<(), ErrBox> {
   }
 }
 
+#[allow(dead_code)]
 struct FileInfoOutput<'a> {
   local: &'a str,
   file_type: &'a str,
   compiled: Option<String>,
   map: Option<String>,
   deps: Option<Deps>,
+}
+
+struct FileDepInfo {
+  name: String,
+  size: usize,
+  total_size: usize,
+  deps: Vec<FileDepInfo>
+}
+
+impl FileDepInfo {
+  pub fn from_graph(module_graph: &ModuleGraph, root_specifier: &ModuleSpecifier) -> Self {
+    let mut seen = HashSet::new();
+    let mut total_sizes = HashMap::new();
+
+    Self::cstr_helper(&mut seen, &mut total_sizes, module_graph, root_specifier)
+  }
+
+  fn cstr_helper(seen: &mut HashSet<String>, total_sizes: &mut HashMap<String, usize>, graph: &ModuleGraph, root: &ModuleSpecifier) -> Self {
+    let name = root.to_string();
+    let never_seen = seen.insert(name.clone());
+    let file = graph
+      .get(&name)
+      .unwrap();
+    
+    let size = file.size_in_bytes();
+
+    let deps = if never_seen {
+      file
+      .imports
+      .iter()
+      .map(|import| import.resolved_specifier.clone())
+      .map(|spec| Self::cstr_helper(seen, total_sizes, graph, &spec))
+      .collect::<Vec<_>>()
+    } else {
+      vec![]
+    };
+
+    let total_size = if never_seen {
+      if let Some(total_size) = total_sizes.get(&name) {
+        total_size.to_owned()
+      } else {
+        let total = size + deps.iter()
+          .map(|dep| dep.total_size)
+          .fold(0usize, |acc, v| acc + v);
+
+        total_sizes.insert(name.clone(), total);
+
+        total
+      }
+    } else {
+      0
+    };
+
+    Self {
+      name,
+      size,
+      total_size,
+      deps
+    }
+  }
 }
 
 // TODO(bartlomieju): this function de facto repeats
@@ -202,126 +263,102 @@ async fn print_file_info(
     .fetch_source_file(&module_specifier, None, Permissions::allow_all())
     .await?;
 
-  let mut output = FileInfoOutput {
-    local: out.filename.to_str().unwrap(),
-    file_type: msg::enum_name_media_type(out.media_type),
-    compiled: None,
-    map: None,
-    deps: None,
-  };
-
-  output.compiled = ts_compiler
+  let local = out.filename.to_str().unwrap();
+  let file_type = msg::enum_name_media_type(out.media_type);
+  let compiled = ts_compiler
     .get_compiled_source_file(&out.url)
     .ok()
     .and_then(get_source_filename);
-
-  output.map = ts_compiler
+  let map = ts_compiler
     .get_source_map_file(&module_specifier)
     .ok()
     .and_then(get_source_filename);
 
+  let module_graph = get_module_graph(&global_state, &module_specifier).await?;
+  let file_info = FileDepInfo::from_graph(&module_graph, &module_specifier);
+
   if json {
     let es_state_rc = EsIsolate::state(&worker.isolate);
     let es_state = es_state_rc.borrow();
-  
-      if let Some(deps) = es_state.modules.deps(&module_specifier) {
-      output.deps = Some(deps);
-    }
+    let deps = es_state.modules.deps(&module_specifier);
 
     let output = json!({
-      "local": output.local,
-      "fileType": output.file_type,
-      "compiled": output.compiled,
-      "map": output.map,
-      "deps": output.deps.map(|x| x.to_json())
+      "local": local,
+      "fileType": file_type,
+      "compiled": compiled,
+      "map": map,
+      "deps": deps.map(|x| x.to_json())
     });
+
     write_json_to_stdout(&output)
   } else {
-    let module_graph = get_module_graph(&global_state, &module_specifier).await?;
-    let top = module_graph.get(&module_specifier.to_string());
+    // let top = module_graph.get(&module_specifier.to_string());
 
-    println!("{} {}", colors::bold("local:"), output.local);
-    println!("{} {}", colors::bold("type:"), output.file_type);
-    if let Some(compiled) = output.compiled {
+    println!("{} {}", colors::bold("local:"), local);
+    println!("{} {}", colors::bold("type:"), file_type);
+    if let Some(compiled) = compiled {
       println!("{} {}", colors::bold("compiled:"), compiled);
     }
-    if let Some(map) = output.map {
+    if let Some(map) = map {
       println!("{} {}", colors::bold("map:"), map);
     }
-    if let Some(file) = top {
-      let imports = file
-        .imports.iter()
-        .map(|import| import.resolved_specifier.to_string())
-        .collect::<Vec<_>>();
-          
-      println!("{} {} unique\n{} ({}, total = {})", colors::bold("deps:"), &module_graph.len(), file.specifier, human_size(file.size_in_bytes() as f64), human_size(0 as f64));
-      let mut seen: HashSet<String> = HashSet::new();
-      seen.insert(file.specifier.to_string());
-        
-        for (idx, dep) in imports.iter().enumerate() {
-          print_dependencies(&mut seen, "", idx == imports.len() - 1, &module_graph, &dep);
-        }
+    println!("{} {} unique", colors::bold("deps:"), &module_graph.len());
+    println!("{} ({}, total = {})", file_info.name, human_size(file_info.size as f64), human_size(file_info.total_size as f64));
+
+    for (idx, dep) in file_info.deps.iter().enumerate() {
+      print_file_dep_info(&dep, "", idx == file_info.deps.len() - 1);
     }
 
     Ok(())
   }
 }
 
-/// Prints all dependencies of the module with the provided name.
-fn print_dependencies(
-  seen: &mut HashSet<String>,
+fn print_file_dep_info(
+  info: &FileDepInfo,
   prefix: &str,
-  is_last: bool,
-  graph: &ModuleGraph,
-  name: &String
+  is_last: bool
 ) {
-  let file = graph.get(name).unwrap();
-  let size = file.size_in_bytes();
-  if seen.contains(name) {
-    print_line(prefix, is_last, false, name, size as f64, 0f64);
-  } else {
-    
-    let children: Vec<String> = file
-      .imports
-      .iter()        
-      .map(|import| import.resolved_specifier.to_string())
-      .collect();
+  print_dep(prefix, is_last, info);
 
-    seen.insert(name.to_string());
-
-    let child_count = children.len();
-    let has_children = child_count > 0;
-
-    print_line(prefix, is_last, has_children, name, size as f64,0f64);
-
-    children
-      .iter()
-      .enumerate()
-      .for_each(move |(idx, dep_specifier)| {
-        let prefix = &get_new_prefix(&prefix, is_last);
-        let is_last = idx == child_count - 1;
-        print_dependencies(seen, prefix, is_last, graph, dep_specifier)
-      });
+  let prefix = &get_new_prefix(prefix, is_last);
+  let child_count = info.deps.len();
+  for (idx, dep) in info.deps.iter().enumerate() {
+    print_file_dep_info(dep, prefix, idx == child_count - 1);
   }
 }
 
-/// Prints a line of the dependency tree to stdout.
-fn print_line(
+fn print_dep (
   prefix: &str,
   is_last: bool,
-  has_children: bool,
-  name: &String,
-  size: f64,
-  total_size: f64
+  info: &FileDepInfo,
 ) {
+  let has_children = !info.deps.is_empty();
   println!("{}{}─{} {} ({}, total = {})",
     prefix,
-    if is_last { "└" } else { "├" },
-    if has_children { "┬" } else { "─" },
-    name,
-    human_size(size as f64),
-    human_size(total_size as f64)
+    get_sibling_connector(is_last),
+    get_child_connector(has_children),
+    info.name,
+    human_size(info.size as f64),
+    human_size(info.total_size as f64)
   );
+}
+
+/// Gets the sibling portion of the tree branch.
+fn get_sibling_connector(is_last: bool) -> char {
+  if is_last {
+    '└'
+  } else {
+    '├'
+  }
+}
+
+/// Gets the child connector for the branch.
+fn get_child_connector(has_children: bool) -> char {
+  if has_children {
+    '┬'
+  } else {
+    '─'
+  }
 }
 
 /// Creates a new prefix for a dependency tree item.
