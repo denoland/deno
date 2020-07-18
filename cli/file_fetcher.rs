@@ -609,8 +609,8 @@ fn map_content_type(
       };
 
       let mut charset: Option<String> = None;
-      for i in 1..ct_vector.len() {
-        let trimmed_part = ct_vector[i].trim_start();
+      for part in ct_vector.iter().skip(1) {
+        let trimmed_part = part.trim_start();
         if trimmed_part.starts_with("charset=") {
           charset = Some(trimmed_part.split_at(8).1.trim_end().to_owned());
           break;

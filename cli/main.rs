@@ -668,7 +668,7 @@ async fn test_command(
     types_header: None,
     media_type: MediaType::TypeScript,
     source_code: SourceCode::new(
-      test_file.clone().into_bytes().into(),
+      test_file.clone().into_bytes(),
       Some("utf-8".to_owned()),
     ),
   };
