@@ -10,6 +10,10 @@
   // Seek whence values.
   // https://golang.org/pkg/io/#pkg-constants
   const SeekMode = {
+    0: "Start",
+    1: "Current",
+    2: "End",
+
     Start: 0,
     Current: 1,
     End: 2,
