@@ -1996,7 +1996,7 @@ mod tests {
     assert!(source.is_ok());
     let source = source.unwrap();
     assert_eq!(
-      &source.source_code.charset.to_owned().to_lowercase()[..],
+      &source.source_code.charset.to_lowercase()[..],
       charset
     );
     let text = &source.source_code.to_utf8().unwrap();

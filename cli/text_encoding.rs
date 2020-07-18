@@ -41,7 +41,7 @@ pub fn convert_to_utf8(bytes: &[u8], charset: &str) -> Result<String, Error> {
 mod tests {
   use super::*;
 
-  fn test_detection(test_data: &Vec<u8>, expected_charset: &str) {
+  fn test_detection(test_data: &[u8], expected_charset: &str) {
     let detected_charset = detect_charset(test_data);
     assert_eq!(
       expected_charset.to_lowercase(),
