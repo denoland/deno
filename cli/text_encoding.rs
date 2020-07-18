@@ -1,3 +1,4 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use std::io::{Error, ErrorKind};
 
 /// Attempts to detect the character encoding of the provided bytes.

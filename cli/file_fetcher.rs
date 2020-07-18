@@ -25,6 +25,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use url::Url;
 
+/// Structure representing source code text.
 #[derive(Debug, Clone)]
 pub struct SourceCode {
   bytes: Vec<u8>,
