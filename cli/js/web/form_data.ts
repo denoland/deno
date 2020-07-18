@@ -108,12 +108,14 @@ class FormDataBase {
 
     // Otherwise, append entry to the context object’s entry list.
     if (!found) {
-      if (value instanceof domFile.DomFileImpl) {
-        this[dataSymbol].push([name, value]);
-      } else if (value instanceof blob.DenoBlob) {
-        const dfile = new domFile.DomFileImpl([value], filename || name, {
-          type: value.type,
-        });
+      if (value instanceof blob.DenoBlob) {
+        const dfile = new domFile.DomFileImpl(
+          [value],
+          filename || value.name || name,
+          {
+            type: value.type,
+          }
+        );
         this[dataSymbol].push([name, dfile]);
       } else {
         this[dataSymbol].push([name, String(value)]);
