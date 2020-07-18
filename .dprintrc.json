@@ -19,7 +19,8 @@
     "std/node_modules",
     "std/hash/_wasm",
     "target",
-    "third_party"
+    "third_party",
+    "cli/tests/encoding"
   ],
   "plugins": [
     "https://plugins.dprint.dev/typescript-0.19.9.wasm",
