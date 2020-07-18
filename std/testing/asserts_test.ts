@@ -4,6 +4,7 @@ import {
   assert,
   assertNotEquals,
   assertStringContains,
+  assertNotStringContains,
   assertArrayContains,
   assertMatch,
   assertEquals,
@@ -157,6 +158,21 @@ Deno.test("testingAssertStringContains", function (): void {
   let didThrow;
   try {
     assertStringContains("Denosaurus", "Raptor");
+    didThrow = false;
+  } catch (e) {
+    assert(e instanceof AssertionError);
+    didThrow = true;
+  }
+  assertEquals(didThrow, true);
+});
+
+Deno.test("testingAssertNotStringContains", function (): void {
+  assertNotStringContains("Denosaurus", "node");
+  assertNotStringContains("Denosaurus", "ABAP");
+  assertNotStringContains("Denosaurus", "python");
+  let didThrow;
+  try {
+    assertNotStringContains("Denosaurus", "Deno");
     didThrow = false;
   } catch (e) {
     assert(e instanceof AssertionError);

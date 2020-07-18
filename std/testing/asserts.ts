@@ -303,6 +303,22 @@ export function assertStringContains(
 }
 
 /**
+ * Make an assertion that actual does not contain expected.
+ */
+export function assertNotStringContains(
+  actual: string,
+  expected: string,
+  msg?: string,
+): void {
+  if (actual.includes(expected)) {
+    if (!msg) {
+      msg = `actual: "${actual}" expected not to contain: "${expected}"`;
+    }
+    throw new AssertionError(msg);
+  }
+}
+
+/**
  * Make an assertion that `actual` contains the `expected` values.
  * If not then an error will be thrown.
  *
