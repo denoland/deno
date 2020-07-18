@@ -148,11 +148,10 @@
 
     return parts.join("");
   }
-  Object.defineProperties(window, {
-    base64: {
-      byteLength,
-      toByteArray,
-      fromByteArray,
-    },
-  });
+
+  window.__base64 = {
+    byteLength,
+    toByteArray,
+    fromByteArray,
+  };
 })(this);

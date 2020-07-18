@@ -98,8 +98,8 @@
     return "relatedTarget" in event;
   }
 
-  function isTrusted(this_) {
-    return eventData.get(this_).isTrusted;
+  function isTrusted() {
+    return eventData.get(this).isTrusted;
   }
 
   class Event {

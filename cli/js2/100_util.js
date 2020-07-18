@@ -143,6 +143,7 @@
     notImplemented,
     createResolvable,
     assert,
+    AssertionError,
     immutableDefine,
     pathFromURL,
     writable,

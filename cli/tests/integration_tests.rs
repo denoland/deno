@@ -2847,6 +2847,7 @@ async fn inspector_pause() {
     use futures::stream::StreamExt;
     while let Some(msg) = socket.next().await {
       let msg = msg.unwrap().to_string();
+      eprintln!("msg: {}", msg);
       assert!(!msg.contains("error"));
       if !msg.contains("Debugger.scriptParsed") {
         return msg;

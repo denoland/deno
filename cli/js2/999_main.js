@@ -206,7 +206,7 @@ delete Object.prototype.__proto__;
     ErrorEvent: util.nonEnumerable(ErrorEvent),
     Event: util.nonEnumerable(Event),
     EventTarget: util.nonEnumerable(EventTarget),
-    Headers: util.nonEnumerable(headers.HeadersImpl),
+    Headers: util.nonEnumerable(headers.Headers),
     FormData: util.nonEnumerable(formData.FormData),
     ReadableStream: util.nonEnumerable(streams.ReadableStream),
     Request: util.nonEnumerable(request.Request),
@@ -305,7 +305,7 @@ delete Object.prototype.__proto__;
 
     if (unstableFlag) {
       Object.defineProperty(
-        denoNs,
+        finalDenoNs,
         "mainModule",
         util.getterOnly(opMainModule),
       );

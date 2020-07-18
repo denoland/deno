@@ -76,7 +76,7 @@
         }
         ret.push(enc.encode(str));
         // eslint-disable-next-line @typescript-eslint/no-use-before-define
-      } else if (element instanceof DenoBlob) {
+      } else if (element instanceof Blob) {
         ret.push(element[bytesSymbol]);
       } else if (element instanceof Uint8Array) {
         ret.push(element);

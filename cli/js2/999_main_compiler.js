@@ -412,6 +412,13 @@ delete Object.prototype.__proto__;
   // Warning! The values in this enum are duplicated in `cli/msg.rs`
   // Update carefully!
   const MediaType = {
+    0: "JavaScript",
+    1: "JSX",
+    2: "TypeScript",
+    3: "TSX",
+    4: "Json",
+    5: "Wasm",
+    6: "Unknown",
     JavaScript: 0,
     JSX: 1,
     TypeScript: 2,
