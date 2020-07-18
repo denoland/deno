@@ -1,10 +1,9 @@
-const { mkdir, test } = Deno;
 import { assert, assertEquals } from "../testing/asserts.ts";
 import { testWalk, touch, walkArray } from "../fs/walk_test.ts";
 import { globToRegExp, isGlob, joinGlobs, normalizeGlob } from "./glob.ts";
 import { SEP, join } from "./mod.ts";
 
-test({
+Deno.test({
   name: "glob: glob to regex",
   fn(): void {
     assertEquals(globToRegExp("unicorn.*") instanceof RegExp, true);
@@ -14,41 +13,41 @@ test({
     assertEquals(globToRegExp("*.ts").test("unicorn.js"), false);
     assertEquals(
       globToRegExp(join("unicorn", "**", "cathedral.ts")).test(
-        join("unicorn", "in", "the", "cathedral.ts")
+        join("unicorn", "in", "the", "cathedral.ts"),
       ),
-      true
+      true,
     );
     assertEquals(
       globToRegExp(join("unicorn", "**", "cathedral.ts")).test(
-        join("unicorn", "in", "the", "kitchen.ts")
+        join("unicorn", "in", "the", "kitchen.ts"),
       ),
-      false
+      false,
     );
     assertEquals(
       globToRegExp(join("unicorn", "**", "bathroom.*")).test(
-        join("unicorn", "sleeping", "in", "bathroom.py")
+        join("unicorn", "sleeping", "in", "bathroom.py"),
       ),
-      true
+      true,
     );
     assertEquals(
       globToRegExp(join("unicorn", "!(sleeping)", "bathroom.ts"), {
         extended: true,
       }).test(join("unicorn", "flying", "bathroom.ts")),
-      true
+      true,
     );
     assertEquals(
       globToRegExp(join("unicorn", "(!sleeping)", "bathroom.ts"), {
         extended: true,
       }).test(join("unicorn", "sleeping", "bathroom.ts")),
-      false
+      false,
     );
   },
 });
 
 testWalk(
   async (d: string): Promise<void> => {
-    await mkdir(d + "/a");
-    await mkdir(d + "/b");
+    await Deno.mkdir(d + "/a");
+    await Deno.mkdir(d + "/b");
     await touch(d + "/a/x.ts");
     await touch(d + "/b/z.ts");
     await touch(d + "/b/z.js");
@@ -60,13 +59,13 @@ testWalk(
     assertEquals(arr.length, 2);
     assertEquals(arr[0], "a/x.ts");
     assertEquals(arr[1], "b/z.ts");
-  }
+  },
 );
 
 testWalk(
   async (d: string): Promise<void> => {
-    await mkdir(d + "/a");
-    await mkdir(d + "/a/yo");
+    await Deno.mkdir(d + "/a");
+    await Deno.mkdir(d + "/a/yo");
     await touch(d + "/a/yo/x.ts");
   },
   async function globInWalkFolderWildcard(): Promise<void> {
@@ -80,15 +79,15 @@ testWalk(
     });
     assertEquals(arr.length, 1);
     assertEquals(arr[0], "a/yo/x.ts");
-  }
+  },
 );
 
 testWalk(
   async (d: string): Promise<void> => {
-    await mkdir(d + "/a");
-    await mkdir(d + "/a/unicorn");
-    await mkdir(d + "/a/deno");
-    await mkdir(d + "/a/raptor");
+    await Deno.mkdir(d + "/a");
+    await Deno.mkdir(d + "/a/unicorn");
+    await Deno.mkdir(d + "/a/deno");
+    await Deno.mkdir(d + "/a/raptor");
     await touch(d + "/a/raptor/x.ts");
     await touch(d + "/a/deno/x.ts");
     await touch(d + "/a/unicorn/x.ts");
@@ -105,7 +104,7 @@ testWalk(
     assertEquals(arr.length, 2);
     assertEquals(arr[0], "a/deno/x.ts");
     assertEquals(arr[1], "a/raptor/x.ts");
-  }
+  },
 );
 
 testWalk(
@@ -121,10 +120,10 @@ testWalk(
     assertEquals(arr.length, 2);
     assertEquals(arr[0], "x.js");
     assertEquals(arr[1], "x.ts");
-  }
+  },
 );
 
-test({
+Deno.test({
   name: "isGlob: pattern to test",
   fn(): void {
     // should be true if valid glob pattern
@@ -239,10 +238,10 @@ test({
   },
 });
 
-test("normalizeGlobGlobstar", function (): void {
+Deno.test("normalizeGlobGlobstar", function (): void {
   assertEquals(normalizeGlob(`**${SEP}..`, { globstar: true }), `**${SEP}..`);
 });
 
-test("joinGlobsGlobstar", function (): void {
+Deno.test("joinGlobsGlobstar", function (): void {
   assertEquals(joinGlobs(["**", ".."], { globstar: true }), `**${SEP}..`);
 });

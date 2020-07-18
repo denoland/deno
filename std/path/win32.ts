@@ -1,8 +1,8 @@
 // Copyright the Browserify authors. MIT License.
 // Ported from https://github.com/browserify/path-browserify/
+/** This module is browser compatible. */
 
-const { cwd, env } = Deno;
-import { FormatInputPathObject, ParsedPath } from "./interface.ts";
+import type { FormatInputPathObject, ParsedPath } from "./_interface.ts";
 import {
   CHAR_DOT,
   CHAR_BACKWARD_SLASH,
@@ -17,7 +17,7 @@ import {
   normalizeString,
   _format,
 } from "./_util.ts";
-import { assert } from "../testing/asserts.ts";
+import { assert } from "../_util/assert.ts";
 
 export const sep = "\\";
 export const delimiter = ";";
@@ -32,14 +32,20 @@ export function resolve(...pathSegments: string[]): string {
     if (i >= 0) {
       path = pathSegments[i];
     } else if (!resolvedDevice) {
-      path = cwd();
+      if (globalThis.Deno == null) {
+        throw new TypeError("Resolved a drive-letter-less path without a CWD.");
+      }
+      path = Deno.cwd();
     } else {
+      if (globalThis.Deno == null) {
+        throw new TypeError("Resolved a relative path without a CWD.");
+      }
       // Windows has the concept of drive-specific current working
       // directories. If we've resolved a drive letter but not yet an
       // absolute path, get cwd for that drive, or the process cwd if
       // the drive cwd is not available. We're sure the device is not
       // a UNC path at this points, because UNC paths are always absolute.
-      path = env.get(`=${resolvedDevice}`) || cwd();
+      path = Deno.env.get(`=${resolvedDevice}`) || Deno.cwd();
 
       // Verify that a cwd was found and that it actually points
       // to our drive. If not, default to the drive's root.
@@ -161,7 +167,7 @@ export function resolve(...pathSegments: string[]): string {
     resolvedTail,
     !resolvedAbsolute,
     "\\",
-    isPathSeparator
+    isPathSeparator,
   );
 
   return resolvedDevice + (resolvedAbsolute ? "\\" : "") + resolvedTail || ".";
@@ -253,7 +259,7 @@ export function normalize(path: string): string {
       path.slice(rootEnd),
       !isAbsolute,
       "\\",
-      isPathSeparator
+      isPathSeparator,
     );
   } else {
     tail = "";
@@ -744,7 +750,7 @@ export function format(pathObject: FormatInputPathObject): string {
   /* eslint-disable max-len */
   if (pathObject === null || typeof pathObject !== "object") {
     throw new TypeError(
-      `The "pathObject" argument must be of type Object. Received type ${typeof pathObject}`
+      `The "pathObject" argument must be of type Object. Received type ${typeof pathObject}`,
     );
   }
   return _format("\\", pathObject);
@@ -908,7 +914,7 @@ export function parse(path: string): ParsedPath {
  * are ignored.
  */
 export function fromFileUrl(url: string | URL): string {
-  return new URL(url).pathname
+  return new URL(String(url)).pathname
     .replace(/^\/*([A-Za-z]:)(\/|$)/, "$1/")
     .replace(/\//g, "\\");
 }

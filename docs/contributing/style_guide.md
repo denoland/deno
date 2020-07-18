@@ -40,6 +40,11 @@ Be explicit even when it means more code.
 There are some situations where it may make sense to use such techniques, but in
 the vast majority of cases it does not.
 
+## Inclusive code
+
+Please follow the guidelines for inclusive code outlined at
+https://chromium.googlesource.com/chromium/src/+/master/styleguide/inclusive_code.md.
+
 ## Rust
 
 Follow Rust conventions and be consistent with existing code.
@@ -80,28 +85,23 @@ When designing function interfaces, stick to the following rules.
    there is only one, and it seems inconceivable that we would add more optional
    parameters in the future.
 
-<!-- prettier-ignore-start -->
-<!-- see https://github.com/prettier/prettier/issues/3679 -->
-
 3. The 'options' argument is the only argument that is a regular 'Object'.
 
    Other arguments can be objects, but they must be distinguishable from a
    'plain' Object runtime, by having either:
 
-    - a distinguishing prototype (e.g. `Array`, `Map`, `Date`, `class MyThing`)
-    - a well-known symbol property (e.g. an iterable with `Symbol.iterator`).
+   - a distinguishing prototype (e.g. `Array`, `Map`, `Date`, `class MyThing`)
+   - a well-known symbol property (e.g. an iterable with `Symbol.iterator`).
 
    This allows the API to evolve in a backwards compatible way, even when the
    position of the options object changes.
-
-<!-- prettier-ignore-end -->
 
 ```ts
 // BAD: optional parameters not part of options object. (#2)
 export function resolve(
   hostname: string,
   family?: "ipv4" | "ipv6",
-  timeout?: number
+  timeout?: number,
 ): IPAddress[] {}
 
 // GOOD.
@@ -111,7 +111,7 @@ export interface ResolveOptions {
 }
 export function resolve(
   hostname: string,
-  options: ResolveOptions = {}
+  options: ResolveOptions = {},
 ): IPAddress[] {}
 ```
 
@@ -130,7 +130,7 @@ export interface RunShellOptions {
 }
 export function runShellWithEnv(
   cmdline: string,
-  options: RunShellOptions
+  options: RunShellOptions,
 ): string {}
 ```
 
@@ -140,7 +140,7 @@ export function renameSync(
   oldname: string,
   newname: string,
   replaceExisting?: boolean,
-  followLinks?: boolean
+  followLinks?: boolean,
 ) {}
 
 // GOOD.
@@ -151,7 +151,7 @@ interface RenameOptions {
 export function renameSync(
   oldname: string,
   newname: string,
-  options: RenameOptions = {}
+  options: RenameOptions = {},
 ) {}
 ```
 
@@ -162,7 +162,7 @@ export function pwrite(
   buffer: TypedArray,
   offset: number,
   length: number,
-  position: number
+  position: number,
 ) {}
 
 // BETTER.
@@ -184,7 +184,7 @@ careful not to introduce circular imports.
 
 ### If a filename starts with an underscore: `_foo.ts`, do not link to it.
 
-Sometimes there maybe situations where an internal module is necessary but its
+Sometimes there may be situations where an internal module is necessary but its
 API is not meant to be stable or linked to. In this case prefix it with an
 underscore. By convention, only files in its own directory should import it.
 
@@ -314,3 +314,16 @@ export function foo(): string {
 `https://deno.land/std/` is intended to be baseline functionality that all Deno
 programs can rely on. We want to guarantee to users that this code does not
 include potentially unreviewed third party code.
+
+#### Document and maintain browser compatiblity.
+
+If a module is browser compatible, include the following in the JSDoc at the top
+of the module:
+
+```ts
+/** This module is browser compatible. */
+```
+
+Maintain browser compatibility for such a module by either not using the global
+`Deno` namespace or feature-testing for it. Make sure any new dependencies are
+also browser compatible.

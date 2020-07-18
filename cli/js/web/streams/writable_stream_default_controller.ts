@@ -6,15 +6,15 @@ import {
   isWritableStreamDefaultController,
   Pair,
   resetQueue,
-  setFunctionName,
   SizeAlgorithm,
   WriteAlgorithm,
   writableStreamDefaultControllerClearAlgorithms,
   writableStreamDefaultControllerError,
 } from "./internals.ts";
 import * as sym from "./symbols.ts";
-import { WritableStreamImpl } from "./writable_stream.ts";
+import type { WritableStreamImpl } from "./writable_stream.ts";
 import { customInspect } from "../console.ts";
+import { setFunctionName } from "../util.ts";
 
 export class WritableStreamDefaultControllerImpl<W>
   implements WritableStreamDefaultController {
@@ -30,7 +30,7 @@ export class WritableStreamDefaultControllerImpl<W>
 
   private constructor() {
     throw new TypeError(
-      "WritableStreamDefaultController's constructor cannot be called."
+      "WritableStreamDefaultController's constructor cannot be called.",
     );
   }
 
@@ -64,5 +64,5 @@ export class WritableStreamDefaultControllerImpl<W>
 
 setFunctionName(
   WritableStreamDefaultControllerImpl,
-  "WritableStreamDefaultController"
+  "WritableStreamDefaultController",
 );

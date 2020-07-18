@@ -1,3 +1,5 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 import * as netOps from "./ops/net.ts";
 import {
   Listener,
@@ -22,11 +24,16 @@ export interface UnixListenOptions {
   path: string;
 }
 
+export interface UnixConnectOptions {
+  transport: "unix";
+  path: string;
+}
+
 export function listen(
-  options: ListenOptions & { transport?: "tcp" }
+  options: ListenOptions & { transport?: "tcp" },
 ): Listener;
 export function listen(
-  options: UnixListenOptions & { transport: "unix" }
+  options: UnixListenOptions & { transport: "unix" },
 ): Listener;
 export function listen(options: ListenOptions | UnixListenOptions): Listener {
   if (options.transport === "unix") {
@@ -38,13 +45,13 @@ export function listen(options: ListenOptions | UnixListenOptions): Listener {
 }
 
 export function listenDatagram(
-  options: ListenOptions & { transport: "udp" }
+  options: ListenOptions & { transport: "udp" },
 ): DatagramConn;
 export function listenDatagram(
-  options: UnixListenOptions & { transport: "unixpacket" }
+  options: UnixListenOptions & { transport: "unixpacket" },
 ): DatagramConn;
 export function listenDatagram(
-  options: ListenOptions | UnixListenOptions
+  options: ListenOptions | UnixListenOptions,
 ): DatagramConn {
   let res;
   if (options.transport === "unixpacket") {
@@ -60,15 +67,8 @@ export function listenDatagram(
   return new DatagramImpl(res.rid, res.localAddr);
 }
 
-export interface UnixConnectOptions {
-  transport: "unix";
-  path: string;
-}
-
-export async function connect(options: UnixConnectOptions): Promise<Conn>;
-export async function connect(options: ConnectOptions): Promise<Conn>;
 export async function connect(
-  options: ConnectOptions | UnixConnectOptions
+  options: ConnectOptions | UnixConnectOptions,
 ): Promise<Conn> {
   if (options.transport === "unix") {
     const res = await netOps.connect(options);

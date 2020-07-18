@@ -5,7 +5,7 @@ const requestBuf = new Uint8Array(64 * 1024);
 const responseBuf = new Uint8Array(
   "HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\nHello World\n"
     .split("")
-    .map((c) => c.charCodeAt(0))
+    .map((c) => c.charCodeAt(0)),
 );
 const promiseMap = new Map();
 let nextPromiseId = 1;
@@ -32,22 +32,22 @@ const scratch32 = new Int32Array(3);
 const scratchBytes = new Uint8Array(
   scratch32.buffer,
   scratch32.byteOffset,
-  scratch32.byteLength
+  scratch32.byteLength,
 );
 assert(scratchBytes.byteLength === 3 * 4);
 
-function send(promiseId, opId, rid, zeroCopy = null) {
+function send(promiseId, opId, rid, ...zeroCopy) {
   scratch32[0] = promiseId;
   scratch32[1] = rid;
   scratch32[2] = -1;
-  return Deno.core.dispatch(opId, scratchBytes, zeroCopy);
+  return Deno.core.dispatch(opId, scratchBytes, ...zeroCopy);
 }
 
 /** Returns Promise<number> */
-function sendAsync(opId, rid, zeroCopy = null) {
+function sendAsync(opId, rid, ...zeroCopy) {
   const promiseId = nextPromiseId++;
   const p = createResolvable();
-  const buf = send(promiseId, opId, rid, zeroCopy);
+  const buf = send(promiseId, opId, rid, ...zeroCopy);
   if (buf) {
     const record = recordFromBuf(buf);
     // Sync result.

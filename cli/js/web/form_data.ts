@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 import * as blob from "./blob.ts";
 import * as domFile from "./dom_file.ts";
 import { DomIterableMixin } from "./dom_iterable.ts";
@@ -17,7 +18,7 @@ class FormDataBase {
     if (value instanceof blob.DenoBlob) {
       const dfile = new domFile.DomFileImpl(
         [value],
-        filename || value.name || name,
+        filename || value.name || "blob",
         {
           type: value.type,
         }
@@ -86,14 +87,13 @@ class FormDataBase {
       if (this[dataSymbol][i][0] === name) {
         if (!found) {
           if (value instanceof blob.DenoBlob) {
-            const dfile = new domFile.DomFileImpl(
+            this[dataSymbol][i][1] = new domFile.DomFileImpl(
               [value],
-              filename || value.name || name,
+              filename || value.name || "blob",
               {
                 type: value.type,
               }
             );
-            this[dataSymbol][i][1] = dfile;
           } else {
             this[dataSymbol][i][1] = String(value);
           }
@@ -111,7 +111,7 @@ class FormDataBase {
       if (value instanceof blob.DenoBlob) {
         const dfile = new domFile.DomFileImpl(
           [value],
-          filename || value.name || name,
+          filename || value.name || "blob",
           {
             type: value.type,
           }
@@ -133,3 +133,8 @@ export class FormDataImpl extends DomIterableMixin<
   FormDataEntryValue,
   typeof FormDataBase
 >(FormDataBase, dataSymbol) {}
+
+Object.defineProperty(FormDataImpl, "name", {
+  value: "FormData",
+  configurable: true,
+});

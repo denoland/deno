@@ -1,10 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 import { EventImpl as Event } from "./event.ts";
 import { requiredArguments } from "./util.ts";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export class CustomEventImpl<T = any> extends Event implements CustomEvent {
-  #detail: T;
+  readonly #detail: T;
 
   constructor(type: string, eventInitDict: CustomEventInit<T> = {}) {
     super(type, eventInitDict);

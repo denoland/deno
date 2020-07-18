@@ -381,11 +381,10 @@ x,,,
    */
   {
     Name: "HugeLines",
-    Input:
-      "#ignore\n".repeat(10000) + "@".repeat(5000) + "," + "*".repeat(5000),
+    Input: "#ignore\n".repeat(10000) + "@".repeat(5000) + "," +
+      "*".repeat(5000),
     Output: [["@".repeat(5000), "*".repeat(5000)]],
     Comment: "#",
-    ignore: true, // TODO(#4521)
   },
   {
     Name: "QuoteWithTrailingCRLF",
@@ -455,7 +454,6 @@ x,,,
 ];
 for (const t of testCases) {
   Deno.test({
-    ignore: !!t.ignore,
     name: `[CSV] ${t.Name}`,
     async fn(): Promise<void> {
       let comma = ",";
@@ -490,7 +488,7 @@ for (const t of testCases) {
               trimLeadingSpace: trim,
               fieldsPerRecord: fieldsPerRec,
               lazyQuotes: lazyquote,
-            }
+            },
           );
         } catch (e) {
           err = e;
@@ -506,7 +504,7 @@ for (const t of testCases) {
             trimLeadingSpace: trim,
             fieldsPerRecord: fieldsPerRec,
             lazyQuotes: lazyquote,
-          }
+          },
         );
         const expected = t.Output;
         assertEquals(actual, expected);

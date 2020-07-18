@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 import { sendAsync, sendSync } from "./dispatch_json.ts";
 
 export interface ConnectTLSRequest {
@@ -23,7 +24,7 @@ interface EstablishTLSResponse {
 }
 
 export function connectTls(
-  args: ConnectTLSRequest
+  args: ConnectTLSRequest,
 ): Promise<EstablishTLSResponse> {
   return sendAsync("op_connect_tls", args);
 }

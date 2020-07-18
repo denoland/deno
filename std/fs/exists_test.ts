@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { assertEquals, assertStrContains } from "../testing/asserts.ts";
+import { assertEquals, assertStringContains } from "../testing/asserts.ts";
 import * as path from "../path/mod.ts";
 import { exists, existsSync } from "./exists.ts";
 
@@ -8,7 +8,7 @@ const testdataDir = path.resolve("fs", "testdata");
 Deno.test("[fs] existsFile", async function (): Promise<void> {
   assertEquals(
     await exists(path.join(testdataDir, "not_exist_file.ts")),
-    false
+    false,
   );
   assertEquals(await existsSync(path.join(testdataDir, "0.ts")), true);
 });
@@ -21,7 +21,7 @@ Deno.test("[fs] existsFileSync", function (): void {
 Deno.test("[fs] existsDirectory", async function (): Promise<void> {
   assertEquals(
     await exists(path.join(testdataDir, "not_exist_directory")),
-    false
+    false,
   );
   assertEquals(existsSync(testdataDir), true);
 });
@@ -29,7 +29,7 @@ Deno.test("[fs] existsDirectory", async function (): Promise<void> {
 Deno.test("[fs] existsDirectorySync", function (): void {
   assertEquals(
     existsSync(path.join(testdataDir, "not_exist_directory")),
-    false
+    false,
   );
   assertEquals(existsSync(testdataDir), true);
 });
@@ -130,7 +130,7 @@ for (const s of scenes) {
 
     const output = await p.output();
     p.close();
-    assertStrContains(new TextDecoder().decode(output), s.output);
+    assertStringContains(new TextDecoder().decode(output), s.output);
   });
   // done
 }

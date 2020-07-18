@@ -9,6 +9,7 @@ export interface Start {
   denoVersion: string;
   noColor: boolean;
   pid: number;
+  ppid: number;
   repl: boolean;
   target: string;
   tsVersion: string;
@@ -19,6 +20,10 @@ export interface Start {
 
 export function opStart(): Start {
   return sendSync("op_start");
+}
+
+export function opMainModule(): string {
+  return sendSync("op_main_module");
 }
 
 export interface Metrics {

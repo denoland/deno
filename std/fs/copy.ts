@@ -2,7 +2,9 @@
 import * as path from "../path/mod.ts";
 import { ensureDir, ensureDirSync } from "./ensure_dir.ts";
 import { isSubdir, getFileInfoType } from "./_util.ts";
-import { assert } from "../testing/asserts.ts";
+import { assert } from "../_util/assert.ts";
+
+const isWindows = Deno.build.os === "windows";
 
 export interface CopyOptions {
   /**
@@ -22,7 +24,7 @@ async function ensureValidCopy(
   src: string,
   dest: string,
   options: CopyOptions,
-  isCopyFolder = false
+  isCopyFolder = false,
 ): Promise<Deno.FileInfo | undefined> {
   let destStat: Deno.FileInfo;
 
@@ -37,7 +39,7 @@ async function ensureValidCopy(
 
   if (isCopyFolder && !destStat.isDirectory) {
     throw new Error(
-      `Cannot overwrite non-directory '${dest}' with directory '${src}'.`
+      `Cannot overwrite non-directory '${dest}' with directory '${src}'.`,
     );
   }
   if (!options.overwrite) {
@@ -51,7 +53,7 @@ function ensureValidCopySync(
   src: string,
   dest: string,
   options: CopyOptions,
-  isCopyFolder = false
+  isCopyFolder = false,
 ): Deno.FileInfo | undefined {
   let destStat: Deno.FileInfo;
   try {
@@ -65,7 +67,7 @@ function ensureValidCopySync(
 
   if (isCopyFolder && !destStat.isDirectory) {
     throw new Error(
-      `Cannot overwrite non-directory '${dest}' with directory '${src}'.`
+      `Cannot overwrite non-directory '${dest}' with directory '${src}'.`,
     );
   }
   if (!options.overwrite) {
@@ -79,7 +81,7 @@ function ensureValidCopySync(
 async function copyFile(
   src: string,
   dest: string,
-  options: CopyOptions
+  options: CopyOptions,
 ): Promise<void> {
   await ensureValidCopy(src, dest, options);
   await Deno.copyFile(src, dest);
@@ -106,12 +108,18 @@ function copyFileSync(src: string, dest: string, options: CopyOptions): void {
 async function copySymLink(
   src: string,
   dest: string,
-  options: CopyOptions
+  options: CopyOptions,
 ): Promise<void> {
   await ensureValidCopy(src, dest, options);
   const originSrcFilePath = await Deno.readLink(src);
   const type = getFileInfoType(await Deno.lstat(src));
-  await Deno.symlink(originSrcFilePath, dest, type);
+  if (isWindows) {
+    await Deno.symlink(originSrcFilePath, dest, {
+      type: type === "dir" ? "dir" : "file",
+    });
+  } else {
+    await Deno.symlink(originSrcFilePath, dest);
+  }
   if (options.preserveTimestamps) {
     const statInfo = await Deno.lstat(src);
     assert(statInfo.atime instanceof Date, `statInfo.atime is unavailable`);
@@ -124,12 +132,19 @@ async function copySymLink(
 function copySymlinkSync(
   src: string,
   dest: string,
-  options: CopyOptions
+  options: CopyOptions,
 ): void {
   ensureValidCopySync(src, dest, options);
   const originSrcFilePath = Deno.readLinkSync(src);
   const type = getFileInfoType(Deno.lstatSync(src));
-  Deno.symlinkSync(originSrcFilePath, dest, type);
+  if (isWindows) {
+    Deno.symlinkSync(originSrcFilePath, dest, {
+      type: type === "dir" ? "dir" : "file",
+    });
+  } else {
+    Deno.symlinkSync(originSrcFilePath, dest);
+  }
+
   if (options.preserveTimestamps) {
     const statInfo = Deno.lstatSync(src);
     assert(statInfo.atime instanceof Date, `statInfo.atime is unavailable`);
@@ -142,7 +157,7 @@ function copySymlinkSync(
 async function copyDir(
   src: string,
   dest: string,
-  options: CopyOptions
+  options: CopyOptions,
 ): Promise<void> {
   const destStat = await ensureValidCopy(src, dest, options, true);
 
@@ -201,7 +216,7 @@ function copyDirSync(src: string, dest: string, options: CopyOptions): void {
 
 /**
  * Copy a file or directory. The directory can have contents. Like `cp -r`.
- * Requires the `--allow-read` and `--alow-write` flag.
+ * Requires the `--allow-read` and `--allow-write` flag.
  * @param src the file/directory path.
  *            Note that if `src` is a directory it will copy everything inside
  *            of this directory, not the entire directory itself
@@ -212,7 +227,7 @@ function copyDirSync(src: string, dest: string, options: CopyOptions): void {
 export async function copy(
   src: string,
   dest: string,
-  options: CopyOptions = {}
+  options: CopyOptions = {},
 ): Promise<void> {
   src = path.resolve(src);
   dest = path.resolve(dest);
@@ -225,7 +240,7 @@ export async function copy(
 
   if (srcStat.isDirectory && isSubdir(src, dest)) {
     throw new Error(
-      `Cannot copy '${src}' to a subdirectory of itself, '${dest}'.`
+      `Cannot copy '${src}' to a subdirectory of itself, '${dest}'.`,
     );
   }
 
@@ -240,7 +255,7 @@ export async function copy(
 
 /**
  * Copy a file or directory. The directory can have contents. Like `cp -r`.
- * Requires the `--allow-read` and `--alow-write` flag.
+ * Requires the `--allow-read` and `--allow-write` flag.
  * @param src the file/directory path.
  *            Note that if `src` is a directory it will copy everything inside
  *            of this directory, not the entire directory itself
@@ -251,7 +266,7 @@ export async function copy(
 export function copySync(
   src: string,
   dest: string,
-  options: CopyOptions = {}
+  options: CopyOptions = {},
 ): void {
   src = path.resolve(src);
   dest = path.resolve(dest);
@@ -264,7 +279,7 @@ export function copySync(
 
   if (srcStat.isDirectory && isSubdir(src, dest)) {
     throw new Error(
-      `Cannot copy '${src}' to a subdirectory of itself, '${dest}'.`
+      `Cannot copy '${src}' to a subdirectory of itself, '${dest}'.`,
     );
   }
 

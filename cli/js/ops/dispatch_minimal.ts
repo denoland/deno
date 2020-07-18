@@ -1,13 +1,15 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 import * as util from "../util.ts";
 import { core } from "../core.ts";
 import { TextDecoder } from "../web/text_encoding.ts";
 import { ErrorKind, errors, getErrorClass } from "../errors.ts";
 
 // Using an object without a prototype because `Map` was causing GC problems.
-const promiseTableMin: {
-  [key: number]: util.Resolvable<RecordMinimal>;
-} = Object.create(null);
+const promiseTableMin: Record<
+  number,
+  util.Resolvable<RecordMinimal>
+> = Object.create(null);
 
 // Note it's important that promiseId starts at 1 instead of 0, because sync
 // messages are indicated with promiseId 0. If we ever add wrap around logic for
@@ -35,7 +37,7 @@ export function recordFromBufMinimal(ui8: Uint8Array): RecordMinimal {
   const buf32 = new Int32Array(
     header.buffer,
     header.byteOffset,
-    header.byteLength / 4
+    header.byteLength / 4,
   );
   const promiseId = buf32[0];
   const arg = buf32[1];
@@ -69,7 +71,7 @@ const scratch32 = new Int32Array(3);
 const scratchBytes = new Uint8Array(
   scratch32.buffer,
   scratch32.byteOffset,
-  scratch32.byteLength
+  scratch32.byteLength,
 );
 util.assert(scratchBytes.byteLength === scratch32.length * 4);
 
@@ -83,17 +85,17 @@ export function asyncMsgFromRust(ui8: Uint8Array): void {
 }
 
 export async function sendAsyncMinimal(
-  opId: number,
+  opName: string,
   arg: number,
-  zeroCopy: Uint8Array
+  zeroCopy: Uint8Array,
 ): Promise<number> {
   const promiseId = nextPromiseId(); // AKA cmdId
   scratch32[0] = promiseId;
   scratch32[1] = arg;
   scratch32[2] = 0; // result
   const promise = util.createResolvable<RecordMinimal>();
-  const buf = core.dispatch(opId, scratchBytes, zeroCopy);
-  if (buf) {
+  const buf = core.dispatchByName(opName, scratchBytes, zeroCopy);
+  if (buf != null) {
     const record = recordFromBufMinimal(buf);
     // Sync result.
     promise.resolve(record);
@@ -107,13 +109,13 @@ export async function sendAsyncMinimal(
 }
 
 export function sendSyncMinimal(
-  opId: number,
+  opName: string,
   arg: number,
-  zeroCopy: Uint8Array
+  zeroCopy: Uint8Array,
 ): number {
   scratch32[0] = 0; // promiseId 0 indicates sync
   scratch32[1] = arg;
-  const res = core.dispatch(opId, scratchBytes, zeroCopy)!;
+  const res = core.dispatchByName(opName, scratchBytes, zeroCopy)!;
   const resRecord = recordFromBufMinimal(res);
   return unwrapResponse(resRecord);
 }

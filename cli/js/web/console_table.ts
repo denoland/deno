@@ -1,7 +1,10 @@
+// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 // Copyright Joyent, Inc. and other Node contributors. MIT license.
 // Forked from Node's lib/internal/cli_table.js
 
 import { hasOwnProperty } from "./util.ts";
+import { stripColor } from "../colors.ts";
 
 const tableChars = {
   middleMiddle: "─",
@@ -19,20 +22,14 @@ const tableChars = {
   middle: " │ ",
 };
 
-const colorRegExp = /\u001b\[\d\d?m/g;
-
-function removeColors(str: string): string {
-  return str.replace(colorRegExp, "");
-}
-
 function isFullWidthCodePoint(code: number): boolean {
   // Code points are partially derived from:
   // http://www.unicode.org/Public/UNIDATA/EastAsianWidth.txt
   return (
     code >= 0x1100 &&
     (code <= 0x115f || // Hangul Jamo
-    code === 0x2329 || // LEFT-POINTING ANGLE BRACKET
-    code === 0x232a || // RIGHT-POINTING ANGLE BRACKET
+      code === 0x2329 || // LEFT-POINTING ANGLE BRACKET
+      code === 0x232a || // RIGHT-POINTING ANGLE BRACKET
       // CJK Radicals Supplement .. Enclosed CJK Letters and Months
       (code >= 0x2e80 && code <= 0x3247 && code !== 0x303f) ||
       // Enclosed CJK Letters and Months .. CJK Unified Ideographs Extension A
@@ -65,7 +62,7 @@ function isFullWidthCodePoint(code: number): boolean {
 }
 
 function getStringWidth(str: string): number {
-  str = removeColors(str).normalize("NFC");
+  str = stripColor(str).normalize("NFC");
   let width = 0;
 
   for (const ch of str) {
@@ -97,7 +94,7 @@ export function cliTable(head: string[], columns: string[][]): string {
   const columnWidths = head.map((h: string): number => getStringWidth(h));
   const longestColumn = columns.reduce(
     (n: number, a: string[]): number => Math.max(n, a.length),
-    0
+    0,
   );
 
   for (let i = 0; i < head.length; i++) {
@@ -117,8 +114,7 @@ export function cliTable(head: string[], columns: string[][]): string {
     tableChars.middleMiddle.repeat(i + 2)
   );
 
-  let result =
-    `${tableChars.topLeft}${divider.join(tableChars.topMiddle)}` +
+  let result = `${tableChars.topLeft}${divider.join(tableChars.topMiddle)}` +
     `${tableChars.topRight}\n${renderRow(head, columnWidths)}\n` +
     `${tableChars.leftMiddle}${divider.join(tableChars.rowMiddle)}` +
     `${tableChars.rightMiddle}\n`;
@@ -127,8 +123,7 @@ export function cliTable(head: string[], columns: string[][]): string {
     result += `${renderRow(row, columnWidths)}\n`;
   }
 
-  result +=
-    `${tableChars.bottomLeft}${divider.join(tableChars.bottomMiddle)}` +
+  result += `${tableChars.bottomLeft}${divider.join(tableChars.bottomMiddle)}` +
     tableChars.bottomRight;
 
   return result;

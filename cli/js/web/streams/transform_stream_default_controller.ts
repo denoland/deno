@@ -4,16 +4,16 @@ import {
   FlushAlgorithm,
   isTransformStreamDefaultController,
   readableStreamDefaultControllerGetDesiredSize,
-  setFunctionName,
   TransformAlgorithm,
   transformStreamDefaultControllerEnqueue,
   transformStreamDefaultControllerError,
   transformStreamDefaultControllerTerminate,
 } from "./internals.ts";
-import { ReadableStreamDefaultControllerImpl } from "./readable_stream_default_controller.ts";
+import type { ReadableStreamDefaultControllerImpl } from "./readable_stream_default_controller.ts";
 import * as sym from "./symbols.ts";
-import { TransformStreamImpl } from "./transform_stream.ts";
+import type { TransformStreamImpl } from "./transform_stream.ts";
 import { customInspect } from "../console.ts";
+import { setFunctionName } from "../util.ts";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export class TransformStreamDefaultControllerImpl<I = any, O = any>
@@ -24,7 +24,7 @@ export class TransformStreamDefaultControllerImpl<I = any, O = any>
 
   private constructor() {
     throw new TypeError(
-      "TransformStreamDefaultController's constructor cannot be called."
+      "TransformStreamDefaultController's constructor cannot be called.",
     );
   }
 
@@ -36,7 +36,7 @@ export class TransformStreamDefaultControllerImpl<I = any, O = any>
       sym.readable
     ][sym.readableStreamController];
     return readableStreamDefaultControllerGetDesiredSize(
-      readableController as ReadableStreamDefaultControllerImpl<O>
+      readableController as ReadableStreamDefaultControllerImpl<O>,
     );
   }
 
@@ -63,13 +63,13 @@ export class TransformStreamDefaultControllerImpl<I = any, O = any>
   }
 
   [customInspect](): string {
-    return `${this.constructor.name} { desiredSize: ${String(
-      this.desiredSize
-    )} }`;
+    return `${this.constructor.name} { desiredSize: ${
+      String(this.desiredSize)
+    } }`;
   }
 }
 
 setFunctionName(
   TransformStreamDefaultControllerImpl,
-  "TransformStreamDefaultController"
+  "TransformStreamDefaultController",
 );

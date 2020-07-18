@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 import { DomIterableMixin } from "./dom_iterable.ts";
 import { requiredArguments } from "./util.ts";
 import { customInspect } from "./console.ts";
@@ -54,7 +55,7 @@ function validateValue(value: string): void {
 function dataAppend(
   data: Array<[string, string]>,
   key: string,
-  value: string
+  value: string,
 ): void {
   for (let i = 0; i < data.length; i++) {
     const [dataKey] = data[i];
@@ -84,7 +85,7 @@ function dataAppend(
  * entry in the headers list. */
 function dataGet(
   data: Array<[string, string]>,
-  key: string
+  key: string,
 ): string | undefined {
   const setCookieValues = [];
   for (const [dataKey, value] of data) {
@@ -117,7 +118,7 @@ function dataGet(
 function dataSet(
   data: Array<[string, string]>,
   key: string,
-  value: string
+  value: string,
 ): void {
   for (let i = 0; i < data.length; i++) {
     const [dataKey] = data[i];
@@ -168,7 +169,7 @@ class HeadersBase {
   constructor(init?: HeadersInit) {
     if (init === null) {
       throw new TypeError(
-        "Failed to construct 'Headers'; The provided value was not valid"
+        "Failed to construct 'Headers'; The provided value was not valid",
       );
     } else if (isHeaders(init)) {
       this[headersData] = [...init];
@@ -182,7 +183,7 @@ class HeadersBase {
           requiredArguments(
             "Headers.constructor tuple array argument",
             tuple.length,
-            2
+            2,
           );
 
           this.append(tuple[0], tuple[1]);
@@ -256,3 +257,8 @@ export class HeadersImpl extends DomIterableMixin<
   string,
   typeof HeadersBase
 >(HeadersBase, headersData) {}
+
+Object.defineProperty(HeadersImpl, "name", {
+  value: "Headers",
+  configurable: true,
+});

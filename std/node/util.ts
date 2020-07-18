@@ -1,3 +1,9 @@
+export { promisify } from "./_util/_util_promisify.ts";
+export { callbackify } from "./_util/_util_callbackify.ts";
+import * as types from "./_util/_util_types.ts";
+
+export { types };
+
 export function isArray(value: unknown): boolean {
   return Array.isArray(value);
 }
@@ -56,7 +62,7 @@ export function validateIntegerRange(
   value: number,
   name: string,
   min = -2147483648,
-  max = 2147483647
+  max = 2147483647,
 ): void {
   // The defaults for min and max correspond to the limits of 32-bit integers.
   if (!Number.isInteger(value)) {
@@ -64,7 +70,17 @@ export function validateIntegerRange(
   }
   if (value < min || value > max) {
     throw new Error(
-      `${name} must be >= ${min} && <= ${max}.  Value was ${value}`
+      `${name} must be >= ${min} && <= ${max}.  Value was ${value}`,
     );
   }
 }
+
+import { _TextDecoder, _TextEncoder } from "./_utils.ts";
+
+/** The global TextDecoder */
+export type TextDecoder = import("./_utils.ts")._TextDecoder;
+export const TextDecoder = _TextDecoder;
+
+/** The global TextEncoder */
+export type TextEncoder = import("./_utils.ts")._TextEncoder;
+export const TextEncoder = _TextEncoder;

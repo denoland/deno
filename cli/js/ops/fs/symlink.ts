@@ -1,26 +1,23 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 import { sendSync, sendAsync } from "../dispatch_json.ts";
-import * as util from "../../util.ts";
-import { build } from "../../build.ts";
+
+export interface SymlinkOptions {
+  type: "file" | "dir";
+}
 
 export function symlinkSync(
   oldpath: string,
   newpath: string,
-  type?: string
+  options?: SymlinkOptions,
 ): void {
-  if (build.os === "windows" && type) {
-    return util.notImplemented();
-  }
-  sendSync("op_symlink", { oldpath, newpath });
+  sendSync("op_symlink", { oldpath, newpath, options });
 }
 
 export async function symlink(
   oldpath: string,
   newpath: string,
-  type?: string
+  options?: SymlinkOptions,
 ): Promise<void> {
-  if (build.os === "windows" && type) {
-    return util.notImplemented();
-  }
-  await sendAsync("op_symlink", { oldpath, newpath });
+  await sendAsync("op_symlink", { oldpath, newpath, options });
 }

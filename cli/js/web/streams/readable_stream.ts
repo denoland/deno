@@ -9,7 +9,6 @@ import {
   isWritableStream,
   isWritableStreamLocked,
   makeSizeAlgorithmFromSizeFunction,
-  setFunctionName,
   setPromiseIsHandledToTrue,
   readableStreamCancel,
   ReadableStreamGenericReader,
@@ -19,12 +18,13 @@ import {
   setUpReadableStreamDefaultControllerFromUnderlyingSource,
   validateAndNormalizeHighWaterMark,
 } from "./internals.ts";
-import { ReadableByteStreamControllerImpl } from "./readable_byte_stream_controller.ts";
+import type { ReadableByteStreamControllerImpl } from "./readable_byte_stream_controller.ts";
 import { ReadableStreamAsyncIteratorPrototype } from "./readable_stream_async_iterator.ts";
-import { ReadableStreamDefaultControllerImpl } from "./readable_stream_default_controller.ts";
+import type { ReadableStreamDefaultControllerImpl } from "./readable_stream_default_controller.ts";
 import * as sym from "./symbols.ts";
 import { customInspect } from "../console.ts";
 import { AbortSignalImpl } from "../abort_signal.ts";
+import { setFunctionName } from "../util.ts";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export class ReadableStreamImpl<R = any> implements ReadableStream<R> {
@@ -41,10 +41,10 @@ export class ReadableStreamImpl<R = any> implements ReadableStream<R> {
     underlyingSource: UnderlyingByteSource | UnderlyingSource<R> = {},
     strategy:
       | {
-          highWaterMark?: number;
-          size?: undefined;
-        }
-      | QueuingStrategy<R> = {}
+        highWaterMark?: number;
+        size?: undefined;
+      }
+      | QueuingStrategy<R> = {},
   ) {
     initializeReadableStream(this);
     const { size } = strategy;
@@ -54,14 +54,14 @@ export class ReadableStreamImpl<R = any> implements ReadableStream<R> {
     if (isUnderlyingByteSource(underlyingSource)) {
       if (size !== undefined) {
         throw new RangeError(
-          `When underlying source is "bytes", strategy.size must be undefined.`
+          `When underlying source is "bytes", strategy.size must be undefined.`,
         );
       }
       highWaterMark = validateAndNormalizeHighWaterMark(highWaterMark ?? 0);
       setUpReadableByteStreamControllerFromUnderlyingSource(
         this,
         underlyingSource,
-        highWaterMark
+        highWaterMark,
       );
     } else if (type === undefined) {
       const sizeAlgorithm = makeSizeAlgorithmFromSizeFunction(size);
@@ -70,11 +70,11 @@ export class ReadableStreamImpl<R = any> implements ReadableStream<R> {
         this,
         underlyingSource,
         highWaterMark,
-        sizeAlgorithm
+        sizeAlgorithm,
       );
     } else {
       throw new RangeError(
-        `Valid values for underlyingSource are "bytes" or undefined.  Received: "${type}".`
+        `Valid values for underlyingSource are "bytes" or undefined.  Received: "${type}".`,
       );
     }
   }
@@ -93,7 +93,7 @@ export class ReadableStreamImpl<R = any> implements ReadableStream<R> {
     }
     if (isReadableStreamLocked(this)) {
       return Promise.reject(
-        new TypeError("Cannot cancel a locked ReadableStream.")
+        new TypeError("Cannot cancel a locked ReadableStream."),
       );
     }
     return readableStreamCancel(this, reason);
@@ -132,7 +132,7 @@ export class ReadableStreamImpl<R = any> implements ReadableStream<R> {
       writable: WritableStream<R>;
       readable: ReadableStream<T>;
     },
-    { preventClose, preventAbort, preventCancel, signal }: PipeOptions = {}
+    { preventClose, preventAbort, preventCancel, signal }: PipeOptions = {},
   ): ReadableStream<T> {
     if (!isReadableStream(this)) {
       throw new TypeError("Invalid ReadableStream.");
@@ -161,7 +161,7 @@ export class ReadableStreamImpl<R = any> implements ReadableStream<R> {
       preventClose,
       preventAbort,
       preventCancel,
-      signal
+      signal,
     );
     setPromiseIsHandledToTrue(promise);
     return readable;
@@ -169,14 +169,14 @@ export class ReadableStreamImpl<R = any> implements ReadableStream<R> {
 
   pipeTo(
     dest: WritableStream<R>,
-    { preventClose, preventAbort, preventCancel, signal }: PipeOptions = {}
+    { preventClose, preventAbort, preventCancel, signal }: PipeOptions = {},
   ): Promise<void> {
     if (!isReadableStream(this)) {
       return Promise.reject(new TypeError("Invalid ReadableStream."));
     }
     if (!isWritableStream(dest)) {
       return Promise.reject(
-        new TypeError("dest is not a valid WritableStream.")
+        new TypeError("dest is not a valid WritableStream."),
       );
     }
     preventClose = Boolean(preventClose);
@@ -197,7 +197,7 @@ export class ReadableStreamImpl<R = any> implements ReadableStream<R> {
       preventClose,
       preventAbort,
       preventCancel,
-      signal
+      signal,
     );
   }
 
@@ -215,7 +215,7 @@ export class ReadableStreamImpl<R = any> implements ReadableStream<R> {
   [Symbol.asyncIterator](
     options: {
       preventCancel?: boolean;
-    } = {}
+    } = {},
   ): AsyncIterableIterator<R> {
     return this.getIterator(options);
   }

@@ -19,7 +19,7 @@ fully qualified module name, and the value is the text source of the module. If
 not attempt to resolve them outside of Deno. If `sources` are not provided, Deno
 will resolve modules as if the root module had been passed on the command line.
 Deno will also cache any of these resources. All resolved resources are treated
-as dynamic imports and require read or net permissions depending if they're
+as dynamic imports and require read or net permissions depending on if they're
 local or remote. The `options` argument is a set of options of type
 `Deno.CompilerOptions`, which is a subset of the TypeScript compiler options
 containing the ones supported by Deno.
@@ -48,11 +48,11 @@ could do on the command line. So you could do something like this:
 
 ```ts
 const [diagnostics, emitMap] = await Deno.compile(
-  "https://deno.land/std/examples/welcome.ts"
+  "https://deno.land/std/examples/welcome.ts",
 );
 ```
 
-In this case `emitMap` will contain a simple `console.log()` statement.
+In this case `emitMap` will contain a `console.log()` statement.
 
 ### `Deno.bundle()`
 
@@ -95,7 +95,7 @@ could do on the command line. So you could do something like this:
 
 ```ts
 const [diagnostics, emit] = await Deno.bundle(
-  "https://deno.land/std/http/server.ts"
+  "https://deno.land/std/http/server.ts",
 );
 ```
 
@@ -151,7 +151,7 @@ const [errors, emitted] = await Deno.compile(
   },
   {
     lib: ["dom", "esnext"],
-  }
+  },
 );
 ```
 
@@ -191,7 +191,7 @@ const [errors, emitted] = await Deno.compile(
   },
   {
     lib: ["dom", "esnext", "deno.ns"],
-  }
+  },
 );
 ```
 

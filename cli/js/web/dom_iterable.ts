@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 import { requiredArguments } from "./util.ts";
 import { exposeForTest } from "../internals.ts";
 
@@ -13,13 +14,13 @@ export interface DomIterable<K, V> {
   forEach(
     callback: (value: V, key: K, parent: this) => void,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    thisArg?: any
+    thisArg?: any,
   ): void;
 }
 
 export function DomIterableMixin<K, V, TBase extends Constructor>(
   Base: TBase,
-  dataSymbol: symbol
+  dataSymbol: symbol,
 ): TBase & Constructor<DomIterable<K, V>> {
   // we have to cast `this` as `any` because there is no way to describe the
   // Base class in a way where the Symbol `dataSymbol` is defined.  So the
@@ -55,15 +56,15 @@ export function DomIterableMixin<K, V, TBase extends Constructor>(
     forEach(
       callbackfn: (value: V, key: K, parent: this) => void,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      thisArg?: any
+      thisArg?: any,
     ): void {
       requiredArguments(
         `${this.constructor.name}.forEach`,
         arguments.length,
-        1
+        1,
       );
       callbackfn = callbackfn.bind(
-        thisArg == null ? globalThis : Object(thisArg)
+        thisArg == null ? globalThis : Object(thisArg),
       );
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       for (const [key, value] of (this as any)[dataSymbol]) {

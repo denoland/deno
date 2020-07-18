@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 import { core } from "./core.ts";
 import * as dispatchMinimal from "./ops/dispatch_minimal.ts";
 import * as dispatchJson from "./ops/dispatch_json.ts";
@@ -8,8 +9,6 @@ import { setVersions } from "./version.ts";
 import { setPrepareStackTrace } from "./error_stack.ts";
 import { Start, opStart } from "./ops/runtime.ts";
 import { handleTimerMacrotask } from "./web/timers.ts";
-
-export let OPS_CACHE: { [name: string]: number };
 
 function getAsyncHandler(opName: string): (msg: Uint8Array) => void {
   switch (opName) {
@@ -24,8 +23,8 @@ function getAsyncHandler(opName: string): (msg: Uint8Array) => void {
 // TODO(bartlomieju): temporary solution, must be fixed when moving
 // dispatches to separate crates
 export function initOps(): void {
-  OPS_CACHE = core.ops();
-  for (const [name, opId] of Object.entries(OPS_CACHE)) {
+  const opsMap = core.ops();
+  for (const [name, opId] of Object.entries(opsMap)) {
     core.setAsyncHandler(opId, getAsyncHandler(name));
   }
   core.setMacrotaskCallback(handleTimerMacrotask);

@@ -1,9 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 type Writer = Deno.Writer;
+type WriterSync = Deno.WriterSync;
 import { decode, encode } from "../encoding/utf8.ts";
 
 /** Writer utility for buffering string chunks */
-export class StringWriter implements Writer {
+export class StringWriter implements Writer, WriterSync {
   private chunks: Uint8Array[] = [];
   private byteLength = 0;
   private cache: string | undefined;
@@ -15,10 +16,14 @@ export class StringWriter implements Writer {
   }
 
   write(p: Uint8Array): Promise<number> {
+    return Promise.resolve(this.writeSync(p));
+  }
+
+  writeSync(p: Uint8Array): number {
     this.chunks.push(p);
     this.byteLength += p.byteLength;
     this.cache = undefined;
-    return Promise.resolve(p.byteLength);
+    return p.byteLength;
   }
 
   toString(): string {

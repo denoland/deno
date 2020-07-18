@@ -18,17 +18,6 @@ pub trait SourceMapGetter {
 /// find a SourceMap.
 pub type CachedMaps = HashMap<String, Option<SourceMap>>;
 
-// The bundle does not get built for 'cargo check', so we don't embed the
-// bundle source map.  The built in source map is the source map for the main
-// JavaScript bundle which is then used to create the snapshot.  Runtime stack
-// traces can contain positions within the bundle which we will map to the
-// original Deno TypeScript code.
-#[cfg(feature = "check-only")]
-fn builtin_source_map(_: &str) -> Option<Vec<u8>> {
-  None
-}
-
-#[cfg(not(feature = "check-only"))]
 fn builtin_source_map(file_name: &str) -> Option<Vec<u8>> {
   if file_name.ends_with("CLI_SNAPSHOT.js") {
     Some(crate::js::CLI_SNAPSHOT_MAP.to_vec())

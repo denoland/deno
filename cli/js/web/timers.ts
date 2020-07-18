@@ -1,9 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 import { assert } from "../util.ts";
 import { startGlobalTimer, stopGlobalTimer } from "../ops/timers.ts";
 import { RBTree } from "../rbtree.ts";
 
 const { console } = globalThis;
+const OriginalDate = Date;
 
 interface Timer {
   id: number;
@@ -71,7 +73,7 @@ async function setGlobalTimeout(due: number, now: number): Promise<void> {
 }
 
 function prepareReadyTimers(): void {
-  const now = Date.now();
+  const now = OriginalDate.now();
   // Bail out if we're not expecting the global timer to fire.
   if (globalTimeoutDue === null || pendingEvents > 0) {
     return;
@@ -145,7 +147,10 @@ function unschedule(timer: Timer): void {
     // still exists is due, and update the global alarm accordingly.
     if (timer.due === globalTimeoutDue) {
       const nextDueNode: DueNode | null = dueTree.min();
-      setOrClearGlobalTimeout(nextDueNode && nextDueNode.due, Date.now());
+      setOrClearGlobalTimeout(
+        nextDueNode && nextDueNode.due,
+        OriginalDate.now(),
+      );
     }
   } else {
     // Multiple timers that are due at the same point in time.
@@ -169,7 +174,7 @@ function fire(timer: Timer): void {
   } else {
     // Interval timer: compute when timer was supposed to fire next.
     // However make sure to never schedule the next interval in the past.
-    const now = Date.now();
+    const now = OriginalDate.now();
     timer.due = Math.max(now, timer.due + timer.delay);
     schedule(timer, now);
   }
@@ -179,7 +184,8 @@ function fire(timer: Timer): void {
   callback();
 }
 
-export type Args = unknown[];
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type Args = any[];
 
 function checkThis(thisArg: unknown): void {
   if (thisArg !== null && thisArg !== undefined && thisArg !== globalThis) {
@@ -197,19 +203,19 @@ function setTimer(
   cb: (...args: Args) => void,
   delay: number,
   args: Args,
-  repeat: boolean
+  repeat: boolean,
 ): number {
   // Bind `args` to the callback and bind `this` to globalThis(global).
   const callback: () => void = cb.bind(globalThis, ...args);
   // In the browser, the delay value must be coercible to an integer between 0
   // and INT32_MAX. Any other value will cause the timer to fire immediately.
   // We emulate this behavior.
-  const now = Date.now();
+  const now = OriginalDate.now();
   if (delay > TIMEOUT_MAX) {
     console.warn(
       `${delay} does not fit into` +
         " a 32-bit signed integer." +
-        "\nTimeout duration was set to 1."
+        "\nTimeout duration was set to 1.",
     );
     delay = 1;
   }
@@ -233,23 +239,23 @@ function setTimer(
 }
 
 export function setTimeout(
+  this: unknown,
   cb: (...args: Args) => void,
   delay = 0,
   ...args: Args
 ): number {
   checkBigInt(delay);
-  // @ts-ignore
   checkThis(this);
   return setTimer(cb, delay, args, false);
 }
 
 export function setInterval(
+  this: unknown,
   cb: (...args: Args) => void,
   delay = 0,
   ...args: Args
 ): number {
   checkBigInt(delay);
-  // @ts-ignore
   checkThis(this);
   return setTimer(cb, delay, args, true);
 }

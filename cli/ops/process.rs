@@ -5,6 +5,7 @@ use crate::op_error::OpError;
 use crate::signal::kill;
 use crate::state::State;
 use deno_core::CoreIsolate;
+use deno_core::CoreIsolateState;
 use deno_core::ResourceTable;
 use deno_core::ZeroCopyBuf;
 use futures::future::poll_fn;
@@ -32,12 +33,12 @@ fn clone_file(
   })
 }
 
-fn subprocess_stdio_map(s: &str) -> std::process::Stdio {
+fn subprocess_stdio_map(s: &str) -> Result<std::process::Stdio, OpError> {
   match s {
-    "inherit" => std::process::Stdio::inherit(),
-    "piped" => std::process::Stdio::piped(),
-    "null" => std::process::Stdio::null(),
-    _ => unreachable!(),
+    "inherit" => Ok(std::process::Stdio::inherit()),
+    "piped" => Ok(std::process::Stdio::piped()),
+    "null" => Ok(std::process::Stdio::null()),
+    _ => Err(OpError::other("Invalid resource for stdio".to_string())),
   }
 }
 
@@ -60,15 +61,15 @@ struct ChildResource {
 }
 
 fn op_run(
-  isolate: &mut CoreIsolate,
+  isolate_state: &mut CoreIsolateState,
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let run_args: RunArgs = serde_json::from_value(args)?;
 
   state.check_run()?;
-  let mut resource_table = isolate.resource_table.borrow_mut();
+  let mut resource_table = isolate_state.resource_table.borrow_mut();
 
   let args = run_args.cmd;
   let env = run_args.env;
@@ -85,28 +86,25 @@ fn op_run(
   }
 
   // TODO: make this work with other resources, eg. sockets
-  let stdin_rid = run_args.stdin_rid;
-  if stdin_rid > 0 {
-    let file = clone_file(stdin_rid, &mut resource_table)?;
+  if run_args.stdin != "" {
+    c.stdin(subprocess_stdio_map(run_args.stdin.as_ref())?);
+  } else {
+    let file = clone_file(run_args.stdin_rid, &mut resource_table)?;
     c.stdin(file);
-  } else {
-    c.stdin(subprocess_stdio_map(run_args.stdin.as_ref()));
   }
 
-  let stdout_rid = run_args.stdout_rid;
-  if stdout_rid > 0 {
-    let file = clone_file(stdout_rid, &mut resource_table)?;
+  if run_args.stdout != "" {
+    c.stdout(subprocess_stdio_map(run_args.stdout.as_ref())?);
+  } else {
+    let file = clone_file(run_args.stdout_rid, &mut resource_table)?;
     c.stdout(file);
-  } else {
-    c.stdout(subprocess_stdio_map(run_args.stdout.as_ref()));
   }
 
-  let stderr_rid = run_args.stderr_rid;
-  if stderr_rid > 0 {
-    let file = clone_file(stderr_rid, &mut resource_table)?;
-    c.stderr(file);
+  if run_args.stderr != "" {
+    c.stderr(subprocess_stdio_map(run_args.stderr.as_ref())?);
   } else {
-    c.stderr(subprocess_stdio_map(run_args.stderr.as_ref()));
+    let file = clone_file(run_args.stderr_rid, &mut resource_table)?;
+    c.stderr(file);
   }
 
   // We want to kill child when it's closed
@@ -174,16 +172,16 @@ struct RunStatusArgs {
 }
 
 fn op_run_status(
-  isolate: &mut CoreIsolate,
+  isolate_state: &mut CoreIsolateState,
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let args: RunStatusArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
 
   state.check_run()?;
-  let resource_table = isolate.resource_table.clone();
+  let resource_table = isolate_state.resource_table.clone();
 
   let future = async move {
     let run_status = poll_fn(|cx| {
@@ -227,7 +225,7 @@ struct KillArgs {
 fn op_kill(
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   state.check_unstable("Deno.kill");
   state.check_run()?;

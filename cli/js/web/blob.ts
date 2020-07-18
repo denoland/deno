@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 import { TextDecoder, TextEncoder } from "./text_encoding.ts";
 import { build } from "../build.ts";
 import { ReadableStreamImpl } from "./streams/readable_stream.ts";
@@ -50,7 +51,7 @@ function convertLineEndingsToNative(s: string): string {
 
 function collectSequenceNotCRLF(
   s: string,
-  position: number
+  position: number,
 ): { collected: string; newPosition: number } {
   const start = position;
   for (
@@ -63,7 +64,7 @@ function collectSequenceNotCRLF(
 
 function toUint8Arrays(
   blobParts: BlobPart[],
-  doNormalizeLineEndingsToNative: boolean
+  doNormalizeLineEndingsToNative: boolean,
 ): Uint8Array[] {
   const ret: Uint8Array[] = [];
   const enc = new TextEncoder();
@@ -102,7 +103,7 @@ function toUint8Arrays(
 
 function processBlobParts(
   blobParts: BlobPart[],
-  options: BlobPropertyBag
+  options: BlobPropertyBag,
 ): Uint8Array {
   const normalizeLineEndingsToNative = options.ending === "native";
   // ArrayBuffer.transfer is not yet implemented in V8, so we just have to
@@ -135,7 +136,7 @@ function getStream(blobBytes: Uint8Array): ReadableStream<ArrayBufferView> {
 }
 
 async function readBytes(
-  reader: ReadableStreamReader<ArrayBufferView>
+  reader: ReadableStreamReader<ArrayBufferView>,
 ): Promise<ArrayBuffer> {
   const chunks: Uint8Array[] = [];
   while (true) {
@@ -161,7 +162,7 @@ async function readBytes(
 // Ensures it does not impact garbage collection.
 export const blobBytesWeakMap = new WeakMap<Blob, Uint8Array>();
 
-export class DenoBlob implements Blob {
+class DenoBlob implements Blob {
   [bytesSymbol]: Uint8Array;
   readonly size: number = 0;
   readonly type: string = "";
@@ -216,3 +217,11 @@ export class DenoBlob implements Blob {
     return readBytes(getStream(this[bytesSymbol]).getReader());
   }
 }
+
+// we want the Base class name to be the name of the class.
+Object.defineProperty(DenoBlob, "name", {
+  value: "Blob",
+  configurable: true,
+});
+
+export { DenoBlob };

@@ -1,14 +1,20 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { sendSync, sendAsync } from "../dispatch_json.ts";
 
-export function chownSync(path: string, uid: number, gid: number): void {
-  sendSync("op_chown", { path, uid, gid });
+import { sendSync, sendAsync } from "../dispatch_json.ts";
+import { pathFromURL } from "../../util.ts";
+
+export function chownSync(
+  path: string | URL,
+  uid: number | null,
+  gid: number | null,
+): void {
+  sendSync("op_chown", { path: pathFromURL(path), uid, gid });
 }
 
 export async function chown(
-  path: string,
-  uid: number,
-  gid: number
+  path: string | URL,
+  uid: number | null,
+  gid: number | null,
 ): Promise<void> {
-  await sendAsync("op_chown", { path, uid, gid });
+  await sendAsync("op_chown", { path: pathFromURL(path), uid, gid });
 }

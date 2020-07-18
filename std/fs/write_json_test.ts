@@ -18,7 +18,7 @@ Deno.test("writeJsonIfNotExists", async function (): Promise<void> {
       throw new Error("should write success");
     },
     Error,
-    "should write success"
+    "should write success",
   );
 
   const content = await Deno.readFile(notExistsJsonFile);
@@ -39,7 +39,7 @@ Deno.test("writeJsonIfExists", async function (): Promise<void> {
       throw new Error("should write success");
     },
     Error,
-    "should write success"
+    "should write success",
   );
 
   const content = await Deno.readFile(existsJsonFile);
@@ -52,7 +52,7 @@ Deno.test("writeJsonIfExists", async function (): Promise<void> {
 Deno.test("writeJsonIfExistsAnInvalidJson", async function (): Promise<void> {
   const existsInvalidJsonFile = path.join(
     testdataDir,
-    "file_write_invalid.json"
+    "file_write_invalid.json",
   );
 
   const invalidJsonContent = new TextEncoder().encode("[123}");
@@ -64,7 +64,7 @@ Deno.test("writeJsonIfExistsAnInvalidJson", async function (): Promise<void> {
       throw new Error("should write success");
     },
     Error,
-    "should write success"
+    "should write success",
   );
 
   const content = await Deno.readFile(existsInvalidJsonFile);
@@ -86,7 +86,7 @@ Deno.test("writeJsonWithSpaces", async function (): Promise<void> {
       throw new Error("should write success");
     },
     Error,
-    "should write success"
+    "should write success",
   );
 
   const content = await Deno.readFile(existsJsonFile);
@@ -109,12 +109,12 @@ Deno.test("writeJsonWithReplacer", async function (): Promise<void> {
         { a: "1", b: "2", c: "3" },
         {
           replacer: ["a"],
-        }
+        },
       );
       throw new Error("should write success");
     },
     Error,
-    "should write success"
+    "should write success",
   );
 
   const content = await Deno.readFile(existsJsonFile);
@@ -133,7 +133,7 @@ Deno.test("writeJsonSyncIfNotExists", function (): void {
       throw new Error("should write success");
     },
     Error,
-    "should write success"
+    "should write success",
   );
 
   const content = Deno.readFileSync(notExistsJsonFile);
@@ -154,7 +154,7 @@ Deno.test("writeJsonSyncIfExists", function (): void {
       throw new Error("should write success");
     },
     Error,
-    "should write success"
+    "should write success",
   );
 
   const content = Deno.readFileSync(existsJsonFile);
@@ -167,7 +167,7 @@ Deno.test("writeJsonSyncIfExists", function (): void {
 Deno.test("writeJsonSyncIfExistsAnInvalidJson", function (): void {
   const existsInvalidJsonFile = path.join(
     testdataDir,
-    "file_write_invalid_sync.json"
+    "file_write_invalid_sync.json",
   );
 
   const invalidJsonContent = new TextEncoder().encode("[123}");
@@ -179,7 +179,7 @@ Deno.test("writeJsonSyncIfExistsAnInvalidJson", function (): void {
       throw new Error("should write success");
     },
     Error,
-    "should write success"
+    "should write success",
   );
 
   const content = Deno.readFileSync(existsInvalidJsonFile);
@@ -201,7 +201,7 @@ Deno.test("writeJsonWithSpaces", function (): void {
       throw new Error("should write success");
     },
     Error,
-    "should write success"
+    "should write success",
   );
 
   const content = Deno.readFileSync(existsJsonFile);
@@ -214,7 +214,7 @@ Deno.test("writeJsonWithSpaces", function (): void {
 Deno.test("writeJsonWithReplacer", function (): void {
   const existsJsonFile = path.join(
     testdataDir,
-    "file_write_replacer_sync.json"
+    "file_write_replacer_sync.json",
   );
 
   const invalidJsonContent = new TextEncoder().encode();
@@ -227,12 +227,12 @@ Deno.test("writeJsonWithReplacer", function (): void {
         { a: "1", b: "2", c: "3" },
         {
           replacer: ["a"],
-        }
+        },
       );
       throw new Error("should write success");
     },
     Error,
-    "should write success"
+    "should write success",
   );
 
   const content = Deno.readFileSync(existsJsonFile);

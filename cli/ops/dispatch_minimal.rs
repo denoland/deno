@@ -7,8 +7,9 @@
 use crate::op_error::OpError;
 use byteorder::{LittleEndian, WriteBytesExt};
 use deno_core::Buf;
-use deno_core::CoreIsolate;
+use deno_core::CoreIsolateState;
 use deno_core::Op;
+use deno_core::OpDispatcher;
 use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
 use std::future::Future;
@@ -114,16 +115,13 @@ fn test_parse_min_record() {
   assert_eq!(parse_min_record(&buf), None);
 }
 
-pub fn minimal_op<D>(
-  d: D,
-) -> impl Fn(&mut CoreIsolate, &[u8], Option<ZeroCopyBuf>) -> Op
+pub fn minimal_op<D>(d: D) -> impl OpDispatcher
 where
-  D: Fn(&mut CoreIsolate, bool, i32, Option<ZeroCopyBuf>) -> MinimalOp,
+  D: Fn(&mut CoreIsolateState, bool, i32, &mut [ZeroCopyBuf]) -> MinimalOp,
 {
-  move |isolate: &mut CoreIsolate,
-        control: &[u8],
-        zero_copy: Option<ZeroCopyBuf>| {
-    let mut record = match parse_min_record(control) {
+  move |isolate_state: &mut CoreIsolateState, zero_copy: &mut [ZeroCopyBuf]| {
+    assert!(!zero_copy.is_empty(), "Expected record at position 0");
+    let mut record = match parse_min_record(&zero_copy[0]) {
       Some(r) => r,
       None => {
         let e = OpError::type_error("Unparsable control buffer".to_string());
@@ -138,7 +136,7 @@ where
     };
     let is_sync = record.promise_id == 0;
     let rid = record.arg;
-    let min_op = d(isolate, is_sync, rid, zero_copy);
+    let min_op = d(isolate_state, is_sync, rid, &mut zero_copy[1..]);
 
     match min_op {
       MinimalOp::Sync(sync_result) => Op::Sync(match sync_result {

@@ -1,9 +1,13 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::fmt_errors::JSError;
+use crate::global_state::GlobalState;
 use crate::inspector::DenoInspector;
 use crate::ops;
+use crate::ops::io::get_stdio;
+use crate::startup_data;
 use crate::state::State;
 use deno_core::Buf;
+use deno_core::CoreIsolate;
 use deno_core::ErrBox;
 use deno_core::ModuleId;
 use deno_core::ModuleSpecifier;
@@ -12,7 +16,6 @@ use futures::channel::mpsc;
 use futures::future::FutureExt;
 use futures::stream::StreamExt;
 use futures::task::AtomicWaker;
-use std::cell::RefMut;
 use std::env;
 use std::future::Future;
 use std::ops::Deref;
@@ -51,11 +54,11 @@ impl WorkerHandle {
     sender.try_send(buf).map_err(ErrBox::from)
   }
 
-  // TODO: should use `try_lock` and return error if
-  // more than one listener tries to get event
-  pub async fn get_event(&self) -> Option<WorkerEvent> {
-    let mut receiver = self.receiver.lock().await;
-    receiver.next().await
+  /// Get the event with lock.
+  /// Return error if more than one listener tries to get event
+  pub async fn get_event(&self) -> Result<Option<WorkerEvent>, ErrBox> {
+    let mut receiver = self.receiver.try_lock()?;
+    Ok(receiver.next().await)
   }
 }
 
@@ -87,7 +90,8 @@ fn create_channels() -> (WorkerChannelsInternal, WorkerHandle) {
 ///  - `WebWorker`
 pub struct Worker {
   pub name: String,
-  pub isolate: Box<deno_core::EsIsolate>,
+  pub isolate: deno_core::EsIsolate,
+  pub inspector: Option<Box<DenoInspector>>,
   pub state: State,
   pub waker: AtomicWaker,
   pub(crate) internal_channels: WorkerChannelsInternal,
@@ -99,18 +103,32 @@ impl Worker {
     let loader = Rc::new(state.clone());
     let mut isolate = deno_core::EsIsolate::new(loader, startup_data, false);
 
-    state.maybe_init_inspector(&mut isolate);
+    {
+      let global_state = state.borrow().global_state.clone();
+      let core_state_rc = CoreIsolate::state(&isolate);
+      let mut core_state = core_state_rc.borrow_mut();
+      core_state.set_js_error_create_fn(move |core_js_error| {
+        JSError::create(core_js_error, &global_state.ts_compiler)
+      });
+    }
 
-    let global_state = state.borrow().global_state.clone();
-    isolate.set_js_error_create_fn(move |core_js_error| {
-      JSError::create(core_js_error, &global_state.ts_compiler)
-    });
+    let inspector = {
+      let state = state.borrow();
+      let global_state = &state.global_state;
+      global_state
+        .flags
+        .inspect
+        .or(global_state.flags.inspect_brk)
+        .filter(|_| !state.is_internal)
+        .map(|inspector_host| DenoInspector::new(&mut isolate, inspector_host))
+    };
 
     let (internal_channels, external_channels) = create_channels();
 
     Self {
       name,
       isolate,
+      inspector,
       state,
       waker: AtomicWaker::new(),
       internal_channels,
@@ -173,16 +191,14 @@ impl Worker {
     self.external_channels.clone()
   }
 
-  #[inline(always)]
-  fn inspector(&self) -> RefMut<Option<Box<DenoInspector>>> {
-    let state = self.state.borrow_mut();
-    RefMut::map(state, |s| &mut s.inspector)
-  }
-
-  fn wait_for_inspector_session(&self) {
-    if self.state.should_inspector_break_on_first_statement() {
+  fn wait_for_inspector_session(&mut self) {
+    let should_break_on_first_statement = self.inspector.is_some() && {
+      let state = self.state.borrow();
+      state.is_main && state.global_state.flags.inspect_brk.is_some()
+    };
+    if should_break_on_first_statement {
       self
-        .inspector()
+        .inspector
         .as_mut()
         .unwrap()
         .wait_for_session_and_break_on_next_statement()
@@ -194,7 +210,7 @@ impl Drop for Worker {
   fn drop(&mut self) {
     // The Isolate object must outlive the Inspector object, but this is
     // currently not enforced by the type system.
-    self.inspector().take();
+    self.inspector.take();
   }
 }
 
@@ -205,7 +221,7 @@ impl Future for Worker {
     let inner = self.get_mut();
 
     // We always poll the inspector if it exists.
-    let _ = inner.inspector().as_mut().map(|i| i.poll_unpin(cx));
+    let _ = inner.inspector.as_mut().map(|i| i.poll_unpin(cx));
     inner.waker.register(cx.waker());
     inner.isolate.poll_unpin(cx)
   }
@@ -233,7 +249,8 @@ impl DerefMut for Worker {
 pub struct MainWorker(Worker);
 
 impl MainWorker {
-  pub fn new(name: String, startup_data: StartupData, state: State) -> Self {
+  // TODO(ry) combine MainWorker::new and MainWorker::create.
+  fn new(name: String, startup_data: StartupData, state: State) -> Self {
     let state_ = state.clone();
     let mut worker = Worker::new(name, startup_data, state_);
     {
@@ -244,6 +261,7 @@ impl MainWorker {
       ops::fetch::init(isolate, &state);
       ops::fs::init(isolate, &state);
       ops::fs_events::init(isolate, &state);
+      ops::idna::init(isolate, &state);
       ops::io::init(isolate, &state);
       ops::plugin::init(isolate, &state);
       ops::net::init(isolate, &state);
@@ -260,6 +278,41 @@ impl MainWorker {
       ops::worker_host::init(isolate, &state);
     }
     Self(worker)
+  }
+
+  pub fn create(
+    global_state: GlobalState,
+    main_module: ModuleSpecifier,
+  ) -> Result<MainWorker, ErrBox> {
+    let state = State::new(
+      global_state.clone(),
+      None,
+      main_module,
+      global_state.maybe_import_map.clone(),
+      false,
+    )?;
+    let mut worker = MainWorker::new(
+      "main".to_string(),
+      startup_data::deno_isolate_init(),
+      state,
+    );
+    {
+      let (stdin, stdout, stderr) = get_stdio();
+      let state_rc = CoreIsolate::state(&worker.isolate);
+      let state = state_rc.borrow();
+      let mut t = state.resource_table.borrow_mut();
+      if let Some(stream) = stdin {
+        t.add("stdin", Box::new(stream));
+      }
+      if let Some(stream) = stdout {
+        t.add("stdout", Box::new(stream));
+      }
+      if let Some(stream) = stderr {
+        t.add("stderr", Box::new(stream));
+      }
+    }
+    worker.execute("bootstrap.mainRuntime()")?;
+    Ok(worker)
   }
 }
 
@@ -296,7 +349,8 @@ mod tests {
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let global_state = GlobalState::new(flags::Flags::default()).unwrap();
     let state =
-      State::new(global_state, None, module_specifier.clone(), false).unwrap();
+      State::new(global_state, None, module_specifier.clone(), None, false)
+        .unwrap();
     let state_ = state.clone();
     tokio_util::run_basic(async move {
       let mut worker =
@@ -325,7 +379,8 @@ mod tests {
       ModuleSpecifier::resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let global_state = GlobalState::new(flags::Flags::default()).unwrap();
     let state =
-      State::new(global_state, None, module_specifier.clone(), false).unwrap();
+      State::new(global_state, None, module_specifier.clone(), None, false)
+        .unwrap();
     let state_ = state.clone();
     tokio_util::run_basic(async move {
       let mut worker =
@@ -340,14 +395,13 @@ mod tests {
     });
 
     let state = state_.borrow();
-    assert_eq!(state.metrics.resolve_count, 1);
     // Check that we didn't start the compiler.
     assert_eq!(state.global_state.compiler_starts.load(Ordering::SeqCst), 0);
   }
 
   #[tokio::test]
   async fn execute_006_url_imports() {
-    let http_server_guard = crate::test_util::http_server();
+    let http_server_guard = test_util::http_server();
     let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
       .parent()
       .unwrap()
@@ -362,9 +416,14 @@ mod tests {
       ..flags::Flags::default()
     };
     let global_state = GlobalState::new(flags).unwrap();
-    let state =
-      State::new(global_state.clone(), None, module_specifier.clone(), false)
-        .unwrap();
+    let state = State::new(
+      global_state.clone(),
+      None,
+      module_specifier.clone(),
+      None,
+      false,
+    )
+    .unwrap();
     let mut worker = MainWorker::new(
       "TEST".to_string(),
       startup_data::deno_isolate_init(),

@@ -7,7 +7,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::path::Prefix;
 use std::str;
-use url::Url;
+use url::{Host, Url};
 
 #[derive(Clone)]
 pub struct DiskCache {
@@ -22,21 +22,23 @@ fn with_io_context<T: AsRef<str>>(
 }
 
 impl DiskCache {
+  /// `location` must be an absolute path.
   pub fn new(location: &Path) -> Self {
+    assert!(location.is_absolute());
     Self {
       location: location.to_owned(),
     }
   }
 
   /// Ensures the location of the cache.
-  pub fn ensure_location(&self) -> io::Result<()> {
-    if self.location.is_dir() {
+  pub fn ensure_dir_exists(&self, path: &Path) -> io::Result<()> {
+    if path.is_dir() {
       return Ok(());
     }
-    fs::create_dir_all(&self.location).map_err(|e| {
+    fs::create_dir_all(&path).map_err(|e| {
       io::Error::new(e.kind(), format!(
         "Could not create TypeScript compiler cache location: {:?}\nCheck the permission of the directory.",
-        self.location
+        path
       ))
     })
   }
@@ -48,7 +50,7 @@ impl DiskCache {
     out.push(scheme);
 
     match scheme {
-      "http" | "https" => {
+      "http" | "https" | "wasm" => {
         let host = url.host_str().unwrap();
         let host_port = match url.port() {
           // Windows doesn't support ":" in filenames, so we represent port using a
@@ -77,6 +79,14 @@ impl DiskCache {
               Prefix::Disk(disk_byte) | Prefix::VerbatimDisk(disk_byte) => {
                 let disk = (disk_byte as char).to_string();
                 out.push(disk);
+              }
+              Prefix::UNC(server, share)
+              | Prefix::VerbatimUNC(server, share) => {
+                out.push("UNC");
+                let host = Host::parse(server.to_str().unwrap()).unwrap();
+                let host = host.to_string().replace(":", "_");
+                out.push(host);
+                out.push(share);
               }
               _ => unreachable!(),
             }
@@ -127,8 +137,7 @@ impl DiskCache {
   pub fn set(&self, filename: &Path, data: &[u8]) -> std::io::Result<()> {
     let path = self.location.join(filename);
     match path.parent() {
-      Some(ref parent) => fs::create_dir_all(parent)
-        .map_err(|e| with_io_context(&e, format!("{:#?}", &path))),
+      Some(ref parent) => self.ensure_dir_exists(parent),
       None => Ok(()),
     }?;
     deno_fs::write_file(&path, data, 0o666)
@@ -152,7 +161,9 @@ mod tests {
     let mut cache_path = cache_location.path().to_owned();
     cache_path.push("foo");
     let cache = DiskCache::new(&cache_path);
-    cache.ensure_location().expect("Testing expect:");
+    cache
+      .ensure_dir_exists(&cache.location)
+      .expect("Testing expect:");
     assert!(cache_path.is_dir());
   }
 
@@ -164,7 +175,9 @@ mod tests {
     cache_location.push("foo");
     assert_eq!(cache_location.is_dir(), false);
     let cache = DiskCache::new(&cache_location);
-    cache.ensure_location().expect("Testing expect:");
+    cache
+      .ensure_dir_exists(&cache.location)
+      .expect("Testing expect:");
     assert_eq!(cache_location.is_dir(), true);
   }
 
@@ -191,10 +204,26 @@ mod tests {
         "https://deno.land/std/http/file_server.ts",
         "https/deno.land/std/http/file_server.ts",
       ),
+      ("wasm://wasm/d1c677ea", "wasm/wasm/d1c677ea"),
     ];
 
     if cfg!(target_os = "windows") {
       test_cases.push(("file:///D:/a/1/s/format.ts", "file/D/a/1/s/format.ts"));
+      // IPv4 localhost
+      test_cases.push((
+        "file://127.0.0.1/d$/a/1/s/format.ts",
+        "file/UNC/127.0.0.1/d$/a/1/s/format.ts",
+      ));
+      // IPv6 localhost
+      test_cases.push((
+        "file://[0:0:0:0:0:0:0:1]/d$/a/1/s/format.ts",
+        "file/UNC/[__1]/d$/a/1/s/format.ts",
+      ));
+      // shared folder
+      test_cases.push((
+        "file://comp/t-share/a/1/s/format.ts",
+        "file/UNC/comp/t-share/a/1/s/format.ts",
+      ));
     } else {
       test_cases.push((
         "file:///std/http/file_server.ts",
@@ -211,7 +240,12 @@ mod tests {
 
   #[test]
   fn test_get_cache_filename_with_extension() {
-    let cache = DiskCache::new(&PathBuf::from("foo"));
+    let p = if cfg!(target_os = "windows") {
+      "C:\\foo"
+    } else {
+      "/foo"
+    };
+    let cache = DiskCache::new(&PathBuf::from(p));
 
     let mut test_cases = vec![
       (

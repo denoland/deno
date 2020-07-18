@@ -1,17 +1,18 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 import { exit } from "./ops/os.ts";
 import { core } from "./core.ts";
 import { version } from "./version.ts";
-import { stringifyArgs } from "./web/console.ts";
+import { inspectArgs } from "./web/console.ts";
 import { startRepl, readline } from "./ops/repl.ts";
 import { close } from "./ops/resources.ts";
 
 function replLog(...args: unknown[]): void {
-  core.print(stringifyArgs(args) + "\n");
+  core.print(inspectArgs(args) + "\n");
 }
 
 function replError(...args: unknown[]): void {
-  core.print(stringifyArgs(args) + "\n", true);
+  core.print(inspectArgs(args) + "\n", true);
 }
 
 // Error messages that allow users to continue input
@@ -32,6 +33,13 @@ function isRecoverableError(e: Error): boolean {
   return recoverableErrorMessages.includes(e.message);
 }
 
+// Returns `true` if `close()` is called in REPL.
+// We should quit the REPL when this function returns `true`.
+function isCloseCalled(): boolean {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (globalThis as any).closed;
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Value = any;
 
@@ -42,10 +50,18 @@ let lastThrownError: Value = undefined;
 // Returns true if code is consumed (no error/irrecoverable error).
 // Returns false if error is recoverable
 function evaluate(code: string): boolean {
-  const [result, errInfo] = core.evalContext(code);
+  // each evalContext is a separate function body, and we want strict mode to
+  // work, so we should ensure that the code starts with "use strict"
+  const [result, errInfo] = core.evalContext(`"use strict";\n\n${code}`);
   if (!errInfo) {
-    lastEvalResult = result;
-    replLog(result);
+    // when a function is eval'ed with just "use strict" sometimes the result
+    // is "use strict" which should be discarded
+    lastEvalResult = typeof result === "string" && result === "use strict"
+      ? undefined
+      : result;
+    if (!isCloseCalled()) {
+      replLog(lastEvalResult);
+    }
   } else if (errInfo.isCompileError && isRecoverableError(errInfo.thrown)) {
     // Recoverable compiler error
     return false; // don't consume code.
@@ -110,6 +126,10 @@ export async function replLoop(): Promise<void> {
   replLog("exit using ctrl+d or close()");
 
   while (true) {
+    if (isCloseCalled()) {
+      quitRepl(0);
+    }
+
     let code = "";
     // Top level read
     try {

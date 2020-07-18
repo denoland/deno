@@ -1,9 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 import { sendSync } from "./dispatch_json.ts";
 
-export interface ResourceMap {
-  [rid: number]: string;
-}
+export type ResourceMap = Record<number, string>;
 
 export function resources(): ResourceMap {
   const res = sendSync("op_resources") as Array<[number, string]>;

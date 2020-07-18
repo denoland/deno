@@ -2,7 +2,7 @@
 import {
   assert,
   assertEquals,
-  assertStrContains,
+  assertStringContains,
   assertThrows,
   assertThrowsAsync,
 } from "../testing/asserts.ts";
@@ -30,7 +30,7 @@ Deno.test("emptyDirIfItNotExist", async function (): Promise<void> {
 Deno.test("emptyDirSyncIfItNotExist", function (): void {
   const testDir = path.join(testdataDir, "empty_dir_test_2");
   const testNestDir = path.join(testDir, "nest");
-  // empty a dir which not exist. then it will create new one
+  // empty a dir which does not exist, then it will a create new one.
   emptyDirSync(testNestDir);
 
   try {
@@ -61,24 +61,24 @@ Deno.test("emptyDirIfItExist", async function (): Promise<void> {
 
   await emptyDir(testDir);
 
-  // after empty: file/directory have already remove
+  // after empty: file/directory have already been removed
   try {
     // test dir still there
     const stat = await Deno.stat(testDir);
     assertEquals(stat.isDirectory, true);
 
-    // nest directory have been remove
+    // nest directory have been removed
     await assertThrowsAsync(
       async (): Promise<void> => {
         await Deno.stat(testNestDir);
-      }
+      },
     );
 
-    // test file have been remove
+    // test file have been removed
     await assertThrowsAsync(
       async (): Promise<void> => {
         await Deno.stat(testDirFile);
-      }
+      },
     );
   } finally {
     // remote test dir
@@ -106,16 +106,16 @@ Deno.test("emptyDirSyncIfItExist", function (): void {
 
   // after empty: file/directory have already remove
   try {
-    // test dir still there
+    // test dir still present
     const stat = Deno.statSync(testDir);
     assertEquals(stat.isDirectory, true);
 
-    // nest directory have been remove
+    // nest directory have been removed
     assertThrows((): void => {
       Deno.statSync(testNestDir);
     });
 
-    // test file have been remove
+    // test file have been removed
     assertThrows((): void => {
       Deno.statSync(testDirFile);
     });
@@ -199,7 +199,7 @@ for (const s of scenes) {
 
       await Deno.writeFile(
         path.join(testfolder, "child.txt"),
-        new TextEncoder().encode("hello world")
+        new TextEncoder().encode("hello world"),
       );
 
       try {
@@ -215,7 +215,10 @@ for (const s of scenes) {
         }
 
         args.push(
-          path.join(testdataDir, s.async ? "empty_dir.ts" : "empty_dir_sync.ts")
+          path.join(
+            testdataDir,
+            s.async ? "empty_dir.ts" : "empty_dir_sync.ts",
+          ),
         );
         args.push("testfolder");
 
@@ -228,14 +231,14 @@ for (const s of scenes) {
         assert(p.stdout);
         const output = await p.output();
         p.close();
-        assertStrContains(new TextDecoder().decode(output), s.output);
+        assertStringContains(new TextDecoder().decode(output), s.output);
       } catch (err) {
         await Deno.remove(testfolder, { recursive: true });
         throw err;
       }
     } finally {
       // Make the test rerunnable
-      // Otherwise would throw error due to mkdir fail.
+      // Otherwise it would throw an error due to mkdir fail.
       await Deno.remove(testfolder, { recursive: true });
       // done
     }

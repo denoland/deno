@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use crate::CoreIsolate;
+use crate::core_isolate::CoreIsolateState;
 use crate::ZeroCopyBuf;
 use futures::Future;
 use std::collections::HashMap;
@@ -20,31 +20,53 @@ pub enum Op {
   AsyncUnref(OpAsyncFuture),
 }
 
-/// Main type describing op
-pub type OpDispatcher =
-  dyn Fn(&mut CoreIsolate, &[u8], Option<ZeroCopyBuf>) -> Op + 'static;
+/// Main type describing Op
+pub trait OpDispatcher {
+  fn dispatch(
+    &self,
+    isolate_state: &mut CoreIsolateState,
+    zero_copy: &mut [ZeroCopyBuf],
+  ) -> Op;
+}
+
+impl<F> OpDispatcher for F
+where
+  F: Fn(&mut CoreIsolateState, &mut [ZeroCopyBuf]) -> Op,
+{
+  fn dispatch(
+    &self,
+    isolate_state: &mut CoreIsolateState,
+    zero_copy: &mut [ZeroCopyBuf],
+  ) -> Op {
+    self(isolate_state, zero_copy)
+  }
+}
 
 #[derive(Default)]
 pub struct OpRegistry {
-  dispatchers: Vec<Rc<OpDispatcher>>,
+  dispatchers: Vec<Rc<dyn OpDispatcher>>,
   name_to_id: HashMap<String, OpId>,
 }
 
 impl OpRegistry {
   pub fn new() -> Self {
     let mut registry = Self::default();
-    let op_id = registry.register("ops", |isolate, _, _| {
-      let buf = isolate.op_registry.json_map();
-      Op::Sync(buf)
-    });
+    let op_id = registry.register(
+      "ops",
+      |state: &mut CoreIsolateState, _: &mut [ZeroCopyBuf]| {
+        let buf = state.op_registry.json_map();
+        Op::Sync(buf)
+      },
+    );
     assert_eq!(op_id, 0);
     registry
   }
 
-  pub fn register<F>(&mut self, name: &str, op: F) -> OpId
-  where
-    F: Fn(&mut CoreIsolate, &[u8], Option<ZeroCopyBuf>) -> Op + 'static,
-  {
+  pub fn register(
+    &mut self,
+    name: &str,
+    op: impl OpDispatcher + 'static,
+  ) -> OpId {
     let op_id = self.dispatchers.len() as u32;
 
     let existing = self.name_to_id.insert(name.to_string(), op_id);
@@ -61,13 +83,19 @@ impl OpRegistry {
     op_map_json.as_bytes().to_owned().into_boxed_slice()
   }
 
-  pub fn get(&self, op_id: OpId) -> Option<Rc<OpDispatcher>> {
-    self.dispatchers.get(op_id as usize).map(Rc::clone)
+  pub fn get(&self, op_id: OpId) -> Option<Rc<dyn OpDispatcher>> {
+    self.dispatchers.get(op_id as usize).cloned()
+  }
+
+  pub fn unregister_op(&mut self, name: &str) {
+    let id = self.name_to_id.remove(name).unwrap();
+    drop(self.dispatchers.remove(id as usize));
   }
 }
 
 #[test]
 fn test_op_registry() {
+  use crate::CoreIsolate;
   use std::sync::atomic;
   use std::sync::Arc;
   let mut op_registry = OpRegistry::new();
@@ -75,10 +103,13 @@ fn test_op_registry() {
   let c = Arc::new(atomic::AtomicUsize::new(0));
   let c_ = c.clone();
 
-  let test_id = op_registry.register("test", move |_, _, _| {
-    c_.fetch_add(1, atomic::Ordering::SeqCst);
-    Op::Sync(Box::new([]))
-  });
+  let test_id = op_registry.register(
+    "test",
+    move |_: &mut CoreIsolateState, _: &mut [ZeroCopyBuf]| {
+      c_.fetch_add(1, atomic::Ordering::SeqCst);
+      Op::Sync(Box::new([]))
+    },
+  );
   assert!(test_id != 0);
 
   let mut expected = HashMap::new();
@@ -86,10 +117,12 @@ fn test_op_registry() {
   expected.insert("test".to_string(), 1);
   assert_eq!(op_registry.name_to_id, expected);
 
-  let mut isolate = CoreIsolate::new(crate::StartupData::None, false);
+  let isolate = CoreIsolate::new(crate::StartupData::None, false);
 
   let dispatch = op_registry.get(test_id).unwrap();
-  let res = dispatch(&mut isolate, &[], None);
+  let state_rc = CoreIsolate::state(&isolate);
+  let mut state = state_rc.borrow_mut();
+  let res = dispatch.dispatch(&mut state, &mut []);
   if let Op::Sync(buf) = res {
     assert_eq!(buf.len(), 0);
   } else {
@@ -98,10 +131,15 @@ fn test_op_registry() {
   assert_eq!(c.load(atomic::Ordering::SeqCst), 1);
 
   assert!(op_registry.get(100).is_none());
+  op_registry.unregister_op("test");
+  expected.remove("test");
+  assert_eq!(op_registry.name_to_id, expected);
+  assert!(op_registry.get(1).is_none());
 }
 
 #[test]
 fn register_op_during_call() {
+  use crate::CoreIsolate;
   use std::sync::atomic;
   use std::sync::Arc;
   use std::sync::Mutex;
@@ -114,25 +152,35 @@ fn register_op_during_call() {
 
   let test_id = {
     let mut g = op_registry.lock().unwrap();
-    g.register("dynamic_register_op", move |_, _, _| {
-      let c__ = c_.clone();
-      let mut g = op_registry_.lock().unwrap();
-      g.register("test", move |_, _, _| {
-        c__.fetch_add(1, atomic::Ordering::SeqCst);
+    g.register(
+      "dynamic_register_op",
+      move |_: &mut CoreIsolateState, _: &mut [ZeroCopyBuf]| {
+        let c__ = c_.clone();
+        let mut g = op_registry_.lock().unwrap();
+        g.register(
+          "test",
+          move |_: &mut CoreIsolateState, _: &mut [ZeroCopyBuf]| {
+            c__.fetch_add(1, atomic::Ordering::SeqCst);
+            Op::Sync(Box::new([]))
+          },
+        );
         Op::Sync(Box::new([]))
-      });
-      Op::Sync(Box::new([]))
-    })
+      },
+    )
   };
   assert!(test_id != 0);
 
-  let mut isolate = CoreIsolate::new(crate::StartupData::None, false);
+  let isolate = CoreIsolate::new(crate::StartupData::None, false);
 
   let dispatcher1 = {
     let g = op_registry.lock().unwrap();
     g.get(test_id).unwrap()
   };
-  dispatcher1(&mut isolate, &[], None);
+  {
+    let state_rc = CoreIsolate::state(&isolate);
+    let mut state = state_rc.borrow_mut();
+    dispatcher1.dispatch(&mut state, &mut []);
+  }
 
   let mut expected = HashMap::new();
   expected.insert("ops".to_string(), 0);
@@ -147,7 +195,9 @@ fn register_op_during_call() {
     let g = op_registry.lock().unwrap();
     g.get(2).unwrap()
   };
-  let res = dispatcher2(&mut isolate, &[], None);
+  let state_rc = CoreIsolate::state(&isolate);
+  let mut state = state_rc.borrow_mut();
+  let res = dispatcher2.dispatch(&mut state, &mut []);
   if let Op::Sync(buf) = res {
     assert_eq!(buf.len(), 0);
   } else {

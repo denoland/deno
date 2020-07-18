@@ -14,9 +14,7 @@ import {
   walk,
   walkSync,
 } from "./walk.ts";
-import { assert } from "../testing/asserts.ts";
-const { cwd } = Deno;
-type FileInfo = Deno.FileInfo;
+import { assert } from "../_util/assert.ts";
 
 const isWindows = Deno.build.os == "windows";
 
@@ -64,21 +62,27 @@ function comparePath(a: WalkEntry, b: WalkEntry): number {
 /**
  * Expand the glob string from the specified `root` directory and yield each
  * result as a `WalkEntry` object.
+ *
+ * Examples:
+ *
+ *     for await (const file of expandGlob("**\/*.ts")) {
+ *       console.log(file);
+ *     }
  */
 export async function* expandGlob(
   glob: string,
   {
-    root = cwd(),
+    root = Deno.cwd(),
     exclude = [],
     includeDirs = true,
     extended = false,
     globstar = false,
-  }: ExpandGlobOptions = {}
+  }: ExpandGlobOptions = {},
 ): AsyncIterableIterator<WalkEntry> {
   const globOptions: GlobOptions = { extended, globstar };
   const absRoot = isAbsolute(root)
     ? normalize(root)
-    : joinGlobs([cwd(), root], globOptions);
+    : joinGlobs([Deno.cwd(), root], globOptions);
   const resolveFromRoot = (path: string): string =>
     isAbsolute(path)
       ? normalize(path)
@@ -106,7 +110,7 @@ export async function* expandGlob(
 
   async function* advanceMatch(
     walkInfo: WalkEntry,
-    globSegment: string
+    globSegment: string,
   ): AsyncIterableIterator<WalkEntry> {
     if (!walkInfo.isDirectory) {
       return;
@@ -131,7 +135,7 @@ export async function* expandGlob(
       match: [
         globToRegExp(
           joinGlobs([walkInfo.path, globSegment], globOptions),
-          globOptions
+          globOptions,
         ),
       ],
       skip: excludePatterns,
@@ -152,32 +156,40 @@ export async function* expandGlob(
   }
   if (hasTrailingSep) {
     currentMatches = currentMatches.filter(
-      (entry: WalkEntry): boolean => entry.isDirectory
+      (entry: WalkEntry): boolean => entry.isDirectory,
     );
   }
   if (!includeDirs) {
     currentMatches = currentMatches.filter(
-      (entry: WalkEntry): boolean => !entry.isDirectory
+      (entry: WalkEntry): boolean => !entry.isDirectory,
     );
   }
   yield* currentMatches;
 }
 
-/** Synchronous version of `expandGlob()`. */
+/**
+ * Synchronous version of `expandGlob()`.
+ *
+ * Examples:
+ *
+ *     for (const file of expandGlobSync("**\/*.ts")) {
+ *       console.log(file);
+ *     }
+ */
 export function* expandGlobSync(
   glob: string,
   {
-    root = cwd(),
+    root = Deno.cwd(),
     exclude = [],
     includeDirs = true,
     extended = false,
     globstar = false,
-  }: ExpandGlobOptions = {}
+  }: ExpandGlobOptions = {},
 ): IterableIterator<WalkEntry> {
   const globOptions: GlobOptions = { extended, globstar };
   const absRoot = isAbsolute(root)
     ? normalize(root)
-    : joinGlobs([cwd(), root], globOptions);
+    : joinGlobs([Deno.cwd(), root], globOptions);
   const resolveFromRoot = (path: string): string =>
     isAbsolute(path)
       ? normalize(path)
@@ -205,7 +217,7 @@ export function* expandGlobSync(
 
   function* advanceMatch(
     walkInfo: WalkEntry,
-    globSegment: string
+    globSegment: string,
   ): IterableIterator<WalkEntry> {
     if (!walkInfo.isDirectory) {
       return;
@@ -230,7 +242,7 @@ export function* expandGlobSync(
       match: [
         globToRegExp(
           joinGlobs([walkInfo.path, globSegment], globOptions),
-          globOptions
+          globOptions,
         ),
       ],
       skip: excludePatterns,
@@ -251,12 +263,12 @@ export function* expandGlobSync(
   }
   if (hasTrailingSep) {
     currentMatches = currentMatches.filter(
-      (entry: WalkEntry): boolean => entry.isDirectory
+      (entry: WalkEntry): boolean => entry.isDirectory,
     );
   }
   if (!includeDirs) {
     currentMatches = currentMatches.filter(
-      (entry: WalkEntry): boolean => !entry.isDirectory
+      (entry: WalkEntry): boolean => !entry.isDirectory,
     );
   }
   yield* currentMatches;

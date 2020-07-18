@@ -16,7 +16,7 @@ specifics.
 
 [Install](https://github.com/denoland/deno_install)
 
-[API Reference](https://deno.land/typedoc/)
+[API Reference](https://doc.deno.land)
 
 [Style Guide](https://github.com/denoland/deno/blob/master/docs/contributing/style_guide.md)
 
@@ -24,6 +24,6 @@ specifics.
 
 [Releases](Releases.md)
 
-[Chat](https://discord.gg/TGMHGv6)
+[Chat](https://discord.gg/deno)
 
 [More links](https://github.com/denolib/awesome-deno)

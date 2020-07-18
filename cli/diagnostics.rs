@@ -96,7 +96,7 @@ fn format_category_and_code(
     _ => "".to_string(),
   };
 
-  let code = colors::bold(format!("TS{}", code.to_string())).to_string();
+  let code = colors::bold(&format!("TS{}", code.to_string())).to_string();
 
   format!("{} [{}]", code, category)
 }
@@ -107,19 +107,20 @@ fn format_message(
   level: usize,
 ) -> String {
   debug!("format_message");
-  if message_chain.is_none() {
-    return format!("{:indent$}{}", "", message, indent = level);
+
+  if let Some(message_chain) = message_chain {
+    let mut s = message_chain.format_message(level);
+    s.pop();
+
+    s
+  } else {
+    format!("{:indent$}{}", "", message, indent = level)
   }
-
-  let mut s = message_chain.clone().unwrap().format_message(level);
-  s.pop();
-
-  s
 }
 
 /// Formats optional source, line and column numbers into a single string.
 fn format_maybe_frame(
-  file_name: Option<String>,
+  file_name: Option<&str>,
   line_number: Option<i64>,
   column_number: Option<i64>,
 ) -> String {
@@ -133,8 +134,8 @@ fn format_maybe_frame(
   let line_number = line_number.unwrap();
   let column_number = column_number.unwrap();
   let file_name_c = colors::cyan(file_name.unwrap());
-  let line_c = colors::yellow(line_number.to_string());
-  let column_c = colors::yellow(column_number.to_string());
+  let line_c = colors::yellow(&line_number.to_string());
+  let column_c = colors::yellow(&column_number.to_string());
   format!("{}:{}:{}", file_name_c, line_c, column_c)
 }
 
@@ -146,26 +147,28 @@ fn format_maybe_related_information(
   }
 
   let mut s = String::new();
-  let related_information = related_information.clone().unwrap();
-  for rd in related_information {
-    s.push_str("\n\n");
-    s.push_str(&format_stack(
-      match rd.category {
-        DiagnosticCategory::Error => true,
-        _ => false,
-      },
-      format_message(&rd.message_chain, &rd.message, 0),
-      rd.source_line.clone(),
-      rd.start_column,
-      rd.end_column,
-      // Formatter expects 1-based line and column numbers, but ours are 0-based.
-      &[format_maybe_frame(
-        rd.script_resource_name.clone(),
-        rd.line_number.map(|n| n + 1),
-        rd.start_column.map(|n| n + 1),
-      )],
-      4,
-    ));
+
+  if let Some(related_information) = related_information {
+    for rd in related_information {
+      s.push_str("\n\n");
+      s.push_str(&format_stack(
+        match rd.category {
+          DiagnosticCategory::Error => true,
+          _ => false,
+        },
+        &format_message(&rd.message_chain, &rd.message, 0),
+        rd.source_line.as_deref(),
+        rd.start_column,
+        rd.end_column,
+        // Formatter expects 1-based line and column numbers, but ours are 0-based.
+        &[format_maybe_frame(
+          rd.script_resource_name.as_deref(),
+          rd.line_number.map(|n| n + 1),
+          rd.start_column.map(|n| n + 1),
+        )],
+        4,
+      ));
+    }
   }
 
   s
@@ -181,17 +184,17 @@ impl fmt::Display for DiagnosticItem {
           DiagnosticCategory::Error => true,
           _ => false,
         },
-        format!(
+        &format!(
           "{}: {}",
           format_category_and_code(&self.category, self.code),
           format_message(&self.message_chain, &self.message, 0)
         ),
-        self.source_line.clone(),
+        self.source_line.as_deref(),
         self.start_column,
         self.end_column,
         // Formatter expects 1-based line and column numbers, but ours are 0-based.
         &[format_maybe_frame(
-          self.script_resource_name.clone(),
+          self.script_resource_name.as_deref(),
           self.line_number.map(|n| n + 1),
           self.start_column.map(|n| n + 1)
         )],
@@ -222,8 +225,8 @@ impl DiagnosticMessageChain {
     s.push_str(&std::iter::repeat(" ").take(level * 2).collect::<String>());
     s.push_str(&self.message);
     s.push('\n');
-    if self.next.is_some() {
-      let arr = self.next.clone().unwrap();
+    if let Some(next) = &self.next {
+      let arr = next.clone();
       for dm in arr {
         s.push_str(&dm.format_message(level + 1));
       }
@@ -450,11 +453,8 @@ mod tests {
 
   #[test]
   fn test_format_some_frame() {
-    let actual = format_maybe_frame(
-      Some("file://foo/bar.ts".to_string()),
-      Some(1),
-      Some(2),
-    );
+    let actual =
+      format_maybe_frame(Some("file://foo/bar.ts"), Some(1), Some(2));
     assert_eq!(strip_ansi_codes(&actual), "file://foo/bar.ts:1:2");
   }
 }

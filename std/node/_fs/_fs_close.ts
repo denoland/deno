@@ -1,22 +1,16 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import { CallbackWithError } from "./_fs_common.ts";
+import type { CallbackWithError } from "./_fs_common.ts";
 
 export function close(fd: number, callback: CallbackWithError): void {
-  new Promise((resolve, reject) => {
+  queueMicrotask(() => {
     try {
       Deno.close(fd);
-      resolve();
+      callback(null);
     } catch (err) {
-      reject(err);
-    }
-  })
-    .then(() => {
-      callback();
-    })
-    .catch((err) => {
       callback(err);
-    });
+    }
+  });
 }
 
 export function closeSync(fd: number): void {

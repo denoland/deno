@@ -9,18 +9,14 @@ import * as path from "../path/mod.ts";
 export function isSubdir(
   src: string,
   dest: string,
-  sep: string = path.sep
+  sep: string = path.sep,
 ): boolean {
   if (src === dest) {
     return false;
   }
   const srcArray = src.split(sep);
   const destArray = dest.split(sep);
-  // see: https://github.com/Microsoft/TypeScript/issues/30821
-  // @ts-ignore
-  return srcArray.reduce((acc: true, current: string, i: number): boolean => {
-    return acc && destArray[i] === current;
-  }, true);
+  return srcArray.every((current, i) => destArray[i] === current);
 }
 
 export type PathType = "file" | "dir" | "symlink";

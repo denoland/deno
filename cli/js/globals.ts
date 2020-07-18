@@ -7,7 +7,7 @@ import * as abortSignal from "./web/abort_signal.ts";
 import * as blob from "./web/blob.ts";
 import * as consoleTypes from "./web/console.ts";
 import * as csprng from "./ops/get_random_values.ts";
-import * as promiseTypes from "./web/promise.ts";
+import type * as promiseTypes from "./web/promise.ts";
 import * as customEvent from "./web/custom_event.ts";
 import * as domException from "./web/dom_exception.ts";
 import * as domFile from "./web/dom_file.ts";
@@ -22,7 +22,7 @@ import * as timers from "./web/timers.ts";
 import * as url from "./web/url.ts";
 import * as urlSearchParams from "./web/url_search_params.ts";
 import * as workers from "./web/workers.ts";
-import * as performanceUtil from "./web/performance.ts";
+import * as performance from "./web/performance.ts";
 import * as request from "./web/request.ts";
 import * as readableStream from "./web/streams/readable_stream.ts";
 import * as transformStream from "./web/streams/transform_stream.ts";
@@ -77,10 +77,10 @@ declare global {
 
   interface DenoCore {
     print(s: string, isErr?: boolean): void;
-    dispatch(
-      opId: number,
-      control: Uint8Array,
-      zeroCopy?: ArrayBufferView | null
+    dispatch(opId: number, ...zeroCopy: ArrayBufferView[]): Uint8Array | null;
+    dispatchByName(
+      opName: string,
+      ...zeroCopy: ArrayBufferView[]
     ): Uint8Array | null;
     setAsyncHandler(opId: number, cb: (msg: Uint8Array) => void): void;
     sharedQueue: {
@@ -96,11 +96,7 @@ declare global {
 
     recv(cb: (opId: number, msg: Uint8Array) => void): void;
 
-    send(
-      opId: number,
-      control: null | ArrayBufferView,
-      data?: ArrayBufferView
-    ): null | Uint8Array;
+    send(opId: number, ...data: ArrayBufferView[]): null | Uint8Array;
 
     setMacrotaskCallback(cb: () => boolean): void;
 
@@ -108,7 +104,7 @@ declare global {
 
     evalContext(
       code: string,
-      scriptName?: string
+      scriptName?: string,
     ): [unknown, EvalErrorInfo | null];
 
     formatError: (e: Error) => string;
@@ -136,6 +132,7 @@ declare global {
   // Assigned to `window` global - main runtime
   var Deno: {
     core: DenoCore;
+    noColor: boolean;
   };
   var onload: ((e: Event) => void) | undefined;
   var onunload: ((e: Event) => void) | undefined;
@@ -153,12 +150,12 @@ declare global {
 
   var onerror:
     | ((
-        msg: string,
-        source: string,
-        lineno: number,
-        colno: number,
-        e: Event
-      ) => boolean | void)
+      msg: string,
+      source: string,
+      lineno: number,
+      colno: number,
+      e: Event,
+    ) => boolean | void)
     | undefined;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -221,7 +218,7 @@ export const windowOrWorkerGlobalScopeProperties = {
   AbortSignal: nonEnumerable(abortSignal.AbortSignalImpl),
   Blob: nonEnumerable(blob.DenoBlob),
   ByteLengthQueuingStrategy: nonEnumerable(
-    queuingStrategy.ByteLengthQueuingStrategyImpl
+    queuingStrategy.ByteLengthQueuingStrategyImpl,
   ),
   CountQueuingStrategy: nonEnumerable(queuingStrategy.CountQueuingStrategyImpl),
   crypto: readOnly(csprng),
@@ -231,17 +228,21 @@ export const windowOrWorkerGlobalScopeProperties = {
   ErrorEvent: nonEnumerable(errorEvent.ErrorEventImpl),
   Event: nonEnumerable(event.EventImpl),
   EventTarget: nonEnumerable(eventTarget.EventTargetImpl),
-  URL: nonEnumerable(url.URLImpl),
-  URLSearchParams: nonEnumerable(urlSearchParams.URLSearchParamsImpl),
   Headers: nonEnumerable(headers.HeadersImpl),
   FormData: nonEnumerable(formData.FormDataImpl),
-  TextEncoder: nonEnumerable(textEncoding.TextEncoder),
-  TextDecoder: nonEnumerable(textEncoding.TextDecoder),
   ReadableStream: nonEnumerable(readableStream.ReadableStreamImpl),
-  TransformStream: nonEnumerable(transformStream.TransformStreamImpl),
   Request: nonEnumerable(request.Request),
   Response: nonEnumerable(fetchTypes.Response),
-  performance: writable(new performanceUtil.Performance()),
+  performance: writable(new performance.PerformanceImpl()),
+  Performance: nonEnumerable(performance.PerformanceImpl),
+  PerformanceEntry: nonEnumerable(performance.PerformanceEntryImpl),
+  PerformanceMark: nonEnumerable(performance.PerformanceMarkImpl),
+  PerformanceMeasure: nonEnumerable(performance.PerformanceMeasureImpl),
+  TextDecoder: nonEnumerable(textEncoding.TextDecoder),
+  TextEncoder: nonEnumerable(textEncoding.TextEncoder),
+  TransformStream: nonEnumerable(transformStream.TransformStreamImpl),
+  URL: nonEnumerable(url.URLImpl),
+  URLSearchParams: nonEnumerable(urlSearchParams.URLSearchParamsImpl),
   Worker: nonEnumerable(workers.WorkerImpl),
   WritableStream: nonEnumerable(writableStream.WritableStreamImpl),
 };
@@ -253,10 +254,10 @@ export function setEventTargetData(value: any): void {
 
 export const eventTargetProperties = {
   addEventListener: readOnly(
-    eventTarget.EventTargetImpl.prototype.addEventListener
+    eventTarget.EventTargetImpl.prototype.addEventListener,
   ),
   dispatchEvent: readOnly(eventTarget.EventTargetImpl.prototype.dispatchEvent),
   removeEventListener: readOnly(
-    eventTarget.EventTargetImpl.prototype.removeEventListener
+    eventTarget.EventTargetImpl.prototype.removeEventListener,
   ),
 };

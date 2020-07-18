@@ -1,4 +1,4 @@
-#!/usr/bin/env -S deno --allow-net
+#!/usr/bin/env -S deno run --allow-net --allow-read
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 // This program serves files in the current directory over HTTP.
@@ -6,11 +6,10 @@
 // TODO Add tests like these:
 // https://github.com/indexzero/http-server/blob/master/test/http-server-test.js
 
-const { args, stat, readDir, open, exit } = Deno;
 import { posix, extname } from "../path/mod.ts";
 import { listenAndServe, ServerRequest, Response } from "./server.ts";
 import { parse } from "../flags/mod.ts";
-import { assert } from "../testing/asserts.ts";
+import { assert } from "../_util/assert.ts";
 
 interface EntryInfo {
   mode: string;
@@ -33,11 +32,8 @@ interface FileServerArgs {
 
 const encoder = new TextEncoder();
 
-const serverArgs = parse(args) as FileServerArgs;
-
-const CORSEnabled = serverArgs.cors ? true : false;
-const target = posix.resolve(serverArgs._[1] ?? "");
-const addr = `0.0.0.0:${serverArgs.port ?? serverArgs.p ?? 4507}`;
+const serverArgs = parse(Deno.args) as FileServerArgs;
+const target = posix.resolve(serverArgs._[0] ?? "");
 
 const MEDIA_TYPES: Record<string, string> = {
   ".md": "text/markdown",
@@ -52,28 +48,12 @@ const MEDIA_TYPES: Record<string, string> = {
   ".jsx": "text/jsx",
   ".gz": "application/gzip",
   ".css": "text/css",
+  ".wasm": "application/wasm",
 };
 
 /** Returns the content-type based on the extension of a path. */
 function contentType(path: string): string | undefined {
   return MEDIA_TYPES[extname(path)];
-}
-
-if (serverArgs.h ?? serverArgs.help) {
-  console.log(`Deno File Server
-  Serves a local directory in HTTP.
-
-INSTALL:
-  deno install --allow-net --allow-read https://deno.land/std/http/file_server.ts
-
-USAGE:
-  file_server [path] [options]
-
-OPTIONS:
-  -h, --help          Prints help information
-  -p, --port <PORT>   Set port
-  --cors              Enable CORS via the "Access-Control-Allow-Origin" header`);
-  exit();
 }
 
 function modeToString(isDir: boolean, maybeMode: number | null): string {
@@ -117,15 +97,21 @@ function fileLenToString(len: number): string {
 
 export async function serveFile(
   req: ServerRequest,
-  filePath: string
+  filePath: string,
 ): Promise<Response> {
-  const [file, fileInfo] = await Promise.all([open(filePath), stat(filePath)]);
+  const [file, fileInfo] = await Promise.all([
+    Deno.open(filePath),
+    Deno.stat(filePath),
+  ]);
   const headers = new Headers();
   headers.set("content-length", fileInfo.size.toString());
   const contentTypeValue = contentType(filePath);
   if (contentTypeValue) {
     headers.set("content-type", contentTypeValue);
   }
+  req.done.then(() => {
+    file.close();
+  });
   return {
     status: 200,
     body: file,
@@ -136,11 +122,11 @@ export async function serveFile(
 // TODO: simplify this after deno.stat and deno.readDir are fixed
 async function serveDir(
   req: ServerRequest,
-  dirPath: string
+  dirPath: string,
 ): Promise<Response> {
   const dirUrl = `/${posix.relative(target, dirPath)}`;
   const listEntry: EntryInfo[] = [];
-  for await (const entry of readDir(dirPath)) {
+  for await (const entry of Deno.readDir(dirPath)) {
     const filePath = posix.join(dirPath, entry.name);
     const fileUrl = posix.join(dirUrl, entry.name);
     if (entry.name === "index.html" && entry.isFile) {
@@ -150,8 +136,10 @@ async function serveDir(
     // Yuck!
     let fileInfo = null;
     try {
-      fileInfo = await stat(filePath);
-    } catch (e) {}
+      fileInfo = await Deno.stat(filePath);
+    } catch (e) {
+      // Pass
+    }
     listEntry.push({
       mode: modeToString(entry.isDirectory, fileInfo?.mode ?? null),
       size: entry.isFile ? fileLenToString(fileInfo?.size ?? 0) : "",
@@ -204,7 +192,7 @@ function setCORS(res: Response): void {
   res.headers.append("access-control-allow-origin", "*");
   res.headers.append(
     "access-control-allow-headers",
-    "Origin, X-Requested-With, Content-Type, Accept, Range"
+    "Origin, X-Requested-With, Content-Type, Accept, Range",
   );
 }
 
@@ -275,9 +263,10 @@ function dirViewerTemplate(dirname: string, entries: EntryInfo[]): string {
               <th>Size</th>
               <th>Name</th>
             </tr>
-            ${entries.map(
-              (entry) =>
-                html`
+            ${
+    entries.map(
+      (entry) =>
+        html`
                   <tr>
                     <td class="mode">
                       ${entry.mode}
@@ -289,8 +278,9 @@ function dirViewerTemplate(dirname: string, entries: EntryInfo[]): string {
                       <a href="${entry.url}">${entry.name}</a>
                     </td>
                   </tr>
-                `
-            )}
+                `,
+    )
+  }
           </table>
         </main>
       </body>
@@ -315,6 +305,26 @@ function html(strings: TemplateStringsArray, ...values: unknown[]): string {
 }
 
 function main(): void {
+  const CORSEnabled = serverArgs.cors ? true : false;
+  const addr = `0.0.0.0:${serverArgs.port ?? serverArgs.p ?? 4507}`;
+
+  if (serverArgs.h ?? serverArgs.help) {
+    console.log(`Deno File Server
+    Serves a local directory in HTTP.
+
+  INSTALL:
+    deno install --allow-net --allow-read https://deno.land/std/http/file_server.ts
+
+  USAGE:
+    file_server [path] [options]
+
+  OPTIONS:
+    -h, --help          Prints help information
+    -p, --port <PORT>   Set port
+    --cors              Enable CORS via the "Access-Control-Allow-Origin" header`);
+    Deno.exit();
+  }
+
   listenAndServe(
     addr,
     async (req): Promise<void> => {
@@ -330,7 +340,7 @@ function main(): void {
 
       let response: Response | undefined;
       try {
-        const fileInfo = await stat(fsPath);
+        const fileInfo = await Deno.stat(fsPath);
         if (fileInfo.isDirectory) {
           response = await serveDir(req, fsPath);
         } else {
@@ -345,9 +355,13 @@ function main(): void {
           setCORS(response);
         }
         serverLog(req, response!);
-        req.respond(response!);
+        try {
+          await req.respond(response!);
+        } catch (e) {
+          console.error(e.message);
+        }
       }
-    }
+    },
   );
 
   console.log(`HTTP server listening on http://${addr}/`);

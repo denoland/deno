@@ -1,5 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+import { build } from "./build.ts";
+import { exposeForTest } from "./internals.ts";
+
 let logDebug = false;
 let logSource = "JS";
 
@@ -70,7 +73,7 @@ export function immutableDefine(
   o: any,
   p: string | number | symbol,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  value: any
+  value: any,
 ): void {
   Object.defineProperty(o, p, {
     value,
@@ -78,3 +81,46 @@ export function immutableDefine(
     writable: false,
   });
 }
+
+function pathFromURLWin32(url: URL): string {
+  const hostname = url.hostname;
+  const pathname = decodeURIComponent(url.pathname.replace(/\//g, "\\"));
+
+  if (hostname !== "") {
+    //TODO(actual-size) Node adds a punycode decoding step, we should consider adding this
+    return `\\\\${hostname}${pathname}`;
+  }
+
+  const validPath = /^\\(?<driveLetter>[A-Za-z]):\\/;
+  const matches = validPath.exec(pathname);
+
+  if (!matches?.groups?.driveLetter) {
+    throw new TypeError("A URL with the file schema must be absolute.");
+  }
+
+  // we don't want a leading slash on an absolute path in Windows
+  return pathname.slice(1);
+}
+
+function pathFromURLPosix(url: URL): string {
+  if (url.hostname !== "") {
+    throw new TypeError(`Host must be empty.`);
+  }
+
+  return decodeURIComponent(url.pathname);
+}
+
+export function pathFromURL(pathOrUrl: string | URL): string {
+  if (pathOrUrl instanceof URL) {
+    if (pathOrUrl.protocol != "file:") {
+      throw new TypeError("Must be a file URL.");
+    }
+
+    return build.os == "windows"
+      ? pathFromURLWin32(pathOrUrl)
+      : pathFromURLPosix(pathOrUrl);
+  }
+  return pathOrUrl;
+}
+
+exposeForTest("pathFromURL", pathFromURL);

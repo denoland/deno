@@ -1,6 +1,8 @@
 use std::env::current_dir;
 use std::error::Error;
 use std::fmt;
+use std::path::Component;
+use std::path::Path;
 use std::path::PathBuf;
 use url::ParseError;
 use url::Url;
@@ -32,19 +34,15 @@ impl fmt::Display for ModuleResolutionError {
         write!(f, "invalid base URL for relative import: {}", err)
       }
       InvalidPath(ref path) => write!(f, "invalid module path: {:?}", path),
-      ImportPrefixMissing(ref specifier, ref maybe_referrer) => {
-        let msg = format!(
-          "relative import path \"{}\" not prefixed with / or ./ or ../",
-          specifier
-        );
-        let msg = if let Some(referrer) = maybe_referrer {
-          format!("{} Imported from \"{}\"", msg, referrer)
-        } else {
-          msg
-        };
-
-        write!(f, "{}", msg)
-      }
+      ImportPrefixMissing(ref specifier, ref maybe_referrer) => write!(
+        f,
+        "relative import path \"{}\" not prefixed with / or ./ or ../{}",
+        specifier,
+        match maybe_referrer {
+          Some(referrer) => format!(" Imported from \"{}\"", referrer),
+          None => format!(""),
+        }
+      ),
     }
   }
 }
@@ -154,6 +152,7 @@ impl ModuleSpecifier {
     path_str: &str,
   ) -> Result<ModuleSpecifier, ModuleResolutionError> {
     let path = current_dir().unwrap().join(path_str);
+    let path = normalize_path(&path);
     Url::from_file_path(path.clone())
       .map(ModuleSpecifier)
       .map_err(|()| ModuleResolutionError::InvalidPath(path))
@@ -205,6 +204,39 @@ impl PartialEq<String> for ModuleSpecifier {
   fn eq(&self, other: &String) -> bool {
     &self.to_string() == other
   }
+}
+
+/// Normalize all itermediate components of the path (ie. remove "./" and "../" components).
+/// Similar to `fs::canonicalize()` but doesn't resolve symlinks.
+///
+/// Taken from Cargo
+/// https://github.com/rust-lang/cargo/blob/af307a38c20a753ec60f0ad18be5abed3db3c9ac/src/cargo/util/paths.rs#L60-L85
+pub fn normalize_path(path: &Path) -> PathBuf {
+  let mut components = path.components().peekable();
+  let mut ret =
+    if let Some(c @ Component::Prefix(..)) = components.peek().cloned() {
+      components.next();
+      PathBuf::from(c.as_os_str())
+    } else {
+      PathBuf::new()
+    };
+
+  for component in components {
+    match component {
+      Component::Prefix(..) => unreachable!(),
+      Component::RootDir => {
+        ret.push(component.as_os_str());
+      }
+      Component::CurDir => {}
+      Component::ParentDir => {
+        ret.pop();
+      }
+      Component::Normal(c) => {
+        ret.push(c);
+      }
+    }
+  }
+  ret
 }
 
 #[cfg(test)]
@@ -419,7 +451,12 @@ mod tests {
       );
       tests.extend(vec![
         (r"/deno/tests/006_url_imports.ts", expected_url.to_string()),
-        (r"\deno\tests\006_url_imports.ts", expected_url),
+        (r"\deno\tests\006_url_imports.ts", expected_url.to_string()),
+        (
+          r"\deno\..\deno\tests\006_url_imports.ts",
+          expected_url.to_string(),
+        ),
+        (r"\deno\.\tests\006_url_imports.ts", expected_url),
       ]);
 
       // Relative local path.
@@ -454,7 +491,12 @@ mod tests {
       let expected_url = format!("file://{}/tests/006_url_imports.ts", cwd_str);
       tests.extend(vec![
         ("tests/006_url_imports.ts", expected_url.to_string()),
-        ("./tests/006_url_imports.ts", expected_url),
+        ("./tests/006_url_imports.ts", expected_url.to_string()),
+        (
+          "tests/../tests/006_url_imports.ts",
+          expected_url.to_string(),
+        ),
+        ("tests/./006_url_imports.ts", expected_url),
       ]);
     }
 
@@ -513,6 +555,23 @@ mod tests {
     for (specifier, expected) in tests {
       let result = ModuleSpecifier::specifier_has_uri_scheme(specifier);
       assert_eq!(result, expected);
+    }
+  }
+
+  #[test]
+  fn test_normalize_path() {
+    assert_eq!(normalize_path(Path::new("a/../b")), PathBuf::from("b"));
+    assert_eq!(normalize_path(Path::new("a/./b/")), PathBuf::from("a/b/"));
+    assert_eq!(
+      normalize_path(Path::new("a/./b/../c")),
+      PathBuf::from("a/c")
+    );
+
+    if cfg!(windows) {
+      assert_eq!(
+        normalize_path(Path::new("C:\\a\\.\\b\\..\\c")),
+        PathBuf::from("C:\\a\\c")
+      );
     }
   }
 }

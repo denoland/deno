@@ -31,7 +31,7 @@ declare namespace WebAssembly {
    * its first `WebAssembly.Instance`. */
   function instantiate(
     bufferSource: BufferSource,
-    importObject?: object
+    importObject?: object,
   ): Promise<WebAssemblyInstantiatedSource>;
 
   /** Takes an already-compiled `WebAssembly.Module` and returns a `Promise`
@@ -39,7 +39,7 @@ declare namespace WebAssembly {
    * the `Module` has already been compiled. */
   function instantiate(
     module: Module,
-    importObject?: object
+    importObject?: object,
   ): Promise<Instance>;
 
   /** Compiles and instantiates a WebAssembly module directly from a streamed
@@ -47,7 +47,7 @@ declare namespace WebAssembly {
    * code. */
   function instantiateStreaming(
     source: Promise<Response>,
-    importObject?: object
+    importObject?: object,
   ): Promise<WebAssemblyInstantiatedSource>;
 
   /** Validates a given typed array of WebAssembly binary code, returning
@@ -73,7 +73,7 @@ declare namespace WebAssembly {
      * custom sections in the module with the given string name. */
     static customSections(
       moduleObject: Module,
-      sectionName: string
+      sectionName: string,
     ): ArrayBuffer;
 
     /** Given a `Module`, returns an array containing descriptions of all the
@@ -174,44 +174,101 @@ declare namespace WebAssembly {
   }
 }
 
-/** Sets a timer which executes a function once after the timer expires. */
+/** Sets a timer which executes a function once after the timer expires. Returns
+ * an id which may be used to cancel the timeout.
+ *
+ *     setTimeout(() => { console.log('hello'); }, 500);
+ */
 declare function setTimeout(
-  cb: (...args: unknown[]) => void,
+  /** callback function to execute when timer expires */
+  cb: (...args: any[]) => void,
+  /** delay in ms */
   delay?: number,
-  ...args: unknown[]
+  /** arguments passed to callback function */
+  ...args: any[]
 ): number;
 
-/** Repeatedly calls a function , with a fixed time delay between each call. */
+/** Repeatedly calls a function , with a fixed time delay between each call.
+ *
+ *     // Outputs 'hello' to the console every 500ms
+ *     setInterval(() => { console.log('hello'); }, 500);
+ */
 declare function setInterval(
-  cb: (...args: unknown[]) => void,
+  /** callback function to execute when timer expires */
+  cb: (...args: any[]) => void,
+  /** delay in ms */
   delay?: number,
-  ...args: unknown[]
+  /** arguments passed to callback function */
+  ...args: any[]
 ): number;
-declare function clearTimeout(id?: number): void;
+
+/** Cancels a timed, repeating action which was previously started by a call
+ * to `setInterval()`
+ *
+ *     const id = setInterval(()= > {console.log('hello');}, 500);
+ *     ...
+ *     clearInterval(id);
+ */
 declare function clearInterval(id?: number): void;
-declare function queueMicrotask(func: Function): void;
+
+/** Cancels a scheduled action initiated by `setTimeout()`
+ *
+ *     const id = setTimeout(()= > {console.log('hello');}, 500);
+ *     ...
+ *     clearTimeout(id);
+ */
+declare function clearTimeout(id?: number): void;
+
+interface VoidFunction {
+  (): void;
+}
+
+/** A microtask is a short function which is executed after the function or
+ * module which created it exits and only if the JavaScript execution stack is
+ * empty, but before returning control to the event loop being used to drive the
+ * script's execution environment. This event loop may be either the main event
+ * loop or the event loop driving a web worker.
+ *
+ *     queueMicrotask(() => { console.log('This event loop stack is complete'); });
+ */
+declare function queueMicrotask(func: VoidFunction): void;
 
 declare var console: Console;
 declare var crypto: Crypto;
 
+/** Registers an event listener in the global scope, which will be called
+ * synchronously whenever the event `type` is dispatched.
+ *
+ *     addEventListener('unload', () => { console.log('All finished!'); });
+ *     ...
+ *     dispatchEvent(new Event('unload'));
+ */
 declare function addEventListener(
   type: string,
   callback: EventListenerOrEventListenerObject | null,
-  options?: boolean | AddEventListenerOptions | undefined
+  options?: boolean | AddEventListenerOptions | undefined,
 ): void;
 
+/** Dispatches an event in the global scope, synchronously invoking any
+ * registered event listeners for this event in the appropriate order. Returns
+ * false if event is cancelable and at least one of the event handlers which
+ * handled this event called Event.preventDefault(). Otherwise it returns true.
+ *
+ *     dispatchEvent(new Event('unload'));
+ */
 declare function dispatchEvent(event: Event): boolean;
 
+/** Remove a previously registered event listener from the global scope
+ *
+ *     const lstnr = () => { console.log('hello'); };
+ *     addEventListener('load', lstnr);
+ *     removeEventListener('load', lstnr);
+ */
 declare function removeEventListener(
   type: string,
   callback: EventListenerOrEventListenerObject | null,
-  options?: boolean | EventListenerOptions | undefined
+  options?: boolean | EventListenerOptions | undefined,
 ): void;
-
-declare interface ImportMeta {
-  url: string;
-  main: boolean;
-}
 
 interface DomIterable<K, V> {
   keys(): IterableIterator<K>;
@@ -220,7 +277,7 @@ interface DomIterable<K, V> {
   [Symbol.iterator](): IterableIterator<[K, V]>;
   forEach(
     callback: (value: V, key: K, parent: this) => void,
-    thisArg?: any
+    thisArg?: any,
   ): void;
 }
 
@@ -341,7 +398,7 @@ interface ReadableStream<R = any> {
       writable: WritableStream<R>;
       readable: ReadableStream<T>;
     },
-    options?: PipeOptions
+    options?: PipeOptions,
   ): ReadableStream<T>;
   pipeTo(dest: WritableStream<R>, options?: PipeOptions): Promise<void>;
   tee(): [ReadableStream<R>, ReadableStream<R>];
@@ -354,11 +411,11 @@ declare var ReadableStream: {
   prototype: ReadableStream;
   new (
     underlyingSource: UnderlyingByteSource,
-    strategy?: { highWaterMark?: number; size?: undefined }
+    strategy?: { highWaterMark?: number; size?: undefined },
   ): ReadableStream<Uint8Array>;
   new <R = any>(
     underlyingSource?: UnderlyingSource<R>,
-    strategy?: QueuingStrategy<R>
+    strategy?: QueuingStrategy<R>,
   ): ReadableStream<R>;
 };
 
@@ -371,9 +428,11 @@ interface WritableStreamDefaultControllerStartCallback {
 }
 
 interface WritableStreamDefaultControllerWriteCallback<W> {
-  (chunk: W, controller: WritableStreamDefaultController): void | PromiseLike<
-    void
-  >;
+  (chunk: W, controller: WritableStreamDefaultController):
+    | void
+    | PromiseLike<
+      void
+    >;
 }
 
 interface WritableStreamErrorCallback {
@@ -394,7 +453,7 @@ interface UnderlyingSink<W = any> {
 declare class WritableStream<W = any> {
   constructor(
     underlyingSink?: UnderlyingSink<W>,
-    strategy?: QueuingStrategy<W>
+    strategy?: QueuingStrategy<W>,
   );
   readonly locked: boolean;
   abort(reason?: any): Promise<void>;
@@ -428,7 +487,7 @@ declare class TransformStream<I = any, O = any> {
   constructor(
     transformer?: Transformer<I, O>,
     writableStrategy?: QueuingStrategy<I>,
-    readableStrategy?: QueuingStrategy<O>
+    readableStrategy?: QueuingStrategy<O>,
   );
   readonly readable: ReadableStream<O>;
   readonly writable: WritableStream<I>;
@@ -456,7 +515,7 @@ interface TransformStreamDefaultControllerCallback<O> {
 interface TransformStreamDefaultControllerTransformCallback<I, O> {
   (
     chunk: I,
-    controller: TransformStreamDefaultController<O>
+    controller: TransformStreamDefaultController<O>,
   ): void | PromiseLike<void>;
 }
 
@@ -532,7 +591,7 @@ declare class Console {
     options?: Partial<{
       depth: number;
       indentLevel: number;
-    }>
+    }>,
   ) => void;
 
   /** From MDN:
@@ -552,7 +611,7 @@ declare class Console {
       depth: number;
       colors: boolean;
       indentLevel: number;
-    }>
+    }>,
   ) => void;
 
   /** Writes the arguments to stdout */
@@ -593,9 +652,9 @@ declare interface Crypto {
       | Float32Array
       | Float64Array
       | DataView
-      | null
+      | null,
   >(
-    array: T
+    array: T,
   ): T;
 }
 
@@ -667,7 +726,7 @@ interface Headers {
   set(name: string, value: string): void;
   forEach(
     callbackfn: (value: string, key: string, parent: Headers) => void,
-    thisArg?: any
+    thisArg?: any,
   ): void;
 }
 
@@ -705,7 +764,7 @@ interface Headers extends DomIterable<string, string> {
   values(): IterableIterator<string>;
   forEach(
     callbackfn: (value: string, key: string, parent: this) => void,
-    thisArg?: any
+    thisArg?: any,
   ): void;
   /** The Symbol.iterator well-known symbol specifies the default
    * iterator for this Headers object
@@ -862,7 +921,7 @@ interface Request extends Body {
   readonly integrity: string;
   /**
    * Returns a boolean indicating whether or not request is for a history
-   * navigation (a.k.a. back-foward navigation).
+   * navigation (a.k.a. back-forward navigation).
    */
   readonly isHistoryNavigation: boolean;
   /**
@@ -922,6 +981,12 @@ declare const Request: {
   new (input: RequestInfo, init?: RequestInit): Request;
 };
 
+interface ResponseInit {
+  headers?: HeadersInit;
+  status?: number;
+  statusText?: string;
+}
+
 type ResponseType =
   | "basic"
   | "cors"
@@ -945,33 +1010,34 @@ interface Response extends Body {
 
 declare const Response: {
   prototype: Response;
-
-  // TODO(#4667) Response constructor is non-standard.
-  // new(body?: BodyInit | null, init?: ResponseInit): Response;
-  new (
-    url: string,
-    status: number,
-    statusText: string,
-    headersList: Array<[string, string]>,
-    rid: number,
-    redirected_: boolean,
-    type_?: null | ResponseType,
-    body_?: null | Body
-  ): Response;
-
+  new (body?: BodyInit | null, init?: ResponseInit): Response;
   error(): Response;
   redirect(url: string, status?: number): Response;
 };
 
-/** Fetch a resource from the network. */
+/** Fetch a resource from the network. It returns a Promise that resolves to the
+ * Response to that request, whether it is successful or not.
+ *
+ *     const response = await fetch("http://my.json.host/data.json");
+ *     console.log(response.status);  // e.g. 200
+ *     console.log(response.statusText); // e.g. "OK"
+ *     const jsonData = await response.json();
+ */
 declare function fetch(
   input: Request | URL | string,
-  init?: RequestInit
+  init?: RequestInit,
 ): Promise<Response>;
 
+/** Decodes a string of data which has been encoded using base-64 encoding.
+ *
+ *     console.log(atob("aGVsbG8gd29ybGQ=")); // outputs 'hello world'
+ */
 declare function atob(s: string): string;
 
-/** Creates a base-64 ASCII string from the input string. */
+/** Creates a base-64 ASCII encoded string from the input string.
+ *
+ *     console.log(btoa("hello world"));  // outputs "aGVsbG8gd29ybGQ="
+ */
 declare function btoa(s: string): string;
 
 declare class TextDecoder {
@@ -983,7 +1049,7 @@ declare class TextDecoder {
   readonly ignoreBOM = false;
   constructor(
     label?: string,
-    options?: { fatal?: boolean; ignoreBOM?: boolean }
+    options?: { fatal?: boolean; ignoreBOM?: boolean },
   );
   /** Returns the result of running encoding's decoder. */
   decode(input?: BufferSource, options?: { stream?: false }): string;
@@ -997,7 +1063,7 @@ declare class TextEncoder {
   encode(input?: string): Uint8Array;
   encodeInto(
     input: string,
-    dest: Uint8Array
+    dest: Uint8Array,
   ): { read: number; written: number };
   readonly [Symbol.toStringTag]: string;
 }
@@ -1005,37 +1071,47 @@ declare class TextEncoder {
 interface URLSearchParams {
   /** Appends a specified key/value pair as a new search parameter.
    *
-   *       let searchParams = new URLSearchParams();
-   *       searchParams.append('name', 'first');
-   *       searchParams.append('name', 'second');
+   * ```ts
+   * let searchParams = new URLSearchParams();
+   * searchParams.append('name', 'first');
+   * searchParams.append('name', 'second');
+   * ```
    */
   append(name: string, value: string): void;
 
   /** Deletes the given search parameter and its associated value,
    * from the list of all search parameters.
    *
-   *       let searchParams = new URLSearchParams([['name', 'value']]);
-   *       searchParams.delete('name');
+   * ```ts
+   * let searchParams = new URLSearchParams([['name', 'value']]);
+   * searchParams.delete('name');
+   * ```
    */
   delete(name: string): void;
 
   /** Returns all the values associated with a given search parameter
    * as an array.
    *
-   *       searchParams.getAll('name');
+   * ```ts
+   * searchParams.getAll('name');
+   * ```
    */
   getAll(name: string): string[];
 
   /** Returns the first value associated to the given search parameter.
    *
-   *       searchParams.get('name');
+   * ```ts
+   * searchParams.get('name');
+   * ```
    */
   get(name: string): string | null;
 
   /** Returns a Boolean that indicates whether a parameter with the
    * specified name exists.
    *
-   *       searchParams.has('name');
+   * ```ts
+   * searchParams.has('name');
+   * ```
    */
   has(name: string): boolean;
 
@@ -1044,7 +1120,9 @@ interface URLSearchParams {
    * deletes the others. If the search parameter doesn't exist, this
    * method creates it.
    *
-   *       searchParams.set('name', 'value');
+   * ```ts
+   * searchParams.set('name', 'value');
+   * ```
    */
   set(name: string, value: string): void;
 
@@ -1052,7 +1130,9 @@ interface URLSearchParams {
    * return undefined. The sort order is according to Unicode code
    * points of the keys.
    *
-   *       searchParams.sort();
+   * ```ts
+   * searchParams.sort();
+   * ```
    */
   sort(): void;
 
@@ -1060,60 +1140,72 @@ interface URLSearchParams {
    * place and return undefined. Optionally accepts an object to use
    * as this when executing callback as second argument.
    *
-   *       const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
-   *       params.forEach((value, key, parent) => {
-   *         console.log(value, key, parent);
-   *       });
+   * ```ts
+   * const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
+   * params.forEach((value, key, parent) => {
+   *   console.log(value, key, parent);
+   * });
+   * ```
    *
    */
   forEach(
     callbackfn: (value: string, key: string, parent: this) => void,
-    thisArg?: any
+    thisArg?: any,
   ): void;
 
   /** Returns an iterator allowing to go through all keys contained
    * in this object.
    *
-   *       const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
-   *       for (const key of params.keys()) {
-   *         console.log(key);
-   *       }
+   * ```ts
+   * const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
+   * for (const key of params.keys()) {
+   *   console.log(key);
+   * }
+   * ```
    */
   keys(): IterableIterator<string>;
 
   /** Returns an iterator allowing to go through all values contained
    * in this object.
    *
-   *       const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
-   *       for (const value of params.values()) {
-   *         console.log(value);
-   *       }
+   * ```ts
+   * const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
+   * for (const value of params.values()) {
+   *   console.log(value);
+   * }
+   * ```
    */
   values(): IterableIterator<string>;
 
   /** Returns an iterator allowing to go through all key/value
    * pairs contained in this object.
    *
-   *       const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
-   *       for (const [key, value] of params.entries()) {
-   *         console.log(key, value);
-   *       }
+   * ```ts
+   * const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
+   * for (const [key, value] of params.entries()) {
+   *   console.log(key, value);
+   * }
+   * ```
    */
   entries(): IterableIterator<[string, string]>;
 
   /** Returns an iterator allowing to go through all key/value
    * pairs contained in this object.
    *
-   *       const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
-   *       for (const [key, value] of params) {
-   *         console.log(key, value);
-   *       }
+   * ```ts
+   * const params = new URLSearchParams([["a", "b"], ["c", "d"]]);
+   * for (const [key, value] of params) {
+   *   console.log(key, value);
+   * }
+   * ```
    */
   [Symbol.iterator](): IterableIterator<[string, string]>;
 
   /** Returns a query string suitable for use in a URL.
    *
-   *        searchParams.toString();
+   * ```ts
+   * searchParams.toString();
+   * ```
    */
   toString(): string;
 }
@@ -1121,7 +1213,7 @@ interface URLSearchParams {
 declare const URLSearchParams: {
   prototype: URLSearchParams;
   new (
-    init?: string[][] | Record<string, string> | string | URLSearchParams
+    init?: string[][] | Record<string, string> | string | URLSearchParams,
   ): URLSearchParams;
   toString(): string;
 };
@@ -1146,7 +1238,7 @@ interface URL {
 
 declare const URL: {
   prototype: URL;
-  new (url: string | URL, base?: string | URL): URL;
+  new (url: string, base?: string | URL): URL;
   createObjectURL(object: any): string;
   revokeObjectURL(url: string): void;
 };
@@ -1206,50 +1298,148 @@ declare class Worker extends EventTarget {
        * Configurable permissions are on the roadmap to be implemented.
        *
        * Example:
-       *    // mod.ts
-       *    const worker = new Worker("./deno_worker.ts", { type: "module", deno: true });
-       *    worker.postMessage({ cmd: "readFile", fileName: "./log.txt" });
        *
-       *    // deno_worker.ts
+       * ```ts
+       * // mod.ts
+       * const worker = new Worker(
+       *   new URL("deno_worker.ts", import.meta.url).href,
+       *   { type: "module", deno: true }
+       * );
+       * worker.postMessage({ cmd: "readFile", fileName: "./log.txt" });
+       *
+       * // deno_worker.ts
        *
        *
-       *    self.onmessage = async function (e) {
-       *        const { cmd, fileName } = e.data;
-       *        if (cmd !== "readFile") {
-       *            throw new Error("Invalid command");
-       *        }
-       *        const buf = await Deno.readFile(fileName);
-       *        const fileContents = new TextDecoder().decode(buf);
-       *        console.log(fileContents);
-       *    }
+       * self.onmessage = async function (e) {
+       *     const { cmd, fileName } = e.data;
+       *     if (cmd !== "readFile") {
+       *         throw new Error("Invalid command");
+       *     }
+       *     const buf = await Deno.readFile(fileName);
+       *     const fileContents = new TextDecoder().decode(buf);
+       *     console.log(fileContents);
+       * }
+       * ```
        *
-       *    // log.txt
-       *    hello world
-       *    hello world 2
+       * // log.txt
+       * hello world
+       * hello world 2
        *
-       *    // run program
-       *    $ deno run --allow-read mod.ts
-       *    hello world
-       *    hello world2
+       * // run program
+       * $ deno run --allow-read mod.ts
+       * hello world
+       * hello world2
        *
        */
       deno?: boolean;
-    }
+    },
   );
   postMessage(message: any, transfer: ArrayBuffer[]): void;
   postMessage(message: any, options?: PostMessageOptions): void;
   terminate(): void;
 }
 
-declare namespace performance {
+declare type PerformanceEntryList = PerformanceEntry[];
+
+declare interface Performance {
+  /** Removes the stored timestamp with the associated name. */
+  clearMarks(markName?: string): void;
+
+  /** Removes stored timestamp with the associated name. */
+  clearMeasures(measureName?: string): void;
+
+  getEntries(): PerformanceEntryList;
+  getEntriesByName(name: string, type?: string): PerformanceEntryList;
+  getEntriesByType(type: string): PerformanceEntryList;
+
+  /** Stores a timestamp with the associated name (a "mark"). */
+  mark(markName: string, options?: PerformanceMarkOptions): PerformanceMark;
+
+  /** Stores the `DOMHighResTimeStamp` duration between two marks along with the
+   * associated name (a "measure"). */
+  measure(
+    measureName: string,
+    options?: PerformanceMeasureOptions,
+  ): PerformanceMeasure;
+  /** Stores the `DOMHighResTimeStamp` duration between two marks along with the
+   * associated name (a "measure"). */
+  measure(
+    measureName: string,
+    startMark?: string,
+    endMark?: string,
+  ): PerformanceMeasure;
+
   /** Returns a current time from Deno's start in milliseconds.
    *
-   * Use the flag --allow-hrtime return a precise value.
+   * Use the permission flag `--allow-hrtime` return a precise value.
    *
-   *       const t = performance.now();
-   *       console.log(`${t} ms since start!`);
+   * ```ts
+   * const t = performance.now();
+   * console.log(`${t} ms since start!`);
+   * ```
    */
-  export function now(): number;
+  now(): number;
+}
+
+declare const Performance: {
+  prototype: Performance;
+  new (): Performance;
+};
+
+declare const performance: Performance;
+
+declare interface PerformanceMarkOptions {
+  /** Metadata to be included in the mark. */
+  detail?: any;
+
+  /** Timestamp to be used as the mark time. */
+  startTime?: number;
+}
+
+declare interface PerformanceMeasureOptions {
+  /** Metadata to be included in the measure. */
+  detail?: any;
+
+  /** Timestamp to be used as the start time or string to be used as start
+   * mark.*/
+  start?: string | number;
+
+  /** Duration between the start and end times. */
+  duration?: number;
+
+  /** Timestamp to be used as the end time or string to be used as end mark. */
+  end?: string | number;
+}
+
+/** Encapsulates a single performance metric that is part of the performance
+ * timeline. A performance entry can be directly created by making a performance
+ * mark or measure (for example by calling the `.mark()` method) at an explicit
+ * point in an application. */
+declare class PerformanceEntry {
+  readonly duration: number;
+  readonly entryType: string;
+  readonly name: string;
+  readonly startTime: number;
+  toJSON(): any;
+}
+
+/** `PerformanceMark` is an abstract interface for `PerformanceEntry` objects
+ * with an entryType of `"mark"`. Entries of this type are created by calling
+ * `performance.mark()` to add a named `DOMHighResTimeStamp` (the mark) to the
+ * performance timeline. */
+declare class PerformanceMark extends PerformanceEntry {
+  readonly detail: any;
+  readonly entryType: "mark";
+  constructor(name: string, options?: PerformanceMarkOptions);
+}
+
+/** `PerformanceMeasure` is an abstract interface for `PerformanceEntry` objects
+ * with an entryType of `"measure"`. Entries of this type are created by calling
+ * `performance.measure()` to add a named `DOMHighResTimeStamp` (the measure)
+ * between two marks to the performance timeline. */
+declare class PerformanceMeasure extends PerformanceEntry {
+  readonly detail: any;
+  readonly entryType: "measure";
 }
 
 interface EventInit {
@@ -1352,7 +1542,7 @@ declare class EventTarget {
   addEventListener(
     type: string,
     listener: EventListenerOrEventListenerObject | null,
-    options?: boolean | AddEventListenerOptions
+    options?: boolean | AddEventListenerOptions,
   ): void;
   /** Dispatches a synthetic event event to target and returns true if either
    * event's cancelable attribute value is false or its preventDefault() method
@@ -1363,7 +1553,7 @@ declare class EventTarget {
   removeEventListener(
     type: string,
     callback: EventListenerOrEventListenerObject | null,
-    options?: EventListenerOptions | boolean
+    options?: EventListenerOptions | boolean,
   ): void;
   [Symbol.toStringTag]: string;
 }
@@ -1434,22 +1624,22 @@ interface AbortSignal extends EventTarget {
   addEventListener<K extends keyof AbortSignalEventMap>(
     type: K,
     listener: (this: AbortSignal, ev: AbortSignalEventMap[K]) => any,
-    options?: boolean | AddEventListenerOptions
+    options?: boolean | AddEventListenerOptions,
   ): void;
   addEventListener(
     type: string,
     listener: EventListenerOrEventListenerObject,
-    options?: boolean | AddEventListenerOptions
+    options?: boolean | AddEventListenerOptions,
   ): void;
   removeEventListener<K extends keyof AbortSignalEventMap>(
     type: K,
     listener: (this: AbortSignal, ev: AbortSignalEventMap[K]) => any,
-    options?: boolean | EventListenerOptions
+    options?: boolean | EventListenerOptions,
   ): void;
   removeEventListener(
     type: string,
     listener: EventListenerOrEventListenerObject,
-    options?: boolean | EventListenerOptions
+    options?: boolean | EventListenerOptions,
   ): void;
 }
 
@@ -1457,3 +1647,11 @@ declare const AbortSignal: {
   prototype: AbortSignal;
   new (): AbortSignal;
 };
+
+interface ErrorConstructor {
+  /** See https://v8.dev/docs/stack-trace-api#stack-trace-collection-for-custom-exceptions. */
+  // eslint-disable-next-line @typescript-eslint/ban-types
+  captureStackTrace(error: Object, constructor?: Function): void;
+  // TODO(nayeemrmn): Support `Error.prepareStackTrace()`. We currently use this
+  // internally in a way that makes it unavailable for users.
+}

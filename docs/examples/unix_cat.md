@@ -5,8 +5,8 @@ is opened, and printed to stdout.
 
 ```ts
 for (let i = 0; i < Deno.args.length; i++) {
-  let filename = Deno.args[i];
-  let file = await Deno.open(filename);
+  const filename = Deno.args[i];
+  const file = await Deno.open(filename);
   await Deno.copy(file, Deno.stdout);
   file.close();
 }

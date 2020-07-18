@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-/**
- * A module to print ANSI terminal colors. Inspired by chalk, kleur, and colors
+/** A module to print ANSI terminal colors. Inspired by chalk, kleur, and colors
  * on npm.
  *
  * ```
@@ -10,8 +9,10 @@
  *
  * This module supports `NO_COLOR` environmental variable disabling any coloring
  * if `NO_COLOR` is set.
- */
-const { noColor } = Deno;
+ *
+ * This module is browser compatible. */
+
+const noColor = globalThis.Deno?.noColor ?? true;
 
 interface Code {
   open: string;
@@ -172,8 +173,25 @@ export function bgRgb8(str: string, color: number): string {
   return run(str, code([48, 5, clampAndTruncate(color)], 49));
 }
 
-/** Set text color using 24bit rgb. */
-export function rgb24(str: string, color: Rgb): string {
+/** Set text color using 24bit rgb.
+ * `color` can be a number in range `0x000000` to `0xffffff` or
+ * an `Rgb`.
+ *
+ * To produce the color magenta:
+ *
+ *      rgba24("foo", 0xff00ff);
+ *      rgba24("foo", {r: 255, g: 0, b: 255});
+ */
+export function rgb24(str: string, color: number | Rgb): string {
+  if (typeof color === "number") {
+    return run(
+      str,
+      code(
+        [38, 2, (color >> 16) & 0xff, (color >> 8) & 0xff, color & 0xff],
+        39,
+      ),
+    );
+  }
   return run(
     str,
     code(
@@ -184,13 +202,30 @@ export function rgb24(str: string, color: Rgb): string {
         clampAndTruncate(color.g),
         clampAndTruncate(color.b),
       ],
-      39
-    )
+      39,
+    ),
   );
 }
 
-/** Set background color using 24bit rgb. */
-export function bgRgb24(str: string, color: Rgb): string {
+/** Set background color using 24bit rgb.
+ * `color` can be a number in range `0x000000` to `0xffffff` or
+ * an `Rgb`.
+ *
+ * To produce the color magenta:
+ *
+ *      bgRgba24("foo", 0xff00ff);
+ *      bgRgba24("foo", {r: 255, g: 0, b: 255});
+ */
+export function bgRgb24(str: string, color: number | Rgb): string {
+  if (typeof color === "number") {
+    return run(
+      str,
+      code(
+        [48, 2, (color >> 16) & 0xff, (color >> 8) & 0xff, color & 0xff],
+        49,
+      ),
+    );
+  }
   return run(
     str,
     code(
@@ -201,7 +236,20 @@ export function bgRgb24(str: string, color: Rgb): string {
         clampAndTruncate(color.g),
         clampAndTruncate(color.b),
       ],
-      49
-    )
+      49,
+    ),
   );
+}
+
+// https://github.com/chalk/ansi-regex/blob/2b56fb0c7a07108e5b54241e8faec160d393aedb/index.js
+const ANSI_PATTERN = new RegExp(
+  [
+    "[\\u001B\\u009B][[\\]()#;?]*(?:(?:(?:[a-zA-Z\\d]*(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]*)*)?\\u0007)",
+    "(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PR-TZcf-ntqry=><~]))",
+  ].join("|"),
+  "g",
+);
+
+export function stripColor(string: string): string {
+  return string.replace(ANSI_PATTERN, "");
 }

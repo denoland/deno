@@ -65,6 +65,4 @@ class TestBenchmark(DenoTestCase):
 
 
 if __name__ == '__main__':
-    # FIME this doesn't appear to be the case.
-    # This test assumes tools/http_server.py is running in the background.
     run_tests()

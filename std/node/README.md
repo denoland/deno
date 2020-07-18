@@ -9,7 +9,7 @@ deno standard library as it's a compatibility module.
 ## Supported Builtins
 
 - [ ] assert
-- [ ] buffer
+- [x] buffer
 - [ ] child_process
 - [ ] cluster
 - [ ] console

@@ -36,7 +36,6 @@ pub fn write_file_2<T: AsRef<[u8]>>(
     {
       use std::os::unix::fs::PermissionsExt;
       let mode = mode & 0o777;
-      debug!("set file mode to {:o}", mode);
       let permissions = PermissionsExt::from_mode(mode);
       file.set_permissions(permissions)?;
     }
@@ -47,6 +46,8 @@ pub fn write_file_2<T: AsRef<[u8]>>(
   file.write_all(data.as_ref())
 }
 
+/// IMPORTANT: This method is duplicated in core/module_specifier.rs
+///
 /// Normalize all itermediate components of the path (ie. remove "./" and "../" components).
 /// Similar to `fs::canonicalize()` but doesn't resolve symlinks.
 ///

@@ -6,7 +6,6 @@ import {
   isWritableStream,
   isWritableStreamDefaultWriter,
   isWritableStreamLocked,
-  setFunctionName,
   setPromiseIsHandledToTrue,
   writableStreamCloseQueuedOrInFlight,
   writableStreamDefaultWriterAbort,
@@ -16,9 +15,10 @@ import {
   writableStreamDefaultWriterWrite,
 } from "./internals.ts";
 import * as sym from "./symbols.ts";
-import { WritableStreamImpl } from "./writable_stream.ts";
+import type { WritableStreamImpl } from "./writable_stream.ts";
 import { customInspect } from "../console.ts";
 import { assert } from "../../util.ts";
+import { setFunctionName } from "../util.ts";
 
 export class WritableStreamDefaultWriterImpl<W>
   implements WritableStreamDefaultWriter<W> {
@@ -68,7 +68,7 @@ export class WritableStreamDefaultWriterImpl<W>
   get closed(): Promise<void> {
     if (!isWritableStreamDefaultWriter(this)) {
       return Promise.reject(
-        new TypeError("Invalid WritableStreamDefaultWriter.")
+        new TypeError("Invalid WritableStreamDefaultWriter."),
       );
     }
     return this[sym.closedPromise].promise;
@@ -87,7 +87,7 @@ export class WritableStreamDefaultWriterImpl<W>
   get ready(): Promise<void> {
     if (!isWritableStreamDefaultWriter(this)) {
       return Promise.reject(
-        new TypeError("Invalid WritableStreamDefaultWriter.")
+        new TypeError("Invalid WritableStreamDefaultWriter."),
       );
     }
     return this[sym.readyPromise].promise;
@@ -97,12 +97,12 @@ export class WritableStreamDefaultWriterImpl<W>
   abort(reason: any): Promise<void> {
     if (!isWritableStreamDefaultWriter(this)) {
       return Promise.reject(
-        new TypeError("Invalid WritableStreamDefaultWriter.")
+        new TypeError("Invalid WritableStreamDefaultWriter."),
       );
     }
     if (!this[sym.ownerWritableStream]) {
       Promise.reject(
-        new TypeError("WritableStreamDefaultWriter has no owner.")
+        new TypeError("WritableStreamDefaultWriter has no owner."),
       );
     }
     return writableStreamDefaultWriterAbort(this, reason);
@@ -111,18 +111,18 @@ export class WritableStreamDefaultWriterImpl<W>
   close(): Promise<void> {
     if (!isWritableStreamDefaultWriter(this)) {
       return Promise.reject(
-        new TypeError("Invalid WritableStreamDefaultWriter.")
+        new TypeError("Invalid WritableStreamDefaultWriter."),
       );
     }
     const stream = this[sym.ownerWritableStream];
     if (!stream) {
       Promise.reject(
-        new TypeError("WritableStreamDefaultWriter has no owner.")
+        new TypeError("WritableStreamDefaultWriter has no owner."),
       );
     }
     if (writableStreamCloseQueuedOrInFlight(stream)) {
       Promise.reject(
-        new TypeError("Stream is in an invalid state to be closed.")
+        new TypeError("Stream is in an invalid state to be closed."),
       );
     }
     return writableStreamDefaultWriterClose(this);
@@ -143,21 +143,21 @@ export class WritableStreamDefaultWriterImpl<W>
   write(chunk: W): Promise<void> {
     if (!isWritableStreamDefaultWriter(this)) {
       return Promise.reject(
-        new TypeError("Invalid WritableStreamDefaultWriter.")
+        new TypeError("Invalid WritableStreamDefaultWriter."),
       );
     }
     if (!this[sym.ownerWritableStream]) {
       Promise.reject(
-        new TypeError("WritableStreamDefaultWriter has no owner.")
+        new TypeError("WritableStreamDefaultWriter has no owner."),
       );
     }
     return writableStreamDefaultWriterWrite(this, chunk);
   }
 
   [customInspect](): string {
-    return `${this.constructor.name} { closed: Promise, desiredSize: ${String(
-      this.desiredSize
-    )}, ready: Promise }`;
+    return `${this.constructor.name} { closed: Promise, desiredSize: ${
+      String(this.desiredSize)
+    }, ready: Promise }`;
   }
 }
 

@@ -1,7 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 // Interfaces 100% copied from Go.
 // Documentation liberally lifted from them too.
-// Thank you! We love Go!
+// Thank you! We love Go! <3
 
 const DEFAULT_BUFFER_SIZE = 32 * 1024;
 
@@ -54,7 +55,7 @@ export async function copy(
   dst: Writer,
   options?: {
     bufSize?: number;
-  }
+  },
 ): Promise<number> {
   let n = 0;
   const bufSize = options?.bufSize ?? DEFAULT_BUFFER_SIZE;
@@ -79,7 +80,7 @@ export async function* iter(
   r: Reader,
   options?: {
     bufSize?: number;
-  }
+  },
 ): AsyncIterableIterator<Uint8Array> {
   const bufSize = options?.bufSize ?? DEFAULT_BUFFER_SIZE;
   const b = new Uint8Array(bufSize);
@@ -97,7 +98,7 @@ export function* iterSync(
   r: ReaderSync,
   options?: {
     bufSize?: number;
-  }
+  },
 ): IterableIterator<Uint8Array> {
   const bufSize = options?.bufSize ?? DEFAULT_BUFFER_SIZE;
   const b = new Uint8Array(bufSize);

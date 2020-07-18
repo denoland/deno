@@ -18,11 +18,11 @@ import {
   readableStreamDefaultControllerGetDesiredSize,
   resetQueue,
   SizeAlgorithm,
-  setFunctionName,
 } from "./internals.ts";
-import { ReadableStreamImpl } from "./readable_stream.ts";
+import type { ReadableStreamImpl } from "./readable_stream.ts";
 import * as sym from "./symbols.ts";
 import { customInspect } from "../console.ts";
+import { setFunctionName } from "../util.ts";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export class ReadableStreamDefaultControllerImpl<R = any>
@@ -41,7 +41,7 @@ export class ReadableStreamDefaultControllerImpl<R = any>
 
   private constructor() {
     throw new TypeError(
-      "ReadableStreamDefaultController's constructor cannot be called."
+      "ReadableStreamDefaultController's constructor cannot be called.",
     );
   }
 
@@ -58,7 +58,7 @@ export class ReadableStreamDefaultControllerImpl<R = any>
     }
     if (!readableStreamDefaultControllerCanCloseOrEnqueue(this)) {
       throw new TypeError(
-        "ReadableStreamDefaultController cannot close or enqueue."
+        "ReadableStreamDefaultController cannot close or enqueue.",
       );
     }
     readableStreamDefaultControllerClose(this);
@@ -104,8 +104,8 @@ export class ReadableStreamDefaultControllerImpl<R = any>
         readableStreamCreateReadResult(
           chunk,
           false,
-          stream[sym.reader]![sym.forAuthorCode]
-        )
+          stream[sym.reader]![sym.forAuthorCode],
+        ),
       );
     }
     const pendingPromise = readableStreamAddReadRequest(stream);
@@ -114,13 +114,13 @@ export class ReadableStreamDefaultControllerImpl<R = any>
   }
 
   [customInspect](): string {
-    return `${this.constructor.name} { desiredSize: ${String(
-      this.desiredSize
-    )} }`;
+    return `${this.constructor.name} { desiredSize: ${
+      String(this.desiredSize)
+    } }`;
   }
 }
 
 setFunctionName(
   ReadableStreamDefaultControllerImpl,
-  "ReadableStreamDefaultController"
+  "ReadableStreamDefaultController",
 );

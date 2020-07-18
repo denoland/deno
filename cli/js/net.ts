@@ -1,16 +1,18 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 import { errors } from "./errors.ts";
-import { Reader, Writer, Closer } from "./io.ts";
+import type { Reader, Writer, Closer } from "./io.ts";
 import { read, write } from "./ops/io.ts";
 import { close } from "./ops/resources.ts";
 import * as netOps from "./ops/net.ts";
-import { Addr } from "./ops/net.ts";
-export { ShutdownMode, shutdown, NetAddr, UnixAddr } from "./ops/net.ts";
+import type { Addr } from "./ops/net.ts";
+export type { ShutdownMode, NetAddr, UnixAddr } from "./ops/net.ts";
+export { shutdown } from "./ops/net.ts";
 
 export interface DatagramConn extends AsyncIterable<[Uint8Array, Addr]> {
   receive(p?: Uint8Array): Promise<[Uint8Array, Addr]>;
 
-  send(p: Uint8Array, addr: Addr): Promise<void>;
+  send(p: Uint8Array, addr: Addr): Promise<number>;
 
   close(): void;
 
@@ -26,6 +28,8 @@ export interface Listener extends AsyncIterable<Conn> {
 
   addr: Addr;
 
+  rid: number;
+
   [Symbol.asyncIterator](): AsyncIterableIterator<Conn>;
 }
 
@@ -33,7 +37,7 @@ export class ConnImpl implements Conn {
   constructor(
     readonly rid: number,
     readonly remoteAddr: Addr,
-    readonly localAddr: Addr
+    readonly localAddr: Addr,
   ) {}
 
   write(p: Uint8Array): Promise<number> {
@@ -93,7 +97,7 @@ export class DatagramImpl implements DatagramConn {
   constructor(
     readonly rid: number,
     readonly addr: Addr,
-    public bufSize: number = 1024
+    public bufSize: number = 1024,
   ) {}
 
   async receive(p?: Uint8Array): Promise<[Uint8Array, Addr]> {
@@ -101,17 +105,17 @@ export class DatagramImpl implements DatagramConn {
     const { size, remoteAddr } = await netOps.receive(
       this.rid,
       this.addr.transport,
-      buf
+      buf,
     );
     const sub = buf.subarray(0, size);
     return [sub, remoteAddr];
   }
 
-  async send(p: Uint8Array, addr: Addr): Promise<void> {
+  send(p: Uint8Array, addr: Addr): Promise<number> {
     const remote = { hostname: "127.0.0.1", ...addr };
 
     const args = { ...remote, rid: this.rid };
-    await netOps.send(args as netOps.SendRequest, p);
+    return netOps.send(args as netOps.SendRequest, p);
   }
 
   close(): void {
@@ -122,11 +126,11 @@ export class DatagramImpl implements DatagramConn {
     while (true) {
       try {
         yield await this.receive();
-      } catch (error) {
-        if (error instanceof errors.BadResource) {
+      } catch (err) {
+        if (err instanceof errors.BadResource) {
           break;
         }
-        throw error;
+        throw err;
       }
     }
   }
@@ -146,7 +150,7 @@ export interface ListenOptions {
 }
 
 export function listen(
-  options: ListenOptions & { transport?: "tcp" }
+  options: ListenOptions & { transport?: "tcp" },
 ): Listener;
 export function listen(options: ListenOptions): Listener {
   const res = netOps.listen({
@@ -170,7 +174,7 @@ export interface UnixConnectOptions {
 export async function connect(options: UnixConnectOptions): Promise<Conn>;
 export async function connect(options: ConnectOptions): Promise<Conn>;
 export async function connect(
-  options: ConnectOptions | UnixConnectOptions
+  options: ConnectOptions | UnixConnectOptions,
 ): Promise<Conn> {
   let res;
 

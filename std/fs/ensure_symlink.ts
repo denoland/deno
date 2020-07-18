@@ -20,7 +20,7 @@ export async function ensureSymlink(src: string, dest: string): Promise<void> {
     const destFilePathType = getFileInfoType(destStatInfo);
     if (destFilePathType !== "symlink") {
       throw new Error(
-        `Ensure path exists, expected 'symlink', got '${destFilePathType}'`
+        `Ensure path exists, expected 'symlink', got '${destFilePathType}'`,
       );
     }
     return;
@@ -28,7 +28,13 @@ export async function ensureSymlink(src: string, dest: string): Promise<void> {
 
   await ensureDir(path.dirname(dest));
 
-  await Deno.symlink(src, dest, srcFilePathType);
+  if (Deno.build.os === "windows") {
+    await Deno.symlink(src, dest, {
+      type: srcFilePathType === "dir" ? "dir" : "file",
+    });
+  } else {
+    await Deno.symlink(src, dest);
+  }
 }
 
 /**
@@ -47,13 +53,18 @@ export function ensureSymlinkSync(src: string, dest: string): void {
     const destFilePathType = getFileInfoType(destStatInfo);
     if (destFilePathType !== "symlink") {
       throw new Error(
-        `Ensure path exists, expected 'symlink', got '${destFilePathType}'`
+        `Ensure path exists, expected 'symlink', got '${destFilePathType}'`,
       );
     }
     return;
   }
 
   ensureDirSync(path.dirname(dest));
-
-  Deno.symlinkSync(src, dest, srcFilePathType);
+  if (Deno.build.os === "windows") {
+    Deno.symlinkSync(src, dest, {
+      type: srcFilePathType === "dir" ? "dir" : "file",
+    });
+  } else {
+    Deno.symlinkSync(src, dest);
+  }
 }

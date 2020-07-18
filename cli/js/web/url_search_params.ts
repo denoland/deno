@@ -6,7 +6,7 @@ import { isIterable, requiredArguments } from "./util.ts";
 export const urls = new WeakMap<URLSearchParams, URL | null>();
 
 export class URLSearchParamsImpl implements URLSearchParams {
-  #params: Array<[string, string]> = [];
+  readonly #params: Array<[string, string]> = [];
 
   constructor(init: string | string[][] | Record<string, string> = "") {
     if (typeof init === "string") {
@@ -57,14 +57,14 @@ export class URLSearchParamsImpl implements URLSearchParams {
   };
 
   #handleArrayInitialization = (
-    init: string[][] | Iterable<[string, string]>
+    init: string[][] | Iterable<[string, string]>,
   ): void => {
     // Overload: sequence<sequence<USVString>>
     for (const tuple of init) {
       // If pair does not contain exactly two items, then throw a TypeError.
       if (tuple.length !== 2) {
         throw new TypeError(
-          "URLSearchParams.constructor tuple array argument must only contain pair elements"
+          "URLSearchParams.constructor tuple array argument must only contain pair elements",
         );
       }
       this.#append(tuple[0], tuple[1]);
@@ -76,13 +76,7 @@ export class URLSearchParamsImpl implements URLSearchParams {
     if (url == null) {
       return;
     }
-
-    let query: string | null = this.toString();
-    if (query === "") {
-      query = null;
-    }
-
-    parts.get(url)!.query = query;
+    parts.get(url)!.query = this.toString();
   };
 
   #append = (name: string, value: string): void => {
@@ -181,7 +175,7 @@ export class URLSearchParamsImpl implements URLSearchParams {
   forEach(
     callbackfn: (value: string, key: string, parent: this) => void,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    thisArg?: any
+    thisArg?: any,
   ): void {
     requiredArguments("URLSearchParams.forEach", arguments.length, 1);
 
@@ -218,7 +212,7 @@ export class URLSearchParamsImpl implements URLSearchParams {
     return this.#params
       .map(
         (tuple) =>
-          `${encodeURIComponent(tuple[0])}=${encodeURIComponent(tuple[1])}`
+          `${encodeURIComponent(tuple[0])}=${encodeURIComponent(tuple[1])}`,
       )
       .join("&");
   }

@@ -17,12 +17,12 @@ This is very much a work-in-progress. I'm actively soliciting feedback.
 
 - behaviour of `%v` verb. In Golang, this is a shortcut verb to "print the
   default format" of the argument. It is currently implemented to format using
-  `toString` in the default case and `inpect` if the `%#v` alternative format
+  `toString` in the default case and `inspect` if the `%#v` alternative format
   flag is used in the format directive. Alternatively, `%V` could be used to
   distinguish the two.
 
   `inspect` output is not defined, however. This may be problematic if using
-  this code on other plattforms (and expecting interoperability). To my
+  this code on other platforms (and expecting interoperability). To my
   knowledge, no suitable specification of object representation aside from JSON
   and `toString` exist. ( Aside: see "[Common object formats][3]" in the
   "Console Living Standard" which basically says "do whatever" )
@@ -35,7 +35,7 @@ This is very much a work-in-progress. I'm actively soliciting feedback.
   format each element according to the format (surrounded by [] and separated by
   comma) (`<` Mnemonic: pull each element out of array)
 
-- how to deal with more newfangled Javascript features ( generic Iterables, Map
+- how to deal with more newfangled JavaScript features (generic Iterables, Map
   and Set types, typed Arrays, ...)
 
 - the implementation is fairly rough around the edges:
@@ -54,22 +54,6 @@ This is very much a work-in-progress. I'm actively soliciting feedback.
 - some flags that are potentially applicable ( POSIX long and unsigned modifiers
   are not likely useful) are missing, namely %q (print quoted), %U (unicode
   format)
-
-## Author
-
-Tim Becker (tim@presseverykey.com)
-
-## License
-
-MIT
-
-The implementation is inspired by POSIX and Golang (see above) but does not port
-implementation code. A number of Golang test-cases based on:
-
-    https://golang.org/src/fmt/fmt_test.go
-    ( BSD: Copyright (c) 2009 The Go Authors. All rights reserved. )
-
-were used.
 
 # printf: prints formatted output
 
@@ -127,26 +111,26 @@ may be omitted:
 In general, 'width' describes the minimum length of the output, while
 'precision' limits the output.
 
-| verb      | precision                                                      |
-| --------- | -------------------------------------------------------------- |
-| `t`       | n/a                                                            |
-| `b c o`   | n/a                                                            |
-| `x X`     | n/a for number, strings are truncated to p bytes(!)            |
-| `e E f F` | number of places after decimal, default 6                      |
-| `g G`     | set maximum number of digits                                   |
-| `s`       | truncate input                                                 |
-| `T`       | truncate                                                       |
-| `v`       | tuncate, or depth if used with # see "'default' format", below |
-| `j`       | n/a                                                            |
+| verb      | precision                                                       |
+| --------- | --------------------------------------------------------------- |
+| `t`       | n/a                                                             |
+| `b c o`   | n/a                                                             |
+| `x X`     | n/a for number, strings are truncated to p bytes(!)             |
+| `e E f F` | number of places after decimal, default 6                       |
+| `g G`     | set maximum number of digits                                    |
+| `s`       | truncate input                                                  |
+| `T`       | truncate                                                        |
+| `v`       | truncate, or depth if used with # see "'default' format", below |
+| `j`       | n/a                                                             |
 
 Numerical values for width and precision can be substituted for the `*` char, in
 which case the values are obtained from the next args, e.g.:
 
-    sprintf ("%*.*f", 9,8,456.0)
+    sprintf("%*.*f", 9, 8, 456.0)
 
 is equivalent to
 
-    sprintf ("%9.9f", 456.0)
+    sprintf("%9.8f", 456.0)
 
 ## Flags
 
@@ -181,7 +165,7 @@ consumed more than once. E.g.:
 
     sprintf("%[2]s %[1]s", "World", "Hello")
 
-returns "Hello World". The precence of a positional indicator resets the arg
+returns "Hello World". The presence of a positional indicator resets the arg
 counter allowing args to be reused:
 
     sprintf("dec[%d]=%d hex[%[1]d]=%x oct[%[1]d]=%#o %s", 1, 255, "Third")

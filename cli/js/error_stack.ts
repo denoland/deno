@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 // Some of the code here is adapted directly from V8 and licensed under a BSD
 // style license available here: https://github.com/v8/v8/blob/24886f2d1c565287d33d71e4109a53bf0b54b75c/LICENSE.v8
 import * as colors from "./colors.ts";
@@ -94,10 +95,10 @@ function getMethodCall(callSite: CallSite): string {
   return result;
 }
 
-function getFileLocation(callSite: CallSite, isInternal = false): string {
-  const cyan = isInternal ? colors.gray : colors.cyan;
-  const yellow = isInternal ? colors.gray : colors.yellow;
-  const black = isInternal ? colors.gray : (s: string): string => s;
+function getFileLocation(callSite: CallSite, internal = false): string {
+  const cyan = internal ? colors.gray : colors.cyan;
+  const yellow = internal ? colors.gray : colors.yellow;
+  const black = internal ? colors.gray : (s: string): string => s;
   if (callSite.isNative()) {
     return cyan("native");
   }
@@ -130,9 +131,9 @@ function getFileLocation(callSite: CallSite, isInternal = false): string {
   return result;
 }
 
-function callSiteToString(callSite: CallSite, isInternal = false): string {
-  const cyan = isInternal ? colors.gray : colors.cyan;
-  const black = isInternal ? colors.gray : (s: string): string => s;
+function callSiteToString(callSite: CallSite, internal = false): string {
+  const cyan = internal ? colors.gray : colors.cyan;
+  const black = internal ? colors.gray : (s: string): string => s;
 
   let result = "";
   const functionName = callSite.getFunctionName();
@@ -148,7 +149,7 @@ function callSiteToString(callSite: CallSite, isInternal = false): string {
   }
   if (isPromiseAll) {
     result += colors.bold(
-      colors.italic(black(`Promise.all (index ${callSite.getPromiseIndex()})`))
+      colors.italic(black(`Promise.all (index ${callSite.getPromiseIndex()})`)),
     );
     return result;
   }
@@ -164,13 +165,11 @@ function callSiteToString(callSite: CallSite, isInternal = false): string {
   } else if (functionName) {
     result += colors.bold(colors.italic(black(functionName)));
   } else {
-    result += getFileLocation(callSite, isInternal);
+    result += getFileLocation(callSite, internal);
     return result;
   }
 
-  result += ` ${black("(")}${getFileLocation(callSite, isInternal)}${black(
-    ")"
-  )}`;
+  result += ` ${black("(")}${getFileLocation(callSite, internal)}${black(")")}`;
   return result;
 }
 
@@ -215,50 +214,47 @@ function evaluateCallSite(callSite: CallSite): CallSiteEval {
 }
 
 function prepareStackTrace(
-  error: Error,
-  structuredStackTrace: CallSite[]
+  error: Error & {
+    __callSiteEvals: CallSiteEval[];
+    __formattedFrames: string[];
+  },
+  callSites: CallSite[],
 ): string {
+  const mappedCallSites = callSites.map(
+    (callSite): CallSite => {
+      const fileName = callSite.getFileName();
+      const lineNumber = callSite.getLineNumber();
+      const columnNumber = callSite.getColumnNumber();
+      if (fileName && lineNumber != null && columnNumber != null) {
+        return patchCallSite(
+          callSite,
+          applySourceMap({
+            fileName,
+            lineNumber,
+            columnNumber,
+          }),
+        );
+      }
+      return callSite;
+    },
+  );
   Object.defineProperties(error, {
-    __callSiteEvals: { value: [] },
-    __formattedFrames: { value: [] },
+    __callSiteEvals: { value: [], configurable: true },
+    __formattedFrames: { value: [], configurable: true },
   });
-  const errorString =
-    `${error.name}: ${error.message}\n` +
-    structuredStackTrace
-      .map(
-        (callSite): CallSite => {
-          const fileName = callSite.getFileName();
-          const lineNumber = callSite.getLineNumber();
-          const columnNumber = callSite.getColumnNumber();
-          if (fileName && lineNumber != null && columnNumber != null) {
-            return patchCallSite(
-              callSite,
-              applySourceMap({
-                fileName,
-                lineNumber,
-                columnNumber,
-              })
-            );
-          }
-          return callSite;
-        }
-      )
-      .map((callSite): string => {
-        // @ts-ignore
-        error.__callSiteEvals.push(Object.freeze(evaluateCallSite(callSite)));
-        const isInternal =
-          callSite.getFileName()?.startsWith("$deno$") ?? false;
-        const string = callSiteToString(callSite, isInternal);
-        // @ts-ignore
-        error.__formattedFrames.push(string);
-        return `    at ${colors.stripColor(string)}`;
-      })
-      .join("\n");
-  // @ts-ignore
+  for (const callSite of mappedCallSites) {
+    error.__callSiteEvals.push(Object.freeze(evaluateCallSite(callSite)));
+    const isInternal = callSite.getFileName()?.startsWith("$deno$") ?? false;
+    error.__formattedFrames.push(callSiteToString(callSite, isInternal));
+  }
   Object.freeze(error.__callSiteEvals);
-  // @ts-ignore
   Object.freeze(error.__formattedFrames);
-  return errorString;
+  return (
+    `${error.name}: ${error.message}\n` +
+    error.__formattedFrames
+      .map((s: string) => `    at ${colors.stripColor(s)}`)
+      .join("\n")
+  );
 }
 
 // @internal

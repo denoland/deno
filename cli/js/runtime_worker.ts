@@ -33,8 +33,8 @@ import { setSignals } from "./signals.ts";
 // TODO: factor out `Deno` global assignment to separate function
 // Add internal object to Deno object.
 // This is not exposed as part of the Deno types.
-// @ts-ignore
-denoNs[internalSymbol] = internalObject;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+(denoNs as any)[internalSymbol] = internalObject;
 
 const encoder = new TextEncoder();
 
@@ -93,7 +93,7 @@ export async function workerMessageRecvCallback(data: string): Promise<void> {
         e.fileName,
         e.lineNumber,
         e.columnNumber,
-        e
+        e,
       );
       handled = ret === true;
     }
@@ -122,14 +122,14 @@ export const workerRuntimeGlobalProperties = {
 export function bootstrapWorkerRuntime(
   name: string,
   useDenoNamespace: boolean,
-  internalName?: string
+  internalName?: string,
 ): void {
   if (hasBootstrapped) {
     throw new Error("Worker runtime already bootstrapped");
   }
   // Remove bootstrapping methods from global scope
-  // @ts-ignore
-  globalThis.bootstrap = undefined;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (globalThis as any).bootstrap = undefined;
   log("bootstrapWorkerRuntime");
   hasBootstrapped = true;
   Object.defineProperties(globalThis, windowOrWorkerGlobalScopeMethods);
@@ -139,7 +139,7 @@ export function bootstrapWorkerRuntime(
   Object.defineProperties(globalThis, { name: readOnly(name) });
   setEventTargetData(globalThis);
   const { unstableFlag, pid, noColor, args } = runtime.start(
-    internalName ?? name
+    internalName ?? name,
   );
 
   if (unstableFlag) {

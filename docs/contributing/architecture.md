@@ -2,15 +2,15 @@
 
 ### Deno and Linux analogy
 
-|                       **Linux** | **Deno**                         |
-| ------------------------------: | :------------------------------- |
-|                       Processes | Web Workers                      |
-|                        Syscalls | Ops                              |
-|           File descriptors (fd) | [Resource ids (rid)](#resources) |
-|                       Scheduler | Tokio                            |
-| Userland: libc++ / glib / boost | https://deno.land/std/           |
-|                 /proc/\$\$/stat | [Deno.metrics()](#metrics)       |
-|                       man pages | deno types                       |
+|                       **Linux** | **Deno**                                     |
+| ------------------------------: | :------------------------------------------- |
+|                       Processes | Web Workers                                  |
+|                        Syscalls | Ops                                          |
+|           File descriptors (fd) | [Resource ids (rid)](architecture#resources) |
+|                       Scheduler | Tokio                                        |
+| Userland: libc++ / glib / boost | https://deno.land/std/                       |
+|                 /proc/\$\$/stat | [Deno.metrics()](architecture#metrics)       |
+|                       man pages | deno types                                   |
 
 #### Resources
 
@@ -20,11 +20,10 @@ would be good to be able to query the system for how many open resources there
 are.
 
 ```ts
-const { resources, close } = Deno;
-console.log(resources());
+console.log(Deno.resources());
 // { 0: "stdin", 1: "stdout", 2: "stderr" }
-close(0);
-console.log(resources());
+Deno.close(0);
+console.log(Deno.resources());
 // { 1: "stdout", 2: "stderr" }
 ```
 

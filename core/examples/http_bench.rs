@@ -4,6 +4,7 @@ extern crate derive_deref;
 extern crate log;
 
 use deno_core::CoreIsolate;
+use deno_core::CoreIsolateState;
 use deno_core::Op;
 use deno_core::ResourceTable;
 use deno_core::Script;
@@ -77,7 +78,7 @@ impl From<Record> for RecordBuf {
 }
 
 struct Isolate {
-  core_isolate: Box<CoreIsolate>, // Unclear why CoreIsolate::new() returns a box.
+  core_isolate: CoreIsolate,
   state: State,
 }
 
@@ -112,22 +113,23 @@ impl Isolate {
 
   fn register_sync_op<F>(&mut self, name: &'static str, handler: F)
   where
-    F: 'static + Fn(State, u32, Option<ZeroCopyBuf>) -> Result<u32, Error>,
+    F: 'static + Fn(State, u32, &mut [ZeroCopyBuf]) -> Result<u32, Error>,
   {
     let state = self.state.clone();
-    let core_handler = move |_isolate: &mut CoreIsolate,
-                             control_buf: &[u8],
-                             zero_copy_buf: Option<ZeroCopyBuf>|
+    let core_handler = move |_isolate_state: &mut CoreIsolateState,
+                             zero_copy_bufs: &mut [ZeroCopyBuf]|
           -> Op {
+      assert!(!zero_copy_bufs.is_empty());
       let state = state.clone();
-      let record = Record::from(control_buf);
+      let record = Record::from(zero_copy_bufs[0].as_ref());
       let is_sync = record.promise_id == 0;
       assert!(is_sync);
 
-      let result: i32 = match handler(state, record.rid, zero_copy_buf) {
-        Ok(r) => r as i32,
-        Err(_) => -1,
-      };
+      let result: i32 =
+        match handler(state, record.rid, &mut zero_copy_bufs[1..]) {
+          Ok(r) => r as i32,
+          Err(_) => -1,
+        };
       let buf = RecordBuf::from(Record { result, ..record })[..].into();
       Op::Sync(buf)
     };
@@ -138,24 +140,25 @@ impl Isolate {
   fn register_op<F>(
     &mut self,
     name: &'static str,
-    handler: impl Fn(State, u32, Option<ZeroCopyBuf>) -> F + Copy + 'static,
+    handler: impl Fn(State, u32, &mut [ZeroCopyBuf]) -> F + Copy + 'static,
   ) where
     F: TryFuture,
     F::Ok: TryInto<i32>,
     <F::Ok as TryInto<i32>>::Error: Debug,
   {
     let state = self.state.clone();
-    let core_handler = move |_isolate: &mut CoreIsolate,
-                             control_buf: &[u8],
-                             zero_copy_buf: Option<ZeroCopyBuf>|
+    let core_handler = move |_isolate_state: &mut CoreIsolateState,
+                             zero_copy_bufs: &mut [ZeroCopyBuf]|
           -> Op {
+      assert!(!zero_copy_bufs.is_empty());
       let state = state.clone();
-      let record = Record::from(control_buf);
+      let record = Record::from(zero_copy_bufs[0].as_ref());
       let is_sync = record.promise_id == 0;
       assert!(!is_sync);
 
+      let mut zero_copy = zero_copy_bufs[1..].to_vec();
       let fut = async move {
-        let op = handler(state, record.rid, zero_copy_buf);
+        let op = handler(state, record.rid, &mut zero_copy);
         let result = op
           .map_ok(|r| r.try_into().expect("op result does not fit in i32"))
           .unwrap_or_else(|_| -1)
@@ -181,7 +184,7 @@ impl Future for Isolate {
 fn op_close(
   state: State,
   rid: u32,
-  _buf: Option<ZeroCopyBuf>,
+  _buf: &mut [ZeroCopyBuf],
 ) -> Result<u32, Error> {
   debug!("close rid={}", rid);
   let resource_table = &mut state.borrow_mut().resource_table;
@@ -194,7 +197,7 @@ fn op_close(
 fn op_listen(
   state: State,
   _rid: u32,
-  _buf: Option<ZeroCopyBuf>,
+  _buf: &mut [ZeroCopyBuf],
 ) -> Result<u32, Error> {
   debug!("listen");
   let addr = "127.0.0.1:4544".parse::<SocketAddr>().unwrap();
@@ -208,7 +211,7 @@ fn op_listen(
 fn op_accept(
   state: State,
   rid: u32,
-  _buf: Option<ZeroCopyBuf>,
+  _buf: &mut [ZeroCopyBuf],
 ) -> impl TryFuture<Ok = u32, Error = Error> {
   debug!("accept rid={}", rid);
 
@@ -226,9 +229,11 @@ fn op_accept(
 fn op_read(
   state: State,
   rid: u32,
-  buf: Option<ZeroCopyBuf>,
+  bufs: &mut [ZeroCopyBuf],
 ) -> impl TryFuture<Ok = usize, Error = Error> {
-  let mut buf = buf.unwrap();
+  assert_eq!(bufs.len(), 1, "Invalid number of arguments");
+  let mut buf = bufs[0].clone();
+
   debug!("read rid={}", rid);
 
   poll_fn(move |cx| {
@@ -243,9 +248,10 @@ fn op_read(
 fn op_write(
   state: State,
   rid: u32,
-  buf: Option<ZeroCopyBuf>,
+  bufs: &mut [ZeroCopyBuf],
 ) -> impl TryFuture<Ok = usize, Error = Error> {
-  let buf = buf.unwrap();
+  assert_eq!(bufs.len(), 1, "Invalid number of arguments");
+  let buf = bufs[0].clone();
   debug!("write rid={}", rid);
 
   poll_fn(move |cx| {

@@ -142,8 +142,12 @@ Deno.test("test_rgb24", function (): void {
       g: 42,
       b: 43,
     }),
-    "[38;2;41;42;43mfoo bar[39m"
+    "[38;2;41;42;43mfoo bar[39m",
   );
+});
+
+Deno.test("test_rgb24number", function (): void {
+  assertEquals(c.rgb24("foo bar", 0x070809), "[38;2;7;8;9mfoo bar[39m");
 });
 
 Deno.test("test_bgRgb24", function (): void {
@@ -153,6 +157,10 @@ Deno.test("test_bgRgb24", function (): void {
       g: 42,
       b: 43,
     }),
-    "[48;2;41;42;43mfoo bar[49m"
+    "[48;2;41;42;43mfoo bar[49m",
   );
+});
+
+Deno.test("test_bgRgb24number", function (): void {
+  assertEquals(c.bgRgb24("foo bar", 0x070809), "[48;2;7;8;9mfoo bar[49m");
 });

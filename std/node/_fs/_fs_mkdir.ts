@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { CallbackWithError } from "./_fs_common.ts";
+import type { CallbackWithError } from "./_fs_common.ts";
 import { fromFileUrl } from "../path.ts";
 
 /**
@@ -14,7 +14,7 @@ type MkdirOptions =
 export function mkdir(
   path: string | URL,
   options?: MkdirOptions | CallbackWithError,
-  callback?: CallbackWithError
+  callback?: CallbackWithError,
 ): void {
   path = path instanceof URL ? fromFileUrl(path) : path;
 
@@ -31,10 +31,11 @@ export function mkdir(
     if (options.recursive !== undefined) recursive = options.recursive;
     if (options.mode !== undefined) mode = options.mode;
   }
-  if (typeof recursive !== "boolean")
+  if (typeof recursive !== "boolean") {
     throw new Deno.errors.InvalidData(
-      "invalid recursive option , must be a boolean"
+      "invalid recursive option , must be a boolean",
     );
+  }
   Deno.mkdir(path, { recursive, mode })
     .then(() => {
       if (typeof callback === "function") {
@@ -61,10 +62,11 @@ export function mkdirSync(path: string | URL, options?: MkdirOptions): void {
     if (options.recursive !== undefined) recursive = options.recursive;
     if (options.mode !== undefined) mode = options.mode;
   }
-  if (typeof recursive !== "boolean")
+  if (typeof recursive !== "boolean") {
     throw new Deno.errors.InvalidData(
-      "invalid recursive option , must be a boolean"
+      "invalid recursive option , must be a boolean",
     );
+  }
 
   Deno.mkdirSync(path, { recursive, mode });
 }

@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 import * as util from "../util.ts";
 import { core } from "../core.ts";
-import { OPS_CACHE } from "../runtime.ts";
 import { ErrorKind, getErrorClass } from "../errors.ts";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -19,9 +19,10 @@ interface JsonResponse {
 }
 
 // Using an object without a prototype because `Map` was causing GC problems.
-const promiseTable: {
-  [key: number]: util.Resolvable<JsonResponse>;
-} = Object.create(null);
+const promiseTable: Record<
+  number,
+  util.Resolvable<JsonResponse>
+> = Object.create(null);
 let _nextPromiseId = 1;
 
 function nextPromiseId(): number {
@@ -29,13 +30,11 @@ function nextPromiseId(): number {
 }
 
 function decode(ui8: Uint8Array): JsonResponse {
-  const s = core.decode(ui8);
-  return JSON.parse(s) as JsonResponse;
+  return JSON.parse(core.decode(ui8));
 }
 
 function encode(args: object): Uint8Array {
-  const s = JSON.stringify(args);
-  return core.encode(s);
+  return core.encode(JSON.stringify(args));
 }
 
 function unwrapResponse(res: JsonResponse): Ok {
@@ -59,14 +58,12 @@ export function asyncMsgFromRust(resUi8: Uint8Array): void {
 export function sendSync(
   opName: string,
   args: object = {},
-  zeroCopy?: Uint8Array
+  ...zeroCopy: Uint8Array[]
 ): Ok {
-  const opId = OPS_CACHE[opName];
-  util.log("sendSync", opName, opId);
+  util.log("sendSync", opName);
   const argsUi8 = encode(args);
-  const resUi8 = core.dispatch(opId, argsUi8, zeroCopy);
+  const resUi8 = core.dispatchByName(opName, argsUi8, ...zeroCopy);
   util.assert(resUi8 != null);
-
   const res = decode(resUi8);
   util.assert(res.promiseId == null);
   return unwrapResponse(res);
@@ -75,17 +72,15 @@ export function sendSync(
 export async function sendAsync(
   opName: string,
   args: object = {},
-  zeroCopy?: Uint8Array
+  ...zeroCopy: Uint8Array[]
 ): Promise<Ok> {
-  const opId = OPS_CACHE[opName];
-  util.log("sendAsync", opName, opId);
+  util.log("sendAsync", opName);
   const promiseId = nextPromiseId();
   args = Object.assign(args, { promiseId });
   const promise = util.createResolvable<Ok>();
-
   const argsUi8 = encode(args);
-  const buf = core.dispatch(opId, argsUi8, zeroCopy);
-  if (buf) {
+  const buf = core.dispatchByName(opName, argsUi8, ...zeroCopy);
+  if (buf != null) {
     // Sync result.
     const res = decode(buf);
     promise.resolve(res);
