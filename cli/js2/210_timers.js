@@ -484,24 +484,22 @@
   }
 
   function setTimeout(
-    this_,
     cb,
     delay = 0,
     ...args
   ) {
     checkBigInt(delay);
-    checkThis(this_);
+    checkThis(this);
     return setTimer(cb, delay, args, false);
   }
 
   function setInterval(
-    this_,
     cb,
     delay = 0,
     ...args
   ) {
     checkBigInt(delay);
-    checkThis(this_);
+    checkThis(this);
     return setTimer(cb, delay, args, true);
   }
 

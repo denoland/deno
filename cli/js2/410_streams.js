@@ -269,15 +269,13 @@
     .getPrototypeOf(Object.getPrototypeOf(async function* () {}).prototype);
 
   const ReadableStreamAsyncIteratorPrototype = Object.setPrototypeOf({
-    next(
-      this_,
-    ) {
-      if (!isReadableStreamAsyncIterator(this_)) {
+    next() {
+      if (!isReadableStreamAsyncIterator(this)) {
         return Promise.reject(
           new TypeError("invalid ReadableStreamAsyncIterator."),
         );
       }
-      const reader = this_[sym.asyncIteratorReader];
+      const reader = this[sym.asyncIteratorReader];
       if (!reader[sym.ownerReadableStream]) {
         return Promise.reject(
           new TypeError("reader owner ReadableStream is undefined."),
@@ -295,15 +293,14 @@
       });
     },
     return(
-      this_,
       value,
     ) {
-      if (!isReadableStreamAsyncIterator(this_)) {
+      if (!isReadableStreamAsyncIterator(this)) {
         return Promise.reject(
           new TypeError("invalid ReadableStreamAsyncIterator."),
         );
       }
-      const reader = this_[sym.asyncIteratorReader];
+      const reader = this[sym.asyncIteratorReader];
       if (!reader[sym.ownerReadableStream]) {
         return Promise.reject(
           new TypeError("reader owner ReadableStream is undefined."),
@@ -314,7 +311,7 @@
           new TypeError("reader has outstanding read requests."),
         );
       }
-      if (!this_[sym.preventCancel]) {
+      if (!this[sym.preventCancel]) {
         const result = readableStreamReaderGenericCancel(reader, value);
         readableStreamReaderGenericRelease(reader);
         return result.then(() =>
