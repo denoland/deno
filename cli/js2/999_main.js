@@ -26,6 +26,7 @@ delete Object.prototype.__proto__;
   const url = window.__url;
   const headers = window.__headers;
   const queuingStrategy = window.__queuingStrategy;
+  const streams = window.__streams;
 
   let windowIsClosing = false;
 
@@ -200,7 +201,7 @@ delete Object.prototype.__proto__;
     EventTarget: util.nonEnumerable(EventTarget),
     Headers: util.nonEnumerable(headers.HeadersImpl),
     // FormData: util.nonEnumerable(formData.FormDataImpl),
-    // ReadableStream: util.nonEnumerable(readableStream.ReadableStreamImpl),
+    ReadableStream: util.nonEnumerable(streams.ReadableStream),
     // Request: util.nonEnumerable(request.Request),
     // Response: util.nonEnumerable(fetchTypes.Response),
     performance: util.writable(new performance.Performance()),
@@ -210,11 +211,11 @@ delete Object.prototype.__proto__;
     PerformanceMeasure: util.nonEnumerable(performance.PerformanceMeasure),
     TextDecoder: util.nonEnumerable(TextDecoder),
     TextEncoder: util.nonEnumerable(TextEncoder),
-    // TransformStream: util.nonEnumerable(transformStream.TransformStreamImpl),
+    TransformStream: util.nonEnumerable(streams.TransformStream),
     URL: util.nonEnumerable(url.URL),
     URLSearchParams: util.nonEnumerable(url.URLSearchParams),
     Worker: util.nonEnumerable(worker.Worker),
-    // WritableStream: util.nonEnumerable(writableStream.WritableStreamImpl),
+    WritableStream: util.nonEnumerable(streams.WritableStream),
   };
 
   const eventTargetProperties = {
