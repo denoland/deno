@@ -5,9 +5,9 @@ use std::io::{Error, ErrorKind};
 ///
 /// Supports UTF-8, UTF-16 Little Endian and UTF-16 Big Endian
 pub fn detect_charset(bytes: &Vec<u8>) -> &str {
-  const UTF8_BOM: &'static [u8] = b"\xEF\xBB\xBF";
-  const UTF16_LE_BOM: &'static [u8] = b"\xFF\xFE";
-  const UTF16_BE_BOM: &'static [u8] = b"\xFE\xFF";
+  const UTF8_BOM: &[u8] = b"\xEF\xBB\xBF";
+  const UTF16_LE_BOM: &[u8] = b"\xFF\xFE";
+  const UTF16_BE_BOM: &[u8] = b"\xFE\xFF";
 
   if bytes.starts_with(UTF8_BOM) {
     "utf-8"
