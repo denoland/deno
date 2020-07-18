@@ -28,13 +28,10 @@ pub fn convert_to_utf8(bytes: &[u8], charset: &str) -> Result<String, Error> {
   match encoding::label::encoding_from_whatwg_label(charset) {
     Some(coder) => match coder.decode(bytes, encoding::DecoderTrap::Strict) {
       Ok(text) => Ok(text),
-      Err(_e) => Err(Error::new(
-        ErrorKind::Other,
-        format!("Invalid data. Charset: {}", charset),
-      )),
+      Err(_e) => Err(ErrorKind::InvalidData.into()),
     },
     None => Err(Error::new(
-      ErrorKind::Other,
+      ErrorKind::InvalidInput,
       format!("Unsupported charset: {}", charset),
     )),
   }
@@ -77,6 +74,8 @@ mod tests {
     let test_data = Vec::new();
     let result = convert_to_utf8(&test_data, "utf-32le");
     assert!(result.is_err());
+    let err = result.expect_err("Err expected");
+    assert!(err.kind() == ErrorKind::InvalidInput);
   }
 
   #[test]
