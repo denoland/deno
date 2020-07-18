@@ -388,7 +388,7 @@ fn custom_headers(path: warp::path::Peek, f: warp::fs::File) -> Box<dyn Reply> {
   }
   if p.contains("cli/tests/encoding/") {
     let charset = p
-      .split_terminator("/")
+      .split_terminator('/')
       .last()
       .unwrap()
       .trim_end_matches(".ts");
