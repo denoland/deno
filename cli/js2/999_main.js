@@ -288,9 +288,9 @@ delete Object.prototype.__proto__;
       runtimeStart();
 
     const denoNs = {
-      ...window.Deno,
       core,
       [internalSymbol]: internalObject,
+      ...window.__denoNs,
     };
     Object.defineProperties(denoNs, {
       pid: util.readOnly(pid),
@@ -305,7 +305,7 @@ delete Object.prototype.__proto__;
         "mainModule",
         util.getterOnly(opMainModule),
       );
-      //   Object.assign(denoNs, denoUnstableNs);
+      Object.assign(denoNs, window.__denoNsUnstable);
     }
 
     // Setup `Deno` global - we're actually overriding already
@@ -343,13 +343,13 @@ delete Object.prototype.__proto__;
     );
 
     const denoNs = {
-      ...window.Deno,
       core,
       [internalSymbol]: internalObject,
+      ...window.__denoNs,
     };
     if (useDenoNamespace) {
       if (unstableFlag) {
-        // Object.assign(denoNs, denoUnstableNs);
+        Object.assign(denoNs, window.__denoNsUnstable);
       }
       Object.defineProperties(denoNs, {
         pid: util.readOnly(pid),
