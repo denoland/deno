@@ -21,7 +21,7 @@ class FormDataBase {
         filename || value.name || "blob",
         {
           type: value.type,
-        }
+        },
       );
       this[dataSymbol].push([name, dfile]);
     } else {
@@ -92,7 +92,7 @@ class FormDataBase {
               filename || value.name || "blob",
               {
                 type: value.type,
-              }
+              },
             );
           } else {
             this[dataSymbol][i][1] = String(value);
@@ -114,7 +114,7 @@ class FormDataBase {
           filename || value.name || "blob",
           {
             type: value.type,
-          }
+          },
         );
         this[dataSymbol].push([name, dfile]);
       } else {
