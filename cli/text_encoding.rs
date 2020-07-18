@@ -28,7 +28,10 @@ pub fn convert_to_utf8(bytes: &[u8], charset: &str) -> Result<String, Error> {
   match encoding::label::encoding_from_whatwg_label(charset) {
     Some(coder) => match coder.decode(bytes, encoding::DecoderTrap::Strict) {
       Ok(text) => Ok(text),
-      Err(_e) => Err(ErrorKind::InvalidData.into()),
+      Err(_e) => Err(Error::new(
+        ErrorKind::Other,
+        format!("Invalid data. Charset: {}", charset),
+      )),
     },
     None => Err(Error::new(
       ErrorKind::Other,

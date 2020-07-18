@@ -1955,7 +1955,12 @@ mod tests {
     let content =
       std::str::from_utf8(b"\xEF\xBB\xBFconsole.log(\"Hello World\");")
         .unwrap();
-    test_fetch_non_utf8_source_file_from_net("utf-16le", content).await;
+    test_fetch_non_utf8_source_file_from_net(
+      "utf-16le",
+      "utf-16le.ts",
+      content,
+    )
+    .await;
   }
 
   #[tokio::test]
@@ -1963,24 +1968,35 @@ mod tests {
     let content =
       std::str::from_utf8(b"\xEF\xBB\xBFconsole.log(\"Hello World\");")
         .unwrap();
-    test_fetch_non_utf8_source_file_from_net("utf-16be", content).await;
+    test_fetch_non_utf8_source_file_from_net(
+      "utf-16be",
+      "utf-16be.ts",
+      content,
+    )
+    .await;
   }
 
   #[tokio::test]
   async fn test_fetch_source_file_from_net_windows_1255() {
     let content = "console.log(\"\u{5E9}\u{5DC}\u{5D5}\u{5DD} \u{5E2}\u{5D5}\u{5DC}\u{5DD}\");";
-    test_fetch_non_utf8_source_file_from_net("windows-1255", content).await;
+    test_fetch_non_utf8_source_file_from_net(
+      "windows-1255",
+      "windows-1255",
+      content,
+    )
+    .await;
   }
 
   async fn test_fetch_non_utf8_source_file_from_net(
     charset: &str,
+    file_name: &str,
     expected_content: &str,
   ) {
     let http_server_guard = test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
     let module_url = Url::parse(&format!(
-      "http://127.0.0.1:4545/cli/tests/encoding/{}.ts",
-      charset
+      "http://127.0.0.1:4545/cli/tests/encoding/{}",
+      file_name
     ))
     .unwrap();
 
