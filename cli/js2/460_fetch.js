@@ -10,6 +10,7 @@
   const Body = window.__bootstrap.body;
   const { ReadableStream } = window.__bootstrap.streams;
   const { MultipartBuilder } = window.__bootstrap.multipart;
+  const { Headers } = window.__bootstrap.headers;
 
   function opFetch(
     args,
