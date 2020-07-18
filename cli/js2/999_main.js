@@ -24,6 +24,7 @@ delete Object.prototype.__proto__;
   const performance = window.__performance;
   const crypto = window.__crypto;
   const url = window.__url;
+  const headers = window.__headers;
 
   let windowIsClosing = false;
 
@@ -194,7 +195,7 @@ delete Object.prototype.__proto__;
     ErrorEvent: util.nonEnumerable(ErrorEvent),
     Event: util.nonEnumerable(Event),
     EventTarget: util.nonEnumerable(EventTarget),
-    // Headers: util.nonEnumerable(headers.HeadersImpl),
+    Headers: util.nonEnumerable(headers.HeadersImpl),
     // FormData: util.nonEnumerable(formData.FormDataImpl),
     // ReadableStream: util.nonEnumerable(readableStream.ReadableStreamImpl),
     // Request: util.nonEnumerable(request.Request),
