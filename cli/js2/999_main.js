@@ -32,6 +32,8 @@ delete Object.prototype.__proto__;
   const formData = window.__bootstrap.formData;
   const request = window.__bootstrap.request;
   const fetch = window.__bootstrap.fetch;
+  const denoNs = window.__bootstrap.denoNs;
+  const denoNsUnstable = window.__bootstrap.denoNsUnstable;
 
   let windowIsClosing = false;
 
@@ -288,12 +290,12 @@ delete Object.prototype.__proto__;
     const { args, cwd, noColor, pid, ppid, repl, unstableFlag } =
       runtimeStart();
 
-    const denoNs = {
+    const finalDenoNs = {
       core,
       [internalSymbol]: internalObject,
-      ...window.__bootstrap.denoNs,
+      ...denoNs,
     };
-    Object.defineProperties(denoNs, {
+    Object.defineProperties(finalDenoNs, {
       pid: util.readOnly(pid),
       ppid: util.readOnly(ppid),
       noColor: util.readOnly(noColor),
@@ -306,12 +308,12 @@ delete Object.prototype.__proto__;
         "mainModule",
         util.getterOnly(opMainModule),
       );
-      Object.assign(denoNs, window.__bootstrap.denoNsUnstable);
+      Object.assign(finalDenoNs, denoNsUnstable);
     }
 
     // Setup `Deno` global - we're actually overriding already
     // existing global `Deno` with `Deno` namespace from "./deno.ts".
-    util.immutableDefine(globalThis, "Deno", denoNs);
+    util.immutableDefine(globalThis, "Deno", finalDenoNs);
     Object.freeze(globalThis.Deno);
     Object.freeze(globalThis.Deno.core);
     Object.freeze(globalThis.Deno.core.sharedQueue);
@@ -344,23 +346,23 @@ delete Object.prototype.__proto__;
       internalName ?? name,
     );
 
-    const denoNs = {
+    const finalDenoNs = {
       core,
       [internalSymbol]: internalObject,
-      ...window.__bootstrap.denoNs,
+      ...denoNs,
     };
     if (useDenoNamespace) {
       if (unstableFlag) {
-        Object.assign(denoNs, window.__bootstrap.denoNsUnstable);
+        Object.assign(finalDenoNs, denoNsUnstable);
       }
-      Object.defineProperties(denoNs, {
+      Object.defineProperties(finalDenoNs, {
         pid: util.readOnly(pid),
         noColor: util.readOnly(noColor),
         args: util.readOnly(Object.freeze(args)),
       });
       // Setup `Deno` global - we're actually overriding already
       // existing global `Deno` with `Deno` namespace from "./deno.ts".
-      util.immutableDefine(globalThis, "Deno", denoNs);
+      util.immutableDefine(globalThis, "Deno", finalDenoNs);
       Object.freeze(globalThis.Deno);
       Object.freeze(globalThis.Deno.core);
       Object.freeze(globalThis.Deno.core.sharedQueue);
