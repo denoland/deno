@@ -3,7 +3,7 @@ use std::io::{Error, ErrorKind};
 
 /// Attempts to detect the character encoding of the provided bytes.
 ///
-/// Supports UTF-8, UTF-16 Little Endian and UTF-16 Big Endian
+/// Supports UTF-8, UTF-16 Little Endian and UTF-16 Big Endian.
 pub fn detect_charset(bytes: &[u8]) -> &str {
   const UTF8_BOM: &[u8] = b"\xEF\xBB\xBF";
   const UTF16_LE_BOM: &[u8] = b"\xFF\xFE";
@@ -23,7 +23,7 @@ pub fn detect_charset(bytes: &[u8]) -> &str {
 
 /// Attempts to convert the provided bytes to a UTF-8 string.
 ///
-/// Supports all encodings supported by the encoding crate, which includes all encodings specified in the WHATWG Encoding Standard (see: https://encoding.spec.whatwg.org/ )
+/// Supports all encodings supported by the encoding crate, which includes all encodings specified in the WHATWG Encoding Standard (see: https://encoding.spec.whatwg.org/).
 pub fn convert_to_utf8(bytes: &[u8], charset: &str) -> Result<String, Error> {
   match encoding::label::encoding_from_whatwg_label(charset) {
     Some(coder) => match coder.decode(bytes, encoding::DecoderTrap::Strict) {
