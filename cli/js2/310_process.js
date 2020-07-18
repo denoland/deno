@@ -1,11 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
-  const { File } = window.__files;
-  const { close } = window.__resources;
-  const { readAll } = window.__buffer;
-  const { sendSync, sendAsync } = window.__dispatchJson;
-  const { assert } = window.__util;
+  const { File } = window.__bootstrap.files;
+  const { close } = window.__bootstrap.resources;
+  const { readAll } = window.__bootstrap.buffer;
+  const { sendSync, sendAsync } = window.__bootstrap.dispatchJson;
+  const { assert } = window.__bootstrap.util;
 
   function opKill(pid, signo) {
     sendSync("op_kill", { pid, signo });
@@ -112,7 +112,7 @@
     return new Process(res);
   }
 
-  window.__process = {
+  window.__bootstrap.process = {
     run,
     Process,
     kill: opKill,

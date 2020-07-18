@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
-  const exposeForTest = window.__internals.exposeForTest;
+  const exposeForTest = window.__bootstrap.internals.exposeForTest;
   const {
     stripColor,
     yellow,
@@ -11,13 +11,13 @@
     green,
     magenta,
     bold,
-  } = window.__colors;
+  } = window.__bootstrap.colors;
 
   const {
     isTypedArray,
     isInvalidDate,
     hasOwnProperty,
-  } = window.__webUtil;
+  } = window.__bootstrap.webUtil;
 
   // Copyright Joyent, Inc. and other Node contributors. MIT license.
   // Forked from Node's lib/internal/cli_table.js
@@ -1173,7 +1173,7 @@
   exposeForTest("Console", Console);
   exposeForTest("inspectArgs", inspectArgs);
 
-  window.__console = {
+  window.__bootstrap.console = {
     CSI,
     inspectArgs,
     Console,

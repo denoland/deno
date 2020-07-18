@@ -1,14 +1,14 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
-  const { gray, green, italic, red, yellow } = window.__colors;
-  const { exit } = window.__os;
-  const { Console, inspectArgs } = window.__console;
-  const { stdout } = window.__files;
-  const { exposeForTest } = window.__internals;
-  const { metrics } = window.__metrics;
-  const { resources } = window.__resources;
-  const { assert } = window.__util;
+  const { gray, green, italic, red, yellow } = window.__bootstrap.colors;
+  const { exit } = window.__bootstrap.os;
+  const { Console, inspectArgs } = window.__bootstrap.console;
+  const { stdout } = window.__bootstrap.files;
+  const { exposeForTest } = window.__bootstrap.internals;
+  const { metrics } = window.__bootstrap.metrics;
+  const { resources } = window.__bootstrap.resources;
+  const { assert } = window.__bootstrap.util;
 
   const disabledConsole = new Console(() => {});
 
@@ -339,7 +339,7 @@ finishing test case.`;
 
   exposeForTest("runTests", runTests);
 
-  window.__testing = {
+  window.__bootstrap.testing = {
     test,
   };
 })(this);

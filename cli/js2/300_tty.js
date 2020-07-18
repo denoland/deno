@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
-  const { sendSync } = window.__dispatchJson;
+  const { sendSync } = window.__bootstrap.dispatchJson;
 
   function consoleSize(rid) {
     return sendSync("op_console_size", { rid });
@@ -15,7 +15,7 @@
     sendSync("op_set_raw", { rid, mode });
   }
 
-  window.__tty = {
+  window.__bootstrap.tty = {
     consoleSize,
     isatty,
     setRaw,

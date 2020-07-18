@@ -65,7 +65,7 @@
     }
   }
 
-  window.__abortSignal = {
+  window.__bootstrap.abortSignal = {
     AbortSignal,
     add,
     signalAbort,

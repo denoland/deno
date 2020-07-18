@@ -1,10 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
-  const { close } = window.__resources;
-  const { read, readSync, write, writeSync } = window.__io;
-  const { sendSync, sendAsync } = window.__dispatchJson;
-  const { pathFromURL } = window.__util;
+  const { close } = window.__bootstrap.resources;
+  const { read, readSync, write, writeSync } = window.__bootstrap.io;
+  const { sendSync, sendAsync } = window.__bootstrap.dispatchJson;
+  const { pathFromURL } = window.__bootstrap.util;
 
   function seekSync(
     rid,
@@ -189,7 +189,7 @@
     }
   }
 
-  window.__files = {
+  window.__bootstrap.files = {
     stdin,
     stdout,
     stderr,

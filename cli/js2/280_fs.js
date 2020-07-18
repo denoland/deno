@@ -1,9 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
-  const { sendSync, sendAsync } = window.__dispatchJson;
-  const { pathFromURL } = window.__util;
-  const build = window.__build.build;
+  const { sendSync, sendAsync } = window.__bootstrap.dispatchJson;
+  const { pathFromURL } = window.__bootstrap.util;
+  const build = window.__bootstrap.build.build;
 
   function chmodSync(path, mode) {
     sendSync("op_chmod", { path: pathFromURL(path), mode });
@@ -325,7 +325,7 @@
     await sendAsync("op_fsync", { rid });
   }
 
-  window.__fs = {
+  window.__bootstrap.fs = {
     cwd,
     chdir,
     chmodSync,

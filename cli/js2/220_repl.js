@@ -2,11 +2,11 @@
 
 ((window) => {
   const core = window.Deno.core;
-  const exit = window.__os.exit;
-  const version = window.__version.version;
-  const dispatchJson = window.__dispatchJson;
-  const close = window.__resources.close;
-  const inspectArgs = window.__console.inspectArgs;
+  const exit = window.__bootstrap.os.exit;
+  const version = window.__bootstrap.version.version;
+  const dispatchJson = window.__bootstrap.dispatchJson;
+  const close = window.__bootstrap.resources.close;
+  const inspectArgs = window.__bootstrap.console.inspectArgs;
 
   function opStartRepl(historyFile) {
     return dispatchJson.sendSync("op_repl_start", { historyFile });
@@ -180,7 +180,7 @@
     }
   }
 
-  window.__repl = {
+  window.__bootstrap.repl = {
     replLoop,
   };
 })(this);

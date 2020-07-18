@@ -2,8 +2,8 @@
 
 ((window) => {
   const core = window.Deno.core;
-  const util = window.__util;
-  const errorNs = window.__errors;
+  const util = window.__bootstrap.util;
+  const errorNs = window.__bootstrap.errors;
 
   // Using an object without a prototype because `Map` was causing GC problems.
   const promiseTableMin = Object.create(null);
@@ -107,7 +107,7 @@
     return unwrapResponse(resRecord);
   }
 
-  window.__dispatchMinimal = {
+  window.__bootstrap.dispatchMinimal = {
     asyncMsgFromRust,
     sendSync,
     sendAsync,

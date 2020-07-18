@@ -1,9 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 ((window) => {
-  const { stat, statSync, chmod, chmodSync } = window.__fs;
-  const { open, openSync } = window.__files;
-  const { writeAll, writeAllSync } = window.__buffer;
-  const { build } = window.__build;
+  const { stat, statSync, chmod, chmodSync } = window.__bootstrap.fs;
+  const { open, openSync } = window.__bootstrap.files;
+  const { writeAll, writeAllSync } = window.__bootstrap.buffer;
+  const { build } = window.__bootstrap.build;
 
   function writeFileSync(
     path,
@@ -83,7 +83,7 @@
     return writeFile(path, encoder.encode(data), options);
   }
 
-  window.__writeFile = {
+  window.__bootstrap.writeFile = {
     writeTextFile,
     writeTextFileSync,
     writeFile,

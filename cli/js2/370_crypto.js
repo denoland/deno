@@ -1,8 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
-  const { sendSync } = window.__dispatchJson;
-  const { assert } = window.__util;
+  const { sendSync } = window.__bootstrap.dispatchJson;
+  const { assert } = window.__bootstrap.util;
 
   function getRandomValues(typedArray) {
     assert(typedArray !== null, "Input must not be null");
@@ -16,7 +16,7 @@
     return typedArray;
   }
 
-  window.__crypto = {
+  window.__bootstrap.crypto = {
     getRandomValues,
   };
 })(this);

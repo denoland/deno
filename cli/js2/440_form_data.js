@@ -1,10 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
-  const blob = window.__blob;
-  const domFile = window.__domFile;
-  const { DomIterableMixin } = window.__domIterable;
-  const { requiredArguments } = window.__webUtil;
+  const blob = window.__bootstrap.blob;
+  const domFile = window.__bootstrap.domFile;
+  const { DomIterableMixin } = window.__bootstrap.domIterable;
+  const { requiredArguments } = window.__bootstrap.webUtil;
 
   const dataSymbol = Symbol("data");
 
@@ -133,7 +133,7 @@
 
   class FormData extends DomIterableMixin(FormDataBase, dataSymbol) {}
 
-  window.__formData = {
+  window.__bootstrap.formData = {
     FormData,
   };
 })(this);

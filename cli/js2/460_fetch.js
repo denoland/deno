@@ -1,15 +1,15 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
-  const { notImplemented } = window.__util;
-  const { getHeaderValueParams, isTypedArray } = window.__webUtil;
-  const { Blob, bytesSymbol: blobBytesSymbol } = window.__blob;
-  const { read } = window.__io;
-  const { close } = window.__resources;
-  const { sendAsync } = window.__dispatchJson;
-  const Body = window.__body;
-  const { ReadableStream } = window.__streams;
-  const { MultipartBuilder } = window.__multipart;
+  const { notImplemented } = window.__bootstrap.util;
+  const { getHeaderValueParams, isTypedArray } = window.__bootstrap.webUtil;
+  const { Blob, bytesSymbol: blobBytesSymbol } = window.__bootstrap.blob;
+  const { read } = window.__bootstrap.io;
+  const { close } = window.__bootstrap.resources;
+  const { sendAsync } = window.__bootstrap.dispatchJson;
+  const Body = window.__bootstrap.body;
+  const { ReadableStream } = window.__bootstrap.streams;
+  const { MultipartBuilder } = window.__bootstrap.multipart;
 
   function opFetch(
     args,
@@ -362,7 +362,7 @@
     return new Response(null, responseInit);
   }
 
-  window.__fetch = {
+  window.__bootstrap.fetch = {
     fetch,
     Response,
   };

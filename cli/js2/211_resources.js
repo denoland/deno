@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
-  const sendSync = window.__dispatchJson.sendSync;
+  const sendSync = window.__bootstrap.dispatchJson.sendSync;
 
   function resources() {
     const res = sendSync("op_resources");
@@ -16,7 +16,7 @@
     sendSync("op_close", { rid });
   }
 
-  window.__resources = {
+  window.__bootstrap.resources = {
     close,
     resources,
   };

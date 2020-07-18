@@ -19,7 +19,7 @@
     Object.freeze(version);
   }
 
-  window.__version = {
+  window.__bootstrap.version = {
     version,
     setVersions,
   };

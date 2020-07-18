@@ -3,8 +3,8 @@
 // This file contains the runtime APIs which will dispatch work to the internal
 // compiler within Deno.
 ((window) => {
-  const util = window.__util;
-  const { sendAsync } = window.__dispatchJson;
+  const util = window.__bootstrap.util;
+  const { sendAsync } = window.__bootstrap.dispatchJson;
 
   function opCompile(request) {
     return sendAsync("op_compile", request);
@@ -92,7 +92,7 @@
     return [maybeDiagnostics, result.output];
   }
 
-  window.__compilerApi = {
+  window.__bootstrap.compilerApi = {
     bundle,
     compile,
     transpileOnly,

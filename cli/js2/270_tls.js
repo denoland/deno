@@ -1,8 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
-  const { Listener, Conn } = window.__net;
-  const { sendAsync, sendSync } = window.__dispatchJson;
+  const { Listener, Conn } = window.__bootstrap.net;
+  const { sendAsync, sendSync } = window.__bootstrap.dispatchJson;
 
   function opConnectTls(
     args,
@@ -73,7 +73,7 @@
     return new Conn(res.rid, res.remoteAddr, res.localAddr);
   }
 
-  window.__tls = {
+  window.__bootstrap.tls = {
     startTls,
     listenTls,
     connectTls,

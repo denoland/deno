@@ -72,7 +72,7 @@
     return string.replace(ANSI_PATTERN, "");
   }
 
-  window.__colors = {
+  window.__bootstrap.colors = {
     bold,
     italic,
     yellow,

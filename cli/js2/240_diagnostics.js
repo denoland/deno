@@ -14,7 +14,7 @@
     Suggestion: 5,
   };
 
-  window.__diagnostics = {
+  window.__bootstrap.diagnostics = {
     DiagnosticCategory,
   };
 })(this);

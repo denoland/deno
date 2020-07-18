@@ -1,8 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
-  const { open, openSync } = window.__files;
-  const { readAll, readAllSync } = window.__buffer;
+  const { open, openSync } = window.__bootstrap.files;
+  const { readAll, readAllSync } = window.__bootstrap.buffer;
 
   function readFileSync(path) {
     const file = openSync(path);
@@ -34,7 +34,7 @@
     return decoder.decode(contents);
   }
 
-  window.__readFile = {
+  window.__bootstrap.readFile = {
     readFile,
     readFileSync,
     readTextFileSync,

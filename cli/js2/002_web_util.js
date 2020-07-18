@@ -186,7 +186,7 @@
     Object.defineProperty(fn, "name", { value, configurable: true });
   }
 
-  window.__webUtil = {
+  window.__bootstrap.webUtil = {
     isTypedArray,
     isInvalidDate,
     requiredArguments,

@@ -1,8 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
-  const { build } = window.__build;
-  const { ReadableStream } = window.__streams;
+  const { build } = window.__bootstrap.build;
+  const { ReadableStream } = window.__bootstrap.streams;
 
   const bytesSymbol = Symbol("bytes");
 
@@ -214,7 +214,7 @@
     }
   }
 
-  window.__blob = {
+  window.__bootstrap.blob = {
     Blob,
     bytesSymbol,
     containsOnlyASCII,

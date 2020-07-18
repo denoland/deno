@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
-  const net = window.__net;
+  const net = window.__bootstrap.net;
 
   function listen(options) {
     if (options.transport === "unix") {
@@ -40,7 +40,7 @@
     }
   }
 
-  window.__netUnstable = {
+  window.__bootstrap.netUnstable = {
     connect,
     listenDatagram,
     listen,

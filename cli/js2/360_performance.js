@@ -1,9 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
-  const { opNow } = window.__timers;
-  const { customInspect, inspect } = window.__console;
-  const { cloneValue, setFunctionName } = window.__webUtil;
+  const { opNow } = window.__bootstrap.timers;
+  const { customInspect, inspect } = window.__bootstrap.console;
+  const { cloneValue, setFunctionName } = window.__bootstrap.webUtil;
 
   let performanceEntries = [];
 
@@ -312,7 +312,7 @@
     }
   }
 
-  window.__performance = {
+  window.__bootstrap.performance = {
     PerformanceEntry,
     PerformanceMark,
     PerformanceMeasure,

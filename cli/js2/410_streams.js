@@ -9,11 +9,11 @@
 ((window) => {
   /* eslint-disable @typescript-eslint/no-explicit-any,require-await */
 
-  const sym = window.__streamSymbols;
-  const { AbortSignal } = window.__abortSignal;
-  const { cloneValue, setFunctionName } = window.__webUtil;
-  const { assert, AssertionError } = window.__util;
-  const { customInspect, inspect } = window.__console;
+  const sym = window.__bootstrap.streamSymbols;
+  const { AbortSignal } = window.__bootstrap.abortSignal;
+  const { cloneValue, setFunctionName } = window.__bootstrap.webUtil;
+  const { assert, AssertionError } = window.__bootstrap.util;
+  const { customInspect, inspect } = window.__bootstrap.console;
 
   class ReadableByteStreamController {
     constructor() {
@@ -3165,7 +3165,7 @@
   }
   /* eslint-enable */
 
-  window.__streams = {
+  window.__bootstrap.streams = {
     ReadableStream,
     TransformStream,
     WritableStream,

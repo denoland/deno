@@ -1,9 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
-  const { DomIterableMixin } = window.__domIterable;
-  const { requiredArguments } = window.__webUtil;
-  const { customInspect } = window.__console;
+  const { DomIterableMixin } = window.__bootstrap.domIterable;
+  const { requiredArguments } = window.__bootstrap.webUtil;
+  const { customInspect } = window.__bootstrap.console;
 
   // From node-fetch
   // Copyright (c) 2016 David Frank. MIT License.
@@ -251,7 +251,7 @@
 
   class Headers extends DomIterableMixin(HeadersBase, headersData) {}
 
-  window.__headers = {
+  window.__bootstrap.headers = {
     Headers,
   };
 })(this);

@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
-  const { sendSync } = window.__dispatchJson;
+  const { sendSync } = window.__bootstrap.dispatchJson;
 
   function opQuery(desc) {
     return sendSync("op_query_permission", desc).state;
@@ -41,7 +41,7 @@
 
   const permissions = new Permissions();
 
-  window.__permissions = {
+  window.__bootstrap.permissions = {
     permissions,
     Permissions,
     PermissionStatus,

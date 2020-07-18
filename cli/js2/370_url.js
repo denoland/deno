@@ -1,11 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
-  const { build } = window.__build;
-  const { getRandomValues } = window.__crypto;
-  const { customInspect } = window.__console;
-  const { sendSync } = window.__dispatchJson;
-  const { isIterable, requiredArguments } = window.__webUtil;
+  const { build } = window.__bootstrap.build;
+  const { getRandomValues } = window.__bootstrap.crypto;
+  const { customInspect } = window.__bootstrap.console;
+  const { sendSync } = window.__bootstrap.dispatchJson;
+  const { isIterable, requiredArguments } = window.__bootstrap.webUtil;
 
   /** https://url.spec.whatwg.org/#idna */
   function domainToAscii(
@@ -850,7 +850,7 @@
     );
   }
 
-  window.__url = {
+  window.__bootstrap.url = {
     URL,
     URLSearchParams,
     blobURLMap,

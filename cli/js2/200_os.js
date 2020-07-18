@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
-  const sendSync = window.__dispatchJson.sendSync;
+  const sendSync = window.__bootstrap.dispatchJson.sendSync;
 
   function loadavg() {
     return sendSync("op_loadavg");
@@ -45,7 +45,7 @@
     return sendSync("op_exec_path");
   }
 
-  window.__os = {
+  window.__bootstrap.os = {
     env,
     execPath,
     exit,

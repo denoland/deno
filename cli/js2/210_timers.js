@@ -1,8 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
-  const assert = window.__util.assert;
-  const dispatchJson = window.__dispatchJson;
+  const assert = window.__bootstrap.util.assert;
+  const dispatchJson = window.__bootstrap.dispatchJson;
 
   function opStopGlobalTimer() {
     dispatchJson.sendSync("op_global_timer_stop");
@@ -533,7 +533,7 @@
     clearTimer(id);
   }
 
-  window.__timers = {
+  window.__bootstrap.timers = {
     clearInterval,
     setInterval,
     clearTimeout,

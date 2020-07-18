@@ -7,7 +7,7 @@
 // not available in the runtime.
 
 ((window) => {
-  window.__streamSymbols = {
+  window.__bootstrap.streamSymbols = {
     abortAlgorithm: Symbol("abortAlgorithm"),
     abortSteps: Symbol("abortSteps"),
     asyncIteratorReader: Symbol("asyncIteratorReader"),

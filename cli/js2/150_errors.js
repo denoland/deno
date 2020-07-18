@@ -221,7 +221,7 @@
     Busy,
   };
 
-  window.__errors = {
+  window.__bootstrap.errors = {
     errors,
     getErrorClass,
   };

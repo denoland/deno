@@ -3,10 +3,10 @@
 ((window) => {
   // Some of the code here is adapted directly from V8 and licensed under a BSD
   // style license available here: https://github.com/v8/v8/blob/24886f2d1c565287d33d71e4109a53bf0b54b75c/LICENSE.v8
-  const colors = window.__colors;
-  const assert = window.__util.assert;
-  const internals = window.__internals;
-  const dispatchJson = window.__dispatchJson;
+  const colors = window.__bootstrap.colors;
+  const assert = window.__bootstrap.util.assert;
+  const internals = window.__bootstrap.internals;
+  const dispatchJson = window.__bootstrap.dispatchJson;
 
   function opFormatDiagnostics(items) {
     return dispatchJson.sendSync("op_format_diagnostic", { items });
@@ -259,7 +259,7 @@
 
   internals.exposeForTest("setPrepareStackTrace", setPrepareStackTrace);
 
-  window.__errorStack = {
+  window.__bootstrap.errorStack = {
     setPrepareStackTrace,
     opApplySourceMap,
     opFormatDiagnostics,

@@ -19,7 +19,7 @@
     Object.freeze(build);
   }
 
-  window.__build = {
+  window.__bootstrap.build = {
     build,
     setBuildInfo,
   };

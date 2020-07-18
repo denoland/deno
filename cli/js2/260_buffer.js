@@ -5,7 +5,7 @@
 // https://github.com/golang/go/blob/master/LICENSE
 
 ((window) => {
-  const { assert } = window.__util;
+  const { assert } = window.__bootstrap.util;
 
   // MIN_READ is the minimum ArrayBuffer size passed to a read call by
   // buffer.ReadFrom. As long as the Buffer has at least MIN_READ bytes beyond
@@ -231,7 +231,7 @@
     }
   }
 
-  window.__buffer = {
+  window.__bootstrap.buffer = {
     writeAll,
     writeAllSync,
     readAll,

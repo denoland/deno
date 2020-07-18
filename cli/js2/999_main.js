@@ -6,32 +6,32 @@ delete Object.prototype.__proto__;
 
 ((window) => {
   const core = Deno.core;
-  const util = window.__util;
-  const eventTarget = window.__eventTarget;
-  const dispatchJson = window.__dispatchJson;
-  const dispatchMinimal = window.__dispatchMinimal;
-  const build = window.__build;
-  const version = window.__version;
-  const errorStack = window.__errorStack;
-  const os = window.__os;
-  const timers = window.__timers;
-  const replLoop = window.__repl.replLoop;
-  const Console = window.__console.Console;
-  const worker = window.__worker;
-  const signals = window.__signals;
-  const { internalSymbol, internalObject } = window.__internals;
-  const abortSignal = window.__abortSignal;
-  const performance = window.__performance;
-  const crypto = window.__crypto;
-  const url = window.__url;
-  const headers = window.__headers;
-  const queuingStrategy = window.__queuingStrategy;
-  const streams = window.__streams;
-  const blob = window.__blob;
-  const domFile = window.__domFile;
-  const formData = window.__formData;
-  const request = window.__request;
-  const fetch = window.__fetch;
+  const util = window.__bootstrap.util;
+  const eventTarget = window.__bootstrap.eventTarget;
+  const dispatchJson = window.__bootstrap.dispatchJson;
+  const dispatchMinimal = window.__bootstrap.dispatchMinimal;
+  const build = window.__bootstrap.build;
+  const version = window.__bootstrap.version;
+  const errorStack = window.__bootstrap.errorStack;
+  const os = window.__bootstrap.os;
+  const timers = window.__bootstrap.timers;
+  const replLoop = window.__bootstrap.repl.replLoop;
+  const Console = window.__bootstrap.console.Console;
+  const worker = window.__bootstrap.worker;
+  const signals = window.__bootstrap.signals;
+  const { internalSymbol, internalObject } = window.__bootstrap.internals;
+  const abortSignal = window.__bootstrap.abortSignal;
+  const performance = window.__bootstrap.performance;
+  const crypto = window.__bootstrap.crypto;
+  const url = window.__bootstrap.url;
+  const headers = window.__bootstrap.headers;
+  const queuingStrategy = window.__bootstrap.queuingStrategy;
+  const streams = window.__bootstrap.streams;
+  const blob = window.__bootstrap.blob;
+  const domFile = window.__bootstrap.domFile;
+  const formData = window.__bootstrap.formData;
+  const request = window.__bootstrap.request;
+  const fetch = window.__bootstrap.fetch;
 
   let windowIsClosing = false;
 
@@ -261,6 +261,7 @@ delete Object.prototype.__proto__;
       throw new Error("Worker runtime already bootstrapped");
     }
     // Remove bootstrapping methods from global scope
+    globalThis.__bootstrap = undefined;
     globalThis.bootstrap = undefined;
     util.log("bootstrapMainRuntime");
     hasBootstrapped = true;
@@ -290,7 +291,7 @@ delete Object.prototype.__proto__;
     const denoNs = {
       core,
       [internalSymbol]: internalObject,
-      ...window.__denoNs,
+      ...window.__bootstrap.denoNs,
     };
     Object.defineProperties(denoNs, {
       pid: util.readOnly(pid),
@@ -305,7 +306,7 @@ delete Object.prototype.__proto__;
         "mainModule",
         util.getterOnly(opMainModule),
       );
-      Object.assign(denoNs, window.__denoNsUnstable);
+      Object.assign(denoNs, window.__bootstrap.denoNsUnstable);
     }
 
     // Setup `Deno` global - we're actually overriding already
@@ -329,6 +330,7 @@ delete Object.prototype.__proto__;
       throw new Error("Worker runtime already bootstrapped");
     }
     // Remove bootstrapping methods from global scope
+    globalThis.__bootstrap = undefined;
     globalThis.bootstrap = undefined;
     util.log("bootstrapWorkerRuntime");
     hasBootstrapped = true;
@@ -345,11 +347,11 @@ delete Object.prototype.__proto__;
     const denoNs = {
       core,
       [internalSymbol]: internalObject,
-      ...window.__denoNs,
+      ...window.__bootstrap.denoNs,
     };
     if (useDenoNamespace) {
       if (unstableFlag) {
-        Object.assign(denoNs, window.__denoNsUnstable);
+        Object.assign(denoNs, window.__bootstrap.denoNsUnstable);
       }
       Object.defineProperties(denoNs, {
         pid: util.readOnly(pid),

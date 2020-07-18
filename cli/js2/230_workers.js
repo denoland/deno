@@ -2,8 +2,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 ((window) => {
-  const { log } = window.__util;
-  const { sendSync, sendAsync } = window.__dispatchJson;
+  const { log } = window.__bootstrap.util;
+  const { sendSync, sendAsync } = window.__bootstrap.dispatchJson;
   /*
   import { blobURLMap } from "./web/url.ts";
   */
@@ -224,7 +224,7 @@
     }
   }
 
-  window.__worker = {
+  window.__bootstrap.worker = {
     Worker,
     MessageEvent,
   };

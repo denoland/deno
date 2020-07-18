@@ -1,10 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
-  const { errors } = window.__errors;
-  const { read, write } = window.__io;
-  const { close } = window.__resources;
-  const { sendSync, sendAsync } = window.__dispatchJson;
+  const { errors } = window.__bootstrap.errors;
+  const { read, write } = window.__bootstrap.io;
+  const { close } = window.__bootstrap.resources;
+  const { sendSync, sendAsync } = window.__bootstrap.dispatchJson;
 
   const ShutdownMode = {
     // See http://man7.org/linux/man-pages/man2/shutdown.2.html
@@ -228,7 +228,7 @@
     return new Conn(res.rid, res.remoteAddr, res.localAddr);
   }
 
-  window.__net = {
+  window.__bootstrap.net = {
     connect,
     Conn,
     opConnect,

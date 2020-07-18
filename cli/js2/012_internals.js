@@ -15,7 +15,7 @@
     });
   }
 
-  window.__internals = {
+  window.__bootstrap.internals = {
     internalSymbol,
     internalObject,
     exposeForTest,

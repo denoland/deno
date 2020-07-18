@@ -1,15 +1,16 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
-  const { Blob } = window.__blob;
-  const { ReadableStream, isReadableStreamDisturbed } = window.__streams;
-  const { Buffer } = window.__buffer;
+  const { Blob } = window.__bootstrap.blob;
+  const { ReadableStream, isReadableStreamDisturbed } =
+    window.__bootstrap.streams;
+  const { Buffer } = window.__bootstrap.buffer;
   const {
     getHeaderValueParams,
     hasHeaderValueOf,
     isTypedArray,
-  } = window.__webUtil;
-  const { MultipartParser } = window.__multipart;
+  } = window.__bootstrap.webUtil;
+  const { MultipartParser } = window.__bootstrap.multipart;
 
   function validateBodyType(owner, bodySource) {
     if (isTypedArray(bodySource)) {
@@ -199,7 +200,7 @@
     }
   }
 
-  window.__body = {
+  window.__bootstrap.body = {
     Body,
     BodyUsedError,
   };

@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
-  const blob = window.__blob;
+  const blob = window.__bootstrap.blob;
 
   class DomFile extends blob.Blob {
     constructor(
@@ -21,7 +21,7 @@
     }
   }
 
-  window.__domFile = {
+  window.__bootstrap.domFile = {
     DomFile,
   };
 })(this);

@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
-  const { customInspect } = window.__console;
+  const { customInspect } = window.__bootstrap.console;
 
   class CountQueuingStrategy {
     constructor({ highWaterMark }) {
@@ -43,7 +43,7 @@
     enumerable: true,
   });
 
-  window.__queuingStrategy = {
+  window.__bootstrap.queuingStrategy = {
     CountQueuingStrategy,
     ByteLengthQueuingStrategy,
   };

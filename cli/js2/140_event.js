@@ -1038,7 +1038,7 @@
   window.EventTarget = EventTarget;
   window.ErrorEvent = ErrorEvent;
   window.CustomEvent = CustomEvent;
-  window.__eventTarget = {
+  window.__bootstrap.eventTarget = {
     setEventTargetData,
   };
 })(this);

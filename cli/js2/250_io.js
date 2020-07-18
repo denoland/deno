@@ -6,7 +6,7 @@
 
 ((window) => {
   const DEFAULT_BUFFER_SIZE = 32 * 1024;
-  const { sendSync, sendAsync } = window.__dispatchMinimal;
+  const { sendSync, sendAsync } = window.__bootstrap.dispatchMinimal;
   // Seek whence values.
   // https://golang.org/pkg/io/#pkg-constants
   const SeekMode = {
@@ -118,7 +118,7 @@
     return result;
   }
 
-  window.__io = {
+  window.__bootstrap.io = {
     iterSync,
     iter,
     copy,

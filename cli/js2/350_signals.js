@@ -1,8 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
-  const { sendSync, sendAsync } = window.__dispatchJson;
-  const { build } = window.__build;
+  const { sendSync, sendAsync } = window.__bootstrap.dispatchJson;
+  const { build } = window.__bootstrap.build;
 
   function bindSignal(signo) {
     return sendSync("op_signal_bind", { signo });
@@ -246,7 +246,7 @@
     }
   }
 
-  window.__signals = {
+  window.__bootstrap.signals = {
     signal,
     signals,
     Signal,

@@ -1,8 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
-  const { sendSync, sendAsync } = window.__dispatchJson;
-  const { close } = window.__resources;
+  const { sendSync, sendAsync } = window.__bootstrap.dispatchJson;
+  const { close } = window.__bootstrap.resources;
 
   class FsWatcher {
     #rid = 0;
@@ -39,7 +39,7 @@
     return new FsWatcher(Array.isArray(paths) ? paths : [paths], options);
   }
 
-  window.__fsEvents = {
+  window.__bootstrap.fsEvents = {
     watchFs,
   };
 })(this);

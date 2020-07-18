@@ -1,8 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
-  const body = window.__body;
-  const { ReadableStream } = window.__streams;
+  const body = window.__bootstrap.body;
+  const { ReadableStream } = window.__bootstrap.streams;
 
   function byteUpperCase(s) {
     return String(s).replace(/[a-z]/g, function byteUpperCaseReplace(c) {
@@ -133,7 +133,7 @@
     }
   }
 
-  window.__request = {
+  window.__bootstrap.request = {
     Request,
   };
 })(this);

@@ -1,10 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
-  const { Buffer } = window.__buffer;
-  const { bytesSymbol, Blob } = window.__blob;
-  const { DomFile } = window.__domFile;
-  const { getHeaderValueParams } = window.__webUtil;
+  const { Buffer } = window.__bootstrap.buffer;
+  const { bytesSymbol, Blob } = window.__bootstrap.blob;
+  const { DomFile } = window.__bootstrap.domFile;
+  const { getHeaderValueParams } = window.__bootstrap.webUtil;
 
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
@@ -192,7 +192,7 @@
     }
   }
 
-  window.__multipart = {
+  window.__bootstrap.multipart = {
     MultipartBuilder,
     MultipartParser,
   };
