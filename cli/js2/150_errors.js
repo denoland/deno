@@ -4,6 +4,28 @@
   // Warning! The values in this enum are duplicated in cli/op_error.rs
   // Update carefully!
   const ErrorKind = {
+    1: "NotFound",
+    2: "PermissionDenied",
+    3: "ConnectionRefused",
+    4: "ConnectionReset",
+    5: "ConnectionAborted",
+    6: "NotConnected",
+    7: "AddrInUse",
+    8: "AddrNotAvailable",
+    9: "BrokenPipe",
+    10: "AlreadyExists",
+    13: "InvalidData",
+    14: "TimedOut",
+    15: "Interrupted",
+    16: "WriteZero",
+    17: "UnexpectedEof",
+    18: "BadResource",
+    19: "Http",
+    20: "URIError",
+    21: "TypeError",
+    22: "Other",
+    23: "Busy",
+
     NotFound: 1,
     PermissionDenied: 2,
     ConnectionRefused: 3,
