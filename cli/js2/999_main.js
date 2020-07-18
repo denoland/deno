@@ -20,6 +20,8 @@ delete Object.prototype.__proto__;
   const worker = window.__worker;
   const signals = window.__signals;
   const { internalSymbol, internalObject } = window.__internals;
+  const abortSignal = window.__abortSignal;
+  const performance = window.__performance;
 
   let windowIsClosing = false;
 
@@ -176,8 +178,8 @@ delete Object.prototype.__proto__;
   // Other properties shared between WindowScope and WorkerGlobalScope
   const windowOrWorkerGlobalScopeProperties = {
     console: util.writable(new Console(core.print)),
-    // AbortController: util.nonEnumerable(abortController.AbortControllerImpl),
-    // AbortSignal: util.nonEnumerable(abortSignal.AbortSignalImpl),
+    AbortController: util.nonEnumerable(abortSignal.AbortController),
+    AbortSignal: util.nonEnumerable(abortSignal.AbortSignal),
     // Blob: util.nonEnumerable(blob.DenoBlob),
     // ByteLengthQueuingStrategy: util.nonEnumerable(
     //   queuingStrategy.ByteLengthQueuingStrategyImpl,
@@ -195,11 +197,11 @@ delete Object.prototype.__proto__;
     // ReadableStream: util.nonEnumerable(readableStream.ReadableStreamImpl),
     // Request: util.nonEnumerable(request.Request),
     // Response: util.nonEnumerable(fetchTypes.Response),
-    // performance: util.writable(new performance.PerformanceImpl()),
-    // Performance: util.nonEnumerable(performance.PerformanceImpl),
-    // PerformanceEntry: util.nonEnumerable(performance.PerformanceEntryImpl),
-    // PerformanceMark: util.nonEnumerable(performance.PerformanceMarkImpl),
-    // PerformanceMeasure: util.nonEnumerable(performance.PerformanceMeasureImpl),
+    performance: util.writable(new performance.Performance()),
+    Performance: util.nonEnumerable(performance.Performance),
+    PerformanceEntry: util.nonEnumerable(performance.PerformanceEntry),
+    PerformanceMark: util.nonEnumerable(performance.PerformanceMark),
+    PerformanceMeasure: util.nonEnumerable(performance.PerformanceMeasure),
     TextDecoder: util.nonEnumerable(TextDecoder),
     TextEncoder: util.nonEnumerable(TextEncoder),
     // TransformStream: util.nonEnumerable(transformStream.TransformStreamImpl),
