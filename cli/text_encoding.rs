@@ -1,3 +1,5 @@
+use std::io::{Error, ErrorKind};
+
 pub fn detect_charset(bytes: &Vec<u8>) -> &str {
   const UTF8_BOM: &'static [u8] = b"\xEF\xBB\xBF";
   const UTF16_LE_BOM: &'static [u8] = b"\xFF\xFE";
@@ -15,16 +17,16 @@ pub fn detect_charset(bytes: &Vec<u8>) -> &str {
   }
 }
 
-pub fn to_utf8(
-  bytes: &Vec<u8>,
-  charset: &str,
-) -> Result<String, std::io::Error> {
+pub fn to_utf8(bytes: &Vec<u8>, charset: &str) -> Result<String, Error> {
   match encoding::label::encoding_from_whatwg_label(charset) {
-    Some(coder) => match coder.decode(bytes, encoding::DecoderTrap::Ignore) {
+    Some(coder) => match coder.decode(bytes, encoding::DecoderTrap::Strict) {
       Ok(text) => Ok(text),
-      Err(_e) => Err(std::io::ErrorKind::InvalidData.into()),
+      Err(_e) => Err(ErrorKind::InvalidData.into()),
     },
-    None => Err(std::io::ErrorKind::InvalidData.into()),
+    None => Err(Error::new(
+      ErrorKind::Other,
+      format!("Unsupported charset: {}", charset),
+    )),
   }
 }
 
@@ -58,5 +60,21 @@ mod tests {
   fn test_detection_utf16_big_endian() {
     let test_data = b"\xFE\xFFHello UTF-16BE".to_owned().to_vec();
     test_detection(&test_data, "utf-16be");
+  }
+
+  #[test]
+  fn test_decoding_unsupported_charset() {
+    let test_data = Vec::new();
+    let result = to_utf8(&test_data, "utf-32le");
+    assert!(result.is_err());
+  }
+
+  #[test]
+  fn test_decoding_invalid_utf8() {
+    let test_data = b"\xFE\xFE\xFF\xFF".to_vec();
+    let result = to_utf8(&test_data, "utf-8");
+    assert!(result.is_err());
+    let err = result.expect_err("Err expected");
+    assert!(err.kind() == ErrorKind::InvalidData);
   }
 }
