@@ -17,7 +17,10 @@ pub fn detect_charset(bytes: &Vec<u8>) -> &str {
   }
 }
 
-pub fn to_utf8(bytes: &Vec<u8>, charset: &str) -> Result<String, Error> {
+pub fn convert_to_utf8(
+  bytes: &Vec<u8>,
+  charset: &str,
+) -> Result<String, Error> {
   match encoding::label::encoding_from_whatwg_label(charset) {
     Some(coder) => match coder.decode(bytes, encoding::DecoderTrap::Strict) {
       Ok(text) => Ok(text),
@@ -35,7 +38,7 @@ mod tests {
   use super::*;
 
   fn test_detection(test_data: &Vec<u8>, expected_charset: &str) {
-    let detected_charset = detect_charset(&test_data);
+    let detected_charset = detect_charset(test_data);
     assert_eq!(
       expected_charset.to_lowercase(),
       detected_charset.to_lowercase()
@@ -65,14 +68,14 @@ mod tests {
   #[test]
   fn test_decoding_unsupported_charset() {
     let test_data = Vec::new();
-    let result = to_utf8(&test_data, "utf-32le");
+    let result = convert_to_utf8(&test_data, "utf-32le");
     assert!(result.is_err());
   }
 
   #[test]
   fn test_decoding_invalid_utf8() {
     let test_data = b"\xFE\xFE\xFF\xFF".to_vec();
-    let result = to_utf8(&test_data, "utf-8");
+    let result = convert_to_utf8(&test_data, "utf-8");
     assert!(result.is_err());
     let err = result.expect_err("Err expected");
     assert!(err.kind() == ErrorKind::InvalidData);

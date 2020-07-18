@@ -241,7 +241,7 @@ struct FileContents {
 fn read_file_contents(file_path: &PathBuf) -> Result<FileContents, ErrBox> {
   let file_bytes = fs::read(&file_path)?;
   let charset = text_encoding::detect_charset(&file_bytes);
-  let file_text = text_encoding::to_utf8(&file_bytes, charset)?;
+  let file_text = text_encoding::convert_to_utf8(&file_bytes, charset)?;
   let had_bom = file_text.starts_with(BOM_CHAR);
   let text = if had_bom {
     // remove the BOM

@@ -50,7 +50,7 @@ impl SourceCode {
   }
 
   pub fn to_utf8(&self) -> Result<String, std::io::Error> {
-    text_encoding::to_utf8(&self.bytes, &self.charset)
+    text_encoding::convert_to_utf8(&self.bytes, &self.charset)
   }
 }
 
