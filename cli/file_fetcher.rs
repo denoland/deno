@@ -1995,10 +1995,7 @@ mod tests {
       .await;
     assert!(source.is_ok());
     let source = source.unwrap();
-    assert_eq!(
-      &source.source_code.charset.to_lowercase()[..],
-      charset
-    );
+    assert_eq!(&source.source_code.charset.to_lowercase()[..], charset);
     let text = &source.source_code.to_utf8().unwrap();
     assert_eq!(text, expected_content);
     assert_eq!(&(source.media_type), &msg::MediaType::TypeScript);
