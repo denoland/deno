@@ -22,6 +22,8 @@ delete Object.prototype.__proto__;
   const { internalSymbol, internalObject } = window.__internals;
   const abortSignal = window.__abortSignal;
   const performance = window.__performance;
+  const crypto = window.__crypto;
+  const url = window.__url;
 
   let windowIsClosing = false;
 
@@ -185,7 +187,7 @@ delete Object.prototype.__proto__;
     //   queuingStrategy.ByteLengthQueuingStrategyImpl,
     // ),
     // CountQueuingStrategy: util.nonEnumerable(queuingStrategy.CountQueuingStrategyImpl),
-    // crypto: util.readOnly(csprng),
+    crypto: util.readOnly(crypto),
     // File: util.nonEnumerable(domFile.DomFileImpl),
     CustomEvent: util.nonEnumerable(CustomEvent),
     DOMException: util.nonEnumerable(DOMException),
@@ -205,8 +207,8 @@ delete Object.prototype.__proto__;
     TextDecoder: util.nonEnumerable(TextDecoder),
     TextEncoder: util.nonEnumerable(TextEncoder),
     // TransformStream: util.nonEnumerable(transformStream.TransformStreamImpl),
-    // URL: util.nonEnumerable(url.URLImpl),
-    // URLSearchParams: util.nonEnumerable(urlSearchParams.URLSearchParamsImpl),
+    URL: util.nonEnumerable(url.URL),
+    URLSearchParams: util.nonEnumerable(url.URLSearchParams),
     Worker: util.nonEnumerable(worker.Worker),
     // WritableStream: util.nonEnumerable(writableStream.WritableStreamImpl),
   };
