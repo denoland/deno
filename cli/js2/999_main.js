@@ -27,6 +27,9 @@ delete Object.prototype.__proto__;
   const headers = window.__headers;
   const queuingStrategy = window.__queuingStrategy;
   const streams = window.__streams;
+  const blob = window.__blob;
+  const domFile = window.__domFile;
+  const formData = window.__formData;
 
   let windowIsClosing = false;
 
@@ -185,7 +188,7 @@ delete Object.prototype.__proto__;
     console: util.writable(new Console(core.print)),
     AbortController: util.nonEnumerable(abortSignal.AbortController),
     AbortSignal: util.nonEnumerable(abortSignal.AbortSignal),
-    // Blob: util.nonEnumerable(blob.DenoBlob),
+    Blob: util.nonEnumerable(blob.Blob),
     ByteLengthQueuingStrategy: util.nonEnumerable(
       queuingStrategy.ByteLengthQueuingStrategy,
     ),
@@ -193,14 +196,14 @@ delete Object.prototype.__proto__;
       queuingStrategy.CountQueuingStrategy,
     ),
     crypto: util.readOnly(crypto),
-    // File: util.nonEnumerable(domFile.DomFileImpl),
+    File: util.nonEnumerable(domFile.DomFile),
     CustomEvent: util.nonEnumerable(CustomEvent),
     DOMException: util.nonEnumerable(DOMException),
     ErrorEvent: util.nonEnumerable(ErrorEvent),
     Event: util.nonEnumerable(Event),
     EventTarget: util.nonEnumerable(EventTarget),
     Headers: util.nonEnumerable(headers.HeadersImpl),
-    // FormData: util.nonEnumerable(formData.FormDataImpl),
+    FormData: util.nonEnumerable(formData.FormData),
     ReadableStream: util.nonEnumerable(streams.ReadableStream),
     // Request: util.nonEnumerable(request.Request),
     // Response: util.nonEnumerable(fetchTypes.Response),
