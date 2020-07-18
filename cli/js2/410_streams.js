@@ -265,6 +265,69 @@
     }
   }
 
+  const AsyncIteratorPrototype = Object
+    .getPrototypeOf(Object.getPrototypeOf(async function* () {}).prototype);
+
+  const ReadableStreamAsyncIteratorPrototype = Object.setPrototypeOf({
+    next(
+      this_,
+    ) {
+      if (!isReadableStreamAsyncIterator(this_)) {
+        return Promise.reject(
+          new TypeError("invalid ReadableStreamAsyncIterator."),
+        );
+      }
+      const reader = this_[sym.asyncIteratorReader];
+      if (!reader[sym.ownerReadableStream]) {
+        return Promise.reject(
+          new TypeError("reader owner ReadableStream is undefined."),
+        );
+      }
+      return readableStreamDefaultReaderRead(reader).then((result) => {
+        assert(typeof result === "object");
+        const { done } = result;
+        assert(typeof done === "boolean");
+        if (done) {
+          readableStreamReaderGenericRelease(reader);
+        }
+        const { value } = result;
+        return readableStreamCreateReadResult(value, done, true);
+      });
+    },
+    return(
+      this_,
+      value,
+    ) {
+      if (!isReadableStreamAsyncIterator(this_)) {
+        return Promise.reject(
+          new TypeError("invalid ReadableStreamAsyncIterator."),
+        );
+      }
+      const reader = this_[sym.asyncIteratorReader];
+      if (!reader[sym.ownerReadableStream]) {
+        return Promise.reject(
+          new TypeError("reader owner ReadableStream is undefined."),
+        );
+      }
+      if (reader[sym.readRequests].length) {
+        return Promise.reject(
+          new TypeError("reader has outstanding read requests."),
+        );
+      }
+      if (!this_[sym.preventCancel]) {
+        const result = readableStreamReaderGenericCancel(reader, value);
+        readableStreamReaderGenericRelease(reader);
+        return result.then(() =>
+          readableStreamCreateReadResult(value, true, true)
+        );
+      }
+      readableStreamReaderGenericRelease(reader);
+      return Promise.resolve(
+        readableStreamCreateReadResult(value, true, true),
+      );
+    },
+  }, AsyncIteratorPrototype);
+
   class ReadableStream {
     constructor(
       underlyingSource = {},
@@ -1951,8 +2014,10 @@
     let canceled2 = false;
     let reason1 = undefined;
     let reason2 = undefined;
+    /* eslint-disable prefer-const */
     let branch1;
     let branch2;
+    /* eslint-enable prefer-const */
     const cancelPromise = getDeferred();
     const pullAlgorithm = () => {
       if (reading) {

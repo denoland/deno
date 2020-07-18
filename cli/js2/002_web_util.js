@@ -60,7 +60,7 @@
     srcBuffer,
     srcByteOffset,
     srcLength,
-    cloneConstructor,
+    _cloneConstructor,
   ) {
     // this function fudges the return type but SharedArrayBuffer is disabled for a while anyway
     return srcBuffer.slice(

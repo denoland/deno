@@ -3,7 +3,7 @@
 ((window) => {
   const { opNow } = window.__bootstrap.timers;
   const { customInspect, inspect } = window.__bootstrap.console;
-  const { cloneValue, setFunctionName } = window.__bootstrap.webUtil;
+  const { cloneValue } = window.__bootstrap.webUtil;
 
   let performanceEntries = [];
 
