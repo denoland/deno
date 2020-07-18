@@ -92,7 +92,7 @@
   }
 
   function pathFromURL(pathOrUrl) {
-    if (pathOrUrl instanceof globalThis.URL) {
+    if (pathOrUrl instanceof URL) {
       if (pathOrUrl.protocol != "file:") {
         throw new TypeError("Must be a file URL.");
       }
