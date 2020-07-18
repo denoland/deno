@@ -25,6 +25,7 @@ delete Object.prototype.__proto__;
   const crypto = window.__crypto;
   const url = window.__url;
   const headers = window.__headers;
+  const queuingStrategy = window.__queuingStrategy;
 
   let windowIsClosing = false;
 
@@ -184,10 +185,12 @@ delete Object.prototype.__proto__;
     AbortController: util.nonEnumerable(abortSignal.AbortController),
     AbortSignal: util.nonEnumerable(abortSignal.AbortSignal),
     // Blob: util.nonEnumerable(blob.DenoBlob),
-    // ByteLengthQueuingStrategy: util.nonEnumerable(
-    //   queuingStrategy.ByteLengthQueuingStrategyImpl,
-    // ),
-    // CountQueuingStrategy: util.nonEnumerable(queuingStrategy.CountQueuingStrategyImpl),
+    ByteLengthQueuingStrategy: util.nonEnumerable(
+      queuingStrategy.ByteLengthQueuingStrategy,
+    ),
+    CountQueuingStrategy: util.nonEnumerable(
+      queuingStrategy.CountQueuingStrategy,
+    ),
     crypto: util.readOnly(crypto),
     // File: util.nonEnumerable(domFile.DomFileImpl),
     CustomEvent: util.nonEnumerable(CustomEvent),
