@@ -292,6 +292,7 @@ delete Object.prototype.__proto__;
 
     const finalDenoNs = {
       core,
+      internal: internalSymbol,
       [internalSymbol]: internalObject,
       ...denoNs,
     };
@@ -348,6 +349,7 @@ delete Object.prototype.__proto__;
 
     const finalDenoNs = {
       core,
+      internal: internalSymbol,
       [internalSymbol]: internalObject,
       ...denoNs,
     };
