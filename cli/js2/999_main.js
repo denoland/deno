@@ -30,6 +30,8 @@ delete Object.prototype.__proto__;
   const blob = window.__blob;
   const domFile = window.__domFile;
   const formData = window.__formData;
+  const request = window.__request;
+  const fetch = window.__fetch;
 
   let windowIsClosing = false;
 
@@ -177,7 +179,7 @@ delete Object.prototype.__proto__;
     btoa: util.writable(btoa),
     clearInterval: util.writable(timers.clearInterval),
     clearTimeout: util.writable(timers.clearTimeout),
-    // fetch: util.writable(fetchTypes.fetch),
+    fetch: util.writable(fetch.fetch),
     // queueMicrotask is bound in Rust
     setInterval: util.writable(timers.setInterval),
     setTimeout: util.writable(timers.setTimeout),
@@ -205,8 +207,8 @@ delete Object.prototype.__proto__;
     Headers: util.nonEnumerable(headers.HeadersImpl),
     FormData: util.nonEnumerable(formData.FormData),
     ReadableStream: util.nonEnumerable(streams.ReadableStream),
-    // Request: util.nonEnumerable(request.Request),
-    // Response: util.nonEnumerable(fetchTypes.Response),
+    Request: util.nonEnumerable(request.Request),
+    Response: util.nonEnumerable(fetch.Response),
     performance: util.writable(new performance.Performance()),
     Performance: util.nonEnumerable(performance.Performance),
     PerformanceEntry: util.nonEnumerable(performance.PerformanceEntry),

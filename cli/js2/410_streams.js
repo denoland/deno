@@ -3169,5 +3169,6 @@
     ReadableStream,
     TransformStream,
     WritableStream,
+    isReadableStreamDisturbed,
   };
 })(this);
