@@ -1,5 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { build } from "../build.ts";
 import { getRandomValues } from "../ops/get_random_values.ts";
 import { domainToAscii } from "../ops/idna.ts";
 import { customInspect } from "./console.ts";
@@ -70,7 +69,6 @@ function parse(url: string, isBase = true): URLParts | undefined {
     parts.username = "";
     parts.password = "";
     [parts.hostname, restUrl] = takePattern(restUrl, /^[/\\]{2}([^/\\?#]*)/);
-    [, restUrl] = takePattern(restUrl, /(?<=[/\\])[/\\]+/);
     parts.port = "";
   } else {
     let restAuthority;
@@ -131,22 +129,26 @@ function generateUUID(): string {
 // Keep it outside of URL to avoid any attempts of access.
 export const blobURLMap = new Map<string, Blob>();
 
-function isAbsolutePath(path: string): boolean {
-  return path.startsWith("/");
-}
-
 // Resolves `.`s and `..`s where possible.
 // Preserves repeating and trailing `/`s by design.
-// On Windows, drive letter paths will be given a leading slash, and also a
-// trailing slash if there are no other components e.g. "C:" -> "/C:/".
-function normalizePath(path: string, isFilePath = false): string {
-  if (isFilePath) {
-    path = path.replace(/^\/*([A-Za-z]:)(\/|$)/, "/$1/");
-  }
-  const isAbsolute = isAbsolutePath(path);
+// Assumes drive letter file paths will have a leading slash.
+function normalizePath(path: string, isFilePath: boolean): string {
+  const isAbsolute = path.startsWith("/");
   path = path.replace(/^\//, "");
   const pathSegments = path.split("/");
 
+  let driveLetter: string | null = null;
+  if (isFilePath && pathSegments[0].match(/^[A-Za-z]:$/)) {
+    driveLetter = pathSegments.shift()!;
+  }
+
+  if (isFilePath && isAbsolute) {
+    while (pathSegments.length > 1 && pathSegments[0] == "") {
+      pathSegments.shift();
+    }
+  }
+
+  let ensureTrailingSlash = false;
   const newPathSegments: string[] = [];
   for (let i = 0; i < pathSegments.length; i++) {
     const previous = newPathSegments[newPathSegments.length - 1];
@@ -156,18 +158,28 @@ function normalizePath(path: string, isFilePath = false): string {
       (previous != undefined || isAbsolute)
     ) {
       newPathSegments.pop();
-    } else if (pathSegments[i] != ".") {
+      ensureTrailingSlash = true;
+    } else if (pathSegments[i] == ".") {
+      ensureTrailingSlash = true;
+    } else {
       newPathSegments.push(pathSegments[i]);
+      ensureTrailingSlash = false;
     }
+  }
+  if (driveLetter != null) {
+    newPathSegments.unshift(driveLetter);
+  }
+  if (newPathSegments.length == 0 && !isAbsolute) {
+    newPathSegments.push(".");
+    ensureTrailingSlash = false;
   }
 
   let newPath = newPathSegments.join("/");
-  if (!isAbsolute) {
-    if (newPathSegments.length == 0) {
-      newPath = ".";
-    }
-  } else {
+  if (isAbsolute) {
     newPath = `/${newPath}`;
+  }
+  if (ensureTrailingSlash) {
+    newPath = newPath.replace(/\/*$/, "/");
   }
   return newPath;
 }
@@ -178,42 +190,39 @@ function resolvePathFromBase(
   basePath: string,
   isFilePath = false,
 ): string {
-  let normalizedPath = normalizePath(path, isFilePath);
-  let normalizedBasePath = normalizePath(basePath, isFilePath);
-
-  let driveLetterPrefix = "";
-  if (isFilePath) {
-    let driveLetter: string;
-    let baseDriveLetter: string;
-    [driveLetter, normalizedPath] = takePattern(
-      normalizedPath,
-      /^(\/[A-Za-z]:)(?=\/)/,
-    );
-    [baseDriveLetter, normalizedBasePath] = takePattern(
-      normalizedBasePath,
-      /^(\/[A-Za-z]:)(?=\/)/,
-    );
-    driveLetterPrefix = driveLetter || baseDriveLetter;
+  let basePrefix: string;
+  let suffix: string;
+  const baseDriveLetter = basePath.match(/^\/+[A-Za-z]:(?=\/|$)/)?.[0];
+  if (isFilePath && path.match(/^\/+[A-Za-z]:(\/|$)/)) {
+    basePrefix = "";
+    suffix = path;
+  } else if (path.startsWith("/")) {
+    if (isFilePath && baseDriveLetter) {
+      basePrefix = baseDriveLetter;
+      suffix = path;
+    } else {
+      basePrefix = "";
+      suffix = path;
+    }
+  } else if (path != "") {
+    basePath = normalizePath(basePath, isFilePath);
+    path = normalizePath(path, isFilePath);
+    // Remove everything after the last `/` in `basePath`.
+    if (baseDriveLetter && isFilePath) {
+      basePrefix = `${baseDriveLetter}${
+        basePath.slice(baseDriveLetter.length).replace(/[^\/]*$/, "")
+      }`;
+    } else {
+      basePrefix = basePath.replace(/[^\/]*$/, "");
+    }
+    basePrefix = basePrefix.replace(/\/*$/, "/");
+    // If `normalizedPath` ends with `.` or `..`, add a trailing slash.
+    suffix = path.replace(/(?<=(^|\/)(\.|\.\.))$/, "/");
+  } else {
+    basePrefix = basePath;
+    suffix = "";
   }
-
-  if (isAbsolutePath(normalizedPath)) {
-    return `${driveLetterPrefix}${normalizedPath}`;
-  }
-  if (!isAbsolutePath(normalizedBasePath)) {
-    throw new TypeError("Base path must be absolute.");
-  }
-
-  // Special case.
-  if (path == "") {
-    return `${driveLetterPrefix}${normalizedBasePath}`;
-  }
-
-  // Remove everything after the last `/` in `normalizedBasePath`.
-  const prefix = normalizedBasePath.replace(/[^\/]*$/, "");
-  // If `normalizedPath` ends with `.` or `..`, add a trailing slash.
-  const suffix = normalizedPath.replace(/(?<=(^|\/)(\.|\.\.))$/, "/");
-
-  return `${driveLetterPrefix}${normalizePath(prefix + suffix)}`;
+  return normalizePath(basePrefix + suffix, isFilePath);
 }
 
 function isValidPort(value: string): boolean {

@@ -237,10 +237,16 @@ unitTest(function urlRequireHost(): void {
 });
 
 unitTest(function urlDriveLetter() {
-  assertEquals(new URL("file:///C:").href, "file:///C:/");
-  assertEquals(new URL("http://example.com/C:").href, "http://example.com/C:");
+  assertEquals(new URL("file:///C:").href, "file:///C:");
+  assertEquals(new URL("file:///C:/").href, "file:///C:/");
+  assertEquals(new URL("file:///C:/..").href, "file:///C:/");
+  // Don't recognise drive letters with extra leading slashes.
+  assertEquals(new URL("file:////C:/..").href, "file:///");
   // Drop the hostname if a drive letter is parsed.
-  assertEquals(new URL("file://foo/C:").href, "file:///C:/");
+  assertEquals(new URL("file://foo/C:").href, "file:///C:");
+  // Don't recognise drive letters in non-file protocols.
+  assertEquals(new URL("http://foo/C:/..").href, "http://foo/");
+  assertEquals(new URL("abcd://foo/C:/..").href, "abcd://foo/");
 });
 
 unitTest(function urlHostnameUpperCase() {
@@ -331,7 +337,7 @@ unitTest(function urlRelativeWithBase(): void {
 
 unitTest(function urlDriveLetterBase() {
   assertEquals(new URL("/b", "file:///C:/a/b").href, "file:///C:/b");
-  assertEquals(new URL("/D:", "file:///C:/a/b").href, "file:///D:/");
+  assertEquals(new URL("/D:", "file:///C:/a/b").href, "file:///D:");
 });
 
 unitTest(function urlEmptyBasePath(): void {
