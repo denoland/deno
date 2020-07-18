@@ -15,10 +15,19 @@ class FormDataBase {
   append(name: string, value: string | blob.DenoBlob, filename?: string): void {
     requiredArguments("FormData.append", arguments.length, 2);
     name = String(name);
-    if (value instanceof blob.DenoBlob) {
+    if (value instanceof domFile.DomFileImpl) {
       const dfile = new domFile.DomFileImpl(
         [value],
-        filename || value.name || "blob",
+        filename || value.name,
+        {
+          type: value.type,
+        },
+      );
+      this[dataSymbol].push([name, dfile]);
+    } else if (value instanceof blob.DenoBlob) {
+      const dfile = new domFile.DomFileImpl(
+        [value],
+        filename || "blob",
         {
           type: value.type,
         },
@@ -86,10 +95,18 @@ class FormDataBase {
     while (i < this[dataSymbol].length) {
       if (this[dataSymbol][i][0] === name) {
         if (!found) {
-          if (value instanceof blob.DenoBlob) {
+          if (value instanceof domFile.DomFileImpl) {
             this[dataSymbol][i][1] = new domFile.DomFileImpl(
               [value],
-              filename || value.name || "blob",
+              filename || value.name,
+              {
+                type: value.type,
+              },
+            );
+          } else if (value instanceof blob.DenoBlob) {
+            this[dataSymbol][i][1] = new domFile.DomFileImpl(
+              [value],
+              filename || "blob",
               {
                 type: value.type,
               },
@@ -108,10 +125,19 @@ class FormDataBase {
 
     // Otherwise, append entry to the context object’s entry list.
     if (!found) {
-      if (value instanceof blob.DenoBlob) {
+      if (value instanceof domFile.DomFileImpl) {
         const dfile = new domFile.DomFileImpl(
           [value],
-          filename || value.name || "blob",
+          filename || value.name,
+          {
+            type: value.type,
+          },
+        );
+        this[dataSymbol].push([name, dfile]);
+      } else if (value instanceof blob.DenoBlob) {
+        const dfile = new domFile.DomFileImpl(
+          [value],
+          filename || "blob",
           {
             type: value.type,
           },
