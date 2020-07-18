@@ -6,6 +6,11 @@ use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
 
+#[cfg(target_os = "windows")]
+extern crate winapi;
+#[cfg(target_os = "windows")]
+extern crate winres;
+
 fn main() {
   // Don't build V8 if "cargo doc" is being run. This is to support docs.rs.
   if env::var_os("RUSTDOCFLAGS").is_some() {
@@ -26,16 +31,6 @@ fn main() {
   );
 
   let extern_crate_modules = include_crate_modules![deno_core];
-
-  // The generation of snapshots is slow and often unnecessary. Until we figure
-  // out how to speed it up, or avoid it when unnecessary, this env var provides
-  // an escape hatch for the impatient hacker in need of faster incremental
-  // builds.
-  // USE WITH EXTREME CAUTION
-  if env::var_os("NO_BUILD_SNAPSHOTS").is_some() {
-    println!("NO_BUILD_SNAPSHOTS is set, skipping snapshot building.");
-    return;
-  }
 
   let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
   let o = PathBuf::from(env::var_os("OUT_DIR").unwrap());
@@ -111,4 +106,20 @@ fn main() {
     &main_module_name,
   )
   .expect("Failed to create snapshot");
+
+  set_binary_metadata();
 }
+
+#[cfg(target_os = "windows")]
+fn set_binary_metadata() {
+  let mut res = winres::WindowsResource::new();
+  res.set_icon("deno.ico");
+  res.set_language(winapi::um::winnt::MAKELANGID(
+    winapi::um::winnt::LANG_ENGLISH,
+    winapi::um::winnt::SUBLANG_ENGLISH_US,
+  ));
+  res.compile().unwrap();
+}
+
+#[cfg(not(target_os = "windows"))]
+fn set_binary_metadata() {}

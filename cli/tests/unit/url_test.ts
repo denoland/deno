@@ -44,6 +44,8 @@ unitTest(function urlHostnameParsing(): void {
   assertEquals(new URL("http://[::1]").hostname, "[::1]");
   assertEquals(new URL("file://[::1]").hostname, "[::1]");
   assertEquals(new URL("abcd://[::1]").hostname, "[::1]");
+  assertEquals(new URL("http://[0:f:0:0:f:f:0:0]").hostname, "[0:f::f:f:0:0]");
+  assertEquals(new URL("http://[0:0:5:6:7:8]").hostname, "[::5:6:7:8]");
 
   // Forbidden host code point.
   assertThrows(() => new URL("http:// a"), TypeError, "Invalid URL.");

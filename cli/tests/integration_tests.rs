@@ -1972,6 +1972,11 @@ itest!(ts_decorators {
   output: "ts_decorators.ts.out",
 });
 
+itest!(ts_type_only_import {
+  args: "run --reload ts_type_only_import.ts",
+  output: "ts_type_only_import.ts.out",
+});
+
 itest!(swc_syntax_error {
   args: "run --reload swc_syntax_error.ts",
   output: "swc_syntax_error.ts.out",
@@ -2185,6 +2190,12 @@ itest!(deno_lint {
 itest!(deno_lint_glob {
   args: "lint --unstable lint/",
   output: "lint/expected_glob.out",
+  exit_code: 1,
+});
+
+itest!(compiler_js_error {
+  args: "run --unstable compiler_js_error.ts",
+  output: "compiler_js_error.ts.out",
   exit_code: 1,
 });
 
