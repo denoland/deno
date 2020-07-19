@@ -2,12 +2,8 @@ pub const TS_VERSION: &str = env!("TS_VERSION");
 
 pub static CLI_SNAPSHOT: &[u8] =
   include_bytes!(concat!(env!("OUT_DIR"), "/CLI_SNAPSHOT.bin"));
-pub static CLI_SNAPSHOT_MAP: &[u8] = &[];
-
 pub static COMPILER_SNAPSHOT: &[u8] =
   include_bytes!(concat!(env!("OUT_DIR"), "/COMPILER_SNAPSHOT.bin"));
-pub static COMPILER_SNAPSHOT_MAP: &[u8] = &[];
-
 pub static DENO_NS_LIB: &str = include_str!("js2/lib.deno.ns.d.ts");
 pub static SHARED_GLOBALS_LIB: &str =
   include_str!("js2/lib.deno.shared_globals.d.ts");
