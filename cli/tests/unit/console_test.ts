@@ -200,33 +200,32 @@ unitTest(function consoleTestStringifyCircular(): void {
   );
   assertEquals(stringify(nestedObj), nestedObjExpected);
   assertEquals(stringify(JSON), 'JSON { Symbol(Symbol.toStringTag): "JSON" }');
-  // FIXME(bartlomieju): broken after migrating to JavaScript runtime code
-  //   assertEquals(
-  //     stringify(console),
-  //     `{
-  //   log: [Function],
-  //   debug: [Function],
-  //   info: [Function],
-  //   dir: [Function],
-  //   dirxml: [Function],
-  //   warn: [Function],
-  //   error: [Function],
-  //   assert: [Function],
-  //   count: [Function],
-  //   countReset: [Function],
-  //   table: [Function],
-  //   time: [Function],
-  //   timeLog: [Function],
-  //   timeEnd: [Function],
-  //   group: [Function],
-  //   groupCollapsed: [Function],
-  //   groupEnd: [Function],
-  //   clear: [Function],
-  //   trace: [Function],
-  //   indentLevel: 0,
-  //   Symbol(isConsoleInstance): true
-  // }`,
-  //   );
+  assertEquals(
+    stringify(console),
+    `{
+  log: [Function: log],
+  debug: [Function: log],
+  info: [Function: log],
+  dir: [Function: dir],
+  dirxml: [Function: dir],
+  warn: [Function: warn],
+  error: [Function: warn],
+  assert: [Function: assert],
+  count: [Function: count],
+  countReset: [Function: countReset],
+  table: [Function: table],
+  time: [Function: time],
+  timeLog: [Function: timeLog],
+  timeEnd: [Function: timeEnd],
+  group: [Function: group],
+  groupCollapsed: [Function: group],
+  groupEnd: [Function: groupEnd],
+  clear: [Function: clear],
+  trace: [Function: trace],
+  indentLevel: 0,
+  Symbol(isConsoleInstance): true
+}`,
+  );
   assertEquals(
     stringify({ str: 1, [Symbol.for("sym")]: 2, [Symbol.toStringTag]: "TAG" }),
     'TAG { str: 1, Symbol(sym): 2, Symbol(Symbol.toStringTag): "TAG" }',
