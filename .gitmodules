@@ -1,8 +1,3 @@
 [submodule "deno_third_party"]
 	path = third_party
 	url = https://github.com/denoland/deno_third_party.git
-[submodule "typescript"]
-	path = deno_typescript/typescript
-	url = https://github.com/microsoft/TypeScript.git
-	fetchRecurseSubmodules = false
-	shallow = true

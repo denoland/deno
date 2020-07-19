@@ -64,11 +64,11 @@ fn create_compiler_snapshot(
   );
   runtime_isolate.register_op(
     "op_fetch_asset",
-    deno_typescript::op_fetch_asset(custom_libs),
+    deno_core::op_fetch_asset(custom_libs),
   );
 
   js_check(
-    runtime_isolate.execute("typescript.js", deno_typescript::TYPESCRIPT_CODE),
+    runtime_isolate.execute("typescript.js", deno_core::TYPESCRIPT_CODE),
   );
 
   create_snapshot(runtime_isolate, snapshot_path, files);
@@ -81,11 +81,11 @@ fn main() {
   }
 
   // To debug snapshot issues uncomment:
-  // deno_typescript::trace_serializer();
+  // trace_serializer();
 
   println!(
     "cargo:rustc-env=TS_VERSION={}",
-    deno_typescript::ts_version()
+    deno_core::ts_version()
   );
 
   println!(
@@ -134,3 +134,16 @@ fn set_binary_metadata() {
 
 #[cfg(not(target_os = "windows"))]
 fn set_binary_metadata() {}
+
+
+/// Sets the --trace-serializer V8 flag for debugging snapshots.
+#[allow(unused)]
+fn trace_serializer() {
+  let dummy = "foo".to_string();
+  let r = deno_core::v8_set_flags(vec![
+    dummy.clone(),
+    "--trace-serializer".to_string(),
+  ]);
+  assert_eq!(r, vec![dummy]);
+}
+

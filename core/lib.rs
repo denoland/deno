@@ -20,6 +20,7 @@ pub mod plugin_api;
 mod resources;
 mod shared_queue;
 mod zero_copy_buf;
+mod ts;
 
 pub use rusty_v8 as v8;
 
@@ -50,6 +51,9 @@ pub use crate::ops::OpDispatcher;
 pub use crate::ops::OpId;
 pub use crate::resources::ResourceTable;
 pub use crate::zero_copy_buf::ZeroCopyBuf;
+pub use crate::ts::op_fetch_asset;
+pub use crate::ts::ts_version;
+pub use crate::ts::TYPESCRIPT_CODE;
 
 pub fn v8_version() -> &'static str {
   v8::V8::get_version()

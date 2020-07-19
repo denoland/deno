@@ -279,6 +279,7 @@ delete Object.prototype.__proto__;
         onload(e);
       }
     });
+
     // Registers the handler for window.onunload function.
     globalThis.addEventListener("unload", (e) => {
       const { onunload } = globalThis;
