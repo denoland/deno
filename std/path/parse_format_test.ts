@@ -35,11 +35,11 @@ const winPaths: Array<[string, string]> = [
   ["\\\\?\\UNC\\server\\share", "\\\\?\\UNC\\"],
 ];
 
-const winSpecialCaseParseTests: Array<ParseTestCase> = [
+const winSpecialCaseParseTests: ParseTestCase[] = [
   ["/foo/bar", { root: "/", dir: "/foo", base: "bar", ext: "", name: "bar" }],
 ];
 
-const winSpecialCaseFormatTests: Array<FormatTestCase> = [
+const winSpecialCaseFormatTests: FormatTestCase[] = [
   [{ dir: "some\\dir" }, "some\\dir\\"],
   [{ base: "index.html" }, "index.html"],
   [{ root: "C:\\" }, "C:\\"],
@@ -73,7 +73,7 @@ const unixPaths: Array<[string, string]> = [
   ["/foo/bar.baz", "/"],
 ];
 
-const unixSpecialCaseFormatTests: Array<FormatTestCase> = [
+const unixSpecialCaseFormatTests: FormatTestCase[] = [
   [{ dir: "some/dir" }, "some/dir/"],
   [{ base: "index.html" }, "index.html"],
   [{ root: "/" }, "/"],
@@ -104,7 +104,7 @@ function checkParseFormat(
 
 function checkSpecialCaseParseFormat(
   path: typeof win32 | typeof posix,
-  testCases: Array<ParseTestCase>,
+  testCases: ParseTestCase[],
 ): void {
   testCases.forEach(([element, expect]) => {
     assertEquals(path.parse(element), expect);
@@ -113,7 +113,7 @@ function checkSpecialCaseParseFormat(
 
 function checkFormat(
   path: typeof win32 | typeof posix,
-  testCases: Array<FormatTestCase>,
+  testCases: FormatTestCase[],
 ): void {
   testCases.forEach((testCase) => {
     assertEquals(path.format(testCase[0]), testCase[1]);
@@ -138,7 +138,7 @@ Deno.test("format", function () {
 });
 
 // Test removal of trailing path separators
-const windowsTrailingTests: Array<ParseTestCase> = [
+const windowsTrailingTests: ParseTestCase[] = [
   [".\\", { root: "", dir: "", base: ".", ext: "", name: "." }],
   ["\\\\", { root: "\\", dir: "\\", base: "", ext: "", name: "" }],
   ["\\\\", { root: "\\", dir: "\\", base: "", ext: "", name: "" }],
@@ -158,7 +158,7 @@ const windowsTrailingTests: Array<ParseTestCase> = [
   ],
 ];
 
-const posixTrailingTests: Array<ParseTestCase> = [
+const posixTrailingTests: ParseTestCase[] = [
   ["./", { root: "", dir: "", base: ".", ext: "", name: "." }],
   ["//", { root: "/", dir: "/", base: "", ext: "", name: "" }],
   ["///", { root: "/", dir: "/", base: "", ext: "", name: "" }],
