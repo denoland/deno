@@ -118,6 +118,7 @@ fn main() {
     .collect::<Vec<String>>();
   create_runtime_snapshot(&runtime_snapshot_path, runtime_files);
   create_compiler_snapshot(&compiler_snapshot_path, js_files, &c);
+
   set_binary_metadata();
 }
 

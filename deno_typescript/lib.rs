@@ -19,7 +19,7 @@ pub fn ts_version() -> String {
   pkg["version"].as_str().unwrap().to_string()
 }
 
-pub fn get_asset(name: &str) -> Option<&'static str> {
+fn get_asset(name: &str) -> Option<&'static str> {
   macro_rules! inc {
     ($e:expr) => {
       Some(include_str!(concat!("typescript/lib/", $e)))
