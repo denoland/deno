@@ -8,6 +8,6 @@ pub fn init(i: &mut CoreIsolate, _s: &State) {
   // TODO(bartlomieju): is this op even required?
   i.register_op(
     "op_fetch_asset",
-    deno_typescript::op_fetch_asset(custom_assets),
+    crate::op_fetch_asset::op_fetch_asset(custom_assets),
   );
 }
