@@ -1,11 +1,14 @@
 // Copyright the Browserify authors. MIT License.
 // Ported from https://github.com/browserify/path-browserify/
+import type { FormatInputPathObject, ParsedPath } from "./mod.ts";
+
 import { assertEquals } from "../testing/asserts.ts";
-import * as path from "./mod.ts";
+import { win32, posix } from "./mod.ts";
 
-// TODO(kt3k): fix any types in this file
+type FormatTestCase = [FormatInputPathObject, string];
+type ParseTestCase = [string, ParsedPath];
 
-const winPaths = [
+const winPaths: Array<[string, string]> = [
   // [path, root]
   ["C:\\path\\dir\\index.html", "C:\\"],
   ["C:\\another_path\\DIR\\1\\2\\33\\\\index", "C:\\"],
@@ -32,9 +35,11 @@ const winPaths = [
   ["\\\\?\\UNC\\server\\share", "\\\\?\\UNC\\"],
 ];
 
-const winSpecialCaseParseTests = [["/foo/bar", { root: "/" }]];
+const winSpecialCaseParseTests: ParseTestCase[] = [
+  ["/foo/bar", { root: "/", dir: "/foo", base: "bar", ext: "", name: "bar" }],
+];
 
-const winSpecialCaseFormatTests = [
+const winSpecialCaseFormatTests: FormatTestCase[] = [
   [{ dir: "some\\dir" }, "some\\dir\\"],
   [{ base: "index.html" }, "index.html"],
   [{ root: "C:\\" }, "C:\\"],
@@ -44,7 +49,7 @@ const winSpecialCaseFormatTests = [
   [{}, ""],
 ];
 
-const unixPaths = [
+const unixPaths: Array<[string, string]> = [
   // [path, root]
   ["/home/user/dir/file.txt", "/"],
   ["/home/user/a dir/another File.zip", "/"],
@@ -68,7 +73,7 @@ const unixPaths = [
   ["/foo/bar.baz", "/"],
 ];
 
-const unixSpecialCaseFormatTests = [
+const unixSpecialCaseFormatTests: FormatTestCase[] = [
   [{ dir: "some/dir" }, "some/dir/"],
   [{ base: "index.html" }, "index.html"],
   [{ root: "/" }, "/"],
@@ -78,10 +83,11 @@ const unixSpecialCaseFormatTests = [
   [{}, ""],
 ];
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function checkParseFormat(path: any, paths: any): void {
-  paths.forEach(function (p: Array<Record<string, unknown>>) {
-    const element = p[0];
+function checkParseFormat(
+  path: typeof win32 | typeof posix,
+  testCases: Array<[string, string]>,
+): void {
+  testCases.forEach(([element, root]) => {
     const output = path.parse(element);
     assertEquals(typeof output.root, "string");
     assertEquals(typeof output.dir, "string");
@@ -89,50 +95,50 @@ function checkParseFormat(path: any, paths: any): void {
     assertEquals(typeof output.ext, "string");
     assertEquals(typeof output.name, "string");
     assertEquals(path.format(output), element);
-    assertEquals(output.rooroot, undefined);
+    assertEquals(output.root, root);
     assertEquals(output.dir, output.dir ? path.dirname(element) : "");
     assertEquals(output.base, path.basename(element));
+    assertEquals(output.ext, path.extname(element));
   });
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function checkSpecialCaseParseFormat(path: any, testCases: any): void {
-  testCases.forEach(function (testCase: Array<Record<string, unknown>>) {
-    const element = testCase[0];
-    const expect = testCase[1];
-    const output = path.parse(element);
-    Object.keys(expect).forEach(function (key) {
-      assertEquals(output[key], expect[key]);
-    });
+function checkSpecialCaseParseFormat(
+  path: typeof win32 | typeof posix,
+  testCases: ParseTestCase[],
+): void {
+  testCases.forEach(([element, expect]) => {
+    assertEquals(path.parse(element), expect);
   });
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function checkFormat(path: any, testCases: unknown[][]): void {
-  testCases.forEach(function (testCase) {
+function checkFormat(
+  path: typeof win32 | typeof posix,
+  testCases: FormatTestCase[],
+): void {
+  testCases.forEach((testCase) => {
     assertEquals(path.format(testCase[0]), testCase[1]);
   });
 }
 
 Deno.test("parseWin32", function () {
-  checkParseFormat(path.win32, winPaths);
-  checkSpecialCaseParseFormat(path.win32, winSpecialCaseParseTests);
+  checkParseFormat(win32, winPaths);
+  checkSpecialCaseParseFormat(win32, winSpecialCaseParseTests);
 });
 
 Deno.test("parse", function () {
-  checkParseFormat(path.posix, unixPaths);
+  checkParseFormat(posix, unixPaths);
 });
 
 Deno.test("formatWin32", function () {
-  checkFormat(path.win32, winSpecialCaseFormatTests);
+  checkFormat(win32, winSpecialCaseFormatTests);
 });
 
 Deno.test("format", function () {
-  checkFormat(path.posix, unixSpecialCaseFormatTests);
+  checkFormat(posix, unixSpecialCaseFormatTests);
 });
 
 // Test removal of trailing path separators
-const windowsTrailingTests = [
+const windowsTrailingTests: ParseTestCase[] = [
   [".\\", { root: "", dir: "", base: ".", ext: "", name: "." }],
   ["\\\\", { root: "\\", dir: "\\", base: "", ext: "", name: "" }],
   ["\\\\", { root: "\\", dir: "\\", base: "", ext: "", name: "" }],
@@ -152,7 +158,7 @@ const windowsTrailingTests = [
   ],
 ];
 
-const posixTrailingTests = [
+const posixTrailingTests: ParseTestCase[] = [
   ["./", { root: "", dir: "", base: ".", ext: "", name: "." }],
   ["//", { root: "/", dir: "/", base: "", ext: "", name: "" }],
   ["///", { root: "/", dir: "/", base: "", ext: "", name: "" }],
@@ -165,7 +171,7 @@ const posixTrailingTests = [
 
 Deno.test("parseTrailingWin32", function () {
   windowsTrailingTests.forEach(function (p) {
-    const actual = path.win32.parse(p[0] as string);
+    const actual = win32.parse(p[0]);
     const expected = p[1];
     assertEquals(actual, expected);
   });
@@ -173,7 +179,7 @@ Deno.test("parseTrailingWin32", function () {
 
 Deno.test("parseTrailing", function () {
   posixTrailingTests.forEach(function (p) {
-    const actual = path.posix.parse(p[0] as string);
+    const actual = posix.parse(p[0]);
     const expected = p[1];
     assertEquals(actual, expected);
   });
