@@ -140,14 +140,8 @@ async function runTestsForPermissionSet(
 
   try {
     for await (const line of readLines(conn)) {
-      let message;
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        message = JSON.parse(line) as any;
-      } catch (e) {
-        Deno.core.print(`message: ${line}\n`, true);
-        throw e;
-      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const message = JSON.parse(line) as any;
       reportToConsole(message);
       if (message.start != null) {
         expectedPassedTests = message.start.tests.length;
