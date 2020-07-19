@@ -1,9 +1,9 @@
 [WILDCARD]
 error: Uncaught TypeError: Cannot resolve extension for "[WILDCARD]config.json" with mediaType "Json".
-    at getExtension (js2/999_main_compiler.js:[WILDCARD])
-    at new SourceFile (js2/999_main_compiler.js:[WILDCARD])
-    at Function.addToCache (js2/999_main_compiler.js:[WILDCARD])
-    at buildSourceFileCache (js2/999_main_compiler.js:[WILDCARD])
-    at compile (js2/999_main_compiler.js:[WILDCARD])
-    at tsCompilerOnMessage (js2/999_main_compiler.js:[WILDCARD])
+    at getExtension (js2/99_main_compiler.js:[WILDCARD])
+    at new SourceFile (js2/99_main_compiler.js:[WILDCARD])
+    at Function.addToCache (js2/99_main_compiler.js:[WILDCARD])
+    at buildSourceFileCache (js2/99_main_compiler.js:[WILDCARD])
+    at compile (js2/99_main_compiler.js:[WILDCARD])
+    at tsCompilerOnMessage (js2/99_main_compiler.js:[WILDCARD])
 [WILDCARD]
