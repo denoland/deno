@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
-  const build = window.__bootstrap.build;
+  const { build } = window.__bootstrap.build;
   const internals = window.__bootstrap.internals;
   let logDebug = false;
   let logSource = "JS";
