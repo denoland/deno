@@ -6,11 +6,21 @@
   const { Blob, bytesSymbol: blobBytesSymbol } = window.__bootstrap.blob;
   const { read } = window.__bootstrap.io;
   const { close } = window.__bootstrap.resources;
-  const { sendAsync } = window.__bootstrap.dispatchJson;
+  const { sendSync, sendAsync } = window.__bootstrap.dispatchJson;
   const Body = window.__bootstrap.body;
   const { ReadableStream } = window.__bootstrap.streams;
   const { MultipartBuilder } = window.__bootstrap.multipart;
   const { Headers } = window.__bootstrap.headers;
+
+  function opCreateHTTPClient(args) {
+    return sendSync("op_create_http_client", args);
+  }
+
+  class HTTPClient {
+    constructor() {
+      this.rid = opCreateHTTPClient({});
+    }
+  }
 
   function opFetch(
     args,
@@ -174,6 +184,7 @@
     method,
     headers,
     body,
+    clientRid,
   ) {
     let headerArray = [];
     if (headers) {
@@ -184,6 +195,7 @@
       method,
       url,
       headers: headerArray,
+      client_rid: clientRid,
     };
 
     return opFetch(args, body);
@@ -197,6 +209,7 @@
     let method = null;
     let headers = null;
     let body;
+    let clientRid = null;
     let redirected = false;
     let remRedirectCount = 20; // TODO: use a better way to handle
 
@@ -250,6 +263,10 @@
             headers.set("content-type", contentType);
           }
         }
+
+        if (init.client instanceof HTTPClient) {
+          clientRid = init.client.rid;
+        }
       }
     } else {
       url = input.url;
@@ -264,7 +281,7 @@
     let responseBody;
     let responseInit = {};
     while (remRedirectCount) {
-      const fetchResponse = await sendFetchReq(url, method, headers, body);
+      const fetchResponse = await sendFetchReq(url, method, headers, body, clientRid);
 
       if (
         NULL_BODY_STATUS.includes(fetchResponse.status) ||
@@ -366,5 +383,6 @@
   window.__bootstrap.fetch = {
     fetch,
     Response,
+    HTTPClient,
   };
 })(this);

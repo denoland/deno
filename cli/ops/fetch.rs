@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use super::io::{StreamResource, StreamResourceHolder};
-use crate::http_util::HttpBody;
+use crate::http_util::{create_http_client, HttpBody};
 use crate::op_error::OpError;
 use crate::state::State;
 use deno_core::CoreIsolate;
@@ -11,10 +11,15 @@ use futures::future::FutureExt;
 use http::header::HeaderName;
 use http::header::HeaderValue;
 use http::Method;
+use reqwest::Client;
 use std::convert::From;
 
 pub fn init(i: &mut CoreIsolate, s: &State) {
   i.register_op("op_fetch", s.stateful_json_op2(op_fetch));
+  i.register_op(
+    "op_create_http_client",
+    s.stateful_json_op2(op_create_http_client),
+  );
 }
 
 #[derive(Deserialize)]
@@ -22,6 +27,7 @@ struct FetchArgs {
   method: Option<String>,
   url: String,
   headers: Vec<(String, String)>,
+  client_rid: Option<u32>,
 }
 
 pub fn op_fetch(
@@ -32,8 +38,17 @@ pub fn op_fetch(
 ) -> Result<JsonOp, OpError> {
   let args: FetchArgs = serde_json::from_value(args)?;
   let url = args.url;
+  let resource_table_ = isolate_state.resource_table.borrow();
+  let state_ = state.borrow();
 
-  let client = &state.borrow().http_client;
+  let client = if let Some(rid) = args.client_rid {
+    let r = resource_table_
+      .get::<HTTPClientResource>(rid)
+      .ok_or(OpError::bad_resource_id())?;
+    &r.client
+  } else {
+    &state_.http_client
+  };
 
   let method = match args.method {
     Some(method_str) => Method::from_bytes(method_str.as_bytes())
@@ -99,4 +114,35 @@ pub fn op_fetch(
   };
 
   Ok(JsonOp::Async(future.boxed_local()))
+}
+
+struct HTTPClientResource {
+  client: Client,
+}
+
+impl HTTPClientResource {
+  fn new(client: Client) -> Self {
+    Self { client }
+  }
+}
+
+#[derive(Deserialize, Default, Debug)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+struct CreateHTTPClientOptions {}
+
+fn op_create_http_client(
+  isolate_state: &mut CoreIsolateState,
+  _state: &State,
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<JsonOp, OpError> {
+  let _args: CreateHTTPClientOptions = serde_json::from_value(args)?;
+  let mut resource_table = isolate_state.resource_table.borrow_mut();
+
+  let client = create_http_client(None).unwrap();
+
+  let rid =
+    resource_table.add("httpClient", Box::new(HTTPClientResource::new(client)));
+  Ok(JsonOp::Sync(json!(rid)))
 }

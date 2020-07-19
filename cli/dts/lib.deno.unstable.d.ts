@@ -1214,4 +1214,12 @@ declare namespace Deno {
    * The pid of the current process's parent.
    */
   export const ppid: number;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   * A HTTPClient for a custom fetch.
+   */
+  export class HTTPClient {
+    rid: number;
+    constructor();
+  }
 }

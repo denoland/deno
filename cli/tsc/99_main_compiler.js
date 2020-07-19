@@ -100,6 +100,7 @@ delete Object.prototype.__proto__;
     "PermissionStatus",
     "hostname",
     "ppid",
+    "HTTPClient",
   ];
 
   function transformMessageText(messageText, code) {
