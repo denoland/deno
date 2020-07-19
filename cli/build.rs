@@ -44,23 +44,23 @@ fn create_compiler_snapshot(
   let mut custom_libs: HashMap<String, PathBuf> = HashMap::new();
   custom_libs.insert(
     "lib.deno.window.d.ts".to_string(),
-    cwd.join("js/lib.deno.window.d.ts"),
+    cwd.join("js2/lib.deno.window.d.ts"),
   );
   custom_libs.insert(
     "lib.deno.worker.d.ts".to_string(),
-    cwd.join("js/lib.deno.worker.d.ts"),
+    cwd.join("js2/lib.deno.worker.d.ts"),
   );
   custom_libs.insert(
     "lib.deno.shared_globals.d.ts".to_string(),
-    cwd.join("js/lib.deno.shared_globals.d.ts"),
+    cwd.join("js2/lib.deno.shared_globals.d.ts"),
   );
   custom_libs.insert(
     "lib.deno.ns.d.ts".to_string(),
-    cwd.join("js/lib.deno.ns.d.ts"),
+    cwd.join("js2/lib.deno.ns.d.ts"),
   );
   custom_libs.insert(
     "lib.deno.unstable.d.ts".to_string(),
-    cwd.join("js/lib.deno.unstable.d.ts"),
+    cwd.join("js2/lib.deno.unstable.d.ts"),
   );
   runtime_isolate.register_op(
     "op_fetch_asset",
