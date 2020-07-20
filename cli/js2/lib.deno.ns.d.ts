@@ -2019,7 +2019,7 @@ declare namespace Deno {
    *
    * [ "/etc/passwd" ]
    */
-  export const args: readonly (string | undefined)[];
+  export const args: readonly string[];
 
   /** A symbol which can be used as a key for a custom method which will be
    * called when `Deno.inspect()` is called, or when the object is logged to
