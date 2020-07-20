@@ -1,7 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-extern crate deno_core;
-extern crate serde;
-extern crate serde_json;
+// Note: this module is used both in build.rs and main.rs.
 
 pub use deno_core::v8_set_flags;
 use deno_core::CoreIsolateState;
@@ -10,14 +8,6 @@ use deno_core::OpDispatcher;
 use deno_core::ZeroCopyBuf;
 use std::collections::HashMap;
 use std::path::PathBuf;
-
-pub static TYPESCRIPT_CODE: &str = include_str!("typescript/lib/typescript.js");
-
-pub fn ts_version() -> String {
-  let data = include_str!("typescript/package.json");
-  let pkg: serde_json::Value = serde_json::from_str(data).unwrap();
-  pkg["version"].as_str().unwrap().to_string()
-}
 
 fn get_asset(name: &str) -> Option<&'static str> {
   macro_rules! inc {

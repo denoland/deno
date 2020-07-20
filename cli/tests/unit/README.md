@@ -2,9 +2,6 @@
 
 Files in this directory are unit tests for Deno runtime.
 
-They are run under compiled Deno binary as opposed to files in `cli/js/` which
-are bundled and snapshotted using `deno_typescript` crate.
-
 Testing Deno runtime code requires checking API under different runtime
 permissions (ie. running with different `--allow-*` flags). To accomplish this
 all tests exercised are created using `unitTest()` function.

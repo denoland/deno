@@ -49,6 +49,7 @@ mod metrics;
 mod module_graph;
 pub mod msg;
 pub mod op_error;
+mod op_fetch_asset;
 pub mod ops;
 pub mod permissions;
 mod repl;

@@ -386,7 +386,6 @@ dependencies = [
  "clap",
  "deno_core",
  "deno_lint",
- "deno_typescript",
  "dissimilar",
  "dlopen",
  "futures 0.3.5",
@@ -457,15 +456,6 @@ dependencies = [
  "regex",
  "swc_atoms",
  "swc_ecma_visit",
-]
-
-[[package]]
-name = "deno_typescript"
-version = "0.49.0"
-dependencies = [
- "deno_core",
- "serde",
- "serde_json",
 ]
 
 [[package]]
