@@ -1,10 +1,27 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+import { EOL, format } from "./eol.ts";
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Replacer = (key: string, value: any) => any;
 
 export interface WriteJsonOptions {
   spaces?: number | string;
   replacer?: Array<number | string> | Replacer;
+}
+
+function createJsonWithEol(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  object: any,
+  options: WriteJsonOptions,
+): string {
+  const contentRaw = JSON.stringify(
+    object,
+    options.replacer as string[],
+    options.spaces,
+  );
+
+  const eol = Deno.build.os === "windows" ? EOL.CRLF : EOL.LF;
+  return format(`${contentRaw}\n`, eol);
 }
 
 /* Writes an object to a JSON file. */
@@ -17,11 +34,7 @@ export async function writeJson(
   let contentRaw = "";
 
   try {
-    contentRaw = JSON.stringify(
-      object,
-      options.replacer as string[],
-      options.spaces,
-    );
+    contentRaw = createJsonWithEol(object, options);
   } catch (err) {
     err.message = `${filePath}: ${err.message}`;
     throw err;
@@ -40,11 +53,7 @@ export function writeJsonSync(
   let contentRaw = "";
 
   try {
-    contentRaw = JSON.stringify(
-      object,
-      options.replacer as string[],
-      options.spaces,
-    );
+    contentRaw = createJsonWithEol(object, options);
   } catch (err) {
     err.message = `${filePath}: ${err.message}`;
     throw err;
