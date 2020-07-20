@@ -8,26 +8,27 @@
 
   const dataSymbol = Symbol("data");
 
+  function parseFormDataValue(value, filename) {
+    if (value instanceof domFile.DomFile) {
+      return new domFile.DomFile([value], filename || value.name, {
+        type: value.type,
+      });
+    } else if (value instanceof blob.Blob) {
+      return new domFile.DomFile([value], filename || "blob", {
+        type: value.type,
+      });
+    } else {
+      return String(value);
+    }
+  }
+
   class FormDataBase {
     [dataSymbol] = [];
 
-    append(
-      name,
-      value,
-      filename,
-    ) {
+    append(name, value, filename) {
       requiredArguments("FormData.append", arguments.length, 2);
       name = String(name);
-      if (value instanceof domFile.DomFile) {
-        this[dataSymbol].push([name, value]);
-      } else if (value instanceof blob.Blob) {
-        const dfile = new domFile.DomFile([value], filename || "blob", {
-          type: value.type,
-        });
-        this[dataSymbol].push([name, dfile]);
-      } else {
-        this[dataSymbol].push([name, String(value)]);
-      }
+      this[dataSymbol].push([name, parseFormDataValue(value, filename)]);
     }
 
     delete(name) {
@@ -74,11 +75,7 @@
       return this[dataSymbol].some((entry) => entry[0] === name);
     }
 
-    set(
-      name,
-      value,
-      filename,
-    ) {
+    set(name, value, filename) {
       requiredArguments("FormData.set", arguments.length, 2);
       name = String(name);
 
@@ -89,19 +86,7 @@
       while (i < this[dataSymbol].length) {
         if (this[dataSymbol][i][0] === name) {
           if (!found) {
-            if (value instanceof domFile.DomFile) {
-              this[dataSymbol][i][1] = value;
-            } else if (value instanceof blob.Blob) {
-              this[dataSymbol][i][1] = new domFile.DomFile(
-                [value],
-                filename || "blob",
-                {
-                  type: value.type,
-                },
-              );
-            } else {
-              this[dataSymbol][i][1] = String(value);
-            }
+            this[dataSymbol][i][1] = parseFormDataValue(value, filename);
             found = true;
           } else {
             this[dataSymbol].splice(i, 1);
@@ -113,16 +98,7 @@
 
       // Otherwise, append entry to the context object’s entry list.
       if (!found) {
-        if (value instanceof domFile.DomFile) {
-          this[dataSymbol].push([name, value]);
-        } else if (value instanceof blob.Blob) {
-          const dfile = new domFile.DomFile([value], filename || "blob", {
-            type: value.type,
-          });
-          this[dataSymbol].push([name, dfile]);
-        } else {
-          this[dataSymbol].push([name, String(value)]);
-        }
+        this[dataSymbol].push([name, parseFormDataValue(value, filename)]);
       }
     }
 
