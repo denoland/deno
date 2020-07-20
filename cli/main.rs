@@ -11,7 +11,7 @@ extern crate futures;
 extern crate serde_json;
 extern crate clap;
 extern crate deno_core;
-extern crate encoding;
+extern crate encoding_rs;
 extern crate indexmap;
 #[cfg(unix)]
 extern crate nix;

@@ -1,5 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use std::io::{Error, ErrorKind};
+use encoding_rs::*;
+use std::{
+  borrow::Cow,
+  io::{Error, ErrorKind},
+};
 
 /// Attempts to detect the character encoding of the provided bytes.
 ///
@@ -25,11 +29,18 @@ pub fn detect_charset(bytes: &[u8]) -> &str {
 ///
 /// Supports all encodings supported by the encoding crate, which includes all encodings specified in the WHATWG Encoding Standard (see: https://encoding.spec.whatwg.org/).
 pub fn convert_to_utf8(bytes: &[u8], charset: &str) -> Result<String, Error> {
-  match encoding::label::encoding_from_whatwg_label(charset) {
-    Some(coder) => match coder.decode(bytes, encoding::DecoderTrap::Strict) {
-      Ok(text) => Ok(text),
-      Err(_e) => Err(ErrorKind::InvalidData.into()),
-    },
+  match Encoding::for_label(charset.as_bytes()) {
+    Some(encoding) => {
+      let decoding_result =
+        encoding.decode_without_bom_handling_and_without_replacement(bytes);
+      match decoding_result {
+        Some(cow_text) => match cow_text {
+          Cow::Owned(text) => Ok(text),
+          Cow::Borrowed(text) => Ok(text.to_owned()),
+        },
+        None => Err(ErrorKind::InvalidData.into()),
+      }
+    }
     None => Err(Error::new(
       ErrorKind::InvalidInput,
       format!("Unsupported charset: {}", charset),
