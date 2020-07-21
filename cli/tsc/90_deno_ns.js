@@ -6,9 +6,6 @@
   window.__bootstrap.denoNs = {
     test: window.__bootstrap.testing.test,
     metrics: window.__bootstrap.metrics.metrics,
-    Process: window.__bootstrap.process.Process,
-    run: window.__bootstrap.process.run,
-    isatty: window.__bootstrap.tty.isatty,
     writeFileSync: window.__bootstrap.writeFile.writeFileSync,
     writeFile: window.__bootstrap.writeFile.writeFile,
     writeTextFileSync: window.__bootstrap.writeFile.writeTextFileSync,
