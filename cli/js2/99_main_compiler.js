@@ -1,7 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-// TODO(ry) Combine this implementation with //deno_typescript/compiler_main.js
-
 // This module is the entry point for "compiler" isolate, ie. the one
 // that is created when Deno needs to compile TS/WASM to JS.
 //

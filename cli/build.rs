@@ -1,4 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+//
+mod op_fetch_asset;
 
 use deno_core::js_check;
 use deno_core::CoreIsolate;
@@ -64,14 +66,21 @@ fn create_compiler_snapshot(
   );
   runtime_isolate.register_op(
     "op_fetch_asset",
-    deno_typescript::op_fetch_asset(custom_libs),
+    op_fetch_asset::op_fetch_asset(custom_libs),
   );
 
-  js_check(
-    runtime_isolate.execute("typescript.js", deno_typescript::TYPESCRIPT_CODE),
-  );
+  js_check(runtime_isolate.execute(
+    "typescript.js",
+    &std::fs::read_to_string("typescript/lib/typescript.js").unwrap(),
+  ));
 
   create_snapshot(runtime_isolate, snapshot_path, files);
+}
+
+fn ts_version() -> String {
+  let data = include_str!("typescript/package.json");
+  let pkg: serde_json::Value = serde_json::from_str(data).unwrap();
+  pkg["version"].as_str().unwrap().to_string()
 }
 
 fn main() {
@@ -81,12 +90,9 @@ fn main() {
   }
 
   // To debug snapshot issues uncomment:
-  // deno_typescript::trace_serializer();
+  // op_fetch_asset::trace_serializer();
 
-  println!(
-    "cargo:rustc-env=TS_VERSION={}",
-    deno_typescript::ts_version()
-  );
+  println!("cargo:rustc-env=TS_VERSION={}", ts_version());
 
   println!(
     "cargo:rustc-env=TARGET={}",
