@@ -13,7 +13,6 @@ delete Object.prototype.__proto__;
   const build = window.__bootstrap.build;
   const version = window.__bootstrap.version;
   const errorStack = window.__bootstrap.errorStack;
-  const os = window.__bootstrap.os;
   const timers = window.__bootstrap.timers;
   const Console = window.__bootstrap.console.Console;
   const worker = window.__bootstrap.worker;
@@ -21,15 +20,6 @@ delete Object.prototype.__proto__;
   const abortSignal = window.__bootstrap.abortSignal;
   const performance = window.__bootstrap.performance;
   const crypto = window.__bootstrap.crypto;
-  const url = window.__bootstrap.url;
-  const headers = window.__bootstrap.headers;
-  const queuingStrategy = window.__bootstrap.queuingStrategy;
-  const streams = window.__bootstrap.streams;
-  const blob = window.__bootstrap.blob;
-  const domFile = window.__bootstrap.domFile;
-  const formData = window.__bootstrap.formData;
-  const request = window.__bootstrap.request;
-  const fetch = window.__bootstrap.fetch;
   const denoNs = window.__bootstrap.denoNs;
   const denoNsUnstable = window.__bootstrap.denoNsUnstable;
 
@@ -38,18 +28,6 @@ delete Object.prototype.__proto__;
   function windowClose() {
     if (!windowIsClosing) {
       windowIsClosing = true;
-      // Push a macrotask to exit after a promise resolve.
-      // This is not perfect, but should be fine for first pass.
-      Promise.resolve().then(() =>
-        timers.setTimeout.call(
-          null,
-          () => {
-            // This should be fine, since only Window/MainWorker has .close()
-            os.exit(0);
-          },
-          0,
-        )
-      );
     }
   }
 
@@ -179,7 +157,6 @@ delete Object.prototype.__proto__;
     btoa: util.writable(btoa),
     clearInterval: util.writable(timers.clearInterval),
     clearTimeout: util.writable(timers.clearTimeout),
-    fetch: util.writable(fetch.fetch),
     // queueMicrotask is bound in Rust
     setInterval: util.writable(timers.setInterval),
     setTimeout: util.writable(timers.setTimeout),
@@ -190,25 +167,12 @@ delete Object.prototype.__proto__;
     console: util.writable(new Console(core.print)),
     AbortController: util.nonEnumerable(abortSignal.AbortController),
     AbortSignal: util.nonEnumerable(abortSignal.AbortSignal),
-    Blob: util.nonEnumerable(blob.Blob),
-    ByteLengthQueuingStrategy: util.nonEnumerable(
-      queuingStrategy.ByteLengthQueuingStrategy,
-    ),
-    CountQueuingStrategy: util.nonEnumerable(
-      queuingStrategy.CountQueuingStrategy,
-    ),
     crypto: util.readOnly(crypto),
-    File: util.nonEnumerable(domFile.DomFile),
     CustomEvent: util.nonEnumerable(CustomEvent),
     DOMException: util.nonEnumerable(DOMException),
     ErrorEvent: util.nonEnumerable(ErrorEvent),
     Event: util.nonEnumerable(Event),
     EventTarget: util.nonEnumerable(EventTarget),
-    Headers: util.nonEnumerable(headers.Headers),
-    FormData: util.nonEnumerable(formData.FormData),
-    ReadableStream: util.nonEnumerable(streams.ReadableStream),
-    Request: util.nonEnumerable(request.Request),
-    Response: util.nonEnumerable(fetch.Response),
     performance: util.writable(new performance.Performance()),
     Performance: util.nonEnumerable(performance.Performance),
     PerformanceEntry: util.nonEnumerable(performance.PerformanceEntry),
@@ -216,11 +180,7 @@ delete Object.prototype.__proto__;
     PerformanceMeasure: util.nonEnumerable(performance.PerformanceMeasure),
     TextDecoder: util.nonEnumerable(TextDecoder),
     TextEncoder: util.nonEnumerable(TextEncoder),
-    TransformStream: util.nonEnumerable(streams.TransformStream),
-    URL: util.nonEnumerable(url.URL),
-    URLSearchParams: util.nonEnumerable(url.URLSearchParams),
     Worker: util.nonEnumerable(worker.Worker),
-    WritableStream: util.nonEnumerable(streams.WritableStream),
   };
 
   const eventTargetProperties = {
