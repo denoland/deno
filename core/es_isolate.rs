@@ -112,10 +112,10 @@ impl EsIsolate {
   ) -> Result<ModuleId, ErrBox> {
     let state_rc = Self::state(self);
     let core_state_rc = CoreIsolate::state(self);
-    let core_state = core_state_rc.borrow();
-    let scope = &mut v8::HandleScope::new(&mut *self.0);
-    let context = core_state.global_context.get(scope).unwrap();
-    let scope = &mut v8::ContextScope::new(scope, context);
+    let scope = &mut v8::HandleScope::with_context(
+      &mut *self.0,
+      core_state_rc.borrow().global_context.as_ref().unwrap(),
+    );
 
     let name_str = v8::String::new(scope, name).unwrap();
     let source_str = v8::String::new(scope, source).unwrap();
@@ -146,15 +146,14 @@ impl EsIsolate {
       import_specifiers.push(module_specifier);
     }
 
-    let mut handle = v8::Global::<v8::Module>::new();
-    handle.set(tc_scope, module);
+    state_rc.borrow_mut().modules.register(
+      id,
+      name,
+      main,
+      v8::Global::<v8::Module>::new(tc_scope, module),
+      import_specifiers,
+    );
 
-    {
-      let mut state = state_rc.borrow_mut();
-      state
-        .modules
-        .register(id, name, main, handle, import_specifiers);
-    }
     Ok(id)
   }
 
@@ -164,23 +163,19 @@ impl EsIsolate {
   /// the V8 exception. By default this type is JSError, however it may be a
   /// different type if CoreIsolate::set_js_error_create_fn() has been used.
   fn mod_instantiate(&mut self, id: ModuleId) -> Result<(), ErrBox> {
-    let state_rc = Self::state(self);
-    let state = state_rc.borrow();
-
     let core_state_rc = CoreIsolate::state(self);
     let core_state = core_state_rc.borrow();
-    let scope = &mut v8::HandleScope::new(&mut *self.0);
-    let context = core_state.global_context.get(scope).unwrap();
-    let scope = &mut v8::ContextScope::new(scope, context);
+    let scope = &mut v8::HandleScope::with_context(
+      &mut *self.0,
+      core_state.global_context.as_ref().unwrap(),
+    );
     let tc_scope = &mut v8::TryCatch::new(scope);
 
-    let module_info = match state.modules.get_info(id) {
-      Some(info) => info,
+    let module = match Self::state(tc_scope).borrow().modules.get_info(id) {
+      Some(info) => v8::Local::new(tc_scope, &info.handle),
       None if id == 0 => return Ok(()),
       _ => panic!("module id {} not found in module table", id),
     };
-    let module = module_info.handle.get(tc_scope).unwrap();
-    drop(state);
 
     if module.get_status() == v8::ModuleStatus::Errored {
       exception_to_err_result(tc_scope, module.get_exception())?
@@ -204,22 +199,22 @@ impl EsIsolate {
   /// different type if CoreIsolate::set_js_error_create_fn() has been used.
   pub fn mod_evaluate(&mut self, id: ModuleId) -> Result<(), ErrBox> {
     self.shared_init();
-    let state_rc = Self::state(self);
-    let state = state_rc.borrow();
 
     let core_state_rc = CoreIsolate::state(self);
 
-    let scope = &mut v8::HandleScope::new(&mut *self.0);
-    let context = {
-      let core_state = core_state_rc.borrow();
-      core_state.global_context.get(scope).unwrap()
-    };
-    let scope = &mut v8::ContextScope::new(scope, context);
+    let scope = &mut v8::HandleScope::with_context(
+      &mut *self.0,
+      core_state_rc.borrow().global_context.as_ref().unwrap(),
+    );
 
-    let info = state.modules.get_info(id).expect("ModuleInfo not found");
-    let module = info.handle.get(scope).expect("Empty module handle");
+    let module = Self::state(scope)
+      .borrow()
+      .modules
+      .get_info(id)
+      .map(|info| v8::Local::new(scope, &info.handle))
+      .expect("ModuleInfo not found");
     let mut status = module.get_status();
-    drop(state);
+
     if status == v8::ModuleStatus::Instantiated {
       // IMPORTANT: Top-level-await is enabled, which means that return value
       // of module evaluation is a promise.
@@ -251,11 +246,7 @@ impl EsIsolate {
           .expect("Expected to get promise as module evaluation result");
         let promise_id = promise.get_identity_hash();
         let mut core_state = core_state_rc.borrow_mut();
-        if let Some(mut handle) =
-          core_state.pending_promise_exceptions.remove(&promise_id)
-        {
-          handle.reset(scope);
-        }
+        core_state.pending_promise_exceptions.remove(&promise_id);
       } else {
         assert!(status == v8::ModuleStatus::Errored);
       }
@@ -278,29 +269,23 @@ impl EsIsolate {
     err: ErrBox,
   ) -> Result<(), ErrBox> {
     let state_rc = Self::state(self);
-    let mut state = state_rc.borrow_mut();
-
     let core_state_rc = CoreIsolate::state(self);
-    let core_state = core_state_rc.borrow();
 
-    let scope = &mut v8::HandleScope::new(&mut *self.0);
-    let context = core_state.global_context.get(scope).unwrap();
-    let scope = &mut v8::ContextScope::new(scope, context);
+    let scope = &mut v8::HandleScope::with_context(
+      &mut *self.0,
+      core_state_rc.borrow().global_context.as_ref().unwrap(),
+    );
 
-    drop(core_state);
-
-    let mut resolver_handle = state
+    let resolver_handle = state_rc
+      .borrow_mut()
       .dyn_import_map
       .remove(&id)
       .expect("Invalid dyn import id");
-    let resolver = resolver_handle.get(scope).unwrap();
-    resolver_handle.reset(scope);
-
-    drop(state);
+    let resolver = resolver_handle.get(scope);
 
     let exception = err
       .downcast_ref::<ErrWithV8Handle>()
-      .and_then(|err| err.get_handle().get(scope))
+      .map(|err| err.get_handle(scope))
       .unwrap_or_else(|| {
         let message = err.to_string();
         let message = v8::String::new(scope, &message).unwrap();
@@ -323,32 +308,27 @@ impl EsIsolate {
 
     debug!("dyn_import_done {} {:?}", id, mod_id);
     assert!(mod_id != 0);
-    let scope = &mut v8::HandleScope::new(&mut *self.0);
-    let context = {
-      let core_state = core_state_rc.borrow();
-      core_state.global_context.get(scope).unwrap()
-    };
-    let scope = &mut v8::ContextScope::new(scope, context);
+    let scope = &mut v8::HandleScope::with_context(
+      &mut *self.0,
+      core_state_rc.borrow().global_context.as_ref().unwrap(),
+    );
 
-    let mut resolver_handle = {
-      let mut state = state_rc.borrow_mut();
-      state
-        .dyn_import_map
-        .remove(&id)
-        .expect("Invalid dyn import id")
-    };
-    let resolver = resolver_handle.get(scope).unwrap();
-    resolver_handle.reset(scope);
+    let resolver_handle = state_rc
+      .borrow_mut()
+      .dyn_import_map
+      .remove(&id)
+      .expect("Invalid dyn import id");
+    let resolver = resolver_handle.get(scope);
 
     let module = {
       let state = state_rc.borrow();
-      let info = state
+      state
         .modules
         .get_info(mod_id)
-        .expect("Dyn import module info not found");
-      // Resolution success
-      info.handle.get(scope).unwrap()
+        .map(|info| v8::Local::new(scope, &info.handle))
+        .expect("Dyn import module info not found")
     };
+    // Resolution success
     assert_eq!(module.get_status(), v8::ModuleStatus::Evaluated);
 
     let module_namespace = module.get_module_namespace();

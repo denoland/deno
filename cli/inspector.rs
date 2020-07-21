@@ -415,7 +415,11 @@ impl DenoInspector {
     });
 
     // Tell the inspector about the global context.
-    let context = core_state.global_context.get(scope).unwrap();
+    let context = core_state
+      .global_context
+      .as_ref()
+      .map(|context| v8::Local::new(scope, context))
+      .unwrap();
     let context_name = v8::inspector::StringView::from(&b"global context"[..]);
     self_.context_created(context, Self::CONTEXT_GROUP_ID, context_name);
 

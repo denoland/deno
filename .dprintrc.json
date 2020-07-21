@@ -12,7 +12,7 @@
   "includes": ["**/*.{ts,tsx,js,jsx,json,md}"],
   "excludes": [
     ".cargo_home",
-    "deno_typescript/typescript",
+    "cli/typescript",
     "gh-pages",
     "std/**/testdata",
     "std/**/vendor",
