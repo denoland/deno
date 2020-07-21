@@ -695,7 +695,7 @@ pub fn main() {
 
   let log_level = match flags.log_level {
     Some(level) => level,
-    None => Level::Info, // Default log level
+    None => Level::Warn, // Default log level
   };
   log::set_max_level(log_level.to_level_filter());
 
