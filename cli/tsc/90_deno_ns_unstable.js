@@ -3,17 +3,12 @@
 // This module exports unstable Deno APIs.
 ((window) => {
   window.__bootstrap.denoNsUnstable = {
-    signal: window.__bootstrap.signals.signal,
-    signals: window.__bootstrap.signals.signals,
-    Signal: window.__bootstrap.signals.Signal,
-    SignalStream: window.__bootstrap.signals.SignalStream,
     transpileOnly: window.__bootstrap.compilerApi.transpileOnly,
     compile: window.__bootstrap.compilerApi.compile,
     bundle: window.__bootstrap.compilerApi.bundle,
     permissions: window.__bootstrap.permissions.permissions,
     Permissions: window.__bootstrap.permissions.Permissions,
     PermissionStatus: window.__bootstrap.permissions.PermissionStatus,
-    openPlugin: window.__bootstrap.plugins.openPlugin,
     DiagnosticCategory: window.__bootstrap.diagnostics.DiagnosticCategory,
     loadavg: window.__bootstrap.os.loadavg,
     hostname: window.__bootstrap.os.hostname,
@@ -25,7 +20,6 @@
     listen: window.__bootstrap.netUnstable.listen,
     connect: window.__bootstrap.netUnstable.connect,
     listenDatagram: window.__bootstrap.netUnstable.listenDatagram,
-    startTls: window.__bootstrap.tls.startTls,
     fstatSync: window.__bootstrap.fs.fstatSync,
     fstat: window.__bootstrap.fs.fstat,
     ftruncateSync: window.__bootstrap.fs.ftruncateSync,
