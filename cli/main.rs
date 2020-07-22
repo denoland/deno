@@ -90,6 +90,7 @@ use futures::Future;
 use log::Level;
 use log::Metadata;
 use log::Record;
+use module_graph::ModuleGraph;
 use serde::Serialize;
 use state::exit_unstable;
 use std::env;
@@ -97,10 +98,12 @@ use std::io::Read;
 use std::io::Write;
 use std::iter::once;
 use std::path::PathBuf;
-use std::{collections::{HashMap, HashSet}, pin::Pin};
+use std::{
+  collections::{HashMap, HashSet},
+  pin::Pin,
+};
 use upgrade::upgrade_command;
 use url::Url;
-use module_graph::ModuleGraph;
 
 static LOGGER: Logger = Logger;
 
@@ -180,41 +183,47 @@ fn print_cache_info(state: &GlobalState, json: bool) -> Result<(), ErrBox> {
 
 /// A dependency tree of the basic module information.
 ///
-/// Constructed from a `ModuleGraph` and `ModuleSpecifier` that 
+/// Constructed from a `ModuleGraph` and `ModuleSpecifier` that
 /// acts as the root of the tree.
 #[derive(Serialize)]
 struct FileInfoDepTree {
   name: String,
   size: usize,
   total_size: usize,
-  deps: Vec<FileInfoDepTree>
+  deps: Vec<FileInfoDepTree>,
 }
 
 impl FileInfoDepTree {
   /// Create a `FileInfoDepTree` tree from a `ModuleGraph` and the root `ModuleSpecifier`.
-  pub fn new(module_graph: &ModuleGraph, root_specifier: &ModuleSpecifier) -> Self {
+  pub fn new(
+    module_graph: &ModuleGraph,
+    root_specifier: &ModuleSpecifier,
+  ) -> Self {
     let mut seen = HashSet::new();
     let mut total_sizes = HashMap::new();
 
     Self::cstr_helper(&mut seen, &mut total_sizes, module_graph, root_specifier)
   }
 
-  fn cstr_helper(seen: &mut HashSet<String>, total_sizes: &mut HashMap<String, usize>, graph: &ModuleGraph, root: &ModuleSpecifier) -> Self {
+  fn cstr_helper(
+    seen: &mut HashSet<String>,
+    total_sizes: &mut HashMap<String, usize>,
+    graph: &ModuleGraph,
+    root: &ModuleSpecifier,
+  ) -> Self {
     let name = root.to_string();
     let never_seen = seen.insert(name.clone());
-    let file = graph
-      .get(&name)
-      .unwrap();
-    
+    let file = graph.get(&name).unwrap();
+
     let size = file.size();
 
     let deps = if never_seen {
       file
-      .imports
-      .iter()
-      .map(|import| import.resolved_specifier.clone())
-      .map(|spec| Self::cstr_helper(seen, total_sizes, graph, &spec))
-      .collect::<Vec<_>>()
+        .imports
+        .iter()
+        .map(|import| import.resolved_specifier.clone())
+        .map(|spec| Self::cstr_helper(seen, total_sizes, graph, &spec))
+        .collect::<Vec<_>>()
     } else {
       vec![]
     };
@@ -223,9 +232,11 @@ impl FileInfoDepTree {
       if let Some(total_size) = total_sizes.get(&name) {
         total_size.to_owned()
       } else {
-        let total = size + deps.iter()
-          .map(|dep| dep.total_size)
-          .fold(0usize, |acc, v| acc + v);
+        let total = size
+          + deps
+            .iter()
+            .map(|dep| dep.total_size)
+            .fold(0usize, |acc, v| acc + v);
 
         total_sizes.insert(name.clone(), total);
 
@@ -239,7 +250,7 @@ impl FileInfoDepTree {
       name,
       size,
       total_size,
-      deps
+      deps,
     }
   }
 }
@@ -273,7 +284,6 @@ async fn print_file_info(
   let file_info = FileInfoDepTree::new(&module_graph, &module_specifier);
 
   if json {
-
     let output = json!({
       "local": local,
       "fileType": file_type,
@@ -295,7 +305,12 @@ async fn print_file_info(
       println!("{} {}", colors::bold("map:"), map);
     }
     println!("{} {} unique", colors::bold("deps:"), &module_graph.len());
-    println!("{} ({}, total = {})", file_info.name, human_size(file_info.size as f64), human_size(file_info.total_size as f64));
+    println!(
+      "{} ({}, total = {})",
+      file_info.name,
+      human_size(file_info.size as f64),
+      human_size(file_info.total_size as f64)
+    );
 
     for (idx, dep) in file_info.deps.iter().enumerate() {
       print_file_dep_info(&dep, "", idx == file_info.deps.len() - 1);
@@ -306,11 +321,7 @@ async fn print_file_info(
 }
 
 /// Prints the `FileInfoDepTree` tree to stdout.
-fn print_file_dep_info(
-  info: &FileInfoDepTree,
-  prefix: &str,
-  is_last: bool
-) {
+fn print_file_dep_info(info: &FileInfoDepTree, prefix: &str, is_last: bool) {
   print_dep(prefix, is_last, info);
 
   let prefix = &get_new_prefix(prefix, is_last);
@@ -321,15 +332,12 @@ fn print_file_dep_info(
 }
 
 /// Prints a single `FileInfoDepTree` to stdout.
-fn print_dep (
-  prefix: &str,
-  is_last: bool,
-  info: &FileInfoDepTree,
-) {
+fn print_dep(prefix: &str, is_last: bool, info: &FileInfoDepTree) {
   let has_children = !info.deps.is_empty();
   let totals = get_totals_string(info);
 
-  println!("{}{}─{} {}{}",
+  println!(
+    "{}{}─{} {}{}",
     prefix,
     get_sibling_connector(is_last),
     get_child_connector(has_children),
@@ -338,9 +346,7 @@ fn print_dep (
   );
 }
 
-fn get_totals_string(
-  info: &FileInfoDepTree
-) -> String {
+fn get_totals_string(info: &FileInfoDepTree) -> String {
   if info.total_size == 0 {
     "".to_string()
   } else {
@@ -371,10 +377,7 @@ fn get_child_connector(has_children: bool) -> char {
 }
 
 /// Creates a new prefix for a dependency tree item.
-fn get_new_prefix(
-  prefix: &str,
-  is_last: bool
-) -> String {
+fn get_new_prefix(prefix: &str, is_last: bool) -> String {
   let mut prefix = prefix.to_string();
   if is_last {
     prefix.push(' ');
@@ -403,15 +406,13 @@ fn get_new_prefix_adds_a_vertial_bar_if_not_is_last() {
 
 /// Gets the full filename of a `SourceFile`.
 fn get_source_filename(file: SourceFile) -> Option<String> {
-  file.filename
-      .to_str()
-      .map(|s| s.to_owned())
+  file.filename.to_str().map(|s| s.to_owned())
 }
 
 /// Constructs a ModuleGraph for the module with the provided name.
 async fn get_module_graph(
   global_state: &GlobalState,
-  module_specifier: &ModuleSpecifier
+  module_specifier: &ModuleSpecifier,
 ) -> Result<ModuleGraph, ErrBox> {
   let mut module_graph_loader = ModuleGraphLoader::new(
     global_state.file_fetcher.clone(),
@@ -423,8 +424,8 @@ async fn get_module_graph(
   module_graph_loader
     .add_to_graph(&module_specifier, None)
     .await?;
-  
-    Ok(module_graph_loader.get_graph())
+
+  Ok(module_graph_loader.get_graph())
 }
 
 fn get_types(unstable: bool) -> String {

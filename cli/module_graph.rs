@@ -386,7 +386,7 @@ impl ModuleGraphLoader {
         lib_directives,
         types_directives,
         type_headers: vec![],
-      }
+      },
     );
     Ok(())
   }
