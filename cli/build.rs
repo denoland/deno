@@ -46,41 +46,34 @@ fn create_compiler_snapshot(
   let mut custom_libs: HashMap<String, PathBuf> = HashMap::new();
   custom_libs.insert(
     "lib.deno.window.d.ts".to_string(),
-    cwd.join("js2/lib.deno.window.d.ts"),
+    cwd.join("dts/lib.deno.window.d.ts"),
   );
   custom_libs.insert(
     "lib.deno.worker.d.ts".to_string(),
-    cwd.join("js2/lib.deno.worker.d.ts"),
+    cwd.join("dts/lib.deno.worker.d.ts"),
   );
   custom_libs.insert(
     "lib.deno.shared_globals.d.ts".to_string(),
-    cwd.join("js2/lib.deno.shared_globals.d.ts"),
+    cwd.join("dts/lib.deno.shared_globals.d.ts"),
   );
   custom_libs.insert(
     "lib.deno.ns.d.ts".to_string(),
-    cwd.join("js2/lib.deno.ns.d.ts"),
+    cwd.join("dts/lib.deno.ns.d.ts"),
   );
   custom_libs.insert(
     "lib.deno.unstable.d.ts".to_string(),
-    cwd.join("js2/lib.deno.unstable.d.ts"),
+    cwd.join("dts/lib.deno.unstable.d.ts"),
   );
   runtime_isolate.register_op(
     "op_fetch_asset",
     op_fetch_asset::op_fetch_asset(custom_libs),
   );
-
-  js_check(runtime_isolate.execute(
-    "typescript.js",
-    &std::fs::read_to_string("typescript/lib/typescript.js").unwrap(),
-  ));
-
   create_snapshot(runtime_isolate, snapshot_path, files);
 }
 
 fn ts_version() -> String {
-  let data = include_str!("typescript/package.json");
-  let pkg: serde_json::Value = serde_json::from_str(data).unwrap();
-  pkg["version"].as_str().unwrap().to_string()
+  // TODO(ry) This should be automatically extracted from typescript.js
+  "3.9.2".to_string()
 }
 
 fn main() {
@@ -106,7 +99,17 @@ fn main() {
   let runtime_snapshot_path = o.join("CLI_SNAPSHOT.bin");
   let compiler_snapshot_path = o.join("COMPILER_SNAPSHOT.bin");
 
-  let mut js_files = std::fs::read_dir("js2/")
+  let js_files = get_js_files("js2");
+  create_runtime_snapshot(&runtime_snapshot_path, js_files);
+
+  let js_files = get_js_files("tsc");
+  create_compiler_snapshot(&compiler_snapshot_path, js_files, &c);
+
+  set_binary_metadata();
+}
+
+fn get_js_files(d: &str) -> Vec<String> {
+  let mut js_files = std::fs::read_dir(d)
     .unwrap()
     .map(|dir_entry| {
       let file = dir_entry.unwrap();
@@ -114,18 +117,8 @@ fn main() {
     })
     .filter(|filename| filename.ends_with(".js"))
     .collect::<Vec<String>>();
-
   js_files.sort();
-
-  let runtime_files = js_files
-    .clone()
-    .into_iter()
-    .filter(|filepath| !filepath.ends_with("compiler.js"))
-    .collect::<Vec<String>>();
-  create_runtime_snapshot(&runtime_snapshot_path, runtime_files);
-  create_compiler_snapshot(&compiler_snapshot_path, js_files, &c);
-
-  set_binary_metadata();
+  js_files
 }
 
 #[cfg(target_os = "windows")]

@@ -69,6 +69,8 @@ def eslint():
         ":!:cli/compilers/wasm_wrap.js",
         ":!:cli/tests/error_syntax.js",
         ":!:cli/tests/lint/**",
+        ":!:cli/dts/**",
+        ":!:cli/tsc/*typescript.js",
     ])
     if source_files:
         max_command_len = 30000
