@@ -1873,10 +1873,6 @@ delete Object.prototype.__proto__;
     }
   }
 
-  function opStart() {
-    return dispatchJson.sendSync("op_start");
-  }
-
   // TODO(bartlomieju): temporary solution, must be fixed when moving
   // dispatches to separate crates
   function initOps() {
@@ -1891,7 +1887,7 @@ delete Object.prototype.__proto__;
     // First we send an empty `Start` message to let the privileged side know we
     // are ready. The response should be a `StartRes` message containing the CLI
     // args and other info.
-    const s = opStart();
+    const s = dispatchJson.sendSync("op_start");
     util.setLogDebug(s.debugFlag, source);
     errorStack.setPrepareStackTrace(Error);
     return s;
@@ -1903,14 +1899,9 @@ delete Object.prototype.__proto__;
     if (hasBootstrapped) {
       throw new Error("Worker runtime already bootstrapped");
     }
-    // Remove bootstrapping methods from global scope
-    globalThis.__bootstrap = undefined;
-    globalThis.bootstrap = undefined;
-    util.log("bootstrapCompilerRuntime");
     hasBootstrapped = true;
+    globalThis.__bootstrap = undefined;
     runtimeStart("TS");
-    delete globalThis.Deno;
-    util.assert(globalThis.Deno === undefined);
   }
 
   globalThis.bootstrapCompilerRuntime = bootstrapCompilerRuntime;
