@@ -26,7 +26,6 @@
 
 ((window) => {
   const core = Deno.core;
-  const base64 = window.__base64;
 
   const CONTINUE = null;
   const END_OF_STREAM = -1;
@@ -92,51 +91,6 @@
 
       return bytes;
     }
-  }
-
-  function atob(s) {
-    s = String(s);
-    s = s.replace(/[\t\n\f\r ]/g, "");
-
-    if (s.length % 4 === 0) {
-      s = s.replace(/==?$/, "");
-    }
-
-    const rem = s.length % 4;
-    if (rem === 1 || /[^+/0-9A-Za-z]/.test(s)) {
-      throw new DOMException(
-        "The string to be decoded is not correctly encoded",
-        "DataDecodeError",
-      );
-    }
-
-    // base64-js requires length exactly times of 4
-    if (rem > 0) {
-      s = s.padEnd(s.length + (4 - rem), "=");
-    }
-
-    const byteArray = base64.toByteArray(s);
-    let result = "";
-    for (let i = 0; i < byteArray.length; i++) {
-      result += String.fromCharCode(byteArray[i]);
-    }
-    return result;
-  }
-
-  function btoa(s) {
-    const byteArray = [];
-    for (let i = 0; i < s.length; i++) {
-      const charCode = s[i].charCodeAt(0);
-      if (charCode > 0xff) {
-        throw new TypeError(
-          "The string to be encoded contains characters " +
-            "outside of the Latin1 range.",
-        );
-      }
-      byteArray.push(charCode);
-    }
-    const result = base64.fromByteArray(Uint8Array.from(byteArray));
-    return result;
   }
 
   class SingleByteDecoder {
@@ -681,6 +635,4 @@
 
   window.TextEncoder = TextEncoder;
   window.TextDecoder = TextDecoder;
-  window.atob = atob;
-  window.btoa = btoa;
 })(this);

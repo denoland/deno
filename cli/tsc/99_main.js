@@ -11,7 +11,6 @@ delete Object.prototype.__proto__;
   const dispatchJson = window.__bootstrap.dispatchJson;
   const build = window.__bootstrap.build;
   const version = window.__bootstrap.version;
-  const timers = window.__bootstrap.timers;
   const Console = window.__bootstrap.console.Console;
   const worker = window.__bootstrap.worker;
   const { internalSymbol, internalObject } = window.__bootstrap.internals;
@@ -109,7 +108,6 @@ delete Object.prototype.__proto__;
     for (const [_name, opId] of Object.entries(opsMap)) {
       core.setAsyncHandler(opId, dispatchJson.asyncMsgFromRust);
     }
-    core.setMacrotaskCallback(timers.handleTimerMacrotask);
   }
 
   function runtimeStart(source) {
@@ -123,17 +121,6 @@ delete Object.prototype.__proto__;
     util.setLogDebug(s.debugFlag, source);
     return s;
   }
-
-  // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
-  const windowOrWorkerGlobalScopeMethods = {
-    atob: util.writable(atob),
-    btoa: util.writable(btoa),
-    clearInterval: util.writable(timers.clearInterval),
-    clearTimeout: util.writable(timers.clearTimeout),
-    // queueMicrotask is bound in Rust
-    setInterval: util.writable(timers.setInterval),
-    setTimeout: util.writable(timers.setTimeout),
-  };
 
   // Other properties shared between WindowScope and WorkerGlobalScope
   const windowOrWorkerGlobalScopeProperties = {
@@ -185,7 +172,6 @@ delete Object.prototype.__proto__;
     globalThis.bootstrap = undefined;
     util.log("bootstrapWorkerRuntime");
     hasBootstrapped = true;
-    Object.defineProperties(globalThis, windowOrWorkerGlobalScopeMethods);
     Object.defineProperties(globalThis, windowOrWorkerGlobalScopeProperties);
     Object.defineProperties(globalThis, workerRuntimeGlobalProperties);
     Object.defineProperties(globalThis, eventTargetProperties);
