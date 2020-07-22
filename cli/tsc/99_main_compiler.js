@@ -16,9 +16,23 @@ delete Object.prototype.__proto__;
 
 ((window) => {
   const core = Deno.core;
-  const { bold, cyan, yellow } = window.__bootstrap.colors;
   const { assert, log, notImplemented } = window.__bootstrap.util;
-  const { DiagnosticCategory } = window.__bootstrap.diagnostics;
+
+  const DiagnosticCategory = {
+    0: "Log",
+    1: "Debug",
+    2: "Info",
+    3: "Error",
+    4: "Warning",
+    5: "Suggestion",
+
+    Log: 0,
+    Debug: 1,
+    Info: 2,
+    Error: 3,
+    Warning: 4,
+    Suggestion: 5,
+  };
 
   const unstableDenoGlobalProperties = [
     "umask",
@@ -1188,11 +1202,11 @@ delete Object.prototype.__proto__;
   ) {
     const { ignoredOptions, diagnostics } = configResult;
     if (ignoredOptions) {
-      console.warn(
-        yellow(`Unsupported compiler options in "${configPath}"\n`) +
-          cyan(`  The following options were ignored:\n`) +
-          `    ${ignoredOptions.map((value) => bold(value)).join(", ")}`,
-      );
+      const msg =
+        `Unsupported compiler options in "${configPath}"\n  The following options were ignored:\n    ${
+          ignoredOptions.map((value) => value).join(", ")
+        }\n`;
+      core.print(msg, true);
     }
     return diagnostics;
   }

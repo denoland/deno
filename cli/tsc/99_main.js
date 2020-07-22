@@ -10,9 +10,7 @@ delete Object.prototype.__proto__;
   const eventTarget = window.__bootstrap.eventTarget;
   const dispatchJson = window.__bootstrap.dispatchJson;
   const build = window.__bootstrap.build;
-  const version = window.__bootstrap.version;
   const errorStack = window.__bootstrap.errorStack;
-  const Console = window.__bootstrap.console.Console;
   const worker = window.__bootstrap.worker;
   const { internalSymbol, internalObject } = window.__bootstrap.internals;
   const performance = window.__bootstrap.performance;
@@ -117,7 +115,6 @@ delete Object.prototype.__proto__;
     // are ready. The response should be a `StartRes` message containing the CLI
     // args and other info.
     const s = opStart();
-    version.setVersions(s.denoVersion, s.v8Version, s.tsVersion);
     build.setBuildInfo(s.target);
     util.setLogDebug(s.debugFlag, source);
     errorStack.setPrepareStackTrace(Error);
@@ -126,17 +123,12 @@ delete Object.prototype.__proto__;
 
   // Other properties shared between WindowScope and WorkerGlobalScope
   const windowOrWorkerGlobalScopeProperties = {
-    console: util.writable(new Console(core.print)),
     crypto: util.readOnly(crypto),
     CustomEvent: util.nonEnumerable(CustomEvent),
     ErrorEvent: util.nonEnumerable(ErrorEvent),
     Event: util.nonEnumerable(Event),
     EventTarget: util.nonEnumerable(EventTarget),
     performance: util.writable(new performance.Performance()),
-    Performance: util.nonEnumerable(performance.Performance),
-    PerformanceEntry: util.nonEnumerable(performance.PerformanceEntry),
-    PerformanceMark: util.nonEnumerable(performance.PerformanceMark),
-    PerformanceMeasure: util.nonEnumerable(performance.PerformanceMeasure),
     TextDecoder: util.nonEnumerable(TextDecoder),
     TextEncoder: util.nonEnumerable(TextEncoder),
     Worker: util.nonEnumerable(worker.Worker),

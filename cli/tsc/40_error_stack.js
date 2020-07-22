@@ -5,12 +5,7 @@
   // style license available here: https://github.com/v8/v8/blob/24886f2d1c565287d33d71e4109a53bf0b54b75c/LICENSE.v8
   const colors = window.__bootstrap.colors;
   const assert = window.__bootstrap.util.assert;
-  const internals = window.__bootstrap.internals;
   const dispatchJson = window.__bootstrap.dispatchJson;
-
-  function opFormatDiagnostics(items) {
-    return dispatchJson.sendSync("op_format_diagnostic", { items });
-  }
 
   function opApplySourceMap(location) {
     const res = dispatchJson.sendSync("op_apply_source_map", location);
@@ -257,11 +252,8 @@
     ErrorConstructor.prepareStackTrace = prepareStackTrace;
   }
 
-  internals.exposeForTest("setPrepareStackTrace", setPrepareStackTrace);
-
   window.__bootstrap.errorStack = {
     setPrepareStackTrace,
     opApplySourceMap,
-    opFormatDiagnostics,
   };
 })(this);

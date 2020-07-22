@@ -1,8 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
+  const core = Deno.core;
   const { build } = window.__bootstrap.build;
-  const internals = window.__bootstrap.internals;
   let logDebug = false;
   let logSource = "JS";
 
@@ -15,9 +15,8 @@
 
   function log(...args) {
     if (logDebug) {
-      // if we destructure `console` off `globalThis` too early, we don't bind to
-      // the right console, therefore we don't log anything out.
-      globalThis.console.log(`DEBUG ${logSource} -`, ...args);
+      const stringifiedArgs = args.map(JSON.stringify).join(" ");
+      core.print(`DEBUG ${logSource} - ${stringifiedArgs}\n`);
     }
   }
 
@@ -103,8 +102,6 @@
     }
     return pathOrUrl;
   }
-
-  internals.exposeForTest("pathFromURL", pathFromURL);
 
   function writable(value) {
     return {
