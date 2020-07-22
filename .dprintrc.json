@@ -12,7 +12,8 @@
   "includes": ["**/*.{ts,tsx,js,jsx,json,md}"],
   "excludes": [
     ".cargo_home",
-    "cli/typescript",
+    "cli/dts",
+    "cli/tsc/*typescript.js",
     "gh-pages",
     "std/**/testdata",
     "std/**/vendor",

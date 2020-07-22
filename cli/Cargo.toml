@@ -16,8 +16,6 @@ path = "main.rs"
 
 [build-dependencies]
 deno_core = { path = "../core", version = "0.49.0" }
-serde = { version = "1.0.112", features = ["derive"] }
-serde_json = { version = "1.0.55", features = [ "preserve_order" ] }
 
 [target.'cfg(windows)'.build-dependencies]
 winres = "0.1"
