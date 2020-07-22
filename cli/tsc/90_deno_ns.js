@@ -9,7 +9,5 @@
     errors: window.__bootstrap.errors.errors,
     customInspect: window.__bootstrap.console.customInspect,
     inspect: window.__bootstrap.console.inspect,
-    resources: window.__bootstrap.resources.resources,
-    close: window.__bootstrap.resources.close,
   };
 })(this);
