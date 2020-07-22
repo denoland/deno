@@ -129,7 +129,6 @@ delete Object.prototype.__proto__;
     console: util.writable(new Console(core.print)),
     crypto: util.readOnly(crypto),
     CustomEvent: util.nonEnumerable(CustomEvent),
-    DOMException: util.nonEnumerable(DOMException),
     ErrorEvent: util.nonEnumerable(ErrorEvent),
     Event: util.nonEnumerable(Event),
     EventTarget: util.nonEnumerable(EventTarget),
