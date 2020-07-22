@@ -19,7 +19,6 @@ delete Object.prototype.__proto__;
   const performance = window.__bootstrap.performance;
   const crypto = window.__bootstrap.crypto;
   const denoNs = window.__bootstrap.denoNs;
-  const denoNsUnstable = window.__bootstrap.denoNsUnstable;
 
   const encoder = new TextEncoder();
 
@@ -194,7 +193,7 @@ delete Object.prototype.__proto__;
     Object.defineProperties(globalThis, eventTargetProperties);
     Object.defineProperties(globalThis, { name: util.readOnly(name) });
     eventTarget.setEventTargetData(globalThis);
-    const { unstableFlag, pid, noColor, args } = runtimeStart(
+    const { noColor, args } = runtimeStart(
       internalName ?? name,
     );
 
@@ -205,11 +204,7 @@ delete Object.prototype.__proto__;
       ...denoNs,
     };
     if (useDenoNamespace) {
-      if (unstableFlag) {
-        Object.assign(finalDenoNs, denoNsUnstable);
-      }
       Object.defineProperties(finalDenoNs, {
-        pid: util.readOnly(pid),
         noColor: util.readOnly(noColor),
         args: util.readOnly(Object.freeze(args)),
       });
