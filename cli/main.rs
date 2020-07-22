@@ -304,7 +304,11 @@ async fn print_file_info(
     if let Some(map) = map {
       println!("{} {}", colors::bold("map:"), map);
     }
-    println!("{} {} unique", colors::bold("deps:"), &module_graph.len());
+    println!(
+      "{} {} unique",
+      colors::bold("deps:"),
+      &module_graph.len() - 1
+    );
     println!(
       "{} ({}, total = {})",
       file_info.name,
@@ -313,7 +317,7 @@ async fn print_file_info(
     );
 
     for (idx, dep) in file_info.deps.iter().enumerate() {
-      print_file_dep_info(&dep, "", idx == file_info.deps.len() - 1);
+      print_file_dep_info(&dep, "  ", idx == file_info.deps.len() - 1);
     }
 
     Ok(())
@@ -334,7 +338,7 @@ fn print_file_dep_info(info: &FileInfoDepTree, prefix: &str, is_last: bool) {
 /// Prints a single `FileInfoDepTree` to stdout.
 fn print_dep(prefix: &str, is_last: bool, info: &FileInfoDepTree) {
   let has_children = !info.deps.is_empty();
-  
+
   println!(
     "{}{}─{} {}{}",
     prefix,
