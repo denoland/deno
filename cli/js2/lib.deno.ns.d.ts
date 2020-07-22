@@ -343,7 +343,7 @@ declare namespace Deno {
   }
 
   export interface Closer {
-    close(): void;
+    close(): Promise<void>;
   }
 
   export interface Seeker {
