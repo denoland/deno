@@ -11,7 +11,6 @@ delete Object.prototype.__proto__;
   const dispatchJson = window.__bootstrap.dispatchJson;
   const build = window.__bootstrap.build;
   const version = window.__bootstrap.version;
-  const errorStack = window.__bootstrap.errorStack;
   const timers = window.__bootstrap.timers;
   const Console = window.__bootstrap.console.Console;
   const worker = window.__bootstrap.worker;
@@ -122,7 +121,6 @@ delete Object.prototype.__proto__;
     version.setVersions(s.denoVersion, s.v8Version, s.tsVersion);
     build.setBuildInfo(s.target);
     util.setLogDebug(s.debugFlag, source);
-    errorStack.setPrepareStackTrace(Error);
     return s;
   }
 
