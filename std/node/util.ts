@@ -5,7 +5,7 @@ import * as types from "./_util/_util_types.ts";
 export { types };
 
 export function inspect(object: unknown, ...opts: any) {
-    return JSON.stringify(object)
+    return typeof object === "string" ? object : JSON.stringify(object)
 }
 
 export function isArray(value: unknown): boolean {
