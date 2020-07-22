@@ -334,19 +334,21 @@ fn print_file_dep_info(info: &FileInfoDepTree, prefix: &str, is_last: bool) {
 /// Prints a single `FileInfoDepTree` to stdout.
 fn print_dep(prefix: &str, is_last: bool, info: &FileInfoDepTree) {
   let has_children = !info.deps.is_empty();
-  let totals = get_totals_string(info);
-
+  
   println!(
     "{}{}─{} {}{}",
     prefix,
     get_sibling_connector(is_last),
     get_child_connector(has_children),
     info.name,
-    totals
+    get_formatted_totals(info)
   );
 }
 
-fn get_totals_string(info: &FileInfoDepTree) -> String {
+/// Gets the formatted totals for the provided `FileInfoDepTree`.
+///
+/// If the total size is reported as 0 then an empty string is returned.
+fn get_formatted_totals(info: &FileInfoDepTree) -> String {
   if info.total_size == 0 {
     "".to_string()
   } else {
