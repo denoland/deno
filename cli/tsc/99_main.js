@@ -9,7 +9,6 @@ delete Object.prototype.__proto__;
   const util = window.__bootstrap.util;
   const eventTarget = window.__bootstrap.eventTarget;
   const dispatchJson = window.__bootstrap.dispatchJson;
-  const dispatchMinimal = window.__bootstrap.dispatchMinimal;
   const build = window.__bootstrap.build;
   const version = window.__bootstrap.version;
   const errorStack = window.__bootstrap.errorStack;
@@ -106,22 +105,12 @@ delete Object.prototype.__proto__;
     return dispatchJson.sendSync("op_start");
   }
 
-  function getAsyncHandler(opName) {
-    switch (opName) {
-      case "op_write":
-      case "op_read":
-        return dispatchMinimal.asyncMsgFromRust;
-      default:
-        return dispatchJson.asyncMsgFromRust;
-    }
-  }
-
   // TODO(bartlomieju): temporary solution, must be fixed when moving
   // dispatches to separate crates
   function initOps() {
     const opsMap = core.ops();
-    for (const [name, opId] of Object.entries(opsMap)) {
-      core.setAsyncHandler(opId, getAsyncHandler(name));
+    for (const [_name, opId] of Object.entries(opsMap)) {
+      core.setAsyncHandler(opId, dispatchJson.asyncMsgFromRust);
     }
     core.setMacrotaskCallback(timers.handleTimerMacrotask);
   }
