@@ -54,6 +54,10 @@ fn op_compiler_respond(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let mut r = response.lock().unwrap();
+  assert!(
+    r.is_none(),
+    "op_compiler_respond found unexpected existing compiler output"
+  );
   *r = Some(args.to_string());
   Ok(JsonOp::Sync(json!({})))
 }
