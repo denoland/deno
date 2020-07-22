@@ -1,7 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { assertEquals } from "../testing/asserts.ts";
 import { existsSync } from "../fs/exists.ts";
-import { readFileStrSync } from "../fs/read_file_str.ts";
 import * as path from "../path/mod.ts";
 import { parse, stringify } from "./toml.ts";
 
@@ -11,8 +10,7 @@ function parseFile(filePath: string): object {
   if (!existsSync(filePath)) {
     throw new Error(`File not found: ${filePath}`);
   }
-  const strFile = readFileStrSync(filePath);
-  return parse(strFile);
+  return parse(Deno.readTextFileSync(filePath));
 }
 
 Deno.test({
