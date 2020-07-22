@@ -1,5 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-//
 mod op_fetch_asset;
 
 use deno_core::js_check;
@@ -9,11 +8,6 @@ use std::collections::HashMap;
 use std::env;
 use std::path::Path;
 use std::path::PathBuf;
-
-#[cfg(target_os = "windows")]
-extern crate winapi;
-#[cfg(target_os = "windows")]
-extern crate winres;
 
 fn create_snapshot(
   mut isolate: CoreIsolate,
@@ -105,7 +99,16 @@ fn main() {
   let js_files = get_js_files("tsc");
   create_compiler_snapshot(&compiler_snapshot_path, js_files, &c);
 
-  set_binary_metadata();
+  #[cfg(target_os = "windows")]
+  {
+    let mut res = winres::WindowsResource::new();
+    res.set_icon("deno.ico");
+    res.set_language(winapi::um::winnt::MAKELANGID(
+      winapi::um::winnt::LANG_ENGLISH,
+      winapi::um::winnt::SUBLANG_ENGLISH_US,
+    ));
+    res.compile().unwrap();
+  }
 }
 
 fn get_js_files(d: &str) -> Vec<String> {
@@ -120,17 +123,3 @@ fn get_js_files(d: &str) -> Vec<String> {
   js_files.sort();
   js_files
 }
-
-#[cfg(target_os = "windows")]
-fn set_binary_metadata() {
-  let mut res = winres::WindowsResource::new();
-  res.set_icon("deno.ico");
-  res.set_language(winapi::um::winnt::MAKELANGID(
-    winapi::um::winnt::LANG_ENGLISH,
-    winapi::um::winnt::SUBLANG_ENGLISH_US,
-  ));
-  res.compile().unwrap();
-}
-
-#[cfg(not(target_os = "windows"))]
-fn set_binary_metadata() {}
