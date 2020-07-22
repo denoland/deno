@@ -12,7 +12,7 @@ use std::path::PathBuf;
 fn get_asset(name: &str) -> Option<&'static str> {
   macro_rules! inc {
     ($e:expr) => {
-      Some(include_str!(concat!("typescript/lib/", $e)))
+      Some(include_str!(concat!("dts/", $e)))
     };
   }
   match name {
