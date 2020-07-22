@@ -26,7 +26,7 @@ pub fn init(
 
   i.register_op(
     "op_compiler_respond",
-    json_op(compiler_op(response.clone(), op_compiler_respond)),
+    json_op(compiler_op(response, op_compiler_respond)),
   );
 }
 
