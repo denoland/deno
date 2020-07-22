@@ -177,8 +177,7 @@ impl Future for CompilerWorker {
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     let inner = self.get_mut();
-    let r = inner.worker.poll_unpin(cx);
-    r
+    inner.worker.poll_unpin(cx)
   }
 }
 
