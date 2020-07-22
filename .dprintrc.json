@@ -1,6 +1,7 @@
 {
   "$schema": "https://dprint.dev/schemas/v0.json",
   "projectType": "openSource",
+  "incremental": true,
   "lineWidth": 80,
   "indentWidth": 2,
   "typescript": {
