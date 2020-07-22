@@ -206,7 +206,7 @@ impl FileInfoDepTree {
       .get(&name)
       .unwrap();
     
-    let size = file.size;
+    let size = file.size();
 
     let deps = if never_seen {
       file
@@ -327,14 +327,29 @@ fn print_dep (
   info: &FileInfoDepTree,
 ) {
   let has_children = !info.deps.is_empty();
-  println!("{}{}─{} {} ({}, total = {})",
+  let totals = get_totals_string(info);
+
+  println!("{}{}─{} {}{}",
     prefix,
     get_sibling_connector(is_last),
     get_child_connector(has_children),
     info.name,
-    human_size(info.size as f64),
-    human_size(info.total_size as f64)
+    totals
   );
+}
+
+fn get_totals_string(
+  info: &FileInfoDepTree
+) -> String {
+  if info.total_size == 0 {
+    "".to_string()
+  } else {
+    format!(
+      " ({}, total = {})",
+      human_size(info.size as f64),
+      human_size(info.total_size as f64)
+    )
+  }
 }
 
 /// Gets the sibling portion of the tree branch.
