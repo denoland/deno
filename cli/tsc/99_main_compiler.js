@@ -3,10 +3,13 @@
 // This module is the entry point for "compiler" isolate, ie. the one
 // that is created when Deno needs to compile TS/WASM to JS.
 //
-// It provides a single functions that should be called by Rust:
-//  - `bootstrapTsCompilerRuntime`
+// It provides two functions that should be called by Rust:
+//  - `bootstrapCompilerRuntime`
 // This functions must be called when creating isolate
 // to properly setup runtime.
+//  - `tsCompilerOnMessage`
+// This function must be called when sending a request
+// to the compiler.
 
 // Removes the `__proto__` for security reasons.  This intentionally makes
 // Deno non compliant with ECMA-262 Annex B.2.2.1
