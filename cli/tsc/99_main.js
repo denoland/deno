@@ -23,14 +23,6 @@ delete Object.prototype.__proto__;
   const denoNs = window.__bootstrap.denoNs;
   const denoNsUnstable = window.__bootstrap.denoNsUnstable;
 
-  let windowIsClosing = false;
-
-  function windowClose() {
-    if (!windowIsClosing) {
-      windowIsClosing = true;
-    }
-  }
-
   const encoder = new TextEncoder();
 
   function workerClose() {
@@ -114,10 +106,6 @@ delete Object.prototype.__proto__;
     return dispatchJson.sendSync("op_start");
   }
 
-  function opMainModule() {
-    return dispatchJson.sendSync("op_main_module");
-  }
-
   function getAsyncHandler(opName) {
     switch (opName) {
       case "op_write":
@@ -193,17 +181,6 @@ delete Object.prototype.__proto__;
     ),
   };
 
-  const mainRuntimeGlobalProperties = {
-    window: util.readOnly(globalThis),
-    self: util.readOnly(globalThis),
-    // TODO(bartlomieju): from MDN docs (https://developer.mozilla.org/en-US/docs/Web/API/WorkerGlobalScope)
-    // it seems those two properties should be available to workers as well
-    onload: util.writable(null),
-    onunload: util.writable(null),
-    close: util.writable(windowClose),
-    closed: util.getterOnly(() => windowIsClosing),
-  };
-
   const workerRuntimeGlobalProperties = {
     self: util.readOnly(globalThis),
     onmessage: util.writable(onmessage),
@@ -215,70 +192,6 @@ delete Object.prototype.__proto__;
   };
 
   let hasBootstrapped = false;
-
-  function bootstrapMainRuntime() {
-    if (hasBootstrapped) {
-      throw new Error("Worker runtime already bootstrapped");
-    }
-    // Remove bootstrapping methods from global scope
-    globalThis.__bootstrap = undefined;
-    globalThis.bootstrap = undefined;
-    util.log("bootstrapMainRuntime");
-    hasBootstrapped = true;
-    Object.defineProperties(globalThis, windowOrWorkerGlobalScopeMethods);
-    Object.defineProperties(globalThis, windowOrWorkerGlobalScopeProperties);
-    Object.defineProperties(globalThis, eventTargetProperties);
-    Object.defineProperties(globalThis, mainRuntimeGlobalProperties);
-    eventTarget.setEventTargetData(globalThis);
-    // Registers the handler for window.onload function.
-    globalThis.addEventListener("load", (e) => {
-      const { onload } = globalThis;
-      if (typeof onload === "function") {
-        onload(e);
-      }
-    });
-    // Registers the handler for window.onunload function.
-    globalThis.addEventListener("unload", (e) => {
-      const { onunload } = globalThis;
-      if (typeof onunload === "function") {
-        onunload(e);
-      }
-    });
-
-    const { args, cwd, noColor, pid, ppid, unstableFlag } = runtimeStart();
-
-    const finalDenoNs = {
-      core,
-      internal: internalSymbol,
-      [internalSymbol]: internalObject,
-      ...denoNs,
-    };
-    Object.defineProperties(finalDenoNs, {
-      pid: util.readOnly(pid),
-      ppid: util.readOnly(ppid),
-      noColor: util.readOnly(noColor),
-      args: util.readOnly(Object.freeze(args)),
-    });
-
-    if (unstableFlag) {
-      Object.defineProperty(
-        finalDenoNs,
-        "mainModule",
-        util.getterOnly(opMainModule),
-      );
-      Object.assign(finalDenoNs, denoNsUnstable);
-    }
-
-    // Setup `Deno` global - we're actually overriding already
-    // existing global `Deno` with `Deno` namespace from "./deno.ts".
-    util.immutableDefine(globalThis, "Deno", finalDenoNs);
-    Object.freeze(globalThis.Deno);
-    Object.freeze(globalThis.Deno.core);
-    Object.freeze(globalThis.Deno.core.sharedQueue);
-
-    util.log("cwd", cwd);
-    util.log("args", args);
-  }
 
   function bootstrapWorkerRuntime(name, useDenoNamespace, internalName) {
     if (hasBootstrapped) {
@@ -329,7 +242,6 @@ delete Object.prototype.__proto__;
   Object.defineProperties(globalThis, {
     bootstrap: {
       value: {
-        mainRuntime: bootstrapMainRuntime,
         workerRuntime: bootstrapWorkerRuntime,
       },
       configurable: true,
