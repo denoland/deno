@@ -4,7 +4,6 @@ use crate::op_error::OpError;
 use crate::ops::json_op;
 use crate::ops::JsonOpDispatcher;
 use crate::state::State;
-use deno_core::Buf;
 use deno_core::CoreIsolate;
 use deno_core::CoreIsolateState;
 use deno_core::ZeroCopyBuf;
@@ -14,7 +13,7 @@ use std::sync::Mutex;
 pub fn init(
   i: &mut CoreIsolate,
   _s: &State,
-  response: Arc<Mutex<Option<Buf>>>,
+  response: Arc<Mutex<Option<String>>>,
 ) {
   let custom_assets = std::collections::HashMap::new();
   // TODO(ry) use None.
@@ -31,12 +30,12 @@ pub fn init(
 }
 
 pub fn compiler_op<D>(
-  response: Arc<Mutex<Option<Buf>>>,
+  response: Arc<Mutex<Option<String>>>,
   dispatcher: D,
 ) -> impl JsonOpDispatcher
 where
   D: Fn(
-    Arc<Mutex<Option<Buf>>>,
+    Arc<Mutex<Option<String>>>,
     Value,
     &mut [ZeroCopyBuf],
   ) -> Result<JsonOp, OpError>,
@@ -50,12 +49,11 @@ where
 }
 
 fn op_compiler_respond(
-  response: Arc<Mutex<Option<Buf>>>,
+  response: Arc<Mutex<Option<String>>>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let mut r = response.lock().unwrap();
-  let str_ = args.to_string();
-  *r = Some(str_.as_bytes().to_vec().into_boxed_slice());
+  *r = Some(args.to_string());
   Ok(JsonOp::Sync(json!({})))
 }

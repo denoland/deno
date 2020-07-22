@@ -30,7 +30,6 @@ use crate::swc_util::SwcDiagnosticBuffer;
 use crate::version;
 use crate::worker::Worker;
 use core::task::Context;
-use deno_core::Buf;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
 use deno_core::StartupData;
@@ -130,7 +129,7 @@ pub struct CompiledModule {
 
 pub struct CompilerWorker {
   worker: Worker,
-  response: Arc<Mutex<Option<Buf>>>,
+  response: Arc<Mutex<Option<String>>>,
 }
 
 impl CompilerWorker {
@@ -149,13 +148,13 @@ impl CompilerWorker {
     Self { worker, response }
   }
 
-  pub fn get_response(&mut self) -> Buf {
-    let mut maybe_buf = self.response.lock().unwrap();
+  pub fn get_response(&mut self) -> String {
+    let mut maybe_response = self.response.lock().unwrap();
     assert!(
-      maybe_buf.is_some(),
+      maybe_response.is_some(),
       "Unexpected missing response from TS compiler"
     );
-    maybe_buf.take().unwrap()
+    maybe_response.take().unwrap()
   }
 }
 
@@ -621,17 +620,15 @@ impl TsCompiler {
       }),
     };
 
-    let req_msg = j.to_string().into_boxed_str().into_boxed_bytes();
+    let req_msg = j.to_string();
 
     // TODO(bartlomieju): lift this call up - TSC shouldn't print anything
     info!("{} {}", colors::green("Check"), module_url.to_string());
 
-    let msg =
+    let json_str =
       execute_in_same_thread(global_state, permissions, req_msg).await?;
 
-    let json_str = std::str::from_utf8(&msg).unwrap();
-
-    let compile_response: CompileResponse = serde_json::from_str(json_str)?;
+    let compile_response: CompileResponse = serde_json::from_str(&json_str)?;
 
     if !compile_response.diagnostics.items.is_empty() {
       return Err(ErrBox::from(compile_response.diagnostics));
@@ -730,13 +727,12 @@ impl TsCompiler {
       }),
     };
 
-    let req_msg = j.to_string().into_boxed_str().into_boxed_bytes();
+    let req_msg = j.to_string();
 
-    let msg =
+    let json_str =
       execute_in_same_thread(global_state, permissions, req_msg).await?;
-    let json_str = std::str::from_utf8(&msg).unwrap();
 
-    let bundle_response: BundleResponse = serde_json::from_str(json_str)?;
+    let bundle_response: BundleResponse = serde_json::from_str(&json_str)?;
 
     maybe_log_stats(bundle_response.stats);
 
@@ -795,15 +791,14 @@ impl TsCompiler {
       }),
     };
 
-    let req_msg = j.to_string().into_boxed_str().into_boxed_bytes();
+    let req_msg = j.to_string();
 
-    let msg =
+    let json_str =
       execute_in_same_thread(global_state.clone(), permissions, req_msg)
         .await?;
 
-    let json_str = std::str::from_utf8(&msg).unwrap();
-
-    let transpile_response: TranspileResponse = serde_json::from_str(json_str)?;
+    let transpile_response: TranspileResponse =
+      serde_json::from_str(&json_str)?;
 
     if !transpile_response.diagnostics.items.is_empty() {
       return Err(ErrBox::from(transpile_response.diagnostics));
@@ -1096,15 +1091,13 @@ impl TsCompiler {
 async fn execute_in_same_thread(
   global_state: GlobalState,
   permissions: Permissions,
-  req: Buf,
-) -> Result<Buf, ErrBox> {
+  req: String,
+) -> Result<String, ErrBox> {
   let mut worker = create_compiler_worker(global_state.clone(), permissions);
-  let msg = String::from_utf8(req.to_vec()).unwrap();
-  let script = format!("globalThis.tsCompilerOnMessage({{ data: {} }});", msg);
+  let script = format!("globalThis.tsCompilerOnMessage({{ data: {} }});", req);
   worker.execute2("<compiler>", &script)?;
   (&mut *worker).await?;
-  let response = worker.get_response();
-  Ok(response)
+  Ok(worker.get_response())
 }
 
 async fn create_runtime_module_graph(
@@ -1197,18 +1190,15 @@ pub async fn runtime_compile(
     "options": maybe_options,
     "unstable": global_state.flags.unstable,
   })
-  .to_string()
-  .into_boxed_str()
-  .into_boxed_bytes();
+  .to_string();
 
   let compiler = global_state.ts_compiler.clone();
 
-  let msg = execute_in_same_thread(global_state, permissions, req_msg)
+  let json_str = execute_in_same_thread(global_state, permissions, req_msg)
     .await
     .map_err(js_error_to_op_error)?;
-  let json_str = std::str::from_utf8(&msg).unwrap();
 
-  let response: RuntimeCompileResponse = serde_json::from_str(json_str)?;
+  let response: RuntimeCompileResponse = serde_json::from_str(&json_str)?;
 
   if response.diagnostics.is_empty() && sources.is_none() {
     compiler.cache_emitted_files(response.emit_map)?;
@@ -1217,7 +1207,7 @@ pub async fn runtime_compile(
   // We're returning `Ok()` instead of `Err()` because it's not runtime
   // error if there were diagnostics produced; we want to let user handle
   // diagnostics in the runtime.
-  Ok(serde_json::from_str::<Value>(json_str).unwrap())
+  Ok(serde_json::from_str::<Value>(&json_str).unwrap())
 }
 
 /// This function is used by `Deno.bundle()` API.
@@ -1247,19 +1237,16 @@ pub async fn runtime_bundle(
     "options": maybe_options,
     "unstable": global_state.flags.unstable,
   })
-  .to_string()
-  .into_boxed_str()
-  .into_boxed_bytes();
+  .to_string();
 
-  let msg = execute_in_same_thread(global_state, permissions, req_msg)
+  let json_str = execute_in_same_thread(global_state, permissions, req_msg)
     .await
     .map_err(js_error_to_op_error)?;
-  let json_str = std::str::from_utf8(&msg).unwrap();
-  let _response: RuntimeBundleResponse = serde_json::from_str(json_str)?;
+  let _response: RuntimeBundleResponse = serde_json::from_str(&json_str)?;
   // We're returning `Ok()` instead of `Err()` because it's not runtime
   // error if there were diagnostics produced; we want to let user handle
   // diagnostics in the runtime.
-  Ok(serde_json::from_str::<Value>(json_str).unwrap())
+  Ok(serde_json::from_str::<Value>(&json_str).unwrap())
 }
 
 /// This function is used by `Deno.transpileOnly()` API.
@@ -1274,15 +1261,12 @@ pub async fn runtime_transpile(
     "sources": sources,
     "options": options,
   })
-  .to_string()
-  .into_boxed_str()
-  .into_boxed_bytes();
+  .to_string();
 
-  let msg = execute_in_same_thread(global_state, permissions, req_msg)
+  let json_str = execute_in_same_thread(global_state, permissions, req_msg)
     .await
     .map_err(js_error_to_op_error)?;
-  let json_str = std::str::from_utf8(&msg).unwrap();
-  let v = serde_json::from_str::<serde_json::Value>(json_str)
+  let v = serde_json::from_str::<serde_json::Value>(&json_str)
     .expect("Error decoding JSON string.");
   Ok(v)
 }
