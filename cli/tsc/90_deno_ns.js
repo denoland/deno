@@ -4,7 +4,6 @@
 
 ((window) => {
   window.__bootstrap.denoNs = {
-    metrics: window.__bootstrap.metrics.metrics,
     version: window.__bootstrap.version.version,
     build: window.__bootstrap.build.build,
     errors: window.__bootstrap.errors.errors,
