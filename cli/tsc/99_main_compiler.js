@@ -17,6 +17,14 @@ delete Object.prototype.__proto__;
 ((window) => {
   const core = Deno.core;
   const { assert, log, notImplemented } = window.__bootstrap.util;
+  const dispatchJson = window.__bootstrap.dispatchJson;
+  const util = window.__bootstrap.util;
+  const errorStack = window.__bootstrap.errorStack;
+
+  function opNow() {
+    const res = dispatchJson.sendSync("op_now");
+    return res.seconds * 1e3 + res.subsecNanos / 1e6;
+  }
 
   const DiagnosticCategory = {
     0: "Log",
@@ -1150,7 +1158,7 @@ delete Object.prototype.__proto__;
   function performanceStart() {
     stats.length = 0;
     // TODO(kitsonk) replace with performance.mark() when landed
-    statsStart = performance.now();
+    statsStart = opNow();
     ts.performance.enable();
   }
 
@@ -1190,7 +1198,7 @@ delete Object.prototype.__proto__;
 
   function performanceEnd() {
     // TODO(kitsonk) replace with performance.measure() when landed
-    const duration = performance.now() - statsStart;
+    const duration = opNow() - statsStart;
     stats.push({ key: "Compile time", value: duration });
     return stats;
   }
@@ -1559,6 +1567,7 @@ delete Object.prototype.__proto__;
     cwd,
     sourceFileMap,
     type,
+    performance,
   }) {
     if (performance) {
       performanceStart();
@@ -1818,64 +1827,92 @@ delete Object.prototype.__proto__;
     return Promise.resolve(result);
   }
 
-  async function tsCompilerOnMessage({
-    data: request,
-  }) {
+  function opCompilerRespond(msg) {
+    dispatchJson.sendSync("op_compiler_respond", msg);
+  }
+
+  async function tsCompilerOnMessage(msg) {
+    const request = msg.data;
     switch (request.type) {
       case CompilerRequestType.Compile: {
         const result = compile(request);
-        globalThis.postMessage(result);
+        opCompilerRespond(result);
         break;
       }
       case CompilerRequestType.Transpile: {
         const result = transpile(request);
-        globalThis.postMessage(result);
+        opCompilerRespond(result);
         break;
       }
       case CompilerRequestType.Bundle: {
         const result = bundle(request);
-        globalThis.postMessage(result);
+        opCompilerRespond(result);
         break;
       }
       case CompilerRequestType.RuntimeCompile: {
         const result = runtimeCompile(request);
-        globalThis.postMessage(result);
+        opCompilerRespond(result);
         break;
       }
       case CompilerRequestType.RuntimeBundle: {
         const result = runtimeBundle(request);
-        globalThis.postMessage(result);
+        opCompilerRespond(result);
         break;
       }
       case CompilerRequestType.RuntimeTranspile: {
         const result = await runtimeTranspile(request);
-        globalThis.postMessage(result);
+        opCompilerRespond(result);
         break;
       }
       default:
-        log(
+        throw new Error(
           `!!! unhandled CompilerRequestType: ${request.type} (${
             CompilerRequestType[request.type]
           })`,
         );
     }
-    // Shutdown after single request
-    globalThis.close();
   }
 
-  function bootstrapTsCompilerRuntime() {
-    globalThis.bootstrap.workerRuntime("TS", false);
-    globalThis.onmessage = tsCompilerOnMessage;
+  function opStart() {
+    return dispatchJson.sendSync("op_start");
   }
 
-  Object.defineProperties(globalThis, {
-    bootstrap: {
-      value: {
-        ...globalThis.bootstrap,
-        tsCompilerRuntime: bootstrapTsCompilerRuntime,
-      },
-      configurable: true,
-      writable: true,
-    },
-  });
+  // TODO(bartlomieju): temporary solution, must be fixed when moving
+  // dispatches to separate crates
+  function initOps() {
+    const opsMap = core.ops();
+    for (const [_name, opId] of Object.entries(opsMap)) {
+      core.setAsyncHandler(opId, dispatchJson.asyncMsgFromRust);
+    }
+  }
+
+  function runtimeStart(source) {
+    initOps();
+    // First we send an empty `Start` message to let the privileged side know we
+    // are ready. The response should be a `StartRes` message containing the CLI
+    // args and other info.
+    const s = opStart();
+    util.setLogDebug(s.debugFlag, source);
+    errorStack.setPrepareStackTrace(Error);
+    return s;
+  }
+
+  let hasBootstrapped = false;
+
+  function bootstrapCompilerRuntime() {
+    if (hasBootstrapped) {
+      throw new Error("Worker runtime already bootstrapped");
+    }
+    // Remove bootstrapping methods from global scope
+    globalThis.__bootstrap = undefined;
+    globalThis.bootstrap = undefined;
+    util.log("bootstrapCompilerRuntime");
+    hasBootstrapped = true;
+    runtimeStart("TS");
+    delete globalThis.Deno;
+    util.assert(globalThis.Deno === undefined);
+  }
+
+  globalThis.bootstrapCompilerRuntime = bootstrapCompilerRuntime;
+  globalThis.tsCompilerOnMessage = tsCompilerOnMessage;
 })(this);

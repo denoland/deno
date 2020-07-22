@@ -28,14 +28,12 @@ use crate::swc_ecma_visit::Visit;
 use crate::swc_util::AstParser;
 use crate::swc_util::SwcDiagnosticBuffer;
 use crate::version;
-use crate::web_worker::WebWorker;
-use crate::worker::WorkerEvent;
+use crate::worker::Worker;
 use core::task::Context;
 use deno_core::Buf;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
 use deno_core::StartupData;
-use futures::future::Either;
 use futures::future::Future;
 use futures::future::FutureExt;
 use log::debug;
@@ -130,30 +128,47 @@ pub struct CompiledModule {
   pub name: String,
 }
 
-pub struct CompilerWorker(WebWorker);
+pub struct CompilerWorker {
+  worker: Worker,
+  response: Arc<Mutex<Option<Buf>>>,
+}
 
 impl CompilerWorker {
   pub fn new(name: String, startup_data: StartupData, state: State) -> Self {
     let state_ = state.clone();
-    let mut worker = WebWorker::new(name, startup_data, state_, false);
+    let mut worker = Worker::new(name, startup_data, state_);
+    let response = Arc::new(Mutex::new(None));
     {
       let isolate = &mut worker.isolate;
-      ops::compiler::init(isolate, &state);
+      ops::runtime::init(isolate, &state);
+      ops::errors::init(isolate, &state);
+      ops::timers::init(isolate, &state);
+      ops::compiler::init(isolate, &state, response.clone());
     }
-    Self(worker)
+
+    Self { worker, response }
+  }
+
+  pub fn get_response(&mut self) -> Buf {
+    let mut maybe_buf = self.response.lock().unwrap();
+    assert!(
+      maybe_buf.is_some(),
+      "Unexpected missing response from TS compiler"
+    );
+    maybe_buf.take().unwrap()
   }
 }
 
 impl Deref for CompilerWorker {
-  type Target = WebWorker;
+  type Target = Worker;
   fn deref(&self) -> &Self::Target {
-    &self.0
+    &self.worker
   }
 }
 
 impl DerefMut for CompilerWorker {
   fn deref_mut(&mut self) -> &mut Self::Target {
-    &mut self.0
+    &mut self.worker
   }
 }
 
@@ -162,7 +177,8 @@ impl Future for CompilerWorker {
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     let inner = self.get_mut();
-    inner.0.poll_unpin(cx)
+    let r = inner.worker.poll_unpin(cx);
+    r
   }
 }
 
@@ -212,7 +228,9 @@ fn create_compiler_worker(
     startup_data::compiler_isolate_init(),
     worker_state,
   );
-  worker.execute("bootstrap.tsCompilerRuntime()").unwrap();
+  worker
+    .execute("globalThis.bootstrapCompilerRuntime()")
+    .unwrap();
   worker
 }
 
@@ -1082,32 +1100,12 @@ async fn execute_in_same_thread(
   req: Buf,
 ) -> Result<Buf, ErrBox> {
   let mut worker = create_compiler_worker(global_state.clone(), permissions);
-  let handle = worker.thread_safe_handle();
-  handle.post_message(req)?;
-
-  let mut event_fut = handle.get_event().boxed_local();
-
-  loop {
-    let select_result = futures::future::select(event_fut, &mut worker).await;
-    match select_result {
-      Either::Left((event_result, _worker)) => {
-        let event = event_result
-          .expect("Compiler didn't respond")
-          .expect("Empty message");
-
-        let buf = match event {
-          WorkerEvent::Message(buf) => Ok(buf),
-          WorkerEvent::Error(error) => Err(error),
-          WorkerEvent::TerminalError(error) => Err(error),
-        }?;
-        return Ok(buf);
-      }
-      Either::Right((worker_result, event_fut_)) => {
-        event_fut = event_fut_;
-        worker_result?;
-      }
-    }
-  }
+  let msg = String::from_utf8(req.to_vec()).unwrap();
+  let script = format!("globalThis.tsCompilerOnMessage({{ data: {} }});", msg);
+  worker.execute2("<compiler>", &script)?;
+  (&mut *worker).await?;
+  let response = worker.get_response();
+  Ok(response)
 }
 
 async fn create_runtime_module_graph(
@@ -1775,6 +1773,7 @@ mod tests {
       .ts_compiler
       .bundle(mock_state.clone(), module_name)
       .await;
+
     assert!(result.is_ok());
   }
 

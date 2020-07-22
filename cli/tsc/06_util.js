@@ -2,7 +2,6 @@
 
 ((window) => {
   const core = Deno.core;
-  const { build } = window.__bootstrap.build;
   let logDebug = false;
   let logSource = "JS";
 
@@ -49,91 +48,6 @@
     throw new Error("not implemented");
   }
 
-  function immutableDefine(
-    o,
-    p,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    value,
-  ) {
-    Object.defineProperty(o, p, {
-      value,
-      configurable: false,
-      writable: false,
-    });
-  }
-
-  function pathFromURLWin32(url) {
-    const hostname = url.hostname;
-    const pathname = decodeURIComponent(url.pathname.replace(/\//g, "\\"));
-
-    if (hostname !== "") {
-      //TODO(actual-size) Node adds a punycode decoding step, we should consider adding this
-      return `\\\\${hostname}${pathname}`;
-    }
-
-    const validPath = /^\\(?<driveLetter>[A-Za-z]):\\/;
-    const matches = validPath.exec(pathname);
-
-    if (!matches?.groups?.driveLetter) {
-      throw new TypeError("A URL with the file schema must be absolute.");
-    }
-
-    // we don't want a leading slash on an absolute path in Windows
-    return pathname.slice(1);
-  }
-
-  function pathFromURLPosix(url) {
-    if (url.hostname !== "") {
-      throw new TypeError(`Host must be empty.`);
-    }
-
-    return decodeURIComponent(url.pathname);
-  }
-
-  function pathFromURL(pathOrUrl) {
-    if (pathOrUrl instanceof URL) {
-      if (pathOrUrl.protocol != "file:") {
-        throw new TypeError("Must be a file URL.");
-      }
-
-      return build.os == "windows"
-        ? pathFromURLWin32(pathOrUrl)
-        : pathFromURLPosix(pathOrUrl);
-    }
-    return pathOrUrl;
-  }
-
-  function writable(value) {
-    return {
-      value,
-      writable: true,
-      enumerable: true,
-      configurable: true,
-    };
-  }
-
-  function nonEnumerable(value) {
-    return {
-      value,
-      writable: true,
-      configurable: true,
-    };
-  }
-
-  function readOnly(value) {
-    return {
-      value,
-      enumerable: true,
-    };
-  }
-
-  function getterOnly(getter) {
-    return {
-      get: getter,
-      enumerable: true,
-    };
-  }
-
   window.__bootstrap.util = {
     log,
     setLogDebug,
@@ -141,11 +55,5 @@
     createResolvable,
     assert,
     AssertionError,
-    immutableDefine,
-    pathFromURL,
-    writable,
-    nonEnumerable,
-    readOnly,
-    getterOnly,
   };
 })(this);

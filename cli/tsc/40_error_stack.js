@@ -5,16 +5,6 @@
   // style license available here: https://github.com/v8/v8/blob/24886f2d1c565287d33d71e4109a53bf0b54b75c/LICENSE.v8
   const colors = window.__bootstrap.colors;
   const assert = window.__bootstrap.util.assert;
-  const dispatchJson = window.__bootstrap.dispatchJson;
-
-  function opApplySourceMap(location) {
-    const res = dispatchJson.sendSync("op_apply_source_map", location);
-    return {
-      fileName: res.fileName,
-      lineNumber: res.lineNumber,
-      columnNumber: res.columnNumber,
-    };
-  }
 
   function patchCallSite(callSite, location) {
     return {
@@ -219,11 +209,11 @@
         if (fileName && lineNumber != null && columnNumber != null) {
           return patchCallSite(
             callSite,
-            opApplySourceMap({
+            {
               fileName,
               lineNumber,
               columnNumber,
-            }),
+            },
           );
         }
         return callSite;
@@ -254,6 +244,5 @@
 
   window.__bootstrap.errorStack = {
     setPrepareStackTrace,
-    opApplySourceMap,
   };
 })(this);
