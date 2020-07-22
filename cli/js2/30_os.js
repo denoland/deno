@@ -17,7 +17,6 @@
 
   function exit(code = 0) {
     sendSync("op_exit", { code });
-    throw new Error("Code not reachable");
   }
 
   function setEnv(key, value) {
