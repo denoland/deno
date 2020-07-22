@@ -296,52 +296,49 @@ unitTest(function urlEncoding() {
   );
 });
 
-unitTest(function urlBaseURL(): void {
-  const base = new URL(
-    "https://foo:bar@baz.qat:8000/qux/quux?foo=bar&baz=12#qat",
-  );
-  const url = new URL("/foo/bar?baz=foo#qux", base);
-  assertEquals(url.href, "https://foo:bar@baz.qat:8000/foo/bar?baz=foo#qux");
+unitTest(function urlBase(): void {
+  assertEquals(new URL("d", new URL("http://foo/a?b#c")).href, "http://foo/d");
 
-  assertEquals(
-    new URL("D", "https://foo.bar/path/a/b/c/d").href,
-    "https://foo.bar/path/a/b/c/D",
-  );
+  assertEquals(new URL("", "http://foo/a/b?c#d").href, "http://foo/a/b?c");
+  assertEquals(new URL("", "file://foo/a/b?c#d").href, "file://foo/a/b?c");
+  assertEquals(new URL("", "abcd://foo/a/b?c#d").href, "abcd://foo/a/b?c");
 
-  assertEquals(new URL("D", "https://foo.bar").href, "https://foo.bar/D");
-  assertEquals(new URL("D", "https://foo.bar/").href, "https://foo.bar/D");
+  assertEquals(new URL("#e", "http://foo/a/b?c#d").href, "http://foo/a/b?c#e");
+  assertEquals(new URL("#e", "file://foo/a/b?c#d").href, "file://foo/a/b?c#e");
+  assertEquals(new URL("#e", "abcd://foo/a/b?c#d").href, "abcd://foo/a/b?c#e");
 
-  assertEquals(
-    new URL("/d", "https://foo.bar/path/a/b/c/d").href,
-    "https://foo.bar/d",
-  );
-});
+  assertEquals(new URL("?e", "http://foo/a/b?c#d").href, "http://foo/a/b?e");
+  assertEquals(new URL("?e", "file://foo/a/b?c#d").href, "file://foo/a/b?e");
+  assertEquals(new URL("?e", "abcd://foo/a/b?c#d").href, "abcd://foo/a/b?e");
 
-unitTest(function urlBaseString(): void {
-  const url = new URL(
-    "/foo/bar?baz=foo#qux",
-    "https://foo:bar@baz.qat:8000/qux/quux?foo=bar&baz=12#qat",
-  );
-  assertEquals(url.href, "https://foo:bar@baz.qat:8000/foo/bar?baz=foo#qux");
-});
+  assertEquals(new URL("e", "http://foo/a/b?c#d").href, "http://foo/a/e");
+  assertEquals(new URL("e", "file://foo/a/b?c#d").href, "file://foo/a/e");
+  assertEquals(new URL("e", "abcd://foo/a/b?c#d").href, "abcd://foo/a/e");
 
-unitTest(function urlRelativeWithBase(): void {
-  assertEquals(new URL("", "file:///a/a/a").href, "file:///a/a/a");
-  assertEquals(new URL(".", "file:///a/a/a").href, "file:///a/a/");
-  assertEquals(new URL("..", "file:///a/a/a").href, "file:///a/");
-  assertEquals(new URL("b", "file:///a/a/a").href, "file:///a/a/b");
-  assertEquals(new URL("b", "file:///a/a/a/").href, "file:///a/a/a/b");
-  assertEquals(new URL("b/", "file:///a/a/a").href, "file:///a/a/b/");
-  assertEquals(new URL("../b", "file:///a/a/a").href, "file:///a/b");
+  assertEquals(new URL(".", "http://foo/a/b?c#d").href, "http://foo/a/");
+  assertEquals(new URL(".", "file://foo/a/b?c#d").href, "file://foo/a/");
+  assertEquals(new URL(".", "abcd://foo/a/b?c#d").href, "abcd://foo/a/");
+
+  assertEquals(new URL("..", "http://foo/a/b?c#d").href, "http://foo/");
+  assertEquals(new URL("..", "file://foo/a/b?c#d").href, "file://foo/");
+  assertEquals(new URL("..", "abcd://foo/a/b?c#d").href, "abcd://foo/");
+
+  assertEquals(new URL("/e", "http://foo/a/b?c#d").href, "http://foo/e");
+  assertEquals(new URL("/e", "file://foo/a/b?c#d").href, "file://foo/e");
+  assertEquals(new URL("/e", "abcd://foo/a/b?c#d").href, "abcd://foo/e");
+
+  assertEquals(new URL("//bar", "http://foo/a/b?c#d").href, "http://bar/");
+  assertEquals(new URL("//bar", "file://foo/a/b?c#d").href, "file://bar/");
+  assertEquals(new URL("//bar", "abcd://foo/a/b?c#d").href, "abcd://bar");
+
+  assertEquals(new URL("efgh:", "http://foo/a/b?c#d").href, "efgh:");
+  assertEquals(new URL("efgh:", "file://foo/a/b?c#d").href, "efgh:");
+  assertEquals(new URL("efgh:", "abcd://foo/a/b?c#d").href, "efgh:");
 });
 
 unitTest(function urlDriveLetterBase() {
   assertEquals(new URL("/b", "file:///C:/a/b").href, "file:///C:/b");
   assertEquals(new URL("/D:", "file:///C:/a/b").href, "file:///D:");
-});
-
-unitTest(function urlEmptyBasePath(): void {
-  assertEquals(new URL("", "http://example.com").href, "http://example.com/");
 });
 
 unitTest(function deletingAllParamsRemovesQuestionMarkFromURL(): void {

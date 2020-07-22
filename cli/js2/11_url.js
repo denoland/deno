@@ -263,73 +263,115 @@
     return [capture, rest];
   }
 
-  function parse(url, isBase = true) {
+  function parse(url, baseParts = null) {
     const parts = {};
     let restUrl;
+    let usedNonBase = false;
     [parts.protocol, restUrl] = takePattern(
       url.trim(),
       /^([A-Za-z][+-.0-9A-Za-z]*):/,
     );
     parts.protocol = parts.protocol.toLowerCase();
-    if (isBase && parts.protocol == "") {
-      return undefined;
+    if (parts.protocol == "") {
+      if (baseParts == null) {
+        return null;
+      }
+      parts.protocol = baseParts.protocol;
+    } else {
+      usedNonBase = true;
     }
     const isSpecial = specialSchemes.includes(parts.protocol);
     if (parts.protocol == "file") {
       parts.slashes = "//";
       parts.username = "";
       parts.password = "";
-      [parts.hostname, restUrl] = takePattern(restUrl, /^[/\\]{2}([^/\\?#]*)/);
+      if (usedNonBase || restUrl.match(/^[/\\]{2}/)) {
+        [parts.hostname, restUrl] = takePattern(
+          restUrl,
+          /^[/\\]{2}([^/\\?#]*)/,
+        );
+        usedNonBase = true;
+      } else {
+        parts.hostname = baseParts.hostname;
+      }
       parts.port = "";
     } else {
-      let restAuthority;
-      if (isSpecial) {
-        parts.slashes = "//";
-        [restAuthority, restUrl] = takePattern(
-          restUrl,
-          /^[/\\]*([^/\\?#]*)/,
+      if (usedNonBase || restUrl.match(/^[/\\]{2}/)) {
+        let restAuthority;
+        if (isSpecial) {
+          parts.slashes = "//";
+          [restAuthority, restUrl] = takePattern(
+            restUrl,
+            /^[/\\]*([^/\\?#]*)/,
+          );
+        } else {
+          parts.slashes = restUrl.match(/^[/\\]{2}/) ? "//" : "";
+          [restAuthority, restUrl] = takePattern(
+            restUrl,
+            /^[/\\]{2}([^/\\?#]*)/,
+          );
+        }
+        let restAuthentication;
+        [restAuthentication, restAuthority] = takePattern(
+          restAuthority,
+          /^(.*)@/,
         );
+        [parts.username, restAuthentication] = takePattern(
+          restAuthentication,
+          /^([^:]*)/,
+        );
+        parts.username = encodeUserinfo(parts.username);
+        [parts.password] = takePattern(restAuthentication, /^:(.*)/);
+        parts.password = encodeUserinfo(parts.password);
+        [parts.hostname, restAuthority] = takePattern(
+          restAuthority,
+          /^(\[[0-9a-fA-F.:]{2,}\]|[^:]+)/,
+        );
+        [parts.port] = takePattern(restAuthority, /^:(.*)/);
+        if (!isValidPort(parts.port)) {
+          return null;
+        }
+        if (parts.hostname == "" && isSpecial) {
+          return null;
+        }
+        usedNonBase = true;
       } else {
-        parts.slashes = restUrl.match(/^[/\\]{2}/) ? "//" : "";
-        [restAuthority, restUrl] = takePattern(restUrl, /^[/\\]{2}([^/\\?#]*)/);
-      }
-      let restAuthentication;
-      [restAuthentication, restAuthority] = takePattern(
-        restAuthority,
-        /^(.*)@/,
-      );
-      [parts.username, restAuthentication] = takePattern(
-        restAuthentication,
-        /^([^:]*)/,
-      );
-      parts.username = encodeUserinfo(parts.username);
-      [parts.password] = takePattern(restAuthentication, /^:(.*)/);
-      parts.password = encodeUserinfo(parts.password);
-      [parts.hostname, restAuthority] = takePattern(
-        restAuthority,
-        /^(\[[0-9a-fA-F.:]{2,}\]|[^:]+)/,
-      );
-      [parts.port] = takePattern(restAuthority, /^:(.*)/);
-      if (!isValidPort(parts.port)) {
-        return undefined;
-      }
-      if (parts.hostname == "" && isSpecial && isBase) {
-        return undefined;
+        parts.username = baseParts.username;
+        parts.password = baseParts.password;
+        parts.hostname = baseParts.hostname;
+        parts.port = baseParts.port;
       }
     }
     try {
       parts.hostname = encodeHostname(parts.hostname, isSpecial);
     } catch {
-      return undefined;
+      return null;
     }
     [parts.path, restUrl] = takePattern(restUrl, /^([^?#]*)/);
     parts.path = encodePathname(parts.path.replace(/\\/g, "/"));
+    if (usedNonBase) {
+      parts.path = normalizePath(parts.path, parts.protocol == "file");
+    } else {
+      if (parts.path != "") {
+        usedNonBase = true;
+      }
+      parts.path = resolvePathFromBase(
+        parts.path,
+        baseParts.path || "/",
+        baseParts.protocol == "file",
+      );
+    }
     // Drop the hostname if a drive letter is parsed.
     if (parts.protocol == "file" && parts.path.match(/^\/+[A-Za-z]:(\/|$)/)) {
       parts.hostname = "";
     }
-    [parts.query, restUrl] = takePattern(restUrl, /^(\?[^#]*)/);
-    parts.query = encodeSearch(parts.query);
+    if (usedNonBase || restUrl.startsWith("?")) {
+      [parts.query, restUrl] = takePattern(restUrl, /^(\?[^#]*)/);
+      parts.query = encodeSearch(parts.query);
+      usedNonBase = true;
+    } else {
+      parts.query = baseParts.query;
+    }
     [parts.hash] = takePattern(restUrl, /^(#.*)/);
     parts.hash = encodeHash(parts.hash);
     return parts;
@@ -633,46 +675,22 @@
     }
 
     constructor(url, base) {
-      let baseParts;
+      let baseParts = null;
+      new.target;
       if (base) {
-        baseParts = typeof base === "string" ? parse(base) : parts.get(base);
-        if (baseParts === undefined) {
+        baseParts = base instanceof URL ? parts.get(base) : parse(base);
+        if (baseParts == null) {
           throw new TypeError("Invalid base URL.");
         }
       }
 
-      const urlParts = typeof url === "string"
-        ? parse(url, !baseParts)
-        : parts.get(url);
-      if (urlParts == undefined) {
+      const urlParts = url instanceof URL
+        ? parts.get(url)
+        : parse(url, baseParts);
+      if (urlParts == null) {
         throw new TypeError("Invalid URL.");
       }
-
-      if (urlParts.protocol) {
-        urlParts.path = normalizePath(
-          urlParts.path,
-          urlParts.protocol == "file",
-        );
-        parts.set(this, urlParts);
-      } else if (baseParts) {
-        parts.set(this, {
-          protocol: baseParts.protocol,
-          slashes: baseParts.slashes,
-          username: baseParts.username,
-          password: baseParts.password,
-          hostname: baseParts.hostname,
-          port: baseParts.port,
-          path: resolvePathFromBase(
-            urlParts.path,
-            baseParts.path || "/",
-            baseParts.protocol == "file",
-          ),
-          query: urlParts.query,
-          hash: urlParts.hash,
-        });
-      } else {
-        throw new TypeError("Invalid URL.");
-      }
+      parts.set(this, urlParts);
 
       this.#updateSearchParams();
     }
