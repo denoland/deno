@@ -12,6 +12,7 @@
     if (value instanceof domFile.DomFile) {
       return new domFile.DomFile([value], filename || value.name, {
         type: value.type,
+        lastModified: value.lastModified,
       });
     } else if (value instanceof blob.Blob) {
       return new domFile.DomFile([value], filename || "blob", {
