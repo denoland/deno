@@ -3,23 +3,31 @@
   "fileType": "TypeScript",
   "compiled": "[WILDCARD].js",
   "map": null,
-  "deps": [
-    "file://[WILDCARD]/005_more_imports.ts",
-    [
-      [
-        "file://[WILDCARD]/subdir/mod1.ts",
-        [
-          [
-            "file://[WILDCARD]/subdir/subdir2/mod2.ts",
-            [
-              [
-                "file://[WILDCARD]/subdir/print_hello.ts",
-                []
-              ]
+  "deps": {
+    "name": "file://[WILDCARD]/005_more_imports.ts",
+    "size": 211,
+    "total_size": 757,
+    "deps": [
+      {
+        "name": "file://[WILDCARD]/subdir/mod1.ts",
+        "size": 320,
+        "total_size": 546,
+        "deps": [
+          {
+            "name": "file://[WILDCARD]/subdir/subdir2/mod2.ts",
+            "size": 163,
+            "total_size": 226,
+            "deps": [
+              {
+                "name": "file://[WILDCARD]/subdir/print_hello.ts",
+                "size": 63,
+                "total_size": 63,
+                "deps": []
+              }
             ]
-          ]
+          }
         ]
-      ]
+      }
     ]
-  ]
+  }
 }
