@@ -341,6 +341,16 @@ unitTest(function urlDriveLetterBase() {
   assertEquals(new URL("/D:", "file:///C:/a/b").href, "file:///D:");
 });
 
+unitTest(function urlSameProtocolBase() {
+  assertEquals(new URL("http:", "http://foo/a").href, "http://foo/a");
+  assertEquals(new URL("file:", "file://foo/a").href, "file://foo/a");
+  assertEquals(new URL("abcd:", "abcd://foo/a").href, "abcd:");
+
+  assertEquals(new URL("http:b", "http://foo/a").href, "http://foo/b");
+  assertEquals(new URL("file:b", "file://foo/a").href, "file://foo/b");
+  assertEquals(new URL("abcd:b", "abcd://foo/a").href, "abcd:b");
+});
+
 unitTest(function deletingAllParamsRemovesQuestionMarkFromURL(): void {
   const url = new URL("http://example.com/?param1&param2");
   url.searchParams.delete("param1");

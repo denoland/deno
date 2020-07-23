@@ -277,7 +277,10 @@
         return null;
       }
       parts.protocol = baseParts.protocol;
-    } else {
+    } else if (
+      parts.protocol != baseParts?.protocol ||
+      !specialSchemes.includes(parts.protocol)
+    ) {
       usedNonBase = true;
     }
     const isSpecial = specialSchemes.includes(parts.protocol);
