@@ -3,10 +3,13 @@
 // This module is the entry point for "compiler" isolate, ie. the one
 // that is created when Deno needs to compile TS/WASM to JS.
 //
-// It provides a single functions that should be called by Rust:
-//  - `bootstrapTsCompilerRuntime`
+// It provides two functions that should be called by Rust:
+//  - `bootstrapCompilerRuntime`
 // This functions must be called when creating isolate
 // to properly setup runtime.
+//  - `tsCompilerOnMessage`
+// This function must be called when sending a request
+// to the compiler.
 
 // Removes the `__proto__` for security reasons.  This intentionally makes
 // Deno non compliant with ECMA-262 Annex B.2.2.1
@@ -16,9 +19,31 @@ delete Object.prototype.__proto__;
 
 ((window) => {
   const core = Deno.core;
-  const { bold, cyan, yellow } = window.__bootstrap.colors;
   const { assert, log, notImplemented } = window.__bootstrap.util;
-  const { DiagnosticCategory } = window.__bootstrap.diagnostics;
+  const dispatchJson = window.__bootstrap.dispatchJson;
+  const util = window.__bootstrap.util;
+  const errorStack = window.__bootstrap.errorStack;
+
+  function opNow() {
+    const res = dispatchJson.sendSync("op_now");
+    return res.seconds * 1e3 + res.subsecNanos / 1e6;
+  }
+
+  const DiagnosticCategory = {
+    0: "Log",
+    1: "Debug",
+    2: "Info",
+    3: "Error",
+    4: "Warning",
+    5: "Suggestion",
+
+    Log: 0,
+    Debug: 1,
+    Info: 2,
+    Error: 3,
+    Warning: 4,
+    Suggestion: 5,
+  };
 
   const unstableDenoGlobalProperties = [
     "umask",
@@ -1136,7 +1161,7 @@ delete Object.prototype.__proto__;
   function performanceStart() {
     stats.length = 0;
     // TODO(kitsonk) replace with performance.mark() when landed
-    statsStart = performance.now();
+    statsStart = opNow();
     ts.performance.enable();
   }
 
@@ -1176,7 +1201,7 @@ delete Object.prototype.__proto__;
 
   function performanceEnd() {
     // TODO(kitsonk) replace with performance.measure() when landed
-    const duration = performance.now() - statsStart;
+    const duration = opNow() - statsStart;
     stats.push({ key: "Compile time", value: duration });
     return stats;
   }
@@ -1188,11 +1213,11 @@ delete Object.prototype.__proto__;
   ) {
     const { ignoredOptions, diagnostics } = configResult;
     if (ignoredOptions) {
-      console.warn(
-        yellow(`Unsupported compiler options in "${configPath}"\n`) +
-          cyan(`  The following options were ignored:\n`) +
-          `    ${ignoredOptions.map((value) => bold(value)).join(", ")}`,
-      );
+      const msg =
+        `Unsupported compiler options in "${configPath}"\n  The following options were ignored:\n    ${
+          ignoredOptions.map((value) => value).join(", ")
+        }\n`;
+      core.print(msg, true);
     }
     return diagnostics;
   }
@@ -1545,6 +1570,7 @@ delete Object.prototype.__proto__;
     cwd,
     sourceFileMap,
     type,
+    performance,
   }) {
     if (performance) {
       performanceStart();
@@ -1804,64 +1830,83 @@ delete Object.prototype.__proto__;
     return Promise.resolve(result);
   }
 
-  async function tsCompilerOnMessage({
-    data: request,
-  }) {
+  function opCompilerRespond(msg) {
+    dispatchJson.sendSync("op_compiler_respond", msg);
+  }
+
+  async function tsCompilerOnMessage(msg) {
+    const request = msg.data;
     switch (request.type) {
       case CompilerRequestType.Compile: {
         const result = compile(request);
-        globalThis.postMessage(result);
+        opCompilerRespond(result);
         break;
       }
       case CompilerRequestType.Transpile: {
         const result = transpile(request);
-        globalThis.postMessage(result);
+        opCompilerRespond(result);
         break;
       }
       case CompilerRequestType.Bundle: {
         const result = bundle(request);
-        globalThis.postMessage(result);
+        opCompilerRespond(result);
         break;
       }
       case CompilerRequestType.RuntimeCompile: {
         const result = runtimeCompile(request);
-        globalThis.postMessage(result);
+        opCompilerRespond(result);
         break;
       }
       case CompilerRequestType.RuntimeBundle: {
         const result = runtimeBundle(request);
-        globalThis.postMessage(result);
+        opCompilerRespond(result);
         break;
       }
       case CompilerRequestType.RuntimeTranspile: {
         const result = await runtimeTranspile(request);
-        globalThis.postMessage(result);
+        opCompilerRespond(result);
         break;
       }
       default:
-        log(
+        throw new Error(
           `!!! unhandled CompilerRequestType: ${request.type} (${
             CompilerRequestType[request.type]
           })`,
         );
     }
-    // Shutdown after single request
-    globalThis.close();
   }
 
-  function bootstrapTsCompilerRuntime() {
-    globalThis.bootstrap.workerRuntime("TS", false);
-    globalThis.onmessage = tsCompilerOnMessage;
+  // TODO(bartlomieju): temporary solution, must be fixed when moving
+  // dispatches to separate crates
+  function initOps() {
+    const opsMap = core.ops();
+    for (const [_name, opId] of Object.entries(opsMap)) {
+      core.setAsyncHandler(opId, dispatchJson.asyncMsgFromRust);
+    }
   }
 
-  Object.defineProperties(globalThis, {
-    bootstrap: {
-      value: {
-        ...globalThis.bootstrap,
-        tsCompilerRuntime: bootstrapTsCompilerRuntime,
-      },
-      configurable: true,
-      writable: true,
-    },
-  });
+  function runtimeStart(source) {
+    initOps();
+    // First we send an empty `Start` message to let the privileged side know we
+    // are ready. The response should be a `StartRes` message containing the CLI
+    // args and other info.
+    const s = dispatchJson.sendSync("op_start");
+    util.setLogDebug(s.debugFlag, source);
+    errorStack.setPrepareStackTrace(Error);
+    return s;
+  }
+
+  let hasBootstrapped = false;
+
+  function bootstrapCompilerRuntime() {
+    if (hasBootstrapped) {
+      throw new Error("Worker runtime already bootstrapped");
+    }
+    hasBootstrapped = true;
+    globalThis.__bootstrap = undefined;
+    runtimeStart("TS");
+  }
+
+  globalThis.bootstrapCompilerRuntime = bootstrapCompilerRuntime;
+  globalThis.tsCompilerOnMessage = tsCompilerOnMessage;
 })(this);
