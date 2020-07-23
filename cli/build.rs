@@ -93,7 +93,7 @@ fn main() {
   let runtime_snapshot_path = o.join("CLI_SNAPSHOT.bin");
   let compiler_snapshot_path = o.join("COMPILER_SNAPSHOT.bin");
 
-  let js_files = get_js_files("js2");
+  let js_files = get_js_files("rt");
   create_runtime_snapshot(&runtime_snapshot_path, js_files);
 
   let js_files = get_js_files("tsc");
