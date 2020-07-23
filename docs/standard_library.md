@@ -69,7 +69,7 @@ deno run --allow-read --allow-write --unstable main.ts
 ```
 
 To make sure that API producing error is unstable check
-[`lib.deno.unstable.d.ts`](https://github.com/denoland/deno/blob/master/cli/js/lib.deno.unstable.d.ts)
+[`lib.deno.unstable.d.ts`](https://github.com/denoland/deno/blob/master/cli/dts/lib.deno.unstable.d.ts)
 declaration.
 
 This problem should be fixed in the near future. Feel free to omit the flag if
