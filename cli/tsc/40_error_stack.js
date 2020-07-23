@@ -3,22 +3,19 @@
 ((window) => {
   // Some of the code here is adapted directly from V8 and licensed under a BSD
   // style license available here: https://github.com/v8/v8/blob/24886f2d1c565287d33d71e4109a53bf0b54b75c/LICENSE.v8
-  const colors = window.__bootstrap.colors;
   const assert = window.__bootstrap.util.assert;
-  const internals = window.__bootstrap.internals;
-  const dispatchJson = window.__bootstrap.dispatchJson;
 
-  function opFormatDiagnostics(items) {
-    return dispatchJson.sendSync("op_format_diagnostic", { items });
-  }
+  // https://github.com/chalk/ansi-regex/blob/2b56fb0c7a07108e5b54241e8faec160d393aedb/index.js
+  const ANSI_PATTERN = new RegExp(
+    [
+      "[\\u001B\\u009B][[\\]()#;?]*(?:(?:(?:[a-zA-Z\\d]*(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]*)*)?\\u0007)",
+      "(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PR-TZcf-ntqry=><~]))",
+    ].join("|"),
+    "g",
+  );
 
-  function opApplySourceMap(location) {
-    const res = dispatchJson.sendSync("op_apply_source_map", location);
-    return {
-      fileName: res.fileName,
-      lineNumber: res.lineNumber,
-      columnNumber: res.columnNumber,
-    };
+  function stripColor(string) {
+    return string.replace(ANSI_PATTERN, "");
   }
 
   function patchCallSite(callSite, location) {
@@ -109,12 +106,9 @@
     return result;
   }
 
-  function getFileLocation(callSite, internal = false) {
-    const cyan = internal ? colors.gray : colors.cyan;
-    const yellow = internal ? colors.gray : colors.yellow;
-    const black = internal ? colors.gray : (s) => s;
+  function getFileLocation(callSite) {
     if (callSite.isNative()) {
-      return cyan("native");
+      return "native";
     }
 
     let result = "";
@@ -123,32 +117,29 @@
     if (!fileName && callSite.isEval()) {
       const evalOrigin = callSite.getEvalOrigin();
       assert(evalOrigin != null);
-      result += cyan(`${evalOrigin}, `);
+      result += `${evalOrigin}, `;
     }
 
     if (fileName) {
-      result += cyan(fileName);
+      result += fileName;
     } else {
-      result += cyan("<anonymous>");
+      result += "<anonymous>";
     }
 
     const lineNumber = callSite.getLineNumber();
     if (lineNumber != null) {
-      result += `${black(":")}${yellow(lineNumber.toString())}`;
+      result += `:${lineNumber.toString()}`;
 
       const columnNumber = callSite.getColumnNumber();
       if (columnNumber != null) {
-        result += `${black(":")}${yellow(columnNumber.toString())}`;
+        result += `:${columnNumber.toString()}`;
       }
     }
 
     return result;
   }
 
-  function callSiteToString(callSite, internal = false) {
-    const cyan = internal ? colors.gray : colors.cyan;
-    const black = internal ? colors.gray : (s) => s;
-
+  function callSiteToString(callSite) {
     let result = "";
     const functionName = callSite.getFunctionName();
 
@@ -159,35 +150,29 @@
     const isMethodCall = !(isTopLevel || isConstructor);
 
     if (isAsync) {
-      result += colors.gray("async ");
+      result += "async ";
     }
     if (isPromiseAll) {
-      result += colors.bold(
-        colors.italic(
-          black(`Promise.all (index ${callSite.getPromiseIndex()})`),
-        ),
-      );
+      result += `Promise.all (index ${callSite.getPromiseIndex()})`;
       return result;
     }
     if (isMethodCall) {
-      result += colors.bold(colors.italic(black(getMethodCall(callSite))));
+      result += getMethodCall(callSite);
     } else if (isConstructor) {
-      result += colors.gray("new ");
+      result += "new ";
       if (functionName) {
-        result += colors.bold(colors.italic(black(functionName)));
+        result += functionName;
       } else {
-        result += cyan("<anonymous>");
+        result += "<anonymous>";
       }
     } else if (functionName) {
-      result += colors.bold(colors.italic(black(functionName)));
+      result += functionName;
     } else {
-      result += getFileLocation(callSite, internal);
+      result += getFileLocation(callSite);
       return result;
     }
 
-    result += ` ${black("(")}${getFileLocation(callSite, internal)}${
-      black(")")
-    }`;
+    result += ` (${getFileLocation(callSite)})`;
     return result;
   }
 
@@ -224,11 +209,11 @@
         if (fileName && lineNumber != null && columnNumber != null) {
           return patchCallSite(
             callSite,
-            opApplySourceMap({
+            {
               fileName,
               lineNumber,
               columnNumber,
-            }),
+            },
           );
         }
         return callSite;
@@ -240,15 +225,14 @@
     });
     for (const callSite of mappedCallSites) {
       error.__callSiteEvals.push(Object.freeze(evaluateCallSite(callSite)));
-      const isInternal = callSite.getFileName()?.startsWith("$deno$") ?? false;
-      error.__formattedFrames.push(callSiteToString(callSite, isInternal));
+      error.__formattedFrames.push(callSiteToString(callSite));
     }
     Object.freeze(error.__callSiteEvals);
     Object.freeze(error.__formattedFrames);
     return (
       `${error.name}: ${error.message}\n` +
       error.__formattedFrames
-        .map((s) => `    at ${colors.stripColor(s)}`)
+        .map((s) => `    at ${stripColor(s)}`)
         .join("\n")
     );
   }
@@ -257,11 +241,7 @@
     ErrorConstructor.prepareStackTrace = prepareStackTrace;
   }
 
-  internals.exposeForTest("setPrepareStackTrace", setPrepareStackTrace);
-
   window.__bootstrap.errorStack = {
     setPrepareStackTrace,
-    opApplySourceMap,
-    opFormatDiagnostics,
   };
 })(this);
