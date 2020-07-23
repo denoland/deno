@@ -168,20 +168,6 @@ async function printFilesNames() {
 printFilesNames().then(() => console.log("Done!"));
 ```
 
-### writeFileStr
-
-Write the string to file.
-
-```ts
-import {
-  writeFileStr,
-  writeFileStrSync,
-} from "https://deno.land/std/fs/mod.ts";
-
-writeFileStr("./target.dat", "file content"); // returns a promise
-writeFileStrSync("./target.dat", "file content"); // void
-```
-
 ### expandGlob
 
 Expand the glob string from the specified `root` directory and yield each result
