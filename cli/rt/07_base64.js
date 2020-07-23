@@ -149,7 +149,7 @@
     return parts.join("");
   }
 
-  window.__base64 = {
+  window.__bootstrap.base64 = {
     byteLength,
     toByteArray,
     fromByteArray,

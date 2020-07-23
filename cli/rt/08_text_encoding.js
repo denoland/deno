@@ -26,7 +26,7 @@
 
 ((window) => {
   const core = Deno.core;
-  const base64 = window.__base64;
+  const base64 = window.__bootstrap.base64;
 
   const CONTINUE = null;
   const END_OF_STREAM = -1;
