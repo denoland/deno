@@ -91,7 +91,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9021768bcce77296b64648cc7a7460e3df99979b97ed5c925c38d1cc83778d98"
 dependencies = [
  "brotli",
- "bytes 0.5.5",
+ "bytes",
  "flate2",
  "futures-core",
  "memchr",
@@ -217,16 +217,6 @@ name = "byteorder"
 version = "1.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "08c48aae112d48ed9f069b33538ea9e3e90aa263cfa3d1c24309612b1f7472de"
-
-[[package]]
-name = "bytes"
-version = "0.4.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "206fdffcfa2df7cbe15601ef46c813fce0965eb3286db6b56c583b814b51c81c"
-dependencies = [
- "byteorder",
- "iovec",
-]
 
 [[package]]
 name = "bytes"
@@ -382,13 +372,13 @@ dependencies = [
  "atty",
  "base64 0.12.3",
  "byteorder",
- "bytes 0.5.5",
+ "bytes",
  "clap",
  "deno_core",
  "deno_lint",
  "dissimilar",
  "dlopen",
- "futures 0.3.5",
+ "futures",
  "fwdansi",
  "http",
  "idna",
@@ -434,7 +424,7 @@ version = "0.49.0"
 dependencies = [
  "derive_deref",
  "downcast-rs",
- "futures 0.3.5",
+ "futures",
  "lazy_static",
  "libc",
  "log 0.4.8",
@@ -671,12 +661,6 @@ checksum = "3dcaa9ae7725d12cdb85b3ad99a434db70b468c09ded17e012d86b5c1010f7a7"
 
 [[package]]
 name = "futures"
-version = "0.1.29"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1b980f2816d6ee8673b6517b52cb0e808a180efc92e5c19d02cdda79066703ef"
-
-[[package]]
-name = "futures"
 version = "0.3.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1e05b85ec287aac0dc34db7d4a569323df697f9c55b99b15d6b4ef8cde49f613"
@@ -715,7 +699,6 @@ dependencies = [
  "futures-core",
  "futures-task",
  "futures-util",
- "num_cpus",
 ]
 
 [[package]]
@@ -757,7 +740,6 @@ version = "0.3.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8764574ff08b701a084482c3c7031349104b07ac897393010494beaa18ce32c6"
 dependencies = [
- "futures 0.1.29",
  "futures-channel",
  "futures-core",
  "futures-io",
@@ -770,7 +752,6 @@ dependencies = [
  "proc-macro-hack",
  "proc-macro-nested",
  "slab",
- "tokio-io",
 ]
 
 [[package]]
@@ -831,7 +812,7 @@ version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "79b7246d7e4b979c03fa093da39cfb3617a96bbeee6310af63991668d7e843ff"
 dependencies = [
- "bytes 0.5.5",
+ "bytes",
  "fnv",
  "futures-core",
  "futures-sink",
@@ -852,7 +833,7 @@ checksum = "ed18eb2459bf1a09ad2d6b1547840c3e5e62882fa09b9a6a20b1de8e3228848f"
 dependencies = [
  "base64 0.12.3",
  "bitflags",
- "bytes 0.5.5",
+ "bytes",
  "headers-core",
  "http",
  "mime 0.3.16",
@@ -884,7 +865,7 @@ version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "28d569972648b2c512421b5f2a405ad6ac9666547189d0c5477a3f200f3e02f9"
 dependencies = [
- "bytes 0.5.5",
+ "bytes",
  "fnv",
  "itoa",
 ]
@@ -895,7 +876,7 @@ version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "13d5ff830006f7646652e057693569bfe0d51760c0085a071769d142a205111b"
 dependencies = [
- "bytes 0.5.5",
+ "bytes",
  "http",
 ]
 
@@ -911,7 +892,7 @@ version = "0.13.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a6e7655b9594024ad0ee439f3b5a7299369dc2a3f459b47c696f9ff676f9aa1f"
 dependencies = [
- "bytes 0.5.5",
+ "bytes",
  "futures-channel",
  "futures-core",
  "futures-util",
@@ -935,7 +916,7 @@ version = "0.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ac965ea399ec3a25ac7d13b8affd4b8f39325cca00858ddf5eb29b79e6b14b08"
 dependencies = [
- "bytes 0.5.5",
+ "bytes",
  "futures-util",
  "hyper",
  "log 0.4.8",
@@ -1003,7 +984,7 @@ version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "19a8a95243d5a0398cae618ec29477c6e3cb631152be5c19481f80bc71559754"
 dependencies = [
- "bytes 0.5.5",
+ "bytes",
 ]
 
 [[package]]
@@ -1790,7 +1771,7 @@ checksum = "3b82c9238b305f26f53443e3a4bc8528d64b8d0bee408ec949eb7bf5635ec680"
 dependencies = [
  "async-compression",
  "base64 0.12.3",
- "bytes 0.5.5",
+ "bytes",
  "encoding_rs",
  "futures-core",
  "futures-util",
@@ -2344,7 +2325,7 @@ name = "test_plugin"
 version = "0.0.1"
 dependencies = [
  "deno_core",
- "futures 0.3.5",
+ "futures",
  "test_util",
 ]
 
@@ -2352,8 +2333,8 @@ dependencies = [
 name = "test_util"
 version = "0.1.0"
 dependencies = [
- "bytes 0.5.5",
- "futures 0.3.5",
+ "bytes",
+ "futures",
  "lazy_static",
  "os_pipe",
  "regex",
@@ -2422,7 +2403,7 @@ version = "0.2.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5d34ca54d84bf2b5b4d7d31e901a8464f7b60ac145a284fba25ceb801f2ddccd"
 dependencies = [
- "bytes 0.5.5",
+ "bytes",
  "fnv",
  "futures-core",
  "iovec",
@@ -2438,17 +2419,6 @@ dependencies = [
  "slab",
  "tokio-macros",
  "winapi 0.3.9",
-]
-
-[[package]]
-name = "tokio-io"
-version = "0.1.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "57fc868aae093479e3131e3d165c93b1c7474109d13c90ec0dda2a1bbfff0674"
-dependencies = [
- "bytes 0.4.12",
- "futures 0.1.29",
- "log 0.4.8",
 ]
 
 [[package]]
@@ -2492,7 +2462,7 @@ version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b8b8fe88007ebc363512449868d7da4389c9400072a3f666f212c7280082882a"
 dependencies = [
- "futures 0.3.5",
+ "futures",
  "log 0.4.8",
  "pin-project",
  "tokio",
@@ -2505,7 +2475,7 @@ version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "be8242891f2b6cbef26a2d7e8605133c2c554cd35b3e4948ea892d6d68436499"
 dependencies = [
- "bytes 0.5.5",
+ "bytes",
  "futures-core",
  "futures-sink",
  "log 0.4.8",
@@ -2542,7 +2512,7 @@ checksum = "cfea31758bf674f990918962e8e5f07071a3161bd7c4138ed23e416e1ac4264e"
 dependencies = [
  "base64 0.11.0",
  "byteorder",
- "bytes 0.5.5",
+ "bytes",
  "http",
  "httparse",
  "input_buffer",
@@ -2733,8 +2703,8 @@ version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0e95175b7a927258ecbb816bdada3cc469cb68593e7940b96a60f4af366a9970"
 dependencies = [
- "bytes 0.5.5",
- "futures 0.3.5",
+ "bytes",
+ "futures",
  "headers",
  "http",
  "hyper",
