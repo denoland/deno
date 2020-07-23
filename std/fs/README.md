@@ -168,21 +168,6 @@ async function printFilesNames() {
 printFilesNames().then(() => console.log("Done!"));
 ```
 
-### readFileStr
-
-Read file and output it as a string.
-
-**ReadOptions**
-
-- encoding : The encoding to read file. lowercased.
-
-```ts
-import { readFileStr, readFileStrSync } from "https://deno.land/std/fs/mod.ts";
-
-readFileStr("./target.dat", { encoding: "utf8" }); // returns a promise
-readFileStrSync("./target.dat", { encoding: "utf8" }); // string
-```
-
 ### expandGlob
 
 Expand the glob string from the specified `root` directory and yield each result
