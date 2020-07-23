@@ -1,4 +1,4 @@
-# js2
+# Runtime JavaScript Code
 
 This directory contains Deno runtime code written in plain JavaScript.
 

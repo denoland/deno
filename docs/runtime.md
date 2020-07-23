@@ -13,7 +13,7 @@ The detailed documentation for implemented Web APIs can be found on
 [doc.deno.land](https://doc.deno.land/https/raw.githubusercontent.com/denoland/deno/master/cli/dts/lib.deno.shared_globals.d.ts).
 Additionally, a full list of the Web APIs which Deno implements is also
 available
-[in the repository](https://github.com/denoland/deno/blob/master/cli/js2/README.md).
+[in the repository](https://github.com/denoland/deno/blob/master/cli/rt/README.md).
 
 The TypeScript definitions for the implemented web APIs can be found in the
 [`lib.deno.shared_globals.d.ts`](https://github.com/denoland/deno/blob/master/cli/dts/lib.deno.shared_globals.d.ts)
