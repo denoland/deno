@@ -236,7 +236,7 @@ impl FileInfoDepTree {
           + deps
             .iter()
             .map(|dep| dep.total_size)
-            .fold(0usize, |acc, v| acc + v);
+            .sum::<usize>();
 
         total_sizes.insert(name.clone(), total);
 
