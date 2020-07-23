@@ -47,7 +47,7 @@ ring = "0.16.15"
 rustyline = { version = "6.2", default-features = false }
 serde = { version = "1.0.112", features = ["derive"] }
 serde_derive = "1.0.112"
-serde_json = "1.0.55"
+serde_json = { version = "1.0.55", features = [ "preserve_order" ] }
 sys-info = "0.7.0"
 sourcemap = "6.0.0"
 tempfile = "3.1.0"

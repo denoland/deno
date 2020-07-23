@@ -20,7 +20,7 @@ lazy_static = "1.4.0"
 libc = "0.2.71"
 log = "0.4.8"
 rusty_v8 = "0.7.0"
-serde_json = "1.0.55"
+serde_json = { version = "1.0.55", features = [ "preserve_order" ] }
 smallvec = "1.4.0"
 url = "2.1.1"
 
