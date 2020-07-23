@@ -1,8 +1,8 @@
-import { A } from "./A.ts"
-import { thing } from "./common.ts"
+import { A } from "./A.ts";
+import { thing } from "./common.ts";
 
 export function C(): void {
-    if (A != null) {
-        thing()
-    }
+  if (A != null) {
+    thing();
+  }
 }

@@ -1,3 +1,2 @@
 export function thing(): void {
-    
 }

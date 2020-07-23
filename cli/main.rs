@@ -232,11 +232,8 @@ impl FileInfoDepTree {
       if let Some(total_size) = total_sizes.get(&name) {
         total_size.to_owned()
       } else {
-        let total = size
-          + deps
-            .iter()
-            .map(|dep| dep.total_size)
-            .sum::<usize>();
+        let total: usize = deps.iter().map(|dep| dep.total_size).sum();
+        let total = size + total;
 
         total_sizes.insert(name.clone(), total);
 
