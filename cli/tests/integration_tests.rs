@@ -2251,6 +2251,11 @@ itest!(import_file_with_colon {
   output: "import_file_with_colon.ts.out",
   http_server: true,
 });
+itest!(info_recursive_modules {
+  args: "info --quiet recursive_imports/A.ts",
+  output: "info_recursive_imports.out",
+  exit_code: 0,
+});
 
 #[test]
 fn cafile_env_fetch() {
