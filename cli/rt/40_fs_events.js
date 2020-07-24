@@ -2,6 +2,7 @@
 
 ((window) => {
   const { sendSync, sendAsync } = window.__bootstrap.dispatchJson;
+  const { errors } = window.__bootstrap.errors;
   const { close } = window.__bootstrap.resources;
 
   class FsWatcher {
@@ -16,10 +17,17 @@
       return this.#rid;
     }
 
-    next() {
-      return sendAsync("op_fs_events_poll", {
-        rid: this.rid,
-      });
+    async next() {
+      try {
+        return await sendAsync("op_fs_events_poll", {
+          rid: this.rid,
+        });
+      } catch (error) {
+        if (error instanceof errors.BadResource) {
+          return { value: undefined, done: true };
+        }
+        throw error;
+      }
     }
 
     return(value) {
