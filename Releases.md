@@ -32,7 +32,6 @@ Changes in std version 0.62.0:
 - feat(std/node): add string_decoder (#6638)
 - fix(std/encoding/toml): could not parse strings with apostrophes/semicolons
   (#6781)
-- fix(std/fs): remove unexisted imports (#6850)
 - fix(std/testing): assertThrows inheritance (#6623)
 - fix(std/wasi): remove number overload from rights in path_open (#6768)
 - refactor(std/datetime): improve weekOfYear (#6741)
