@@ -66,6 +66,7 @@ pub enum DenoSubcommand {
     allow_none: bool,
     include: Option<Vec<String>>,
     filter: Option<String>,
+    cover: bool,
   },
   Types,
   Upgrade {
@@ -554,8 +555,10 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let allow_none = matches.is_present("allow_none");
   let quiet = matches.is_present("quiet");
   let filter = matches.value_of("filter").map(String::from);
+  let cover = matches.is_present("cover");
   let include = if matches.is_present("files") {
-    let files: Vec<String> = matches
+
+  let files: Vec<String> = matches
       .values_of("files")
       .unwrap()
       .map(String::from)
@@ -565,12 +568,14 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     None
   };
 
+
   flags.subcommand = DenoSubcommand::Test {
     fail_fast: failfast,
     quiet,
     include,
     filter,
     allow_none,
+    cover,
   };
 }
 
@@ -1136,6 +1141,12 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
         .long("filter")
         .takes_value(true)
         .help("Run tests with this string or pattern in the test name"),
+    )
+    .arg(
+        Arg::with_name("cover")
+        .long("cover")
+        .takes_value(false)
+        .help("Collect coverage information"),
     )
     .arg(
       Arg::with_name("files")
@@ -2685,6 +2696,7 @@ mod tests {
           allow_none: true,
           quiet: false,
           include: Some(svec!["dir1/", "dir2/"]),
+          cover: false,
         },
         allow_net: true,
         ..Flags::default()
@@ -2704,6 +2716,7 @@ mod tests {
           quiet: false,
           filter: Some("foo".to_string()),
           include: Some(svec!["dir1"]),
+          cover: false,
         },
         ..Flags::default()
       }

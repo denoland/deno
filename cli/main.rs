@@ -22,6 +22,7 @@ extern crate serde_derive;
 extern crate tokio;
 extern crate url;
 
+mod coverage;
 mod checksum;
 pub mod colors;
 pub mod deno_dir;
@@ -73,6 +74,8 @@ pub use deno_lint::swc_ecma_ast;
 pub use deno_lint::swc_ecma_parser;
 pub use deno_lint::swc_ecma_visit;
 
+use crate::coverage::CoverageCollector;
+use crate::coverage::ScriptCoverage;
 use crate::doc::parser::DocFileLoader;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
@@ -634,6 +637,7 @@ async fn test_command(
   quiet: bool,
   allow_none: bool,
   filter: Option<String>,
+  cover: bool,
 ) -> Result<(), ErrBox> {
   let global_state = GlobalState::new(flags.clone())?;
   let cwd = std::env::current_dir().expect("No current directory");
@@ -652,7 +656,7 @@ async fn test_command(
   let test_file_url =
     Url::from_file_path(&test_file_path).expect("Should be valid file url");
   let test_file =
-    test_runner::render_test_file(test_modules, fail_fast, quiet, filter);
+    test_runner::render_test_file(test_modules.clone(), fail_fast, quiet, filter);
   let main_module =
     ModuleSpecifier::resolve_url(&test_file_url.to_string()).unwrap();
   let mut worker =
@@ -673,111 +677,164 @@ async fn test_command(
     .global_state
     .file_fetcher
     .save_source_file_in_cache(&main_module, source_file);
+
+  let mut maybe_coverage_collector = if cover {
+     let inspector = match worker.inspector.as_mut() {
+       Some(inspector) => inspector,
+       None => {
+         return Err(
+           // TODO(caspervonb) this should be implicit when the cover flag is provided.
+           OpError::other("coverage option requires --inspect flag".to_string()).into(),
+         )
+       }
+     };
+     let inspector_url = Url::parse(&inspector.debugger_url)?;
+     let mut coverage_collector = CoverageCollector::connect(inspector_url).await?;
+     coverage_collector.start_collecting().await?;
+     inspector.wait_for_session_and_break_on_next_statement();
+
+     Some(coverage_collector)
+  } else {
+      None
+  };
+
   let execute_result = worker.execute_module(&main_module).await;
   execute_result?;
   worker.execute("window.dispatchEvent(new Event('load'))")?;
   (&mut *worker).await?;
-  worker.execute("window.dispatchEvent(new Event('unload'))")
+  worker.execute("window.dispatchEvent(new Event('unload'))")?;
+  (&mut *worker).await?;
+
+  if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
+      coverage_collector.stop_collecting().await?;
+
+      // TODO(caspervonb) Use either a thread and join it here or tasks and poll
+      // the worker and coverage_collector concurrently
+      // to avoid having to depend on this somewhat arbritrary delay.
+      tokio::time::delay_for(std::time::Duration::from_millis(500)).await;
+      (&mut *worker).await?;
+
+      let script_coverage = coverage_collector.take_precise_coverage().await?;
+      let test_scripts = test_modules
+           .into_iter()
+           .map(|u| u.to_string())
+           .collect::<Vec<String>>();
+
+      let filtered_coverage = script_coverage
+          .into_iter()
+          .filter(|e| !test_scripts.contains(&e.url))
+          .filter(|e| !e.url.contains(".deno"))
+          .filter(|e| !e.url.contains("__anonymous__"))
+          .filter(|e| e.url.contains(cwd.as_os_str().to_str().unwrap()))
+          .collect::<Vec<ScriptCoverage>>();
+
+      // TODO(caspervonb) print a summary report to console
+      // TODO(caspervonb) add support for lcov output (see geninfo(1) for format spec).
+      eprintln!("{:#?}", filtered_coverage);
+  }
+
+  Ok(())
 }
 
 pub fn main() {
-  #[cfg(windows)]
-  colors::enable_ansi(); // For Windows 10
+    #[cfg(windows)]
+    colors::enable_ansi(); // For Windows 10
 
-  log::set_logger(&LOGGER).unwrap();
-  let args: Vec<String> = env::args().collect();
-  let flags = flags::flags_from_vec(args);
+    log::set_logger(&LOGGER).unwrap();
+    let args: Vec<String> = env::args().collect();
+    let flags = flags::flags_from_vec(args);
 
-  if let Some(ref v8_flags) = flags.v8_flags {
-    let mut v8_flags_ = v8_flags.clone();
-    v8_flags_.insert(0, "UNUSED_BUT_NECESSARY_ARG0".to_string());
-    v8_set_flags(v8_flags_);
-  }
+    if let Some(ref v8_flags) = flags.v8_flags {
+        let mut v8_flags_ = v8_flags.clone();
+        v8_flags_.insert(0, "UNUSED_BUT_NECESSARY_ARG0".to_string());
+        v8_set_flags(v8_flags_);
+    }
 
-  let log_level = match flags.log_level {
-    Some(level) => level,
-    None => Level::Info, // Default log level
-  };
-  log::set_max_level(log_level.to_level_filter());
+    let log_level = match flags.log_level {
+        Some(level) => level,
+        None => Level::Info, // Default log level
+    };
+    log::set_max_level(log_level.to_level_filter());
 
-  let fut = match flags.clone().subcommand {
-    DenoSubcommand::Bundle {
-      source_file,
-      out_file,
-    } => bundle_command(flags, source_file, out_file).boxed_local(),
-    DenoSubcommand::Doc {
-      source_file,
-      json,
-      filter,
-      private,
-    } => doc_command(flags, source_file, json, filter, private).boxed_local(),
-    DenoSubcommand::Eval {
-      print,
-      code,
-      as_typescript,
-    } => eval_command(flags, code, as_typescript, print).boxed_local(),
-    DenoSubcommand::Cache { files } => {
-      cache_command(flags, files).boxed_local()
-    }
-    DenoSubcommand::Fmt { check, files } => {
-      fmt::format(files, check).boxed_local()
-    }
-    DenoSubcommand::Info { file, json } => {
-      info_command(flags, file, json).boxed_local()
-    }
-    DenoSubcommand::Install {
-      module_url,
-      args,
-      name,
-      root,
-      force,
-    } => {
-      install_command(flags, module_url, args, name, root, force).boxed_local()
-    }
-    DenoSubcommand::Lint { files, rules } => {
-      lint_command(flags, files, rules).boxed_local()
-    }
-    DenoSubcommand::Repl => run_repl(flags).boxed_local(),
-    DenoSubcommand::Run { script } => run_command(flags, script).boxed_local(),
-    DenoSubcommand::Test {
-      fail_fast,
-      quiet,
-      include,
-      allow_none,
-      filter,
-    } => test_command(flags, include, fail_fast, quiet, allow_none, filter)
-      .boxed_local(),
-    DenoSubcommand::Completions { buf } => {
-      if let Err(e) = write_to_stdout_ignore_sigpipe(&buf) {
-        eprintln!("{}", e);
+    let fut = match flags.clone().subcommand {
+        DenoSubcommand::Bundle {
+            source_file,
+            out_file,
+        } => bundle_command(flags, source_file, out_file).boxed_local(),
+        DenoSubcommand::Doc {
+            source_file,
+            json,
+            filter,
+            private,
+        } => doc_command(flags, source_file, json, filter, private).boxed_local(),
+        DenoSubcommand::Eval {
+            print,
+            code,
+            as_typescript,
+        } => eval_command(flags, code, as_typescript, print).boxed_local(),
+        DenoSubcommand::Cache { files } => {
+            cache_command(flags, files).boxed_local()
+        }
+        DenoSubcommand::Fmt { check, files } => {
+            fmt::format(files, check).boxed_local()
+        }
+        DenoSubcommand::Info { file, json } => {
+            info_command(flags, file, json).boxed_local()
+        }
+        DenoSubcommand::Install {
+            module_url,
+            args,
+            name,
+            root,
+            force,
+        } => {
+            install_command(flags, module_url, args, name, root, force).boxed_local()
+        }
+        DenoSubcommand::Lint { files, rules } => {
+            lint_command(flags, files, rules).boxed_local()
+        }
+        DenoSubcommand::Repl => run_repl(flags).boxed_local(),
+        DenoSubcommand::Run { script } => run_command(flags, script).boxed_local(),
+        DenoSubcommand::Test {
+            fail_fast,
+            quiet,
+            include,
+            allow_none,
+            filter,
+            cover,
+        } => test_command(flags, include, fail_fast, quiet, allow_none, filter, cover)
+        .boxed_local(),
+        DenoSubcommand::Completions { buf } => {
+            if let Err(e) = write_to_stdout_ignore_sigpipe(&buf) {
+                eprintln!("{}", e);
+                std::process::exit(1);
+            }
+            return;
+        }
+        DenoSubcommand::Types => {
+            let types = get_types(flags.unstable);
+            if let Err(e) = write_to_stdout_ignore_sigpipe(types.as_bytes()) {
+                eprintln!("{}", e);
+                std::process::exit(1);
+            }
+            return;
+        }
+        DenoSubcommand::Upgrade {
+            force,
+            dry_run,
+            version,
+            output,
+            ca_file,
+        } => {
+            upgrade_command(dry_run, force, version, output, ca_file).boxed_local()
+        }
+        _ => unreachable!(),
+    };
+
+    let result = tokio_util::run_basic(fut);
+    if let Err(err) = result {
+        let msg = format!("{}: {}", colors::red_bold("error"), err.to_string(),);
+        eprintln!("{}", msg);
         std::process::exit(1);
-      }
-      return;
     }
-    DenoSubcommand::Types => {
-      let types = get_types(flags.unstable);
-      if let Err(e) = write_to_stdout_ignore_sigpipe(types.as_bytes()) {
-        eprintln!("{}", e);
-        std::process::exit(1);
-      }
-      return;
-    }
-    DenoSubcommand::Upgrade {
-      force,
-      dry_run,
-      version,
-      output,
-      ca_file,
-    } => {
-      upgrade_command(dry_run, force, version, output, ca_file).boxed_local()
-    }
-    _ => unreachable!(),
-  };
-
-  let result = tokio_util::run_basic(fut);
-  if let Err(err) = result {
-    let msg = format!("{}: {}", colors::red_bold("error"), err.to_string(),);
-    eprintln!("{}", msg);
-    std::process::exit(1);
-  }
 }
