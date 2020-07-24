@@ -441,9 +441,12 @@ async fn ast_command(flags: Flags, source_file: String) -> Result<(), ErrBox> {
   let module_specifier = ModuleSpecifier::resolve_url_or_path(&source_file)?;
 
   debug!(">>>>> ast START");
-  let global_state = GlobalState::new(flags)?;
+  
+  if !flags.unstable {
+    exit_unstable("ast");
+  }
 
-  info!("{} {}", colors::green("AST"), module_specifier.to_string());
+  let global_state = GlobalState::new(flags)?;
 
   let out = global_state
     .file_fetcher
@@ -462,8 +465,7 @@ async fn ast_command(flags: Flags, source_file: String) -> Result<(), ErrBox> {
   )?;
 
   debug!(">>>>> ast END");
-  println!("{}", serde_json::to_string(&ast)?);
-  Ok(())
+  write_to_stdout_ignore_sigpipe(serde_json::to_string(&ast)?.as_bytes()).map_err(ErrBox::from)
 }
 
 async fn bundle_command(

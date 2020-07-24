@@ -744,14 +744,16 @@ The installation root is determined, in order of precedence:
 These must be added to the path manually if required.")
 }
 
-fn ast_subcommand<'a, 'b>() -> App<'a, 'b> {
-  SubCommand::with_name("ast")
+fn bundle_subcommand<'a, 'b>() -> App<'a, 'b> {
+  SubCommand::with_name("bundle")
     .arg(
       Arg::with_name("source_file")
         .takes_value(true)
         .required(true),
     )
     .arg(unstable_arg())
+    .arg(lock_arg())
+    .arg(lock_write_arg())
     .about("Bundle module and dependencies into single file")
     .long_about(
       "Output a single JavaScript file with all dependencies.
@@ -762,8 +764,8 @@ If no output file is given, the output is written to standard output:
     )
 }
 
-fn bundle_subcommand<'a, 'b>() -> App<'a, 'b> {
-  SubCommand::with_name("bundle")
+fn ast_subcommand<'a, 'b>() -> App<'a, 'b> {
+  SubCommand::with_name("ast")
     .arg(
       Arg::with_name("source_file")
         .takes_value(true)
