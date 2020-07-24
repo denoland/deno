@@ -436,6 +436,13 @@ async fn eval_command(
   Ok(())
 }
 
+async fn ast_command(
+    source_file: String,
+) -> Result<(), ErrBox> {
+  
+  Ok(())
+}
+
 async fn bundle_command(
   flags: Flags,
   source_file: String,

@@ -15,6 +15,9 @@ macro_rules! svec {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum DenoSubcommand {
+  Ast {
+    source_file: String,
+  },
   Bundle {
     source_file: String,
     out_file: Option<PathBuf>,
@@ -273,6 +276,8 @@ pub fn flags_from_vec_safe(args: Vec<String>) -> clap::Result<Flags> {
     doc_parse(&mut flags, m);
   } else if let Some(m) = matches.subcommand_matches("lint") {
     lint_parse(&mut flags, m);
+  } else if let Some(m) = matches.subcommand_matches("ast") {
+    ast_parse(&mut flags, m);
   } else {
     repl_parse(&mut flags, &matches);
   }
@@ -314,6 +319,7 @@ If the flag is set, restrict these messages to errors.",
         )
         .global(true),
     )
+    .subcommand(ast_subcommand())
     .subcommand(bundle_subcommand())
     .subcommand(cache_subcommand())
     .subcommand(completions_subcommand())
@@ -335,6 +341,15 @@ If the flag is set, restrict these messages to errors.",
 fn types_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   unstable_arg_parse(flags, matches);
   flags.subcommand = DenoSubcommand::Types;
+}
+
+fn ast_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  unstable_arg_parse(flags, matches);
+
+  let source_file = matches.value_of("source_file").unwrap().to_string();
+  flags.subcommand = DenoSubcommand::Ast {
+    source_file,
+  };
 }
 
 fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
@@ -731,10 +746,8 @@ The installation root is determined, in order of precedence:
 These must be added to the path manually if required.")
 }
 
-fn bundle_subcommand<'a, 'b>() -> App<'a, 'b> {
-  SubCommand::with_name("bundle")
-    .arg(lock_arg())
-    .arg(lock_write_arg())
+fn ast_subcommand<'a, 'b>() -> App<'a, 'b> {
+  SubCommand::with_name("ast")
     .arg(
       Arg::with_name("source_file")
         .takes_value(true)
@@ -752,6 +765,21 @@ fn bundle_subcommand<'a, 'b>() -> App<'a, 'b> {
 
 If no output file is given, the output is written to standard output:
   deno bundle https://deno.land/std/examples/colors.ts",
+    )
+}
+
+fn bundle_subcommand<'a, 'b>() -> App<'a, 'b> {
+  SubCommand::with_name("bundle")
+    .arg(
+      Arg::with_name("source_file")
+        .takes_value(true)
+        .required(true),
+    )
+    .arg(unstable_arg())
+    .about("Print the AST of a particular source file.")
+    .long_about(
+      "Prints the AST of a single JavaScript/TypeScript file.
+  deno ast https://deno.land/std/examples/colors.ts",
     )
 }
 
