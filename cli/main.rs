@@ -462,6 +462,8 @@ async fn ast_command(
       let module = parse_result.unwrap();
       Ok(module)
   })?;
+
+  debug!(">>>>> ast END");
   println!("{}", serde_json::to_string(&ast)?);
   Ok(())
 }
