@@ -83,6 +83,7 @@ use crate::op_error::OpError;
 use crate::permissions::Permissions;
 use crate::tsc::TargetLib;
 use crate::worker::MainWorker;
+use crate::swc_util::AstParser;
 use deno_core::v8_set_flags;
 use deno_core::Deps;
 use deno_core::ErrBox;
@@ -437,9 +438,31 @@ async fn eval_command(
 }
 
 async fn ast_command(
+    flags: Flags,
     source_file: String,
 ) -> Result<(), ErrBox> {
-  
+  let module_specifier = ModuleSpecifier::resolve_url_or_path(&source_file)?;
+
+  debug!(">>>>> ast START");
+  let global_state = GlobalState::new(flags)?;
+
+  info!(
+    "{} {}",
+    colors::green("AST"),
+    module_specifier.to_string()
+  );
+
+  let out = global_state
+    .file_fetcher
+    .fetch_source_file(&module_specifier, None, Permissions::allow_all())
+    .await?;
+  let src = std::str::from_utf8(&out.source_code)?;
+  let parser = AstParser::new();
+  let ast = parser.parse_module::<_, Result<swc_ecma_ast::Module, ErrBox>>(&module_specifier.to_string(), out.media_type, src, |parse_result| {
+      let module = parse_result.unwrap();
+      Ok(module)
+  })?;
+  println!("{}", serde_json::to_string(&ast)?);
   Ok(())
 }
 
@@ -708,6 +731,9 @@ pub fn main() {
   log::set_max_level(log_level.to_level_filter());
 
   let fut = match flags.clone().subcommand {
+    DenoSubcommand::Ast {
+      source_file,
+    } => ast_command(flags, source_file).boxed_local(),
     DenoSubcommand::Bundle {
       source_file,
       out_file,
