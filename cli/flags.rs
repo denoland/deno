@@ -751,11 +751,7 @@ fn ast_subcommand<'a, 'b>() -> App<'a, 'b> {
         .takes_value(true)
         .required(true),
     )
-    .arg(Arg::with_name("out_file").takes_value(true).required(false))
-    .arg(ca_file_arg())
-    .arg(importmap_arg())
     .arg(unstable_arg())
-    .arg(config_arg())
     .about("Bundle module and dependencies into single file")
     .long_about(
       "Output a single JavaScript file with all dependencies.
