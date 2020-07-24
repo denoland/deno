@@ -347,9 +347,7 @@ fn ast_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   unstable_arg_parse(flags, matches);
 
   let source_file = matches.value_of("source_file").unwrap().to_string();
-  flags.subcommand = DenoSubcommand::Ast {
-    source_file,
-  };
+  flags.subcommand = DenoSubcommand::Ast { source_file };
 }
 
 fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
