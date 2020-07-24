@@ -49,6 +49,7 @@ mod metrics;
 mod module_graph;
 pub mod msg;
 pub mod op_error;
+mod op_fetch_asset;
 pub mod ops;
 pub mod permissions;
 mod repl;
@@ -440,16 +441,7 @@ async fn bundle_command(
   source_file: String,
   out_file: Option<PathBuf>,
 ) -> Result<(), ErrBox> {
-  let mut module_specifier =
-    ModuleSpecifier::resolve_url_or_path(&source_file)?;
-  let url = module_specifier.as_url();
-
-  // TODO(bartlomieju): fix this hack in ModuleSpecifier
-  if url.scheme() == "file" {
-    let a = deno_fs::normalize_path(&url.to_file_path().unwrap());
-    let u = Url::from_file_path(a).unwrap();
-    module_specifier = ModuleSpecifier::from(u)
-  }
+  let module_specifier = ModuleSpecifier::resolve_url_or_path(&source_file)?;
 
   debug!(">>>>> bundle START");
   let global_state = GlobalState::new(flags)?;

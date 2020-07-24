@@ -1,6 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use crate::CoreIsolate;
+use crate::CoreIsolateState;
 use crate::EsIsolate;
 use crate::JSError;
 use crate::ZeroCopyBuf;
@@ -236,9 +237,7 @@ pub extern "C" fn host_import_module_dynamically_callback(
   let resolver = v8::PromiseResolver::new(scope).unwrap();
   let promise = resolver.get_promise(scope);
 
-  let mut resolver_handle = v8::Global::new();
-  resolver_handle.set(scope, resolver);
-
+  let resolver_handle = v8::Global::new(scope, resolver);
   {
     let state_rc = EsIsolate::state(scope);
     let mut state = state_rc.borrow_mut();
@@ -283,18 +282,13 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
   match message.get_event() {
     v8::PromiseRejectEvent::PromiseRejectWithNoHandler => {
       let error = message.get_value();
-      let mut error_global = v8::Global::<v8::Value>::new();
-      error_global.set(scope, error);
+      let error_global = v8::Global::new(scope, error);
       state
         .pending_promise_exceptions
         .insert(promise_id, error_global);
     }
     v8::PromiseRejectEvent::PromiseHandlerAddedAfterReject => {
-      if let Some(mut handle) =
-        state.pending_promise_exceptions.remove(&promise_id)
-      {
-        handle.reset(scope);
-      }
+      state.pending_promise_exceptions.remove(&promise_id);
     }
     v8::PromiseRejectEvent::PromiseRejectAfterResolved => {}
     v8::PromiseRejectEvent::PromiseResolveAfterResolved => {
@@ -364,14 +358,17 @@ fn recv(
   let state_rc = CoreIsolate::state(scope);
   let mut state = state_rc.borrow_mut();
 
-  if !state.js_recv_cb.is_empty() {
-    let msg = v8::String::new(scope, "Deno.core.recv already called.").unwrap();
-    scope.throw_exception(msg.into());
-    return;
-  }
+  let cb = match v8::Local::<v8::Function>::try_from(args.get(0)) {
+    Ok(cb) => cb,
+    Err(err) => return throw_type_error(scope, err.to_string()),
+  };
 
-  let recv_fn = v8::Local::<v8::Function>::try_from(args.get(0)).unwrap();
-  state.js_recv_cb.set(scope, recv_fn);
+  let slot = match &mut state.js_recv_cb {
+    slot @ None => slot,
+    _ => return throw_type_error(scope, "Deno.core.recv() already called"),
+  };
+
+  slot.replace(v8::Global::new(scope, cb));
 }
 
 fn send(
@@ -391,7 +388,6 @@ fn send(
 
   let state_rc = CoreIsolate::state(scope);
   let mut state = state_rc.borrow_mut();
-  assert!(!state.global_context.is_empty());
 
   let buf_iter = (1..args.length()).map(|idx| {
     v8::Local::<v8::ArrayBufferView>::try_from(args.get(idx))
@@ -433,17 +429,22 @@ fn set_macrotask_callback(
   let state_rc = CoreIsolate::state(scope);
   let mut state = state_rc.borrow_mut();
 
-  if !state.js_macrotask_cb.is_empty() {
-    let msg =
-      v8::String::new(scope, "Deno.core.setMacrotaskCallback already called.")
-        .unwrap();
-    scope.throw_exception(msg.into());
-    return;
-  }
+  let cb = match v8::Local::<v8::Function>::try_from(args.get(0)) {
+    Ok(cb) => cb,
+    Err(err) => return throw_type_error(scope, err.to_string()),
+  };
 
-  let macrotask_cb_fn =
-    v8::Local::<v8::Function>::try_from(args.get(0)).unwrap();
-  state.js_macrotask_cb.set(scope, macrotask_cb_fn);
+  let slot = match &mut state.js_macrotask_cb {
+    slot @ None => slot,
+    _ => {
+      return throw_type_error(
+        scope,
+        "Deno.core.setMacrotaskCallback() already called",
+      );
+    }
+  };
+
+  slot.replace(v8::Global::new(scope, cb));
 }
 
 fn eval_context(
@@ -668,18 +669,23 @@ fn shared_getter(
 ) {
   let state_rc = CoreIsolate::state(scope);
   let mut state = state_rc.borrow_mut();
+  let CoreIsolateState {
+    shared_ab, shared, ..
+  } = &mut *state;
 
   // Lazily initialize the persistent external ArrayBuffer.
-  if state.shared_ab.is_empty() {
-    let ab = v8::SharedArrayBuffer::with_backing_store(
-      scope,
-      state.shared.get_backing_store(),
-    );
-    state.shared_ab.set(scope, ab);
-  }
-
-  let shared_ab = state.shared_ab.get(scope).unwrap();
-  rv.set(shared_ab.into());
+  let shared_ab = match shared_ab {
+    Some(ref ab) => v8::Local::new(scope, ab),
+    slot @ None => {
+      let ab = v8::SharedArrayBuffer::with_backing_store(
+        scope,
+        shared.get_backing_store(),
+      );
+      slot.replace(v8::Global::new(scope, ab));
+      ab
+    }
+  };
+  rv.set(shared_ab.into())
 }
 
 pub fn module_resolve_callback<'s>(
@@ -709,19 +715,17 @@ pub fn module_resolve_callback<'s>(
 
     if req_str == specifier_str {
       let id = state.module_resolve_cb(&req_str, referrer_id);
-      let maybe_info = state.modules.get_info(id);
-
-      if maybe_info.is_none() {
-        let msg = format!(
-          "Cannot resolve module \"{}\" from \"{}\"",
-          req_str, referrer_name
-        );
-        let msg = v8::String::new(scope, &msg).unwrap();
-        scope.throw_exception(msg.into());
-        break;
+      match state.modules.get_info(id) {
+        Some(info) => return Some(v8::Local::new(scope, &info.handle)),
+        None => {
+          let msg = format!(
+            r#"Cannot resolve module "{}" from "{}""#,
+            req_str, referrer_name
+          );
+          throw_type_error(scope, msg);
+          return None;
+        }
       }
-
-      return maybe_info.and_then(|i| i.handle.get(scope));
     }
   }
 
@@ -774,4 +778,13 @@ fn get_promise_details(
       rv.set(promise_details.into());
     }
   }
+}
+
+fn throw_type_error<'s>(
+  scope: &mut v8::HandleScope<'s>,
+  message: impl AsRef<str>,
+) {
+  let message = v8::String::new(scope, message.as_ref()).unwrap();
+  let exception = v8::Exception::type_error(scope, message);
+  scope.throw_exception(exception);
 }

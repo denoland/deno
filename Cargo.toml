@@ -2,7 +2,6 @@
 members = [
   "cli",
   "core",
-  "deno_typescript",
   "test_plugin",
   "test_util",
 ]

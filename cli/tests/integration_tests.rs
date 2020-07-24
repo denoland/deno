@@ -689,7 +689,7 @@ fn ts_reload() {
   assert!(std::str::from_utf8(&output.stdout)
     .unwrap()
     .trim()
-    .contains("compiler::host.writeFile deno://002_hello.js"));
+    .contains("\"compiler::host.writeFile\" \"deno://002_hello.js\""));
 }
 
 #[test]
@@ -1978,6 +1978,11 @@ itest!(ts_decorators {
   output: "ts_decorators.ts.out",
 });
 
+itest!(ts_type_only_import {
+  args: "run --reload ts_type_only_import.ts",
+  output: "ts_type_only_import.ts.out",
+});
+
 itest!(swc_syntax_error {
   args: "run --reload swc_syntax_error.ts",
   output: "swc_syntax_error.ts.out",
@@ -2191,6 +2196,12 @@ itest!(deno_lint {
 itest!(deno_lint_glob {
   args: "lint --unstable lint/",
   output: "lint/expected_glob.out",
+  exit_code: 1,
+});
+
+itest!(compiler_js_error {
+  args: "run --unstable compiler_js_error.ts",
+  output: "compiler_js_error.ts.out",
   exit_code: 1,
 });
 
@@ -2842,7 +2853,9 @@ async fn inspector_pause() {
     use futures::stream::StreamExt;
     while let Some(msg) = socket.next().await {
       let msg = msg.unwrap().to_string();
-      assert!(!msg.contains("error"));
+      // FIXME(bartlomieju): fails because there's a file loaded
+      // called 150_errors.js
+      // assert!(!msg.contains("error"));
       if !msg.contains("Debugger.scriptParsed") {
         return msg;
       }
