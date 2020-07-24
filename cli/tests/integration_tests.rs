@@ -689,7 +689,7 @@ fn ts_reload() {
   assert!(std::str::from_utf8(&output.stdout)
     .unwrap()
     .trim()
-    .contains("compiler::host.writeFile deno://002_hello.js"));
+    .contains("\"compiler::host.writeFile\" \"deno://002_hello.js\""));
 }
 
 #[test]

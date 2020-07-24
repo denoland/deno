@@ -1513,7 +1513,7 @@ mod tests {
     assert!(r.is_err());
 
     let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-      .join("js2/99_main.js");
+      .join("rt/99_main.js");
     let specifier =
       ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
     let r = fetcher
@@ -1536,7 +1536,7 @@ mod tests {
     assert!(r.is_err());
 
     let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-      .join("js2/99_main.js");
+      .join("rt/99_main.js");
     let specifier =
       ModuleSpecifier::resolve_url_or_path(p.to_str().unwrap()).unwrap();
     let r = fetcher
