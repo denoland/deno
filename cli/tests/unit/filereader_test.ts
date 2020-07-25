@@ -11,7 +11,7 @@ unitTest(function fileReaderConstruct(): void {
 });
 
 unitTest(async function fileReaderLoadBlob(): Promise<void> {
-  await new Promise<void>(resolve=>{
+  await new Promise<void>((resolve) => {
     const fr = new FileReader();
     const b1 = new Blob(["Hello World"]);
 
@@ -29,33 +29,33 @@ unitTest(async function fileReaderLoadBlob(): Promise<void> {
       loadstart: false,
       progress: 0,
     };
-    let result : string|null = null;
+    let result: string | null = null;
 
-    fr.addEventListener('load',()=>{
+    fr.addEventListener("load", () => {
       hasDispatchedEvents.load = true;
     });
-    fr.addEventListener('loadend',()=>{
+    fr.addEventListener("loadend", () => {
       hasDispatchedEvents.loadend = true;
     });
-    fr.addEventListener('loadstart',()=>{
+    fr.addEventListener("loadstart", () => {
       hasDispatchedEvents.loadstart = true;
     });
-    fr.addEventListener('progress',()=>{
+    fr.addEventListener("progress", () => {
       hasDispatchedEvents.progress += 1;
     });
 
-    fr.onloadstart = ():void=>{
+    fr.onloadstart = (): void => {
       hasOnEvents.loadstart = true;
     };
-    fr.onprogress = ():void=>{
+    fr.onprogress = (): void => {
       assertEquals(fr.readyState, FileReader.LOADING);
 
       hasOnEvents.progress += 1;
     };
-    fr.onload = ():void=>{
+    fr.onload = (): void => {
       hasOnEvents.load = true;
     };
-    fr.onloadend = (ev):void=>{
+    fr.onloadend = (ev): void => {
       hasOnEvents.loadend = true;
       result = fr.result as string;
 
@@ -69,14 +69,13 @@ unitTest(async function fileReaderLoadBlob(): Promise<void> {
       assertEquals(fr.readyState, FileReader.DONE);
 
       assertEquals(result, "Hello World");
-      assertEquals(ev.lengthComputable,true);
+      assertEquals(ev.lengthComputable, true);
       resolve();
     };
 
     fr.readAsText(b1);
   });
 });
-
 
 unitTest(async function fileReaderLoadBlobDouble(): Promise<void> {
   // impl note from https://w3c.github.io/FileAPI/
@@ -87,18 +86,18 @@ unitTest(async function fileReaderLoadBlobDouble(): Promise<void> {
   const b1 = new Blob(["First load"]);
   const b2 = new Blob(["Second load"]);
 
-  await new Promise<void>(resolve=>{
-    let result : string|null = null;
+  await new Promise<void>((resolve) => {
+    let result: string | null = null;
 
-    fr.onload = ():void=>{
+    fr.onload = (): void => {
       result = fr.result as string;
       assertEquals(result === "First load" || result === "Second load", true);
 
-      if(result === "First load") {
+      if (result === "First load") {
         fr.readAsText(b2);
       }
     };
-    fr.onloadend = ():void=>{
+    fr.onloadend = (): void => {
       assertEquals(result, "Second load");
 
       resolve();
@@ -109,12 +108,12 @@ unitTest(async function fileReaderLoadBlobDouble(): Promise<void> {
 });
 
 unitTest(async function fileReaderLoadBlobArrayBuffer(): Promise<void> {
-  await new Promise<void>(resolve=>{
+  await new Promise<void>((resolve) => {
     const fr = new FileReader();
     const b1 = new Blob(["Hello World"]);
-    let result : ArrayBuffer|null = null;
+    let result: ArrayBuffer | null = null;
 
-    fr.onloadend = (ev):void=>{
+    fr.onloadend = (ev): void => {
       assertEquals(fr.result instanceof ArrayBuffer, true);
       result = fr.result as ArrayBuffer;
 
@@ -122,7 +121,7 @@ unitTest(async function fileReaderLoadBlobArrayBuffer(): Promise<void> {
       const text = decoder.decode(result);
 
       assertEquals(text, "Hello World");
-      assertEquals(ev.lengthComputable,true);
+      assertEquals(ev.lengthComputable, true);
       resolve();
     };
 
@@ -131,15 +130,18 @@ unitTest(async function fileReaderLoadBlobArrayBuffer(): Promise<void> {
 });
 
 unitTest(async function fileReaderLoadBlobDataUrl(): Promise<void> {
-  await new Promise<void>(resolve=>{
+  await new Promise<void>((resolve) => {
     const fr = new FileReader();
     const b1 = new Blob(["Hello World"]);
-    let result : string|null = null;
+    let result: string | null = null;
 
-    fr.onloadend = (ev):void=>{
-      result = fr.result as string
-      assertEquals(result, "data:application/octet-stream;base64,SGVsbG8gV29ybGQ=");
-      assertEquals(ev.lengthComputable,true);
+    fr.onloadend = (ev): void => {
+      result = fr.result as string;
+      assertEquals(
+        result,
+        "data:application/octet-stream;base64,SGVsbG8gV29ybGQ=",
+      );
+      assertEquals(ev.lengthComputable, true);
       resolve();
     };
 

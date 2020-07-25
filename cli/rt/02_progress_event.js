@@ -3,7 +3,7 @@
 
 ((window) => {
   class ProgressEvent extends Event {
-    constructor(type, eventInitDict={}) {
+    constructor(type, eventInitDict = {}) {
       super(type, eventInitDict);
 
       this.lengthComputable = eventInitDict?.lengthComputable ?? false;

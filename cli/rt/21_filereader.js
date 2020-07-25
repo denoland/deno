@@ -15,8 +15,7 @@
     readyState = FileReader.EMPTY;
     result = null;
 
-    constructor(
-    ) {
+    constructor() {
       super();
     }
 
@@ -24,17 +23,17 @@
       // not implemented
     }
     readAsArrayBuffer(blob) {
-      this.#readOperation(blob, {kind: 'ArrayBuffer'});
+      this.#readOperation(blob, { kind: "ArrayBuffer" });
     }
     readAsBinaryString(blob) {
       // alias for readAsArrayBuffer
-      this.#readOperation(blob, {kind: 'ArrayBuffer'});
+      this.#readOperation(blob, { kind: "ArrayBuffer" });
     }
     readAsDataURL(blob) {
-      this.#readOperation(blob, {kind: 'DataUrl'});
+      this.#readOperation(blob, { kind: "DataUrl" });
     }
     readAsText(blob, encoding) {
-      this.#readOperation(blob, {kind: 'Text', encoding});
+      this.#readOperation(blob, { kind: "Text", encoding });
     }
 
     async #readOperation(blob, readtype) {
