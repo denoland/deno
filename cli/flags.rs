@@ -3055,7 +3055,24 @@ mod tests {
       }
     );
   }
-
+  #[test]
+  fn ast() {
+    let r = flags_from_vec_safe(svec![
+      "deno",
+      "ast",
+      "--unstable",
+      "https://deno.land/std/http/file_server.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Ast {
+          source_file: "https://deno.land/std/http/file_server.ts".to_string(),
+        },
+        ..Flags::default()
+      }
+    );
+  }
   #[test]
   fn inspect_default_host() {
     let r = flags_from_vec_safe(svec!["deno", "run", "--inspect", "foo.js"]);
