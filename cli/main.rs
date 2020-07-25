@@ -465,7 +465,7 @@ async fn ast_command(flags: Flags, source_file: String) -> Result<(), ErrBox> {
   )?;
 
   debug!(">>>>> ast END");
-  write_to_stdout_ignore_sigpipe(serde_json::to_string(&ast)?.as_bytes())
+  write_to_stdout_ignore_sigpipe(serde_json::to_string_pretty(&ast)?.as_bytes())
     .map_err(ErrBox::from)
 }
 
