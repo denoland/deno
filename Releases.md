@@ -6,6 +6,37 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### 1.2.1 / 2020.07.23
+
+Changes in the CLI:
+
+- fix: IPv6 hostname should be compressed (#6772)
+- fix: Ignore polling errors caused by return() in watchFs (#6785)
+- fix: Improve URL compatibility (#6807)
+- fix: ModuleSpecifier removes relative path parts (#6762)
+- fix: Share reqwest client between fetch calls (#6792)
+- fix: add icon and metadata to deno.exe on Windows (#6693)
+- fix: panic for runtime error in TS compiler (#6758)
+- fix: providing empty source code for missing compiled files (#6760)
+- refactor: Make OpDispatcher a trait (#6736, #6742)
+- refactor: Remove duplicate code and allow filename overwrite for DomFile
+  (#6817, #6830)
+- upgrade: Rust 1.45.0 (#6791)
+- upgrade: rusty_v8 0.7.0 (#6801)
+- upgrade: tokio 0.2.22 (#6838)
+
+Changes in std version 0.62.0:
+
+- BREAKING(std/fs): remove readFileStr and writeFileStr (#6848, #6847)
+- feat(std/encoding): add ascii85 module (#6711)
+- feat(std/node): add string_decoder (#6638)
+- fix(std/encoding/toml): could not parse strings with apostrophes/semicolons
+  (#6781)
+- fix(std/testing): assertThrows inheritance (#6623)
+- fix(std/wasi): remove number overload from rights in path_open (#6768)
+- refactor(std/datetime): improve weekOfYear (#6741)
+- refactor(std/path): enrich the types in parse_format_test (#6803)
+
 ### 1.2.0 / 2020.07.13
 
 Changes in the CLI:
