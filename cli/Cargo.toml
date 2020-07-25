@@ -23,7 +23,7 @@ winapi = "0.3.8"
 
 [dependencies]
 deno_core = { path = "../core", version = "0.50.0" }
-deno_lint = "0.1.16"
+deno_lint = "0.1.17"
 
 atty = "0.2.14"
 base64 = "0.12.2"
