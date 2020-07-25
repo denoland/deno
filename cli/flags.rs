@@ -3069,6 +3069,7 @@ mod tests {
         subcommand: DenoSubcommand::Ast {
           source_file: "https://deno.land/std/http/file_server.ts".to_string(),
         },
+        unstable: true,
         ..Flags::default()
       }
     );
