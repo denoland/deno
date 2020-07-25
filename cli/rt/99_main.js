@@ -29,6 +29,7 @@ delete Object.prototype.__proto__;
   const streams = window.__bootstrap.streams;
   const blob = window.__bootstrap.blob;
   const domFile = window.__bootstrap.domFile;
+  const progressEvent = window.__bootstrap.progressEvent;
   const formData = window.__bootstrap.formData;
   const request = window.__bootstrap.request;
   const fetch = window.__bootstrap.fetch;
@@ -216,6 +217,7 @@ delete Object.prototype.__proto__;
     PerformanceEntry: util.nonEnumerable(performance.PerformanceEntry),
     PerformanceMark: util.nonEnumerable(performance.PerformanceMark),
     PerformanceMeasure: util.nonEnumerable(performance.PerformanceMeasure),
+    ProgressEvent: util.nonEnumerable(progressEvent.ProgressEvent),
     TextDecoder: util.nonEnumerable(TextDecoder),
     TextEncoder: util.nonEnumerable(TextEncoder),
     TransformStream: util.nonEnumerable(streams.TransformStream),

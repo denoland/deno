@@ -1591,6 +1591,11 @@ interface ProgressEvent<T extends EventTarget = EventTarget> extends Event {
   readonly total: number;
 }
 
+declare var ProgressEvent: {
+  prototype: ProgressEvent;
+  new(type:string, params: any): ProgressEvent;
+};
+
 interface CustomEventInit<T = any> extends EventInit {
   detail?: T;
 }

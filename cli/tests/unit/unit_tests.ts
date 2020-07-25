@@ -43,6 +43,7 @@ import "./os_test.ts";
 import "./permissions_test.ts";
 import "./path_from_url_test.ts";
 import "./process_test.ts";
+import "./progressevent_test.ts";
 import "./real_path_test.ts";
 import "./read_dir_test.ts";
 import "./read_text_file_test.ts";
