@@ -303,6 +303,21 @@ export function assertStringContains(
 }
 
 /**
+ * Make an assertion the actual is an instance of the expected. If not
+ * then thrown.
+ */
+export function assertInstanceOf(actual: unknown,
+  expected: any,
+  msg?: string,): void {
+    if (!(actual instanceof expected)) {
+      if (!msg) {
+        msg = `actual: "${actual}" is not an instance of: "${expected}"`;
+      }
+      throw new AssertionError(msg);
+    }
+}
+
+/**
  * Make an assertion that `actual` contains the `expected` values.
  * If not then an error will be thrown.
  *

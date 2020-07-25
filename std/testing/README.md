@@ -20,6 +20,7 @@ pretty-printed diff of failing assertion.
   for non-primitives the values must reference the same instance.
 - `assertStringContains()` - Make an assertion that `actual` contains
   `expected`.
+- `assertInstanceOf()` - Make an assertion the actual is an instance of the expected.
 - `assertMatch()` - Make an assertion that `actual` match RegExp `expected`.
 - `assertArrayContains()` - Make an assertion that `actual` array contains the
   `expected` values.

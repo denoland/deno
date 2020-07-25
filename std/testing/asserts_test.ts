@@ -15,6 +15,7 @@ import {
   fail,
   unimplemented,
   unreachable,
+  assertInstanceOf
 } from "./asserts.ts";
 import { red, green, gray, bold, yellow, stripColor } from "../fmt/colors.ts";
 
@@ -352,6 +353,27 @@ Deno.test({
     );
   },
 });
+
+Deno.test({
+  name: "instance of object",
+  fn: () => {
+    class Person {
+      public name: string
+      public age: number;
+      public address: string;
+
+      constructor(name: string, age: number, address: string ) {
+        this.name = name;
+        this.age = age;
+        this.address = address;
+      }
+    }
+
+    const bob = new Person("Bob",22, "uk");
+
+    assertInstanceOf(bob, Person);
+  }
+})
 
 Deno.test({
   name: "failed with array",
