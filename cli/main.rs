@@ -441,7 +441,7 @@ async fn ast_command(flags: Flags, source_file: String) -> Result<(), ErrBox> {
   let module_specifier = ModuleSpecifier::resolve_url_or_path(&source_file)?;
 
   debug!(">>>>> ast START");
-  
+
   if !flags.unstable {
     exit_unstable("ast");
   }
@@ -465,7 +465,8 @@ async fn ast_command(flags: Flags, source_file: String) -> Result<(), ErrBox> {
   )?;
 
   debug!(">>>>> ast END");
-  write_to_stdout_ignore_sigpipe(serde_json::to_string(&ast)?.as_bytes()).map_err(ErrBox::from)
+  write_to_stdout_ignore_sigpipe(serde_json::to_string(&ast)?.as_bytes())
+    .map_err(ErrBox::from)
 }
 
 async fn bundle_command(
