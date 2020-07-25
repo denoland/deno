@@ -746,14 +746,18 @@ These must be added to the path manually if required.")
 
 fn bundle_subcommand<'a, 'b>() -> App<'a, 'b> {
   SubCommand::with_name("bundle")
+    .arg(lock_arg())
+    .arg(lock_write_arg())
     .arg(
       Arg::with_name("source_file")
         .takes_value(true)
         .required(true),
     )
+    .arg(Arg::with_name("out_file").takes_value(true).required(false))
+    .arg(ca_file_arg())
+    .arg(importmap_arg())
     .arg(unstable_arg())
-    .arg(lock_arg())
-    .arg(lock_write_arg())
+    .arg(config_arg())
     .about("Bundle module and dependencies into single file")
     .long_about(
       "Output a single JavaScript file with all dependencies.
