@@ -91,7 +91,7 @@ use log::Level;
 use log::Metadata;
 use log::Record;
 use module_graph::ModuleGraph;
-use serde::Serialize;
+use serde::ser::SerializeStruct;
 use state::exit_unstable;
 use std::env;
 use std::io::Read;
@@ -185,12 +185,28 @@ fn print_cache_info(state: &GlobalState, json: bool) -> Result<(), ErrBox> {
 ///
 /// Constructed from a `ModuleGraph` and `ModuleSpecifier` that
 /// acts as the root of the tree.
-#[derive(Serialize)]
 struct FileInfoDepTree {
   name: String,
   size: usize,
-  total_size: usize,
+  total_size: Option<usize>,
   deps: Vec<FileInfoDepTree>,
+}
+
+impl serde::Serialize for FileInfoDepTree {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: serde::Serializer,
+  {
+    let mut state = serializer.serialize_struct("FileInfoDepTree", 4)?;
+
+    state.serialize_field("name", &self.name)?;
+    if let Some(total_size) = self.total_size {
+      state.serialize_field("size", &self.size)?;
+      state.serialize_field("total_size", &total_size)?;
+    }
+    state.serialize_field("deps", &self.deps)?;
+    state.end()
+  }
 }
 
 impl FileInfoDepTree {
@@ -214,9 +230,7 @@ impl FileInfoDepTree {
     let name = root.to_string();
     let never_seen = seen.insert(name.clone());
     let file = graph.get(&name).unwrap();
-
     let size = file.size();
-
     let deps = if never_seen {
       file
         .imports
@@ -230,17 +244,26 @@ impl FileInfoDepTree {
 
     let total_size = if never_seen {
       if let Some(total_size) = total_sizes.get(&name) {
-        total_size.to_owned()
+        Some(total_size.to_owned())
       } else {
-        let total: usize = deps.iter().map(|dep| dep.total_size).sum();
+        let total: usize = deps
+          .iter()
+          .map(|dep| {
+            if let Some(total_size) = dep.total_size {
+              total_size
+            } else {
+              0
+            }
+          })
+          .sum();
         let total = size + total;
 
         total_sizes.insert(name.clone(), total);
 
-        total
+        Some(total)
       }
     } else {
-      0
+      None
     };
 
     Self {
@@ -261,11 +284,9 @@ async fn print_file_info(
   let global_state = worker.state.borrow().global_state.clone();
   let ts_compiler = &global_state.ts_compiler;
   let file_fetcher = &global_state.file_fetcher;
-
   let out = file_fetcher
     .fetch_source_file(&module_specifier, None, Permissions::allow_all())
     .await?;
-
   let local = out.filename.to_str().unwrap();
   let file_type = msg::enum_name_media_type(out.media_type);
   let compiled: Option<String> = ts_compiler
@@ -276,7 +297,6 @@ async fn print_file_info(
     .get_source_map_file(&module_specifier)
     .ok()
     .and_then(get_source_filename);
-
   let module_graph = get_module_graph(&global_state, &module_specifier).await?;
   let file_info = FileInfoDepTree::new(&module_graph, &module_specifier);
 
@@ -288,11 +308,8 @@ async fn print_file_info(
       "map": map,
       "deps": file_info
     });
-
     write_json_to_stdout(&output)
   } else {
-    // let top = module_graph.get(&module_specifier.to_string());
-
     println!("{} {}", colors::bold("local:"), local);
     println!("{} {}", colors::bold("type:"), file_type);
     if let Some(compiled) = compiled {
@@ -301,6 +318,7 @@ async fn print_file_info(
     if let Some(map) = map {
       println!("{} {}", colors::bold("map:"), map);
     }
+
     println!(
       "{} {} unique",
       colors::bold("deps:"),
@@ -310,7 +328,7 @@ async fn print_file_info(
       "{} ({}, total = {})",
       file_info.name,
       human_size(file_info.size as f64),
-      human_size(file_info.total_size as f64)
+      human_size(file_info.total_size.unwrap() as f64)
     );
 
     for (idx, dep) in file_info.deps.iter().enumerate() {
@@ -350,14 +368,14 @@ fn print_dep(prefix: &str, is_last: bool, info: &FileInfoDepTree) {
 ///
 /// If the total size is reported as 0 then an empty string is returned.
 fn get_formatted_totals(info: &FileInfoDepTree) -> String {
-  if info.total_size == 0 {
-    "".to_string()
-  } else {
+  if let Some(total_size) = info.total_size {
     format!(
       " ({}, total = {})",
       human_size(info.size as f64),
-      human_size(info.total_size as f64)
+      human_size(total_size as f64)
     )
+  } else {
+    "".to_string()
   }
 }
 
@@ -389,7 +407,6 @@ fn get_new_prefix(prefix: &str, is_last: bool) -> String {
   }
 
   prefix.push(' ');
-
   prefix
 }
 
