@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { unitTest, assert, assertEquals } from "./test_util.ts";
+import { unitTest, assertEquals } from "./test_util.ts";
 
 unitTest(function fileReaderConstruct(): void {
   const f = new FileReader();
@@ -43,18 +43,18 @@ unitTest(async function fileReaderLoadBlob(): Promise<void> {
       hasDispatchedEvents.progress += 1;
     });
 
-    fr.onloadstart = ()=>{
+    fr.onloadstart = ():void=>{
       hasOnEvents.loadstart = true;
     };
-    fr.onprogress = ()=>{
+    fr.onprogress = ():void=>{
       assertEquals(fr.readyState, FileReader.LOADING);
 
       hasOnEvents.progress += 1;
     };
-    fr.onload = ()=>{
+    fr.onload = ():void=>{
       hasOnEvents.load = true;
     };
-    fr.onloadend = (ev)=>{
+    fr.onloadend = (ev):void=>{
       hasOnEvents.loadend = true;
       result = fr.result as string;
 
@@ -89,7 +89,7 @@ unitTest(async function fileReaderLoadBlobDouble(): Promise<void> {
   await new Promise<void>(resolve=>{
     let result : string|null = null;
 
-    fr.onload = ()=>{
+    fr.onload = ():void=>{
       result = fr.result as string;
       assertEquals(result === "First load" || result === "Second load", true);
 
@@ -97,7 +97,7 @@ unitTest(async function fileReaderLoadBlobDouble(): Promise<void> {
         fr.readAsText(b2);
       }
     };
-    fr.onloadend = (ev)=>{
+    fr.onloadend = ():void=>{
       assertEquals(result, "Second load");
 
       resolve();
@@ -113,7 +113,7 @@ unitTest(async function fileReaderLoadBlobArrayBuffer(): Promise<void> {
     const b1 = new Blob(["Hello World"]);
     let result : ArrayBuffer|null = null;
 
-    fr.onloadend = (ev)=>{
+    fr.onloadend = (ev):void=>{
       assertEquals(fr.result instanceof ArrayBuffer, true);
       result = fr.result as ArrayBuffer;
 
@@ -135,7 +135,7 @@ unitTest(async function fileReaderLoadBlobDataUrl(): Promise<void> {
     const b1 = new Blob(["Hello World"]);
     let result : string|null = null;
 
-    fr.onloadend = (ev)=>{
+    fr.onloadend = (ev):void=>{
       result = fr.result as string
       assertEquals(result, "data:application/octet-stream;base64,SGVsbG8gV29ybGQ=");
       assertEquals(ev.lengthComputable,true);
