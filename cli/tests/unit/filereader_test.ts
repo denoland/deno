@@ -2,7 +2,8 @@
 import { unitTest, assertEquals } from "./test_util.ts";
 
 unitTest(function fileReaderConstruct(): void {
-  const f = new FileReader();
+  const fr = new FileReader();
+  assertEquals(fr.readyState, FileReader.EMPTY);
 
   assertEquals(FileReader.EMPTY, 0);
   assertEquals(FileReader.LOADING, 1);
