@@ -11,18 +11,17 @@ function serializeToJsonFileContent(
   filePath: string,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   object: any,
-  options: WriteJsonOptions
+  options: WriteJsonOptions,
 ): string {
   try {
     const jsonContent = JSON.stringify(
       object,
       options.replacer as string[],
-      options.spaces
+      options.spaces,
     );
-    
+
     return `${jsonContent}\n`;
-  }
-  catch (err) {
+  } catch (err) {
     err.message = `${filePath}: ${err.message}`;
     throw err;
   }
