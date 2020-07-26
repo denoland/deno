@@ -19,7 +19,7 @@ function serializeToJsonFileContent(
       options.replacer as string[],
       options.spaces
     );
-    
+
     return `${jsonContent}\n`;
   }
   catch (err) {
