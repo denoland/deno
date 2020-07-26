@@ -13,7 +13,7 @@ jobs:
     strategy:
       matrix:
         config:
-          - os: macOS-latest
+          - os: macos-10.15
             kind: test_release
           - os: windows-2019
             kind: test_release
