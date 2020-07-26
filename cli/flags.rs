@@ -776,9 +776,9 @@ fn ast_subcommand<'a, 'b>() -> App<'a, 'b> {
         .required(true),
     )
     .arg(unstable_arg())
-    .about("Print the AST of a particular source file.")
+    .about("Unstable: Print AST of a source file.")
     .long_about(
-      "Prints the AST of a single JavaScript/TypeScript file.
+      "Unstable: Print AST of a JavaScript or TypeScript file.
   deno ast https://deno.land/std/examples/colors.ts",
     )
 }
