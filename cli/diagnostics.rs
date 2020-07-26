@@ -2,9 +2,6 @@
 //! This module encodes TypeScript errors (diagnostics) into Rust structs and
 //! contains code for printing them to the console.
 
-// TODO(ry) This module does a lot of JSON parsing manually. It should use
-// serde_json.
-
 use crate::colors;
 use crate::fmt_errors::format_stack;
 use serde::Deserialize;
