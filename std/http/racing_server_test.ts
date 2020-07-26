@@ -5,8 +5,7 @@ import { TextProtoReader } from "../textproto/mod.ts";
 let server: Deno.Process<Deno.RunOptions & { stdout: "piped" }>;
 async function startServer(): Promise<void> {
   server = Deno.run({
-    // TODO(lucacasonato): remove unstable when stabilized
-    cmd: [Deno.execPath(), "run", "--unstable", "-A", "http/racing_server.ts"],
+    cmd: [Deno.execPath(), "run", "-A", "http/racing_server.ts"],
     stdout: "piped",
   });
   // Once racing server is ready it will write to its stdout.
