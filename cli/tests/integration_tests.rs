@@ -1383,7 +1383,7 @@ itest!(deno_test_only {
 });
 
 itest!(deno_ast {
-  args: "ast deno_ast_test.ts",
+  args: "ast --unstable --quiet deno_ast_test.ts",
   output: "deno_ast_test.out",
 });
 
