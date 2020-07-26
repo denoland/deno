@@ -693,6 +693,20 @@ fn ts_reload() {
 }
 
 #[test]
+fn test_ast() {
+  let mod1 = util::root_path().join("cli/tests/subdir/mod1.ts");
+  assert!(mod1.is_file());
+  let mut deno = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("ast")
+    .arg(mod1)
+    .spawn()
+    .expect("failed to spawn script");
+  let status = deno.wait().expect("failed to wait for the child process");
+  assert!(status.success());
+}
+
+#[test]
 fn bundle_exports() {
   // First we have to generate a bundle of some module that has exports.
   let mod1 = util::root_path().join("cli/tests/subdir/mod1.ts");
