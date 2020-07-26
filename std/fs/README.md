@@ -140,8 +140,8 @@ Writes an object to a JSON file.
 - space : Adds indentation, white space, and line break characters to the
   return-value JSON text to make it easier to read.
 
-You can also specify options from `Deno.WriteFileOptions`
-to configure how the file is written.
+You can also specify options from `Deno.WriteFileOptions` to configure how the
+file is written.
 
 ```ts
 import { writeJson, writeJsonSync } from "https://deno.land/std/fs/mod.ts";
