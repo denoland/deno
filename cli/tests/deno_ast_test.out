@@ -2,7 +2,7 @@
   "type": "Module",
   "span": {
     "start": 44,
-    "end": 161,
+    "end": 162,
     "ctxt": 0
   },
   "body": [
@@ -126,7 +126,7 @@
       "type": "ExportDeclaration",
       "span": {
         "start": 99,
-        "end": 161,
+        "end": 162,
         "ctxt": 0
       },
       "declaration": {
@@ -147,29 +147,29 @@
         "decorators": [],
         "span": {
           "start": 106,
-          "end": 161,
+          "end": 162,
           "ctxt": 0
         },
         "body": {
           "type": "BlockStatement",
           "span": {
             "start": 134,
-            "end": 161,
+            "end": 162,
             "ctxt": 0
           },
           "stmts": [
             {
               "type": "ReturnStatement",
               "span": {
-                "start": 137,
-                "end": 159,
+                "start": 138,
+                "end": 160,
                 "ctxt": 0
               },
               "argument": {
                 "type": "StringLiteral",
                 "span": {
-                  "start": 144,
-                  "end": 158,
+                  "start": 145,
+                  "end": 159,
                   "ctxt": 0
                 },
                 "value": "Hello, Deno!",
