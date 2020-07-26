@@ -189,7 +189,7 @@ Deno.test("writeJsonSyncIfExistsAnInvalidJson", function (): void {
   assertEquals(new TextDecoder().decode(content), `{"a":"1"}\n`);
 });
 
-Deno.test("writeJsonWithSpaces", function (): void {
+Deno.test("writeJsonSyncWithSpaces", function (): void {
   const existsJsonFile = path.join(testdataDir, "file_write_spaces_sync.json");
 
   const invalidJsonContent = new TextEncoder().encode();
@@ -211,7 +211,7 @@ Deno.test("writeJsonWithSpaces", function (): void {
   assertEquals(new TextDecoder().decode(content), `{\n  "a": "1"\n}\n`);
 });
 
-Deno.test("writeJsonWithReplacer", function (): void {
+Deno.test("writeJsonSyncWithReplacer", function (): void {
   const existsJsonFile = path.join(
     testdataDir,
     "file_write_replacer_sync.json",

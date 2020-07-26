@@ -17,7 +17,7 @@ function serialize(
     let jsonString = JSON.stringify(
       object,
       options.replacer as string[],
-      options.spaces,
+      options.spaces
     );
     return `${jsonString}\n`;
   } catch (err) {
