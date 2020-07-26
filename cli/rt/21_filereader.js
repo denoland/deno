@@ -2,6 +2,8 @@
 
 ((window) => {
   const base64 = window.__bootstrap.base64;
+  const setTimeout = window.__bootstrap.timers.setTimeout;
+  const ProgressEvent = window.__bootstrap.progressEvent.ProgressEvent;
 
   async function readOperation(fr, blob, readtype) {
     // Implementation from https://w3c.github.io/FileAPI/ notes
