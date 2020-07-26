@@ -5,5 +5,5 @@ interface Fruits {
 }
 
 export function SayHello(): string {
- return "Hello, Deno!";
+  return "Hello, Deno!";
 }
