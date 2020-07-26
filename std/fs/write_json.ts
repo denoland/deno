@@ -14,7 +14,7 @@ function serialize(
   options: WriteJsonOptions,
 ): string {
   try {
-    let jsonString = JSON.stringify(
+    const jsonString = JSON.stringify(
       object,
       options.replacer as string[],
       options.spaces,
