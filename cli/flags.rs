@@ -345,7 +345,6 @@ fn types_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
 fn ast_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   unstable_arg_parse(flags, matches);
-
   let source_file = matches.value_of("source_file").unwrap().to_string();
   flags.subcommand = DenoSubcommand::Ast { source_file };
 }
@@ -770,15 +769,15 @@ If no output file is given, the output is written to standard output:
 
 fn ast_subcommand<'a, 'b>() -> App<'a, 'b> {
   SubCommand::with_name("ast")
+    .arg(unstable_arg())
     .arg(
       Arg::with_name("source_file")
         .takes_value(true)
         .required(true),
     )
-    .arg(unstable_arg())
     .about("Unstable: Print AST of a source file.")
     .long_about(
-      "Unstable: Print AST of a JavaScript or TypeScript file.
+      "Print AST of a JavaScript or TypeScript file.
   deno ast --unstable https://deno.land/std/examples/colors.ts",
     )
 }
