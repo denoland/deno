@@ -2,7 +2,6 @@
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::futures::FutureExt;
 use crate::op_error::OpError;
-use crate::permissions::Permissions;
 use crate::state::State;
 use crate::swc_util::AstParser;
 use crate::tsc::runtime_bundle;
@@ -105,10 +104,11 @@ fn op_parse(
   let global_state = s.global_state.clone();
   let module_specifier =
     ModuleSpecifier::resolve_url_or_path(&args.source_file)?;
+  let permissions = s.permissions.clone();
   let fut = async move {
     let out = global_state
       .file_fetcher
-      .fetch_source_file(&module_specifier, None, Permissions::allow_all())
+      .fetch_source_file(&module_specifier, None, permissions)
       .await?;
     let src = std::str::from_utf8(&out.source_code).unwrap();
     let parser = AstParser::new();
