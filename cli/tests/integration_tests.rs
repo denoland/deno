@@ -694,16 +694,152 @@ fn ts_reload() {
 
 #[test]
 fn test_ast() {
-  let mod1 = util::root_path().join("cli/tests/subdir/mod1.ts");
+  let mod1 = util::root_path().join("cli/tests/subdir/print_hello.ts");
   assert!(mod1.is_file());
-  let mut deno = util::deno_cmd()
+  let output = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("ast")
     .arg(mod1)
-    .spawn()
+    .output()
     .expect("failed to spawn script");
-  let status = deno.wait().expect("failed to wait for the child process");
-  assert!(status.success());
+  assert_eq!(
+    std::str::from_utf8(&output.stdout).unwrap().trim(),
+    r#"{
+  "type": "Module",
+  "span": {
+    "start": 0,
+    "end": 62,
+    "ctxt": 0
+  },
+  "body": [
+    {
+      "type": "ExportDeclaration",
+      "span": {
+        "start": 0,
+        "end": 62,
+        "ctxt": 0
+      },
+      "declaration": {
+        "type": "FunctionDeclaration",
+        "identifier": {
+          "type": "Identifier",
+          "span": {
+            "start": 16,
+            "end": 26,
+            "ctxt": 0
+          },
+          "value": "printHello",
+          "typeAnnotation": null,
+          "optional": false
+        },
+        "declare": false,
+        "params": [],
+        "decorators": [],
+        "span": {
+          "start": 7,
+          "end": 62,
+          "ctxt": 0
+        },
+        "body": {
+          "type": "BlockStatement",
+          "span": {
+            "start": 35,
+            "end": 62,
+            "ctxt": 0
+          },
+          "stmts": [
+            {
+              "type": "ExpressionStatement",
+              "span": {
+                "start": 39,
+                "end": 60,
+                "ctxt": 0
+              },
+              "expression": {
+                "type": "CallExpression",
+                "span": {
+                  "start": 39,
+                  "end": 59,
+                  "ctxt": 0
+                },
+                "callee": {
+                  "type": "MemberExpression",
+                  "span": {
+                    "start": 39,
+                    "end": 50,
+                    "ctxt": 0
+                  },
+                  "object": {
+                    "type": "Identifier",
+                    "span": {
+                      "start": 39,
+                      "end": 46,
+                      "ctxt": 0
+                    },
+                    "value": "console",
+                    "typeAnnotation": null,
+                    "optional": false
+                  },
+                  "property": {
+                    "type": "Identifier",
+                    "span": {
+                      "start": 47,
+                      "end": 50,
+                      "ctxt": 0
+                    },
+                    "value": "log",
+                    "typeAnnotation": null,
+                    "optional": false
+                  },
+                  "computed": false
+                },
+                "arguments": [
+                  {
+                    "spread": null,
+                    "expression": {
+                      "type": "StringLiteral",
+                      "span": {
+                        "start": 51,
+                        "end": 58,
+                        "ctxt": 0
+                      },
+                      "value": "Hello",
+                      "hasEscape": false
+                    }
+                  }
+                ],
+                "typeArguments": null
+              }
+            }
+          ]
+        },
+        "generator": false,
+        "async": false,
+        "typeParameters": null,
+        "returnType": {
+          "type": "TsTypeAnnotation",
+          "span": {
+            "start": 28,
+            "end": 34,
+            "ctxt": 0
+          },
+          "typeAnnotation": {
+            "type": "TsKeywordType",
+            "span": {
+              "start": 30,
+              "end": 34,
+              "ctxt": 0
+            },
+            "kind": "void"
+          }
+        }
+      }
+    }
+  ],
+  "interpreter": null
+}"#
+  );
+  assert_eq!(output.stderr, b"");
 }
 
 #[test]
