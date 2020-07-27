@@ -7,8 +7,6 @@ use crate::futures::StreamExt;
 use crate::tokio_util;
 use deno_core::ErrBox;
 use serde::Deserialize;
-use std;
-use tokio_tungstenite;
 use url::Url;
 
 pub struct CoverageCollector {
