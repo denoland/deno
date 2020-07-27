@@ -40,9 +40,7 @@ pub async fn format(
   let mut target_files = collect_files(args)?;
   if !ignore.is_empty() {
     let ignore_files = collect_files(ignore)?;
-
-    println!("{:?}", ignore_files);
-    target_files.retain(|f| ignore_files.contains(&f));
+    target_files.retain(|f| !ignore_files.contains(&f));
   }
   let config = get_config();
   if check {
@@ -225,7 +223,7 @@ pub fn collect_files(files: Vec<String>) -> Result<Vec<PathBuf>, ErrBox> {
     for arg in files {
       let p = PathBuf::from(arg);
       if p.is_dir() {
-        target_files.extend(files_in_subtree(p, is_supported));
+        target_files.extend(files_in_subtree(p.canonicalize()?, is_supported));
       } else {
         target_files.push(p.canonicalize()?);
       };
