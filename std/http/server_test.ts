@@ -25,9 +25,9 @@ import { BufReader, BufWriter } from "../io/bufio.ts";
 import { delay } from "../async/delay.ts";
 import { decode, encode } from "../encoding/utf8.ts";
 import { mockConn } from "./_mock_conn.ts";
-import { dirname, fromFileUrl, join, resolve } from "../path/mod.ts";
+import { fromFileUrl, join, parent, resolve } from "../path/mod.ts";
 
-const moduleDir = dirname(fromFileUrl(import.meta.url));
+const moduleDir = parent(fromFileUrl(import.meta.url));
 const testdataDir = resolve(moduleDir, "testdata");
 
 interface ResponseTest {

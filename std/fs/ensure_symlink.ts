@@ -27,7 +27,7 @@ export async function ensureSymlink(src: string, dest: string): Promise<void> {
     return;
   }
 
-  await ensureDir(path.dirname(dest));
+  await ensureDir(path.parent(dest));
 
   const options: Deno.SymlinkOptions | undefined = isWindows
     ? {
@@ -60,7 +60,7 @@ export function ensureSymlinkSync(src: string, dest: string): void {
     return;
   }
 
-  ensureDirSync(path.dirname(dest));
+  ensureDirSync(path.parent(dest));
 
   const options: Deno.SymlinkOptions | undefined = isWindows
     ? {

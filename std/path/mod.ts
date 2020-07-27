@@ -11,10 +11,10 @@ const path = isWindows ? _win32 : _posix;
 export const win32 = _win32;
 export const posix = _posix;
 export const {
-  basename,
+  fileName,
   delimiter,
-  dirname,
-  extname,
+  parent,
+  extension,
   format,
   fromFileUrl,
   isAbsolute,
@@ -23,7 +23,7 @@ export const {
   parse,
   relative,
   resolve,
-  sep,
+  separator,
   toFileUrl,
   toNamespacedPath,
 } = path;

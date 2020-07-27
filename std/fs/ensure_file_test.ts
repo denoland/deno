@@ -3,7 +3,7 @@ import { assertThrows, assertThrowsAsync } from "../testing/asserts.ts";
 import * as path from "../path/mod.ts";
 import { ensureFile, ensureFileSync } from "./ensure_file.ts";
 
-const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
+const moduleDir = path.parent(path.fromFileUrl(import.meta.url));
 const testdataDir = path.resolve(moduleDir, "testdata");
 
 Deno.test("ensureFileIfItNotExist", async function (): Promise<void> {

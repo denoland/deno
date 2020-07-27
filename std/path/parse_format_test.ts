@@ -96,9 +96,9 @@ function checkParseFormat(
     assertEquals(typeof output.name, "string");
     assertEquals(path.format(output), element);
     assertEquals(output.root, root);
-    assertEquals(output.dir, output.dir ? path.dirname(element) : "");
-    assertEquals(output.base, path.basename(element));
-    assertEquals(output.ext, path.extname(element));
+    assertEquals(output.dir, output.dir ? path.parent(element) : "");
+    assertEquals(output.base, path.fileName(element));
+    assertEquals(output.ext, path.extension(element));
   });
 }
 

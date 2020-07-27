@@ -24,7 +24,7 @@ export async function ensureFile(filePath: string): Promise<void> {
     // if file not exists
     if (err instanceof Deno.errors.NotFound) {
       // ensure dir exists
-      await ensureDir(path.dirname(filePath));
+      await ensureDir(path.parent(filePath));
       // create file
       await Deno.writeFile(filePath, new Uint8Array());
       return;
@@ -55,7 +55,7 @@ export function ensureFileSync(filePath: string): void {
     // if file not exists
     if (err instanceof Deno.errors.NotFound) {
       // ensure dir exists
-      ensureDirSync(path.dirname(filePath));
+      ensureDirSync(path.parent(filePath));
       // create file
       Deno.writeFileSync(filePath, new Uint8Array());
       return;

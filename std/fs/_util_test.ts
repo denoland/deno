@@ -6,19 +6,19 @@ import { getFileInfoType, isSubdir, PathType } from "./_util.ts";
 import { ensureFileSync } from "./ensure_file.ts";
 import { ensureDirSync } from "./ensure_dir.ts";
 
-const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
+const moduleDir = path.parent(path.fromFileUrl(import.meta.url));
 const testdataDir = path.resolve(moduleDir, "testdata");
 
 Deno.test("_isSubdir", function (): void {
   const pairs = [
-    ["", "", false, path.posix.sep],
-    ["/first/second", "/first", false, path.posix.sep],
-    ["/first", "/first", false, path.posix.sep],
-    ["/first", "/first/second", true, path.posix.sep],
-    ["first", "first/second", true, path.posix.sep],
-    ["../first", "../first/second", true, path.posix.sep],
-    ["c:\\first", "c:\\first", false, path.win32.sep],
-    ["c:\\first", "c:\\first\\second", true, path.win32.sep],
+    ["", "", false, path.posix.separator],
+    ["/first/second", "/first", false, path.posix.separator],
+    ["/first", "/first", false, path.posix.separator],
+    ["/first", "/first/second", true, path.posix.separator],
+    ["first", "first/second", true, path.posix.separator],
+    ["../first", "../first/second", true, path.posix.separator],
+    ["c:\\first", "c:\\first", false, path.win32.separator],
+    ["c:\\first", "c:\\first\\second", true, path.win32.separator],
   ];
 
   pairs.forEach(function (p): void {

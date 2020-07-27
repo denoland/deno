@@ -8,12 +8,12 @@ import { BufReader } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 import { ServerRequest } from "./server.ts";
 import { FileServerArgs, serveFile } from "./file_server.ts";
-import { dirname, fromFileUrl, join, resolve } from "../path/mod.ts";
+import { fromFileUrl, join, parent, resolve } from "../path/mod.ts";
 let fileServer: Deno.Process<Deno.RunOptions & { stdout: "piped" }>;
 
 type FileServerCfg = Omit<FileServerArgs, "_"> & { target?: string };
 
-const moduleDir = dirname(fromFileUrl(import.meta.url));
+const moduleDir = parent(fromFileUrl(import.meta.url));
 const testdataDir = resolve(moduleDir, "testdata");
 
 async function startFileServer({

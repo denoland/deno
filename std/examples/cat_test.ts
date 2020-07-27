@@ -1,8 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { assertStrictEquals } from "../testing/asserts.ts";
-import { dirname, fromFileUrl } from "../path/mod.ts";
+import { fromFileUrl, parent } from "../path/mod.ts";
 
-const moduleDir = dirname(fromFileUrl(import.meta.url));
+const moduleDir = parent(fromFileUrl(import.meta.url));
 
 Deno.test("[examples/cat] print multiple files", async () => {
   const decoder = new TextDecoder();

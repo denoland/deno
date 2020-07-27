@@ -1,4 +1,51 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-export * from "../path/mod.ts";
-import * as m from "../path/mod.ts";
-export default m;
+import {
+  delimiter,
+  extension as extname,
+  fileName as basename,
+  format,
+  fromFileUrl,
+  isAbsolute,
+  join,
+  normalize,
+  parent as dirname,
+  parse,
+  relative,
+  resolve,
+  separator as sep,
+  toNamespacedPath,
+} from "../path/mod.ts";
+
+export {
+  basename,
+  delimiter,
+  dirname,
+  extname,
+  format,
+  fromFileUrl,
+  isAbsolute,
+  join,
+  normalize,
+  parse,
+  relative,
+  resolve,
+  sep,
+  toNamespacedPath,
+};
+
+export default {
+  delimiter,
+  extname,
+  basename,
+  format,
+  fromFileUrl,
+  isAbsolute,
+  join,
+  normalize,
+  dirname,
+  parse,
+  relative,
+  resolve,
+  sep,
+  toNamespacedPath,
+};

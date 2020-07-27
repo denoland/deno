@@ -23,7 +23,7 @@ export async function ensureLink(src: string, dest: string): Promise<void> {
     return;
   }
 
-  await ensureDir(path.dirname(dest));
+  await ensureDir(path.parent(dest));
 
   await Deno.link(src, dest);
 }
@@ -47,7 +47,7 @@ export function ensureLinkSync(src: string, dest: string): void {
     return;
   }
 
-  ensureDirSync(path.dirname(dest));
+  ensureDirSync(path.parent(dest));
 
   Deno.linkSync(src, dest);
 }

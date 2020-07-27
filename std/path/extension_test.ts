@@ -50,39 +50,39 @@ const pairs = [
   ["file.//", "."],
 ];
 
-Deno.test("extname", function () {
+Deno.test("extension", function () {
   pairs.forEach(function (p) {
     const input = p[0];
     const expected = p[1];
-    assertEquals(expected, path.posix.extname(input));
+    assertEquals(expected, path.posix.extension(input));
   });
 
   // On *nix, backslash is a valid name component like any other character.
-  assertEquals(path.posix.extname(".\\"), "");
-  assertEquals(path.posix.extname("..\\"), ".\\");
-  assertEquals(path.posix.extname("file.ext\\"), ".ext\\");
-  assertEquals(path.posix.extname("file.ext\\\\"), ".ext\\\\");
-  assertEquals(path.posix.extname("file\\"), "");
-  assertEquals(path.posix.extname("file\\\\"), "");
-  assertEquals(path.posix.extname("file.\\"), ".\\");
-  assertEquals(path.posix.extname("file.\\\\"), ".\\\\");
+  assertEquals(path.posix.extension(".\\"), "");
+  assertEquals(path.posix.extension("..\\"), ".\\");
+  assertEquals(path.posix.extension("file.ext\\"), ".ext\\");
+  assertEquals(path.posix.extension("file.ext\\\\"), ".ext\\\\");
+  assertEquals(path.posix.extension("file\\"), "");
+  assertEquals(path.posix.extension("file\\\\"), "");
+  assertEquals(path.posix.extension("file.\\"), ".\\");
+  assertEquals(path.posix.extension("file.\\\\"), ".\\\\");
 });
 
-Deno.test("extnameWin32", function () {
+Deno.test("extensionWin32", function () {
   pairs.forEach(function (p) {
     const input = p[0].replace(slashRE, "\\");
     const expected = p[1];
-    assertEquals(expected, path.win32.extname(input));
-    assertEquals(expected, path.win32.extname("C:" + input));
+    assertEquals(expected, path.win32.extension(input));
+    assertEquals(expected, path.win32.extension("C:" + input));
   });
 
   // On Windows, backslash is a path separator.
-  assertEquals(path.win32.extname(".\\"), "");
-  assertEquals(path.win32.extname("..\\"), "");
-  assertEquals(path.win32.extname("file.ext\\"), ".ext");
-  assertEquals(path.win32.extname("file.ext\\\\"), ".ext");
-  assertEquals(path.win32.extname("file\\"), "");
-  assertEquals(path.win32.extname("file\\\\"), "");
-  assertEquals(path.win32.extname("file.\\"), ".");
-  assertEquals(path.win32.extname("file.\\\\"), ".");
+  assertEquals(path.win32.extension(".\\"), "");
+  assertEquals(path.win32.extension("..\\"), "");
+  assertEquals(path.win32.extension("file.ext\\"), ".ext");
+  assertEquals(path.win32.extension("file.ext\\\\"), ".ext");
+  assertEquals(path.win32.extension("file\\"), "");
+  assertEquals(path.win32.extension("file\\\\"), "");
+  assertEquals(path.win32.extension("file.\\"), ".");
+  assertEquals(path.win32.extension("file.\\\\"), ".");
 });

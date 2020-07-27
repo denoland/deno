@@ -7,9 +7,9 @@ import {
   assertEquals,
   assertStringIncludes,
 } from "../testing/asserts.ts";
-import { dirname, fromFileUrl } from "../path/mod.ts";
+import { fromFileUrl, parent } from "../path/mod.ts";
 
-const moduleDir = dirname(fromFileUrl(import.meta.url));
+const moduleDir = parent(fromFileUrl(import.meta.url));
 
 Deno.test("xevalSuccess", async function (): Promise<void> {
   const chunks: string[] = [];

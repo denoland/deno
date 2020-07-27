@@ -9,7 +9,7 @@ import {
 import * as path from "../path/mod.ts";
 import { emptyDir, emptyDirSync } from "./empty_dir.ts";
 
-const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
+const moduleDir = path.parent(path.fromFileUrl(import.meta.url));
 const testdataDir = path.resolve(moduleDir, "testdata");
 
 Deno.test("emptyDirIfItNotExist", async function (): Promise<void> {

@@ -2,9 +2,9 @@
 import { assert, assertEquals } from "../testing/asserts.ts";
 import { BufReader, BufWriter } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
-import { dirname, fromFileUrl } from "../path/mod.ts";
+import { fromFileUrl, parent } from "../path/mod.ts";
 
-const moduleDir = dirname(fromFileUrl(import.meta.url));
+const moduleDir = parent(fromFileUrl(import.meta.url));
 
 let server: Deno.Process<Deno.RunOptions & { stdout: "piped" }>;
 async function startServer(): Promise<void> {

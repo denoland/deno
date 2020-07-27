@@ -2,7 +2,7 @@
 import { equal, findIndex, findLastIndex, hasPrefix } from "../bytes/mod.ts";
 import { copyN } from "../io/ioutil.ts";
 import { MultiReader } from "../io/readers.ts";
-import { extname } from "../path/mod.ts";
+import { extension } from "../path/mod.ts";
 import { BufReader, BufWriter } from "../io/bufio.ts";
 import { encoder } from "../encoding/utf8.ts";
 import { assert } from "../_util/assert.ts";
@@ -308,7 +308,7 @@ export class MultipartReader {
       assert(contentType != null, "content-type must be set");
       if (n > maxMemory) {
         // too big, write to disk and flush buffer
-        const ext = extname(p.fileName);
+        const ext = extension(p.fileName);
         const filepath = await Deno.makeTempFile({
           dir: ".",
           prefix: "multipart-",

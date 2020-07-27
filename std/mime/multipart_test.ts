@@ -20,7 +20,7 @@ const boundary = "--abcde";
 const dashBoundary = e.encode("--" + boundary);
 const nlDashBoundary = e.encode("\r\n--" + boundary);
 
-const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
+const moduleDir = path.parent(path.fromFileUrl(import.meta.url));
 const testdataDir = path.resolve(moduleDir, "testdata");
 
 Deno.test("multipartScanUntilBoundary1", function (): void {

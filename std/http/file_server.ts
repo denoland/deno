@@ -6,7 +6,7 @@
 // TODO Add tests like these:
 // https://github.com/indexzero/http-server/blob/master/test/http-server-test.js
 
-import { extname, posix } from "../path/mod.ts";
+import { extension, posix } from "../path/mod.ts";
 import {
   HTTPSOptions,
   listenAndServe,
@@ -70,7 +70,7 @@ const MEDIA_TYPES: Record<string, string> = {
 
 /** Returns the content-type based on the extension of a path. */
 function contentType(path: string): string | undefined {
-  return MEDIA_TYPES[extname(path)];
+  return MEDIA_TYPES[extension(path)];
 }
 
 function modeToString(isDir: boolean, maybeMode: number | null): string {

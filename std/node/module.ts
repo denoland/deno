@@ -97,7 +97,7 @@ class Module {
     this.loaded = false;
     this.children = [];
     this.paths = [];
-    this.path = path.dirname(id);
+    this.path = path.parent(id);
   }
   static builtinModules: string[] = [];
   static _extensions: {
@@ -132,7 +132,7 @@ class Module {
   load(filename: string): void {
     assert(!this.loaded);
     this.filename = filename;
-    this.paths = Module._nodeModulePaths(path.dirname(filename));
+    this.paths = Module._nodeModulePaths(path.parent(filename));
 
     const extension = findLongestRegisteredExtension(filename);
     // Removed ESM code
@@ -150,7 +150,7 @@ class Module {
     // manifest code removed
     const compiledWrapper = wrapSafe(filename, content);
     // inspector code remove
-    const dirname = path.dirname(filename);
+    const dirname = path.parent(filename);
     const require = makeRequireFunction(this);
     const exports = this.exports;
     const thisValue = exports;
@@ -200,7 +200,7 @@ class Module {
       return ["."].concat(Module._nodeModulePaths("."), modulePaths);
     }
     // Returns the parent path of the file
-    return [path.dirname(parent.filename)];
+    return [path.parent(parent.filename)];
   }
 
   static _resolveFilename(
@@ -690,13 +690,14 @@ function readPackage(requestPath: string): PackageInfo | null {
 function readPackageScope(
   checkPath: string,
 ): { path: string; data: PackageInfo } | false {
-  const rootSeparatorIndex = checkPath.indexOf(path.sep);
+  const rootSeparatorIndex = checkPath.indexOf(path.separator);
   let separatorIndex;
   while (
-    (separatorIndex = checkPath.lastIndexOf(path.sep)) > rootSeparatorIndex
+    (separatorIndex = checkPath.lastIndexOf(path.separator)) >
+      rootSeparatorIndex
   ) {
     checkPath = checkPath.slice(0, separatorIndex);
-    if (checkPath.endsWith(path.sep + "node_modules")) return false;
+    if (checkPath.endsWith(path.separator + "node_modules")) return false;
     const pjson = readPackage(checkPath);
     if (pjson) {
       return {
@@ -790,7 +791,7 @@ function tryExtensions(
 // Find the longest (possibly multi-dot) extension registered in
 // Module._extensions
 function findLongestRegisteredExtension(filename: string): string {
-  const name = path.basename(filename);
+  const name = path.fileName(filename);
   let currentExtension;
   let index;
   let startIndex = 0;

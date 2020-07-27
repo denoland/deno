@@ -40,7 +40,7 @@ Deno.test({
 
     const currentDir = Deno.cwd(); // to unchange current directory after this test
 
-    const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
+    const moduleDir = path.parent(path.fromFileUrl(import.meta.url));
     process.chdir(path.resolve(moduleDir, ".."));
 
     assert(process.cwd().match(/\Wstd$/));

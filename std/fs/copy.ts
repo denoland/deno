@@ -185,7 +185,7 @@ async function copyDir(
 
   for await (const entry of Deno.readDir(src)) {
     const srcPath = path.join(src, entry.name);
-    const destPath = path.join(dest, path.basename(srcPath as string));
+    const destPath = path.join(dest, path.fileName(srcPath as string));
     if (entry.isSymlink) {
       await copySymLink(srcPath, destPath, options);
     } else if (entry.isDirectory) {
@@ -217,7 +217,7 @@ function copyDirSync(src: string, dest: string, options: CopyOptions): void {
   for (const entry of Deno.readDirSync(src)) {
     assert(entry.name != null, "file.name must be set");
     const srcPath = path.join(src, entry.name);
-    const destPath = path.join(dest, path.basename(srcPath as string));
+    const destPath = path.join(dest, path.fileName(srcPath as string));
     if (entry.isSymlink) {
       copySymlinkSync(srcPath, destPath, options);
     } else if (entry.isDirectory) {

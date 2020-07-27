@@ -8,7 +8,7 @@ import {
 import * as path from "../path/mod.ts";
 import { ensureSymlink, ensureSymlinkSync } from "./ensure_symlink.ts";
 
-const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
+const moduleDir = path.parent(path.fromFileUrl(import.meta.url));
 const testdataDir = path.resolve(moduleDir, "testdata");
 
 Deno.test("ensureSymlinkIfItNotExist", async function (): Promise<void> {

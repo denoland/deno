@@ -3,9 +3,9 @@ import { assert, assertEquals } from "../../testing/asserts.ts";
 import { TextProtoReader } from "../../textproto/mod.ts";
 import { BufReader } from "../../io/bufio.ts";
 import { delay } from "../../async/delay.ts";
-import { dirname, fromFileUrl, resolve } from "../../path/mod.ts";
+import { fromFileUrl, parent, resolve } from "../../path/mod.ts";
 
-const moduleDir = resolve(dirname(fromFileUrl(import.meta.url)));
+const moduleDir = resolve(parent(fromFileUrl(import.meta.url)));
 
 async function startServer(): Promise<
   Deno.Process<Deno.RunOptions & { stdout: "piped" }>

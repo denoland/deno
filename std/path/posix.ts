@@ -12,7 +12,7 @@ import {
   normalizeString,
 } from "./_util.ts";
 
-export const sep = "/";
+export const separator = "/";
 export const delimiter = ":";
 
 // path.resolve([from ...], to)
@@ -212,10 +212,10 @@ export function toNamespacedPath(path: string): string {
 }
 
 /**
- * Return the directory name of a `path`.
- * @param path to determine name for
+ * Return the parent of a `path`.
+ * @param path
  */
-export function dirname(path: string): string {
+export function parent(path: string): string {
   assertPath(path);
   if (path.length === 0) return ".";
   const hasRoot = path.charCodeAt(0) === CHAR_FORWARD_SLASH;
@@ -243,7 +243,7 @@ export function dirname(path: string): string {
  * @param path to process
  * @param ext of path directory
  */
-export function basename(path: string, ext = ""): string {
+export function fileName(path: string, ext = ""): string {
   if (ext !== undefined && typeof ext !== "string") {
     throw new TypeError('"ext" argument must be a string');
   }
@@ -321,7 +321,7 @@ export function basename(path: string, ext = ""): string {
  * Return the extension of the `path`.
  * @param path with extension
  */
-export function extname(path: string): string {
+export function extension(path: string): string {
   assertPath(path);
   let startDot = -1;
   let startPart = 0;
