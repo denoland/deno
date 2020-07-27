@@ -10,7 +10,9 @@ Deno.test("writeJsonIfNotExists", async function (): Promise<void> {
 
   try {
     await writeJson(notExistsJsonFile, { a: "1" });
-  } catch {}
+  } catch {
+    // empty
+  }
 
   const content = await Deno.readFile(notExistsJsonFile);
 
@@ -26,7 +28,9 @@ Deno.test("writeJsonIfExists", async function (): Promise<void> {
 
   try {
     await writeJson(existsJsonFile, { a: "1" });
-  } catch {}
+  } catch {
+    // empty
+  }
 
   const content = await Deno.readFile(existsJsonFile);
 
@@ -46,7 +50,9 @@ Deno.test("writeJsonIfExistsAnInvalidJson", async function (): Promise<void> {
 
   try {
     await writeJson(existsInvalidJsonFile, { a: "1" });
-  } catch {}
+  } catch {
+    // empty
+  }
 
   const content = await Deno.readFile(existsInvalidJsonFile);
 
@@ -63,7 +69,9 @@ Deno.test("writeJsonWithSpaces", async function (): Promise<void> {
 
   try {
     await writeJson(existsJsonFile, { a: "1" }, { spaces: 2 });
-  } catch {}
+  } catch {
+    // empty
+  }
 
   const content = await Deno.readFile(existsJsonFile);
 
@@ -84,7 +92,9 @@ Deno.test("writeJsonWithReplacer", async function (): Promise<void> {
       { a: "1", b: "2", c: "3" },
       { replacer: ["a"] },
     );
-  } catch {}
+  } catch {
+    // empty
+  }
 
   const content = await Deno.readFile(existsJsonFile);
 
@@ -101,7 +111,9 @@ Deno.test("writeJsonAppend", async function (): Promise<void> {
   try {
     await writeJson(existsJsonFile, { a: "1" }, { append: true });
     await writeJson(existsJsonFile, { b: "2" }, { append: true });
-  } catch {}
+  } catch {
+    // empty
+  }
 
   const content = await Deno.readFile(existsJsonFile);
 
@@ -115,7 +127,9 @@ Deno.test("writeJsonSyncIfNotExists", function (): void {
 
   try {
     writeJsonSync(notExistsJsonFile, { a: "1" });
-  } catch {}
+  } catch {
+    // empty
+  }
 
   const content = Deno.readFileSync(notExistsJsonFile);
 
@@ -131,7 +145,9 @@ Deno.test("writeJsonSyncIfExists", function (): void {
 
   try {
     writeJsonSync(existsJsonFile, { a: "1" });
-  } catch {}
+  } catch {
+    // empty
+  }
 
   const content = Deno.readFileSync(existsJsonFile);
 
@@ -151,7 +167,9 @@ Deno.test("writeJsonSyncIfExistsAnInvalidJson", function (): void {
 
   try {
     writeJsonSync(existsInvalidJsonFile, { a: "1" });
-  } catch {}
+  } catch {
+    // empty
+  }
 
   const content = Deno.readFileSync(existsInvalidJsonFile);
 
@@ -168,7 +186,9 @@ Deno.test("writeJsonSyncWithSpaces", function (): void {
 
   try {
     writeJsonSync(existsJsonFile, { a: "1" }, { spaces: 2 });
-  } catch {}
+  } catch {
+    // empty
+  }
 
   const content = Deno.readFileSync(existsJsonFile);
 
@@ -192,7 +212,9 @@ Deno.test("writeJsonSyncWithReplacer", function (): void {
       { a: "1", b: "2", c: "3" },
       { replacer: ["a"] },
     );
-  } catch {}
+  } catch {
+    // empty
+  }
 
   const content = Deno.readFileSync(existsJsonFile);
 
@@ -209,7 +231,9 @@ Deno.test("writeJsonSyncAppend", function (): void {
   try {
     writeJsonSync(existsJsonFile, { a: "1" }, { append: true });
     writeJsonSync(existsJsonFile, { b: "2" }, { append: true });
-  } catch {}
+  } catch {
+    // empty
+  }
 
   const content = Deno.readFileSync(existsJsonFile);
 
