@@ -8,11 +8,7 @@ const testdataDir = path.resolve("fs", "testdata");
 Deno.test("writeJsonIfNotExists", async function (): Promise<void> {
   const notExistsJsonFile = path.join(testdataDir, "file_not_exists.json");
 
-  try {
-    await writeJson(notExistsJsonFile, { a: "1" });
-  } catch {
-    // empty
-  }
+  await writeJson(notExistsJsonFile, { a: "1" });
 
   const content = await Deno.readFile(notExistsJsonFile);
 
