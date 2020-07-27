@@ -13,7 +13,7 @@ Deno.test("writeJsonIfNotExists", async function (): Promise<void> {
   const notExistsJsonFile = path.join(testdataDir, "file_not_exists.json");
 
   await assertThrowsAsync(
-    async (): Promise<void> => {
+    async (): Promise<never> => {
       await writeJson(notExistsJsonFile, { a: "1" });
       throw new Error("should write success");
     },
@@ -34,7 +34,7 @@ Deno.test("writeJsonIfExists", async function (): Promise<void> {
   await Deno.writeFile(existsJsonFile, new Uint8Array());
 
   await assertThrowsAsync(
-    async (): Promise<void> => {
+    async (): Promise<never> => {
       await writeJson(existsJsonFile, { a: "1" });
       throw new Error("should write success");
     },
@@ -59,7 +59,7 @@ Deno.test("writeJsonIfExistsAnInvalidJson", async function (): Promise<void> {
   await Deno.writeFile(existsInvalidJsonFile, invalidJsonContent);
 
   await assertThrowsAsync(
-    async (): Promise<void> => {
+    async (): Promise<never> => {
       await writeJson(existsInvalidJsonFile, { a: "1" });
       throw new Error("should write success");
     },
@@ -81,7 +81,7 @@ Deno.test("writeJsonWithSpaces", async function (): Promise<void> {
   await Deno.writeFile(existsJsonFile, invalidJsonContent);
 
   await assertThrowsAsync(
-    async (): Promise<void> => {
+    async (): Promise<never> => {
       await writeJson(existsJsonFile, { a: "1" }, { spaces: 2 });
       throw new Error("should write success");
     },
@@ -103,7 +103,7 @@ Deno.test("writeJsonWithReplacer", async function (): Promise<void> {
   await Deno.writeFile(existsJsonFile, invalidJsonContent);
 
   await assertThrowsAsync(
-    async (): Promise<void> => {
+    async (): Promise<never> => {
       await writeJson(
         existsJsonFile,
         { a: "1", b: "2", c: "3" },
@@ -130,7 +130,7 @@ Deno.test("writeJsonAppend", async function (): Promise<void> {
   await Deno.writeFile(existsJsonFile, new Uint8Array());
 
   await assertThrowsAsync(
-    async (): Promise<void> => {
+    async (): Promise<never> => {
       await writeJson(existsJsonFile, { a: "1" }, { append: true });
       await writeJson(existsJsonFile, { b: "2" }, { append: true });
       throw new Error("should write success");
@@ -150,7 +150,7 @@ Deno.test("writeJsonSyncIfNotExists", function (): void {
   const notExistsJsonFile = path.join(testdataDir, "file_not_exists_sync.json");
 
   assertThrows(
-    (): void => {
+    (): never => {
       writeJsonSync(notExistsJsonFile, { a: "1" });
       throw new Error("should write success");
     },
@@ -171,7 +171,7 @@ Deno.test("writeJsonSyncIfExists", function (): void {
   Deno.writeFileSync(existsJsonFile, new Uint8Array());
 
   assertThrows(
-    (): void => {
+    (): never => {
       writeJsonSync(existsJsonFile, { a: "1" });
       throw new Error("should write success");
     },
@@ -196,7 +196,7 @@ Deno.test("writeJsonSyncIfExistsAnInvalidJson", function (): void {
   Deno.writeFileSync(existsInvalidJsonFile, invalidJsonContent);
 
   assertThrows(
-    (): void => {
+    (): never => {
       writeJsonSync(existsInvalidJsonFile, { a: "1" });
       throw new Error("should write success");
     },
@@ -218,7 +218,7 @@ Deno.test("writeJsonSyncWithSpaces", function (): void {
   Deno.writeFileSync(existsJsonFile, invalidJsonContent);
 
   assertThrows(
-    (): void => {
+    (): never => {
       writeJsonSync(existsJsonFile, { a: "1" }, { spaces: 2 });
       throw new Error("should write success");
     },
@@ -243,7 +243,7 @@ Deno.test("writeJsonSyncWithReplacer", function (): void {
   Deno.writeFileSync(existsJsonFile, invalidJsonContent);
 
   assertThrows(
-    (): void => {
+    (): never => {
       writeJsonSync(
         existsJsonFile,
         { a: "1", b: "2", c: "3" },
@@ -270,7 +270,7 @@ Deno.test("writeJsonSyncAppend", function (): void {
   Deno.writeFileSync(existsJsonFile, new Uint8Array());
 
   assertThrows(
-    (): void => {
+    (): never => {
       writeJsonSync(existsJsonFile, { a: "1" }, { append: true });
       writeJsonSync(existsJsonFile, { b: "2" }, { append: true });
       throw new Error("should write success");
