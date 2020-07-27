@@ -93,6 +93,8 @@ struct ParseArgs {
   source_file: String,
 }
 
+// TODO(divy-work): Should we take swc parse options?
+// TODO(divy-work): Accept multiple source_files to parse
 fn op_parse(
   state: &State,
   args: Value,
