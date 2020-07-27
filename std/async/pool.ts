@@ -17,8 +17,8 @@ export async function asyncPool<T, R>(
   array: T[],
   iteratorFn: (data: T, array: T[]) => Promise<R>,
 ): Promise<R[]> {
-  const ret: Promise<R>[] = [];
-  const executing: Promise<unknown>[] = [];
+  const ret: Array<Promise<R>> = [];
+  const executing: Array<Promise<unknown>> = [];
   for (const item of array) {
     const p = Promise.resolve().then(() => iteratorFn(item, array));
     ret.push(p);
