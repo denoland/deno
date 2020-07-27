@@ -90,11 +90,10 @@ fn op_transpile(
 
 #[derive(Deserialize, Debug)]
 struct ParseArgs {
-  source_file: String,
+  source: String,
 }
 
 // TODO(divy-work): Should we take swc parse options?
-// TODO(divy-work): Accept multiple source_files to parse
 fn op_parse(
   state: &State,
   args: Value,
@@ -104,8 +103,7 @@ fn op_parse(
   let args: ParseArgs = serde_json::from_value(args)?;
   let s = state.borrow();
   let global_state = s.global_state.clone();
-  let module_specifier =
-    ModuleSpecifier::resolve_url_or_path(&args.source_file)?;
+  let module_specifier = ModuleSpecifier::resolve_url_or_path(&args.source)?;
   let permissions = s.permissions.clone();
   let fut = async move {
     let out = global_state

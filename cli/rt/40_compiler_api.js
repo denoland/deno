@@ -26,11 +26,11 @@
       : `./${specifier}`;
   }
 
-  // TODO(divy-work): Use AST type interface from swc?
-  function ast(source_file) {
-    util.log("Deno.ast", { source_file });
+  // TODO(divy-work): Use AST type interface from swc as return type?
+  function ast(source) {
+    util.log("Deno.ast", { source });
     const payload = {
-      source_file,
+      source,
     };
     return opAst(payload);
   }
