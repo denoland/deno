@@ -29,13 +29,19 @@ const BOM_CHAR: char = '\u{FEFF}';
 ///
 /// First argument supports globs, and if it is `None`
 /// then the current directory is recursively walked.
-pub async fn format(args: Vec<String>, check: bool) -> Result<(), ErrBox> {
+pub async fn format(
+  args: Vec<String>,
+  check: bool,
+  ignore: Vec<String>,
+) -> Result<(), ErrBox> {
   if args.len() == 1 && args[0] == "-" {
     return format_stdin(check);
   }
-
-  let target_files = collect_files(args)?;
-
+  let mut target_files = collect_files(args)?;
+  let ignore_files = collect_files(ignore)?;
+  if ignore_files.len() > 0 {
+    target_files.retain(|f| ignore_files.contains(&f));
+  }
   let config = get_config();
   if check {
     check_source_files(config, target_files).await

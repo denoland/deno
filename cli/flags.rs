@@ -39,6 +39,7 @@ pub enum DenoSubcommand {
   Fmt {
     check: bool,
     files: Vec<String>,
+    ignore: Vec<String>,
   },
   Help,
   Info {
@@ -101,6 +102,7 @@ pub struct Flags {
   pub ca_file: Option<String>,
   pub cached_only: bool,
   pub config_path: Option<String>,
+  pub ignore: Vec<String>,
   pub import_map_path: Option<String>,
   pub inspect: Option<SocketAddr>,
   pub inspect_brk: Option<SocketAddr>,
@@ -342,9 +344,14 @@ fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     Some(f) => f.map(String::from).collect(),
     None => vec![],
   };
+  let ignore = match matches.values_of("ignore") {
+    Some(f) => f.map(String::from).collect(),
+    None => vec![],
+  };
   flags.subcommand = DenoSubcommand::Fmt {
     check: matches.is_present("check"),
     files,
+    ignore,
   }
 }
 
@@ -657,6 +664,14 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         .long("check")
         .help("Check if the source files are formatted.")
         .takes_value(false),
+    )
+    .arg(
+      Arg::with_name("ignore")
+        .long("ignore")
+        .takes_value(true)
+        .use_delimiter(true)
+        .require_equals(true)
+        .help("Ignore formatting particular source files."),
     )
     .arg(
       Arg::with_name("files")
