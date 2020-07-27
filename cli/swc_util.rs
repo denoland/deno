@@ -26,11 +26,11 @@ use std::error::Error;
 use std::fmt;
 use std::sync::Arc;
 use std::sync::RwLock;
+use swc_common::chain;
 use swc_ecma_codegen::text_writer::JsWriter;
 use swc_ecma_codegen::Node;
-use swc_ecma_transforms::typescript;
 use swc_ecma_transforms::fixer;
-use swc_common::chain;
+use swc_ecma_transforms::typescript;
 
 struct DummyHandler;
 
@@ -201,14 +201,11 @@ impl AstParser {
 
       let mut parser = Parser::new_from(lexer);
 
-      let parse_result =
-        parser
-          .parse_module()
-          .map_err(move |err| {
-            let mut diagnostic = err.into_diagnostic(&self.handler);
-            diagnostic.emit();
-            SwcDiagnosticBuffer::from_swc_error(buffered_err, self)
-          });
+      let parse_result = parser.parse_module().map_err(move |err| {
+        let mut diagnostic = err.into_diagnostic(&self.handler);
+        diagnostic.emit();
+        SwcDiagnosticBuffer::from_swc_error(buffered_err, self)
+      });
 
       callback(parse_result)
     })
@@ -223,14 +220,9 @@ impl AstParser {
     self.parse_module(file_name, media_type, source_code, |parse_result| {
       let module = parse_result?;
       let program = Program::Module(module);
-      let mut pass = chain!(
-        typescript::strip(),
-        fixer(),
-      );
-      let program = swc_ecma_transforms::util::COMMENTS.set(&self.comments, || {
-        program.fold_with(&mut pass)
-      });
-      
+      let mut pass = chain!(typescript::strip(), fixer(),);
+      let program = swc_ecma_transforms::util::COMMENTS
+        .set(&self.comments, || program.fold_with(&mut pass));
 
       let mut src_map_buf = vec![];
       let mut buf = vec![];
@@ -262,9 +254,7 @@ impl AstParser {
         let map = String::from_utf8(buf)?;
 
         src.push_str("\n//# sourceMappingURL=data:application/json;base64,");
-        let encoded_map = base64::encode(
-          map.as_bytes()
-        );
+        let encoded_map = base64::encode(map.as_bytes());
         src.push_str(&encoded_map);
       }
       Ok(src)
