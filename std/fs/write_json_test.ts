@@ -124,6 +124,28 @@ Deno.test("writeJsonWithReplacer", async function (): Promise<void> {
   assertEquals(new TextDecoder().decode(content), `{"a":"1"}\n`);
 });
 
+Deno.test("writeJsonAppend", async function (): Promise<void> {
+  const existsJsonFile = path.join(testdataDir, "file_write_append.json");
+
+  await Deno.writeFile(existsJsonFile, new Uint8Array());
+
+  await assertThrowsAsync(
+    async (): Promise<void> => {
+      await writeJson(existsJsonFile, { a: "1" }, {append: true});
+      await writeJson(existsJsonFile, { b: "2" }, {append: true});
+      throw new Error("should write success");
+    },
+    Error,
+    "should write success",
+  );
+
+  const content = await Deno.readFile(existsJsonFile);
+
+  await Deno.remove(existsJsonFile);
+
+  assertEquals(new TextDecoder().decode(content), `{"a":"1"}\n{"b":"2"}\n`);
+});
+
 Deno.test("writeJsonSyncIfNotExists", function (): void {
   const notExistsJsonFile = path.join(testdataDir, "file_not_exists_sync.json");
 
@@ -240,4 +262,26 @@ Deno.test("writeJsonSyncWithReplacer", function (): void {
   Deno.removeSync(existsJsonFile);
 
   assertEquals(new TextDecoder().decode(content), `{"a":"1"}\n`);
+});
+
+Deno.test("writeJsonSyncAppend", function (): void {
+  const existsJsonFile = path.join(testdataDir, "file_write_append_sync.json");
+
+  Deno.writeFileSync(existsJsonFile, new Uint8Array());
+
+  assertThrows(
+    (): void => {
+      writeJsonSync(existsJsonFile, { a: "1" }, {append: true});
+      writeJsonSync(existsJsonFile, { b: "2" }, {append: true});
+      throw new Error("should write success");
+    },
+    Error,
+    "should write success",
+  );
+
+  const content = Deno.readFileSync(existsJsonFile);
+
+  Deno.removeSync(existsJsonFile);
+
+  assertEquals(new TextDecoder().decode(content), `{"a":"1"}\n{"b":"2"}\n`);
 });
