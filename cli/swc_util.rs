@@ -28,10 +28,9 @@ use std::sync::Arc;
 use std::sync::RwLock;
 use swc_ecma_codegen::text_writer::JsWriter;
 use swc_ecma_codegen::Node;
-use swc_ecma_transforms::helpers;
-use swc_ecma_transforms::helpers::Helpers;
 use swc_ecma_transforms::typescript;
-use swc_ecma_transforms::util;
+use swc_ecma_transforms::fixer;
+use swc_common::chain;
 
 struct DummyHandler;
 
@@ -224,13 +223,14 @@ impl AstParser {
     self.parse_module(file_name, media_type, source_code, |parse_result| {
       let module = parse_result?;
       let program = Program::Module(module);
-      let mut pass = typescript::strip();
-      let program = helpers::HELPERS.set(&Helpers::new(false), || {
-        util::HANDLER.set(&self.handler, || {
-          // Fold module
-          program.fold_with(&mut pass)
-        })
+      let mut pass = chain!(
+        typescript::strip(),
+        fixer(),
+      );
+      let program = swc_ecma_transforms::util::COMMENTS.set(&self.comments, || {
+        program.fold_with(&mut pass)
       });
+      
 
       let mut src_map_buf = vec![];
       let mut buf = vec![];
@@ -262,11 +262,10 @@ impl AstParser {
         let map = String::from_utf8(buf)?;
 
         src.push_str("\n//# sourceMappingURL=data:application/json;base64,");
-        base64::encode_config_buf(
-          map.as_bytes(),
-          base64::Config::new(base64::CharacterSet::UrlSafe, true),
-          &mut src,
+        let encoded_map = base64::encode(
+          map.as_bytes()
         );
+        src.push_str(&encoded_map);
       }
       Ok(src)
     })

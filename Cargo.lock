@@ -527,7 +527,7 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-typescript"
-version = "0.22.0"
+version = "0.23.0"
 dependencies = [
  "dprint-core",
  "serde",
@@ -2229,9 +2229,9 @@ dependencies = [
 
 [[package]]
 name = "swc_ecma_codegen"
-version = "0.28.0"
+version = "0.28.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e9b1b654354df8ebdc35d4046436157da9f4858a9e6e3b3058576157dcf885ed"
+checksum = "4788c9802262d13a53b677bb812354f15867bc851523f734d8015cb101ecf5c7"
 dependencies = [
  "bitflags",
  "num-bigint",
@@ -2292,9 +2292,9 @@ dependencies = [
 
 [[package]]
 name = "swc_ecma_transforms"
-version = "0.15.0"
+version = "0.15.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "884147b4f0f99522627c9590ba6657ae6b3c80cd0e3f32081bd094e01b353421"
+checksum = "32621ba8874cc1a1fed27abe4b0c079d05f42fa19fe593f02c50a95e882759f9"
 dependencies = [
  "Inflector",
  "arrayvec",
