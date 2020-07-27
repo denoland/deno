@@ -131,8 +131,8 @@ Deno.test("writeJsonAppend", async function (): Promise<void> {
 
   await assertThrowsAsync(
     async (): Promise<void> => {
-      await writeJson(existsJsonFile, { a: "1" }, {append: true});
-      await writeJson(existsJsonFile, { b: "2" }, {append: true});
+      await writeJson(existsJsonFile, { a: "1" }, { append: true });
+      await writeJson(existsJsonFile, { b: "2" }, { append: true });
       throw new Error("should write success");
     },
     Error,
@@ -271,8 +271,8 @@ Deno.test("writeJsonSyncAppend", function (): void {
 
   assertThrows(
     (): void => {
-      writeJsonSync(existsJsonFile, { a: "1" }, {append: true});
-      writeJsonSync(existsJsonFile, { b: "2" }, {append: true});
+      writeJsonSync(existsJsonFile, { a: "1" }, { append: true });
+      writeJsonSync(existsJsonFile, { b: "2" }, { append: true });
       throw new Error("should write success");
     },
     Error,
