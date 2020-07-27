@@ -10,6 +10,10 @@
     return sendAsync("op_compile", request);
   }
 
+  function opAst(request) {
+    return sendAsync("op_parse", request);
+  }
+
   function opTranspile(
     request,
   ) {
@@ -20,6 +24,15 @@
     return specifier.match(/^([\.\/\\]|https?:\/{2}|file:\/{2})/)
       ? specifier
       : `./${specifier}`;
+  }
+
+  // TODO(divy-work): Use AST type interface from swc?
+  function ast(source_file) {
+    util.log("Deno.ast", { source_file });
+    const payload = {
+      source_file,
+    };
+    return opAst(payload);
   }
 
   // TODO(bartlomieju): change return type to interface?
@@ -96,5 +109,6 @@
     bundle,
     compile,
     transpileOnly,
+    ast,
   };
 })(this);
