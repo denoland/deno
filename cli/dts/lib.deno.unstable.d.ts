@@ -2,6 +2,7 @@
 
 /// <reference no-default-lib="true" />
 /// <reference lib="deno.ns" />
+/// <reference lib="swc" />
 
 declare namespace Deno {
   /**
@@ -456,7 +457,22 @@ declare namespace Deno {
     sources: Record<string, string>,
     options?: CompilerOptions,
   ): Promise<Record<string, TranspileOnlyResult>>;
-
+  
+   /** **UNSTABLE**: new API, yet to be vetted.
+   * Returns the AST for the provided source file.
+   * The extension of the module name will be used to determine the media type of the module.
+   *
+   * ```ts
+   * const ast = await Deno.ast("foo.ts");
+   * ```
+   *
+   * @param source  A source file to be parsed. The extension of the key will determine
+   *                the media type of the file when processing.
+   */
+  export function ast(
+    source: string,
+  ): Promise<Program, undefined>;
+  
   /** **UNSTABLE**: new API, yet to be vetted.
    *
    * Takes a root module name, and optionally a record set of sources. Resolves
