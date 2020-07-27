@@ -38,8 +38,8 @@ pub async fn format(
     return format_stdin(check);
   }
   let mut target_files = collect_files(args)?;
-  let ignore_files = collect_files(ignore)?;
-  if !ignore_files.is_empty() {
+  if !ignore.is_empty() {
+    let ignore_files = collect_files(ignore)?;
     target_files.retain(|f| ignore_files.contains(&f));
   }
   let config = get_config();
