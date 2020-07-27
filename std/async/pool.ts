@@ -15,12 +15,12 @@
 export async function asyncPool<T, R>(
   poolLimit: number,
   array: T[],
-  iteratorFn: (data: T, array: T[]) => Promise<R>,
+  iteratorFn: (data: T) => Promise<R>,
 ): Promise<R[]> {
   const ret: Array<Promise<R>> = [];
   const executing: Array<Promise<unknown>> = [];
   for (const item of array) {
-    const p = Promise.resolve().then(() => iteratorFn(item, array));
+    const p = Promise.resolve().then(() => iteratorFn(item));
     ret.push(p);
     const e: Promise<unknown> = p.then(() =>
       executing.splice(executing.indexOf(e), 1)
