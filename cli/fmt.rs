@@ -39,7 +39,7 @@ pub async fn format(
   }
   let mut target_files = collect_files(args)?;
   let ignore_files = collect_files(ignore)?;
-  if ignore_files.len() > 0 {
+  if !ignore_files.is_empty() {
     target_files.retain(|f| ignore_files.contains(&f));
   }
   let config = get_config();
