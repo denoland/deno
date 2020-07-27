@@ -2,6 +2,7 @@
 use crate::file_fetcher::SourceFileFetcher;
 use crate::global_state::GlobalState;
 use crate::global_timer::GlobalTimer;
+use crate::http_util::create_http_client;
 use crate::import_map::ImportMap;
 use crate::metrics::Metrics;
 use crate::op_error::OpError;
@@ -61,6 +62,7 @@ pub struct StateInner {
   pub target_lib: TargetLib,
   pub is_main: bool,
   pub is_internal: bool,
+  pub http_client: reqwest::Client,
 }
 
 impl State {
@@ -338,6 +340,8 @@ impl State {
       global_state.permissions.clone()
     };
 
+    let http_client = create_http_client(global_state.flags.ca_file.clone())?;
+
     let state = Rc::new(RefCell::new(StateInner {
       global_state,
       main_module,
@@ -352,6 +356,7 @@ impl State {
       target_lib: TargetLib::Main,
       is_main: true,
       is_internal,
+      http_client,
     }));
 
     Ok(Self(state))
@@ -374,6 +379,8 @@ impl State {
       global_state.permissions.clone()
     };
 
+    let http_client = create_http_client(global_state.flags.ca_file.clone())?;
+
     let state = Rc::new(RefCell::new(StateInner {
       global_state,
       main_module,
@@ -388,6 +395,7 @@ impl State {
       target_lib: TargetLib::Worker,
       is_main: false,
       is_internal: false,
+      http_client,
     }));
 
     Ok(Self(state))

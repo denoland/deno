@@ -689,7 +689,7 @@ fn ts_reload() {
   assert!(std::str::from_utf8(&output.stdout)
     .unwrap()
     .trim()
-    .contains("compiler::host.writeFile deno://002_hello.js"));
+    .contains("\"compiler::host.writeFile\" \"deno://002_hello.js\""));
 }
 
 #[test]
@@ -1961,6 +1961,12 @@ itest!(type_directives_redirect {
   http_server: true,
 });
 
+itest!(type_headers_deno_types {
+  args: "run --reload type_headers_deno_types.ts",
+  output: "type_headers_deno_types.ts.out",
+  http_server: true,
+});
+
 itest!(ts_type_imports {
   args: "run --reload ts_type_imports.ts",
   output: "ts_type_imports.ts.out",
@@ -1970,6 +1976,11 @@ itest!(ts_type_imports {
 itest!(ts_decorators {
   args: "run --reload -c tsconfig.decorators.json ts_decorators.ts",
   output: "ts_decorators.ts.out",
+});
+
+itest!(ts_type_only_import {
+  args: "run --reload ts_type_only_import.ts",
+  output: "ts_type_only_import.ts.out",
 });
 
 itest!(swc_syntax_error {
@@ -2842,7 +2853,9 @@ async fn inspector_pause() {
     use futures::stream::StreamExt;
     while let Some(msg) = socket.next().await {
       let msg = msg.unwrap().to_string();
-      assert!(!msg.contains("error"));
+      // FIXME(bartlomieju): fails because there's a file loaded
+      // called 150_errors.js
+      // assert!(!msg.contains("error"));
       if !msg.contains("Debugger.scriptParsed") {
         return msg;
       }

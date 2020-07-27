@@ -21,7 +21,6 @@ unitTest({ perms: { read: true } }, async function filesCopyToStdout(): Promise<
   const bytesWritten = await Deno.copy(file, Deno.stdout);
   const fileSize = Deno.statSync(filename).size;
   assertEquals(bytesWritten, fileSize);
-  console.log("bytes written", bytesWritten);
   file.close();
 });
 

@@ -8,9 +8,9 @@ import {
 
 const readErrorStackPattern = new RegExp(
   `^.*
-    at unwrapResponse \\(.*dispatch_minimal\\.ts:.*\\)
-    at Object.sendAsyncMinimal \\(.*dispatch_minimal\\.ts:.*\\)
-    at async Object\\.read \\(.*io\\.ts:.*\\).*$`,
+    at unwrapResponse \\(.*dispatch_minimal\\.js:.*\\)
+    at sendAsync \\(.*dispatch_minimal\\.js:.*\\)
+    at async Object\\.read \\(.*io\\.js:.*\\).*$`,
   "ms",
 );
 
