@@ -281,15 +281,3 @@ impl AstParser {
     }
   }
 }
-
-#[test]
-fn test_strip_types() {
-  let ast_parser = AstParser::new();
-  let result = ast_parser.strip_types(
-    "test.ts",
-    MediaType::TypeScript,
-    "const a: number = 10;",
-  );
-  assert!(result.is_ok());
-  assert_eq!(result.unwrap(), "const a = 10;\n");
-}
