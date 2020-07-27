@@ -413,6 +413,9 @@ struct CompileResponse {
   build_info: Option<String>,
   stats: Option<Vec<Stat>>,
 }
+
+// TODO(bartlomieju): remove
+#[allow(unused)]
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct TranspileResponse {
@@ -747,8 +750,8 @@ impl TsCompiler {
 
   pub async fn transpile(
     &self,
-    global_state: GlobalState,
-    permissions: Permissions,
+    _global_state: GlobalState,
+    _permissions: Permissions,
     module_graph: ModuleGraph,
   ) -> Result<(), ErrBox> {
     let mut source_files: Vec<TranspileSourceFile> = Vec::new();
@@ -767,46 +770,30 @@ impl TsCompiler {
       return Ok(());
     }
 
-    let source_files_json =
-      serde_json::to_value(source_files).expect("Filed to serialize data");
-    let compiler_config = self.config.clone();
-    let cwd = std::env::current_dir().unwrap();
-    let performance = match global_state.flags.log_level {
-      Some(Level::Debug) => true,
-      _ => false,
-    };
-    let j = match (compiler_config.path, compiler_config.content) {
-      (Some(config_path), Some(config_data)) => json!({
-        "config": str::from_utf8(&config_data).unwrap(),
-        "configPath": config_path,
-        "cwd": cwd,
-        "performance": performance,
-        "sourceFiles": source_files_json,
-        "type": msg::CompilerRequestType::Transpile,
-      }),
-      _ => json!({
-        "performance": performance,
-        "sourceFiles": source_files_json,
-        "type": msg::CompilerRequestType::Transpile,
-      }),
-    };
+    let mut emit_map = HashMap::new();
 
-    let req_msg = j.to_string();
+    for source_file in source_files {
+      let parser = AstParser::new();
+      let stripped_source = parser.strip_types(
+        &source_file.file_name,
+        MediaType::TypeScript,
+        &source_file.source_code,
+      )?;
 
-    let json_str =
-      execute_in_same_thread(global_state.clone(), permissions, req_msg)
-        .await?;
+      // TODO(bartlomieju): this is superfluous, just to make caching function happy
+      let emitted_filename = PathBuf::from(&source_file.file_name)
+        .with_extension("js")
+        .to_string_lossy()
+        .to_string();
+      let emitted_source = EmittedSource {
+        filename: source_file.file_name.to_string(),
+        contents: stripped_source,
+      };
 
-    let transpile_response: TranspileResponse =
-      serde_json::from_str(&json_str)?;
-
-    if !transpile_response.diagnostics.items.is_empty() {
-      return Err(ErrBox::from(transpile_response.diagnostics));
+      emit_map.insert(emitted_filename, emitted_source);
     }
 
-    maybe_log_stats(transpile_response.stats);
-
-    self.cache_emitted_files(transpile_response.emit_map)?;
+    self.cache_emitted_files(emit_map)?;
     Ok(())
   }
 
@@ -1725,7 +1712,7 @@ mod tests {
     let source_code = compiled_file.code;
     assert!(source_code
       .as_bytes()
-      .starts_with(b"console.log(\"Hello World\");"));
+      .starts_with(b"console.log('Hello World');"));
     let mut lines: Vec<String> =
       source_code.split('\n').map(|s| s.to_string()).collect();
     let last_line = lines.pop().unwrap();
