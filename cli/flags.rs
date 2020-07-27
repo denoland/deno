@@ -557,8 +557,7 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let filter = matches.value_of("filter").map(String::from);
   let cover = matches.is_present("cover");
   let include = if matches.is_present("files") {
-
-  let files: Vec<String> = matches
+    let files: Vec<String> = matches
       .values_of("files")
       .unwrap()
       .map(String::from)
@@ -567,7 +566,6 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   } else {
     None
   };
-
 
   flags.subcommand = DenoSubcommand::Test {
     fail_fast: failfast,
@@ -1143,7 +1141,7 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
         .help("Run tests with this string or pattern in the test name"),
     )
     .arg(
-        Arg::with_name("cover")
+      Arg::with_name("cover")
         .long("cover")
         .takes_value(false)
         .help("Collect coverage information"),
