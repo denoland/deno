@@ -94,7 +94,6 @@ struct ParseArgs {
   options: Option<ParseOptions>,
 }
 
-// TODO(divy-work): Should we take swc parse options?
 fn op_parse(
   state: &State,
   args: Value,
