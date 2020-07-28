@@ -6,6 +6,7 @@ use std::path::PathBuf;
 crate_modules!();
 
 pub struct WebScripts {
+  pub declaration: String,
   pub dom_exception: String,
   pub event: String,
   pub text_encoding: String,
@@ -20,6 +21,7 @@ fn get_str_path(file_name: &str) -> String {
 
 pub fn get_scripts() -> WebScripts {
   WebScripts {
+    declaration: get_str_path("lib.deno_web.d.ts"),
     dom_exception: get_str_path("00_dom_exception.js"),
     event: get_str_path("01_event.js"),
     text_encoding: get_str_path("08_text_encoding.js"),

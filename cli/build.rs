@@ -38,6 +38,11 @@ fn create_compiler_snapshot(
 ) {
   let mut runtime_isolate = CoreIsolate::new(StartupData::None, true);
   let mut custom_libs: HashMap<String, PathBuf> = HashMap::new();
+  let web_scripts = deno_web::get_scripts();
+  custom_libs.insert(
+    "lib.deno.web.d.ts".to_string(),
+    PathBuf::from(web_scripts.declaration),
+  );
   custom_libs.insert(
     "lib.deno.window.d.ts".to_string(),
     cwd.join("dts/lib.deno.window.d.ts"),
@@ -80,6 +85,10 @@ fn main() {
   // op_fetch_asset::trace_serializer();
 
   println!("cargo:rustc-env=TS_VERSION={}", ts_version());
+  println!(
+    "cargo:rustc-env=DENO_WEB_LIB_PATH={}",
+    deno_web::get_scripts().declaration
+  );
 
   println!(
     "cargo:rustc-env=TARGET={}",

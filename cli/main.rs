@@ -291,16 +291,18 @@ async fn print_file_info(
 fn get_types(unstable: bool) -> String {
   if unstable {
     format!(
-      "{}\n{}\n{}\n{}",
+      "{}\n{}\n{}\n{}\n{}",
       crate::js::DENO_NS_LIB,
+      crate::js::DENO_WEB_LIB,
       crate::js::SHARED_GLOBALS_LIB,
       crate::js::WINDOW_LIB,
       crate::js::UNSTABLE_NS_LIB,
     )
   } else {
     format!(
-      "{}\n{}\n{}",
+      "{}\n{}\n{}\n{}",
       crate::js::DENO_NS_LIB,
+      crate::js::DENO_WEB_LIB,
       crate::js::SHARED_GLOBALS_LIB,
       crate::js::WINDOW_LIB,
     )
