@@ -405,8 +405,8 @@ Deno.test("directoryEntryType", async function (): Promise<void> {
     type: "directory",
   });
   
-  const filePath = path.resolve("archive", "folder_type_test");
-  const outputFile = path.resolve("archive", "folder_type_test.tar");
+  const filePath = resolve("archive", "folder_type_test");
+  const outputFile = resolve("archive", "folder_type_test.tar");
   await Deno.mkdir(filePath);
   tar.append("archive/folder_type_test/", {
     filePath,
