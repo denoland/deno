@@ -7,6 +7,7 @@ use crate::futures::StreamExt;
 use crate::tokio_util;
 use deno_core::ErrBox;
 use serde::Deserialize;
+use serde::Serialize;
 use url::Url;
 
 pub struct CoverageCollector {
@@ -89,7 +90,7 @@ impl CoverageCollector {
   }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CoverageRange {
   pub start_offset: usize,
@@ -97,7 +98,7 @@ pub struct CoverageRange {
   pub count: usize,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FunctionCoverage {
   pub function_name: String,
@@ -105,7 +106,7 @@ pub struct FunctionCoverage {
   pub is_block_coverage: bool,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScriptCoverage {
   pub script_id: String,

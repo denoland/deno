@@ -736,7 +736,8 @@ async fn test_command(
 
     // TODO(caspervonb) print a summary report to console
     // TODO(caspervonb) add support for lcov output (see geninfo(1) for format spec).
-    eprintln!("{:#?}", filtered_coverage);
+
+    write_json_to_stdout(&filtered_coverage)?;
   }
 
   Ok(())
