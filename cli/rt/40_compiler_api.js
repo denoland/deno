@@ -26,7 +26,7 @@
       : `./${specifier}`;
   }
 
-  async function ast(source, options) {
+  function ast(source, options) {
     util.log("Deno.ast", { source, options });
     const payload = {
       source,
