@@ -2794,3 +2794,4 @@ export type Accessibility = "public" | "protected" | "private";
 
 export interface Invalid extends Node, HasSpan {
   type: "Invalid";
+}

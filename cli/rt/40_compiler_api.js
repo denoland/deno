@@ -27,11 +27,12 @@
   }
 
   // TODO(divy-work): Use AST type interface from swc as return type?
-  function ast(source) {
-    util.log("Deno.ast", { source });
+  function ast(source, options = {}) {
+    util.log("Deno.ast", { source, options });
     const payload = {
       source,
     };
+    if (Object.keys(options) > 0) payload.options = options;
     return opAst(payload);
   }
 

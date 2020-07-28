@@ -1419,61 +1419,67 @@ pub fn pre_process_file(
   analyze_dynamic_imports: bool,
 ) -> Result<(Vec<ImportDesc>, Vec<TsReferenceDesc>), SwcDiagnosticBuffer> {
   let parser = AstParser::new();
-  parser.parse_module(file_name, media_type, source_code, |parse_result| {
-    let module = parse_result?;
-    let mut collector = DependencyVisitor {
-      dependencies: vec![],
-    };
-    let module_span = module.span;
-    collector.visit_module(&module, &module);
+  parser.parse_module(
+    file_name,
+    media_type,
+    source_code,
+    None,
+    |parse_result| {
+      let module = parse_result?;
+      let mut collector = DependencyVisitor {
+        dependencies: vec![],
+      };
+      let module_span = module.span;
+      collector.visit_module(&module, &module);
 
-    let dependency_descriptors = collector.dependencies;
+      let dependency_descriptors = collector.dependencies;
 
-    // for each import check if there's relevant @deno-types directive
-    let imports = dependency_descriptors
-      .iter()
-      .filter(|desc| {
-        if analyze_dynamic_imports {
-          return true;
+      // for each import check if there's relevant @deno-types directive
+      let imports = dependency_descriptors
+        .iter()
+        .filter(|desc| {
+          if analyze_dynamic_imports {
+            return true;
+          }
+
+          desc.kind != DependencyKind::DynamicImport
+        })
+        .map(|desc| {
+          let location = parser.get_span_location(desc.span);
+          let deno_types = get_deno_types(&parser, desc.span);
+          ImportDesc {
+            specifier: desc.specifier.to_string(),
+            deno_types,
+            location: location.into(),
+          }
+        })
+        .collect();
+
+      // analyze comment from beginning of the file and find TS directives
+      let comments = parser
+        .comments
+        .take_leading_comments(module_span.lo())
+        .unwrap_or_else(Vec::new);
+
+      let mut references = vec![];
+      for comment in comments {
+        if comment.kind != CommentKind::Line {
+          continue;
         }
 
-        desc.kind != DependencyKind::DynamicImport
-      })
-      .map(|desc| {
-        let location = parser.get_span_location(desc.span);
-        let deno_types = get_deno_types(&parser, desc.span);
-        ImportDesc {
-          specifier: desc.specifier.to_string(),
-          deno_types,
-          location: location.into(),
+        let text = comment.text.to_string();
+        if let Some((kind, specifier)) = parse_ts_reference(text.trim()) {
+          let location = parser.get_span_location(comment.span);
+          references.push(TsReferenceDesc {
+            kind,
+            specifier,
+            location: location.into(),
+          });
         }
-      })
-      .collect();
-
-    // analyze comment from beginning of the file and find TS directives
-    let comments = parser
-      .comments
-      .take_leading_comments(module_span.lo())
-      .unwrap_or_else(Vec::new);
-
-    let mut references = vec![];
-    for comment in comments {
-      if comment.kind != CommentKind::Line {
-        continue;
       }
-
-      let text = comment.text.to_string();
-      if let Some((kind, specifier)) = parse_ts_reference(text.trim()) {
-        let location = parser.get_span_location(comment.span);
-        references.push(TsReferenceDesc {
-          kind,
-          specifier,
-          location: location.into(),
-        });
-      }
-    }
-    Ok((imports, references))
-  })
+      Ok((imports, references))
+    },
+  )
 }
 
 fn get_deno_types(parser: &AstParser, span: Span) -> Option<String> {

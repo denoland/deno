@@ -20,10 +20,20 @@ use crate::swc_ecma_parser::Session;
 use crate::swc_ecma_parser::SourceFileInput;
 use crate::swc_ecma_parser::Syntax;
 use crate::swc_ecma_parser::TsConfig;
+use serde::{Deserialize, Serialize};
 use std::error::Error;
 use std::fmt;
 use std::sync::Arc;
 use std::sync::RwLock;
+
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ParseOptions {
+  #[serde(flatten)]
+  pub syntax: Syntax,
+  #[serde(default)]
+  pub target: JscTarget,
+}
 
 fn get_default_es_config() -> EsConfig {
   let mut config = EsConfig::default();
@@ -167,6 +177,7 @@ impl AstParser {
     file_name: &str,
     media_type: MediaType,
     source_code: &str,
+    options: Option<ParseOptions>,
     callback: F,
   ) -> R
   where
@@ -183,12 +194,18 @@ impl AstParser {
         handler: &self.handler,
       };
 
-      let syntax = get_syntax_for_media_type(media_type);
+      let mut syntax = get_syntax_for_media_type(media_type);
+      let mut target = JscTarget::Es2019;
+
+      if let Some(opt) = options {
+        syntax = opt.syntax;
+        target = opt.target;
+      }
 
       let lexer = Lexer::new(
         session,
         syntax,
-        JscTarget::Es2019,
+        target,
         SourceFileInput::from(&*swc_source_file),
         Some(&self.comments),
       );
