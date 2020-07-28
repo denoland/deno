@@ -809,10 +809,10 @@ pub fn main() {
       allow_none,
       filter,
       coverage,
-    } => {
-      test_command(flags, include, fail_fast, quiet, allow_none, filter, coverage)
-        .boxed_local()
-    }
+    } => test_command(
+      flags, include, fail_fast, quiet, allow_none, filter, coverage,
+    )
+    .boxed_local(),
     DenoSubcommand::Completions { buf } => {
       if let Err(e) = write_to_stdout_ignore_sigpipe(&buf) {
         eprintln!("{}", e);
