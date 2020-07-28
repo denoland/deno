@@ -117,7 +117,7 @@ Deno.test("writeJsonSync not exists", function (): void {
   assertEquals(content, `{"a":"1"}\n`);
 });
 
-Deno.test("writeJsonSync if not exists", async function (): Promise<void> {
+Deno.test("writeJsonSync if not exists", function (): void {
   const notExistsJsonFile = path.join(
     testdataDir,
     "writeJsonSync_file_not_exists.json",
