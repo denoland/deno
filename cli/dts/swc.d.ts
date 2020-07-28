@@ -755,7 +755,7 @@ interface HasInterpreter {
   interpreter: string;
 }
 
-export type Program = Module | Script;
+declare type Program = Module | Script;
 
 export interface Module extends Node, HasSpan, HasInterpreter {
   type: "Module";
