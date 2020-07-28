@@ -15,6 +15,7 @@
 //!   exceptions.
 
 use crate::import_map::ImportMapError;
+use crate::swc_util;
 use deno_core::ErrBox;
 use deno_core::ModuleResolutionError;
 use rustyline::error::ReadlineError;
@@ -208,6 +209,24 @@ impl From<&io::Error> for OpError {
     Self {
       kind,
       msg: error.to_string(),
+    }
+  }
+}
+
+impl From<&swc_util::SwcDiagnosticBuffer> for OpError {
+  fn from(error: &swc_util::SwcDiagnosticBuffer) -> Self {
+    Self {
+      kind: ErrorKind::InvalidData,
+      msg: error.diagnostics.join(","),
+    }
+  }
+}
+
+impl From<swc_util::SwcDiagnosticBuffer> for OpError {
+  fn from(error: swc_util::SwcDiagnosticBuffer) -> Self {
+    Self {
+      kind: ErrorKind::InvalidData,
+      msg: error.diagnostics.join(","),
     }
   }
 }

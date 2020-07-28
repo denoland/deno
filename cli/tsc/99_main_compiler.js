@@ -808,7 +808,7 @@ delete Object.prototype.__proto__;
   ts.libMap.set("deno.worker", "lib.deno.worker.d.ts");
   ts.libMap.set("deno.shared_globals", "lib.deno.shared_globals.d.ts");
   ts.libMap.set("deno.unstable", "lib.deno.unstable.d.ts");
-
+  ts.libMap.set("swc", "swc.d.ts");
   // this pre-populates the cache at snapshot time of our library files, so they
   // are available in the future when needed.
   SNAPSHOT_HOST.getSourceFile(
@@ -829,6 +829,10 @@ delete Object.prototype.__proto__;
   );
   SNAPSHOT_HOST.getSourceFile(
     `${ASSETS}/lib.deno.unstable.d.ts`,
+    ts.ScriptTarget.ESNext,
+  );
+  SNAPSHOT_HOST.getSourceFile(
+    `${ASSETS}/swc.d.ts`,
     ts.ScriptTarget.ESNext,
   );
 

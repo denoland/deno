@@ -116,7 +116,7 @@ fn op_parse(
       out.media_type,
       &src,
       |parse_result| {
-        let module = parse_result.unwrap();
+        let module = parse_result?;
         Ok(serde_json::to_value(module)?)
       },
     )
