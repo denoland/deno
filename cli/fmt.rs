@@ -27,7 +27,7 @@ const BOM_CHAR: char = '\u{FEFF}';
 
 /// Format JavaScript/TypeScript files.
 ///
-/// First argument supports globs, and if it is `None`
+/// First argument and ignore supports globs, and if it is `None`
 /// then the current directory is recursively walked.
 pub async fn format(
   args: Vec<String>,

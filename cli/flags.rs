@@ -340,6 +340,7 @@ fn types_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 }
 
 fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  // TODO(divy-work): remove `--unstable` in 1.3.0
   unstable_arg_parse(flags, matches);
   let files = match matches.values_of("files") {
     Some(f) => f.map(String::from).collect(),
