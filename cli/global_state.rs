@@ -174,10 +174,7 @@ impl GlobalState {
 
     if should_compile {
       if self.flags.no_check {
-        self
-          .ts_compiler
-          .transpile(self.clone(), permissions, module_graph)
-          .await?;
+        self.ts_compiler.transpile(module_graph).await?;
       } else {
         self
           .ts_compiler

@@ -23,7 +23,7 @@ winapi = "0.3.8"
 
 [dependencies]
 deno_core = { path = "../core", version = "0.50.0" }
-deno_lint = "0.1.17"
+deno_lint = "0.1.19"
 
 atty = "0.2.14"
 base64 = "0.12.2"
@@ -50,6 +50,8 @@ serde_derive = "1.0.112"
 serde_json = { version = "1.0.55", features = [ "preserve_order" ] }
 sys-info = "0.7.0"
 sourcemap = "6.0.0"
+swc_ecma_transforms = "=0.16.0"
+swc_ecma_codegen = "=0.29.1"
 tempfile = "3.1.0"
 termcolor = "1.1.0"
 tokio = { version = "0.2.22", features = ["full"] }

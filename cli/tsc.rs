@@ -413,13 +413,6 @@ struct CompileResponse {
   build_info: Option<String>,
   stats: Option<Vec<Stat>>,
 }
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct TranspileResponse {
-  diagnostics: Diagnostic,
-  emit_map: HashMap<String, EmittedSource>,
-  stats: Option<Vec<Stat>>,
-}
 
 // TODO(bartlomieju): possible deduplicate once TS refactor is stabilized
 #[derive(Deserialize)]
@@ -742,8 +735,6 @@ impl TsCompiler {
 
   pub async fn transpile(
     &self,
-    global_state: GlobalState,
-    permissions: Permissions,
     module_graph: ModuleGraph,
   ) -> Result<(), ErrBox> {
     let mut source_files: Vec<TranspileSourceFile> = Vec::new();
@@ -762,44 +753,30 @@ impl TsCompiler {
       return Ok(());
     }
 
-    let source_files_json =
-      serde_json::to_value(source_files).expect("Filed to serialize data");
-    let compiler_config = self.config.clone();
-    let cwd = std::env::current_dir().unwrap();
-    let performance =
-      matches!(global_state.flags.log_level, Some(Level::Debug));
-    let j = match (compiler_config.path, compiler_config.content) {
-      (Some(config_path), Some(config_data)) => json!({
-        "config": str::from_utf8(&config_data).unwrap(),
-        "configPath": config_path,
-        "cwd": cwd,
-        "performance": performance,
-        "sourceFiles": source_files_json,
-        "type": msg::CompilerRequestType::Transpile,
-      }),
-      _ => json!({
-        "performance": performance,
-        "sourceFiles": source_files_json,
-        "type": msg::CompilerRequestType::Transpile,
-      }),
-    };
+    let mut emit_map = HashMap::new();
 
-    let req_msg = j.to_string();
+    for source_file in source_files {
+      let parser = AstParser::default();
+      let stripped_source = parser.strip_types(
+        &source_file.file_name,
+        MediaType::TypeScript,
+        &source_file.source_code,
+      )?;
 
-    let json_str =
-      execute_in_same_thread(global_state.clone(), permissions, req_msg)
-        .await?;
+      // TODO(bartlomieju): this is superfluous, just to make caching function happy
+      let emitted_filename = PathBuf::from(&source_file.file_name)
+        .with_extension("js")
+        .to_string_lossy()
+        .to_string();
+      let emitted_source = EmittedSource {
+        filename: source_file.file_name.to_string(),
+        contents: stripped_source,
+      };
 
-    let transpile_response: TranspileResponse =
-      serde_json::from_str(&json_str)?;
-
-    if !transpile_response.diagnostics.items.is_empty() {
-      return Err(ErrBox::from(transpile_response.diagnostics));
+      emit_map.insert(emitted_filename, emitted_source);
     }
 
-    maybe_log_stats(transpile_response.stats);
-
-    self.cache_emitted_files(transpile_response.emit_map)?;
+    self.cache_emitted_files(emit_map)?;
     Ok(())
   }
 
@@ -1710,9 +1687,7 @@ mod tests {
     )
     .unwrap();
 
-    let result = ts_compiler
-      .transpile(mock_state.clone(), Permissions::allow_all(), module_graph)
-      .await;
+    let result = ts_compiler.transpile(module_graph).await;
     assert!(result.is_ok());
     let compiled_file = ts_compiler.get_compiled_module(&out.url).unwrap();
     let source_code = compiled_file.code;

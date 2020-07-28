@@ -12,18 +12,29 @@ use crate::swc_common::Globals;
 use crate::swc_common::SourceMap;
 use crate::swc_common::Span;
 use crate::swc_ecma_ast;
+use crate::swc_ecma_ast::Program;
 use crate::swc_ecma_parser::lexer::Lexer;
 use crate::swc_ecma_parser::EsConfig;
 use crate::swc_ecma_parser::JscTarget;
 use crate::swc_ecma_parser::Parser;
-use crate::swc_ecma_parser::Session;
 use crate::swc_ecma_parser::SourceFileInput;
 use crate::swc_ecma_parser::Syntax;
 use crate::swc_ecma_parser::TsConfig;
+use crate::swc_ecma_visit::FoldWith;
+use deno_core::ErrBox;
 use std::error::Error;
 use std::fmt;
 use std::sync::Arc;
 use std::sync::RwLock;
+use swc_common::chain;
+use swc_ecma_codegen::text_writer::JsWriter;
+use swc_ecma_codegen::Node;
+use swc_ecma_transforms::fixer;
+use swc_ecma_transforms::typescript;
+
+struct DummyHandler;
+
+impl swc_ecma_codegen::Handlers for DummyHandler {}
 
 fn get_default_es_config() -> EsConfig {
   let mut config = EsConfig::default();
@@ -179,31 +190,74 @@ impl AstParser {
       );
 
       let buffered_err = self.buffered_error.clone();
-      let session = Session {
-        handler: &self.handler,
-      };
-
       let syntax = get_syntax_for_media_type(media_type);
 
       let lexer = Lexer::new(
-        session,
         syntax,
         JscTarget::Es2019,
         SourceFileInput::from(&*swc_source_file),
         Some(&self.comments),
       );
 
-      let mut parser = Parser::new_from(session, lexer);
+      let mut parser = Parser::new_from(lexer);
 
-      let parse_result =
-        parser
-          .parse_module()
-          .map_err(move |mut err: DiagnosticBuilder| {
-            err.emit();
-            SwcDiagnosticBuffer::from_swc_error(buffered_err, self)
-          });
+      let parse_result = parser.parse_module().map_err(move |err| {
+        let mut diagnostic = err.into_diagnostic(&self.handler);
+        diagnostic.emit();
+        SwcDiagnosticBuffer::from_swc_error(buffered_err, self)
+      });
 
       callback(parse_result)
+    })
+  }
+
+  pub fn strip_types(
+    &self,
+    file_name: &str,
+    media_type: MediaType,
+    source_code: &str,
+  ) -> Result<String, ErrBox> {
+    self.parse_module(file_name, media_type, source_code, |parse_result| {
+      let module = parse_result?;
+      let program = Program::Module(module);
+      let mut compiler_pass = chain!(typescript::strip(), fixer());
+      let program = swc_ecma_transforms::util::COMMENTS
+        .set(&self.comments, || program.fold_with(&mut compiler_pass));
+
+      let mut src_map_buf = vec![];
+      let mut buf = vec![];
+      {
+        let handlers = Box::new(DummyHandler);
+        let writer = Box::new(JsWriter::new(
+          self.source_map.clone(),
+          "\n",
+          &mut buf,
+          Some(&mut src_map_buf),
+        ));
+        let config = swc_ecma_codegen::Config { minify: false };
+        let mut emitter = swc_ecma_codegen::Emitter {
+          cfg: config,
+          comments: Some(&self.comments),
+          cm: self.source_map.clone(),
+          wr: writer,
+          handlers,
+        };
+        program.emit_with(&mut emitter)?;
+      }
+      let mut src = String::from_utf8(buf).map_err(ErrBox::from)?;
+      {
+        let mut buf = vec![];
+        self
+          .source_map
+          .build_source_map_from(&mut src_map_buf, None)
+          .to_writer(&mut buf)?;
+        let map = String::from_utf8(buf)?;
+
+        src.push_str("//# sourceMappingURL=data:application/json;base64,");
+        let encoded_map = base64::encode(map.as_bytes());
+        src.push_str(&encoded_map);
+      }
+      Ok(src)
     })
   }
 
@@ -226,4 +280,15 @@ impl AstParser {
       vec![]
     }
   }
+}
+
+#[test]
+fn test_strip_types() {
+  let ast_parser = AstParser::default();
+  let result = ast_parser
+    .strip_types("test.ts", MediaType::TypeScript, "const a: number = 10;")
+    .unwrap();
+  assert!(result.starts_with(
+    "const a = 10;\n//# sourceMappingURL=data:application/json;base64,"
+  ));
 }
