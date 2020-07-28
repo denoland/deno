@@ -176,7 +176,7 @@ impl GlobalState {
       if self.flags.no_check {
         self
           .ts_compiler
-          .transpile(self.clone(), permissions, module_graph)
+          .transpile(module_graph)
           .await?;
       } else {
         self
