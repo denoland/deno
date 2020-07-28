@@ -32,17 +32,17 @@ const BOM_CHAR: char = '\u{FEFF}';
 pub async fn format(
   args: Vec<String>,
   check: bool,
-  ignore: Vec<String>,
+  exclude: Vec<String>,
 ) -> Result<(), ErrBox> {
   if args.len() == 1 && args[0] == "-" {
     return format_stdin(check);
   }
   // collect all files provided.
   let mut target_files = collect_files(args)?;
-  if !ignore.is_empty() {
+  if !exclude.is_empty() {
     // collect all files to be ignored
     // and retain only files that should be formatted.
-    let ignore_files = collect_files(ignore)?;
+    let ignore_files = collect_files(exclude)?;
     target_files.retain(|f| !ignore_files.contains(&f));
   }
   let config = get_config();

@@ -39,7 +39,7 @@ pub enum DenoSubcommand {
   Fmt {
     check: bool,
     files: Vec<String>,
-    ignore: Vec<String>,
+    exclude: Vec<String>,
   },
   Help,
   Info {
@@ -102,7 +102,7 @@ pub struct Flags {
   pub ca_file: Option<String>,
   pub cached_only: bool,
   pub config_path: Option<String>,
-  pub ignore: Vec<String>,
+  pub exclude: Vec<String>,
   pub import_map_path: Option<String>,
   pub inspect: Option<SocketAddr>,
   pub inspect_brk: Option<SocketAddr>,
@@ -346,14 +346,14 @@ fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     Some(f) => f.map(String::from).collect(),
     None => vec![],
   };
-  let ignore = match matches.values_of("ignore") {
+  let exclude = match matches.values_of("exclude") {
     Some(f) => f.map(String::from).collect(),
     None => vec![],
   };
   flags.subcommand = DenoSubcommand::Fmt {
     check: matches.is_present("check"),
     files,
-    ignore,
+    exclude,
   }
 }
 
@@ -668,8 +668,8 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         .takes_value(false),
     )
     .arg(
-      Arg::with_name("ignore")
-        .long("ignore")
+      Arg::with_name("exclude")
+        .long("exclude")
         .requires("unstable")
         .takes_value(true)
         .use_delimiter(true)
@@ -1684,7 +1684,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Fmt {
-          ignore: vec![],
+          exclude: vec![],
           check: false,
           files: vec!["script_1.ts".to_string(), "script_2.ts".to_string()]
         },
@@ -1697,7 +1697,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Fmt {
-          ignore: vec![],
+          exclude: vec![],
           check: true,
           files: vec![],
         },
@@ -1710,7 +1710,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Fmt {
-          ignore: vec![],
+          exclude: vec![],
           check: false,
           files: vec![],
         },
