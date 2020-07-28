@@ -2,7 +2,7 @@
 
 /// <reference no-default-lib="true" />
 /// <reference lib="deno.ns" />
-/// <reference path="swc.d.ts" />
+/// <reference path="swc" />
 
 declare namespace Deno {
   /**
