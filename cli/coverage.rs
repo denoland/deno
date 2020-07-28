@@ -41,7 +41,7 @@ impl CoverageCollector {
 
     self
           .socket
-          .send(r#"{"id":3,"method":"Profiler.startPreciseCoverage", "params": {"callCount": false, "detailed": true}}"#.into()).await.unwrap();
+          .send(r#"{"id":3,"method":"Profiler.startPreciseCoverage", "params": {"callCount": true, "detailed": true}}"#.into()).await.unwrap();
 
     self
       .socket
