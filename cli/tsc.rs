@@ -1687,9 +1687,7 @@ mod tests {
     )
     .unwrap();
 
-    let result = ts_compiler
-      .transpile(module_graph)
-      .await;
+    let result = ts_compiler.transpile(module_graph).await;
     assert!(result.is_ok());
     let compiled_file = ts_compiler.get_compiled_module(&out.url).unwrap();
     let source_code = compiled_file.code;
