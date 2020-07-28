@@ -1,34 +1,46 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-// From https://github.com/rxaviers/async-pool/blob/master/lib/es7.js.
-// Copyright (c) 2017 Rafael Xavier de Souza http://rafael.xavier.blog.br
-// Licensed under MIT
-
 /**
- * asyncPool is like Promise.all(array.map(async () => {...})), except that you
- * can specify the maximum amount of items being processed concurrently.
+ * pooledMap transforms values from an (async) iterable into another async
+ * iterable. The transforms are done concurrently, with a max concurrency
+ * defined by the poolLimit.
  * 
  * @param poolLimit The maximum count of items being processed concurrently. 
  * @param array The input array for mapping.
  * @param iteratorFn The function to call for every item of the array.
  */
-export async function asyncPool<T, R>(
+export function pooledMap<T, R>(
   poolLimit: number,
-  array: T[],
+  array: Iterable<T> | AsyncIterable<T>,
   iteratorFn: (data: T) => Promise<R>,
-): Promise<R[]> {
-  const ret: Array<Promise<R>> = [];
-  const executing: Array<Promise<unknown>> = [];
-  for (const item of array) {
-    const p = Promise.resolve().then(() => iteratorFn(item));
-    ret.push(p);
-    const e: Promise<unknown> = p.then(() =>
-      executing.splice(executing.indexOf(e), 1)
-    );
-    executing.push(e);
-    if (executing.length >= poolLimit) {
-      await Promise.race(executing);
+): AsyncIterableIterator<R> {
+  // Create the async iterable that is returned from this function.
+  const res = new TransformStream<Promise<R>, R>({
+    async transform(
+      p: Promise<R>,
+      controller: TransformStreamDefaultController<R>,
+    ) {
+      controller.enqueue(await p);
+    },
+  });
+  // Start processing items from the iterator
+  (async () => {
+    const writer = res.writable.getWriter();
+    const executing: Array<Promise<unknown>> = [];
+    for await (const item of array) {
+      const p = Promise.resolve().then(() => iteratorFn(item));
+      writer.write(p);
+      const e: Promise<unknown> = p.then(() =>
+        executing.splice(executing.indexOf(e), 1)
+      );
+      executing.push(e);
+      if (executing.length >= poolLimit) {
+        await Promise.race(executing);
+      }
     }
-  }
-  return Promise.all(ret);
+    // Wait until all ongoing events have processed, then close the writer.
+    await Promise.all(executing);
+    writer.close();
+  })();
+  return res.readable.getIterator();
 }
