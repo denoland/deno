@@ -51,7 +51,7 @@ impl DocParser {
   pub fn new(loader: Box<dyn DocFileLoader>, private: bool) -> Self {
     DocParser {
       loader,
-      ast_parser: AstParser::new(),
+      ast_parser: AstParser::default(),
       private,
     }
   }
