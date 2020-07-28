@@ -37,8 +37,11 @@ pub async fn format(
   if args.len() == 1 && args[0] == "-" {
     return format_stdin(check);
   }
+  // collect all files provided.
   let mut target_files = collect_files(args)?;
   if !ignore.is_empty() {
+    // collect all files to be ignored
+    // and retain only files that should be formatted.
     let ignore_files = collect_files(ignore)?;
     target_files.retain(|f| !ignore_files.contains(&f));
   }
