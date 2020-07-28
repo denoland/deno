@@ -586,10 +586,7 @@ impl TsCompiler {
     };
     let root_names = vec![module_url.to_string()];
     let unstable = self.flags.unstable;
-    let performance = match self.flags.log_level {
-      Some(Level::Debug) => true,
-      _ => false,
-    };
+    let performance = matches!(self.flags.log_level, Some(Level::Debug));
     let compiler_config = self.config.clone();
     let cwd = std::env::current_dir().unwrap();
 
@@ -695,10 +692,8 @@ impl TsCompiler {
     let root_names = vec![module_specifier.to_string()];
     let target = "main";
     let cwd = std::env::current_dir().unwrap();
-    let performance = match global_state.flags.log_level {
-      Some(Level::Debug) => true,
-      _ => false,
-    };
+    let performance =
+      matches!(global_state.flags.log_level, Some(Level::Debug));
 
     let compiler_config = self.config.clone();
 
@@ -771,10 +766,8 @@ impl TsCompiler {
       serde_json::to_value(source_files).expect("Filed to serialize data");
     let compiler_config = self.config.clone();
     let cwd = std::env::current_dir().unwrap();
-    let performance = match global_state.flags.log_level {
-      Some(Level::Debug) => true,
-      _ => false,
-    };
+    let performance =
+      matches!(global_state.flags.log_level, Some(Level::Debug));
     let j = match (compiler_config.path, compiler_config.content) {
       (Some(config_path), Some(config_data)) => json!({
         "config": str::from_utf8(&config_data).unwrap(),
