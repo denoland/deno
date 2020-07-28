@@ -149,6 +149,7 @@
     return parts.join("");
   }
 
+  window.__bootstrap = (window.__bootstrap || {});
   window.__bootstrap.base64 = {
     byteLength,
     toByteArray,

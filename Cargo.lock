@@ -455,6 +455,7 @@ name = "deno_web"
 version = "0.1.0"
 dependencies = [
  "deno_core",
+ "futures",
 ]
 
 [[package]]
