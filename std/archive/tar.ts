@@ -383,7 +383,7 @@ export class Tar {
       fileSize: pad(fileSize, 11),
       mtime: pad(mtime, 11),
       checksum: "        ",
-      type: info?.isDirectory ? "5" : "0",
+      type: info?.isDirectory ?? opts.type === "directory" ? "5" : "0",
       ustar,
       owner: opts.owner || "",
       group: opts.group || "",
