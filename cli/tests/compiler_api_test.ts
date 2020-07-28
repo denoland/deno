@@ -208,7 +208,7 @@ Deno.test({
 Deno.test({
   name: "Deno.compile() - SWC diagnostics",
   async fn() {
-    assertThrowsAsync(async () => {
+    await assertThrowsAsync(async () => {
       await Deno.compile("main.js", {
         "main.js": `
       export class Foo {

@@ -1411,7 +1411,7 @@ pub fn pre_process_file(
   source_code: &str,
   analyze_dynamic_imports: bool,
 ) -> Result<(Vec<ImportDesc>, Vec<TsReferenceDesc>), SwcDiagnosticBuffer> {
-  let parser = AstParser::new();
+  let parser = AstParser::default();
   parser.parse_module(file_name, media_type, source_code, |parse_result| {
     let module = parse_result?;
     let mut collector = DependencyVisitor {

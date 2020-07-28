@@ -141,7 +141,7 @@ pub struct AstParser {
 }
 
 impl AstParser {
-  pub fn new() -> Self {
+  pub fn default() -> Self {
     let buffered_error = SwcErrorBuffer::default();
 
     let handler = Handler::with_emitter_and_flags(
