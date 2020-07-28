@@ -253,7 +253,7 @@ impl AstParser {
           .to_writer(&mut buf)?;
         let map = String::from_utf8(buf)?;
 
-        src.push_str("\n//# sourceMappingURL=data:application/json;base64,");
+        src.push_str("//# sourceMappingURL=data:application/json;base64,");
         let encoded_map = base64::encode(map.as_bytes());
         src.push_str(&encoded_map);
       }
@@ -285,11 +285,10 @@ impl AstParser {
 #[test]
 fn test_strip_types() {
   let ast_parser = AstParser::new();
-  let result = ast_parser.strip_types(
-    "test.ts",
-    MediaType::TypeScript,
-    "const a: number = 10;",
-  );
-  assert!(result.is_ok());
-  assert_eq!(result.unwrap(), "const a = 10;\n");
+  let result = ast_parser
+    .strip_types("test.ts", MediaType::TypeScript, "const a: number = 10;")
+    .unwrap();
+  assert!(result.starts_with(
+    "const a = 10;\n//# sourceMappingURL=data:application/json;base64,"
+  ));
 }
