@@ -755,15 +755,15 @@ interface HasInterpreter {
   interpreter: string;
 }
 
-declare type Program = Module | Script;
+export declare type Program = Module | Script;
 
-export interface Module extends Node, HasSpan, HasInterpreter {
+export declare interface Module extends Node, HasSpan, HasInterpreter {
   type: "Module";
 
   body: ModuleItem[];
 }
 
-export interface Script extends Node, HasSpan, HasInterpreter {
+export declare interface Script extends Node, HasSpan, HasInterpreter {
   type: "Script";
 
   body: Statement[];
