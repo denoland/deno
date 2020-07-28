@@ -140,6 +140,12 @@ pub struct AstParser {
   pub globals: Globals,
 }
 
+impl Default for AstParser {
+  fn default() -> Self {
+    Self::new()
+  }
+}
+
 impl AstParser {
   pub fn new() -> Self {
     let buffered_error = SwcErrorBuffer::default();
