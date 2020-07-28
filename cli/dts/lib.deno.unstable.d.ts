@@ -2,7 +2,7 @@
 
 /// <reference no-default-lib="true" />
 /// <reference lib="deno.ns" />
-/// <reference lib="swc" />
+/// <reference lib="swc" />_
 
 declare namespace Deno {
   /**
@@ -471,7 +471,7 @@ declare namespace Deno {
    */
   export function ast(
     source: string,
-  ): Promise<Program, undefined>;
+  ): Promise<Program>;
   
   /** **UNSTABLE**: new API, yet to be vetted.
    *
