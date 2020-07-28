@@ -26,15 +26,6 @@ use std::fmt;
 use std::sync::Arc;
 use std::sync::RwLock;
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ParseOptions {
-  #[serde(flatten)]
-  pub syntax: Syntax,
-  #[serde(default)]
-  pub target: JscTarget,
-}
-
 impl ParseOptions {
   pub fn default(media_type: MediaType) -> Self {
     ParseOptions {
@@ -186,7 +177,6 @@ impl AstParser {
     file_name: &str,
     media_type: MediaType,
     source_code: &str,
-    options: Option<ParseOptions>,
     callback: F,
   ) -> R
   where
@@ -203,13 +193,12 @@ impl AstParser {
         handler: &self.handler,
       };
 
-      let parse_options =
-        options.unwrap_or_else(|| ParseOptions::default(media_type));
+      let syntax = get_syntax_for_media_type(media_type);
 
       let lexer = Lexer::new(
         session,
-        parse_options.syntax,
-        parse_options.target,
+        syntax,
+        JscTarget::Es2019,
         SourceFileInput::from(&*swc_source_file),
         Some(&self.comments),
       );

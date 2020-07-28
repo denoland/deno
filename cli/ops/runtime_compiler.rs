@@ -3,7 +3,7 @@ use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::futures::FutureExt;
 use crate::op_error::OpError;
 use crate::state::State;
-use crate::swc_util::{AstParser, ParseOptions};
+use crate::swc_util::AstParser;
 use crate::tsc::runtime_bundle;
 use crate::tsc::runtime_compile;
 use crate::tsc::runtime_transpile;
@@ -91,7 +91,6 @@ fn op_transpile(
 #[derive(Deserialize, Debug)]
 struct ParseArgs {
   source: String,
-  options: Option<ParseOptions>,
 }
 
 fn op_parse(
@@ -116,7 +115,6 @@ fn op_parse(
       &module_specifier.to_string(),
       out.media_type,
       &src,
-      args.options,
       |parse_result| {
         let module = parse_result.unwrap();
         Ok(serde_json::to_value(module)?)

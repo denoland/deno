@@ -26,12 +26,11 @@
       : `./${specifier}`;
   }
 
-  function ast(source, options) {
-    util.log("Deno.ast", { source, options });
+  function ast(source) {
+    util.log("Deno.ast", { source });
     const payload = {
       source,
     };
-    if (options) payload.options = options;
     return opAst(payload);
   }
 

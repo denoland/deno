@@ -66,7 +66,6 @@ impl DocParser {
       file_name,
       media_type,
       source_code,
-      None,
       |parse_result| {
         let module = parse_result?;
         let doc_entries =
