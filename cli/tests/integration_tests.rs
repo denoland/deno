@@ -357,6 +357,7 @@ fn fmt_test() {
     .current_dir(util::root_path())
     .arg("fmt")
     .arg(format!("--ignore={}", badly_formatted_str))
+    .arg("--unstable")
     .arg("--check")
     .arg(badly_formatted_str)
     .spawn()
