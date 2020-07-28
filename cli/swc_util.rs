@@ -20,20 +20,10 @@ use crate::swc_ecma_parser::Session;
 use crate::swc_ecma_parser::SourceFileInput;
 use crate::swc_ecma_parser::Syntax;
 use crate::swc_ecma_parser::TsConfig;
-use serde::{Deserialize, Serialize};
 use std::error::Error;
 use std::fmt;
 use std::sync::Arc;
 use std::sync::RwLock;
-
-impl ParseOptions {
-  pub fn default(media_type: MediaType) -> Self {
-    ParseOptions {
-      syntax: get_syntax_for_media_type(media_type),
-      target: JscTarget::Es2019,
-    }
-  }
-}
 
 fn get_default_es_config() -> EsConfig {
   let mut config = EsConfig::default();
