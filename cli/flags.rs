@@ -340,6 +340,7 @@ fn types_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 }
 
 fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  unstable_arg_parse(flags, matches);
   let files = match matches.values_of("files") {
     Some(f) => f.map(String::from).collect(),
     None => vec![],
@@ -668,11 +669,13 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
     .arg(
       Arg::with_name("ignore")
         .long("ignore")
+        .requires("unstable")
         .takes_value(true)
         .use_delimiter(true)
         .require_equals(true)
-        .help("Ignore formatting particular source files."),
+        .help("Ignore formatting particular source files. Use with --unstable"),
     )
+    .arg(unstable_arg())
     .arg(
       Arg::with_name("files")
         .takes_value(true)
