@@ -35,6 +35,15 @@ pub struct ParseOptions {
   pub target: JscTarget,
 }
 
+impl ParseOptions {
+  pub fn default(media_type: MediaType) -> Self {
+    ParseOptions {
+      syntax: get_syntax_for_media_type(media_type),
+      target: JscTarget::Es2019,
+    }
+  }
+}
+
 fn get_default_es_config() -> EsConfig {
   let mut config = EsConfig::default();
   config.num_sep = true;
@@ -194,18 +203,12 @@ impl AstParser {
         handler: &self.handler,
       };
 
-      let mut syntax = get_syntax_for_media_type(media_type);
-      let mut target = JscTarget::Es2019;
-
-      if let Some(opt) = options {
-        syntax = opt.syntax;
-        target = opt.target;
-      }
+      let parse_options = options.unwrap_or(ParseOptions::default(media_type));
 
       let lexer = Lexer::new(
         session,
-        syntax,
-        target,
+        parse_options.syntax,
+        parse_options.target,
         SourceFileInput::from(&*swc_source_file),
         Some(&self.comments),
       );
