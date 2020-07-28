@@ -756,7 +756,7 @@ impl TsCompiler {
     let mut emit_map = HashMap::new();
 
     for source_file in source_files {
-      let parser = AstParser::new();
+      let parser = AstParser::default();
       let stripped_source = parser.strip_types(
         &source_file.file_name,
         MediaType::TypeScript,

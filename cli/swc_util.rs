@@ -284,7 +284,7 @@ impl AstParser {
 
 #[test]
 fn test_strip_types() {
-  let ast_parser = AstParser::new();
+  let ast_parser = AstParser::default();
   let result = ast_parser
     .strip_types("test.ts", MediaType::TypeScript, "const a: number = 10;")
     .unwrap();
