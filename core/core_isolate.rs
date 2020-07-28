@@ -162,25 +162,41 @@ pub unsafe fn v8_init() {
   v8::V8::set_flags_from_command_line(argv);
 }
 
+pub(crate) struct IsolateOptions {
+  will_snapshot: bool,
+  startup_script: Option<OwnedScript>,
+  startup_snapshot: Option<Snapshot>,
+}
+
 impl CoreIsolate {
   /// startup_data defines the snapshot or script used at startup to initialize
   /// the isolate.
   pub fn new(startup_data: StartupData, will_snapshot: bool) -> Self {
-    static DENO_INIT: Once = Once::new();
-    DENO_INIT.call_once(|| {
-      unsafe { v8_init() };
-    });
-
     let (startup_script, startup_snapshot) = match startup_data {
       StartupData::Script(script) => (Some(script.into()), None),
       StartupData::Snapshot(snapshot) => (None, Some(snapshot)),
       StartupData::None => (None, None),
     };
 
+    let options = IsolateOptions {
+      will_snapshot,
+      startup_script,
+      startup_snapshot,
+    };
+
+    Self::from_options(options)
+  }
+
+  fn from_options(options: IsolateOptions) -> Self {
+    static DENO_INIT: Once = Once::new();
+    DENO_INIT.call_once(|| {
+      unsafe { v8_init() };
+    });
+
     let global_context;
-    let (mut isolate, maybe_snapshot_creator) = if will_snapshot {
+    let (mut isolate, maybe_snapshot_creator) = if options.will_snapshot {
       // TODO(ry) Support loading snapshots before snapshotting.
-      assert!(startup_snapshot.is_none());
+      assert!(options.startup_snapshot.is_none());
       let mut creator =
         v8::SnapshotCreator::new(Some(&bindings::EXTERNAL_REFERENCES));
       let isolate = unsafe { creator.get_owned_isolate() };
@@ -195,7 +211,7 @@ impl CoreIsolate {
     } else {
       let mut params = v8::Isolate::create_params()
         .external_references(&**bindings::EXTERNAL_REFERENCES);
-      let snapshot_loaded = if let Some(snapshot) = startup_snapshot {
+      let snapshot_loaded = if let Some(snapshot) = options.startup_snapshot {
         params = match snapshot {
           Snapshot::Static(data) => params.snapshot_blob(data),
           Snapshot::JustCreated(data) => params.snapshot_blob(data),
@@ -243,7 +259,7 @@ impl CoreIsolate {
       snapshot_creator: maybe_snapshot_creator,
       has_snapshotted: false,
       needs_init: true,
-      startup_script,
+      startup_script: options.startup_script,
     }
   }
 
