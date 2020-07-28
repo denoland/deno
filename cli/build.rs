@@ -125,13 +125,15 @@ fn get_js_files(d: &str) -> Vec<String> {
 }
 
 fn get_js_files_for_rt() -> Vec<String> {
+  let web_scripts = deno_web::get_scripts();
+
   let f = vec![
     "rt/00_bootstrap_namespace.js",
-    "rt/00_dom_exception.js",
+    &web_scripts.dom_exception,
     "rt/01_build.js",
     "rt/01_colors.js",
     "rt/01_errors.js",
-    "rt/01_event.js",
+    &web_scripts.event,
     "rt/01_internals.js",
     "rt/01_version.js",
     "rt/01_web_util.js",
@@ -139,8 +141,8 @@ fn get_js_files_for_rt() -> Vec<String> {
     "rt/02_console.js",
     "rt/03_dom_iterable.js",
     "rt/06_util.js",
-    "rt/07_base64.js",
-    "rt/08_text_encoding.js",
+    &web_scripts.base64,
+    &web_scripts.text_encoding,
     "rt/10_dispatch_json.js",
     "rt/10_dispatch_minimal.js",
     "rt/11_crypto.js",

@@ -376,6 +376,7 @@ dependencies = [
  "clap",
  "deno_core",
  "deno_lint",
+ "deno_web",
  "dissimilar",
  "dlopen",
  "futures",
