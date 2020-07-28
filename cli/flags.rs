@@ -671,6 +671,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         .takes_value(true)
         .use_delimiter(true)
         .require_equals(true)
+        .requires("unstable")
         .help("Ignore formatting particular source files."),
     )
     .arg(
