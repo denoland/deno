@@ -141,7 +141,6 @@ fn get_js_files_for_rt() -> Vec<String> {
     "rt/02_console.js",
     "rt/03_dom_iterable.js",
     "rt/06_util.js",
-    &web_scripts.base64,
     &web_scripts.text_encoding,
     "rt/10_dispatch_json.js",
     "rt/10_dispatch_minimal.js",

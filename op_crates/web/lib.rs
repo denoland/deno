@@ -8,7 +8,6 @@ crate_modules!();
 pub struct WebScripts {
   pub dom_exception: String,
   pub event: String,
-  pub base64: String,
   pub text_encoding: String,
 }
 
@@ -23,7 +22,6 @@ pub fn get_scripts() -> WebScripts {
   WebScripts {
     dom_exception: get_str_path("00_dom_exception.js"),
     event: get_str_path("01_event.js"),
-    base64: get_str_path("07_base64.js"),
     text_encoding: get_str_path("08_text_encoding.js"),
   }
 }
@@ -52,7 +50,6 @@ mod tests {
         .execute("00_dom_exception.js", include_str!("00_dom_exception.js")),
     );
     js_check(isolate.execute("01_event.js", include_str!("01_event.js")));
-    js_check(isolate.execute("07_base64.js", include_str!("07_base64.js")));
     js_check(
       isolate
         .execute("08_text_encoding.js", include_str!("08_text_encoding.js")),
@@ -81,6 +78,20 @@ mod tests {
           include_str!("event_target_test.js"),
         ),
       );
+      if let Poll::Ready(Err(_)) = isolate.poll_unpin(&mut cx) {
+        unreachable!();
+      }
+    });
+  }
+
+  #[test]
+  fn test_text_encoding() {
+    run_in_task(|mut cx| {
+      let mut isolate = setup();
+      js_check(isolate.execute(
+        "text_encoding_test.js",
+        include_str!("text_encoding_test.js"),
+      ));
       if let Poll::Ready(Err(_)) = isolate.poll_unpin(&mut cx) {
         unreachable!();
       }
