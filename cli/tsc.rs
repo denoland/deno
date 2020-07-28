@@ -414,16 +414,6 @@ struct CompileResponse {
   stats: Option<Vec<Stat>>,
 }
 
-// TODO(bartlomieju): remove
-#[allow(unused)]
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct TranspileResponse {
-  diagnostics: Diagnostic,
-  emit_map: HashMap<String, EmittedSource>,
-  stats: Option<Vec<Stat>>,
-}
-
 // TODO(bartlomieju): possible deduplicate once TS refactor is stabilized
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
