@@ -203,7 +203,8 @@ impl AstParser {
         handler: &self.handler,
       };
 
-      let parse_options = options.unwrap_or(ParseOptions::default(media_type));
+      let parse_options =
+        options.unwrap_or_else(|| ParseOptions::default(media_type));
 
       let lexer = Lexer::new(
         session,
