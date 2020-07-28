@@ -722,8 +722,8 @@ pub fn main() {
     DenoSubcommand::Fmt {
       check,
       files,
-      ignore,
-    } => fmt::format(files, check, ignore).boxed_local(),
+      exclude,
+    } => fmt::format(files, check, exclude).boxed_local(),
     DenoSubcommand::Info { file, json } => {
       info_command(flags, file, json).boxed_local()
     }
