@@ -1707,7 +1707,7 @@ mod tests {
     let source_code = compiled_file.code;
     assert!(source_code
       .as_bytes()
-      .starts_with(b"console.log('Hello World');"));
+      .starts_with(b"console.log(\"Hello World\");"));
     let mut lines: Vec<String> =
       source_code.split('\n').map(|s| s.to_string()).collect();
     let last_line = lines.pop().unwrap();

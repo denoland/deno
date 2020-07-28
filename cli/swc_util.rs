@@ -220,9 +220,9 @@ impl AstParser {
     self.parse_module(file_name, media_type, source_code, |parse_result| {
       let module = parse_result?;
       let program = Program::Module(module);
-      let mut pass = chain!(typescript::strip(), fixer(),);
+      let mut compiler_pass = chain!(typescript::strip(), fixer());
       let program = swc_ecma_transforms::util::COMMENTS
-        .set(&self.comments, || program.fold_with(&mut pass));
+        .set(&self.comments, || program.fold_with(&mut compiler_pass));
 
       let mut src_map_buf = vec![];
       let mut buf = vec![];
