@@ -58,6 +58,7 @@ fn create_compiler_snapshot(
     "lib.deno.unstable.d.ts".to_string(),
     cwd.join("dts/lib.deno.unstable.d.ts"),
   );
+  custom_libs.insert("swc.d.ts".to_string(), cwd.join("dts/swc.d.ts"));
   runtime_isolate.register_op(
     "op_fetch_asset",
     op_fetch_asset::op_fetch_asset(custom_libs),

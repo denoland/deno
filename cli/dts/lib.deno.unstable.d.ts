@@ -471,6 +471,7 @@ declare namespace Deno {
    */
   export function ast(
     source: string,
+    options: object,
   ): Promise<Program>;
   
   /** **UNSTABLE**: new API, yet to be vetted.
