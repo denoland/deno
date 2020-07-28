@@ -9,7 +9,7 @@ import * as path from "../path/mod.ts";
 export function isSubdir(
   src: string,
   dest: string,
-  sep: string = path.sep
+  sep: string = path.sep,
 ): boolean {
   if (src === dest) {
     return false;

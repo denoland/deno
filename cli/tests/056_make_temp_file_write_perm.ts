@@ -1,8 +1,9 @@
-const path = await Deno.makeTempFile({ dir: "./subdir/" });
-if (path.startsWith(Deno.cwd())) {
+const path = await Deno.makeTempFile({ dir: `subdir` });
+try {
+  if (!path.match(/^subdir[/\\][^/\\]+/)) {
+    throw Error("bad " + path);
+  }
   console.log("good", path);
-} else {
-  throw Error("bad " + path);
+} finally {
+  await Deno.remove(path);
 }
-console.log(path);
-await Deno.remove(path);

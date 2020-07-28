@@ -8,6 +8,7 @@
       "installation": "Installation",
       "setup_your_environment": "Setup your environment",
       "first_steps": "First steps",
+      "command_line_interface": "Command line interface",
       "permissions": "Permissions",
       "typescript": "Using TypeScript",
       "webassembly": "Using WebAssembly"
@@ -35,7 +36,10 @@
     "name": "Standard library"
   },
   "testing": {
-    "name": "Testing"
+    "name": "Testing",
+    "children": {
+      "assertions": "Assertions"
+    }
   },
   "tools": {
     "name": "Tools",
@@ -45,7 +49,8 @@
       "formatter": "Formatter",
       "bundler": "Bundler",
       "documentation_generator": "Documentation generator",
-      "dependency_inspector": "Dependency inspector"
+      "dependency_inspector": "Dependency inspector",
+      "linter": "Linter"
     }
   },
   "embedding_deno": {

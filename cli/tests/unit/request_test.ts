@@ -10,22 +10,22 @@ unitTest(function fromInit(): void {
     },
   });
 
-  // @ts-ignore
-  assertEquals("ahoyhoy", req._bodySource);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  assertEquals("ahoyhoy", (req as any)._bodySource);
   assertEquals(req.url, "https://example.com");
   assertEquals(req.headers.get("test-header"), "value");
 });
 
 unitTest(function fromRequest(): void {
   const r = new Request("https://example.com");
-  // @ts-ignore
-  r._bodySource = "ahoyhoy";
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (r as any)._bodySource = "ahoyhoy";
   r.headers.set("test-header", "value");
 
   const req = new Request(r);
 
-  // @ts-ignore
-  assertEquals(req._bodySource, r._bodySource);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  assertEquals((req as any)._bodySource, (r as any)._bodySource);
   assertEquals(req.url, r.url);
   assertEquals(req.headers.get("test-header"), r.headers.get("test-header"));
 });
@@ -44,6 +44,6 @@ unitTest(async function cloneRequestBodyStream(): Promise<void> {
 
   assertEquals(b1, b2);
 
-  // @ts-ignore
-  assert(r1._bodySource !== r2._bodySource);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  assert((r1 as any)._bodySource !== (r2 as any)._bodySource);
 });

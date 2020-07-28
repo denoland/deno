@@ -3,6 +3,7 @@ use crate::http_util::HttpBody;
 use crate::op_error::OpError;
 use crate::state::State;
 use deno_core::CoreIsolate;
+use deno_core::CoreIsolateState;
 use deno_core::ResourceTable;
 use deno_core::ZeroCopyBuf;
 use futures::future::poll_fn;
@@ -36,25 +37,48 @@ lazy_static! {
   /// resource table is dropped storing reference to that handle, the handle
   /// itself won't be closed (so Deno.core.print) will still work.
   // TODO(ry) It should be possible to close stdout.
-  static ref STDOUT_HANDLE: std::fs::File = {
+  static ref STDIN_HANDLE: Option<std::fs::File> = {
     #[cfg(not(windows))]
-    let stdout = unsafe { std::fs::File::from_raw_fd(1) };
+    let stdin = unsafe { Some(std::fs::File::from_raw_fd(0)) };
+    #[cfg(windows)]
+    let stdin = unsafe {
+      let handle = winapi::um::processenv::GetStdHandle(
+        winapi::um::winbase::STD_INPUT_HANDLE,
+      );
+      if handle.is_null() {
+        return None;
+      }
+      Some(std::fs::File::from_raw_handle(handle))
+    };
+    stdin
+  };
+  static ref STDOUT_HANDLE: Option<std::fs::File> = {
+    #[cfg(not(windows))]
+    let stdout = unsafe { Some(std::fs::File::from_raw_fd(1)) };
     #[cfg(windows)]
     let stdout = unsafe {
-      std::fs::File::from_raw_handle(winapi::um::processenv::GetStdHandle(
+      let handle = winapi::um::processenv::GetStdHandle(
         winapi::um::winbase::STD_OUTPUT_HANDLE,
-      ))
+      );
+      if handle.is_null() {
+        return None;
+      }
+      Some(std::fs::File::from_raw_handle(handle))
     };
     stdout
   };
-  static ref STDERR_HANDLE: std::fs::File = {
+  static ref STDERR_HANDLE: Option<std::fs::File> = {
     #[cfg(not(windows))]
-    let stderr = unsafe { std::fs::File::from_raw_fd(2) };
+    let stderr = unsafe { Some(std::fs::File::from_raw_fd(2)) };
     #[cfg(windows)]
     let stderr = unsafe {
-      std::fs::File::from_raw_handle(winapi::um::processenv::GetStdHandle(
+      let handle = winapi::um::processenv::GetStdHandle(
         winapi::um::winbase::STD_ERROR_HANDLE,
-      ))
+      );
+      if handle.is_null() {
+        return None;
+      }
+      Some(std::fs::File::from_raw_handle(handle))
     };
     stderr
   };
@@ -66,24 +90,29 @@ pub fn init(i: &mut CoreIsolate, s: &State) {
 }
 
 pub fn get_stdio() -> (
-  StreamResourceHolder,
-  StreamResourceHolder,
-  StreamResourceHolder,
+  Option<StreamResourceHolder>,
+  Option<StreamResourceHolder>,
+  Option<StreamResourceHolder>,
 ) {
-  let stdin = StreamResourceHolder::new(StreamResource::Stdin(
-    tokio::io::stdin(),
-    TTYMetadata::default(),
-  ));
-  let stdout = StreamResourceHolder::new(StreamResource::FsFile(Some({
-    let stdout = STDOUT_HANDLE.try_clone().unwrap();
-    (tokio::fs::File::from_std(stdout), FileMetadata::default())
-  })));
-  let stderr = StreamResourceHolder::new(StreamResource::FsFile(Some({
-    let stderr = STDERR_HANDLE.try_clone().unwrap();
-    (tokio::fs::File::from_std(stderr), FileMetadata::default())
-  })));
+  let stdin = get_stdio_stream(&STDIN_HANDLE);
+  let stdout = get_stdio_stream(&STDOUT_HANDLE);
+  let stderr = get_stdio_stream(&STDERR_HANDLE);
 
   (stdin, stdout, stderr)
+}
+
+fn get_stdio_stream(
+  handle: &Option<std::fs::File>,
+) -> Option<StreamResourceHolder> {
+  match handle {
+    None => None,
+    Some(file_handle) => match file_handle.try_clone() {
+      Ok(clone) => Some(StreamResourceHolder::new(StreamResource::FsFile(
+        Some((tokio::fs::File::from_std(clone), FileMetadata::default())),
+      ))),
+      Err(_e) => None,
+    },
+  }
 }
 
 fn no_buffer_specified() -> OpError {
@@ -206,19 +235,19 @@ impl DenoAsyncRead for StreamResource {
 }
 
 pub fn op_read(
-  isolate: &mut CoreIsolate,
+  isolate_state: &mut CoreIsolateState,
   _state: &State,
   is_sync: bool,
   rid: i32,
-  zero_copy: Option<ZeroCopyBuf>,
+  zero_copy: &mut [ZeroCopyBuf],
 ) -> MinimalOp {
   debug!("read rid={}", rid);
-  if zero_copy.is_none() {
-    return MinimalOp::Sync(Err(no_buffer_specified()));
+  match zero_copy.len() {
+    0 => return MinimalOp::Sync(Err(no_buffer_specified())),
+    1 => {}
+    _ => panic!("Invalid number of arguments"),
   }
-  let resource_table = isolate.resource_table.clone();
-
-  let mut buf = zero_copy.unwrap();
+  let resource_table = isolate_state.resource_table.clone();
 
   if is_sync {
     MinimalOp::Sync({
@@ -228,7 +257,7 @@ pub fn op_read(
         Ok(std_file) => {
           use std::io::Read;
           std_file
-            .read(&mut buf)
+            .read(&mut zero_copy[0])
             .map(|n: usize| n as i32)
             .map_err(OpError::from)
         }
@@ -238,6 +267,7 @@ pub fn op_read(
       })
     })
   } else {
+    let mut zero_copy = zero_copy[0].clone();
     MinimalOp::Async(
       poll_fn(move |cx| {
         let mut resource_table = resource_table.borrow_mut();
@@ -248,7 +278,7 @@ pub fn op_read(
         let mut task_tracker_id: Option<usize> = None;
         let nread = match resource_holder
           .resource
-          .poll_read(cx, &mut buf.as_mut()[..])
+          .poll_read(cx, &mut zero_copy)
           .map_err(OpError::from)
         {
           Poll::Ready(t) => {
@@ -330,28 +360,28 @@ impl DenoAsyncWrite for StreamResource {
 }
 
 pub fn op_write(
-  isolate: &mut CoreIsolate,
+  isolate_state: &mut CoreIsolateState,
   _state: &State,
   is_sync: bool,
   rid: i32,
-  zero_copy: Option<ZeroCopyBuf>,
+  zero_copy: &mut [ZeroCopyBuf],
 ) -> MinimalOp {
   debug!("write rid={}", rid);
-  if zero_copy.is_none() {
-    return MinimalOp::Sync(Err(no_buffer_specified()));
+  match zero_copy.len() {
+    0 => return MinimalOp::Sync(Err(no_buffer_specified())),
+    1 => {}
+    _ => panic!("Invalid number of arguments"),
   }
-
-  let buf = zero_copy.unwrap();
 
   if is_sync {
     MinimalOp::Sync({
       // First we look up the rid in the resource table.
-      let mut resource_table = isolate.resource_table.borrow_mut();
+      let mut resource_table = isolate_state.resource_table.borrow_mut();
       std_file_resource(&mut resource_table, rid as u32, move |r| match r {
         Ok(std_file) => {
           use std::io::Write;
           std_file
-            .write(&buf)
+            .write(&zero_copy[0])
             .map(|nwritten: usize| nwritten as i32)
             .map_err(OpError::from)
         }
@@ -361,7 +391,8 @@ pub fn op_write(
       })
     })
   } else {
-    let resource_table = isolate.resource_table.clone();
+    let zero_copy = zero_copy[0].clone();
+    let resource_table = isolate_state.resource_table.clone();
     MinimalOp::Async(
       async move {
         let nwritten = poll_fn(|cx| {
@@ -369,7 +400,7 @@ pub fn op_write(
           let resource_holder = resource_table
             .get_mut::<StreamResourceHolder>(rid as u32)
             .ok_or_else(OpError::bad_resource_id)?;
-          resource_holder.resource.poll_write(cx, &buf.as_ref()[..])
+          resource_holder.resource.poll_write(cx, &zero_copy)
         })
         .await?;
 

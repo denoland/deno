@@ -6,7 +6,7 @@ unitTest(function urlSearchParamsInitString(): void {
   const searchParams = new URLSearchParams(init);
   assert(
     init === searchParams.toString(),
-    "The init query string does not match"
+    "The init query string does not match",
   );
 });
 
@@ -177,8 +177,8 @@ unitTest(function urlSearchParamsAppendArgumentsCheck(): void {
       const searchParams = new URLSearchParams();
       let hasThrown = 0;
       try {
-        // @ts-ignore
-        searchParams[method]();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (searchParams as any)[method]();
         hasThrown = 1;
       } catch (err) {
         if (err instanceof TypeError) {
@@ -194,8 +194,8 @@ unitTest(function urlSearchParamsAppendArgumentsCheck(): void {
     const searchParams = new URLSearchParams();
     let hasThrown = 0;
     try {
-      // @ts-ignore
-      searchParams[method]("foo");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (searchParams as any)[method]("foo");
       hasThrown = 1;
     } catch (err) {
       if (err instanceof TypeError) {
@@ -235,13 +235,15 @@ unitTest(function urlSearchParamsCustomSymbolIterator(): void {
 unitTest(
   function urlSearchParamsCustomSymbolIteratorWithNonStringParams(): void {
     const params = {};
-    // @ts-ignore
-    params[Symbol.iterator] = function* (): IterableIterator<[number, number]> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (params as any)[Symbol.iterator] = function* (): IterableIterator<
+      [number, number]
+    > {
       yield [1, 2];
     };
     const params1 = new URLSearchParams((params as unknown) as string[][]);
     assertEquals(params1.get("1"), "2");
-  }
+  },
 );
 
 // If a class extends URLSearchParams, override one method should not change another's behavior.
@@ -259,7 +261,7 @@ unitTest(
     new CustomSearchParams(new CustomSearchParams({ foo: "bar" }));
     new CustomSearchParams().set("foo", "bar");
     assertEquals(overridedAppendCalled, 0);
-  }
+  },
 );
 
 unitTest(function urlSearchParamsOverridingEntriesNotChangeForEach(): void {

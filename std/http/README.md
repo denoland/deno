@@ -2,9 +2,9 @@
 
 ```typescript
 import { serve } from "https://deno.land/std/http/server.ts";
-const s = serve({ port: 8000 });
+const server = serve({ port: 8000 });
 console.log("http://localhost:8000/");
-for await (const req of s) {
+for await (const req of server) {
   req.respond({ body: "Hello World\n" });
 }
 ```
@@ -55,10 +55,10 @@ to delete it.
 
 ```ts
 import { Response } from "https://deno.land/std/http/server.ts";
-import { delCookie } from "https://deno.land/std/http/cookie.ts";
+import { deleteCookie } from "https://deno.land/std/http/cookie.ts";
 
 let response: Response = {};
-delCookie(response, "deno");
+deleteCookie(response, "deno");
 
 const cookieHeader = response.headers.get("set-cookie");
 console.log("Set-Cookie:", cookieHeader);

@@ -8,7 +8,7 @@ function setup() {
     [dataSymbol] = new Map<string, number>();
 
     constructor(
-      data: Array<[string, number]> | IterableIterator<[string, number]>
+      data: Array<[string, number]> | IterableIterator<[string, number]>,
     ) {
       for (const [key, value] of data) {
         this[dataSymbol].set(key, value);
@@ -20,7 +20,7 @@ function setup() {
     Base,
     // This is using an internal API we don't want published as types, so having
     // to cast to any to "trick" TypeScript
-    // @ts-ignore TypeScript (as of 3.7) does not support indexing namespaces by symbol
+    // @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
     DomIterable: Deno[Deno.internal].DomIterableMixin(Base, dataSymbol),
   };
 }
@@ -53,7 +53,7 @@ unitTest(function testDomIterable(): void {
     this: typeof scope,
     value: number,
     key: string,
-    parent: typeof domIterable
+    parent: typeof domIterable,
   ): void {
     assertEquals(parent, domIterable);
     assert(key != null);

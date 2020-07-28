@@ -4,11 +4,8 @@ import { unitTest, assertEquals } from "./test_util.ts";
 unitTest(function addEventListenerTest(): void {
   const document = new EventTarget();
 
-  // @ts-ignore tests ignoring the type system for resilience
   assertEquals(document.addEventListener("x", null, false), undefined);
-  // @ts-ignore
   assertEquals(document.addEventListener("x", null, true), undefined);
-  // @ts-ignore
   assertEquals(document.addEventListener("x", null), undefined);
 });
 
@@ -40,7 +37,7 @@ unitTest(function anEventTargetCanBeSubclassed(): void {
     on(
       type: string,
       callback: ((e: Event) => void) | null,
-      options?: AddEventListenerOptions
+      options?: AddEventListenerOptions,
     ): void {
       this.addEventListener(type, callback, options);
     }
@@ -48,7 +45,7 @@ unitTest(function anEventTargetCanBeSubclassed(): void {
     off(
       type: string,
       callback: ((e: Event) => void) | null,
-      options?: EventListenerOptions
+      options?: EventListenerOptions,
     ): void {
       this.removeEventListener(type, callback, options);
     }
@@ -71,11 +68,8 @@ unitTest(function anEventTargetCanBeSubclassed(): void {
 
 unitTest(function removingNullEventListenerShouldSucceed(): void {
   const document = new EventTarget();
-  // @ts-ignore
   assertEquals(document.removeEventListener("x", null, false), undefined);
-  // @ts-ignore
   assertEquals(document.removeEventListener("x", null, true), undefined);
-  // @ts-ignore
   assertEquals(document.removeEventListener("x", null), undefined);
 });
 
@@ -227,5 +221,5 @@ unitTest(
     target.removeEventListener("foo", listener);
     target.dispatchEvent(event);
     assertEquals(callCount, 2);
-  }
+  },
 );

@@ -1,6 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 #![deny(warnings)]
 
+extern crate dissimilar;
 #[macro_use]
 extern crate lazy_static;
 #[macro_use]
@@ -25,10 +26,12 @@ mod checksum;
 pub mod colors;
 pub mod deno_dir;
 pub mod diagnostics;
+mod diff;
 mod disk_cache;
 mod doc;
 mod file_fetcher;
 pub mod flags;
+mod flags_allow_net;
 mod fmt;
 pub mod fmt_errors;
 mod fs;
@@ -40,11 +43,13 @@ mod import_map;
 mod inspector;
 pub mod installer;
 mod js;
+mod lint;
 mod lockfile;
 mod metrics;
 mod module_graph;
 pub mod msg;
 pub mod op_error;
+mod op_fetch_asset;
 pub mod ops;
 pub mod permissions;
 mod repl;
@@ -55,7 +60,6 @@ mod startup_data;
 pub mod state;
 mod swc_util;
 mod test_runner;
-pub mod test_util;
 mod tokio_util;
 mod tsc;
 mod upgrade;
@@ -63,26 +67,26 @@ pub mod version;
 mod web_worker;
 pub mod worker;
 
-pub use dprint_plugin_typescript::swc_common;
-pub use dprint_plugin_typescript::swc_ecma_ast;
-pub use dprint_plugin_typescript::swc_ecma_parser;
+pub use deno_lint::dprint_plugin_typescript;
+pub use deno_lint::swc_common;
+pub use deno_lint::swc_ecma_ast;
+pub use deno_lint::swc_ecma_parser;
+pub use deno_lint::swc_ecma_visit;
 
 use crate::doc::parser::DocFileLoader;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::fs as deno_fs;
 use crate::global_state::GlobalState;
-use crate::import_map::ImportMap;
 use crate::msg::MediaType;
 use crate::op_error::OpError;
-use crate::ops::io::get_stdio;
 use crate::permissions::Permissions;
-use crate::state::exit_unstable;
-use crate::state::State;
 use crate::tsc::TargetLib;
 use crate::worker::MainWorker;
 use deno_core::v8_set_flags;
+use deno_core::Deps;
 use deno_core::ErrBox;
+use deno_core::EsIsolate;
 use deno_core::ModuleSpecifier;
 use flags::DenoSubcommand;
 use flags::Flags;
@@ -91,7 +95,9 @@ use futures::Future;
 use log::Level;
 use log::Metadata;
 use log::Record;
+use state::exit_unstable;
 use std::env;
+use std::io::Read;
 use std::io::Write;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -139,46 +145,47 @@ fn write_to_stdout_ignore_sigpipe(bytes: &[u8]) -> Result<(), std::io::Error> {
   }
 }
 
-fn create_main_worker(
-  global_state: GlobalState,
-  main_module: ModuleSpecifier,
-) -> Result<MainWorker, ErrBox> {
-  let state = State::new(global_state, None, main_module, false)?;
-
-  let mut worker = MainWorker::new(
-    "main".to_string(),
-    startup_data::deno_isolate_init(),
-    state,
-  );
-
-  {
-    let (stdin, stdout, stderr) = get_stdio();
-    let mut t = worker.resource_table.borrow_mut();
-    t.add("stdin", Box::new(stdin));
-    t.add("stdout", Box::new(stdout));
-    t.add("stderr", Box::new(stderr));
-  }
-
-  worker.execute("bootstrap.mainRuntime()")?;
-  Ok(worker)
+fn write_json_to_stdout<T>(value: &T) -> Result<(), ErrBox>
+where
+  T: ?Sized + serde::ser::Serialize,
+{
+  let writer = std::io::BufWriter::new(std::io::stdout());
+  serde_json::to_writer_pretty(writer, value).map_err(ErrBox::from)
 }
 
-fn print_cache_info(state: &GlobalState) {
-  println!(
-    "{} {:?}",
-    colors::bold("DENO_DIR location:".to_string()),
-    state.dir.root
-  );
-  println!(
-    "{} {:?}",
-    colors::bold("Remote modules cache:".to_string()),
-    state.file_fetcher.http_cache.location
-  );
-  println!(
-    "{} {:?}",
-    colors::bold("TypeScript compiler cache:".to_string()),
-    state.dir.gen_cache.location
-  );
+fn print_cache_info(state: &GlobalState, json: bool) -> Result<(), ErrBox> {
+  let deno_dir = &state.dir.root;
+  let modules_cache = &state.file_fetcher.http_cache.location;
+  let typescript_cache = &state.dir.gen_cache.location;
+  if json {
+    let output = json!({
+        "denoDir": deno_dir,
+        "modulesCache": modules_cache,
+        "typescriptCache": typescript_cache,
+    });
+    write_json_to_stdout(&output)
+  } else {
+    println!("{} {:?}", colors::bold("DENO_DIR location:"), deno_dir);
+    println!(
+      "{} {:?}",
+      colors::bold("Remote modules cache:"),
+      modules_cache
+    );
+    println!(
+      "{} {:?}",
+      colors::bold("TypeScript compiler cache:"),
+      typescript_cache
+    );
+    Ok(())
+  }
+}
+
+struct FileInfoOutput<'a> {
+  local: &'a str,
+  file_type: &'a str,
+  compiled: Option<String>,
+  map: Option<String>,
+  deps: Option<Deps>,
 }
 
 // TODO(bartlomieju): this function de facto repeats
@@ -186,6 +193,7 @@ fn print_cache_info(state: &GlobalState) {
 async fn print_file_info(
   worker: &MainWorker,
   module_specifier: ModuleSpecifier,
+  json: bool,
 ) -> Result<(), ErrBox> {
   let global_state = worker.state.borrow().global_state.clone();
 
@@ -194,28 +202,29 @@ async fn print_file_info(
     .fetch_source_file(&module_specifier, None, Permissions::allow_all())
     .await?;
 
-  println!(
-    "{} {}",
-    colors::bold("local:".to_string()),
-    out.filename.to_str().unwrap()
-  );
-
-  println!(
-    "{} {}",
-    colors::bold("type:".to_string()),
-    msg::enum_name_media_type(out.media_type)
-  );
+  let mut output = FileInfoOutput {
+    local: out.filename.to_str().unwrap(),
+    file_type: msg::enum_name_media_type(out.media_type),
+    compiled: None,
+    map: None,
+    deps: None,
+  };
 
   let module_specifier_ = module_specifier.clone();
+
   global_state
-    .clone()
-    .fetch_compiled_module(
-      module_specifier_,
+    .prepare_module_load(
+      module_specifier_.clone(),
       None,
       TargetLib::Main,
       Permissions::allow_all(),
       false,
+      global_state.maybe_import_map.clone(),
     )
+    .await?;
+  global_state
+    .clone()
+    .fetch_compiled_module(module_specifier_, None)
     .await?;
 
   if out.media_type == msg::MediaType::TypeScript
@@ -226,12 +235,8 @@ async fn print_file_info(
       .ts_compiler
       .get_compiled_source_file(&out.url)
       .unwrap();
-
-    println!(
-      "{} {}",
-      colors::bold("compiled:".to_string()),
-      compiled_source_file.filename.to_str().unwrap(),
-    );
+    output.compiled =
+      compiled_source_file.filename.to_str().map(|s| s.to_owned());
   }
 
   if let Ok(source_map) = global_state
@@ -239,28 +244,48 @@ async fn print_file_info(
     .ts_compiler
     .get_source_map_file(&module_specifier)
   {
-    println!(
-      "{} {}",
-      colors::bold("map:".to_string()),
-      source_map.filename.to_str().unwrap()
-    );
+    output.map = source_map.filename.to_str().map(|s| s.to_owned());
+  }
+  let es_state_rc = EsIsolate::state(&worker.isolate);
+  let es_state = es_state_rc.borrow();
+
+  if let Some(deps) = es_state.modules.deps(&module_specifier) {
+    output.deps = Some(deps);
   }
 
-  if let Some(deps) = worker.isolate.modules.deps(&module_specifier) {
-    println!("{}{}", colors::bold("deps:\n".to_string()), deps.name);
-    if let Some(ref depsdeps) = deps.deps {
-      for d in depsdeps {
-        println!("{}", d);
-      }
-    }
+  if json {
+    let output = json!({
+      "local": output.local,
+      "fileType": output.file_type,
+      "compiled": output.compiled,
+      "map": output.map,
+      "deps": output.deps.map(|x| x.to_json())
+    });
+    write_json_to_stdout(&output)
   } else {
-    println!(
-      "{} cannot retrieve full dependency graph",
-      colors::bold("deps:".to_string()),
-    );
+    println!("{} {}", colors::bold("local:"), output.local);
+    println!("{} {}", colors::bold("type:"), output.file_type);
+    if let Some(compiled) = output.compiled {
+      println!("{} {}", colors::bold("compiled:"), compiled);
+    }
+    if let Some(map) = output.map {
+      println!("{} {}", colors::bold("map:"), map);
+    }
+    if let Some(deps) = output.deps {
+      println!("{}{}", colors::bold("deps:\n"), deps.name);
+      if let Some(ref depsdeps) = deps.deps {
+        for d in depsdeps {
+          println!("{}", d);
+        }
+      }
+    } else {
+      println!(
+        "{} cannot retrieve full dependency graph",
+        colors::bold("deps:"),
+      );
+    }
+    Ok(())
   }
-
-  Ok(())
 }
 
 fn get_types(unstable: bool) -> String {
@@ -285,18 +310,21 @@ fn get_types(unstable: bool) -> String {
 async fn info_command(
   flags: Flags,
   file: Option<String>,
+  json: bool,
 ) -> Result<(), ErrBox> {
+  if json && !flags.unstable {
+    exit_unstable("--json");
+  }
   let global_state = GlobalState::new(flags)?;
   // If it was just "deno info" print location of caches and exit
   if file.is_none() {
-    print_cache_info(&global_state);
-    return Ok(());
+    print_cache_info(&global_state, json)
+  } else {
+    let main_module = ModuleSpecifier::resolve_url_or_path(&file.unwrap())?;
+    let mut worker = MainWorker::create(global_state, main_module.clone())?;
+    worker.preload_module(&main_module).await?;
+    print_file_info(&worker, main_module.clone(), json).await
   }
-
-  let main_module = ModuleSpecifier::resolve_url_or_path(&file.unwrap())?;
-  let mut worker = create_main_worker(global_state, main_module.clone())?;
-  worker.preload_module(&main_module).await?;
-  print_file_info(&worker, main_module.clone()).await
 }
 
 async fn install_command(
@@ -312,10 +340,38 @@ async fn install_command(
   fetch_flags.reload = true;
   let global_state = GlobalState::new(fetch_flags)?;
   let main_module = ModuleSpecifier::resolve_url_or_path(&module_url)?;
-  let mut worker = create_main_worker(global_state, main_module.clone())?;
+  let mut worker = MainWorker::create(global_state, main_module.clone())?;
   worker.preload_module(&main_module).await?;
   installer::install(flags, &module_url, args, name, root, force)
     .map_err(ErrBox::from)
+}
+
+async fn lint_command(
+  flags: Flags,
+  files: Vec<String>,
+  list_rules: bool,
+) -> Result<(), ErrBox> {
+  let global_state = GlobalState::new(flags)?;
+
+  // TODO(bartlomieju): refactor, it's non-sense to create
+  // state just to perform unstable check...
+  use crate::state::State;
+  let state = State::new(
+    global_state,
+    None,
+    ModuleSpecifier::resolve_url("file:///dummy.ts").unwrap(),
+    None,
+    true,
+  )?;
+
+  state.check_unstable("lint");
+
+  if list_rules {
+    lint::print_rules_list();
+    return Ok(());
+  }
+
+  lint::lint_files(files).await
 }
 
 async fn cache_command(flags: Flags, files: Vec<String>) -> Result<(), ErrBox> {
@@ -323,21 +379,11 @@ async fn cache_command(flags: Flags, files: Vec<String>) -> Result<(), ErrBox> {
     ModuleSpecifier::resolve_url_or_path("./__$deno$fetch.ts").unwrap();
   let global_state = GlobalState::new(flags)?;
   let mut worker =
-    create_main_worker(global_state.clone(), main_module.clone())?;
+    MainWorker::create(global_state.clone(), main_module.clone())?;
 
   for file in files {
     let specifier = ModuleSpecifier::resolve_url_or_path(&file)?;
     worker.preload_module(&specifier).await.map(|_| ())?;
-  }
-
-  if global_state.flags.lock_write {
-    if let Some(ref lockfile) = global_state.lockfile {
-      let g = lockfile.lock().unwrap();
-      g.write()?;
-    } else {
-      eprintln!("--lock flag must be specified when using --lock-write");
-      std::process::exit(11);
-    }
   }
 
   Ok(())
@@ -347,25 +393,32 @@ async fn eval_command(
   flags: Flags,
   code: String,
   as_typescript: bool,
+  print: bool,
 ) -> Result<(), ErrBox> {
   // Force TypeScript compile.
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./__$deno$eval.ts").unwrap();
   let global_state = GlobalState::new(flags)?;
-  let mut worker = create_main_worker(global_state, main_module.clone())?;
+  let mut worker = MainWorker::create(global_state, main_module.clone())?;
   let main_module_url = main_module.as_url().to_owned();
   // Create a dummy source file.
+  let source_code = if print {
+    "console.log(".to_string() + &code + ")"
+  } else {
+    code.clone()
+  }
+  .into_bytes();
+
   let source_file = SourceFile {
     filename: main_module_url.to_file_path().unwrap(),
     url: main_module_url,
-    types_url: None,
     types_header: None,
     media_type: if as_typescript {
       MediaType::TypeScript
     } else {
       MediaType::JavaScript
     },
-    source_code: code.clone().into_bytes(),
+    source_code,
   };
   // Save our fake file into file fetcher cache
   // to allow module access by TS compiler (e.g. op_fetch_source_files)
@@ -388,43 +441,71 @@ async fn bundle_command(
   source_file: String,
   out_file: Option<PathBuf>,
 ) -> Result<(), ErrBox> {
-  let mut module_name = ModuleSpecifier::resolve_url_or_path(&source_file)?;
-  let url = module_name.as_url();
-
-  // TODO(bartlomieju): fix this hack in ModuleSpecifier
-  if url.scheme() == "file" {
-    let a = deno_fs::normalize_path(&url.to_file_path().unwrap());
-    let u = Url::from_file_path(a).unwrap();
-    module_name = ModuleSpecifier::from(u)
-  }
+  let module_specifier = ModuleSpecifier::resolve_url_or_path(&source_file)?;
 
   debug!(">>>>> bundle START");
-  let compiler_config = tsc::CompilerConfig::load(flags.config_path.clone())?;
-
-  let maybe_import_map = match flags.import_map_path.as_ref() {
-    None => None,
-    Some(file_path) => {
-      if !flags.unstable {
-        exit_unstable("--importmap")
-      }
-      Some(ImportMap::load(file_path)?)
-    }
-  };
-
   let global_state = GlobalState::new(flags)?;
 
-  let bundle_result = tsc::bundle(
-    &global_state,
-    compiler_config,
-    module_name,
-    maybe_import_map,
-    out_file,
-    global_state.flags.unstable,
-  )
-  .await;
+  info!(
+    "{} {}",
+    colors::green("Bundle"),
+    module_specifier.to_string()
+  );
+
+  let output = global_state
+    .ts_compiler
+    .bundle(global_state.clone(), module_specifier)
+    .await?;
 
   debug!(">>>>> bundle END");
-  bundle_result
+
+  if let Some(out_file_) = out_file.as_ref() {
+    let output_bytes = output.as_bytes();
+    let output_len = output_bytes.len();
+    deno_fs::write_file(out_file_, output_bytes, 0o666)?;
+    info!(
+      "{} {:?} ({})",
+      colors::green("Emit"),
+      out_file_,
+      colors::gray(&human_size(output_len as f64))
+    );
+  } else {
+    println!("{}", output);
+  }
+  Ok(())
+}
+
+fn human_size(bytse: f64) -> String {
+  let negative = if bytse.is_sign_positive() { "" } else { "-" };
+  let bytse = bytse.abs();
+  let units = ["Bytes", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
+  if bytse < 1_f64 {
+    return format!("{}{} {}", negative, bytse, "Bytes");
+  }
+  let delimiter = 1024_f64;
+  let exponent = std::cmp::min(
+    (bytse.ln() / delimiter.ln()).floor() as i32,
+    (units.len() - 1) as i32,
+  );
+  let pretty_bytes = format!("{:.2}", bytse / delimiter.powi(exponent))
+    .parse::<f64>()
+    .unwrap()
+    * 1_f64;
+  let unit = units[exponent as usize];
+  format!("{}{} {}", negative, pretty_bytes, unit)
+}
+
+#[test]
+fn human_size_test() {
+  assert_eq!(human_size(16_f64), "16 Bytes");
+  assert_eq!(human_size((16 * 1024) as f64), "16 KB");
+  assert_eq!(human_size((16 * 1024 * 1024) as f64), "16 MB");
+  assert_eq!(human_size(16_f64 * 1024_f64.powf(3.0)), "16 GB");
+  assert_eq!(human_size(16_f64 * 1024_f64.powf(4.0)), "16 TB");
+  assert_eq!(human_size(16_f64 * 1024_f64.powf(5.0)), "16 PB");
+  assert_eq!(human_size(16_f64 * 1024_f64.powf(6.0)), "16 EB");
+  assert_eq!(human_size(16_f64 * 1024_f64.powf(7.0)), "16 ZB");
+  assert_eq!(human_size(16_f64 * 1024_f64.powf(8.0)), "16 YB");
 }
 
 async fn doc_command(
@@ -432,6 +513,7 @@ async fn doc_command(
   source_file: Option<String>,
   json: bool,
   maybe_filter: Option<String>,
+  private: bool,
 ) -> Result<(), ErrBox> {
   let global_state = GlobalState::new(flags.clone())?;
   let source_file = source_file.unwrap_or_else(|| "--builtin".to_string());
@@ -457,7 +539,7 @@ async fn doc_command(
   }
 
   let loader = Box::new(global_state.file_fetcher.clone());
-  let doc_parser = doc::DocParser::new(loader);
+  let doc_parser = doc::DocParser::new(loader, private);
 
   let parse_result = if source_file == "--builtin" {
     doc_parser.parse_source("lib.deno.d.ts", get_types(flags.unstable).as_str())
@@ -478,19 +560,18 @@ async fn doc_command(
   };
 
   if json {
-    let writer = std::io::BufWriter::new(std::io::stdout());
-    serde_json::to_writer_pretty(writer, &doc_nodes).map_err(ErrBox::from)
+    write_json_to_stdout(&doc_nodes)
   } else {
     let details = if let Some(filter) = maybe_filter {
-      let node = doc::find_node_by_name_recursively(doc_nodes, filter.clone());
-      if let Some(node) = node {
-        doc::printer::format_details(node)
-      } else {
+      let nodes =
+        doc::find_nodes_by_name_recursively(doc_nodes, filter.clone());
+      if nodes.is_empty() {
         eprintln!("Node {} was not found!", filter);
         std::process::exit(1);
       }
+      format!("{}", doc::DocPrinter::new(&nodes, true, private))
     } else {
-      doc::printer::format(doc_nodes)
+      format!("{}", doc::DocPrinter::new(&doc_nodes, false, private))
     };
 
     write_to_stdout_ignore_sigpipe(details.as_bytes()).map_err(ErrBox::from)
@@ -501,7 +582,7 @@ async fn run_repl(flags: Flags) -> Result<(), ErrBox> {
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./__$deno$repl.ts").unwrap();
   let global_state = GlobalState::new(flags)?;
-  let mut worker = create_main_worker(global_state, main_module)?;
+  let mut worker = MainWorker::create(global_state, main_module)?;
   loop {
     (&mut *worker).await?;
   }
@@ -509,23 +590,40 @@ async fn run_repl(flags: Flags) -> Result<(), ErrBox> {
 
 async fn run_command(flags: Flags, script: String) -> Result<(), ErrBox> {
   let global_state = GlobalState::new(flags.clone())?;
-  let main_module = ModuleSpecifier::resolve_url_or_path(&script).unwrap();
+  let main_module = if script != "-" {
+    ModuleSpecifier::resolve_url_or_path(&script).unwrap()
+  } else {
+    ModuleSpecifier::resolve_url_or_path("./__$deno$stdin.ts").unwrap()
+  };
   let mut worker =
-    create_main_worker(global_state.clone(), main_module.clone())?;
+    MainWorker::create(global_state.clone(), main_module.clone())?;
+  if script == "-" {
+    let mut source = Vec::new();
+    std::io::stdin().read_to_end(&mut source)?;
+    let main_module_url = main_module.as_url().to_owned();
+    // Create a dummy source file.
+    let source_file = SourceFile {
+      filename: main_module_url.to_file_path().unwrap(),
+      url: main_module_url,
+      types_header: None,
+      media_type: MediaType::TypeScript,
+      source_code: source,
+    };
+    // Save our fake file into file fetcher cache
+    // to allow module access by TS compiler (e.g. op_fetch_source_files)
+    worker
+      .state
+      .borrow()
+      .global_state
+      .file_fetcher
+      .save_source_file_in_cache(&main_module, source_file);
+  };
+
   debug!("main_module {}", main_module);
   worker.execute_module(&main_module).await?;
   worker.execute("window.dispatchEvent(new Event('load'))")?;
   (&mut *worker).await?;
   worker.execute("window.dispatchEvent(new Event('unload'))")?;
-  if global_state.flags.lock_write {
-    if let Some(ref lockfile) = global_state.lockfile {
-      let g = lockfile.lock().unwrap();
-      g.write()?;
-    } else {
-      eprintln!("--lock flag must be specified when using --lock-write");
-      std::process::exit(11);
-    }
-  }
   Ok(())
 }
 
@@ -558,12 +656,11 @@ async fn test_command(
   let main_module =
     ModuleSpecifier::resolve_url(&test_file_url.to_string()).unwrap();
   let mut worker =
-    create_main_worker(global_state.clone(), main_module.clone())?;
+    MainWorker::create(global_state.clone(), main_module.clone())?;
   // Create a dummy source file.
   let source_file = SourceFile {
     filename: test_file_url.to_file_path().unwrap(),
     url: test_file_url,
-    types_url: None,
     types_header: None,
     media_type: MediaType::TypeScript,
     source_code: test_file.clone().into_bytes(),
@@ -612,18 +709,22 @@ pub fn main() {
       source_file,
       json,
       filter,
-    } => doc_command(flags, source_file, json, filter).boxed_local(),
+      private,
+    } => doc_command(flags, source_file, json, filter, private).boxed_local(),
     DenoSubcommand::Eval {
+      print,
       code,
       as_typescript,
-    } => eval_command(flags, code, as_typescript).boxed_local(),
+    } => eval_command(flags, code, as_typescript, print).boxed_local(),
     DenoSubcommand::Cache { files } => {
       cache_command(flags, files).boxed_local()
     }
     DenoSubcommand::Fmt { check, files } => {
       fmt::format(files, check).boxed_local()
     }
-    DenoSubcommand::Info { file } => info_command(flags, file).boxed_local(),
+    DenoSubcommand::Info { file, json } => {
+      info_command(flags, file, json).boxed_local()
+    }
     DenoSubcommand::Install {
       module_url,
       args,
@@ -632,6 +733,9 @@ pub fn main() {
       force,
     } => {
       install_command(flags, module_url, args, name, root, force).boxed_local()
+    }
+    DenoSubcommand::Lint { files, rules } => {
+      lint_command(flags, files, rules).boxed_local()
     }
     DenoSubcommand::Repl => run_repl(flags).boxed_local(),
     DenoSubcommand::Run { script } => run_command(flags, script).boxed_local(),
@@ -662,17 +766,17 @@ pub fn main() {
       force,
       dry_run,
       version,
-    } => upgrade_command(dry_run, force, version).boxed_local(),
+      output,
+      ca_file,
+    } => {
+      upgrade_command(dry_run, force, version, output, ca_file).boxed_local()
+    }
     _ => unreachable!(),
   };
 
   let result = tokio_util::run_basic(fut);
   if let Err(err) = result {
-    let msg = format!(
-      "{}: {}",
-      colors::red_bold("error".to_string()),
-      err.to_string(),
-    );
+    let msg = format!("{}: {}", colors::red_bold("error"), err.to_string(),);
     eprintln!("{}", msg);
     std::process::exit(1);
   }

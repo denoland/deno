@@ -8,8 +8,9 @@ for `unload` events need to be synchronous. Both events cannot be cancelled.
 
 Example:
 
+**main.ts**
+
 ```ts
-// main.ts
 import "./imported.ts";
 
 const handler = (e: Event): void => {
@@ -29,8 +30,11 @@ window.onunload = (e: Event): void => {
 };
 
 console.log("log from main script");
+```
 
-// imported.ts
+**imported.ts**
+
+```ts
 const handler = (e: Event): void => {
   console.log(`got ${e.type} event in event handler (imported)`);
 };
@@ -68,3 +72,7 @@ got unload event in event handler (main)
 All listeners added using `window.addEventListener` were run, but
 `window.onload` and `window.onunload` defined in `main.ts` overrode handlers
 defined in `imported.ts`.
+
+In other words, you can register multiple `window.addEventListener` `"load"` or
+`"unload"` events, but only the last loaded `window.onload` or `window.onunload`
+events will be executed.

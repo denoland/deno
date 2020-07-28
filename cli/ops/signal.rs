@@ -3,6 +3,7 @@ use super::dispatch_json::{JsonOp, Value};
 use crate::op_error::OpError;
 use crate::state::State;
 use deno_core::CoreIsolate;
+use deno_core::CoreIsolateState;
 use deno_core::ZeroCopyBuf;
 
 #[cfg(unix)]
@@ -39,14 +40,14 @@ struct SignalArgs {
 
 #[cfg(unix)]
 fn op_signal_bind(
-  isolate: &mut CoreIsolate,
+  isolate_state: &mut CoreIsolateState,
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   state.check_unstable("Deno.signal");
   let args: BindSignalArgs = serde_json::from_value(args)?;
-  let mut resource_table = isolate.resource_table.borrow_mut();
+  let mut resource_table = isolate_state.resource_table.borrow_mut();
   let rid = resource_table.add(
     "signal",
     Box::new(SignalStreamResource(
@@ -61,15 +62,15 @@ fn op_signal_bind(
 
 #[cfg(unix)]
 fn op_signal_poll(
-  isolate: &mut CoreIsolate,
+  isolate_state: &mut CoreIsolateState,
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   state.check_unstable("Deno.signal");
   let args: SignalArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
-  let resource_table = isolate.resource_table.clone();
+  let resource_table = isolate_state.resource_table.clone();
 
   let future = poll_fn(move |cx| {
     let mut resource_table = resource_table.borrow_mut();
@@ -88,15 +89,15 @@ fn op_signal_poll(
 
 #[cfg(unix)]
 pub fn op_signal_unbind(
-  isolate: &mut CoreIsolate,
+  isolate_state: &mut CoreIsolateState,
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   state.check_unstable("Deno.signal");
   let args: SignalArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
-  let mut resource_table = isolate.resource_table.borrow_mut();
+  let mut resource_table = isolate_state.resource_table.borrow_mut();
   let resource = resource_table.get::<SignalStreamResource>(rid);
   if let Some(signal) = resource {
     if let Some(waker) = &signal.1 {
@@ -113,30 +114,30 @@ pub fn op_signal_unbind(
 
 #[cfg(not(unix))]
 pub fn op_signal_bind(
-  _isolate: &mut CoreIsolate,
+  _isolate_state: &mut CoreIsolateState,
   _state: &State,
   _args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   unimplemented!();
 }
 
 #[cfg(not(unix))]
 fn op_signal_unbind(
-  _isolate: &mut CoreIsolate,
+  _isolate_state: &mut CoreIsolateState,
   _state: &State,
   _args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   unimplemented!();
 }
 
 #[cfg(not(unix))]
 fn op_signal_poll(
-  _isolate: &mut CoreIsolate,
+  _isolate_state: &mut CoreIsolateState,
   _state: &State,
   _args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   unimplemented!();
 }

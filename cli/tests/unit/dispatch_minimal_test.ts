@@ -8,10 +8,10 @@ import {
 
 const readErrorStackPattern = new RegExp(
   `^.*
-    at unwrapResponse \\(.*dispatch_minimal\\.ts:.*\\)
-    at Object.sendAsyncMinimal \\(.*dispatch_minimal\\.ts:.*\\)
-    at async Object\\.read \\(.*io\\.ts:.*\\).*$`,
-  "ms"
+    at unwrapResponse \\(.*dispatch_minimal\\.js:.*\\)
+    at sendAsync \\(.*dispatch_minimal\\.js:.*\\)
+    at async Object\\.read \\(.*io\\.js:.*\\).*$`,
+  "ms",
 );
 
 unitTest(async function sendAsyncStackTrace(): Promise<void> {
@@ -25,16 +25,22 @@ unitTest(async function sendAsyncStackTrace(): Promise<void> {
   }
 });
 
+declare global {
+  // eslint-disable-next-line @typescript-eslint/no-namespace
+  namespace Deno {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    var core: any; // eslint-disable-line no-var
+  }
+}
+
 unitTest(function malformedMinimalControlBuffer(): void {
-  // @ts-ignore
   const readOpId = Deno.core.ops()["op_read"];
-  // @ts-ignore
   const res = Deno.core.send(readOpId, new Uint8Array([1, 2, 3, 4, 5]));
   const header = res.slice(0, 12);
   const buf32 = new Int32Array(
     header.buffer,
     header.byteOffset,
-    header.byteLength / 4
+    header.byteLength / 4,
   );
   const arg = buf32[1];
   const message = new TextDecoder().decode(res.slice(12)).trim();

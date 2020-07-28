@@ -18,27 +18,6 @@ pub trait SourceMapGetter {
 /// find a SourceMap.
 pub type CachedMaps = HashMap<String, Option<SourceMap>>;
 
-// The bundle does not get built for 'cargo check', so we don't embed the
-// bundle source map.  The built in source map is the source map for the main
-// JavaScript bundle which is then used to create the snapshot.  Runtime stack
-// traces can contain positions within the bundle which we will map to the
-// original Deno TypeScript code.
-#[cfg(feature = "check-only")]
-fn builtin_source_map(_: &str) -> Option<Vec<u8>> {
-  None
-}
-
-#[cfg(not(feature = "check-only"))]
-fn builtin_source_map(file_name: &str) -> Option<Vec<u8>> {
-  if file_name.ends_with("CLI_SNAPSHOT.js") {
-    Some(crate::js::CLI_SNAPSHOT_MAP.to_vec())
-  } else if file_name.ends_with("COMPILER_SNAPSHOT.js") {
-    Some(crate::js::COMPILER_SNAPSHOT_MAP.to_vec())
-  } else {
-    None
-  }
-}
-
 /// Apply a source map to a deno_core::JSError, returning a JSError where file
 /// names and line/column numbers point to the location in the original source,
 /// rather than the transpiled source code.
@@ -165,8 +144,8 @@ fn parse_map_string<G: SourceMapGetter>(
   file_name: &str,
   getter: &G,
 ) -> Option<SourceMap> {
-  builtin_source_map(file_name)
-    .or_else(|| getter.get_source_map(file_name))
+  getter
+    .get_source_map(file_name)
     .and_then(|raw_source_map| SourceMap::from_slice(&raw_source_map).ok())
 }
 

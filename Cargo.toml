@@ -2,7 +2,9 @@
 members = [
   "cli",
   "core",
-  "tools/hyper_hello",
-  "deno_typescript",
-  "test_plugin"
+  "test_plugin",
+  "test_util",
+]
+exclude = [
+  "std/hash/_wasm"
 ]

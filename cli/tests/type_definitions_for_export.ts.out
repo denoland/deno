@@ -1,0 +1,5 @@
+Check [WILDCARD]type_definitions_for_export.ts
+error: TS2345 [ERROR]: Argument of type 'string' is not assignable to parameter of type 'number'.
+bar(foo);
+    ~~~
+    at [WILDCARD]type_definitions_for_export.ts:7:5

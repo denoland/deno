@@ -3,6 +3,7 @@ use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::futures::FutureExt;
 use crate::op_error::OpError;
 use crate::state::State;
+use crate::tsc::runtime_bundle;
 use crate::tsc::runtime_compile;
 use crate::tsc::runtime_transpile;
 use deno_core::CoreIsolate;
@@ -26,7 +27,7 @@ struct CompileArgs {
 fn op_compile(
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   state.check_unstable("Deno.compile");
   let args: CompileArgs = serde_json::from_value(args)?;
@@ -34,15 +35,27 @@ fn op_compile(
   let global_state = s.global_state.clone();
   let permissions = s.permissions.clone();
   let fut = async move {
-    runtime_compile(
-      global_state,
-      permissions,
-      &args.root_name,
-      &args.sources,
-      args.bundle,
-      &args.options,
-    )
-    .await
+    let fut = if args.bundle {
+      runtime_bundle(
+        global_state,
+        permissions,
+        &args.root_name,
+        &args.sources,
+        &args.options,
+      )
+      .boxed_local()
+    } else {
+      runtime_compile(
+        global_state,
+        permissions,
+        &args.root_name,
+        &args.sources,
+        &args.options,
+      )
+      .boxed_local()
+    };
+
+    fut.await
   }
   .boxed_local();
   Ok(JsonOp::Async(fut))
@@ -57,7 +70,7 @@ struct TranspileArgs {
 fn op_transpile(
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   state.check_unstable("Deno.transpile");
   let args: TranspileArgs = serde_json::from_value(args)?;

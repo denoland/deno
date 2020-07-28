@@ -1,8 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { BufReader } from "./bufio.ts";
+import type { BufReader } from "./bufio.ts";
 type Reader = Deno.Reader;
 type Writer = Deno.Writer;
-import { assert } from "../testing/asserts.ts";
+import { assert } from "../_util/assert.ts";
 
 const DEFAULT_BUFFER_SIZE = 32 * 1024;
 
@@ -12,7 +12,7 @@ const DEFAULT_BUFFER_SIZE = 32 * 1024;
 export async function copyN(
   r: Reader,
   dest: Writer,
-  size: number
+  size: number,
 ): Promise<number> {
   let bytesRead = 0;
   let buf = new Uint8Array(DEFAULT_BUFFER_SIZE);
@@ -67,7 +67,7 @@ export async function readLong(buf: BufReader): Promise<number | null> {
   // We probably should provide a similar API that returns BigInt values.
   if (big > MAX_SAFE_INTEGER) {
     throw new RangeError(
-      "Long value too big to be represented as a JavaScript number."
+      "Long value too big to be represented as a JavaScript number.",
     );
   }
   return Number(big);

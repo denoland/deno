@@ -1,3 +1,1 @@
-const { stderr } = Deno;
-
-stderr.write(new TextEncoder().encode("x"));
+Deno.stderr.write(new TextEncoder().encode("x"));

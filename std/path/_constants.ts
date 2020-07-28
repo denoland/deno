@@ -1,7 +1,6 @@
 // Copyright the Browserify authors. MIT License.
 // Ported from https://github.com/browserify/path-browserify/
-
-const { build } = Deno;
+/** This module is browser compatible. */
 
 // Alphabet chars.
 export const CHAR_UPPERCASE_A = 65; /* A */
@@ -48,7 +47,14 @@ export const CHAR_EQUAL = 61; /* = */
 export const CHAR_0 = 48; /* 0 */
 export const CHAR_9 = 57; /* 9 */
 
-const isWindows = build.os == "windows";
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const navigator = (globalThis as any).navigator;
 
-export const SEP = isWindows ? "\\" : "/";
-export const SEP_PATTERN = isWindows ? /[\\/]+/ : /\/+/;
+let isWindows = false;
+if (globalThis.Deno != null) {
+  isWindows = Deno.build.os == "windows";
+} else if (navigator?.appVersion != null) {
+  isWindows = navigator.appVersion.includes("Win");
+}
+
+export { isWindows };

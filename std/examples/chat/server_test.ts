@@ -5,17 +5,15 @@ import { BufReader } from "../../io/bufio.ts";
 import { connectWebSocket, WebSocket } from "../../ws/mod.ts";
 import { delay } from "../../async/delay.ts";
 
-const { test } = Deno;
-
-async function startServer(): Promise<Deno.Process> {
+async function startServer(): Promise<
+  Deno.Process<Deno.RunOptions & { stdout: "piped" }>
+> {
   const server = Deno.run({
-    // TODO(lucacasonato): remove unstable once possible
     cmd: [
       Deno.execPath(),
       "run",
       "--allow-net",
       "--allow-read",
-      "--unstable",
       "server.ts",
     ],
     cwd: "examples/chat",
@@ -27,14 +25,14 @@ async function startServer(): Promise<Deno.Process> {
     const s = await r.readLine();
     assert(s !== null && s.includes("chat server starting"));
   } catch (err) {
-    server.stdout!.close();
+    server.stdout.close();
     server.close();
   }
 
   return server;
 }
 
-test({
+Deno.test({
   name: "[examples/chat] GET / should serve html",
   async fn() {
     const server = await startServer();
@@ -46,13 +44,13 @@ test({
       assert(html.includes("ws chat example"), "body is ok");
     } finally {
       server.close();
-      server.stdout!.close();
+      server.stdout.close();
     }
     await delay(10);
   },
 });
 
-test({
+Deno.test({
   name: "[examples/chat] GET /ws should upgrade conn to ws",
   async fn() {
     const server = await startServer();
@@ -66,7 +64,7 @@ test({
       assertEquals((await it.next()).value, "[1]: Hello");
     } finally {
       server.close();
-      server.stdout!.close();
+      server.stdout.close();
       ws!.conn.close();
     }
   },

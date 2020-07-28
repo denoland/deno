@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-/**
- * A module to print ANSI terminal colors. Inspired by chalk, kleur, and colors
+/** A module to print ANSI terminal colors. Inspired by chalk, kleur, and colors
  * on npm.
  *
  * ```
@@ -10,8 +9,10 @@
  *
  * This module supports `NO_COLOR` environmental variable disabling any coloring
  * if `NO_COLOR` is set.
- */
-const { noColor } = Deno;
+ *
+ * This module is browser compatible. */
+
+const noColor = globalThis.Deno?.noColor ?? true;
 
 interface Code {
   open: string;
@@ -185,7 +186,10 @@ export function rgb24(str: string, color: number | Rgb): string {
   if (typeof color === "number") {
     return run(
       str,
-      code([38, 2, (color >> 16) & 0xff, (color >> 8) & 0xff, color & 0xff], 39)
+      code(
+        [38, 2, (color >> 16) & 0xff, (color >> 8) & 0xff, color & 0xff],
+        39,
+      ),
     );
   }
   return run(
@@ -198,8 +202,8 @@ export function rgb24(str: string, color: number | Rgb): string {
         clampAndTruncate(color.g),
         clampAndTruncate(color.b),
       ],
-      39
-    )
+      39,
+    ),
   );
 }
 
@@ -216,7 +220,10 @@ export function bgRgb24(str: string, color: number | Rgb): string {
   if (typeof color === "number") {
     return run(
       str,
-      code([48, 2, (color >> 16) & 0xff, (color >> 8) & 0xff, color & 0xff], 49)
+      code(
+        [48, 2, (color >> 16) & 0xff, (color >> 8) & 0xff, color & 0xff],
+        49,
+      ),
     );
   }
   return run(
@@ -229,8 +236,8 @@ export function bgRgb24(str: string, color: number | Rgb): string {
         clampAndTruncate(color.g),
         clampAndTruncate(color.b),
       ],
-      49
-    )
+      49,
+    ),
   );
 }
 
@@ -240,7 +247,7 @@ const ANSI_PATTERN = new RegExp(
     "[\\u001B\\u009B][[\\]()#;?]*(?:(?:(?:[a-zA-Z\\d]*(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]*)*)?\\u0007)",
     "(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PR-TZcf-ntqry=><~]))",
   ].join("|"),
-  "g"
+  "g",
 );
 
 export function stripColor(string: string): string {

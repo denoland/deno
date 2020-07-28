@@ -29,5 +29,5 @@ console.log(
   loadedJsx1,
   loadedJsx2,
   loadedJsx3,
-  loadedJsx4
+  loadedJsx4,
 );

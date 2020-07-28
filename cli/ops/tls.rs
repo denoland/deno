@@ -5,6 +5,7 @@ use crate::op_error::OpError;
 use crate::resolve_addr::resolve_addr;
 use crate::state::State;
 use deno_core::CoreIsolate;
+use deno_core::CoreIsolateState;
 use deno_core::ZeroCopyBuf;
 use futures::future::poll_fn;
 use futures::future::FutureExt;
@@ -53,16 +54,16 @@ struct StartTLSArgs {
 }
 
 pub fn op_start_tls(
-  isolate: &mut CoreIsolate,
+  isolate_state: &mut CoreIsolateState,
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   state.check_unstable("Deno.startTls");
   let args: StartTLSArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let cert_file = args.cert_file.clone();
-  let resource_table = isolate.resource_table.clone();
+  let resource_table = isolate_state.resource_table.clone();
 
   let mut domain = args.hostname;
   if domain.is_empty() {
@@ -132,14 +133,14 @@ pub fn op_start_tls(
 }
 
 pub fn op_connect_tls(
-  isolate: &mut CoreIsolate,
+  isolate_state: &mut CoreIsolateState,
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let args: ConnectTLSArgs = serde_json::from_value(args)?;
   let cert_file = args.cert_file.clone();
-  let resource_table = isolate.resource_table.clone();
+  let resource_table = isolate_state.resource_table.clone();
   state.check_net(&args.hostname, args.port)?;
   if let Some(path) = cert_file.clone() {
     state.check_read(Path::new(&path))?;
@@ -306,10 +307,10 @@ struct ListenTlsArgs {
 }
 
 fn op_listen_tls(
-  isolate: &mut CoreIsolate,
+  isolate_state: &mut CoreIsolateState,
   state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let args: ListenTlsArgs = serde_json::from_value(args)?;
   assert_eq!(args.transport, "tcp");
@@ -337,7 +338,7 @@ fn op_listen_tls(
     local_addr,
   };
 
-  let mut resource_table = isolate.resource_table.borrow_mut();
+  let mut resource_table = isolate_state.resource_table.borrow_mut();
   let rid = resource_table.add("tlsListener", Box::new(tls_listener_resource));
 
   Ok(JsonOp::Sync(json!({
@@ -356,14 +357,14 @@ struct AcceptTlsArgs {
 }
 
 fn op_accept_tls(
-  isolate: &mut CoreIsolate,
+  isolate_state: &mut CoreIsolateState,
   _state: &State,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let args: AcceptTlsArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
-  let resource_table = isolate.resource_table.clone();
+  let resource_table = isolate_state.resource_table.clone();
   let op = async move {
     let accept_fut = poll_fn(|cx| {
       let mut resource_table = resource_table.borrow_mut();

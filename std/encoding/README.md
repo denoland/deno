@@ -2,6 +2,7 @@
 
 Helper module for dealing with external data structures.
 
+- [`ascii85`](#ascii85)
 - [`base32`](#base32)
 - [`binary`](#binary)
 - [`csv`](#csv)
@@ -29,18 +30,61 @@ writeVarbig(w: Deno.Writer, x: bigint, o: VarbigOptions = {}): Promise<number>
 
 ## CSV
 
-- **`parse(input: string | BufReader, opt: ParseCsvOptions): Promise<unknown[]>`**:
-  Read the string/buffer into an
+### API
+
+#### `readMatrix(reader: BufReader, opt: ReadOptions = { comma: ",", trimLeadingSpace: false, lazyQuotes: false }): Promise<string[][]>`
+
+Parse the CSV from the `reader` with the options provided and return
+`string[][]`.
+
+#### `parse(input: string | BufReader, opt: ParseOptions = { header: false }): Promise<unknown[]>`:
+
+Parse the CSV string/buffer with the options provided. The result of this
+function is as follows:
+
+- If you don't provide both `opt.header` and `opt.parse`, it returns
+  `string[][]`.
+- If you provide `opt.header` but not `opt.parse`, it returns `object[]`.
+- If you provide `opt.parse`, it returns an array where each element is the
+  value returned from `opt.parse`.
+
+##### `ParseOptions`
+
+- **`header: boolean | string[] | HeaderOptions[];`**: If a boolean is provided,
+  the first line will be used as Header definitions. If `string[]` or
+  `HeaderOptions[]` those names will be used for header definition.
+- **`parse?: (input: unknown) => unknown;`**: Parse function for the row, which
+  will be executed after parsing of all columns. Therefore if you don't provide
+  header and parse function with headers, input will be `string[]`.
+
+##### `HeaderOptions`
+
+- **`name: string;`**: Name of the header to be used as property.
+- **`parse?: (input: string) => unknown;`**: Parse function for the column. This
+  is executed on each entry of the header. This can be combined with the Parse
+  function of the rows.
+
+##### `ReadOptions`
+
+- **`comma?: string;`**: Character which separates values. Default: `','`
+- **`comment?: string;`**: Character to start a comment. Default: `'#'`
+- **`trimLeadingSpace?: boolean;`**: Flag to trim the leading space of the
+  value. Default: `false`
+- **`lazyQuotes?: boolean;`**: Allow unquoted quote in a quoted field or non
+  double quoted quotes in quoted field. Default: 'false`
+- **`fieldsPerRecord?`**: Enabling the check of fields for each row. If == 0,
+  first row is used as referral for the number of fields.
 
 ### Usage
 
 ```ts
+import { parse } from "https://deno.land/std/encoding/csv.ts";
 const string = "a,b,c\nd,e,f";
 
 console.log(
   await parse(string, {
     header: false,
-  })
+  }),
 );
 // output:
 // [["a", "b", "c"], ["d", "e", "f"]]
@@ -140,24 +184,10 @@ will output:
 }
 ```
 
-### Usage
-
-#### Parse
+### Basic usage
 
 ```ts
-import { parse } from "./parser.ts";
-import { readFileStrSync } from "../fs/read_file_str.ts";
-
-const tomlObject = parse(readFileStrSync("file.toml"));
-
-const tomlString = 'foo.bar = "Deno"';
-const tomlObject22 = parse(tomlString);
-```
-
-#### Stringify
-
-```ts
-import { stringify } from "./parser.ts";
+import { parse, stringify } from "https://deno.land/std/encoding/toml.ts";
 const obj = {
   bin: [
     { name: "deno", path: "cli/main.rs" },
@@ -166,6 +196,32 @@ const obj = {
   nib: [{ name: "node", path: "not_found" }],
 };
 const tomlString = stringify(obj);
+console.log(tomlString);
+
+// =>
+// [[bin]]
+// name = "deno"
+// path = "cli/main.rs"
+
+// [[bin]]
+// name = "deno_core"
+// path = "src/foo.rs"
+
+// [[nib]]
+// name = "node"
+// path = "not_found"
+
+const tomlObject = parse(tomlString);
+console.log(tomlObject);
+
+// =>
+// {
+//     bin: [
+//       { name: "deno", path: "cli/main.rs" },
+//       { name: "deno_core", path: "src/foo.rs" }
+//     ],
+//     nib: [ { name: "node", path: "not_found" } ]
+//   }
 ```
 
 ## YAML
@@ -266,4 +322,59 @@ console.log(binaryData);
 
 console.log(encode(binaryData));
 // => RC2E6GA=
+```
+
+## ascii85
+
+Ascii85/base85 encoder and decoder with support for multiple standards
+
+### Basic usage
+
+`encode` encodes a `Uint8Array` to a ascii85 representation, and `decode`
+decodes the given ascii85 representation to a `Uint8Array`.
+
+```ts
+import { encode, decode } from "https://deno.land/std/encoding/ascii85.ts";
+
+const a85Repr = "LpTqp";
+
+const binaryData = decode(a85Repr);
+console.log(binaryData);
+// => Uint8Array [ 136, 180, 79, 24 ]
+
+console.log(encode(binaryData));
+// => LpTqp
+```
+
+### Specifying a standard and delimeter
+
+By default all functions are using the most popular Adobe version of ascii85 and
+not adding any delimeter. However, there are three more standards supported -
+btoa (different delimeter and additional compression of 4 bytes equal to 32),
+[Z85](https://rfc.zeromq.org/spec/32/) and
+[RFC 1924](https://tools.ietf.org/html/rfc1924). It's possible to use a
+different encoding by specifying it in `options` object as a second parameter.
+
+Similarly, it's possible to make `encode` add a delimeter (`<~` and `~>` for
+Adobe, `xbtoa Begin` and `xbtoa End` with newlines between the delimeters and
+encoded data for btoa. Checksums for btoa are not supported. Delimeters are not
+supported by other encodings.)
+
+encoding examples:
+
+```ts
+import { encode, decode } from "https://deno.land/std/encoding/ascii85.ts";
+const binaryData = new Uint8Array([136, 180, 79, 24]);
+console.log(encode(binaryData));
+// => LpTqp
+console.log(encode(binaryData, { standard: "Adobe", delimeter: true }));
+// => <~LpTqp~>
+console.log(encode(binaryData, { standard: "btoa", delimeter: true }));
+/* => xbtoa Begin
+LpTqp
+xbtoa End */
+console.log(encode(binaryData, { standard: "RFC 1924" }));
+// => h_p`_
+console.log(encode(binaryData, { standard: "Z85" }));
+// => H{P}{
 ```

@@ -27,7 +27,7 @@ export function signal(
 
   if (signos.length < 1) {
     throw new Error(
-      "No signals are given. You need to specify at least one signal to create a signal stream."
+      "No signals are given. You need to specify at least one signal to create a signal stream.",
     );
   }
 
@@ -61,12 +61,12 @@ export function signal(
 export function onSignal(signo: number, callback: () => void): Disposable {
   const sig = signal(signo);
 
-  //setTimeout allows `sig` to be returned before blocking on the await
-  setTimeout(async () => {
+  // allows `sig` to be returned before blocking on the await
+  (async (): Promise<void> => {
     for await (const _ of sig) {
       callback();
     }
-  }, 0);
+  })();
 
   return sig;
 }

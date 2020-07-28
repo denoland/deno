@@ -6,7 +6,7 @@
 /* eslint-disable max-len */
 
 import { YAMLError } from "../error.ts";
-import { RepresentFn, StyleVariant, Type } from "../type.ts";
+import type { RepresentFn, StyleVariant, Type } from "../type.ts";
 import * as common from "../utils.ts";
 import { DumperState, DumperStateOptions } from "./dumper_state.ts";
 
@@ -92,7 +92,7 @@ function encodeHex(character: number): string {
     length = 8;
   } else {
     throw new YAMLError(
-      "code point within a string may not be greater than 0xFFFFFFFF"
+      "code point within a string may not be greater than 0xFFFFFFFF",
     );
   }
 
@@ -242,14 +242,13 @@ function chooseScalarStyle(
   singleLineOnly: boolean,
   indentPerLevel: number,
   lineWidth: number,
-  testAmbiguousType: (...args: Any[]) => Any
+  testAmbiguousType: (...args: Any[]) => Any,
 ): number {
   const shouldTrackWidth = lineWidth !== -1;
   let hasLineBreak = false,
     hasFoldableLine = false, // only checked if shouldTrackWidth
     previousLineBreak = -1, // count the first line correctly
-    plain =
-      isPlainSafeFirst(string.charCodeAt(0)) &&
+    plain = isPlainSafeFirst(string.charCodeAt(0)) &&
       !isWhitespace(string.charCodeAt(string.length - 1));
 
   let char: number, i: number;
@@ -271,8 +270,7 @@ function chooseScalarStyle(
         hasLineBreak = true;
         // Check if any line can be folded.
         if (shouldTrackWidth) {
-          hasFoldableLine =
-            hasFoldableLine ||
+          hasFoldableLine = hasFoldableLine ||
             // Foldable line = too long, and not more-indented.
             (i - previousLineBreak - 1 > lineWidth &&
               string[previousLineBreak + 1] !== " ");
@@ -284,8 +282,7 @@ function chooseScalarStyle(
       plain = plain && isPlainSafe(char);
     }
     // in case the end is missing a \n
-    hasFoldableLine =
-      hasFoldableLine ||
+    hasFoldableLine = hasFoldableLine ||
       (shouldTrackWidth &&
         i - previousLineBreak - 1 > lineWidth &&
         string[previousLineBreak + 1] !== " ");
@@ -387,8 +384,7 @@ function foldString(string: string, width: number): string {
     const prefix = match[1],
       line = match[2];
     moreIndented = line[0] === " ";
-    result +=
-      prefix +
+    result += prefix +
       (!prevMoreIndented && !moreIndented && line !== "" ? "\n" : "") +
       // eslint-disable-next-line @typescript-eslint/no-use-before-define
       foldLine(line, width);
@@ -412,7 +408,7 @@ function escapeString(string: string): string {
       if (nextChar >= 0xdc00 && nextChar <= 0xdfff /* low surrogate */) {
         // Combine the surrogate pair and store it escaped.
         result += encodeHex(
-          (char - 0xd800) * 0x400 + nextChar - 0xdc00 + 0x10000
+          (char - 0xd800) * 0x400 + nextChar - 0xdc00 + 0x10000,
         );
         // Advance index one extra since we already used that char here.
         i++;
@@ -420,10 +416,9 @@ function escapeString(string: string): string {
       }
     }
     escapeSeq = ESCAPE_SEQUENCES[char];
-    result +=
-      !escapeSeq && isPrintable(char)
-        ? string[i]
-        : escapeSeq || encodeHex(char);
+    result += !escapeSeq && isPrintable(char)
+      ? string[i]
+      : escapeSeq || encodeHex(char);
   }
 
   return result;
@@ -453,7 +448,7 @@ function writeScalar(
   state: DumperState,
   string: string,
   level: number,
-  iskey: boolean
+  iskey: boolean,
 ): void {
   state.dump = ((): string => {
     if (string.length === 0) {
@@ -476,15 +471,13 @@ function writeScalar(
     // This behaves better than a constant minimum width which disallows
     // narrower options, or an indent threshold which causes the width
     // to suddenly increase.
-    const lineWidth =
-      state.lineWidth === -1
-        ? -1
-        : Math.max(Math.min(state.lineWidth, 40), state.lineWidth - indent);
+    const lineWidth = state.lineWidth === -1
+      ? -1
+      : Math.max(Math.min(state.lineWidth, 40), state.lineWidth - indent);
 
     // Without knowing if keys are implicit/explicit,
     // assume implicit for safety.
-    const singleLineOnly =
-      iskey ||
+    const singleLineOnly = iskey ||
       // No block styles in flow mode.
       (state.flowLevel > -1 && level >= state.flowLevel);
     function testAmbiguity(str: string): boolean {
@@ -497,7 +490,7 @@ function writeScalar(
         singleLineOnly,
         state.indent,
         lineWidth,
-        testAmbiguity
+        testAmbiguity,
       )
     ) {
       case STYLE_PLAIN:
@@ -505,13 +498,15 @@ function writeScalar(
       case STYLE_SINGLE:
         return `'${string.replace(/'/g, "''")}'`;
       case STYLE_LITERAL:
-        return `|${blockHeader(string, state.indent)}${dropEndingNewline(
-          indentString(string, indent)
-        )}`;
+        return `|${blockHeader(string, state.indent)}${
+          dropEndingNewline(indentString(string, indent))
+        }`;
       case STYLE_FOLDED:
-        return `>${blockHeader(string, state.indent)}${dropEndingNewline(
-          indentString(foldString(string, lineWidth), indent)
-        )}`;
+        return `>${blockHeader(string, state.indent)}${
+          dropEndingNewline(
+            indentString(foldString(string, lineWidth), indent),
+          )
+        }`;
       case STYLE_DOUBLE:
         return `"${escapeString(string)}"`;
       default:
@@ -523,7 +518,7 @@ function writeScalar(
 function writeFlowSequence(
   state: DumperState,
   level: number,
-  object: Any
+  object: Any,
 ): void {
   let _result = "";
   const _tag = state.tag;
@@ -545,7 +540,7 @@ function writeBlockSequence(
   state: DumperState,
   level: number,
   object: Any,
-  compact = false
+  compact = false,
 ): void {
   let _result = "";
   const _tag = state.tag;
@@ -575,7 +570,7 @@ function writeBlockSequence(
 function writeFlowMapping(
   state: DumperState,
   level: number,
-  object: Any
+  object: Any,
 ): void {
   let _result = "";
   const _tag = state.tag,
@@ -624,7 +619,7 @@ function writeBlockMapping(
   state: DumperState,
   level: number,
   object: Any,
-  compact = false
+  compact = false,
 ): void {
   const _tag = state.tag,
     objectKeyList = Object.keys(object);
@@ -665,8 +660,7 @@ function writeBlockMapping(
       continue; // Skip this pair because of invalid key.
     }
 
-    explicitPair =
-      (state.tag !== null && state.tag !== "?") ||
+    explicitPair = (state.tag !== null && state.tag !== "?") ||
       (state.dump && state.dump.length > 1024);
 
     if (explicitPair) {
@@ -707,7 +701,7 @@ function writeBlockMapping(
 function detectType(
   state: DumperState,
   object: Any,
-  explicit = false
+  explicit = false,
 ): boolean {
   const typeList = explicit ? state.explicitTypes : state.implicitTypes;
 
@@ -733,11 +727,11 @@ function detectType(
         } else if (_hasOwnProperty.call(type.represent, style)) {
           _result = (type.represent as ArrayObject<RepresentFn>)[style](
             object,
-            style
+            style,
           );
         } else {
           throw new YAMLError(
-            `!<${type.tag}> tag resolver accepts not "${style}" style`
+            `!<${type.tag}> tag resolver accepts not "${style}" style`,
           );
         }
 
@@ -760,7 +754,7 @@ function writeNode(
   object: Any,
   block: boolean,
   compact: boolean,
-  iskey = false
+  iskey = false,
 ): boolean {
   state.tag = null;
   state.dump = object;
@@ -843,7 +837,7 @@ function writeNode(
 function inspectNode(
   object: Any,
   objects: Any[],
-  duplicatesIndexes: number[]
+  duplicatesIndexes: number[],
 ): void {
   if (object !== null && typeof object === "object") {
     const index = objects.indexOf(object);

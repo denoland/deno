@@ -1,4 +1,4 @@
-#!/usr/bin/env -S deno --allow-net --allow-env
+#!/usr/bin/env -S deno run --allow-net --allow-env
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // A program to post files to gist.github.com. Use the following to install it:
 // deno install -f --allow-env --allow-read --allow-net=api.github.com https://deno.land/std/examples/gist.ts
@@ -21,7 +21,7 @@ const parsedArgs = parse(Deno.args);
 if (parsedArgs._.length === 0) {
   console.error(
     "Usage: gist.ts --allow-env --allow-net [-t|--title Example] some_file " +
-      "[next_file]"
+      "[next_file]",
   );
   Deno.exit(1);
 }

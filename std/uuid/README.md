@@ -11,5 +11,5 @@ import { v4 } from "https://deno.land/std/uuid/mod.ts";
 const myUUID = v4.generate();
 
 // Validate a v4 uuid
-const isValid = v4.validate(aString);
+const isValid = v4.validate(myUUID);
 ```

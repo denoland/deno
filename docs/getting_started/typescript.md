@@ -2,12 +2,44 @@
 
 <!-- TODO(lucacasonato): text on 'just import .ts' -->
 
-### Using external type definitions
-
 Deno supports both JavaScript and TypeScript as first class languages at
 runtime. This means it requires fully qualified module names, including the
 extension (or a server providing the correct media type). In addition, Deno has
-no "magical" module resolution.
+no "magical" module resolution. Instead, imported modules are specified as files
+(including extensions) or fully qualified URL imports. Typescript modules can be
+directly imported. E.g.
+
+```
+import { Response } from "https://deno.land/std@0.53.0/http/server.ts";
+import { queue } from "./collections.ts";
+```
+
+### `--no-check` option
+
+When using `deno run`, `deno test`, `deno cache`,`deno info`, or `deno bundle`
+you can specify the `--no-check` flag to disable TypeScript type checking. This
+can significantly reduce the time that program startup takes. This can be very
+useful when type checking is provided by your editor and you want startup time
+to be as fast as possible (for example when restarting the program automatically
+with a file watcher).
+
+Because `--no-check` does not do TypeScript type checking we can not
+automatically remove type only imports and exports as this would require type
+information. For this purpose TypeScript provides the
+[`import type` and `export type` syntax](https://www.typescriptlang.org/docs/handbook/release-notes/typescript-3-8.html#type-only-imports-and-exports).
+To export a type in a different file use
+`export type { AnInterface } from "./mod.ts";`. To import a type use
+`import type { AnInterface } from "./mod.ts";`. You can check that you are using
+`import type` and `export type` where necessary by setting the
+`importsNotUsedAsValues` TypeScript compiler option to `"error"`. You can see an
+example `tsconfig.json` with this option
+[in the standard library](https://github.com/denoland/deno/blob/master/std/tsconfig_test.json).
+
+Because there is no type information when using `--no-check`, `const enum` is
+not supported because it is type-directed. `--no-check` also does not support
+the legacy `import =` and `export =` syntax.
+
+### Using external type definitions
 
 The out of the box TypeScript compiler though relies on both extension-less
 modules and the Node.js module resolution logic to apply types to JavaScript
@@ -24,7 +56,7 @@ takes the form of a compiler hint. Compiler hints inform Deno the location of
 `.d.ts` files and the JavaScript code that is imported that they relate to. The
 hint is `@deno-types` and when specified the value will be used in the compiler
 instead of the JavaScript module. For example, if you had `foo.js`, but you know
-that along side of it was `foo.d.ts` which was the types for the file, the code
+that alongside of it was `foo.d.ts` which was the types for the file, the code
 would look like this:
 
 ```ts
@@ -48,7 +80,7 @@ If you are hosting modules which you want to be consumed by Deno, and you want
 to inform Deno about the location of the type definitions, you can utilize a
 triple-slash directive in the actual code. For example, if you have a JavaScript
 module and you would like to provide Deno with the location of the type
-definitions which happen to be alongside that file, your JavaScript module named
+definition which happens to be alongside that file, your JavaScript module named
 `foo.js` might look like this:
 
 ```js
@@ -98,7 +130,7 @@ way to support customization a configuration file such as `tsconfig.json` might
 be provided to Deno on program execution.
 
 You need to explicitly tell Deno where to look for this configuration by setting
-the `-c` argument when executing your application.
+the `-c` (or `--config`) argument when executing your application.
 
 ```shell
 deno run -c tsconfig.json mod.ts

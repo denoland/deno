@@ -13,7 +13,7 @@ jobs:
     strategy:
       matrix:
         config:
-          - os: macOS-latest
+          - os: macos-10.15
             kind: test_release
           - os: windows-2019
             kind: test_release
@@ -44,7 +44,7 @@ jobs:
         run: git config --global core.symlinks true
 
       - name: Clone repository
-        uses: actions/checkout@v1
+        uses: actions/checkout@v2
         with:
           # Use depth > 1, because sometimes we need to rebuild master and if
           # other commits have landed it will become impossible to rebuild if
@@ -61,12 +61,18 @@ jobs:
           !startsWith(github.ref, 'refs/tags/std/')
         run: |
           mkdir -p target/release
-          tar --exclude=.cargo_home --exclude=".git*" --exclude=target --exclude=deno_typescript/typescript/tests --exclude=third_party/cpplint --exclude=third_party/node_modules --exclude=third_party/python_packages --exclude=third_party/prebuilt -czvf target/release/deno_src.tar.gz -C .. deno
+          tar --exclude=.cargo_home --exclude=".git*" --exclude=target --exclude=third_party/node_modules --exclude=third_party/python_packages --exclude=third_party/prebuilt -czvf target/release/deno_src.tar.gz -C .. deno
 
       - name: Install rust
         uses: hecrj/setup-rust-action@v1
         with:
-          rust-version: "1.43.0"
+          rust-version: 1.45.0
+
+      - name: Install rust targets
+        run: |
+          # Necessary for the std/wasi tests
+          rustup target add wasm32-unknown-unknown
+          rustup target add wasm32-wasi
 
       - name: Install clippy and rustfmt
         if: matrix.config.kind == 'lint'
@@ -104,7 +110,7 @@ jobs:
         run: echo "::set-env name=CARGO_HOME::$(pwd)/.cargo_home"
 
       - name: Cache
-        uses: denoland/github-actions-cache@stable-prerelease
+        uses: actions/cache@v2
         with:
           # Note: crates from the denoland/deno git repo always get rebuilt,
           # and their outputs ('deno', 'libdeno.rlib' etc.) are quite big,
@@ -226,9 +232,6 @@ jobs:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         run: |
           cd core
-          cargo publish
-          cd ../deno_typescript
-          sleep 30
           cargo publish
           cd ../cli
           sleep 30

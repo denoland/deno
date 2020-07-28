@@ -1,18 +1,16 @@
 // Copyright the Browserify authors. MIT License.
 // Ported from https://github.com/browserify/path-browserify/
-
-const { test } = Deno;
 import { assertEquals } from "../testing/asserts.ts";
 import * as path from "./mod.ts";
 
-test("isAbsolute", function () {
+Deno.test("isAbsolute", function () {
   assertEquals(path.posix.isAbsolute("/home/foo"), true);
   assertEquals(path.posix.isAbsolute("/home/foo/.."), true);
   assertEquals(path.posix.isAbsolute("bar/"), false);
   assertEquals(path.posix.isAbsolute("./baz"), false);
 });
 
-test("isAbsoluteWin32", function () {
+Deno.test("isAbsoluteWin32", function () {
   assertEquals(path.win32.isAbsolute("/"), true);
   assertEquals(path.win32.isAbsolute("//"), true);
   assertEquals(path.win32.isAbsolute("//server"), true);

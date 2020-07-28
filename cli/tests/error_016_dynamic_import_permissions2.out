@@ -1,2 +1,3 @@
 [WILDCARD]
 error: Uncaught TypeError: read access to "[WILDCARD]passwd", run again with the --allow-read flag
+Imported from "[WILDCARD]evil_remote_import.js:3"

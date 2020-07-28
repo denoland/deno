@@ -1,24 +1,23 @@
-const { test } = Deno;
 import { assertEquals, assertThrows } from "../testing/asserts.ts";
 import { delay } from "../async/delay.ts";
 import { signal, onSignal } from "./mod.ts";
 
-test({
+Deno.test({
   name: "signal() throws when called with empty signals",
   ignore: Deno.build.os === "windows",
   fn() {
     assertThrows(
       () => {
-        // @ts-ignore
-        signal();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (signal as any)();
       },
       Error,
-      "No signals are given. You need to specify at least one signal to create a signal stream."
+      "No signals are given. You need to specify at least one signal to create a signal stream.",
     );
   },
 });
 
-test({
+Deno.test({
   name: "signal() iterates for multiple signals",
   ignore: Deno.build.os === "windows",
   fn: async (): Promise<void> => {
@@ -29,7 +28,7 @@ test({
     const sig = signal(
       Deno.Signal.SIGUSR1,
       Deno.Signal.SIGUSR2,
-      Deno.Signal.SIGINT
+      Deno.Signal.SIGINT,
     );
 
     setTimeout(async () => {
@@ -59,7 +58,7 @@ test({
   },
 });
 
-test({
+Deno.test({
   name: "onSignal() registers and disposes of event handler",
   ignore: Deno.build.os === "windows",
   async fn() {

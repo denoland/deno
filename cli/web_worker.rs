@@ -91,12 +91,7 @@ impl WebWorker {
     let mut worker = Worker::new(name, startup_data, state_);
 
     let terminated = Arc::new(AtomicBool::new(false));
-    let isolate_handle = worker
-      .isolate
-      .v8_isolate
-      .as_mut()
-      .unwrap()
-      .thread_safe_handle();
+    let isolate_handle = worker.isolate.thread_safe_handle();
     let (terminate_tx, terminate_rx) = mpsc::channel::<()>(1);
 
     let handle = WebWorkerHandle {
@@ -126,6 +121,7 @@ impl WebWorker {
         handle,
       );
       ops::worker_host::init(isolate, &state);
+      ops::idna::init(isolate, &state);
       ops::io::init(isolate, &state);
       ops::resources::init(isolate, &state);
       ops::errors::init(isolate, &state);
@@ -217,7 +213,6 @@ impl Future for WebWorker {
       match r {
         Some(msg) => {
           let msg = String::from_utf8(msg.to_vec()).unwrap();
-          debug!("received message from host: {}", msg);
           let script = format!("workerMessageRecvCallback({})", msg);
 
           if let Err(e) = worker.execute(&script) {
