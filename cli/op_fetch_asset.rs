@@ -20,6 +20,7 @@ fn get_asset(name: &str) -> Option<&'static str> {
     "system_loader_es5.js" => Some(include_str!("system_loader_es5.js")),
     "bootstrap.ts" => Some("console.log(\"hello deno\");"),
     "typescript.d.ts" => inc!("typescript.d.ts"),
+    "swc.d.ts" => inc!("swc.d.ts"),
     "lib.dom.d.ts" => inc!("lib.dom.d.ts"),
     "lib.dom.iterable.d.ts" => inc!("lib.dom.iterable.d.ts"),
     "lib.es5.d.ts" => inc!("lib.es5.d.ts"),
