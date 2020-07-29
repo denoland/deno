@@ -734,10 +734,53 @@ async fn test_command(
       .filter(|e| e.url.contains(cwd.as_os_str().to_str().unwrap()))
       .collect::<Vec<ScriptCoverage>>();
 
-    // TODO(caspervonb) print a summary report to console
     // TODO(caspervonb) add support for lcov output (see geninfo(1) for format spec).
+    println!("test coverage:");
 
-    write_json_to_stdout(&filtered_coverage)?;
+    for script in filtered_coverage {
+      let url = Url::parse(&script.url)?;
+      let path = url.to_file_path().unwrap();
+      let source = tokio::fs::read_to_string(&path).await?;
+
+      let mut total = 0;
+      let mut covered = 0;
+
+      let mut offset = 0;
+      for line in source.lines() {
+        let line_start_offset = offset;
+        let line_end_offset = line_start_offset + line.len();
+
+        let mut count = 1;
+        let mut ignore = false;
+
+        if line.len() == 0 {
+          ignore = true;
+        }
+
+        for function in &script.functions {
+          for range in &function.ranges {
+            if range.start_offset <= line_start_offset
+              && range.end_offset >= line_end_offset
+              && !ignore
+            {
+              count = range.count;
+            }
+          }
+        }
+
+        if count > 0 {
+          covered += 1;
+        }
+
+        total += 1;
+
+        offset += line.len();
+      }
+
+      let relative_path = path.strip_prefix(&cwd)?;
+      let result = (covered as f32 / total as f32) * 100.0;
+      println!("{} {:.3}%", relative_path.to_str().unwrap(), result);
+    }
   }
 
   Ok(())
