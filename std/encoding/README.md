@@ -144,14 +144,13 @@ Inline tables are supported. See below:
 
 ```toml
 animal = { type = { name = "pug" } }
-## Output
+## Output { animal: { type: { name: "pug" } } }
 animal = { type.name = "pug" }
-## Output { animal : { type : { name : "pug" } }
+## Output { animal: { type : { name : "pug" } }
 animal.as.leaders = "tosin"
 ## Output { animal: { as: { leaders: "tosin" } } }
 "tosin.abasi" = "guitarist"
-## Output
-"tosin.abasi" : "guitarist"
+## Output { tosin.abasi: "guitarist" }
 ```
 
 ##### Array of Tables
