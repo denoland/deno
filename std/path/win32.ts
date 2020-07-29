@@ -914,7 +914,9 @@ export function parse(path: string): ParsedPath {
  * are ignored.
  */
 export function fromFileUrl(url: string | URL): string {
-  return (url instanceof URL ? url : new URL(url)).pathname
-    .replace(/^\/*([A-Za-z]:)(\/|$)/, "$1/")
-    .replace(/\//g, "\\");
+  return decodeURIComponent(
+    (url instanceof URL ? url : new URL(url)).pathname
+      .replace(/^\/*([A-Za-z]:)(\/|$)/, "$1/")
+      .replace(/\//g, "\\"),
+  );
 }
