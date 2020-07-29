@@ -71,6 +71,16 @@ pub enum StartupData<'a> {
   None,
 }
 
+impl StartupData<'_> {
+  fn into_options(self) -> (Option<OwnedScript>, Option<Snapshot>) {
+    match self {
+      Self::Script(script) => (Some(script.into()), None),
+      Self::Snapshot(snapshot) => (None, Some(snapshot)),
+      Self::None => (None, None),
+    }
+  }
+}
+
 type JSErrorCreateFn = dyn Fn(JSError) -> ErrBox;
 
 /// A single execution context of JavaScript. Corresponds roughly to the "Web
@@ -172,12 +182,7 @@ impl CoreIsolate {
   /// startup_data defines the snapshot or script used at startup to initialize
   /// the isolate.
   pub fn new(startup_data: StartupData, will_snapshot: bool) -> Self {
-    let (startup_script, startup_snapshot) = match startup_data {
-      StartupData::Script(script) => (Some(script.into()), None),
-      StartupData::Snapshot(snapshot) => (None, Some(snapshot)),
-      StartupData::None => (None, None),
-    };
-
+    let (startup_script, startup_snapshot) = startup_data.into_options();
     let options = IsolateOptions {
       will_snapshot,
       startup_script,
