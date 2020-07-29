@@ -172,10 +172,17 @@ pub unsafe fn v8_init() {
   v8::V8::set_flags_from_command_line(argv);
 }
 
+/// Minimum and maximum bytes of heap used in an isolate
+pub struct HeapLimits {
+  pub min: usize,
+  pub max: usize,
+}
+
 pub(crate) struct IsolateOptions {
   will_snapshot: bool,
   startup_script: Option<OwnedScript>,
   startup_snapshot: Option<Snapshot>,
+  heap_limits: Option<HeapLimits>,
 }
 
 impl CoreIsolate {
@@ -187,6 +194,22 @@ impl CoreIsolate {
       will_snapshot,
       startup_script,
       startup_snapshot,
+      heap_limits: None,
+    };
+
+    Self::from_options(options)
+  }
+
+  pub fn with_heap_limits(
+    startup_data: StartupData,
+    heap_limits: HeapLimits,
+  ) -> Self {
+    let (startup_script, startup_snapshot) = startup_data.into_options();
+    let options = IsolateOptions {
+      will_snapshot: false,
+      startup_script,
+      startup_snapshot,
+      heap_limits: Some(heap_limits),
     };
 
     Self::from_options(options)
@@ -226,6 +249,10 @@ impl CoreIsolate {
       } else {
         false
       };
+
+      if let Some(heap_limits) = options.heap_limits {
+        params = params.heap_limits(heap_limits.min, heap_limits.max)
+      }
 
       let isolate = v8::Isolate::new(params);
       let mut isolate = CoreIsolate::setup_isolate(isolate);
