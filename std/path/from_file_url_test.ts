@@ -5,6 +5,7 @@ import { assertEquals } from "../testing/asserts.ts";
 Deno.test("[path] fromFileUrl", function () {
   assertEquals(posix.fromFileUrl(new URL("file:///home/foo")), "/home/foo");
   assertEquals(posix.fromFileUrl("file:///home/foo"), "/home/foo");
+  assertEquals(posix.fromFileUrl("file:///home/foo%20bar"), "/home/foo bar");
   assertEquals(posix.fromFileUrl("https://example.com/foo"), "/foo");
   assertEquals(posix.fromFileUrl("file:///"), "/");
   // Drive letters are supported platform-independently to align with the WHATWG
@@ -19,6 +20,7 @@ Deno.test("[path] fromFileUrl", function () {
 Deno.test("[path] fromFileUrl (win32)", function () {
   assertEquals(win32.fromFileUrl(new URL("file:///home/foo")), "\\home\\foo");
   assertEquals(win32.fromFileUrl("file:///home/foo"), "\\home\\foo");
+  assertEquals(win32.fromFileUrl("file:///home/foo%20bar"), "\\home\\foo bar");
   assertEquals(win32.fromFileUrl("https://example.com/foo"), "\\foo");
   assertEquals(win32.fromFileUrl("file:///"), "\\");
   assertEquals(win32.fromFileUrl("file:///c:"), "c:\\");
