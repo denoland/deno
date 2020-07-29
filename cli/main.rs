@@ -753,7 +753,7 @@ async fn test_command(
         let mut count = 1;
         let mut ignore = false;
 
-        if line.len() == 0 {
+        if line.is_empty() {
           ignore = true;
         }
 
