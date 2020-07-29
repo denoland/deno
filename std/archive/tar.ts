@@ -352,6 +352,10 @@ export class Tar {
     let info: Deno.FileInfo | undefined;
     if (opts.filePath) {
       info = await Deno.stat(opts.filePath);
+      if (info.isDirectory) {
+        info.size = 0;
+        opts.reader = new Deno.Buffer();
+      }
     }
 
     const mode = opts.fileMode || (info && info.mode) ||
