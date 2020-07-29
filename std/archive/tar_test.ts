@@ -408,8 +408,6 @@ Deno.test("directoryEntryType", async function (): Promise<void> {
   const filePath = resolve("archive", "testdata");
   tar.append("archive/testdata/", {
     filePath,
-    contentSize: 0,
-    reader: new Deno.Buffer(),
   });
 
   const outputFile = resolve("archive", "testdata", "directory_type_test.tar");
