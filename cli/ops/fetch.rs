@@ -45,7 +45,7 @@ pub fn op_fetch(
 
   let client = if let Some(rid) = args.client_rid {
     let r = resource_table_
-      .get::<HTTPClientResource>(rid)
+      .get::<HttpClientResource>(rid)
       .ok_or_else(OpError::bad_resource_id)?;
     &r.client
   } else {
@@ -118,11 +118,11 @@ pub fn op_fetch(
   Ok(JsonOp::Async(future.boxed_local()))
 }
 
-struct HTTPClientResource {
+struct HttpClientResource {
   client: Client,
 }
 
-impl HTTPClientResource {
+impl HttpClientResource {
   fn new(client: Client) -> Self {
     Self { client }
   }
@@ -131,7 +131,7 @@ impl HTTPClientResource {
 #[derive(Deserialize, Default, Debug)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
-struct CreateHTTPClientOptions {
+struct CreateHttpClientOptions {
   ca_file: Option<String>,
 }
 
@@ -141,7 +141,7 @@ fn op_create_http_client(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
-  let args: CreateHTTPClientOptions = serde_json::from_value(args)?;
+  let args: CreateHttpClientOptions = serde_json::from_value(args)?;
   let mut resource_table = isolate_state.resource_table.borrow_mut();
 
   if let Some(ca_file) = args.ca_file.clone() {
@@ -151,6 +151,6 @@ fn op_create_http_client(
   let client = create_http_client(args.ca_file).unwrap();
 
   let rid =
-    resource_table.add("httpClient", Box::new(HTTPClientResource::new(client)));
+    resource_table.add("httpClient", Box::new(HttpClientResource::new(client)));
   Ok(JsonOp::Sync(json!(rid)))
 }

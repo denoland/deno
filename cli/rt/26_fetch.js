@@ -12,13 +12,13 @@
   const { MultipartBuilder } = window.__bootstrap.multipart;
   const { Headers } = window.__bootstrap.headers;
 
-  function opCreateHTTPClient(args) {
+  function opCreateHttpClient(args) {
     return sendSync("op_create_http_client", args);
   }
 
-  class HTTPClient {
+  class HttpClient {
     constructor(init) {
-      this.rid = opCreateHTTPClient({ caFile: init?.caFile });
+      this.rid = opCreateHttpClient({ caFile: init?.caFile });
     }
   }
 
@@ -264,7 +264,7 @@
           }
         }
 
-        if (init.client instanceof HTTPClient) {
+        if (init.client instanceof HttpClient) {
           clientRid = init.client.rid;
         }
       }
@@ -389,6 +389,6 @@
   window.__bootstrap.fetch = {
     fetch,
     Response,
-    HTTPClient,
+    HttpClient,
   };
 })(this);
