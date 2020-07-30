@@ -1222,7 +1222,7 @@ declare namespace Deno {
    * const client = new Deno.HTTPClient({ caFile: "./ca.pem" });
    * const req = await fetch("https://myserver.com", { client });
    */
-  export class HTTPClient {
+  export class HttpClient {
     rid: number;
     constructor(init: HTTPClientInit);
   }
