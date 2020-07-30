@@ -27,14 +27,14 @@ Deno.test({
 
 ## Assertions
 
-There are some useful assertion utilities at https://deno.land/std@__STD_VERSION__/testing#usage
+There are some useful assertion utilities at https://deno.land/std@$STD_VERSION/testing#usage
 to make testing easier:
 
 ```ts
 import {
   assertEquals,
   assertArrayContains,
-} from "https://deno.land/std@__STD_VERSION__/testing/asserts.ts";
+} from "https://deno.land/std@$STD_VERSION/testing/asserts.ts";
 
 Deno.test("hello world", () => {
   const x = 1 + 2;
@@ -49,7 +49,7 @@ You can also test asynchronous code by passing a test function that returns a
 promise. For this you can use the `async` keyword when defining a function:
 
 ```ts
-import { delay } from "https://deno.land/std@__STD_VERSION__/async/delay.ts";
+import { delay } from "https://deno.land/std@$STD_VERSION/async/delay.ts";
 
 Deno.test("async hello world", async () => {
   const x = 1 + 2;

@@ -10,7 +10,7 @@ no "magical" module resolution. Instead, imported modules are specified as files
 directly imported. E.g.
 
 ```
-import { Response } from "https://deno.land/std@__STD_VERSION__/http/server.ts";
+import { Response } from "https://deno.land/std@$STD_VERSION/http/server.ts";
 import { queue } from "./collections.ts";
 ```
 
