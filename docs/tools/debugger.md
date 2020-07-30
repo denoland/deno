@@ -15,8 +15,8 @@ the first line of code.
 ### Chrome Devtools
 
 Let's try debugging a program using Chrome Devtools. For this, we'll use
-[file_server.ts](https://deno.land/std@$STD_VERSION/http/file_server.ts) from `std`,
-a static file server.
+[file_server.ts](https://deno.land/std@$STD_VERSION/http/file_server.ts) from
+`std`, a static file server.
 
 Use the `--inspect-brk` flag to break execution on the first line:
 

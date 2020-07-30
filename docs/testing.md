@@ -27,8 +27,8 @@ Deno.test({
 
 ## Assertions
 
-There are some useful assertion utilities at https://deno.land/std@$STD_VERSION/testing#usage
-to make testing easier:
+There are some useful assertion utilities at
+https://deno.land/std@$STD_VERSION/testing#usage to make testing easier:
 
 ```ts
 import {
