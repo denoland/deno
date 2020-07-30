@@ -914,9 +914,17 @@ export function parse(path: string): ParsedPath {
  * are ignored.
  */
 export function fromFileUrl(url: string | URL): string {
-  return decodeURIComponent(
-    (url instanceof URL ? url : new URL(url)).pathname
+  url = url instanceof URL ? url : new URL(url);
+  let path = decodeURIComponent(
+    url.pathname
       .replace(/^\/*([A-Za-z]:)(\/|$)/, "$1/")
       .replace(/\//g, "\\"),
   );
+  if (url.hostname != "") {
+    // Note: The `URL` implementation guarantees that the drive letter and
+    // hostname are mutually exclusive. Otherwise it would not have been valid
+    // to append the hostname and path like this.
+    path = `\\\\${url.hostname}${path}`;
+  }
+  return path;
 }
