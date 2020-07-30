@@ -24,6 +24,7 @@ pub fn init(i: &mut CoreIsolate, s: &State) {
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct FetchArgs {
   method: Option<String>,
   url: String,
