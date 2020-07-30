@@ -195,6 +195,7 @@
       method,
       url,
       headers: headerArray,
+      // eslint-disable-next-line @typescript-eslint/camelcase
       client_rid: clientRid,
     };
 
@@ -281,7 +282,13 @@
     let responseBody;
     let responseInit = {};
     while (remRedirectCount) {
-      const fetchResponse = await sendFetchReq(url, method, headers, body, clientRid);
+      const fetchResponse = await sendFetchReq(
+        url,
+        method,
+        headers,
+        body,
+        clientRid,
+      );
 
       if (
         NULL_BODY_STATUS.includes(fetchResponse.status) ||

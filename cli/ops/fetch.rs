@@ -45,7 +45,7 @@ pub fn op_fetch(
   let client = if let Some(rid) = args.client_rid {
     let r = resource_table_
       .get::<HTTPClientResource>(rid)
-      .ok_or(OpError::bad_resource_id())?;
+      .ok_or_else(OpError::bad_resource_id)?;
     &r.client
   } else {
     &state_.http_client
