@@ -174,7 +174,17 @@ pub unsafe fn v8_init() {
 
 /// Minimum and maximum bytes of heap used in an isolate
 pub struct HeapLimits {
-  pub min: usize,
+  /// By default V8 starts with a small heap and dynamically grows it to match
+  /// the set of live objects. This may lead to ineffective garbage collections
+  /// at startup if the live set is large. Setting the initial heap size avoids
+  /// such garbage collections. Note that this does not affect young generation
+  /// garbage collections.
+  pub initial: usize,
+  /// When the heap size approaches `max`, V8 will perform series of
+  /// garbage collections and invoke the
+  /// [NearHeapLimitCallback](TODO).
+  /// If the garbage collections do not help and the callback does not
+  /// increase the limit, then V8 will crash with V8::FatalProcessOutOfMemory.
   pub max: usize,
 }
 
@@ -200,6 +210,12 @@ impl CoreIsolate {
     Self::from_options(options)
   }
 
+  /// This is useful for controlling memory usage of scripts.
+  ///
+  /// See [`HeapLimits`](struct.HeapLimits.html) for more details.
+  ///
+  /// Make sure to use [`add_near_heap_limit_callback`]()
+  /// to prevent v8 from crashing when reaching the upper limit.
   pub fn with_heap_limits(
     startup_data: StartupData,
     heap_limits: HeapLimits,
@@ -251,7 +267,7 @@ impl CoreIsolate {
       };
 
       if let Some(heap_limits) = options.heap_limits {
-        params = params.heap_limits(heap_limits.min, heap_limits.max)
+        params = params.heap_limits(heap_limits.initial, heap_limits.max)
       }
 
       let isolate = v8::Isolate::new(params);
