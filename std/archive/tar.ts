@@ -379,6 +379,7 @@ export class Tar {
 
     const fileSize = info?.size ?? opts.contentSize;
     assert(fileSize != null, "fileSize must be set");
+
     const type = opts.type
       ? FileTypes[opts.type as keyof typeof FileTypes]
       : (info?.isDirectory ? FileTypes.directory : FileTypes.file);
@@ -601,8 +602,9 @@ export class Untar {
     );
 
     meta.fileSize = parseInt(decoder.decode(header.fileSize), 8);
-    meta.type = FileTypes[meta.type as keyof typeof FileTypes] as unknown as string ??
-      meta.type;
+    meta.type =
+      FileTypes[meta.type as keyof typeof FileTypes] as unknown as string ??
+        meta.type;
 
     return meta;
   };
