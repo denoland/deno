@@ -602,9 +602,7 @@ export class Untar {
     );
 
     meta.fileSize = parseInt(decoder.decode(header.fileSize), 8);
-    meta.type =
-      FileTypes[meta.type as keyof typeof FileTypes] as unknown as string ??
-        meta.type;
+    meta.type = FileTypes[parseInt(meta.type!)] ?? meta.type;
 
     return meta;
   };
