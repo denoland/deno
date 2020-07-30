@@ -1225,6 +1225,7 @@ declare namespace Deno {
   export class HttpClient {
     rid: number;
     constructor(init: HttpClientInit);
+    close(): void;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.

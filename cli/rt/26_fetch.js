@@ -20,6 +20,9 @@
     constructor(init) {
       this.rid = opCreateHttpClient({ caFile: init?.caFile });
     }
+    close() {
+      close(this.rid);
+    }
   }
 
   function opFetch(
