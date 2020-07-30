@@ -352,6 +352,20 @@ fn fmt_test() {
   let badly_formatted_str = badly_formatted.to_str().unwrap();
   std::fs::copy(&badly_formatted_original, &badly_formatted)
     .expect("Failed to copy file");
+  // First, check formatting by ignoring the badly formatted file.
+  let status = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("fmt")
+    .arg(format!("--ignore={}", badly_formatted_str))
+    .arg("--unstable")
+    .arg("--check")
+    .arg(badly_formatted_str)
+    .spawn()
+    .expect("Failed to spawn script")
+    .wait()
+    .expect("Failed to wait for child process");
+  assert!(status.success());
+  // Check without ignore.
   let status = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("fmt")
@@ -362,6 +376,7 @@ fn fmt_test() {
     .wait()
     .expect("Failed to wait for child process");
   assert!(!status.success());
+  // Format the source file.
   let status = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("fmt")

@@ -719,9 +719,11 @@ pub fn main() {
     DenoSubcommand::Cache { files } => {
       cache_command(flags, files).boxed_local()
     }
-    DenoSubcommand::Fmt { check, files } => {
-      fmt::format(files, check).boxed_local()
-    }
+    DenoSubcommand::Fmt {
+      check,
+      files,
+      ignore,
+    } => fmt::format(files, check, ignore).boxed_local(),
     DenoSubcommand::Info { file, json } => {
       info_command(flags, file, json).boxed_local()
     }

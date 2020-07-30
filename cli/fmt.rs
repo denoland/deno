@@ -27,15 +27,24 @@ const BOM_CHAR: char = '\u{FEFF}';
 
 /// Format JavaScript/TypeScript files.
 ///
-/// First argument supports globs, and if it is `None`
+/// First argument and ignore supports globs, and if it is `None`
 /// then the current directory is recursively walked.
-pub async fn format(args: Vec<String>, check: bool) -> Result<(), ErrBox> {
+pub async fn format(
+  args: Vec<String>,
+  check: bool,
+  exclude: Vec<String>,
+) -> Result<(), ErrBox> {
   if args.len() == 1 && args[0] == "-" {
     return format_stdin(check);
   }
-
-  let target_files = collect_files(args)?;
-
+  // collect all files provided.
+  let mut target_files = collect_files(args)?;
+  if !exclude.is_empty() {
+    // collect all files to be ignored
+    // and retain only files that should be formatted.
+    let ignore_files = collect_files(exclude)?;
+    target_files.retain(|f| !ignore_files.contains(&f));
+  }
   let config = get_config();
   if check {
     check_source_files(config, target_files).await
@@ -217,9 +226,9 @@ pub fn collect_files(files: Vec<String>) -> Result<Vec<PathBuf>, ErrBox> {
     for arg in files {
       let p = PathBuf::from(arg);
       if p.is_dir() {
-        target_files.extend(files_in_subtree(p, is_supported));
+        target_files.extend(files_in_subtree(p.canonicalize()?, is_supported));
       } else {
-        target_files.push(p);
+        target_files.push(p.canonicalize()?);
       };
     }
   }
