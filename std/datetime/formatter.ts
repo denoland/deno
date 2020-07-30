@@ -1,4 +1,4 @@
-import { Tokenizer, Rule, CallbackResult } from "./tokenizer.ts";
+import { CallbackResult, Rule, Tokenizer } from "./tokenizer.ts";
 
 function digits(value: string | number, count = 2): string {
   return String(value).padStart(count, "0");
@@ -30,90 +30,108 @@ interface Options {
   timeZone?: TimeZone;
 }
 
+function createLiteralTestFunction(value: string) {
+  return (string: string) => {
+    return string.startsWith(value)
+      ? { value, length: value.length }
+      : undefined;
+  };
+}
+
+function createMatchTestFunction(match: RegExp) {
+  return (string: string) => {
+    const result = match.exec(string);
+    if (result) return { value: result, length: result[0].length };
+  };
+}
+
 // according to unicode symbols (http://userguide.icu-project.org/formatparse/datetime)
 const defaultRules = [
   {
-    test: /^yyyy/,
+    test: createLiteralTestFunction("yyyy"),
     fn: (): CallbackResult => ({ type: "year", value: "numeric" }),
   },
   {
-    test: /^yy/,
+    test: createLiteralTestFunction("yy"),
     fn: (): CallbackResult => ({ type: "year", value: "2-digit" }),
   },
 
   {
-    test: /^MM/,
+    test: createLiteralTestFunction("MM"),
     fn: (): CallbackResult => ({ type: "month", value: "2-digit" }),
   },
   {
-    test: /^M/,
+    test: createLiteralTestFunction("M"),
     fn: (): CallbackResult => ({ type: "month", value: "numeric" }),
   },
   {
-    test: /^dd/,
+    test: createLiteralTestFunction("dd"),
     fn: (): CallbackResult => ({ type: "day", value: "2-digit" }),
   },
-  { test: /^d/, fn: (): CallbackResult => ({ type: "day", value: "numeric" }) },
+  {
+    test: createLiteralTestFunction("d"),
+    fn: (): CallbackResult => ({ type: "day", value: "numeric" }),
+  },
 
   {
-    test: /^hh/,
+    test: createLiteralTestFunction("hh"),
     fn: (): CallbackResult => ({ type: "hour", value: "2-digit" }),
   },
   {
-    test: /^h/,
+    test: createLiteralTestFunction("h"),
     fn: (): CallbackResult => ({ type: "hour", value: "numeric" }),
   },
   {
-    test: /^mm/,
+    test: createLiteralTestFunction("mm"),
     fn: (): CallbackResult => ({ type: "minute", value: "2-digit" }),
   },
   {
-    test: /^m/,
+    test: createLiteralTestFunction("m"),
     fn: (): CallbackResult => ({ type: "minute", value: "numeric" }),
   },
   {
-    test: /^ss/,
+    test: createLiteralTestFunction("ss"),
     fn: (): CallbackResult => ({ type: "second", value: "2-digit" }),
   },
   {
-    test: /^s/,
+    test: createLiteralTestFunction("s"),
     fn: (): CallbackResult => ({ type: "second", value: "numeric" }),
   },
   {
-    test: /^SSS/,
+    test: createLiteralTestFunction("SSS"),
     fn: (): CallbackResult => ({ type: "fractionalSecond", value: 3 }),
   },
   {
-    test: /^SS/,
+    test: createLiteralTestFunction("SS"),
     fn: (): CallbackResult => ({ type: "fractionalSecond", value: 2 }),
   },
   {
-    test: /^S/,
+    test: createLiteralTestFunction("S"),
     fn: (): CallbackResult => ({ type: "fractionalSecond", value: 1 }),
   },
 
   {
-    test: /^a/,
-    fn: (match: RegExpExecArray): CallbackResult => ({
+    test: createLiteralTestFunction("a"),
+    fn: (value: unknown): CallbackResult => ({
       type: "dayPeriod",
-      value: match[0],
+      value: value as string,
     }),
   },
 
   // quoted literal
   {
-    test: /^(')(?<value>\\.|[^\']*)\1/,
-    fn: (match: RegExpExecArray): CallbackResult => ({
+    test: createMatchTestFunction(/^(')(?<value>\\.|[^\']*)\1/),
+    fn: (match: unknown): CallbackResult => ({
       type: "literal",
-      value: match.groups!.value,
+      value: (match as RegExpExecArray).groups!.value as string,
     }),
   },
   // literal
   {
-    test: /^.+?\s*/,
-    fn: (match: RegExpExecArray): CallbackResult => ({
+    test: createMatchTestFunction(/^.+?\s*/),
+    fn: (match: unknown): CallbackResult => ({
       type: "literal",
-      value: match[0],
+      value: (match as RegExpExecArray)[0],
     }),
   },
 ];

@@ -1,7 +1,6 @@
 export type Token = {
   type: string;
   value: string | number;
-  input: string;
   index: number;
 };
 
@@ -9,10 +8,13 @@ interface ReceiverResult {
   [name: string]: string | number;
 }
 export type CallbackResult = { type: string; value: string | number };
-type CallbackFunction = (match: RegExpExecArray) => CallbackResult;
+type CallbackFunction = (value: unknown) => CallbackResult;
+type TestFunction = (
+  string: string,
+) => { value: unknown; length: number } | undefined;
 
 export interface Rule {
-  test: RegExp;
+  test: TestFunction;
   fn: CallbackFunction;
 }
 
@@ -23,7 +25,7 @@ export class Tokenizer {
     this.rules = rules;
   }
 
-  addRule(test: RegExp, fn: CallbackFunction): Tokenizer {
+  addRule(test: TestFunction, fn: CallbackFunction): Tokenizer {
     this.rules.push({ test, fn });
     return this;
   }
@@ -35,12 +37,12 @@ export class Tokenizer {
     function* generator(rules: Rule[]): IterableIterator<ReceiverResult> {
       let index = 0;
       for (const rule of rules) {
-        const match = rule.test.exec(string);
-        if (match) {
-          const value = match[0];
-          index += value.length;
-          string = string.slice(match[0].length);
-          const token = { ...rule.fn(match), input: value, index };
+        const result = rule.test(string);
+        if (result) {
+          const { value, length } = result;
+          index += length;
+          string = string.slice(length);
+          const token = { ...rule.fn(value), index };
           yield receiver(token);
           yield* generator(rules);
         }
