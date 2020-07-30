@@ -195,8 +195,7 @@
       method,
       url,
       headers: headerArray,
-      // eslint-disable-next-line @typescript-eslint/camelcase
-      client_rid: clientRid,
+      clientRid,
     };
 
     return opFetch(args, body);
