@@ -20,9 +20,11 @@ use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
 use futures::task::AtomicWaker;
 use futures::Future;
+use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::convert::From;
+use std::ffi::c_void;
 use std::mem::forget;
 use std::ops::Deref;
 use std::ops::DerefMut;
@@ -83,6 +85,13 @@ impl StartupData<'_> {
 
 type JSErrorCreateFn = dyn Fn(JSError) -> ErrBox;
 
+/// Objects that need to live as long as the isolate
+#[derive(Default)]
+struct IsolateAllocations {
+  near_heap_limit_callback_data:
+    Option<(Pin<Box<RefCell<dyn Any>>>, v8::NearHeapLimitCallback)>,
+}
+
 /// A single execution context of JavaScript. Corresponds roughly to the "Web
 /// Worker" concept in the DOM. An CoreIsolate is a Future that can be used with
 /// Tokio. The CoreIsolate future completes when there is an error or when all
@@ -99,6 +108,7 @@ pub struct CoreIsolate {
   has_snapshotted: bool,
   needs_init: bool,
   startup_script: Option<OwnedScript>,
+  allocations: IsolateAllocations,
 }
 
 /// Internal state for CoreIsolate which is stored in one of v8::Isolate's
@@ -308,6 +318,7 @@ impl CoreIsolate {
       has_snapshotted: false,
       needs_init: true,
       startup_script: options.startup_script,
+      allocations: IsolateAllocations::default(),
     }
   }
 
@@ -417,6 +428,44 @@ impl CoreIsolate {
     let mut state = state_rc.borrow_mut();
     state.op_registry.register(name, op)
   }
+
+  pub fn add_near_heap_limit_callback<C>(&mut self, cb: C)
+  where
+    C: FnMut(usize, usize) -> usize + 'static,
+  {
+    let boxed_cb = Box::pin(RefCell::new(cb));
+    let data = boxed_cb.as_ptr() as *mut c_void;
+    self.allocations.near_heap_limit_callback_data =
+      Some((boxed_cb, near_heap_limit_callback::<C>));
+    self
+      .v8_isolate
+      .as_mut()
+      .unwrap()
+      .add_near_heap_limit_callback(near_heap_limit_callback::<C>, data);
+  }
+
+  pub fn remove_near_heap_limit_callback(&mut self, heap_limit: usize) {
+    if let Some((_, cb)) = self.allocations.near_heap_limit_callback_data {
+      self
+        .v8_isolate
+        .as_mut()
+        .unwrap()
+        .remove_near_heap_limit_callback(cb, heap_limit);
+    }
+    self.allocations.near_heap_limit_callback_data = None;
+  }
+}
+
+extern "C" fn near_heap_limit_callback<F>(
+  data: *mut c_void,
+  current_heap_limit: usize,
+  initial_heap_limit: usize,
+) -> usize
+where
+  F: FnMut(usize, usize) -> usize,
+{
+  let callback = unsafe { &mut *(data as *mut F) };
+  callback(current_heap_limit, initial_heap_limit)
 }
 
 impl Future for CoreIsolate {
