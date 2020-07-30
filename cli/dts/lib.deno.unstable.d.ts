@@ -1216,10 +1216,30 @@ declare namespace Deno {
   export const ppid: number;
 
   /** **UNSTABLE**: New API, yet to be vetted.
-   * A HTTPClient for a custom fetch.
+   * A custom HTTPClient for a fetch.
+   * 
+   * ```ts
+   * const client = new Deno.HTTPClient({ caFile: "./ca.pem" });
+   * const req = await fetch("https://myserver.com", { client });
    */
   export class HTTPClient {
     rid: number;
-    constructor();
+    constructor(init: HTTPClientInit);
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   * The options used when creating a [HTTPClient].
+   */
+  interface HTTPClientInit {
+    /** A certificate authority to use when validating TLS certificates.
+     * 
+     * Requires `allow-read` permission.
+     */
+    caFile?: string;
   }
 }
+
+declare function fetch(
+  input: Request | URL | string,
+  init?: RequestInit & { client: Deno.HTTPClient },
+): Promise<Response>;

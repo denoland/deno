@@ -13,6 +13,7 @@ use http::header::HeaderValue;
 use http::Method;
 use reqwest::Client;
 use std::convert::From;
+use std::path::PathBuf;
 
 pub fn init(i: &mut CoreIsolate, s: &State) {
   i.register_op("op_fetch", s.stateful_json_op2(op_fetch));
@@ -129,18 +130,24 @@ impl HTTPClientResource {
 #[derive(Deserialize, Default, Debug)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
-struct CreateHTTPClientOptions {}
+struct CreateHTTPClientOptions {
+  ca_file: Option<String>,
+}
 
 fn op_create_http_client(
   isolate_state: &mut CoreIsolateState,
-  _state: &State,
+  state: &State,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
-  let _args: CreateHTTPClientOptions = serde_json::from_value(args)?;
+  let args: CreateHTTPClientOptions = serde_json::from_value(args)?;
   let mut resource_table = isolate_state.resource_table.borrow_mut();
 
-  let client = create_http_client(None).unwrap();
+  if let Some(ca_file) = args.ca_file.clone() {
+    state.check_read(&PathBuf::from(ca_file))?;
+  }
+
+  let client = create_http_client(args.ca_file).unwrap();
 
   let rid =
     resource_table.add("httpClient", Box::new(HTTPClientResource::new(client)));

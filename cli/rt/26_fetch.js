@@ -17,8 +17,8 @@
   }
 
   class HTTPClient {
-    constructor() {
-      this.rid = opCreateHTTPClient({});
+    constructor(init) {
+      this.rid = opCreateHTTPClient({ caFile: init?.caFile });
     }
   }
 
