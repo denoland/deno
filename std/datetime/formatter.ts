@@ -1,4 +1,10 @@
-import { CallbackResult, Rule, Tokenizer } from "./tokenizer.ts";
+import {
+  CallbackResult,
+  Rule,
+  TestFunction,
+  TestResult,
+  Tokenizer,
+} from "./tokenizer.ts";
 
 function digits(value: string | number, count = 2): string {
   return String(value).padStart(count, "0");
@@ -30,16 +36,16 @@ interface Options {
   timeZone?: TimeZone;
 }
 
-function createLiteralTestFunction(value: string) {
-  return (string: string) => {
+function createLiteralTestFunction(value: string): TestFunction {
+  return (string: string): TestResult => {
     return string.startsWith(value)
       ? { value, length: value.length }
       : undefined;
   };
 }
 
-function createMatchTestFunction(match: RegExp) {
-  return (string: string) => {
+function createMatchTestFunction(match: RegExp): TestFunction {
+  return (string: string): TestResult => {
     const result = match.exec(string);
     if (result) return { value: result, length: result[0].length };
   };

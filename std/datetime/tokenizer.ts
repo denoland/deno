@@ -9,9 +9,11 @@ interface ReceiverResult {
 }
 export type CallbackResult = { type: string; value: string | number };
 type CallbackFunction = (value: unknown) => CallbackResult;
-type TestFunction = (
+
+export type TestResult = { value: unknown; length: number };
+export type TestFunction = (
   string: string,
-) => { value: unknown; length: number } | undefined;
+) => TestResult | undefined;
 
 export interface Rule {
   test: TestFunction;
