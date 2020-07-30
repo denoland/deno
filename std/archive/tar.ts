@@ -105,7 +105,7 @@ function pad(num: number, bytes: number, base?: number): string {
   return "000000000000".substr(numString.length + 12 - bytes) + numString;
 }
 
-enum Types {
+enum FileTypes {
   "file" = 0,
   "link" = 1,
   "symlink" = 2,
@@ -380,8 +380,8 @@ export class Tar {
     const fileSize = info?.size ?? opts.contentSize;
     assert(fileSize != null, "fileSize must be set");
     const type = opts.type
-      ? Types[opts.type as keyof typeof Types]
-      : (info?.isDirectory ? Types.directory : Types.file);
+      ? FileTypes[opts.type as keyof typeof FileTypes]
+      : (info?.isDirectory ? FileTypes.directory : FileTypes.file);
     const tarData: TarDataWithSource = {
       fileName,
       fileNamePrefix,
@@ -601,7 +601,7 @@ export class Untar {
     );
 
     meta.fileSize = parseInt(decoder.decode(header.fileSize), 8);
-    meta.type = Types[meta.type as keyof typeof Types] as unknown as string ??
+    meta.type = FileTypes[meta.type as keyof typeof FileTypes] as unknown as string ??
       meta.type;
 
     return meta;
