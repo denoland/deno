@@ -3,7 +3,21 @@
 ((window) => {
   const base64 = window.__bootstrap.base64;
   const setTimeout = window.__bootstrap.timers.setTimeout;
-  const ProgressEvent = window.__bootstrap.progressEvent.ProgressEvent;
+
+  // ProgressEvent could also be used in other DOM progress event emits.
+  // Current use is for FileReader.
+  class ProgressEvent extends Event {
+    constructor(type, eventInitDict = {}) {
+      super(type, eventInitDict);
+
+      this.lengthComputable = eventInitDict?.lengthComputable ?? false;
+      this.loaded = eventInitDict?.loaded ?? 0;
+      this.total = eventInitDict?.total ?? 0;
+    }
+  }
+  window.__bootstrap.progressEvent = {
+    ProgressEvent,
+  };
 
   async function readOperation(fr, blob, readtype) {
     // Implementation from https://w3c.github.io/FileAPI/ notes
