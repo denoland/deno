@@ -96,7 +96,7 @@
         } // 5 Otherwise, if chunkPromise is fulfilled with an object whose done property is true, queue a task to run the following steps and abort this algorithm:
         else if (chunk.done === true) {
           setTimeout(() => {
-            if(fr.aborting) {
+            if (fr.aborting) {
               return;
             }
 
@@ -157,7 +157,7 @@
           break;
         }
       } catch (err) {
-        if(fr.aborting) {
+        if (fr.aborting) {
           break;
         }
 
@@ -207,12 +207,15 @@
 
     abort() {
       // If context object's state is "empty" or if context object's state is "done" set context object's result to null and terminate this algorithm.
-      if(this.readyState === FileReader.EMPTY || this.readyState === FileReader.DONE) {
+      if (
+        this.readyState === FileReader.EMPTY ||
+        this.readyState === FileReader.DONE
+      ) {
         this.result = null;
         return;
       }
       // If context object's state is "loading" set context object's state to "done" and set context object's result to null.
-      if(this.readyState === FileReader.LOADING) {
+      if (this.readyState === FileReader.LOADING) {
         this.readyState = FileReader.DONE;
         this.result = null;
       }

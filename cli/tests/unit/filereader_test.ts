@@ -175,7 +175,7 @@ unitTest(async function fileReaderLoadBlobAbort(): Promise<void> {
       assertEquals(ev.lengthComputable, false);
       resolve();
     };
-    fr.onabort = (ev): void => {
+    fr.onabort = (): void => {
       hasOnEvents.abort = true;
     };
 
@@ -210,7 +210,7 @@ unitTest(async function fileReaderLoadBlobAbort(): Promise<void> {
       assertEquals(ev.lengthComputable, false);
       resolve();
     };
-    fr.onabort = (ev): void => {
+    fr.onabort = (): void => {
       hasOnEvents.abort = true;
     };
 
