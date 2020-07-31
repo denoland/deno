@@ -60,7 +60,7 @@ have been historically written with bash or python.
   imported via URLs:
 
   ```javascript
-  import * as log from "https://deno.land/std/log/mod.ts";
+  import * as log from "https://deno.land/std@$STD_VERSION/log/mod.ts";
   ```
 
 ## Other key behaviors

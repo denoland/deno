@@ -47,7 +47,7 @@ directory, however the execution fails as the process was attempting to access a
 file in the `/etc` directory:
 
 ```shell
-$ deno run --allow-read=/usr https://deno.land/std/examples/cat.ts /etc/passwd
+$ deno run --allow-read=/usr https://deno.land/std@$STD_VERSION/examples/cat.ts /etc/passwd
 error: Uncaught PermissionDenied: read access to "/etc/passwd", run again with the --allow-read flag
 ► $deno$/dispatch_json.ts:40:11
     at DenoError ($deno$/errors.ts:20:5)
@@ -57,7 +57,7 @@ error: Uncaught PermissionDenied: read access to "/etc/passwd", run again with t
 Try it out again with the correct permissions by allow-listing `/etc` instead:
 
 ```shell
-deno run --allow-read=/etc https://deno.land/std/examples/cat.ts /etc/passwd
+deno run --allow-read=/etc https://deno.land/std@$STD_VERSION/examples/cat.ts /etc/passwd
 ```
 
 `--allow-write` works the same as `--allow-read`.
