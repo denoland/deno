@@ -1,15 +1,14 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::file_fetcher::map_file_extension;
 use crate::op_error::OpError;
-use crate::swc_common::comments::CommentKind;
-use crate::swc_common::Span;
-use crate::swc_ecma_ast;
-use crate::swc_ecma_ast::Decl;
-use crate::swc_ecma_ast::DefaultDecl;
-use crate::swc_ecma_ast::ModuleDecl;
-use crate::swc_ecma_ast::Stmt;
 use crate::swc_util::AstParser;
 use crate::swc_util::SwcDiagnosticBuffer;
+use swc_common::comments::CommentKind;
+use swc_common::Span;
+use swc_ecmascript::ast::Decl;
+use swc_ecmascript::ast::DefaultDecl;
+use swc_ecmascript::ast::ModuleDecl;
+use swc_ecmascript::ast::Stmt;
 
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
@@ -62,22 +61,18 @@ impl DocParser {
     source_code: &str,
   ) -> Result<ModuleDoc, SwcDiagnosticBuffer> {
     let media_type = map_file_extension(&PathBuf::from(file_name));
-    self.ast_parser.parse_module(
-      file_name,
-      media_type,
-      source_code,
-      |parse_result| {
-        let module = parse_result?;
-        let doc_entries =
-          self.get_doc_nodes_for_module_body(module.body.clone());
-        let reexports = self.get_reexports_for_module_body(module.body);
-        let module_doc = ModuleDoc {
-          definitions: doc_entries,
-          reexports,
-        };
-        Ok(module_doc)
-      },
-    )
+    let parse_result =
+      self
+        .ast_parser
+        .parse_module(file_name, media_type, source_code);
+    let module = parse_result?;
+    let doc_entries = self.get_doc_nodes_for_module_body(module.body.clone());
+    let reexports = self.get_reexports_for_module_body(module.body);
+    let module_doc = ModuleDoc {
+      definitions: doc_entries,
+      reexports,
+    };
+    Ok(module_doc)
   }
 
   pub async fn parse(&self, file_name: &str) -> Result<Vec<DocNode>, ErrBox> {
@@ -452,14 +447,14 @@ impl DocParser {
 
   pub fn get_reexports_for_module_body(
     &self,
-    module_body: Vec<swc_ecma_ast::ModuleItem>,
+    module_body: Vec<swc_ecmascript::ast::ModuleItem>,
   ) -> Vec<node::Reexport> {
-    use swc_ecma_ast::ExportSpecifier::*;
+    use swc_ecmascript::ast::ExportSpecifier::*;
 
     let mut reexports: Vec<node::Reexport> = vec![];
 
     for node in module_body.iter() {
-      if let swc_ecma_ast::ModuleItem::ModuleDecl(module_decl) = node {
+      if let swc_ecmascript::ast::ModuleItem::ModuleDecl(module_decl) = node {
         let r = match module_decl {
           ModuleDecl::ExportNamed(named_export) => {
             if let Some(src) = &named_export.src {
@@ -513,16 +508,16 @@ impl DocParser {
 
   pub fn get_doc_nodes_for_module_body(
     &self,
-    module_body: Vec<swc_ecma_ast::ModuleItem>,
+    module_body: Vec<swc_ecmascript::ast::ModuleItem>,
   ) -> Vec<DocNode> {
     let mut doc_entries: Vec<DocNode> = vec![];
     for node in module_body.iter() {
       match node {
-        swc_ecma_ast::ModuleItem::ModuleDecl(module_decl) => {
+        swc_ecmascript::ast::ModuleItem::ModuleDecl(module_decl) => {
           doc_entries
             .extend(self.get_doc_nodes_for_module_exports(module_decl));
         }
-        swc_ecma_ast::ModuleItem::Stmt(stmt) => {
+        swc_ecmascript::ast::ModuleItem::Stmt(stmt) => {
           if let Some(doc_node) = self.get_doc_node_for_stmt(stmt) {
             doc_entries.push(doc_node);
           }
