@@ -27,7 +27,7 @@
 
     // 1. If fr’s state is "loading", throw an InvalidStateError DOMException.
     if (fr.readyState === FileReader.LOADING) {
-      throw new DOMExcechunkPromiseption(
+      throw new DOMException(
         "Invalid FileReader state.",
         "InvalidStateError",
       );
