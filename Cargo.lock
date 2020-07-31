@@ -373,7 +373,7 @@ dependencies = [
 
 [[package]]
 name = "deno"
-version = "1.2.1"
+version = "1.2.2"
 dependencies = [
  "atty",
  "base64 0.12.3",
@@ -429,7 +429,7 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.50.0"
+version = "0.51.0"
 dependencies = [
  "derive_deref",
  "downcast-rs",
