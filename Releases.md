@@ -6,7 +6,7 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
-### 1.2.2 / 2020.07.23
+### 1.2.2 / 2020.07.31
 
 Changes in the CLI:
 
