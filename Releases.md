@@ -12,12 +12,10 @@ Changes in the CLI:
 
 - fix: Change release build flags to optimize for size (#6907)
 - fix: Fix file URL to path conversion on Windows (#6920)
-- fix: deno-types directive should have higher precedence than
-  X-TypeScript-Types header (#6761)
+- fix: deno-types, X-TypeScript-Types precedence (#6761)
 - fix: downcast from SwcDiagnosticBuffer to OpError (#6909)
 - perf: Use SWC to strip types for "--no-check" flag (#6895)
-- upgrade: deno_lint v0.1.17 (#6869)
-- upgrade: deno_lint, dprint, swc (#6928)
+- upgrade: deno_lint, dprint, swc (#6928, #6869)
 - feat(unstable): add "--ignore" flag to deno fmt (#6890)
 
 Changes in std version 0.63.0:
