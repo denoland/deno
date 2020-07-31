@@ -697,7 +697,6 @@ async fn test_command(
     let mut coverage_collector =
       CoverageCollector::connect(inspector_url).await?;
     coverage_collector.start_collecting().await?;
-    inspector.wait_for_session_and_break_on_next_statement();
 
     Some(coverage_collector)
   } else {
