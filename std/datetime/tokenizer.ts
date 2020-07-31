@@ -10,7 +10,7 @@ interface ReceiverResult {
 export type CallbackResult = { type: string; value: string | number };
 type CallbackFunction = (value: unknown) => CallbackResult;
 
-export type TestResult = { value: unknown; length: number } | undefined;
+export type TestResult = { value: unknown; length: number } | undefined;
 export type TestFunction = (
   string: string,
 ) => TestResult | undefined;
