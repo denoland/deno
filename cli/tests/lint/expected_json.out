@@ -1,0 +1,16 @@
+(ban-untagged-ignore) Ignore directive requires lint rule code
+// deno-lint-ignore
+~~~~~~~~~~~~~~~~~~~
+    at /Users/paul/dev/projects/deno/cli/tests/lint/file1.js:1:0
+
+(no-empty) Empty block statement
+while (false) {}
+              ~~
+    at /Users/paul/dev/projects/deno/cli/tests/lint/file1.js:2:14
+
+(no-empty) Empty block statement
+} catch (e) {}
+            ~~
+    at /Users/paul/dev/projects/deno/cli/tests/lint/file2.ts:3:12
+
+Found 3 problems

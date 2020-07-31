@@ -2223,6 +2223,12 @@ itest!(deno_lint {
   exit_code: 1,
 });
 
+itest!(deno_lint_json {
+  args: "lint --unstable lint/file1.js lint/file2.ts lint/ignored_file.ts",
+  output: "lint/expected_json.out",
+  exit_code: 1,
+});
+
 itest!(deno_lint_glob {
   args: "lint --unstable lint/",
   output: "lint/expected_glob.out",

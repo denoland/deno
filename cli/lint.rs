@@ -15,6 +15,7 @@ use crate::fmt_errors;
 use crate::swc_util;
 use deno_core::ErrBox;
 use deno_lint::diagnostic::LintDiagnostic;
+use deno_lint::diagnostic::Location;
 use deno_lint::linter::Linter;
 use deno_lint::linter::LinterBuilder;
 use deno_lint::rules;
@@ -23,11 +24,50 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
+use serde::{Serialize};
 use swc_ecmascript::parser::Syntax;
+
+// TODO - Where should this stuff live?
+#[derive(Serialize)]
+struct LocationAdapter {
+  pub filename: String,
+  pub line: usize,
+  pub col: usize,
+}
+
+#[derive(Serialize)]
+struct LintDiagnosticAdapter {
+  pub location: LocationAdapter,
+  pub message: String,
+  pub code: String,
+  pub line_src: String,
+  pub snippet_length: usize,
+}
+
+fn create_location_adapter(source: &Location) -> LocationAdapter {
+  LocationAdapter {
+    filename: source.filename.clone(),
+    line: source.line,
+    col: source.col,
+  }
+}
+
+fn create_lint_diagnostic_adapter(source: &LintDiagnostic) -> LintDiagnosticAdapter {
+  let location = create_location_adapter(&source.location);
+
+  LintDiagnosticAdapter {
+    location: location,
+    message: source.message.clone(),
+    code: source.code.clone(),
+    line_src: source.line_src.clone(),
+    snippet_length: source.snippet_length,
+  }
+}
 
 pub async fn lint_files(args: Vec<String>) -> Result<(), ErrBox> {
   let target_files = collect_files(args)?;
   debug!("Found {} files", target_files.len());
+  debug!("Hello world!");
 
   let error_count = Arc::new(AtomicUsize::new(0));
 
@@ -44,7 +84,7 @@ pub async fn lint_files(args: Vec<String>) -> Result<(), ErrBox> {
           error_count.fetch_add(file_diagnostics.len(), Ordering::SeqCst);
           let _g = output_lock.lock().unwrap();
           for d in file_diagnostics.iter() {
-            let fmt_diagnostic = format_diagnostic(d);
+            let fmt_diagnostic = format_diagnostic_json(d);
             eprintln!("{}\n", fmt_diagnostic);
           }
         }
@@ -161,6 +201,14 @@ fn lint_file(file_path: PathBuf) -> Result<Vec<LintDiagnostic>, ErrBox> {
   Ok(file_diagnostics)
 }
 
+fn format_diagnostic_json(d: &LintDiagnostic) -> String {
+  let adapter = create_lint_diagnostic_adapter(&d);
+  let message = serde_json::to_string_pretty(&adapter).unwrap();
+
+  message
+}
+
+#[allow(dead_code)]
 fn format_diagnostic(d: &LintDiagnostic) -> String {
   let pretty_message =
     format!("({}) {}", colors::gray(&d.code), d.message.clone());
