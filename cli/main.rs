@@ -67,12 +67,6 @@ pub mod version;
 mod web_worker;
 pub mod worker;
 
-pub use deno_lint::dprint_plugin_typescript;
-pub use deno_lint::swc_common;
-pub use deno_lint::swc_ecma_ast;
-pub use deno_lint::swc_ecma_parser;
-pub use deno_lint::swc_ecma_visit;
-
 use crate::doc::parser::DocFileLoader;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;

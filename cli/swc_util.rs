@@ -1,40 +1,39 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::msg::MediaType;
-use crate::swc_common;
-use crate::swc_common::comments::Comments;
-use crate::swc_common::errors::Diagnostic;
-use crate::swc_common::errors::DiagnosticBuilder;
-use crate::swc_common::errors::Emitter;
-use crate::swc_common::errors::Handler;
-use crate::swc_common::errors::HandlerFlags;
-use crate::swc_common::FileName;
-use crate::swc_common::Globals;
-use crate::swc_common::SourceMap;
-use crate::swc_common::Span;
-use crate::swc_ecma_ast;
-use crate::swc_ecma_ast::Program;
-use crate::swc_ecma_parser::lexer::Lexer;
-use crate::swc_ecma_parser::EsConfig;
-use crate::swc_ecma_parser::JscTarget;
-use crate::swc_ecma_parser::Parser;
-use crate::swc_ecma_parser::SourceFileInput;
-use crate::swc_ecma_parser::Syntax;
-use crate::swc_ecma_parser::TsConfig;
-use crate::swc_ecma_visit::FoldWith;
+use swc_common;
+use swc_common::comments::SingleThreadedComments;
+use swc_common::errors::Diagnostic;
+use swc_common::errors::DiagnosticBuilder;
+use swc_common::errors::Emitter;
+use swc_common::errors::Handler;
+use swc_common::errors::HandlerFlags;
+use swc_common::FileName;
+use swc_common::Globals;
+use swc_common::SourceMap;
+use swc_common::Span;
+use swc_ecmascript::ast::Program;
+use swc_ecmascript::parser::lexer::Lexer;
+use swc_ecmascript::parser::EsConfig;
+use swc_ecmascript::parser::JscTarget;
+use swc_ecmascript::parser::Parser;
+use swc_ecmascript::parser::StringInput;
+use swc_ecmascript::parser::Syntax;
+use swc_ecmascript::parser::TsConfig;
+use swc_ecmascript::visit::FoldWith;
 use deno_core::ErrBox;
 use std::error::Error;
 use std::fmt;
 use std::sync::Arc;
 use std::sync::RwLock;
 use swc_common::chain;
-use swc_ecma_codegen::text_writer::JsWriter;
-use swc_ecma_codegen::Node;
-use swc_ecma_transforms::fixer;
-use swc_ecma_transforms::typescript;
+use swc_ecmascript::codegen::text_writer::JsWriter;
+use swc_ecmascript::codegen::Node;
+use swc_ecmascript::transforms::fixer;
+use swc_ecmascript::transforms::typescript;
 
 struct DummyHandler;
 
-impl swc_ecma_codegen::Handlers for DummyHandler {}
+impl swc_ecmascript::codegen::Handlers for DummyHandler {}
 
 fn get_default_es_config() -> EsConfig {
   let mut config = EsConfig::default();
@@ -147,7 +146,7 @@ pub struct AstParser {
   pub buffered_error: SwcErrorBuffer,
   pub source_map: Arc<SourceMap>,
   pub handler: Handler,
-  pub comments: Comments,
+  pub comments: SingleThreadedComments,
   pub globals: Globals,
 }
 
@@ -168,7 +167,7 @@ impl AstParser {
       buffered_error,
       source_map: Arc::new(SourceMap::default()),
       handler,
-      comments: Comments::default(),
+      comments: SingleThreadedComments::default(),
       globals: Globals::new(),
     }
   }
@@ -181,7 +180,7 @@ impl AstParser {
     callback: F,
   ) -> R
   where
-    F: FnOnce(Result<swc_ecma_ast::Module, SwcDiagnosticBuffer>) -> R,
+    F: FnOnce(Result<swc_ecmascript::ast::Module, SwcDiagnosticBuffer>) -> R,
   {
     swc_common::GLOBALS.set(&self.globals, || {
       let swc_source_file = self.source_map.new_source_file(
@@ -195,7 +194,7 @@ impl AstParser {
       let lexer = Lexer::new(
         syntax,
         JscTarget::Es2019,
-        SourceFileInput::from(&*swc_source_file),
+        StringInput::from(&*swc_source_file),
         Some(&self.comments),
       );
 
@@ -220,9 +219,8 @@ impl AstParser {
     self.parse_module(file_name, media_type, source_code, |parse_result| {
       let module = parse_result?;
       let program = Program::Module(module);
-      let mut compiler_pass = chain!(typescript::strip(), fixer());
-      let program = swc_ecma_transforms::util::COMMENTS
-        .set(&self.comments, || program.fold_with(&mut compiler_pass));
+      let mut compiler_pass = chain!(typescript::strip(), fixer(Some(&self.comments)));
+      let program = program.fold_with(&mut compiler_pass);
 
       let mut src_map_buf = vec![];
       let mut buf = vec![];
@@ -234,8 +232,8 @@ impl AstParser {
           &mut buf,
           Some(&mut src_map_buf),
         ));
-        let config = swc_ecma_codegen::Config { minify: false };
-        let mut emitter = swc_ecma_codegen::Emitter {
+        let config = swc_ecmascript::codegen::Config { minify: false };
+        let mut emitter = swc_ecmascript::codegen::Emitter {
           cfg: config,
           comments: Some(&self.comments),
           cm: self.source_map.clone(),
@@ -269,16 +267,9 @@ impl AstParser {
     &self,
     span: Span,
   ) -> Vec<swc_common::comments::Comment> {
-    let maybe_comments = self.comments.take_leading_comments(span.lo());
-
-    if let Some(comments) = maybe_comments {
-      // clone the comments and put them back in map
-      let to_return = comments.clone();
-      self.comments.add_leading(span.lo(), comments);
-      to_return
-    } else {
-      vec![]
-    }
+    self.comments.with_leading(span.lo(), |comments| {
+      comments.to_vec()
+    })
   }
 }
 

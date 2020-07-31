@@ -19,12 +19,10 @@ use crate::permissions::Permissions;
 use crate::source_maps::SourceMapGetter;
 use crate::startup_data;
 use crate::state::State;
-use crate::swc_common::comments::CommentKind;
-use crate::swc_common::Span;
-use crate::swc_ecma_ast;
-use crate::swc_ecma_visit;
-use crate::swc_ecma_visit::Node;
-use crate::swc_ecma_visit::Visit;
+use swc_common::comments::CommentKind;
+use swc_common::Span;
+use swc_ecmascript::visit::Node;
+use swc_ecmascript::visit::Visit;
 use crate::swc_util::AstParser;
 use crate::swc_util::SwcDiagnosticBuffer;
 use crate::version;
@@ -1262,7 +1260,7 @@ struct DependencyVisitor {
 impl Visit for DependencyVisitor {
   fn visit_import_decl(
     &mut self,
-    import_decl: &swc_ecma_ast::ImportDecl,
+    import_decl: &swc_ecmascript::ast::ImportDecl,
     _parent: &dyn Node,
   ) {
     let src_str = import_decl.src.value.to_string();
@@ -1275,7 +1273,7 @@ impl Visit for DependencyVisitor {
 
   fn visit_named_export(
     &mut self,
-    named_export: &swc_ecma_ast::NamedExport,
+    named_export: &swc_ecmascript::ast::NamedExport,
     _parent: &dyn Node,
   ) {
     if let Some(src) = &named_export.src {
@@ -1290,7 +1288,7 @@ impl Visit for DependencyVisitor {
 
   fn visit_export_all(
     &mut self,
-    export_all: &swc_ecma_ast::ExportAll,
+    export_all: &swc_ecmascript::ast::ExportAll,
     _parent: &dyn Node,
   ) {
     let src_str = export_all.src.value.to_string();
@@ -1303,7 +1301,7 @@ impl Visit for DependencyVisitor {
 
   fn visit_ts_import_type(
     &mut self,
-    ts_import_type: &swc_ecma_ast::TsImportType,
+    ts_import_type: &swc_ecmascript::ast::TsImportType,
     _parent: &dyn Node,
   ) {
     // TODO(bartlomieju): possibly add separate DependencyKind
@@ -1317,13 +1315,13 @@ impl Visit for DependencyVisitor {
 
   fn visit_call_expr(
     &mut self,
-    call_expr: &swc_ecma_ast::CallExpr,
+    call_expr: &swc_ecmascript::ast::CallExpr,
     parent: &dyn Node,
   ) {
-    use swc_ecma_ast::Expr::*;
-    use swc_ecma_ast::ExprOrSuper::*;
+    use swc_ecmascript::ast::Expr::*;
+    use swc_ecmascript::ast::ExprOrSuper::*;
 
-    swc_ecma_visit::visit_call_expr(self, call_expr, parent);
+    swc_ecmascript::visit::visit_call_expr(self, call_expr, parent);
     let boxed_expr = match call_expr.callee.clone() {
       Super(_) => return,
       Expr(boxed) => boxed,
@@ -1341,7 +1339,7 @@ impl Visit for DependencyVisitor {
     if let Some(arg) = call_expr.args.get(0) {
       match &*arg.expr {
         Lit(lit) => {
-          if let swc_ecma_ast::Lit::Str(str_) = lit {
+          if let swc_ecmascript::ast::Lit::Str(str_) = lit {
             let src_str = str_.value.to_string();
             self.dependencies.push(DependencyDescriptor {
               specifier: src_str,
@@ -1423,8 +1421,7 @@ pub fn pre_process_file(
     // analyze comment from beginning of the file and find TS directives
     let comments = parser
       .comments
-      .take_leading_comments(module_span.lo())
-      .unwrap_or_else(Vec::new);
+      .with_leading(module_span.lo(), |cmts| cmts.to_vec());
 
     let mut references = vec![];
     for comment in comments {

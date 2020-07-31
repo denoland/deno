@@ -12,7 +12,7 @@ use crate::file_fetcher::map_file_extension;
 use crate::fmt::collect_files;
 use crate::fmt::run_parallelized;
 use crate::fmt_errors;
-use crate::swc_ecma_parser::Syntax;
+use swc_ecmascript::parser::Syntax;
 use crate::swc_util;
 use deno_core::ErrBox;
 use deno_lint::diagnostic::LintDiagnostic;
