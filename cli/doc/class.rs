@@ -5,8 +5,8 @@ use crate::doc::display::{
   display_method, display_optional, display_readonly, display_static,
   SliceDisplayer,
 };
-use swc_common::Spanned;
 use serde::Serialize;
+use swc_common::Spanned;
 
 use super::function::function_to_function_def;
 use super::function::FunctionDef;

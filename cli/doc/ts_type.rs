@@ -7,6 +7,8 @@ use super::ts_type_param::TsTypeParamDef;
 use super::ParamDef;
 use crate::colors;
 use crate::doc;
+use serde::Serialize;
+use std::fmt::{Display, Formatter, Result as FmtResult};
 use swc_ecmascript::ast::{
   TsArrayType, TsConditionalType, TsExprWithTypeArgs, TsFnOrConstructorType,
   TsIndexedAccessType, TsKeywordType, TsLit, TsLitType, TsOptionalType,
@@ -14,8 +16,6 @@ use swc_ecmascript::ast::{
   TsTypeLit, TsTypeOperator, TsTypeParamInstantiation, TsTypeQuery, TsTypeRef,
   TsUnionOrIntersectionType,
 };
-use serde::Serialize;
-use std::fmt::{Display, Formatter, Result as FmtResult};
 
 // pub enum TsType {
 //  *      TsKeywordType(TsKeywordType),

@@ -1,10 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::display::{display_optional, SliceDisplayer};
 use super::ts_type::{ts_type_ann_to_def, TsTypeDef};
-use swc_common::SourceMap;
-use swc_ecmascript::ast::{ObjectPatProp, Pat, TsFnParam};
 use serde::Serialize;
 use std::fmt::{Display, Formatter, Result as FmtResult};
+use swc_common::SourceMap;
+use swc_ecmascript::ast::{ObjectPatProp, Pat, TsFnParam};
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]

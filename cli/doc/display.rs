@@ -68,7 +68,9 @@ pub(crate) fn display_generator(is_generator: bool) -> impl Display {
   colors::magenta(if is_generator { "*" } else { "" })
 }
 
-pub(crate) fn display_method(method: swc_ecmascript::ast::MethodKind) -> impl Display {
+pub(crate) fn display_method(
+  method: swc_ecmascript::ast::MethodKind,
+) -> impl Display {
   colors::magenta(match method {
     swc_ecmascript::ast::MethodKind::Getter => "get ",
     swc_ecmascript::ast::MethodKind::Setter => "set ",

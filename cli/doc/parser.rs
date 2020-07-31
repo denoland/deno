@@ -1,14 +1,14 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::file_fetcher::map_file_extension;
 use crate::op_error::OpError;
+use crate::swc_util::AstParser;
+use crate::swc_util::SwcDiagnosticBuffer;
 use swc_common::comments::CommentKind;
 use swc_common::Span;
 use swc_ecmascript::ast::Decl;
 use swc_ecmascript::ast::DefaultDecl;
 use swc_ecmascript::ast::ModuleDecl;
 use swc_ecmascript::ast::Stmt;
-use crate::swc_util::AstParser;
-use crate::swc_util::SwcDiagnosticBuffer;
 
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
@@ -61,22 +61,18 @@ impl DocParser {
     source_code: &str,
   ) -> Result<ModuleDoc, SwcDiagnosticBuffer> {
     let media_type = map_file_extension(&PathBuf::from(file_name));
-    self.ast_parser.parse_module(
-      file_name,
-      media_type,
-      source_code,
-      |parse_result| {
-        let module = parse_result?;
-        let doc_entries =
-          self.get_doc_nodes_for_module_body(module.body.clone());
-        let reexports = self.get_reexports_for_module_body(module.body);
-        let module_doc = ModuleDoc {
-          definitions: doc_entries,
-          reexports,
-        };
-        Ok(module_doc)
-      },
-    )
+    let parse_result =
+      self
+        .ast_parser
+        .parse_module(file_name, media_type, source_code);
+    let module = parse_result?;
+    let doc_entries = self.get_doc_nodes_for_module_body(module.body.clone());
+    let reexports = self.get_reexports_for_module_body(module.body);
+    let module_doc = ModuleDoc {
+      definitions: doc_entries,
+      reexports,
+    };
+    Ok(module_doc)
   }
 
   pub async fn parse(&self, file_name: &str) -> Result<Vec<DocNode>, ErrBox> {
