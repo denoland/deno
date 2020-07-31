@@ -27,6 +27,49 @@ use std::sync::{Arc, Mutex};
 use serde::{Serialize};
 use swc_ecmascript::parser::Syntax;
 
+trait LintDiagnosticVisitor
+{
+  fn visit(&mut self, d: &LintDiagnostic);
+  fn close(&self);
+}
+
+struct ConsoleLintDiagnosticVisitor {}
+impl LintDiagnosticVisitor for ConsoleLintDiagnosticVisitor
+{
+  fn visit(&mut self, d: &LintDiagnostic) {
+    let fmt_diagnostic = format_diagnostic(d);
+    eprintln!("{}\n", fmt_diagnostic);
+  }
+
+  fn close(&self) {
+    // no-op
+  }
+}
+
+struct JsonLintDiagnosticVisitor {
+  diagnostics: Vec<LintDiagnosticAdapter>,
+}
+impl JsonLintDiagnosticVisitor {
+  fn new() -> JsonLintDiagnosticVisitor {
+    JsonLintDiagnosticVisitor {
+      diagnostics: Vec::new(),
+    }
+  }
+}
+
+impl LintDiagnosticVisitor for JsonLintDiagnosticVisitor
+{
+  fn visit(&mut self, d: &LintDiagnostic) {
+    let adapter = create_lint_diagnostic_adapter(d);
+    self.diagnostics.push(adapter);
+  }
+
+  fn close(&self) {
+    let json = serde_json::to_string_pretty(&self.diagnostics);
+    eprintln!("{}\n", json.unwrap());
+  }
+}
+
 // TODO - Where should this stuff live?
 #[derive(Serialize)]
 struct LocationAdapter {
@@ -35,6 +78,7 @@ struct LocationAdapter {
   pub col: usize,
 }
 
+// TODO - What about this?
 #[derive(Serialize)]
 struct LintDiagnosticAdapter {
   pub location: LocationAdapter,
@@ -71,10 +115,10 @@ pub async fn lint_files(args: Vec<String>) -> Result<(), ErrBox> {
 
   let error_count = Arc::new(AtomicUsize::new(0));
 
-  // prevent threads outputting at the same time
-  let output_lock = Arc::new(Mutex::new(0));
+  let visitor_lock = Arc::new(Mutex::new(JsonLintDiagnosticVisitor::new()));
 
   run_parallelized(target_files, {
+    let visitor_lock = visitor_lock.clone();
     let error_count = error_count.clone();
     move |file_path| {
       let r = lint_file(file_path.clone());
@@ -82,10 +126,9 @@ pub async fn lint_files(args: Vec<String>) -> Result<(), ErrBox> {
       match r {
         Ok(file_diagnostics) => {
           error_count.fetch_add(file_diagnostics.len(), Ordering::SeqCst);
-          let _g = output_lock.lock().unwrap();
+          let mut visitor = visitor_lock.lock().unwrap();
           for d in file_diagnostics.iter() {
-            let fmt_diagnostic = format_diagnostic_json(d);
-            eprintln!("{}\n", fmt_diagnostic);
+            visitor.visit(&d);
           }
         }
         Err(err) => {
@@ -97,6 +140,8 @@ pub async fn lint_files(args: Vec<String>) -> Result<(), ErrBox> {
     }
   })
   .await?;
+
+  visitor_lock.lock().unwrap().close();
 
   let error_count = error_count.load(Ordering::SeqCst);
   if error_count > 0 {
