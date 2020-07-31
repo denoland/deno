@@ -148,3 +148,73 @@ unitTest(async function fileReaderLoadBlobDataUrl(): Promise<void> {
     fr.readAsDataURL(b1);
   });
 });
+
+unitTest(async function fileReaderLoadBlobAbort(): Promise<void> {
+  await new Promise<void>((resolve) => {
+    const fr = new FileReader();
+    const b1 = new Blob(["Hello World"]);
+
+    const hasOnEvents = {
+      load: false,
+      loadend: false,
+      abort: false,
+    };
+
+    fr.onload = (): void => {
+      hasOnEvents.load = true;
+    };
+    fr.onloadend = (ev): void => {
+      hasOnEvents.loadend = true;
+
+      assertEquals(hasOnEvents.load, false);
+      assertEquals(hasOnEvents.loadend, true);
+      assertEquals(hasOnEvents.abort, true);
+
+      assertEquals(fr.readyState, FileReader.DONE);
+      assertEquals(fr.result, null);
+      assertEquals(ev.lengthComputable, false);
+      resolve();
+    };
+    fr.onabort = (ev): void => {
+      hasOnEvents.abort = true;
+    };
+
+    fr.readAsDataURL(b1);
+    fr.abort();
+  });
+});
+
+unitTest(async function fileReaderLoadBlobAbort(): Promise<void> {
+  await new Promise<void>((resolve) => {
+    const fr = new FileReader();
+    const b1 = new Blob(["Hello World"]);
+
+    const hasOnEvents = {
+      load: false,
+      loadend: false,
+      abort: false,
+    };
+
+    fr.onload = (): void => {
+      hasOnEvents.load = true;
+    };
+    fr.onloadend = (ev): void => {
+      hasOnEvents.loadend = true;
+
+      assertEquals(hasOnEvents.load, false);
+      assertEquals(hasOnEvents.loadend, true);
+      assertEquals(hasOnEvents.abort, true);
+
+      assertEquals(fr.readyState, FileReader.DONE);
+      assertEquals(fr.result, null);
+      assertEquals(ev.lengthComputable, false);
+      resolve();
+    };
+    fr.onabort = (ev): void => {
+      hasOnEvents.abort = true;
+    };
+
+    fr.readAsDataURL(b1);
+    fr.abort();
+  });
+});

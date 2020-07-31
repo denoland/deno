@@ -23,6 +23,8 @@
     // Implementation from https://w3c.github.io/FileAPI/ notes
     // And body of deno blob.ts readBytes
 
+    fr.aborting = false;
+
     // 1. If fr’s state is "loading", throw an InvalidStateError DOMException.
     if (fr.readyState === FileReader.LOADING) {
       throw new DOMExcechunkPromiseption(
@@ -54,7 +56,7 @@
     let isFirstChunk = true;
 
     // 10 in parallel while true
-    while (true) {
+    while (!fr.aborting) {
       // 1. Wait for chunkPromise to be fulfilled or rejected.
       try {
         const chunk = await chunkPromise;
@@ -94,6 +96,10 @@
         } // 5 Otherwise, if chunkPromise is fulfilled with an object whose done property is true, queue a task to run the following steps and abort this algorithm:
         else if (chunk.done === true) {
           setTimeout(() => {
+            if(fr.aborting) {
+              return;
+            }
+
             // 1. Set fr’s state to "done".
             fr.readyState = FileReader.DONE;
             // 2. Let result be the result of package data given bytes, type, blob’s type, and encodingName.
@@ -151,6 +157,10 @@
           break;
         }
       } catch (err) {
+        if(fr.aborting) {
+          break;
+        }
+
         // chunkPromise rejected
         fr.readyState = FileReader.DONE;
         fr.error = err;
@@ -189,13 +199,42 @@
 
     readyState = FileReader.EMPTY;
     result = null;
+    aborting = false;
 
     constructor() {
       super();
     }
 
     abort() {
-      // not implemented
+      // If context object's state is "empty" or if context object's state is "done" set context object's result to null and terminate this algorithm.
+      if(this.readyState === FileReader.EMPTY || this.readyState === FileReader.DONE) {
+        this.result = null;
+        return;
+      }
+      // If context object's state is "loading" set context object's state to "done" and set context object's result to null.
+      if(this.readyState === FileReader.LOADING) {
+        this.readyState = FileReader.DONE;
+        this.result = null;
+      }
+      // If there are any tasks from the context object on the file reading task source in an affiliated task queue, then remove those tasks from that task queue.
+      // Terminate the algorithm for the read method being processed.
+      this.aborting = true;
+
+      // Fire a progress event called abort at the context object.
+      const ev = new ProgressEvent("abort", {});
+      this.dispatchEvent(ev);
+      if (this.onabort !== null) {
+        this.onabort(ev);
+      }
+
+      // If context object's state is not "loading", fire a progress event called loadend at the context object.
+      if (this.readyState !== FileReader.LOADING) {
+        const ev = new ProgressEvent("loadend", {});
+        this.dispatchEvent(ev);
+        if (this.onloadend !== null) {
+          this.onloadend(ev);
+        }
+      }
     }
     readAsArrayBuffer(blob) {
       readOperation(this, blob, { kind: "ArrayBuffer" });
