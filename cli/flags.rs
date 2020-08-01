@@ -1744,6 +1744,7 @@ mod tests {
         subcommand: DenoSubcommand::Lint {
           files: vec!["script_1.ts".to_string(), "script_2.ts".to_string()],
           rules: false,
+          ignore: vec![],
         },
         unstable: true,
         ..Flags::default()
@@ -1757,6 +1758,7 @@ mod tests {
         subcommand: DenoSubcommand::Lint {
           files: vec![],
           rules: false,
+          ignore: vec![],
         },
         unstable: true,
         ..Flags::default()
@@ -1770,6 +1772,7 @@ mod tests {
         subcommand: DenoSubcommand::Lint {
           files: vec![],
           rules: true
+          ignore: vec![],
         },
         unstable: true,
         ..Flags::default()
