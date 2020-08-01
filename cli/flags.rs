@@ -55,6 +55,7 @@ pub enum DenoSubcommand {
   },
   Lint {
     files: Vec<String>,
+    ignore: Vec<String>,
     rules: bool,
   },
   Repl,
@@ -1013,6 +1014,15 @@ Ignore linting a file by adding an ignore comment at the top of the file:
       Arg::with_name("rules")
         .long("rules")
         .help("List available rules"),
+    )
+    .arg(
+      Arg::with_name("ignore")
+        .long("ignore")
+        .requires("unstable")
+        .takes_value(true)
+        .use_delimiter(true)
+        .require_equals(true)
+        .help("Ignore linting particular source files."),
     )
     .arg(
       Arg::with_name("files")

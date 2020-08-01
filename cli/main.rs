@@ -344,6 +344,7 @@ async fn lint_command(
   flags: Flags,
   files: Vec<String>,
   list_rules: bool,
+  ignore: Vec<String>,
 ) -> Result<(), ErrBox> {
   let global_state = GlobalState::new(flags)?;
 
@@ -365,7 +366,7 @@ async fn lint_command(
     return Ok(());
   }
 
-  lint::lint_files(files).await
+  lint::lint_files(files, ignore).await
 }
 
 async fn cache_command(flags: Flags, files: Vec<String>) -> Result<(), ErrBox> {
@@ -730,9 +731,11 @@ pub fn main() {
     } => {
       install_command(flags, module_url, args, name, root, force).boxed_local()
     }
-    DenoSubcommand::Lint { files, rules } => {
-      lint_command(flags, files, rules).boxed_local()
-    }
+    DenoSubcommand::Lint {
+      files,
+      rules,
+      ignore,
+    } => lint_command(flags, files, rules, ignore).boxed_local(),
     DenoSubcommand::Repl => run_repl(flags).boxed_local(),
     DenoSubcommand::Run { script } => run_command(flags, script).boxed_local(),
     DenoSubcommand::Test {
