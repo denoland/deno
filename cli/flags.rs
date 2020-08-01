@@ -628,8 +628,16 @@ fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     Some(f) => f.map(String::from).collect(),
     None => vec![],
   };
+  let ignore = match matches.values_of("ignore") {
+    Some(f) => f.map(String::from).collect(),
+    None => vec![],
+  };
   let rules = matches.is_present("rules");
-  flags.subcommand = DenoSubcommand::Lint { files, rules };
+  flags.subcommand = DenoSubcommand::Lint {
+    files,
+    rules,
+    ignore,
+  };
 }
 
 fn types_subcommand<'a, 'b>() -> App<'a, 'b> {
@@ -1771,7 +1779,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Lint {
           files: vec![],
-          rules: true
+          rules: true,
           ignore: vec![],
         },
         unstable: true,
