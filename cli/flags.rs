@@ -56,6 +56,7 @@ pub enum DenoSubcommand {
   Lint {
     files: Vec<String>,
     rules: bool,
+    json: bool,
   },
   Repl,
   Run {
@@ -628,7 +629,8 @@ fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     None => vec![],
   };
   let rules = matches.is_present("rules");
-  flags.subcommand = DenoSubcommand::Lint { files, rules };
+  let json = matches.is_present("json");
+  flags.subcommand = DenoSubcommand::Lint { files, rules, json };
 }
 
 fn types_subcommand<'a, 'b>() -> App<'a, 'b> {
@@ -993,6 +995,9 @@ fn lint_subcommand<'a, 'b>() -> App<'a, 'b> {
   deno lint --unstable
   deno lint --unstable myfile1.ts myfile2.js
 
+Print result as JSON:
+  deno lint --unstable --json
+
 List available rules:
   deno lint --unstable --rules
 
@@ -1016,6 +1021,12 @@ Ignore linting a file by adding an ignore comment at the top of the file:
       Arg::with_name("rules")
         .long("rules")
         .help("List available rules"),
+    )
+    .arg(
+      Arg::with_name("json")
+        .long("json")
+        .help("Output lint result in JSON format.")
+        .takes_value(false),
     )
     .arg(
       Arg::with_name("files")
@@ -1737,6 +1748,7 @@ mod tests {
         subcommand: DenoSubcommand::Lint {
           files: vec!["script_1.ts".to_string(), "script_2.ts".to_string()],
           rules: false,
+          json: false,
         },
         unstable: true,
         ..Flags::default()
@@ -1750,6 +1762,7 @@ mod tests {
         subcommand: DenoSubcommand::Lint {
           files: vec![],
           rules: false,
+          json: false,
         },
         unstable: true,
         ..Flags::default()
@@ -1762,7 +1775,28 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Lint {
           files: vec![],
-          rules: true
+          rules: true,
+          json: false,
+        },
+        unstable: true,
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec_safe(svec![
+      "deno",
+      "lint",
+      "--unstable",
+      "--json",
+      "script_1.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Lint {
+          files: vec!["script_1.ts".to_string()],
+          rules: false,
+          json: true,
         },
         unstable: true,
         ..Flags::default()

@@ -6,7 +6,6 @@
 //! At the moment it is only consumed using CLI but in
 //! the future it can be easily extended to provide
 //! the same functions as ops available in JS runtime.
-
 use crate::colors;
 use crate::file_fetcher::map_file_extension;
 use crate::fmt::collect_files;
@@ -15,125 +14,57 @@ use crate::fmt_errors;
 use crate::swc_util;
 use deno_core::ErrBox;
 use deno_lint::diagnostic::LintDiagnostic;
-use deno_lint::diagnostic::Location;
 use deno_lint::linter::Linter;
 use deno_lint::linter::LinterBuilder;
 use deno_lint::rules;
 use deno_lint::rules::LintRule;
+use serde::Serialize;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use serde::{Serialize};
 use swc_ecmascript::parser::Syntax;
 
-trait LintDiagnosticVisitor
-{
-  fn visit(&mut self, d: &LintDiagnostic);
-  fn close(&self);
+pub enum LintReporterKind {
+  Pretty,
+  Json,
 }
 
-struct ConsoleLintDiagnosticVisitor {}
-impl LintDiagnosticVisitor for ConsoleLintDiagnosticVisitor
-{
-  fn visit(&mut self, d: &LintDiagnostic) {
-    let fmt_diagnostic = format_diagnostic(d);
-    eprintln!("{}\n", fmt_diagnostic);
-  }
-
-  fn close(&self) {
-    // no-op
+fn create_reporter(kind: LintReporterKind) -> Box<dyn LintReporter + Send> {
+  match kind {
+    LintReporterKind::Pretty => Box::new(PrettyLintReporter::new()),
+    LintReporterKind::Json => Box::new(JsonLintReporter::new()),
   }
 }
 
-struct JsonLintDiagnosticVisitor {
-  diagnostics: Vec<LintDiagnosticAdapter>,
-}
-impl JsonLintDiagnosticVisitor {
-  fn new() -> JsonLintDiagnosticVisitor {
-    JsonLintDiagnosticVisitor {
-      diagnostics: Vec::new(),
-    }
-  }
-}
-
-impl LintDiagnosticVisitor for JsonLintDiagnosticVisitor
-{
-  fn visit(&mut self, d: &LintDiagnostic) {
-    let adapter = create_lint_diagnostic_adapter(d);
-    self.diagnostics.push(adapter);
-  }
-
-  fn close(&self) {
-    let json = serde_json::to_string_pretty(&self.diagnostics);
-    eprintln!("{}\n", json.unwrap());
-  }
-}
-
-// TODO - Where should this stuff live?
-#[derive(Serialize)]
-struct LocationAdapter {
-  pub filename: String,
-  pub line: usize,
-  pub col: usize,
-}
-
-// TODO - What about this?
-#[derive(Serialize)]
-struct LintDiagnosticAdapter {
-  pub location: LocationAdapter,
-  pub message: String,
-  pub code: String,
-  pub line_src: String,
-  pub snippet_length: usize,
-}
-
-fn create_location_adapter(source: &Location) -> LocationAdapter {
-  LocationAdapter {
-    filename: source.filename.clone(),
-    line: source.line,
-    col: source.col,
-  }
-}
-
-fn create_lint_diagnostic_adapter(source: &LintDiagnostic) -> LintDiagnosticAdapter {
-  let location = create_location_adapter(&source.location);
-
-  LintDiagnosticAdapter {
-    location: location,
-    message: source.message.clone(),
-    code: source.code.clone(),
-    line_src: source.line_src.clone(),
-    snippet_length: source.snippet_length,
-  }
-}
-
-pub async fn lint_files(args: Vec<String>) -> Result<(), ErrBox> {
+pub async fn lint_files(
+  args: Vec<String>,
+  reporter_kind: LintReporterKind,
+) -> Result<(), ErrBox> {
   let target_files = collect_files(args)?;
   debug!("Found {} files", target_files.len());
-  debug!("Hello world!");
 
-  let error_count = Arc::new(AtomicUsize::new(0));
+  let has_error = Arc::new(AtomicBool::new(false));
 
-  let visitor_lock = Arc::new(Mutex::new(JsonLintDiagnosticVisitor::new()));
+  let reporter_lock = Arc::new(Mutex::new(create_reporter(reporter_kind)));
 
   run_parallelized(target_files, {
-    let visitor_lock = visitor_lock.clone();
-    let error_count = error_count.clone();
+    let reporter_lock = reporter_lock.clone();
+    let has_error = has_error.clone();
     move |file_path| {
       let r = lint_file(file_path.clone());
+      let mut reporter = reporter_lock.lock().unwrap();
 
       match r {
         Ok(file_diagnostics) => {
-          error_count.fetch_add(file_diagnostics.len(), Ordering::SeqCst);
-          let mut visitor = visitor_lock.lock().unwrap();
           for d in file_diagnostics.iter() {
-            visitor.visit(&d);
+            has_error.store(true, Ordering::Relaxed);
+            reporter.visit(&d);
           }
         }
         Err(err) => {
-          eprintln!("Error linting: {}", file_path.to_string_lossy());
-          eprintln!("   {}", err);
+          has_error.store(true, Ordering::Relaxed);
+          reporter.visit_error(&file_path.to_string_lossy().to_string(), &err);
         }
       }
       Ok(())
@@ -141,11 +72,11 @@ pub async fn lint_files(args: Vec<String>) -> Result<(), ErrBox> {
   })
   .await?;
 
-  visitor_lock.lock().unwrap().close();
+  let has_error = has_error.load(Ordering::Relaxed);
 
-  let error_count = error_count.load(Ordering::SeqCst);
-  if error_count > 0 {
-    eprintln!("Found {} problems", error_count);
+  reporter_lock.lock().unwrap().close();
+
+  if has_error {
     std::process::exit(1);
   }
 
@@ -246,29 +177,140 @@ fn lint_file(file_path: PathBuf) -> Result<Vec<LintDiagnostic>, ErrBox> {
   Ok(file_diagnostics)
 }
 
-fn format_diagnostic_json(d: &LintDiagnostic) -> String {
-  let adapter = create_lint_diagnostic_adapter(&d);
-  let message = serde_json::to_string_pretty(&adapter).unwrap();
-
-  message
+trait LintReporter {
+  fn visit(&mut self, d: &LintDiagnostic);
+  fn visit_error(&mut self, file_path: &str, err: &ErrBox);
+  fn close(&mut self);
 }
 
-#[allow(dead_code)]
-fn format_diagnostic(d: &LintDiagnostic) -> String {
-  let pretty_message =
-    format!("({}) {}", colors::gray(&d.code), d.message.clone());
+#[derive(Serialize)]
+struct LintError {
+  file_path: String,
+  message: String,
+}
 
-  fmt_errors::format_stack(
-    true,
-    &pretty_message,
-    Some(&d.line_src),
-    Some(d.location.col as i64),
-    Some((d.location.col + d.snippet_length) as i64),
-    &[fmt_errors::format_location(
-      &d.location.filename,
-      d.location.line as i64,
-      d.location.col as i64,
-    )],
-    0,
-  )
+struct PrettyLintReporter {
+  lint_count: u32,
+}
+
+impl PrettyLintReporter {
+  fn new() -> PrettyLintReporter {
+    PrettyLintReporter { lint_count: 0 }
+  }
+}
+
+impl LintReporter for PrettyLintReporter {
+  fn visit(&mut self, d: &LintDiagnostic) {
+    self.lint_count += 1;
+
+    let pretty_message =
+      format!("({}) {}", colors::gray(&d.code), d.message.clone());
+
+    let message = fmt_errors::format_stack(
+      true,
+      &pretty_message,
+      Some(&d.line_src),
+      Some(d.location.col as i64),
+      Some((d.location.col + d.snippet_length) as i64),
+      &[fmt_errors::format_location(
+        &d.location.filename,
+        d.location.line as i64,
+        d.location.col as i64,
+      )],
+      0,
+    );
+
+    eprintln!("{}\n", message);
+  }
+
+  fn visit_error(&mut self, file_path: &str, err: &ErrBox) {
+    eprintln!("Error linting: {}", file_path);
+    eprintln!("   {}", err);
+  }
+
+  fn close(&mut self) {
+    match self.lint_count {
+      1 => eprintln!("Found 1 problem"),
+      n if n > 1 => eprintln!("Found {} problems", self.lint_count),
+      _ => (),
+    }
+  }
+}
+
+#[derive(Serialize)]
+struct JsonLintReporter {
+  diagnostics: Vec<SerializableDiagnostic>,
+  errors: Vec<LintError>,
+}
+
+impl JsonLintReporter {
+  fn new() -> JsonLintReporter {
+    JsonLintReporter {
+      diagnostics: Vec::new(),
+      errors: Vec::new(),
+    }
+  }
+}
+
+impl LintReporter for JsonLintReporter {
+  fn visit(&mut self, d: &LintDiagnostic) {
+    self.diagnostics.push(SerializableDiagnostic::new(d));
+  }
+
+  fn visit_error(&mut self, file_path: &str, err: &ErrBox) {
+    self.errors.push(LintError {
+      file_path: file_path.to_string(),
+      message: err.to_string(),
+    });
+  }
+
+  fn close(&mut self) {
+    // Sort so that we guarantee a deterministic output which is useful for tests
+    self
+      .diagnostics
+      .sort_by(|a, b| a.get_sort_key().cmp(&b.get_sort_key()));
+
+    let json = serde_json::to_string_pretty(&self);
+    eprintln!("{}", json.unwrap());
+  }
+}
+
+#[derive(Serialize)]
+struct SerializableLocation {
+  filename: String,
+  line: usize,
+  col: usize,
+}
+
+#[derive(Serialize)]
+struct SerializableDiagnostic {
+  location: SerializableLocation,
+  message: String,
+  code: String,
+  line_src: String,
+  snippet_length: usize,
+}
+
+impl SerializableDiagnostic {
+  pub fn new(source: &LintDiagnostic) -> SerializableDiagnostic {
+    let location = &source.location;
+
+    SerializableDiagnostic {
+      location: SerializableLocation {
+        filename: location.filename.clone(),
+        line: location.line,
+        col: location.col,
+      },
+      message: source.message.clone(),
+      code: source.code.clone(),
+      line_src: source.line_src.clone(),
+      snippet_length: source.snippet_length,
+    }
+  }
+
+  pub fn get_sort_key(&self) -> String {
+    let location = &self.location;
+
+    return format!("{}:{}:{}", location.filename, location.line, location.col);
+  }
 }

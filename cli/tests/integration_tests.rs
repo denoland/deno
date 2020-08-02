@@ -2224,7 +2224,8 @@ itest!(deno_lint {
 });
 
 itest!(deno_lint_json {
-  args: "lint --unstable lint/file1.js lint/file2.ts lint/ignored_file.ts",
+  args:
+    "lint --unstable --json lint/file1.js lint/file2.ts lint/ignored_file.ts",
   output: "lint/expected_json.out",
   exit_code: 1,
 });

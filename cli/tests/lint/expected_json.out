@@ -1,16 +1,38 @@
-(ban-untagged-ignore) Ignore directive requires lint rule code
-// deno-lint-ignore
-~~~~~~~~~~~~~~~~~~~
-    at /Users/paul/dev/projects/deno/cli/tests/lint/file1.js:1:0
-
-(no-empty) Empty block statement
-while (false) {}
-              ~~
-    at /Users/paul/dev/projects/deno/cli/tests/lint/file1.js:2:14
-
-(no-empty) Empty block statement
-} catch (e) {}
-            ~~
-    at /Users/paul/dev/projects/deno/cli/tests/lint/file2.ts:3:12
-
-Found 3 problems
+{
+  "diagnostics": [
+    {
+      "location": {
+        "filename": "[WILDCARD]",
+        "line": 1,
+        "col": 0
+      },
+      "message": "Ignore directive requires lint rule code",
+      "code": "ban-untagged-ignore",
+      "line_src": "// deno-lint-ignore",
+      "snippet_length": 19
+    },
+    {
+      "location": {
+        "filename": "[WILDCARD]",
+        "line": 2,
+        "col": 14
+      },
+      "message": "Empty block statement",
+      "code": "no-empty",
+      "line_src": "while (false) {}",
+      "snippet_length": 2
+    },
+    {
+      "location": {
+        "filename": "[WILDCARD]",
+        "line": 3,
+        "col": 12
+      },
+      "message": "Empty block statement",
+      "code": "no-empty",
+      "line_src": "} catch (e) {}",
+      "snippet_length": 2
+    }
+  ],
+  "errors": []
+}

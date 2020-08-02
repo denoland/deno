@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-//#![deny(warnings)]
+#![deny(warnings)]
 
 extern crate dissimilar;
 #[macro_use]
@@ -345,6 +345,7 @@ async fn lint_command(
   flags: Flags,
   files: Vec<String>,
   list_rules: bool,
+  json: bool,
 ) -> Result<(), ErrBox> {
   if !flags.unstable {
     exit_unstable("lint");
@@ -355,7 +356,13 @@ async fn lint_command(
     return Ok(());
   }
 
-  lint::lint_files(files).await
+  let reporter = if json {
+    lint::LintReporterKind::Json
+  } else {
+    lint::LintReporterKind::Pretty
+  };
+
+  lint::lint_files(files, reporter).await
 }
 
 async fn cache_command(flags: Flags, files: Vec<String>) -> Result<(), ErrBox> {
@@ -732,8 +739,8 @@ pub fn main() {
     } => {
       install_command(flags, module_url, args, name, root, force).boxed_local()
     }
-    DenoSubcommand::Lint { files, rules } => {
-      lint_command(flags, files, rules).boxed_local()
+    DenoSubcommand::Lint { files, rules, json } => {
+      lint_command(flags, files, rules, json).boxed_local()
     }
     DenoSubcommand::Repl => run_repl(flags).boxed_local(),
     DenoSubcommand::Run { script } => run_command(flags, script).boxed_local(),
