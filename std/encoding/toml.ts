@@ -280,7 +280,7 @@ class Parser {
       return dataString.slice(0, endOfString);
     }
 
-    const m = /(?:|\[|{|).*(?:|\]||})\s*[^#]/g.exec(dataString);
+    const m = /(?:|\[|{).*(?:|\]|})\s*^((?!#).)*/g.exec(dataString);
     if (m) {
       return m[0].trim();
     } else {
