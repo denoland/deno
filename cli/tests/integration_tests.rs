@@ -2208,6 +2208,7 @@ itest!(compiler_js_error {
 itest!(import_file_with_colon {
   args: "run --quiet --reload import_file_with_colon.ts",
   output: "import_file_with_colon.ts.out",
+  http_server: true,
 });
 
 #[test]
