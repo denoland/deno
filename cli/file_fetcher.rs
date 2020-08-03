@@ -12,6 +12,7 @@ use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
 use futures::future::FutureExt;
 use log::info;
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fs;
 use std::future::Future;
@@ -50,8 +51,12 @@ impl TextDocument {
     self.bytes
   }
 
-  pub fn to_utf8(&self) -> Result<String, std::io::Error> {
+  pub fn to_str(&self) -> Result<Cow<str>, std::io::Error> {
     text_encoding::convert_to_utf8(&self.bytes, &self.charset)
+  }
+
+  pub fn to_string(&self) -> Result<String, std::io::Error> {
+    self.to_str().map(String::from)
   }
 }
 
@@ -219,7 +224,7 @@ impl SourceFileFetcher {
         // TODO: move somewhere?
         if file.source_code.bytes.starts_with(b"#!") {
           file.source_code =
-            filter_shebang(&file.source_code.to_utf8().unwrap()[..]).into();
+            filter_shebang(&file.source_code.to_str().unwrap()[..]).into();
         }
 
         // Cache in-process for subsequent access.
@@ -1589,7 +1594,7 @@ mod tests {
       .await;
     assert!(r.is_ok());
     let fetched_file = r.unwrap();
-    let source_code = fetched_file.source_code.to_utf8();
+    let source_code = fetched_file.source_code.to_str();
     assert!(source_code.is_ok());
     let actual = source_code.unwrap();
     assert_eq!(expected_content, actual);
@@ -2018,7 +2023,7 @@ mod tests {
     assert!(source.is_ok());
     let source = source.unwrap();
     assert_eq!(&source.source_code.charset.to_lowercase()[..], charset);
-    let text = &source.source_code.to_utf8().unwrap();
+    let text = &source.source_code.to_str().unwrap();
     assert_eq!(text, expected_content);
     assert_eq!(&(source.media_type), &msg::MediaType::TypeScript);
 

@@ -528,10 +528,7 @@ async fn doc_command(
         let source_file = fetcher
           .fetch_source_file(&specifier, None, Permissions::allow_all())
           .await?;
-        source_file
-          .source_code
-          .to_utf8()
-          .map_err(|_| OpError::other("failed to parse".to_string()))
+        source_file.source_code.to_string().map_err(OpError::from)
       }
       .boxed_local()
     }

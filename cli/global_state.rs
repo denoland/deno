@@ -250,7 +250,7 @@ impl GlobalState {
       }
     } else {
       CompiledModule {
-        code: out.source_code.to_utf8()?,
+        code: out.source_code.to_string()?,
         name: out.url.to_string(),
       }
     };

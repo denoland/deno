@@ -256,7 +256,7 @@ fn read_file_contents(file_path: &PathBuf) -> Result<FileContents, ErrBox> {
     // remove the BOM
     String::from(&file_text[BOM_CHAR.len_utf8()..])
   } else {
-    file_text
+    String::from(file_text)
   };
 
   Ok(FileContents { text, had_bom })

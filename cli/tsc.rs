@@ -851,7 +851,7 @@ impl TsCompiler {
     let compiled_source_file = self.get_compiled_source_file(module_url)?;
 
     let compiled_module = CompiledModule {
-      code: compiled_source_file.source_code.to_utf8()?,
+      code: compiled_source_file.source_code.to_string()?,
       name: module_url.to_string(),
     };
 
@@ -859,8 +859,8 @@ impl TsCompiler {
   }
 
   /// Return compiled JS file for given TS module.
-  // TODO: ideally we shouldn't construct SourceFile by hand, but it should be delegated to
-  // SourceFileFetcher
+  // TODO: ideally we shouldn't construct SourceFile by hand, but it should be
+  // delegated to SourceFileFetcher.
   pub fn get_compiled_source_file(
     &self,
     module_url: &Url,
@@ -979,7 +979,7 @@ impl SourceMapGetter for TsCompiler {
     self
       .try_resolve_and_get_source_file(script_name)
       .and_then(|out| {
-        out.source_code.to_utf8().ok().map(|v| {
+        out.source_code.to_str().ok().map(|v| {
           // Do NOT use .lines(): it skips the terminating empty line.
           // (due to internally using .split_terminator() instead of .split())
           let lines: Vec<&str> = v.split('\n').collect();
