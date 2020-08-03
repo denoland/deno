@@ -108,8 +108,8 @@ function bar(a: any) {
 ```
 
 To provide some compatibility with ESLint `deno lint` also supports
-`// eslint-ignore-next-line` directive. Just like in `// deno-lint-ignore` it's
-required to specify ignored rule name is required.
+`// eslint-ignore-next-line` directive. Just like with `// deno-lint-ignore`,
+it's required to specify the ignored rule name.
 
 ```ts
 // eslint-ignore-next-line no-empty
