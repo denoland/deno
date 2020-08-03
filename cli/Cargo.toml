@@ -8,10 +8,8 @@ authors = ["the Deno authors"]
 edition = "2018"
 description = "Provides the deno executable"
 repository = "https://github.com/denoland/deno"
-default-run = "deno"
 
-[[bin]]
-name = "deno"
+[lib]
 path = "main.rs"
 
 [build-dependencies]
