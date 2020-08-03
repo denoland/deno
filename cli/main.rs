@@ -415,7 +415,7 @@ async fn eval_command(
     } else {
       MediaType::JavaScript
     },
-    source_code: TextDocument::new(source_code, Some("utf-8".to_owned())),
+    source_code: TextDocument::new(source_code, Some("utf-8")),
   };
   // Save our fake file into file fetcher cache
   // to allow module access by TS compiler (e.g. op_fetch_source_files)
@@ -661,7 +661,7 @@ async fn test_command(
     media_type: MediaType::TypeScript,
     source_code: TextDocument::new(
       test_file.clone().into_bytes(),
-      Some("utf-8".to_owned()),
+      Some("utf-8"),
     ),
   };
   // Save our fake file into file fetcher cache

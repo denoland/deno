@@ -30,16 +30,17 @@ use url::Url;
 #[derive(Debug, Clone)]
 pub struct TextDocument {
   bytes: Vec<u8>,
-  charset: String,
+  charset: Cow<'static, str>,
 }
 
 impl TextDocument {
-  pub fn new(bytes: Vec<u8>, charset: Option<String>) -> TextDocument {
-    let charset = match charset {
-      Some(value) => value,
-      None => text_encoding::detect_charset(&bytes).to_owned(),
-    };
-
+  pub fn new(
+    bytes: Vec<u8>,
+    charset: Option<impl Into<Cow<'static, str>>>,
+  ) -> TextDocument {
+    let charset = charset
+      .map(|cs| cs.into())
+      .unwrap_or_else(|| text_encoding::detect_charset(&bytes).into());
     TextDocument { bytes, charset }
   }
 
@@ -62,7 +63,7 @@ impl TextDocument {
 
 impl From<Vec<u8>> for TextDocument {
   fn from(bytes: Vec<u8>) -> Self {
-    TextDocument::new(bytes, None)
+    TextDocument::new(bytes, Option::<&str>::None)
   }
 }
 
