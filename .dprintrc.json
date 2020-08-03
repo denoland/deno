@@ -14,6 +14,7 @@
   "excludes": [
     ".cargo_home",
     "cli/dts",
+    "cli/tests/encoding",
     "cli/tsc/*typescript.js",
     "gh-pages",
     "std/**/testdata",
@@ -21,8 +22,7 @@
     "std/node_modules",
     "std/hash/_wasm",
     "target",
-    "third_party",
-    "cli/tests/encoding"
+    "third_party"
   ],
   "plugins": [
     "https://plugins.dprint.dev/typescript-0.19.9.wasm",

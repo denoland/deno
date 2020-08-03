@@ -1989,7 +1989,8 @@ mod tests {
 
   #[tokio::test]
   async fn test_fetch_source_file_from_net_windows_1255() {
-    let content = "console.log(\"\u{5E9}\u{5DC}\u{5D5}\u{5DD} \u{5E2}\u{5D5}\u{5DC}\u{5DD}\");\u{A}";
+    let content = "console.log(\"\u{5E9}\u{5DC}\u{5D5}\u{5DD} \
+                   \u{5E2}\u{5D5}\u{5DC}\u{5DD}\");\u{A}";
     test_fetch_non_utf8_source_file_from_net(
       "windows-1255",
       "windows-1255",

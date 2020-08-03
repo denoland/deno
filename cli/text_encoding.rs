@@ -24,8 +24,9 @@ pub fn detect_charset(bytes: &'_ [u8]) -> &'static str {
 
 /// Attempts to convert the provided bytes to a UTF-8 string.
 ///
-/// Supports all encodings supported by the encoding_rs crate, which includes all encodings specified in the WHATWG Encoding Standard, and only those encodings (see: https://encoding.spec.whatwg.org/).
-pub fn convert_to_utf8(bytes: &[u8], charset: &str) -> Result<String, Error> {
+/// Supports all encodings supported by the encoding_rs crate, which includes
+/// all encodings specified in the WHATWG Encoding Standard, and only those
+/// encodings (see: https://encoding.spec.whatwg.org/).
 pub fn convert_to_utf8<'a>(
   bytes: &'a [u8],
   charset: &'_ str,
