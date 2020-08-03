@@ -471,7 +471,7 @@ impl TsCompiler {
       if let Some(metadata) = self.get_metadata(&url) {
         // Compare version hashes
         let version_hash_to_validate = source_code_version_hash(
-          &source_file.source_code,
+          &source_file.source_code.as_bytes(),
           version::DENO,
           &self.config.hash,
         );
@@ -512,7 +512,7 @@ impl TsCompiler {
           .fetch_cached_source_file(&specifier, Permissions::allow_all())
         {
           let existing_hash = crate::checksum::gen(&[
-            &source_file.source_code,
+            &source_file.source_code.as_bytes(),
             version::DENO.as_bytes(),
           ]);
           let expected_hash =
@@ -851,9 +851,7 @@ impl TsCompiler {
     let compiled_source_file = self.get_compiled_source_file(module_url)?;
 
     let compiled_module = CompiledModule {
-      code: str::from_utf8(&compiled_source_file.source_code)
-        .unwrap()
-        .to_string(),
+      code: compiled_source_file.source_code.to_string()?,
       name: module_url.to_string(),
     };
 
@@ -861,8 +859,8 @@ impl TsCompiler {
   }
 
   /// Return compiled JS file for given TS module.
-  // TODO: ideally we shouldn't construct SourceFile by hand, but it should be delegated to
-  // SourceFileFetcher
+  // TODO: ideally we shouldn't construct SourceFile by hand, but it should be
+  // delegated to SourceFileFetcher.
   pub fn get_compiled_source_file(
     &self,
     module_url: &Url,
@@ -878,7 +876,7 @@ impl TsCompiler {
       url: module_url.clone(),
       filename: compiled_code_filename,
       media_type: msg::MediaType::JavaScript,
-      source_code: compiled_code,
+      source_code: compiled_code.into(),
       types_header: None,
     };
 
@@ -902,7 +900,7 @@ impl TsCompiler {
     self.mark_compiled(module_specifier.as_url());
 
     let version_hash = source_code_version_hash(
-      &source_file.source_code,
+      &source_file.source_code.as_bytes(),
       version::DENO,
       &self.config.hash,
     );
@@ -935,7 +933,7 @@ impl TsCompiler {
       url: module_specifier.as_url().to_owned(),
       filename: source_map_filename,
       media_type: msg::MediaType::JavaScript,
-      source_code,
+      source_code: source_code.into(),
       types_header: None,
     };
 
@@ -981,7 +979,7 @@ impl SourceMapGetter for TsCompiler {
     self
       .try_resolve_and_get_source_file(script_name)
       .and_then(|out| {
-        str::from_utf8(&out.source_code).ok().map(|v| {
+        out.source_code.to_str().ok().map(|v| {
           // Do NOT use .lines(): it skips the terminating empty line.
           // (due to internally using .split_terminator() instead of .split())
           let lines: Vec<&str> = v.split('\n').collect();
@@ -1020,7 +1018,7 @@ impl TsCompiler {
   ) -> Option<Vec<u8>> {
     if let Some(module_specifier) = self.try_to_resolve(script_name) {
       return match self.get_source_map_file(&module_specifier) {
-        Ok(out) => Some(out.source_code),
+        Ok(out) => Some(out.source_code.into_bytes()),
         Err(_) => {
           // Check if map is inlined
           if let Ok(compiled_source) =
@@ -1566,7 +1564,7 @@ mod tests {
       url: specifier.as_url().clone(),
       filename: PathBuf::from(p.to_str().unwrap().to_string()),
       media_type: msg::MediaType::TypeScript,
-      source_code: include_bytes!("./tests/002_hello.ts").to_vec(),
+      source_code: include_bytes!("./tests/002_hello.ts").to_vec().into(),
       types_header: None,
     };
     let dir =
@@ -1642,7 +1640,7 @@ mod tests {
       url: specifier.as_url().clone(),
       filename: PathBuf::from(p.to_str().unwrap().to_string()),
       media_type: msg::MediaType::TypeScript,
-      source_code: include_bytes!("./tests/002_hello.ts").to_vec(),
+      source_code: include_bytes!("./tests/002_hello.ts").to_vec().into(),
       types_header: None,
     };
     let dir =

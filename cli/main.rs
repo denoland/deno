@@ -11,6 +11,7 @@ extern crate futures;
 extern crate serde_json;
 extern crate clap;
 extern crate deno_core;
+extern crate encoding_rs;
 extern crate indexmap;
 #[cfg(unix)]
 extern crate nix;
@@ -60,6 +61,7 @@ mod startup_data;
 pub mod state;
 mod swc_util;
 mod test_runner;
+mod text_encoding;
 mod tokio_util;
 mod tsc;
 mod upgrade;
@@ -70,6 +72,7 @@ pub mod worker;
 use crate::doc::parser::DocFileLoader;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
+use crate::file_fetcher::TextDocument;
 use crate::fs as deno_fs;
 use crate::global_state::GlobalState;
 use crate::msg::MediaType;
@@ -412,7 +415,7 @@ async fn eval_command(
     } else {
       MediaType::JavaScript
     },
-    source_code,
+    source_code: TextDocument::new(source_code, Some("utf-8")),
   };
   // Save our fake file into file fetcher cache
   // to allow module access by TS compiler (e.g. op_fetch_source_files)
@@ -525,8 +528,7 @@ async fn doc_command(
         let source_file = fetcher
           .fetch_source_file(&specifier, None, Permissions::allow_all())
           .await?;
-        String::from_utf8(source_file.source_code)
-          .map_err(|_| OpError::other("failed to parse".to_string()))
+        source_file.source_code.to_string().map_err(OpError::from)
       }
       .boxed_local()
     }
@@ -601,7 +603,7 @@ async fn run_command(flags: Flags, script: String) -> Result<(), ErrBox> {
       url: main_module_url,
       types_header: None,
       media_type: MediaType::TypeScript,
-      source_code: source,
+      source_code: source.into(),
     };
     // Save our fake file into file fetcher cache
     // to allow module access by TS compiler (e.g. op_fetch_source_files)
@@ -657,7 +659,10 @@ async fn test_command(
     url: test_file_url,
     types_header: None,
     media_type: MediaType::TypeScript,
-    source_code: test_file.clone().into_bytes(),
+    source_code: TextDocument::new(
+      test_file.clone().into_bytes(),
+      Some("utf-8"),
+    ),
   };
   // Save our fake file into file fetcher cache
   // to allow module access by TS compiler (e.g. op_fetch_source_files)

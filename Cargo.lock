@@ -385,6 +385,7 @@ dependencies = [
  "dissimilar",
  "dlopen",
  "dprint-plugin-typescript",
+ "encoding_rs",
  "futures",
  "fwdansi",
  "http",

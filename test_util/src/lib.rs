@@ -430,6 +430,19 @@ fn custom_headers(path: warp::path::Peek, f: warp::fs::File) -> Box<dyn Reply> {
     let f = with_header(f, "Content-Length", "39");
     return Box::new(f);
   }
+  if p.contains("cli/tests/encoding/") {
+    let charset = p
+      .split_terminator('/')
+      .last()
+      .unwrap()
+      .trim_end_matches(".ts");
+    let f = with_header(
+      f,
+      "Content-Type",
+      &format!("application/typescript;charset={}", charset)[..],
+    );
+    return Box::new(f);
+  }
 
   let content_type = if p.contains(".t1.") {
     Some("text/typescript")
