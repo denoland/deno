@@ -280,9 +280,16 @@ class Parser {
       return dataString.slice(0, endOfString);
     }
 
-    const m = /(?:|\[|{|).*(?:|\]||})\s*[^#]/g.exec(dataString);
+    const m = /(?:|\[|{|).*(?:|\]|\|})\s*[^#]/g.exec(dataString);
     if (m) {
-      return m[0].trim();
+      // Todo(jaydhelton) Clean this mess up before PR
+      const thing = m[0].trim()
+      const t = /^((?!#).)*/g.exec(thing)
+      // Todo(jaydhelton) This is matching on empty space as well
+      if (t) {
+        return t[0].trim();
+      }
+      return thing;
     } else {
       return dataString;
     }
