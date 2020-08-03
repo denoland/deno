@@ -1,1 +1,0 @@
-console.log("Hello from file_with_:_in_name.ts");
