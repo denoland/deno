@@ -614,14 +614,12 @@ fn map_content_type(
         }
       };
 
-      let mut charset: Option<String> = None;
-      for part in ct_vector.iter().skip(1) {
-        let trimmed_part = part.trim_start();
-        if trimmed_part.starts_with("charset=") {
-          charset = Some(trimmed_part.split_at(8).1.trim_end().to_owned());
-          break;
-        }
-      }
+      let charset = ct_vector
+        .into_iter()
+        .skip(1)
+        .map(str::trim)
+        .find_map(|part| part.strip_prefix("charset="))
+        .map(ToOwned::to_owned);
 
       (media_type, charset)
     }
