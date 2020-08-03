@@ -349,6 +349,8 @@ Deno.test({
         [1, 2],
       ],
       hosts: ["alpha", "omega"],
+      bool: true,
+      bool2: false,
     };
     const expected = `deno    = "is"
 not     = "[node]"
@@ -383,6 +385,8 @@ sf5     = NaN
 sf6     = NaN
 data    = [["gamma","delta"],[1,2]]
 hosts   = ["alpha","omega"]
+bool    = true
+bool2   = false
 
 [foo]
 bar     = "deno"

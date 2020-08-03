@@ -471,6 +471,8 @@ class Dumper {
         out.push(this._strDeclaration([prop], value.toString()));
       } else if (typeof value === "number") {
         out.push(this._numberDeclaration([prop], value));
+      } else if (typeof value === "boolean") {
+        out.push(this._boolDeclaration([prop], value));
       } else if (
         value instanceof Array &&
         this._isSimplySerializable(value[0])
@@ -504,6 +506,7 @@ class Dumper {
     return (
       typeof value === "string" ||
       typeof value === "number" ||
+      typeof value === "boolean" ||
       value instanceof RegExp ||
       value instanceof Date ||
       value instanceof Array
@@ -537,6 +540,9 @@ class Dumper {
       default:
         return `${this._declaration(keys)}${value}`;
     }
+  }
+  _boolDeclaration(keys: string[], value: boolean): string {
+    return `${this._declaration(keys)}${value}`;
   }
   _dateDeclaration(keys: string[], value: Date): string {
     function dtPad(v: string, lPad = 2): string {
