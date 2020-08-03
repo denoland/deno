@@ -1599,8 +1599,10 @@ mod tests {
   async fn test_fetch_source_file_from_disk_utf_16_be() {
     test_fetch_source_file_from_disk_nonstandard_encoding(
       "utf-16be",
-      String::from_utf8(b"\xEF\xBB\xBFconsole.log(\"Hello World\");".to_vec())
-        .unwrap(),
+      String::from_utf8(
+        b"\xEF\xBB\xBFconsole.log(\"Hello World\");\x0A".to_vec(),
+      )
+      .unwrap(),
     )
     .await;
   }
@@ -1609,8 +1611,10 @@ mod tests {
   async fn test_fetch_source_file_from_disk_utf_16_le() {
     test_fetch_source_file_from_disk_nonstandard_encoding(
       "utf-16le",
-      String::from_utf8(b"\xEF\xBB\xBFconsole.log(\"Hello World\");".to_vec())
-        .unwrap(),
+      String::from_utf8(
+        b"\xEF\xBB\xBFconsole.log(\"Hello World\");\x0A".to_vec(),
+      )
+      .unwrap(),
     )
     .await;
   }
@@ -1619,8 +1623,10 @@ mod tests {
   async fn test_fetch_source_file_from_disk_utf_8_with_bom() {
     test_fetch_source_file_from_disk_nonstandard_encoding(
       "utf-8",
-      String::from_utf8(b"\xEF\xBB\xBFconsole.log(\"Hello World\");".to_vec())
-        .unwrap(),
+      String::from_utf8(
+        b"\xEF\xBB\xBFconsole.log(\"Hello World\");\x0A".to_vec(),
+      )
+      .unwrap(),
     )
     .await;
   }
@@ -1953,7 +1959,7 @@ mod tests {
   #[tokio::test]
   async fn test_fetch_source_file_from_net_utf16_le() {
     let content =
-      std::str::from_utf8(b"\xEF\xBB\xBFconsole.log(\"Hello World\");")
+      std::str::from_utf8(b"\xEF\xBB\xBFconsole.log(\"Hello World\");\x0A")
         .unwrap();
     test_fetch_non_utf8_source_file_from_net(
       "utf-16le",
@@ -1966,7 +1972,7 @@ mod tests {
   #[tokio::test]
   async fn test_fetch_source_file_from_net_utf16_be() {
     let content =
-      std::str::from_utf8(b"\xEF\xBB\xBFconsole.log(\"Hello World\");")
+      std::str::from_utf8(b"\xEF\xBB\xBFconsole.log(\"Hello World\");\x0A")
         .unwrap();
     test_fetch_non_utf8_source_file_from_net(
       "utf-16be",
@@ -1978,7 +1984,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_fetch_source_file_from_net_windows_1255() {
-    let content = "console.log(\"\u{5E9}\u{5DC}\u{5D5}\u{5DD} \u{5E2}\u{5D5}\u{5DC}\u{5DD}\");";
+    let content = "console.log(\"\u{5E9}\u{5DC}\u{5D5}\u{5DD} \u{5E2}\u{5D5}\u{5DC}\u{5DD}\");\u{A}";
     test_fetch_non_utf8_source_file_from_net(
       "windows-1255",
       "windows-1255",
