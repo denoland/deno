@@ -293,6 +293,39 @@ pub async fn run_all_servers() {
       );
       res
     }))
+    .or(warp::path!("type_headers_deno_types.foo.js").map(|| {
+      let mut res = Response::new(Body::from("export function foo(text) { console.log(text); }"));
+      let h = res.headers_mut();
+      h.insert(
+        "Content-type",
+        HeaderValue::from_static("application/javascript"),
+      );
+      h.insert(
+        "X-TypeScript-Types",
+        HeaderValue::from_static(
+          "http://localhost:4545/type_headers_deno_types.d.ts",
+        ),
+      );
+      res
+    }))
+    .or(warp::path!("type_headers_deno_types.d.ts").map(|| {
+      let mut res = Response::new(Body::from("export function foo(text: number): void;"));
+      let h = res.headers_mut();
+      h.insert(
+        "Content-type",
+        HeaderValue::from_static("application/typescript"),
+      );
+      res
+    }))
+    .or(warp::path!("type_headers_deno_types.foo.d.ts").map(|| {
+      let mut res = Response::new(Body::from("export function foo(text: string): void;"));
+      let h = res.headers_mut();
+      h.insert(
+        "Content-type",
+        HeaderValue::from_static("application/typescript"),
+      );
+      res
+    }))
     .or(warp::path!("cli"/"tests"/"subdir"/"xTypeScriptTypesRedirect.d.ts").map(|| {
       let mut res = Response::new(Body::from(
         "import './xTypeScriptTypesRedirected.d.ts';",

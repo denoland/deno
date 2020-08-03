@@ -9,13 +9,11 @@ async function startServer(): Promise<
   Deno.Process<Deno.RunOptions & { stdout: "piped" }>
 > {
   const server = Deno.run({
-    // TODO(lucacasonato): remove unstable once possible
     cmd: [
       Deno.execPath(),
       "run",
       "--allow-net",
       "--allow-read",
-      "--unstable",
       "server.ts",
     ],
     cwd: "examples/chat",

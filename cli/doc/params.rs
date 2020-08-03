@@ -1,11 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::display::{display_optional, SliceDisplayer};
 use super::ts_type::{ts_type_ann_to_def, TsTypeDef};
-use crate::swc_common::SourceMap;
-use crate::swc_ecma_ast;
-use crate::swc_ecma_ast::{ObjectPatProp, Pat, TsFnParam};
 use serde::Serialize;
 use std::fmt::{Display, Formatter, Result as FmtResult};
+use swc_common::SourceMap;
+use swc_ecmascript::ast::{ObjectPatProp, Pat, TsFnParam};
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -146,7 +145,7 @@ impl Display for ObjectPatPropDef {
 }
 
 pub fn ident_to_param_def(
-  ident: &swc_ecma_ast::Ident,
+  ident: &swc_ecmascript::ast::Ident,
   _source_map: Option<&SourceMap>,
 ) -> ParamDef {
   let ts_type = ident.type_ann.as_ref().map(|rt| ts_type_ann_to_def(rt));
@@ -159,7 +158,7 @@ pub fn ident_to_param_def(
 }
 
 fn rest_pat_to_param_def(
-  rest_pat: &swc_ecma_ast::RestPat,
+  rest_pat: &swc_ecmascript::ast::RestPat,
   source_map: Option<&SourceMap>,
 ) -> ParamDef {
   let ts_type = rest_pat.type_ann.as_ref().map(|rt| ts_type_ann_to_def(rt));
@@ -190,7 +189,7 @@ fn object_pat_prop_to_def(
 }
 
 fn object_pat_to_param_def(
-  object_pat: &swc_ecma_ast::ObjectPat,
+  object_pat: &swc_ecmascript::ast::ObjectPat,
   source_map: Option<&SourceMap>,
 ) -> ParamDef {
   let props = object_pat
@@ -211,7 +210,7 @@ fn object_pat_to_param_def(
 }
 
 fn array_pat_to_param_def(
-  array_pat: &swc_ecma_ast::ArrayPat,
+  array_pat: &swc_ecmascript::ast::ArrayPat,
   source_map: Option<&SourceMap>,
 ) -> ParamDef {
   let elements = array_pat
@@ -229,7 +228,7 @@ fn array_pat_to_param_def(
 }
 
 pub fn assign_pat_to_param_def(
-  assign_pat: &swc_ecma_ast::AssignPat,
+  assign_pat: &swc_ecmascript::ast::AssignPat,
   source_map: Option<&SourceMap>,
 ) -> ParamDef {
   let ts_type = assign_pat
@@ -245,7 +244,7 @@ pub fn assign_pat_to_param_def(
 }
 
 pub fn pat_to_param_def(
-  pat: &swc_ecma_ast::Pat,
+  pat: &swc_ecmascript::ast::Pat,
   source_map: Option<&SourceMap>,
 ) -> ParamDef {
   match pat {
@@ -259,7 +258,7 @@ pub fn pat_to_param_def(
 }
 
 pub fn ts_fn_param_to_param_def(
-  ts_fn_param: &swc_ecma_ast::TsFnParam,
+  ts_fn_param: &swc_ecmascript::ast::TsFnParam,
   source_map: Option<&SourceMap>,
 ) -> ParamDef {
   match ts_fn_param {
@@ -275,10 +274,10 @@ pub fn ts_fn_param_to_param_def(
 }
 
 pub fn prop_name_to_string(
-  prop_name: &swc_ecma_ast::PropName,
+  prop_name: &swc_ecmascript::ast::PropName,
   source_map: Option<&SourceMap>,
 ) -> String {
-  use crate::swc_ecma_ast::PropName;
+  use swc_ecmascript::ast::PropName;
   match prop_name {
     PropName::Ident(ident) => ident.sym.to_string(),
     PropName::Str(str_) => str_.value.to_string(),

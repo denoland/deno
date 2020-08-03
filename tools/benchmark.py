@@ -60,11 +60,7 @@ def get_binary_sizes(build_dir):
         for file_name in file_names:
             if not file_name in [
                     "CLI_SNAPSHOT.bin",
-                    "CLI_SNAPSHOT.js",
-                    "CLI_SNAPSHOT.js.map",
                     "COMPILER_SNAPSHOT.bin",
-                    "COMPILER_SNAPSHOT.js",
-                    "COMPILER_SNAPSHOT.js.map",
             ]:
                 continue
             file_path = os.path.join(parent_dir, file_name)

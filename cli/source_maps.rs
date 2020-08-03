@@ -18,16 +18,6 @@ pub trait SourceMapGetter {
 /// find a SourceMap.
 pub type CachedMaps = HashMap<String, Option<SourceMap>>;
 
-fn builtin_source_map(file_name: &str) -> Option<Vec<u8>> {
-  if file_name.ends_with("CLI_SNAPSHOT.js") {
-    Some(crate::js::CLI_SNAPSHOT_MAP.to_vec())
-  } else if file_name.ends_with("COMPILER_SNAPSHOT.js") {
-    Some(crate::js::COMPILER_SNAPSHOT_MAP.to_vec())
-  } else {
-    None
-  }
-}
-
 /// Apply a source map to a deno_core::JSError, returning a JSError where file
 /// names and line/column numbers point to the location in the original source,
 /// rather than the transpiled source code.
@@ -154,8 +144,8 @@ fn parse_map_string<G: SourceMapGetter>(
   file_name: &str,
   getter: &G,
 ) -> Option<SourceMap> {
-  builtin_source_map(file_name)
-    .or_else(|| getter.get_source_map(file_name))
+  getter
+    .get_source_map(file_name)
     .and_then(|raw_source_map| SourceMap::from_slice(&raw_source_map).ok())
 }
 

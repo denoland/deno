@@ -378,12 +378,15 @@ impl ErrWithV8Handle {
     err: ErrBox,
     handle: v8::Local<v8::Value>,
   ) -> Self {
-    let handle = v8::Global::new_from(scope, handle);
+    let handle = v8::Global::new(scope, handle);
     Self { err, handle }
   }
 
-  pub fn get_handle(&self) -> &v8::Global<v8::Value> {
-    &self.handle
+  pub fn get_handle<'s>(
+    &self,
+    scope: &mut v8::HandleScope<'s>,
+  ) -> v8::Local<'s, v8::Value> {
+    v8::Local::new(scope, &self.handle)
   }
 }
 

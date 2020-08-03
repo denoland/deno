@@ -2,10 +2,15 @@
 members = [
   "cli",
   "core",
-  "deno_typescript",
   "test_plugin",
   "test_util",
 ]
 exclude = [
   "std/hash/_wasm"
 ]
+
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 'z' # Optimize for size

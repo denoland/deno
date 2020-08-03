@@ -15,16 +15,16 @@ the first line of code.
 ### Chrome Devtools
 
 Let's try debugging a program using Chrome Devtools. For this, we'll use
-[file_server.ts](https://deno.land/std@v0.50.0/http/file_server.ts) from `std`,
-a static file server.
+[file_server.ts](https://deno.land/std@$STD_VERSION/http/file_server.ts) from
+`std`, a static file server.
 
 Use the `--inspect-brk` flag to break execution on the first line:
 
 ```shell
-$ deno run --inspect-brk --allow-read --allow-net https://deno.land/std@v0.50.0/http/file_server.ts
+$ deno run --inspect-brk --allow-read --allow-net https://deno.land/std@$STD_VERSION/http/file_server.ts
 Debugger listening on ws://127.0.0.1:9229/ws/1e82c406-85a9-44ab-86b6-7341583480b1
-Download https://deno.land/std@v0.50.0/http/file_server.ts
-Compile https://deno.land/std@v0.50.0/http/file_server.ts
+Download https://deno.land/std@$STD_VERSION/http/file_server.ts
+Compile https://deno.land/std@$STD_VERSION/http/file_server.ts
 ...
 ```
 
@@ -110,7 +110,7 @@ with a script name if you want a fixed entry point.
 Let's try out debugging a local source file. Create `server.ts`:
 
 ```ts
-import { serve } from "https://deno.land/std@v0.50.0/http/server.ts";
+import { serve } from "https://deno.land/std@$STD_VERSION/http/server.ts";
 const server = serve({ port: 8000 });
 console.log("http://localhost:8000/");
 
