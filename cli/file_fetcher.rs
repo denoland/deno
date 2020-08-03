@@ -583,11 +583,11 @@ fn map_content_type(
 ) -> (msg::MediaType, Option<String>) {
   match content_type {
     Some(content_type) => {
-      // sometimes there is additional data after the media type in
+      // Sometimes there is additional data after the media type in
       // Content-Type so we have to do a bit of manipulation so we are only
-      // dealing with the actual media type
-      let ct_vector: Vec<&str> = content_type.split(';').collect();
-      let ct: &str = ct_vector.first().unwrap();
+      // dealing with the actual media type.
+      let mut ct_iter = content_type.split(';');
+      let ct = ct_iter.next().unwrap();
       let media_type = match ct.to_lowercase().as_ref() {
         "application/typescript"
         | "text/typescript"
@@ -614,12 +614,10 @@ fn map_content_type(
         }
       };
 
-      let charset = ct_vector
-        .into_iter()
-        .skip(1)
+      let charset = ct_iter
         .map(str::trim)
-        .find_map(|part| part.strip_prefix("charset="))
-        .map(ToOwned::to_owned);
+        .find_map(|s| s.strip_prefix("charset="))
+        .map(String::from);
 
       (media_type, charset)
     }
