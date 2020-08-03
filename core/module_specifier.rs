@@ -1,4 +1,4 @@
-use crate::utils::normalize_path;
+use crate::normalize_path;
 use std::env::current_dir;
 use std::error::Error;
 use std::fmt;

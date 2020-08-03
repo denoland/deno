@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-pub use deno_core::utils::normalize_path;
+pub use deno_core::normalize_path;
 use deno_core::ErrBox;
 use std::env::current_dir;
 use std::fs::OpenOptions;
