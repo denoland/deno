@@ -2220,6 +2220,12 @@ itest!(compiler_js_error {
   exit_code: 1,
 });
 
+itest!(import_file_with_colon {
+  args: "run --quiet --reload import_file_with_colon.ts",
+  output: "import_file_with_colon.ts.out",
+  http_server: true,
+});
+
 #[test]
 fn cafile_env_fetch() {
   use url::Url;
