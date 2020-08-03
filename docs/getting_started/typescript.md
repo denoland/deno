@@ -10,7 +10,7 @@ no "magical" module resolution. Instead, imported modules are specified as files
 directly imported. E.g.
 
 ```
-import { Response } from "https://deno.land/std@0.53.0/http/server.ts";
+import { Response } from "https://deno.land/std@$STD_VERSION/http/server.ts";
 import { queue } from "./collections.ts";
 ```
 
@@ -36,8 +36,8 @@ example `tsconfig.json` with this option
 [in the standard library](https://github.com/denoland/deno/blob/master/std/tsconfig_test.json).
 
 Because there is no type information when using `--no-check`, `const enum` is
-not supported because it is are type-directed. `--no-check` also does not
-support the legacy `import =` and `export =` syntax.
+not supported because it is type-directed. `--no-check` also does not support
+the legacy `import =` and `export =` syntax.
 
 ### Using external type definitions
 

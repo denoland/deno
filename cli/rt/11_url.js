@@ -1,7 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
-  const { build } = window.__bootstrap.build;
   const { getRandomValues } = window.__bootstrap.crypto;
   const { customInspect } = window.__bootstrap.console;
   const { sendSync } = window.__bootstrap.dispatchJson;
@@ -264,74 +263,118 @@
     return [capture, rest];
   }
 
-  function parse(url, isBase = true) {
+  function parse(url, baseParts = null) {
     const parts = {};
     let restUrl;
-    [parts.protocol, restUrl] = takePattern(url.trim(), /^([a-z]+):/);
-    if (isBase && parts.protocol == "") {
-      return undefined;
+    let usedNonBase = false;
+    [parts.protocol, restUrl] = takePattern(
+      url.trim(),
+      /^([A-Za-z][+-.0-9A-Za-z]*):/,
+    );
+    parts.protocol = parts.protocol.toLowerCase();
+    if (parts.protocol == "") {
+      if (baseParts == null) {
+        return null;
+      }
+      parts.protocol = baseParts.protocol;
+    } else if (
+      parts.protocol != baseParts?.protocol ||
+      !specialSchemes.includes(parts.protocol)
+    ) {
+      usedNonBase = true;
     }
     const isSpecial = specialSchemes.includes(parts.protocol);
     if (parts.protocol == "file") {
       parts.slashes = "//";
       parts.username = "";
       parts.password = "";
-      [parts.hostname, restUrl] = takePattern(restUrl, /^[/\\]{2}([^/\\?#]*)/);
-      parts.port = "";
-      if (build.os == "windows" && parts.hostname == "") {
-        // UNC paths. e.g. "\\\\localhost\\foo\\bar" on Windows should be
-        // representable as `new URL("file:////localhost/foo/bar")` which is
-        // equivalent to: `new URL("file://localhost/foo/bar")`.
+      if (usedNonBase || restUrl.match(/^[/\\]{2}/)) {
         [parts.hostname, restUrl] = takePattern(
           restUrl,
-          /^[/\\]{2,}([^/\\?#]*)/,
+          /^[/\\]{2}([^/\\?#]*)/,
         );
-      }
-    } else {
-      let restAuthority;
-      if (isSpecial) {
-        parts.slashes = "//";
-        [restAuthority, restUrl] = takePattern(
-          restUrl,
-          /^[/\\]{2,}([^/\\?#]*)/,
-        );
+        usedNonBase = true;
       } else {
-        parts.slashes = restUrl.match(/^[/\\]{2}/) ? "//" : "";
-        [restAuthority, restUrl] = takePattern(restUrl, /^[/\\]{2}([^/\\?#]*)/);
+        parts.hostname = baseParts.hostname;
       }
-      let restAuthentication;
-      [restAuthentication, restAuthority] = takePattern(
-        restAuthority,
-        /^(.*)@/,
-      );
-      [parts.username, restAuthentication] = takePattern(
-        restAuthentication,
-        /^([^:]*)/,
-      );
-      parts.username = encodeUserinfo(parts.username);
-      [parts.password] = takePattern(restAuthentication, /^:(.*)/);
-      parts.password = encodeUserinfo(parts.password);
-      [parts.hostname, restAuthority] = takePattern(
-        restAuthority,
-        /^(\[[0-9a-fA-F.:]{2,}\]|[^:]+)/,
-      );
-      [parts.port] = takePattern(restAuthority, /^:(.*)/);
-      if (!isValidPort(parts.port)) {
-        return undefined;
-      }
-      if (parts.hostname == "" && isSpecial && isBase) {
-        return undefined;
+      parts.port = "";
+    } else {
+      if (usedNonBase || restUrl.match(/^[/\\]{2}/)) {
+        let restAuthority;
+        if (isSpecial) {
+          parts.slashes = "//";
+          [restAuthority, restUrl] = takePattern(
+            restUrl,
+            /^[/\\]*([^/\\?#]*)/,
+          );
+        } else {
+          parts.slashes = restUrl.match(/^[/\\]{2}/) ? "//" : "";
+          [restAuthority, restUrl] = takePattern(
+            restUrl,
+            /^[/\\]{2}([^/\\?#]*)/,
+          );
+        }
+        let restAuthentication;
+        [restAuthentication, restAuthority] = takePattern(
+          restAuthority,
+          /^(.*)@/,
+        );
+        [parts.username, restAuthentication] = takePattern(
+          restAuthentication,
+          /^([^:]*)/,
+        );
+        parts.username = encodeUserinfo(parts.username);
+        [parts.password] = takePattern(restAuthentication, /^:(.*)/);
+        parts.password = encodeUserinfo(parts.password);
+        [parts.hostname, restAuthority] = takePattern(
+          restAuthority,
+          /^(\[[0-9a-fA-F.:]{2,}\]|[^:]+)/,
+        );
+        [parts.port] = takePattern(restAuthority, /^:(.*)/);
+        if (!isValidPort(parts.port)) {
+          return null;
+        }
+        if (parts.hostname == "" && isSpecial) {
+          return null;
+        }
+        usedNonBase = true;
+      } else {
+        parts.username = baseParts.username;
+        parts.password = baseParts.password;
+        parts.hostname = baseParts.hostname;
+        parts.port = baseParts.port;
       }
     }
     try {
       parts.hostname = encodeHostname(parts.hostname, isSpecial);
     } catch {
-      return undefined;
+      return null;
     }
     [parts.path, restUrl] = takePattern(restUrl, /^([^?#]*)/);
     parts.path = encodePathname(parts.path.replace(/\\/g, "/"));
-    [parts.query, restUrl] = takePattern(restUrl, /^(\?[^#]*)/);
-    parts.query = encodeSearch(parts.query);
+    if (usedNonBase) {
+      parts.path = normalizePath(parts.path, parts.protocol == "file");
+    } else {
+      if (parts.path != "") {
+        usedNonBase = true;
+      }
+      parts.path = resolvePathFromBase(
+        parts.path,
+        baseParts.path || "/",
+        baseParts.protocol == "file",
+      );
+    }
+    // Drop the hostname if a drive letter is parsed.
+    if (parts.protocol == "file" && parts.path.match(/^\/+[A-Za-z]:(\/|$)/)) {
+      parts.hostname = "";
+    }
+    if (usedNonBase || restUrl.startsWith("?")) {
+      [parts.query, restUrl] = takePattern(restUrl, /^(\?[^#]*)/);
+      parts.query = encodeSearch(parts.query);
+      usedNonBase = true;
+    } else {
+      parts.query = baseParts.query;
+    }
     [parts.hash] = takePattern(restUrl, /^(#.*)/);
     parts.hash = encodeHash(parts.hash);
     return parts;
@@ -348,22 +391,26 @@
   // Keep it outside of URL to avoid any attempts of access.
   const blobURLMap = new Map();
 
-  function isAbsolutePath(path) {
-    return path.startsWith("/");
-  }
-
   // Resolves `.`s and `..`s where possible.
   // Preserves repeating and trailing `/`s by design.
-  // On Windows, drive letter paths will be given a leading slash, and also a
-  // trailing slash if there are no other components e.g. "C:" -> "/C:/".
-  function normalizePath(path, isFilePath = false) {
-    if (build.os == "windows" && isFilePath) {
-      path = path.replace(/^\/*([A-Za-z]:)(\/|$)/, "/$1/");
-    }
-    const isAbsolute = isAbsolutePath(path);
+  // Assumes drive letter file paths will have a leading slash.
+  function normalizePath(path, isFilePath) {
+    const isAbsolute = path.startsWith("/");
     path = path.replace(/^\//, "");
     const pathSegments = path.split("/");
 
+    let driveLetter = null;
+    if (isFilePath && pathSegments[0].match(/^[A-Za-z]:$/)) {
+      driveLetter = pathSegments.shift();
+    }
+
+    if (isFilePath && isAbsolute) {
+      while (pathSegments.length > 1 && pathSegments[0] == "") {
+        pathSegments.shift();
+      }
+    }
+
+    let ensureTrailingSlash = false;
     const newPathSegments = [];
     for (let i = 0; i < pathSegments.length; i++) {
       const previous = newPathSegments[newPathSegments.length - 1];
@@ -373,64 +420,67 @@
         (previous != undefined || isAbsolute)
       ) {
         newPathSegments.pop();
-      } else if (pathSegments[i] != ".") {
+        ensureTrailingSlash = true;
+      } else if (pathSegments[i] == ".") {
+        ensureTrailingSlash = true;
+      } else {
         newPathSegments.push(pathSegments[i]);
+        ensureTrailingSlash = false;
       }
+    }
+    if (driveLetter != null) {
+      newPathSegments.unshift(driveLetter);
+    }
+    if (newPathSegments.length == 0 && !isAbsolute) {
+      newPathSegments.push(".");
+      ensureTrailingSlash = false;
     }
 
     let newPath = newPathSegments.join("/");
-    if (!isAbsolute) {
-      if (newPathSegments.length == 0) {
-        newPath = ".";
-      }
-    } else {
+    if (isAbsolute) {
       newPath = `/${newPath}`;
+    }
+    if (ensureTrailingSlash) {
+      newPath = newPath.replace(/\/*$/, "/");
     }
     return newPath;
   }
 
   // Standard URL basing logic, applied to paths.
-  function resolvePathFromBase(
-    path,
-    basePath,
-    isFilePath = false,
-  ) {
-    let normalizedPath = normalizePath(path, isFilePath);
-    let normalizedBasePath = normalizePath(basePath, isFilePath);
-
-    let driveLetterPrefix = "";
-    if (build.os == "windows" && isFilePath) {
-      let driveLetter;
-      let baseDriveLetter;
-      [driveLetter, normalizedPath] = takePattern(
-        normalizedPath,
-        /^(\/[A-Za-z]:)(?=\/)/,
-      );
-      [baseDriveLetter, normalizedBasePath] = takePattern(
-        normalizedBasePath,
-        /^(\/[A-Za-z]:)(?=\/)/,
-      );
-      driveLetterPrefix = driveLetter || baseDriveLetter;
+  function resolvePathFromBase(path, basePath, isFilePath) {
+    let basePrefix;
+    let suffix;
+    const baseDriveLetter = basePath.match(/^\/+[A-Za-z]:(?=\/|$)/)?.[0];
+    if (isFilePath && path.match(/^\/+[A-Za-z]:(\/|$)/)) {
+      basePrefix = "";
+      suffix = path;
+    } else if (path.startsWith("/")) {
+      if (isFilePath && baseDriveLetter) {
+        basePrefix = baseDriveLetter;
+        suffix = path;
+      } else {
+        basePrefix = "";
+        suffix = path;
+      }
+    } else if (path != "") {
+      basePath = normalizePath(basePath, isFilePath);
+      path = normalizePath(path, isFilePath);
+      // Remove everything after the last `/` in `basePath`.
+      if (baseDriveLetter && isFilePath) {
+        basePrefix = `${baseDriveLetter}${
+          basePath.slice(baseDriveLetter.length).replace(/[^\/]*$/, "")
+        }`;
+      } else {
+        basePrefix = basePath.replace(/[^\/]*$/, "");
+      }
+      basePrefix = basePrefix.replace(/\/*$/, "/");
+      // If `normalizedPath` ends with `.` or `..`, add a trailing slash.
+      suffix = path.replace(/(?<=(^|\/)(\.|\.\.))$/, "/");
+    } else {
+      basePrefix = basePath;
+      suffix = "";
     }
-
-    if (isAbsolutePath(normalizedPath)) {
-      return `${driveLetterPrefix}${normalizedPath}`;
-    }
-    if (!isAbsolutePath(normalizedBasePath)) {
-      throw new TypeError("Base path must be absolute.");
-    }
-
-    // Special case.
-    if (path == "") {
-      return `${driveLetterPrefix}${normalizedBasePath}`;
-    }
-
-    // Remove everything after the last `/` in `normalizedBasePath`.
-    const prefix = normalizedBasePath.replace(/[^\/]*$/, "");
-    // If `normalizedPath` ends with `.` or `..`, add a trailing slash.
-    const suffix = normalizedPath.replace(/(?<=(^|\/)(\.|\.\.))$/, "/");
-
-    return `${driveLetterPrefix}${normalizePath(prefix + suffix)}`;
+    return normalizePath(basePrefix + suffix, isFilePath);
   }
 
   function isValidPort(value) {
@@ -628,46 +678,22 @@
     }
 
     constructor(url, base) {
-      let baseParts;
+      let baseParts = null;
+      new.target;
       if (base) {
-        baseParts = typeof base === "string" ? parse(base) : parts.get(base);
-        if (baseParts === undefined) {
+        baseParts = base instanceof URL ? parts.get(base) : parse(base);
+        if (baseParts == null) {
           throw new TypeError("Invalid base URL.");
         }
       }
 
-      const urlParts = typeof url === "string"
-        ? parse(url, !baseParts)
-        : parts.get(url);
-      if (urlParts == undefined) {
+      const urlParts = url instanceof URL
+        ? parts.get(url)
+        : parse(url, baseParts);
+      if (urlParts == null) {
         throw new TypeError("Invalid URL.");
       }
-
-      if (urlParts.protocol) {
-        urlParts.path = normalizePath(
-          urlParts.path,
-          urlParts.protocol == "file",
-        );
-        parts.set(this, urlParts);
-      } else if (baseParts) {
-        parts.set(this, {
-          protocol: baseParts.protocol,
-          slashes: baseParts.slashes,
-          username: baseParts.username,
-          password: baseParts.password,
-          hostname: baseParts.hostname,
-          port: baseParts.port,
-          path: resolvePathFromBase(
-            urlParts.path,
-            baseParts.path || "/",
-            baseParts.protocol == "file",
-          ),
-          query: urlParts.query,
-          hash: urlParts.hash,
-        });
-      } else {
-        throw new TypeError("Invalid URL.");
-      }
+      parts.set(this, urlParts);
 
       this.#updateSearchParams();
     }

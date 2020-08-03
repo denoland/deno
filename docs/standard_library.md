@@ -27,7 +27,7 @@ change:
 
 ```typescript
 // imports from v0.50.0 of std, never changes
-import { copy } from "https://deno.land/std@0.50.0/fs/copy.ts";
+import { copy } from "https://deno.land/std@$STD_VERSION/fs/copy.ts";
 ```
 
 ## Troubleshooting
@@ -40,7 +40,7 @@ exist:
 
 ```typescript
 // main.ts
-import { copy } from "https://deno.land/std@0.50.0/fs/copy.ts";
+import { copy } from "https://deno.land/std@$STD_VERSION/fs/copy.ts";
 
 copy("log.txt", "log-old.txt");
 ```
@@ -48,18 +48,18 @@ copy("log.txt", "log-old.txt");
 ```shell
 $ deno run --allow-read --allow-write main.ts
 Compile file:///dev/deno/main.ts
-Download https://deno.land/std@0.50.0/fs/copy.ts
-Download https://deno.land/std@0.50.0/fs/ensure_dir.ts
-Download https://deno.land/std@0.50.0/fs/_util.ts
+Download https://deno.land/std@$STD_VERSION/fs/copy.ts
+Download https://deno.land/std@$STD_VERSION/fs/ensure_dir.ts
+Download https://deno.land/std@$STD_VERSION/fs/_util.ts
 error: TS2339 [ERROR]: Property 'utime' does not exist on type 'typeof Deno'.
     await Deno.utime(dest, statInfo.atime, statInfo.mtime);
                ~~~~~
-    at https://deno.land/std@0.50.0/fs/copy.ts:90:16
+    at https://deno.land/std@$STD_VERSION/fs/copy.ts:90:16
 
 TS2339 [ERROR]: Property 'utimeSync' does not exist on type 'typeof Deno'.
     Deno.utimeSync(dest, statInfo.atime, statInfo.mtime);
          ~~~~~~~~~
-    at https://deno.land/std@0.50.0/fs/copy.ts:101:10
+    at https://deno.land/std@$STD_VERSION/fs/copy.ts:101:10
 ```
 
 Solution to that problem requires adding `--unstable` flag:

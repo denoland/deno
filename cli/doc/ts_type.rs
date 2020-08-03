@@ -7,16 +7,15 @@ use super::ts_type_param::TsTypeParamDef;
 use super::ParamDef;
 use crate::colors;
 use crate::doc;
-use crate::swc_ecma_ast;
-use crate::swc_ecma_ast::{
+use serde::Serialize;
+use std::fmt::{Display, Formatter, Result as FmtResult};
+use swc_ecmascript::ast::{
   TsArrayType, TsConditionalType, TsExprWithTypeArgs, TsFnOrConstructorType,
   TsIndexedAccessType, TsKeywordType, TsLit, TsLitType, TsOptionalType,
   TsParenthesizedType, TsRestType, TsThisType, TsTupleType, TsType, TsTypeAnn,
   TsTypeLit, TsTypeOperator, TsTypeParamInstantiation, TsTypeQuery, TsTypeRef,
   TsUnionOrIntersectionType,
 };
-use serde::Serialize;
-use std::fmt::{Display, Formatter, Result as FmtResult};
 
 // pub enum TsType {
 //  *      TsKeywordType(TsKeywordType),
@@ -129,7 +128,7 @@ impl Into<TsTypeDef> for &TsTupleType {
 
 impl Into<TsTypeDef> for &TsUnionOrIntersectionType {
   fn into(self) -> TsTypeDef {
-    use crate::swc_ecma_ast::TsUnionOrIntersectionType::*;
+    use swc_ecmascript::ast::TsUnionOrIntersectionType::*;
 
     match self {
       TsUnionType(union_type) => {
@@ -168,7 +167,7 @@ impl Into<TsTypeDef> for &TsUnionOrIntersectionType {
 
 impl Into<TsTypeDef> for &TsKeywordType {
   fn into(self) -> TsTypeDef {
-    use crate::swc_ecma_ast::TsKeywordTypeKind::*;
+    use swc_ecmascript::ast::TsKeywordTypeKind::*;
 
     let keyword_str = match self.kind {
       TsAnyKeyword => "any",
@@ -258,9 +257,9 @@ impl Into<TsTypeDef> for &TsThisType {
 }
 
 pub fn ts_entity_name_to_name(
-  entity_name: &swc_ecma_ast::TsEntityName,
+  entity_name: &swc_ecmascript::ast::TsEntityName,
 ) -> String {
-  use crate::swc_ecma_ast::TsEntityName::*;
+  use swc_ecmascript::ast::TsEntityName::*;
 
   match entity_name {
     Ident(ident) => ident.sym.to_string(),
@@ -274,7 +273,7 @@ pub fn ts_entity_name_to_name(
 
 impl Into<TsTypeDef> for &TsTypeQuery {
   fn into(self) -> TsTypeDef {
-    use crate::swc_ecma_ast::TsTypeQueryExpr::*;
+    use swc_ecmascript::ast::TsTypeQueryExpr::*;
 
     let type_name = match &self.expr_name {
       TsEntityName(entity_name) => ts_entity_name_to_name(&*entity_name),
@@ -374,7 +373,7 @@ impl Into<TsTypeDef> for &TsTypeLit {
     let mut index_signatures = vec![];
 
     for type_element in &self.members {
-      use crate::swc_ecma_ast::TsTypeElement::*;
+      use swc_ecmascript::ast::TsTypeElement::*;
 
       match &type_element {
         TsMethodSignature(ts_method_sig) => {
@@ -511,7 +510,7 @@ impl Into<TsTypeDef> for &TsConditionalType {
 
 impl Into<TsTypeDef> for &TsFnOrConstructorType {
   fn into(self) -> TsTypeDef {
-    use crate::swc_ecma_ast::TsFnOrConstructorType::*;
+    use swc_ecmascript::ast::TsFnOrConstructorType::*;
 
     let fn_def = match self {
       TsFnType(ts_fn_type) => {
@@ -563,7 +562,7 @@ impl Into<TsTypeDef> for &TsFnOrConstructorType {
 
 impl Into<TsTypeDef> for &TsType {
   fn into(self) -> TsTypeDef {
-    use crate::swc_ecma_ast::TsType::*;
+    use swc_ecmascript::ast::TsType::*;
 
     match self {
       TsKeywordType(ref keyword_type) => keyword_type.into(),
@@ -829,7 +828,7 @@ pub struct TsTypeDef {
 }
 
 pub fn ts_type_ann_to_def(type_ann: &TsTypeAnn) -> TsTypeDef {
-  use crate::swc_ecma_ast::TsType::*;
+  use swc_ecmascript::ast::TsType::*;
 
   match &*type_ann.type_ann {
     TsKeywordType(keyword_type) => keyword_type.into(),

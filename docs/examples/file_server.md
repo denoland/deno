@@ -3,14 +3,14 @@
 This one serves a local directory in HTTP.
 
 ```shell
-deno install --allow-net --allow-read https://deno.land/std/http/file_server.ts
+deno install --allow-net --allow-read https://deno.land/std@$STD_VERSION/http/file_server.ts
 ```
 
 Run it:
 
 ```shell
 $ file_server .
-Downloading https://deno.land/std/http/file_server.ts...
+Downloading https://deno.land/std@$STD_VERSION/http/file_server.ts...
 [...]
 HTTP server listening on http://0.0.0.0:4500/
 ```

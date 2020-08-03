@@ -2,9 +2,6 @@
 //! This module encodes TypeScript errors (diagnostics) into Rust structs and
 //! contains code for printing them to the console.
 
-// TODO(ry) This module does a lot of JSON parsing manually. It should use
-// serde_json.
-
 use crate::colors;
 use crate::fmt_errors::format_stack;
 use serde::Deserialize;
@@ -152,10 +149,7 @@ fn format_maybe_related_information(
     for rd in related_information {
       s.push_str("\n\n");
       s.push_str(&format_stack(
-        match rd.category {
-          DiagnosticCategory::Error => true,
-          _ => false,
-        },
+        matches!(rd.category, DiagnosticCategory::Error),
         &format_message(&rd.message_chain, &rd.message, 0),
         rd.source_line.as_deref(),
         rd.start_column,
@@ -180,10 +174,7 @@ impl fmt::Display for DiagnosticItem {
       f,
       "{}",
       format_stack(
-        match self.category {
-          DiagnosticCategory::Error => true,
-          _ => false,
-        },
+        matches!(self.category, DiagnosticCategory::Error),
         &format!(
           "{}: {}",
           format_category_and_code(&self.category, self.code),
