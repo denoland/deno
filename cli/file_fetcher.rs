@@ -25,21 +25,21 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use url::Url;
 
-/// Structure representing source code text.
+/// Structure representing a text document.
 #[derive(Debug, Clone)]
-pub struct SourceCode {
+pub struct TextDocument {
   bytes: Vec<u8>,
   charset: String,
 }
 
-impl SourceCode {
-  pub fn new(bytes: Vec<u8>, charset: Option<String>) -> SourceCode {
+impl TextDocument {
+  pub fn new(bytes: Vec<u8>, charset: Option<String>) -> TextDocument {
     let charset = match charset {
       Some(value) => value,
       None => text_encoding::detect_charset(&bytes).to_owned(),
     };
 
-    SourceCode { bytes, charset }
+    TextDocument { bytes, charset }
   }
 
   pub fn as_bytes(&self) -> &Vec<u8> {
@@ -55,9 +55,9 @@ impl SourceCode {
   }
 }
 
-impl From<Vec<u8>> for SourceCode {
+impl From<Vec<u8>> for TextDocument {
   fn from(bytes: Vec<u8>) -> Self {
-    SourceCode::new(bytes, None)
+    TextDocument::new(bytes, None)
   }
 }
 
@@ -71,7 +71,7 @@ pub struct SourceFile {
   pub filename: PathBuf,
   pub types_header: Option<String>,
   pub media_type: msg::MediaType,
-  pub source_code: SourceCode,
+  pub source_code: TextDocument,
 }
 
 /// Simple struct implementing in-process caching to prevent multiple
@@ -356,7 +356,7 @@ impl SourceFileFetcher {
       url: module_url.clone(),
       filename: filepath,
       media_type,
-      source_code: SourceCode::new(source_code, charset),
+      source_code: TextDocument::new(source_code, charset),
       types_header: None,
     })
   }
@@ -427,7 +427,7 @@ impl SourceFileFetcher {
       url: module_url.clone(),
       filename: cache_filename,
       media_type,
-      source_code: SourceCode::new(source_code, charset),
+      source_code: TextDocument::new(source_code, charset),
       types_header,
     }))
   }
@@ -540,7 +540,7 @@ impl SourceFileFetcher {
             url: module_url.clone(),
             filename: cache_filepath,
             media_type,
-            source_code: SourceCode::new(source, charset),
+            source_code: TextDocument::new(source, charset),
             types_header,
           };
 

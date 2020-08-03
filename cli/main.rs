@@ -70,9 +70,9 @@ mod web_worker;
 pub mod worker;
 
 use crate::doc::parser::DocFileLoader;
-use crate::file_fetcher::SourceCode;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
+use crate::file_fetcher::TextDocument;
 use crate::fs as deno_fs;
 use crate::global_state::GlobalState;
 use crate::msg::MediaType;
@@ -415,7 +415,7 @@ async fn eval_command(
     } else {
       MediaType::JavaScript
     },
-    source_code: SourceCode::new(source_code, Some("utf-8".to_owned())),
+    source_code: TextDocument::new(source_code, Some("utf-8".to_owned())),
   };
   // Save our fake file into file fetcher cache
   // to allow module access by TS compiler (e.g. op_fetch_source_files)
@@ -662,7 +662,7 @@ async fn test_command(
     url: test_file_url,
     types_header: None,
     media_type: MediaType::TypeScript,
-    source_code: SourceCode::new(
+    source_code: TextDocument::new(
       test_file.clone().into_bytes(),
       Some("utf-8".to_owned()),
     ),
