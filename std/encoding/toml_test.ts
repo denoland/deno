@@ -4,7 +4,7 @@ import { existsSync } from "../fs/exists.ts";
 import * as path from "../path/mod.ts";
 import { parse, stringify } from "./toml.ts";
 
-const testFilesDir = path.resolve( "testdata");
+const testFilesDir = path.resolve( "encoding", "testdata");
 
 function parseFile(filePath: string): object {
   if (!existsSync(filePath)) {
