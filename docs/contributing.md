@@ -2,7 +2,7 @@
 
 - Read the [style guide](./contributing/style_guide.md).
 
-- Please don't make [the benchmarks](https://deno.land/benchmarks.html) worse.
+- Please don't make [the benchmarks](https://deno.land/benchmarks) worse.
 
 - Ask for help in the [community chat room](https://discord.gg/deno).
 
