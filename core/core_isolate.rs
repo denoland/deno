@@ -1306,4 +1306,31 @@ pub mod tests {
     let mut isolate2 = CoreIsolate::new(startup_data, false);
     js_check(isolate2.execute("check.js", "if (a != 3) throw Error('x')"));
   }
+
+  #[test]
+  fn test_heap_limits() {
+    let heap_limits = HeapLimits {
+      initial: 0,
+      max: 20 * 1024, // 20 kB
+    };
+    let mut isolate =
+      CoreIsolate::with_heap_limits(StartupData::None, heap_limits);
+    let cb_handle = isolate.thread_safe_handle();
+    isolate.add_near_heap_limit_callback(
+      move |current_limit, _initial_limit| {
+        cb_handle.terminate_execution();
+        current_limit * 2
+      },
+    );
+    let err = isolate
+      .execute(
+        "script name",
+        r#"let s = ""; while(true) { s += "Hello"; }"#,
+      )
+      .expect_err("script should fail");
+    assert_eq!(
+      "Uncaught Error: execution terminated",
+      err.downcast::<JSError>().unwrap().message
+    );
+  }
 }
