@@ -118,7 +118,7 @@ include `node`, expecting to resolve to some path like
 **Why not use the triple-slash type reference in TypeScript files?**
 
 The TypeScript compiler supports triple-slash directives, including a type
-reference directive. If Deno used this, it would interfere with the behavior of
+reference directive. If Deno used this, it would interfere with the behaviour of
 the TypeScript compiler. Deno only looks for the directive in JavaScript (and
 JSX) files.
 
@@ -177,7 +177,7 @@ Following are the currently allowed settings and their default values in Deno:
 ```
 
 For documentation on allowed values and use cases please visit the
-[typescript docs](https://www.typescriptlang.org/docs/handbook/compiler-options.html).
+[TypeScript Docs](https://www.typescriptlang.org/docs/handbook/compiler-options.html).
 
 **Note**: Any options not listed above are either not supported by Deno or are
 listed as deprecated/experimental in the TypeScript documentation.
