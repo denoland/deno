@@ -944,7 +944,7 @@ unitTest(
   async function fetchCustomHttpClientSuccess(): Promise<
     void
   > {
-    const client = new Deno.HttpClient(
+    const client = Deno.createHttpClient(
       { caFile: "./cli/tests/tls/RootCA.crt" },
     );
     const response = await fetch(

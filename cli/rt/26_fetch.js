@@ -12,23 +12,24 @@
   const { MultipartBuilder } = window.__bootstrap.multipart;
   const { Headers } = window.__bootstrap.headers;
 
+  function createHttpClient(options) {
+    return new HttpClient(opCreateHttpClient(options));
+  }
+
   function opCreateHttpClient(args) {
     return sendSync("op_create_http_client", args);
   }
 
   class HttpClient {
-    constructor(init) {
-      this.rid = opCreateHttpClient({ caFile: init?.caFile });
+    constructor(rid) {
+      this.rid = rid;
     }
     close() {
       close(this.rid);
     }
   }
 
-  function opFetch(
-    args,
-    body,
-  ) {
+  function opFetch(args, body) {
     let zeroCopy;
     if (body != null) {
       zeroCopy = new Uint8Array(body.buffer, body.byteOffset, body.byteLength);
@@ -182,13 +183,7 @@
     }
   }
 
-  function sendFetchReq(
-    url,
-    method,
-    headers,
-    body,
-    clientRid,
-  ) {
+  function sendFetchReq(url, method, headers, body, clientRid) {
     let headerArray = [];
     if (headers) {
       headerArray = Array.from(headers.entries());
@@ -204,10 +199,7 @@
     return opFetch(args, body);
   }
 
-  async function fetch(
-    input,
-    init,
-  ) {
+  async function fetch(input, init) {
     let url;
     let method = null;
     let headers = null;
@@ -393,5 +385,6 @@
     fetch,
     Response,
     HttpClient,
+    createHttpClient,
   };
 })(this);
