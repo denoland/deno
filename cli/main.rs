@@ -294,10 +294,7 @@ fn get_types(unstable: bool) -> String {
   );
 
   if unstable {
-    types.push_str(&format!(
-      "\n{}",
-      crate::js::UNSTABLE_NS_LIB,
-    )); 
+    types.push_str(&format!("\n{}", crate::js::UNSTABLE_NS_LIB,));
   }
 
   types
@@ -384,7 +381,8 @@ async fn eval_command(
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./__$deno$eval.ts").unwrap();
   let global_state = GlobalState::new(flags)?;
-  let mut worker = MainWorker::create(global_state.clone(), main_module.clone())?;
+  let mut worker =
+    MainWorker::create(global_state.clone(), main_module.clone())?;
   let main_module_url = main_module.as_url().to_owned();
   // Create a dummy source file.
   let source_code = if print {
@@ -508,8 +506,8 @@ async fn doc_command(
       let fetcher = self.clone();
       let specifier = specifier.to_string();
       async move {
-        let specifier =
-          ModuleSpecifier::resolve_url_or_path(&specifier).map_err(OpError::from)?;
+        let specifier = ModuleSpecifier::resolve_url_or_path(&specifier)
+          .map_err(OpError::from)?;
         let source_file = fetcher
           .fetch_source_file(&specifier, None, Permissions::allow_all())
           .await?;
