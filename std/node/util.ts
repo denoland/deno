@@ -5,7 +5,12 @@ import * as types from "./_util/_util_types.ts";
 export { types };
 
 export function inspect(object: unknown, ...opts: any) {
-    return typeof object === "string" ? object : JSON.stringify(object)
+    return Deno.inspect(object, {
+      depth: opts.depth ?? 4,
+      maxArrayLength: opts.iterableLimit ?? 100,
+      compact: !!(opts.compact ?? true),
+      sorted: !!(opts.sorted ?? false)
+    });
 }
 
 export function isArray(value: unknown): boolean {
