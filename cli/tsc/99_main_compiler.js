@@ -100,6 +100,15 @@ delete Object.prototype.__proto__;
     "PermissionStatus",
     "hostname",
     "ppid",
+    "mainModule",
+    "ftruncate",
+    "ftruncateSync",
+    "fdatasync",
+    "fdatasyncSync",
+    "fsync",
+    "fsyncSync",
+    "fstat",
+    "fstatSync",
     "HttpClient",
   ];
 
@@ -127,7 +136,7 @@ delete Object.prototype.__proto__;
         const suggestion = messageText.match(suggestionMessagePattern);
         const replacedMessageText = messageText.replace(
           suggestionMessagePattern,
-          "",
+          ""
         );
         if (suggestion && unstableDenoGlobalProperties.includes(property)) {
           const suggestedProperty = suggestion[1];
@@ -140,9 +149,7 @@ delete Object.prototype.__proto__;
     return messageText;
   }
 
-  function fromDiagnosticCategory(
-    category,
-  ) {
+  function fromDiagnosticCategory(category) {
     switch (category) {
       case ts.DiagnosticCategory.Error:
         return DiagnosticCategory.Error;
@@ -154,36 +161,30 @@ delete Object.prototype.__proto__;
         return DiagnosticCategory.Warning;
       default:
         throw new Error(
-          `Unexpected DiagnosticCategory: "${category}"/"${
-            ts.DiagnosticCategory[category]
-          }"`,
+          `Unexpected DiagnosticCategory: "${category}"/"${ts.DiagnosticCategory[category]}"`
         );
     }
   }
 
-  function getSourceInformation(
-    sourceFile,
-    start,
-    length,
-  ) {
+  function getSourceInformation(sourceFile, start, length) {
     const scriptResourceName = sourceFile.fileName;
     const {
       line: lineNumber,
       character: startColumn,
     } = sourceFile.getLineAndCharacterOfPosition(start);
     const endPosition = sourceFile.getLineAndCharacterOfPosition(
-      start + length,
+      start + length
     );
-    const endColumn = lineNumber === endPosition.line
-      ? endPosition.character
-      : startColumn;
+    const endColumn =
+      lineNumber === endPosition.line ? endPosition.character : startColumn;
     const lastLineInFile = sourceFile.getLineAndCharacterOfPosition(
-      sourceFile.text.length,
+      sourceFile.text.length
     ).line;
     const lineStart = sourceFile.getPositionOfLineAndCharacter(lineNumber, 0);
-    const lineEnd = lineNumber < lastLineInFile
-      ? sourceFile.getPositionOfLineAndCharacter(lineNumber + 1, 0)
-      : sourceFile.text.length;
+    const lineEnd =
+      lineNumber < lastLineInFile
+        ? sourceFile.getPositionOfLineAndCharacter(lineNumber + 1, 0)
+        : sourceFile.text.length;
     const sourceLine = sourceFile.text
       .slice(lineStart, lineEnd)
       .replace(/\s+$/g, "")
@@ -197,9 +198,7 @@ delete Object.prototype.__proto__;
     };
   }
 
-  function fromDiagnosticMessageChain(
-    messageChain,
-  ) {
+  function fromDiagnosticMessageChain(messageChain) {
     if (!messageChain) {
       return undefined;
     }
@@ -215,9 +214,7 @@ delete Object.prototype.__proto__;
     });
   }
 
-  function parseDiagnostic(
-    item,
-  ) {
+  function parseDiagnostic(item) {
     const {
       messageText,
       category: sourceCategory,
@@ -226,12 +223,12 @@ delete Object.prototype.__proto__;
       start: startPosition,
       length,
     } = item;
-    const sourceInfo = file && startPosition && length
-      ? getSourceInformation(file, startPosition, length)
-      : undefined;
-    const endPosition = startPosition && length
-      ? startPosition + length
-      : undefined;
+    const sourceInfo =
+      file && startPosition && length
+        ? getSourceInformation(file, startPosition, length)
+        : undefined;
+    const endPosition =
+      startPosition && length ? startPosition + length : undefined;
     const category = fromDiagnosticCategory(sourceCategory);
 
     let message;
@@ -255,9 +252,7 @@ delete Object.prototype.__proto__;
     return sourceInfo ? { ...base, ...sourceInfo } : base;
   }
 
-  function parseRelatedInformation(
-    relatedInformation,
-  ) {
+  function parseRelatedInformation(relatedInformation) {
     const result = [];
     for (const item of relatedInformation) {
       result.push(parseDiagnostic(item));
@@ -265,15 +260,13 @@ delete Object.prototype.__proto__;
     return result;
   }
 
-  function fromTypeScriptDiagnostic(
-    diagnostics,
-  ) {
+  function fromTypeScriptDiagnostic(diagnostics) {
     const items = [];
     for (const sourceDiagnostic of diagnostics) {
       const item = parseDiagnostic(sourceDiagnostic);
       if (sourceDiagnostic.relatedInformation) {
         item.relatedInformation = parseRelatedInformation(
-          sourceDiagnostic.relatedInformation,
+          sourceDiagnostic.relatedInformation
         );
       }
       items.push(item);
@@ -468,9 +461,7 @@ delete Object.prototype.__proto__;
       case MediaType.Unknown:
       default:
         throw TypeError(
-          `Cannot resolve extension for "${fileName}" with mediaType "${
-            MediaType[mediaType]
-          }".`,
+          `Cannot resolve extension for "${fileName}" with mediaType "${MediaType[mediaType]}".`
         );
     }
   }
@@ -490,19 +481,14 @@ delete Object.prototype.__proto__;
    */
   const RESOLVED_SPECIFIER_CACHE = new Map();
 
-  function configure(
-    defaultOptions,
-    source,
-    path,
-    cwd,
-  ) {
+  function configure(defaultOptions, source, path, cwd) {
     const { config, error } = ts.parseConfigFileTextToJson(path, source);
     if (error) {
       return { diagnostics: [error], options: defaultOptions };
     }
     const { options, errors } = ts.convertCompilerOptionsFromJson(
       config.compilerOptions,
-      cwd,
+      cwd
     );
     const ignoredOptions = [];
     for (const key of Object.keys(options)) {
@@ -541,11 +527,7 @@ delete Object.prototype.__proto__;
       return SOURCE_FILE_CACHE.get(url);
     }
 
-    static cacheResolvedUrl(
-      resolvedUrl,
-      rawModuleSpecifier,
-      containingFile,
-    ) {
+    static cacheResolvedUrl(resolvedUrl, rawModuleSpecifier, containingFile) {
       containingFile = containingFile || "";
       let innerCache = RESOLVED_SPECIFIER_CACHE.get(containingFile);
       if (!innerCache) {
@@ -555,10 +537,7 @@ delete Object.prototype.__proto__;
       innerCache.set(rawModuleSpecifier, resolvedUrl);
     }
 
-    static getResolvedUrl(
-      moduleSpecifier,
-      containingFile,
-    ) {
+    static getResolvedUrl(moduleSpecifier, containingFile) {
       const containingCache = RESOLVED_SPECIFIER_CACHE.get(containingFile);
       if (containingCache) {
         return containingCache.get(moduleSpecifier);
@@ -622,17 +601,13 @@ delete Object.prototype.__proto__;
       return this.#options;
     }
 
-    configure(
-      cwd,
-      path,
-      configurationText,
-    ) {
+    configure(cwd, path, configurationText) {
       log("compiler::host.configure", path);
       const { options, ...result } = configure(
         this.#options,
         configurationText,
         path,
-        cwd,
+        cwd
       );
       this.#options = options;
       return result;
@@ -681,7 +656,7 @@ delete Object.prototype.__proto__;
       fileName,
       languageVersion,
       onError,
-      shouldCreateNewSourceFile,
+      shouldCreateNewSourceFile
     ) {
       log("compiler::host.getSourceFile", fileName);
       try {
@@ -699,7 +674,7 @@ delete Object.prototype.__proto__;
           sourceFile.tsSourceFile = ts.createSourceFile(
             tsSourceFileName,
             sourceFile.sourceCode,
-            languageVersion,
+            languageVersion
           );
           sourceFile.tsSourceFile.version = sourceFile.versionHash;
           delete sourceFile.sourceCode;
@@ -719,10 +694,7 @@ delete Object.prototype.__proto__;
       return notImplemented();
     }
 
-    resolveModuleNames(
-      moduleNames,
-      containingFile,
-    ) {
+    resolveModuleNames(moduleNames, containingFile) {
       log("compiler::host.resolveModuleNames", {
         moduleNames,
         containingFile,
@@ -761,13 +733,7 @@ delete Object.prototype.__proto__;
       return true;
     }
 
-    writeFile(
-      fileName,
-      data,
-      _writeByteOrderMark,
-      _onError,
-      sourceFiles,
-    ) {
+    writeFile(fileName, data, _writeByteOrderMark, _onError, sourceFiles) {
       log("compiler::host.writeFile", fileName);
       this.#writeFile(fileName, data, sourceFiles);
     }
@@ -814,23 +780,23 @@ delete Object.prototype.__proto__;
   // are available in the future when needed.
   SNAPSHOT_HOST.getSourceFile(
     `${ASSETS}/lib.deno.ns.d.ts`,
-    ts.ScriptTarget.ESNext,
+    ts.ScriptTarget.ESNext
   );
   SNAPSHOT_HOST.getSourceFile(
     `${ASSETS}/lib.deno.window.d.ts`,
-    ts.ScriptTarget.ESNext,
+    ts.ScriptTarget.ESNext
   );
   SNAPSHOT_HOST.getSourceFile(
     `${ASSETS}/lib.deno.worker.d.ts`,
-    ts.ScriptTarget.ESNext,
+    ts.ScriptTarget.ESNext
   );
   SNAPSHOT_HOST.getSourceFile(
     `${ASSETS}/lib.deno.shared_globals.d.ts`,
-    ts.ScriptTarget.ESNext,
+    ts.ScriptTarget.ESNext
   );
   SNAPSHOT_HOST.getSourceFile(
     `${ASSETS}/lib.deno.unstable.d.ts`,
-    ts.ScriptTarget.ESNext,
+    ts.ScriptTarget.ESNext
   );
 
   // We never use this program; it's only created
@@ -849,9 +815,7 @@ delete Object.prototype.__proto__;
   const SYSTEM_LOADER = getAsset("system_loader.js");
   const SYSTEM_LOADER_ES5 = getAsset("system_loader_es5.js");
 
-  function buildLocalSourceFileCache(
-    sourceFileMap,
-  ) {
+  function buildLocalSourceFileCache(sourceFileMap) {
     for (const entry of Object.values(sourceFileMap)) {
       assert(entry.sourceCode.length > 0);
       SourceFile.addToCache({
@@ -866,7 +830,8 @@ delete Object.prototype.__proto__;
         let mappedUrl = importDesc.resolvedSpecifier;
         const importedFile = sourceFileMap[importDesc.resolvedSpecifier];
         assert(importedFile);
-        const isJsOrJsx = importedFile.mediaType === MediaType.JavaScript ||
+        const isJsOrJsx =
+          importedFile.mediaType === MediaType.JavaScript ||
           importedFile.mediaType === MediaType.JSX;
         // If JS or JSX perform substitution for types if available
         if (isJsOrJsx) {
@@ -890,22 +855,20 @@ delete Object.prototype.__proto__;
         SourceFile.cacheResolvedUrl(
           fileRef.resolvedSpecifier.replace("memory://", ""),
           fileRef.specifier,
-          entry.url,
+          entry.url
         );
       }
       for (const fileRef of entry.libDirectives) {
         SourceFile.cacheResolvedUrl(
           fileRef.resolvedSpecifier.replace("memory://", ""),
           fileRef.specifier,
-          entry.url,
+          entry.url
         );
       }
     }
   }
 
-  function buildSourceFileCache(
-    sourceFileMap,
-  ) {
+  function buildSourceFileCache(sourceFileMap) {
     for (const entry of Object.values(sourceFileMap)) {
       SourceFile.addToCache({
         url: entry.url,
@@ -927,7 +890,8 @@ delete Object.prototype.__proto__;
         if (importedFile.redirect) {
           mappedUrl = importedFile.redirect;
         }
-        const isJsOrJsx = importedFile.mediaType === MediaType.JavaScript ||
+        const isJsOrJsx =
+          importedFile.mediaType === MediaType.JavaScript ||
           importedFile.mediaType === MediaType.JSX;
         // If JS or JSX perform substitution for types if available
         if (isJsOrJsx) {
@@ -950,14 +914,14 @@ delete Object.prototype.__proto__;
         SourceFile.cacheResolvedUrl(
           fileRef.resolvedSpecifier,
           fileRef.specifier,
-          entry.url,
+          entry.url
         );
       }
       for (const fileRef of entry.libDirectives) {
         SourceFile.cacheResolvedUrl(
           fileRef.resolvedSpecifier,
           fileRef.specifier,
-          entry.url,
+          entry.url
         );
       }
     }
@@ -975,11 +939,7 @@ delete Object.prototype.__proto__;
   };
 
   function createBundleWriteFile(state) {
-    return function writeFile(
-      _fileName,
-      data,
-      sourceFiles,
-    ) {
+    return function writeFile(_fileName, data, sourceFiles) {
       assert(sourceFiles != null);
       assert(state.host);
       // we only support single root names for bundles
@@ -988,19 +948,13 @@ delete Object.prototype.__proto__;
         state.rootNames[0],
         data,
         sourceFiles,
-        state.host.options.target ?? ts.ScriptTarget.ESNext,
+        state.host.options.target ?? ts.ScriptTarget.ESNext
       );
     };
   }
 
-  function createCompileWriteFile(
-    state,
-  ) {
-    return function writeFile(
-      fileName,
-      data,
-      sourceFiles,
-    ) {
+  function createCompileWriteFile(state) {
+    return function writeFile(fileName, data, sourceFiles) {
       const isBuildInfo = fileName === TS_BUILD_INFO;
 
       if (isBuildInfo) {
@@ -1018,14 +972,8 @@ delete Object.prototype.__proto__;
     };
   }
 
-  function createRuntimeCompileWriteFile(
-    state,
-  ) {
-    return function writeFile(
-      fileName,
-      data,
-      sourceFiles,
-    ) {
+  function createRuntimeCompileWriteFile(state) {
+    return function writeFile(fileName, data, sourceFiles) {
       assert(sourceFiles);
       assert(sourceFiles.length === 1);
       state.emitMap[fileName] = {
@@ -1170,10 +1118,7 @@ delete Object.prototype.__proto__;
     ts.performance.enable();
   }
 
-  function performanceProgram({
-    program,
-    fileCount,
-  }) {
+  function performanceProgram({ program, fileCount }) {
     if (program) {
       if ("getProgram" in program) {
         program = program.getProgram();
@@ -1212,16 +1157,12 @@ delete Object.prototype.__proto__;
   }
 
   // TODO(Bartlomieju): this check should be done in Rust; there should be no
-  function processConfigureResponse(
-    configResult,
-    configPath,
-  ) {
+  function processConfigureResponse(configResult, configPath) {
     const { ignoredOptions, diagnostics } = configResult;
     if (ignoredOptions) {
-      const msg =
-        `Unsupported compiler options in "${configPath}"\n  The following options were ignored:\n    ${
-          ignoredOptions.map((value) => value).join(", ")
-        }\n`;
+      const msg = `Unsupported compiler options in "${configPath}"\n  The following options were ignored:\n    ${ignoredOptions
+        .map((value) => value)
+        .join(", ")}\n`;
       core.print(msg, true);
     }
     return diagnostics;
@@ -1320,12 +1261,7 @@ delete Object.prototype.__proto__;
     }
   }
 
-  function buildBundle(
-    rootName,
-    data,
-    sourceFiles,
-    target,
-  ) {
+  function buildBundle(rootName, data, sourceFiles, target) {
     // when outputting to AMD and a single outfile, TypeScript makes up the module
     // specifiers which are used to define the modules, and doesn't expose them
     // publicly, so we have to try to replicate
@@ -1348,8 +1284,7 @@ delete Object.prototype.__proto__;
         if (rootExport === "default") {
           instantiate += `export default __exp["${rootExport}"];\n`;
         } else {
-          instantiate +=
-            `export const ${rootExport} = __exp["${rootExport}"];\n`;
+          instantiate += `export const ${rootExport} = __exp["${rootExport}"];\n`;
         }
       }
     } else {
@@ -1357,7 +1292,8 @@ delete Object.prototype.__proto__;
         ? `await __instantiate("${rootName}", true);\n`
         : `__instantiate("${rootName}", false);\n`;
     }
-    const es5Bundle = target === ts.ScriptTarget.ES3 ||
+    const es5Bundle =
+      target === ts.ScriptTarget.ES3 ||
       target === ts.ScriptTarget.ES5 ||
       target === ts.ScriptTarget.ES2015 ||
       target === ts.ScriptTarget.ES2016;
@@ -1399,7 +1335,7 @@ delete Object.prototype.__proto__;
             sym.flags & ts.SymbolFlags.InterfaceExcludes ||
             sym.flags & ts.SymbolFlags.TypeParameterExcludes ||
             sym.flags & ts.SymbolFlags.TypeAliasExcludes
-          ),
+          )
       )
       .map((sym) => sym.getName());
   }
@@ -1468,7 +1404,7 @@ delete Object.prototype.__proto__;
         ...program.getSemanticDiagnostics(),
       ];
       diagnostics = diagnostics.filter(
-        ({ code }) => !ignoredDiagnostics.includes(code),
+        ({ code }) => !ignoredDiagnostics.includes(code)
       );
 
       // We will only proceed with the emit if there are no diagnostics.
@@ -1480,7 +1416,7 @@ delete Object.prototype.__proto__;
         if (options.checkJs) {
           assert(
             emitResult.emitSkipped === false,
-            "Unexpected skip of the emit.",
+            "Unexpected skip of the emit."
           );
         }
         // emitResult.diagnostics is `readonly` in TS3.5+ and can't be assigned
@@ -1518,7 +1454,7 @@ delete Object.prototype.__proto__;
         DEFAULT_TRANSPILE_OPTIONS,
         configText,
         configPath,
-        cwd,
+        cwd
       );
       const diagnostics = processConfigureResponse(response, configPath);
       if (diagnostics && diagnostics.length) {
@@ -1631,7 +1567,7 @@ delete Object.prototype.__proto__;
         const emitResult = program.emit();
         assert(
           emitResult.emitSkipped === false,
-          "Unexpected skip of the emit.",
+          "Unexpected skip of the emit."
         );
         // emitResult.diagnostics is `readonly` in TS3.5+ and can't be assigned
         // without casting.
@@ -1665,9 +1601,7 @@ delete Object.prototype.__proto__;
     return result;
   }
 
-  function runtimeCompile(
-    request,
-  ) {
+  function runtimeCompile(request) {
     const { options, rootNames, target, unstable, sourceFileMap } = request;
 
     log(">>> runtime compile start", {
@@ -1809,17 +1743,15 @@ delete Object.prototype.__proto__;
     };
   }
 
-  function runtimeTranspile(
-    request,
-  ) {
+  function runtimeTranspile(request) {
     const result = {};
     const { sources, options } = request;
     const compilerOptions = options
       ? Object.assign(
-        {},
-        DEFAULT_RUNTIME_TRANSPILE_OPTIONS,
-        convertCompilerOptions(options).options,
-      )
+          {},
+          DEFAULT_RUNTIME_TRANSPILE_OPTIONS,
+          convertCompilerOptions(options).options
+        )
       : DEFAULT_RUNTIME_TRANSPILE_OPTIONS;
 
     for (const [fileName, inputText] of Object.entries(sources)) {
@@ -1828,7 +1760,7 @@ delete Object.prototype.__proto__;
         {
           fileName,
           compilerOptions,
-        },
+        }
       );
       result[fileName] = { source, map };
     }
@@ -1876,7 +1808,7 @@ delete Object.prototype.__proto__;
         throw new Error(
           `!!! unhandled CompilerRequestType: ${request.type} (${
             CompilerRequestType[request.type]
-          })`,
+          })`
         );
     }
   }
