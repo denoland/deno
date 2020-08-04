@@ -429,6 +429,11 @@ impl CoreIsolate {
     state.op_registry.register(name, op)
   }
 
+  /// Registers a callback on the isolate when the memory limits are approached.
+  /// Use this to prevent V8 from crashing the process when reaching the limit.
+  ///
+  /// Calls the closure with the current heap limit and the initial heap limit.
+  /// The return value of the closure is set as the new limit.
   pub fn add_near_heap_limit_callback<C>(&mut self, cb: C)
   where
     C: FnMut(usize, usize) -> usize + 'static,
