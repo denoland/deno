@@ -63,6 +63,7 @@ const MEDIA_TYPES: Record<string, string> = {
   ".gz": "application/gzip",
   ".css": "text/css",
   ".wasm": "application/wasm",
+  ".mjs": "application/javascript",
 };
 
 /** Returns the content-type based on the extension of a path. */
