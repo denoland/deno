@@ -68,6 +68,21 @@
   "examples": {
     "name": "Examples",
     "children": {
+      "examples_basic": "Basic",
+      "examples_advanced": "Advanced"
+    }
+  },
+  "examples_basic": {
+    "name": "Basic",
+    "children": {
+      "hello_world": "Hello World",
+      "import_export": "Import and Export Modules",
+      "manage_dependencies": "Manage Dependencies"
+    }
+  },
+  "examples_advanced": {
+    "name": "Advanced",
+    "children": {
       "unix_cat": "Unix cat program",
       "file_server": "File server",
       "tcp_echo": "TCP echo server",
