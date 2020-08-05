@@ -24,14 +24,8 @@ pub struct DocPrinter<'a> {
 }
 
 impl<'a> DocPrinter<'a> {
-  pub fn new(
-    doc_nodes: &[doc::DocNode],
-    private: bool,
-  ) -> DocPrinter {
-    DocPrinter {
-      doc_nodes,
-      private,
-    }
+  pub fn new(doc_nodes: &[doc::DocNode], private: bool) -> DocPrinter {
+    DocPrinter { doc_nodes, private }
   }
 
   pub fn format(&self, w: &mut Formatter<'_>) -> FmtResult {
