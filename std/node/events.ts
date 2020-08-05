@@ -44,7 +44,7 @@ export default class EventEmitter {
   private _addListener(
     eventName: string | symbol,
     listener: Function | WrappedFunction,
-    prepend: boolean
+    prepend: boolean,
   ): this {
     this.emit("newListener", eventName, listener);
     if (this._events.has(eventName)) {
@@ -64,7 +64,7 @@ export default class EventEmitter {
       const warning = new Error(
         `Possible EventEmitter memory leak detected.
          ${this.listenerCount(eventName)} ${eventName.toString()} listeners.
-         Use emitter.setMaxListeners() to increase limit`
+         Use emitter.setMaxListeners() to increase limit`,
       );
       warning.name = "MaxListenersExceededWarning";
       console.warn(warning);
@@ -76,7 +76,7 @@ export default class EventEmitter {
   /** Alias for emitter.on(eventName, listener). */
   public addListener(
     eventName: string | symbol,
-    listener: Function | WrappedFunction
+    listener: Function | WrappedFunction,
   ): this {
     return this._addListener(eventName, listener, false);
   }
@@ -147,13 +147,13 @@ export default class EventEmitter {
   private _listeners(
     target: EventEmitter,
     eventName: string | symbol,
-    unwrap: boolean
+    unwrap: boolean,
   ): Function[] {
     if (!target._events.has(eventName)) {
       return [];
     }
     const eventListeners: Function[] = target._events.get(
-      eventName
+      eventName,
     ) as Function[];
 
     return unwrap
@@ -180,7 +180,7 @@ export default class EventEmitter {
    * including any wrappers (such as those created by .once()).
    */
   public rawListeners(
-    eventName: string | symbol
+    eventName: string | symbol,
   ): Array<Function | WrappedFunction> {
     return this._listeners(this, eventName, false);
   }
@@ -199,7 +199,7 @@ export default class EventEmitter {
    */
   public on(
     eventName: string | symbol,
-    listener: Function | WrappedFunction
+    listener: Function | WrappedFunction,
   ): this {
     return this.addListener(eventName, listener);
   }
@@ -217,7 +217,7 @@ export default class EventEmitter {
   // Wrapped function that calls EventEmitter.removeListener(eventName, self) on execution.
   private onceWrap(
     eventName: string | symbol,
-    listener: Function
+    listener: Function,
   ): WrappedFunction {
     const wrapper = function (
       this: {
@@ -239,7 +239,7 @@ export default class EventEmitter {
       context: this,
     };
     const wrapped = (wrapper.bind(
-      wrapperContext
+      wrapperContext,
     ) as unknown) as WrappedFunction;
     wrapperContext.rawListener = wrapped;
     wrapped.listener = listener;
@@ -255,7 +255,7 @@ export default class EventEmitter {
    */
   public prependListener(
     eventName: string | symbol,
-    listener: Function | WrappedFunction
+    listener: Function | WrappedFunction,
   ): this {
     return this._addListener(eventName, listener, true);
   }
@@ -267,7 +267,7 @@ export default class EventEmitter {
    */
   public prependOnceListener(
     eventName: string | symbol,
-    listener: Function
+    listener: Function,
   ): this {
     const wrapped: WrappedFunction = this.onceWrap(eventName, listener);
     this.prependListener(eventName, wrapped);
@@ -359,7 +359,7 @@ export { EventEmitter };
  */
 export function once(
   emitter: EventEmitter | EventTarget,
-  name: string
+  name: string,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Promise<any[]> {
   return new Promise((resolve, reject) => {
@@ -371,7 +371,7 @@ export function once(
         (...args) => {
           resolve(args);
         },
-        { once: true, passive: false, capture: false }
+        { once: true, passive: false, capture: false },
       );
       return;
     } else if (emitter instanceof EventEmitter) {
@@ -429,7 +429,7 @@ interface AsyncInterable {
  */
 export function on(
   emitter: EventEmitter,
-  event: string | symbol
+  event: string | symbol,
 ): AsyncInterable {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const unconsumedEventValues: any[] = [];
@@ -524,3 +524,4 @@ export function on(
     iterator.return();
   }
 }
+export const captureRejectionSymbol = Symbol.for("nodejs.rejection");

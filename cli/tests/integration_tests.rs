@@ -16,6 +16,7 @@ use tempfile::TempDir;
 fn std_tests() {
   let dir = TempDir::new().expect("tempdir fail");
   let std_path = util::root_path().join("std");
+  let std_config = std_path.join("tsconfig_test.json");
   let status = util::deno_cmd()
     .env("DENO_DIR", dir.path())
     .current_dir(std_path) // TODO(ry) change this to root_path
@@ -23,6 +24,8 @@ fn std_tests() {
     .arg("--unstable")
     .arg("--seed=86") // Some tests rely on specific random numbers.
     .arg("-A")
+    .arg("--config")
+    .arg(std_config.to_str().unwrap())
     // .arg("-Ldebug")
     .spawn()
     .unwrap()
@@ -344,11 +347,25 @@ fn fmt_test() {
   let t = TempDir::new().expect("tempdir fail");
   let fixed = util::root_path().join("cli/tests/badly_formatted_fixed.js");
   let badly_formatted_original =
-    util::root_path().join("cli/tests/badly_formatted.js");
+    util::root_path().join("cli/tests/badly_formatted.mjs");
   let badly_formatted = t.path().join("badly_formatted.js");
   let badly_formatted_str = badly_formatted.to_str().unwrap();
   std::fs::copy(&badly_formatted_original, &badly_formatted)
     .expect("Failed to copy file");
+  // First, check formatting by ignoring the badly formatted file.
+  let status = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("fmt")
+    .arg(format!("--ignore={}", badly_formatted_str))
+    .arg("--unstable")
+    .arg("--check")
+    .arg(badly_formatted_str)
+    .spawn()
+    .expect("Failed to spawn script")
+    .wait()
+    .expect("Failed to wait for child process");
+  assert!(status.success());
+  // Check without ignore.
   let status = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("fmt")
@@ -359,6 +376,7 @@ fn fmt_test() {
     .wait()
     .expect("Failed to wait for child process");
   assert!(!status.success());
+  // Format the source file.
   let status = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("fmt")
@@ -399,11 +417,7 @@ fn fmt_stdin_error() {
 #[test]
 fn upgrade_in_tmpdir() {
   let temp_dir = TempDir::new().unwrap();
-  let exe_path = if cfg!(windows) {
-    temp_dir.path().join("deno")
-  } else {
-    temp_dir.path().join("deno.exe")
-  };
+  let exe_path = temp_dir.path().join("deno");
   let _ = std::fs::copy(util::deno_exe_path(), &exe_path).unwrap();
   assert!(exe_path.exists());
   let _mtime1 = std::fs::metadata(&exe_path).unwrap().modified().unwrap();
@@ -421,13 +435,30 @@ fn upgrade_in_tmpdir() {
 
 // Warning: this test requires internet access.
 #[test]
+fn upgrade_with_space_in_path() {
+  let temp_dir = tempfile::Builder::new()
+    .prefix("directory with spaces")
+    .tempdir()
+    .unwrap();
+  let exe_path = temp_dir.path().join("deno");
+  let _ = std::fs::copy(util::deno_exe_path(), &exe_path).unwrap();
+  assert!(exe_path.exists());
+  let status = Command::new(&exe_path)
+    .arg("upgrade")
+    .arg("--force")
+    .env("TMP", temp_dir.path())
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(status.success());
+}
+
+// Warning: this test requires internet access.
+#[test]
 fn upgrade_with_version_in_tmpdir() {
   let temp_dir = TempDir::new().unwrap();
-  let exe_path = if cfg!(windows) {
-    temp_dir.path().join("deno")
-  } else {
-    temp_dir.path().join("deno.exe")
-  };
+  let exe_path = temp_dir.path().join("deno");
   let _ = std::fs::copy(util::deno_exe_path(), &exe_path).unwrap();
   assert!(exe_path.exists());
   let _mtime1 = std::fs::metadata(&exe_path).unwrap().modified().unwrap();
@@ -448,6 +479,41 @@ fn upgrade_with_version_in_tmpdir() {
   assert!(upgraded_deno_version.contains("0.42.0"));
   let _mtime2 = std::fs::metadata(&exe_path).unwrap().modified().unwrap();
   // TODO(ry) assert!(mtime1 < mtime2);
+}
+
+// Warning: this test requires internet access.
+#[test]
+fn upgrade_with_out_in_tmpdir() {
+  let temp_dir = TempDir::new().unwrap();
+  let exe_path = temp_dir.path().join("deno");
+  let new_exe_path = temp_dir.path().join("foo");
+  let _ = std::fs::copy(util::deno_exe_path(), &exe_path).unwrap();
+  assert!(exe_path.exists());
+  let mtime1 = std::fs::metadata(&exe_path).unwrap().modified().unwrap();
+  let status = Command::new(&exe_path)
+    .arg("upgrade")
+    .arg("--version")
+    .arg("1.0.2")
+    .arg("--output")
+    .arg(&new_exe_path.to_str().unwrap())
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(status.success());
+  assert!(new_exe_path.exists());
+  let mtime2 = std::fs::metadata(&exe_path).unwrap().modified().unwrap();
+  assert_eq!(mtime1, mtime2); // Original exe_path was not changed.
+
+  let v = String::from_utf8(
+    Command::new(&new_exe_path)
+      .arg("-V")
+      .output()
+      .unwrap()
+      .stdout,
+  )
+  .unwrap();
+  assert!(v.contains("1.0.2"));
 }
 
 #[test]
@@ -583,7 +649,7 @@ fn ts_dependency_recompilation() {
   let stderr_output = std::str::from_utf8(&output.stderr).unwrap().trim();
 
   assert!(stdout_output.ends_with("foo"));
-  assert!(stderr_output.starts_with("Compile"));
+  assert!(stderr_output.starts_with("Check"));
 
   // Overwrite contents of b.ts and run again
   std::fs::write(
@@ -608,6 +674,37 @@ fn ts_dependency_recompilation() {
   assert!(stderr_output.contains("TS2345"));
   assert!(!output.status.success());
   assert!(stdout_output.is_empty());
+}
+
+#[test]
+fn ts_reload() {
+  let hello_ts = util::root_path().join("cli/tests/002_hello.ts");
+  assert!(hello_ts.is_file());
+  let mut initial = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("cache")
+    .arg("--reload")
+    .arg(hello_ts.clone())
+    .spawn()
+    .expect("failed to spawn script");
+  let status_initial =
+    initial.wait().expect("failed to wait for child process");
+  assert!(status_initial.success());
+
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("cache")
+    .arg("--reload")
+    .arg("-L")
+    .arg("debug")
+    .arg(hello_ts)
+    .output()
+    .expect("failed to spawn script");
+  // check the output of the the bundle program.
+  assert!(std::str::from_utf8(&output.stdout)
+    .unwrap()
+    .trim()
+    .contains("\"compiler::host.writeFile\" \"deno://002_hello.js\""));
 }
 
 #[test]
@@ -1155,6 +1252,7 @@ macro_rules! itest(
 );
 
 // Unfortunately #[ignore] doesn't work with itest!
+#[allow(unused)]
 macro_rules! itest_ignore(
   ($name:ident {$( $key:ident: $value:expr,)*})  => {
     #[ignore]
@@ -1236,8 +1334,7 @@ itest!(_018_async_catch {
   output: "018_async_catch.ts.out",
 });
 
-// TODO(ry) Re-enable flaky test https://github.com/denoland/deno/issues/4049
-itest_ignore!(_019_media_types {
+itest!(_019_media_types {
   args: "run --reload 019_media_types.ts",
   output: "019_media_types.ts.out",
   http_server: true,
@@ -1254,8 +1351,7 @@ itest!(_021_mjs_modules {
   output: "021_mjs_modules.ts.out",
 });
 
-// TODO(ry) Re-enable flaky test https://github.com/denoland/deno/issues/4049
-itest_ignore!(_022_info_flag_script {
+itest!(_022_info_flag_script {
   args: "info http://127.0.0.1:4545/cli/tests/019_media_types.ts",
   output: "022_info_flag_script.out",
   http_server: true,
@@ -1264,12 +1360,6 @@ itest_ignore!(_022_info_flag_script {
 itest!(_023_no_ext_with_headers {
   args: "run --reload 023_no_ext_with_headers",
   output: "023_no_ext_with_headers.out",
-});
-
-// FIXME(bartlomieju): this test should use remote file
-itest_ignore!(_024_import_no_ext_with_headers {
-  args: "run --reload 024_import_no_ext_with_headers.ts",
-  output: "024_import_no_ext_with_headers.ts.out",
 });
 
 // TODO(lucacasonato): remove --unstable when permissions goes stable
@@ -1382,10 +1472,9 @@ itest!(_034_onload {
   output: "034_onload.out",
 });
 
-// TODO(ry) Re-enable flaky test https://github.com/denoland/deno/issues/4049
-itest_ignore!(_035_cached_only_flag {
+itest!(_035_cached_only_flag {
   args:
-    "--reload --cached-only http://127.0.0.1:4545/cli/tests/019_media_types.ts",
+    "run --reload --cached-only http://127.0.0.1:4545/cli/tests/019_media_types.ts",
   output: "035_cached_only_flag.out",
   exit_code: 1,
   http_server: true,
@@ -1420,6 +1509,11 @@ itest!(_041_info_flag {
   output: "041_info_flag.out",
 });
 
+itest!(info_json {
+  args: "info --json --unstable",
+  output: "info_json.out",
+});
+
 itest!(_042_dyn_import_evalcontext {
   args: "run --quiet --allow-read --reload 042_dyn_import_evalcontext.ts",
   output: "042_dyn_import_evalcontext.ts.out",
@@ -1431,8 +1525,8 @@ itest!(_044_bad_resource {
   exit_code: 1,
 });
 
-itest_ignore!(_045_proxy {
-  args: "run --allow-net --allow-env --allow-run --reload 045_proxy_test.ts",
+itest!(_045_proxy {
+  args: "run --allow-net --allow-env --allow-run --allow-read --reload --quiet 045_proxy_test.ts",
   output: "045_proxy_test.ts.out",
   http_server: true,
 });
@@ -1447,24 +1541,21 @@ itest!(_047_jsx {
   output: "047_jsx_test.jsx.out",
 });
 
-// TODO(ry) Re-enable flaky test https://github.com/denoland/deno/issues/4049
-itest_ignore!(_048_media_types_jsx {
+itest!(_048_media_types_jsx {
   args: "run  --reload 048_media_types_jsx.ts",
   output: "048_media_types_jsx.ts.out",
   http_server: true,
 });
 
-// TODO(ry) Re-enable flaky test https://github.com/denoland/deno/issues/4049
-itest_ignore!(_049_info_flag_script_jsx {
+itest!(_049_info_flag_script_jsx {
   args: "info http://127.0.0.1:4545/cli/tests/048_media_types_jsx.ts",
   output: "049_info_flag_script_jsx.out",
   http_server: true,
 });
 
-// TODO(ry) Re-enable flaky test https://github.com/denoland/deno/issues/4049
-itest_ignore!(_052_no_remote_flag {
+itest!(_052_no_remote_flag {
   args:
-    "--reload --no-remote http://127.0.0.1:4545/cli/tests/019_media_types.ts",
+    "run --reload --no-remote http://127.0.0.1:4545/cli/tests/019_media_types.ts",
   output: "052_no_remote_flag.out",
   exit_code: 1,
   http_server: true,
@@ -1473,6 +1564,12 @@ itest_ignore!(_052_no_remote_flag {
 itest!(_054_info_local_imports {
   args: "info --quiet 005_more_imports.ts",
   output: "054_info_local_imports.out",
+  exit_code: 0,
+});
+
+itest!(_055_info_file_json {
+  args: "info --quiet --json --unstable 005_more_imports.ts",
+  output: "055_info_file_json.out",
   exit_code: 0,
 });
 
@@ -1510,6 +1607,12 @@ itest!(js_import_detect {
   exit_code: 0,
 });
 
+itest!(lock_write_requires_lock {
+  args: "run --lock-write some_file.ts",
+  output: "lock_write_requires_lock.out",
+  exit_code: 1,
+});
+
 itest!(lock_write_fetch {
   args:
     "run --quiet --allow-read --allow-write --allow-env --allow-run lock_write_fetch.ts",
@@ -1523,10 +1626,16 @@ itest!(lock_check_ok {
   http_server: true,
 });
 
-// TODO(ry) Re-enable flaky test https://github.com/denoland/deno/issues/4049
-itest_ignore!(lock_check_ok2 {
-  args: "run 019_media_types.ts --lock=lock_check_ok2.json",
+itest!(lock_check_ok2 {
+  args: "run --lock=lock_check_ok2.json 019_media_types.ts",
   output: "019_media_types.ts.out",
+  http_server: true,
+});
+
+itest!(lock_dynamic_imports {
+  args: "run --lock=lock_dynamic_imports.json --allow-read --allow-net http://127.0.0.1:4545/cli/tests/013_dynamic_import.ts",
+  output: "lock_dynamic_imports.out",
+  exit_code: 10,
   http_server: true,
 });
 
@@ -1537,10 +1646,16 @@ itest!(lock_check_err {
   http_server: true,
 });
 
-// TODO(ry) Re-enable flaky test https://github.com/denoland/deno/issues/4049
-itest_ignore!(lock_check_err2 {
+itest!(lock_check_err2 {
   args: "run --lock=lock_check_err2.json 019_media_types.ts",
   output: "lock_check_err2.out",
+  exit_code: 10,
+  http_server: true,
+});
+
+itest!(lock_check_err_with_bundle {
+  args: "bundle --lock=lock_check_err_with_bundle.json http://127.0.0.1:4545/cli/tests/subdir/mod1.ts",
+  output: "lock_check_err_with_bundle.out",
   exit_code: 10,
   http_server: true,
 });
@@ -1741,6 +1856,12 @@ itest!(error_025_tab_indent {
   exit_code: 1,
 });
 
+itest!(error_no_check {
+  args: "run --reload --no-check error_no_check.ts",
+  output: "error_no_check.ts.out",
+  exit_code: 1,
+});
+
 itest!(error_syntax {
   args: "run --reload error_syntax.js",
   exit_code: 1,
@@ -1799,6 +1920,12 @@ itest!(main_module {
   output: "main_module.ts.out",
 });
 
+itest!(no_check {
+  args: "run --quiet --reload --no-check 006_url_imports.ts",
+  output: "006_url_imports.ts.out",
+  http_server: true,
+});
+
 itest!(lib_ref {
   args: "run --quiet --unstable --reload lib_ref.ts",
   output: "lib_ref.ts.out",
@@ -1849,6 +1976,12 @@ itest!(type_directives_redirect {
   http_server: true,
 });
 
+itest!(type_headers_deno_types {
+  args: "run --reload type_headers_deno_types.ts",
+  output: "type_headers_deno_types.ts.out",
+  http_server: true,
+});
+
 itest!(ts_type_imports {
   args: "run --reload ts_type_imports.ts",
   output: "ts_type_imports.ts.out",
@@ -1858,6 +1991,11 @@ itest!(ts_type_imports {
 itest!(ts_decorators {
   args: "run --reload -c tsconfig.decorators.json ts_decorators.ts",
   output: "ts_decorators.ts.out",
+});
+
+itest!(ts_type_only_import {
+  args: "run --reload ts_type_only_import.ts",
+  output: "ts_type_only_import.ts.out",
 });
 
 itest!(swc_syntax_error {
@@ -1961,6 +2099,12 @@ itest!(unstable_enabled_js {
   output: "unstable_enabled_js.out",
 });
 
+itest!(unstable_disabled_ts2551 {
+  args: "run --reload unstable_ts2551.ts",
+  exit_code: 1,
+  output: "unstable_disabled_ts2551.out",
+});
+
 itest!(_053_import_compression {
   args: "run --quiet --reload --allow-net 053_import_compression/main.ts",
   output: "053_import_compression.out",
@@ -1986,9 +2130,9 @@ itest!(cafile_eval {
   http_server: true,
 });
 
-itest_ignore!(cafile_info {
+itest!(cafile_info {
   args:
-    "info --cert tls/RootCA.pem https://localhost:5545/cli/tests/cafile_info.ts",
+    "info --quiet --cert tls/RootCA.pem https://localhost:5545/cli/tests/cafile_info.ts",
   output: "cafile_info.ts.out",
   http_server: true,
 });
@@ -2048,6 +2192,11 @@ itest!(single_compile_with_reload {
   output: "single_compile_with_reload.ts.out",
 });
 
+itest!(performance_stats {
+  args: "cache --reload --log-level debug 002_hello.ts",
+  output: "performance_stats.out",
+});
+
 itest!(proto_exploit {
   args: "run proto_exploit.js",
   output: "proto_exploit.js.out",
@@ -2064,6 +2213,39 @@ itest!(deno_lint_glob {
   output: "lint/expected_glob.out",
   exit_code: 1,
 });
+
+itest!(compiler_js_error {
+  args: "run --unstable compiler_js_error.ts",
+  output: "compiler_js_error.ts.out",
+  exit_code: 1,
+});
+
+itest!(import_file_with_colon {
+  args: "run --quiet --reload import_file_with_colon.ts",
+  output: "import_file_with_colon.ts.out",
+  http_server: true,
+});
+
+#[test]
+fn cafile_env_fetch() {
+  use url::Url;
+  let g = util::http_server();
+  let deno_dir = TempDir::new().expect("tempdir fail");
+  let module_url =
+    Url::parse("https://localhost:5545/cli/tests/cafile_url_imports.ts")
+      .unwrap();
+  let cafile = util::root_path().join("cli/tests/tls/RootCA.pem");
+  let output = Command::new(util::deno_exe_path())
+    .env("DENO_DIR", deno_dir.path())
+    .env("DENO_CERT", cafile)
+    .current_dir(util::root_path())
+    .arg("cache")
+    .arg(module_url.to_string())
+    .output()
+    .expect("Failed to spawn script");
+  assert!(output.status.success());
+  drop(g);
+}
 
 #[test]
 fn cafile_fetch() {
@@ -2530,7 +2712,8 @@ fn test_permissions_net_listen_allow_localhost_4555_fail() {
 
 #[test]
 fn test_permissions_net_listen_allow_localhost() {
-  // Port 4600 is chosen to not colide with those used by tools/http_server.py
+  // Port 4600 is chosen to not colide with those used by
+  // target/debug/test_server
   let (_, err) = util::run_and_collect_output(
     true,
 			"run --allow-net=localhost complex_permissions_test.ts netListen localhost:4600",
@@ -2691,7 +2874,9 @@ async fn inspector_pause() {
     use futures::stream::StreamExt;
     while let Some(msg) = socket.next().await {
       let msg = msg.unwrap().to_string();
-      assert!(!msg.contains("error"));
+      // FIXME(bartlomieju): fails because there's a file loaded
+      // called 150_errors.js
+      // assert!(!msg.contains("error"));
       if !msg.contains("Debugger.scriptParsed") {
         return msg;
       }
@@ -2972,4 +3157,131 @@ fn exec_path() {
     std::fs::canonicalize(&std::path::Path::new(stdout_str)).unwrap();
   let expected = std::fs::canonicalize(util::deno_exe_path()).unwrap();
   assert_eq!(expected, actual);
+}
+
+#[cfg(not(windows))]
+#[test]
+fn set_raw_should_not_panic_on_no_tty() {
+  let output = util::deno_cmd()
+    .arg("eval")
+    .arg("--unstable")
+    .arg("Deno.setRaw(Deno.stdin.rid, true)")
+    // stdin set to piped so it certainly does not refer to TTY
+    .stdin(std::process::Stdio::piped())
+    // stderr is piped so we can capture output.
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(!output.status.success());
+  let stderr = std::str::from_utf8(&output.stderr).unwrap().trim();
+  assert!(stderr.contains("BadResource"));
+}
+
+#[cfg(windows)]
+enum WinProcConstraints {
+  NoStdIn,
+  NoStdOut,
+  NoStdErr,
+}
+
+#[cfg(windows)]
+fn run_deno_script_constrained(
+  script_path: std::path::PathBuf,
+  constraints: WinProcConstraints,
+) -> Result<(), i64> {
+  let file_path = "cli/tests/DenoWinRunner.ps1";
+  let constraints = match constraints {
+    WinProcConstraints::NoStdIn => "1",
+    WinProcConstraints::NoStdOut => "2",
+    WinProcConstraints::NoStdErr => "4",
+  };
+  let deno_exe_path = util::deno_exe_path()
+    .into_os_string()
+    .into_string()
+    .unwrap();
+
+  let deno_script_path = script_path.into_os_string().into_string().unwrap();
+
+  let args = vec![&deno_exe_path[..], &deno_script_path[..], constraints];
+  util::run_powershell_script_file(file_path, args)
+}
+
+#[cfg(windows)]
+#[test]
+fn should_not_panic_on_no_stdin() {
+  let output = run_deno_script_constrained(
+    util::tests_path().join("echo.ts"),
+    WinProcConstraints::NoStdIn,
+  );
+  output.unwrap();
+}
+
+#[cfg(windows)]
+#[test]
+fn should_not_panic_on_no_stdout() {
+  let output = run_deno_script_constrained(
+    util::tests_path().join("echo.ts"),
+    WinProcConstraints::NoStdOut,
+  );
+  output.unwrap();
+}
+
+#[cfg(windows)]
+#[test]
+fn should_not_panic_on_no_stderr() {
+  let output = run_deno_script_constrained(
+    util::tests_path().join("echo.ts"),
+    WinProcConstraints::NoStdErr,
+  );
+  output.unwrap();
+}
+
+#[cfg(not(windows))]
+#[test]
+fn should_not_panic_on_undefined_home_environment_variable() {
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("cli/tests/echo.ts")
+    .env_remove("HOME")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+}
+
+#[test]
+fn should_not_panic_on_undefined_deno_dir_environment_variable() {
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("cli/tests/echo.ts")
+    .env_remove("DENO_DIR")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+}
+
+#[cfg(not(windows))]
+#[test]
+fn should_not_panic_on_undefined_deno_dir_and_home_environment_variables() {
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("cli/tests/echo.ts")
+    .env_remove("DENO_DIR")
+    .env_remove("HOME")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
 }

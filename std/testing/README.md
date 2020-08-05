@@ -90,7 +90,7 @@ Deno.test("doesThrow", function (): void {
       throw new TypeError("hello world!");
     },
     TypeError,
-    "hello"
+    "hello",
   );
 });
 
@@ -109,7 +109,7 @@ Deno.test("doesThrow", async function (): Promise<void> {
   await assertThrowsAsync(
     async (): Promise<void> => {
       throw new TypeError("hello world!");
-    }
+    },
   );
   await assertThrowsAsync(async (): Promise<void> => {
     throw new TypeError("hello world!");
@@ -119,12 +119,12 @@ Deno.test("doesThrow", async function (): Promise<void> {
       throw new TypeError("hello world!");
     },
     TypeError,
-    "hello"
+    "hello",
   );
   await assertThrowsAsync(
     async (): Promise<void> => {
       return Promise.reject(new Error());
-    }
+    },
   );
 });
 
@@ -133,7 +133,7 @@ Deno.test("fails", async function (): Promise<void> {
   await assertThrowsAsync(
     async (): Promise<void> => {
       console.log("Hello world");
-    }
+    },
   );
 });
 ```
@@ -214,7 +214,7 @@ runBenchmarks({ silent: true }, (p: BenchmarkRunProgress) => {
   // initial progress data
   if (p.state === ProgressState.BenchmarkingStart) {
     console.log(
-      `Starting benchmarking. Queued: ${p.queued.length}, filtered: ${p.filtered}`
+      `Starting benchmarking. Queued: ${p.queued.length}, filtered: ${p.filtered}`,
     );
   }
   // ...

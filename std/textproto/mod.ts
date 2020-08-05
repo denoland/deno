@@ -3,8 +3,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-import { BufReader } from "../io/bufio.ts";
-import { charCode } from "../io/util.ts";
+import type { BufReader } from "../io/bufio.ts";
 import { concat } from "../bytes/mod.ts";
 import { decode } from "../encoding/utf8.ts";
 
@@ -17,6 +16,10 @@ function str(buf: Uint8Array | null | undefined): string {
   } else {
     return decode(buf);
   }
+}
+
+function charCode(s: string): number {
+  return s.charCodeAt(0);
 }
 
 export class TextProtoReader {
@@ -68,7 +71,7 @@ export class TextProtoReader {
       throw new Deno.errors.UnexpectedEof();
     } else if (buf[0] == charCode(" ") || buf[0] == charCode("\t")) {
       throw new Deno.errors.InvalidData(
-        `malformed MIME header initial line: ${str(line)}`
+        `malformed MIME header initial line: ${str(line)}`,
       );
     }
 
@@ -81,7 +84,7 @@ export class TextProtoReader {
       let i = kv.indexOf(charCode(":"));
       if (i < 0) {
         throw new Deno.errors.InvalidData(
-          `malformed MIME header line: ${str(kv)}`
+          `malformed MIME header line: ${str(kv)}`,
         );
       }
 
@@ -107,7 +110,7 @@ export class TextProtoReader {
       }
       const value = str(kv.subarray(i)).replace(
         invalidHeaderCharRegex,
-        encodeURI
+        encodeURI,
       );
 
       // In case of invalid header we swallow the error

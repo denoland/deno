@@ -2,7 +2,7 @@
 // Ported from https://github.com/browserify/path-browserify/
 /** This module is browser compatible. */
 
-import { FormatInputPathObject, ParsedPath } from "./_interface.ts";
+import type { FormatInputPathObject, ParsedPath } from "./_interface.ts";
 import {
   CHAR_DOT,
   CHAR_BACKWARD_SLASH,
@@ -167,7 +167,7 @@ export function resolve(...pathSegments: string[]): string {
     resolvedTail,
     !resolvedAbsolute,
     "\\",
-    isPathSeparator
+    isPathSeparator,
   );
 
   return resolvedDevice + (resolvedAbsolute ? "\\" : "") + resolvedTail || ".";
@@ -259,7 +259,7 @@ export function normalize(path: string): string {
       path.slice(rootEnd),
       !isAbsolute,
       "\\",
-      isPathSeparator
+      isPathSeparator,
     );
   } else {
     tail = "";
@@ -750,7 +750,7 @@ export function format(pathObject: FormatInputPathObject): string {
   /* eslint-disable max-len */
   if (pathObject === null || typeof pathObject !== "object") {
     throw new TypeError(
-      `The "pathObject" argument must be of type Object. Received type ${typeof pathObject}`
+      `The "pathObject" argument must be of type Object. Received type ${typeof pathObject}`,
     );
   }
   return _format("\\", pathObject);
@@ -907,14 +907,25 @@ export function parse(path: string): ParsedPath {
 
 /** Converts a file URL to a path string.
  *
- *      fromFileUrl("file:///C:/Users/foo"); // "C:\\Users\\foo"
  *      fromFileUrl("file:///home/foo"); // "\\home\\foo"
- *
- * Note that non-file URLs are treated as file URLs and irrelevant components
- * are ignored.
+ *      fromFileUrl("file:///C:/Users/foo"); // "C:\\Users\\foo"
+ *      fromFileUrl("file://localhost/home/foo"); // "\\\\localhost\\home\\foo"
  */
 export function fromFileUrl(url: string | URL): string {
-  return new URL(url).pathname
-    .replace(/^\/*([A-Za-z]:)(\/|$)/, "$1/")
-    .replace(/\//g, "\\");
+  url = url instanceof URL ? url : new URL(url);
+  if (url.protocol != "file:") {
+    throw new TypeError("Must be a file URL.");
+  }
+  let path = decodeURIComponent(
+    url.pathname
+      .replace(/^\/*([A-Za-z]:)(\/|$)/, "$1/")
+      .replace(/\//g, "\\"),
+  );
+  if (url.hostname != "") {
+    // Note: The `URL` implementation guarantees that the drive letter and
+    // hostname are mutually exclusive. Otherwise it would not have been valid
+    // to append the hostname and path like this.
+    path = `\\\\${url.hostname}${path}`;
+  }
+  return path;
 }

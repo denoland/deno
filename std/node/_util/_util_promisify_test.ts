@@ -30,20 +30,20 @@ import { promisify } from "./_util_promisify.ts";
 import * as fs from "../fs.ts";
 
 const readFile = promisify(fs.readFile);
-const customPromisifyArgs = Symbol.for("deno.nodejs.util.promisify.customArgs");
+const customPromisifyArgs = Symbol.for("nodejs.util.promisify.customArgs");
 
 Deno.test(
   "Errors should reject the promise",
   async function testPromiseRejection() {
     await assertThrowsAsync(() => readFile("/dontexist"), Deno.errors.NotFound);
-  }
+  },
 );
 
 Deno.test("Promisify.custom", async function testPromisifyCustom() {
   function fn(): void {}
 
   function promisifedFn(): void {}
-  // @ts-ignore TypeScript (as of 3.7) does not support indexing namespaces by symbol
+  // @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
   fn[promisify.custom] = promisifedFn;
 
   const promisifiedFnA = promisify(fn);
@@ -63,7 +63,7 @@ Deno.test("promiisfy.custom symbol", function testPromisifyCustomSymbol() {
   // util.promisify.custom is a shared symbol which can be accessed
   // as `Symbol.for("nodejs.util.promisify.custom")`.
   const kCustomPromisifiedSymbol = Symbol.for("nodejs.util.promisify.custom");
-  // @ts-ignore TypeScript (as of 3.7) does not support indexing namespaces by symbol
+  // @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
   fn[kCustomPromisifiedSymbol] = promisifiedFn;
 
   assertStrictEquals(kCustomPromisifiedSymbol, promisify.custom);
@@ -73,7 +73,7 @@ Deno.test("promiisfy.custom symbol", function testPromisifyCustomSymbol() {
 
 Deno.test("Invalid argument should throw", function testThrowInvalidArgument() {
   function fn(): void {}
-  // @ts-ignore TypeScript (as of 3.7) does not support indexing namespaces by symbol
+  // @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
   fn[promisify.custom] = 42;
   try {
     promisify(fn);
@@ -91,7 +91,7 @@ Deno.test("Custom promisify args", async function testPromisifyCustomArgs() {
     callback(null, firstValue, secondValue);
   }
 
-  // @ts-ignore TypeScript (as of 3.7) does not support indexing namespaces by symbol
+  // @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
   fn[customPromisifyArgs] = ["first", "second"];
 
   const obj = await promisify(fn)();
@@ -106,7 +106,7 @@ Deno.test(
     }
     const value = await promisify(fn)();
     assertStrictEquals(value, "foo");
-  }
+  },
 );
 
 Deno.test(
@@ -117,7 +117,7 @@ Deno.test(
     }
     const value = await promisify(fn)();
     assertStrictEquals(value, undefined);
-  }
+  },
 );
 
 Deno.test(
@@ -128,7 +128,7 @@ Deno.test(
     }
     const value = await promisify(fn)();
     assertStrictEquals(value, undefined);
-  }
+  },
 );
 
 Deno.test(
@@ -139,7 +139,7 @@ Deno.test(
     }
     const value = await promisify(fn)(null, 42);
     assertStrictEquals(value, 42);
-  }
+  },
 );
 
 Deno.test(
@@ -151,15 +151,15 @@ Deno.test(
     await assertThrowsAsync(
       () => promisify(fn)(new Error("oops"), null),
       Error,
-      "oops"
+      "oops",
     );
-  }
+  },
 );
 
 Deno.test("Rejected value", async function testPromisifyWithAsObjectMethod() {
   const o: { fn?: Function } = {};
   const fn = promisify(function (cb: Function): void {
-    // @ts-ignore TypeScript
+    // @ts-expect-error TypeScript
     cb(null, this === o);
   });
 
@@ -173,7 +173,7 @@ Deno.test(
   "Multiple callback",
   async function testPromisifyWithMultipleCallback() {
     const err = new Error(
-      "Should not have called the callback with the error."
+      "Should not have called the callback with the error.",
     );
     const stack = err.stack;
 
@@ -185,7 +185,7 @@ Deno.test(
     await fn();
     await Promise.resolve();
     return assertStrictEquals(stack, err.stack);
-  }
+  },
 );
 
 Deno.test("Promisify a promise", function testPromisifyPromise() {
@@ -203,7 +203,7 @@ Deno.test("Test error", async function testInvalidArguments() {
     a: number,
     b: number,
     c: number,
-    cb: Function
+    cb: Function,
   ): void {
     errToThrow = new Error(`${a}-${b}-${c}-${cb}`);
     throw errToThrow;
@@ -220,14 +220,14 @@ Deno.test("Test error", async function testInvalidArguments() {
 Deno.test("Test invalid arguments", function testInvalidArguments() {
   [undefined, null, true, 0, "str", {}, [], Symbol()].forEach((input) => {
     try {
-      // @ts-ignore TypeScript
+      // @ts-expect-error TypeScript
       promisify(input);
     } catch (e) {
       assertStrictEquals(e.code, "ERR_INVALID_ARG_TYPE");
       assert(e instanceof TypeError);
       assertEquals(
         e.message,
-        `The "original" argument must be of type Function. Received ${typeof input}`
+        `The "original" argument must be of type Function. Received ${typeof input}`,
       );
     }
   });

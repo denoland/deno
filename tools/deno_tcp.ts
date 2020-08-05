@@ -6,7 +6,7 @@ const addr = Deno.args[0] || "127.0.0.1:4500";
 const [hostname, port] = addr.split(":");
 const listener = Deno.listen({ hostname, port: Number(port) });
 const response = new TextEncoder().encode(
-  "HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\nHello World\n"
+  "HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\nHello World\n",
 );
 async function handle(conn: Deno.Conn): Promise<void> {
   const buffer = new Uint8Array(1024);

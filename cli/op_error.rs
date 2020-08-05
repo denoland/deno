@@ -15,6 +15,7 @@
 //!   exceptions.
 
 use crate::import_map::ImportMapError;
+use crate::swc_util::SwcDiagnosticBuffer;
 use deno_core::ErrBox;
 use deno_core::ModuleResolutionError;
 use rustyline::error::ReadlineError;
@@ -319,6 +320,7 @@ impl From<nix::Error> for OpError {
       nix::Error::Sys(EPERM) => ErrorKind::PermissionDenied,
       nix::Error::Sys(EINVAL) => ErrorKind::TypeError,
       nix::Error::Sys(ENOENT) => ErrorKind::NotFound,
+      nix::Error::Sys(ENOTTY) => ErrorKind::BadResource,
       nix::Error::Sys(UnknownErrno) => unreachable!(),
       nix::Error::Sys(_) => unreachable!(),
       nix::Error::InvalidPath => ErrorKind::TypeError,
@@ -381,6 +383,21 @@ impl From<&notify::Error> for OpError {
   }
 }
 
+impl From<SwcDiagnosticBuffer> for OpError {
+  fn from(error: SwcDiagnosticBuffer) -> Self {
+    OpError::from(&error)
+  }
+}
+
+impl From<&SwcDiagnosticBuffer> for OpError {
+  fn from(error: &SwcDiagnosticBuffer) -> Self {
+    Self {
+      kind: ErrorKind::Other,
+      msg: error.diagnostics.join(", "),
+    }
+  }
+}
+
 impl From<ErrBox> for OpError {
   fn from(error: ErrBox) -> Self {
     #[cfg(unix)]
@@ -417,6 +434,11 @@ impl From<ErrBox> for OpError {
       })
       .or_else(|| error.downcast_ref::<dlopen::Error>().map(|e| e.into()))
       .or_else(|| error.downcast_ref::<notify::Error>().map(|e| e.into()))
+      .or_else(|| {
+        error
+          .downcast_ref::<SwcDiagnosticBuffer>()
+          .map(|e| e.into())
+      })
       .or_else(|| unix_error_kind(&error))
       .unwrap_or_else(|| {
         panic!("Can't downcast {:?} to OpError", error);

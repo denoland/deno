@@ -6,7 +6,7 @@ import {
   assertStringContains,
 } from "./test_util.ts";
 const {
-  stringifyArgs,
+  inspectArgs,
   // @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
 } = Deno[Deno.internal];
 
@@ -27,7 +27,7 @@ unitTest(function newHeaderTest(): void {
   } catch (e) {
     assertEquals(
       e.message,
-      "Failed to construct 'Headers'; The provided value was not valid"
+      "Failed to construct 'Headers'; The provided value was not valid",
     );
   }
 });
@@ -91,7 +91,7 @@ unitTest(function headerHasSuccess(): void {
     assert(headers.has(name), "headers has name " + name);
     assert(
       !headers.has("nameNotInHeaders"),
-      "headers do not have header: nameNotInHeaders"
+      "headers do not have header: nameNotInHeaders",
     );
   }
 });
@@ -287,7 +287,7 @@ unitTest(function headerParamsArgumentsCheck(): void {
     assertEquals(hasThrown, 2);
     assertStringContains(
       errMsg,
-      `${method} requires at least 1 argument, but only 0 present`
+      `${method} requires at least 1 argument, but only 0 present`,
     );
   });
 
@@ -311,7 +311,7 @@ unitTest(function headerParamsArgumentsCheck(): void {
     assertEquals(hasThrown, 2);
     assertStringContains(
       errMsg,
-      `${method} requires at least 2 arguments, but only 0 present`
+      `${method} requires at least 2 arguments, but only 0 present`,
     );
 
     hasThrown = 0;
@@ -331,7 +331,7 @@ unitTest(function headerParamsArgumentsCheck(): void {
     assertEquals(hasThrown, 2);
     assertStringContains(
       errMsg,
-      `${method} requires at least 2 arguments, but only 1 present`
+      `${method} requires at least 2 arguments, but only 1 present`,
     );
   });
 });
@@ -402,7 +402,7 @@ unitTest(function toStringShouldBeWebCompatibility(): void {
 });
 
 function stringify(...args: unknown[]): string {
-  return stringifyArgs(args).replace(/\n$/, "");
+  return inspectArgs(args).replace(/\n$/, "");
 }
 
 unitTest(function customInspectReturnsCorrectHeadersFormat(): void {
@@ -411,7 +411,7 @@ unitTest(function customInspectReturnsCorrectHeadersFormat(): void {
   const singleHeader = new Headers([["Content-Type", "application/json"]]);
   assertEquals(
     stringify(singleHeader),
-    "Headers { content-type: application/json }"
+    "Headers { content-type: application/json }",
   );
   const multiParamHeader = new Headers([
     ["Content-Type", "application/json"],
@@ -419,6 +419,6 @@ unitTest(function customInspectReturnsCorrectHeadersFormat(): void {
   ]);
   assertEquals(
     stringify(multiParamHeader),
-    "Headers { content-type: application/json, content-length: 1337 }"
+    "Headers { content-type: application/json, content-length: 1337 }",
   );
 });

@@ -18,24 +18,23 @@ Deno.test("hello world #1", () => {
 // Fully fledged test definition, longer form, but configurable (see below)
 Deno.test({
   name: "hello world #2",
-  fn() => {
+  fn: () => {
     const x = 1 + 2;
     assertEquals(x, 3);
-  }
+  },
 });
-
 ```
 
 ## Assertions
 
-There are some useful assertion utilities at https://deno.land/std/testing#usage
-to make testing easier:
+There are some useful assertion utilities at
+https://deno.land/std@$STD_VERSION/testing#usage to make testing easier:
 
 ```ts
 import {
   assertEquals,
   assertArrayContains,
-} from "https://deno.land/std/testing/asserts.ts";
+} from "https://deno.land/std@$STD_VERSION/testing/asserts.ts";
 
 Deno.test("hello world", () => {
   const x = 1 + 2;
@@ -50,7 +49,7 @@ You can also test asynchronous code by passing a test function that returns a
 promise. For this you can use the `async` keyword when defining a function:
 
 ```ts
-import { delay } from "https://deno.land/std/async/delay.ts";
+import { delay } from "https://deno.land/std@$STD_VERSION/async/delay.ts";
 
 Deno.test("async hello world", async () => {
   const x = 1 + 2;
@@ -130,12 +129,32 @@ There are a number of options to filter the tests you are running.
 Tests can be run individually or in groups using the command line `--filter`
 option.
 
-```shell
-deno test --filter "hello world" tests/
+The filter flags accept a string or a pattern as value.
+
+Assuming the following tests:
+
+```ts
+Deno.test({ name: "my-test", fn: myTest });
+Deno.test({ name: "test-1", fn: test1 });
+Deno.test({ name: "test2", fn: test2 });
 ```
 
-This command will run any test which contains the string "hello world" in its
-test name for tests found within files in the `tests/` directory.
+This command will run all of these tests because they all contain the word
+"test".
+
+```shell
+deno test --filter "test" tests/
+```
+
+On the flip side, the following command uses a pattern and will run the second
+and third tests.
+
+```shell
+deno test --filter "/test-*\d/" tests/
+```
+
+_To let Deno know that you want to use a pattern, wrap your filter with
+forward-slashes like the JavaScript syntactic sugar for a REGEX._
 
 ### Test definition filtering
 

@@ -44,7 +44,7 @@ function include(
   path: string,
   exts?: string[],
   match?: RegExp[],
-  skip?: RegExp[]
+  skip?: RegExp[],
 ): boolean {
   if (exts && !exts.some((ext): boolean => path.endsWith(ext))) {
     return false;
@@ -91,7 +91,7 @@ export async function* walk(
     exts = undefined,
     match = undefined,
     skip = undefined,
-  }: WalkOptions = {}
+  }: WalkOptions = {},
 ): AsyncIterableIterator<WalkEntry> {
   if (maxDepth < 0) {
     return;
@@ -144,7 +144,7 @@ export function* walkSync(
     exts = undefined,
     match = undefined,
     skip = undefined,
-  }: WalkOptions = {}
+  }: WalkOptions = {},
 ): IterableIterator<WalkEntry> {
   if (maxDepth < 0) {
     return;

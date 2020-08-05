@@ -1,16 +1,18 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use crate::swc_ecma_ast;
+use crate::colors;
+use crate::doc::display::{display_optional, display_readonly, SliceDisplayer};
 use serde::Serialize;
 
 use super::params::ts_fn_param_to_param_def;
 use super::parser::DocParser;
-use super::ts_type::ts_entity_name_to_name;
 use super::ts_type::ts_type_ann_to_def;
 use super::ts_type::TsTypeDef;
 use super::ts_type_param::maybe_type_param_decl_to_type_param_defs;
 use super::ts_type_param::TsTypeParamDef;
 use super::Location;
 use super::ParamDef;
+
+use std::fmt::{Display, Formatter, Result as FmtResult};
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -22,6 +24,22 @@ pub struct InterfaceMethodDef {
   pub params: Vec<ParamDef>,
   pub return_type: Option<TsTypeDef>,
   pub type_params: Vec<TsTypeParamDef>,
+}
+
+impl Display for InterfaceMethodDef {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+    write!(
+      f,
+      "{}{}({})",
+      colors::bold(&self.name),
+      display_optional(self.optional),
+      SliceDisplayer::new(&self.params, ", ", false),
+    )?;
+    if let Some(return_type) = &self.return_type {
+      write!(f, ": {}", return_type)?;
+    }
+    Ok(())
+  }
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -37,6 +55,44 @@ pub struct InterfacePropertyDef {
   pub type_params: Vec<TsTypeParamDef>,
 }
 
+impl Display for InterfacePropertyDef {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+    write!(
+      f,
+      "{}{}",
+      colors::bold(&self.name),
+      display_optional(self.optional),
+    )?;
+    if let Some(ts_type) = &self.ts_type {
+      write!(f, ": {}", ts_type)?;
+    }
+    Ok(())
+  }
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct InterfaceIndexSignatureDef {
+  pub readonly: bool,
+  pub params: Vec<ParamDef>,
+  pub ts_type: Option<TsTypeDef>,
+}
+
+impl Display for InterfaceIndexSignatureDef {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+    write!(
+      f,
+      "{}[{}]",
+      display_readonly(self.readonly),
+      SliceDisplayer::new(&self.params, ", ", false)
+    )?;
+    if let Some(ts_type) = &self.ts_type {
+      write!(f, ": {}", ts_type)?;
+    }
+    Ok(())
+  }
+}
+
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct InterfaceCallSignatureDef {
@@ -50,16 +106,17 @@ pub struct InterfaceCallSignatureDef {
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct InterfaceDef {
-  pub extends: Vec<String>,
+  pub extends: Vec<TsTypeDef>,
   pub methods: Vec<InterfaceMethodDef>,
   pub properties: Vec<InterfacePropertyDef>,
   pub call_signatures: Vec<InterfaceCallSignatureDef>,
+  pub index_signatures: Vec<InterfaceIndexSignatureDef>,
   pub type_params: Vec<TsTypeParamDef>,
 }
 
-pub fn expr_to_name(expr: &swc_ecma_ast::Expr) -> String {
-  use crate::swc_ecma_ast::Expr::*;
-  use crate::swc_ecma_ast::ExprOrSuper::*;
+pub fn expr_to_name(expr: &swc_ecmascript::ast::Expr) -> String {
+  use swc_ecmascript::ast::Expr::*;
+  use swc_ecmascript::ast::ExprOrSuper::*;
 
   match expr {
     Ident(ident) => ident.sym.to_string(),
@@ -77,16 +134,17 @@ pub fn expr_to_name(expr: &swc_ecma_ast::Expr) -> String {
 
 pub fn get_doc_for_ts_interface_decl(
   doc_parser: &DocParser,
-  interface_decl: &swc_ecma_ast::TsInterfaceDecl,
+  interface_decl: &swc_ecmascript::ast::TsInterfaceDecl,
 ) -> (String, InterfaceDef) {
   let interface_name = interface_decl.id.sym.to_string();
 
   let mut methods = vec![];
   let mut properties = vec![];
   let mut call_signatures = vec![];
+  let mut index_signatures = vec![];
 
   for type_element in &interface_decl.body.body {
-    use crate::swc_ecma_ast::TsTypeElement::*;
+    use swc_ecmascript::ast::TsTypeElement::*;
 
     match &type_element {
       TsMethodSignature(ts_method_sig) => {
@@ -95,7 +153,10 @@ pub fn get_doc_for_ts_interface_decl(
         let mut params = vec![];
 
         for param in &ts_method_sig.params {
-          let param_def = ts_fn_param_to_param_def(param);
+          let param_def = ts_fn_param_to_param_def(
+            param,
+            Some(&doc_parser.ast_parser.source_map),
+          );
           params.push(param_def);
         }
 
@@ -131,7 +192,10 @@ pub fn get_doc_for_ts_interface_decl(
         let mut params = vec![];
 
         for param in &ts_prop_sig.params {
-          let param_def = ts_fn_param_to_param_def(param);
+          let param_def = ts_fn_param_to_param_def(
+            param,
+            Some(&doc_parser.ast_parser.source_map),
+          );
           params.push(param_def);
         }
 
@@ -164,7 +228,10 @@ pub fn get_doc_for_ts_interface_decl(
 
         let mut params = vec![];
         for param in &ts_call_sig.params {
-          let param_def = ts_fn_param_to_param_def(param);
+          let param_def = ts_fn_param_to_param_def(
+            param,
+            Some(&doc_parser.ast_parser.source_map),
+          );
           params.push(param_def);
         }
 
@@ -189,9 +256,27 @@ pub fn get_doc_for_ts_interface_decl(
         };
         call_signatures.push(call_sig_def);
       }
+      TsIndexSignature(ts_index_sig) => {
+        let mut params = vec![];
+        for param in &ts_index_sig.params {
+          let param_def = ts_fn_param_to_param_def(param, None);
+          params.push(param_def);
+        }
+
+        let ts_type = ts_index_sig
+          .type_ann
+          .as_ref()
+          .map(|rt| (&*rt.type_ann).into());
+
+        let index_sig_def = InterfaceIndexSignatureDef {
+          readonly: ts_index_sig.readonly,
+          params,
+          ts_type,
+        };
+        index_signatures.push(index_sig_def);
+      }
       // TODO:
       TsConstructSignatureDecl(_) => {}
-      TsIndexSignature(_) => {}
     }
   }
 
@@ -199,17 +284,18 @@ pub fn get_doc_for_ts_interface_decl(
     interface_decl.type_params.as_ref(),
   );
 
-  let extends: Vec<String> = interface_decl
+  let extends = interface_decl
     .extends
     .iter()
-    .map(|expr| ts_entity_name_to_name(&expr.expr))
-    .collect();
+    .map(|expr| expr.into())
+    .collect::<Vec<TsTypeDef>>();
 
   let interface_def = InterfaceDef {
     extends,
     methods,
     properties,
     call_signatures,
+    index_signatures,
     type_params,
   };
 

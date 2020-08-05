@@ -1,8 +1,28 @@
 import { assert, assertThrows, assertEquals } from "../testing/asserts.ts";
-import { process } from "./process.ts";
+import * as all from "./process.ts";
+import { env, argv } from "./process.ts";
 
 // NOTE: Deno.execPath() (and thus process.argv) currently requires --allow-env
 // (Also Deno.env.toObject() (and process.env) requires --allow-env but it's more obvious)
+
+Deno.test({
+  name: "process exports are as they should be",
+  fn() {
+    // * should be the same as process, default, and globalThis.process
+    // without the export aliases, and with properties that are not standalone
+    const allKeys = new Set<string>(Object.keys(all));
+    // without { process } for deno b/c
+    allKeys.delete("process");
+    // without esm default
+    allKeys.delete("default");
+    // with on, which is not exported via *
+    allKeys.add("on");
+    const allStr = Array.from(allKeys).sort().join(" ");
+    assertEquals(Object.keys(all.default).sort().join(" "), allStr);
+    assertEquals(Object.keys(all.process).sort().join(" "), allStr);
+    assertEquals(Object.keys(process).sort().join(" "), allStr);
+  },
+});
 
 Deno.test({
   name: "process.cwd and process.chdir success",
@@ -24,7 +44,7 @@ Deno.test({
         process.chdir("non-existent-directory-name");
       },
       Deno.errors.NotFound,
-      "file"
+      "file",
       // On every OS Deno returns: "No such file" except for Windows, where it's:
       // "The system cannot find the file specified. (os error 2)" so "file" is
       // the only common string here.
@@ -75,7 +95,7 @@ Deno.test({
         process.on("uncaughtException", (_err: Error) => {});
       },
       Error,
-      "implemented"
+      "implemented",
     );
   },
 });
@@ -84,9 +104,10 @@ Deno.test({
   name: "process.argv",
   fn() {
     assert(Array.isArray(process.argv));
+    assert(Array.isArray(argv));
     assert(
       process.argv[0].match(/[^/\\]*deno[^/\\]*$/),
-      "deno included in the file name of argv[0]"
+      "deno included in the file name of argv[0]",
     );
     // we cannot test for anything else (we see test runner arguments here)
   },
@@ -96,5 +117,6 @@ Deno.test({
   name: "process.env",
   fn() {
     assertEquals(typeof process.env.PATH, "string");
+    assertEquals(typeof env.PATH, "string");
   },
 });

@@ -1,30 +1,58 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { intoCallbackAPIWithIntercept, MaybeEmpty } from "../_utils.ts";
-import { getEncoding, FileOptions } from "./_fs_common.ts";
+import {
+  Encodings,
+  getEncoding,
+  FileOptionsArgument,
+  TextOptionsArgument,
+  BinaryOptionsArgument,
+  TextEncodings,
+  BinaryEncodings,
+} from "./_fs_common.ts";
 import { Buffer } from "../buffer.ts";
 import { fromFileUrl } from "../path.ts";
 
-type ReadFileCallback = (
-  err: MaybeEmpty<Error>,
-  data: MaybeEmpty<string | Buffer>
-) => void;
-
+function maybeDecode(data: Uint8Array, encoding: TextEncodings): string;
 function maybeDecode(
   data: Uint8Array,
-  encoding: string | null
+  encoding: BinaryEncodings | null,
+): Buffer;
+function maybeDecode(
+  data: Uint8Array,
+  encoding: Encodings | null,
 ): string | Buffer {
   const buffer = new Buffer(data.buffer, data.byteOffset, data.byteLength);
-  if (encoding) return buffer.toString(encoding);
+  if (encoding && encoding !== "binary") return buffer.toString(encoding);
   return buffer;
 }
 
+type TextCallback = (err: Error | null, data?: string) => void;
+type BinaryCallback = (err: Error | null, data?: Buffer) => void;
+type GenericCallback = (err: Error | null, data?: string | Buffer) => void;
+type Callback = TextCallback | BinaryCallback | GenericCallback;
+
 export function readFile(
   path: string | URL,
-  optOrCallback: ReadFileCallback | FileOptions | string | undefined,
-  callback?: ReadFileCallback
+  options: TextOptionsArgument,
+  callback: TextCallback,
+): void;
+export function readFile(
+  path: string | URL,
+  options: BinaryOptionsArgument,
+  callback: BinaryCallback,
+): void;
+export function readFile(
+  path: string | URL,
+  options: null | undefined | FileOptionsArgument,
+  callback: BinaryCallback,
+): void;
+export function readFile(path: string | URL, callback: BinaryCallback): void;
+export function readFile(
+  path: string | URL,
+  optOrCallback?: FileOptionsArgument | Callback | null | undefined,
+  callback?: Callback,
 ): void {
   path = path instanceof URL ? fromFileUrl(path) : path;
-  let cb: ReadFileCallback | undefined;
+  let cb: Callback | undefined;
   if (typeof optOrCallback === "function") {
     cb = optOrCallback;
   } else {
@@ -33,18 +61,39 @@ export function readFile(
 
   const encoding = getEncoding(optOrCallback);
 
-  intoCallbackAPIWithIntercept<Uint8Array, string | Buffer>(
-    Deno.readFile,
-    (data: Uint8Array): string | Buffer => maybeDecode(data, encoding),
-    cb,
-    path
-  );
+  const p = Deno.readFile(path);
+
+  if (cb) {
+    p.then((data: Uint8Array) => {
+      if (encoding && encoding !== "binary") {
+        const text = maybeDecode(data, encoding);
+        return (cb as TextCallback)(null, text);
+      }
+      const buffer = maybeDecode(data, encoding);
+      (cb as BinaryCallback)(null, buffer);
+    }).catch((err) => cb && cb(err));
+  }
 }
 
 export function readFileSync(
   path: string | URL,
-  opt?: FileOptions | string
+  opt: TextOptionsArgument,
+): string;
+export function readFileSync(
+  path: string | URL,
+  opt?: BinaryOptionsArgument,
+): Buffer;
+export function readFileSync(
+  path: string | URL,
+  opt?: FileOptionsArgument,
 ): string | Buffer {
   path = path instanceof URL ? fromFileUrl(path) : path;
-  return maybeDecode(Deno.readFileSync(path), getEncoding(opt));
+  const data = Deno.readFileSync(path);
+  const encoding = getEncoding(opt);
+  if (encoding && encoding !== "binary") {
+    const text = maybeDecode(data, encoding);
+    return text;
+  }
+  const buffer = maybeDecode(data, encoding);
+  return buffer;
 }

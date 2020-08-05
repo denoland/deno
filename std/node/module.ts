@@ -22,13 +22,14 @@
 import "./global.ts";
 
 import * as nodeBuffer from "./buffer.ts";
+import * as nodeEvents from "./events.ts";
 import * as nodeFS from "./fs.ts";
-import * as nodeUtil from "./util.ts";
+import * as nodeOs from "./os.ts";
 import * as nodePath from "./path.ts";
 import * as nodeTimers from "./timers.ts";
-import * as nodeOs from "./os.ts";
-import * as nodeEvents from "./events.ts";
 import * as nodeQueryString from "./querystring.ts";
+import * as nodeStringDecoder from "./string_decoder.ts";
+import * as nodeUtil from "./util.ts";
 
 import * as path from "../path/mod.ts";
 import { assert } from "../_util/assert.ts";
@@ -70,7 +71,7 @@ function stat(filename: string): StatResult {
 function updateChildren(
   parent: Module | null,
   child: Module,
-  scan: boolean
+  scan: boolean,
 ): void {
   const children = parent && parent.children;
   if (children && !(scan && children.includes(child))) {
@@ -163,7 +164,7 @@ class Module {
       require,
       this,
       filename,
-      dirname
+      dirname,
     );
     if (requireDepth === 0) {
       statCache = null;
@@ -171,11 +172,13 @@ class Module {
     return result;
   }
 
+  /*
+   * Check for node modules paths.
+   * */
   static _resolveLookupPaths(
     request: string,
-    parent: Module | null
+    parent: Module | null,
   ): string[] | null {
-    // Check for node modules paths.
     if (
       request.charAt(0) !== "." ||
       (request.length > 1 &&
@@ -195,19 +198,17 @@ class Module {
     if (!parent || !parent.id || !parent.filename) {
       // Make require('./path/to/foo') work - normally the path is taken
       // from realpath(__filename) but with eval there is no filename
-      const mainPaths = ["."].concat(Module._nodeModulePaths("."), modulePaths);
-      return mainPaths;
+      return ["."].concat(Module._nodeModulePaths("."), modulePaths);
     }
-
-    const parentDir = [path.dirname(parent.filename)];
-    return parentDir;
+    // Returns the parent path of the file
+    return [path.dirname(parent.filename)];
   }
 
   static _resolveFilename(
     request: string,
     parent: Module,
     isMain: boolean,
-    options?: { paths: string[] }
+    options?: { paths: string[] },
   ): string {
     // Polyfills.
     if (nativeModuleCanBeRequiredByUsers(request)) {
@@ -218,8 +219,7 @@ class Module {
 
     if (typeof options === "object" && options !== null) {
       if (Array.isArray(options.paths)) {
-        const isRelative =
-          request.startsWith("./") ||
+        const isRelative = request.startsWith("./") ||
           request.startsWith("../") ||
           (isWindows && request.startsWith(".\\")) ||
           request.startsWith("..\\");
@@ -277,7 +277,7 @@ class Module {
   static _findPath(
     request: string,
     paths: string[],
-    isMain: boolean
+    isMain: boolean,
   ): string | boolean {
     const absoluteRequest = path.isAbsolute(request);
     if (absoluteRequest) {
@@ -286,16 +286,15 @@ class Module {
       return false;
     }
 
-    const cacheKey =
-      request + "\x00" + (paths.length === 1 ? paths[0] : paths.join("\x00"));
+    const cacheKey = request + "\x00" +
+      (paths.length === 1 ? paths[0] : paths.join("\x00"));
     const entry = Module._pathCache[cacheKey];
     if (entry) {
       return entry;
     }
 
     let exts;
-    let trailingSlash =
-      request.length > 0 &&
+    let trailingSlash = request.length > 0 &&
       request.charCodeAt(request.length - 1) === CHAR_FORWARD_SLASH;
     if (!trailingSlash) {
       trailingSlash = /(?:^|\/)\.?\.$/.test(request);
@@ -597,20 +596,24 @@ function createNativeModule(id: string, exports: any): Module {
 }
 
 nativeModulePolyfill.set("buffer", createNativeModule("buffer", nodeBuffer));
-nativeModulePolyfill.set("fs", createNativeModule("fs", nodeFS));
 nativeModulePolyfill.set("events", createNativeModule("events", nodeEvents));
+nativeModulePolyfill.set("fs", createNativeModule("fs", nodeFS));
 nativeModulePolyfill.set("os", createNativeModule("os", nodeOs));
 nativeModulePolyfill.set("path", createNativeModule("path", nodePath));
-nativeModulePolyfill.set("timers", createNativeModule("timers", nodeTimers));
-nativeModulePolyfill.set("util", createNativeModule("util", nodeUtil));
 nativeModulePolyfill.set(
   "querystring",
-  createNativeModule("querystring", nodeQueryString)
+  createNativeModule("querystring", nodeQueryString),
 );
+nativeModulePolyfill.set(
+  "string_decoder",
+  createNativeModule("string_decoder", nodeStringDecoder),
+);
+nativeModulePolyfill.set("timers", createNativeModule("timers", nodeTimers));
+nativeModulePolyfill.set("util", createNativeModule("util", nodeUtil));
 
 function loadNativeModule(
   _filename: string,
-  request: string
+  request: string,
 ): Module | undefined {
   return nativeModulePolyfill.get(request);
 }
@@ -657,7 +660,7 @@ function readPackage(requestPath: string): PackageInfo | null {
   let json: string | undefined;
   try {
     json = new TextDecoder().decode(
-      Deno.readFileSync(path.toNamespacedPath(jsonPath))
+      Deno.readFileSync(path.toNamespacedPath(jsonPath)),
     );
   } catch {
     // pass
@@ -686,7 +689,7 @@ function readPackage(requestPath: string): PackageInfo | null {
 }
 
 function readPackageScope(
-  checkPath: string
+  checkPath: string,
 ): { path: string; data: PackageInfo } | false {
   const rootSeparatorIndex = checkPath.indexOf(path.sep);
   let separatorIndex;
@@ -721,7 +724,7 @@ function tryPackage(
   requestPath: string,
   exts: string[],
   isMain: boolean,
-  _originalPath: string
+  _originalPath: string,
 ): string | false {
   const pkg = readPackageMain(requestPath);
 
@@ -730,8 +733,7 @@ function tryPackage(
   }
 
   const filename = path.resolve(requestPath, pkg);
-  let actual =
-    tryFile(filename, isMain) ||
+  let actual = tryFile(filename, isMain) ||
     tryExtensions(filename, exts, isMain) ||
     tryExtensions(path.resolve(filename, "index"), exts, isMain);
   if (actual === false) {
@@ -739,7 +741,7 @@ function tryPackage(
     if (!actual) {
       const err = new Error(
         `Cannot find module '${filename}'. ` +
-          'Please verify that the package.json has a valid "main" entry'
+          'Please verify that the package.json has a valid "main" entry',
       ) as Error & { code: string };
       err.code = "MODULE_NOT_FOUND";
       throw err;
@@ -774,7 +776,7 @@ function toRealPath(requestPath: string): string {
 function tryExtensions(
   p: string,
   exts: string[],
-  isMain: boolean
+  isMain: boolean,
 ): string | false {
   for (let i = 0; i < exts.length; i++) {
     const filename = tryFile(p + exts[i], isMain);
@@ -821,7 +823,7 @@ function isConditionalDotExportSugar(exports: any, _basePath: string): boolean {
         '"exports" cannot ' +
           "contain some keys starting with '.' and some not. The exports " +
           "object must either be an object of package subpath keys or an " +
-          "object of main entry condition name keys only."
+          "object of main entry condition name keys only.",
       );
     }
   }
@@ -848,7 +850,7 @@ function applyExports(basePath: string, expansion: string): string {
         mapping,
         "",
         basePath,
-        mappingKey
+        mappingKey,
       );
     }
 
@@ -874,7 +876,7 @@ function applyExports(basePath: string, expansion: string): string {
         mapping,
         subpath,
         basePath,
-        mappingKey
+        mappingKey,
       );
     }
   }
@@ -883,7 +885,7 @@ function applyExports(basePath: string, expansion: string): string {
 
   const e = new Error(
     `Package exports for '${basePath}' do not define ` +
-      `a '${mappingKey}' subpath`
+      `a '${mappingKey}' subpath`,
   ) as Error & { code?: string };
   e.code = "MODULE_NOT_FOUND";
   throw e;
@@ -896,7 +898,7 @@ const EXPORTS_PATTERN = /^((?:@[^/\\%]+\/)?[^./\\%][^/\\%]*)(\/.*)?$/;
 function resolveExports(
   nmPath: string,
   request: string,
-  absoluteRequest: boolean
+  absoluteRequest: boolean,
 ): string {
   // The implementation's behavior is meant to mirror resolution in ESM.
   if (!absoluteRequest) {
@@ -918,7 +920,7 @@ function resolveExportsTarget(
   target: any,
   subpath: string,
   basePath: string,
-  mappingKey: string
+  mappingKey: string,
 ): string {
   if (typeof target === "string") {
     if (
@@ -952,7 +954,7 @@ function resolveExportsTarget(
           targetValue,
           subpath,
           basePath,
-          mappingKey
+          mappingKey,
         );
       } catch (e) {
         if (e.code !== "MODULE_NOT_FOUND") throw e;
@@ -967,7 +969,7 @@ function resolveExportsTarget(
           target.default,
           subpath,
           basePath,
-          mappingKey
+          mappingKey,
         );
       } catch (e) {
         if (e.code !== "MODULE_NOT_FOUND") throw e;
@@ -978,7 +980,7 @@ function resolveExportsTarget(
   if (mappingKey !== ".") {
     e = new Error(
       `Package exports for '${basePath}' do not define a ` +
-        `valid '${mappingKey}' target${subpath ? " for " + subpath : ""}`
+        `valid '${mappingKey}' target${subpath ? " for " + subpath : ""}`,
     );
   } else {
     e = new Error(`No valid exports main found for '${basePath}'`);
@@ -994,9 +996,9 @@ const nmLen = nmChars.length;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function emitCircularRequireWarning(prop: any): void {
   console.error(
-    `Accessing non-existent property '${String(
-      prop
-    )}' of module exports inside circular dependency`
+    `Accessing non-existent property '${
+      String(prop)
+    }' of module exports inside circular dependency`,
   );
 }
 
@@ -1019,7 +1021,7 @@ const CircularRequirePrototypeWarningProxy = new Proxy(
       emitCircularRequireWarning(prop);
       return undefined;
     },
-  }
+  },
 );
 
 // Object.prototype and ObjectProtoype refer to our 'primordials' versions
@@ -1051,7 +1053,7 @@ type RequireWrapper = (
   require: any,
   module: Module,
   __filename: string,
-  __dirname: string
+  __dirname: string,
 ) => void;
 
 function wrapSafe(filename: string, content: string): RequireWrapper {
@@ -1094,8 +1096,8 @@ Module._extensions[".json"] = (module: Module, filename: string): void => {
 
 function createRequireFromPath(filename: string): RequireFunction {
   // Allow a directory to be passed as the filename
-  const trailingSlash =
-    filename.endsWith("/") || (isWindows && filename.endsWith("\\"));
+  const trailingSlash = filename.endsWith("/") ||
+    (isWindows && filename.endsWith("\\"));
 
   const proxyPath = trailingSlash ? path.join(filename, "noop.js") : filename;
 

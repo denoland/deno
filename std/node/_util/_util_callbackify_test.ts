@@ -58,7 +58,7 @@ class TestQueue {
         if (this.#queueSize === 0) {
           assert(
             this.#resolve,
-            "Test setup error; async queue is missing #resolve"
+            "Test setup error; async queue is missing #resolve",
           );
           this.#resolve();
         }
@@ -127,7 +127,7 @@ Deno.test(
     }
 
     await testQueue.waitForCompletion();
-  }
+  },
 );
 
 Deno.test(
@@ -152,7 +152,7 @@ Deno.test(
               assertStrictEquals(
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 (err as any).code,
-                "ERR_FALSY_VALUE_REJECTION"
+                "ERR_FALSY_VALUE_REJECTION",
               );
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               assertStrictEquals((err as any).reason, value);
@@ -188,7 +188,7 @@ Deno.test(
               assertStrictEquals(
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 (err as any).code,
-                "ERR_FALSY_VALUE_REJECTION"
+                "ERR_FALSY_VALUE_REJECTION",
               );
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               assertStrictEquals((err as any).reason, value);
@@ -222,7 +222,7 @@ Deno.test(
               assertStrictEquals(
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 (err as any).code,
-                "ERR_FALSY_VALUE_REJECTION"
+                "ERR_FALSY_VALUE_REJECTION",
               );
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               assertStrictEquals((err as any).reason, value);
@@ -238,7 +238,7 @@ Deno.test(
     }
 
     await testQueue.waitForCompletion();
-  }
+  },
 );
 
 Deno.test("callbackify passes arguments to the original", async () => {
@@ -246,7 +246,7 @@ Deno.test("callbackify passes arguments to the original", async () => {
 
   for (const value of values) {
     // eslint-disable-next-line require-await
-    async function asyncFn<T>(arg: T): Promise<T> {
+    async function asyncFn(arg: typeof value): Promise<typeof value> {
       assertStrictEquals(arg, value);
       return arg;
     }
@@ -263,7 +263,7 @@ Deno.test("callbackify passes arguments to the original", async () => {
       });
     });
 
-    function promiseFn<T>(arg: T): Promise<T> {
+    function promiseFn<T>(arg: typeof value): Promise<typeof value> {
       assertStrictEquals(arg, value);
       return Promise.resolve(arg);
     }
@@ -304,7 +304,7 @@ Deno.test("callbackify preserves the `this` binding", async () => {
       cbSyncFunction.call(objectWithSyncFunction, value, function (
         this: unknown,
         err: unknown,
-        ret: unknown
+        ret: unknown,
       ) {
         assertStrictEquals(err, null);
         assertStrictEquals(ret, value);
@@ -325,7 +325,7 @@ Deno.test("callbackify preserves the `this` binding", async () => {
       cbAsyncFunction.call(objectWithAsyncFunction, value, function (
         this: unknown,
         err: unknown,
-        ret: unknown
+        ret: unknown,
       ) {
         assertStrictEquals(err, null);
         assertStrictEquals(ret, value);
@@ -351,7 +351,7 @@ Deno.test("callbackify throws with non-function inputs", () => {
       assertStrictEquals(err.name, "TypeError");
       assertStrictEquals(
         err.message,
-        'The "original" argument must be of type function.'
+        'The "original" argument must be of type function.',
       );
     }
   });
@@ -382,9 +382,9 @@ Deno.test(
         assertStrictEquals(err.name, "TypeError");
         assertStrictEquals(
           err.message,
-          "The last argument must be of type function."
+          "The last argument must be of type function.",
         );
       }
     });
-  }
+  },
 );

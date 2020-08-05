@@ -4,7 +4,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 import { Type } from "../type.ts";
-import { Any } from "../utils.ts";
+import type { Any } from "../utils.ts";
 
 const _toString = Object.prototype.toString;
 

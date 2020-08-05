@@ -56,8 +56,20 @@ pub async fn upgrade_command(
   dry_run: bool,
   force: bool,
   version: Option<String>,
+  output: Option<PathBuf>,
+  ca_file: Option<String>,
 ) -> Result<(), ErrBox> {
-  let client = Client::builder().redirect(Policy::none()).build()?;
+  let mut client_builder = Client::builder().redirect(Policy::none());
+
+  // If we have been provided a CA Certificate, add it into the HTTP client
+  if let Some(ca_file) = ca_file {
+    let buf = std::fs::read(ca_file);
+    let cert = reqwest::Certificate::from_pem(&buf.unwrap())?;
+    client_builder = client_builder.add_root_certificate(cert);
+  }
+
+  let client = client_builder.build()?;
+
   let current_version = semver_parse(crate::version::DENO).unwrap();
 
   let install_version = match version {
@@ -65,7 +77,7 @@ pub async fn upgrade_command(
       Ok(ver) => {
         if !force && current_version == ver {
           println!("Version {} is already installed", &ver);
-          std::process::exit(1)
+          return Ok(());
         } else {
           ver
         }
@@ -83,7 +95,7 @@ pub async fn upgrade_command(
           "Local deno version {} is the most recent release",
           &crate::version::DENO
         );
-        std::process::exit(1)
+        return Ok(());
       } else {
         latest_version
       }
@@ -103,7 +115,13 @@ pub async fn upgrade_command(
   check_exe(&new_exe_path, &install_version)?;
 
   if !dry_run {
-    replace_exe(&new_exe_path, &old_exe_path)?;
+    match output {
+      Some(path) => {
+        fs::rename(&new_exe_path, &path)
+          .or_else(|_| fs::copy(&new_exe_path, &path).map(|_| ()))?;
+      }
+      None => replace_exe(&new_exe_path, &old_exe_path)?,
+    }
   }
 
   println!("Upgrade done successfully");
@@ -204,9 +222,9 @@ fn unpack(archive_data: Vec<u8>) -> Result<PathBuf, ErrBox> {
           }",
         )
         .arg("-Path")
-        .arg(&archive_path)
+        .arg(format!("'{}'", &archive_path.to_str().unwrap()))
         .arg("-DestinationPath")
-        .arg(&temp_dir)
+        .arg(format!("'{}'", &temp_dir.to_str().unwrap()))
         .spawn()?
         .wait()?
     }

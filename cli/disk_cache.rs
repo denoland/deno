@@ -1,4 +1,5 @@
 use crate::fs as deno_fs;
+use crate::http_cache::url_to_filename;
 use std::ffi::OsStr;
 use std::fs;
 use std::io;
@@ -7,7 +8,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::path::Prefix;
 use std::str;
-use url::Url;
+use url::{Host, Url};
 
 #[derive(Clone)]
 pub struct DiskCache {
@@ -50,7 +51,7 @@ impl DiskCache {
     out.push(scheme);
 
     match scheme {
-      "http" | "https" | "wasm" => {
+      "wasm" => {
         let host = url.host_str().unwrap();
         let host_port = match url.port() {
           // Windows doesn't support ":" in filenames, so we represent port using a
@@ -64,6 +65,7 @@ impl DiskCache {
           out.push(path_seg);
         }
       }
+      "http" | "https" => out = url_to_filename(url),
       "file" => {
         let path = url.to_file_path().unwrap();
         let mut path_components = path.components();
@@ -79,6 +81,14 @@ impl DiskCache {
               Prefix::Disk(disk_byte) | Prefix::VerbatimDisk(disk_byte) => {
                 let disk = (disk_byte as char).to_string();
                 out.push(disk);
+              }
+              Prefix::UNC(server, share)
+              | Prefix::VerbatimUNC(server, share) => {
+                out.push("UNC");
+                let host = Host::parse(server.to_str().unwrap()).unwrap();
+                let host = host.to_string().replace(":", "_");
+                out.push(host);
+                out.push(share);
               }
               _ => unreachable!(),
             }
@@ -186,21 +196,36 @@ mod tests {
     let mut test_cases = vec![
       (
         "http://deno.land/std/http/file_server.ts",
-        "http/deno.land/std/http/file_server.ts",
+        "http/deno.land/d8300752800fe3f0beda9505dc1c3b5388beb1ee45afd1f1e2c9fc0866df15cf",
       ),
       (
         "http://localhost:8000/std/http/file_server.ts",
-        "http/localhost_PORT8000/std/http/file_server.ts",
+        "http/localhost_PORT8000/d8300752800fe3f0beda9505dc1c3b5388beb1ee45afd1f1e2c9fc0866df15cf",
       ),
       (
         "https://deno.land/std/http/file_server.ts",
-        "https/deno.land/std/http/file_server.ts",
+        "https/deno.land/d8300752800fe3f0beda9505dc1c3b5388beb1ee45afd1f1e2c9fc0866df15cf",
       ),
       ("wasm://wasm/d1c677ea", "wasm/wasm/d1c677ea"),
     ];
 
     if cfg!(target_os = "windows") {
       test_cases.push(("file:///D:/a/1/s/format.ts", "file/D/a/1/s/format.ts"));
+      // IPv4 localhost
+      test_cases.push((
+        "file://127.0.0.1/d$/a/1/s/format.ts",
+        "file/UNC/127.0.0.1/d$/a/1/s/format.ts",
+      ));
+      // IPv6 localhost
+      test_cases.push((
+        "file://[0:0:0:0:0:0:0:1]/d$/a/1/s/format.ts",
+        "file/UNC/[__1]/d$/a/1/s/format.ts",
+      ));
+      // shared folder
+      test_cases.push((
+        "file://comp/t-share/a/1/s/format.ts",
+        "file/UNC/comp/t-share/a/1/s/format.ts",
+      ));
     } else {
       test_cases.push((
         "file:///std/http/file_server.ts",
@@ -228,12 +253,12 @@ mod tests {
       (
         "http://deno.land/std/http/file_server.ts",
         "js",
-        "http/deno.land/std/http/file_server.ts.js",
+        "http/deno.land/d8300752800fe3f0beda9505dc1c3b5388beb1ee45afd1f1e2c9fc0866df15cf.js",
       ),
       (
         "http://deno.land/std/http/file_server.ts",
         "js.map",
-        "http/deno.land/std/http/file_server.ts.js.map",
+        "http/deno.land/d8300752800fe3f0beda9505dc1c3b5388beb1ee45afd1f1e2c9fc0866df15cf.js.map",
       ),
     ];
 

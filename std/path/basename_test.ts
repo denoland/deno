@@ -32,7 +32,7 @@ Deno.test("basename", function () {
   // On unix a backslash is just treated as any other character.
   assertEquals(
     path.posix.basename("\\dir\\basename.ext"),
-    "\\dir\\basename.ext"
+    "\\dir\\basename.ext",
   );
   assertEquals(path.posix.basename("\\basename.ext"), "\\basename.ext");
   assertEquals(path.posix.basename("basename.ext"), "basename.ext");
@@ -44,7 +44,7 @@ Deno.test("basename", function () {
   const controlCharFilename = "Icon" + String.fromCharCode(13);
   assertEquals(
     path.posix.basename("/a/b/" + controlCharFilename),
-    controlCharFilename
+    controlCharFilename,
   );
 });
 

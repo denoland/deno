@@ -5,26 +5,26 @@ use std::fmt;
 use std::fmt::Write;
 
 fn fmt_add() -> String {
-  format!("{}", colors::green_bold("+".to_string()))
+  format!("{}", colors::green_bold("+"))
 }
 
-fn fmt_add_text(x: String) -> String {
+fn fmt_add_text(x: &str) -> String {
   format!("{}", colors::green(x))
 }
 
-fn fmt_add_text_highlight(x: String) -> String {
+fn fmt_add_text_highlight(x: &str) -> String {
   format!("{}", colors::white_on_green(x))
 }
 
 fn fmt_rem() -> String {
-  format!("{}", colors::red_bold("-".to_string()))
+  format!("{}", colors::red_bold("-"))
 }
 
-fn fmt_rem_text(x: String) -> String {
+fn fmt_rem_text(x: &str) -> String {
   format!("{}", colors::red(x))
 }
 
-fn fmt_rem_text_highlight(x: String) -> String {
+fn fmt_rem_text_highlight(x: &str) -> String {
   format!("{}", colors::white_on_red(x))
 }
 
@@ -42,7 +42,7 @@ fn write_line_diff(
       diff,
       "{:0width$}{} ",
       *orig_line + i,
-      colors::gray("|".to_string()),
+      colors::gray("|"),
       width = line_number_width
     )?;
     write!(diff, "{}", fmt_rem())?;
@@ -56,7 +56,7 @@ fn write_line_diff(
       diff,
       "{:0width$}{} ",
       *edit_line + i,
-      colors::gray("|".to_string()),
+      colors::gray("|"),
       width = line_number_width
     )?;
     write!(diff, "{}", fmt_add())?;
@@ -107,7 +107,7 @@ pub fn diff(orig_text: &str, edit_text: &str) -> Result<String, fmt::Error> {
           if i > 0 {
             orig.push_str("\n");
           }
-          orig.push_str(&fmt_rem_text_highlight(s.to_string()));
+          orig.push_str(&fmt_rem_text_highlight(s));
         }
         changes = true
       }
@@ -117,7 +117,7 @@ pub fn diff(orig_text: &str, edit_text: &str) -> Result<String, fmt::Error> {
           if i > 0 {
             edit.push_str("\n");
           }
-          edit.push_str(&fmt_add_text_highlight(s.to_string()));
+          edit.push_str(&fmt_add_text_highlight(s));
         }
         changes = true
       }
@@ -142,8 +142,8 @@ pub fn diff(orig_text: &str, edit_text: &str) -> Result<String, fmt::Error> {
               edit_line += 1;
             }
           }
-          orig.push_str(&fmt_rem_text(s.to_string()));
-          edit.push_str(&fmt_add_text(s.to_string()));
+          orig.push_str(&fmt_rem_text(s));
+          edit.push_str(&fmt_add_text(s));
         }
       }
     }

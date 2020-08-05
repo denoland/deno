@@ -57,7 +57,7 @@ export function globrex(
     strict = false,
     filepath = false,
     flags = "",
-  }: GlobrexOptions = {}
+  }: GlobrexOptions = {},
 ): GlobrexResult {
   const sepPattern = new RegExp(`^${SEP}${strict ? "" : "+"}$`);
   let regex = "";
@@ -82,7 +82,7 @@ export function globrex(
   // Helper function to build string and segments
   function add(
     str: string,
-    options: AddOptions = { split: false, last: false, only: "" }
+    options: AddOptions = { split: false, last: false, only: "" },
   ): void {
     const { split, last, only } = options;
     if (only !== "path") regex += str;
@@ -279,8 +279,7 @@ export function globrex(
         add(".*");
       } else {
         // globstar is enabled, so determine if this is a globstar segment
-        const isGlobstar =
-          starCount > 1 && // multiple "*"'s
+        const isGlobstar = starCount > 1 && // multiple "*"'s
           // from the start of the segment
           [SEP_RAW, "/", undefined].includes(prevChar) &&
           // to the end of the segment
@@ -320,7 +319,7 @@ export function globrex(
       segments: pathSegments,
       globstar: new RegExp(
         !flags.includes("g") ? `^${GLOBSTAR_SEGMENT}$` : GLOBSTAR_SEGMENT,
-        flags
+        flags,
       ),
     };
   }

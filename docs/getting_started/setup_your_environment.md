@@ -113,5 +113,5 @@ project (`npm init -y` as necessary), then add the following block to your
 ```
 
 If you don't see your favorite IDE on this list, maybe you can develop an
-extension. Our [community Discord group](https://discord.gg/TGMHGv6) can give
-you some pointers on where to get started.
+extension. Our [community Discord group](https://discord.gg/deno) can give you
+some pointers on where to get started.

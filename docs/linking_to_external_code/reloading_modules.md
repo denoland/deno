@@ -10,7 +10,6 @@ usage is described below:
 
 ```ts
 deno cache --reload my_module.ts
-
 ```
 
 ### To reload specific modules
@@ -18,17 +17,17 @@ deno cache --reload my_module.ts
 Sometimes we want to upgrade only some modules. You can control it by passing an
 argument to a `--reload` flag.
 
-To reload all v0.55.0 standard modules
+To reload all \$STD_VERSION standard modules
 
 ```ts
-deno cache --reload=https://deno.land/std@v0.55.0 my_module.ts
+deno cache --reload=https://deno.land/std@$STD_VERSION my_module.ts
 ```
 
 To reload specific modules (in this example - colors and file system copy) use a
 comma to separate URLs
 
 ```ts
-deno cache --reload=https://deno.land/std/fs/copy.ts,https://deno.land/std/fmt/colors.ts my_module.ts
+deno cache --reload=https://deno.land/std@$STD_VERSION/fs/copy.ts,https://deno.land/std@$STD_VERSION/fmt/colors.ts my_module.ts
 ```
 
 <!-- Should this be part of examples? -->

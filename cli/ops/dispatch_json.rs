@@ -3,6 +3,7 @@ use crate::op_error::OpError;
 use deno_core::Buf;
 use deno_core::CoreIsolateState;
 use deno_core::Op;
+use deno_core::OpDispatcher;
 use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
 pub use serde_derive::Deserialize;
@@ -44,20 +45,39 @@ struct AsyncArgs {
   promise_id: Option<u64>,
 }
 
-pub fn json_op<D>(
-  d: D,
-) -> impl Fn(&mut CoreIsolateState, &[u8], &mut [ZeroCopyBuf]) -> Op
+/// Like OpDispatcher but with additional json `Value` parameter
+/// and return a result of `JsonOp` instead of `Op`.
+pub trait JsonOpDispatcher {
+  fn dispatch(
+    &self,
+    isolate_state: &mut CoreIsolateState,
+    json: Value,
+    zero_copy: &mut [ZeroCopyBuf],
+  ) -> Result<JsonOp, OpError>;
+}
+
+impl<F> JsonOpDispatcher for F
 where
-  D: Fn(
+  F: Fn(
     &mut CoreIsolateState,
     Value,
     &mut [ZeroCopyBuf],
   ) -> Result<JsonOp, OpError>,
 {
-  move |isolate_state: &mut CoreIsolateState,
-        control: &[u8],
-        zero_copy: &mut [ZeroCopyBuf]| {
-    let async_args: AsyncArgs = match serde_json::from_slice(control) {
+  fn dispatch(
+    &self,
+    isolate_state: &mut CoreIsolateState,
+    json: Value,
+    zero_copy: &mut [ZeroCopyBuf],
+  ) -> Result<JsonOp, OpError> {
+    self(isolate_state, json, zero_copy)
+  }
+}
+
+pub fn json_op(d: impl JsonOpDispatcher) -> impl OpDispatcher {
+  move |isolate_state: &mut CoreIsolateState, zero_copy: &mut [ZeroCopyBuf]| {
+    assert!(!zero_copy.is_empty(), "Expected JSON string at position 0");
+    let async_args: AsyncArgs = match serde_json::from_slice(&zero_copy[0]) {
       Ok(args) => args,
       Err(e) => {
         let buf = serialize_result(None, Err(OpError::from(e)));
@@ -67,9 +87,9 @@ where
     let promise_id = async_args.promise_id;
     let is_sync = promise_id.is_none();
 
-    let result = serde_json::from_slice(control)
+    let result = serde_json::from_slice(&zero_copy[0])
       .map_err(OpError::from)
-      .and_then(|args| d(isolate_state, args, zero_copy));
+      .and_then(|args| d.dispatch(isolate_state, args, &mut zero_copy[1..]));
 
     // Convert to Op
     match result {

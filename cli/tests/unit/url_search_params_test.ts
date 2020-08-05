@@ -6,7 +6,7 @@ unitTest(function urlSearchParamsInitString(): void {
   const searchParams = new URLSearchParams(init);
   assert(
     init === searchParams.toString(),
-    "The init query string does not match"
+    "The init query string does not match",
   );
 });
 
@@ -243,7 +243,7 @@ unitTest(
     };
     const params1 = new URLSearchParams((params as unknown) as string[][]);
     assertEquals(params1.get("1"), "2");
-  }
+  },
 );
 
 // If a class extends URLSearchParams, override one method should not change another's behavior.
@@ -261,7 +261,7 @@ unitTest(
     new CustomSearchParams(new CustomSearchParams({ foo: "bar" }));
     new CustomSearchParams().set("foo", "bar");
     assertEquals(overridedAppendCalled, 0);
-  }
+  },
 );
 
 unitTest(function urlSearchParamsOverridingEntriesNotChangeForEach(): void {

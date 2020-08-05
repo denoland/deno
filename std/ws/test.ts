@@ -21,13 +21,13 @@ import { delay } from "../async/delay.ts";
 Deno.test("[ws] read unmasked text frame", async () => {
   // unmasked single text frame with payload "Hello"
   const buf = new BufReader(
-    new Deno.Buffer(new Uint8Array([0x81, 0x05, 0x48, 0x65, 0x6c, 0x6c, 0x6f]))
+    new Deno.Buffer(new Uint8Array([0x81, 0x05, 0x48, 0x65, 0x6c, 0x6c, 0x6f])),
   );
   const frame = await readFrame(buf);
   assertEquals(frame.opcode, OpCode.TextFrame);
   assertEquals(frame.mask, undefined);
   const actual = new TextDecoder().decode(
-    new Deno.Buffer(frame.payload).bytes()
+    new Deno.Buffer(frame.payload).bytes(),
   );
   assertEquals(actual, "Hello");
   assertEquals(frame.isLastFrame, true);
@@ -49,14 +49,14 @@ Deno.test("[ws] read masked text frame", async () => {
         0x4d,
         0x51,
         0x58,
-      ])
-    )
+      ]),
+    ),
   );
   const frame = await readFrame(buf);
   assertEquals(frame.opcode, OpCode.TextFrame);
   unmask(frame.payload, frame.mask);
   const actual = new TextDecoder().decode(
-    new Deno.Buffer(frame.payload).bytes()
+    new Deno.Buffer(frame.payload).bytes(),
   );
   assertEquals(actual, "Hello");
   assertEquals(frame.isLastFrame, true);
@@ -64,10 +64,10 @@ Deno.test("[ws] read masked text frame", async () => {
 
 Deno.test("[ws] read unmasked split text frames", async () => {
   const buf1 = new BufReader(
-    new Deno.Buffer(new Uint8Array([0x01, 0x03, 0x48, 0x65, 0x6c]))
+    new Deno.Buffer(new Uint8Array([0x01, 0x03, 0x48, 0x65, 0x6c])),
   );
   const buf2 = new BufReader(
-    new Deno.Buffer(new Uint8Array([0x80, 0x02, 0x6c, 0x6f]))
+    new Deno.Buffer(new Uint8Array([0x80, 0x02, 0x6c, 0x6f])),
   );
   const [f1, f2] = await Promise.all([readFrame(buf1), readFrame(buf2)]);
   assertEquals(f1.isLastFrame, false);
@@ -86,15 +86,15 @@ Deno.test("[ws] read unmasked split text frames", async () => {
 Deno.test("[ws] read unmasked ping / pong frame", async () => {
   // unmasked ping with payload "Hello"
   const buf = new BufReader(
-    new Deno.Buffer(new Uint8Array([0x89, 0x05, 0x48, 0x65, 0x6c, 0x6c, 0x6f]))
+    new Deno.Buffer(new Uint8Array([0x89, 0x05, 0x48, 0x65, 0x6c, 0x6c, 0x6f])),
   );
   const ping = await readFrame(buf);
   assertEquals(ping.opcode, OpCode.Ping);
   const actual1 = new TextDecoder().decode(
-    new Deno.Buffer(ping.payload).bytes()
+    new Deno.Buffer(ping.payload).bytes(),
   );
   assertEquals(actual1, "Hello");
-  // prettier-ignore
+  // deno-fmt-ignore
   const pongFrame= [0x8a, 0x85, 0x37, 0xfa, 0x21, 0x3d, 0x7f, 0x9f, 0x4d, 0x51, 0x58]
   const buf2 = new BufReader(new Deno.Buffer(new Uint8Array(pongFrame)));
   const pong = await readFrame(buf2);
@@ -102,7 +102,7 @@ Deno.test("[ws] read unmasked ping / pong frame", async () => {
   assert(pong.mask !== undefined);
   unmask(pong.payload, pong.mask);
   const actual2 = new TextDecoder().decode(
-    new Deno.Buffer(pong.payload).bytes()
+    new Deno.Buffer(pong.payload).bytes(),
   );
   assertEquals(actual2, "Hello");
 });
@@ -163,7 +163,7 @@ Deno.test("[ws] acceptable", () => {
         ["sec-websocket-version", "13"],
         ["upgrade", "WebSocket"],
       ]),
-    })
+    }),
   );
 });
 
@@ -172,25 +172,25 @@ Deno.test("[ws] acceptable should return false when headers invalid", () => {
     acceptable({
       headers: new Headers({ "sec-websocket-key": "aaa" }),
     }),
-    false
+    false,
   );
   assertEquals(
     acceptable({
       headers: new Headers({ upgrade: "websocket" }),
     }),
-    false
+    false,
   );
   assertEquals(
     acceptable({
       headers: new Headers({ upgrade: "invalid", "sec-websocket-key": "aaa" }),
     }),
-    false
+    false,
   );
   assertEquals(
     acceptable({
       headers: new Headers({ upgrade: "websocket", "sec-websocket-ky": "" }),
     }),
-    false
+    false,
   );
 });
 
@@ -200,9 +200,9 @@ Deno.test(
     await assertThrowsAsync(
       async (): Promise<void> => {
         await connectWebSocket("file://hoge/hoge");
-      }
+      },
     );
-  }
+  },
 );
 
 Deno.test("[ws] write and read masked frame", async () => {
@@ -217,7 +217,7 @@ Deno.test("[ws] write and read masked frame", async () => {
       opcode: OpCode.TextFrame,
       payload: encode(msg),
     },
-    buf
+    buf,
   );
   const frame = await readFrame(r);
   assertEquals(frame.opcode, OpCode.TextFrame);
@@ -237,9 +237,9 @@ Deno.test("[ws] handshake should not send search when it's empty", async () => {
         new URL("ws://example.com"),
         new Headers(),
         new BufReader(reader),
-        new BufWriter(writer)
+        new BufWriter(writer),
       );
-    }
+    },
   );
 
   const tpReader = new TextProtoReader(new BufReader(writer));
@@ -260,16 +260,16 @@ Deno.test(
           new URL("ws://example.com?a=1"),
           new Headers(),
           new BufReader(reader),
-          new BufWriter(writer)
+          new BufWriter(writer),
         );
-      }
+      },
     );
 
     const tpReader = new TextProtoReader(new BufReader(writer));
     const statusLine = await tpReader.readLine();
 
     assertEquals(statusLine, "GET /?a=1 HTTP/1.1");
-  }
+  },
 );
 
 Deno.test("[ws] ws.close() should use 1000 as close code", async () => {
@@ -356,11 +356,11 @@ Deno.test(
     sock.closeForce();
     await assertThrowsAsync(
       () => sock.send("hello"),
-      Deno.errors.ConnectionReset
+      Deno.errors.ConnectionReset,
     );
     await assertThrowsAsync(() => sock.ping(), Deno.errors.ConnectionReset);
     await assertThrowsAsync(() => sock.close(0), Deno.errors.ConnectionReset);
-  }
+  },
 );
 
 Deno.test(
@@ -378,7 +378,7 @@ Deno.test(
     const { value, done } = await it.next();
     assertEquals(value, undefined);
     assertEquals(done, true);
-  }
+  },
 );
 
 Deno.test({

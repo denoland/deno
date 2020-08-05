@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { getLevelByName, LevelName, LogLevels } from "./levels.ts";
-import { LogRecord } from "./logger.ts";
+import type { LogRecord } from "./logger.ts";
 import { red, yellow, blue, bold } from "../fmt/colors.ts";
 import { existsSync, exists } from "../fs/exists.ts";
 import { BufWriterSync } from "../io/bufio.ts";
@@ -41,7 +41,7 @@ export class BaseHandler {
       const value = logRecord[p1 as keyof LogRecord];
 
       // do not interpolate missing values
-      if (!value) {
+      if (value == null) {
         return match;
       }
 
@@ -195,7 +195,7 @@ export class RotatingFileHandler extends FileHandler {
         if (await exists(this._filename + "." + i)) {
           this.destroy();
           throw new Deno.errors.AlreadyExists(
-            "Backup log file " + this._filename + "." + i + " already exists"
+            "Backup log file " + this._filename + "." + i + " already exists",
           );
         }
       }

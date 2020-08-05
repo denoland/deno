@@ -55,10 +55,10 @@ to delete it.
 
 ```ts
 import { Response } from "https://deno.land/std/http/server.ts";
-import { delCookie } from "https://deno.land/std/http/cookie.ts";
+import { deleteCookie } from "https://deno.land/std/http/cookie.ts";
 
 let response: Response = {};
-delCookie(response, "deno");
+deleteCookie(response, "deno");
 
 const cookieHeader = response.headers.get("set-cookie");
 console.log("Set-Cookie:", cookieHeader);

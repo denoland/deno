@@ -78,13 +78,13 @@ Deno.test(
       assertEquals(res.headers.get("content-type"), "text/markdown");
       const downloadedFile = await res.text();
       const localFile = new TextDecoder().decode(
-        await Deno.readFile("README.md")
+        await Deno.readFile("README.md"),
       );
       assertEquals(downloadedFile, localFile);
     } finally {
       await killFileServer();
     }
-  }
+  },
 );
 
 Deno.test(
@@ -98,14 +98,14 @@ Deno.test(
       assertEquals(res.headers.get("content-type"), "text/markdown");
       const downloadedFile = await res.text();
       const localFile = new TextDecoder().decode(
-        await Deno.readFile("./http/README.md")
+        await Deno.readFile("./http/README.md"),
       );
       console.log(downloadedFile, localFile);
       assertEquals(downloadedFile, localFile);
     } finally {
       await killFileServer();
     }
-  }
+  },
 );
 
 Deno.test("serveDirectory", async function (): Promise<void> {

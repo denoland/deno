@@ -45,7 +45,7 @@ Deno.test("[examples/catj] print multiple files", async () => {
   const decoder = new TextDecoder();
   const process = catj(
     "testdata/catj/simple-object.json",
-    "testdata/catj/simple-array.json"
+    "testdata/catj/simple-array.json",
   );
   try {
     const output = await process.output();

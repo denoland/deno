@@ -42,7 +42,7 @@ const initialChecksum = 8 * 32;
 
 async function readBlock(
   reader: Deno.Reader,
-  p: Uint8Array
+  p: Uint8Array,
 ): Promise<number | null> {
   let bytesRead = 0;
   while (bytesRead < p.length) {
@@ -105,15 +105,16 @@ function pad(num: number, bytes: number, base?: number): string {
   return "000000000000".substr(numString.length + 12 - bytes) + numString;
 }
 
-const types: { [key: string]: string } = {
-  "": "file",
-  "0": "file",
-  "1": "link",
-  "2": "symlink",
-  "3": "character-device",
-  "4": "block-device",
-  "5": "directory",
-};
+enum FileTypes {
+  "file" = 0,
+  "link" = 1,
+  "symlink" = 2,
+  "character-device" = 3,
+  "block-device" = 4,
+  "directory" = 5,
+  "fifo" = 6,
+  "contiguous-file" = 7,
+}
 
 /*
 struct posix_header {           // byte offset
@@ -352,28 +353,36 @@ export class Tar {
     let info: Deno.FileInfo | undefined;
     if (opts.filePath) {
       info = await Deno.stat(opts.filePath);
+      if (info.isDirectory) {
+        info.size = 0;
+        opts.reader = new Deno.Buffer();
+      }
     }
 
-    const mode =
-        opts.fileMode || (info && info.mode) || parseInt("777", 8) & 0xfff,
+    const mode = opts.fileMode || (info && info.mode) ||
+        parseInt("777", 8) & 0xfff,
       mtime = Math.floor(
-        opts.mtime ?? (info?.mtime ?? new Date()).valueOf() / 1000
+        opts.mtime ?? (info?.mtime ?? new Date()).valueOf() / 1000,
       ),
       uid = opts.uid || 0,
       gid = opts.gid || 0;
     if (typeof opts.owner === "string" && opts.owner.length >= 32) {
       throw new Error(
-        "ustar format does not allow owner name length >= 32 bytes"
+        "ustar format does not allow owner name length >= 32 bytes",
       );
     }
     if (typeof opts.group === "string" && opts.group.length >= 32) {
       throw new Error(
-        "ustar format does not allow group name length >= 32 bytes"
+        "ustar format does not allow group name length >= 32 bytes",
       );
     }
 
     const fileSize = info?.size ?? opts.contentSize;
     assert(fileSize != null, "fileSize must be set");
+
+    const type = opts.type
+      ? FileTypes[opts.type as keyof typeof FileTypes]
+      : (info?.isDirectory ? FileTypes.directory : FileTypes.file);
     const tarData: TarDataWithSource = {
       fileName,
       fileNamePrefix,
@@ -383,7 +392,7 @@ export class Tar {
       fileSize: pad(fileSize, 11),
       mtime: pad(mtime, 11),
       checksum: "        ",
-      type: "0", // just a file
+      type: type.toString(),
       ustar,
       owner: opts.owner || "",
       group: opts.group || "",
@@ -428,9 +437,9 @@ export class Tar {
         new Deno.Buffer(
           clean(
             recordSize -
-              (parseInt(tarData.fileSize, 8) % recordSize || recordSize)
-          )
-        )
+              (parseInt(tarData.fileSize, 8) % recordSize || recordSize),
+          ),
+        ),
       );
     });
 
@@ -450,7 +459,7 @@ class TarEntry implements Reader {
   constructor(
     meta: TarMeta,
     header: TarHeader,
-    reader: Reader | (Reader & Deno.Seeker)
+    reader: Reader | (Reader & Deno.Seeker),
   ) {
     Object.assign(this, meta);
     this.#header = header;
@@ -473,7 +482,7 @@ class TarEntry implements Reader {
     const bufSize = Math.min(
       // bufSize can't be greater than p.length nor bytes left in the entry
       p.length,
-      entryBytesLeft
+      entryBytesLeft,
     );
 
     if (entryBytesLeft <= 0) return null;
@@ -503,7 +512,7 @@ class TarEntry implements Reader {
     if (typeof (this.#reader as Seeker).seek === "function") {
       await (this.#reader as Seeker).seek(
         this.#entrySize - this.#read,
-        Deno.SeekMode.Current
+        Deno.SeekMode.Current,
       );
       this.#read = this.#entrySize;
     } else {
@@ -576,7 +585,7 @@ export class Untar {
       "fileMode",
       "mtime",
       "uid",
-      "gid"
+      "gid",
     ]).forEach((key): void => {
       const arr = trim(header[key]);
       if (arr.byteLength > 0) {
@@ -589,11 +598,11 @@ export class Untar {
         if (arr.byteLength > 0) {
           meta[key] = decoder.decode(arr);
         }
-      }
+      },
     );
 
     meta.fileSize = parseInt(decoder.decode(header.fileSize), 8);
-    meta.type = types[meta.type as string] || meta.type;
+    meta.type = FileTypes[parseInt(meta.type!)] ?? meta.type;
 
     return meta;
   };

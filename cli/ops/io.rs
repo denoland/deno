@@ -37,36 +37,48 @@ lazy_static! {
   /// resource table is dropped storing reference to that handle, the handle
   /// itself won't be closed (so Deno.core.print) will still work.
   // TODO(ry) It should be possible to close stdout.
-  static ref STDIN_HANDLE: std::fs::File = {
+  static ref STDIN_HANDLE: Option<std::fs::File> = {
     #[cfg(not(windows))]
-    let stdin = unsafe { std::fs::File::from_raw_fd(0) };
+    let stdin = unsafe { Some(std::fs::File::from_raw_fd(0)) };
     #[cfg(windows)]
     let stdin = unsafe {
-      std::fs::File::from_raw_handle(winapi::um::processenv::GetStdHandle(
+      let handle = winapi::um::processenv::GetStdHandle(
         winapi::um::winbase::STD_INPUT_HANDLE,
-      ))
+      );
+      if handle.is_null() {
+        return None;
+      }
+      Some(std::fs::File::from_raw_handle(handle))
     };
     stdin
   };
-  static ref STDOUT_HANDLE: std::fs::File = {
+  static ref STDOUT_HANDLE: Option<std::fs::File> = {
     #[cfg(not(windows))]
-    let stdout = unsafe { std::fs::File::from_raw_fd(1) };
+    let stdout = unsafe { Some(std::fs::File::from_raw_fd(1)) };
     #[cfg(windows)]
     let stdout = unsafe {
-      std::fs::File::from_raw_handle(winapi::um::processenv::GetStdHandle(
+      let handle = winapi::um::processenv::GetStdHandle(
         winapi::um::winbase::STD_OUTPUT_HANDLE,
-      ))
+      );
+      if handle.is_null() {
+        return None;
+      }
+      Some(std::fs::File::from_raw_handle(handle))
     };
     stdout
   };
-  static ref STDERR_HANDLE: std::fs::File = {
+  static ref STDERR_HANDLE: Option<std::fs::File> = {
     #[cfg(not(windows))]
-    let stderr = unsafe { std::fs::File::from_raw_fd(2) };
+    let stderr = unsafe { Some(std::fs::File::from_raw_fd(2)) };
     #[cfg(windows)]
     let stderr = unsafe {
-      std::fs::File::from_raw_handle(winapi::um::processenv::GetStdHandle(
+      let handle = winapi::um::processenv::GetStdHandle(
         winapi::um::winbase::STD_ERROR_HANDLE,
-      ))
+      );
+      if handle.is_null() {
+        return None;
+      }
+      Some(std::fs::File::from_raw_handle(handle))
     };
     stderr
   };
@@ -78,24 +90,29 @@ pub fn init(i: &mut CoreIsolate, s: &State) {
 }
 
 pub fn get_stdio() -> (
-  StreamResourceHolder,
-  StreamResourceHolder,
-  StreamResourceHolder,
+  Option<StreamResourceHolder>,
+  Option<StreamResourceHolder>,
+  Option<StreamResourceHolder>,
 ) {
-  let stdin = StreamResourceHolder::new(StreamResource::FsFile(Some({
-    let stdin = STDIN_HANDLE.try_clone().unwrap();
-    (tokio::fs::File::from_std(stdin), FileMetadata::default())
-  })));
-  let stdout = StreamResourceHolder::new(StreamResource::FsFile(Some({
-    let stdout = STDOUT_HANDLE.try_clone().unwrap();
-    (tokio::fs::File::from_std(stdout), FileMetadata::default())
-  })));
-  let stderr = StreamResourceHolder::new(StreamResource::FsFile(Some({
-    let stderr = STDERR_HANDLE.try_clone().unwrap();
-    (tokio::fs::File::from_std(stderr), FileMetadata::default())
-  })));
+  let stdin = get_stdio_stream(&STDIN_HANDLE);
+  let stdout = get_stdio_stream(&STDOUT_HANDLE);
+  let stderr = get_stdio_stream(&STDERR_HANDLE);
 
   (stdin, stdout, stderr)
+}
+
+fn get_stdio_stream(
+  handle: &Option<std::fs::File>,
+) -> Option<StreamResourceHolder> {
+  match handle {
+    None => None,
+    Some(file_handle) => match file_handle.try_clone() {
+      Ok(clone) => Some(StreamResourceHolder::new(StreamResource::FsFile(
+        Some((tokio::fs::File::from_std(clone), FileMetadata::default())),
+      ))),
+      Err(_e) => None,
+    },
+  }
 }
 
 fn no_buffer_specified() -> OpError {

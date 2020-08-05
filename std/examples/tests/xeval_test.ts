@@ -21,7 +21,7 @@ Deno.test("xevalDelimiter", async function (): Promise<void> {
     ($): number => chunks.push($),
     {
       delimiter: "MADAM",
-    }
+    },
   );
   assertEquals(chunks, ["!MAD", "ADAM!"]);
 });

@@ -1,8 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { copyBytes } from "../io/util.ts";
 
 /** Find first index of binary pattern from a. If not found, then return -1
- * @param source soruce array
+ * @param source source array
  * @param pat pattern to find in source array
  */
 export function findIndex(source: Uint8Array, pat: Uint8Array): number {
@@ -27,7 +26,7 @@ export function findIndex(source: Uint8Array, pat: Uint8Array): number {
 }
 
 /** Find last index of binary pattern from a. If not found, then return -1.
- * @param source soruce array
+ * @param source source array
  * @param pat pattern to find in source array
  */
 export function findLastIndex(source: Uint8Array, pat: Uint8Array): number {
@@ -75,7 +74,7 @@ export function hasPrefix(source: Uint8Array, prefix: Uint8Array): boolean {
 }
 
 /** Check whether binary array ends with suffix.
- * @param source srouce array
+ * @param source source array
  * @param suffix suffix array to check in source
  */
 export function hasSuffix(source: Uint8Array, suffix: Uint8Array): boolean {
@@ -132,10 +131,29 @@ export function concat(origin: Uint8Array, b: Uint8Array): Uint8Array {
   return output;
 }
 
-/** Check srouce array contains pattern array.
- * @param source srouce array
+/** Check source array contains pattern array.
+ * @param source source array
  * @param pat patter array
  */
 export function contains(source: Uint8Array, pat: Uint8Array): boolean {
   return findIndex(source, pat) != -1;
+}
+
+/**
+ * Copy bytes from one Uint8Array to another.  Bytes from `src` which don't fit
+ * into `dst` will not be copied.
+ *
+ * @param src Source byte array
+ * @param dst Destination byte array
+ * @param off Offset into `dst` at which to begin writing values from `src`.
+ * @return number of bytes copied
+ */
+export function copyBytes(src: Uint8Array, dst: Uint8Array, off = 0): number {
+  off = Math.max(0, Math.min(off, dst.byteLength));
+  const dstBytesAvailable = dst.byteLength - off;
+  if (src.byteLength > dstBytesAvailable) {
+    src = src.subarray(0, dstBytesAvailable);
+  }
+  dst.set(src, off);
+  return src.byteLength;
 }

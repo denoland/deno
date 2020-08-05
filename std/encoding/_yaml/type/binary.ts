@@ -3,7 +3,7 @@
 // https://github.com/nodeca/js-yaml/commit/665aadda42349dcae869f12040d9b10ef18d12da
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { Type } from "../type.ts";
-import { Any } from "../utils.ts";
+import type { Any } from "../utils.ts";
 
 // [ 64, 65, 66 ] -> [ padding, CR, LF ]
 const BASE64_MAP =

@@ -47,7 +47,7 @@ export function sizeof(dataType: DataType): number {
  * Resolves it in a `Uint8Array`, or throws `Deno.errors.UnexpectedEof` if `n` bytes cannot be read. */
 export async function getNBytes(
   r: Deno.Reader,
-  n: number
+  n: number,
 ): Promise<Uint8Array> {
   const scratch = new Uint8Array(n);
   const nRead = await r.read(scratch);
@@ -117,7 +117,7 @@ export function varbig(b: Uint8Array, o: VarbigOptions = {}): bigint | null {
 export function putVarnum(
   b: Uint8Array,
   x: number,
-  o: VarnumOptions = {}
+  o: VarnumOptions = {},
 ): number {
   o.dataType = o.dataType ?? "int32";
   const littleEndian = (o.endian ?? "big") === "little" ? true : false;
@@ -158,7 +158,7 @@ export function putVarnum(
 export function putVarbig(
   b: Uint8Array,
   x: bigint,
-  o: VarbigOptions = {}
+  o: VarbigOptions = {},
 ): number {
   o.dataType = o.dataType ?? "int64";
   const littleEndian = (o.endian ?? "big") === "little" ? true : false;
@@ -198,7 +198,7 @@ export function putVarbig(
  * `o.dataType` defaults to `"int32"`. */
 export async function readVarnum(
   r: Deno.Reader,
-  o: VarnumOptions = {}
+  o: VarnumOptions = {},
 ): Promise<number> {
   o.dataType = o.dataType ?? "int32";
   const scratch = await getNBytes(r, sizeof(o.dataType));
@@ -210,7 +210,7 @@ export async function readVarnum(
  * `o.dataType` defaults to `"int64"`. */
 export async function readVarbig(
   r: Deno.Reader,
-  o: VarbigOptions = {}
+  o: VarbigOptions = {},
 ): Promise<bigint> {
   o.dataType = o.dataType ?? "int64";
   const scratch = await getNBytes(r, sizeof(o.dataType));
@@ -223,7 +223,7 @@ export async function readVarbig(
 export function writeVarnum(
   w: Deno.Writer,
   x: number,
-  o: VarnumOptions = {}
+  o: VarnumOptions = {},
 ): Promise<number> {
   o.dataType = o.dataType ?? "int32";
   const scratch = new Uint8Array(sizeof(o.dataType));
@@ -237,7 +237,7 @@ export function writeVarnum(
 export function writeVarbig(
   w: Deno.Writer,
   x: bigint,
-  o: VarbigOptions = {}
+  o: VarbigOptions = {},
 ): Promise<number> {
   o.dataType = o.dataType ?? "int64";
   const scratch = new Uint8Array(sizeof(o.dataType));

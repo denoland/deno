@@ -16,11 +16,14 @@ use crate::swc_util;
 use deno_core::ErrBox;
 use deno_lint::diagnostic::LintDiagnostic;
 use deno_lint::linter::Linter;
+use deno_lint::linter::LinterBuilder;
 use deno_lint::rules;
+use deno_lint::rules::LintRule;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
+use swc_ecmascript::parser::Syntax;
 
 pub async fn lint_files(args: Vec<String>) -> Result<(), ErrBox> {
   let target_files = collect_files(args)?;
@@ -64,8 +67,64 @@ pub async fn lint_files(args: Vec<String>) -> Result<(), ErrBox> {
   Ok(())
 }
 
+/// List of lint rules used available in "deno lint" subcommand
+fn get_rules() -> Vec<Box<dyn LintRule>> {
+  vec![
+    rules::ban_ts_comment::BanTsComment::new(),
+    rules::ban_untagged_ignore::BanUntaggedIgnore::new(),
+    rules::constructor_super::ConstructorSuper::new(),
+    rules::for_direction::ForDirection::new(),
+    rules::getter_return::GetterReturn::new(),
+    rules::no_array_constructor::NoArrayConstructor::new(),
+    rules::no_async_promise_executor::NoAsyncPromiseExecutor::new(),
+    rules::no_case_declarations::NoCaseDeclarations::new(),
+    rules::no_class_assign::NoClassAssign::new(),
+    rules::no_compare_neg_zero::NoCompareNegZero::new(),
+    rules::no_cond_assign::NoCondAssign::new(),
+    rules::no_debugger::NoDebugger::new(),
+    rules::no_delete_var::NoDeleteVar::new(),
+    rules::no_dupe_args::NoDupeArgs::new(),
+    rules::no_dupe_class_members::NoDupeClassMembers::new(),
+    rules::no_dupe_else_if::NoDupeElseIf::new(),
+    rules::no_dupe_keys::NoDupeKeys::new(),
+    rules::no_duplicate_case::NoDuplicateCase::new(),
+    rules::no_empty_character_class::NoEmptyCharacterClass::new(),
+    rules::no_empty_interface::NoEmptyInterface::new(),
+    rules::no_empty_pattern::NoEmptyPattern::new(),
+    rules::no_empty::NoEmpty::new(),
+    rules::no_ex_assign::NoExAssign::new(),
+    rules::no_explicit_any::NoExplicitAny::new(),
+    rules::no_extra_boolean_cast::NoExtraBooleanCast::new(),
+    rules::no_extra_non_null_assertion::NoExtraNonNullAssertion::new(),
+    rules::no_extra_semi::NoExtraSemi::new(),
+    rules::no_func_assign::NoFuncAssign::new(),
+    rules::no_misused_new::NoMisusedNew::new(),
+    rules::no_namespace::NoNamespace::new(),
+    rules::no_new_symbol::NoNewSymbol::new(),
+    rules::no_obj_calls::NoObjCalls::new(),
+    rules::no_octal::NoOctal::new(),
+    rules::no_prototype_builtins::NoPrototypeBuiltins::new(),
+    rules::no_regex_spaces::NoRegexSpaces::new(),
+    rules::no_setter_return::NoSetterReturn::new(),
+    rules::no_this_alias::NoThisAlias::new(),
+    rules::no_this_before_super::NoThisBeforeSuper::new(),
+    rules::no_unsafe_finally::NoUnsafeFinally::new(),
+    rules::no_unsafe_negation::NoUnsafeNegation::new(),
+    rules::no_with::NoWith::new(),
+    rules::prefer_as_const::PreferAsConst::new(),
+    rules::prefer_namespace_keyword::PreferNamespaceKeyword::new(),
+    rules::require_yield::RequireYield::new(),
+    rules::triple_slash_reference::TripleSlashReference::new(),
+    rules::use_isnan::UseIsNaN::new(),
+    rules::valid_typeof::ValidTypeof::new(),
+    rules::no_inferrable_types::NoInferrableTypes::new(),
+    rules::no_unused_labels::NoUnusedLabels::new(),
+    rules::no_shadow_restricted_names::NoShadowRestrictedNames::new(),
+  ]
+}
+
 pub fn print_rules_list() {
-  let lint_rules = rules::get_recommended_rules();
+  let lint_rules = get_rules();
 
   println!("Available rules:");
   for rule in lint_rules {
@@ -73,17 +132,19 @@ pub fn print_rules_list() {
   }
 }
 
-fn create_linter() -> Linter {
-  Linter::new(
-    "deno-lint-ignore-file".to_string(),
-    vec![
-      "deno-lint-ignore".to_string(),
-      "eslint-disable-next-line".to_string(),
-    ],
-    // TODO(bartlomieju): switch to true, once
-    // https://github.com/denoland/deno_lint/issues/156 is fixed
-    false,
-  )
+fn create_linter(syntax: Syntax, rules: Vec<Box<dyn LintRule>>) -> Linter {
+  LinterBuilder::default()
+    .ignore_file_directives(vec!["deno-lint-ignore-file"])
+    .ignore_diagnostic_directives(vec![
+      "deno-lint-ignore",
+      "eslint-disable-next-line",
+    ])
+    .lint_unused_ignore_directives(true)
+    // TODO(bartlomieju): switch to true
+    .lint_unknown_rules(false)
+    .syntax(syntax)
+    .rules(rules)
+    .build()
 }
 
 fn lint_file(file_path: PathBuf) -> Result<Vec<LintDiagnostic>, ErrBox> {
@@ -92,30 +153,26 @@ fn lint_file(file_path: PathBuf) -> Result<Vec<LintDiagnostic>, ErrBox> {
   let media_type = map_file_extension(&file_path);
   let syntax = swc_util::get_syntax_for_media_type(media_type);
 
-  let mut linter = create_linter();
-  let lint_rules = rules::get_recommended_rules();
+  let lint_rules = get_rules();
+  let mut linter = create_linter(syntax, lint_rules);
 
-  let file_diagnostics =
-    linter.lint(file_name, source_code, syntax, lint_rules)?;
+  let file_diagnostics = linter.lint(file_name, source_code)?;
 
   Ok(file_diagnostics)
 }
 
 fn format_diagnostic(d: &LintDiagnostic) -> String {
-  let pretty_message = format!(
-    "({}) {}",
-    colors::gray(d.code.to_string()),
-    d.message.clone()
-  );
+  let pretty_message =
+    format!("({}) {}", colors::gray(&d.code), d.message.clone());
 
   fmt_errors::format_stack(
     true,
-    pretty_message,
-    Some(d.line_src.clone()),
+    &pretty_message,
+    Some(&d.line_src),
     Some(d.location.col as i64),
     Some((d.location.col + d.snippet_length) as i64),
     &[fmt_errors::format_location(
-      d.location.filename.clone(),
+      &d.location.filename,
       d.location.line as i64,
       d.location.col as i64,
     )],

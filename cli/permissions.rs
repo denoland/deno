@@ -283,9 +283,18 @@ impl Permissions {
     let url: &str = url.unwrap();
     // If url is invalid, then throw a TypeError.
     let parsed = Url::parse(url).map_err(OpError::from)?;
-    Ok(
-      self.get_state_net(&format!("{}", parsed.host().unwrap()), parsed.port()),
-    )
+    // The url may be parsed correctly but still lack a host, i.e. "localhost:235" or "mailto:someone@somewhere.com" or "file:/1.txt"
+    // Note that host:port combos are parsed as scheme:path
+    if parsed.host().is_none() {
+      return Err(OpError::uri_error(
+        "invalid url, expected format: <scheme>://<host>[:port][/subpath]"
+          .to_owned(),
+      ));
+    }
+    Ok(self.get_state_net(
+      &format!("{}", parsed.host().unwrap()),
+      parsed.port_or_known_default(),
+    ))
   }
 
   pub fn check_net(&self, hostname: &str, port: u16) -> Result<(), OpError> {
@@ -300,7 +309,7 @@ impl Permissions {
       .host_str()
       .ok_or_else(|| OpError::uri_error("missing host".to_owned()))?;
     self
-      .get_state_net(host, url.port())
+      .get_state_net(host, url.port_or_known_default())
       .check(&format!("network access to \"{}\"", url), "--allow-net")
   }
 
@@ -470,7 +479,7 @@ fn permission_prompt(message: &str) -> bool {
     PERMISSION_EMOJI, message
   );
   // print to stderr so that if deno is > to a file this is still displayed.
-  eprint!("{}", colors::bold(msg));
+  eprint!("{}", colors::bold(&msg));
   loop {
     let mut input = String::new();
     let stdin = io::stdin();
@@ -486,7 +495,7 @@ fn permission_prompt(message: &str) -> bool {
         // If we don't get a recognized option try again.
         let msg_again =
           format!("Unrecognized option '{}' [g/d (g = grant, d = deny)] ", ch);
-        eprint!("{}", colors::bold(msg_again));
+        eprint!("{}", colors::bold(&msg_again));
       }
     };
   }
@@ -516,7 +525,7 @@ fn permission_prompt(_message: &str) -> bool {
 fn log_perm_access(message: &str) {
   debug!(
     "{}",
-    colors::bold(format!("{}️  Granted {}", PERMISSION_EMOJI, message))
+    colors::bold(&format!("{}️  Granted {}", PERMISSION_EMOJI, message))
   );
 }
 
@@ -621,7 +630,8 @@ mod tests {
         "deno.land",
         "github.com:3000",
         "127.0.0.1",
-        "172.16.0.2:8000"
+        "172.16.0.2:8000",
+        "www.github.com:443"
       ],
       ..Default::default()
     });
@@ -684,6 +694,8 @@ mod tests {
       ("https://172.16.0.2:6000", false),
       ("tcp://172.16.0.1:8000", false),
       ("https://172.16.0.1:8000", false),
+      // Testing issue #6531 (Network permissions check doesn't account for well-known default ports) so we dont regress
+      ("https://www.github.com:443/robots.txt", true),
     ];
 
     for (url_str, is_ok) in url_tests.iter() {
@@ -833,11 +845,35 @@ mod tests {
     );
 
     let mut perms3 = Permissions::from_flags(&Flags {
-      net_allowlist: allowlist,
+      net_allowlist: allowlist.clone(),
       ..Default::default()
     });
     set_prompt_result(true);
     assert!(perms3.request_net(&Some(":")).is_err());
+
+    let mut perms4 = Permissions::from_flags(&Flags {
+      net_allowlist: allowlist.clone(),
+      ..Default::default()
+    });
+    set_prompt_result(false);
+    assert_eq!(
+      perms4
+        .request_net(&Some("localhost:8080"))
+        .unwrap_err()
+        .kind,
+      crate::op_error::ErrorKind::URIError
+    );
+
+    let mut perms5 = Permissions::from_flags(&Flags {
+      net_allowlist: allowlist,
+      ..Default::default()
+    });
+    set_prompt_result(false);
+    assert_eq!(
+      perms5.request_net(&Some("file:/1.txt")).unwrap_err().kind,
+      crate::op_error::ErrorKind::URIError
+    );
+
     drop(guard);
   }
 

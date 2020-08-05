@@ -20,7 +20,7 @@ export async function ensureSymlink(src: string, dest: string): Promise<void> {
     const destFilePathType = getFileInfoType(destStatInfo);
     if (destFilePathType !== "symlink") {
       throw new Error(
-        `Ensure path exists, expected 'symlink', got '${destFilePathType}'`
+        `Ensure path exists, expected 'symlink', got '${destFilePathType}'`,
       );
     }
     return;
@@ -53,7 +53,7 @@ export function ensureSymlinkSync(src: string, dest: string): void {
     const destFilePathType = getFileInfoType(destStatInfo);
     if (destFilePathType !== "symlink") {
       throw new Error(
-        `Ensure path exists, expected 'symlink', got '${destFilePathType}'`
+        `Ensure path exists, expected 'symlink', got '${destFilePathType}'`,
       );
     }
     return;

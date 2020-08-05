@@ -261,6 +261,7 @@ impl MainWorker {
       ops::fetch::init(isolate, &state);
       ops::fs::init(isolate, &state);
       ops::fs_events::init(isolate, &state);
+      ops::idna::init(isolate, &state);
       ops::io::init(isolate, &state);
       ops::plugin::init(isolate, &state);
       ops::net::init(isolate, &state);
@@ -300,9 +301,15 @@ impl MainWorker {
       let state_rc = CoreIsolate::state(&worker.isolate);
       let state = state_rc.borrow();
       let mut t = state.resource_table.borrow_mut();
-      t.add("stdin", Box::new(stdin));
-      t.add("stdout", Box::new(stdout));
-      t.add("stderr", Box::new(stderr));
+      if let Some(stream) = stdin {
+        t.add("stdin", Box::new(stream));
+      }
+      if let Some(stream) = stdout {
+        t.add("stdout", Box::new(stream));
+      }
+      if let Some(stream) = stderr {
+        t.add("stderr", Box::new(stream));
+      }
     }
     worker.execute("bootstrap.mainRuntime()")?;
     Ok(worker)

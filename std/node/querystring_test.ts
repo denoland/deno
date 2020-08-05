@@ -11,7 +11,7 @@ Deno.test({
         c: true,
         d: ["foo", "bar"],
       }),
-      "a=hello&b=5&c=true&d=foo&d=bar"
+      "a=hello&b=5&c=true&d=foo&d=bar",
     );
   },
 });
