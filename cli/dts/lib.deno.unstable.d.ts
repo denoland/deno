@@ -1225,7 +1225,6 @@ declare namespace Deno {
    */
   export class HttpClient {
     rid: number;
-    constructor(rid: number);
     close(): void;
   }
 
