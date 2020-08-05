@@ -100,6 +100,15 @@ delete Object.prototype.__proto__;
     "PermissionStatus",
     "hostname",
     "ppid",
+    "mainModule",
+    "ftruncate",
+    "ftruncateSync",
+    "fdatasync",
+    "fdatasyncSync",
+    "fsync",
+    "fsyncSync",
+    "fstat",
+    "fstatSync",
   ];
 
   function transformMessageText(messageText, code) {
