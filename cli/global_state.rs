@@ -250,7 +250,7 @@ impl GlobalState {
       }
     } else {
       CompiledModule {
-        code: String::from_utf8(out.source_code.clone())?,
+        code: out.source_code.to_string()?,
         name: out.url.to_string(),
       }
     };

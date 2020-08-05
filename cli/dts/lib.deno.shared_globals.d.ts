@@ -594,8 +594,7 @@ declare class Console {
     }>,
   ) => void;
 
-  /** From MDN:
-   * Displays an interactive tree of the descendant elements of
+  /** Displays an interactive tree of the descendant elements of
    * the specified XML/HTML element. If it is not possible to display
    * as an element the JavaScript Object view is shown instead.
    * The output is presented as a hierarchical listing of expandable
@@ -603,6 +602,9 @@ declare class Console {
    *
    * Since we write to stdout, we can't display anything interactive
    * we just fall back to `console.dir`.
+   * 
+   * > [Console.dirxml](https://developer.mozilla.org/en-US/docs/Web/API/Console/dirxml)
+   * > by Mozilla Contributors is licensed under CC-BY-SA 2.5.
    */
   dirxml: (
     obj: unknown,
