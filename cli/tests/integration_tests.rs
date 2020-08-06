@@ -2208,6 +2208,11 @@ itest!(deno_lint {
   exit_code: 1,
 });
 
+itest!(deno_lint_ignore {
+  args: "lint --unstable --ignore=lint/file1.js",
+  exit_code: 1,
+});
+
 itest!(deno_lint_glob {
   args: "lint --unstable lint/",
   output: "lint/expected_glob.out",
