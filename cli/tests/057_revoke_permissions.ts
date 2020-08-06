@@ -21,6 +21,9 @@ function genFunc(grant: Deno.PermissionName): [string, () => Promise<void>] {
     const status0 = await Deno.permissions.query({ name: grant });
     assert(status0 != null);
     assert(status0.state === "granted");
+    const statusSync0 = Deno.permissions.querySync({ name: grant });
+    assert(statusSync0 != null);
+    assert(statusSync0.state === "granted");
 
     const status1 = await Deno.permissions.revoke({ name: grant });
     assert(status1 != null);
@@ -30,23 +33,7 @@ function genFunc(grant: Deno.PermissionName): [string, () => Promise<void>] {
   return [name, gen];
 }
 
-function genFuncSync(grant: Deno.PermissionName): [string, () => void] {
-  const gen: () => void = function Granted(): void {
-    const status0 = Deno.permissions.querySync({ name: grant });
-    assert(status0 != null);
-    assert(status0.state === "granted");
-
-    const status1 = Deno.permissions.revokeSync({ name: grant });
-    assert(status1 != null);
-    assert(status1.state === "prompt");
-  };
-  const name = grant + "Granted-Sync";
-  return [name, gen];
-}
-
 for (const grant of knownPermissions) {
   const [name, fn] = genFunc(grant);
-  const [nameSync, fnSync] = genFuncSync(grant);
   Deno.test(name, fn);
-  Deno.test(nameSync, fnSync);
 }
