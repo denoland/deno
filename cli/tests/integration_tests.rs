@@ -2209,7 +2209,8 @@ itest!(deno_lint {
 });
 
 itest!(deno_lint_ignore {
-  args: "lint --unstable --ignore=lint/file1.js",
+  args: "lint --unstable --ignore=lint/file1.js lint/",
+  output: "lint/expected_ignore.out",
   exit_code: 1,
 });
 
