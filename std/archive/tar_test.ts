@@ -395,3 +395,32 @@ Deno.test("untarLinuxGeneratedTar", async function (): Promise<void> {
 
   file.close();
 });
+
+Deno.test("directoryEntryType", async function (): Promise<void> {
+  const tar = new Tar();
+
+  tar.append("directory/", {
+    reader: new Deno.Buffer(),
+    contentSize: 0,
+    type: "directory",
+  });
+
+  const filePath = resolve("archive", "testdata");
+  tar.append("archive/testdata/", {
+    filePath,
+  });
+
+  const outputFile = resolve("archive", "testdata", "directory_type_test.tar");
+  const file = await Deno.open(outputFile, { create: true, write: true });
+  await Deno.copy(tar.getReader(), file);
+  await file.close();
+
+  const reader = await Deno.open(outputFile, { read: true });
+  const untar = new Untar(reader);
+  for await (const entry of untar) {
+    assertEquals(entry.type, "directory");
+  }
+
+  await reader.close();
+  await Deno.remove(outputFile);
+});

@@ -1,4 +1,5 @@
 use crate::fs as deno_fs;
+use crate::http_cache::url_to_filename;
 use std::ffi::OsStr;
 use std::fs;
 use std::io;
@@ -50,7 +51,7 @@ impl DiskCache {
     out.push(scheme);
 
     match scheme {
-      "http" | "https" | "wasm" => {
+      "wasm" => {
         let host = url.host_str().unwrap();
         let host_port = match url.port() {
           // Windows doesn't support ":" in filenames, so we represent port using a
@@ -64,6 +65,7 @@ impl DiskCache {
           out.push(path_seg);
         }
       }
+      "http" | "https" => out = url_to_filename(url),
       "file" => {
         let path = url.to_file_path().unwrap();
         let mut path_components = path.components();
@@ -194,15 +196,15 @@ mod tests {
     let mut test_cases = vec![
       (
         "http://deno.land/std/http/file_server.ts",
-        "http/deno.land/std/http/file_server.ts",
+        "http/deno.land/d8300752800fe3f0beda9505dc1c3b5388beb1ee45afd1f1e2c9fc0866df15cf",
       ),
       (
         "http://localhost:8000/std/http/file_server.ts",
-        "http/localhost_PORT8000/std/http/file_server.ts",
+        "http/localhost_PORT8000/d8300752800fe3f0beda9505dc1c3b5388beb1ee45afd1f1e2c9fc0866df15cf",
       ),
       (
         "https://deno.land/std/http/file_server.ts",
-        "https/deno.land/std/http/file_server.ts",
+        "https/deno.land/d8300752800fe3f0beda9505dc1c3b5388beb1ee45afd1f1e2c9fc0866df15cf",
       ),
       ("wasm://wasm/d1c677ea", "wasm/wasm/d1c677ea"),
     ];
@@ -251,12 +253,12 @@ mod tests {
       (
         "http://deno.land/std/http/file_server.ts",
         "js",
-        "http/deno.land/std/http/file_server.ts.js",
+        "http/deno.land/d8300752800fe3f0beda9505dc1c3b5388beb1ee45afd1f1e2c9fc0866df15cf.js",
       ),
       (
         "http://deno.land/std/http/file_server.ts",
         "js.map",
-        "http/deno.land/std/http/file_server.ts.js.map",
+        "http/deno.land/d8300752800fe3f0beda9505dc1c3b5388beb1ee45afd1f1e2c9fc0866df15cf.js.map",
       ),
     ];
 

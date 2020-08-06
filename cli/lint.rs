@@ -12,7 +12,6 @@ use crate::file_fetcher::map_file_extension;
 use crate::fmt::collect_files;
 use crate::fmt::run_parallelized;
 use crate::fmt_errors;
-use crate::swc_ecma_parser::Syntax;
 use crate::swc_util;
 use deno_core::ErrBox;
 use deno_lint::diagnostic::LintDiagnostic;
@@ -24,6 +23,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
+use swc_ecmascript::parser::Syntax;
 
 pub async fn lint_files(args: Vec<String>) -> Result<(), ErrBox> {
   let target_files = collect_files(args)?;

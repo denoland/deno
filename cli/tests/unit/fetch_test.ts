@@ -938,3 +938,21 @@ unitTest(function fetchResponseEmptyConstructor(): void {
   assertEquals(response.bodyUsed, false);
   assertEquals([...response.headers], []);
 });
+
+unitTest(
+  { perms: { net: true, read: true } },
+  async function fetchCustomHttpClientSuccess(): Promise<
+    void
+  > {
+    const client = Deno.createHttpClient(
+      { caFile: "./cli/tests/tls/RootCA.crt" },
+    );
+    const response = await fetch(
+      "https://localhost:5545/cli/tests/fixture.json",
+      { client },
+    );
+    const json = await response.json();
+    assertEquals(json.name, "deno");
+    client.close();
+  },
+);

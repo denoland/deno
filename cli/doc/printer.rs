@@ -16,7 +16,6 @@ use crate::doc::display::{
   display_abstract, display_async, display_generator, Indent, SliceDisplayer,
 };
 use crate::doc::DocNodeKind;
-use crate::swc_ecma_ast;
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
 pub struct DocPrinter<'a> {
@@ -193,8 +192,8 @@ impl<'a> DocPrinter<'a> {
       self.private
         || node
           .accessibility
-          .unwrap_or(swc_ecma_ast::Accessibility::Public)
-          != swc_ecma_ast::Accessibility::Private
+          .unwrap_or(swc_ecmascript::ast::Accessibility::Public)
+          != swc_ecmascript::ast::Accessibility::Private
     }) {
       writeln!(w, "{}{}", Indent(1), node,)?;
       if let Some(js_doc) = &node.js_doc {
@@ -208,8 +207,8 @@ impl<'a> DocPrinter<'a> {
       self.private
         || node
           .accessibility
-          .unwrap_or(swc_ecma_ast::Accessibility::Public)
-          != swc_ecma_ast::Accessibility::Private
+          .unwrap_or(swc_ecmascript::ast::Accessibility::Public)
+          != swc_ecmascript::ast::Accessibility::Private
     }) {
       writeln!(w, "{}{}", Indent(1), node,)?;
       if let Some(js_doc) = &node.js_doc {
@@ -454,9 +453,9 @@ impl<'a> DocPrinter<'a> {
       "{}{} {}",
       Indent(indent),
       colors::magenta(match variable_def.kind {
-        swc_ecma_ast::VarDeclKind::Const => "const",
-        swc_ecma_ast::VarDeclKind::Let => "let",
-        swc_ecma_ast::VarDeclKind::Var => "var",
+        swc_ecmascript::ast::VarDeclKind::Const => "const",
+        swc_ecmascript::ast::VarDeclKind::Let => "let",
+        swc_ecmascript::ast::VarDeclKind::Var => "var",
       }),
       colors::bold(&node.name),
     )?;

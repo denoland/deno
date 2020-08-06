@@ -6,6 +6,25 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### 1.2.2 / 2020.07.31
+
+Changes in the CLI:
+
+- fix: Change release build flags to optimize for size (#6907)
+- fix: Fix file URL to path conversion on Windows (#6920)
+- fix: deno-types, X-TypeScript-Types precedence (#6761)
+- fix: downcast from SwcDiagnosticBuffer to OpError (#6909)
+- perf: Use SWC to strip types for "--no-check" flag (#6895)
+- upgrade: deno_lint, dprint, swc (#6928, #6869)
+- feat(unstable): add "--ignore" flag to deno fmt (#6890)
+
+Changes in std version 0.63.0:
+
+- feat(std/async): add pooledMap utility (#6898)
+- fix(std/json): Add newline at the end of json files (#6885)
+- fix(std/path): Percent-decode in fromFileUrl() (#6913)
+- fix(std/tar): directory type bug (#6905)
+
 ### 1.2.1 / 2020.07.23
 
 Changes in the CLI:

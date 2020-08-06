@@ -340,10 +340,7 @@ impl ModuleNameMap {
   /// Check if a name is an alias to another module.
   pub fn is_alias(&self, name: &str) -> bool {
     let cond = self.inner.get(name);
-    match cond {
-      Some(SymbolicModule::Alias(_)) => true,
-      _ => false,
-    }
+    matches!(cond, Some(SymbolicModule::Alias(_)))
   }
 }
 

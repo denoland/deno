@@ -354,6 +354,17 @@ pub async fn run_all_servers() {
         HeaderValue::from_static("application/javascript"),
       );
       res
+    }))
+    .or(warp::path!("cli"/"tests"/"subdir"/"file_with_:_in_name.ts").map(|| {
+      let mut res = Response::new(Body::from(
+        "console.log('Hello from file_with_:_in_name.ts');",
+      ));
+      let h = res.headers_mut();
+      h.insert(
+        "Content-type",
+        HeaderValue::from_static("application/typescript"),
+      );
+      res
     }));
 
   let content_type_handler = warp::any()
@@ -417,6 +428,19 @@ fn custom_headers(path: warp::path::Peek, f: warp::fs::File) -> Box<dyn Reply> {
     let f = with_header(f, "Content-Encoding", "gzip");
     let f = with_header(f, "Content-Type", "application/javascript");
     let f = with_header(f, "Content-Length", "39");
+    return Box::new(f);
+  }
+  if p.contains("cli/tests/encoding/") {
+    let charset = p
+      .split_terminator('/')
+      .last()
+      .unwrap()
+      .trim_end_matches(".ts");
+    let f = with_header(
+      f,
+      "Content-Type",
+      &format!("application/typescript;charset={}", charset)[..],
+    );
     return Box::new(f);
   }
 

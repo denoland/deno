@@ -14,7 +14,7 @@ repository = "https://github.com/denoland/deno"
 path = "lib.rs"
 
 [dependencies]
-deno_core = { version = "0.50.0", path = "../../core" }
+deno_core = { version = "0.51.0", path = "../../core" }
 
 [dev-dependencies]
 futures = "0.3.5"
