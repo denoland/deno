@@ -48,7 +48,7 @@ Deno.test({
 Deno.test({
   name: "[TOML] Boolean",
   fn(): void {
-    const expected = { boolean: { bool1: true, bool2: false } };
+    const expected = { boolean: { bool1: true, bool2: false, bool3: true } };
     const actual = parseFile(path.join(testFilesDir, "boolean.toml"));
     assertEquals(actual, expected);
   },
@@ -349,6 +349,8 @@ Deno.test({
         [1, 2],
       ],
       hosts: ["alpha", "omega"],
+      bool: true,
+      bool2: false,
     };
     const expected = `deno    = "is"
 not     = "[node]"
@@ -383,6 +385,8 @@ sf5     = NaN
 sf6     = NaN
 data    = [["gamma","delta"],[1,2]]
 hosts   = ["alpha","omega"]
+bool    = true
+bool2   = false
 
 [foo]
 bar     = "deno"
