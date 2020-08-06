@@ -127,4 +127,6 @@ __bootstrap.denoNsUnstable = {
   fdatasync: __bootstrap.fs.fdatasync,
   fsyncSync: __bootstrap.fs.fsyncSync,
   fsync: __bootstrap.fs.fsync,
+  HttpClient: __bootstrap.fetch.HttpClient,
+  createHttpClient: __bootstrap.fetch.createHttpClient,
 };

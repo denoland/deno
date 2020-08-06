@@ -64,23 +64,18 @@
   }
 
   function pathFromURLWin32(url) {
-    const hostname = url.hostname;
-    const pathname = decodeURIComponent(url.pathname.replace(/\//g, "\\"));
-
-    if (hostname !== "") {
-      //TODO(actual-size) Node adds a punycode decoding step, we should consider adding this
-      return `\\\\${hostname}${pathname}`;
+    let path = decodeURIComponent(
+      url.pathname
+        .replace(/^\/*([A-Za-z]:)(\/|$)/, "$1/")
+        .replace(/\//g, "\\"),
+    );
+    if (url.hostname != "") {
+      // Note: The `URL` implementation guarantees that the drive letter and
+      // hostname are mutually exclusive. Otherwise it would not have been valid
+      // to append the hostname and path like this.
+      path = `\\\\${url.hostname}${path}`;
     }
-
-    const validPath = /^\\(?<driveLetter>[A-Za-z]):\\/;
-    const matches = validPath.exec(pathname);
-
-    if (!matches?.groups?.driveLetter) {
-      throw new TypeError("A URL with the file schema must be absolute.");
-    }
-
-    // we don't want a leading slash on an absolute path in Windows
-    return pathname.slice(1);
+    return path;
   }
 
   function pathFromURLPosix(url) {

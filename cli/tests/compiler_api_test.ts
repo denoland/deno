@@ -1,5 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEquals } from "../../std/testing/asserts.ts";
+import {
+  assert,
+  assertEquals,
+  assertThrowsAsync,
+} from "../../std/testing/asserts.ts";
 
 Deno.test({
   name: "Deno.compile() - sources provided",
@@ -33,7 +37,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "Deno.compile() - compiler options effects imit",
+  name: "Deno.compile() - compiler options effects emit",
   async fn() {
     const [diagnostics, actual] = await Deno.compile(
       "/foo.ts",
@@ -197,5 +201,25 @@ Deno.test({
     });
     assert(Array.isArray(diagnostics));
     assert(diagnostics.length === 1);
+  },
+});
+
+// See https://github.com/denoland/deno/issues/6908
+Deno.test({
+  name: "Deno.compile() - SWC diagnostics",
+  async fn() {
+    await assertThrowsAsync(async () => {
+      await Deno.compile("main.js", {
+        "main.js": `
+      export class Foo {
+        constructor() {
+          console.log("foo");
+        }
+        export get() {
+          console.log("bar");
+        }
+      }`,
+      });
+    });
   },
 });

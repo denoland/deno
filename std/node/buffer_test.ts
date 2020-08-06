@@ -5,10 +5,10 @@ Deno.test({
   name: "Buffer global scope",
   fn() {
     // deno-lint-ignore ban-ts-comment
-    // @ts-ignore
+    // @ts-expect-error
     assert(window.Buffer === Buffer);
     // deno-lint-ignore ban-ts-comment
-    // @ts-ignore
+    // @ts-expect-error
     assert(globalThis.Buffer === Buffer);
   },
 });
@@ -36,7 +36,7 @@ Deno.test({
       assertThrows(
         () => {
           // deno-lint-ignore ban-ts-comment
-          // @ts-ignore
+          // @ts-expect-error
           Buffer.alloc(size);
         },
         TypeError,
@@ -55,8 +55,6 @@ Deno.test({
     for (const value of invalidValues) {
       assertThrows(
         () => {
-          // deno-lint-ignore ban-ts-comment
-          // @ts-ignore
           console.log(value.constructor.name);
           Buffer.alloc(1, value);
         },
@@ -399,7 +397,7 @@ Deno.test({
       assertThrows(
         () => {
           // deno-lint-ignore ban-ts-comment
-          // @ts-ignore
+          // @ts-expect-error
           buffer.toString(encoding);
         },
         TypeError,
@@ -418,15 +416,13 @@ Deno.test({
 
     for (const encoding of defaultToUtf8Encodings) {
       // deno-lint-ignore ban-ts-comment
-      // @ts-ignore
+      // @ts-expect-error
       assertEquals(Buffer.from("yes", encoding).toString(), "yes");
     }
 
     for (const encoding of invalidEncodings) {
       assertThrows(
         () => {
-          // deno-lint-ignore ban-ts-comment
-          // @ts-ignore
           Buffer.from("yes", encoding);
         },
         TypeError,
@@ -445,8 +441,6 @@ Deno.test({
     for (const encoding of notImplemented) {
       assertThrows(
         () => {
-          // deno-lint-ignore ban-ts-comment
-          // @ts-ignore
           buffer.toString(encoding);
         },
         Error,
@@ -456,8 +450,6 @@ Deno.test({
 
       assertThrows(
         () => {
-          // deno-lint-ignore ban-ts-comment
-          // @ts-ignore
           Buffer.from("", encoding);
         },
         Error,
@@ -586,7 +578,7 @@ Deno.test({
 
     assertThrows(
       // deno-lint-ignore ban-ts-comment
-      // @ts-ignore
+      // @ts-expect-error
       () => Buffer.alloc(1).equals("abc"),
       TypeError,
       `The "otherBuffer" argument must be an instance of Buffer or Uint8Array. Received type string`,

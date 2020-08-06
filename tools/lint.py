@@ -69,6 +69,7 @@ def eslint():
         ":!:cli/compilers/wasm_wrap.js",
         ":!:cli/tests/error_syntax.js",
         ":!:cli/tests/lint/**",
+        ":!:cli/tests/encoding/**",
         ":!:cli/dts/**",
         ":!:cli/tsc/*typescript.js",
     ])

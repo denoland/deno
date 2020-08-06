@@ -48,7 +48,7 @@ could do on the command line. So you could do something like this:
 
 ```ts
 const [diagnostics, emitMap] = await Deno.compile(
-  "https://deno.land/std/examples/welcome.ts",
+  "https://deno.land/std@$STD_VERSION/examples/welcome.ts",
 );
 ```
 
@@ -95,7 +95,7 @@ could do on the command line. So you could do something like this:
 
 ```ts
 const [diagnostics, emit] = await Deno.bundle(
-  "https://deno.land/std/http/server.ts",
+  "https://deno.land/std@$STD_VERSION/http/server.ts",
 );
 ```
 
