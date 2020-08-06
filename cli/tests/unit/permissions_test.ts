@@ -63,7 +63,7 @@ unitTest(function syncPermissionsInvalidTests(): void {
 
 async function assertAsyncInvalidPermissionHandled(
   fn: (desc: Deno.PermissionDescriptor) => Promise<Deno.PermissionStatus>,
-  descriptor: Deno.PermissionDescriptor
+  descriptor: Deno.PermissionDescriptor,
 ): Promise<void> {
   let thrown = false;
   try {
@@ -78,7 +78,7 @@ async function assertAsyncInvalidPermissionHandled(
 
 function assertSyncInvalidPermissionHandled(
   fn: (desc: Deno.PermissionDescriptor) => Deno.PermissionStatus,
-  descriptor: Deno.PermissionDescriptor
+  descriptor: Deno.PermissionDescriptor,
 ): void {
   let thrown = false;
   try {
