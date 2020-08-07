@@ -52,46 +52,67 @@
   function getErrorClass(kind) {
     switch (kind) {
       case ErrorKind.TypeError:
+      case "TypeError":
         return TypeError;
       case ErrorKind.Other:
+      case "Other":
         return Error;
       case ErrorKind.URIError:
+      case "URIError":
         return URIError;
       case ErrorKind.NotFound:
+      case "NotFound":
         return NotFound;
       case ErrorKind.PermissionDenied:
+      case "PermissionDenied":
         return PermissionDenied;
       case ErrorKind.ConnectionRefused:
+      case "ConnectionRefused":
         return ConnectionRefused;
       case ErrorKind.ConnectionReset:
+      case "ConnectionReset":
         return ConnectionReset;
       case ErrorKind.ConnectionAborted:
+      case "ConnectionAborted":
         return ConnectionAborted;
       case ErrorKind.NotConnected:
+      case "NotConnected":
         return NotConnected;
       case ErrorKind.AddrInUse:
+      case "AddrInUse":
         return AddrInUse;
       case ErrorKind.AddrNotAvailable:
+      case "AddrNotAvailable":
         return AddrNotAvailable;
       case ErrorKind.BrokenPipe:
+      case "BrokenPipe":
         return BrokenPipe;
       case ErrorKind.AlreadyExists:
+      case "AlreadyExists":
         return AlreadyExists;
       case ErrorKind.InvalidData:
+      case "InvalidData":
         return InvalidData;
       case ErrorKind.TimedOut:
+      case "TimedOut":
         return TimedOut;
       case ErrorKind.Interrupted:
+      case "Interrupted":
         return Interrupted;
       case ErrorKind.WriteZero:
+      case "WriteZero":
         return WriteZero;
       case ErrorKind.UnexpectedEof:
+      case "UnexpectedEof":
         return UnexpectedEof;
       case ErrorKind.BadResource:
+      case "BadResource":
         return BadResource;
       case ErrorKind.Http:
+      case "Http":
         return Http;
       case ErrorKind.Busy:
+      case "Busy":
         return Busy;
     }
   }
