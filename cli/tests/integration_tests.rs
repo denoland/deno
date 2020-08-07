@@ -1454,6 +1454,12 @@ itest!(_030_eval_ts {
   output: "030_eval_ts.out",
 });
 
+itest!(_031_info_no_check {
+  args: "info 031_info_no_check.ts",
+  output: "031_info_no_check.out",
+  http_server: true,
+});
+
 itest!(_033_import_map {
   args:
     "run --quiet --reload --importmap=importmaps/import_map.json --unstable importmaps/test.ts",
