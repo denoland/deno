@@ -60,20 +60,6 @@ mod tests {
   }
 
   #[test]
-  fn test_dom_exception() {
-    run_in_task(|mut cx| {
-      let mut isolate = setup();
-      js_check(
-        isolate
-          .execute("dom_exception.js", include_str!("dom_exception_test.js")),
-      );
-      if let Poll::Ready(Err(_)) = isolate.poll_unpin(&mut cx) {
-        unreachable!();
-      }
-    });
-  }
-
-  #[test]
   fn test_event() {
     run_in_task(|mut cx| {
       let mut isolate = setup();
