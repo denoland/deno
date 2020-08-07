@@ -860,8 +860,8 @@ mod tests {
       perms4
         .request_net(&Some("localhost:8080"))
         .unwrap_err()
-        .kind,
-      crate::op_error::ErrorKind::URIError
+        .kind_str,
+      "URIError"
     );
 
     let mut perms5 = Permissions::from_flags(&Flags {
@@ -870,8 +870,11 @@ mod tests {
     });
     set_prompt_result(false);
     assert_eq!(
-      perms5.request_net(&Some("file:/1.txt")).unwrap_err().kind,
-      crate::op_error::ErrorKind::URIError
+      perms5
+        .request_net(&Some("file:/1.txt"))
+        .unwrap_err()
+        .kind_str,
+      "URIError"
     );
 
     drop(guard);
