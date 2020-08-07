@@ -382,6 +382,7 @@ dependencies = [
  "clap",
  "deno_core",
  "deno_lint",
+ "deno_web",
  "dissimilar",
  "dlopen",
  "dprint-plugin-typescript",
@@ -457,6 +458,14 @@ dependencies = [
  "swc_atoms",
  "swc_common",
  "swc_ecmascript",
+]
+
+[[package]]
+name = "deno_web"
+version = "0.1.0"
+dependencies = [
+ "deno_core",
+ "futures",
 ]
 
 [[package]]
