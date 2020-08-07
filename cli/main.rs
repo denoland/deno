@@ -96,6 +96,7 @@ use state::exit_unstable;
 use std::env;
 use std::io::Read;
 use std::io::Write;
+use std::iter::once;
 use std::path::PathBuf;
 use std::pin::Pin;
 use upgrade::upgrade_command;
@@ -666,9 +667,27 @@ pub fn main() {
   let flags = flags::flags_from_vec(args);
 
   if let Some(ref v8_flags) = flags.v8_flags {
-    let mut v8_flags_ = v8_flags.clone();
-    v8_flags_.insert(0, "UNUSED_BUT_NECESSARY_ARG0".to_string());
-    v8_set_flags(v8_flags_);
+    let v8_flags_includes_help = v8_flags
+      .iter()
+      .any(|flag| flag == "-help" || flag == "--help");
+    let v8_flags = once("UNUSED_BUT_NECESSARY_ARG0".to_owned())
+      .chain(v8_flags.iter().cloned())
+      .collect::<Vec<_>>();
+    let unrecognized_v8_flags = v8_set_flags(v8_flags)
+      .into_iter()
+      .skip(1)
+      .collect::<Vec<_>>();
+    if !unrecognized_v8_flags.is_empty() {
+      for f in unrecognized_v8_flags {
+        eprintln!("error: V8 did not recognize flag '{}'", f);
+      }
+      eprintln!();
+      eprintln!("For a list of V8 flags, use '--v8-flags=--help'");
+      std::process::exit(1);
+    }
+    if v8_flags_includes_help {
+      std::process::exit(0);
+    }
   }
 
   let log_level = match flags.log_level {
