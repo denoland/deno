@@ -27,7 +27,7 @@ pub enum JsonOp {
 fn json_err(err: OpError) -> Value {
   json!({
     "message": err.msg,
-    "kind": err.kind as u32,
+    "kind": err.kind_str,
   })
 }
 

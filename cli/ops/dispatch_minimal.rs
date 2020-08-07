@@ -40,21 +40,24 @@ impl Into<Buf> for Record {
 pub struct ErrorRecord {
   pub promise_id: i32,
   pub arg: i32,
-  pub error_code: i32,
+  pub error_len: i32,
+  pub error_code: Vec<u8>,
   pub error_message: Vec<u8>,
 }
 
 impl Into<Buf> for ErrorRecord {
   fn into(self) -> Buf {
-    let v32: Vec<i32> = vec![self.promise_id, self.arg, self.error_code];
+    let v32: Vec<i32> = vec![self.promise_id, self.arg, self.error_len];
     let mut v8: Vec<u8> = Vec::new();
     for n in v32 {
       v8.write_i32::<LittleEndian>(n).unwrap();
     }
+    let mut code = self.error_code;
     let mut message = self.error_message;
-    // Align to 32bit word, padding with the space character.
-    message.resize((message.len() + 3usize) & !3usize, b' ');
+    v8.append(&mut code);
     v8.append(&mut message);
+    // Align to 32bit word, padding with the space character.
+    v8.resize((v8.len() + 3usize) & !3usize, b' ');
     v8.into_boxed_slice()
   }
 }
@@ -62,13 +65,14 @@ impl Into<Buf> for ErrorRecord {
 #[test]
 fn test_error_record() {
   let expected = vec![
-    1, 0, 0, 0, 255, 255, 255, 255, 10, 0, 0, 0, 69, 114, 114, 111, 114, 32,
-    32, 32,
+    1, 0, 0, 0, 255, 255, 255, 255, 11, 0, 0, 0, 66, 97, 100, 82, 101, 115,
+    111, 117, 114, 99, 101, 69, 114, 114, 111, 114,
   ];
   let err_record = ErrorRecord {
     promise_id: 1,
     arg: -1,
-    error_code: 10,
+    error_len: 11,
+    error_code: "BadResource".to_string().as_bytes().to_owned(),
     error_message: "Error".to_string().as_bytes().to_owned(),
   };
   let buf: Buf = err_record.into();
@@ -128,7 +132,8 @@ where
         let error_record = ErrorRecord {
           promise_id: 0,
           arg: -1,
-          error_code: e.kind as i32,
+          error_len: e.kind_str.len() as i32,
+          error_code: e.kind_str.as_bytes().to_owned(),
           error_message: e.msg.as_bytes().to_owned(),
         };
         return Op::Sync(error_record.into());
@@ -148,7 +153,8 @@ where
           let error_record = ErrorRecord {
             promise_id: record.promise_id,
             arg: -1,
-            error_code: err.kind as i32,
+            error_len: err.kind_str.len() as i32,
+            error_code: err.kind_str.as_bytes().to_owned(),
             error_message: err.msg.as_bytes().to_owned(),
           };
           error_record.into()
@@ -165,7 +171,8 @@ where
               let error_record = ErrorRecord {
                 promise_id: record.promise_id,
                 arg: -1,
-                error_code: err.kind as i32,
+                error_len: err.kind_str.len() as i32,
+                error_code: err.kind_str.as_bytes().to_owned(),
                 error_message: err.msg.as_bytes().to_owned(),
               };
               error_record.into()
