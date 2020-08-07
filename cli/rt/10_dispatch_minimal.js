@@ -32,9 +32,11 @@
     let err;
 
     if (arg < 0) {
-      const kind = result;
-      const message = decoder.decode(ui8.subarray(12));
-      err = { kind, message };
+      const codeLen = result;
+      const codeAndMessage = decoder.decode(ui8.subarray(12));
+      const errorCode = codeAndMessage.slice(0, codeLen);
+      const message = codeAndMessage.slice(codeLen);
+      err = { kind: errorCode, message };
     } else if (ui8.length != 12) {
       throw new errorNs.errors.InvalidData("BadMessage");
     }

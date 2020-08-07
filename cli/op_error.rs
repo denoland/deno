@@ -54,15 +54,48 @@ pub enum ErrorKind {
   Busy = 23,
 }
 
+fn error_kind_to_error_kind_str(kind: ErrorKind) -> String {
+  let s = match kind {
+    ErrorKind::NotFound => "NotFound",
+    ErrorKind::PermissionDenied => "PermissionDenied",
+    ErrorKind::ConnectionRefused => "ConnectionRefused",
+    ErrorKind::ConnectionReset => "ConnectionReset",
+    ErrorKind::ConnectionAborted => "ConnectionAborted",
+    ErrorKind::NotConnected => "NotConnected",
+    ErrorKind::AddrInUse => "AddrInUse",
+    ErrorKind::AddrNotAvailable => "AddrNotAvailable",
+    ErrorKind::BrokenPipe => "BrokenPipe",
+    ErrorKind::AlreadyExists => "AlreadyExists",
+    ErrorKind::InvalidData => "InvalidData",
+    ErrorKind::TimedOut => "TimedOut",
+    ErrorKind::Interrupted => "Interrupted",
+    ErrorKind::WriteZero => "WriteZero",
+    ErrorKind::UnexpectedEof => "UnexpectedEof",
+    ErrorKind::BadResource => "BadResource",
+    ErrorKind::Http => "Http",
+    ErrorKind::URIError => "URIError",
+    ErrorKind::TypeError => "TypeError",
+    ErrorKind::Other => "Other",
+    ErrorKind::Busy => "Busy",
+  };
+
+  s.to_string()
+}
+
 #[derive(Debug)]
 pub struct OpError {
   pub kind: ErrorKind,
+  pub kind_str: String,
   pub msg: String,
 }
 
 impl OpError {
   fn new(kind: ErrorKind, msg: String) -> Self {
-    Self { kind, msg }
+    Self {
+      kind,
+      kind_str: error_kind_to_error_kind_str(kind),
+      msg,
+    }
   }
 
   pub fn not_found(msg: String) -> Self {
@@ -112,6 +145,10 @@ impl OpError {
       "resource is unavailable because it is in use by a promise".to_string(),
     )
   }
+
+  pub fn invalid_domain_error() -> OpError {
+    OpError::new(ErrorKind::TypeError, "Invalid domain.".to_string())
+  }
 }
 
 impl Error for OpError {}
@@ -130,10 +167,7 @@ impl From<ImportMapError> for OpError {
 
 impl From<&ImportMapError> for OpError {
   fn from(error: &ImportMapError) -> Self {
-    Self {
-      kind: ErrorKind::Other,
-      msg: error.to_string(),
-    }
+    Self::new(ErrorKind::Other, error.to_string())
   }
 }
 
@@ -145,10 +179,7 @@ impl From<ModuleResolutionError> for OpError {
 
 impl From<&ModuleResolutionError> for OpError {
   fn from(error: &ModuleResolutionError) -> Self {
-    Self {
-      kind: ErrorKind::URIError,
-      msg: error.to_string(),
-    }
+    Self::new(ErrorKind::URIError, error.to_string())
   }
 }
 
@@ -166,10 +197,7 @@ impl From<&VarError> for OpError {
       NotUnicode(..) => ErrorKind::InvalidData,
     };
 
-    Self {
-      kind,
-      msg: error.to_string(),
-    }
+    Self::new(kind, error.to_string())
   }
 }
 
@@ -206,10 +234,7 @@ impl From<&io::Error> for OpError {
       _ => unreachable!(),
     };
 
-    Self {
-      kind,
-      msg: error.to_string(),
-    }
+    Self::new(kind, error.to_string())
   }
 }
 
@@ -221,10 +246,7 @@ impl From<url::ParseError> for OpError {
 
 impl From<&url::ParseError> for OpError {
   fn from(error: &url::ParseError) -> Self {
-    Self {
-      kind: ErrorKind::URIError,
-      msg: error.to_string(),
-    }
+    Self::new(ErrorKind::URIError, error.to_string())
   }
 }
 impl From<reqwest::Error> for OpError {
@@ -252,14 +274,8 @@ impl From<&reqwest::Error> for OpError {
             .downcast_ref::<serde_json::error::Error>()
             .map(|e| e.into())
         })
-        .unwrap_or_else(|| Self {
-          kind: ErrorKind::Http,
-          msg: error.to_string(),
-        }),
-      None => Self {
-        kind: ErrorKind::Http,
-        msg: error.to_string(),
-      },
+        .unwrap_or_else(|| Self::new(ErrorKind::Http, error.to_string())),
+      None => Self::new(ErrorKind::Http, error.to_string()),
     }
   }
 }
@@ -282,10 +298,7 @@ impl From<&ReadlineError> for OpError {
       _ => unimplemented!(),
     };
 
-    Self {
-      kind,
-      msg: error.to_string(),
-    }
+    Self::new(kind, error.to_string())
   }
 }
 
@@ -305,10 +318,7 @@ impl From<&serde_json::error::Error> for OpError {
       Category::Eof => ErrorKind::UnexpectedEof,
     };
 
-    Self {
-      kind,
-      msg: error.to_string(),
-    }
+    Self::new(kind, error.to_string())
   }
 }
 
@@ -328,10 +338,7 @@ impl From<nix::Error> for OpError {
       nix::Error::UnsupportedOperation => unreachable!(),
     };
 
-    Self {
-      kind,
-      msg: error.to_string(),
-    }
+    Self::new(kind, error.to_string())
   }
 }
 
@@ -352,10 +359,7 @@ impl From<&dlopen::Error> for OpError {
       NullSymbol => ErrorKind::Other,
     };
 
-    Self {
-      kind,
-      msg: error.to_string(),
-    }
+    Self::new(kind, error.to_string())
   }
 }
 
@@ -376,10 +380,7 @@ impl From<&notify::Error> for OpError {
       InvalidConfig(_) => ErrorKind::InvalidData,
     };
 
-    Self {
-      kind,
-      msg: error.to_string(),
-    }
+    Self::new(kind, error.to_string())
   }
 }
 
@@ -391,10 +392,7 @@ impl From<SwcDiagnosticBuffer> for OpError {
 
 impl From<&SwcDiagnosticBuffer> for OpError {
   fn from(error: &SwcDiagnosticBuffer) -> Self {
-    Self {
-      kind: ErrorKind::Other,
-      msg: error.diagnostics.join(", "),
-    }
+    Self::new(ErrorKind::Other, error.diagnostics.join(", "))
   }
 }
 
