@@ -1098,9 +1098,6 @@ declare namespace Deno {
    */
   export function hostname(): string;
 
-  /** **UNSTABLE**: The URL of the file that was originally executed from the command-line. */
-  export const mainModule: string;
-
   /** **UNSTABLE**: new API, yet to be vetted.
    * Synchronously truncates or extends the specified file stream, to reach the
    * specified `len`.  If `len` is not specified then the entire file contents
@@ -1217,7 +1214,7 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    * A custom HttpClient for use with `fetch`.
-   * 
+   *
    * ```ts
    * const client = new Deno.createHttpClient({ caFile: "./ca.pem" });
    * const req = await fetch("https://myserver.com", { client });
@@ -1233,7 +1230,7 @@ declare namespace Deno {
    */
   interface CreateHttpClientOptions {
     /** A certificate authority to use when validating TLS certificates.
-     * 
+     *
      * Requires `allow-read` permission.
      */
     caFile?: string;
@@ -1241,7 +1238,7 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    * Create a custom HttpClient for to use with `fetch`.
-   * 
+   *
    * ```ts
    * const client = new Deno.createHttpClient({ caFile: "./ca.pem" });
    * const req = await fetch("https://myserver.com", { client });
