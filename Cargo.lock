@@ -1902,9 +1902,9 @@ dependencies = [
 
 [[package]]
 name = "rusty_v8"
-version = "0.7.0"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "390f2a21e9855f0cf6113a076cabdfd880b13c055391d61474d5eebf2c1ed491"
+checksum = "817d6a99172cdfb384579a754da4d816989f1a541b9562bca4688b5d8bc39199"
 dependencies = [
  "bitflags",
  "cargo_gn",
@@ -2974,9 +2974,9 @@ dependencies = [
 
 [[package]]
 name = "which"
-version = "4.0.1"
+version = "4.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b5fe1a9cb33fe7cf77d431070d0223e544b1e4e7f7764bad0a3e691a6678a131"
+checksum = "87c14ef7e1b8b8ecfc75d5eca37949410046e66f15d185c01d70824f1f8111ef"
 dependencies = [
  "libc",
  "thiserror",
