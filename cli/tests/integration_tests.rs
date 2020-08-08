@@ -2922,6 +2922,13 @@ async fn inspector_pause() {
 
 #[tokio::test]
 async fn inspector_port_collision() {
+  // Skip this test on WSL, which allows multiple processes to listen on the
+  // same port, rather than making `bind()` fail with `EADDRINUSE`.
+  if cfg!(target_os = "linux") && std::env::var_os("WSL_DISTRO_NAME").is_some()
+  {
+    return;
+  }
+
   let script = util::tests_path().join("inspector1.js");
   let inspect_flag = inspect_flag_with_unique_port("--inspect");
 
