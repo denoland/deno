@@ -6,6 +6,28 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### 1.2.3 / 2020.08.08
+
+Changes in the CLI:
+
+- fix: Never type check in deno info (#6978)
+- fix: add missing globals to unstable diagnostics (#6960)
+- fix: add support for non-UTF8 source files (#6789)
+- fix: hash file names in gen cache (#6911)
+- refactor: Encode op errors as strings instead of numbers (#6977)
+- refactor: Op crate for Web APIs (#6906)
+- refactor: remove repeated code in main.rs (#6954)
+- upgrade to rusty_v8 0.8.1 / V8 8.6.334 (#6980)
+- upgrade: deno_lint v0.1.21 (#6985)
+- upgrade: swc_ecmascript (#6943)
+- feat(unstable): custom http client for fetch (#6918)
+
+Changes in std version 0.64.0:
+
+- fix(std/toml): parser error with inline comments (#6942)
+- fix(std/encoding/toml): Add boolean support to stringify (#6941)
+- refactor: Rewrite globToRegExp() (#6963)
+
 ### 1.2.2 / 2020.07.31
 
 Changes in the CLI:
