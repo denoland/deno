@@ -220,7 +220,8 @@ impl DocParser {
                     named_specifier
                       .imported
                       .as_ref()
-                      .map(|ident| ident.sym.to_string()),
+                      .map(|ident| ident.sym.to_string())
+                      .or_else(|| Some(named_specifier.local.sym.to_string())),
                     import_decl.src.value.to_string(),
                   ),
                   Default(default_specifier) => (
