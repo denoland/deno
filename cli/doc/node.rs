@@ -72,7 +72,6 @@ pub struct ModuleDoc {
 #[serde(rename_all = "camelCase")]
 pub struct ImportDef {
   pub src: String,
-  pub local: String,
   pub imported: Option<String>,
 }
 

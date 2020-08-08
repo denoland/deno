@@ -2,7 +2,6 @@
 use crate::file_fetcher::map_file_extension;
 use crate::op_error::OpError;
 use crate::swc_util::AstParser;
-use crate::swc_util::SwcDiagnosticBuffer;
 use swc_common::comments::CommentKind;
 use swc_common::Span;
 use swc_ecmascript::ast::Decl;
@@ -60,14 +59,18 @@ impl DocParser {
     &self,
     file_name: &str,
     source_code: &str,
-  ) -> Result<ModuleDoc, SwcDiagnosticBuffer> {
+  ) -> Result<ModuleDoc, ErrBox> {
     let media_type = map_file_extension(&PathBuf::from(file_name));
     let parse_result =
       self
         .ast_parser
         .parse_module(file_name, media_type, source_code);
     let module = parse_result?;
-    let doc_entries = self.get_doc_nodes_for_module_body(module.body.clone());
+    let mut doc_entries =
+      self.get_doc_nodes_for_module_body(module.body.clone());
+    let import_doc_entries =
+      self.get_doc_nodes_for_module_imports(module.body.clone(), file_name)?;
+    doc_entries.extend(import_doc_entries);
     let reexports = self.get_reexports_for_module_body(module.body);
     let module_doc = ModuleDoc {
       definitions: doc_entries,
@@ -195,58 +198,82 @@ impl DocParser {
     Ok(flattened_docs)
   }
 
+  fn get_doc_nodes_for_module_imports(
+    &self,
+    module_body: Vec<swc_ecmascript::ast::ModuleItem>,
+    referrer: &str,
+  ) -> Result<Vec<DocNode>, ErrBox> {
+    let mut imports = vec![];
+
+    for node in module_body.iter() {
+      match node {
+        swc_ecmascript::ast::ModuleItem::ModuleDecl(module_decl) => {
+          match module_decl {
+            ModuleDecl::Import(import_decl) => {
+              let (js_doc, location) = self.details_for_span(import_decl.span);
+              for specifier in &import_decl.specifiers {
+                use swc_ecmascript::ast::ImportSpecifier::*;
+
+                let (name, maybe_imported_name, src) = match specifier {
+                  Named(named_specifier) => (
+                    named_specifier.local.sym.to_string(),
+                    named_specifier
+                      .imported
+                      .as_ref()
+                      .map(|ident| ident.sym.to_string()),
+                    import_decl.src.value.to_string(),
+                  ),
+                  Default(default_specifier) => (
+                    default_specifier.local.sym.to_string(),
+                    Some("default".to_string()),
+                    import_decl.src.value.to_string(),
+                  ),
+                  Namespace(namespace_specifier) => (
+                    namespace_specifier.local.sym.to_string(),
+                    None,
+                    import_decl.src.value.to_string(),
+                  ),
+                };
+
+                let resolved_specifier = self.loader.resolve(&src, referrer)?;
+                let import_def = ImportDef {
+                  src: resolved_specifier.to_string(),
+                  imported: maybe_imported_name,
+                };
+
+                let doc_node = DocNode {
+                  kind: DocNodeKind::Import,
+                  name,
+                  location: location.clone(),
+                  js_doc: js_doc.clone(),
+                  import_def: Some(import_def),
+                  class_def: None,
+                  function_def: None,
+                  variable_def: None,
+                  enum_def: None,
+                  type_alias_def: None,
+                  namespace_def: None,
+                  interface_def: None,
+                };
+
+                imports.push(doc_node);
+              }
+            }
+            _ => {}
+          };
+        }
+        _ => {}
+      }
+    }
+
+    Ok(imports)
+  }
+
   pub fn get_doc_nodes_for_module_exports(
     &self,
     module_decl: &ModuleDecl,
   ) -> Vec<DocNode> {
     match module_decl {
-      ModuleDecl::Import(import_decl) => {
-        let mut imports = vec![];
-        let (js_doc, location) = self.details_for_span(import_decl.span);
-        for specifier in &import_decl.specifiers {
-          use swc_ecmascript::ast::ImportSpecifier::*;
-
-          let import_def = match specifier {
-            Named(named_specifier) => ImportDef {
-              src: import_decl.src.value.to_string(),
-              local: named_specifier.local.sym.to_string(),
-              imported: named_specifier
-                .imported
-                .as_ref()
-                .map(|ident| ident.sym.to_string()),
-            },
-            Default(default_specifier) => ImportDef {
-              src: import_decl.src.value.to_string(),
-              local: default_specifier.local.sym.to_string(),
-              imported: Some("default".to_string()),
-            },
-            Namespace(namespace_specifier) => ImportDef {
-              src: import_decl.src.value.to_string(),
-              local: namespace_specifier.local.sym.to_string(),
-              imported: None,
-            },
-          };
-
-          let doc_node = DocNode {
-            kind: DocNodeKind::Import,
-            name: "".to_string(),
-            location: location.clone(),
-            js_doc: js_doc.clone(),
-            import_def: Some(import_def),
-            class_def: None,
-            function_def: None,
-            variable_def: None,
-            enum_def: None,
-            type_alias_def: None,
-            namespace_def: None,
-            interface_def: None,
-          };
-
-          imports.push(doc_node);
-        }
-
-        imports
-      }
       ModuleDecl::ExportDecl(export_decl) => {
         vec![super::module::get_doc_node_for_export_decl(
           self,
