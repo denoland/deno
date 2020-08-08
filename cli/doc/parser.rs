@@ -23,6 +23,7 @@ use super::node;
 use super::node::ModuleDoc;
 use super::DocNode;
 use super::DocNodeKind;
+use super::ImportDef;
 use super::Location;
 
 pub trait DocFileLoader {
@@ -138,6 +139,7 @@ impl DocParser {
               variable_def: None,
               function_def: None,
               class_def: None,
+              import_def: None,
             };
             processed_reexports.push(ns_doc_node);
           }
@@ -198,6 +200,53 @@ impl DocParser {
     module_decl: &ModuleDecl,
   ) -> Vec<DocNode> {
     match module_decl {
+      ModuleDecl::Import(import_decl) => {
+        let mut imports = vec![];
+        let (js_doc, location) = self.details_for_span(import_decl.span);
+        for specifier in &import_decl.specifiers {
+          use swc_ecmascript::ast::ImportSpecifier::*;
+
+          let import_def = match specifier {
+            Named(named_specifier) => ImportDef {
+              src: import_decl.src.value.to_string(),
+              local: named_specifier.local.sym.to_string(),
+              imported: named_specifier
+                .imported
+                .as_ref()
+                .map(|ident| ident.sym.to_string()),
+            },
+            Default(default_specifier) => ImportDef {
+              src: import_decl.src.value.to_string(),
+              local: default_specifier.local.sym.to_string(),
+              imported: None,
+            },
+            Namespace(namespace_specifier) => ImportDef {
+              src: import_decl.src.value.to_string(),
+              local: namespace_specifier.local.sym.to_string(),
+              imported: None,
+            },
+          };
+
+          let doc_node = DocNode {
+            kind: DocNodeKind::Import,
+            name: "".to_string(),
+            location: location.clone(),
+            js_doc: js_doc.clone(),
+            import_def: Some(import_def),
+            class_def: None,
+            function_def: None,
+            variable_def: None,
+            enum_def: None,
+            type_alias_def: None,
+            namespace_def: None,
+            interface_def: None,
+          };
+
+          imports.push(doc_node);
+        }
+
+        imports
+      }
       ModuleDecl::ExportDecl(export_decl) => {
         vec![super::module::get_doc_node_for_export_decl(
           self,
@@ -225,6 +274,7 @@ impl DocParser {
               type_alias_def: None,
               namespace_def: None,
               interface_def: None,
+              import_def: None,
             }
           }
           DefaultDecl::Fn(fn_expr) => {
@@ -244,6 +294,7 @@ impl DocParser {
               type_alias_def: None,
               namespace_def: None,
               interface_def: None,
+              import_def: None,
             }
           }
           DefaultDecl::TsInterfaceDecl(interface_decl) => {
@@ -264,6 +315,7 @@ impl DocParser {
               type_alias_def: None,
               namespace_def: None,
               interface_def: Some(interface_def),
+              import_def: None,
             }
           }
         };
@@ -309,6 +361,7 @@ impl DocParser {
           type_alias_def: None,
           namespace_def: None,
           interface_def: None,
+          import_def: None,
         })
       }
       Decl::Fn(fn_decl) => {
@@ -330,6 +383,7 @@ impl DocParser {
           type_alias_def: None,
           namespace_def: None,
           interface_def: None,
+          import_def: None,
         })
       }
       Decl::Var(var_decl) => {
@@ -350,6 +404,7 @@ impl DocParser {
           type_alias_def: None,
           namespace_def: None,
           interface_def: None,
+          import_def: None,
         })
       }
       Decl::TsInterface(ts_interface_decl) => {
@@ -374,6 +429,7 @@ impl DocParser {
           enum_def: None,
           type_alias_def: None,
           namespace_def: None,
+          import_def: None,
         })
       }
       Decl::TsTypeAlias(ts_type_alias) => {
@@ -398,6 +454,7 @@ impl DocParser {
           class_def: None,
           enum_def: None,
           namespace_def: None,
+          import_def: None,
         })
       }
       Decl::TsEnum(ts_enum) => {
@@ -419,6 +476,7 @@ impl DocParser {
           function_def: None,
           class_def: None,
           namespace_def: None,
+          import_def: None,
         })
       }
       Decl::TsModule(ts_module) => {
@@ -440,6 +498,7 @@ impl DocParser {
           variable_def: None,
           function_def: None,
           class_def: None,
+          import_def: None,
         })
       }
     }
