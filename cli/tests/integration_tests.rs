@@ -21,6 +21,7 @@ fn std_tests() {
     .env("DENO_DIR", dir.path())
     .current_dir(std_path) // TODO(ry) change this to root_path
     .arg("test")
+    .arg("-L=debug")
     .arg("--unstable")
     .arg("--seed=86") // Some tests rely on specific random numbers.
     .arg("-A")
