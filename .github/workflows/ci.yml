@@ -13,16 +13,16 @@ jobs:
     strategy:
       matrix:
         config:
-          - os: macos-10.15
-            kind: test_release
-          - os: windows-2019
-            kind: test_release
-          - os: ubuntu-16.04
-            kind: test_release
+#         - os: macos-10.15
+#           kind: test_release
+#         - os: windows-2019
+#           kind: test_release
+#         - os: ubuntu-16.04
+#           kind: test_release
           - os: ubuntu-16.04
             kind: test_debug
-          - os: ubuntu-16.04
-            kind: bench
+#         - os: ubuntu-16.04
+#           kind: bench
           - os: ubuntu-16.04
             kind: lint
 
@@ -150,7 +150,7 @@ jobs:
 
       - name: Test debug
         if: matrix.config.kind == 'test_debug'
-        run: cargo test --locked --all-targets
+        run: cargo test --locked --all-targets std -- --nocapture --test-threads=1
 
       - name: Run Benchmarks
         if: matrix.config.kind == 'bench'
