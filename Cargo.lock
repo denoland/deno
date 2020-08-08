@@ -448,13 +448,15 @@ dependencies = [
 
 [[package]]
 name = "deno_lint"
-version = "0.1.20"
+version = "0.1.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "97e2a1067a263cd8cbf75d115c253a152263f67da33711eaafce48132068c1b8"
+checksum = "76f450b9c2ce1411d82b9f5377e4006041d5308f739d394b8d98df6748a5e541"
 dependencies = [
  "lazy_static",
  "log 0.4.11",
  "regex",
+ "serde",
+ "serde_json",
  "swc_atoms",
  "swc_common",
  "swc_ecmascript",
