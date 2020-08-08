@@ -218,7 +218,7 @@ impl DocParser {
             Default(default_specifier) => ImportDef {
               src: import_decl.src.value.to_string(),
               local: default_specifier.local.sym.to_string(),
-              imported: None,
+              imported: Some("default".to_string()),
             },
             Namespace(namespace_specifier) => ImportDef {
               src: import_decl.src.value.to_string(),
