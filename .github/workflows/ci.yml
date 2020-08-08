@@ -150,7 +150,7 @@ jobs:
 
       - name: Test debug
         if: matrix.config.kind == 'test_debug'
-        run: cargo test --locked --all-targets std_tests -- --nocapture --test-threads=1
+        run: cargo test --locked --all-targets wasm -- --nocapture --test-threads=1
 
       - name: Run Benchmarks
         if: matrix.config.kind == 'bench'
