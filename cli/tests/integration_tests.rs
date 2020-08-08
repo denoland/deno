@@ -2934,10 +2934,10 @@ async fn inspector_port_collision() {
     .unwrap();
 
   let stderr_1 = child1.stderr.as_mut().unwrap();
-  let mut stderr_lines_1 = std::io::BufReader::new(stderr_1)
+  let mut stderr_1_lines = std::io::BufReader::new(stderr_1)
     .lines()
     .map(|r| r.unwrap());
-  let _ = extract_ws_url_from_stderr(&mut stderr_lines_1);
+  let _ = extract_ws_url_from_stderr(&mut stderr_1_lines);
 
   let mut child2 = util::deno_cmd()
     .arg("run")
@@ -2947,15 +2947,13 @@ async fn inspector_port_collision() {
     .spawn()
     .unwrap();
 
-  use std::io::Read;
-  let mut stderr_str_2 = String::new();
-  child2
-    .stderr
-    .as_mut()
-    .unwrap()
-    .read_to_string(&mut stderr_str_2)
-    .unwrap();
-  assert!(stderr_str_2.contains("Cannot start inspector server"));
+  let stderr_2 = child2.stderr.as_mut().unwrap();
+  let stderr_2_error_message = std::io::BufReader::new(stderr_2)
+    .lines()
+    .map(|r| r.unwrap())
+    .inspect(|line| assert!(!line.contains("Debugger listening")))
+    .find(|line| line.contains("Cannot start inspector server"));
+  assert!(stderr_2_error_message.is_some());
 
   child1.kill().unwrap();
   child1.wait().unwrap();
