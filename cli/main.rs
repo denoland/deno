@@ -668,7 +668,13 @@ pub fn main() {
   if let Some(ref v8_flags) = flags.v8_flags {
     let mut v8_flags_ = v8_flags.clone();
     v8_flags_.insert(0, "UNUSED_BUT_NECESSARY_ARG0".to_string());
+    let v8_flags_includes_help = v8_flags
+      .iter()
+      .any(|flag| flag == "-help" || flag == "--help");
     v8_set_flags(v8_flags_);
+    if v8_flags_includes_help {
+      std::process::exit(0);
+    }
   }
 
   let log_level = match flags.log_level {
