@@ -22,7 +22,7 @@ Changes in the CLI:
 - upgrade: swc_ecmascript (#6943)
 - feat(unstable): custom http client for fetch (#6918)
 
-Changes in std version 0.65.0:
+Changes in std version 0.64.0:
 
 - fix(std/toml): parser error with inline comments (#6942)
 - fix(std/encoding/toml): Add boolean support to stringify (#6941)
