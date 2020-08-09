@@ -36,14 +36,33 @@ deno completions bash > /usr/local/etc/bash_completion.d/deno.bash
 source /usr/local/etc/bash_completion.d/deno.bash
 ```
 
-Example (zsh):
+Example (zsh without framework):
 
+```shell
+mkdir ~/.zsh # create a folder to save your completions. it can be anywhere
+deno completions zsh > .zsh/_deno
+deno completions bash > .zsh/deno.bash
+```
+then add this to your `.zshrc`
+
+```shell
+zstyle ':completion:*:*:deno:*' script ~/.zsh/deno-comp.bash
+fpath=(~/.zsh $fpath)
+autoload -Uz compinit
+compinit -u
+```
+restart your terminal.
+
+
+Example (zsh + oh-my-zsh) [recommended for zsh users] :
 ```shell
 mkdir ~/.oh-my-zsh/custom/plugins/deno
 deno completions zsh > ~/.oh-my-zsh/custom/plugins/deno/_deno
 ```
 
-After this add `deno` plugin under plugins tag in `~/.zshrc` file.
+After this add deno plugin under plugins tag in `~/.zshrc` file.
+for tools like `antigen` path will be `~/.antigen/bundles/robbyrussell/oh-my-zsh/plugins`
+and command will be `antigen bundle deno` and so on.
 
 ### Editors and IDEs
 
