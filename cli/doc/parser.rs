@@ -206,64 +206,58 @@ impl DocParser {
     let mut imports = vec![];
 
     for node in module_body.iter() {
-      match node {
-        swc_ecmascript::ast::ModuleItem::ModuleDecl(module_decl) => {
-          match module_decl {
-            ModuleDecl::Import(import_decl) => {
-              let (js_doc, location) = self.details_for_span(import_decl.span);
-              for specifier in &import_decl.specifiers {
-                use swc_ecmascript::ast::ImportSpecifier::*;
+      if let swc_ecmascript::ast::ModuleItem::ModuleDecl(module_decl) = node {
+        if let ModuleDecl::Import(import_decl) = module_decl {
+          let (js_doc, location) = self.details_for_span(import_decl.span);
+          for specifier in &import_decl.specifiers {
+            use swc_ecmascript::ast::ImportSpecifier::*;
 
-                let (name, maybe_imported_name, src) = match specifier {
-                  Named(named_specifier) => (
-                    named_specifier.local.sym.to_string(),
-                    named_specifier
-                      .imported
-                      .as_ref()
-                      .map(|ident| ident.sym.to_string())
-                      .or_else(|| Some(named_specifier.local.sym.to_string())),
-                    import_decl.src.value.to_string(),
-                  ),
-                  Default(default_specifier) => (
-                    default_specifier.local.sym.to_string(),
-                    Some("default".to_string()),
-                    import_decl.src.value.to_string(),
-                  ),
-                  Namespace(namespace_specifier) => (
-                    namespace_specifier.local.sym.to_string(),
-                    None,
-                    import_decl.src.value.to_string(),
-                  ),
-                };
+            let (name, maybe_imported_name, src) = match specifier {
+              Named(named_specifier) => (
+                named_specifier.local.sym.to_string(),
+                named_specifier
+                  .imported
+                  .as_ref()
+                  .map(|ident| ident.sym.to_string())
+                  .or_else(|| Some(named_specifier.local.sym.to_string())),
+                import_decl.src.value.to_string(),
+              ),
+              Default(default_specifier) => (
+                default_specifier.local.sym.to_string(),
+                Some("default".to_string()),
+                import_decl.src.value.to_string(),
+              ),
+              Namespace(namespace_specifier) => (
+                namespace_specifier.local.sym.to_string(),
+                None,
+                import_decl.src.value.to_string(),
+              ),
+            };
 
-                let resolved_specifier = self.loader.resolve(&src, referrer)?;
-                let import_def = ImportDef {
-                  src: resolved_specifier.to_string(),
-                  imported: maybe_imported_name,
-                };
+            let resolved_specifier = self.loader.resolve(&src, referrer)?;
+            let import_def = ImportDef {
+              src: resolved_specifier.to_string(),
+              imported: maybe_imported_name,
+            };
 
-                let doc_node = DocNode {
-                  kind: DocNodeKind::Import,
-                  name,
-                  location: location.clone(),
-                  js_doc: js_doc.clone(),
-                  import_def: Some(import_def),
-                  class_def: None,
-                  function_def: None,
-                  variable_def: None,
-                  enum_def: None,
-                  type_alias_def: None,
-                  namespace_def: None,
-                  interface_def: None,
-                };
+            let doc_node = DocNode {
+              kind: DocNodeKind::Import,
+              name,
+              location: location.clone(),
+              js_doc: js_doc.clone(),
+              import_def: Some(import_def),
+              class_def: None,
+              function_def: None,
+              variable_def: None,
+              enum_def: None,
+              type_alias_def: None,
+              namespace_def: None,
+              interface_def: None,
+            };
 
-                imports.push(doc_node);
-              }
-            }
-            _ => {}
-          };
+            imports.push(doc_node);
+          }
         }
-        _ => {}
       }
     }
 
