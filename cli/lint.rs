@@ -239,7 +239,7 @@ impl LintReporter for PrettyLintReporter {
 
 #[derive(Serialize)]
 struct JsonLintReporter {
-  diagnostics: Vec<SerializableDiagnostic>,
+  diagnostics: Vec<LintDiagnostic>,
   errors: Vec<LintError>,
 }
 
@@ -254,7 +254,7 @@ impl JsonLintReporter {
 
 impl LintReporter for JsonLintReporter {
   fn visit(&mut self, d: &LintDiagnostic) {
-    self.diagnostics.push(SerializableDiagnostic::new(d));
+    self.diagnostics.push(d.clone());
   }
 
   fn visit_error(&mut self, file_path: &str, err: &ErrBox) {
@@ -268,49 +268,15 @@ impl LintReporter for JsonLintReporter {
     // Sort so that we guarantee a deterministic output which is useful for tests
     self
       .diagnostics
-      .sort_by(|a, b| a.get_sort_key().cmp(&b.get_sort_key()));
+      .sort_by(|a, b| get_sort_key(&a).cmp(&get_sort_key(&b)));
 
     let json = serde_json::to_string_pretty(&self);
     eprintln!("{}", json.unwrap());
   }
 }
 
-#[derive(Serialize)]
-struct SerializableLocation {
-  filename: String,
-  line: usize,
-  col: usize,
-}
+pub fn get_sort_key(a: &LintDiagnostic) -> String {
+  let location = &a.location;
 
-#[derive(Serialize)]
-struct SerializableDiagnostic {
-  location: SerializableLocation,
-  message: String,
-  code: String,
-  line_src: String,
-  snippet_length: usize,
-}
-
-impl SerializableDiagnostic {
-  pub fn new(source: &LintDiagnostic) -> SerializableDiagnostic {
-    let location = &source.location;
-
-    SerializableDiagnostic {
-      location: SerializableLocation {
-        filename: location.filename.clone(),
-        line: location.line,
-        col: location.col,
-      },
-      message: source.message.clone(),
-      code: source.code.clone(),
-      line_src: source.line_src.clone(),
-      snippet_length: source.snippet_length,
-    }
-  }
-
-  pub fn get_sort_key(&self) -> String {
-    let location = &self.location;
-
-    return format!("{}:{}:{}", location.filename, location.line, location.col);
-  }
+  return format!("{}:{}:{}", location.filename, location.line, location.col);
 }
