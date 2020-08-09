@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "1.2.2"
+version = "1.2.3"
 license = "MIT"
 authors = ["the Deno authors"]
 edition = "2018"
@@ -15,15 +15,15 @@ name = "deno"
 path = "main.rs"
 
 [build-dependencies]
-deno_core = { path = "../core", version = "0.51.0" }
-deno_web = { path = "../op_crates/web", version = "0.1.0" }
+deno_core = { path = "../core", version = "0.52.0" }
+deno_web = { path = "../op_crates/web", version = "0.2.0" }
 
 [target.'cfg(windows)'.build-dependencies]
 winres = "0.1"
 winapi = "0.3.8"
 
 [dependencies]
-deno_core = { path = "../core", version = "0.51.0" }
+deno_core = { path = "../core", version = "0.52.0" }
 deno_lint = { version = "0.1.21", features = ["json"] }
 
 atty = "0.2.14"
