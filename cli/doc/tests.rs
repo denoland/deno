@@ -198,21 +198,6 @@ export function fooFn(a: number) {
       }
     },
     {
-      "kind": "import",
-      "name": "",
-      "location": {
-        "filename": "file:///test.ts",
-        "line": 3,
-        "col": 0
-      },
-      "jsDoc": null,
-      "importDef": {
-        "src": "./reexport.ts",
-        "local": "buzz",
-        "imported": "fizz",
-      }
-    },
-    {
       "kind": "function",
       "name": "fooFn",
       "location": {
@@ -238,6 +223,20 @@ export function fooFn(a: number) {
         "returnType": null,
         "isAsync": false,
         "isGenerator": false
+      },
+    },
+    {
+      "kind": "import",
+      "name": "buzz",
+      "location": {
+        "filename": "file:///test.ts",
+        "line": 3,
+        "col": 0
+      },
+      "jsDoc": null,
+      "importDef": {
+        "src": "file:///reexport.ts",
+        "imported": "fizz",
       }
     }
   ]);
