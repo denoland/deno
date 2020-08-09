@@ -1,0 +1,5 @@
+error: V8 did not recognize flag '--foo'
+error: V8 did not recognize flag 'bar'
+error: V8 did not recognize flag '-baz'
+
+For a list of V8 flags, use '--v8-flags=--help'

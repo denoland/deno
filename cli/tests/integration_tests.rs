@@ -2030,17 +2030,23 @@ itest!(unbuffered_stdout {
 
 // Cannot write the expression to evaluate as "console.log(typeof gc)"
 // because itest! splits args on whitespace.
-itest!(eval_v8_flags {
+itest!(v8_flags_eval {
   args: "eval --v8-flags=--expose-gc console.log(typeof(gc))",
   output: "v8_flags.js.out",
 });
 
-itest!(run_v8_flags {
+itest!(v8_flags_run {
   args: "run --v8-flags=--expose-gc v8_flags.js",
   output: "v8_flags.js.out",
 });
 
-itest!(run_v8_help {
+itest!(v8_flags_unrecognized {
+  args: "repl --v8-flags=--foo,bar,--trace-gc,-baz",
+  output: "v8_flags_unrecognized.out",
+  exit_code: 1,
+});
+
+itest!(v8_help {
   args: "repl --v8-flags=--help",
   output: "v8_help.out",
 });
@@ -2916,6 +2922,13 @@ async fn inspector_pause() {
 
 #[tokio::test]
 async fn inspector_port_collision() {
+  // Skip this test on WSL, which allows multiple processes to listen on the
+  // same port, rather than making `bind()` fail with `EADDRINUSE`.
+  if cfg!(target_os = "linux") && std::env::var_os("WSL_DISTRO_NAME").is_some()
+  {
+    return;
+  }
+
   let script = util::tests_path().join("inspector1.js");
   let inspect_flag = inspect_flag_with_unique_port("--inspect");
 
@@ -2928,10 +2941,10 @@ async fn inspector_port_collision() {
     .unwrap();
 
   let stderr_1 = child1.stderr.as_mut().unwrap();
-  let mut stderr_lines_1 = std::io::BufReader::new(stderr_1)
+  let mut stderr_1_lines = std::io::BufReader::new(stderr_1)
     .lines()
     .map(|r| r.unwrap());
-  let _ = extract_ws_url_from_stderr(&mut stderr_lines_1);
+  let _ = extract_ws_url_from_stderr(&mut stderr_1_lines);
 
   let mut child2 = util::deno_cmd()
     .arg("run")
@@ -2941,15 +2954,13 @@ async fn inspector_port_collision() {
     .spawn()
     .unwrap();
 
-  use std::io::Read;
-  let mut stderr_str_2 = String::new();
-  child2
-    .stderr
-    .as_mut()
-    .unwrap()
-    .read_to_string(&mut stderr_str_2)
-    .unwrap();
-  assert!(stderr_str_2.contains("Cannot start inspector server"));
+  let stderr_2 = child2.stderr.as_mut().unwrap();
+  let stderr_2_error_message = std::io::BufReader::new(stderr_2)
+    .lines()
+    .map(|r| r.unwrap())
+    .inspect(|line| assert!(!line.contains("Debugger listening")))
+    .find(|line| line.contains("Cannot start inspector server"));
+  assert!(stderr_2_error_message.is_some());
 
   child1.kill().unwrap();
   child1.wait().unwrap();
