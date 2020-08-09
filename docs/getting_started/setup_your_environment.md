@@ -41,17 +41,17 @@ Example (zsh without framework):
 ```shell
 mkdir ~/.zsh # create a folder to save your completions. it can be anywhere
 deno completions zsh > .zsh/_deno
-deno completions bash > .zsh/deno.bash
 ```
 then add this to your `.zshrc`
 
 ```shell
-zstyle ':completion:*:*:deno:*' script ~/.zsh/deno-comp.bash
 fpath=(~/.zsh $fpath)
 autoload -Uz compinit
 compinit -u
 ```
-restart your terminal.
+and restart your terminal. note that if completions are still not loading, you
+may need to run `rm ~/.zcompdump/` to remove previously generated completions
+and then `compinit` to generate them again.
 
 
 Example (zsh + oh-my-zsh) [recommended for zsh users] :
