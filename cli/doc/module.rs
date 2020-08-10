@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use crate::swc_common::Spanned;
-use crate::swc_ecma_ast;
+use swc_common::Spanned;
 
 use super::parser::DocParser;
 use super::DocNode;
@@ -8,10 +7,10 @@ use super::DocNodeKind;
 
 pub fn get_doc_node_for_export_decl(
   doc_parser: &DocParser,
-  export_decl: &swc_ecma_ast::ExportDecl,
+  export_decl: &swc_ecmascript::ast::ExportDecl,
 ) -> DocNode {
   let export_span = export_decl.span();
-  use crate::swc_ecma_ast::Decl;
+  use swc_ecmascript::ast::Decl;
 
   let js_doc = doc_parser.js_doc_for_span(export_span);
   let location = doc_parser.ast_parser.get_span_location(export_span).into();
@@ -32,6 +31,7 @@ pub fn get_doc_node_for_export_decl(
         type_alias_def: None,
         namespace_def: None,
         interface_def: None,
+        import_def: None,
       }
     }
     Decl::Fn(fn_decl) => {
@@ -49,6 +49,7 @@ pub fn get_doc_node_for_export_decl(
         type_alias_def: None,
         namespace_def: None,
         interface_def: None,
+        import_def: None,
       }
     }
     Decl::Var(var_decl) => {
@@ -65,6 +66,7 @@ pub fn get_doc_node_for_export_decl(
         type_alias_def: None,
         namespace_def: None,
         interface_def: None,
+        import_def: None,
       }
     }
     Decl::TsInterface(ts_interface_decl) => {
@@ -85,6 +87,7 @@ pub fn get_doc_node_for_export_decl(
         enum_def: None,
         type_alias_def: None,
         namespace_def: None,
+        import_def: None,
       }
     }
     Decl::TsTypeAlias(ts_type_alias) => {
@@ -105,6 +108,7 @@ pub fn get_doc_node_for_export_decl(
         class_def: None,
         enum_def: None,
         namespace_def: None,
+        import_def: None,
       }
     }
     Decl::TsEnum(ts_enum) => {
@@ -122,6 +126,7 @@ pub fn get_doc_node_for_export_decl(
         function_def: None,
         class_def: None,
         namespace_def: None,
+        import_def: None,
       }
     }
     Decl::TsModule(ts_module) => {
@@ -139,6 +144,7 @@ pub fn get_doc_node_for_export_decl(
         variable_def: None,
         function_def: None,
         class_def: None,
+        import_def: None,
       }
     }
   }

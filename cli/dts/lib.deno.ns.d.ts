@@ -1565,7 +1565,7 @@ declare namespace Deno {
    * else overwriting.
    *
    * ```ts
-   * await Deno.writeTextFileSync("hello1.txt", "Hello world\n");  // overwrite "hello1.txt" or create it
+   * Deno.writeTextFileSync("hello1.txt", "Hello world\n");  // overwrite "hello1.txt" or create it
    * ```
    *
    * Requires `allow-write` permission, and `allow-read` if `options.create` is `false`.

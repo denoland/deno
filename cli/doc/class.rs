@@ -5,9 +5,8 @@ use crate::doc::display::{
   display_method, display_optional, display_readonly, display_static,
   SliceDisplayer,
 };
-use crate::swc_common::Spanned;
-use crate::swc_ecma_ast;
 use serde::Serialize;
+use swc_common::Spanned;
 
 use super::function::function_to_function_def;
 use super::function::FunctionDef;
@@ -31,7 +30,7 @@ use std::fmt::{Display, Formatter, Result as FmtResult};
 #[serde(rename_all = "camelCase")]
 pub struct ClassConstructorDef {
   pub js_doc: Option<String>,
-  pub accessibility: Option<swc_ecma_ast::Accessibility>,
+  pub accessibility: Option<swc_ecmascript::ast::Accessibility>,
   pub name: String,
   pub params: Vec<ParamDef>,
   pub location: Location,
@@ -55,7 +54,7 @@ pub struct ClassPropertyDef {
   pub js_doc: Option<String>,
   pub ts_type: Option<TsTypeDef>,
   pub readonly: bool,
-  pub accessibility: Option<swc_ecma_ast::Accessibility>,
+  pub accessibility: Option<swc_ecmascript::ast::Accessibility>,
   pub optional: bool,
   pub is_abstract: bool,
   pub is_static: bool,
@@ -109,12 +108,12 @@ impl Display for ClassIndexSignatureDef {
 #[serde(rename_all = "camelCase")]
 pub struct ClassMethodDef {
   pub js_doc: Option<String>,
-  pub accessibility: Option<swc_ecma_ast::Accessibility>,
+  pub accessibility: Option<swc_ecmascript::ast::Accessibility>,
   pub optional: bool,
   pub is_abstract: bool,
   pub is_static: bool,
   pub name: String,
-  pub kind: swc_ecma_ast::MethodKind,
+  pub kind: swc_ecmascript::ast::MethodKind,
   pub function_def: FunctionDef,
   pub location: Location,
 }
@@ -158,7 +157,7 @@ pub struct ClassDef {
 
 pub fn class_to_class_def(
   doc_parser: &DocParser,
-  class: &swc_ecma_ast::Class,
+  class: &swc_ecmascript::ast::Class,
 ) -> ClassDef {
   let mut constructors = vec![];
   let mut methods = vec![];
@@ -167,7 +166,7 @@ pub fn class_to_class_def(
 
   let extends: Option<String> = match &class.super_class {
     Some(boxed) => {
-      use crate::swc_ecma_ast::Expr;
+      use swc_ecmascript::ast::Expr;
       let expr: &Expr = &**boxed;
       match expr {
         Expr::Ident(ident) => Some(ident.sym.to_string()),
@@ -184,7 +183,7 @@ pub fn class_to_class_def(
     .collect::<Vec<TsTypeDef>>();
 
   for member in &class.body {
-    use crate::swc_ecma_ast::ClassMember::*;
+    use swc_ecmascript::ast::ClassMember::*;
 
     match member {
       Constructor(ctor) => {
@@ -197,7 +196,7 @@ pub fn class_to_class_def(
         let mut params = vec![];
 
         for param in &ctor.params {
-          use crate::swc_ecma_ast::ParamOrTsParamProp::*;
+          use swc_ecmascript::ast::ParamOrTsParamProp::*;
 
           let param_def = match param {
             Param(param) => pat_to_param_def(
@@ -205,7 +204,7 @@ pub fn class_to_class_def(
               Some(&doc_parser.ast_parser.source_map),
             ),
             TsParamProp(ts_param_prop) => {
-              use swc_ecma_ast::TsParamPropParam;
+              use swc_ecmascript::ast::TsParamPropParam;
 
               match &ts_param_prop.param {
                 TsParamPropParam::Ident(ident) => ident_to_param_def(
@@ -331,7 +330,7 @@ pub fn class_to_class_def(
 
 pub fn get_doc_for_class_decl(
   doc_parser: &DocParser,
-  class_decl: &swc_ecma_ast::ClassDecl,
+  class_decl: &swc_ecmascript::ast::ClassDecl,
 ) -> (String, ClassDef) {
   let class_name = class_decl.ident.sym.to_string();
   let class_def = class_to_class_def(doc_parser, &class_decl.class);

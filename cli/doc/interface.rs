@@ -1,7 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::colors;
 use crate::doc::display::{display_optional, display_readonly, SliceDisplayer};
-use crate::swc_ecma_ast;
 use serde::Serialize;
 
 use super::params::ts_fn_param_to_param_def;
@@ -115,9 +114,9 @@ pub struct InterfaceDef {
   pub type_params: Vec<TsTypeParamDef>,
 }
 
-pub fn expr_to_name(expr: &swc_ecma_ast::Expr) -> String {
-  use crate::swc_ecma_ast::Expr::*;
-  use crate::swc_ecma_ast::ExprOrSuper::*;
+pub fn expr_to_name(expr: &swc_ecmascript::ast::Expr) -> String {
+  use swc_ecmascript::ast::Expr::*;
+  use swc_ecmascript::ast::ExprOrSuper::*;
 
   match expr {
     Ident(ident) => ident.sym.to_string(),
@@ -135,7 +134,7 @@ pub fn expr_to_name(expr: &swc_ecma_ast::Expr) -> String {
 
 pub fn get_doc_for_ts_interface_decl(
   doc_parser: &DocParser,
-  interface_decl: &swc_ecma_ast::TsInterfaceDecl,
+  interface_decl: &swc_ecmascript::ast::TsInterfaceDecl,
 ) -> (String, InterfaceDef) {
   let interface_name = interface_decl.id.sym.to_string();
 
@@ -145,7 +144,7 @@ pub fn get_doc_for_ts_interface_decl(
   let mut index_signatures = vec![];
 
   for type_element in &interface_decl.body.body {
-    use crate::swc_ecma_ast::TsTypeElement::*;
+    use swc_ecmascript::ast::TsTypeElement::*;
 
     match &type_element {
       TsMethodSignature(ts_method_sig) => {

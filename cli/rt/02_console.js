@@ -371,14 +371,14 @@
         let str = "";
         let j = i;
         for (; j < max - 1; j++) {
-          // In future, colors should be taken here into the account
-          const padding = maxLineLength[j - i];
+          const lengthOfColorCodes = entries[j].length - dataLen[j];
+          const padding = maxLineLength[j - i] + lengthOfColorCodes;
           str += `${entries[j]}, `[order](padding, " ");
         }
         if (order === "padStart") {
+          const lengthOfColorCodes = entries[j].length - dataLen[j];
           const padding = maxLineLength[j - i] +
-            entries[j].length -
-            dataLen[j] -
+            lengthOfColorCodes -
             separatorSpace;
           str += entries[j].padStart(padding, " ");
         } else {
