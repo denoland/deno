@@ -219,10 +219,25 @@
     }
 
     toString() {
+      const replacer = function (match) {
+        const replace = {
+          "!": "%21",
+          "'": "%27",
+          "(": "%28",
+          ")": "%29",
+          "~": "%7E",
+          "%20": "+",
+        };
+        return replace[match];
+      };
+
+      const serialize = function (str) {
+        return encodeURIComponent(str).replace(/[!'()~]|%20/g, replacer);
+      };
+
       return this.#params
         .map(
-          (tuple) =>
-            `${encodeURIComponent(tuple[0])}=${encodeURIComponent(tuple[1])}`,
+          (tuple) => `${serialize(tuple[0])}=${serialize(tuple[1])}`,
         )
         .join("&");
     }
