@@ -10,6 +10,7 @@ extern crate log;
 
 mod bindings;
 mod core_isolate;
+pub mod dispatch_json;
 mod errors;
 mod es_isolate;
 mod flags;
