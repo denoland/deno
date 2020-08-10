@@ -3,7 +3,6 @@
 ((window) => {
   const core = window.Deno.core;
   const util = window.__bootstrap.util;
-  const errorNs = window.__bootstrap.errors;
 
   // Using an object without a prototype because `Map` was causing GC problems.
   const promiseTableMin = Object.create(null);
@@ -32,11 +31,13 @@
     let err;
 
     if (arg < 0) {
-      const kind = result;
-      const message = decoder.decode(ui8.subarray(12));
-      err = { kind, message };
+      const codeLen = result;
+      const codeAndMessage = decoder.decode(ui8.subarray(12));
+      const errorCode = codeAndMessage.slice(0, codeLen);
+      const message = codeAndMessage.slice(codeLen);
+      err = { kind: errorCode, message };
     } else if (ui8.length != 12) {
-      throw new errorNs.errors.InvalidData("BadMessage");
+      throw new TypeError("Malformed response message");
     }
 
     return {
@@ -49,7 +50,7 @@
 
   function unwrapResponse(res) {
     if (res.err != null) {
-      throw new (errorNs.getErrorClass(res.err.kind))(res.err.message);
+      throw new (core.getErrorClass(res.err.kind))(res.err.message);
     }
     return res.result;
   }
