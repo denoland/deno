@@ -17,6 +17,7 @@ pub mod variable;
 
 pub use node::DocNode;
 pub use node::DocNodeKind;
+pub use node::ImportDef;
 pub use node::Location;
 pub use params::ParamDef;
 pub use parser::DocParser;

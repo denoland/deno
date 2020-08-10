@@ -129,6 +129,7 @@ impl<'a> DocPrinter<'a> {
       DocNodeKind::Interface => 4,
       DocNodeKind::TypeAlias => 5,
       DocNodeKind::Namespace => 6,
+      DocNodeKind::Import => 7,
     }
   }
 
@@ -152,6 +153,7 @@ impl<'a> DocPrinter<'a> {
       DocNodeKind::Namespace => {
         self.format_namespace_signature(w, node, indent)
       }
+      DocNodeKind::Import => Ok(()),
     }
   }
 
