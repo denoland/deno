@@ -1,17 +1,17 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
-  const {getRandomValues} = window.__bootstrap.crypto;
-  const {customInspect} = window.__bootstrap.console;
-  const {sendSync} = window.__bootstrap.dispatchJson;
-  const {isIterable, requiredArguments} = window.__bootstrap.webUtil;
+  const { getRandomValues } = window.__bootstrap.crypto;
+  const { customInspect } = window.__bootstrap.console;
+  const { sendSync } = window.__bootstrap.dispatchJson;
+  const { isIterable, requiredArguments } = window.__bootstrap.webUtil;
 
   /** https://url.spec.whatwg.org/#idna */
   function domainToAscii(
     domain,
-    {beStrict = false} = {},
+    { beStrict = false } = {},
   ) {
-    return sendSync("op_domain_to_ascii", {domain, beStrict});
+    return sendSync("op_domain_to_ascii", { domain, beStrict });
   }
 
   const urls = new WeakMap();
@@ -227,7 +227,7 @@
             `${encodeURIComponent(tuple[0])}=${encodeURIComponent(tuple[1])}`,
         )
         .join("&")
-        .replaceAll('%20', '+');
+        .replaceAll("%20", "+");
     }
   }
 
@@ -472,7 +472,7 @@
       if (baseDriveLetter && isFilePath) {
         basePrefix = `${baseDriveLetter}${
           basePath.slice(baseDriveLetter.length).replace(/[^\/]*$/, "")
-          }`;
+        }`;
       } else {
         basePrefix = basePath.replace(/[^\/]*$/, "");
       }
@@ -591,7 +591,7 @@
       value = String(value);
       if (value !== this.href) {
         const url = new URL(value);
-        parts.set(this, {...parts.get(url)});
+        parts.set(this, { ...parts.get(url) });
         this.#updateSearchParams();
       }
     }
@@ -883,7 +883,7 @@
   function encodeQuery(s) {
     const encodeSpace = (c) =>
       (c === "\u0020") ? "+" : (charInSearchSet(c) ? encodeChar(c) : c);
-    return [...s].map(encodeSpace).join("",);
+    return [...s].map(encodeSpace).join("");
   }
 
   window.__bootstrap.url = {
