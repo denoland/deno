@@ -226,7 +226,7 @@ impl CoreIsolate {
   ///
   /// See [`HeapLimits`](struct.HeapLimits.html) for more details.
   ///
-  /// Make sure to use [`add_near_heap_limit_callback`]()
+  /// Make sure to use [`add_near_heap_limit_callback`](#method.add_near_heap_limit_callback)
   /// to prevent v8 from crashing when reaching the upper limit.
   pub fn with_heap_limits(
     startup_data: StartupData,
