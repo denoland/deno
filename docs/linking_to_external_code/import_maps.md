@@ -21,7 +21,7 @@ Example:
 ```js
 {
    "imports": {
-      "fmt/": "https://deno.land/std@0.55.0/fmt/"
+      "fmt/": "https://deno.land/std@$STD_VERSION/fmt/"
    }
 }
 ```

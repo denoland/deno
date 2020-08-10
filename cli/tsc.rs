@@ -19,12 +19,6 @@ use crate::permissions::Permissions;
 use crate::source_maps::SourceMapGetter;
 use crate::startup_data;
 use crate::state::State;
-use crate::swc_common::comments::CommentKind;
-use crate::swc_common::Span;
-use crate::swc_ecma_ast;
-use crate::swc_ecma_visit;
-use crate::swc_ecma_visit::Node;
-use crate::swc_ecma_visit::Visit;
 use crate::swc_util::AstParser;
 use crate::swc_util::SwcDiagnosticBuffer;
 use crate::version;
@@ -57,6 +51,10 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::task::Poll;
+use swc_common::comments::CommentKind;
+use swc_common::Span;
+use swc_ecmascript::visit::Node;
+use swc_ecmascript::visit::Visit;
 use url::Url;
 
 pub const AVAILABLE_LIBS: &[&str] = &[
@@ -413,13 +411,6 @@ struct CompileResponse {
   build_info: Option<String>,
   stats: Option<Vec<Stat>>,
 }
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct TranspileResponse {
-  diagnostics: Diagnostic,
-  emit_map: HashMap<String, EmittedSource>,
-  stats: Option<Vec<Stat>>,
-}
 
 // TODO(bartlomieju): possible deduplicate once TS refactor is stabilized
 #[derive(Deserialize)]
@@ -480,7 +471,7 @@ impl TsCompiler {
       if let Some(metadata) = self.get_metadata(&url) {
         // Compare version hashes
         let version_hash_to_validate = source_code_version_hash(
-          &source_file.source_code,
+          &source_file.source_code.as_bytes(),
           version::DENO,
           &self.config.hash,
         );
@@ -521,7 +512,7 @@ impl TsCompiler {
           .fetch_cached_source_file(&specifier, Permissions::allow_all())
         {
           let existing_hash = crate::checksum::gen(&[
-            &source_file.source_code,
+            &source_file.source_code.as_bytes(),
             version::DENO.as_bytes(),
           ]);
           let expected_hash =
@@ -586,10 +577,7 @@ impl TsCompiler {
     };
     let root_names = vec![module_url.to_string()];
     let unstable = self.flags.unstable;
-    let performance = match self.flags.log_level {
-      Some(Level::Debug) => true,
-      _ => false,
-    };
+    let performance = matches!(self.flags.log_level, Some(Level::Debug));
     let compiler_config = self.config.clone();
     let cwd = std::env::current_dir().unwrap();
 
@@ -695,10 +683,8 @@ impl TsCompiler {
     let root_names = vec![module_specifier.to_string()];
     let target = "main";
     let cwd = std::env::current_dir().unwrap();
-    let performance = match global_state.flags.log_level {
-      Some(Level::Debug) => true,
-      _ => false,
-    };
+    let performance =
+      matches!(global_state.flags.log_level, Some(Level::Debug));
 
     let compiler_config = self.config.clone();
 
@@ -747,8 +733,6 @@ impl TsCompiler {
 
   pub async fn transpile(
     &self,
-    global_state: GlobalState,
-    permissions: Permissions,
     module_graph: ModuleGraph,
   ) -> Result<(), ErrBox> {
     let mut source_files: Vec<TranspileSourceFile> = Vec::new();
@@ -767,46 +751,30 @@ impl TsCompiler {
       return Ok(());
     }
 
-    let source_files_json =
-      serde_json::to_value(source_files).expect("Filed to serialize data");
-    let compiler_config = self.config.clone();
-    let cwd = std::env::current_dir().unwrap();
-    let performance = match global_state.flags.log_level {
-      Some(Level::Debug) => true,
-      _ => false,
-    };
-    let j = match (compiler_config.path, compiler_config.content) {
-      (Some(config_path), Some(config_data)) => json!({
-        "config": str::from_utf8(&config_data).unwrap(),
-        "configPath": config_path,
-        "cwd": cwd,
-        "performance": performance,
-        "sourceFiles": source_files_json,
-        "type": msg::CompilerRequestType::Transpile,
-      }),
-      _ => json!({
-        "performance": performance,
-        "sourceFiles": source_files_json,
-        "type": msg::CompilerRequestType::Transpile,
-      }),
-    };
+    let mut emit_map = HashMap::new();
 
-    let req_msg = j.to_string();
+    for source_file in source_files {
+      let parser = AstParser::default();
+      let stripped_source = parser.strip_types(
+        &source_file.file_name,
+        MediaType::TypeScript,
+        &source_file.source_code,
+      )?;
 
-    let json_str =
-      execute_in_same_thread(global_state.clone(), permissions, req_msg)
-        .await?;
+      // TODO(bartlomieju): this is superfluous, just to make caching function happy
+      let emitted_filename = PathBuf::from(&source_file.file_name)
+        .with_extension("js")
+        .to_string_lossy()
+        .to_string();
+      let emitted_source = EmittedSource {
+        filename: source_file.file_name.to_string(),
+        contents: stripped_source,
+      };
 
-    let transpile_response: TranspileResponse =
-      serde_json::from_str(&json_str)?;
-
-    if !transpile_response.diagnostics.items.is_empty() {
-      return Err(ErrBox::from(transpile_response.diagnostics));
+      emit_map.insert(emitted_filename, emitted_source);
     }
 
-    maybe_log_stats(transpile_response.stats);
-
-    self.cache_emitted_files(transpile_response.emit_map)?;
+    self.cache_emitted_files(emit_map)?;
     Ok(())
   }
 
@@ -883,9 +851,7 @@ impl TsCompiler {
     let compiled_source_file = self.get_compiled_source_file(module_url)?;
 
     let compiled_module = CompiledModule {
-      code: str::from_utf8(&compiled_source_file.source_code)
-        .unwrap()
-        .to_string(),
+      code: compiled_source_file.source_code.to_string()?,
       name: module_url.to_string(),
     };
 
@@ -893,8 +859,8 @@ impl TsCompiler {
   }
 
   /// Return compiled JS file for given TS module.
-  // TODO: ideally we shouldn't construct SourceFile by hand, but it should be delegated to
-  // SourceFileFetcher
+  // TODO: ideally we shouldn't construct SourceFile by hand, but it should be
+  // delegated to SourceFileFetcher.
   pub fn get_compiled_source_file(
     &self,
     module_url: &Url,
@@ -910,7 +876,7 @@ impl TsCompiler {
       url: module_url.clone(),
       filename: compiled_code_filename,
       media_type: msg::MediaType::JavaScript,
-      source_code: compiled_code,
+      source_code: compiled_code.into(),
       types_header: None,
     };
 
@@ -934,7 +900,7 @@ impl TsCompiler {
     self.mark_compiled(module_specifier.as_url());
 
     let version_hash = source_code_version_hash(
-      &source_file.source_code,
+      &source_file.source_code.as_bytes(),
       version::DENO,
       &self.config.hash,
     );
@@ -967,7 +933,7 @@ impl TsCompiler {
       url: module_specifier.as_url().to_owned(),
       filename: source_map_filename,
       media_type: msg::MediaType::JavaScript,
-      source_code,
+      source_code: source_code.into(),
       types_header: None,
     };
 
@@ -1013,7 +979,7 @@ impl SourceMapGetter for TsCompiler {
     self
       .try_resolve_and_get_source_file(script_name)
       .and_then(|out| {
-        str::from_utf8(&out.source_code).ok().map(|v| {
+        out.source_code.to_str().ok().map(|v| {
           // Do NOT use .lines(): it skips the terminating empty line.
           // (due to internally using .split_terminator() instead of .split())
           let lines: Vec<&str> = v.split('\n').collect();
@@ -1052,7 +1018,7 @@ impl TsCompiler {
   ) -> Option<Vec<u8>> {
     if let Some(module_specifier) = self.try_to_resolve(script_name) {
       return match self.get_source_map_file(&module_specifier) {
-        Ok(out) => Some(out.source_code),
+        Ok(out) => Some(out.source_code.into_bytes()),
         Err(_) => {
           // Check if map is inlined
           if let Ok(compiled_source) =
@@ -1292,7 +1258,7 @@ struct DependencyVisitor {
 impl Visit for DependencyVisitor {
   fn visit_import_decl(
     &mut self,
-    import_decl: &swc_ecma_ast::ImportDecl,
+    import_decl: &swc_ecmascript::ast::ImportDecl,
     _parent: &dyn Node,
   ) {
     let src_str = import_decl.src.value.to_string();
@@ -1305,7 +1271,7 @@ impl Visit for DependencyVisitor {
 
   fn visit_named_export(
     &mut self,
-    named_export: &swc_ecma_ast::NamedExport,
+    named_export: &swc_ecmascript::ast::NamedExport,
     _parent: &dyn Node,
   ) {
     if let Some(src) = &named_export.src {
@@ -1320,7 +1286,7 @@ impl Visit for DependencyVisitor {
 
   fn visit_export_all(
     &mut self,
-    export_all: &swc_ecma_ast::ExportAll,
+    export_all: &swc_ecmascript::ast::ExportAll,
     _parent: &dyn Node,
   ) {
     let src_str = export_all.src.value.to_string();
@@ -1333,7 +1299,7 @@ impl Visit for DependencyVisitor {
 
   fn visit_ts_import_type(
     &mut self,
-    ts_import_type: &swc_ecma_ast::TsImportType,
+    ts_import_type: &swc_ecmascript::ast::TsImportType,
     _parent: &dyn Node,
   ) {
     // TODO(bartlomieju): possibly add separate DependencyKind
@@ -1347,13 +1313,13 @@ impl Visit for DependencyVisitor {
 
   fn visit_call_expr(
     &mut self,
-    call_expr: &swc_ecma_ast::CallExpr,
+    call_expr: &swc_ecmascript::ast::CallExpr,
     parent: &dyn Node,
   ) {
-    use swc_ecma_ast::Expr::*;
-    use swc_ecma_ast::ExprOrSuper::*;
+    use swc_ecmascript::ast::Expr::*;
+    use swc_ecmascript::ast::ExprOrSuper::*;
 
-    swc_ecma_visit::visit_call_expr(self, call_expr, parent);
+    swc_ecmascript::visit::visit_call_expr(self, call_expr, parent);
     let boxed_expr = match call_expr.callee.clone() {
       Super(_) => return,
       Expr(boxed) => boxed,
@@ -1371,7 +1337,7 @@ impl Visit for DependencyVisitor {
     if let Some(arg) = call_expr.args.get(0) {
       match &*arg.expr {
         Lit(lit) => {
-          if let swc_ecma_ast::Lit::Str(str_) = lit {
+          if let swc_ecmascript::ast::Lit::Str(str_) = lit {
             let src_str = str_.value.to_string();
             self.dependencies.push(DependencyDescriptor {
               specifier: src_str,
@@ -1418,62 +1384,60 @@ pub fn pre_process_file(
   source_code: &str,
   analyze_dynamic_imports: bool,
 ) -> Result<(Vec<ImportDesc>, Vec<TsReferenceDesc>), SwcDiagnosticBuffer> {
-  let parser = AstParser::new();
-  parser.parse_module(file_name, media_type, source_code, |parse_result| {
-    let module = parse_result?;
-    let mut collector = DependencyVisitor {
-      dependencies: vec![],
-    };
-    let module_span = module.span;
-    collector.visit_module(&module, &module);
+  let parser = AstParser::default();
+  let parse_result = parser.parse_module(file_name, media_type, source_code);
+  let module = parse_result?;
+  let mut collector = DependencyVisitor {
+    dependencies: vec![],
+  };
+  let module_span = module.span;
+  collector.visit_module(&module, &module);
 
-    let dependency_descriptors = collector.dependencies;
+  let dependency_descriptors = collector.dependencies;
 
-    // for each import check if there's relevant @deno-types directive
-    let imports = dependency_descriptors
-      .iter()
-      .filter(|desc| {
-        if analyze_dynamic_imports {
-          return true;
-        }
-
-        desc.kind != DependencyKind::DynamicImport
-      })
-      .map(|desc| {
-        let location = parser.get_span_location(desc.span);
-        let deno_types = get_deno_types(&parser, desc.span);
-        ImportDesc {
-          specifier: desc.specifier.to_string(),
-          deno_types,
-          location: location.into(),
-        }
-      })
-      .collect();
-
-    // analyze comment from beginning of the file and find TS directives
-    let comments = parser
-      .comments
-      .take_leading_comments(module_span.lo())
-      .unwrap_or_else(Vec::new);
-
-    let mut references = vec![];
-    for comment in comments {
-      if comment.kind != CommentKind::Line {
-        continue;
+  // for each import check if there's relevant @deno-types directive
+  let imports = dependency_descriptors
+    .iter()
+    .filter(|desc| {
+      if analyze_dynamic_imports {
+        return true;
       }
 
-      let text = comment.text.to_string();
-      if let Some((kind, specifier)) = parse_ts_reference(text.trim()) {
-        let location = parser.get_span_location(comment.span);
-        references.push(TsReferenceDesc {
-          kind,
-          specifier,
-          location: location.into(),
-        });
+      desc.kind != DependencyKind::DynamicImport
+    })
+    .map(|desc| {
+      let location = parser.get_span_location(desc.span);
+      let deno_types = get_deno_types(&parser, desc.span);
+      ImportDesc {
+        specifier: desc.specifier.to_string(),
+        deno_types,
+        location: location.into(),
       }
+    })
+    .collect();
+
+  // analyze comment from beginning of the file and find TS directives
+  let comments = parser
+    .comments
+    .with_leading(module_span.lo(), |cmts| cmts.to_vec());
+
+  let mut references = vec![];
+  for comment in comments {
+    if comment.kind != CommentKind::Line {
+      continue;
     }
-    Ok((imports, references))
-  })
+
+    let text = comment.text.to_string();
+    if let Some((kind, specifier)) = parse_ts_reference(text.trim()) {
+      let location = parser.get_span_location(comment.span);
+      references.push(TsReferenceDesc {
+        kind,
+        specifier,
+        location: location.into(),
+      });
+    }
+  }
+  Ok((imports, references))
 }
 
 fn get_deno_types(parser: &AstParser, span: Span) -> Option<String> {
@@ -1600,7 +1564,7 @@ mod tests {
       url: specifier.as_url().clone(),
       filename: PathBuf::from(p.to_str().unwrap().to_string()),
       media_type: msg::MediaType::TypeScript,
-      source_code: include_bytes!("./tests/002_hello.ts").to_vec(),
+      source_code: include_bytes!("./tests/002_hello.ts").to_vec().into(),
       types_header: None,
     };
     let dir =
@@ -1676,7 +1640,7 @@ mod tests {
       url: specifier.as_url().clone(),
       filename: PathBuf::from(p.to_str().unwrap().to_string()),
       media_type: msg::MediaType::TypeScript,
-      source_code: include_bytes!("./tests/002_hello.ts").to_vec(),
+      source_code: include_bytes!("./tests/002_hello.ts").to_vec().into(),
       types_header: None,
     };
     let dir =
@@ -1717,9 +1681,7 @@ mod tests {
     )
     .unwrap();
 
-    let result = ts_compiler
-      .transpile(mock_state.clone(), Permissions::allow_all(), module_graph)
-      .await;
+    let result = ts_compiler.transpile(module_graph).await;
     assert!(result.is_ok());
     let compiled_file = ts_compiler.get_compiled_module(&out.url).unwrap();
     let source_code = compiled_file.code;

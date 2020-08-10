@@ -23,6 +23,7 @@ delete Object.prototype.__proto__;
   const dispatchJson = window.__bootstrap.dispatchJson;
   const util = window.__bootstrap.util;
   const errorStack = window.__bootstrap.errorStack;
+  const errors = window.__bootstrap.errors.errors;
 
   function opNow() {
     const res = dispatchJson.sendSync("op_now");
@@ -100,6 +101,17 @@ delete Object.prototype.__proto__;
     "PermissionStatus",
     "hostname",
     "ppid",
+    "mainModule",
+    "ftruncate",
+    "ftruncateSync",
+    "fdatasync",
+    "fdatasyncSync",
+    "fsync",
+    "fsyncSync",
+    "fstat",
+    "fstatSync",
+    "HttpClient",
+    "createHttpClient",
   ];
 
   function transformMessageText(messageText, code) {
@@ -139,9 +151,7 @@ delete Object.prototype.__proto__;
     return messageText;
   }
 
-  function fromDiagnosticCategory(
-    category,
-  ) {
+  function fromDiagnosticCategory(category) {
     switch (category) {
       case ts.DiagnosticCategory.Error:
         return DiagnosticCategory.Error;
@@ -160,11 +170,7 @@ delete Object.prototype.__proto__;
     }
   }
 
-  function getSourceInformation(
-    sourceFile,
-    start,
-    length,
-  ) {
+  function getSourceInformation(sourceFile, start, length) {
     const scriptResourceName = sourceFile.fileName;
     const {
       line: lineNumber,
@@ -196,9 +202,7 @@ delete Object.prototype.__proto__;
     };
   }
 
-  function fromDiagnosticMessageChain(
-    messageChain,
-  ) {
+  function fromDiagnosticMessageChain(messageChain) {
     if (!messageChain) {
       return undefined;
     }
@@ -214,9 +218,7 @@ delete Object.prototype.__proto__;
     });
   }
 
-  function parseDiagnostic(
-    item,
-  ) {
+  function parseDiagnostic(item) {
     const {
       messageText,
       category: sourceCategory,
@@ -254,9 +256,7 @@ delete Object.prototype.__proto__;
     return sourceInfo ? { ...base, ...sourceInfo } : base;
   }
 
-  function parseRelatedInformation(
-    relatedInformation,
-  ) {
+  function parseRelatedInformation(relatedInformation) {
     const result = [];
     for (const item of relatedInformation) {
       result.push(parseDiagnostic(item));
@@ -264,9 +264,7 @@ delete Object.prototype.__proto__;
     return result;
   }
 
-  function fromTypeScriptDiagnostic(
-    diagnostics,
-  ) {
+  function fromTypeScriptDiagnostic(diagnostics) {
     const items = [];
     for (const sourceDiagnostic of diagnostics) {
       const item = parseDiagnostic(sourceDiagnostic);
@@ -489,12 +487,7 @@ delete Object.prototype.__proto__;
    */
   const RESOLVED_SPECIFIER_CACHE = new Map();
 
-  function configure(
-    defaultOptions,
-    source,
-    path,
-    cwd,
-  ) {
+  function configure(defaultOptions, source, path, cwd) {
     const { config, error } = ts.parseConfigFileTextToJson(path, source);
     if (error) {
       return { diagnostics: [error], options: defaultOptions };
@@ -540,11 +533,7 @@ delete Object.prototype.__proto__;
       return SOURCE_FILE_CACHE.get(url);
     }
 
-    static cacheResolvedUrl(
-      resolvedUrl,
-      rawModuleSpecifier,
-      containingFile,
-    ) {
+    static cacheResolvedUrl(resolvedUrl, rawModuleSpecifier, containingFile) {
       containingFile = containingFile || "";
       let innerCache = RESOLVED_SPECIFIER_CACHE.get(containingFile);
       if (!innerCache) {
@@ -554,10 +543,7 @@ delete Object.prototype.__proto__;
       innerCache.set(rawModuleSpecifier, resolvedUrl);
     }
 
-    static getResolvedUrl(
-      moduleSpecifier,
-      containingFile,
-    ) {
+    static getResolvedUrl(moduleSpecifier, containingFile) {
       const containingCache = RESOLVED_SPECIFIER_CACHE.get(containingFile);
       if (containingCache) {
         return containingCache.get(moduleSpecifier);
@@ -621,11 +607,7 @@ delete Object.prototype.__proto__;
       return this.#options;
     }
 
-    configure(
-      cwd,
-      path,
-      configurationText,
-    ) {
+    configure(cwd, path, configurationText) {
       log("compiler::host.configure", path);
       const { options, ...result } = configure(
         this.#options,
@@ -718,10 +700,7 @@ delete Object.prototype.__proto__;
       return notImplemented();
     }
 
-    resolveModuleNames(
-      moduleNames,
-      containingFile,
-    ) {
+    resolveModuleNames(moduleNames, containingFile) {
       log("compiler::host.resolveModuleNames", {
         moduleNames,
         containingFile,
@@ -760,13 +739,7 @@ delete Object.prototype.__proto__;
       return true;
     }
 
-    writeFile(
-      fileName,
-      data,
-      _writeByteOrderMark,
-      _onError,
-      sourceFiles,
-    ) {
+    writeFile(fileName, data, _writeByteOrderMark, _onError, sourceFiles) {
       log("compiler::host.writeFile", fileName);
       this.#writeFile(fileName, data, sourceFiles);
     }
@@ -804,6 +777,7 @@ delete Object.prototype.__proto__;
   // as these are internal APIs of TypeScript which maintain valid libs
   ts.libs.push("deno.ns", "deno.window", "deno.worker", "deno.shared_globals");
   ts.libMap.set("deno.ns", "lib.deno.ns.d.ts");
+  ts.libMap.set("deno.web", "lib.deno.web.d.ts");
   ts.libMap.set("deno.window", "lib.deno.window.d.ts");
   ts.libMap.set("deno.worker", "lib.deno.worker.d.ts");
   ts.libMap.set("deno.shared_globals", "lib.deno.shared_globals.d.ts");
@@ -813,6 +787,10 @@ delete Object.prototype.__proto__;
   // are available in the future when needed.
   SNAPSHOT_HOST.getSourceFile(
     `${ASSETS}/lib.deno.ns.d.ts`,
+    ts.ScriptTarget.ESNext,
+  );
+  SNAPSHOT_HOST.getSourceFile(
+    `${ASSETS}/lib.deno.web.d.ts`,
     ts.ScriptTarget.ESNext,
   );
   SNAPSHOT_HOST.getSourceFile(
@@ -848,9 +826,7 @@ delete Object.prototype.__proto__;
   const SYSTEM_LOADER = getAsset("system_loader.js");
   const SYSTEM_LOADER_ES5 = getAsset("system_loader_es5.js");
 
-  function buildLocalSourceFileCache(
-    sourceFileMap,
-  ) {
+  function buildLocalSourceFileCache(sourceFileMap) {
     for (const entry of Object.values(sourceFileMap)) {
       assert(entry.sourceCode.length > 0);
       SourceFile.addToCache({
@@ -902,9 +878,7 @@ delete Object.prototype.__proto__;
     }
   }
 
-  function buildSourceFileCache(
-    sourceFileMap,
-  ) {
+  function buildSourceFileCache(sourceFileMap) {
     for (const entry of Object.values(sourceFileMap)) {
       SourceFile.addToCache({
         url: entry.url,
@@ -974,11 +948,7 @@ delete Object.prototype.__proto__;
   };
 
   function createBundleWriteFile(state) {
-    return function writeFile(
-      _fileName,
-      data,
-      sourceFiles,
-    ) {
+    return function writeFile(_fileName, data, sourceFiles) {
       assert(sourceFiles != null);
       assert(state.host);
       // we only support single root names for bundles
@@ -992,14 +962,8 @@ delete Object.prototype.__proto__;
     };
   }
 
-  function createCompileWriteFile(
-    state,
-  ) {
-    return function writeFile(
-      fileName,
-      data,
-      sourceFiles,
-    ) {
+  function createCompileWriteFile(state) {
+    return function writeFile(fileName, data, sourceFiles) {
       const isBuildInfo = fileName === TS_BUILD_INFO;
 
       if (isBuildInfo) {
@@ -1017,14 +981,8 @@ delete Object.prototype.__proto__;
     };
   }
 
-  function createRuntimeCompileWriteFile(
-    state,
-  ) {
-    return function writeFile(
-      fileName,
-      data,
-      sourceFiles,
-    ) {
+  function createRuntimeCompileWriteFile(state) {
+    return function writeFile(fileName, data, sourceFiles) {
       assert(sourceFiles);
       assert(sourceFiles.length === 1);
       state.emitMap[fileName] = {
@@ -1169,10 +1127,7 @@ delete Object.prototype.__proto__;
     ts.performance.enable();
   }
 
-  function performanceProgram({
-    program,
-    fileCount,
-  }) {
+  function performanceProgram({ program, fileCount }) {
     if (program) {
       if ("getProgram" in program) {
         program = program.getProgram();
@@ -1211,15 +1166,14 @@ delete Object.prototype.__proto__;
   }
 
   // TODO(Bartlomieju): this check should be done in Rust; there should be no
-  function processConfigureResponse(
-    configResult,
-    configPath,
-  ) {
+  function processConfigureResponse(configResult, configPath) {
     const { ignoredOptions, diagnostics } = configResult;
     if (ignoredOptions) {
       const msg =
         `Unsupported compiler options in "${configPath}"\n  The following options were ignored:\n    ${
-          ignoredOptions.map((value) => value).join(", ")
+          ignoredOptions
+            .map((value) => value)
+            .join(", ")
         }\n`;
       core.print(msg, true);
     }
@@ -1319,12 +1273,7 @@ delete Object.prototype.__proto__;
     }
   }
 
-  function buildBundle(
-    rootName,
-    data,
-    sourceFiles,
-    target,
-  ) {
+  function buildBundle(rootName, data, sourceFiles, target) {
     // when outputting to AMD and a single outfile, TypeScript makes up the module
     // specifiers which are used to define the modules, and doesn't expose them
     // publicly, so we have to try to replicate
@@ -1664,9 +1613,7 @@ delete Object.prototype.__proto__;
     return result;
   }
 
-  function runtimeCompile(
-    request,
-  ) {
+  function runtimeCompile(request) {
     const { options, rootNames, target, unstable, sourceFileMap } = request;
 
     log(">>> runtime compile start", {
@@ -1808,9 +1755,7 @@ delete Object.prototype.__proto__;
     };
   }
 
-  function runtimeTranspile(
-    request,
-  ) {
+  function runtimeTranspile(request) {
     const result = {};
     const { sources, options } = request;
     const compilerOptions = options
@@ -1907,6 +1852,27 @@ delete Object.prototype.__proto__;
       throw new Error("Worker runtime already bootstrapped");
     }
     hasBootstrapped = true;
+    core.registerErrorClass("NotFound", errors.NotFound);
+    core.registerErrorClass("PermissionDenied", errors.PermissionDenied);
+    core.registerErrorClass("ConnectionRefused", errors.ConnectionRefused);
+    core.registerErrorClass("ConnectionReset", errors.ConnectionReset);
+    core.registerErrorClass("ConnectionAborted", errors.ConnectionAborted);
+    core.registerErrorClass("NotConnected", errors.NotConnected);
+    core.registerErrorClass("AddrInUse", errors.AddrInUse);
+    core.registerErrorClass("AddrNotAvailable", errors.AddrNotAvailable);
+    core.registerErrorClass("BrokenPipe", errors.BrokenPipe);
+    core.registerErrorClass("AlreadyExists", errors.AlreadyExists);
+    core.registerErrorClass("InvalidData", errors.InvalidData);
+    core.registerErrorClass("TimedOut", errors.TimedOut);
+    core.registerErrorClass("Interrupted", errors.Interrupted);
+    core.registerErrorClass("WriteZero", errors.WriteZero);
+    core.registerErrorClass("UnexpectedEof", errors.UnexpectedEof);
+    core.registerErrorClass("BadResource", errors.BadResource);
+    core.registerErrorClass("Http", errors.Http);
+    core.registerErrorClass("URIError", URIError);
+    core.registerErrorClass("TypeError", TypeError);
+    core.registerErrorClass("Other", Error);
+    core.registerErrorClass("Busy", errors.Busy);
     globalThis.__bootstrap = undefined;
     runtimeStart("TS");
   }

@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "1.2.1"
+version = "1.2.3"
 license = "MIT"
 authors = ["the Deno authors"]
 edition = "2018"
@@ -15,15 +15,16 @@ name = "deno"
 path = "main.rs"
 
 [build-dependencies]
-deno_core = { path = "../core", version = "0.50.0" }
+deno_core = { path = "../core", version = "0.52.0" }
+deno_web = { path = "../op_crates/web", version = "0.2.0" }
 
 [target.'cfg(windows)'.build-dependencies]
 winres = "0.1"
 winapi = "0.3.8"
 
 [dependencies]
-deno_core = { path = "../core", version = "0.50.0" }
-deno_lint = "0.1.17"
+deno_core = { path = "../core", version = "0.52.0" }
+deno_lint = { version = "0.1.21", features = ["json"] }
 
 atty = "0.2.14"
 base64 = "0.12.2"
@@ -32,6 +33,8 @@ byteorder = "1.3.4"
 clap = "2.33.1"
 dissimilar = "1.0.2"
 dlopen = "0.1.8"
+encoding_rs = "0.8.23"
+dprint-plugin-typescript = "0.25.0"
 futures = "0.3.5"
 http = "0.2.1"
 idna = "0.2.0"
@@ -50,6 +53,8 @@ serde_derive = "1.0.112"
 serde_json = { version = "1.0.55", features = [ "preserve_order" ] }
 sys-info = "0.7.0"
 sourcemap = "6.0.0"
+swc_common = { version = "=0.8.0", features = ["sourcemap"] }
+swc_ecmascript = { version = "=0.1.0", features = ["codegen", "parser", "transforms", "visit"] }
 tempfile = "3.1.0"
 termcolor = "1.1.0"
 tokio = { version = "0.2.22", features = ["full"] }

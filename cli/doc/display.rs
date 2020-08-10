@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::colors;
-use crate::swc_ecma_ast;
 use std::fmt::{Display, Formatter, Result};
 
 pub(crate) struct Indent(pub i64);
@@ -50,13 +49,13 @@ pub(crate) fn display_abstract(is_abstract: bool) -> impl Display {
 }
 
 pub(crate) fn display_accessibility(
-  accessibility: Option<swc_ecma_ast::Accessibility>,
+  accessibility: Option<swc_ecmascript::ast::Accessibility>,
 ) -> impl Display {
   colors::magenta(
-    match accessibility.unwrap_or(swc_ecma_ast::Accessibility::Public) {
-      swc_ecma_ast::Accessibility::Public => "",
-      swc_ecma_ast::Accessibility::Protected => "protected ",
-      swc_ecma_ast::Accessibility::Private => "private ",
+    match accessibility.unwrap_or(swc_ecmascript::ast::Accessibility::Public) {
+      swc_ecmascript::ast::Accessibility::Public => "",
+      swc_ecmascript::ast::Accessibility::Protected => "protected ",
+      swc_ecmascript::ast::Accessibility::Private => "private ",
     },
   )
 }
@@ -69,10 +68,12 @@ pub(crate) fn display_generator(is_generator: bool) -> impl Display {
   colors::magenta(if is_generator { "*" } else { "" })
 }
 
-pub(crate) fn display_method(method: swc_ecma_ast::MethodKind) -> impl Display {
+pub(crate) fn display_method(
+  method: swc_ecmascript::ast::MethodKind,
+) -> impl Display {
   colors::magenta(match method {
-    swc_ecma_ast::MethodKind::Getter => "get ",
-    swc_ecma_ast::MethodKind::Setter => "set ",
+    swc_ecmascript::ast::MethodKind::Getter => "get ",
+    swc_ecmascript::ast::MethodKind::Setter => "set ",
     _ => "",
   })
 }

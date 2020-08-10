@@ -93,31 +93,28 @@ console.log(
 ## TOML
 
 This module parse TOML files. It follows as much as possible the
-[TOML specs](https://github.com/toml-lang/toml). Be sure to read the supported
-types as not every specs is supported at the moment and the handling in
-TypeScript side is a bit different.
+[TOML specs](https://toml.io/en/latest). Be sure to read the supported types as
+not every specs is supported at the moment and the handling in TypeScript side
+is a bit different.
 
 ### Supported types and handling
 
-- :heavy_check_mark: [Keys](https://github.com/toml-lang/toml#string)
-- :exclamation: [String](https://github.com/toml-lang/toml#string)
+- :heavy_check_mark: [Keys](https://toml.io/en/latest#keys)
+- :exclamation: [String](https://toml.io/en/latest#string)
+- :heavy_check_mark: [Multiline String](https://toml.io/en/latest#string)
+- :heavy_check_mark: [Literal String](https://toml.io/en/latest#string)
+- :exclamation: [Integer](https://toml.io/en/latest#integer)
+- :heavy_check_mark: [Float](https://toml.io/en/latest#float)
+- :heavy_check_mark: [Boolean](https://toml.io/en/latest#boolean)
 - :heavy_check_mark:
-  [Multiline String](https://github.com/toml-lang/toml#string)
-- :heavy_check_mark: [Literal String](https://github.com/toml-lang/toml#string)
-- :exclamation: [Integer](https://github.com/toml-lang/toml#integer)
-- :heavy_check_mark: [Float](https://github.com/toml-lang/toml#float)
-- :heavy_check_mark: [Boolean](https://github.com/toml-lang/toml#boolean)
+  [Offset Date-time](https://toml.io/en/latest#offset-date-time)
 - :heavy_check_mark:
-  [Offset Date-time](https://github.com/toml-lang/toml#offset-date-time)
-- :heavy_check_mark:
-  [Local Date-time](https://github.com/toml-lang/toml#local-date-time)
-- :heavy_check_mark: [Local Date](https://github.com/toml-lang/toml#local-date)
-- :exclamation: [Local Time](https://github.com/toml-lang/toml#local-time)
-- :heavy_check_mark: [Table](https://github.com/toml-lang/toml#table)
-- :heavy_check_mark:
-  [Inline Table](https://github.com/toml-lang/toml#inline-table)
-- :exclamation:
-  [Array of Tables](https://github.com/toml-lang/toml#array-of-tables)
+  [Local Date-time](https://toml.io/en/latest#local-date-time)
+- :heavy_check_mark: [Local Date](https://toml.io/en/latest#local-date)
+- :exclamation: [Local Time](https://toml.io/en/latest#local-time)
+- :heavy_check_mark: [Table](https://toml.io/en/latest#table)
+- :heavy_check_mark: [Inline Table](https://toml.io/en/latest#inline-table)
+- :exclamation: [Array of Tables](https://toml.io/en/latest#array-of-tables)
 
 :exclamation: _Supported with warnings see [Warning](#Warning)._
 
@@ -144,14 +141,13 @@ Inline tables are supported. See below:
 
 ```toml
 animal = { type = { name = "pug" } }
-## Output
+## Output { animal: { type: { name: "pug" } } }
 animal = { type.name = "pug" }
-## Output { animal : { type : { name : "pug" } }
+## Output { animal: { type : { name : "pug" } }
 animal.as.leaders = "tosin"
 ## Output { animal: { as: { leaders: "tosin" } } }
 "tosin.abasi" = "guitarist"
-## Output
-"tosin.abasi" : "guitarist"
+## Output { tosin.abasi: "guitarist" }
 ```
 
 ##### Array of Tables
