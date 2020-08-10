@@ -20,6 +20,8 @@ lazy_static = "1.4.0"
 libc = "0.2.71"
 log = "0.4.8"
 rusty_v8 = "0.8.1"
+serde = { version = "1.0.112", features = ["derive"] }
+serde_derive = "1.0.112"
 serde_json = { version = "1.0.55", features = [ "preserve_order" ] }
 smallvec = "1.4.0"
 url = "2.1.1"
