@@ -46,6 +46,7 @@ pub fn get_doc_for_ts_namespace_decl(
     class_def: None,
     type_alias_def: None,
     interface_def: None,
+    import_def: None,
   }
 }
 
