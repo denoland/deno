@@ -34,6 +34,7 @@ delete Object.prototype.__proto__;
   const fetch = window.__bootstrap.fetch;
   const denoNs = window.__bootstrap.denoNs;
   const denoNsUnstable = window.__bootstrap.denoNsUnstable;
+  const errors = window.__bootstrap.errors.errors;
 
   let windowIsClosing = false;
 
@@ -175,6 +176,30 @@ delete Object.prototype.__proto__;
     return s;
   }
 
+  function registerErrors() {
+    core.registerErrorClass("NotFound", errors.NotFound);
+    core.registerErrorClass("PermissionDenied", errors.PermissionDenied);
+    core.registerErrorClass("ConnectionRefused", errors.ConnectionRefused);
+    core.registerErrorClass("ConnectionReset", errors.ConnectionReset);
+    core.registerErrorClass("ConnectionAborted", errors.ConnectionAborted);
+    core.registerErrorClass("NotConnected", errors.NotConnected);
+    core.registerErrorClass("AddrInUse", errors.AddrInUse);
+    core.registerErrorClass("AddrNotAvailable", errors.AddrNotAvailable);
+    core.registerErrorClass("BrokenPipe", errors.BrokenPipe);
+    core.registerErrorClass("AlreadyExists", errors.AlreadyExists);
+    core.registerErrorClass("InvalidData", errors.InvalidData);
+    core.registerErrorClass("TimedOut", errors.TimedOut);
+    core.registerErrorClass("Interrupted", errors.Interrupted);
+    core.registerErrorClass("WriteZero", errors.WriteZero);
+    core.registerErrorClass("UnexpectedEof", errors.UnexpectedEof);
+    core.registerErrorClass("BadResource", errors.BadResource);
+    core.registerErrorClass("Http", errors.Http);
+    core.registerErrorClass("URIError", URIError);
+    core.registerErrorClass("TypeError", TypeError);
+    core.registerErrorClass("Other", Error);
+    core.registerErrorClass("Busy", errors.Busy);
+  }
+
   // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
   const windowOrWorkerGlobalScopeMethods = {
     atob: util.writable(atob),
@@ -290,6 +315,8 @@ delete Object.prototype.__proto__;
     const { args, cwd, noColor, pid, ppid, repl, unstableFlag } =
       runtimeStart();
 
+    registerErrors();
+
     const finalDenoNs = {
       core,
       internal: internalSymbol,
@@ -346,6 +373,8 @@ delete Object.prototype.__proto__;
     const { unstableFlag, pid, noColor, args } = runtimeStart(
       internalName ?? name,
     );
+
+    registerErrors();
 
     const finalDenoNs = {
       core,

@@ -38,6 +38,7 @@ SharedQueue Binary Layout
 
   let initialized = false;
   let opsCache = {};
+  const errorMap = {};
 
   function maybeInit() {
     if (!initialized) {
@@ -187,11 +188,26 @@ SharedQueue Binary Layout
     return send(opsCache[opName], control, ...zeroCopy);
   }
 
+  function registerErrorClass(errorName, errorClass) {
+    if (typeof errorMap[errorName] !== "undefined") {
+      throw new TypeError(`Error class for "${errorName}" already registered`);
+    }
+    errorMap[errorName] = errorClass;
+  }
+
+  function getErrorClass(errorName) {
+    const errorClass = errorMap[errorName];
+    assert(errorClass);
+    return errorClass;
+  }
+
   Object.assign(window.Deno.core, {
     setAsyncHandler,
     dispatch: send,
     dispatchByName: dispatch,
     ops,
+    registerErrorClass,
+    getErrorClass,
     // sharedQueue is private but exposed for testing.
     sharedQueue: {
       MAX_RECORDS,

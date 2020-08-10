@@ -23,6 +23,7 @@ delete Object.prototype.__proto__;
   const dispatchJson = window.__bootstrap.dispatchJson;
   const util = window.__bootstrap.util;
   const errorStack = window.__bootstrap.errorStack;
+  const errors = window.__bootstrap.errors.errors;
 
   function opNow() {
     const res = dispatchJson.sendSync("op_now");
@@ -776,6 +777,7 @@ delete Object.prototype.__proto__;
   // as these are internal APIs of TypeScript which maintain valid libs
   ts.libs.push("deno.ns", "deno.window", "deno.worker", "deno.shared_globals");
   ts.libMap.set("deno.ns", "lib.deno.ns.d.ts");
+  ts.libMap.set("deno.web", "lib.deno.web.d.ts");
   ts.libMap.set("deno.window", "lib.deno.window.d.ts");
   ts.libMap.set("deno.worker", "lib.deno.worker.d.ts");
   ts.libMap.set("deno.shared_globals", "lib.deno.shared_globals.d.ts");
@@ -785,6 +787,10 @@ delete Object.prototype.__proto__;
   // are available in the future when needed.
   SNAPSHOT_HOST.getSourceFile(
     `${ASSETS}/lib.deno.ns.d.ts`,
+    ts.ScriptTarget.ESNext,
+  );
+  SNAPSHOT_HOST.getSourceFile(
+    `${ASSETS}/lib.deno.web.d.ts`,
     ts.ScriptTarget.ESNext,
   );
   SNAPSHOT_HOST.getSourceFile(
@@ -1846,6 +1852,27 @@ delete Object.prototype.__proto__;
       throw new Error("Worker runtime already bootstrapped");
     }
     hasBootstrapped = true;
+    core.registerErrorClass("NotFound", errors.NotFound);
+    core.registerErrorClass("PermissionDenied", errors.PermissionDenied);
+    core.registerErrorClass("ConnectionRefused", errors.ConnectionRefused);
+    core.registerErrorClass("ConnectionReset", errors.ConnectionReset);
+    core.registerErrorClass("ConnectionAborted", errors.ConnectionAborted);
+    core.registerErrorClass("NotConnected", errors.NotConnected);
+    core.registerErrorClass("AddrInUse", errors.AddrInUse);
+    core.registerErrorClass("AddrNotAvailable", errors.AddrNotAvailable);
+    core.registerErrorClass("BrokenPipe", errors.BrokenPipe);
+    core.registerErrorClass("AlreadyExists", errors.AlreadyExists);
+    core.registerErrorClass("InvalidData", errors.InvalidData);
+    core.registerErrorClass("TimedOut", errors.TimedOut);
+    core.registerErrorClass("Interrupted", errors.Interrupted);
+    core.registerErrorClass("WriteZero", errors.WriteZero);
+    core.registerErrorClass("UnexpectedEof", errors.UnexpectedEof);
+    core.registerErrorClass("BadResource", errors.BadResource);
+    core.registerErrorClass("Http", errors.Http);
+    core.registerErrorClass("URIError", URIError);
+    core.registerErrorClass("TypeError", TypeError);
+    core.registerErrorClass("Other", Error);
+    core.registerErrorClass("Busy", errors.Busy);
     globalThis.__bootstrap = undefined;
     runtimeStart("TS");
   }

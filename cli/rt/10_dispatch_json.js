@@ -3,7 +3,6 @@
 ((window) => {
   const core = window.Deno.core;
   const util = window.__bootstrap.util;
-  const getErrorClass = window.__bootstrap.errors.getErrorClass;
   // Using an object without a prototype because `Map` was causing GC problems.
   const promiseTable = Object.create(null);
   let _nextPromiseId = 1;
@@ -22,7 +21,7 @@
 
   function unwrapResponse(res) {
     if (res.err != null) {
-      throw new (getErrorClass(res.err.kind))(res.err.message);
+      throw new (core.getErrorClass(res.err.kind))(res.err.message);
     }
     util.assert(res.ok != null);
     return res.ok;

@@ -54,15 +54,75 @@ pub enum ErrorKind {
   Busy = 23,
 }
 
+impl From<ErrorKind> for String {
+  fn from(kind: ErrorKind) -> Self {
+    let s = match kind {
+      ErrorKind::NotFound => "NotFound",
+      ErrorKind::PermissionDenied => "PermissionDenied",
+      ErrorKind::ConnectionRefused => "ConnectionRefused",
+      ErrorKind::ConnectionReset => "ConnectionReset",
+      ErrorKind::ConnectionAborted => "ConnectionAborted",
+      ErrorKind::NotConnected => "NotConnected",
+      ErrorKind::AddrInUse => "AddrInUse",
+      ErrorKind::AddrNotAvailable => "AddrNotAvailable",
+      ErrorKind::BrokenPipe => "BrokenPipe",
+      ErrorKind::AlreadyExists => "AlreadyExists",
+      ErrorKind::InvalidData => "InvalidData",
+      ErrorKind::TimedOut => "TimedOut",
+      ErrorKind::Interrupted => "Interrupted",
+      ErrorKind::WriteZero => "WriteZero",
+      ErrorKind::UnexpectedEof => "UnexpectedEof",
+      ErrorKind::BadResource => "BadResource",
+      ErrorKind::Http => "Http",
+      ErrorKind::URIError => "URIError",
+      ErrorKind::TypeError => "TypeError",
+      ErrorKind::Other => "Other",
+      ErrorKind::Busy => "Busy",
+    };
+
+    s.to_string()
+  }
+}
+
+fn error_str_to_kind(kind_str: &str) -> ErrorKind {
+  match kind_str {
+    "NotFound" => ErrorKind::NotFound,
+    "PermissionDenied" => ErrorKind::PermissionDenied,
+    "ConnectionRefused" => ErrorKind::ConnectionRefused,
+    "ConnectionReset" => ErrorKind::ConnectionReset,
+    "ConnectionAborted" => ErrorKind::ConnectionAborted,
+    "NotConnected" => ErrorKind::NotConnected,
+    "AddrInUse" => ErrorKind::AddrInUse,
+    "AddrNotAvailable" => ErrorKind::AddrNotAvailable,
+    "BrokenPipe" => ErrorKind::BrokenPipe,
+    "AlreadyExists" => ErrorKind::AlreadyExists,
+    "InvalidData" => ErrorKind::InvalidData,
+    "TimedOut" => ErrorKind::TimedOut,
+    "Interrupted" => ErrorKind::Interrupted,
+    "WriteZero" => ErrorKind::WriteZero,
+    "UnexpectedEof" => ErrorKind::UnexpectedEof,
+    "BadResource" => ErrorKind::BadResource,
+    "Http" => ErrorKind::Http,
+    "URIError" => ErrorKind::URIError,
+    "TypeError" => ErrorKind::TypeError,
+    "Other" => ErrorKind::Other,
+    "Busy" => ErrorKind::Busy,
+    _ => panic!("unknown error kind"),
+  }
+}
+
 #[derive(Debug)]
 pub struct OpError {
-  pub kind: ErrorKind,
+  pub kind_str: String,
   pub msg: String,
 }
 
 impl OpError {
   fn new(kind: ErrorKind, msg: String) -> Self {
-    Self { kind, msg }
+    Self {
+      kind_str: kind.into(),
+      msg,
+    }
   }
 
   pub fn not_found(msg: String) -> Self {
@@ -112,6 +172,10 @@ impl OpError {
       "resource is unavailable because it is in use by a promise".to_string(),
     )
   }
+
+  pub fn invalid_domain_error() -> OpError {
+    OpError::new(ErrorKind::TypeError, "Invalid domain.".to_string())
+  }
 }
 
 impl Error for OpError {}
@@ -130,10 +194,7 @@ impl From<ImportMapError> for OpError {
 
 impl From<&ImportMapError> for OpError {
   fn from(error: &ImportMapError) -> Self {
-    Self {
-      kind: ErrorKind::Other,
-      msg: error.to_string(),
-    }
+    Self::new(ErrorKind::Other, error.to_string())
   }
 }
 
@@ -145,10 +206,7 @@ impl From<ModuleResolutionError> for OpError {
 
 impl From<&ModuleResolutionError> for OpError {
   fn from(error: &ModuleResolutionError) -> Self {
-    Self {
-      kind: ErrorKind::URIError,
-      msg: error.to_string(),
-    }
+    Self::new(ErrorKind::URIError, error.to_string())
   }
 }
 
@@ -166,10 +224,7 @@ impl From<&VarError> for OpError {
       NotUnicode(..) => ErrorKind::InvalidData,
     };
 
-    Self {
-      kind,
-      msg: error.to_string(),
-    }
+    Self::new(kind, error.to_string())
   }
 }
 
@@ -206,10 +261,7 @@ impl From<&io::Error> for OpError {
       _ => unreachable!(),
     };
 
-    Self {
-      kind,
-      msg: error.to_string(),
-    }
+    Self::new(kind, error.to_string())
   }
 }
 
@@ -221,10 +273,7 @@ impl From<url::ParseError> for OpError {
 
 impl From<&url::ParseError> for OpError {
   fn from(error: &url::ParseError) -> Self {
-    Self {
-      kind: ErrorKind::URIError,
-      msg: error.to_string(),
-    }
+    Self::new(ErrorKind::URIError, error.to_string())
   }
 }
 impl From<reqwest::Error> for OpError {
@@ -252,14 +301,8 @@ impl From<&reqwest::Error> for OpError {
             .downcast_ref::<serde_json::error::Error>()
             .map(|e| e.into())
         })
-        .unwrap_or_else(|| Self {
-          kind: ErrorKind::Http,
-          msg: error.to_string(),
-        }),
-      None => Self {
-        kind: ErrorKind::Http,
-        msg: error.to_string(),
-      },
+        .unwrap_or_else(|| Self::new(ErrorKind::Http, error.to_string())),
+      None => Self::new(ErrorKind::Http, error.to_string()),
     }
   }
 }
@@ -282,10 +325,7 @@ impl From<&ReadlineError> for OpError {
       _ => unimplemented!(),
     };
 
-    Self {
-      kind,
-      msg: error.to_string(),
-    }
+    Self::new(kind, error.to_string())
   }
 }
 
@@ -305,10 +345,7 @@ impl From<&serde_json::error::Error> for OpError {
       Category::Eof => ErrorKind::UnexpectedEof,
     };
 
-    Self {
-      kind,
-      msg: error.to_string(),
-    }
+    Self::new(kind, error.to_string())
   }
 }
 
@@ -328,10 +365,7 @@ impl From<nix::Error> for OpError {
       nix::Error::UnsupportedOperation => unreachable!(),
     };
 
-    Self {
-      kind,
-      msg: error.to_string(),
-    }
+    Self::new(kind, error.to_string())
   }
 }
 
@@ -352,10 +386,7 @@ impl From<&dlopen::Error> for OpError {
       NullSymbol => ErrorKind::Other,
     };
 
-    Self {
-      kind,
-      msg: error.to_string(),
-    }
+    Self::new(kind, error.to_string())
   }
 }
 
@@ -376,10 +407,7 @@ impl From<&notify::Error> for OpError {
       InvalidConfig(_) => ErrorKind::InvalidData,
     };
 
-    Self {
-      kind,
-      msg: error.to_string(),
-    }
+    Self::new(kind, error.to_string())
   }
 }
 
@@ -391,10 +419,7 @@ impl From<SwcDiagnosticBuffer> for OpError {
 
 impl From<&SwcDiagnosticBuffer> for OpError {
   fn from(error: &SwcDiagnosticBuffer) -> Self {
-    Self {
-      kind: ErrorKind::Other,
-      msg: error.diagnostics.join(", "),
-    }
+    Self::new(ErrorKind::Other, error.diagnostics.join(", "))
   }
 }
 
@@ -412,9 +437,9 @@ impl From<ErrBox> for OpError {
 
     None
       .or_else(|| {
-        error
-          .downcast_ref::<OpError>()
-          .map(|e| OpError::new(e.kind, e.msg.to_string()))
+        error.downcast_ref::<OpError>().map(|e| {
+          OpError::new(error_str_to_kind(&e.kind_str), e.msg.to_string())
+        })
       })
       .or_else(|| error.downcast_ref::<reqwest::Error>().map(|e| e.into()))
       .or_else(|| error.downcast_ref::<ImportMapError>().map(|e| e.into()))
@@ -467,21 +492,21 @@ mod tests {
   #[test]
   fn test_simple_error() {
     let err = OpError::not_found("foo".to_string());
-    assert_eq!(err.kind, ErrorKind::NotFound);
+    assert_eq!(err.kind_str, "NotFound");
     assert_eq!(err.to_string(), "foo");
   }
 
   #[test]
   fn test_io_error() {
     let err = OpError::from(io_error());
-    assert_eq!(err.kind, ErrorKind::NotFound);
+    assert_eq!(err.kind_str, "NotFound");
     assert_eq!(err.to_string(), "entity not found");
   }
 
   #[test]
   fn test_url_error() {
     let err = OpError::from(url_error());
-    assert_eq!(err.kind, ErrorKind::URIError);
+    assert_eq!(err.kind_str, "URIError");
     assert_eq!(err.to_string(), "empty host");
   }
 
@@ -490,21 +515,21 @@ mod tests {
   #[test]
   fn test_import_map_error() {
     let err = OpError::from(import_map_error());
-    assert_eq!(err.kind, ErrorKind::Other);
+    assert_eq!(err.kind_str, "Other");
     assert_eq!(err.to_string(), "an import map error");
   }
 
   #[test]
   fn test_bad_resource() {
     let err = OpError::bad_resource("Resource has been closed".to_string());
-    assert_eq!(err.kind, ErrorKind::BadResource);
+    assert_eq!(err.kind_str, "BadResource");
     assert_eq!(err.to_string(), "Resource has been closed");
   }
 
   #[test]
   fn test_bad_resource_id() {
     let err = OpError::bad_resource_id();
-    assert_eq!(err.kind, ErrorKind::BadResource);
+    assert_eq!(err.kind_str, "BadResource");
     assert_eq!(err.to_string(), "Bad resource ID");
   }
 
@@ -513,7 +538,7 @@ mod tests {
     let err = OpError::permission_denied(
       "run again with the --allow-net flag".to_string(),
     );
-    assert_eq!(err.kind, ErrorKind::PermissionDenied);
+    assert_eq!(err.kind_str, "PermissionDenied");
     assert_eq!(err.to_string(), "run again with the --allow-net flag");
   }
 }
