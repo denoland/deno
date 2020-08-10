@@ -328,14 +328,10 @@ delete Object.prototype.__proto__;
       ppid: util.readOnly(ppid),
       noColor: util.readOnly(noColor),
       args: util.readOnly(Object.freeze(args)),
+      mainModule: util.getterOnly(opMainModule),
     });
 
     if (unstableFlag) {
-      Object.defineProperty(
-        finalDenoNs,
-        "mainModule",
-        util.getterOnly(opMainModule),
-      );
       Object.assign(finalDenoNs, denoNsUnstable);
     }
 

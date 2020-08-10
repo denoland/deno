@@ -11,6 +11,7 @@ pub enum DocNodeKind {
   Interface,
   TypeAlias,
   Namespace,
+  Import,
 }
 
 #[derive(Debug, Serialize, Clone, PartialEq)]
@@ -69,6 +70,13 @@ pub struct ModuleDoc {
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
+pub struct ImportDef {
+  pub src: String,
+  pub imported: Option<String>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct DocNode {
   pub kind: DocNodeKind,
   pub name: String,
@@ -95,4 +103,7 @@ pub struct DocNode {
 
   #[serde(skip_serializing_if = "Option::is_none")]
   pub interface_def: Option<super::interface::InterfaceDef>,
+
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub import_def: Option<ImportDef>,
 }
