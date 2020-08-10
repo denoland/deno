@@ -373,7 +373,7 @@
     }
     if (usedNonBase || restUrl.startsWith("?")) {
       [parts.query, restUrl] = takePattern(restUrl, /^(\?[^#]*)/);
-      parts.query = encodeQuery(parts.query);
+      parts.query = encodeSearch(parts.query);
       usedNonBase = true;
     } else {
       parts.query = baseParts.query;
@@ -877,13 +877,6 @@
     return [...s].map((c) => (charInFragmentSet(c) ? encodeChar(c) : c)).join(
       "",
     );
-  }
-
-  // special case for +
-  function encodeQuery(s) {
-    const encodeSpace = (c) =>
-      (c === "\u0020") ? "+" : (charInSearchSet(c) ? encodeChar(c) : c);
-    return [...s].map(encodeSpace).join("");
   }
 
   window.__bootstrap.url = {
