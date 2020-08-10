@@ -31,6 +31,7 @@ pub fn get_doc_node_for_export_decl(
         type_alias_def: None,
         namespace_def: None,
         interface_def: None,
+        import_def: None,
       }
     }
     Decl::Fn(fn_decl) => {
@@ -48,6 +49,7 @@ pub fn get_doc_node_for_export_decl(
         type_alias_def: None,
         namespace_def: None,
         interface_def: None,
+        import_def: None,
       }
     }
     Decl::Var(var_decl) => {
@@ -64,6 +66,7 @@ pub fn get_doc_node_for_export_decl(
         type_alias_def: None,
         namespace_def: None,
         interface_def: None,
+        import_def: None,
       }
     }
     Decl::TsInterface(ts_interface_decl) => {
@@ -84,6 +87,7 @@ pub fn get_doc_node_for_export_decl(
         enum_def: None,
         type_alias_def: None,
         namespace_def: None,
+        import_def: None,
       }
     }
     Decl::TsTypeAlias(ts_type_alias) => {
@@ -104,6 +108,7 @@ pub fn get_doc_node_for_export_decl(
         class_def: None,
         enum_def: None,
         namespace_def: None,
+        import_def: None,
       }
     }
     Decl::TsEnum(ts_enum) => {
@@ -121,6 +126,7 @@ pub fn get_doc_node_for_export_decl(
         function_def: None,
         class_def: None,
         namespace_def: None,
+        import_def: None,
       }
     }
     Decl::TsModule(ts_module) => {
@@ -138,6 +144,7 @@ pub fn get_doc_node_for_export_decl(
         variable_def: None,
         function_def: None,
         class_def: None,
+        import_def: None,
       }
     }
   }
