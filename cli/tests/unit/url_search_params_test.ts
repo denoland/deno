@@ -275,3 +275,8 @@ unitTest(function urlSearchParamsOverridingEntriesNotChangeForEach(): void {
   params.forEach(() => void ++loopCount);
   assertEquals(loopCount, 1);
 });
+
+unitTest(function urlSearchParamsSpaceTranslateToPlusSign(): void {
+  const params = new URLSearchParams({a: 'hello world'});
+  assertEquals(params.toString(), "a=hello+world");
+})
