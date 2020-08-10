@@ -188,7 +188,7 @@ export function assertEquals(
     message = `\n${red(CAN_NOT_DISPLAY)} + \n\n`;
   }
   if (msg) {
-    message = msg;
+    message = `${msg} - ${message}`;
   }
   throw new AssertionError(message);
 }
