@@ -1925,7 +1925,7 @@ itest!(import_meta {
 });
 
 itest!(main_module {
-  args: "run --quiet --unstable --allow-read --reload main_module.ts",
+  args: "run --quiet --allow-read --reload main_module.ts",
   output: "main_module.ts.out",
 });
 
