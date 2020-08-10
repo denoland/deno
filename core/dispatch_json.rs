@@ -14,8 +14,8 @@ use std::pin::Pin;
 
 #[derive(Serialize)]
 pub struct JsonError {
-  message: String,
-  kind: String,
+  pub message: String,
+  pub kind: String,
 }
 
 impl From<serde_json::error::Error> for JsonError {

@@ -17,6 +17,7 @@
 use crate::import_map::ImportMapError;
 use crate::swc_util::SwcDiagnosticBuffer;
 use deno_core::ErrBox;
+use deno_core::dispatch_json::JsonError;
 use deno_core::ModuleResolutionError;
 use rustyline::error::ReadlineError;
 use std::env::VarError;
@@ -183,6 +184,15 @@ impl Error for OpError {}
 impl fmt::Display for OpError {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     f.pad(self.msg.as_str())
+  }
+}
+
+impl From<OpError> for JsonError {
+  fn from(error: OpError) -> Self {
+    JsonError {
+      kind: error.kind_str,
+      message: error.msg,
+    }
   }
 }
 
