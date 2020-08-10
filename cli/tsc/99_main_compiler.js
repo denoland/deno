@@ -776,6 +776,7 @@ delete Object.prototype.__proto__;
   // as these are internal APIs of TypeScript which maintain valid libs
   ts.libs.push("deno.ns", "deno.window", "deno.worker", "deno.shared_globals");
   ts.libMap.set("deno.ns", "lib.deno.ns.d.ts");
+  ts.libMap.set("deno.web", "lib.deno.web.d.ts");
   ts.libMap.set("deno.window", "lib.deno.window.d.ts");
   ts.libMap.set("deno.worker", "lib.deno.worker.d.ts");
   ts.libMap.set("deno.shared_globals", "lib.deno.shared_globals.d.ts");
@@ -785,6 +786,10 @@ delete Object.prototype.__proto__;
   // are available in the future when needed.
   SNAPSHOT_HOST.getSourceFile(
     `${ASSETS}/lib.deno.ns.d.ts`,
+    ts.ScriptTarget.ESNext,
+  );
+  SNAPSHOT_HOST.getSourceFile(
+    `${ASSETS}/lib.deno.web.d.ts`,
     ts.ScriptTarget.ESNext,
   );
   SNAPSHOT_HOST.getSourceFile(
