@@ -134,9 +134,12 @@ import { bar } from "./nested_reexport.ts";
  * JSDoc for const
  */
 export const foo = "foo";
+
+export const fizz = "fizz";
 "#;
   let test_source_code = r#"
 export { default, foo as fooConst } from "./reexport.ts";
+import { fizz as buzz } from "./reexport.ts";
 
 /** JSDoc for function */
 export function fooFn(a: number) {
@@ -158,7 +161,7 @@ export function fooFn(a: number) {
     .parse_with_reexports("file:///test.ts")
     .await
     .unwrap();
-  assert_eq!(entries.len(), 2);
+  assert_eq!(entries.len(), 3);
 
   let expected_json = json!([
     {
@@ -180,7 +183,7 @@ export function fooFn(a: number) {
       "name": "fooFn",
       "location": {
         "filename": "file:///test.ts",
-        "line": 5,
+        "line": 6,
         "col": 0
       },
       "jsDoc": "JSDoc for function",
@@ -201,6 +204,20 @@ export function fooFn(a: number) {
         "returnType": null,
         "isAsync": false,
         "isGenerator": false
+      },
+    },
+    {
+      "kind": "import",
+      "name": "buzz",
+      "location": {
+        "filename": "file:///test.ts",
+        "line": 3,
+        "col": 0
+      },
+      "jsDoc": null,
+      "importDef": {
+        "src": "file:///reexport.ts",
+        "imported": "fizz",
       }
     }
   ]);

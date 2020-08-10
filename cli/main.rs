@@ -532,7 +532,7 @@ async fn doc_command(
       .await
   };
 
-  let doc_nodes = match parse_result {
+  let mut doc_nodes = match parse_result {
     Ok(nodes) => nodes,
     Err(e) => {
       eprintln!("{}", e);
@@ -543,6 +543,7 @@ async fn doc_command(
   if json {
     write_json_to_stdout(&doc_nodes)
   } else {
+    doc_nodes.retain(|doc_node| doc_node.kind != doc::DocNodeKind::Import);
     let details = if let Some(filter) = maybe_filter {
       let nodes =
         doc::find_nodes_by_name_recursively(doc_nodes, filter.clone());
