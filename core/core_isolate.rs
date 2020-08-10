@@ -85,11 +85,13 @@ impl StartupData<'_> {
 
 type JSErrorCreateFn = dyn Fn(JSError) -> ErrBox;
 
+type PinnedRefCell = Pin<Box<RefCell<dyn Any>>>;
+
 /// Objects that need to live as long as the isolate
 #[derive(Default)]
 struct IsolateAllocations {
   near_heap_limit_callback_data:
-    Option<(Pin<Box<RefCell<dyn Any>>>, v8::NearHeapLimitCallback)>,
+    Option<(PinnedRefCell, v8::NearHeapLimitCallback)>,
 }
 
 /// A single execution context of JavaScript. Corresponds roughly to the "Web
