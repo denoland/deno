@@ -401,7 +401,7 @@ mod tests {
 
   #[tokio::test]
   async fn execute_006_url_imports() {
-    let http_server_guard = test_util::http_server();
+    let _http_server_guard = test_util::http_server();
     let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
       .parent()
       .unwrap()
@@ -441,7 +441,6 @@ mod tests {
     assert_eq!(state.metrics.resolve_count, 3);
     // Check that we've only invoked the compiler once.
     assert_eq!(state.global_state.compiler_starts.load(Ordering::SeqCst), 1);
-    drop(http_server_guard);
   }
 
   fn create_test_worker() -> MainWorker {
