@@ -593,7 +593,7 @@ pub fn run_and_collect_output(
   if let Some(envs) = envs {
     deno_process_builder.envs(envs);
   }
-  let http_guard = if need_http_server {
+  let _http_guard = if need_http_server {
     Some(http_server())
   } else {
     None
@@ -612,7 +612,6 @@ pub fn run_and_collect_output(
     stderr,
     status,
   } = deno.wait_with_output().expect("failed to wait on child");
-  drop(http_guard);
   let stdout = String::from_utf8(stdout).unwrap();
   let stderr = String::from_utf8(stderr).unwrap();
   if expect_success != status.success() {
@@ -705,7 +704,7 @@ impl CheckOutputIntegrationTest {
     println!("root path {}", root.display());
     println!("deno_exe path {}", deno_exe.display());
 
-    let http_server_guard = if self.http_server {
+    let _http_server_guard = if self.http_server {
       Some(http_server())
     } else {
       None
@@ -741,8 +740,6 @@ impl CheckOutputIntegrationTest {
 
     let status = process.wait().expect("failed to finish process");
     let exit_code = status.code().unwrap();
-
-    drop(http_server_guard);
 
     actual = strip_ansi_codes(&actual).to_string();
 
