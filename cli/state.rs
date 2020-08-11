@@ -78,6 +78,92 @@ impl State {
     self.core_op(json_op(self.stateful_op(dispatcher)))
   }
 
+  pub fn stateful_json_op_sync<D>(&self, dispatcher: D) -> impl OpDispatcher
+  where
+    D: Fn(
+      &mut deno_core::CoreIsolateState,
+      &State,
+      Value,
+      &mut [ZeroCopyBuf],
+    ) -> Result<Value, OpError>,
+  {
+    let state = self.clone();
+
+    use deno_core::CoreIsolateState;
+
+    move |isolate_state: &mut CoreIsolateState, zero_copy: &mut [ZeroCopyBuf]| {
+      assert!(!zero_copy.is_empty(), "Expected JSON string at position 0");  
+      let result = serde_json::from_slice(&zero_copy[0])
+        .map_err(OpError::from)
+        .and_then(|args| {
+          dispatcher(isolate_state, &state, args, &mut zero_copy[1..])
+        });
+  
+      use crate::ops::serialize_result;
+
+      // Convert to Op
+      match result {
+        Ok(sync_value) => {
+          Op::Sync(serialize_result(None, Ok(sync_value)))
+        },
+        Err(sync_err) => {
+          let buf = serialize_result(None, Err(sync_err));
+          Op::Sync(buf)
+        }
+      }
+    }
+  }
+
+  pub fn stateful_json_op_async<D>(&self, dispatcher: D) -> impl OpDispatcher 
+  where
+    D: Fn(
+      &mut deno_core::CoreIsolateState,
+      &State,
+      Value,
+      &mut [ZeroCopyBuf],
+    ) -> Pin<Box<dyn Future<Output = Result<Value, OpError>>>>,
+  {
+    let state = self.clone();
+
+    use deno_core::CoreIsolateState;
+    use crate::ops::AsyncArgs;
+
+    move |isolate_state: &mut CoreIsolateState, zero_copy: &mut [ZeroCopyBuf]| {
+      assert!(!zero_copy.is_empty(), "Expected JSON string at position 0");  
+      let async_args: AsyncArgs = match serde_json::from_slice(&zero_copy[0]) {
+        Ok(args) => args,
+        Err(e) => {
+          let buf = serialize_result(None, Err(OpError::from(e)));
+          return Op::Sync(buf);
+        }
+      };
+      let promise_id = async_args.promise_id;
+
+      let result = serde_json::from_slice(&zero_copy[0])
+        .map_err(OpError::from)
+        .and_then(|args| {
+          Ok(dispatcher(isolate_state, &state, args, &mut zero_copy[1..]))
+        });
+  
+      use crate::ops::serialize_result;
+
+      // Convert to Op
+      match result {
+        Ok(fut) => {
+          assert!(promise_id.is_some());
+          let fut2 = fut.then(move |result| {
+            futures::future::ready(serialize_result(promise_id, result))
+          });
+          Op::Async(fut2.boxed_local())
+        },
+        Err(sync_err) => {
+          let buf = serialize_result(None, Err(sync_err));
+          Op::Sync(buf)
+        }
+      }
+    }
+  }
+
   pub fn stateful_json_core_op<D>(&self, dispatcher: D) -> impl OpDispatcher
   where
     D: Fn(&State, Value, &mut [ZeroCopyBuf]) -> Result<CoreJsonOp, JsonError>,
