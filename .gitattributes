@@ -6,7 +6,6 @@
 
 # Tell git which symlinks point to files, and which ones point to directories.
 # This is relevant for Windows only, and requires git >= 2.19.2 to work.
-/core/libdeno/* symlink=dir
 /cli/tests/symlink_to_subdir symlink=dir
 
 # Tell github these are vendored files.
