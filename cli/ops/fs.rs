@@ -20,11 +20,8 @@ use std::time::UNIX_EPOCH;
 use rand::{thread_rng, Rng};
 
 pub fn init(i: &mut CoreIsolate, s: &State) {
-  i.register_op("op_open", s.stateful_json_op2(op_open));
-
-  i.register_op("op_open_sync", s.stateful_json_op_sync(op_open_sync));
-  i.register_op("op_open_async", s.stateful_json_op_async(op_open_async));
-
+  i.register_op("op_open_sync", s.json_op_sync(op_open_sync));
+  i.register_op("op_open_async", s.json_op_async(op_open_async));
   i.register_op("op_seek", s.stateful_json_op2(op_seek));
   i.register_op("op_fdatasync", s.stateful_json_op2(op_fdatasync));
   i.register_op("op_fsync", s.stateful_json_op2(op_fsync));
@@ -58,7 +55,6 @@ fn into_string(s: std::ffi::OsString) -> Result<String, OpError> {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct OpenArgs {
-  promise_id: Option<u64>,
   path: String,
   options: OpenOptions,
   mode: Option<u32>,
@@ -76,81 +72,10 @@ struct OpenOptions {
   create_new: bool,
 }
 
-fn op_open(
-  isolate_state: &mut CoreIsolateState,
+fn open_helper(
   state: &State,
   args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
-  let args: OpenArgs = serde_json::from_value(args)?;
-  let path = Path::new(&args.path).to_path_buf();
-  let resource_table = isolate_state.resource_table.clone();
-
-  let mut open_options = std::fs::OpenOptions::new();
-
-  if let Some(mode) = args.mode {
-    // mode only used if creating the file on Unix
-    // if not specified, defaults to 0o666
-    #[cfg(unix)]
-    {
-      use std::os::unix::fs::OpenOptionsExt;
-      open_options.mode(mode & 0o777);
-    }
-    #[cfg(not(unix))]
-    let _ = mode; // avoid unused warning
-  }
-
-  let options = args.options;
-  if options.read {
-    state.check_read(&path)?;
-  }
-
-  if options.write || options.append {
-    state.check_write(&path)?;
-  }
-
-  open_options
-    .read(options.read)
-    .create(options.create)
-    .write(options.write)
-    .truncate(options.truncate)
-    .append(options.append)
-    .create_new(options.create_new);
-
-  let is_sync = args.promise_id.is_none();
-
-  if is_sync {
-    let std_file = open_options.open(path)?;
-    let tokio_file = tokio::fs::File::from_std(std_file);
-    let mut resource_table = resource_table.borrow_mut();
-    let rid = resource_table.add(
-      "fsFile",
-      Box::new(StreamResourceHolder::new(StreamResource::FsFile(Some((
-        tokio_file,
-        FileMetadata::default(),
-      ))))),
-    );
-    Ok(JsonOp::Sync(json!(rid)))
-  } else {
-    let fut = async move {
-      let tokio_file = tokio::fs::OpenOptions::from(open_options)
-        .open(path)
-        .await?;
-      let mut resource_table = resource_table.borrow_mut();
-      let rid = resource_table.add(
-        "fsFile",
-        Box::new(StreamResourceHolder::new(StreamResource::FsFile(Some((
-          tokio_file,
-          FileMetadata::default(),
-        ))))),
-      );
-      Ok(json!(rid))
-    };
-    Ok(JsonOp::Async(fut.boxed_local()))
-  }
-}
-
-fn open_helper(state: &State, args: Value) -> Result<(PathBuf, std::fs::OpenOptions), OpError> {
+) -> Result<(PathBuf, std::fs::OpenOptions), OpError> {
   let args: OpenArgs = serde_json::from_value(args)?;
   let path = Path::new(&args.path).to_path_buf();
 
@@ -209,34 +134,29 @@ fn op_open_sync(
   Ok(json!(rid))
 }
 
-use std::pin::Pin;
-use futures::Future;
+// use futures::Future;
+// use std::pin::Pin;
 
-fn op_open_async(
-  isolate_state: &mut CoreIsolateState,
-  state: &State,
+async fn op_open_async(
+  resource_table: std::rc::Rc<std::cell::RefCell<deno_core::ResourceTable>>,
+  state: State,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Pin<Box<dyn Future<Output = Result<Value, OpError>>>> {
-  let resource_table = isolate_state.resource_table.clone();
-  let state = state.clone();
-  async move {
-    let (path, open_options) = open_helper(&state, args)?;
-    let tokio_file = tokio::fs::OpenOptions::from(open_options)
-      .open(path)
-      .await?;
-    let mut resource_table = resource_table.borrow_mut();
-    let rid = resource_table.add(
-      "fsFile",
-      Box::new(StreamResourceHolder::new(StreamResource::FsFile(Some((
-        tokio_file,
-        FileMetadata::default(),
-      ))))),
-    );
-    Ok(json!(rid))
-  }.boxed_local()
+) -> Result<Value, OpError> {
+  let (path, open_options) = open_helper(&state, args)?;
+  let tokio_file = tokio::fs::OpenOptions::from(open_options)
+    .open(path)
+    .await?;
+  let mut resource_table = resource_table.borrow_mut();
+  let rid = resource_table.add(
+    "fsFile",
+    Box::new(StreamResourceHolder::new(StreamResource::FsFile(Some((
+      tokio_file,
+      FileMetadata::default(),
+    ))))),
+  );
+  Ok(json!(rid))
 }
-
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]

@@ -24,7 +24,7 @@
 
   function opOpenSync(path, options) {
     const mode = options?.mode;
-    return sendSync("op_open", { path: pathFromURL(path), options, mode });
+    return sendSync("op_open_sync", { path: pathFromURL(path), options, mode });
   }
 
   function opOpen(
@@ -32,7 +32,7 @@
     options,
   ) {
     const mode = options?.mode;
-    return sendAsync("op_open", { path: pathFromURL(path), options, mode });
+    return sendAsync("op_open_async", { path: pathFromURL(path), options, mode });
   }
 
   function openSync(
