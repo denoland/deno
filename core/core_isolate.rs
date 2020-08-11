@@ -1318,8 +1318,13 @@ pub mod tests {
     let mut isolate =
       CoreIsolate::with_heap_limits(StartupData::None, heap_limits);
     let cb_handle = isolate.thread_safe_handle();
+
+    let callback_invoke_count = Rc::new(AtomicUsize::default());
+    let inner_invoke_count = Rc::clone(&callback_invoke_count);
+
     isolate.add_near_heap_limit_callback(
       move |current_limit, _initial_limit| {
+        inner_invoke_count.fetch_add(1, Ordering::SeqCst);
         cb_handle.terminate_execution();
         current_limit * 2
       },
@@ -1334,5 +1339,6 @@ pub mod tests {
       "Uncaught Error: execution terminated",
       err.downcast::<JSError>().unwrap().message
     );
+    assert!(callback_invoke_count.load(Ordering::SeqCst) > 0)
   }
 }
