@@ -348,7 +348,7 @@ function main(): void {
   OPTIONS:
     -h, --help          Prints help information
     -p, --port <PORT>   Set port
-    --cors              Enable CORS via the "Access-Control-Allow-Origin" header;
+    --cors              Enable CORS via the "Access-Control-Allow-Origin" header
     --host     <HOST>   Hostname (default is 0.0.0.0)
     -c, --cert <FILE>   TLS certificate file (enables TLS)
     -k, --key  <FILE>   TLS key file (enables TLS)
