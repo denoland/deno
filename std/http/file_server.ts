@@ -330,7 +330,7 @@ function main(): void {
 
   if (tlsOpts.keyFile || tlsOpts.certFile) {
     if (tlsOpts.keyFile === "" || tlsOpts.certFile === "") {
-      console.log("--host, --key and --cert are required for TLS");
+      console.log("--key and --cert are required for TLS");
       serverArgs.h = true;
     }
   }

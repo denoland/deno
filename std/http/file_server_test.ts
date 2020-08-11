@@ -282,7 +282,7 @@ Deno.test("partial TLS arguments fail", async function (): Promise<void> {
     const r = new TextProtoReader(new BufReader(fileServer.stdout));
     const s = await r.readLine();
     assert(
-      s !== null && s.includes("--host, --key and --cert are required for TLS"),
+      s !== null && s.includes("--key and --cert are required for TLS"),
     );
   } finally {
     await killFileServer();
