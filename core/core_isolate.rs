@@ -450,14 +450,14 @@ impl CoreIsolate {
   }
 
   pub fn remove_near_heap_limit_callback(&mut self, heap_limit: usize) {
-    if let Some((_, cb)) = self.allocations.near_heap_limit_callback_data {
+    if let Some((_, cb)) = self.allocations.near_heap_limit_callback_data.take()
+    {
       self
         .v8_isolate
         .as_mut()
         .unwrap()
         .remove_near_heap_limit_callback(cb, heap_limit);
     }
-    self.allocations.near_heap_limit_callback_data = None;
   }
 }
 
@@ -1338,5 +1338,16 @@ pub mod tests {
       err.downcast::<JSError>().unwrap().message
     );
     assert!(callback_invoke_count.load(Ordering::SeqCst) > 0)
+  }
+
+  #[test]
+  fn test_heap_limit_cb_remove() {
+    let mut isolate = CoreIsolate::new(StartupData::None, false);
+
+    isolate.add_near_heap_limit_callback(|current_limit, _initial_limit| {
+      current_limit * 2
+    });
+    isolate.remove_near_heap_limit_callback(20 * 1024);
+    assert!(isolate.allocations.near_heap_limit_callback_data.is_none());
   }
 }
