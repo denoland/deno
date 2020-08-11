@@ -551,9 +551,9 @@ async fn doc_command(
         eprintln!("Node {} was not found!", filter);
         std::process::exit(1);
       }
-      format!("{}", doc::DocPrinter::new(&nodes, true, private))
+      format!("{}", doc::DocPrinter::new(&nodes, private))
     } else {
-      format!("{}", doc::DocPrinter::new(&doc_nodes, false, private))
+      format!("{}", doc::DocPrinter::new(&doc_nodes, private))
     };
 
     write_to_stdout_ignore_sigpipe(details.as_bytes()).map_err(ErrBox::from)

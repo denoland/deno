@@ -20,32 +20,19 @@ use std::fmt::{Display, Formatter, Result as FmtResult};
 
 pub struct DocPrinter<'a> {
   doc_nodes: &'a [doc::DocNode],
-  details: bool,
   private: bool,
 }
 
 impl<'a> DocPrinter<'a> {
-  pub fn new(
-    doc_nodes: &[doc::DocNode],
-    details: bool,
-    private: bool,
-  ) -> DocPrinter {
-    DocPrinter {
-      doc_nodes,
-      details,
-      private,
-    }
+  pub fn new(doc_nodes: &[doc::DocNode], private: bool) -> DocPrinter {
+    DocPrinter { doc_nodes, private }
   }
 
   pub fn format(&self, w: &mut Formatter<'_>) -> FmtResult {
-    if self.details {
-      self.format_details(w, self.doc_nodes, 0)
-    } else {
-      self.format_summary(w, self.doc_nodes, 0)
-    }
+    self.format_(w, self.doc_nodes, 0)
   }
 
-  fn format_summary(
+  fn format_(
     &self,
     w: &mut Formatter<'_>,
     doc_nodes: &[doc::DocNode],
@@ -61,36 +48,7 @@ impl<'a> DocPrinter<'a> {
       }
     });
 
-    for node in sorted {
-      self.format_signature(w, &node, indent)?;
-
-      if let Some(js_doc) = &node.js_doc {
-        self.format_jsdoc(w, js_doc, indent + 1, self.details)?;
-      }
-
-      writeln!(w)?;
-
-      if DocNodeKind::Namespace == node.kind {
-        self.format_summary(
-          w,
-          &node.namespace_def.as_ref().unwrap().elements,
-          indent + 1,
-        )?;
-
-        writeln!(w)?;
-      };
-    }
-
-    Ok(())
-  }
-
-  fn format_details(
-    &self,
-    w: &mut Formatter<'_>,
-    doc_nodes: &[doc::DocNode],
-    indent: i64,
-  ) -> FmtResult {
-    for node in doc_nodes {
+    for node in &sorted {
       write!(
         w,
         "{}",
@@ -104,15 +62,15 @@ impl<'a> DocPrinter<'a> {
 
       let js_doc = &node.js_doc;
       if let Some(js_doc) = js_doc {
-        self.format_jsdoc(w, js_doc, indent + 1, self.details)?;
+        self.format_jsdoc(w, js_doc, indent + 1)?;
       }
       writeln!(w)?;
 
       match node.kind {
-        DocNodeKind::Class => self.format_class_details(w, node)?,
-        DocNodeKind::Enum => self.format_enum_details(w, node)?,
-        DocNodeKind::Interface => self.format_interface_details(w, node)?,
-        DocNodeKind::Namespace => self.format_namespace_details(w, node)?,
+        DocNodeKind::Class => self.format_class(w, node)?,
+        DocNodeKind::Enum => self.format_enum(w, node)?,
+        DocNodeKind::Interface => self.format_interface(w, node)?,
+        DocNodeKind::Namespace => self.format_namespace(w, node)?,
         _ => {}
       }
     }
@@ -163,22 +121,15 @@ impl<'a> DocPrinter<'a> {
     w: &mut Formatter<'_>,
     jsdoc: &str,
     indent: i64,
-    details: bool,
   ) -> FmtResult {
     for line in jsdoc.lines() {
-      // Only show the first paragraph when summarising
-      // This should use the @summary JSDoc tag instead
-      if !details && line.is_empty() {
-        break;
-      }
-
       writeln!(w, "{}{}", Indent(indent), colors::gray(&line))?;
     }
 
     Ok(())
   }
 
-  fn format_class_details(
+  fn format_class(
     &self,
     w: &mut Formatter<'_>,
     node: &doc::DocNode,
@@ -187,7 +138,7 @@ impl<'a> DocPrinter<'a> {
     for node in &class_def.constructors {
       writeln!(w, "{}{}", Indent(1), node,)?;
       if let Some(js_doc) = &node.js_doc {
-        self.format_jsdoc(w, &js_doc, 2, self.details)?;
+        self.format_jsdoc(w, &js_doc, 2)?;
       }
     }
     for node in class_def.properties.iter().filter(|node| {
@@ -199,7 +150,7 @@ impl<'a> DocPrinter<'a> {
     }) {
       writeln!(w, "{}{}", Indent(1), node,)?;
       if let Some(js_doc) = &node.js_doc {
-        self.format_jsdoc(w, &js_doc, 2, self.details)?;
+        self.format_jsdoc(w, &js_doc, 2)?;
       }
     }
     for index_sign_def in &class_def.index_signatures {
@@ -214,13 +165,13 @@ impl<'a> DocPrinter<'a> {
     }) {
       writeln!(w, "{}{}", Indent(1), node,)?;
       if let Some(js_doc) = &node.js_doc {
-        self.format_jsdoc(w, js_doc, 2, self.details)?;
+        self.format_jsdoc(w, js_doc, 2)?;
       }
     }
     writeln!(w)
   }
 
-  fn format_enum_details(
+  fn format_enum(
     &self,
     w: &mut Formatter<'_>,
     node: &doc::DocNode,
@@ -232,7 +183,7 @@ impl<'a> DocPrinter<'a> {
     writeln!(w)
   }
 
-  fn format_interface_details(
+  fn format_interface(
     &self,
     w: &mut Formatter<'_>,
     node: &doc::DocNode,
@@ -242,13 +193,13 @@ impl<'a> DocPrinter<'a> {
     for property_def in &interface_def.properties {
       writeln!(w, "{}{}", Indent(1), property_def)?;
       if let Some(js_doc) = &property_def.js_doc {
-        self.format_jsdoc(w, js_doc, 2, self.details)?;
+        self.format_jsdoc(w, js_doc, 2)?;
       }
     }
     for method_def in &interface_def.methods {
       writeln!(w, "{}{}", Indent(1), method_def)?;
       if let Some(js_doc) = &method_def.js_doc {
-        self.format_jsdoc(w, js_doc, 2, self.details)?;
+        self.format_jsdoc(w, js_doc, 2)?;
       }
     }
     for index_sign_def in &interface_def.index_signatures {
@@ -257,7 +208,7 @@ impl<'a> DocPrinter<'a> {
     writeln!(w)
   }
 
-  fn format_namespace_details(
+  fn format_namespace(
     &self,
     w: &mut Formatter<'_>,
     node: &doc::DocNode,
@@ -266,7 +217,7 @@ impl<'a> DocPrinter<'a> {
     for node in elements {
       self.format_signature(w, &node, 1)?;
       if let Some(js_doc) = &node.js_doc {
-        self.format_jsdoc(w, js_doc, 2, false)?;
+        self.format_jsdoc(w, js_doc, 2)?;
       }
     }
     writeln!(w)

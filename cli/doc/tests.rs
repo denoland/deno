@@ -44,26 +44,17 @@ impl DocFileLoader for TestLoader {
 
 macro_rules! doc_test {
   ( $name:ident, $source:expr; $block:block ) => {
-    doc_test!($name, $source, false, false; $block);
-  };
-
-  ( $name:ident, $source:expr, details; $block:block ) => {
-    doc_test!($name, $source, true, false; $block);
+    doc_test!($name, $source, false; $block);
   };
 
   ( $name:ident, $source:expr, private; $block:block ) => {
-    doc_test!($name, $source, false, true; $block);
+    doc_test!($name, $source, true; $block);
   };
 
-  ( $name:ident, $source:expr, details, private; $block:block ) => {
-    doc_test!($name, $source, true, true; $block);
-  };
-
-  ( $name:ident, $source:expr, $details:expr, $private:expr; $block:block ) => {
+  ( $name:ident, $source:expr, $private:expr; $block:block ) => {
     #[tokio::test]
     async fn $name() {
       let source_code = $source;
-      let details = $details;
       let private = $private;
 
       let loader =
@@ -73,7 +64,7 @@ macro_rules! doc_test {
         .await
         .unwrap();
 
-      let doc = DocPrinter::new(&entries, details, private).to_string();
+      let doc = DocPrinter::new(&entries, private).to_string();
       #[allow(unused_variables)]
       let doc = colors::strip_ansi_codes(&doc);
 
@@ -85,27 +76,17 @@ macro_rules! doc_test {
 macro_rules! contains_test {
   ( $name:ident, $source:expr;
     $( $contains:expr ),* $( ; $( $notcontains:expr ),* )? ) => {
-    contains_test!($name, $source, false, false; $($contains),* $(;$($notcontains),*)?);
-  };
-
-  ( $name:ident, $source:expr, details;
-    $( $contains:expr ),* $( ; $( $notcontains:expr ),* )? ) => {
-    contains_test!($name, $source, true, false; $($contains),* $(;$($notcontains),*)?);
+    contains_test!($name, $source, false; $($contains),* $(;$($notcontains),*)?);
   };
 
   ( $name:ident, $source:expr, private;
     $( $contains:expr ),* $( ; $( $notcontains:expr ),* )? ) => {
-    contains_test!($name, $source, false, true; $($contains),* $(;$($notcontains),*)?);
+    contains_test!($name, $source, true; $($contains),* $(;$($notcontains),*)?);
   };
 
-  ( $name:ident, $source:expr, details, private;
+  ( $name:ident, $source:expr, $private:expr;
     $( $contains:expr ),* $( ; $( $notcontains:expr ),* )? ) => {
-    contains_test!($name, $source, true, true; $($contains),* $(;$($notcontains),*)?);
-  };
-
-  ( $name:ident, $source:expr, $details:expr, $private:expr;
-    $( $contains:expr ),* $( ; $( $notcontains:expr ),* )? ) => {
-    doc_test!($name, $source, $details, $private; {
+    doc_test!($name, $source, $private; {
       $(
         assert!(doc.contains($contains));
       )*
@@ -128,7 +109,7 @@ macro_rules! json_test {
   };
 
   ( $name:ident, $source:expr, $private:expr; $json:tt ) => {
-    doc_test!($name, $source, false, $private; {
+    doc_test!($name, $source, $private; {
       let actual = serde_json::to_value(&entries).unwrap();
       let expected_json = json!($json);
       assert_eq!(actual, expected_json);
@@ -244,7 +225,7 @@ export function fooFn(a: number) {
   assert_eq!(actual, expected_json);
 
   assert!(colors::strip_ansi_codes(
-    DocPrinter::new(&entries, false, false).to_string().as_str()
+    DocPrinter::new(&entries, false).to_string().as_str()
   )
   .contains("function fooFn(a: number)"));
 }
@@ -1606,8 +1587,7 @@ mod printer {
   use super::*;
 
   contains_test!(abstract_class,
-    "export abstract class Class {}",
-    details;
+    "export abstract class Class {}";
     "abstract class Class"
   );
 
@@ -1616,8 +1596,7 @@ mod printer {
 export abstract class Class {
   abstract method() {}
 }
-    "#,
-    details;
+    "#;
     "abstract method()"
   );
 
@@ -1626,8 +1605,7 @@ export abstract class Class {
 export class Class {
   async amethod(v) {}
 }
-    "#,
-    details;
+    "#;
     "async amethod(v)"
   );
 
@@ -1636,22 +1614,18 @@ export class Class {
 export class Class {
   constructor(a, b) {}
 }
-    "#,
-    details;
+    "#;
     "constructor(a, b)"
   );
 
-  const CLASS_SOURCE: &str = r#"
+  contains_test!(class_details,
+    r#"
 export class C {
   /** a doc */
   a() {}
   f: number;
 }
     "#;
-
-  contains_test!(class_details,
-    CLASS_SOURCE,
-    details;
     "class C",
     "a()",
     "f: number"
@@ -1665,7 +1639,6 @@ export class Class {
   public pub() {}
 }
     "#,
-    details,
     private;
     "private pri()",
     "protected pro()",
@@ -1679,8 +1652,7 @@ export class Class {
   protected pro() {}
   public pub() {}
 }
-    "#,
-    details;
+    "#;
     "protected pro()",
     "pub()"
   );
@@ -1711,8 +1683,7 @@ export class Class {
   get a(): void {}
   set b(_v: void) {}
 }
-    "#,
-    details;
+    "#;
     "get a(): void",
     "set b(_v: void)"
   );
@@ -1722,8 +1693,7 @@ export class Class {
 export class C {
   [key: string]: number;
 }
-    "#,
-    details;
+    "#;
     "[key: string]: number"
   );
 
@@ -1742,8 +1712,7 @@ export class C {
 export class Class {
   method(v) {}
 }
-    "#,
-    details;
+    "#;
     "method(v)"
   );
 
@@ -1753,8 +1722,7 @@ export class Class {
   someproperty: bool;
   optproperty: bigint;
 }
-    "#,
-    details;
+    "#;
     "someproperty: bool",
     "optproperty: bigint"
   );
@@ -1764,8 +1732,7 @@ export class Class {
 export class C {
   readonly [key: string]: number;
 }
-    "#,
-    details;
+    "#;
     "readonly [key: string]: number"
   );
 
@@ -1774,16 +1741,8 @@ export class C {
 export class Class {
   static property = "";
 }
-    "#,
-    details;
+    "#;
     "static property"
-  );
-
-  contains_test!(class_summary,
-    CLASS_SOURCE;
-    "class C";
-    "a()",
-    "f: number"
   );
 
   contains_test!(class_readonly_property,
@@ -1791,8 +1750,7 @@ export class Class {
 export class Class {
   readonly property = "";
 }
-    "#,
-    details;
+    "#;
     "readonly property"
   );
 
@@ -1802,7 +1760,6 @@ export class Class {
   private property = "";
 }
     "#,
-    details,
     private;
     "private property"
   );
@@ -1817,7 +1774,8 @@ export class Class {
     "enum Enum"
   );
 
-  const EXPORT_SOURCE: &str = r#"
+  contains_test!(exports_all_with_private,
+    r#"
 export function a() {}
 function b() {}
 export class C {}
@@ -1826,27 +1784,12 @@ export interface E {}
 interface F {}
 export namespace G {}
 namespace H {}
-    "#;
-
-  contains_test!(exports_all_with_private,
-    EXPORT_SOURCE,
+    "#,
     private;
     "function a()",
     "class C",
     "interface E",
     "namespace G",
-    "function b()",
-    "class D",
-    "interface F",
-    "namespace H"
-  );
-
-  contains_test!(exports_only_exports_without_private,
-    EXPORT_SOURCE;
-    "function a()",
-    "class C",
-    "interface E",
-    "namespace G";
     "function b()",
     "class D",
     "interface F",
@@ -1952,8 +1895,7 @@ export function f(): Generic<[string, number]> { return {}; }
 export interface Interface {
   [index: number]: Interface;
 }
-    "#,
-    details;
+    "#;
     "[index: number]: Interface"
   );
 
@@ -1963,8 +1905,7 @@ export interface I {
   m(a, b);
   mo?(c);
 }
-    "#,
-    details;
+    "#;
     "m(a, b)",
     "mo?(c)"
   );
@@ -1975,8 +1916,7 @@ export interface I {
   p: string;
   po?: number;
 }
-    "#,
-    details;
+    "#;
     "p: string",
     "po?: number"
   );
@@ -1986,12 +1926,12 @@ export interface I {
 export interface Interface {
   readonly [index: number]: Interface;
 }
-    "#,
-    details;
+    "#;
     "readonly [index: number]: Interface"
   );
 
-  const JSDOC_SOURCE: &str = r#"
+  contains_test!(jsdoc,
+    r#"
 /**
  * A is a class
  *
@@ -2011,23 +1951,9 @@ export interface B {}
  */
 export function C() {}
     "#;
-
-  contains_test!(jsdoc_details,
-    JSDOC_SOURCE,
-    details;
     "A is a class",
     "B is an interface",
     "C is a function",
-    "Nothing more",
-    "Should be",
-    "Summarised"
-  );
-
-  contains_test!(jsdoc_summary,
-    JSDOC_SOURCE;
-    "A is a class",
-    "B is an interface",
-    "C is a function";
     "Nothing more",
     "Should be",
     "Summarised"
@@ -2038,7 +1964,8 @@ export function C() {}
     "namespace Namespace"
   );
 
-  const NAMESPACE_SOURCE: &str = r#"
+  contains_test!(namespace_details,
+    r#"
 export namespace Namespace {
   /**
    * Doc comment 1
@@ -2054,26 +1981,11 @@ export namespace Namespace {
   export class B {}
 }
     "#;
-
-  contains_test!(namespace_details,
-    NAMESPACE_SOURCE,
-    details;
     "namespace Namespace",
     "function a()",
     "class B",
     "Doc comment 1",
-    "Doc comment 2";
-    "Details 1",
-    "Details 2"
-  );
-
-  contains_test!(namespace_summary,
-    NAMESPACE_SOURCE;
-    "namespace Namespace",
-    "function a()",
-    "class B",
-    "Doc comment 1",
-    "Doc comment 2";
+    "Doc comment 2",
     "Details 1",
     "Details 2"
   );
