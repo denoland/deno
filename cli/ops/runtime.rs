@@ -53,7 +53,6 @@ fn op_main_module(
     let main_path = std::env::current_dir().unwrap().join(main_url.to_string());
     state.check_read_blind(&main_path, "main_module")?;
   }
-  state.check_unstable("Deno.mainModule");
   Ok(JsonOp::Sync(json!(&main)))
 }
 

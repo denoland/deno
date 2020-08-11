@@ -710,7 +710,7 @@ mod tests {
 
   #[test]
   fn test_permissions_request_run() {
-    let guard = PERMISSION_PROMPT_GUARD.lock().unwrap();
+    let _guard = PERMISSION_PROMPT_GUARD.lock().unwrap();
     let mut perms0 = Permissions::from_flags(&Flags {
       ..Default::default()
     });
@@ -722,12 +722,11 @@ mod tests {
     });
     set_prompt_result(false);
     assert_eq!(perms1.request_run(), PermissionState::Deny);
-    drop(guard);
   }
 
   #[test]
   fn test_permissions_request_read() {
-    let guard = PERMISSION_PROMPT_GUARD.lock().unwrap();
+    let _guard = PERMISSION_PROMPT_GUARD.lock().unwrap();
     let allowlist = vec![PathBuf::from("/foo/bar")];
     let mut perms0 = Permissions::from_flags(&Flags {
       read_allowlist: allowlist.clone(),
@@ -760,12 +759,11 @@ mod tests {
       perms2.request_read(&Some(Path::new("/foo/baz"))),
       PermissionState::Deny
     );
-    drop(guard);
   }
 
   #[test]
   fn test_permissions_request_write() {
-    let guard = PERMISSION_PROMPT_GUARD.lock().unwrap();
+    let _guard = PERMISSION_PROMPT_GUARD.lock().unwrap();
     let allowlist = vec![PathBuf::from("/foo/bar")];
     let mut perms0 = Permissions::from_flags(&Flags {
       write_allowlist: allowlist.clone(),
@@ -798,12 +796,11 @@ mod tests {
       perms2.request_write(&Some(Path::new("/foo/baz"))),
       PermissionState::Deny
     );
-    drop(guard);
   }
 
   #[test]
   fn test_permission_request_net() {
-    let guard = PERMISSION_PROMPT_GUARD.lock().unwrap();
+    let _guard = PERMISSION_PROMPT_GUARD.lock().unwrap();
     let allowlist = svec!["localhost:8080"];
 
     let mut perms0 = Permissions::from_flags(&Flags {
@@ -876,13 +873,11 @@ mod tests {
         .kind_str,
       "URIError"
     );
-
-    drop(guard);
   }
 
   #[test]
   fn test_permissions_request_env() {
-    let guard = PERMISSION_PROMPT_GUARD.lock().unwrap();
+    let _guard = PERMISSION_PROMPT_GUARD.lock().unwrap();
     let mut perms0 = Permissions::from_flags(&Flags {
       ..Default::default()
     });
@@ -894,12 +889,11 @@ mod tests {
     });
     set_prompt_result(false);
     assert_eq!(perms1.request_env(), PermissionState::Deny);
-    drop(guard);
   }
 
   #[test]
   fn test_permissions_request_plugin() {
-    let guard = PERMISSION_PROMPT_GUARD.lock().unwrap();
+    let _guard = PERMISSION_PROMPT_GUARD.lock().unwrap();
     let mut perms0 = Permissions::from_flags(&Flags {
       ..Default::default()
     });
@@ -911,12 +905,11 @@ mod tests {
     });
     set_prompt_result(false);
     assert_eq!(perms1.request_plugin(), PermissionState::Deny);
-    drop(guard);
   }
 
   #[test]
   fn test_permissions_request_hrtime() {
-    let guard = PERMISSION_PROMPT_GUARD.lock().unwrap();
+    let _guard = PERMISSION_PROMPT_GUARD.lock().unwrap();
     let mut perms0 = Permissions::from_flags(&Flags {
       ..Default::default()
     });
@@ -928,7 +921,6 @@ mod tests {
     });
     set_prompt_result(false);
     assert_eq!(perms1.request_hrtime(), PermissionState::Deny);
-    drop(guard);
   }
 
   #[test]
@@ -966,7 +958,7 @@ mod tests {
 
   #[test]
   fn test_fork() {
-    let guard = PERMISSION_PROMPT_GUARD.lock().unwrap();
+    let _guard = PERMISSION_PROMPT_GUARD.lock().unwrap();
     let perms0 = Permissions::from_flags(&Flags {
       ..Default::default()
     });
@@ -1028,6 +1020,5 @@ mod tests {
         allow_hrtime: PermissionState::Deny,
       }
     );
-    drop(guard);
   }
 }

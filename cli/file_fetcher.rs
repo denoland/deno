@@ -797,7 +797,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_get_source_code_1() {
-    let http_server_guard = test_util::http_server();
+    let _http_server_guard = test_util::http_server();
     let (temp_dir, fetcher) = test_setup();
     let fetcher_1 = fetcher.clone();
     let fetcher_2 = fetcher.clone();
@@ -906,13 +906,11 @@ mod tests {
     assert_eq!(r4.source_code.bytes, expected4);
     // Resolved back to TypeScript
     assert_eq!(&(r4.media_type), &msg::MediaType::TypeScript);
-
-    drop(http_server_guard);
   }
 
   #[tokio::test]
   async fn test_get_source_code_2() {
-    let http_server_guard = test_util::http_server();
+    let _http_server_guard = test_util::http_server();
     let (temp_dir, fetcher) = test_setup();
     let module_url =
       Url::parse("http://localhost:4545/cli/tests/subdir/mismatch_ext.ts")
@@ -991,13 +989,11 @@ mod tests {
     assert_eq!(&(r3.media_type), &msg::MediaType::JavaScript);
     let (_, headers) = fetcher.http_cache.get(&module_url).unwrap();
     assert_eq!(headers.get("content-type").unwrap(), "text/javascript");
-
-    drop(http_server_guard);
   }
 
   #[tokio::test]
   async fn test_get_source_code_multiple_downloads_of_same_file() {
-    let http_server_guard = test_util::http_server();
+    let _http_server_guard = test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
     let specifier = ModuleSpecifier::resolve_url(
       "http://localhost:4545/cli/tests/subdir/mismatch_ext.ts",
@@ -1038,12 +1034,11 @@ mod tests {
     let headers_file_modified_2 = headers_file_metadata_2.modified().unwrap();
 
     assert_eq!(headers_file_modified, headers_file_modified_2);
-    drop(http_server_guard);
   }
 
   #[tokio::test]
   async fn test_get_source_code_3() {
-    let http_server_guard = test_util::http_server();
+    let _http_server_guard = test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
 
     let redirect_module_url = Url::parse(
@@ -1091,13 +1086,11 @@ mod tests {
     assert!(headers.get("location").is_none());
     // Examine the meta result.
     assert_eq!(mod_meta.url, target_module_url);
-
-    drop(http_server_guard);
   }
 
   #[tokio::test]
   async fn test_get_source_code_4() {
-    let http_server_guard = test_util::http_server();
+    let _http_server_guard = test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
     let double_redirect_url = Url::parse(
       "http://localhost:4548/cli/tests/subdir/redirects/redirect1.js",
@@ -1149,13 +1142,11 @@ mod tests {
 
     // Examine the meta result.
     assert_eq!(mod_meta.url, target_url);
-
-    drop(http_server_guard);
   }
 
   #[tokio::test]
   async fn test_get_source_code_5() {
-    let http_server_guard = test_util::http_server();
+    let _http_server_guard = test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
 
     let double_redirect_url = Url::parse(
@@ -1211,13 +1202,11 @@ mod tests {
     let file_modified_2 = file_metadata_2.modified().unwrap();
 
     assert_eq!(file_modified, file_modified_2);
-
-    drop(http_server_guard);
   }
 
   #[tokio::test]
   async fn test_get_source_code_6() {
-    let http_server_guard = test_util::http_server();
+    let _http_server_guard = test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
     let double_redirect_url = Url::parse(
       "http://localhost:4548/cli/tests/subdir/redirects/redirect1.js",
@@ -1253,13 +1242,11 @@ mod tests {
 
     let result = fetcher.fetch_cached_remote_source(&double_redirect_url, 1);
     assert!(result.is_err());
-
-    drop(http_server_guard);
   }
 
   #[tokio::test]
   async fn test_get_source_code_7() {
-    let http_server_guard = test_util::http_server();
+    let _http_server_guard = test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
 
     // Testing redirect with Location set to absolute url.
@@ -1308,13 +1295,11 @@ mod tests {
     assert!(headers.get("location").is_none());
     // Examine the meta result.
     assert_eq!(mod_meta.url, target_module_url);
-
-    drop(http_server_guard);
   }
 
   #[tokio::test]
   async fn test_get_source_no_remote() {
-    let http_server_guard = test_util::http_server();
+    let _http_server_guard = test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
     let module_url =
       Url::parse("http://localhost:4545/cli/tests/002_hello.ts").unwrap();
@@ -1332,13 +1317,11 @@ mod tests {
     // FIXME(bartlomieju):
     // let err = result.err().unwrap();
     // assert_eq!(err.kind(), ErrorKind::NotFound);
-
-    drop(http_server_guard);
   }
 
   #[tokio::test]
   async fn test_get_source_cached_only() {
-    let http_server_guard = test_util::http_server();
+    let _http_server_guard = test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
     let fetcher_1 = fetcher.clone();
     let fetcher_2 = fetcher.clone();
@@ -1384,12 +1367,11 @@ mod tests {
       )
       .await;
     assert!(result.is_ok());
-    drop(http_server_guard);
   }
 
   #[tokio::test]
   async fn test_fetch_source_0() {
-    let http_server_guard = test_util::http_server();
+    let _http_server_guard = test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
     let module_url =
       Url::parse("http://127.0.0.1:4545/cli/tests/subdir/mt_video_mp2t.t3.ts")
@@ -1424,13 +1406,11 @@ mod tests {
     assert_eq!(r2.source_code.bytes, b"export const loaded = true;\n");
     // Not MediaType::TypeScript due to .headers.json modification
     assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
-
-    drop(http_server_guard);
   }
 
   #[tokio::test]
   async fn fetch_remote_source_no_ext() {
-    let g = test_util::http_server();
+    let _g = test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
     let module_url =
       &Url::parse("http://localhost:4545/cli/tests/subdir/no_ext").unwrap();
@@ -1449,12 +1429,11 @@ mod tests {
     assert_eq!(&(r.media_type), &msg::MediaType::TypeScript);
     let (_, headers) = fetcher.http_cache.get(module_url).unwrap();
     assert_eq!(headers.get("content-type").unwrap(), "text/typescript");
-    drop(g)
   }
 
   #[tokio::test]
   async fn fetch_remote_source_mismatch_ext() {
-    let g = test_util::http_server();
+    let _g = test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
     let module_url =
       &Url::parse("http://localhost:4545/cli/tests/subdir/mismatch_ext.ts")
@@ -1474,12 +1453,11 @@ mod tests {
     assert_eq!(&(r2.media_type), &msg::MediaType::JavaScript);
     let (_, headers) = fetcher.http_cache.get(module_url).unwrap();
     assert_eq!(headers.get("content-type").unwrap(), "text/javascript");
-    drop(g);
   }
 
   #[tokio::test]
   async fn fetch_remote_source_unknown_ext() {
-    let g = test_util::http_server();
+    let _g = test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
     let module_url =
       &Url::parse("http://localhost:4545/cli/tests/subdir/unknown_ext.deno")
@@ -1499,7 +1477,6 @@ mod tests {
     assert_eq!(&(r3.media_type), &msg::MediaType::TypeScript);
     let (_, headers) = fetcher.http_cache.get(module_url).unwrap();
     assert_eq!(headers.get("content-type").unwrap(), "text/typescript");
-    drop(g);
   }
 
   #[tokio::test]
@@ -1879,7 +1856,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_fetch_with_etag() {
-    let http_server_guard = test_util::http_server();
+    let _http_server_guard = test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
     let module_url =
       Url::parse("http://127.0.0.1:4545/etag_script.ts").unwrap();
@@ -1928,13 +1905,11 @@ mod tests {
 
     // Assert that the file has not been modified
     assert_eq!(modified1, modified2);
-
-    drop(http_server_guard);
   }
 
   #[tokio::test]
   async fn test_fetch_with_types_header() {
-    let http_server_guard = test_util::http_server();
+    let _http_server_guard = test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
     let module_url =
       Url::parse("http://127.0.0.1:4545/xTypeScriptTypes.js").unwrap();
@@ -1955,7 +1930,6 @@ mod tests {
       source.types_header,
       Some("./xTypeScriptTypes.d.ts".to_string())
     );
-    drop(http_server_guard);
   }
 
   #[tokio::test]
@@ -2001,7 +1975,7 @@ mod tests {
     file_name: &str,
     expected_content: &str,
   ) {
-    let http_server_guard = test_util::http_server();
+    let _http_server_guard = test_util::http_server();
     let (_temp_dir, fetcher) = test_setup();
     let module_url = Url::parse(&format!(
       "http://127.0.0.1:4545/cli/tests/encoding/{}",
@@ -2030,7 +2004,5 @@ mod tests {
       headers.get("content-type").unwrap(),
       &format!("application/typescript;charset={}", charset)
     );
-
-    drop(http_server_guard);
   }
 }
