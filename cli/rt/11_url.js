@@ -15,28 +15,6 @@
   }
 
   const urls = new WeakMap();
-  // deno-fmt-ignore
-  const noEscape = [
-    /*
-      0, 1, 2, 3, 4, 5, 6, 7, 8, 9, A, B, C, D, E, F
-    */
-      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 0x00 - 0x0F
-      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 0x10 - 0x1F
-      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, // 0x20 - 0x2F
-      1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, // 0x30 - 0x3F
-      0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 0x40 - 0x4F
-      1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, // 0x50 - 0x5F
-      0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 0x60 - 0x6F
-      1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0  // 0x70 - 0x7F
-  ];
-
-  const hexTable = new Array(256);
-  for (let i = 0; i < 256; ++i) {
-    hexTable[i] = "%" + ((i < 16 ? "0" : "") + i.toString(16)).toUpperCase();
-  }
-  // Special version of hexTable that uses `+` for U+0020 SPACE.
-  const paramHexTable = hexTable.slice();
-  paramHexTable[0x20] = "+";
 
   class URLSearchParams {
     #params = [];
@@ -244,9 +222,7 @@
       return this.#params
         .map(
           (tuple) =>
-            `${encodeStr(tuple[0], noEscape, paramHexTable)}=${
-              encodeStr(tuple[1], noEscape, paramHexTable)
-            }`,
+            `${encodeSearchParam(tuple[0])}=${encodeSearchParam(tuple[1])}`,
         )
         .join("&");
     }
@@ -816,6 +792,11 @@
     return ["\u0000", "\u0009", "\u000A", "\u000D", "\u0020", "\u0023", "\u0025", "\u002F", "\u003A", "\u003C", "\u003E", "\u003F", "\u0040", "\u005B", "\u005C", "\u005D", "\u005E"].includes(c);
   }
 
+  function charInFormUrlencodedSet(c) {
+    // deno-fmt-ignore
+    return charInUserinfoSet(c) || ["\u0021", "\u0024", "\u0025", "\u0026", "\u0027", "\u0028", "\u0029", "\u002B", "\u002C", "\u007E"].includes(c);
+  }
+
   const encoder = new TextEncoder();
 
   function encodeChar(c) {
@@ -900,59 +881,9 @@
     );
   }
 
-  function encodeStr(str, noEscapeTable, hexTable) {
-    const len = str.length;
-    if (len === 0) return "";
-
-    let out = "";
-    let lastPos = 0;
-
-    for (let i = 0; i < len; i++) {
-      let c = str.charCodeAt(i);
-      // ASCII
-      if (c < 0x80) {
-        if (noEscapeTable[c] === 1) continue;
-        if (lastPos < i) out += str.slice(lastPos, i);
-        lastPos = i + 1;
-        out += hexTable[c];
-        continue;
-      }
-
-      if (lastPos < i) out += str.slice(lastPos, i);
-
-      // Multi-byte characters ...
-      if (c < 0x800) {
-        lastPos = i + 1;
-        out += hexTable[0xc0 | (c >> 6)] + hexTable[0x80 | (c & 0x3f)];
-        continue;
-      }
-      if (c < 0xd800 || c >= 0xe000) {
-        lastPos = i + 1;
-        out += hexTable[0xe0 | (c >> 12)] +
-          hexTable[0x80 | ((c >> 6) & 0x3f)] +
-          hexTable[0x80 | (c & 0x3f)];
-        continue;
-      }
-      // Surrogate pair
-      ++i;
-
-      // This branch should never happen because all URLSearchParams entries
-      // should already be converted to USVString. But, included for
-      // completion's sake anyway.
-      if (i >= len) throw new Deno.errors.InvalidData("invalid URI");
-
-      const c2 = str.charCodeAt(i) & 0x3ff;
-
-      lastPos = i + 1;
-      c = 0x10000 + (((c & 0x3ff) << 10) | c2);
-      out += hexTable[0xf0 | (c >> 18)] +
-        hexTable[0x80 | ((c >> 12) & 0x3f)] +
-        hexTable[0x80 | ((c >> 6) & 0x3f)] +
-        hexTable[0x80 | (c & 0x3f)];
-    }
-    if (lastPos === 0) return str;
-    if (lastPos < len) return out + str.slice(lastPos);
-    return out;
+  function encodeSearchParam(s) {
+    return [...s].map((c) => (charInFormUrlencodedSet(c) ? encodeChar(c) : c))
+      .join("").replace("%20", "+");
   }
 
   window.__bootstrap.url = {
