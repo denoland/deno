@@ -458,7 +458,7 @@ impl ModuleGraphLoader {
           redirect: Some(source_file.url.to_string()),
           filename: source_file.filename.to_str().unwrap().to_string(),
           version_hash: checksum::gen(&[
-            &source_file.source_code,
+            &source_file.source_code.as_bytes(),
             version::DENO.as_bytes(),
           ]),
           media_type: source_file.media_type,
@@ -473,9 +473,11 @@ impl ModuleGraphLoader {
     }
 
     let module_specifier = ModuleSpecifier::from(source_file.url.clone());
-    let version_hash =
-      checksum::gen(&[&source_file.source_code, version::DENO.as_bytes()]);
-    let source_code = String::from_utf8(source_file.source_code)?;
+    let version_hash = checksum::gen(&[
+      &source_file.source_code.as_bytes(),
+      version::DENO.as_bytes(),
+    ]);
+    let source_code = source_file.source_code.to_string()?;
 
     if SUPPORTED_MEDIA_TYPES.contains(&source_file.media_type) {
       if let Some(types_specifier) = source_file.types_header {
@@ -602,7 +604,7 @@ mod tests {
   #[ignore]
   #[tokio::test]
   async fn source_graph_fetch() {
-    let http_server_guard = test_util::http_server();
+    let _http_server_guard = test_util::http_server();
 
     let module_specifier = ModuleSpecifier::resolve_url_or_path(
       "http://localhost:4545/cli/tests/019_media_types.ts",
@@ -690,12 +692,11 @@ mod tests {
         },
       ])
     );
-    drop(http_server_guard);
   }
 
   #[tokio::test]
   async fn source_graph_type_references() {
-    let http_server_guard = test_util::http_server();
+    let _http_server_guard = test_util::http_server();
 
     let module_specifier = ModuleSpecifier::resolve_url_or_path(
       "http://localhost:4545/cli/tests/type_definitions.ts",
@@ -747,13 +748,11 @@ mod tests {
     ));
     assert!(graph
       .contains_key("http://localhost:4545/cli/tests/type_definitions/qat.ts"));
-
-    drop(http_server_guard);
   }
 
   #[tokio::test]
   async fn source_graph_type_references2() {
-    let http_server_guard = test_util::http_server();
+    let _http_server_guard = test_util::http_server();
 
     let module_specifier = ModuleSpecifier::resolve_url_or_path(
       "http://localhost:4545/cli/tests/type_directives_02.ts",
@@ -797,12 +796,11 @@ mod tests {
         }
       ])
     );
-    drop(http_server_guard);
   }
 
   #[tokio::test]
   async fn source_graph_type_references3() {
-    let http_server_guard = test_util::http_server();
+    let _http_server_guard = test_util::http_server();
 
     let module_specifier = ModuleSpecifier::resolve_url_or_path(
       "http://localhost:4545/cli/tests/type_directives_01.ts",
@@ -840,12 +838,11 @@ mod tests {
         }
       ])
     );
-    drop(http_server_guard);
   }
 
   #[tokio::test]
   async fn source_graph_different_langs() {
-    let http_server_guard = test_util::http_server();
+    let _http_server_guard = test_util::http_server();
 
     // ModuleGraphLoader was mistakenly parsing this file as TSX
     // https://github.com/denoland/deno/issues/5867
@@ -858,8 +855,6 @@ mod tests {
     build_graph(&module_specifier)
       .await
       .expect("Failed to build graph");
-
-    drop(http_server_guard);
   }
 }
 

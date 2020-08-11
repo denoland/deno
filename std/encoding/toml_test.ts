@@ -1,7 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { assertEquals } from "../testing/asserts.ts";
 import { existsSync } from "../fs/exists.ts";
-import { readFileStrSync } from "../fs/read_file_str.ts";
 import * as path from "../path/mod.ts";
 import { parse, stringify } from "./toml.ts";
 
@@ -11,8 +10,7 @@ function parseFile(filePath: string): object {
   if (!existsSync(filePath)) {
     throw new Error(`File not found: ${filePath}`);
   }
-  const strFile = readFileStrSync(filePath);
-  return parse(strFile);
+  return parse(Deno.readTextFileSync(filePath));
 }
 
 Deno.test({
@@ -50,7 +48,7 @@ Deno.test({
 Deno.test({
   name: "[TOML] Boolean",
   fn(): void {
-    const expected = { boolean: { bool1: true, bool2: false } };
+    const expected = { boolean: { bool1: true, bool2: false, bool3: true } };
     const actual = parseFile(path.join(testFilesDir, "boolean.toml"));
     assertEquals(actual, expected);
   },
@@ -351,6 +349,8 @@ Deno.test({
         [1, 2],
       ],
       hosts: ["alpha", "omega"],
+      bool: true,
+      bool2: false,
     };
     const expected = `deno    = "is"
 not     = "[node]"
@@ -385,6 +385,8 @@ sf5     = NaN
 sf6     = NaN
 data    = [["gamma","delta"],[1,2]]
 hosts   = ["alpha","omega"]
+bool    = true
+bool2   = false
 
 [foo]
 bar     = "deno"

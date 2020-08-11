@@ -61,9 +61,9 @@ export function promisify(original: Function): Function {
     throw new NodeInvalidArgTypeError("original", "Function", original);
   }
 
-  // @ts-ignore TypeScript (as of 3.7) does not support indexing namespaces by symbol
+  // @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
   if (original[kCustomPromisifiedSymbol]) {
-    // @ts-ignore TypeScript (as of 3.7) does not support indexing namespaces by symbol
+    // @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
     const fn = original[kCustomPromisifiedSymbol];
     if (typeof fn !== "function") {
       throw new NodeInvalidArgTypeError(
@@ -82,12 +82,12 @@ export function promisify(original: Function): Function {
 
   // Names to create an object from in case the callback receives multiple
   // arguments, e.g. ['bytesRead', 'buffer'] for fs.read.
-  // @ts-ignore TypeScript (as of 3.7) does not support indexing namespaces by symbol
+  // @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
   const argumentNames = original[kCustomPromisifyArgsSymbol];
 
   function fn(...args: unknown[]): Promise<unknown> {
     return new Promise((resolve, reject) => {
-      // @ts-ignore: 'this' implicitly has type 'any' because it does not have a type annotation
+      // @ts-expect-error: 'this' implicitly has type 'any' because it does not have a type annotation
       original.call(this, ...args, (err: Error, ...values: unknown[]) => {
         if (err) {
           return reject(err);
@@ -95,7 +95,7 @@ export function promisify(original: Function): Function {
         if (argumentNames !== undefined && values.length > 1) {
           const obj = {};
           for (let i = 0; i < argumentNames.length; i++) {
-            // @ts-ignore TypeScript
+            // @ts-expect-error TypeScript
             obj[argumentNames[i]] = values[i];
           }
           resolve(obj);

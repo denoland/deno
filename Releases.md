@@ -6,6 +6,78 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### 1.2.3 / 2020.08.08
+
+Changes in the CLI:
+
+- fix: Never type check in deno info (#6978)
+- fix: add missing globals to unstable diagnostics (#6960)
+- fix: add support for non-UTF8 source files (#6789)
+- fix: hash file names in gen cache (#6911)
+- refactor: Encode op errors as strings instead of numbers (#6977)
+- refactor: Op crate for Web APIs (#6906)
+- refactor: remove repeated code in main.rs (#6954)
+- upgrade to rusty_v8 0.8.1 / V8 8.6.334 (#6980)
+- upgrade: deno_lint v0.1.21 (#6985)
+- upgrade: swc_ecmascript (#6943)
+- feat(unstable): custom http client for fetch (#6918)
+
+Changes in std version 0.64.0:
+
+- fix(std/toml): parser error with inline comments (#6942)
+- fix(std/encoding/toml): Add boolean support to stringify (#6941)
+- refactor: Rewrite globToRegExp() (#6963)
+
+### 1.2.2 / 2020.07.31
+
+Changes in the CLI:
+
+- fix: Change release build flags to optimize for size (#6907)
+- fix: Fix file URL to path conversion on Windows (#6920)
+- fix: deno-types, X-TypeScript-Types precedence (#6761)
+- fix: downcast from SwcDiagnosticBuffer to OpError (#6909)
+- perf: Use SWC to strip types for "--no-check" flag (#6895)
+- upgrade: deno_lint, dprint, swc (#6928, #6869)
+- feat(unstable): add "--ignore" flag to deno fmt (#6890)
+
+Changes in std version 0.63.0:
+
+- feat(std/async): add pooledMap utility (#6898)
+- fix(std/json): Add newline at the end of json files (#6885)
+- fix(std/path): Percent-decode in fromFileUrl() (#6913)
+- fix(std/tar): directory type bug (#6905)
+
+### 1.2.1 / 2020.07.23
+
+Changes in the CLI:
+
+- fix: IPv6 hostname should be compressed (#6772)
+- fix: Ignore polling errors caused by return() in watchFs (#6785)
+- fix: Improve URL compatibility (#6807)
+- fix: ModuleSpecifier removes relative path parts (#6762)
+- fix: Share reqwest client between fetch calls (#6792)
+- fix: add icon and metadata to deno.exe on Windows (#6693)
+- fix: panic for runtime error in TS compiler (#6758)
+- fix: providing empty source code for missing compiled files (#6760)
+- refactor: Make OpDispatcher a trait (#6736, #6742)
+- refactor: Remove duplicate code and allow filename overwrite for DomFile
+  (#6817, #6830)
+- upgrade: Rust 1.45.0 (#6791)
+- upgrade: rusty_v8 0.7.0 (#6801)
+- upgrade: tokio 0.2.22 (#6838)
+
+Changes in std version 0.62.0:
+
+- BREAKING(std/fs): remove readFileStr and writeFileStr (#6848, #6847)
+- feat(std/encoding): add ascii85 module (#6711)
+- feat(std/node): add string_decoder (#6638)
+- fix(std/encoding/toml): could not parse strings with apostrophes/semicolons
+  (#6781)
+- fix(std/testing): assertThrows inheritance (#6623)
+- fix(std/wasi): remove number overload from rights in path_open (#6768)
+- refactor(std/datetime): improve weekOfYear (#6741)
+- refactor(std/path): enrich the types in parse_format_test (#6803)
+
 ### 1.2.0 / 2020.07.13
 
 Changes in the CLI:

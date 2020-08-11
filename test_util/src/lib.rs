@@ -293,6 +293,39 @@ pub async fn run_all_servers() {
       );
       res
     }))
+    .or(warp::path!("type_headers_deno_types.foo.js").map(|| {
+      let mut res = Response::new(Body::from("export function foo(text) { console.log(text); }"));
+      let h = res.headers_mut();
+      h.insert(
+        "Content-type",
+        HeaderValue::from_static("application/javascript"),
+      );
+      h.insert(
+        "X-TypeScript-Types",
+        HeaderValue::from_static(
+          "http://localhost:4545/type_headers_deno_types.d.ts",
+        ),
+      );
+      res
+    }))
+    .or(warp::path!("type_headers_deno_types.d.ts").map(|| {
+      let mut res = Response::new(Body::from("export function foo(text: number): void;"));
+      let h = res.headers_mut();
+      h.insert(
+        "Content-type",
+        HeaderValue::from_static("application/typescript"),
+      );
+      res
+    }))
+    .or(warp::path!("type_headers_deno_types.foo.d.ts").map(|| {
+      let mut res = Response::new(Body::from("export function foo(text: string): void;"));
+      let h = res.headers_mut();
+      h.insert(
+        "Content-type",
+        HeaderValue::from_static("application/typescript"),
+      );
+      res
+    }))
     .or(warp::path!("cli"/"tests"/"subdir"/"xTypeScriptTypesRedirect.d.ts").map(|| {
       let mut res = Response::new(Body::from(
         "import './xTypeScriptTypesRedirected.d.ts';",
@@ -319,6 +352,17 @@ pub async fn run_all_servers() {
       h.insert(
         "Content-type",
         HeaderValue::from_static("application/javascript"),
+      );
+      res
+    }))
+    .or(warp::path!("cli"/"tests"/"subdir"/"file_with_:_in_name.ts").map(|| {
+      let mut res = Response::new(Body::from(
+        "console.log('Hello from file_with_:_in_name.ts');",
+      ));
+      let h = res.headers_mut();
+      h.insert(
+        "Content-type",
+        HeaderValue::from_static("application/typescript"),
       );
       res
     }));
@@ -384,6 +428,19 @@ fn custom_headers(path: warp::path::Peek, f: warp::fs::File) -> Box<dyn Reply> {
     let f = with_header(f, "Content-Encoding", "gzip");
     let f = with_header(f, "Content-Type", "application/javascript");
     let f = with_header(f, "Content-Length", "39");
+    return Box::new(f);
+  }
+  if p.contains("cli/tests/encoding/") {
+    let charset = p
+      .split_terminator('/')
+      .last()
+      .unwrap()
+      .trim_end_matches(".ts");
+    let f = with_header(
+      f,
+      "Content-Type",
+      &format!("application/typescript;charset={}", charset)[..],
+    );
     return Box::new(f);
   }
 
@@ -536,7 +593,7 @@ pub fn run_and_collect_output(
   if let Some(envs) = envs {
     deno_process_builder.envs(envs);
   }
-  let http_guard = if need_http_server {
+  let _http_guard = if need_http_server {
     Some(http_server())
   } else {
     None
@@ -555,7 +612,6 @@ pub fn run_and_collect_output(
     stderr,
     status,
   } = deno.wait_with_output().expect("failed to wait on child");
-  drop(http_guard);
   let stdout = String::from_utf8(stdout).unwrap();
   let stderr = String::from_utf8(stderr).unwrap();
   if expect_success != status.success() {
@@ -648,7 +704,7 @@ impl CheckOutputIntegrationTest {
     println!("root path {}", root.display());
     println!("deno_exe path {}", deno_exe.display());
 
-    let http_server_guard = if self.http_server {
+    let _http_server_guard = if self.http_server {
       Some(http_server())
     } else {
       None
@@ -684,8 +740,6 @@ impl CheckOutputIntegrationTest {
 
     let status = process.wait().expect("failed to finish process");
     let exit_code = status.code().unwrap();
-
-    drop(http_server_guard);
 
     actual = strip_ansi_codes(&actual).to_string();
 

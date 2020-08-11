@@ -174,10 +174,7 @@ impl GlobalState {
 
     if should_compile {
       if self.flags.no_check {
-        self
-          .ts_compiler
-          .transpile(self.clone(), permissions, module_graph)
-          .await?;
+        self.ts_compiler.transpile(module_graph).await?;
       } else {
         self
           .ts_compiler
@@ -253,7 +250,7 @@ impl GlobalState {
       }
     } else {
       CompiledModule {
-        code: String::from_utf8(out.source_code.clone())?,
+        code: out.source_code.to_string()?,
         name: out.url.to_string(),
       }
     };
