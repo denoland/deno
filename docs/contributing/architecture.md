@@ -48,7 +48,7 @@ Metrics is Deno's internal counter for various statistics.
 
 ![architectural schematic](https://deno.land/images/schematic_v0.2.png)
 
-
 ### Conference
 
-[Ryan Dahl - An interesting case with Deno](https://www.youtube.com/watch?v=1b7FoBwxc7E)
+[Ryan Dahl - An interesting case with
+Deno](https://www.youtube.com/watch?v=1b7FoBwxc7E)
