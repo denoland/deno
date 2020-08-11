@@ -40,7 +40,7 @@ pub fn op_ws_create(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CloseArgs {
-  stream_rid: u32,
+  rid: u32,
   code: Option<u16>,
   reason: Option<String>,
 }
@@ -54,7 +54,7 @@ pub fn op_ws_close(
   let args: CloseArgs = serde_json::from_value(args)?;
   let mut resource_table = isolate_state.resource_table.borrow_mut();
   let stream = resource_table
-    .get_mut::<WebSocket<AutoStream>>(args.stream_rid)
+    .get_mut::<WebSocket<AutoStream>>(args.rid)
     .ok_or_else(OpError::bad_resource_id)?;
 
   stream
@@ -66,6 +66,10 @@ pub fn op_ws_close(
       },
     }))
     .unwrap();
+
+  resource_table
+    .close(args.rid)
+    .ok_or_else(OpError::bad_resource_id)?;
 
   Ok(JsonOp::Sync(json!({})))
 }

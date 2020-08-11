@@ -12,7 +12,7 @@
 
     close(code, reason) {
       sendSync("op_ws_close", {
-        streamRid: this.rid,
+        rid: this.rid,
         code,
         reason,
       });
