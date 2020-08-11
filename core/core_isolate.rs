@@ -85,13 +85,11 @@ impl StartupData<'_> {
 
 type JSErrorCreateFn = dyn Fn(JSError) -> ErrBox;
 
-type PinnedRefCell = Pin<Box<RefCell<dyn Any>>>;
-
 /// Objects that need to live as long as the isolate
 #[derive(Default)]
 struct IsolateAllocations {
   near_heap_limit_callback_data:
-    Option<(PinnedRefCell, v8::NearHeapLimitCallback)>,
+    Option<(Box<RefCell<dyn Any>>, v8::NearHeapLimitCallback)>,
 }
 
 /// A single execution context of JavaScript. Corresponds roughly to the "Web
@@ -440,7 +438,7 @@ impl CoreIsolate {
   where
     C: FnMut(usize, usize) -> usize + 'static,
   {
-    let boxed_cb = Box::pin(RefCell::new(cb));
+    let boxed_cb = Box::new(RefCell::new(cb));
     let data = boxed_cb.as_ptr() as *mut c_void;
     self.allocations.near_heap_limit_callback_data =
       Some((boxed_cb, near_heap_limit_callback::<C>));
