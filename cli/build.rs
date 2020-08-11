@@ -170,6 +170,7 @@ fn get_js_files_for_rt() -> Vec<String> {
     "rt/24_body.js",
     "rt/25_request.js",
     "rt/26_fetch.js",
+    "rt/27_websocket.js",
     "rt/30_files.js",
     "rt/30_fs.js",
     "rt/30_metrics.js",

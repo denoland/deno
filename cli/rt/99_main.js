@@ -30,6 +30,7 @@ delete Object.prototype.__proto__;
   const blob = window.__bootstrap.blob;
   const domFile = window.__bootstrap.domFile;
   const formData = window.__bootstrap.formData;
+  const webSocket = window.__bootstrap.webSocket;
   const request = window.__bootstrap.request;
   const fetch = window.__bootstrap.fetch;
   const denoNs = window.__bootstrap.denoNs;
@@ -233,6 +234,7 @@ delete Object.prototype.__proto__;
     EventTarget: util.nonEnumerable(EventTarget),
     Headers: util.nonEnumerable(headers.Headers),
     FormData: util.nonEnumerable(formData.FormData),
+    WebSocket: util.nonEnumerable(webSocket.WebSocket),
     ReadableStream: util.nonEnumerable(streams.ReadableStream),
     Request: util.nonEnumerable(request.Request),
     Response: util.nonEnumerable(fetch.Response),
