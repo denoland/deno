@@ -83,7 +83,7 @@ export function promisify(original: Function): Function {
   // arguments, e.g. ['bytesRead', 'buffer'] for fs.read.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const argumentNames = (original as any)[kCustomPromisifyArgsSymbol];
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   function fn(this: any, ...args: unknown[]): Promise<unknown> {
     return new Promise((resolve, reject) => {
       original.call(this, ...args, (err: Error, ...values: unknown[]) => {
