@@ -9,9 +9,7 @@ use crate::ModuleGraph;
 use crate::ModuleGraphLoader;
 use crate::ModuleSpecifier;
 use crate::Permissions;
-//use crate::tsc::TargetLib;
 use deno_core::ErrBox;
-use serde::ser::SerializeStruct;
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 
@@ -93,28 +91,12 @@ impl ModuleDepInfo {
 ///
 /// Constructed from a `ModuleGraph` and `ModuleSpecifier` that
 /// acts as the root of the tree.
+#[derive(Serialize)]
 struct FileInfoDepTree {
   name: String,
   size: usize,
   total_size: Option<usize>,
   deps: Vec<FileInfoDepTree>,
-}
-
-impl serde::Serialize for FileInfoDepTree {
-  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-  where
-    S: serde::Serializer,
-  {
-    let mut state = serializer.serialize_struct("FileInfoDepTree", 4)?;
-
-    state.serialize_field("name", &self.name)?;
-    if let Some(total_size) = self.total_size {
-      state.serialize_field("size", &self.size)?;
-      state.serialize_field("total_size", &total_size)?;
-    }
-    state.serialize_field("deps", &self.deps)?;
-    state.end()
-  }
 }
 
 impl FileInfoDepTree {
@@ -264,21 +246,6 @@ async fn get_module_graph(
   global_state: &GlobalState,
   module_specifier: &ModuleSpecifier,
 ) -> Result<ModuleGraph, ErrBox> {
-    /*global_state
-    .prepare_module_load(
-      module_specifier.clone(),
-      None,
-      TargetLib::Main,
-      Permissions::allow_all(),
-      false,
-      global_state.maybe_import_map.clone(),
-    )
-    .await?;
-  global_state
-    .clone()
-    .fetch_compiled_module(module_specifier.clone(), None)
-    .await?;
-*/
   let mut module_graph_loader = ModuleGraphLoader::new(
     global_state.file_fetcher.clone(),
     global_state.maybe_import_map.clone(),
