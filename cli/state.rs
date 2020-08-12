@@ -113,7 +113,7 @@ impl State {
     }
   }
 
-  pub fn stateful_json_op_async<D>(
+  pub fn stateful_json_op_async<D, F>(
     &self,
     dispatcher: D,
   ) -> impl Fn(&mut deno_core::CoreIsolateState, &mut [ZeroCopyBuf]) -> Op
@@ -123,7 +123,8 @@ impl State {
       &State,
       Value,
       &mut [ZeroCopyBuf],
-    ) -> Pin<Box<dyn Future<Output = Result<Value, OpError>>>>,
+    ) -> F,
+    F: Future<Output = Result<Value, OpError>> + 'static,
   {
     let state = self.clone();
 
@@ -144,8 +145,8 @@ impl State {
 
       let result = serde_json::from_slice(&zero_copy[0])
         .map_err(OpError::from)
-        .and_then(|args| {
-          Ok(dispatcher(isolate_state, &state, args, &mut zero_copy[1..]))
+        .map(|args| {
+          dispatcher(isolate_state, &state, args, &mut zero_copy[1..])
         });
 
       use crate::ops::serialize_result;
