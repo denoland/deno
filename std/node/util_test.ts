@@ -1,5 +1,12 @@
-import { assert } from "../testing/asserts.ts";
+import { assert, assertEquals } from "../testing/asserts.ts";
 import * as util from "./util.ts";
+
+Deno.test({
+  name: "[util] inspect",
+  fn() {
+    assertEquals(util.inspect({ foo: 123 }), "{ foo: 123 }");
+  },
+});
 
 Deno.test({
   name: "[util] isBoolean",
