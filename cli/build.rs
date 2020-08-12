@@ -72,7 +72,7 @@ fn create_compiler_snapshot(
 
 fn ts_version() -> String {
   // TODO(ry) This should be automatically extracted from typescript.js
-  "3.9.2".to_string()
+  "3.9.7".to_string()
 }
 
 fn main() {
