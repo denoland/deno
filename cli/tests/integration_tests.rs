@@ -1016,7 +1016,7 @@ fn bundle_import_map() {
   let mut deno = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("bundle")
-    .arg("--importmap")
+    .arg("--import-map")
     .arg(import_map_path)
     .arg("--unstable")
     .arg(import)
@@ -1808,7 +1808,7 @@ itest!(_031_info_ts_error {
 
 itest!(_033_import_map {
   args:
-    "run --quiet --reload --importmap=importmaps/import_map.json --unstable importmaps/test.ts",
+    "run --quiet --reload --import-map=import_maps/import_map.json --unstable import_maps/test.ts",
   output: "033_import_map.out",
 });
 
@@ -1827,7 +1827,7 @@ itest!(_035_cached_only_flag {
 
 itest!(_036_import_map_fetch {
   args:
-    "cache --quiet --reload --importmap=importmaps/import_map.json --unstable importmaps/test.ts",
+    "cache --quiet --reload --import-map=import_maps/import_map.json --unstable import_maps/test.ts",
   output: "036_import_map_fetch.out",
 });
 
@@ -1972,7 +1972,7 @@ itest!(_064_permissions_revoke_global {
 
 itest!(_065_import_map_info {
   args:
-    "info --quiet --importmap=importmaps/import_map.json --unstable importmaps/test.ts",
+    "info --quiet --import-map=import_maps/import_map.json --unstable import_maps/test.ts",
   output: "065_import_map_info.out",
 });
 
@@ -2725,9 +2725,9 @@ itest!(deno_doc {
   output: "deno_doc.out",
 });
 
-itest!(deno_doc_importmap {
-  args: "doc --unstable --importmap=doc/importmap.json doc/use_importmap.js",
-  output: "doc/use_importmap.out",
+itest!(deno_doc_import_map {
+  args: "doc --unstable --import-map=doc/import_map.json doc/use_import_map.js",
+  output: "doc/use_import_map.out",
 });
 
 itest!(compiler_js_error {
