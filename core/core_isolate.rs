@@ -440,8 +440,19 @@ impl CoreIsolate {
   {
     let boxed_cb = Box::new(RefCell::new(cb));
     let data = boxed_cb.as_ptr() as *mut c_void;
-    self.allocations.near_heap_limit_callback_data =
-      Some((boxed_cb, near_heap_limit_callback::<C>));
+
+    let prev = self
+      .allocations
+      .near_heap_limit_callback_data
+      .replace((boxed_cb, near_heap_limit_callback::<C>));
+    if let Some((_, prev_cb)) = prev {
+      self
+        .v8_isolate
+        .as_mut()
+        .unwrap()
+        .remove_near_heap_limit_callback(prev_cb, 0);
+    }
+
     self
       .v8_isolate
       .as_mut()
@@ -1349,5 +1360,48 @@ pub mod tests {
     });
     isolate.remove_near_heap_limit_callback(20 * 1024);
     assert!(isolate.allocations.near_heap_limit_callback_data.is_none());
+  }
+
+  #[test]
+  fn test_heap_limit_cb_multiple() {
+    let heap_limits = HeapLimits {
+      initial: 0,
+      max: 20 * 1024, // 20 kB
+    };
+    let mut isolate =
+      CoreIsolate::with_heap_limits(StartupData::None, heap_limits);
+    let cb_handle = isolate.thread_safe_handle();
+
+    let callback_invoke_count_first = Rc::new(AtomicUsize::default());
+    let inner_invoke_count_first = Rc::clone(&callback_invoke_count_first);
+    isolate.add_near_heap_limit_callback(
+      move |current_limit, _initial_limit| {
+        inner_invoke_count_first.fetch_add(1, Ordering::SeqCst);
+        current_limit * 2
+      },
+    );
+
+    let callback_invoke_count_second = Rc::new(AtomicUsize::default());
+    let inner_invoke_count_second = Rc::clone(&callback_invoke_count_second);
+    isolate.add_near_heap_limit_callback(
+      move |current_limit, _initial_limit| {
+        inner_invoke_count_second.fetch_add(1, Ordering::SeqCst);
+        cb_handle.terminate_execution();
+        current_limit * 2
+      },
+    );
+
+    let err = isolate
+      .execute(
+        "script name",
+        r#"let s = ""; while(true) { s += "Hello"; }"#,
+      )
+      .expect_err("script should fail");
+    assert_eq!(
+      "Uncaught Error: execution terminated",
+      err.downcast::<JSError>().unwrap().message
+    );
+    assert_eq!(0, callback_invoke_count_first.load(Ordering::SeqCst));
+    assert!(callback_invoke_count_second.load(Ordering::SeqCst) > 0);
   }
 }
