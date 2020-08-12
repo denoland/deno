@@ -10,7 +10,8 @@ import {
 import { assert } from "../_util/assert.ts";
 import type { LevelName } from "./levels.ts";
 
-export { LogLevels, LevelName } from "./levels.ts";
+export { LogLevels } from "./levels.ts";
+export type { LevelName } from "./levels.ts";
 export { Logger } from "./logger.ts";
 
 export class LoggerConfig {
