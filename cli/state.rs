@@ -75,7 +75,10 @@ impl State {
     self.core_op(json_op(self.stateful_op(dispatcher)))
   }
 
-  pub fn stateful_json_op_sync<D>(&self, dispatcher: D) -> impl Fn(&mut deno_core::CoreIsolateState, &mut [ZeroCopyBuf]) -> Op
+  pub fn stateful_json_op_sync<D>(
+    &self,
+    dispatcher: D,
+  ) -> impl Fn(&mut deno_core::CoreIsolateState, &mut [ZeroCopyBuf]) -> Op
   where
     D: Fn(
       &mut deno_core::CoreIsolateState,
@@ -88,21 +91,20 @@ impl State {
 
     use deno_core::CoreIsolateState;
 
-    move |isolate_state: &mut CoreIsolateState, zero_copy: &mut [ZeroCopyBuf]| {
-      assert!(!zero_copy.is_empty(), "Expected JSON string at position 0");  
+    move |isolate_state: &mut CoreIsolateState,
+          zero_copy: &mut [ZeroCopyBuf]| {
+      assert!(!zero_copy.is_empty(), "Expected JSON string at position 0");
       let result = serde_json::from_slice(&zero_copy[0])
         .map_err(OpError::from)
         .and_then(|args| {
           dispatcher(isolate_state, &state, args, &mut zero_copy[1..])
         });
-  
+
       use crate::ops::serialize_result;
 
       // Convert to Op
       match result {
-        Ok(sync_value) => {
-          Op::Sync(serialize_result(None, Ok(sync_value)))
-        },
+        Ok(sync_value) => Op::Sync(serialize_result(None, Ok(sync_value))),
         Err(sync_err) => {
           let buf = serialize_result(None, Err(sync_err));
           Op::Sync(buf)
@@ -111,7 +113,10 @@ impl State {
     }
   }
 
-  pub fn stateful_json_op_async<D>(&self, dispatcher: D) -> impl Fn(&mut deno_core::CoreIsolateState, &mut [ZeroCopyBuf]) -> Op
+  pub fn stateful_json_op_async<D>(
+    &self,
+    dispatcher: D,
+  ) -> impl Fn(&mut deno_core::CoreIsolateState, &mut [ZeroCopyBuf]) -> Op
   where
     D: Fn(
       &mut deno_core::CoreIsolateState,
@@ -122,11 +127,12 @@ impl State {
   {
     let state = self.clone();
 
-    use deno_core::CoreIsolateState;
     use crate::ops::AsyncArgs;
+    use deno_core::CoreIsolateState;
 
-    move |isolate_state: &mut CoreIsolateState, zero_copy: &mut [ZeroCopyBuf]| {
-      assert!(!zero_copy.is_empty(), "Expected JSON string at position 0");  
+    move |isolate_state: &mut CoreIsolateState,
+          zero_copy: &mut [ZeroCopyBuf]| {
+      assert!(!zero_copy.is_empty(), "Expected JSON string at position 0");
       let async_args: AsyncArgs = match serde_json::from_slice(&zero_copy[0]) {
         Ok(args) => args,
         Err(e) => {
@@ -141,7 +147,7 @@ impl State {
         .and_then(|args| {
           Ok(dispatcher(isolate_state, &state, args, &mut zero_copy[1..]))
         });
-  
+
       use crate::ops::serialize_result;
 
       // Convert to Op
@@ -152,7 +158,7 @@ impl State {
             futures::future::ready(serialize_result(promise_id, result))
           });
           Op::Async(fut2.boxed_local())
-        },
+        }
         Err(sync_err) => {
           let buf = serialize_result(None, Err(sync_err));
           Op::Sync(buf)

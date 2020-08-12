@@ -150,7 +150,10 @@ fn op_open(
   }
 }
 
-fn open_helper(state: &State, args: Value) -> Result<(PathBuf, std::fs::OpenOptions), OpError> {
+fn open_helper(
+  state: &State,
+  args: Value,
+) -> Result<(PathBuf, std::fs::OpenOptions), OpError> {
   let args: OpenArgs = serde_json::from_value(args)?;
   let path = Path::new(&args.path).to_path_buf();
 
@@ -209,8 +212,8 @@ fn op_open_sync(
   Ok(json!(rid))
 }
 
-use std::pin::Pin;
 use futures::Future;
+use std::pin::Pin;
 
 fn op_open_async(
   isolate_state: &mut CoreIsolateState,
@@ -234,9 +237,9 @@ fn op_open_async(
       ))))),
     );
     Ok(json!(rid))
-  }.boxed_local()
+  }
+  .boxed_local()
 }
-
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
