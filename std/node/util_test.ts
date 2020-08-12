@@ -1,10 +1,11 @@
 import { assert, assertEquals } from "../testing/asserts.ts";
+import { stripColor } from "../fmt/colors.ts";
 import * as util from "./util.ts";
 
 Deno.test({
   name: "[util] inspect",
   fn() {
-    assertEquals(util.inspect({ foo: 123 }), "{ foo: 123 }");
+    assertEquals(stripColor(util.inspect({ foo: 123 })), "{ foo: 123 }");
   },
 });
 
