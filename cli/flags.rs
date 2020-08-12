@@ -362,6 +362,7 @@ fn install_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   permission_args_parse(flags, matches);
   config_arg_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
+  no_check_arg_parse(flags, matches);
   unstable_arg_parse(flags, matches);
 
   let root = if matches.is_present("root") {
@@ -731,6 +732,7 @@ fn install_subcommand<'a, 'b>() -> App<'a, 'b> {
             .short("f")
             .help("Forcefully overwrite existing installation")
             .takes_value(false))
+        .arg(no_check_arg())
         .arg(ca_file_arg())
         .arg(unstable_arg())
         .arg(config_arg())
