@@ -16,6 +16,7 @@
 
     readyState = this.CONNECTING;
     onopen = () => {};
+    onerror = () => {};
 
     constructor(url) {
       super();
@@ -31,17 +32,25 @@
 
       this.url = wsURL.href;
 
-      sendAsync("op_ws_create", { url: wsURL.href }).then((rid) => {
-        this.rid = rid;
-        this.readyState = this.OPEN;
-        let event = new Event("open");
-        event.target = this;
-        this.onopen(event);
-        this.dispatchEvent(event);
+      sendAsync("op_ws_create", { url: wsURL.href }).then(({ type, rid }) => {
+        if (type === "success") {
+          this.rid = rid;
+          this.readyState = this.OPEN;
+          let event = new Event("open");
+          event.target = this;
+          this.onopen(event);
+          this.dispatchEvent(event);
+        } else {
+          this.readyState = this.CLOSED;
+          let event = new Event("error");
+          event.target = this;
+          this.onerror(event);
+          this.dispatchEvent(event);
+        }
       });
     }
 
-    send(data) {
+    send(data) { // TODO: blob & arraybuffer
       sendSync("op_ws_send", {
         rid: this.rid,
         data,

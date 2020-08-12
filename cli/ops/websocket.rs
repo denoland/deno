@@ -12,7 +12,7 @@ use tokio::net::TcpStream;
 use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
 use tokio_tungstenite::tungstenite::protocol::CloseFrame;
 use tokio_tungstenite::tungstenite::Message;
-use tokio_tungstenite::{connect_async, WebSocketStream};
+use tokio_tungstenite::{connect_async, WebSocketStream, MaybeTlsStream};
 
 pub fn init(i: &mut CoreIsolate, s: &State) {
   i.register_op("op_ws_create", s.stateful_json_op2(op_ws_create));
@@ -36,9 +36,12 @@ pub fn op_ws_create(
   let resource_table = isolate_state.resource_table.clone();
   let future = async move {
     let mut resource_table = resource_table.borrow_mut();
-    let (stream, _) = connect_async(args.url).await.unwrap();
+    let (stream, _) = match connect_async(args.url).await {
+      Ok(s) => s,
+      Err(_) => return Ok(json!({"type": "error"}))
+    };
     let rid = resource_table.add("webSocketStream", Box::new(stream));
-    Ok(json!(rid))
+    Ok(json!({"type": "success", "rid": rid}))
   };
   Ok(JsonOp::Async(future.boxed_local()))
 }
@@ -59,7 +62,7 @@ pub fn op_ws_send(
   let args: SendArgs = serde_json::from_value(args)?;
   let mut resource_table = isolate_state.resource_table.borrow_mut();
   let stream = resource_table
-    .get_mut::<WebSocketStream<TcpStream>>(args.rid)
+    .get_mut::<WebSocketStream<MaybeTlsStream<TcpStream>>>(args.rid)
     .ok_or_else(OpError::bad_resource_id)?;
   block_on(stream.send(Message::Text(args.data))).unwrap();
   Ok(JsonOp::Sync(json!({})))
@@ -84,7 +87,7 @@ pub fn op_ws_close(
   let future = async move {
     let mut resource_table = resource_table.borrow_mut();
     let stream = resource_table
-      .get_mut::<WebSocketStream<TcpStream>>(args.rid)
+      .get_mut::<WebSocketStream<MaybeTlsStream<TcpStream>>>(args.rid)
       .ok_or_else(OpError::bad_resource_id)?;
     stream
       .close(Some(CloseFrame {
