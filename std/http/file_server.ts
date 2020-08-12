@@ -7,7 +7,13 @@
 // https://github.com/indexzero/http-server/blob/master/test/http-server-test.js
 
 import { posix, extname } from "../path/mod.ts";
-import { listenAndServe, ServerRequest, Response } from "./server.ts";
+import {
+  listenAndServe,
+  listenAndServeTLS,
+  ServerRequest,
+  Response,
+  HTTPSOptions,
+} from "./server.ts";
 import { parse } from "../flags/mod.ts";
 import { assert } from "../_util/assert.ts";
 
@@ -28,6 +34,14 @@ interface FileServerArgs {
   // -h --help
   h: boolean;
   help: boolean;
+  // --host
+  host: string;
+  // -c --cert
+  c: string;
+  cert: string;
+  // -k --key
+  k: string;
+  key: string;
 }
 
 const encoder = new TextEncoder();
@@ -49,6 +63,7 @@ const MEDIA_TYPES: Record<string, string> = {
   ".gz": "application/gzip",
   ".css": "text/css",
   ".wasm": "application/wasm",
+  ".mjs": "application/javascript",
 };
 
 /** Returns the content-type based on the extension of a path. */
@@ -306,7 +321,19 @@ function html(strings: TemplateStringsArray, ...values: unknown[]): string {
 
 function main(): void {
   const CORSEnabled = serverArgs.cors ? true : false;
-  const addr = `0.0.0.0:${serverArgs.port ?? serverArgs.p ?? 4507}`;
+  const port = serverArgs.port ?? serverArgs.p ?? 4507;
+  const host = serverArgs.host ?? "0.0.0.0";
+  const addr = `${host}:${port}`;
+  const tlsOpts = {} as HTTPSOptions;
+  tlsOpts.certFile = serverArgs.cert ?? serverArgs.c ?? "";
+  tlsOpts.keyFile = serverArgs.key ?? serverArgs.k ?? "";
+
+  if (tlsOpts.keyFile || tlsOpts.certFile) {
+    if (tlsOpts.keyFile === "" || tlsOpts.certFile === "") {
+      console.log("--key and --cert are required for TLS");
+      serverArgs.h = true;
+    }
+  }
 
   if (serverArgs.h ?? serverArgs.help) {
     console.log(`Deno File Server
@@ -321,50 +348,62 @@ function main(): void {
   OPTIONS:
     -h, --help          Prints help information
     -p, --port <PORT>   Set port
-    --cors              Enable CORS via the "Access-Control-Allow-Origin" header`);
+    --cors              Enable CORS via the "Access-Control-Allow-Origin" header
+    --host     <HOST>   Hostname (default is 0.0.0.0)
+    -c, --cert <FILE>   TLS certificate file (enables TLS)
+    -k, --key  <FILE>   TLS key file (enables TLS)
+
+    All TLS options are required when one is provided.`);
+
     Deno.exit();
   }
 
-  listenAndServe(
-    addr,
-    async (req): Promise<void> => {
-      let normalizedUrl = posix.normalize(req.url);
-      try {
-        normalizedUrl = decodeURIComponent(normalizedUrl);
-      } catch (e) {
-        if (!(e instanceof URIError)) {
-          throw e;
-        }
+  const handler = async (req: ServerRequest): Promise<void> => {
+    let normalizedUrl = posix.normalize(req.url);
+    try {
+      normalizedUrl = decodeURIComponent(normalizedUrl);
+    } catch (e) {
+      if (!(e instanceof URIError)) {
+        throw e;
       }
-      const fsPath = posix.join(target, normalizedUrl);
+    }
+    const fsPath = posix.join(target, normalizedUrl);
 
-      let response: Response | undefined;
+    let response: Response | undefined;
+    try {
+      const fileInfo = await Deno.stat(fsPath);
+      if (fileInfo.isDirectory) {
+        response = await serveDir(req, fsPath);
+      } else {
+        response = await serveFile(req, fsPath);
+      }
+    } catch (e) {
+      console.error(e.message);
+      response = await serveFallback(req, e);
+    } finally {
+      if (CORSEnabled) {
+        assert(response);
+        setCORS(response);
+      }
+      serverLog(req, response!);
       try {
-        const fileInfo = await Deno.stat(fsPath);
-        if (fileInfo.isDirectory) {
-          response = await serveDir(req, fsPath);
-        } else {
-          response = await serveFile(req, fsPath);
-        }
+        await req.respond(response!);
       } catch (e) {
         console.error(e.message);
-        response = await serveFallback(req, e);
-      } finally {
-        if (CORSEnabled) {
-          assert(response);
-          setCORS(response);
-        }
-        serverLog(req, response!);
-        try {
-          await req.respond(response!);
-        } catch (e) {
-          console.error(e.message);
-        }
       }
-    },
-  );
+    }
+  };
 
-  console.log(`HTTP server listening on http://${addr}/`);
+  let proto = "http";
+  if (tlsOpts.keyFile || tlsOpts.certFile) {
+    proto += "s";
+    tlsOpts.hostname = host;
+    tlsOpts.port = port;
+    listenAndServeTLS(tlsOpts, handler);
+  } else {
+    listenAndServe(addr, handler);
+  }
+  console.log(`${proto.toUpperCase()} server listening on ${proto}://${addr}/`);
 }
 
 if (import.meta.main) {
