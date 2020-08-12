@@ -376,7 +376,11 @@ function main(): void {
     try {
       const fileInfo = await Deno.stat(fsPath);
       if (fileInfo.isDirectory) {
-        response = await serveDir(req, fsPath);
+        if (dirListingEnabled) {
+          response = await serveDir(req, fsPath);
+        } else {
+          throw new Deno.errors.NotFound();
+        }
       } else {
         response = await serveFile(req, fsPath);
       }
@@ -391,16 +395,6 @@ function main(): void {
       serverLog(req, response!);
       try {
         await req.respond(response!);
-        const fileInfo = await Deno.stat(fsPath);
-        if (fileInfo.isDirectory) {
-          if (dirListingEnabled) {
-            response = await serveDir(req, fsPath);
-          } else {
-            throw new Deno.errors.NotFound();
-          }
-        } else {
-          response = await serveFile(req, fsPath);
-        }
       } catch (e) {
         console.error(e.message);
       }
