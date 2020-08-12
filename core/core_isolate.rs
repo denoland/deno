@@ -20,9 +20,11 @@ use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
 use futures::task::AtomicWaker;
 use futures::Future;
+use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::convert::From;
+use std::ffi::c_void;
 use std::mem::forget;
 use std::ops::Deref;
 use std::ops::DerefMut;
@@ -71,7 +73,24 @@ pub enum StartupData<'a> {
   None,
 }
 
+impl StartupData<'_> {
+  fn into_options(self) -> (Option<OwnedScript>, Option<Snapshot>) {
+    match self {
+      Self::Script(script) => (Some(script.into()), None),
+      Self::Snapshot(snapshot) => (None, Some(snapshot)),
+      Self::None => (None, None),
+    }
+  }
+}
+
 type JSErrorCreateFn = dyn Fn(JSError) -> ErrBox;
+
+/// Objects that need to live as long as the isolate
+#[derive(Default)]
+struct IsolateAllocations {
+  near_heap_limit_callback_data:
+    Option<(Box<RefCell<dyn Any>>, v8::NearHeapLimitCallback)>,
+}
 
 /// A single execution context of JavaScript. Corresponds roughly to the "Web
 /// Worker" concept in the DOM. An CoreIsolate is a Future that can be used with
@@ -89,6 +108,7 @@ pub struct CoreIsolate {
   has_snapshotted: bool,
   needs_init: bool,
   startup_script: Option<OwnedScript>,
+  allocations: IsolateAllocations,
 }
 
 /// Internal state for CoreIsolate which is stored in one of v8::Isolate's
@@ -162,25 +182,75 @@ pub unsafe fn v8_init() {
   v8::V8::set_flags_from_command_line(argv);
 }
 
+/// Minimum and maximum bytes of heap used in an isolate
+pub struct HeapLimits {
+  /// By default V8 starts with a small heap and dynamically grows it to match
+  /// the set of live objects. This may lead to ineffective garbage collections
+  /// at startup if the live set is large. Setting the initial heap size avoids
+  /// such garbage collections. Note that this does not affect young generation
+  /// garbage collections.
+  pub initial: usize,
+  /// When the heap size approaches `max`, V8 will perform series of
+  /// garbage collections and invoke the
+  /// [NearHeapLimitCallback](TODO).
+  /// If the garbage collections do not help and the callback does not
+  /// increase the limit, then V8 will crash with V8::FatalProcessOutOfMemory.
+  pub max: usize,
+}
+
+pub(crate) struct IsolateOptions {
+  will_snapshot: bool,
+  startup_script: Option<OwnedScript>,
+  startup_snapshot: Option<Snapshot>,
+  heap_limits: Option<HeapLimits>,
+}
+
 impl CoreIsolate {
   /// startup_data defines the snapshot or script used at startup to initialize
   /// the isolate.
   pub fn new(startup_data: StartupData, will_snapshot: bool) -> Self {
+    let (startup_script, startup_snapshot) = startup_data.into_options();
+    let options = IsolateOptions {
+      will_snapshot,
+      startup_script,
+      startup_snapshot,
+      heap_limits: None,
+    };
+
+    Self::from_options(options)
+  }
+
+  /// This is useful for controlling memory usage of scripts.
+  ///
+  /// See [`HeapLimits`](struct.HeapLimits.html) for more details.
+  ///
+  /// Make sure to use [`add_near_heap_limit_callback`](#method.add_near_heap_limit_callback)
+  /// to prevent v8 from crashing when reaching the upper limit.
+  pub fn with_heap_limits(
+    startup_data: StartupData,
+    heap_limits: HeapLimits,
+  ) -> Self {
+    let (startup_script, startup_snapshot) = startup_data.into_options();
+    let options = IsolateOptions {
+      will_snapshot: false,
+      startup_script,
+      startup_snapshot,
+      heap_limits: Some(heap_limits),
+    };
+
+    Self::from_options(options)
+  }
+
+  fn from_options(options: IsolateOptions) -> Self {
     static DENO_INIT: Once = Once::new();
     DENO_INIT.call_once(|| {
       unsafe { v8_init() };
     });
 
-    let (startup_script, startup_snapshot) = match startup_data {
-      StartupData::Script(script) => (Some(script.into()), None),
-      StartupData::Snapshot(snapshot) => (None, Some(snapshot)),
-      StartupData::None => (None, None),
-    };
-
     let global_context;
-    let (mut isolate, maybe_snapshot_creator) = if will_snapshot {
+    let (mut isolate, maybe_snapshot_creator) = if options.will_snapshot {
       // TODO(ry) Support loading snapshots before snapshotting.
-      assert!(startup_snapshot.is_none());
+      assert!(options.startup_snapshot.is_none());
       let mut creator =
         v8::SnapshotCreator::new(Some(&bindings::EXTERNAL_REFERENCES));
       let isolate = unsafe { creator.get_owned_isolate() };
@@ -195,7 +265,7 @@ impl CoreIsolate {
     } else {
       let mut params = v8::Isolate::create_params()
         .external_references(&**bindings::EXTERNAL_REFERENCES);
-      let snapshot_loaded = if let Some(snapshot) = startup_snapshot {
+      let snapshot_loaded = if let Some(snapshot) = options.startup_snapshot {
         params = match snapshot {
           Snapshot::Static(data) => params.snapshot_blob(data),
           Snapshot::JustCreated(data) => params.snapshot_blob(data),
@@ -205,6 +275,10 @@ impl CoreIsolate {
       } else {
         false
       };
+
+      if let Some(heap_limits) = options.heap_limits {
+        params = params.heap_limits(heap_limits.initial, heap_limits.max)
+      }
 
       let isolate = v8::Isolate::new(params);
       let mut isolate = CoreIsolate::setup_isolate(isolate);
@@ -243,7 +317,8 @@ impl CoreIsolate {
       snapshot_creator: maybe_snapshot_creator,
       has_snapshotted: false,
       needs_init: true,
-      startup_script,
+      startup_script: options.startup_script,
+      allocations: IsolateAllocations::default(),
     }
   }
 
@@ -353,6 +428,49 @@ impl CoreIsolate {
     let mut state = state_rc.borrow_mut();
     state.op_registry.register(name, op)
   }
+
+  /// Registers a callback on the isolate when the memory limits are approached.
+  /// Use this to prevent V8 from crashing the process when reaching the limit.
+  ///
+  /// Calls the closure with the current heap limit and the initial heap limit.
+  /// The return value of the closure is set as the new limit.
+  pub fn add_near_heap_limit_callback<C>(&mut self, cb: C)
+  where
+    C: FnMut(usize, usize) -> usize + 'static,
+  {
+    let boxed_cb = Box::new(RefCell::new(cb));
+    let data = boxed_cb.as_ptr() as *mut c_void;
+    self.allocations.near_heap_limit_callback_data =
+      Some((boxed_cb, near_heap_limit_callback::<C>));
+    self
+      .v8_isolate
+      .as_mut()
+      .unwrap()
+      .add_near_heap_limit_callback(near_heap_limit_callback::<C>, data);
+  }
+
+  pub fn remove_near_heap_limit_callback(&mut self, heap_limit: usize) {
+    if let Some((_, cb)) = self.allocations.near_heap_limit_callback_data.take()
+    {
+      self
+        .v8_isolate
+        .as_mut()
+        .unwrap()
+        .remove_near_heap_limit_callback(cb, heap_limit);
+    }
+  }
+}
+
+extern "C" fn near_heap_limit_callback<F>(
+  data: *mut c_void,
+  current_heap_limit: usize,
+  initial_heap_limit: usize,
+) -> usize
+where
+  F: FnMut(usize, usize) -> usize,
+{
+  let callback = unsafe { &mut *(data as *mut F) };
+  callback(current_heap_limit, initial_heap_limit)
 }
 
 impl Future for CoreIsolate {
@@ -1187,5 +1305,49 @@ pub mod tests {
     let startup_data = StartupData::Snapshot(Snapshot::Boxed(snapshot));
     let mut isolate2 = CoreIsolate::new(startup_data, false);
     js_check(isolate2.execute("check.js", "if (a != 3) throw Error('x')"));
+  }
+
+  #[test]
+  fn test_heap_limits() {
+    let heap_limits = HeapLimits {
+      initial: 0,
+      max: 20 * 1024, // 20 kB
+    };
+    let mut isolate =
+      CoreIsolate::with_heap_limits(StartupData::None, heap_limits);
+    let cb_handle = isolate.thread_safe_handle();
+
+    let callback_invoke_count = Rc::new(AtomicUsize::default());
+    let inner_invoke_count = Rc::clone(&callback_invoke_count);
+
+    isolate.add_near_heap_limit_callback(
+      move |current_limit, _initial_limit| {
+        inner_invoke_count.fetch_add(1, Ordering::SeqCst);
+        cb_handle.terminate_execution();
+        current_limit * 2
+      },
+    );
+    let err = isolate
+      .execute(
+        "script name",
+        r#"let s = ""; while(true) { s += "Hello"; }"#,
+      )
+      .expect_err("script should fail");
+    assert_eq!(
+      "Uncaught Error: execution terminated",
+      err.downcast::<JSError>().unwrap().message
+    );
+    assert!(callback_invoke_count.load(Ordering::SeqCst) > 0)
+  }
+
+  #[test]
+  fn test_heap_limit_cb_remove() {
+    let mut isolate = CoreIsolate::new(StartupData::None, false);
+
+    isolate.add_near_heap_limit_callback(|current_limit, _initial_limit| {
+      current_limit * 2
+    });
+    isolate.remove_near_heap_limit_callback(20 * 1024);
+    assert!(isolate.allocations.near_heap_limit_callback_data.is_none());
   }
 }
