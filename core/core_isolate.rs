@@ -470,6 +470,21 @@ impl CoreIsolate {
         .remove_near_heap_limit_callback(cb, heap_limit);
     }
   }
+
+  /// Allows registering a callback v8 calls whenever JS tries to evaluate code at
+  /// runtime using `eval` or the `Function` constructor.
+  // TODO(neolegends): Allow passing closures via runtime-generated trampolines
+  #[doc(hidden)]
+  pub fn set_modify_code_generation_from_strings_callback(
+    &mut self,
+    cb: v8::ModifyCodeGenerationFromStringsCallback,
+  ) {
+    self
+      .v8_isolate
+      .as_mut()
+      .unwrap()
+      .set_modify_code_generation_from_strings_callback(cb);
+  }
 }
 
 extern "C" fn near_heap_limit_callback<F>(
@@ -1403,5 +1418,26 @@ pub mod tests {
     );
     assert_eq!(0, callback_invoke_count_first.load(Ordering::SeqCst));
     assert!(callback_invoke_count_second.load(Ordering::SeqCst) > 0);
+  }
+
+  #[test]
+  fn block_execution() {
+    extern "C" fn block_code_execution(
+      _ctx: v8::Local<v8::Context>,
+      _src: v8::Local<v8::Value>,
+    ) -> v8::ModifyCodeGenerationFromStringsResult<'static> {
+      v8::ModifyCodeGenerationFromStringsResult {
+        codegen_allowed: false,
+        modified_source: None,
+      }
+    }
+
+    let mut isolate = CoreIsolate::new(StartupData::None, false);
+    isolate
+      .set_modify_code_generation_from_strings_callback(block_code_execution);
+
+    isolate
+      .execute("script name", r#"eval("1 + 1");"#)
+      .expect_err("script should fail");
   }
 }
