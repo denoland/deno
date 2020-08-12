@@ -55,6 +55,7 @@ pub enum DenoSubcommand {
   },
   Lint {
     files: Vec<String>,
+    ignore: Vec<String>,
     rules: bool,
   },
   Repl,
@@ -628,8 +629,16 @@ fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     Some(f) => f.map(String::from).collect(),
     None => vec![],
   };
+  let ignore = match matches.values_of("ignore") {
+    Some(f) => f.map(String::from).collect(),
+    None => vec![],
+  };
   let rules = matches.is_present("rules");
-  flags.subcommand = DenoSubcommand::Lint { files, rules };
+  flags.subcommand = DenoSubcommand::Lint {
+    files,
+    rules,
+    ignore,
+  };
 }
 
 fn types_subcommand<'a, 'b>() -> App<'a, 'b> {
@@ -1018,6 +1027,15 @@ Ignore linting a file by adding an ignore comment at the top of the file:
       Arg::with_name("rules")
         .long("rules")
         .help("List available rules"),
+    )
+    .arg(
+      Arg::with_name("ignore")
+        .long("ignore")
+        .requires("unstable")
+        .takes_value(true)
+        .use_delimiter(true)
+        .require_equals(true)
+        .help("Ignore linting particular source files."),
     )
     .arg(
       Arg::with_name("files")
@@ -1739,19 +1757,26 @@ mod tests {
         subcommand: DenoSubcommand::Lint {
           files: vec!["script_1.ts".to_string(), "script_2.ts".to_string()],
           rules: false,
+          ignore: vec![],
         },
         unstable: true,
         ..Flags::default()
       }
     );
 
-    let r = flags_from_vec_safe(svec!["deno", "lint", "--unstable"]);
+    let r = flags_from_vec_safe(svec![
+      "deno",
+      "lint",
+      "--unstable",
+      "--ignore=script_1.ts,script_2.ts"
+    ]);
     assert_eq!(
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Lint {
           files: vec![],
           rules: false,
+          ignore: svec!["script_1.ts", "script_2.ts"],
         },
         unstable: true,
         ..Flags::default()
@@ -1764,7 +1789,8 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Lint {
           files: vec![],
-          rules: true
+          rules: true,
+          ignore: vec![],
         },
         unstable: true,
         ..Flags::default()

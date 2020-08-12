@@ -25,8 +25,17 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use swc_ecmascript::parser::Syntax;
 
-pub async fn lint_files(args: Vec<String>) -> Result<(), ErrBox> {
-  let target_files = collect_files(args)?;
+pub async fn lint_files(
+  args: Vec<String>,
+  ignore: Vec<String>,
+) -> Result<(), ErrBox> {
+  let mut target_files = collect_files(args)?;
+  if !ignore.is_empty() {
+    // collect all files to be ignored
+    // and retain only files that should be linted.
+    let ignore_files = collect_files(ignore)?;
+    target_files.retain(|f| !ignore_files.contains(&f));
+  }
   debug!("Found {} files", target_files.len());
 
   let error_count = Arc::new(AtomicUsize::new(0));
