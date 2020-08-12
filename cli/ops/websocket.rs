@@ -4,15 +4,19 @@ use crate::op_error::OpError;
 use crate::state::State;
 use deno_core::ZeroCopyBuf;
 use deno_core::{CoreIsolate, CoreIsolateState};
+use futures::executor::block_on;
 use futures::future::FutureExt;
+use futures::SinkExt;
 use std::borrow::Cow;
 use tokio::net::TcpStream;
 use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
 use tokio_tungstenite::tungstenite::protocol::CloseFrame;
+use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::{connect_async, WebSocketStream};
 
 pub fn init(i: &mut CoreIsolate, s: &State) {
   i.register_op("op_ws_create", s.stateful_json_op2(op_ws_create));
+  i.register_op("op_ws_send", s.stateful_json_op2(op_ws_send));
   i.register_op("op_ws_close", s.stateful_json_op2(op_ws_close));
 }
 
@@ -23,7 +27,7 @@ struct CreateArgs {
 }
 
 pub fn op_ws_create(
-  isolate_state: & mut CoreIsolateState,
+  isolate_state: &mut CoreIsolateState,
   _state: &State,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
@@ -37,6 +41,28 @@ pub fn op_ws_create(
     Ok(json!(rid))
   };
   Ok(JsonOp::Async(future.boxed_local()))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SendArgs {
+  rid: u32,
+  data: String,
+}
+
+pub fn op_ws_send(
+  isolate_state: &mut CoreIsolateState,
+  _state: &State,
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<JsonOp, OpError> {
+  let args: SendArgs = serde_json::from_value(args)?;
+  let mut resource_table = isolate_state.resource_table.borrow_mut();
+  let stream = resource_table
+    .get_mut::<WebSocketStream<TcpStream>>(args.rid)
+    .ok_or_else(OpError::bad_resource_id)?;
+  block_on(stream.send(Message::Text(args.data))).unwrap();
+  Ok(JsonOp::Sync(json!({})))
 }
 
 #[derive(Deserialize)]
@@ -67,11 +93,12 @@ pub fn op_ws_close(
           Some(reason) => Cow::from(reason),
           None => Default::default(),
         },
-      })).await.unwrap();
+      }))
+      .await
+      .unwrap();
 
     Ok(json!({}))
   };
-
 
   Ok(JsonOp::Async(future.boxed_local()))
 }
