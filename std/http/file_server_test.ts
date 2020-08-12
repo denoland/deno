@@ -3,17 +3,15 @@ import { assert, assertEquals } from "../testing/asserts.ts";
 import { BufReader } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 import { ServerRequest } from "./server.ts";
-import { serveFile } from "./file_server.ts";
+import { serveFile, FileServerArgs } from "./file_server.ts";
 let fileServer: Deno.Process<Deno.RunOptions & { stdout: "piped" }>;
 
-type FileServerCfg = {
-  target?: string;
-  port?: number;
-};
+type FileServerCfg = Omit<FileServerArgs, "_"> & { target?: string };
 
 async function startFileServer({
   target = ".",
   port = 4507,
+  "dir-listing": dirListing = true,
 }: FileServerCfg = {}): Promise<void> {
   fileServer = Deno.run({
     cmd: [
@@ -26,6 +24,7 @@ async function startFileServer({
       "--cors",
       "-p",
       `${port}`,
+      `${dirListing ? "" : "--no-dir-listing"}`,
     ],
     stdout: "piped",
     stderr: "null",
@@ -100,7 +99,6 @@ Deno.test(
       const localFile = new TextDecoder().decode(
         await Deno.readFile("./http/README.md"),
       );
-      console.log(downloadedFile, localFile);
       assertEquals(downloadedFile, localFile);
     } finally {
       await killFileServer();
@@ -284,6 +282,19 @@ Deno.test("partial TLS arguments fail", async function (): Promise<void> {
     assert(
       s !== null && s.includes("--key and --cert are required for TLS"),
     );
+  } finally {
+    await killFileServer();
+  }
+});
+
+Deno.test("file_server disable dir listings", async function (): Promise<void> {
+  await startFileServer({ "dir-listing": false });
+  try {
+    const res = await fetch("http://localhost:4507/");
+    assert(res.headers.has("access-control-allow-origin"));
+    assert(res.headers.has("access-control-allow-headers"));
+    assertEquals(res.status, 404);
+    const _ = await res.text();
   } finally {
     await killFileServer();
   }

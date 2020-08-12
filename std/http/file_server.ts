@@ -24,24 +24,26 @@ interface EntryInfo {
   name: string;
 }
 
-interface FileServerArgs {
+export interface FileServerArgs {
   _: string[];
   // -p --port
-  p: number;
-  port: number;
+  p?: number;
+  port?: number;
   // --cors
-  cors: boolean;
-  // -h --help
-  h: boolean;
-  help: boolean;
+  cors?: boolean;
+  // --no-dir-listing
+  "dir-listing"?: boolean;
   // --host
-  host: string;
+  host?: string;
   // -c --cert
-  c: string;
-  cert: string;
+  c?: string;
+  cert?: string;
   // -k --key
-  k: string;
-  key: string;
+  k?: string;
+  key?: string;
+  // -h --help
+  h?: boolean;
+  help?: boolean;
 }
 
 const encoder = new TextEncoder();
@@ -327,6 +329,7 @@ function main(): void {
   const tlsOpts = {} as HTTPSOptions;
   tlsOpts.certFile = serverArgs.cert ?? serverArgs.c ?? "";
   tlsOpts.keyFile = serverArgs.key ?? serverArgs.k ?? "";
+  const dirListingEnabled = serverArgs["dir-listing"] ?? true;
 
   if (tlsOpts.keyFile || tlsOpts.certFile) {
     if (tlsOpts.keyFile === "" || tlsOpts.certFile === "") {
@@ -352,9 +355,9 @@ function main(): void {
     --host     <HOST>   Hostname (default is 0.0.0.0)
     -c, --cert <FILE>   TLS certificate file (enables TLS)
     -k, --key  <FILE>   TLS key file (enables TLS)
+    --no-dir-listing    Disable directory listing
 
     All TLS options are required when one is provided.`);
-
     Deno.exit();
   }
 
@@ -373,7 +376,11 @@ function main(): void {
     try {
       const fileInfo = await Deno.stat(fsPath);
       if (fileInfo.isDirectory) {
-        response = await serveDir(req, fsPath);
+        if (dirListingEnabled) {
+          response = await serveDir(req, fsPath);
+        } else {
+          throw new Deno.errors.NotFound();
+        }
       } else {
         response = await serveFile(req, fsPath);
       }
