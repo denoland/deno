@@ -18,9 +18,6 @@ use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::Op;
 use deno_core::ZeroCopyBuf;
-use deno_core::dispatch_json::JsonOp as CoreJsonOp;
-use deno_core::dispatch_json::JsonError;
-use deno_core::dispatch_json::JsonOpDispatcher as CoreJsonOpDispatcher;
 use futures::future::FutureExt;
 use futures::Future;
 use rand::rngs::StdRng;
@@ -78,7 +75,7 @@ impl State {
     self.core_op(json_op(self.stateful_op(dispatcher)))
   }
 
-  pub fn stateful_json_op_sync<D>(&self, dispatcher: D) -> impl OpDispatcher
+  pub fn stateful_json_op_sync<D>(&self, dispatcher: D) -> impl Fn(&mut deno_core::CoreIsolateState, &mut [ZeroCopyBuf]) -> Op
   where
     D: Fn(
       &mut deno_core::CoreIsolateState,
@@ -114,7 +111,7 @@ impl State {
     }
   }
 
-  pub fn stateful_json_op_async<D>(&self, dispatcher: D) -> impl OpDispatcher 
+  pub fn stateful_json_op_async<D>(&self, dispatcher: D) -> impl Fn(&mut deno_core::CoreIsolateState, &mut [ZeroCopyBuf]) -> Op
   where
     D: Fn(
       &mut deno_core::CoreIsolateState,
@@ -164,14 +161,6 @@ impl State {
     }
   }
 
-  pub fn stateful_json_core_op<D>(&self, dispatcher: D) -> impl OpDispatcher
-  where
-    D: Fn(&State, Value, &mut [ZeroCopyBuf]) -> Result<CoreJsonOp, JsonError>,
-  {
-    use deno_core::dispatch_json::json_op as core_json_op;
-    self.core_op(core_json_op(self.core_stateful_op(dispatcher)))
-  }
-
   pub fn stateful_json_op2<D>(
     &self,
     dispatcher: D,
@@ -187,15 +176,6 @@ impl State {
     use crate::ops::json_op;
     self.core_op(json_op(self.stateful_op2(dispatcher)))
   }
-
-  pub fn stateful_json_core_op2<D>(&self, dispatcher: D) -> impl OpDispatcher
-  where
-    D: Fn(&mut deno_core::CoreIsolateState, &State, Value, &mut [ZeroCopyBuf]) -> Result<CoreJsonOp, JsonError>,
-  {
-    use deno_core::dispatch_json::json_op as core_json_op;
-    self.core_op(core_json_op(self.core_stateful_op2(dispatcher)))
-  }
-
 
   /// Wrap core `OpDispatcher` to collect metrics.
   // TODO(ry) this should be private. Is called by stateful_json_op or
@@ -285,17 +265,6 @@ impl State {
     ))
   }
 
-  pub fn core_stateful_op<D>(&self, dispatcher: D) -> impl CoreJsonOpDispatcher
-  where
-    D: Fn(&State, Value, &mut [ZeroCopyBuf]) -> Result<CoreJsonOp, JsonError>,
-  {
-    let state = self.clone();
-    move |_isolate_state: &mut deno_core::CoreIsolateState,
-          args: Value,
-          zero_copy: &mut [ZeroCopyBuf]|
-          -> Result<CoreJsonOp, JsonError> { dispatcher(&state, args, zero_copy) }
-  }
-
   /// This is a special function that provides `state` argument to dispatcher.
   ///
   /// NOTE: This only works with JSON dispatcher.
@@ -317,24 +286,6 @@ impl State {
           args: Value,
           zero_copy: &mut [ZeroCopyBuf]|
           -> Result<JsonOp, OpError> { dispatcher(&state, args, zero_copy) }
-  }
-
-  pub fn core_stateful_op2<D>(&self, dispatcher: D) -> impl CoreJsonOpDispatcher
-  where
-    D: Fn(
-      &mut deno_core::CoreIsolateState,
-      &State,
-      Value,
-      &mut [ZeroCopyBuf],
-    ) -> Result<CoreJsonOp, JsonError>,
-  {
-    let state = self.clone();
-    move |isolate_state: &mut deno_core::CoreIsolateState,
-          args: Value,
-          zero_copy: &mut [ZeroCopyBuf]|
-          -> Result<CoreJsonOp, JsonError> {
-      dispatcher(isolate_state, &state, args, zero_copy)
-    }
   }
 
   pub fn stateful_op2<D>(

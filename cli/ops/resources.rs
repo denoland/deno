@@ -1,14 +1,14 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::op_error::OpError;
 use crate::state::State;
 use deno_core::CoreIsolate;
 use deno_core::CoreIsolateState;
-use deno_core::dispatch_json::{Deserialize, JsonOp, JsonError, Value};
 use deno_core::ZeroCopyBuf;
 
 pub fn init(i: &mut CoreIsolate, s: &State) {
-  i.register_op("op_resources", s.stateful_json_core_op2(op_resources));
-  i.register_op("op_close", s.stateful_json_core_op2(op_close));
+  i.register_op("op_resources", s.stateful_json_op2(op_resources));
+  i.register_op("op_close", s.stateful_json_op2(op_close));
 }
 
 fn op_resources(
@@ -16,7 +16,7 @@ fn op_resources(
   _state: &State,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, JsonError> {
+) -> Result<JsonOp, OpError> {
   let serialized_resources = isolate_state.resource_table.borrow().entries();
   Ok(JsonOp::Sync(json!(serialized_resources)))
 }
@@ -27,7 +27,7 @@ fn op_close(
   _state: &State,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, JsonError> {
+) -> Result<JsonOp, OpError> {
   #[derive(Deserialize)]
   struct CloseArgs {
     rid: i32,
@@ -36,7 +36,6 @@ fn op_close(
   let mut resource_table = isolate_state.resource_table.borrow_mut();
   resource_table
     .close(args.rid as u32)
-    .ok_or_else(OpError::bad_resource_id)
-    .map_err(JsonError::from)?;
+    .ok_or_else(OpError::bad_resource_id)?;
   Ok(JsonOp::Sync(json!({})))
 }
