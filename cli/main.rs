@@ -41,6 +41,7 @@ mod global_timer;
 pub mod http_cache;
 mod http_util;
 mod import_map;
+mod info;
 mod inspector;
 pub mod installer;
 mod js;
@@ -91,17 +92,14 @@ use log::Level;
 use log::Metadata;
 use log::Record;
 use module_graph::ModuleGraph;
-use serde::ser::SerializeStruct;
+//use serde::ser::SerializeStruct;
 use state::exit_unstable;
 use std::env;
 use std::io::Read;
 use std::io::Write;
 use std::iter::once;
 use std::path::PathBuf;
-use std::{
-  collections::{HashMap, HashSet},
-  pin::Pin,
-};
+use std::pin::Pin;
 use upgrade::upgrade_command;
 use url::Url;
 
@@ -181,273 +179,6 @@ fn print_cache_info(state: &GlobalState, json: bool) -> Result<(), ErrBox> {
   }
 }
 
-/// A dependency tree of the basic module information.
-///
-/// Constructed from a `ModuleGraph` and `ModuleSpecifier` that
-/// acts as the root of the tree.
-struct FileInfoDepTree {
-  name: String,
-  size: usize,
-  total_size: Option<usize>,
-  deps: Vec<FileInfoDepTree>,
-}
-
-impl serde::Serialize for FileInfoDepTree {
-  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-  where
-    S: serde::Serializer,
-  {
-    let mut state = serializer.serialize_struct("FileInfoDepTree", 4)?;
-
-    state.serialize_field("name", &self.name)?;
-    if let Some(total_size) = self.total_size {
-      state.serialize_field("size", &self.size)?;
-      state.serialize_field("total_size", &total_size)?;
-    }
-    state.serialize_field("deps", &self.deps)?;
-    state.end()
-  }
-}
-
-impl FileInfoDepTree {
-  /// Create a `FileInfoDepTree` tree from a `ModuleGraph` and the root `ModuleSpecifier`.
-  pub fn new(
-    module_graph: &ModuleGraph,
-    root_specifier: &ModuleSpecifier,
-  ) -> Self {
-    let mut seen = HashSet::new();
-    let mut total_sizes = HashMap::new();
-
-    Self::cstr_helper(&mut seen, &mut total_sizes, module_graph, root_specifier)
-  }
-
-  fn cstr_helper(
-    seen: &mut HashSet<String>,
-    total_sizes: &mut HashMap<String, usize>,
-    graph: &ModuleGraph,
-    root: &ModuleSpecifier,
-  ) -> Self {
-    let name = root.to_string();
-    let never_seen = seen.insert(name.clone());
-    let file = graph.get(&name).unwrap();
-    let size = file.size();
-    let deps = if never_seen {
-      file
-        .imports
-        .iter()
-        .map(|import| import.resolved_specifier.clone())
-        .map(|spec| Self::cstr_helper(seen, total_sizes, graph, &spec))
-        .collect::<Vec<_>>()
-    } else {
-      vec![]
-    };
-
-    let total_size = if never_seen {
-      if let Some(total_size) = total_sizes.get(&name) {
-        Some(total_size.to_owned())
-      } else {
-        let total: usize = deps
-          .iter()
-          .map(|dep| {
-            if let Some(total_size) = dep.total_size {
-              total_size
-            } else {
-              0
-            }
-          })
-          .sum();
-        let total = size + total;
-
-        total_sizes.insert(name.clone(), total);
-
-        Some(total)
-      }
-    } else {
-      None
-    };
-
-    Self {
-      name,
-      size,
-      total_size,
-      deps,
-    }
-  }
-}
-
-/// Prints the provided `ModuleSpecifier` file info.
-async fn print_file_info(
-  worker: &MainWorker,
-  module_specifier: ModuleSpecifier,
-  json: bool,
-) -> Result<(), ErrBox> {
-  let global_state = worker.state.borrow().global_state.clone();
-  let ts_compiler = &global_state.ts_compiler;
-  let file_fetcher = &global_state.file_fetcher;
-  let out = file_fetcher
-    .fetch_source_file(&module_specifier, None, Permissions::allow_all())
-    .await?;
-  let local = out.filename.to_str().unwrap();
-  let file_type = msg::enum_name_media_type(out.media_type);
-  let compiled: Option<String> = ts_compiler
-    .get_compiled_source_file(&out.url)
-    .ok()
-    .and_then(get_source_filename);
-  let map: Option<String> = ts_compiler
-    .get_source_map_file(&module_specifier)
-    .ok()
-    .and_then(get_source_filename);
-  let module_graph = get_module_graph(&global_state, &module_specifier).await?;
-  let file_info = FileInfoDepTree::new(&module_graph, &module_specifier);
-
-  if json {
-    let output = json!({
-      "local": local,
-      "fileType": file_type,
-      "compiled": compiled,
-      "map": map,
-      "deps": file_info
-    });
-    write_json_to_stdout(&output)
-  } else {
-    println!("{} {}", colors::bold("local:"), local);
-    println!("{} {}", colors::bold("type:"), file_type);
-    if let Some(compiled) = compiled {
-      println!("{} {}", colors::bold("compiled:"), compiled);
-    }
-    if let Some(map) = map {
-      println!("{} {}", colors::bold("map:"), map);
-    }
-
-    println!(
-      "{} {} unique",
-      colors::bold("deps:"),
-      &module_graph.len() - 1
-    );
-    println!(
-      "{} ({}, total = {})",
-      file_info.name,
-      human_size(file_info.size as f64),
-      human_size(file_info.total_size.unwrap() as f64)
-    );
-
-    for (idx, dep) in file_info.deps.iter().enumerate() {
-      print_file_dep_info(&dep, "  ", idx == file_info.deps.len() - 1);
-    }
-
-    Ok(())
-  }
-}
-
-/// Prints the `FileInfoDepTree` tree to stdout.
-fn print_file_dep_info(info: &FileInfoDepTree, prefix: &str, is_last: bool) {
-  print_dep(prefix, is_last, info);
-
-  let prefix = &get_new_prefix(prefix, is_last);
-  let child_count = info.deps.len();
-  for (idx, dep) in info.deps.iter().enumerate() {
-    print_file_dep_info(dep, prefix, idx == child_count - 1);
-  }
-}
-
-/// Prints a single `FileInfoDepTree` to stdout.
-fn print_dep(prefix: &str, is_last: bool, info: &FileInfoDepTree) {
-  let has_children = !info.deps.is_empty();
-
-  println!(
-    "{}{}─{} {}{}",
-    prefix,
-    get_sibling_connector(is_last),
-    get_child_connector(has_children),
-    info.name,
-    get_formatted_totals(info)
-  );
-}
-
-/// Gets the formatted totals for the provided `FileInfoDepTree`.
-///
-/// If the total size is reported as 0 then an empty string is returned.
-fn get_formatted_totals(info: &FileInfoDepTree) -> String {
-  if let Some(total_size) = info.total_size {
-    format!(
-      " ({}, total = {})",
-      human_size(info.size as f64),
-      human_size(total_size as f64)
-    )
-  } else {
-    "".to_string()
-  }
-}
-
-/// Gets the sibling portion of the tree branch.
-fn get_sibling_connector(is_last: bool) -> char {
-  if is_last {
-    '└'
-  } else {
-    '├'
-  }
-}
-
-/// Gets the child connector for the branch.
-fn get_child_connector(has_children: bool) -> char {
-  if has_children {
-    '┬'
-  } else {
-    '─'
-  }
-}
-
-/// Creates a new prefix for a dependency tree item.
-fn get_new_prefix(prefix: &str, is_last: bool) -> String {
-  let mut prefix = prefix.to_string();
-  if is_last {
-    prefix.push(' ');
-  } else {
-    prefix.push('│');
-  }
-
-  prefix.push(' ');
-  prefix
-}
-
-#[test]
-fn get_new_prefix_adds_spaces_if_is_last() {
-  let prefix = get_new_prefix("", true);
-
-  assert_eq!(prefix, "  ".to_string());
-}
-
-#[test]
-fn get_new_prefix_adds_a_vertial_bar_if_not_is_last() {
-  let prefix = get_new_prefix("", false);
-
-  assert_eq!(prefix, "│ ".to_string());
-}
-
-/// Gets the full filename of a `SourceFile`.
-fn get_source_filename(file: SourceFile) -> Option<String> {
-  file.filename.to_str().map(|s| s.to_owned())
-}
-
-/// Constructs a ModuleGraph for the module with the provided name.
-async fn get_module_graph(
-  global_state: &GlobalState,
-  module_specifier: &ModuleSpecifier,
-) -> Result<ModuleGraph, ErrBox> {
-  let mut module_graph_loader = ModuleGraphLoader::new(
-    global_state.file_fetcher.clone(),
-    global_state.maybe_import_map.clone(),
-    Permissions::allow_all(),
-    false,
-    false,
-  );
-  module_graph_loader
-    .add_to_graph(&module_specifier, None)
-    .await?;
-
-  Ok(module_graph_loader.get_graph())
-}
-
 fn get_types(unstable: bool) -> String {
   let mut types = format!(
     "{}\n{}\n{}\n{}",
@@ -480,7 +211,14 @@ async fn info_command(
     let main_module = ModuleSpecifier::resolve_url_or_path(&file.unwrap())?;
     let mut worker = MainWorker::create(global_state, main_module.clone())?;
     worker.preload_module(&main_module).await?;
-    print_file_info(&worker, main_module.clone(), json).await
+    let info = info::ModuleDepInfo::new(&worker, main_module.clone()).await?;
+
+    if json {
+      write_json_to_stdout(&json!(info))
+    } else {
+      info.print();
+      Ok(())
+    }
   }
 }
 
@@ -621,7 +359,7 @@ async fn bundle_command(
   Ok(())
 }
 
-fn human_size(bytse: f64) -> String {
+pub fn human_size(bytse: f64) -> String {
   let negative = if bytse.is_sign_positive() { "" } else { "-" };
   let bytse = bytse.abs();
   let units = ["Bytes", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
