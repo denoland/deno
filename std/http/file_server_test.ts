@@ -199,3 +199,92 @@ Deno.test("file_server running as library", async function (): Promise<void> {
     await killFileServer();
   }
 });
+
+async function startTlsFileServer({
+  target = ".",
+  port = 4577,
+}: FileServerCfg = {}): Promise<void> {
+  fileServer = Deno.run({
+    cmd: [
+      Deno.execPath(),
+      "run",
+      "--allow-read",
+      "--allow-net",
+      "http/file_server.ts",
+      target,
+      "--host",
+      "localhost",
+      "--cert",
+      "./http/testdata/tls/localhost.crt",
+      "--key",
+      "./http/testdata/tls/localhost.key",
+      "--cors",
+      "-p",
+      `${port}`,
+    ],
+    stdout: "piped",
+    stderr: "null",
+  });
+  // Once fileServer is ready it will write to its stdout.
+  assert(fileServer.stdout != null);
+  const r = new TextProtoReader(new BufReader(fileServer.stdout));
+  const s = await r.readLine();
+  assert(s !== null && s.includes("server listening"));
+}
+
+Deno.test("serveDirectory TLS", async function (): Promise<void> {
+  await startTlsFileServer();
+  try {
+    // Valid request after invalid
+    const conn = await Deno.connectTls({
+      hostname: "localhost",
+      port: 4577,
+      certFile: "./http/testdata/tls/RootCA.pem",
+    });
+
+    await Deno.writeAll(
+      conn,
+      new TextEncoder().encode("GET /http HTTP/1.0\r\n\r\n"),
+    );
+    const res = new Uint8Array(128 * 1024);
+    const nread = await conn.read(res);
+    assert(nread !== null);
+    conn.close();
+    const page = new TextDecoder().decode(res.subarray(0, nread));
+    assert(page.includes("<title>Deno File Server</title>"));
+  } finally {
+    await killFileServer();
+  }
+});
+
+Deno.test("partial TLS arguments fail", async function (): Promise<void> {
+  fileServer = Deno.run({
+    cmd: [
+      Deno.execPath(),
+      "run",
+      "--allow-read",
+      "--allow-net",
+      "http/file_server.ts",
+      ".",
+      "--host",
+      "localhost",
+      "--cert",
+      "./http/testdata/tls/localhost.crt",
+      "-p",
+      `4578`,
+    ],
+    stdout: "piped",
+    stderr: "null",
+  });
+  try {
+    // Once fileServer is ready it will write to its stdout.
+    assert(fileServer.stdout != null);
+    const r = new TextProtoReader(new BufReader(fileServer.stdout));
+    const s = await r.readLine();
+    assert(
+      s !== null && s.includes("--key and --cert are required for TLS"),
+    );
+  } finally {
+    await killFileServer();
+  }
+});

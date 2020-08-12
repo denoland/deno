@@ -165,6 +165,7 @@ fn get_js_files_for_rt() -> Vec<String> {
     "rt/20_headers.js",
     "rt/20_streams_queuing_strategy.js",
     "rt/21_dom_file.js",
+    "rt/21_filereader.js",
     "rt/22_form_data.js",
     "rt/23_multipart.js",
     "rt/24_body.js",

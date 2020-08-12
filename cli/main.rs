@@ -533,7 +533,7 @@ async fn doc_command(
       .await
   };
 
-  let doc_nodes = match parse_result {
+  let mut doc_nodes = match parse_result {
     Ok(nodes) => nodes,
     Err(e) => {
       eprintln!("{}", e);
@@ -544,6 +544,7 @@ async fn doc_command(
   if json {
     write_json_to_stdout(&doc_nodes)
   } else {
+    doc_nodes.retain(|doc_node| doc_node.kind != doc::DocNodeKind::Import);
     let details = if let Some(filter) = maybe_filter {
       let nodes =
         doc::find_nodes_by_name_recursively(doc_nodes, filter.clone());
@@ -551,9 +552,9 @@ async fn doc_command(
         eprintln!("Node {} was not found!", filter);
         std::process::exit(1);
       }
-      format!("{}", doc::DocPrinter::new(&nodes, true, private))
+      format!("{}", doc::DocPrinter::new(&nodes, private))
     } else {
-      format!("{}", doc::DocPrinter::new(&doc_nodes, false, private))
+      format!("{}", doc::DocPrinter::new(&doc_nodes, private))
     };
 
     write_to_stdout_ignore_sigpipe(details.as_bytes()).map_err(ErrBox::from)

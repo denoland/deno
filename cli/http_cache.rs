@@ -236,7 +236,6 @@ mod tests {
     );
     assert_eq!(headers.get("etag").unwrap(), "as5625rqdsfb");
     assert_eq!(headers.get("foobar"), None);
-    drop(dir);
   }
 
   #[test]
