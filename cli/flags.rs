@@ -2230,6 +2230,23 @@ mod tests {
   }
 
   #[test]
+  fn bundle_with_reload() {
+    let r =
+        flags_from_vec_safe(svec!["deno", "bundle", "--reload", "source.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        reload: true,
+        subcommand: DenoSubcommand::Bundle {
+          source_file: "source.ts".to_string(),
+          out_file: None,
+        },
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
   fn run_importmap() {
     let r = flags_from_vec_safe(svec![
       "deno",
