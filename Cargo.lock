@@ -440,8 +440,6 @@ dependencies = [
  "libc",
  "log 0.4.11",
  "rusty_v8",
- "serde",
- "serde_derive",
  "serde_json",
  "smallvec 1.4.1",
  "tokio",
