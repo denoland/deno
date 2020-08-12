@@ -2232,7 +2232,7 @@ mod tests {
   #[test]
   fn bundle_with_reload() {
     let r =
-        flags_from_vec_safe(svec!["deno", "bundle", "--reload", "source.ts"]);
+      flags_from_vec_safe(svec!["deno", "bundle", "--reload", "source.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
