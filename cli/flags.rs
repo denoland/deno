@@ -3,6 +3,7 @@ use clap::App;
 use clap::AppSettings;
 use clap::Arg;
 use clap::ArgMatches;
+use clap::ArgSettings;
 use clap::SubCommand;
 use log::Level;
 use std::net::SocketAddr;
@@ -988,10 +989,10 @@ Show documentation for runtime built-ins:
     // https://github.com/clap-rs/clap/issues/1794. Currently `--builtin` is
     // just a possible value of `source_file` so leading hyphens must be
     // enabled.
-    .setting(clap::AppSettings::AllowLeadingHyphen)
     .arg(Arg::with_name("source_file").takes_value(true))
     .arg(
       Arg::with_name("filter")
+        .set(ArgSettings::AllowLeadingHyphen)
         .help("Dot separated path to symbol.")
         .takes_value(true)
         .required(false)
