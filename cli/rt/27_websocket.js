@@ -17,12 +17,18 @@
 
     readyState = this.CONNECTING;
 
+    extensions = "";
+    protocol = "";
+
+    binaryType = "blob";
+    bufferedAmount = 0;
+
     onopen = () => {};
     onerror = () => {};
     onclose = () => {};
     onmessage = () => {};
 
-    constructor(url, protocols) {
+    constructor(url, protocols = []) {
       super();
       requiredArguments("WebSocket", arguments.length, 1);
 
@@ -44,16 +50,25 @@
 
       this.url = wsURL.href;
 
-      sendAsync("op_ws_create", { url: wsURL.href }).then(({ success, rid }) => {
-        if (success) {
-          this.rid = rid;
+      if (protocols && typeof protocols === "string") {
+        protocols = [protocols];
+      }
+
+      sendAsync("op_ws_create", {
+        url: wsURL.href,
+        protocols: protocols.join("; "),
+      }).then((create) => {
+        if (create.success) {
+          this.rid = create.rid;
+          this.extensions = create.extensions;
+          this.protocol = create.protocol;
           this.readyState = this.OPEN;
           const event = new Event("open");
           event.target = this;
           this.onopen(event);
           this.dispatchEvent(event);
 
-          this.eventloop(this, rid);
+          this.eventloop();
         } else {
           this.readyState = this.CLOSED;
           const event = new Event("error");
@@ -70,7 +85,7 @@
       if (this.readyState !== this.CLOSING && this.readyState !== this.CLOSED) {
         if (data instanceof Blob) {
           data.arrayBuffer().then((buf) => {
-            console.log(buf);
+            this.bufferedAmount += buf.byteLength;
             sendSync("op_ws_send", {
               rid: this.rid,
             }, buf);
@@ -82,18 +97,22 @@
           data instanceof Uint8ClampedArray || data instanceof Float32Array ||
           data instanceof Float64Array || data instanceof DataView
         ) {
+          this.bufferedAmount += data.byteLength;
           sendSync("op_ws_send", {
             rid: this.rid,
           }, data);
         } else if (data instanceof ArrayBuffer) { //TODO
-          console.log(data);
+          this.bufferedAmount += data.byteLength;
           sendSync("op_ws_send", {
             rid: this.rid,
           }, data);
         } else {
+          const string = String(data);
+          const encoder = new TextEncoder();
+          this.bufferedAmount += encoder.encode(string).byteLength;
           sendSync("op_ws_send", {
             rid: this.rid,
-            text: String(data),
+            text: string,
           });
         }
       } else {
@@ -142,8 +161,20 @@
     async eventloop() {
       const message = await sendAsync("op_ws_next_event", { rid: this.rid });
       if (message.type === "string" || message.type === "binary") {
+        let data;
+
+        if (message.type === "string") {
+          data = message.data;
+        } else {
+          if (this.binaryType === "blob") {
+            data = new Blob([message.data]);
+          } else {
+            data = message.data;
+          }
+        }
+
         const event = new MessageEvent("message", {
-          data: message.data,
+          data,
           origin: this.url,
         });
         event.target = this;

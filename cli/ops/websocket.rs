@@ -7,12 +7,13 @@ use deno_core::{CoreIsolate, CoreIsolateState};
 use futures::executor::block_on;
 use futures::future::FutureExt;
 use futures::{SinkExt, StreamExt};
+use http::{Method, Request, Uri};
 use std::borrow::Cow;
 use tokio::net::TcpStream;
 use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
 use tokio_tungstenite::tungstenite::protocol::CloseFrame;
-use tokio_tungstenite::tungstenite::{Message, Error};
-use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};
+use tokio_tungstenite::tungstenite::{Error, Message};
+use tokio_tungstenite::{client_async_tls, MaybeTlsStream, WebSocketStream};
 
 pub fn init(i: &mut CoreIsolate, s: &State) {
   i.register_op("op_ws_create", s.stateful_json_op2(op_ws_create));
@@ -25,6 +26,7 @@ pub fn init(i: &mut CoreIsolate, s: &State) {
 #[serde(rename_all = "camelCase")]
 struct CreateArgs {
   url: String,
+  protocols: String,
 }
 
 pub fn op_ws_create(
@@ -37,12 +39,48 @@ pub fn op_ws_create(
   let resource_table = isolate_state.resource_table.clone();
   let future = async move {
     let mut resource_table = resource_table.borrow_mut();
-    let (stream, _) = match connect_async(args.url).await {
+
+    let uri: Uri = args.url.parse().unwrap();
+    let request = Request::builder()
+      .method(Method::GET)
+      .uri(&uri)
+      .header("Sec-WebSocket-Protocol", args.protocols)
+      .body(())
+      .unwrap();
+    let domain = &uri.host().unwrap().to_string();
+    let port = &uri
+      .port_u16()
+      .or_else(|| match uri.scheme_str() {
+        Some("wss") => Some(443),
+        Some("ws") => Some(80),
+        _ => None,
+      })
+      .unwrap();
+    let addr = format!("{}:{}", domain, port);
+    let try_socket = TcpStream::connect(addr).await;
+    let socket = try_socket.map_err(Error::Io).unwrap();
+
+    let (stream, response) = match client_async_tls(request, socket).await {
       Ok(s) => s,
       Err(_) => return Ok(json!({"success": false})),
     };
     let rid = resource_table.add("webSocketStream", Box::new(stream));
-    Ok(json!({"success": true, "rid": rid}))
+    let protocol = match response.headers().get("Sec-WebSocket-Protocol") {
+      Some(header) => header.to_str().unwrap(),
+      None => "",
+    };
+    let extensions = response
+      .headers()
+      .get_all("Sec-WebSocket-Extensions")
+      .iter()
+      .map(|header| header.to_str().unwrap())
+      .collect::<String>();
+    Ok(json!({
+    "success": true,
+    "rid": rid,
+    "protocol": protocol,
+    "extensions": extensions
+    }))
   };
   Ok(JsonOp::Async(future.boxed_local()))
 }
@@ -116,6 +154,7 @@ pub fn op_ws_close(
 struct NextEventArgs {
   rid: u32,
 }
+
 pub fn op_ws_next_event(
   isolate_state: &mut CoreIsolateState,
   _state: &State,
@@ -133,7 +172,9 @@ pub fn op_ws_next_event(
       Ok(message) => message,
       Err(e) => match e {
         Error::ConnectionClosed => {
-          resource_table.close(args.rid).ok_or_else(OpError::bad_resource_id)?;
+          resource_table
+            .close(args.rid)
+            .ok_or_else(OpError::bad_resource_id)?;
           return Ok(json!({
             "type": "closed",
           }));
@@ -143,22 +184,18 @@ pub fn op_ws_next_event(
             "type": "error",
           }));
         }
-      }
+      },
     };
 
     match message {
-      Message::Text(text) => {
-        Ok(json!({
-          "type": "string",
-          "data": text
-        }))
-      },
-      Message::Binary(data) => {
-        Ok(json!({
-          "type": "binary",
-          "data": data
-        }))
-      }
+      Message::Text(text) => Ok(json!({
+        "type": "string",
+        "data": text
+      })),
+      Message::Binary(data) => Ok(json!({
+        "type": "binary",
+        "data": data
+      })),
       Message::Close(frame) => {
         let frame = frame.unwrap();
         let code: u16 = frame.code.into();
@@ -168,15 +205,10 @@ pub fn op_ws_next_event(
           "reason": frame.reason.as_ref()
         }))
       }
-      Message::Ping(_)  => {
-        Ok(json!({"type": "ping"}))
-      }
-      Message::Pong(_)  => {
-        Ok(json!({"type": "pong"}))
-      }
+      Message::Ping(_) => Ok(json!({"type": "ping"})),
+      Message::Pong(_) => Ok(json!({"type": "pong"})),
     }
   };
 
   Ok(JsonOp::Async(future.boxed_local()))
 }
-

@@ -1060,7 +1060,6 @@
     }
   }
 
-
   class CustomEvent extends Event {
     #detail = null;
 
