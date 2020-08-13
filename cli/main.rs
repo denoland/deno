@@ -215,7 +215,7 @@ async fn info_command(
     if json {
       write_json_to_stdout(&json!(info))
     } else {
-      info.print();
+      println!("{}", info);
       Ok(())
     }
   }
