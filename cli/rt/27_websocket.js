@@ -20,6 +20,7 @@
     onopen = () => {};
     onerror = () => {};
     onclose = () => {};
+    onmessage = () => {};
 
     constructor(url, protocols) {
       super();
@@ -34,7 +35,7 @@
         );
       }
 
-      if (wsURL.hash !== "" && wsURL.href.endsWith("#")) {
+      if (wsURL.hash !== "" && !wsURL.href.endsWith("#")) {
         throw new DOMException(
           "Fragments are not allowed in a WebSocket URL.",
           "SyntaxError",
@@ -43,14 +44,16 @@
 
       this.url = wsURL.href;
 
-      sendAsync("op_ws_create", { url: wsURL.href }).then(({ type, rid }) => {
-        if (type === "success") {
+      sendAsync("op_ws_create", { url: wsURL.href }).then(({ success, rid }) => {
+        if (success) {
           this.rid = rid;
           this.readyState = this.OPEN;
           const event = new Event("open");
           event.target = this;
           this.onopen(event);
           this.dispatchEvent(event);
+
+          this.eventloop(this, rid);
         } else {
           this.readyState = this.CLOSED;
           const event = new Event("error");
@@ -134,6 +137,36 @@
         this.onclose(event);
         this.dispatchEvent(event);
       });
+    }
+
+    async eventloop() {
+      const message = await sendAsync("op_ws_next_event", { rid: this.rid });
+      if (message.type === "string" || message.type === "binary") {
+        const event = new MessageEvent("message", {
+          data: message.data,
+          origin: this.url,
+        });
+        event.target = this;
+        this.onmessage(event);
+        this.dispatchEvent(event);
+
+        this.eventloop();
+      } else if (message.type === "close") {
+        this.readyState = this.CLOSED;
+        const event = new CloseEvent("close", {
+          wasClean: true,
+          code: message.code,
+          reason: message.reason,
+        });
+        event.target = this;
+        this.onclose(event);
+        this.dispatchEvent(event);
+      } else if (message.type === "error") {
+        const event = new Event("error");
+        event.target = this;
+        this.onerror(event);
+        this.dispatchEvent(event);
+      }
     }
   }
 

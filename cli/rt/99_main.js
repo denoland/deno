@@ -81,7 +81,7 @@ delete Object.prototype.__proto__;
 
   let isClosing = false;
   async function workerMessageRecvCallback(data) {
-    const msgEvent = new worker.MessageEvent("message", {
+    const msgEvent = new MessageEvent("message", {
       cancelable: false,
       data,
     });
@@ -230,6 +230,8 @@ delete Object.prototype.__proto__;
     CustomEvent: util.nonEnumerable(CustomEvent),
     DOMException: util.nonEnumerable(DOMException),
     ErrorEvent: util.nonEnumerable(ErrorEvent),
+    CloseEvent: util.nonEnumerable(CloseEvent),
+    MessageEvent: util.nonEnumerable(MessageEvent),
     Event: util.nonEnumerable(Event),
     EventTarget: util.nonEnumerable(EventTarget),
     Headers: util.nonEnumerable(headers.Headers),

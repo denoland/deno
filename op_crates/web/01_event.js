@@ -1046,6 +1046,21 @@
     }
   }
 
+  class MessageEvent extends Event {
+    constructor(type, eventInitDict) {
+      super(type, {
+        bubbles: eventInitDict?.bubbles ?? false,
+        cancelable: eventInitDict?.cancelable ?? false,
+        composed: eventInitDict?.composed ?? false,
+      });
+
+      this.data = eventInitDict?.data ?? null;
+      this.origin = eventInitDict?.origin ?? "";
+      this.lastEventId = eventInitDict?.lastEventId ?? "";
+    }
+  }
+
+
   class CustomEvent extends Event {
     #detail = null;
 
@@ -1073,6 +1088,7 @@
   window.EventTarget = EventTarget;
   window.ErrorEvent = ErrorEvent;
   window.CloseEvent = CloseEvent;
+  window.MessageEvent = MessageEvent;
   window.CustomEvent = CustomEvent;
   window.dispatchEvent = EventTarget.prototype.dispatchEvent;
   window.addEventListener = EventTarget.prototype.addEventListener;
