@@ -23,15 +23,22 @@
 
     constructor(url, protocols) {
       super();
-      requiredArguments("WebSocket.send", arguments.length, 1);
+      requiredArguments("WebSocket", arguments.length, 1);
 
       const wsURL = new URL(url);
 
-      if (
-        (wsURL.protocol !== "ws:" && wsURL.protocol !== "wss:") ||
-        wsURL.hash !== ""
-      ) {
-        throw new DOMException("", "SyntaxError");
+      if (wsURL.protocol !== "ws:" && wsURL.protocol !== "wss:") {
+        throw new DOMException(
+          "Only ws & wss schemes are allowed in a WebSocket URL.",
+          "SyntaxError",
+        );
+      }
+
+      if (wsURL.hash !== "" && wsURL.href.endsWith("#")) {
+        throw new DOMException(
+          "Fragments are not allowed in a WebSocket URL.",
+          "SyntaxError",
+        );
       }
 
       this.url = wsURL.href;
@@ -96,12 +103,18 @@
 
     close(code, reason) {
       if (code && (code !== 1000 && !(3000 <= code > 5000))) {
-        throw new DOMException("", "NotSupportedError");
+        throw new DOMException(
+          "The close code must be either 1000 or in the range of 3000 to 4999.",
+          "NotSupportedError",
+        );
       }
 
       const encoder = new TextEncoder();
       if (reason && encoder.encode(reason).byteLength > 123) {
-        throw new DOMException("", "SyntaxError");
+        throw new DOMException(
+          "The close reason may not be longer than 123 bytes.",
+          "SyntaxError",
+        );
       }
 
       this.readyState = this.CLOSING;
