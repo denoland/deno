@@ -1,9 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use clap::App;
 use clap::AppSettings;
-use clap::ArgSettings;
 use clap::Arg;
 use clap::ArgMatches;
+use clap::ArgSettings;
 use clap::SubCommand;
 use log::Level;
 use std::net::SocketAddr;
