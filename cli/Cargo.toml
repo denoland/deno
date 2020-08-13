@@ -24,7 +24,7 @@ winapi = "0.3.9"
 
 [dependencies]
 deno_core = { path = "../core", version = "0.52.0" }
-deno_lint = { version = "0.1.21", features = ["json"] }
+deno_lint = { version = "0.1.22", features = ["json"] }
 
 atty = "0.2.14"
 base64 = "0.12.3"
@@ -34,7 +34,7 @@ clap = "2.33.2"
 dissimilar = "1.0.2"
 dlopen = "0.1.8"
 encoding_rs = "0.8.23"
-dprint-plugin-typescript = "0.27.0"
+dprint-plugin-typescript = "0.28.0"
 futures = "0.3.5"
 http = "0.2.1"
 idna = "0.2.0"
@@ -53,8 +53,8 @@ serde_derive = "1.0.115"
 serde_json = { version = "1.0.57", features = [ "preserve_order" ] }
 sys-info = "0.7.0"
 sourcemap = "6.0.1"
-swc_common = { version = "=0.8.0", features = ["sourcemap"] }
-swc_ecmascript = { version = "=0.1.0", features = ["codegen", "parser", "transforms", "visit"] }
+swc_common = { version = "=0.9.1", features = ["sourcemap"] }
+swc_ecmascript = { version = "=0.3.1", features = ["codegen", "parser", "transforms", "visit"] }
 tempfile = "3.1.0"
 termcolor = "1.1.0"
 tokio = { version = "0.2.22", features = ["full"] }

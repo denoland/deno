@@ -3,6 +3,7 @@ use crate::msg::MediaType;
 use deno_core::ErrBox;
 use std::error::Error;
 use std::fmt;
+use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::RwLock;
 use swc_common::chain;
@@ -143,7 +144,7 @@ impl Emitter for SwcErrorBuffer {
 /// to `parse_module`.
 pub struct AstParser {
   pub buffered_error: SwcErrorBuffer,
-  pub source_map: Arc<SourceMap>,
+  pub source_map: Rc<SourceMap>,
   pub handler: Handler,
   pub comments: SingleThreadedComments,
   pub globals: Globals,
@@ -164,7 +165,7 @@ impl AstParser {
 
     AstParser {
       buffered_error,
-      source_map: Arc::new(SourceMap::default()),
+      source_map: Rc::new(SourceMap::default()),
       handler,
       comments: SingleThreadedComments::default(),
       globals: Globals::new(),
