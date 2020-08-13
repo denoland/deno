@@ -92,7 +92,6 @@ use log::Level;
 use log::Metadata;
 use log::Record;
 use module_graph::ModuleGraph;
-//use serde::ser::SerializeStruct;
 use state::exit_unstable;
 use std::env;
 use std::io::Read;
