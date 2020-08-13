@@ -55,6 +55,7 @@ pub enum DenoSubcommand {
   },
   Lint {
     files: Vec<String>,
+    ignore: Vec<String>,
     rules: bool,
     json: bool,
   },
@@ -362,6 +363,7 @@ fn install_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   permission_args_parse(flags, matches);
   config_arg_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
+  no_check_arg_parse(flags, matches);
   unstable_arg_parse(flags, matches);
 
   let root = if matches.is_present("root") {
@@ -394,6 +396,7 @@ fn install_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 fn bundle_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   ca_file_arg_parse(flags, matches);
   config_arg_parse(flags, matches);
+  reload_arg_parse(flags, matches);
   importmap_arg_parse(flags, matches);
   unstable_arg_parse(flags, matches);
   lock_args_parse(flags, matches);
@@ -466,6 +469,7 @@ fn eval_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 }
 
 fn info_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  reload_arg_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
   unstable_arg_parse(flags, matches);
   let json = matches.is_present("json");
@@ -628,9 +632,18 @@ fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     Some(f) => f.map(String::from).collect(),
     None => vec![],
   };
+  let ignore = match matches.values_of("ignore") {
+    Some(f) => f.map(String::from).collect(),
+    None => vec![],
+  };
   let rules = matches.is_present("rules");
   let json = matches.is_present("json");
-  flags.subcommand = DenoSubcommand::Lint { files, rules, json };
+  flags.subcommand = DenoSubcommand::Lint {
+    files,
+    rules,
+    ignore,
+    json,
+  };
 }
 
 fn types_subcommand<'a, 'b>() -> App<'a, 'b> {
@@ -722,6 +735,7 @@ fn install_subcommand<'a, 'b>() -> App<'a, 'b> {
             .short("f")
             .help("Forcefully overwrite existing installation")
             .takes_value(false))
+        .arg(no_check_arg())
         .arg(ca_file_arg())
         .arg(unstable_arg())
         .arg(config_arg())
@@ -763,6 +777,7 @@ fn bundle_subcommand<'a, 'b>() -> App<'a, 'b> {
     )
     .arg(Arg::with_name("out_file").takes_value(true).required(false))
     .arg(ca_file_arg())
+    .arg(reload_arg())
     .arg(importmap_arg())
     .arg(unstable_arg())
     .arg(config_arg())
@@ -850,6 +865,7 @@ Remote modules cache: Subdirectory containing downloaded remote modules.
 TypeScript compiler cache: Subdirectory containing TS compiler output.",
     )
     .arg(Arg::with_name("file").takes_value(true).required(false))
+    .arg(reload_arg().requires("file"))
     .arg(ca_file_arg())
     // TODO(nayeemrmn): `--no-check` has been removed for `deno info`, but it
     // shouldn't cause flag parsing to fail for backward-compatibility. Remove
@@ -1021,6 +1037,15 @@ Ignore linting a file by adding an ignore comment at the top of the file:
       Arg::with_name("rules")
         .long("rules")
         .help("List available rules"),
+    )
+    .arg(
+      Arg::with_name("ignore")
+        .long("ignore")
+        .requires("unstable")
+        .takes_value(true)
+        .use_delimiter(true)
+        .require_equals(true)
+        .help("Ignore linting particular source files."),
     )
     .arg(
       Arg::with_name("json")
@@ -1749,13 +1774,19 @@ mod tests {
           files: vec!["script_1.ts".to_string(), "script_2.ts".to_string()],
           rules: false,
           json: false,
+          ignore: vec![],
         },
         unstable: true,
         ..Flags::default()
       }
     );
 
-    let r = flags_from_vec_safe(svec!["deno", "lint", "--unstable"]);
+    let r = flags_from_vec_safe(svec![
+      "deno",
+      "lint",
+      "--unstable",
+      "--ignore=script_1.ts,script_2.ts"
+    ]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -1763,6 +1794,7 @@ mod tests {
           files: vec![],
           rules: false,
           json: false,
+          ignore: svec!["script_1.ts", "script_2.ts"],
         },
         unstable: true,
         ..Flags::default()
@@ -1777,6 +1809,7 @@ mod tests {
           files: vec![],
           rules: true,
           json: false,
+          ignore: vec![],
         },
         unstable: true,
         ..Flags::default()
@@ -1797,6 +1830,7 @@ mod tests {
           files: vec!["script_1.ts".to_string()],
           rules: false,
           json: true,
+          ignore: vec![],
         },
         unstable: true,
         ..Flags::default()
@@ -1869,6 +1903,20 @@ mod tests {
           json: false,
           file: Some("script.ts".to_string()),
         },
+        no_check: true,
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec_safe(svec!["deno", "info", "--reload", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Info {
+          json: false,
+          file: Some("script.ts".to_string()),
+        },
+        reload: true,
         no_check: true,
         ..Flags::default()
       }
@@ -2263,6 +2311,23 @@ mod tests {
         },
         lock_write: true,
         lock: Some("lock.json".to_string()),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn bundle_with_reload() {
+    let r =
+      flags_from_vec_safe(svec!["deno", "bundle", "--reload", "source.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        reload: true,
+        subcommand: DenoSubcommand::Bundle {
+          source_file: "source.ts".to_string(),
+          out_file: None,
+        },
         ..Flags::default()
       }
     );

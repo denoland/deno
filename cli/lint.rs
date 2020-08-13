@@ -39,13 +39,25 @@ fn create_reporter(kind: LintReporterKind) -> Box<dyn LintReporter + Send> {
 
 pub async fn lint_files(
   args: Vec<String>,
-  reporter_kind: LintReporterKind,
+  ignore: Vec<String>,
+  json: bool,
 ) -> Result<(), ErrBox> {
-  let target_files = collect_files(args)?;
+  let mut target_files = collect_files(args)?;
+  if !ignore.is_empty() {
+    // collect all files to be ignored
+    // and retain only files that should be linted.
+    let ignore_files = collect_files(ignore)?;
+    target_files.retain(|f| !ignore_files.contains(&f));
+  }
   debug!("Found {} files", target_files.len());
 
   let has_error = Arc::new(AtomicBool::new(false));
 
+  let reported_kind = if json {
+    LintReporterKind::Json
+  } else {
+    LintReporterKind::Pretty
+  };
   let reporter_lock = Arc::new(Mutex::new(create_reporter(reporter_kind)));
 
   run_parallelized(target_files, {

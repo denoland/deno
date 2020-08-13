@@ -4,7 +4,6 @@ mod dispatch_minimal;
 
 pub use dispatch_json::json_op;
 pub use dispatch_json::JsonOp;
-pub use dispatch_json::JsonOpDispatcher;
 pub use dispatch_json::JsonResult;
 pub use dispatch_minimal::minimal_op;
 pub use dispatch_minimal::MinimalOp;

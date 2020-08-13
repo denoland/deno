@@ -3,6 +3,7 @@ use crate::op_error::OpError;
 use crate::ops::dispatch_json::Deserialize;
 use crate::ops::dispatch_json::JsonOp;
 use crate::ops::dispatch_json::Value;
+use crate::ops::json_op;
 use crate::state::State;
 use deno_core::plugin_api;
 use deno_core::CoreIsolate;
@@ -20,7 +21,10 @@ use std::task::Context;
 use std::task::Poll;
 
 pub fn init(i: &mut CoreIsolate, s: &State) {
-  i.register_op("op_open_plugin", s.stateful_json_op2(op_open_plugin));
+  i.register_op(
+    "op_open_plugin",
+    s.core_op(json_op(s.stateful_op2(op_open_plugin))),
+  );
 }
 
 #[derive(Deserialize)]
@@ -106,8 +110,7 @@ impl<'a> plugin_api::Interface for PluginInterface<'a> {
     let plugin_lib = self.plugin_lib.clone();
     self.isolate_state.op_registry.register(
       name,
-      move |isolate_state: &mut CoreIsolateState,
-            zero_copy: &mut [ZeroCopyBuf]| {
+      move |isolate_state, zero_copy| {
         let mut interface = PluginInterface::new(isolate_state, &plugin_lib);
         let op = dispatch_op_fn(&mut interface, zero_copy);
         match op {
