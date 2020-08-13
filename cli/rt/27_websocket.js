@@ -40,7 +40,6 @@
       return this.#protocol;
     }
 
-
     binaryType = "blob";
     #bufferedAmount = 0;
     get bufferedAmount() {
@@ -50,7 +49,6 @@
     get url() {
       return this.#url;
     }
-
 
     onopen = () => {};
     onerror = () => {};
@@ -111,7 +109,9 @@
     send(data) {
       requiredArguments("WebSocket.send", arguments.length, 1);
 
-      if (this.#readyState !== this.#CLOSING && this.#readyState !== this.#CLOSED) {
+      if (
+        this.#readyState !== this.#CLOSING && this.#readyState !== this.#CLOSED
+      ) {
         if (data instanceof Blob) {
           data.arrayBuffer().then((buf) => {
             this.#bufferedAmount += buf.byteLength;
@@ -187,7 +187,7 @@
       });
     }
 
-    async #eventLoop() {
+async #eventLoop() {
       const message = await sendAsync("op_ws_next_event", { rid: this.#rid });
       if (message.type === "string" || message.type === "binary") {
         let data;
