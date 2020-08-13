@@ -58,12 +58,12 @@ pub fn op_ws_create(
       .unwrap();
     let addr = format!("{}:{}", domain, port);
     let try_socket = TcpStream::connect(addr).await;
-    let socket = try_socket.map_err(Error::Io).unwrap();
-
-    let (stream, response) = match client_async_tls(request, socket).await {
-      Ok(s) => s,
+    let socket = match try_socket.map_err(Error::Io) {
+      Ok(socket) => socket,
       Err(_) => return Ok(json!({"success": false})),
     };
+
+    let (stream, response) = client_async_tls(request, socket).await.unwrap();
     let rid = resource_table.add("webSocketStream", Box::new(stream));
     let protocol = match response.headers().get("Sec-WebSocket-Protocol") {
       Some(header) => header.to_str().unwrap(),
