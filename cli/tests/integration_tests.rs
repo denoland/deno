@@ -2216,14 +2216,21 @@ itest!(deno_lint {
   exit_code: 1,
 });
 
+itest!(deno_lint_json {
+  args:
+    "lint --unstable --json lint/file1.js lint/file2.ts lint/ignored_file.ts lint/malformed.js",
+  output: "lint/expected_json.out",
+  exit_code: 1,
+});
+
 itest!(deno_lint_ignore {
-  args: "lint --unstable --ignore=lint/file1.js lint/",
+  args: "lint --unstable --ignore=lint/file1.js,lint/malformed.js lint/",
   output: "lint/expected_ignore.out",
   exit_code: 1,
 });
 
 itest!(deno_lint_glob {
-  args: "lint --unstable lint/",
+  args: "lint --unstable --ignore=lint/malformed.js lint/",
   output: "lint/expected_glob.out",
   exit_code: 1,
 });

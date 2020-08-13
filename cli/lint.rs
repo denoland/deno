@@ -6,7 +6,6 @@
 //! At the moment it is only consumed using CLI but in
 //! the future it can be easily extended to provide
 //! the same functions as ops available in JS runtime.
-
 use crate::colors;
 use crate::file_fetcher::map_file_extension;
 use crate::fmt::collect_files;
@@ -19,15 +18,29 @@ use deno_lint::linter::Linter;
 use deno_lint::linter::LinterBuilder;
 use deno_lint::rules;
 use deno_lint::rules::LintRule;
+use serde::Serialize;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use swc_ecmascript::parser::Syntax;
+
+pub enum LintReporterKind {
+  Pretty,
+  Json,
+}
+
+fn create_reporter(kind: LintReporterKind) -> Box<dyn LintReporter + Send> {
+  match kind {
+    LintReporterKind::Pretty => Box::new(PrettyLintReporter::new()),
+    LintReporterKind::Json => Box::new(JsonLintReporter::new()),
+  }
+}
 
 pub async fn lint_files(
   args: Vec<String>,
   ignore: Vec<String>,
+  json: bool,
 ) -> Result<(), ErrBox> {
   let mut target_files = collect_files(args)?;
   if !ignore.is_empty() {
@@ -38,28 +51,32 @@ pub async fn lint_files(
   }
   debug!("Found {} files", target_files.len());
 
-  let error_count = Arc::new(AtomicUsize::new(0));
+  let has_error = Arc::new(AtomicBool::new(false));
 
-  // prevent threads outputting at the same time
-  let output_lock = Arc::new(Mutex::new(0));
+  let reporter_kind = if json {
+    LintReporterKind::Json
+  } else {
+    LintReporterKind::Pretty
+  };
+  let reporter_lock = Arc::new(Mutex::new(create_reporter(reporter_kind)));
 
   run_parallelized(target_files, {
-    let error_count = error_count.clone();
+    let reporter_lock = reporter_lock.clone();
+    let has_error = has_error.clone();
     move |file_path| {
       let r = lint_file(file_path.clone());
+      let mut reporter = reporter_lock.lock().unwrap();
 
       match r {
         Ok(file_diagnostics) => {
-          error_count.fetch_add(file_diagnostics.len(), Ordering::SeqCst);
-          let _g = output_lock.lock().unwrap();
           for d in file_diagnostics.iter() {
-            let fmt_diagnostic = format_diagnostic(d);
-            eprintln!("{}\n", fmt_diagnostic);
+            has_error.store(true, Ordering::Relaxed);
+            reporter.visit(&d);
           }
         }
         Err(err) => {
-          eprintln!("Error linting: {}", file_path.to_string_lossy());
-          eprintln!("   {}", err);
+          has_error.store(true, Ordering::Relaxed);
+          reporter.visit_error(&file_path.to_string_lossy().to_string(), &err);
         }
       }
       Ok(())
@@ -67,9 +84,11 @@ pub async fn lint_files(
   })
   .await?;
 
-  let error_count = error_count.load(Ordering::SeqCst);
-  if error_count > 0 {
-    eprintln!("Found {} problems", error_count);
+  let has_error = has_error.load(Ordering::Relaxed);
+
+  reporter_lock.lock().unwrap().close();
+
+  if has_error {
     std::process::exit(1);
   }
 
@@ -170,21 +189,106 @@ fn lint_file(file_path: PathBuf) -> Result<Vec<LintDiagnostic>, ErrBox> {
   Ok(file_diagnostics)
 }
 
-fn format_diagnostic(d: &LintDiagnostic) -> String {
-  let pretty_message =
-    format!("({}) {}", colors::gray(&d.code), d.message.clone());
+trait LintReporter {
+  fn visit(&mut self, d: &LintDiagnostic);
+  fn visit_error(&mut self, file_path: &str, err: &ErrBox);
+  fn close(&mut self);
+}
 
-  fmt_errors::format_stack(
-    true,
-    &pretty_message,
-    Some(&d.line_src),
-    Some(d.location.col as i64),
-    Some((d.location.col + d.snippet_length) as i64),
-    &[fmt_errors::format_location(
-      &d.location.filename,
-      d.location.line as i64,
-      d.location.col as i64,
-    )],
-    0,
-  )
+#[derive(Serialize)]
+struct LintError {
+  file_path: String,
+  message: String,
+}
+
+struct PrettyLintReporter {
+  lint_count: u32,
+}
+
+impl PrettyLintReporter {
+  fn new() -> PrettyLintReporter {
+    PrettyLintReporter { lint_count: 0 }
+  }
+}
+
+impl LintReporter for PrettyLintReporter {
+  fn visit(&mut self, d: &LintDiagnostic) {
+    self.lint_count += 1;
+
+    let pretty_message =
+      format!("({}) {}", colors::gray(&d.code), d.message.clone());
+
+    let message = fmt_errors::format_stack(
+      true,
+      &pretty_message,
+      Some(&d.line_src),
+      Some(d.location.col as i64),
+      Some((d.location.col + d.snippet_length) as i64),
+      &[fmt_errors::format_location(
+        &d.location.filename,
+        d.location.line as i64,
+        d.location.col as i64,
+      )],
+      0,
+    );
+
+    eprintln!("{}\n", message);
+  }
+
+  fn visit_error(&mut self, file_path: &str, err: &ErrBox) {
+    eprintln!("Error linting: {}", file_path);
+    eprintln!("   {}", err);
+  }
+
+  fn close(&mut self) {
+    match self.lint_count {
+      1 => eprintln!("Found 1 problem"),
+      n if n > 1 => eprintln!("Found {} problems", self.lint_count),
+      _ => (),
+    }
+  }
+}
+
+#[derive(Serialize)]
+struct JsonLintReporter {
+  diagnostics: Vec<LintDiagnostic>,
+  errors: Vec<LintError>,
+}
+
+impl JsonLintReporter {
+  fn new() -> JsonLintReporter {
+    JsonLintReporter {
+      diagnostics: Vec::new(),
+      errors: Vec::new(),
+    }
+  }
+}
+
+impl LintReporter for JsonLintReporter {
+  fn visit(&mut self, d: &LintDiagnostic) {
+    self.diagnostics.push(d.clone());
+  }
+
+  fn visit_error(&mut self, file_path: &str, err: &ErrBox) {
+    self.errors.push(LintError {
+      file_path: file_path.to_string(),
+      message: err.to_string(),
+    });
+  }
+
+  fn close(&mut self) {
+    // Sort so that we guarantee a deterministic output which is useful for tests
+    self
+      .diagnostics
+      .sort_by(|a, b| get_sort_key(&a).cmp(&get_sort_key(&b)));
+
+    let json = serde_json::to_string_pretty(&self);
+    eprintln!("{}", json.unwrap());
+  }
+}
+
+pub fn get_sort_key(a: &LintDiagnostic) -> String {
+  let location = &a.location;
+
+  return format!("{}:{}:{}", location.filename, location.line, location.col);
 }
