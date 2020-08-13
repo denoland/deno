@@ -53,7 +53,7 @@ pub async fn lint_files(
 
   let has_error = Arc::new(AtomicBool::new(false));
 
-  let reported_kind = if json {
+  let reporter_kind = if json {
     LintReporterKind::Json
   } else {
     LintReporterKind::Pretty

@@ -34,5 +34,10 @@
       "snippet_length": 2
     }
   ],
-  "errors": []
+  "errors": [
+    {
+      "file_path": "[WILDCARD]malformed.js",
+      "message": "Expected RBrace, got None at [WILDCARD]malformed.js:2:15"
+    }
+  ]
 }
