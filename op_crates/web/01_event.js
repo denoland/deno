@@ -1011,6 +1011,41 @@
     "error",
   ]);
 
+  class CloseEvent extends Event {
+    #wasClean = "";
+    #code = "";
+    #reason = "";
+
+    get wasClean() {
+      return this.#wasClean;
+    }
+    get code() {
+      return this.#code;
+    }
+    get reason() {
+      return this.#reason;
+    }
+
+    constructor(type, {
+      bubbles,
+      cancelable,
+      composed,
+      wasClean = false,
+      code = 0,
+      reason = "",
+    }) {
+      super(type, {
+        bubbles: bubbles,
+        cancelable: cancelable,
+        composed: composed,
+      });
+
+      this.#wasClean = wasClean;
+      this.#code = code;
+      this.#reason = reason;
+    }
+  }
+
   class CustomEvent extends Event {
     #detail = null;
 
@@ -1037,6 +1072,7 @@
   window.Event = Event;
   window.EventTarget = EventTarget;
   window.ErrorEvent = ErrorEvent;
+  window.CloseEvent = CloseEvent;
   window.CustomEvent = CustomEvent;
   window.dispatchEvent = EventTarget.prototype.dispatchEvent;
   window.addEventListener = EventTarget.prototype.addEventListener;

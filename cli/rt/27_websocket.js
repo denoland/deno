@@ -2,6 +2,7 @@
 
 ((window) => {
   const { sendSync, sendAsync } = window.__bootstrap.dispatchJson;
+  const { requiredArguments } = window.__bootstrap.webUtil;
 
   class WebSocket extends EventTarget {
     static CONNECTING = 0;
@@ -15,11 +16,14 @@
     CLOSED = 3;
 
     readyState = this.CONNECTING;
+
     onopen = () => {};
     onerror = () => {};
+    onclose = () => {};
 
-    constructor(url) {
+    constructor(url, protocols) {
       super();
+      requiredArguments("WebSocket.send", arguments.length, 1);
 
       const wsURL = new URL(url);
 
@@ -36,13 +40,13 @@
         if (type === "success") {
           this.rid = rid;
           this.readyState = this.OPEN;
-          let event = new Event("open");
+          const event = new Event("open");
           event.target = this;
           this.onopen(event);
           this.dispatchEvent(event);
         } else {
           this.readyState = this.CLOSED;
-          let event = new Event("error");
+          const event = new Event("error");
           event.target = this;
           this.onerror(event);
           this.dispatchEvent(event);
@@ -50,11 +54,44 @@
       });
     }
 
-    send(data) { // TODO: blob & arraybuffer
-      sendSync("op_ws_send", {
-        rid: this.rid,
-        data,
-      });
+    send(data) {
+      requiredArguments("WebSocket.send", arguments.length, 1);
+
+      if (this.readyState !== this.CLOSING && this.readyState !== this.CLOSED) {
+        if (data instanceof Blob) {
+          data.arrayBuffer().then((buf) => {
+            console.log(buf);
+            sendSync("op_ws_send", {
+              rid: this.rid,
+            }, buf);
+          });
+        } else if (
+          data instanceof Int8Array || data instanceof Int16Array ||
+          data instanceof Int32Array || data instanceof Uint8Array ||
+          data instanceof Uint16Array || data instanceof Uint32Array ||
+          data instanceof Uint8ClampedArray || data instanceof Float32Array ||
+          data instanceof Float64Array || data instanceof DataView
+        ) {
+          sendSync("op_ws_send", {
+            rid: this.rid,
+          }, data);
+        } else if (data instanceof ArrayBuffer) { //TODO
+          console.log(data);
+          sendSync("op_ws_send", {
+            rid: this.rid,
+          }, data);
+        } else {
+          sendSync("op_ws_send", {
+            rid: this.rid,
+            text: String(data),
+          });
+        }
+      } else {
+        const event = new Event("error");
+        event.target = this;
+        this.onerror(event);
+        this.dispatchEvent(event);
+      }
     }
 
     close(code, reason) {
@@ -62,17 +99,27 @@
         throw new DOMException("", "NotSupportedError");
       }
 
-      let encoder = new TextEncoder();
+      const encoder = new TextEncoder();
       if (reason && encoder.encode(reason).byteLength > 123) {
         throw new DOMException("", "SyntaxError");
       }
+
+      this.readyState = this.CLOSING;
 
       sendAsync("op_ws_close", {
         rid: this.rid,
         code,
         reason,
       }).then(() => {
-        console.log("closed");
+        this.readyState = this.CLOSED;
+        const event = new CloseEvent("close", {
+          wasClean: true,
+          code,
+          reason,
+        });
+        event.target = this;
+        this.onclose(event);
+        this.dispatchEvent(event);
       });
     }
   }
