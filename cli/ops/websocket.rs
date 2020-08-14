@@ -192,10 +192,12 @@ pub fn op_ws_next_event(
         "type": "string",
         "data": text
       })),
-      Message::Binary(data) => Ok(json!({
-        "type": "binary",
-        "data": data
-      })),
+      Message::Binary(data) => {
+        Ok(json!({ //TODO: don't use json to send binary data
+          "type": "binary",
+          "data": data
+        }))
+      }
       Message::Close(frame) => {
         let frame = frame.unwrap();
         let code: u16 = frame.code.into();

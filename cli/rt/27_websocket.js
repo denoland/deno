@@ -130,11 +130,11 @@
           sendSync("op_ws_send", {
             rid: this.#rid,
           }, data);
-        } else if (data instanceof ArrayBuffer) { //TODO
+        } else if (data instanceof ArrayBuffer) {
           this.#bufferedAmount += data.byteLength;
           sendSync("op_ws_send", {
             rid: this.#rid,
-          }, data);
+          }, new DataView(data));
         } else {
           const string = String(data);
           const encoder = new TextEncoder();
@@ -196,9 +196,9 @@ async #eventLoop() {
           data = message.data;
         } else {
           if (this.binaryType === "blob") {
-            data = new Blob([message.data]);
+            data = new Blob([new Uint8Array(message.data)]);
           } else {
-            data = message.data;
+            data = new Uint8Array(message.data).buffer;
           }
         }
 
