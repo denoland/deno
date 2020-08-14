@@ -3,31 +3,55 @@ import { assert, assertEquals, assertThrows } from "../testing/asserts.ts";
 import * as datetime from "./mod.ts";
 
 Deno.test({
-  name: "[std/datetime] parseDate",
+  name: "[std/datetime] parse",
   fn: () => {
     assertEquals(
-      datetime.parseDateTime("01-03-2019 16:30", "mm-dd-yyyy hh:mm"),
+      datetime.parse("01-03-2019 16:30", "MM-dd-yyyy hh:mm"),
       new Date(2019, 0, 3, 16, 30),
     );
     assertEquals(
-      datetime.parseDateTime("03-01-2019 16:31", "dd-mm-yyyy hh:mm"),
+      datetime.parse("01.03.2019 16:30", "MM.dd.yyyy hh:mm"),
+      new Date(2019, 0, 3, 16, 30),
+    );
+    assertEquals(
+      datetime.parse("03-01-2019 16:31", "dd-MM-yyyy hh:mm"),
       new Date(2019, 0, 3, 16, 31),
     );
     assertEquals(
-      datetime.parseDateTime("2019-01-03 16:32", "yyyy-mm-dd hh:mm"),
+      datetime.parse("2019-01-03 16:32", "yyyy-MM-dd hh:mm"),
       new Date(2019, 0, 3, 16, 32),
     );
     assertEquals(
-      datetime.parseDateTime("16:33 01-03-2019", "hh:mm mm-dd-yyyy"),
+      datetime.parse("16:33 01-03-2019", "hh:mm MM-dd-yyyy"),
       new Date(2019, 0, 3, 16, 33),
     );
     assertEquals(
-      datetime.parseDateTime("16:34 03-01-2019", "hh:mm dd-mm-yyyy"),
+      datetime.parse("01-03-2019 16:33:23.123", "MM-dd-yyyy hh:mm:ss.SSS"),
+      new Date(2019, 0, 3, 16, 33, 23, 123),
+    );
+    assertEquals(
+      datetime.parse("01-03-2019 09:33 PM", "MM-dd-yyyy hh:mm a"),
+      new Date(2019, 0, 3, 21, 33),
+    );
+    assertEquals(
+      datetime.parse("16:34 03-01-2019", "hh:mm dd-MM-yyyy"),
       new Date(2019, 0, 3, 16, 34),
     );
     assertEquals(
-      datetime.parseDateTime("16:35 2019-01-03", "hh:mm yyyy-mm-dd"),
+      datetime.parse("16:35 2019-01-03", "hh:mm yyyy-MM-dd"),
       new Date(2019, 0, 3, 16, 35),
+    );
+    assertEquals(
+      datetime.parse("01-03-2019", "MM-dd-yyyy"),
+      new Date(2019, 0, 3),
+    );
+    assertEquals(
+      datetime.parse("03-01-2019", "dd-MM-yyyy"),
+      new Date(2019, 0, 3),
+    );
+    assertEquals(
+      datetime.parse("2019-01-03", "yyyy-MM-dd"),
+      new Date(2019, 0, 3),
     );
   },
 });
@@ -35,45 +59,47 @@ Deno.test({
 Deno.test({
   name: "[std/datetime] invalidParseDateTimeFormatThrows",
   fn: () => {
-    assertThrows(
-      (): void => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (datetime as any).parseDateTime("2019-01-01 00:00", "x-y-z");
-      },
-      Error,
-      "Invalid datetime format!",
-    );
+    assertThrows((): void => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (datetime as any).parse("2019-01-01 00:00", "x-y-z");
+    }, Error);
+    assertThrows((): void => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (datetime as any).parse("2019-01-01", "x-y-z");
+    }, Error);
   },
 });
 
 Deno.test({
-  name: "[std/datetime] parseDate",
+  name: "[std/datetime] format",
   fn: () => {
     assertEquals(
-      datetime.parseDate("01-03-2019", "mm-dd-yyyy"),
-      new Date(2019, 0, 3),
+      "2019-01-01",
+      datetime.format(new Date("2019-01-01T03:24:00"), "yyyy-MM-dd"),
     );
     assertEquals(
-      datetime.parseDate("03-01-2019", "dd-mm-yyyy"),
-      new Date(2019, 0, 3),
+      "01.01.2019",
+      datetime.format(new Date("2019-01-01T03:24:00"), "dd.MM.yyyy"),
     );
     assertEquals(
-      datetime.parseDate("2019-01-03", "yyyy-mm-dd"),
-      new Date(2019, 0, 3),
+      "03:24:00",
+      datetime.format(new Date("2019-01-01T03:24:00"), "hh:mm:ss"),
     );
-  },
-});
-
-Deno.test({
-  name: "[std/datetime] invalidParseDateFormatThrows",
-  fn: () => {
-    assertThrows(
-      (): void => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (datetime as any).parseDate("2019-01-01", "x-y-z");
-      },
-      Error,
-      "Invalid date format!",
+    assertEquals(
+      "03:24:00.532",
+      datetime.format(new Date("2019-01-01T03:24:00.532"), "hh:mm:ss.SSS"),
+    );
+    assertEquals(
+      "03:24:00 AM",
+      datetime.format(new Date("2019-01-01T03:24:00"), "hh:mm:ss a"),
+    );
+    assertEquals(
+      "09:24:00 PM",
+      datetime.format(new Date("2019-01-01T21:24:00"), "hh:mm:ss a"),
+    );
+    assertEquals(
+      datetime.format(new Date(2019, 0, 20), "'today:' yyyy-MM-dd"),
+      "today: 2019-01-20",
     );
   },
 });
@@ -186,7 +212,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "[std/datetime] Difference",
+  name: "[std/datetime] difference",
   fn(): void {
     const denoInit = new Date("2018/5/14");
     const denoRelaseV1 = new Date("2020/5/13");
