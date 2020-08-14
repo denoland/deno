@@ -278,9 +278,7 @@ impl LintReporter for JsonLintReporter {
 
   fn close(&mut self) {
     // Sort so that we guarantee a deterministic output which is useful for tests
-    self
-      .diagnostics
-      .sort_by(|a, b| get_sort_key(&a).cmp(&get_sort_key(&b)));
+    self.diagnostics.sort_by_key(|key| get_sort_key(&key));
 
     let json = serde_json::to_string_pretty(&self);
     eprintln!("{}", json.unwrap());
