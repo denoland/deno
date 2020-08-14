@@ -31,7 +31,7 @@
     #extensions = "";
     #protocol = "";
     #url = "";
-    #rid = -1;
+    #rid;
 
     get extensions() {
       return this.#extensions;
@@ -128,7 +128,7 @@
         this.#readyState === this.#OPEN
       ) {
         if (data instanceof Blob) {
-          data.arrayBuffer().then((buf) => {
+          data.slice().arrayBuffer().then((buf) => {
             this.#bufferedAmount += buf.byteLength;
             sendSync("op_ws_send", {
               rid: this.#rid,
