@@ -225,8 +225,8 @@
     }
 
 async #eventLoop() {
-      const message = await sendAsync("op_ws_next_event", { rid: this.#rid });
       if (this.#readyState === this.#OPEN) {
+        const message = await sendAsync("op_ws_next_event", { rid: this.#rid });
         if (message.type === "string" || message.type === "binary") {
           let data;
 

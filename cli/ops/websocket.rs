@@ -135,10 +135,7 @@ pub fn op_ws_close(
       let mut resource_table = resource_table.borrow_mut();
       resource_table
         .remove::<WebSocketStream<MaybeTlsStream<TcpStream>>>(args.rid)
-        .ok_or_else(|| {
-          println!("asdfasdfsad bad resource");
-          OpError::bad_resource_id()
-        })?
+        .ok_or_else(|| OpError::bad_resource_id())?
     };
     (*stream)
       .close(Some(CloseFrame {
