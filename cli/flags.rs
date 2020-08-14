@@ -195,6 +195,8 @@ static ENV_VARIABLES_HELP: &str = "ENVIRONMENT VARIABLES:
     HTTP_PROXY           Proxy address for HTTP requests
                          (module downloads, fetch)
     HTTPS_PROXY          Proxy address for HTTPS requests
+                         (module downloads, fetch)
+    NO_PROXY             List of hosts which do not use proxy
                          (module downloads, fetch)";
 
 static DENO_HELP: &str = "A secure JavaScript and TypeScript runtime
