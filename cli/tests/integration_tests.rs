@@ -3203,6 +3203,8 @@ fn set_raw_should_not_panic_on_no_tty() {
 }
 
 #[cfg(windows)]
+// Clippy suggests to remove the `NoStd` prefix from all variants. I disagree.
+#[allow(clippy::enum_variant_names)]
 enum WinProcConstraints {
   NoStdIn,
   NoStdOut,
