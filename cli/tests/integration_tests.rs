@@ -2884,7 +2884,9 @@ async fn inspector_pause() {
   /// Returns the next websocket message as a string ignoring
   /// Debugger.scriptParsed messages.
   async fn ws_read_msg(
-    socket: &mut tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
+    socket: &mut tokio_tungstenite::WebSocketStream<
+      tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+    >,
   ) -> String {
     use futures::stream::StreamExt;
     while let Some(msg) = socket.next().await {
@@ -3157,6 +3159,40 @@ async fn inspector_runtime_evaluate_does_not_crash() {
 
   std::mem::drop(stdin);
   child.wait().unwrap();
+}
+
+#[tokio::test]
+async fn websocket() {
+  use warp::Filter;
+
+  tokio::spawn(async move {
+    let websocket_route = warp::ws().map(|ws: warp::ws::Ws| {
+      ws.on_upgrade(|websocket| {
+        let (tx, rx) = websocket.split();
+        rx.forward(tx).map(|result| {
+          if let Err(e) = result {
+            panic!("websocket error: {:?}", e);
+          }
+        })
+      })
+    });
+    warp::serve(websocket_route)
+      .run(([127, 0, 0, 1], 4242))
+      .await;
+  });
+
+  let script = util::tests_path().join("websocket.ts");
+  let status = util::deno_cmd()
+    .arg("test")
+    .arg("--unstable")
+    .arg("--allow-net")
+    .arg(script)
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+
+  assert!(status.success());
 }
 
 #[test]
