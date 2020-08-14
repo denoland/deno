@@ -1,11 +1,11 @@
 ## Assertions
 
 To help developers write tests the Deno standard library comes with a built in
-[assertions module](https://deno.land/std/testing/asserts.ts) which can be
-imported from `https://deno.land/std/testing/asserts.ts`.
+[assertions module](https://deno.land/std@$STD_VERSION/testing/asserts.ts) which
+can be imported from `https://deno.land/std@$STD_VERSION/testing/asserts.ts`.
 
 ```js
-import { assert } from "https://deno.land/std/testing/asserts.ts";
+import { assert } from "https://deno.land/std@$STD_VERSION/testing/asserts.ts";
 
 Deno.test("Hello Test", () => {
   assert("Hello");
@@ -150,7 +150,7 @@ Deno.test("Test Assert Throws", () => {
       throw new Error("Panic!");
     },
     Error,
-    "Panic!"
+    "Panic!",
   );
 });
 ```
@@ -168,7 +168,7 @@ Deno.test("Test Assert Throws Async", () => {
       });
     },
     Error,
-    "Panic! Threw Error"
+    "Panic! Threw Error",
   );
 
   assertThrowsAsync(
@@ -176,7 +176,7 @@ Deno.test("Test Assert Throws Async", () => {
       return Promise.reject(new Error("Panic! Reject Error"));
     },
     Error,
-    "Panic! Reject Error"
+    "Panic! Reject Error",
   );
 });
 ```

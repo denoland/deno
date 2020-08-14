@@ -27,7 +27,7 @@ export function signal(
 
   if (signos.length < 1) {
     throw new Error(
-      "No signals are given. You need to specify at least one signal to create a signal stream."
+      "No signals are given. You need to specify at least one signal to create a signal stream.",
     );
   }
 

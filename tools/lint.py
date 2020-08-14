@@ -69,17 +69,29 @@ def eslint():
         ":!:cli/compilers/wasm_wrap.js",
         ":!:cli/tests/error_syntax.js",
         ":!:cli/tests/lint/**",
+        ":!:cli/tests/encoding/**",
+        ":!:cli/dts/**",
+        ":!:cli/tsc/*typescript.js",
     ])
     if source_files:
-        print_command("eslint", source_files)
-        # Set NODE_PATH so we don't have to maintain a symlink in root_path.
-        env = os.environ.copy()
-        env["NODE_PATH"] = os.path.join(root_path, "third_party",
-                                        "node_modules")
-        run(["node", script, "--max-warnings=0", "--"] + source_files,
-            shell=False,
-            env=env,
-            quiet=True)
+        max_command_len = 30000
+        pre_command = ["node", script, "--max-warnings=0", "--"]
+        chunks = [[]]
+        cmd_len = len(" ".join(pre_command))
+        for f in source_files:
+            if cmd_len + len(f) > max_command_len:
+                chunks.append([f])
+                cmd_len = len(" ".join(pre_command))
+            else:
+                chunks[-1].append(f)
+                cmd_len = cmd_len + len(f) + 1
+        for c in chunks:
+            print_command("eslint", c)
+            # Set NODE_PATH so we don't have to maintain a symlink in root_path.
+            env = os.environ.copy()
+            env["NODE_PATH"] = os.path.join(root_path, "third_party",
+                                            "node_modules")
+            run(pre_command + c, shell=False, env=env, quiet=True)
 
 
 def pylint():

@@ -58,9 +58,15 @@ fn create_web_worker(
     let state = state_rc.borrow();
     let mut resource_table = state.resource_table.borrow_mut();
     let (stdin, stdout, stderr) = get_stdio();
-    resource_table.add("stdin", Box::new(stdin));
-    resource_table.add("stdout", Box::new(stdout));
-    resource_table.add("stderr", Box::new(stderr));
+    if let Some(stream) = stdin {
+      resource_table.add("stdin", Box::new(stream));
+    }
+    if let Some(stream) = stdout {
+      resource_table.add("stdout", Box::new(stream));
+    }
+    if let Some(stream) = stderr {
+      resource_table.add("stderr", Box::new(stream));
+    }
   }
 
   // Instead of using name for log we use `worker-${id}` because

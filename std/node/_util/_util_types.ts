@@ -194,7 +194,8 @@ export function isSymbolObject(value: unknown): boolean {
 // Adapted from Lodash
 export function isTypedArray(value: unknown): boolean {
   /** Used to match `toStringTag` values of typed arrays. */
-  const reTypedTag = /^\[object (?:Float(?:32|64)|(?:Int|Uint)(?:8|16|32)|Uint8Clamped)Array\]$/;
+  const reTypedTag =
+    /^\[object (?:Float(?:32|64)|(?:Int|Uint)(?:8|16|32)|Uint8Clamped)Array\]$/;
   return _isObjectLike(value) && reTypedTag.test(_toString.call(value));
 }
 

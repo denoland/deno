@@ -1,5 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use crate::swc_common;
 use serde::Serialize;
 
 #[derive(Debug, PartialEq, Serialize, Clone)]
@@ -12,24 +11,7 @@ pub enum DocNodeKind {
   Interface,
   TypeAlias,
   Namespace,
-}
-
-#[derive(Debug, Serialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub enum ParamKind {
-  Identifier,
-  Rest,
-  Array,
-  Object,
-}
-
-#[derive(Debug, Serialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct ParamDef {
-  pub name: String,
-  pub kind: ParamKind,
-  pub optional: bool,
-  pub ts_type: Option<super::ts_type::TsTypeDef>,
+  Import,
 }
 
 #[derive(Debug, Serialize, Clone, PartialEq)]
@@ -41,7 +23,7 @@ pub struct Location {
 
 impl Into<Location> for swc_common::Loc {
   fn into(self) -> Location {
-    use crate::swc_common::FileName::*;
+    use swc_common::FileName::*;
 
     let filename = match &self.file.name {
       Real(path_buf) => path_buf.to_string_lossy().to_string(),
@@ -82,8 +64,15 @@ pub struct Reexport {
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ModuleDoc {
-  pub exports: Vec<DocNode>,
+  pub definitions: Vec<DocNode>,
   pub reexports: Vec<Reexport>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportDef {
+  pub src: String,
+  pub imported: Option<String>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -114,4 +103,7 @@ pub struct DocNode {
 
   #[serde(skip_serializing_if = "Option::is_none")]
   pub interface_def: Option<super::interface::InterfaceDef>,
+
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub import_def: Option<ImportDef>,
 }

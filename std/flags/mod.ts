@@ -104,7 +104,7 @@ export function parse(
     stopEarly = false,
     string = [],
     unknown = (i: string): unknown => i,
-  }: ArgParsingOptions = {}
+  }: ArgParsingOptions = {},
 ): Args {
   const flags: Flags = {
     bools: {},
@@ -191,7 +191,7 @@ export function parse(
   function setArg(
     key: string,
     val: unknown,
-    arg: string | undefined = undefined
+    arg: string | undefined = undefined,
   ): void {
     if (arg && flags.unknownFn && !argDefined(key, arg)) {
       if (flags.unknownFn(arg, key, val) === false) return;
@@ -210,7 +210,7 @@ export function parse(
 
   function aliasIsBoolean(key: string): boolean {
     return getForce(aliases, key).some(
-      (x) => typeof get(flags.bools, x) === "boolean"
+      (x) => typeof get(flags.bools, x) === "boolean",
     );
   }
 

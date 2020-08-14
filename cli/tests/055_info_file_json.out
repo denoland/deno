@@ -1,0 +1,25 @@
+{
+  "local": "[WILDCARD]005_more_imports.ts",
+  "fileType": "TypeScript",
+  "compiled": "[WILDCARD].js",
+  "map": null,
+  "deps": [
+    "file://[WILDCARD]/005_more_imports.ts",
+    [
+      [
+        "file://[WILDCARD]/subdir/mod1.ts",
+        [
+          [
+            "file://[WILDCARD]/subdir/subdir2/mod2.ts",
+            [
+              [
+                "file://[WILDCARD]/subdir/print_hello.ts",
+                []
+              ]
+            ]
+          ]
+        ]
+      ]
+    ]
+  ]
+}

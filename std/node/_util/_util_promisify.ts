@@ -21,37 +21,54 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+// Hack: work around the following TypeScript error:
+//   error: TS2345 [ERROR]: Argument of type 'typeof kCustomPromisifiedSymbol'
+//   is not assignable to parameter of type 'typeof kCustomPromisifiedSymbol'.
+//        assertStrictEquals(kCustomPromisifiedSymbol, promisify.custom);
+//                                                     ~~~~~~~~~~~~~~~~
+declare const _CustomPromisifiedSymbol: unique symbol;
+declare const _CustomPromisifyArgsSymbol: unique symbol;
+declare let Symbol: SymbolConstructor;
+interface SymbolConstructor {
+  for(key: "nodejs.util.promisify.custom"): typeof _CustomPromisifiedSymbol;
+  for(
+    key: "nodejs.util.promisify.customArgs",
+  ): typeof _CustomPromisifyArgsSymbol;
+}
+// End hack.
+
 // In addition to being accessible through util.promisify.custom,
-// this symbol is registered globally and can be accessed in any environment as Symbol.for('nodejs.util.promisify.custom')
+// this symbol is registered globally and can be accessed in any environment as
+// Symbol.for('nodejs.util.promisify.custom').
 const kCustomPromisifiedSymbol = Symbol.for("nodejs.util.promisify.custom");
-// This is an internal Node symbol used by functions returning multiple arguments
-// e.g. ['bytesRead', 'buffer'] for fs.read.
+// This is an internal Node symbol used by functions returning multiple
+// arguments, e.g. ['bytesRead', 'buffer'] for fs.read().
 const kCustomPromisifyArgsSymbol = Symbol.for(
-  "deno.nodejs.util.promisify.customArgs"
+  "nodejs.util.promisify.customArgs",
 );
 
 class NodeInvalidArgTypeError extends TypeError {
   public code = "ERR_INVALID_ARG_TYPE";
   constructor(argumentName: string, type: string, received: unknown) {
     super(
-      `The "${argumentName}" argument must be of type ${type}. Received ${typeof received}`
+      `The "${argumentName}" argument must be of type ${type}. Received ${typeof received}`,
     );
   }
 }
 
 export function promisify(original: Function): Function {
-  if (typeof original !== "function")
+  if (typeof original !== "function") {
     throw new NodeInvalidArgTypeError("original", "Function", original);
-
-  // @ts-ignore TypeScript (as of 3.7) does not support indexing namespaces by symbol
-  if (original[kCustomPromisifiedSymbol]) {
-    // @ts-ignore TypeScript (as of 3.7) does not support indexing namespaces by symbol
-    const fn = original[kCustomPromisifiedSymbol];
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  if ((original as any)[kCustomPromisifiedSymbol]) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const fn = (original as any)[kCustomPromisifiedSymbol];
     if (typeof fn !== "function") {
       throw new NodeInvalidArgTypeError(
         "util.promisify.custom",
         "Function",
-        fn
+        fn,
       );
     }
     return Object.defineProperty(fn, kCustomPromisifiedSymbol, {
@@ -64,12 +81,11 @@ export function promisify(original: Function): Function {
 
   // Names to create an object from in case the callback receives multiple
   // arguments, e.g. ['bytesRead', 'buffer'] for fs.read.
-  // @ts-ignore TypeScript (as of 3.7) does not support indexing namespaces by symbol
-  const argumentNames = original[kCustomPromisifyArgsSymbol];
-
-  function fn(...args: unknown[]): Promise<unknown> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const argumentNames = (original as any)[kCustomPromisifyArgsSymbol];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function fn(this: any, ...args: unknown[]): Promise<unknown> {
     return new Promise((resolve, reject) => {
-      // @ts-ignore: 'this' implicitly has type 'any' because it does not have a type annotation
       original.call(this, ...args, (err: Error, ...values: unknown[]) => {
         if (err) {
           return reject(err);
@@ -77,8 +93,8 @@ export function promisify(original: Function): Function {
         if (argumentNames !== undefined && values.length > 1) {
           const obj = {};
           for (let i = 0; i < argumentNames.length; i++) {
-            // @ts-ignore TypeScript
-            obj[argumentNames[i]] = values[i];
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (obj as any)[argumentNames[i]] = values[i];
           }
           resolve(obj);
         } else {
@@ -98,7 +114,7 @@ export function promisify(original: Function): Function {
   });
   return Object.defineProperties(
     fn,
-    Object.getOwnPropertyDescriptors(original)
+    Object.getOwnPropertyDescriptors(original),
   );
 }
 

@@ -1,3 +1,74 @@
+import * as hex from "../encoding/hex.ts";
+import * as base64 from "../encoding/base64.ts";
+import { notImplemented, normalizeEncoding } from "./_utils.ts";
+
+const notImplementedEncodings = [
+  "ascii",
+  "binary",
+  "latin1",
+  "ucs2",
+  "utf16le",
+];
+
+function checkEncoding(encoding = "utf8", strict = true): string {
+  if (typeof encoding !== "string" || (strict && encoding === "")) {
+    if (!strict) return "utf8";
+    throw new TypeError(`Unkown encoding: ${encoding}`);
+  }
+
+  const normalized = normalizeEncoding(encoding);
+
+  if (normalized === undefined) {
+    throw new TypeError(`Unkown encoding: ${encoding}`);
+  }
+
+  if (notImplementedEncodings.includes(encoding)) {
+    notImplemented(`"${encoding}" encoding`);
+  }
+
+  return normalized;
+}
+
+interface EncodingOp {
+  byteLength(string: string): number;
+}
+
+// https://github.com/nodejs/node/blob/56dbe466fdbc598baea3bfce289bf52b97b8b8f7/lib/buffer.js#L598
+const encodingOps: { [key: string]: EncodingOp } = {
+  utf8: {
+    byteLength: (string: string): number =>
+      new TextEncoder().encode(string).byteLength,
+  },
+  ucs2: {
+    byteLength: (string: string): number => string.length * 2,
+  },
+  utf16le: {
+    byteLength: (string: string): number => string.length * 2,
+  },
+  latin1: {
+    byteLength: (string: string): number => string.length,
+  },
+  ascii: {
+    byteLength: (string: string): number => string.length,
+  },
+  base64: {
+    byteLength: (string: string): number =>
+      base64ByteLength(string, string.length),
+  },
+  hex: {
+    byteLength: (string: string): number => string.length >>> 1,
+  },
+};
+
+function base64ByteLength(str: string, bytes: number): number {
+  // Handle padding
+  if (str.charCodeAt(bytes - 1) === 0x3d) bytes--;
+  if (bytes > 1 && str.charCodeAt(bytes - 1) === 0x3d) bytes--;
+
+  // Base64 ratio: 3/4
+  return (bytes * 3) >>> 2;
+}
+
 /**
  * See also https://nodejs.org/api/buffer.html
  */
@@ -5,7 +76,60 @@ export default class Buffer extends Uint8Array {
   /**
    * Allocates a new Buffer of size bytes.
    */
-  static alloc(size: number): Buffer {
+  static alloc(
+    size: number,
+    fill?: number | string | Uint8Array | Buffer,
+    encoding = "utf8",
+  ): Buffer {
+    if (typeof size !== "number") {
+      throw new TypeError(
+        `The "size" argument must be of type number. Received type ${typeof size}`,
+      );
+    }
+
+    const buf = new Buffer(size);
+    if (size === 0) return buf;
+
+    let bufFill;
+    if (typeof fill === "string") {
+      encoding = checkEncoding(encoding);
+      if (
+        typeof fill === "string" && fill.length === 1 && encoding === "utf8"
+      ) {
+        buf.fill(fill.charCodeAt(0));
+      } else bufFill = Buffer.from(fill, encoding);
+    } else if (typeof fill === "number") {
+      buf.fill(fill);
+    } else if (fill instanceof Uint8Array) {
+      if (fill.length === 0) {
+        throw new TypeError(
+          `The argument "value" is invalid. Received ${fill.constructor.name} []`,
+        );
+      }
+
+      bufFill = fill;
+    }
+
+    if (bufFill) {
+      if (bufFill.length > buf.length) {
+        bufFill = bufFill.subarray(0, buf.length);
+      }
+
+      let offset = 0;
+      while (offset < size) {
+        buf.set(bufFill, offset);
+        offset += bufFill.length;
+        if (offset + bufFill.length >= size) break;
+      }
+      if (offset !== size) {
+        buf.set(bufFill.subarray(0, size - offset), offset);
+      }
+    }
+
+    return buf;
+  }
+
+  static allocUnsafe(size: number): Buffer {
     return new Buffer(size);
   }
 
@@ -15,10 +139,13 @@ export default class Buffer extends Uint8Array {
    * used to convert the string into bytes.
    */
   static byteLength(
-    string: string | Buffer | ArrayBufferView | ArrayBuffer | SharedArrayBuffer
+    string: string | Buffer | ArrayBufferView | ArrayBuffer | SharedArrayBuffer,
+    encoding = "utf8",
   ): number {
     if (typeof string != "string") return string.byteLength;
-    return new TextEncoder().encode(string).length;
+
+    encoding = normalizeEncoding(encoding) || "utf8";
+    return encodingOps[encoding].byteLength(string);
   }
 
   /**
@@ -57,7 +184,7 @@ export default class Buffer extends Uint8Array {
   static from(
     arrayBuffer: ArrayBuffer | SharedArrayBuffer,
     byteOffset?: number,
-    length?: number
+    length?: number,
   ): Buffer;
   /**
    * Copies the passed buffer data onto a new Buffer instance.
@@ -66,11 +193,26 @@ export default class Buffer extends Uint8Array {
   /**
    * Creates a new Buffer containing string.
    */
-  static from(string: string): Buffer;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  static from(value: any, offset?: number, length?: number): Buffer {
-    if (typeof value == "string")
+  static from(string: string, encoding?: string): Buffer;
+  static from(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    value: any,
+    offsetOrEncoding?: number | string,
+    length?: number,
+  ): Buffer {
+    const offset = typeof offsetOrEncoding === "string"
+      ? undefined
+      : offsetOrEncoding;
+    let encoding = typeof offsetOrEncoding === "string"
+      ? offsetOrEncoding
+      : undefined;
+
+    if (typeof value == "string") {
+      encoding = checkEncoding(encoding, false);
+      if (encoding === "hex") return new Buffer(hex.decodeString(value).buffer);
+      if (encoding === "base64") return new Buffer(base64.decode(value));
       return new Buffer(new TextEncoder().encode(value).buffer);
+    }
 
     // workaround for https://github.com/microsoft/TypeScript/issues/38446
     return new Buffer(value, offset!, length);
@@ -83,6 +225,15 @@ export default class Buffer extends Uint8Array {
     return obj instanceof Buffer;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  static isEncoding(encoding: any): boolean {
+    return (
+      typeof encoding === "string" &&
+      encoding.length !== 0 &&
+      normalizeEncoding(encoding) !== undefined
+    );
+  }
+
   /**
    * Copies data from a region of buf to a region in target, even if the target
    * memory region overlaps with buf.
@@ -91,25 +242,45 @@ export default class Buffer extends Uint8Array {
     targetBuffer: Buffer | Uint8Array,
     targetStart = 0,
     sourceStart = 0,
-    sourceEnd = this.length
+    sourceEnd = this.length,
   ): number {
     const sourceBuffer = this.subarray(sourceStart, sourceEnd);
     targetBuffer.set(sourceBuffer, targetStart);
     return sourceBuffer.length;
   }
 
+  /*
+   * Returns true if both buf and otherBuffer have exactly the same bytes, false otherwise.
+   */
+  equals(otherBuffer: Uint8Array | Buffer): boolean {
+    if (!(otherBuffer instanceof Uint8Array)) {
+      throw new TypeError(
+        `The "otherBuffer" argument must be an instance of Buffer or Uint8Array. Received type ${typeof otherBuffer}`,
+      );
+    }
+
+    if (this === otherBuffer) return true;
+    if (this.byteLength !== otherBuffer.byteLength) return false;
+
+    for (let i = 0; i < this.length; i++) {
+      if (this[i] !== otherBuffer[i]) return false;
+    }
+
+    return true;
+  }
+
   readBigInt64BE(offset = 0): bigint {
     return new DataView(
       this.buffer,
       this.byteOffset,
-      this.byteLength
+      this.byteLength,
     ).getBigInt64(offset);
   }
   readBigInt64LE(offset = 0): bigint {
     return new DataView(
       this.buffer,
       this.byteOffset,
-      this.byteLength
+      this.byteLength,
     ).getBigInt64(offset, true);
   }
 
@@ -117,14 +288,14 @@ export default class Buffer extends Uint8Array {
     return new DataView(
       this.buffer,
       this.byteOffset,
-      this.byteLength
+      this.byteLength,
     ).getBigUint64(offset);
   }
   readBigUInt64LE(offset = 0): bigint {
     return new DataView(
       this.buffer,
       this.byteOffset,
-      this.byteLength
+      this.byteLength,
     ).getBigUint64(offset, true);
   }
 
@@ -132,14 +303,14 @@ export default class Buffer extends Uint8Array {
     return new DataView(
       this.buffer,
       this.byteOffset,
-      this.byteLength
+      this.byteLength,
     ).getFloat64(offset);
   }
   readDoubleLE(offset = 0): number {
     return new DataView(
       this.buffer,
       this.byteOffset,
-      this.byteLength
+      this.byteLength,
     ).getFloat64(offset, true);
   }
 
@@ -147,50 +318,50 @@ export default class Buffer extends Uint8Array {
     return new DataView(
       this.buffer,
       this.byteOffset,
-      this.byteLength
+      this.byteLength,
     ).getFloat32(offset);
   }
   readFloatLE(offset = 0): number {
     return new DataView(
       this.buffer,
       this.byteOffset,
-      this.byteLength
+      this.byteLength,
     ).getFloat32(offset, true);
   }
 
   readInt8(offset = 0): number {
     return new DataView(this.buffer, this.byteOffset, this.byteLength).getInt8(
-      offset
+      offset,
     );
   }
 
   readInt16BE(offset = 0): number {
     return new DataView(this.buffer, this.byteOffset, this.byteLength).getInt16(
-      offset
+      offset,
     );
   }
   readInt16LE(offset = 0): number {
     return new DataView(this.buffer, this.byteOffset, this.byteLength).getInt16(
       offset,
-      true
+      true,
     );
   }
 
   readInt32BE(offset = 0): number {
     return new DataView(this.buffer, this.byteOffset, this.byteLength).getInt32(
-      offset
+      offset,
     );
   }
   readInt32LE(offset = 0): number {
     return new DataView(this.buffer, this.byteOffset, this.byteLength).getInt32(
       offset,
-      true
+      true,
     );
   }
 
   readUInt8(offset = 0): number {
     return new DataView(this.buffer, this.byteOffset, this.byteLength).getUint8(
-      offset
+      offset,
     );
   }
 
@@ -198,14 +369,14 @@ export default class Buffer extends Uint8Array {
     return new DataView(
       this.buffer,
       this.byteOffset,
-      this.byteLength
+      this.byteLength,
     ).getUint16(offset);
   }
   readUInt16LE(offset = 0): number {
     return new DataView(
       this.buffer,
       this.byteOffset,
-      this.byteLength
+      this.byteLength,
     ).getUint16(offset, true);
   }
 
@@ -213,14 +384,14 @@ export default class Buffer extends Uint8Array {
     return new DataView(
       this.buffer,
       this.byteOffset,
-      this.byteLength
+      this.byteLength,
     ).getUint32(offset);
   }
   readUInt32LE(offset = 0): number {
     return new DataView(
       this.buffer,
       this.byteOffset,
-      this.byteLength
+      this.byteLength,
     ).getUint32(offset, true);
   }
 
@@ -246,7 +417,13 @@ export default class Buffer extends Uint8Array {
    * encoding. start and end may be passed to decode only a subset of buf.
    */
   toString(encoding = "utf8", start = 0, end = this.length): string {
-    return new TextDecoder(encoding).decode(this.subarray(start, end));
+    encoding = checkEncoding(encoding);
+
+    const b = this.subarray(start, end);
+    if (encoding === "hex") return hex.encodeToString(b);
+    if (encoding === "base64") return base64.encode(b.buffer);
+
+    return new TextDecoder(encoding).decode(b);
   }
 
   /**
@@ -258,14 +435,14 @@ export default class Buffer extends Uint8Array {
   write(string: string, offset = 0, length = this.length): number {
     return new TextEncoder().encodeInto(
       string,
-      this.subarray(offset, offset + length)
+      this.subarray(offset, offset + length),
     ).written;
   }
 
   writeBigInt64BE(value: bigint, offset = 0): number {
     new DataView(this.buffer, this.byteOffset, this.byteLength).setBigInt64(
       offset,
-      value
+      value,
     );
     return offset + 4;
   }
@@ -273,7 +450,7 @@ export default class Buffer extends Uint8Array {
     new DataView(this.buffer, this.byteOffset, this.byteLength).setBigInt64(
       offset,
       value,
-      true
+      true,
     );
     return offset + 4;
   }
@@ -281,7 +458,7 @@ export default class Buffer extends Uint8Array {
   writeBigUInt64BE(value: bigint, offset = 0): number {
     new DataView(this.buffer, this.byteOffset, this.byteLength).setBigUint64(
       offset,
-      value
+      value,
     );
     return offset + 4;
   }
@@ -289,7 +466,7 @@ export default class Buffer extends Uint8Array {
     new DataView(this.buffer, this.byteOffset, this.byteLength).setBigUint64(
       offset,
       value,
-      true
+      true,
     );
     return offset + 4;
   }
@@ -297,7 +474,7 @@ export default class Buffer extends Uint8Array {
   writeDoubleBE(value: number, offset = 0): number {
     new DataView(this.buffer, this.byteOffset, this.byteLength).setFloat64(
       offset,
-      value
+      value,
     );
     return offset + 8;
   }
@@ -305,7 +482,7 @@ export default class Buffer extends Uint8Array {
     new DataView(this.buffer, this.byteOffset, this.byteLength).setFloat64(
       offset,
       value,
-      true
+      true,
     );
     return offset + 8;
   }
@@ -313,7 +490,7 @@ export default class Buffer extends Uint8Array {
   writeFloatBE(value: number, offset = 0): number {
     new DataView(this.buffer, this.byteOffset, this.byteLength).setFloat32(
       offset,
-      value
+      value,
     );
     return offset + 4;
   }
@@ -321,7 +498,7 @@ export default class Buffer extends Uint8Array {
     new DataView(this.buffer, this.byteOffset, this.byteLength).setFloat32(
       offset,
       value,
-      true
+      true,
     );
     return offset + 4;
   }
@@ -329,7 +506,7 @@ export default class Buffer extends Uint8Array {
   writeInt8(value: number, offset = 0): number {
     new DataView(this.buffer, this.byteOffset, this.byteLength).setInt8(
       offset,
-      value
+      value,
     );
     return offset + 1;
   }
@@ -337,7 +514,7 @@ export default class Buffer extends Uint8Array {
   writeInt16BE(value: number, offset = 0): number {
     new DataView(this.buffer, this.byteOffset, this.byteLength).setInt16(
       offset,
-      value
+      value,
     );
     return offset + 2;
   }
@@ -345,7 +522,7 @@ export default class Buffer extends Uint8Array {
     new DataView(this.buffer, this.byteOffset, this.byteLength).setInt16(
       offset,
       value,
-      true
+      true,
     );
     return offset + 2;
   }
@@ -353,7 +530,7 @@ export default class Buffer extends Uint8Array {
   writeInt32BE(value: number, offset = 0): number {
     new DataView(this.buffer, this.byteOffset, this.byteLength).setUint32(
       offset,
-      value
+      value,
     );
     return offset + 4;
   }
@@ -361,7 +538,7 @@ export default class Buffer extends Uint8Array {
     new DataView(this.buffer, this.byteOffset, this.byteLength).setInt32(
       offset,
       value,
-      true
+      true,
     );
     return offset + 4;
   }
@@ -369,7 +546,7 @@ export default class Buffer extends Uint8Array {
   writeUInt8(value: number, offset = 0): number {
     new DataView(this.buffer, this.byteOffset, this.byteLength).setUint8(
       offset,
-      value
+      value,
     );
     return offset + 1;
   }
@@ -377,7 +554,7 @@ export default class Buffer extends Uint8Array {
   writeUInt16BE(value: number, offset = 0): number {
     new DataView(this.buffer, this.byteOffset, this.byteLength).setUint16(
       offset,
-      value
+      value,
     );
     return offset + 2;
   }
@@ -385,7 +562,7 @@ export default class Buffer extends Uint8Array {
     new DataView(this.buffer, this.byteOffset, this.byteLength).setUint16(
       offset,
       value,
-      true
+      true,
     );
     return offset + 2;
   }
@@ -393,7 +570,7 @@ export default class Buffer extends Uint8Array {
   writeUInt32BE(value: number, offset = 0): number {
     new DataView(this.buffer, this.byteOffset, this.byteLength).setUint32(
       offset,
-      value
+      value,
     );
     return offset + 4;
   }
@@ -401,7 +578,7 @@ export default class Buffer extends Uint8Array {
     new DataView(this.buffer, this.byteOffset, this.byteLength).setUint32(
       offset,
       value,
-      true
+      true,
     );
     return offset + 4;
   }

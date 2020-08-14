@@ -65,14 +65,14 @@ Deno.test({
         new Dirent(entry).isFIFO();
       },
       Error,
-      "does not yet support"
+      "does not yet support",
     );
     assertThrows(
       () => {
         new Dirent(entry).isSocket();
       },
       Error,
-      "does not yet support"
+      "does not yet support",
     );
   },
 });

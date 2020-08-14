@@ -122,7 +122,7 @@ function isProhibidedForTrailer(key: string): boolean {
  * field will be deleted. */
 export async function readTrailers(
   headers: Headers,
-  r: BufReader
+  r: BufReader,
 ): Promise<void> {
   const trailers = parseTrailer(headers.get("trailer"));
   if (trailers == null) return;
@@ -133,11 +133,11 @@ export async function readTrailers(
     throw new Deno.errors.InvalidData("Missing trailer header.");
   }
   const undeclared = [...result.keys()].filter(
-    (k) => !trailerNames.includes(k)
+    (k) => !trailerNames.includes(k),
   );
   if (undeclared.length > 0) {
     throw new Deno.errors.InvalidData(
-      `Undeclared trailers: ${Deno.inspect(undeclared)}.`
+      `Undeclared trailers: ${Deno.inspect(undeclared)}.`,
     );
   }
   for (const [k, v] of result) {
@@ -146,7 +146,7 @@ export async function readTrailers(
   const missingTrailers = trailerNames.filter((k) => !result.has(k));
   if (missingTrailers.length > 0) {
     throw new Deno.errors.InvalidData(
-      `Missing trailers: ${Deno.inspect(missingTrailers)}.`
+      `Missing trailers: ${Deno.inspect(missingTrailers)}.`,
     );
   }
   headers.delete("trailer");
@@ -163,7 +163,7 @@ function parseTrailer(field: string | null): Headers | undefined {
   const prohibited = trailerNames.filter((k) => isProhibidedForTrailer(k));
   if (prohibited.length > 0) {
     throw new Deno.errors.InvalidData(
-      `Prohibited trailer names: ${Deno.inspect(prohibited)}.`
+      `Prohibited trailer names: ${Deno.inspect(prohibited)}.`,
     );
   }
   return new Headers(trailerNames.map((key) => [key, ""]));
@@ -171,7 +171,7 @@ function parseTrailer(field: string | null): Headers | undefined {
 
 export async function writeChunkedBody(
   w: Deno.Writer,
-  r: Deno.Reader
+  r: Deno.Reader,
 ): Promise<void> {
   const writer = BufWriter.create(w);
   for await (const chunk of Deno.iter(r)) {
@@ -192,7 +192,7 @@ export async function writeChunkedBody(
 export async function writeTrailers(
   w: Deno.Writer,
   headers: Headers,
-  trailers: Headers
+  trailers: Headers,
 ): Promise<void> {
   const trailer = headers.get("trailer");
   if (trailer === null) {
@@ -201,7 +201,7 @@ export async function writeTrailers(
   const transferEncoding = headers.get("transfer-encoding");
   if (transferEncoding === null || !transferEncoding.match(/^chunked/)) {
     throw new TypeError(
-      `Trailers are only allowed for "transfer-encoding: chunked", got "transfer-encoding: ${transferEncoding}".`
+      `Trailers are only allowed for "transfer-encoding: chunked", got "transfer-encoding: ${transferEncoding}".`,
     );
   }
   const writer = BufWriter.create(w);
@@ -211,11 +211,11 @@ export async function writeTrailers(
   );
   if (prohibitedTrailers.length > 0) {
     throw new TypeError(
-      `Prohibited trailer names: ${Deno.inspect(prohibitedTrailers)}.`
+      `Prohibited trailer names: ${Deno.inspect(prohibitedTrailers)}.`,
     );
   }
   const undeclared = [...trailers.keys()].filter(
-    (k) => !trailerNames.includes(k)
+    (k) => !trailerNames.includes(k),
   );
   if (undeclared.length > 0) {
     throw new TypeError(`Undeclared trailers: ${Deno.inspect(undeclared)}.`);
@@ -229,7 +229,7 @@ export async function writeTrailers(
 
 export async function writeResponse(
   w: Deno.Writer,
-  r: Response
+  r: Response,
 ): Promise<void> {
   const protoMajor = 1;
   const protoMinor = 1;
@@ -333,7 +333,7 @@ export function parseHTTPVersion(vers: string): [number, number] {
 
 export async function readRequest(
   conn: Deno.Conn,
-  bufr: BufReader
+  bufr: BufReader,
 ): Promise<ServerRequest | null> {
   const tp = new TextProtoReader(bufr);
   const firstLine = await tp.readLine(); // e.g. GET /index.html HTTP/1.0
@@ -372,7 +372,7 @@ function fixLength(req: ServerRequest): void {
       // that contains a Transfer-Encoding header field.
       // rfc: https://tools.ietf.org/html/rfc7230#section-3.3.2
       throw new Error(
-        "http: Transfer-Encoding and Content-Length cannot be send together"
+        "http: Transfer-Encoding and Content-Length cannot be send together",
       );
     }
   }

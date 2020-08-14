@@ -32,7 +32,7 @@ Detailed guides to each subcommand can be found [here](../tools.md).
 ### Script source
 
 Deno can grab the scripts from multiple sources, a filename, a url, and '-' to
-read the file from stdin. The later is useful for integration with other
+read the file from stdin. The last is useful for integration with other
 applications.
 
 ```shell

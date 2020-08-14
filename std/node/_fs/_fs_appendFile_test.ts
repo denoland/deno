@@ -13,7 +13,7 @@ Deno.test({
         appendFile("some/path", "some data", "utf8");
       },
       Error,
-      "No callback function supplied"
+      "No callback function supplied",
     );
   },
 });
@@ -23,35 +23,39 @@ Deno.test({
   fn() {
     assertThrows(
       () => {
+        // @ts-expect-error Type '"made-up-encoding"' is not assignable to type
         appendFile("some/path", "some data", "made-up-encoding", () => {});
       },
       Error,
-      "Only 'utf8' encoding is currently supported"
+      "Only 'utf8' encoding is currently supported",
     );
     assertThrows(
       () => {
         appendFile(
           "some/path",
           "some data",
+          // @ts-expect-error Type '"made-up-encoding"' is not assignable to type
           { encoding: "made-up-encoding" },
-          () => {}
+          () => {},
         );
       },
       Error,
-      "Only 'utf8' encoding is currently supported"
+      "Only 'utf8' encoding is currently supported",
     );
     assertThrows(
+      // @ts-expect-error Type '"made-up-encoding"' is not assignable to type
       () => appendFileSync("some/path", "some data", "made-up-encoding"),
       Error,
-      "Only 'utf8' encoding is currently supported"
+      "Only 'utf8' encoding is currently supported",
     );
     assertThrows(
       () =>
         appendFileSync("some/path", "some data", {
+          // @ts-expect-error Type '"made-up-encoding"' is not assignable to type
           encoding: "made-up-encoding",
         }),
       Error,
-      "Only 'utf8' encoding is currently supported"
+      "Only 'utf8' encoding is currently supported",
     );
   },
 });
@@ -196,7 +200,7 @@ Deno.test({
     assertThrows(
       () => appendFileSync(tempFile, "hello world", { flag: "ax" }),
       Deno.errors.AlreadyExists,
-      ""
+      "",
     );
     assertEquals(Deno.resources(), openResourcesBeforeAppend);
     Deno.removeSync(tempFile);

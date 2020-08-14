@@ -1,6 +1,6 @@
 import { assert, assertEquals, fail } from "../../testing/asserts.ts";
 import Dir from "./_fs_dir.ts";
-import Dirent from "./_fs_dirent.ts";
+import type Dirent from "./_fs_dirent.ts";
 
 Deno.test({
   name: "Closing current directory with callback is successful",
@@ -49,7 +49,7 @@ Deno.test({
 
       let calledBack = false;
       const fileFromCallback: Dirent | null = await new Dir(
-        testDir
+        testDir,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ).read((err: any, res: Dirent) => {
         assert(res === null);
@@ -83,10 +83,11 @@ Deno.test({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (err: any, secondResult: Dirent) => {
           assert(
-            secondResult.name === "bar.txt" || secondResult.name === "foo.txt"
+            secondResult.name === "bar.txt" ||
+              secondResult.name === "foo.txt",
           );
           secondCallback = true;
-        }
+        },
       );
       const thirdRead: Dirent | null = await dir.read();
       const fourthRead: Dirent | null = await dir.read();

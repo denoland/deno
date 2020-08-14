@@ -14,19 +14,17 @@ import third_party
 #   "deno_http" was once called "deno_net_http"
 
 DURATION = "20s"
-
-LAST_PORT = 4544
+NEXT_PORT = 4544
 
 
 def server_addr(port):
     return "0.0.0.0:%s" % port
 
 
-def get_port(port=None):
-    global LAST_PORT
-    if port is None:
-        port = LAST_PORT
-        LAST_PORT = LAST_PORT + 1
+def get_port():
+    global NEXT_PORT
+    port = NEXT_PORT
+    NEXT_PORT += 1
     # Return port as str because all usages below are as a str and having it an
     # integer just adds complexity.
     return str(port)
@@ -136,7 +134,7 @@ def hyper_http(hyper_hello_exe):
 
 
 def http_benchmark(build_dir):
-    hyper_hello_exe = os.path.join(build_dir, "hyper_hello")
+    hyper_hello_exe = os.path.join(build_dir, "test_server")
     deno_core_http_bench_exe = os.path.join(build_dir,
                                             "examples/deno_core_http_bench")
     deno_exe = os.path.join(build_dir, "deno")

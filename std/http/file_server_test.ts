@@ -3,17 +3,15 @@ import { assert, assertEquals } from "../testing/asserts.ts";
 import { BufReader } from "../io/bufio.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 import { ServerRequest } from "./server.ts";
-import { serveFile } from "./file_server.ts";
+import { serveFile, FileServerArgs } from "./file_server.ts";
 let fileServer: Deno.Process<Deno.RunOptions & { stdout: "piped" }>;
 
-type FileServerCfg = {
-  target?: string;
-  port?: number;
-};
+type FileServerCfg = Omit<FileServerArgs, "_"> & { target?: string };
 
 async function startFileServer({
   target = ".",
   port = 4507,
+  "dir-listing": dirListing = true,
 }: FileServerCfg = {}): Promise<void> {
   fileServer = Deno.run({
     cmd: [
@@ -26,6 +24,7 @@ async function startFileServer({
       "--cors",
       "-p",
       `${port}`,
+      `${dirListing ? "" : "--no-dir-listing"}`,
     ],
     stdout: "piped",
     stderr: "null",
@@ -78,13 +77,13 @@ Deno.test(
       assertEquals(res.headers.get("content-type"), "text/markdown");
       const downloadedFile = await res.text();
       const localFile = new TextDecoder().decode(
-        await Deno.readFile("README.md")
+        await Deno.readFile("README.md"),
       );
       assertEquals(downloadedFile, localFile);
     } finally {
       await killFileServer();
     }
-  }
+  },
 );
 
 Deno.test(
@@ -98,14 +97,13 @@ Deno.test(
       assertEquals(res.headers.get("content-type"), "text/markdown");
       const downloadedFile = await res.text();
       const localFile = new TextDecoder().decode(
-        await Deno.readFile("./http/README.md")
+        await Deno.readFile("./http/README.md"),
       );
-      console.log(downloadedFile, localFile);
       assertEquals(downloadedFile, localFile);
     } finally {
       await killFileServer();
     }
-  }
+  },
 );
 
 Deno.test("serveDirectory", async function (): Promise<void> {
@@ -195,6 +193,108 @@ Deno.test("file_server running as library", async function (): Promise<void> {
   try {
     const res = await fetch("http://localhost:8000");
     assertEquals(res.status, 200);
+  } finally {
+    await killFileServer();
+  }
+});
+
+async function startTlsFileServer({
+  target = ".",
+  port = 4577,
+}: FileServerCfg = {}): Promise<void> {
+  fileServer = Deno.run({
+    cmd: [
+      Deno.execPath(),
+      "run",
+      "--allow-read",
+      "--allow-net",
+      "http/file_server.ts",
+      target,
+      "--host",
+      "localhost",
+      "--cert",
+      "./http/testdata/tls/localhost.crt",
+      "--key",
+      "./http/testdata/tls/localhost.key",
+      "--cors",
+      "-p",
+      `${port}`,
+    ],
+    stdout: "piped",
+    stderr: "null",
+  });
+  // Once fileServer is ready it will write to its stdout.
+  assert(fileServer.stdout != null);
+  const r = new TextProtoReader(new BufReader(fileServer.stdout));
+  const s = await r.readLine();
+  assert(s !== null && s.includes("server listening"));
+}
+
+Deno.test("serveDirectory TLS", async function (): Promise<void> {
+  await startTlsFileServer();
+  try {
+    // Valid request after invalid
+    const conn = await Deno.connectTls({
+      hostname: "localhost",
+      port: 4577,
+      certFile: "./http/testdata/tls/RootCA.pem",
+    });
+
+    await Deno.writeAll(
+      conn,
+      new TextEncoder().encode("GET /http HTTP/1.0\r\n\r\n"),
+    );
+    const res = new Uint8Array(128 * 1024);
+    const nread = await conn.read(res);
+    assert(nread !== null);
+    conn.close();
+    const page = new TextDecoder().decode(res.subarray(0, nread));
+    assert(page.includes("<title>Deno File Server</title>"));
+  } finally {
+    await killFileServer();
+  }
+});
+
+Deno.test("partial TLS arguments fail", async function (): Promise<void> {
+  fileServer = Deno.run({
+    cmd: [
+      Deno.execPath(),
+      "run",
+      "--allow-read",
+      "--allow-net",
+      "http/file_server.ts",
+      ".",
+      "--host",
+      "localhost",
+      "--cert",
+      "./http/testdata/tls/localhost.crt",
+      "-p",
+      `4578`,
+    ],
+    stdout: "piped",
+    stderr: "null",
+  });
+  try {
+    // Once fileServer is ready it will write to its stdout.
+    assert(fileServer.stdout != null);
+    const r = new TextProtoReader(new BufReader(fileServer.stdout));
+    const s = await r.readLine();
+    assert(
+      s !== null && s.includes("--key and --cert are required for TLS"),
+    );
+  } finally {
+    await killFileServer();
+  }
+});
+
+Deno.test("file_server disable dir listings", async function (): Promise<void> {
+  await startFileServer({ "dir-listing": false });
+  try {
+    const res = await fetch("http://localhost:4507/");
+    assert(res.headers.has("access-control-allow-origin"));
+    assert(res.headers.has("access-control-allow-headers"));
+    assertEquals(res.status, 404);
+    const _ = await res.text();
   } finally {
     await killFileServer();
   }

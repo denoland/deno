@@ -16,7 +16,6 @@ function toHexString(value: number[] | ArrayBuffer): string {
   return hex;
 }
 
-// prettier-ignore
 // deno-fmt-ignore
 const fixtures: {
   sha512bits224: Record<string, Record<string, Message>>,
@@ -285,10 +284,9 @@ for (const method of methods) {
         fn() {
           const algorithm = new Sha512(224);
           algorithm.update(message);
-          const actual =
-            method === "hex"
-              ? algorithm[method]()
-              : toHexString(algorithm[method]());
+          const actual = method === "hex"
+            ? algorithm[method]()
+            : toHexString(algorithm[method]());
           assertEquals(actual, expected);
         },
       });
@@ -305,10 +303,9 @@ for (const method of methods) {
         fn() {
           const algorithm = new Sha512(256);
           algorithm.update(message);
-          const actual =
-            method === "hex"
-              ? algorithm[method]()
-              : toHexString(algorithm[method]());
+          const actual = method === "hex"
+            ? algorithm[method]()
+            : toHexString(algorithm[method]());
           assertEquals(actual, expected);
         },
       });
@@ -325,10 +322,9 @@ for (const method of methods) {
         fn() {
           const algorithm = new Sha512();
           algorithm.update(message);
-          const actual =
-            method === "hex"
-              ? algorithm[method]()
-              : toHexString(algorithm[method]());
+          const actual = method === "hex"
+            ? algorithm[method]()
+            : toHexString(algorithm[method]());
           assertEquals(actual, expected);
         },
       });
@@ -345,10 +341,9 @@ for (const method of methods) {
         fn() {
           const algorithm = new HmacSha512(key, 224);
           algorithm.update(message);
-          const actual =
-            method === "hex"
-              ? algorithm[method]()
-              : toHexString(algorithm[method]());
+          const actual = method === "hex"
+            ? algorithm[method]()
+            : toHexString(algorithm[method]());
           assertEquals(actual, expected);
         },
       });
@@ -365,10 +360,9 @@ for (const method of methods) {
         fn() {
           const algorithm = new HmacSha512(key, 256);
           algorithm.update(message);
-          const actual =
-            method === "hex"
-              ? algorithm[method]()
-              : toHexString(algorithm[method]());
+          const actual = method === "hex"
+            ? algorithm[method]()
+            : toHexString(algorithm[method]());
           assertEquals(actual, expected);
         },
       });
@@ -385,10 +379,9 @@ for (const method of methods) {
         fn() {
           const algorithm = new HmacSha512(key);
           algorithm.update(message);
-          const actual =
-            method === "hex"
-              ? algorithm[method]()
-              : toHexString(algorithm[method]());
+          const actual = method === "hex"
+            ? algorithm[method]()
+            : toHexString(algorithm[method]());
           assertEquals(actual, expected);
         },
       });
@@ -401,6 +394,6 @@ Deno.test("[hash/sha512] test Uint8Array from Reader", async () => {
   const hash = new Sha512().update(data).hex();
   assertEquals(
     hash,
-    "ee26b0dd4af7e749aa1a8ee3c10ae9923f618980772e473f8819a5d4940e0db27ac185f8a0e1d5f84f88bc887fd67b143732c304cc5fa9ad8e6f57f50028a8ff"
+    "ee26b0dd4af7e749aa1a8ee3c10ae9923f618980772e473f8819a5d4940e0db27ac185f8a0e1d5f84f88bc887fd67b143732c304cc5fa9ad8e6f57f50028a8ff",
   );
 });

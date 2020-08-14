@@ -47,7 +47,7 @@ Deno.test({
         }
       },
       Error,
-      "something went wrong"
+      "something went wrong",
     );
   },
 });

@@ -40,7 +40,7 @@ const DEFAULT_DELIMITER = "\n";
 export async function xeval(
   reader: Deno.Reader,
   xevalFunc: XevalFunc,
-  { delimiter = DEFAULT_DELIMITER }: XevalOptions = {}
+  { delimiter = DEFAULT_DELIMITER }: XevalOptions = {},
 ): Promise<void> {
   for await (const chunk of readStringDelim(reader, delimiter)) {
     // Ignore empty chunks.

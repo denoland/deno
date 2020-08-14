@@ -23,4 +23,4 @@ wasm-bindgen = "0.2.63"
 
 [profile.release]
 lto = true
-opt-level = "z"
+opt-level = 3

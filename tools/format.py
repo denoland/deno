@@ -3,7 +3,7 @@
 import os
 import sys
 import argparse
-from third_party import python_env
+from third_party import python_env, get_prebuilt_tool_path
 from util import git_ls_files, git_staged, third_party_path, root_path
 from util import print_command, run
 
@@ -17,7 +17,7 @@ def get_cmd_args():
         return cmd_args
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--js", help="run prettier", action="store_true")
+    parser.add_argument("--js", help="run dprint", action="store_true")
     parser.add_argument("--py", help="run yapf", action="store_true")
     parser.add_argument("--rs", help="run rustfmt", action="store_true")
     parser.add_argument(
@@ -38,7 +38,7 @@ def main():
 
     did_fmt = False
     if args.js:
-        prettier()
+        dprint()
         did_fmt = True
     if args.py:
         yapf()
@@ -48,24 +48,15 @@ def main():
         did_fmt = True
 
     if not did_fmt:
-        prettier()
+        dprint()
         yapf()
         rustfmt()
 
 
-def prettier():
-    script = os.path.join(third_party_path, "node_modules", "prettier",
-                          "bin-prettier.js")
-    source_files = get_sources(root_path, ["*.js", "*.json", "*.ts", "*.md"])
-    if source_files:
-        max_command_length = 24000
-        while len(source_files) > 0:
-            command = ["node", script, "--write", "--loglevel=error", "--"]
-            while len(source_files) > 0:
-                command.append(source_files.pop())
-                if len(" ".join(command)) > max_command_length:
-                    break
-            run(command, shell=False, quiet=True)
+def dprint():
+    executable_path = get_prebuilt_tool_path("dprint")
+    command = [executable_path, "fmt"]
+    run(command, shell=False, quiet=True)
 
 
 def yapf():

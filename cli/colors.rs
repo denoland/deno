@@ -3,7 +3,7 @@ use regex::Regex;
 use std::env;
 use std::fmt;
 use std::io::Write;
-use termcolor::Color::{Ansi256, Black, Magenta, Red, White};
+use termcolor::Color::{Ansi256, Black, Blue, Green, Magenta, Red, White};
 use termcolor::{Ansi, ColorSpec, WriteColor};
 
 #[cfg(windows)]
@@ -46,89 +46,104 @@ fn style(s: &str, colorspec: ColorSpec) -> impl fmt::Display {
   String::from_utf8_lossy(&v).into_owned()
 }
 
-pub fn red_bold(s: String) -> impl fmt::Display {
+pub fn red_bold(s: &str) -> impl fmt::Display {
   let mut style_spec = ColorSpec::new();
   style_spec.set_fg(Some(Red)).set_bold(true);
   style(&s, style_spec)
 }
 
-pub fn green_bold(s: String) -> impl fmt::Display {
+pub fn green_bold(s: &str) -> impl fmt::Display {
   let mut style_spec = ColorSpec::new();
-  style_spec.set_fg(Some(Ansi256(10))).set_bold(true);
+  style_spec
+    .set_fg(Some(Green))
+    .set_bold(true)
+    .set_intense(true);
   style(&s, style_spec)
 }
 
-pub fn italic_bold(s: String) -> impl fmt::Display {
+pub fn italic_bold(s: &str) -> impl fmt::Display {
   let mut style_spec = ColorSpec::new();
   style_spec.set_bold(true).set_italic(true);
   style(&s, style_spec)
 }
 
-pub fn black_on_white(s: String) -> impl fmt::Display {
+pub fn black_on_white(s: &str) -> impl fmt::Display {
   let mut style_spec = ColorSpec::new();
   style_spec.set_bg(Some(White)).set_fg(Some(Black));
   style(&s, style_spec)
 }
 
-pub fn white_on_red(s: String) -> impl fmt::Display {
+pub fn white_on_red(s: &str) -> impl fmt::Display {
   let mut style_spec = ColorSpec::new();
   style_spec.set_bg(Some(Red)).set_fg(Some(White));
   style(&s, style_spec)
 }
 
-pub fn white_on_green(s: String) -> impl fmt::Display {
+pub fn white_on_green(s: &str) -> impl fmt::Display {
   let mut style_spec = ColorSpec::new();
   style_spec.set_bg(Some(Ansi256(10))).set_fg(Some(White));
   style(&s, style_spec)
 }
 
-pub fn yellow(s: String) -> impl fmt::Display {
+pub fn yellow(s: &str) -> impl fmt::Display {
   let mut style_spec = ColorSpec::new();
   style_spec.set_fg(Some(Ansi256(11)));
   style(&s, style_spec)
 }
 
-pub fn cyan(s: String) -> impl fmt::Display {
+pub fn cyan(s: &str) -> impl fmt::Display {
   let mut style_spec = ColorSpec::new();
   style_spec.set_fg(Some(Ansi256(14)));
   style(&s, style_spec)
 }
 
-pub fn red(s: String) -> impl fmt::Display {
+pub fn red(s: &str) -> impl fmt::Display {
   let mut style_spec = ColorSpec::new();
   style_spec.set_fg(Some(Red));
   style(&s, style_spec)
 }
 
-pub fn green(s: String) -> impl fmt::Display {
+pub fn green(s: &str) -> impl fmt::Display {
   let mut style_spec = ColorSpec::new();
-  style_spec.set_fg(Some(Ansi256(10)));
+  style_spec.set_fg(Some(Green)).set_intense(true);
   style(&s, style_spec)
 }
 
-pub fn magenta(s: String) -> impl fmt::Display {
+pub fn magenta(s: &str) -> impl fmt::Display {
   let mut style_spec = ColorSpec::new();
   style_spec.set_fg(Some(Magenta));
   style(&s, style_spec)
 }
 
-pub fn bold(s: String) -> impl fmt::Display {
+pub fn bold(s: &str) -> impl fmt::Display {
   let mut style_spec = ColorSpec::new();
   style_spec.set_bold(true);
   style(&s, style_spec)
 }
 
-pub fn gray(s: String) -> impl fmt::Display {
+pub fn gray(s: &str) -> impl fmt::Display {
   let mut style_spec = ColorSpec::new();
   style_spec.set_fg(Some(Ansi256(8)));
   style(&s, style_spec)
 }
 
-pub fn italic_bold_gray(s: String) -> impl fmt::Display {
+pub fn italic_gray(s: &str) -> impl fmt::Display {
+  let mut style_spec = ColorSpec::new();
+  style_spec.set_fg(Some(Ansi256(8))).set_italic(true);
+  style(&s, style_spec)
+}
+
+pub fn italic_bold_gray(s: &str) -> impl fmt::Display {
   let mut style_spec = ColorSpec::new();
   style_spec
     .set_fg(Some(Ansi256(8)))
     .set_bold(true)
     .set_italic(true);
+  style(&s, style_spec)
+}
+
+pub fn intense_blue(s: &str) -> impl fmt::Display {
+  let mut style_spec = ColorSpec::new();
+  style_spec.set_fg(Some(Blue)).set_intense(true);
   style(&s, style_spec)
 }

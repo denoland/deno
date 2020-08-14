@@ -93,9 +93,9 @@ Deno.test({
       "event",
       (oneArg: string, twoArg: string, threeArg: string) => {
         eventsFired.push(
-          "event(" + oneArg + ", " + twoArg + ", " + threeArg + ")"
+          "event(" + oneArg + ", " + twoArg + ", " + threeArg + ")",
         );
-      }
+      },
     );
     testEmitter.emit("event", 1, 2, 3);
     assertEquals(eventsFired, ["event(1)", "event(1, 2)", "event(1, 2, 3)"]);
@@ -346,7 +346,7 @@ Deno.test({
     assertEquals(rawListenersForEvent[0], listenerA);
     assertEquals(
       (rawListenersForOnceEvent[0] as WrappedFunction).listener,
-      listenerB
+      listenerB,
     );
   },
 });
@@ -361,7 +361,8 @@ Deno.test({
     testEmitter.once("once-event", listenerA);
 
     const rawListenersForOnceEvent = testEmitter.rawListeners("once-event");
-    const wrappedFn: WrappedFunction = rawListenersForOnceEvent[0] as WrappedFunction;
+    const wrappedFn: WrappedFunction =
+      rawListenersForOnceEvent[0] as WrappedFunction;
     wrappedFn.listener();
     wrappedFn.listener();
     wrappedFn.listener();
@@ -411,14 +412,14 @@ Deno.test({
         ee.setMaxListeners(-1);
       },
       Error,
-      "must be >= 0"
+      "must be >= 0",
     );
     assertThrows(
       () => {
         ee.setMaxListeners(3.45);
       },
       Error,
-      "must be 'an integer'"
+      "must be 'an integer'",
     );
   },
 });
@@ -434,7 +435,7 @@ Deno.test({
         ee.emit("error");
       },
       Error,
-      "Unhandled error"
+      "Unhandled error",
     );
 
     ee.on(EventEmitter.errorMonitor, () => {
@@ -447,7 +448,7 @@ Deno.test({
         ee.emit("error");
       },
       Error,
-      "Unhandled error"
+      "Unhandled error",
     );
     assertEquals(events, ["errorMonitor event"]);
 

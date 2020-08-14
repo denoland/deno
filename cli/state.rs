@@ -2,6 +2,7 @@
 use crate::file_fetcher::SourceFileFetcher;
 use crate::global_state::GlobalState;
 use crate::global_timer::GlobalTimer;
+use crate::http_util::create_http_client;
 use crate::import_map::ImportMap;
 use crate::metrics::Metrics;
 use crate::op_error::OpError;
@@ -59,13 +60,14 @@ pub struct StateInner {
   pub target_lib: TargetLib,
   pub is_main: bool,
   pub is_internal: bool,
+  pub http_client: reqwest::Client,
 }
 
 impl State {
   pub fn stateful_json_op<D>(
     &self,
     dispatcher: D,
-  ) -> impl Fn(&mut deno_core::CoreIsolateState, &[u8], &mut [ZeroCopyBuf]) -> Op
+  ) -> impl Fn(&mut deno_core::CoreIsolateState, &mut [ZeroCopyBuf]) -> Op
   where
     D: Fn(&State, Value, &mut [ZeroCopyBuf]) -> Result<JsonOp, OpError>,
   {
@@ -76,7 +78,7 @@ impl State {
   pub fn stateful_json_op2<D>(
     &self,
     dispatcher: D,
-  ) -> impl Fn(&mut deno_core::CoreIsolateState, &[u8], &mut [ZeroCopyBuf]) -> Op
+  ) -> impl Fn(&mut deno_core::CoreIsolateState, &mut [ZeroCopyBuf]) -> Op
   where
     D: Fn(
       &mut deno_core::CoreIsolateState,
@@ -95,21 +97,21 @@ impl State {
   pub fn core_op<D>(
     &self,
     dispatcher: D,
-  ) -> impl Fn(&mut deno_core::CoreIsolateState, &[u8], &mut [ZeroCopyBuf]) -> Op
+  ) -> impl Fn(&mut deno_core::CoreIsolateState, &mut [ZeroCopyBuf]) -> Op
   where
-    D: Fn(&mut deno_core::CoreIsolateState, &[u8], &mut [ZeroCopyBuf]) -> Op,
+    D: Fn(&mut deno_core::CoreIsolateState, &mut [ZeroCopyBuf]) -> Op,
   {
     let state = self.clone();
 
     move |isolate_state: &mut deno_core::CoreIsolateState,
-          control: &[u8],
           zero_copy: &mut [ZeroCopyBuf]|
           -> Op {
-      let bytes_sent_control = control.len() as u64;
+      let bytes_sent_control =
+        zero_copy.get(0).map(|s| s.len()).unwrap_or(0) as u64;
       let bytes_sent_zero_copy =
-        zero_copy.iter().map(|b| b.len()).sum::<usize>() as u64;
+        zero_copy[1..].iter().map(|b| b.len()).sum::<usize>() as u64;
 
-      let op = dispatcher(isolate_state, control, zero_copy);
+      let op = dispatcher(isolate_state, zero_copy);
 
       match op {
         Op::Sync(buf) => {
@@ -155,7 +157,7 @@ impl State {
   pub fn stateful_minimal_op2<D>(
     &self,
     dispatcher: D,
-  ) -> impl Fn(&mut deno_core::CoreIsolateState, &[u8], &mut [ZeroCopyBuf]) -> Op
+  ) -> impl Fn(&mut deno_core::CoreIsolateState, &mut [ZeroCopyBuf]) -> Op
   where
     D: Fn(
       &mut deno_core::CoreIsolateState,
@@ -365,6 +367,8 @@ impl State {
       global_state.permissions.clone()
     };
 
+    let http_client = create_http_client(global_state.flags.ca_file.clone())?;
+
     let state = Rc::new(RefCell::new(StateInner {
       global_state,
       main_module,
@@ -379,6 +383,7 @@ impl State {
       target_lib: TargetLib::Main,
       is_main: true,
       is_internal,
+      http_client,
     }));
 
     Ok(Self(state))
@@ -401,6 +406,8 @@ impl State {
       global_state.permissions.clone()
     };
 
+    let http_client = create_http_client(global_state.flags.ca_file.clone())?;
+
     let state = Rc::new(RefCell::new(StateInner {
       global_state,
       main_module,
@@ -415,6 +422,7 @@ impl State {
       target_lib: TargetLib::Worker,
       is_main: false,
       is_internal: false,
+      http_client,
     }));
 
     Ok(Self(state))
@@ -499,7 +507,7 @@ impl State {
     let module_specifier = ModuleSpecifier::resolve_url_or_path(main_module)
       .expect("Invalid entry module");
     State::new(
-      GlobalState::mock(vec!["deno".to_string()]),
+      GlobalState::mock(vec!["deno".to_string()], None),
       None,
       module_specifier,
       None,

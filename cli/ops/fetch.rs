@@ -11,17 +11,25 @@ use futures::future::FutureExt;
 use http::header::HeaderName;
 use http::header::HeaderValue;
 use http::Method;
+use reqwest::Client;
 use std::convert::From;
+use std::path::PathBuf;
 
 pub fn init(i: &mut CoreIsolate, s: &State) {
   i.register_op("op_fetch", s.stateful_json_op2(op_fetch));
+  i.register_op(
+    "op_create_http_client",
+    s.stateful_json_op2(op_create_http_client),
+  );
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct FetchArgs {
   method: Option<String>,
   url: String,
   headers: Vec<(String, String)>,
+  client_rid: Option<u32>,
 }
 
 pub fn op_fetch(
@@ -32,9 +40,17 @@ pub fn op_fetch(
 ) -> Result<JsonOp, OpError> {
   let args: FetchArgs = serde_json::from_value(args)?;
   let url = args.url;
+  let resource_table_ = isolate_state.resource_table.borrow();
+  let state_ = state.borrow();
 
-  let client =
-    create_http_client(state.borrow().global_state.flags.ca_file.clone())?;
+  let client = if let Some(rid) = args.client_rid {
+    let r = resource_table_
+      .get::<HttpClientResource>(rid)
+      .ok_or_else(OpError::bad_resource_id)?;
+    &r.client
+  } else {
+    &state_.http_client
+  };
 
   let method = match args.method {
     Some(method_str) => Method::from_bytes(method_str.as_bytes())
@@ -100,4 +116,41 @@ pub fn op_fetch(
   };
 
   Ok(JsonOp::Async(future.boxed_local()))
+}
+
+struct HttpClientResource {
+  client: Client,
+}
+
+impl HttpClientResource {
+  fn new(client: Client) -> Self {
+    Self { client }
+  }
+}
+
+#[derive(Deserialize, Default, Debug)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+struct CreateHttpClientOptions {
+  ca_file: Option<String>,
+}
+
+fn op_create_http_client(
+  isolate_state: &mut CoreIsolateState,
+  state: &State,
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<JsonOp, OpError> {
+  let args: CreateHttpClientOptions = serde_json::from_value(args)?;
+  let mut resource_table = isolate_state.resource_table.borrow_mut();
+
+  if let Some(ca_file) = args.ca_file.clone() {
+    state.check_read(&PathBuf::from(ca_file))?;
+  }
+
+  let client = create_http_client(args.ca_file).unwrap();
+
+  let rid =
+    resource_table.add("httpClient", Box::new(HttpClientResource::new(client)));
+  Ok(JsonOp::Sync(json!(rid)))
 }

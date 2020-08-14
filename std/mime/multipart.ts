@@ -35,7 +35,7 @@ export function isFormFile(x: any): x is FormFile {
 function randomBoundary(): string {
   let boundary = "--------------------------";
   for (let i = 0; i < 24; i++) {
-    boundary += Math.floor(Math.random() * 10).toString(16);
+    boundary += Math.floor(Math.random() * 16).toString(16);
   }
   return boundary;
 }
@@ -59,7 +59,7 @@ function randomBoundary(): string {
 export function matchAfterPrefix(
   buf: Uint8Array,
   prefix: Uint8Array,
-  eof: boolean
+  eof: boolean,
 ): -1 | 0 | 1 {
   if (buf.length === prefix.length) {
     return eof ? 1 : 0;
@@ -98,7 +98,7 @@ export function scanUntilBoundary(
   dashBoundary: Uint8Array,
   newLineDashBoundary: Uint8Array,
   total: number,
-  eof: boolean
+  eof: boolean,
 ): number | null {
   if (total === 0) {
     // At beginning of body, allow dashBoundary.
@@ -168,7 +168,7 @@ class PartReader implements Deno.Reader, Deno.Closer {
         this.mr.dashBoundary,
         this.mr.newLineDashBoundary,
         this.total,
-        eof
+        eof,
       );
       if (this.n === 0) {
         // Force buffered I/O to read more into buffer.
@@ -417,7 +417,7 @@ export class MultipartReader {
 
 function multipatFormData(
   fileMap: Map<string, FormFile | FormFile[]>,
-  valueMap: Map<string, string>
+  valueMap: Map<string, string>,
 ): MultipartFormData {
   function file(key: string): FormFile | FormFile[] | undefined {
     return fileMap.get(key);
@@ -468,7 +468,7 @@ class PartWriter implements Deno.Writer {
     private writer: Deno.Writer,
     readonly boundary: string,
     public headers: Headers,
-    isFirstBoundary: boolean
+    isFirstBoundary: boolean,
   ) {
     let buf = "";
     if (isFirstBoundary) {
@@ -549,7 +549,7 @@ export class MultipartWriter {
       this.writer,
       this.boundary,
       headers,
-      !this.lastPart
+      !this.lastPart,
     );
     this.lastPart = part;
     return part;
@@ -559,7 +559,7 @@ export class MultipartWriter {
     const h = new Headers();
     h.set(
       "Content-Disposition",
-      `form-data; name="${field}"; filename="${filename}"`
+      `form-data; name="${field}"; filename="${filename}"`,
     );
     h.set("Content-Type", "application/octet-stream");
     return this.createPart(h);
@@ -580,7 +580,7 @@ export class MultipartWriter {
   async writeFile(
     field: string,
     filename: string,
-    file: Deno.Reader
+    file: Deno.Reader,
   ): Promise<void> {
     const f = await this.createFormFile(field, filename);
     await Deno.copy(file, f);

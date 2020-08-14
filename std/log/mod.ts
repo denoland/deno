@@ -8,9 +8,11 @@ import {
   RotatingFileHandler,
 } from "./handlers.ts";
 import { assert } from "../_util/assert.ts";
-import { LevelName } from "./levels.ts";
+import type { LevelName } from "./levels.ts";
 
 export { LogLevels } from "./levels.ts";
+export type { LevelName } from "./levels.ts";
+export { Logger } from "./logger.ts";
 
 export class LoggerConfig {
   level?: LevelName;
@@ -59,7 +61,7 @@ export function getLogger(name?: string): Logger {
     const d = state.loggers.get("default");
     assert(
       d != null,
-      `"default" logger must be set for getting logger without name`
+      `"default" logger must be set for getting logger without name`,
     );
     return d;
   }

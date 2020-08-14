@@ -1,8 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::ts_type::TsTypeDef;
-use crate::swc_ecma_ast::TsTypeParam;
-use crate::swc_ecma_ast::TsTypeParamDecl;
 use serde::Serialize;
+use std::fmt::{Display, Formatter, Result as FmtResult};
+use swc_ecmascript::ast::TsTypeParam;
+use swc_ecmascript::ast::TsTypeParamDecl;
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -14,6 +15,19 @@ pub struct TsTypeParamDef {
 
   #[serde(skip_serializing_if = "Option::is_none")]
   pub default: Option<TsTypeDef>,
+}
+
+impl Display for TsTypeParamDef {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+    write!(f, "{}", self.name)?;
+    if let Some(constraint) = &self.constraint {
+      write!(f, " extends {}", constraint)?;
+    }
+    if let Some(default) = &self.default {
+      write!(f, " = {}", default)?;
+    }
+    Ok(())
+  }
 }
 
 impl Into<TsTypeParamDef> for &TsTypeParam {

@@ -21,6 +21,9 @@ yarn.lock
 # yarn creates this in error.
 tools/node_modules/
 
+# compiled wasm files
+std/wasi/testdata/snapshot_preview1/
+
 # MacOS generated files
 .DS_Store
 .DS_Store?

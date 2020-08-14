@@ -3,16 +3,16 @@
 // Copyright 2011-2015 by Vitaly Puzrin. All rights reserved. MIT license.
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import { Schema, SchemaDefinition } from "../schema.ts";
+import type { Schema, SchemaDefinition } from "../schema.ts";
 import { State } from "../state.ts";
-import { StyleVariant, Type } from "../type.ts";
-import { ArrayObject, Any } from "../utils.ts";
+import type { StyleVariant, Type } from "../type.ts";
+import type { ArrayObject, Any } from "../utils.ts";
 
 const _hasOwnProperty = Object.prototype.hasOwnProperty;
 
 function compileStyleMap(
   schema: Schema,
-  map?: ArrayObject<StyleVariant> | null
+  map?: ArrayObject<StyleVariant> | null,
 ): ArrayObject<StyleVariant> {
   if (typeof map === "undefined" || map === null) return {};
 

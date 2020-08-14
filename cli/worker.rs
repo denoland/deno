@@ -261,6 +261,7 @@ impl MainWorker {
       ops::fetch::init(isolate, &state);
       ops::fs::init(isolate, &state);
       ops::fs_events::init(isolate, &state);
+      ops::idna::init(isolate, &state);
       ops::io::init(isolate, &state);
       ops::plugin::init(isolate, &state);
       ops::net::init(isolate, &state);
@@ -300,9 +301,15 @@ impl MainWorker {
       let state_rc = CoreIsolate::state(&worker.isolate);
       let state = state_rc.borrow();
       let mut t = state.resource_table.borrow_mut();
-      t.add("stdin", Box::new(stdin));
-      t.add("stdout", Box::new(stdout));
-      t.add("stderr", Box::new(stderr));
+      if let Some(stream) = stdin {
+        t.add("stdin", Box::new(stream));
+      }
+      if let Some(stream) = stdout {
+        t.add("stdout", Box::new(stream));
+      }
+      if let Some(stream) = stderr {
+        t.add("stderr", Box::new(stream));
+      }
     }
     worker.execute("bootstrap.mainRuntime()")?;
     Ok(worker)
@@ -394,7 +401,7 @@ mod tests {
 
   #[tokio::test]
   async fn execute_006_url_imports() {
-    let http_server_guard = test_util::http_server();
+    let _http_server_guard = test_util::http_server();
     let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
       .parent()
       .unwrap()
@@ -434,7 +441,6 @@ mod tests {
     assert_eq!(state.metrics.resolve_count, 3);
     // Check that we've only invoked the compiler once.
     assert_eq!(state.global_state.compiler_starts.load(Ordering::SeqCst), 1);
-    drop(http_server_guard);
   }
 
   fn create_test_worker() -> MainWorker {

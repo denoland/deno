@@ -96,8 +96,7 @@ Deno.test({
 Deno.test({
   name: "[textproto] Reader : MIME Header Non compliant",
   async fn(): Promise<void> {
-    const input =
-      "Foo: bar\r\n" +
+    const input = "Foo: bar\r\n" +
       "Content-Language: en\r\n" +
       "SID : 0\r\n" +
       "Audio Mode : None\r\n" +
@@ -143,9 +142,7 @@ Deno.test({
 Deno.test({
   name: "[textproto] Reader : MIME Header Trim Continued",
   async fn(): Promise<void> {
-    const input =
-      "" + // for code formatting purpose.
-      "a:\n" +
+    const input = "a:\n" +
       " 0 \r\n" +
       "b:1 \t\r\n" +
       "c: 2\r\n" +
@@ -185,7 +182,7 @@ Deno.test({
     const input = "abcdefghijklmnopqrstuvwxyz";
     const bufSize = 25;
     const tp = new TextProtoReader(
-      new BufReader(new StringReader(input), bufSize)
+      new BufReader(new StringReader(input), bufSize),
     );
     const line = await tp.readLine();
     assertEquals(line, input);

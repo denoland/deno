@@ -37,6 +37,8 @@ SharedQueue Binary Layout
   let asyncHandlers;
 
   let initialized = false;
+  let opsCache = {};
+  const errorMap = {};
 
   function maybeInit() {
     if (!initialized) {
@@ -61,7 +63,8 @@ SharedQueue Binary Layout
     // op id 0 is a special value to retrieve the map of registered ops.
     const opsMapBytes = send(0, new Uint8Array([]));
     const opsMapJson = String.fromCharCode.apply(null, opsMapBytes);
-    return JSON.parse(opsMapJson);
+    opsCache = JSON.parse(opsMapJson);
+    return { ...opsCache };
   }
 
   function assert(cond) {
@@ -181,10 +184,30 @@ SharedQueue Binary Layout
     }
   }
 
+  function dispatch(opName, control, ...zeroCopy) {
+    return send(opsCache[opName], control, ...zeroCopy);
+  }
+
+  function registerErrorClass(errorName, errorClass) {
+    if (typeof errorMap[errorName] !== "undefined") {
+      throw new TypeError(`Error class for "${errorName}" already registered`);
+    }
+    errorMap[errorName] = errorClass;
+  }
+
+  function getErrorClass(errorName) {
+    const errorClass = errorMap[errorName];
+    assert(errorClass);
+    return errorClass;
+  }
+
   Object.assign(window.Deno.core, {
     setAsyncHandler,
     dispatch: send,
+    dispatchByName: dispatch,
     ops,
+    registerErrorClass,
+    getErrorClass,
     // sharedQueue is private but exposed for testing.
     sharedQueue: {
       MAX_RECORDS,

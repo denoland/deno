@@ -13,7 +13,7 @@ jobs:
     strategy:
       matrix:
         config:
-          - os: macOS-latest
+          - os: macos-10.15
             kind: test_release
           - os: windows-2019
             kind: test_release
@@ -61,12 +61,18 @@ jobs:
           !startsWith(github.ref, 'refs/tags/std/')
         run: |
           mkdir -p target/release
-          tar --exclude=.cargo_home --exclude=".git*" --exclude=target --exclude=deno_typescript/typescript/tests --exclude=third_party/cpplint --exclude=third_party/node_modules --exclude=third_party/python_packages --exclude=third_party/prebuilt -czvf target/release/deno_src.tar.gz -C .. deno
+          tar --exclude=.cargo_home --exclude=".git*" --exclude=target --exclude=third_party/node_modules --exclude=third_party/python_packages --exclude=third_party/prebuilt -czvf target/release/deno_src.tar.gz -C .. deno
 
       - name: Install rust
         uses: hecrj/setup-rust-action@v1
         with:
-          rust-version: 1.44.0
+          rust-version: 1.45.2
+
+      - name: Install rust targets
+        run: |
+          # Necessary for the std/wasi tests
+          rustup target add wasm32-unknown-unknown
+          rustup target add wasm32-wasi
 
       - name: Install clippy and rustfmt
         if: matrix.config.kind == 'lint'
@@ -227,9 +233,10 @@ jobs:
         run: |
           cd core
           cargo publish
-          cd ../deno_typescript
           sleep 30
+          cd ../op_crates/web
           cargo publish
-          cd ../cli
+          sleep 30
+          cd ../../cli
           sleep 30
           cargo publish

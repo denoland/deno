@@ -1,7 +1,7 @@
 // Specifier should be resolved relative to current file
 const jsWorker = new Worker(
   new URL("sibling_worker.js", import.meta.url).href,
-  { type: "module", name: "sibling" }
+  { type: "module", name: "sibling" },
 );
 
 jsWorker.onerror = (_e) => {

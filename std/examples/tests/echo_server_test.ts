@@ -19,7 +19,7 @@ Deno.test("[examples/echo_server]", async () => {
     assertNotEquals(message, null);
     assertStrictEquals(
       decoder.decode((message as ReadLineResult).line).trim(),
-      "Listening on 0.0.0.0:8080"
+      "Listening on 0.0.0.0:8080",
     );
 
     conn = await Deno.connect({ hostname: "127.0.0.1", port: 8080 });

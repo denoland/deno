@@ -229,14 +229,14 @@ Deno.test("Should return false for invalid Float64Array types", () => {
 Deno.test("Should return true for valid generator functions", () => {
   assertStrictEquals(
     isGeneratorFunction(function* foo() {}),
-    true
+    true,
   );
 });
 
 Deno.test("Should return false for invalid generator functions", () => {
   assertStrictEquals(
     isGeneratorFunction(function foo() {}),
-    false
+    false,
   );
 });
 
@@ -249,7 +249,7 @@ Deno.test("Should return true for valid generator object types", () => {
 Deno.test("Should return false for invalid generation object types", () => {
   assertStrictEquals(
     isGeneratorObject(function* foo() {}),
-    false
+    false,
   );
 });
 

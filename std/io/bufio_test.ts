@@ -16,7 +16,8 @@ import {
 import * as iotest from "./_iotest.ts";
 import { StringReader } from "./readers.ts";
 import { StringWriter } from "./writers.ts";
-import { charCode, copyBytes } from "./util.ts";
+import { charCode } from "./util.ts";
+import { copyBytes } from "../bytes/mod.ts";
 
 const encoder = new TextEncoder();
 
@@ -121,8 +122,7 @@ Deno.test("bufioBufReader", async function (): Promise<void> {
           const read = readmaker.fn(new StringReader(text));
           const buf = new BufReader(read, bufsize);
           const s = await bufreader.fn(buf);
-          const debugStr =
-            `reader=${readmaker.name} ` +
+          const debugStr = `reader=${readmaker.name} ` +
             `fn=${bufreader.name} bufsize=${bufsize} want=${text} got=${s}`;
           assertEquals(s, text, debugStr);
         }
@@ -178,11 +178,11 @@ Deno.test("bufioReadString", async function (): Promise<void> {
 });
 
 const testInput = encoder.encode(
-  "012\n345\n678\n9ab\ncde\nfgh\nijk\nlmn\nopq\nrst\nuvw\nxy"
+  "012\n345\n678\n9ab\ncde\nfgh\nijk\nlmn\nopq\nrst\nuvw\nxy",
 );
 const testInputrn = encoder.encode(
   "012\r\n345\r\n678\r\n9ab\r\ncde\r\nfgh\r\nijk\r\nlmn\r\nopq\r\nrst\r\n" +
-    "uvw\r\nxy\r\n\n\r\n"
+    "uvw\r\nxy\r\n\n\r\n",
 );
 const testOutput = encoder.encode("0123456789abcdefghijklmnopqrstuvwxy");
 
@@ -224,7 +224,7 @@ async function testReadLine(input: Uint8Array): Promise<void> {
       assertEquals(
         line,
         want,
-        `Bad line at stride ${stride}: want: ${want} got: ${line}`
+        `Bad line at stride ${stride}: want: ${want} got: ${line}`,
       );
       done += line.byteLength;
     }
@@ -232,7 +232,7 @@ async function testReadLine(input: Uint8Array): Promise<void> {
       done,
       testOutput.byteLength,
       `readLine didn't return everything: got: ${done}, ` +
-        `want: ${testOutput} (stride: ${stride})`
+        `want: ${testOutput} (stride: ${stride})`,
     );
   }
 }
@@ -248,7 +248,7 @@ Deno.test("bufioPeek", async function (): Promise<void> {
   // string is 16 (minReadBufferSize) long.
   const buf = new BufReader(
     new StringReader("abcdefghijklmnop"),
-    MIN_READ_BUFFER_SIZE
+    MIN_READ_BUFFER_SIZE,
   );
 
   let actual = await buf.peek(1);
@@ -305,24 +305,24 @@ Deno.test("bufioPeek", async function (): Promise<void> {
   const r = await buf.peek(1);
   assert(r === null);
   /* TODO
-	Test for issue 3022, not exposing a reader's error on a successful Peek.
-	buf = NewReaderSize(dataAndEOFReader("abcd"), 32)
-	if s, err := buf.Peek(2); string(s) != "ab" || err != nil {
-		t.Errorf(`Peek(2) on "abcd", EOF = %q, %v; want "ab", nil`, string(s), err)
-	}
-	if s, err := buf.Peek(4); string(s) != "abcd" || err != nil {
-		t.Errorf(
+  Test for issue 3022, not exposing a reader's error on a successful Peek.
+  buf = NewReaderSize(dataAndEOFReader("abcd"), 32)
+  if s, err := buf.Peek(2); string(s) != "ab" || err != nil {
+    t.Errorf(`Peek(2) on "abcd", EOF = %q, %v; want "ab", nil`, string(s), err)
+  }
+  if s, err := buf.Peek(4); string(s) != "abcd" || err != nil {
+    t.Errorf(
       `Peek(4) on "abcd", EOF = %q, %v; want "abcd", nil`,
       string(s),
       err
     )
-	}
-	if n, err := buf.Read(p[0:5]); string(p[0:n]) != "abcd" || err != nil {
-		t.Fatalf("Read after peek = %q, %v; want abcd, EOF", p[0:n], err)
-	}
-	if n, err := buf.Read(p[0:1]); string(p[0:n]) != "" || err != io.EOF {
-		t.Fatalf(`second Read after peek = %q, %v; want "", EOF`, p[0:n], err)
-	}
+  }
+  if n, err := buf.Read(p[0:5]); string(p[0:n]) != "abcd" || err != nil {
+    t.Fatalf("Read after peek = %q, %v; want abcd, EOF", p[0:n], err)
+  }
+  if n, err := buf.Read(p[0:1]); string(p[0:n]) != "" || err != io.EOF {
+    t.Fatalf(`second Read after peek = %q, %v; want "", EOF`, p[0:n], err)
+  }
   */
 });
 
@@ -424,7 +424,7 @@ Deno.test("bufReaderReadFull", async function (): Promise<void> {
 Deno.test("readStringDelimAndLines", async function (): Promise<void> {
   const enc = new TextEncoder();
   const data = new Deno.Buffer(
-    enc.encode("Hello World\tHello World 2\tHello World 3")
+    enc.encode("Hello World\tHello World 2\tHello World 3"),
   );
   const chunks_ = [];
 
@@ -463,9 +463,9 @@ Deno.test(
     assertEquals(decoder.decode(r2.line), "z");
     assert(
       r1.line.buffer !== r2.line.buffer,
-      "array buffer should not be shared across reads"
+      "array buffer should not be shared across reads",
     );
-  }
+  },
 );
 
 Deno.test({
@@ -495,5 +495,60 @@ Deno.test({
     bufWriter.flush();
     const actual = stringWriter.toString();
     assertEquals(actual, "hello\nworld\nhow\nare\nyou?\n\nfoobar\n\n");
+  },
+});
+
+Deno.test({
+  name: "BufWriter.flush should write all bytes",
+  async fn(): Promise<void> {
+    const bufSize = 16 * 1024;
+    const data = new Uint8Array(bufSize);
+    data.fill("a".charCodeAt(0));
+
+    const cache: Uint8Array[] = [];
+    const writer: Deno.Writer = {
+      write(p: Uint8Array): Promise<number> {
+        cache.push(p.subarray(0, 1));
+
+        // Writer that only writes 1 byte at a time
+        return Promise.resolve(1);
+      },
+    };
+
+    const bufWriter = new BufWriter(writer);
+    await bufWriter.write(data);
+
+    await bufWriter.flush();
+    const buf = new Uint8Array(cache.length);
+    for (let i = 0; i < cache.length; i++) buf.set(cache[i], i);
+
+    assertEquals(data, buf);
+  },
+});
+
+Deno.test({
+  name: "BufWriterSync.flush should write all bytes",
+  fn(): void {
+    const bufSize = 16 * 1024;
+    const data = new Uint8Array(bufSize);
+    data.fill("a".charCodeAt(0));
+
+    const cache: Uint8Array[] = [];
+    const writer: Deno.WriterSync = {
+      writeSync(p: Uint8Array): number {
+        cache.push(p.subarray(0, 1));
+        // Writer that only writes 1 byte at a time
+        return 1;
+      },
+    };
+
+    const bufWriter = new BufWriterSync(writer);
+    bufWriter.writeSync(data);
+
+    bufWriter.flush();
+    const buf = new Uint8Array(cache.length);
+    for (let i = 0; i < cache.length; i++) buf.set(cache[i], i);
+
+    assertEquals(data, buf);
   },
 });

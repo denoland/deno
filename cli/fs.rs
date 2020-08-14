@@ -1,10 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+pub use deno_core::normalize_path;
+use deno_core::ErrBox;
 use std::env::current_dir;
 use std::fs::OpenOptions;
 use std::io::Write;
-use std::path::{Component, Path, PathBuf};
-
-use deno_core::ErrBox;
+use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
 pub fn write_file<T: AsRef<[u8]>>(
@@ -36,7 +36,6 @@ pub fn write_file_2<T: AsRef<[u8]>>(
     {
       use std::os::unix::fs::PermissionsExt;
       let mode = mode & 0o777;
-      debug!("set file mode to {:o}", mode);
       let permissions = PermissionsExt::from_mode(mode);
       file.set_permissions(permissions)?;
     }
@@ -45,39 +44,6 @@ pub fn write_file_2<T: AsRef<[u8]>>(
   }
 
   file.write_all(data.as_ref())
-}
-
-/// Normalize all itermediate components of the path (ie. remove "./" and "../" components).
-/// Similar to `fs::canonicalize()` but doesn't resolve symlinks.
-///
-/// Taken from Cargo
-/// https://github.com/rust-lang/cargo/blob/af307a38c20a753ec60f0ad18be5abed3db3c9ac/src/cargo/util/paths.rs#L60-L85
-pub fn normalize_path(path: &Path) -> PathBuf {
-  let mut components = path.components().peekable();
-  let mut ret =
-    if let Some(c @ Component::Prefix(..)) = components.peek().cloned() {
-      components.next();
-      PathBuf::from(c.as_os_str())
-    } else {
-      PathBuf::new()
-    };
-
-  for component in components {
-    match component {
-      Component::Prefix(..) => unreachable!(),
-      Component::RootDir => {
-        ret.push(component.as_os_str());
-      }
-      Component::CurDir => {}
-      Component::ParentDir => {
-        ret.pop();
-      }
-      Component::Normal(c) => {
-        ret.push(c);
-      }
-    }
-  }
-  ret
 }
 
 pub fn resolve_from_cwd(path: &Path) -> Result<PathBuf, ErrBox> {

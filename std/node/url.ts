@@ -38,12 +38,14 @@ const tabRegEx = /\t/g;
 
 export function fileURLToPath(path: string | URL): string {
   if (typeof path === "string") path = new URL(path);
-  else if (!(path instanceof URL))
+  else if (!(path instanceof URL)) {
     throw new Deno.errors.InvalidData(
-      "invalid argument path , must be a string or URL"
+      "invalid argument path , must be a string or URL",
     );
-  if (path.protocol !== "file:")
+  }
+  if (path.protocol !== "file:") {
     throw new Deno.errors.InvalidData("invalid url scheme");
+  }
   return isWindows ? getPathFromURLWin(path) : getPathFromURLPosix(path);
 }
 
@@ -59,7 +61,7 @@ function getPathFromURLWin(url: URL): string {
       ) {
         // 5c 5C \
         throw new Deno.errors.InvalidData(
-          "must not include encoded \\ or / characters"
+          "must not include encoded \\ or / characters",
         );
       }
     }
@@ -95,7 +97,7 @@ function getPathFromURLPosix(url: URL): string {
       const third = pathname.codePointAt(n + 2) || 0x20;
       if (pathname[n + 1] === "2" && third === 102) {
         throw new Deno.errors.InvalidData(
-          "must not include encoded / characters"
+          "must not include encoded / characters",
         );
       }
     }
@@ -111,16 +113,19 @@ export function pathToFileURL(filepath: string): URL {
     (filePathLast === CHAR_FORWARD_SLASH ||
       (isWindows && filePathLast === CHAR_BACKWARD_SLASH)) &&
     resolved[resolved.length - 1] !== path.sep
-  )
+  ) {
     resolved += "/";
+  }
   const outURL = new URL("file://");
   if (resolved.includes("%")) resolved = resolved.replace(percentRegEx, "%25");
   // In posix, "/" is a valid character in paths
-  if (!isWindows && resolved.includes("\\"))
+  if (!isWindows && resolved.includes("\\")) {
     resolved = resolved.replace(backslashRegEx, "%5C");
+  }
   if (resolved.includes("\n")) resolved = resolved.replace(newlineRegEx, "%0A");
-  if (resolved.includes("\r"))
+  if (resolved.includes("\r")) {
     resolved = resolved.replace(carriageReturnRegEx, "%0D");
+  }
   if (resolved.includes("\t")) resolved = resolved.replace(tabRegEx, "%09");
   outURL.pathname = resolved;
   return outURL;

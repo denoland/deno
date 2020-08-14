@@ -9,7 +9,6 @@ use crate::module_graph::ModuleGraphFile;
 use crate::module_graph::ModuleGraphLoader;
 use crate::msg;
 use crate::msg::MediaType;
-use crate::op_error::OpError;
 use crate::permissions::Permissions;
 use crate::state::exit_unstable;
 use crate::tsc::CompiledModule;
@@ -58,6 +57,10 @@ impl GlobalState {
     let dir = deno_dir::DenoDir::new(custom_root)?;
     let deps_cache_location = dir.root.join("deps");
     let http_cache = http_cache::HttpCache::new(&deps_cache_location);
+    let ca_file = flags
+      .ca_file
+      .clone()
+      .or_else(|| env::var("DENO_CERT").map(String::into).ok());
 
     let file_fetcher = SourceFileFetcher::new(
       http_cache,
@@ -65,19 +68,18 @@ impl GlobalState {
       flags.cache_blocklist.clone(),
       flags.no_remote,
       flags.cached_only,
-      flags.ca_file.clone(),
+      ca_file,
     )?;
 
     let ts_compiler = TsCompiler::new(
       file_fetcher.clone(),
+      flags.clone(),
       dir.gen_cache.clone(),
-      !flags.reload,
-      flags.config_path.clone(),
     )?;
 
-    // Note: reads lazily from disk on first call to lockfile.check()
     let lockfile = if let Some(filename) = &flags.lock {
-      Some(Mutex::new(Lockfile::new(filename.to_string())))
+      let lockfile = Lockfile::new(filename.to_string(), flags.lock_write)?;
+      Some(Mutex::new(lockfile))
     } else {
       None
     };
@@ -143,8 +145,26 @@ impl GlobalState {
       .fetch_cached_source_file(&module_specifier, permissions.clone())
       .expect("Source file not found");
 
-    // Check if we need to compile files.
     let module_graph_files = module_graph.values().collect::<Vec<_>>();
+    // Check integrity of every file in module graph
+    if let Some(ref lockfile) = self.lockfile {
+      let mut g = lockfile.lock().unwrap();
+
+      for graph_file in &module_graph_files {
+        let check_passed =
+          g.check_or_insert(&graph_file.url, &graph_file.source_code);
+
+        if !check_passed {
+          eprintln!(
+            "Subresource integrity check failed --lock={}\n{}",
+            g.filename, graph_file.url
+          );
+          std::process::exit(10);
+        }
+      }
+    }
+
+    // Check if we need to compile files.
     let should_compile = needs_compilation(
       self.ts_compiler.compile_js,
       out.media_type,
@@ -153,17 +173,26 @@ impl GlobalState {
     let allow_js = should_allow_js(&module_graph_files);
 
     if should_compile {
-      self
-        .ts_compiler
-        .compile_module_graph(
-          self.clone(),
-          &out,
-          target_lib,
-          permissions,
-          module_graph,
-          allow_js,
-        )
-        .await?;
+      if self.flags.no_check {
+        self.ts_compiler.transpile(module_graph).await?;
+      } else {
+        self
+          .ts_compiler
+          .compile(
+            self.clone(),
+            &out,
+            target_lib,
+            permissions,
+            module_graph,
+            allow_js,
+          )
+          .await?;
+      }
+    }
+
+    if let Some(ref lockfile) = self.lockfile {
+      let g = lockfile.lock().unwrap();
+      g.write()?;
     }
 
     drop(compile_lock);
@@ -182,7 +211,6 @@ impl GlobalState {
     _maybe_referrer: Option<ModuleSpecifier>,
   ) -> Result<CompiledModule, ErrBox> {
     let state1 = self.clone();
-    let state2 = self.clone();
     let module_specifier = module_specifier.clone();
 
     let out = self
@@ -204,53 +232,48 @@ impl GlobalState {
     };
 
     let compiled_module = if was_compiled {
-      state1
-        .ts_compiler
-        .get_compiled_module(&out.url)
-        .map_err(|e| {
-          let msg = e.to_string();
-          OpError::other(format!(
-            "Failed to get compiled source code of {}.\nReason: {}",
-            out.url, msg
-          ))
-        })?
+      match state1.ts_compiler.get_compiled_module(&out.url) {
+        Ok(module) => module,
+        Err(e) => {
+          let msg = format!(
+            "Failed to get compiled source code of \"{}\".\nReason: {}\n\
+            If the source file provides only type exports, prefer to use \"import type\" or \"export type\" syntax instead.",
+            out.url, e.to_string()
+          );
+          info!("{} {}", crate::colors::yellow("Warning"), msg);
+
+          CompiledModule {
+            code: "".to_string(),
+            name: out.url.to_string(),
+          }
+        }
+      }
     } else {
       CompiledModule {
-        code: String::from_utf8(out.source_code.clone())?,
+        code: out.source_code.to_string()?,
         name: out.url.to_string(),
       }
     };
 
     drop(compile_lock);
 
-    if let Some(ref lockfile) = state2.lockfile {
-      let mut g = lockfile.lock().unwrap();
-      if state2.flags.lock_write {
-        g.insert(&out.url, out.source_code);
-      } else {
-        let check = match g.check(&out.url, out.source_code) {
-          Err(e) => return Err(ErrBox::from(e)),
-          Ok(v) => v,
-        };
-        if !check {
-          eprintln!(
-            "Subresource integrity check failed --lock={}\n{}",
-            g.filename, compiled_module.name
-          );
-          std::process::exit(10);
-        }
-      }
-    }
     Ok(compiled_module)
   }
 
   #[cfg(test)]
-  pub fn mock(argv: Vec<String>) -> GlobalState {
-    GlobalState::new(flags::Flags {
-      argv,
-      ..flags::Flags::default()
-    })
-    .unwrap()
+  pub fn mock(
+    argv: Vec<String>,
+    maybe_flags: Option<flags::Flags>,
+  ) -> GlobalState {
+    if let Some(in_flags) = maybe_flags {
+      GlobalState::new(flags::Flags { argv, ..in_flags }).unwrap()
+    } else {
+      GlobalState::new(flags::Flags {
+        argv,
+        ..flags::Flags::default()
+      })
+      .unwrap()
+    }
   }
 }
 
@@ -312,7 +335,7 @@ fn needs_compilation(
 #[test]
 fn thread_safe() {
   fn f<S: Send + Sync>(_: S) {}
-  f(GlobalState::mock(vec![]));
+  f(GlobalState::mock(vec![], None));
 }
 
 #[test]
@@ -327,6 +350,7 @@ fn test_should_allow_js() {
       redirect: None,
       filename: "some/file.ts".to_string(),
       imports: vec![],
+      version_hash: "1".to_string(),
       referenced_files: vec![],
       lib_directives: vec![],
       types_directives: vec![],
@@ -339,6 +363,7 @@ fn test_should_allow_js() {
       url: "file:///some/file1.js".to_string(),
       redirect: None,
       filename: "some/file1.js".to_string(),
+      version_hash: "1".to_string(),
       imports: vec![ImportDescriptor {
         specifier: "./file.ts".to_string(),
         resolved_specifier: ModuleSpecifier::resolve_url(
@@ -369,6 +394,7 @@ fn test_should_allow_js() {
       redirect: None,
       filename: "some/file.jsx".to_string(),
       imports: vec![],
+      version_hash: "1".to_string(),
       referenced_files: vec![],
       lib_directives: vec![],
       types_directives: vec![],
@@ -381,6 +407,7 @@ fn test_should_allow_js() {
       url: "file:///some/file.ts".to_string(),
       redirect: None,
       filename: "some/file.ts".to_string(),
+      version_hash: "1".to_string(),
       imports: vec![ImportDescriptor {
         specifier: "./file.jsx".to_string(),
         resolved_specifier: ModuleSpecifier::resolve_url(
@@ -414,6 +441,7 @@ fn test_should_allow_js() {
       referenced_files: vec![],
       lib_directives: vec![],
       types_directives: vec![],
+      version_hash: "1".to_string(),
       type_headers: vec![],
       media_type: MediaType::JavaScript,
       source_code: "function foo() {}".to_string(),
@@ -440,6 +468,7 @@ fn test_should_allow_js() {
       referenced_files: vec![],
       lib_directives: vec![],
       types_directives: vec![],
+      version_hash: "1".to_string(),
       type_headers: vec![],
       media_type: MediaType::JavaScript,
       source_code: "function foo() {}".to_string(),
@@ -462,6 +491,7 @@ fn test_needs_compilation() {
       lib_directives: vec![],
       types_directives: vec![],
       type_headers: vec![],
+      version_hash: "1".to_string(),
       media_type: MediaType::JavaScript,
       source_code: "function foo() {}".to_string(),
     }],
@@ -487,6 +517,7 @@ fn test_needs_compilation() {
         types_directives: vec![],
         type_headers: vec![],
         media_type: MediaType::TypeScript,
+        version_hash: "1".to_string(),
         source_code: "function foo() {}".to_string(),
       },
       &ModuleGraphFile {
@@ -499,6 +530,7 @@ fn test_needs_compilation() {
         lib_directives: vec![],
         types_directives: vec![],
         type_headers: vec![],
+        version_hash: "1".to_string(),
         media_type: MediaType::JavaScript,
         source_code: "function foo() {}".to_string(),
       },

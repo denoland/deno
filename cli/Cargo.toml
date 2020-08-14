@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "1.1.0"
+version = "1.3.0"
 license = "MIT"
 authors = ["the Deno authors"]
 edition = "2018"
@@ -15,56 +15,63 @@ name = "deno"
 path = "main.rs"
 
 [build-dependencies]
-deno_core = { path = "../core", version = "0.48.0" }
-deno_typescript = { path = "../deno_typescript", version = "0.48.0" }
+deno_core = { path = "../core", version = "0.53.0" }
+deno_web = { path = "../op_crates/web", version = "0.3.0" }
+
+[target.'cfg(windows)'.build-dependencies]
+winres = "0.1.11"
+winapi = "0.3.9"
 
 [dependencies]
-deno_core = { path = "../core", version = "0.48.0" }
-deno_lint = { version = "0.1.10" }
-deno_typescript = { path = "../deno_typescript", version = "0.48.0" }
+deno_core = { path = "../core", version = "0.53.0" }
+deno_lint = { version = "0.1.22", features = ["json"] }
+
 
 atty = "0.2.14"
-base64 = "0.12.1"
-bytes = "0.5.4"
+base64 = "0.12.3"
+bytes = "0.5.6"
 byteorder = "1.3.4"
-clap = "2.33.1"
-dirs = "2.0.2"
-dissimilar = "1.0"
+clap = "2.33.2"
+dissimilar = "1.0.2"
 dlopen = "0.1.8"
-dprint-plugin-typescript = "0.19.2"
-futures = { version = "0.3.5", features = ["compat", "io-compat"] }
+encoding_rs = "0.8.23"
+dprint-plugin-typescript = "0.28.0"
+futures = "0.3.5"
 http = "0.2.1"
-indexmap = "1.3.2"
+idna = "0.2.0"
+indexmap = "1.5.1"
 lazy_static = "1.4.0"
-libc = "0.2.71"
-log = "0.4.8"
-notify = "5.0.0-pre.2"
+libc = "0.2.74"
+log = "0.4.11"
+notify = "5.0.0-pre.3"
 rand = "0.7.3"
 regex = "1.3.9"
-reqwest = { version = "0.10.6", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli"] }
-ring = "0.16.14"
-rustyline = "6.1.2"
-serde = { version = "1.0.111", features = ["derive"] }
-serde_derive = "1.0.111"
-serde_json = { version = "1.0.53", features = [ "preserve_order" ] }
+reqwest = { version = "0.10.7", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli"] }
+ring = "0.16.15"
+rustyline = { version = "6.2.0", default-features = false }
+serde = { version = "1.0.115", features = ["derive"] }
+serde_derive = "1.0.115"
+serde_json = { version = "1.0.57", features = [ "preserve_order" ] }
 sys-info = "0.7.0"
-sourcemap = "5.0.0"
+sourcemap = "6.0.1"
+swc_common = { version = "=0.9.1", features = ["sourcemap"] }
+swc_ecmascript = { version = "=0.3.1", features = ["codegen", "parser", "transforms", "visit"] }
 tempfile = "3.1.0"
 termcolor = "1.1.0"
-tokio = { version = "0.2.21", features = ["rt-core", "tcp", "udp", "uds", "process", "fs", "blocking", "sync", "io-std", "macros", "time"] }
-tokio-rustls = "0.13.1"
+tokio = { version = "0.2.22", features = ["full"] }
+tokio-rustls = "0.14.0"
 url = "2.1.1"
-utime = "0.3.0"
+utime = "0.3.1"
 webpki = "0.21.3"
 webpki-roots = "0.19.0"
 walkdir = "2.3.1"
-warp = "0.2.3"
+warp = { version = "0.2.4", features = ["tls"] }
 semver-parser = "0.9.0"
 uuid = { version = "0.8.1", features = ["v4"] }
-swc_ecma_visit = "0.5.1"
 
 [target.'cfg(windows)'.dependencies]
-winapi = "0.3.8"
+winapi = { version = "0.3.9", features = ["knownfolders", "objbase", "shlobj",
+"winbase", "winerror", "tlhelp32"] }
 fwdansi = "1.1.0"
 
 [target.'cfg(unix)'.dependencies]
@@ -78,3 +85,10 @@ test_util = { path = "../test_util" }
 
 [target.'cfg(unix)'.dev-dependencies]
 pty = "0.2.2"
+
+[package.metadata.winres]
+# This section defines the metadata that appears in the deno.exe PE header.
+OriginalFilename = "deno.exe"
+LegalCopyright = "© Deno contributors & Deno Land Inc. MIT licensed."
+ProductName = "Deno"
+FileDescription = "A secure runtime for JavaScript and TypeScript."

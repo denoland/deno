@@ -6,6 +6,263 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### 1.3.0 / 2020.08.13
+
+Changes in the CLI:
+
+- feat: Add "--no-check" flag to deno install (#6948)
+- feat: Add "--ignore" flag to deno lint (#6934)
+- feat: Add "--json" flag to deno lint (#6940)
+- feat: Add "--reload" flag to deno bundle (#6996)
+- feat: Add "--reload" flag to deno info (#7009)
+- feat: FileReader API (#6673)
+- feat: Handle imports in deno doc (#6987)
+- feat: Stabilize Deno.mainModule (#6993)
+- feat: Support file URLs in Deno.run for executable (#6994)
+- fix: console.log should see color codes when grouping occurs (#7000)
+- fix: URLSearchParams.toString() behaviour is different from browsers (#7017)
+- fix: Remove @ts-expect-error directives (#7024)
+- fix(unstable): Add missing globals to diagnostics (#6988)
+- refactor(doc): Remove detailed / summary distinction (#6818)
+- core: Memory limits & callbacks (#6914)
+- upgrade: TypeScript to 3.9.7 (#7036)
+- upgrade: Rust crates (#7034, #7040)
+
+Changes in std version 0.65.0:
+
+- feat(std/http): Add TLS serve abilities to file_server (#6962)
+- feat(std/http): Add --no-dir-listing flag to file_server (#6808)
+- feat(std/node): Add util.inspect (#6833)
+- fix: Make std work with isolatedModules (#7016)
+
+### 1.2.3 / 2020.08.08
+
+Changes in the CLI:
+
+- fix: Never type check in deno info (#6978)
+- fix: add missing globals to unstable diagnostics (#6960)
+- fix: add support for non-UTF8 source files (#6789)
+- fix: hash file names in gen cache (#6911)
+- refactor: Encode op errors as strings instead of numbers (#6977)
+- refactor: Op crate for Web APIs (#6906)
+- refactor: remove repeated code in main.rs (#6954)
+- upgrade to rusty_v8 0.8.1 / V8 8.6.334 (#6980)
+- upgrade: deno_lint v0.1.21 (#6985)
+- upgrade: swc_ecmascript (#6943)
+- feat(unstable): custom http client for fetch (#6918)
+
+Changes in std version 0.64.0:
+
+- fix(std/toml): parser error with inline comments (#6942)
+- fix(std/encoding/toml): Add boolean support to stringify (#6941)
+- refactor: Rewrite globToRegExp() (#6963)
+
+### 1.2.2 / 2020.07.31
+
+Changes in the CLI:
+
+- fix: Change release build flags to optimize for size (#6907)
+- fix: Fix file URL to path conversion on Windows (#6920)
+- fix: deno-types, X-TypeScript-Types precedence (#6761)
+- fix: downcast from SwcDiagnosticBuffer to OpError (#6909)
+- perf: Use SWC to strip types for "--no-check" flag (#6895)
+- upgrade: deno_lint, dprint, swc (#6928, #6869)
+- feat(unstable): add "--ignore" flag to deno fmt (#6890)
+
+Changes in std version 0.63.0:
+
+- feat(std/async): add pooledMap utility (#6898)
+- fix(std/json): Add newline at the end of json files (#6885)
+- fix(std/path): Percent-decode in fromFileUrl() (#6913)
+- fix(std/tar): directory type bug (#6905)
+
+### 1.2.1 / 2020.07.23
+
+Changes in the CLI:
+
+- fix: IPv6 hostname should be compressed (#6772)
+- fix: Ignore polling errors caused by return() in watchFs (#6785)
+- fix: Improve URL compatibility (#6807)
+- fix: ModuleSpecifier removes relative path parts (#6762)
+- fix: Share reqwest client between fetch calls (#6792)
+- fix: add icon and metadata to deno.exe on Windows (#6693)
+- fix: panic for runtime error in TS compiler (#6758)
+- fix: providing empty source code for missing compiled files (#6760)
+- refactor: Make OpDispatcher a trait (#6736, #6742)
+- refactor: Remove duplicate code and allow filename overwrite for DomFile
+  (#6817, #6830)
+- upgrade: Rust 1.45.0 (#6791)
+- upgrade: rusty_v8 0.7.0 (#6801)
+- upgrade: tokio 0.2.22 (#6838)
+
+Changes in std version 0.62.0:
+
+- BREAKING(std/fs): remove readFileStr and writeFileStr (#6848, #6847)
+- feat(std/encoding): add ascii85 module (#6711)
+- feat(std/node): add string_decoder (#6638)
+- fix(std/encoding/toml): could not parse strings with apostrophes/semicolons
+  (#6781)
+- fix(std/testing): assertThrows inheritance (#6623)
+- fix(std/wasi): remove number overload from rights in path_open (#6768)
+- refactor(std/datetime): improve weekOfYear (#6741)
+- refactor(std/path): enrich the types in parse_format_test (#6803)
+
+### 1.2.0 / 2020.07.13
+
+Changes in the CLI:
+
+- feat(cli): Add --cert option to "deno upgrade" (#6609)
+- feat(cli): Add --config flag to "deno install" (#6204)
+- feat(cli): Add --json option to "deno info" (#6372)
+- feat(cli): Add --no-check option (#6456)
+- feat(cli): Add --output option to "deno upgrade" (#6352)
+- feat(cli): Add DENO_CERT environment variable (#6370)
+- feat(cli): Add lockfile support to bundle (#6624)
+- feat(cli/js): Add WriteFileOptions to writeTextFile & writeTextFileSync
+  (#6280)
+- feat(cli/js): Add copy argument to Buffer.bytes (#6697)
+- feat(cli/js): Add performance user timing APIs (#6421)
+- feat(cli/js): Add sorted, trailingComma, compact and iterableLimit to
+  InspectOptions (#6591)
+- feat(cli/js): Deno.chown() make uid, gid args optional (#4612)
+- feat(doc): Improve terminal printer (#6594)
+- feat(test): Add support for regex in filter flag (#6343)
+- feat(unstable): Add Deno.consoleSize() (#6520)
+- feat(unstable): Add Deno.ppid (#6539, #6717)
+- fix(cli): Don't panic when no "HOME" env var is set (#6728)
+- fix(cli): Harden pragma and reference parsing in module analysis (#6702)
+- fix(cli): Panic when stdio is null on windows (#6528)
+- fix(cli): Parsing of --allow-net flag (#6698)
+- fix(cli/js): Allow Buffer to store MAX_SIZE bytes (#6570)
+- fix(cli/js): Definition of URL constructor (#6653)
+- fix(cli/js): Deno.setRaw shouldn't panic on ENOTTY (#6630)
+- fix(cli/js): Fix process socket types (#6676)
+- fix(cli/js): Fix relative redirect in fetch API (#6715)
+- fix(cli/js): Implement IPv4 hostname parsing in URL (#6707)
+- fix(cli/js): Implement spec-compliant host parsing for URL (#6689)
+- fix(cli/js): Response constructor default properties in fetch API (#6650)
+- fix(cli/js): Update timers to ignore Date Override (#6552)
+- perf(cli): Improve .arrayBuffer() speed in fetch API (#6669)
+- refactor(core): Remove control slice from ops (#6048)
+
+Changes in std version 0.61.0:
+
+- BREAKING(std/encoding/hex): Simplify API (#6690)
+- feat(std/datetime): Add weekOfYear (#6659)
+- feat(std/log): Expose Logger type and improve public interface for get & set
+  log levels (#6617)
+- feat(std/node): Add buf.equals() (#6640)
+- feat(std/wasi): Implement fd_readdir (#6631)
+- fix(std): base64 in workers (#6681)
+- fix(std): md5 in workers (#6662)
+- fix(std/http): Properly return port 80 in \_parseAddrFromStr (#6635)
+- fix(std/mime): Boundary random hex values (#6646)
+- fix(std/node): Add encoding argument to Buffer.byteLength (#6639)
+- fix(std/tesing/asserts): AssertEquals/NotEquals should use milliseconds in
+  Date (#6644)
+- fix(std/wasi): Return errno::success from fd_tell (#6636)
+
+### 1.1.3 / 2020.07.03
+
+Changes in the CLI:
+
+- fix(cli): Change seek offset type from i32 to i64 (#6518)
+- fix(cli/body): Maximum call stack size exceeded error (#6537)
+- fix(cli/doc): Doc printer missing [] around tuple type (#6523)
+- fix(cli/js): Buffer.bytes() ArrayBuffer size (#6511)
+- fix(cli/js): Fix conditional types for process sockets (#6275)
+- fix(cli/upgrade): Upgrade fails on Windows with space in temp path (#6522)
+- fix: Lock file for dynamic imports (#6569)
+- fix: Move ImportMeta to deno.ns lib (#6588)
+- fix: Net permissions didn't account for default ports (#6606)
+- refactor: Improvements to TsCompiler and its tests (#6576)
+- upgrade: deno_lint 0.1.15 (#6580, #6614)
+- upgrade: dprint-plugin-typescript 0.19.5 (#6527, #6614)
+
+Changes in std version 0.60.0:
+
+- feat(std/asserts): Allow assert functions to specify type parameter (#6413)
+- feat(std/datetime): Add is leap and difference functions (#4857)
+- feat(std/io): Add fromStreamReader, fromStreamWriter (#5789, #6535)
+- feat(std/node): Add Buffer.allocUnsafe (#6533)
+- feat(std/node): Add Buffer.isEncoding (#6521)
+- feat(std/node): Support hex/base64 encoding in fs.readFile/fs.writeFile
+  (#6512)
+- feat(std/wasi) Implement fd_filestat_get (#6555)
+- feat(std/wasi) Implement fd_filestat_set_size (#6558)
+- feat(std/wasi): Implement fd_datasync (#6556)
+- feat(std/wasi): Implement fd_sync (#6560)
+- fix(std/http): Catch errors on file_server response.send (#6285)
+- fix(std/http): Support ipv6 parsing (#5263)
+- fix(std/log): Print "{msg}" when log an empty line (#6381)
+- fix(std/node): Add fill & encoding args to Buffer.alloc (#6526)
+- fix(std/node): Do not use absolute urls (#6562)
+- fix(std/wasi): path_filestat_get padding (#6509)
+- fix(std/wasi): Use lookupflags for path_filestat_get (#6530)
+- refactor(std/http): Cookie types to not require full ServerRequest object
+  (#6577)
+
+### 1.1.2 / 2020.06.26
+
+Changes in the CLI:
+
+- fix(web/console): Improve string quoting behaviour (#6457)
+- fix(web/url): Support UNC paths on Windows (#6418)
+- fix(web/url): Support URLSearchParam as Body (#6416)
+- fix: 'Compile' messages changed to 'Check' messages (#6504)
+- fix: Panic when process stdio rid is 0 or invalid (#6405)
+- fix: enable experimental-wasm-bigint (#6443)
+- fix: ipv6 parsing for --allow-net params (#6453, #6472)
+- fix: panic when demanding permissions for hostless URLs (#6500)
+- fix: strings shouldn't be interpreted as file URLs (#6412)
+- refactor: Add ability to output compiler performance information (#6434)
+- refactor: Incremental compilation for TypeScript (#6428, #6489)
+- upgrade: rusty_v8 0.4.2 / V8 8.5.216 (#6503)
+
+Changes in unstable APIs:
+
+- Add Deno.fdatasyncSync and fdatasync (#6403)
+- Add Deno.fstatSync and fstat (#6425)
+- Add Deno.fsyncSync and fsync (#6411)
+- Add Deno.ftruncate and ftruncateSync (#6243)
+- Remove Deno.dir (#6385)
+
+Changes in std version 0.59.0:
+
+- BREAKING(std/encoding/hex): reorder encode & decode arguments (#6410)
+- feat(std/node): support hex / base64 encoding in Buffer (#6414)
+- feat(std/wasi): add wasi_snapshot_preview1 (#6441)
+- fix(std/io): Make BufWriter/BufWriterSync.flush write all chunks (#6269)
+- fix(std/node): fix readFile types, add encoding types (#6451)
+- fix(std/node): global process should usable (#6392)
+- fix(std/node/process): env, argv exports (#6455)
+- fix(std/testing) assertArrayContains should work with any array-like (#6402)
+- fix(std/testing): assertThrows gracefully fails if non-Error thrown (#6330)
+- refactor(std/testing): Remove unuseful statement (#6486)
+- refactor: shift copyBytes and tweak deps to reduce dependencies (#6469)
+
+### 1.1.1 / 2020.06.19
+
+- fix: "deno test" should respect NO_COLOR=true (#6371)
+- fix: Deno.bundle supports targets < ES2017 (#6346)
+- fix: decode path properly on win32 (#6351)
+- fix: improve failure message for deno upgrade (#6348)
+- fix: apply http redirection limit for cached files (#6308)
+- fix: JSX compilation bug and provide better error message (#6300)
+- fix: DatagramConn.send (unstable) should return bytes sent (#6265, #6291)
+- upgrade: v8 to 8.5.104, rusty_v8 0.5.1 (#6377)
+- upgrade: crates (#6378)
+
+Changes in std version 0.58.0:
+
+- feat(std/log): expose logger name to LogRecord (#6316)
+- fix(std/async): MuxAsyncIterator throws muxed errors (#6295)
+- fix(std/io): BufWriter/StringWriter bug (#6247)
+- fix(std/io): Use Deno.test in writers_test (#6273)
+- fix(std/node): added tests for static methods of Buffer (#6276)
+- fix(std/testing): assertEqual so that it handles URL objects (#6278)
+- perf(std/hash): reimplement all hashes in WASM (#6292)
+
 ### 1.1.0 / 2020.06.12
 
 Changes in the CLI:

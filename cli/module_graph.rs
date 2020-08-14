@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-
+use crate::checksum;
 use crate::doc::Location;
 use crate::file_fetcher::map_file_extension;
 use crate::file_fetcher::SourceFile;
@@ -13,6 +13,7 @@ use crate::tsc::ImportDesc;
 use crate::tsc::TsReferenceDesc;
 use crate::tsc::TsReferenceKind;
 use crate::tsc::AVAILABLE_LIBS;
+use crate::version;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
 use futures::stream::FuturesUnordered;
@@ -228,6 +229,7 @@ pub struct ModuleGraphFile {
   pub url: String,
   pub redirect: Option<String>,
   pub filename: String,
+  pub version_hash: String,
   pub imports: Vec<ImportDescriptor>,
   pub referenced_files: Vec<ReferenceDescriptor>,
   pub lib_directives: Vec<ReferenceDescriptor>,
@@ -369,6 +371,7 @@ impl ModuleGraphLoader {
         specifier: specifier.to_string(),
         url: specifier.to_string(),
         redirect: None,
+        version_hash: "".to_string(),
         media_type: map_file_extension(&PathBuf::from(specifier.clone())),
         filename: specifier,
         source_code,
@@ -454,6 +457,10 @@ impl ModuleGraphLoader {
           url: module_specifier.to_string(),
           redirect: Some(source_file.url.to_string()),
           filename: source_file.filename.to_str().unwrap().to_string(),
+          version_hash: checksum::gen(&[
+            &source_file.source_code.as_bytes(),
+            version::DENO.as_bytes(),
+          ]),
           media_type: source_file.media_type,
           source_code: "".to_string(),
           imports: vec![],
@@ -466,7 +473,11 @@ impl ModuleGraphLoader {
     }
 
     let module_specifier = ModuleSpecifier::from(source_file.url.clone());
-    let source_code = String::from_utf8(source_file.source_code)?;
+    let version_hash = checksum::gen(&[
+      &source_file.source_code.as_bytes(),
+      version::DENO.as_bytes(),
+    ]);
+    let source_code = source_file.source_code.to_string()?;
 
     if SUPPORTED_MEDIA_TYPES.contains(&source_file.media_type) {
       if let Some(types_specifier) = source_file.types_header {
@@ -553,6 +564,7 @@ impl ModuleGraphLoader {
         specifier: module_specifier.to_string(),
         url: module_specifier.to_string(),
         redirect: None,
+        version_hash,
         filename: source_file.filename.to_str().unwrap().to_string(),
         media_type: source_file.media_type,
         source_code,
@@ -592,7 +604,7 @@ mod tests {
   #[ignore]
   #[tokio::test]
   async fn source_graph_fetch() {
-    let http_server_guard = test_util::http_server();
+    let _http_server_guard = test_util::http_server();
 
     let module_specifier = ModuleSpecifier::resolve_url_or_path(
       "http://localhost:4545/cli/tests/019_media_types.ts",
@@ -680,12 +692,11 @@ mod tests {
         },
       ])
     );
-    drop(http_server_guard);
   }
 
   #[tokio::test]
   async fn source_graph_type_references() {
-    let http_server_guard = test_util::http_server();
+    let _http_server_guard = test_util::http_server();
 
     let module_specifier = ModuleSpecifier::resolve_url_or_path(
       "http://localhost:4545/cli/tests/type_definitions.ts",
@@ -737,13 +748,11 @@ mod tests {
     ));
     assert!(graph
       .contains_key("http://localhost:4545/cli/tests/type_definitions/qat.ts"));
-
-    drop(http_server_guard);
   }
 
   #[tokio::test]
   async fn source_graph_type_references2() {
-    let http_server_guard = test_util::http_server();
+    let _http_server_guard = test_util::http_server();
 
     let module_specifier = ModuleSpecifier::resolve_url_or_path(
       "http://localhost:4545/cli/tests/type_directives_02.ts",
@@ -787,12 +796,11 @@ mod tests {
         }
       ])
     );
-    drop(http_server_guard);
   }
 
   #[tokio::test]
   async fn source_graph_type_references3() {
-    let http_server_guard = test_util::http_server();
+    let _http_server_guard = test_util::http_server();
 
     let module_specifier = ModuleSpecifier::resolve_url_or_path(
       "http://localhost:4545/cli/tests/type_directives_01.ts",
@@ -830,12 +838,11 @@ mod tests {
         }
       ])
     );
-    drop(http_server_guard);
   }
 
   #[tokio::test]
   async fn source_graph_different_langs() {
-    let http_server_guard = test_util::http_server();
+    let _http_server_guard = test_util::http_server();
 
     // ModuleGraphLoader was mistakenly parsing this file as TSX
     // https://github.com/denoland/deno/issues/5867
@@ -848,8 +855,6 @@ mod tests {
     build_graph(&module_specifier)
       .await
       .expect("Failed to build graph");
-
-    drop(http_server_guard);
   }
 }
 

@@ -65,7 +65,7 @@ export class ServerRequest {
             .map((e): string => e.trim().toLowerCase());
           assert(
             parts.includes("chunked"),
-            'transfer-encoding must include "chunked" if content-length is not set'
+            'transfer-encoding must include "chunked" if content-length is not set',
           );
           this._body = chunkedBodyReader(this.headers, this.r);
         } else {
@@ -136,7 +136,7 @@ export class Server implements AsyncIterable<ServerRequest> {
 
   // Yields all HTTP requests on a single TCP connection.
   private async *iterateHttpRequests(
-    conn: Deno.Conn
+    conn: Deno.Conn,
   ): AsyncIterableIterator<ServerRequest> {
     const reader = new BufReader(conn);
     const writer = new BufWriter(conn);
@@ -203,7 +203,7 @@ export class Server implements AsyncIterable<ServerRequest> {
   // same kind and adds it to the request multiplexer so that another TCP
   // connection can be accepted.
   private async *acceptConnAndIterateHttpRequests(
-    mux: MuxAsyncIterator<ServerRequest>
+    mux: MuxAsyncIterator<ServerRequest>,
   ): AsyncIterableIterator<ServerRequest> {
     if (this.closing) return;
     // Wait for a new connection.
@@ -238,6 +238,38 @@ export class Server implements AsyncIterable<ServerRequest> {
 export type HTTPOptions = Omit<Deno.ListenOptions, "transport">;
 
 /**
+ * Parse addr from string
+ *
+ *     const addr = "::1:8000";
+ *     parseAddrFromString(addr);
+ *
+ * @param addr Address string
+ */
+export function _parseAddrFromStr(addr: string): HTTPOptions {
+  let url: URL;
+  try {
+    const host = addr.startsWith(":") ? `0.0.0.0${addr}` : addr;
+    url = new URL(`http://${host}`);
+  } catch {
+    throw new TypeError("Invalid address.");
+  }
+  if (
+    url.username ||
+    url.password ||
+    url.pathname != "/" ||
+    url.search ||
+    url.hash
+  ) {
+    throw new TypeError("Invalid address.");
+  }
+
+  return {
+    hostname: url.hostname,
+    port: url.port === "" ? 80 : Number(url.port),
+  };
+}
+
+/**
  * Create a HTTP server
  *
  *     import { serve } from "https://deno.land/std/http/server.ts";
@@ -249,8 +281,7 @@ export type HTTPOptions = Omit<Deno.ListenOptions, "transport">;
  */
 export function serve(addr: string | HTTPOptions): Server {
   if (typeof addr === "string") {
-    const [hostname, port] = addr.split(":");
-    addr = { hostname, port: Number(port) };
+    addr = _parseAddrFromStr(addr);
   }
 
   const listener = Deno.listen(addr);
@@ -271,7 +302,7 @@ export function serve(addr: string | HTTPOptions): Server {
  */
 export async function listenAndServe(
   addr: string | HTTPOptions,
-  handler: (req: ServerRequest) => void
+  handler: (req: ServerRequest) => void,
 ): Promise<void> {
   const server = serve(addr);
 
@@ -328,7 +359,7 @@ export function serveTLS(options: HTTPSOptions): Server {
  */
 export async function listenAndServeTLS(
   options: HTTPSOptions,
-  handler: (req: ServerRequest) => void
+  handler: (req: ServerRequest) => void,
 ): Promise<void> {
   const server = serveTLS(options);
 

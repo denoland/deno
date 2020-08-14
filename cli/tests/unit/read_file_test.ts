@@ -3,6 +3,8 @@ import {
   unitTest,
   assert,
   assertEquals,
+  assertThrows,
+  assertThrowsAsync,
   pathToAbsoluteFileUrl,
 } from "./test_util.ts";
 
@@ -17,7 +19,7 @@ unitTest({ perms: { read: true } }, function readFileSyncSuccess(): void {
 
 unitTest({ perms: { read: true } }, function readFileSyncUrl(): void {
   const data = Deno.readFileSync(
-    pathToAbsoluteFileUrl("cli/tests/fixture.json")
+    pathToAbsoluteFileUrl("cli/tests/fixture.json"),
   );
   assert(data.byteLength > 0);
   const decoder = new TextDecoder("utf-8");
@@ -27,34 +29,22 @@ unitTest({ perms: { read: true } }, function readFileSyncUrl(): void {
 });
 
 unitTest({ perms: { read: false } }, function readFileSyncPerm(): void {
-  let caughtError = false;
-  try {
+  assertThrows(() => {
     Deno.readFileSync("cli/tests/fixture.json");
-  } catch (e) {
-    caughtError = true;
-    assert(e instanceof Deno.errors.PermissionDenied);
-  }
-  assert(caughtError);
+  }, Deno.errors.PermissionDenied);
 });
 
 unitTest({ perms: { read: true } }, function readFileSyncNotFound(): void {
-  let caughtError = false;
-  let data;
-  try {
-    data = Deno.readFileSync("bad_filename");
-  } catch (e) {
-    caughtError = true;
-    assert(e instanceof Deno.errors.NotFound);
-  }
-  assert(caughtError);
-  assert(data === undefined);
+  assertThrows(() => {
+    Deno.readFileSync("bad_filename");
+  }, Deno.errors.NotFound);
 });
 
 unitTest({ perms: { read: true } }, async function readFileUrl(): Promise<
   void
 > {
   const data = await Deno.readFile(
-    pathToAbsoluteFileUrl("cli/tests/fixture.json")
+    pathToAbsoluteFileUrl("cli/tests/fixture.json"),
   );
   assert(data.byteLength > 0);
   const decoder = new TextDecoder("utf-8");
@@ -77,14 +67,9 @@ unitTest({ perms: { read: true } }, async function readFileSuccess(): Promise<
 unitTest({ perms: { read: false } }, async function readFilePerm(): Promise<
   void
 > {
-  let caughtError = false;
-  try {
+  await assertThrowsAsync(async () => {
     await Deno.readFile("cli/tests/fixture.json");
-  } catch (e) {
-    caughtError = true;
-    assert(e instanceof Deno.errors.PermissionDenied);
-  }
-  assert(caughtError);
+  }, Deno.errors.PermissionDenied);
 });
 
 unitTest({ perms: { read: true } }, function readFileSyncLoop(): void {

@@ -16,7 +16,7 @@ Deno.test("ensureFileIfItNotExist", async function (): Promise<void> {
       await Deno.stat(testFile).then((): void => {
         throw new Error("test file should exists.");
       });
-    }
+    },
   );
 
   await Deno.remove(testDir, { recursive: true });
@@ -50,7 +50,7 @@ Deno.test("ensureFileIfItExist", async function (): Promise<void> {
       await Deno.stat(testFile).then((): void => {
         throw new Error("test file should exists.");
       });
-    }
+    },
   );
 
   await Deno.remove(testDir, { recursive: true });
@@ -83,7 +83,7 @@ Deno.test("ensureFileIfItExistAsDir", async function (): Promise<void> {
       await ensureFile(testDir);
     },
     Error,
-    `Ensure path exists, expected 'file', got 'dir'`
+    `Ensure path exists, expected 'file', got 'dir'`,
   );
 
   await Deno.remove(testDir, { recursive: true });
@@ -99,7 +99,7 @@ Deno.test("ensureFileSyncIfItExistAsDir", function (): void {
       ensureFileSync(testDir);
     },
     Error,
-    `Ensure path exists, expected 'file', got 'dir'`
+    `Ensure path exists, expected 'file', got 'dir'`,
   );
 
   Deno.removeSync(testDir, { recursive: true });

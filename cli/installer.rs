@@ -79,6 +79,17 @@ deno {} "$@"
   Ok(())
 }
 
+fn generate_config_file(
+  file_path: PathBuf,
+  config_file_name: String,
+) -> Result<(), Error> {
+  let config_file_copy_path = get_config_file_path(&file_path);
+  let cwd = std::env::current_dir().unwrap();
+  let config_file_path = cwd.join(config_file_name);
+  fs::copy(config_file_path, config_file_copy_path)?;
+  Ok(())
+}
+
 fn get_installer_root() -> Result<PathBuf, Error> {
   if let Ok(env_dir) = env::var("DENO_INSTALL_ROOT") {
     if !env_dir.is_empty() {
@@ -207,14 +218,30 @@ pub fn install(
     }
   }
 
+  if flags.no_check {
+    executable_args.push("--no-check".to_string());
+  }
+
   if flags.unstable {
     executable_args.push("--unstable".to_string());
+  }
+
+  if flags.config_path.is_some() {
+    let config_file_path = get_config_file_path(&file_path);
+    let config_file_path_option = config_file_path.to_str();
+    if let Some(config_file_path_string) = config_file_path_option {
+      executable_args.push("--config".to_string());
+      executable_args.push(config_file_path_string.to_string());
+    }
   }
 
   executable_args.push(module_url.to_string());
   executable_args.extend_from_slice(&args);
 
   generate_executable_file(file_path.to_owned(), executable_args)?;
+  if let Some(config_path) = flags.config_path {
+    generate_config_file(file_path.to_owned(), config_path)?;
+  }
 
   println!("✅ Successfully installed {}", name);
   println!("{}", file_path.to_string_lossy());
@@ -241,6 +268,12 @@ fn is_in_path(dir: &PathBuf) -> bool {
     }
   }
   false
+}
+
+fn get_config_file_path(file_path: &PathBuf) -> PathBuf {
+  let mut config_file_copy_path = PathBuf::from(file_path);
+  config_file_copy_path.set_extension("tsconfig.json");
+  config_file_copy_path
 }
 
 #[cfg(test)]
@@ -525,6 +558,7 @@ mod tests {
       Flags {
         allow_net: true,
         allow_read: true,
+        no_check: true,
         log_level: Some(Level::Error),
         ..Flags::default()
       },
@@ -543,7 +577,7 @@ mod tests {
 
     assert!(file_path.exists());
     let content = fs::read_to_string(file_path).unwrap();
-    assert!(content.contains(r#""run" "--allow-read" "--allow-net" "--quiet" "http://localhost:4545/cli/tests/echo_server.ts" "--foobar""#));
+    assert!(content.contains(r#""run" "--allow-read" "--allow-net" "--quiet" "--no-check" "http://localhost:4545/cli/tests/echo_server.ts" "--foobar""#));
   }
 
   #[test]
@@ -628,5 +662,37 @@ mod tests {
     // Assert modified
     let file_content_2 = fs::read_to_string(&file_path).unwrap();
     assert!(file_content_2.contains("cat.ts"));
+  }
+
+  #[test]
+  fn install_with_config() {
+    let temp_dir = TempDir::new().expect("tempdir fail");
+    let bin_dir = temp_dir.path().join("bin");
+    let config_file_path = temp_dir.path().join("test_tsconfig.json");
+    let config = "{}";
+    let mut config_file = File::create(&config_file_path).unwrap();
+    let result = config_file.write_all(config.as_bytes());
+    assert!(result.is_ok());
+
+    let result = install(
+      Flags {
+        config_path: Some(config_file_path.to_string_lossy().to_string()),
+        ..Flags::default()
+      },
+      "http://localhost:4545/cli/tests/cat.ts",
+      vec![],
+      Some("echo_test".to_string()),
+      Some(temp_dir.path().to_path_buf()),
+      true,
+    );
+    eprintln!("result {:?}", result);
+    assert!(result.is_ok());
+
+    let config_file_name = "echo_test.tsconfig.json";
+
+    let file_path = bin_dir.join(config_file_name.to_string());
+    assert!(file_path.exists());
+    let content = fs::read_to_string(file_path).unwrap();
+    assert!(content == "{}");
   }
 }

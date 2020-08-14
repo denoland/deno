@@ -133,18 +133,24 @@ const foo = readJsonSync("./foo.json");
 
 Writes an object to a JSON file.
 
-**WriteJsonOptions**
+#### WriteJsonOptions
 
 - replacer : An array of strings and numbers that acts as a approved list for
   selecting the object properties that will be stringified.
 - space : Adds indentation, white space, and line break characters to the
   return-value JSON text to make it easier to read.
 
+You can also specify options from `Deno.WriteFileOptions` to configure how the
+file is written.
+
 ```ts
 import { writeJson, writeJsonSync } from "https://deno.land/std/fs/mod.ts";
 
 writeJson("./target.dat", { foo: "bar" }, { spaces: 2 }); // returns a promise
 writeJsonSync("./target.dat", { foo: "bar" }, { replacer: ["foo"] }); // void
+
+// appends to the file instead of rewriting
+writeJsonSync("./target.dat", { foo: "bar" }, { append: true });
 ```
 
 ### walk
@@ -168,31 +174,27 @@ async function printFilesNames() {
 printFilesNames().then(() => console.log("Done!"));
 ```
 
-### readFileStr
+### expandGlob
 
-Read file and output it as a string.
-
-**ReadOptions**
-
-- encoding : The encoding to read file. lowercased.
+Expand the glob string from the specified `root` directory and yield each result
+as a `WalkEntry` object.
 
 ```ts
-import { readFileStr, readFileStrSync } from "https://deno.land/std/fs/mod.ts";
+import { expandGlob } from "https://deno.land/std/fs/mod.ts";
 
-readFileStr("./target.dat", { encoding: "utf8" }); // returns a promise
-readFileStrSync("./target.dat", { encoding: "utf8" }); // string
+for await (const file of expandGlob("**/*.ts")) {
+  console.log(file);
+}
 ```
 
-### writeFileStr
+### expandGlobSync
 
-Write the string to file.
+Synchronous version of `expandGlob()`.
 
 ```ts
-import {
-  writeFileStr,
-  writeFileStrSync,
-} from "https://deno.land/std/fs/mod.ts";
+import { expandGlobSync } from "https://deno.land/std/fs/mod.ts";
 
-writeFileStr("./target.dat", "file content"); // returns a promise
-writeFileStrSync("./target.dat", "file content"); // void
+for (const file of expandGlobSync("**/*.ts")) {
+  console.log(file);
+}
 ```

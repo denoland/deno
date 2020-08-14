@@ -26,7 +26,7 @@ pub enum JsonOp {
 fn json_err(err: OpError) -> Value {
   json!({
     "message": err.msg,
-    "kind": err.kind as u32,
+    "kind": err.kind_str,
   })
 }
 
@@ -46,7 +46,7 @@ struct AsyncArgs {
 
 pub fn json_op<D>(
   d: D,
-) -> impl Fn(&mut CoreIsolateState, &[u8], &mut [ZeroCopyBuf]) -> Op
+) -> impl Fn(&mut CoreIsolateState, &mut [ZeroCopyBuf]) -> Op
 where
   D: Fn(
     &mut CoreIsolateState,
@@ -54,10 +54,9 @@ where
     &mut [ZeroCopyBuf],
   ) -> Result<JsonOp, OpError>,
 {
-  move |isolate_state: &mut CoreIsolateState,
-        control: &[u8],
-        zero_copy: &mut [ZeroCopyBuf]| {
-    let async_args: AsyncArgs = match serde_json::from_slice(control) {
+  move |isolate_state: &mut CoreIsolateState, zero_copy: &mut [ZeroCopyBuf]| {
+    assert!(!zero_copy.is_empty(), "Expected JSON string at position 0");
+    let async_args: AsyncArgs = match serde_json::from_slice(&zero_copy[0]) {
       Ok(args) => args,
       Err(e) => {
         let buf = serialize_result(None, Err(OpError::from(e)));
@@ -67,9 +66,9 @@ where
     let promise_id = async_args.promise_id;
     let is_sync = promise_id.is_none();
 
-    let result = serde_json::from_slice(control)
+    let result = serde_json::from_slice(&zero_copy[0])
       .map_err(OpError::from)
-      .and_then(|args| d(isolate_state, args, zero_copy));
+      .and_then(|args| d(isolate_state, args, &mut zero_copy[1..]));
 
     // Convert to Op
     match result {
