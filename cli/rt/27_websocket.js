@@ -81,6 +81,15 @@
         protocols = [protocols];
       }
 
+      if (
+        protocols.some((x) => protocols.indexOf(x) !== protocols.lastIndexOf(x))
+      ) {
+        throw new DOMException(
+          "Can't supply multiple times the same protocol.",
+          "SyntaxError",
+        );
+      }
+
       sendAsync("op_ws_create", {
         url: wsURL.href,
         protocols: protocols.join("; "),
@@ -98,10 +107,16 @@
           this.#eventLoop();
         } else {
           this.#readyState = this.#CLOSED;
-          const event = new Event("error");
-          event.target = this;
-          this.onerror(event);
-          this.dispatchEvent(event);
+
+          const errEvent = new Event("error");
+          errEvent.target = this;
+          this.onerror(errEvent);
+          this.dispatchEvent(errEvent);
+
+          const closeEvent = new CloseEvent("close");
+          closeEvent.target = this;
+          this.onclose(closeEvent);
+          this.dispatchEvent(closeEvent);
         }
       });
     }
@@ -110,7 +125,7 @@
       requiredArguments("WebSocket.send", arguments.length, 1);
 
       if (
-        this.#readyState !== this.#CLOSING && this.#readyState !== this.#CLOSED
+        this.#readyState === this.#OPEN
       ) {
         if (data instanceof Blob) {
           data.arrayBuffer().then((buf) => {
@@ -144,11 +159,6 @@
             text: string,
           });
         }
-      } else {
-        const event = new Event("error");
-        event.target = this;
-        this.onerror(event);
-        this.dispatchEvent(event);
       }
     }
 
@@ -168,64 +178,93 @@
         );
       }
 
-      this.#readyState = this.#CLOSING;
+      if (this.#readyState === this.#CONNECTING) {
+        this.#readyState = this.#CLOSING;
 
-      sendAsync("op_ws_close", {
-        rid: this.#rid,
-        code,
-        reason,
-      }).then(() => {
-        this.#readyState = this.#CLOSED;
-        const event = new CloseEvent("close", {
-          wasClean: true,
+        sendAsync("op_ws_close", {
+          rid: this.#rid,
           code,
           reason,
+        }).then(() => {
+          this.#readyState = this.#CLOSED;
+          const event = new CloseEvent("close", {
+            wasClean: true,
+            code,
+            reason,
+          });
+          event.target = this;
+          this.onclose(event);
+          this.dispatchEvent(event);
         });
-        event.target = this;
-        this.onclose(event);
-        this.dispatchEvent(event);
-      });
-    }
 
-async #eventLoop() {
-      const message = await sendAsync("op_ws_next_event", { rid: this.#rid });
-      if (message.type === "string" || message.type === "binary") {
-        let data;
-
-        if (message.type === "string") {
-          data = message.data;
-        } else {
-          if (this.binaryType === "blob") {
-            data = new Blob([new Uint8Array(message.data)]);
-          } else {
-            data = new Uint8Array(message.data).buffer;
-          }
-        }
-
-        const event = new MessageEvent("message", {
-          data,
-          origin: this.#url,
-        });
-        event.target = this;
-        this.onmessage(event);
-        this.dispatchEvent(event);
-
-        this.#eventLoop();
-      } else if (message.type === "close") {
-        this.#readyState = this.#CLOSED;
-        const event = new CloseEvent("close", {
-          wasClean: true,
-          code: message.code,
-          reason: message.reason,
-        });
-        event.target = this;
-        this.onclose(event);
-        this.dispatchEvent(event);
-      } else if (message.type === "error") {
         const event = new Event("error");
         event.target = this;
         this.onerror(event);
         this.dispatchEvent(event);
+      } else if (
+        this.#readyState !== this.#CLOSING && this.#readyState !== this.#CLOSED
+      ) {
+        this.#readyState = this.#CLOSING;
+
+        sendAsync("op_ws_close", {
+          rid: this.#rid,
+          code,
+          reason,
+        }).then(() => {
+          this.#readyState = this.#CLOSED;
+          const event = new CloseEvent("close", {
+            wasClean: true,
+            code,
+            reason,
+          });
+          event.target = this;
+          this.onclose(event);
+          this.dispatchEvent(event);
+        });
+      }
+    }
+
+async #eventLoop() {
+      const message = await sendAsync("op_ws_next_event", { rid: this.#rid });
+      if (this.#readyState === this.#OPEN) {
+        if (message.type === "string" || message.type === "binary") {
+          let data;
+
+          if (message.type === "string") {
+            data = message.data;
+          } else {
+            if (this.binaryType === "blob") {
+              data = new Blob([new Uint8Array(message.data)]);
+            } else {
+              data = new Uint8Array(message.data).buffer;
+            }
+          }
+
+          const event = new MessageEvent("message", {
+            data,
+            origin: this.#url,
+          });
+          event.target = this;
+          this.onmessage(event);
+          this.dispatchEvent(event);
+
+          this.#eventLoop();
+        } else if (message.type === "close") {
+          this.#readyState = this.#CLOSED;
+          const event = new CloseEvent("close", {
+            wasClean: true,
+            code: message.code,
+            reason: message.reason,
+          });
+          event.target = this;
+          this.onclose(event);
+          this.dispatchEvent(event);
+        } else if (message.type === "error") {
+          const event = new Event("error");
+          event.target = this;
+          this.onerror(event);
+          this.dispatchEvent(event);
+        }
       }
     }
   }
