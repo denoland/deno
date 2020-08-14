@@ -1033,7 +1033,7 @@
       wasClean = false,
       code = 0,
       reason = "",
-    }) {
+    } = {}) {
       super(type, {
         bubbles: bubbles,
         cancelable: cancelable,

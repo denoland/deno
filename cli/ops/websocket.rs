@@ -38,8 +38,6 @@ pub fn op_ws_create(
   let args: CreateArgs = serde_json::from_value(args)?;
   let resource_table = isolate_state.resource_table.clone();
   let future = async move {
-    let mut resource_table = resource_table.borrow_mut();
-
     let uri: Uri = args.url.parse().unwrap();
     let request = Request::builder()
       .method(Method::GET)
@@ -64,7 +62,12 @@ pub fn op_ws_create(
     };
 
     let (stream, response) = client_async_tls(request, socket).await.unwrap();
-    let rid = resource_table.add("webSocketStream", Box::new(stream));
+
+    let rid = {
+      let mut resource_table = resource_table.borrow_mut();
+      resource_table.add("webSocketStream", Box::new(stream))
+    };
+
     let protocol = match response.headers().get("Sec-WebSocket-Protocol") {
       Some(header) => header.to_str().unwrap(),
       None => "",
@@ -128,11 +131,16 @@ pub fn op_ws_close(
   let args: CloseArgs = serde_json::from_value(args)?;
   let resource_table = isolate_state.resource_table.clone();
   let future = async move {
-    let mut resource_table = resource_table.borrow_mut();
-    let stream = resource_table
-      .get_mut::<WebSocketStream<MaybeTlsStream<TcpStream>>>(args.rid)
-      .ok_or_else(OpError::bad_resource_id)?;
-    stream
+    let mut stream = {
+      let mut resource_table = resource_table.borrow_mut();
+      resource_table
+        .remove::<WebSocketStream<MaybeTlsStream<TcpStream>>>(args.rid)
+        .ok_or_else(|| {
+          println!("asdfasdfsad bad resource");
+          OpError::bad_resource_id()
+        })?
+    };
+    (*stream)
       .close(Some(CloseFrame {
         code: CloseCode::from(args.code.unwrap_or(1005)),
         reason: match args.reason {

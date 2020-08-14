@@ -68,7 +68,7 @@
         );
       }
 
-      if (wsURL.hash !== "" && !wsURL.href.endsWith("#")) {
+      if (wsURL.hash !== "" || wsURL.href.endsWith("#")) {
         throw new DOMException(
           "Fragments are not allowed in a WebSocket URL.",
           "SyntaxError",
