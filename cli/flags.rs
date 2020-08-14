@@ -3,6 +3,7 @@ use clap::App;
 use clap::AppSettings;
 use clap::Arg;
 use clap::ArgMatches;
+use clap::ArgSettings;
 use clap::SubCommand;
 use log::Level;
 use std::net::SocketAddr;
@@ -1191,6 +1192,7 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
     )
     .arg(
       Arg::with_name("filter")
+        .set(ArgSettings::AllowLeadingHyphen)
         .long("filter")
         .takes_value(true)
         .help("Run tests with this string or pattern in the test name"),
@@ -2875,6 +2877,25 @@ mod tests {
           allow_none: false,
           quiet: false,
           filter: Some("foo".to_string()),
+          include: Some(svec!["dir1"]),
+        },
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn test_filter_leading_hyphen() {
+    let r =
+      flags_from_vec_safe(svec!["deno", "test", "--filter", "- foo", "dir1"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Test {
+          fail_fast: false,
+          allow_none: false,
+          quiet: false,
+          filter: Some("- foo".to_string()),
           include: Some(svec!["dir1"]),
         },
         ..Flags::default()
