@@ -6,6 +6,35 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### 1.3.0 / 2020.08.13
+
+Changes in the CLI:
+
+- feat: Add "--no-check" flag to deno install (#6948)
+- feat: Add "--ignore" flag to deno lint (#6934)
+- feat: Add "--json" flag to deno lint (#6940)
+- feat: Add "--reload" flag to deno bundle (#6996)
+- feat: Add "--reload" flag to deno info (#7009)
+- feat: FileReader API (#6673)
+- feat: Handle imports in deno doc (#6987)
+- feat: Stabilize Deno.mainModule (#6993)
+- feat: Support file URLs in Deno.run for executable (#6994)
+- fix: console.log should see color codes when grouping occurs (#7000)
+- fix: URLSearchParams.toString() behaviour is different from browsers (#7017)
+- fix: Remove @ts-expect-error directives (#7024)
+- fix(unstable): Add missing globals to diagnostics (#6988)
+- refactor(doc): Remove detailed / summary distinction (#6818)
+- core: Memory limits & callbacks (#6914)
+- upgrade: TypeScript to 3.9.7 (#7036)
+- upgrade: Rust crates (#7034, #7040)
+
+Changes in std version 0.65.0:
+
+- feat(std/http): Add TLS serve abilities to file_server (#6962)
+- feat(std/http): Add --no-dir-listing flag to file_server (#6808)
+- feat(std/node): Add util.inspect (#6833)
+- fix: Make std work with isolatedModules (#7016)
+
 ### 1.2.3 / 2020.08.08
 
 Changes in the CLI:

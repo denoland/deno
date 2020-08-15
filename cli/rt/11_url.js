@@ -222,7 +222,7 @@
       return this.#params
         .map(
           (tuple) =>
-            `${encodeURIComponent(tuple[0])}=${encodeURIComponent(tuple[1])}`,
+            `${encodeSearchParam(tuple[0])}=${encodeSearchParam(tuple[1])}`,
         )
         .join("&");
     }
@@ -792,6 +792,11 @@
     return ["\u0000", "\u0009", "\u000A", "\u000D", "\u0020", "\u0023", "\u0025", "\u002F", "\u003A", "\u003C", "\u003E", "\u003F", "\u0040", "\u005B", "\u005C", "\u005D", "\u005E"].includes(c);
   }
 
+  function charInFormUrlencodedSet(c) {
+    // deno-fmt-ignore
+    return charInUserinfoSet(c) || ["\u0021", "\u0024", "\u0025", "\u0026", "\u0027", "\u0028", "\u0029", "\u002B", "\u002C", "\u007E"].includes(c);
+  }
+
   const encoder = new TextEncoder();
 
   function encodeChar(c) {
@@ -874,6 +879,11 @@
     return [...s].map((c) => (charInFragmentSet(c) ? encodeChar(c) : c)).join(
       "",
     );
+  }
+
+  function encodeSearchParam(s) {
+    return [...s].map((c) => (charInFormUrlencodedSet(c) ? encodeChar(c) : c))
+      .join("").replace("%20", "+");
   }
 
   window.__bootstrap.url = {
