@@ -484,15 +484,7 @@ for (const t of testCases) {
           );
         });
 
-        if (t.Error instanceof ParseError) {
-          assert(err instanceof ParseError);
-          assertEquals(err.error, t.Error.error);
-          assertEquals(err.startLine, t.Error.startLine);
-          assertEquals(err.line, t.Error.line);
-          assertEquals(err.column, t.Error.column);
-        } else {
-          assertEquals(err, t.Error);
-        }
+        assertEquals(err, t.Error);
       } else {
         actual = await readMatrix(
           new BufReader(new StringReader(t.Input ?? "")),
