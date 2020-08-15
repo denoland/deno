@@ -27,28 +27,25 @@ export class ParseError extends Error {
   line: number;
   /** Column (rune index) where the error occurred */
   column: number | null;
-  /** The actual error */
-  error: string;
 
   constructor(
     start: number,
     line: number,
     column: number | null,
-    error: string,
+    message: string,
   ) {
     super();
     this.startLine = start;
     this.column = column;
     this.line = line;
-    this.error = error;
 
-    if (error === ERR_FIELD_COUNT) {
-      this.message = `record on line ${line}: ${error}`;
+    if (message === ERR_FIELD_COUNT) {
+      this.message = `record on line ${line}: ${message}`;
     } else if (start !== line) {
       this.message =
-        `record on line ${start}; parse error on line ${line}, column ${column}: ${error}`;
+        `record on line ${start}; parse error on line ${line}, column ${column}: ${message}`;
     } else {
-      this.message = `parse error on line ${line}, column ${column}: ${error}`;
+      this.message = `parse error on line ${line}, column ${column}: ${message}`;
     }
   }
 }
