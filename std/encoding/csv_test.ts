@@ -4,7 +4,7 @@
 // https://github.com/golang/go/blob/master/LICENSE
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import { assert, assertEquals, assertThrowsAsync } from "../testing/asserts.ts";
+import { assertEquals, assertThrowsAsync } from "../testing/asserts.ts";
 import {
   readMatrix,
   parse,
