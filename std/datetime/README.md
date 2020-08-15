@@ -88,3 +88,13 @@ import { weekOfYear } from "https://deno.land/std/datetime/mod.ts";
 
 weekOfYear(new Date("2020-12-28T03:24:00")); // Returns 53
 ```
+
+### weekOfMonth
+
+Returns the month week number of the the provided date
+
+```ts
+import { weekOfMonth } from "https://deno.land/std/datetime/mod.ts";
+
+weekOfMonth(new Date("2020-12-28T03:24:00")); // Returns 5
+```
