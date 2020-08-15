@@ -62,7 +62,7 @@ deno lint --unstable myfile1.ts myfile2.ts
 #### Files
 
 To ignore whole file `// deno-lint-ignore-file` directive should placed at the
-top of the file.
+top of the file:
 
 ```ts
 // deno-lint-ignore-file
@@ -93,7 +93,7 @@ function foo(): any {
 #### Diagnostics
 
 To ignore certain diagnostic `// deno-lint-ignore <codes...>` directive should
-be placed before offending line. Specifying ignored rule name is required.
+be placed before offending line. Specifying ignored rule name is required:
 
 ```ts
 // deno-lint-ignore no-explicit-any
@@ -109,7 +109,7 @@ function bar(a: any) {
 
 To provide some compatibility with ESLint `deno lint` also supports
 `// eslint-ignore-next-line` directive. Just like with `// deno-lint-ignore`,
-it's required to specify the ignored rule name.
+it's required to specify the ignored rule name:
 
 ```ts
 // eslint-ignore-next-line no-empty
