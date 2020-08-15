@@ -86,6 +86,10 @@ export function weekOfYear(date: Date): number {
   return Math.ceil((workingDate.getTime() - yearStart.getTime() + DAY) / WEEK);
 }
 
+export function quarterOfYear(date: Date): number {
+  return Math.floor((date.getMonth() + 3) / 3);
+}
+
 /**
  * Parse a date to return a IMF formated string date
  * RFC: https://tools.ietf.org/html/rfc7231#section-7.1.1.1

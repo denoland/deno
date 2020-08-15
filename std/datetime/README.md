@@ -88,3 +88,13 @@ import { weekOfYear } from "https://deno.land/std/datetime/mod.ts";
 
 weekOfYear(new Date("2020-12-28T03:24:00")); // Returns 53
 ```
+
+### quarterOfYear
+
+Returns the quarter number of the provided date.
+
+```ts
+import { quarterOfYear } from "https://deno.land/std/datetime/mod.ts";
+
+quarterOfYear(new Date("2020-12-28T03:24:00")); // Returns 4
+```

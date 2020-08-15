@@ -114,6 +114,16 @@ Deno.test({
 });
 
 Deno.test({
+  name: "[std/datetime] quarterOfYear",
+  fn: () => {
+    assertEquals(datetime.quarterOfYear(new Date("2019-01-01T03:24:00")), 1);
+    assertEquals(datetime.quarterOfYear(new Date("2019-03-11T03:24:00")), 1);
+    assertEquals(datetime.quarterOfYear(new Date("2019-07-31T03:24:00")), 3);
+    assertEquals(datetime.quarterOfYear(new Date("2019-12-31T03:24:00")), 4);
+  },
+});
+
+Deno.test({
   name: "[std/datetime] currentDayOfYear",
   fn: () => {
     assertEquals(datetime.dayOfYear(new Date()), datetime.currentDayOfYear());
