@@ -26,6 +26,29 @@ unitTest({ perms: { run: true } }, async function runSuccess(): Promise<void> {
   p.stdout.close();
   p.close();
 });
+
+unitTest({ perms: { run: true } }, async function runUrl(): Promise<void> {
+  const q = Deno.run({
+    cmd: ["python", "-c", "import sys; print sys.executable"],
+    stdout: "piped",
+  });
+  await q.status();
+  const pythonPath = new TextDecoder().decode(await q.output()).trim();
+  q.close();
+
+  const p = Deno.run({
+    cmd: [new URL(`file:///${pythonPath}`), "-c", "print('hello world')"],
+    stdout: "piped",
+    stderr: "null",
+  });
+  const status = await p.status();
+  assertEquals(status.success, true);
+  assertEquals(status.code, 0);
+  assertEquals(status.signal, undefined);
+  p.stdout.close();
+  p.close();
+});
+
 unitTest({ perms: { run: true } }, async function runStdinRid0(): Promise<
   void
 > {

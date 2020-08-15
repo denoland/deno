@@ -2,7 +2,6 @@
 use super::dispatch_json::{JsonOp, Value};
 use crate::op_error::OpError;
 use crate::ops::json_op;
-use crate::ops::JsonOpDispatcher;
 use crate::state::State;
 use deno_core::CoreIsolate;
 use deno_core::CoreIsolateState;
@@ -32,7 +31,11 @@ pub fn init(
 pub fn compiler_op<D>(
   response: Arc<Mutex<Option<String>>>,
   dispatcher: D,
-) -> impl JsonOpDispatcher
+) -> impl Fn(
+  &mut deno_core::CoreIsolateState,
+  Value,
+  &mut [ZeroCopyBuf],
+) -> Result<JsonOp, OpError>
 where
   D: Fn(
     Arc<Mutex<Option<String>>>,

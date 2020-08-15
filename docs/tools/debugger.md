@@ -93,12 +93,12 @@ config:
   "configurations": [
     {
       "name": "Deno",
-      "type": "node",
+      "type": "pwa-node",
       "request": "launch",
       "cwd": "${workspaceFolder}",
       "runtimeExecutable": "deno",
       "runtimeArgs": ["run", "--inspect-brk", "-A", "${file}"],
-      "port": 9229
+      "attachSimplePort": 9229
     }
   ]
 }
