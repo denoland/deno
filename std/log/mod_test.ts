@@ -12,7 +12,7 @@ import {
   LogLevels,
   LevelName,
 } from "./mod.ts";
-import { BaseHandler } from "./handlers.ts";
+import { BaseHandler, FormatterFunction } from "./handlers.ts";
 
 class TestHandler extends BaseHandler {
   public messages: string[] = [];
@@ -64,7 +64,8 @@ Deno.test({
   async fn() {
     const consoleHandler = new TestHandler("DEBUG");
     const anotherConsoleHandler = new TestHandler("DEBUG", {
-      formatter: "[{loggerName}] {levelName} {msg}",
+      formatter: (({ loggerName, levelName, msg }) =>
+        `[${loggerName}] ${levelName} ${msg}`) as FormatterFunction,
     });
     await setup({
       handlers: {
