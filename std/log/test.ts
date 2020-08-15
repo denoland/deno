@@ -11,14 +11,14 @@ import {
 class TestHandler extends log.handlers.BaseHandler {
   public messages: string[] = [];
 
-  log(msg: string): void {
-    this.messages.push(msg);
+  log(message: string): void {
+    this.messages.push(message);
   }
 }
 
 Deno.test("defaultHandlers", async function (): Promise<void> {
   const loggers: {
-    [key: string]: (msg: string, ...args: unknown[]) => void;
+    [key: string]: (message: string, ...args: unknown[]) => void;
   } = {
     DEBUG: log.debug,
     INFO: log.info,

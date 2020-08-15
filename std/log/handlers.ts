@@ -5,7 +5,7 @@ import { red, yellow, blue, bold } from "../fmt/colors.ts";
 import { existsSync, exists } from "../fs/exists.ts";
 import { BufWriterSync } from "../io/bufio.ts";
 
-const DEFAULT_FORMATTER = "{levelName} {msg}";
+const DEFAULT_FORMATTER = "{levelName} {message}";
 type FormatterFunction = (logRecord: LogRecord) => string;
 type LogMode = "a" | "w" | "x";
 
@@ -28,8 +28,8 @@ export class BaseHandler {
   handle(logRecord: LogRecord): void {
     if (this.level > logRecord.level) return;
 
-    const msg = this.format(logRecord);
-    return this.log(msg);
+    const message = this.format(logRecord);
+    return this.log(message);
   }
 
   format(logRecord: LogRecord): string {
@@ -49,37 +49,37 @@ export class BaseHandler {
     });
   }
 
-  log(_msg: string): void {}
+  log(_message: string): void {}
   async setup(): Promise<void> {}
   async destroy(): Promise<void> {}
 }
 
 export class ConsoleHandler extends BaseHandler {
   format(logRecord: LogRecord): string {
-    let msg = super.format(logRecord);
+    let message = super.format(logRecord);
 
     switch (logRecord.level) {
       case LogLevels.INFO:
-        msg = blue(msg);
+        message = blue(message);
         break;
       case LogLevels.WARNING:
-        msg = yellow(msg);
+        message = yellow(message);
         break;
       case LogLevels.ERROR:
-        msg = red(msg);
+        message = red(message);
         break;
       case LogLevels.CRITICAL:
-        msg = bold(red(msg));
+        message = bold(red(message));
         break;
       default:
         break;
     }
 
-    return msg;
+    return message;
   }
 
-  log(msg: string): void {
-    console.log(msg);
+  log(message: string): void {
+    console.log(message);
   }
 }
 
@@ -87,7 +87,7 @@ export abstract class WriterHandler extends BaseHandler {
   protected _writer!: Deno.Writer;
   #encoder = new TextEncoder();
 
-  abstract log(msg: string): void;
+  abstract log(message: string): void;
 }
 
 interface FileHandlerOptions extends HandlerOptions {
@@ -135,8 +135,8 @@ export class FileHandler extends WriterHandler {
     }
   }
 
-  log(msg: string): void {
-    this._buf.writeSync(this._encoder.encode(msg + "\n"));
+  log(message: string): void {
+    this._buf.writeSync(this._encoder.encode(message + "\n"));
   }
 
   flush(): void {
@@ -204,16 +204,16 @@ export class RotatingFileHandler extends FileHandler {
     }
   }
 
-  log(msg: string): void {
-    const msgByteLength = this._encoder.encode(msg).byteLength + 1;
+  log(message: string): void {
+    const messageByteLength = this._encoder.encode(message).byteLength + 1;
 
-    if (this.#currentFileSize + msgByteLength > this.#maxBytes) {
+    if (this.#currentFileSize + messageByteLength > this.#maxBytes) {
       this.rotateLogFiles();
       this.#currentFileSize = 0;
     }
 
-    this._buf.writeSync(this._encoder.encode(msg + "\n"));
-    this.#currentFileSize += msgByteLength;
+    this._buf.writeSync(this._encoder.encode(message + "\n"));
+    this.#currentFileSize += messageByteLength;
   }
 
   rotateLogFiles(): void {

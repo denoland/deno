@@ -23,7 +23,7 @@ Deno.test({
   fn() {
     const handlerNoName = new TestHandler("DEBUG");
     const handlerWithLoggerName = new TestHandler("DEBUG", {
-      formatter: "[{loggerName}] {levelName} {msg}",
+      formatter: "[{loggerName}] {levelName} {message}",
     });
 
     const logger = new Logger("config", "DEBUG", {
@@ -55,7 +55,7 @@ Deno.test("customHandler", function (): void {
   const inlineData: string = logger.debug("foo", 1, 2);
 
   const record = handler.records[0];
-  assertEquals(record.msg, "foo");
+  assertEquals(record.message, "foo");
   assertEquals(record.args, [1, 2]);
   assertEquals(record.level, LogLevels.DEBUG);
   assertEquals(record.levelName, "DEBUG");
@@ -115,7 +115,7 @@ Deno.test("logFunctions", function (): void {
 });
 
 Deno.test(
-  "String resolver fn will not execute if msg will not be logged",
+  "String resolver fn will not execute if message will not be logged",
   function (): void {
     const handler = new TestHandler("ERROR");
     const logger = new Logger("default", "ERROR", { handlers: [handler] });

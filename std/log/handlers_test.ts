@@ -63,7 +63,7 @@ Deno.test("simpleHandler", function (): void {
       const level = getLevelByName(levelName as LevelName);
       handler.handle(
         new LogRecord({
-          msg: `${levelName.toLowerCase()}-test`,
+          message: `${levelName.toLowerCase()}-test`,
           args: [],
           level: level,
           loggerName: "default",
@@ -79,12 +79,12 @@ Deno.test("simpleHandler", function (): void {
 
 Deno.test("testFormatterAsString", function (): void {
   const handler = new TestHandler("DEBUG", {
-    formatter: "test {levelName} {msg}",
+    formatter: "test {levelName} {message}",
   });
 
   handler.handle(
     new LogRecord({
-      msg: "Hello, world!",
+      message: "Hello, world!",
       args: [],
       level: LogLevels.DEBUG,
       loggerName: "default",
@@ -94,14 +94,14 @@ Deno.test("testFormatterAsString", function (): void {
   assertEquals(handler.messages, ["test DEBUG Hello, world!"]);
 });
 
-Deno.test("testFormatterWithEmptyMsg", function () {
+Deno.test("testFormatterWithEmptyMessage", function () {
   const handler = new TestHandler("DEBUG", {
-    formatter: "test {levelName} {msg}",
+    formatter: "test {levelName} {message}",
   });
 
   handler.handle(
     new LogRecord({
-      msg: "",
+      message: "",
       args: [],
       level: LogLevels.DEBUG,
       loggerName: "default",
@@ -114,12 +114,12 @@ Deno.test("testFormatterWithEmptyMsg", function () {
 Deno.test("testFormatterAsFunction", function (): void {
   const handler = new TestHandler("DEBUG", {
     formatter: (logRecord): string =>
-      `fn formatter ${logRecord.levelName} ${logRecord.msg}`,
+      `fn formatter ${logRecord.levelName} ${logRecord.message}`,
   });
 
   handler.handle(
     new LogRecord({
-      msg: "Hello, world!",
+      message: "Hello, world!",
       args: [],
       level: LogLevels.ERROR,
       loggerName: "default",
@@ -140,7 +140,7 @@ Deno.test({
     await fileHandler.setup();
     fileHandler.handle(
       new LogRecord({
-        msg: "Hello World",
+        message: "Hello World",
         args: [],
         level: LogLevels.WARNING,
         loggerName: "default",
@@ -152,7 +152,7 @@ Deno.test({
     await fileHandler.setup();
     fileHandler.handle(
       new LogRecord({
-        msg: "Hello World",
+        message: "Hello World",
         args: [],
         level: LogLevels.WARNING,
         loggerName: "default",
@@ -262,7 +262,7 @@ Deno.test({
 
     fileHandler.handle(
       new LogRecord({
-        msg: "AAA",
+        message: "AAA",
         args: [],
         level: LogLevels.ERROR,
         loggerName: "default",
@@ -272,7 +272,7 @@ Deno.test({
     assertEquals((await Deno.stat(LOG_FILE)).size, 10);
     fileHandler.handle(
       new LogRecord({
-        msg: "AAA",
+        message: "AAA",
         args: [],
         level: LogLevels.ERROR,
         loggerName: "default",
@@ -282,7 +282,7 @@ Deno.test({
     assertEquals((await Deno.stat(LOG_FILE)).size, 20);
     fileHandler.handle(
       new LogRecord({
-        msg: "AAA",
+        message: "AAA",
         args: [],
         level: LogLevels.ERROR,
         loggerName: "default",
@@ -312,7 +312,7 @@ Deno.test({
 
     fileHandler.handle(
       new LogRecord({
-        msg: "AAA",
+        message: "AAA",
         args: [],
         level: LogLevels.ERROR,
         loggerName: "default",
@@ -320,7 +320,7 @@ Deno.test({
     ); // 'ERROR AAA\n' = 10 bytes
     fileHandler.handle(
       new LogRecord({
-        msg: "AAA",
+        message: "AAA",
         args: [],
         level: LogLevels.ERROR,
         loggerName: "default",
@@ -328,7 +328,7 @@ Deno.test({
     );
     fileHandler.handle(
       new LogRecord({
-        msg: "AAA",
+        message: "AAA",
         args: [],
         level: LogLevels.ERROR,
         loggerName: "default",
@@ -371,7 +371,7 @@ Deno.test({
     await fileHandler.setup();
     fileHandler.handle(
       new LogRecord({
-        msg: "AAA",
+        message: "AAA",
         args: [],
         level: LogLevels.ERROR,
         loggerName: "default",
@@ -450,7 +450,7 @@ Deno.test({
     await fileHandler.setup();
     fileHandler.handle(
       new LogRecord({
-        msg: "AAA",
+        message: "AAA",
         args: [],
         level: LogLevels.ERROR,
         loggerName: "default",
@@ -466,7 +466,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "RotatingFileHandler: rotate on byte length, not msg length",
+  name: "RotatingFileHandler: rotate on byte length, not message length",
   async fn() {
     const fileHandler = new RotatingFileHandler("WARNING", {
       filename: LOG_FILE,
@@ -476,23 +476,23 @@ Deno.test({
     });
     await fileHandler.setup();
 
-    const msg = "。";
-    const msgLength = msg.length;
-    const msgByteLength = new TextEncoder().encode(msg).byteLength;
-    assertNotEquals(msgLength, msgByteLength);
-    assertEquals(msgLength, 1);
-    assertEquals(msgByteLength, 3);
+    const message = "。";
+    const messageLength = message.length;
+    const messageByteLength = new TextEncoder().encode(message).byteLength;
+    assertNotEquals(messageLength, messageByteLength);
+    assertEquals(messageLength, 1);
+    assertEquals(messageByteLength, 3);
 
-    fileHandler.log(msg); // logs 4 bytes (including '\n')
-    fileHandler.log(msg); // max bytes is 7, but this would be 8.  Rollover.
+    fileHandler.log(message); // logs 4 bytes (including '\n')
+    fileHandler.log(message); // max bytes is 7, but this would be 8.  Rollover.
 
     await fileHandler.destroy();
 
     const fileSize1 = (await Deno.stat(LOG_FILE)).size;
     const fileSize2 = (await Deno.stat(LOG_FILE + ".1")).size;
 
-    assertEquals(fileSize1, msgByteLength + 1);
-    assertEquals(fileSize2, msgByteLength + 1);
+    assertEquals(fileSize1, messageByteLength + 1);
+    assertEquals(fileSize2, messageByteLength + 1);
 
     Deno.removeSync(LOG_FILE);
     Deno.removeSync(LOG_FILE + ".1");
@@ -510,7 +510,7 @@ Deno.test({
 
     fileHandler.handle(
       new LogRecord({
-        msg: "AAA",
+        message: "AAA",
         args: [],
         level: LogLevels.ERROR,
         loggerName: "default",
@@ -523,7 +523,7 @@ Deno.test({
 
     fileHandler.handle(
       new LogRecord({
-        msg: "AAA",
+        message: "AAA",
         args: [],
         level: LogLevels.CRITICAL,
         loggerName: "default",

@@ -64,7 +64,7 @@ Deno.test({
   async fn() {
     const consoleHandler = new TestHandler("DEBUG");
     const anotherConsoleHandler = new TestHandler("DEBUG", {
-      formatter: "[{loggerName}] {levelName} {msg}",
+      formatter: "[{loggerName}] {levelName} {message}",
     });
     await setup({
       handlers: {
@@ -194,28 +194,28 @@ Deno.test({
       },
     });
     const logger: Logger = getLogger();
-    logger.info("msg1");
+    logger.info("message1");
     assertEquals(testHandlerA.messages.length, 1);
-    assertEquals(testHandlerA.messages[0], "INFO msg1");
+    assertEquals(testHandlerA.messages[0], "INFO message1");
     assertEquals(testHandlerB.messages.length, 0);
 
     logger.handlers = [testHandlerA, testHandlerB];
 
-    logger.info("msg2");
+    logger.info("message2");
     assertEquals(testHandlerA.messages.length, 2);
-    assertEquals(testHandlerA.messages[1], "INFO msg2");
+    assertEquals(testHandlerA.messages[1], "INFO message2");
     assertEquals(testHandlerB.messages.length, 1);
-    assertEquals(testHandlerB.messages[0], "INFO msg2");
+    assertEquals(testHandlerB.messages[0], "INFO message2");
 
     logger.handlers = [testHandlerB];
 
-    logger.info("msg3");
+    logger.info("message3");
     assertEquals(testHandlerA.messages.length, 2);
     assertEquals(testHandlerB.messages.length, 2);
-    assertEquals(testHandlerB.messages[1], "INFO msg3");
+    assertEquals(testHandlerB.messages[1], "INFO message3");
 
     logger.handlers = [];
-    logger.info("msg4");
+    logger.info("message4");
     assertEquals(testHandlerA.messages.length, 2);
     assertEquals(testHandlerB.messages.length, 2);
   },

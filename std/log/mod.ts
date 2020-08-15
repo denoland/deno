@@ -74,84 +74,87 @@ export function getLogger(name?: string): Logger {
   return result;
 }
 
-export function debug<T>(msg: () => T, ...args: unknown[]): T | undefined;
+export function debug<T>(message: () => T, ...args: unknown[]): T | undefined;
 export function debug<T>(
-  msg: T extends Function ? never : T,
+  message: T extends Function ? never : T,
   ...args: unknown[]
 ): T;
 export function debug<T>(
-  msg: (T extends Function ? never : T) | (() => T),
+  message: (T extends Function ? never : T) | (() => T),
   ...args: unknown[]
 ): T | undefined {
   // Assist TS compiler with pass-through generic type
-  if (msg instanceof Function) {
-    return getLogger("default").debug(msg, ...args);
+  if (message instanceof Function) {
+    return getLogger("default").debug(message, ...args);
   }
-  return getLogger("default").debug(msg, ...args);
+  return getLogger("default").debug(message, ...args);
 }
 
-export function info<T>(msg: () => T, ...args: unknown[]): T | undefined;
+export function info<T>(message: () => T, ...args: unknown[]): T | undefined;
 export function info<T>(
-  msg: T extends Function ? never : T,
+  message: T extends Function ? never : T,
   ...args: unknown[]
 ): T;
 export function info<T>(
-  msg: (T extends Function ? never : T) | (() => T),
+  message: (T extends Function ? never : T) | (() => T),
   ...args: unknown[]
 ): T | undefined {
   // Assist TS compiler with pass-through generic type
-  if (msg instanceof Function) {
-    return getLogger("default").info(msg, ...args);
+  if (message instanceof Function) {
+    return getLogger("default").info(message, ...args);
   }
-  return getLogger("default").info(msg, ...args);
+  return getLogger("default").info(message, ...args);
 }
 
-export function warning<T>(msg: () => T, ...args: unknown[]): T | undefined;
+export function warning<T>(message: () => T, ...args: unknown[]): T | undefined;
 export function warning<T>(
-  msg: T extends Function ? never : T,
+  message: T extends Function ? never : T,
   ...args: unknown[]
 ): T;
 export function warning<T>(
-  msg: (T extends Function ? never : T) | (() => T),
+  message: (T extends Function ? never : T) | (() => T),
   ...args: unknown[]
 ): T | undefined {
   // Assist TS compiler with pass-through generic type
-  if (msg instanceof Function) {
-    return getLogger("default").warning(msg, ...args);
+  if (message instanceof Function) {
+    return getLogger("default").warning(message, ...args);
   }
-  return getLogger("default").warning(msg, ...args);
+  return getLogger("default").warning(message, ...args);
 }
 
-export function error<T>(msg: () => T, ...args: unknown[]): T | undefined;
+export function error<T>(message: () => T, ...args: unknown[]): T | undefined;
 export function error<T>(
-  msg: T extends Function ? never : T,
+  message: T extends Function ? never : T,
   ...args: unknown[]
 ): T;
 export function error<T>(
-  msg: (T extends Function ? never : T) | (() => T),
+  message: (T extends Function ? never : T) | (() => T),
   ...args: unknown[]
 ): T | undefined {
   // Assist TS compiler with pass-through generic type
-  if (msg instanceof Function) {
-    return getLogger("default").error(msg, ...args);
+  if (message instanceof Function) {
+    return getLogger("default").error(message, ...args);
   }
-  return getLogger("default").error(msg, ...args);
+  return getLogger("default").error(message, ...args);
 }
 
-export function critical<T>(msg: () => T, ...args: unknown[]): T | undefined;
 export function critical<T>(
-  msg: T extends Function ? never : T,
+  message: () => T,
+  ...args: unknown[]
+): T | undefined;
+export function critical<T>(
+  message: T extends Function ? never : T,
   ...args: unknown[]
 ): T;
 export function critical<T>(
-  msg: (T extends Function ? never : T) | (() => T),
+  message: (T extends Function ? never : T) | (() => T),
   ...args: unknown[]
 ): T | undefined {
   // Assist TS compiler with pass-through generic type
-  if (msg instanceof Function) {
-    return getLogger("default").critical(msg, ...args);
+  if (message instanceof Function) {
+    return getLogger("default").critical(message, ...args);
   }
-  return getLogger("default").critical(msg, ...args);
+  return getLogger("default").critical(message, ...args);
 }
 
 export async function setup(config: LogConfig): Promise<void> {
