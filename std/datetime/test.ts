@@ -114,6 +114,19 @@ Deno.test({
 });
 
 Deno.test({
+  name: "[std/datetime] weekOfMonth",
+  fn: () => {
+    assertEquals(datetime.weekOfMonth(new Date("2019-01-01T03:24:00")), 1);
+    assertEquals(datetime.weekOfMonth(new Date("2019-01-08T03:24:00")), 2);
+    assertEquals(datetime.weekOfMonth(new Date("2019-01-15T03:24:00")), 3);
+    assertEquals(datetime.weekOfMonth(new Date("2019-01-22T03:24:00")), 4);
+    assertEquals(datetime.weekOfMonth(new Date("2019-01-29T03:24:00")), 5);
+    assertEquals(datetime.weekOfMonth(new Date("2019-03-11T03:24:00")), 3);
+    assertEquals(datetime.weekOfMonth(new Date("2019-12-31T03:24:00")), 6);
+  },
+});
+
+Deno.test({
   name: "[std/datetime] currentDayOfYear",
   fn: () => {
     assertEquals(datetime.dayOfYear(new Date()), datetime.currentDayOfYear());

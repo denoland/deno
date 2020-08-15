@@ -86,6 +86,12 @@ export function weekOfYear(date: Date): number {
   return Math.ceil((workingDate.getTime() - yearStart.getTime() + DAY) / WEEK);
 }
 
+export function weekOfMonth(date: Date): number {
+  let day = date.getDate();
+  day += (date.getDay() === 0 ? 0 : 7 - date.getDay());
+  return Math.ceil(day / 7);
+}
+
 /**
  * Parse a date to return a IMF formated string date
  * RFC: https://tools.ietf.org/html/rfc7231#section-7.1.1.1
