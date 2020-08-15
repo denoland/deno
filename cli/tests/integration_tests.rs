@@ -3161,7 +3161,7 @@ async fn inspector_runtime_evaluate_does_not_crash() {
   child.wait().unwrap();
 }
 
-#[tokio::test]
+#[tokio::test(core_threads = 2)]
 async fn websocket() {
   use warp::Filter;
 
