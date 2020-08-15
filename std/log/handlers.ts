@@ -5,24 +5,24 @@ import { red, yellow, blue, bold } from "../fmt/colors.ts";
 import { existsSync, exists } from "../fs/exists.ts";
 import { BufWriterSync } from "../io/bufio.ts";
 
-const DEFAULT_FORMATTER = "{levelName} {msg}";
-type FormatterFunction = (logRecord: LogRecord) => string;
+export type FormatterFunction = (logRecord: LogRecord) => string;
 type LogMode = "a" | "w" | "x";
 
 interface HandlerOptions {
-  formatter?: string | FormatterFunction;
+  formatter?: FormatterFunction;
 }
 
 export class BaseHandler {
   level: number;
   levelName: LevelName;
-  formatter: string | FormatterFunction;
+  formatter: FormatterFunction;
 
   constructor(levelName: LevelName, options: HandlerOptions = {}) {
     this.level = getLevelByName(levelName);
     this.levelName = levelName;
 
-    this.formatter = options.formatter || DEFAULT_FORMATTER;
+    this.formatter = options.formatter ||
+      (({ levelName, msg }) => `${levelName} ${msg}`) as FormatterFunction;
   }
 
   handle(logRecord: LogRecord): void {
@@ -33,20 +33,7 @@ export class BaseHandler {
   }
 
   format(logRecord: LogRecord): string {
-    if (this.formatter instanceof Function) {
-      return this.formatter(logRecord);
-    }
-
-    return this.formatter.replace(/{(\S+)}/g, (match, p1): string => {
-      const value = logRecord[p1 as keyof LogRecord];
-
-      // do not interpolate missing values
-      if (value == null) {
-        return match;
-      }
-
-      return String(value);
-    });
+    return this.formatter(logRecord);
   }
 
   log(_msg: string): void {}
