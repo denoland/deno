@@ -5,7 +5,7 @@
   const { close } = window.__bootstrap.resources;
   const { readAll } = window.__bootstrap.buffer;
   const { sendSync, sendAsync } = window.__bootstrap.dispatchJson;
-  const { assert } = window.__bootstrap.util;
+  const { assert, pathFromURL } = window.__bootstrap.util;
 
   function opKill(pid, signo) {
     sendSync("op_kill", { pid, signo });
@@ -98,6 +98,9 @@
     stderr = "inherit",
     stdin = "inherit",
   }) {
+    if (cmd[0] != null) {
+      cmd[0] = pathFromURL(cmd[0]);
+    }
     const res = opRun({
       cmd: cmd.map(String),
       cwd,

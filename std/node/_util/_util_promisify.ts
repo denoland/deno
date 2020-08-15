@@ -60,11 +60,10 @@ export function promisify(original: Function): Function {
   if (typeof original !== "function") {
     throw new NodeInvalidArgTypeError("original", "Function", original);
   }
-
-  // @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
-  if (original[kCustomPromisifiedSymbol]) {
-    // @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
-    const fn = original[kCustomPromisifiedSymbol];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  if ((original as any)[kCustomPromisifiedSymbol]) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const fn = (original as any)[kCustomPromisifiedSymbol];
     if (typeof fn !== "function") {
       throw new NodeInvalidArgTypeError(
         "util.promisify.custom",
@@ -82,12 +81,11 @@ export function promisify(original: Function): Function {
 
   // Names to create an object from in case the callback receives multiple
   // arguments, e.g. ['bytesRead', 'buffer'] for fs.read.
-  // @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
-  const argumentNames = original[kCustomPromisifyArgsSymbol];
-
-  function fn(...args: unknown[]): Promise<unknown> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const argumentNames = (original as any)[kCustomPromisifyArgsSymbol];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function fn(this: any, ...args: unknown[]): Promise<unknown> {
     return new Promise((resolve, reject) => {
-      // @ts-expect-error: 'this' implicitly has type 'any' because it does not have a type annotation
       original.call(this, ...args, (err: Error, ...values: unknown[]) => {
         if (err) {
           return reject(err);
@@ -95,8 +93,8 @@ export function promisify(original: Function): Function {
         if (argumentNames !== undefined && values.length > 1) {
           const obj = {};
           for (let i = 0; i < argumentNames.length; i++) {
-            // @ts-expect-error TypeScript
-            obj[argumentNames[i]] = values[i];
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (obj as any)[argumentNames[i]] = values[i];
           }
           resolve(obj);
         } else {
