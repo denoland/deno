@@ -268,7 +268,7 @@ x,,,
   {
     Name: "StartLine2",
     Input: 'a,b\n\"d\n\n,e',
-    Error: new ParseError(2, 5, null, ERR_QUOTE),
+    Error: new ParseError(2, 5, 0, ERR_QUOTE),
   },
   {
     Name: "CRLFInQuotedField", // Issue 21201

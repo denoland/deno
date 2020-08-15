@@ -45,7 +45,8 @@ export class ParseError extends Error {
       this.message =
         `record on line ${start}; parse error on line ${line}, column ${column}: ${message}`;
     } else {
-      this.message = `parse error on line ${line}, column ${column}: ${message}`;
+      this.message =
+        `parse error on line ${line}, column ${column}: ${message}`;
     }
   }
 }
@@ -190,13 +191,16 @@ async function readRecord(
           recordBuffer += line;
           const r = await readLine(tp);
           lineIndex++;
+          line = r ?? ""; // This is a workaround for making this module behave similarly to the encoding/csv/reader.go.
+          fullLine = line;
           if (r === null) {
             // Abrupt end of file (EOF or error).
             if (!opt.lazyQuotes) {
+              const col = runeCount(fullLine);
               quoteError = new ParseError(
                 startLine + 1,
                 lineIndex,
-                null,
+                col,
                 ERR_QUOTE,
               );
               break parseField;
@@ -205,8 +209,6 @@ async function readRecord(
             break parseField;
           }
           recordBuffer += "\n"; // preserve line feed (This is because TextProtoReader removes it.)
-          line = r;
-          fullLine = line;
         } else {
           // Abrupt end of file (EOF on error).
           if (!opt.lazyQuotes) {
