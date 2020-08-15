@@ -114,13 +114,6 @@ Deno.test({
 });
 
 Deno.test({
-  name: "[std/datetime] currentDayOfYear",
-  fn: () => {
-    assertEquals(datetime.dayOfYear(new Date()), datetime.currentDayOfYear());
-  },
-});
-
-Deno.test({
   name: "[std/datetime] weekOfYear",
   fn: () => {
     assertEquals(datetime.weekOfYear(new Date("2020-01-05T03:24:00")), 1);
