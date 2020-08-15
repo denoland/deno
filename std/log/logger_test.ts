@@ -2,7 +2,7 @@
 import { assertEquals, assert } from "../testing/asserts.ts";
 import { LogRecord, Logger } from "./logger.ts";
 import { LogLevels, LevelName } from "./levels.ts";
-import { BaseHandler } from "./handlers.ts";
+import { BaseHandler, FormatterFunction } from "./handlers.ts";
 
 class TestHandler extends BaseHandler {
   public messages: string[] = [];
@@ -23,7 +23,8 @@ Deno.test({
   fn() {
     const handlerNoName = new TestHandler("DEBUG");
     const handlerWithLoggerName = new TestHandler("DEBUG", {
-      formatter: "[{loggerName}] {levelName} {msg}",
+      formatter: (({ loggerName, levelName, msg }) =>
+        `[${loggerName}] ${levelName} ${msg}`) as FormatterFunction,
     });
 
     const logger = new Logger("config", "DEBUG", {
