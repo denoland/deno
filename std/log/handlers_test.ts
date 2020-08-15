@@ -12,7 +12,12 @@ import {
   getLevelByName,
   LevelName,
 } from "./levels.ts";
-import { BaseHandler, FileHandler, RotatingFileHandler } from "./handlers.ts";
+import {
+  BaseHandler,
+  FileHandler,
+  RotatingFileHandler,
+  FormatterFunction,
+} from "./handlers.ts";
 import { LogRecord } from "./logger.ts";
 import { existsSync } from "../fs/exists.ts";
 
@@ -79,7 +84,8 @@ Deno.test("simpleHandler", function (): void {
 
 Deno.test("testFormatterAsString", function (): void {
   const handler = new TestHandler("DEBUG", {
-    formatter: "test {levelName} {msg}",
+    formatter: (({ levelName, msg }) =>
+      `test ${levelName} ${msg}`) as FormatterFunction,
   });
 
   handler.handle(
@@ -96,7 +102,8 @@ Deno.test("testFormatterAsString", function (): void {
 
 Deno.test("testFormatterWithEmptyMsg", function () {
   const handler = new TestHandler("DEBUG", {
-    formatter: "test {levelName} {msg}",
+    formatter: (({ levelName, msg }) =>
+      `test ${levelName} ${msg}`) as FormatterFunction,
   });
 
   handler.handle(

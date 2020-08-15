@@ -22,7 +22,7 @@ await log.setup({
     file: new log.handlers.FileHandler("WARNING", {
       filename: "./log.txt",
       // you can change format of output message using any keys in `LogRecord`
-      formatter: "{levelName} {msg}",
+      formatter: ({ levelName, msg }) => `${levelName} ${msg}`,
     }),
   },
 
@@ -101,7 +101,7 @@ console via `console.log()`. This logger takes `HandlerOptions`:
 type FormatterFunction = (logRecord: LogRecord) => string;
 
 interface HandlerOptions {
-  formatter?: string | FormatterFunction; //see `Custom message format` below
+  formatter?: FormatterFunction; //see `Custom message format` below
 }
 ```
 
@@ -115,7 +115,7 @@ process completion. This logger takes `FileOptions`:
 
 ```typescript
 interface FileHandlerOptions {
-  formatter?: string | FormatterFunction; //see `Custom message format` below
+  formatter?: FormatterFunction; //see `Custom message format` below
   filename: string;
   mode?: LogMode; // 'a', 'w', 'x'
 }
@@ -163,7 +163,7 @@ Options for this handler are:
 interface RotatingFileHandlerOptions {
   maxBytes: number;
   maxBackupCount: number;
-  formatter?: string | FormatterFunction; //see `Custom message format` below
+  formatter?: FormatterFunction; //see `Custom message format` below
   filename: string;
   mode?: LogMode; // 'a', 'w', 'x'
 }
@@ -185,9 +185,8 @@ log files.
 ### Custom message format
 
 If you want to override default format of message you can define `formatter`
-option for handler. It can be either simple string-based format that uses
-`LogRecord` fields or more complicated function-based one that takes `LogRecord`
-as argument and outputs string.
+option for handler. It is a function-based format that takes `LogRecord` as an
+argument and outputs a string.
 
 Eg.
 
@@ -195,7 +194,7 @@ Eg.
 await log.setup({
   handlers: {
     stringFmt: new log.handlers.ConsoleHandler("DEBUG", {
-      formatter: "[{levelName}] {msg}"
+      formatter: ({levelName, msg}) => `[${levelName}] ${msg}`
     }),
 
     functionFmt: new log.handlers.ConsoleHandler("DEBUG", {
@@ -211,7 +210,7 @@ await log.setup({
     }),
 
     anotherFmt: new log.handlers.ConsoleHandler("DEBUG", {
-      formatter: "[{loggerName}] - {levelName} {msg}"
+      formatter: ({loggerName, levelName, msg}) => `[${loggerName}] - ${levelName} ${msg}`
     }),
   },
 
