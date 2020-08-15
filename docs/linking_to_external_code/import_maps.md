@@ -40,7 +40,7 @@ Then:
 $ deno run --importmap=import_map.json --unstable color.ts
 ```
 
-To use staring directory for absolute imports:
+To use starting directory for absolute imports:
 
 ```json
 // import_map.json
