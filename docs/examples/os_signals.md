@@ -34,4 +34,4 @@ for await (const _ of sig) {
 }
 ```
 
-The above for-await loop exits after 5 seconds when sig.dispose() is called.
+The above for-await loop exits after 5 seconds when `sig.dispose()` is called.
