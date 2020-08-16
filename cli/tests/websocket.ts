@@ -2,16 +2,16 @@
 import { assertEquals, assertThrows, fail } from "./unit/test_util.ts";
 
 Deno.test("invalid scheme", () => {
-  assertThrows(() => new WebSocket("foo://localhost:8080"));
+  assertThrows(() => new WebSocket("foo://localhost:4242"));
 });
 
 Deno.test("fragment", () => {
-  assertThrows(() => new WebSocket("ws://localhost:8080/#"));
-  assertThrows(() => new WebSocket("ws://localhost:8080/#foo"));
+  assertThrows(() => new WebSocket("ws://localhost:4242/#"));
+  assertThrows(() => new WebSocket("ws://localhost:4242/#foo"));
 });
 
 Deno.test("duplicate protocols", () => {
-  assertThrows(() => new WebSocket("ws://localhost:8080", ["foo", "foo"]));
+  assertThrows(() => new WebSocket("ws://localhost:4242", ["foo", "foo"]));
 });
 
 Deno.test("invalid server", () => {
@@ -27,21 +27,23 @@ Deno.test("invalid server", () => {
 });
 
 Deno.test("connect & close", () => {
-  const ws = new WebSocket("ws://localhost:8080");
+  const ws = new WebSocket("ws://localhost:4242");
   ws.onerror = (): void => fail();
   ws.onopen = (): void => ws.close();
 });
 
 Deno.test("connect & close custom valid code", () => {
-  const ws = new WebSocket("ws://localhost:8080");
+  const ws = new WebSocket("ws://localhost:4242");
   ws.onerror = (): void => fail();
   ws.onopen = (): void => ws.close(1000);
 });
 
 Deno.test("connect & close custom invalid code", () => {
-  const ws = new WebSocket("ws://localhost:8080");
+  const ws = new WebSocket("ws://localhost:4242");
   ws.onerror = (): void => fail();
-  ws.onopen = (): void => assertThrows(() => ws.close(1001));
+  ws.onopen = (): void => {
+    assertThrows(() => ws.close(1001));
+  };
 });
 
 Deno.test("connect & close custom valid reason", () => {
@@ -51,21 +53,22 @@ Deno.test("connect & close custom valid reason", () => {
 });
 
 Deno.test("connect & close custom invalid reason", () => {
-  const ws = new WebSocket("ws://localhost:8080");
+  const ws = new WebSocket("ws://localhost:4242");
   ws.onerror = (): void => fail();
-  ws.onopen = (): void =>
+  ws.onopen = (): void => {
     assertThrows(() => ws.close(1000, "".padEnd(124, "o")));
+  };
 });
 
 Deno.test("echo string", () => {
-  const ws = new WebSocket("ws://localhost:8080");
+  const ws = new WebSocket("ws://localhost:4242");
   ws.onerror = (): void => fail();
   ws.onopen = (): void => ws.send("foo");
   ws.onmessage = (e): void => assertEquals(e.data, "foo");
 });
 
 Deno.test("echo blob with binaryType blob", () => {
-  const ws = new WebSocket("ws://localhost:8080");
+  const ws = new WebSocket("ws://localhost:4242");
   const blob = new Blob(["foo"]);
   ws.onerror = (): void => fail();
   ws.onopen = (): void => ws.send(blob);
@@ -74,7 +77,7 @@ Deno.test("echo blob with binaryType blob", () => {
 });
 
 Deno.test("echo blob with binaryType arraybuffer", () => {
-  const ws = new WebSocket("ws://localhost:8080");
+  const ws = new WebSocket("ws://localhost:4242");
   ws.binaryType = "arraybuffer";
   const blob = new Blob(["foo"]);
   ws.onerror = (): void => fail();
@@ -84,7 +87,7 @@ Deno.test("echo blob with binaryType arraybuffer", () => {
 });
 
 Deno.test("echo uint8array with binaryType blob", () => {
-  const ws = new WebSocket("ws://localhost:8080");
+  const ws = new WebSocket("ws://localhost:4242");
   const uint = new Uint8Array([102, 111, 111]);
   ws.onerror = (): void => fail();
   ws.onopen = (): void => ws.send(uint);
@@ -93,7 +96,7 @@ Deno.test("echo uint8array with binaryType blob", () => {
 });
 
 Deno.test("echo uint8array with binaryType arraybuffer", () => {
-  const ws = new WebSocket("ws://localhost:8080");
+  const ws = new WebSocket("ws://localhost:4242");
   ws.binaryType = "arraybuffer";
   const uint = new Uint8Array([102, 111, 111]);
   ws.onerror = (): void => fail();
@@ -102,7 +105,7 @@ Deno.test("echo uint8array with binaryType arraybuffer", () => {
 });
 
 Deno.test("echo arraybuffer with binaryType blob", () => {
-  const ws = new WebSocket("ws://localhost:8080");
+  const ws = new WebSocket("ws://localhost:4242");
   const buffer = new ArrayBuffer(3);
   ws.onerror = (): void => fail();
   ws.onopen = (): void => ws.send(buffer);
@@ -111,7 +114,7 @@ Deno.test("echo arraybuffer with binaryType blob", () => {
 });
 
 Deno.test("echo arraybuffer with binaryType arraybuffer", () => {
-  const ws = new WebSocket("ws://localhost:8080");
+  const ws = new WebSocket("ws://localhost:4242");
   ws.binaryType = "arraybuffer";
   const buffer = new ArrayBuffer(3);
   ws.onerror = (): void => fail();
@@ -120,7 +123,7 @@ Deno.test("echo arraybuffer with binaryType arraybuffer", () => {
 });
 
 Deno.test("send setinterval", () => {
-  const ws = new WebSocket("ws://localhost:8080");
+  const ws = new WebSocket("ws://localhost:4242");
   ws.onerror = (): void => fail();
   ws.onopen = (): void => {
     let i = 0;
