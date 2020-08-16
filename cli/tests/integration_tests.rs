@@ -50,7 +50,7 @@ fn std_lint() {
 
 #[test]
 fn x_deno_warning() {
-  let g = util::http_server();
+  let _g = util::http_server();
   let output = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("run")
@@ -67,7 +67,6 @@ fn x_deno_warning() {
   let stderr_str = std::str::from_utf8(&output.stderr).unwrap().trim();
   assert_eq!("testing x-deno-warning header", stdout_str);
   assert!(util::strip_ansi_codes(stderr_str).contains("Warning foobar"));
-  drop(g);
 }
 
 #[test]
@@ -283,7 +282,7 @@ fn benchmark_test() {
 #[test]
 fn deno_dir_test() {
   use std::fs::remove_dir_all;
-  let g = util::http_server();
+  let _g = util::http_server();
   let deno_dir = TempDir::new().expect("tempdir fail");
   remove_dir_all(deno_dir.path()).unwrap();
 
@@ -316,13 +315,11 @@ fn deno_dir_test() {
   assert!(deno_dir.path().join("gen").is_dir());
 
   remove_dir_all(deno_dir.path()).unwrap();
-  drop(deno_dir);
-  drop(g);
 }
 
 #[test]
 fn cache_test() {
-  let g = util::http_server();
+  let _g = util::http_server();
   let deno_dir = TempDir::new().expect("tempdir fail");
   let module_url =
     url::Url::parse("http://localhost:4545/cli/tests/006_url_imports.ts")
@@ -339,7 +336,6 @@ fn cache_test() {
   assert_eq!(out, "");
   // TODO(ry) Is there some way to check that the file was actually cached in
   // DENO_DIR?
-  drop(g);
 }
 
 #[test]
@@ -554,7 +550,7 @@ fn installer_test_local_module_run() {
 
 #[test]
 fn installer_test_remote_module_run() {
-  let g = util::http_server();
+  let _g = util::http_server();
   let temp_dir = TempDir::new().expect("tempdir fail");
   let bin_dir = temp_dir.path().join("bin");
   std::fs::create_dir(&bin_dir).unwrap();
@@ -587,12 +583,11 @@ fn installer_test_remote_module_run() {
     .unwrap()
     .trim()
     .ends_with("hello, foo"));
-  drop(g)
 }
 
 #[test]
 fn js_unit_tests() {
-  let g = util::http_server();
+  let _g = util::http_server();
   let mut deno = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("run")
@@ -606,7 +601,6 @@ fn js_unit_tests() {
     .spawn()
     .expect("failed to spawn script");
   let status = deno.wait().expect("failed to wait for the child process");
-  drop(g);
   assert_eq!(Some(0), status.code());
   assert!(status.success());
 }
@@ -1399,7 +1393,7 @@ itest!(deno_test_only {
 
 #[test]
 fn workers() {
-  let g = util::http_server();
+  let _g = util::http_server();
   let status = util::deno_cmd()
     .current_dir(util::tests_path())
     .arg("test")
@@ -1413,7 +1407,6 @@ fn workers() {
     .wait()
     .unwrap();
   assert!(status.success());
-  drop(g);
 }
 
 #[test]
@@ -1925,7 +1918,7 @@ itest!(import_meta {
 });
 
 itest!(main_module {
-  args: "run --quiet --unstable --allow-read --reload main_module.ts",
+  args: "run --quiet --allow-read --reload main_module.ts",
   output: "main_module.ts.out",
 });
 
@@ -2065,6 +2058,11 @@ itest!(wasm {
 itest!(wasm_async {
   args: "run wasm_async.js",
   output: "wasm_async.out",
+});
+
+itest!(wasm_streaming {
+  args: "run wasm_streaming.js",
+  output: "wasm_streaming.out",
 });
 
 itest!(wasm_unreachable {
@@ -2223,8 +2221,21 @@ itest!(deno_lint {
   exit_code: 1,
 });
 
+itest!(deno_lint_json {
+  args:
+    "lint --unstable --json lint/file1.js lint/file2.ts lint/ignored_file.ts lint/malformed.js",
+  output: "lint/expected_json.out",
+  exit_code: 1,
+});
+
+itest!(deno_lint_ignore {
+  args: "lint --unstable --ignore=lint/file1.js,lint/malformed.js lint/",
+  output: "lint/expected_ignore.out",
+  exit_code: 1,
+});
+
 itest!(deno_lint_glob {
-  args: "lint --unstable lint/",
+  args: "lint --unstable --ignore=lint/malformed.js lint/",
   output: "lint/expected_glob.out",
   exit_code: 1,
 });
@@ -2244,7 +2255,7 @@ itest!(import_file_with_colon {
 #[test]
 fn cafile_env_fetch() {
   use url::Url;
-  let g = util::http_server();
+  let _g = util::http_server();
   let deno_dir = TempDir::new().expect("tempdir fail");
   let module_url =
     Url::parse("https://localhost:5545/cli/tests/cafile_url_imports.ts")
@@ -2259,13 +2270,12 @@ fn cafile_env_fetch() {
     .output()
     .expect("Failed to spawn script");
   assert!(output.status.success());
-  drop(g);
 }
 
 #[test]
 fn cafile_fetch() {
   use url::Url;
-  let g = util::http_server();
+  let _g = util::http_server();
   let deno_dir = TempDir::new().expect("tempdir fail");
   let module_url =
     Url::parse("http://localhost:4545/cli/tests/cafile_url_imports.ts")
@@ -2283,12 +2293,11 @@ fn cafile_fetch() {
   assert!(output.status.success());
   let out = std::str::from_utf8(&output.stdout).unwrap();
   assert_eq!(out, "");
-  drop(g);
 }
 
 #[test]
 fn cafile_install_remote_module() {
-  let g = util::http_server();
+  let _g = util::http_server();
   let temp_dir = TempDir::new().expect("tempdir fail");
   let bin_dir = temp_dir.path().join("bin");
   std::fs::create_dir(&bin_dir).unwrap();
@@ -2324,15 +2333,11 @@ fn cafile_install_remote_module() {
     .expect("failed to spawn script");
   let stdout = std::str::from_utf8(&output.stdout).unwrap().trim();
   assert!(stdout.ends_with("foo"));
-
-  drop(deno_dir);
-  drop(temp_dir);
-  drop(g)
 }
 
 #[test]
 fn cafile_bundle_remote_exports() {
-  let g = util::http_server();
+  let _g = util::http_server();
 
   // First we have to generate a bundle of some remote module that has exports.
   let mod1 = "https://localhost:5545/cli/tests/subdir/mod1.ts";
@@ -2374,8 +2379,6 @@ fn cafile_bundle_remote_exports() {
     .trim()
     .ends_with("Hello"));
   assert_eq!(output.stderr, b"");
-
-  drop(g)
 }
 
 #[test]
@@ -3157,7 +3160,7 @@ async fn inspector_runtime_evaluate_does_not_crash() {
     }
   }
 
-  std::mem::drop(stdin);
+  drop(stdin);
   child.wait().unwrap();
 }
 

@@ -1896,7 +1896,7 @@ declare namespace Deno {
   export interface RunOptions {
     /** Arguments to pass. Note, the first element needs to be a path to the
      * binary */
-    cmd: string[];
+    cmd: string[] | [URL, ...string[]];
     cwd?: string;
     env?: {
       [key: string]: string;
@@ -2025,4 +2025,7 @@ declare namespace Deno {
    * called when `Deno.inspect()` is called, or when the object is logged to
    * the console. */
   export const customInspect: unique symbol;
+
+  /** The URL of the entrypoint module entered from the command-line. */
+  export const mainModule: string;
 }

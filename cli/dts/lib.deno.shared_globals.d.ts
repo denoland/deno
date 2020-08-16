@@ -569,6 +569,48 @@ declare const File: {
   new (fileBits: BlobPart[], fileName: string, options?: FilePropertyBag): File;
 };
 
+interface FileReaderEventMap {
+  "abort": ProgressEvent<FileReader>;
+  "error": ProgressEvent<FileReader>;
+  "load": ProgressEvent<FileReader>;
+  "loadend": ProgressEvent<FileReader>;
+  "loadstart": ProgressEvent<FileReader>;
+  "progress": ProgressEvent<FileReader>;
+}
+
+/** Lets web applications asynchronously read the contents of files (or raw data buffers) stored on the user's computer, using File or Blob objects to specify the file or data to read. */
+interface FileReader extends EventTarget {
+  readonly error: DOMException | null;
+  onabort: ((this: FileReader, ev: ProgressEvent<FileReader>) => any) | null;
+  onerror: ((this: FileReader, ev: ProgressEvent<FileReader>) => any) | null;
+  onload: ((this: FileReader, ev: ProgressEvent<FileReader>) => any) | null;
+  onloadend: ((this: FileReader, ev: ProgressEvent<FileReader>) => any) | null;
+  onloadstart: ((this: FileReader, ev: ProgressEvent<FileReader>) => any) | null;
+  onprogress: ((this: FileReader, ev: ProgressEvent<FileReader>) => any) | null;
+  readonly readyState: number;
+  readonly result: string | ArrayBuffer | null;
+  abort(): void;
+  readAsArrayBuffer(blob: Blob): void;
+  readAsBinaryString(blob: Blob): void;
+  readAsDataURL(blob: Blob): void;
+  readAsText(blob: Blob, encoding?: string): void;
+  readonly DONE: number;
+  readonly EMPTY: number;
+  readonly LOADING: number;
+  addEventListener<K extends keyof FileReaderEventMap>(type: K, listener: (this: FileReader, ev: FileReaderEventMap[K]) => any, options?: boolean | AddEventListenerOptions): void;
+  addEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions): void;
+  removeEventListener<K extends keyof FileReaderEventMap>(type: K, listener: (this: FileReader, ev: FileReaderEventMap[K]) => any, options?: boolean | EventListenerOptions): void;
+  removeEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | EventListenerOptions): void;
+}
+
+declare var FileReader: {
+  prototype: FileReader;
+  new(): FileReader;
+  readonly DONE: number;
+  readonly EMPTY: number;
+  readonly LOADING: number;
+};
+
 declare const isConsoleInstance: unique symbol;
 
 declare class Console {
@@ -1234,6 +1276,12 @@ interface PostMessageOptions {
   transfer?: any[];
 }
 
+interface ProgressEventInit extends EventInit {
+  lengthComputable?: boolean;
+  loaded?: number;
+  total?: number;
+}
+
 declare class Worker extends EventTarget {
   onerror?: (e: ErrorEvent) => void;
   onmessage?: (e: MessageEvent) => void;
@@ -1408,6 +1456,11 @@ interface ProgressEvent<T extends EventTarget = EventTarget> extends Event {
   readonly target: T | null;
   readonly total: number;
 }
+
+declare var ProgressEvent: {
+  prototype: ProgressEvent;
+  new(type:string, eventInitDict?: ProgressEventInit): ProgressEvent;
+};
 
 interface CustomEventInit<T = any> extends EventInit {
   detail?: T;

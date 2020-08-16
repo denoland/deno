@@ -1,5 +1,5 @@
 {
   "compilerOptions": {
-    "importsNotUsedAsValues": "error"
+    "isolatedModules": true
   }
 }

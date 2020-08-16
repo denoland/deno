@@ -248,7 +248,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_fetch_string() {
-    let http_server_guard = test_util::http_server();
+    let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
     let url =
       Url::parse("http://127.0.0.1:4545/cli/tests/fixture.json").unwrap();
@@ -262,12 +262,11 @@ mod tests {
     } else {
       panic!();
     }
-    drop(http_server_guard);
   }
 
   #[tokio::test]
   async fn test_fetch_gzip() {
-    let http_server_guard = test_util::http_server();
+    let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
     let url = Url::parse(
       "http://127.0.0.1:4545/cli/tests/053_import_compression/gziped",
@@ -286,12 +285,11 @@ mod tests {
     } else {
       panic!();
     }
-    drop(http_server_guard);
   }
 
   #[tokio::test]
   async fn test_fetch_with_etag() {
-    let http_server_guard = test_util::http_server();
+    let _http_server_guard = test_util::http_server();
     let url = Url::parse("http://127.0.0.1:4545/etag_script.ts").unwrap();
     let client = create_http_client(None).unwrap();
     let result = fetch_once(client.clone(), &url, None).await;
@@ -310,13 +308,11 @@ mod tests {
     let res =
       fetch_once(client, &url, Some("33a64df551425fcc55e".to_string())).await;
     assert_eq!(res.unwrap(), FetchOnceResult::NotModified);
-
-    drop(http_server_guard);
   }
 
   #[tokio::test]
   async fn test_fetch_brotli() {
-    let http_server_guard = test_util::http_server();
+    let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
     let url = Url::parse(
       "http://127.0.0.1:4545/cli/tests/053_import_compression/brotli",
@@ -336,12 +332,11 @@ mod tests {
     } else {
       panic!();
     }
-    drop(http_server_guard);
   }
 
   #[tokio::test]
   async fn test_fetch_once_with_redirect() {
-    let http_server_guard = test_util::http_server();
+    let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
     let url =
       Url::parse("http://127.0.0.1:4546/cli/tests/fixture.json").unwrap();
@@ -355,7 +350,6 @@ mod tests {
     } else {
       panic!();
     }
-    drop(http_server_guard);
   }
 
   #[test]
@@ -398,7 +392,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_fetch_with_cafile_string() {
-    let http_server_guard = test_util::http_server();
+    let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
     let url =
       Url::parse("https://localhost:5545/cli/tests/fixture.json").unwrap();
@@ -419,12 +413,11 @@ mod tests {
     } else {
       panic!();
     }
-    drop(http_server_guard);
   }
 
   #[tokio::test]
   async fn test_fetch_with_cafile_gzip() {
-    let http_server_guard = test_util::http_server();
+    let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
     let url = Url::parse(
       "https://localhost:5545/cli/tests/053_import_compression/gziped",
@@ -449,12 +442,11 @@ mod tests {
     } else {
       panic!();
     }
-    drop(http_server_guard);
   }
 
   #[tokio::test]
   async fn test_fetch_with_cafile_with_etag() {
-    let http_server_guard = test_util::http_server();
+    let _http_server_guard = test_util::http_server();
     let url = Url::parse("https://localhost:5545/etag_script.ts").unwrap();
     let client = create_http_client(Some(String::from(
       test_util::root_path()
@@ -480,13 +472,11 @@ mod tests {
     let res =
       fetch_once(client, &url, Some("33a64df551425fcc55e".to_string())).await;
     assert_eq!(res.unwrap(), FetchOnceResult::NotModified);
-
-    drop(http_server_guard);
   }
 
   #[tokio::test]
   async fn test_fetch_with_cafile_brotli() {
-    let http_server_guard = test_util::http_server();
+    let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
     let url = Url::parse(
       "https://localhost:5545/cli/tests/053_import_compression/brotli",
@@ -512,6 +502,5 @@ mod tests {
     } else {
       panic!();
     }
-    drop(http_server_guard);
   }
 }

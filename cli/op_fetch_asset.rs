@@ -4,7 +4,6 @@
 pub use deno_core::v8_set_flags;
 use deno_core::CoreIsolateState;
 use deno_core::Op;
-use deno_core::OpDispatcher;
 use deno_core::ZeroCopyBuf;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -88,7 +87,7 @@ fn get_asset(name: &str) -> Option<&'static str> {
 /// CoreIsolate.
 pub fn op_fetch_asset<S: ::std::hash::BuildHasher>(
   custom_assets: HashMap<String, PathBuf, S>,
-) -> impl OpDispatcher {
+) -> impl Fn(&mut deno_core::CoreIsolateState, &mut [ZeroCopyBuf]) -> Op {
   for (_, path) in custom_assets.iter() {
     println!("cargo:rerun-if-changed={}", path.display());
   }

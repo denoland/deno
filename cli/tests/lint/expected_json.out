@@ -1,0 +1,43 @@
+{
+  "diagnostics": [
+    {
+      "location": {
+        "filename": "[WILDCARD]",
+        "line": 1,
+        "col": 0
+      },
+      "message": "Ignore directive requires lint rule code",
+      "code": "ban-untagged-ignore",
+      "line_src": "// deno-lint-ignore",
+      "snippet_length": 19
+    },
+    {
+      "location": {
+        "filename": "[WILDCARD]",
+        "line": 2,
+        "col": 14
+      },
+      "message": "Empty block statement",
+      "code": "no-empty",
+      "line_src": "while (false) {}",
+      "snippet_length": 2
+    },
+    {
+      "location": {
+        "filename": "[WILDCARD]",
+        "line": 3,
+        "col": 12
+      },
+      "message": "Empty block statement",
+      "code": "no-empty",
+      "line_src": "} catch (e) {}",
+      "snippet_length": 2
+    }
+  ],
+  "errors": [
+    {
+      "file_path": "[WILDCARD]malformed.js",
+      "message": "Expected RBrace, got None at [WILDCARD]malformed.js:4:15"
+    }
+  ]
+}
