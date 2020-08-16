@@ -987,12 +987,12 @@ mod tests {
     let perms2 = Permissions {
       read: UnaryPermission {
         global_state: PermissionState::Prompt,
-        granted_list: [PathBuf::from("/foo")].iter().cloned().collect(),
+        granted_list: resolve_fs_allowlist(&[PathBuf::from("/foo")]),
         ..Default::default()
       },
       write: UnaryPermission {
         global_state: PermissionState::Prompt,
-        granted_list: [PathBuf::from("/foo")].iter().cloned().collect(),
+        granted_list: resolve_fs_allowlist(&[PathBuf::from("/foo")]),
         ..Default::default()
       },
       net: UnaryPermission {
@@ -1093,12 +1093,12 @@ mod tests {
     let mut perms = Permissions {
       read: UnaryPermission {
         global_state: PermissionState::Prompt,
-        granted_list: [PathBuf::from("/foo")].iter().cloned().collect(),
+        granted_list: resolve_fs_allowlist(&[PathBuf::from("/foo")]),
         ..Default::default()
       },
       write: UnaryPermission {
         global_state: PermissionState::Prompt,
-        granted_list: [PathBuf::from("/foo")].iter().cloned().collect(),
+        granted_list: resolve_fs_allowlist(&[PathBuf::from("/foo")]),
         ..Default::default()
       },
       net: UnaryPermission {
