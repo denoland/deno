@@ -235,7 +235,7 @@ comments should be written as:
 /** This is a good single line JSDoc. */
 ```
 
-And not
+And not:
 
 ```ts
 /**
