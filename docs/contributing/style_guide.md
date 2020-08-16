@@ -291,7 +291,7 @@ Deno.test("myTestFunction", function () {
 Top level functions should use the `function` keyword. Arrow syntax should be
 limited to closures.
 
-Bad
+Bad:
 
 ```ts
 export const foo = (): string => {
@@ -299,7 +299,7 @@ export const foo = (): string => {
 };
 ```
 
-Good
+Good:
 
 ```ts
 export function foo(): string {
