@@ -193,7 +193,7 @@ underscore. By convention, only files in its own directory should import it.
 We strive for complete documentation. Every exported symbol ideally should have
 a documentation line.
 
-If possible, use a single line for the JS Doc. Example:
+If possible, use a single line for the JSDoc. Example:
 
 ```ts
 /** foo does bar. */
