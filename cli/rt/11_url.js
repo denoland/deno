@@ -883,7 +883,7 @@
 
   function encodeSearchParam(s) {
     return [...s].map((c) => (charInFormUrlencodedSet(c) ? encodeChar(c) : c))
-      .join("").replace("%20", "+");
+      .join("").replace(/%20/g, "+");
   }
 
   window.__bootstrap.url = {
