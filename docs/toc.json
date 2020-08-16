@@ -19,6 +19,7 @@
     "children": {
       "stability": "Stability",
       "program_lifecycle": "Program lifecycle",
+      "permission_apis": "Permission APIs",
       "compiler_apis": "Compiler APIs",
       "workers": "Workers"
     }
@@ -75,7 +76,6 @@
       "file_server": "File server",
       "tcp_echo": "TCP echo server",
       "subprocess": "Creating a subprocess",
-      "permissions": "Inspecting and revoking permissions",
       "os_signals": "OS Signals",
       "file_system_events": "File system events",
       "testing_if_main": "Checking if file is main"
