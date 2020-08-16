@@ -49,7 +49,7 @@ https://chromium.googlesource.com/chromium/src/+/master/styleguide/inclusive_cod
 
 Follow Rust conventions and be consistent with existing code.
 
-## Typescript
+## TypeScript
 
 The TypeScript portions of the codebase include `cli/js` for the built-ins and
 the standard library `std`.
