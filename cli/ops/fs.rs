@@ -212,27 +212,29 @@ fn op_open_sync(
   Ok(json!(rid))
 }
 
-async fn op_open_async(
+fn op_open_async(
   isolate_state: &mut CoreIsolateState,
   state: &State,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, OpError> {
+) -> impl futures::future::Future<Output = Result<Value, OpError>> {
   let resource_table = isolate_state.resource_table.clone();
-  let state = state.clone();
-  let (path, open_options) = open_helper(&state, args)?;
-  let tokio_file = tokio::fs::OpenOptions::from(open_options)
-    .open(path)
-    .await?;
-  let mut resource_table = resource_table.borrow_mut();
-  let rid = resource_table.add(
-    "fsFile",
-    Box::new(StreamResourceHolder::new(StreamResource::FsFile(Some((
-      tokio_file,
-      FileMetadata::default(),
-    ))))),
-  );
-  Ok(json!(rid))
+  let open_info = open_helper(state, args);
+  async move {
+    let (path, open_options) = open_info?;
+    let tokio_file = tokio::fs::OpenOptions::from(open_options)
+      .open(path)
+      .await?;
+    let mut resource_table = resource_table.borrow_mut();
+    let rid = resource_table.add(
+      "fsFile",
+      Box::new(StreamResourceHolder::new(StreamResource::FsFile(Some((
+        tokio_file,
+        FileMetadata::default(),
+      ))))),
+    );
+    Ok(json!(rid))
+  }
 }
 
 #[derive(Deserialize)]

@@ -6,12 +6,14 @@ use crate::http_util::create_http_client;
 use crate::import_map::ImportMap;
 use crate::metrics::Metrics;
 use crate::op_error::OpError;
+use crate::ops::AsyncArgs;
 use crate::ops::JsonOp;
 use crate::ops::MinimalOp;
 use crate::permissions::Permissions;
 use crate::tsc::TargetLib;
 use crate::web_worker::WebWorkerHandle;
 use deno_core::Buf;
+use deno_core::CoreIsolateState;
 use deno_core::ErrBox;
 use deno_core::ModuleLoadId;
 use deno_core::ModuleLoader;
@@ -89,8 +91,6 @@ impl State {
   {
     let state = self.clone();
 
-    use deno_core::CoreIsolateState;
-
     move |isolate_state: &mut CoreIsolateState,
           zero_copy: &mut [ZeroCopyBuf]| {
       assert!(!zero_copy.is_empty(), "Expected JSON string at position 0");
@@ -116,23 +116,14 @@ impl State {
   pub fn stateful_json_op_async<D, F>(
     &self,
     dispatcher: D,
-  ) -> impl Fn(&mut deno_core::CoreIsolateState, &mut [ZeroCopyBuf]) -> Op
+  ) -> impl Fn(&mut CoreIsolateState, &mut [ZeroCopyBuf]) -> Op
   where
-    D: Fn(
-      &mut deno_core::CoreIsolateState,
-      &State,
-      Value,
-      &mut [ZeroCopyBuf],
-    ) -> F,
-    F: Future<Output = Result<Value, OpError>> + 'static,
+    D: Fn(&mut CoreIsolateState, &State, Value, &mut [ZeroCopyBuf]) -> F,
+    F: Future<Output = Result<Value, OpError>> + Sized + 'static,
   {
     let state = self.clone();
 
-    use crate::ops::AsyncArgs;
-    use deno_core::CoreIsolateState;
-
-    move |isolate_state: &mut CoreIsolateState,
-          zero_copy: &mut [ZeroCopyBuf]| {
+    move |isolate_state, zero_copy| {
       assert!(!zero_copy.is_empty(), "Expected JSON string at position 0");
       let async_args: AsyncArgs = match serde_json::from_slice(&zero_copy[0]) {
         Ok(args) => args,
