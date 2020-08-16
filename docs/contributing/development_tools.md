@@ -34,7 +34,7 @@ Format the code:
 
 ### Profiling
 
-To start profiling,
+To start profiling:
 
 ```sh
 # Make sure we're only building release.
