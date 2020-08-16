@@ -90,7 +90,7 @@ When designing function interfaces, stick to the following rules.
    Other arguments can be objects, but they must be distinguishable from a
    'plain' Object runtime, by having either:
 
-   - a distinguishing prototype (e.g. `Array`, `Map`, `Date`, `class MyThing`)
+   - a distinguishing prototype (e.g. `Array`, `Map`, `Date`, `class MyThing`).
    - a well-known symbol property (e.g. an iterable with `Symbol.iterator`).
 
    This allows the API to evolve in a backwards compatible way, even when the
