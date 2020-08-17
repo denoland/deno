@@ -91,6 +91,12 @@ unitTest(async function blobStream(): Promise<void> {
   assertEquals(decode(bytes), "Hello World");
 });
 
+unitTest(async function blobArrayBuffer(): Promise<void> {
+  const uint = new Uint8Array([102, 111, 111]);
+  const blob = new Blob([uint]);
+  assertEquals(await blob.arrayBuffer(), uint.buffer);
+});
+
 unitTest(function blobConstructorNameIsBlob(): void {
   const blob = new Blob();
   assertEquals(blob.constructor.name, "Blob");

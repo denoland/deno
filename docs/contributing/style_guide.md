@@ -49,7 +49,7 @@ https://chromium.googlesource.com/chromium/src/+/master/styleguide/inclusive_cod
 
 Follow Rust conventions and be consistent with existing code.
 
-## Typescript
+## TypeScript
 
 The TypeScript portions of the codebase include `cli/js` for the built-ins and
 the standard library `std`.
@@ -90,7 +90,7 @@ When designing function interfaces, stick to the following rules.
    Other arguments can be objects, but they must be distinguishable from a
    'plain' Object runtime, by having either:
 
-   - a distinguishing prototype (e.g. `Array`, `Map`, `Date`, `class MyThing`)
+   - a distinguishing prototype (e.g. `Array`, `Map`, `Date`, `class MyThing`).
    - a well-known symbol property (e.g. an iterable with `Symbol.iterator`).
 
    This allows the API to evolve in a backwards compatible way, even when the
@@ -193,7 +193,7 @@ underscore. By convention, only files in its own directory should import it.
 We strive for complete documentation. Every exported symbol ideally should have
 a documentation line.
 
-If possible, use a single line for the JS Doc. Example:
+If possible, use a single line for the JSDoc. Example:
 
 ```ts
 /** foo does bar. */
@@ -235,7 +235,7 @@ comments should be written as:
 /** This is a good single line JSDoc. */
 ```
 
-And not
+And not:
 
 ```ts
 /**
@@ -291,7 +291,7 @@ Deno.test("myTestFunction", function () {
 Top level functions should use the `function` keyword. Arrow syntax should be
 limited to closures.
 
-Bad
+Bad:
 
 ```ts
 export const foo = (): string => {
@@ -299,7 +299,7 @@ export const foo = (): string => {
 };
 ```
 
-Good
+Good:
 
 ```ts
 export function foo(): string {

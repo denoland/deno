@@ -218,7 +218,7 @@ class Parser {
     }
 
     // If binary / octal / hex
-    const hex = /(0(?:x|o|b)[0-9a-f_]*)[^#]/gi.exec(dataString);
+    const hex = /^(0(?:x|o|b)[0-9a-f_]*)[^#]/gi.exec(dataString);
     if (hex && hex[0]) {
       return hex[0].trim();
     }
