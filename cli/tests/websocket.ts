@@ -83,7 +83,7 @@ Deno.test("echo blob with binaryType arraybuffer", () => {
   ws.onerror = (): void => fail();
   ws.onopen = (): void => ws.send(blob);
   ws.onmessage = async (e): Promise<void> =>
-    assertEquals(await e.data.arrayBuffer(), await blob.arrayBuffer());
+    assertEquals(await e.data, await blob.arrayBuffer());
 });
 
 Deno.test("echo uint8array with binaryType blob", () => {
