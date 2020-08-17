@@ -90,9 +90,9 @@ impl Default for PermissionState {
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 pub struct UnaryPermission<T: Eq + Hash> {
-  global_state: PermissionState,
-  granted_list: HashSet<T>,
-  denied_list: HashSet<T>,
+  pub global_state: PermissionState,
+  pub granted_list: HashSet<T>,
+  pub denied_list: HashSet<T>,
 }
 
 impl<T: Eq + Hash> UnaryPermission<T> {
