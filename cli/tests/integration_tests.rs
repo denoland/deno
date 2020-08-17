@@ -2253,8 +2253,8 @@ itest!(import_file_with_colon {
 });
 
 itest!(info_recursive_modules {
-  args: "info --quiet recursive_imports/A.ts",
-  output: "info_recursive_imports.out",
+  args: "info --quiet info_recursive_imports_test.ts",
+  output: "info_recursive_imports_test.out",
   exit_code: 0,
 });
 
