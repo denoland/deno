@@ -107,3 +107,181 @@ pub struct DocNode {
   #[serde(skip_serializing_if = "Option::is_none")]
   pub import_def: Option<ImportDef>,
 }
+
+impl DocNode {
+  pub fn function(
+    name: String,
+    location: Location,
+    js_doc: Option<String>,
+    fn_def: super::function::FunctionDef,
+  ) -> Self {
+    Self {
+      kind: DocNodeKind::Function,
+      name,
+      location,
+      js_doc,
+      function_def: Some(fn_def),
+      variable_def: None,
+      enum_def: None,
+      class_def: None,
+      type_alias_def: None,
+      namespace_def: None,
+      interface_def: None,
+      import_def: None,
+    }
+  }
+
+  pub fn variable(
+    name: String,
+    location: Location,
+    js_doc: Option<String>,
+    var_def: super::variable::VariableDef,
+  ) -> Self {
+    Self {
+      kind: DocNodeKind::Variable,
+      name,
+      location,
+      js_doc,
+      function_def: None,
+      variable_def: Some(var_def),
+      enum_def: None,
+      class_def: None,
+      type_alias_def: None,
+      namespace_def: None,
+      interface_def: None,
+      import_def: None,
+    }
+  }
+
+  pub fn r#enum(
+    name: String,
+    location: Location,
+    js_doc: Option<String>,
+    enum_def: super::r#enum::EnumDef,
+  ) -> Self {
+    Self {
+      kind: DocNodeKind::Enum,
+      name,
+      location,
+      js_doc,
+      function_def: None,
+      variable_def: None,
+      enum_def: Some(enum_def),
+      class_def: None,
+      type_alias_def: None,
+      namespace_def: None,
+      interface_def: None,
+      import_def: None,
+    }
+  }
+
+  pub fn class(
+    name: String,
+    location: Location,
+    js_doc: Option<String>,
+    class_def: super::class::ClassDef,
+  ) -> Self {
+    Self {
+      kind: DocNodeKind::Class,
+      name,
+      location,
+      js_doc,
+      function_def: None,
+      variable_def: None,
+      enum_def: None,
+      class_def: Some(class_def),
+      type_alias_def: None,
+      namespace_def: None,
+      interface_def: None,
+      import_def: None,
+    }
+  }
+
+  pub fn type_alias(
+    name: String,
+    location: Location,
+    js_doc: Option<String>,
+    type_alias_def: super::type_alias::TypeAliasDef,
+  ) -> Self {
+    Self {
+      kind: DocNodeKind::TypeAlias,
+      name,
+      location,
+      js_doc,
+      function_def: None,
+      variable_def: None,
+      enum_def: None,
+      class_def: None,
+      type_alias_def: Some(type_alias_def),
+      namespace_def: None,
+      interface_def: None,
+      import_def: None,
+    }
+  }
+
+  pub fn namespace(
+    name: String,
+    location: Location,
+    js_doc: Option<String>,
+    namespace_def: super::namespace::NamespaceDef,
+  ) -> Self {
+    Self {
+      kind: DocNodeKind::Namespace,
+      name,
+      location,
+      js_doc,
+      function_def: None,
+      variable_def: None,
+      enum_def: None,
+      class_def: None,
+      type_alias_def: None,
+      namespace_def: Some(namespace_def),
+      interface_def: None,
+      import_def: None,
+    }
+  }
+
+  pub fn interface(
+    name: String,
+    location: Location,
+    js_doc: Option<String>,
+    interface_def: super::interface::InterfaceDef,
+  ) -> Self {
+    Self {
+      kind: DocNodeKind::Interface,
+      name,
+      location,
+      js_doc,
+      function_def: None,
+      variable_def: None,
+      enum_def: None,
+      class_def: None,
+      type_alias_def: None,
+      namespace_def: None,
+      interface_def: Some(interface_def),
+      import_def: None,
+    }
+  }
+
+  pub fn import(
+    name: String,
+    location: Location,
+    js_doc: Option<String>,
+    import_def: ImportDef,
+  ) -> Self {
+    Self {
+      kind: DocNodeKind::Import,
+      name,
+      location,
+      js_doc,
+      function_def: None,
+      variable_def: None,
+      enum_def: None,
+      class_def: None,
+      type_alias_def: None,
+      namespace_def: None,
+      interface_def: None,
+      import_def: Some(import_def),
+    }
+  }
+}
