@@ -29,6 +29,8 @@ Deno.test({
           "whitespace\n   is preserved.",
         withApostrophe: "What if it's not?",
         withSemicolon: `const message = 'hello world';`,
+        withHexNumberLiteral:
+          "Prevent bug from stripping string here ->0xabcdef",
       },
     };
     const actual = parseFile(path.join(testFilesDir, "string.toml"));
