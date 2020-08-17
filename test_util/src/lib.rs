@@ -767,7 +767,7 @@ impl CheckOutputIntegrationTest {
   }
 }
 
-fn wildcard_match(pattern: &str, s: &str) -> bool {
+pub fn wildcard_match(pattern: &str, s: &str) -> bool {
   pattern_match(pattern, s, "[WILDCARD]")
 }
 

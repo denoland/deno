@@ -1,3 +1,6 @@
-console.log(await Deno.permissions.revoke({ name: "read" }));
-console.log(await Deno.permissions.query({ name: "read", path: "foo" }));
-console.log(await Deno.permissions.query({ name: "read", path: "bar" }));
+const status1 = await Deno.permissions.revoke({ name: "read" });
+const status2 = await Deno.permissions.query({ name: "read", path: "foo" });
+const status3 = await Deno.permissions.query({ name: "read", path: "bar" });
+console.log(status1);
+console.log(status2);
+console.log(status3);

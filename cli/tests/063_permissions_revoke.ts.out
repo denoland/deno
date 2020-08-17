@@ -1,4 +1,3 @@
-[WILDCARD]
-PermissionStatus { state: "prompt" }
+[WILDCARD]PermissionStatus { state: "prompt" }
 PermissionStatus { state: "granted" }
 PermissionStatus { state: "prompt" }
