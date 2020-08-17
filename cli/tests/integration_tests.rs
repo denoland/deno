@@ -3174,7 +3174,7 @@ async fn websocket() {
         let (tx, rx) = websocket.split();
         rx.forward(tx).map(|result| {
           if let Err(e) = result {
-            panic!("websocket error: {:?}", e);
+            println!("websocket server error: {:?}", e);
           }
         })
       })

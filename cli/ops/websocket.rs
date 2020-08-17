@@ -5,7 +5,7 @@ use crate::state::State;
 use deno_core::ZeroCopyBuf;
 use deno_core::{CoreIsolate, CoreIsolateState};
 use futures::executor::block_on;
-use futures::future::FutureExt;
+use futures::future::{poll_fn, FutureExt};
 use futures::{SinkExt, StreamExt};
 use http::{Method, Request, Uri};
 use std::borrow::Cow;
@@ -46,14 +46,11 @@ pub fn op_ws_create(
       .body(())
       .unwrap();
     let domain = &uri.host().unwrap().to_string();
-    let port = &uri
-      .port_u16()
-      .or_else(|| match uri.scheme_str() {
-        Some("wss") => Some(443),
-        Some("ws") => Some(80),
-        _ => None,
-      })
-      .unwrap();
+    let port = &uri.port_u16().unwrap_or(match uri.scheme_str() {
+      Some("wss") => 443,
+      Some("ws") => 80,
+      _ => 0,
+    });
     let addr = format!("{}:{}", domain, port);
     let try_socket = TcpStream::connect(addr).await;
     let socket = match try_socket.map_err(Error::Io) {
@@ -168,54 +165,57 @@ pub fn op_ws_next_event(
 ) -> Result<JsonOp, OpError> {
   let args: NextEventArgs = serde_json::from_value(args)?;
   let resource_table = isolate_state.resource_table.clone();
-  let future = async move {
+  let future = poll_fn(move |cx| {
     let mut resource_table = resource_table.borrow_mut();
     let stream = resource_table
       .get_mut::<WebSocketStream<MaybeTlsStream<TcpStream>>>(args.rid)
       .ok_or_else(OpError::bad_resource_id)?;
-    let message = match stream.next().await.unwrap() {
-      Ok(message) => message,
-      Err(e) => match e {
-        Error::ConnectionClosed => {
+
+    stream.poll_next_unpin(cx).map(|val| {
+      match val {
+        Some(val) => {
+          match val {
+            Ok(message) => {
+              match message {
+                Message::Text(text) => Ok(json!({
+                  "type": "string",
+                  "data": text
+                })),
+                Message::Binary(data) => {
+                  Ok(json!({ //TODO: don't use json to send binary data
+                    "type": "binary",
+                    "data": data
+                  }))
+                }
+                Message::Close(frame) => {
+                  let frame = frame.unwrap();
+                  let code: u16 = frame.code.into();
+                  Ok(json!({
+                    "type": "close",
+                    "code": code,
+                    "reason": frame.reason.as_ref()
+                  }))
+                }
+                Message::Ping(_) => Ok(json!({"type": "ping"})),
+                Message::Pong(_) => Ok(json!({"type": "pong"})),
+              }
+            }
+            Err(_) => Ok(json!({
+              "type": "error",
+            })),
+          }
+        }
+        None => {
           resource_table
             .close(args.rid)
             .ok_or_else(OpError::bad_resource_id)?;
-          return Ok(json!({
+          Ok(json!({
             "type": "closed",
-          }));
+          }))
         }
-        _ => {
-          return Ok(json!({
-            "type": "error",
-          }));
-        }
-      },
-    };
-
-    match message {
-      Message::Text(text) => Ok(json!({
-        "type": "string",
-        "data": text
-      })),
-      Message::Binary(data) => {
-        Ok(json!({ //TODO: don't use json to send binary data
-          "type": "binary",
-          "data": data
-        }))
       }
-      Message::Close(frame) => {
-        let frame = frame.unwrap();
-        let code: u16 = frame.code.into();
-        Ok(json!({
-          "type": "close",
-          "code": code,
-          "reason": frame.reason.as_ref()
-        }))
-      }
-      Message::Ping(_) => Ok(json!({"type": "ping"})),
-      Message::Pong(_) => Ok(json!({"type": "pong"})),
-    }
-  };
+    })
+  });
 
   Ok(JsonOp::Async(future.boxed_local()))
 }
