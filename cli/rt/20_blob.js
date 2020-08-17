@@ -151,7 +151,7 @@
           bytes.set(chunk, offs);
           offs += chunk.byteLength;
         }
-        return bytes;
+        return bytes.buffer;
       } else {
         throw new TypeError("Invalid reader result.");
       }
