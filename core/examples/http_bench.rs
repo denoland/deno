@@ -1,14 +1,17 @@
 #[macro_use]
 extern crate log;
 
+use deno_core::serde_json;
 use deno_core::CoreIsolate;
 use deno_core::CoreIsolateState;
+use deno_core::ErrBox;
 use deno_core::Op;
 use deno_core::ResourceTable;
 use deno_core::Script;
 use deno_core::StartupData;
 use deno_core::ZeroCopyBuf;
 use futures::future::poll_fn;
+use futures::future::Future;
 use futures::future::FutureExt;
 use futures::future::TryFuture;
 use futures::future::TryFutureExt;
@@ -152,8 +155,8 @@ pub fn isolate_new() -> CoreIsolate {
     isolate.register_op(name, core_handler);
   }
 
-  register_sync_op(&mut isolate, "listen", op_listen);
-  register_async_op(&mut isolate, "accept", op_accept);
+  isolate.register_op_json_sync("listen", op_listen);
+  isolate.register_op_json_async("accept", op_accept);
   register_async_op(&mut isolate, "read", op_read);
   register_async_op(&mut isolate, "write", op_write);
   register_sync_op(&mut isolate, "close", op_close);
@@ -175,34 +178,40 @@ fn op_close(
 }
 
 fn op_listen(
-  resource_table: Rc<RefCell<ResourceTable>>,
-  _rid: u32,
+  state: &mut CoreIsolateState,
+  _args: serde_json::Value,
   _buf: &mut [ZeroCopyBuf],
-) -> Result<u32, Error> {
+) -> Result<serde_json::Value, ErrBox> {
   debug!("listen");
   let addr = "127.0.0.1:4544".parse::<SocketAddr>().unwrap();
   let std_listener = std::net::TcpListener::bind(&addr)?;
   let listener = TcpListener::from_std(std_listener)?;
-  let resource_table = &mut resource_table.borrow_mut();
+  let resource_table = &mut state.resource_table.borrow_mut();
   let rid = resource_table.add("tcpListener", Box::new(listener));
-  Ok(rid)
+  Ok(serde_json::json!({ "rid": rid }))
 }
 
 fn op_accept(
-  resource_table: Rc<RefCell<ResourceTable>>,
-  rid: u32,
+  state: &mut CoreIsolateState,
+  args: serde_json::Value,
   _buf: &mut [ZeroCopyBuf],
-) -> impl TryFuture<Ok = u32, Error = Error> {
+) -> impl Future<Output = Result<serde_json::Value, ErrBox>> {
+  let rid = args.get("rid").unwrap().as_u64().unwrap() as u32;
   debug!("accept rid={}", rid);
 
+  let resource_table = state.resource_table.clone();
   poll_fn(move |cx| {
     let resource_table = &mut resource_table.borrow_mut();
     let listener = resource_table
       .get_mut::<TcpListener>(rid)
       .ok_or_else(bad_resource)?;
-    listener.poll_accept(cx).map_ok(|(stream, _addr)| {
-      resource_table.add("tcpStream", Box::new(stream))
-    })
+    listener
+      .poll_accept(cx)
+      .map_err(ErrBox::from)
+      .map_ok(|(stream, _addr)| {
+        let rid = resource_table.add("tcpStream", Box::new(stream));
+        serde_json::json!({ "rid": rid })
+      })
   })
 }
 
@@ -265,7 +274,7 @@ fn main() {
     .enable_all()
     .build()
     .unwrap();
-  runtime.block_on(isolate).expect("unexpected isolate error");
+  deno_core::js_check(runtime.block_on(isolate));
 }
 
 #[test]
