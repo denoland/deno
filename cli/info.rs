@@ -49,7 +49,7 @@ impl ModuleDepInfo {
     let module_graph =
       get_module_graph(&global_state, &module_specifier).await?;
     let deps = FileInfoDepTree::new(&module_graph, &module_specifier);
-    let dep_count = get_unique_dep_count(&module_graph);
+    let dep_count = get_unique_dep_count(&module_graph) - 1;
 
     let info = Self {
       local,
@@ -100,12 +100,12 @@ impl std::fmt::Display for ModuleDepInfo {
     }
 
     f.write_fmt(format_args!(
-      "{} {} unique\n",
+      "{} {} unique",
       colors::bold("deps:"),
       self.dep_count
     ))?;
     f.write_fmt(format_args!(
-      "{} ({}, total = {})\n",
+      "\n{} ({}, total = {})",
       self.deps.name,
       human_size(self.deps.size as f64),
       human_size(self.deps.total_size.unwrap() as f64)
@@ -244,7 +244,7 @@ fn print_dep(
   let has_children = !info.deps.is_empty();
 
   formatter.write_fmt(format_args!(
-    "{}{}─{} {}{}\n",
+    "\n{}{}─{} {}{}",
     prefix,
     get_sibling_connector(is_last),
     get_child_connector(has_children),
