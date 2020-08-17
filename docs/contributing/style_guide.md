@@ -1,39 +1,5 @@
 # Deno Style Guide
 
-## Table of Contents
-
-- [Copyright Headers](#copyright-headers)
-- [Use underscores, not dashes in
-  filenames.](#use-underscores-not-dashes-in-filenames)
-- [Add tests for new features.](#add-tests-for-new-features)
-- [TODO Comments](#todo-comments)
-- [Meta-programming is discouraged. Including the use of
-  Proxy.](#meta-programming-is-discouraged-including-the-use-of-proxy)
-- [Inclusive code](#inclusive-code)
-- [Rust](#rust)
-- [Typescript](#typescript)
-  - [Use TypeScript instead of JavaScript.](#use-typescript-instead-of-javascript)
-  - [Use the term "module" instead of "library" or
-    "package".](#use-the-term-module-instead-of-library-or-package)
-  - [Do not use the filename
-    `index.ts`/`index.js`.](#do-not-use-the-filename-indextsindexjs)
-  - [Exported functions: max 2 args, put the rest into an options
-    object.](#exported-functions-max-2-args-put-the-rest-into-an-options-object)
-  - [Minimize dependencies; do not make circular
-    imports.](#minimize-dependencies-do-not-make-circular-imports)
-  - [If a filename starts with an underscore: `_foo.ts`, do not link to
-    it.](#if-a-filename-starts-with-an-underscore-_foots-do-not-link-to-it)
-  - [Use JSDoc for exported symbols.](#use-jsdoc-for-exported-symbols)
-  - [Each module should come with a test
-    module.](#each-module-should-come-with-a-test-module)
-  - [Unit Tests should be explicit.](#unit-tests-should-be-explicit)
-  - [Top level functions should not use arrow
-    syntax.](#top-level-functions-should-not-use-arrow-syntax)
-  - [`std`](#std)
-    - [Do not depend on external code.](#do-not-depend-on-external-code)
-    - [Document and maintain browser
-      compatiblity.](#document-and-maintain-browser-compatiblity)
-
 ## Copyright Headers
 
 Most modules in the repository should have the following copyright header:
