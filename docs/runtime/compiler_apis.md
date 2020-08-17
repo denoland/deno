@@ -202,7 +202,7 @@ errors logged as part of the compilation.
 #### Using the triple slash reference
 
 You do not have to specify the `lib` in the compiler options. Deno also supports
-[the triple-slash reference to a lib](https://www.typescriptlang.org/docs/handbook/triple-slash-directives.html#-reference-lib-).
+[the triple-slash reference to a lib](https://www.typescriptlang.org/docs/handbook/triple-slash-directives.html#-reference-lib-)
 which can be embedded in the contents of the file. For example, if you have a
 `main.ts` like:
 
