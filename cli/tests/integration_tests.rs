@@ -1607,7 +1607,7 @@ fn itest_pty(args: &str, output: &str, input: &[u8]) {
   let fork = Fork::from_ptmx().unwrap();
   if let Ok(mut master) = fork.is_parent() {
     let mut output_actual = String::new();
-    master.write(input).unwrap();
+    master.write_all(input).unwrap();
     master.read_to_string(&mut output_actual).unwrap();
     println!("{}", &output_actual);
     fork.wait().unwrap();
