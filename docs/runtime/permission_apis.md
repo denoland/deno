@@ -113,7 +113,7 @@ console.log(status2);
 
 If the current permission state is "prompt", a prompt will appear on the user's
 terminal asking them if they would like to grant the request. The request for
-`desc1` was granted so the new status is returned and execution will continue as
+`desc1` was granted so its new status is returned and execution will continue as
 if `--allow-read=/foo` was specified on the CLI. The request for `desc2` was
 denied so its permission state is downgraded from "prompt" to "denied".
 
