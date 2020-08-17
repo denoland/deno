@@ -132,7 +132,7 @@
             this.#bufferedAmount += buf.byteLength;
             sendSync("op_ws_send", {
               rid: this.#rid,
-            }, buf);
+            }, new DataView(buf));
           });
         } else if (
           data instanceof Int8Array || data instanceof Int16Array ||
