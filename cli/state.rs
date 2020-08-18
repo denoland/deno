@@ -561,6 +561,11 @@ impl State {
   }
 
   #[inline]
+  pub fn check_hrtime(&self) -> Result<(), OpError> {
+    self.borrow().permissions.check_hrtime()
+  }
+
+  #[inline]
   pub fn check_plugin(&self, filename: &Path) -> Result<(), OpError> {
     self.borrow().permissions.check_plugin(filename)
   }

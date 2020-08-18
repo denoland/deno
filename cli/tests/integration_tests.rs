@@ -1,8 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 #[cfg(unix)]
 extern crate nix;
-#[cfg(unix)]
-extern crate pty;
 extern crate tempfile;
 
 use test_util as util;
@@ -166,8 +164,8 @@ fn no_color() {
 #[test]
 #[ignore]
 pub fn test_raw_tty() {
-  use pty::fork::*;
   use std::io::{Read, Write};
+  use util::pty::fork::*;
 
   let fork = Fork::from_ptmx().unwrap();
 
@@ -1581,12 +1579,6 @@ itest!(_056_make_temp_file_write_perm {
   output: "056_make_temp_file_write_perm.out",
 });
 
-// TODO(lucacasonato): remove --unstable when permissions goes stable
-itest!(_057_revoke_permissions {
-  args: "test -A --unstable 057_revoke_permissions.ts",
-  output: "057_revoke_permissions.out",
-});
-
 itest!(_058_tasks_microtasks_close {
   args: "run --quiet 058_tasks_microtasks_close.ts",
   output: "058_tasks_microtasks_close.ts.out",
@@ -1601,6 +1593,36 @@ itest!(_059_fs_relative_path_perm {
 itest!(_060_deno_doc_displays_all_overloads_in_details_view {
   args: "doc 060_deno_doc_displays_all_overloads_in_details_view.ts NS.test",
   output: "060_deno_doc_displays_all_overloads_in_details_view.ts.out",
+});
+
+#[cfg(unix)]
+#[test]
+fn _061_permissions_request() {
+  let args = "run --unstable 061_permissions_request.ts";
+  let output = "061_permissions_request.ts.out";
+  let input = b"g\nd\n";
+
+  util::test_pty(args, output, input);
+}
+
+#[cfg(unix)]
+#[test]
+fn _062_permissions_request_global() {
+  let args = "run --unstable 062_permissions_request_global.ts";
+  let output = "062_permissions_request_global.ts.out";
+  let input = b"g\n";
+
+  util::test_pty(args, output, input);
+}
+
+itest!(_063_permissions_revoke {
+  args: "run --unstable --allow-read=foo,bar 063_permissions_revoke.ts",
+  output: "063_permissions_revoke.ts.out",
+});
+
+itest!(_064_permissions_revoke_global {
+  args: "run --unstable --allow-read=foo,bar 064_permissions_revoke_global.ts",
+  output: "064_permissions_revoke_global.ts.out",
 });
 
 itest!(js_import_detect {

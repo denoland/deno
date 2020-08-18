@@ -59,16 +59,20 @@ fn op_now(
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
-  let state = state.borrow();
-  let seconds = state.start_time.elapsed().as_secs();
-  let mut subsec_nanos = state.start_time.elapsed().subsec_nanos();
+  let inner_state = state.borrow();
+  let seconds = inner_state.start_time.elapsed().as_secs();
+  let mut subsec_nanos = inner_state.start_time.elapsed().subsec_nanos();
   let reduced_time_precision = 2_000_000; // 2ms in nanoseconds
 
   // If the permission is not enabled
   // Round the nano result on 2 milliseconds
   // see: https://developer.mozilla.org/en-US/docs/Web/API/DOMHighResTimeStamp#Reduced_time_precision
-  if !state.permissions.allow_hrtime.is_allow() {
-    subsec_nanos -= subsec_nanos % reduced_time_precision
+  if let Err(op_error) = state.check_hrtime() {
+    if op_error.kind_str == "PermissionDenied" {
+      subsec_nanos -= subsec_nanos % reduced_time_precision;
+    } else {
+      return Err(op_error);
+    }
   }
 
   Ok(JsonOp::Sync(json!({

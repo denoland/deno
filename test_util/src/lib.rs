@@ -7,6 +7,8 @@ extern crate lazy_static;
 
 use futures::future::{self, FutureExt};
 use os_pipe::pipe;
+#[cfg(unix)]
+pub use pty;
 use regex::Regex;
 use std::env;
 use std::io::Read;
@@ -767,7 +769,7 @@ impl CheckOutputIntegrationTest {
   }
 }
 
-fn wildcard_match(pattern: &str, s: &str) -> bool {
+pub fn wildcard_match(pattern: &str, s: &str) -> bool {
   pattern_match(pattern, s, "[WILDCARD]")
 }
 
@@ -818,6 +820,39 @@ pub fn pattern_match(pattern: &str, s: &str, wildcard: &str) -> bool {
 
   dbg!("end ", t.1.len());
   t.1.is_empty()
+}
+
+/// Kind of reflects `itest!()`. Note that the pty's output (which also contains
+/// stdin content) is compared against the content of the `output` path.
+#[cfg(unix)]
+pub fn test_pty(args: &str, output_path: &str, input: &[u8]) {
+  use pty::fork::Fork;
+
+  let tests_path = tests_path();
+  let fork = Fork::from_ptmx().unwrap();
+  if let Ok(mut master) = fork.is_parent() {
+    let mut output_actual = String::new();
+    master.write_all(input).unwrap();
+    master.read_to_string(&mut output_actual).unwrap();
+    fork.wait().unwrap();
+
+    let output_expected =
+      std::fs::read_to_string(tests_path.join(output_path)).unwrap();
+    if !wildcard_match(&output_expected, &output_actual) {
+      println!("OUTPUT\n{}\nOUTPUT", output_actual);
+      println!("EXPECTED\n{}\nEXPECTED", output_expected);
+      panic!("pattern match failed");
+    }
+  } else {
+    deno_cmd()
+      .current_dir(tests_path)
+      .env("NO_COLOR", "1")
+      .args(args.split_whitespace())
+      .spawn()
+      .unwrap()
+      .wait()
+      .unwrap();
+  }
 }
 
 #[test]
