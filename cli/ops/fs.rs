@@ -23,7 +23,7 @@ use std::time::UNIX_EPOCH;
 
 use rand::{thread_rng, Rng};
 
-pub fn init(i: &mut CoreIsolate, s: &State) {
+pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
   let t = &CoreIsolate::state(i).borrow().resource_table.clone();
 
   i.register_op("op_open_sync", s.stateful_json_op_sync(t, op_open_sync));
@@ -140,7 +140,7 @@ fn op_open_sync(
 }
 
 async fn op_open_async(
-  state: State,
+  state: Rc<State>,
   resource_table: Rc<RefCell<ResourceTable>>,
   args: Value,
   _zero_copy: BufVec,
@@ -170,7 +170,7 @@ struct SeekArgs {
 
 fn op_seek(
   isolate_state: &mut CoreIsolateState,
-  _state: &State,
+  _state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -230,7 +230,7 @@ struct FdatasyncArgs {
 
 fn op_fdatasync(
   isolate_state: &mut CoreIsolateState,
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -274,7 +274,7 @@ struct FsyncArgs {
 
 fn op_fsync(
   isolate_state: &mut CoreIsolateState,
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -318,7 +318,7 @@ struct FstatArgs {
 
 fn op_fstat(
   isolate_state: &mut CoreIsolateState,
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -360,7 +360,7 @@ struct UmaskArgs {
 }
 
 fn op_umask(
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -398,7 +398,7 @@ struct ChdirArgs {
 }
 
 fn op_chdir(
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -419,7 +419,7 @@ struct MkdirArgs {
 }
 
 fn op_mkdir(
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -453,7 +453,7 @@ struct ChmodArgs {
 }
 
 fn op_chmod(
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -493,7 +493,7 @@ struct ChownArgs {
 }
 
 fn op_chown(
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -530,7 +530,7 @@ struct RemoveArgs {
 }
 
 fn op_remove(
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -584,7 +584,7 @@ struct CopyFileArgs {
 }
 
 fn op_copy_file(
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -678,7 +678,7 @@ struct StatArgs {
 }
 
 fn op_stat(
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -708,7 +708,7 @@ struct RealpathArgs {
 }
 
 fn op_realpath(
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -743,7 +743,7 @@ struct ReadDirArgs {
 }
 
 fn op_read_dir(
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -786,7 +786,7 @@ struct RenameArgs {
 }
 
 fn op_rename(
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -815,7 +815,7 @@ struct LinkArgs {
 }
 
 fn op_link(
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -853,7 +853,7 @@ struct SymlinkOptions {
 }
 
 fn op_symlink(
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -913,7 +913,7 @@ struct ReadLinkArgs {
 }
 
 fn op_read_link(
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -941,7 +941,7 @@ struct FtruncateArgs {
 
 fn op_ftruncate(
   isolate_state: &mut CoreIsolateState,
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -986,7 +986,7 @@ struct TruncateArgs {
 }
 
 fn op_truncate(
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -1060,7 +1060,7 @@ struct MakeTempArgs {
 }
 
 fn op_make_temp_dir(
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -1091,7 +1091,7 @@ fn op_make_temp_dir(
 }
 
 fn op_make_temp_file(
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -1131,7 +1131,7 @@ struct UtimeArgs {
 }
 
 fn op_utime(
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -1151,7 +1151,7 @@ fn op_utime(
 }
 
 fn op_cwd(
-  state: &State,
+  state: &Rc<State>,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {

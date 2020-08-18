@@ -8,8 +8,9 @@ use crate::state::State;
 use deno_core::CoreIsolate;
 use deno_core::ZeroCopyBuf;
 use idna::{domain_to_ascii, domain_to_ascii_strict};
+use std::rc::Rc;
 
-pub fn init(i: &mut CoreIsolate, s: &State) {
+pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
   i.register_op("op_domain_to_ascii", s.stateful_json_op(op_domain_to_ascii));
 }
 
@@ -21,7 +22,7 @@ struct DomainToAscii {
 }
 
 fn op_domain_to_ascii(
-  _state: &State,
+  _state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {

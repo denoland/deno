@@ -13,6 +13,7 @@ use futures::future::FutureExt;
 use std::convert::From;
 use std::net::Shutdown;
 use std::net::SocketAddr;
+use std::rc::Rc;
 use std::task::Context;
 use std::task::Poll;
 use tokio::net::TcpListener;
@@ -22,7 +23,7 @@ use tokio::net::UdpSocket;
 #[cfg(unix)]
 use super::net_unix;
 
-pub fn init(i: &mut CoreIsolate, s: &State) {
+pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
   i.register_op("op_accept", s.stateful_json_op2(op_accept));
   i.register_op("op_connect", s.stateful_json_op2(op_connect));
   i.register_op("op_shutdown", s.stateful_json_op2(op_shutdown));
@@ -102,7 +103,7 @@ fn accept_tcp(
 
 fn op_accept(
   isolate_state: &mut CoreIsolateState,
-  _state: &State,
+  _state: &Rc<State>,
   args: Value,
   zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -126,7 +127,7 @@ struct ReceiveArgs {
 
 fn receive_udp(
   isolate_state: &mut CoreIsolateState,
-  _state: &State,
+  _state: &Rc<State>,
   args: ReceiveArgs,
   zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -166,7 +167,7 @@ fn receive_udp(
 
 fn op_datagram_receive(
   isolate_state: &mut CoreIsolateState,
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -196,7 +197,7 @@ struct SendArgs {
 
 fn op_datagram_send(
   isolate_state: &mut CoreIsolateState,
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -266,7 +267,7 @@ struct ConnectArgs {
 
 fn op_connect(
   isolate_state: &mut CoreIsolateState,
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -352,7 +353,7 @@ struct ShutdownArgs {
 
 fn op_shutdown(
   isolate_state: &mut CoreIsolateState,
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -494,7 +495,7 @@ fn listen_udp(
 
 fn op_listen(
   isolate_state: &mut CoreIsolateState,
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {

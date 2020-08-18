@@ -6,12 +6,13 @@ use crate::state::State;
 use deno_core::CoreIsolate;
 use deno_core::CoreIsolateState;
 use deno_core::ZeroCopyBuf;
+use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::Mutex;
 
 pub fn init(
   i: &mut CoreIsolate,
-  _s: &State,
+  _s: &Rc<State>,
   response: Arc<Mutex<Option<String>>>,
 ) {
   let custom_assets = std::collections::HashMap::new();

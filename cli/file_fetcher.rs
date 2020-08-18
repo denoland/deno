@@ -121,7 +121,7 @@ impl SourceFileFetcher {
     cache_blocklist: Vec<String>,
     no_remote: bool,
     cached_only: bool,
-    ca_file: Option<String>,
+    ca_file: Option<&str>,
   ) -> Result<Self, ErrBox> {
     let file_fetcher = Self {
       http_cache,

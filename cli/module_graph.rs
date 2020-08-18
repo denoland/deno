@@ -582,7 +582,7 @@ impl ModuleGraphLoader {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::GlobalState;
+  use crate::global_state::GlobalState;
 
   async fn build_graph(
     module_specifier: &ModuleSpecifier,

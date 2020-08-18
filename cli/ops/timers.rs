@@ -5,10 +5,11 @@ use crate::state::State;
 use deno_core::CoreIsolate;
 use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
+use std::rc::Rc;
 use std::time::Duration;
 use std::time::Instant;
 
-pub fn init(i: &mut CoreIsolate, s: &State) {
+pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
   i.register_op(
     "op_global_timer_stop",
     s.stateful_json_op(op_global_timer_stop),
@@ -18,12 +19,11 @@ pub fn init(i: &mut CoreIsolate, s: &State) {
 }
 
 fn op_global_timer_stop(
-  state: &State,
+  state: &Rc<State>,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
-  let mut state = state.borrow_mut();
-  state.global_timer.cancel();
+  state.global_timer.borrow_mut().cancel();
   Ok(JsonOp::Sync(json!({})))
 }
 
@@ -33,17 +33,17 @@ struct GlobalTimerArgs {
 }
 
 fn op_global_timer(
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let args: GlobalTimerArgs = serde_json::from_value(args)?;
   let val = args.timeout;
 
-  let mut state = state.borrow_mut();
   let deadline = Instant::now() + Duration::from_millis(val);
   let f = state
     .global_timer
+    .borrow_mut()
     .new_timeout(deadline)
     .then(move |_| futures::future::ok(json!({})));
 
@@ -55,13 +55,12 @@ fn op_global_timer(
 // If the High precision flag is not set, the
 // nanoseconds are rounded on 2ms.
 fn op_now(
-  state: &State,
+  state: &Rc<State>,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
-  let inner_state = state.borrow();
-  let seconds = inner_state.start_time.elapsed().as_secs();
-  let mut subsec_nanos = inner_state.start_time.elapsed().subsec_nanos();
+  let seconds = state.start_time.elapsed().as_secs();
+  let mut subsec_nanos = state.start_time.elapsed().subsec_nanos();
   let reduced_time_precision = 2_000_000; // 2ms in nanoseconds
 
   // If the permission is not enabled

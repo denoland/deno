@@ -5,8 +5,9 @@ use crate::state::State;
 use deno_core::CoreIsolate;
 use deno_core::ZeroCopyBuf;
 use std::path::Path;
+use std::rc::Rc;
 
-pub fn init(i: &mut CoreIsolate, s: &State) {
+pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
   i.register_op(
     "op_query_permission",
     s.stateful_json_op(op_query_permission),
@@ -29,13 +30,12 @@ struct PermissionArgs {
 }
 
 pub fn op_query_permission(
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let args: PermissionArgs = serde_json::from_value(args)?;
-  let state = state.borrow();
-  let permissions = &state.permissions;
+  let permissions = state.permissions.borrow();
   let path = args.path.as_deref();
   let perm = match args.name.as_ref() {
     "read" => permissions.query_read(&path.as_deref().map(Path::new)),
@@ -51,13 +51,12 @@ pub fn op_query_permission(
 }
 
 pub fn op_revoke_permission(
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let args: PermissionArgs = serde_json::from_value(args)?;
-  let mut state = state.borrow_mut();
-  let permissions = &mut state.permissions;
+  let mut permissions = state.permissions.borrow_mut();
   let path = args.path.as_deref();
   let perm = match args.name.as_ref() {
     "read" => permissions.revoke_read(&path.as_deref().map(Path::new)),
@@ -73,13 +72,12 @@ pub fn op_revoke_permission(
 }
 
 pub fn op_request_permission(
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let args: PermissionArgs = serde_json::from_value(args)?;
-  let mut state = state.borrow_mut();
-  let permissions = &mut state.permissions;
+  let permissions = &mut state.permissions.borrow_mut();
   let path = args.path.as_deref();
   let perm = match args.name.as_ref() {
     "read" => permissions.request_read(&path.as_deref().map(Path::new)),

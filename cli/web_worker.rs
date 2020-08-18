@@ -14,6 +14,7 @@ use std::future::Future;
 use std::ops::Deref;
 use std::ops::DerefMut;
 use std::pin::Pin;
+use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -84,11 +85,10 @@ impl WebWorker {
   pub fn new(
     name: String,
     startup_data: StartupData,
-    state: State,
+    state: &Rc<State>,
     has_deno_namespace: bool,
   ) -> Self {
-    let state_ = state.clone();
-    let mut worker = Worker::new(name, startup_data, state_);
+    let mut worker = Worker::new(name, startup_data, &state);
 
     let terminated = Arc::new(AtomicBool::new(false));
     let isolate_handle = worker.isolate.thread_safe_handle();
@@ -254,7 +254,7 @@ mod tests {
     let mut worker = WebWorker::new(
       "TEST".to_string(),
       startup_data::deno_isolate_init(),
-      state,
+      &state,
       false,
     );
     worker

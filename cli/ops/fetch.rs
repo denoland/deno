@@ -14,8 +14,9 @@ use http::Method;
 use reqwest::Client;
 use std::convert::From;
 use std::path::PathBuf;
+use std::rc::Rc;
 
-pub fn init(i: &mut CoreIsolate, s: &State) {
+pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
   i.register_op("op_fetch", s.stateful_json_op2(op_fetch));
   i.register_op(
     "op_create_http_client",
@@ -34,22 +35,23 @@ struct FetchArgs {
 
 pub fn op_fetch(
   isolate_state: &mut CoreIsolateState,
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   data: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let args: FetchArgs = serde_json::from_value(args)?;
   let url = args.url;
   let resource_table_ = isolate_state.resource_table.borrow();
-  let state_ = state.borrow();
 
+  let mut client_ref_mut;
   let client = if let Some(rid) = args.client_rid {
     let r = resource_table_
       .get::<HttpClientResource>(rid)
       .ok_or_else(OpError::bad_resource_id)?;
     &r.client
   } else {
-    &state_.http_client
+    client_ref_mut = state.http_client.borrow_mut();
+    &mut *client_ref_mut
   };
 
   let method = match args.method {
@@ -137,7 +139,7 @@ struct CreateHttpClientOptions {
 
 fn op_create_http_client(
   isolate_state: &mut CoreIsolateState,
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -148,7 +150,7 @@ fn op_create_http_client(
     state.check_read(&PathBuf::from(ca_file))?;
   }
 
-  let client = create_http_client(args.ca_file).unwrap();
+  let client = create_http_client(args.ca_file.as_deref()).unwrap();
 
   let rid =
     resource_table.add("httpClient", Box::new(HttpClientResource::new(client)));
