@@ -13,8 +13,8 @@ The following symbols are supported:
 - `d` - numeric day
 - `dd` - 2-digit day
 
-- `h` - numeric hour
-- `hh` - 2-digit hour
+- `H` - numeric hour
+- `HH` - 2-digit hour
 - `m` - numeric minute
 - `mm` - 2-digit minute
 - `s` - numeric second

@@ -81,11 +81,11 @@ const defaultRules = [
   },
 
   {
-    test: createLiteralTestFunction("hh"),
+    test: createLiteralTestFunction("HH"),
     fn: (): CallbackResult => ({ type: "hour", value: "2-digit" }),
   },
   {
-    test: createLiteralTestFunction("h"),
+    test: createLiteralTestFunction("H"),
     fn: (): CallbackResult => ({ type: "hour", value: "numeric" }),
   },
   {
