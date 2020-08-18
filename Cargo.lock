@@ -329,6 +329,7 @@ dependencies = [
  "bytes",
  "clap",
  "deno_core",
+ "deno_doc",
  "deno_lint",
  "deno_web",
  "dissimilar",
@@ -391,6 +392,22 @@ dependencies = [
  "smallvec",
  "tokio",
  "url",
+]
+
+[[package]]
+name = "deno_doc"
+version = "0.1.0"
+dependencies = [
+ "deno_core",
+ "futures",
+ "lazy_static",
+ "regex",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "swc_common",
+ "swc_ecmascript",
+ "termcolor",
 ]
 
 [[package]]
