@@ -6,17 +6,21 @@ use crate::http_util::create_http_client;
 use crate::import_map::ImportMap;
 use crate::metrics::Metrics;
 use crate::op_error::OpError;
+use crate::ops::serialize_result;
 use crate::ops::JsonOp;
 use crate::ops::MinimalOp;
 use crate::permissions::Permissions;
 use crate::tsc::TargetLib;
 use crate::web_worker::WebWorkerHandle;
 use deno_core::Buf;
+use deno_core::BufVec;
+use deno_core::CoreIsolateState;
 use deno_core::ErrBox;
 use deno_core::ModuleLoadId;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::Op;
+use deno_core::ResourceTable;
 use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
 use futures::Future;
@@ -73,6 +77,93 @@ impl State {
   {
     use crate::ops::json_op;
     self.core_op(json_op(self.stateful_op(dispatcher)))
+  }
+
+  pub fn stateful_json_op_sync<D>(
+    &self,
+    resource_table: &Rc<RefCell<ResourceTable>>,
+    dispatcher: D,
+  ) -> impl Fn(&mut deno_core::CoreIsolateState, &mut [ZeroCopyBuf]) -> Op
+  where
+    D: Fn(
+      &State,
+      &mut ResourceTable,
+      Value,
+      &mut [ZeroCopyBuf],
+    ) -> Result<Value, OpError>,
+  {
+    let state = self.clone();
+    let resource_table = resource_table.clone();
+
+    move |_: &mut CoreIsolateState, bufs: &mut [ZeroCopyBuf]| {
+      // The first buffer should contain JSON encoded op arguments; parse them.
+      let args: Value = match serde_json::from_slice(&bufs[0]) {
+        Ok(v) => v,
+        Err(e) => {
+          let e = OpError::from(e);
+          return Op::Sync(serialize_result(None, Err(e)));
+        }
+      };
+
+      // Make a slice containing all buffers except for the first one.
+      let zero_copy = &mut bufs[1..];
+
+      let result =
+        dispatcher(&state, &mut *resource_table.borrow_mut(), args, zero_copy);
+
+      // Convert to Op.
+      Op::Sync(serialize_result(None, result))
+    }
+  }
+
+  pub fn stateful_json_op_async<D, F>(
+    &self,
+    resource_table: &Rc<RefCell<ResourceTable>>,
+    dispatcher: D,
+  ) -> impl Fn(&mut CoreIsolateState, &mut [ZeroCopyBuf]) -> Op
+  where
+    D: FnOnce(State, Rc<RefCell<ResourceTable>>, Value, BufVec) -> F + Clone,
+    F: Future<Output = Result<Value, OpError>> + 'static,
+  {
+    let state = self.clone();
+    let resource_table = resource_table.clone();
+
+    move |_: &mut CoreIsolateState, bufs: &mut [ZeroCopyBuf]| {
+      // The first buffer should contain JSON encoded op arguments; parse them.
+      let args: Value = match serde_json::from_slice(&bufs[0]) {
+        Ok(v) => v,
+        Err(e) => {
+          let e = OpError::from(e);
+          return Op::Sync(serialize_result(None, Err(e)));
+        }
+      };
+
+      // `args` should have a `promiseId` property with positive integer value.
+      let promise_id = match args.get("promiseId").and_then(|v| v.as_u64()) {
+        Some(i) => i,
+        None => {
+          let e = OpError::type_error("`promiseId` invalid/missing".to_owned());
+          return Op::Sync(serialize_result(None, Err(e)));
+        }
+      };
+
+      // Take ownership of all buffers after the first one.
+      let zero_copy: BufVec = bufs[1..].into();
+
+      // Call dispatcher to obtain op future.
+      let fut = (dispatcher.clone())(
+        state.clone(),
+        resource_table.clone(),
+        args,
+        zero_copy,
+      );
+
+      // Convert to Op.
+      Op::Async(
+        async move { serialize_result(Some(promise_id), fut.await) }
+          .boxed_local(),
+      )
+    }
   }
 
   pub fn stateful_json_op2<D>(
