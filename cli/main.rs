@@ -503,19 +503,39 @@ async fn doc_command(
   let source_file = source_file.unwrap_or_else(|| "--builtin".to_string());
 
   impl DocFileLoader for SourceFileFetcher {
+    fn resolve(
+      &self,
+      specifier: &str,
+      referrer: &str,
+    ) -> Result<String, doc::DocError> {
+      ModuleSpecifier::resolve_import(specifier, referrer)
+        .map(|specifier| specifier.to_string())
+        .map_err(|e| doc::DocError::Resolve(e.to_string()))
+    }
+
     fn load_source_code(
       &self,
       specifier: &str,
-    ) -> Pin<Box<dyn Future<Output = Result<String, ErrBox>>>> {
+    ) -> Pin<Box<dyn Future<Output = Result<String, doc::DocError>>>> {
       let fetcher = self.clone();
-      let specifier = specifier.to_string();
+      let specifier = ModuleSpecifier::resolve_url_or_path(specifier)
+        .expect("Expected valid specifier");
       async move {
-        let specifier = ModuleSpecifier::resolve_url_or_path(&specifier)
-          .map_err(ErrBox::from)?;
         let source_file = fetcher
           .fetch_source_file(&specifier, None, Permissions::allow_all())
-          .await?;
-        source_file.source_code.to_string().map_err(ErrBox::from)
+          .await
+          .map_err(|e| {
+            doc::DocError::Io(std::io::Error::new(
+              std::io::ErrorKind::Other,
+              e.to_string(),
+            ))
+          })?;
+        source_file.source_code.to_string().map_err(|e| {
+          doc::DocError::Io(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            e.to_string(),
+          ))
+        })
       }
       .boxed_local()
     }
@@ -559,9 +579,9 @@ async fn doc_command(
         eprintln!("Node {} was not found!", filter);
         std::process::exit(1);
       }
-      format!("{}", doc::DocPrinter::new(&nodes, private))
+      format!("{}", doc::DocPrinter::new(&nodes, colors::use_color(), private))
     } else {
-      format!("{}", doc::DocPrinter::new(&doc_nodes, private))
+      format!("{}", doc::DocPrinter::new(&doc_nodes, colors::use_color(), private))
     };
 
     write_to_stdout_ignore_sigpipe(details.as_bytes()).map_err(ErrBox::from)

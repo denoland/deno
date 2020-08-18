@@ -398,7 +398,6 @@ dependencies = [
 name = "deno_doc"
 version = "0.1.0"
 dependencies = [
- "deno_core",
  "futures",
  "lazy_static",
  "regex",
