@@ -381,7 +381,6 @@ dependencies = [
 name = "deno_core"
 version = "0.53.0"
 dependencies = [
- "derive_deref",
  "downcast-rs",
  "futures",
  "lazy_static",
@@ -416,17 +415,6 @@ version = "0.3.0"
 dependencies = [
  "deno_core",
  "futures",
-]
-
-[[package]]
-name = "derive_deref"
-version = "1.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dcdbcee2d9941369faba772587a565f4f534e42cb8d17e5295871de730163b2b"
-dependencies = [
- "proc-macro2 1.0.19",
- "quote 1.0.7",
- "syn 1.0.36",
 ]
 
 [[package]]

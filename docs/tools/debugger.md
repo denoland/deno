@@ -32,7 +32,7 @@ Open `chrome://inspect` and click `Inspect` next to target:
 
 ![chrome://inspect](../images/debugger1.jpg)
 
-It might take a few seconds after opening the devtools to load all modules.
+It might take a few seconds after opening the Devtools to load all modules.
 
 ![Devtools opened](../images/debugger2.jpg)
 
