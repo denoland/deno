@@ -26,7 +26,7 @@ Other examples:
 const desc1 = { name: "write" };
 
 // Write permission to `$PWD/foo/bar`.
-const desc2 = { name: "write", "foo/bar": "foo/bar" };
+const desc2 = { name: "write", path: "foo/bar" };
 
 // Global net permission.
 const desc3 = { name: "net" };

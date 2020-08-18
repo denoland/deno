@@ -1,8 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 #[cfg(unix)]
 extern crate nix;
-#[cfg(unix)]
-extern crate pty;
 extern crate tempfile;
 
 use test_util as util;
@@ -166,8 +164,8 @@ fn no_color() {
 #[test]
 #[ignore]
 pub fn test_raw_tty() {
-  use pty::fork::*;
   use std::io::{Read, Write};
+  use util::pty::fork::*;
 
   let fork = Fork::from_ptmx().unwrap();
 
@@ -1597,58 +1595,24 @@ itest!(_060_deno_doc_displays_all_overloads_in_details_view {
   output: "060_deno_doc_displays_all_overloads_in_details_view.ts.out",
 });
 
-/// Kind of reflects `itest!()`. Note that the pty's output (which also contains
-/// stdin content) is compared against the content of the `output` path.
-#[cfg(not(windows))]
-fn itest_pty(args: &str, output: &str, input: &[u8]) {
-  use pty::fork::Fork;
-  use std::io::Read;
-
-  let tests_path = util::tests_path();
-  let fork = Fork::from_ptmx().unwrap();
-  if let Ok(mut master) = fork.is_parent() {
-    let mut output_actual = String::new();
-    master.write_all(input).unwrap();
-    master.read_to_string(&mut output_actual).unwrap();
-    fork.wait().unwrap();
-
-    let output_expected =
-      std::fs::read_to_string(tests_path.join(output)).unwrap();
-    if !util::wildcard_match(&output_expected, &output_actual) {
-      println!("OUTPUT\n{}\nOUTPUT", output_actual);
-      println!("EXPECTED\n{}\nEXPECTED", output_expected);
-      panic!("pattern match failed");
-    }
-  } else {
-    util::deno_cmd()
-      .current_dir(tests_path)
-      .env("NO_COLOR", "1")
-      .args(args.split_whitespace())
-      .spawn()
-      .unwrap()
-      .wait()
-      .unwrap();
-  }
-}
-
-#[cfg(not(windows))]
+#[cfg(unix)]
 #[test]
 fn _061_permissions_request() {
   let args = "run --unstable 061_permissions_request.ts";
   let output = "061_permissions_request.ts.out";
   let input = b"g\nd\n";
 
-  itest_pty(args, output, input);
+  util::test_pty(args, output, input);
 }
 
-#[cfg(not(windows))]
+#[cfg(unix)]
 #[test]
 fn _062_permissions_request_global() {
   let args = "run --unstable 062_permissions_request_global.ts";
   let output = "062_permissions_request_global.ts.out";
   let input = b"g\n";
 
-  itest_pty(args, output, input);
+  util::test_pty(args, output, input);
 }
 
 itest!(_063_permissions_revoke {
