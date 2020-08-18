@@ -395,9 +395,9 @@ dependencies = [
 
 [[package]]
 name = "deno_lint"
-version = "0.1.22"
+version = "0.1.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "02ead89c9eed9768b51ce67a4508657bf2e012085e5ec642cdecae691541d699"
+checksum = "4ba002330f68c912ad16c723fb365e6982a5ddf3923350145c3e0fe04c54f3f1"
 dependencies = [
  "lazy_static",
  "log 0.4.11",
@@ -472,9 +472,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-typescript"
-version = "0.28.0"
+version = "0.29.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "04d8a8e95b0826c2928f05b5165c7ff8a29b77a5b0b6eddfacfc47e5c69fafcd"
+checksum = "3db6fad5c93bca5fbb45d512a7e1a889ac01bad449eb7c9f618c252b2da9d7d8"
 dependencies = [
  "dprint-core",
  "serde",
@@ -2229,9 +2229,9 @@ dependencies = [
 
 [[package]]
 name = "swc_ecmascript"
-version = "0.3.1"
+version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a55ba299226ff81dfb5a5165a2dc1dd4e873a7b46b2b29e09db3976362145474"
+checksum = "63ca800e654c425bc5baa314fae8f9420a451f3e12c186d9b5dcba41ab27ec65"
 dependencies = [
  "swc_ecma_ast",
  "swc_ecma_codegen",
