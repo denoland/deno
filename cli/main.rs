@@ -68,15 +68,13 @@ pub mod version;
 mod web_worker;
 pub mod worker;
 
-use deno_doc as doc;
-use deno_doc::parser::DocFileLoader;
+use crate::file_fetcher::map_file_extension;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::file_fetcher::TextDocument;
 use crate::fs as deno_fs;
 use crate::global_state::GlobalState;
 use crate::msg::MediaType;
-use crate::file_fetcher::map_file_extension;
 use crate::permissions::Permissions;
 use crate::tsc::TargetLib;
 use crate::worker::MainWorker;
@@ -85,6 +83,8 @@ use deno_core::Deps;
 use deno_core::ErrBox;
 use deno_core::EsIsolate;
 use deno_core::ModuleSpecifier;
+use deno_doc as doc;
+use deno_doc::parser::DocFileLoader;
 use flags::DenoSubcommand;
 use flags::Flags;
 use futures::future::FutureExt;
@@ -527,7 +527,11 @@ async fn doc_command(
   let syntax = swc_util::get_syntax_for_media_type(media_type);
 
   let parse_result = if source_file == "--builtin" {
-    doc_parser.parse_source("lib.deno.d.ts", syntax, get_types(flags.unstable).as_str())
+    doc_parser.parse_source(
+      "lib.deno.d.ts",
+      syntax,
+      get_types(flags.unstable).as_str(),
+    )
   } else {
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&source_file).unwrap();

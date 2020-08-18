@@ -1,12 +1,12 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::msg::MediaType;
 use deno_core::ErrBox;
+use serde::Serialize;
 use std::error::Error;
 use std::fmt;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::RwLock;
-use serde::Serialize;
 use swc_common::chain;
 use swc_common::comments::SingleThreadedComments;
 use swc_common::errors::Diagnostic;
