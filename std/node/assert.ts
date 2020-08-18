@@ -1,4 +1,10 @@
-import { assertEquals, assertNotEquals, assertStrictEquals, assertMatch, assertThrows } from "../testing/asserts.ts";
+import {
+  assertEquals,
+  assertNotEquals,
+  assertStrictEquals,
+  assertMatch,
+  assertThrows,
+} from "../testing/asserts.ts";
 
 export { assert, fail } from "../testing/asserts.ts";
 
