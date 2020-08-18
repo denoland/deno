@@ -1624,6 +1624,8 @@ fn itest_pty(args: &str, output: &str, input: &[u8]) {
       .env("NO_COLOR", "1")
       .args(args.split_whitespace())
       .spawn()
+      .unwrap()
+      .wait()
       .unwrap();
   }
 }
