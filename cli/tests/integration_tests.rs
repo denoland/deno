@@ -3184,7 +3184,7 @@ async fn websocket() {
       .await;
   });
 
-  let script = util::tests_path().join("websocket.ts");
+  let script = util::tests_path().join("websocket_test.ts");
   let status = util::deno_cmd()
     .arg("test")
     .arg("--unstable")
