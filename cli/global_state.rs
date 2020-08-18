@@ -340,7 +340,7 @@ fn thread_safe() {
 
 #[test]
 fn test_should_allow_js() {
-  use crate::doc::Location;
+  use crate::swc_util::Location;
   use crate::module_graph::ImportDescriptor;
 
   assert!(should_allow_js(&[

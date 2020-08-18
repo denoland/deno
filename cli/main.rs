@@ -579,9 +579,15 @@ async fn doc_command(
         eprintln!("Node {} was not found!", filter);
         std::process::exit(1);
       }
-      format!("{}", doc::DocPrinter::new(&nodes, colors::use_color(), private))
+      format!(
+        "{}",
+        doc::DocPrinter::new(&nodes, colors::use_color(), private)
+      )
     } else {
-      format!("{}", doc::DocPrinter::new(&doc_nodes, colors::use_color(), private))
+      format!(
+        "{}",
+        doc::DocPrinter::new(&doc_nodes, colors::use_color(), private)
+      )
     };
 
     write_to_stdout_ignore_sigpipe(details.as_bytes()).map_err(ErrBox::from)
