@@ -6,39 +6,39 @@ Deno.test({
   name: "[std/datetime] parse",
   fn: () => {
     assertEquals(
-      datetime.parse("01-03-2019 16:30", "MM-dd-yyyy hh:mm"),
+      datetime.parse("01-03-2019 16:30", "MM-dd-yyyy HH:mm"),
       new Date(2019, 0, 3, 16, 30),
     );
     assertEquals(
-      datetime.parse("01.03.2019 16:30", "MM.dd.yyyy hh:mm"),
+      datetime.parse("01.03.2019 16:30", "MM.dd.yyyy HH:mm"),
       new Date(2019, 0, 3, 16, 30),
     );
     assertEquals(
-      datetime.parse("03-01-2019 16:31", "dd-MM-yyyy hh:mm"),
+      datetime.parse("03-01-2019 16:31", "dd-MM-yyyy HH:mm"),
       new Date(2019, 0, 3, 16, 31),
     );
     assertEquals(
-      datetime.parse("2019-01-03 16:32", "yyyy-MM-dd hh:mm"),
+      datetime.parse("2019-01-03 16:32", "yyyy-MM-dd HH:mm"),
       new Date(2019, 0, 3, 16, 32),
     );
     assertEquals(
-      datetime.parse("16:33 01-03-2019", "hh:mm MM-dd-yyyy"),
+      datetime.parse("16:33 01-03-2019", "HH:mm MM-dd-yyyy"),
       new Date(2019, 0, 3, 16, 33),
     );
     assertEquals(
-      datetime.parse("01-03-2019 16:33:23.123", "MM-dd-yyyy hh:mm:ss.SSS"),
+      datetime.parse("01-03-2019 16:33:23.123", "MM-dd-yyyy HH:mm:ss.SSS"),
       new Date(2019, 0, 3, 16, 33, 23, 123),
     );
     assertEquals(
-      datetime.parse("01-03-2019 09:33 PM", "MM-dd-yyyy hh:mm a"),
+      datetime.parse("01-03-2019 09:33 PM", "MM-dd-yyyy HH:mm a"),
       new Date(2019, 0, 3, 21, 33),
     );
     assertEquals(
-      datetime.parse("16:34 03-01-2019", "hh:mm dd-MM-yyyy"),
+      datetime.parse("16:34 03-01-2019", "HH:mm dd-MM-yyyy"),
       new Date(2019, 0, 3, 16, 34),
     );
     assertEquals(
-      datetime.parse("16:35 2019-01-03", "hh:mm yyyy-MM-dd"),
+      datetime.parse("16:35 2019-01-03", "HH:mm yyyy-MM-dd"),
       new Date(2019, 0, 3, 16, 35),
     );
     assertEquals(
@@ -83,19 +83,19 @@ Deno.test({
     );
     assertEquals(
       "03:24:00",
-      datetime.format(new Date("2019-01-01T03:24:00"), "hh:mm:ss"),
+      datetime.format(new Date("2019-01-01T03:24:00"), "HH:mm:ss"),
     );
     assertEquals(
       "03:24:00.532",
-      datetime.format(new Date("2019-01-01T03:24:00.532"), "hh:mm:ss.SSS"),
+      datetime.format(new Date("2019-01-01T03:24:00.532"), "HH:mm:ss.SSS"),
     );
     assertEquals(
       "03:24:00 AM",
-      datetime.format(new Date("2019-01-01T03:24:00"), "hh:mm:ss a"),
+      datetime.format(new Date("2019-01-01T03:24:00"), "HH:mm:ss a"),
     );
     assertEquals(
       "09:24:00 PM",
-      datetime.format(new Date("2019-01-01T21:24:00"), "hh:mm:ss a"),
+      datetime.format(new Date("2019-01-01T21:24:00"), "HH:mm:ss a"),
     );
     assertEquals(
       datetime.format(new Date(2019, 0, 20), "'today:' yyyy-MM-dd"),
