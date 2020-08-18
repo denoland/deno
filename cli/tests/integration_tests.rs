@@ -1597,8 +1597,9 @@ itest!(_060_deno_doc_displays_all_overloads_in_details_view {
   output: "060_deno_doc_displays_all_overloads_in_details_view.ts.out",
 });
 
-// Kind of reflects `itest!()`. Note that the pty's output (which also contains
-// stdin content) is compared against the content of the `output` path.
+/// Kind of reflects `itest!()`. Note that the pty's output (which also contains
+/// stdin content) is compared against the content of the `output` path.
+#[cfg(not(windows))]
 fn itest_pty(args: &str, output: &str, input: &[u8]) {
   use pty::fork::Fork;
   use std::io::Read;
