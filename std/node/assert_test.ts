@@ -4,7 +4,8 @@ import {
   assertNotEquals,
   assertStrictEquals,
   assertMatch,
-  assertThrows
+  assertThrows,
+  fail as denoFail
 } from "../testing/asserts.ts";
 
 import {  
@@ -14,7 +15,8 @@ import {
   notEqual,
   strictEqual,
   match,
-  throws
+  throws,
+  fail
 } from './assert.ts';
 
 assertStrictEquals(assert, denoAssert, '`assert()` should be exposed');
@@ -25,3 +27,4 @@ assertStrictEquals(assertNotEquals, notEqual, '`assertNotEquals()` should be exp
 assertStrictEquals(assertStrictEquals, strictEqual, '`assertStrictEquals()` should be exposed as `strictEqual()`');
 assertStrictEquals(assertMatch, match, '`assertMatch()` should be exposed as `match()`');
 assertStrictEquals(assertThrows, throws, '`assertThrows()` should be exposed as `throws()`');
+assertStrictEquals(fail, denoFail, '`fail()` should be exposed');
