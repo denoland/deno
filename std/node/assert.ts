@@ -7,11 +7,11 @@ import {
   assertThrows,
 } from "../testing/asserts.ts";
 
-export { 
-  assert as default, 
-  assert as ok, 
-  assert, 
-  fail 
+export {
+  assert as default,
+  assert as ok,
+  assert,
+  fail,
 } from "../testing/asserts.ts";
 
 export const deepStrictEqual = assertEquals;

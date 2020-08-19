@@ -247,7 +247,11 @@ export function assertStrictEquals(
   expected: unknown,
   msg?: string,
 ): void;
-export function assertStrictEquals<T>(actual: T, expected: T, msg?: string): void;
+export function assertStrictEquals<T>(
+  actual: T,
+  expected: T,
+  msg?: string,
+): void;
 export function assertStrictEquals(
   actual: unknown,
   expected: unknown,
@@ -303,7 +307,11 @@ export function assertNotStrictEquals(
   expected: unknown,
   msg?: string,
 ): void;
-export function assertNotStrictEquals<T>(actual: T, expected: T, msg?: string): void;
+export function assertNotStrictEquals<T>(
+  actual: T,
+  expected: T,
+  msg?: string,
+): void;
 export function assertNotStrictEquals(
   actual: unknown,
   expected: unknown,
@@ -314,7 +322,7 @@ export function assertNotStrictEquals(
   }
 
   throw new AssertionError(
-    msg ?? `Expected "actual" to be strictly unequal to: ${_format(actual)}\n`
+    msg ?? `Expected "actual" to be strictly unequal to: ${_format(actual)}\n`,
   );
 }
 

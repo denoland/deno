@@ -464,31 +464,31 @@ Deno.test({
 });
 
 Deno.test({
-  name: 'strictly unequal pass case',
+  name: "strictly unequal pass case",
   fn(): void {
     assertNotStrictEquals(true, false);
     assertNotStrictEquals(10, 11);
-    assertNotStrictEquals('abc', 'xyz');
+    assertNotStrictEquals("abc", "xyz");
     assertNotStrictEquals(1, "1");
 
-    const xs = [1, false, 'foo'];
-    const ys = [1, true, 'bar'];
+    const xs = [1, false, "foo"];
+    const ys = [1, true, "bar"];
     assertNotStrictEquals(xs, ys);
 
     const x = { a: 1 };
     const y = { a: 2 };
     assertNotStrictEquals(x, y);
-  }
+  },
 });
 
 Deno.test({
-  name: 'strictly unequal fail case',
+  name: "strictly unequal fail case",
   fn(): void {
     assertThrows(
       () => assertNotStrictEquals(1, 1),
-      AssertionError
-    )
-  }
+      AssertionError,
+    );
+  },
 });
 
 Deno.test({
