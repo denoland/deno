@@ -68,7 +68,10 @@ mod tests {
   fn test_abort_controller() {
     run_in_task(|mut cx| {
       let mut isolate = setup();
-      js_check(isolate.execute("abort_controller_test.js", include_str!("abort_controller_test.js")));
+      js_check(isolate.execute(
+        "abort_controller_test.js",
+        include_str!("abort_controller_test.js"),
+      ));
       if let Poll::Ready(Err(_)) = isolate.poll_unpin(&mut cx) {
         unreachable!();
       }
