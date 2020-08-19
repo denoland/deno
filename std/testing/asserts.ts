@@ -242,9 +242,15 @@ export function assertNotEquals(
  * assertStrictEquals(1, 2)
  * ```
  */
-export function assertStrictEquals<T>(
-  actual: T,
-  expected: T,
+export function assertStrictEquals(
+  actual: unknown,
+  expected: unknown,
+  msg?: string,
+): void;
+export function assertStrictEquals<T>(actual: T, expected: T, msg?: string): void;
+export function assertStrictEquals(
+  actual: unknown,
+  expected: unknown,
   msg?: string,
 ): void {
   if (actual === expected) {
@@ -279,6 +285,51 @@ export function assertStrictEquals<T>(
       } catch (e) {
         message = `\n${red(CAN_NOT_DISPLAY)} + \n\n`;
       }
+    }
+  }
+
+  throw new AssertionError(message);
+}
+
+/**
+ * Make an assertion that `actual` and `expected` are not strictly equal.  
+ * If the values are strictly equal then throw.
+ * ```ts
+ * assertNotStrictEquals(1, 1)
+ * ```
+ */
+export function assertNotStrictEquals(
+  actual: unknown,
+  expected: unknown,
+  msg?: string,
+): void;
+export function assertNotStrictEquals<T>(actual: T, expected: T, msg?: string): void;
+export function assertNotStrictEquals(
+  actual: unknown,
+  expected: unknown,
+  msg?: string,
+): void {
+  if (actual !== expected) {
+    return;
+  }
+
+  let message: string;
+
+  if (msg) {
+    message = msg;
+  } else {
+    const actualString = _format(actual);
+    const expectedString = _format(expected);
+
+    try {
+      const diffResult = diff(
+        actualString.split("\n"),
+        expectedString.split("\n"),
+      );
+      const diffMsg = buildMessage(diffResult).join("\n");
+      message = `Expected "actual" to be strictly unequal to:\n${diffMsg}`;
+    } catch (e) {
+      message = `\n${red(CAN_NOT_DISPLAY)} + \n\n`;
     }
   }
 
