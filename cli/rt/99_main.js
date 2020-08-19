@@ -20,7 +20,6 @@ delete Object.prototype.__proto__;
   const worker = window.__bootstrap.worker;
   const signals = window.__bootstrap.signals;
   const { internalSymbol, internalObject } = window.__bootstrap.internals;
-  const abortSignal = window.__bootstrap.abortSignal;
   const performance = window.__bootstrap.performance;
   const crypto = window.__bootstrap.crypto;
   const url = window.__bootstrap.url;
@@ -217,8 +216,6 @@ delete Object.prototype.__proto__;
   // Other properties shared between WindowScope and WorkerGlobalScope
   const windowOrWorkerGlobalScopeProperties = {
     console: util.writable(new Console(core.print)),
-    AbortController: util.nonEnumerable(abortSignal.AbortController),
-    AbortSignal: util.nonEnumerable(abortSignal.AbortSignal),
     Blob: util.nonEnumerable(blob.Blob),
     ByteLengthQueuingStrategy: util.nonEnumerable(
       queuingStrategy.ByteLengthQueuingStrategy,
