@@ -81,13 +81,12 @@ def run_output(args,
         print " ".join(args)
     env = make_env(env=env, merge_env=merge_env)
     shell = os.name == "nt"  # Run through shell to make .bat/.cmd files work.
-    p = subprocess.Popen(
-        args,
-        cwd=cwd,
-        env=env,
-        shell=shell,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE)
+    p = subprocess.Popen(args,
+                         cwd=cwd,
+                         env=env,
+                         shell=shell,
+                         stdout=subprocess.PIPE,
+                         stderr=subprocess.PIPE)
     try:
         out, err = p.communicate()
     except subprocess.CalledProcessError as e:
@@ -98,8 +97,8 @@ def run_output(args,
     if retcode and exit_on_fail:
         sys.exit(retcode)
     # Ignore Windows CRLF (\r\n).
-    return CmdResult(
-        out.replace('\r\n', '\n'), err.replace('\r\n', '\n'), retcode)
+    return CmdResult(out.replace('\r\n', '\n'), err.replace('\r\n', '\n'),
+                     retcode)
 
 
 def shell_quote_win(arg):
@@ -402,8 +401,12 @@ def tty_capture(cmd, bytes_input, timeout=5):
     fdmap = {mo: 'stdout', me: 'stderr', mi: 'stdin'}
 
     timeout_exact = time.time() + timeout
-    p = subprocess.Popen(
-        cmd, bufsize=1, stdin=si, stdout=so, stderr=se, close_fds=True)
+    p = subprocess.Popen(cmd,
+                         bufsize=1,
+                         stdin=si,
+                         stdout=so,
+                         stderr=se,
+                         close_fds=True)
     os.write(mi, bytes_input)
 
     select_timeout = .04  #seconds
@@ -416,8 +419,8 @@ def tty_capture(cmd, bytes_input, timeout=5):
                 if not data:
                     break
                 res[fdmap[fd]] += data
-        elif p.poll() is not None or time.time(
-        ) > timeout_exact:  # select timed-out
+        elif p.poll(
+        ) is not None or time.time() > timeout_exact:  # select timed-out
             break  # p exited
     for fd in [si, so, se, mi, mo, me]:
         os.close(fd)  # can't do it sooner: it leads to errno.EIO error

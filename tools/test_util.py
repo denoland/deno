@@ -56,19 +56,24 @@ class ColorTextTestRunner(unittest.TextTestRunner):
 
 def create_test_arg_parser():
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        '--failfast', '-f', action='store_true', help='Stop on first failure')
-    parser.add_argument(
-        '--verbose', '-v', action='store_true', help='Verbose output')
+    parser.add_argument('--failfast',
+                        '-f',
+                        action='store_true',
+                        help='Stop on first failure')
+    parser.add_argument('--verbose',
+                        '-v',
+                        action='store_true',
+                        help='Verbose output')
     parser.add_argument("--executable", help="Use external executable of Deno")
-    parser.add_argument(
-        '--release',
-        action='store_true',
-        help='Test against release executable')
-    parser.add_argument(
-        '--pattern', '-p', help='Run tests that match provided pattern')
-    parser.add_argument(
-        '--build-dir', dest="build_dir", help='Deno build directory')
+    parser.add_argument('--release',
+                        action='store_true',
+                        help='Test against release executable')
+    parser.add_argument('--pattern',
+                        '-p',
+                        help='Run tests that match provided pattern')
+    parser.add_argument('--build-dir',
+                        dest="build_dir",
+                        help='Deno build directory')
     return parser
 
 
@@ -132,8 +137,8 @@ def run_tests(test_cases=None):
         filtered_tests = filter_test_suite(suite, args.pattern)
         suite = unittest.TestSuite(filtered_tests)
 
-    runner = ColorTextTestRunner(
-        verbosity=args.verbose + 2, failfast=args.failfast)
+    runner = ColorTextTestRunner(verbosity=args.verbose + 2,
+                                 failfast=args.failfast)
 
     result = runner.run(suite)
     if not result.wasSuccessful():

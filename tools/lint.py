@@ -22,8 +22,9 @@ def get_cmd_args():
     parser.add_argument("--js", help="run eslint", action="store_true")
     parser.add_argument("--py", help="run pylint", action="store_true")
     parser.add_argument("--rs", help="run clippy", action="store_true")
-    parser.add_argument(
-        "--staged", help="run only on staged files", action="store_true")
+    parser.add_argument("--staged",
+                        help="run only on staged files",
+                        action="store_true")
     cmd_args = parser.parse_args()
     return cmd_args
 

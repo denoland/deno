@@ -64,10 +64,9 @@ def deno_tcp_proxy(deno_exe, hyper_hello_exe):
         server_addr(origin_port)
     ]
     print "http_proxy_benchmark testing DENO using net/tcp."
-    return run(
-        deno_cmd,
-        port,
-        origin_cmd=http_proxy_origin(hyper_hello_exe, origin_port))
+    return run(deno_cmd,
+               port,
+               origin_cmd=http_proxy_origin(hyper_hello_exe, origin_port))
 
 
 def deno_http_proxy(deno_exe, hyper_hello_exe):
@@ -79,10 +78,9 @@ def deno_http_proxy(deno_exe, hyper_hello_exe):
         server_addr(origin_port)
     ]
     print "http_proxy_benchmark testing DENO using net/http."
-    return run(
-        deno_cmd,
-        port,
-        origin_cmd=http_proxy_origin(hyper_hello_exe, origin_port))
+    return run(deno_cmd,
+               port,
+               origin_cmd=http_proxy_origin(hyper_hello_exe, origin_port))
 
 
 def deno_core_http_bench(exe):

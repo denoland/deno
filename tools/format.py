@@ -6,6 +6,7 @@ from third_party import get_prebuilt_tool_path
 from util import root_path
 from util import run
 
+
 def main():
     os.chdir(root_path)
     dprint()

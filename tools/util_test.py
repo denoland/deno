@@ -2,8 +2,7 @@
 import os
 
 from test_util import DenoTestCase, run_tests
-from util import (parse_exit_code, shell_quote_win, parse_wrk_output,
-                  root_path)
+from util import (parse_exit_code, shell_quote_win, parse_wrk_output, root_path)
 
 
 class TestUtil(DenoTestCase):
@@ -14,8 +13,7 @@ class TestUtil(DenoTestCase):
 
     def test_shell_quote_win(self):
         assert shell_quote_win('simple') == 'simple'
-        assert shell_quote_win(
-            'roof/\\isoprojection') == 'roof/\\isoprojection'
+        assert shell_quote_win('roof/\\isoprojection') == 'roof/\\isoprojection'
         assert shell_quote_win('with space') == '"with space"'
         assert shell_quote_win('embedded"quote') == '"embedded""quote"'
         assert shell_quote_win(
