@@ -302,14 +302,17 @@ export default class Module {
 
     this.fds = [
       {
+        fdflags: FDFLAGS_APPEND,
         type: FILETYPE_CHARACTER_DEVICE,
         handle: Deno.stdin,
       },
       {
+        fdflags: FDFLAGS_APPEND,
         type: FILETYPE_CHARACTER_DEVICE,
         handle: Deno.stdout,
       },
       {
+        fdflags: FDFLAGS_APPEND,
         type: FILETYPE_CHARACTER_DEVICE,
         handle: Deno.stderr,
       },
@@ -514,7 +517,7 @@ export default class Module {
 
         const view = new DataView(this.memory.buffer);
         view.setUint8(stat_out, entry.type);
-        view.setUint16(stat_out + 4, 0, true); // TODO
+        view.setUint16(stat_out + 4, entry.fdflags, true);
         view.setBigUint64(stat_out + 8, 0n, true); // TODO
         view.setBigUint64(stat_out + 16, 0n, true); // TODO
 
@@ -1196,6 +1199,7 @@ export default class Module {
           try {
             const entries = Array.from(Deno.readDirSync(path));
             const opened_fd = this.fds.push({
+              fdflags,
               entries,
               path,
             }) - 1;
@@ -1279,6 +1283,7 @@ export default class Module {
         try {
           const handle = Deno.openSync(path, options);
           const opened_fd = this.fds.push({
+            fdflags,
             handle,
             path,
           }) - 1;
