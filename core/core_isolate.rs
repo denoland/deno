@@ -530,21 +530,19 @@ where
   callback(current_heap_limit, initial_heap_limit)
 }
 
-fn json_err(_err: ErrBox) -> Value {
-  // TODO(ry) Use OpError instead of ErrBox.
-  json!({
-    "message": "todo",
-    "kind": "todo",
-  })
-}
-
 fn serialize_result(
   promise_id: Option<u64>,
-  result: Result<Value, ErrBox>, // TODO(ry) Use OpError instead of ErrBox.
+  result: Result<Value, ErrBox>,
 ) -> Buf {
   let value = match result {
     Ok(v) => json!({ "ok": v, "promiseId": promise_id }),
-    Err(err) => json!({ "err": json_err(err), "promiseId": promise_id }),
+    Err(err) => json!({
+      "promiseId": promise_id ,
+      "err": {
+        "message": err.to_string(),
+        "kind": "Other", // TODO(ry) Figure out how to propagate errors.
+      }
+    }),
   };
   serde_json::to_vec(&value).unwrap().into_boxed_slice()
 }
