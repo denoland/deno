@@ -9,7 +9,6 @@
 ((window) => {
   /* eslint-disable @typescript-eslint/no-explicit-any,require-await */
 
-  const { AbortSignal } = window.__bootstrap.abortSignal;
   const { cloneValue, setFunctionName } = window.__bootstrap.webUtil;
   const { assert, AssertionError } = window.__bootstrap.util;
   const { customInspect, inspect } = window.__bootstrap.console;
