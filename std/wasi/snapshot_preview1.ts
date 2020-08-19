@@ -292,8 +292,7 @@ export default class Module {
   // deno-lint-ignore no-explicit-any
   fds: any[];
 
-  // deno-lint-ignore no-explicit-any
-  exports: { [key: string]: any };
+  exports: Record<string, Function>;
 
   constructor(options: ModuleOptions) {
     this.args = options.args ? options.args : [];
