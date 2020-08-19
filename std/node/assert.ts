@@ -6,7 +6,7 @@ import {
   assertThrows,
 } from "../testing/asserts.ts";
 
-export { assert, fail } from "../testing/asserts.ts";
+export { assert as ok, assert, fail } from "../testing/asserts.ts";
 
 export const equal = assertEquals;
 export const notEqual = assertNotEquals;
