@@ -74,11 +74,10 @@ jobs:
           rustup target add wasm32-unknown-unknown
           rustup target add wasm32-wasi
 
-      - name: Install clippy and rustfmt
+      - name: Install clippy
         if: matrix.config.kind == 'lint'
         run: |
           rustup component add clippy
-          rustup component add rustfmt
 
       - name: Install Python
         uses: actions/setup-python@v1

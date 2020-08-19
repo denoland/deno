@@ -76,14 +76,7 @@ def run_pip():
         cwd=third_party_path,
         merge_env=pip_env)
 
-    # Get yapf.
-    run([
-        sys.executable, "-m", "pip", "install", "--upgrade", "--target",
-        python_packages_path, "yapf"
-    ],
-        cwd=third_party_path,
-        merge_env=pip_env)
-
+    # Install pylint.
     run([
         sys.executable, "-m", "pip", "install", "--upgrade", "--target",
         python_packages_path, "pylint==1.5.6"
