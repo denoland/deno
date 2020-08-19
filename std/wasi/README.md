@@ -68,7 +68,7 @@ const instance = await WebAssembly.instantiate(module, {
   wasi_snapshot_preview1: wasi.exports,
 });
 
-wasi.memory = module.exports.memory;
+wasi.memory = instance.exports.memory;
 
 if (module.exports._start) {
   instance.exports._start();
