@@ -179,7 +179,7 @@ impl State {
   /// Wrap core `OpDispatcher` to collect metrics.
   // TODO(ry) this should be private. Is called by stateful_json_op or
   // stateful_minimal_op
-  pub fn core_op<D>(
+  pub(crate) fn core_op<D>(
     self: &Rc<Self>,
     dispatcher: D,
   ) -> impl Fn(&mut deno_core::CoreIsolateState, &mut [ZeroCopyBuf]) -> Op
@@ -318,7 +318,7 @@ impl State {
   ///
   /// This is intentionally a non-recoverable check so that people cannot probe
   /// for unstable APIs from stable programs.
-  pub fn check_unstable(self: &Rc<Self>, api_name: &str) {
+  pub fn check_unstable(&self, api_name: &str) {
     // TODO(ry) Maybe use IsolateHandle::terminate_execution here to provide a
     // stack trace in JS.
     if !self.global_state.flags.unstable {

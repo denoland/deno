@@ -6,11 +6,11 @@
   const build = window.__bootstrap.build.build;
 
   function chmodSync(path, mode) {
-    sendSync("op_chmod", { path: pathFromURL(path), mode });
+    sendSync("op_chmod_sync", { path: pathFromURL(path), mode });
   }
 
   async function chmod(path, mode) {
-    await sendAsync("op_chmod", { path: pathFromURL(path), mode });
+    await sendAsync("op_chmod_async", { path: pathFromURL(path), mode });
   }
 
   function chownSync(
@@ -18,7 +18,7 @@
     uid,
     gid,
   ) {
-    sendSync("op_chown", { path: pathFromURL(path), uid, gid });
+    sendSync("op_chown_sync", { path: pathFromURL(path), uid, gid });
   }
 
   async function chown(
@@ -26,7 +26,7 @@
     uid,
     gid,
   ) {
-    await sendAsync("op_chown", { path: pathFromURL(path), uid, gid });
+    await sendAsync("op_chown_async", { path: pathFromURL(path), uid, gid });
   }
 
   function copyFileSync(
@@ -87,14 +87,14 @@
   }
 
   function mkdirSync(path, options) {
-    sendSync("op_mkdir", mkdirArgs(path, options));
+    sendSync("op_mkdir_sync", mkdirArgs(path, options));
   }
 
   async function mkdir(
     path,
     options,
   ) {
-    await sendAsync("op_mkdir", mkdirArgs(path, options));
+    await sendAsync("op_mkdir_async", mkdirArgs(path, options));
   }
 
   function res(response) {
@@ -138,7 +138,7 @@
     path,
     options = {},
   ) {
-    sendSync("op_remove", {
+    sendSync("op_remove_sync", {
       path: pathFromURL(path),
       recursive: !!options.recursive,
     });
@@ -148,7 +148,7 @@
     path,
     options = {},
   ) {
-    await sendAsync("op_remove", {
+    await sendAsync("op_remove_async", {
       path: pathFromURL(path),
       recursive: !!options.recursive,
     });
@@ -188,11 +188,11 @@
   }
 
   function fstatSync(rid) {
-    return parseFileInfo(sendSync("op_fstat", { rid }));
+    return parseFileInfo(sendSync("op_fstat_sync", { rid }));
   }
 
   async function fstat(rid) {
-    return parseFileInfo(await sendAsync("op_fstat", { rid }));
+    return parseFileInfo(await sendAsync("op_fstat_async", { rid }));
   }
 
   async function lstat(path) {
@@ -310,19 +310,19 @@
   }
 
   function fdatasyncSync(rid) {
-    sendSync("op_fdatasync", { rid });
+    sendSync("op_fdatasync_sync", { rid });
   }
 
   async function fdatasync(rid) {
-    await sendAsync("op_fdatasync", { rid });
+    await sendAsync("op_fdatasync_async", { rid });
   }
 
   function fsyncSync(rid) {
-    sendSync("op_fsync", { rid });
+    sendSync("op_fsync_sync", { rid });
   }
 
   async function fsync(rid) {
-    await sendAsync("op_fsync", { rid });
+    await sendAsync("op_fsync_async", { rid });
   }
 
   window.__bootstrap.fs = {

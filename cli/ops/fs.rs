@@ -16,11 +16,11 @@ use std::cell::RefCell;
 use std::convert::From;
 use std::env::{current_dir, set_current_dir, temp_dir};
 use std::io;
+use std::io::{Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
-use std::io::{Seek, SeekFrom};
 
 use rand::{thread_rng, Rng};
 
@@ -33,15 +33,54 @@ pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
   i.register_op("op_seek_sync", s.stateful_json_op_sync(t, op_seek_sync));
   i.register_op("op_seek_async", s.stateful_json_op_async(t, op_seek_async));
 
-  i.register_op("op_fdatasync", s.stateful_json_op2(op_fdatasync));
-  i.register_op("op_fsync", s.stateful_json_op2(op_fsync));
-  i.register_op("op_fstat", s.stateful_json_op2(op_fstat));
-  i.register_op("op_umask", s.stateful_json_op(op_umask));
-  i.register_op("op_chdir", s.stateful_json_op(op_chdir));
-  i.register_op("op_mkdir", s.stateful_json_op(op_mkdir));
-  i.register_op("op_chmod", s.stateful_json_op(op_chmod));
-  i.register_op("op_chown", s.stateful_json_op(op_chown));
-  i.register_op("op_remove", s.stateful_json_op(op_remove));
+  i.register_op(
+    "op_fdatasync_sync",
+    s.stateful_json_op_sync(t, op_fdatasync_sync),
+  );
+  i.register_op(
+    "op_fdatasync_async",
+    s.stateful_json_op_async(t, op_fdatasync_async),
+  );
+
+  i.register_op("op_fsync_sync", s.stateful_json_op_sync(t, op_fsync_sync));
+  i.register_op(
+    "op_fsync_async",
+    s.stateful_json_op_async(t, op_fsync_async),
+  );
+
+  i.register_op("op_fstat_sync", s.stateful_json_op_sync(t, op_fstat_sync));
+  i.register_op(
+    "op_fstat_async",
+    s.stateful_json_op_async(t, op_fstat_async),
+  );
+
+  i.register_op("op_umask", s.stateful_json_op_sync(t, op_umask));
+  i.register_op("op_chdir", s.stateful_json_op_sync(t, op_chdir));
+
+  i.register_op("op_mkdir_sync", s.stateful_json_op_sync(t, op_mkdir_sync));
+  i.register_op(
+    "op_mkdir_async",
+    s.stateful_json_op_async(t, op_mkdir_async),
+  );
+
+  i.register_op("op_chmod_sync", s.stateful_json_op_sync(t, op_chmod_sync));
+  i.register_op(
+    "op_chmod_async",
+    s.stateful_json_op_async(t, op_chmod_async),
+  );
+
+  i.register_op("op_chown_sync", s.stateful_json_op_sync(t, op_chown_sync));
+  i.register_op(
+    "op_chown_async",
+    s.stateful_json_op_async(t, op_chown_async),
+  );
+
+  i.register_op("op_remove_sync", s.stateful_json_op_sync(t, op_remove_sync));
+  i.register_op(
+    "op_remove_async",
+    s.stateful_json_op_async(t, op_remove_async),
+  );
+
   i.register_op("op_copy_file", s.stateful_json_op(op_copy_file));
   i.register_op("op_stat", s.stateful_json_op(op_stat));
   i.register_op("op_realpath", s.stateful_json_op(op_realpath));
@@ -214,7 +253,6 @@ async fn op_seek_async(
   _zero_copy: BufVec,
 ) -> Result<Value, OpError> {
   let (rid, seek_from) = seek_helper(args)?;
-  let resource_table = resource_table.clone();
   // TODO(ry) This is a fake async op. We need to use poll_fn,
   // tokio::fs::File::start_seek and tokio::fs::File::poll_complete
   let mut resource_table = resource_table.borrow_mut();
@@ -230,134 +268,130 @@ async fn op_seek_async(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct FdatasyncArgs {
-  promise_id: Option<u64>,
   rid: i32,
 }
 
-fn op_fdatasync(
-  isolate_state: &mut CoreIsolateState,
-  state: &Rc<State>,
+fn op_fdatasync_sync(
+  state: &State,
+  resource_table: &mut ResourceTable,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<Value, OpError> {
   state.check_unstable("Deno.fdatasync");
   let args: FdatasyncArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
+  std_file_resource(resource_table, rid, |r| match r {
+    Ok(std_file) => std_file.sync_data().map_err(OpError::from),
+    Err(_) => Err(OpError::type_error(
+      "cannot sync this type of resource".to_string(),
+    )),
+  })?;
+  Ok(json!({}))
+}
 
-  let resource_table = isolate_state.resource_table.clone();
-  let is_sync = args.promise_id.is_none();
-
-  if is_sync {
-    let mut resource_table = resource_table.borrow_mut();
-    std_file_resource(&mut resource_table, rid, |r| match r {
-      Ok(std_file) => std_file.sync_data().map_err(OpError::from),
-      Err(_) => Err(OpError::type_error(
-        "cannot sync this type of resource".to_string(),
-      )),
-    })?;
-    Ok(JsonOp::Sync(json!({})))
-  } else {
-    let fut = async move {
-      let mut resource_table = resource_table.borrow_mut();
-      std_file_resource(&mut resource_table, rid, |r| match r {
-        Ok(std_file) => std_file.sync_data().map_err(OpError::from),
-        Err(_) => Err(OpError::type_error(
-          "cannot sync this type of resource".to_string(),
-        )),
-      })?;
-      Ok(json!({}))
-    };
-    Ok(JsonOp::Async(fut.boxed_local()))
-  }
+async fn op_fdatasync_async(
+  state: Rc<State>,
+  resource_table: Rc<RefCell<ResourceTable>>,
+  args: Value,
+  _zero_copy: BufVec,
+) -> Result<Value, OpError> {
+  state.check_unstable("Deno.fdatasync");
+  let args: FdatasyncArgs = serde_json::from_value(args)?;
+  let rid = args.rid as u32;
+  let mut resource_table = resource_table.borrow_mut();
+  std_file_resource(&mut resource_table, rid, |r| match r {
+    Ok(std_file) => std_file.sync_data().map_err(OpError::from),
+    Err(_) => Err(OpError::type_error(
+      "cannot sync this type of resource".to_string(),
+    )),
+  })?;
+  Ok(json!({}))
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct FsyncArgs {
-  promise_id: Option<u64>,
   rid: i32,
 }
 
-fn op_fsync(
-  isolate_state: &mut CoreIsolateState,
-  state: &Rc<State>,
+fn op_fsync_sync(
+  state: &State,
+  resource_table: &mut ResourceTable,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<Value, OpError> {
   state.check_unstable("Deno.fsync");
   let args: FsyncArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
+  std_file_resource(resource_table, rid, |r| match r {
+    Ok(std_file) => std_file.sync_all().map_err(OpError::from),
+    Err(_) => Err(OpError::type_error(
+      "cannot sync this type of resource".to_string(),
+    )),
+  })?;
+  Ok(json!({}))
+}
 
-  let resource_table = isolate_state.resource_table.clone();
-  let is_sync = args.promise_id.is_none();
-
-  if is_sync {
-    let mut resource_table = resource_table.borrow_mut();
-    std_file_resource(&mut resource_table, rid, |r| match r {
-      Ok(std_file) => std_file.sync_all().map_err(OpError::from),
-      Err(_) => Err(OpError::type_error(
-        "cannot sync this type of resource".to_string(),
-      )),
-    })?;
-    Ok(JsonOp::Sync(json!({})))
-  } else {
-    let fut = async move {
-      let mut resource_table = resource_table.borrow_mut();
-      std_file_resource(&mut resource_table, rid, |r| match r {
-        Ok(std_file) => std_file.sync_all().map_err(OpError::from),
-        Err(_) => Err(OpError::type_error(
-          "cannot sync this type of resource".to_string(),
-        )),
-      })?;
-      Ok(json!({}))
-    };
-    Ok(JsonOp::Async(fut.boxed_local()))
-  }
+async fn op_fsync_async(
+  state: Rc<State>,
+  resource_table: Rc<RefCell<ResourceTable>>,
+  args: Value,
+  _zero_copy: BufVec,
+) -> Result<Value, OpError> {
+  state.check_unstable("Deno.fsync");
+  let args: FsyncArgs = serde_json::from_value(args)?;
+  let rid = args.rid as u32;
+  let mut resource_table = resource_table.borrow_mut();
+  std_file_resource(&mut resource_table, rid, |r| match r {
+    Ok(std_file) => std_file.sync_all().map_err(OpError::from),
+    Err(_) => Err(OpError::type_error(
+      "cannot sync this type of resource".to_string(),
+    )),
+  })?;
+  Ok(json!({}))
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct FstatArgs {
-  promise_id: Option<u64>,
   rid: i32,
 }
 
-fn op_fstat(
-  isolate_state: &mut CoreIsolateState,
-  state: &Rc<State>,
+fn op_fstat_sync(
+  state: &State,
+  resource_table: &mut ResourceTable,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<Value, OpError> {
   state.check_unstable("Deno.fstat");
   let args: FstatArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
+  let metadata = std_file_resource(resource_table, rid, |r| match r {
+    Ok(std_file) => std_file.metadata().map_err(OpError::from),
+    Err(_) => Err(OpError::type_error(
+      "cannot stat this type of resource".to_string(),
+    )),
+  })?;
+  Ok(get_stat_json(metadata).unwrap())
+}
 
-  let resource_table = isolate_state.resource_table.clone();
-  let is_sync = args.promise_id.is_none();
-
-  if is_sync {
-    let mut resource_table = resource_table.borrow_mut();
-    let metadata = std_file_resource(&mut resource_table, rid, |r| match r {
-      Ok(std_file) => std_file.metadata().map_err(OpError::from),
-      Err(_) => Err(OpError::type_error(
-        "cannot stat this type of resource".to_string(),
-      )),
-    })?;
-    Ok(JsonOp::Sync(get_stat_json(metadata).unwrap()))
-  } else {
-    let fut = async move {
-      let mut resource_table = resource_table.borrow_mut();
-      let metadata =
-        std_file_resource(&mut resource_table, rid, |r| match r {
-          Ok(std_file) => std_file.metadata().map_err(OpError::from),
-          Err(_) => Err(OpError::type_error(
-            "cannot stat this type of resource".to_string(),
-          )),
-        })?;
-      Ok(get_stat_json(metadata).unwrap())
-    };
-    Ok(JsonOp::Async(fut.boxed_local()))
-  }
+async fn op_fstat_async(
+  state: Rc<State>,
+  resource_table: Rc<RefCell<ResourceTable>>,
+  args: Value,
+  _zero_copy: BufVec,
+) -> Result<Value, OpError> {
+  state.check_unstable("Deno.fstat");
+  let args: FstatArgs = serde_json::from_value(args)?;
+  let rid = args.rid as u32;
+  let mut resource_table = resource_table.borrow_mut();
+  let metadata = std_file_resource(&mut resource_table, rid, |r| match r {
+    Ok(std_file) => std_file.metadata().map_err(OpError::from),
+    Err(_) => Err(OpError::type_error(
+      "cannot stat this type of resource".to_string(),
+    )),
+  })?;
+  Ok(get_stat_json(metadata).unwrap())
 }
 
 #[derive(Deserialize)]
@@ -366,10 +400,11 @@ struct UmaskArgs {
 }
 
 fn op_umask(
-  state: &Rc<State>,
+  state: &State,
+  _resource_table: &mut ResourceTable,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<Value, OpError> {
   state.check_unstable("Deno.umask");
   let args: UmaskArgs = serde_json::from_value(args)?;
   // TODO implement umask for Windows
@@ -394,7 +429,7 @@ fn op_umask(
       let _ = umask(prev);
       prev
     };
-    Ok(JsonOp::Sync(json!(r.bits() as u32)))
+    Ok(json!(r.bits() as u32))
   }
 }
 
@@ -404,39 +439,59 @@ struct ChdirArgs {
 }
 
 fn op_chdir(
-  state: &Rc<State>,
+  state: &State,
+  _resource_table: &mut ResourceTable,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<Value, OpError> {
   let args: ChdirArgs = serde_json::from_value(args)?;
   let d = PathBuf::from(&args.directory);
   state.check_read(&d)?;
   set_current_dir(&d)?;
-  Ok(JsonOp::Sync(json!({})))
+  Ok(json!({}))
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct MkdirArgs {
-  promise_id: Option<u64>,
   path: String,
   recursive: bool,
   mode: Option<u32>,
 }
 
-fn op_mkdir(
-  state: &Rc<State>,
+fn op_mkdir_sync(
+  state: &State,
+  _resource_table: &mut ResourceTable,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<Value, OpError> {
   let args: MkdirArgs = serde_json::from_value(args)?;
   let path = Path::new(&args.path).to_path_buf();
   let mode = args.mode.unwrap_or(0o777) & 0o777;
-
   state.check_write(&path)?;
+  debug!("op_mkdir {} {:o} {}", path.display(), mode, args.recursive);
+  let mut builder = std::fs::DirBuilder::new();
+  builder.recursive(args.recursive);
+  #[cfg(unix)]
+  {
+    use std::os::unix::fs::DirBuilderExt;
+    builder.mode(mode);
+  }
+  builder.create(path)?;
+  Ok(json!({}))
+}
 
-  let is_sync = args.promise_id.is_none();
-  blocking_json(is_sync, move || {
+async fn op_mkdir_async(
+  state: Rc<State>,
+  _resource_table: Rc<RefCell<ResourceTable>>,
+  args: Value,
+  _zero_copy: BufVec,
+) -> Result<Value, OpError> {
+  let args: MkdirArgs = serde_json::from_value(args)?;
+  let path = Path::new(&args.path).to_path_buf();
+  let mode = args.mode.unwrap_or(0o777) & 0o777;
+  state.check_write(&path)?;
+  tokio::task::spawn_blocking(move || {
     debug!("op_mkdir {} {:o} {}", path.display(), mode, args.recursive);
     let mut builder = std::fs::DirBuilder::new();
     builder.recursive(args.recursive);
@@ -448,30 +503,57 @@ fn op_mkdir(
     builder.create(path)?;
     Ok(json!({}))
   })
+  .await
+  .unwrap()
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ChmodArgs {
-  promise_id: Option<u64>,
   path: String,
   mode: u32,
 }
 
-fn op_chmod(
-  state: &Rc<State>,
+fn op_chmod_sync(
+  state: &State,
+  _resource_table: &mut ResourceTable,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<Value, OpError> {
   let args: ChmodArgs = serde_json::from_value(args)?;
   let path = Path::new(&args.path).to_path_buf();
   let mode = args.mode & 0o777;
 
   state.check_write(&path)?;
+  debug!("op_chmod_sync {} {:o}", path.display(), mode);
+  #[cfg(unix)]
+  {
+    use std::os::unix::fs::PermissionsExt;
+    let permissions = PermissionsExt::from_mode(mode);
+    std::fs::set_permissions(&path, permissions)?;
+    Ok(json!({}))
+  }
+  // TODO Implement chmod for Windows (#4357)
+  #[cfg(not(unix))]
+  {
+    // Still check file/dir exists on Windows
+    let _metadata = std::fs::metadata(&path)?;
+    Err(OpError::not_implemented())
+  }
+}
 
-  let is_sync = args.promise_id.is_none();
-  blocking_json(is_sync, move || {
-    debug!("op_chmod {} {:o}", path.display(), mode);
+async fn op_chmod_async(
+  state: Rc<State>,
+  _resource_table: Rc<RefCell<ResourceTable>>,
+  args: Value,
+  _zero_copy: BufVec,
+) -> Result<Value, OpError> {
+  let args: ChmodArgs = serde_json::from_value(args)?;
+  let path = Path::new(&args.path).to_path_buf();
+  let mode = args.mode & 0o777;
+  state.check_write(&path)?;
+  tokio::task::spawn_blocking(move || {
+    debug!("op_chmod_async {} {:o}", path.display(), mode);
     #[cfg(unix)]
     {
       use std::os::unix::fs::PermissionsExt;
@@ -487,30 +569,64 @@ fn op_chmod(
       Err(OpError::not_implemented())
     }
   })
+  .await
+  .unwrap()
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ChownArgs {
-  promise_id: Option<u64>,
   path: String,
   uid: Option<u32>,
   gid: Option<u32>,
 }
 
-fn op_chown(
-  state: &Rc<State>,
+fn op_chown_sync(
+  state: &State,
+  _resource_table: &mut ResourceTable,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<Value, OpError> {
   let args: ChownArgs = serde_json::from_value(args)?;
   let path = Path::new(&args.path).to_path_buf();
-
   state.check_write(&path)?;
+  debug!(
+    "op_chown_sync {} {:?} {:?}",
+    path.display(),
+    args.uid,
+    args.gid,
+  );
+  #[cfg(unix)]
+  {
+    use nix::unistd::{chown, Gid, Uid};
+    let nix_uid = args.uid.map(Uid::from_raw);
+    let nix_gid = args.gid.map(Gid::from_raw);
+    chown(&path, nix_uid, nix_gid)?;
+    Ok(json!({}))
+  }
+  // TODO Implement chown for Windows
+  #[cfg(not(unix))]
+  {
+    Err(OpError::not_implemented())
+  }
+}
 
-  let is_sync = args.promise_id.is_none();
-  blocking_json(is_sync, move || {
-    debug!("op_chown {} {:?} {:?}", path.display(), args.uid, args.gid,);
+async fn op_chown_async(
+  state: Rc<State>,
+  _resource_table: Rc<RefCell<ResourceTable>>,
+  args: Value,
+  _zero_copy: BufVec,
+) -> Result<Value, OpError> {
+  let args: ChownArgs = serde_json::from_value(args)?;
+  let path = Path::new(&args.path).to_path_buf();
+  state.check_write(&path)?;
+  tokio::task::spawn_blocking(move || {
+    debug!(
+      "op_chown_async {} {:?} {:?}",
+      path.display(),
+      args.uid,
+      args.gid,
+    );
     #[cfg(unix)]
     {
       use nix::unistd::{chown, Gid, Uid};
@@ -525,35 +641,80 @@ fn op_chown(
       Err(OpError::not_implemented())
     }
   })
+  .await
+  .unwrap()
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RemoveArgs {
-  promise_id: Option<u64>,
   path: String,
   recursive: bool,
 }
 
-fn op_remove(
-  state: &Rc<State>,
+fn op_remove_sync(
+  state: &State,
+  _resource_table: &mut ResourceTable,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<Value, OpError> {
   let args: RemoveArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
   let recursive = args.recursive;
 
   state.check_write(&path)?;
 
-  let is_sync = args.promise_id.is_none();
-  blocking_json(is_sync, move || {
+  #[cfg(not(unix))]
+  use std::os::windows::prelude::MetadataExt;
+
+  let metadata = std::fs::symlink_metadata(&path)?;
+
+  debug!("op_remove_sync {} {}", path.display(), recursive);
+  let file_type = metadata.file_type();
+  if file_type.is_file() {
+    std::fs::remove_file(&path)?;
+  } else if recursive {
+    std::fs::remove_dir_all(&path)?;
+  } else if file_type.is_symlink() {
+    #[cfg(unix)]
+    std::fs::remove_file(&path)?;
+    #[cfg(not(unix))]
+    {
+      use winapi::um::winnt::FILE_ATTRIBUTE_DIRECTORY;
+      if metadata.file_attributes() & FILE_ATTRIBUTE_DIRECTORY != 0 {
+        std::fs::remove_dir(&path)?;
+      } else {
+        std::fs::remove_file(&path)?;
+      }
+    }
+  } else if file_type.is_dir() {
+    std::fs::remove_dir(&path)?;
+  } else {
+    // pipes, sockets, etc...
+    std::fs::remove_file(&path)?;
+  }
+  Ok(json!({}))
+}
+
+async fn op_remove_async(
+  state: Rc<State>,
+  _resource_table: Rc<RefCell<ResourceTable>>,
+  args: Value,
+  _zero_copy: BufVec,
+) -> Result<Value, OpError> {
+  let args: RemoveArgs = serde_json::from_value(args)?;
+  let path = PathBuf::from(&args.path);
+  let recursive = args.recursive;
+
+  state.check_write(&path)?;
+
+  tokio::task::spawn_blocking(move || {
     #[cfg(not(unix))]
     use std::os::windows::prelude::MetadataExt;
 
     let metadata = std::fs::symlink_metadata(&path)?;
 
-    debug!("op_remove {} {}", path.display(), recursive);
+    debug!("op_remove_async {} {}", path.display(), recursive);
     let file_type = metadata.file_type();
     if file_type.is_file() {
       std::fs::remove_file(&path)?;
@@ -579,6 +740,8 @@ fn op_remove(
     }
     Ok(json!({}))
   })
+  .await
+  .unwrap()
 }
 
 #[derive(Deserialize)]
