@@ -499,7 +499,7 @@ Deno.test({
     assertArrayContains<boolean>([true, false], [true]);
     const value = { x: 1 };
     assertStrictEquals<typeof value>(value, value);
-    assertNotStrictEquals<number>(1, '1' as any);
+    assertNotStrictEquals<object>(value, { x: 1 });
   },
 });
 
