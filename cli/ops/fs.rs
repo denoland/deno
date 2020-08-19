@@ -20,6 +20,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
+use std::io::{Seek, SeekFrom};
 
 use rand::{thread_rng, Rng};
 
@@ -29,7 +30,9 @@ pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
   i.register_op("op_open_sync", s.stateful_json_op_sync(t, op_open_sync));
   i.register_op("op_open_async", s.stateful_json_op_async(t, op_open_async));
 
-  i.register_op("op_seek", s.stateful_json_op2(op_seek));
+  i.register_op("op_seek_sync", s.stateful_json_op_sync(t, op_seek_sync));
+  i.register_op("op_seek_async", s.stateful_json_op_async(t, op_seek_async));
+
   i.register_op("op_fdatasync", s.stateful_json_op2(op_fdatasync));
   i.register_op("op_fsync", s.stateful_json_op2(op_fsync));
   i.register_op("op_fstat", s.stateful_json_op2(op_fstat));
@@ -162,19 +165,12 @@ async fn op_open_async(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct SeekArgs {
-  promise_id: Option<u64>,
   rid: i32,
   offset: i64,
   whence: i32,
 }
 
-fn op_seek(
-  isolate_state: &mut CoreIsolateState,
-  _state: &Rc<State>,
-  args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
-  use std::io::{Seek, SeekFrom};
+fn seek_helper(args: Value) -> Result<(u32, SeekFrom), OpError> {
   let args: SeekArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let offset = args.offset;
@@ -192,33 +188,43 @@ fn op_seek(
     }
   };
 
-  let resource_table = isolate_state.resource_table.clone();
-  let is_sync = args.promise_id.is_none();
+  Ok((rid, seek_from))
+}
 
-  if is_sync {
-    let mut resource_table = resource_table.borrow_mut();
-    let pos = std_file_resource(&mut resource_table, rid, |r| match r {
-      Ok(std_file) => std_file.seek(seek_from).map_err(OpError::from),
-      Err(_) => Err(OpError::type_error(
-        "cannot seek on this type of resource".to_string(),
-      )),
-    })?;
-    Ok(JsonOp::Sync(json!(pos)))
-  } else {
-    // TODO(ry) This is a fake async op. We need to use poll_fn,
-    // tokio::fs::File::start_seek and tokio::fs::File::poll_complete
-    let fut = async move {
-      let mut resource_table = resource_table.borrow_mut();
-      let pos = std_file_resource(&mut resource_table, rid, |r| match r {
-        Ok(std_file) => std_file.seek(seek_from).map_err(OpError::from),
-        Err(_) => Err(OpError::type_error(
-          "cannot seek on this type of resource".to_string(),
-        )),
-      })?;
-      Ok(json!(pos))
-    };
-    Ok(JsonOp::Async(fut.boxed_local()))
-  }
+fn op_seek_sync(
+  _state: &State,
+  resource_table: &mut ResourceTable,
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, OpError> {
+  let (rid, seek_from) = seek_helper(args)?;
+  let pos = std_file_resource(resource_table, rid, |r| match r {
+    Ok(std_file) => std_file.seek(seek_from).map_err(OpError::from),
+    Err(_) => Err(OpError::type_error(
+      "cannot seek on this type of resource".to_string(),
+    )),
+  })?;
+  Ok(json!(pos))
+}
+
+async fn op_seek_async(
+  _state: Rc<State>,
+  resource_table: Rc<RefCell<ResourceTable>>,
+  args: Value,
+  _zero_copy: BufVec,
+) -> Result<Value, OpError> {
+  let (rid, seek_from) = seek_helper(args)?;
+  let resource_table = resource_table.clone();
+  // TODO(ry) This is a fake async op. We need to use poll_fn,
+  // tokio::fs::File::start_seek and tokio::fs::File::poll_complete
+  let mut resource_table = resource_table.borrow_mut();
+  let pos = std_file_resource(&mut resource_table, rid, |r| match r {
+    Ok(std_file) => std_file.seek(seek_from).map_err(OpError::from),
+    Err(_) => Err(OpError::type_error(
+      "cannot seek on this type of resource".to_string(),
+    )),
+  })?;
+  Ok(json!(pos))
 }
 
 #[derive(Deserialize)]

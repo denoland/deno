@@ -86,7 +86,7 @@ impl State {
     let state = self.clone();
     let resource_table = resource_table.clone();
 
-    move |_: &mut CoreIsolateState, bufs: &mut [ZeroCopyBuf]| {
+    let f = move |_: &mut CoreIsolateState, bufs: &mut [ZeroCopyBuf]| {
       // The first buffer should contain JSON encoded op arguments; parse them.
       let args: Value = match serde_json::from_slice(&bufs[0]) {
         Ok(v) => v,
@@ -104,7 +104,8 @@ impl State {
 
       // Convert to Op.
       Op::Sync(serialize_result(None, result))
-    }
+    };
+    self.core_op(f)
   }
 
   pub fn stateful_json_op_async<D, F>(
@@ -120,7 +121,7 @@ impl State {
     let state = self.clone();
     let resource_table = resource_table.clone();
 
-    move |_: &mut CoreIsolateState, bufs: &mut [ZeroCopyBuf]| {
+    let f = move |_: &mut CoreIsolateState, bufs: &mut [ZeroCopyBuf]| {
       // The first buffer should contain JSON encoded op arguments; parse them.
       let args: Value = match serde_json::from_slice(&bufs[0]) {
         Ok(v) => v,
@@ -155,7 +156,8 @@ impl State {
         async move { serialize_result(Some(promise_id), fut.await) }
           .boxed_local(),
       )
-    }
+    };
+    self.core_op(f)
   }
 
   pub fn stateful_json_op2<D>(
