@@ -146,7 +146,7 @@ fn get_js_files_for_rt() -> Vec<String> {
     "rt/01_internals.js",
     "rt/01_version.js",
     "rt/01_web_util.js",
-    "rt/02_abort_signal.js",
+    &web_scripts.abort_signal,
     "rt/02_console.js",
     "rt/03_dom_iterable.js",
     "rt/06_util.js",

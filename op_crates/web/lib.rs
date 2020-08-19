@@ -6,6 +6,7 @@ use std::path::PathBuf;
 crate_modules!();
 
 pub struct WebScripts {
+  pub abort_signal: String,
   pub declaration: String,
   pub dom_exception: String,
   pub event: String,
@@ -21,6 +22,7 @@ fn get_str_path(file_name: &str) -> String {
 
 pub fn get_scripts() -> WebScripts {
   WebScripts {
+    abort_signal: get_str_path("02_abort_signal.js"),
     declaration: get_str_path("lib.deno_web.d.ts"),
     dom_exception: get_str_path("00_dom_exception.js"),
     event: get_str_path("01_event.js"),
@@ -53,10 +55,27 @@ mod tests {
     );
     js_check(isolate.execute("01_event.js", include_str!("01_event.js")));
     js_check(
+      isolate.execute("02_abort_signal.js", include_str!("02_abort_signal.js")),
+    );
+    js_check(
       isolate
         .execute("08_text_encoding.js", include_str!("08_text_encoding.js")),
     );
     isolate
+  }
+
+  #[test]
+  fn test_abort_controller() {
+    run_in_task(|mut cx| {
+      let mut isolate = setup();
+      js_check(isolate.execute(
+        "abort_controller_test.js",
+        include_str!("abort_controller_test.js"),
+      ));
+      if let Poll::Ready(Err(_)) = isolate.poll_unpin(&mut cx) {
+        unreachable!();
+      }
+    });
   }
 
   #[test]

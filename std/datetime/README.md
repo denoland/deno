@@ -64,19 +64,14 @@ format(new Date(2019, 0, 20), "'today:' yyyy-MM-dd") // output : "today: 2019-01
 ...
 ```
 
-### dayOfYear / currentDayOfYear
+### dayOfYear
 
-- `dayOfYear()` - Returns the number of the day in the year.
-- `currentDayOfYear()` - Returns the number of the current day in the year.
+Returns the number of the day in the year.
 
 ```ts
-import {
-  dayOfYear,
-  currentDayOfYear,
-} from "https://deno.land/std/datetime/mod.ts";
+import { dayOfYear } from "https://deno.land/std/datetime/mod.ts";
 
 dayOfYear(new Date("2019-03-11T03:24:00")); // output: 70
-currentDayOfYear(); // output: ** depends on when you run it :) **
 ```
 
 ### weekOfYear

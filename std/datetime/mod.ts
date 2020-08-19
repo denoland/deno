@@ -55,14 +55,6 @@ export function dayOfYear(date: Date): number {
 }
 
 /**
- * Get number of current day in year
- * @return Number of current day in year
- */
-export function currentDayOfYear(): number {
-  return dayOfYear(new Date());
-}
-
-/**
  * Get number of the week in the year (ISO-8601)
  * @return Number of the week in year
  */

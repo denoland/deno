@@ -8,8 +8,9 @@ use crate::state::State;
 use deno_core::CoreIsolate;
 use deno_core::ZeroCopyBuf;
 use std::collections::HashMap;
+use std::rc::Rc;
 
-pub fn init(i: &mut CoreIsolate, s: &State) {
+pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
   i.register_op(
     "op_apply_source_map",
     s.stateful_json_op(op_apply_source_map),
@@ -29,7 +30,7 @@ struct ApplySourceMap {
 }
 
 fn op_apply_source_map(
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -42,7 +43,7 @@ fn op_apply_source_map(
       args.line_number.into(),
       args.column_number.into(),
       &mut mappings_map,
-      &state.borrow().global_state.ts_compiler,
+      &state.global_state.ts_compiler,
     );
 
   Ok(JsonOp::Sync(json!({
@@ -53,7 +54,7 @@ fn op_apply_source_map(
 }
 
 fn op_format_diagnostic(
-  _state: &State,
+  _state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {

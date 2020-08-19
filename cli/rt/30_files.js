@@ -28,7 +28,10 @@
   ) {
     checkOpenOptions(options);
     const mode = options?.mode;
-    const rid = sendSync("op_open", { path: pathFromURL(path), options, mode });
+    const rid = sendSync(
+      "op_open_sync",
+      { path: pathFromURL(path), options, mode },
+    );
 
     return new File(rid);
   }
@@ -40,7 +43,7 @@
     checkOpenOptions(options);
     const mode = options?.mode;
     const rid = await sendAsync(
-      "op_open",
+      "op_open_async",
       { path: pathFromURL(path), options, mode },
     );
 
