@@ -55,11 +55,11 @@ mod tests {
     );
     js_check(isolate.execute("01_event.js", include_str!("01_event.js")));
     js_check(
-      isolate
-        .execute("08_text_encoding.js", include_str!("08_text_encoding.js")),
+      isolate.execute("02_abort_signal.js", include_str!("02_abort_signal.js")),
     );
     js_check(
-      isolate.execute("02_abort_signal.js", include_str!("02_abort_signal.js")),
+      isolate
+        .execute("08_text_encoding.js", include_str!("08_text_encoding.js")),
     );
     isolate
   }
