@@ -29,7 +29,6 @@ pub mod deno_dir;
 pub mod diagnostics;
 mod diff;
 mod disk_cache;
-mod doc;
 mod file_fetcher;
 pub mod flags;
 mod flags_allow_net;
@@ -69,14 +68,13 @@ pub mod version;
 mod web_worker;
 pub mod worker;
 
-use crate::doc::parser::DocFileLoader;
+use crate::file_fetcher::map_file_extension;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::file_fetcher::TextDocument;
 use crate::fs as deno_fs;
 use crate::global_state::GlobalState;
 use crate::msg::MediaType;
-use crate::op_error::OpError;
 use crate::permissions::Permissions;
 use crate::tsc::TargetLib;
 use crate::worker::MainWorker;
@@ -85,6 +83,8 @@ use deno_core::Deps;
 use deno_core::ErrBox;
 use deno_core::EsIsolate;
 use deno_core::ModuleSpecifier;
+use deno_doc as doc;
+use deno_doc::parser::DocFileLoader;
 use flags::DenoSubcommand;
 use flags::Flags;
 use futures::future::FutureExt;
@@ -505,19 +505,39 @@ async fn doc_command(
   let source_file = source_file.unwrap_or_else(|| "--builtin".to_string());
 
   impl DocFileLoader for SourceFileFetcher {
+    fn resolve(
+      &self,
+      specifier: &str,
+      referrer: &str,
+    ) -> Result<String, doc::DocError> {
+      ModuleSpecifier::resolve_import(specifier, referrer)
+        .map(|specifier| specifier.to_string())
+        .map_err(|e| doc::DocError::Resolve(e.to_string()))
+    }
+
     fn load_source_code(
       &self,
       specifier: &str,
-    ) -> Pin<Box<dyn Future<Output = Result<String, OpError>>>> {
+    ) -> Pin<Box<dyn Future<Output = Result<String, doc::DocError>>>> {
       let fetcher = self.clone();
-      let specifier = specifier.to_string();
+      let specifier = ModuleSpecifier::resolve_url_or_path(specifier)
+        .expect("Expected valid specifier");
       async move {
-        let specifier = ModuleSpecifier::resolve_url_or_path(&specifier)
-          .map_err(OpError::from)?;
         let source_file = fetcher
           .fetch_source_file(&specifier, None, Permissions::allow_all())
-          .await?;
-        source_file.source_code.to_string().map_err(OpError::from)
+          .await
+          .map_err(|e| {
+            doc::DocError::Io(std::io::Error::new(
+              std::io::ErrorKind::Other,
+              e.to_string(),
+            ))
+          })?;
+        source_file.source_code.to_string().map_err(|e| {
+          doc::DocError::Io(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            e.to_string(),
+          ))
+        })
       }
       .boxed_local()
     }
@@ -525,14 +545,20 @@ async fn doc_command(
 
   let loader = Box::new(global_state.file_fetcher.clone());
   let doc_parser = doc::DocParser::new(loader, private);
+  let media_type = map_file_extension(&PathBuf::from(&source_file));
+  let syntax = swc_util::get_syntax_for_media_type(media_type);
 
   let parse_result = if source_file == "--builtin" {
-    doc_parser.parse_source("lib.deno.d.ts", get_types(flags.unstable).as_str())
+    doc_parser.parse_source(
+      "lib.deno.d.ts",
+      syntax,
+      get_types(flags.unstable).as_str(),
+    )
   } else {
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&source_file).unwrap();
     doc_parser
-      .parse_with_reexports(&module_specifier.to_string())
+      .parse_with_reexports(&module_specifier.to_string(), syntax)
       .await
   };
 
@@ -555,9 +581,15 @@ async fn doc_command(
         eprintln!("Node {} was not found!", filter);
         std::process::exit(1);
       }
-      format!("{}", doc::DocPrinter::new(&nodes, private))
+      format!(
+        "{}",
+        doc::DocPrinter::new(&nodes, colors::use_color(), private)
+      )
     } else {
-      format!("{}", doc::DocPrinter::new(&doc_nodes, private))
+      format!(
+        "{}",
+        doc::DocPrinter::new(&doc_nodes, colors::use_color(), private)
+      )
     };
 
     write_to_stdout_ignore_sigpipe(details.as_bytes()).map_err(ErrBox::from)

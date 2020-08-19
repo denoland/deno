@@ -329,6 +329,7 @@ dependencies = [
  "bytes",
  "clap",
  "deno_core",
+ "deno_doc",
  "deno_lint",
  "deno_web",
  "dissimilar",
@@ -390,6 +391,23 @@ dependencies = [
  "smallvec",
  "tokio",
  "url",
+]
+
+[[package]]
+name = "deno_doc"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c1700f692f75fb14c854ca5e2b5e74c23c5b5cc2b3ea9adec4ff0cd5693deab0"
+dependencies = [
+ "futures",
+ "lazy_static",
+ "regex",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "swc_common",
+ "swc_ecmascript",
+ "termcolor",
 ]
 
 [[package]]

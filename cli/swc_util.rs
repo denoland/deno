@@ -1,6 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::msg::MediaType;
 use deno_core::ErrBox;
+use serde::Serialize;
 use std::error::Error;
 use std::fmt;
 use std::rc::Rc;
@@ -30,6 +31,31 @@ use swc_ecmascript::parser::TsConfig;
 use swc_ecmascript::transforms::fixer;
 use swc_ecmascript::transforms::typescript;
 use swc_ecmascript::visit::FoldWith;
+
+#[derive(Debug, Serialize, Clone, PartialEq)]
+pub struct Location {
+  pub filename: String,
+  pub line: usize,
+  pub col: usize,
+}
+
+impl Into<Location> for swc_common::Loc {
+  fn into(self) -> Location {
+    use swc_common::FileName::*;
+
+    let filename = match &self.file.name {
+      Real(path_buf) => path_buf.to_string_lossy().to_string(),
+      Custom(str_) => str_.to_string(),
+      _ => panic!("invalid filename"),
+    };
+
+    Location {
+      filename,
+      line: self.line,
+      col: self.col_display,
+    }
+  }
+}
 
 struct DummyHandler;
 
