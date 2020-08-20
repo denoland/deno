@@ -25,19 +25,13 @@ Extra steps for Windows users:
 
 ### Prerequisites
 
-You will need to [install Rust](https://www.rust-lang.org/tools/install).
+> Deno requires the progressively latest stable release of Rust. Deno does not support the Rust nightlies.
 
-Check the versions of the required tools:
-
-```
-rustc -V  # rustc 1.45.2 (d3fb005a3 2020-07-31) works, rustc 1.44.1 (c7087fe00 2020-06-17) is too old
-cargo -V  # cargo 1.45.1 (f242df6ed 2020-07-22) works, cargo 1.44.1 (88ba85757 2020-06-11) is too old
-```
-
-The latest stable release of Rust is recommended. Deno does not support the Rust nightlies. To update Rust using `rustup`, use:
+[Update or Install Rust](https://www.rust-lang.org/tools/install). Check that Rust installed/updated correctly:
 
 ```
-rustup update
+rustc -V
+cargo -V
 ```
 
 ### Setup rust targets and components
