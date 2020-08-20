@@ -5,7 +5,6 @@ use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::import_map::ImportMap;
 use crate::msg::MediaType;
-use crate::op_error::OpError;
 use crate::permissions::Permissions;
 use crate::swc_util::Location;
 use crate::tsc::pre_process_file;
@@ -37,7 +36,7 @@ fn err_with_location(e: ErrBox, maybe_location: Option<&Location>) -> ErrBox {
       location.filename, location.line
     );
     let err_str = e.to_string();
-    ErrBox::other(OpError::other(format!("{}{}", err_str, location_str)))
+    ErrBox::other(format!("{}{}", err_str, location_str))
   } else {
     e
   }
@@ -52,9 +51,9 @@ fn validate_no_downgrade(
   if let Some(referrer) = maybe_referrer.as_ref() {
     if let "https" = referrer.as_url().scheme() {
       if let "http" = module_specifier.as_url().scheme() {
-        let e = ErrBox::other(OpError::permission_denied(
+        let e = ErrBox::new_text("PermissionDenied", 
           "Modules loaded over https:// are not allowed to import modules over http://".to_string()
-        ));
+        );
         return Err(err_with_location(e, maybe_location));
       };
     };
@@ -77,9 +76,9 @@ fn validate_no_file_from_remote(
         match specifier_url.scheme() {
           "http" | "https" => {}
           _ => {
-            let e = ErrBox::other(OpError::permission_denied(
+            let e = ErrBox::new_text("PermissionDenied", 
               "Remote modules are not allowed to statically import local modules. Use dynamic import instead.".to_string()
-            ));
+            );
             return Err(err_with_location(e, maybe_location));
           }
         }
@@ -106,7 +105,7 @@ fn resolve_imports_and_references(
     let maybe_resolved = if let Some(import_map) = maybe_import_map.as_ref() {
       import_map
         .resolve(&import_desc.specifier, &referrer.to_string())
-        .map_err(ErrBox::other)?
+        .map_err(ErrBox::from_err)?
     } else {
       None
     };
@@ -118,7 +117,7 @@ fn resolve_imports_and_references(
         &import_desc.specifier,
         &referrer.to_string(),
       )
-      .map_err(ErrBox::other)?
+      .map_err(ErrBox::from_err)?
     };
 
     let resolved_type_directive =
@@ -128,7 +127,7 @@ fn resolve_imports_and_references(
             &types_specifier,
             &referrer.to_string(),
           )
-          .map_err(ErrBox::other)?,
+          .map_err(ErrBox::from_err)?,
         )
       } else {
         None
@@ -154,7 +153,7 @@ fn resolve_imports_and_references(
       &ref_desc.specifier,
       &referrer.to_string(),
     )
-    .map_err(ErrBox::other)?;
+    .map_err(ErrBox::from_err)?;
 
     let reference_descriptor = ReferenceDescriptor {
       specifier: ref_desc.specifier.to_string(),
@@ -343,7 +342,7 @@ impl ModuleGraphLoader {
         spec
       } else {
         ModuleSpecifier::resolve_url(&format!("memory://{}", specifier))
-          .map_err(ErrBox::other)?
+          .map_err(ErrBox::from_err)?
       };
 
     let (raw_imports, raw_references) = pre_process_file(
@@ -352,7 +351,7 @@ impl ModuleGraphLoader {
       &source_code,
       self.analyze_dynamic_imports,
     )
-    .map_err(ErrBox::other)?;
+    .map_err(ErrBox::from_err)?;
     let (imports, references) = resolve_imports_and_references(
       module_specifier.clone(),
       self.maybe_import_map.as_ref(),
@@ -486,8 +485,10 @@ impl ModuleGraphLoader {
       &source_file.source_code.as_bytes(),
       version::DENO.as_bytes(),
     ]);
-    let source_code =
-      source_file.source_code.to_string().map_err(ErrBox::other)?;
+    let source_code = source_file
+      .source_code
+      .to_string()
+      .map_err(ErrBox::from_err)?;
 
     if SUPPORTED_MEDIA_TYPES.contains(&source_file.media_type) {
       if let Some(types_specifier) = source_file.types_header {
@@ -497,7 +498,7 @@ impl ModuleGraphLoader {
             &types_specifier,
             &module_specifier.to_string(),
           )
-          .map_err(ErrBox::other)?,
+          .map_err(ErrBox::from_err)?,
           kind: TsReferenceKind::Types,
           // TODO(bartlomieju): location is not needed in here and constructing
           // location by hand is bad
@@ -521,7 +522,7 @@ impl ModuleGraphLoader {
         &source_code,
         self.analyze_dynamic_imports,
       )
-      .map_err(ErrBox::other)?;
+      .map_err(ErrBox::from_err)?;
       let (imports_, references) = resolve_imports_and_references(
         module_specifier.clone(),
         self.maybe_import_map.as_ref(),

@@ -1,6 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use super::io::{StreamResource, StreamResourceHolder};
+use crate::op_error::io_to_errbox;
 use crate::op_error::OpError;
 use crate::resolve_addr::resolve_addr;
 use crate::state::State;
@@ -58,7 +59,7 @@ fn accept_tcp(
           OpError::bad_resource("Listener has been closed".to_string())
         })?;
       let listener = &mut listener_resource.listener;
-      match listener.poll_accept(cx).map_err(OpError::from) {
+      match listener.poll_accept(cx).map_err(io_to_errbox) {
         Poll::Ready(Ok((stream, addr))) => {
           listener_resource.untrack_task();
           Poll::Ready(Ok((stream, addr)))
@@ -74,8 +75,8 @@ fn accept_tcp(
       }
     });
     let (tcp_stream, _socket_addr) = accept_fut.await?;
-    let local_addr = tcp_stream.local_addr()?;
-    let remote_addr = tcp_stream.peer_addr()?;
+    let local_addr = tcp_stream.local_addr().map_err(io_to_errbox)?;
+    let remote_addr = tcp_stream.peer_addr().map_err(io_to_errbox)?;
     let mut resource_table = resource_table.borrow_mut();
     let rid = resource_table.add(
       "tcpStream",
@@ -223,7 +224,7 @@ fn op_datagram_send(
         resource
           .socket
           .poll_send_to(cx, &zero_copy, &addr)
-          .map_err(OpError::from)
+          .map_err(io_to_errbox)
           .map_ok(|byte_length| json!(byte_length))
       });
       Ok(JsonOp::Async(f.boxed_local()))
@@ -247,7 +248,8 @@ fn op_datagram_send(
         let socket = &mut resource.socket;
         let byte_length = socket
           .send_to(&zero_copy, &resource.local_addr.as_pathname().unwrap())
-          .await?;
+          .await
+          .map_err(io_to_errbox)?;
 
         Ok(json!(byte_length))
       };
@@ -280,9 +282,10 @@ fn op_connect(
       state.check_net(&args.hostname, args.port)?;
       let op = async move {
         let addr = resolve_addr(&args.hostname, args.port)?;
-        let tcp_stream = TcpStream::connect(&addr).await?;
-        let local_addr = tcp_stream.local_addr()?;
-        let remote_addr = tcp_stream.peer_addr()?;
+        let tcp_stream =
+          TcpStream::connect(&addr).await.map_err(io_to_errbox)?;
+        let local_addr = tcp_stream.local_addr().map_err(io_to_errbox)?;
+        let remote_addr = tcp_stream.peer_addr().map_err(io_to_errbox)?;
         let mut resource_table = resource_table.borrow_mut();
         let rid = resource_table.add(
           "tcpStream",
@@ -317,9 +320,11 @@ fn op_connect(
       let op = async move {
         let path = args.path;
         let unix_stream =
-          net_unix::UnixStream::connect(net_unix::Path::new(&path)).await?;
-        let local_addr = unix_stream.local_addr()?;
-        let remote_addr = unix_stream.peer_addr()?;
+          net_unix::UnixStream::connect(net_unix::Path::new(&path))
+            .await
+            .map_err(io_to_errbox)?;
+        let local_addr = unix_stream.local_addr().map_err(io_to_errbox)?;
+        let remote_addr = unix_stream.peer_addr().map_err(io_to_errbox)?;
         let mut resource_table = resource_table.borrow_mut();
         let rid = resource_table.add(
           "unixStream",

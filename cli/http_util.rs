@@ -40,15 +40,16 @@ pub fn create_http_client(ca_file: Option<&str>) -> Result<Client, ErrBox> {
   if let Some(ca_file) = ca_file {
     let mut buf = Vec::new();
     File::open(ca_file)
-      .map_err(ErrBox::other)?
+      .map_err(ErrBox::from_err)?
       .read_to_end(&mut buf)
-      .map_err(ErrBox::other)?;
-    let cert = reqwest::Certificate::from_pem(&buf).map_err(ErrBox::other)?;
+      .map_err(ErrBox::from_err)?;
+    let cert =
+      reqwest::Certificate::from_pem(&buf).map_err(ErrBox::from_err)?;
     builder = builder.add_root_certificate(cert);
   }
 
   builder.build().map_err(|_| {
-    ErrBox::other(io::Error::new(
+    ErrBox::from_err(io::Error::new(
       io::ErrorKind::Other,
       "Unable to build http client".to_string(),
     ))
@@ -112,7 +113,7 @@ pub fn fetch_once(
       let if_none_match_val = HeaderValue::from_str(&etag).unwrap();
       request = request.header(IF_NONE_MATCH, if_none_match_val);
     }
-    let response = request.send().await.map_err(ErrBox::other)?;
+    let response = request.send().await.map_err(ErrBox::from_err)?;
 
     if response.status() == StatusCode::NOT_MODIFIED {
       return Ok(FetchOnceResult::NotModified);
@@ -160,10 +161,10 @@ pub fn fetch_once(
         io::ErrorKind::Other,
         format!("Import '{}' failed: {}", &url, response.status()),
       );
-      return Err(ErrBox::other(err));
+      return Err(ErrBox::from_err(err));
     }
 
-    let body = response.bytes().await.map_err(ErrBox::other)?.to_vec();
+    let body = response.bytes().await.map_err(ErrBox::from_err)?.to_vec();
 
     return Ok(FetchOnceResult::Code(body, headers_));
   };

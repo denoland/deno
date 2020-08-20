@@ -10,7 +10,6 @@ extern crate semver_parser;
 use crate::futures::FutureExt;
 use crate::http_util::fetch_once;
 use crate::http_util::FetchOnceResult;
-use crate::op_error::OpError;
 use crate::ErrBox;
 use regex::Regex;
 use reqwest::{redirect::Policy, Client};
@@ -41,14 +40,14 @@ async fn get_latest_version(client: &Client) -> Result<Version, ErrBox> {
   let body = client
     .get(
       Url::parse("https://github.com/denoland/deno/releases/latest")
-        .map_err(ErrBox::other)?,
+        .map_err(ErrBox::from_err)?,
     )
     .send()
     .await
-    .map_err(ErrBox::other)?
+    .map_err(ErrBox::from_err)?
     .text()
     .await
-    .map_err(ErrBox::other)?;
+    .map_err(ErrBox::from_err)?;
   let v = find_version(&body)?;
   Ok(semver_parse(&v).unwrap())
 }
@@ -67,12 +66,12 @@ pub async fn upgrade_command(
   // If we have been provided a CA Certificate, add it into the HTTP client
   if let Some(ca_file) = ca_file {
     let buf = std::fs::read(ca_file);
-    let cert =
-      reqwest::Certificate::from_pem(&buf.unwrap()).map_err(ErrBox::other)?;
+    let cert = reqwest::Certificate::from_pem(&buf.unwrap())
+      .map_err(ErrBox::from_err)?;
     client_builder = client_builder.add_root_certificate(cert);
   }
 
-  let client = client_builder.build().map_err(ErrBox::other)?;
+  let client = client_builder.build().map_err(ErrBox::from_err)?;
 
   let current_version = semver_parse(crate::version::DENO).unwrap();
 
@@ -112,12 +111,12 @@ pub async fn upgrade_command(
     &install_version,
   )
   .await?;
-  let old_exe_path = std::env::current_exe().map_err(ErrBox::other)?;
-  let new_exe_path = unpack(archive_data).map_err(ErrBox::other)?;
+  let old_exe_path = std::env::current_exe().map_err(ErrBox::from_err)?;
+  let new_exe_path = unpack(archive_data).map_err(ErrBox::from_err)?;
   let permissions = fs::metadata(&old_exe_path)
-    .map_err(ErrBox::other)?
+    .map_err(ErrBox::from_err)?
     .permissions();
-  fs::set_permissions(&new_exe_path, permissions).map_err(ErrBox::other)?;
+  fs::set_permissions(&new_exe_path, permissions).map_err(ErrBox::from_err)?;
   check_exe(&new_exe_path, &install_version)?;
 
   if !dry_run {
@@ -125,10 +124,10 @@ pub async fn upgrade_command(
       Some(path) => {
         fs::rename(&new_exe_path, &path)
           .or_else(|_| fs::copy(&new_exe_path, &path).map(|_| ()))
-          .map_err(ErrBox::other)?;
+          .map_err(ErrBox::from_err)?;
       }
       None => {
-        replace_exe(&new_exe_path, &old_exe_path).map_err(ErrBox::other)?
+        replace_exe(&new_exe_path, &old_exe_path).map_err(ErrBox::from_err)?
       }
     }
   }
@@ -175,17 +174,16 @@ fn compose_url_to_exec(version: &Version) -> Result<Url, ErrBox> {
     "https://github.com/denoland/deno/releases/download/v{}/{}",
     version, ARCHIVE_NAME
   );
-  Url::parse(&s).map_err(ErrBox::other)
+  Url::parse(&s).map_err(ErrBox::from_err)
 }
 
 fn find_version(text: &str) -> Result<String, ErrBox> {
-  let re = Regex::new(r#"v([^\?]+)?""#).map_err(ErrBox::other)?;
+  let re = Regex::new(r#"v([^\?]+)?""#).map_err(ErrBox::from_err)?;
   if let Some(_mat) = re.find(text) {
     let mat = _mat.as_str();
     return Ok(mat[1..mat.len() - 1].to_string());
   }
-  Err(OpError::other("Cannot read latest tag version".to_string()))
-    .map_err(ErrBox::other)
+  Err(ErrBox::other("Cannot read latest tag version".to_string()))
 }
 
 fn unpack(archive_data: Vec<u8>) -> Result<PathBuf, std::io::Error> {
@@ -276,8 +274,8 @@ fn check_exe(
     .arg("-V")
     .stderr(std::process::Stdio::inherit())
     .output()
-    .map_err(ErrBox::other)?;
-  let stdout = String::from_utf8(output.stdout).map_err(ErrBox::other)?;
+    .map_err(ErrBox::from_err)?;
+  let stdout = String::from_utf8(output.stdout).map_err(ErrBox::from_err)?;
   assert!(output.status.success());
   assert_eq!(stdout.trim(), format!("deno {}", expected_version));
   Ok(())

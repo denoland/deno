@@ -55,7 +55,7 @@ fn op_compile(
       .boxed_local()
     };
 
-    fut.await
+    fut.await.map_err(|e| e.into())
   }
   .boxed_local();
   Ok(JsonOp::Async(fut))
@@ -79,6 +79,7 @@ fn op_transpile(
   let fut = async move {
     runtime_transpile(&global_state, permissions, &args.sources, &args.options)
       .await
+      .map_err(|e| e.into())
   }
   .boxed_local();
   Ok(JsonOp::Async(fut))

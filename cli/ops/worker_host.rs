@@ -165,7 +165,7 @@ fn run_worker_thread(
       rt.block_on(worker).expect("Panic in event loop");
       debug!("Worker thread shuts down {}", &name);
     })
-    .map_err(ErrBox::other)?;
+    .map_err(ErrBox::from_err)?;
 
   let worker_handle = handle_receiver.recv().unwrap()?;
   Ok((join_handle, worker_handle))

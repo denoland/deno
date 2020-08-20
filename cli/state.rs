@@ -5,6 +5,7 @@ use crate::global_timer::GlobalTimer;
 use crate::http_util::create_http_client;
 use crate::import_map::ImportMap;
 use crate::metrics::Metrics;
+use crate::op_error::serde_to_errbox;
 use crate::op_error::OpError;
 use crate::ops::serialize_result;
 use crate::ops::JsonOp;
@@ -91,7 +92,7 @@ impl State {
       let args: Value = match serde_json::from_slice(&bufs[0]) {
         Ok(v) => v,
         Err(e) => {
-          let e = OpError::from(e);
+          let e = serde_to_errbox(e);
           return Op::Sync(serialize_result(None, Err(e)));
         }
       };
@@ -100,7 +101,8 @@ impl State {
       let zero_copy = &mut bufs[1..];
 
       let result =
-        dispatcher(&state, &mut *resource_table.borrow_mut(), args, zero_copy);
+        dispatcher(&state, &mut *resource_table.borrow_mut(), args, zero_copy)
+          .map_err(|e| e.into());
 
       // Convert to Op.
       Op::Sync(serialize_result(None, result))
@@ -125,7 +127,7 @@ impl State {
       let args: Value = match serde_json::from_slice(&bufs[0]) {
         Ok(v) => v,
         Err(e) => {
-          let e = OpError::from(e);
+          let e = serde_to_errbox(e);
           return Op::Sync(serialize_result(None, Err(e)));
         }
       };
@@ -134,7 +136,10 @@ impl State {
       let promise_id = match args.get("promiseId").and_then(|v| v.as_u64()) {
         Some(i) => i,
         None => {
-          let e = OpError::type_error("`promiseId` invalid/missing".to_owned());
+          let e = ErrBox::new_text(
+            "TypeError",
+            "`promiseId` invalid/missing".to_owned(),
+          );
           return Op::Sync(serialize_result(None, Err(e)));
         }
       };
@@ -152,8 +157,10 @@ impl State {
 
       // Convert to Op.
       Op::Async(
-        async move { serialize_result(Some(promise_id), fut.await) }
-          .boxed_local(),
+        async move {
+          serialize_result(Some(promise_id), fut.await.map_err(|e| e.into()))
+        }
+        .boxed_local(),
       )
     }
   }
@@ -344,14 +351,14 @@ impl ModuleLoader for State {
       if let Some(import_map) = &self.import_map {
         let result = import_map
           .resolve(specifier, referrer)
-          .map_err(ErrBox::other)?;
+          .map_err(ErrBox::from_err)?;
         if let Some(r) = result {
           return Ok(r);
         }
       }
     }
     let module_specifier = ModuleSpecifier::resolve_import(specifier, referrer)
-      .map_err(ErrBox::other)?;
+      .map_err(ErrBox::from_err)?;
 
     Ok(module_specifier)
   }

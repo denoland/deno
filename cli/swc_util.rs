@@ -235,7 +235,7 @@ impl AstParser {
     source_code: &str,
   ) -> Result<String, ErrBox> {
     let parse_result = self.parse_module(file_name, media_type, source_code);
-    let module = parse_result.map_err(ErrBox::other)?;
+    let module = parse_result.map_err(ErrBox::from_err)?;
     let program = Program::Module(module);
     let mut compiler_pass =
       chain!(typescript::strip(), fixer(Some(&self.comments)));
@@ -259,17 +259,17 @@ impl AstParser {
         wr: writer,
         handlers,
       };
-      program.emit_with(&mut emitter).map_err(ErrBox::other)?;
+      program.emit_with(&mut emitter).map_err(ErrBox::from_err)?;
     }
-    let mut src = String::from_utf8(buf).map_err(ErrBox::other)?;
+    let mut src = String::from_utf8(buf).map_err(ErrBox::from_err)?;
     {
       let mut buf = vec![];
       self
         .source_map
         .build_source_map_from(&mut src_map_buf, None)
         .to_writer(&mut buf)
-        .map_err(ErrBox::other)?;
-      let map = String::from_utf8(buf).map_err(ErrBox::other)?;
+        .map_err(ErrBox::from_err)?;
+      let map = String::from_utf8(buf).map_err(ErrBox::from_err)?;
 
       src.push_str("//# sourceMappingURL=data:application/json;base64,");
       let encoded_map = base64::encode(map.as_bytes());

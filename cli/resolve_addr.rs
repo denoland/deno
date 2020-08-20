@@ -1,10 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use crate::op_error::OpError;
+use crate::op_error::io_to_errbox;
+use deno_core::ErrBox;
 use std::net::SocketAddr;
 use std::net::ToSocketAddrs;
 
 /// Resolve network address. Returns a future.
-pub fn resolve_addr(hostname: &str, port: u16) -> Result<SocketAddr, OpError> {
+pub fn resolve_addr(hostname: &str, port: u16) -> Result<SocketAddr, ErrBox> {
   // Default to localhost if given just the port. Example: ":80"
   let addr: &str = if !hostname.is_empty() {
     &hostname
@@ -21,7 +22,7 @@ pub fn resolve_addr(hostname: &str, port: u16) -> Result<SocketAddr, OpError> {
     addr
   };
   let addr_port_pair = (addr, port);
-  let mut iter = addr_port_pair.to_socket_addrs().map_err(OpError::from)?;
+  let mut iter = addr_port_pair.to_socket_addrs().map_err(io_to_errbox)?;
   Ok(iter.next().unwrap())
 }
 

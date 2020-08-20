@@ -3,12 +3,15 @@
 use super::dispatch_json::{blocking_json, Deserialize, JsonOp, Value};
 use super::io::std_file_resource;
 use super::io::{FileMetadata, StreamResource, StreamResourceHolder};
+use crate::op_error::io_to_errbox;
+use crate::op_error::nix_to_errbox;
 use crate::op_error::OpError;
 use crate::ops::dispatch_json::JsonResult;
 use crate::state::State;
 use deno_core::BufVec;
 use deno_core::CoreIsolate;
 use deno_core::CoreIsolateState;
+use deno_core::ErrBox;
 use deno_core::ResourceTable;
 use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
@@ -439,7 +442,7 @@ fn op_mkdir(
       use std::os::unix::fs::DirBuilderExt;
       builder.mode(mode);
     }
-    builder.create(path)?;
+    builder.create(path).map_err(io_to_errbox)?;
     Ok(json!({}))
   })
 }
@@ -470,7 +473,7 @@ fn op_chmod(
     {
       use std::os::unix::fs::PermissionsExt;
       let permissions = PermissionsExt::from_mode(mode);
-      std::fs::set_permissions(&path, permissions)?;
+      std::fs::set_permissions(&path, permissions).map_err(io_to_errbox)?;
       Ok(json!({}))
     }
     // TODO Implement chmod for Windows (#4357)
@@ -510,7 +513,7 @@ fn op_chown(
       use nix::unistd::{chown, Gid, Uid};
       let nix_uid = args.uid.map(Uid::from_raw);
       let nix_gid = args.gid.map(Gid::from_raw);
-      chown(&path, nix_uid, nix_gid)?;
+      chown(&path, nix_uid, nix_gid).map_err(nix_to_errbox)?;
       Ok(json!({}))
     }
     // TODO Implement chown for Windows
@@ -545,31 +548,31 @@ fn op_remove(
     #[cfg(not(unix))]
     use std::os::windows::prelude::MetadataExt;
 
-    let metadata = std::fs::symlink_metadata(&path)?;
+    let metadata = std::fs::symlink_metadata(&path).map_err(io_to_errbox)?;
 
     debug!("op_remove {} {}", path.display(), recursive);
     let file_type = metadata.file_type();
     if file_type.is_file() {
-      std::fs::remove_file(&path)?;
+      std::fs::remove_file(&path).map_err(io_to_errbox)?;
     } else if recursive {
-      std::fs::remove_dir_all(&path)?;
+      std::fs::remove_dir_all(&path).map_err(io_to_errbox)?;
     } else if file_type.is_symlink() {
       #[cfg(unix)]
-      std::fs::remove_file(&path)?;
+      std::fs::remove_file(&path).map_err(io_to_errbox)?;
       #[cfg(not(unix))]
       {
         use winapi::um::winnt::FILE_ATTRIBUTE_DIRECTORY;
         if metadata.file_attributes() & FILE_ATTRIBUTE_DIRECTORY != 0 {
-          std::fs::remove_dir(&path)?;
+          std::fs::remove_dir(&path).map_err(io_to_errbox)?;
         } else {
-          std::fs::remove_file(&path)?;
+          std::fs::remove_file(&path).map_err(io_to_errbox)?;
         }
       }
     } else if file_type.is_dir() {
-      std::fs::remove_dir(&path)?;
+      std::fs::remove_dir(&path).map_err(io_to_errbox)?;
     } else {
       // pipes, sockets, etc...
-      std::fs::remove_file(&path)?;
+      std::fs::remove_file(&path).map_err(io_to_errbox)?;
     }
     Ok(json!({}))
   })
@@ -602,11 +605,11 @@ fn op_copy_file(
     // See https://github.com/rust-lang/rust/issues/54800
     // Once the issue is resolved, we should remove this workaround.
     if cfg!(unix) && !from.is_file() {
-      return Err(OpError::not_found("File not found".to_string()));
+      return Err(ErrBox::new_text("NotFound", "File not found".to_string()));
     }
 
     // returns size of from as u64 (we ignore)
-    std::fs::copy(&from, &to)?;
+    std::fs::copy(&from, &to).map_err(io_to_errbox)?;
     Ok(json!({}))
   })
 }
@@ -692,9 +695,9 @@ fn op_stat(
   blocking_json(is_sync, move || {
     debug!("op_stat {} {}", path.display(), lstat);
     let metadata = if lstat {
-      std::fs::symlink_metadata(&path)?
+      std::fs::symlink_metadata(&path).map_err(io_to_errbox)?
     } else {
-      std::fs::metadata(&path)?
+      std::fs::metadata(&path).map_err(io_to_errbox)?
     };
     get_stat_json(metadata)
   })
@@ -725,7 +728,7 @@ fn op_realpath(
     debug!("op_realpath {}", path.display());
     // corresponds to the realpath on Unix and
     // CreateFile and GetFinalPathNameByHandle on Windows
-    let realpath = std::fs::canonicalize(&path)?;
+    let realpath = std::fs::canonicalize(&path).map_err(io_to_errbox)?;
     let mut realpath_str =
       into_string(realpath.into_os_string())?.replace("\\", "/");
     if cfg!(windows) {
@@ -755,7 +758,8 @@ fn op_read_dir(
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
     debug!("op_read_dir {}", path.display());
-    let entries: Vec<_> = std::fs::read_dir(path)?
+    let entries: Vec<_> = std::fs::read_dir(path)
+      .map_err(io_to_errbox)?
       .filter_map(|entry| {
         let entry = entry.unwrap();
         let file_type = entry.file_type().unwrap();
@@ -801,7 +805,7 @@ fn op_rename(
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
     debug!("op_rename {} {}", oldpath.display(), newpath.display());
-    std::fs::rename(&oldpath, &newpath)?;
+    std::fs::rename(&oldpath, &newpath).map_err(io_to_errbox)?;
     Ok(json!({}))
   })
 }
@@ -830,7 +834,7 @@ fn op_link(
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
     debug!("op_link {} {}", oldpath.display(), newpath.display());
-    std::fs::hard_link(&oldpath, &newpath)?;
+    std::fs::hard_link(&oldpath, &newpath).map_err(io_to_errbox)?;
     Ok(json!({}))
   })
 }
@@ -870,7 +874,7 @@ fn op_symlink(
     #[cfg(unix)]
     {
       use std::os::unix::fs::symlink;
-      symlink(&oldpath, &newpath)?;
+      symlink(&oldpath, &newpath).map_err(io_to_errbox)?;
       Ok(json!({}))
     }
     #[cfg(not(unix))]
@@ -925,7 +929,9 @@ fn op_read_link(
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
     debug!("op_read_link {}", path.display());
-    let target = std::fs::read_link(&path)?.into_os_string();
+    let target = std::fs::read_link(&path)
+      .map_err(io_to_errbox)?
+      .into_os_string();
     let targetstr = into_string(target)?;
     Ok(json!(targetstr))
   })
@@ -999,8 +1005,11 @@ fn op_truncate(
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
     debug!("op_truncate {} {}", path.display(), len);
-    let f = std::fs::OpenOptions::new().write(true).open(&path)?;
-    f.set_len(len)?;
+    let f = std::fs::OpenOptions::new()
+      .write(true)
+      .open(&path)
+      .map_err(io_to_errbox)?;
+    f.set_len(len).map_err(io_to_errbox)?;
     Ok(json!({}))
   })
 }
@@ -1083,7 +1092,8 @@ fn op_make_temp_dir(
       prefix.as_deref(),
       suffix.as_deref(),
       true,
-    )?;
+    )
+    .map_err(io_to_errbox)?;
     let path_str = into_string(path.into_os_string())?;
 
     Ok(json!(path_str))
@@ -1114,7 +1124,8 @@ fn op_make_temp_file(
       prefix.as_deref(),
       suffix.as_deref(),
       false,
-    )?;
+    )
+    .map_err(io_to_errbox)?;
     let path_str = into_string(path.into_os_string())?;
 
     Ok(json!(path_str))
@@ -1145,7 +1156,8 @@ fn op_utime(
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
     debug!("op_utime {} {} {}", args.path, args.atime, args.mtime);
-    utime::set_file_times(args.path, args.atime, args.mtime)?;
+    utime::set_file_times(args.path, args.atime, args.mtime)
+      .map_err(io_to_errbox)?;
     Ok(json!({}))
   })
 }

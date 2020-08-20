@@ -10,7 +10,6 @@
 use crate::colors;
 use crate::diff::diff;
 use crate::fs::files_in_subtree;
-use crate::op_error::OpError;
 use crate::text_encoding;
 use deno_core::ErrBox;
 use dprint_plugin_typescript as dprint;
@@ -39,11 +38,11 @@ pub async fn format(
     return format_stdin(check);
   }
   // collect all files provided.
-  let mut target_files = collect_files(args).map_err(ErrBox::other)?;
+  let mut target_files = collect_files(args).map_err(ErrBox::from_err)?;
   if !exclude.is_empty() {
     // collect all files to be ignored
     // and retain only files that should be formatted.
-    let ignore_files = collect_files(exclude).map_err(ErrBox::other)?;
+    let ignore_files = collect_files(exclude).map_err(ErrBox::from_err)?;
     target_files.retain(|f| !ignore_files.contains(&f));
   }
   let config = get_config();
@@ -110,11 +109,11 @@ async fn check_source_files(
   if not_formatted_files_count == 0 {
     Ok(())
   } else {
-    Err(ErrBox::other(OpError::other(format!(
+    Err(ErrBox::other(format!(
       "Found {} not formatted {}",
       not_formatted_files_count,
       files_str(not_formatted_files_count),
-    ))))
+    )))
   }
 }
 
@@ -172,9 +171,7 @@ async fn format_source_files(
 fn format_stdin(check: bool) -> Result<(), ErrBox> {
   let mut source = String::new();
   if stdin().read_to_string(&mut source).is_err() {
-    return Err(ErrBox::other(OpError::other(
-      "Failed to read from stdin".to_string(),
-    )));
+    return Err(ErrBox::other("Failed to read from stdin".to_string()));
   }
   let formatter = dprint::Formatter::new(get_config());
 
@@ -188,11 +185,11 @@ fn format_stdin(check: bool) -> Result<(), ErrBox> {
       } else {
         stdout()
           .write_all(formatted_text.as_bytes())
-          .map_err(ErrBox::other)?;
+          .map_err(ErrBox::from_err)?;
       }
     }
     Err(e) => {
-      return Err(ErrBox::other(OpError::other(e)));
+      return Err(ErrBox::other(e));
     }
   }
   Ok(())
@@ -251,10 +248,10 @@ struct FileContents {
 }
 
 fn read_file_contents(file_path: &PathBuf) -> Result<FileContents, ErrBox> {
-  let file_bytes = fs::read(&file_path).map_err(ErrBox::other)?;
+  let file_bytes = fs::read(&file_path).map_err(ErrBox::from_err)?;
   let charset = text_encoding::detect_charset(&file_bytes);
   let file_text = text_encoding::convert_to_utf8(&file_bytes, charset)
-    .map_err(ErrBox::other)?;
+    .map_err(ErrBox::from_err)?;
   let had_bom = file_text.starts_with(BOM_CHAR);
   let text = if had_bom {
     // remove the BOM
@@ -277,7 +274,7 @@ fn write_file_contents(
     file_contents.text
   };
 
-  Ok(fs::write(file_path, file_text).map_err(ErrBox::other)?)
+  Ok(fs::write(file_path, file_text).map_err(ErrBox::from_err)?)
 }
 
 pub async fn run_parallelized<F>(

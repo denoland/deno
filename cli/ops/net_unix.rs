@@ -1,5 +1,6 @@
 use super::dispatch_json::{Deserialize, JsonOp};
 use super::io::{StreamResource, StreamResourceHolder};
+use crate::op_error::io_to_errbox;
 use crate::op_error::OpError;
 use deno_core::CoreIsolateState;
 use deno_core::ResourceTable;
@@ -48,12 +49,15 @@ pub fn accept_unix(
         })?
     };
 
-    let (unix_stream, _socket_addr) =
-      listener_resource.listener.accept().await?;
+    let (unix_stream, _socket_addr) = listener_resource
+      .listener
+      .accept()
+      .await
+      .map_err(io_to_errbox)?;
     drop(resource_table_);
 
-    let local_addr = unix_stream.local_addr()?;
-    let remote_addr = unix_stream.peer_addr()?;
+    let local_addr = unix_stream.local_addr().map_err(io_to_errbox)?;
+    let remote_addr = unix_stream.peer_addr().map_err(io_to_errbox)?;
     let mut resource_table_ = resource_table.borrow_mut();
     let rid = resource_table_.add(
       "unixStream",
@@ -93,7 +97,11 @@ pub fn receive_unix_packet(
       .ok_or_else(|| {
         OpError::bad_resource("Socket has been closed".to_string())
       })?;
-    let (size, remote_addr) = resource.socket.recv_from(&mut zero_copy).await?;
+    let (size, remote_addr) = resource
+      .socket
+      .recv_from(&mut zero_copy)
+      .await
+      .map_err(io_to_errbox)?;
     Ok(json!({
       "size": size,
       "remoteAddr": {

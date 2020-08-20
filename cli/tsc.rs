@@ -278,7 +278,7 @@ impl CompilerConfig {
     let config = match &config_file {
       Some(config_file) => {
         debug!("Attempt to load config: {}", config_file.to_str().unwrap());
-        let config = fs::read(&config_file).map_err(ErrBox::other)?;
+        let config = fs::read(&config_file).map_err(ErrBox::from_err)?;
         Some(config)
       }
       _ => None,
@@ -293,7 +293,7 @@ impl CompilerConfig {
     // JavaScript files as well
     let compile_js = if let Some(config_content) = config.clone() {
       let config_str =
-        std::str::from_utf8(&config_content).map_err(ErrBox::other)?;
+        std::str::from_utf8(&config_content).map_err(ErrBox::from_err)?;
       CHECK_JS_RE.is_match(config_str)
     } else {
       false
@@ -492,7 +492,7 @@ impl TsCompiler {
   ) -> Result<bool, ErrBox> {
     if let Some(build_info_str) = build_info.as_ref() {
       let build_inf_json: Value =
-        serde_json::from_str(build_info_str).map_err(ErrBox::other)?;
+        serde_json::from_str(build_info_str).map_err(ErrBox::from_err)?;
       let program_val = build_inf_json["program"].as_object().unwrap();
       let file_infos = program_val["fileInfos"].as_object().unwrap();
 
@@ -558,7 +558,7 @@ impl TsCompiler {
       .disk_cache
       .get_cache_filename_with_extension(&module_url, "buildinfo");
     let build_info = match self.disk_cache.get(&build_info_key) {
-      Ok(bytes) => Some(String::from_utf8(bytes).map_err(ErrBox::other)?),
+      Ok(bytes) => Some(String::from_utf8(bytes).map_err(ErrBox::from_err)?),
       Err(_) => None,
     };
 
@@ -618,10 +618,10 @@ impl TsCompiler {
       execute_in_same_thread(global_state, permissions, req_msg).await?;
 
     let compile_response: CompileResponse =
-      serde_json::from_str(&json_str).map_err(ErrBox::other)?;
+      serde_json::from_str(&json_str).map_err(ErrBox::from_err)?;
 
     if !compile_response.diagnostics.items.is_empty() {
-      return Err(ErrBox::other(compile_response.diagnostics));
+      return Err(ErrBox::from_err(compile_response.diagnostics));
     }
 
     maybe_log_stats(compile_response.stats);
@@ -629,11 +629,11 @@ impl TsCompiler {
     if let Some(build_info) = compile_response.build_info {
       self
         .cache_build_info(&module_url, build_info)
-        .map_err(ErrBox::other)?;
+        .map_err(ErrBox::from_err)?;
     }
     self
       .cache_emitted_files(compile_response.emit_map)
-      .map_err(ErrBox::other)?;
+      .map_err(ErrBox::from_err)?;
     Ok(())
   }
 
@@ -681,7 +681,7 @@ impl TsCompiler {
     }
     if let Some(ref lockfile) = global_state.lockfile {
       let g = lockfile.lock().unwrap();
-      g.write().map_err(ErrBox::other)?;
+      g.write().map_err(ErrBox::from_err)?;
     }
     let module_graph_json =
       serde_json::to_value(module_graph).expect("Failed to serialize data");
@@ -725,12 +725,12 @@ impl TsCompiler {
       execute_in_same_thread(global_state, permissions, req_msg).await?;
 
     let bundle_response: BundleResponse =
-      serde_json::from_str(&json_str).map_err(ErrBox::other)?;
+      serde_json::from_str(&json_str).map_err(ErrBox::from_err)?;
 
     maybe_log_stats(bundle_response.stats);
 
     if !bundle_response.diagnostics.items.is_empty() {
-      return Err(ErrBox::other(bundle_response.diagnostics));
+      return Err(ErrBox::from_err(bundle_response.diagnostics));
     }
 
     assert!(bundle_response.bundle_output.is_some());
@@ -781,7 +781,9 @@ impl TsCompiler {
       emit_map.insert(emitted_filename, emitted_source);
     }
 
-    self.cache_emitted_files(emit_map).map_err(ErrBox::other)?;
+    self
+      .cache_emitted_files(emit_map)
+      .map_err(ErrBox::from_err)?;
     Ok(())
   }
 
@@ -861,7 +863,7 @@ impl TsCompiler {
       code: compiled_source_file
         .source_code
         .to_string()
-        .map_err(ErrBox::other)?,
+        .map_err(ErrBox::from_err)?,
       name: module_url.to_string(),
     };
 
@@ -879,7 +881,7 @@ impl TsCompiler {
       .disk_cache
       .get_cache_filename_with_extension(&module_url, "js");
     let compiled_code =
-      self.disk_cache.get(&cache_key).map_err(ErrBox::other)?;
+      self.disk_cache.get(&cache_key).map_err(ErrBox::from_err)?;
     let compiled_code_filename = self.disk_cache.location.join(cache_key);
     debug!("compiled filename: {:?}", compiled_code_filename);
 
@@ -936,7 +938,8 @@ impl TsCompiler {
     let cache_key = self
       .disk_cache
       .get_cache_filename_with_extension(module_specifier.as_url(), "js.map");
-    let source_code = self.disk_cache.get(&cache_key).map_err(ErrBox::other)?;
+    let source_code =
+      self.disk_cache.get(&cache_key).map_err(ErrBox::from_err)?;
     let source_map_filename = self.disk_cache.location.join(cache_key);
     debug!("source map filename: {:?}", source_map_filename);
 

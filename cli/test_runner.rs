@@ -56,7 +56,7 @@ pub fn prepare_test_modules_urls(
   }
 
   for remote_url in include_urls {
-    let url = Url::parse(&remote_url).map_err(ErrBox::other)?;
+    let url = Url::parse(&remote_url).map_err(ErrBox::from_err)?;
     prepared.push(url);
   }
 

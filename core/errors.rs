@@ -55,12 +55,17 @@ impl ErrBox {
     ErrBox(Box::new(err), kind)
   }
 
-  pub fn other<T: AnyError>(err: T) -> Self {
-    ErrBox(Box::new(err), "Other")
+  pub fn new_text(kind: &'static str, err_str: String) -> Self {
+    ErrBox::new(kind, TextError(err_str))
   }
 
-  pub fn new_other(err_str: String) -> Self {
-    ErrBox(Box::new(TextError(err_str)), "Other")
+  /// Catch-all
+  pub fn from_err<T: AnyError>(err: T) -> Self {
+    ErrBox::new("Other", err)
+  }
+
+  pub fn other(err_str: String) -> Self {
+    ErrBox::new("Other", TextError(err_str))
   }
 }
 

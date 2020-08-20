@@ -83,18 +83,18 @@ pub struct Metadata {
 impl Metadata {
   pub fn write(&self, cache_filename: &Path) -> Result<(), ErrBox> {
     let metadata_filename = Self::filename(cache_filename);
-    let json = serde_json::to_string_pretty(self).map_err(ErrBox::other)?;
+    let json = serde_json::to_string_pretty(self).map_err(ErrBox::from_err)?;
     deno_fs::write_file(&metadata_filename, json, 0o666)
-      .map_err(ErrBox::other)?;
+      .map_err(ErrBox::from_err)?;
     Ok(())
   }
 
   pub fn read(cache_filename: &Path) -> Result<Metadata, ErrBox> {
     let metadata_filename = Metadata::filename(&cache_filename);
     let metadata =
-      fs::read_to_string(metadata_filename).map_err(ErrBox::other)?;
+      fs::read_to_string(metadata_filename).map_err(ErrBox::from_err)?;
     let metadata: Metadata =
-      serde_json::from_str(&metadata).map_err(ErrBox::other)?;
+      serde_json::from_str(&metadata).map_err(ErrBox::from_err)?;
     Ok(metadata)
   }
 
@@ -141,11 +141,11 @@ impl HttpCache {
   pub fn get(&self, url: &Url) -> Result<(File, HeadersMap), ErrBox> {
     let cache_filename = self.location.join(url_to_filename(url));
     let metadata_filename = Metadata::filename(&cache_filename);
-    let file = File::open(cache_filename).map_err(ErrBox::other)?;
+    let file = File::open(cache_filename).map_err(ErrBox::from_err)?;
     let metadata =
-      fs::read_to_string(metadata_filename).map_err(ErrBox::other)?;
+      fs::read_to_string(metadata_filename).map_err(ErrBox::from_err)?;
     let metadata: Metadata =
-      serde_json::from_str(&metadata).map_err(ErrBox::other)?;
+      serde_json::from_str(&metadata).map_err(ErrBox::from_err)?;
     Ok((file, metadata.headers))
   }
 
@@ -153,9 +153,9 @@ impl HttpCache {
     let cache_filename = self.location.join(url_to_filename(url));
     let metadata_filename = Metadata::filename(&cache_filename);
     let metadata =
-      fs::read_to_string(metadata_filename).map_err(ErrBox::other)?;
+      fs::read_to_string(metadata_filename).map_err(ErrBox::from_err)?;
     let metadata: Metadata =
-      serde_json::from_str(&metadata).map_err(ErrBox::other)?;
+      serde_json::from_str(&metadata).map_err(ErrBox::from_err)?;
     Ok(metadata)
   }
 
@@ -172,10 +172,10 @@ impl HttpCache {
       .expect("Cache filename should have a parent dir");
     self
       .ensure_dir_exists(parent_filename)
-      .map_err(ErrBox::other)?;
+      .map_err(ErrBox::from_err)?;
     // Cache content
     deno_fs::write_file(&cache_filename, content, 0o666)
-      .map_err(ErrBox::other)?;
+      .map_err(ErrBox::from_err)?;
 
     let metadata = Metadata {
       url: url.to_string(),

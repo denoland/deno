@@ -638,7 +638,7 @@ mod tests {
           module_url_specified: inner.url.clone(),
           module_url_found: src.1.to_owned(),
         })),
-        None => Poll::Ready(Err(ErrBox::other(MockError::LoadErr))),
+        None => Poll::Ready(Err(ErrBox::from_err(MockError::LoadErr))),
       }
     }
   }
@@ -661,13 +661,13 @@ mod tests {
       let output_specifier =
         match ModuleSpecifier::resolve_import(specifier, referrer) {
           Ok(specifier) => specifier,
-          Err(..) => return Err(ErrBox::other(MockError::ResolveErr)),
+          Err(..) => return Err(ErrBox::from_err(MockError::ResolveErr)),
         };
 
       if mock_source_code(&output_specifier.to_string()).is_some() {
         Ok(output_specifier)
       } else {
-        Err(ErrBox::other(MockError::ResolveErr))
+        Err(ErrBox::from_err(MockError::ResolveErr))
       }
     }
 

@@ -48,7 +48,7 @@ pub struct ImportMap {
 impl ImportMap {
   pub fn load(file_path: &str) -> Result<Self, ErrBox> {
     let file_url = ModuleSpecifier::resolve_url_or_path(file_path)
-      .map_err(ErrBox::other)?
+      .map_err(ErrBox::from_err)?
       .to_string();
     let resolved_path = std::env::current_dir().unwrap().join(file_path);
     debug!(
@@ -69,9 +69,9 @@ impl ImportMap {
           .as_str(),
         )
       })
-      .map_err(ErrBox::other)?;
+      .map_err(ErrBox::from_err)?;
     // The URL of the import map is the base URL for its values.
-    ImportMap::from_json(&file_url, &json_string).map_err(ErrBox::other)
+    ImportMap::from_json(&file_url, &json_string).map_err(ErrBox::from_err)
   }
 
   pub fn from_json(

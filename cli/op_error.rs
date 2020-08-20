@@ -107,6 +107,12 @@ impl fmt::Display for OpError {
   }
 }
 
+impl From<OpError> for ErrBox {
+  fn from(error: OpError) -> Self {
+    ErrBox::new_text(error.kind, error.msg)
+  }
+}
+
 impl From<ImportMapError> for OpError {
   fn from(error: ImportMapError) -> Self {
     OpError::from(&error)
@@ -155,6 +161,34 @@ impl From<io::Error> for OpError {
   }
 }
 
+pub fn io_to_errbox(error: io::Error) -> ErrBox {
+  use io::ErrorKind::*;
+  let kind = match error.kind() {
+    NotFound => "NotFound",
+    PermissionDenied => "PermissionDenied",
+    ConnectionRefused => "ConnectionRefused",
+    ConnectionReset => "ConnectionReset",
+    ConnectionAborted => "ConnectionAborted",
+    NotConnected => "NotConnected",
+    AddrInUse => "AddrInUse",
+    AddrNotAvailable => "AddrNotAvailable",
+    BrokenPipe => "BrokenPipe",
+    AlreadyExists => "AlreadyExists",
+    InvalidInput => "TypeError",
+    InvalidData => "InvalidData",
+    TimedOut => "TimedOut",
+    Interrupted => "Interrupted",
+    WriteZero => "WriteZero",
+    UnexpectedEof => "UnexpectedEof",
+    Other => "Other",
+    WouldBlock => unreachable!(),
+    // Non-exhaustive enum - might add new variants
+    // in the future
+    _ => unreachable!(),
+  };
+  ErrBox::new(kind, error)
+}
+
 impl From<&io::Error> for OpError {
   fn from(error: &io::Error) -> Self {
     use io::ErrorKind::*;
@@ -197,6 +231,11 @@ impl From<&url::ParseError> for OpError {
     Self::new("URIError", error.to_string())
   }
 }
+
+pub fn url_to_errbox(error: url::ParseError) -> ErrBox {
+  ErrBox::new("URIError", error)
+}
+
 impl From<reqwest::Error> for OpError {
   fn from(error: reqwest::Error) -> Self {
     OpError::from(&error)
@@ -228,26 +267,45 @@ impl From<&reqwest::Error> for OpError {
   }
 }
 
-impl From<ReadlineError> for OpError {
-  fn from(error: ReadlineError) -> Self {
-    OpError::from(&error)
+pub fn reqwest_to_errbox(error: reqwest::Error) -> ErrBox {
+  match error.source() {
+    Some(err_ref) => None
+      .or_else(|| {
+        err_ref.downcast_ref::<url::ParseError>().map(|_e| {
+          // url_to_errbox(e.to_owned())
+          todo!()
+        })
+      })
+      .or_else(|| {
+        err_ref.downcast_ref::<io::Error>().map(|_e| {
+          // io_to_errbox(e.to_owned())
+          todo!()
+        })
+      })
+      .or_else(|| {
+        err_ref
+          .downcast_ref::<serde_json::error::Error>()
+          .map(|_e| {
+            // serde_to_errbox(e.to_owned())
+            todo!()
+          })
+      })
+      .unwrap_or_else(|| ErrBox::new("Http", error)),
+    None => ErrBox::new("Http", error),
   }
 }
 
-impl From<&ReadlineError> for OpError {
-  fn from(error: &ReadlineError) -> Self {
-    use ReadlineError::*;
-    let kind = match error {
-      Io(err) => return OpError::from(err),
-      Eof => "UnexpectedEof",
-      Interrupted => "Interrupted",
-      #[cfg(unix)]
-      Errno(err) => return (*err).into(),
-      _ => unimplemented!(),
-    };
-
-    Self::new(kind, error.to_string())
-  }
+pub fn readline_to_errbox(error: ReadlineError) -> ErrBox {
+  use ReadlineError::*;
+  let kind = match error {
+    Io(err) => return io_to_errbox(err),
+    Eof => "UnexpectedEof",
+    Interrupted => "Interrupted",
+    #[cfg(unix)]
+    Errno(_err) => todo!(),
+    _ => unimplemented!(),
+  };
+  ErrBox::new(kind, error)
 }
 
 impl From<serde_json::error::Error> for OpError {
@@ -268,6 +326,35 @@ impl From<&serde_json::error::Error> for OpError {
 
     Self::new(kind, error.to_string())
   }
+}
+
+pub fn serde_to_errbox(error: serde_json::error::Error) -> ErrBox {
+  use serde_json::error::*;
+  let kind = match error.classify() {
+    Category::Io => "TypeError",
+    Category::Syntax => "TypeError",
+    Category::Data => "InvalidData",
+    Category::Eof => "UnexpectedEof",
+  };
+  ErrBox::new(kind, error)
+}
+
+#[cfg(unix)]
+pub fn nix_to_errbox(error: nix::Error) -> ErrBox {
+  use nix::errno::Errno::*;
+  let kind = match error {
+    nix::Error::Sys(EPERM) => "PermissionDenied",
+    nix::Error::Sys(EINVAL) => "TypeError",
+    nix::Error::Sys(ENOENT) => "NotFound",
+    nix::Error::Sys(ENOTTY) => "BadResource",
+    nix::Error::Sys(UnknownErrno) => unreachable!(),
+    nix::Error::Sys(_) => unreachable!(),
+    nix::Error::InvalidPath => "TypeError",
+    nix::Error::InvalidUtf8 => "InvalidData",
+    nix::Error::UnsupportedOperation => unreachable!(),
+  };
+
+  ErrBox::new(kind, error)
 }
 
 #[cfg(unix)]
@@ -372,7 +459,6 @@ impl From<ErrBox> for OpError {
       })
       .or_else(|| error.downcast_ref::<url::ParseError>().map(|e| e.into()))
       .or_else(|| error.downcast_ref::<VarError>().map(|e| e.into()))
-      .or_else(|| error.downcast_ref::<ReadlineError>().map(|e| e.into()))
       .or_else(|| {
         error
           .downcast_ref::<serde_json::error::Error>()
@@ -386,9 +472,8 @@ impl From<ErrBox> for OpError {
           .map(|e| e.into())
       })
       .or_else(|| unix_error_kind(&error))
-      .unwrap_or_else(|| {
-        panic!("Can't downcast {:?} to OpError", error);
-      })
+      .or_else(|| Some(OpError::new(error.1, error.0.to_string())))
+      .unwrap()
   }
 }
 

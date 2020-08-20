@@ -1,7 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+use crate::op_error::serde_to_errbox;
 use crate::op_error::OpError;
 use deno_core::Buf;
 use deno_core::CoreIsolateState;
+use deno_core::ErrBox;
 use deno_core::Op;
 use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
@@ -11,7 +13,7 @@ pub use serde_json::Value;
 use std::future::Future;
 use std::pin::Pin;
 
-pub type JsonResult = Result<Value, OpError>;
+pub type JsonResult = Result<Value, ErrBox>;
 
 pub type AsyncJsonOp = Pin<Box<dyn Future<Output = JsonResult>>>;
 
@@ -23,10 +25,10 @@ pub enum JsonOp {
   AsyncUnref(AsyncJsonOp),
 }
 
-fn json_err(err: OpError) -> Value {
+fn json_err(err: ErrBox) -> Value {
   json!({
-    "message": err.msg,
-    "kind": err.kind,
+    "message": err.0.to_string(),
+    "kind": err.1,
   })
 }
 
@@ -59,7 +61,7 @@ where
     let async_args: AsyncArgs = match serde_json::from_slice(&zero_copy[0]) {
       Ok(args) => args,
       Err(e) => {
-        let buf = serialize_result(None, Err(OpError::from(e)));
+        let buf = serialize_result(None, Err(serde_to_errbox(e)));
         return Op::Sync(buf);
       }
     };
@@ -67,8 +69,10 @@ where
     let is_sync = promise_id.is_none();
 
     let result = serde_json::from_slice(&zero_copy[0])
-      .map_err(OpError::from)
-      .and_then(|args| d(isolate_state, args, &mut zero_copy[1..]));
+      .map_err(serde_to_errbox)
+      .and_then(|args| {
+        d(isolate_state, args, &mut zero_copy[1..]).map_err(|e| e.into())
+      });
 
     // Convert to Op
     match result {

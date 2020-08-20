@@ -2,6 +2,7 @@
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use super::io::{StreamResource, StreamResourceHolder};
 use crate::http_util::{create_http_client, HttpBody};
+use crate::op_error::reqwest_to_errbox;
 use crate::op_error::OpError;
 use crate::state::State;
 use deno_core::CoreIsolate;
@@ -90,7 +91,7 @@ pub fn op_fetch(
 
   let resource_table = isolate_state.resource_table.clone();
   let future = async move {
-    let res = request.send().await?;
+    let res = request.send().await.map_err(reqwest_to_errbox)?;
     debug!("Fetch response {}", url);
     let status = res.status();
     let mut res_headers = Vec::new();

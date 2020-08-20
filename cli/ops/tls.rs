@@ -1,11 +1,13 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use super::io::{StreamResource, StreamResourceHolder};
+use crate::op_error::io_to_errbox;
 use crate::op_error::OpError;
 use crate::resolve_addr::resolve_addr;
 use crate::state::State;
 use deno_core::CoreIsolate;
 use deno_core::CoreIsolateState;
+use deno_core::ErrBox;
 use deno_core::ZeroCopyBuf;
 use futures::future::poll_fn;
 use futures::future::FutureExt;
@@ -81,7 +83,7 @@ pub fn op_start_tls(
       let mut resource_table_ = resource_table.borrow_mut();
       match resource_table_.remove::<StreamResourceHolder>(rid) {
         Some(resource) => *resource,
-        None => return Err(OpError::bad_resource_id()),
+        None => return Err(ErrBox::from(OpError::bad_resource_id())),
       }
     };
 
@@ -89,14 +91,14 @@ pub fn op_start_tls(
       resource_holder.resource
     {
       let tcp_stream = tcp_stream.take().unwrap();
-      let local_addr = tcp_stream.local_addr()?;
-      let remote_addr = tcp_stream.peer_addr()?;
+      let local_addr = tcp_stream.local_addr().map_err(io_to_errbox)?;
+      let remote_addr = tcp_stream.peer_addr().map_err(io_to_errbox)?;
       let mut config = ClientConfig::new();
       config
         .root_store
         .add_server_trust_anchors(&webpki_roots::TLS_SERVER_ROOTS);
       if let Some(path) = cert_file {
-        let key_file = File::open(path)?;
+        let key_file = File::open(path).map_err(io_to_errbox)?;
         let reader = &mut BufReader::new(key_file);
         config.root_store.add_pem_file(reader).unwrap();
       }
@@ -104,7 +106,10 @@ pub fn op_start_tls(
       let tls_connector = TlsConnector::from(Arc::new(config));
       let dnsname =
         DNSNameRef::try_from_ascii_str(&domain).expect("Invalid DNS lookup");
-      let tls_stream = tls_connector.connect(dnsname, tcp_stream).await?;
+      let tls_stream = tls_connector
+        .connect(dnsname, tcp_stream)
+        .await
+        .map_err(io_to_errbox)?;
 
       let mut resource_table_ = resource_table.borrow_mut();
       let rid = resource_table_.add(
@@ -127,7 +132,7 @@ pub fn op_start_tls(
           }
       }))
     } else {
-      Err(OpError::bad_resource_id())
+      Err(ErrBox::from(OpError::bad_resource_id()))
     }
   };
   Ok(JsonOp::Async(op.boxed_local()))
@@ -154,22 +159,25 @@ pub fn op_connect_tls(
 
   let op = async move {
     let addr = resolve_addr(&args.hostname, args.port)?;
-    let tcp_stream = TcpStream::connect(&addr).await?;
-    let local_addr = tcp_stream.local_addr()?;
-    let remote_addr = tcp_stream.peer_addr()?;
+    let tcp_stream = TcpStream::connect(&addr).await.map_err(io_to_errbox)?;
+    let local_addr = tcp_stream.local_addr().map_err(io_to_errbox)?;
+    let remote_addr = tcp_stream.peer_addr().map_err(io_to_errbox)?;
     let mut config = ClientConfig::new();
     config
       .root_store
       .add_server_trust_anchors(&webpki_roots::TLS_SERVER_ROOTS);
     if let Some(path) = cert_file {
-      let key_file = File::open(path)?;
+      let key_file = File::open(path).map_err(io_to_errbox)?;
       let reader = &mut BufReader::new(key_file);
       config.root_store.add_pem_file(reader).unwrap();
     }
     let tls_connector = TlsConnector::from(Arc::new(config));
     let dnsname =
       DNSNameRef::try_from_ascii_str(&domain).expect("Invalid DNS lookup");
-    let tls_stream = tls_connector.connect(dnsname, tcp_stream).await?;
+    let tls_stream = tls_connector
+      .connect(dnsname, tcp_stream)
+      .await
+      .map_err(io_to_errbox)?;
     let mut resource_table_ = resource_table.borrow_mut();
     let rid = resource_table_.add(
       "clientTlsStream",
@@ -375,7 +383,7 @@ fn op_accept_tls(
           OpError::bad_resource("Listener has been closed".to_string())
         })?;
       let listener = &mut listener_resource.listener;
-      match listener.poll_accept(cx).map_err(OpError::from) {
+      match listener.poll_accept(cx).map_err(io_to_errbox) {
         Poll::Ready(Ok((stream, addr))) => {
           listener_resource.untrack_task();
           Poll::Ready(Ok((stream, addr)))
@@ -391,8 +399,8 @@ fn op_accept_tls(
       }
     });
     let (tcp_stream, _socket_addr) = accept_fut.await?;
-    let local_addr = tcp_stream.local_addr()?;
-    let remote_addr = tcp_stream.peer_addr()?;
+    let local_addr = tcp_stream.local_addr().map_err(io_to_errbox)?;
+    let remote_addr = tcp_stream.peer_addr().map_err(io_to_errbox)?;
     let tls_acceptor = {
       let resource_table = resource_table.borrow();
       let resource = resource_table
@@ -401,7 +409,10 @@ fn op_accept_tls(
         .expect("Can't find tls listener");
       resource.tls_acceptor.clone()
     };
-    let tls_stream = tls_acceptor.accept(tcp_stream).await?;
+    let tls_stream = tls_acceptor
+      .accept(tcp_stream)
+      .await
+      .map_err(io_to_errbox)?;
     let rid = {
       let mut resource_table = resource_table.borrow_mut();
       resource_table.add(
