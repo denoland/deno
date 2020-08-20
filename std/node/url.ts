@@ -36,7 +36,7 @@ const newlineRegEx = /\n/g;
 const carriageReturnRegEx = /\r/g;
 const tabRegEx = /\t/g;
 
-export const URL = globalThis.URL
+export { URL };
 
 export function fileURLToPath(path: string | URL): string {
   if (typeof path === "string") path = new URL(path);
