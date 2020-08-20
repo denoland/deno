@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{JsonOp, Value};
-use crate::errbox::from_serde;
 use crate::state::State;
 use deno_core::CoreIsolate;
 use deno_core::CoreIsolateState;
@@ -10,6 +9,8 @@ use std::rc::Rc;
 
 #[cfg(unix)]
 use super::dispatch_json::Deserialize;
+#[cfg(unix)]
+use crate::errbox::from_serde;
 #[cfg(unix)]
 use futures::future::{poll_fn, FutureExt};
 #[cfg(unix)]

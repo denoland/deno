@@ -2,6 +2,7 @@ use super::dispatch_json::JsonOp;
 use super::io::std_file_resource;
 use super::io::{StreamResource, StreamResourceHolder};
 use crate::errbox::from_io;
+#[cfg(unix)]
 use crate::errbox::from_nix;
 use crate::errbox::from_serde;
 use crate::errbox::resource_unavailable;
@@ -15,9 +16,6 @@ use nix::sys::termios;
 use serde_derive::{Deserialize, Serialize};
 use serde_json::Value;
 use std::rc::Rc;
-
-#[cfg(windows)]
-use crate::errbox::from_io;
 
 #[cfg(windows)]
 use winapi::shared::minwindef::DWORD;
@@ -38,7 +36,7 @@ fn get_windows_handle(
   if handle == handleapi::INVALID_HANDLE_VALUE {
     return Err(from_io(std::io::Error::last_os_error()));
   } else if handle.is_null() {
-    return Err(ErrBoxError::other("null handle".to_owned()));
+    return Err(ErrBox::other("null handle".to_owned()));
   }
   Ok(handle)
 }
@@ -120,7 +118,7 @@ pub fn op_set_raw(
     if handle == handleapi::INVALID_HANDLE_VALUE {
       return Err(from_io(std::io::Error::last_os_error()));
     } else if handle.is_null() {
-      return Err(ErrBox::other("null handle".to_owned()).into());
+      return Err(ErrBox::other("null handle".to_owned()));
     }
     let mut original_mode: DWORD = 0;
     if unsafe { consoleapi::GetConsoleMode(handle, &mut original_mode) }
@@ -301,12 +299,9 @@ pub fn op_console_size(
             ) == 0
             {
               // TODO (caspervonb) use GetLastError
-              return Err(
-                ErrBox::other(
-                  winapi::um::errhandlingapi::GetLastError().to_string(),
-                )
-                .into(),
-              );
+              return Err(ErrBox::other(
+                winapi::um::errhandlingapi::GetLastError().to_string(),
+              ));
             }
 
             Ok(ConsoleSize {

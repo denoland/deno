@@ -4,6 +4,7 @@ use super::dispatch_json::{blocking_json, Deserialize, JsonOp, Value};
 use super::io::std_file_resource;
 use super::io::{FileMetadata, StreamResource, StreamResourceHolder};
 use crate::errbox::from_io;
+#[cfg(unix)]
 use crate::errbox::from_nix;
 use crate::errbox::from_serde;
 use crate::errbox::invalid_utf8;
@@ -481,7 +482,7 @@ fn op_chmod(
     #[cfg(not(unix))]
     {
       // Still check file/dir exists on Windows
-      let _metadata = std::fs::metadata(&path)?;
+      let _metadata = std::fs::metadata(&path).map_err(from_io)?;
       Err(not_implemented())
     }
   })
@@ -884,8 +885,8 @@ fn op_symlink(
 
       match args.options {
         Some(options) => match options._type.as_ref() {
-          "file" => symlink_file(&oldpath, &newpath)?,
-          "dir" => symlink_dir(&oldpath, &newpath)?,
+          "file" => symlink_file(&oldpath, &newpath).map_err(from_io)?,
+          "dir" => symlink_dir(&oldpath, &newpath).map_err(from_io)?,
           _ => return Err(ErrBox::type_error("unsupported type".to_string())),
         },
         None => {
