@@ -784,7 +784,7 @@ pub mod tests {
         _maybe_referrer: Option<ModuleSpecifier>,
         _is_dyn_import: bool,
       ) -> Pin<Box<ModuleSourceFuture>> {
-        async { Err(ErrBox::from(io::Error::from(io::ErrorKind::NotFound))) }
+        async { Err(ErrBox::other(io::Error::from(io::ErrorKind::NotFound))) }
           .boxed()
       }
     }

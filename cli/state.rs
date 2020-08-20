@@ -342,14 +342,16 @@ impl ModuleLoader for State {
   ) -> Result<ModuleSpecifier, ErrBox> {
     if !is_main {
       if let Some(import_map) = &self.import_map {
-        let result = import_map.resolve(specifier, referrer)?;
+        let result = import_map
+          .resolve(specifier, referrer)
+          .map_err(ErrBox::other)?;
         if let Some(r) = result {
           return Ok(r);
         }
       }
     }
-    let module_specifier =
-      ModuleSpecifier::resolve_import(specifier, referrer)?;
+    let module_specifier = ModuleSpecifier::resolve_import(specifier, referrer)
+      .map_err(ErrBox::other)?;
 
     Ok(module_specifier)
   }

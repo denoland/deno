@@ -39,6 +39,10 @@ impl ErrBox {
       Err(self)
     }
   }
+
+  pub fn other<T: AnyError>(err: T) -> Self {
+    ErrBox(Box::new(err), "Other")
+  }
 }
 
 impl AsRef<dyn AnyError> for ErrBox {
@@ -54,21 +58,27 @@ impl Deref for ErrBox {
   }
 }
 
-impl<T: AnyError> From<T> for ErrBox {
-  fn from(error: T) -> Self {
-    Self(Box::new(error), "Other")
-  }
-}
+// impl<T: AnyError> From<T> for ErrBox {
+//   fn from(error: T) -> Self {
+//     Self(Box::new(error), "Other")
+//   }
+// }
 
-impl From<Box<dyn AnyError>> for ErrBox {
-  fn from(boxed: Box<dyn AnyError>) -> Self {
-    Self(boxed, "Other")
-  }
-}
+// impl From<Box<dyn AnyError>> for ErrBox {
+//   fn from(boxed: Box<dyn AnyError>) -> Self {
+//     Self(boxed, "Other")
+//   }
+// }
 
 impl fmt::Display for ErrBox {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     self.0.fmt(f)
+  }
+}
+
+impl From<JSError> for ErrBox {
+  fn from(js_error: JSError) -> Self {
+    Self(Box::new(js_error), "Other")
   }
 }
 
@@ -363,6 +373,12 @@ pub(crate) fn attach_handle_to_error(
   handle: v8::Local<v8::Value>,
 ) -> ErrBox {
   ErrWithV8Handle::new(scope, err, handle).into()
+}
+
+impl From<ErrWithV8Handle> for ErrBox {
+  fn from(err_with_handle: ErrWithV8Handle) -> Self {
+    err_with_handle.err
+  }
 }
 
 // TODO(piscisaureus): rusty_v8 should implement the Error trait on

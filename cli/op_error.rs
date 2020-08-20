@@ -35,6 +35,11 @@ impl OpError {
     Self { kind, msg }
   }
 
+  pub fn into_errbox(self) -> ErrBox {
+    let kind = self.kind;
+    ErrBox(Box::new(self), kind)
+  }
+
   pub fn not_found(msg: String) -> Self {
     Self::new("NotFound", msg)
   }

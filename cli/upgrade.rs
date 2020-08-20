@@ -39,13 +39,16 @@ const ARCHIVE_NAME: &str = "deno-x86_64-unknown-linux-gnu.zip";
 async fn get_latest_version(client: &Client) -> Result<Version, ErrBox> {
   println!("Checking for latest version");
   let body = client
-    .get(Url::parse(
-      "https://github.com/denoland/deno/releases/latest",
-    )?)
+    .get(
+      Url::parse("https://github.com/denoland/deno/releases/latest")
+        .map_err(ErrBox::other)?,
+    )
     .send()
-    .await?
+    .await
+    .map_err(ErrBox::other)?
     .text()
-    .await?;
+    .await
+    .map_err(ErrBox::other)?;
   let v = find_version(&body)?;
   Ok(semver_parse(&v).unwrap())
 }
@@ -64,11 +67,12 @@ pub async fn upgrade_command(
   // If we have been provided a CA Certificate, add it into the HTTP client
   if let Some(ca_file) = ca_file {
     let buf = std::fs::read(ca_file);
-    let cert = reqwest::Certificate::from_pem(&buf.unwrap())?;
+    let cert =
+      reqwest::Certificate::from_pem(&buf.unwrap()).map_err(ErrBox::other)?;
     client_builder = client_builder.add_root_certificate(cert);
   }
 
-  let client = client_builder.build()?;
+  let client = client_builder.build().map_err(ErrBox::other)?;
 
   let current_version = semver_parse(crate::version::DENO).unwrap();
 
@@ -108,19 +112,24 @@ pub async fn upgrade_command(
     &install_version,
   )
   .await?;
-  let old_exe_path = std::env::current_exe()?;
-  let new_exe_path = unpack(archive_data)?;
-  let permissions = fs::metadata(&old_exe_path)?.permissions();
-  fs::set_permissions(&new_exe_path, permissions)?;
+  let old_exe_path = std::env::current_exe().map_err(ErrBox::other)?;
+  let new_exe_path = unpack(archive_data).map_err(ErrBox::other)?;
+  let permissions = fs::metadata(&old_exe_path)
+    .map_err(ErrBox::other)?
+    .permissions();
+  fs::set_permissions(&new_exe_path, permissions).map_err(ErrBox::other)?;
   check_exe(&new_exe_path, &install_version)?;
 
   if !dry_run {
     match output {
       Some(path) => {
         fs::rename(&new_exe_path, &path)
-          .or_else(|_| fs::copy(&new_exe_path, &path).map(|_| ()))?;
+          .or_else(|_| fs::copy(&new_exe_path, &path).map(|_| ()))
+          .map_err(ErrBox::other)?;
       }
-      None => replace_exe(&new_exe_path, &old_exe_path)?,
+      None => {
+        replace_exe(&new_exe_path, &old_exe_path).map_err(ErrBox::other)?
+      }
     }
   }
 
@@ -166,19 +175,20 @@ fn compose_url_to_exec(version: &Version) -> Result<Url, ErrBox> {
     "https://github.com/denoland/deno/releases/download/v{}/{}",
     version, ARCHIVE_NAME
   );
-  Ok(Url::parse(&s)?)
+  Url::parse(&s).map_err(ErrBox::other)
 }
 
 fn find_version(text: &str) -> Result<String, ErrBox> {
-  let re = Regex::new(r#"v([^\?]+)?""#)?;
+  let re = Regex::new(r#"v([^\?]+)?""#).map_err(ErrBox::other)?;
   if let Some(_mat) = re.find(text) {
     let mat = _mat.as_str();
     return Ok(mat[1..mat.len() - 1].to_string());
   }
-  Err(OpError::other("Cannot read latest tag version".to_string()).into())
+  Err(OpError::other("Cannot read latest tag version".to_string()))
+    .map_err(ErrBox::other)
 }
 
-fn unpack(archive_data: Vec<u8>) -> Result<PathBuf, ErrBox> {
+fn unpack(archive_data: Vec<u8>) -> Result<PathBuf, std::io::Error> {
   // We use into_path so that the tempdir is not automatically deleted. This is
   // useful for debugging upgrade, but also so this function can return a path
   // to the newly uncompressed file without fear of the tempdir being deleted.
@@ -244,7 +254,7 @@ fn unpack(archive_data: Vec<u8>) -> Result<PathBuf, ErrBox> {
   Ok(exe_path)
 }
 
-fn replace_exe(new: &Path, old: &Path) -> Result<(), ErrBox> {
+fn replace_exe(new: &Path, old: &Path) -> Result<(), std::io::Error> {
   if cfg!(windows) {
     // On windows you cannot replace the currently running executable.
     // so first we rename it to deno.old.exe
@@ -265,8 +275,9 @@ fn check_exe(
   let output = Command::new(exe_path)
     .arg("-V")
     .stderr(std::process::Stdio::inherit())
-    .output()?;
-  let stdout = String::from_utf8(output.stdout)?;
+    .output()
+    .map_err(ErrBox::other)?;
+  let stdout = String::from_utf8(output.stdout).map_err(ErrBox::other)?;
   assert!(output.status.success());
   assert_eq!(stdout.trim(), format!("deno {}", expected_version));
   Ok(())

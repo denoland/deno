@@ -47,7 +47,9 @@ pub struct ImportMap {
 
 impl ImportMap {
   pub fn load(file_path: &str) -> Result<Self, ErrBox> {
-    let file_url = ModuleSpecifier::resolve_url_or_path(file_path)?.to_string();
+    let file_url = ModuleSpecifier::resolve_url_or_path(file_path)
+      .map_err(ErrBox::other)?
+      .to_string();
     let resolved_path = std::env::current_dir().unwrap().join(file_path);
     debug!(
       "Attempt to load import map: {}",
@@ -55,19 +57,21 @@ impl ImportMap {
     );
 
     // Load the contents of import map
-    let json_string = fs::read_to_string(&resolved_path).map_err(|err| {
-      io::Error::new(
-        io::ErrorKind::InvalidInput,
-        format!(
-          "Error retrieving import map file at \"{}\": {}",
-          resolved_path.to_str().unwrap(),
-          err.to_string()
+    let json_string = fs::read_to_string(&resolved_path)
+      .map_err(|err| {
+        io::Error::new(
+          io::ErrorKind::InvalidInput,
+          format!(
+            "Error retrieving import map file at \"{}\": {}",
+            resolved_path.to_str().unwrap(),
+            err.to_string()
+          )
+          .as_str(),
         )
-        .as_str(),
-      )
-    })?;
+      })
+      .map_err(ErrBox::other)?;
     // The URL of the import map is the base URL for its values.
-    ImportMap::from_json(&file_url, &json_string).map_err(ErrBox::from)
+    ImportMap::from_json(&file_url, &json_string).map_err(ErrBox::other)
   }
 
   pub fn from_json(

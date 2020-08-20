@@ -79,13 +79,13 @@ pub fn op_fs_events_open(
   let sender = std::sync::Mutex::new(sender);
   let mut watcher: RecommendedWatcher =
     Watcher::new_immediate(move |res: Result<NotifyEvent, NotifyError>| {
-      let res2 = res.map(FsEvent::from).map_err(ErrBox::from);
+      let res2 = res.map(FsEvent::from).map_err(ErrBox::other);
       let mut sender = sender.lock().unwrap();
       // Ignore result, if send failed it means that watcher was already closed,
       // but not all messages have been flushed.
       let _ = sender.try_send(res2);
     })
-    .map_err(ErrBox::from)?;
+    .map_err(ErrBox::other)?;
   let recursive_mode = if args.recursive {
     RecursiveMode::Recursive
   } else {
@@ -93,7 +93,7 @@ pub fn op_fs_events_open(
   };
   for path in &args.paths {
     state.check_read(&PathBuf::from(path))?;
-    watcher.watch(path, recursive_mode).map_err(ErrBox::from)?;
+    watcher.watch(path, recursive_mode).map_err(ErrBox::other)?;
   }
   let resource = FsEventsResource { watcher, receiver };
   let mut resource_table = isolate_state.resource_table.borrow_mut();

@@ -98,72 +98,74 @@ fn run_worker_thread(
 
   let builder =
     std::thread::Builder::new().name(format!("deno-worker-{}", worker_id));
-  let join_handle = builder.spawn(move || {
-    // Any error inside this block is terminal:
-    // - JS worker is useless - meaning it throws an exception and can't do anything else,
-    //  all action done upon it should be noops
-    // - newly spawned thread exits
-    let result = create_web_worker(
-      worker_id,
-      name,
-      &global_state,
-      permissions,
-      specifier.clone(),
-      has_deno_namespace,
-    );
+  let join_handle = builder
+    .spawn(move || {
+      // Any error inside this block is terminal:
+      // - JS worker is useless - meaning it throws an exception and can't do anything else,
+      //  all action done upon it should be noops
+      // - newly spawned thread exits
+      let result = create_web_worker(
+        worker_id,
+        name,
+        &global_state,
+        permissions,
+        specifier.clone(),
+        has_deno_namespace,
+      );
 
-    if let Err(err) = result {
-      handle_sender.send(Err(err)).unwrap();
-      return;
-    }
+      if let Err(err) = result {
+        handle_sender.send(Err(err)).unwrap();
+        return;
+      }
 
-    let mut worker = result.unwrap();
-    let name = worker.name.to_string();
-    // Send thread safe handle to newly created worker to host thread
-    handle_sender.send(Ok(worker.thread_safe_handle())).unwrap();
-    drop(handle_sender);
+      let mut worker = result.unwrap();
+      let name = worker.name.to_string();
+      // Send thread safe handle to newly created worker to host thread
+      handle_sender.send(Ok(worker.thread_safe_handle())).unwrap();
+      drop(handle_sender);
 
-    // At this point the only method of communication with host
-    // is using `worker.internal_channels`.
-    //
-    // Host can already push messages and interact with worker.
-    //
-    // Next steps:
-    // - create tokio runtime
-    // - load provided module or code
-    // - start driving worker's event loop
+      // At this point the only method of communication with host
+      // is using `worker.internal_channels`.
+      //
+      // Host can already push messages and interact with worker.
+      //
+      // Next steps:
+      // - create tokio runtime
+      // - load provided module or code
+      // - start driving worker's event loop
 
-    let mut rt = create_basic_runtime();
+      let mut rt = create_basic_runtime();
 
-    // TODO: run with using select with terminate
+      // TODO: run with using select with terminate
 
-    // Execute provided source code immediately
-    let result = if let Some(source_code) = maybe_source_code {
-      worker.execute(&source_code)
-    } else {
-      // TODO(bartlomieju): add "type": "classic", ie. ability to load
-      // script instead of module
-      let load_future = worker.execute_module(&specifier).boxed_local();
+      // Execute provided source code immediately
+      let result = if let Some(source_code) = maybe_source_code {
+        worker.execute(&source_code)
+      } else {
+        // TODO(bartlomieju): add "type": "classic", ie. ability to load
+        // script instead of module
+        let load_future = worker.execute_module(&specifier).boxed_local();
 
-      rt.block_on(load_future)
-    };
+        rt.block_on(load_future)
+      };
 
-    if let Err(e) = result {
-      let mut sender = worker.internal_channels.sender.clone();
-      sender
-        .try_send(WorkerEvent::TerminalError(e))
-        .expect("Failed to post message to host");
+      if let Err(e) = result {
+        let mut sender = worker.internal_channels.sender.clone();
+        sender
+          .try_send(WorkerEvent::TerminalError(e))
+          .expect("Failed to post message to host");
 
-      // Failure to execute script is a terminal error, bye, bye.
-      return;
-    }
+        // Failure to execute script is a terminal error, bye, bye.
+        return;
+      }
 
-    // TODO(bartlomieju): this thread should return result of event loop
-    // that means that we should store JoinHandle to thread to ensure
-    // that it actually terminates.
-    rt.block_on(worker).expect("Panic in event loop");
-    debug!("Worker thread shuts down {}", &name);
-  })?;
+      // TODO(bartlomieju): this thread should return result of event loop
+      // that means that we should store JoinHandle to thread to ensure
+      // that it actually terminates.
+      rt.block_on(worker).expect("Panic in event loop");
+      debug!("Worker thread shuts down {}", &name);
+    })
+    .map_err(ErrBox::other)?;
 
   let worker_handle = handle_receiver.recv().unwrap()?;
   Ok((join_handle, worker_handle))
