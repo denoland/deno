@@ -72,11 +72,13 @@ fn create_compiler_snapshot(
 }
 
 fn ts_version() -> String {
-  let ts_bytes = std::fs::read("tsc/00_typescript.js").unwrap();
-  let ts_source = String::from_utf8(ts_bytes).unwrap();
-  let re = Regex::new(r#"ts.version = "(\d\.\d\.\d)";"#).unwrap();
-  let caps = re.captures(&ts_source).unwrap();
-  caps.get(1).unwrap().as_str().to_owned()
+  let ts_source = std::fs::read_to_string("tsc/00_typescript.js").unwrap();
+  Regex::new(r#"ts.version = "(\d\.\d\.\d)";"#)
+    .ok()
+    .and_then(|re| re.captures(&ts_source))
+    .and_then(|caps| caps.get(1))
+    .map(|cap| cap.as_str().to_string())
+    .unwrap()
 }
 
 fn main() {
