@@ -349,9 +349,7 @@ impl SourceFileFetcher {
       ErrBox::new_text("URIError", "File URL contains invalid path".to_string())
     })?;
 
-    permissions
-      .check_read(&filepath)
-      .map_err(ErrBox::from_err)?;
+    permissions.check_read(&filepath)?;
     let source_code = match fs::read(filepath.clone()) {
       Ok(c) => c,
       Err(e) => return Err(ErrBox::from_err(e)),
@@ -457,7 +455,7 @@ impl SourceFileFetcher {
     }
 
     if let Err(e) = permissions.check_net_url(&module_url) {
-      return futures::future::err(ErrBox::from_err(e)).boxed_local();
+      return futures::future::err(e).boxed_local();
     }
 
     let is_blocked =

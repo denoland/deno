@@ -83,7 +83,7 @@ pub fn op_start_tls(
       let mut resource_table_ = resource_table.borrow_mut();
       match resource_table_.remove::<StreamResourceHolder>(rid) {
         Some(resource) => *resource,
-        None => return Err(ErrBox::from(OpError::bad_resource_id())),
+        None => return Err(ErrBox::bad_resource_id()),
       }
     };
 
@@ -132,7 +132,7 @@ pub fn op_start_tls(
           }
       }))
     } else {
-      Err(ErrBox::from(OpError::bad_resource_id()))
+      Err(ErrBox::bad_resource_id())
     }
   };
   Ok(JsonOp::Async(op.boxed_local()))
@@ -203,46 +203,46 @@ pub fn op_connect_tls(
   Ok(JsonOp::Async(op.boxed_local()))
 }
 
-fn load_certs(path: &str) -> Result<Vec<Certificate>, OpError> {
-  let cert_file = File::open(path)?;
+fn load_certs(path: &str) -> Result<Vec<Certificate>, ErrBox> {
+  let cert_file = File::open(path).map_err(io_to_errbox)?;
   let reader = &mut BufReader::new(cert_file);
 
   let certs = certs(reader)
-    .map_err(|_| OpError::other("Unable to decode certificate".to_string()))?;
+    .map_err(|_| ErrBox::other("Unable to decode certificate".to_string()))?;
 
   if certs.is_empty() {
-    let e = OpError::other("No certificates found in cert file".to_string());
+    let e = ErrBox::other("No certificates found in cert file".to_string());
     return Err(e);
   }
 
   Ok(certs)
 }
 
-fn key_decode_err() -> OpError {
-  OpError::other("Unable to decode key".to_string())
+fn key_decode_err() -> ErrBox {
+  ErrBox::other("Unable to decode key".to_string())
 }
 
-fn key_not_found_err() -> OpError {
-  OpError::other("No keys found in key file".to_string())
+fn key_not_found_err() -> ErrBox {
+  ErrBox::other("No keys found in key file".to_string())
 }
 
 /// Starts with -----BEGIN RSA PRIVATE KEY-----
-fn load_rsa_keys(path: &str) -> Result<Vec<PrivateKey>, OpError> {
-  let key_file = File::open(path)?;
+fn load_rsa_keys(path: &str) -> Result<Vec<PrivateKey>, ErrBox> {
+  let key_file = File::open(path).map_err(io_to_errbox)?;
   let reader = &mut BufReader::new(key_file);
   let keys = rsa_private_keys(reader).map_err(|_| key_decode_err())?;
   Ok(keys)
 }
 
 /// Starts with -----BEGIN PRIVATE KEY-----
-fn load_pkcs8_keys(path: &str) -> Result<Vec<PrivateKey>, OpError> {
-  let key_file = File::open(path)?;
+fn load_pkcs8_keys(path: &str) -> Result<Vec<PrivateKey>, ErrBox> {
+  let key_file = File::open(path).map_err(io_to_errbox)?;
   let reader = &mut BufReader::new(key_file);
   let keys = pkcs8_private_keys(reader).map_err(|_| key_decode_err())?;
   Ok(keys)
 }
 
-fn load_keys(path: &str) -> Result<Vec<PrivateKey>, OpError> {
+fn load_keys(path: &str) -> Result<Vec<PrivateKey>, ErrBox> {
   let path = path.to_string();
   let mut keys = load_rsa_keys(&path)?;
 
@@ -276,13 +276,13 @@ impl TlsListenerResource {
   /// can be notified when listener is closed.
   ///
   /// Throws an error if another task is already tracked.
-  pub fn track_task(&mut self, cx: &Context) -> Result<(), OpError> {
+  pub fn track_task(&mut self, cx: &Context) -> Result<(), ErrBox> {
     // Currently, we only allow tracking a single accept task for a listener.
     // This might be changed in the future with multiple workers.
     // Caveat: TcpListener by itself also only tracks an accept task at a time.
     // See https://github.com/tokio-rs/tokio/issues/846#issuecomment-454208883
     if self.waker.is_some() {
-      return Err(OpError::other("Another accept task is ongoing".to_string()));
+      return Err(ErrBox::other("Another accept task is ongoing".to_string()));
     }
 
     let waker = futures::task::AtomicWaker::new();
@@ -380,7 +380,7 @@ fn op_accept_tls(
       let listener_resource = resource_table
         .get_mut::<TlsListenerResource>(rid)
         .ok_or_else(|| {
-          OpError::bad_resource("Listener has been closed".to_string())
+          ErrBox::bad_resource("Listener has been closed".to_string())
         })?;
       let listener = &mut listener_resource.listener;
       match listener.poll_accept(cx).map_err(io_to_errbox) {
@@ -405,7 +405,7 @@ fn op_accept_tls(
       let resource_table = resource_table.borrow();
       let resource = resource_table
         .get::<TlsListenerResource>(rid)
-        .ok_or_else(OpError::bad_resource_id)
+        .ok_or_else(ErrBox::bad_resource_id)
         .expect("Can't find tls listener");
       resource.tls_acceptor.clone()
     };

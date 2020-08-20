@@ -3,6 +3,7 @@
 //! https://url.spec.whatwg.org/#idna
 
 use super::dispatch_json::{Deserialize, JsonOp, Value};
+use crate::op_error::invalid_domain_error;
 use crate::op_error::OpError;
 use crate::state::State;
 use deno_core::CoreIsolate;
@@ -29,10 +30,9 @@ fn op_domain_to_ascii(
   let args: DomainToAscii = serde_json::from_value(args)?;
   let domain = if args.be_strict {
     domain_to_ascii_strict(args.domain.as_str())
-      .map_err(|_| OpError::invalid_domain_error())?
+      .map_err(|_| invalid_domain_error())?
   } else {
-    domain_to_ascii(args.domain.as_str())
-      .map_err(|_| OpError::invalid_domain_error())?
+    domain_to_ascii(args.domain.as_str()).map_err(|_| invalid_domain_error())?
   };
   Ok(JsonOp::Sync(json!(domain)))
 }

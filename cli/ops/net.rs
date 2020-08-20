@@ -7,11 +7,11 @@ use crate::resolve_addr::resolve_addr;
 use crate::state::State;
 use deno_core::CoreIsolate;
 use deno_core::CoreIsolateState;
+use deno_core::ErrBox;
 use deno_core::ResourceTable;
 use deno_core::ZeroCopyBuf;
 use futures::future::poll_fn;
 use futures::future::FutureExt;
-use std::convert::From;
 use std::net::Shutdown;
 use std::net::SocketAddr;
 use std::rc::Rc;
@@ -56,7 +56,7 @@ fn accept_tcp(
       let listener_resource = resource_table
         .get_mut::<TcpListenerResource>(rid)
         .ok_or_else(|| {
-          OpError::bad_resource("Listener has been closed".to_string())
+          ErrBox::bad_resource("Listener has been closed".to_string())
         })?;
       let listener = &mut listener_resource.listener;
       match listener.poll_accept(cx).map_err(io_to_errbox) {
@@ -113,10 +113,13 @@ fn op_accept(
     "tcp" => accept_tcp(isolate_state, args, zero_copy),
     #[cfg(unix)]
     "unix" => net_unix::accept_unix(isolate_state, args.rid as u32, zero_copy),
-    _ => Err(OpError::other(format!(
-      "Unsupported transport protocol {}",
-      args.transport
-    ))),
+    _ => Err(
+      ErrBox::other(format!(
+        "Unsupported transport protocol {}",
+        args.transport
+      ))
+      .into(),
+    ),
   }
 }
 
@@ -145,12 +148,12 @@ fn receive_udp(
       let resource = resource_table
         .get_mut::<UdpSocketResource>(rid)
         .ok_or_else(|| {
-          OpError::bad_resource("Socket has been closed".to_string())
+          ErrBox::bad_resource("Socket has been closed".to_string())
         })?;
       let socket = &mut resource.socket;
       socket
         .poll_recv_from(cx, &mut zero_copy)
-        .map_err(OpError::from)
+        .map_err(io_to_errbox)
     });
     let (size, remote_addr) = receive_fut.await?;
     Ok(json!({
@@ -181,10 +184,13 @@ fn op_datagram_receive(
     "unixpacket" => {
       net_unix::receive_unix_packet(isolate_state, args.rid as u32, zero_copy)
     }
-    _ => Err(OpError::other(format!(
-      "Unsupported transport protocol {}",
-      args.transport
-    ))),
+    _ => Err(
+      ErrBox::other(format!(
+        "Unsupported transport protocol {}",
+        args.transport
+      ))
+      .into(),
+    ),
   }
 }
 
@@ -219,7 +225,7 @@ fn op_datagram_send(
         let resource = resource_table
           .get_mut::<UdpSocketResource>(rid as u32)
           .ok_or_else(|| {
-            OpError::bad_resource("Socket has been closed".to_string())
+            ErrBox::bad_resource("Socket has been closed".to_string())
           })?;
         resource
           .socket
@@ -241,9 +247,7 @@ fn op_datagram_send(
         let mut resource_table = resource_table.borrow_mut();
         let resource = resource_table
           .get_mut::<net_unix::UnixDatagramResource>(rid as u32)
-          .ok_or_else(|| {
-            OpError::other("Socket has been closed".to_string())
-          })?;
+          .ok_or_else(|| ErrBox::other("Socket has been closed".to_string()))?;
 
         let socket = &mut resource.socket;
         let byte_length = socket
@@ -256,7 +260,7 @@ fn op_datagram_send(
 
       Ok(JsonOp::Async(op.boxed_local()))
     }
-    _ => Err(OpError::other("Wrong argument format!".to_owned())),
+    _ => Err(ErrBox::other("Wrong argument format!".to_owned()).into()),
   }
 }
 
@@ -346,7 +350,7 @@ fn op_connect(
       };
       Ok(JsonOp::Async(op.boxed_local()))
     }
-    _ => Err(OpError::other("Wrong argument format!".to_owned())),
+    _ => Err(ErrBox::other("Wrong argument format!".to_owned()).into()),
   }
 }
 
@@ -378,17 +382,17 @@ fn op_shutdown(
   let mut resource_table = isolate_state.resource_table.borrow_mut();
   let resource_holder = resource_table
     .get_mut::<StreamResourceHolder>(rid)
-    .ok_or_else(OpError::bad_resource_id)?;
+    .ok_or_else(ErrBox::bad_resource_id)?;
   match resource_holder.resource {
     StreamResource::TcpStream(Some(ref mut stream)) => {
-      TcpStream::shutdown(stream, shutdown_mode).map_err(OpError::from)?;
+      TcpStream::shutdown(stream, shutdown_mode).map_err(io_to_errbox)?;
     }
     #[cfg(unix)]
     StreamResource::UnixStream(ref mut stream) => {
       net_unix::UnixStream::shutdown(stream, shutdown_mode)
-        .map_err(OpError::from)?;
+        .map_err(io_to_errbox)?;
     }
-    _ => return Err(OpError::bad_resource_id()),
+    _ => return Err(OpError::from(ErrBox::bad_resource_id())),
   }
 
   Ok(JsonOp::Sync(json!({})))
@@ -412,13 +416,13 @@ impl TcpListenerResource {
   /// can be notified when listener is closed.
   ///
   /// Throws an error if another task is already tracked.
-  pub fn track_task(&mut self, cx: &Context) -> Result<(), OpError> {
+  pub fn track_task(&mut self, cx: &Context) -> Result<(), ErrBox> {
     // Currently, we only allow tracking a single accept task for a listener.
     // This might be changed in the future with multiple workers.
     // Caveat: TcpListener by itself also only tracks an accept task at a time.
     // See https://github.com/tokio-rs/tokio/issues/846#issuecomment-454208883
     if self.waker.is_some() {
-      return Err(OpError::other("Another accept task is ongoing".to_string()));
+      return Err(ErrBox::other("Another accept task is ongoing".to_string()));
     }
 
     let waker = futures::task::AtomicWaker::new();
@@ -568,6 +572,6 @@ fn op_listen(
       })))
     }
     #[cfg(unix)]
-    _ => Err(OpError::other("Wrong argument format!".to_owned())),
+    _ => Err(ErrBox::other("Wrong argument format!".to_owned()).into()),
   }
 }

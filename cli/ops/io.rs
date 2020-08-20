@@ -1,9 +1,11 @@
 use super::dispatch_minimal::MinimalOp;
 use crate::http_util::HttpBody;
-use crate::op_error::OpError;
+use crate::op_error::io_to_errbox;
+use crate::op_error::resource_unavailable;
 use crate::state::State;
 use deno_core::CoreIsolate;
 use deno_core::CoreIsolateState;
+use deno_core::ErrBox;
 use deno_core::ResourceTable;
 use deno_core::ZeroCopyBuf;
 use futures::future::poll_fn;
@@ -116,8 +118,8 @@ fn get_stdio_stream(
   }
 }
 
-fn no_buffer_specified() -> OpError {
-  OpError::type_error("no buffer specified".to_string())
+fn no_buffer_specified() -> ErrBox {
+  ErrBox::type_error("no buffer specified".to_string())
 }
 
 #[cfg(unix)]
@@ -159,7 +161,7 @@ impl Drop for StreamResourceHolder {
 }
 
 impl StreamResourceHolder {
-  pub fn track_task(&mut self, cx: &Context) -> Result<usize, OpError> {
+  pub fn track_task(&mut self, cx: &Context) -> Result<usize, ErrBox> {
     let waker = futures::task::AtomicWaker::new();
     waker.register(cx.waker());
     // Its OK if it overflows
@@ -200,13 +202,13 @@ impl<T: AsyncRead + Unpin> UnpinAsyncRead for T {}
 impl<T: AsyncWrite + Unpin> UnpinAsyncWrite for T {}
 
 /// `DenoAsyncRead` is the same as the `tokio_io::AsyncRead` trait
-/// but uses an `OpError` error instead of `std::io:Error`
+/// but uses an `ErrBox` error instead of `std::io:Error`
 pub trait DenoAsyncRead {
   fn poll_read(
     &mut self,
     cx: &mut Context,
     buf: &mut [u8],
-  ) -> Poll<Result<usize, OpError>>;
+  ) -> Poll<Result<usize, ErrBox>>;
 }
 
 impl DenoAsyncRead for StreamResource {
@@ -214,11 +216,11 @@ impl DenoAsyncRead for StreamResource {
     &mut self,
     cx: &mut Context,
     buf: &mut [u8],
-  ) -> Poll<Result<usize, OpError>> {
+  ) -> Poll<Result<usize, ErrBox>> {
     use StreamResource::*;
     let f: &mut dyn UnpinAsyncRead = match self {
       FsFile(Some((f, _))) => f,
-      FsFile(None) => return Poll::Ready(Err(OpError::resource_unavailable())),
+      FsFile(None) => return Poll::Ready(Err(resource_unavailable())),
       Stdin(f, _) => f,
       TcpStream(Some(f)) => f,
       #[cfg(not(windows))]
@@ -228,9 +230,9 @@ impl DenoAsyncRead for StreamResource {
       ChildStdout(f) => f,
       ChildStderr(f) => f,
       HttpBody(f) => f,
-      _ => return Err(OpError::bad_resource_id()).into(),
+      _ => return Err(ErrBox::bad_resource_id()).into(),
     };
-    let v = ready!(Pin::new(f).poll_read(cx, buf))?;
+    let v = ready!(Pin::new(f).poll_read(cx, buf)).map_err(io_to_errbox)?;
     Ok(v).into()
   }
 }
@@ -260,9 +262,9 @@ pub fn op_read(
           std_file
             .read(&mut zero_copy[0])
             .map(|n: usize| n as i32)
-            .map_err(OpError::from)
+            .map_err(io_to_errbox)
         }
-        Err(_) => Err(OpError::type_error(
+        Err(_) => Err(ErrBox::type_error(
           "sync read not allowed on this resource".to_string(),
         )),
       })
@@ -274,13 +276,10 @@ pub fn op_read(
         let mut resource_table = resource_table.borrow_mut();
         let resource_holder = resource_table
           .get_mut::<StreamResourceHolder>(rid as u32)
-          .ok_or_else(OpError::bad_resource_id)?;
+          .ok_or_else(ErrBox::bad_resource_id)?;
 
         let mut task_tracker_id: Option<usize> = None;
-        let nread = match resource_holder
-          .resource
-          .poll_read(cx, &mut zero_copy)
-          .map_err(OpError::from)
+        let nread = match resource_holder.resource.poll_read(cx, &mut zero_copy)
         {
           Poll::Ready(t) => {
             if let Some(id) = task_tracker_id {
@@ -301,17 +300,17 @@ pub fn op_read(
 }
 
 /// `DenoAsyncWrite` is the same as the `tokio_io::AsyncWrite` trait
-/// but uses an `OpError` error instead of `std::io:Error`
+/// but uses an `ErrBox` error instead of `std::io:Error`
 pub trait DenoAsyncWrite {
   fn poll_write(
     &mut self,
     cx: &mut Context,
     buf: &[u8],
-  ) -> Poll<Result<usize, OpError>>;
+  ) -> Poll<Result<usize, ErrBox>>;
 
-  fn poll_close(&mut self, cx: &mut Context) -> Poll<Result<(), OpError>>;
+  fn poll_close(&mut self, cx: &mut Context) -> Poll<Result<(), ErrBox>>;
 
-  fn poll_flush(&mut self, cx: &mut Context) -> Poll<Result<(), OpError>>;
+  fn poll_flush(&mut self, cx: &mut Context) -> Poll<Result<(), ErrBox>>;
 }
 
 impl DenoAsyncWrite for StreamResource {
@@ -319,7 +318,7 @@ impl DenoAsyncWrite for StreamResource {
     &mut self,
     cx: &mut Context,
     buf: &[u8],
-  ) -> Poll<Result<usize, OpError>> {
+  ) -> Poll<Result<usize, ErrBox>> {
     use StreamResource::*;
     let f: &mut dyn UnpinAsyncWrite = match self {
       FsFile(Some((f, _))) => f,
@@ -330,14 +329,14 @@ impl DenoAsyncWrite for StreamResource {
       ClientTlsStream(f) => f,
       ServerTlsStream(f) => f,
       ChildStdin(f) => f,
-      _ => return Err(OpError::bad_resource_id()).into(),
+      _ => return Err(ErrBox::bad_resource_id()).into(),
     };
 
-    let v = ready!(Pin::new(f).poll_write(cx, buf))?;
+    let v = ready!(Pin::new(f).poll_write(cx, buf)).map_err(io_to_errbox)?;
     Ok(v).into()
   }
 
-  fn poll_flush(&mut self, cx: &mut Context) -> Poll<Result<(), OpError>> {
+  fn poll_flush(&mut self, cx: &mut Context) -> Poll<Result<(), ErrBox>> {
     use StreamResource::*;
     let f: &mut dyn UnpinAsyncWrite = match self {
       FsFile(Some((f, _))) => f,
@@ -348,14 +347,14 @@ impl DenoAsyncWrite for StreamResource {
       ClientTlsStream(f) => f,
       ServerTlsStream(f) => f,
       ChildStdin(f) => f,
-      _ => return Err(OpError::bad_resource_id()).into(),
+      _ => return Err(ErrBox::bad_resource_id()).into(),
     };
 
-    ready!(Pin::new(f).poll_flush(cx))?;
+    ready!(Pin::new(f).poll_flush(cx)).map_err(io_to_errbox)?;
     Ok(()).into()
   }
 
-  fn poll_close(&mut self, _cx: &mut Context) -> Poll<Result<(), OpError>> {
+  fn poll_close(&mut self, _cx: &mut Context) -> Poll<Result<(), ErrBox>> {
     unimplemented!()
   }
 }
@@ -384,9 +383,9 @@ pub fn op_write(
           std_file
             .write(&zero_copy[0])
             .map(|nwritten: usize| nwritten as i32)
-            .map_err(OpError::from)
+            .map_err(io_to_errbox)
         }
-        Err(_) => Err(OpError::type_error(
+        Err(_) => Err(ErrBox::type_error(
           "sync read not allowed on this resource".to_string(),
         )),
       })
@@ -400,7 +399,7 @@ pub fn op_write(
           let mut resource_table = resource_table.borrow_mut();
           let resource_holder = resource_table
             .get_mut::<StreamResourceHolder>(rid as u32)
-            .ok_or_else(OpError::bad_resource_id)?;
+            .ok_or_else(ErrBox::bad_resource_id)?;
           resource_holder.resource.poll_write(cx, &zero_copy)
         })
         .await?;
@@ -413,7 +412,7 @@ pub fn op_write(
           let mut resource_table = resource_table.borrow_mut();
           let resource_holder = resource_table
             .get_mut::<StreamResourceHolder>(rid as u32)
-            .ok_or_else(OpError::bad_resource_id)?;
+            .ok_or_else(ErrBox::bad_resource_id)?;
           resource_holder.resource.poll_flush(cx)
         })
         .await?;
@@ -436,11 +435,10 @@ pub fn std_file_resource<F, T>(
   resource_table: &mut ResourceTable,
   rid: u32,
   mut f: F,
-) -> Result<T, OpError>
+) -> Result<T, ErrBox>
 where
-  F: FnMut(
-    Result<&mut std::fs::File, &mut StreamResource>,
-  ) -> Result<T, OpError>,
+  F:
+    FnMut(Result<&mut std::fs::File, &mut StreamResource>) -> Result<T, ErrBox>,
 {
   // First we look up the rid in the resource table.
   let mut r = resource_table.get_mut::<StreamResourceHolder>(rid);
@@ -469,16 +467,16 @@ where
               // some operation is in-flight.
               resource_holder.resource =
                 StreamResource::FsFile(Some((tokio_file, metadata)));
-              Err(OpError::resource_unavailable())
+              Err(resource_unavailable())
             }
           }
         } else {
-          Err(OpError::resource_unavailable())
+          Err(resource_unavailable())
         }
       }
       _ => f(Err(&mut resource_holder.resource)),
     }
   } else {
-    Err(OpError::bad_resource_id())
+    Err(ErrBox::bad_resource_id())
   }
 }

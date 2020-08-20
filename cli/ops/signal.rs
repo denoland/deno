@@ -4,6 +4,7 @@ use crate::op_error::OpError;
 use crate::state::State;
 use deno_core::CoreIsolate;
 use deno_core::CoreIsolateState;
+use deno_core::ErrBox;
 use deno_core::ZeroCopyBuf;
 use std::rc::Rc;
 
@@ -109,7 +110,7 @@ pub fn op_signal_unbind(
   }
   resource_table
     .close(rid)
-    .ok_or_else(OpError::bad_resource_id)?;
+    .ok_or_else(ErrBox::bad_resource_id)?;
   Ok(JsonOp::Sync(json!({})))
 }
 

@@ -119,7 +119,7 @@ pub fn op_fs_events_poll(
     let mut resource_table = resource_table.borrow_mut();
     let watcher = resource_table
       .get_mut::<FsEventsResource>(rid)
-      .ok_or_else(OpError::bad_resource_id)?;
+      .ok_or_else(ErrBox::bad_resource_id)?;
     watcher
       .receiver
       .poll_recv(cx)

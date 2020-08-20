@@ -497,7 +497,7 @@ impl State {
   }
 
   #[inline]
-  pub fn check_read(&self, path: &Path) -> Result<(), OpError> {
+  pub fn check_read(&self, path: &Path) -> Result<(), ErrBox> {
     self.permissions.borrow().check_read(path)
   }
 
@@ -508,49 +508,49 @@ impl State {
     &self,
     path: &Path,
     display: &str,
-  ) -> Result<(), OpError> {
+  ) -> Result<(), ErrBox> {
     self.permissions.borrow().check_read_blind(path, display)
   }
 
   #[inline]
-  pub fn check_write(&self, path: &Path) -> Result<(), OpError> {
+  pub fn check_write(&self, path: &Path) -> Result<(), ErrBox> {
     self.permissions.borrow().check_write(path)
   }
 
   #[inline]
-  pub fn check_env(&self) -> Result<(), OpError> {
+  pub fn check_env(&self) -> Result<(), ErrBox> {
     self.permissions.borrow().check_env()
   }
 
   #[inline]
-  pub fn check_net(&self, hostname: &str, port: u16) -> Result<(), OpError> {
+  pub fn check_net(&self, hostname: &str, port: u16) -> Result<(), ErrBox> {
     self.permissions.borrow().check_net(hostname, port)
   }
 
   #[inline]
-  pub fn check_net_url(&self, url: &url::Url) -> Result<(), OpError> {
+  pub fn check_net_url(&self, url: &url::Url) -> Result<(), ErrBox> {
     self.permissions.borrow().check_net_url(url)
   }
 
   #[inline]
-  pub fn check_run(&self) -> Result<(), OpError> {
+  pub fn check_run(&self) -> Result<(), ErrBox> {
     self.permissions.borrow().check_run()
   }
 
   #[inline]
-  pub fn check_hrtime(&self) -> Result<(), OpError> {
+  pub fn check_hrtime(&self) -> Result<(), ErrBox> {
     self.permissions.borrow().check_hrtime()
   }
 
   #[inline]
-  pub fn check_plugin(&self, filename: &Path) -> Result<(), OpError> {
+  pub fn check_plugin(&self, filename: &Path) -> Result<(), ErrBox> {
     self.permissions.borrow().check_plugin(filename)
   }
 
   pub fn check_dyn_import(
     &self,
     module_specifier: &ModuleSpecifier,
-  ) -> Result<(), OpError> {
+  ) -> Result<(), ErrBox> {
     let u = module_specifier.as_url();
     // TODO(bartlomieju): temporary fix to prevent hitting `unreachable`
     // statement that is actually reachable...

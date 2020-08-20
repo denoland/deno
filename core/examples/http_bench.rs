@@ -20,7 +20,6 @@ use std::convert::TryInto;
 use std::env;
 use std::fmt::Debug;
 use std::io::Error;
-use std::io::ErrorKind;
 use std::mem::size_of;
 use std::net::SocketAddr;
 use std::pin::Pin;
@@ -96,7 +95,7 @@ pub fn isolate_new() -> CoreIsolate {
         Rc<RefCell<ResourceTable>>,
         u32,
         &mut [ZeroCopyBuf],
-      ) -> Result<u32, Error>,
+      ) -> Result<u32, ErrBox>,
   {
     let core_handler = move |state: &mut CoreIsolateState,
                              zero_copy_bufs: &mut [ZeroCopyBuf]|
@@ -168,13 +167,13 @@ fn op_close(
   resource_table: Rc<RefCell<ResourceTable>>,
   rid: u32,
   _buf: &mut [ZeroCopyBuf],
-) -> Result<u32, Error> {
+) -> Result<u32, ErrBox> {
   debug!("close rid={}", rid);
   let resource_table = &mut resource_table.borrow_mut();
   resource_table
     .close(rid)
     .map(|_| 0)
-    .ok_or_else(bad_resource)
+    .ok_or_else(ErrBox::bad_resource_id)
 }
 
 fn op_listen(
@@ -184,8 +183,9 @@ fn op_listen(
 ) -> Result<serde_json::Value, ErrBox> {
   debug!("listen");
   let addr = "127.0.0.1:4544".parse::<SocketAddr>().unwrap();
-  let std_listener = std::net::TcpListener::bind(&addr)?;
-  let listener = TcpListener::from_std(std_listener)?;
+  let std_listener =
+    std::net::TcpListener::bind(&addr).map_err(io_to_errbox)?;
+  let listener = TcpListener::from_std(std_listener).map_err(io_to_errbox)?;
   let resource_table = &mut state.resource_table.borrow_mut();
   let rid = resource_table.add("tcpListener", Box::new(listener));
   Ok(serde_json::json!({ "rid": rid }))
@@ -204,10 +204,10 @@ fn op_accept(
     let resource_table = &mut resource_table.borrow_mut();
     let listener = resource_table
       .get_mut::<TcpListener>(rid)
-      .ok_or_else(bad_resource)?;
+      .ok_or_else(ErrBox::bad_resource_id)?;
     listener
       .poll_accept(cx)
-      .map_err(ErrBox::from)
+      .map_err(io_to_errbox)
       .map_ok(|(stream, _addr)| {
         let rid = resource_table.add("tcpStream", Box::new(stream));
         serde_json::json!({ "rid": rid })
@@ -219,7 +219,7 @@ fn op_read(
   resource_table: Rc<RefCell<ResourceTable>>,
   rid: u32,
   bufs: &mut [ZeroCopyBuf],
-) -> impl TryFuture<Ok = usize, Error = Error> {
+) -> impl TryFuture<Ok = usize, Error = ErrBox> {
   assert_eq!(bufs.len(), 1, "Invalid number of arguments");
   let mut buf = bufs[0].clone();
 
@@ -229,8 +229,10 @@ fn op_read(
     let resource_table = &mut resource_table.borrow_mut();
     let stream = resource_table
       .get_mut::<TcpStream>(rid)
-      .ok_or_else(bad_resource)?;
-    Pin::new(stream).poll_read(cx, &mut buf)
+      .ok_or_else(ErrBox::bad_resource_id)?;
+    Pin::new(stream)
+      .poll_read(cx, &mut buf)
+      .map_err(io_to_errbox)
   })
 }
 
@@ -238,7 +240,7 @@ fn op_write(
   resource_table: Rc<RefCell<ResourceTable>>,
   rid: u32,
   bufs: &mut [ZeroCopyBuf],
-) -> impl TryFuture<Ok = usize, Error = Error> {
+) -> impl TryFuture<Ok = usize, Error = ErrBox> {
   assert_eq!(bufs.len(), 1, "Invalid number of arguments");
   let buf = bufs[0].clone();
   debug!("write rid={}", rid);
@@ -247,13 +249,13 @@ fn op_write(
     let resource_table = &mut resource_table.borrow_mut();
     let stream = resource_table
       .get_mut::<TcpStream>(rid)
-      .ok_or_else(bad_resource)?;
-    Pin::new(stream).poll_write(cx, &buf)
+      .ok_or_else(ErrBox::bad_resource_id)?;
+    Pin::new(stream).poll_write(cx, &buf).map_err(io_to_errbox)
   })
 }
 
-fn bad_resource() -> Error {
-  Error::new(ErrorKind::NotFound, "bad resource id")
+fn io_to_errbox(error: Error) -> ErrBox {
+  ErrBox::new("IO", error)
 }
 
 fn main() {

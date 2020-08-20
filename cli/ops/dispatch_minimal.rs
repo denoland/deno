@@ -4,10 +4,10 @@
 //! alternative to flatbuffers using a very simple list of int32s to lay out
 //! messages. The first i32 is used to determine if a message a flatbuffer
 //! message or a "minimal" message.
-use crate::op_error::OpError;
 use byteorder::{LittleEndian, WriteBytesExt};
 use deno_core::Buf;
 use deno_core::CoreIsolateState;
+use deno_core::ErrBox;
 use deno_core::Op;
 use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
@@ -15,8 +15,8 @@ use std::future::Future;
 use std::pin::Pin;
 
 pub enum MinimalOp {
-  Sync(Result<i32, OpError>),
-  Async(Pin<Box<dyn Future<Output = Result<i32, OpError>>>>),
+  Sync(Result<i32, ErrBox>),
+  Async(Pin<Box<dyn Future<Output = Result<i32, ErrBox>>>>),
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -129,13 +129,13 @@ where
     let mut record = match parse_min_record(&zero_copy[0]) {
       Some(r) => r,
       None => {
-        let e = OpError::type_error("Unparsable control buffer".to_string());
+        let e = ErrBox::type_error("Unparsable control buffer".to_string());
         let error_record = ErrorRecord {
           promise_id: 0,
           arg: -1,
-          error_len: e.kind.len() as i32,
-          error_code: e.kind.as_bytes().to_owned(),
-          error_message: e.msg.as_bytes().to_owned(),
+          error_len: e.1.len() as i32,
+          error_code: e.1.as_bytes().to_owned(),
+          error_message: e.to_string().as_bytes().to_owned(),
         };
         return Op::Sync(error_record.into());
       }
@@ -154,9 +154,9 @@ where
           let error_record = ErrorRecord {
             promise_id: record.promise_id,
             arg: -1,
-            error_len: err.kind.len() as i32,
-            error_code: err.kind.as_bytes().to_owned(),
-            error_message: err.msg.as_bytes().to_owned(),
+            error_len: err.1.len() as i32,
+            error_code: err.1.as_bytes().to_owned(),
+            error_message: err.to_string().as_bytes().to_owned(),
           };
           error_record.into()
         }
@@ -172,9 +172,9 @@ where
               let error_record = ErrorRecord {
                 promise_id: record.promise_id,
                 arg: -1,
-                error_len: err.kind.len() as i32,
-                error_code: err.kind.as_bytes().to_owned(),
-                error_message: err.msg.as_bytes().to_owned(),
+                error_len: err.1.len() as i32,
+                error_code: err.1.as_bytes().to_owned(),
+                error_message: err.to_string().as_bytes().to_owned(),
               };
               error_record.into()
             }

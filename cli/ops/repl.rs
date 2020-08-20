@@ -6,6 +6,7 @@ use crate::repl::Repl;
 use crate::state::State;
 use deno_core::CoreIsolate;
 use deno_core::CoreIsolateState;
+use deno_core::ErrBox;
 use deno_core::ZeroCopyBuf;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -60,7 +61,7 @@ fn op_repl_readline(
   let resource_table = isolate_state.resource_table.borrow();
   let resource = resource_table
     .get::<ReplResource>(rid)
-    .ok_or_else(OpError::bad_resource_id)?;
+    .ok_or_else(ErrBox::bad_resource_id)?;
   let repl = resource.0.clone();
 
   blocking_json(false, move || {

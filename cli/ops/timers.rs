@@ -66,12 +66,8 @@ fn op_now(
   // If the permission is not enabled
   // Round the nano result on 2 milliseconds
   // see: https://developer.mozilla.org/en-US/docs/Web/API/DOMHighResTimeStamp#Reduced_time_precision
-  if let Err(op_error) = state.check_hrtime() {
-    if op_error.kind == "PermissionDenied" {
-      subsec_nanos -= subsec_nanos % reduced_time_precision;
-    } else {
-      return Err(op_error);
-    }
+  if state.check_hrtime().is_err() {
+    subsec_nanos -= subsec_nanos % reduced_time_precision;
   }
 
   Ok(JsonOp::Sync(json!({

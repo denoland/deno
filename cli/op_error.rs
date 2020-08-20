@@ -14,8 +14,6 @@
 //!   But Diagnostics are compile-time type errors, whereas JSErrors are runtime
 //!   exceptions.
 
-use crate::import_map::ImportMapError;
-use crate::swc_util::SwcDiagnosticBuffer;
 use deno_core::ErrBox;
 use deno_core::ModuleResolutionError;
 use rustyline::error::ReadlineError;
@@ -34,69 +32,6 @@ impl OpError {
   fn new(kind: &'static str, msg: String) -> Self {
     Self { kind, msg }
   }
-
-  pub fn into_errbox(self) -> ErrBox {
-    let kind = self.kind;
-    ErrBox(Box::new(self), kind)
-  }
-
-  pub fn not_found(msg: String) -> Self {
-    Self::new("NotFound", msg)
-  }
-
-  pub fn not_implemented() -> Self {
-    Self::other("not implemented".to_string())
-  }
-
-  pub fn other(msg: String) -> Self {
-    Self::new("Other", msg)
-  }
-
-  pub fn type_error(msg: String) -> Self {
-    Self::new("TypeError", msg)
-  }
-
-  pub fn http(msg: String) -> Self {
-    Self::new("Http", msg)
-  }
-
-  pub fn uri_error(msg: String) -> Self {
-    Self::new("URIError", msg)
-  }
-
-  pub fn permission_denied(msg: String) -> OpError {
-    Self::new("PermissionDenied", msg)
-  }
-
-  pub fn bad_resource(msg: String) -> OpError {
-    Self::new("BadResource", msg)
-  }
-
-  // BadResource usually needs no additional detail, hence this helper.
-  pub fn bad_resource_id() -> OpError {
-    Self::new("BadResource", "Bad resource ID".to_string())
-  }
-
-  pub fn invalid_utf8() -> OpError {
-    Self::new("InvalidData", "invalid utf8".to_string())
-  }
-
-  pub fn resource_unavailable() -> OpError {
-    Self::new(
-      "Busy",
-      "resource is unavailable because it is in use by a promise".to_string(),
-    )
-  }
-
-  pub fn invalid_domain_error() -> OpError {
-    OpError::type_error("Invalid domain.".to_string())
-  }
-
-  pub fn permission_escalation_error() -> OpError {
-    OpError::permission_denied(
-      "Arguments escalate parent permissions.".to_string(),
-    )
-  }
 }
 
 impl Error for OpError {}
@@ -107,21 +42,44 @@ impl fmt::Display for OpError {
   }
 }
 
+pub fn not_implemented() -> ErrBox {
+  ErrBox::other("not implemented".to_string())
+}
+
+pub fn invalid_utf8() -> ErrBox {
+  ErrBox::new_text("InvalidData", "invalid utf8".to_string())
+}
+
+pub fn invalid_domain_error() -> ErrBox {
+  ErrBox::type_error("Invalid domain.".to_string())
+}
+
+pub fn uri_error(msg: String) -> ErrBox {
+  ErrBox::new_text("URIError", msg)
+}
+
+pub fn resolve_to_errbox(error: ModuleResolutionError) -> ErrBox {
+  uri_error(error.to_string())
+}
+
+pub fn permission_escalation_error() -> ErrBox {
+  permission_denied("Arguments escalate parent permissions.".to_string())
+}
+
+pub fn resource_unavailable() -> ErrBox {
+  ErrBox::new_text(
+    "Busy",
+    "resource is unavailable because it is in use by a promise".to_string(),
+  )
+}
+
+pub fn permission_denied(msg: String) -> ErrBox {
+  ErrBox::new_text("PermissionDenied", msg)
+}
+
 impl From<OpError> for ErrBox {
   fn from(error: OpError) -> Self {
     ErrBox::new_text(error.kind, error.msg)
-  }
-}
-
-impl From<ImportMapError> for OpError {
-  fn from(error: ImportMapError) -> Self {
-    OpError::from(&error)
-  }
-}
-
-impl From<&ImportMapError> for OpError {
-  fn from(error: &ImportMapError) -> Self {
-    Self::new("Other", error.to_string())
   }
 }
 
@@ -383,6 +341,19 @@ impl From<dlopen::Error> for OpError {
   }
 }
 
+pub fn dl_to_errbox(error: dlopen::Error) -> ErrBox {
+  use dlopen::Error::*;
+  let kind = match error {
+    NullCharacter(_) => "Other",
+    OpeningLibraryError(e) => return io_to_errbox(e),
+    SymbolGettingError(e) => return io_to_errbox(e),
+    AddrNotMatchingDll(e) => return io_to_errbox(e),
+    NullSymbol => "Other",
+  };
+
+  ErrBox::new(kind, error)
+}
+
 impl From<&dlopen::Error> for OpError {
   fn from(error: &dlopen::Error) -> Self {
     use dlopen::Error::*;
@@ -419,18 +390,6 @@ impl From<&notify::Error> for OpError {
   }
 }
 
-impl From<SwcDiagnosticBuffer> for OpError {
-  fn from(error: SwcDiagnosticBuffer) -> Self {
-    OpError::from(&error)
-  }
-}
-
-impl From<&SwcDiagnosticBuffer> for OpError {
-  fn from(error: &SwcDiagnosticBuffer) -> Self {
-    Self::new("Other", error.diagnostics.join(", "))
-  }
-}
-
 impl From<ErrBox> for OpError {
   fn from(error: ErrBox) -> Self {
     #[cfg(unix)]
@@ -450,7 +409,6 @@ impl From<ErrBox> for OpError {
           .map(|e| OpError::new(&e.kind, e.msg.to_string()))
       })
       .or_else(|| error.downcast_ref::<reqwest::Error>().map(|e| e.into()))
-      .or_else(|| error.downcast_ref::<ImportMapError>().map(|e| e.into()))
       .or_else(|| error.downcast_ref::<io::Error>().map(|e| e.into()))
       .or_else(|| {
         error
@@ -466,85 +424,8 @@ impl From<ErrBox> for OpError {
       })
       .or_else(|| error.downcast_ref::<dlopen::Error>().map(|e| e.into()))
       .or_else(|| error.downcast_ref::<notify::Error>().map(|e| e.into()))
-      .or_else(|| {
-        error
-          .downcast_ref::<SwcDiagnosticBuffer>()
-          .map(|e| e.into())
-      })
       .or_else(|| unix_error_kind(&error))
       .or_else(|| Some(OpError::new(error.1, error.0.to_string())))
       .unwrap()
-  }
-}
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-
-  fn io_error() -> io::Error {
-    io::Error::from(io::ErrorKind::NotFound)
-  }
-
-  fn url_error() -> url::ParseError {
-    url::ParseError::EmptyHost
-  }
-
-  fn import_map_error() -> ImportMapError {
-    ImportMapError {
-      msg: "an import map error".to_string(),
-    }
-  }
-
-  #[test]
-  fn test_simple_error() {
-    let err = OpError::not_found("foo".to_string());
-    assert_eq!(err.kind, "NotFound");
-    assert_eq!(err.to_string(), "foo");
-  }
-
-  #[test]
-  fn test_io_error() {
-    let err = OpError::from(io_error());
-    assert_eq!(err.kind, "NotFound");
-    assert_eq!(err.to_string(), "entity not found");
-  }
-
-  #[test]
-  fn test_url_error() {
-    let err = OpError::from(url_error());
-    assert_eq!(err.kind, "URIError");
-    assert_eq!(err.to_string(), "empty host");
-  }
-
-  // TODO find a way to easily test tokio errors and unix errors
-
-  #[test]
-  fn test_import_map_error() {
-    let err = OpError::from(import_map_error());
-    assert_eq!(err.kind, "Other");
-    assert_eq!(err.to_string(), "an import map error");
-  }
-
-  #[test]
-  fn test_bad_resource() {
-    let err = OpError::bad_resource("Resource has been closed".to_string());
-    assert_eq!(err.kind, "BadResource");
-    assert_eq!(err.to_string(), "Resource has been closed");
-  }
-
-  #[test]
-  fn test_bad_resource_id() {
-    let err = OpError::bad_resource_id();
-    assert_eq!(err.kind, "BadResource");
-    assert_eq!(err.to_string(), "Bad resource ID");
-  }
-
-  #[test]
-  fn test_permission_denied() {
-    let err = OpError::permission_denied(
-      "run again with the --allow-net flag".to_string(),
-    );
-    assert_eq!(err.kind, "PermissionDenied");
-    assert_eq!(err.to_string(), "run again with the --allow-net flag");
   }
 }

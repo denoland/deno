@@ -56,16 +56,29 @@ impl ErrBox {
   }
 
   pub fn new_text(kind: &'static str, err_str: String) -> Self {
-    ErrBox::new(kind, TextError(err_str))
+    Self::new(kind, TextError(err_str))
   }
 
   /// Catch-all
   pub fn from_err<T: AnyError>(err: T) -> Self {
-    ErrBox::new("Other", err)
+    Self::new("Other", err)
   }
 
-  pub fn other(err_str: String) -> Self {
-    ErrBox::new("Other", TextError(err_str))
+  pub fn other(msg: String) -> Self {
+    Self::new_text("Other", msg)
+  }
+
+  pub fn bad_resource(msg: String) -> Self {
+    Self::new_text("BadResource", msg)
+  }
+
+  // BadResource usually needs no additional detail, hence this helper.
+  pub fn bad_resource_id() -> Self {
+    Self::new_text("BadResource", "Bad resource ID".to_string())
+  }
+
+  pub fn type_error(msg: String) -> Self {
+    Self::new_text("TypeError", msg)
   }
 }
 
@@ -444,5 +457,22 @@ impl fmt::Display for ErrWithV8Handle {
 impl fmt::Debug for ErrWithV8Handle {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     self.err.fmt(f)
+  }
+}
+
+#[cfg(tests)]
+mod tests {
+  #[test]
+  fn test_bad_resource() {
+    let err = ErrBox::bad_resource("Resource has been closed".to_string());
+    assert_eq!(err.1, "BadResource");
+    assert_eq!(err.to_string(), "Resource has been closed");
+  }
+
+  #[test]
+  fn test_bad_resource_id() {
+    let err = ErrBox::bad_resource_id();
+    assert_eq!(err.1, "BadResource");
+    assert_eq!(err.to_string(), "Bad resource ID");
   }
 }

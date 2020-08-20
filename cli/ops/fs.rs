@@ -3,8 +3,11 @@
 use super::dispatch_json::{blocking_json, Deserialize, JsonOp, Value};
 use super::io::std_file_resource;
 use super::io::{FileMetadata, StreamResource, StreamResourceHolder};
+use crate::op_error::invalid_utf8;
 use crate::op_error::io_to_errbox;
 use crate::op_error::nix_to_errbox;
+#[cfg(not(unix))]
+use crate::op_error::not_implemented;
 use crate::op_error::OpError;
 use crate::ops::dispatch_json::JsonResult;
 use crate::state::State;
@@ -58,8 +61,8 @@ pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
   i.register_op("op_utime", s.stateful_json_op(op_utime));
 }
 
-fn into_string(s: std::ffi::OsString) -> Result<String, OpError> {
-  s.into_string().map_err(|_| OpError::invalid_utf8())
+fn into_string(s: std::ffi::OsString) -> Result<String, ErrBox> {
+  s.into_string().map_err(|_| invalid_utf8())
 }
 
 #[derive(Deserialize)]
@@ -188,10 +191,9 @@ fn op_seek(
     1 => SeekFrom::Current(offset),
     2 => SeekFrom::End(offset),
     _ => {
-      return Err(OpError::type_error(format!(
-        "Invalid seek mode: {}",
-        whence
-      )));
+      return Err(
+        ErrBox::type_error(format!("Invalid seek mode: {}", whence)).into(),
+      );
     }
   };
 
@@ -201,8 +203,8 @@ fn op_seek(
   if is_sync {
     let mut resource_table = resource_table.borrow_mut();
     let pos = std_file_resource(&mut resource_table, rid, |r| match r {
-      Ok(std_file) => std_file.seek(seek_from).map_err(OpError::from),
-      Err(_) => Err(OpError::type_error(
+      Ok(std_file) => std_file.seek(seek_from).map_err(io_to_errbox),
+      Err(_) => Err(ErrBox::type_error(
         "cannot seek on this type of resource".to_string(),
       )),
     })?;
@@ -213,8 +215,8 @@ fn op_seek(
     let fut = async move {
       let mut resource_table = resource_table.borrow_mut();
       let pos = std_file_resource(&mut resource_table, rid, |r| match r {
-        Ok(std_file) => std_file.seek(seek_from).map_err(OpError::from),
-        Err(_) => Err(OpError::type_error(
+        Ok(std_file) => std_file.seek(seek_from).map_err(io_to_errbox),
+        Err(_) => Err(ErrBox::type_error(
           "cannot seek on this type of resource".to_string(),
         )),
       })?;
@@ -247,8 +249,8 @@ fn op_fdatasync(
   if is_sync {
     let mut resource_table = resource_table.borrow_mut();
     std_file_resource(&mut resource_table, rid, |r| match r {
-      Ok(std_file) => std_file.sync_data().map_err(OpError::from),
-      Err(_) => Err(OpError::type_error(
+      Ok(std_file) => std_file.sync_data().map_err(io_to_errbox),
+      Err(_) => Err(ErrBox::type_error(
         "cannot sync this type of resource".to_string(),
       )),
     })?;
@@ -257,8 +259,8 @@ fn op_fdatasync(
     let fut = async move {
       let mut resource_table = resource_table.borrow_mut();
       std_file_resource(&mut resource_table, rid, |r| match r {
-        Ok(std_file) => std_file.sync_data().map_err(OpError::from),
-        Err(_) => Err(OpError::type_error(
+        Ok(std_file) => std_file.sync_data().map_err(io_to_errbox),
+        Err(_) => Err(ErrBox::type_error(
           "cannot sync this type of resource".to_string(),
         )),
       })?;
@@ -291,8 +293,8 @@ fn op_fsync(
   if is_sync {
     let mut resource_table = resource_table.borrow_mut();
     std_file_resource(&mut resource_table, rid, |r| match r {
-      Ok(std_file) => std_file.sync_all().map_err(OpError::from),
-      Err(_) => Err(OpError::type_error(
+      Ok(std_file) => std_file.sync_all().map_err(io_to_errbox),
+      Err(_) => Err(ErrBox::type_error(
         "cannot sync this type of resource".to_string(),
       )),
     })?;
@@ -301,8 +303,8 @@ fn op_fsync(
     let fut = async move {
       let mut resource_table = resource_table.borrow_mut();
       std_file_resource(&mut resource_table, rid, |r| match r {
-        Ok(std_file) => std_file.sync_all().map_err(OpError::from),
-        Err(_) => Err(OpError::type_error(
+        Ok(std_file) => std_file.sync_all().map_err(io_to_errbox),
+        Err(_) => Err(ErrBox::type_error(
           "cannot sync this type of resource".to_string(),
         )),
       })?;
@@ -335,8 +337,8 @@ fn op_fstat(
   if is_sync {
     let mut resource_table = resource_table.borrow_mut();
     let metadata = std_file_resource(&mut resource_table, rid, |r| match r {
-      Ok(std_file) => std_file.metadata().map_err(OpError::from),
-      Err(_) => Err(OpError::type_error(
+      Ok(std_file) => std_file.metadata().map_err(io_to_errbox),
+      Err(_) => Err(ErrBox::type_error(
         "cannot stat this type of resource".to_string(),
       )),
     })?;
@@ -346,8 +348,8 @@ fn op_fstat(
       let mut resource_table = resource_table.borrow_mut();
       let metadata =
         std_file_resource(&mut resource_table, rid, |r| match r {
-          Ok(std_file) => std_file.metadata().map_err(OpError::from),
-          Err(_) => Err(OpError::type_error(
+          Ok(std_file) => std_file.metadata().map_err(io_to_errbox),
+          Err(_) => Err(ErrBox::type_error(
             "cannot stat this type of resource".to_string(),
           )),
         })?;
@@ -375,7 +377,7 @@ fn op_umask(
   #[cfg(not(unix))]
   {
     let _ = args.mask; // avoid unused warning.
-    Err(OpError::not_implemented())
+    Err(not_implemented())
   }
   #[cfg(unix)]
   {
@@ -481,7 +483,7 @@ fn op_chmod(
     {
       // Still check file/dir exists on Windows
       let _metadata = std::fs::metadata(&path)?;
-      Err(OpError::not_implemented())
+      Err(not_implemented())
     }
   })
 }
@@ -519,7 +521,7 @@ fn op_chown(
     // TODO Implement chown for Windows
     #[cfg(not(unix))]
     {
-      Err(OpError::not_implemented())
+      Err(not_implemented())
     }
   })
 }
@@ -885,19 +887,19 @@ fn op_symlink(
         Some(options) => match options._type.as_ref() {
           "file" => symlink_file(&oldpath, &newpath)?,
           "dir" => symlink_dir(&oldpath, &newpath)?,
-          _ => return Err(OpError::type_error("unsupported type".to_string())),
+          _ => return Err(ErrBox::type_error("unsupported type".to_string())),
         },
         None => {
           let old_meta = std::fs::metadata(&oldpath);
           match old_meta {
             Ok(metadata) => {
               if metadata.is_file() {
-                symlink_file(&oldpath, &newpath)?
+                symlink_file(&oldpath, &newpath).map_err(io_to_errbox)?
               } else if metadata.is_dir() {
-                symlink_dir(&oldpath, &newpath)?
+                symlink_dir(&oldpath, &newpath).map_err(io_to_errbox)?
               }
             }
-            Err(_) => return Err(OpError::type_error(
+            Err(_) => return Err(ErrBox::type_error(
               "you must pass a `options` argument for non-existent target path in windows"
                 .to_string(),
             )),
@@ -962,8 +964,8 @@ fn op_ftruncate(
   if is_sync {
     let mut resource_table = resource_table.borrow_mut();
     std_file_resource(&mut resource_table, rid, |r| match r {
-      Ok(std_file) => std_file.set_len(len).map_err(OpError::from),
-      Err(_) => Err(OpError::type_error(
+      Ok(std_file) => std_file.set_len(len).map_err(io_to_errbox),
+      Err(_) => Err(ErrBox::type_error(
         "cannot truncate this type of resource".to_string(),
       )),
     })?;
@@ -972,8 +974,8 @@ fn op_ftruncate(
     let fut = async move {
       let mut resource_table = resource_table.borrow_mut();
       std_file_resource(&mut resource_table, rid, |r| match r {
-        Ok(std_file) => std_file.set_len(len).map_err(OpError::from),
-        Err(_) => Err(OpError::type_error(
+        Ok(std_file) => std_file.set_len(len).map_err(io_to_errbox),
+        Err(_) => Err(ErrBox::type_error(
           "cannot truncate this type of resource".to_string(),
         )),
       })?;

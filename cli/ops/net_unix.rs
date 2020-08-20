@@ -3,6 +3,7 @@ use super::io::{StreamResource, StreamResourceHolder};
 use crate::op_error::io_to_errbox;
 use crate::op_error::OpError;
 use deno_core::CoreIsolateState;
+use deno_core::ErrBox;
 use deno_core::ResourceTable;
 use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
@@ -37,7 +38,7 @@ pub fn accept_unix(
     let _ = resource_table
       .borrow()
       .get::<UnixListenerResource>(rid)
-      .ok_or_else(OpError::bad_resource_id)?;
+      .ok_or_else(ErrBox::bad_resource_id)?;
   }
   let op = async move {
     let mut resource_table_ = resource_table.borrow_mut();
@@ -45,7 +46,7 @@ pub fn accept_unix(
       resource_table_
         .get_mut::<UnixListenerResource>(rid)
         .ok_or_else(|| {
-          OpError::bad_resource("Listener has been closed".to_string())
+          ErrBox::bad_resource("Listener has been closed".to_string())
         })?
     };
 
@@ -95,7 +96,7 @@ pub fn receive_unix_packet(
     let resource = resource_table_
       .get_mut::<UnixDatagramResource>(rid)
       .ok_or_else(|| {
-        OpError::bad_resource("Socket has been closed".to_string())
+        ErrBox::bad_resource("Socket has been closed".to_string())
       })?;
     let (size, remote_addr) = resource
       .socket
