@@ -1,10 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{JsonOp, Value};
-use crate::op_error::OpError;
 use crate::ops::json_op;
 use crate::state::State;
 use deno_core::CoreIsolate;
 use deno_core::CoreIsolateState;
+use deno_core::ErrBox;
 use deno_core::ZeroCopyBuf;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -36,18 +36,18 @@ pub fn compiler_op<D>(
   &mut deno_core::CoreIsolateState,
   Value,
   &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError>
+) -> Result<JsonOp, ErrBox>
 where
   D: Fn(
     Arc<Mutex<Option<String>>>,
     Value,
     &mut [ZeroCopyBuf],
-  ) -> Result<JsonOp, OpError>,
+  ) -> Result<JsonOp, ErrBox>,
 {
   move |_isolate_state: &mut CoreIsolateState,
         args: Value,
         zero_copy: &mut [ZeroCopyBuf]|
-        -> Result<JsonOp, OpError> {
+        -> Result<JsonOp, ErrBox> {
     dispatcher(response.clone(), args, zero_copy)
   }
 }
@@ -56,7 +56,7 @@ fn op_compiler_respond(
   response: Arc<Mutex<Option<String>>>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   let mut r = response.lock().unwrap();
   assert!(
     r.is_none(),

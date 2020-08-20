@@ -1,8 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
-use crate::op_error::OpError;
+use crate::op_error::serde_to_errbox;
 use crate::state::State;
 use deno_core::CoreIsolate;
+use deno_core::ErrBox;
 use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
 use std::rc::Rc;
@@ -22,7 +23,7 @@ fn op_global_timer_stop(
   state: &Rc<State>,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   state.global_timer.borrow_mut().cancel();
   Ok(JsonOp::Sync(json!({})))
 }
@@ -36,8 +37,9 @@ fn op_global_timer(
   state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
-  let args: GlobalTimerArgs = serde_json::from_value(args)?;
+) -> Result<JsonOp, ErrBox> {
+  let args: GlobalTimerArgs =
+    serde_json::from_value(args).map_err(serde_to_errbox)?;
   let val = args.timeout;
 
   let deadline = Instant::now() + Duration::from_millis(val);
@@ -58,7 +60,7 @@ fn op_now(
   state: &Rc<State>,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   let seconds = state.start_time.elapsed().as_secs();
   let mut subsec_nanos = state.start_time.elapsed().subsec_nanos();
   let reduced_time_precision = 2_000_000; // 2ms in nanoseconds

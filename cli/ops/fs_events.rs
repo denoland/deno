@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
-use crate::op_error::OpError;
+use crate::op_error::serde_to_errbox;
 use crate::state::State;
 use deno_core::CoreIsolate;
 use deno_core::CoreIsolateState;
@@ -68,13 +68,13 @@ pub fn op_fs_events_open(
   state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   #[derive(Deserialize)]
   struct OpenArgs {
     recursive: bool,
     paths: Vec<String>,
   }
-  let args: OpenArgs = serde_json::from_value(args)?;
+  let args: OpenArgs = serde_json::from_value(args).map_err(serde_to_errbox)?;
   let (sender, receiver) = mpsc::channel::<Result<FsEvent, ErrBox>>(16);
   let sender = std::sync::Mutex::new(sender);
   let mut watcher: RecommendedWatcher =
@@ -108,12 +108,13 @@ pub fn op_fs_events_poll(
   _state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   #[derive(Deserialize)]
   struct PollArgs {
     rid: u32,
   }
-  let PollArgs { rid } = serde_json::from_value(args)?;
+  let PollArgs { rid } =
+    serde_json::from_value(args).map_err(serde_to_errbox)?;
   let resource_table = isolate_state.resource_table.clone();
   let f = poll_fn(move |cx| {
     let mut resource_table = resource_table.borrow_mut();

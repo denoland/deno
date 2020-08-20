@@ -3,8 +3,8 @@ use super::dispatch_json::{Deserialize, JsonOp, Value};
 use super::io::{StreamResource, StreamResourceHolder};
 use crate::http_util::{create_http_client, HttpBody};
 use crate::op_error::reqwest_to_errbox;
+use crate::op_error::serde_to_errbox;
 use crate::op_error::url_to_errbox;
-use crate::op_error::OpError;
 use crate::state::State;
 use deno_core::CoreIsolate;
 use deno_core::CoreIsolateState;
@@ -41,8 +41,9 @@ pub fn op_fetch(
   state: &Rc<State>,
   args: Value,
   data: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
-  let args: FetchArgs = serde_json::from_value(args)?;
+) -> Result<JsonOp, ErrBox> {
+  let args: FetchArgs =
+    serde_json::from_value(args).map_err(serde_to_errbox)?;
   let url = args.url;
   let resource_table_ = isolate_state.resource_table.borrow();
 
@@ -68,9 +69,10 @@ pub fn op_fetch(
   // Check scheme before asking for net permission
   let scheme = url_.scheme();
   if scheme != "http" && scheme != "https" {
-    return Err(
-      ErrBox::type_error(format!("scheme '{}' not supported", scheme)).into(),
-    );
+    return Err(ErrBox::type_error(format!(
+      "scheme '{}' not supported",
+      scheme
+    )));
   }
 
   state.check_net_url(&url_)?;
@@ -144,8 +146,9 @@ fn op_create_http_client(
   state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
-  let args: CreateHttpClientOptions = serde_json::from_value(args)?;
+) -> Result<JsonOp, ErrBox> {
+  let args: CreateHttpClientOptions =
+    serde_json::from_value(args).map_err(serde_to_errbox)?;
   let mut resource_table = isolate_state.resource_table.borrow_mut();
 
   if let Some(ca_file) = args.ca_file.clone() {

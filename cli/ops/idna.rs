@@ -4,9 +4,10 @@
 
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::op_error::invalid_domain_error;
-use crate::op_error::OpError;
+use crate::op_error::serde_to_errbox;
 use crate::state::State;
 use deno_core::CoreIsolate;
+use deno_core::ErrBox;
 use deno_core::ZeroCopyBuf;
 use idna::{domain_to_ascii, domain_to_ascii_strict};
 use std::rc::Rc;
@@ -26,8 +27,9 @@ fn op_domain_to_ascii(
   _state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
-  let args: DomainToAscii = serde_json::from_value(args)?;
+) -> Result<JsonOp, ErrBox> {
+  let args: DomainToAscii =
+    serde_json::from_value(args).map_err(serde_to_errbox)?;
   let domain = if args.be_strict {
     domain_to_ascii_strict(args.domain.as_str())
       .map_err(|_| invalid_domain_error())?

@@ -2,7 +2,8 @@
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::fmt_errors::JSError;
 use crate::global_state::GlobalState;
-use crate::op_error::OpError;
+use crate::op_error::resolve_to_errbox;
+use crate::op_error::serde_to_errbox;
 use crate::ops::io::get_stdio;
 use crate::permissions::Permissions;
 use crate::startup_data;
@@ -186,8 +187,9 @@ fn op_create_worker(
   state: &Rc<State>,
   args: Value,
   _data: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
-  let args: CreateWorkerArgs = serde_json::from_value(args)?;
+) -> Result<JsonOp, ErrBox> {
+  let args: CreateWorkerArgs =
+    serde_json::from_value(args).map_err(serde_to_errbox)?;
 
   let specifier = args.specifier.clone();
   let maybe_source_code = if args.has_source_code {
@@ -206,7 +208,8 @@ fn op_create_worker(
   let worker_id = state.next_worker_id.get();
   state.next_worker_id.set(worker_id + 1);
 
-  let module_specifier = ModuleSpecifier::resolve_url(&specifier)?;
+  let module_specifier =
+    ModuleSpecifier::resolve_url(&specifier).map_err(resolve_to_errbox)?;
   let worker_name = args_name.unwrap_or_else(|| "".to_string());
 
   let (join_handle, worker_handle) = run_worker_thread(
@@ -238,8 +241,9 @@ fn op_host_terminate_worker(
   state: &Rc<State>,
   args: Value,
   _data: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
-  let args: WorkerArgs = serde_json::from_value(args)?;
+) -> Result<JsonOp, ErrBox> {
+  let args: WorkerArgs =
+    serde_json::from_value(args).map_err(serde_to_errbox)?;
   let id = args.id as u32;
   let (join_handle, worker_handle) = state
     .workers
@@ -306,8 +310,9 @@ fn op_host_get_message(
   state: &Rc<State>,
   args: Value,
   _data: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
-  let args: WorkerArgs = serde_json::from_value(args)?;
+) -> Result<JsonOp, ErrBox> {
+  let args: WorkerArgs =
+    serde_json::from_value(args).map_err(serde_to_errbox)?;
   let id = args.id as u32;
   let state = state.clone();
   let worker_handle = state.workers.borrow()[&id].1.clone();
@@ -347,9 +352,10 @@ fn op_host_post_message(
   state: &Rc<State>,
   args: Value,
   data: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   assert_eq!(data.len(), 1, "Invalid number of arguments");
-  let args: WorkerArgs = serde_json::from_value(args)?;
+  let args: WorkerArgs =
+    serde_json::from_value(args).map_err(serde_to_errbox)?;
   let id = args.id as u32;
   let msg = Vec::from(&*data[0]).into_boxed_slice();
 

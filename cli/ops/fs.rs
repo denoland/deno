@@ -8,7 +8,7 @@ use crate::op_error::io_to_errbox;
 use crate::op_error::nix_to_errbox;
 #[cfg(not(unix))]
 use crate::op_error::not_implemented;
-use crate::op_error::OpError;
+use crate::op_error::serde_to_errbox;
 use crate::ops::dispatch_json::JsonResult;
 use crate::state::State;
 use deno_core::BufVec;
@@ -88,8 +88,8 @@ struct OpenOptions {
 fn open_helper(
   state: &State,
   args: Value,
-) -> Result<(PathBuf, std::fs::OpenOptions), OpError> {
-  let args: OpenArgs = serde_json::from_value(args)?;
+) -> Result<(PathBuf, std::fs::OpenOptions), ErrBox> {
+  let args: OpenArgs = serde_json::from_value(args).map_err(serde_to_errbox)?;
   let path = Path::new(&args.path).to_path_buf();
 
   let mut open_options = std::fs::OpenOptions::new();
@@ -131,9 +131,9 @@ fn op_open_sync(
   resource_table: &mut ResourceTable,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, OpError> {
+) -> Result<Value, ErrBox> {
   let (path, open_options) = open_helper(state, args)?;
-  let std_file = open_options.open(path)?;
+  let std_file = open_options.open(path).map_err(io_to_errbox)?;
   let tokio_file = tokio::fs::File::from_std(std_file);
   let rid = resource_table.add(
     "fsFile",
@@ -150,11 +150,12 @@ async fn op_open_async(
   resource_table: Rc<RefCell<ResourceTable>>,
   args: Value,
   _zero_copy: BufVec,
-) -> Result<Value, OpError> {
+) -> Result<Value, ErrBox> {
   let (path, open_options) = open_helper(&state, args)?;
   let tokio_file = tokio::fs::OpenOptions::from(open_options)
     .open(path)
-    .await?;
+    .await
+    .map_err(io_to_errbox)?;
   let rid = resource_table.borrow_mut().add(
     "fsFile",
     Box::new(StreamResourceHolder::new(StreamResource::FsFile(Some((
@@ -179,9 +180,9 @@ fn op_seek(
   _state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   use std::io::{Seek, SeekFrom};
-  let args: SeekArgs = serde_json::from_value(args)?;
+  let args: SeekArgs = serde_json::from_value(args).map_err(serde_to_errbox)?;
   let rid = args.rid as u32;
   let offset = args.offset;
   let whence = args.whence as u32;
@@ -191,9 +192,7 @@ fn op_seek(
     1 => SeekFrom::Current(offset),
     2 => SeekFrom::End(offset),
     _ => {
-      return Err(
-        ErrBox::type_error(format!("Invalid seek mode: {}", whence)).into(),
-      );
+      return Err(ErrBox::type_error(format!("Invalid seek mode: {}", whence)));
     }
   };
 
@@ -238,9 +237,10 @@ fn op_fdatasync(
   state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   state.check_unstable("Deno.fdatasync");
-  let args: FdatasyncArgs = serde_json::from_value(args)?;
+  let args: FdatasyncArgs =
+    serde_json::from_value(args).map_err(serde_to_errbox)?;
   let rid = args.rid as u32;
 
   let resource_table = isolate_state.resource_table.clone();
@@ -282,9 +282,10 @@ fn op_fsync(
   state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   state.check_unstable("Deno.fsync");
-  let args: FsyncArgs = serde_json::from_value(args)?;
+  let args: FsyncArgs =
+    serde_json::from_value(args).map_err(serde_to_errbox)?;
   let rid = args.rid as u32;
 
   let resource_table = isolate_state.resource_table.clone();
@@ -326,9 +327,10 @@ fn op_fstat(
   state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   state.check_unstable("Deno.fstat");
-  let args: FstatArgs = serde_json::from_value(args)?;
+  let args: FstatArgs =
+    serde_json::from_value(args).map_err(serde_to_errbox)?;
   let rid = args.rid as u32;
 
   let resource_table = isolate_state.resource_table.clone();
@@ -368,9 +370,10 @@ fn op_umask(
   state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   state.check_unstable("Deno.umask");
-  let args: UmaskArgs = serde_json::from_value(args)?;
+  let args: UmaskArgs =
+    serde_json::from_value(args).map_err(serde_to_errbox)?;
   // TODO implement umask for Windows
   // see https://github.com/nodejs/node/blob/master/src/node_process_methods.cc
   // and https://docs.microsoft.com/fr-fr/cpp/c-runtime-library/reference/umask?view=vs-2019
@@ -406,11 +409,12 @@ fn op_chdir(
   state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
-  let args: ChdirArgs = serde_json::from_value(args)?;
+) -> Result<JsonOp, ErrBox> {
+  let args: ChdirArgs =
+    serde_json::from_value(args).map_err(serde_to_errbox)?;
   let d = PathBuf::from(&args.directory);
   state.check_read(&d)?;
-  set_current_dir(&d)?;
+  set_current_dir(&d).map_err(io_to_errbox)?;
   Ok(JsonOp::Sync(json!({})))
 }
 
@@ -427,8 +431,9 @@ fn op_mkdir(
   state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
-  let args: MkdirArgs = serde_json::from_value(args)?;
+) -> Result<JsonOp, ErrBox> {
+  let args: MkdirArgs =
+    serde_json::from_value(args).map_err(serde_to_errbox)?;
   let path = Path::new(&args.path).to_path_buf();
   let mode = args.mode.unwrap_or(0o777) & 0o777;
 
@@ -461,8 +466,9 @@ fn op_chmod(
   state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
-  let args: ChmodArgs = serde_json::from_value(args)?;
+) -> Result<JsonOp, ErrBox> {
+  let args: ChmodArgs =
+    serde_json::from_value(args).map_err(serde_to_errbox)?;
   let path = Path::new(&args.path).to_path_buf();
   let mode = args.mode & 0o777;
 
@@ -501,8 +507,9 @@ fn op_chown(
   state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
-  let args: ChownArgs = serde_json::from_value(args)?;
+) -> Result<JsonOp, ErrBox> {
+  let args: ChownArgs =
+    serde_json::from_value(args).map_err(serde_to_errbox)?;
   let path = Path::new(&args.path).to_path_buf();
 
   state.check_write(&path)?;
@@ -538,8 +545,9 @@ fn op_remove(
   state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
-  let args: RemoveArgs = serde_json::from_value(args)?;
+) -> Result<JsonOp, ErrBox> {
+  let args: RemoveArgs =
+    serde_json::from_value(args).map_err(serde_to_errbox)?;
   let path = PathBuf::from(&args.path);
   let recursive = args.recursive;
 
@@ -592,8 +600,9 @@ fn op_copy_file(
   state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
-  let args: CopyFileArgs = serde_json::from_value(args)?;
+) -> Result<JsonOp, ErrBox> {
+  let args: CopyFileArgs =
+    serde_json::from_value(args).map_err(serde_to_errbox)?;
   let from = PathBuf::from(&args.from);
   let to = PathBuf::from(&args.to);
 
@@ -686,8 +695,8 @@ fn op_stat(
   state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
-  let args: StatArgs = serde_json::from_value(args)?;
+) -> Result<JsonOp, ErrBox> {
+  let args: StatArgs = serde_json::from_value(args).map_err(serde_to_errbox)?;
   let path = PathBuf::from(&args.path);
   let lstat = args.lstat;
 
@@ -716,13 +725,14 @@ fn op_realpath(
   state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
-  let args: RealpathArgs = serde_json::from_value(args)?;
+) -> Result<JsonOp, ErrBox> {
+  let args: RealpathArgs =
+    serde_json::from_value(args).map_err(serde_to_errbox)?;
   let path = PathBuf::from(&args.path);
 
   state.check_read(&path)?;
   if path.is_relative() {
-    state.check_read_blind(&current_dir()?, "CWD")?;
+    state.check_read_blind(&current_dir().map_err(io_to_errbox)?, "CWD")?;
   }
 
   let is_sync = args.promise_id.is_none();
@@ -751,8 +761,9 @@ fn op_read_dir(
   state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
-  let args: ReadDirArgs = serde_json::from_value(args)?;
+) -> Result<JsonOp, ErrBox> {
+  let args: ReadDirArgs =
+    serde_json::from_value(args).map_err(serde_to_errbox)?;
   let path = PathBuf::from(&args.path);
 
   state.check_read(&path)?;
@@ -795,8 +806,9 @@ fn op_rename(
   state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
-  let args: RenameArgs = serde_json::from_value(args)?;
+) -> Result<JsonOp, ErrBox> {
+  let args: RenameArgs =
+    serde_json::from_value(args).map_err(serde_to_errbox)?;
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
 
@@ -824,9 +836,9 @@ fn op_link(
   state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   state.check_unstable("Deno.link");
-  let args: LinkArgs = serde_json::from_value(args)?;
+  let args: LinkArgs = serde_json::from_value(args).map_err(serde_to_errbox)?;
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
 
@@ -862,9 +874,10 @@ fn op_symlink(
   state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   state.check_unstable("Deno.symlink");
-  let args: SymlinkArgs = serde_json::from_value(args)?;
+  let args: SymlinkArgs =
+    serde_json::from_value(args).map_err(serde_to_errbox)?;
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
 
@@ -922,8 +935,9 @@ fn op_read_link(
   state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
-  let args: ReadLinkArgs = serde_json::from_value(args)?;
+) -> Result<JsonOp, ErrBox> {
+  let args: ReadLinkArgs =
+    serde_json::from_value(args).map_err(serde_to_errbox)?;
   let path = PathBuf::from(&args.path);
 
   state.check_read(&path)?;
@@ -952,9 +966,10 @@ fn op_ftruncate(
   state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   state.check_unstable("Deno.ftruncate");
-  let args: FtruncateArgs = serde_json::from_value(args)?;
+  let args: FtruncateArgs =
+    serde_json::from_value(args).map_err(serde_to_errbox)?;
   let rid = args.rid as u32;
   let len = args.len as u64;
 
@@ -997,8 +1012,9 @@ fn op_truncate(
   state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
-  let args: TruncateArgs = serde_json::from_value(args)?;
+) -> Result<JsonOp, ErrBox> {
+  let args: TruncateArgs =
+    serde_json::from_value(args).map_err(serde_to_errbox)?;
   let path = PathBuf::from(&args.path);
   let len = args.len;
 
@@ -1074,8 +1090,9 @@ fn op_make_temp_dir(
   state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
-  let args: MakeTempArgs = serde_json::from_value(args)?;
+) -> Result<JsonOp, ErrBox> {
+  let args: MakeTempArgs =
+    serde_json::from_value(args).map_err(serde_to_errbox)?;
 
   let dir = args.dir.map(|s| PathBuf::from(&s));
   let prefix = args.prefix.map(String::from);
@@ -1106,8 +1123,9 @@ fn op_make_temp_file(
   state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
-  let args: MakeTempArgs = serde_json::from_value(args)?;
+) -> Result<JsonOp, ErrBox> {
+  let args: MakeTempArgs =
+    serde_json::from_value(args).map_err(serde_to_errbox)?;
 
   let dir = args.dir.map(|s| PathBuf::from(&s));
   let prefix = args.prefix.map(String::from);
@@ -1147,10 +1165,11 @@ fn op_utime(
   state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   state.check_unstable("Deno.utime");
 
-  let args: UtimeArgs = serde_json::from_value(args)?;
+  let args: UtimeArgs =
+    serde_json::from_value(args).map_err(serde_to_errbox)?;
   let path = PathBuf::from(&args.path);
 
   state.check_write(&path)?;
@@ -1168,8 +1187,8 @@ fn op_cwd(
   state: &Rc<State>,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
-  let path = current_dir()?;
+) -> Result<JsonOp, ErrBox> {
+  let path = current_dir().map_err(io_to_errbox)?;
   state.check_read_blind(&path, "CWD")?;
   let path_str = into_string(path.into_os_string())?;
   Ok(JsonOp::Sync(json!(path_str)))

@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{JsonOp, Value};
-use crate::op_error::OpError;
+use crate::op_error::serde_to_errbox;
 use crate::state::State;
 use deno_core::CoreIsolate;
 use deno_core::CoreIsolateState;
@@ -46,9 +46,10 @@ fn op_signal_bind(
   state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   state.check_unstable("Deno.signal");
-  let args: BindSignalArgs = serde_json::from_value(args)?;
+  let args: BindSignalArgs =
+    serde_json::from_value(args).map_err(serde_to_errbox)?;
   let mut resource_table = isolate_state.resource_table.borrow_mut();
   let rid = resource_table.add(
     "signal",
@@ -68,9 +69,10 @@ fn op_signal_poll(
   state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   state.check_unstable("Deno.signal");
-  let args: SignalArgs = serde_json::from_value(args)?;
+  let args: SignalArgs =
+    serde_json::from_value(args).map_err(serde_to_errbox)?;
   let rid = args.rid as u32;
   let resource_table = isolate_state.resource_table.clone();
 
@@ -95,9 +97,10 @@ pub fn op_signal_unbind(
   state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   state.check_unstable("Deno.signal");
-  let args: SignalArgs = serde_json::from_value(args)?;
+  let args: SignalArgs =
+    serde_json::from_value(args).map_err(serde_to_errbox)?;
   let rid = args.rid as u32;
   let mut resource_table = isolate_state.resource_table.borrow_mut();
   let resource = resource_table.get::<SignalStreamResource>(rid);
@@ -120,7 +123,7 @@ pub fn op_signal_bind(
   _state: &Rc<State>,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   unimplemented!();
 }
 
@@ -130,7 +133,7 @@ fn op_signal_unbind(
   _state: &Rc<State>,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   unimplemented!();
 }
 
@@ -140,6 +143,6 @@ fn op_signal_poll(
   _state: &Rc<State>,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   unimplemented!();
 }

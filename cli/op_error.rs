@@ -101,6 +101,16 @@ impl From<VarError> for OpError {
   }
 }
 
+pub fn var_to_errbox(error: VarError) -> ErrBox {
+  use VarError::*;
+  let kind = match error {
+    NotPresent => "NotFound",
+    NotUnicode(..) => "InvalidData",
+  };
+
+  ErrBox::new(kind, error)
+}
+
 impl From<&VarError> for OpError {
   fn from(error: &VarError) -> Self {
     use VarError::*;

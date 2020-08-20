@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::op_error::serde_to_errbox;
-use crate::op_error::OpError;
 use deno_core::Buf;
 use deno_core::CoreIsolateState;
 use deno_core::ErrBox;
@@ -54,7 +53,7 @@ where
     &mut CoreIsolateState,
     Value,
     &mut [ZeroCopyBuf],
-  ) -> Result<JsonOp, OpError>,
+  ) -> Result<JsonOp, ErrBox>,
 {
   move |isolate_state: &mut CoreIsolateState, zero_copy: &mut [ZeroCopyBuf]| {
     assert!(!zero_copy.is_empty(), "Expected JSON string at position 0");
@@ -70,9 +69,7 @@ where
 
     let result = serde_json::from_slice(&zero_copy[0])
       .map_err(serde_to_errbox)
-      .and_then(|args| {
-        d(isolate_state, args, &mut zero_copy[1..]).map_err(|e| e.into())
-      });
+      .and_then(|args| d(isolate_state, args, &mut zero_copy[1..]));
 
     // Convert to Op
     match result {
@@ -106,7 +103,7 @@ where
   }
 }
 
-pub fn blocking_json<F>(is_sync: bool, f: F) -> Result<JsonOp, OpError>
+pub fn blocking_json<F>(is_sync: bool, f: F) -> Result<JsonOp, ErrBox>
 where
   F: 'static + Send + FnOnce() -> JsonResult,
 {

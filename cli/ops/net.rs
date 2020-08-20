@@ -2,7 +2,7 @@
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use super::io::{StreamResource, StreamResourceHolder};
 use crate::op_error::io_to_errbox;
-use crate::op_error::OpError;
+use crate::op_error::serde_to_errbox;
 use crate::resolve_addr::resolve_addr;
 use crate::state::State;
 use deno_core::CoreIsolate;
@@ -46,7 +46,7 @@ fn accept_tcp(
   isolate_state: &mut CoreIsolateState,
   args: AcceptArgs,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   let rid = args.rid as u32;
   let resource_table = isolate_state.resource_table.clone();
 
@@ -107,19 +107,17 @@ fn op_accept(
   _state: &Rc<State>,
   args: Value,
   zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
-  let args: AcceptArgs = serde_json::from_value(args)?;
+) -> Result<JsonOp, ErrBox> {
+  let args: AcceptArgs =
+    serde_json::from_value(args).map_err(serde_to_errbox)?;
   match args.transport.as_str() {
     "tcp" => accept_tcp(isolate_state, args, zero_copy),
     #[cfg(unix)]
     "unix" => net_unix::accept_unix(isolate_state, args.rid as u32, zero_copy),
-    _ => Err(
-      ErrBox::other(format!(
-        "Unsupported transport protocol {}",
-        args.transport
-      ))
-      .into(),
-    ),
+    _ => Err(ErrBox::other(format!(
+      "Unsupported transport protocol {}",
+      args.transport
+    ))),
   }
 }
 
@@ -134,7 +132,7 @@ fn receive_udp(
   _state: &Rc<State>,
   args: ReceiveArgs,
   zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   assert_eq!(zero_copy.len(), 1, "Invalid number of arguments");
   let mut zero_copy = zero_copy[0].clone();
 
@@ -174,23 +172,21 @@ fn op_datagram_receive(
   state: &Rc<State>,
   args: Value,
   zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   assert_eq!(zero_copy.len(), 1, "Invalid number of arguments");
 
-  let args: ReceiveArgs = serde_json::from_value(args)?;
+  let args: ReceiveArgs =
+    serde_json::from_value(args).map_err(serde_to_errbox)?;
   match args.transport.as_str() {
     "udp" => receive_udp(isolate_state, state, args, zero_copy),
     #[cfg(unix)]
     "unixpacket" => {
       net_unix::receive_unix_packet(isolate_state, args.rid as u32, zero_copy)
     }
-    _ => Err(
-      ErrBox::other(format!(
-        "Unsupported transport protocol {}",
-        args.transport
-      ))
-      .into(),
-    ),
+    _ => Err(ErrBox::other(format!(
+      "Unsupported transport protocol {}",
+      args.transport
+    ))),
   }
 }
 
@@ -207,12 +203,12 @@ fn op_datagram_send(
   state: &Rc<State>,
   args: Value,
   zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   assert_eq!(zero_copy.len(), 1, "Invalid number of arguments");
   let zero_copy = zero_copy[0].clone();
 
   let resource_table = isolate_state.resource_table.clone();
-  match serde_json::from_value(args)? {
+  match serde_json::from_value(args).map_err(serde_to_errbox)? {
     SendArgs {
       rid,
       transport,
@@ -260,7 +256,7 @@ fn op_datagram_send(
 
       Ok(JsonOp::Async(op.boxed_local()))
     }
-    _ => Err(ErrBox::other("Wrong argument format!".to_owned()).into()),
+    _ => Err(ErrBox::other("Wrong argument format!".to_owned())),
   }
 }
 
@@ -276,9 +272,9 @@ fn op_connect(
   state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   let resource_table = isolate_state.resource_table.clone();
-  match serde_json::from_value(args)? {
+  match serde_json::from_value(args).map_err(serde_to_errbox)? {
     ConnectArgs {
       transport,
       transport_args: ArgsEnum::Ip(args),
@@ -350,7 +346,7 @@ fn op_connect(
       };
       Ok(JsonOp::Async(op.boxed_local()))
     }
-    _ => Err(ErrBox::other("Wrong argument format!".to_owned()).into()),
+    _ => Err(ErrBox::other("Wrong argument format!".to_owned())),
   }
 }
 
@@ -365,10 +361,11 @@ fn op_shutdown(
   state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   state.check_unstable("Deno.shutdown");
 
-  let args: ShutdownArgs = serde_json::from_value(args)?;
+  let args: ShutdownArgs =
+    serde_json::from_value(args).map_err(serde_to_errbox)?;
 
   let rid = args.rid as u32;
   let how = args.how;
@@ -392,7 +389,7 @@ fn op_shutdown(
       net_unix::UnixStream::shutdown(stream, shutdown_mode)
         .map_err(io_to_errbox)?;
     }
-    _ => return Err(OpError::from(ErrBox::bad_resource_id())),
+    _ => return Err(ErrBox::bad_resource_id()),
   }
 
   Ok(JsonOp::Sync(json!({})))
@@ -475,10 +472,11 @@ struct ListenArgs {
 fn listen_tcp(
   resource_table: &mut ResourceTable,
   addr: SocketAddr,
-) -> Result<(u32, SocketAddr), OpError> {
-  let std_listener = std::net::TcpListener::bind(&addr)?;
-  let listener = TcpListener::from_std(std_listener)?;
-  let local_addr = listener.local_addr()?;
+) -> Result<(u32, SocketAddr), ErrBox> {
+  let std_listener =
+    std::net::TcpListener::bind(&addr).map_err(io_to_errbox)?;
+  let listener = TcpListener::from_std(std_listener).map_err(io_to_errbox)?;
+  let local_addr = listener.local_addr().map_err(io_to_errbox)?;
   let listener_resource = TcpListenerResource {
     listener,
     waker: None,
@@ -492,10 +490,10 @@ fn listen_tcp(
 fn listen_udp(
   resource_table: &mut ResourceTable,
   addr: SocketAddr,
-) -> Result<(u32, SocketAddr), OpError> {
-  let std_socket = std::net::UdpSocket::bind(&addr)?;
-  let socket = UdpSocket::from_std(std_socket)?;
-  let local_addr = socket.local_addr()?;
+) -> Result<(u32, SocketAddr), ErrBox> {
+  let std_socket = std::net::UdpSocket::bind(&addr).map_err(io_to_errbox)?;
+  let socket = UdpSocket::from_std(std_socket).map_err(io_to_errbox)?;
+  let local_addr = socket.local_addr().map_err(io_to_errbox)?;
   let socket_resource = UdpSocketResource { socket };
   let rid = resource_table.add("udpSocket", Box::new(socket_resource));
 
@@ -507,9 +505,9 @@ fn op_listen(
   state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   let mut resource_table = isolate_state.resource_table.borrow_mut();
-  match serde_json::from_value(args)? {
+  match serde_json::from_value(args).map_err(serde_to_errbox)? {
     ListenArgs {
       transport,
       transport_args: ArgsEnum::Ip(args),
@@ -572,6 +570,6 @@ fn op_listen(
       })))
     }
     #[cfg(unix)]
-    _ => Err(ErrBox::other("Wrong argument format!".to_owned()).into()),
+    _ => Err(ErrBox::other("Wrong argument format!".to_owned())),
   }
 }

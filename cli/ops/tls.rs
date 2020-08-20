@@ -2,7 +2,7 @@
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use super::io::{StreamResource, StreamResourceHolder};
 use crate::op_error::io_to_errbox;
-use crate::op_error::OpError;
+use crate::op_error::serde_to_errbox;
 use crate::resolve_addr::resolve_addr;
 use crate::state::State;
 use deno_core::CoreIsolate;
@@ -61,9 +61,10 @@ pub fn op_start_tls(
   state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   state.check_unstable("Deno.startTls");
-  let args: StartTLSArgs = serde_json::from_value(args)?;
+  let args: StartTLSArgs =
+    serde_json::from_value(args).map_err(serde_to_errbox)?;
   let rid = args.rid as u32;
   let cert_file = args.cert_file.clone();
   let resource_table = isolate_state.resource_table.clone();
@@ -143,8 +144,9 @@ pub fn op_connect_tls(
   state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
-  let args: ConnectTLSArgs = serde_json::from_value(args)?;
+) -> Result<JsonOp, ErrBox> {
+  let args: ConnectTLSArgs =
+    serde_json::from_value(args).map_err(serde_to_errbox)?;
   let cert_file = args.cert_file.clone();
   let resource_table = isolate_state.resource_table.clone();
   state.check_net(&args.hostname, args.port)?;
@@ -320,8 +322,9 @@ fn op_listen_tls(
   state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
-  let args: ListenTlsArgs = serde_json::from_value(args)?;
+) -> Result<JsonOp, ErrBox> {
+  let args: ListenTlsArgs =
+    serde_json::from_value(args).map_err(serde_to_errbox)?;
   assert_eq!(args.transport, "tcp");
 
   let cert_file = args.cert_file;
@@ -337,9 +340,10 @@ fn op_listen_tls(
     .expect("invalid key or certificate");
   let tls_acceptor = TlsAcceptor::from(Arc::new(config));
   let addr = resolve_addr(&args.hostname, args.port)?;
-  let std_listener = std::net::TcpListener::bind(&addr)?;
-  let listener = TcpListener::from_std(std_listener)?;
-  let local_addr = listener.local_addr()?;
+  let std_listener =
+    std::net::TcpListener::bind(&addr).map_err(io_to_errbox)?;
+  let listener = TcpListener::from_std(std_listener).map_err(io_to_errbox)?;
+  let local_addr = listener.local_addr().map_err(io_to_errbox)?;
   let tls_listener_resource = TlsListenerResource {
     listener,
     tls_acceptor,
@@ -370,8 +374,9 @@ fn op_accept_tls(
   _state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
-  let args: AcceptTlsArgs = serde_json::from_value(args)?;
+) -> Result<JsonOp, ErrBox> {
+  let args: AcceptTlsArgs =
+    serde_json::from_value(args).map_err(serde_to_errbox)?;
   let rid = args.rid as u32;
   let resource_table = isolate_state.resource_table.clone();
   let op = async move {

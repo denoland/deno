@@ -6,7 +6,6 @@ use crate::http_util::create_http_client;
 use crate::import_map::ImportMap;
 use crate::metrics::Metrics;
 use crate::op_error::serde_to_errbox;
-use crate::op_error::OpError;
 use crate::ops::serialize_result;
 use crate::ops::JsonOp;
 use crate::ops::MinimalOp;
@@ -65,7 +64,7 @@ impl State {
     dispatcher: D,
   ) -> impl Fn(&mut deno_core::CoreIsolateState, &mut [ZeroCopyBuf]) -> Op
   where
-    D: Fn(&Rc<State>, Value, &mut [ZeroCopyBuf]) -> Result<JsonOp, OpError>,
+    D: Fn(&Rc<State>, Value, &mut [ZeroCopyBuf]) -> Result<JsonOp, ErrBox>,
   {
     use crate::ops::json_op;
     self.core_op(json_op(self.stateful_op(dispatcher)))
@@ -82,7 +81,7 @@ impl State {
       &mut ResourceTable,
       Value,
       &mut [ZeroCopyBuf],
-    ) -> Result<Value, OpError>,
+    ) -> Result<Value, ErrBox>,
   {
     let state = self.clone();
     let resource_table = resource_table.clone();
@@ -101,8 +100,7 @@ impl State {
       let zero_copy = &mut bufs[1..];
 
       let result =
-        dispatcher(&state, &mut *resource_table.borrow_mut(), args, zero_copy)
-          .map_err(|e| e.into());
+        dispatcher(&state, &mut *resource_table.borrow_mut(), args, zero_copy);
 
       // Convert to Op.
       Op::Sync(serialize_result(None, result))
@@ -117,7 +115,7 @@ impl State {
   where
     D:
       FnOnce(Rc<State>, Rc<RefCell<ResourceTable>>, Value, BufVec) -> F + Clone,
-    F: Future<Output = Result<Value, OpError>> + 'static,
+    F: Future<Output = Result<Value, ErrBox>> + 'static,
   {
     let state = self.clone();
     let resource_table = resource_table.clone();
@@ -157,10 +155,8 @@ impl State {
 
       // Convert to Op.
       Op::Async(
-        async move {
-          serialize_result(Some(promise_id), fut.await.map_err(|e| e.into()))
-        }
-        .boxed_local(),
+        async move { serialize_result(Some(promise_id), fut.await) }
+          .boxed_local(),
       )
     }
   }
@@ -175,7 +171,7 @@ impl State {
       &Rc<State>,
       Value,
       &mut [ZeroCopyBuf],
-    ) -> Result<JsonOp, OpError>,
+    ) -> Result<JsonOp, ErrBox>,
   {
     use crate::ops::json_op;
     self.core_op(json_op(self.stateful_op2(dispatcher)))
@@ -283,15 +279,15 @@ impl State {
     &mut deno_core::CoreIsolateState,
     Value,
     &mut [ZeroCopyBuf],
-  ) -> Result<JsonOp, OpError>
+  ) -> Result<JsonOp, ErrBox>
   where
-    D: Fn(&Rc<State>, Value, &mut [ZeroCopyBuf]) -> Result<JsonOp, OpError>,
+    D: Fn(&Rc<State>, Value, &mut [ZeroCopyBuf]) -> Result<JsonOp, ErrBox>,
   {
     let state = self.clone();
     move |_isolate_state: &mut deno_core::CoreIsolateState,
           args: Value,
           zero_copy: &mut [ZeroCopyBuf]|
-          -> Result<JsonOp, OpError> { dispatcher(&state, args, zero_copy) }
+          -> Result<JsonOp, ErrBox> { dispatcher(&state, args, zero_copy) }
   }
 
   pub fn stateful_op2<D>(
@@ -301,20 +297,20 @@ impl State {
     &mut deno_core::CoreIsolateState,
     Value,
     &mut [ZeroCopyBuf],
-  ) -> Result<JsonOp, OpError>
+  ) -> Result<JsonOp, ErrBox>
   where
     D: Fn(
       &mut deno_core::CoreIsolateState,
       &Rc<State>,
       Value,
       &mut [ZeroCopyBuf],
-    ) -> Result<JsonOp, OpError>,
+    ) -> Result<JsonOp, ErrBox>,
   {
     let state = self.clone();
     move |isolate_state: &mut deno_core::CoreIsolateState,
           args: Value,
           zero_copy: &mut [ZeroCopyBuf]|
-          -> Result<JsonOp, OpError> {
+          -> Result<JsonOp, ErrBox> {
       dispatcher(isolate_state, &state, args, zero_copy)
     }
   }

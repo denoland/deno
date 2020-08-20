@@ -2,8 +2,9 @@ use super::dispatch_json::JsonOp;
 use super::io::std_file_resource;
 use super::io::{StreamResource, StreamResourceHolder};
 use crate::op_error::io_to_errbox;
+use crate::op_error::nix_to_errbox;
 use crate::op_error::resource_unavailable;
-use crate::op_error::OpError;
+use crate::op_error::serde_to_errbox;
 use crate::state::State;
 use deno_core::CoreIsolate;
 use deno_core::CoreIsolateState;
@@ -59,9 +60,10 @@ pub fn op_set_raw(
   state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   state.check_unstable("Deno.setRaw");
-  let args: SetRawArgs = serde_json::from_value(args)?;
+  let args: SetRawArgs =
+    serde_json::from_value(args).map_err(serde_to_errbox)?;
   let rid = args.rid;
   let is_raw = args.mode;
 
@@ -145,7 +147,7 @@ pub fn op_set_raw(
     let mut resource_table = isolate_state.resource_table.borrow_mut();
     let resource_holder = resource_table.get_mut::<StreamResourceHolder>(rid);
     if resource_holder.is_none() {
-      return Err(ErrBox::bad_resource_id().into());
+      return Err(ErrBox::bad_resource_id());
     }
 
     if is_raw {
@@ -157,11 +159,9 @@ pub fn op_set_raw(
           StreamResource::FsFile(Some((f, ref mut metadata))) => {
             (f.as_raw_fd(), &mut metadata.tty.mode)
           }
-          StreamResource::FsFile(None) => {
-            return Err(resource_unavailable().into())
-          }
+          StreamResource::FsFile(None) => return Err(resource_unavailable()),
           _ => {
-            return Err(ErrBox::other("Not supported".to_owned()).into());
+            return Err(ErrBox::other("Not supported".to_owned()));
           }
         };
 
@@ -170,7 +170,7 @@ pub fn op_set_raw(
         return Ok(JsonOp::Sync(json!({})));
       }
 
-      let original_mode = termios::tcgetattr(raw_fd)?;
+      let original_mode = termios::tcgetattr(raw_fd).map_err(nix_to_errbox)?;
       let mut raw = original_mode.clone();
       // Save original mode.
       maybe_tty_mode.replace(original_mode);
@@ -189,7 +189,8 @@ pub fn op_set_raw(
         | termios::LocalFlags::ISIG);
       raw.control_chars[termios::SpecialCharacterIndices::VMIN as usize] = 1;
       raw.control_chars[termios::SpecialCharacterIndices::VTIME as usize] = 0;
-      termios::tcsetattr(raw_fd, termios::SetArg::TCSADRAIN, &raw)?;
+      termios::tcsetattr(raw_fd, termios::SetArg::TCSADRAIN, &raw)
+        .map_err(nix_to_errbox)?;
       Ok(JsonOp::Sync(json!({})))
     } else {
       // Try restore saved mode.
@@ -202,15 +203,16 @@ pub fn op_set_raw(
             (f.as_raw_fd(), &mut metadata.tty.mode)
           }
           StreamResource::FsFile(None) => {
-            return Err(resource_unavailable().into());
+            return Err(resource_unavailable());
           }
           _ => {
-            return Err(ErrBox::bad_resource_id().into());
+            return Err(ErrBox::bad_resource_id());
           }
         };
 
       if let Some(mode) = maybe_tty_mode.take() {
-        termios::tcsetattr(raw_fd, termios::SetArg::TCSADRAIN, &mode)?;
+        termios::tcsetattr(raw_fd, termios::SetArg::TCSADRAIN, &mode)
+          .map_err(nix_to_errbox)?;
       }
 
       Ok(JsonOp::Sync(json!({})))
@@ -228,8 +230,9 @@ pub fn op_isatty(
   _state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
-  let args: IsattyArgs = serde_json::from_value(args)?;
+) -> Result<JsonOp, ErrBox> {
+  let args: IsattyArgs =
+    serde_json::from_value(args).map_err(serde_to_errbox)?;
   let rid = args.rid;
 
   let mut resource_table = isolate_state.resource_table.borrow_mut();
@@ -275,9 +278,10 @@ pub fn op_console_size(
   state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   state.check_unstable("Deno.consoleSize");
-  let args: ConsoleSizeArgs = serde_json::from_value(args)?;
+  let args: ConsoleSizeArgs =
+    serde_json::from_value(args).map_err(serde_to_errbox)?;
   let rid = args.rid;
 
   let mut resource_table = isolate_state.resource_table.borrow_mut();

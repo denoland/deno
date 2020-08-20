@@ -2,7 +2,7 @@
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use super::io::{std_file_resource, StreamResource, StreamResourceHolder};
 use crate::op_error::io_to_errbox;
-use crate::op_error::OpError;
+use crate::op_error::serde_to_errbox;
 use crate::signal::kill;
 use crate::state::State;
 use deno_core::CoreIsolate;
@@ -67,8 +67,9 @@ fn op_run(
   state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
-  let run_args: RunArgs = serde_json::from_value(args)?;
+) -> Result<JsonOp, ErrBox> {
+  let run_args: RunArgs =
+    serde_json::from_value(args).map_err(serde_to_errbox)?;
 
   state.check_run()?;
   let mut resource_table = isolate_state.resource_table.borrow_mut();
@@ -113,7 +114,7 @@ fn op_run(
   c.kill_on_drop(true);
 
   // Spawn the command.
-  let mut child = c.spawn()?;
+  let mut child = c.spawn().map_err(io_to_errbox)?;
   let pid = child.id();
 
   let stdin_rid = match child.stdin.take() {
@@ -178,8 +179,9 @@ fn op_run_status(
   state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
-  let args: RunStatusArgs = serde_json::from_value(args)?;
+) -> Result<JsonOp, ErrBox> {
+  let args: RunStatusArgs =
+    serde_json::from_value(args).map_err(serde_to_errbox)?;
   let rid = args.rid as u32;
 
   state.check_run()?;
@@ -228,11 +230,11 @@ fn op_kill(
   state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   state.check_unstable("Deno.kill");
   state.check_run()?;
 
-  let args: KillArgs = serde_json::from_value(args)?;
+  let args: KillArgs = serde_json::from_value(args).map_err(serde_to_errbox)?;
   kill(args.pid, args.signo)?;
   Ok(JsonOp::Sync(json!({})))
 }
