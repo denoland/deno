@@ -7,6 +7,7 @@
 //! the same functions as ops available in JS runtime.
 
 extern crate semver_parser;
+use crate::errbox;
 use crate::futures::FutureExt;
 use crate::http_util::fetch_once;
 use crate::http_util::FetchOnceResult;
@@ -40,14 +41,14 @@ async fn get_latest_version(client: &Client) -> Result<Version, ErrBox> {
   let body = client
     .get(
       Url::parse("https://github.com/denoland/deno/releases/latest")
-        .map_err(ErrBox::from_err)?,
+        .map_err(errbox::from_url)?,
     )
     .send()
     .await
-    .map_err(ErrBox::from_err)?
+    .map_err(errbox::from_reqwest)?
     .text()
     .await
-    .map_err(ErrBox::from_err)?;
+    .map_err(errbox::from_reqwest)?;
   let v = find_version(&body)?;
   Ok(semver_parse(&v).unwrap())
 }
@@ -67,11 +68,11 @@ pub async fn upgrade_command(
   if let Some(ca_file) = ca_file {
     let buf = std::fs::read(ca_file);
     let cert = reqwest::Certificate::from_pem(&buf.unwrap())
-      .map_err(ErrBox::from_err)?;
+      .map_err(errbox::from_reqwest)?;
     client_builder = client_builder.add_root_certificate(cert);
   }
 
-  let client = client_builder.build().map_err(ErrBox::from_err)?;
+  let client = client_builder.build().map_err(errbox::from_reqwest)?;
 
   let current_version = semver_parse(crate::version::DENO).unwrap();
 
@@ -111,12 +112,12 @@ pub async fn upgrade_command(
     &install_version,
   )
   .await?;
-  let old_exe_path = std::env::current_exe().map_err(ErrBox::from_err)?;
-  let new_exe_path = unpack(archive_data).map_err(ErrBox::from_err)?;
+  let old_exe_path = std::env::current_exe().map_err(errbox::from_io)?;
+  let new_exe_path = unpack(archive_data).map_err(errbox::from_io)?;
   let permissions = fs::metadata(&old_exe_path)
-    .map_err(ErrBox::from_err)?
+    .map_err(errbox::from_io)?
     .permissions();
-  fs::set_permissions(&new_exe_path, permissions).map_err(ErrBox::from_err)?;
+  fs::set_permissions(&new_exe_path, permissions).map_err(errbox::from_io)?;
   check_exe(&new_exe_path, &install_version)?;
 
   if !dry_run {
@@ -124,10 +125,10 @@ pub async fn upgrade_command(
       Some(path) => {
         fs::rename(&new_exe_path, &path)
           .or_else(|_| fs::copy(&new_exe_path, &path).map(|_| ()))
-          .map_err(ErrBox::from_err)?;
+          .map_err(errbox::from_io)?;
       }
       None => {
-        replace_exe(&new_exe_path, &old_exe_path).map_err(ErrBox::from_err)?
+        replace_exe(&new_exe_path, &old_exe_path).map_err(errbox::from_io)?
       }
     }
   }
@@ -174,11 +175,12 @@ fn compose_url_to_exec(version: &Version) -> Result<Url, ErrBox> {
     "https://github.com/denoland/deno/releases/download/v{}/{}",
     version, ARCHIVE_NAME
   );
-  Url::parse(&s).map_err(ErrBox::from_err)
+  Url::parse(&s).map_err(errbox::from_url)
 }
 
 fn find_version(text: &str) -> Result<String, ErrBox> {
-  let re = Regex::new(r#"v([^\?]+)?""#).map_err(ErrBox::from_err)?;
+  let re =
+    Regex::new(r#"v([^\?]+)?""#).map_err(|e| ErrBox::other(e.to_string()))?;
   if let Some(_mat) = re.find(text) {
     let mat = _mat.as_str();
     return Ok(mat[1..mat.len() - 1].to_string());
@@ -274,8 +276,9 @@ fn check_exe(
     .arg("-V")
     .stderr(std::process::Stdio::inherit())
     .output()
-    .map_err(ErrBox::from_err)?;
-  let stdout = String::from_utf8(output.stdout).map_err(ErrBox::from_err)?;
+    .map_err(errbox::from_io)?;
+  let stdout = String::from_utf8(output.stdout)
+    .map_err(|e| ErrBox::other(e.to_string()))?;
   assert!(output.status.success());
   assert_eq!(stdout.trim(), format!("deno {}", expected_version));
   Ok(())

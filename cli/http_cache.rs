@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use crate::errbox;
 /// This module is meant to eventually implement HTTP cache
 /// as defined in RFC 7234 (https://tools.ietf.org/html/rfc7234).
 /// Currently it's a very simplified version to fulfill Deno needs
@@ -83,18 +84,19 @@ pub struct Metadata {
 impl Metadata {
   pub fn write(&self, cache_filename: &Path) -> Result<(), ErrBox> {
     let metadata_filename = Self::filename(cache_filename);
-    let json = serde_json::to_string_pretty(self).map_err(ErrBox::from_err)?;
+    let json =
+      serde_json::to_string_pretty(self).map_err(errbox::from_serde)?;
     deno_fs::write_file(&metadata_filename, json, 0o666)
-      .map_err(ErrBox::from_err)?;
+      .map_err(errbox::from_io)?;
     Ok(())
   }
 
   pub fn read(cache_filename: &Path) -> Result<Metadata, ErrBox> {
     let metadata_filename = Metadata::filename(&cache_filename);
     let metadata =
-      fs::read_to_string(metadata_filename).map_err(ErrBox::from_err)?;
+      fs::read_to_string(metadata_filename).map_err(errbox::from_io)?;
     let metadata: Metadata =
-      serde_json::from_str(&metadata).map_err(ErrBox::from_err)?;
+      serde_json::from_str(&metadata).map_err(errbox::from_serde)?;
     Ok(metadata)
   }
 
@@ -141,11 +143,11 @@ impl HttpCache {
   pub fn get(&self, url: &Url) -> Result<(File, HeadersMap), ErrBox> {
     let cache_filename = self.location.join(url_to_filename(url));
     let metadata_filename = Metadata::filename(&cache_filename);
-    let file = File::open(cache_filename).map_err(ErrBox::from_err)?;
+    let file = File::open(cache_filename).map_err(errbox::from_io)?;
     let metadata =
-      fs::read_to_string(metadata_filename).map_err(ErrBox::from_err)?;
+      fs::read_to_string(metadata_filename).map_err(errbox::from_io)?;
     let metadata: Metadata =
-      serde_json::from_str(&metadata).map_err(ErrBox::from_err)?;
+      serde_json::from_str(&metadata).map_err(errbox::from_serde)?;
     Ok((file, metadata.headers))
   }
 
@@ -153,9 +155,9 @@ impl HttpCache {
     let cache_filename = self.location.join(url_to_filename(url));
     let metadata_filename = Metadata::filename(&cache_filename);
     let metadata =
-      fs::read_to_string(metadata_filename).map_err(ErrBox::from_err)?;
+      fs::read_to_string(metadata_filename).map_err(errbox::from_io)?;
     let metadata: Metadata =
-      serde_json::from_str(&metadata).map_err(ErrBox::from_err)?;
+      serde_json::from_str(&metadata).map_err(errbox::from_serde)?;
     Ok(metadata)
   }
 
@@ -172,10 +174,10 @@ impl HttpCache {
       .expect("Cache filename should have a parent dir");
     self
       .ensure_dir_exists(parent_filename)
-      .map_err(ErrBox::from_err)?;
+      .map_err(errbox::from_io)?;
     // Cache content
     deno_fs::write_file(&cache_filename, content, 0o666)
-      .map_err(ErrBox::from_err)?;
+      .map_err(errbox::from_io)?;
 
     let metadata = Metadata {
       url: url.to_string(),

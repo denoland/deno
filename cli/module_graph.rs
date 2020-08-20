@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::checksum;
+use crate::errbox;
 use crate::file_fetcher::map_file_extension;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
@@ -51,7 +52,7 @@ fn validate_no_downgrade(
   if let Some(referrer) = maybe_referrer.as_ref() {
     if let "https" = referrer.as_url().scheme() {
       if let "http" = module_specifier.as_url().scheme() {
-        let e = ErrBox::new_text("PermissionDenied", 
+        let e = errbox::permission_denied(
           "Modules loaded over https:// are not allowed to import modules over http://".to_string()
         );
         return Err(err_with_location(e, maybe_location));
@@ -76,7 +77,7 @@ fn validate_no_file_from_remote(
         match specifier_url.scheme() {
           "http" | "https" => {}
           _ => {
-            let e = ErrBox::new_text("PermissionDenied", 
+            let e = errbox::permission_denied(
               "Remote modules are not allowed to statically import local modules. Use dynamic import instead.".to_string()
             );
             return Err(err_with_location(e, maybe_location));
@@ -105,7 +106,7 @@ fn resolve_imports_and_references(
     let maybe_resolved = if let Some(import_map) = maybe_import_map.as_ref() {
       import_map
         .resolve(&import_desc.specifier, &referrer.to_string())
-        .map_err(ErrBox::from_err)?
+        .map_err(|e| ErrBox::other(e.to_string()))?
     } else {
       None
     };
@@ -117,7 +118,7 @@ fn resolve_imports_and_references(
         &import_desc.specifier,
         &referrer.to_string(),
       )
-      .map_err(ErrBox::from_err)?
+      .map_err(errbox::from_resolution)?
     };
 
     let resolved_type_directive =
@@ -127,7 +128,7 @@ fn resolve_imports_and_references(
             &types_specifier,
             &referrer.to_string(),
           )
-          .map_err(ErrBox::from_err)?,
+          .map_err(errbox::from_resolution)?,
         )
       } else {
         None
@@ -153,7 +154,7 @@ fn resolve_imports_and_references(
       &ref_desc.specifier,
       &referrer.to_string(),
     )
-    .map_err(ErrBox::from_err)?;
+    .map_err(errbox::from_resolution)?;
 
     let reference_descriptor = ReferenceDescriptor {
       specifier: ref_desc.specifier.to_string(),
@@ -342,7 +343,7 @@ impl ModuleGraphLoader {
         spec
       } else {
         ModuleSpecifier::resolve_url(&format!("memory://{}", specifier))
-          .map_err(ErrBox::from_err)?
+          .map_err(errbox::from_resolution)?
       };
 
     let (raw_imports, raw_references) = pre_process_file(
@@ -351,7 +352,7 @@ impl ModuleGraphLoader {
       &source_code,
       self.analyze_dynamic_imports,
     )
-    .map_err(ErrBox::from_err)?;
+    .map_err(|e| ErrBox::other(e.to_string()))?;
     let (imports, references) = resolve_imports_and_references(
       module_specifier.clone(),
       self.maybe_import_map.as_ref(),
@@ -488,7 +489,7 @@ impl ModuleGraphLoader {
     let source_code = source_file
       .source_code
       .to_string()
-      .map_err(ErrBox::from_err)?;
+      .map_err(errbox::from_io)?;
 
     if SUPPORTED_MEDIA_TYPES.contains(&source_file.media_type) {
       if let Some(types_specifier) = source_file.types_header {
@@ -498,7 +499,7 @@ impl ModuleGraphLoader {
             &types_specifier,
             &module_specifier.to_string(),
           )
-          .map_err(ErrBox::from_err)?,
+          .map_err(errbox::from_resolution)?,
           kind: TsReferenceKind::Types,
           // TODO(bartlomieju): location is not needed in here and constructing
           // location by hand is bad
@@ -522,7 +523,7 @@ impl ModuleGraphLoader {
         &source_code,
         self.analyze_dynamic_imports,
       )
-      .map_err(ErrBox::from_err)?;
+      .map_err(|e| ErrBox::other(e.to_string()))?;
       let (imports_, references) = resolve_imports_and_references(
         module_specifier.clone(),
         self.maybe_import_map.as_ref(),

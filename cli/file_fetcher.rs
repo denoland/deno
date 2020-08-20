@@ -1,5 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::colors;
+use crate::errbox::from_io;
+use crate::errbox::from_url;
+use crate::errbox::uri_error;
 use crate::http_cache::HttpCache;
 use crate::http_util;
 use crate::http_util::create_http_client;
@@ -324,7 +327,7 @@ impl SourceFileFetcher {
           module_url.to_string()
         ),
       );
-      return Err(ErrBox::from_err(e));
+      return Err(from_io(e));
     }
 
     // Fetch remote file and cache on-disk for subsequent access
@@ -345,14 +348,14 @@ impl SourceFileFetcher {
     module_url: &Url,
     permissions: &Permissions,
   ) -> Result<SourceFile, ErrBox> {
-    let filepath = module_url.to_file_path().map_err(|()| {
-      ErrBox::new_text("URIError", "File URL contains invalid path".to_string())
-    })?;
+    let filepath = module_url
+      .to_file_path()
+      .map_err(|()| uri_error("File URL contains invalid path".to_string()))?;
 
     permissions.check_read(&filepath)?;
     let source_code = match fs::read(filepath.clone()) {
       Ok(c) => c,
-      Err(e) => return Err(ErrBox::from_err(e)),
+      Err(e) => return Err(from_io(e)),
     };
 
     let (media_type, charset) = map_content_type(&filepath, None);
@@ -409,7 +412,7 @@ impl SourceFileFetcher {
           url
         }
         Err(e) => {
-          return Err(ErrBox::from_err(e));
+          return Err(from_url(e));
         }
       };
       return self
@@ -417,9 +420,7 @@ impl SourceFileFetcher {
     }
 
     let mut source_code = Vec::new();
-    source_file
-      .read_to_end(&mut source_code)
-      .map_err(ErrBox::from_err)?;
+    source_file.read_to_end(&mut source_code).map_err(from_io)?;
 
     let cache_filename = self.http_cache.get_cache_filename(module_url);
     let fake_filepath = PathBuf::from(module_url.path());
@@ -478,7 +479,7 @@ impl SourceFileFetcher {
     // If file wasn't found in cache check if we can fetch it
     if cached_only {
       // We can't fetch remote file - bail out
-      return futures::future::err(ErrBox::from_err(std::io::Error::new(
+      return futures::future::err(from_io(std::io::Error::new(
         std::io::ErrorKind::NotFound,
         format!(
           "Cannot find remote file '{}' in cache, --cached-only is specified",

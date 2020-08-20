@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{JsonOp, Value};
 use crate::colors;
-use crate::errbox::resolve_to_errbox;
+use crate::errbox::from_resolution;
 use crate::state::State;
 use crate::version;
 use crate::DenoSubcommand;
@@ -50,7 +50,7 @@ fn op_main_module(
 ) -> Result<JsonOp, ErrBox> {
   let main = &state.main_module.to_string();
   let main_url =
-    ModuleSpecifier::resolve_url_or_path(&main).map_err(resolve_to_errbox)?;
+    ModuleSpecifier::resolve_url_or_path(&main).map_err(from_resolution)?;
   if main_url.as_url().scheme() == "file" {
     let main_path = std::env::current_dir().unwrap().join(main_url.to_string());
     state.check_read_blind(&main_path, "main_module")?;

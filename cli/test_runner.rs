@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use crate::errbox;
 use crate::fs as deno_fs;
 use crate::installer::is_remote_url;
 use deno_core::ErrBox;
@@ -56,7 +57,7 @@ pub fn prepare_test_modules_urls(
   }
 
   for remote_url in include_urls {
-    let url = Url::parse(&remote_url).map_err(ErrBox::from_err)?;
+    let url = Url::parse(&remote_url).map_err(errbox::from_url)?;
     prepared.push(url);
   }
 

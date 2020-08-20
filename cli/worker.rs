@@ -51,13 +51,18 @@ impl WorkerHandle {
   /// Post message to worker as a host.
   pub fn post_message(&self, buf: Buf) -> Result<(), ErrBox> {
     let mut sender = self.sender.clone();
-    sender.try_send(buf).map_err(ErrBox::from_err)
+    sender
+      .try_send(buf)
+      .map_err(|e| ErrBox::other(e.to_string()))
   }
 
   /// Get the event with lock.
   /// Return error if more than one listener tries to get event
   pub async fn get_event(&self) -> Result<Option<WorkerEvent>, ErrBox> {
-    let mut receiver = self.receiver.try_lock().map_err(ErrBox::from_err)?;
+    let mut receiver = self
+      .receiver
+      .try_lock()
+      .map_err(|e| ErrBox::other(e.to_string()))?;
     Ok(receiver.next().await)
   }
 }

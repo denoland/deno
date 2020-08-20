@@ -149,7 +149,7 @@ where
   T: ?Sized + serde::ser::Serialize,
 {
   let writer = std::io::BufWriter::new(std::io::stdout());
-  serde_json::to_writer_pretty(writer, value).map_err(ErrBox::from_err)
+  serde_json::to_writer_pretty(writer, value).map_err(errbox::from_serde)
 }
 
 fn print_cache_info(
@@ -320,7 +320,7 @@ async fn info_command(
     print_cache_info(&global_state, json)
   } else {
     let main_module = ModuleSpecifier::resolve_url_or_path(&file.unwrap())
-      .map_err(ErrBox::from_err)?;
+      .map_err(errbox::from_resolution)?;
     let mut worker = MainWorker::create(&global_state, main_module.clone())?;
     worker.preload_module(&main_module).await?;
     print_file_info(&worker, main_module.clone(), json).await
@@ -340,11 +340,11 @@ async fn install_command(
   fetch_flags.reload = true;
   let global_state = GlobalState::new(fetch_flags)?;
   let main_module = ModuleSpecifier::resolve_url_or_path(&module_url)
-    .map_err(ErrBox::from_err)?;
+    .map_err(errbox::from_resolution)?;
   let mut worker = MainWorker::create(&global_state, main_module.clone())?;
   worker.preload_module(&main_module).await?;
   installer::install(flags, &module_url, args, name, root, force)
-    .map_err(ErrBox::from_err)
+    .map_err(errbox::from_io)
 }
 
 async fn lint_command(
@@ -373,8 +373,8 @@ async fn cache_command(flags: Flags, files: Vec<String>) -> Result<(), ErrBox> {
   let mut worker = MainWorker::create(&global_state, main_module.clone())?;
 
   for file in files {
-    let specifier =
-      ModuleSpecifier::resolve_url_or_path(&file).map_err(ErrBox::from_err)?;
+    let specifier = ModuleSpecifier::resolve_url_or_path(&file)
+      .map_err(errbox::from_resolution)?;
     worker.preload_module(&specifier).await.map(|_| ())?;
   }
 
@@ -431,7 +431,7 @@ async fn bundle_command(
   out_file: Option<PathBuf>,
 ) -> Result<(), ErrBox> {
   let module_specifier = ModuleSpecifier::resolve_url_or_path(&source_file)
-    .map_err(ErrBox::from_err)?;
+    .map_err(errbox::from_resolution)?;
 
   debug!(">>>>> bundle START");
   let global_state = GlobalState::new(flags)?;
@@ -453,7 +453,7 @@ async fn bundle_command(
     let output_bytes = output.as_bytes();
     let output_len = output_bytes.len();
     deno_fs::write_file(out_file_, output_bytes, 0o666)
-      .map_err(ErrBox::from_err)?;
+      .map_err(errbox::from_io)?;
     info!(
       "{} {:?} ({})",
       colors::green("Emit"),
@@ -597,7 +597,7 @@ async fn doc_command(
       )
     };
 
-    write_to_stdout_ignore_sigpipe(details.as_bytes()).map_err(ErrBox::from_err)
+    write_to_stdout_ignore_sigpipe(details.as_bytes()).map_err(errbox::from_io)
   }
 }
 
@@ -624,7 +624,7 @@ async fn run_command(flags: Flags, script: String) -> Result<(), ErrBox> {
     let mut source = Vec::new();
     std::io::stdin()
       .read_to_end(&mut source)
-      .map_err(ErrBox::from_err)?;
+      .map_err(errbox::from_io)?;
     let main_module_url = main_module.as_url().to_owned();
     // Create a dummy source file.
     let source_file = SourceFile {

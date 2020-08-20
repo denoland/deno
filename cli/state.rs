@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use crate::errbox::from_serde;
+use crate::errbox;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::global_state::GlobalState;
 use crate::global_timer::GlobalTimer;
@@ -91,7 +91,7 @@ impl State {
       let args: Value = match serde_json::from_slice(&bufs[0]) {
         Ok(v) => v,
         Err(e) => {
-          let e = from_serde(e);
+          let e = errbox::from_serde(e);
           return Op::Sync(serialize_result(None, Err(e)));
         }
       };
@@ -125,7 +125,7 @@ impl State {
       let args: Value = match serde_json::from_slice(&bufs[0]) {
         Ok(v) => v,
         Err(e) => {
-          let e = from_serde(e);
+          let e = errbox::from_serde(e);
           return Op::Sync(serialize_result(None, Err(e)));
         }
       };
@@ -347,14 +347,14 @@ impl ModuleLoader for State {
       if let Some(import_map) = &self.import_map {
         let result = import_map
           .resolve(specifier, referrer)
-          .map_err(ErrBox::from_err)?;
+          .map_err(|e| ErrBox::other(e.to_string()))?;
         if let Some(r) = result {
           return Ok(r);
         }
       }
     }
     let module_specifier = ModuleSpecifier::resolve_import(specifier, referrer)
-      .map_err(ErrBox::from_err)?;
+      .map_err(errbox::from_resolution)?;
 
     Ok(module_specifier)
   }

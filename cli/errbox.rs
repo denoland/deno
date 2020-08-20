@@ -33,7 +33,7 @@ pub fn uri_error(msg: String) -> ErrBox {
   ErrBox::new_text("URIError", msg)
 }
 
-pub fn resolve_to_errbox(error: ModuleResolutionError) -> ErrBox {
+pub fn from_resolution(error: ModuleResolutionError) -> ErrBox {
   uri_error(error.to_string())
 }
 
@@ -181,6 +181,19 @@ pub fn from_dlopen(error: dlopen::Error) -> ErrBox {
     SymbolGettingError(e) => return from_io(e),
     AddrNotMatchingDll(e) => return from_io(e),
     NullSymbol => "Other",
+  };
+
+  ErrBox::new(kind, error)
+}
+
+pub fn from_notify(error: notify::Error) -> ErrBox {
+  use notify::ErrorKind::*;
+  let kind = match error.kind {
+    Generic(_) => "Other",
+    Io(e) => return from_io(e),
+    PathNotFound => "NotFound",
+    WatchNotFound => "NotFound",
+    InvalidConfig(_) => "InvalidData",
   };
 
   ErrBox::new(kind, error)
