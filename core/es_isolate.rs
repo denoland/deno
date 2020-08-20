@@ -785,7 +785,9 @@ pub mod tests {
         _is_dyn_import: bool,
       ) -> Pin<Box<ModuleSourceFuture>> {
         async {
-          Err(ErrBox::from_err(io::Error::from(io::ErrorKind::NotFound)))
+          Err(ErrBox::other(
+            io::Error::from(io::ErrorKind::NotFound).to_string(),
+          ))
         }
         .boxed()
       }

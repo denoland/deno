@@ -59,11 +59,6 @@ impl ErrBox {
     Self::new(kind, TextError(err_str))
   }
 
-  /// Catch-all
-  pub fn from_err<T: AnyError>(err: T) -> Self {
-    Self::new("Other", err)
-  }
-
   pub fn other(msg: String) -> Self {
     Self::new_text("Other", msg)
   }
@@ -94,18 +89,6 @@ impl Deref for ErrBox {
     &self.0
   }
 }
-
-// impl<T: AnyError> From<T> for ErrBox {
-//   fn from(error: T) -> Self {
-//     Self(Box::new(error), "Other")
-//   }
-// }
-
-// impl From<Box<dyn AnyError>> for ErrBox {
-//   fn from(boxed: Box<dyn AnyError>) -> Self {
-//     Self(boxed, "Other")
-//   }
-// }
 
 impl fmt::Display for ErrBox {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -409,13 +392,8 @@ pub(crate) fn attach_handle_to_error(
   err: ErrBox,
   handle: v8::Local<v8::Value>,
 ) -> ErrBox {
-  ErrWithV8Handle::new(scope, err, handle).into()
-}
-
-impl From<ErrWithV8Handle> for ErrBox {
-  fn from(err_with_handle: ErrWithV8Handle) -> Self {
-    err_with_handle.err
-  }
+  // TODO(bartomieju): this is a special case...
+  ErrBox::new("Other", ErrWithV8Handle::new(scope, err, handle))
 }
 
 // TODO(piscisaureus): rusty_v8 should implement the Error trait on
