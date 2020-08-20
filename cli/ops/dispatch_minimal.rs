@@ -133,8 +133,8 @@ where
         let error_record = ErrorRecord {
           promise_id: 0,
           arg: -1,
-          error_len: e.kind_str.len() as i32,
-          error_code: e.kind_str.as_bytes().to_owned(),
+          error_len: e.kind.len() as i32,
+          error_code: e.kind.as_bytes().to_owned(),
           error_message: e.msg.as_bytes().to_owned(),
         };
         return Op::Sync(error_record.into());
@@ -154,8 +154,8 @@ where
           let error_record = ErrorRecord {
             promise_id: record.promise_id,
             arg: -1,
-            error_len: err.kind_str.len() as i32,
-            error_code: err.kind_str.as_bytes().to_owned(),
+            error_len: err.kind.len() as i32,
+            error_code: err.kind.as_bytes().to_owned(),
             error_message: err.msg.as_bytes().to_owned(),
           };
           error_record.into()
@@ -172,8 +172,8 @@ where
               let error_record = ErrorRecord {
                 promise_id: record.promise_id,
                 arg: -1,
-                error_len: err.kind_str.len() as i32,
-                error_code: err.kind_str.as_bytes().to_owned(),
+                error_len: err.kind.len() as i32,
+                error_code: err.kind.as_bytes().to_owned(),
                 error_message: err.msg.as_bytes().to_owned(),
               };
               error_record.into()

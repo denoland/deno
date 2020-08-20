@@ -24,109 +24,19 @@ use std::error::Error;
 use std::fmt;
 use std::io;
 
-// Warning! The values in this enum are duplicated in js/errors.ts
-// Update carefully!
-#[derive(Clone, Copy, PartialEq, Debug)]
-pub enum ErrorKind {
-  NotFound = 1,
-  PermissionDenied = 2,
-  ConnectionRefused = 3,
-  ConnectionReset = 4,
-  ConnectionAborted = 5,
-  NotConnected = 6,
-  AddrInUse = 7,
-  AddrNotAvailable = 8,
-  BrokenPipe = 9,
-  AlreadyExists = 10,
-  InvalidData = 13,
-  TimedOut = 14,
-  Interrupted = 15,
-  WriteZero = 16,
-  UnexpectedEof = 17,
-  BadResource = 18,
-  Http = 19,
-  URIError = 20,
-  TypeError = 21,
-  /// This maps to window.Error - ie. a generic error type
-  /// if no better context is available.
-  /// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Error
-  Other = 22,
-  Busy = 23,
-}
-
-impl From<ErrorKind> for String {
-  fn from(kind: ErrorKind) -> Self {
-    let s = match kind {
-      ErrorKind::NotFound => "NotFound",
-      ErrorKind::PermissionDenied => "PermissionDenied",
-      ErrorKind::ConnectionRefused => "ConnectionRefused",
-      ErrorKind::ConnectionReset => "ConnectionReset",
-      ErrorKind::ConnectionAborted => "ConnectionAborted",
-      ErrorKind::NotConnected => "NotConnected",
-      ErrorKind::AddrInUse => "AddrInUse",
-      ErrorKind::AddrNotAvailable => "AddrNotAvailable",
-      ErrorKind::BrokenPipe => "BrokenPipe",
-      ErrorKind::AlreadyExists => "AlreadyExists",
-      ErrorKind::InvalidData => "InvalidData",
-      ErrorKind::TimedOut => "TimedOut",
-      ErrorKind::Interrupted => "Interrupted",
-      ErrorKind::WriteZero => "WriteZero",
-      ErrorKind::UnexpectedEof => "UnexpectedEof",
-      ErrorKind::BadResource => "BadResource",
-      ErrorKind::Http => "Http",
-      ErrorKind::URIError => "URIError",
-      ErrorKind::TypeError => "TypeError",
-      ErrorKind::Other => "Other",
-      ErrorKind::Busy => "Busy",
-    };
-
-    s.to_string()
-  }
-}
-
-fn error_str_to_kind(kind_str: &str) -> ErrorKind {
-  match kind_str {
-    "NotFound" => ErrorKind::NotFound,
-    "PermissionDenied" => ErrorKind::PermissionDenied,
-    "ConnectionRefused" => ErrorKind::ConnectionRefused,
-    "ConnectionReset" => ErrorKind::ConnectionReset,
-    "ConnectionAborted" => ErrorKind::ConnectionAborted,
-    "NotConnected" => ErrorKind::NotConnected,
-    "AddrInUse" => ErrorKind::AddrInUse,
-    "AddrNotAvailable" => ErrorKind::AddrNotAvailable,
-    "BrokenPipe" => ErrorKind::BrokenPipe,
-    "AlreadyExists" => ErrorKind::AlreadyExists,
-    "InvalidData" => ErrorKind::InvalidData,
-    "TimedOut" => ErrorKind::TimedOut,
-    "Interrupted" => ErrorKind::Interrupted,
-    "WriteZero" => ErrorKind::WriteZero,
-    "UnexpectedEof" => ErrorKind::UnexpectedEof,
-    "BadResource" => ErrorKind::BadResource,
-    "Http" => ErrorKind::Http,
-    "URIError" => ErrorKind::URIError,
-    "TypeError" => ErrorKind::TypeError,
-    "Other" => ErrorKind::Other,
-    "Busy" => ErrorKind::Busy,
-    _ => panic!("unknown error kind"),
-  }
-}
-
 #[derive(Debug)]
 pub struct OpError {
-  pub kind_str: String,
+  pub kind: &'static str,
   pub msg: String,
 }
 
 impl OpError {
-  fn new(kind: ErrorKind, msg: String) -> Self {
-    Self {
-      kind_str: kind.into(),
-      msg,
-    }
+  fn new(kind: &'static str, msg: String) -> Self {
+    Self { kind, msg }
   }
 
   pub fn not_found(msg: String) -> Self {
-    Self::new(ErrorKind::NotFound, msg)
+    Self::new("NotFound", msg)
   }
 
   pub fn not_implemented() -> Self {
@@ -134,41 +44,41 @@ impl OpError {
   }
 
   pub fn other(msg: String) -> Self {
-    Self::new(ErrorKind::Other, msg)
+    Self::new("Other", msg)
   }
 
   pub fn type_error(msg: String) -> Self {
-    Self::new(ErrorKind::TypeError, msg)
+    Self::new("TypeError", msg)
   }
 
   pub fn http(msg: String) -> Self {
-    Self::new(ErrorKind::Http, msg)
+    Self::new("Http", msg)
   }
 
   pub fn uri_error(msg: String) -> Self {
-    Self::new(ErrorKind::URIError, msg)
+    Self::new("URIError", msg)
   }
 
   pub fn permission_denied(msg: String) -> OpError {
-    Self::new(ErrorKind::PermissionDenied, msg)
+    Self::new("PermissionDenied", msg)
   }
 
   pub fn bad_resource(msg: String) -> OpError {
-    Self::new(ErrorKind::BadResource, msg)
+    Self::new("BadResource", msg)
   }
 
   // BadResource usually needs no additional detail, hence this helper.
   pub fn bad_resource_id() -> OpError {
-    Self::new(ErrorKind::BadResource, "Bad resource ID".to_string())
+    Self::new("BadResource", "Bad resource ID".to_string())
   }
 
   pub fn invalid_utf8() -> OpError {
-    Self::new(ErrorKind::InvalidData, "invalid utf8".to_string())
+    Self::new("InvalidData", "invalid utf8".to_string())
   }
 
   pub fn resource_unavailable() -> OpError {
     Self::new(
-      ErrorKind::Busy,
+      "Busy",
       "resource is unavailable because it is in use by a promise".to_string(),
     )
   }
@@ -200,7 +110,7 @@ impl From<ImportMapError> for OpError {
 
 impl From<&ImportMapError> for OpError {
   fn from(error: &ImportMapError) -> Self {
-    Self::new(ErrorKind::Other, error.to_string())
+    Self::new("Other", error.to_string())
   }
 }
 
@@ -212,7 +122,7 @@ impl From<ModuleResolutionError> for OpError {
 
 impl From<&ModuleResolutionError> for OpError {
   fn from(error: &ModuleResolutionError) -> Self {
-    Self::new(ErrorKind::URIError, error.to_string())
+    Self::new("URIError", error.to_string())
   }
 }
 
@@ -226,8 +136,8 @@ impl From<&VarError> for OpError {
   fn from(error: &VarError) -> Self {
     use VarError::*;
     let kind = match error {
-      NotPresent => ErrorKind::NotFound,
-      NotUnicode(..) => ErrorKind::InvalidData,
+      NotPresent => "NotFound",
+      NotUnicode(..) => "InvalidData",
     };
 
     Self::new(kind, error.to_string())
@@ -244,23 +154,23 @@ impl From<&io::Error> for OpError {
   fn from(error: &io::Error) -> Self {
     use io::ErrorKind::*;
     let kind = match error.kind() {
-      NotFound => ErrorKind::NotFound,
-      PermissionDenied => ErrorKind::PermissionDenied,
-      ConnectionRefused => ErrorKind::ConnectionRefused,
-      ConnectionReset => ErrorKind::ConnectionReset,
-      ConnectionAborted => ErrorKind::ConnectionAborted,
-      NotConnected => ErrorKind::NotConnected,
-      AddrInUse => ErrorKind::AddrInUse,
-      AddrNotAvailable => ErrorKind::AddrNotAvailable,
-      BrokenPipe => ErrorKind::BrokenPipe,
-      AlreadyExists => ErrorKind::AlreadyExists,
-      InvalidInput => ErrorKind::TypeError,
-      InvalidData => ErrorKind::InvalidData,
-      TimedOut => ErrorKind::TimedOut,
-      Interrupted => ErrorKind::Interrupted,
-      WriteZero => ErrorKind::WriteZero,
-      UnexpectedEof => ErrorKind::UnexpectedEof,
-      Other => ErrorKind::Other,
+      NotFound => "NotFound",
+      PermissionDenied => "PermissionDenied",
+      ConnectionRefused => "ConnectionRefused",
+      ConnectionReset => "ConnectionReset",
+      ConnectionAborted => "ConnectionAborted",
+      NotConnected => "NotConnected",
+      AddrInUse => "AddrInUse",
+      AddrNotAvailable => "AddrNotAvailable",
+      BrokenPipe => "BrokenPipe",
+      AlreadyExists => "AlreadyExists",
+      InvalidInput => "TypeError",
+      InvalidData => "InvalidData",
+      TimedOut => "TimedOut",
+      Interrupted => "Interrupted",
+      WriteZero => "WriteZero",
+      UnexpectedEof => "UnexpectedEof",
+      Other => "Other",
       WouldBlock => unreachable!(),
       // Non-exhaustive enum - might add new variants
       // in the future
@@ -279,7 +189,7 @@ impl From<url::ParseError> for OpError {
 
 impl From<&url::ParseError> for OpError {
   fn from(error: &url::ParseError) -> Self {
-    Self::new(ErrorKind::URIError, error.to_string())
+    Self::new("URIError", error.to_string())
   }
 }
 impl From<reqwest::Error> for OpError {
@@ -307,8 +217,8 @@ impl From<&reqwest::Error> for OpError {
             .downcast_ref::<serde_json::error::Error>()
             .map(|e| e.into())
         })
-        .unwrap_or_else(|| Self::new(ErrorKind::Http, error.to_string())),
-      None => Self::new(ErrorKind::Http, error.to_string()),
+        .unwrap_or_else(|| Self::new("Http", error.to_string())),
+      None => Self::new("Http", error.to_string()),
     }
   }
 }
@@ -324,8 +234,8 @@ impl From<&ReadlineError> for OpError {
     use ReadlineError::*;
     let kind = match error {
       Io(err) => return OpError::from(err),
-      Eof => ErrorKind::UnexpectedEof,
-      Interrupted => ErrorKind::Interrupted,
+      Eof => "UnexpectedEof",
+      Interrupted => "Interrupted",
       #[cfg(unix)]
       Errno(err) => return (*err).into(),
       _ => unimplemented!(),
@@ -345,10 +255,10 @@ impl From<&serde_json::error::Error> for OpError {
   fn from(error: &serde_json::error::Error) -> Self {
     use serde_json::error::*;
     let kind = match error.classify() {
-      Category::Io => ErrorKind::TypeError,
-      Category::Syntax => ErrorKind::TypeError,
-      Category::Data => ErrorKind::InvalidData,
-      Category::Eof => ErrorKind::UnexpectedEof,
+      Category::Io => "TypeError",
+      Category::Syntax => "TypeError",
+      Category::Data => "InvalidData",
+      Category::Eof => "UnexpectedEof",
     };
 
     Self::new(kind, error.to_string())
@@ -360,14 +270,14 @@ impl From<nix::Error> for OpError {
   fn from(error: nix::Error) -> Self {
     use nix::errno::Errno::*;
     let kind = match error {
-      nix::Error::Sys(EPERM) => ErrorKind::PermissionDenied,
-      nix::Error::Sys(EINVAL) => ErrorKind::TypeError,
-      nix::Error::Sys(ENOENT) => ErrorKind::NotFound,
-      nix::Error::Sys(ENOTTY) => ErrorKind::BadResource,
+      nix::Error::Sys(EPERM) => "PermissionDenied",
+      nix::Error::Sys(EINVAL) => "TypeError",
+      nix::Error::Sys(ENOENT) => "NotFound",
+      nix::Error::Sys(ENOTTY) => "BadResource",
       nix::Error::Sys(UnknownErrno) => unreachable!(),
       nix::Error::Sys(_) => unreachable!(),
-      nix::Error::InvalidPath => ErrorKind::TypeError,
-      nix::Error::InvalidUtf8 => ErrorKind::InvalidData,
+      nix::Error::InvalidPath => "TypeError",
+      nix::Error::InvalidUtf8 => "InvalidData",
       nix::Error::UnsupportedOperation => unreachable!(),
     };
 
@@ -385,11 +295,11 @@ impl From<&dlopen::Error> for OpError {
   fn from(error: &dlopen::Error) -> Self {
     use dlopen::Error::*;
     let kind = match error {
-      NullCharacter(_) => ErrorKind::Other,
+      NullCharacter(_) => "Other",
       OpeningLibraryError(e) => return e.into(),
       SymbolGettingError(e) => return e.into(),
       AddrNotMatchingDll(e) => return e.into(),
-      NullSymbol => ErrorKind::Other,
+      NullSymbol => "Other",
     };
 
     Self::new(kind, error.to_string())
@@ -406,11 +316,11 @@ impl From<&notify::Error> for OpError {
   fn from(error: &notify::Error) -> Self {
     use notify::ErrorKind::*;
     let kind = match error.kind {
-      Generic(_) => ErrorKind::Other,
+      Generic(_) => "Other",
       Io(ref e) => return e.into(),
-      PathNotFound => ErrorKind::NotFound,
-      WatchNotFound => ErrorKind::NotFound,
-      InvalidConfig(_) => ErrorKind::InvalidData,
+      PathNotFound => "NotFound",
+      WatchNotFound => "NotFound",
+      InvalidConfig(_) => "InvalidData",
     };
 
     Self::new(kind, error.to_string())
@@ -425,7 +335,7 @@ impl From<SwcDiagnosticBuffer> for OpError {
 
 impl From<&SwcDiagnosticBuffer> for OpError {
   fn from(error: &SwcDiagnosticBuffer) -> Self {
-    Self::new(ErrorKind::Other, error.diagnostics.join(", "))
+    Self::new("Other", error.diagnostics.join(", "))
   }
 }
 
@@ -443,9 +353,9 @@ impl From<ErrBox> for OpError {
 
     None
       .or_else(|| {
-        error.downcast_ref::<OpError>().map(|e| {
-          OpError::new(error_str_to_kind(&e.kind_str), e.msg.to_string())
-        })
+        error
+          .downcast_ref::<OpError>()
+          .map(|e| OpError::new(&e.kind, e.msg.to_string()))
       })
       .or_else(|| error.downcast_ref::<reqwest::Error>().map(|e| e.into()))
       .or_else(|| error.downcast_ref::<ImportMapError>().map(|e| e.into()))
@@ -498,21 +408,21 @@ mod tests {
   #[test]
   fn test_simple_error() {
     let err = OpError::not_found("foo".to_string());
-    assert_eq!(err.kind_str, "NotFound");
+    assert_eq!(err.kind, "NotFound");
     assert_eq!(err.to_string(), "foo");
   }
 
   #[test]
   fn test_io_error() {
     let err = OpError::from(io_error());
-    assert_eq!(err.kind_str, "NotFound");
+    assert_eq!(err.kind, "NotFound");
     assert_eq!(err.to_string(), "entity not found");
   }
 
   #[test]
   fn test_url_error() {
     let err = OpError::from(url_error());
-    assert_eq!(err.kind_str, "URIError");
+    assert_eq!(err.kind, "URIError");
     assert_eq!(err.to_string(), "empty host");
   }
 
@@ -521,21 +431,21 @@ mod tests {
   #[test]
   fn test_import_map_error() {
     let err = OpError::from(import_map_error());
-    assert_eq!(err.kind_str, "Other");
+    assert_eq!(err.kind, "Other");
     assert_eq!(err.to_string(), "an import map error");
   }
 
   #[test]
   fn test_bad_resource() {
     let err = OpError::bad_resource("Resource has been closed".to_string());
-    assert_eq!(err.kind_str, "BadResource");
+    assert_eq!(err.kind, "BadResource");
     assert_eq!(err.to_string(), "Resource has been closed");
   }
 
   #[test]
   fn test_bad_resource_id() {
     let err = OpError::bad_resource_id();
-    assert_eq!(err.kind_str, "BadResource");
+    assert_eq!(err.kind, "BadResource");
     assert_eq!(err.to_string(), "Bad resource ID");
   }
 
@@ -544,7 +454,7 @@ mod tests {
     let err = OpError::permission_denied(
       "run again with the --allow-net flag".to_string(),
     );
-    assert_eq!(err.kind_str, "PermissionDenied");
+    assert_eq!(err.kind, "PermissionDenied");
     assert_eq!(err.to_string(), "run again with the --allow-net flag");
   }
 }

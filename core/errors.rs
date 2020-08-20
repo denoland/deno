@@ -15,7 +15,7 @@ pub trait AnyError: Any + Error + Send + Sync + 'static {}
 impl<T> AnyError for T where T: Any + Error + Send + Sync + Sized + 'static {}
 
 #[derive(Debug)]
-pub struct ErrBox(Box<dyn AnyError>);
+pub struct ErrBox(pub Box<dyn AnyError>, pub &'static str);
 
 impl dyn AnyError {
   pub fn downcast_ref<T: AnyError>(&self) -> Option<&T> {
@@ -56,13 +56,13 @@ impl Deref for ErrBox {
 
 impl<T: AnyError> From<T> for ErrBox {
   fn from(error: T) -> Self {
-    Self(Box::new(error))
+    Self(Box::new(error), "Other")
   }
 }
 
 impl From<Box<dyn AnyError>> for ErrBox {
   fn from(boxed: Box<dyn AnyError>) -> Self {
-    Self(boxed)
+    Self(boxed, "Other")
   }
 }
 
