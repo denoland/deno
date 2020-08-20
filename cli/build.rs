@@ -4,6 +4,7 @@ mod op_fetch_asset;
 use deno_core::js_check;
 use deno_core::CoreIsolate;
 use deno_core::StartupData;
+use regex::Regex;
 use std::collections::HashMap;
 use std::env;
 use std::path::Path;
@@ -71,8 +72,11 @@ fn create_compiler_snapshot(
 }
 
 fn ts_version() -> String {
-  // TODO(ry) This should be automatically extracted from typescript.js
-  "3.9.7".to_string()
+  let ts_bytes = std::fs::read("tsc/00_typescript.js").unwrap();
+  let ts_source = String::from_utf8(ts_bytes).unwrap();
+  let re = Regex::new(r#"ts.version = "(\d\.\d\.\d)";"#).unwrap();
+  let caps = re.captures(&ts_source).unwrap();
+  caps.get(1).unwrap().as_str().to_owned()
 }
 
 fn main() {
