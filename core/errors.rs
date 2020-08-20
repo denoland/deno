@@ -15,6 +15,17 @@ pub trait AnyError: Any + Error + Send + Sync + 'static {}
 impl<T> AnyError for T where T: Any + Error + Send + Sync + Sized + 'static {}
 
 #[derive(Debug)]
+pub struct TextError(pub String);
+
+impl Error for TextError {}
+
+impl fmt::Display for TextError {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    self.0.fmt(f)
+  }
+}
+
+#[derive(Debug)]
 pub struct ErrBox(pub Box<dyn AnyError>, pub &'static str);
 
 impl dyn AnyError {
@@ -40,8 +51,16 @@ impl ErrBox {
     }
   }
 
+  pub fn new<T: AnyError>(kind: &'static str, err: T) -> Self {
+    ErrBox(Box::new(err), kind)
+  }
+
   pub fn other<T: AnyError>(err: T) -> Self {
     ErrBox(Box::new(err), "Other")
+  }
+
+  pub fn new_other(err_str: String) -> Self {
+    ErrBox(Box::new(TextError(err_str)), "Other")
   }
 }
 
