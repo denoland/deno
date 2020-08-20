@@ -55,7 +55,7 @@ export function dayOfYear(date: Date): number {
   const diff = date.getTime() -
     yearStart.getTime() +
     (yearStart.getTimezoneOffset() - date.getTimezoneOffset()) * 60 * 1000;
-  return Math.ceil(diff / DAY);
+  return Math.floor(diff / DAY);
 }
 
 /**
