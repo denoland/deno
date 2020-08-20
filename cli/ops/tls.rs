@@ -1,8 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use super::io::{StreamResource, StreamResourceHolder};
-use crate::op_error::io_to_errbox;
-use crate::op_error::serde_to_errbox;
+use crate::errbox::from_io;
+use crate::errbox::from_serde;
 use crate::resolve_addr::resolve_addr;
 use crate::state::State;
 use deno_core::CoreIsolate;
@@ -63,8 +63,7 @@ pub fn op_start_tls(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
   state.check_unstable("Deno.startTls");
-  let args: StartTLSArgs =
-    serde_json::from_value(args).map_err(serde_to_errbox)?;
+  let args: StartTLSArgs = serde_json::from_value(args).map_err(from_serde)?;
   let rid = args.rid as u32;
   let cert_file = args.cert_file.clone();
   let resource_table = isolate_state.resource_table.clone();
@@ -92,14 +91,14 @@ pub fn op_start_tls(
       resource_holder.resource
     {
       let tcp_stream = tcp_stream.take().unwrap();
-      let local_addr = tcp_stream.local_addr().map_err(io_to_errbox)?;
-      let remote_addr = tcp_stream.peer_addr().map_err(io_to_errbox)?;
+      let local_addr = tcp_stream.local_addr().map_err(from_io)?;
+      let remote_addr = tcp_stream.peer_addr().map_err(from_io)?;
       let mut config = ClientConfig::new();
       config
         .root_store
         .add_server_trust_anchors(&webpki_roots::TLS_SERVER_ROOTS);
       if let Some(path) = cert_file {
-        let key_file = File::open(path).map_err(io_to_errbox)?;
+        let key_file = File::open(path).map_err(from_io)?;
         let reader = &mut BufReader::new(key_file);
         config.root_store.add_pem_file(reader).unwrap();
       }
@@ -110,7 +109,7 @@ pub fn op_start_tls(
       let tls_stream = tls_connector
         .connect(dnsname, tcp_stream)
         .await
-        .map_err(io_to_errbox)?;
+        .map_err(from_io)?;
 
       let mut resource_table_ = resource_table.borrow_mut();
       let rid = resource_table_.add(
@@ -146,7 +145,7 @@ pub fn op_connect_tls(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
   let args: ConnectTLSArgs =
-    serde_json::from_value(args).map_err(serde_to_errbox)?;
+    serde_json::from_value(args).map_err(from_serde)?;
   let cert_file = args.cert_file.clone();
   let resource_table = isolate_state.resource_table.clone();
   state.check_net(&args.hostname, args.port)?;
@@ -161,15 +160,15 @@ pub fn op_connect_tls(
 
   let op = async move {
     let addr = resolve_addr(&args.hostname, args.port)?;
-    let tcp_stream = TcpStream::connect(&addr).await.map_err(io_to_errbox)?;
-    let local_addr = tcp_stream.local_addr().map_err(io_to_errbox)?;
-    let remote_addr = tcp_stream.peer_addr().map_err(io_to_errbox)?;
+    let tcp_stream = TcpStream::connect(&addr).await.map_err(from_io)?;
+    let local_addr = tcp_stream.local_addr().map_err(from_io)?;
+    let remote_addr = tcp_stream.peer_addr().map_err(from_io)?;
     let mut config = ClientConfig::new();
     config
       .root_store
       .add_server_trust_anchors(&webpki_roots::TLS_SERVER_ROOTS);
     if let Some(path) = cert_file {
-      let key_file = File::open(path).map_err(io_to_errbox)?;
+      let key_file = File::open(path).map_err(from_io)?;
       let reader = &mut BufReader::new(key_file);
       config.root_store.add_pem_file(reader).unwrap();
     }
@@ -179,7 +178,7 @@ pub fn op_connect_tls(
     let tls_stream = tls_connector
       .connect(dnsname, tcp_stream)
       .await
-      .map_err(io_to_errbox)?;
+      .map_err(from_io)?;
     let mut resource_table_ = resource_table.borrow_mut();
     let rid = resource_table_.add(
       "clientTlsStream",
@@ -206,7 +205,7 @@ pub fn op_connect_tls(
 }
 
 fn load_certs(path: &str) -> Result<Vec<Certificate>, ErrBox> {
-  let cert_file = File::open(path).map_err(io_to_errbox)?;
+  let cert_file = File::open(path).map_err(from_io)?;
   let reader = &mut BufReader::new(cert_file);
 
   let certs = certs(reader)
@@ -230,7 +229,7 @@ fn key_not_found_err() -> ErrBox {
 
 /// Starts with -----BEGIN RSA PRIVATE KEY-----
 fn load_rsa_keys(path: &str) -> Result<Vec<PrivateKey>, ErrBox> {
-  let key_file = File::open(path).map_err(io_to_errbox)?;
+  let key_file = File::open(path).map_err(from_io)?;
   let reader = &mut BufReader::new(key_file);
   let keys = rsa_private_keys(reader).map_err(|_| key_decode_err())?;
   Ok(keys)
@@ -238,7 +237,7 @@ fn load_rsa_keys(path: &str) -> Result<Vec<PrivateKey>, ErrBox> {
 
 /// Starts with -----BEGIN PRIVATE KEY-----
 fn load_pkcs8_keys(path: &str) -> Result<Vec<PrivateKey>, ErrBox> {
-  let key_file = File::open(path).map_err(io_to_errbox)?;
+  let key_file = File::open(path).map_err(from_io)?;
   let reader = &mut BufReader::new(key_file);
   let keys = pkcs8_private_keys(reader).map_err(|_| key_decode_err())?;
   Ok(keys)
@@ -323,8 +322,7 @@ fn op_listen_tls(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
-  let args: ListenTlsArgs =
-    serde_json::from_value(args).map_err(serde_to_errbox)?;
+  let args: ListenTlsArgs = serde_json::from_value(args).map_err(from_serde)?;
   assert_eq!(args.transport, "tcp");
 
   let cert_file = args.cert_file;
@@ -340,10 +338,9 @@ fn op_listen_tls(
     .expect("invalid key or certificate");
   let tls_acceptor = TlsAcceptor::from(Arc::new(config));
   let addr = resolve_addr(&args.hostname, args.port)?;
-  let std_listener =
-    std::net::TcpListener::bind(&addr).map_err(io_to_errbox)?;
-  let listener = TcpListener::from_std(std_listener).map_err(io_to_errbox)?;
-  let local_addr = listener.local_addr().map_err(io_to_errbox)?;
+  let std_listener = std::net::TcpListener::bind(&addr).map_err(from_io)?;
+  let listener = TcpListener::from_std(std_listener).map_err(from_io)?;
+  let local_addr = listener.local_addr().map_err(from_io)?;
   let tls_listener_resource = TlsListenerResource {
     listener,
     tls_acceptor,
@@ -375,8 +372,7 @@ fn op_accept_tls(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
-  let args: AcceptTlsArgs =
-    serde_json::from_value(args).map_err(serde_to_errbox)?;
+  let args: AcceptTlsArgs = serde_json::from_value(args).map_err(from_serde)?;
   let rid = args.rid as u32;
   let resource_table = isolate_state.resource_table.clone();
   let op = async move {
@@ -388,7 +384,7 @@ fn op_accept_tls(
           ErrBox::bad_resource("Listener has been closed".to_string())
         })?;
       let listener = &mut listener_resource.listener;
-      match listener.poll_accept(cx).map_err(io_to_errbox) {
+      match listener.poll_accept(cx).map_err(from_io) {
         Poll::Ready(Ok((stream, addr))) => {
           listener_resource.untrack_task();
           Poll::Ready(Ok((stream, addr)))
@@ -404,8 +400,8 @@ fn op_accept_tls(
       }
     });
     let (tcp_stream, _socket_addr) = accept_fut.await?;
-    let local_addr = tcp_stream.local_addr().map_err(io_to_errbox)?;
-    let remote_addr = tcp_stream.peer_addr().map_err(io_to_errbox)?;
+    let local_addr = tcp_stream.local_addr().map_err(from_io)?;
+    let remote_addr = tcp_stream.peer_addr().map_err(from_io)?;
     let tls_acceptor = {
       let resource_table = resource_table.borrow();
       let resource = resource_table
@@ -414,10 +410,7 @@ fn op_accept_tls(
         .expect("Can't find tls listener");
       resource.tls_acceptor.clone()
     };
-    let tls_stream = tls_acceptor
-      .accept(tcp_stream)
-      .await
-      .map_err(io_to_errbox)?;
+    let tls_stream = tls_acceptor.accept(tcp_stream).await.map_err(from_io)?;
     let rid = {
       let mut resource_table = resource_table.borrow_mut();
       resource_table.add(

@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
-use crate::op_error::serde_to_errbox;
+use crate::errbox::from_serde;
 use crate::state::State;
 use deno_core::CoreIsolate;
 use deno_core::ErrBox;
@@ -36,7 +36,7 @@ pub fn op_query_permission(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
   let args: PermissionArgs =
-    serde_json::from_value(args).map_err(serde_to_errbox)?;
+    serde_json::from_value(args).map_err(from_serde)?;
   let permissions = state.permissions.borrow();
   let path = args.path.as_deref();
   let perm = match args.name.as_ref() {
@@ -58,7 +58,7 @@ pub fn op_revoke_permission(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
   let args: PermissionArgs =
-    serde_json::from_value(args).map_err(serde_to_errbox)?;
+    serde_json::from_value(args).map_err(from_serde)?;
   let mut permissions = state.permissions.borrow_mut();
   let path = args.path.as_deref();
   let perm = match args.name.as_ref() {
@@ -80,7 +80,7 @@ pub fn op_request_permission(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
   let args: PermissionArgs =
-    serde_json::from_value(args).map_err(serde_to_errbox)?;
+    serde_json::from_value(args).map_err(from_serde)?;
   let permissions = &mut state.permissions.borrow_mut();
   let path = args.path.as_deref();
   let perm = match args.name.as_ref() {

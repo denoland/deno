@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use crate::op_error::serde_to_errbox;
+use crate::errbox::from_serde;
 use deno_core::Buf;
 use deno_core::CoreIsolateState;
 use deno_core::ErrBox;
@@ -60,7 +60,7 @@ where
     let async_args: AsyncArgs = match serde_json::from_slice(&zero_copy[0]) {
       Ok(args) => args,
       Err(e) => {
-        let buf = serialize_result(None, Err(serde_to_errbox(e)));
+        let buf = serialize_result(None, Err(from_serde(e)));
         return Op::Sync(buf);
       }
     };
@@ -68,7 +68,7 @@ where
     let is_sync = promise_id.is_none();
 
     let result = serde_json::from_slice(&zero_copy[0])
-      .map_err(serde_to_errbox)
+      .map_err(from_serde)
       .and_then(|args| d(isolate_state, args, &mut zero_copy[1..]));
 
     // Convert to Op

@@ -1,5 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use crate::op_error::io_to_errbox;
+use crate::errbox::from_io;
 use deno_core::ErrBox;
 use std::net::SocketAddr;
 use std::net::ToSocketAddrs;
@@ -22,7 +22,7 @@ pub fn resolve_addr(hostname: &str, port: u16) -> Result<SocketAddr, ErrBox> {
     addr
   };
   let addr_port_pair = (addr, port);
-  let mut iter = addr_port_pair.to_socket_addrs().map_err(io_to_errbox)?;
+  let mut iter = addr_port_pair.to_socket_addrs().map_err(from_io)?;
   Ok(iter.next().unwrap())
 }
 

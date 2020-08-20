@@ -1,8 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 #[cfg(not(unix))]
-use crate::op_error::io_to_errbox;
+use crate::errbox::from_io;
 #[cfg(unix)]
-use crate::op_error::nix_to_errbox;
+use crate::errbox::from_nix;
 use deno_core::ErrBox;
 
 #[cfg(not(unix))]
@@ -27,8 +27,8 @@ pub fn kill(pid: i32, signo: i32) -> Result<(), ErrBox> {
   use nix::sys::signal::{kill as unix_kill, Signal};
   use nix::unistd::Pid;
   use std::convert::TryFrom;
-  let sig = Signal::try_from(signo).map_err(nix_to_errbox)?;
-  unix_kill(Pid::from_raw(pid), Option::Some(sig)).map_err(nix_to_errbox)
+  let sig = Signal::try_from(signo).map_err(from_nix)?;
+  unix_kill(Pid::from_raw(pid), Option::Some(sig)).map_err(from_nix)
 }
 
 #[cfg(not(unix))]
@@ -41,14 +41,14 @@ pub fn kill(pid: i32, signal: i32) -> Result<(), ErrBox> {
       unsafe {
         let handle = OpenProcess(PROCESS_TERMINATE, 0, pid as DWORD);
         if handle.is_null() {
-          return Err(io_to_errbox(std::io::Error::last_os_error()));
+          return Err(from_io(std::io::Error::last_os_error()));
         }
         if TerminateProcess(handle, 1) == 0 {
           CloseHandle(handle);
-          return Err(io_to_errbox(std::io::Error::last_os_error()));
+          return Err(from_io(std::io::Error::last_os_error()));
         }
         if CloseHandle(handle) == 0 {
-          return Err(io_to_errbox(std::io::Error::last_os_error()));
+          return Err(from_io(std::io::Error::last_os_error()));
         }
       }
     }

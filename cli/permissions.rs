@@ -1,11 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::colors;
+use crate::errbox::from_url;
+use crate::errbox::permission_denied;
+use crate::errbox::permission_escalation_error;
+use crate::errbox::uri_error;
 use crate::flags::Flags;
 use crate::fs::resolve_from_cwd;
-use crate::op_error::permission_denied;
-use crate::op_error::permission_escalation_error;
-use crate::op_error::uri_error;
-use crate::op_error::url_to_errbox;
 use deno_core::ErrBox;
 use serde::Deserialize;
 use std::collections::HashSet;
@@ -260,7 +260,7 @@ impl Permissions {
     }
     let url: &str = url.unwrap();
     // If url is invalid, then throw a TypeError.
-    let parsed = Url::parse(url).map_err(url_to_errbox)?;
+    let parsed = Url::parse(url).map_err(from_url)?;
     // The url may be parsed correctly but still lack a host, i.e. "localhost:235" or "mailto:someone@somewhere.com" or "file:/1.txt"
     // Note that host:port combos are parsed as scheme:path
     if parsed.host().is_none() {

@@ -1,8 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use super::io::{std_file_resource, StreamResource, StreamResourceHolder};
-use crate::op_error::io_to_errbox;
-use crate::op_error::serde_to_errbox;
+use crate::errbox::from_io;
+use crate::errbox::from_serde;
 use crate::signal::kill;
 use crate::state::State;
 use deno_core::CoreIsolate;
@@ -30,7 +30,7 @@ fn clone_file(
   resource_table: &mut ResourceTable,
 ) -> Result<std::fs::File, ErrBox> {
   std_file_resource(resource_table, rid, move |r| match r {
-    Ok(std_file) => std_file.try_clone().map_err(io_to_errbox),
+    Ok(std_file) => std_file.try_clone().map_err(from_io),
     Err(_) => Err(ErrBox::bad_resource_id()),
   })
 }
@@ -68,8 +68,7 @@ fn op_run(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
-  let run_args: RunArgs =
-    serde_json::from_value(args).map_err(serde_to_errbox)?;
+  let run_args: RunArgs = serde_json::from_value(args).map_err(from_serde)?;
 
   state.check_run()?;
   let mut resource_table = isolate_state.resource_table.borrow_mut();
@@ -114,7 +113,7 @@ fn op_run(
   c.kill_on_drop(true);
 
   // Spawn the command.
-  let mut child = c.spawn().map_err(io_to_errbox)?;
+  let mut child = c.spawn().map_err(from_io)?;
   let pid = child.id();
 
   let stdin_rid = match child.stdin.take() {
@@ -180,8 +179,7 @@ fn op_run_status(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
-  let args: RunStatusArgs =
-    serde_json::from_value(args).map_err(serde_to_errbox)?;
+  let args: RunStatusArgs = serde_json::from_value(args).map_err(from_serde)?;
   let rid = args.rid as u32;
 
   state.check_run()?;
@@ -194,7 +192,7 @@ fn op_run_status(
         .get_mut::<ChildResource>(rid)
         .ok_or_else(ErrBox::bad_resource_id)?;
       let child = &mut child_resource.child;
-      child.map_err(io_to_errbox).poll_unpin(cx)
+      child.map_err(from_io).poll_unpin(cx)
     })
     .await?;
 
@@ -234,7 +232,7 @@ fn op_kill(
   state.check_unstable("Deno.kill");
   state.check_run()?;
 
-  let args: KillArgs = serde_json::from_value(args).map_err(serde_to_errbox)?;
+  let args: KillArgs = serde_json::from_value(args).map_err(from_serde)?;
   kill(args.pid, args.signo)?;
   Ok(JsonOp::Sync(json!({})))
 }

@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::deno_dir::DenoDir;
-use crate::op_error::readline_to_errbox;
+use crate::errbox::from_readline;
 use deno_core::ErrBox;
 use rustyline::Editor;
 use std::fs;
@@ -55,7 +55,7 @@ impl Repl {
         self.editor.add_history_entry(line.clone());
         line
       })
-      .map_err(readline_to_errbox)
+      .map_err(from_readline)
     // Forward error to TS side for processing
   }
 }

@@ -1,11 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+use crate::errbox::from_serde;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::global_state::GlobalState;
 use crate::global_timer::GlobalTimer;
 use crate::http_util::create_http_client;
 use crate::import_map::ImportMap;
 use crate::metrics::Metrics;
-use crate::op_error::serde_to_errbox;
 use crate::ops::serialize_result;
 use crate::ops::JsonOp;
 use crate::ops::MinimalOp;
@@ -91,7 +91,7 @@ impl State {
       let args: Value = match serde_json::from_slice(&bufs[0]) {
         Ok(v) => v,
         Err(e) => {
-          let e = serde_to_errbox(e);
+          let e = from_serde(e);
           return Op::Sync(serialize_result(None, Err(e)));
         }
       };
@@ -125,7 +125,7 @@ impl State {
       let args: Value = match serde_json::from_slice(&bufs[0]) {
         Ok(v) => v,
         Err(e) => {
-          let e = serde_to_errbox(e);
+          let e = from_serde(e);
           return Op::Sync(serialize_result(None, Err(e)));
         }
       };

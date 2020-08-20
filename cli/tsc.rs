@@ -3,6 +3,9 @@ use crate::colors;
 use crate::diagnostics::Diagnostic;
 use crate::diagnostics::DiagnosticItem;
 use crate::disk_cache::DiskCache;
+use crate::errbox::from_io;
+use crate::errbox::from_serde;
+use crate::errbox::resolve_to_errbox;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::flags::Flags;
@@ -12,9 +15,6 @@ use crate::module_graph::ModuleGraph;
 use crate::module_graph::ModuleGraphLoader;
 use crate::msg;
 use crate::msg::MediaType;
-use crate::op_error::io_to_errbox;
-use crate::op_error::resolve_to_errbox;
-use crate::op_error::serde_to_errbox;
 use crate::ops;
 use crate::permissions::Permissions;
 use crate::source_maps::SourceMapGetter;
@@ -1114,7 +1114,7 @@ async fn create_runtime_module_graph(
   // download all additional files from TSconfig and add them to root_names
   if let Some(options) = maybe_options {
     let options_json: serde_json::Value =
-      serde_json::from_str(options).map_err(serde_to_errbox)?;
+      serde_json::from_str(options).map_err(from_serde)?;
     if let Some(types_option) = options_json.get("types") {
       let types_arr = types_option.as_array().expect("types is not an array");
 
@@ -1184,12 +1184,12 @@ pub async fn runtime_compile(
     .map_err(js_error_to_errbox)?;
 
   let response: RuntimeCompileResponse =
-    serde_json::from_str(&json_str).map_err(serde_to_errbox)?;
+    serde_json::from_str(&json_str).map_err(from_serde)?;
 
   if response.diagnostics.is_empty() && sources.is_none() {
     compiler
       .cache_emitted_files(response.emit_map)
-      .map_err(io_to_errbox)?;
+      .map_err(from_io)?;
   }
 
   // We're returning `Ok()` instead of `Err()` because it's not runtime
@@ -1231,7 +1231,7 @@ pub async fn runtime_bundle(
     .await
     .map_err(js_error_to_errbox)?;
   let _response: RuntimeBundleResponse =
-    serde_json::from_str(&json_str).map_err(serde_to_errbox)?;
+    serde_json::from_str(&json_str).map_err(from_serde)?;
   // We're returning `Ok()` instead of `Err()` because it's not runtime
   // error if there were diagnostics produced; we want to let user handle
   // diagnostics in the runtime.

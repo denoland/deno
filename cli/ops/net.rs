@@ -1,8 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use super::io::{StreamResource, StreamResourceHolder};
-use crate::op_error::io_to_errbox;
-use crate::op_error::serde_to_errbox;
+use crate::errbox::from_io;
+use crate::errbox::from_serde;
 use crate::resolve_addr::resolve_addr;
 use crate::state::State;
 use deno_core::CoreIsolate;
@@ -59,7 +59,7 @@ fn accept_tcp(
           ErrBox::bad_resource("Listener has been closed".to_string())
         })?;
       let listener = &mut listener_resource.listener;
-      match listener.poll_accept(cx).map_err(io_to_errbox) {
+      match listener.poll_accept(cx).map_err(from_io) {
         Poll::Ready(Ok((stream, addr))) => {
           listener_resource.untrack_task();
           Poll::Ready(Ok((stream, addr)))
@@ -75,8 +75,8 @@ fn accept_tcp(
       }
     });
     let (tcp_stream, _socket_addr) = accept_fut.await?;
-    let local_addr = tcp_stream.local_addr().map_err(io_to_errbox)?;
-    let remote_addr = tcp_stream.peer_addr().map_err(io_to_errbox)?;
+    let local_addr = tcp_stream.local_addr().map_err(from_io)?;
+    let remote_addr = tcp_stream.peer_addr().map_err(from_io)?;
     let mut resource_table = resource_table.borrow_mut();
     let rid = resource_table.add(
       "tcpStream",
@@ -108,8 +108,7 @@ fn op_accept(
   args: Value,
   zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
-  let args: AcceptArgs =
-    serde_json::from_value(args).map_err(serde_to_errbox)?;
+  let args: AcceptArgs = serde_json::from_value(args).map_err(from_serde)?;
   match args.transport.as_str() {
     "tcp" => accept_tcp(isolate_state, args, zero_copy),
     #[cfg(unix)]
@@ -149,9 +148,7 @@ fn receive_udp(
           ErrBox::bad_resource("Socket has been closed".to_string())
         })?;
       let socket = &mut resource.socket;
-      socket
-        .poll_recv_from(cx, &mut zero_copy)
-        .map_err(io_to_errbox)
+      socket.poll_recv_from(cx, &mut zero_copy).map_err(from_io)
     });
     let (size, remote_addr) = receive_fut.await?;
     Ok(json!({
@@ -175,8 +172,7 @@ fn op_datagram_receive(
 ) -> Result<JsonOp, ErrBox> {
   assert_eq!(zero_copy.len(), 1, "Invalid number of arguments");
 
-  let args: ReceiveArgs =
-    serde_json::from_value(args).map_err(serde_to_errbox)?;
+  let args: ReceiveArgs = serde_json::from_value(args).map_err(from_serde)?;
   match args.transport.as_str() {
     "udp" => receive_udp(isolate_state, state, args, zero_copy),
     #[cfg(unix)]
@@ -208,7 +204,7 @@ fn op_datagram_send(
   let zero_copy = zero_copy[0].clone();
 
   let resource_table = isolate_state.resource_table.clone();
-  match serde_json::from_value(args).map_err(serde_to_errbox)? {
+  match serde_json::from_value(args).map_err(from_serde)? {
     SendArgs {
       rid,
       transport,
@@ -226,7 +222,7 @@ fn op_datagram_send(
         resource
           .socket
           .poll_send_to(cx, &zero_copy, &addr)
-          .map_err(io_to_errbox)
+          .map_err(from_io)
           .map_ok(|byte_length| json!(byte_length))
       });
       Ok(JsonOp::Async(f.boxed_local()))
@@ -249,7 +245,7 @@ fn op_datagram_send(
         let byte_length = socket
           .send_to(&zero_copy, &resource.local_addr.as_pathname().unwrap())
           .await
-          .map_err(io_to_errbox)?;
+          .map_err(from_io)?;
 
         Ok(json!(byte_length))
       };
@@ -274,7 +270,7 @@ fn op_connect(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
   let resource_table = isolate_state.resource_table.clone();
-  match serde_json::from_value(args).map_err(serde_to_errbox)? {
+  match serde_json::from_value(args).map_err(from_serde)? {
     ConnectArgs {
       transport,
       transport_args: ArgsEnum::Ip(args),
@@ -282,10 +278,9 @@ fn op_connect(
       state.check_net(&args.hostname, args.port)?;
       let op = async move {
         let addr = resolve_addr(&args.hostname, args.port)?;
-        let tcp_stream =
-          TcpStream::connect(&addr).await.map_err(io_to_errbox)?;
-        let local_addr = tcp_stream.local_addr().map_err(io_to_errbox)?;
-        let remote_addr = tcp_stream.peer_addr().map_err(io_to_errbox)?;
+        let tcp_stream = TcpStream::connect(&addr).await.map_err(from_io)?;
+        let local_addr = tcp_stream.local_addr().map_err(from_io)?;
+        let remote_addr = tcp_stream.peer_addr().map_err(from_io)?;
         let mut resource_table = resource_table.borrow_mut();
         let rid = resource_table.add(
           "tcpStream",
@@ -322,9 +317,9 @@ fn op_connect(
         let unix_stream =
           net_unix::UnixStream::connect(net_unix::Path::new(&path))
             .await
-            .map_err(io_to_errbox)?;
-        let local_addr = unix_stream.local_addr().map_err(io_to_errbox)?;
-        let remote_addr = unix_stream.peer_addr().map_err(io_to_errbox)?;
+            .map_err(from_io)?;
+        let local_addr = unix_stream.local_addr().map_err(from_io)?;
+        let remote_addr = unix_stream.peer_addr().map_err(from_io)?;
         let mut resource_table = resource_table.borrow_mut();
         let rid = resource_table.add(
           "unixStream",
@@ -364,8 +359,7 @@ fn op_shutdown(
 ) -> Result<JsonOp, ErrBox> {
   state.check_unstable("Deno.shutdown");
 
-  let args: ShutdownArgs =
-    serde_json::from_value(args).map_err(serde_to_errbox)?;
+  let args: ShutdownArgs = serde_json::from_value(args).map_err(from_serde)?;
 
   let rid = args.rid as u32;
   let how = args.how;
@@ -382,12 +376,11 @@ fn op_shutdown(
     .ok_or_else(ErrBox::bad_resource_id)?;
   match resource_holder.resource {
     StreamResource::TcpStream(Some(ref mut stream)) => {
-      TcpStream::shutdown(stream, shutdown_mode).map_err(io_to_errbox)?;
+      TcpStream::shutdown(stream, shutdown_mode).map_err(from_io)?;
     }
     #[cfg(unix)]
     StreamResource::UnixStream(ref mut stream) => {
-      net_unix::UnixStream::shutdown(stream, shutdown_mode)
-        .map_err(io_to_errbox)?;
+      net_unix::UnixStream::shutdown(stream, shutdown_mode).map_err(from_io)?;
     }
     _ => return Err(ErrBox::bad_resource_id()),
   }
@@ -473,10 +466,9 @@ fn listen_tcp(
   resource_table: &mut ResourceTable,
   addr: SocketAddr,
 ) -> Result<(u32, SocketAddr), ErrBox> {
-  let std_listener =
-    std::net::TcpListener::bind(&addr).map_err(io_to_errbox)?;
-  let listener = TcpListener::from_std(std_listener).map_err(io_to_errbox)?;
-  let local_addr = listener.local_addr().map_err(io_to_errbox)?;
+  let std_listener = std::net::TcpListener::bind(&addr).map_err(from_io)?;
+  let listener = TcpListener::from_std(std_listener).map_err(from_io)?;
+  let local_addr = listener.local_addr().map_err(from_io)?;
   let listener_resource = TcpListenerResource {
     listener,
     waker: None,
@@ -491,9 +483,9 @@ fn listen_udp(
   resource_table: &mut ResourceTable,
   addr: SocketAddr,
 ) -> Result<(u32, SocketAddr), ErrBox> {
-  let std_socket = std::net::UdpSocket::bind(&addr).map_err(io_to_errbox)?;
-  let socket = UdpSocket::from_std(std_socket).map_err(io_to_errbox)?;
-  let local_addr = socket.local_addr().map_err(io_to_errbox)?;
+  let std_socket = std::net::UdpSocket::bind(&addr).map_err(from_io)?;
+  let socket = UdpSocket::from_std(std_socket).map_err(from_io)?;
+  let local_addr = socket.local_addr().map_err(from_io)?;
   let socket_resource = UdpSocketResource { socket };
   let rid = resource_table.add("udpSocket", Box::new(socket_resource));
 
@@ -507,7 +499,7 @@ fn op_listen(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
   let mut resource_table = isolate_state.resource_table.borrow_mut();
-  match serde_json::from_value(args).map_err(serde_to_errbox)? {
+  match serde_json::from_value(args).map_err(from_serde)? {
     ListenArgs {
       transport,
       transport_args: ArgsEnum::Ip(args),

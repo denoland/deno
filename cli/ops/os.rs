@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
-use crate::op_error::serde_to_errbox;
-use crate::op_error::var_to_errbox;
+use crate::errbox::from_serde;
+use crate::errbox::from_var;
 use crate::state::State;
 use deno_core::CoreIsolate;
 use deno_core::ErrBox;
@@ -48,7 +48,7 @@ fn op_set_env(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
-  let args: SetEnv = serde_json::from_value(args).map_err(serde_to_errbox)?;
+  let args: SetEnv = serde_json::from_value(args).map_err(from_serde)?;
   state.check_env()?;
   env::set_var(args.key, args.value);
   Ok(JsonOp::Sync(json!({})))
@@ -74,11 +74,11 @@ fn op_get_env(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
-  let args: GetEnv = serde_json::from_value(args).map_err(serde_to_errbox)?;
+  let args: GetEnv = serde_json::from_value(args).map_err(from_serde)?;
   state.check_env()?;
   let r = match env::var(args.key) {
     Err(env::VarError::NotPresent) => json!([]),
-    v => json!([v.map_err(var_to_errbox)?]),
+    v => json!([v.map_err(from_var)?]),
   };
   Ok(JsonOp::Sync(r))
 }
@@ -93,8 +93,7 @@ fn op_delete_env(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
-  let args: DeleteEnv =
-    serde_json::from_value(args).map_err(serde_to_errbox)?;
+  let args: DeleteEnv = serde_json::from_value(args).map_err(from_serde)?;
   state.check_env()?;
   env::remove_var(args.key);
   Ok(JsonOp::Sync(json!({})))
@@ -110,7 +109,7 @@ fn op_exit(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
-  let args: Exit = serde_json::from_value(args).map_err(serde_to_errbox)?;
+  let args: Exit = serde_json::from_value(args).map_err(from_serde)?;
   std::process::exit(args.code)
 }
 

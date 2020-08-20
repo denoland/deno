@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{JsonOp, Value};
 use crate::colors;
-use crate::op_error::resolve_to_errbox;
+use crate::errbox::resolve_to_errbox;
 use crate::state::State;
 use crate::version;
 use crate::DenoSubcommand;

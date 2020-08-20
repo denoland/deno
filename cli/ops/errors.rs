@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::diagnostics::Diagnostic;
-use crate::op_error::serde_to_errbox;
+use crate::errbox::from_serde;
 use crate::source_maps::get_orig_position;
 use crate::source_maps::CachedMaps;
 use crate::state::State;
@@ -36,7 +36,7 @@ fn op_apply_source_map(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
   let args: ApplySourceMap =
-    serde_json::from_value(args).map_err(serde_to_errbox)?;
+    serde_json::from_value(args).map_err(from_serde)?;
 
   let mut mappings_map: CachedMaps = HashMap::new();
   let (orig_file_name, orig_line_number, orig_column_number) =
@@ -61,6 +61,6 @@ fn op_format_diagnostic(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
   let diagnostic: Diagnostic =
-    serde_json::from_value(args).map_err(serde_to_errbox)?;
+    serde_json::from_value(args).map_err(from_serde)?;
   Ok(JsonOp::Sync(json!(diagnostic.to_string())))
 }

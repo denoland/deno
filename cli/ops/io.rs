@@ -1,7 +1,7 @@
 use super::dispatch_minimal::MinimalOp;
+use crate::errbox::from_io;
+use crate::errbox::resource_unavailable;
 use crate::http_util::HttpBody;
-use crate::op_error::io_to_errbox;
-use crate::op_error::resource_unavailable;
 use crate::state::State;
 use deno_core::CoreIsolate;
 use deno_core::CoreIsolateState;
@@ -232,7 +232,7 @@ impl DenoAsyncRead for StreamResource {
       HttpBody(f) => f,
       _ => return Err(ErrBox::bad_resource_id()).into(),
     };
-    let v = ready!(Pin::new(f).poll_read(cx, buf)).map_err(io_to_errbox)?;
+    let v = ready!(Pin::new(f).poll_read(cx, buf)).map_err(from_io)?;
     Ok(v).into()
   }
 }
@@ -262,7 +262,7 @@ pub fn op_read(
           std_file
             .read(&mut zero_copy[0])
             .map(|n: usize| n as i32)
-            .map_err(io_to_errbox)
+            .map_err(from_io)
         }
         Err(_) => Err(ErrBox::type_error(
           "sync read not allowed on this resource".to_string(),
@@ -332,7 +332,7 @@ impl DenoAsyncWrite for StreamResource {
       _ => return Err(ErrBox::bad_resource_id()).into(),
     };
 
-    let v = ready!(Pin::new(f).poll_write(cx, buf)).map_err(io_to_errbox)?;
+    let v = ready!(Pin::new(f).poll_write(cx, buf)).map_err(from_io)?;
     Ok(v).into()
   }
 
@@ -350,7 +350,7 @@ impl DenoAsyncWrite for StreamResource {
       _ => return Err(ErrBox::bad_resource_id()).into(),
     };
 
-    ready!(Pin::new(f).poll_flush(cx)).map_err(io_to_errbox)?;
+    ready!(Pin::new(f).poll_flush(cx)).map_err(from_io)?;
     Ok(()).into()
   }
 
@@ -383,7 +383,7 @@ pub fn op_write(
           std_file
             .write(&zero_copy[0])
             .map(|nwritten: usize| nwritten as i32)
-            .map_err(io_to_errbox)
+            .map_err(from_io)
         }
         Err(_) => Err(ErrBox::type_error(
           "sync read not allowed on this resource".to_string(),

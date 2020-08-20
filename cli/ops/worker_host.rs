@@ -1,9 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
+use crate::errbox::from_serde;
+use crate::errbox::resolve_to_errbox;
 use crate::fmt_errors::JSError;
 use crate::global_state::GlobalState;
-use crate::op_error::resolve_to_errbox;
-use crate::op_error::serde_to_errbox;
 use crate::ops::io::get_stdio;
 use crate::permissions::Permissions;
 use crate::startup_data;
@@ -189,7 +189,7 @@ fn op_create_worker(
   _data: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
   let args: CreateWorkerArgs =
-    serde_json::from_value(args).map_err(serde_to_errbox)?;
+    serde_json::from_value(args).map_err(from_serde)?;
 
   let specifier = args.specifier.clone();
   let maybe_source_code = if args.has_source_code {
@@ -242,8 +242,7 @@ fn op_host_terminate_worker(
   args: Value,
   _data: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
-  let args: WorkerArgs =
-    serde_json::from_value(args).map_err(serde_to_errbox)?;
+  let args: WorkerArgs = serde_json::from_value(args).map_err(from_serde)?;
   let id = args.id as u32;
   let (join_handle, worker_handle) = state
     .workers
@@ -311,8 +310,7 @@ fn op_host_get_message(
   args: Value,
   _data: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
-  let args: WorkerArgs =
-    serde_json::from_value(args).map_err(serde_to_errbox)?;
+  let args: WorkerArgs = serde_json::from_value(args).map_err(from_serde)?;
   let id = args.id as u32;
   let state = state.clone();
   let worker_handle = state.workers.borrow()[&id].1.clone();
@@ -354,8 +352,7 @@ fn op_host_post_message(
   data: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
   assert_eq!(data.len(), 1, "Invalid number of arguments");
-  let args: WorkerArgs =
-    serde_json::from_value(args).map_err(serde_to_errbox)?;
+  let args: WorkerArgs = serde_json::from_value(args).map_err(from_serde)?;
   let id = args.id as u32;
   let msg = Vec::from(&*data[0]).into_boxed_slice();
 
