@@ -57,8 +57,16 @@ pub fn root_path() -> PathBuf {
   PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/.."))
 }
 
+pub fn prebuilt_path() -> PathBuf {
+  third_party_path().join("prebuilt")
+}
+
 pub fn tests_path() -> PathBuf {
   root_path().join("cli").join("tests")
+}
+
+pub fn third_party_path() -> PathBuf {
+  root_path().join("third_party")
 }
 
 pub fn target_dir() -> PathBuf {
@@ -75,6 +83,24 @@ pub fn deno_exe_path() -> PathBuf {
     p.set_extension("exe");
   }
   p
+}
+
+pub fn prebuilt_tool_path(tool: &str) -> PathBuf {
+  let mut exe = tool.to_string();
+  exe.push_str(if cfg!(windows) { ".exe" } else { "" });
+  prebuilt_path().join(platform_dir_name()).join(exe)
+}
+
+fn platform_dir_name() -> &'static str {
+  if cfg!(target_os = "linux") {
+    "linux64"
+  } else if cfg!(target_os = "macos") {
+    "mac"
+  } else if cfg!(target_os = "windows") {
+    "win"
+  } else {
+    unreachable!()
+  }
 }
 
 pub fn test_server_path() -> PathBuf {
@@ -576,6 +602,76 @@ pub fn http_server() -> HttpServerGuard {
 /// Helper function to strip ansi codes.
 pub fn strip_ansi_codes(s: &str) -> std::borrow::Cow<str> {
   STRIP_ANSI_RE.replace_all(s, "")
+}
+
+pub fn run(
+  cmd: &[&str],
+  input: Option<&[&str]>,
+  envs: Option<Vec<(String, String)>>,
+  current_dir: Option<&str>,
+  expect_success: bool,
+) {
+  let mut process_builder = Command::new(cmd[0]);
+  process_builder.args(&cmd[1..]).stdin(Stdio::piped());
+
+  if let Some(dir) = current_dir {
+    process_builder.current_dir(dir);
+  }
+  if let Some(envs) = envs {
+    process_builder.envs(envs);
+  }
+  let mut prog = process_builder.spawn().expect("failed to spawn script");
+  if let Some(lines) = input {
+    let stdin = prog.stdin.as_mut().expect("failed to get stdin");
+    stdin
+      .write_all(lines.join("\n").as_bytes())
+      .expect("failed to write to stdin");
+  }
+  let status = prog.wait().expect("failed to wait on child");
+  if expect_success != status.success() {
+    panic!("Unexpected exit code: {:?}", status.code());
+  }
+}
+
+pub fn run_collect(
+  cmd: &[&str],
+  input: Option<&[&str]>,
+  envs: Option<Vec<(String, String)>>,
+  current_dir: Option<&str>,
+  expect_success: bool,
+) -> (String, String) {
+  let mut process_builder = Command::new(cmd[0]);
+  process_builder
+    .args(&cmd[1..])
+    .stdin(Stdio::piped())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped());
+  if let Some(dir) = current_dir {
+    process_builder.current_dir(dir);
+  }
+  if let Some(envs) = envs {
+    process_builder.envs(envs);
+  }
+  let mut prog = process_builder.spawn().expect("failed to spawn script");
+  if let Some(lines) = input {
+    let stdin = prog.stdin.as_mut().expect("failed to get stdin");
+    stdin
+      .write_all(lines.join("\n").as_bytes())
+      .expect("failed to write to stdin");
+  }
+  let Output {
+    stdout,
+    stderr,
+    status,
+  } = prog.wait_with_output().expect("failed to wait on child");
+  let stdout = String::from_utf8(stdout).unwrap();
+  let stderr = String::from_utf8(stderr).unwrap();
+  if expect_success != status.success() {
+    eprintln!("stdout: <<<{}>>>", stdout);
+    eprintln!("stderr: <<<{}>>>", stderr);
+    panic!("Unexpected exit code: {:?}", status.code());
+  }
+  (stdout, stderr)
 }
 
 pub fn run_and_collect_output(
