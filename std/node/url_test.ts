@@ -1,4 +1,4 @@
-import { assert, assertEquals } from "../testing/asserts.ts";
+import { assertEquals } from "../testing/asserts.ts";
 import * as url from "./url.ts";
 
 Deno.test({
