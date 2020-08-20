@@ -1,11 +1,13 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::colors;
+use crate::errbox::from_io;
+use crate::errbox::from_url;
+use crate::errbox::uri_error;
 use crate::http_cache::HttpCache;
 use crate::http_util;
 use crate::http_util::create_http_client;
 use crate::http_util::FetchOnceResult;
 use crate::msg;
-use crate::op_error::OpError;
 use crate::permissions::Permissions;
 use crate::text_encoding;
 use deno_core::ErrBox;
@@ -138,11 +140,12 @@ impl SourceFileFetcher {
 
   pub fn check_if_supported_scheme(url: &Url) -> Result<(), ErrBox> {
     if !SUPPORTED_URL_SCHEMES.contains(&url.scheme()) {
-      return Err(
-        OpError::other(
-          format!("Unsupported scheme \"{}\" for module \"{}\". Supported schemes: {:#?}", url.scheme(), url, SUPPORTED_URL_SCHEMES),
-        ).into()
-      );
+      return Err(ErrBox::other(format!(
+        "Unsupported scheme \"{}\" for module \"{}\". Supported schemes: {:#?}",
+        url.scheme(),
+        url,
+        SUPPORTED_URL_SCHEMES
+      )));
     }
 
     Ok(())
@@ -255,13 +258,13 @@ impl SourceFileFetcher {
             r#"Cannot find module "{}"{} in cache, --cached-only is specified"#,
             module_url, referrer_suffix
           );
-          OpError::not_found(msg).into()
+          ErrBox::new_text("NotFound", msg)
         } else if is_not_found {
           let msg = format!(
             r#"Cannot resolve module "{}"{}"#,
             module_url, referrer_suffix
           );
-          OpError::not_found(msg).into()
+          ErrBox::new_text("NotFound", msg)
         } else {
           err
         };
@@ -324,7 +327,7 @@ impl SourceFileFetcher {
           module_url.to_string()
         ),
       );
-      return Err(e.into());
+      return Err(from_io(e));
     }
 
     // Fetch remote file and cache on-disk for subsequent access
@@ -345,16 +348,14 @@ impl SourceFileFetcher {
     module_url: &Url,
     permissions: &Permissions,
   ) -> Result<SourceFile, ErrBox> {
-    let filepath = module_url.to_file_path().map_err(|()| {
-      ErrBox::from(OpError::uri_error(
-        "File URL contains invalid path".to_owned(),
-      ))
-    })?;
+    let filepath = module_url
+      .to_file_path()
+      .map_err(|()| uri_error("File URL contains invalid path".to_string()))?;
 
     permissions.check_read(&filepath)?;
     let source_code = match fs::read(filepath.clone()) {
       Ok(c) => c,
-      Err(e) => return Err(e.into()),
+      Err(e) => return Err(from_io(e)),
     };
 
     let (media_type, charset) = map_content_type(&filepath, None);
@@ -385,8 +386,7 @@ impl SourceFileFetcher {
     redirect_limit: i64,
   ) -> Result<Option<SourceFile>, ErrBox> {
     if redirect_limit < 0 {
-      let e = OpError::http("too many redirects".to_string());
-      return Err(e.into());
+      return Err(ErrBox::new_text("Http", "too many redirects".to_string()));
     }
 
     let result = self.http_cache.get(&module_url);
@@ -412,7 +412,7 @@ impl SourceFileFetcher {
           url
         }
         Err(e) => {
-          return Err(e.into());
+          return Err(from_url(e));
         }
       };
       return self
@@ -420,7 +420,7 @@ impl SourceFileFetcher {
     }
 
     let mut source_code = Vec::new();
-    source_file.read_to_end(&mut source_code)?;
+    source_file.read_to_end(&mut source_code).map_err(from_io)?;
 
     let cache_filename = self.http_cache.get_cache_filename(module_url);
     let fake_filepath = PathBuf::from(module_url.path());
@@ -451,12 +451,12 @@ impl SourceFileFetcher {
     permissions: &Permissions,
   ) -> Pin<Box<dyn Future<Output = Result<SourceFile, ErrBox>>>> {
     if redirect_limit < 0 {
-      let e = OpError::http("too many redirects".to_string());
-      return futures::future::err(e.into()).boxed_local();
+      let e = ErrBox::new_text("Http", "too many redirects".to_string());
+      return futures::future::err(e).boxed_local();
     }
 
     if let Err(e) = permissions.check_net_url(&module_url) {
-      return futures::future::err(e.into()).boxed_local();
+      return futures::future::err(e).boxed_local();
     }
 
     let is_blocked =
@@ -479,16 +479,13 @@ impl SourceFileFetcher {
     // If file wasn't found in cache check if we can fetch it
     if cached_only {
       // We can't fetch remote file - bail out
-      return futures::future::err(
-        std::io::Error::new(
-          std::io::ErrorKind::NotFound,
-          format!(
-            "Cannot find remote file '{}' in cache, --cached-only is specified",
-            module_url.to_string()
-          ),
-        )
-        .into(),
-      )
+      return futures::future::err(from_io(std::io::Error::new(
+        std::io::ErrorKind::NotFound,
+        format!(
+          "Cannot find remote file '{}' in cache, --cached-only is specified",
+          module_url.to_string()
+        ),
+      )))
       .boxed_local();
     }
 

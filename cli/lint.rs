@@ -7,6 +7,7 @@
 //! the future it can be easily extended to provide
 //! the same functions as ops available in JS runtime.
 use crate::colors;
+use crate::errbox;
 use crate::file_fetcher::map_file_extension;
 use crate::fmt::collect_files;
 use crate::fmt::run_parallelized;
@@ -42,11 +43,11 @@ pub async fn lint_files(
   ignore: Vec<String>,
   json: bool,
 ) -> Result<(), ErrBox> {
-  let mut target_files = collect_files(args)?;
+  let mut target_files = collect_files(args).map_err(errbox::from_io)?;
   if !ignore.is_empty() {
     // collect all files to be ignored
     // and retain only files that should be linted.
-    let ignore_files = collect_files(ignore)?;
+    let ignore_files = collect_files(ignore).map_err(errbox::from_io)?;
     target_files.retain(|f| !ignore_files.contains(&f));
   }
   debug!("Found {} files", target_files.len());
@@ -177,14 +178,16 @@ fn create_linter(syntax: Syntax, rules: Vec<Box<dyn LintRule>>) -> Linter {
 
 fn lint_file(file_path: PathBuf) -> Result<Vec<LintDiagnostic>, ErrBox> {
   let file_name = file_path.to_string_lossy().to_string();
-  let source_code = fs::read_to_string(&file_path)?;
+  let source_code = fs::read_to_string(&file_path).map_err(errbox::from_io)?;
   let media_type = map_file_extension(&file_path);
   let syntax = swc_util::get_syntax_for_media_type(media_type);
 
   let lint_rules = get_rules();
   let mut linter = create_linter(syntax, lint_rules);
 
-  let file_diagnostics = linter.lint(file_name, source_code)?;
+  let file_diagnostics = linter
+    .lint(file_name, source_code)
+    .map_err(|e| ErrBox::other(e.to_string()))?;
 
   Ok(file_diagnostics)
 }

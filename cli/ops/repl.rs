@@ -1,11 +1,12 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{blocking_json, Deserialize, JsonOp, Value};
-use crate::op_error::OpError;
+use crate::errbox::from_serde;
 use crate::repl;
 use crate::repl::Repl;
 use crate::state::State;
 use deno_core::CoreIsolate;
 use deno_core::CoreIsolateState;
+use deno_core::ErrBox;
 use deno_core::ZeroCopyBuf;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -29,8 +30,8 @@ fn op_repl_start(
   state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
-  let args: ReplStartArgs = serde_json::from_value(args)?;
+) -> Result<JsonOp, ErrBox> {
+  let args: ReplStartArgs = serde_json::from_value(args).map_err(from_serde)?;
   debug!("op_repl_start {}", args.history_file);
   let history_path =
     repl::history_path(&state.global_state.dir, &args.history_file);
@@ -52,15 +53,16 @@ fn op_repl_readline(
   _state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
-  let args: ReplReadlineArgs = serde_json::from_value(args)?;
+) -> Result<JsonOp, ErrBox> {
+  let args: ReplReadlineArgs =
+    serde_json::from_value(args).map_err(from_serde)?;
   let rid = args.rid as u32;
   let prompt = args.prompt;
   debug!("op_repl_readline {} {}", rid, prompt);
   let resource_table = isolate_state.resource_table.borrow();
   let resource = resource_table
     .get::<ReplResource>(rid)
-    .ok_or_else(OpError::bad_resource_id)?;
+    .ok_or_else(ErrBox::bad_resource_id)?;
   let repl = resource.0.clone();
 
   blocking_json(false, move || {

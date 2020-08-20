@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+use crate::errbox;
 use crate::version;
 use bytes::Bytes;
 use deno_core::ErrBox;
@@ -39,13 +40,17 @@ pub fn create_http_client(ca_file: Option<&str>) -> Result<Client, ErrBox> {
 
   if let Some(ca_file) = ca_file {
     let mut buf = Vec::new();
-    File::open(ca_file)?.read_to_end(&mut buf)?;
-    let cert = reqwest::Certificate::from_pem(&buf)?;
+    File::open(ca_file)
+      .map_err(errbox::from_io)?
+      .read_to_end(&mut buf)
+      .map_err(errbox::from_io)?;
+    let cert =
+      reqwest::Certificate::from_pem(&buf).map_err(errbox::from_reqwest)?;
     builder = builder.add_root_certificate(cert);
   }
 
   builder.build().map_err(|_| {
-    ErrBox::from(io::Error::new(
+    errbox::from_io(io::Error::new(
       io::ErrorKind::Other,
       "Unable to build http client".to_string(),
     ))
@@ -109,7 +114,7 @@ pub fn fetch_once(
       let if_none_match_val = HeaderValue::from_str(&etag).unwrap();
       request = request.header(IF_NONE_MATCH, if_none_match_val);
     }
-    let response = request.send().await?;
+    let response = request.send().await.map_err(errbox::from_reqwest)?;
 
     if response.status() == StatusCode::NOT_MODIFIED {
       return Ok(FetchOnceResult::NotModified);
@@ -157,10 +162,14 @@ pub fn fetch_once(
         io::ErrorKind::Other,
         format!("Import '{}' failed: {}", &url, response.status()),
       );
-      return Err(err.into());
+      return Err(errbox::from_io(err));
     }
 
-    let body = response.bytes().await?.to_vec();
+    let body = response
+      .bytes()
+      .await
+      .map_err(errbox::from_reqwest)?
+      .to_vec();
 
     return Ok(FetchOnceResult::Code(body, headers_));
   };

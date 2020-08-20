@@ -1,11 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+use crate::errbox;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::global_state::GlobalState;
 use crate::global_timer::GlobalTimer;
 use crate::http_util::create_http_client;
 use crate::import_map::ImportMap;
 use crate::metrics::Metrics;
-use crate::op_error::OpError;
 use crate::ops::serialize_result;
 use crate::ops::JsonOp;
 use crate::ops::MinimalOp;
@@ -64,7 +64,7 @@ impl State {
     dispatcher: D,
   ) -> impl Fn(&mut deno_core::CoreIsolateState, &mut [ZeroCopyBuf]) -> Op
   where
-    D: Fn(&Rc<State>, Value, &mut [ZeroCopyBuf]) -> Result<JsonOp, OpError>,
+    D: Fn(&Rc<State>, Value, &mut [ZeroCopyBuf]) -> Result<JsonOp, ErrBox>,
   {
     use crate::ops::json_op;
     self.core_op(json_op(self.stateful_op(dispatcher)))
@@ -81,7 +81,7 @@ impl State {
       &mut ResourceTable,
       Value,
       &mut [ZeroCopyBuf],
-    ) -> Result<Value, OpError>,
+    ) -> Result<Value, ErrBox>,
   {
     let state = self.clone();
     let resource_table = resource_table.clone();
@@ -91,7 +91,7 @@ impl State {
       let args: Value = match serde_json::from_slice(&bufs[0]) {
         Ok(v) => v,
         Err(e) => {
-          let e = OpError::from(e);
+          let e = errbox::from_serde(e);
           return Op::Sync(serialize_result(None, Err(e)));
         }
       };
@@ -115,7 +115,7 @@ impl State {
   where
     D:
       FnOnce(Rc<State>, Rc<RefCell<ResourceTable>>, Value, BufVec) -> F + Clone,
-    F: Future<Output = Result<Value, OpError>> + 'static,
+    F: Future<Output = Result<Value, ErrBox>> + 'static,
   {
     let state = self.clone();
     let resource_table = resource_table.clone();
@@ -125,7 +125,7 @@ impl State {
       let args: Value = match serde_json::from_slice(&bufs[0]) {
         Ok(v) => v,
         Err(e) => {
-          let e = OpError::from(e);
+          let e = errbox::from_serde(e);
           return Op::Sync(serialize_result(None, Err(e)));
         }
       };
@@ -134,7 +134,10 @@ impl State {
       let promise_id = match args.get("promiseId").and_then(|v| v.as_u64()) {
         Some(i) => i,
         None => {
-          let e = OpError::type_error("`promiseId` invalid/missing".to_owned());
+          let e = ErrBox::new_text(
+            "TypeError",
+            "`promiseId` invalid/missing".to_owned(),
+          );
           return Op::Sync(serialize_result(None, Err(e)));
         }
       };
@@ -168,7 +171,7 @@ impl State {
       &Rc<State>,
       Value,
       &mut [ZeroCopyBuf],
-    ) -> Result<JsonOp, OpError>,
+    ) -> Result<JsonOp, ErrBox>,
   {
     use crate::ops::json_op;
     self.core_op(json_op(self.stateful_op2(dispatcher)))
@@ -276,15 +279,15 @@ impl State {
     &mut deno_core::CoreIsolateState,
     Value,
     &mut [ZeroCopyBuf],
-  ) -> Result<JsonOp, OpError>
+  ) -> Result<JsonOp, ErrBox>
   where
-    D: Fn(&Rc<State>, Value, &mut [ZeroCopyBuf]) -> Result<JsonOp, OpError>,
+    D: Fn(&Rc<State>, Value, &mut [ZeroCopyBuf]) -> Result<JsonOp, ErrBox>,
   {
     let state = self.clone();
     move |_isolate_state: &mut deno_core::CoreIsolateState,
           args: Value,
           zero_copy: &mut [ZeroCopyBuf]|
-          -> Result<JsonOp, OpError> { dispatcher(&state, args, zero_copy) }
+          -> Result<JsonOp, ErrBox> { dispatcher(&state, args, zero_copy) }
   }
 
   pub fn stateful_op2<D>(
@@ -294,20 +297,20 @@ impl State {
     &mut deno_core::CoreIsolateState,
     Value,
     &mut [ZeroCopyBuf],
-  ) -> Result<JsonOp, OpError>
+  ) -> Result<JsonOp, ErrBox>
   where
     D: Fn(
       &mut deno_core::CoreIsolateState,
       &Rc<State>,
       Value,
       &mut [ZeroCopyBuf],
-    ) -> Result<JsonOp, OpError>,
+    ) -> Result<JsonOp, ErrBox>,
   {
     let state = self.clone();
     move |isolate_state: &mut deno_core::CoreIsolateState,
           args: Value,
           zero_copy: &mut [ZeroCopyBuf]|
-          -> Result<JsonOp, OpError> {
+          -> Result<JsonOp, ErrBox> {
       dispatcher(isolate_state, &state, args, zero_copy)
     }
   }
@@ -342,14 +345,16 @@ impl ModuleLoader for State {
   ) -> Result<ModuleSpecifier, ErrBox> {
     if !is_main {
       if let Some(import_map) = &self.import_map {
-        let result = import_map.resolve(specifier, referrer)?;
+        let result = import_map
+          .resolve(specifier, referrer)
+          .map_err(|e| ErrBox::other(e.to_string()))?;
         if let Some(r) = result {
           return Ok(r);
         }
       }
     }
-    let module_specifier =
-      ModuleSpecifier::resolve_import(specifier, referrer)?;
+    let module_specifier = ModuleSpecifier::resolve_import(specifier, referrer)
+      .map_err(errbox::from_resolution)?;
 
     Ok(module_specifier)
   }
@@ -488,7 +493,7 @@ impl State {
   }
 
   #[inline]
-  pub fn check_read(&self, path: &Path) -> Result<(), OpError> {
+  pub fn check_read(&self, path: &Path) -> Result<(), ErrBox> {
     self.permissions.borrow().check_read(path)
   }
 
@@ -499,49 +504,49 @@ impl State {
     &self,
     path: &Path,
     display: &str,
-  ) -> Result<(), OpError> {
+  ) -> Result<(), ErrBox> {
     self.permissions.borrow().check_read_blind(path, display)
   }
 
   #[inline]
-  pub fn check_write(&self, path: &Path) -> Result<(), OpError> {
+  pub fn check_write(&self, path: &Path) -> Result<(), ErrBox> {
     self.permissions.borrow().check_write(path)
   }
 
   #[inline]
-  pub fn check_env(&self) -> Result<(), OpError> {
+  pub fn check_env(&self) -> Result<(), ErrBox> {
     self.permissions.borrow().check_env()
   }
 
   #[inline]
-  pub fn check_net(&self, hostname: &str, port: u16) -> Result<(), OpError> {
+  pub fn check_net(&self, hostname: &str, port: u16) -> Result<(), ErrBox> {
     self.permissions.borrow().check_net(hostname, port)
   }
 
   #[inline]
-  pub fn check_net_url(&self, url: &url::Url) -> Result<(), OpError> {
+  pub fn check_net_url(&self, url: &url::Url) -> Result<(), ErrBox> {
     self.permissions.borrow().check_net_url(url)
   }
 
   #[inline]
-  pub fn check_run(&self) -> Result<(), OpError> {
+  pub fn check_run(&self) -> Result<(), ErrBox> {
     self.permissions.borrow().check_run()
   }
 
   #[inline]
-  pub fn check_hrtime(&self) -> Result<(), OpError> {
+  pub fn check_hrtime(&self) -> Result<(), ErrBox> {
     self.permissions.borrow().check_hrtime()
   }
 
   #[inline]
-  pub fn check_plugin(&self, filename: &Path) -> Result<(), OpError> {
+  pub fn check_plugin(&self, filename: &Path) -> Result<(), ErrBox> {
     self.permissions.borrow().check_plugin(filename)
   }
 
   pub fn check_dyn_import(
     &self,
     module_specifier: &ModuleSpecifier,
-  ) -> Result<(), OpError> {
+  ) -> Result<(), ErrBox> {
     let u = module_specifier.as_url();
     // TODO(bartlomieju): temporary fix to prevent hitting `unreachable`
     // statement that is actually reachable...

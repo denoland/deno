@@ -1,11 +1,12 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{JsonOp, Value};
 use crate::colors;
-use crate::op_error::OpError;
+use crate::errbox::from_resolution;
 use crate::state::State;
 use crate::version;
 use crate::DenoSubcommand;
 use deno_core::CoreIsolate;
+use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
 use deno_core::ZeroCopyBuf;
 use std::env;
@@ -21,7 +22,7 @@ fn op_start(
   state: &Rc<State>,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   let gs = &state.global_state;
 
   Ok(JsonOp::Sync(json!({
@@ -46,9 +47,10 @@ fn op_main_module(
   state: &Rc<State>,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   let main = &state.main_module.to_string();
-  let main_url = ModuleSpecifier::resolve_url_or_path(&main)?;
+  let main_url =
+    ModuleSpecifier::resolve_url_or_path(&main).map_err(from_resolution)?;
   if main_url.as_url().scheme() == "file" {
     let main_path = std::env::current_dir().unwrap().join(main_url.to_string());
     state.check_read_blind(&main_path, "main_module")?;
@@ -60,7 +62,7 @@ fn op_metrics(
   state: &Rc<State>,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   let m = &state.metrics.borrow();
 
   Ok(JsonOp::Sync(json!({

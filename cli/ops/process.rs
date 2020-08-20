@@ -1,17 +1,18 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use super::io::{std_file_resource, StreamResource, StreamResourceHolder};
-use crate::op_error::OpError;
+use crate::errbox::from_io;
+use crate::errbox::from_serde;
 use crate::signal::kill;
 use crate::state::State;
 use deno_core::CoreIsolate;
 use deno_core::CoreIsolateState;
+use deno_core::ErrBox;
 use deno_core::ResourceTable;
 use deno_core::ZeroCopyBuf;
 use futures::future::poll_fn;
 use futures::future::FutureExt;
 use futures::TryFutureExt;
-use std::convert::From;
 use std::rc::Rc;
 use tokio::process::Command;
 
@@ -27,19 +28,19 @@ pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
 fn clone_file(
   rid: u32,
   resource_table: &mut ResourceTable,
-) -> Result<std::fs::File, OpError> {
+) -> Result<std::fs::File, ErrBox> {
   std_file_resource(resource_table, rid, move |r| match r {
-    Ok(std_file) => std_file.try_clone().map_err(OpError::from),
-    Err(_) => Err(OpError::bad_resource_id()),
+    Ok(std_file) => std_file.try_clone().map_err(from_io),
+    Err(_) => Err(ErrBox::bad_resource_id()),
   })
 }
 
-fn subprocess_stdio_map(s: &str) -> Result<std::process::Stdio, OpError> {
+fn subprocess_stdio_map(s: &str) -> Result<std::process::Stdio, ErrBox> {
   match s {
     "inherit" => Ok(std::process::Stdio::inherit()),
     "piped" => Ok(std::process::Stdio::piped()),
     "null" => Ok(std::process::Stdio::null()),
-    _ => Err(OpError::other("Invalid resource for stdio".to_string())),
+    _ => Err(ErrBox::other("Invalid resource for stdio".to_string())),
   }
 }
 
@@ -66,8 +67,8 @@ fn op_run(
   state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
-  let run_args: RunArgs = serde_json::from_value(args)?;
+) -> Result<JsonOp, ErrBox> {
+  let run_args: RunArgs = serde_json::from_value(args).map_err(from_serde)?;
 
   state.check_run()?;
   let mut resource_table = isolate_state.resource_table.borrow_mut();
@@ -112,7 +113,7 @@ fn op_run(
   c.kill_on_drop(true);
 
   // Spawn the command.
-  let mut child = c.spawn()?;
+  let mut child = c.spawn().map_err(from_io)?;
   let pid = child.id();
 
   let stdin_rid = match child.stdin.take() {
@@ -177,8 +178,8 @@ fn op_run_status(
   state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
-  let args: RunStatusArgs = serde_json::from_value(args)?;
+) -> Result<JsonOp, ErrBox> {
+  let args: RunStatusArgs = serde_json::from_value(args).map_err(from_serde)?;
   let rid = args.rid as u32;
 
   state.check_run()?;
@@ -189,9 +190,9 @@ fn op_run_status(
       let mut resource_table = resource_table.borrow_mut();
       let child_resource = resource_table
         .get_mut::<ChildResource>(rid)
-        .ok_or_else(OpError::bad_resource_id)?;
+        .ok_or_else(ErrBox::bad_resource_id)?;
       let child = &mut child_resource.child;
-      child.map_err(OpError::from).poll_unpin(cx)
+      child.map_err(from_io).poll_unpin(cx)
     })
     .await?;
 
@@ -227,11 +228,11 @@ fn op_kill(
   state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   state.check_unstable("Deno.kill");
   state.check_run()?;
 
-  let args: KillArgs = serde_json::from_value(args)?;
+  let args: KillArgs = serde_json::from_value(args).map_err(from_serde)?;
   kill(args.pid, args.signo)?;
   Ok(JsonOp::Sync(json!({})))
 }

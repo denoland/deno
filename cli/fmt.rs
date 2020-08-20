@@ -9,8 +9,8 @@
 
 use crate::colors;
 use crate::diff::diff;
+use crate::errbox;
 use crate::fs::files_in_subtree;
-use crate::op_error::OpError;
 use crate::text_encoding;
 use deno_core::ErrBox;
 use dprint_plugin_typescript as dprint;
@@ -39,11 +39,11 @@ pub async fn format(
     return format_stdin(check);
   }
   // collect all files provided.
-  let mut target_files = collect_files(args)?;
+  let mut target_files = collect_files(args).map_err(errbox::from_io)?;
   if !exclude.is_empty() {
     // collect all files to be ignored
     // and retain only files that should be formatted.
-    let ignore_files = collect_files(exclude)?;
+    let ignore_files = collect_files(exclude).map_err(errbox::from_io)?;
     target_files.retain(|f| !ignore_files.contains(&f));
   }
   let config = get_config();
@@ -110,14 +110,11 @@ async fn check_source_files(
   if not_formatted_files_count == 0 {
     Ok(())
   } else {
-    Err(
-      OpError::other(format!(
-        "Found {} not formatted {}",
-        not_formatted_files_count,
-        files_str(not_formatted_files_count),
-      ))
-      .into(),
-    )
+    Err(ErrBox::other(format!(
+      "Found {} not formatted {}",
+      not_formatted_files_count,
+      files_str(not_formatted_files_count),
+    )))
   }
 }
 
@@ -175,7 +172,7 @@ async fn format_source_files(
 fn format_stdin(check: bool) -> Result<(), ErrBox> {
   let mut source = String::new();
   if stdin().read_to_string(&mut source).is_err() {
-    return Err(OpError::other("Failed to read from stdin".to_string()).into());
+    return Err(ErrBox::other("Failed to read from stdin".to_string()));
   }
   let formatter = dprint::Formatter::new(get_config());
 
@@ -187,11 +184,13 @@ fn format_stdin(check: bool) -> Result<(), ErrBox> {
           println!("Not formatted stdin");
         }
       } else {
-        stdout().write_all(formatted_text.as_bytes())?;
+        stdout()
+          .write_all(formatted_text.as_bytes())
+          .map_err(errbox::from_io)?;
       }
     }
     Err(e) => {
-      return Err(OpError::other(e).into());
+      return Err(ErrBox::other(e));
     }
   }
   Ok(())
@@ -217,7 +216,9 @@ fn is_supported(path: &Path) -> bool {
   }
 }
 
-pub fn collect_files(files: Vec<String>) -> Result<Vec<PathBuf>, ErrBox> {
+pub fn collect_files(
+  files: Vec<String>,
+) -> Result<Vec<PathBuf>, std::io::Error> {
   let mut target_files: Vec<PathBuf> = vec![];
 
   if files.is_empty() {
@@ -248,9 +249,10 @@ struct FileContents {
 }
 
 fn read_file_contents(file_path: &PathBuf) -> Result<FileContents, ErrBox> {
-  let file_bytes = fs::read(&file_path)?;
+  let file_bytes = fs::read(&file_path).map_err(errbox::from_io)?;
   let charset = text_encoding::detect_charset(&file_bytes);
-  let file_text = text_encoding::convert_to_utf8(&file_bytes, charset)?;
+  let file_text = text_encoding::convert_to_utf8(&file_bytes, charset)
+    .map_err(errbox::from_io)?;
   let had_bom = file_text.starts_with(BOM_CHAR);
   let text = if had_bom {
     // remove the BOM
@@ -273,7 +275,7 @@ fn write_file_contents(
     file_contents.text
   };
 
-  Ok(fs::write(file_path, file_text)?)
+  Ok(fs::write(file_path, file_text).map_err(errbox::from_io)?)
 }
 
 pub async fn run_parallelized<F>(

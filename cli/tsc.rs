@@ -3,6 +3,7 @@ use crate::colors;
 use crate::diagnostics::Diagnostic;
 use crate::diagnostics::DiagnosticItem;
 use crate::disk_cache::DiskCache;
+use crate::errbox;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::flags::Flags;
@@ -12,7 +13,6 @@ use crate::module_graph::ModuleGraph;
 use crate::module_graph::ModuleGraphLoader;
 use crate::msg;
 use crate::msg::MediaType;
-use crate::op_error::OpError;
 use crate::ops;
 use crate::permissions::Permissions;
 use crate::source_maps::SourceMapGetter;
@@ -278,7 +278,7 @@ impl CompilerConfig {
     let config = match &config_file {
       Some(config_file) => {
         debug!("Attempt to load config: {}", config_file.to_str().unwrap());
-        let config = fs::read(&config_file)?;
+        let config = fs::read(&config_file).map_err(errbox::from_io)?;
         Some(config)
       }
       _ => None,
@@ -292,7 +292,8 @@ impl CompilerConfig {
     // If `checkJs` is set to true in `compilerOptions` then we're gonna be compiling
     // JavaScript files as well
     let compile_js = if let Some(config_content) = config.clone() {
-      let config_str = std::str::from_utf8(&config_content)?;
+      let config_str = std::str::from_utf8(&config_content)
+        .map_err(|e| ErrBox::other(e.to_string()))?;
       CHECK_JS_RE.is_match(config_str)
     } else {
       false
@@ -490,7 +491,8 @@ impl TsCompiler {
     build_info: &Option<String>,
   ) -> Result<bool, ErrBox> {
     if let Some(build_info_str) = build_info.as_ref() {
-      let build_inf_json: Value = serde_json::from_str(build_info_str)?;
+      let build_inf_json: Value =
+        serde_json::from_str(build_info_str).map_err(errbox::from_serde)?;
       let program_val = build_inf_json["program"].as_object().unwrap();
       let file_infos = program_val["fileInfos"].as_object().unwrap();
 
@@ -556,7 +558,9 @@ impl TsCompiler {
       .disk_cache
       .get_cache_filename_with_extension(&module_url, "buildinfo");
     let build_info = match self.disk_cache.get(&build_info_key) {
-      Ok(bytes) => Some(String::from_utf8(bytes)?),
+      Ok(bytes) => Some(
+        String::from_utf8(bytes).map_err(|e| ErrBox::other(e.to_string()))?,
+      ),
       Err(_) => None,
     };
 
@@ -615,18 +619,23 @@ impl TsCompiler {
     let json_str =
       execute_in_same_thread(global_state, permissions, req_msg).await?;
 
-    let compile_response: CompileResponse = serde_json::from_str(&json_str)?;
+    let compile_response: CompileResponse =
+      serde_json::from_str(&json_str).map_err(errbox::from_serde)?;
 
     if !compile_response.diagnostics.items.is_empty() {
-      return Err(ErrBox::from(compile_response.diagnostics));
+      return Err(ErrBox::other(compile_response.diagnostics.to_string()));
     }
 
     maybe_log_stats(compile_response.stats);
 
     if let Some(build_info) = compile_response.build_info {
-      self.cache_build_info(&module_url, build_info)?;
+      self
+        .cache_build_info(&module_url, build_info)
+        .map_err(errbox::from_io)?;
     }
-    self.cache_emitted_files(compile_response.emit_map)?;
+    self
+      .cache_emitted_files(compile_response.emit_map)
+      .map_err(errbox::from_io)?;
     Ok(())
   }
 
@@ -674,7 +683,7 @@ impl TsCompiler {
     }
     if let Some(ref lockfile) = global_state.lockfile {
       let g = lockfile.lock().unwrap();
-      g.write()?;
+      g.write().map_err(errbox::from_io)?;
     }
     let module_graph_json =
       serde_json::to_value(module_graph).expect("Failed to serialize data");
@@ -717,12 +726,13 @@ impl TsCompiler {
     let json_str =
       execute_in_same_thread(global_state, permissions, req_msg).await?;
 
-    let bundle_response: BundleResponse = serde_json::from_str(&json_str)?;
+    let bundle_response: BundleResponse =
+      serde_json::from_str(&json_str).map_err(errbox::from_serde)?;
 
     maybe_log_stats(bundle_response.stats);
 
     if !bundle_response.diagnostics.items.is_empty() {
-      return Err(ErrBox::from(bundle_response.diagnostics));
+      return Err(ErrBox::other(bundle_response.diagnostics.to_string()));
     }
 
     assert!(bundle_response.bundle_output.is_some());
@@ -773,7 +783,9 @@ impl TsCompiler {
       emit_map.insert(emitted_filename, emitted_source);
     }
 
-    self.cache_emitted_files(emit_map)?;
+    self
+      .cache_emitted_files(emit_map)
+      .map_err(errbox::from_io)?;
     Ok(())
   }
 
@@ -850,7 +862,10 @@ impl TsCompiler {
     let compiled_source_file = self.get_compiled_source_file(module_url)?;
 
     let compiled_module = CompiledModule {
-      code: compiled_source_file.source_code.to_string()?,
+      code: compiled_source_file
+        .source_code
+        .to_string()
+        .map_err(errbox::from_io)?,
       name: module_url.to_string(),
     };
 
@@ -867,7 +882,8 @@ impl TsCompiler {
     let cache_key = self
       .disk_cache
       .get_cache_filename_with_extension(&module_url, "js");
-    let compiled_code = self.disk_cache.get(&cache_key)?;
+    let compiled_code =
+      self.disk_cache.get(&cache_key).map_err(errbox::from_io)?;
     let compiled_code_filename = self.disk_cache.location.join(cache_key);
     debug!("compiled filename: {:?}", compiled_code_filename);
 
@@ -924,7 +940,8 @@ impl TsCompiler {
     let cache_key = self
       .disk_cache
       .get_cache_filename_with_extension(module_specifier.as_url(), "js.map");
-    let source_code = self.disk_cache.get(&cache_key)?;
+    let source_code =
+      self.disk_cache.get(&cache_key).map_err(errbox::from_io)?;
     let source_map_filename = self.disk_cache.location.join(cache_key);
     debug!("source map filename: {:?}", source_map_filename);
 
@@ -1071,7 +1088,7 @@ async fn create_runtime_module_graph(
   root_name: &str,
   sources: &Option<HashMap<String, String>>,
   maybe_options: &Option<String>,
-) -> Result<(Vec<String>, ModuleGraph), OpError> {
+) -> Result<(Vec<String>, ModuleGraph), ErrBox> {
   let mut root_names = vec![];
   let mut module_graph_loader = ModuleGraphLoader::new(
     global_state.file_fetcher.clone(),
@@ -1086,7 +1103,8 @@ async fn create_runtime_module_graph(
     module_graph_loader.build_local_graph(root_name, s_map)?;
   } else {
     let module_specifier =
-      ModuleSpecifier::resolve_import(root_name, "<unknown>")?;
+      ModuleSpecifier::resolve_import(root_name, "<unknown>")
+        .map_err(errbox::from_resolution)?;
     root_names.push(module_specifier.to_string());
     module_graph_loader
       .add_to_graph(&module_specifier, None)
@@ -1095,7 +1113,8 @@ async fn create_runtime_module_graph(
 
   // download all additional files from TSconfig and add them to root_names
   if let Some(options) = maybe_options {
-    let options_json: serde_json::Value = serde_json::from_str(options)?;
+    let options_json: serde_json::Value =
+      serde_json::from_str(options).map_err(errbox::from_serde)?;
     if let Some(types_option) = options_json.get("types") {
       let types_arr = types_option.as_array().expect("types is not an array");
 
@@ -1104,7 +1123,8 @@ async fn create_runtime_module_graph(
           .as_str()
           .expect("type is not a string")
           .to_string();
-        let type_specifier = ModuleSpecifier::resolve_url_or_path(&type_str)?;
+        let type_specifier = ModuleSpecifier::resolve_url_or_path(&type_str)
+          .map_err(errbox::from_resolution)?;
         module_graph_loader
           .add_to_graph(&type_specifier, None)
           .await?;
@@ -1117,14 +1137,14 @@ async fn create_runtime_module_graph(
 }
 
 /// Because TS compiler can raise runtime error, we need to
-/// manually convert formatted JSError into and OpError.
-fn js_error_to_op_error(error: ErrBox) -> OpError {
+/// manually convert formatted JSError into and ErrBox.
+fn js_error_to_errbox(error: ErrBox) -> ErrBox {
   match error.downcast::<JSError>() {
     Ok(js_error) => {
       let msg = format!("Error in TS compiler:\n{}", js_error);
-      OpError::other(msg)
+      ErrBox::other(msg)
     }
-    Err(error) => error.into(),
+    Err(error) => error,
   }
 }
 
@@ -1135,7 +1155,7 @@ pub async fn runtime_compile(
   root_name: &str,
   sources: &Option<HashMap<String, String>>,
   maybe_options: &Option<String>,
-) -> Result<Value, OpError> {
+) -> Result<Value, ErrBox> {
   let (root_names, module_graph) = create_runtime_module_graph(
     &global_state,
     permissions.clone(),
@@ -1161,12 +1181,15 @@ pub async fn runtime_compile(
 
   let json_str = execute_in_same_thread(global_state, permissions, req_msg)
     .await
-    .map_err(js_error_to_op_error)?;
+    .map_err(js_error_to_errbox)?;
 
-  let response: RuntimeCompileResponse = serde_json::from_str(&json_str)?;
+  let response: RuntimeCompileResponse =
+    serde_json::from_str(&json_str).map_err(errbox::from_serde)?;
 
   if response.diagnostics.is_empty() && sources.is_none() {
-    compiler.cache_emitted_files(response.emit_map)?;
+    compiler
+      .cache_emitted_files(response.emit_map)
+      .map_err(errbox::from_io)?;
   }
 
   // We're returning `Ok()` instead of `Err()` because it's not runtime
@@ -1182,7 +1205,7 @@ pub async fn runtime_bundle(
   root_name: &str,
   sources: &Option<HashMap<String, String>>,
   maybe_options: &Option<String>,
-) -> Result<Value, OpError> {
+) -> Result<Value, ErrBox> {
   let (root_names, module_graph) = create_runtime_module_graph(
     &global_state,
     permissions.clone(),
@@ -1206,8 +1229,9 @@ pub async fn runtime_bundle(
 
   let json_str = execute_in_same_thread(global_state, permissions, req_msg)
     .await
-    .map_err(js_error_to_op_error)?;
-  let _response: RuntimeBundleResponse = serde_json::from_str(&json_str)?;
+    .map_err(js_error_to_errbox)?;
+  let _response: RuntimeBundleResponse =
+    serde_json::from_str(&json_str).map_err(errbox::from_serde)?;
   // We're returning `Ok()` instead of `Err()` because it's not runtime
   // error if there were diagnostics produced; we want to let user handle
   // diagnostics in the runtime.
@@ -1220,7 +1244,7 @@ pub async fn runtime_transpile(
   permissions: Permissions,
   sources: &HashMap<String, String>,
   options: &Option<String>,
-) -> Result<Value, OpError> {
+) -> Result<Value, ErrBox> {
   let req_msg = json!({
     "type": msg::CompilerRequestType::RuntimeTranspile,
     "sources": sources,
@@ -1230,7 +1254,7 @@ pub async fn runtime_transpile(
 
   let json_str = execute_in_same_thread(global_state, permissions, req_msg)
     .await
-    .map_err(js_error_to_op_error)?;
+    .map_err(js_error_to_errbox)?;
   let v = serde_json::from_str::<serde_json::Value>(&json_str)
     .expect("Error decoding JSON string.");
   Ok(v)

@@ -15,7 +15,18 @@ pub trait AnyError: Any + Error + Send + Sync + 'static {}
 impl<T> AnyError for T where T: Any + Error + Send + Sync + Sized + 'static {}
 
 #[derive(Debug)]
-pub struct ErrBox(Box<dyn AnyError>);
+pub struct TextError(pub String);
+
+impl Error for TextError {}
+
+impl fmt::Display for TextError {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    self.0.fmt(f)
+  }
+}
+
+#[derive(Debug)]
+pub struct ErrBox(pub Box<dyn AnyError>, pub &'static str);
 
 impl dyn AnyError {
   pub fn downcast_ref<T: AnyError>(&self) -> Option<&T> {
@@ -39,6 +50,31 @@ impl ErrBox {
       Err(self)
     }
   }
+
+  pub fn new<T: AnyError>(kind: &'static str, err: T) -> Self {
+    ErrBox(Box::new(err), kind)
+  }
+
+  pub fn new_text(kind: &'static str, err_str: String) -> Self {
+    Self::new(kind, TextError(err_str))
+  }
+
+  pub fn other(msg: String) -> Self {
+    Self::new_text("Other", msg)
+  }
+
+  pub fn bad_resource(msg: String) -> Self {
+    Self::new_text("BadResource", msg)
+  }
+
+  // BadResource usually needs no additional detail, hence this helper.
+  pub fn bad_resource_id() -> Self {
+    Self::new_text("BadResource", "Bad resource ID".to_string())
+  }
+
+  pub fn type_error(msg: String) -> Self {
+    Self::new_text("TypeError", msg)
+  }
 }
 
 impl AsRef<dyn AnyError> for ErrBox {
@@ -54,21 +90,15 @@ impl Deref for ErrBox {
   }
 }
 
-impl<T: AnyError> From<T> for ErrBox {
-  fn from(error: T) -> Self {
-    Self(Box::new(error))
-  }
-}
-
-impl From<Box<dyn AnyError>> for ErrBox {
-  fn from(boxed: Box<dyn AnyError>) -> Self {
-    Self(boxed)
-  }
-}
-
 impl fmt::Display for ErrBox {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     self.0.fmt(f)
+  }
+}
+
+impl From<JSError> for ErrBox {
+  fn from(js_error: JSError) -> Self {
+    Self(Box::new(js_error), "Other")
   }
 }
 
@@ -362,7 +392,8 @@ pub(crate) fn attach_handle_to_error(
   err: ErrBox,
   handle: v8::Local<v8::Value>,
 ) -> ErrBox {
-  ErrWithV8Handle::new(scope, err, handle).into()
+  // TODO(bartomieju): this is a special case...
+  ErrBox::new("Other", ErrWithV8Handle::new(scope, err, handle))
 }
 
 // TODO(piscisaureus): rusty_v8 should implement the Error trait on
@@ -404,5 +435,22 @@ impl fmt::Display for ErrWithV8Handle {
 impl fmt::Debug for ErrWithV8Handle {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     self.err.fmt(f)
+  }
+}
+
+#[cfg(tests)]
+mod tests {
+  #[test]
+  fn test_bad_resource() {
+    let err = ErrBox::bad_resource("Resource has been closed".to_string());
+    assert_eq!(err.1, "BadResource");
+    assert_eq!(err.to_string(), "Resource has been closed");
+  }
+
+  #[test]
+  fn test_bad_resource_id() {
+    let err = ErrBox::bad_resource_id();
+    assert_eq!(err.1, "BadResource");
+    assert_eq!(err.to_string(), "Bad resource ID");
   }
 }
