@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::env;
 use std::path::Path;
 use std::path::PathBuf;
+use regex::Regex;
 
 fn create_snapshot(
   mut isolate: CoreIsolate,
@@ -71,8 +72,10 @@ fn create_compiler_snapshot(
 }
 
 fn ts_version() -> String {
-  // TODO(ry) This should be automatically extracted from typescript.js
-  "3.9.7".to_string()
+  let typescript_js = std::fs::read_to_string("tsc/00_typescript.js").unwrap();
+  let re = Regex::new(r#"ts.version = "(\d+\.\d+\.\d+)""#).unwrap();
+  let caps = re.captures(&typescript_js).unwrap();
+  caps[1].to_string()
 }
 
 fn main() {
