@@ -39,8 +39,8 @@ impl log::Log for Logger {
 
 pub fn isolate_new() -> CoreIsolate {
   let startup_data = StartupData::Script(Script {
-    source: include_str!("http_bench.js"),
-    filename: "http_bench.js",
+    source: include_str!("http_bench_json_ops.js"),
+    filename: "http_bench_json_ops.js",
   });
 
   let mut isolate = CoreIsolate::new(startup_data, false);
