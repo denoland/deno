@@ -46,11 +46,12 @@ unitTest(function blobShouldNotThrowError(): void {
   let hasThrown = false;
 
   try {
-    const options1: object = {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const options1: any = {
       ending: "utf8",
       hasOwnProperty: "hasOwnProperty",
     };
-    const options2: object = Object.create(null);
+    const options2 = Object.create(null);
     new Blob(["Hello World"], options1);
     new Blob(["Hello World"], options2);
   } catch {
@@ -61,9 +62,9 @@ unitTest(function blobShouldNotThrowError(): void {
 });
 
 unitTest(function nativeEndLine(): void {
-  const options: object = {
+  const options = {
     ending: "native",
-  };
+  } as const;
   const blob = new Blob(["Hello\nWorld"], options);
 
   assertEquals(blob.size, Deno.build.os === "windows" ? 12 : 11);

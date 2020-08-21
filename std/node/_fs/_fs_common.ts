@@ -47,7 +47,13 @@ export function isFileOptions(
 }
 
 export function getEncoding(
-  optOrCallback?: FileOptions | WriteFileOptions | Function | Encodings | null,
+  optOrCallback?:
+    | FileOptions
+    | WriteFileOptions
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    | ((...args: any[]) => any)
+    | Encodings
+    | null,
 ): Encodings | null {
   if (!optOrCallback || typeof optOrCallback === "function") {
     return null;

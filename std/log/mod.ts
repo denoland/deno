@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { Logger } from "./logger.ts";
+import type { GenericFunction } from "./logger.ts";
 import {
   BaseHandler,
   ConsoleHandler,
@@ -76,11 +77,11 @@ export function getLogger(name?: string): Logger {
 
 export function debug<T>(msg: () => T, ...args: unknown[]): T | undefined;
 export function debug<T>(
-  msg: T extends Function ? never : T,
+  msg: T extends GenericFunction ? never : T,
   ...args: unknown[]
 ): T;
 export function debug<T>(
-  msg: (T extends Function ? never : T) | (() => T),
+  msg: (T extends GenericFunction ? never : T) | (() => T),
   ...args: unknown[]
 ): T | undefined {
   // Assist TS compiler with pass-through generic type
@@ -92,11 +93,11 @@ export function debug<T>(
 
 export function info<T>(msg: () => T, ...args: unknown[]): T | undefined;
 export function info<T>(
-  msg: T extends Function ? never : T,
+  msg: T extends GenericFunction ? never : T,
   ...args: unknown[]
 ): T;
 export function info<T>(
-  msg: (T extends Function ? never : T) | (() => T),
+  msg: (T extends GenericFunction ? never : T) | (() => T),
   ...args: unknown[]
 ): T | undefined {
   // Assist TS compiler with pass-through generic type
@@ -108,11 +109,11 @@ export function info<T>(
 
 export function warning<T>(msg: () => T, ...args: unknown[]): T | undefined;
 export function warning<T>(
-  msg: T extends Function ? never : T,
+  msg: T extends GenericFunction ? never : T,
   ...args: unknown[]
 ): T;
 export function warning<T>(
-  msg: (T extends Function ? never : T) | (() => T),
+  msg: (T extends GenericFunction ? never : T) | (() => T),
   ...args: unknown[]
 ): T | undefined {
   // Assist TS compiler with pass-through generic type
@@ -124,11 +125,11 @@ export function warning<T>(
 
 export function error<T>(msg: () => T, ...args: unknown[]): T | undefined;
 export function error<T>(
-  msg: T extends Function ? never : T,
+  msg: T extends GenericFunction ? never : T,
   ...args: unknown[]
 ): T;
 export function error<T>(
-  msg: (T extends Function ? never : T) | (() => T),
+  msg: (T extends GenericFunction ? never : T) | (() => T),
   ...args: unknown[]
 ): T | undefined {
   // Assist TS compiler with pass-through generic type
@@ -140,11 +141,11 @@ export function error<T>(
 
 export function critical<T>(msg: () => T, ...args: unknown[]): T | undefined;
 export function critical<T>(
-  msg: T extends Function ? never : T,
+  msg: T extends GenericFunction ? never : T,
   ...args: unknown[]
 ): T;
 export function critical<T>(
-  msg: (T extends Function ? never : T) | (() => T),
+  msg: (T extends GenericFunction ? never : T) | (() => T),
   ...args: unknown[]
 ): T | undefined {
   // Assist TS compiler with pass-through generic type
