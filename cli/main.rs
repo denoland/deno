@@ -91,8 +91,6 @@ use flags::Flags;
 use futures::future::FutureExt;
 use futures::Future;
 use log::Level;
-// use log::Metadata;
-// use log::Record;
 use state::exit_unstable;
 use std::env;
 use std::io::Read;
@@ -103,37 +101,6 @@ use std::pin::Pin;
 use std::sync::Arc;
 use upgrade::upgrade_command;
 use url::Url;
-
-/*
-static LOGGER: Logger = Logger;
-
-// TODO(ry) Switch to env_logger or other standard crate.
-struct Logger;
-
-impl log::Log for Logger {
-  fn enabled(&self, metadata: &Metadata) -> bool {
-    metadata.level() <= log::max_level()
-  }
-
-  fn log(&self, record: &Record) {
-    if self.enabled(record.metadata()) {
-      let mut target = record.target().to_string();
-
-      if let Some(line_no) = record.line() {
-        target.push_str(":");
-        target.push_str(&line_no.to_string());
-      }
-
-      if record.level() >= Level::Info {
-        eprintln!("{}", record.args());
-      } else {
-        eprintln!("{} RS - {} - {}", record.level(), target, record.args());
-      }
-    }
-  }
-  fn flush(&self) {}
-}
-*/
 
 fn write_to_stdout_ignore_sigpipe(bytes: &[u8]) -> Result<(), std::io::Error> {
   use std::io::ErrorKind;
@@ -707,7 +674,6 @@ pub fn main() {
   #[cfg(windows)]
   colors::enable_ansi(); // For Windows 10
 
-  // log::set_logger(&LOGGER).unwrap();
   let args: Vec<String> = env::args().collect();
   let flags = flags::flags_from_vec(args);
 
@@ -742,12 +708,10 @@ pub fn main() {
   env_logger::builder()
     .format(|buf, record| {
       let mut target = record.target().to_string();
-
       if let Some(line_no) = record.line() {
         target.push_str(":");
         target.push_str(&line_no.to_string());
       }
-
       if record.level() >= Level::Info {
         writeln!(buf, "{}", record.args())
       } else {
