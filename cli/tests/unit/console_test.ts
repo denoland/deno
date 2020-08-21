@@ -691,6 +691,34 @@ unitTest(async function consoleTestStringifyPromises(): Promise<void> {
   assertEquals(strLines[1], "  <rejected> Error: Whoops");
 });
 
+unitTest(function consoleTestStringifyProxy(): void {
+  assertEquals(
+    stringify(new Proxy([1, 2, 3], { get(): void {} })),
+    "Proxy [ [ 1, 2, 3 ], { get: [Function: get] } ]",
+  );
+  assertEquals(
+    stringify(
+      new Proxy({ a: 1 }, {
+        set(): boolean {
+          return false;
+        },
+      }),
+    ),
+    "Proxy [ { a: 1 }, { set: [Function: set] } ]",
+  );
+  assertEquals(
+    stringify(new Proxy([1, 2, 3, 4, 5, 6, 7], { get(): void {} })),
+    `Proxy [ [
+    1, 2, 3, 4,
+    5, 6, 7
+  ], { get: [Function: get] } ]`,
+  );
+  assertEquals(
+    stringify(new Proxy(function fn() {}, { get(): void {} })),
+    "Proxy [ [Function: fn], { get: [Function: get] } ]",
+  );
+});
+
 unitTest(function consoleTestWithCustomInspector(): void {
   class A {
     [customInspect](): string {

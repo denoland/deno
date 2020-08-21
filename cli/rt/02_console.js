@@ -400,6 +400,11 @@
     level,
     inspectOptions,
   ) {
+    const proxyDetails = Deno.core.getProxyDetails(value);
+    if (proxyDetails != null) {
+      return inspectProxy(proxyDetails, ctx, level, inspectOptions);
+    }
+
     switch (typeof value) {
       case "string":
         return value;
@@ -643,7 +648,16 @@
     return `Promise { ${str} }`;
   }
 
-  // TODO: Proxy
+  function inspectProxy(
+    targetAndHandler,
+    ctx,
+    level,
+    inspectOptions,
+  ) {
+    return `Proxy ${
+      inspectArray(targetAndHandler, ctx, level, inspectOptions)
+    }`;
+  }
 
   function inspectRawObject(
     value,
