@@ -540,7 +540,7 @@ fn serialize_result(
       "promiseId": promise_id ,
       "err": {
         "message": err.to_string(),
-        "kind": "Other", // TODO(ry) Figure out how to propagate errors.
+        "kind": err.1,
       }
     }),
   };
