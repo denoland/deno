@@ -740,6 +740,20 @@ pub fn main() {
     None => Level::Info, // Default log level
   };
   env_logger::builder()
+    .format(|buf, record| {
+      let mut target = record.target().to_string();
+
+      if let Some(line_no) = record.line() {
+        target.push_str(":");
+        target.push_str(&line_no.to_string());
+      }
+
+      if record.level() >= Level::Info {
+        writeln!(buf, "{}", record.args())
+      } else {
+        writeln!(buf, "{} RS- {} - {}", record.level(), target, record.args())
+      }
+    })
     .filter_level(log_level.to_level_filter())
     .init();
 
