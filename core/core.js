@@ -61,7 +61,7 @@ SharedQueue Binary Layout
 
   function ops() {
     // op id 0 is a special value to retrieve the map of registered ops.
-    const opsMapBytes = send(0, new Uint8Array([]));
+    const opsMapBytes = send(0);
     const opsMapJson = String.fromCharCode.apply(null, opsMapBytes);
     opsCache = JSON.parse(opsMapJson);
     return { ...opsCache };
@@ -215,12 +215,12 @@ SharedQueue Binary Layout
   let nextPromiseId = 1;
   const promiseTable = {};
 
-  function jsonOpAsync(opName, args) {
+  function jsonOpAsync(opName, args, ...zeroCopy) {
     setAsyncHandler(opsCache[opName], jsonOpAsyncHandler);
 
     args.promiseId = nextPromiseId++;
     const argsBuf = encodeJson(args);
-    dispatch(opName, argsBuf);
+    dispatch(opName, argsBuf, ...zeroCopy);
     let resolve, reject;
     const promise = new Promise((resolve_, reject_) => {
       resolve = resolve_;
@@ -232,14 +232,14 @@ SharedQueue Binary Layout
     return promise;
   }
 
-  function jsonOpSync(opName, args) {
+  function jsonOpSync(opName, args, ...zeroCopy) {
     const argsBuf = encodeJson(args);
-    const res = dispatch(opName, argsBuf);
+    const res = dispatch(opName, argsBuf, ...zeroCopy);
     const r = decodeJson(res);
-    if (r["ok"]) {
-      return r["ok"];
+    if ("ok" in r) {
+      return r.ok;
     } else {
-      throw r["err"];
+      throw r.err;
     }
   }
 
