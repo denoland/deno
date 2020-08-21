@@ -23,6 +23,7 @@ root_path = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 tests_path = os.path.join(root_path, "cli/tests")
 third_party_path = os.path.join(root_path, "third_party")
 
+
 def make_env(merge_env=None, env=None):
     if env is None:
         env = os.environ
