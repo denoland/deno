@@ -91,8 +91,8 @@ use flags::Flags;
 use futures::future::FutureExt;
 use futures::Future;
 use log::Level;
-use log::Metadata;
-use log::Record;
+// use log::Metadata;
+// use log::Record;
 use state::exit_unstable;
 use std::env;
 use std::io::Read;
@@ -104,6 +104,7 @@ use std::sync::Arc;
 use upgrade::upgrade_command;
 use url::Url;
 
+/*
 static LOGGER: Logger = Logger;
 
 // TODO(ry) Switch to env_logger or other standard crate.
@@ -132,6 +133,7 @@ impl log::Log for Logger {
   }
   fn flush(&self) {}
 }
+*/
 
 fn write_to_stdout_ignore_sigpipe(bytes: &[u8]) -> Result<(), std::io::Error> {
   use std::io::ErrorKind;
@@ -705,7 +707,7 @@ pub fn main() {
   #[cfg(windows)]
   colors::enable_ansi(); // For Windows 10
 
-  log::set_logger(&LOGGER).unwrap();
+  // log::set_logger(&LOGGER).unwrap();
   let args: Vec<String> = env::args().collect();
   let flags = flags::flags_from_vec(args);
 
@@ -737,7 +739,9 @@ pub fn main() {
     Some(level) => level,
     None => Level::Info, // Default log level
   };
-  log::set_max_level(log_level.to_level_filter());
+  env_logger::builder()
+    .filter_level(log_level.to_level_filter())
+    .init();
 
   let fut = match flags.clone().subcommand {
     DenoSubcommand::Bundle {
