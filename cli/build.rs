@@ -4,11 +4,11 @@ mod op_fetch_asset;
 use deno_core::js_check;
 use deno_core::CoreIsolate;
 use deno_core::StartupData;
+use regex::Regex;
 use std::collections::HashMap;
 use std::env;
 use std::path::Path;
 use std::path::PathBuf;
-use regex::Regex;
 
 fn create_snapshot(
   mut isolate: CoreIsolate,
