@@ -73,7 +73,7 @@ fn create_compiler_snapshot(
 
 fn ts_version() -> String {
   let ts_source = std::fs::read_to_string("tsc/00_typescript.js").unwrap();
-  Regex::new(r#"ts.version = "(\d\.\d\.\d)";"#)
+  Regex::new(r#"ts.version = "(\d+\.\d+\.\d+)";"#)
     .ok()
     .and_then(|re| re.captures(&ts_source))
     .and_then(|caps| caps.get(1))
