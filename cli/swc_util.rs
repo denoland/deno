@@ -1,4 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
+#![allow(unused)]
 use crate::msg::MediaType;
 use deno_core::ErrBox;
 use serde::Serialize;
@@ -31,6 +33,7 @@ use swc_ecmascript::parser::Syntax;
 use swc_ecmascript::parser::TsConfig;
 use swc_ecmascript::transforms::compat::es2020::typescript_class_properties;
 use swc_ecmascript::transforms::fixer;
+use swc_ecmascript::transforms::helpers;
 use swc_ecmascript::transforms::typescript;
 use swc_ecmascript::visit::FoldWith;
 
@@ -246,7 +249,11 @@ impl AstParser {
     );
 
     let program =
-      GLOBALS.set(&self.globals, || program.fold_with(&mut compiler_pass));
+      GLOBALS.set(&self.globals, || {
+        helpers::HELPERS.set(&helpers::Helpers::new(true), || {
+          program.fold_with(&mut compiler_pass)
+        })
+      });
 
     let mut src_map_buf = vec![];
     let mut buf = vec![];
