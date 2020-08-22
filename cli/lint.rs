@@ -6,12 +6,12 @@
 //! At the moment it is only consumed using CLI but in
 //! the future it can be easily extended to provide
 //! the same functions as ops available in JS runtime.
+use crate::ast;
 use crate::colors;
 use crate::file_fetcher::map_file_extension;
 use crate::fmt::collect_files;
 use crate::fmt::run_parallelized;
 use crate::fmt_errors;
-use crate::swc_util;
 use deno_core::ErrBox;
 use deno_lint::diagnostic::LintDiagnostic;
 use deno_lint::linter::Linter;
@@ -179,7 +179,7 @@ fn lint_file(file_path: PathBuf) -> Result<Vec<LintDiagnostic>, ErrBox> {
   let file_name = file_path.to_string_lossy().to_string();
   let source_code = fs::read_to_string(&file_path)?;
   let media_type = map_file_extension(&file_path);
-  let syntax = swc_util::get_syntax_for_media_type(media_type);
+  let syntax = ast::get_syntax_for_media_type(media_type);
 
   let lint_rules = get_rules();
   let mut linter = create_linter(syntax, lint_rules);

@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+use crate::ast;
 use crate::colors;
 use crate::diagnostics::Diagnostic;
 use crate::diagnostics::DiagnosticItem;
@@ -753,12 +754,13 @@ impl TsCompiler {
     let mut emit_map = HashMap::new();
 
     for source_file in source_files {
-      let parser = AstParser::default();
-      let stripped_source = parser.strip_types(
+      let parsed_module = ast::parse(
         &source_file.file_name,
-        MediaType::TypeScript,
         &source_file.source_code,
+        MediaType::TypeScript,
       )?;
+      let (stripped_source, _) =
+        parsed_module.transpile(&ast::EmitTranspileOptions::default())?;
 
       // TODO(bartlomieju): this is superfluous, just to make caching function happy
       let emitted_filename = PathBuf::from(&source_file.file_name)

@@ -23,6 +23,7 @@ extern crate serde_derive;
 extern crate tokio;
 extern crate url;
 
+mod ast;
 mod checksum;
 pub mod colors;
 pub mod deno_dir;
@@ -546,7 +547,7 @@ async fn doc_command(
   let loader = Box::new(global_state.file_fetcher.clone());
   let doc_parser = doc::DocParser::new(loader, private);
   let media_type = map_file_extension(&PathBuf::from(&source_file));
-  let syntax = swc_util::get_syntax_for_media_type(media_type);
+  let syntax = ast::get_syntax_for_media_type(media_type);
 
   let parse_result = if source_file == "--builtin" {
     doc_parser.parse_source(
