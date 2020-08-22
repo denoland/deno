@@ -57,10 +57,6 @@ impl Into<Location> for swc_common::Loc {
   }
 }
 
-struct DummyHandler;
-
-impl swc_ecmascript::codegen::Handlers for DummyHandler {}
-
 fn get_default_es_config() -> EsConfig {
   let mut config = EsConfig::default();
   config.num_sep = true;
@@ -244,7 +240,6 @@ impl AstParser {
     let mut src_map_buf = vec![];
     let mut buf = vec![];
     {
-      let handlers = Box::new(DummyHandler);
       let writer = Box::new(JsWriter::new(
         self.source_map.clone(),
         "\n",
@@ -257,7 +252,6 @@ impl AstParser {
         comments: Some(&self.comments),
         cm: self.source_map.clone(),
         wr: writer,
-        handlers,
       };
       program.emit_with(&mut emitter)?;
     }
