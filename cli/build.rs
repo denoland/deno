@@ -71,11 +71,13 @@ fn create_compiler_snapshot(
 }
 
 fn ts_version() -> String {
-  let src = std::fs::read_to_string("tsc/00_typescript.js").unwrap();
-  // The below code supposes that the typescript source has
-  // `ts.version = "X.Y.Z"` pattern in a single line.
-  let line = src.lines().find(|l| l.contains("ts.version = ")).unwrap();
-  line
+  std::fs::read_to_string("tsc/00_typescript.js")
+    .unwrap()
+    .lines()
+    .find(|l| l.contains("ts.version = "))
+    .expect(
+      "Failed to find the pattern `ts.version = ` in typescript source code",
+    )
     .chars()
     .skip_while(|c| !char::is_numeric(*c))
     .take_while(|c| *c != '"')
