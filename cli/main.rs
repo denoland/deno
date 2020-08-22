@@ -718,7 +718,13 @@ pub fn main() {
     if record.level() >= Level::Info {
       writeln!(buf, "{}", record.args())
     } else {
-      writeln!(buf, "{} RS - {} - {}", record.level(), target, record.args())
+      writeln!(
+        buf,
+        "{} RS - {} - {}",
+        record.level(),
+        target,
+        record.args()
+      )
     }
   })
   .init();
