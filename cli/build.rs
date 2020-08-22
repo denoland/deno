@@ -4,7 +4,6 @@ mod op_fetch_asset;
 use deno_core::js_check;
 use deno_core::CoreIsolate;
 use deno_core::StartupData;
-use regex::Regex;
 use std::collections::HashMap;
 use std::env;
 use std::path::Path;
@@ -72,13 +71,15 @@ fn create_compiler_snapshot(
 }
 
 fn ts_version() -> String {
-  let ts_source = std::fs::read_to_string("tsc/00_typescript.js").unwrap();
-  Regex::new(r#"ts.version = "(\d+\.\d+\.\d+)";"#)
-    .ok()
-    .and_then(|re| re.captures(&ts_source))
-    .and_then(|caps| caps.get(1))
-    .map(|cap| cap.as_str().to_string())
-    .unwrap()
+  let src = std::fs::read_to_string("tsc/00_typescript.js").unwrap();
+  // The below code supposes that the typescript source has
+  // `ts.version = "X.Y.Z"` pattern in a single line.
+  let line = src.lines().find(|l| l.contains("ts.version = ")).unwrap();
+  line
+    .chars()
+    .skip_while(|c| !char::is_numeric(*c))
+    .take_while(|c| *c != '"')
+    .collect::<String>()
 }
 
 fn main() {
