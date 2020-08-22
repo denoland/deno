@@ -18,6 +18,7 @@ use swc_common::FileName;
 use swc_common::Globals;
 use swc_common::SourceMap;
 use swc_common::Span;
+use swc_common::GLOBALS;
 use swc_ecmascript::ast::Program;
 use swc_ecmascript::codegen::text_writer::JsWriter;
 use swc_ecmascript::codegen::Node;
@@ -28,6 +29,7 @@ use swc_ecmascript::parser::Parser;
 use swc_ecmascript::parser::StringInput;
 use swc_ecmascript::parser::Syntax;
 use swc_ecmascript::parser::TsConfig;
+use swc_ecmascript::transforms::compat::es2020::typescript_class_properties;
 use swc_ecmascript::transforms::fixer;
 use swc_ecmascript::transforms::typescript;
 use swc_ecmascript::visit::FoldWith;
@@ -237,9 +239,14 @@ impl AstParser {
     let parse_result = self.parse_module(file_name, media_type, source_code);
     let module = parse_result?;
     let program = Program::Module(module);
-    let mut compiler_pass =
-      chain!(typescript::strip(), fixer(Some(&self.comments)));
-    let program = program.fold_with(&mut compiler_pass);
+    let mut compiler_pass = chain!(
+      typescript_class_properties(),
+      typescript::strip(),
+      fixer(Some(&self.comments))
+    );
+
+    let program =
+      GLOBALS.set(&self.globals, || program.fold_with(&mut compiler_pass));
 
     let mut src_map_buf = vec![];
     let mut buf = vec![];
@@ -293,11 +300,25 @@ impl AstParser {
 
 #[test]
 fn test_strip_types() {
+  let source_code = r#"
+const a: number = 10;
+class A {
+  b = this.a;
+  constructor(public a: any) {}
+}  
+"#;
   let ast_parser = AstParser::default();
   let result = ast_parser
-    .strip_types("test.ts", MediaType::TypeScript, "const a: number = 10;")
+    .strip_types("test.ts", MediaType::TypeScript, source_code)
     .unwrap();
   assert!(result.starts_with(
-    "const a = 10;\n//# sourceMappingURL=data:application/json;base64,"
+    r#"const a = 10;
+class A {
+    constructor(a){
+        this.a = a;
+        this.b = this.a;
+    }
+}
+//# sourceMappingURL=data:application/json;base64,"#
   ));
 }
