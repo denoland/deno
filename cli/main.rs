@@ -101,7 +101,6 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
 use upgrade::upgrade_command;
-use url::Url;
 
 static LOGGER: Logger = Logger;
 
@@ -650,9 +649,8 @@ async fn test_command(
   allow_none: bool,
   filter: Option<String>,
 ) -> Result<(), ErrBox> {
-  let global_state = GlobalState::new(flags.clone())?;
-  let cwd = std::env::current_dir().expect("No current directory");
   let include = include.unwrap_or_else(|| vec![".".to_string()]);
+  let cwd = std::env::current_dir().expect("No current directory");
   let test_modules = test_runner::prepare_test_modules_urls(include, &cwd)?;
 
   if test_modules.is_empty() {
@@ -663,35 +661,27 @@ async fn test_command(
     return Ok(());
   }
 
-  let test_file_path = cwd.join(".deno.test.ts");
-  let test_file_url =
-    Url::from_file_path(&test_file_path).expect("Should be valid file url");
-  let test_file =
-    test_runner::render_test_file(test_modules, fail_fast, quiet, filter);
-  let main_module =
-    ModuleSpecifier::resolve_url(&test_file_url.to_string()).unwrap();
-  let mut worker = MainWorker::create(&global_state, main_module.clone())?;
-  // Create a dummy source file.
-  let source_file = SourceFile {
-    filename: test_file_url.to_file_path().unwrap(),
-    url: test_file_url,
-    types_header: None,
-    media_type: MediaType::TypeScript,
-    source_code: TextDocument::new(
-      test_file.clone().into_bytes(),
-      Some("utf-8"),
-    ),
-  };
-  // Save our fake file into file fetcher cache
-  // to allow module access by TS compiler
-  global_state
-    .file_fetcher
-    .save_source_file_in_cache(&main_module, source_file);
-  let execute_result = worker.execute_module(&main_module).await;
-  execute_result?;
-  worker.execute("window.dispatchEvent(new Event('load'))")?;
-  (&mut *worker).await?;
-  worker.execute("window.dispatchEvent(new Event('unload'))")
+  for test_module in test_modules {
+    let global_state = GlobalState::new(flags.clone())?;
+    let main_module = ModuleSpecifier::from(test_module);
+    let mut worker = MainWorker::create(&global_state, main_module.clone())?;
+
+    let options = if let Some(filter) = filter.clone() {
+      json!({ "failFast": fail_fast, "reportToConsole": !quiet, "disableLog": quiet, "filter": filter })
+    } else {
+      json!({ "failFast": fail_fast, "reportToConsole": !quiet, "disableLog": quiet })
+    };
+
+    let run_tests_cmd = format!("Deno[Deno.internal].runTests({});\n", options);
+    let execute_result = worker.execute_module(&main_module).await;
+    execute_result?;
+    worker.execute(&run_tests_cmd)?;
+    worker.execute("window.dispatchEvent(new Event('load'))")?;
+    (&mut *worker).await?;
+    worker.execute("window.dispatchEvent(new Event('unload'))")?;
+  }
+
+  Ok(())
 }
 
 pub fn main() {

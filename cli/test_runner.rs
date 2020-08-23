@@ -63,33 +63,6 @@ pub fn prepare_test_modules_urls(
   Ok(prepared)
 }
 
-pub fn render_test_file(
-  modules: Vec<Url>,
-  fail_fast: bool,
-  quiet: bool,
-  filter: Option<String>,
-) -> String {
-  let mut test_file = "".to_string();
-
-  for module in modules {
-    test_file.push_str(&format!("import \"{}\";\n", module.to_string()));
-  }
-
-  let options = if let Some(filter) = filter {
-    json!({ "failFast": fail_fast, "reportToConsole": !quiet, "disableLog": quiet, "filter": filter })
-  } else {
-    json!({ "failFast": fail_fast, "reportToConsole": !quiet, "disableLog": quiet })
-  };
-
-  let run_tests_cmd = format!(
-    "// @ts-ignore\nDeno[Deno.internal].runTests({});\n",
-    options
-  );
-  test_file.push_str(&run_tests_cmd);
-
-  test_file
-}
-
 #[cfg(test)]
 mod tests {
   use super::*;
