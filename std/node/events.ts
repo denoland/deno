@@ -344,7 +344,14 @@ export default class EventEmitter {
    * Infinity (or 0) to indicate an unlimited number of listeners.
    */
   public setMaxListeners(n: number): this {
-    validateIntegerRange(n, "maxListeners", 0);
+    if (n !== Infinity) {
+      if (n === 0) {
+        n = Infinity;
+      } else {
+        validateIntegerRange(n, "maxListeners", 0);
+      }
+    }
+
     this.maxListeners = n;
     return this;
   }
