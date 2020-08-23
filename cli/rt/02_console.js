@@ -450,12 +450,12 @@
     const quote = QUOTES.find((c) => !string.includes(c)) ?? QUOTES[0];
     const escapePattern = new RegExp(`(?=[${quote}\\\\])`, "g");
     string = string.replace(escapePattern, "\\");
-    string = replaceEscaped(string);
+    string = replaceEscapeSequences(string);
     return `${quote}${string}${quote}`;
   }
 
-  // Replace escaped sequences that can modify output.
-  function replaceEscaped(string) {
+  // Replace escape sequences that can modify output.
+  function replaceEscapeSequences(string) {
     return string
       .replace(/[\b]/g, "\\b")
       .replace(/\f/g, "\\f")
@@ -697,7 +697,7 @@
 
     for (const key of stringKeys) {
       entries.push(
-        `${replaceEscaped(key)}: ${
+        `${replaceEscapeSequences(key)}: ${
           inspectValueWithQuotes(
             value[key],
             ctx,
@@ -709,7 +709,7 @@
     }
     for (const key of symbolKeys) {
       entries.push(
-        `${replaceEscaped(key.toString())}: ${
+        `${replaceEscapeSequences(key.toString())}: ${
           inspectValueWithQuotes(
             value[key],
             ctx,
