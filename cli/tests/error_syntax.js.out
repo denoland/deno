@@ -1,1 +1,1 @@
-error: Expected Comma, got Some(Word(following)) at [WILDCARD]tests/error_syntax.js:3:5
+error: Expected ,, got following at [WILDCARD]tests/error_syntax.js:3:5
