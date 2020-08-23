@@ -303,8 +303,6 @@ finishing test case.`;
     reportToConsole: reportToConsole_ = true,
     onMessage = undefined,
   } = {}) {
-    log(`${green("Running")} ${Deno.mainModule}`);
-
     const filterFn = createFilterFn(filter, skip);
     const testRunner = new TestRunner(TEST_REGISTRY, filterFn, failFast);
 
