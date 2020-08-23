@@ -77,8 +77,8 @@ impl From<Record> for RecordBuf {
 
 pub fn isolate_new() -> CoreIsolate {
   let startup_data = StartupData::Script(Script {
-    source: include_str!("http_bench.js"),
-    filename: "http_bench.js",
+    source: include_str!("http_bench_bin_ops.js"),
+    filename: "http_bench_bin_ops.js",
   });
 
   let mut isolate = CoreIsolate::new(startup_data, false);
