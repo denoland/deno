@@ -4,7 +4,7 @@ import { assert, assertEquals } from "../testing/asserts.ts";
 import * as path from "../path/mod.ts";
 import WASI from "./snapshot_preview1.ts";
 
-if (import.meta.main) {
+if (Deno.args.length > 0) {
   const options = JSON.parse(Deno.args[0]);
   const binary = await Deno.readFile(Deno.args[1]);
   const module = await WebAssembly.compile(binary);
