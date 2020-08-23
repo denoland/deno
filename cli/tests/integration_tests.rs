@@ -2262,6 +2262,16 @@ itest!(deno_lint_glob {
   exit_code: 1,
 });
 
+itest!(deno_doc_builtin {
+  args: "doc",
+  output: "deno_doc_builtin.out",
+});
+
+itest!(deno_doc {
+  args: "doc deno_doc.ts",
+  output: "deno_doc.out",
+});
+
 itest!(compiler_js_error {
   args: "run --unstable compiler_js_error.ts",
   output: "compiler_js_error.ts.out",
