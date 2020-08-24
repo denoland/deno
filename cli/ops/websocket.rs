@@ -9,13 +9,14 @@ use futures::future::{poll_fn, FutureExt};
 use futures::{SinkExt, StreamExt};
 use http::{Method, Request, Uri};
 use std::borrow::Cow;
+use std::rc::Rc;
 use tokio::net::TcpStream;
 use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
 use tokio_tungstenite::tungstenite::protocol::CloseFrame;
 use tokio_tungstenite::tungstenite::{Error, Message};
 use tokio_tungstenite::{client_async_tls, MaybeTlsStream, WebSocketStream};
 
-pub fn init(i: &mut CoreIsolate, s: &State) {
+pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
   i.register_op("op_ws_create", s.stateful_json_op2(op_ws_create));
   i.register_op("op_ws_send", s.stateful_json_op2(op_ws_send));
   i.register_op("op_ws_close", s.stateful_json_op2(op_ws_close));
@@ -31,7 +32,7 @@ struct CreateArgs {
 
 pub fn op_ws_create(
   isolate_state: &mut CoreIsolateState,
-  _state: &State,
+  _state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -94,7 +95,7 @@ struct SendArgs {
 
 pub fn op_ws_send(
   isolate_state: &mut CoreIsolateState,
-  _state: &State,
+  _state: &Rc<State>,
   args: Value,
   zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -121,7 +122,7 @@ struct CloseArgs {
 
 pub fn op_ws_close(
   isolate_state: &mut CoreIsolateState,
-  _state: &State,
+  _state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -159,7 +160,7 @@ struct NextEventArgs {
 
 pub fn op_ws_next_event(
   isolate_state: &mut CoreIsolateState,
-  _state: &State,
+  _state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
