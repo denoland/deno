@@ -395,7 +395,7 @@
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   function isEitherArrayBuffer(x) {
-    return x instanceof SharedArrayBuffer || x instanceof ArrayBuffer;
+    return x instanceof SharedArrayBuffer || x instanceof ArrayBuffer || typeof x === "undefined";
   }
 
   class TextDecoder {
@@ -452,7 +452,9 @@
           input.byteLength,
         );
       } else {
-        bytes = new Uint8Array(0);
+        throw new TypeError(
+          "Provided input is not of type ArrayBuffer or ArrayBufferView",
+        );
       }
 
       // For simple utf-8 decoding "Deno.core.decode" can be used for performance

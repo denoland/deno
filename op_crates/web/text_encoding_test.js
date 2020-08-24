@@ -131,10 +131,42 @@ function textDecoderErrorEncoding() {
   assert(didThrow);
 }
 
-function textDecoderHandlesNull() {
-  const fixture = null;
+function textDecoderHandlesUndefined() {
+  const fixture = undefined;
   const decoder = new TextDecoder();
   assert(decoder.decode(fixture) === "");
+}
+
+function textDecoderThrowsOnEmpty() {
+  const fixture = "";
+  const decoder = new TextDecoder();
+  let didThrow = false;
+  try {
+    decoder.decode(fixture);
+  } catch (e) {
+    didThrow = true;
+    assert(
+      e.message ===
+        "Provided input is not of type ArrayBuffer or ArrayBufferView",
+    );
+  }
+  assert(didThrow);
+}
+
+function textDecoderThrowsOnNull() {
+  const fixture = null;
+  const decoder = new TextDecoder();
+  let didThrow = false;
+  try {
+    decoder.decode(fixture);
+  } catch (e) {
+    didThrow = true;
+    assert(
+      e.message ===
+        "Provided input is not of type ArrayBuffer or ArrayBufferView",
+    );
+  }
+  assert(didThrow);
 }
 
 function textEncoder() {
@@ -237,7 +269,9 @@ function main() {
   textDecoderNotBOM();
   textDecoderASCII();
   textDecoderErrorEncoding();
-  textDecoderHandlesNull();
+  textDecoderHandlesUndefined();
+  textDecoderThrowsOnEmpty();
+  textDecoderThrowsOnNull();
   textEncoder();
   textEncodeInto();
   textEncodeInto2();
