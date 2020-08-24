@@ -228,53 +228,59 @@ const clock_time_monotonic = function (): bigint {
 const clock_time_process = clock_time_monotonic;
 const clock_time_thread = clock_time_monotonic;
 
-function errno(err: Error) {
-  switch (err.name) {
-    case "NotFound":
-      return ERRNO_NOENT;
+function syscall(target: Function): Function {
+  return function (...args: unknown[]): number {
+    try {
+      return target(...args);
+    } catch (err) {
+      switch (err.name) {
+        case "NotFound":
+          return ERRNO_NOENT;
 
-    case "PermissionDenied":
-      return ERRNO_ACCES;
+        case "PermissionDenied":
+          return ERRNO_ACCES;
 
-    case "ConnectionRefused":
-      return ERRNO_CONNREFUSED;
+        case "ConnectionRefused":
+          return ERRNO_CONNREFUSED;
 
-    case "ConnectionReset":
-      return ERRNO_CONNRESET;
+        case "ConnectionReset":
+          return ERRNO_CONNRESET;
 
-    case "ConnectionAborted":
-      return ERRNO_CONNABORTED;
+        case "ConnectionAborted":
+          return ERRNO_CONNABORTED;
 
-    case "NotConnected":
-      return ERRNO_NOTCONN;
+        case "NotConnected":
+          return ERRNO_NOTCONN;
 
-    case "AddrInUse":
-      return ERRNO_ADDRINUSE;
+        case "AddrInUse":
+          return ERRNO_ADDRINUSE;
 
-    case "AddrNotAvailable":
-      return ERRNO_ADDRNOTAVAIL;
+        case "AddrNotAvailable":
+          return ERRNO_ADDRNOTAVAIL;
 
-    case "BrokenPipe":
-      return ERRNO_PIPE;
+        case "BrokenPipe":
+          return ERRNO_PIPE;
 
-    case "InvalidData":
-      return ERRNO_INVAL;
+        case "InvalidData":
+          return ERRNO_INVAL;
 
-    case "TimedOut":
-      return ERRNO_TIMEDOUT;
+        case "TimedOut":
+          return ERRNO_TIMEDOUT;
 
-    case "Interrupted":
-      return ERRNO_INTR;
+        case "Interrupted":
+          return ERRNO_INTR;
 
-    case "BadResource":
-      return ERRNO_BADF;
+        case "BadResource":
+          return ERRNO_BADF;
 
-    case "Busy":
-      return ERRNO_BUSY;
+        case "Busy":
+          return ERRNO_BUSY;
 
-    default:
-      return ERRNO_INVAL;
-  }
+        default:
+          return ERRNO_INVAL;
+      }
+    }
+  };
 }
 
 export interface ContextOptions {
@@ -331,7 +337,7 @@ export default class Context {
     }
 
     this.exports = {
-      args_get: (argv_ptr: number, argv_buf_ptr: number): number => {
+      args_get: syscall((argv_ptr: number, argv_buf_ptr: number): number => {
         const args = this.args;
         const text = new TextEncoder();
         const heap = new Uint8Array(this.memory.buffer);
@@ -347,44 +353,48 @@ export default class Context {
         }
 
         return ERRNO_SUCCESS;
-      },
+      }),
 
-      args_sizes_get: (argc_out: number, argv_buf_size_out: number): number => {
-        const args = this.args;
-        const text = new TextEncoder();
-        const view = new DataView(this.memory.buffer);
+      args_sizes_get: syscall(
+        (argc_out: number, argv_buf_size_out: number): number => {
+          const args = this.args;
+          const text = new TextEncoder();
+          const view = new DataView(this.memory.buffer);
 
-        view.setUint32(argc_out, args.length, true);
-        view.setUint32(
-          argv_buf_size_out,
-          args.reduce(function (acc, arg) {
-            return acc + text.encode(`${arg}\0`).length;
-          }, 0),
-          true,
-        );
+          view.setUint32(argc_out, args.length, true);
+          view.setUint32(
+            argv_buf_size_out,
+            args.reduce(function (acc, arg) {
+              return acc + text.encode(`${arg}\0`).length;
+            }, 0),
+            true,
+          );
 
-        return ERRNO_SUCCESS;
-      },
+          return ERRNO_SUCCESS;
+        },
+      ),
 
-      environ_get: (environ_ptr: number, environ_buf_ptr: number): number => {
-        const entries = Object.entries(this.env);
-        const text = new TextEncoder();
-        const heap = new Uint8Array(this.memory.buffer);
-        const view = new DataView(this.memory.buffer);
+      environ_get: syscall(
+        (environ_ptr: number, environ_buf_ptr: number): number => {
+          const entries = Object.entries(this.env);
+          const text = new TextEncoder();
+          const heap = new Uint8Array(this.memory.buffer);
+          const view = new DataView(this.memory.buffer);
 
-        for (let [key, value] of entries) {
-          view.setUint32(environ_ptr, environ_buf_ptr, true);
-          environ_ptr += 4;
+          for (let [key, value] of entries) {
+            view.setUint32(environ_ptr, environ_buf_ptr, true);
+            environ_ptr += 4;
 
-          const data = text.encode(`${key}=${value}\0`);
-          heap.set(data, environ_buf_ptr);
-          environ_buf_ptr += data.length;
-        }
+            const data = text.encode(`${key}=${value}\0`);
+            heap.set(data, environ_buf_ptr);
+            environ_buf_ptr += data.length;
+          }
 
-        return ERRNO_SUCCESS;
-      },
+          return ERRNO_SUCCESS;
+        },
+      ),
 
-      environ_sizes_get: (
+      environ_sizes_get: syscall((
         environc_out: number,
         environ_buf_size_out: number,
       ): number => {
@@ -402,9 +412,9 @@ export default class Context {
         );
 
         return ERRNO_SUCCESS;
-      },
+      }),
 
-      clock_res_get: (id: number, resolution_out: number): number => {
+      clock_res_get: syscall((id: number, resolution_out: number): number => {
         const view = new DataView(this.memory.buffer);
 
         switch (id) {
@@ -429,9 +439,9 @@ export default class Context {
         }
 
         return ERRNO_SUCCESS;
-      },
+      }),
 
-      clock_time_get: (
+      clock_time_get: syscall((
         id: number,
         precision: bigint,
         time_out: number,
@@ -460,22 +470,24 @@ export default class Context {
         }
 
         return ERRNO_SUCCESS;
-      },
+      }),
 
-      fd_advise: (
+      fd_advise: syscall((
         fd: number,
         offset: bigint,
         len: bigint,
         advice: number,
       ): number => {
         return ERRNO_NOSYS;
-      },
+      }),
 
-      fd_allocate: (fd: number, offset: bigint, len: bigint): number => {
-        return ERRNO_NOSYS;
-      },
+      fd_allocate: syscall(
+        (fd: number, offset: bigint, len: bigint): number => {
+          return ERRNO_NOSYS;
+        },
+      ),
 
-      fd_close: (fd: number): number => {
+      fd_close: syscall((fd: number): number => {
         const entry = this.fds[fd];
         if (!entry) {
           return ERRNO_BADF;
@@ -488,24 +500,20 @@ export default class Context {
         delete this.fds[fd];
 
         return ERRNO_SUCCESS;
-      },
+      }),
 
-      fd_datasync: (fd: number): number => {
+      fd_datasync: syscall((fd: number): number => {
         const entry = this.fds[fd];
         if (!entry) {
           return ERRNO_BADF;
         }
 
-        try {
-          Deno.fdatasyncSync(entry.handle.rid);
-        } catch (err) {
-          return errno(err);
-        }
+        Deno.fdatasyncSync(entry.handle.rid);
 
         return ERRNO_SUCCESS;
-      },
+      }),
 
-      fd_fdstat_get: (fd: number, stat_out: number): number => {
+      fd_fdstat_get: syscall((fd: number, stat_out: number): number => {
         const entry = this.fds[fd];
         if (!entry) {
           return ERRNO_BADF;
@@ -518,21 +526,21 @@ export default class Context {
         view.setBigUint64(stat_out + 16, 0n, true); // TODO
 
         return ERRNO_SUCCESS;
-      },
+      }),
 
-      fd_fdstat_set_flags: (fd: number, flags: number): number => {
+      fd_fdstat_set_flags: syscall((fd: number, flags: number): number => {
         return ERRNO_NOSYS;
-      },
+      }),
 
-      fd_fdstat_set_rights: (
+      fd_fdstat_set_rights: syscall((
         fd: number,
         fs_rights_base: bigint,
         fs_rights_inheriting: bigint,
       ): number => {
         return ERRNO_NOSYS;
-      },
+      }),
 
-      fd_filestat_get: (fd: number, buf_out: number): number => {
+      fd_filestat_get: syscall((fd: number, buf_out: number): number => {
         const entry = this.fds[fd];
         if (!entry) {
           return ERRNO_BADF;
@@ -540,87 +548,79 @@ export default class Context {
 
         const view = new DataView(this.memory.buffer);
 
-        try {
-          const info = Deno.fstatSync(entry.handle.rid);
+        const info = Deno.fstatSync(entry.handle.rid);
 
-          if (entry.type === undefined) {
-            switch (true) {
-              case info.isFile:
-                entry.type = FILETYPE_REGULAR_FILE;
-                break;
+        if (entry.type === undefined) {
+          switch (true) {
+            case info.isFile:
+              entry.type = FILETYPE_REGULAR_FILE;
+              break;
 
-              case info.isDirectory:
-                entry.type = FILETYPE_DIRECTORY;
-                break;
+            case info.isDirectory:
+              entry.type = FILETYPE_DIRECTORY;
+              break;
 
-              case info.isSymlink:
-                entry.type = FILETYPE_SYMBOLIC_LINK;
-                break;
+            case info.isSymlink:
+              entry.type = FILETYPE_SYMBOLIC_LINK;
+              break;
 
-              default:
-                entry.type = FILETYPE_UNKNOWN;
-                break;
-            }
+            default:
+              entry.type = FILETYPE_UNKNOWN;
+              break;
           }
-
-          view.setBigUint64(buf_out, BigInt(info.dev ? info.dev : 0), true);
-          buf_out += 8;
-
-          view.setBigUint64(buf_out, BigInt(info.ino ? info.ino : 0), true);
-          buf_out += 8;
-
-          view.setUint8(buf_out, entry.type);
-          buf_out += 8;
-
-          view.setUint32(buf_out, Number(info.nlink), true);
-          buf_out += 8;
-
-          view.setBigUint64(buf_out, BigInt(info.size), true);
-          buf_out += 8;
-
-          view.setBigUint64(
-            buf_out,
-            BigInt(info.atime ? info.atime.getTime() * 1e6 : 0),
-            true,
-          );
-          buf_out += 8;
-
-          view.setBigUint64(
-            buf_out,
-            BigInt(info.mtime ? info.mtime.getTime() * 1e6 : 0),
-            true,
-          );
-          buf_out += 8;
-
-          view.setBigUint64(
-            buf_out,
-            BigInt(info.birthtime ? info.birthtime.getTime() * 1e6 : 0),
-            true,
-          );
-          buf_out += 8;
-        } catch (err) {
-          return errno(err);
         }
 
-        return ERRNO_SUCCESS;
-      },
+        view.setBigUint64(buf_out, BigInt(info.dev ? info.dev : 0), true);
+        buf_out += 8;
 
-      fd_filestat_set_size: (fd: number, size: bigint): number => {
+        view.setBigUint64(buf_out, BigInt(info.ino ? info.ino : 0), true);
+        buf_out += 8;
+
+        view.setUint8(buf_out, entry.type);
+        buf_out += 8;
+
+        view.setUint32(buf_out, Number(info.nlink), true);
+        buf_out += 8;
+
+        view.setBigUint64(buf_out, BigInt(info.size), true);
+        buf_out += 8;
+
+        view.setBigUint64(
+          buf_out,
+          BigInt(info.atime ? info.atime.getTime() * 1e6 : 0),
+          true,
+        );
+        buf_out += 8;
+
+        view.setBigUint64(
+          buf_out,
+          BigInt(info.mtime ? info.mtime.getTime() * 1e6 : 0),
+          true,
+        );
+        buf_out += 8;
+
+        view.setBigUint64(
+          buf_out,
+          BigInt(info.birthtime ? info.birthtime.getTime() * 1e6 : 0),
+          true,
+        );
+        buf_out += 8;
+
+        return ERRNO_SUCCESS;
+      }),
+
+      fd_filestat_set_size: syscall((fd: number, size: bigint): number => {
         const entry = this.fds[fd];
         if (!entry) {
           return ERRNO_BADF;
         }
 
-        try {
-          Deno.ftruncateSync(entry.handle.rid, Number(size));
-        } catch (err) {
-          return errno(err);
-        }
+        Deno.ftruncateSync(entry.handle.rid, Number(size));
 
         return ERRNO_SUCCESS;
-      },
+      }),
 
-      fd_filestat_set_times: (
+      fd_filestat_set_times: syscall((
         fd: number,
         atim: bigint,
         mtim: bigint,
@@ -643,16 +643,12 @@ export default class Context {
           mtim = BigInt(Date.now() * 1e6);
         }
 
-        try {
-          Deno.utimeSync(entry.path, Number(atim), Number(mtim));
-        } catch (err) {
-          return errno(err);
-        }
+        Deno.utimeSync(entry.path, Number(atim), Number(mtim));
 
         return ERRNO_SUCCESS;
-      },
+      }),
 
-      fd_pread: (
+      fd_pread: syscall((
         fd: number,
         iovs_ptr: number,
         iovs_len: number,
@@ -683,9 +679,9 @@ export default class Context {
         view.setUint32(nread_out, nread, true);
 
         return ERRNO_SUCCESS;
-      },
+      }),
 
-      fd_prestat_get: (fd: number, buf_out: number): number => {
+      fd_prestat_get: syscall((fd: number, buf_out: number): number => {
         const entry = this.fds[fd];
         if (!entry) {
           return ERRNO_BADF;
@@ -704,9 +700,9 @@ export default class Context {
         );
 
         return ERRNO_SUCCESS;
-      },
+      }),
 
-      fd_prestat_dir_name: (
+      fd_prestat_dir_name: syscall((
         fd: number,
         path_ptr: number,
         path_len: number,
@@ -724,9 +720,9 @@ export default class Context {
         data.set(new TextEncoder().encode(entry.vpath));
 
         return ERRNO_SUCCESS;
-      },
+      }),
 
-      fd_pwrite: (
+      fd_pwrite: syscall((
         fd: number,
         iovs_ptr: number,
         iovs_len: number,
@@ -757,9 +753,9 @@ export default class Context {
         view.setUint32(nwritten_out, nwritten, true);
 
         return ERRNO_SUCCESS;
-      },
+      }),
 
-      fd_read: (
+      fd_read: syscall((
         fd: number,
         iovs_ptr: number,
         iovs_len: number,
@@ -787,9 +783,9 @@ export default class Context {
         view.setUint32(nread_out, nread, true);
 
         return ERRNO_SUCCESS;
-      },
+      }),
 
-      fd_readdir: (
+      fd_readdir: syscall((
         fd: number,
         buf_ptr: number,
         buf_len: number,
@@ -806,63 +802,59 @@ export default class Context {
 
         let bufused = 0;
 
-        try {
-          const entries = Array.from(Deno.readDirSync(entry.path));
-          for (let i = Number(cookie); i < entries.length; i++) {
-            const name_data = new TextEncoder().encode(entries[i].name);
+        const entries = Array.from(Deno.readDirSync(entry.path));
+        for (let i = Number(cookie); i < entries.length; i++) {
+          const name_data = new TextEncoder().encode(entries[i].name);
 
-            const entry_info = Deno.statSync(
-              resolve(entry.path, entries[i].name),
-            );
-            const entry_data = new Uint8Array(24 + name_data.byteLength);
-            const entry_view = new DataView(entry_data.buffer);
+          const entry_info = Deno.statSync(
+            resolve(entry.path, entries[i].name),
+          );
+          const entry_data = new Uint8Array(24 + name_data.byteLength);
+          const entry_view = new DataView(entry_data.buffer);
 
-            entry_view.setBigUint64(0, BigInt(i + 1), true);
-            entry_view.setBigUint64(
-              8,
-              BigInt(entry_info.ino ? entry_info.ino : 0),
-              true,
-            );
-            entry_view.setUint32(16, name_data.byteLength, true);
+          entry_view.setBigUint64(0, BigInt(i + 1), true);
+          entry_view.setBigUint64(
+            8,
+            BigInt(entry_info.ino ? entry_info.ino : 0),
+            true,
+          );
+          entry_view.setUint32(16, name_data.byteLength, true);
 
-            switch (true) {
-              case entries[i].isFile:
-                var type = FILETYPE_REGULAR_FILE;
-                break;
+          switch (true) {
+            case entries[i].isFile:
+              var type = FILETYPE_REGULAR_FILE;
+              break;
 
-              case entries[i].isDirectory:
-                var type = FILETYPE_REGULAR_FILE;
-                break;
+            case entries[i].isDirectory:
+              var type = FILETYPE_REGULAR_FILE;
+              break;
 
-              case entries[i].isSymlink:
-                var type = FILETYPE_SYMBOLIC_LINK;
-                break;
+            case entries[i].isSymlink:
+              var type = FILETYPE_SYMBOLIC_LINK;
+              break;
 
-              default:
-                var type = FILETYPE_REGULAR_FILE;
-                break;
-            }
-
-            entry_view.setUint8(20, type);
-            entry_data.set(name_data, 24);
-
-            const data = entry_data.slice(
-              0,
-              Math.min(entry_data.length, buf_len - bufused),
-            );
-            heap.set(data, buf_ptr + bufused);
-            bufused += data.byteLength;
+            default:
+              var type = FILETYPE_REGULAR_FILE;
+              break;
           }
-        } catch (err) {
-          return errno(err);
+
+          entry_view.setUint8(20, type);
+          entry_data.set(name_data, 24);
+
+          const data = entry_data.slice(
+            0,
+            Math.min(entry_data.length, buf_len - bufused),
+          );
+          heap.set(data, buf_ptr + bufused);
+          bufused += data.byteLength;
         }
 
         view.setUint32(bufused_out, bufused, true);
 
         return ERRNO_SUCCESS;
-      },
+      }),
 
-      fd_renumber: (fd: number, to: number): number => {
+      fd_renumber: syscall((fd: number, to: number): number => {
         if (!this.fds[fd]) {
           return ERRNO_BADF;
         }
@@ -876,9 +868,9 @@ export default class Context {
         delete this.fds[fd];
 
         return ERRNO_SUCCESS;
-      },
+      }),
 
-      fd_seek: (
+      fd_seek: syscall((
         fd: number,
         offset: bigint,
         whence: number,
@@ -891,34 +883,25 @@ export default class Context {
 
         const view = new DataView(this.memory.buffer);
 
-        try {
-          // FIXME Deno does not support seeking with big integers
-
-          const newoffset = entry.handle.seekSync(Number(offset), whence);
-          view.setBigUint64(newoffset_out, BigInt(newoffset), true);
-        } catch (err) {
-          return ERRNO_INVAL;
-        }
+        // FIXME Deno does not support seeking with big integers
+        const newoffset = entry.handle.seekSync(Number(offset), whence);
+        view.setBigUint64(newoffset_out, BigInt(newoffset), true);
 
         return ERRNO_SUCCESS;
-      },
+      }),
 
-      fd_sync: (fd: number): number => {
+      fd_sync: syscall((fd: number): number => {
         const entry = this.fds[fd];
         if (!entry) {
           return ERRNO_BADF;
         }
 
-        try {
-          Deno.fsyncSync(entry.handle.rid);
-        } catch (err) {
-          return errno(err);
-        }
+        Deno.fsyncSync(entry.handle.rid);
 
         return ERRNO_SUCCESS;
-      },
+      }),
 
-      fd_tell: (fd: number, offset_out: number): number => {
+      fd_tell: syscall((fd: number, offset_out: number): number => {
         const entry = this.fds[fd];
         if (!entry) {
           return ERRNO_BADF;
@@ -926,17 +909,13 @@ export default class Context {
 
         const view = new DataView(this.memory.buffer);
 
-        try {
-          const offset = entry.handle.seekSync(0, Deno.SeekMode.Current);
-          view.setBigUint64(offset_out, offset, true);
-        } catch (err) {
-          return ERRNO_INVAL;
-        }
+        const offset = entry.handle.seekSync(0, Deno.SeekMode.Current);
+        view.setBigUint64(offset_out, offset, true);
 
         return ERRNO_SUCCESS;
-      },
+      }),
 
-      fd_write: (
+      fd_write: syscall((
         fd: number,
         iovs_ptr: number,
         iovs_len: number,
@@ -965,9 +944,9 @@ export default class Context {
         view.setUint32(nwritten_out, nwritten, true);
 
         return ERRNO_SUCCESS;
-      },
+      }),
 
-      path_create_directory: (
+      path_create_directory: syscall((
         fd: number,
         path_ptr: number,
         path_len: number,
@@ -985,16 +964,12 @@ export default class Context {
         const data = new Uint8Array(this.memory.buffer, path_ptr, path_len);
         const path = resolve(entry.path, text.decode(data));
 
-        try {
-          Deno.mkdirSync(path);
-        } catch (err) {
-          return errno(err);
-        }
+        Deno.mkdirSync(path);
 
         return ERRNO_SUCCESS;
-      },
+      }),
 
-      path_filestat_get: (
+      path_filestat_get: syscall((
         fd: number,
         flags: number,
         path_ptr: number,
@@ -1016,73 +991,69 @@ export default class Context {
 
         const view = new DataView(this.memory.buffer);
 
-        try {
-          const info = (flags & LOOKUPFLAGS_SYMLINK_FOLLOW) != 0
-            ? Deno.statSync(path)
-            : Deno.lstatSync(path);
+        const info = (flags & LOOKUPFLAGS_SYMLINK_FOLLOW) != 0
+          ? Deno.statSync(path)
+          : Deno.lstatSync(path);
 
-          view.setBigUint64(buf_out, BigInt(info.dev ? info.dev : 0), true);
-          buf_out += 8;
+        view.setBigUint64(buf_out, BigInt(info.dev ? info.dev : 0), true);
+        buf_out += 8;
 
-          view.setBigUint64(buf_out, BigInt(info.ino ? info.ino : 0), true);
-          buf_out += 8;
+        view.setBigUint64(buf_out, BigInt(info.ino ? info.ino : 0), true);
+        buf_out += 8;
 
-          switch (true) {
-            case info.isFile:
-              view.setUint8(buf_out, FILETYPE_REGULAR_FILE);
-              buf_out += 8;
-              break;
+        switch (true) {
+          case info.isFile:
+            view.setUint8(buf_out, FILETYPE_REGULAR_FILE);
+            buf_out += 8;
+            break;
 
-            case info.isDirectory:
-              view.setUint8(buf_out, FILETYPE_DIRECTORY);
-              buf_out += 8;
-              break;
+          case info.isDirectory:
+            view.setUint8(buf_out, FILETYPE_DIRECTORY);
+            buf_out += 8;
+            break;
 
-            case info.isSymlink:
-              view.setUint8(buf_out, FILETYPE_SYMBOLIC_LINK);
-              buf_out += 8;
-              break;
+          case info.isSymlink:
+            view.setUint8(buf_out, FILETYPE_SYMBOLIC_LINK);
+            buf_out += 8;
+            break;
 
-            default:
-              view.setUint8(buf_out, FILETYPE_UNKNOWN);
-              buf_out += 8;
-              break;
-          }
-
-          view.setUint32(buf_out, Number(info.nlink), true);
-          buf_out += 8;
-
-          view.setBigUint64(buf_out, BigInt(info.size), true);
-          buf_out += 8;
-
-          view.setBigUint64(
-            buf_out,
-            BigInt(info.atime ? info.atime.getTime() * 1e6 : 0),
-            true,
-          );
-          buf_out += 8;
-
-          view.setBigUint64(
-            buf_out,
-            BigInt(info.mtime ? info.mtime.getTime() * 1e6 : 0),
-            true,
-          );
-          buf_out += 8;
-
-          view.setBigUint64(
-            buf_out,
-            BigInt(info.birthtime ? info.birthtime.getTime() * 1e6 : 0),
-            true,
-          );
-          buf_out += 8;
-        } catch (err) {
-          return errno(err);
+          default:
+            view.setUint8(buf_out, FILETYPE_UNKNOWN);
+            buf_out += 8;
+            break;
         }
 
-        return ERRNO_SUCCESS;
-      },
+        view.setUint32(buf_out, Number(info.nlink), true);
+        buf_out += 8;
 
-      path_filestat_set_times: (
+        view.setBigUint64(buf_out, BigInt(info.size), true);
+        buf_out += 8;
+
+        view.setBigUint64(
+          buf_out,
+          BigInt(info.atime ? info.atime.getTime() * 1e6 : 0),
+          true,
+        );
+        buf_out += 8;
+
+        view.setBigUint64(
+          buf_out,
+          BigInt(info.mtime ? info.mtime.getTime() * 1e6 : 0),
+          true,
+        );
+        buf_out += 8;
+
+        view.setBigUint64(
+          buf_out,
+          BigInt(info.birthtime ? info.birthtime.getTime() * 1e6 : 0),
+          true,
+        );
+        buf_out += 8;
+
+        return ERRNO_SUCCESS;
+      }),
+
+      path_filestat_set_times: syscall((
         fd: number,
         flags: number,
         path_ptr: number,
@@ -1112,16 +1083,12 @@ export default class Context {
           mtim = BigInt(Date.now()) * BigInt(1e6);
         }
 
-        try {
-          Deno.utimeSync(path, Number(atim), Number(mtim));
-        } catch (err) {
-          return errno(err);
-        }
+        Deno.utimeSync(path, Number(atim), Number(mtim));
 
         return ERRNO_SUCCESS;
-      },
+      }),
 
-      path_link: (
+      path_link: syscall((
         old_fd: number,
         old_flags: number,
         old_path_ptr: number,
@@ -1154,16 +1121,12 @@ export default class Context {
         );
         const new_path = resolve(new_entry.path, text.decode(new_data));
 
-        try {
-          Deno.linkSync(old_path, new_path);
-        } catch (err) {
-          return errno(err);
-        }
+        Deno.linkSync(old_path, new_path);
 
         return ERRNO_SUCCESS;
-      },
+      }),
 
-      path_open: (
+      path_open: syscall((
         fd: number,
         dirflags: number,
         path_ptr: number,
@@ -1192,18 +1155,15 @@ export default class Context {
           // directory this way so there's no native fstat but Deno.open
           // doesn't work with directories on windows so we'll have to work
           // around it for now.
-          try {
-            const entries = Array.from(Deno.readDirSync(path));
-            const opened_fd = this.fds.push({
-              entries,
-              path,
-            }) - 1;
 
-            const view = new DataView(this.memory.buffer);
-            view.setUint32(opened_fd_out, opened_fd, true);
-          } catch (err) {
-            return errno(err);
-          }
+          const entries = Array.from(Deno.readDirSync(path));
+          const opened_fd = this.fds.push({
+            entries,
+            path,
+          }) - 1;
+
+          const view = new DataView(this.memory.buffer);
+          view.setUint32(opened_fd_out, opened_fd, true);
 
           return ERRNO_SUCCESS;
         }
@@ -1275,23 +1235,19 @@ export default class Context {
           options.read = true;
         }
 
-        try {
-          const handle = Deno.openSync(path, options);
-          const opened_fd = this.fds.push({
-            handle,
-            path,
-          }) - 1;
+        const handle = Deno.openSync(path, options);
+        const opened_fd = this.fds.push({
+          handle,
+          path,
+        }) - 1;
 
-          const view = new DataView(this.memory.buffer);
-          view.setUint32(opened_fd_out, opened_fd, true);
-        } catch (err) {
-          return errno(err);
-        }
+        const view = new DataView(this.memory.buffer);
+        view.setUint32(opened_fd_out, opened_fd, true);
 
         return ERRNO_SUCCESS;
-      },
+      }),
 
-      path_readlink: (
+      path_readlink: syscall((
         fd: number,
         path_ptr: number,
         path_len: number,
@@ -1311,24 +1267,24 @@ export default class Context {
         const view = new DataView(this.memory.buffer);
         const heap = new Uint8Array(this.memory.buffer);
 
-        const data = new Uint8Array(this.memory.buffer, path_ptr, path_len);
-        const path = resolve(entry.path, new TextDecoder().decode(data));
+        const path_data = new Uint8Array(
+          this.memory.buffer,
+          path_ptr,
+          path_len,
+        );
+        const path = resolve(entry.path, new TextDecoder().decode(path_data));
 
-        try {
-          const link = Deno.readLinkSync(path);
-          const data = new TextEncoder().encode(link);
-          heap.set(new Uint8Array(data, 0, buf_len), buf_ptr);
+        const link = Deno.readLinkSync(path);
+        const link_data = new TextEncoder().encode(link);
+        heap.set(new Uint8Array(link_data, 0, buf_len), buf_ptr);
 
-          const bufused = Math.min(data.byteLength, buf_len);
-          view.setUint32(bufused_out, bufused, true);
-        } catch (err) {
-          return errno(err);
-        }
+        const bufused = Math.min(link_data.byteLength, buf_len);
+        view.setUint32(bufused_out, bufused, true);
 
         return ERRNO_SUCCESS;
-      },
+      }),
 
-      path_remove_directory: (
+      path_remove_directory: syscall((
         fd: number,
         path_ptr: number,
         path_len: number,
@@ -1346,20 +1302,16 @@ export default class Context {
         const data = new Uint8Array(this.memory.buffer, path_ptr, path_len);
         const path = resolve(entry.path, text.decode(data));
 
-        try {
-          if (!Deno.statSync(path).isDirectory) {
-            return ERRNO_NOTDIR;
-          }
-
-          Deno.removeSync(path);
-        } catch (err) {
-          return errno(err);
+        if (!Deno.statSync(path).isDirectory) {
+          return ERRNO_NOTDIR;
         }
 
-        return ERRNO_SUCCESS;
-      },
+        Deno.removeSync(path);
 
-      path_rename: (
+        return ERRNO_SUCCESS;
+      }),
+
+      path_rename: syscall((
         fd: number,
         old_path_ptr: number,
         old_path_len: number,
@@ -1391,16 +1343,12 @@ export default class Context {
         );
         const new_path = resolve(new_entry.path, text.decode(new_data));
 
-        try {
-          Deno.renameSync(old_path, new_path);
-        } catch (err) {
-          return errno(err);
-        }
+        Deno.renameSync(old_path, new_path);
 
         return ERRNO_SUCCESS;
-      },
+      }),
 
-      path_symlink: (
+      path_symlink: syscall((
         old_path_ptr: number,
         old_path_len: number,
         fd: number,
@@ -1430,16 +1378,12 @@ export default class Context {
         );
         const new_path = resolve(entry.path, text.decode(new_data));
 
-        try {
-          Deno.symlinkSync(old_path, new_path);
-        } catch (err) {
-          return errno(err);
-        }
+        Deno.symlinkSync(old_path, new_path);
 
         return ERRNO_SUCCESS;
-      },
+      }),
 
-      path_unlink_file: (
+      path_unlink_file: syscall((
         fd: number,
         path_ptr: number,
         path_len: number,
@@ -1457,44 +1401,40 @@ export default class Context {
         const data = new Uint8Array(this.memory.buffer, path_ptr, path_len);
         const path = resolve(entry.path, text.decode(data));
 
-        try {
-          Deno.removeSync(path);
-        } catch (err) {
-          return errno(err);
-        }
+        Deno.removeSync(path);
 
         return ERRNO_SUCCESS;
-      },
+      }),
 
-      poll_oneoff: (
+      poll_oneoff: syscall((
         in_ptr: number,
         out_ptr: number,
         nsubscriptions: number,
         nevents_out: number,
       ): number => {
         return ERRNO_NOSYS;
-      },
+      }),
 
-      proc_exit: (rval: number): never => {
+      proc_exit: syscall((rval: number): never => {
         Deno.exit(rval);
-      },
+      }),
 
-      proc_raise: (sig: number): number => {
+      proc_raise: syscall((sig: number): number => {
         return ERRNO_NOSYS;
-      },
+      }),
 
-      sched_yield: (): number => {
+      sched_yield: syscall((): number => {
         return ERRNO_SUCCESS;
-      },
+      }),
 
-      random_get: (buf_ptr: number, buf_len: number): number => {
+      random_get: syscall((buf_ptr: number, buf_len: number): number => {
         const buffer = new Uint8Array(this.memory.buffer, buf_ptr, buf_len);
         crypto.getRandomValues(buffer);
 
         return ERRNO_SUCCESS;
-      },
+      }),
 
-      sock_recv: (
+      sock_recv: syscall((
         fd: number,
         ri_data_ptr: number,
         ri_data_len: number,
@@ -1503,9 +1443,9 @@ export default class Context {
         ro_flags_out: number,
       ): number => {
         return ERRNO_NOSYS;
-      },
+      }),
 
-      sock_send: (
+      sock_send: syscall((
         fd: number,
         si_data_ptr: number,
         si_data_len: number,
@@ -1513,11 +1453,11 @@ export default class Context {
         so_datalen_out: number,
       ): number => {
         return ERRNO_NOSYS;
-      },
+      }),
 
-      sock_shutdown: (fd: number, how: number): number => {
+      sock_shutdown: syscall((fd: number, how: number): number => {
         return ERRNO_NOSYS;
-      },
+      }),
     };
   }
 }
