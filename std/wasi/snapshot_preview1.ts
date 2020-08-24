@@ -277,14 +277,14 @@ function errno(err: Error) {
   }
 }
 
-export interface ModuleOptions {
+export interface ContextOptions {
   args?: string[];
   env?: { [key: string]: string | undefined };
   preopens?: { [key: string]: string };
   memory?: WebAssembly.Memory;
 }
 
-export default class Module {
+export default class Context {
   args: string[];
   env: { [key: string]: string | undefined };
   memory: WebAssembly.Memory;
@@ -294,7 +294,7 @@ export default class Module {
 
   exports: Record<string, Function>;
 
-  constructor(options: ModuleOptions) {
+  constructor(options: ContextOptions) {
     this.args = options.args ? options.args : [];
     this.env = options.env ? options.env : {};
     this.memory = options.memory!;
