@@ -3196,25 +3196,9 @@ async fn inspector_runtime_evaluate_does_not_crash() {
   child.wait().unwrap();
 }
 
-#[tokio::test(core_threads = 2)]
-async fn websocket() {
-  use warp::Filter;
-
-  tokio::spawn(async move {
-    let websocket_route = warp::ws().map(|ws: warp::ws::Ws| {
-      ws.on_upgrade(|websocket| {
-        let (tx, rx) = websocket.split();
-        rx.forward(tx).map(|result| {
-          if let Err(e) = result {
-            println!("websocket server error: {:?}", e);
-          }
-        })
-      })
-    });
-    warp::serve(websocket_route)
-      .run(([127, 0, 0, 1], 4242))
-      .await;
-  });
+#[test]
+fn websocket() {
+  let _g = util::http_server();
 
   let script = util::tests_path().join("websocket_test.ts");
   let status = util::deno_cmd()

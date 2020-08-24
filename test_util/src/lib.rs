@@ -38,6 +38,7 @@ const DOUBLE_REDIRECTS_PORT: u16 = 4548;
 const INF_REDIRECTS_PORT: u16 = 4549;
 const REDIRECT_ABSOLUTE_PORT: u16 = 4550;
 const HTTPS_PORT: u16 = 5545;
+const WS_PORT: u16 = 4242;
 
 pub const PERMISSION_VARIANTS: [&str; 5] =
   ["read", "write", "env", "net", "run"];
@@ -107,6 +108,20 @@ pub async fn run_all_servers() {
   });
   let redirect_server_fut =
     warp::serve(routes).bind(([127, 0, 0, 1], REDIRECT_PORT));
+
+  let websocket_route = warp::ws().map(|ws: warp::ws::Ws| {
+    ws.on_upgrade(|websocket| {
+      use futures::stream::StreamExt;
+      let (tx, rx) = websocket.split();
+      rx.forward(tx).map(|result| {
+        if let Err(e) = result {
+          println!("websocket server error: {:?}", e);
+        }
+      })
+    })
+  });
+  let ws_server_fut =
+    warp::serve(websocket_route).bind(([127, 0, 0, 1], WS_PORT));
 
   let routes = warp::path::full().map(|path: warp::path::FullPath| {
     let p = path.as_str();
@@ -393,6 +408,7 @@ pub async fn run_all_servers() {
       http_fut,
       https_fut,
       redirect_server_fut,
+      ws_server_fut,
       another_redirect_server_fut,
       inf_redirect_server_fut,
       double_redirect_server_fut,
