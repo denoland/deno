@@ -7,16 +7,19 @@ import {
   assertNotEquals,
 } from "./test_util.ts";
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyRecord = Record<any, any>;
+
 function deferred(): {
-  promise: Promise<{}>;
-  resolve: (value?: {} | PromiseLike<{}>) => void;
+  promise: Promise<AnyRecord>;
+  resolve: (value?: AnyRecord | PromiseLike<AnyRecord>) => void;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   reject: (reason?: any) => void;
 } {
-  let resolve: (value?: {} | PromiseLike<{}>) => void;
+  let resolve: (value?: AnyRecord | PromiseLike<AnyRecord>) => void;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let reject: ((reason?: any) => void) | undefined = undefined;
-  const promise = new Promise<{}>((res, rej): void => {
+  const promise = new Promise<AnyRecord>((res, rej): void => {
     resolve = res;
     reject = rej;
   });
