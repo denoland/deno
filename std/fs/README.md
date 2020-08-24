@@ -176,7 +176,8 @@ printFilesNames().then(() => console.log("Done!"));
 
 ### readFileStr
 
-Read file and output it as a string. Note: this module does not require the `--unstable` flag.
+Read file and output it as a string. Note: this module does not require the
+`--unstable` flag.
 
 **ReadOptions**
 
@@ -191,7 +192,8 @@ readFileStrSync("./target.dat", { encoding: "utf8" }); // string
 
 ### writeFileStr
 
-Write the string to file. Note: this module does not require the `--unstable` flag.
+Write the string to file. Note: this module does not require the `--unstable`
+flag.
 
 ```ts
 import {
