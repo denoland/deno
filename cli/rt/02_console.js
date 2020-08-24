@@ -402,7 +402,9 @@
   ) {
     const proxyDetails = Deno.core.getProxyDetails(value);
     if (proxyDetails != null) {
-      return inspectProxy(proxyDetails, ctx, level, inspectOptions);
+      return inspectOptions.showProxy
+        ? inspectProxy(proxyDetails, ctx, level, inspectOptions)
+        : inspectValue(proxyDetails[0], ctx, level, inspectOptions);
     }
 
     switch (typeof value) {

@@ -691,34 +691,6 @@ unitTest(async function consoleTestStringifyPromises(): Promise<void> {
   assertEquals(strLines[1], "  <rejected> Error: Whoops");
 });
 
-unitTest(function consoleTestStringifyProxy(): void {
-  assertEquals(
-    stringify(new Proxy([1, 2, 3], { get(): void {} })),
-    "Proxy [ [ 1, 2, 3 ], { get: [Function: get] } ]",
-  );
-  assertEquals(
-    stringify(
-      new Proxy({ a: 1 }, {
-        set(): boolean {
-          return false;
-        },
-      }),
-    ),
-    "Proxy [ { a: 1 }, { set: [Function: set] } ]",
-  );
-  assertEquals(
-    stringify(new Proxy([1, 2, 3, 4, 5, 6, 7], { get(): void {} })),
-    `Proxy [ [
-    1, 2, 3, 4,
-    5, 6, 7
-  ], { get: [Function: get] } ]`,
-  );
-  assertEquals(
-    stringify(new Proxy(function fn() {}, { get(): void {} })),
-    "Proxy [ [Function: fn], { get: [Function: get] } ]",
-  );
-});
-
 unitTest(function consoleTestWithCustomInspector(): void {
   class A {
     [customInspect](): string {
@@ -1377,5 +1349,47 @@ unitTest(function inspectIterableLimit(): void {
       { iterableLimit: 2 },
     ),
     `Map { "a" => 1, "b" => 2, ... 1 more items }`,
+  );
+});
+
+unitTest(function inspectProxy(): void {
+  assertEquals(
+    Deno.inspect(
+      new Proxy([1, 2, 3], { get(): void {} }),
+      { showProxy: false },
+    ),
+    "[ 1, 2, 3 ]",
+  );
+  assertEquals(
+    Deno.inspect(new Proxy([1, 2, 3], { get(): void {} }), { showProxy: true }),
+    "Proxy [ [ 1, 2, 3 ], { get: [Function: get] } ]",
+  );
+  assertEquals(
+    Deno.inspect(
+      new Proxy({ a: 1 }, {
+        set(): boolean {
+          return false;
+        },
+      }),
+      { showProxy: true },
+    ),
+    "Proxy [ { a: 1 }, { set: [Function: set] } ]",
+  );
+  assertEquals(
+    Deno.inspect(
+      new Proxy([1, 2, 3, 4, 5, 6, 7], { get(): void {} }),
+      { showProxy: true },
+    ),
+    `Proxy [ [
+    1, 2, 3, 4,
+    5, 6, 7
+  ], { get: [Function: get] } ]`,
+  );
+  assertEquals(
+    Deno.inspect(
+      new Proxy(function fn() {}, { get(): void {} }),
+      { showProxy: true },
+    ),
+    "Proxy [ [Function: fn], { get: [Function: get] } ]",
   );
 });
