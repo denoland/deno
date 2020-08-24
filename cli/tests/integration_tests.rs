@@ -3352,3 +3352,50 @@ fn should_not_panic_on_undefined_deno_dir_and_home_environment_variables() {
     .unwrap();
   assert!(output.status.success());
 }
+
+#[test]
+fn debug_with_log_level_and_rust_log() {
+  let hello_ts = util::root_path().join("cli/tests/002_hello.ts");
+  let expected = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("-L")
+    .arg("debug")
+    .arg("--reload")
+    .arg(hello_ts.clone())
+    .output()
+    .expect("failed to spawn script");
+  let rust_log = util::deno_cmd()
+    .env("RUST_LOG", "debug")
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("-L")
+    .arg("debug")
+    .arg("--reload")
+    .arg(hello_ts.clone())
+    .output()
+    .expect("failed to spawn script");
+  assert_eq!(expected, rust_log);
+}
+
+#[test]
+fn rust_log_debug() {
+  std::env::set_var("RUST_LOG", "debug");
+  (util::CheckOutputIntegrationTest {
+    args: "run --reload 002_hello.ts",
+    output: "RUST_LOG_debug.out",
+    .. Default::default()
+  }).run();
+  std::env::remove_var("RUST_LOG");
+}
+
+#[test]
+fn rust_log_deno_permissions() {
+  std::env::set_var("RUST_LOG", "deno::permissions");
+  (util::CheckOutputIntegrationTest {
+    args: "run --reload 002_hello.ts",
+    output: "RUST_LOG_permissions.out",
+    .. Default::default()
+  }).run();
+  std::env::remove_var("RUST_LOG");
+}
