@@ -3,6 +3,7 @@ use clap::App;
 use clap::AppSettings;
 use clap::Arg;
 use clap::ArgMatches;
+use clap::ArgSettings;
 use clap::SubCommand;
 use log::Level;
 use std::net::SocketAddr;
@@ -57,6 +58,7 @@ pub enum DenoSubcommand {
     files: Vec<String>,
     ignore: Vec<String>,
     rules: bool,
+    json: bool,
   },
   Repl,
   Run {
@@ -194,6 +196,8 @@ static ENV_VARIABLES_HELP: &str = "ENVIRONMENT VARIABLES:
     HTTP_PROXY           Proxy address for HTTP requests
                          (module downloads, fetch)
     HTTPS_PROXY          Proxy address for HTTPS requests
+                         (module downloads, fetch)
+    NO_PROXY             Comma-separated list of hosts which do not use a proxy
                          (module downloads, fetch)";
 
 static DENO_HELP: &str = "A secure JavaScript and TypeScript runtime
@@ -636,10 +640,12 @@ fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     None => vec![],
   };
   let rules = matches.is_present("rules");
+  let json = matches.is_present("json");
   flags.subcommand = DenoSubcommand::Lint {
     files,
     rules,
     ignore,
+    json,
   };
 }
 
@@ -1008,6 +1014,9 @@ fn lint_subcommand<'a, 'b>() -> App<'a, 'b> {
   deno lint --unstable
   deno lint --unstable myfile1.ts myfile2.js
 
+Print result as JSON:
+  deno lint --unstable --json
+
 List available rules:
   deno lint --unstable --rules
 
@@ -1040,6 +1049,12 @@ Ignore linting a file by adding an ignore comment at the top of the file:
         .use_delimiter(true)
         .require_equals(true)
         .help("Ignore linting particular source files."),
+    )
+    .arg(
+      Arg::with_name("json")
+        .long("json")
+        .help("Output lint result in JSON format.")
+        .takes_value(false),
     )
     .arg(
       Arg::with_name("files")
@@ -1179,6 +1194,7 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
     )
     .arg(
       Arg::with_name("filter")
+        .set(ArgSettings::AllowLeadingHyphen)
         .long("filter")
         .takes_value(true)
         .help("Run tests with this string or pattern in the test name"),
@@ -1761,6 +1777,7 @@ mod tests {
         subcommand: DenoSubcommand::Lint {
           files: vec!["script_1.ts".to_string(), "script_2.ts".to_string()],
           rules: false,
+          json: false,
           ignore: vec![],
         },
         unstable: true,
@@ -1780,6 +1797,7 @@ mod tests {
         subcommand: DenoSubcommand::Lint {
           files: vec![],
           rules: false,
+          json: false,
           ignore: svec!["script_1.ts", "script_2.ts"],
         },
         unstable: true,
@@ -1794,6 +1812,28 @@ mod tests {
         subcommand: DenoSubcommand::Lint {
           files: vec![],
           rules: true,
+          json: false,
+          ignore: vec![],
+        },
+        unstable: true,
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec_safe(svec![
+      "deno",
+      "lint",
+      "--unstable",
+      "--json",
+      "script_1.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Lint {
+          files: vec!["script_1.ts".to_string()],
+          rules: false,
+          json: true,
           ignore: vec![],
         },
         unstable: true,
@@ -2839,6 +2879,25 @@ mod tests {
           allow_none: false,
           quiet: false,
           filter: Some("foo".to_string()),
+          include: Some(svec!["dir1"]),
+        },
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn test_filter_leading_hyphen() {
+    let r =
+      flags_from_vec_safe(svec!["deno", "test", "--filter", "- foo", "dir1"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Test {
+          fail_fast: false,
+          allow_none: false,
+          quiet: false,
+          filter: Some("- foo".to_string()),
           include: Some(svec!["dir1"]),
         },
         ..Flags::default()

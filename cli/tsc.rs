@@ -3,7 +3,6 @@ use crate::colors;
 use crate::diagnostics::Diagnostic;
 use crate::diagnostics::DiagnosticItem;
 use crate::disk_cache::DiskCache;
-use crate::doc::Location;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::flags::Flags;
@@ -20,6 +19,7 @@ use crate::source_maps::SourceMapGetter;
 use crate::startup_data;
 use crate::state::State;
 use crate::swc_util::AstParser;
+use crate::swc_util::Location;
 use crate::swc_util::SwcDiagnosticBuffer;
 use crate::version;
 use crate::worker::Worker;
@@ -46,6 +46,7 @@ use std::ops::Deref;
 use std::ops::DerefMut;
 use std::path::PathBuf;
 use std::pin::Pin;
+use std::rc::Rc;
 use std::str;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -131,9 +132,12 @@ pub struct CompilerWorker {
 }
 
 impl CompilerWorker {
-  pub fn new(name: String, startup_data: StartupData, state: State) -> Self {
-    let state_ = state.clone();
-    let mut worker = Worker::new(name, startup_data, state_);
+  pub fn new(
+    name: String,
+    startup_data: StartupData,
+    state: &Rc<State>,
+  ) -> Self {
+    let mut worker = Worker::new(name, startup_data, state);
     let response = Arc::new(Mutex::new(None));
     {
       let isolate = &mut worker.isolate;
@@ -199,21 +203,16 @@ lazy_static! {
 /// Create a new worker with snapshot of TS compiler and setup compiler's
 /// runtime.
 fn create_compiler_worker(
-  global_state: GlobalState,
+  global_state: &Arc<GlobalState>,
   permissions: Permissions,
 ) -> CompilerWorker {
   // TODO(bartlomieju): these $deno$ specifiers should be unified for all subcommands
   // like 'eval', 'repl'
   let entry_point =
     ModuleSpecifier::resolve_url_or_path("./__$deno$ts_compiler.ts").unwrap();
-  let worker_state = State::new(
-    global_state.clone(),
-    Some(permissions),
-    entry_point,
-    None,
-    true,
-  )
-  .expect("Unable to create worker state");
+  let worker_state =
+    State::new(&global_state, Some(permissions), entry_point, None, true)
+      .expect("Unable to create worker state");
 
   // TODO(bartlomieju): this metric is never used anywhere
   // Count how many times we start the compiler worker.
@@ -222,7 +221,7 @@ fn create_compiler_worker(
   let mut worker = CompilerWorker::new(
     "TS".to_string(),
     startup_data::compiler_isolate_init(),
-    worker_state,
+    &worker_state,
   );
   worker
     .execute("globalThis.bootstrapCompilerRuntime()")
@@ -545,7 +544,7 @@ impl TsCompiler {
   /// compiler.
   pub async fn compile(
     &self,
-    global_state: GlobalState,
+    global_state: &Arc<GlobalState>,
     source_file: &SourceFile,
     target: TargetLib,
     permissions: Permissions,
@@ -635,7 +634,7 @@ impl TsCompiler {
   /// all the dependencies for that module.
   pub async fn bundle(
     &self,
-    global_state: GlobalState,
+    global_state: &Arc<GlobalState>,
     module_specifier: ModuleSpecifier,
   ) -> Result<String, ErrBox> {
     debug!(
@@ -1055,11 +1054,11 @@ impl TsCompiler {
 }
 
 async fn execute_in_same_thread(
-  global_state: GlobalState,
+  global_state: &Arc<GlobalState>,
   permissions: Permissions,
   req: String,
 ) -> Result<String, ErrBox> {
-  let mut worker = create_compiler_worker(global_state.clone(), permissions);
+  let mut worker = create_compiler_worker(&global_state, permissions);
   let script = format!("globalThis.tsCompilerOnMessage({{ data: {} }});", req);
   worker.execute2("<compiler>", &script)?;
   (&mut *worker).await?;
@@ -1067,7 +1066,7 @@ async fn execute_in_same_thread(
 }
 
 async fn create_runtime_module_graph(
-  global_state: GlobalState,
+  global_state: &Arc<GlobalState>,
   permissions: Permissions,
   root_name: &str,
   sources: &Option<HashMap<String, String>>,
@@ -1131,14 +1130,14 @@ fn js_error_to_op_error(error: ErrBox) -> OpError {
 
 /// This function is used by `Deno.compile()` API.
 pub async fn runtime_compile(
-  global_state: GlobalState,
+  global_state: &Arc<GlobalState>,
   permissions: Permissions,
   root_name: &str,
   sources: &Option<HashMap<String, String>>,
   maybe_options: &Option<String>,
 ) -> Result<Value, OpError> {
   let (root_names, module_graph) = create_runtime_module_graph(
-    global_state.clone(),
+    &global_state,
     permissions.clone(),
     root_name,
     sources,
@@ -1178,14 +1177,14 @@ pub async fn runtime_compile(
 
 /// This function is used by `Deno.bundle()` API.
 pub async fn runtime_bundle(
-  global_state: GlobalState,
+  global_state: &Arc<GlobalState>,
   permissions: Permissions,
   root_name: &str,
   sources: &Option<HashMap<String, String>>,
   maybe_options: &Option<String>,
 ) -> Result<Value, OpError> {
   let (root_names, module_graph) = create_runtime_module_graph(
-    global_state.clone(),
+    &global_state,
     permissions.clone(),
     root_name,
     sources,
@@ -1217,7 +1216,7 @@ pub async fn runtime_bundle(
 
 /// This function is used by `Deno.transpileOnly()` API.
 pub async fn runtime_transpile(
-  global_state: GlobalState,
+  global_state: &Arc<GlobalState>,
   permissions: Permissions,
   sources: &HashMap<String, String>,
   options: &Option<String>,
@@ -1495,6 +1494,7 @@ mod tests {
   use super::*;
   use crate::deno_dir;
   use crate::fs as deno_fs;
+  use crate::global_state::GlobalState;
   use crate::http_cache;
   use deno_core::ModuleSpecifier;
   use std::path::PathBuf;
@@ -1607,7 +1607,7 @@ mod tests {
 
     let result = ts_compiler
       .compile(
-        mock_state.clone(),
+        &mock_state,
         &out,
         TargetLib::Main,
         Permissions::allow_all(),
@@ -1716,7 +1716,7 @@ mod tests {
 
     let result = mock_state
       .ts_compiler
-      .bundle(mock_state.clone(), module_name)
+      .bundle(&mock_state, module_name)
       .await;
 
     assert!(result.is_ok());

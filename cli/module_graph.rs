@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::checksum;
-use crate::doc::Location;
 use crate::file_fetcher::map_file_extension;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
@@ -8,6 +7,7 @@ use crate::import_map::ImportMap;
 use crate::msg::MediaType;
 use crate::op_error::OpError;
 use crate::permissions::Permissions;
+use crate::swc_util::Location;
 use crate::tsc::pre_process_file;
 use crate::tsc::ImportDesc;
 use crate::tsc::TsReferenceDesc;
@@ -582,7 +582,7 @@ impl ModuleGraphLoader {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::GlobalState;
+  use crate::global_state::GlobalState;
 
   async fn build_graph(
     module_specifier: &ModuleSpecifier,

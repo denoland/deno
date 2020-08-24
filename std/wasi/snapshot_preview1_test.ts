@@ -3,7 +3,7 @@
 import { assert, assertEquals } from "../testing/asserts.ts";
 import { copy } from "../fs/mod.ts";
 import * as path from "../path/mod.ts";
-import WASI from "./snapshot_preview1.ts";
+import Context from "./snapshot_preview1.ts";
 
 const ignore = [
   "wasi_clock_time_get_realtime.wasm",
@@ -23,18 +23,17 @@ if (import.meta.main) {
   const binary = await Deno.readFile(Deno.args[1]);
   const module = await WebAssembly.compile(binary);
 
-  const arg0 = Deno.args[1];
-  const wasi = new WASI({
+  const context = new Context({
     env: options.env,
     args: [arg0].concat(options.args),
     preopens: options.preopens,
   });
 
   const instance = new WebAssembly.Instance(module, {
-    wasi_snapshot_preview1: wasi.exports,
+    wasi_snapshot_preview1: context.exports,
   });
 
-  wasi.memory = instance.exports.memory;
+  context.memory = instance.exports.memory;
 
   instance.exports._start();
 } else {

@@ -65,11 +65,12 @@
     }
   }
 
+  window.AbortSignal = AbortSignal;
+  window.AbortController = AbortController;
+  window.__bootstrap = window.__bootstrap || {};
   window.__bootstrap.abortSignal = {
-    AbortSignal,
     add,
     signalAbort,
     remove,
-    AbortController,
   };
 })(this);

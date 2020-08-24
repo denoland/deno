@@ -9,8 +9,9 @@ use crate::tsc::runtime_transpile;
 use deno_core::CoreIsolate;
 use deno_core::ZeroCopyBuf;
 use std::collections::HashMap;
+use std::rc::Rc;
 
-pub fn init(i: &mut CoreIsolate, s: &State) {
+pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
   i.register_op("op_compile", s.stateful_json_op(op_compile));
   i.register_op("op_transpile", s.stateful_json_op(op_transpile));
 }
@@ -25,19 +26,18 @@ struct CompileArgs {
 }
 
 fn op_compile(
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   state.check_unstable("Deno.compile");
   let args: CompileArgs = serde_json::from_value(args)?;
-  let s = state.borrow();
-  let global_state = s.global_state.clone();
-  let permissions = s.permissions.clone();
+  let global_state = state.global_state.clone();
+  let permissions = state.permissions.borrow().clone();
   let fut = async move {
     let fut = if args.bundle {
       runtime_bundle(
-        global_state,
+        &global_state,
         permissions,
         &args.root_name,
         &args.sources,
@@ -46,7 +46,7 @@ fn op_compile(
       .boxed_local()
     } else {
       runtime_compile(
-        global_state,
+        &global_state,
         permissions,
         &args.root_name,
         &args.sources,
@@ -68,17 +68,16 @@ struct TranspileArgs {
 }
 
 fn op_transpile(
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   state.check_unstable("Deno.transpile");
   let args: TranspileArgs = serde_json::from_value(args)?;
-  let s = state.borrow();
-  let global_state = s.global_state.clone();
-  let permissions = s.permissions.clone();
+  let global_state = state.global_state.clone();
+  let permissions = state.permissions.borrow().clone();
   let fut = async move {
-    runtime_transpile(global_state, permissions, &args.sources, &args.options)
+    runtime_transpile(&global_state, permissions, &args.sources, &args.options)
       .await
   }
   .boxed_local();

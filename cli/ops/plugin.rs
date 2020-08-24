@@ -20,7 +20,7 @@ use std::rc::Rc;
 use std::task::Context;
 use std::task::Poll;
 
-pub fn init(i: &mut CoreIsolate, s: &State) {
+pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
   i.register_op(
     "op_open_plugin",
     s.core_op(json_op(s.stateful_op2(op_open_plugin))),
@@ -35,7 +35,7 @@ struct OpenPluginArgs {
 
 pub fn op_open_plugin(
   isolate_state: &mut CoreIsolateState,
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {

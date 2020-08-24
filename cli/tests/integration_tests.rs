@@ -1,8 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 #[cfg(unix)]
 extern crate nix;
-#[cfg(unix)]
-extern crate pty;
 extern crate tempfile;
 
 use test_util as util;
@@ -166,8 +164,8 @@ fn no_color() {
 #[test]
 #[ignore]
 pub fn test_raw_tty() {
-  use pty::fork::*;
   use std::io::{Read, Write};
+  use util::pty::fork::*;
 
   let fork = Fork::from_ptmx().unwrap();
 
@@ -1581,12 +1579,6 @@ itest!(_056_make_temp_file_write_perm {
   output: "056_make_temp_file_write_perm.out",
 });
 
-// TODO(lucacasonato): remove --unstable when permissions goes stable
-itest!(_057_revoke_permissions {
-  args: "test -A --unstable 057_revoke_permissions.ts",
-  output: "057_revoke_permissions.out",
-});
-
 itest!(_058_tasks_microtasks_close {
   args: "run --quiet 058_tasks_microtasks_close.ts",
   output: "058_tasks_microtasks_close.ts.out",
@@ -1601,6 +1593,36 @@ itest!(_059_fs_relative_path_perm {
 itest!(_060_deno_doc_displays_all_overloads_in_details_view {
   args: "doc 060_deno_doc_displays_all_overloads_in_details_view.ts NS.test",
   output: "060_deno_doc_displays_all_overloads_in_details_view.ts.out",
+});
+
+#[cfg(unix)]
+#[test]
+fn _061_permissions_request() {
+  let args = "run --unstable 061_permissions_request.ts";
+  let output = "061_permissions_request.ts.out";
+  let input = b"g\nd\n";
+
+  util::test_pty(args, output, input);
+}
+
+#[cfg(unix)]
+#[test]
+fn _062_permissions_request_global() {
+  let args = "run --unstable 062_permissions_request_global.ts";
+  let output = "062_permissions_request_global.ts.out";
+  let input = b"g\n";
+
+  util::test_pty(args, output, input);
+}
+
+itest!(_063_permissions_revoke {
+  args: "run --unstable --allow-read=foo,bar 063_permissions_revoke.ts",
+  output: "063_permissions_revoke.ts.out",
+});
+
+itest!(_064_permissions_revoke_global {
+  args: "run --unstable --allow-read=foo,bar 064_permissions_revoke_global.ts",
+  output: "064_permissions_revoke_global.ts.out",
 });
 
 itest!(js_import_detect {
@@ -2060,6 +2082,11 @@ itest!(wasm_async {
   output: "wasm_async.out",
 });
 
+itest!(wasm_streaming {
+  args: "run wasm_streaming.js",
+  output: "wasm_streaming.out",
+});
+
 itest!(wasm_unreachable {
   args: "run wasm_unreachable.js",
   output: "wasm_unreachable.out",
@@ -2216,16 +2243,33 @@ itest!(deno_lint {
   exit_code: 1,
 });
 
+itest!(deno_lint_json {
+  args:
+    "lint --unstable --json lint/file1.js lint/file2.ts lint/ignored_file.ts lint/malformed.js",
+  output: "lint/expected_json.out",
+  exit_code: 1,
+});
+
 itest!(deno_lint_ignore {
-  args: "lint --unstable --ignore=lint/file1.js lint/",
+  args: "lint --unstable --ignore=lint/file1.js,lint/malformed.js lint/",
   output: "lint/expected_ignore.out",
   exit_code: 1,
 });
 
 itest!(deno_lint_glob {
-  args: "lint --unstable lint/",
+  args: "lint --unstable --ignore=lint/malformed.js lint/",
   output: "lint/expected_glob.out",
   exit_code: 1,
+});
+
+itest!(deno_doc_builtin {
+  args: "doc",
+  output: "deno_doc_builtin.out",
+});
+
+itest!(deno_doc {
+  args: "doc deno_doc.ts",
+  output: "deno_doc.out",
 });
 
 itest!(compiler_js_error {
@@ -3191,6 +3235,8 @@ fn set_raw_should_not_panic_on_no_tty() {
 }
 
 #[cfg(windows)]
+// Clippy suggests to remove the `NoStd` prefix from all variants. I disagree.
+#[allow(clippy::enum_variant_names)]
 enum WinProcConstraints {
   NoStdIn,
   NoStdOut,
