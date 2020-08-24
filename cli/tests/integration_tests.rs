@@ -3372,7 +3372,7 @@ fn debug_with_log_level_and_rust_log() {
     .arg("-L")
     .arg("debug")
     .arg("--reload")
-    .arg(hello_ts.clone())
+    .arg(hello_ts)
     .output()
     .expect("failed to spawn script");
   assert_eq!(expected, rust_log);
