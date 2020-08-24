@@ -1,17 +1,14 @@
 #[macro_use]
 extern crate log;
 
-use deno_core::serde_json;
 use deno_core::CoreIsolate;
 use deno_core::CoreIsolateState;
-use deno_core::ErrBox;
 use deno_core::Op;
 use deno_core::ResourceTable;
 use deno_core::Script;
 use deno_core::StartupData;
 use deno_core::ZeroCopyBuf;
 use futures::future::poll_fn;
-use futures::future::Future;
 use futures::future::FutureExt;
 use futures::future::TryFuture;
 use futures::future::TryFutureExt;
@@ -80,8 +77,8 @@ impl From<Record> for RecordBuf {
 
 pub fn isolate_new() -> CoreIsolate {
   let startup_data = StartupData::Script(Script {
-    source: include_str!("http_bench.js"),
-    filename: "http_bench.js",
+    source: include_str!("http_bench_bin_ops.js"),
+    filename: "http_bench_bin_ops.js",
   });
 
   let mut isolate = CoreIsolate::new(startup_data, false);
@@ -155,8 +152,8 @@ pub fn isolate_new() -> CoreIsolate {
     isolate.register_op(name, core_handler);
   }
 
-  isolate.register_op_json_sync("listen", op_listen);
-  isolate.register_op_json_async("accept", op_accept);
+  register_sync_op(&mut isolate, "listen", op_listen);
+  register_async_op(&mut isolate, "accept", op_accept);
   register_async_op(&mut isolate, "read", op_read);
   register_async_op(&mut isolate, "write", op_write);
   register_sync_op(&mut isolate, "close", op_close);
@@ -178,40 +175,34 @@ fn op_close(
 }
 
 fn op_listen(
-  state: &mut CoreIsolateState,
-  _args: serde_json::Value,
+  resource_table: Rc<RefCell<ResourceTable>>,
+  _rid: u32,
   _buf: &mut [ZeroCopyBuf],
-) -> Result<serde_json::Value, ErrBox> {
+) -> Result<u32, Error> {
   debug!("listen");
   let addr = "127.0.0.1:4544".parse::<SocketAddr>().unwrap();
   let std_listener = std::net::TcpListener::bind(&addr)?;
   let listener = TcpListener::from_std(std_listener)?;
-  let resource_table = &mut state.resource_table.borrow_mut();
+  let resource_table = &mut resource_table.borrow_mut();
   let rid = resource_table.add("tcpListener", Box::new(listener));
-  Ok(serde_json::json!({ "rid": rid }))
+  Ok(rid)
 }
 
 fn op_accept(
-  state: &mut CoreIsolateState,
-  args: serde_json::Value,
+  resource_table: Rc<RefCell<ResourceTable>>,
+  rid: u32,
   _buf: &mut [ZeroCopyBuf],
-) -> impl Future<Output = Result<serde_json::Value, ErrBox>> {
-  let rid = args.get("rid").unwrap().as_u64().unwrap() as u32;
+) -> impl TryFuture<Ok = u32, Error = Error> {
   debug!("accept rid={}", rid);
 
-  let resource_table = state.resource_table.clone();
   poll_fn(move |cx| {
     let resource_table = &mut resource_table.borrow_mut();
     let listener = resource_table
       .get_mut::<TcpListener>(rid)
       .ok_or_else(bad_resource)?;
-    listener
-      .poll_accept(cx)
-      .map_err(ErrBox::from)
-      .map_ok(|(stream, _addr)| {
-        let rid = resource_table.add("tcpStream", Box::new(stream));
-        serde_json::json!({ "rid": rid })
-      })
+    listener.poll_accept(cx).map_ok(|(stream, _addr)| {
+      resource_table.add("tcpStream", Box::new(stream))
+    })
   })
 }
 
@@ -274,7 +265,7 @@ fn main() {
     .enable_all()
     .build()
     .unwrap();
-  deno_core::js_check(runtime.block_on(isolate));
+  runtime.block_on(isolate).expect("unexpected isolate error");
 }
 
 #[test]

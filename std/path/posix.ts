@@ -436,5 +436,7 @@ export function fromFileUrl(url: string | URL): string {
   if (url.protocol != "file:") {
     throw new TypeError("Must be a file URL.");
   }
-  return decodeURIComponent(url.pathname);
+  return decodeURIComponent(
+    url.pathname.replace(/%(?![0-9A-Fa-f]{2})/g, "%25"),
+  );
 }
