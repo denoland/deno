@@ -1,14 +1,22 @@
 # Read and Write Files
 
-Interacting with the filesystem to read and write files is a basic requirement of most development projects. Deno provides a number of ways to do this via the [standard library]() and the [Deno runtime API]().
+Interacting with the filesystem to read and write files is a basic requirement
+of most development projects. Deno provides a number of ways to do this via the
+[standard library]() and the [Deno runtime API]().
 
-As highlighted in the [Fetch Data example](./fetch_data) Deno restricts access to Input / Output by default for security reasons. So when interacting with the filesystem the `--allow-read` and `--allow-write` flags must be used with the `deno run` command.
+As highlighted in the [Fetch Data example](./fetch_data) Deno restricts access
+to Input / Output by default for security reasons. So when interacting with the
+filesystem the `--allow-read` and `--allow-write` flags must be used with the
+`deno run` command.
 
 ## Read
 
-The Deno runtime API makes it possible to read text files via the `readTextFile()` method, it just requires a path string or URL object. The method returns a promise which provides access to the text data.
+The Deno runtime API makes it possible to read text files via the
+`readTextFile()` method, it just requires a path string or URL object. The
+method returns a promise which provides access to the text data.
 
 **Command:** `deno run --allow-read read.ts`
+
 ```js
 async function readFile(path: string): Promise<string> {
   return await Deno.readTextFile(new URL(path, import.meta.url));
@@ -28,11 +36,18 @@ text.then((response) => console.log(response));
  * ]
  */
 ```
-The Deno standard library enables more advanced interaction with the filesystem and provides methods to read and parse files. The `readJson()` and `readJsonSync()` allow developers to read and parse files containing JSON. All these methods require is a valid file path string which can be generated using the `fromFileUrl()` method.
 
-Currently some of this functionality is marked as unstable so the `--unstable` flag is required along with the `deno run` command.
+The Deno standard library enables more advanced interaction with the filesystem
+and provides methods to read and parse files. The `readJson()` and
+`readJsonSync()` allow developers to read and parse files containing JSON. All
+these methods require is a valid file path string which can be generated using
+the `fromFileUrl()` method.
+
+Currently some of this functionality is marked as unstable so the `--unstable`
+flag is required along with the `deno run` command.
 
 **Command:** `deno run --unstable --allow-read read.ts`
+
 ```js
 import { readJsonSync } from "https://deno.land/std@0.65.0/fs/mod.ts";
 import { fromFileUrl } from "https://deno.land/std@0.65.0/path/mod.ts";
@@ -57,11 +72,15 @@ console.log(readJson("./people.json"));
 
 ## Write
 
-The Deno runtime API allows developers to write text to files via the `writeTextFile()` method. It just requires a file path and text string. On success the method will return an empty promise.
+The Deno runtime API allows developers to write text to files via the
+`writeTextFile()` method. It just requires a file path and text string. On
+success the method will return an empty promise.
 
-To run the command the `--allow-write` flag must be supplied to the `deno run` command.
+To run the command the `--allow-write` flag must be supplied to the `deno run`
+command.
 
 **Command:** `deno run --allow-write write.ts`
+
 ```js
 async function writeFile(path: string, text: string): Promise<void> {
   return await Deno.writeTextFile(path, text);
@@ -75,13 +94,23 @@ write.then(() => console.log("File written to."));
  * Output: File written to.
  */
 ```
-The Deno standard library makes available more advanced features to write to the filesystem. For instance it is possible to write an object literal to a JSON file.
 
-This requires a combination of the `ensureFile()`, `ensureFileSync()`, `writeJson()` and `writeJsonSync()` methods. In the example below the `ensureFileSync()` and the `writeJsonSync()` methods. The former checks for the existence of a file, and if it doesn't exist creates it. The latter method then writes the object to the file as JSON. If asynchronus execution is required use the `ensureFile()` and `writeJson()` methods.
+The Deno standard library makes available more advanced features to write to the
+filesystem. For instance it is possible to write an object literal to a JSON
+file.
 
-To execute the code the `deno run` command needs the stable flag and both the write and read flags.
+This requires a combination of the `ensureFile()`, `ensureFileSync()`,
+`writeJson()` and `writeJsonSync()` methods. In the example below the
+`ensureFileSync()` and the `writeJsonSync()` methods. The former checks for the
+existence of a file, and if it doesn't exist creates it. The latter method then
+writes the object to the file as JSON. If asynchronus execution is required use
+the `ensureFile()` and `writeJson()` methods.
+
+To execute the code the `deno run` command needs the stable flag and both the
+write and read flags.
 
 **Command:** `deno run --allow-write --allow-read --unstable write.ts`
+
 ```js
 import {
   ensureFileSync,
