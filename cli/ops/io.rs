@@ -11,6 +11,7 @@ use futures::future::FutureExt;
 use futures::ready;
 use std::collections::HashMap;
 use std::pin::Pin;
+use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::task::Context;
 use std::task::Poll;
@@ -84,7 +85,7 @@ lazy_static! {
   };
 }
 
-pub fn init(i: &mut CoreIsolate, s: &State) {
+pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
   i.register_op("op_read", s.stateful_minimal_op2(op_read));
   i.register_op("op_write", s.stateful_minimal_op2(op_write));
 }
@@ -236,7 +237,7 @@ impl DenoAsyncRead for StreamResource {
 
 pub fn op_read(
   isolate_state: &mut CoreIsolateState,
-  _state: &State,
+  _state: &Rc<State>,
   is_sync: bool,
   rid: i32,
   zero_copy: &mut [ZeroCopyBuf],
@@ -361,7 +362,7 @@ impl DenoAsyncWrite for StreamResource {
 
 pub fn op_write(
   isolate_state: &mut CoreIsolateState,
-  _state: &State,
+  _state: &Rc<State>,
   is_sync: bool,
   rid: i32,
   zero_copy: &mut [ZeroCopyBuf],

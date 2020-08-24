@@ -6,9 +6,10 @@ use deno_core::CoreIsolate;
 use deno_core::ZeroCopyBuf;
 use std::collections::HashMap;
 use std::env;
+use std::rc::Rc;
 use url::Url;
 
-pub fn init(i: &mut CoreIsolate, s: &State) {
+pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
   i.register_op("op_exit", s.stateful_json_op(op_exit));
   i.register_op("op_env", s.stateful_json_op(op_env));
   i.register_op("op_exec_path", s.stateful_json_op(op_exec_path));
@@ -21,7 +22,7 @@ pub fn init(i: &mut CoreIsolate, s: &State) {
 }
 
 fn op_exec_path(
-  state: &State,
+  state: &Rc<State>,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -41,7 +42,7 @@ struct SetEnv {
 }
 
 fn op_set_env(
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -52,7 +53,7 @@ fn op_set_env(
 }
 
 fn op_env(
-  state: &State,
+  state: &Rc<State>,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -67,7 +68,7 @@ struct GetEnv {
 }
 
 fn op_get_env(
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -86,7 +87,7 @@ struct DeleteEnv {
 }
 
 fn op_delete_env(
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -102,7 +103,7 @@ struct Exit {
 }
 
 fn op_exit(
-  _s: &State,
+  _s: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -111,7 +112,7 @@ fn op_exit(
 }
 
 fn op_loadavg(
-  state: &State,
+  state: &Rc<State>,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -128,7 +129,7 @@ fn op_loadavg(
 }
 
 fn op_hostname(
-  state: &State,
+  state: &Rc<State>,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -139,7 +140,7 @@ fn op_hostname(
 }
 
 fn op_os_release(
-  state: &State,
+  state: &Rc<State>,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {

@@ -9,7 +9,6 @@ use crate::module_graph::ModuleGraphFile;
 use crate::module_graph::ModuleGraphLoader;
 use crate::msg;
 use crate::msg::MediaType;
-use crate::op_error::OpError;
 use crate::permissions::Permissions;
 use crate::state::exit_unstable;
 use crate::tsc::CompiledModule;
@@ -18,20 +17,15 @@ use crate::tsc::TsCompiler;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
 use std::env;
-use std::ops::Deref;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::sync::Mutex;
 use tokio::sync::Mutex as AsyncMutex;
 
-/// Holds state of the program and can be accessed by V8 isolate.
-#[derive(Clone)]
-pub struct GlobalState(Arc<GlobalStateInner>);
-
 /// This structure represents state of single "deno" program.
 ///
 /// It is shared by all created workers (thus V8 isolates).
-pub struct GlobalStateInner {
+pub struct GlobalState {
   /// Flags parsed from `argv` contents.
   pub flags: flags::Flags,
   /// Permissions parsed from `flags`.
@@ -45,23 +39,13 @@ pub struct GlobalStateInner {
   compile_lock: AsyncMutex<()>,
 }
 
-impl Deref for GlobalState {
-  type Target = GlobalStateInner;
-  fn deref(&self) -> &Self::Target {
-    &self.0
-  }
-}
-
 impl GlobalState {
-  pub fn new(flags: flags::Flags) -> Result<Self, ErrBox> {
+  pub fn new(flags: flags::Flags) -> Result<Arc<Self>, ErrBox> {
     let custom_root = env::var("DENO_DIR").map(String::into).ok();
     let dir = deno_dir::DenoDir::new(custom_root)?;
     let deps_cache_location = dir.root.join("deps");
     let http_cache = http_cache::HttpCache::new(&deps_cache_location);
-    let ca_file = flags
-      .ca_file
-      .clone()
-      .or_else(|| env::var("DENO_CERT").map(String::into).ok());
+    let ca_file = flags.ca_file.clone().or_else(|| env::var("DENO_CERT").ok());
 
     let file_fetcher = SourceFileFetcher::new(
       http_cache,
@@ -69,7 +53,7 @@ impl GlobalState {
       flags.cache_blocklist.clone(),
       flags.no_remote,
       flags.cached_only,
-      ca_file,
+      ca_file.as_deref(),
     )?;
 
     let ts_compiler = TsCompiler::new(
@@ -96,7 +80,7 @@ impl GlobalState {
         }
       };
 
-    let inner = GlobalStateInner {
+    let global_state = GlobalState {
       dir,
       permissions: Permissions::from_flags(&flags),
       flags,
@@ -107,7 +91,7 @@ impl GlobalState {
       compiler_starts: AtomicUsize::new(0),
       compile_lock: AsyncMutex::new(()),
     };
-    Ok(GlobalState(Arc::new(inner)))
+    Ok(Arc::new(global_state))
   }
 
   /// This function is called when new module load is
@@ -115,7 +99,7 @@ impl GlobalState {
   /// all dependencies and if it is required then also perform TS typecheck
   /// and traspilation.
   pub async fn prepare_module_load(
-    &self,
+    self: &Arc<Self>,
     module_specifier: ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
     target_lib: TargetLib,
@@ -175,21 +159,11 @@ impl GlobalState {
 
     if should_compile {
       if self.flags.no_check {
-        self
-          .ts_compiler
-          .transpile(self.clone(), permissions, module_graph)
-          .await?;
+        self.ts_compiler.transpile(module_graph).await?;
       } else {
         self
           .ts_compiler
-          .compile(
-            self.clone(),
-            &out,
-            target_lib,
-            permissions,
-            module_graph,
-            allow_js,
-          )
+          .compile(self, &out, target_lib, permissions, module_graph, allow_js)
           .await?;
       }
     }
@@ -214,7 +188,6 @@ impl GlobalState {
     module_specifier: ModuleSpecifier,
     _maybe_referrer: Option<ModuleSpecifier>,
   ) -> Result<CompiledModule, ErrBox> {
-    let state1 = self.clone();
     let module_specifier = module_specifier.clone();
 
     let out = self
@@ -236,19 +209,25 @@ impl GlobalState {
     };
 
     let compiled_module = if was_compiled {
-      state1
-        .ts_compiler
-        .get_compiled_module(&out.url)
-        .map_err(|e| {
-          let msg = e.to_string();
-          OpError::other(format!(
-            "Failed to get compiled source code of {}.\nReason: {}",
-            out.url, msg
-          ))
-        })?
+      match self.ts_compiler.get_compiled_module(&out.url) {
+        Ok(module) => module,
+        Err(e) => {
+          let msg = format!(
+            "Failed to get compiled source code of \"{}\".\nReason: {}\n\
+            If the source file provides only type exports, prefer to use \"import type\" or \"export type\" syntax instead.",
+            out.url, e.to_string()
+          );
+          info!("{} {}", crate::colors::yellow("Warning"), msg);
+
+          CompiledModule {
+            code: "".to_string(),
+            name: out.url.to_string(),
+          }
+        }
+      }
     } else {
       CompiledModule {
-        code: String::from_utf8(out.source_code.clone())?,
+        code: out.source_code.to_string()?,
         name: out.url.to_string(),
       }
     };
@@ -262,16 +241,12 @@ impl GlobalState {
   pub fn mock(
     argv: Vec<String>,
     maybe_flags: Option<flags::Flags>,
-  ) -> GlobalState {
-    if let Some(in_flags) = maybe_flags {
-      GlobalState::new(flags::Flags { argv, ..in_flags }).unwrap()
-    } else {
-      GlobalState::new(flags::Flags {
-        argv,
-        ..flags::Flags::default()
-      })
-      .unwrap()
-    }
+  ) -> Arc<GlobalState> {
+    GlobalState::new(flags::Flags {
+      argv,
+      ..maybe_flags.unwrap_or_default()
+    })
+    .unwrap()
   }
 }
 
@@ -338,8 +313,8 @@ fn thread_safe() {
 
 #[test]
 fn test_should_allow_js() {
-  use crate::doc::Location;
   use crate::module_graph::ImportDescriptor;
+  use crate::swc_util::Location;
 
   assert!(should_allow_js(&[
     &ModuleGraphFile {

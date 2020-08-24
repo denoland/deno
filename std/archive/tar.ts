@@ -105,15 +105,16 @@ function pad(num: number, bytes: number, base?: number): string {
   return "000000000000".substr(numString.length + 12 - bytes) + numString;
 }
 
-const types: { [key: string]: string } = {
-  "": "file",
-  "0": "file",
-  "1": "link",
-  "2": "symlink",
-  "3": "character-device",
-  "4": "block-device",
-  "5": "directory",
-};
+enum FileTypes {
+  "file" = 0,
+  "link" = 1,
+  "symlink" = 2,
+  "character-device" = 3,
+  "block-device" = 4,
+  "directory" = 5,
+  "fifo" = 6,
+  "contiguous-file" = 7,
+}
 
 /*
 struct posix_header {           // byte offset
@@ -352,6 +353,10 @@ export class Tar {
     let info: Deno.FileInfo | undefined;
     if (opts.filePath) {
       info = await Deno.stat(opts.filePath);
+      if (info.isDirectory) {
+        info.size = 0;
+        opts.reader = new Deno.Buffer();
+      }
     }
 
     const mode = opts.fileMode || (info && info.mode) ||
@@ -374,6 +379,10 @@ export class Tar {
 
     const fileSize = info?.size ?? opts.contentSize;
     assert(fileSize != null, "fileSize must be set");
+
+    const type = opts.type
+      ? FileTypes[opts.type as keyof typeof FileTypes]
+      : (info?.isDirectory ? FileTypes.directory : FileTypes.file);
     const tarData: TarDataWithSource = {
       fileName,
       fileNamePrefix,
@@ -383,7 +392,7 @@ export class Tar {
       fileSize: pad(fileSize, 11),
       mtime: pad(mtime, 11),
       checksum: "        ",
-      type: "0", // just a file
+      type: type.toString(),
       ustar,
       owner: opts.owner || "",
       group: opts.group || "",
@@ -593,7 +602,7 @@ export class Untar {
     );
 
     meta.fileSize = parseInt(decoder.decode(header.fileSize), 8);
-    meta.type = types[meta.type as string] || meta.type;
+    meta.type = FileTypes[parseInt(meta.type!)] ?? meta.type;
 
     return meta;
   };

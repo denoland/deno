@@ -203,25 +203,25 @@ unitTest(function consoleTestStringifyCircular(): void {
   assertEquals(
     stringify(console),
     `{
-  log: [Function],
-  debug: [Function],
-  info: [Function],
-  dir: [Function],
-  dirxml: [Function],
-  warn: [Function],
-  error: [Function],
-  assert: [Function],
-  count: [Function],
-  countReset: [Function],
-  table: [Function],
-  time: [Function],
-  timeLog: [Function],
-  timeEnd: [Function],
-  group: [Function],
-  groupCollapsed: [Function],
-  groupEnd: [Function],
-  clear: [Function],
-  trace: [Function],
+  log: [Function: log],
+  debug: [Function: log],
+  info: [Function: log],
+  dir: [Function: dir],
+  dirxml: [Function: dir],
+  warn: [Function: warn],
+  error: [Function: warn],
+  assert: [Function: assert],
+  count: [Function: count],
+  countReset: [Function: countReset],
+  table: [Function: table],
+  time: [Function: time],
+  timeLog: [Function: timeLog],
+  timeEnd: [Function: timeEnd],
+  group: [Function: group],
+  groupCollapsed: [Function: group],
+  groupEnd: [Function: groupEnd],
+  clear: [Function: clear],
+  trace: [Function: trace],
   indentLevel: 0,
   Symbol(isConsoleInstance): true
 }`,
@@ -588,6 +588,84 @@ unitTest(function consoleTestStringifyIterable() {
 ]`
   );
   */
+});
+
+unitTest(function consoleTestStringifyIterableWhenGrouped(): void {
+  const withOddNumberOfEls = new Float64Array(
+    [
+      2.1,
+      2.01,
+      2.001,
+      2.0001,
+      2.00001,
+      2.000001,
+      2.0000001,
+      2.00000001,
+      2.000000001,
+      2.0000000001,
+      2,
+    ],
+  );
+  assertEquals(
+    stringify(withOddNumberOfEls),
+    `Float64Array(11) [
+          2.1,         2.01,
+        2.001,       2.0001,
+      2.00001,     2.000001,
+    2.0000001,   2.00000001,
+  2.000000001, 2.0000000001,
+            2
+]`,
+  );
+  const withEvenNumberOfEls = new Float64Array(
+    [
+      2.1,
+      2.01,
+      2.001,
+      2.0001,
+      2.00001,
+      2.000001,
+      2.0000001,
+      2.00000001,
+      2.000000001,
+      2.0000000001,
+      2,
+      2,
+    ],
+  );
+  assertEquals(
+    stringify(withEvenNumberOfEls),
+    `Float64Array(12) [
+          2.1,         2.01,
+        2.001,       2.0001,
+      2.00001,     2.000001,
+    2.0000001,   2.00000001,
+  2.000000001, 2.0000000001,
+            2,            2
+]`,
+  );
+  const withThreeColumns = [
+    2,
+    2.1,
+    2.11,
+    2,
+    2.111,
+    2.1111,
+    2,
+    2.1,
+    2.11,
+    2,
+    2.1,
+  ];
+  assertEquals(
+    stringify(withThreeColumns),
+    `[
+  2,   2.1,   2.11,
+  2, 2.111, 2.1111,
+  2,   2.1,   2.11,
+  2,   2.1
+]`,
+  );
 });
 
 unitTest(async function consoleTestStringifyPromises(): Promise<void> {

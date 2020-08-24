@@ -2,7 +2,6 @@
 use super::dispatch_json::{JsonOp, Value};
 use crate::op_error::OpError;
 use crate::ops::json_op;
-use crate::ops::JsonOpDispatcher;
 use crate::state::State;
 use crate::web_worker::WebWorkerHandle;
 use crate::worker::WorkerEvent;
@@ -11,11 +10,16 @@ use deno_core::CoreIsolateState;
 use deno_core::ZeroCopyBuf;
 use futures::channel::mpsc;
 use std::convert::From;
+use std::rc::Rc;
 
 pub fn web_worker_op<D>(
   sender: mpsc::Sender<WorkerEvent>,
   dispatcher: D,
-) -> impl JsonOpDispatcher
+) -> impl Fn(
+  &mut CoreIsolateState,
+  Value,
+  &mut [ZeroCopyBuf],
+) -> Result<JsonOp, OpError>
 where
   D: Fn(
     &mpsc::Sender<WorkerEvent>,
@@ -33,7 +37,11 @@ pub fn web_worker_op2<D>(
   handle: WebWorkerHandle,
   sender: mpsc::Sender<WorkerEvent>,
   dispatcher: D,
-) -> impl JsonOpDispatcher
+) -> impl Fn(
+  &mut CoreIsolateState,
+  Value,
+  &mut [ZeroCopyBuf],
+) -> Result<JsonOp, OpError>
 where
   D: Fn(
     WebWorkerHandle,
@@ -52,7 +60,7 @@ where
 
 pub fn init(
   i: &mut CoreIsolate,
-  s: &State,
+  s: &Rc<State>,
   sender: &mpsc::Sender<WorkerEvent>,
   handle: WebWorkerHandle,
 ) {

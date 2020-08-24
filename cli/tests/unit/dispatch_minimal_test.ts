@@ -8,9 +8,9 @@ import {
 
 const readErrorStackPattern = new RegExp(
   `^.*
-    at unwrapResponse \\(.*dispatch_minimal\\.ts:.*\\)
-    at Object.sendAsyncMinimal \\(.*dispatch_minimal\\.ts:.*\\)
-    at async Object\\.read \\(.*io\\.ts:.*\\).*$`,
+    at unwrapResponse \\(.*dispatch_minimal\\.js:.*\\)
+    at sendAsync \\(.*dispatch_minimal\\.js:.*\\)
+    at async Object\\.read \\(.*io\\.js:.*\\).*$`,
   "ms",
 );
 
@@ -43,7 +43,7 @@ unitTest(function malformedMinimalControlBuffer(): void {
     header.byteLength / 4,
   );
   const arg = buf32[1];
-  const message = new TextDecoder().decode(res.slice(12)).trim();
+  const codeAndMessage = new TextDecoder().decode(res.slice(12)).trim();
   assert(arg < 0);
-  assertEquals(message, "Unparsable control buffer");
+  assertEquals(codeAndMessage, "TypeErrorUnparsable control buffer");
 });

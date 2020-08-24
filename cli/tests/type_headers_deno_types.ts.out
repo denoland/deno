@@ -1,0 +1,5 @@
+Download http://[WILDCARD]:4545/type_headers_deno_types.foo.js
+Download http://[WILDCARD]:4545/type_headers_deno_types.foo.d.ts
+Download http://[WILDCARD]:4545/type_headers_deno_types.d.ts
+Check [WILDCARD]/type_headers_deno_types.ts
+hello
