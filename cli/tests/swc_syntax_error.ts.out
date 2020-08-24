@@ -1,1 +1,1 @@
-error: Unexpected token Some(RBrace) at [WILDCARD]syntax_error.ts:4:0
+error: Unexpected token `}`. Expected an identifier, void, yield, null, await, break, a string literal, a numeric literal, true, false, `, -, import, this, typeof, {, [, ( at [WILDCARD]syntax_error.ts:4:0
