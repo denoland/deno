@@ -3362,9 +3362,12 @@ fn debug_with_log_level_and_rust_log() {
     .arg("-L")
     .arg("debug")
     .arg("--reload")
-    .arg(hello_ts.clone())
-    .output()
-    .expect("failed to spawn script");
+    .arg(&hello_ts)
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
   let rust_log = util::deno_cmd()
     .env("RUST_LOG", "debug")
     .current_dir(util::root_path())
@@ -3372,9 +3375,14 @@ fn debug_with_log_level_and_rust_log() {
     .arg("-L")
     .arg("debug")
     .arg("--reload")
-    .arg(hello_ts)
-    .output()
-    .expect("failed to spawn script");
+    .arg(&hello_ts)
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  println!("{:?}", expected);
+  println!("{:?}", rust_log);
   assert_eq!(expected, rust_log);
 }
 
