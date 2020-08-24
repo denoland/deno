@@ -29,9 +29,9 @@
     "third_party"
   ],
   "plugins": [
-    "https://plugins.dprint.dev/typescript-0.29.0.wasm",
+    "https://plugins.dprint.dev/typescript-0.30.0.wasm",
     "https://plugins.dprint.dev/json-0.7.0.wasm",
-    "https://plugins.dprint.dev/markdown-0.4.0.wasm",
+    "https://plugins.dprint.dev/markdown-0.4.1.wasm",
     "https://plugins.dprint.dev/rustfmt-0.3.0.wasm",
     "https://plugins.dprint.dev/yapf-0.1.1.exe-plugin@7550683e5f8b76c4825eec5cf88b5dcbd043ade4019c60d79e989e1e7fb6f4d8"
   ]
