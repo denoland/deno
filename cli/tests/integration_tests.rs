@@ -3384,8 +3384,9 @@ fn rust_log_debug() {
   (util::CheckOutputIntegrationTest {
     args: "run --reload 002_hello.ts",
     output: "RUST_LOG_debug.out",
-    .. Default::default()
-  }).run();
+    ..Default::default()
+  })
+  .run();
   std::env::remove_var("RUST_LOG");
 }
 
@@ -3395,7 +3396,8 @@ fn rust_log_deno_permissions() {
   (util::CheckOutputIntegrationTest {
     args: "run --reload 002_hello.ts",
     output: "RUST_LOG_permissions.out",
-    .. Default::default()
-  }).run();
+    ..Default::default()
+  })
+  .run();
   std::env::remove_var("RUST_LOG");
 }
