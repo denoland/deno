@@ -3,58 +3,12 @@
 ((window) => {
   const { sendSync, sendAsync } = window.__bootstrap.dispatchJson;
   const { requiredArguments } = window.__bootstrap.webUtil;
+  const CONNECTING = 0;
+  const OPEN = 1;
+  const CLOSING = 2;
+  const CLOSED = 3;
 
   class WebSocket extends EventTarget {
-    #CONNECTING = 0;
-    #OPEN = 1;
-    #CLOSING = 2;
-    #CLOSED = 3;
-
-    get CONNECTING() {
-      return this.#CONNECTING;
-    }
-    get OPEN() {
-      return this.#OPEN;
-    }
-    get CLOSING() {
-      return this.#CLOSING;
-    }
-    get CLOSED() {
-      return this.#CLOSED;
-    }
-
-    #readyState = this.#CONNECTING;
-    get readyState() {
-      return this.#readyState;
-    }
-
-    #extensions = "";
-    #protocol = "";
-    #url = "";
-    #rid;
-
-    get extensions() {
-      return this.#extensions;
-    }
-    get protocol() {
-      return this.#protocol;
-    }
-
-    binaryType = "blob";
-    #bufferedAmount = 0;
-    get bufferedAmount() {
-      return this.#bufferedAmount;
-    }
-
-    get url() {
-      return this.#url;
-    }
-
-    onopen = () => {};
-    onerror = () => {};
-    onclose = () => {};
-    onmessage = () => {};
-
     constructor(url, protocols = []) {
       super();
       requiredArguments("WebSocket", arguments.length, 1);
@@ -98,7 +52,7 @@
           this.#rid = create.rid;
           this.#extensions = create.extensions;
           this.#protocol = create.protocol;
-          this.#readyState = this.#OPEN;
+          this.#readyState = OPEN;
           const event = new Event("open");
           event.target = this;
           this.onopen(event);
@@ -106,7 +60,7 @@
 
           this.#eventLoop();
         } else {
-          this.#readyState = this.#CLOSED;
+          this.#readyState = CLOSED;
 
           const errEvent = new Event("error");
           errEvent.target = this;
@@ -121,11 +75,57 @@
       });
     }
 
+
+    get CONNECTING() {
+      return CONNECTING;
+    }
+    get OPEN() {
+      return OPEN;
+    }
+    get CLOSING() {
+      return CLOSING;
+    }
+    get CLOSED() {
+      return CLOSED;
+    }
+
+    #readyState = CONNECTING;
+    get readyState() {
+      return this.#readyState;
+    }
+
+    #extensions = "";
+    #protocol = "";
+    #url = "";
+    #rid;
+
+    get extensions() {
+      return this.#extensions;
+    }
+    get protocol() {
+      return this.#protocol;
+    }
+
+    binaryType = "blob";
+    #bufferedAmount = 0;
+    get bufferedAmount() {
+      return this.#bufferedAmount;
+    }
+
+    get url() {
+      return this.#url;
+    }
+
+    onopen = () => {};
+    onerror = () => {};
+    onclose = () => {};
+    onmessage = () => {};
+
     send(data) {
       requiredArguments("WebSocket.send", arguments.length, 1);
 
       if (
-        this.#readyState === this.#OPEN
+        this.#readyState === OPEN
       ) {
         if (data instanceof Blob) {
           data.slice().arrayBuffer().then((buf) => {
@@ -178,15 +178,15 @@
         );
       }
 
-      if (this.#readyState === this.#CONNECTING) {
-        this.#readyState = this.#CLOSING;
+      if (this.#readyState === CONNECTING) {
+        this.#readyState = CLOSING;
 
         sendAsync("op_ws_close", {
           rid: this.#rid,
           code,
           reason,
         }).then(() => {
-          this.#readyState = this.#CLOSED;
+          this.#readyState = CLOSED;
           const event = new CloseEvent("close", {
             wasClean: true,
             code,
@@ -202,16 +202,16 @@
         this.onerror(event);
         this.dispatchEvent(event);
       } else if (
-        this.#readyState !== this.#CLOSING && this.#readyState !== this.#CLOSED
+        this.#readyState !== CLOSING && this.#readyState !== CLOSED
       ) {
-        this.#readyState = this.#CLOSING;
+        this.#readyState = CLOSING;
 
         sendAsync("op_ws_close", {
           rid: this.#rid,
           code,
           reason,
         }).then(() => {
-          this.#readyState = this.#CLOSED;
+          this.#readyState = CLOSED;
           const event = new CloseEvent("close", {
             wasClean: true,
             code,
@@ -225,7 +225,7 @@
     }
 
     async #eventLoop() {
-      if (this.#readyState === this.#OPEN) {
+      if (this.#readyState === OPEN) {
         const message = await sendAsync("op_ws_next_event", { rid: this.#rid });
         if (message.type === "string" || message.type === "binary") {
           let data;
@@ -250,7 +250,7 @@
 
           this.#eventLoop();
         } else if (message.type === "close") {
-          this.#readyState = this.#CLOSED;
+          this.#readyState = CLOSED;
           const event = new CloseEvent("close", {
             wasClean: true,
             code: message.code,
