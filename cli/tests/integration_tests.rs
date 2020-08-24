@@ -3381,8 +3381,7 @@ fn debug_with_log_level_and_rust_log() {
     .unwrap()
     .wait_with_output()
     .unwrap();
-  println!("{:?}", expected);
-  println!("{:?}", rust_log);
+  std::env::remove_var("RUST_LOG");
   assert_eq!(expected, rust_log);
 }
 
