@@ -16,6 +16,7 @@
     "cli/dts",
     "cli/tests/encoding",
     "cli/tsc/*typescript.js",
+    "compiler/system_loader_es5.js",
     "gh-pages",
     "std/**/testdata",
     "std/**/vendor",
