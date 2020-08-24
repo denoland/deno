@@ -51,7 +51,9 @@ pub use crate::ops::Op;
 pub use crate::ops::OpAsyncFuture;
 pub use crate::ops::OpId;
 pub use crate::resources::ResourceTable;
+pub use crate::zero_copy_buf::BufVec;
 pub use crate::zero_copy_buf::ZeroCopyBuf;
+pub use serde_json;
 
 pub fn v8_version() -> &'static str {
   v8::V8::get_version()

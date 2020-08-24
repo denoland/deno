@@ -7,6 +7,7 @@ Deno.test("[path] fromFileUrl", function () {
   assertEquals(posix.fromFileUrl("file:///"), "/");
   assertEquals(posix.fromFileUrl("file:///home/foo"), "/home/foo");
   assertEquals(posix.fromFileUrl("file:///home/foo%20bar"), "/home/foo bar");
+  assertEquals(posix.fromFileUrl("file:///%"), "/%");
   assertEquals(posix.fromFileUrl("file://localhost/foo"), "/foo");
   assertEquals(posix.fromFileUrl("file:///C:"), "/C:");
   assertEquals(posix.fromFileUrl("file:///C:/"), "/C:/");
@@ -29,6 +30,7 @@ Deno.test("[path] fromFileUrl (win32)", function () {
   assertEquals(win32.fromFileUrl("file:///"), "\\");
   assertEquals(win32.fromFileUrl("file:///home/foo"), "\\home\\foo");
   assertEquals(win32.fromFileUrl("file:///home/foo%20bar"), "\\home\\foo bar");
+  assertEquals(win32.fromFileUrl("file:///%"), "\\%");
   assertEquals(win32.fromFileUrl("file://localhost/foo"), "\\\\localhost\\foo");
   assertEquals(win32.fromFileUrl("file:///C:"), "C:\\");
   assertEquals(win32.fromFileUrl("file:///C:/"), "C:\\");

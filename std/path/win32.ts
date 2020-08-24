@@ -919,7 +919,8 @@ export function fromFileUrl(url: string | URL): string {
   let path = decodeURIComponent(
     url.pathname
       .replace(/^\/*([A-Za-z]:)(\/|$)/, "$1/")
-      .replace(/\//g, "\\"),
+      .replace(/\//g, "\\")
+      .replace(/%(?![0-9A-Fa-f]{2})/g, "%25"),
   );
   if (url.hostname != "") {
     // Note: The `URL` implementation guarantees that the drive letter and

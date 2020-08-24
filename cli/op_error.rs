@@ -174,7 +174,13 @@ impl OpError {
   }
 
   pub fn invalid_domain_error() -> OpError {
-    OpError::new(ErrorKind::TypeError, "Invalid domain.".to_string())
+    OpError::type_error("Invalid domain.".to_string())
+  }
+
+  pub fn permission_escalation_error() -> OpError {
+    OpError::permission_denied(
+      "Arguments escalate parent permissions.".to_string(),
+    )
   }
 }
 

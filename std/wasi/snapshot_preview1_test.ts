@@ -2,24 +2,24 @@
 
 import { assert, assertEquals } from "../testing/asserts.ts";
 import * as path from "../path/mod.ts";
-import WASI from "./snapshot_preview1.ts";
+import Context from "./snapshot_preview1.ts";
 
 if (import.meta.main) {
   const options = JSON.parse(Deno.args[0]);
   const binary = await Deno.readFile(Deno.args[1]);
   const module = await WebAssembly.compile(binary);
 
-  const wasi = new WASI({
+  const context = new Context({
     env: options.env,
     args: options.args,
     preopens: options.preopens,
   });
 
   const instance = new WebAssembly.Instance(module, {
-    wasi_snapshot_preview1: wasi.exports,
+    wasi_snapshot_preview1: context.exports,
   });
 
-  wasi.memory = instance.exports.memory;
+  context.memory = instance.exports.memory;
 
   instance.exports._start();
 } else {

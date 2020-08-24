@@ -277,14 +277,14 @@ function errno(err: Error) {
   }
 }
 
-export interface ModuleOptions {
+export interface ContextOptions {
   args?: string[];
   env?: { [key: string]: string | undefined };
   preopens?: { [key: string]: string };
   memory?: WebAssembly.Memory;
 }
 
-export default class Module {
+export default class Context {
   args: string[];
   env: { [key: string]: string | undefined };
   memory: WebAssembly.Memory;
@@ -292,10 +292,9 @@ export default class Module {
   // deno-lint-ignore no-explicit-any
   fds: any[];
 
-  // deno-lint-ignore no-explicit-any
-  exports: { [key: string]: any };
+  exports: Record<string, Function>;
 
-  constructor(options: ModuleOptions) {
+  constructor(options: ContextOptions) {
     this.args = options.args ? options.args : [];
     this.env = options.env ? options.env : {};
     this.memory = options.memory!;

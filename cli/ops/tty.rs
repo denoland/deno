@@ -10,6 +10,7 @@ use deno_core::ZeroCopyBuf;
 use nix::sys::termios;
 use serde_derive::{Deserialize, Serialize};
 use serde_json::Value;
+use std::rc::Rc;
 
 #[cfg(windows)]
 use winapi::shared::minwindef::DWORD;
@@ -35,7 +36,7 @@ fn get_windows_handle(
   Ok(handle)
 }
 
-pub fn init(i: &mut CoreIsolate, s: &State) {
+pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
   i.register_op("op_set_raw", s.stateful_json_op2(op_set_raw));
   i.register_op("op_isatty", s.stateful_json_op2(op_isatty));
   i.register_op("op_console_size", s.stateful_json_op2(op_console_size));
@@ -49,7 +50,7 @@ struct SetRawArgs {
 
 pub fn op_set_raw(
   isolate_state: &mut CoreIsolateState,
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -218,7 +219,7 @@ struct IsattyArgs {
 
 pub fn op_isatty(
   isolate_state: &mut CoreIsolateState,
-  _state: &State,
+  _state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -265,7 +266,7 @@ struct ConsoleSize {
 
 pub fn op_console_size(
   isolate_state: &mut CoreIsolateState,
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {

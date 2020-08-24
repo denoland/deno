@@ -61,7 +61,7 @@ SharedQueue Binary Layout
 
   function ops() {
     // op id 0 is a special value to retrieve the map of registered ops.
-    const opsMapBytes = send(0, new Uint8Array([]));
+    const opsMapBytes = send(0);
     const opsMapJson = String.fromCharCode.apply(null, opsMapBytes);
     opsCache = JSON.parse(opsMapJson);
     return { ...opsCache };
@@ -201,7 +201,64 @@ SharedQueue Binary Layout
     return errorClass;
   }
 
+  // Returns Uint8Array
+  function encodeJson(args) {
+    const s = JSON.stringify(args);
+    return core.encode(s);
+  }
+
+  function decodeJson(ui8) {
+    const s = Deno.core.decode(ui8);
+    return JSON.parse(s);
+  }
+
+  let nextPromiseId = 1;
+  const promiseTable = {};
+
+  function jsonOpAsync(opName, args, ...zeroCopy) {
+    setAsyncHandler(opsCache[opName], jsonOpAsyncHandler);
+
+    args.promiseId = nextPromiseId++;
+    const argsBuf = encodeJson(args);
+    dispatch(opName, argsBuf, ...zeroCopy);
+    let resolve, reject;
+    const promise = new Promise((resolve_, reject_) => {
+      resolve = resolve_;
+      reject = reject_;
+    });
+    promise.resolve = resolve;
+    promise.reject = reject;
+    promiseTable[args.promiseId] = promise;
+    return promise;
+  }
+
+  function jsonOpSync(opName, args, ...zeroCopy) {
+    const argsBuf = encodeJson(args);
+    const res = dispatch(opName, argsBuf, ...zeroCopy);
+    const r = decodeJson(res);
+    if ("ok" in r) {
+      return r.ok;
+    } else {
+      throw r.err;
+    }
+  }
+
+  function jsonOpAsyncHandler(buf) {
+    // Json Op.
+    const msg = decodeJson(buf);
+    const { ok, err, promiseId } = msg;
+    const promise = promiseTable[promiseId];
+    delete promiseTable[promiseId];
+    if (ok) {
+      promise.resolve(ok);
+    } else {
+      promise.reject(err);
+    }
+  }
+
   Object.assign(window.Deno.core, {
+    jsonOpAsync,
+    jsonOpSync,
     setAsyncHandler,
     dispatch: send,
     dispatchByName: dispatch,

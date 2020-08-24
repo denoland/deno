@@ -1,7 +1,5 @@
 # Deno Style Guide
 
-## Table of Contents
-
 ## Copyright Headers
 
 Most modules in the repository should have the following copyright header:

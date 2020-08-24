@@ -8,6 +8,7 @@ import {
   assertMatch,
   assertEquals,
   assertStrictEquals,
+  assertNotStrictEquals,
   assertThrows,
   assertThrowsAsync,
   AssertionError,
@@ -463,13 +464,42 @@ Deno.test({
 });
 
 Deno.test({
-  name: "assert* functions with specified type paratemeter",
+  name: "strictly unequal pass case",
+  fn(): void {
+    assertNotStrictEquals(true, false);
+    assertNotStrictEquals(10, 11);
+    assertNotStrictEquals("abc", "xyz");
+    assertNotStrictEquals(1, "1");
+
+    const xs = [1, false, "foo"];
+    const ys = [1, true, "bar"];
+    assertNotStrictEquals(xs, ys);
+
+    const x = { a: 1 };
+    const y = { a: 2 };
+    assertNotStrictEquals(x, y);
+  },
+});
+
+Deno.test({
+  name: "strictly unequal fail case",
+  fn(): void {
+    assertThrows(
+      () => assertNotStrictEquals(1, 1),
+      AssertionError,
+    );
+  },
+});
+
+Deno.test({
+  name: "assert* functions with specified type parameter",
   fn(): void {
     assertEquals<string>("hello", "hello");
     assertNotEquals<number>(1, 2);
     assertArrayContains<boolean>([true, false], [true]);
     const value = { x: 1 };
     assertStrictEquals<typeof value>(value, value);
+    assertNotStrictEquals<object>(value, { x: 1 });
   },
 });
 

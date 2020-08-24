@@ -30,7 +30,7 @@ fn json_err(err: OpError) -> Value {
   })
 }
 
-fn serialize_result(promise_id: Option<u64>, result: JsonResult) -> Buf {
+pub fn serialize_result(promise_id: Option<u64>, result: JsonResult) -> Buf {
   let value = match result {
     Ok(v) => json!({ "ok": v, "promiseId": promise_id }),
     Err(err) => json!({ "err": json_err(err), "promiseId": promise_id }),

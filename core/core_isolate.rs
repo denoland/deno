@@ -20,6 +20,8 @@ use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
 use futures::task::AtomicWaker;
 use futures::Future;
+use serde_json::json;
+use serde_json::Value;
 use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -429,6 +431,50 @@ impl CoreIsolate {
     state.op_registry.register(name, op)
   }
 
+  pub fn register_op_json_sync<F>(&mut self, name: &str, op: F) -> OpId
+  where
+    F: 'static
+      + Fn(
+        &mut CoreIsolateState,
+        serde_json::Value,
+        &mut [ZeroCopyBuf],
+      ) -> Result<serde_json::Value, ErrBox>,
+  {
+    let core_op =
+      move |state: &mut CoreIsolateState, bufs: &mut [ZeroCopyBuf]| -> Op {
+        let value = serde_json::from_slice(&bufs[0]).unwrap();
+        let result = op(state, value, &mut bufs[1..]);
+        let buf = serialize_result(None, result);
+        Op::Sync(buf)
+      };
+
+    let state_rc = Self::state(self);
+    let mut state = state_rc.borrow_mut();
+    state.op_registry.register(name, core_op)
+  }
+
+  pub fn register_op_json_async<F, Fut>(&mut self, name: &str, op: F) -> OpId
+  where
+    Fut: 'static + Future<Output = Result<serde_json::Value, ErrBox>>,
+    F: 'static
+      + Fn(&mut CoreIsolateState, serde_json::Value, &mut [ZeroCopyBuf]) -> Fut,
+  {
+    let core_op = move |state: &mut CoreIsolateState,
+                        bufs: &mut [ZeroCopyBuf]|
+          -> Op {
+      let value: serde_json::Value = serde_json::from_slice(&bufs[0]).unwrap();
+      let promise_id = value.get("promiseId").unwrap().as_u64().unwrap();
+      let fut = op(state, value, &mut bufs[1..]);
+      let fut2 =
+        fut.map(move |result| serialize_result(Some(promise_id), result));
+      Op::Async(Box::pin(fut2))
+    };
+
+    let state_rc = Self::state(self);
+    let mut state = state_rc.borrow_mut();
+    state.op_registry.register(name, core_op)
+  }
+
   /// Registers a callback on the isolate when the memory limits are approached.
   /// Use this to prevent V8 from crashing the process when reaching the limit.
   ///
@@ -482,6 +528,23 @@ where
 {
   let callback = unsafe { &mut *(data as *mut F) };
   callback(current_heap_limit, initial_heap_limit)
+}
+
+fn serialize_result(
+  promise_id: Option<u64>,
+  result: Result<Value, ErrBox>,
+) -> Buf {
+  let value = match result {
+    Ok(v) => json!({ "ok": v, "promiseId": promise_id }),
+    Err(err) => json!({
+      "promiseId": promise_id ,
+      "err": {
+        "message": err.to_string(),
+        "kind": "Other", // TODO(ry) Figure out how to propagate errors.
+      }
+    }),
+  };
+  serde_json::to_vec(&value).unwrap().into_boxed_slice()
 }
 
 impl Future for CoreIsolate {
@@ -991,10 +1054,7 @@ pub mod tests {
          "#,
       ));
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
-      assert!(match isolate.poll_unpin(cx) {
-        Poll::Ready(Ok(_)) => true,
-        _ => false,
-      });
+      assert!(matches!(isolate.poll_unpin(cx), Poll::Ready(Ok(_))));
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
       js_check(isolate.execute(
         "check2.js",
@@ -1005,17 +1065,11 @@ pub mod tests {
          "#,
       ));
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 2);
-      assert!(match isolate.poll_unpin(cx) {
-        Poll::Ready(Ok(_)) => true,
-        _ => false,
-      });
+      assert!(matches!(isolate.poll_unpin(cx), Poll::Ready(Ok(_))));
       js_check(isolate.execute("check3.js", "assert(nrecv == 2)"));
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 2);
       // We are idle, so the next poll should be the last.
-      assert!(match isolate.poll_unpin(cx) {
-        Poll::Ready(Ok(_)) => true,
-        _ => false,
-      });
+      assert!(matches!(isolate.poll_unpin(cx), Poll::Ready(Ok(_))));
     });
   }
 
@@ -1037,10 +1091,7 @@ pub mod tests {
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
       // The above op never finish, but isolate can finish
       // because the op is an unreffed async op.
-      assert!(match isolate.poll_unpin(cx) {
-        Poll::Ready(Ok(_)) => true,
-        _ => false,
-      });
+      assert!(matches!(isolate.poll_unpin(cx), Poll::Ready(Ok(_))));
     })
   }
 
@@ -1167,10 +1218,7 @@ pub mod tests {
          "#,
       ));
       assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
-      assert!(match isolate.poll_unpin(cx) {
-        Poll::Ready(Ok(_)) => true,
-        _ => false,
-      });
+      assert!(matches!(isolate.poll_unpin(cx), Poll::Ready(Ok(_))));
       js_check(isolate.execute("check.js", "assert(asyncRecv == 1);"));
     });
   }
