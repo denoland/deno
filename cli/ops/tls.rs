@@ -14,6 +14,7 @@ use std::fs::File;
 use std::io::BufReader;
 use std::net::SocketAddr;
 use std::path::Path;
+use std::rc::Rc;
 use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
@@ -29,7 +30,7 @@ use tokio_rustls::{
 };
 use webpki::DNSNameRef;
 
-pub fn init(i: &mut CoreIsolate, s: &State) {
+pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
   i.register_op("op_start_tls", s.stateful_json_op2(op_start_tls));
   i.register_op("op_connect_tls", s.stateful_json_op2(op_connect_tls));
   i.register_op("op_listen_tls", s.stateful_json_op2(op_listen_tls));
@@ -55,7 +56,7 @@ struct StartTLSArgs {
 
 pub fn op_start_tls(
   isolate_state: &mut CoreIsolateState,
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -134,7 +135,7 @@ pub fn op_start_tls(
 
 pub fn op_connect_tls(
   isolate_state: &mut CoreIsolateState,
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -308,7 +309,7 @@ struct ListenTlsArgs {
 
 fn op_listen_tls(
   isolate_state: &mut CoreIsolateState,
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -358,7 +359,7 @@ struct AcceptTlsArgs {
 
 fn op_accept_tls(
   isolate_state: &mut CoreIsolateState,
-  _state: &State,
+  _state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {

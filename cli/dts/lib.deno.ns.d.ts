@@ -993,9 +993,9 @@ declare namespace Deno {
   }
 
   /** Synchronously creates a new temporary directory in the default directory
-   * for temporary files (see also `Deno.dir("temp")`), unless `dir` is specified.
-   * Other optional options include prefixing and suffixing the directory name
-   * with `prefix` and `suffix` respectively.
+   * for temporary files, unless `dir` is specified. Other optional options
+   * include prefixing and suffixing the directory name with `prefix` and
+   * `suffix` respectively.
    *
    * The full path to the newly created directory is returned.
    *
@@ -1013,9 +1013,9 @@ declare namespace Deno {
   export function makeTempDirSync(options?: MakeTempOptions): string;
 
   /** Creates a new temporary directory in the default directory for temporary
-   * files (see also `Deno.dir("temp")`), unless `dir` is specified.  Other
-   * optional options include prefixing and suffixing the directory name with
-   * `prefix` and `suffix` respectively.
+   * files, unless `dir` is specified. Other optional options include
+   * prefixing and suffixing the directory name with `prefix` and `suffix`
+   * respectively.
    *
    * This call resolves to the full path to the newly created directory.
    *
@@ -1896,7 +1896,7 @@ declare namespace Deno {
   export interface RunOptions {
     /** Arguments to pass. Note, the first element needs to be a path to the
      * binary */
-    cmd: string[];
+    cmd: string[] | [URL, ...string[]];
     cwd?: string;
     env?: {
       [key: string]: string;
@@ -2025,4 +2025,7 @@ declare namespace Deno {
    * called when `Deno.inspect()` is called, or when the object is logged to
    * the console. */
   export const customInspect: unique symbol;
+
+  /** The URL of the entrypoint module entered from the command-line. */
+  export const mainModule: string;
 }

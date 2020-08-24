@@ -29,7 +29,6 @@ pub mod deno_dir;
 pub mod diagnostics;
 mod diff;
 mod disk_cache;
-mod doc;
 mod file_fetcher;
 pub mod flags;
 mod flags_allow_net;
@@ -69,14 +68,13 @@ pub mod version;
 mod web_worker;
 pub mod worker;
 
-use crate::doc::parser::DocFileLoader;
+use crate::file_fetcher::map_file_extension;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::file_fetcher::TextDocument;
 use crate::fs as deno_fs;
 use crate::global_state::GlobalState;
 use crate::msg::MediaType;
-use crate::op_error::OpError;
 use crate::permissions::Permissions;
 use crate::tsc::TargetLib;
 use crate::worker::MainWorker;
@@ -85,6 +83,8 @@ use deno_core::Deps;
 use deno_core::ErrBox;
 use deno_core::EsIsolate;
 use deno_core::ModuleSpecifier;
+use deno_doc as doc;
+use deno_doc::parser::DocFileLoader;
 use flags::DenoSubcommand;
 use flags::Flags;
 use futures::future::FutureExt;
@@ -96,8 +96,10 @@ use state::exit_unstable;
 use std::env;
 use std::io::Read;
 use std::io::Write;
+use std::iter::once;
 use std::path::PathBuf;
 use std::pin::Pin;
+use std::sync::Arc;
 use upgrade::upgrade_command;
 use url::Url;
 
@@ -150,7 +152,10 @@ where
   serde_json::to_writer_pretty(writer, value).map_err(ErrBox::from)
 }
 
-fn print_cache_info(state: &GlobalState, json: bool) -> Result<(), ErrBox> {
+fn print_cache_info(
+  state: &Arc<GlobalState>,
+  json: bool,
+) -> Result<(), ErrBox> {
   let deno_dir = &state.dir.root;
   let modules_cache = &state.file_fetcher.http_cache.location;
   let typescript_cache = &state.dir.gen_cache.location;
@@ -192,7 +197,7 @@ async fn print_file_info(
   module_specifier: ModuleSpecifier,
   json: bool,
 ) -> Result<(), ErrBox> {
-  let global_state = worker.state.borrow().global_state.clone();
+  let global_state = worker.state.global_state.clone();
 
   let out = global_state
     .file_fetcher
@@ -287,8 +292,9 @@ async fn print_file_info(
 
 fn get_types(unstable: bool) -> String {
   let mut types = format!(
-    "{}\n{}\n{}",
+    "{}\n{}\n{}\n{}",
     crate::js::DENO_NS_LIB,
+    crate::js::DENO_WEB_LIB,
     crate::js::SHARED_GLOBALS_LIB,
     crate::js::WINDOW_LIB,
   );
@@ -314,7 +320,7 @@ async fn info_command(
     print_cache_info(&global_state, json)
   } else {
     let main_module = ModuleSpecifier::resolve_url_or_path(&file.unwrap())?;
-    let mut worker = MainWorker::create(global_state, main_module.clone())?;
+    let mut worker = MainWorker::create(&global_state, main_module.clone())?;
     worker.preload_module(&main_module).await?;
     print_file_info(&worker, main_module.clone(), json).await
   }
@@ -333,7 +339,7 @@ async fn install_command(
   fetch_flags.reload = true;
   let global_state = GlobalState::new(fetch_flags)?;
   let main_module = ModuleSpecifier::resolve_url_or_path(&module_url)?;
-  let mut worker = MainWorker::create(global_state, main_module.clone())?;
+  let mut worker = MainWorker::create(&global_state, main_module.clone())?;
   worker.preload_module(&main_module).await?;
   installer::install(flags, &module_url, args, name, root, force)
     .map_err(ErrBox::from)
@@ -343,6 +349,8 @@ async fn lint_command(
   flags: Flags,
   files: Vec<String>,
   list_rules: bool,
+  ignore: Vec<String>,
+  json: bool,
 ) -> Result<(), ErrBox> {
   if !flags.unstable {
     exit_unstable("lint");
@@ -353,15 +361,14 @@ async fn lint_command(
     return Ok(());
   }
 
-  lint::lint_files(files).await
+  lint::lint_files(files, ignore, json).await
 }
 
 async fn cache_command(flags: Flags, files: Vec<String>) -> Result<(), ErrBox> {
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./__$deno$fetch.ts").unwrap();
   let global_state = GlobalState::new(flags)?;
-  let mut worker =
-    MainWorker::create(global_state.clone(), main_module.clone())?;
+  let mut worker = MainWorker::create(&global_state, main_module.clone())?;
 
   for file in files {
     let specifier = ModuleSpecifier::resolve_url_or_path(&file)?;
@@ -381,8 +388,7 @@ async fn eval_command(
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./__$deno$eval.ts").unwrap();
   let global_state = GlobalState::new(flags)?;
-  let mut worker =
-    MainWorker::create(global_state.clone(), main_module.clone())?;
+  let mut worker = MainWorker::create(&global_state, main_module.clone())?;
   let main_module_url = main_module.as_url().to_owned();
   // Create a dummy source file.
   let source_code = if print {
@@ -434,7 +440,7 @@ async fn bundle_command(
 
   let output = global_state
     .ts_compiler
-    .bundle(global_state.clone(), module_specifier)
+    .bundle(&global_state, module_specifier)
     .await?;
 
   debug!(">>>>> bundle END");
@@ -499,19 +505,39 @@ async fn doc_command(
   let source_file = source_file.unwrap_or_else(|| "--builtin".to_string());
 
   impl DocFileLoader for SourceFileFetcher {
+    fn resolve(
+      &self,
+      specifier: &str,
+      referrer: &str,
+    ) -> Result<String, doc::DocError> {
+      ModuleSpecifier::resolve_import(specifier, referrer)
+        .map(|specifier| specifier.to_string())
+        .map_err(|e| doc::DocError::Resolve(e.to_string()))
+    }
+
     fn load_source_code(
       &self,
       specifier: &str,
-    ) -> Pin<Box<dyn Future<Output = Result<String, OpError>>>> {
+    ) -> Pin<Box<dyn Future<Output = Result<String, doc::DocError>>>> {
       let fetcher = self.clone();
-      let specifier = specifier.to_string();
+      let specifier = ModuleSpecifier::resolve_url_or_path(specifier)
+        .expect("Expected valid specifier");
       async move {
-        let specifier = ModuleSpecifier::resolve_url_or_path(&specifier)
-          .map_err(OpError::from)?;
         let source_file = fetcher
           .fetch_source_file(&specifier, None, Permissions::allow_all())
-          .await?;
-        source_file.source_code.to_string().map_err(OpError::from)
+          .await
+          .map_err(|e| {
+            doc::DocError::Io(std::io::Error::new(
+              std::io::ErrorKind::Other,
+              e.to_string(),
+            ))
+          })?;
+        source_file.source_code.to_string().map_err(|e| {
+          doc::DocError::Io(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            e.to_string(),
+          ))
+        })
       }
       .boxed_local()
     }
@@ -521,16 +547,28 @@ async fn doc_command(
   let doc_parser = doc::DocParser::new(loader, private);
 
   let parse_result = if source_file == "--builtin" {
-    doc_parser.parse_source("lib.deno.d.ts", get_types(flags.unstable).as_str())
+    let syntax = swc_util::get_syntax_for_dts();
+    doc_parser.parse_source(
+      "lib.deno.d.ts",
+      syntax,
+      get_types(flags.unstable).as_str(),
+    )
   } else {
+    let path = PathBuf::from(&source_file);
+    let syntax = if path.ends_with("d.ts") {
+      swc_util::get_syntax_for_dts()
+    } else {
+      let media_type = map_file_extension(&path);
+      swc_util::get_syntax_for_media_type(media_type)
+    };
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&source_file).unwrap();
     doc_parser
-      .parse_with_reexports(&module_specifier.to_string())
+      .parse_with_reexports(&module_specifier.to_string(), syntax)
       .await
   };
 
-  let doc_nodes = match parse_result {
+  let mut doc_nodes = match parse_result {
     Ok(nodes) => nodes,
     Err(e) => {
       eprintln!("{}", e);
@@ -541,6 +579,7 @@ async fn doc_command(
   if json {
     write_json_to_stdout(&doc_nodes)
   } else {
+    doc_nodes.retain(|doc_node| doc_node.kind != doc::DocNodeKind::Import);
     let details = if let Some(filter) = maybe_filter {
       let nodes =
         doc::find_nodes_by_name_recursively(doc_nodes, filter.clone());
@@ -548,9 +587,15 @@ async fn doc_command(
         eprintln!("Node {} was not found!", filter);
         std::process::exit(1);
       }
-      format!("{}", doc::DocPrinter::new(&nodes, true, private))
+      format!(
+        "{}",
+        doc::DocPrinter::new(&nodes, colors::use_color(), private)
+      )
     } else {
-      format!("{}", doc::DocPrinter::new(&doc_nodes, false, private))
+      format!(
+        "{}",
+        doc::DocPrinter::new(&doc_nodes, colors::use_color(), private)
+      )
     };
 
     write_to_stdout_ignore_sigpipe(details.as_bytes()).map_err(ErrBox::from)
@@ -561,7 +606,7 @@ async fn run_repl(flags: Flags) -> Result<(), ErrBox> {
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./__$deno$repl.ts").unwrap();
   let global_state = GlobalState::new(flags)?;
-  let mut worker = MainWorker::create(global_state, main_module)?;
+  let mut worker = MainWorker::create(&global_state, main_module)?;
   loop {
     (&mut *worker).await?;
   }
@@ -575,7 +620,7 @@ async fn run_command(flags: Flags, script: String) -> Result<(), ErrBox> {
     ModuleSpecifier::resolve_url_or_path("./__$deno$stdin.ts").unwrap()
   };
   let mut worker =
-    MainWorker::create(global_state.clone(), main_module.clone())?;
+    MainWorker::create(&global_state.clone(), main_module.clone())?;
   if script == "-" {
     let mut source = Vec::new();
     std::io::stdin().read_to_end(&mut source)?;
@@ -631,8 +676,7 @@ async fn test_command(
     test_runner::render_test_file(test_modules, fail_fast, quiet, filter);
   let main_module =
     ModuleSpecifier::resolve_url(&test_file_url.to_string()).unwrap();
-  let mut worker =
-    MainWorker::create(global_state.clone(), main_module.clone())?;
+  let mut worker = MainWorker::create(&global_state, main_module.clone())?;
   // Create a dummy source file.
   let source_file = SourceFile {
     filename: test_file_url.to_file_path().unwrap(),
@@ -665,9 +709,27 @@ pub fn main() {
   let flags = flags::flags_from_vec(args);
 
   if let Some(ref v8_flags) = flags.v8_flags {
-    let mut v8_flags_ = v8_flags.clone();
-    v8_flags_.insert(0, "UNUSED_BUT_NECESSARY_ARG0".to_string());
-    v8_set_flags(v8_flags_);
+    let v8_flags_includes_help = v8_flags
+      .iter()
+      .any(|flag| flag == "-help" || flag == "--help");
+    let v8_flags = once("UNUSED_BUT_NECESSARY_ARG0".to_owned())
+      .chain(v8_flags.iter().cloned())
+      .collect::<Vec<_>>();
+    let unrecognized_v8_flags = v8_set_flags(v8_flags)
+      .into_iter()
+      .skip(1)
+      .collect::<Vec<_>>();
+    if !unrecognized_v8_flags.is_empty() {
+      for f in unrecognized_v8_flags {
+        eprintln!("error: V8 did not recognize flag '{}'", f);
+      }
+      eprintln!();
+      eprintln!("For a list of V8 flags, use '--v8-flags=--help'");
+      std::process::exit(1);
+    }
+    if v8_flags_includes_help {
+      std::process::exit(0);
+    }
   }
 
   let log_level = match flags.log_level {
@@ -712,9 +774,12 @@ pub fn main() {
     } => {
       install_command(flags, module_url, args, name, root, force).boxed_local()
     }
-    DenoSubcommand::Lint { files, rules } => {
-      lint_command(flags, files, rules).boxed_local()
-    }
+    DenoSubcommand::Lint {
+      files,
+      rules,
+      ignore,
+      json,
+    } => lint_command(flags, files, rules, ignore, json).boxed_local(),
     DenoSubcommand::Repl => run_repl(flags).boxed_local(),
     DenoSubcommand::Run { script } => run_command(flags, script).boxed_local(),
     DenoSubcommand::Test {

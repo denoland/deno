@@ -1,8 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::msg::MediaType;
 use deno_core::ErrBox;
+use serde::Serialize;
 use std::error::Error;
 use std::fmt;
+use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::RwLock;
 use swc_common::chain;
@@ -30,9 +32,30 @@ use swc_ecmascript::transforms::fixer;
 use swc_ecmascript::transforms::typescript;
 use swc_ecmascript::visit::FoldWith;
 
-struct DummyHandler;
+#[derive(Debug, Serialize, Clone, PartialEq)]
+pub struct Location {
+  pub filename: String,
+  pub line: usize,
+  pub col: usize,
+}
 
-impl swc_ecmascript::codegen::Handlers for DummyHandler {}
+impl Into<Location> for swc_common::Loc {
+  fn into(self) -> Location {
+    use swc_common::FileName::*;
+
+    let filename = match &self.file.name {
+      Real(path_buf) => path_buf.to_string_lossy().to_string(),
+      Custom(str_) => str_.to_string(),
+      _ => panic!("invalid filename"),
+    };
+
+    Location {
+      filename,
+      line: self.line,
+      col: self.col_display,
+    }
+  }
+}
 
 fn get_default_es_config() -> EsConfig {
   let mut config = EsConfig::default();
@@ -55,6 +78,12 @@ fn get_default_ts_config() -> TsConfig {
   ts_config.dynamic_import = true;
   ts_config.decorators = true;
   ts_config
+}
+
+pub fn get_syntax_for_dts() -> Syntax {
+  let mut ts_config = TsConfig::default();
+  ts_config.dts = true;
+  Syntax::Typescript(ts_config)
 }
 
 pub fn get_syntax_for_media_type(media_type: MediaType) -> Syntax {
@@ -143,7 +172,7 @@ impl Emitter for SwcErrorBuffer {
 /// to `parse_module`.
 pub struct AstParser {
   pub buffered_error: SwcErrorBuffer,
-  pub source_map: Arc<SourceMap>,
+  pub source_map: Rc<SourceMap>,
   pub handler: Handler,
   pub comments: SingleThreadedComments,
   pub globals: Globals,
@@ -164,7 +193,7 @@ impl AstParser {
 
     AstParser {
       buffered_error,
-      source_map: Arc::new(SourceMap::default()),
+      source_map: Rc::new(SourceMap::default()),
       handler,
       comments: SingleThreadedComments::default(),
       globals: Globals::new(),
@@ -217,7 +246,6 @@ impl AstParser {
     let mut src_map_buf = vec![];
     let mut buf = vec![];
     {
-      let handlers = Box::new(DummyHandler);
       let writer = Box::new(JsWriter::new(
         self.source_map.clone(),
         "\n",
@@ -230,7 +258,6 @@ impl AstParser {
         comments: Some(&self.comments),
         cm: self.source_map.clone(),
         wr: writer,
-        handlers,
       };
       program.emit_with(&mut emitter)?;
     }

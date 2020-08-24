@@ -1,0 +1,6 @@
+[WILDCARD]PermissionStatus { state: "granted" }
+PermissionStatus { state: "granted" }
+PermissionStatus { state: "granted" }
+[WILDCARD]PermissionStatus { state: "granted" }
+PermissionStatus { state: "granted" }
+PermissionStatus { state: "granted" }

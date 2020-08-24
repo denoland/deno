@@ -7,6 +7,8 @@ extern crate lazy_static;
 
 use futures::future::{self, FutureExt};
 use os_pipe::pipe;
+#[cfg(unix)]
+pub use pty;
 use regex::Regex;
 use std::env;
 use std::io::Read;
@@ -593,7 +595,7 @@ pub fn run_and_collect_output(
   if let Some(envs) = envs {
     deno_process_builder.envs(envs);
   }
-  let http_guard = if need_http_server {
+  let _http_guard = if need_http_server {
     Some(http_server())
   } else {
     None
@@ -612,7 +614,6 @@ pub fn run_and_collect_output(
     stderr,
     status,
   } = deno.wait_with_output().expect("failed to wait on child");
-  drop(http_guard);
   let stdout = String::from_utf8(stdout).unwrap();
   let stderr = String::from_utf8(stderr).unwrap();
   if expect_success != status.success() {
@@ -705,7 +706,7 @@ impl CheckOutputIntegrationTest {
     println!("root path {}", root.display());
     println!("deno_exe path {}", deno_exe.display());
 
-    let http_server_guard = if self.http_server {
+    let _http_server_guard = if self.http_server {
       Some(http_server())
     } else {
       None
@@ -742,8 +743,6 @@ impl CheckOutputIntegrationTest {
     let status = process.wait().expect("failed to finish process");
     let exit_code = status.code().unwrap();
 
-    drop(http_server_guard);
-
     actual = strip_ansi_codes(&actual).to_string();
 
     if self.exit_code != exit_code {
@@ -770,7 +769,7 @@ impl CheckOutputIntegrationTest {
   }
 }
 
-fn wildcard_match(pattern: &str, s: &str) -> bool {
+pub fn wildcard_match(pattern: &str, s: &str) -> bool {
   pattern_match(pattern, s, "[WILDCARD]")
 }
 
@@ -821,6 +820,39 @@ pub fn pattern_match(pattern: &str, s: &str, wildcard: &str) -> bool {
 
   dbg!("end ", t.1.len());
   t.1.is_empty()
+}
+
+/// Kind of reflects `itest!()`. Note that the pty's output (which also contains
+/// stdin content) is compared against the content of the `output` path.
+#[cfg(unix)]
+pub fn test_pty(args: &str, output_path: &str, input: &[u8]) {
+  use pty::fork::Fork;
+
+  let tests_path = tests_path();
+  let fork = Fork::from_ptmx().unwrap();
+  if let Ok(mut master) = fork.is_parent() {
+    let mut output_actual = String::new();
+    master.write_all(input).unwrap();
+    master.read_to_string(&mut output_actual).unwrap();
+    fork.wait().unwrap();
+
+    let output_expected =
+      std::fs::read_to_string(tests_path.join(output_path)).unwrap();
+    if !wildcard_match(&output_expected, &output_actual) {
+      println!("OUTPUT\n{}\nOUTPUT", output_actual);
+      println!("EXPECTED\n{}\nEXPECTED", output_expected);
+      panic!("pattern match failed");
+    }
+  } else {
+    deno_cmd()
+      .current_dir(tests_path)
+      .env("NO_COLOR", "1")
+      .args(args.split_whitespace())
+      .spawn()
+      .unwrap()
+      .wait()
+      .unwrap();
+  }
 }
 
 #[test]

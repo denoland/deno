@@ -16,13 +16,38 @@ export const ERR_QUOTE = 'extraneous or missing " in quoted-field';
 export const ERR_INVALID_DELIM = "Invalid Delimiter";
 export const ERR_FIELD_COUNT = "wrong number of fields";
 
+/**
+ * A ParseError is returned for parsing errors.
+ * Line numbers are 1-indexed and columns are 0-indexed.
+ */
 export class ParseError extends Error {
-  StartLine: number;
-  Line: number;
-  constructor(start: number, line: number, message: string) {
-    super(message);
-    this.StartLine = start;
-    this.Line = line;
+  /** Line where the record starts*/
+  startLine: number;
+  /** Line where the error occurred */
+  line: number;
+  /** Column (rune index) where the error occurred */
+  column: number | null;
+
+  constructor(
+    start: number,
+    line: number,
+    column: number | null,
+    message: string,
+  ) {
+    super();
+    this.startLine = start;
+    this.column = column;
+    this.line = line;
+
+    if (message === ERR_FIELD_COUNT) {
+      this.message = `record on line ${line}: ${message}`;
+    } else if (start !== line) {
+      this.message =
+        `record on line ${start}; parse error on line ${line}, column ${column}: ${message}`;
+    } else {
+      this.message =
+        `parse error on line ${line}, column ${column}: ${message}`;
+    }
   }
 }
 
@@ -61,13 +86,13 @@ function chkOptions(opt: ReadOptions): void {
 }
 
 async function readRecord(
-  Startline: number,
+  startLine: number,
   reader: BufReader,
   opt: ReadOptions = { comma: ",", trimLeadingSpace: false },
 ): Promise<string[] | null> {
   const tp = new TextProtoReader(reader);
-  const lineIndex = Startline;
   let line = await readLine(tp);
+  let lineIndex = startLine + 1;
 
   if (line === null) return null;
   if (line.length === 0) {
@@ -80,7 +105,8 @@ async function readRecord(
 
   assert(opt.comma != null);
 
-  let quoteError: string | null = null;
+  let fullLine = line;
+  let quoteError: ParseError | null = null;
   const quote = '"';
   const quoteLen = quote.length;
   const commaLen = opt.comma.length;
@@ -103,7 +129,15 @@ async function readRecord(
       if (!opt.lazyQuotes) {
         const j = field.indexOf(quote);
         if (j >= 0) {
-          quoteError = ERR_BARE_QUOTE;
+          const col = runeCount(
+            fullLine.slice(0, fullLine.length - line.slice(j).length),
+          );
+          quoteError = new ParseError(
+            startLine + 1,
+            lineIndex,
+            col,
+            ERR_BARE_QUOTE,
+          );
           break parseField;
         }
       }
@@ -141,27 +175,50 @@ async function readRecord(
             recordBuffer += quote;
           } else {
             // `"*` sequence (invalid non-escaped quote).
-            quoteError = ERR_QUOTE;
+            const col = runeCount(
+              fullLine.slice(0, fullLine.length - line.length - quoteLen),
+            );
+            quoteError = new ParseError(
+              startLine + 1,
+              lineIndex,
+              col,
+              ERR_QUOTE,
+            );
             break parseField;
           }
         } else if (line.length > 0 || !(await isEOF(tp))) {
           // Hit end of line (copy all data so far).
           recordBuffer += line;
           const r = await readLine(tp);
+          lineIndex++;
+          line = r ?? ""; // This is a workaround for making this module behave similarly to the encoding/csv/reader.go.
+          fullLine = line;
           if (r === null) {
+            // Abrupt end of file (EOF or error).
             if (!opt.lazyQuotes) {
-              quoteError = ERR_QUOTE;
+              const col = runeCount(fullLine);
+              quoteError = new ParseError(
+                startLine + 1,
+                lineIndex,
+                col,
+                ERR_QUOTE,
+              );
               break parseField;
             }
             fieldIndexes.push(recordBuffer.length);
             break parseField;
           }
           recordBuffer += "\n"; // preserve line feed (This is because TextProtoReader removes it.)
-          line = r;
         } else {
           // Abrupt end of file (EOF on error).
           if (!opt.lazyQuotes) {
-            quoteError = ERR_QUOTE;
+            const col = runeCount(fullLine);
+            quoteError = new ParseError(
+              startLine + 1,
+              lineIndex,
+              col,
+              ERR_QUOTE,
+            );
             break parseField;
           }
           fieldIndexes.push(recordBuffer.length);
@@ -171,7 +228,7 @@ async function readRecord(
     }
   }
   if (quoteError) {
-    throw new ParseError(Startline, lineIndex, quoteError);
+    throw quoteError;
   }
   const result = [] as string[];
   let preIdx = 0;
@@ -184,6 +241,11 @@ async function readRecord(
 
 async function isEOF(tp: TextProtoReader): Promise<boolean> {
   return (await tp.r.peek(0)) === null;
+}
+
+function runeCount(s: string): number {
+  // Array.from considers the surrogate pair.
+  return Array.from(s).length;
 }
 
 async function readLine(tp: TextProtoReader): Promise<string | null> {
@@ -251,7 +313,7 @@ export async function readMatrix(
 
     if (lineResult.length > 0) {
       if (_nbFields && _nbFields !== lineResult.length) {
-        throw new ParseError(lineIndex, lineIndex, ERR_FIELD_COUNT);
+        throw new ParseError(lineIndex, lineIndex, null, ERR_FIELD_COUNT);
       }
       result.push(lineResult);
     }

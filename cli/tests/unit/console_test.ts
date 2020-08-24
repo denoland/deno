@@ -57,6 +57,23 @@ unitTest(function consoleTestStringifyComplexObjects(): void {
   assertEquals(stringify({ foo: "bar" }), `{ foo: "bar" }`);
 });
 
+unitTest(
+  function consoleTestStringifyComplexObjectsWithEscapedSequences(): void {
+    assertEquals(
+      stringify(["foo\b", "foo\f", "foo\n", "foo\r", "foo\t", "foo\v"]),
+      `[ "foo\\b", "foo\\f", "foo\\n", "foo\\r", "foo\\t", "foo\\v" ]`,
+    );
+    assertEquals(
+      stringify({ "foo\b": "bar\n", "bar\r": "baz\t" }),
+      `{ foo\\b: "bar\\n", bar\\r: "baz\\t" }`,
+    );
+    assertEquals(
+      stringify(new Set(["foo\n", "foo\r"])),
+      `Set { "foo\\n", "foo\\r" }`,
+    );
+  },
+);
+
 unitTest(function consoleTestStringifyQuotes(): void {
   assertEquals(stringify(["\\"]), `[ "\\\\" ]`);
   assertEquals(stringify(['\\,"']), `[ '\\\\,"' ]`);
@@ -588,6 +605,84 @@ unitTest(function consoleTestStringifyIterable() {
 ]`
   );
   */
+});
+
+unitTest(function consoleTestStringifyIterableWhenGrouped(): void {
+  const withOddNumberOfEls = new Float64Array(
+    [
+      2.1,
+      2.01,
+      2.001,
+      2.0001,
+      2.00001,
+      2.000001,
+      2.0000001,
+      2.00000001,
+      2.000000001,
+      2.0000000001,
+      2,
+    ],
+  );
+  assertEquals(
+    stringify(withOddNumberOfEls),
+    `Float64Array(11) [
+          2.1,         2.01,
+        2.001,       2.0001,
+      2.00001,     2.000001,
+    2.0000001,   2.00000001,
+  2.000000001, 2.0000000001,
+            2
+]`,
+  );
+  const withEvenNumberOfEls = new Float64Array(
+    [
+      2.1,
+      2.01,
+      2.001,
+      2.0001,
+      2.00001,
+      2.000001,
+      2.0000001,
+      2.00000001,
+      2.000000001,
+      2.0000000001,
+      2,
+      2,
+    ],
+  );
+  assertEquals(
+    stringify(withEvenNumberOfEls),
+    `Float64Array(12) [
+          2.1,         2.01,
+        2.001,       2.0001,
+      2.00001,     2.000001,
+    2.0000001,   2.00000001,
+  2.000000001, 2.0000000001,
+            2,            2
+]`,
+  );
+  const withThreeColumns = [
+    2,
+    2.1,
+    2.11,
+    2,
+    2.111,
+    2.1111,
+    2,
+    2.1,
+    2.11,
+    2,
+    2.1,
+  ];
+  assertEquals(
+    stringify(withThreeColumns),
+    `[
+  2,   2.1,   2.11,
+  2, 2.111, 2.1111,
+  2,   2.1,   2.11,
+  2,   2.1
+]`,
+  );
 });
 
 unitTest(async function consoleTestStringifyPromises(): Promise<void> {

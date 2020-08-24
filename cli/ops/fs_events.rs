@@ -17,9 +17,10 @@ use notify::Watcher;
 use serde::Serialize;
 use std::convert::From;
 use std::path::PathBuf;
+use std::rc::Rc;
 use tokio::sync::mpsc;
 
-pub fn init(i: &mut CoreIsolate, s: &State) {
+pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
   i.register_op("op_fs_events_open", s.stateful_json_op2(op_fs_events_open));
   i.register_op("op_fs_events_poll", s.stateful_json_op2(op_fs_events_poll));
 }
@@ -64,7 +65,7 @@ impl From<NotifyEvent> for FsEvent {
 
 pub fn op_fs_events_open(
   isolate_state: &mut CoreIsolateState,
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -102,7 +103,7 @@ pub fn op_fs_events_open(
 
 pub fn op_fs_events_poll(
   isolate_state: &mut CoreIsolateState,
-  _state: &State,
+  _state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {

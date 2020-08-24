@@ -4,6 +4,16 @@ import * as types from "./_util/_util_types.ts";
 
 export { types };
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function inspect(object: unknown, ...opts: any): string {
+  return Deno.inspect(object, {
+    depth: opts.depth ?? 4,
+    iterableLimit: opts.iterableLimit ?? 100,
+    compact: !!(opts.compact ?? true),
+    sorted: !!(opts.sorted ?? false),
+  });
+}
+
 export function isArray(value: unknown): boolean {
   return Array.isArray(value);
 }

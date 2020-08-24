@@ -222,7 +222,7 @@
       return this.#params
         .map(
           (tuple) =>
-            `${encodeURIComponent(tuple[0])}=${encodeURIComponent(tuple[1])}`,
+            `${encodeSearchParam(tuple[0])}=${encodeSearchParam(tuple[1])}`,
         )
         .join("&");
     }
@@ -370,7 +370,7 @@
     }
     if (usedNonBase || restUrl.startsWith("?")) {
       [parts.query, restUrl] = takePattern(restUrl, /^(\?[^#]*)/);
-      parts.query = encodeSearch(parts.query);
+      parts.query = encodeSearch(parts.query, isSpecial);
       usedNonBase = true;
     } else {
       parts.query = baseParts.query;
@@ -660,7 +660,8 @@
     set search(value) {
       value = String(value);
       const query = value == "" || value.charAt(0) == "?" ? value : `?${value}`;
-      parts.get(this).query = encodeSearch(query);
+      const isSpecial = specialSchemes.includes(parts.get(this).protocol);
+      parts.get(this).query = encodeSearch(query, isSpecial);
       this.#updateSearchParams();
     }
 
@@ -766,9 +767,9 @@
     return (c >= "\u0000" && c <= "\u001F") || c > "\u007E";
   }
 
-  function charInSearchSet(c) {
+  function charInSearchSet(c, isSpecial) {
     // deno-fmt-ignore
-    return charInC0ControlSet(c) || ["\u0020", "\u0022", "\u0023", "\u0027", "\u003C", "\u003E"].includes(c) || c > "\u007E";
+    return charInC0ControlSet(c) || ["\u0020", "\u0022", "\u0023", "\u003C", "\u003E"].includes(c) || isSpecial && c == "\u0027" || c > "\u007E";
   }
 
   function charInFragmentSet(c) {
@@ -790,6 +791,11 @@
   function charIsForbiddenInHost(c) {
     // deno-fmt-ignore
     return ["\u0000", "\u0009", "\u000A", "\u000D", "\u0020", "\u0023", "\u0025", "\u002F", "\u003A", "\u003C", "\u003E", "\u003F", "\u0040", "\u005B", "\u005C", "\u005D", "\u005E"].includes(c);
+  }
+
+  function charInFormUrlencodedSet(c) {
+    // deno-fmt-ignore
+    return charInUserinfoSet(c) || ["\u0021", "\u0024", "\u0025", "\u0026", "\u0027", "\u0028", "\u0029", "\u002B", "\u002C", "\u007E"].includes(c);
   }
 
   const encoder = new TextEncoder();
@@ -866,14 +872,21 @@
     return [...s].map((c) => (charInPathSet(c) ? encodeChar(c) : c)).join("");
   }
 
-  function encodeSearch(s) {
-    return [...s].map((c) => (charInSearchSet(c) ? encodeChar(c) : c)).join("");
+  function encodeSearch(s, isSpecial) {
+    return [...s].map((
+      c,
+    ) => (charInSearchSet(c, isSpecial) ? encodeChar(c) : c)).join("");
   }
 
   function encodeHash(s) {
     return [...s].map((c) => (charInFragmentSet(c) ? encodeChar(c) : c)).join(
       "",
     );
+  }
+
+  function encodeSearchParam(s) {
+    return [...s].map((c) => (charInFormUrlencodedSet(c) ? encodeChar(c) : c))
+      .join("").replace(/%20/g, "+");
   }
 
   window.__bootstrap.url = {

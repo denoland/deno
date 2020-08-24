@@ -12,12 +12,13 @@ use futures::future::poll_fn;
 use futures::future::FutureExt;
 use futures::TryFutureExt;
 use std::convert::From;
+use std::rc::Rc;
 use tokio::process::Command;
 
 #[cfg(unix)]
 use std::os::unix::process::ExitStatusExt;
 
-pub fn init(i: &mut CoreIsolate, s: &State) {
+pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
   i.register_op("op_run", s.stateful_json_op2(op_run));
   i.register_op("op_run_status", s.stateful_json_op2(op_run_status));
   i.register_op("op_kill", s.stateful_json_op(op_kill));
@@ -62,7 +63,7 @@ struct ChildResource {
 
 fn op_run(
   isolate_state: &mut CoreIsolateState,
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -173,7 +174,7 @@ struct RunStatusArgs {
 
 fn op_run_status(
   isolate_state: &mut CoreIsolateState,
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -223,7 +224,7 @@ struct KillArgs {
 }
 
 fn op_kill(
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {

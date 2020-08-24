@@ -48,7 +48,7 @@ declare namespace Deno {
    * Gets the size of the console as columns/rows.
    *
    * ```ts
-   * const { columns, rows } = await Deno.consoleSize(Deno.stdout.rid);
+   * const { columns, rows } = Deno.consoleSize(Deno.stdout.rid);
    * ```
    */
   export function consoleSize(
@@ -283,7 +283,7 @@ declare namespace Deno {
      * symbols). Defaults to `false`. */
     keyofStringsOnly?: string;
     /** Emit class fields with ECMAScript-standard semantics. Defaults to `false`.
-     * Does not apply to `"esnext"` target. */
+     */
     useDefineForClassFields?: boolean;
     /** List of library files to be included in the compilation. If omitted,
      * then the Deno main runtime libs are used. */
@@ -1129,9 +1129,6 @@ declare namespace Deno {
    */
   export function hostname(): string;
 
-  /** **UNSTABLE**: The URL of the file that was originally executed from the command-line. */
-  export const mainModule: string;
-
   /** **UNSTABLE**: new API, yet to be vetted.
    * Synchronously truncates or extends the specified file stream, to reach the
    * specified `len`.  If `len` is not specified then the entire file contents
@@ -1245,4 +1242,45 @@ declare namespace Deno {
    * The pid of the current process's parent.
    */
   export const ppid: number;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   * A custom HttpClient for use with `fetch`.
+   *
+   * ```ts
+   * const client = new Deno.createHttpClient({ caFile: "./ca.pem" });
+   * const req = await fetch("https://myserver.com", { client });
+   * ```
+   */
+  export class HttpClient {
+    rid: number;
+    close(): void;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   * The options used when creating a [HttpClient].
+   */
+  interface CreateHttpClientOptions {
+    /** A certificate authority to use when validating TLS certificates.
+     *
+     * Requires `allow-read` permission.
+     */
+    caFile?: string;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   * Create a custom HttpClient for to use with `fetch`.
+   *
+   * ```ts
+   * const client = new Deno.createHttpClient({ caFile: "./ca.pem" });
+   * const req = await fetch("https://myserver.com", { client });
+   * ```
+   */
+  export function createHttpClient(
+    options: CreateHttpClientOptions,
+  ): HttpClient;
 }
+
+declare function fetch(
+  input: Request | URL | string,
+  init?: RequestInit & { client: Deno.HttpClient },
+): Promise<Response>;

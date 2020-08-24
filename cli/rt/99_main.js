@@ -20,7 +20,6 @@ delete Object.prototype.__proto__;
   const worker = window.__bootstrap.worker;
   const signals = window.__bootstrap.signals;
   const { internalSymbol, internalObject } = window.__bootstrap.internals;
-  const abortSignal = window.__bootstrap.abortSignal;
   const performance = window.__bootstrap.performance;
   const crypto = window.__bootstrap.crypto;
   const url = window.__bootstrap.url;
@@ -29,11 +28,14 @@ delete Object.prototype.__proto__;
   const streams = window.__bootstrap.streams;
   const blob = window.__bootstrap.blob;
   const domFile = window.__bootstrap.domFile;
+  const progressEvent = window.__bootstrap.progressEvent;
+  const fileReader = window.__bootstrap.fileReader;
   const formData = window.__bootstrap.formData;
   const request = window.__bootstrap.request;
   const fetch = window.__bootstrap.fetch;
   const denoNs = window.__bootstrap.denoNs;
   const denoNsUnstable = window.__bootstrap.denoNsUnstable;
+  const errors = window.__bootstrap.errors.errors;
 
   let windowIsClosing = false;
 
@@ -175,6 +177,30 @@ delete Object.prototype.__proto__;
     return s;
   }
 
+  function registerErrors() {
+    core.registerErrorClass("NotFound", errors.NotFound);
+    core.registerErrorClass("PermissionDenied", errors.PermissionDenied);
+    core.registerErrorClass("ConnectionRefused", errors.ConnectionRefused);
+    core.registerErrorClass("ConnectionReset", errors.ConnectionReset);
+    core.registerErrorClass("ConnectionAborted", errors.ConnectionAborted);
+    core.registerErrorClass("NotConnected", errors.NotConnected);
+    core.registerErrorClass("AddrInUse", errors.AddrInUse);
+    core.registerErrorClass("AddrNotAvailable", errors.AddrNotAvailable);
+    core.registerErrorClass("BrokenPipe", errors.BrokenPipe);
+    core.registerErrorClass("AlreadyExists", errors.AlreadyExists);
+    core.registerErrorClass("InvalidData", errors.InvalidData);
+    core.registerErrorClass("TimedOut", errors.TimedOut);
+    core.registerErrorClass("Interrupted", errors.Interrupted);
+    core.registerErrorClass("WriteZero", errors.WriteZero);
+    core.registerErrorClass("UnexpectedEof", errors.UnexpectedEof);
+    core.registerErrorClass("BadResource", errors.BadResource);
+    core.registerErrorClass("Http", errors.Http);
+    core.registerErrorClass("URIError", URIError);
+    core.registerErrorClass("TypeError", TypeError);
+    core.registerErrorClass("Other", Error);
+    core.registerErrorClass("Busy", errors.Busy);
+  }
+
   // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
   const windowOrWorkerGlobalScopeMethods = {
     atob: util.writable(atob),
@@ -190,8 +216,6 @@ delete Object.prototype.__proto__;
   // Other properties shared between WindowScope and WorkerGlobalScope
   const windowOrWorkerGlobalScopeProperties = {
     console: util.writable(new Console(core.print)),
-    AbortController: util.nonEnumerable(abortSignal.AbortController),
-    AbortSignal: util.nonEnumerable(abortSignal.AbortSignal),
     Blob: util.nonEnumerable(blob.Blob),
     ByteLengthQueuingStrategy: util.nonEnumerable(
       queuingStrategy.ByteLengthQueuingStrategy,
@@ -201,6 +225,7 @@ delete Object.prototype.__proto__;
     ),
     crypto: util.readOnly(crypto),
     File: util.nonEnumerable(domFile.DomFile),
+    FileReader: util.nonEnumerable(fileReader.FileReader),
     CustomEvent: util.nonEnumerable(CustomEvent),
     DOMException: util.nonEnumerable(DOMException),
     ErrorEvent: util.nonEnumerable(ErrorEvent),
@@ -216,6 +241,7 @@ delete Object.prototype.__proto__;
     PerformanceEntry: util.nonEnumerable(performance.PerformanceEntry),
     PerformanceMark: util.nonEnumerable(performance.PerformanceMark),
     PerformanceMeasure: util.nonEnumerable(performance.PerformanceMeasure),
+    ProgressEvent: util.nonEnumerable(progressEvent.ProgressEvent),
     TextDecoder: util.nonEnumerable(TextDecoder),
     TextEncoder: util.nonEnumerable(TextEncoder),
     TransformStream: util.nonEnumerable(streams.TransformStream),
@@ -290,6 +316,8 @@ delete Object.prototype.__proto__;
     const { args, cwd, noColor, pid, ppid, repl, unstableFlag } =
       runtimeStart();
 
+    registerErrors();
+
     const finalDenoNs = {
       core,
       internal: internalSymbol,
@@ -301,14 +329,10 @@ delete Object.prototype.__proto__;
       ppid: util.readOnly(ppid),
       noColor: util.readOnly(noColor),
       args: util.readOnly(Object.freeze(args)),
+      mainModule: util.getterOnly(opMainModule),
     });
 
     if (unstableFlag) {
-      Object.defineProperty(
-        finalDenoNs,
-        "mainModule",
-        util.getterOnly(opMainModule),
-      );
       Object.assign(finalDenoNs, denoNsUnstable);
     }
 
@@ -346,6 +370,8 @@ delete Object.prototype.__proto__;
     const { unstableFlag, pid, noColor, args } = runtimeStart(
       internalName ?? name,
     );
+
+    registerErrors();
 
     const finalDenoNs = {
       core,

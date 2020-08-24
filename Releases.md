@@ -6,6 +6,79 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### 1.3.1 / 2020.08.21
+
+- fix: Allow isolated "%"s when parsing file URLs (#7108)
+- fix: Blob.arrayBuffer returns Uint8Array (#7086)
+- fix: CLI argument parsing with dash values (#7039)
+- fix: Create Body stream from any valid bodySource (#7128)
+- fix: Granular permission requests/revokes (#7074)
+- fix: Handling of multiple spaces in URLSearchParams (#7068)
+- core: Enable WebAssembly.instantiateStreaming (#7043)
+- core: Add missing export of HeapLimits (#7047)
+- upgrade: swc_ecmascript, deno_lint, dprint (#7098)
+
+Changes in std version 0.66.0:
+
+- BREAKING(std/datetime): Remove currentDayOfYear (#7059)
+- feat(std/node): Add basic asserts (#7091)
+- feat(std/datetime): Generalise parser, add formatter (#6619)
+- fix(std/node): Misnamed assert exports (#7123)
+- fix(std/encoding/toml): Stop TOML parser from detecting numbers in strings.
+  (#7064)
+- fix(std/encoding/csv): Improve error message on ParseError (#7057)
+
+### 1.3.0 / 2020.08.13
+
+Changes in the CLI:
+
+- feat: Add "--no-check" flag to deno install (#6948)
+- feat: Add "--ignore" flag to deno lint (#6934)
+- feat: Add "--json" flag to deno lint (#6940)
+- feat: Add "--reload" flag to deno bundle (#6996)
+- feat: Add "--reload" flag to deno info (#7009)
+- feat: FileReader API (#6673)
+- feat: Handle imports in deno doc (#6987)
+- feat: Stabilize Deno.mainModule (#6993)
+- feat: Support file URLs in Deno.run for executable (#6994)
+- fix: console.log should see color codes when grouping occurs (#7000)
+- fix: URLSearchParams.toString() behaviour is different from browsers (#7017)
+- fix: Remove @ts-expect-error directives (#7024)
+- fix(unstable): Add missing globals to diagnostics (#6988)
+- refactor(doc): Remove detailed / summary distinction (#6818)
+- core: Memory limits & callbacks (#6914)
+- upgrade: TypeScript to 3.9.7 (#7036)
+- upgrade: Rust crates (#7034, #7040)
+
+Changes in std version 0.65.0:
+
+- feat(std/http): Add TLS serve abilities to file_server (#6962)
+- feat(std/http): Add --no-dir-listing flag to file_server (#6808)
+- feat(std/node): Add util.inspect (#6833)
+- fix: Make std work with isolatedModules (#7016)
+
+### 1.2.3 / 2020.08.08
+
+Changes in the CLI:
+
+- fix: Never type check in deno info (#6978)
+- fix: add missing globals to unstable diagnostics (#6960)
+- fix: add support for non-UTF8 source files (#6789)
+- fix: hash file names in gen cache (#6911)
+- refactor: Encode op errors as strings instead of numbers (#6977)
+- refactor: Op crate for Web APIs (#6906)
+- refactor: remove repeated code in main.rs (#6954)
+- upgrade to rusty_v8 0.8.1 / V8 8.6.334 (#6980)
+- upgrade: deno_lint v0.1.21 (#6985)
+- upgrade: swc_ecmascript (#6943)
+- feat(unstable): custom http client for fetch (#6918)
+
+Changes in std version 0.64.0:
+
+- fix(std/toml): parser error with inline comments (#6942)
+- fix(std/encoding/toml): Add boolean support to stringify (#6941)
+- refactor: Rewrite globToRegExp() (#6963)
+
 ### 1.2.2 / 2020.07.31
 
 Changes in the CLI:
