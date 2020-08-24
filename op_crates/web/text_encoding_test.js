@@ -131,6 +131,12 @@ function textDecoderErrorEncoding() {
   assert(didThrow);
 }
 
+function textDecoderHandlesNull() {
+  const fixture = null;
+  const decoder = new TextDecoder();
+  assert(decoder.decode(fixture) === "");
+}
+
 function textEncoder() {
   const fixture = "𝓽𝓮𝔁𝓽";
   const encoder = new TextEncoder();
@@ -231,6 +237,7 @@ function main() {
   textDecoderNotBOM();
   textDecoderASCII();
   textDecoderErrorEncoding();
+  textDecoderHandlesNull();
   textEncoder();
   textEncodeInto();
   textEncodeInto2();

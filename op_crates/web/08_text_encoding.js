@@ -442,6 +442,7 @@
         bytes = new Uint8Array(input);
       } else if (
         typeof input === "object" &&
+        input !== null &&
         "buffer" in input &&
         isEitherArrayBuffer(input.buffer)
       ) {
