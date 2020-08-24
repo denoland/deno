@@ -80,6 +80,12 @@ fn get_default_ts_config() -> TsConfig {
   ts_config
 }
 
+pub fn get_syntax_for_dts() -> Syntax {
+  let mut ts_config = TsConfig::default();
+  ts_config.dts = true;
+  Syntax::Typescript(ts_config)
+}
+
 pub fn get_syntax_for_media_type(media_type: MediaType) -> Syntax {
   match media_type {
     MediaType::JavaScript => Syntax::Es(get_default_es_config()),
