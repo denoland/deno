@@ -94,7 +94,9 @@ export default class Buffer extends Uint8Array {
     if (typeof fill === "string") {
       encoding = checkEncoding(encoding);
       if (
-        typeof fill === "string" && fill.length === 1 && encoding === "utf8"
+        typeof fill === "string" &&
+        fill.length === 1 &&
+        encoding === "utf8"
       ) {
         buf.fill(fill.charCodeAt(0));
       } else bufFill = Buffer.from(fill, encoding);
@@ -221,7 +223,7 @@ export default class Buffer extends Uint8Array {
   /**
    * Returns true if obj is a Buffer, false otherwise.
    */
-  static isBuffer(obj: object): obj is Buffer {
+  static isBuffer(obj: unknown): obj is Buffer {
     return obj instanceof Buffer;
   }
 
@@ -408,7 +410,7 @@ export default class Buffer extends Uint8Array {
    * Returns a JSON representation of buf. JSON.stringify() implicitly calls
    * this function when stringifying a Buffer instance.
    */
-  toJSON(): object {
+  toJSON(): Record<string, unknown> {
     return { type: "Buffer", data: Array.from(this) };
   }
 

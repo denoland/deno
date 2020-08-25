@@ -813,7 +813,7 @@ function readFlowCollection(state: LoaderState, nodeIndent: number): boolean {
         valueNode,
       );
     } else if (isPair) {
-      (result as Array<{}>).push(
+      (result as ArrayObject[]).push(
         storeMappingPair(
           state,
           null,

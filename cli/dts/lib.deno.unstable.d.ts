@@ -283,7 +283,7 @@ declare namespace Deno {
      * symbols). Defaults to `false`. */
     keyofStringsOnly?: string;
     /** Emit class fields with ECMAScript-standard semantics. Defaults to `false`.
-     * Does not apply to `"esnext"` target. */
+     */
     useDefineForClassFields?: boolean;
     /** List of library files to be included in the compilation. If omitted,
      * then the Deno main runtime libs are used. */
