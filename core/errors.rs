@@ -138,7 +138,7 @@ fn get_property<'a>(
 
 impl JSError {
   pub(crate) fn create(js_error: Self) -> ErrBox {
-    ErrBox::from(js_error)
+    js_error.into()
   }
 
   pub fn from_v8_exception(

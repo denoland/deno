@@ -61,8 +61,7 @@ where
     let async_args: AsyncArgs = match serde_json::from_slice(&zero_copy[0]) {
       Ok(args) => args,
       Err(e) => {
-        let buf =
-          serialize_result(rust_err_to_json_fn, None, Err(ErrBox::from(e)));
+        let buf = serialize_result(rust_err_to_json_fn, None, Err(e.into()));
         return Op::Sync(buf);
       }
     };

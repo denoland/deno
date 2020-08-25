@@ -41,7 +41,7 @@ impl Repl {
       .map(|_| debug!("Saved REPL history to: {:?}", self.history_file))
       .map_err(|e| {
         eprintln!("Unable to save REPL history: {:?} {}", self.history_file, e);
-        ErrBox::from(e)
+        e.into()
       })
   }
 

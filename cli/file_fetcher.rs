@@ -324,7 +324,7 @@ impl SourceFileFetcher {
           module_url.to_string()
         ),
       );
-      return Err(ErrBox::from(e));
+      return Err(e.into());
     }
 
     // Fetch remote file and cache on-disk for subsequent access
@@ -352,7 +352,7 @@ impl SourceFileFetcher {
     permissions.check_read(&filepath)?;
     let source_code = match fs::read(filepath.clone()) {
       Ok(c) => c,
-      Err(e) => return Err(ErrBox::from(e)),
+      Err(e) => return Err(e.into()),
     };
 
     let (media_type, charset) = map_content_type(&filepath, None);
@@ -409,7 +409,7 @@ impl SourceFileFetcher {
           url
         }
         Err(e) => {
-          return Err(ErrBox::from(e));
+          return Err(e.into());
         }
       };
       return self

@@ -94,7 +94,7 @@ impl State {
           return Op::Sync(serialize_result(
             rust_err_to_json_fn,
             None,
-            Err(ErrBox::from(e)),
+            Err(e.into()),
           ));
         }
       };
@@ -129,7 +129,7 @@ impl State {
       let args: Value = match serde_json::from_slice(&bufs[0]) {
         Ok(v) => v,
         Err(e) => {
-          let e = ErrBox::from(e);
+          let e = e.into();
           return Op::Sync(serialize_result(rust_err_to_json_fn, None, Err(e)));
         }
       };
