@@ -203,11 +203,11 @@ pub fn get_error_class(e: &ErrBox) -> &'static str {
   })
   .or_else(|| {
     #[cfg(unix)]
-    let maybe_nix_error_class =
+    let maybe_get_nix_error_class =
       || e.downcast_ref::<nix::Error>().map(get_nix_error_class);
     #[cfg(not(unix))]
-    let maybe_nix_error_class = || Option::<&'static str>::None;
-    (maybe_nix_error_class)()
+    let maybe_get_nix_error_class = || Option::<&'static str>::None;
+    (maybe_get_nix_error_class)()
   })
   .unwrap_or_else(|| {
     panic!("ErrBox '{}' contains boxed error of unknown type", e);
