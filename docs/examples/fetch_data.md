@@ -6,9 +6,9 @@ than in any other JavaScript application, just call the the `fetch()` method.
 
 The exception with Deno occurs when running a script which makes a call over the
 web. Deno is secure by default which means access to IO (Input / Output) is
-prohibited. To make a call over the web Deno must be explicitly told
-it is ok to do so. This is achieved by adding the `--allow-net` flag to the
-`deno run` command.
+prohibited. To make a call over the web Deno must be explicitly told it is ok to
+do so. This is achieved by adding the `--allow-net` flag to the `deno run`
+command.
 
 **Command:** `deno run --allow-net fetch.ts`
 
