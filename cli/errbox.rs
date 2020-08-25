@@ -123,7 +123,11 @@ fn get_serde_json_error_class(
 ) -> &'static str {
   use serde_json::error::*;
   match error.classify() {
-    Category::Io => "TypeError", // TODO(piscisaureus): this is not correct.
+    Category::Io => error
+      .source()
+      .and_then(|e| e.downcast_ref::<io::Error>())
+      .map(get_io_error_class)
+      .unwrap(),
     Category::Syntax => "SyntaxError",
     Category::Data => "InvalidData",
     Category::Eof => "UnexpectedEof",
