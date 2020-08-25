@@ -307,14 +307,17 @@ export default class Context {
 
     this.fds = [
       {
+        fdflags: FDFLAGS_APPEND,
         type: FILETYPE_CHARACTER_DEVICE,
         handle: Deno.stdin,
       },
       {
+        fdflags: FDFLAGS_APPEND,
         type: FILETYPE_CHARACTER_DEVICE,
         handle: Deno.stdout,
       },
       {
+        fdflags: FDFLAGS_APPEND,
         type: FILETYPE_CHARACTER_DEVICE,
         handle: Deno.stderr,
       },
@@ -521,7 +524,7 @@ export default class Context {
 
         const view = new DataView(this.memory.buffer);
         view.setUint8(stat_out, entry.type);
-        view.setUint16(stat_out + 4, 0, true); // TODO
+        view.setUint16(stat_out + 2, entry.fdflags, true);
         view.setBigUint64(stat_out + 8, 0n, true); // TODO
         view.setBigUint64(stat_out + 16, 0n, true); // TODO
 
@@ -1155,9 +1158,9 @@ export default class Context {
           // directory this way so there's no native fstat but Deno.open
           // doesn't work with directories on windows so we'll have to work
           // around it for now.
-
           const entries = Array.from(Deno.readDirSync(path));
           const opened_fd = this.fds.push({
+            fdflags,
             entries,
             path,
           }) - 1;
@@ -1237,6 +1240,7 @@ export default class Context {
 
         const handle = Deno.openSync(path, options);
         const opened_fd = this.fds.push({
+          fdflags,
           handle,
           path,
         }) - 1;
