@@ -131,7 +131,7 @@ fn get_serde_json_error_class(
 }
 
 fn get_swc_diagnostic_class(_: &SwcDiagnosticBuffer) -> &'static str {
-  "Other"
+  "SyntaxError"
 }
 
 fn get_url_parse_error_class(_error: &url::ParseError) -> &'static str {
