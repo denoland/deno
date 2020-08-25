@@ -214,8 +214,7 @@ fn op_create_worker(
     module_specifier,
     use_deno_namespace,
     maybe_source_code,
-  )
-  .map_err(|e| ErrBox::other(e.to_string()))?;
+  )?;
   // At this point all interactions with worker happen using thread
   // safe handler returned from previous function call
   parent_state
@@ -353,8 +352,6 @@ fn op_host_post_message(
   debug!("post message to worker {}", id);
   let workers = state.workers.borrow();
   let worker_handle = workers[&id].1.clone();
-  worker_handle
-    .post_message(msg)
-    .map_err(|e| ErrBox::other(e.to_string()))?;
+  worker_handle.post_message(msg)?;
   Ok(JsonOp::Sync(json!({})))
 }

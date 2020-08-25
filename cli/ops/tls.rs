@@ -200,10 +200,10 @@ fn load_certs(path: &str) -> Result<Vec<Certificate>, ErrBox> {
   let reader = &mut BufReader::new(cert_file);
 
   let certs = certs(reader)
-    .map_err(|_| ErrBox::other("Unable to decode certificate".to_string()))?;
+    .map_err(|_| ErrBox::new("InvalidData", "Unable to decode certificate"))?;
 
   if certs.is_empty() {
-    let e = ErrBox::other("No certificates found in cert file".to_string());
+    let e = ErrBox::new("InvalidData", "No certificates found in cert file");
     return Err(e);
   }
 
@@ -211,11 +211,11 @@ fn load_certs(path: &str) -> Result<Vec<Certificate>, ErrBox> {
 }
 
 fn key_decode_err() -> ErrBox {
-  ErrBox::other("Unable to decode key".to_string())
+  ErrBox::new("InvalidData", "Unable to decode key")
 }
 
 fn key_not_found_err() -> ErrBox {
-  ErrBox::other("No keys found in key file".to_string())
+  ErrBox::new("InvalidData", "No keys found in key file")
 }
 
 /// Starts with -----BEGIN RSA PRIVATE KEY-----
@@ -274,7 +274,7 @@ impl TlsListenerResource {
     // Caveat: TcpListener by itself also only tracks an accept task at a time.
     // See https://github.com/tokio-rs/tokio/issues/846#issuecomment-454208883
     if self.waker.is_some() {
-      return Err(ErrBox::other("Another accept task is ongoing".to_string()));
+      return Err(ErrBox::new("Busy", "Another accept task is ongoing"));
     }
 
     let waker = futures::task::AtomicWaker::new();

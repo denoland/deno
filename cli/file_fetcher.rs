@@ -137,7 +137,7 @@ impl SourceFileFetcher {
 
   pub fn check_if_supported_scheme(url: &Url) -> Result<(), ErrBox> {
     if !SUPPORTED_URL_SCHEMES.contains(&url.scheme()) {
-      return Err(ErrBox::other(format!(
+      return Err(ErrBox::error(format!(
         "Unsupported scheme \"{}\" for module \"{}\". Supported schemes: {:#?}",
         url.scheme(),
         url,

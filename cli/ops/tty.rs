@@ -31,7 +31,7 @@ fn get_windows_handle(
   if handle == handleapi::INVALID_HANDLE_VALUE {
     return Err(ErrBox::last_os_error());
   } else if handle.is_null() {
-    return Err(ErrBox::other("null handle".to_owned()));
+    return Err(ErrBox::new("ReferenceError", "null handle"));
   }
   Ok(handle)
 }
@@ -113,7 +113,7 @@ pub fn op_set_raw(
     if handle == handleapi::INVALID_HANDLE_VALUE {
       return Err(ErrBox::last_os_error());
     } else if handle.is_null() {
-      return Err(ErrBox::other("null handle".to_owned()));
+      return Err(ErrBox::new("ReferenceError", "null handle"));
     }
     let mut original_mode: DWORD = 0;
     if unsafe { consoleapi::GetConsoleMode(handle, &mut original_mode) }
@@ -292,10 +292,7 @@ pub fn op_console_size(
               &mut bufinfo,
             ) == 0
             {
-              // TODO (caspervonb) use GetLastError
-              return Err(ErrBox::other(
-                winapi::um::errhandlingapi::GetLastError().to_string(),
-              ));
+              return Err(ErrBox::last_os_error());
             }
 
             Ok(ConsoleSize {

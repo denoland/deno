@@ -92,7 +92,7 @@ impl<F> RustErrToJsonFn for F where for<'e> F: Fn(&'e ErrBox) -> Box<[u8]> {}
 
 fn rust_err_to_json(e: &ErrBox) -> Box<[u8]> {
   let value = json!({
-    "kind": "Other",
+    "kind": "Error",
     "message": e.to_string()
   });
   serde_json::to_vec(&value).unwrap().into_boxed_slice()
@@ -552,8 +552,8 @@ fn serialize_result(
     Err(err) => json!({
       "promiseId": promise_id ,
       "err": {
+        "kind": "Error",
         "message": err.to_string(),
-        "kind": "Other",
       }
     }),
   };

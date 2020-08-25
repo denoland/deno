@@ -109,7 +109,7 @@ async fn check_source_files(
   if not_formatted_files_count == 0 {
     Ok(())
   } else {
-    Err(ErrBox::other(format!(
+    Err(ErrBox::error(format!(
       "Found {} not formatted {}",
       not_formatted_files_count,
       files_str(not_formatted_files_count),
@@ -171,7 +171,7 @@ async fn format_source_files(
 fn format_stdin(check: bool) -> Result<(), ErrBox> {
   let mut source = String::new();
   if stdin().read_to_string(&mut source).is_err() {
-    return Err(ErrBox::other("Failed to read from stdin".to_string()));
+    return Err(ErrBox::error("Failed to read from stdin"));
   }
   let formatter = dprint::Formatter::new(get_config());
 
@@ -187,7 +187,7 @@ fn format_stdin(check: bool) -> Result<(), ErrBox> {
       }
     }
     Err(e) => {
-      return Err(ErrBox::other(e));
+      return Err(ErrBox::error(e));
     }
   }
   Ok(())

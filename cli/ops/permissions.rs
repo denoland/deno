@@ -45,7 +45,12 @@ pub fn op_query_permission(
     "run" => permissions.query_run(),
     "plugin" => permissions.query_plugin(),
     "hrtime" => permissions.query_hrtime(),
-    n => return Err(ErrBox::other(format!("No such permission name: {}", n))),
+    n => {
+      return Err(ErrBox::new(
+        "ReferenceError",
+        format!("No such permission name: {}", n),
+      ))
+    }
   };
   Ok(JsonOp::Sync(json!({ "state": perm.to_string() })))
 }
@@ -66,7 +71,12 @@ pub fn op_revoke_permission(
     "run" => permissions.revoke_run(),
     "plugin" => permissions.revoke_plugin(),
     "hrtime" => permissions.revoke_hrtime(),
-    n => return Err(ErrBox::other(format!("No such permission name: {}", n))),
+    n => {
+      return Err(ErrBox::new(
+        "ReferenceError",
+        format!("No such permission name: {}", n),
+      ))
+    }
   };
   Ok(JsonOp::Sync(json!({ "state": perm.to_string() })))
 }
@@ -87,7 +97,12 @@ pub fn op_request_permission(
     "run" => permissions.request_run(),
     "plugin" => permissions.request_plugin(),
     "hrtime" => permissions.request_hrtime(),
-    n => return Err(ErrBox::other(format!("No such permission name: {}", n))),
+    n => {
+      return Err(ErrBox::new(
+        "ReferenceError",
+        format!("No such permission name: {}", n),
+      ))
+    }
   };
   Ok(JsonOp::Sync(json!({ "state": perm.to_string() })))
 }

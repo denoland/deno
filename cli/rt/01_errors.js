@@ -126,7 +126,7 @@
       this.name = "Busy";
     }
   }
-  
+
   class NotSupported extends Error {
     constructor(msg) {
       super(msg);
@@ -153,7 +153,7 @@
     BadResource,
     Http,
     Busy,
-    NotSupported
+    NotSupported,
   };
 
   window.__bootstrap.errors = {

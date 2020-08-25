@@ -55,8 +55,7 @@ pub fn op_fetch(
   };
 
   let method = match args.method {
-    Some(method_str) => Method::from_bytes(method_str.as_bytes())
-      .map_err(|e| ErrBox::other(e.to_string()))?,
+    Some(method_str) => Method::from_bytes(method_str.as_bytes())?,
     None => Method::GET,
   };
 

@@ -43,6 +43,10 @@ impl ErrBox {
     Self::new("BadResource", "Bad resource ID")
   }
 
+  pub fn error(message: impl Into<Cow<'static, str>>) -> Self {
+    Self::new("Error", message)
+  }
+
   pub fn not_supported() -> Self {
     Self::new("NotSupported", "The operation is supported")
   }
@@ -56,10 +60,6 @@ impl ErrBox {
 
   pub fn type_error(message: impl Into<Cow<'static, str>>) -> Self {
     Self::new("TypeError", message)
-  }
-
-  pub fn other(message: impl Into<Cow<'static, str>>) -> Self {
-    Self::new("Other", message)
   }
 
   pub fn last_os_error() -> Self {

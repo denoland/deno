@@ -169,13 +169,12 @@ fn compose_url_to_exec(version: &Version) -> Result<Url, ErrBox> {
 }
 
 fn find_version(text: &str) -> Result<String, ErrBox> {
-  let re =
-    Regex::new(r#"v([^\?]+)?""#).map_err(|e| ErrBox::other(e.to_string()))?;
+  let re = Regex::new(r#"v([^\?]+)?""#)?;
   if let Some(_mat) = re.find(text) {
     let mat = _mat.as_str();
     return Ok(mat[1..mat.len() - 1].to_string());
   }
-  Err(ErrBox::other("Cannot read latest tag version".to_string()))
+  Err(ErrBox::new("NotFound", "Cannot read latest tag version"))
 }
 
 fn unpack(archive_data: Vec<u8>) -> Result<PathBuf, std::io::Error> {
@@ -266,8 +265,7 @@ fn check_exe(
     .arg("-V")
     .stderr(std::process::Stdio::inherit())
     .output()?;
-  let stdout = String::from_utf8(output.stdout)
-    .map_err(|e| ErrBox::other(e.to_string()))?;
+  let stdout = String::from_utf8(output.stdout)?;
   assert!(output.status.success());
   assert_eq!(stdout.trim(), format!("deno {}", expected_version));
   Ok(())

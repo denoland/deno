@@ -291,8 +291,7 @@ impl CompilerConfig {
     // If `checkJs` is set to true in `compilerOptions` then we're gonna be compiling
     // JavaScript files as well
     let compile_js = if let Some(config_content) = config.clone() {
-      let config_str = std::str::from_utf8(&config_content)
-        .map_err(|e| ErrBox::other(e.to_string()))?;
+      let config_str = std::str::from_utf8(&config_content)?;
       CHECK_JS_RE.is_match(config_str)
     } else {
       false
@@ -556,9 +555,7 @@ impl TsCompiler {
       .disk_cache
       .get_cache_filename_with_extension(&module_url, "buildinfo");
     let build_info = match self.disk_cache.get(&build_info_key) {
-      Ok(bytes) => Some(
-        String::from_utf8(bytes).map_err(|e| ErrBox::other(e.to_string()))?,
-      ),
+      Ok(bytes) => Some(String::from_utf8(bytes)?),
       Err(_) => None,
     };
 
@@ -620,7 +617,7 @@ impl TsCompiler {
     let compile_response: CompileResponse = serde_json::from_str(&json_str)?;
 
     if !compile_response.diagnostics.items.is_empty() {
-      return Err(ErrBox::other(compile_response.diagnostics.to_string()));
+      return Err(ErrBox::error(compile_response.diagnostics.to_string()));
     }
 
     maybe_log_stats(compile_response.stats);
@@ -724,7 +721,7 @@ impl TsCompiler {
     maybe_log_stats(bundle_response.stats);
 
     if !bundle_response.diagnostics.items.is_empty() {
-      return Err(ErrBox::other(bundle_response.diagnostics.to_string()));
+      return Err(ErrBox::error(bundle_response.diagnostics.to_string()));
     }
 
     assert!(bundle_response.bundle_output.is_some());
@@ -1124,7 +1121,7 @@ fn js_error_to_errbox(error: ErrBox) -> ErrBox {
   match error.downcast::<JSError>() {
     Ok(js_error) => {
       let msg = format!("Error in TS compiler:\n{}", js_error);
-      ErrBox::other(msg)
+      ErrBox::error(msg)
     }
     Err(error) => error,
   }

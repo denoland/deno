@@ -36,7 +36,7 @@ fn err_with_location(e: ErrBox, maybe_location: Option<&Location>) -> ErrBox {
       location.filename, location.line
     );
     let err_str = e.to_string();
-    ErrBox::other(format!("{}{}", err_str, location_str))
+    ErrBox::error(format!("{}{}", err_str, location_str))
   } else {
     e
   }

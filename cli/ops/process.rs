@@ -37,7 +37,7 @@ fn subprocess_stdio_map(s: &str) -> Result<std::process::Stdio, ErrBox> {
     "inherit" => Ok(std::process::Stdio::inherit()),
     "piped" => Ok(std::process::Stdio::piped()),
     "null" => Ok(std::process::Stdio::null()),
-    _ => Err(ErrBox::other("Invalid resource for stdio".to_string())),
+    _ => Err(ErrBox::type_error("Invalid resource for stdio")),
   }
 }
 

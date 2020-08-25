@@ -111,7 +111,7 @@ fn op_accept(
     "tcp" => accept_tcp(isolate_state, args, zero_copy),
     #[cfg(unix)]
     "unix" => net_unix::accept_unix(isolate_state, args.rid as u32, zero_copy),
-    _ => Err(ErrBox::other(format!(
+    _ => Err(ErrBox::error(format!(
       "Unsupported transport protocol {}",
       args.transport
     ))),
@@ -179,7 +179,7 @@ fn op_datagram_receive(
     "unixpacket" => {
       net_unix::receive_unix_packet(isolate_state, args.rid as u32, zero_copy)
     }
-    _ => Err(ErrBox::other(format!(
+    _ => Err(ErrBox::error(format!(
       "Unsupported transport protocol {}",
       args.transport
     ))),
@@ -239,8 +239,9 @@ fn op_datagram_send(
         let mut resource_table = resource_table.borrow_mut();
         let resource = resource_table
           .get_mut::<net_unix::UnixDatagramResource>(rid as u32)
-          .ok_or_else(|| ErrBox::other("Socket has been closed".to_string()))?;
-
+          .ok_or_else(|| {
+            ErrBox::new("NotConnected", "Socket has been closed")
+          })?;
         let socket = &mut resource.socket;
         let byte_length = socket
           .send_to(&zero_copy, &resource.local_addr.as_pathname().unwrap())
@@ -251,7 +252,7 @@ fn op_datagram_send(
 
       Ok(JsonOp::Async(op.boxed_local()))
     }
-    _ => Err(ErrBox::other("Wrong argument format!".to_owned())),
+    _ => Err(ErrBox::type_error("Wrong argument format!")),
   }
 }
 
@@ -338,7 +339,7 @@ fn op_connect(
       };
       Ok(JsonOp::Async(op.boxed_local()))
     }
-    _ => Err(ErrBox::other("Wrong argument format!".to_owned())),
+    _ => Err(ErrBox::type_error("Wrong argument format!")),
   }
 }
 
@@ -409,7 +410,7 @@ impl TcpListenerResource {
     // Caveat: TcpListener by itself also only tracks an accept task at a time.
     // See https://github.com/tokio-rs/tokio/issues/846#issuecomment-454208883
     if self.waker.is_some() {
-      return Err(ErrBox::other("Another accept task is ongoing".to_string()));
+      return Err(ErrBox::new("Busy", "Another accept task is ongoing"));
     }
 
     let waker = futures::task::AtomicWaker::new();
@@ -559,6 +560,6 @@ fn op_listen(
       })))
     }
     #[cfg(unix)]
-    _ => Err(ErrBox::other("Wrong argument format!".to_owned())),
+    _ => Err(ErrBox::type_error("Wrong argument format!")),
   }
 }

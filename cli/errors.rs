@@ -22,11 +22,11 @@ use std::io;
 fn get_dlopen_error_class(error: &dlopen::Error) -> &'static str {
   use dlopen::Error::*;
   match error {
-    NullCharacter(_) => "Other",
+    NullCharacter(_) => "InvalidData",
     OpeningLibraryError(ref e) => get_io_error_class(e),
     SymbolGettingError(ref e) => get_io_error_class(e),
     AddrNotMatchingDll(ref e) => get_io_error_class(e),
-    NullSymbol => "Other",
+    NullSymbol => "NotFound",
   }
 }
 
@@ -61,7 +61,7 @@ fn get_io_error_class(error: &io::Error) -> &'static str {
     Interrupted => "Interrupted",
     WriteZero => "WriteZero",
     UnexpectedEof => "UnexpectedEof",
-    Other => "Other",
+    Other => "Error",
     WouldBlock => unreachable!(),
     // Non-exhaustive enum - might add new variants
     // in the future
@@ -78,7 +78,7 @@ fn get_module_resolution_error_class(
 fn get_notify_error_class(error: &notify::Error) -> &'static str {
   use notify::ErrorKind::*;
   match error.kind {
-    Generic(_) => "Other",
+    Generic(_) => "Error",
     Io(ref e) => get_io_error_class(e),
     PathNotFound => "NotFound",
     WatchNotFound => "NotFound",
@@ -95,6 +95,15 @@ fn get_readline_error_class(error: &ReadlineError) -> &'static str {
     #[cfg(unix)]
     Errno(err) => get_nix_error_class(err),
     _ => unimplemented!(),
+  }
+}
+
+fn get_regex_error_class(error: &regex::Error) -> &'static str {
+  use regex::Error::*;
+  match error {
+    Syntax(_) => "SyntaxError",
+    CompiledTooBig(_) => "RangeError",
+    _ => "Error",
   }
 }
 
@@ -194,6 +203,7 @@ pub fn get_error_class(e: &ErrBox) -> &'static str {
     e.downcast_ref::<reqwest::Error>()
       .map(get_request_error_class)
   })
+  .or_else(|| e.downcast_ref::<regex::Error>().map(get_regex_error_class))
   .or_else(|| {
     e.downcast_ref::<serde_json::error::Error>()
       .map(get_serde_json_error_class)
