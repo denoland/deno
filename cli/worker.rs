@@ -119,6 +119,7 @@ impl Worker {
       core_state.set_js_error_create_fn(move |core_js_error| {
         JSError::create(core_js_error, &global_state.ts_compiler)
       });
+      core_state.set_rust_err_to_json_fn(&crate::errbox::rust_err_to_json);
     }
 
     let inspector = {

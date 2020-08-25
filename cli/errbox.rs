@@ -10,6 +10,8 @@
 //!   But Diagnostics are compile-time type errors, whereas JSErrors are runtime
 //!   exceptions.
 
+use crate::import_map::ImportMapError;
+use crate::swc_util::SwcDiagnosticBuffer;
 use deno_core::ErrBox;
 use deno_core::ModuleResolutionError;
 use rustyline::error::ReadlineError;
@@ -197,4 +199,58 @@ pub fn from_notify(error: notify::Error) -> ErrBox {
   };
 
   ErrBox::new(kind, error)
+}
+
+pub fn rust_err_to_json(_e: &ErrBox) -> Box<[u8]> {
+  unimplemented!()
+}
+
+pub fn get_err_class(error: &ErrBox) -> &'static str {
+  #[cfg(unix)]
+  fn unix_error_kind(err: &ErrBox) -> Option<ErrBox> {
+    err.downcast_ref::<nix::Error>().map(|e| (*e).into())
+  }
+
+  #[cfg(not(unix))]
+  fn unix_error_kind(_: &ErrBox) -> Option<ErrBox> {
+    None
+  }
+
+  None
+    .or_else(|| {
+      error
+        .downcast_ref::<ErrBox>()
+        .map(|e| ErrBox::new(error_str_to_kind(&e.kind_str), e.msg.to_string()))
+    })
+    .or_else(|| error.downcast_ref::<reqwest::Error>().map(|e| e.into()))
+    .or_else(|| error.downcast_ref::<ImportMapError>().map(|e| e.into()))
+    .or_else(|| error.downcast_ref::<io::Error>().map(|e| e.into()))
+    .or_else(|| {
+      error
+        .downcast_ref::<ModuleResolutionError>()
+        .map(|e| e.into())
+    })
+    .or_else(|| {
+      error
+        .downcast_ref::<url::ParseError>()
+        .map(|e| from_url_ref(&a))
+    })
+    .or_else(|| error.downcast_ref::<VarError>().map(|e| e.into()))
+    .or_else(|| error.downcast_ref::<ReadlineError>().map(|e| e.into()))
+    .or_else(|| {
+      error
+        .downcast_ref::<serde_json::error::Error>()
+        .map(|e| e.into())
+    })
+    .or_else(|| error.downcast_ref::<dlopen::Error>().map(|e| e.into()))
+    .or_else(|| error.downcast_ref::<notify::Error>().map(|e| e.into()))
+    .or_else(|| {
+      error
+        .downcast_ref::<SwcDiagnosticBuffer>()
+        .map(|e| e.into())
+    })
+    .or_else(|| unix_error_kind(&error))
+    .unwrap_or_else(|| {
+      panic!("Can't downcast {:?} to ErrBox", error);
+    })
 }
