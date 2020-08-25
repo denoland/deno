@@ -120,3 +120,12 @@ Deno.test({
     assertEquals(typeof env.PATH, "string");
   },
 });
+
+Deno.test({
+  name: "process.stdin",
+  fn() {
+    assertEquals(typeof process.stdin.rid, "number");
+    assertEquals(process.stdin.rid, Deno.stdin.rid);
+    assert(process.stdin.isTTY);
+  },
+});
