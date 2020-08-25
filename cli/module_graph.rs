@@ -55,7 +55,7 @@ fn validate_no_downgrade(
         let e = errbox::permission_denied(
           "Modules loaded over https:// are not allowed to import modules over http://".to_string()
         );
-        return Err(err_with_location(e, maybe_location));
+        return Err(err_with_location(e.into(), maybe_location));
       };
     };
   };
@@ -80,7 +80,7 @@ fn validate_no_file_from_remote(
             let e = errbox::permission_denied(
               "Remote modules are not allowed to statically import local modules. Use dynamic import instead.".to_string()
             );
-            return Err(err_with_location(e, maybe_location));
+            return Err(err_with_location(e.into(), maybe_location));
           }
         }
       }
@@ -104,9 +104,7 @@ fn resolve_imports_and_references(
 
   for import_desc in import_descs {
     let maybe_resolved = if let Some(import_map) = maybe_import_map.as_ref() {
-      import_map
-        .resolve(&import_desc.specifier, &referrer.to_string())
-        .map_err(|e| ErrBox::other(e.to_string()))?
+      import_map.resolve(&import_desc.specifier, &referrer.to_string())?
     } else {
       None
     };
@@ -117,19 +115,15 @@ fn resolve_imports_and_references(
       ModuleSpecifier::resolve_import(
         &import_desc.specifier,
         &referrer.to_string(),
-      )
-      .map_err(errbox::from_resolution)?
+      )?
     };
 
     let resolved_type_directive =
       if let Some(types_specifier) = import_desc.deno_types.as_ref() {
-        Some(
-          ModuleSpecifier::resolve_import(
-            &types_specifier,
-            &referrer.to_string(),
-          )
-          .map_err(errbox::from_resolution)?,
-        )
+        Some(ModuleSpecifier::resolve_import(
+          &types_specifier,
+          &referrer.to_string(),
+        )?)
       } else {
         None
       };
@@ -153,8 +147,7 @@ fn resolve_imports_and_references(
     let resolved_specifier = ModuleSpecifier::resolve_import(
       &ref_desc.specifier,
       &referrer.to_string(),
-    )
-    .map_err(errbox::from_resolution)?;
+    )?;
 
     let reference_descriptor = ReferenceDescriptor {
       specifier: ref_desc.specifier.to_string(),
@@ -342,8 +335,7 @@ impl ModuleGraphLoader {
       if let Ok(spec) = ModuleSpecifier::resolve_url(&specifier) {
         spec
       } else {
-        ModuleSpecifier::resolve_url(&format!("memory://{}", specifier))
-          .map_err(errbox::from_resolution)?
+        ModuleSpecifier::resolve_url(&format!("memory://{}", specifier))?
       };
 
     let (raw_imports, raw_references) = pre_process_file(
@@ -351,8 +343,7 @@ impl ModuleGraphLoader {
       map_file_extension(&PathBuf::from(&specifier)),
       &source_code,
       self.analyze_dynamic_imports,
-    )
-    .map_err(|e| ErrBox::other(e.to_string()))?;
+    )?;
     let (imports, references) = resolve_imports_and_references(
       module_specifier.clone(),
       self.maybe_import_map.as_ref(),
@@ -486,10 +477,7 @@ impl ModuleGraphLoader {
       &source_file.source_code.as_bytes(),
       version::DENO.as_bytes(),
     ]);
-    let source_code = source_file
-      .source_code
-      .to_string()
-      .map_err(errbox::from_io)?;
+    let source_code = source_file.source_code.to_string()?;
 
     if SUPPORTED_MEDIA_TYPES.contains(&source_file.media_type) {
       if let Some(types_specifier) = source_file.types_header {
@@ -498,8 +486,7 @@ impl ModuleGraphLoader {
           resolved_specifier: ModuleSpecifier::resolve_import(
             &types_specifier,
             &module_specifier.to_string(),
-          )
-          .map_err(errbox::from_resolution)?,
+          )?,
           kind: TsReferenceKind::Types,
           // TODO(bartlomieju): location is not needed in here and constructing
           // location by hand is bad
@@ -522,8 +509,7 @@ impl ModuleGraphLoader {
         source_file.media_type,
         &source_code,
         self.analyze_dynamic_imports,
-      )
-      .map_err(|e| ErrBox::other(e.to_string()))?;
+      )?;
       let (imports_, references) = resolve_imports_and_references(
         module_specifier.clone(),
         self.maybe_import_map.as_ref(),

@@ -42,7 +42,7 @@ pub fn op_fetch(
   args: Value,
   data: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
-  let args: FetchArgs = serde_json::from_value(args).map_err(from_serde)?;
+  let args: FetchArgs = serde_json::from_value(args)?;
   let url = args.url;
   let resource_table_ = isolate_state.resource_table.borrow();
 

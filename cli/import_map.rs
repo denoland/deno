@@ -1,6 +1,3 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-
-use crate::errbox;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
 use indexmap::IndexMap;
@@ -50,9 +47,7 @@ pub struct ImportMap {
 
 impl ImportMap {
   pub fn load(file_path: &str) -> Result<Self, ErrBox> {
-    let file_url = ModuleSpecifier::resolve_url_or_path(file_path)
-      .map_err(errbox::from_resolution)?
-      .to_string();
+    let file_url = ModuleSpecifier::resolve_url_or_path(file_path)?.to_string();
     let resolved_path = std::env::current_dir().unwrap().join(file_path);
     debug!(
       "Attempt to load import map: {}",
@@ -60,22 +55,19 @@ impl ImportMap {
     );
 
     // Load the contents of import map
-    let json_string = fs::read_to_string(&resolved_path)
-      .map_err(|err| {
-        io::Error::new(
-          io::ErrorKind::InvalidInput,
-          format!(
-            "Error retrieving import map file at \"{}\": {}",
-            resolved_path.to_str().unwrap(),
-            err.to_string()
-          )
-          .as_str(),
+    let json_string = fs::read_to_string(&resolved_path).map_err(|err| {
+      io::Error::new(
+        io::ErrorKind::InvalidInput,
+        format!(
+          "Error retrieving import map file at \"{}\": {}",
+          resolved_path.to_str().unwrap(),
+          err.to_string()
         )
-      })
-      .map_err(errbox::from_io)?;
+        .as_str(),
+      )
+    })?;
     // The URL of the import map is the base URL for its values.
-    ImportMap::from_json(&file_url, &json_string)
-      .map_err(|e| ErrBox::other(e.to_string()))
+    ImportMap::from_json(&file_url, &json_string).map_err(ErrBox::from)
   }
 
   pub fn from_json(
