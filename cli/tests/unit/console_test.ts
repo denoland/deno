@@ -1356,7 +1356,6 @@ unitTest(function inspectProxy(): void {
   assertEquals(
     Deno.inspect(
       new Proxy([1, 2, 3], { get(): void {} }),
-      { showProxy: false },
     ),
     "[ 1, 2, 3 ]",
   );
