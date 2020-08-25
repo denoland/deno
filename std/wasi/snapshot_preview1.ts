@@ -524,7 +524,7 @@ export default class Context {
 
         const view = new DataView(this.memory.buffer);
         view.setUint8(stat_out, entry.type);
-        view.setUint16(stat_out + 4, entry.fdflags, true);
+        view.setUint16(stat_out + 2, entry.fdflags, true);
         view.setBigUint64(stat_out + 8, 0n, true); // TODO
         view.setBigUint64(stat_out + 16, 0n, true); // TODO
 
