@@ -96,9 +96,15 @@ impl fmt::Display for ErrBox {
   }
 }
 
-impl From<JSError> for ErrBox {
-  fn from(js_error: JSError) -> Self {
-    Self(Box::new(js_error), "Other")
+impl<T: AnyError> From<T> for ErrBox {
+  fn from(error: T) -> Self {
+    Self(Box::new(error), "Other")
+  }
+}
+
+impl From<Box<dyn AnyError>> for ErrBox {
+  fn from(boxed: Box<dyn AnyError>) -> Self {
+    Self(boxed, "Other")
   }
 }
 

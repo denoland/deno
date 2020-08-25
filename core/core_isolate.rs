@@ -87,9 +87,9 @@ impl StartupData<'_> {
 
 type JSErrorCreateFn = dyn Fn(JSError) -> ErrBox;
 
-type RustErrToJsonFn = dyn Fn(&ErrBox) -> Box<[u8]>;
+pub type RustErrToJsonFn = dyn Fn(ErrBox) -> Box<[u8]> + 'static;
 
-fn rust_err_to_json(e: &ErrBox) -> Box<[u8]> {
+fn rust_err_to_json(e: ErrBox) -> Box<[u8]> {
   format!("{{ \"kind\": \"Error\", \"message\": \"{}\" }}", e)
     .as_bytes()
     .into()
@@ -131,7 +131,7 @@ pub struct CoreIsolateState {
   pub(crate) js_macrotask_cb: Option<v8::Global<v8::Function>>,
   pub(crate) pending_promise_exceptions: HashMap<i32, v8::Global<v8::Value>>,
   pub(crate) js_error_create_fn: Box<JSErrorCreateFn>,
-  pub(crate) rust_err_to_json_fn: Box<RustErrToJsonFn>,
+  pub rust_err_to_json_fn: Box<RustErrToJsonFn>,
   pub(crate) shared: SharedQueue,
   pending_ops: FuturesUnordered<PendingOpFuture>,
   pending_unref_ops: FuturesUnordered<PendingOpFuture>,
@@ -676,6 +676,13 @@ impl CoreIsolateState {
     f: impl Fn(JSError) -> ErrBox + 'static,
   ) {
     self.js_error_create_fn = Box::new(f);
+  }
+
+  pub fn set_rust_err_to_json_fn(
+    &mut self,
+    f: impl Fn(ErrBox) -> Box<[u8]> + 'static,
+  ) {
+    self.rust_err_to_json_fn = Box::new(f);
   }
 
   pub fn dispatch_op<'s>(

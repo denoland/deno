@@ -31,6 +31,19 @@ fn json_err(err: ErrBox) -> Value {
   })
 }
 
+pub fn new_serialize_result(rust_err_to_json_fn: &dyn Fn(ErrBox) -> Box<[u8]>, promise_id: Option<u64>, result: JsonResult) -> Buf {
+  let value = match result {
+    Ok(v) => json!({ "ok": v, "promiseId": promise_id }),
+    Err(err) => {
+      let serialized_err = rust_err_to_json_fn(err);
+      let err_value: Value = serde_json::from_slice(&serialized_err).unwrap();
+      json!({ "err": err_value, "promiseId": promise_id })
+    }
+  };
+  serde_json::to_vec(&value).unwrap().into_boxed_slice()
+}
+
+
 pub fn serialize_result(promise_id: Option<u64>, result: JsonResult) -> Buf {
   let value = match result {
     Ok(v) => json!({ "ok": v, "promiseId": promise_id }),

@@ -7,6 +7,7 @@ use crate::http_util::create_http_client;
 use crate::import_map::ImportMap;
 use crate::metrics::Metrics;
 use crate::ops::serialize_result;
+use crate::ops::new_serialize_result;
 use crate::ops::JsonOp;
 use crate::ops::MinimalOp;
 use crate::permissions::Permissions;
@@ -120,13 +121,14 @@ impl State {
     let state = self.clone();
     let resource_table = resource_table.clone();
 
-    move |_: &mut CoreIsolateState, bufs: &mut [ZeroCopyBuf]| {
+    move |isolate_state: &mut CoreIsolateState, bufs: &mut [ZeroCopyBuf]| {
+      let rust_err_to_json_fn = isolate_state.rust_err_to_json_fn.clone();
       // The first buffer should contain JSON encoded op arguments; parse them.
       let args: Value = match serde_json::from_slice(&bufs[0]) {
         Ok(v) => v,
         Err(e) => {
           let e = errbox::from_serde(e);
-          return Op::Sync(serialize_result(None, Err(e)));
+          return Op::Sync(new_serialize_result(rust_err_to_json_fn, None, Err(e)));
         }
       };
 
@@ -138,7 +140,7 @@ impl State {
             "TypeError",
             "`promiseId` invalid/missing".to_owned(),
           );
-          return Op::Sync(serialize_result(None, Err(e)));
+          return Op::Sync(new_serialize_result(rust_err_to_json_fn, None, Err(e)));
         }
       };
 
@@ -155,7 +157,7 @@ impl State {
 
       // Convert to Op.
       Op::Async(
-        async move { serialize_result(Some(promise_id), fut.await) }
+        async move { new_serialize_result(rust_err_to_json_fn, Some(promise_id), fut.await) }
           .boxed_local(),
       )
     }
