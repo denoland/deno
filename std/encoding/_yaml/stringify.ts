@@ -13,6 +13,9 @@ export type DumpOptions = DumperStateOptions;
  *
  * You can disable exceptions by setting the skipInvalid option to true.
  */
-export function stringify(obj: object, options?: DumpOptions): string {
+export function stringify(
+  obj: Record<string, unknown>,
+  options?: DumpOptions,
+): string {
   return dump(obj, options);
 }

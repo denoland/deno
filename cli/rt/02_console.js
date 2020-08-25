@@ -439,16 +439,30 @@
   const QUOTES = ['"', "'", "`"];
 
   /** Surround the string in quotes.
- *
- * The quote symbol is chosen by taking the first of the `QUOTES` array which
- * does not occur in the string. If they all occur, settle with `QUOTES[0]`.
- *
- * Insert a backslash before any occurrence of the chosen quote symbol and
- * before any backslash. */
+   *
+   * The quote symbol is chosen by taking the first of the `QUOTES` array which
+   * does not occur in the string. If they all occur, settle with `QUOTES[0]`.
+   *
+   * Insert a backslash before any occurrence of the chosen quote symbol and
+   * before any backslash.
+   */
   function quoteString(string) {
     const quote = QUOTES.find((c) => !string.includes(c)) ?? QUOTES[0];
     const escapePattern = new RegExp(`(?=[${quote}\\\\])`, "g");
-    return `${quote}${string.replace(escapePattern, "\\")}${quote}`;
+    string = string.replace(escapePattern, "\\");
+    string = replaceEscapeSequences(string);
+    return `${quote}${string}${quote}`;
+  }
+
+  // Replace escape sequences that can modify output.
+  function replaceEscapeSequences(string) {
+    return string
+      .replace(/[\b]/g, "\\b")
+      .replace(/\f/g, "\\f")
+      .replace(/\n/g, "\\n")
+      .replace(/\r/g, "\\r")
+      .replace(/\t/g, "\\t")
+      .replace(/\v/g, "\\v");
   }
 
   // Print strings when they are inside of arrays or objects with quotes
@@ -683,7 +697,7 @@
 
     for (const key of stringKeys) {
       entries.push(
-        `${key}: ${
+        `${replaceEscapeSequences(key)}: ${
           inspectValueWithQuotes(
             value[key],
             ctx,
@@ -695,7 +709,7 @@
     }
     for (const key of symbolKeys) {
       entries.push(
-        `${key.toString()}: ${
+        `${replaceEscapeSequences(key.toString())}: ${
           inspectValueWithQuotes(
             value[key],
             ctx,
