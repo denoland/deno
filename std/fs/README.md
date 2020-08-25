@@ -4,8 +4,8 @@ fs module is made to provide helpers to manipulate the filesystem.
 
 ## Usage
 
-All the following modules are exposed in `mod.ts` This feature is currently
-unstable. To enable it use `deno run --unstable`
+Most the following modules are exposed in `mod.ts` This feature is currently
+<b>unstable</b>. To enable it use `deno run --unstable`
 
 ### emptyDir
 
@@ -172,6 +172,37 @@ async function printFilesNames() {
 }
 
 printFilesNames().then(() => console.log("Done!"));
+```
+
+### readFileStr
+
+Read file and output it as a string. Note: this module does not require the
+`--unstable` flag.
+
+**ReadOptions**
+
+- encoding : The encoding to read file. lowercased.
+
+```ts
+import { readFileStr, readFileStrSync } from "https://deno.land/std/fs/mod.ts";
+
+readFileStr("./target.dat", { encoding: "utf8" }); // returns a promise
+readFileStrSync("./target.dat", { encoding: "utf8" }); // string
+```
+
+### writeFileStr
+
+Write the string to file. Note: this module does not require the `--unstable`
+flag.
+
+```ts
+import {
+  writeFileStr,
+  writeFileStrSync,
+} from "https://deno.land/std/fs/mod.ts";
+
+writeFileStr("./target.dat", "file content"); // returns a promise
+writeFileStrSync("./target.dat", "file content"); // void
 ```
 
 ### expandGlob
