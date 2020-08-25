@@ -1,7 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::colors;
-use crate::errbox::from_io;
-use crate::errbox::from_url;
 use crate::errbox::uri_error;
 use crate::http_cache::HttpCache;
 use crate::http_util;

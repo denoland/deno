@@ -1,5 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use crate::errbox::from_serde;
 use deno_core::Buf;
 use deno_core::CoreIsolateState;
 use deno_core::ErrBox;

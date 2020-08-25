@@ -19,49 +19,12 @@ use std::env::VarError;
 use std::error::Error;
 use std::io;
 
-pub fn not_implemented() -> ErrBox {
-  ErrBox::other("not implemented".to_string())
-}
-
-pub fn invalid_utf8() -> ErrBox {
-  ErrBox::new_text("InvalidData", "invalid utf8".to_string())
-}
-
-pub fn invalid_domain_error() -> ErrBox {
-  ErrBox::type_error("Invalid domain.".to_string())
-}
-
-pub fn uri_error(msg: String) -> ErrBox {
-  ErrBox::new_text("URIError", msg)
-}
-
-pub fn from_resolution(error: ModuleResolutionError) -> ErrBox {
-  uri_error(error.to_string())
-}
-
-pub fn permission_escalation_error() -> ErrBox {
-  permission_denied("Arguments escalate parent permissions.".to_string())
-}
-
-pub fn resource_unavailable() -> ErrBox {
-  ErrBox::new_text(
-    "Busy",
-    "resource is unavailable because it is in use by a promise".to_string(),
-  )
-}
-
-pub fn permission_denied(msg: String) -> ErrBox {
-  ErrBox::new_text("PermissionDenied", msg)
-}
-
-pub fn from_var(error: VarError) -> ErrBox {
+fn from_var(error: &VarError) -> &'static str {
   use VarError::*;
-  let kind = match error {
+  match error {
     NotPresent => "NotFound",
     NotUnicode(..) => "InvalidData",
-  };
-
-  ErrBox::new(kind, error)
+  }
 }
 
 fn get_io_kind(error_kind: &io::ErrorKind) -> &'static str {
@@ -91,76 +54,71 @@ fn get_io_kind(error_kind: &io::ErrorKind) -> &'static str {
   }
 }
 
-pub fn from_io(error: io::Error) -> ErrBox {
-  let kind = get_io_kind(&error.kind());
-  ErrBox::new(kind, error)
+fn get_io_error_class(error: &io::Error) -> &'static str {
+  get_io_kind(&error.kind())
 }
 
-pub fn from_io_ref(error: &io::Error) -> ErrBox {
-  let kind = get_io_kind(&error.kind());
-  ErrBox::new_text(kind, error.to_string())
+fn get_url_parse_error_class(error: &url::ParseError) -> &'static str {
+  "URIError"
 }
 
-pub fn from_url(error: url::ParseError) -> ErrBox {
-  ErrBox::new("URIError", error)
-}
-
-fn from_url_ref(error: &url::ParseError) -> ErrBox {
-  ErrBox::new_text("URIError", error.to_string())
-}
-
-pub fn from_reqwest(error: reqwest::Error) -> ErrBox {
+fn get_request_error_class(error: &reqwest::Error) -> &'static str {
   match error.source() {
     Some(err_ref) => None
-      .or_else(|| err_ref.downcast_ref::<url::ParseError>().map(from_url_ref))
-      .or_else(|| err_ref.downcast_ref::<io::Error>().map(from_io_ref))
+      .or_else(|| {
+        err_ref
+          .downcast_ref::<url::ParseError>()
+          .map(get_url_parse_error_class)
+      })
+      .or_else(|| err_ref.downcast_ref::<io::Error>().map(get_io_error_class))
       .or_else(|| {
         err_ref
           .downcast_ref::<serde_json::error::Error>()
-          .map(from_serde_ref)
+          .map(get_serde_json_error_class)
       })
-      .unwrap_or_else(|| ErrBox::new("Http", error)),
-    None => ErrBox::new("Http", error),
+      .unwrap_or("Http"),
+    None => "Http",
   }
 }
 
-pub fn from_readline(error: ReadlineError) -> ErrBox {
+fn get_import_map_error_class(_: &ImportMapError) -> &'static str {
+  "URIError"
+}
+
+fn get_mpdule_resolution_error_class(
+  _: &ModuleResolutionError,
+) -> &'static str {
+  "URIError"
+}
+
+fn from_readline(error: &ReadlineError) -> &'static str {
   use ReadlineError::*;
-  let kind = match error {
-    Io(err) => return from_io(err),
+  match error {
+    Io(err) => get_io_error_class(err),
     Eof => "UnexpectedEof",
     Interrupted => "Interrupted",
     #[cfg(unix)]
-    Errno(err) => return from_nix(err),
+    Errno(err) => from_nix(err),
     _ => unimplemented!(),
-  };
-  ErrBox::new(kind, error)
+  }
 }
 
-fn get_serde_kind(category: serde_json::error::Category) -> &'static str {
+fn get_serde_json_error_class(
+  error: &serde_json::error::Error,
+) -> &'static str {
   use serde_json::error::*;
-  match category {
-    Category::Io => "TypeError",
-    Category::Syntax => "TypeError",
+  match error.classify() {
+    Category::Io => "TypeError", // TODO(piscisaureus): this is not correct.
+    Category::Syntax => "SyntaxError",
     Category::Data => "InvalidData",
     Category::Eof => "UnexpectedEof",
   }
 }
 
-pub fn from_serde(error: serde_json::error::Error) -> ErrBox {
-  let kind = get_serde_kind(error.classify());
-  ErrBox::new(kind, error)
-}
-
-pub fn from_serde_ref(error: &serde_json::error::Error) -> ErrBox {
-  let kind = get_serde_kind(error.classify());
-  ErrBox::new_text(kind, error.to_string())
-}
-
 #[cfg(unix)]
-pub fn from_nix(error: nix::Error) -> ErrBox {
+fn from_nix(error: &nix::Error) -> &'static str {
   use nix::errno::Errno::*;
-  let kind = match error {
+  match error {
     nix::Error::Sys(EPERM) => "PermissionDenied",
     nix::Error::Sys(EINVAL) => "TypeError",
     nix::Error::Sys(ENOENT) => "NotFound",
@@ -170,87 +128,133 @@ pub fn from_nix(error: nix::Error) -> ErrBox {
     nix::Error::InvalidPath => "TypeError",
     nix::Error::InvalidUtf8 => "InvalidData",
     nix::Error::UnsupportedOperation => unreachable!(),
-  };
-
-  ErrBox::new(kind, error)
+  }
 }
 
-pub fn from_dlopen(error: dlopen::Error) -> ErrBox {
+fn get_dlopen_error_class(error: &dlopen::Error) -> &'static str {
   use dlopen::Error::*;
-  let kind = match error {
+  match error {
     NullCharacter(_) => "Other",
-    OpeningLibraryError(e) => return from_io(e),
-    SymbolGettingError(e) => return from_io(e),
-    AddrNotMatchingDll(e) => return from_io(e),
+    OpeningLibraryError(e) => get_io_error_class(e),
+    SymbolGettingError(e) => get_io_error_class(e),
+    AddrNotMatchingDll(e) => get_io_error_class(e),
     NullSymbol => "Other",
-  };
-
-  ErrBox::new(kind, error)
+  }
 }
 
-pub fn from_notify(error: notify::Error) -> ErrBox {
+fn get_notify_error_class(error: &notify::Error) -> &'static str {
   use notify::ErrorKind::*;
-  let kind = match error.kind {
+  match error.kind {
     Generic(_) => "Other",
-    Io(e) => return from_io(e),
+    Io(ref e) => get_io_error_class(e),
     PathNotFound => "NotFound",
     WatchNotFound => "NotFound",
     InvalidConfig(_) => "InvalidData",
-  };
-
-  ErrBox::new(kind, error)
+  }
 }
 
-pub fn rust_err_to_json(_e: &ErrBox) -> Box<[u8]> {
-  unimplemented!()
+fn get_swc_diagnostic_error_class(_: &SwcDiagnosticBuffer) -> &'static str {
+  "Other"
 }
 
-pub fn get_err_class(error: &ErrBox) -> &'static str {
-  #[cfg(unix)]
-  fn unix_error_kind(err: &ErrBox) -> Option<ErrBox> {
-    err.downcast_ref::<nix::Error>().map(|e| (*e).into())
-  }
-
-  #[cfg(not(unix))]
-  fn unix_error_kind(_: &ErrBox) -> Option<ErrBox> {
-    None
-  }
-
+pub fn get_error_class(error: &ErrBox) -> &'static str {
   None
     .or_else(|| {
       error
-        .downcast_ref::<ErrBox>()
-        .map(|e| ErrBox::new(error_str_to_kind(&e.kind_str), e.msg.to_string()))
+        .downcast_ref::<reqwest::Error>()
+        .map(get_request_error_class)
     })
-    .or_else(|| error.downcast_ref::<reqwest::Error>().map(|e| e.into()))
-    .or_else(|| error.downcast_ref::<ImportMapError>().map(|e| e.into()))
-    .or_else(|| error.downcast_ref::<io::Error>().map(|e| e.into()))
+    .or_else(|| {
+      error
+        .downcast_ref::<ImportMapError>()
+        .map(get_import_map_error_class)
+    })
     .or_else(|| {
       error
         .downcast_ref::<ModuleResolutionError>()
-        .map(|e| e.into())
+        .map(get_mpdule_resolution_error_class)
     })
+    .or_else(|| error.downcast_ref::<io::Error>().map(get_io_error_class))
     .or_else(|| {
       error
         .downcast_ref::<url::ParseError>()
-        .map(|e| from_url_ref(&a))
+        .map(get_url_parse_error_class)
     })
-    .or_else(|| error.downcast_ref::<VarError>().map(|e| e.into()))
-    .or_else(|| error.downcast_ref::<ReadlineError>().map(|e| e.into()))
+    .or_else(|| error.downcast_ref::<VarError>().map(from_var))
+    .or_else(|| error.downcast_ref::<ReadlineError>().map(from_readline))
     .or_else(|| {
       error
         .downcast_ref::<serde_json::error::Error>()
-        .map(|e| e.into())
+        .map(get_serde_json_error_class)
     })
-    .or_else(|| error.downcast_ref::<dlopen::Error>().map(|e| e.into()))
-    .or_else(|| error.downcast_ref::<notify::Error>().map(|e| e.into()))
+    .or_else(|| {
+      error
+        .downcast_ref::<dlopen::Error>()
+        .map(get_dlopen_error_class)
+    })
+    .or_else(|| {
+      error
+        .downcast_ref::<notify::Error>()
+        .map(get_notify_error_class)
+    })
     .or_else(|| {
       error
         .downcast_ref::<SwcDiagnosticBuffer>()
-        .map(|e| e.into())
+        .map(get_swc_diagnostic_error_class)
     })
-    .or_else(|| unix_error_kind(&error))
+    .or_else(|| {
+      #[cfg(unix)]
+      fn get_os_error_class(error: &ErrBox) -> Option<&'static str> {
+        error.downcast_ref::<nix::Error>().map(from_nix)
+      }
+      #[cfg(not(unix))]
+      fn get_os_error_class(_: &ErrBox) -> Option<&'static str> {
+        None
+      }
+      get_os_error_class(error)
+    })
     .unwrap_or_else(|| {
       panic!("Can't downcast {:?} to ErrBox", error);
     })
+}
+
+pub fn rust_err_to_json(error: &ErrBox) -> Box<[u8]> {
+  let error_value =
+    json!({ "kind": get_error_class(error), "message": error.to_string()});
+  serde_json::to_vec(&error_value).unwrap().into_boxed_slice()
+}
+
+pub fn not_implemented() -> ErrBox {
+  ErrBox::other("not implemented".to_string())
+}
+
+pub fn invalid_utf8() -> ErrBox {
+  ErrBox::new_text("InvalidData", "invalid utf8".to_string())
+}
+
+pub fn invalid_domain_error() -> ErrBox {
+  ErrBox::type_error("Invalid domain.".to_string())
+}
+
+pub fn uri_error(msg: String) -> ErrBox {
+  ErrBox::new_text("URIError", msg)
+}
+
+pub fn from_resolution(error: &ModuleResolutionError) -> ErrBox {
+  uri_error(error.to_string())
+}
+
+pub fn permission_escalation_error() -> ErrBox {
+  permission_denied("Arguments escalate parent permissions.".to_string())
+}
+
+pub fn resource_unavailable() -> ErrBox {
+  ErrBox::new_text(
+    "Busy",
+    "resource is unavailable because it is in use by a promise".to_string(),
+  )
+}
+
+pub fn permission_denied(msg: String) -> ErrBox {
+  ErrBox::new_text("PermissionDenied", msg)
 }
