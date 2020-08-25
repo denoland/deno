@@ -76,7 +76,7 @@ Deno.test({
 
     // there are only sync actions until it gets restored,
     // so it's safe to overwrite this
-    console.warn = (): never => fail("Infinity listeners should be allowed");
+    console.warn = (): void => fail("Infinity listeners should be allowed");
 
     ee.setMaxListeners(Infinity);
     ee.on("test", noop);

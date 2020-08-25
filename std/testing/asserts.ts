@@ -412,7 +412,7 @@ export function assertMatch(
 /**
  * Forcefully throws a failed assertion
  */
-export function fail(msg?: string): never {
+export function fail(msg?: string): void {
   // eslint-disable-next-line @typescript-eslint/no-use-before-define
   assert(false, `Failed assertion${msg ? `: ${msg}` : "."}`);
 }
