@@ -117,7 +117,7 @@ fn get_stdio_stream(
 }
 
 fn no_buffer_specified() -> ErrBox {
-  ErrBox::type_error("no buffer specified".to_string())
+  ErrBox::type_error("no buffer specified")
 }
 
 #[cfg(unix)]
@@ -262,9 +262,9 @@ pub fn op_read(
             .map(|n: usize| n as i32)
             .map_err(ErrBox::from)
         }
-        Err(_) => Err(ErrBox::type_error(
-          "sync read not allowed on this resource".to_string(),
-        )),
+        Err(_) => {
+          Err(ErrBox::type_error("sync read not allowed on this resource"))
+        }
       })
     })
   } else {
@@ -383,9 +383,9 @@ pub fn op_write(
             .map(|nwritten: usize| nwritten as i32)
             .map_err(ErrBox::from)
         }
-        Err(_) => Err(ErrBox::type_error(
-          "sync read not allowed on this resource".to_string(),
-        )),
+        Err(_) => {
+          Err(ErrBox::type_error("sync read not allowed on this resource"))
+        }
       })
     })
   } else {

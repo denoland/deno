@@ -89,7 +89,7 @@ fn test_error_record() {
     arg: -1,
     error_len: 11,
     error_class: b"BadResource",
-    error_message: "Error".to_string().as_bytes().to_owned(),
+    error_message: b"Error".to_vec(),
   };
   let buf: Buf = err_record.into();
   assert_eq!(buf, expected.into_boxed_slice());

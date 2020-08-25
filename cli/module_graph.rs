@@ -76,8 +76,10 @@ fn validate_no_file_from_remote(
         match specifier_url.scheme() {
           "http" | "https" => {}
           _ => {
-            let e = ErrBox::new("PermissionDenied",
-              "Remote modules are not allowed to statically import local modules. Use dynamic import instead.".to_string()
+            let e = ErrBox::new(
+              "PermissionDenied",
+              "Remote modules are not allowed to statically import local \
+              modules. Use dynamic import instead.",
             );
             return Err(err_with_location(e, maybe_location));
           }

@@ -49,7 +49,7 @@ pub fn kill(pid: i32, signal: i32) -> Result<(), ErrBox> {
       }
     }
     _ => {
-      return Err(ErrBox::type_error("unsupported signal".to_string()));
+      return Err(ErrBox::type_error("unsupported signal"));
     }
   }
   Ok(())

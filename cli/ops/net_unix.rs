@@ -43,9 +43,7 @@ pub fn accept_unix(
     let listener_resource = {
       resource_table_
         .get_mut::<UnixListenerResource>(rid)
-        .ok_or_else(|| {
-          ErrBox::bad_resource("Listener has been closed".to_string())
-        })?
+        .ok_or_else(|| ErrBox::bad_resource("Listener has been closed"))?
     };
 
     let (unix_stream, _socket_addr) =
@@ -90,9 +88,7 @@ pub fn receive_unix_packet(
     let mut resource_table_ = resource_table.borrow_mut();
     let resource = resource_table_
       .get_mut::<UnixDatagramResource>(rid)
-      .ok_or_else(|| {
-        ErrBox::bad_resource("Socket has been closed".to_string())
-      })?;
+      .ok_or_else(|| ErrBox::bad_resource("Socket has been closed"))?;
     let (size, remote_addr) = resource.socket.recv_from(&mut zero_copy).await?;
     Ok(json!({
       "size": size,

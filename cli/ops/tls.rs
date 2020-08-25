@@ -371,9 +371,7 @@ fn op_accept_tls(
       let mut resource_table = resource_table.borrow_mut();
       let listener_resource = resource_table
         .get_mut::<TlsListenerResource>(rid)
-        .ok_or_else(|| {
-          ErrBox::bad_resource("Listener has been closed".to_string())
-        })?;
+        .ok_or_else(|| ErrBox::bad_resource("Listener has been closed"))?;
       let listener = &mut listener_resource.listener;
       match listener.poll_accept(cx).map_err(ErrBox::from) {
         Poll::Ready(Ok((stream, addr))) => {

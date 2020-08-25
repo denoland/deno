@@ -199,9 +199,7 @@ fn op_seek(
     let mut resource_table = resource_table.borrow_mut();
     let pos = std_file_resource(&mut resource_table, rid, |r| match r {
       Ok(std_file) => std_file.seek(seek_from).map_err(ErrBox::from),
-      Err(_) => Err(ErrBox::type_error(
-        "cannot seek on this type of resource".to_string(),
-      )),
+      Err(_) => Err(ErrBox::type_error("cannot seek on this type of resource")),
     })?;
     Ok(JsonOp::Sync(json!(pos)))
   } else {
@@ -211,9 +209,9 @@ fn op_seek(
       let mut resource_table = resource_table.borrow_mut();
       let pos = std_file_resource(&mut resource_table, rid, |r| match r {
         Ok(std_file) => std_file.seek(seek_from).map_err(ErrBox::from),
-        Err(_) => Err(ErrBox::type_error(
-          "cannot seek on this type of resource".to_string(),
-        )),
+        Err(_) => {
+          Err(ErrBox::type_error("cannot seek on this type of resource"))
+        }
       })?;
       Ok(json!(pos))
     };
@@ -245,9 +243,7 @@ fn op_fdatasync(
     let mut resource_table = resource_table.borrow_mut();
     std_file_resource(&mut resource_table, rid, |r| match r {
       Ok(std_file) => std_file.sync_data().map_err(ErrBox::from),
-      Err(_) => Err(ErrBox::type_error(
-        "cannot sync this type of resource".to_string(),
-      )),
+      Err(_) => Err(ErrBox::type_error("cannot sync this type of resource")),
     })?;
     Ok(JsonOp::Sync(json!({})))
   } else {
@@ -255,9 +251,7 @@ fn op_fdatasync(
       let mut resource_table = resource_table.borrow_mut();
       std_file_resource(&mut resource_table, rid, |r| match r {
         Ok(std_file) => std_file.sync_data().map_err(ErrBox::from),
-        Err(_) => Err(ErrBox::type_error(
-          "cannot sync this type of resource".to_string(),
-        )),
+        Err(_) => Err(ErrBox::type_error("cannot sync this type of resource")),
       })?;
       Ok(json!({}))
     };
@@ -289,9 +283,7 @@ fn op_fsync(
     let mut resource_table = resource_table.borrow_mut();
     std_file_resource(&mut resource_table, rid, |r| match r {
       Ok(std_file) => std_file.sync_all().map_err(ErrBox::from),
-      Err(_) => Err(ErrBox::type_error(
-        "cannot sync this type of resource".to_string(),
-      )),
+      Err(_) => Err(ErrBox::type_error("cannot sync this type of resource")),
     })?;
     Ok(JsonOp::Sync(json!({})))
   } else {
@@ -299,9 +291,7 @@ fn op_fsync(
       let mut resource_table = resource_table.borrow_mut();
       std_file_resource(&mut resource_table, rid, |r| match r {
         Ok(std_file) => std_file.sync_all().map_err(ErrBox::from),
-        Err(_) => Err(ErrBox::type_error(
-          "cannot sync this type of resource".to_string(),
-        )),
+        Err(_) => Err(ErrBox::type_error("cannot sync this type of resource")),
       })?;
       Ok(json!({}))
     };
@@ -333,9 +323,7 @@ fn op_fstat(
     let mut resource_table = resource_table.borrow_mut();
     let metadata = std_file_resource(&mut resource_table, rid, |r| match r {
       Ok(std_file) => std_file.metadata().map_err(ErrBox::from),
-      Err(_) => Err(ErrBox::type_error(
-        "cannot stat this type of resource".to_string(),
-      )),
+      Err(_) => Err(ErrBox::type_error("cannot stat this type of resource")),
     })?;
     Ok(JsonOp::Sync(get_stat_json(metadata).unwrap()))
   } else {
@@ -344,9 +332,9 @@ fn op_fstat(
       let metadata =
         std_file_resource(&mut resource_table, rid, |r| match r {
           Ok(std_file) => std_file.metadata().map_err(ErrBox::from),
-          Err(_) => Err(ErrBox::type_error(
-            "cannot stat this type of resource".to_string(),
-          )),
+          Err(_) => {
+            Err(ErrBox::type_error("cannot stat this type of resource"))
+          }
         })?;
       Ok(get_stat_json(metadata).unwrap())
     };
@@ -879,7 +867,7 @@ fn op_symlink(
         Some(options) => match options._type.as_ref() {
           "file" => symlink_file(&oldpath, &newpath)?,
           "dir" => symlink_dir(&oldpath, &newpath)?,
-          _ => return Err(ErrBox::type_error("unsupported type".to_string())),
+          _ => return Err(ErrBox::type_error("unsupported type")),
         },
         None => {
           let old_meta = std::fs::metadata(&oldpath);
@@ -955,9 +943,9 @@ fn op_ftruncate(
     let mut resource_table = resource_table.borrow_mut();
     std_file_resource(&mut resource_table, rid, |r| match r {
       Ok(std_file) => std_file.set_len(len).map_err(ErrBox::from),
-      Err(_) => Err(ErrBox::type_error(
-        "cannot truncate this type of resource".to_string(),
-      )),
+      Err(_) => {
+        Err(ErrBox::type_error("cannot truncate this type of resource"))
+      }
     })?;
     Ok(JsonOp::Sync(json!({})))
   } else {
@@ -965,9 +953,9 @@ fn op_ftruncate(
       let mut resource_table = resource_table.borrow_mut();
       std_file_resource(&mut resource_table, rid, |r| match r {
         Ok(std_file) => std_file.set_len(len).map_err(ErrBox::from),
-        Err(_) => Err(ErrBox::type_error(
-          "cannot truncate this type of resource".to_string(),
-        )),
+        Err(_) => {
+          Err(ErrBox::type_error("cannot truncate this type of resource"))
+        }
       })?;
       Ok(json!({}))
     };

@@ -53,9 +53,7 @@ fn accept_tcp(
       let mut resource_table = resource_table.borrow_mut();
       let listener_resource = resource_table
         .get_mut::<TcpListenerResource>(rid)
-        .ok_or_else(|| {
-          ErrBox::bad_resource("Listener has been closed".to_string())
-        })?;
+        .ok_or_else(|| ErrBox::bad_resource("Listener has been closed"))?;
       let listener = &mut listener_resource.listener;
       match listener.poll_accept(cx).map_err(ErrBox::from) {
         Poll::Ready(Ok((stream, addr))) => {
@@ -142,9 +140,7 @@ fn receive_udp(
       let mut resource_table = resource_table.borrow_mut();
       let resource = resource_table
         .get_mut::<UdpSocketResource>(rid)
-        .ok_or_else(|| {
-          ErrBox::bad_resource("Socket has been closed".to_string())
-        })?;
+        .ok_or_else(|| ErrBox::bad_resource("Socket has been closed"))?;
       let socket = &mut resource.socket;
       socket
         .poll_recv_from(cx, &mut zero_copy)
@@ -216,9 +212,7 @@ fn op_datagram_send(
         let mut resource_table = resource_table.borrow_mut();
         let resource = resource_table
           .get_mut::<UdpSocketResource>(rid as u32)
-          .ok_or_else(|| {
-            ErrBox::bad_resource("Socket has been closed".to_string())
-          })?;
+          .ok_or_else(|| ErrBox::bad_resource("Socket has been closed"))?;
         resource
           .socket
           .poll_send_to(cx, &zero_copy, &addr)

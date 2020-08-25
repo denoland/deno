@@ -450,7 +450,7 @@ impl fmt::Debug for ErrWithV8Handle {
 mod tests {
   #[test]
   fn test_bad_resource() {
-    let err = ErrBox::bad_resource("Resource has been closed".to_string());
+    let err = ErrBox::bad_resource("Resource has been closed");
     assert_eq!(err.1, "BadResource");
     assert_eq!(err.to_string(), "Resource has been closed");
   }
