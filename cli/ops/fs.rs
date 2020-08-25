@@ -6,22 +6,33 @@ use super::io::{FileMetadata, StreamResource, StreamResourceHolder};
 use crate::op_error::OpError;
 use crate::ops::dispatch_json::JsonResult;
 use crate::state::State;
+use deno_core::BufVec;
 use deno_core::CoreIsolate;
 use deno_core::CoreIsolateState;
+use deno_core::ResourceTable;
 use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
+use std::cell::RefCell;
 use std::convert::From;
 use std::env::{current_dir, set_current_dir, temp_dir};
 use std::io;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
 use rand::{thread_rng, Rng};
 
-pub fn init(i: &mut CoreIsolate, s: &State) {
-  i.register_op("op_open", s.stateful_json_op2(op_open));
+pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
+  let t = &CoreIsolate::state(i).borrow().resource_table.clone();
+
+  i.register_op("op_open_sync", s.stateful_json_op_sync(t, op_open_sync));
+  i.register_op("op_open_async", s.stateful_json_op_async(t, op_open_async));
+
   i.register_op("op_seek", s.stateful_json_op2(op_seek));
+  i.register_op("op_fdatasync", s.stateful_json_op2(op_fdatasync));
+  i.register_op("op_fsync", s.stateful_json_op2(op_fsync));
+  i.register_op("op_fstat", s.stateful_json_op2(op_fstat));
   i.register_op("op_umask", s.stateful_json_op(op_umask));
   i.register_op("op_chdir", s.stateful_json_op(op_chdir));
   i.register_op("op_mkdir", s.stateful_json_op(op_mkdir));
@@ -36,6 +47,7 @@ pub fn init(i: &mut CoreIsolate, s: &State) {
   i.register_op("op_link", s.stateful_json_op(op_link));
   i.register_op("op_symlink", s.stateful_json_op(op_symlink));
   i.register_op("op_read_link", s.stateful_json_op(op_read_link));
+  i.register_op("op_ftruncate", s.stateful_json_op2(op_ftruncate));
   i.register_op("op_truncate", s.stateful_json_op(op_truncate));
   i.register_op("op_make_temp_dir", s.stateful_json_op(op_make_temp_dir));
   i.register_op("op_make_temp_file", s.stateful_json_op(op_make_temp_file));
@@ -50,10 +62,9 @@ fn into_string(s: std::ffi::OsString) -> Result<String, OpError> {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct OpenArgs {
-  promise_id: Option<u64>,
   path: String,
-  options: OpenOptions,
   mode: Option<u32>,
+  options: OpenOptions,
 }
 
 #[derive(Deserialize, Default, Debug)]
@@ -68,15 +79,12 @@ struct OpenOptions {
   create_new: bool,
 }
 
-fn op_open(
-  isolate_state: &mut CoreIsolateState,
+fn open_helper(
   state: &State,
   args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<(PathBuf, std::fs::OpenOptions), OpError> {
   let args: OpenArgs = serde_json::from_value(args)?;
   let path = Path::new(&args.path).to_path_buf();
-  let resource_table = isolate_state.resource_table.clone();
 
   let mut open_options = std::fs::OpenOptions::new();
 
@@ -109,37 +117,46 @@ fn op_open(
     .append(options.append)
     .create_new(options.create_new);
 
-  let is_sync = args.promise_id.is_none();
+  Ok((path, open_options))
+}
 
-  if is_sync {
-    let std_file = open_options.open(path)?;
-    let tokio_file = tokio::fs::File::from_std(std_file);
-    let mut resource_table = resource_table.borrow_mut();
-    let rid = resource_table.add(
-      "fsFile",
-      Box::new(StreamResourceHolder::new(StreamResource::FsFile(Some((
-        tokio_file,
-        FileMetadata::default(),
-      ))))),
-    );
-    Ok(JsonOp::Sync(json!(rid)))
-  } else {
-    let fut = async move {
-      let tokio_file = tokio::fs::OpenOptions::from(open_options)
-        .open(path)
-        .await?;
-      let mut resource_table = resource_table.borrow_mut();
-      let rid = resource_table.add(
-        "fsFile",
-        Box::new(StreamResourceHolder::new(StreamResource::FsFile(Some((
-          tokio_file,
-          FileMetadata::default(),
-        ))))),
-      );
-      Ok(json!(rid))
-    };
-    Ok(JsonOp::Async(fut.boxed_local()))
-  }
+fn op_open_sync(
+  state: &State,
+  resource_table: &mut ResourceTable,
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, OpError> {
+  let (path, open_options) = open_helper(state, args)?;
+  let std_file = open_options.open(path)?;
+  let tokio_file = tokio::fs::File::from_std(std_file);
+  let rid = resource_table.add(
+    "fsFile",
+    Box::new(StreamResourceHolder::new(StreamResource::FsFile(Some((
+      tokio_file,
+      FileMetadata::default(),
+    ))))),
+  );
+  Ok(json!(rid))
+}
+
+async fn op_open_async(
+  state: Rc<State>,
+  resource_table: Rc<RefCell<ResourceTable>>,
+  args: Value,
+  _zero_copy: BufVec,
+) -> Result<Value, OpError> {
+  let (path, open_options) = open_helper(&state, args)?;
+  let tokio_file = tokio::fs::OpenOptions::from(open_options)
+    .open(path)
+    .await?;
+  let rid = resource_table.borrow_mut().add(
+    "fsFile",
+    Box::new(StreamResourceHolder::new(StreamResource::FsFile(Some((
+      tokio_file,
+      FileMetadata::default(),
+    ))))),
+  );
+  Ok(json!(rid))
 }
 
 #[derive(Deserialize)]
@@ -147,13 +164,13 @@ fn op_open(
 struct SeekArgs {
   promise_id: Option<u64>,
   rid: i32,
-  offset: i32,
+  offset: i64,
   whence: i32,
 }
 
 fn op_seek(
   isolate_state: &mut CoreIsolateState,
-  _state: &State,
+  _state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -165,8 +182,8 @@ fn op_seek(
   // Translate seek mode to Rust repr.
   let seek_from = match whence {
     0 => SeekFrom::Start(offset as u64),
-    1 => SeekFrom::Current(i64::from(offset)),
-    2 => SeekFrom::End(i64::from(offset)),
+    1 => SeekFrom::Current(offset),
+    2 => SeekFrom::End(offset),
     _ => {
       return Err(OpError::type_error(format!(
         "Invalid seek mode: {}",
@@ -205,12 +222,145 @@ fn op_seek(
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FdatasyncArgs {
+  promise_id: Option<u64>,
+  rid: i32,
+}
+
+fn op_fdatasync(
+  isolate_state: &mut CoreIsolateState,
+  state: &Rc<State>,
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<JsonOp, OpError> {
+  state.check_unstable("Deno.fdatasync");
+  let args: FdatasyncArgs = serde_json::from_value(args)?;
+  let rid = args.rid as u32;
+
+  let resource_table = isolate_state.resource_table.clone();
+  let is_sync = args.promise_id.is_none();
+
+  if is_sync {
+    let mut resource_table = resource_table.borrow_mut();
+    std_file_resource(&mut resource_table, rid, |r| match r {
+      Ok(std_file) => std_file.sync_data().map_err(OpError::from),
+      Err(_) => Err(OpError::type_error(
+        "cannot sync this type of resource".to_string(),
+      )),
+    })?;
+    Ok(JsonOp::Sync(json!({})))
+  } else {
+    let fut = async move {
+      let mut resource_table = resource_table.borrow_mut();
+      std_file_resource(&mut resource_table, rid, |r| match r {
+        Ok(std_file) => std_file.sync_data().map_err(OpError::from),
+        Err(_) => Err(OpError::type_error(
+          "cannot sync this type of resource".to_string(),
+        )),
+      })?;
+      Ok(json!({}))
+    };
+    Ok(JsonOp::Async(fut.boxed_local()))
+  }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FsyncArgs {
+  promise_id: Option<u64>,
+  rid: i32,
+}
+
+fn op_fsync(
+  isolate_state: &mut CoreIsolateState,
+  state: &Rc<State>,
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<JsonOp, OpError> {
+  state.check_unstable("Deno.fsync");
+  let args: FsyncArgs = serde_json::from_value(args)?;
+  let rid = args.rid as u32;
+
+  let resource_table = isolate_state.resource_table.clone();
+  let is_sync = args.promise_id.is_none();
+
+  if is_sync {
+    let mut resource_table = resource_table.borrow_mut();
+    std_file_resource(&mut resource_table, rid, |r| match r {
+      Ok(std_file) => std_file.sync_all().map_err(OpError::from),
+      Err(_) => Err(OpError::type_error(
+        "cannot sync this type of resource".to_string(),
+      )),
+    })?;
+    Ok(JsonOp::Sync(json!({})))
+  } else {
+    let fut = async move {
+      let mut resource_table = resource_table.borrow_mut();
+      std_file_resource(&mut resource_table, rid, |r| match r {
+        Ok(std_file) => std_file.sync_all().map_err(OpError::from),
+        Err(_) => Err(OpError::type_error(
+          "cannot sync this type of resource".to_string(),
+        )),
+      })?;
+      Ok(json!({}))
+    };
+    Ok(JsonOp::Async(fut.boxed_local()))
+  }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FstatArgs {
+  promise_id: Option<u64>,
+  rid: i32,
+}
+
+fn op_fstat(
+  isolate_state: &mut CoreIsolateState,
+  state: &Rc<State>,
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<JsonOp, OpError> {
+  state.check_unstable("Deno.fstat");
+  let args: FstatArgs = serde_json::from_value(args)?;
+  let rid = args.rid as u32;
+
+  let resource_table = isolate_state.resource_table.clone();
+  let is_sync = args.promise_id.is_none();
+
+  if is_sync {
+    let mut resource_table = resource_table.borrow_mut();
+    let metadata = std_file_resource(&mut resource_table, rid, |r| match r {
+      Ok(std_file) => std_file.metadata().map_err(OpError::from),
+      Err(_) => Err(OpError::type_error(
+        "cannot stat this type of resource".to_string(),
+      )),
+    })?;
+    Ok(JsonOp::Sync(get_stat_json(metadata).unwrap()))
+  } else {
+    let fut = async move {
+      let mut resource_table = resource_table.borrow_mut();
+      let metadata =
+        std_file_resource(&mut resource_table, rid, |r| match r {
+          Ok(std_file) => std_file.metadata().map_err(OpError::from),
+          Err(_) => Err(OpError::type_error(
+            "cannot stat this type of resource".to_string(),
+          )),
+        })?;
+      Ok(get_stat_json(metadata).unwrap())
+    };
+    Ok(JsonOp::Async(fut.boxed_local()))
+  }
+}
+
+#[derive(Deserialize)]
 struct UmaskArgs {
   mask: Option<u32>,
 }
 
 fn op_umask(
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -248,7 +398,7 @@ struct ChdirArgs {
 }
 
 fn op_chdir(
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -269,7 +419,7 @@ struct MkdirArgs {
 }
 
 fn op_mkdir(
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -303,7 +453,7 @@ struct ChmodArgs {
 }
 
 fn op_chmod(
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -338,12 +488,12 @@ fn op_chmod(
 struct ChownArgs {
   promise_id: Option<u64>,
   path: String,
-  uid: u32,
-  gid: u32,
+  uid: Option<u32>,
+  gid: Option<u32>,
 }
 
 fn op_chown(
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -354,20 +504,18 @@ fn op_chown(
 
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
-    debug!("op_chown {} {} {}", path.display(), args.uid, args.gid);
+    debug!("op_chown {} {:?} {:?}", path.display(), args.uid, args.gid,);
     #[cfg(unix)]
     {
       use nix::unistd::{chown, Gid, Uid};
-      let nix_uid = Uid::from_raw(args.uid);
-      let nix_gid = Gid::from_raw(args.gid);
-      chown(&path, Option::Some(nix_uid), Option::Some(nix_gid))?;
+      let nix_uid = args.uid.map(Uid::from_raw);
+      let nix_gid = args.gid.map(Gid::from_raw);
+      chown(&path, nix_uid, nix_gid)?;
       Ok(json!({}))
     }
     // TODO Implement chown for Windows
     #[cfg(not(unix))]
     {
-      // Still check file/dir exists on Windows
-      let _metadata = std::fs::metadata(&path)?;
       Err(OpError::not_implemented())
     }
   })
@@ -382,7 +530,7 @@ struct RemoveArgs {
 }
 
 fn op_remove(
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -436,7 +584,7 @@ struct CopyFileArgs {
 }
 
 fn op_copy_file(
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -530,7 +678,7 @@ struct StatArgs {
 }
 
 fn op_stat(
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -560,7 +708,7 @@ struct RealpathArgs {
 }
 
 fn op_realpath(
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -595,7 +743,7 @@ struct ReadDirArgs {
 }
 
 fn op_read_dir(
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -638,7 +786,7 @@ struct RenameArgs {
 }
 
 fn op_rename(
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -667,7 +815,7 @@ struct LinkArgs {
 }
 
 fn op_link(
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -705,7 +853,7 @@ struct SymlinkOptions {
 }
 
 fn op_symlink(
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -765,7 +913,7 @@ struct ReadLinkArgs {
 }
 
 fn op_read_link(
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -785,6 +933,52 @@ fn op_read_link(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct FtruncateArgs {
+  promise_id: Option<u64>,
+  rid: i32,
+  len: i32,
+}
+
+fn op_ftruncate(
+  isolate_state: &mut CoreIsolateState,
+  state: &Rc<State>,
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<JsonOp, OpError> {
+  state.check_unstable("Deno.ftruncate");
+  let args: FtruncateArgs = serde_json::from_value(args)?;
+  let rid = args.rid as u32;
+  let len = args.len as u64;
+
+  let resource_table = isolate_state.resource_table.clone();
+  let is_sync = args.promise_id.is_none();
+
+  if is_sync {
+    let mut resource_table = resource_table.borrow_mut();
+    std_file_resource(&mut resource_table, rid, |r| match r {
+      Ok(std_file) => std_file.set_len(len).map_err(OpError::from),
+      Err(_) => Err(OpError::type_error(
+        "cannot truncate this type of resource".to_string(),
+      )),
+    })?;
+    Ok(JsonOp::Sync(json!({})))
+  } else {
+    let fut = async move {
+      let mut resource_table = resource_table.borrow_mut();
+      std_file_resource(&mut resource_table, rid, |r| match r {
+        Ok(std_file) => std_file.set_len(len).map_err(OpError::from),
+        Err(_) => Err(OpError::type_error(
+          "cannot truncate this type of resource".to_string(),
+        )),
+      })?;
+      Ok(json!({}))
+    };
+    Ok(JsonOp::Async(fut.boxed_local()))
+  }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct TruncateArgs {
   promise_id: Option<u64>,
   path: String,
@@ -792,7 +986,7 @@ struct TruncateArgs {
 }
 
 fn op_truncate(
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -866,7 +1060,7 @@ struct MakeTempArgs {
 }
 
 fn op_make_temp_dir(
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -897,7 +1091,7 @@ fn op_make_temp_dir(
 }
 
 fn op_make_temp_file(
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -937,7 +1131,7 @@ struct UtimeArgs {
 }
 
 fn op_utime(
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -957,7 +1151,7 @@ fn op_utime(
 }
 
 fn op_cwd(
-  state: &State,
+  state: &Rc<State>,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {

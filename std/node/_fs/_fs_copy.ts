@@ -1,12 +1,12 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-import { CallbackWithError } from "./_fs_common.ts";
+import type { CallbackWithError } from "./_fs_common.ts";
 import { fromFileUrl } from "../path.ts";
 
 export function copyFile(
   source: string | URL,
   destination: string,
-  callback: CallbackWithError
+  callback: CallbackWithError,
 ): void {
   source = source instanceof URL ? fromFileUrl(source) : source;
 

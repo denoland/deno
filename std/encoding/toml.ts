@@ -1,6 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { deepAssign } from "../_util/deep_assign.ts";
-import { assert } from "../testing/asserts.ts";
+import { assert } from "../_util/assert.ts";
+
+class TOMLError extends Error {}
 
 class KeyValuePair {
   constructor(public key: string, public value: unknown) {}
@@ -110,7 +112,7 @@ class Parser {
               .join("\n")
               .replace(/"""/g, '"')
               .replace(/'''/g, `'`)
-              .replace(/\n/g, "\\n")
+              .replace(/\n/g, "\\n"),
           );
           isLiteral = false;
         } else {
@@ -122,10 +124,14 @@ class Parser {
     }
     this.tomlLines = merged;
   }
-  _unflat(keys: string[], values: object = {}, cObj: object = {}): object {
+  _unflat(
+    keys: string[],
+    values: Record<string, unknown> | unknown[] = {},
+    cObj: Record<string, unknown> | unknown[] = {},
+  ): Record<string, unknown> {
     const out: Record<string, unknown> = {};
     if (keys.length === 0) {
-      return cObj;
+      return cObj as Record<string, unknown>;
     } else {
       if (Object.keys(cObj).length === 0) {
         cObj = values;
@@ -216,7 +222,7 @@ class Parser {
     }
 
     // If binary / octal / hex
-    const hex = /(0(?:x|o|b)[0-9a-f_]*)[^#]/gi.exec(dataString);
+    const hex = /^(0(?:x|o|b)[0-9a-f_]*)[^#]/gi.exec(dataString);
     if (hex && hex[0]) {
       return hex[0].trim();
     }
@@ -230,10 +236,7 @@ class Parser {
     if (invalidArr) {
       dataString = dataString.replace(/,]/g, "]");
     }
-    const m = /(?:\'|\[|{|\").*(?:\'|\]|\"|})\s*[^#]/g.exec(dataString);
-    if (m) {
-      dataString = m[0].trim();
-    }
+    dataString = this._stripComment(dataString);
     if (dataString[0] === "{" && dataString[dataString.length - 1] === "}") {
       const reg = /([a-zA-Z0-9-_\.]*) (=)/gi;
       let result;
@@ -259,6 +262,34 @@ class Parser {
       dataString = dataString.replace(`\\n'`, `'`);
     }
     return eval(dataString);
+  }
+  private _stripComment(dataString: string): string {
+    const isString = dataString.startsWith('"') || dataString.startsWith("'");
+    if (isString) {
+      const [quote] = dataString;
+      let indexOfNextQuote = 0;
+      while (
+        (indexOfNextQuote = dataString.indexOf(quote, indexOfNextQuote + 1)) !==
+          -1
+      ) {
+        const isEscaped = dataString[indexOfNextQuote - 1] === "\\";
+        if (!isEscaped) {
+          break;
+        }
+      }
+      if (indexOfNextQuote === -1) {
+        throw new TOMLError("imcomplete string literal");
+      }
+      const endOfString = indexOfNextQuote + 1;
+      return dataString.slice(0, endOfString);
+    }
+
+    const m = /(?:|\[|{).*(?:|\]|})\s*^((?!#).)*/g.exec(dataString);
+    if (m) {
+      return m[0].trim();
+    } else {
+      return dataString;
+    }
   }
   _isLocalTime(str: string): boolean {
     const reg = /(\d{2}):(\d{2}):(\d{2})/;
@@ -321,7 +352,7 @@ class Parser {
           this.context.currentGroup.type === "array"
         ) {
           this.context.currentGroup.arrValues.push(
-            this.context.currentGroup.objValues
+            this.context.currentGroup.objValues,
           );
           this.context.currentGroup.objValues = {};
         }
@@ -350,7 +381,7 @@ class Parser {
     if (this.context.currentGroup) {
       if (this.context.currentGroup.type === "array") {
         this.context.currentGroup.arrValues.push(
-          this.context.currentGroup.objValues
+          this.context.currentGroup.objValues,
         );
       }
       this._groupToOutput();
@@ -371,7 +402,7 @@ class Parser {
           const shift = pathDeclaration.shift();
           if (shift) {
             k = shift.replace(/"/g, "");
-            v = this._unflat(pathDeclaration, v as object);
+            v = this._unflat(pathDeclaration, v as Record<string, unknown>);
           }
         } else {
           k = k.replace(/"/g, "");
@@ -384,7 +415,7 @@ class Parser {
       }
     }
   }
-  parse(): object {
+  parse(): Record<string, unknown> {
     this._sanitize();
     this._parseLines();
     this._cleanOutput();
@@ -406,9 +437,9 @@ function joinKeys(keys: string[]): string {
 
 class Dumper {
   maxPad = 0;
-  srcObject: object;
+  srcObject: Record<string, unknown>;
   output: string[] = [];
-  constructor(srcObjc: object) {
+  constructor(srcObjc: Record<string, unknown>) {
     this.srcObject = srcObjc;
   }
   dump(): string[] {
@@ -444,6 +475,8 @@ class Dumper {
         out.push(this._strDeclaration([prop], value.toString()));
       } else if (typeof value === "number") {
         out.push(this._numberDeclaration([prop], value));
+      } else if (typeof value === "boolean") {
+        out.push(this._boolDeclaration([prop], value));
       } else if (
         value instanceof Array &&
         this._isSimplySerializable(value[0])
@@ -477,6 +510,7 @@ class Dumper {
     return (
       typeof value === "string" ||
       typeof value === "number" ||
+      typeof value === "boolean" ||
       value instanceof RegExp ||
       value instanceof Date ||
       value instanceof Array
@@ -510,6 +544,9 @@ class Dumper {
       default:
         return `${this._declaration(keys)}${value}`;
     }
+  }
+  _boolDeclaration(keys: string[], value: boolean): string {
+    return `${this._declaration(keys)}${value}`;
   }
   _dateDeclaration(keys: string[], value: Date): string {
     function dtPad(v: string, lPad = 2): string {
@@ -559,11 +596,11 @@ class Dumper {
   }
 }
 
-export function stringify(srcObj: object): string {
+export function stringify(srcObj: Record<string, unknown>): string {
   return new Dumper(srcObj).dump().join("\n");
 }
 
-export function parse(tomlString: string): object {
+export function parse(tomlString: string): Record<string, unknown> {
   // File is potentially using EOL CRLF
   tomlString = tomlString.replace(/\r\n/g, "\n").replace(/\\\n/g, "\n");
   return new Parser(tomlString).parse();

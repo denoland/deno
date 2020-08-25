@@ -25,6 +25,24 @@ Extra steps for Windows users:
 
 ### Prerequisites
 
+You will need to [install Rust](https://www.rust-lang.org/tools/install). Make
+sure to fetch the latest stable release as Deno does not support nightly builds.
+Check that you have the required tools:
+
+```
+rustc -V
+cargo -V
+```
+
+### Setup rust targets and components
+
+```shell
+rustup target add wasm32-unknown-unknown
+rustup target add wasm32-wasi
+```
+
+### Building Deno
+
 The easiest way to build Deno is by using a precompiled version of V8:
 
 ```
@@ -46,7 +64,9 @@ When building V8 from source, there are more dependencies:
 For Linux users glib-2.0 development files must also be installed. (On Ubuntu,
 run `apt install libglib2.0-dev`.)
 
-Mac users must have [XCode](https://developer.apple.com/xcode/) installed.
+Mac users must have Command Line Tools installed.
+([XCode](https://developer.apple.com/xcode/) already includes CLT. Run
+`xcode-select --install` to install it without XCode.)
 
 For Windows users:
 

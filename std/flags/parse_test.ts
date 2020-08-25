@@ -43,7 +43,7 @@ Deno.test("comprehensive", function (): void {
       meep: false,
       name: "meowmers",
       _: ["bare", "--not-a-flag", "eek"],
-    }
+    },
   );
 });
 

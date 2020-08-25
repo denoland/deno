@@ -1,5 +1,5 @@
 Download http://localhost:4545/cli/tests/subdir/mod2.ts
 Download http://localhost:4545/cli/tests/subdir/print_hello.ts
-Compile [WILDCARD]/fetch/test.ts
+Check [WILDCARD]/fetch/test.ts
 Download http://localhost:4545/cli/tests/subdir/mt_text_typescript.t1.ts
-Compile [WILDCARD]/fetch/other.ts
+Check [WILDCARD]/fetch/other.ts

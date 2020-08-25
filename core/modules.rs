@@ -340,10 +340,7 @@ impl ModuleNameMap {
   /// Check if a name is an alias to another module.
   pub fn is_alias(&self, name: &str) -> bool {
     let cond = self.inner.get(name);
-    match cond {
-      Some(SymbolicModule::Alias(_)) => true,
-      _ => false,
-    }
+    matches!(cond, Some(SymbolicModule::Alias(_)))
   }
 }
 
@@ -484,20 +481,14 @@ impl Deps {
     }
   }
 
-  pub fn to_json(&self) -> String {
-    let mut children = "[".to_string();
-
-    if let Some(ref deps) = self.deps {
-      for d in deps {
-        children.push_str(&d.to_json());
-        if !d.is_last {
-          children.push_str(",");
-        }
-      }
+  pub fn to_json(&self) -> serde_json::Value {
+    let children;
+    if let Some(deps) = &self.deps {
+      children = deps.iter().map(|c| c.to_json()).collect();
+    } else {
+      children = Vec::new()
     }
-    children.push_str("]");
-
-    format!("[\"{}\",{}]", self.name, children)
+    serde_json::json!([&self.name, children])
   }
 }
 
@@ -1056,6 +1047,29 @@ mod tests {
     assert!(modules.deps(&specifier).is_none());
   }
 
+  #[test]
+  fn deps_to_json() {
+    fn dep(name: &str, deps: Option<Vec<Deps>>) -> Deps {
+      Deps {
+        name: name.to_string(),
+        deps,
+        prefix: "".to_string(),
+        is_last: false,
+      }
+    }
+    let deps = dep(
+      "a",
+      Some(vec![
+        dep("b", Some(vec![dep("b2", None)])),
+        dep("c", Some(vec![])),
+      ]),
+    );
+    assert_eq!(
+      serde_json::json!(["a", [["b", [["b2", []]]], ["c", []]]]),
+      deps.to_json()
+    );
+  }
+
   /* TODO(bartlomieju): reenable
   #[test]
   fn deps() {
@@ -1076,22 +1090,5 @@ mod tests {
     assert_eq!(bar_deps.deps, Some(vec![]));
   }
 
-  #[test]
-  fn test_deps_to_json() {
-    let mut modules = Modules::new();
-    modules.register(1, "foo");
-    modules.register(2, "bar");
-    modules.register(3, "baz");
-    modules.register(4, "zuh");
-    modules.add_child(1, "bar");
-    modules.add_child(1, "baz");
-    modules.add_child(3, "zuh");
-    let maybe_deps = modules.deps("foo");
-    assert!(maybe_deps.is_some());
-    assert_eq!(
-      "[\"foo\",[[\"bar\",[]],[\"baz\",[[\"zuh\",[]]]]]]",
-      maybe_deps.unwrap().to_json()
-    );
-  }
   */
 }

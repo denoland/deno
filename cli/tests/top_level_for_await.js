@@ -7,4 +7,4 @@ function* asyncGenerator() {
 
 for await (const num of asyncGenerator()) {
   console.log(num);
-};
+}

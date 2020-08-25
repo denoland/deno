@@ -1,10 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-
-const { test } = Deno;
 import { assertEquals } from "../../testing/asserts.ts";
 import { mul32, mul64 } from "./util.ts";
 
-test("[hash/fnv/util] mul32", () => {
+Deno.test("[hash/fnv/util] mul32", () => {
   assertEquals(mul32(0xffffffff, 0xffffffff), 1);
   assertEquals(mul32(0x12345678, 0xdeadbeef), 0x5621ca08);
   assertEquals(mul32(0xf626f430, 0xff7469f1), 0x2a939130);
@@ -19,7 +17,7 @@ test("[hash/fnv/util] mul32", () => {
   assertEquals(mul32(0xc60898cc, 0xbfe7dcc4), 0x15f84c30);
 });
 
-test("[hash/fnv/util] mul64", () => {
+Deno.test("[hash/fnv/util] mul64", () => {
   assertEquals(mul64([0xffffffff, 0xffffffff], [0xffffffff, 0xffffffff]), [
     0,
     1,

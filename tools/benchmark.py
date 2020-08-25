@@ -3,7 +3,7 @@
 # Performs benchmark and append data to //website/data.json.
 # If //website/data.json doesn't exist, this script tries to import it from
 # gh-pages branch.
-# To view the results locally run ./tools/http_server.py and visit
+# To view the results locally run target/debug/test_server and visit
 # http://localhost:4545/website
 
 import os
@@ -16,7 +16,6 @@ from util import build_path, executable_suffix, root_path, run, run_output
 import third_party
 from http_benchmark import http_benchmark
 import throughput_benchmark
-import http_server
 
 # The list of the tuples of the benchmark name, arguments and return code
 exec_time_benchmarks = [
@@ -32,6 +31,10 @@ exec_time_benchmarks = [
      ["run", "--allow-read", "cli/tests/workers_round_robin_bench.ts"], None),
     ("text_decoder", ["run", "cli/tests/text_decoder_perf.js"], None),
     ("text_encoder", ["run", "cli/tests/text_encoder_perf.js"], None),
+    ("check", ["cache", "--reload", "std/examples/chat/server_test.ts"], None),
+    ("no_check",
+     ["cache", "--reload", "--no-check",
+      "std/examples/chat/server_test.ts"], None),
 ]
 
 
@@ -57,11 +60,7 @@ def get_binary_sizes(build_dir):
         for file_name in file_names:
             if not file_name in [
                     "CLI_SNAPSHOT.bin",
-                    "CLI_SNAPSHOT.js",
-                    "CLI_SNAPSHOT.js.map",
                     "COMPILER_SNAPSHOT.bin",
-                    "COMPILER_SNAPSHOT.js",
-                    "COMPILER_SNAPSHOT.js.map",
             ]:
                 continue
             file_path = os.path.join(parent_dir, file_name)
@@ -239,7 +238,6 @@ def main():
     build_dir = build_path()
     sha1 = run_output(["git", "rev-parse", "HEAD"],
                       exit_on_fail=True).out.strip()
-    http_server.spawn()
 
     deno_exe = os.path.join(build_dir, "deno")
 

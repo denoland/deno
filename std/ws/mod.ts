@@ -1,5 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-
 import { decode, encode } from "../encoding/utf8.ts";
 import { hasOwnProperty } from "../_util/has_own_property.ts";
 import { BufReader, BufWriter } from "../io/bufio.ts";
@@ -8,10 +7,8 @@ import { Sha1 } from "../hash/sha1.ts";
 import { writeResponse } from "../http/_io.ts";
 import { TextProtoReader } from "../textproto/mod.ts";
 import { Deferred, deferred } from "../async/deferred.ts";
-import { assert } from "../testing/asserts.ts";
+import { assert } from "../_util/assert.ts";
 import { concat } from "../bytes/mod.ts";
-import Conn = Deno.Conn;
-import Writer = Deno.Writer;
 
 export enum OpCode {
   Continue = 0x0,
@@ -35,7 +32,7 @@ export interface WebSocketCloseEvent {
 }
 
 export function isWebSocketCloseEvent(
-  a: WebSocketEvent
+  a: WebSocketEvent,
 ): a is WebSocketCloseEvent {
   return hasOwnProperty(a, "code");
 }
@@ -43,7 +40,7 @@ export function isWebSocketCloseEvent(
 export type WebSocketPingEvent = ["ping", Uint8Array];
 
 export function isWebSocketPingEvent(
-  a: WebSocketEvent
+  a: WebSocketEvent,
 ): a is WebSocketPingEvent {
   return Array.isArray(a) && a[0] === "ping" && a[1] instanceof Uint8Array;
 }
@@ -51,7 +48,7 @@ export function isWebSocketPingEvent(
 export type WebSocketPongEvent = ["pong", Uint8Array];
 
 export function isWebSocketPongEvent(
-  a: WebSocketEvent
+  a: WebSocketEvent,
 ): a is WebSocketPongEvent {
   return Array.isArray(a) && a[0] === "pong" && a[1] instanceof Uint8Array;
 }
@@ -66,7 +63,7 @@ export interface WebSocketFrame {
 }
 
 export interface WebSocket extends AsyncIterable<WebSocketEvent> {
-  readonly conn: Conn;
+  readonly conn: Deno.Conn;
   readonly isClosed: boolean;
 
   [Symbol.asyncIterator](): AsyncIterableIterator<WebSocketEvent>;
@@ -108,14 +105,14 @@ export function unmask(payload: Uint8Array, mask?: Uint8Array): void {
 /** Write websocket frame to given writer */
 export async function writeFrame(
   frame: WebSocketFrame,
-  writer: Writer
+  writer: Deno.Writer,
 ): Promise<void> {
   const payloadLength = frame.payload.byteLength;
   let header: Uint8Array;
   const hasMask = frame.mask ? 0x80 : 0;
   if (frame.mask && frame.mask.byteLength !== 4) {
     throw new Error(
-      "invalid mask. mask must be 4 bytes: length=" + frame.mask.byteLength
+      "invalid mask. mask must be 4 bytes: length=" + frame.mask.byteLength,
     );
   }
   if (payloadLength < 126) {
@@ -200,7 +197,7 @@ function createMask(): Uint8Array {
 }
 
 class WebSocketImpl implements WebSocket {
-  readonly conn: Conn;
+  readonly conn: Deno.Conn;
   private readonly mask?: Uint8Array;
   private readonly bufReader: BufReader;
   private readonly bufWriter: BufWriter;
@@ -215,7 +212,7 @@ class WebSocketImpl implements WebSocket {
     bufWriter,
     mask,
   }: {
-    conn: Conn;
+    conn: Deno.Conn;
     bufReader?: BufReader;
     bufWriter?: BufWriter;
     mask?: Uint8Array;
@@ -262,15 +259,16 @@ class WebSocketImpl implements WebSocket {
             payloadsLength = 0;
           }
           break;
-        case OpCode.Close:
+        case OpCode.Close: {
           // [0x12, 0x34] -> 0x1234
           const code = (frame.payload[0] << 8) | frame.payload[1];
           const reason = decode(
-            frame.payload.subarray(2, frame.payload.length)
+            frame.payload.subarray(2, frame.payload.length),
           );
           await this.close(code, reason);
           yield { code, reason };
           return;
+        }
         case OpCode.Ping:
           await this.enqueue({
             opcode: OpCode.Pong,
@@ -314,8 +312,9 @@ class WebSocketImpl implements WebSocket {
   }
 
   send(data: WebSocketMessage): Promise<void> {
-    const opcode =
-      typeof data === "string" ? OpCode.TextFrame : OpCode.BinaryFrame;
+    const opcode = typeof data === "string"
+      ? OpCode.TextFrame
+      : OpCode.BinaryFrame;
     const payload = typeof data === "string" ? encode(data) : data;
     const isLastFrame = true;
     const frame = {
@@ -384,7 +383,7 @@ class WebSocketImpl implements WebSocket {
       this.sendQueue = [];
       rest.forEach((e) =>
         e.d.reject(
-          new Deno.errors.ConnectionReset("Socket has already been closed")
+          new Deno.errors.ConnectionReset("Socket has already been closed"),
         )
       );
     }
@@ -417,7 +416,7 @@ export function createSecAccept(nonce: string): string {
 
 /** Upgrade given TCP connection into websocket connection */
 export async function acceptWebSocket(req: {
-  conn: Conn;
+  conn: Deno.Conn;
   bufWriter: BufWriter;
   bufReader: BufReader;
   headers: Headers;
@@ -459,7 +458,7 @@ export async function handshake(
   url: URL,
   headers: Headers,
   bufReader: BufReader,
-  bufWriter: BufWriter
+  bufWriter: BufWriter,
 ): Promise<void> {
   const { hostname, pathname, search } = url;
   const key = createSecKey();
@@ -496,7 +495,7 @@ export async function handshake(
   if (version !== "HTTP/1.1" || statusCode !== "101") {
     throw new Error(
       `ws: server didn't accept handshake: ` +
-        `version=${version}, statusCode=${statusCode}`
+        `version=${version}, statusCode=${statusCode}`,
     );
   }
 
@@ -510,7 +509,7 @@ export async function handshake(
   if (secAccept !== expectedSecAccept) {
     throw new Error(
       `ws: unexpected sec-websocket-accept header: ` +
-        `expected=${expectedSecAccept}, actual=${secAccept}`
+        `expected=${expectedSecAccept}, actual=${secAccept}`,
     );
   }
 }
@@ -521,11 +520,11 @@ export async function handshake(
  */
 export async function connectWebSocket(
   endpoint: string,
-  headers: Headers = new Headers()
+  headers: Headers = new Headers(),
 ): Promise<WebSocket> {
   const url = new URL(endpoint);
   const { hostname } = url;
-  let conn: Conn;
+  let conn: Deno.Conn;
   if (url.protocol === "http:" || url.protocol === "ws:") {
     const port = parseInt(url.port || "80");
     conn = await Deno.connect({ hostname, port });
@@ -552,7 +551,7 @@ export async function connectWebSocket(
 }
 
 export function createWebSocket(params: {
-  conn: Conn;
+  conn: Deno.Conn;
   bufWriter?: BufWriter;
   bufReader?: BufReader;
   mask?: Uint8Array;

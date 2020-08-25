@@ -64,7 +64,7 @@ pub fn url_to_filename(url: &Url) -> PathBuf {
   // NOTE: fragment is omitted on purpose - it's not taken into
   // account when caching - it denotes parts of webpage, which
   // in case of static resources doesn't make much sense
-  let hashed_filename = crate::checksum::gen(vec![rest_str.as_bytes()]);
+  let hashed_filename = crate::checksum::gen(&[rest_str.as_bytes()]);
   cache_filename.push(hashed_filename);
   cache_filename
 }
@@ -236,7 +236,6 @@ mod tests {
     );
     assert_eq!(headers.get("etag").unwrap(), "as5625rqdsfb");
     assert_eq!(headers.get("foobar"), None);
-    drop(dir);
   }
 
   #[test]

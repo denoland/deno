@@ -1,10 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-const { open, openSync, close, renameSync, stat } = Deno;
-type File = Deno.File;
-type Writer = Deno.Writer;
-type OpenOptions = Deno.OpenOptions;
 import { getLevelByName, LevelName, LogLevels } from "./levels.ts";
-import { LogRecord } from "./logger.ts";
+import type { LogRecord } from "./logger.ts";
 import { red, yellow, blue, bold } from "../fmt/colors.ts";
 import { existsSync, exists } from "../fs/exists.ts";
 import { BufWriterSync } from "../io/bufio.ts";
@@ -45,7 +41,7 @@ export class BaseHandler {
       const value = logRecord[p1 as keyof LogRecord];
 
       // do not interpolate missing values
-      if (!value) {
+      if (value == null) {
         return match;
       }
 
@@ -88,7 +84,7 @@ export class ConsoleHandler extends BaseHandler {
 }
 
 export abstract class WriterHandler extends BaseHandler {
-  protected _writer!: Writer;
+  protected _writer!: Deno.Writer;
   #encoder = new TextEncoder();
 
   abstract log(msg: string): void;
@@ -100,13 +96,12 @@ interface FileHandlerOptions extends HandlerOptions {
 }
 
 export class FileHandler extends WriterHandler {
-  protected _file: File | undefined;
+  protected _file: Deno.File | undefined;
   protected _buf!: BufWriterSync;
   protected _filename: string;
   protected _mode: LogMode;
-  protected _openOptions: OpenOptions;
+  protected _openOptions: Deno.OpenOptions;
   protected _encoder = new TextEncoder();
-  #intervalId = -1;
   #unloadCallback = (): Promise<void> => this.destroy();
 
   constructor(levelName: LevelName, options: FileHandlerOptions) {
@@ -124,14 +119,11 @@ export class FileHandler extends WriterHandler {
   }
 
   async setup(): Promise<void> {
-    this._file = await open(this._filename, this._openOptions);
+    this._file = await Deno.open(this._filename, this._openOptions);
     this._writer = this._file;
     this._buf = new BufWriterSync(this._file);
 
     addEventListener("unload", this.#unloadCallback);
-
-    // flush the buffer every 30 seconds
-    this.#intervalId = setInterval(() => this.flush(), 30 * 1000);
   }
 
   handle(logRecord: LogRecord): void {
@@ -158,7 +150,6 @@ export class FileHandler extends WriterHandler {
     this._file?.close();
     this._file = undefined;
     removeEventListener("unload", this.#unloadCallback);
-    clearInterval(this.#intervalId);
     return Promise.resolve();
   }
 }
@@ -204,12 +195,12 @@ export class RotatingFileHandler extends FileHandler {
         if (await exists(this._filename + "." + i)) {
           this.destroy();
           throw new Deno.errors.AlreadyExists(
-            "Backup log file " + this._filename + "." + i + " already exists"
+            "Backup log file " + this._filename + "." + i + " already exists",
           );
         }
       }
     } else {
-      this.#currentFileSize = (await stat(this._filename)).size;
+      this.#currentFileSize = (await Deno.stat(this._filename)).size;
     }
   }
 
@@ -227,18 +218,18 @@ export class RotatingFileHandler extends FileHandler {
 
   rotateLogFiles(): void {
     this._buf.flush();
-    close(this._file!.rid);
+    Deno.close(this._file!.rid);
 
     for (let i = this.#maxBackupCount - 1; i >= 0; i--) {
       const source = this._filename + (i === 0 ? "" : "." + i);
       const dest = this._filename + "." + (i + 1);
 
       if (existsSync(source)) {
-        renameSync(source, dest);
+        Deno.renameSync(source, dest);
       }
     }
 
-    this._file = openSync(this._filename, this._openOptions);
+    this._file = Deno.openSync(this._filename, this._openOptions);
     this._writer = this._file;
     this._buf = new BufWriterSync(this._file);
   }

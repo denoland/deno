@@ -4,8 +4,8 @@ fs module is made to provide helpers to manipulate the filesystem.
 
 ## Usage
 
-All the following modules are exposed in `mod.ts` This feature is currently
-unstable. To enable it use `deno run --unstable`
+Most the following modules are exposed in `mod.ts` This feature is currently
+<b>unstable</b>. To enable it use `deno run --unstable`
 
 ### emptyDir
 
@@ -133,18 +133,24 @@ const foo = readJsonSync("./foo.json");
 
 Writes an object to a JSON file.
 
-**WriteJsonOptions**
+#### WriteJsonOptions
 
 - replacer : An array of strings and numbers that acts as a approved list for
   selecting the object properties that will be stringified.
 - space : Adds indentation, white space, and line break characters to the
   return-value JSON text to make it easier to read.
 
+You can also specify options from `Deno.WriteFileOptions` to configure how the
+file is written.
+
 ```ts
 import { writeJson, writeJsonSync } from "https://deno.land/std/fs/mod.ts";
 
 writeJson("./target.dat", { foo: "bar" }, { spaces: 2 }); // returns a promise
 writeJsonSync("./target.dat", { foo: "bar" }, { replacer: ["foo"] }); // void
+
+// appends to the file instead of rewriting
+writeJsonSync("./target.dat", { foo: "bar" }, { append: true });
 ```
 
 ### walk
@@ -154,8 +160,8 @@ Iterate all files in a directory recursively.
 ```ts
 import { walk, walkSync } from "https://deno.land/std/fs/mod.ts";
 
-for (const fileInfo of walkSync(".")) {
-  console.log(fileInfo.filename);
+for (const entry of walkSync(".")) {
+  console.log(entry.path);
 }
 
 // Async
@@ -170,7 +176,8 @@ printFilesNames().then(() => console.log("Done!"));
 
 ### readFileStr
 
-Read file and output it as a string.
+Read file and output it as a string. Note: this module does not require the
+`--unstable` flag.
 
 **ReadOptions**
 
@@ -185,7 +192,8 @@ readFileStrSync("./target.dat", { encoding: "utf8" }); // string
 
 ### writeFileStr
 
-Write the string to file.
+Write the string to file. Note: this module does not require the `--unstable`
+flag.
 
 ```ts
 import {
@@ -195,4 +203,29 @@ import {
 
 writeFileStr("./target.dat", "file content"); // returns a promise
 writeFileStrSync("./target.dat", "file content"); // void
+```
+
+### expandGlob
+
+Expand the glob string from the specified `root` directory and yield each result
+as a `WalkEntry` object.
+
+```ts
+import { expandGlob } from "https://deno.land/std/fs/mod.ts";
+
+for await (const file of expandGlob("**/*.ts")) {
+  console.log(file);
+}
+```
+
+### expandGlobSync
+
+Synchronous version of `expandGlob()`.
+
+```ts
+import { expandGlobSync } from "https://deno.land/std/fs/mod.ts";
+
+for (const file of expandGlobSync("**/*.ts")) {
+  console.log(file);
+}
 ```

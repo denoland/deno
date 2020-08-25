@@ -7,8 +7,11 @@
 //! the future it can be easily extended to provide
 //! the same functions as ops available in JS runtime.
 
+use crate::colors;
+use crate::diff::diff;
 use crate::fs::files_in_subtree;
 use crate::op_error::OpError;
+use crate::text_encoding;
 use deno_core::ErrBox;
 use dprint_plugin_typescript as dprint;
 use std::fs;
@@ -25,29 +28,23 @@ const BOM_CHAR: char = '\u{FEFF}';
 
 /// Format JavaScript/TypeScript files.
 ///
-/// First argument supports globs, and if it is `None`
+/// First argument and ignore supports globs, and if it is `None`
 /// then the current directory is recursively walked.
-pub async fn format(args: Vec<String>, check: bool) -> Result<(), ErrBox> {
+pub async fn format(
+  args: Vec<String>,
+  check: bool,
+  exclude: Vec<String>,
+) -> Result<(), ErrBox> {
   if args.len() == 1 && args[0] == "-" {
     return format_stdin(check);
   }
-
-  let mut target_files: Vec<PathBuf> = vec![];
-
-  if args.is_empty() {
-    target_files.extend(files_in_subtree(
-      std::env::current_dir().unwrap(),
-      is_supported,
-    ));
-  } else {
-    for arg in args {
-      let p = PathBuf::from(arg);
-      if p.is_dir() {
-        target_files.extend(files_in_subtree(p, is_supported));
-      } else {
-        target_files.push(p);
-      };
-    }
+  // collect all files provided.
+  let mut target_files = collect_files(args)?;
+  if !exclude.is_empty() {
+    // collect all files to be ignored
+    // and retain only files that should be formatted.
+    let ignore_files = collect_files(exclude)?;
+    target_files.retain(|f| !ignore_files.contains(&f));
   }
   let config = get_config();
   if check {
@@ -63,7 +60,9 @@ async fn check_source_files(
 ) -> Result<(), ErrBox> {
   let not_formatted_files_count = Arc::new(AtomicUsize::new(0));
   let formatter = Arc::new(dprint::Formatter::new(config));
-  let output_lock = Arc::new(Mutex::new(0)); // prevent threads outputting at the same time
+
+  // prevent threads outputting at the same time
+  let output_lock = Arc::new(Mutex::new(0));
 
   run_parallelized(paths, {
     let not_formatted_files_count = not_formatted_files_count.clone();
@@ -74,6 +73,25 @@ async fn check_source_files(
         Ok(formatted_text) => {
           if formatted_text != file_text {
             not_formatted_files_count.fetch_add(1, Ordering::SeqCst);
+            let _g = output_lock.lock().unwrap();
+            match diff(&file_text, &formatted_text) {
+              Ok(diff) => {
+                println!();
+                println!(
+                  "{} {}:",
+                  colors::bold("from"),
+                  file_path.display().to_string()
+                );
+                println!("{}", diff);
+              }
+              Err(e) => {
+                eprintln!(
+                  "Error generating diff: {}",
+                  file_path.to_string_lossy()
+                );
+                eprintln!("   {}", e);
+              }
+            }
           }
         }
         Err(e) => {
@@ -193,10 +211,30 @@ fn is_supported(path: &Path) -> bool {
     .and_then(|e| e.to_str())
     .map(|e| e.to_lowercase());
   if let Some(ext) = lowercase_ext {
-    ext == "ts" || ext == "tsx" || ext == "js" || ext == "jsx"
+    ext == "ts" || ext == "tsx" || ext == "js" || ext == "jsx" || ext == "mjs"
   } else {
     false
   }
+}
+
+pub fn collect_files(files: Vec<String>) -> Result<Vec<PathBuf>, ErrBox> {
+  let mut target_files: Vec<PathBuf> = vec![];
+
+  if files.is_empty() {
+    target_files
+      .extend(files_in_subtree(std::env::current_dir()?, is_supported));
+  } else {
+    for arg in files {
+      let p = PathBuf::from(arg);
+      if p.is_dir() {
+        target_files.extend(files_in_subtree(p.canonicalize()?, is_supported));
+      } else {
+        target_files.push(p.canonicalize()?);
+      };
+    }
+  }
+
+  Ok(target_files)
 }
 
 fn get_config() -> dprint::configuration::Configuration {
@@ -210,13 +248,15 @@ struct FileContents {
 }
 
 fn read_file_contents(file_path: &PathBuf) -> Result<FileContents, ErrBox> {
-  let file_text = fs::read_to_string(&file_path)?;
+  let file_bytes = fs::read(&file_path)?;
+  let charset = text_encoding::detect_charset(&file_bytes);
+  let file_text = text_encoding::convert_to_utf8(&file_bytes, charset)?;
   let had_bom = file_text.starts_with(BOM_CHAR);
   let text = if had_bom {
     // remove the BOM
     String::from(&file_text[BOM_CHAR.len_utf8()..])
   } else {
-    file_text
+    String::from(file_text)
   };
 
   Ok(FileContents { text, had_bom })
@@ -236,7 +276,7 @@ fn write_file_contents(
   Ok(fs::write(file_path, file_text)?)
 }
 
-async fn run_parallelized<F>(
+pub async fn run_parallelized<F>(
   file_paths: Vec<PathBuf>,
   f: F,
 ) -> Result<(), ErrBox>
@@ -293,12 +333,6 @@ fn test_is_supported() {
   assert!(is_supported(Path::new("foo.TSX")));
   assert!(is_supported(Path::new("foo.JS")));
   assert!(is_supported(Path::new("foo.JSX")));
-}
-
-#[tokio::test]
-async fn check_tests_dir() {
-  // Because of cli/tests/error_syntax.js the following should fail but not
-  // crash.
-  let r = format(vec!["./tests".to_string()], true).await;
-  assert!(r.is_err());
+  assert!(is_supported(Path::new("foo.mjs")));
+  assert!(!is_supported(Path::new("foo.mjsx")));
 }

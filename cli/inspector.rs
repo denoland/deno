@@ -378,8 +378,7 @@ impl DenoInspector {
     let core_state_rc = deno_core::CoreIsolate::state(isolate);
     let core_state = core_state_rc.borrow();
 
-    let mut hs = v8::HandleScope::new(isolate);
-    let scope = hs.enter();
+    let scope = &mut v8::HandleScope::new(&mut **isolate);
 
     let (new_websocket_tx, new_websocket_rx) =
       mpsc::unbounded::<WebSocketProxy>();
@@ -402,7 +401,7 @@ impl DenoInspector {
 
       let sessions = InspectorSessions::new(self_ptr, new_websocket_rx);
       let flags = InspectorFlags::new();
-      let waker = InspectorWaker::new(scope.isolate().thread_safe_handle());
+      let waker = InspectorWaker::new(scope.thread_safe_handle());
 
       Self {
         v8_inspector_client,
@@ -416,7 +415,11 @@ impl DenoInspector {
     });
 
     // Tell the inspector about the global context.
-    let context = core_state.global_context.get(scope).unwrap();
+    let context = core_state
+      .global_context
+      .as_ref()
+      .map(|context| v8::Local::new(scope, context))
+      .unwrap();
     let context_name = v8::inspector::StringView::from(&b"global context"[..]);
     self_.context_created(context, Self::CONTEXT_GROUP_ID, context_name);
 

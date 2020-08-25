@@ -39,21 +39,24 @@ impl Into<Buf> for Record {
 pub struct ErrorRecord {
   pub promise_id: i32,
   pub arg: i32,
-  pub error_code: i32,
+  pub error_len: i32,
+  pub error_code: Vec<u8>,
   pub error_message: Vec<u8>,
 }
 
 impl Into<Buf> for ErrorRecord {
   fn into(self) -> Buf {
-    let v32: Vec<i32> = vec![self.promise_id, self.arg, self.error_code];
+    let v32: Vec<i32> = vec![self.promise_id, self.arg, self.error_len];
     let mut v8: Vec<u8> = Vec::new();
     for n in v32 {
       v8.write_i32::<LittleEndian>(n).unwrap();
     }
+    let mut code = self.error_code;
     let mut message = self.error_message;
-    // Align to 32bit word, padding with the space character.
-    message.resize((message.len() + 3usize) & !3usize, b' ');
+    v8.append(&mut code);
     v8.append(&mut message);
+    // Align to 32bit word, padding with the space character.
+    v8.resize((v8.len() + 3usize) & !3usize, b' ');
     v8.into_boxed_slice()
   }
 }
@@ -61,13 +64,14 @@ impl Into<Buf> for ErrorRecord {
 #[test]
 fn test_error_record() {
   let expected = vec![
-    1, 0, 0, 0, 255, 255, 255, 255, 10, 0, 0, 0, 69, 114, 114, 111, 114, 32,
-    32, 32,
+    1, 0, 0, 0, 255, 255, 255, 255, 11, 0, 0, 0, 66, 97, 100, 82, 101, 115,
+    111, 117, 114, 99, 101, 69, 114, 114, 111, 114,
   ];
   let err_record = ErrorRecord {
     promise_id: 1,
     arg: -1,
-    error_code: 10,
+    error_len: 11,
+    error_code: "BadResource".to_string().as_bytes().to_owned(),
     error_message: "Error".to_string().as_bytes().to_owned(),
   };
   let buf: Buf = err_record.into();
@@ -116,21 +120,21 @@ fn test_parse_min_record() {
 
 pub fn minimal_op<D>(
   d: D,
-) -> impl Fn(&mut CoreIsolateState, &[u8], &mut [ZeroCopyBuf]) -> Op
+) -> impl Fn(&mut CoreIsolateState, &mut [ZeroCopyBuf]) -> Op
 where
   D: Fn(&mut CoreIsolateState, bool, i32, &mut [ZeroCopyBuf]) -> MinimalOp,
 {
-  move |isolate_state: &mut CoreIsolateState,
-        control: &[u8],
-        zero_copy: &mut [ZeroCopyBuf]| {
-    let mut record = match parse_min_record(control) {
+  move |isolate_state: &mut CoreIsolateState, zero_copy: &mut [ZeroCopyBuf]| {
+    assert!(!zero_copy.is_empty(), "Expected record at position 0");
+    let mut record = match parse_min_record(&zero_copy[0]) {
       Some(r) => r,
       None => {
         let e = OpError::type_error("Unparsable control buffer".to_string());
         let error_record = ErrorRecord {
           promise_id: 0,
           arg: -1,
-          error_code: e.kind as i32,
+          error_len: e.kind_str.len() as i32,
+          error_code: e.kind_str.as_bytes().to_owned(),
           error_message: e.msg.as_bytes().to_owned(),
         };
         return Op::Sync(error_record.into());
@@ -138,7 +142,7 @@ where
     };
     let is_sync = record.promise_id == 0;
     let rid = record.arg;
-    let min_op = d(isolate_state, is_sync, rid, zero_copy);
+    let min_op = d(isolate_state, is_sync, rid, &mut zero_copy[1..]);
 
     match min_op {
       MinimalOp::Sync(sync_result) => Op::Sync(match sync_result {
@@ -150,7 +154,8 @@ where
           let error_record = ErrorRecord {
             promise_id: record.promise_id,
             arg: -1,
-            error_code: err.kind as i32,
+            error_len: err.kind_str.len() as i32,
+            error_code: err.kind_str.as_bytes().to_owned(),
             error_message: err.msg.as_bytes().to_owned(),
           };
           error_record.into()
@@ -167,7 +172,8 @@ where
               let error_record = ErrorRecord {
                 promise_id: record.promise_id,
                 arg: -1,
-                error_code: err.kind as i32,
+                error_len: err.kind_str.len() as i32,
+                error_code: err.kind_str.as_bytes().to_owned(),
                 error_message: err.msg.as_bytes().to_owned(),
               };
               error_record.into()

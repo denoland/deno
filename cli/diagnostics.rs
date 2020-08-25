@@ -2,9 +2,6 @@
 //! This module encodes TypeScript errors (diagnostics) into Rust structs and
 //! contains code for printing them to the console.
 
-// TODO(ry) This module does a lot of JSON parsing manually. It should use
-// serde_json.
-
 use crate::colors;
 use crate::fmt_errors::format_stack;
 use serde::Deserialize;
@@ -96,7 +93,7 @@ fn format_category_and_code(
     _ => "".to_string(),
   };
 
-  let code = colors::bold(format!("TS{}", code.to_string())).to_string();
+  let code = colors::bold(&format!("TS{}", code.to_string())).to_string();
 
   format!("{} [{}]", code, category)
 }
@@ -120,7 +117,7 @@ fn format_message(
 
 /// Formats optional source, line and column numbers into a single string.
 fn format_maybe_frame(
-  file_name: Option<String>,
+  file_name: Option<&str>,
   line_number: Option<i64>,
   column_number: Option<i64>,
 ) -> String {
@@ -134,8 +131,8 @@ fn format_maybe_frame(
   let line_number = line_number.unwrap();
   let column_number = column_number.unwrap();
   let file_name_c = colors::cyan(file_name.unwrap());
-  let line_c = colors::yellow(line_number.to_string());
-  let column_c = colors::yellow(column_number.to_string());
+  let line_c = colors::yellow(&line_number.to_string());
+  let column_c = colors::yellow(&column_number.to_string());
   format!("{}:{}:{}", file_name_c, line_c, column_c)
 }
 
@@ -152,17 +149,14 @@ fn format_maybe_related_information(
     for rd in related_information {
       s.push_str("\n\n");
       s.push_str(&format_stack(
-        match rd.category {
-          DiagnosticCategory::Error => true,
-          _ => false,
-        },
-        format_message(&rd.message_chain, &rd.message, 0),
-        rd.source_line.clone(),
+        matches!(rd.category, DiagnosticCategory::Error),
+        &format_message(&rd.message_chain, &rd.message, 0),
+        rd.source_line.as_deref(),
         rd.start_column,
         rd.end_column,
         // Formatter expects 1-based line and column numbers, but ours are 0-based.
         &[format_maybe_frame(
-          rd.script_resource_name.clone(),
+          rd.script_resource_name.as_deref(),
           rd.line_number.map(|n| n + 1),
           rd.start_column.map(|n| n + 1),
         )],
@@ -180,21 +174,18 @@ impl fmt::Display for DiagnosticItem {
       f,
       "{}",
       format_stack(
-        match self.category {
-          DiagnosticCategory::Error => true,
-          _ => false,
-        },
-        format!(
+        matches!(self.category, DiagnosticCategory::Error),
+        &format!(
           "{}: {}",
           format_category_and_code(&self.category, self.code),
           format_message(&self.message_chain, &self.message, 0)
         ),
-        self.source_line.clone(),
+        self.source_line.as_deref(),
         self.start_column,
         self.end_column,
         // Formatter expects 1-based line and column numbers, but ours are 0-based.
         &[format_maybe_frame(
-          self.script_resource_name.clone(),
+          self.script_resource_name.as_deref(),
           self.line_number.map(|n| n + 1),
           self.start_column.map(|n| n + 1)
         )],
@@ -453,11 +444,8 @@ mod tests {
 
   #[test]
   fn test_format_some_frame() {
-    let actual = format_maybe_frame(
-      Some("file://foo/bar.ts".to_string()),
-      Some(1),
-      Some(2),
-    );
+    let actual =
+      format_maybe_frame(Some("file://foo/bar.ts"), Some(1), Some(2));
     assert_eq!(strip_ansi_codes(&actual), "file://foo/bar.ts:1:2");
   }
 }

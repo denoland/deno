@@ -1,9 +1,13 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { unitTest, assert } from "./test_util.ts";
+import {
+  unitTest,
+  assert,
+  assertThrows,
+  assertThrowsAsync,
+} from "./test_util.ts";
 
 // Allow 10 second difference.
 // Note this might not be enough for FAT (but we are not testing on such fs).
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function assertFuzzyTimestampEquals(t1: Date | null, t2: Date): void {
   assert(t1 instanceof Date);
   assert(Math.abs(t1.valueOf() - t2.valueOf()) < 10_000);
@@ -25,7 +29,7 @@ unitTest(
     const fileInfo = Deno.statSync(filename);
     assertFuzzyTimestampEquals(fileInfo.atime, new Date(atime * 1000));
     assertFuzzyTimestampEquals(fileInfo.mtime, new Date(mtime * 1000));
-  }
+  },
 );
 
 unitTest(
@@ -40,7 +44,7 @@ unitTest(
     const dirInfo = Deno.statSync(testDir);
     assertFuzzyTimestampEquals(dirInfo.atime, new Date(atime * 1000));
     assertFuzzyTimestampEquals(dirInfo.mtime, new Date(mtime * 1000));
-  }
+  },
 );
 
 unitTest(
@@ -55,7 +59,7 @@ unitTest(
     const dirInfo = Deno.statSync(testDir);
     assertFuzzyTimestampEquals(dirInfo.atime, atime);
     assertFuzzyTimestampEquals(dirInfo.mtime, mtime);
-  }
+  },
 );
 
 unitTest(
@@ -73,7 +77,7 @@ unitTest(
     const fileInfo = Deno.statSync(filename);
     assertFuzzyTimestampEquals(fileInfo.atime, atime);
     assertFuzzyTimestampEquals(fileInfo.mtime, mtime);
-  }
+  },
 );
 
 unitTest(
@@ -90,7 +94,7 @@ unitTest(
     const dirInfo = Deno.statSync(testDir);
     assertFuzzyTimestampEquals(dirInfo.atime, new Date(atime * 1000));
     assertFuzzyTimestampEquals(dirInfo.mtime, new Date(mtime * 1000));
-  }
+  },
 );
 
 unitTest(
@@ -99,15 +103,10 @@ unitTest(
     const atime = 1000;
     const mtime = 50000;
 
-    let caughtError = false;
-    try {
+    assertThrows(() => {
       Deno.utimeSync("/baddir", atime, mtime);
-    } catch (e) {
-      caughtError = true;
-      assert(e instanceof Deno.errors.NotFound);
-    }
-    assert(caughtError);
-  }
+    }, Deno.errors.NotFound);
+  },
 );
 
 unitTest(
@@ -116,15 +115,10 @@ unitTest(
     const atime = 1000;
     const mtime = 50000;
 
-    let caughtError = false;
-    try {
+    assertThrows(() => {
       Deno.utimeSync("/some_dir", atime, mtime);
-    } catch (e) {
-      caughtError = true;
-      assert(e instanceof Deno.errors.PermissionDenied);
-    }
-    assert(caughtError);
-  }
+    }, Deno.errors.PermissionDenied);
+  },
 );
 
 unitTest(
@@ -143,7 +137,7 @@ unitTest(
     const fileInfo = Deno.statSync(filename);
     assertFuzzyTimestampEquals(fileInfo.atime, new Date(atime * 1000));
     assertFuzzyTimestampEquals(fileInfo.mtime, new Date(mtime * 1000));
-  }
+  },
 );
 
 unitTest(
@@ -158,7 +152,7 @@ unitTest(
     const dirInfo = Deno.statSync(testDir);
     assertFuzzyTimestampEquals(dirInfo.atime, new Date(atime * 1000));
     assertFuzzyTimestampEquals(dirInfo.mtime, new Date(mtime * 1000));
-  }
+  },
 );
 
 unitTest(
@@ -173,7 +167,7 @@ unitTest(
     const dirInfo = Deno.statSync(testDir);
     assertFuzzyTimestampEquals(dirInfo.atime, atime);
     assertFuzzyTimestampEquals(dirInfo.mtime, mtime);
-  }
+  },
 );
 
 unitTest(
@@ -192,7 +186,7 @@ unitTest(
     const fileInfo = Deno.statSync(filename);
     assertFuzzyTimestampEquals(fileInfo.atime, atime);
     assertFuzzyTimestampEquals(fileInfo.mtime, mtime);
-  }
+  },
 );
 
 unitTest(
@@ -201,15 +195,10 @@ unitTest(
     const atime = 1000;
     const mtime = 50000;
 
-    let caughtError = false;
-    try {
+    await assertThrowsAsync(async () => {
       await Deno.utime("/baddir", atime, mtime);
-    } catch (e) {
-      caughtError = true;
-      assert(e instanceof Deno.errors.NotFound);
-    }
-    assert(caughtError);
-  }
+    }, Deno.errors.NotFound);
+  },
 );
 
 unitTest(
@@ -218,13 +207,8 @@ unitTest(
     const atime = 1000;
     const mtime = 50000;
 
-    let caughtError = false;
-    try {
+    await assertThrowsAsync(async () => {
       await Deno.utime("/some_dir", atime, mtime);
-    } catch (e) {
-      caughtError = true;
-      assert(e instanceof Deno.errors.PermissionDenied);
-    }
-    assert(caughtError);
-  }
+    }, Deno.errors.PermissionDenied);
+  },
 );

@@ -22,7 +22,7 @@ pub enum Op {
 
 /// Main type describing op
 pub type OpDispatcher =
-  dyn Fn(&mut CoreIsolateState, &[u8], &mut [ZeroCopyBuf]) -> Op + 'static;
+  dyn Fn(&mut CoreIsolateState, &mut [ZeroCopyBuf]) -> Op + 'static;
 
 #[derive(Default)]
 pub struct OpRegistry {
@@ -33,7 +33,7 @@ pub struct OpRegistry {
 impl OpRegistry {
   pub fn new() -> Self {
     let mut registry = Self::default();
-    let op_id = registry.register("ops", |state, _, _| {
+    let op_id = registry.register("ops", |state, _| {
       let buf = state.op_registry.json_map();
       Op::Sync(buf)
     });
@@ -43,7 +43,7 @@ impl OpRegistry {
 
   pub fn register<F>(&mut self, name: &str, op: F) -> OpId
   where
-    F: Fn(&mut CoreIsolateState, &[u8], &mut [ZeroCopyBuf]) -> Op + 'static,
+    F: Fn(&mut CoreIsolateState, &mut [ZeroCopyBuf]) -> Op + 'static,
   {
     let op_id = self.dispatchers.len() as u32;
 
@@ -64,6 +64,11 @@ impl OpRegistry {
   pub fn get(&self, op_id: OpId) -> Option<Rc<OpDispatcher>> {
     self.dispatchers.get(op_id as usize).map(Rc::clone)
   }
+
+  pub fn unregister_op(&mut self, name: &str) {
+    let id = self.name_to_id.remove(name).unwrap();
+    drop(self.dispatchers.remove(id as usize));
+  }
 }
 
 #[test]
@@ -76,7 +81,7 @@ fn test_op_registry() {
   let c = Arc::new(atomic::AtomicUsize::new(0));
   let c_ = c.clone();
 
-  let test_id = op_registry.register("test", move |_, _, _| {
+  let test_id = op_registry.register("test", move |_, _| {
     c_.fetch_add(1, atomic::Ordering::SeqCst);
     Op::Sync(Box::new([]))
   });
@@ -92,7 +97,7 @@ fn test_op_registry() {
   let dispatch = op_registry.get(test_id).unwrap();
   let state_rc = CoreIsolate::state(&isolate);
   let mut state = state_rc.borrow_mut();
-  let res = dispatch(&mut state, &[], &mut []);
+  let res = dispatch(&mut state, &mut []);
   if let Op::Sync(buf) = res {
     assert_eq!(buf.len(), 0);
   } else {
@@ -101,6 +106,10 @@ fn test_op_registry() {
   assert_eq!(c.load(atomic::Ordering::SeqCst), 1);
 
   assert!(op_registry.get(100).is_none());
+  op_registry.unregister_op("test");
+  expected.remove("test");
+  assert_eq!(op_registry.name_to_id, expected);
+  assert!(op_registry.get(1).is_none());
 }
 
 #[test]
@@ -118,10 +127,10 @@ fn register_op_during_call() {
 
   let test_id = {
     let mut g = op_registry.lock().unwrap();
-    g.register("dynamic_register_op", move |_, _, _| {
+    g.register("dynamic_register_op", move |_, _| {
       let c__ = c_.clone();
       let mut g = op_registry_.lock().unwrap();
-      g.register("test", move |_, _, _| {
+      g.register("test", move |_, _| {
         c__.fetch_add(1, atomic::Ordering::SeqCst);
         Op::Sync(Box::new([]))
       });
@@ -139,7 +148,7 @@ fn register_op_during_call() {
   {
     let state_rc = CoreIsolate::state(&isolate);
     let mut state = state_rc.borrow_mut();
-    dispatcher1(&mut state, &[], &mut []);
+    dispatcher1(&mut state, &mut []);
   }
 
   let mut expected = HashMap::new();
@@ -157,7 +166,7 @@ fn register_op_during_call() {
   };
   let state_rc = CoreIsolate::state(&isolate);
   let mut state = state_rc.borrow_mut();
-  let res = dispatcher2(&mut state, &[], &mut []);
+  let res = dispatcher2(&mut state, &mut []);
   if let Op::Sync(buf) = res {
     assert_eq!(buf.len(), 0);
   } else {

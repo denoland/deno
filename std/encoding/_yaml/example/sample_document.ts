@@ -3,13 +3,12 @@
 
 import { parse } from "../../yaml.ts";
 
-const { readFileSync, cwd } = Deno;
-
 (() => {
-  const yml = readFileSync(`${cwd()}/example/sample_document.yml`);
+  const yml = Deno.readFileSync(`${Deno.cwd()}/example/sample_document.yml`);
 
   const document = new TextDecoder().decode(yml);
-  const obj = parse(document) as object;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const obj = parse(document) as Record<string, any>;
   console.log(obj);
 
   let i = 0;

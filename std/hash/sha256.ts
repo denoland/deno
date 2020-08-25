@@ -14,7 +14,6 @@ export type Message = string | number[] | ArrayBuffer;
 const HEX_CHARS = "0123456789abcdef".split("");
 const EXTRA = [-2147483648, 8388608, 32768, 128] as const;
 const SHIFT = [24, 16, 8, 0] as const;
-// prettier-ignore
 // deno-fmt-ignore
 const K = [
   0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1,
@@ -58,6 +57,7 @@ export class Sha256 {
 
   protected init(is224: boolean, sharedMemory: boolean): void {
     if (sharedMemory) {
+      // deno-fmt-ignore
       blocks[0] = blocks[16] = blocks[1] = blocks[2] = blocks[3] = blocks[4] = blocks[5] = blocks[6] = blocks[7] = blocks[8] = blocks[9] = blocks[10] = blocks[11] = blocks[12] = blocks[13] = blocks[14] = blocks[15] = 0;
       this.#blocks = blocks;
     } else {
@@ -116,6 +116,7 @@ export class Sha256 {
       if (this.#hashed) {
         this.#hashed = false;
         blocks[0] = this.#block;
+        // deno-fmt-ignore
         blocks[16] = blocks[1] = blocks[2] = blocks[3] = blocks[4] = blocks[5] = blocks[6] = blocks[7] = blocks[8] = blocks[9] = blocks[10] = blocks[11] = blocks[12] = blocks[13] = blocks[14] = blocks[15] = 0;
       }
 
@@ -136,8 +137,7 @@ export class Sha256 {
             blocks[i >> 2] |= (0x80 | ((code >> 6) & 0x3f)) << SHIFT[i++ & 3];
             blocks[i >> 2] |= (0x80 | (code & 0x3f)) << SHIFT[i++ & 3];
           } else {
-            code =
-              0x10000 +
+            code = 0x10000 +
               (((code & 0x3ff) << 10) | (msg.charCodeAt(++index) & 0x3ff));
             blocks[i >> 2] |= (0xf0 | (code >> 18)) << SHIFT[i++ & 3];
             blocks[i >> 2] |= (0x80 | ((code >> 12) & 0x3f)) << SHIFT[i++ & 3];
@@ -180,6 +180,7 @@ export class Sha256 {
         this.hash();
       }
       blocks[0] = this.#block;
+      // deno-fmt-ignore
       blocks[16] = blocks[1] = blocks[2] = blocks[3] = blocks[4] = blocks[5] = blocks[6] = blocks[7] = blocks[8] = blocks[9] = blocks[10] = blocks[11] = blocks[12] = blocks[13] = blocks[14] = blocks[15] = 0;
     }
     blocks[14] = (this.#hBytes << 3) | (this.#bytes >>> 29);
@@ -213,8 +214,8 @@ export class Sha256 {
       t1 = blocks[j - 15];
       s0 = ((t1 >>> 7) | (t1 << 25)) ^ ((t1 >>> 18) | (t1 << 14)) ^ (t1 >>> 3);
       t1 = blocks[j - 2];
-      s1 =
-        ((t1 >>> 17) | (t1 << 15)) ^ ((t1 >>> 19) | (t1 << 13)) ^ (t1 >>> 10);
+      s1 = ((t1 >>> 17) | (t1 << 15)) ^ ((t1 >>> 19) | (t1 << 13)) ^
+        (t1 >>> 10);
       blocks[j] = (blocks[j - 16] + s0 + blocks[j - 7] + s1) << 0;
     }
 
@@ -234,12 +235,10 @@ export class Sha256 {
         }
         this.#first = false;
       } else {
-        s0 =
-          ((a >>> 2) | (a << 30)) ^
+        s0 = ((a >>> 2) | (a << 30)) ^
           ((a >>> 13) | (a << 19)) ^
           ((a >>> 22) | (a << 10));
-        s1 =
-          ((e >>> 6) | (e << 26)) ^
+        s1 = ((e >>> 6) | (e << 26)) ^
           ((e >>> 11) | (e << 21)) ^
           ((e >>> 25) | (e << 7));
         ab = a & b;
@@ -250,12 +249,10 @@ export class Sha256 {
         h = (d + t1) << 0;
         d = (t1 + t2) << 0;
       }
-      s0 =
-        ((d >>> 2) | (d << 30)) ^
+      s0 = ((d >>> 2) | (d << 30)) ^
         ((d >>> 13) | (d << 19)) ^
         ((d >>> 22) | (d << 10));
-      s1 =
-        ((h >>> 6) | (h << 26)) ^
+      s1 = ((h >>> 6) | (h << 26)) ^
         ((h >>> 11) | (h << 21)) ^
         ((h >>> 25) | (h << 7));
       da = d & a;
@@ -265,12 +262,10 @@ export class Sha256 {
       t2 = s0 + maj;
       g = (c + t1) << 0;
       c = (t1 + t2) << 0;
-      s0 =
-        ((c >>> 2) | (c << 30)) ^
+      s0 = ((c >>> 2) | (c << 30)) ^
         ((c >>> 13) | (c << 19)) ^
         ((c >>> 22) | (c << 10));
-      s1 =
-        ((g >>> 6) | (g << 26)) ^
+      s1 = ((g >>> 6) | (g << 26)) ^
         ((g >>> 11) | (g << 21)) ^
         ((g >>> 25) | (g << 7));
       cd = c & d;
@@ -280,12 +275,10 @@ export class Sha256 {
       t2 = s0 + maj;
       f = (b + t1) << 0;
       b = (t1 + t2) << 0;
-      s0 =
-        ((b >>> 2) | (b << 30)) ^
+      s0 = ((b >>> 2) | (b << 30)) ^
         ((b >>> 13) | (b << 19)) ^
         ((b >>> 22) | (b << 10));
-      s1 =
-        ((f >>> 6) | (f << 26)) ^
+      s1 = ((f >>> 6) | (f << 26)) ^
         ((f >>> 11) | (f << 21)) ^
         ((f >>> 25) | (f << 7));
       bc = b & c;
@@ -320,8 +313,7 @@ export class Sha256 {
     const h6 = this.#h6;
     const h7 = this.#h7;
 
-    let hex =
-      HEX_CHARS[(h0 >> 28) & 0x0f] +
+    let hex = HEX_CHARS[(h0 >> 28) & 0x0f] +
       HEX_CHARS[(h0 >> 24) & 0x0f] +
       HEX_CHARS[(h0 >> 20) & 0x0f] +
       HEX_CHARS[(h0 >> 16) & 0x0f] +
@@ -378,8 +370,7 @@ export class Sha256 {
       HEX_CHARS[(h6 >> 4) & 0x0f] +
       HEX_CHARS[h6 & 0x0f];
     if (!this.#is224) {
-      hex +=
-        HEX_CHARS[(h7 >> 28) & 0x0f] +
+      hex += HEX_CHARS[(h7 >> 28) & 0x0f] +
         HEX_CHARS[(h7 >> 24) & 0x0f] +
         HEX_CHARS[(h7 >> 20) & 0x0f] +
         HEX_CHARS[(h7 >> 16) & 0x0f] +
@@ -444,7 +435,7 @@ export class Sha256 {
         (h7 >> 24) & 0xff,
         (h7 >> 16) & 0xff,
         (h7 >> 8) & 0xff,
-        h7 & 0xff
+        h7 & 0xff,
       );
     }
     return arr;
@@ -501,8 +492,7 @@ export class HmacSha256 extends Sha256 {
           bytes[index++] = 0x80 | ((code >> 6) & 0x3f);
           bytes[index++] = 0x80 | (code & 0x3f);
         } else {
-          code =
-            0x10000 +
+          code = 0x10000 +
             (((code & 0x3ff) << 10) | (secretKey.charCodeAt(++i) & 0x3ff));
           bytes[index++] = 0xf0 | (code >> 18);
           bytes[index++] = 0x80 | ((code >> 12) & 0x3f);

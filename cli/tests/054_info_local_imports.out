@@ -1,7 +1,6 @@
 local: [WILDCARD]005_more_imports.ts
 type: TypeScript
-compiled: [WILDCARD]005_more_imports.ts.js
-map: [WILDCARD]005_more_imports.ts.js.map
+compiled: [WILDCARD].js
 deps:
 file://[WILDCARD]/005_more_imports.ts
   └─┬ file://[WILDCARD]/subdir/mod1.ts

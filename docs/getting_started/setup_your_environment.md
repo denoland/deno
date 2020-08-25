@@ -1,4 +1,4 @@
-## Setup your environment
+## Set up your environment
 
 To productively get going with Deno you should set up your environment. This
 means setting up shell autocomplete, environmental variables and your editor or
@@ -29,12 +29,42 @@ The supported shells are:
 - powershell
 - elvish
 
-Example:
+Example (bash):
 
 ```shell
 deno completions bash > /usr/local/etc/bash_completion.d/deno.bash
 source /usr/local/etc/bash_completion.d/deno.bash
 ```
+
+Example (zsh without framework):
+
+```shell
+mkdir ~/.zsh # create a folder to save your completions. it can be anywhere
+deno completions zsh > .zsh/_deno
+```
+
+then add this to your `.zshrc`
+
+```shell
+fpath=(~/.zsh $fpath)
+autoload -Uz compinit
+compinit -u
+```
+
+and restart your terminal. note that if completions are still not loading, you
+may need to run `rm ~/.zcompdump/` to remove previously generated completions
+and then `compinit` to generate them again.
+
+Example (zsh + oh-my-zsh) [recommended for zsh users] :
+
+```shell
+mkdir ~/.oh-my-zsh/custom/plugins/deno
+deno completions zsh > ~/.oh-my-zsh/custom/plugins/deno/_deno
+```
+
+After this add deno plugin under plugins tag in `~/.zshrc` file. for tools like
+`antigen` path will be `~/.antigen/bundles/robbyrussell/oh-my-zsh/plugins` and
+command will be `antigen bundle deno` and so on.
 
 ### Editors and IDEs
 
@@ -65,9 +95,13 @@ on YouTrack.
 
 Vim works fairly well for Deno/TypeScript if you install
 [CoC](https://github.com/neoclide/coc.nvim) (intellisense engine and language
-server protocol). After CoC itself is installed, from inside Vim, simply run
-`:CocInstall coc-deno`. From now on, things like `gd` (go to definition) and
-`gr` (goto/find references) should work.
+server protocol).
+
+After CoC is installed, from inside Vim, run`:CocInstall coc-tsserver` and
+`:CocInstall coc-deno`. To get autocompletion working for Deno type definitions
+run `:CocCommand deno.types`. Optionally restart the CoC server `:CocRestart`.
+From now on, things like `gd` (go to definition) and `gr` (goto/find references)
+should work.
 
 #### Emacs
 
@@ -100,5 +134,5 @@ project (`npm init -y` as necessary), then add the following block to your
 ```
 
 If you don't see your favorite IDE on this list, maybe you can develop an
-extension. Our [community Discord group](https://discord.gg/TGMHGv6) can give
-you some pointers on where to get started.
+extension. Our [community Discord group](https://discord.gg/deno) can give you
+some pointers on where to get started.

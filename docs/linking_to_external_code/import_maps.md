@@ -16,27 +16,56 @@ Current limitations:
 
 Example:
 
-```js
-// import_map.json
+**import_map.json**
 
+```js
 {
    "imports": {
-      "http/": "https://deno.land/std/http/"
+      "fmt/": "https://deno.land/std@$STD_VERSION/fmt/"
    }
 }
 ```
 
+**color.ts**
+
 ```ts
-// hello_server.ts
+import { red } from "fmt/colors.ts";
 
-import { serve } from "http/server.ts";
+console.log(red("hello world"));
+```
 
-const body = new TextEncoder().encode("Hello World\n");
-for await (const req of serve(":8000")) {
-  req.respond({ body });
+Then:
+
+```shell
+$ deno run --importmap=import_map.json --unstable color.ts
+```
+
+To use starting directory for absolute imports:
+
+```json
+// import_map.json
+
+{
+  "imports": {
+    "/": "./"
+  }
 }
 ```
 
-```shell
-$ deno run --allow-net --importmap=import_map.json --unstable hello_server.ts
+```ts
+// main.ts
+
+import { MyUtil } from "/util.ts";
+```
+
+You may map a different directory: (eg. src)
+
+```json
+// import_map.json
+
+{
+  "imports": {
+    "/": "./src"
+  }
+}
 ```

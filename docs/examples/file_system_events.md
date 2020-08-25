@@ -1,4 +1,4 @@
-### File system events
+## File system events
 
 To poll for file system events:
 

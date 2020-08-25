@@ -1,18 +1,16 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { assertEquals } from "../testing/asserts.ts";
 import { existsSync } from "../fs/exists.ts";
-import { readFileStrSync } from "../fs/read_file_str.ts";
 import * as path from "../path/mod.ts";
 import { parse, stringify } from "./toml.ts";
 
 const testFilesDir = path.resolve("encoding", "testdata");
 
-function parseFile(filePath: string): object {
+function parseFile(filePath: string): Record<string, unknown> {
   if (!existsSync(filePath)) {
     throw new Error(`File not found: ${filePath}`);
   }
-  const strFile = readFileStrSync(filePath);
-  return parse(strFile);
+  return parse(Deno.readTextFileSync(filePath));
 }
 
 Deno.test({
@@ -27,9 +25,12 @@ Deno.test({
         str4: 'this is a "quote"',
         str5: "The quick brown\nfox jumps over\nthe lazy dog.",
         str6: "The quick brown\nfox jumps over\nthe lazy dog.",
-        lines:
-          "The first newline is\ntrimmed in raw strings.\n   All other " +
+        lines: "The first newline is\ntrimmed in raw strings.\n   All other " +
           "whitespace\n   is preserved.",
+        withApostrophe: "What if it's not?",
+        withSemicolon: `const message = 'hello world';`,
+        withHexNumberLiteral:
+          "Prevent bug from stripping string here ->0xabcdef",
       },
     };
     const actual = parseFile(path.join(testFilesDir, "string.toml"));
@@ -49,7 +50,7 @@ Deno.test({
 Deno.test({
   name: "[TOML] Boolean",
   fn(): void {
-    const expected = { boolean: { bool1: true, bool2: false } };
+    const expected = { boolean: { bool1: true, bool2: false, bool3: true } };
     const actual = parseFile(path.join(testFilesDir, "boolean.toml"));
     assertEquals(actual, expected);
   },
@@ -253,7 +254,6 @@ Deno.test({
 Deno.test({
   name: "[TOML] Cargo",
   fn(): void {
-    /* eslint-disable @typescript-eslint/camelcase */
     const expected = {
       workspace: { members: ["./", "core"] },
       bin: [{ name: "deno", path: "cli/main.rs" }],
@@ -290,7 +290,6 @@ Deno.test({
       },
       target: { "cfg(windows)": { dependencies: { winapi: "0.3.6" } } },
     };
-    /* eslint-enable @typescript-eslint/camelcase */
     const actual = parseFile(path.join(testFilesDir, "cargo.toml"));
     assertEquals(actual, expected);
   },
@@ -350,6 +349,8 @@ Deno.test({
         [1, 2],
       ],
       hosts: ["alpha", "omega"],
+      bool: true,
+      bool2: false,
     };
     const expected = `deno    = "is"
 not     = "[node]"
@@ -384,6 +385,8 @@ sf5     = NaN
 sf6     = NaN
 data    = [["gamma","delta"],[1,2]]
 hosts   = ["alpha","omega"]
+bool    = true
+bool2   = false
 
 [foo]
 bar     = "deno"

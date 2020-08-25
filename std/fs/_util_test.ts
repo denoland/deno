@@ -28,7 +28,7 @@ Deno.test("_isSubdir", function (): void {
     assertEquals(
       isSubdir(src, dest, sep),
       expected,
-      `'${src}' should ${expected ? "" : "not"} be parent dir of '${dest}'`
+      `'${src}' should ${expected ? "" : "not"} be parent dir of '${dest}'`,
     );
   });
 });

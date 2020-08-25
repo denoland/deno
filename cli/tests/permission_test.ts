@@ -1,23 +1,22 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
-const { args, listen, env, exit, makeTempDirSync, readFileSync, run } = Deno;
-
-const name = args[0];
-const test: { [key: string]: Function } = {
+const name = Deno.args[0];
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const test: { [key: string]: (...args: any[]) => void | Promise<void> } = {
   readRequired(): Promise<void> {
-    readFileSync("README.md");
+    Deno.readFileSync("README.md");
     return Promise.resolve();
   },
   writeRequired(): void {
-    makeTempDirSync();
+    Deno.makeTempDirSync();
   },
   envRequired(): void {
-    env.get("home");
+    Deno.env.get("home");
   },
   netRequired(): void {
-    listen({ transport: "tcp", port: 4541 });
+    Deno.listen({ transport: "tcp", port: 4541 });
   },
   runRequired(): void {
-    run({
+    Deno.run({
       cmd: [
         "python",
         "-c",
@@ -29,7 +28,7 @@ const test: { [key: string]: Function } = {
 
 if (!test[name]) {
   console.log("Unknown test:", name);
-  exit(1);
+  Deno.exit(1);
 }
 
 test[name]();

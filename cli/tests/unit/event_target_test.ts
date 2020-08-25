@@ -37,7 +37,7 @@ unitTest(function anEventTargetCanBeSubclassed(): void {
     on(
       type: string,
       callback: ((e: Event) => void) | null,
-      options?: AddEventListenerOptions
+      options?: AddEventListenerOptions,
     ): void {
       this.addEventListener(type, callback, options);
     }
@@ -45,7 +45,7 @@ unitTest(function anEventTargetCanBeSubclassed(): void {
     off(
       type: string,
       callback: ((e: Event) => void) | null,
-      options?: EventListenerOptions
+      options?: EventListenerOptions,
     ): void {
       this.removeEventListener(type, callback, options);
     }
@@ -221,5 +221,5 @@ unitTest(
     target.removeEventListener("foo", listener);
     target.dispatchEvent(event);
     assertEquals(callCount, 2);
-  }
+  },
 );

@@ -2,9 +2,6 @@
 
 Files in this directory are unit tests for Deno runtime.
 
-They are run under compiled Deno binary as opposed to files in `cli/js/` which
-are bundled and snapshotted using `deno_typescript` crate.
-
 Testing Deno runtime code requires checking API under different runtime
 permissions (ie. running with different `--allow-*` flags). To accomplish this
 all tests exercised are created using `unitTest()` function.
@@ -75,6 +72,6 @@ RUST_BACKTRACE=1 cargo run -- run --unstable --allow-read --allow-write cli/test
 
 ### Http server
 
-`tools/http_server.py` is required to run when one's running unit tests. During
-CI it's spawned automatically, but if you want to run tests manually make sure
-that server is spawned otherwise there'll be cascade of test failures.
+`target/debug/test_server` is required to run when one's running unit tests.
+During CI it's spawned automatically, but if you want to run tests manually make
+sure that server is spawned otherwise there'll be cascade of test failures.
