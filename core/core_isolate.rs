@@ -87,6 +87,14 @@ impl StartupData<'_> {
 
 type JSErrorCreateFn = dyn Fn(JSError) -> ErrBox;
 
+type RustErrToJsonFn = dyn Fn(&ErrBox) -> Box<[u8]>;
+
+fn rust_err_to_json(e: &ErrBox) -> Box<[u8]> {
+  format!("{{ \"kind\": \"Error\", \"message\": \"{}\" }}", e)
+    .as_bytes()
+    .into()
+}
+
 /// Objects that need to live as long as the isolate
 #[derive(Default)]
 struct IsolateAllocations {
@@ -123,6 +131,7 @@ pub struct CoreIsolateState {
   pub(crate) js_macrotask_cb: Option<v8::Global<v8::Function>>,
   pub(crate) pending_promise_exceptions: HashMap<i32, v8::Global<v8::Value>>,
   pub(crate) js_error_create_fn: Box<JSErrorCreateFn>,
+  pub(crate) rust_err_to_json_fn: Box<RustErrToJsonFn>,
   pub(crate) shared: SharedQueue,
   pending_ops: FuturesUnordered<PendingOpFuture>,
   pending_unref_ops: FuturesUnordered<PendingOpFuture>,
@@ -307,6 +316,7 @@ impl CoreIsolate {
       js_recv_cb: None,
       js_macrotask_cb: None,
       js_error_create_fn: Box::new(JSError::create),
+      rust_err_to_json_fn: Box::new(rust_err_to_json),
       shared: SharedQueue::new(RECOMMENDED_SIZE),
       pending_ops: FuturesUnordered::new(),
       pending_unref_ops: FuturesUnordered::new(),
