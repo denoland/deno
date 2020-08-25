@@ -29,11 +29,7 @@ pub mod deno_dir;
 pub mod diagnostics;
 mod diff;
 mod disk_cache;
-<<<<<<< HEAD
-mod doc;
 mod doctest_runner;
-=======
->>>>>>> d0ccab7fb7dd80030d3765ca9a9af44de6ecda5a
 mod file_fetcher;
 pub mod flags;
 mod flags_allow_net;
