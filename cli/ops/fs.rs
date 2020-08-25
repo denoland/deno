@@ -3,7 +3,6 @@
 use super::dispatch_json::{blocking_json, Deserialize, JsonOp, Value};
 use super::io::std_file_resource;
 use super::io::{FileMetadata, StreamResource, StreamResourceHolder};
-#[cfg(unix)]
 use crate::errbox::invalid_utf8;
 #[cfg(not(unix))]
 use crate::errbox::not_implemented;

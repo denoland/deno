@@ -1,7 +1,6 @@
 use super::dispatch_json::JsonOp;
 use super::io::std_file_resource;
 use super::io::{StreamResource, StreamResourceHolder};
-#[cfg(unix)]
 use crate::errbox::resource_unavailable;
 use crate::state::State;
 use deno_core::CoreIsolate;
