@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::deno_dir;
-use crate::errbox;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::flags;
 use crate::http_cache;

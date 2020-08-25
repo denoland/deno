@@ -53,8 +53,7 @@ fn op_repl_readline(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
-  let args: ReplReadlineArgs =
-    serde_json::from_value(args)?;
+  let args: ReplReadlineArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let prompt = args.prompt;
   debug!("op_repl_readline {} {}", rid, prompt);

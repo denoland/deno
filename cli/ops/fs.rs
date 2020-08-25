@@ -199,7 +199,7 @@ fn op_seek(
   if is_sync {
     let mut resource_table = resource_table.borrow_mut();
     let pos = std_file_resource(&mut resource_table, rid, |r| match r {
-      Ok(std_file) => std_file.seek(seek_from),
+      Ok(std_file) => std_file.seek(seek_from).map_err(ErrBox::from),
       Err(_) => Err(ErrBox::type_error(
         "cannot seek on this type of resource".to_string(),
       )),
@@ -211,7 +211,7 @@ fn op_seek(
     let fut = async move {
       let mut resource_table = resource_table.borrow_mut();
       let pos = std_file_resource(&mut resource_table, rid, |r| match r {
-        Ok(std_file) => std_file.seek(seek_from),
+        Ok(std_file) => std_file.seek(seek_from).map_err(ErrBox::from),
         Err(_) => Err(ErrBox::type_error(
           "cannot seek on this type of resource".to_string(),
         )),
@@ -245,7 +245,7 @@ fn op_fdatasync(
   if is_sync {
     let mut resource_table = resource_table.borrow_mut();
     std_file_resource(&mut resource_table, rid, |r| match r {
-      Ok(std_file) => std_file.sync_data(),
+      Ok(std_file) => std_file.sync_data().map_err(ErrBox::from),
       Err(_) => Err(ErrBox::type_error(
         "cannot sync this type of resource".to_string(),
       )),
@@ -255,7 +255,7 @@ fn op_fdatasync(
     let fut = async move {
       let mut resource_table = resource_table.borrow_mut();
       std_file_resource(&mut resource_table, rid, |r| match r {
-        Ok(std_file) => std_file.sync_data(),
+        Ok(std_file) => std_file.sync_data().map_err(ErrBox::from),
         Err(_) => Err(ErrBox::type_error(
           "cannot sync this type of resource".to_string(),
         )),
@@ -289,7 +289,7 @@ fn op_fsync(
   if is_sync {
     let mut resource_table = resource_table.borrow_mut();
     std_file_resource(&mut resource_table, rid, |r| match r {
-      Ok(std_file) => std_file.sync_all(),
+      Ok(std_file) => std_file.sync_all().map_err(ErrBox::from),
       Err(_) => Err(ErrBox::type_error(
         "cannot sync this type of resource".to_string(),
       )),
@@ -299,7 +299,7 @@ fn op_fsync(
     let fut = async move {
       let mut resource_table = resource_table.borrow_mut();
       std_file_resource(&mut resource_table, rid, |r| match r {
-        Ok(std_file) => std_file.sync_all(),
+        Ok(std_file) => std_file.sync_all().map_err(ErrBox::from),
         Err(_) => Err(ErrBox::type_error(
           "cannot sync this type of resource".to_string(),
         )),
@@ -333,7 +333,7 @@ fn op_fstat(
   if is_sync {
     let mut resource_table = resource_table.borrow_mut();
     let metadata = std_file_resource(&mut resource_table, rid, |r| match r {
-      Ok(std_file) => std_file.metadata(),
+      Ok(std_file) => std_file.metadata().map_err(ErrBox::from),
       Err(_) => Err(ErrBox::type_error(
         "cannot stat this type of resource".to_string(),
       )),
@@ -344,7 +344,7 @@ fn op_fstat(
       let mut resource_table = resource_table.borrow_mut();
       let metadata =
         std_file_resource(&mut resource_table, rid, |r| match r {
-          Ok(std_file) => std_file.metadata(),
+          Ok(std_file) => std_file.metadata().map_err(ErrBox::from),
           Err(_) => Err(ErrBox::type_error(
             "cannot stat this type of resource".to_string(),
           )),
@@ -957,7 +957,7 @@ fn op_ftruncate(
   if is_sync {
     let mut resource_table = resource_table.borrow_mut();
     std_file_resource(&mut resource_table, rid, |r| match r {
-      Ok(std_file) => std_file.set_len(len),
+      Ok(std_file) => std_file.set_len(len).map_err(ErrBox::from),
       Err(_) => Err(ErrBox::type_error(
         "cannot truncate this type of resource".to_string(),
       )),
@@ -967,7 +967,7 @@ fn op_ftruncate(
     let fut = async move {
       let mut resource_table = resource_table.borrow_mut();
       std_file_resource(&mut resource_table, rid, |r| match r {
-        Ok(std_file) => std_file.set_len(len),
+        Ok(std_file) => std_file.set_len(len).map_err(ErrBox::from),
         Err(_) => Err(ErrBox::type_error(
           "cannot truncate this type of resource".to_string(),
         )),

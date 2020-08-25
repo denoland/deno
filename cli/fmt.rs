@@ -9,7 +9,6 @@
 
 use crate::colors;
 use crate::diff::diff;
-use crate::errbox;
 use crate::fs::files_in_subtree;
 use crate::text_encoding;
 use deno_core::ErrBox;

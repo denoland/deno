@@ -258,7 +258,10 @@ pub fn op_read(
       std_file_resource(&mut resource_table, rid as u32, move |r| match r {
         Ok(std_file) => {
           use std::io::Read;
-          std_file.read(&mut zero_copy[0]).map(|n: usize| n as i32)
+          std_file
+            .read(&mut zero_copy[0])
+            .map(|n: usize| n as i32)
+            .map_err(ErrBox::from)
         }
         Err(_) => Err(ErrBox::type_error(
           "sync read not allowed on this resource".to_string(),
@@ -379,6 +382,7 @@ pub fn op_write(
           std_file
             .write(&zero_copy[0])
             .map(|nwritten: usize| nwritten as i32)
+            .map_err(ErrBox::from)
         }
         Err(_) => Err(ErrBox::type_error(
           "sync read not allowed on this resource".to_string(),

@@ -48,8 +48,7 @@ fn op_signal_bind(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
   state.check_unstable("Deno.signal");
-  let args: BindSignalArgs =
-    serde_json::from_value(args)?;
+  let args: BindSignalArgs = serde_json::from_value(args)?;
   let mut resource_table = isolate_state.resource_table.borrow_mut();
   let rid = resource_table.add(
     "signal",

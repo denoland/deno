@@ -104,10 +104,7 @@ pub fn op_start_tls(
       let tls_connector = TlsConnector::from(Arc::new(config));
       let dnsname =
         DNSNameRef::try_from_ascii_str(&domain).expect("Invalid DNS lookup");
-      let tls_stream = tls_connector
-        .connect(dnsname, tcp_stream)
-        .await
-        ?;
+      let tls_stream = tls_connector.connect(dnsname, tcp_stream).await?;
 
       let mut resource_table_ = resource_table.borrow_mut();
       let rid = resource_table_.add(
@@ -142,8 +139,7 @@ pub fn op_connect_tls(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
-  let args: ConnectTLSArgs =
-    serde_json::from_value(args)?;
+  let args: ConnectTLSArgs = serde_json::from_value(args)?;
   let cert_file = args.cert_file.clone();
   let resource_table = isolate_state.resource_table.clone();
   state.check_net(&args.hostname, args.port)?;
@@ -173,10 +169,7 @@ pub fn op_connect_tls(
     let tls_connector = TlsConnector::from(Arc::new(config));
     let dnsname =
       DNSNameRef::try_from_ascii_str(&domain).expect("Invalid DNS lookup");
-    let tls_stream = tls_connector
-      .connect(dnsname, tcp_stream)
-      .await
-      ?;
+    let tls_stream = tls_connector.connect(dnsname, tcp_stream).await?;
     let mut resource_table_ = resource_table.borrow_mut();
     let rid = resource_table_.add(
       "clientTlsStream",
@@ -382,7 +375,7 @@ fn op_accept_tls(
           ErrBox::bad_resource("Listener has been closed".to_string())
         })?;
       let listener = &mut listener_resource.listener;
-      match listener.poll_accept(cx) {
+      match listener.poll_accept(cx).map_err(ErrBox::from) {
         Poll::Ready(Ok((stream, addr))) => {
           listener_resource.untrack_task();
           Poll::Ready(Ok((stream, addr)))

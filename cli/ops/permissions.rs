@@ -34,8 +34,7 @@ pub fn op_query_permission(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
-  let args: PermissionArgs =
-    serde_json::from_value(args)?;
+  let args: PermissionArgs = serde_json::from_value(args)?;
   let permissions = state.permissions.borrow();
   let path = args.path.as_deref();
   let perm = match args.name.as_ref() {
@@ -56,8 +55,7 @@ pub fn op_revoke_permission(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
-  let args: PermissionArgs =
-    serde_json::from_value(args)?;
+  let args: PermissionArgs = serde_json::from_value(args)?;
   let mut permissions = state.permissions.borrow_mut();
   let path = args.path.as_deref();
   let perm = match args.name.as_ref() {
@@ -78,8 +76,7 @@ pub fn op_request_permission(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
-  let args: PermissionArgs =
-    serde_json::from_value(args)?;
+  let args: PermissionArgs = serde_json::from_value(args)?;
   let permissions = &mut state.permissions.borrow_mut();
   let path = args.path.as_deref();
   let perm = match args.name.as_ref() {

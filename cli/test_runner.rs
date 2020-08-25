@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::errbox;
 use crate::fs as deno_fs;
 use crate::installer::is_remote_url;
 use deno_core::ErrBox;

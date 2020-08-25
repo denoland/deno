@@ -262,9 +262,9 @@ impl Permissions {
     // The url may be parsed correctly but still lack a host, i.e. "localhost:235" or "mailto:someone@somewhere.com" or "file:/1.txt"
     // Note that host:port combos are parsed as scheme:path
     if parsed.host().is_none() {
-      return Err(uri_error(
-        "invalid url, expected format: <scheme>://<host>[:port][/subpath]"
-          .to_owned(),
+      return Err(ErrBox::new(
+        "URIError",
+        "invalid urlormat: <scheme>://<host>[:port][/subpath]",
       ));
     }
     Ok(self.query_net(
@@ -567,7 +567,7 @@ impl Permissions {
   pub fn check_net_url(&self, url: &url::Url) -> Result<(), ErrBox> {
     let host = url
       .host_str()
-      .ok_or_else(|| uri_error("missing host".to_owned()))?;
+      .ok_or_else(|| ErrBox::new("URIError", "missing host"))?;
     self
       .query_net(host, url.port_or_known_default())
       .check(&format!("network access to \"{}\"", url), "--allow-net")

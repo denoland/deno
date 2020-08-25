@@ -59,7 +59,7 @@ fn get_io_error_class(error: &io::Error) -> &'static str {
   get_io_kind(&error.kind())
 }
 
-fn get_url_parse_error_class(error: &url::ParseError) -> &'static str {
+fn get_url_parse_error_class(_error: &url::ParseError) -> &'static str {
   "URIError"
 }
 

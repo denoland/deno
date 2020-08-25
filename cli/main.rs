@@ -149,7 +149,7 @@ where
   T: ?Sized + serde::ser::Serialize,
 {
   let writer = std::io::BufWriter::new(std::io::stdout());
-  serde_json::to_writer_pretty(writer, value)
+  serde_json::to_writer_pretty(writer, value).map_err(ErrBox::from)
 }
 
 fn print_cache_info(
@@ -342,6 +342,7 @@ async fn install_command(
   let mut worker = MainWorker::create(&global_state, main_module.clone())?;
   worker.preload_module(&main_module).await?;
   installer::install(flags, &module_url, args, name, root, force)
+    .map_err(ErrBox::from)
 }
 
 async fn lint_command(
@@ -597,7 +598,7 @@ async fn doc_command(
       )
     };
 
-    write_to_stdout_ignore_sigpipe(details.as_bytes())
+    write_to_stdout_ignore_sigpipe(details.as_bytes()).map_err(ErrBox::from)
   }
 }
 

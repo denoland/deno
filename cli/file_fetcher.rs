@@ -324,7 +324,7 @@ impl SourceFileFetcher {
           module_url.to_string()
         ),
       );
-      return Err(from_io(e));
+      return Err(ErrBox::from(e));
     }
 
     // Fetch remote file and cache on-disk for subsequent access
@@ -345,14 +345,14 @@ impl SourceFileFetcher {
     module_url: &Url,
     permissions: &Permissions,
   ) -> Result<SourceFile, ErrBox> {
-    let filepath = module_url
-      .to_file_path()
-      .map_err(|()| uri_error("File URL contains invalid path".to_string()))?;
+    let filepath = module_url.to_file_path().map_err(|()| {
+      ErrBox::new("URIError", "File URL contains invalid path")
+    })?;
 
     permissions.check_read(&filepath)?;
     let source_code = match fs::read(filepath.clone()) {
       Ok(c) => c,
-      Err(e) => return Err(from_io(e)),
+      Err(e) => return Err(ErrBox::from(e)),
     };
 
     let (media_type, charset) = map_content_type(&filepath, None);
@@ -409,7 +409,7 @@ impl SourceFileFetcher {
           url
         }
         Err(e) => {
-          return Err(from_url(e));
+          return Err(ErrBox::from(e));
         }
       };
       return self
@@ -476,7 +476,7 @@ impl SourceFileFetcher {
     // If file wasn't found in cache check if we can fetch it
     if cached_only {
       // We can't fetch remote file - bail out
-      return futures::future::err(from_io(std::io::Error::new(
+      return futures::future::err(ErrBox::from(std::io::Error::new(
         std::io::ErrorKind::NotFound,
         format!(
           "Cannot find remote file '{}' in cache, --cached-only is specified",

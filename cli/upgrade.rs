@@ -7,7 +7,6 @@
 //! the same functions as ops available in JS runtime.
 
 extern crate semver_parser;
-use crate::errbox;
 use crate::futures::FutureExt;
 use crate::http_util::fetch_once;
 use crate::http_util::FetchOnceResult;
@@ -166,7 +165,7 @@ fn compose_url_to_exec(version: &Version) -> Result<Url, ErrBox> {
     "https://github.com/denoland/deno/releases/download/v{}/{}",
     version, ARCHIVE_NAME
   );
-  Url::parse(&s)
+  Url::parse(&s).map_err(ErrBox::from)
 }
 
 fn find_version(text: &str) -> Result<String, ErrBox> {

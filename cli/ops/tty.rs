@@ -31,7 +31,7 @@ fn get_windows_handle(
 
   let handle = f.as_raw_handle();
   if handle == handleapi::INVALID_HANDLE_VALUE {
-    return Err(from_io(std::io::Error::last_os_error()));
+    return Err(ErrBox::from(std::io::Error::last_os_error()));
   } else if handle.is_null() {
     return Err(ErrBox::other("null handle".to_owned()));
   }
@@ -113,7 +113,7 @@ pub fn op_set_raw(
     };
 
     if handle == handleapi::INVALID_HANDLE_VALUE {
-      return Err(from_io(std::io::Error::last_os_error()));
+      return Err(ErrBox::from(std::io::Error::last_os_error()));
     } else if handle.is_null() {
       return Err(ErrBox::other("null handle".to_owned()));
     }
@@ -121,7 +121,7 @@ pub fn op_set_raw(
     if unsafe { consoleapi::GetConsoleMode(handle, &mut original_mode) }
       == FALSE
     {
-      return Err(from_io(std::io::Error::last_os_error()));
+      return Err(ErrBox::from(std::io::Error::last_os_error()));
     }
     let new_mode = if is_raw {
       original_mode & !RAW_MODE_MASK
@@ -129,7 +129,7 @@ pub fn op_set_raw(
       original_mode | RAW_MODE_MASK
     };
     if unsafe { consoleapi::SetConsoleMode(handle, new_mode) } == FALSE {
-      return Err(from_io(std::io::Error::last_os_error()));
+      return Err(ErrBox::from(std::io::Error::last_os_error()));
     }
 
     Ok(JsonOp::Sync(json!({})))
@@ -183,8 +183,7 @@ pub fn op_set_raw(
         | termios::LocalFlags::ISIG);
       raw.control_chars[termios::SpecialCharacterIndices::VMIN as usize] = 1;
       raw.control_chars[termios::SpecialCharacterIndices::VTIME as usize] = 0;
-      termios::tcsetattr(raw_fd, termios::SetArg::TCSADRAIN, &raw)
-        ?;
+      termios::tcsetattr(raw_fd, termios::SetArg::TCSADRAIN, &raw)?;
       Ok(JsonOp::Sync(json!({})))
     } else {
       // Try restore saved mode.
@@ -205,8 +204,7 @@ pub fn op_set_raw(
         };
 
       if let Some(mode) = maybe_tty_mode.take() {
-        termios::tcsetattr(raw_fd, termios::SetArg::TCSADRAIN, &mode)
-          ?;
+        termios::tcsetattr(raw_fd, termios::SetArg::TCSADRAIN, &mode)?;
       }
 
       Ok(JsonOp::Sync(json!({})))
@@ -273,8 +271,7 @@ pub fn op_console_size(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
   state.check_unstable("Deno.consoleSize");
-  let args: ConsoleSizeArgs =
-    serde_json::from_value(args)?;
+  let args: ConsoleSizeArgs = serde_json::from_value(args)?;
   let rid = args.rid;
 
   let mut resource_table = isolate_state.resource_table.borrow_mut();
@@ -316,7 +313,7 @@ pub fn op_console_size(
           unsafe {
             let mut size: libc::winsize = std::mem::zeroed();
             if libc::ioctl(fd, libc::TIOCGWINSZ, &mut size as *mut _) != 0 {
-              return Err(from_io(std::io::Error::last_os_error()));
+              return Err(ErrBox::from(std::io::Error::last_os_error()));
             }
 
             // TODO (caspervonb) return a tuple instead

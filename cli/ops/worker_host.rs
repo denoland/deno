@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
-use crate::errbox;
 use crate::fmt_errors::JSError;
 use crate::global_state::GlobalState;
 use crate::ops::io::get_stdio;

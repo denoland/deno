@@ -55,7 +55,7 @@ fn validate_no_downgrade(
         let e = errbox::permission_denied(
           "Modules loaded over https:// are not allowed to import modules over http://".to_string()
         );
-        return Err(err_with_location(e.into(), maybe_location));
+        return Err(err_with_location(e, maybe_location));
       };
     };
   };
@@ -80,7 +80,7 @@ fn validate_no_file_from_remote(
             let e = errbox::permission_denied(
               "Remote modules are not allowed to statically import local modules. Use dynamic import instead.".to_string()
             );
-            return Err(err_with_location(e.into(), maybe_location));
+            return Err(err_with_location(e, maybe_location));
           }
         }
       }

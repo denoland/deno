@@ -48,8 +48,7 @@ fn op_main_module(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
   let main = &state.main_module.to_string();
-  let main_url =
-    ModuleSpecifier::resolve_url_or_path(&main)?;
+  let main_url = ModuleSpecifier::resolve_url_or_path(&main)?;
   if main_url.as_url().scheme() == "file" {
     let main_path = std::env::current_dir().unwrap().join(main_url.to_string());
     state.check_read_blind(&main_path, "main_module")?;

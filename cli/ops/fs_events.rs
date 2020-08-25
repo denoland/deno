@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
-use crate::errbox;
 use crate::state::State;
 use deno_core::CoreIsolate;
 use deno_core::CoreIsolateState;
@@ -74,19 +73,17 @@ pub fn op_fs_events_open(
     recursive: bool,
     paths: Vec<String>,
   }
-  let args: OpenArgs =
-    serde_json::from_value(args)?;
+  let args: OpenArgs = serde_json::from_value(args)?;
   let (sender, receiver) = mpsc::channel::<Result<FsEvent, ErrBox>>(16);
   let sender = std::sync::Mutex::new(sender);
   let mut watcher: RecommendedWatcher =
     Watcher::new_immediate(move |res: Result<NotifyEvent, NotifyError>| {
-      let res2 = res.map(FsEvent::from);
+      let res2 = res.map(FsEvent::from).map_err(ErrBox::from);
       let mut sender = sender.lock().unwrap();
       // Ignore result, if send failed it means that watcher was already closed,
       // but not all messages have been flushed.
       let _ = sender.try_send(res2);
-    })
-    ?;
+    })?;
   let recursive_mode = if args.recursive {
     RecursiveMode::Recursive
   } else {
@@ -94,9 +91,7 @@ pub fn op_fs_events_open(
   };
   for path in &args.paths {
     state.check_read(&PathBuf::from(path))?;
-    watcher
-      .watch(path, recursive_mode)
-      ?;
+    watcher.watch(path, recursive_mode)?;
   }
   let resource = FsEventsResource { watcher, receiver };
   let mut resource_table = isolate_state.resource_table.borrow_mut();
@@ -114,8 +109,7 @@ pub fn op_fs_events_poll(
   struct PollArgs {
     rid: u32,
   }
-  let PollArgs { rid } =
-    serde_json::from_value(args)?;
+  let PollArgs { rid } = serde_json::from_value(args)?;
   let resource_table = isolate_state.resource_table.clone();
   let f = poll_fn(move |cx| {
     let mut resource_table = resource_table.borrow_mut();

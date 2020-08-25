@@ -24,7 +24,7 @@ pub fn kill(pid: i32, signo: i32) -> Result<(), ErrBox> {
   use nix::unistd::Pid;
   use std::convert::TryFrom;
   let sig = Signal::try_from(signo)?;
-  unix_kill(Pid::from_raw(pid), Option::Some(sig))
+  unix_kill(Pid::from_raw(pid), Option::Some(sig)).map_err(ErrBox::from)
 }
 
 #[cfg(not(unix))]
@@ -37,14 +37,14 @@ pub fn kill(pid: i32, signal: i32) -> Result<(), ErrBox> {
       unsafe {
         let handle = OpenProcess(PROCESS_TERMINATE, 0, pid as DWORD);
         if handle.is_null() {
-          return Err(from_io(std::io::Error::last_os_error()));
+          return Err(ErrBox::from(std::io::Error::last_os_error()));
         }
         if TerminateProcess(handle, 1) == 0 {
           CloseHandle(handle);
-          return Err(from_io(std::io::Error::last_os_error()));
+          return Err(ErrBox::from(std::io::Error::last_os_error()));
         }
         if CloseHandle(handle) == 0 {
-          return Err(from_io(std::io::Error::last_os_error()));
+          return Err(ErrBox::from(std::io::Error::last_os_error()));
         }
       }
     }

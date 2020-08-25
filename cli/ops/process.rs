@@ -10,7 +10,6 @@ use deno_core::ResourceTable;
 use deno_core::ZeroCopyBuf;
 use futures::future::poll_fn;
 use futures::future::FutureExt;
-use futures::TryFutureExt;
 use std::rc::Rc;
 use tokio::process::Command;
 
@@ -28,7 +27,7 @@ fn clone_file(
   resource_table: &mut ResourceTable,
 ) -> Result<std::fs::File, ErrBox> {
   std_file_resource(resource_table, rid, move |r| match r {
-    Ok(std_file) => std_file.try_clone(),
+    Ok(std_file) => std_file.try_clone().map_err(ErrBox::from),
     Err(_) => Err(ErrBox::bad_resource_id()),
   })
 }
@@ -190,7 +189,7 @@ fn op_run_status(
         .get_mut::<ChildResource>(rid)
         .ok_or_else(ErrBox::bad_resource_id)?;
       let child = &mut child_resource.child;
-      child.poll_unpin(cx)
+      child.poll_unpin(cx).map_err(ErrBox::from)
     })
     .await?;
 

@@ -57,7 +57,7 @@ fn accept_tcp(
           ErrBox::bad_resource("Listener has been closed".to_string())
         })?;
       let listener = &mut listener_resource.listener;
-      match listener.poll_accept(cx) {
+      match listener.poll_accept(cx).map_err(ErrBox::from) {
         Poll::Ready(Ok((stream, addr))) => {
           listener_resource.untrack_task();
           Poll::Ready(Ok((stream, addr)))
@@ -146,7 +146,9 @@ fn receive_udp(
           ErrBox::bad_resource("Socket has been closed".to_string())
         })?;
       let socket = &mut resource.socket;
-      socket.poll_recv_from(cx, &mut zero_copy)
+      socket
+        .poll_recv_from(cx, &mut zero_copy)
+        .map_err(ErrBox::from)
     });
     let (size, remote_addr) = receive_fut.await?;
     Ok(json!({
@@ -221,6 +223,7 @@ fn op_datagram_send(
           .socket
           .poll_send_to(cx, &zero_copy, &addr)
           .map_ok(|byte_length| json!(byte_length))
+          .map_err(ErrBox::from)
       });
       Ok(JsonOp::Async(f.boxed_local()))
     }

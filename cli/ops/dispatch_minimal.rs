@@ -4,6 +4,7 @@
 //! alternative to flatbuffers using a very simple list of int32s to lay out
 //! messages. The first i32 is used to determine if a message a flatbuffer
 //! message or a "minimal" message.
+use crate::errbox;
 use byteorder::{LittleEndian, WriteBytesExt};
 use deno_core::Buf;
 use deno_core::CoreIsolateState;
@@ -130,11 +131,12 @@ where
       Some(r) => r,
       None => {
         let e = ErrBox::type_error("Unparsable control buffer".to_string());
+        let code = errbox::get_error_class(&e);
         let error_record = ErrorRecord {
           promise_id: 0,
           arg: -1,
-          error_len: e.1.len() as i32,
-          error_code: e.1.as_bytes().to_owned(),
+          error_len: code.len() as i32,
+          error_code: code.as_bytes().to_owned(),
           error_message: e.to_string().as_bytes().to_owned(),
         };
         return Op::Sync(error_record.into());
@@ -151,11 +153,12 @@ where
           record.into()
         }
         Err(err) => {
+          let code = errbox::get_error_class(&err);
           let error_record = ErrorRecord {
             promise_id: record.promise_id,
             arg: -1,
-            error_len: err.1.len() as i32,
-            error_code: err.1.as_bytes().to_owned(),
+            error_len: code.len() as i32,
+            error_code: code.as_bytes().to_owned(),
             error_message: err.to_string().as_bytes().to_owned(),
           };
           error_record.into()
@@ -169,11 +172,12 @@ where
               record.into()
             }
             Err(err) => {
+              let code = errbox::get_error_class(&err);
               let error_record = ErrorRecord {
                 promise_id: record.promise_id,
                 arg: -1,
-                error_len: err.1.len() as i32,
-                error_code: err.1.as_bytes().to_owned(),
+                error_len: code.len() as i32,
+                error_code: code.as_bytes().to_owned(),
                 error_message: err.to_string().as_bytes().to_owned(),
               };
               error_record.into()

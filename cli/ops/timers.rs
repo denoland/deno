@@ -37,8 +37,7 @@ fn op_global_timer(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
-  let args: GlobalTimerArgs =
-    serde_json::from_value(args)?;
+  let args: GlobalTimerArgs = serde_json::from_value(args)?;
   let val = args.timeout;
 
   let deadline = Instant::now() + Duration::from_millis(val);

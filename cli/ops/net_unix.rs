@@ -93,11 +93,7 @@ pub fn receive_unix_packet(
       .ok_or_else(|| {
         ErrBox::bad_resource("Socket has been closed".to_string())
       })?;
-    let (size, remote_addr) = resource
-      .socket
-      .recv_from(&mut zero_copy)
-      .await
-      ?;
+    let (size, remote_addr) = resource.socket.recv_from(&mut zero_copy).await?;
     Ok(json!({
       "size": size,
       "remoteAddr": {
