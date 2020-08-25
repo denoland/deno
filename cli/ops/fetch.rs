@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use super::io::{StreamResource, StreamResourceHolder};
-use crate::http_util::{create_http_client, HttpBody};
+use crate::http_util::{create_http_client_with_timeout, HttpBody};
 use crate::state::State;
 use deno_core::CoreIsolate;
 use deno_core::CoreIsolateState;
@@ -134,6 +134,7 @@ impl HttpClientResource {
 #[serde(default)]
 struct CreateHttpClientOptions {
   ca_file: Option<String>,
+  timeout_ms: Option<u64>,
 }
 
 fn op_create_http_client(
@@ -149,7 +150,10 @@ fn op_create_http_client(
     state.check_read(&PathBuf::from(ca_file))?;
   }
 
-  let client = create_http_client(args.ca_file.as_deref()).unwrap();
+  let client = create_http_client_with_timeout(
+    args.ca_file.as_deref(),
+    args.timeout_ms
+  ).unwrap();
 
   let rid =
     resource_table.add("httpClient", Box::new(HttpClientResource::new(client)));

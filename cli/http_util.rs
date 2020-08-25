@@ -23,10 +23,16 @@ use std::task::Context;
 use std::task::Poll;
 use tokio::io::AsyncRead;
 use url::Url;
+use std::time::Duration;
 
 /// Create new instance of async reqwest::Client. This client supports
 /// proxies and doesn't follow redirects.
 pub fn create_http_client(ca_file: Option<&str>) -> Result<Client, ErrBox> {
+  create_http_client_with_timeout(ca_file, None)
+}
+/// Create new instance of async reqwest::Client with a request timeout. This client supports
+/// proxies and doesn't follow redirects.
+pub fn create_http_client_with_timeout(ca_file: Option<&str>, timeout_ms: Option<u64>) -> Result<Client, ErrBox> {
   let mut headers = HeaderMap::new();
   headers.insert(
     USER_AGENT,
@@ -42,6 +48,10 @@ pub fn create_http_client(ca_file: Option<&str>) -> Result<Client, ErrBox> {
     File::open(ca_file)?.read_to_end(&mut buf)?;
     let cert = reqwest::Certificate::from_pem(&buf)?;
     builder = builder.add_root_certificate(cert);
+  }
+
+  if let Some(timeout_ms) = timeout_ms {
+    builder = builder.timeout(Duration::from_millis(timeout_ms));
   }
 
   builder
