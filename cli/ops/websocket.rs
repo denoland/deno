@@ -1,14 +1,22 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
+#![allow(warnings)]
+
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::op_error::OpError;
 use crate::state::State;
+use core::future::Future;
+use core::task::Context;
+use core::task::Poll;
 use deno_core::ZeroCopyBuf;
 use deno_core::{CoreIsolate, CoreIsolateState};
 use futures::executor::block_on;
 use futures::future::{poll_fn, FutureExt};
+use futures::ready;
 use futures::{SinkExt, StreamExt};
 use http::{Method, Request, Uri};
 use std::borrow::Cow;
+use std::pin::Pin;
 use std::rc::Rc;
 use tokio::net::TcpStream;
 use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
@@ -22,6 +30,8 @@ pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
   i.register_op("op_ws_close", s.stateful_json_op2(op_ws_close));
   i.register_op("op_ws_next_event", s.stateful_json_op2(op_ws_next_event));
 }
+
+type WsStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -100,16 +110,39 @@ pub fn op_ws_send(
   zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
   let args: SendArgs = serde_json::from_value(args)?;
-  let mut resource_table = isolate_state.resource_table.borrow_mut();
-  let stream = resource_table
-    .get_mut::<WebSocketStream<MaybeTlsStream<TcpStream>>>(args.rid)
-    .ok_or_else(OpError::bad_resource_id)?;
-  block_on(stream.send(match args.text {
+
+  use futures::Sink;
+
+  let mut maybe_msg = Some(match args.text {
     Some(text) => Message::Text(text),
     None => Message::Binary(zero_copy[0].to_owned().to_vec()),
-  }))
-  .unwrap();
-  Ok(JsonOp::Sync(json!({})))
+  });
+  let resource_table = isolate_state.resource_table.clone();
+  let rid = args.rid;
+
+  let future = poll_fn(move |cx| {
+    let mut resource_table = resource_table.borrow_mut();
+    let mut stream = resource_table
+      .get_mut::<WsStream>(rid)
+      .ok_or_else(OpError::bad_resource_id)?;
+
+    // TODO(ry) Handle errors below instead of unwrap.
+    // Need to map tungstenite::error::Error to OpError.
+
+    let stream_pin = Pin::new(&mut stream);
+    ready!(stream_pin.poll_ready(cx)).unwrap();
+
+    if let Some(msg) = maybe_msg.take() {
+      let stream_pin = Pin::new(&mut stream);
+      stream_pin.start_send(msg).unwrap();
+    }
+
+    let stream_pin = Pin::new(&mut stream);
+    ready!(stream_pin.poll_flush(cx)).unwrap();
+
+    Poll::Ready(Ok(json!({})))
+  });
+  Ok(JsonOp::Async(future.boxed_local()))
 }
 
 #[derive(Deserialize)]
@@ -132,7 +165,7 @@ pub fn op_ws_close(
     let mut stream = {
       let mut resource_table = resource_table.borrow_mut();
       resource_table
-        .remove::<WebSocketStream<MaybeTlsStream<TcpStream>>>(args.rid)
+        .remove::<WsStream>(args.rid)
         .ok_or_else(OpError::bad_resource_id)?
     };
     (*stream)
@@ -145,6 +178,8 @@ pub fn op_ws_close(
       }))
       .await
       .unwrap();
+    // stream.rx.close();
+    drop(stream);
 
     Ok(json!({}))
   };
@@ -169,8 +204,20 @@ pub fn op_ws_next_event(
   let future = poll_fn(move |cx| {
     let mut resource_table = resource_table.borrow_mut();
     let stream = resource_table
-      .get_mut::<WebSocketStream<MaybeTlsStream<TcpStream>>>(args.rid)
+      .get_mut::<WsStream>(args.rid)
       .ok_or_else(OpError::bad_resource_id)?;
+
+    /*
+    match stream.rx.try_recv() {
+      Ok(_) => todo!(),
+      Err(tokio::sync::oneshot::error::TryRecvError::Empty) => {}
+      Err(tokio::sync::oneshot::error::TryRecvError::Closed) => todo!(),
+    }
+
+    if Poll::Pending != stream.rx.poll_unpin(cx) {
+      todo!()
+    }
+    */
 
     stream.poll_next_unpin(cx).map(|val| {
       match val {

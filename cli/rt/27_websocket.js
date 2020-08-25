@@ -9,6 +9,8 @@
   const CLOSED = 3;
 
   class WebSocket extends EventTarget {
+    #readyState = CONNECTING;
+
     constructor(url, protocols = []) {
       super();
       requiredArguments("WebSocket", arguments.length, 1);
@@ -75,7 +77,6 @@
       });
     }
 
-
     get CONNECTING() {
       return CONNECTING;
     }
@@ -89,7 +90,6 @@
       return CLOSED;
     }
 
-    #readyState = CONNECTING;
     get readyState() {
       return this.#readyState;
     }
@@ -124,41 +124,38 @@
     send(data) {
       requiredArguments("WebSocket.send", arguments.length, 1);
 
-      if (
-        this.#readyState === OPEN
+      if (this.#readyState != OPEN) {
+        throw Error("readyState not OPEN");
+      }
+
+      const ws = this;
+
+      function sendTypedArray(ta) {
+        ws.#bufferedAmount += ta.size;
+        sendAsync("op_ws_send", {
+          rid: ws.#rid,
+        }, ta).then(() => {
+          ws.#bufferedAmount -= ta.size;
+        });
+      }
+
+      if (data instanceof Blob) {
+        data.arrayBuffer().then((ab) => sendTypedArray(new DataView(ab)));
+      } else if (
+        data instanceof Int8Array || data instanceof Int16Array ||
+        data instanceof Int32Array || data instanceof Uint8Array ||
+        data instanceof Uint16Array || data instanceof Uint32Array ||
+        data instanceof Uint8ClampedArray || data instanceof Float32Array ||
+        data instanceof Float64Array || data instanceof DataView
       ) {
-        if (data instanceof Blob) {
-          data.slice().arrayBuffer().then((buf) => {
-            this.#bufferedAmount += buf.byteLength;
-            sendSync("op_ws_send", {
-              rid: this.#rid,
-            }, new DataView(buf));
-          });
-        } else if (
-          data instanceof Int8Array || data instanceof Int16Array ||
-          data instanceof Int32Array || data instanceof Uint8Array ||
-          data instanceof Uint16Array || data instanceof Uint32Array ||
-          data instanceof Uint8ClampedArray || data instanceof Float32Array ||
-          data instanceof Float64Array || data instanceof DataView
-        ) {
-          this.#bufferedAmount += data.byteLength;
-          sendSync("op_ws_send", {
-            rid: this.#rid,
-          }, data);
-        } else if (data instanceof ArrayBuffer) {
-          this.#bufferedAmount += data.byteLength;
-          sendSync("op_ws_send", {
-            rid: this.#rid,
-          }, new DataView(data));
-        } else {
-          const string = String(data);
-          const encoder = new TextEncoder();
-          this.#bufferedAmount += encoder.encode(string).byteLength;
-          sendSync("op_ws_send", {
-            rid: this.#rid,
-            text: string,
-          });
-        }
+        sendTypedArray(data);
+      } else if (data instanceof ArrayBuffer) {
+        sendTypedArray(new DataView(data));
+      } else {
+        const string = String(data);
+        const encoder = new TextEncoder();
+        const d = encoder.encode(string);
+        sendTypedArray(d);
       }
     }
 
@@ -226,7 +223,9 @@
 
     async #eventLoop() {
       if (this.#readyState === OPEN) {
+        console.log("before op_ws_next_event");
         const message = await sendAsync("op_ws_next_event", { rid: this.#rid });
+        console.log("after op_ws_next_event");
         if (message.type === "string" || message.type === "binary") {
           let data;
 
