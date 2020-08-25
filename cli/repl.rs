@@ -35,8 +35,7 @@ impl Repl {
   }
 
   fn save_history(&mut self) -> Result<(), ErrBox> {
-    fs::create_dir_all(self.history_file.parent().unwrap())
-      .map_err(errbox::from_io)?;
+    fs::create_dir_all(self.history_file.parent().unwrap())?;
     self
       .editor
       .save_history(&self.history_file.to_str().unwrap())
@@ -48,14 +47,11 @@ impl Repl {
   }
 
   pub fn readline(&mut self, prompt: &str) -> Result<String, ErrBox> {
-    self
-      .editor
-      .readline(&prompt)
-      .map(|line| {
-        self.editor.add_history_entry(line.clone());
-        line
-      })
-      .map_err(errbox::from_readline)
+    self.editor.readline(&prompt).map(|line| {
+      self.editor.add_history_entry(line.clone());
+      line
+    })
+
     // Forward error to TS side for processing
   }
 }

@@ -3,10 +3,7 @@
 use super::dispatch_json::{blocking_json, Deserialize, JsonOp, Value};
 use super::io::std_file_resource;
 use super::io::{FileMetadata, StreamResource, StreamResourceHolder};
-use crate::errbox::from_io;
 #[cfg(unix)]
-use crate::errbox::from_nix;
-use crate::errbox::from_serde;
 use crate::errbox::invalid_utf8;
 #[cfg(not(unix))]
 use crate::errbox::not_implemented;
@@ -90,7 +87,7 @@ fn open_helper(
   state: &State,
   args: Value,
 ) -> Result<(PathBuf, std::fs::OpenOptions), ErrBox> {
-  let args: OpenArgs = serde_json::from_value(args).map_err(from_serde)?;
+  let args: OpenArgs = serde_json::from_value(args)?;
   let path = Path::new(&args.path).to_path_buf();
 
   let mut open_options = std::fs::OpenOptions::new();
@@ -134,7 +131,7 @@ fn op_open_sync(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<Value, ErrBox> {
   let (path, open_options) = open_helper(state, args)?;
-  let std_file = open_options.open(path).map_err(from_io)?;
+  let std_file = open_options.open(path)?;
   let tokio_file = tokio::fs::File::from_std(std_file);
   let rid = resource_table.add(
     "fsFile",
@@ -155,8 +152,7 @@ async fn op_open_async(
   let (path, open_options) = open_helper(&state, args)?;
   let tokio_file = tokio::fs::OpenOptions::from(open_options)
     .open(path)
-    .await
-    .map_err(from_io)?;
+    .await?;
   let rid = resource_table.borrow_mut().add(
     "fsFile",
     Box::new(StreamResourceHolder::new(StreamResource::FsFile(Some((
@@ -183,7 +179,7 @@ fn op_seek(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
   use std::io::{Seek, SeekFrom};
-  let args: SeekArgs = serde_json::from_value(args).map_err(from_serde)?;
+  let args: SeekArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let offset = args.offset;
   let whence = args.whence as u32;
@@ -203,7 +199,7 @@ fn op_seek(
   if is_sync {
     let mut resource_table = resource_table.borrow_mut();
     let pos = std_file_resource(&mut resource_table, rid, |r| match r {
-      Ok(std_file) => std_file.seek(seek_from).map_err(from_io),
+      Ok(std_file) => std_file.seek(seek_from),
       Err(_) => Err(ErrBox::type_error(
         "cannot seek on this type of resource".to_string(),
       )),
@@ -215,7 +211,7 @@ fn op_seek(
     let fut = async move {
       let mut resource_table = resource_table.borrow_mut();
       let pos = std_file_resource(&mut resource_table, rid, |r| match r {
-        Ok(std_file) => std_file.seek(seek_from).map_err(from_io),
+        Ok(std_file) => std_file.seek(seek_from),
         Err(_) => Err(ErrBox::type_error(
           "cannot seek on this type of resource".to_string(),
         )),
@@ -240,7 +236,7 @@ fn op_fdatasync(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
   state.check_unstable("Deno.fdatasync");
-  let args: FdatasyncArgs = serde_json::from_value(args).map_err(from_serde)?;
+  let args: FdatasyncArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
 
   let resource_table = isolate_state.resource_table.clone();
@@ -249,7 +245,7 @@ fn op_fdatasync(
   if is_sync {
     let mut resource_table = resource_table.borrow_mut();
     std_file_resource(&mut resource_table, rid, |r| match r {
-      Ok(std_file) => std_file.sync_data().map_err(from_io),
+      Ok(std_file) => std_file.sync_data(),
       Err(_) => Err(ErrBox::type_error(
         "cannot sync this type of resource".to_string(),
       )),
@@ -259,7 +255,7 @@ fn op_fdatasync(
     let fut = async move {
       let mut resource_table = resource_table.borrow_mut();
       std_file_resource(&mut resource_table, rid, |r| match r {
-        Ok(std_file) => std_file.sync_data().map_err(from_io),
+        Ok(std_file) => std_file.sync_data(),
         Err(_) => Err(ErrBox::type_error(
           "cannot sync this type of resource".to_string(),
         )),
@@ -284,7 +280,7 @@ fn op_fsync(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
   state.check_unstable("Deno.fsync");
-  let args: FsyncArgs = serde_json::from_value(args).map_err(from_serde)?;
+  let args: FsyncArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
 
   let resource_table = isolate_state.resource_table.clone();
@@ -293,7 +289,7 @@ fn op_fsync(
   if is_sync {
     let mut resource_table = resource_table.borrow_mut();
     std_file_resource(&mut resource_table, rid, |r| match r {
-      Ok(std_file) => std_file.sync_all().map_err(from_io),
+      Ok(std_file) => std_file.sync_all(),
       Err(_) => Err(ErrBox::type_error(
         "cannot sync this type of resource".to_string(),
       )),
@@ -303,7 +299,7 @@ fn op_fsync(
     let fut = async move {
       let mut resource_table = resource_table.borrow_mut();
       std_file_resource(&mut resource_table, rid, |r| match r {
-        Ok(std_file) => std_file.sync_all().map_err(from_io),
+        Ok(std_file) => std_file.sync_all(),
         Err(_) => Err(ErrBox::type_error(
           "cannot sync this type of resource".to_string(),
         )),
@@ -328,7 +324,7 @@ fn op_fstat(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
   state.check_unstable("Deno.fstat");
-  let args: FstatArgs = serde_json::from_value(args).map_err(from_serde)?;
+  let args: FstatArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
 
   let resource_table = isolate_state.resource_table.clone();
@@ -337,7 +333,7 @@ fn op_fstat(
   if is_sync {
     let mut resource_table = resource_table.borrow_mut();
     let metadata = std_file_resource(&mut resource_table, rid, |r| match r {
-      Ok(std_file) => std_file.metadata().map_err(from_io),
+      Ok(std_file) => std_file.metadata(),
       Err(_) => Err(ErrBox::type_error(
         "cannot stat this type of resource".to_string(),
       )),
@@ -348,7 +344,7 @@ fn op_fstat(
       let mut resource_table = resource_table.borrow_mut();
       let metadata =
         std_file_resource(&mut resource_table, rid, |r| match r {
-          Ok(std_file) => std_file.metadata().map_err(from_io),
+          Ok(std_file) => std_file.metadata(),
           Err(_) => Err(ErrBox::type_error(
             "cannot stat this type of resource".to_string(),
           )),
@@ -370,7 +366,7 @@ fn op_umask(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
   state.check_unstable("Deno.umask");
-  let args: UmaskArgs = serde_json::from_value(args).map_err(from_serde)?;
+  let args: UmaskArgs = serde_json::from_value(args)?;
   // TODO implement umask for Windows
   // see https://github.com/nodejs/node/blob/master/src/node_process_methods.cc
   // and https://docs.microsoft.com/fr-fr/cpp/c-runtime-library/reference/umask?view=vs-2019
@@ -407,10 +403,10 @@ fn op_chdir(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
-  let args: ChdirArgs = serde_json::from_value(args).map_err(from_serde)?;
+  let args: ChdirArgs = serde_json::from_value(args)?;
   let d = PathBuf::from(&args.directory);
   state.check_read(&d)?;
-  set_current_dir(&d).map_err(from_io)?;
+  set_current_dir(&d)?;
   Ok(JsonOp::Sync(json!({})))
 }
 
@@ -428,7 +424,7 @@ fn op_mkdir(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
-  let args: MkdirArgs = serde_json::from_value(args).map_err(from_serde)?;
+  let args: MkdirArgs = serde_json::from_value(args)?;
   let path = Path::new(&args.path).to_path_buf();
   let mode = args.mode.unwrap_or(0o777) & 0o777;
 
@@ -444,7 +440,7 @@ fn op_mkdir(
       use std::os::unix::fs::DirBuilderExt;
       builder.mode(mode);
     }
-    builder.create(path).map_err(from_io)?;
+    builder.create(path)?;
     Ok(json!({}))
   })
 }
@@ -462,7 +458,7 @@ fn op_chmod(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
-  let args: ChmodArgs = serde_json::from_value(args).map_err(from_serde)?;
+  let args: ChmodArgs = serde_json::from_value(args)?;
   let path = Path::new(&args.path).to_path_buf();
   let mode = args.mode & 0o777;
 
@@ -475,14 +471,14 @@ fn op_chmod(
     {
       use std::os::unix::fs::PermissionsExt;
       let permissions = PermissionsExt::from_mode(mode);
-      std::fs::set_permissions(&path, permissions).map_err(from_io)?;
+      std::fs::set_permissions(&path, permissions)?;
       Ok(json!({}))
     }
     // TODO Implement chmod for Windows (#4357)
     #[cfg(not(unix))]
     {
       // Still check file/dir exists on Windows
-      let _metadata = std::fs::metadata(&path).map_err(from_io)?;
+      let _metadata = std::fs::metadata(&path)?;
       Err(not_implemented())
     }
   })
@@ -502,7 +498,7 @@ fn op_chown(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
-  let args: ChownArgs = serde_json::from_value(args).map_err(from_serde)?;
+  let args: ChownArgs = serde_json::from_value(args)?;
   let path = Path::new(&args.path).to_path_buf();
 
   state.check_write(&path)?;
@@ -515,7 +511,7 @@ fn op_chown(
       use nix::unistd::{chown, Gid, Uid};
       let nix_uid = args.uid.map(Uid::from_raw);
       let nix_gid = args.gid.map(Gid::from_raw);
-      chown(&path, nix_uid, nix_gid).map_err(from_nix)?;
+      chown(&path, nix_uid, nix_gid)?;
       Ok(json!({}))
     }
     // TODO Implement chown for Windows
@@ -539,7 +535,7 @@ fn op_remove(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
-  let args: RemoveArgs = serde_json::from_value(args).map_err(from_serde)?;
+  let args: RemoveArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
   let recursive = args.recursive;
 
@@ -550,31 +546,31 @@ fn op_remove(
     #[cfg(not(unix))]
     use std::os::windows::prelude::MetadataExt;
 
-    let metadata = std::fs::symlink_metadata(&path).map_err(from_io)?;
+    let metadata = std::fs::symlink_metadata(&path)?;
 
     debug!("op_remove {} {}", path.display(), recursive);
     let file_type = metadata.file_type();
     if file_type.is_file() {
-      std::fs::remove_file(&path).map_err(from_io)?;
+      std::fs::remove_file(&path)?;
     } else if recursive {
-      std::fs::remove_dir_all(&path).map_err(from_io)?;
+      std::fs::remove_dir_all(&path)?;
     } else if file_type.is_symlink() {
       #[cfg(unix)]
-      std::fs::remove_file(&path).map_err(from_io)?;
+      std::fs::remove_file(&path)?;
       #[cfg(not(unix))]
       {
         use winapi::um::winnt::FILE_ATTRIBUTE_DIRECTORY;
         if metadata.file_attributes() & FILE_ATTRIBUTE_DIRECTORY != 0 {
-          std::fs::remove_dir(&path).map_err(from_io)?;
+          std::fs::remove_dir(&path)?;
         } else {
-          std::fs::remove_file(&path).map_err(from_io)?;
+          std::fs::remove_file(&path)?;
         }
       }
     } else if file_type.is_dir() {
-      std::fs::remove_dir(&path).map_err(from_io)?;
+      std::fs::remove_dir(&path)?;
     } else {
       // pipes, sockets, etc...
-      std::fs::remove_file(&path).map_err(from_io)?;
+      std::fs::remove_file(&path)?;
     }
     Ok(json!({}))
   })
@@ -593,7 +589,7 @@ fn op_copy_file(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
-  let args: CopyFileArgs = serde_json::from_value(args).map_err(from_serde)?;
+  let args: CopyFileArgs = serde_json::from_value(args)?;
   let from = PathBuf::from(&args.from);
   let to = PathBuf::from(&args.to);
 
@@ -607,11 +603,11 @@ fn op_copy_file(
     // See https://github.com/rust-lang/rust/issues/54800
     // Once the issue is resolved, we should remove this workaround.
     if cfg!(unix) && !from.is_file() {
-      return Err(ErrBox::new_text("NotFound", "File not found".to_string()));
+      return Err(ErrBox::new("NotFound", "File not found"));
     }
 
     // returns size of from as u64 (we ignore)
-    std::fs::copy(&from, &to).map_err(from_io)?;
+    std::fs::copy(&from, &to)?;
     Ok(json!({}))
   })
 }
@@ -687,7 +683,7 @@ fn op_stat(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
-  let args: StatArgs = serde_json::from_value(args).map_err(from_serde)?;
+  let args: StatArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
   let lstat = args.lstat;
 
@@ -697,9 +693,9 @@ fn op_stat(
   blocking_json(is_sync, move || {
     debug!("op_stat {} {}", path.display(), lstat);
     let metadata = if lstat {
-      std::fs::symlink_metadata(&path).map_err(from_io)?
+      std::fs::symlink_metadata(&path)?
     } else {
-      std::fs::metadata(&path).map_err(from_io)?
+      std::fs::metadata(&path)?
     };
     get_stat_json(metadata)
   })
@@ -717,12 +713,12 @@ fn op_realpath(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
-  let args: RealpathArgs = serde_json::from_value(args).map_err(from_serde)?;
+  let args: RealpathArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
 
   state.check_read(&path)?;
   if path.is_relative() {
-    state.check_read_blind(&current_dir().map_err(from_io)?, "CWD")?;
+    state.check_read_blind(&current_dir()?, "CWD")?;
   }
 
   let is_sync = args.promise_id.is_none();
@@ -730,7 +726,7 @@ fn op_realpath(
     debug!("op_realpath {}", path.display());
     // corresponds to the realpath on Unix and
     // CreateFile and GetFinalPathNameByHandle on Windows
-    let realpath = std::fs::canonicalize(&path).map_err(from_io)?;
+    let realpath = std::fs::canonicalize(&path)?;
     let mut realpath_str =
       into_string(realpath.into_os_string())?.replace("\\", "/");
     if cfg!(windows) {
@@ -752,7 +748,7 @@ fn op_read_dir(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
-  let args: ReadDirArgs = serde_json::from_value(args).map_err(from_serde)?;
+  let args: ReadDirArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
 
   state.check_read(&path)?;
@@ -760,8 +756,7 @@ fn op_read_dir(
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
     debug!("op_read_dir {}", path.display());
-    let entries: Vec<_> = std::fs::read_dir(path)
-      .map_err(from_io)?
+    let entries: Vec<_> = std::fs::read_dir(path)?
       .filter_map(|entry| {
         let entry = entry.unwrap();
         let file_type = entry.file_type().unwrap();
@@ -796,7 +791,7 @@ fn op_rename(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
-  let args: RenameArgs = serde_json::from_value(args).map_err(from_serde)?;
+  let args: RenameArgs = serde_json::from_value(args)?;
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
 
@@ -807,7 +802,7 @@ fn op_rename(
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
     debug!("op_rename {} {}", oldpath.display(), newpath.display());
-    std::fs::rename(&oldpath, &newpath).map_err(from_io)?;
+    std::fs::rename(&oldpath, &newpath)?;
     Ok(json!({}))
   })
 }
@@ -826,7 +821,7 @@ fn op_link(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
   state.check_unstable("Deno.link");
-  let args: LinkArgs = serde_json::from_value(args).map_err(from_serde)?;
+  let args: LinkArgs = serde_json::from_value(args)?;
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
 
@@ -836,7 +831,7 @@ fn op_link(
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
     debug!("op_link {} {}", oldpath.display(), newpath.display());
-    std::fs::hard_link(&oldpath, &newpath).map_err(from_io)?;
+    std::fs::hard_link(&oldpath, &newpath)?;
     Ok(json!({}))
   })
 }
@@ -864,7 +859,7 @@ fn op_symlink(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
   state.check_unstable("Deno.symlink");
-  let args: SymlinkArgs = serde_json::from_value(args).map_err(from_serde)?;
+  let args: SymlinkArgs = serde_json::from_value(args)?;
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
 
@@ -876,7 +871,7 @@ fn op_symlink(
     #[cfg(unix)]
     {
       use std::os::unix::fs::symlink;
-      symlink(&oldpath, &newpath).map_err(from_io)?;
+      symlink(&oldpath, &newpath)?;
       Ok(json!({}))
     }
     #[cfg(not(unix))]
@@ -885,8 +880,8 @@ fn op_symlink(
 
       match args.options {
         Some(options) => match options._type.as_ref() {
-          "file" => symlink_file(&oldpath, &newpath).map_err(from_io)?,
-          "dir" => symlink_dir(&oldpath, &newpath).map_err(from_io)?,
+          "file" => symlink_file(&oldpath, &newpath)?,
+          "dir" => symlink_dir(&oldpath, &newpath)?,
           _ => return Err(ErrBox::type_error("unsupported type".to_string())),
         },
         None => {
@@ -894,9 +889,9 @@ fn op_symlink(
           match old_meta {
             Ok(metadata) => {
               if metadata.is_file() {
-                symlink_file(&oldpath, &newpath).map_err(from_io)?
+                symlink_file(&oldpath, &newpath)?
               } else if metadata.is_dir() {
-                symlink_dir(&oldpath, &newpath).map_err(from_io)?
+                symlink_dir(&oldpath, &newpath)?
               }
             }
             Err(_) => return Err(ErrBox::type_error(
@@ -923,7 +918,7 @@ fn op_read_link(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
-  let args: ReadLinkArgs = serde_json::from_value(args).map_err(from_serde)?;
+  let args: ReadLinkArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
 
   state.check_read(&path)?;
@@ -931,7 +926,7 @@ fn op_read_link(
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
     debug!("op_read_link {}", path.display());
-    let target = std::fs::read_link(&path).map_err(from_io)?.into_os_string();
+    let target = std::fs::read_link(&path)?.into_os_string();
     let targetstr = into_string(target)?;
     Ok(json!(targetstr))
   })
@@ -952,7 +947,7 @@ fn op_ftruncate(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
   state.check_unstable("Deno.ftruncate");
-  let args: FtruncateArgs = serde_json::from_value(args).map_err(from_serde)?;
+  let args: FtruncateArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let len = args.len as u64;
 
@@ -962,7 +957,7 @@ fn op_ftruncate(
   if is_sync {
     let mut resource_table = resource_table.borrow_mut();
     std_file_resource(&mut resource_table, rid, |r| match r {
-      Ok(std_file) => std_file.set_len(len).map_err(from_io),
+      Ok(std_file) => std_file.set_len(len),
       Err(_) => Err(ErrBox::type_error(
         "cannot truncate this type of resource".to_string(),
       )),
@@ -972,7 +967,7 @@ fn op_ftruncate(
     let fut = async move {
       let mut resource_table = resource_table.borrow_mut();
       std_file_resource(&mut resource_table, rid, |r| match r {
-        Ok(std_file) => std_file.set_len(len).map_err(from_io),
+        Ok(std_file) => std_file.set_len(len),
         Err(_) => Err(ErrBox::type_error(
           "cannot truncate this type of resource".to_string(),
         )),
@@ -996,7 +991,7 @@ fn op_truncate(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
-  let args: TruncateArgs = serde_json::from_value(args).map_err(from_serde)?;
+  let args: TruncateArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
   let len = args.len;
 
@@ -1005,11 +1000,8 @@ fn op_truncate(
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
     debug!("op_truncate {} {}", path.display(), len);
-    let f = std::fs::OpenOptions::new()
-      .write(true)
-      .open(&path)
-      .map_err(from_io)?;
-    f.set_len(len).map_err(from_io)?;
+    let f = std::fs::OpenOptions::new().write(true).open(&path)?;
+    f.set_len(len)?;
     Ok(json!({}))
   })
 }
@@ -1073,7 +1065,7 @@ fn op_make_temp_dir(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
-  let args: MakeTempArgs = serde_json::from_value(args).map_err(from_serde)?;
+  let args: MakeTempArgs = serde_json::from_value(args)?;
 
   let dir = args.dir.map(|s| PathBuf::from(&s));
   let prefix = args.prefix.map(String::from);
@@ -1092,8 +1084,7 @@ fn op_make_temp_dir(
       prefix.as_deref(),
       suffix.as_deref(),
       true,
-    )
-    .map_err(from_io)?;
+    )?;
     let path_str = into_string(path.into_os_string())?;
 
     Ok(json!(path_str))
@@ -1105,7 +1096,7 @@ fn op_make_temp_file(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
-  let args: MakeTempArgs = serde_json::from_value(args).map_err(from_serde)?;
+  let args: MakeTempArgs = serde_json::from_value(args)?;
 
   let dir = args.dir.map(|s| PathBuf::from(&s));
   let prefix = args.prefix.map(String::from);
@@ -1124,8 +1115,7 @@ fn op_make_temp_file(
       prefix.as_deref(),
       suffix.as_deref(),
       false,
-    )
-    .map_err(from_io)?;
+    )?;
     let path_str = into_string(path.into_os_string())?;
 
     Ok(json!(path_str))
@@ -1148,7 +1138,7 @@ fn op_utime(
 ) -> Result<JsonOp, ErrBox> {
   state.check_unstable("Deno.utime");
 
-  let args: UtimeArgs = serde_json::from_value(args).map_err(from_serde)?;
+  let args: UtimeArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
 
   state.check_write(&path)?;
@@ -1156,8 +1146,7 @@ fn op_utime(
   let is_sync = args.promise_id.is_none();
   blocking_json(is_sync, move || {
     debug!("op_utime {} {} {}", args.path, args.atime, args.mtime);
-    utime::set_file_times(args.path, args.atime, args.mtime)
-      .map_err(from_io)?;
+    utime::set_file_times(args.path, args.atime, args.mtime)?;
     Ok(json!({}))
   })
 }
@@ -1167,7 +1156,7 @@ fn op_cwd(
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
-  let path = current_dir().map_err(from_io)?;
+  let path = current_dir()?;
   state.check_read_blind(&path, "CWD")?;
   let path_str = into_string(path.into_os_string())?;
   Ok(JsonOp::Sync(json!(path_str)))

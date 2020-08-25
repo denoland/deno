@@ -83,7 +83,6 @@ where
     let is_sync = promise_id.is_none();
 
     let result = serde_json::from_slice(&zero_copy[0])
-      .map_err(from_serde)
       .and_then(|args| d(isolate_state, args, &mut zero_copy[1..]));
 
     // Convert to Op

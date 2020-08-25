@@ -1,10 +1,7 @@
 use super::dispatch_json::JsonOp;
 use super::io::std_file_resource;
 use super::io::{StreamResource, StreamResourceHolder};
-use crate::errbox::from_io;
 #[cfg(unix)]
-use crate::errbox::from_nix;
-use crate::errbox::from_serde;
 use crate::errbox::resource_unavailable;
 use crate::state::State;
 use deno_core::CoreIsolate;
@@ -60,7 +57,7 @@ pub fn op_set_raw(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
   state.check_unstable("Deno.setRaw");
-  let args: SetRawArgs = serde_json::from_value(args).map_err(from_serde)?;
+  let args: SetRawArgs = serde_json::from_value(args)?;
   let rid = args.rid;
   let is_raw = args.mode;
 
@@ -167,7 +164,7 @@ pub fn op_set_raw(
         return Ok(JsonOp::Sync(json!({})));
       }
 
-      let original_mode = termios::tcgetattr(raw_fd).map_err(from_nix)?;
+      let original_mode = termios::tcgetattr(raw_fd)?;
       let mut raw = original_mode.clone();
       // Save original mode.
       maybe_tty_mode.replace(original_mode);
@@ -187,7 +184,7 @@ pub fn op_set_raw(
       raw.control_chars[termios::SpecialCharacterIndices::VMIN as usize] = 1;
       raw.control_chars[termios::SpecialCharacterIndices::VTIME as usize] = 0;
       termios::tcsetattr(raw_fd, termios::SetArg::TCSADRAIN, &raw)
-        .map_err(from_nix)?;
+        ?;
       Ok(JsonOp::Sync(json!({})))
     } else {
       // Try restore saved mode.
@@ -209,7 +206,7 @@ pub fn op_set_raw(
 
       if let Some(mode) = maybe_tty_mode.take() {
         termios::tcsetattr(raw_fd, termios::SetArg::TCSADRAIN, &mode)
-          .map_err(from_nix)?;
+          ?;
       }
 
       Ok(JsonOp::Sync(json!({})))
@@ -228,7 +225,7 @@ pub fn op_isatty(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
-  let args: IsattyArgs = serde_json::from_value(args).map_err(from_serde)?;
+  let args: IsattyArgs = serde_json::from_value(args)?;
   let rid = args.rid;
 
   let mut resource_table = isolate_state.resource_table.borrow_mut();
@@ -277,7 +274,7 @@ pub fn op_console_size(
 ) -> Result<JsonOp, ErrBox> {
   state.check_unstable("Deno.consoleSize");
   let args: ConsoleSizeArgs =
-    serde_json::from_value(args).map_err(from_serde)?;
+    serde_json::from_value(args)?;
   let rid = args.rid;
 
   let mut resource_table = isolate_state.resource_table.borrow_mut();

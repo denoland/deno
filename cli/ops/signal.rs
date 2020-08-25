@@ -10,7 +10,6 @@ use std::rc::Rc;
 #[cfg(unix)]
 use super::dispatch_json::Deserialize;
 #[cfg(unix)]
-use crate::errbox::from_serde;
 #[cfg(unix)]
 use futures::future::{poll_fn, FutureExt};
 #[cfg(unix)]
@@ -50,7 +49,7 @@ fn op_signal_bind(
 ) -> Result<JsonOp, ErrBox> {
   state.check_unstable("Deno.signal");
   let args: BindSignalArgs =
-    serde_json::from_value(args).map_err(from_serde)?;
+    serde_json::from_value(args)?;
   let mut resource_table = isolate_state.resource_table.borrow_mut();
   let rid = resource_table.add(
     "signal",
@@ -72,7 +71,7 @@ fn op_signal_poll(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
   state.check_unstable("Deno.signal");
-  let args: SignalArgs = serde_json::from_value(args).map_err(from_serde)?;
+  let args: SignalArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let resource_table = isolate_state.resource_table.clone();
 
@@ -99,7 +98,7 @@ pub fn op_signal_unbind(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
   state.check_unstable("Deno.signal");
-  let args: SignalArgs = serde_json::from_value(args).map_err(from_serde)?;
+  let args: SignalArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let mut resource_table = isolate_state.resource_table.borrow_mut();
   let resource = resource_table.get::<SignalStreamResource>(rid);

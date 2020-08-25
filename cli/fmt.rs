@@ -39,11 +39,11 @@ pub async fn format(
     return format_stdin(check);
   }
   // collect all files provided.
-  let mut target_files = collect_files(args).map_err(errbox::from_io)?;
+  let mut target_files = collect_files(args)?;
   if !exclude.is_empty() {
     // collect all files to be ignored
     // and retain only files that should be formatted.
-    let ignore_files = collect_files(exclude).map_err(errbox::from_io)?;
+    let ignore_files = collect_files(exclude)?;
     target_files.retain(|f| !ignore_files.contains(&f));
   }
   let config = get_config();
@@ -184,9 +184,7 @@ fn format_stdin(check: bool) -> Result<(), ErrBox> {
           println!("Not formatted stdin");
         }
       } else {
-        stdout()
-          .write_all(formatted_text.as_bytes())
-          .map_err(errbox::from_io)?;
+        stdout().write_all(formatted_text.as_bytes())?;
       }
     }
     Err(e) => {
@@ -249,10 +247,9 @@ struct FileContents {
 }
 
 fn read_file_contents(file_path: &PathBuf) -> Result<FileContents, ErrBox> {
-  let file_bytes = fs::read(&file_path).map_err(errbox::from_io)?;
+  let file_bytes = fs::read(&file_path)?;
   let charset = text_encoding::detect_charset(&file_bytes);
-  let file_text = text_encoding::convert_to_utf8(&file_bytes, charset)
-    .map_err(errbox::from_io)?;
+  let file_text = text_encoding::convert_to_utf8(&file_bytes, charset)?;
   let had_bom = file_text.starts_with(BOM_CHAR);
   let text = if had_bom {
     // remove the BOM
@@ -275,7 +272,7 @@ fn write_file_contents(
     file_contents.text
   };
 
-  Ok(fs::write(file_path, file_text).map_err(errbox::from_io)?)
+  Ok(fs::write(file_path, file_text)?)
 }
 
 pub async fn run_parallelized<F>(

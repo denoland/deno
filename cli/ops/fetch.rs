@@ -1,9 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use super::io::{StreamResource, StreamResourceHolder};
-use crate::errbox::from_reqwest;
-use crate::errbox::from_serde;
-use crate::errbox::from_url;
 use crate::http_util::{create_http_client, HttpBody};
 use crate::state::State;
 use deno_core::CoreIsolate;
@@ -63,7 +60,7 @@ pub fn op_fetch(
     None => Method::GET,
   };
 
-  let url_ = url::Url::parse(&url).map_err(from_url)?;
+  let url_ = url::Url::parse(&url)?;
 
   // Check scheme before asking for net permission
   let scheme = url_.scheme();
@@ -93,7 +90,7 @@ pub fn op_fetch(
 
   let resource_table = isolate_state.resource_table.clone();
   let future = async move {
-    let res = request.send().await.map_err(from_reqwest)?;
+    let res = request.send().await?;
     debug!("Fetch response {}", url);
     let status = res.status();
     let mut res_headers = Vec::new();
@@ -146,8 +143,7 @@ fn op_create_http_client(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
-  let args: CreateHttpClientOptions =
-    serde_json::from_value(args).map_err(from_serde)?;
+  let args: CreateHttpClientOptions = serde_json::from_value(args)?;
   let mut resource_table = isolate_state.resource_table.borrow_mut();
 
   if let Some(ca_file) = args.ca_file.clone() {

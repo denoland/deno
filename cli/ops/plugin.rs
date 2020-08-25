@@ -1,5 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use crate::errbox::from_dlopen;
 use crate::ops::dispatch_json::Deserialize;
 use crate::ops::dispatch_json::JsonOp;
 use crate::ops::dispatch_json::Value;
@@ -47,7 +46,7 @@ pub fn op_open_plugin(
   state.check_plugin(&filename)?;
 
   debug!("Loading Plugin: {:#?}", filename);
-  let plugin_lib = Library::open(filename).map(Rc::new).map_err(from_dlopen)?;
+  let plugin_lib = Library::open(filename).map(Rc::new)?;
   let plugin_resource = PluginResource::new(&plugin_lib);
 
   let mut resource_table = isolate_state.resource_table.borrow_mut();

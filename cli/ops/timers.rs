@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
-use crate::errbox::from_serde;
 use crate::state::State;
 use deno_core::CoreIsolate;
 use deno_core::ErrBox;
@@ -39,7 +38,7 @@ fn op_global_timer(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
   let args: GlobalTimerArgs =
-    serde_json::from_value(args).map_err(from_serde)?;
+    serde_json::from_value(args)?;
   let val = args.timeout;
 
   let deadline = Instant::now() + Duration::from_millis(val);

@@ -98,74 +98,72 @@ fn run_worker_thread(
 
   let builder =
     std::thread::Builder::new().name(format!("deno-worker-{}", worker_id));
-  let join_handle = builder
-    .spawn(move || {
-      // Any error inside this block is terminal:
-      // - JS worker is useless - meaning it throws an exception and can't do anything else,
-      //  all action done upon it should be noops
-      // - newly spawned thread exits
-      let result = create_web_worker(
-        worker_id,
-        name,
-        &global_state,
-        permissions,
-        specifier.clone(),
-        has_deno_namespace,
-      );
+  let join_handle = builder.spawn(move || {
+    // Any error inside this block is terminal:
+    // - JS worker is useless - meaning it throws an exception and can't do anything else,
+    //  all action done upon it should be noops
+    // - newly spawned thread exits
+    let result = create_web_worker(
+      worker_id,
+      name,
+      &global_state,
+      permissions,
+      specifier.clone(),
+      has_deno_namespace,
+    );
 
-      if let Err(err) = result {
-        handle_sender.send(Err(err)).unwrap();
-        return;
-      }
+    if let Err(err) = result {
+      handle_sender.send(Err(err)).unwrap();
+      return;
+    }
 
-      let mut worker = result.unwrap();
-      let name = worker.name.to_string();
-      // Send thread safe handle to newly created worker to host thread
-      handle_sender.send(Ok(worker.thread_safe_handle())).unwrap();
-      drop(handle_sender);
+    let mut worker = result.unwrap();
+    let name = worker.name.to_string();
+    // Send thread safe handle to newly created worker to host thread
+    handle_sender.send(Ok(worker.thread_safe_handle())).unwrap();
+    drop(handle_sender);
 
-      // At this point the only method of communication with host
-      // is using `worker.internal_channels`.
-      //
-      // Host can already push messages and interact with worker.
-      //
-      // Next steps:
-      // - create tokio runtime
-      // - load provided module or code
-      // - start driving worker's event loop
+    // At this point the only method of communication with host
+    // is using `worker.internal_channels`.
+    //
+    // Host can already push messages and interact with worker.
+    //
+    // Next steps:
+    // - create tokio runtime
+    // - load provided module or code
+    // - start driving worker's event loop
 
-      let mut rt = create_basic_runtime();
+    let mut rt = create_basic_runtime();
 
-      // TODO: run with using select with terminate
+    // TODO: run with using select with terminate
 
-      // Execute provided source code immediately
-      let result = if let Some(source_code) = maybe_source_code {
-        worker.execute(&source_code)
-      } else {
-        // TODO(bartlomieju): add "type": "classic", ie. ability to load
-        // script instead of module
-        let load_future = worker.execute_module(&specifier).boxed_local();
+    // Execute provided source code immediately
+    let result = if let Some(source_code) = maybe_source_code {
+      worker.execute(&source_code)
+    } else {
+      // TODO(bartlomieju): add "type": "classic", ie. ability to load
+      // script instead of module
+      let load_future = worker.execute_module(&specifier).boxed_local();
 
-        rt.block_on(load_future)
-      };
+      rt.block_on(load_future)
+    };
 
-      if let Err(e) = result {
-        let mut sender = worker.internal_channels.sender.clone();
-        sender
-          .try_send(WorkerEvent::TerminalError(e))
-          .expect("Failed to post message to host");
+    if let Err(e) = result {
+      let mut sender = worker.internal_channels.sender.clone();
+      sender
+        .try_send(WorkerEvent::TerminalError(e))
+        .expect("Failed to post message to host");
 
-        // Failure to execute script is a terminal error, bye, bye.
-        return;
-      }
+      // Failure to execute script is a terminal error, bye, bye.
+      return;
+    }
 
-      // TODO(bartlomieju): this thread should return result of event loop
-      // that means that we should store JoinHandle to thread to ensure
-      // that it actually terminates.
-      rt.block_on(worker).expect("Panic in event loop");
-      debug!("Worker thread shuts down {}", &name);
-    })
-    .map_err(errbox::from_io)?;
+    // TODO(bartlomieju): this thread should return result of event loop
+    // that means that we should store JoinHandle to thread to ensure
+    // that it actually terminates.
+    rt.block_on(worker).expect("Panic in event loop");
+    debug!("Worker thread shuts down {}", &name);
+  })?;
 
   let worker_handle = handle_receiver.recv().unwrap()?;
   Ok((join_handle, worker_handle))
@@ -187,8 +185,7 @@ fn op_create_worker(
   args: Value,
   _data: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
-  let args: CreateWorkerArgs =
-    serde_json::from_value(args).map_err(errbox::from_serde)?;
+  let args: CreateWorkerArgs = serde_json::from_value(args)?;
 
   let specifier = args.specifier.clone();
   let maybe_source_code = if args.has_source_code {
@@ -207,8 +204,7 @@ fn op_create_worker(
   let worker_id = state.next_worker_id.get();
   state.next_worker_id.set(worker_id + 1);
 
-  let module_specifier = ModuleSpecifier::resolve_url(&specifier)
-    .map_err(errbox::from_resolution)?;
+  let module_specifier = ModuleSpecifier::resolve_url(&specifier)?;
   let worker_name = args_name.unwrap_or_else(|| "".to_string());
 
   let (join_handle, worker_handle) = run_worker_thread(
@@ -241,8 +237,7 @@ fn op_host_terminate_worker(
   args: Value,
   _data: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
-  let args: WorkerArgs =
-    serde_json::from_value(args).map_err(errbox::from_serde)?;
+  let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
   let (join_handle, worker_handle) = state
     .workers
@@ -310,8 +305,7 @@ fn op_host_get_message(
   args: Value,
   _data: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
-  let args: WorkerArgs =
-    serde_json::from_value(args).map_err(errbox::from_serde)?;
+  let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
   let state = state.clone();
   let worker_handle = state.workers.borrow()[&id].1.clone();
@@ -353,8 +347,7 @@ fn op_host_post_message(
   data: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
   assert_eq!(data.len(), 1, "Invalid number of arguments");
-  let args: WorkerArgs =
-    serde_json::from_value(args).map_err(errbox::from_serde)?;
+  let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
   let msg = Vec::from(&*data[0]).into_boxed_slice();
 

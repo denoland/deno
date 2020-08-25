@@ -43,7 +43,7 @@ pub struct GlobalState {
 impl GlobalState {
   pub fn new(flags: flags::Flags) -> Result<Arc<Self>, ErrBox> {
     let custom_root = env::var("DENO_DIR").map(String::into).ok();
-    let dir = deno_dir::DenoDir::new(custom_root).map_err(errbox::from_io)?;
+    let dir = deno_dir::DenoDir::new(custom_root)?;
     let deps_cache_location = dir.root.join("deps");
     let http_cache = http_cache::HttpCache::new(&deps_cache_location);
     let ca_file = flags.ca_file.clone().or_else(|| env::var("DENO_CERT").ok());
@@ -64,8 +64,7 @@ impl GlobalState {
     )?;
 
     let lockfile = if let Some(filename) = &flags.lock {
-      let lockfile = Lockfile::new(filename.to_string(), flags.lock_write)
-        .map_err(errbox::from_io)?;
+      let lockfile = Lockfile::new(filename.to_string(), flags.lock_write)?;
       Some(Mutex::new(lockfile))
     } else {
       None
@@ -172,7 +171,7 @@ impl GlobalState {
 
     if let Some(ref lockfile) = self.lockfile {
       let g = lockfile.lock().unwrap();
-      g.write().map_err(errbox::from_io)?;
+      g.write()?;
     }
 
     drop(compile_lock);
@@ -229,7 +228,7 @@ impl GlobalState {
       }
     } else {
       CompiledModule {
-        code: out.source_code.to_string().map_err(errbox::from_io)?,
+        code: out.source_code.to_string()?,
         name: out.url.to_string(),
       }
     };

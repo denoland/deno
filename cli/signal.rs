@@ -1,8 +1,4 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-#[cfg(not(unix))]
-use crate::errbox::from_io;
-#[cfg(unix)]
-use crate::errbox::from_nix;
 use deno_core::ErrBox;
 
 #[cfg(not(unix))]
@@ -27,8 +23,8 @@ pub fn kill(pid: i32, signo: i32) -> Result<(), ErrBox> {
   use nix::sys::signal::{kill as unix_kill, Signal};
   use nix::unistd::Pid;
   use std::convert::TryFrom;
-  let sig = Signal::try_from(signo).map_err(from_nix)?;
-  unix_kill(Pid::from_raw(pid), Option::Some(sig)).map_err(from_nix)
+  let sig = Signal::try_from(signo)?;
+  unix_kill(Pid::from_raw(pid), Option::Some(sig))
 }
 
 #[cfg(not(unix))]
@@ -36,7 +32,7 @@ pub fn kill(pid: i32, signal: i32) -> Result<(), ErrBox> {
   match signal {
     SIGINT | SIGKILL | SIGTERM => {
       if pid <= 0 {
-        return Err(ErrBox::type_error("unsupported pid".to_string()));
+        return Err(ErrBox::type_error("unsupported pid"));
       }
       unsafe {
         let handle = OpenProcess(PROCESS_TERMINATE, 0, pid as DWORD);

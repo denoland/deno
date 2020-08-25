@@ -255,13 +255,13 @@ impl SourceFileFetcher {
             r#"Cannot find module "{}"{} in cache, --cached-only is specified"#,
             module_url, referrer_suffix
           );
-          ErrBox::new_text("NotFound", msg)
+          ErrBox::new("NotFound", msg)
         } else if is_not_found {
           let msg = format!(
             r#"Cannot resolve module "{}"{}"#,
             module_url, referrer_suffix
           );
-          ErrBox::new_text("NotFound", msg)
+          ErrBox::new("NotFound", msg)
         } else {
           err
         };
@@ -383,7 +383,7 @@ impl SourceFileFetcher {
     redirect_limit: i64,
   ) -> Result<Option<SourceFile>, ErrBox> {
     if redirect_limit < 0 {
-      return Err(ErrBox::new_text("Http", "too many redirects".to_string()));
+      return Err(ErrBox::new("Http", "too many redirects"));
     }
 
     let result = self.http_cache.get(&module_url);
@@ -417,7 +417,7 @@ impl SourceFileFetcher {
     }
 
     let mut source_code = Vec::new();
-    source_file.read_to_end(&mut source_code).map_err(from_io)?;
+    source_file.read_to_end(&mut source_code)?;
 
     let cache_filename = self.http_cache.get_cache_filename(module_url);
     let fake_filepath = PathBuf::from(module_url.path());
@@ -448,7 +448,7 @@ impl SourceFileFetcher {
     permissions: &Permissions,
   ) -> Pin<Box<dyn Future<Output = Result<SourceFile, ErrBox>>>> {
     if redirect_limit < 0 {
-      let e = ErrBox::new_text("Http", "too many redirects".to_string());
+      let e = ErrBox::new("Http", "too many redirects");
       return futures::future::err(e).boxed_local();
     }
 

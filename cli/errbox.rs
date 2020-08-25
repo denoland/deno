@@ -15,6 +15,7 @@ use crate::swc_util::SwcDiagnosticBuffer;
 use deno_core::ErrBox;
 use deno_core::ModuleResolutionError;
 use rustyline::error::ReadlineError;
+use std::borrow::Cow;
 use std::env::VarError;
 use std::error::Error;
 use std::io;
@@ -225,36 +226,28 @@ pub fn rust_err_to_json(error: &ErrBox) -> Box<[u8]> {
 }
 
 pub fn not_implemented() -> ErrBox {
-  ErrBox::other("not implemented".to_string())
+  ErrBox::other("not implemented")
 }
 
 pub fn invalid_utf8() -> ErrBox {
-  ErrBox::new_text("InvalidData", "invalid utf8".to_string())
+  ErrBox::new("InvalidData", "invalid utf8")
 }
 
 pub fn invalid_domain_error() -> ErrBox {
-  ErrBox::type_error("Invalid domain.".to_string())
-}
-
-pub fn uri_error(msg: String) -> ErrBox {
-  ErrBox::new_text("URIError", msg)
-}
-
-pub fn from_resolution(error: &ModuleResolutionError) -> ErrBox {
-  uri_error(error.to_string())
+  ErrBox::type_error("Invalid domain")
 }
 
 pub fn permission_escalation_error() -> ErrBox {
-  permission_denied("Arguments escalate parent permissions.".to_string())
+  permission_denied("Arguments escalate parent permissions")
 }
 
 pub fn resource_unavailable() -> ErrBox {
-  ErrBox::new_text(
+  ErrBox::new(
     "Busy",
-    "resource is unavailable because it is in use by a promise".to_string(),
+    "resource is unavailable because it is in use by a promise",
   )
 }
 
-pub fn permission_denied(msg: String) -> ErrBox {
-  ErrBox::new_text("PermissionDenied", msg)
+pub fn permission_denied(message: impl Into<Cow<'static, str>>) -> ErrBox {
+  ErrBox::new("PermissionDenied", message)
 }

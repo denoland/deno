@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{blocking_json, Deserialize, JsonOp, Value};
-use crate::errbox::from_serde;
 use crate::repl;
 use crate::repl::Repl;
 use crate::state::State;
@@ -31,7 +30,7 @@ fn op_repl_start(
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
-  let args: ReplStartArgs = serde_json::from_value(args).map_err(from_serde)?;
+  let args: ReplStartArgs = serde_json::from_value(args)?;
   debug!("op_repl_start {}", args.history_file);
   let history_path =
     repl::history_path(&state.global_state.dir, &args.history_file);
@@ -55,7 +54,7 @@ fn op_repl_readline(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
   let args: ReplReadlineArgs =
-    serde_json::from_value(args).map_err(from_serde)?;
+    serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let prompt = args.prompt;
   debug!("op_repl_readline {} {}", rid, prompt);

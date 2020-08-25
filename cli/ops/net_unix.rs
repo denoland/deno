@@ -1,6 +1,5 @@
 use super::dispatch_json::{Deserialize, JsonOp};
 use super::io::{StreamResource, StreamResourceHolder};
-use crate::errbox::from_io;
 use deno_core::CoreIsolateState;
 use deno_core::ErrBox;
 use deno_core::ResourceTable;
@@ -50,11 +49,11 @@ pub fn accept_unix(
     };
 
     let (unix_stream, _socket_addr) =
-      listener_resource.listener.accept().await.map_err(from_io)?;
+      listener_resource.listener.accept().await?;
     drop(resource_table_);
 
-    let local_addr = unix_stream.local_addr().map_err(from_io)?;
-    let remote_addr = unix_stream.peer_addr().map_err(from_io)?;
+    let local_addr = unix_stream.local_addr()?;
+    let remote_addr = unix_stream.peer_addr()?;
     let mut resource_table_ = resource_table.borrow_mut();
     let rid = resource_table_.add(
       "unixStream",
@@ -98,7 +97,7 @@ pub fn receive_unix_packet(
       .socket
       .recv_from(&mut zero_copy)
       .await
-      .map_err(from_io)?;
+      ?;
     Ok(json!({
       "size": size,
       "remoteAddr": {
@@ -118,8 +117,8 @@ pub fn listen_unix(
   if addr.exists() {
     remove_file(&addr).unwrap();
   }
-  let listener = UnixListener::bind(&addr).map_err(from_io)?;
-  let local_addr = listener.local_addr().map_err(from_io)?;
+  let listener = UnixListener::bind(&addr)?;
+  let local_addr = listener.local_addr()?;
   let listener_resource = UnixListenerResource { listener };
   let rid = resource_table.add("unixListener", Box::new(listener_resource));
 
@@ -133,8 +132,8 @@ pub fn listen_unix_packet(
   if addr.exists() {
     remove_file(&addr).unwrap();
   }
-  let socket = UnixDatagram::bind(&addr).map_err(from_io)?;
-  let local_addr = socket.local_addr().map_err(from_io)?;
+  let socket = UnixDatagram::bind(&addr)?;
+  let local_addr = socket.local_addr()?;
   let datagram_resource = UnixDatagramResource {
     socket,
     local_addr: local_addr.clone(),

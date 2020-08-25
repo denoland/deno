@@ -553,7 +553,7 @@ fn serialize_result(
       "promiseId": promise_id ,
       "err": {
         "message": err.to_string(),
-        "kind": err.1,
+        "kind": "Other",
       }
     }),
   };

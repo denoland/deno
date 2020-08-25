@@ -140,10 +140,7 @@ impl State {
       let promise_id = match args.get("promiseId").and_then(|v| v.as_u64()) {
         Some(i) => i,
         None => {
-          let e = ErrBox::new_text(
-            "TypeError",
-            "`promiseId` invalid/missing".to_owned(),
-          );
+          let e = ErrBox::new("TypeError", "`promiseId` invalid/missing");
           return Op::Sync(new_serialize_result(
             rust_err_to_json_fn,
             None,
@@ -365,8 +362,8 @@ impl ModuleLoader for State {
         }
       }
     }
-    let module_specifier = ModuleSpecifier::resolve_import(specifier, referrer)
-      .map_err(errbox::from_resolution)?;
+    let module_specifier =
+      ModuleSpecifier::resolve_import(specifier, referrer)?;
 
     Ok(module_specifier)
   }

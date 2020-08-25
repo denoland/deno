@@ -3,11 +3,11 @@
 use rusty_v8 as v8;
 use std::any::Any;
 use std::any::TypeId;
+use std::borrow::Cow;
 use std::convert::TryFrom;
 use std::convert::TryInto;
 use std::error::Error;
 use std::fmt;
-use std::ops::Deref;
 
 // The Send and Sync traits are required because deno is multithreaded and we
 // need to be able to handle errors across threads.
@@ -26,85 +26,84 @@ impl fmt::Display for TextError {
 }
 
 #[derive(Debug)]
-pub struct ErrBox(pub Box<dyn AnyError>, pub &'static str);
-
-impl dyn AnyError {
-  pub fn downcast_ref<T: AnyError>(&self) -> Option<&T> {
-    if Any::type_id(self) == TypeId::of::<T>() {
-      let target = self as *const Self as *const T;
-      let target = unsafe { &*target };
-      Some(target)
-    } else {
-      None
-    }
-  }
+pub enum ErrBox {
+  Simple {
+    class: &'static str,
+    message: Cow<'static, str>,
+  },
+  Boxed(Box<dyn AnyError>),
 }
+
+impl dyn AnyError {}
 
 impl ErrBox {
-  pub fn downcast<T: AnyError>(self) -> Result<T, Self> {
-    if Any::type_id(&*self.0) == TypeId::of::<T>() {
-      let target = Box::into_raw(self.0) as *mut T;
-      let target = unsafe { Box::from_raw(target) };
-      Ok(*target)
-    } else {
-      Err(self)
+  pub fn new(
+    class: &'static str,
+    message: impl Into<Cow<'static, str>>,
+  ) -> Self {
+    Self::Simple {
+      class,
+      message: message.into(),
     }
   }
 
-  pub fn new<T: AnyError>(kind: &'static str, err: T) -> Self {
-    ErrBox(Box::new(err), kind)
+  pub fn bad_resource(message: impl Into<Cow<'static, str>>) -> Self {
+    Self::new("BadResource", message)
   }
 
-  pub fn new_text(kind: &'static str, err_str: String) -> Self {
-    Self::new(kind, TextError(err_str))
-  }
-
-  pub fn other(msg: String) -> Self {
-    Self::new_text("Other", msg)
-  }
-
-  pub fn bad_resource(msg: String) -> Self {
-    Self::new_text("BadResource", msg)
-  }
-
-  // BadResource usually needs no additional detail, hence this helper.
   pub fn bad_resource_id() -> Self {
-    Self::new_text("BadResource", "Bad resource ID".to_string())
+    Self::new("BadResource", "Bad resource ID")
   }
 
-  pub fn type_error(msg: String) -> Self {
-    Self::new_text("TypeError", msg)
+  pub fn other(message: impl Into<Cow<'static, str>>) -> Self {
+    Self::new("Other", message)
   }
-}
 
-impl AsRef<dyn AnyError> for ErrBox {
-  fn as_ref(&self) -> &dyn AnyError {
-    self.0.as_ref()
+  pub fn type_error(message: impl Into<Cow<'static, str>>) -> Self {
+    Self::new("TypeError", message)
   }
-}
 
-impl Deref for ErrBox {
-  type Target = Box<dyn AnyError>;
-  fn deref(&self) -> &Self::Target {
-    &self.0
+  pub fn downcast<T: AnyError>(self) -> Result<T, Self> {
+    match self {
+      Self::Boxed(error) if Any::type_id(&*error) == TypeId::of::<T>() => {
+        let error = Box::into_raw(error) as *mut T;
+        let error = unsafe { Box::from_raw(error) };
+        Ok(*error)
+      }
+      other => Err(other),
+    }
+  }
+
+  pub fn downcast_ref<T: AnyError>(&self) -> Option<&T> {
+    match self {
+      Self::Boxed(error) if Any::type_id(&**error) == TypeId::of::<T>() => {
+        let error = &**error as *const dyn AnyError as *const T;
+        let error = unsafe { &*error };
+        Some(error)
+      }
+      _ => None,
+    }
   }
 }
 
 impl fmt::Display for ErrBox {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    self.0.fmt(f)
+    match self {
+      Self::Simple { message, .. } => f.write_str(message),
+      Self::Boxed(error) => error.fmt(f),
+    }
   }
 }
 
 impl<T: AnyError> From<T> for ErrBox {
   fn from(error: T) -> Self {
-    Self(Box::new(error), "Other")
+    Self::Boxed(Box::new(error))
   }
 }
 
 impl From<Box<dyn AnyError>> for ErrBox {
   fn from(boxed: Box<dyn AnyError>) -> Self {
-    Self(boxed, "Other")
+    Self::Boxed(boxed)
   }
 }
 
@@ -399,7 +398,7 @@ pub(crate) fn attach_handle_to_error(
   handle: v8::Local<v8::Value>,
 ) -> ErrBox {
   // TODO(bartomieju): this is a special case...
-  ErrBox::new("Other", ErrWithV8Handle::new(scope, err, handle))
+  ErrBox::from(ErrWithV8Handle::new(scope, err, handle))
 }
 
 // TODO(piscisaureus): rusty_v8 should implement the Error trait on
