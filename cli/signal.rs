@@ -37,14 +37,14 @@ pub fn kill(pid: i32, signal: i32) -> Result<(), ErrBox> {
       unsafe {
         let handle = OpenProcess(PROCESS_TERMINATE, 0, pid as DWORD);
         if handle.is_null() {
-          return Err(ErrBox::from(std::io::Error::last_os_error()));
+          return Err(ErrBox::last_os_error());
         }
         if TerminateProcess(handle, 1) == 0 {
           CloseHandle(handle);
-          return Err(ErrBox::from(std::io::Error::last_os_error()));
+          return Err(ErrBox::last_os_error());
         }
         if CloseHandle(handle) == 0 {
-          return Err(ErrBox::from(std::io::Error::last_os_error()));
+          return Err(ErrBox::last_os_error());
         }
       }
     }

@@ -1,5 +1,4 @@
 use super::dispatch_minimal::MinimalOp;
-use crate::errbox::resource_unavailable;
 use crate::http_util::HttpBody;
 use crate::state::State;
 use deno_core::CoreIsolate;
@@ -219,7 +218,7 @@ impl DenoAsyncRead for StreamResource {
     use StreamResource::*;
     let f: &mut dyn UnpinAsyncRead = match self {
       FsFile(Some((f, _))) => f,
-      FsFile(None) => return Poll::Ready(Err(resource_unavailable())),
+      FsFile(None) => return Poll::Ready(Err(ErrBox::resource_unavailable())),
       Stdin(f, _) => f,
       TcpStream(Some(f)) => f,
       #[cfg(not(windows))]
@@ -466,11 +465,11 @@ where
               // some operation is in-flight.
               resource_holder.resource =
                 StreamResource::FsFile(Some((tokio_file, metadata)));
-              Err(resource_unavailable())
+              Err(ErrBox::resource_unavailable())
             }
           }
         } else {
-          Err(resource_unavailable())
+          Err(ErrBox::resource_unavailable())
         }
       }
       _ => f(Err(&mut resource_holder.resource)),

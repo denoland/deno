@@ -29,7 +29,7 @@ pub mod deno_dir;
 pub mod diagnostics;
 mod diff;
 mod disk_cache;
-pub mod errbox;
+pub mod errors;
 mod file_fetcher;
 pub mod flags;
 mod flags_allow_net;

@@ -1,7 +1,6 @@
 use super::dispatch_json::JsonOp;
 use super::io::std_file_resource;
 use super::io::{StreamResource, StreamResourceHolder};
-use crate::errbox::resource_unavailable;
 use crate::state::State;
 use deno_core::CoreIsolate;
 use deno_core::CoreIsolateState;
@@ -30,7 +29,7 @@ fn get_windows_handle(
 
   let handle = f.as_raw_handle();
   if handle == handleapi::INVALID_HANDLE_VALUE {
-    return Err(ErrBox::from(std::io::Error::last_os_error()));
+    return Err(ErrBox::last_os_error());
   } else if handle.is_null() {
     return Err(ErrBox::other("null handle".to_owned()));
   }
@@ -99,11 +98,11 @@ pub fn op_set_raw(
               // some operation is in-flight.
               resource_holder.resource =
                 StreamResource::FsFile(Some((tokio_file, metadata)));
-              return Err(resource_unavailable());
+              return Err(ErrBox::resource_unavailable());
             }
           }
         } else {
-          return Err(resource_unavailable());
+          return Err(ErrBox::resource_unavailable());
         }
       }
       _ => {
@@ -112,7 +111,7 @@ pub fn op_set_raw(
     };
 
     if handle == handleapi::INVALID_HANDLE_VALUE {
-      return Err(ErrBox::from(std::io::Error::last_os_error()));
+      return Err(ErrBox::last_os_error());
     } else if handle.is_null() {
       return Err(ErrBox::other("null handle".to_owned()));
     }
@@ -120,7 +119,7 @@ pub fn op_set_raw(
     if unsafe { consoleapi::GetConsoleMode(handle, &mut original_mode) }
       == FALSE
     {
-      return Err(ErrBox::from(std::io::Error::last_os_error()));
+      return Err(ErrBox::last_os_error());
     }
     let new_mode = if is_raw {
       original_mode & !RAW_MODE_MASK
@@ -128,7 +127,7 @@ pub fn op_set_raw(
       original_mode | RAW_MODE_MASK
     };
     if unsafe { consoleapi::SetConsoleMode(handle, new_mode) } == FALSE {
-      return Err(ErrBox::from(std::io::Error::last_os_error()));
+      return Err(ErrBox::last_os_error());
     }
 
     Ok(JsonOp::Sync(json!({})))
@@ -152,9 +151,11 @@ pub fn op_set_raw(
           StreamResource::FsFile(Some((f, ref mut metadata))) => {
             (f.as_raw_fd(), &mut metadata.tty.mode)
           }
-          StreamResource::FsFile(None) => return Err(resource_unavailable()),
+          StreamResource::FsFile(None) => {
+            return Err(ErrBox::resource_unavailable())
+          }
           _ => {
-            return Err(ErrBox::other("Not supported".to_owned()));
+            return Err(ErrBox::not_supported());
           }
         };
 
@@ -195,7 +196,7 @@ pub fn op_set_raw(
             (f.as_raw_fd(), &mut metadata.tty.mode)
           }
           StreamResource::FsFile(None) => {
-            return Err(resource_unavailable());
+            return Err(ErrBox::resource_unavailable());
           }
           _ => {
             return Err(ErrBox::bad_resource_id());
@@ -312,7 +313,7 @@ pub fn op_console_size(
           unsafe {
             let mut size: libc::winsize = std::mem::zeroed();
             if libc::ioctl(fd, libc::TIOCGWINSZ, &mut size as *mut _) != 0 {
-              return Err(ErrBox::from(std::io::Error::last_os_error()));
+              return Err(ErrBox::last_os_error());
             }
 
             // TODO (caspervonb) return a tuple instead

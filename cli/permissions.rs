@@ -1,7 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::colors;
-use crate::errbox::permission_denied;
-use crate::errbox::permission_escalation_error;
 use crate::flags::Flags;
 use crate::fs::resolve_from_cwd;
 use deno_core::ErrBox;
@@ -38,8 +36,8 @@ impl PermissionState {
       log_perm_access(msg);
       return Ok(());
     }
-    let m = format!("{}, run again with the {} flag", msg, flag_name);
-    Err(permission_denied(m))
+    let message = format!("{}, run again with the {} flag", msg, flag_name);
+    Err(ErrBox::new("PermissionDenied", message))
   }
 
   /// Check that the permissions represented by `other` don't escalate ours.
@@ -715,6 +713,10 @@ fn check_host_and_port_list(
   allowlist.contains(host)
     || (port.is_some()
       && allowlist.contains(&format!("{}:{}", host, port.unwrap())))
+}
+
+fn permission_escalation_error() -> ErrBox {
+  ErrBox::new("PermissionDenied", "Arguments escalate parent permissions")
 }
 
 #[cfg(test)]

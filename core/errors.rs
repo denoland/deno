@@ -8,6 +8,7 @@ use std::convert::TryFrom;
 use std::convert::TryInto;
 use std::error::Error;
 use std::fmt;
+use std::io;
 
 // The Send and Sync traits are required because deno is multithreaded and we
 // need to be able to handle errors across threads.
@@ -42,12 +43,27 @@ impl ErrBox {
     Self::new("BadResource", "Bad resource ID")
   }
 
-  pub fn other(message: impl Into<Cow<'static, str>>) -> Self {
-    Self::new("Other", message)
+  pub fn not_supported() -> Self {
+    Self::new("NotSupported", "The operation is supported")
+  }
+
+  pub fn resource_unavailable() -> Self {
+    Self::new(
+      "Busy",
+      "Resource is unavailable because it is in use by a promise",
+    )
   }
 
   pub fn type_error(message: impl Into<Cow<'static, str>>) -> Self {
     Self::new("TypeError", message)
+  }
+
+  pub fn other(message: impl Into<Cow<'static, str>>) -> Self {
+    Self::new("Other", message)
+  }
+
+  pub fn last_os_error() -> Self {
+    Self::from(io::Error::last_os_error())
   }
 
   pub fn downcast<T: AnyError>(self) -> Result<T, Self> {
@@ -385,7 +401,7 @@ pub(crate) fn attach_handle_to_error(
   handle: v8::Local<v8::Value>,
 ) -> ErrBox {
   // TODO(bartomieju): this is a special case...
-  ErrBox::from(ErrWithV8Handle::new(scope, err, handle))
+  ErrWithV8Handle::new(scope, err, handle).into()
 }
 
 // TODO(piscisaureus): rusty_v8 should implement the Error trait on

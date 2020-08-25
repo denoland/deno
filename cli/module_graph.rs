@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::checksum;
-use crate::errbox;
 use crate::file_fetcher::map_file_extension;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
@@ -52,8 +51,8 @@ fn validate_no_downgrade(
   if let Some(referrer) = maybe_referrer.as_ref() {
     if let "https" = referrer.as_url().scheme() {
       if let "http" = module_specifier.as_url().scheme() {
-        let e = errbox::permission_denied(
-          "Modules loaded over https:// are not allowed to import modules over http://".to_string()
+        let e = ErrBox::new("PermissionDenied",
+          "Modules loaded over https:// are not allowed to import modules over http://"
         );
         return Err(err_with_location(e, maybe_location));
       };
@@ -77,7 +76,7 @@ fn validate_no_file_from_remote(
         match specifier_url.scheme() {
           "http" | "https" => {}
           _ => {
-            let e = errbox::permission_denied(
+            let e = ErrBox::new("PermissionDenied",
               "Remote modules are not allowed to statically import local modules. Use dynamic import instead.".to_string()
             );
             return Err(err_with_location(e, maybe_location));

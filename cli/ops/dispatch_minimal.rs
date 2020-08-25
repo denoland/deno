@@ -4,7 +4,7 @@
 //! alternative to flatbuffers using a very simple list of int32s to lay out
 //! messages. The first i32 is used to determine if a message a flatbuffer
 //! message or a "minimal" message.
-use crate::errbox;
+use crate::errors::get_error_class;
 use byteorder::{LittleEndian, WriteBytesExt};
 use deno_core::Buf;
 use deno_core::CoreIsolateState;
@@ -131,7 +131,7 @@ where
       Some(r) => r,
       None => {
         let e = ErrBox::type_error("Unparsable control buffer".to_string());
-        let code = errbox::get_error_class(&e);
+        let code = get_error_class(&e);
         let error_record = ErrorRecord {
           promise_id: 0,
           arg: -1,
@@ -153,7 +153,7 @@ where
           record.into()
         }
         Err(err) => {
-          let code = errbox::get_error_class(&err);
+          let code = get_error_class(&err);
           let error_record = ErrorRecord {
             promise_id: record.promise_id,
             arg: -1,
@@ -172,7 +172,7 @@ where
               record.into()
             }
             Err(err) => {
-              let code = errbox::get_error_class(&err);
+              let code = get_error_class(&err);
               let error_record = ErrorRecord {
                 promise_id: record.promise_id,
                 arg: -1,

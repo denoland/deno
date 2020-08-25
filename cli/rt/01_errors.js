@@ -126,6 +126,13 @@
       this.name = "Busy";
     }
   }
+  
+  class NotSupported extends Error {
+    constructor(msg) {
+      super(msg);
+      this.name = "NotSupported";
+    }
+  }
 
   const errors = {
     NotFound,
@@ -146,6 +153,7 @@
     BadResource,
     Http,
     Busy,
+    NotSupported
   };
 
   window.__bootstrap.errors = {

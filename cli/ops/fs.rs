@@ -3,9 +3,7 @@
 use super::dispatch_json::{blocking_json, Deserialize, JsonOp, Value};
 use super::io::std_file_resource;
 use super::io::{FileMetadata, StreamResource, StreamResourceHolder};
-use crate::errbox::invalid_utf8;
 #[cfg(not(unix))]
-use crate::errbox::not_implemented;
 use crate::ops::dispatch_json::JsonResult;
 use crate::state::State;
 use deno_core::BufVec;
@@ -59,7 +57,10 @@ pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
 }
 
 fn into_string(s: std::ffi::OsString) -> Result<String, ErrBox> {
-  s.into_string().map_err(|_| invalid_utf8())
+  s.into_string().map_err(|s| {
+    let message = format!("File name or path {:?} is not valid UTF-8", s);
+    ErrBox::new("InvalidData", message)
+  })
 }
 
 #[derive(Deserialize)]
@@ -372,7 +373,7 @@ fn op_umask(
   #[cfg(not(unix))]
   {
     let _ = args.mask; // avoid unused warning.
-    Err(not_implemented())
+    Err(ErrBox::not_supported())
   }
   #[cfg(unix)]
   {
@@ -478,7 +479,7 @@ fn op_chmod(
     {
       // Still check file/dir exists on Windows
       let _metadata = std::fs::metadata(&path)?;
-      Err(not_implemented())
+      Err(ErrBox::not_supported())
     }
   })
 }
@@ -515,9 +516,7 @@ fn op_chown(
     }
     // TODO Implement chown for Windows
     #[cfg(not(unix))]
-    {
-      Err(not_implemented())
-    }
+    Err(ErrBox::not_supported())
   })
 }
 

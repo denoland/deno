@@ -15,7 +15,6 @@ use crate::swc_util::SwcDiagnosticBuffer;
 use deno_core::ErrBox;
 use deno_core::ModuleResolutionError;
 use rustyline::error::ReadlineError;
-use std::borrow::Cow;
 use std::env;
 use std::error::Error;
 use std::io;
@@ -224,27 +223,4 @@ pub fn rust_err_to_json(error: &ErrBox) -> Box<[u8]> {
   let error_value =
     json!({ "kind": get_error_class(error), "message": error.to_string()});
   serde_json::to_vec(&error_value).unwrap().into_boxed_slice()
-}
-
-pub fn invalid_utf8() -> ErrBox {
-  ErrBox::new("InvalidData", "invalid utf8")
-}
-
-pub fn not_implemented() -> ErrBox {
-  ErrBox::other("not implemented")
-}
-
-pub fn permission_denied(message: impl Into<Cow<'static, str>>) -> ErrBox {
-  ErrBox::new("PermissionDenied", message)
-}
-
-pub fn permission_escalation_error() -> ErrBox {
-  permission_denied("Arguments escalate parent permissions")
-}
-
-pub fn resource_unavailable() -> ErrBox {
-  ErrBox::new(
-    "Busy",
-    "resource is unavailable because it is in use by a promise",
-  )
 }
