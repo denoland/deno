@@ -20,12 +20,13 @@ if (Deno.build.os == "windows") {
 
 if (import.meta.main) {
   const options = JSON.parse(Deno.args[0]);
-  const binary = await Deno.readFile(Deno.args[1]);
+  const pathname = Deno.args[1];
+  const binary = await Deno.readFile(pathname);
   const module = await WebAssembly.compile(binary);
 
   const context = new Context({
     env: options.env,
-    args: [arg0].concat(options.args),
+    args: [pathname].concat(options.args),
     preopens: options.preopens,
   });
 
