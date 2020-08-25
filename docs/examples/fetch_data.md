@@ -5,8 +5,8 @@ retrieve data from somewhere else on the web. This works no differently in Deno
 than in any other JavaScript application, just call the the `fetch()` method.
 
 The exception with Deno occurs when running a script which makes a call over the
-web. Deno is secure by default, which means access to IO (Input / Output) is
-prohibited by default. To make a call over the web Deno must be explicitly told
+web. Deno is secure by default which means access to IO (Input / Output) is
+prohibited. To make a call over the web Deno must be explicitly told
 it is ok to do so. This is achieved by adding the `--allow-net` flag to the
 `deno run` command.
 
