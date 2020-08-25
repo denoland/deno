@@ -15,17 +15,6 @@ pub trait AnyError: Any + Error + Send + Sync + 'static {}
 impl<T> AnyError for T where T: Any + Error + Send + Sync + Sized + 'static {}
 
 #[derive(Debug)]
-pub struct TextError(pub String);
-
-impl Error for TextError {}
-
-impl fmt::Display for TextError {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    self.0.fmt(f)
-  }
-}
-
-#[derive(Debug)]
 pub enum ErrBox {
   Simple {
     class: &'static str,
@@ -33,8 +22,6 @@ pub enum ErrBox {
   },
   Boxed(Box<dyn AnyError>),
 }
-
-impl dyn AnyError {}
 
 impl ErrBox {
   pub fn new(

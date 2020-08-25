@@ -476,14 +476,12 @@ impl SourceFileFetcher {
     // If file wasn't found in cache check if we can fetch it
     if cached_only {
       // We can't fetch remote file - bail out
-      return futures::future::err(ErrBox::from(std::io::Error::new(
-        std::io::ErrorKind::NotFound,
-        format!(
-          "Cannot find remote file '{}' in cache, --cached-only is specified",
-          module_url.to_string()
-        ),
-      )))
-      .boxed_local();
+      let message = format!(
+        "Cannot find remote file '{}' in cache, --cached-only is specified",
+        module_url
+      );
+      return futures::future::err(ErrBox::new("NotFound", message))
+        .boxed_local();
     }
 
     info!("{} {}", colors::green("Download"), module_url.to_string());
