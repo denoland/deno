@@ -1,6 +1,7 @@
 // Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
 const name = Deno.args[0];
-const test: { [key: string]: Function } = {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const test: { [key: string]: (...args: any[]) => void | Promise<void> } = {
   read(files: string[]): void {
     files.forEach((file) => Deno.readFileSync(file));
   },
