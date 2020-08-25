@@ -47,7 +47,6 @@ export const process = {
   stdin: {
     ...Deno.stdin,
     get isTTY(): boolean {
-      console.log(this);
       return Deno.isatty(this.rid)
     }
   },

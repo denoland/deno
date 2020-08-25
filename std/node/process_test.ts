@@ -126,6 +126,21 @@ Deno.test({
   fn() {
     assertEquals(typeof process.stdin.rid, "number");
     assertEquals(process.stdin.rid, Deno.stdin.rid);
-    assert(process.stdin.isTTY);
+  },
+});
+
+Deno.test({
+  name: "process.stdout",
+  fn() {
+    assertEquals(typeof process.stdout.rid, "number");
+    assertEquals(process.stdout.rid, Deno.stdout.rid);
+  },
+});
+
+Deno.test({
+  name: "process.stderr",
+  fn() {
+    assertEquals(typeof process.stderr.rid, "number");
+    assertEquals(process.stderr.rid, Deno.stderr.rid);
   },
 });
