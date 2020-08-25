@@ -1,11 +1,11 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use super::io::{StreamResource, StreamResourceHolder};
-use crate::op_error::OpError;
 use crate::resolve_addr::resolve_addr;
 use crate::state::State;
 use deno_core::CoreIsolate;
 use deno_core::CoreIsolateState;
+use deno_core::ErrBox;
 use deno_core::ZeroCopyBuf;
 use futures::future::poll_fn;
 use futures::future::FutureExt;
@@ -59,7 +59,7 @@ pub fn op_start_tls(
   state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   state.check_unstable("Deno.startTls");
   let args: StartTLSArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
@@ -81,7 +81,7 @@ pub fn op_start_tls(
       let mut resource_table_ = resource_table.borrow_mut();
       match resource_table_.remove::<StreamResourceHolder>(rid) {
         Some(resource) => *resource,
-        None => return Err(OpError::bad_resource_id()),
+        None => return Err(ErrBox::bad_resource_id()),
       }
     };
 
@@ -127,7 +127,7 @@ pub fn op_start_tls(
           }
       }))
     } else {
-      Err(OpError::bad_resource_id())
+      Err(ErrBox::bad_resource_id())
     }
   };
   Ok(JsonOp::Async(op.boxed_local()))
@@ -138,7 +138,7 @@ pub fn op_connect_tls(
   state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   let args: ConnectTLSArgs = serde_json::from_value(args)?;
   let cert_file = args.cert_file.clone();
   let resource_table = isolate_state.resource_table.clone();
@@ -195,31 +195,31 @@ pub fn op_connect_tls(
   Ok(JsonOp::Async(op.boxed_local()))
 }
 
-fn load_certs(path: &str) -> Result<Vec<Certificate>, OpError> {
+fn load_certs(path: &str) -> Result<Vec<Certificate>, ErrBox> {
   let cert_file = File::open(path)?;
   let reader = &mut BufReader::new(cert_file);
 
   let certs = certs(reader)
-    .map_err(|_| OpError::other("Unable to decode certificate".to_string()))?;
+    .map_err(|_| ErrBox::new("InvalidData", "Unable to decode certificate"))?;
 
   if certs.is_empty() {
-    let e = OpError::other("No certificates found in cert file".to_string());
+    let e = ErrBox::new("InvalidData", "No certificates found in cert file");
     return Err(e);
   }
 
   Ok(certs)
 }
 
-fn key_decode_err() -> OpError {
-  OpError::other("Unable to decode key".to_string())
+fn key_decode_err() -> ErrBox {
+  ErrBox::new("InvalidData", "Unable to decode key")
 }
 
-fn key_not_found_err() -> OpError {
-  OpError::other("No keys found in key file".to_string())
+fn key_not_found_err() -> ErrBox {
+  ErrBox::new("InvalidData", "No keys found in key file")
 }
 
 /// Starts with -----BEGIN RSA PRIVATE KEY-----
-fn load_rsa_keys(path: &str) -> Result<Vec<PrivateKey>, OpError> {
+fn load_rsa_keys(path: &str) -> Result<Vec<PrivateKey>, ErrBox> {
   let key_file = File::open(path)?;
   let reader = &mut BufReader::new(key_file);
   let keys = rsa_private_keys(reader).map_err(|_| key_decode_err())?;
@@ -227,14 +227,14 @@ fn load_rsa_keys(path: &str) -> Result<Vec<PrivateKey>, OpError> {
 }
 
 /// Starts with -----BEGIN PRIVATE KEY-----
-fn load_pkcs8_keys(path: &str) -> Result<Vec<PrivateKey>, OpError> {
+fn load_pkcs8_keys(path: &str) -> Result<Vec<PrivateKey>, ErrBox> {
   let key_file = File::open(path)?;
   let reader = &mut BufReader::new(key_file);
   let keys = pkcs8_private_keys(reader).map_err(|_| key_decode_err())?;
   Ok(keys)
 }
 
-fn load_keys(path: &str) -> Result<Vec<PrivateKey>, OpError> {
+fn load_keys(path: &str) -> Result<Vec<PrivateKey>, ErrBox> {
   let path = path.to_string();
   let mut keys = load_rsa_keys(&path)?;
 
@@ -268,13 +268,13 @@ impl TlsListenerResource {
   /// can be notified when listener is closed.
   ///
   /// Throws an error if another task is already tracked.
-  pub fn track_task(&mut self, cx: &Context) -> Result<(), OpError> {
+  pub fn track_task(&mut self, cx: &Context) -> Result<(), ErrBox> {
     // Currently, we only allow tracking a single accept task for a listener.
     // This might be changed in the future with multiple workers.
     // Caveat: TcpListener by itself also only tracks an accept task at a time.
     // See https://github.com/tokio-rs/tokio/issues/846#issuecomment-454208883
     if self.waker.is_some() {
-      return Err(OpError::other("Another accept task is ongoing".to_string()));
+      return Err(ErrBox::new("Busy", "Another accept task is ongoing"));
     }
 
     let waker = futures::task::AtomicWaker::new();
@@ -312,7 +312,7 @@ fn op_listen_tls(
   state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   let args: ListenTlsArgs = serde_json::from_value(args)?;
   assert_eq!(args.transport, "tcp");
 
@@ -362,7 +362,7 @@ fn op_accept_tls(
   _state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   let args: AcceptTlsArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let resource_table = isolate_state.resource_table.clone();
@@ -372,10 +372,10 @@ fn op_accept_tls(
       let listener_resource = resource_table
         .get_mut::<TlsListenerResource>(rid)
         .ok_or_else(|| {
-          OpError::bad_resource("Listener has been closed".to_string())
+          ErrBox::bad_resource("Listener has been closed".to_string())
         })?;
       let listener = &mut listener_resource.listener;
-      match listener.poll_accept(cx).map_err(OpError::from) {
+      match listener.poll_accept(cx).map_err(ErrBox::from) {
         Poll::Ready(Ok((stream, addr))) => {
           listener_resource.untrack_task();
           Poll::Ready(Ok((stream, addr)))
@@ -397,7 +397,7 @@ fn op_accept_tls(
       let resource_table = resource_table.borrow();
       let resource = resource_table
         .get::<TlsListenerResource>(rid)
-        .ok_or_else(OpError::bad_resource_id)
+        .ok_or_else(ErrBox::bad_resource_id)
         .expect("Can't find tls listener");
       resource.tls_acceptor.clone()
     };

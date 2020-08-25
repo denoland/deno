@@ -114,7 +114,7 @@ impl JSError {
   ) -> ErrBox {
     let core_js_error = apply_source_map(&core_js_error, source_map_getter);
     let js_error = Self(core_js_error);
-    ErrBox::from(js_error)
+    js_error.into()
   }
 }
 

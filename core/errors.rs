@@ -3,11 +3,12 @@
 use rusty_v8 as v8;
 use std::any::Any;
 use std::any::TypeId;
+use std::borrow::Cow;
 use std::convert::TryFrom;
 use std::convert::TryInto;
 use std::error::Error;
 use std::fmt;
-use std::ops::Deref;
+use std::io;
 
 // The Send and Sync traits are required because deno is multithreaded and we
 // need to be able to handle errors across threads.
@@ -15,60 +16,97 @@ pub trait AnyError: Any + Error + Send + Sync + 'static {}
 impl<T> AnyError for T where T: Any + Error + Send + Sync + Sized + 'static {}
 
 #[derive(Debug)]
-pub struct ErrBox(Box<dyn AnyError>);
-
-impl dyn AnyError {
-  pub fn downcast_ref<T: AnyError>(&self) -> Option<&T> {
-    if Any::type_id(self) == TypeId::of::<T>() {
-      let target = self as *const Self as *const T;
-      let target = unsafe { &*target };
-      Some(target)
-    } else {
-      None
-    }
-  }
+pub enum ErrBox {
+  Simple {
+    class: &'static str,
+    message: Cow<'static, str>,
+  },
+  Boxed(Box<dyn AnyError>),
 }
 
 impl ErrBox {
-  pub fn downcast<T: AnyError>(self) -> Result<T, Self> {
-    if Any::type_id(&*self.0) == TypeId::of::<T>() {
-      let target = Box::into_raw(self.0) as *mut T;
-      let target = unsafe { Box::from_raw(target) };
-      Ok(*target)
-    } else {
-      Err(self)
+  pub fn new(
+    class: &'static str,
+    message: impl Into<Cow<'static, str>>,
+  ) -> Self {
+    Self::Simple {
+      class,
+      message: message.into(),
     }
   }
-}
 
-impl AsRef<dyn AnyError> for ErrBox {
-  fn as_ref(&self) -> &dyn AnyError {
-    self.0.as_ref()
+  pub fn bad_resource(message: impl Into<Cow<'static, str>>) -> Self {
+    Self::new("BadResource", message)
   }
-}
 
-impl Deref for ErrBox {
-  type Target = Box<dyn AnyError>;
-  fn deref(&self) -> &Self::Target {
-    &self.0
+  pub fn bad_resource_id() -> Self {
+    Self::new("BadResource", "Bad resource ID")
   }
-}
 
-impl<T: AnyError> From<T> for ErrBox {
-  fn from(error: T) -> Self {
-    Self(Box::new(error))
+  pub fn error(message: impl Into<Cow<'static, str>>) -> Self {
+    Self::new("Error", message)
   }
-}
 
-impl From<Box<dyn AnyError>> for ErrBox {
-  fn from(boxed: Box<dyn AnyError>) -> Self {
-    Self(boxed)
+  pub fn not_supported() -> Self {
+    Self::new("NotSupported", "The operation is supported")
+  }
+
+  pub fn resource_unavailable() -> Self {
+    Self::new(
+      "Busy",
+      "Resource is unavailable because it is in use by a promise",
+    )
+  }
+
+  pub fn type_error(message: impl Into<Cow<'static, str>>) -> Self {
+    Self::new("TypeError", message)
+  }
+
+  pub fn last_os_error() -> Self {
+    Self::from(io::Error::last_os_error())
+  }
+
+  pub fn downcast<T: AnyError>(self) -> Result<T, Self> {
+    match self {
+      Self::Boxed(error) if Any::type_id(&*error) == TypeId::of::<T>() => {
+        let error = Box::into_raw(error) as *mut T;
+        let error = unsafe { Box::from_raw(error) };
+        Ok(*error)
+      }
+      other => Err(other),
+    }
+  }
+
+  pub fn downcast_ref<T: AnyError>(&self) -> Option<&T> {
+    match self {
+      Self::Boxed(error) if Any::type_id(&**error) == TypeId::of::<T>() => {
+        let error = &**error as *const dyn AnyError as *const T;
+        let error = unsafe { &*error };
+        Some(error)
+      }
+      _ => None,
+    }
   }
 }
 
 impl fmt::Display for ErrBox {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    self.0.fmt(f)
+    match self {
+      Self::Simple { message, .. } => f.write_str(message),
+      Self::Boxed(error) => error.fmt(f),
+    }
+  }
+}
+
+impl<T: AnyError> From<T> for ErrBox {
+  fn from(error: T) -> Self {
+    Self::Boxed(Box::new(error))
+  }
+}
+
+impl From<Box<dyn AnyError>> for ErrBox {
+  fn from(boxed: Box<dyn AnyError>) -> Self {
+    Self::Boxed(boxed)
   }
 }
 
@@ -116,7 +154,7 @@ fn get_property<'a>(
 
 impl JSError {
   pub(crate) fn create(js_error: Self) -> ErrBox {
-    ErrBox::from(js_error)
+    js_error.into()
   }
 
   pub fn from_v8_exception(
@@ -362,6 +400,7 @@ pub(crate) fn attach_handle_to_error(
   err: ErrBox,
   handle: v8::Local<v8::Value>,
 ) -> ErrBox {
+  // TODO(bartomieju): this is a special case...
   ErrWithV8Handle::new(scope, err, handle).into()
 }
 
@@ -404,5 +443,22 @@ impl fmt::Display for ErrWithV8Handle {
 impl fmt::Debug for ErrWithV8Handle {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     self.err.fmt(f)
+  }
+}
+
+#[cfg(tests)]
+mod tests {
+  #[test]
+  fn test_bad_resource() {
+    let err = ErrBox::bad_resource("Resource has been closed".to_string());
+    assert_eq!(err.1, "BadResource");
+    assert_eq!(err.to_string(), "Resource has been closed");
+  }
+
+  #[test]
+  fn test_bad_resource_id() {
+    let err = ErrBox::bad_resource_id();
+    assert_eq!(err.1, "BadResource");
+    assert_eq!(err.to_string(), "Bad resource ID");
   }
 }

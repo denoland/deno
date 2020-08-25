@@ -1,7 +1,7 @@
 use super::dispatch_json::{Deserialize, JsonOp};
 use super::io::{StreamResource, StreamResourceHolder};
-use crate::op_error::OpError;
 use deno_core::CoreIsolateState;
+use deno_core::ErrBox;
 use deno_core::ResourceTable;
 use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
@@ -30,13 +30,13 @@ pub fn accept_unix(
   isolate_state: &mut CoreIsolateState,
   rid: u32,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   let resource_table = isolate_state.resource_table.clone();
   {
     let _ = resource_table
       .borrow()
       .get::<UnixListenerResource>(rid)
-      .ok_or_else(OpError::bad_resource_id)?;
+      .ok_or_else(ErrBox::bad_resource_id)?;
   }
   let op = async move {
     let mut resource_table_ = resource_table.borrow_mut();
@@ -44,7 +44,7 @@ pub fn accept_unix(
       resource_table_
         .get_mut::<UnixListenerResource>(rid)
         .ok_or_else(|| {
-          OpError::bad_resource("Listener has been closed".to_string())
+          ErrBox::bad_resource("Listener has been closed".to_string())
         })?
     };
 
@@ -81,7 +81,7 @@ pub fn receive_unix_packet(
   isolate_state: &mut CoreIsolateState,
   rid: u32,
   zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   assert_eq!(zero_copy.len(), 1, "Invalid number of arguments");
   let mut zero_copy = zero_copy[0].clone();
   let resource_table = isolate_state.resource_table.clone();
@@ -91,7 +91,7 @@ pub fn receive_unix_packet(
     let resource = resource_table_
       .get_mut::<UnixDatagramResource>(rid)
       .ok_or_else(|| {
-        OpError::bad_resource("Socket has been closed".to_string())
+        ErrBox::bad_resource("Socket has been closed".to_string())
       })?;
     let (size, remote_addr) = resource.socket.recv_from(&mut zero_copy).await?;
     Ok(json!({
@@ -109,7 +109,7 @@ pub fn receive_unix_packet(
 pub fn listen_unix(
   resource_table: &mut ResourceTable,
   addr: &Path,
-) -> Result<(u32, unix::net::SocketAddr), OpError> {
+) -> Result<(u32, unix::net::SocketAddr), ErrBox> {
   if addr.exists() {
     remove_file(&addr).unwrap();
   }
@@ -124,7 +124,7 @@ pub fn listen_unix(
 pub fn listen_unix_packet(
   resource_table: &mut ResourceTable,
   addr: &Path,
-) -> Result<(u32, unix::net::SocketAddr), OpError> {
+) -> Result<(u32, unix::net::SocketAddr), ErrBox> {
   if addr.exists() {
     remove_file(&addr).unwrap();
   }

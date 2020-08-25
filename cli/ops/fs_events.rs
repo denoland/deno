@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
-use crate::op_error::OpError;
 use crate::state::State;
 use deno_core::CoreIsolate;
 use deno_core::CoreIsolateState;
@@ -68,7 +67,7 @@ pub fn op_fs_events_open(
   state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   #[derive(Deserialize)]
   struct OpenArgs {
     recursive: bool,
@@ -84,8 +83,7 @@ pub fn op_fs_events_open(
       // Ignore result, if send failed it means that watcher was already closed,
       // but not all messages have been flushed.
       let _ = sender.try_send(res2);
-    })
-    .map_err(ErrBox::from)?;
+    })?;
   let recursive_mode = if args.recursive {
     RecursiveMode::Recursive
   } else {
@@ -93,7 +91,7 @@ pub fn op_fs_events_open(
   };
   for path in &args.paths {
     state.check_read(&PathBuf::from(path))?;
-    watcher.watch(path, recursive_mode).map_err(ErrBox::from)?;
+    watcher.watch(path, recursive_mode)?;
   }
   let resource = FsEventsResource { watcher, receiver };
   let mut resource_table = isolate_state.resource_table.borrow_mut();
@@ -106,7 +104,7 @@ pub fn op_fs_events_poll(
   _state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   #[derive(Deserialize)]
   struct PollArgs {
     rid: u32,
@@ -117,13 +115,13 @@ pub fn op_fs_events_poll(
     let mut resource_table = resource_table.borrow_mut();
     let watcher = resource_table
       .get_mut::<FsEventsResource>(rid)
-      .ok_or_else(OpError::bad_resource_id)?;
+      .ok_or_else(ErrBox::bad_resource_id)?;
     watcher
       .receiver
       .poll_recv(cx)
       .map(|maybe_result| match maybe_result {
         Some(Ok(value)) => Ok(json!({ "value": value, "done": false })),
-        Some(Err(err)) => Err(OpError::from(err)),
+        Some(Err(err)) => Err(err),
         None => Ok(json!({ "done": true })),
       })
   });

@@ -31,11 +31,11 @@
     let err;
 
     if (arg < 0) {
-      const codeLen = result;
-      const codeAndMessage = decoder.decode(ui8.subarray(12));
-      const errorCode = codeAndMessage.slice(0, codeLen);
-      const message = codeAndMessage.slice(codeLen);
-      err = { kind: errorCode, message };
+      const classLen = result;
+      const classAndMessage = decoder.decode(ui8.subarray(12));
+      const errorClass = classAndMessage.slice(0, classLen);
+      const message = classAndMessage.slice(classLen);
+      err = { kind: errorClass, message };
     } else if (ui8.length != 12) {
       throw new TypeError("Malformed response message");
     }
@@ -72,11 +72,7 @@
     promise.resolve(record);
   }
 
-  async function sendAsync(
-    opName,
-    arg,
-    zeroCopy,
-  ) {
+  async function sendAsync(opName, arg, zeroCopy) {
     const promiseId = nextPromiseId(); // AKA cmdId
     scratch32[0] = promiseId;
     scratch32[1] = arg;
@@ -96,11 +92,7 @@
     return unwrapResponse(res);
   }
 
-  function sendSync(
-    opName,
-    arg,
-    zeroCopy,
-  ) {
+  function sendSync(opName, arg, zeroCopy) {
     scratch32[0] = 0; // promiseId 0 indicates sync
     scratch32[1] = arg;
     const res = core.dispatchByName(opName, scratchBytes, zeroCopy);
