@@ -134,7 +134,7 @@ impl HttpClientResource {
 #[serde(default)]
 struct CreateHttpClientOptions {
   ca_file: Option<String>,
-  timeout_ms: Option<u64>,
+  timeout: Option<u64>,
 }
 
 fn op_create_http_client(
@@ -151,7 +151,7 @@ fn op_create_http_client(
   }
 
   let client =
-    create_http_client_with_timeout(args.ca_file.as_deref(), args.timeout_ms)
+    create_http_client_with_timeout(args.ca_file.as_deref(), args.timeout)
       .unwrap();
 
   let rid =

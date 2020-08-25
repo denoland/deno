@@ -1236,7 +1236,7 @@ declare namespace Deno {
     caFile?: string;
 
     /** Request timeout in milliseconds. Sets deadline for total request + body read. */
-    timeoutMs?: number;
+    timeout?: number;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
