@@ -220,10 +220,6 @@ pub fn rust_err_to_json(error: &ErrBox) -> Box<[u8]> {
   serde_json::to_vec(&error_value).unwrap().into_boxed_slice()
 }
 
-pub fn invalid_domain_error() -> ErrBox {
-  ErrBox::type_error("Invalid domain")
-}
-
 pub fn invalid_utf8() -> ErrBox {
   ErrBox::new("InvalidData", "invalid utf8")
 }

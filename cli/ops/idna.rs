@@ -3,7 +3,6 @@
 //! https://url.spec.whatwg.org/#idna
 
 use super::dispatch_json::{Deserialize, JsonOp, Value};
-use crate::errbox::invalid_domain_error;
 use crate::state::State;
 use deno_core::CoreIsolate;
 use deno_core::ErrBox;
@@ -28,11 +27,14 @@ fn op_domain_to_ascii(
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
   let args: DomainToAscii = serde_json::from_value(args)?;
-  let domain = if args.be_strict {
+  if args.be_strict {
     domain_to_ascii_strict(args.domain.as_str())
-      .map_err(|_| invalid_domain_error())?
   } else {
-    domain_to_ascii(args.domain.as_str()).map_err(|_| invalid_domain_error())?
-  };
-  Ok(JsonOp::Sync(json!(domain)))
+    domain_to_ascii(args.domain.as_str())
+  }
+  .map_err(|err| {
+    let message = format!("Invalid IDNA encoded domain name: {:?}", err);
+    ErrBox::new("URIError", message)
+  })
+  .map(|domain| JsonOp::Sync(json!(domain)))
 }
