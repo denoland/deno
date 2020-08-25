@@ -10,6 +10,7 @@ use deno_core::CoreIsolateState;
 use deno_core::ZeroCopyBuf;
 use futures::channel::mpsc;
 use std::convert::From;
+use std::rc::Rc;
 
 pub fn web_worker_op<D>(
   sender: mpsc::Sender<WorkerEvent>,
@@ -59,7 +60,7 @@ where
 
 pub fn init(
   i: &mut CoreIsolate,
-  s: &State,
+  s: &Rc<State>,
   sender: &mpsc::Sender<WorkerEvent>,
   handle: WebWorkerHandle,
 ) {

@@ -4,7 +4,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 import { CbFunction, load, loadAll } from "./loader/loader.ts";
-import { LoaderStateOptions } from "./loader/loader_state.ts";
+import type { LoaderStateOptions } from "./loader/loader_state.ts";
 
 export type ParseOptions = LoaderStateOptions;
 
@@ -26,7 +26,7 @@ export function parse(content: string, options?: ParseOptions): unknown {
 export function parseAll(
   content: string,
   iterator?: CbFunction,
-  options?: ParseOptions
+  options?: ParseOptions,
 ): unknown {
   return loadAll(content, iterator, options);
 }

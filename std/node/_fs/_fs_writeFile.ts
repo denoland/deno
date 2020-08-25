@@ -1,24 +1,27 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { notImplemented } from "../_utils.ts";
 import { fromFileUrl } from "../path.ts";
+import { Buffer } from "../buffer.ts";
 
 import {
+  Encodings,
   WriteFileOptions,
   CallbackWithError,
   isFileOptions,
   getEncoding,
+  checkEncoding,
   getOpenOptions,
 } from "./_fs_common.ts";
 
 export function writeFile(
   pathOrRid: string | number | URL,
   data: string | Uint8Array,
-  optOrCallback: string | CallbackWithError | WriteFileOptions | undefined,
-  callback?: CallbackWithError
+  optOrCallback: Encodings | CallbackWithError | WriteFileOptions | undefined,
+  callback?: CallbackWithError,
 ): void {
   const callbackFn: CallbackWithError | undefined =
     optOrCallback instanceof Function ? optOrCallback : callback;
-  const options: string | WriteFileOptions | undefined =
+  const options: Encodings | WriteFileOptions | undefined =
     optOrCallback instanceof Function ? undefined : optOrCallback;
 
   if (!callbackFn) {
@@ -35,11 +38,10 @@ export function writeFile(
     ? options.mode
     : undefined;
 
-  const encoding = getEncoding(options) || "utf8";
+  const encoding = checkEncoding(getEncoding(options)) || "utf8";
   const openOptions = getOpenOptions(flag || "w");
 
-  if (typeof data === "string" && encoding === "utf8")
-    data = new TextEncoder().encode(data) as Uint8Array;
+  if (typeof data === "string") data = Buffer.from(data, encoding);
 
   const isRid = typeof pathOrRid === "number";
   let file;
@@ -70,7 +72,7 @@ export function writeFile(
 export function writeFileSync(
   pathOrRid: string | number | URL,
   data: string | Uint8Array,
-  options?: string | WriteFileOptions
+  options?: Encodings | WriteFileOptions,
 ): void {
   pathOrRid = pathOrRid instanceof URL ? fromFileUrl(pathOrRid) : pathOrRid;
 
@@ -82,11 +84,10 @@ export function writeFileSync(
     ? options.mode
     : undefined;
 
-  const encoding = getEncoding(options) || "utf8";
+  const encoding = checkEncoding(getEncoding(options)) || "utf8";
   const openOptions = getOpenOptions(flag || "w");
 
-  if (typeof data === "string" && encoding === "utf8")
-    data = new TextEncoder().encode(data) as Uint8Array;
+  if (typeof data === "string") data = Buffer.from(data, encoding);
 
   const isRid = typeof pathOrRid === "number";
   let file;

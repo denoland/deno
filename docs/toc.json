@@ -8,6 +8,7 @@
       "installation": "Installation",
       "setup_your_environment": "Setup your environment",
       "first_steps": "First steps",
+      "command_line_interface": "Command line interface",
       "permissions": "Permissions",
       "typescript": "Using TypeScript",
       "webassembly": "Using WebAssembly"
@@ -18,6 +19,7 @@
     "children": {
       "stability": "Stability",
       "program_lifecycle": "Program lifecycle",
+      "permission_apis": "Permission APIs",
       "compiler_apis": "Compiler APIs",
       "workers": "Workers"
     }
@@ -35,7 +37,10 @@
     "name": "Standard library"
   },
   "testing": {
-    "name": "Testing"
+    "name": "Testing",
+    "children": {
+      "assertions": "Assertions"
+    }
   },
   "tools": {
     "name": "Tools",
@@ -45,7 +50,8 @@
       "formatter": "Formatter",
       "bundler": "Bundler",
       "documentation_generator": "Documentation generator",
-      "dependency_inspector": "Dependency inspector"
+      "dependency_inspector": "Dependency inspector",
+      "linter": "Linter"
     }
   },
   "embedding_deno": {
@@ -63,11 +69,13 @@
   "examples": {
     "name": "Examples",
     "children": {
+      "hello_world": "Hello World",
+      "import_export": "Import and Export Modules",
+      "manage_dependencies": "Manage Dependencies",
       "unix_cat": "Unix cat program",
       "file_server": "File server",
       "tcp_echo": "TCP echo server",
       "subprocess": "Creating a subprocess",
-      "permissions": "Inspecting and revoking permissions",
       "os_signals": "OS Signals",
       "file_system_events": "File system events",
       "testing_if_main": "Checking if file is main"

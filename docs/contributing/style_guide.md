@@ -1,7 +1,5 @@
 # Deno Style Guide
 
-## Table of Contents
-
 ## Copyright Headers
 
 Most modules in the repository should have the following copyright header:
@@ -40,11 +38,16 @@ Be explicit even when it means more code.
 There are some situations where it may make sense to use such techniques, but in
 the vast majority of cases it does not.
 
+## Inclusive code
+
+Please follow the guidelines for inclusive code outlined at
+https://chromium.googlesource.com/chromium/src/+/master/styleguide/inclusive_code.md.
+
 ## Rust
 
 Follow Rust conventions and be consistent with existing code.
 
-## Typescript
+## TypeScript
 
 The TypeScript portions of the codebase include `cli/js` for the built-ins and
 the standard library `std`.
@@ -80,28 +83,23 @@ When designing function interfaces, stick to the following rules.
    there is only one, and it seems inconceivable that we would add more optional
    parameters in the future.
 
-<!-- prettier-ignore-start -->
-<!-- see https://github.com/prettier/prettier/issues/3679 -->
-
 3. The 'options' argument is the only argument that is a regular 'Object'.
 
    Other arguments can be objects, but they must be distinguishable from a
    'plain' Object runtime, by having either:
 
-    - a distinguishing prototype (e.g. `Array`, `Map`, `Date`, `class MyThing`)
-    - a well-known symbol property (e.g. an iterable with `Symbol.iterator`).
+   - a distinguishing prototype (e.g. `Array`, `Map`, `Date`, `class MyThing`).
+   - a well-known symbol property (e.g. an iterable with `Symbol.iterator`).
 
    This allows the API to evolve in a backwards compatible way, even when the
    position of the options object changes.
-
-<!-- prettier-ignore-end -->
 
 ```ts
 // BAD: optional parameters not part of options object. (#2)
 export function resolve(
   hostname: string,
   family?: "ipv4" | "ipv6",
-  timeout?: number
+  timeout?: number,
 ): IPAddress[] {}
 
 // GOOD.
@@ -111,7 +109,7 @@ export interface ResolveOptions {
 }
 export function resolve(
   hostname: string,
-  options: ResolveOptions = {}
+  options: ResolveOptions = {},
 ): IPAddress[] {}
 ```
 
@@ -130,7 +128,7 @@ export interface RunShellOptions {
 }
 export function runShellWithEnv(
   cmdline: string,
-  options: RunShellOptions
+  options: RunShellOptions,
 ): string {}
 ```
 
@@ -140,7 +138,7 @@ export function renameSync(
   oldname: string,
   newname: string,
   replaceExisting?: boolean,
-  followLinks?: boolean
+  followLinks?: boolean,
 ) {}
 
 // GOOD.
@@ -151,7 +149,7 @@ interface RenameOptions {
 export function renameSync(
   oldname: string,
   newname: string,
-  options: RenameOptions = {}
+  options: RenameOptions = {},
 ) {}
 ```
 
@@ -162,7 +160,7 @@ export function pwrite(
   buffer: TypedArray,
   offset: number,
   length: number,
-  position: number
+  position: number,
 ) {}
 
 // BETTER.
@@ -193,7 +191,7 @@ underscore. By convention, only files in its own directory should import it.
 We strive for complete documentation. Every exported symbol ideally should have
 a documentation line.
 
-If possible, use a single line for the JS Doc. Example:
+If possible, use a single line for the JSDoc. Example:
 
 ```ts
 /** foo does bar. */
@@ -235,7 +233,7 @@ comments should be written as:
 /** This is a good single line JSDoc. */
 ```
 
-And not
+And not:
 
 ```ts
 /**
@@ -278,10 +276,10 @@ test myTestFunction ... ok
 Example of test:
 
 ```ts
-import { assertEquals } from "https://deno.land/std@v0.11/testing/asserts.ts";
+import { assertEquals } from "https://deno.land/std@$STD_VERSION/testing/asserts.ts";
 import { foo } from "./mod.ts";
 
-Deno.test("myTestFunction" function() {
+Deno.test("myTestFunction", function () {
   assertEquals(foo(), { bar: "bar" });
 });
 ```
@@ -291,7 +289,7 @@ Deno.test("myTestFunction" function() {
 Top level functions should use the `function` keyword. Arrow syntax should be
 limited to closures.
 
-Bad
+Bad:
 
 ```ts
 export const foo = (): string => {
@@ -299,7 +297,7 @@ export const foo = (): string => {
 };
 ```
 
-Good
+Good:
 
 ```ts
 export function foo(): string {

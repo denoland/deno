@@ -1,7 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+import { assert } from "../_util/assert.ts";
 import { deepAssign } from "../_util/deep_assign.ts";
-
-const { noColor } = Deno;
 
 interface BenchmarkClock {
   start: number;
@@ -72,11 +71,11 @@ export interface BenchmarkRunResult {
 /** Defines the current progress during the run of `runBenchmarks` */
 export interface BenchmarkRunProgress extends BenchmarkRunResult {
   /** List of the queued benchmarks to run with their name and their run count */
-  queued: Array<{ name: string; runsCount: number }>;
+  queued?: Array<{ name: string; runsCount: number }>;
   /** The currently running benchmark with its name, run count and the already finished measurements in milliseconds */
   running?: { name: string; runsCount: number; measuredRunsMs: number[] };
   /** Indicates in which state benchmarking currently is */
-  state: ProgressState;
+  state?: ProgressState;
 }
 
 /** Defines the states `BenchmarkRunProgress` can be in */
@@ -98,11 +97,11 @@ export class BenchmarkRunError extends Error {
 }
 
 function red(text: string): string {
-  return noColor ? text : `\x1b[31m${text}\x1b[0m`;
+  return Deno.noColor ? text : `\x1b[31m${text}\x1b[0m`;
 }
 
 function blue(text: string): string {
-  return noColor ? text : `\x1b[34m${text}\x1b[0m`;
+  return Deno.noColor ? text : `\x1b[34m${text}\x1b[0m`;
 }
 
 function verifyOr1Run(runs?: number): number {
@@ -114,17 +113,17 @@ function assertTiming(clock: BenchmarkClock): void {
   if (!clock.stop) {
     throw new BenchmarkRunError(
       `Running benchmarks FAILED during benchmark named [${clock.for}]. The benchmark timer's stop method must be called`,
-      clock.for
+      clock.for,
     );
   } else if (!clock.start) {
     throw new BenchmarkRunError(
       `Running benchmarks FAILED during benchmark named [${clock.for}]. The benchmark timer's start method must be called`,
-      clock.for
+      clock.for,
     );
   } else if (clock.start > clock.stop) {
     throw new BenchmarkRunError(
       `Running benchmarks FAILED during benchmark named [${clock.for}]. The benchmark timer's start method must be called before its stop method`,
-      clock.for
+      clock.for,
     );
   }
 }
@@ -138,7 +137,7 @@ function createBenchmarkTimer(clock: BenchmarkClock): BenchmarkTimer {
       if (isNaN(clock.start)) {
         throw new BenchmarkRunError(
           `Running benchmarks FAILED during benchmark named [${clock.for}]. The benchmark timer's start method must be called before its stop method`,
-          clock.for
+          clock.for,
         );
       }
       clock.stop = performance.now();
@@ -150,7 +149,7 @@ const candidates: BenchmarkDefinition[] = [];
 
 /** Registers a benchmark as a candidate for the runBenchmarks executor. */
 export function bench(
-  benchmark: BenchmarkDefinition | BenchmarkFunction
+  benchmark: BenchmarkDefinition | BenchmarkFunction,
 ): void {
   if (!benchmark.name) {
     throw new Error("The benchmark function must not be anonymous");
@@ -173,7 +172,7 @@ export function clearBenchmarks({
   skip = /$^/,
 }: BenchmarkClearOptions = {}): void {
   const keep = candidates.filter(
-    ({ name }): boolean => !only.test(name) || skip.test(name)
+    ({ name }): boolean => !only.test(name) || skip.test(name),
   );
   candidates.splice(0, candidates.length);
   candidates.push(...keep);
@@ -187,11 +186,11 @@ export function clearBenchmarks({
  */
 export async function runBenchmarks(
   { only = /[^\s]/, skip = /^\s*$/, silent }: BenchmarkRunOptions = {},
-  progressCb?: (progress: BenchmarkRunProgress) => void
+  progressCb?: (progress: BenchmarkRunProgress) => void | Promise<void>,
 ): Promise<BenchmarkRunResult> {
   // Filtering candidates by the "only" and "skip" constraint
   const benchmarks: BenchmarkDefinition[] = candidates.filter(
-    ({ name }): boolean => only.test(name) && !skip.test(name)
+    ({ name }): boolean => only.test(name) && !skip.test(name),
   );
   // Init main counters and error flag
   const filtered = candidates.length - benchmarks.length;
@@ -213,13 +212,13 @@ export async function runBenchmarks(
   };
 
   // Publish initial progress data
-  publishProgress(progress, ProgressState.BenchmarkingStart, progressCb);
+  await publishProgress(progress, ProgressState.BenchmarkingStart, progressCb);
 
   if (!silent) {
     console.log(
       "running",
       benchmarks.length,
-      `benchmark${benchmarks.length === 1 ? " ..." : "s ..."}`
+      `benchmark${benchmarks.length === 1 ? " ..." : "s ..."}`,
     );
   }
 
@@ -234,8 +233,9 @@ export async function runBenchmarks(
     clock.for = name;
 
     // Remove benchmark from queued
+    assert(progress.queued);
     const queueIndex = progress.queued.findIndex(
-      (queued) => queued.name === name && queued.runsCount === runs
+      (queued) => queued.name === name && queued.runsCount === runs,
     );
     if (queueIndex != -1) {
       progress.queued.splice(queueIndex, 1);
@@ -243,7 +243,7 @@ export async function runBenchmarks(
     // Init the progress of the running benchmark
     progress.running = { name, runsCount: runs, measuredRunsMs: [] };
     // Publish starting of a benchmark
-    publishProgress(progress, ProgressState.BenchStart, progressCb);
+    await publishProgress(progress, ProgressState.BenchStart, progressCb);
 
     // Trying benchmark.func
     let result = "";
@@ -267,16 +267,19 @@ export async function runBenchmarks(
         // Adding partial result
         progress.running.measuredRunsMs.push(measuredMs);
         // Publish partial benchmark results
-        publishProgress(progress, ProgressState.BenchPartialResult, progressCb);
+        await publishProgress(
+          progress,
+          ProgressState.BenchPartialResult,
+          progressCb,
+        );
 
         // Resetting the benchmark clock
         clock.start = clock.stop = NaN;
         // Once all ran
         if (!--pendingRuns) {
-          result =
-            runs == 1
-              ? `${totalMs}ms`
-              : `${runs} runs avg: ${totalMs / runs}ms`;
+          result = runs == 1
+            ? `${totalMs}ms`
+            : `${runs} runs avg: ${totalMs / runs}ms`;
           // Adding results
           progress.results.push({
             name,
@@ -288,7 +291,11 @@ export async function runBenchmarks(
           // Clear currently running
           delete progress.running;
           // Publish results of the benchmark
-          publishProgress(progress, ProgressState.BenchResult, progressCb);
+          await publishProgress(
+            progress,
+            ProgressState.BenchResult,
+            progressCb,
+          );
           break;
         }
       }
@@ -317,18 +324,18 @@ export async function runBenchmarks(
   // Indicate finished running
   delete progress.queued;
   // Publish final result in Cb too
-  publishProgress(progress, ProgressState.BenchmarkingEnd, progressCb);
+  await publishProgress(progress, ProgressState.BenchmarkingEnd, progressCb);
 
   if (!silent) {
     // Closing results
     console.log(
-      `benchmark result: ${!!failError ? red("FAIL") : blue("DONE")}. ` +
-        `${progress.results.length} measured; ${filtered} filtered`
+      `benchmark result: ${failError ? red("FAIL") : blue("DONE")}. ` +
+        `${progress.results.length} measured; ${filtered} filtered`,
     );
   }
 
   // Throw error if there was a failing benchmark
-  if (!!failError) {
+  if (failError) {
     throw failError;
   }
 
@@ -340,17 +347,17 @@ export async function runBenchmarks(
   return benchmarkRunResult;
 }
 
-function publishProgress(
+async function publishProgress(
   progress: BenchmarkRunProgress,
   state: ProgressState,
-  progressCb?: (progress: BenchmarkRunProgress) => void
-): void {
-  progressCb && progressCb(cloneProgressWithState(progress, state));
+  progressCb?: (progress: BenchmarkRunProgress) => void | Promise<void>,
+): Promise<void> {
+  progressCb && (await progressCb(cloneProgressWithState(progress, state)));
 }
 
 function cloneProgressWithState(
   progress: BenchmarkRunProgress,
-  state: ProgressState
+  state: ProgressState,
 ): BenchmarkRunProgress {
   return deepAssign({}, progress, { state }) as BenchmarkRunProgress;
 }

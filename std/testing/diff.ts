@@ -41,7 +41,7 @@ export default function diff<T>(A: T[], B: T[]): Array<DiffResult<T>> {
   const suffixCommon = createCommon(
     A.slice(prefixCommon.length),
     B.slice(prefixCommon.length),
-    true
+    true,
   ).reverse();
   A = suffixCommon.length
     ? A.slice(prefixCommon.length, -suffixCommon.length)
@@ -57,16 +57,16 @@ export default function diff<T>(A: T[], B: T[]): Array<DiffResult<T>> {
   if (!N) {
     return [
       ...prefixCommon.map(
-        (c): DiffResult<typeof c> => ({ type: DiffType.common, value: c })
+        (c): DiffResult<typeof c> => ({ type: DiffType.common, value: c }),
       ),
       ...A.map(
         (a): DiffResult<typeof a> => ({
           type: swapped ? DiffType.added : DiffType.removed,
           value: a,
-        })
+        }),
       ),
       ...suffixCommon.map(
-        (c): DiffResult<typeof c> => ({ type: DiffType.common, value: c })
+        (c): DiffResult<typeof c> => ({ type: DiffType.common, value: c }),
       ),
     ];
   }
@@ -91,7 +91,7 @@ export default function diff<T>(A: T[], B: T[]): Array<DiffResult<T>> {
     A: T[],
     B: T[],
     current: FarthestPoint,
-    swapped: boolean
+    swapped: boolean,
   ): Array<{
     type: DiffType;
     value: T;
@@ -133,7 +133,7 @@ export default function diff<T>(A: T[], B: T[]): Array<DiffResult<T>> {
     slide: FarthestPoint,
     down: FarthestPoint,
     k: number,
-    M: number
+    M: number,
   ): FarthestPoint {
     if (slide && slide.y === -1 && down && down.y === -1) {
       return { y: 0, id: 0 };
@@ -163,7 +163,7 @@ export default function diff<T>(A: T[], B: T[]): Array<DiffResult<T>> {
     down: FarthestPoint,
     _offset: number,
     A: T[],
-    B: T[]
+    B: T[],
   ): FarthestPoint {
     const M = A.length;
     const N = B.length;
@@ -189,7 +189,7 @@ export default function diff<T>(A: T[], B: T[]): Array<DiffResult<T>> {
         fp[k + 1 + offset],
         offset,
         A,
-        B
+        B,
       );
     }
     for (let k = delta + p; k > delta; --k) {
@@ -199,7 +199,7 @@ export default function diff<T>(A: T[], B: T[]): Array<DiffResult<T>> {
         fp[k + 1 + offset],
         offset,
         A,
-        B
+        B,
       );
     }
     fp[delta + offset] = snake(
@@ -208,16 +208,16 @@ export default function diff<T>(A: T[], B: T[]): Array<DiffResult<T>> {
       fp[delta + 1 + offset],
       offset,
       A,
-      B
+      B,
     );
   }
   return [
     ...prefixCommon.map(
-      (c): DiffResult<typeof c> => ({ type: DiffType.common, value: c })
+      (c): DiffResult<typeof c> => ({ type: DiffType.common, value: c }),
     ),
     ...backTrace(A, B, fp[delta + offset], swapped),
     ...suffixCommon.map(
-      (c): DiffResult<typeof c> => ({ type: DiffType.common, value: c })
+      (c): DiffResult<typeof c> => ({ type: DiffType.common, value: c }),
     ),
   ];
 }

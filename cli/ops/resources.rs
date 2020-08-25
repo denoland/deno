@@ -5,15 +5,16 @@ use crate::state::State;
 use deno_core::CoreIsolate;
 use deno_core::CoreIsolateState;
 use deno_core::ZeroCopyBuf;
+use std::rc::Rc;
 
-pub fn init(i: &mut CoreIsolate, s: &State) {
+pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
   i.register_op("op_resources", s.stateful_json_op2(op_resources));
   i.register_op("op_close", s.stateful_json_op2(op_close));
 }
 
 fn op_resources(
   isolate_state: &mut CoreIsolateState,
-  _state: &State,
+  _state: &Rc<State>,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -24,7 +25,7 @@ fn op_resources(
 /// op_close removes a resource from the resource table.
 fn op_close(
   isolate_state: &mut CoreIsolateState,
-  _state: &State,
+  _state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {

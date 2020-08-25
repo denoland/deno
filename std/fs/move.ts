@@ -10,13 +10,13 @@ interface MoveOptions {
 export async function move(
   src: string,
   dest: string,
-  { overwrite = false }: MoveOptions = {}
+  { overwrite = false }: MoveOptions = {},
 ): Promise<void> {
   const srcStat = await Deno.stat(src);
 
   if (srcStat.isDirectory && isSubdir(src, dest)) {
     throw new Error(
-      `Cannot move '${src}' to a subdirectory of itself, '${dest}'.`
+      `Cannot move '${src}' to a subdirectory of itself, '${dest}'.`,
     );
   }
 
@@ -39,13 +39,13 @@ export async function move(
 export function moveSync(
   src: string,
   dest: string,
-  { overwrite = false }: MoveOptions = {}
+  { overwrite = false }: MoveOptions = {},
 ): void {
   const srcStat = Deno.statSync(src);
 
   if (srcStat.isDirectory && isSubdir(src, dest)) {
     throw new Error(
-      `Cannot move '${src}' to a subdirectory of itself, '${dest}'.`
+      `Cannot move '${src}' to a subdirectory of itself, '${dest}'.`,
     );
   }
 

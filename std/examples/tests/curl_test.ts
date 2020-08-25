@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { serve } from "../../http/server.ts";
-import { assertStrictEq } from "../../testing/asserts.ts";
+import { assertStrictEquals } from "../../testing/asserts.ts";
 
 Deno.test({
   name: "[examples/curl] send a request to a specified url",
@@ -30,7 +30,7 @@ Deno.test({
       const actual = decoder.decode(output).trim();
       const expected = "Hello world";
 
-      assertStrictEq(actual, expected);
+      assertStrictEquals(actual, expected);
     } finally {
       server.close();
       process.close();

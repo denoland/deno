@@ -1,12 +1,50 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { unitTest, assert, assertEquals } from "./test_util.ts";
 
+unitTest(function urlSearchParamsWithMultipleSpaces(): void {
+  const init = { str: "this string has spaces in it" };
+  const searchParams = new URLSearchParams(init).toString();
+  assertEquals(searchParams, "str=this+string+has+spaces+in+it");
+});
+
+unitTest(function urlSearchParamsWithExclamation(): void {
+  const init = [
+    ["str", "hello, world!"],
+  ];
+  const searchParams = new URLSearchParams(init).toString();
+  assertEquals(searchParams, "str=hello%2C+world%21");
+});
+
+unitTest(function urlSearchParamsWithQuotes(): void {
+  const init = [
+    ["str", "'hello world'"],
+  ];
+  const searchParams = new URLSearchParams(init).toString();
+  assertEquals(searchParams, "str=%27hello+world%27");
+});
+
+unitTest(function urlSearchParamsWithBraket(): void {
+  const init = [
+    ["str", "(hello world)"],
+  ];
+  const searchParams = new URLSearchParams(init).toString();
+  assertEquals(searchParams, "str=%28hello+world%29");
+});
+
+unitTest(function urlSearchParamsWithTilde(): void {
+  const init = [
+    ["str", "hello~world"],
+  ];
+  const searchParams = new URLSearchParams(init).toString();
+  assertEquals(searchParams, "str=hello%7Eworld");
+});
+
 unitTest(function urlSearchParamsInitString(): void {
   const init = "c=4&a=2&b=3&%C3%A1=1";
   const searchParams = new URLSearchParams(init);
   assert(
     init === searchParams.toString(),
-    "The init query string does not match"
+    "The init query string does not match",
   );
 });
 
@@ -243,7 +281,7 @@ unitTest(
     };
     const params1 = new URLSearchParams((params as unknown) as string[][]);
     assertEquals(params1.get("1"), "2");
-  }
+  },
 );
 
 // If a class extends URLSearchParams, override one method should not change another's behavior.
@@ -261,7 +299,7 @@ unitTest(
     new CustomSearchParams(new CustomSearchParams({ foo: "bar" }));
     new CustomSearchParams().set("foo", "bar");
     assertEquals(overridedAppendCalled, 0);
-  }
+  },
 );
 
 unitTest(function urlSearchParamsOverridingEntriesNotChangeForEach(): void {

@@ -5,6 +5,7 @@ use crate::state::State;
 use deno_core::CoreIsolate;
 use deno_core::CoreIsolateState;
 use deno_core::ZeroCopyBuf;
+use std::rc::Rc;
 
 #[cfg(unix)]
 use super::dispatch_json::Deserialize;
@@ -15,7 +16,7 @@ use std::task::Waker;
 #[cfg(unix)]
 use tokio::signal::unix::{signal, Signal, SignalKind};
 
-pub fn init(i: &mut CoreIsolate, s: &State) {
+pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
   i.register_op("op_signal_bind", s.stateful_json_op2(op_signal_bind));
   i.register_op("op_signal_unbind", s.stateful_json_op2(op_signal_unbind));
   i.register_op("op_signal_poll", s.stateful_json_op2(op_signal_poll));
@@ -41,7 +42,7 @@ struct SignalArgs {
 #[cfg(unix)]
 fn op_signal_bind(
   isolate_state: &mut CoreIsolateState,
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -63,7 +64,7 @@ fn op_signal_bind(
 #[cfg(unix)]
 fn op_signal_poll(
   isolate_state: &mut CoreIsolateState,
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -90,7 +91,7 @@ fn op_signal_poll(
 #[cfg(unix)]
 pub fn op_signal_unbind(
   isolate_state: &mut CoreIsolateState,
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -115,7 +116,7 @@ pub fn op_signal_unbind(
 #[cfg(not(unix))]
 pub fn op_signal_bind(
   _isolate_state: &mut CoreIsolateState,
-  _state: &State,
+  _state: &Rc<State>,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -125,7 +126,7 @@ pub fn op_signal_bind(
 #[cfg(not(unix))]
 fn op_signal_unbind(
   _isolate_state: &mut CoreIsolateState,
-  _state: &State,
+  _state: &Rc<State>,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {
@@ -135,7 +136,7 @@ fn op_signal_unbind(
 #[cfg(not(unix))]
 fn op_signal_poll(
   _isolate_state: &mut CoreIsolateState,
-  _state: &State,
+  _state: &Rc<State>,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, OpError> {

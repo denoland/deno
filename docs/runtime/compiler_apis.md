@@ -1,7 +1,7 @@
-## Compiler API
+## Compiler APIs
 
-> This is an unstable Deno feature. Learn more about
-> [unstable features](./stability.md).
+> This API is unstable. Learn more about
+> [unstable features](../runtime/stability.md).
 
 Deno supports runtime access to the built-in TypeScript compiler. There are
 three methods in the `Deno` namespace that provide this access.
@@ -48,7 +48,7 @@ could do on the command line. So you could do something like this:
 
 ```ts
 const [diagnostics, emitMap] = await Deno.compile(
-  "https://deno.land/std/examples/welcome.ts"
+  "https://deno.land/std@$STD_VERSION/examples/welcome.ts",
 );
 ```
 
@@ -95,7 +95,7 @@ could do on the command line. So you could do something like this:
 
 ```ts
 const [diagnostics, emit] = await Deno.bundle(
-  "https://deno.land/std/http/server.ts"
+  "https://deno.land/std@$STD_VERSION/http/server.ts",
 );
 ```
 
@@ -151,7 +151,7 @@ const [errors, emitted] = await Deno.compile(
   },
   {
     lib: ["dom", "esnext"],
-  }
+  },
 );
 ```
 
@@ -191,7 +191,7 @@ const [errors, emitted] = await Deno.compile(
   },
   {
     lib: ["dom", "esnext", "deno.ns"],
-  }
+  },
 );
 ```
 
@@ -202,7 +202,7 @@ errors logged as part of the compilation.
 #### Using the triple slash reference
 
 You do not have to specify the `lib` in the compiler options. Deno also supports
-[the triple-slash reference to a lib](https://www.typescriptlang.org/docs/handbook/triple-slash-directives.html#-reference-lib-).
+[the triple-slash reference to a lib](https://www.typescriptlang.org/docs/handbook/triple-slash-directives.html#-reference-lib-)
 which can be embedded in the contents of the file. For example, if you have a
 `main.ts` like:
 

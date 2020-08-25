@@ -11,6 +11,7 @@ use futures::future::FutureExt;
 use futures::ready;
 use std::collections::HashMap;
 use std::pin::Pin;
+use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::task::Context;
 use std::task::Poll;
@@ -37,54 +38,82 @@ lazy_static! {
   /// resource table is dropped storing reference to that handle, the handle
   /// itself won't be closed (so Deno.core.print) will still work.
   // TODO(ry) It should be possible to close stdout.
-  static ref STDOUT_HANDLE: std::fs::File = {
+  static ref STDIN_HANDLE: Option<std::fs::File> = {
     #[cfg(not(windows))]
-    let stdout = unsafe { std::fs::File::from_raw_fd(1) };
+    let stdin = unsafe { Some(std::fs::File::from_raw_fd(0)) };
+    #[cfg(windows)]
+    let stdin = unsafe {
+      let handle = winapi::um::processenv::GetStdHandle(
+        winapi::um::winbase::STD_INPUT_HANDLE,
+      );
+      if handle.is_null() {
+        return None;
+      }
+      Some(std::fs::File::from_raw_handle(handle))
+    };
+    stdin
+  };
+  static ref STDOUT_HANDLE: Option<std::fs::File> = {
+    #[cfg(not(windows))]
+    let stdout = unsafe { Some(std::fs::File::from_raw_fd(1)) };
     #[cfg(windows)]
     let stdout = unsafe {
-      std::fs::File::from_raw_handle(winapi::um::processenv::GetStdHandle(
+      let handle = winapi::um::processenv::GetStdHandle(
         winapi::um::winbase::STD_OUTPUT_HANDLE,
-      ))
+      );
+      if handle.is_null() {
+        return None;
+      }
+      Some(std::fs::File::from_raw_handle(handle))
     };
     stdout
   };
-  static ref STDERR_HANDLE: std::fs::File = {
+  static ref STDERR_HANDLE: Option<std::fs::File> = {
     #[cfg(not(windows))]
-    let stderr = unsafe { std::fs::File::from_raw_fd(2) };
+    let stderr = unsafe { Some(std::fs::File::from_raw_fd(2)) };
     #[cfg(windows)]
     let stderr = unsafe {
-      std::fs::File::from_raw_handle(winapi::um::processenv::GetStdHandle(
+      let handle = winapi::um::processenv::GetStdHandle(
         winapi::um::winbase::STD_ERROR_HANDLE,
-      ))
+      );
+      if handle.is_null() {
+        return None;
+      }
+      Some(std::fs::File::from_raw_handle(handle))
     };
     stderr
   };
 }
 
-pub fn init(i: &mut CoreIsolate, s: &State) {
+pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
   i.register_op("op_read", s.stateful_minimal_op2(op_read));
   i.register_op("op_write", s.stateful_minimal_op2(op_write));
 }
 
 pub fn get_stdio() -> (
-  StreamResourceHolder,
-  StreamResourceHolder,
-  StreamResourceHolder,
+  Option<StreamResourceHolder>,
+  Option<StreamResourceHolder>,
+  Option<StreamResourceHolder>,
 ) {
-  let stdin = StreamResourceHolder::new(StreamResource::Stdin(
-    tokio::io::stdin(),
-    TTYMetadata::default(),
-  ));
-  let stdout = StreamResourceHolder::new(StreamResource::FsFile(Some({
-    let stdout = STDOUT_HANDLE.try_clone().unwrap();
-    (tokio::fs::File::from_std(stdout), FileMetadata::default())
-  })));
-  let stderr = StreamResourceHolder::new(StreamResource::FsFile(Some({
-    let stderr = STDERR_HANDLE.try_clone().unwrap();
-    (tokio::fs::File::from_std(stderr), FileMetadata::default())
-  })));
+  let stdin = get_stdio_stream(&STDIN_HANDLE);
+  let stdout = get_stdio_stream(&STDOUT_HANDLE);
+  let stderr = get_stdio_stream(&STDERR_HANDLE);
 
   (stdin, stdout, stderr)
+}
+
+fn get_stdio_stream(
+  handle: &Option<std::fs::File>,
+) -> Option<StreamResourceHolder> {
+  match handle {
+    None => None,
+    Some(file_handle) => match file_handle.try_clone() {
+      Ok(clone) => Some(StreamResourceHolder::new(StreamResource::FsFile(
+        Some((tokio::fs::File::from_std(clone), FileMetadata::default())),
+      ))),
+      Err(_e) => None,
+    },
+  }
 }
 
 fn no_buffer_specified() -> OpError {
@@ -208,7 +237,7 @@ impl DenoAsyncRead for StreamResource {
 
 pub fn op_read(
   isolate_state: &mut CoreIsolateState,
-  _state: &State,
+  _state: &Rc<State>,
   is_sync: bool,
   rid: i32,
   zero_copy: &mut [ZeroCopyBuf],
@@ -333,7 +362,7 @@ impl DenoAsyncWrite for StreamResource {
 
 pub fn op_write(
   isolate_state: &mut CoreIsolateState,
-  _state: &State,
+  _state: &Rc<State>,
   is_sync: bool,
   rid: i32,
   zero_copy: &mut [ZeroCopyBuf],
