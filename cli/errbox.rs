@@ -16,21 +16,36 @@ use deno_core::ErrBox;
 use deno_core::ModuleResolutionError;
 use rustyline::error::ReadlineError;
 use std::borrow::Cow;
-use std::env::VarError;
+use std::env;
 use std::error::Error;
 use std::io;
 
-fn from_var(error: &VarError) -> &'static str {
-  use VarError::*;
+fn get_dlopen_error_class(error: &dlopen::Error) -> &'static str {
+  use dlopen::Error::*;
+  match error {
+    NullCharacter(_) => "Other",
+    OpeningLibraryError(ref e) => get_io_error_class(e),
+    SymbolGettingError(ref e) => get_io_error_class(e),
+    AddrNotMatchingDll(ref e) => get_io_error_class(e),
+    NullSymbol => "Other",
+  }
+}
+
+fn get_env_var_error_class(error: &env::VarError) -> &'static str {
+  use env::VarError::*;
   match error {
     NotPresent => "NotFound",
     NotUnicode(..) => "InvalidData",
   }
 }
 
-fn get_io_kind(error_kind: &io::ErrorKind) -> &'static str {
+fn get_import_map_error_class(_: &ImportMapError) -> &'static str {
+  "URIError"
+}
+
+fn get_io_error_class(error: &io::Error) -> &'static str {
   use io::ErrorKind::*;
-  match error_kind {
+  match error.kind() {
     NotFound => "NotFound",
     PermissionDenied => "PermissionDenied",
     ConnectionRefused => "ConnectionRefused",
@@ -55,12 +70,33 @@ fn get_io_kind(error_kind: &io::ErrorKind) -> &'static str {
   }
 }
 
-fn get_io_error_class(error: &io::Error) -> &'static str {
-  get_io_kind(&error.kind())
+fn get_module_resolution_error_class(
+  _: &ModuleResolutionError,
+) -> &'static str {
+  "URIError"
 }
 
-fn get_url_parse_error_class(_error: &url::ParseError) -> &'static str {
-  "URIError"
+fn get_notify_error_class(error: &notify::Error) -> &'static str {
+  use notify::ErrorKind::*;
+  match error.kind {
+    Generic(_) => "Other",
+    Io(ref e) => get_io_error_class(e),
+    PathNotFound => "NotFound",
+    WatchNotFound => "NotFound",
+    InvalidConfig(_) => "InvalidData",
+  }
+}
+
+fn get_readline_error_class(error: &ReadlineError) -> &'static str {
+  use ReadlineError::*;
+  match error {
+    Io(err) => get_io_error_class(err),
+    Eof => "UnexpectedEof",
+    Interrupted => "Interrupted",
+    #[cfg(unix)]
+    Errno(err) => get_nix_error_class(err),
+    _ => unimplemented!(),
+  }
 }
 
 fn get_request_error_class(error: &reqwest::Error) -> &'static str {
@@ -82,28 +118,6 @@ fn get_request_error_class(error: &reqwest::Error) -> &'static str {
   }
 }
 
-fn get_import_map_error_class(_: &ImportMapError) -> &'static str {
-  "URIError"
-}
-
-fn get_mpdule_resolution_error_class(
-  _: &ModuleResolutionError,
-) -> &'static str {
-  "URIError"
-}
-
-fn from_readline(error: &ReadlineError) -> &'static str {
-  use ReadlineError::*;
-  match error {
-    Io(err) => get_io_error_class(err),
-    Eof => "UnexpectedEof",
-    Interrupted => "Interrupted",
-    #[cfg(unix)]
-    Errno(err) => from_nix(err),
-    _ => unimplemented!(),
-  }
-}
-
 fn get_serde_json_error_class(
   error: &serde_json::error::Error,
 ) -> &'static str {
@@ -116,8 +130,16 @@ fn get_serde_json_error_class(
   }
 }
 
+fn get_swc_diagnostic_class(_: &SwcDiagnosticBuffer) -> &'static str {
+  "Other"
+}
+
+fn get_url_parse_error_class(_error: &url::ParseError) -> &'static str {
+  "URIError"
+}
+
 #[cfg(unix)]
-fn from_nix(error: &nix::Error) -> &'static str {
+fn get_nix_error_class(error: &nix::Error) -> &'static str {
   use nix::errno::Errno::*;
   match error {
     nix::Error::Sys(EPERM) => "PermissionDenied",
@@ -132,91 +154,64 @@ fn from_nix(error: &nix::Error) -> &'static str {
   }
 }
 
-fn get_dlopen_error_class(error: &dlopen::Error) -> &'static str {
-  use dlopen::Error::*;
-  match error {
-    NullCharacter(_) => "Other",
-    OpeningLibraryError(e) => get_io_error_class(e),
-    SymbolGettingError(e) => get_io_error_class(e),
-    AddrNotMatchingDll(e) => get_io_error_class(e),
-    NullSymbol => "Other",
+pub fn get_error_class(e: &ErrBox) -> &'static str {
+  use ErrBox::*;
+  match e {
+    Simple { class, .. } => Some(*class),
+    _ => None,
   }
-}
-
-fn get_notify_error_class(error: &notify::Error) -> &'static str {
-  use notify::ErrorKind::*;
-  match error.kind {
-    Generic(_) => "Other",
-    Io(ref e) => get_io_error_class(e),
-    PathNotFound => "NotFound",
-    WatchNotFound => "NotFound",
-    InvalidConfig(_) => "InvalidData",
-  }
-}
-
-fn get_swc_diagnostic_error_class(_: &SwcDiagnosticBuffer) -> &'static str {
-  "Other"
-}
-
-pub fn get_error_class(error: &ErrBox) -> &'static str {
-  None
-    .or_else(|| {
-      error
-        .downcast_ref::<reqwest::Error>()
-        .map(get_request_error_class)
-    })
-    .or_else(|| {
-      error
-        .downcast_ref::<ImportMapError>()
-        .map(get_import_map_error_class)
-    })
-    .or_else(|| {
-      error
-        .downcast_ref::<ModuleResolutionError>()
-        .map(get_mpdule_resolution_error_class)
-    })
-    .or_else(|| error.downcast_ref::<io::Error>().map(get_io_error_class))
-    .or_else(|| {
-      error
-        .downcast_ref::<url::ParseError>()
-        .map(get_url_parse_error_class)
-    })
-    .or_else(|| error.downcast_ref::<VarError>().map(from_var))
-    .or_else(|| error.downcast_ref::<ReadlineError>().map(from_readline))
-    .or_else(|| {
-      error
-        .downcast_ref::<serde_json::error::Error>()
-        .map(get_serde_json_error_class)
-    })
-    .or_else(|| {
-      error
-        .downcast_ref::<dlopen::Error>()
-        .map(get_dlopen_error_class)
-    })
-    .or_else(|| {
-      error
-        .downcast_ref::<notify::Error>()
-        .map(get_notify_error_class)
-    })
-    .or_else(|| {
-      error
-        .downcast_ref::<SwcDiagnosticBuffer>()
-        .map(get_swc_diagnostic_error_class)
-    })
-    .or_else(|| {
-      #[cfg(unix)]
-      fn get_os_error_class(error: &ErrBox) -> Option<&'static str> {
-        error.downcast_ref::<nix::Error>().map(from_nix)
-      }
-      #[cfg(not(unix))]
-      fn get_os_error_class(_: &ErrBox) -> Option<&'static str> {
-        None
-      }
-      get_os_error_class(error)
-    })
-    .unwrap_or_else(|| {
-      panic!("Can't downcast {:?} to ErrBox", error);
-    })
+  .or_else(|| {
+    e.downcast_ref::<dlopen::Error>()
+      .map(get_dlopen_error_class)
+  })
+  .or_else(|| {
+    e.downcast_ref::<env::VarError>()
+      .map(get_env_var_error_class)
+  })
+  .or_else(|| {
+    e.downcast_ref::<ImportMapError>()
+      .map(get_import_map_error_class)
+  })
+  .or_else(|| e.downcast_ref::<io::Error>().map(get_io_error_class))
+  .or_else(|| {
+    e.downcast_ref::<ModuleResolutionError>()
+      .map(get_module_resolution_error_class)
+  })
+  .or_else(|| {
+    e.downcast_ref::<notify::Error>()
+      .map(get_notify_error_class)
+  })
+  .or_else(|| {
+    e.downcast_ref::<ReadlineError>()
+      .map(get_readline_error_class)
+  })
+  .or_else(|| {
+    e.downcast_ref::<reqwest::Error>()
+      .map(get_request_error_class)
+  })
+  .or_else(|| {
+    e.downcast_ref::<serde_json::error::Error>()
+      .map(get_serde_json_error_class)
+  })
+  .or_else(|| {
+    e.downcast_ref::<SwcDiagnosticBuffer>()
+      .map(get_swc_diagnostic_class)
+  })
+  .or_else(|| {
+    e.downcast_ref::<url::ParseError>()
+      .map(get_url_parse_error_class)
+  })
+  .or_else(|| {
+    #[cfg(unix)]
+    let maybe_nix_error_class =
+      || e.downcast_ref::<nix::Error>().map(get_nix_error_class);
+    #[cfg(not(unix))]
+    let maybe_nix_error_class = || Option::<&'static str>::None;
+    (maybe_nix_error_class)()
+  })
+  .unwrap_or_else(|| {
+    panic!("ErrBox '{}' contains boxed error of unknown type", e);
+  })
 }
 
 pub fn rust_err_to_json(error: &ErrBox) -> Box<[u8]> {
@@ -225,16 +220,20 @@ pub fn rust_err_to_json(error: &ErrBox) -> Box<[u8]> {
   serde_json::to_vec(&error_value).unwrap().into_boxed_slice()
 }
 
-pub fn not_implemented() -> ErrBox {
-  ErrBox::other("not implemented")
+pub fn invalid_domain_error() -> ErrBox {
+  ErrBox::type_error("Invalid domain")
 }
 
 pub fn invalid_utf8() -> ErrBox {
   ErrBox::new("InvalidData", "invalid utf8")
 }
 
-pub fn invalid_domain_error() -> ErrBox {
-  ErrBox::type_error("Invalid domain")
+pub fn not_implemented() -> ErrBox {
+  ErrBox::other("not implemented")
+}
+
+pub fn permission_denied(message: impl Into<Cow<'static, str>>) -> ErrBox {
+  ErrBox::new("PermissionDenied", message)
 }
 
 pub fn permission_escalation_error() -> ErrBox {
@@ -246,8 +245,4 @@ pub fn resource_unavailable() -> ErrBox {
     "Busy",
     "resource is unavailable because it is in use by a promise",
   )
-}
-
-pub fn permission_denied(message: impl Into<Cow<'static, str>>) -> ErrBox {
-  ErrBox::new("PermissionDenied", message)
 }
