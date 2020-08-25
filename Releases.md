@@ -6,6 +6,28 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at
 https://github.com/denoland/deno_install
 
+### 1.3.1 / 2020.08.21
+
+- fix: Allow isolated "%"s when parsing file URLs (#7108)
+- fix: Blob.arrayBuffer returns Uint8Array (#7086)
+- fix: CLI argument parsing with dash values (#7039)
+- fix: Create Body stream from any valid bodySource (#7128)
+- fix: Granular permission requests/revokes (#7074)
+- fix: Handling of multiple spaces in URLSearchParams (#7068)
+- core: Enable WebAssembly.instantiateStreaming (#7043)
+- core: Add missing export of HeapLimits (#7047)
+- upgrade: swc_ecmascript, deno_lint, dprint (#7098)
+
+Changes in std version 0.66.0:
+
+- BREAKING(std/datetime): Remove currentDayOfYear (#7059)
+- feat(std/node): Add basic asserts (#7091)
+- feat(std/datetime): Generalise parser, add formatter (#6619)
+- fix(std/node): Misnamed assert exports (#7123)
+- fix(std/encoding/toml): Stop TOML parser from detecting numbers in strings.
+  (#7064)
+- fix(std/encoding/csv): Improve error message on ParseError (#7057)
+
 ### 1.3.0 / 2020.08.13
 
 Changes in the CLI:

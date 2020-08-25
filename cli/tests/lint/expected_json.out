@@ -37,7 +37,7 @@
   "errors": [
     {
       "file_path": "[WILDCARD]malformed.js",
-      "message": "Expected RBrace, got None at [WILDCARD]malformed.js:4:15"
+      "message": "Expected }, got <eof> at [WILDCARD]malformed.js:4:15"
     }
   ]
 }
