@@ -154,6 +154,7 @@
     trailingComma: false,
     compact: true,
     iterableLimit: 100,
+    showProxy: false,
   };
 
   const DEFAULT_INDENT = "  "; // Default indent string

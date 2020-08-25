@@ -1361,6 +1361,12 @@ unitTest(function inspectProxy(): void {
     "[ 1, 2, 3 ]",
   );
   assertEquals(
+    Deno.inspect(
+      new Proxy({ key: "value" }, { get(): void {} }),
+    ),
+    `{ key: "value" }`,
+  );
+  assertEquals(
     Deno.inspect(new Proxy([1, 2, 3], { get(): void {} }), { showProxy: true }),
     "Proxy [ [ 1, 2, 3 ], { get: [Function: get] } ]",
   );
