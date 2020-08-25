@@ -3,7 +3,6 @@
 use super::dispatch_json::{blocking_json, Deserialize, JsonOp, Value};
 use super::io::std_file_resource;
 use super::io::{FileMetadata, StreamResource, StreamResourceHolder};
-#[cfg(not(unix))]
 use crate::ops::dispatch_json::JsonResult;
 use crate::state::State;
 use deno_core::BufVec;
