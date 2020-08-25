@@ -100,22 +100,24 @@ fn get_readline_error_class(error: &ReadlineError) -> &'static str {
 }
 
 fn get_request_error_class(error: &reqwest::Error) -> &'static str {
-  match error.source() {
-    Some(err_ref) => None
+  error
+    .source()
+    .and_then(|inner_err| {
+      (inner_err
+        .downcast_ref::<io::Error>()
+        .map(get_io_error_class))
       .or_else(|| {
-        err_ref
-          .downcast_ref::<url::ParseError>()
-          .map(get_url_parse_error_class)
-      })
-      .or_else(|| err_ref.downcast_ref::<io::Error>().map(get_io_error_class))
-      .or_else(|| {
-        err_ref
+        inner_err
           .downcast_ref::<serde_json::error::Error>()
           .map(get_serde_json_error_class)
       })
-      .unwrap_or("Http"),
-    None => "Http",
-  }
+      .or_else(|| {
+        inner_err
+          .downcast_ref::<url::ParseError>()
+          .map(get_url_parse_error_class)
+      })
+    })
+    .unwrap_or("Http")
 }
 
 fn get_serde_json_error_class(
