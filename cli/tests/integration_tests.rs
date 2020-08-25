@@ -3355,56 +3355,56 @@ fn should_not_panic_on_undefined_deno_dir_and_home_environment_variables() {
 
 #[test]
 fn debug_with_log_level_and_rust_log() {
-  let hello_ts = util::root_path().join("cli/tests/002_hello.ts");
-  let expected = util::deno_cmd()
-    .current_dir(util::root_path())
-    .arg("run")
-    .arg("-L")
-    .arg("debug")
-    .arg("--reload")
-    .arg(&hello_ts)
-    .stdout(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  let rust_log = util::deno_cmd()
-    .env("RUST_LOG", "debug")
-    .current_dir(util::root_path())
-    .arg("run")
-    .arg("-L")
-    .arg("debug")
-    .arg("--reload")
-    .arg(&hello_ts)
-    .stdout(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  std::env::remove_var("RUST_LOG");
-  assert_eq!(expected, rust_log);
+  let expected = std::fs::read_to_string(
+    util::tests_path().join("debug_with_log_level_and_RUST_LOG.out"),
+  )
+  .expect("cannot read output");
+  let (actual, _) = util::run_and_collect_output(
+    true,
+    "run -L debug --reload 002_hello.ts",
+    None,
+    Some(vec![
+      ("RUST_LOG".to_owned(), "debug".to_owned()),
+      ("NO_COLOR".to_owned(), "1".to_owned()),
+    ]),
+    false,
+  );
+  assert!(util::wildcard_match(&expected, &actual));
 }
 
 #[test]
 fn rust_log_debug() {
-  std::env::set_var("RUST_LOG", "debug");
-  (util::CheckOutputIntegrationTest {
-    args: "run --reload 002_hello.ts",
-    output: "RUST_LOG_debug.out",
-    ..Default::default()
-  })
-  .run();
-  std::env::remove_var("RUST_LOG");
+  let expected =
+    std::fs::read_to_string(util::tests_path().join("RUST_LOG_debug.out"))
+      .expect("cannot read output");
+  let (actual, _) = util::run_and_collect_output(
+    true,
+    "run --reload 002_hello.ts",
+    None,
+    Some(vec![
+      ("RUST_LOG".to_owned(), "debug".to_owned()),
+      ("NO_COLOR".to_owned(), "1".to_owned()),
+    ]),
+    false,
+  );
+  assert!(util::wildcard_match(&expected, &actual));
 }
 
 #[test]
 fn rust_log_deno_permissions() {
-  std::env::set_var("RUST_LOG", "deno::permissions");
-  (util::CheckOutputIntegrationTest {
-    args: "run --reload 002_hello.ts",
-    output: "RUST_LOG_permissions.out",
-    ..Default::default()
-  })
-  .run();
-  std::env::remove_var("RUST_LOG");
+  let expected = std::fs::read_to_string(
+    util::tests_path().join("RUST_LOG_deno_permissions.out"),
+  )
+  .expect("cannot read output");
+  let (actual, _) = util::run_and_collect_output(
+    true,
+    "run --reload 002_hello.ts",
+    None,
+    Some(vec![
+      ("RUST_LOG".to_owned(), "deno::permissions".to_owned()),
+      ("NO_COLOR".to_owned(), "1".to_owned()),
+    ]),
+    false,
+  );
+  assert!(util::wildcard_match(&expected, &actual));
 }
