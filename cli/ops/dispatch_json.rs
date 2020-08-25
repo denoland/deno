@@ -106,11 +106,8 @@ where
         Op::AsyncUnref(fut2.boxed_local())
       }
       Err(sync_err) => {
-        let buf = serialize_result(
-          rust_err_to_json_fn,
-          promise_id,
-          Err(sync_err),
-        );
+        let buf =
+          serialize_result(rust_err_to_json_fn, promise_id, Err(sync_err));
         if is_sync {
           Op::Sync(buf)
         } else {
