@@ -12,7 +12,6 @@ use crate::module_graph::ModuleGraph;
 use crate::module_graph::ModuleGraphLoader;
 use crate::msg;
 use crate::msg::MediaType;
-use crate::op_error::OpError;
 use crate::ops;
 use crate::permissions::Permissions;
 use crate::source_maps::SourceMapGetter;
@@ -618,7 +617,7 @@ impl TsCompiler {
     let compile_response: CompileResponse = serde_json::from_str(&json_str)?;
 
     if !compile_response.diagnostics.items.is_empty() {
-      return Err(ErrBox::from(compile_response.diagnostics));
+      return Err(ErrBox::error(compile_response.diagnostics.to_string()));
     }
 
     maybe_log_stats(compile_response.stats);
@@ -722,7 +721,7 @@ impl TsCompiler {
     maybe_log_stats(bundle_response.stats);
 
     if !bundle_response.diagnostics.items.is_empty() {
-      return Err(ErrBox::from(bundle_response.diagnostics));
+      return Err(ErrBox::error(bundle_response.diagnostics.to_string()));
     }
 
     assert!(bundle_response.bundle_output.is_some());
@@ -1071,7 +1070,7 @@ async fn create_runtime_module_graph(
   root_name: &str,
   sources: &Option<HashMap<String, String>>,
   maybe_options: &Option<String>,
-) -> Result<(Vec<String>, ModuleGraph), OpError> {
+) -> Result<(Vec<String>, ModuleGraph), ErrBox> {
   let mut root_names = vec![];
   let mut module_graph_loader = ModuleGraphLoader::new(
     global_state.file_fetcher.clone(),
@@ -1117,14 +1116,14 @@ async fn create_runtime_module_graph(
 }
 
 /// Because TS compiler can raise runtime error, we need to
-/// manually convert formatted JSError into and OpError.
-fn js_error_to_op_error(error: ErrBox) -> OpError {
+/// manually convert formatted JSError into and ErrBox.
+fn js_error_to_errbox(error: ErrBox) -> ErrBox {
   match error.downcast::<JSError>() {
     Ok(js_error) => {
       let msg = format!("Error in TS compiler:\n{}", js_error);
-      OpError::other(msg)
+      ErrBox::error(msg)
     }
-    Err(error) => error.into(),
+    Err(error) => error,
   }
 }
 
@@ -1135,7 +1134,7 @@ pub async fn runtime_compile(
   root_name: &str,
   sources: &Option<HashMap<String, String>>,
   maybe_options: &Option<String>,
-) -> Result<Value, OpError> {
+) -> Result<Value, ErrBox> {
   let (root_names, module_graph) = create_runtime_module_graph(
     &global_state,
     permissions.clone(),
@@ -1161,7 +1160,7 @@ pub async fn runtime_compile(
 
   let json_str = execute_in_same_thread(global_state, permissions, req_msg)
     .await
-    .map_err(js_error_to_op_error)?;
+    .map_err(js_error_to_errbox)?;
 
   let response: RuntimeCompileResponse = serde_json::from_str(&json_str)?;
 
@@ -1182,7 +1181,7 @@ pub async fn runtime_bundle(
   root_name: &str,
   sources: &Option<HashMap<String, String>>,
   maybe_options: &Option<String>,
-) -> Result<Value, OpError> {
+) -> Result<Value, ErrBox> {
   let (root_names, module_graph) = create_runtime_module_graph(
     &global_state,
     permissions.clone(),
@@ -1206,7 +1205,7 @@ pub async fn runtime_bundle(
 
   let json_str = execute_in_same_thread(global_state, permissions, req_msg)
     .await
-    .map_err(js_error_to_op_error)?;
+    .map_err(js_error_to_errbox)?;
   let _response: RuntimeBundleResponse = serde_json::from_str(&json_str)?;
   // We're returning `Ok()` instead of `Err()` because it's not runtime
   // error if there were diagnostics produced; we want to let user handle
@@ -1220,7 +1219,7 @@ pub async fn runtime_transpile(
   permissions: Permissions,
   sources: &HashMap<String, String>,
   options: &Option<String>,
-) -> Result<Value, OpError> {
+) -> Result<Value, ErrBox> {
   let req_msg = json!({
     "type": msg::CompilerRequestType::RuntimeTranspile,
     "sources": sources,
@@ -1230,7 +1229,7 @@ pub async fn runtime_transpile(
 
   let json_str = execute_in_same_thread(global_state, permissions, req_msg)
     .await
-    .map_err(js_error_to_op_error)?;
+    .map_err(js_error_to_errbox)?;
   let v = serde_json::from_str::<serde_json::Value>(&json_str)
     .expect("Error decoding JSON string.");
   Ok(v)

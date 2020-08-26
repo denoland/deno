@@ -29,6 +29,7 @@ pub mod deno_dir;
 pub mod diagnostics;
 mod diff;
 mod disk_cache;
+pub mod errors;
 mod file_fetcher;
 pub mod flags;
 mod flags_allow_net;
@@ -48,7 +49,6 @@ mod lockfile;
 mod metrics;
 mod module_graph;
 pub mod msg;
-pub mod op_error;
 mod op_fetch_asset;
 pub mod ops;
 pub mod permissions;
@@ -545,16 +545,22 @@ async fn doc_command(
 
   let loader = Box::new(global_state.file_fetcher.clone());
   let doc_parser = doc::DocParser::new(loader, private);
-  let media_type = map_file_extension(&PathBuf::from(&source_file));
-  let syntax = swc_util::get_syntax_for_media_type(media_type);
 
   let parse_result = if source_file == "--builtin" {
+    let syntax = swc_util::get_syntax_for_dts();
     doc_parser.parse_source(
       "lib.deno.d.ts",
       syntax,
       get_types(flags.unstable).as_str(),
     )
   } else {
+    let path = PathBuf::from(&source_file);
+    let syntax = if path.ends_with("d.ts") {
+      swc_util::get_syntax_for_dts()
+    } else {
+      let media_type = map_file_extension(&path);
+      swc_util::get_syntax_for_media_type(media_type)
+    };
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&source_file).unwrap();
     doc_parser

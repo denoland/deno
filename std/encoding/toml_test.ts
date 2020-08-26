@@ -6,7 +6,7 @@ import { parse, stringify } from "./toml.ts";
 
 const testFilesDir = path.resolve("encoding", "testdata");
 
-function parseFile(filePath: string): object {
+function parseFile(filePath: string): Record<string, unknown> {
   if (!existsSync(filePath)) {
     throw new Error(`File not found: ${filePath}`);
   }
@@ -254,7 +254,6 @@ Deno.test({
 Deno.test({
   name: "[TOML] Cargo",
   fn(): void {
-    /* eslint-disable @typescript-eslint/camelcase */
     const expected = {
       workspace: { members: ["./", "core"] },
       bin: [{ name: "deno", path: "cli/main.rs" }],
@@ -291,7 +290,6 @@ Deno.test({
       },
       target: { "cfg(windows)": { dependencies: { winapi: "0.3.6" } } },
     };
-    /* eslint-enable @typescript-eslint/camelcase */
     const actual = parseFile(path.join(testFilesDir, "cargo.toml"));
     assertEquals(actual, expected);
   },

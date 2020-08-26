@@ -659,7 +659,7 @@ class Printf {
     }
   }
 
-  fmtV(val: object): string {
+  fmtV(val: Record<string, unknown>): string {
     if (this.flags.sharp) {
       const options = this.flags.precision !== -1
         ? { depth: this.flags.precision }

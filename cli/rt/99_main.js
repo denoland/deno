@@ -195,10 +195,14 @@ delete Object.prototype.__proto__;
     core.registerErrorClass("UnexpectedEof", errors.UnexpectedEof);
     core.registerErrorClass("BadResource", errors.BadResource);
     core.registerErrorClass("Http", errors.Http);
-    core.registerErrorClass("URIError", URIError);
-    core.registerErrorClass("TypeError", TypeError);
-    core.registerErrorClass("Other", Error);
     core.registerErrorClass("Busy", errors.Busy);
+    core.registerErrorClass("NotSupported", errors.NotSupported);
+    core.registerErrorClass("Error", Error);
+    core.registerErrorClass("RangeError", RangeError);
+    core.registerErrorClass("ReferenceError", ReferenceError);
+    core.registerErrorClass("SyntaxError", SyntaxError);
+    core.registerErrorClass("TypeError", TypeError);
+    core.registerErrorClass("URIError", URIError);
   }
 
   // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope

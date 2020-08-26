@@ -301,7 +301,9 @@ const createHeader = (): string[] => [
   "",
   "",
   `    ${gray(bold("[Diff]"))} ${red(bold("Actual"))} / ${
-    green(bold("Expected"))
+    green(
+      bold("Expected"),
+    )
   }`,
   "",
   "",
@@ -484,10 +486,7 @@ Deno.test({
 Deno.test({
   name: "strictly unequal fail case",
   fn(): void {
-    assertThrows(
-      () => assertNotStrictEquals(1, 1),
-      AssertionError,
-    );
+    assertThrows(() => assertNotStrictEquals(1, 1), AssertionError);
   },
 });
 
@@ -499,6 +498,7 @@ Deno.test({
     assertArrayContains<boolean>([true, false], [true]);
     const value = { x: 1 };
     assertStrictEquals<typeof value>(value, value);
+    // eslint-disable-next-line @typescript-eslint/ban-types
     assertNotStrictEquals<object>(value, { x: 1 });
   },
 });

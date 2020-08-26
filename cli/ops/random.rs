@@ -1,8 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{JsonOp, Value};
-use crate::op_error::OpError;
 use crate::state::State;
 use deno_core::CoreIsolate;
+use deno_core::ErrBox;
 use deno_core::ZeroCopyBuf;
 use rand::thread_rng;
 use rand::Rng;
@@ -19,7 +19,7 @@ fn op_get_random_values(
   state: &Rc<State>,
   _args: Value,
   zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   assert_eq!(zero_copy.len(), 1);
 
   if let Some(seeded_rng) = &state.seeded_rng {
