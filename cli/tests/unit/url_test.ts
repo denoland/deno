@@ -183,10 +183,13 @@ unitTest(function urlNormalize(): void {
 unitTest(function urlModifyPathname(): void {
   const url = new URL("http://foo.bar/baz%qat/qux%quux");
   assertEquals(url.pathname, "/baz%qat/qux%quux");
+  // Self-assignment is to invoke the setter.
+  // deno-lint-ignore no-self-assign
   url.pathname = url.pathname;
   assertEquals(url.pathname, "/baz%qat/qux%quux");
   url.pathname = "baz#qat qux";
   assertEquals(url.pathname, "/baz%23qat%20qux");
+  // deno-lint-ignore no-self-assign
   url.pathname = url.pathname;
   assertEquals(url.pathname, "/baz%23qat%20qux");
 });
@@ -195,6 +198,7 @@ unitTest(function urlModifyHash(): void {
   const url = new URL("http://foo.bar");
   url.hash = "%foo bar/qat%qux#bar";
   assertEquals(url.hash, "#%foo%20bar/qat%qux#bar");
+  // deno-lint-ignore no-self-assign
   url.hash = url.hash;
   assertEquals(url.hash, "#%foo%20bar/qat%qux#bar");
 });
