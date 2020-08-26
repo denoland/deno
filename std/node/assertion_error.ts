@@ -383,8 +383,10 @@ export interface AssertionErrorConstructorOptions {
   actual?: unknown;
   expected?: unknown;
   operator?: string;
+  // eslint-disable-next-line @typescript-eslint/ban-types
   stackStartFn?: Function;
   // Compatibility with older versions.
+  // eslint-disable-next-line @typescript-eslint/ban-types
   stackStartFunction?: Function;
 }
 
@@ -544,7 +546,7 @@ export class AssertionError extends Error {
     return `${this.name} [${this.code}]: ${this.message}`;
   }
 
-  [inspect.custom](recurseTimes: number, ctx: object) {
+  [inspect.custom](recurseTimes: number, ctx: Record<string, unknown>) {
     // Long strings should not be fully inspected.
     const tmpActual = this.actual;
     const tmpExpected = this.expected;
