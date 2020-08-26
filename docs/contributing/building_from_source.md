@@ -25,9 +25,11 @@ Extra steps for Windows users:
 
 ### Prerequisites
 
-> Deno requires the progressively latest stable release of Rust. Deno does not support the Rust nightlies.
+> Deno requires the progressively latest stable release of Rust. Deno does not
+> support the Rust nightlies.
 
-[Update or Install Rust](https://www.rust-lang.org/tools/install). Check that Rust installed/updated correctly:
+[Update or Install Rust](https://www.rust-lang.org/tools/install). Check that
+Rust installed/updated correctly:
 
 ```
 rustc -V
