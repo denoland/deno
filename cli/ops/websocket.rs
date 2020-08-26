@@ -1,7 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-#![allow(warnings)]
-
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::op_error::OpError;
 use crate::state::State;
