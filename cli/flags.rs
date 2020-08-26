@@ -1144,6 +1144,7 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
       Arg::with_name("coverage")
         .long("coverage")
         .takes_value(false)
+        .requires("unstable")
         .requires("inspect")
         .help("Collect coverage information"),
     )
