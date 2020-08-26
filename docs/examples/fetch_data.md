@@ -13,35 +13,32 @@ command.
 **Command:** `deno run --allow-net fetch.ts`
 
 ```js
-async function callApi(url: string): Promise<Response> {
-  try {
-    return await fetch(url);
-  } catch (e) {
-    throw new Error(e.message);
-  }
-}
-
 /**
  * Output: JSON Data
-**/
-callApi("https://api.github.com/users/denoland")
-  .then((response) => {
-    return response.json();
-  })
-  .then((json) => console.log(json));
+ */
+const json = fetch("https://api.github.com/users/denoland");
+
+json.then((response) => {
+  return response.json();
+}).then((jsonData) => {
+  console.log(jsonData);
+});
 
 /**
  * Output: HTML Data
-**/
-callApi("https://deno.land/")
-  .then((response) => {
-    return response.text();
-  })
-  .then((text) => console.log(text));
+ */
+const text = fetch("https://deno.land/");
+
+text.then((response) => {
+  return response.text();
+}).then((textData) => {
+  console.log(textData);
+});
 
 /**
  * Output: Error Message
-**/
-callApi("https://does.not.exist/")
-  .catch((error) => console.log(error));
+ */
+const error = fetch("https://does.not.exist/");
+
+error.catch((error) => console.log(error.message));
 ```
