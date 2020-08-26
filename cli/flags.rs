@@ -1917,7 +1917,6 @@ mod tests {
           file: Some("script.ts".to_string()),
         },
         reload: true,
-        no_check: true,
         ..Flags::default()
       }
     );
