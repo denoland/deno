@@ -5,7 +5,6 @@ use crate::global_timer::GlobalTimer;
 use crate::http_util::create_http_client;
 use crate::import_map::ImportMap;
 use crate::metrics::Metrics;
-use crate::op_error::OpError;
 use crate::ops::serialize_result;
 use crate::ops::JsonOp;
 use crate::ops::MinimalOp;
@@ -64,7 +63,7 @@ impl State {
     dispatcher: D,
   ) -> impl Fn(&mut deno_core::CoreIsolateState, &mut [ZeroCopyBuf]) -> Op
   where
-    D: Fn(&Rc<State>, Value, &mut [ZeroCopyBuf]) -> Result<JsonOp, OpError>,
+    D: Fn(&Rc<State>, Value, &mut [ZeroCopyBuf]) -> Result<JsonOp, ErrBox>,
   {
     use crate::ops::json_op;
     self.core_op(json_op(self.stateful_op(dispatcher)))
@@ -81,18 +80,22 @@ impl State {
       &mut ResourceTable,
       Value,
       &mut [ZeroCopyBuf],
-    ) -> Result<Value, OpError>,
+    ) -> Result<Value, ErrBox>,
   {
     let state = self.clone();
     let resource_table = resource_table.clone();
 
-    move |_: &mut CoreIsolateState, bufs: &mut [ZeroCopyBuf]| {
+    move |isolate_state: &mut CoreIsolateState, bufs: &mut [ZeroCopyBuf]| {
+      let rust_err_to_json_fn = isolate_state.rust_err_to_json_fn;
       // The first buffer should contain JSON encoded op arguments; parse them.
       let args: Value = match serde_json::from_slice(&bufs[0]) {
         Ok(v) => v,
         Err(e) => {
-          let e = OpError::from(e);
-          return Op::Sync(serialize_result(None, Err(e)));
+          return Op::Sync(serialize_result(
+            rust_err_to_json_fn,
+            None,
+            Err(e.into()),
+          ));
         }
       };
 
@@ -103,7 +106,7 @@ impl State {
         dispatcher(&state, &mut *resource_table.borrow_mut(), args, zero_copy);
 
       // Convert to Op.
-      Op::Sync(serialize_result(None, result))
+      Op::Sync(serialize_result(rust_err_to_json_fn, None, result))
     }
   }
 
@@ -115,18 +118,19 @@ impl State {
   where
     D:
       FnOnce(Rc<State>, Rc<RefCell<ResourceTable>>, Value, BufVec) -> F + Clone,
-    F: Future<Output = Result<Value, OpError>> + 'static,
+    F: Future<Output = Result<Value, ErrBox>> + 'static,
   {
     let state = self.clone();
     let resource_table = resource_table.clone();
 
-    move |_: &mut CoreIsolateState, bufs: &mut [ZeroCopyBuf]| {
+    move |isolate_state: &mut CoreIsolateState, bufs: &mut [ZeroCopyBuf]| {
+      let rust_err_to_json_fn = isolate_state.rust_err_to_json_fn;
       // The first buffer should contain JSON encoded op arguments; parse them.
       let args: Value = match serde_json::from_slice(&bufs[0]) {
         Ok(v) => v,
         Err(e) => {
-          let e = OpError::from(e);
-          return Op::Sync(serialize_result(None, Err(e)));
+          let e = e.into();
+          return Op::Sync(serialize_result(rust_err_to_json_fn, None, Err(e)));
         }
       };
 
@@ -134,8 +138,8 @@ impl State {
       let promise_id = match args.get("promiseId").and_then(|v| v.as_u64()) {
         Some(i) => i,
         None => {
-          let e = OpError::type_error("`promiseId` invalid/missing".to_owned());
-          return Op::Sync(serialize_result(None, Err(e)));
+          let e = ErrBox::new("TypeError", "`promiseId` invalid/missing");
+          return Op::Sync(serialize_result(rust_err_to_json_fn, None, Err(e)));
         }
       };
 
@@ -152,8 +156,10 @@ impl State {
 
       // Convert to Op.
       Op::Async(
-        async move { serialize_result(Some(promise_id), fut.await) }
-          .boxed_local(),
+        async move {
+          serialize_result(rust_err_to_json_fn, Some(promise_id), fut.await)
+        }
+        .boxed_local(),
       )
     }
   }
@@ -168,7 +174,7 @@ impl State {
       &Rc<State>,
       Value,
       &mut [ZeroCopyBuf],
-    ) -> Result<JsonOp, OpError>,
+    ) -> Result<JsonOp, ErrBox>,
   {
     use crate::ops::json_op;
     self.core_op(json_op(self.stateful_op2(dispatcher)))
@@ -276,15 +282,15 @@ impl State {
     &mut deno_core::CoreIsolateState,
     Value,
     &mut [ZeroCopyBuf],
-  ) -> Result<JsonOp, OpError>
+  ) -> Result<JsonOp, ErrBox>
   where
-    D: Fn(&Rc<State>, Value, &mut [ZeroCopyBuf]) -> Result<JsonOp, OpError>,
+    D: Fn(&Rc<State>, Value, &mut [ZeroCopyBuf]) -> Result<JsonOp, ErrBox>,
   {
     let state = self.clone();
     move |_isolate_state: &mut deno_core::CoreIsolateState,
           args: Value,
           zero_copy: &mut [ZeroCopyBuf]|
-          -> Result<JsonOp, OpError> { dispatcher(&state, args, zero_copy) }
+          -> Result<JsonOp, ErrBox> { dispatcher(&state, args, zero_copy) }
   }
 
   pub fn stateful_op2<D>(
@@ -294,20 +300,20 @@ impl State {
     &mut deno_core::CoreIsolateState,
     Value,
     &mut [ZeroCopyBuf],
-  ) -> Result<JsonOp, OpError>
+  ) -> Result<JsonOp, ErrBox>
   where
     D: Fn(
       &mut deno_core::CoreIsolateState,
       &Rc<State>,
       Value,
       &mut [ZeroCopyBuf],
-    ) -> Result<JsonOp, OpError>,
+    ) -> Result<JsonOp, ErrBox>,
   {
     let state = self.clone();
     move |isolate_state: &mut deno_core::CoreIsolateState,
           args: Value,
           zero_copy: &mut [ZeroCopyBuf]|
-          -> Result<JsonOp, OpError> {
+          -> Result<JsonOp, ErrBox> {
       dispatcher(isolate_state, &state, args, zero_copy)
     }
   }
@@ -488,7 +494,7 @@ impl State {
   }
 
   #[inline]
-  pub fn check_read(&self, path: &Path) -> Result<(), OpError> {
+  pub fn check_read(&self, path: &Path) -> Result<(), ErrBox> {
     self.permissions.borrow().check_read(path)
   }
 
@@ -499,49 +505,49 @@ impl State {
     &self,
     path: &Path,
     display: &str,
-  ) -> Result<(), OpError> {
+  ) -> Result<(), ErrBox> {
     self.permissions.borrow().check_read_blind(path, display)
   }
 
   #[inline]
-  pub fn check_write(&self, path: &Path) -> Result<(), OpError> {
+  pub fn check_write(&self, path: &Path) -> Result<(), ErrBox> {
     self.permissions.borrow().check_write(path)
   }
 
   #[inline]
-  pub fn check_env(&self) -> Result<(), OpError> {
+  pub fn check_env(&self) -> Result<(), ErrBox> {
     self.permissions.borrow().check_env()
   }
 
   #[inline]
-  pub fn check_net(&self, hostname: &str, port: u16) -> Result<(), OpError> {
+  pub fn check_net(&self, hostname: &str, port: u16) -> Result<(), ErrBox> {
     self.permissions.borrow().check_net(hostname, port)
   }
 
   #[inline]
-  pub fn check_net_url(&self, url: &url::Url) -> Result<(), OpError> {
+  pub fn check_net_url(&self, url: &url::Url) -> Result<(), ErrBox> {
     self.permissions.borrow().check_net_url(url)
   }
 
   #[inline]
-  pub fn check_run(&self) -> Result<(), OpError> {
+  pub fn check_run(&self) -> Result<(), ErrBox> {
     self.permissions.borrow().check_run()
   }
 
   #[inline]
-  pub fn check_hrtime(&self) -> Result<(), OpError> {
+  pub fn check_hrtime(&self) -> Result<(), ErrBox> {
     self.permissions.borrow().check_hrtime()
   }
 
   #[inline]
-  pub fn check_plugin(&self, filename: &Path) -> Result<(), OpError> {
+  pub fn check_plugin(&self, filename: &Path) -> Result<(), ErrBox> {
     self.permissions.borrow().check_plugin(filename)
   }
 
   pub fn check_dyn_import(
     &self,
     module_specifier: &ModuleSpecifier,
-  ) -> Result<(), OpError> {
+  ) -> Result<(), ErrBox> {
     let u = module_specifier.as_url();
     // TODO(bartlomieju): temporary fix to prevent hitting `unreachable`
     // statement that is actually reachable...

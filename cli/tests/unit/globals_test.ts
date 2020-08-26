@@ -72,7 +72,8 @@ unitTest(function DenoNamespaceImmutable(): void {
   }
   assert(denoCopy === Deno);
   try {
-    delete window.Deno;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    delete (window as any).Deno;
   } catch {
     // pass
   }
@@ -87,7 +88,8 @@ unitTest(function DenoNamespaceImmutable(): void {
   }
   assert(readFile === Deno.readFile);
   try {
-    delete window.Deno.readFile;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    delete (window as any).Deno.readFile;
   } catch {
     // pass
   }

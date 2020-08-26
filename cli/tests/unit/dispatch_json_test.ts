@@ -39,7 +39,7 @@ unitTest(function malformedJsonControlBuffer(): void {
   const resText = new TextDecoder().decode(resBuf);
   const resObj = JSON.parse(resText);
   assertStrictEquals(resObj.ok, undefined);
-  assertStrictEquals(resObj.err.kind, "TypeError");
+  assertStrictEquals(resObj.err.kind, "SyntaxError");
   assertMatch(resObj.err.message, /\bexpected value\b/);
 });
 

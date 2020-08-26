@@ -6,7 +6,7 @@ import {
 } from "../testing/asserts.ts";
 import EventEmitter, { WrappedFunction, once, on } from "./events.ts";
 
-const shouldNeverBeEmitted: Function = () => {
+const shouldNeverBeEmitted = () => {
   fail("Should never be called");
 };
 

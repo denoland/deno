@@ -255,6 +255,7 @@ Deno.test({
     let pc = 0;
     // Assert initial progress before running
     let progress = progressCallbacks[pc++];
+    assert(progress.queued);
     assertEquals(progress.state, ProgressState.BenchmarkingStart);
     assertEquals(progress.filtered, 1);
     assertEquals(progress.queued.length, 2);
@@ -265,6 +266,7 @@ Deno.test({
     progress = progressCallbacks[pc++];
     assertEquals(progress.state, ProgressState.BenchStart);
     assertEquals(progress.filtered, 1);
+    assert(progress.queued);
     assertEquals(progress.queued.length, 1);
     assert(!!progress.queued.find(({ name }) => name == "multiple"));
     assertEquals(progress.running, {
@@ -277,6 +279,7 @@ Deno.test({
     // Assert running result of bench "single"
     progress = progressCallbacks[pc++];
     assertEquals(progress.state, ProgressState.BenchPartialResult);
+    assert(progress.queued);
     assertEquals(progress.queued.length, 1);
     assertEquals(progress.running!.measuredRunsMs.length, 1);
     assertEquals(progress.results.length, 0);
@@ -284,6 +287,7 @@ Deno.test({
     // Assert result of bench "single"
     progress = progressCallbacks[pc++];
     assertEquals(progress.state, ProgressState.BenchResult);
+    assert(progress.queued);
     assertEquals(progress.queued.length, 1);
     assertEquals(progress.running, undefined);
     assertEquals(progress.results.length, 1);
@@ -292,6 +296,7 @@ Deno.test({
     // Assert start of bench "multiple"
     progress = progressCallbacks[pc++];
     assertEquals(progress.state, ProgressState.BenchStart);
+    assert(progress.queued);
     assertEquals(progress.queued.length, 0);
     assertEquals(progress.running, {
       name: "multiple",
@@ -303,6 +308,7 @@ Deno.test({
     // Assert first result of bench "multiple"
     progress = progressCallbacks[pc++];
     assertEquals(progress.state, ProgressState.BenchPartialResult);
+    assert(progress.queued);
     assertEquals(progress.queued.length, 0);
     assertEquals(progress.running!.measuredRunsMs.length, 1);
     assertEquals(progress.results.length, 1);
@@ -310,6 +316,7 @@ Deno.test({
     // Assert second result of bench "multiple"
     progress = progressCallbacks[pc++];
     assertEquals(progress.state, ProgressState.BenchPartialResult);
+    assert(progress.queued);
     assertEquals(progress.queued.length, 0);
     assertEquals(progress.running!.measuredRunsMs.length, 2);
     assertEquals(progress.results.length, 1);
@@ -317,6 +324,7 @@ Deno.test({
     // Assert finish of bench "multiple"
     progress = progressCallbacks[pc++];
     assertEquals(progress.state, ProgressState.BenchResult);
+    assert(progress.queued);
     assertEquals(progress.queued.length, 0);
     assertEquals(progress.running, undefined);
     assertEquals(progress.results.length, 2);

@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+use crate::errors::rust_err_to_json;
 use crate::fmt_errors::JSError;
 use crate::global_state::GlobalState;
 use crate::inspector::DenoInspector;
@@ -51,7 +52,8 @@ impl WorkerHandle {
   /// Post message to worker as a host.
   pub fn post_message(&self, buf: Buf) -> Result<(), ErrBox> {
     let mut sender = self.sender.clone();
-    sender.try_send(buf).map_err(ErrBox::from)
+    sender.try_send(buf)?;
+    Ok(())
   }
 
   /// Get the event with lock.
@@ -114,6 +116,7 @@ impl Worker {
       core_state.set_js_error_create_fn(move |core_js_error| {
         JSError::create(core_js_error, &global_state.ts_compiler)
       });
+      core_state.set_rust_err_to_json_fn(&rust_err_to_json);
     }
 
     let inspector = {

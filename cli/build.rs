@@ -71,8 +71,17 @@ fn create_compiler_snapshot(
 }
 
 fn ts_version() -> String {
-  // TODO(ry) This should be automatically extracted from typescript.js
-  "3.9.7".to_string()
+  std::fs::read_to_string("tsc/00_typescript.js")
+    .unwrap()
+    .lines()
+    .find(|l| l.contains("ts.version = "))
+    .expect(
+      "Failed to find the pattern `ts.version = ` in typescript source code",
+    )
+    .chars()
+    .skip_while(|c| !char::is_numeric(*c))
+    .take_while(|c| *c != '"')
+    .collect::<String>()
 }
 
 fn main() {
