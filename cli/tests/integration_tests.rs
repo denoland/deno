@@ -1446,9 +1446,8 @@ itest!(_030_eval_ts {
 });
 
 itest!(_031_info_no_check {
-  args: "info 031_info_no_check.ts",
+  args: "info --no-check 031_info_no_check.ts",
   output: "031_info_no_check.out",
-  http_server: true,
 });
 
 itest!(_033_import_map {
@@ -1544,10 +1543,7 @@ itest!(_048_media_types_jsx {
   http_server: true,
 });
 
-// TODO(nayeemrmn): This hits an SWC type-stripping bug:
-// `error: Unterminated regexp literal at http://localhost:4545/cli/tests/subdir/mt_video_vdn_tsx.t2.tsx:4:19`
-// Re-enable once fixed.
-itest_ignore!(_049_info_flag_script_jsx {
+itest!(_049_info_flag_script_jsx {
   args: "info http://127.0.0.1:4545/cli/tests/048_media_types_jsx.ts",
   output: "049_info_flag_script_jsx.out",
   http_server: true,
@@ -2282,6 +2278,11 @@ itest!(import_file_with_colon {
   args: "run --quiet --reload import_file_with_colon.ts",
   output: "import_file_with_colon.ts.out",
   http_server: true,
+});
+
+itest!(info_type_import {
+  args: "info info_type_import.ts",
+  output: "info_type_import.out",
 });
 
 #[test]
