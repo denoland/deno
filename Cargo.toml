@@ -1,17 +1,21 @@
 [workspace]
-members = [
-  "cli",
-  "core",
-  "test_plugin",
-  "test_util",
-  "op_crates/web",
-]
-exclude = [
-  "std/hash/_wasm"
-]
-
+members = ["cli", "core", "test_plugin", "test_util", "op_crates/web"]
+exclude = ["std/hash/_wasm"]
 
 [profile.release]
-codegen-units = 1
+codegen-units = 2
 lto = true
-opt-level = 'z' # Optimize for size
+opt-level = 's' # Optimize for size
+
+[profile.bench]
+codegen-units = 2
+lto = true
+opt-level = 's' # Optimize for size
+
+[profile.dev]
+codegen-units = 2
+debug = false
+
+[profile.test]
+codegen-units = 2
+debug = false
