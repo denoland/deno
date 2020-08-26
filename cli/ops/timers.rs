@@ -1,8 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
-use crate::op_error::OpError;
 use crate::state::State;
 use deno_core::CoreIsolate;
+use deno_core::ErrBox;
 use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
 use std::rc::Rc;
@@ -22,7 +22,7 @@ fn op_global_timer_stop(
   state: &Rc<State>,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   state.global_timer.borrow_mut().cancel();
   Ok(JsonOp::Sync(json!({})))
 }
@@ -36,7 +36,7 @@ fn op_global_timer(
   state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   let args: GlobalTimerArgs = serde_json::from_value(args)?;
   let val = args.timeout;
 
@@ -58,7 +58,7 @@ fn op_now(
   state: &Rc<State>,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   let seconds = state.start_time.elapsed().as_secs();
   let mut subsec_nanos = state.start_time.elapsed().subsec_nanos();
   let reduced_time_precision = 2_000_000; // 2ms in nanoseconds
@@ -66,12 +66,8 @@ fn op_now(
   // If the permission is not enabled
   // Round the nano result on 2 milliseconds
   // see: https://developer.mozilla.org/en-US/docs/Web/API/DOMHighResTimeStamp#Reduced_time_precision
-  if let Err(op_error) = state.check_hrtime() {
-    if op_error.kind_str == "PermissionDenied" {
-      subsec_nanos -= subsec_nanos % reduced_time_precision;
-    } else {
-      return Err(op_error);
-    }
+  if state.check_hrtime().is_err() {
+    subsec_nanos -= subsec_nanos % reduced_time_precision;
   }
 
   Ok(JsonOp::Sync(json!({

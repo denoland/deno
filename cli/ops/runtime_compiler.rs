@@ -1,12 +1,12 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::futures::FutureExt;
-use crate::op_error::OpError;
 use crate::state::State;
 use crate::tsc::runtime_bundle;
 use crate::tsc::runtime_compile;
 use crate::tsc::runtime_transpile;
 use deno_core::CoreIsolate;
+use deno_core::ErrBox;
 use deno_core::ZeroCopyBuf;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -29,7 +29,7 @@ fn op_compile(
   state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   state.check_unstable("Deno.compile");
   let args: CompileArgs = serde_json::from_value(args)?;
   let global_state = state.global_state.clone();
@@ -71,7 +71,7 @@ fn op_transpile(
   state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   state.check_unstable("Deno.transpile");
   let args: TranspileArgs = serde_json::from_value(args)?;
   let global_state = state.global_state.clone();

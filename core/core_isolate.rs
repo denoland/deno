@@ -87,6 +87,17 @@ impl StartupData<'_> {
 
 type JSErrorCreateFn = dyn Fn(JSError) -> ErrBox;
 
+pub trait RustErrToJsonFn: for<'e> Fn(&'e ErrBox) -> Box<[u8]> {}
+impl<F> RustErrToJsonFn for F where for<'e> F: Fn(&'e ErrBox) -> Box<[u8]> {}
+
+fn rust_err_to_json(e: &ErrBox) -> Box<[u8]> {
+  let value = json!({
+    "kind": "Error",
+    "message": e.to_string()
+  });
+  serde_json::to_vec(&value).unwrap().into_boxed_slice()
+}
+
 /// Objects that need to live as long as the isolate
 #[derive(Default)]
 struct IsolateAllocations {
@@ -123,6 +134,7 @@ pub struct CoreIsolateState {
   pub(crate) js_macrotask_cb: Option<v8::Global<v8::Function>>,
   pub(crate) pending_promise_exceptions: HashMap<i32, v8::Global<v8::Value>>,
   pub(crate) js_error_create_fn: Box<JSErrorCreateFn>,
+  pub rust_err_to_json_fn: &'static dyn RustErrToJsonFn,
   pub(crate) shared: SharedQueue,
   pending_ops: FuturesUnordered<PendingOpFuture>,
   pending_unref_ops: FuturesUnordered<PendingOpFuture>,
@@ -307,6 +319,7 @@ impl CoreIsolate {
       js_recv_cb: None,
       js_macrotask_cb: None,
       js_error_create_fn: Box::new(JSError::create),
+      rust_err_to_json_fn: &rust_err_to_json,
       shared: SharedQueue::new(RECOMMENDED_SIZE),
       pending_ops: FuturesUnordered::new(),
       pending_unref_ops: FuturesUnordered::new(),
@@ -539,8 +552,8 @@ fn serialize_result(
     Err(err) => json!({
       "promiseId": promise_id ,
       "err": {
+        "kind": "Error",
         "message": err.to_string(),
-        "kind": "Other", // TODO(ry) Figure out how to propagate errors.
       }
     }),
   };
@@ -666,6 +679,13 @@ impl CoreIsolateState {
     f: impl Fn(JSError) -> ErrBox + 'static,
   ) {
     self.js_error_create_fn = Box::new(f);
+  }
+
+  pub fn set_rust_err_to_json_fn(
+    &mut self,
+    f: &'static (impl for<'e> Fn(&'e ErrBox) -> Box<[u8]> + 'static),
+  ) {
+    self.rust_err_to_json_fn = f;
   }
 
   pub fn dispatch_op<'s>(

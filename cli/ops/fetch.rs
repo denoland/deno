@@ -2,10 +2,10 @@
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use super::io::{StreamResource, StreamResourceHolder};
 use crate::http_util::{create_http_client, HttpBody};
-use crate::op_error::OpError;
 use crate::state::State;
 use deno_core::CoreIsolate;
 use deno_core::CoreIsolateState;
+use deno_core::ErrBox;
 use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
 use http::header::HeaderName;
@@ -38,7 +38,7 @@ pub fn op_fetch(
   state: &Rc<State>,
   args: Value,
   data: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   let args: FetchArgs = serde_json::from_value(args)?;
   let url = args.url;
   let resource_table_ = isolate_state.resource_table.borrow();
@@ -47,7 +47,7 @@ pub fn op_fetch(
   let client = if let Some(rid) = args.client_rid {
     let r = resource_table_
       .get::<HttpClientResource>(rid)
-      .ok_or_else(OpError::bad_resource_id)?;
+      .ok_or_else(ErrBox::bad_resource_id)?;
     &r.client
   } else {
     client_ref_mut = state.http_client.borrow_mut();
@@ -55,17 +55,16 @@ pub fn op_fetch(
   };
 
   let method = match args.method {
-    Some(method_str) => Method::from_bytes(method_str.as_bytes())
-      .map_err(|e| OpError::other(e.to_string()))?,
+    Some(method_str) => Method::from_bytes(method_str.as_bytes())?,
     None => Method::GET,
   };
 
-  let url_ = url::Url::parse(&url).map_err(OpError::from)?;
+  let url_ = url::Url::parse(&url)?;
 
   // Check scheme before asking for net permission
   let scheme = url_.scheme();
   if scheme != "http" && scheme != "https" {
-    return Err(OpError::type_error(format!(
+    return Err(ErrBox::type_error(format!(
       "scheme '{}' not supported",
       scheme
     )));
@@ -142,7 +141,7 @@ fn op_create_http_client(
   state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   let args: CreateHttpClientOptions = serde_json::from_value(args)?;
   let mut resource_table = isolate_state.resource_table.borrow_mut();
 
