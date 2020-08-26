@@ -13,6 +13,7 @@ use deno_core::{CoreIsolate, CoreIsolateState};
 use futures::executor::block_on;
 use futures::future::{poll_fn, FutureExt};
 use futures::ready;
+use futures::Sink;
 use futures::{SinkExt, StreamExt};
 use http::{Method, Request, Uri};
 use std::borrow::Cow;
@@ -111,8 +112,6 @@ pub fn op_ws_send(
 ) -> Result<JsonOp, OpError> {
   let args: SendArgs = serde_json::from_value(args)?;
 
-  use futures::Sink;
-
   let mut maybe_msg = Some(match args.text {
     Some(text) => Message::Text(text),
     None => Message::Binary(zero_copy[0].to_owned().to_vec()),
@@ -161,28 +160,40 @@ pub fn op_ws_close(
 ) -> Result<JsonOp, OpError> {
   let args: CloseArgs = serde_json::from_value(args)?;
   let resource_table = isolate_state.resource_table.clone();
-  let future = async move {
-    let mut stream = {
-      let mut resource_table = resource_table.borrow_mut();
-      resource_table
-        .remove::<WsStream>(args.rid)
-        .ok_or_else(OpError::bad_resource_id)?
-    };
-    (*stream)
-      .close(Some(CloseFrame {
-        code: CloseCode::from(args.code.unwrap_or(1005)),
-        reason: match args.reason {
-          Some(reason) => Cow::from(reason),
-          None => Default::default(),
-        },
-      }))
-      .await
-      .unwrap();
-    // stream.rx.close();
-    drop(stream);
+  let rid = args.rid;
+  let mut maybe_msg = Some(Message::Close(args.code.map(|c| CloseFrame {
+    code: CloseCode::from(c),
+    reason: match args.reason {
+      Some(reason) => Cow::from(reason),
+      None => Default::default(),
+    },
+  })));
 
-    Ok(json!({}))
-  };
+  let future = poll_fn(move |cx| {
+    let mut resource_table = resource_table.borrow_mut();
+    let mut stream = resource_table
+      .get_mut::<WsStream>(rid)
+      .ok_or_else(OpError::bad_resource_id)?;
+
+    // TODO(ry) Handle errors below instead of unwrap.
+    // Need to map tungstenite::error::Error to OpError.
+
+    let stream_pin = Pin::new(&mut stream);
+    ready!(stream_pin.poll_ready(cx)).unwrap();
+
+    if let Some(msg) = maybe_msg.take() {
+      let stream_pin = Pin::new(&mut stream);
+      stream_pin.start_send(msg).unwrap();
+    }
+
+    let stream_pin = Pin::new(&mut stream);
+    ready!(stream_pin.poll_flush(cx)).unwrap();
+
+    let stream_pin = Pin::new(&mut stream);
+    ready!(stream_pin.poll_close(cx)).unwrap();
+
+    Poll::Ready(Ok(json!({})))
+  });
 
   Ok(JsonOp::Async(future.boxed_local()))
 }
@@ -236,13 +247,16 @@ pub fn op_ws_next_event(
                   }))
                 }
                 Message::Close(frame) => {
-                  let frame = frame.unwrap();
-                  let code: u16 = frame.code.into();
-                  Ok(json!({
-                    "type": "close",
-                    "code": code,
-                    "reason": frame.reason.as_ref()
-                  }))
+                  if let Some(frame) = frame {
+                    let code: u16 = frame.code.into();
+                    Ok(json!({
+                      "type": "close",
+                      "code": code,
+                      "reason": frame.reason.as_ref()
+                    }))
+                  } else {
+                    Ok(json!({ "type": "close" }))
+                  }
                 }
                 Message::Ping(_) => Ok(json!({"type": "ping"})),
                 Message::Pong(_) => Ok(json!({"type": "pong"})),
