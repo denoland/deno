@@ -32,11 +32,14 @@ export interface Cookie {
 
 export type SameSite = "Strict" | "Lax" | "None";
 
+const FIELD_CONTENT_REGEXP = /^[\u0009\u0020-\u007e\u0080-\u00ff]+$/;
+
 function toString(cookie: Cookie): string {
   if (!cookie.name) {
     return "";
   }
   const out: string[] = [];
+  validateCookieProperty("Name", cookie.name);
   out.push(`${cookie.name}=${cookie.value}`);
 
   // Fallback for invalid Set-Cookie
@@ -61,12 +64,14 @@ function toString(cookie: Cookie): string {
     out.push(`Max-Age=${cookie.maxAge}`);
   }
   if (cookie.domain) {
+    validateCookieProperty("Domain", cookie.domain);
     out.push(`Domain=${cookie.domain}`);
   }
   if (cookie.sameSite) {
     out.push(`SameSite=${cookie.sameSite}`);
   }
   if (cookie.path) {
+    validateCookieProperty("Path", cookie.path);
     out.push(`Path=${cookie.path}`);
   }
   if (cookie.expires) {
@@ -78,6 +83,22 @@ function toString(cookie: Cookie): string {
   }
   return out.join("; ");
 }
+
+
+/**
+ * Validate Cookie property.
+ * @param key Name of the cookie.
+ * @param value Value of the cookie.
+ */
+function validateCookieProperty(
+  key: string,
+  value: string | undefined | null,
+): void {
+  if (value && !FIELD_CONTENT_REGEXP.test(value)) {
+    throw new TypeError(`The ${key} of the cookie (${value}) is invalid.`);
+  }
+}
+
 
 /**
  * Parse the cookies of the Server Request
