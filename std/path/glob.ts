@@ -1,5 +1,3 @@
-// globToRegExp() is originall ported from globrex@0.1.2.
-// Copyright 2018 Terkel Gjervig Nielsen. All rights reserved. MIT license.
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // This module is browser compatible.
 
@@ -22,232 +20,296 @@ export interface GlobOptions {
 
 export type GlobToRegExpOptions = GlobOptions;
 
-/** Convert a glob string to a regular expressions.
+// deno-fmt-ignore
+const regExpEscapeChars = ["!", "$", "(", ")", "*", "+", ".", "=", "?", "[", "\\", "^", "{", "|"];
+const rangeEscapeChars = ["-", "\\", "]"];
+
+/** Convert a glob string to a regular expression.
  *
- *      // Looking for all the `ts` files:
- *      walkSync(".", {
- *        match: [globToRegExp("*.ts")]
- *      });
+ * Tries to match bash glob expansion as closely as possible.
  *
- *      Looking for all the `.json` files in any subfolder:
- *      walkSync(".", {
- *        match: [globToRegExp(join("a", "**", "*.json"), {
- *          extended: true,
- *          globstar: true
- *        })]
- *      }); */
+ * Basic glob syntax:
+ * - `*` - Matches everything without leaving the path segment.
+ * - `{foo,bar}` - Matches `foo` or `bar`.
+ * - `[abcd]` - Matches `a`, `b`, `c` or `d`.
+ * - `[a-d]` - Matches `a`, `b`, `c` or `d`.
+ * - `[!abcd]` - Matches any single character besides `a`, `b`, `c` or `d`.
+ * - `[[:<class>:]]` - Matches any character belonging to `<class>`.
+ *     - `[[:alnum:]]` - Matches any digit or letter.
+ *     - `[[:digit:]abc]` - Matches any digit, `a`, `b` or `c`.
+ *     - See https://facelessuser.github.io/wcmatch/glob/#posix-character-classes
+ *       for a complete list of supported character classes.
+ * - `\` - Escapes the next character for an `os` other than `"windows"`.
+ * - \` - Escapes the next character for `os` set to `"windows"`.
+ * - `/` - Path separator.
+ * - `\` - Additional path separator only for `os` set to `"windows"`.
+ *
+ * Extended syntax:
+ * - Requires `{ extended: true }`.
+ * - `?(foo|bar)` - Matches 0 or 1 instance of `{foo,bar}`.
+ * - `@(foo|bar)` - Matches 1 instance of `{foo,bar}`. They behave the same.
+ * - `*(foo|bar)` - Matches _n_ instances of `{foo,bar}`.
+ * - `+(foo|bar)` - Matches _n > 0_ instances of `{foo,bar}`.
+ * - `!(foo|bar)` - Matches anything other than `{foo,bar}`.
+ * - See https://www.linuxjournal.com/content/bash-extended-globbing.
+ *
+ * Globstar syntax:
+ * - Requires `{ globstar: true }`.
+ * - `**` - Matches any number of any path segments.
+ *     - Must comprise its entire path segment in the provided glob.
+ * - See https://www.linuxjournal.com/content/globstar-new-bash-globbing-option.
+ *
+ * Note the following properties:
+ * - The generated `RegExp` is anchored at both start and end.
+ * - Repeating and trailing separators are tolerated. Trailing separators in the
+ *   provided glob have no meaning and are discarded.
+ * - Absolute globs will only match absolute paths, etc.
+ * - Empty globs will match nothing.
+ * - Any special glob syntax must be contained to one path segment. For example,
+ *   `?(foo|bar/baz)` is invalid. The separator will take precendence and the
+ *   first segment ends with an unclosed group.
+ * - If a path segment ends with unclosed groups or a dangling escape prefix, a
+ *   parse error has occured. Every character for that segment is taken
+ *   literally in this event.
+ *
+ * Limitations:
+ * - A negative group like `!(foo|bar)` will wrongly be converted to a negative
+ *   look-ahead followed by a wildcard. This means that `!(foo).js` will wrongly
+ *   fail to match `foobar.js`, even though `foobar` is not `foo`. Effectively,
+ *   `!(foo|bar)` is treated like `!(@(foo|bar)*)`. This will work correctly if
+ *   the group occurs not nested at the end of the segment. */
 export function globToRegExp(
   glob: string,
   { extended = true, globstar: globstarOption = true, os = NATIVE_OS }:
     GlobToRegExpOptions = {},
 ): RegExp {
-  const sep = os == "windows" ? `(?:\\\\|\\/)+` : `\\/+`;
-  const sepMaybe = os == "windows" ? `(?:\\\\|\\/)*` : `\\/*`;
+  if (glob == "") {
+    return /(?!)/;
+  }
+
+  const sep = os == "windows" ? "(?:\\\\|/)+" : "/+";
+  const sepMaybe = os == "windows" ? "(?:\\\\|/)*" : "/*";
   const seps = os == "windows" ? ["\\", "/"] : ["/"];
-  const sepRaw = os == "windows" ? `\\` : `/`;
   const globstar = os == "windows"
-    ? `(?:[^\\\\/]*(?:\\\\|\\/|$)+)*`
-    : `(?:[^/]*(?:\\/|$)+)*`;
-  const wildcard = os == "windows" ? `[^\\\\/]*` : `[^/]*`;
-
-  // Keep track of scope for extended syntaxes.
-  const extStack = [];
-
-  // If we are doing extended matching, this boolean is true when we are inside
-  // a group (eg {*.html,*.js}), and false otherwise.
-  let inGroup = false;
-  let inRange = false;
-
-  let regExpString = "";
+    ? "(?:[^\\\\/]*(?:\\\\|/|$)+)*"
+    : "(?:[^/]*(?:/|$)+)*";
+  const wildcard = os == "windows" ? "[^\\\\/]*" : "[^/]*";
+  const escapePrefix = os == "windows" ? "`" : "\\";
 
   // Remove trailing separators.
   let newLength = glob.length;
-  for (; newLength > 0 && seps.includes(glob[newLength - 1]); newLength--);
+  for (; newLength > 1 && seps.includes(glob[newLength - 1]); newLength--);
   glob = glob.slice(0, newLength);
 
-  let c, n;
-  for (let i = 0; i < glob.length; i++) {
-    c = glob[i];
-    n = glob[i + 1];
+  let regExpString = "";
 
-    if (seps.includes(c)) {
-      regExpString += sep;
-      while (seps.includes(glob[i + 1])) i++;
-      continue;
-    }
+  // Terminates correctly. Trust that `j` is incremented every iteration.
+  for (let j = 0; j < glob.length;) {
+    let segment = "";
+    const groupStack = [];
+    let inRange = false;
+    let inEscape = false;
+    let endsWithSep = false;
+    let i = j;
 
-    if (c == "[") {
-      if (inRange && n == ":") {
-        i++; // skip [
-        let value = "";
-        while (glob[++i] !== ":") value += glob[i];
-        if (value == "alnum") regExpString += "\\w\\d";
-        else if (value == "space") regExpString += "\\s";
-        else if (value == "digit") regExpString += "\\d";
-        i++; // skip last ]
+    // Terminates with `i` at the non-inclusive end of the current segment.
+    for (; i < glob.length && !seps.includes(glob[i]); i++) {
+      if (inEscape) {
+        inEscape = false;
+        const escapeChars = inRange ? rangeEscapeChars : regExpEscapeChars;
+        segment += escapeChars.includes(glob[i]) ? `\\${glob[i]}` : glob[i];
         continue;
       }
-      inRange = true;
-      regExpString += c;
-      continue;
-    }
 
-    if (c == "]") {
-      inRange = false;
-      regExpString += c;
-      continue;
-    }
+      if (glob[i] == escapePrefix) {
+        inEscape = true;
+        continue;
+      }
 
-    if (c == "!") {
+      if (glob[i] == "[") {
+        if (!inRange) {
+          inRange = true;
+          segment += "[";
+          if (glob[i + 1] == "!") {
+            i++;
+            segment += "^";
+          } else if (glob[i + 1] == "^") {
+            i++;
+            segment += "\\^";
+          }
+          continue;
+        } else if (glob[i + 1] == ":") {
+          let k = i + 1;
+          let value = "";
+          while (glob[k + 1] != null && glob[k + 1] != ":") {
+            value += glob[k + 1];
+            k++;
+          }
+          if (glob[k + 1] == ":" && glob[k + 2] == "]") {
+            i = k + 2;
+            if (value == "alnum") segment += "\\dA-Za-z";
+            else if (value == "alpha") segment += "A-Za-z";
+            else if (value == "ascii") segment += "\x00-\x7F";
+            else if (value == "blank") segment += "\t ";
+            else if (value == "cntrl") segment += "\x00-\x1F\x7F";
+            else if (value == "digit") segment += "\\d";
+            else if (value == "graph") segment += "\x21-\x7E";
+            else if (value == "lower") segment += "a-z";
+            else if (value == "print") segment += "\x20-\x7E";
+            else if (value == "punct") {
+              segment += "!\"#$%&'()*+,\\-./:;<=>?@[\\\\\\]^_‘{|}~";
+            } else if (value == "space") segment += "\\s\v";
+            else if (value == "upper") segment += "A-Z";
+            else if (value == "word") segment += "\\w";
+            else if (value == "xdigit") segment += "\\dA-Fa-f";
+            continue;
+          }
+        }
+      }
+
+      if (glob[i] == "]" && inRange) {
+        inRange = false;
+        segment += "]";
+        continue;
+      }
+
       if (inRange) {
-        if (glob[i - 1] == "[") {
-          regExpString += "^";
-          continue;
-        }
-      } else if (extended) {
-        if (n == "(") {
-          extStack.push(c);
-          regExpString += "(?!";
-          i++;
-          continue;
-        }
-        regExpString += `\\${c}`;
-        continue;
-      } else {
-        regExpString += `\\${c}`;
-        continue;
-      }
-    }
-
-    if (inRange) {
-      if (c == "\\" || c == "^" && glob[i - 1] == "[") regExpString += `\\${c}`;
-      else regExpString += c;
-      continue;
-    }
-
-    if (["\\", "$", "^", ".", "="].includes(c)) {
-      regExpString += `\\${c}`;
-      continue;
-    }
-
-    if (c == "(") {
-      if (extStack.length) {
-        regExpString += `${c}?:`;
-        continue;
-      }
-      regExpString += `\\${c}`;
-      continue;
-    }
-
-    if (c == ")") {
-      if (extStack.length) {
-        regExpString += c;
-        const type = extStack.pop()!;
-        if (type == "@") {
-          regExpString += "{1}";
-        } else if (type == "!") {
-          regExpString += wildcard;
+        if (glob[i] == "\\") {
+          segment += `\\\\`;
         } else {
-          regExpString += type;
+          segment += glob[i];
         }
         continue;
       }
-      regExpString += `\\${c}`;
-      continue;
-    }
 
-    if (c == "|") {
-      if (extStack.length) {
-        regExpString += c;
-        continue;
-      }
-      regExpString += `\\${c}`;
-      continue;
-    }
-
-    if (c == "+") {
-      if (n == "(" && extended) {
-        extStack.push(c);
-        continue;
-      }
-      regExpString += `\\${c}`;
-      continue;
-    }
-
-    if (c == "@" && extended) {
-      if (n == "(") {
-        extStack.push(c);
-        continue;
-      }
-    }
-
-    if (c == "?") {
-      if (extended) {
-        if (n == "(") {
-          extStack.push(c);
+      if (
+        glob[i] == ")" && groupStack.length > 0 &&
+        groupStack[groupStack.length - 1] != "BRACE"
+      ) {
+        segment += ")";
+        const type = groupStack.pop()!;
+        if (type == "!") {
+          segment += wildcard;
+        } else if (type != "@") {
+          segment += type;
         }
         continue;
-      } else {
-        regExpString += ".";
+      }
+
+      if (
+        glob[i] == "|" && groupStack.length > 0 &&
+        groupStack[groupStack.length - 1] != "BRACE"
+      ) {
+        segment += "|";
         continue;
       }
-    }
 
-    if (c == "{") {
-      inGroup = true;
-      regExpString += "(?:";
-      continue;
-    }
-
-    if (c == "}") {
-      inGroup = false;
-      regExpString += ")";
-      continue;
-    }
-
-    if (c == ",") {
-      if (inGroup) {
-        regExpString += "|";
-        continue;
-      }
-      regExpString += `\\${c}`;
-      continue;
-    }
-
-    if (c == "*") {
-      if (n == "(" && extended) {
-        extStack.push(c);
-        continue;
-      }
-      // Move over all consecutive "*"'s.
-      // Also store the previous and next characters
-      const prevChar = glob[i - 1];
-      let starCount = 1;
-      while (glob[i + 1] == "*") {
-        starCount++;
+      if (glob[i] == "+" && extended && glob[i + 1] == "(") {
         i++;
+        groupStack.push("+");
+        segment += "(?:";
+        continue;
       }
-      const nextChar = glob[i + 1];
-      const isGlobstar = globstarOption && starCount > 1 &&
-        // from the start of the segment
-        [sepRaw, "/", undefined].includes(prevChar) &&
-        // to the end of the segment
-        [sepRaw, "/", undefined].includes(nextChar);
-      if (isGlobstar) {
-        // it's a globstar, so match zero or more path segments
-        regExpString += globstar;
-        while (seps.includes(glob[i + 1])) i++;
-      } else {
-        // it's not a globstar, so only match one path segment
-        regExpString += wildcard;
+
+      if (glob[i] == "@" && extended && glob[i + 1] == "(") {
+        i++;
+        groupStack.push("@");
+        segment += "(?:";
+        continue;
       }
-      continue;
+
+      if (glob[i] == "?") {
+        if (extended && glob[i + 1] == "(") {
+          i++;
+          groupStack.push("?");
+          segment += "(?:";
+        } else {
+          segment += ".";
+        }
+        continue;
+      }
+
+      if (glob[i] == "!" && extended && glob[i + 1] == "(") {
+        i++;
+        groupStack.push("!");
+        segment += "(?!";
+        continue;
+      }
+
+      if (glob[i] == "{") {
+        groupStack.push("BRACE");
+        segment += "(?:";
+        continue;
+      }
+
+      if (glob[i] == "}" && groupStack[groupStack.length - 1] == "BRACE") {
+        groupStack.pop();
+        segment += ")";
+        continue;
+      }
+
+      if (glob[i] == "," && groupStack[groupStack.length - 1] == "BRACE") {
+        segment += "|";
+        continue;
+      }
+
+      if (glob[i] == "*") {
+        if (extended && glob[i + 1] == "(") {
+          i++;
+          groupStack.push("*");
+          segment += "(?:";
+        } else {
+          const prevChar = glob[i - 1];
+          let numStars = 1;
+          while (glob[i + 1] == "*") {
+            i++;
+            numStars++;
+          }
+          const nextChar = glob[i + 1];
+          if (
+            globstarOption && numStars == 2 &&
+            [...seps, undefined].includes(prevChar) &&
+            [...seps, undefined].includes(nextChar)
+          ) {
+            segment += globstar;
+            endsWithSep = true;
+          } else {
+            segment += wildcard;
+          }
+        }
+        continue;
+      }
+
+      segment += regExpEscapeChars.includes(glob[i]) ? `\\${glob[i]}` : glob[i];
     }
 
-    regExpString += c;
+    // Check for unclosed groups or a dangling backslash.
+    if (groupStack.length > 0 || inRange || inEscape) {
+      // Parse failure. Take all characters from this segment literally.
+      segment = "";
+      for (const c of glob.slice(j, i)) {
+        segment += regExpEscapeChars.includes(c) ? `\\${c}` : c;
+        endsWithSep = false;
+      }
+    }
+
+    regExpString += segment;
+    if (!endsWithSep) {
+      regExpString += i < glob.length ? sep : sepMaybe;
+      endsWithSep = true;
+    }
+
+    // Terminates with `i` at the start of the next segment.
+    while (seps.includes(glob[i])) i++;
+
+    // Check that the next value of `j` is indeed higher than the current value.
+    if (!(i > j)) {
+      throw new Error("Assertion failure: i > j (potential infinite loop)");
+    }
+    j = i;
   }
 
-  regExpString = `^${regExpString}${regExpString != "" ? sepMaybe : ""}$`;
+  regExpString = `^${regExpString}$`;
   return new RegExp(regExpString);
 }
 
