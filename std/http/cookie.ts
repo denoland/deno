@@ -84,7 +84,6 @@ function toString(cookie: Cookie): string {
   return out.join("; ");
 }
 
-
 /**
  * Validate Cookie property.
  * @param key Name of the cookie.
@@ -98,7 +97,6 @@ function validateCookieProperty(
     throw new TypeError(`The ${key} of the cookie (${value}) is invalid.`);
   }
 }
-
 
 /**
  * Parse the cookies of the Server Request
