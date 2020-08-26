@@ -2705,6 +2705,7 @@ mod tests {
           allow_none: false,
           quiet: false,
           include: Some(svec!["script.ts"]),
+          coverage: false,
         },
         no_check: true,
         ..Flags::default()
@@ -2912,6 +2913,7 @@ mod tests {
           quiet: false,
           filter: Some("- foo".to_string()),
           include: Some(svec!["dir1"]),
+          coverage: false,
         },
         ..Flags::default()
       }

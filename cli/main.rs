@@ -71,7 +71,6 @@ pub mod worker;
 
 use crate::coverage::CoverageCollector;
 use crate::coverage::ScriptCoverage;
-use crate::doc::parser::DocFileLoader;
 use crate::file_fetcher::map_file_extension;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
@@ -709,8 +708,7 @@ async fn test_command(
       None => {
         return Err(
           // TODO(caspervonb) this should be implicit when the cover flag is provided.
-          OpError::other("coverage option requires --inspect flag".to_string())
-            .into(),
+          ErrBox::error("coverage option requires --inspect flag"),
         );
       }
     };
