@@ -1,0 +1,6 @@
+[WILDCARD]
+local: [WILDCARD]031_info_no_check.ts
+type: TypeScript
+compiled: [WILDCARD].js
+deps:
+[WILDCARD]031_info_no_check.ts
