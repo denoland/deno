@@ -218,6 +218,10 @@ pub fn install(
     }
   }
 
+  if flags.no_check {
+    executable_args.push("--no-check".to_string());
+  }
+
   if flags.unstable {
     executable_args.push("--unstable".to_string());
   }
@@ -554,6 +558,7 @@ mod tests {
       Flags {
         allow_net: true,
         allow_read: true,
+        no_check: true,
         log_level: Some(Level::Error),
         ..Flags::default()
       },
@@ -572,7 +577,7 @@ mod tests {
 
     assert!(file_path.exists());
     let content = fs::read_to_string(file_path).unwrap();
-    assert!(content.contains(r#""run" "--allow-read" "--allow-net" "--quiet" "http://localhost:4545/cli/tests/echo_server.ts" "--foobar""#));
+    assert!(content.contains(r#""run" "--allow-read" "--allow-net" "--quiet" "--no-check" "http://localhost:4545/cli/tests/echo_server.ts" "--foobar""#));
   }
 
   #[test]

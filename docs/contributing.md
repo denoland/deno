@@ -2,7 +2,7 @@
 
 - Read the [style guide](./contributing/style_guide.md).
 
-- Please don't make [the benchmarks](https://deno.land/benchmarks.html) worse.
+- Please don't make [the benchmarks](https://deno.land/benchmarks) worse.
 
 - Ask for help in the [community chat room](https://discord.gg/deno).
 
@@ -11,7 +11,7 @@
 
 - Please be professional in the forums. We follow
   [Rust's code of conduct](https://www.rust-lang.org/policies/code-of-conduct)
-  (CoC) Have a problem? Email ry@tinyclouds.org.
+  (CoC). Have a problem? Email ry@tinyclouds.org.
 
 ## Development
 

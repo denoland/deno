@@ -9,10 +9,10 @@
 
 use crate::colors;
 use crate::diff::diff;
-use crate::dprint_plugin_typescript as dprint;
 use crate::fs::files_in_subtree;
-use crate::op_error::OpError;
+use crate::text_encoding;
 use deno_core::ErrBox;
+use dprint_plugin_typescript as dprint;
 use std::fs;
 use std::io::stdin;
 use std::io::stdout;
@@ -27,15 +27,24 @@ const BOM_CHAR: char = '\u{FEFF}';
 
 /// Format JavaScript/TypeScript files.
 ///
-/// First argument supports globs, and if it is `None`
+/// First argument and ignore supports globs, and if it is `None`
 /// then the current directory is recursively walked.
-pub async fn format(args: Vec<String>, check: bool) -> Result<(), ErrBox> {
+pub async fn format(
+  args: Vec<String>,
+  check: bool,
+  exclude: Vec<String>,
+) -> Result<(), ErrBox> {
   if args.len() == 1 && args[0] == "-" {
     return format_stdin(check);
   }
-
-  let target_files = collect_files(args)?;
-
+  // collect all files provided.
+  let mut target_files = collect_files(args)?;
+  if !exclude.is_empty() {
+    // collect all files to be ignored
+    // and retain only files that should be formatted.
+    let ignore_files = collect_files(exclude)?;
+    target_files.retain(|f| !ignore_files.contains(&f));
+  }
   let config = get_config();
   if check {
     check_source_files(config, target_files).await
@@ -100,14 +109,11 @@ async fn check_source_files(
   if not_formatted_files_count == 0 {
     Ok(())
   } else {
-    Err(
-      OpError::other(format!(
-        "Found {} not formatted {}",
-        not_formatted_files_count,
-        files_str(not_formatted_files_count),
-      ))
-      .into(),
-    )
+    Err(ErrBox::error(format!(
+      "Found {} not formatted {}",
+      not_formatted_files_count,
+      files_str(not_formatted_files_count),
+    )))
   }
 }
 
@@ -165,7 +171,7 @@ async fn format_source_files(
 fn format_stdin(check: bool) -> Result<(), ErrBox> {
   let mut source = String::new();
   if stdin().read_to_string(&mut source).is_err() {
-    return Err(OpError::other("Failed to read from stdin".to_string()).into());
+    return Err(ErrBox::error("Failed to read from stdin"));
   }
   let formatter = dprint::Formatter::new(get_config());
 
@@ -181,7 +187,7 @@ fn format_stdin(check: bool) -> Result<(), ErrBox> {
       }
     }
     Err(e) => {
-      return Err(OpError::other(e).into());
+      return Err(ErrBox::error(e));
     }
   }
   Ok(())
@@ -207,7 +213,9 @@ fn is_supported(path: &Path) -> bool {
   }
 }
 
-pub fn collect_files(files: Vec<String>) -> Result<Vec<PathBuf>, ErrBox> {
+pub fn collect_files(
+  files: Vec<String>,
+) -> Result<Vec<PathBuf>, std::io::Error> {
   let mut target_files: Vec<PathBuf> = vec![];
 
   if files.is_empty() {
@@ -217,9 +225,9 @@ pub fn collect_files(files: Vec<String>) -> Result<Vec<PathBuf>, ErrBox> {
     for arg in files {
       let p = PathBuf::from(arg);
       if p.is_dir() {
-        target_files.extend(files_in_subtree(p, is_supported));
+        target_files.extend(files_in_subtree(p.canonicalize()?, is_supported));
       } else {
-        target_files.push(p);
+        target_files.push(p.canonicalize()?);
       };
     }
   }
@@ -238,13 +246,15 @@ struct FileContents {
 }
 
 fn read_file_contents(file_path: &PathBuf) -> Result<FileContents, ErrBox> {
-  let file_text = fs::read_to_string(&file_path)?;
+  let file_bytes = fs::read(&file_path)?;
+  let charset = text_encoding::detect_charset(&file_bytes);
+  let file_text = text_encoding::convert_to_utf8(&file_bytes, charset)?;
   let had_bom = file_text.starts_with(BOM_CHAR);
   let text = if had_bom {
     // remove the BOM
     String::from(&file_text[BOM_CHAR.len_utf8()..])
   } else {
-    file_text
+    String::from(file_text)
   };
 
   Ok(FileContents { text, had_bom })

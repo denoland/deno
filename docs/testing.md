@@ -27,14 +27,14 @@ Deno.test({
 
 ## Assertions
 
-There are some useful assertion utilities at https://deno.land/std/testing#usage
-to make testing easier:
+There are some useful assertion utilities at
+https://deno.land/std@$STD_VERSION/testing#usage to make testing easier:
 
 ```ts
 import {
   assertEquals,
   assertArrayContains,
-} from "https://deno.land/std/testing/asserts.ts";
+} from "https://deno.land/std@$STD_VERSION/testing/asserts.ts";
 
 Deno.test("hello world", () => {
   const x = 1 + 2;
@@ -49,7 +49,7 @@ You can also test asynchronous code by passing a test function that returns a
 promise. For this you can use the `async` keyword when defining a function:
 
 ```ts
-import { delay } from "https://deno.land/std/async/delay.ts";
+import { delay } from "https://deno.land/std@$STD_VERSION/async/delay.ts";
 
 Deno.test("async hello world", async () => {
   const x = 1 + 2;
@@ -99,7 +99,7 @@ current directory (recursively) that match the glob
 files in the directory that match this glob will be run.
 
 ```shell
-# Run all tests in the current directly and all sub-directories
+# Run all tests in the current directory and all sub-directories
 deno test
 
 # Run all tests in the util directory

@@ -499,7 +499,9 @@ function writeScalar(
         return `'${string.replace(/'/g, "''")}'`;
       case STYLE_LITERAL:
         return `|${blockHeader(string, state.indent)}${
-          dropEndingNewline(indentString(string, indent))
+          dropEndingNewline(
+            indentString(string, indent),
+          )
         }`;
       case STYLE_FOLDED:
         return `>${blockHeader(string, state.indent)}${
@@ -867,7 +869,10 @@ function inspectNode(
   }
 }
 
-function getDuplicateReferences(object: object, state: DumperState): void {
+function getDuplicateReferences(
+  object: Record<string, unknown>,
+  state: DumperState,
+): void {
   const objects: Any[] = [],
     duplicatesIndexes: number[] = [];
 

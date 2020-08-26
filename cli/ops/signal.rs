@@ -1,13 +1,15 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{JsonOp, Value};
-use crate::op_error::OpError;
 use crate::state::State;
 use deno_core::CoreIsolate;
 use deno_core::CoreIsolateState;
+use deno_core::ErrBox;
 use deno_core::ZeroCopyBuf;
+use std::rc::Rc;
 
 #[cfg(unix)]
 use super::dispatch_json::Deserialize;
+#[cfg(unix)]
 #[cfg(unix)]
 use futures::future::{poll_fn, FutureExt};
 #[cfg(unix)]
@@ -15,7 +17,7 @@ use std::task::Waker;
 #[cfg(unix)]
 use tokio::signal::unix::{signal, Signal, SignalKind};
 
-pub fn init(i: &mut CoreIsolate, s: &State) {
+pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
   i.register_op("op_signal_bind", s.stateful_json_op2(op_signal_bind));
   i.register_op("op_signal_unbind", s.stateful_json_op2(op_signal_unbind));
   i.register_op("op_signal_poll", s.stateful_json_op2(op_signal_poll));
@@ -41,10 +43,10 @@ struct SignalArgs {
 #[cfg(unix)]
 fn op_signal_bind(
   isolate_state: &mut CoreIsolateState,
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   state.check_unstable("Deno.signal");
   let args: BindSignalArgs = serde_json::from_value(args)?;
   let mut resource_table = isolate_state.resource_table.borrow_mut();
@@ -63,10 +65,10 @@ fn op_signal_bind(
 #[cfg(unix)]
 fn op_signal_poll(
   isolate_state: &mut CoreIsolateState,
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   state.check_unstable("Deno.signal");
   let args: SignalArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
@@ -90,10 +92,10 @@ fn op_signal_poll(
 #[cfg(unix)]
 pub fn op_signal_unbind(
   isolate_state: &mut CoreIsolateState,
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   state.check_unstable("Deno.signal");
   let args: SignalArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
@@ -108,36 +110,36 @@ pub fn op_signal_unbind(
   }
   resource_table
     .close(rid)
-    .ok_or_else(OpError::bad_resource_id)?;
+    .ok_or_else(ErrBox::bad_resource_id)?;
   Ok(JsonOp::Sync(json!({})))
 }
 
 #[cfg(not(unix))]
 pub fn op_signal_bind(
   _isolate_state: &mut CoreIsolateState,
-  _state: &State,
+  _state: &Rc<State>,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   unimplemented!();
 }
 
 #[cfg(not(unix))]
 fn op_signal_unbind(
   _isolate_state: &mut CoreIsolateState,
-  _state: &State,
+  _state: &Rc<State>,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   unimplemented!();
 }
 
 #[cfg(not(unix))]
 fn op_signal_poll(
   _isolate_state: &mut CoreIsolateState,
-  _state: &State,
+  _state: &Rc<State>,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   unimplemented!();
 }

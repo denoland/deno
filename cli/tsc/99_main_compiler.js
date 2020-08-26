@@ -3,10 +3,13 @@
 // This module is the entry point for "compiler" isolate, ie. the one
 // that is created when Deno needs to compile TS/WASM to JS.
 //
-// It provides a single functions that should be called by Rust:
-//  - `bootstrapTsCompilerRuntime`
+// It provides two functions that should be called by Rust:
+//  - `bootstrapCompilerRuntime`
 // This functions must be called when creating isolate
 // to properly setup runtime.
+//  - `tsCompilerOnMessage`
+// This function must be called when sending a request
+// to the compiler.
 
 // Removes the `__proto__` for security reasons.  This intentionally makes
 // Deno non compliant with ECMA-262 Annex B.2.2.1
@@ -16,65 +19,102 @@ delete Object.prototype.__proto__;
 
 ((window) => {
   const core = Deno.core;
-  const { bold, cyan, yellow } = window.__bootstrap.colors;
   const { assert, log, notImplemented } = window.__bootstrap.util;
-  const { DiagnosticCategory } = window.__bootstrap.diagnostics;
+  const dispatchJson = window.__bootstrap.dispatchJson;
+  const util = window.__bootstrap.util;
+  const errorStack = window.__bootstrap.errorStack;
+  const errors = window.__bootstrap.errors.errors;
+
+  function opNow() {
+    const res = dispatchJson.sendSync("op_now");
+    return res.seconds * 1e3 + res.subsecNanos / 1e6;
+  }
+
+  const DiagnosticCategory = {
+    0: "Log",
+    1: "Debug",
+    2: "Info",
+    3: "Error",
+    4: "Warning",
+    5: "Suggestion",
+
+    Log: 0,
+    Debug: 1,
+    Info: 2,
+    Error: 3,
+    Warning: 4,
+    Suggestion: 5,
+  };
 
   const unstableDenoGlobalProperties = [
-    "umask",
-    "linkSync",
-    "link",
-    "symlinkSync",
-    "symlink",
-    "loadavg",
-    "osRelease",
-    "openPlugin",
-    "DiagnosticCategory",
-    "DiagnosticMessageChain",
-    "DiagnosticItem",
-    "Diagnostic",
-    "formatDiagnostics",
     "CompilerOptions",
-    "TranspileOnlyResult",
-    "transpileOnly",
-    "compile",
-    "bundle",
-    "Location",
-    "applySourceMap",
-    "LinuxSignal",
-    "MacOSSignal",
-    "Signal",
-    "SignalStream",
-    "signal",
-    "signals",
-    "setRaw",
-    "utimeSync",
-    "utime",
-    "ShutdownMode",
-    "shutdown",
     "DatagramConn",
-    "UnixListenOptions",
-    "listen",
-    "listenDatagram",
-    "UnixConnectOptions",
-    "connect",
-    "StartTlsOptions",
-    "startTls",
-    "kill",
+    "Diagnostic",
+    "DiagnosticCategory",
+    "DiagnosticItem",
+    "DiagnosticMessageChain",
+    "EnvPermissionDescriptor",
+    "HrtimePermissionDescriptor",
+    "HttpClient",
+    "LinuxSignal",
+    "Location",
+    "MacOSSignal",
+    "NetPermissionDescriptor",
+    "PermissionDescriptor",
     "PermissionName",
     "PermissionState",
-    "RunPermissionDescriptor",
-    "ReadPermissionDescriptor",
-    "WritePermissionDescriptor",
-    "NetPermissionDescriptor",
-    "EnvPermissionDescriptor",
-    "PluginPermissionDescriptor",
-    "HrtimePermissionDescriptor",
-    "PermissionDescriptor",
-    "Permissions",
     "PermissionStatus",
+    "Permissions",
+    "PluginPermissionDescriptor",
+    "ReadPermissionDescriptor",
+    "RunPermissionDescriptor",
+    "ShutdownMode",
+    "Signal",
+    "SignalStream",
+    "StartTlsOptions",
+    "SymlinkOptions",
+    "TranspileOnlyResult",
+    "UnixConnectOptions",
+    "UnixListenOptions",
+    "WritePermissionDescriptor",
+    "applySourceMap",
+    "bundle",
+    "compile",
+    "connect",
+    "consoleSize",
+    "createHttpClient",
+    "fdatasync",
+    "fdatasyncSync",
+    "formatDiagnostics",
+    "fstat",
+    "fstatSync",
+    "fsync",
+    "fsyncSync",
+    "ftruncate",
+    "ftruncateSync",
     "hostname",
+    "kill",
+    "link",
+    "linkSync",
+    "listen",
+    "listenDatagram",
+    "loadavg",
+    "mainModule",
+    "openPlugin",
+    "osRelease",
+    "permissions",
     "ppid",
+    "setRaw",
+    "shutdown",
+    "signal",
+    "signals",
+    "startTls",
+    "symlink",
+    "symlinkSync",
+    "transpileOnly",
+    "umask",
+    "utime",
+    "utimeSync",
   ];
 
   function transformMessageText(messageText, code) {
@@ -114,9 +154,7 @@ delete Object.prototype.__proto__;
     return messageText;
   }
 
-  function fromDiagnosticCategory(
-    category,
-  ) {
+  function fromDiagnosticCategory(category) {
     switch (category) {
       case ts.DiagnosticCategory.Error:
         return DiagnosticCategory.Error;
@@ -135,11 +173,7 @@ delete Object.prototype.__proto__;
     }
   }
 
-  function getSourceInformation(
-    sourceFile,
-    start,
-    length,
-  ) {
+  function getSourceInformation(sourceFile, start, length) {
     const scriptResourceName = sourceFile.fileName;
     const {
       line: lineNumber,
@@ -171,9 +205,7 @@ delete Object.prototype.__proto__;
     };
   }
 
-  function fromDiagnosticMessageChain(
-    messageChain,
-  ) {
+  function fromDiagnosticMessageChain(messageChain) {
     if (!messageChain) {
       return undefined;
     }
@@ -189,9 +221,7 @@ delete Object.prototype.__proto__;
     });
   }
 
-  function parseDiagnostic(
-    item,
-  ) {
+  function parseDiagnostic(item) {
     const {
       messageText,
       category: sourceCategory,
@@ -229,9 +259,7 @@ delete Object.prototype.__proto__;
     return sourceInfo ? { ...base, ...sourceInfo } : base;
   }
 
-  function parseRelatedInformation(
-    relatedInformation,
-  ) {
+  function parseRelatedInformation(relatedInformation) {
     const result = [];
     for (const item of relatedInformation) {
       result.push(parseDiagnostic(item));
@@ -239,9 +267,7 @@ delete Object.prototype.__proto__;
     return result;
   }
 
-  function fromTypeScriptDiagnostic(
-    diagnostics,
-  ) {
+  function fromTypeScriptDiagnostic(diagnostics) {
     const items = [];
     for (const sourceDiagnostic of diagnostics) {
       const item = parseDiagnostic(sourceDiagnostic);
@@ -464,12 +490,7 @@ delete Object.prototype.__proto__;
    */
   const RESOLVED_SPECIFIER_CACHE = new Map();
 
-  function configure(
-    defaultOptions,
-    source,
-    path,
-    cwd,
-  ) {
+  function configure(defaultOptions, source, path, cwd) {
     const { config, error } = ts.parseConfigFileTextToJson(path, source);
     if (error) {
       return { diagnostics: [error], options: defaultOptions };
@@ -515,11 +536,7 @@ delete Object.prototype.__proto__;
       return SOURCE_FILE_CACHE.get(url);
     }
 
-    static cacheResolvedUrl(
-      resolvedUrl,
-      rawModuleSpecifier,
-      containingFile,
-    ) {
+    static cacheResolvedUrl(resolvedUrl, rawModuleSpecifier, containingFile) {
       containingFile = containingFile || "";
       let innerCache = RESOLVED_SPECIFIER_CACHE.get(containingFile);
       if (!innerCache) {
@@ -529,10 +546,7 @@ delete Object.prototype.__proto__;
       innerCache.set(rawModuleSpecifier, resolvedUrl);
     }
 
-    static getResolvedUrl(
-      moduleSpecifier,
-      containingFile,
-    ) {
+    static getResolvedUrl(moduleSpecifier, containingFile) {
       const containingCache = RESOLVED_SPECIFIER_CACHE.get(containingFile);
       if (containingCache) {
         return containingCache.get(moduleSpecifier);
@@ -596,11 +610,7 @@ delete Object.prototype.__proto__;
       return this.#options;
     }
 
-    configure(
-      cwd,
-      path,
-      configurationText,
-    ) {
+    configure(cwd, path, configurationText) {
       log("compiler::host.configure", path);
       const { options, ...result } = configure(
         this.#options,
@@ -693,10 +703,7 @@ delete Object.prototype.__proto__;
       return notImplemented();
     }
 
-    resolveModuleNames(
-      moduleNames,
-      containingFile,
-    ) {
+    resolveModuleNames(moduleNames, containingFile) {
       log("compiler::host.resolveModuleNames", {
         moduleNames,
         containingFile,
@@ -735,13 +742,7 @@ delete Object.prototype.__proto__;
       return true;
     }
 
-    writeFile(
-      fileName,
-      data,
-      _writeByteOrderMark,
-      _onError,
-      sourceFiles,
-    ) {
+    writeFile(fileName, data, _writeByteOrderMark, _onError, sourceFiles) {
       log("compiler::host.writeFile", fileName);
       this.#writeFile(fileName, data, sourceFiles);
     }
@@ -779,6 +780,7 @@ delete Object.prototype.__proto__;
   // as these are internal APIs of TypeScript which maintain valid libs
   ts.libs.push("deno.ns", "deno.window", "deno.worker", "deno.shared_globals");
   ts.libMap.set("deno.ns", "lib.deno.ns.d.ts");
+  ts.libMap.set("deno.web", "lib.deno.web.d.ts");
   ts.libMap.set("deno.window", "lib.deno.window.d.ts");
   ts.libMap.set("deno.worker", "lib.deno.worker.d.ts");
   ts.libMap.set("deno.shared_globals", "lib.deno.shared_globals.d.ts");
@@ -788,6 +790,10 @@ delete Object.prototype.__proto__;
   // are available in the future when needed.
   SNAPSHOT_HOST.getSourceFile(
     `${ASSETS}/lib.deno.ns.d.ts`,
+    ts.ScriptTarget.ESNext,
+  );
+  SNAPSHOT_HOST.getSourceFile(
+    `${ASSETS}/lib.deno.web.d.ts`,
     ts.ScriptTarget.ESNext,
   );
   SNAPSHOT_HOST.getSourceFile(
@@ -823,9 +829,7 @@ delete Object.prototype.__proto__;
   const SYSTEM_LOADER = getAsset("system_loader.js");
   const SYSTEM_LOADER_ES5 = getAsset("system_loader_es5.js");
 
-  function buildLocalSourceFileCache(
-    sourceFileMap,
-  ) {
+  function buildLocalSourceFileCache(sourceFileMap) {
     for (const entry of Object.values(sourceFileMap)) {
       assert(entry.sourceCode.length > 0);
       SourceFile.addToCache({
@@ -844,11 +848,13 @@ delete Object.prototype.__proto__;
           importedFile.mediaType === MediaType.JSX;
         // If JS or JSX perform substitution for types if available
         if (isJsOrJsx) {
-          if (importedFile.typeHeaders.length > 0) {
+          // @deno-types has highest precedence, followed by
+          // X-TypeScript-Types header
+          if (importDesc.resolvedTypeDirective) {
+            mappedUrl = importDesc.resolvedTypeDirective;
+          } else if (importedFile.typeHeaders.length > 0) {
             const typeHeaders = importedFile.typeHeaders[0];
             mappedUrl = typeHeaders.resolvedSpecifier;
-          } else if (importDesc.resolvedTypeDirective) {
-            mappedUrl = importDesc.resolvedTypeDirective;
           } else if (importedFile.typesDirectives.length > 0) {
             const typeDirective = importedFile.typesDirectives[0];
             mappedUrl = typeDirective.resolvedSpecifier;
@@ -875,9 +881,7 @@ delete Object.prototype.__proto__;
     }
   }
 
-  function buildSourceFileCache(
-    sourceFileMap,
-  ) {
+  function buildSourceFileCache(sourceFileMap) {
     for (const entry of Object.values(sourceFileMap)) {
       SourceFile.addToCache({
         url: entry.url,
@@ -903,11 +907,13 @@ delete Object.prototype.__proto__;
           importedFile.mediaType === MediaType.JSX;
         // If JS or JSX perform substitution for types if available
         if (isJsOrJsx) {
-          if (importedFile.typeHeaders.length > 0) {
+          // @deno-types has highest precedence, followed by
+          // X-TypeScript-Types header
+          if (importDesc.resolvedTypeDirective) {
+            mappedUrl = importDesc.resolvedTypeDirective;
+          } else if (importedFile.typeHeaders.length > 0) {
             const typeHeaders = importedFile.typeHeaders[0];
             mappedUrl = typeHeaders.resolvedSpecifier;
-          } else if (importDesc.resolvedTypeDirective) {
-            mappedUrl = importDesc.resolvedTypeDirective;
           } else if (importedFile.typesDirectives.length > 0) {
             const typeDirective = importedFile.typesDirectives[0];
             mappedUrl = typeDirective.resolvedSpecifier;
@@ -945,11 +951,7 @@ delete Object.prototype.__proto__;
   };
 
   function createBundleWriteFile(state) {
-    return function writeFile(
-      _fileName,
-      data,
-      sourceFiles,
-    ) {
+    return function writeFile(_fileName, data, sourceFiles) {
       assert(sourceFiles != null);
       assert(state.host);
       // we only support single root names for bundles
@@ -963,14 +965,8 @@ delete Object.prototype.__proto__;
     };
   }
 
-  function createCompileWriteFile(
-    state,
-  ) {
-    return function writeFile(
-      fileName,
-      data,
-      sourceFiles,
-    ) {
+  function createCompileWriteFile(state) {
+    return function writeFile(fileName, data, sourceFiles) {
       const isBuildInfo = fileName === TS_BUILD_INFO;
 
       if (isBuildInfo) {
@@ -988,14 +984,8 @@ delete Object.prototype.__proto__;
     };
   }
 
-  function createRuntimeCompileWriteFile(
-    state,
-  ) {
-    return function writeFile(
-      fileName,
-      data,
-      sourceFiles,
-    ) {
+  function createRuntimeCompileWriteFile(state) {
+    return function writeFile(fileName, data, sourceFiles) {
       assert(sourceFiles);
       assert(sourceFiles.length === 1);
       state.emitMap[fileName] = {
@@ -1136,14 +1126,11 @@ delete Object.prototype.__proto__;
   function performanceStart() {
     stats.length = 0;
     // TODO(kitsonk) replace with performance.mark() when landed
-    statsStart = performance.now();
+    statsStart = opNow();
     ts.performance.enable();
   }
 
-  function performanceProgram({
-    program,
-    fileCount,
-  }) {
+  function performanceProgram({ program, fileCount }) {
     if (program) {
       if ("getProgram" in program) {
         program = program.getProgram();
@@ -1176,23 +1163,22 @@ delete Object.prototype.__proto__;
 
   function performanceEnd() {
     // TODO(kitsonk) replace with performance.measure() when landed
-    const duration = performance.now() - statsStart;
+    const duration = opNow() - statsStart;
     stats.push({ key: "Compile time", value: duration });
     return stats;
   }
 
   // TODO(Bartlomieju): this check should be done in Rust; there should be no
-  function processConfigureResponse(
-    configResult,
-    configPath,
-  ) {
+  function processConfigureResponse(configResult, configPath) {
     const { ignoredOptions, diagnostics } = configResult;
     if (ignoredOptions) {
-      console.warn(
-        yellow(`Unsupported compiler options in "${configPath}"\n`) +
-          cyan(`  The following options were ignored:\n`) +
-          `    ${ignoredOptions.map((value) => bold(value)).join(", ")}`,
-      );
+      const msg =
+        `Unsupported compiler options in "${configPath}"\n  The following options were ignored:\n    ${
+          ignoredOptions
+            .map((value) => value)
+            .join(", ")
+        }\n`;
+      core.print(msg, true);
     }
     return diagnostics;
   }
@@ -1290,12 +1276,7 @@ delete Object.prototype.__proto__;
     }
   }
 
-  function buildBundle(
-    rootName,
-    data,
-    sourceFiles,
-    target,
-  ) {
+  function buildBundle(rootName, data, sourceFiles, target) {
     // when outputting to AMD and a single outfile, TypeScript makes up the module
     // specifiers which are used to define the modules, and doesn't expose them
     // publicly, so we have to try to replicate
@@ -1545,6 +1526,7 @@ delete Object.prototype.__proto__;
     cwd,
     sourceFileMap,
     type,
+    performance,
   }) {
     if (performance) {
       performanceStart();
@@ -1634,9 +1616,7 @@ delete Object.prototype.__proto__;
     return result;
   }
 
-  function runtimeCompile(
-    request,
-  ) {
+  function runtimeCompile(request) {
     const { options, rootNames, target, unstable, sourceFileMap } = request;
 
     log(">>> runtime compile start", {
@@ -1778,9 +1758,7 @@ delete Object.prototype.__proto__;
     };
   }
 
-  function runtimeTranspile(
-    request,
-  ) {
+  function runtimeTranspile(request) {
     const result = {};
     const { sources, options } = request;
     const compilerOptions = options
@@ -1804,64 +1782,104 @@ delete Object.prototype.__proto__;
     return Promise.resolve(result);
   }
 
-  async function tsCompilerOnMessage({
-    data: request,
-  }) {
+  function opCompilerRespond(msg) {
+    dispatchJson.sendSync("op_compiler_respond", msg);
+  }
+
+  async function tsCompilerOnMessage(msg) {
+    const request = msg.data;
     switch (request.type) {
       case CompilerRequestType.Compile: {
         const result = compile(request);
-        globalThis.postMessage(result);
+        opCompilerRespond(result);
         break;
       }
       case CompilerRequestType.Transpile: {
         const result = transpile(request);
-        globalThis.postMessage(result);
+        opCompilerRespond(result);
         break;
       }
       case CompilerRequestType.Bundle: {
         const result = bundle(request);
-        globalThis.postMessage(result);
+        opCompilerRespond(result);
         break;
       }
       case CompilerRequestType.RuntimeCompile: {
         const result = runtimeCompile(request);
-        globalThis.postMessage(result);
+        opCompilerRespond(result);
         break;
       }
       case CompilerRequestType.RuntimeBundle: {
         const result = runtimeBundle(request);
-        globalThis.postMessage(result);
+        opCompilerRespond(result);
         break;
       }
       case CompilerRequestType.RuntimeTranspile: {
         const result = await runtimeTranspile(request);
-        globalThis.postMessage(result);
+        opCompilerRespond(result);
         break;
       }
       default:
-        log(
+        throw new Error(
           `!!! unhandled CompilerRequestType: ${request.type} (${
             CompilerRequestType[request.type]
           })`,
         );
     }
-    // Shutdown after single request
-    globalThis.close();
   }
 
-  function bootstrapTsCompilerRuntime() {
-    globalThis.bootstrap.workerRuntime("TS", false);
-    globalThis.onmessage = tsCompilerOnMessage;
+  // TODO(bartlomieju): temporary solution, must be fixed when moving
+  // dispatches to separate crates
+  function initOps() {
+    const opsMap = core.ops();
+    for (const [_name, opId] of Object.entries(opsMap)) {
+      core.setAsyncHandler(opId, dispatchJson.asyncMsgFromRust);
+    }
   }
 
-  Object.defineProperties(globalThis, {
-    bootstrap: {
-      value: {
-        ...globalThis.bootstrap,
-        tsCompilerRuntime: bootstrapTsCompilerRuntime,
-      },
-      configurable: true,
-      writable: true,
-    },
-  });
+  function runtimeStart(source) {
+    initOps();
+    // First we send an empty `Start` message to let the privileged side know we
+    // are ready. The response should be a `StartRes` message containing the CLI
+    // args and other info.
+    const s = dispatchJson.sendSync("op_start");
+    util.setLogDebug(s.debugFlag, source);
+    errorStack.setPrepareStackTrace(Error);
+    return s;
+  }
+
+  let hasBootstrapped = false;
+
+  function bootstrapCompilerRuntime() {
+    if (hasBootstrapped) {
+      throw new Error("Worker runtime already bootstrapped");
+    }
+    hasBootstrapped = true;
+    core.registerErrorClass("NotFound", errors.NotFound);
+    core.registerErrorClass("PermissionDenied", errors.PermissionDenied);
+    core.registerErrorClass("ConnectionRefused", errors.ConnectionRefused);
+    core.registerErrorClass("ConnectionReset", errors.ConnectionReset);
+    core.registerErrorClass("ConnectionAborted", errors.ConnectionAborted);
+    core.registerErrorClass("NotConnected", errors.NotConnected);
+    core.registerErrorClass("AddrInUse", errors.AddrInUse);
+    core.registerErrorClass("AddrNotAvailable", errors.AddrNotAvailable);
+    core.registerErrorClass("BrokenPipe", errors.BrokenPipe);
+    core.registerErrorClass("AlreadyExists", errors.AlreadyExists);
+    core.registerErrorClass("InvalidData", errors.InvalidData);
+    core.registerErrorClass("TimedOut", errors.TimedOut);
+    core.registerErrorClass("Interrupted", errors.Interrupted);
+    core.registerErrorClass("WriteZero", errors.WriteZero);
+    core.registerErrorClass("UnexpectedEof", errors.UnexpectedEof);
+    core.registerErrorClass("BadResource", errors.BadResource);
+    core.registerErrorClass("Http", errors.Http);
+    core.registerErrorClass("URIError", URIError);
+    core.registerErrorClass("TypeError", TypeError);
+    core.registerErrorClass("Other", Error);
+    core.registerErrorClass("Busy", errors.Busy);
+    globalThis.__bootstrap = undefined;
+    runtimeStart("TS");
+  }
+
+  globalThis.bootstrapCompilerRuntime = bootstrapCompilerRuntime;
+  globalThis.tsCompilerOnMessage = tsCompilerOnMessage;
 })(this);

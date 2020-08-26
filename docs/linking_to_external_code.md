@@ -7,7 +7,7 @@ directly from URLs. This example uses a URL to import an assertion library:
 **test.ts**
 
 ```ts
-import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+import { assertEquals } from "https://deno.land/std@$STD_VERSION/testing/asserts.ts";
 
 assertEquals("hello", "hello");
 assertEquals("world", "world");
@@ -20,9 +20,9 @@ Try running this:
 ```shell
 $ deno run test.ts
 Compile file:///mnt/f9/Projects/github.com/denoland/deno/docs/test.ts
-Download https://deno.land/std/testing/asserts.ts
-Download https://deno.land/std/fmt/colors.ts
-Download https://deno.land/std/testing/diff.ts
+Download https://deno.land/std@$STD_VERSION/testing/asserts.ts
+Download https://deno.land/std@$STD_VERSION/fmt/colors.ts
+Download https://deno.land/std@$STD_VERSION/testing/diff.ts
 Asserted! ✓
 ```
 
@@ -57,8 +57,9 @@ being run: `https://unpkg.com/liltest@0.0.5/dist/liltest.js`.
 The solution is to import and re-export your external libraries in a central
 `deps.ts` file (which serves the same purpose as Node's `package.json` file).
 For example, let's say you were using the above assertion library across a large
-project. Rather than importing `"https://deno.land/std/testing/asserts.ts"`
-everywhere, you could create a `deps.ts` file that exports the third-party code:
+project. Rather than importing
+`"https://deno.land/std@$STD_VERSION/testing/asserts.ts"` everywhere, you could
+create a `deps.ts` file that exports the third-party code:
 
 **deps.ts**
 
@@ -67,7 +68,7 @@ export {
   assert,
   assertEquals,
   assertStrContains,
-} from "https://deno.land/std/testing/asserts.ts";
+} from "https://deno.land/std@$STD_VERSION/testing/asserts.ts";
 ```
 
 And throughout the same project, you can import from the `deps.ts` and avoid

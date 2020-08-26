@@ -1,18 +1,18 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use super::io::{StreamResource, StreamResourceHolder};
-use crate::op_error::OpError;
 use crate::resolve_addr::resolve_addr;
 use crate::state::State;
 use deno_core::CoreIsolate;
 use deno_core::CoreIsolateState;
+use deno_core::ErrBox;
 use deno_core::ResourceTable;
 use deno_core::ZeroCopyBuf;
 use futures::future::poll_fn;
 use futures::future::FutureExt;
-use std::convert::From;
 use std::net::Shutdown;
 use std::net::SocketAddr;
+use std::rc::Rc;
 use std::task::Context;
 use std::task::Poll;
 use tokio::net::TcpListener;
@@ -22,7 +22,7 @@ use tokio::net::UdpSocket;
 #[cfg(unix)]
 use super::net_unix;
 
-pub fn init(i: &mut CoreIsolate, s: &State) {
+pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
   i.register_op("op_accept", s.stateful_json_op2(op_accept));
   i.register_op("op_connect", s.stateful_json_op2(op_connect));
   i.register_op("op_shutdown", s.stateful_json_op2(op_shutdown));
@@ -44,7 +44,7 @@ fn accept_tcp(
   isolate_state: &mut CoreIsolateState,
   args: AcceptArgs,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   let rid = args.rid as u32;
   let resource_table = isolate_state.resource_table.clone();
 
@@ -53,11 +53,9 @@ fn accept_tcp(
       let mut resource_table = resource_table.borrow_mut();
       let listener_resource = resource_table
         .get_mut::<TcpListenerResource>(rid)
-        .ok_or_else(|| {
-          OpError::bad_resource("Listener has been closed".to_string())
-        })?;
+        .ok_or_else(|| ErrBox::bad_resource("Listener has been closed"))?;
       let listener = &mut listener_resource.listener;
-      match listener.poll_accept(cx).map_err(OpError::from) {
+      match listener.poll_accept(cx).map_err(ErrBox::from) {
         Poll::Ready(Ok((stream, addr))) => {
           listener_resource.untrack_task();
           Poll::Ready(Ok((stream, addr)))
@@ -102,16 +100,16 @@ fn accept_tcp(
 
 fn op_accept(
   isolate_state: &mut CoreIsolateState,
-  _state: &State,
+  _state: &Rc<State>,
   args: Value,
   zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   let args: AcceptArgs = serde_json::from_value(args)?;
   match args.transport.as_str() {
     "tcp" => accept_tcp(isolate_state, args, zero_copy),
     #[cfg(unix)]
     "unix" => net_unix::accept_unix(isolate_state, args.rid as u32, zero_copy),
-    _ => Err(OpError::other(format!(
+    _ => Err(ErrBox::error(format!(
       "Unsupported transport protocol {}",
       args.transport
     ))),
@@ -126,10 +124,10 @@ struct ReceiveArgs {
 
 fn receive_udp(
   isolate_state: &mut CoreIsolateState,
-  _state: &State,
+  _state: &Rc<State>,
   args: ReceiveArgs,
   zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   assert_eq!(zero_copy.len(), 1, "Invalid number of arguments");
   let mut zero_copy = zero_copy[0].clone();
 
@@ -142,13 +140,11 @@ fn receive_udp(
       let mut resource_table = resource_table.borrow_mut();
       let resource = resource_table
         .get_mut::<UdpSocketResource>(rid)
-        .ok_or_else(|| {
-          OpError::bad_resource("Socket has been closed".to_string())
-        })?;
+        .ok_or_else(|| ErrBox::bad_resource("Socket has been closed"))?;
       let socket = &mut resource.socket;
       socket
         .poll_recv_from(cx, &mut zero_copy)
-        .map_err(OpError::from)
+        .map_err(ErrBox::from)
     });
     let (size, remote_addr) = receive_fut.await?;
     Ok(json!({
@@ -166,10 +162,10 @@ fn receive_udp(
 
 fn op_datagram_receive(
   isolate_state: &mut CoreIsolateState,
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   assert_eq!(zero_copy.len(), 1, "Invalid number of arguments");
 
   let args: ReceiveArgs = serde_json::from_value(args)?;
@@ -179,7 +175,7 @@ fn op_datagram_receive(
     "unixpacket" => {
       net_unix::receive_unix_packet(isolate_state, args.rid as u32, zero_copy)
     }
-    _ => Err(OpError::other(format!(
+    _ => Err(ErrBox::error(format!(
       "Unsupported transport protocol {}",
       args.transport
     ))),
@@ -196,10 +192,10 @@ struct SendArgs {
 
 fn op_datagram_send(
   isolate_state: &mut CoreIsolateState,
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   assert_eq!(zero_copy.len(), 1, "Invalid number of arguments");
   let zero_copy = zero_copy[0].clone();
 
@@ -216,14 +212,12 @@ fn op_datagram_send(
         let mut resource_table = resource_table.borrow_mut();
         let resource = resource_table
           .get_mut::<UdpSocketResource>(rid as u32)
-          .ok_or_else(|| {
-            OpError::bad_resource("Socket has been closed".to_string())
-          })?;
+          .ok_or_else(|| ErrBox::bad_resource("Socket has been closed"))?;
         resource
           .socket
           .poll_send_to(cx, &zero_copy, &addr)
-          .map_err(OpError::from)
           .map_ok(|byte_length| json!(byte_length))
+          .map_err(ErrBox::from)
       });
       Ok(JsonOp::Async(f.boxed_local()))
     }
@@ -240,9 +234,8 @@ fn op_datagram_send(
         let resource = resource_table
           .get_mut::<net_unix::UnixDatagramResource>(rid as u32)
           .ok_or_else(|| {
-            OpError::other("Socket has been closed".to_string())
+            ErrBox::new("NotConnected", "Socket has been closed")
           })?;
-
         let socket = &mut resource.socket;
         let byte_length = socket
           .send_to(&zero_copy, &resource.local_addr.as_pathname().unwrap())
@@ -253,7 +246,7 @@ fn op_datagram_send(
 
       Ok(JsonOp::Async(op.boxed_local()))
     }
-    _ => Err(OpError::other("Wrong argument format!".to_owned())),
+    _ => Err(ErrBox::type_error("Wrong argument format!")),
   }
 }
 
@@ -266,10 +259,10 @@ struct ConnectArgs {
 
 fn op_connect(
   isolate_state: &mut CoreIsolateState,
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   let resource_table = isolate_state.resource_table.clone();
   match serde_json::from_value(args)? {
     ConnectArgs {
@@ -340,7 +333,7 @@ fn op_connect(
       };
       Ok(JsonOp::Async(op.boxed_local()))
     }
-    _ => Err(OpError::other("Wrong argument format!".to_owned())),
+    _ => Err(ErrBox::type_error("Wrong argument format!")),
   }
 }
 
@@ -352,10 +345,10 @@ struct ShutdownArgs {
 
 fn op_shutdown(
   isolate_state: &mut CoreIsolateState,
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   state.check_unstable("Deno.shutdown");
 
   let args: ShutdownArgs = serde_json::from_value(args)?;
@@ -372,17 +365,16 @@ fn op_shutdown(
   let mut resource_table = isolate_state.resource_table.borrow_mut();
   let resource_holder = resource_table
     .get_mut::<StreamResourceHolder>(rid)
-    .ok_or_else(OpError::bad_resource_id)?;
+    .ok_or_else(ErrBox::bad_resource_id)?;
   match resource_holder.resource {
     StreamResource::TcpStream(Some(ref mut stream)) => {
-      TcpStream::shutdown(stream, shutdown_mode).map_err(OpError::from)?;
+      TcpStream::shutdown(stream, shutdown_mode)?;
     }
     #[cfg(unix)]
     StreamResource::UnixStream(ref mut stream) => {
-      net_unix::UnixStream::shutdown(stream, shutdown_mode)
-        .map_err(OpError::from)?;
+      net_unix::UnixStream::shutdown(stream, shutdown_mode)?;
     }
-    _ => return Err(OpError::bad_resource_id()),
+    _ => return Err(ErrBox::bad_resource_id()),
   }
 
   Ok(JsonOp::Sync(json!({})))
@@ -406,13 +398,13 @@ impl TcpListenerResource {
   /// can be notified when listener is closed.
   ///
   /// Throws an error if another task is already tracked.
-  pub fn track_task(&mut self, cx: &Context) -> Result<(), OpError> {
+  pub fn track_task(&mut self, cx: &Context) -> Result<(), ErrBox> {
     // Currently, we only allow tracking a single accept task for a listener.
     // This might be changed in the future with multiple workers.
     // Caveat: TcpListener by itself also only tracks an accept task at a time.
     // See https://github.com/tokio-rs/tokio/issues/846#issuecomment-454208883
     if self.waker.is_some() {
-      return Err(OpError::other("Another accept task is ongoing".to_string()));
+      return Err(ErrBox::new("Busy", "Another accept task is ongoing"));
     }
 
     let waker = futures::task::AtomicWaker::new();
@@ -465,7 +457,7 @@ struct ListenArgs {
 fn listen_tcp(
   resource_table: &mut ResourceTable,
   addr: SocketAddr,
-) -> Result<(u32, SocketAddr), OpError> {
+) -> Result<(u32, SocketAddr), ErrBox> {
   let std_listener = std::net::TcpListener::bind(&addr)?;
   let listener = TcpListener::from_std(std_listener)?;
   let local_addr = listener.local_addr()?;
@@ -482,7 +474,7 @@ fn listen_tcp(
 fn listen_udp(
   resource_table: &mut ResourceTable,
   addr: SocketAddr,
-) -> Result<(u32, SocketAddr), OpError> {
+) -> Result<(u32, SocketAddr), ErrBox> {
   let std_socket = std::net::UdpSocket::bind(&addr)?;
   let socket = UdpSocket::from_std(std_socket)?;
   let local_addr = socket.local_addr()?;
@@ -494,10 +486,10 @@ fn listen_udp(
 
 fn op_listen(
   isolate_state: &mut CoreIsolateState,
-  state: &State,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   let mut resource_table = isolate_state.resource_table.borrow_mut();
   match serde_json::from_value(args)? {
     ListenArgs {
@@ -562,6 +554,6 @@ fn op_listen(
       })))
     }
     #[cfg(unix)]
-    _ => Err(OpError::other("Wrong argument format!".to_owned())),
+    _ => Err(ErrBox::type_error("Wrong argument format!")),
   }
 }

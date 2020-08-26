@@ -5,6 +5,7 @@ pub static CLI_SNAPSHOT: &[u8] =
 pub static COMPILER_SNAPSHOT: &[u8] =
   include_bytes!(concat!(env!("OUT_DIR"), "/COMPILER_SNAPSHOT.bin"));
 pub static DENO_NS_LIB: &str = include_str!("dts/lib.deno.ns.d.ts");
+pub static DENO_WEB_LIB: &str = include_str!(env!("DENO_WEB_LIB_PATH"));
 pub static SHARED_GLOBALS_LIB: &str =
   include_str!("dts/lib.deno.shared_globals.d.ts");
 pub static WINDOW_LIB: &str = include_str!("dts/lib.deno.window.d.ts");
@@ -38,7 +39,7 @@ fn compiler_snapshot() {
   deno_core::js_check(isolate.execute(
     "<anon>",
     r#"
-    if (!(bootstrap.tsCompilerRuntime)) {
+    if (!(bootstrapCompilerRuntime)) {
         throw Error("bad");
       }
       console.log(`ts version: ${ts.version}`);

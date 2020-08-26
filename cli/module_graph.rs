@@ -1,13 +1,12 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::checksum;
-use crate::doc::Location;
 use crate::file_fetcher::map_file_extension;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::import_map::ImportMap;
 use crate::msg::MediaType;
-use crate::op_error::OpError;
 use crate::permissions::Permissions;
+use crate::swc_util::Location;
 use crate::tsc::pre_process_file;
 use crate::tsc::ImportDesc;
 use crate::tsc::TsReferenceDesc;
@@ -37,7 +36,7 @@ fn err_with_location(e: ErrBox, maybe_location: Option<&Location>) -> ErrBox {
       location.filename, location.line
     );
     let err_str = e.to_string();
-    OpError::other(format!("{}{}", err_str, location_str)).into()
+    ErrBox::error(format!("{}{}", err_str, location_str))
   } else {
     e
   }
@@ -52,10 +51,10 @@ fn validate_no_downgrade(
   if let Some(referrer) = maybe_referrer.as_ref() {
     if let "https" = referrer.as_url().scheme() {
       if let "http" = module_specifier.as_url().scheme() {
-        let e = OpError::permission_denied(
-          "Modules loaded over https:// are not allowed to import modules over http://".to_string()
+        let e = ErrBox::new("PermissionDenied",
+          "Modules loaded over https:// are not allowed to import modules over http://"
         );
-        return Err(err_with_location(e.into(), maybe_location));
+        return Err(err_with_location(e, maybe_location));
       };
     };
   };
@@ -77,10 +76,12 @@ fn validate_no_file_from_remote(
         match specifier_url.scheme() {
           "http" | "https" => {}
           _ => {
-            let e = OpError::permission_denied(
-              "Remote modules are not allowed to statically import local modules. Use dynamic import instead.".to_string()
+            let e = ErrBox::new(
+              "PermissionDenied",
+              "Remote modules are not allowed to statically import local \
+              modules. Use dynamic import instead.",
             );
-            return Err(err_with_location(e.into(), maybe_location));
+            return Err(err_with_location(e, maybe_location));
           }
         }
       }
@@ -458,7 +459,7 @@ impl ModuleGraphLoader {
           redirect: Some(source_file.url.to_string()),
           filename: source_file.filename.to_str().unwrap().to_string(),
           version_hash: checksum::gen(&[
-            &source_file.source_code,
+            &source_file.source_code.as_bytes(),
             version::DENO.as_bytes(),
           ]),
           media_type: source_file.media_type,
@@ -473,9 +474,11 @@ impl ModuleGraphLoader {
     }
 
     let module_specifier = ModuleSpecifier::from(source_file.url.clone());
-    let version_hash =
-      checksum::gen(&[&source_file.source_code, version::DENO.as_bytes()]);
-    let source_code = String::from_utf8(source_file.source_code)?;
+    let version_hash = checksum::gen(&[
+      &source_file.source_code.as_bytes(),
+      version::DENO.as_bytes(),
+    ]);
+    let source_code = source_file.source_code.to_string()?;
 
     if SUPPORTED_MEDIA_TYPES.contains(&source_file.media_type) {
       if let Some(types_specifier) = source_file.types_header {
@@ -580,7 +583,7 @@ impl ModuleGraphLoader {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::GlobalState;
+  use crate::global_state::GlobalState;
 
   async fn build_graph(
     module_specifier: &ModuleSpecifier,
@@ -602,7 +605,7 @@ mod tests {
   #[ignore]
   #[tokio::test]
   async fn source_graph_fetch() {
-    let http_server_guard = test_util::http_server();
+    let _http_server_guard = test_util::http_server();
 
     let module_specifier = ModuleSpecifier::resolve_url_or_path(
       "http://localhost:4545/cli/tests/019_media_types.ts",
@@ -690,12 +693,11 @@ mod tests {
         },
       ])
     );
-    drop(http_server_guard);
   }
 
   #[tokio::test]
   async fn source_graph_type_references() {
-    let http_server_guard = test_util::http_server();
+    let _http_server_guard = test_util::http_server();
 
     let module_specifier = ModuleSpecifier::resolve_url_or_path(
       "http://localhost:4545/cli/tests/type_definitions.ts",
@@ -747,13 +749,11 @@ mod tests {
     ));
     assert!(graph
       .contains_key("http://localhost:4545/cli/tests/type_definitions/qat.ts"));
-
-    drop(http_server_guard);
   }
 
   #[tokio::test]
   async fn source_graph_type_references2() {
-    let http_server_guard = test_util::http_server();
+    let _http_server_guard = test_util::http_server();
 
     let module_specifier = ModuleSpecifier::resolve_url_or_path(
       "http://localhost:4545/cli/tests/type_directives_02.ts",
@@ -797,12 +797,11 @@ mod tests {
         }
       ])
     );
-    drop(http_server_guard);
   }
 
   #[tokio::test]
   async fn source_graph_type_references3() {
-    let http_server_guard = test_util::http_server();
+    let _http_server_guard = test_util::http_server();
 
     let module_specifier = ModuleSpecifier::resolve_url_or_path(
       "http://localhost:4545/cli/tests/type_directives_01.ts",
@@ -840,12 +839,11 @@ mod tests {
         }
       ])
     );
-    drop(http_server_guard);
   }
 
   #[tokio::test]
   async fn source_graph_different_langs() {
-    let http_server_guard = test_util::http_server();
+    let _http_server_guard = test_util::http_server();
 
     // ModuleGraphLoader was mistakenly parsing this file as TSX
     // https://github.com/denoland/deno/issues/5867
@@ -858,8 +856,6 @@ mod tests {
     build_graph(&module_specifier)
       .await
       .expect("Failed to build graph");
-
-    drop(http_server_guard);
   }
 }
 

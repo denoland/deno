@@ -4,20 +4,22 @@
 //! alternative to flatbuffers using a very simple list of int32s to lay out
 //! messages. The first i32 is used to determine if a message a flatbuffer
 //! message or a "minimal" message.
-use crate::op_error::OpError;
-use byteorder::{LittleEndian, WriteBytesExt};
+use crate::errors::get_error_class;
 use deno_core::Buf;
 use deno_core::CoreIsolateState;
+use deno_core::ErrBox;
 use deno_core::Op;
-use deno_core::OpDispatcher;
 use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
 use std::future::Future;
+use std::iter::repeat;
+use std::mem::size_of_val;
 use std::pin::Pin;
+use std::slice;
 
 pub enum MinimalOp {
-  Sync(Result<i32, OpError>),
-  Async(Pin<Box<dyn Future<Output = Result<i32, OpError>>>>),
+  Sync(Result<i32, ErrBox>),
+  Async(Pin<Box<dyn Future<Output = Result<i32, ErrBox>>>>),
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -40,36 +42,54 @@ impl Into<Buf> for Record {
 pub struct ErrorRecord {
   pub promise_id: i32,
   pub arg: i32,
-  pub error_code: i32,
+  pub error_len: i32,
+  pub error_class: &'static [u8],
   pub error_message: Vec<u8>,
 }
 
 impl Into<Buf> for ErrorRecord {
   fn into(self) -> Buf {
-    let v32: Vec<i32> = vec![self.promise_id, self.arg, self.error_code];
-    let mut v8: Vec<u8> = Vec::new();
-    for n in v32 {
-      v8.write_i32::<LittleEndian>(n).unwrap();
-    }
-    let mut message = self.error_message;
-    // Align to 32bit word, padding with the space character.
-    message.resize((message.len() + 3usize) & !3usize, b' ');
-    v8.append(&mut message);
-    v8.into_boxed_slice()
+    let Self {
+      promise_id,
+      arg,
+      error_len,
+      error_class,
+      error_message,
+      ..
+    } = self;
+    let header_i32 = [promise_id, arg, error_len];
+    let header_u8 = unsafe {
+      slice::from_raw_parts(
+        &header_i32 as *const _ as *const u8,
+        size_of_val(&header_i32),
+      )
+    };
+    let padded_len =
+      (header_u8.len() + error_class.len() + error_message.len() + 3usize)
+        & !3usize;
+    header_u8
+      .iter()
+      .cloned()
+      .chain(error_class.iter().cloned())
+      .chain(error_message.into_iter())
+      .chain(repeat(b' '))
+      .take(padded_len)
+      .collect()
   }
 }
 
 #[test]
 fn test_error_record() {
   let expected = vec![
-    1, 0, 0, 0, 255, 255, 255, 255, 10, 0, 0, 0, 69, 114, 114, 111, 114, 32,
-    32, 32,
+    1, 0, 0, 0, 255, 255, 255, 255, 11, 0, 0, 0, 66, 97, 100, 82, 101, 115,
+    111, 117, 114, 99, 101, 69, 114, 114, 111, 114,
   ];
   let err_record = ErrorRecord {
     promise_id: 1,
     arg: -1,
-    error_code: 10,
-    error_message: "Error".to_string().as_bytes().to_owned(),
+    error_len: 11,
+    error_class: b"BadResource",
+    error_message: b"Error".to_vec(),
   };
   let buf: Buf = err_record.into();
   assert_eq!(buf, expected.into_boxed_slice());
@@ -115,7 +135,9 @@ fn test_parse_min_record() {
   assert_eq!(parse_min_record(&buf), None);
 }
 
-pub fn minimal_op<D>(d: D) -> impl OpDispatcher
+pub fn minimal_op<D>(
+  d: D,
+) -> impl Fn(&mut CoreIsolateState, &mut [ZeroCopyBuf]) -> Op
 where
   D: Fn(&mut CoreIsolateState, bool, i32, &mut [ZeroCopyBuf]) -> MinimalOp,
 {
@@ -124,12 +146,14 @@ where
     let mut record = match parse_min_record(&zero_copy[0]) {
       Some(r) => r,
       None => {
-        let e = OpError::type_error("Unparsable control buffer".to_string());
+        let error = ErrBox::type_error("Unparsable control buffer");
+        let error_class = get_error_class(&error);
         let error_record = ErrorRecord {
           promise_id: 0,
           arg: -1,
-          error_code: e.kind as i32,
-          error_message: e.msg.as_bytes().to_owned(),
+          error_len: error_class.len() as i32,
+          error_class: error_class.as_bytes(),
+          error_message: error.to_string().as_bytes().to_owned(),
         };
         return Op::Sync(error_record.into());
       }
@@ -145,11 +169,13 @@ where
           record.into()
         }
         Err(err) => {
+          let error_class = get_error_class(&err);
           let error_record = ErrorRecord {
             promise_id: record.promise_id,
             arg: -1,
-            error_code: err.kind as i32,
-            error_message: err.msg.as_bytes().to_owned(),
+            error_len: error_class.len() as i32,
+            error_class: error_class.as_bytes(),
+            error_message: err.to_string().as_bytes().to_owned(),
           };
           error_record.into()
         }
@@ -162,11 +188,13 @@ where
               record.into()
             }
             Err(err) => {
+              let error_class = get_error_class(&err);
               let error_record = ErrorRecord {
                 promise_id: record.promise_id,
                 arg: -1,
-                error_code: err.kind as i32,
-                error_message: err.msg.as_bytes().to_owned(),
+                error_len: error_class.len() as i32,
+                error_class: error_class.as_bytes(),
+                error_message: err.to_string().as_bytes().to_owned(),
               };
               error_record.into()
             }

@@ -1,27 +1,27 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{JsonOp, Value};
 use crate::colors;
-use crate::op_error::OpError;
 use crate::state::State;
 use crate::version;
 use crate::DenoSubcommand;
 use deno_core::CoreIsolate;
+use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
 use deno_core::ZeroCopyBuf;
 use std::env;
+use std::rc::Rc;
 
-pub fn init(i: &mut CoreIsolate, s: &State) {
+pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
   i.register_op("op_start", s.stateful_json_op(op_start));
   i.register_op("op_main_module", s.stateful_json_op(op_main_module));
   i.register_op("op_metrics", s.stateful_json_op(op_metrics));
 }
 
 fn op_start(
-  state: &State,
+  state: &Rc<State>,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
-  let state = state.borrow();
+) -> Result<JsonOp, ErrBox> {
   let gs = &state.global_state;
 
   Ok(JsonOp::Sync(json!({
@@ -43,27 +43,25 @@ fn op_start(
 }
 
 fn op_main_module(
-  state: &State,
+  state: &Rc<State>,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
-  let main = &state.borrow().main_module.to_string();
+) -> Result<JsonOp, ErrBox> {
+  let main = &state.main_module.to_string();
   let main_url = ModuleSpecifier::resolve_url_or_path(&main)?;
   if main_url.as_url().scheme() == "file" {
     let main_path = std::env::current_dir().unwrap().join(main_url.to_string());
     state.check_read_blind(&main_path, "main_module")?;
   }
-  state.check_unstable("Deno.mainModule");
   Ok(JsonOp::Sync(json!(&main)))
 }
 
 fn op_metrics(
-  state: &State,
+  state: &Rc<State>,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
-  let state = state.borrow();
-  let m = &state.metrics;
+) -> Result<JsonOp, ErrBox> {
+  let m = &state.metrics.borrow();
 
   Ok(JsonOp::Sync(json!({
     "opsDispatched": m.ops_dispatched,

@@ -784,8 +784,7 @@ pub mod tests {
         _maybe_referrer: Option<ModuleSpecifier>,
         _is_dyn_import: bool,
       ) -> Pin<Box<ModuleSourceFuture>> {
-        async { Err(ErrBox::from(io::Error::from(io::ErrorKind::NotFound))) }
-          .boxed()
+        async { Err(io::Error::from(io::ErrorKind::NotFound).into()) }.boxed()
       }
     }
 
@@ -891,23 +890,14 @@ pub mod tests {
       ));
 
       // First poll runs `prepare_load` hook.
-      assert!(match isolate.poll_unpin(cx) {
-        Poll::Pending => true,
-        _ => false,
-      });
+      assert!(matches!(isolate.poll_unpin(cx), Poll::Pending));
       assert_eq!(prepare_load_count.load(Ordering::Relaxed), 1);
 
       // Second poll actually loads modules into the isolate.
-      assert!(match isolate.poll_unpin(cx) {
-        Poll::Ready(Ok(_)) => true,
-        _ => false,
-      });
+      assert!(matches!(isolate.poll_unpin(cx), Poll::Ready(Ok(_))));
       assert_eq!(resolve_count.load(Ordering::Relaxed), 4);
       assert_eq!(load_count.load(Ordering::Relaxed), 2);
-      assert!(match isolate.poll_unpin(cx) {
-        Poll::Ready(Ok(_)) => true,
-        _ => false,
-      });
+      assert!(matches!(isolate.poll_unpin(cx), Poll::Ready(Ok(_))));
       assert_eq!(resolve_count.load(Ordering::Relaxed), 4);
       assert_eq!(load_count.load(Ordering::Relaxed), 2);
     })
