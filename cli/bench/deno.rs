@@ -1,7 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-#[macro_use]
-extern crate lazy_static;
 use serde_json::{self, map::Map, Number, Value};
 use std::{
   convert::From,
@@ -11,7 +9,6 @@ use std::{
 };
 
 mod http;
-mod strace;
 mod throughput;
 
 fn read_json(filename: &str) -> Result<serde_json::Value> {
@@ -253,10 +250,7 @@ fn run_http(
       stats
         .iter()
         .map(|(name, result)| {
-          (
-            name.clone(),
-            Value::Number(Number::from_f64(result.requests).unwrap()),
-          )
+          (name.clone(), Value::Number(Number::from(result.requests)))
         })
         .collect::<Map<String, Value>>(),
     ),
@@ -308,7 +302,7 @@ fn run_strace_benchmarks(
     let mut output = String::new();
     file.as_file_mut().read_to_string(&mut output)?;
 
-    let strace_result = strace::parse(&output)?;
+    let strace_result = test_util::parse_strace_output(&output);
     thread_count.insert(
       name.to_string(),
       Value::Number(Number::from(
@@ -325,22 +319,6 @@ fn run_strace_benchmarks(
   new_data.insert("syscall_count".to_string(), Value::Object(syscall_count));
 
   Ok(())
-}
-
-fn max_mem_parse(output: &str) -> Option<u64> {
-  // Takes the output from "time -v" as input and extracts the 'maximum
-  // resident set size' and returns it in bytes.
-  for line in output.lines() {
-    if line
-      .to_lowercase()
-      .contains("maximum resident set size (kbytes)")
-    {
-      let value = line.split(": ").nth(1).unwrap();
-      return Some(str::parse::<u64>(value).unwrap() * 1024);
-    }
-  }
-
-  None
 }
 
 fn run_max_mem_benchmark(deno_exe: &PathBuf) -> Result<Value> {
@@ -362,7 +340,7 @@ fn run_max_mem_benchmark(deno_exe: &PathBuf) -> Result<Value> {
 
     results.insert(
       name.to_string(),
-      Value::Number(Number::from(max_mem_parse(&out).unwrap())),
+      Value::Number(Number::from(test_util::parse_max_mem(&out).unwrap())),
     );
   }
 
@@ -482,14 +460,3 @@ impl From<walkdir::Error> for Error {
 }
 
 pub(crate) type Result<T> = std::result::Result<T, Error>;
-
-#[cfg(test)]
-mod tests {
-  #[test]
-  fn max_mem_parse() {
-    const text: &str = include_str!("./testdata/time.out");
-    let size = max_mem_parse(text)?;
-
-    assert_eq!(size, 120380 * 1024);
-  }
-}

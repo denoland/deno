@@ -1,10 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use super::Result;
-use regex::Regex;
 use std::{
   collections::HashMap, path::PathBuf, process::Command, time::Duration,
 };
+pub use test_util::{parse_wrk_output, WrkOutput as HttpBenchmarkResult};
 
 // Some of the benchmarks in this file have been renamed. In case the history
 // somehow gets messed up:
@@ -13,11 +13,6 @@ use std::{
 //   "deno_http" was once called "deno_net_http"
 
 const DURATION: &str = "20s";
-
-pub(crate) struct HttpBenchmarkResult {
-  pub latency: f64,
-  pub requests: f64,
-}
 
 pub(crate) fn benchmark(
   target_path: &PathBuf,
@@ -125,49 +120,7 @@ fn run(
     origin.kill()?;
   }
 
-  parse_wrk_output(output)
-}
-
-fn parse_wrk_output(output: String) -> Result<HttpBenchmarkResult> {
-  lazy_static! {
-    static ref REQUESTS_RX: Regex =
-      Regex::new(r"Requests/sec:\s+(\d+)").unwrap();
-    static ref LATENCY_RX: Regex =
-      Regex::new(r"\s+99%(?:\s+(\d+.\d+)([a-z]+))").unwrap();
-  }
-
-  let mut requests = None;
-  let mut latency = None;
-
-  for line in output.lines() {
-    if requests == None {
-      if let Some(cap) = REQUESTS_RX.captures(line) {
-        requests =
-          Some(str::parse::<f64>(cap.get(1).unwrap().as_str()).unwrap());
-      }
-    }
-    if latency == None {
-      if let Some(cap) = LATENCY_RX.captures(line) {
-        let time = cap.get(1).unwrap();
-        let unit = cap.get(2).unwrap();
-
-        latency = Some(
-          str::parse::<f64>(time.as_str()).unwrap()
-            * match unit.as_str() {
-              "ms" => 1.0,
-              "us" => 0.001,
-              "s" => 1000.0,
-              _ => unreachable!(),
-            },
-        );
-      }
-    }
-  }
-
-  Ok(HttpBenchmarkResult {
-    requests: requests.unwrap(),
-    latency: latency.unwrap(),
-  })
+  Ok(parse_wrk_output(&output))
 }
 
 fn get_port() -> u16 {
@@ -347,31 +300,4 @@ fn hyper_http(exe: &str) -> Result<HttpBenchmarkResult> {
   let port = get_port();
   println!("http_benchmark testing RUST hyper");
   run(&[exe, &format!("{}", port)], port, None, None)
-}
-
-#[cfg(test)]
-mod tests {
-  #[test]
-  fn parse_wrk_output_1() {
-    const text: &str = include_str!("./testdata/wrk1.txt");
-    let wrk = parse_wrk_output(text)?;
-    assert_eq!(wrk.requests, 1837);
-    assert_eq!(wrk.latency, 6.25);
-  }
-
-  #[test]
-  fn parse_wrk_output_2() {
-    const text: &str = include_str!("./testdata/wrk2.txt");
-    let wrk = parse_wrk_output(text)?;
-    assert_eq!(wrk.requests, 53435);
-    assert_eq!(wrk.latency, 6.22);
-  }
-
-  #[test]
-  fn parse_wrk_output_3() {
-    const text: &str = include_str!("./testdata/wrk3.txt");
-    let wrk = parse_wrk_output(text)?;
-    assert_eq!(wrk.requests, 96037);
-    assert_eq!(wrk.latency, 6.36);
-  }
 }
