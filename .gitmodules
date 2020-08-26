@@ -3,4 +3,4 @@
 	url = https://github.com/denoland/deno_third_party.git
 [submodule "std/wasi/testdata"]
 	path = std/wasi/testdata
-	url = git@github.com:khronosproject/wasi-test-suite.git
+	url = https://github.com/khronosproject/wasi-test-suite.git
