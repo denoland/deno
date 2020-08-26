@@ -228,8 +228,8 @@ const clock_time_monotonic = function (): bigint {
 const clock_time_process = clock_time_monotonic;
 const clock_time_thread = clock_time_monotonic;
 
-type SyscallFunction = (...args: unknown[]) => number;
-function syscall(target: SyscallFunction): SyscallFunction {
+type Syscall = (...args: unknown[]) => number;
+function syscall(target: Syscall): Syscall {
   return function (...args: unknown[]): number {
     try {
       return target(...args);
@@ -299,7 +299,7 @@ export default class Context {
   // deno-lint-ignore no-explicit-any
   fds: any[];
 
-  exports: Record<string, SyscallFunction>;
+  exports: Record<string, Syscall>;
 
   constructor(options: ContextOptions) {
     this.args = options.args ? options.args : [];
