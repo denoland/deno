@@ -1,7 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import { ServerRequest, Response } from "./server.ts";
 import { getCookies, deleteCookie, setCookie } from "./cookie.ts";
-import { assert, assertEquals } from "../testing/asserts.ts";
+import { assert, assertEquals, assertThrows } from "../testing/asserts.ts";
 
 Deno.test({
   name: "Cookie parser",
@@ -35,20 +35,20 @@ Deno.test({
   name: "Cookie Validation",
   fn(): void {
     const res: Response = {};
-    let error = false;
     res.headers = new Headers();
-    try {
-      setCookie(res, {
-        name: "Name",
-        value: "名称",
-        httpOnly: true,
-        secure: true,
-        maxAge: 0,
-      });
-    } catch (e) {
-      error = true;
-    }
-    assert(error);
+    assertThrows(
+      (): void => {
+        setCookie(res, {
+          name: "Name",
+          value: "名称",
+          httpOnly: true,
+          secure: true,
+          maxAge: 0,
+        });
+      },
+      TypeError,
+      "The Name of the cookie (名称) is invalid.",
+    );
   },
 });
 
