@@ -67,6 +67,15 @@ const kReadableOperator: { [ key: string ]: string } = {
 // diff.
 const kMaxShortLength = 12;
 
+
+// TODO: change this when `Deno.consoleSize()` will be stable
+interface DenoUnstable {
+  consoleSize?(rid: number): { columns: number };
+}
+function getConsoleWidth(): number {
+  return (Deno as DenoUnstable).consoleSize?.(Deno.stderr.rid).columns ?? 80;
+}
+
 export function copyError(source: Error): Error {
   const keys = ObjectKeys(source);
   const target = ObjectCreate(ObjectGetPrototypeOf(source));
@@ -149,7 +158,7 @@ export function createErrDiff(actual: unknown, expected: unknown, operator: stri
       // If the stderr is a tty and the input length is lower than the current
       // columns per line, add a mismatch indicator below the output. If it is
       // not a tty, use a default value of 80 characters.
-      const maxLength = process.stderr.isTTY ? process.stderr.columns : 80;
+      const maxLength = Deno.isatty(Deno.stderr.rid) ? getConsoleWidth() : 80;
       if (inputLength < maxLength) {
         while (actualRaw[i] === expectedRaw[i]) {
           i++;

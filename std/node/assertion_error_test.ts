@@ -5,7 +5,7 @@ import {
   assertStrictEquals,
 } from "../testing/asserts.ts";
 import { stripColor } from "../fmt/colors.ts";
-import { copyError, inspectValue } from "./assertion_error.ts";
+import { copyError, inspectValue, createErrDiff } from "./assertion_error.ts";
 
 Deno.test({
   name: "copyError()",
@@ -28,12 +28,29 @@ Deno.test({
 Deno.test({
   name: "inspectValue()",
   fn() {
-    console.log();
     const obj = { a: 1, b: [2] };
     Object.defineProperty(obj, "c", { value: 3, enumerable: false });
     assertStrictEquals(
       stripColor(inspectValue(obj)),
-      "{\n  a: 1,\n  b: [\n    2\n  ]\n}",
+      "{ a: 1, b: [ 2 ] }",
+    );
+  },
+});
+
+Deno.test({
+  name: "createErrDiff()",
+  fn() {
+    assertStrictEquals(
+      stripColor(
+        createErrDiff({ a: 1, b: 2 }, { a: 2, b: 2 }, "strictEqual"),
+      ),
+      stripColor(
+        'Expected "actual" to be reference-equal to "expected":' + "\n" +
+          "+ actual - expected" + "\n" +
+          "\n" +
+          "+ { a: 1, b: 2 }" + "\n" +
+          "- { a: 2, b: 2 }",
+      ),
     );
   },
 });
