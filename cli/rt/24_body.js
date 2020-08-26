@@ -66,6 +66,32 @@
     return buffer.bytes().buffer;
   }
 
+  function bodyToArrayBuffer(bodySource) {
+    if (isTypedArray(bodySource)) {
+      return bodySource.buffer;
+    } else if (bodySource instanceof ArrayBuffer) {
+      return bodySource;
+    } else if (typeof bodySource === "string") {
+      const enc = new TextEncoder();
+      return enc.encode(bodySource).buffer;
+    } else if (bodySource instanceof ReadableStream) {
+      throw new Error(
+        `Can't convert stream to ArrayBuffer (try bufferFromStream)`,
+      );
+    } else if (
+      bodySource instanceof FormData ||
+      bodySource instanceof URLSearchParams
+    ) {
+      const enc = new TextEncoder();
+      return enc.encode(bodySource.toString()).buffer;
+    } else if (!bodySource) {
+      return null;
+    }
+    throw new Error(
+      `Body type not implemented: ${bodySource.constructor.name}`,
+    );
+  }
+
   const BodyUsedError =
     "Failed to execute 'clone' on 'Body': body is already used";
 
@@ -86,18 +112,26 @@
         return this._stream;
       }
 
-      if (this._bodySource instanceof ReadableStream) {
+      if (!this._bodySource) {
+        return null;
+      } else if (this._bodySource instanceof ReadableStream) {
         this._stream = this._bodySource;
-      }
-      if (typeof this._bodySource === "string") {
-        const bodySource = this._bodySource;
+      } else {
+        const buf = bodyToArrayBuffer(this._bodySource);
+        if (!(buf instanceof ArrayBuffer)) {
+          throw new Error(
+            `Expected ArrayBuffer from body`,
+          );
+        }
+
         this._stream = new ReadableStream({
           start(controller) {
-            controller.enqueue(bodySource);
+            controller.enqueue(buf);
             controller.close();
           },
         });
       }
+
       return this._stream;
     }
 
@@ -172,31 +206,10 @@
     }
 
     arrayBuffer() {
-      if (isTypedArray(this._bodySource)) {
-        return Promise.resolve(this._bodySource.buffer);
-      } else if (this._bodySource instanceof ArrayBuffer) {
-        return Promise.resolve(this._bodySource);
-      } else if (typeof this._bodySource === "string") {
-        const enc = new TextEncoder();
-        return Promise.resolve(
-          enc.encode(this._bodySource).buffer,
-        );
-      } else if (this._bodySource instanceof ReadableStream) {
+      if (this._bodySource instanceof ReadableStream) {
         return bufferFromStream(this._bodySource.getReader(), this.#size);
-      } else if (
-        this._bodySource instanceof FormData ||
-        this._bodySource instanceof URLSearchParams
-      ) {
-        const enc = new TextEncoder();
-        return Promise.resolve(
-          enc.encode(this._bodySource.toString()).buffer,
-        );
-      } else if (!this._bodySource) {
-        return Promise.resolve(new ArrayBuffer(0));
       }
-      throw new Error(
-        `Body type not yet implemented: ${this._bodySource.constructor.name}`,
-      );
+      return bodyToArrayBuffer(this._bodySource);
     }
   }
 

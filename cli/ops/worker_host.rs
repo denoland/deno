@@ -2,7 +2,6 @@
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::fmt_errors::JSError;
 use crate::global_state::GlobalState;
-use crate::op_error::OpError;
 use crate::ops::io::get_stdio;
 use crate::permissions::Permissions;
 use crate::startup_data;
@@ -184,7 +183,7 @@ fn op_create_worker(
   state: &Rc<State>,
   args: Value,
   _data: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   let args: CreateWorkerArgs = serde_json::from_value(args)?;
 
   let specifier = args.specifier.clone();
@@ -215,8 +214,7 @@ fn op_create_worker(
     module_specifier,
     use_deno_namespace,
     maybe_source_code,
-  )
-  .map_err(|e| OpError::other(e.to_string()))?;
+  )?;
   // At this point all interactions with worker happen using thread
   // safe handler returned from previous function call
   parent_state
@@ -236,7 +234,7 @@ fn op_host_terminate_worker(
   state: &Rc<State>,
   args: Value,
   _data: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
   let (join_handle, worker_handle) = state
@@ -304,7 +302,7 @@ fn op_host_get_message(
   state: &Rc<State>,
   args: Value,
   _data: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
   let state = state.clone();
@@ -345,7 +343,7 @@ fn op_host_post_message(
   state: &Rc<State>,
   args: Value,
   data: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   assert_eq!(data.len(), 1, "Invalid number of arguments");
   let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
@@ -354,8 +352,6 @@ fn op_host_post_message(
   debug!("post message to worker {}", id);
   let workers = state.workers.borrow();
   let worker_handle = workers[&id].1.clone();
-  worker_handle
-    .post_message(msg)
-    .map_err(|e| OpError::other(e.to_string()))?;
+  worker_handle.post_message(msg)?;
   Ok(JsonOp::Sync(json!({})))
 }

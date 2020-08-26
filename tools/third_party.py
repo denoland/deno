@@ -7,7 +7,7 @@ import re
 import site
 import sys
 from tempfile import mkdtemp
-from util import add_env_path, executable_suffix, libdeno_path, make_env, rmtree
+from util import add_env_path, executable_suffix, make_env, rmtree
 from util import root_path, run, third_party_path
 
 depot_tools_path = os.path.join(third_party_path, "depot_tools")
@@ -31,8 +31,6 @@ def python_env(env=None, merge_env=None):
         python_site_env = {}
         temp = os.environ["PATH"], sys.path
         os.environ["PATH"], sys.path = "", []
-        site.addsitedir(os.path.join(libdeno_path,
-                                     "build"))  # Modifies PATH and sys.path.
         site.addsitedir(python_packages_path)  # Modifies PATH and sys.path.
         python_site_env = {"PATH": os.environ["PATH"], "PYTHONPATH": sys.path}
         os.environ["PATH"], sys.path = temp
