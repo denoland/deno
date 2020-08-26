@@ -32,6 +32,27 @@ Deno.test({
 });
 
 Deno.test({
+  name: "Cookie Validation",
+  fn(): void {
+    const res: Response = {};
+    let error = false;
+    res.headers = new Headers();
+    try {
+      setCookie(res, {
+        name: "Name",
+        value: "名称",
+        httpOnly: true,
+        secure: true,
+        maxAge: 0,
+      });
+    } catch (e) {
+      error = true;
+    }
+    assert(error);
+  },
+});
+
+Deno.test({
   name: "Cookie Delete",
   fn(): void {
     const res: Response = {};
