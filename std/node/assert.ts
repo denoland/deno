@@ -7,6 +7,8 @@ import {
   assertThrows,
 } from "../testing/asserts.ts";
 
+export { AssertionError } from "./assertion_error.ts";
+
 export {
   assert as default,
   assert as ok,

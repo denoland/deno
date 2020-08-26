@@ -15,10 +15,11 @@ const DEFAULT_INSPECT_OPTIONS = {
   breakLength: 80,
   compact: 3,
   sorted: false,
-  getters: false
+  getters: false,
 };
 
 inspect.defaultOptions = DEFAULT_INSPECT_OPTIONS;
+inspect.custom = Deno.customInspect;
 
 // TODO: make it in-line with Node's implementation
 // Ref: https://nodejs.org/dist/latest-v14.x/docs/api/util.html#util_util_inspect_object_options
