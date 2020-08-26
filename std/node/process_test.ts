@@ -137,7 +137,7 @@ Deno.test({
   name: "process.stdout",
   fn() {
     assertEquals(typeof process.stdout.rid, "number");
-    assertEquals(process.stdout.rid, Deno.stdout.rid)
+    assertEquals(process.stdout.rid, Deno.stdout.rid);
     assert(process.stdout.isTTY);
   },
 });

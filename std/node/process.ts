@@ -41,20 +41,20 @@ export const process = {
   stderr: {
     ...Deno.stderr,
     get isTTY(): boolean {
-      return Deno.isatty(this.rid)
-    }
+      return Deno.isatty(this.rid);
+    },
   },
   stdin: {
     ...Deno.stdin,
     get isTTY(): boolean {
-      return Deno.isatty(this.rid)
-    }
+      return Deno.isatty(this.rid);
+    },
   },
   stdout: {
     ...Deno.stdout,
     get isTTY(): boolean {
-      return Deno.isatty(this.rid)
-    }
+      return Deno.isatty(this.rid);
+    },
   },
   /** https://nodejs.org/api/process.html#process_process_events */
   // on is not exported by node, it is only available within process:
