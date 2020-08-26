@@ -225,7 +225,7 @@ impl LintReporter for PrettyLintReporter {
       Some(d.location.col as i64),
       Some((d.location.col + d.snippet_length) as i64),
       &[fmt_errors::format_location(
-        &d.location.filename,
+        &d.filename,
         d.location.line as i64,
         d.location.col as i64,
       )],
@@ -288,5 +288,5 @@ impl LintReporter for JsonLintReporter {
 pub fn get_sort_key(a: &LintDiagnostic) -> String {
   let location = &a.location;
 
-  return format!("{}:{}:{}", location.filename, location.line, location.col);
+  return format!("{}:{}:{}", a.filename, location.line, location.col);
 }
