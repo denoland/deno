@@ -53,8 +53,8 @@ flag is required along with the `deno run` command.
 **Command:** `deno run --unstable --allow-read read.ts`
 
 ```js
-import { readJsonSync } from "https://deno.land/std@0.65.0/fs/mod.ts";
-import { fromFileUrl } from "https://deno.land/std@0.65.0/path/mod.ts";
+import { readJsonSync } from "https://deno.land/std@$STD_VERSION/fs/mod.ts";
+import { fromFileUrl } from "https://deno.land/std@$STD_VERSION/path/mod.ts";
 
 function readJson(path: string): object {
   const file = fromFileUrl(new URL(path, import.meta.url));
@@ -77,8 +77,8 @@ console.log(readJson("./people.json"));
 ## Write
 
 The Deno runtime API allows developers to write text to files via the
-`writeTextFile()` method. It just requires a file path and text string. On
-success the method will return an empty promise.
+`writeTextFile()` method. It just requires a file path and text string. The
+method returns a promise which resolves when the file was successfully written.
 
 To run the command the `--allow-write` flag must be supplied to the `deno run`
 command.
@@ -119,7 +119,7 @@ write and read flags.
 import {
   ensureFileSync,
   writeJsonSync,
-} from "https://deno.land/std@0.65.0/fs/mod.ts";
+} from "https://deno.land/std@$STD_VERSION/fs/mod.ts";
 
 function writeJson(path: string, data: object): string {
   try {
