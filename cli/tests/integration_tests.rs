@@ -2280,6 +2280,11 @@ itest!(import_file_with_colon {
   http_server: true,
 });
 
+itest!(info_type_import {
+  args: "info info_type_import.ts",
+  output: "info_type_import.out",
+});
+
 #[test]
 fn cafile_env_fetch() {
   use url::Url;
