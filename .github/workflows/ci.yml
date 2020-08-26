@@ -122,7 +122,7 @@ jobs:
             target/*/build
             target/*/deps
           key:
-            ${{ matrix.config.os }}-${{ matrix.config.kind }}-${{ hashFiles('Cargo.lock') }}
+            ${{ matrix.config.os }}-${{ matrix.config.kind }}-${{ github.sha }}
           restore-keys: |
             ${{ matrix.config.os }}-${{ matrix.config.kind }}-
 
