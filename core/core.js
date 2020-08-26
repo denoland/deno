@@ -188,17 +188,17 @@ SharedQueue Binary Layout
     return send(opsCache[opName], control, ...zeroCopy);
   }
 
-  function registerErrorClass(errorName, errorClass) {
+  function registerErrorClass(errorName, className) {
     if (typeof errorMap[errorName] !== "undefined") {
       throw new TypeError(`Error class for "${errorName}" already registered`);
     }
-    errorMap[errorName] = errorClass;
+    errorMap[errorName] = className;
   }
 
   function getErrorClass(errorName) {
-    const errorClass = errorMap[errorName];
-    assert(errorClass);
-    return errorClass;
+    const className = errorMap[errorName];
+    assert(className);
+    return className;
   }
 
   // Returns Uint8Array
