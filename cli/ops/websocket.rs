@@ -3,16 +3,13 @@
 use super::dispatch_json::{Deserialize, JsonOp, Value};
 use crate::op_error::OpError;
 use crate::state::State;
-use core::future::Future;
-use core::task::Context;
 use core::task::Poll;
 use deno_core::ZeroCopyBuf;
 use deno_core::{CoreIsolate, CoreIsolateState};
-use futures::executor::block_on;
 use futures::future::{poll_fn, FutureExt};
 use futures::ready;
 use futures::Sink;
-use futures::{SinkExt, StreamExt};
+use futures::StreamExt;
 use http::{Method, Request, Uri};
 use std::borrow::Cow;
 use std::pin::Pin;
