@@ -11,9 +11,8 @@ import {
 
 import AssertionError from "./assertion_error.ts";
 
-import {
+import assert, {
   ok,
-  assert,
   assert as assert_,
   deepStrictEqual,
   notDeepStrictEqual,
