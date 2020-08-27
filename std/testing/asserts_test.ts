@@ -6,6 +6,7 @@ import {
   assertStringContains,
   assertArrayContains,
   assertMatch,
+  assertNotMatch,
   assertEquals,
   assertStrictEquals,
   assertNotStrictEquals,
@@ -225,6 +226,25 @@ Deno.test("testingAssertStringMatchingThrows", function (): void {
     assert(
       e.message ===
         `actual: "Denosaurus from Jurassic" expected to match: "/Raptor/"`,
+    );
+    assert(e instanceof AssertionError);
+    didThrow = true;
+  }
+  assert(didThrow);
+});
+
+Deno.test("testingAssertStringNotMatching", function (): void {
+  assertNotMatch("foobar.deno.com", RegExp(/[a-zA-Z]+@[a-zA-Z]+.com/));
+});
+
+Deno.test("testingAssertStringNotMatchingThrows", function (): void {
+  let didThrow = false;
+  try {
+    assertNotMatch("Denosaurus from Jurassic", RegExp(/from/));
+  } catch (e) {
+    assert(
+      e.message ===
+        `actual: "Denosaurus from Jurassic" expected to not match: "/from/"`,
     );
     assert(e instanceof AssertionError);
     didThrow = true;
