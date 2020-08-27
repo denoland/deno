@@ -2,10 +2,10 @@
 use super::dispatch_json::{Deserialize, Value};
 use super::io::{StreamResource, StreamResourceHolder};
 use crate::http_util::{create_http_client, HttpBody};
-use crate::op_error::OpError;
 use crate::state::State;
 use deno_core::BufVec;
 use deno_core::CoreIsolate;
+use deno_core::ErrBox;
 use deno_core::ResourceTable;
 use deno_core::ZeroCopyBuf;
 use http::header::HeaderName;
@@ -41,7 +41,7 @@ async fn op_fetch(
   resource_table: Rc<RefCell<ResourceTable>>,
   args: Value,
   data: BufVec,
-) -> Result<Value, OpError> {
+) -> Result<Value, ErrBox> {
   let args: FetchArgs = serde_json::from_value(args)?;
   let url = args.url;
   let resource_table2 = resource_table.clone();
@@ -50,7 +50,7 @@ async fn op_fetch(
     let resource_table_ = resource_table.borrow();
     let r = resource_table_
       .get::<HttpClientResource>(rid)
-      .ok_or_else(OpError::bad_resource_id)?;
+      .ok_or_else(ErrBox::bad_resource_id)?;
     r.client.clone()
   } else {
     let client_ref = state.http_client.borrow_mut();
@@ -58,17 +58,16 @@ async fn op_fetch(
   };
 
   let method = match args.method {
-    Some(method_str) => Method::from_bytes(method_str.as_bytes())
-      .map_err(|e| OpError::other(e.to_string()))?,
+    Some(method_str) => Method::from_bytes(method_str.as_bytes())?,
     None => Method::GET,
   };
 
-  let url_ = url::Url::parse(&url).map_err(OpError::from)?;
+  let url_ = url::Url::parse(&url)?;
 
   // Check scheme before asking for net permission
   let scheme = url_.scheme();
   if scheme != "http" && scheme != "https" {
-    return Err(OpError::type_error(format!(
+    return Err(ErrBox::type_error(format!(
       "scheme '{}' not supported",
       scheme
     )));
@@ -141,7 +140,7 @@ fn op_create_http_client(
   resource_table: &mut ResourceTable,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, OpError> {
+) -> Result<Value, ErrBox> {
   let args: CreateHttpClientOptions = serde_json::from_value(args)?;
 
   if let Some(ca_file) = args.ca_file.clone() {

@@ -62,18 +62,15 @@ fn get_asset(name: &str) -> Option<&'static str> {
     "lib.es2019.string.d.ts" => inc!("lib.es2019.string.d.ts"),
     "lib.es2019.symbol.d.ts" => inc!("lib.es2019.symbol.d.ts"),
     "lib.es2020.bigint.d.ts" => inc!("lib.es2020.bigint.d.ts"),
+    "lib.es2020.intl.d.ts" => inc!("lib.es2020.intl.d.ts"),
     "lib.es2020.promise.d.ts" => inc!("lib.es2020.promise.d.ts"),
     "lib.es2020.string.d.ts" => inc!("lib.es2020.string.d.ts"),
     "lib.es2020.symbol.wellknown.d.ts" => {
       inc!("lib.es2020.symbol.wellknown.d.ts")
     }
-    "lib.esnext.array.d.ts" => inc!("lib.esnext.array.d.ts"),
-    "lib.esnext.asynciterable.d.ts" => inc!("lib.esnext.asynciterable.d.ts"),
-    "lib.esnext.bigint.d.ts" => inc!("lib.esnext.bigint.d.ts"),
     "lib.esnext.intl.d.ts" => inc!("lib.esnext.intl.d.ts"),
     "lib.esnext.promise.d.ts" => inc!("lib.esnext.promise.d.ts"),
     "lib.esnext.string.d.ts" => inc!("lib.esnext.string.d.ts"),
-    "lib.esnext.symbol.d.ts" => inc!("lib.esnext.symbol.d.ts"),
     "lib.scripthost.d.ts" => inc!("lib.scripthost.d.ts"),
     "lib.webworker.d.ts" => inc!("lib.webworker.d.ts"),
     "lib.webworker.importscripts.d.ts" => {

@@ -38,7 +38,7 @@ export function isUndefined(value: unknown): value is undefined {
   return value === undefined;
 }
 
-export function isObject(value: unknown): value is object {
+export function isObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object";
 }
 

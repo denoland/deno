@@ -183,10 +183,13 @@ unitTest(function urlNormalize(): void {
 unitTest(function urlModifyPathname(): void {
   const url = new URL("http://foo.bar/baz%qat/qux%quux");
   assertEquals(url.pathname, "/baz%qat/qux%quux");
+  // Self-assignment is to invoke the setter.
+  // deno-lint-ignore no-self-assign
   url.pathname = url.pathname;
   assertEquals(url.pathname, "/baz%qat/qux%quux");
   url.pathname = "baz#qat qux";
   assertEquals(url.pathname, "/baz%23qat%20qux");
+  // deno-lint-ignore no-self-assign
   url.pathname = url.pathname;
   assertEquals(url.pathname, "/baz%23qat%20qux");
 });
@@ -195,6 +198,7 @@ unitTest(function urlModifyHash(): void {
   const url = new URL("http://foo.bar");
   url.hash = "%foo bar/qat%qux#bar";
   assertEquals(url.hash, "#%foo%20bar/qat%qux#bar");
+  // deno-lint-ignore no-self-assign
   url.hash = url.hash;
   assertEquals(url.hash, "#%foo%20bar/qat%qux#bar");
 });
@@ -272,26 +276,30 @@ unitTest(function urlTrim() {
 
 unitTest(function urlEncoding() {
   assertEquals(
-    new URL("https://a !$&*()=,;+'\"@example.com").username,
+    new URL("http://a !$&*()=,;+'\"@example.com").username,
     "a%20!$&*()%3D,%3B+%27%22",
   );
   assertEquals(
-    new URL("https://:a !$&*()=,;+'\"@example.com").password,
+    new URL("http://:a !$&*()=,;+'\"@example.com").password,
     "a%20!$&*()%3D,%3B+%27%22",
   );
-  assertEquals(new URL("abcde://mañana/c?d#e").hostname, "ma%C3%B1ana");
   // https://url.spec.whatwg.org/#idna
-  assertEquals(new URL("https://mañana/c?d#e").hostname, "xn--maana-pta");
+  assertEquals(new URL("http://mañana/c?d#e").hostname, "xn--maana-pta");
+  assertEquals(new URL("abcd://mañana/c?d#e").hostname, "ma%C3%B1ana");
   assertEquals(
-    new URL("https://example.com/a ~!@$&*()=:/,;+'\"\\").pathname,
+    new URL("http://example.com/a ~!@$&*()=:/,;+'\"\\").pathname,
     "/a%20~!@$&*()=:/,;+'%22/",
   );
   assertEquals(
-    new URL("https://example.com?a ~!@$&*()=:/,;?+'\"\\").search,
+    new URL("http://example.com?a ~!@$&*()=:/,;?+'\"\\").search,
     "?a%20~!@$&*()=:/,;?+%27%22\\",
   );
   assertEquals(
-    new URL("https://example.com#a ~!@#$&*()=:/,;?+'\"\\").hash,
+    new URL("abcd://example.com?a ~!@$&*()=:/,;?+'\"\\").search,
+    "?a%20~!@$&*()=:/,;?+'%22\\",
+  );
+  assertEquals(
+    new URL("http://example.com#a ~!@#$&*()=:/,;?+'\"\\").hash,
     "#a%20~!@#$&*()=:/,;?+'%22\\",
   );
 });

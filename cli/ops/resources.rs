@@ -1,9 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, JsonOp, Value};
-use crate::op_error::OpError;
 use crate::state::State;
 use deno_core::CoreIsolate;
 use deno_core::CoreIsolateState;
+use deno_core::ErrBox;
 use deno_core::ZeroCopyBuf;
 use std::rc::Rc;
 
@@ -17,7 +17,7 @@ fn op_resources(
   _state: &Rc<State>,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   let serialized_resources = isolate_state.resource_table.borrow().entries();
   Ok(JsonOp::Sync(json!(serialized_resources)))
 }
@@ -28,7 +28,7 @@ fn op_close(
   _state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   #[derive(Deserialize)]
   struct CloseArgs {
     rid: i32,
@@ -37,6 +37,6 @@ fn op_close(
   let mut resource_table = isolate_state.resource_table.borrow_mut();
   resource_table
     .close(args.rid as u32)
-    .ok_or_else(OpError::bad_resource_id)?;
+    .ok_or_else(ErrBox::bad_resource_id)?;
   Ok(JsonOp::Sync(json!({})))
 }
