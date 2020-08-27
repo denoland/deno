@@ -12,6 +12,9 @@ str3 = '''
 # not a comment
 ''' # comment
 
+point0 = { x = 1, y = 2, str0 = "#not a comment", z = 3 } # comment
+point1 = { x = 7, y = 8, z = 9, str0 = "#not a comment"} # comment
+
 [deno] # this comment is fine
 features = ["#secure by default", "supports typescript # not a comment"] # Comment caused Issue #7072
 url = "https://deno.land/" # comment
