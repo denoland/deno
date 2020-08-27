@@ -709,7 +709,6 @@ pub fn main() {
     env_logger::Env::default()
       .default_filter_or(log_level.to_level_filter().to_string()),
   )
-  .target(env_logger::Target::Stdout)
   .format(|buf, record| {
     let mut target = record.target().to_string();
     if let Some(line_no) = record.line() {

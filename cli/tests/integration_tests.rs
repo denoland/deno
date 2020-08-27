@@ -3377,7 +3377,7 @@ fn rust_log_debug() {
   let expected =
     std::fs::read_to_string(util::tests_path().join("RUST_LOG_debug.out"))
       .expect("cannot read output");
-  let (actual, _) = util::run_and_collect_output(
+  let (_, actual) = util::run_and_collect_output(
     true,
     "run --reload 002_hello.ts",
     None,
@@ -3396,7 +3396,7 @@ fn rust_log_deno_permissions() {
     util::tests_path().join("RUST_LOG_deno_permissions.out"),
   )
   .expect("cannot read output");
-  let (actual, _) = util::run_and_collect_output(
+  let (_, actual) = util::run_and_collect_output(
     true,
     "run --reload 002_hello.ts",
     None,
