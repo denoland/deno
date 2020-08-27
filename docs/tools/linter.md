@@ -14,8 +14,10 @@ deno lint --unstable myfile1.ts myfile2.ts
 
 ### Available rules
 
+- `adjacent-overload-signatures`
 - `ban-ts-comment`
 - `ban-untagged-ignore`
+- `ban-types`
 - `constructor-super`
 - `for-direction`
 - `getter-return`
@@ -25,9 +27,12 @@ deno lint --unstable myfile1.ts myfile2.ts
 - `no-class-assign`
 - `no-compare-neg-zero`
 - `no-cond-assign`
+- `no-control-regex`
 - `no-debugger`
 - `no-delete-var`
 - `no-dupe-args`
+- `no-dupe-class-members`
+- `no-dupe-else-if`
 - `no-dupe-keys`
 - `no-duplicate-case`
 - `no-empty-character-class`
@@ -36,7 +41,12 @@ deno lint --unstable myfile1.ts myfile2.ts
 - `no-empty`
 - `no-ex-assign`
 - `no-explicit-any`
+- `no-extra-boolean-cast`
+- `no-extra-non-null-assertion`
+- `no-extra-semi`
+- `no-mixed-spaces-and-tabs`
 - `no-func-assign`
+- `no-irregular-whitespace`
 - `no-misused-new`
 - `no-namespace`
 - `no-new-symbol`
@@ -45,8 +55,10 @@ deno lint --unstable myfile1.ts myfile2.ts
 - `no-prototype-builtins`
 - `no-regex-spaces`
 - `no-setter-return`
+- `no-self-assign`
 - `no-this-alias`
 - `no-this-before-super`
+- `no-unexpected-multiline`
 - `no-unsafe-finally`
 - `no-unsafe-negation`
 - `no-with`
@@ -56,6 +68,11 @@ deno lint --unstable myfile1.ts myfile2.ts
 - `triple-slash-reference`
 - `use-isnan`
 - `valid-typeof`
+- `no-inferrable-types`
+- `no-invalid-regexp`
+- `no-unused-labels`
+- `no-shadow-restricted-names`
+- `no-constant-condition`
 
 ### Ignore directives
 
