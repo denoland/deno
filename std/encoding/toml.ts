@@ -37,7 +37,7 @@ class Parser {
       }
     }
     this.tomlLines = out;
-    this._removeComments()
+    this._removeComments();
     this._mergeMultilines();
   }
 
@@ -48,33 +48,35 @@ class Parser {
 
     function stringStart(line: string) {
       const m = line.match(/(?:=\s*\[?\s*)("""|'''|"|')/);
-      if (!m) 
+      if (!m) {
         return false;
+      }
 
       // We want to know which syntax was used to open the string
-      openStringMatch = m[1]
+      openStringMatch = m[1];
       return true;
     }
 
     function stringEnd(line: string) {
-      // match the syntax used to open the string when searching for string close 
+      // match the syntax used to open the string when searching for string close
       // e.g. if we open with ''' we must close with a '''
       const reg = RegExp(`(?<!(=\\s*))${openStringMatch}(?!(.*"))`);
-      if (!line.match(reg)) 
+      if (!line.match(reg)) {
         return false;
-      
+      }
+
       openStringMatch = "";
       return true;
     }
 
     const cleaned = [];
     let isOpenString = false;
-    let openStringMatch = ""
+    let openStringMatch = "";
     for (let i = 0; i < this.tomlLines.length; i++) {
       const line = this.tomlLines[i];
 
-      // stringStart and stringEnd are separate conditions to 
-      // support both single-line and multi-line strings 
+      // stringStart and stringEnd are separate conditions to
+      // support both single-line and multi-line strings
       if (!isOpenString && stringStart(line)) {
         isOpenString = true;
       }
@@ -83,7 +85,9 @@ class Parser {
       }
 
       if (!isOpenString && !isFullLineComment(line)) {
-        let out = line.split(/(?<=([\,\[\]\{\}]|".*"|'.*'|\w(?!.*("|')+))\s*)#/gi);
+        let out = line.split(
+          /(?<=([\,\[\]\{\}]|".*"|'.*'|\w(?!.*("|')+))\s*)#/gi,
+        );
         cleaned.push(out[0].trim());
       } else if (isOpenString || !isFullLineComment(line)) {
         cleaned.push(line);
