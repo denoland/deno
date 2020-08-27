@@ -1,10 +1,10 @@
+use deno_core::plugin_api::DispatchOpFn;
 use deno_core::plugin_api::Interface;
 use deno_core::plugin_api::Op;
 use deno_core::plugin_api::ZeroCopyBuf;
-use deno_core::plugin_api::DispatchOpFn;
 use futures::future::FutureExt;
 
-#[no_mangle]  
+#[no_mangle]
 pub fn deno_plugin_init(interface: &mut dyn Interface) {
   interface.register_op("testSync", Box::new(op_test_sync));
   interface.register_op("testAsync", Box::new(op_test_async));
@@ -55,18 +55,16 @@ fn op_test_async(
   Op::Async(fut.boxed())
 }
 
-fn wrap_op<D>(d: D) -> Box<DispatchOpFn> 
-where 
-  D: Fn(
-    &mut dyn Interface,
-    String,
-    &mut [ZeroCopyBuf],
-  ) -> Op + 'static
+fn wrap_op<D>(d: D) -> Box<DispatchOpFn>
+where
+  D: Fn(&mut dyn Interface, String, &mut [ZeroCopyBuf]) -> Op + 'static,
 {
-  Box::new(move |i: &mut dyn Interface, zero_copy: &mut [ZeroCopyBuf]| {
-    let first_buf_str = std::str::from_utf8(&zero_copy[0][..]).unwrap();
-    d(i, first_buf_str.to_string(), &mut zero_copy[1..])
-  })
+  Box::new(
+    move |i: &mut dyn Interface, zero_copy: &mut [ZeroCopyBuf]| {
+      let first_buf_str = std::str::from_utf8(&zero_copy[0][..]).unwrap();
+      d(i, first_buf_str.to_string(), &mut zero_copy[1..])
+    },
+  )
 }
 
 fn op_wrapped(
@@ -91,7 +89,7 @@ fn op_wrapped(
     });
     assert!(rx.await.is_ok());
     let result = b"test";
-    let result_box: Buf = Box::new(*result);
+    let result_box: Box<[u8]> = Box::new(*result);
     result_box
   };
 

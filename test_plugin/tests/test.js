@@ -37,7 +37,9 @@ const promiseTestAsync = new Promise((resolve) => resolveTestAsync = resolve);
 
 let resolveTestWrapped;
 
-const promiseTestWrapped = new Promise((resolve) => resolveTestWrapped = resolve);
+const promiseTestWrapped = new Promise((resolve) =>
+  resolveTestWrapped = resolve
+);
 
 function runTestSync() {
   const response = Deno.core.dispatch(
