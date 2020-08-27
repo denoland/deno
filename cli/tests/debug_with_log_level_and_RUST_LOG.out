@@ -1,68 +1,13 @@
 Deno isolate init with snapshots.
 rust:shared_queue:reset
-DEBUG JS - cwd [WILDCARD]/cli/tests
-DEBUG JS - args []
 main_module file://[WILDCARD]/cli/tests/002_hello.ts
 fetch_source_file specifier: file://[WILDCARD]/cli/tests/002_hello.ts maybe_referrer: None
 ⚠️️  Granted read access to "[WILDCARD]/cli/tests/002_hello.ts"
 Check file://[WILDCARD]/cli/tests/002_hello.ts
 Deno isolate init with snapshots.
 rust:shared_queue:reset
-DEBUG TS - "sendSync" "op_now"
 ⚠️️  Granted access to high precision time
-DEBUG TS - ">>> compile start" {"rootNames":["file://[WILDCARD]/cli/tests/002_hello.ts"]}
-DEBUG TS - "compiler::host.getCompilationSettings()"
-DEBUG TS - "compiler::host.getDefaultLibFileName()"
-DEBUG TS - "compiler::host.getSourceFile" "file://[WILDCARD]/cli/tests/002_hello.ts"
-DEBUG TS - "compiler::host.getSourceFile" "asset:///lib.deno.window.d.ts"
-DEBUG TS - "compiler::host.getSourceFile" "asset:///lib.deno.ns.d.ts"
-DEBUG TS - "compiler::host.getSourceFile" "asset:///lib.esnext.d.ts"
-DEBUG TS - "compiler::host.getSourceFile" "asset:///lib.es2020.d.ts"
-DEBUG TS - "compiler::host.getSourceFile" "asset:///lib.es2019.d.ts"
-DEBUG TS - "compiler::host.getSourceFile" "asset:///lib.es2018.d.ts"
-DEBUG TS - "compiler::host.getSourceFile" "asset:///lib.es2017.d.ts"
-DEBUG TS - "compiler::host.getSourceFile" "asset:///lib.es2016.d.ts"
-DEBUG TS - "compiler::host.getSourceFile" "asset:///lib.es2015.d.ts"
-DEBUG TS - "compiler::host.getSourceFile" "asset:///lib.es5.d.ts"
-DEBUG TS - "compiler::host.getSourceFile" "asset:///lib.es2015.core.d.ts"
-DEBUG TS - "compiler::host.getSourceFile" "asset:///lib.es2015.collection.d.ts"
-DEBUG TS - "compiler::host.getSourceFile" "asset:///lib.es2015.iterable.d.ts"
-DEBUG TS - "compiler::host.getSourceFile" "asset:///lib.es2015.symbol.d.ts"
-DEBUG TS - "compiler::host.getSourceFile" "asset:///lib.es2015.generator.d.ts"
-DEBUG TS - "compiler::host.getSourceFile" "asset:///lib.es2015.promise.d.ts"
-DEBUG TS - "compiler::host.getSourceFile" "asset:///lib.es2015.proxy.d.ts"
-DEBUG TS - "compiler::host.getSourceFile" "asset:///lib.es2015.reflect.d.ts"
-DEBUG TS - "compiler::host.getSourceFile" "asset:///lib.es2015.symbol.wellknown.d.ts"
-DEBUG TS - "compiler::host.getSourceFile" "asset:///lib.es2016.array.include.d.ts"
-DEBUG TS - "compiler::host.getSourceFile" "asset:///lib.es2017.object.d.ts"
-DEBUG TS - "compiler::host.getSourceFile" "asset:///lib.es2017.sharedmemory.d.ts"
-DEBUG TS - "compiler::host.getSourceFile" "asset:///lib.es2017.string.d.ts"
-DEBUG TS - "compiler::host.getSourceFile" "asset:///lib.es2017.intl.d.ts"
-DEBUG TS - "compiler::host.getSourceFile" "asset:///lib.es2017.typedarrays.d.ts"
-DEBUG TS - "compiler::host.getSourceFile" "asset:///lib.es2018.asynciterable.d.ts"
-DEBUG TS - "compiler::host.getSourceFile" "asset:///lib.es2018.asyncgenerator.d.ts"
-DEBUG TS - "compiler::host.getSourceFile" "asset:///lib.es2018.promise.d.ts"
-DEBUG TS - "compiler::host.getSourceFile" "asset:///lib.es2018.regexp.d.ts"
-DEBUG TS - "compiler::host.getSourceFile" "asset:///lib.es2018.intl.d.ts"
-DEBUG TS - "compiler::host.getSourceFile" "asset:///lib.es2019.array.d.ts"
-DEBUG TS - "compiler::host.getSourceFile" "asset:///lib.es2019.object.d.ts"
-DEBUG TS - "compiler::host.getSourceFile" "asset:///lib.es2019.string.d.ts"
-DEBUG TS - "compiler::host.getSourceFile" "asset:///lib.es2019.symbol.d.ts"
-DEBUG TS - "compiler::host.getSourceFile" "asset:///lib.es2020.bigint.d.ts"
-DEBUG TS - "compiler::host.getSourceFile" "asset:///lib.es2020.promise.d.ts"
-DEBUG TS - "compiler::host.getSourceFile" "asset:///lib.es2020.string.d.ts"
-DEBUG TS - "compiler::host.getSourceFile" "asset:///lib.es2020.symbol.wellknown.d.ts"
-DEBUG TS - "compiler::host.getSourceFile" "asset:///lib.esnext.intl.d.ts"
-DEBUG TS - "compiler::host.getSourceFile" "asset:///lib.esnext.string.d.ts"
-DEBUG TS - "compiler::host.getSourceFile" "asset:///lib.esnext.promise.d.ts"
-DEBUG TS - "compiler::host.getSourceFile" "asset:///lib.deno.shared_globals.d.ts"
-DEBUG TS - "compiler::host.getSourceFile" "asset:///lib.deno.web.d.ts"
-DEBUG TS - "compiler::host.writeFile" "deno://002_hello.js"
-DEBUG TS - "compiler::host.writeFile" "cache:///tsbuildinfo.json"
-DEBUG TS - "<<< compile end" {"rootNames":["file://[WILDCARD]/cli/tests/002_hello.ts"]}
-DEBUG TS - "sendSync" "op_now"
 ⚠️️  Granted access to high precision time
-DEBUG TS - "sendSync" "op_compiler_respond"
 DEBUG - Compilation Statistics:
 Files: [WILDCARD]
 Nodes: [WILDCARD]
@@ -78,4 +23,3 @@ Total TS time: [WILDCARD]
 Compile time: [WILDCARD]
 compiled filename: "[WILDCARD]/cli/tests/002_hello.ts.js"
 register_complete file://[WILDCARD]/cli/tests/002_hello.ts
-Hello World
