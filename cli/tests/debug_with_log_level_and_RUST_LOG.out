@@ -2,7 +2,7 @@ Deno isolate init with snapshots.
 rust:shared_queue:reset
 main_module file://[WILDCARD]/cli/tests/002_hello.ts
 fetch_source_file specifier: file://[WILDCARD]/cli/tests/002_hello.ts maybe_referrer: None
-⚠️️  Granted read access to "[WILDCARD]/cli/tests/002_hello.ts"
+⚠️️  Granted read access to "[WILDCARD]002_hello.ts"
 Check file://[WILDCARD]/cli/tests/002_hello.ts
 Deno isolate init with snapshots.
 rust:shared_queue:reset
@@ -21,5 +21,5 @@ Check time: [WILDCARD]
 Emit time: [WILDCARD]
 Total TS time: [WILDCARD]
 Compile time: [WILDCARD]
-compiled filename: "[WILDCARD]/cli/tests/002_hello.ts.js"
+compiled filename: "[WILDCARD]002_hello.ts.js"
 register_complete file://[WILDCARD]/cli/tests/002_hello.ts
