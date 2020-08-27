@@ -53,25 +53,25 @@ class Parser {
       }
 
       // We want to know which syntax was used to open the string
-      openStringMatch = m[1];
+      openStringSyntax = m[1];
       return true;
     }
 
     function stringEnd(line: string) {
       // match the syntax used to open the string when searching for string close
       // e.g. if we open with ''' we must close with a '''
-      const reg = RegExp(`(?<!(=\\s*))${openStringMatch}(?!(.*"))`);
+      const reg = RegExp(`(?<!(=\\s*))${openStringSyntax}(?!(.*"))`);
       if (!line.match(reg)) {
         return false;
       }
 
-      openStringMatch = "";
+      openStringSyntax = "";
       return true;
     }
 
     const cleaned = [];
     let isOpenString = false;
-    let openStringMatch = "";
+    let openStringSyntax = "";
     for (let i = 0; i < this.tomlLines.length; i++) {
       const line = this.tomlLines[i];
 
@@ -85,14 +85,26 @@ class Parser {
       }
 
       if (!isOpenString && !isFullLineComment(line)) {
-        let out = line.split(
+        const out = line.split(
           /(?<=([\,\[\]\{\}]|".*"|'.*'|\w(?!.*("|')+))\s*)#/gi,
         );
         cleaned.push(out[0].trim());
       } else if (isOpenString || !isFullLineComment(line)) {
         cleaned.push(line);
       }
+
+      // If a single line comment doesnt end on the same line, throw error
+      if (
+        isOpenString && (openStringSyntax === "'" || openStringSyntax === '"')
+      ) {
+        throw new TOMLError(`Single-line string is not closed:\n${line}`);
+      }
     }
+
+    if (isOpenString) {
+      throw new TOMLError(`Incomplete string until EOF`);
+    }
+
     this.tomlLines = cleaned;
   }
 
