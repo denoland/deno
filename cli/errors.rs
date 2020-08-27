@@ -228,9 +228,3 @@ pub fn get_error_class(e: &ErrBox) -> &'static str {
     panic!("ErrBox '{}' contains boxed error of unknown type", e);
   })
 }
-
-pub fn rust_err_to_json(error: &ErrBox) -> Box<[u8]> {
-  let error_value =
-    json!({ "kind": get_error_class(error), "message": error.to_string()});
-  serde_json::to_vec(&error_value).unwrap().into_boxed_slice()
-}

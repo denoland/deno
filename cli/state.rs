@@ -86,15 +86,16 @@ impl State {
     let resource_table = resource_table.clone();
 
     move |isolate_state: &mut CoreIsolateState, bufs: &mut [ZeroCopyBuf]| {
-      let rust_err_to_json_fn = isolate_state.rust_err_to_json_fn;
+      let get_error_class_fn = isolate_state.get_error_class_fn;
+
       // The first buffer should contain JSON encoded op arguments; parse them.
       let args: Value = match serde_json::from_slice(&bufs[0]) {
         Ok(v) => v,
         Err(e) => {
           return Op::Sync(serialize_result(
-            rust_err_to_json_fn,
             None,
             Err(e.into()),
+            get_error_class_fn,
           ));
         }
       };
@@ -106,7 +107,7 @@ impl State {
         dispatcher(&state, &mut *resource_table.borrow_mut(), args, zero_copy);
 
       // Convert to Op.
-      Op::Sync(serialize_result(rust_err_to_json_fn, None, result))
+      Op::Sync(serialize_result(None, result, get_error_class_fn))
     }
   }
 
@@ -124,13 +125,14 @@ impl State {
     let resource_table = resource_table.clone();
 
     move |isolate_state: &mut CoreIsolateState, bufs: &mut [ZeroCopyBuf]| {
-      let rust_err_to_json_fn = isolate_state.rust_err_to_json_fn;
+      let get_error_class_fn = isolate_state.get_error_class_fn;
+
       // The first buffer should contain JSON encoded op arguments; parse them.
       let args: Value = match serde_json::from_slice(&bufs[0]) {
         Ok(v) => v,
         Err(e) => {
           let e = e.into();
-          return Op::Sync(serialize_result(rust_err_to_json_fn, None, Err(e)));
+          return Op::Sync(serialize_result(None, Err(e), get_error_class_fn));
         }
       };
 
@@ -139,7 +141,7 @@ impl State {
         Some(i) => i,
         None => {
           let e = ErrBox::new("TypeError", "`promiseId` invalid/missing");
-          return Op::Sync(serialize_result(rust_err_to_json_fn, None, Err(e)));
+          return Op::Sync(serialize_result(None, Err(e), get_error_class_fn));
         }
       };
 
@@ -157,7 +159,7 @@ impl State {
       // Convert to Op.
       Op::Async(
         async move {
-          serialize_result(rust_err_to_json_fn, Some(promise_id), fut.await)
+          serialize_result(Some(promise_id), fut.await, get_error_class_fn)
         }
         .boxed_local(),
       )

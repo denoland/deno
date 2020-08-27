@@ -17,15 +17,15 @@ Deno.test({
   name: "benching",
 
   fn: async function (): Promise<void> {
-    bench(function forIncrementX1e9(b): void {
+    bench(function forIncrementX1e3(b): void {
       b.start();
-      for (let i = 0; i < 1e9; i++);
+      for (let i = 0; i < 1e3; i++);
       b.stop();
     });
 
-    bench(function forDecrementX1e9(b): void {
+    bench(function forDecrementX1e3(b): void {
       b.start();
-      for (let i = 1e9; i > 0; i--);
+      for (let i = 1e3; i > 0; i--);
       b.stop();
     });
 
@@ -73,7 +73,7 @@ Deno.test({
     assertEquals(benchResult.results.length, 5);
 
     const resultWithSingleRunsFiltered = benchResult.results.filter(
-      ({ name }) => name === "forDecrementX1e9",
+      ({ name }) => name === "forDecrementX1e3",
     );
     assertEquals(resultWithSingleRunsFiltered.length, 1);
 

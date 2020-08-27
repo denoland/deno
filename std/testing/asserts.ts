@@ -410,6 +410,23 @@ export function assertMatch(
 }
 
 /**
+ * Make an assertion that `actual` not match RegExp `expected`. If match
+ * then thrown
+ */
+export function assertNotMatch(
+  actual: string,
+  expected: RegExp,
+  msg?: string,
+): void {
+  if (expected.test(actual)) {
+    if (!msg) {
+      msg = `actual: "${actual}" expected to not match: "${expected}"`;
+    }
+    throw new AssertionError(msg);
+  }
+}
+
+/**
  * Forcefully throws a failed assertion
  */
 export function fail(msg?: string): void {
