@@ -140,7 +140,7 @@ fn op_signal_unbind(
 }
 
 #[cfg(not(unix))]
-fn op_signal_poll(
+async fn op_signal_poll(
   _state: Rc<State>,
   _resource_table: Rc<RefCell<ResourceTable>>,
   _args: Value,
