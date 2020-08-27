@@ -538,7 +538,7 @@ fn op_chmod_sync(
   {
     // Still check file/dir exists on Windows
     let _metadata = std::fs::metadata(&path)?;
-    Err(ErrBox::not_implemented())
+    Err(ErrBox::error("Not implemented"))
   }
 }
 
@@ -607,7 +607,7 @@ fn op_chown_sync(
   // TODO Implement chown for Windows
   #[cfg(not(unix))]
   {
-    Err(ErrBox::not_implemented())
+    Err(ErrBox::error("Not implemented"))
   }
 }
 
