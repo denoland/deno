@@ -763,8 +763,8 @@ function singleByteEncodings() {
 
   for (let i = 0, l = singleByteEncodings.length; i < l; i++) {
     const encoding = singleByteEncodings[i];
-    for (let ii = 0, ll = encoding.labels.length; ii < ll; ii++) {
-      const label = encoding.labels[ii];
+    for (let i2 = 0, l2 = encoding.labels.length; i2 < l2; i2++) {
+      const label = encoding.labels[i2];
       const decoder = new TextDecoder(label);
       const data = decoder.decode(view);
 
