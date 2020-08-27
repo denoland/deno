@@ -58,17 +58,6 @@ pub struct State {
 }
 
 impl State {
-  pub fn stateful_json_op<D>(
-    self: &Rc<Self>,
-    dispatcher: D,
-  ) -> impl Fn(&mut deno_core::CoreIsolateState, &mut [ZeroCopyBuf]) -> Op
-  where
-    D: Fn(&Rc<State>, Value, &mut [ZeroCopyBuf]) -> Result<JsonOp, ErrBox>,
-  {
-    use crate::ops::json_op;
-    self.core_op(json_op(self.stateful_op(dispatcher)))
-  }
-
   pub fn stateful_json_op_sync<D>(
     self: &Rc<Self>,
     resource_table: &Rc<RefCell<ResourceTable>>,
