@@ -3359,7 +3359,7 @@ fn debug_with_log_level_and_rust_log() {
     util::tests_path().join("debug_with_log_level_and_RUST_LOG.out"),
   )
   .expect("cannot read output");
-  let (actual, _) = util::run_and_collect_output(
+  let (_, actual) = util::run_and_collect_output(
     true,
     "run -L debug --reload 002_hello.ts",
     None,
