@@ -79,9 +79,27 @@ pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
     s.stateful_json_op_async(t, op_remove_async),
   );
 
-  i.register_op("op_copy_file", s.stateful_json_op(op_copy_file));
-  i.register_op("op_stat", s.stateful_json_op(op_stat));
-  i.register_op("op_realpath", s.stateful_json_op(op_realpath));
+  i.register_op(
+    "op_copy_file_sync",
+    s.stateful_json_op_sync(t, op_copy_file_sync),
+  );
+  i.register_op(
+    "op_copy_file_async",
+    s.stateful_json_op_async(t, op_copy_file_async),
+  );
+
+  i.register_op("op_stat_sync", s.stateful_json_op_sync(t, op_stat_sync));
+  i.register_op("op_stat_async", s.stateful_json_op_async(t, op_stat_async));
+
+  i.register_op(
+    "op_realpath_sync",
+    s.stateful_json_op_sync(t, op_realpath_sync),
+  );
+  i.register_op(
+    "op_realpath_async",
+    s.stateful_json_op_async(t, op_realpath_async),
+  );
+
   i.register_op("op_read_dir", s.stateful_json_op(op_read_dir));
   i.register_op("op_rename", s.stateful_json_op(op_rename));
   i.register_op("op_link", s.stateful_json_op(op_link));
@@ -752,16 +770,16 @@ async fn op_remove_async(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CopyFileArgs {
-  promise_id: Option<u64>,
   from: String,
   to: String,
 }
 
-fn op_copy_file(
-  state: &Rc<State>,
+fn op_copy_file_sync(
+  state: &State,
+  _resource_table: &mut ResourceTable,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, ErrBox> {
+) -> Result<Value, ErrBox> {
   let args: CopyFileArgs = serde_json::from_value(args)?;
   let from = PathBuf::from(&args.from);
   let to = PathBuf::from(&args.to);
@@ -769,9 +787,34 @@ fn op_copy_file(
   state.check_read(&from)?;
   state.check_write(&to)?;
 
-  debug!("op_copy_file {} {}", from.display(), to.display());
-  let is_sync = args.promise_id.is_none();
-  blocking_json(is_sync, move || {
+  debug!("op_copy_file_sync {} {}", from.display(), to.display());
+  // On *nix, Rust reports non-existent `from` as ErrorKind::InvalidInput
+  // See https://github.com/rust-lang/rust/issues/54800
+  // Once the issue is resolved, we should remove this workaround.
+  if cfg!(unix) && !from.is_file() {
+    return Err(ErrBox::new("NotFound", "File not found"));
+  }
+
+  // returns size of from as u64 (we ignore)
+  std::fs::copy(&from, &to)?;
+  Ok(json!({}))
+}
+
+async fn op_copy_file_async(
+  state: Rc<State>,
+  _resource_table: Rc<RefCell<ResourceTable>>,
+  args: Value,
+  _zero_copy: BufVec,
+) -> Result<Value, ErrBox> {
+  let args: CopyFileArgs = serde_json::from_value(args)?;
+  let from = PathBuf::from(&args.from);
+  let to = PathBuf::from(&args.to);
+
+  state.check_read(&from)?;
+  state.check_write(&to)?;
+
+  debug!("op_copy_file_async {} {}", from.display(), to.display());
+  tokio::task::spawn_blocking(move || {
     // On *nix, Rust reports non-existent `from` as ErrorKind::InvalidInput
     // See https://github.com/rust-lang/rust/issues/54800
     // Once the issue is resolved, we should remove this workaround.
@@ -783,6 +826,8 @@ fn op_copy_file(
     std::fs::copy(&from, &to)?;
     Ok(json!({}))
   })
+  .await
+  .unwrap()
 }
 
 fn to_msec(maybe_time: Result<SystemTime, io::Error>) -> serde_json::Value {
@@ -846,25 +891,43 @@ fn get_stat_json(metadata: std::fs::Metadata) -> JsonResult {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct StatArgs {
-  promise_id: Option<u64>,
   path: String,
   lstat: bool,
 }
 
-fn op_stat(
-  state: &Rc<State>,
+fn op_stat_sync(
+  state: &State,
+  _resource_table: &mut ResourceTable,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, ErrBox> {
+) -> Result<Value, ErrBox> {
+  let args: StatArgs = serde_json::from_value(args)?;
+  let path = PathBuf::from(&args.path);
+  let lstat = args.lstat;
+  state.check_read(&path)?;
+  debug!("op_stat_sync {} {}", path.display(), lstat);
+  let metadata = if lstat {
+    std::fs::symlink_metadata(&path)?
+  } else {
+    std::fs::metadata(&path)?
+  };
+  get_stat_json(metadata)
+}
+
+async fn op_stat_async(
+  state: Rc<State>,
+  _resource_table: Rc<RefCell<ResourceTable>>,
+  args: Value,
+  _zero_copy: BufVec,
+) -> Result<Value, ErrBox> {
   let args: StatArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
   let lstat = args.lstat;
 
   state.check_read(&path)?;
 
-  let is_sync = args.promise_id.is_none();
-  blocking_json(is_sync, move || {
-    debug!("op_stat {} {}", path.display(), lstat);
+  tokio::task::spawn_blocking(move || {
+    debug!("op_stat_async {} {}", path.display(), lstat);
     let metadata = if lstat {
       std::fs::symlink_metadata(&path)?
     } else {
@@ -872,20 +935,22 @@ fn op_stat(
     };
     get_stat_json(metadata)
   })
+  .await
+  .unwrap()
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RealpathArgs {
-  promise_id: Option<u64>,
   path: String,
 }
 
-fn op_realpath(
-  state: &Rc<State>,
+fn op_realpath_sync(
+  state: &State,
+  _resource_table: &mut ResourceTable,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, ErrBox> {
+) -> Result<Value, ErrBox> {
   let args: RealpathArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
 
@@ -894,9 +959,34 @@ fn op_realpath(
     state.check_read_blind(&current_dir()?, "CWD")?;
   }
 
-  let is_sync = args.promise_id.is_none();
-  blocking_json(is_sync, move || {
-    debug!("op_realpath {}", path.display());
+  debug!("op_realpath_sync {}", path.display());
+  // corresponds to the realpath on Unix and
+  // CreateFile and GetFinalPathNameByHandle on Windows
+  let realpath = std::fs::canonicalize(&path)?;
+  let mut realpath_str =
+    into_string(realpath.into_os_string())?.replace("\\", "/");
+  if cfg!(windows) {
+    realpath_str = realpath_str.trim_start_matches("//?/").to_string();
+  }
+  Ok(json!(realpath_str))
+}
+
+async fn op_realpath_async(
+  state: Rc<State>,
+  _resource_table: Rc<RefCell<ResourceTable>>,
+  args: Value,
+  _zero_copy: BufVec,
+) -> Result<Value, ErrBox> {
+  let args: RealpathArgs = serde_json::from_value(args)?;
+  let path = PathBuf::from(&args.path);
+
+  state.check_read(&path)?;
+  if path.is_relative() {
+    state.check_read_blind(&current_dir()?, "CWD")?;
+  }
+
+  tokio::task::spawn_blocking(move || {
+    debug!("op_realpath_async {}", path.display());
     // corresponds to the realpath on Unix and
     // CreateFile and GetFinalPathNameByHandle on Windows
     let realpath = std::fs::canonicalize(&path)?;
@@ -907,6 +997,8 @@ fn op_realpath(
     }
     Ok(json!(realpath_str))
   })
+  .await
+  .unwrap()
 }
 
 #[derive(Deserialize)]

@@ -33,7 +33,7 @@
     fromPath,
     toPath,
   ) {
-    sendSync("op_copy_file", {
+    sendSync("op_copy_file_sync", {
       from: pathFromURL(fromPath),
       to: pathFromURL(toPath),
     });
@@ -43,7 +43,7 @@
     fromPath,
     toPath,
   ) {
-    await sendAsync("op_copy_file", {
+    await sendAsync("op_copy_file_async", {
       from: pathFromURL(fromPath),
       to: pathFromURL(toPath),
     });
@@ -127,11 +127,11 @@
   }
 
   function realPathSync(path) {
-    return sendSync("op_realpath", { path });
+    return sendSync("op_realpath_sync", { path });
   }
 
   function realPath(path) {
-    return sendAsync("op_realpath", { path });
+    return sendAsync("op_realpath_async", { path });
   }
 
   function removeSync(
@@ -196,7 +196,7 @@
   }
 
   async function lstat(path) {
-    const res = await sendAsync("op_stat", {
+    const res = await sendAsync("op_stat_async", {
       path: pathFromURL(path),
       lstat: true,
     });
@@ -204,7 +204,7 @@
   }
 
   function lstatSync(path) {
-    const res = sendSync("op_stat", {
+    const res = sendSync("op_stat_sync", {
       path: pathFromURL(path),
       lstat: true,
     });
@@ -212,7 +212,7 @@
   }
 
   async function stat(path) {
-    const res = await sendAsync("op_stat", {
+    const res = await sendAsync("op_stat_async", {
       path: pathFromURL(path),
       lstat: false,
     });
@@ -220,7 +220,7 @@
   }
 
   function statSync(path) {
-    const res = sendSync("op_stat", {
+    const res = sendSync("op_stat_sync", {
       path: pathFromURL(path),
       lstat: false,
     });
