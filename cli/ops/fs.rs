@@ -7,11 +7,9 @@ use crate::ops::dispatch_json::JsonResult;
 use crate::state::State;
 use deno_core::BufVec;
 use deno_core::CoreIsolate;
-use deno_core::CoreIsolateState;
 use deno_core::ErrBox;
 use deno_core::ResourceTable;
 use deno_core::ZeroCopyBuf;
-use futures::future::FutureExt;
 use std::cell::RefCell;
 use std::convert::From;
 use std::env::{current_dir, set_current_dir, temp_dir};
@@ -89,7 +87,16 @@ pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
   i.register_op("op_link", s.stateful_json_op(op_link));
   i.register_op("op_symlink", s.stateful_json_op(op_symlink));
   i.register_op("op_read_link", s.stateful_json_op(op_read_link));
-  i.register_op("op_ftruncate", s.stateful_json_op2(op_ftruncate));
+
+  i.register_op(
+    "op_ftruncate_sync",
+    s.stateful_json_op_sync(t, op_ftruncate_sync),
+  );
+  i.register_op(
+    "op_ftruncate_async",
+    s.stateful_json_op_async(t, op_ftruncate_async),
+  );
+
   i.register_op("op_truncate", s.stateful_json_op(op_truncate));
   i.register_op("op_make_temp_dir", s.stateful_json_op(op_make_temp_dir));
   i.register_op("op_make_temp_file", s.stateful_json_op(op_make_temp_file));
@@ -1101,47 +1108,43 @@ fn op_read_link(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct FtruncateArgs {
-  promise_id: Option<u64>,
   rid: i32,
   len: i32,
 }
 
-fn op_ftruncate(
-  isolate_state: &mut CoreIsolateState,
-  state: &Rc<State>,
+fn op_ftruncate_sync(
+  state: &State,
+  resource_table: &mut ResourceTable,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, ErrBox> {
+) -> Result<Value, ErrBox> {
   state.check_unstable("Deno.ftruncate");
   let args: FtruncateArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
   let len = args.len as u64;
+  std_file_resource(resource_table, rid, |r| match r {
+    Ok(std_file) => std_file.set_len(len).map_err(ErrBox::from),
+    Err(_) => Err(ErrBox::type_error("cannot truncate this type of resource")),
+  })?;
+  Ok(json!({}))
+}
 
-  let resource_table = isolate_state.resource_table.clone();
-  let is_sync = args.promise_id.is_none();
-
-  if is_sync {
-    let mut resource_table = resource_table.borrow_mut();
-    std_file_resource(&mut resource_table, rid, |r| match r {
-      Ok(std_file) => std_file.set_len(len).map_err(ErrBox::from),
-      Err(_) => {
-        Err(ErrBox::type_error("cannot truncate this type of resource"))
-      }
-    })?;
-    Ok(JsonOp::Sync(json!({})))
-  } else {
-    let fut = async move {
-      let mut resource_table = resource_table.borrow_mut();
-      std_file_resource(&mut resource_table, rid, |r| match r {
-        Ok(std_file) => std_file.set_len(len).map_err(ErrBox::from),
-        Err(_) => {
-          Err(ErrBox::type_error("cannot truncate this type of resource"))
-        }
-      })?;
-      Ok(json!({}))
-    };
-    Ok(JsonOp::Async(fut.boxed_local()))
-  }
+async fn op_ftruncate_async(
+  state: Rc<State>,
+  resource_table: Rc<RefCell<ResourceTable>>,
+  args: Value,
+  _zero_copy: BufVec,
+) -> Result<Value, ErrBox> {
+  state.check_unstable("Deno.ftruncate");
+  let args: FtruncateArgs = serde_json::from_value(args)?;
+  let rid = args.rid as u32;
+  let len = args.len as u64;
+  let mut resource_table = resource_table.borrow_mut();
+  std_file_resource(&mut resource_table, rid, |r| match r {
+    Ok(std_file) => std_file.set_len(len).map_err(ErrBox::from),
+    Err(_) => Err(ErrBox::type_error("cannot truncate this type of resource")),
+  })?;
+  Ok(json!({}))
 }
 
 #[derive(Deserialize)]

@@ -236,11 +236,11 @@
   }
 
   function ftruncateSync(rid, len) {
-    sendSync("op_ftruncate", { rid, len: coerceLen(len) });
+    sendSync("op_ftruncate_sync", { rid, len: coerceLen(len) });
   }
 
   async function ftruncate(rid, len) {
-    await sendAsync("op_ftruncate", { rid, len: coerceLen(len) });
+    await sendAsync("op_ftruncate_async", { rid, len: coerceLen(len) });
   }
 
   function truncateSync(path, len) {

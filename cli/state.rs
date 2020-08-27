@@ -170,6 +170,8 @@ impl State {
     self.core_op(f)
   }
 
+  // TODO(bartlomieju): remove me - still used by `op_open_plugin` which
+  // needs access to isolate_state
   pub fn stateful_json_op2<D>(
     self: &Rc<Self>,
     dispatcher: D,
