@@ -1,12 +1,13 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use super::dispatch_json::{Deserialize, JsonOp, Value};
+use super::dispatch_json::{Deserialize, Value};
 use crate::state::State;
 use deno_core::CoreIsolate;
-use deno_core::CoreIsolateState;
+use deno_core::ResourceTable;
+use deno_core::BufVec;
+use std::cell::RefCell;
 use deno_core::ErrBox;
 use deno_core::ZeroCopyBuf;
 use futures::future::poll_fn;
-use futures::future::FutureExt;
 use notify::event::Event as NotifyEvent;
 use notify::Error as NotifyError;
 use notify::EventKind;
@@ -20,8 +21,10 @@ use std::rc::Rc;
 use tokio::sync::mpsc;
 
 pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  i.register_op("op_fs_events_open", s.stateful_json_op2(op_fs_events_open));
-  i.register_op("op_fs_events_poll", s.stateful_json_op2(op_fs_events_poll));
+  let t = &CoreIsolate::state(i).borrow().resource_table.clone();
+
+  i.register_op("op_fs_events_open", s.stateful_json_op_sync(t, op_fs_events_open));
+  i.register_op("op_fs_events_poll", s.stateful_json_op_async(t, op_fs_events_poll));
 }
 
 struct FsEventsResource {
@@ -62,12 +65,12 @@ impl From<NotifyEvent> for FsEvent {
   }
 }
 
-pub fn op_fs_events_open(
-  isolate_state: &mut CoreIsolateState,
-  state: &Rc<State>,
+fn op_fs_events_open(
+  state: &State,
+  resource_table: &mut ResourceTable,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, ErrBox> {
+) -> Result<Value, ErrBox> {
   #[derive(Deserialize)]
   struct OpenArgs {
     recursive: bool,
@@ -94,24 +97,22 @@ pub fn op_fs_events_open(
     watcher.watch(path, recursive_mode)?;
   }
   let resource = FsEventsResource { watcher, receiver };
-  let mut resource_table = isolate_state.resource_table.borrow_mut();
   let rid = resource_table.add("fsEvents", Box::new(resource));
-  Ok(JsonOp::Sync(json!(rid)))
+  Ok(json!(rid))
 }
 
-pub fn op_fs_events_poll(
-  isolate_state: &mut CoreIsolateState,
-  _state: &Rc<State>,
+async fn op_fs_events_poll(
+  _state: Rc<State>,
+  resource_table: Rc<RefCell<ResourceTable>>,
   args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, ErrBox> {
+  _zero_copy: BufVec,
+) -> Result<Value, ErrBox> {
   #[derive(Deserialize)]
   struct PollArgs {
     rid: u32,
   }
   let PollArgs { rid } = serde_json::from_value(args)?;
-  let resource_table = isolate_state.resource_table.clone();
-  let f = poll_fn(move |cx| {
+  poll_fn(move |cx| {
     let mut resource_table = resource_table.borrow_mut();
     let watcher = resource_table
       .get_mut::<FsEventsResource>(rid)
@@ -124,6 +125,5 @@ pub fn op_fs_events_poll(
         Some(Err(err)) => Err(err),
         None => Ok(json!({ "done": true })),
       })
-  });
-  Ok(JsonOp::Async(f.boxed_local()))
+  }).await
 }
