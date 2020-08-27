@@ -77,7 +77,7 @@
         offset = 0xf0;
       } else {
         throw TypeError(
-          `Code point out of range: \\x${codePoint.toString(16)}`,
+          `Code point out of range: \\x${codePoint.toString(16)}`
         );
       }
 
@@ -105,7 +105,7 @@
     if (rem === 1 || /[^+/0-9A-Za-z]/.test(s)) {
       throw new DOMException(
         "The string to be decoded is not correctly encoded",
-        "DataDecodeError",
+        "DataDecodeError"
       );
     }
 
@@ -129,7 +129,7 @@
       if (charCode > 0xff) {
         throw new TypeError(
           "The string to be encoded contains characters " +
-            "outside of the Latin1 range.",
+            "outside of the Latin1 range."
         );
       }
       byteArray.push(charCode);
@@ -142,10 +142,7 @@
     #index = [];
     #fatal = false;
 
-    constructor(
-      index,
-      { ignoreBOM = false, fatal = false } = {},
-    ) {
+    constructor(index, { ignoreBOM = false, fatal = false } = {}) {
       if (ignoreBOM) {
         throw new TypeError("Ignoring the BOM is available only with utf-8.");
       }
@@ -192,6 +189,146 @@
       "x-cp1252",
     ],
     "utf-8": ["unicode-1-1-utf-8", "utf-8", "utf8"],
+    ibm866: ["866", "cp866", "csibm866", "ibm866"],
+    "iso-8859-2": [
+      "csisolatin2",
+      "iso-8859-2",
+      "iso-ir-101",
+      "iso8859-2",
+      "iso88592",
+      "iso_8859-2",
+      "iso_8859-2:1987",
+      "l2",
+      "latin2",
+    ],
+    "iso-8859-3": [
+      "csisolatin3",
+      "iso-8859-3",
+      "iso-ir-109",
+      "iso8859-3",
+      "iso88593",
+      "iso_8859-3",
+      "iso_8859-3:1988",
+      "l3",
+      "latin3",
+    ],
+    "iso-8859-4": [
+      "csisolatin4",
+      "iso-8859-4",
+      "iso-ir-110",
+      "iso8859-4",
+      "iso88594",
+      "iso_8859-4",
+      "iso_8859-4:1988",
+      "l4",
+      "latin4",
+    ],
+    "iso-8859-5": [
+      "csisolatincyrillic",
+      "cyrillic",
+      "iso-8859-5",
+      "iso-ir-144",
+      "iso8859-5",
+      "iso88595",
+      "iso_8859-5",
+      "iso_8859-5:1988",
+    ],
+    "iso-8859-6": [
+      "arabic",
+      "asmo-708",
+      "csiso88596e",
+      "csiso88596i",
+      "csisolatinarabic",
+      "ecma-114",
+      "iso-8859-6",
+      "iso-8859-6-e",
+      "iso-8859-6-i",
+      "iso-ir-127",
+      "iso8859-6",
+      "iso88596",
+      "iso_8859-6",
+      "iso_8859-6:1987",
+    ],
+    "iso-8859-7": [
+      "csisolatingreek",
+      "ecma-118",
+      "elot_928",
+      "greek",
+      "greek8",
+      "iso-8859-7",
+      "iso-ir-126",
+      "iso8859-7",
+      "iso88597",
+      "iso_8859-7",
+      "iso_8859-7:1987",
+      "sun_eu_greek",
+    ],
+    "iso-8859-8": [
+      "csiso88598e",
+      "csisolatinhebrew",
+      "hebrew",
+      "iso-8859-8",
+      "iso-8859-8-e",
+      "iso-ir-138",
+      "iso8859-8",
+      "iso88598",
+      "iso_8859-8",
+      "iso_8859-8:1988",
+      "visual",
+    ],
+    "iso-8859-10": [
+      "csisolatin6",
+      "iso-8859-10",
+      "iso-ir-157",
+      "iso8859-10",
+      "iso885910",
+      "l6",
+      "latin6",
+    ],
+    "iso-8859-13": ["iso-8859-13", "iso8859-13", "iso885913"],
+    "iso-8859-14": ["iso-8859-14", "iso8859-14", "iso885914"],
+    "iso-8859-15": [
+      "csisolatin9",
+      "iso-8859-15",
+      "iso8859-15",
+      "iso885915",
+      "iso_8859-15",
+      "l9",
+    ],
+    "iso-8859-16": ["iso-8859-16"],
+    "koi8-r": ["cskoi8r", "koi", "koi8", "koi8-r", "koi8_r"],
+    "koi8-u": ["koi8-ru", "koi8-u"],
+    macintosh: ["csmacintosh", "mac", "macintosh", "x-mac-roman"],
+    "windows-874": [
+      "dos-874",
+      "iso-8859-11",
+      "iso8859-11",
+      "iso885911",
+      "tis-620",
+      "windows-874",
+    ],
+    "windows-1250": ["cp1250", "windows-1250", "x-cp1250"],
+    "windows-1251": ["cp1251", "windows-1251", "x-cp1251"],
+    "windows-1253": ["cp1253", "windows-1253", "x-cp1253"],
+    "windows-1254": [
+      "cp1254",
+      "csisolatin5",
+      "iso-8859-9",
+      "iso-ir-148",
+      "iso8859-9",
+      "iso88599",
+      "iso_8859-9",
+      "iso_8859-9:1989",
+      "l5",
+      "latin5",
+      "windows-1254",
+      "x-cp1254",
+    ],
+    "windows-1255": ["cp1255", "windows-1255", "x-cp1255"],
+    "windows-1256": ["cp1256", "windows-1256", "x-cp1256"],
+    "windows-1257": ["cp1257", "windows-1257", "x-cp1257"],
+    "windows-1258": ["cp1258", "windows-1258", "x-cp1258"],
+    "x-mac-cyrillic": ["x-mac-cyrillic", "x-mac-ukrainian"],
   };
   // We convert these into a Map where every label resolves to its canonical
   // encoding type.
@@ -341,12 +478,9 @@
     255,
   ]);
   for (const [key, index] of encodingIndexes) {
-    decoders.set(
-      key,
-      (options) => {
-        return new SingleByteDecoder(index, options);
-      },
-    );
+    decoders.set(key, (options) => {
+      return new SingleByteDecoder(index, options);
+    });
   }
 
   function codePointsToString(codePoints) {
@@ -395,8 +529,11 @@
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   function isEitherArrayBuffer(x) {
-    return x instanceof SharedArrayBuffer || x instanceof ArrayBuffer ||
-      typeof x === "undefined";
+    return (
+      x instanceof SharedArrayBuffer ||
+      x instanceof ArrayBuffer ||
+      typeof x === "undefined"
+    );
   }
 
   class TextDecoder {
@@ -419,7 +556,7 @@
       const encoding = encodings.get(label);
       if (!encoding) {
         throw new RangeError(
-          `The encoding label provided ('${label}') is invalid.`,
+          `The encoding label provided ('${label}') is invalid.`
         );
       }
       if (!decoders.has(encoding) && encoding !== "utf-8") {
@@ -428,10 +565,7 @@
       this.#encoding = encoding;
     }
 
-    decode(
-      input,
-      options = { stream: false },
-    ) {
+    decode(input, options = { stream: false }) {
       if (options.stream) {
         throw new TypeError("Stream not supported.");
       }
@@ -450,11 +584,11 @@
         bytes = new Uint8Array(
           input.buffer,
           input.byteOffset,
-          input.byteLength,
+          input.byteLength
         );
       } else {
         throw new TypeError(
-          "Provided input is not of type ArrayBuffer or ArrayBufferView",
+          "Provided input is not of type ArrayBuffer or ArrayBufferView"
         );
       }
 
@@ -581,11 +715,7 @@
   // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
   // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
   // SOFTWARE.
-  function decodeUtf8(
-    input,
-    fatal,
-    ignoreBOM,
-  ) {
+  function decodeUtf8(input, fatal, ignoreBOM) {
     let outString = "";
 
     // Prepare a buffer so that we don't have to do a lot of string concats, which
@@ -608,7 +738,7 @@
       if (state === 12 || (state !== 0 && (input[i] & 0xc0) !== 0x80)) {
         if (fatal) {
           throw new TypeError(
-            `Decoder error. Invalid byte in sequence at position ${i} in data.`,
+            `Decoder error. Invalid byte in sequence at position ${i} in data.`
           );
         }
         outBuffer[outIndex++] = 0xfffd; // Replacement character
@@ -620,6 +750,7 @@
       }
 
       // deno-fmt-ignore
+      // prettier-ignore
       type = [
          0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
          0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
@@ -630,10 +761,12 @@
          8,8,2,2,2,2,2,2,2,2,2,2,2,2,2,2,  2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,
         10,3,3,3,3,3,3,3,3,3,3,3,3,4,3,3, 11,6,6,6,5,8,8,8,8,8,8,8,8,8,8,8
       ][input[i]];
-      codepoint = state !== 0
-        ? (input[i] & 0x3f) | (codepoint << 6)
-        : (0xff >> type) & input[i];
+      codepoint =
+        state !== 0
+          ? (input[i] & 0x3f) | (codepoint << 6)
+          : (0xff >> type) & input[i];
       // deno-fmt-ignore
+      // prettier-ignore
       state = [
          0,12,24,36,60,96,84,12,12,12,48,72, 12,12,12,12,12,12,12,12,12,12,12,12,
         12, 0,12,12,12,12,12, 0,12, 0,12,12, 12,24,12,12,12,12,12,24,12,24,12,12,
@@ -676,7 +809,7 @@
     // Final flush of buffer
     outString += String.fromCharCode.apply(
       null,
-      outBuffer.subarray(0, outIndex),
+      outBuffer.subarray(0, outIndex)
     );
 
     return outString;
@@ -724,11 +857,7 @@
     return ((validLen + placeHoldersLen) * 3) / 4 - placeHoldersLen;
   }
 
-  function _byteLength(
-    b64,
-    validLen,
-    placeHoldersLen,
-  ) {
+  function _byteLength(b64, validLen, placeHoldersLen) {
     return ((validLen + placeHoldersLen) * 3) / 4 - placeHoldersLen;
   }
 
@@ -747,7 +876,8 @@
 
     let i;
     for (i = 0; i < len; i += 4) {
-      tmp = (revLookup[b64.charCodeAt(i)] << 18) |
+      tmp =
+        (revLookup[b64.charCodeAt(i)] << 18) |
         (revLookup[b64.charCodeAt(i + 1)] << 12) |
         (revLookup[b64.charCodeAt(i + 2)] << 6) |
         revLookup[b64.charCodeAt(i + 3)];
@@ -757,13 +887,15 @@
     }
 
     if (placeHoldersLen === 2) {
-      tmp = (revLookup[b64.charCodeAt(i)] << 2) |
+      tmp =
+        (revLookup[b64.charCodeAt(i)] << 2) |
         (revLookup[b64.charCodeAt(i + 1)] >> 4);
       arr[curByte++] = tmp & 0xff;
     }
 
     if (placeHoldersLen === 1) {
-      tmp = (revLookup[b64.charCodeAt(i)] << 10) |
+      tmp =
+        (revLookup[b64.charCodeAt(i)] << 10) |
         (revLookup[b64.charCodeAt(i + 1)] << 4) |
         (revLookup[b64.charCodeAt(i + 2)] >> 2);
       arr[curByte++] = (tmp >> 8) & 0xff;
@@ -786,7 +918,8 @@
     let tmp;
     const output = [];
     for (let i = start; i < end; i += 3) {
-      tmp = ((uint8[i] << 16) & 0xff0000) +
+      tmp =
+        ((uint8[i] << 16) & 0xff0000) +
         ((uint8[i + 1] << 8) & 0xff00) +
         (uint8[i + 2] & 0xff);
       output.push(tripletToBase64(tmp));
@@ -807,8 +940,8 @@
         encodeChunk(
           uint8,
           i,
-          i + maxChunkLength > len2 ? len2 : i + maxChunkLength,
-        ),
+          i + maxChunkLength > len2 ? len2 : i + maxChunkLength
+        )
       );
     }
 
@@ -822,7 +955,7 @@
         lookup[tmp >> 10] +
           lookup[(tmp >> 4) & 0x3f] +
           lookup[(tmp << 2) & 0x3f] +
-          "=",
+          "="
       );
     }
 
@@ -839,6 +972,6 @@
   window.TextDecoder = TextDecoder;
   window.atob = atob;
   window.btoa = btoa;
-  window.__bootstrap = (window.__bootstrap || {});
+  window.__bootstrap = window.__bootstrap || {};
   window.__bootstrap.base64 = base64;
 })(this);
