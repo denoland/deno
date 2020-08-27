@@ -102,15 +102,16 @@
   }
 
   function readDirSync(path) {
-    return res(sendSync("op_read_dir", { path: pathFromURL(path) }))[
+    return res(sendSync("op_read_dir_sync", { path: pathFromURL(path) }))[
       Symbol.iterator
     ]();
   }
 
   function readDir(path) {
-    const array = sendAsync("op_read_dir", { path: pathFromURL(path) }).then(
-      res,
-    );
+    const array = sendAsync("op_read_dir_async", { path: pathFromURL(path) })
+      .then(
+        res,
+      );
     return {
       async *[Symbol.asyncIterator]() {
         yield* await array;

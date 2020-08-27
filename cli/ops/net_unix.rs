@@ -31,12 +31,6 @@ pub async fn accept_unix(
   rid: u32,
   _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
-  {
-    let _ = resource_table
-      .borrow()
-      .get::<UnixListenerResource>(rid)
-      .ok_or_else(ErrBox::bad_resource_id)?;
-  }
   let mut resource_table_ = resource_table.borrow_mut();
   let listener_resource = {
     resource_table_
