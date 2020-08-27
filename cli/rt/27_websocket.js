@@ -137,19 +137,19 @@
         throw Error("readyState not OPEN");
       }
 
-      const ws = this;
-
-      function sendTypedArray(ta) {
-        ws.#bufferedAmount += ta.size;
+      const sendTypedArray = (ta) => {
+        this.#bufferedAmount += ta.size;
         sendAsync("op_ws_send", {
-          rid: ws.#rid,
+          rid: this.#rid,
         }, ta).then(() => {
-          ws.#bufferedAmount -= ta.size;
+          this.#bufferedAmount -= ta.size;
         });
-      }
+      };
 
       if (data instanceof Blob) {
-        data.slice().arrayBuffer().then((ab) => sendTypedArray(new DataView(ab)));
+        data.slice().arrayBuffer().then((ab) =>
+          sendTypedArray(new DataView(ab))
+        );
       } else if (
         data instanceof Int8Array || data instanceof Int16Array ||
         data instanceof Int32Array || data instanceof Uint8Array ||
@@ -164,12 +164,12 @@
         const string = String(data);
         const encoder = new TextEncoder();
         const d = encoder.encode(string);
-        ws.#bufferedAmount += d.size;
+        this.#bufferedAmount += d.size;
         sendAsync("op_ws_send", {
-          rid: ws.#rid,
+          rid: this.#rid,
           text: string,
         }).then(() => {
-          ws.#bufferedAmount -= d.size;
+          this.#bufferedAmount -= d.size;
         });
       }
     }
