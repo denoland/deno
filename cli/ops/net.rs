@@ -3,15 +3,15 @@ use super::dispatch_json::{Deserialize, Value};
 use super::io::{StreamResource, StreamResourceHolder};
 use crate::resolve_addr::resolve_addr;
 use crate::state::State;
+use deno_core::BufVec;
 use deno_core::CoreIsolate;
 use deno_core::ErrBox;
 use deno_core::ResourceTable;
 use deno_core::ZeroCopyBuf;
-use deno_core::BufVec;
 use futures::future::poll_fn;
+use std::cell::RefCell;
 use std::net::Shutdown;
 use std::net::SocketAddr;
-use std::cell::RefCell;
 use std::rc::Rc;
 use std::task::Context;
 use std::task::Poll;
@@ -33,7 +33,10 @@ pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
     "op_datagram_receive",
     s.stateful_json_op_async(t, op_datagram_receive),
   );
-  i.register_op("op_datagram_send", s.stateful_json_op_async(t, op_datagram_send));
+  i.register_op(
+    "op_datagram_send",
+    s.stateful_json_op_async(t, op_datagram_send),
+  );
 }
 
 #[derive(Deserialize)]
@@ -49,50 +52,50 @@ async fn accept_tcp(
 ) -> Result<Value, ErrBox> {
   let rid = args.rid as u32;
 
-    let accept_fut = poll_fn(|cx| {
-      let mut resource_table = resource_table.borrow_mut();
-      let listener_resource = resource_table
-        .get_mut::<TcpListenerResource>(rid)
-        .ok_or_else(|| ErrBox::bad_resource("Listener has been closed"))?;
-      let listener = &mut listener_resource.listener;
-      match listener.poll_accept(cx).map_err(ErrBox::from) {
-        Poll::Ready(Ok((stream, addr))) => {
-          listener_resource.untrack_task();
-          Poll::Ready(Ok((stream, addr)))
-        }
-        Poll::Pending => {
-          listener_resource.track_task(cx)?;
-          Poll::Pending
-        }
-        Poll::Ready(Err(e)) => {
-          listener_resource.untrack_task();
-          Poll::Ready(Err(e))
-        }
-      }
-    });
-    let (tcp_stream, _socket_addr) = accept_fut.await?;
-    let local_addr = tcp_stream.local_addr()?;
-    let remote_addr = tcp_stream.peer_addr()?;
+  let accept_fut = poll_fn(|cx| {
     let mut resource_table = resource_table.borrow_mut();
-    let rid = resource_table.add(
-      "tcpStream",
-      Box::new(StreamResourceHolder::new(StreamResource::TcpStream(Some(
-        tcp_stream,
-      )))),
-    );
-    Ok(json!({
-      "rid": rid,
-      "localAddr": {
-        "hostname": local_addr.ip().to_string(),
-        "port": local_addr.port(),
-        "transport": "tcp",
-      },
-      "remoteAddr": {
-        "hostname": remote_addr.ip().to_string(),
-        "port": remote_addr.port(),
-        "transport": "tcp",
+    let listener_resource = resource_table
+      .get_mut::<TcpListenerResource>(rid)
+      .ok_or_else(|| ErrBox::bad_resource("Listener has been closed"))?;
+    let listener = &mut listener_resource.listener;
+    match listener.poll_accept(cx).map_err(ErrBox::from) {
+      Poll::Ready(Ok((stream, addr))) => {
+        listener_resource.untrack_task();
+        Poll::Ready(Ok((stream, addr)))
       }
-    }))
+      Poll::Pending => {
+        listener_resource.track_task(cx)?;
+        Poll::Pending
+      }
+      Poll::Ready(Err(e)) => {
+        listener_resource.untrack_task();
+        Poll::Ready(Err(e))
+      }
+    }
+  });
+  let (tcp_stream, _socket_addr) = accept_fut.await?;
+  let local_addr = tcp_stream.local_addr()?;
+  let remote_addr = tcp_stream.peer_addr()?;
+  let mut resource_table = resource_table.borrow_mut();
+  let rid = resource_table.add(
+    "tcpStream",
+    Box::new(StreamResourceHolder::new(StreamResource::TcpStream(Some(
+      tcp_stream,
+    )))),
+  );
+  Ok(json!({
+    "rid": rid,
+    "localAddr": {
+      "hostname": local_addr.ip().to_string(),
+      "port": local_addr.port(),
+      "transport": "tcp",
+    },
+    "remoteAddr": {
+      "hostname": remote_addr.ip().to_string(),
+      "port": remote_addr.port(),
+      "transport": "tcp",
+    }
+  }))
 }
 
 async fn op_accept(
@@ -105,7 +108,9 @@ async fn op_accept(
   match args.transport.as_str() {
     "tcp" => accept_tcp(resource_table, args, zero_copy).await,
     #[cfg(unix)]
-    "unix" => net_unix::accept_unix(resource_table, args.rid as u32, zero_copy).await,
+    "unix" => {
+      net_unix::accept_unix(resource_table, args.rid as u32, zero_copy).await
+    }
     _ => Err(ErrBox::error(format!(
       "Unsupported transport protocol {}",
       args.transport
@@ -164,7 +169,8 @@ async fn op_datagram_receive(
     "udp" => receive_udp(resource_table, &state, args, zero_copy).await,
     #[cfg(unix)]
     "unixpacket" => {
-      net_unix::receive_unix_packet(resource_table, args.rid as u32, zero_copy).await
+      net_unix::receive_unix_packet(resource_table, args.rid as u32, zero_copy)
+        .await
     }
     _ => Err(ErrBox::error(format!(
       "Unsupported transport protocol {}",
@@ -208,7 +214,8 @@ async fn op_datagram_send(
           .poll_send_to(cx, &zero_copy, &addr)
           .map_ok(|byte_length| json!(byte_length))
           .map_err(ErrBox::from)
-      }).await
+      })
+      .await
     }
     #[cfg(unix)]
     SendArgs {
@@ -221,9 +228,7 @@ async fn op_datagram_send(
       let mut resource_table = resource_table.borrow_mut();
       let resource = resource_table
         .get_mut::<net_unix::UnixDatagramResource>(rid as u32)
-        .ok_or_else(|| {
-          ErrBox::new("NotConnected", "Socket has been closed")
-        })?;
+        .ok_or_else(|| ErrBox::new("NotConnected", "Socket has been closed"))?;
       let socket = &mut resource.socket;
       let byte_length = socket
         .send_to(&zero_copy, &resource.local_addr.as_pathname().unwrap())

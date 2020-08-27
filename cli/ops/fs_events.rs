@@ -1,11 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use super::dispatch_json::{Deserialize, Value};
 use crate::state::State;
-use deno_core::CoreIsolate;
-use deno_core::ResourceTable;
 use deno_core::BufVec;
-use std::cell::RefCell;
+use deno_core::CoreIsolate;
 use deno_core::ErrBox;
+use deno_core::ResourceTable;
 use deno_core::ZeroCopyBuf;
 use futures::future::poll_fn;
 use notify::event::Event as NotifyEvent;
@@ -15,6 +14,7 @@ use notify::RecommendedWatcher;
 use notify::RecursiveMode;
 use notify::Watcher;
 use serde::Serialize;
+use std::cell::RefCell;
 use std::convert::From;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -23,8 +23,14 @@ use tokio::sync::mpsc;
 pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
   let t = &CoreIsolate::state(i).borrow().resource_table.clone();
 
-  i.register_op("op_fs_events_open", s.stateful_json_op_sync(t, op_fs_events_open));
-  i.register_op("op_fs_events_poll", s.stateful_json_op_async(t, op_fs_events_poll));
+  i.register_op(
+    "op_fs_events_open",
+    s.stateful_json_op_sync(t, op_fs_events_open),
+  );
+  i.register_op(
+    "op_fs_events_poll",
+    s.stateful_json_op_async(t, op_fs_events_poll),
+  );
 }
 
 struct FsEventsResource {
@@ -125,5 +131,6 @@ async fn op_fs_events_poll(
         Some(Err(err)) => Err(err),
         None => Ok(json!({ "done": true })),
       })
-  }).await
+  })
+  .await
 }

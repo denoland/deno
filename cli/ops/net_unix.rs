@@ -1,12 +1,12 @@
 use super::dispatch_json::{Deserialize, Value};
 use super::io::{StreamResource, StreamResourceHolder};
+use deno_core::BufVec;
 use deno_core::ErrBox;
 use deno_core::ResourceTable;
+use std::cell::RefCell;
 use std::fs::remove_file;
 use std::os::unix;
 pub use std::path::Path;
-use std::cell::RefCell;
-use deno_core::BufVec;
 use std::rc::Rc;
 use tokio::net::UnixDatagram;
 use tokio::net::UnixListener;
@@ -44,8 +44,7 @@ pub async fn accept_unix(
       .ok_or_else(|| ErrBox::bad_resource("Listener has been closed"))?
   };
 
-  let (unix_stream, _socket_addr) =
-    listener_resource.listener.accept().await?;
+  let (unix_stream, _socket_addr) = listener_resource.listener.accept().await?;
   drop(resource_table_);
 
   let local_addr = unix_stream.local_addr()?;
