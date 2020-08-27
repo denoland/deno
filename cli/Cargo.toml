@@ -15,9 +15,9 @@ name = "deno"
 path = "main.rs"
 
 [[bench]]
-name = "deno"
+name = "deno_bench"
 harness = false
-path = "./bench/deno.rs"
+path = "./bench/main.rs"
 
 [build-dependencies]
 deno_core = { path = "../core", version = "0.54.0" }
