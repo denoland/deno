@@ -915,7 +915,7 @@ export default class Context {
         const view = new DataView(this.memory.buffer);
 
         const offset = entry.handle.seekSync(0, Deno.SeekMode.Current);
-        view.setBigUint64(offset_out, offset, true);
+        view.setBigUint64(offset_out, BigInt(offset), true);
 
         return ERRNO_SUCCESS;
       }),
