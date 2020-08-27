@@ -144,7 +144,7 @@ fn op_signal_poll(
   _state: Rc<State>,
   _resource_table: Rc<RefCell<ResourceTable>>,
   _args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: BufVec,
 ) -> Result<Value, ErrBox> {
   unimplemented!();
 }
