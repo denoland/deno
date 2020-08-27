@@ -119,15 +119,3 @@ where
     }
   }
 }
-
-pub fn blocking_json<F>(is_sync: bool, f: F) -> Result<JsonOp, ErrBox>
-where
-  F: 'static + Send + FnOnce() -> JsonResult,
-{
-  if is_sync {
-    Ok(JsonOp::Sync(f()?))
-  } else {
-    let fut = async move { tokio::task::spawn_blocking(f).await.unwrap() };
-    Ok(JsonOp::Async(fut.boxed_local()))
-  }
-}

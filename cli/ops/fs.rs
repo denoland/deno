@@ -1,6 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 // Some deserializer fields are only used on Unix and Windows build fails without it
-use super::dispatch_json::{blocking_json, Deserialize, JsonOp, Value};
+use super::dispatch_json::{Deserialize, Value};
 use super::io::std_file_resource;
 use super::io::{FileMetadata, StreamResource, StreamResourceHolder};
 use crate::ops::dispatch_json::JsonResult;
@@ -100,11 +100,41 @@ pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
     s.stateful_json_op_async(t, op_realpath_async),
   );
 
-  i.register_op("op_read_dir", s.stateful_json_op(op_read_dir));
-  i.register_op("op_rename", s.stateful_json_op(op_rename));
-  i.register_op("op_link", s.stateful_json_op(op_link));
-  i.register_op("op_symlink", s.stateful_json_op(op_symlink));
-  i.register_op("op_read_link", s.stateful_json_op(op_read_link));
+  i.register_op(
+    "op_read_dir_sync",
+    s.stateful_json_op_sync(t, op_read_dir_sync),
+  );
+  i.register_op(
+    "op_read_dir_async",
+    s.stateful_json_op_async(t, op_read_dir_async),
+  );
+
+  i.register_op("op_rename_sync", s.stateful_json_op_sync(t, op_rename_sync));
+  i.register_op(
+    "op_rename_async",
+    s.stateful_json_op_async(t, op_rename_async),
+  );
+
+  i.register_op("op_link_sync", s.stateful_json_op_sync(t, op_link_sync));
+  i.register_op("op_link_async", s.stateful_json_op_async(t, op_link_async));
+
+  i.register_op(
+    "op_symlink_sync",
+    s.stateful_json_op_sync(t, op_symlink_sync),
+  );
+  i.register_op(
+    "op_symlink_async",
+    s.stateful_json_op_async(t, op_symlink_async),
+  );
+
+  i.register_op(
+    "op_read_link_sync",
+    s.stateful_json_op_sync(t, op_read_link_sync),
+  );
+  i.register_op(
+    "op_read_link_async",
+    s.stateful_json_op_async(t, op_read_link_async),
+  );
 
   i.register_op(
     "op_ftruncate_sync",
@@ -115,11 +145,40 @@ pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
     s.stateful_json_op_async(t, op_ftruncate_async),
   );
 
-  i.register_op("op_truncate", s.stateful_json_op(op_truncate));
-  i.register_op("op_make_temp_dir", s.stateful_json_op(op_make_temp_dir));
-  i.register_op("op_make_temp_file", s.stateful_json_op(op_make_temp_file));
-  i.register_op("op_cwd", s.stateful_json_op(op_cwd));
-  i.register_op("op_utime", s.stateful_json_op(op_utime));
+  i.register_op(
+    "op_truncate_sync",
+    s.stateful_json_op_sync(t, op_truncate_sync),
+  );
+  i.register_op(
+    "op_truncate_async",
+    s.stateful_json_op_async(t, op_truncate_async),
+  );
+
+  i.register_op(
+    "op_make_temp_dir_sync",
+    s.stateful_json_op_sync(t, op_make_temp_dir_sync),
+  );
+  i.register_op(
+    "op_make_temp_dir_async",
+    s.stateful_json_op_async(t, op_make_temp_dir_async),
+  );
+
+  i.register_op(
+    "op_make_temp_file_sync",
+    s.stateful_json_op_sync(t, op_make_temp_file_sync),
+  );
+  i.register_op(
+    "op_make_temp_file_async",
+    s.stateful_json_op_async(t, op_make_temp_file_async),
+  );
+
+  i.register_op("op_cwd", s.stateful_json_op_sync(t, op_cwd));
+
+  i.register_op("op_utime_sync", s.stateful_json_op_sync(t, op_utime_sync));
+  i.register_op(
+    "op_utime_async",
+    s.stateful_json_op_async(t, op_utime_async),
+  );
 }
 
 fn into_string(s: std::ffi::OsString) -> Result<String, ErrBox> {
@@ -1004,23 +1063,55 @@ async fn op_realpath_async(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ReadDirArgs {
-  promise_id: Option<u64>,
   path: String,
 }
 
-fn op_read_dir(
-  state: &Rc<State>,
+fn op_read_dir_sync(
+  state: &State,
+  _resource_table: &mut ResourceTable,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, ErrBox> {
+) -> Result<Value, ErrBox> {
   let args: ReadDirArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
 
   state.check_read(&path)?;
 
-  let is_sync = args.promise_id.is_none();
-  blocking_json(is_sync, move || {
-    debug!("op_read_dir {}", path.display());
+  debug!("op_read_dir_sync {}", path.display());
+  let entries: Vec<_> = std::fs::read_dir(path)?
+    .filter_map(|entry| {
+      let entry = entry.unwrap();
+      let file_type = entry.file_type().unwrap();
+      // Not all filenames can be encoded as UTF-8. Skip those for now.
+      if let Ok(name) = into_string(entry.file_name()) {
+        Some(json!({
+          "name": name,
+          "isFile": file_type.is_file(),
+          "isDirectory": file_type.is_dir(),
+          "isSymlink": file_type.is_symlink()
+        }))
+      } else {
+        None
+      }
+    })
+    .collect();
+
+  Ok(json!({ "entries": entries }))
+}
+
+async fn op_read_dir_async(
+  state: Rc<State>,
+  _resource_table: Rc<RefCell<ResourceTable>>,
+  args: Value,
+  _zero_copy: BufVec,
+) -> Result<Value, ErrBox> {
+  let args: ReadDirArgs = serde_json::from_value(args)?;
+  let path = PathBuf::from(&args.path);
+
+  state.check_read(&path)?;
+
+  tokio::task::spawn_blocking(move || {
+    debug!("op_read_dir_async {}", path.display());
     let entries: Vec<_> = std::fs::read_dir(path)?
       .filter_map(|entry| {
         let entry = entry.unwrap();
@@ -1041,21 +1132,41 @@ fn op_read_dir(
 
     Ok(json!({ "entries": entries }))
   })
+  .await
+  .unwrap()
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RenameArgs {
-  promise_id: Option<u64>,
   oldpath: String,
   newpath: String,
 }
 
-fn op_rename(
-  state: &Rc<State>,
+fn op_rename_sync(
+  state: &State,
+  _resource_table: &mut ResourceTable,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, ErrBox> {
+) -> Result<Value, ErrBox> {
+  let args: RenameArgs = serde_json::from_value(args)?;
+  let oldpath = PathBuf::from(&args.oldpath);
+  let newpath = PathBuf::from(&args.newpath);
+
+  state.check_read(&oldpath)?;
+  state.check_write(&oldpath)?;
+  state.check_write(&newpath)?;
+  debug!("op_rename_sync {} {}", oldpath.display(), newpath.display());
+  std::fs::rename(&oldpath, &newpath)?;
+  Ok(json!({}))
+}
+
+async fn op_rename_async(
+  state: Rc<State>,
+  _resource_table: Rc<RefCell<ResourceTable>>,
+  args: Value,
+  _zero_copy: BufVec,
+) -> Result<Value, ErrBox> {
   let args: RenameArgs = serde_json::from_value(args)?;
   let oldpath = PathBuf::from(&args.oldpath);
   let newpath = PathBuf::from(&args.newpath);
@@ -1064,27 +1175,32 @@ fn op_rename(
   state.check_write(&oldpath)?;
   state.check_write(&newpath)?;
 
-  let is_sync = args.promise_id.is_none();
-  blocking_json(is_sync, move || {
-    debug!("op_rename {} {}", oldpath.display(), newpath.display());
+  tokio::task::spawn_blocking(move || {
+    debug!(
+      "op_rename_async {} {}",
+      oldpath.display(),
+      newpath.display()
+    );
     std::fs::rename(&oldpath, &newpath)?;
     Ok(json!({}))
   })
+  .await
+  .unwrap()
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct LinkArgs {
-  promise_id: Option<u64>,
   oldpath: String,
   newpath: String,
 }
 
-fn op_link(
-  state: &Rc<State>,
+fn op_link_sync(
+  state: &State,
+  _resource_table: &mut ResourceTable,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, ErrBox> {
+) -> Result<Value, ErrBox> {
   state.check_unstable("Deno.link");
   let args: LinkArgs = serde_json::from_value(args)?;
   let oldpath = PathBuf::from(&args.oldpath);
@@ -1093,18 +1209,37 @@ fn op_link(
   state.check_read(&oldpath)?;
   state.check_write(&newpath)?;
 
-  let is_sync = args.promise_id.is_none();
-  blocking_json(is_sync, move || {
-    debug!("op_link {} {}", oldpath.display(), newpath.display());
+  debug!("op_link_sync {} {}", oldpath.display(), newpath.display());
+  std::fs::hard_link(&oldpath, &newpath)?;
+  Ok(json!({}))
+}
+
+async fn op_link_async(
+  state: Rc<State>,
+  _resource_table: Rc<RefCell<ResourceTable>>,
+  args: Value,
+  _zero_copy: BufVec,
+) -> Result<Value, ErrBox> {
+  state.check_unstable("Deno.link");
+  let args: LinkArgs = serde_json::from_value(args)?;
+  let oldpath = PathBuf::from(&args.oldpath);
+  let newpath = PathBuf::from(&args.newpath);
+
+  state.check_read(&oldpath)?;
+  state.check_write(&newpath)?;
+
+  tokio::task::spawn_blocking(move || {
+    debug!("op_link_async {} {}", oldpath.display(), newpath.display());
     std::fs::hard_link(&oldpath, &newpath)?;
     Ok(json!({}))
   })
+  .await
+  .unwrap()
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct SymlinkArgs {
-  promise_id: Option<u64>,
   oldpath: String,
   newpath: String,
   #[cfg(not(unix))]
@@ -1118,11 +1253,12 @@ struct SymlinkOptions {
   _type: String,
 }
 
-fn op_symlink(
-  state: &Rc<State>,
+fn op_symlink_sync(
+  state: &State,
+  _resource_table: &mut ResourceTable,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, ErrBox> {
+) -> Result<Value, ErrBox> {
   state.check_unstable("Deno.symlink");
   let args: SymlinkArgs = serde_json::from_value(args)?;
   let oldpath = PathBuf::from(&args.oldpath);
@@ -1130,9 +1266,63 @@ fn op_symlink(
 
   state.check_write(&newpath)?;
 
-  let is_sync = args.promise_id.is_none();
-  blocking_json(is_sync, move || {
-    debug!("op_symlink {} {}", oldpath.display(), newpath.display());
+  debug!(
+    "op_symlink_sync {} {}",
+    oldpath.display(),
+    newpath.display()
+  );
+  #[cfg(unix)]
+  {
+    use std::os::unix::fs::symlink;
+    symlink(&oldpath, &newpath)?;
+    Ok(json!({}))
+  }
+  #[cfg(not(unix))]
+  {
+    use std::os::windows::fs::{symlink_dir, symlink_file};
+
+    match args.options {
+      Some(options) => match options._type.as_ref() {
+        "file" => symlink_file(&oldpath, &newpath)?,
+        "dir" => symlink_dir(&oldpath, &newpath)?,
+        _ => return Err(ErrBox::type_error("unsupported type")),
+      },
+      None => {
+        let old_meta = std::fs::metadata(&oldpath);
+        match old_meta {
+          Ok(metadata) => {
+            if metadata.is_file() {
+              symlink_file(&oldpath, &newpath)?
+            } else if metadata.is_dir() {
+              symlink_dir(&oldpath, &newpath)?
+            }
+          }
+          Err(_) => return Err(ErrBox::type_error(
+            "you must pass a `options` argument for non-existent target path in windows"
+              .to_string(),
+          )),
+        }
+      }
+    };
+    Ok(json!({}))
+  }
+}
+
+async fn op_symlink_async(
+  state: Rc<State>,
+  _resource_table: Rc<RefCell<ResourceTable>>,
+  args: Value,
+  _zero_copy: BufVec,
+) -> Result<Value, ErrBox> {
+  state.check_unstable("Deno.symlink");
+  let args: SymlinkArgs = serde_json::from_value(args)?;
+  let oldpath = PathBuf::from(&args.oldpath);
+  let newpath = PathBuf::from(&args.newpath);
+
+  state.check_write(&newpath)?;
+
+  tokio::task::spawn_blocking(move || {
+    debug!("op_symlink_async {} {}", oldpath.display(), newpath.display());
     #[cfg(unix)]
     {
       use std::os::unix::fs::symlink;
@@ -1169,32 +1359,52 @@ fn op_symlink(
       Ok(json!({}))
     }
   })
+  .await
+  .unwrap()
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ReadLinkArgs {
-  promise_id: Option<u64>,
   path: String,
 }
 
-fn op_read_link(
-  state: &Rc<State>,
+fn op_read_link_sync(
+  state: &State,
+  _resource_table: &mut ResourceTable,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, ErrBox> {
+) -> Result<Value, ErrBox> {
   let args: ReadLinkArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
 
   state.check_read(&path)?;
 
-  let is_sync = args.promise_id.is_none();
-  blocking_json(is_sync, move || {
-    debug!("op_read_link {}", path.display());
+  debug!("op_read_link_value {}", path.display());
+  let target = std::fs::read_link(&path)?.into_os_string();
+  let targetstr = into_string(target)?;
+  Ok(json!(targetstr))
+}
+
+async fn op_read_link_async(
+  state: Rc<State>,
+  _resource_table: Rc<RefCell<ResourceTable>>,
+  args: Value,
+  _zero_copy: BufVec,
+) -> Result<Value, ErrBox> {
+  let args: ReadLinkArgs = serde_json::from_value(args)?;
+  let path = PathBuf::from(&args.path);
+
+  state.check_read(&path)?;
+
+  tokio::task::spawn_blocking(move || {
+    debug!("op_read_link_async {}", path.display());
     let target = std::fs::read_link(&path)?.into_os_string();
     let targetstr = into_string(target)?;
     Ok(json!(targetstr))
   })
+  .await
+  .unwrap()
 }
 
 #[derive(Deserialize)]
@@ -1242,29 +1452,48 @@ async fn op_ftruncate_async(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct TruncateArgs {
-  promise_id: Option<u64>,
   path: String,
   len: u64,
 }
 
-fn op_truncate(
-  state: &Rc<State>,
+fn op_truncate_sync(
+  state: &State,
+  _resource_table: &mut ResourceTable,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, ErrBox> {
+) -> Result<Value, ErrBox> {
   let args: TruncateArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
   let len = args.len;
 
   state.check_write(&path)?;
 
-  let is_sync = args.promise_id.is_none();
-  blocking_json(is_sync, move || {
-    debug!("op_truncate {} {}", path.display(), len);
+  debug!("op_truncate_sync {} {}", path.display(), len);
+  let f = std::fs::OpenOptions::new().write(true).open(&path)?;
+  f.set_len(len)?;
+  Ok(json!({}))
+}
+
+async fn op_truncate_async(
+  state: Rc<State>,
+  _resource_table: Rc<RefCell<ResourceTable>>,
+  args: Value,
+  _zero_copy: BufVec,
+) -> Result<Value, ErrBox> {
+  let args: TruncateArgs = serde_json::from_value(args)?;
+  let path = PathBuf::from(&args.path);
+  let len = args.len;
+
+  state.check_write(&path)?;
+
+  tokio::task::spawn_blocking(move || {
+    debug!("op_truncate_async {} {}", path.display(), len);
     let f = std::fs::OpenOptions::new().write(true).open(&path)?;
     f.set_len(len)?;
     Ok(json!({}))
   })
+  .await
+  .unwrap()
 }
 
 fn make_temp(
@@ -1315,17 +1544,17 @@ fn make_temp(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct MakeTempArgs {
-  promise_id: Option<u64>,
   dir: Option<String>,
   prefix: Option<String>,
   suffix: Option<String>,
 }
 
-fn op_make_temp_dir(
-  state: &Rc<State>,
+fn op_make_temp_dir_sync(
+  state: &State,
+  _resource_table: &mut ResourceTable,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, ErrBox> {
+) -> Result<Value, ErrBox> {
   let args: MakeTempArgs = serde_json::from_value(args)?;
 
   let dir = args.dir.map(|s| PathBuf::from(&s));
@@ -1334,8 +1563,36 @@ fn op_make_temp_dir(
 
   state.check_write(dir.clone().unwrap_or_else(temp_dir).as_path())?;
 
-  let is_sync = args.promise_id.is_none();
-  blocking_json(is_sync, move || {
+  // TODO(piscisaureus): use byte vector for paths, not a string.
+  // See https://github.com/denoland/deno/issues/627.
+  // We can't assume that paths are always valid utf8 strings.
+  let path = make_temp(
+    // Converting Option<String> to Option<&str>
+    dir.as_deref(),
+    prefix.as_deref(),
+    suffix.as_deref(),
+    true,
+  )?;
+  let path_str = into_string(path.into_os_string())?;
+
+  Ok(json!(path_str))
+}
+
+async fn op_make_temp_dir_async(
+  state: Rc<State>,
+  _resource_table: Rc<RefCell<ResourceTable>>,
+  args: Value,
+  _zero_copy: BufVec,
+) -> Result<Value, ErrBox> {
+  let args: MakeTempArgs = serde_json::from_value(args)?;
+
+  let dir = args.dir.map(|s| PathBuf::from(&s));
+  let prefix = args.prefix.map(String::from);
+  let suffix = args.suffix.map(String::from);
+
+  state.check_write(dir.clone().unwrap_or_else(temp_dir).as_path())?;
+
+  tokio::task::spawn_blocking(move || {
     // TODO(piscisaureus): use byte vector for paths, not a string.
     // See https://github.com/denoland/deno/issues/627.
     // We can't assume that paths are always valid utf8 strings.
@@ -1350,13 +1607,16 @@ fn op_make_temp_dir(
 
     Ok(json!(path_str))
   })
+  .await
+  .unwrap()
 }
 
-fn op_make_temp_file(
-  state: &Rc<State>,
+fn op_make_temp_file_sync(
+  state: &State,
+  _resource_table: &mut ResourceTable,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, ErrBox> {
+) -> Result<Value, ErrBox> {
   let args: MakeTempArgs = serde_json::from_value(args)?;
 
   let dir = args.dir.map(|s| PathBuf::from(&s));
@@ -1365,8 +1625,36 @@ fn op_make_temp_file(
 
   state.check_write(dir.clone().unwrap_or_else(temp_dir).as_path())?;
 
-  let is_sync = args.promise_id.is_none();
-  blocking_json(is_sync, move || {
+  // TODO(piscisaureus): use byte vector for paths, not a string.
+  // See https://github.com/denoland/deno/issues/627.
+  // We can't assume that paths are always valid utf8 strings.
+  let path = make_temp(
+    // Converting Option<String> to Option<&str>
+    dir.as_deref(),
+    prefix.as_deref(),
+    suffix.as_deref(),
+    false,
+  )?;
+  let path_str = into_string(path.into_os_string())?;
+
+  Ok(json!(path_str))
+}
+
+async fn op_make_temp_file_async(
+  state: Rc<State>,
+  _resource_table: Rc<RefCell<ResourceTable>>,
+  args: Value,
+  _zero_copy: BufVec,
+) -> Result<Value, ErrBox> {
+  let args: MakeTempArgs = serde_json::from_value(args)?;
+
+  let dir = args.dir.map(|s| PathBuf::from(&s));
+  let prefix = args.prefix.map(String::from);
+  let suffix = args.suffix.map(String::from);
+
+  state.check_write(dir.clone().unwrap_or_else(temp_dir).as_path())?;
+
+  tokio::task::spawn_blocking(move || {
     // TODO(piscisaureus): use byte vector for paths, not a string.
     // See https://github.com/denoland/deno/issues/627.
     // We can't assume that paths are always valid utf8 strings.
@@ -1381,22 +1669,41 @@ fn op_make_temp_file(
 
     Ok(json!(path_str))
   })
+  .await
+  .unwrap()
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct UtimeArgs {
-  promise_id: Option<u64>,
   path: String,
   atime: i64,
   mtime: i64,
 }
 
-fn op_utime(
-  state: &Rc<State>,
+fn op_utime_sync(
+  state: &State,
+  _resource_table: &mut ResourceTable,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, ErrBox> {
+) -> Result<Value, ErrBox> {
+  state.check_unstable("Deno.utime");
+
+  let args: UtimeArgs = serde_json::from_value(args)?;
+  let path = PathBuf::from(&args.path);
+
+  state.check_write(&path)?;
+  debug!("op_utime_sync {} {} {}", args.path, args.atime, args.mtime);
+  utime::set_file_times(args.path, args.atime, args.mtime)?;
+  Ok(json!({}))
+}
+
+async fn op_utime_async(
+  state: Rc<State>,
+  _resource_table: Rc<RefCell<ResourceTable>>,
+  args: Value,
+  _zero_copy: BufVec,
+) -> Result<Value, ErrBox> {
   state.check_unstable("Deno.utime");
 
   let args: UtimeArgs = serde_json::from_value(args)?;
@@ -1404,21 +1711,23 @@ fn op_utime(
 
   state.check_write(&path)?;
 
-  let is_sync = args.promise_id.is_none();
-  blocking_json(is_sync, move || {
-    debug!("op_utime {} {} {}", args.path, args.atime, args.mtime);
+  tokio::task::spawn_blocking(move || {
+    debug!("op_utime_async {} {} {}", args.path, args.atime, args.mtime);
     utime::set_file_times(args.path, args.atime, args.mtime)?;
     Ok(json!({}))
   })
+  .await
+  .unwrap()
 }
 
 fn op_cwd(
-  state: &Rc<State>,
+  state: &State,
+  _resource_table: &mut ResourceTable,
   _args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, ErrBox> {
+) -> Result<Value, ErrBox> {
   let path = current_dir()?;
   state.check_read_blind(&path, "CWD")?;
   let path_str = into_string(path.into_os_string())?;
-  Ok(JsonOp::Sync(json!(path_str)))
+  Ok(json!(path_str))
 }

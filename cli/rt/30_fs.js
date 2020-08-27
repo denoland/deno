@@ -58,19 +58,19 @@
   }
 
   function makeTempDirSync(options = {}) {
-    return sendSync("op_make_temp_dir", options);
+    return sendSync("op_make_temp_dir_sync", options);
   }
 
   function makeTempDir(options = {}) {
-    return sendAsync("op_make_temp_dir", options);
+    return sendAsync("op_make_temp_dir_async", options);
   }
 
   function makeTempFileSync(options = {}) {
-    return sendSync("op_make_temp_file", options);
+    return sendSync("op_make_temp_file_sync", options);
   }
 
   function makeTempFile(options = {}) {
-    return sendAsync("op_make_temp_file", options);
+    return sendAsync("op_make_temp_file_async", options);
   }
 
   function mkdirArgs(path, options) {
@@ -119,11 +119,11 @@
   }
 
   function readLinkSync(path) {
-    return sendSync("op_read_link", { path });
+    return sendSync("op_read_link_sync", { path });
   }
 
   function readLink(path) {
-    return sendAsync("op_read_link", { path });
+    return sendAsync("op_read_link_async", { path });
   }
 
   function realPathSync(path) {
@@ -155,11 +155,11 @@
   }
 
   function renameSync(oldpath, newpath) {
-    sendSync("op_rename", { oldpath, newpath });
+    sendSync("op_rename_sync", { oldpath, newpath });
   }
 
   async function rename(oldpath, newpath) {
-    await sendAsync("op_rename", { oldpath, newpath });
+    await sendAsync("op_rename_async", { oldpath, newpath });
   }
 
   function parseFileInfo(response) {
@@ -244,11 +244,11 @@
   }
 
   function truncateSync(path, len) {
-    sendSync("op_truncate", { path, len: coerceLen(len) });
+    sendSync("op_truncate_sync", { path, len: coerceLen(len) });
   }
 
   async function truncate(path, len) {
-    await sendAsync("op_truncate", { path, len: coerceLen(len) });
+    await sendAsync("op_truncate_async", { path, len: coerceLen(len) });
   }
 
   function umask(mask) {
@@ -256,11 +256,11 @@
   }
 
   function linkSync(oldpath, newpath) {
-    sendSync("op_link", { oldpath, newpath });
+    sendSync("op_link_sync", { oldpath, newpath });
   }
 
   async function link(oldpath, newpath) {
-    await sendAsync("op_link", { oldpath, newpath });
+    await sendAsync("op_link_async", { oldpath, newpath });
   }
 
   function toSecondsFromEpoch(v) {
@@ -272,7 +272,7 @@
     atime,
     mtime,
   ) {
-    sendSync("op_utime", {
+    sendSync("op_utime_sync", {
       path,
       // TODO(ry) split atime, mtime into [seconds, nanoseconds] tuple
       atime: toSecondsFromEpoch(atime),
@@ -285,7 +285,7 @@
     atime,
     mtime,
   ) {
-    await sendAsync("op_utime", {
+    await sendAsync("op_utime_async", {
       path,
       // TODO(ry) split atime, mtime into [seconds, nanoseconds] tuple
       atime: toSecondsFromEpoch(atime),
@@ -298,7 +298,7 @@
     newpath,
     options,
   ) {
-    sendSync("op_symlink", { oldpath, newpath, options });
+    sendSync("op_symlink_sync", { oldpath, newpath, options });
   }
 
   async function symlink(
@@ -306,7 +306,7 @@
     newpath,
     options,
   ) {
-    await sendAsync("op_symlink", { oldpath, newpath, options });
+    await sendAsync("op_symlink_async", { oldpath, newpath, options });
   }
 
   function fdatasyncSync(rid) {
