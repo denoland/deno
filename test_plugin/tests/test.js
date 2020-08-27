@@ -21,7 +21,7 @@ const resourcesPre = Deno.resources();
 
 const rid = Deno.openPlugin(filename);
 
-const { testSync, testAsync } = Deno.core.ops();
+const { testSync, testAsync, testWrapped } = Deno.core.ops();
 if (!(testSync > 0)) {
   throw "bad op id for testSync";
 }
@@ -30,6 +30,14 @@ if (!(testAsync > 0)) {
 }
 
 const textDecoder = new TextDecoder();
+
+let resolveTestAsync;
+
+const promiseTestAsync = new Promise((resolve) => resolveTestAsync = resolve);
+
+let resolveTestWrapped;
+
+const promiseTestWrapped = new Promise((resolve) => resolveTestWrapped = resolve);
 
 function runTestSync() {
   const response = Deno.core.dispatch(
@@ -43,12 +51,30 @@ function runTestSync() {
 }
 
 Deno.core.setAsyncHandler(testAsync, (response) => {
+  resolveTestAsync(response);
+  console.log(`Plugin Async Response: ${textDecoder.decode(response)}`);
+});
+
+Deno.core.setAsyncHandler(testWrapped, (response) => {
+  resolveTestWrapped(response);
   console.log(`Plugin Async Response: ${textDecoder.decode(response)}`);
 });
 
 function runTestAsync() {
   const response = Deno.core.dispatch(
     testAsync,
+    new Uint8Array([116, 101, 115, 116]),
+    new Uint8Array([49, 50, 51]),
+  );
+
+  if (response != null || response != undefined) {
+    throw new Error("Expected null response!");
+  }
+}
+
+function runTestWrapped() {
+  const response = Deno.core.dispatch(
+    testWrapped,
     new Uint8Array([116, 101, 115, 116]),
     new Uint8Array([49, 50, 51]),
   );
@@ -92,7 +118,16 @@ After: ${postStr}`,
 }
 
 runTestSync();
+
+// run async test
 runTestAsync();
+// wait for it to finish
+await promiseTestAsync;
+
+// run wrapped op test
+runTestWrapped();
+// wait for it to finish
+await promiseTestWrapped;
 
 runTestOpCount();
 runTestPluginClose();
