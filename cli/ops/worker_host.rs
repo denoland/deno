@@ -13,6 +13,7 @@ use crate::worker::WorkerEvent;
 use deno_core::CoreIsolate;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
+use deno_core::ResourceTable;
 use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
 use std::convert::From;
@@ -21,14 +22,19 @@ use std::sync::Arc;
 use std::thread::JoinHandle;
 
 pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  i.register_op("op_create_worker", s.stateful_json_op(op_create_worker));
+  let t = &CoreIsolate::state(i).borrow().resource_table.clone();
+
+  i.register_op(
+    "op_create_worker",
+    s.stateful_json_op_sync(t, op_create_worker),
+  );
   i.register_op(
     "op_host_terminate_worker",
-    s.stateful_json_op(op_host_terminate_worker),
+    s.stateful_json_op_sync(t, op_host_terminate_worker),
   );
   i.register_op(
     "op_host_post_message",
-    s.stateful_json_op(op_host_post_message),
+    s.stateful_json_op_sync(t, op_host_post_message),
   );
   i.register_op(
     "op_host_get_message",
@@ -180,10 +186,11 @@ struct CreateWorkerArgs {
 
 /// Create worker as the host
 fn op_create_worker(
-  state: &Rc<State>,
+  state: &State,
+  _resource_table: &mut ResourceTable,
   args: Value,
   _data: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, ErrBox> {
+) -> Result<Value, ErrBox> {
   let args: CreateWorkerArgs = serde_json::from_value(args)?;
 
   let specifier = args.specifier.clone();
@@ -197,7 +204,6 @@ fn op_create_worker(
   if use_deno_namespace {
     state.check_unstable("Worker.deno");
   }
-  let parent_state = state.clone();
   let global_state = state.global_state.clone();
   let permissions = state.permissions.borrow().clone();
   let worker_id = state.next_worker_id.get();
@@ -217,12 +223,12 @@ fn op_create_worker(
   )?;
   // At this point all interactions with worker happen using thread
   // safe handler returned from previous function call
-  parent_state
+  state
     .workers
     .borrow_mut()
     .insert(worker_id, (join_handle, worker_handle));
 
-  Ok(JsonOp::Sync(json!({ "id": worker_id })))
+  Ok(json!({ "id": worker_id }))
 }
 
 #[derive(Deserialize)]
@@ -231,10 +237,11 @@ struct WorkerArgs {
 }
 
 fn op_host_terminate_worker(
-  state: &Rc<State>,
+  state: &State,
+  _resource_table: &mut ResourceTable,
   args: Value,
   _data: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, ErrBox> {
+) -> Result<Value, ErrBox> {
   let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
   let (join_handle, worker_handle) = state
@@ -244,7 +251,7 @@ fn op_host_terminate_worker(
     .expect("No worker handle found");
   worker_handle.terminate();
   join_handle.join().expect("Panic in worker thread");
-  Ok(JsonOp::Sync(json!({})))
+  Ok(json!({}))
 }
 
 fn serialize_worker_event(event: WorkerEvent) -> Value {
@@ -297,6 +304,10 @@ fn serialize_worker_event(event: WorkerEvent) -> Value {
   }
 }
 
+// TODO(bartlomieju): when this function is turned
+// into async one, then `let worker_handle` panics on missing
+// handle - it seems there's some kind of race condition happening
+// when whole function is async.
 /// Get message from guest worker as host
 fn op_host_get_message(
   state: &Rc<State>,
@@ -340,10 +351,11 @@ fn op_host_get_message(
 
 /// Post message to guest worker as host
 fn op_host_post_message(
-  state: &Rc<State>,
+  state: &State,
+  _resource_table: &mut ResourceTable,
   args: Value,
   data: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, ErrBox> {
+) -> Result<Value, ErrBox> {
   assert_eq!(data.len(), 1, "Invalid number of arguments");
   let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
@@ -353,5 +365,5 @@ fn op_host_post_message(
   let workers = state.workers.borrow();
   let worker_handle = workers[&id].1.clone();
   worker_handle.post_message(msg)?;
-  Ok(JsonOp::Sync(json!({})))
+  Ok(json!({}))
 }
