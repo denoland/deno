@@ -32,7 +32,7 @@ class Parser {
     for (let i = 0; i < this.tomlLines.length; i++) {
       const s = this.tomlLines[i];
       const trimmed = s.trim();
-      if (trimmed !== "" && trimmed[0] !== "#") {
+      if (trimmed !== "") {
         out.push(s);
       }
     }
