@@ -68,6 +68,7 @@ async fn op_repl_readline(
     .get::<ReplResource>(rid)
     .ok_or_else(ErrBox::bad_resource_id)?;
   let repl = resource.0.clone();
+  drop(resource_table);
   tokio::task::spawn_blocking(move || {
     let line = repl.lock().unwrap().readline(&prompt)?;
     Ok(json!(line))
