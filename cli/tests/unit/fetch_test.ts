@@ -970,7 +970,7 @@ unitTest(
         "https://localhost:4545/cli/tests/fixture.json",
         { client },
       );
-    });
+    }, Deno.errors.Http);
     client.close();
   },
 );
