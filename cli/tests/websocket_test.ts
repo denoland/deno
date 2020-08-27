@@ -121,8 +121,12 @@ Deno.test("echo blob with binaryType blob", async () => {
   const blob = new Blob(["foo"]);
   ws.onerror = (): void => fail();
   ws.onopen = (): void => ws.send(blob);
-  ws.onmessage = async (e): Promise<void> => {
-    assertEquals(await e.data.text(), await blob.text());
+  ws.onmessage = (e): void => {
+    e.data.text().then((actual: string) => {
+      blob.text().then((expected) => {
+        assertEquals(actual, expected);
+      });
+    });
     ws.close();
   };
   ws.onclose = (): void => {
@@ -138,8 +142,10 @@ Deno.test("echo blob with binaryType arraybuffer", async () => {
   const blob = new Blob(["foo"]);
   ws.onerror = (): void => fail();
   ws.onopen = (): void => ws.send(blob);
-  ws.onmessage = async (e): Promise<void> => {
-    assertEquals(await e.data, await blob.arrayBuffer());
+  ws.onmessage = (e): void => {
+    blob.arrayBuffer().then((expected) => {
+      assertEquals(e.data, expected);
+    });
     ws.close();
   };
   ws.onclose = (): void => {
@@ -154,8 +160,10 @@ Deno.test("echo uint8array with binaryType blob", async () => {
   const uint = new Uint8Array([102, 111, 111]);
   ws.onerror = (): void => fail();
   ws.onopen = (): void => ws.send(uint);
-  ws.onmessage = async (e): Promise<void> => {
-    assertEquals(await e.data.arrayBuffer(), uint.buffer);
+  ws.onmessage = (e): void => {
+    e.data.arrayBuffer().then((actual: ArrayBuffer) => {
+      assertEquals(actual, uint.buffer);
+    });
     ws.close();
   };
   ws.onclose = (): void => {
@@ -187,8 +195,10 @@ Deno.test("echo arraybuffer with binaryType blob", async () => {
   const buffer = new ArrayBuffer(3);
   ws.onerror = (): void => fail();
   ws.onopen = (): void => ws.send(buffer);
-  ws.onmessage = async (e): Promise<void> => {
-    assertEquals(await e.data.arrayBuffer(), buffer);
+  ws.onmessage = (e): void => {
+    e.data.arrayBuffer().then((actual: ArrayBuffer) => {
+      assertEquals(actual, buffer);
+    });
     ws.close();
   };
   ws.onclose = (): void => {

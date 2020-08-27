@@ -1,7 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 ((window) => {
-  const { sendSync, sendAsync } = window.__bootstrap.dispatchJson;
+  const { sendAsync } = window.__bootstrap.dispatchJson;
+  const { close } = window.__bootstrap.resources;
   const { requiredArguments } = window.__bootstrap.webUtil;
   const CONNECTING = 0;
   const OPEN = 1;
@@ -106,7 +107,15 @@
       return this.#protocol;
     }
 
-    binaryType = "blob";
+    #binaryType = "blob";
+    get binaryType() {
+      return this.#binaryType;
+    }
+    set binaryType(value) {
+      if (value === "blob" || value === "arraybuffer") {
+        this.#binaryType = value;
+      }
+    }
     #bufferedAmount = 0;
     get bufferedAmount() {
       return this.#bufferedAmount;
@@ -140,7 +149,7 @@
       }
 
       if (data instanceof Blob) {
-        data.arrayBuffer().then((ab) => sendTypedArray(new DataView(ab)));
+        data.slice().arrayBuffer().then((ab) => sendTypedArray(new DataView(ab)));
       } else if (
         data instanceof Int8Array || data instanceof Int16Array ||
         data instanceof Int32Array || data instanceof Uint8Array ||
@@ -155,7 +164,13 @@
         const string = String(data);
         const encoder = new TextEncoder();
         const d = encoder.encode(string);
-        sendTypedArray(d);
+        ws.#bufferedAmount += d.size;
+        sendAsync("op_ws_send", {
+          rid: ws.#rid,
+          text: string,
+        }).then(() => {
+          ws.#bufferedAmount -= d.size;
+        });
       }
     }
 
@@ -192,6 +207,7 @@
           event.target = this;
           this.onclose(event);
           this.dispatchEvent(event);
+          close(this.#rid);
         });
 
         const event = new Event("error");
@@ -217,6 +233,7 @@
           event.target = this;
           this.onclose(event);
           this.dispatchEvent(event);
+          close(this.#rid);
         });
       }
     }
