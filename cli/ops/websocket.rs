@@ -1,9 +1,9 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
 use super::dispatch_json::{Deserialize, JsonOp, Value};
-use crate::op_error::OpError;
 use crate::state::State;
 use core::task::Poll;
+use deno_core::ErrBox;
 use deno_core::ZeroCopyBuf;
 use deno_core::{CoreIsolate, CoreIsolateState};
 use futures::future::{poll_fn, FutureExt};
@@ -41,7 +41,7 @@ pub fn op_ws_create(
   _state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   let args: CreateArgs = serde_json::from_value(args)?;
   let resource_table = isolate_state.resource_table.clone();
   let future = async move {
@@ -104,7 +104,7 @@ pub fn op_ws_send(
   _state: &Rc<State>,
   args: Value,
   zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   let args: SendArgs = serde_json::from_value(args)?;
 
   let mut maybe_msg = Some(match args.text {
@@ -118,10 +118,10 @@ pub fn op_ws_send(
     let mut resource_table = resource_table.borrow_mut();
     let mut stream = resource_table
       .get_mut::<WsStream>(rid)
-      .ok_or_else(OpError::bad_resource_id)?;
+      .ok_or_else(ErrBox::bad_resource_id)?;
 
     // TODO(ry) Handle errors below instead of unwrap.
-    // Need to map tungstenite::error::Error to OpError.
+    // Need to map tungstenite::error::Error to ErrBox.
 
     let stream_pin = Pin::new(&mut stream);
     ready!(stream_pin.poll_ready(cx)).unwrap();
@@ -152,7 +152,7 @@ pub fn op_ws_close(
   _state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   let args: CloseArgs = serde_json::from_value(args)?;
   let resource_table = isolate_state.resource_table.clone();
   let rid = args.rid;
@@ -168,10 +168,10 @@ pub fn op_ws_close(
     let mut resource_table = resource_table.borrow_mut();
     let mut stream = resource_table
       .get_mut::<WsStream>(rid)
-      .ok_or_else(OpError::bad_resource_id)?;
+      .ok_or_else(ErrBox::bad_resource_id)?;
 
     // TODO(ry) Handle errors below instead of unwrap.
-    // Need to map tungstenite::error::Error to OpError.
+    // Need to map tungstenite::error::Error to ErrBox.
 
     let stream_pin = Pin::new(&mut stream);
     ready!(stream_pin.poll_ready(cx)).unwrap();
@@ -204,14 +204,14 @@ pub fn op_ws_next_event(
   _state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<JsonOp, ErrBox> {
   let args: NextEventArgs = serde_json::from_value(args)?;
   let resource_table = isolate_state.resource_table.clone();
   let future = poll_fn(move |cx| {
     let mut resource_table = resource_table.borrow_mut();
     let stream = resource_table
       .get_mut::<WsStream>(args.rid)
-      .ok_or_else(OpError::bad_resource_id)?;
+      .ok_or_else(ErrBox::bad_resource_id)?;
 
     /*
     match stream.rx.try_recv() {
@@ -265,7 +265,7 @@ pub fn op_ws_next_event(
         None => {
           resource_table
             .close(args.rid)
-            .ok_or_else(OpError::bad_resource_id)?;
+            .ok_or_else(ErrBox::bad_resource_id)?;
           Ok(json!({
             "type": "closed",
           }))

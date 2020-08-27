@@ -236,8 +236,7 @@ impl AstParser {
     media_type: MediaType,
     source_code: &str,
   ) -> Result<String, ErrBox> {
-    let parse_result = self.parse_module(file_name, media_type, source_code);
-    let module = parse_result?;
+    let module = self.parse_module(file_name, media_type, source_code)?;
     let program = Program::Module(module);
     let mut compiler_pass =
       chain!(typescript::strip(), fixer(Some(&self.comments)));
@@ -261,7 +260,7 @@ impl AstParser {
       };
       program.emit_with(&mut emitter)?;
     }
-    let mut src = String::from_utf8(buf).map_err(ErrBox::from)?;
+    let mut src = String::from_utf8(buf)?;
     {
       let mut buf = vec![];
       self
