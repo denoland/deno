@@ -1002,26 +1002,12 @@ pub fn parse_wrk_output(output: &str) -> WrkOutput {
 pub struct StraceOutput {
   pub percent_time: f64,
   pub seconds: f64,
-  pub usecs_per_call: u64,
+  pub usecs_per_call: Option<u64>,
   pub calls: u64,
   pub errors: u64,
 }
 
 pub fn parse_strace_output(output: &str) -> HashMap<String, StraceOutput> {
-  fn extract_values(syscall_fields: &[&str]) -> StraceOutput {
-    StraceOutput {
-      percent_time: str::parse::<f64>(syscall_fields[0]).unwrap(),
-      seconds: str::parse::<f64>(syscall_fields[1]).unwrap(),
-      usecs_per_call: str::parse::<u64>(syscall_fields[2]).unwrap(),
-      calls: str::parse::<u64>(syscall_fields[3]).unwrap(),
-      errors: if syscall_fields.len() < 6 {
-        0
-      } else {
-        str::parse::<u64>(syscall_fields[4]).unwrap()
-      },
-    }
-  }
-
   let mut summary = HashMap::new();
 
   // Filter out non-relevant lines. See the error log at
@@ -1046,13 +1032,33 @@ pub fn parse_strace_output(output: &str) -> HashMap<String, StraceOutput> {
     let syscall_name = syscall_fields.last().unwrap();
 
     if 5 <= len && len <= 6 {
-      summary.insert(syscall_name.to_string(), extract_values(&syscall_fields));
+      summary.insert(
+        syscall_name.to_string(),
+        StraceOutput {
+          percent_time: str::parse::<f64>(syscall_fields[0]).unwrap(),
+          seconds: str::parse::<f64>(syscall_fields[1]).unwrap(),
+          usecs_per_call: Some(str::parse::<u64>(syscall_fields[2]).unwrap()),
+          calls: str::parse::<u64>(syscall_fields[3]).unwrap(),
+          errors: if syscall_fields.len() < 6 {
+            0
+          } else {
+            str::parse::<u64>(syscall_fields[4]).unwrap()
+          },
+        },
+      );
     }
   }
 
+  let total_fields = total_line.split_whitespace().collect::<Vec<_>>();
   summary.insert(
     "total".to_string(),
-    extract_values(&total_line.split_whitespace().collect::<Vec<_>>()),
+    StraceOutput {
+      percent_time: str::parse::<f64>(total_fields[0]).unwrap(),
+      seconds: str::parse::<f64>(total_fields[1]).unwrap(),
+      usecs_per_call: None,
+      calls: str::parse::<u64>(total_fields[2]).unwrap(),
+      errors: str::parse::<u64>(total_fields[3]).unwrap(),
+    },
   );
 
   summary
@@ -1122,6 +1128,7 @@ mod tests {
 
     // summary line
     assert_eq!(strace.get("total").unwrap().calls, 704);
+    assert_eq!(strace.get("total").unwrap().errors, 5);
   }
 
   #[test]
@@ -1136,6 +1143,7 @@ mod tests {
 
     // summary line
     assert_eq!(strace.get("total").unwrap().calls, 821);
+    assert_eq!(strace.get("total").unwrap().errors, 107);
   }
 
   #[test]
