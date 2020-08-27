@@ -17,9 +17,11 @@ use tokio::process::Command;
 use std::os::unix::process::ExitStatusExt;
 
 pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
+  let t = &CoreIsolate::state(i).borrow().resource_table.clone();
+
   i.register_op("op_run", s.stateful_json_op2(op_run));
   i.register_op("op_run_status", s.stateful_json_op2(op_run_status));
-  i.register_op("op_kill", s.stateful_json_op(op_kill));
+  i.register_op("op_kill", s.stateful_json_op_sync(t, op_kill));
 }
 
 fn clone_file(
@@ -222,14 +224,15 @@ struct KillArgs {
 }
 
 fn op_kill(
-  state: &Rc<State>,
+  state: &State,
+  _resource_table: &mut ResourceTable,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, ErrBox> {
+) -> Result<Value, ErrBox> {
   state.check_unstable("Deno.kill");
   state.check_run()?;
 
   let args: KillArgs = serde_json::from_value(args)?;
   kill(args.pid, args.signo)?;
-  Ok(JsonOp::Sync(json!({})))
+  Ok(json!({}))
 }
