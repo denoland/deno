@@ -6,6 +6,7 @@ use deno_core::CoreIsolate;
 use deno_core::ErrBox;
 use deno_core::ResourceTable;
 use deno_core::ZeroCopyBuf;
+use futures::future::FutureExt;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Duration;
@@ -50,7 +51,12 @@ async fn op_global_timer(
   let val = args.timeout;
 
   let deadline = Instant::now() + Duration::from_millis(val);
-  let _ = state.global_timer.borrow_mut().new_timeout(deadline).await;
+  let timer_fut = state
+    .global_timer
+    .borrow_mut()
+    .new_timeout(deadline)
+    .boxed_local();
+  let _ = timer_fut.await;
   Ok(json!({}))
 }
 
