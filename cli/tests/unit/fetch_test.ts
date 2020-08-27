@@ -956,3 +956,39 @@ unitTest(
     client.close();
   },
 );
+
+unitTest(
+  { perms: { net: true, read: true } },
+  async function fetchCustomHttpClientTimeoutError(): Promise<
+    void
+  > {
+    const client = Deno.createHttpClient(
+      { timeout: 1 },
+    );
+    await assertThrowsAsync(async (): Promise<void> => {
+      const _response = await fetch(
+        "https://localhost:4545/cli/tests/fixture.json",
+        { client },
+      );
+    });
+    client.close();
+  },
+);
+unitTest(
+  { perms: { net: true, read: true } },
+  async function fetchCustomHttpClientTimeout(): Promise<
+    void
+  > {
+    const client = Deno.createHttpClient(
+      { timeout: 10000 },
+    );
+    const resp = await fetch(
+      "http://localhost:4545/cli/tests/fixture.json",
+      { client },
+    );
+    assertEquals(resp.status, 200);
+    const json = await resp.json();
+    assertEquals(json.name, "deno");
+    client.close();
+  },
+);
