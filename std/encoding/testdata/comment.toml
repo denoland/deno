@@ -1,6 +1,6 @@
 # This is a full-line comment
-str0 = "value"  # This is a comment at the end of a line
-str1 = "# This is not a comment" # but this is 
+str0 = 'value' # This is a comment at the end of a line
+str1 = "# This is not a comment" # but this is
 str2 = """ # this is not a comment!
 A multiline string with a #
 # this is also not a comment
@@ -27,4 +27,3 @@ objectives = [ # Comment
  "minimal config file", 
  "#not a comment" # comment
 ] # comment
-
