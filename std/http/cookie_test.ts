@@ -46,8 +46,6 @@ Deno.test({
           maxAge: 0,
         });
       },
-      TypeError,
-      "The Name of the cookie (名称) is invalid.",
     );
   },
 });
