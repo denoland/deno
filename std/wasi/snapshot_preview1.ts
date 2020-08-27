@@ -228,6 +228,7 @@ const clock_time_monotonic = function (): bigint {
 const clock_time_process = clock_time_monotonic;
 const clock_time_thread = clock_time_monotonic;
 
+// deno-lint-ignore ban-types
 function syscall(target: Function): Function {
   return function (...args: unknown[]): number {
     try {
@@ -298,6 +299,7 @@ export default class Context {
   // deno-lint-ignore no-explicit-any
   fds: any[];
 
+  // deno-lint-ignore ban-types
   exports: Record<string, Function>;
 
   constructor(options: ContextOptions) {
