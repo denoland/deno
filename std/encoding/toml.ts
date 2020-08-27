@@ -73,8 +73,8 @@ class Parser {
     for (let i = 0; i < this.tomlLines.length; i++) {
       const line = this.tomlLines[i];
 
-      // stringStart and stringEnd are seperate conditions to 
-      // support multi-line strings 
+      // stringStart and stringEnd are separate conditions to 
+      // support both single-line and multi-line strings 
       if (!isOpenString && stringStart(line)) {
         isOpenString = true;
       }
