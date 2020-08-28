@@ -581,11 +581,11 @@ delete Object.prototype.__proto__;
     #writeFile = null;
     /* Deno specific APIs */
 
-    constructor({
+    constructor(
       options,
       target,
       writeFile,
-    }) {
+    ) {
       this.#target = target;
       this.#writeFile = writeFile;
       this.#options = options;
@@ -719,9 +719,13 @@ delete Object.prototype.__proto__;
   class IncrementalCompileHost extends Host {
     #buildInfo = "";
 
-    constructor(options) {
-      super({ ...options, incremental: true });
-      const { buildInfo } = options;
+    constructor(
+      options,
+      target,
+      writeFile,
+      buildInfo,
+    ) {
+      super(options, target, writeFile);
       if (buildInfo) {
         this.#buildInfo = buildInfo;
       }
@@ -738,11 +742,11 @@ delete Object.prototype.__proto__;
   // NOTE: target doesn't really matter here,
   // this is in fact a mock host created just to
   // load all type definitions and snapshot them.
-  let SNAPSHOT_HOST = new Host({
-    options: DEFAULT_COMPILE_OPTIONS,
-    target: CompilerHostTarget.Main,
-    writeFile() {},
-  });
+  let SNAPSHOT_HOST = new Host(
+    DEFAULT_COMPILE_OPTIONS,
+    CompilerHostTarget.Main,
+    () => {},
+  );
   const SNAPSHOT_COMPILER_OPTIONS = SNAPSHOT_HOST.getCompilationSettings();
 
   // This is a hacky way of adding our libs to the libs available in TypeScript()
@@ -1380,12 +1384,12 @@ delete Object.prototype.__proto__;
       diagnostics = processConfigureResponse(configResult, configPath) || [];
     }
 
-    const host = new IncrementalCompileHost({
+    const host = new IncrementalCompileHost(
       options,
       target,
-      writeFile: createCompileWriteFile(state),
+      createCompileWriteFile(state),
       buildInfo,
-    });
+    );
 
     buildSourceFileCache(sourceFileMap);
     // if there was a configuration and no diagnostics with it, we will continue
@@ -1560,11 +1564,11 @@ delete Object.prototype.__proto__;
       diagnostics = processConfigureResponse(configResult, configPath) || [];
     }
 
-    const host = new Host({
+    const host = new Host(
       options,
       target,
-      writeFile: createBundleWriteFile(state),
-    });
+      createBundleWriteFile(state),
+    );
     state.host = host;
 
     buildSourceFileCache(sourceFileMap);
@@ -1663,11 +1667,11 @@ delete Object.prototype.__proto__;
       rootNames,
       emitMap: {},
     };
-    const host = new Host({
-      options: opts,
+    const host = new Host(
+      opts,
       target,
-      writeFile: createRuntimeCompileWriteFile(state),
-    });
+      createRuntimeCompileWriteFile(state),
+    );
 
     const program = ts.createProgram({
       rootNames,
@@ -1739,11 +1743,11 @@ delete Object.prototype.__proto__;
       DEFAULT_BUNDLER_OPTIONS,
     );
 
-    const host = new Host({
-      options: opts,
+    const host = new Host(
+      opts,
       target,
-      writeFile: createBundleWriteFile(state),
-    });
+      createBundleWriteFile(state),
+    );
     state.host = host;
 
     const program = ts.createProgram({
