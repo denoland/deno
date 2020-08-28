@@ -1412,8 +1412,13 @@ delete Object.prototype.__proto__;
       ({ code }) => code != 5023 && !IGNORED_DIAGNOSTICS.includes(code),
     );
 
+    // TODO(bartlomieju): this options is excluded by `ts.convertCompilerOptionsFromJson`
+    // however stuff breaks if it's not passed (type_directives_js_main.js)
+    newopts.allowNonTsExtensions = true;
+
+    // Deno.core.print(`allowJs: ${allowJs}\n`, true);
     // Deno.core.print(`new options: ${JSON.stringify(newopts, null, 2)}\n`, true);
-    // Deno.core.print(`new result: ${JSON.stringify(newConfigResult, null, 2)}\n`, true);
+    // Deno.core.print(`new result: ${JSON.stringify(diagnostics, null, 2)}\n`, true);
 
     // Deno.core.print(`configured options: ${JSON.stringify(options, null, 2)}\n`, true);
     // Deno.core.print(`configured diagnostics: ${JSON.stringify(diagnostics, null, 2)}\n`, true);
