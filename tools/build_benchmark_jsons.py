@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import os
+import json
 from util import build_path
 
 
