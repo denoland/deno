@@ -199,7 +199,7 @@ static ENV_VARIABLES_HELP: &str = "ENVIRONMENT VARIABLES:
                          (module downloads, fetch)
     NO_PROXY             Comma-separated list of hosts which do not use a proxy
                          (module downloads, fetch)
-    RUST_LOG             Write Rust debug logs to stderr";
+    RUST_LOG             Write Rust logs to stderr";
 
 static DENO_HELP: &str = "A secure JavaScript and TypeScript runtime
 
