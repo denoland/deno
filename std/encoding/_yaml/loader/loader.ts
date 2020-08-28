@@ -26,6 +26,7 @@ const CHOMPING_STRIP = 2;
 const CHOMPING_KEEP = 3;
 
 const PATTERN_NON_PRINTABLE =
+  // deno-lint-ignore no-control-regex
   /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x84\x86-\x9F\uFFFE\uFFFF]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?:[^\uD800-\uDBFF]|^)[\uDC00-\uDFFF]/;
 const PATTERN_NON_ASCII_LINE_BREAKS = /[\x85\u2028\u2029]/;
 const PATTERN_FLOW_INDICATORS = /[,\[\]\{\}]/;
