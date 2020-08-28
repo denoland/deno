@@ -163,6 +163,15 @@ impl DerefMut for CoreIsolate {
   }
 }
 
+impl Drop for CoreIsolateState {
+  fn drop(&mut self) {
+    // TODO(afinch7) this is a temporary fix for a segfault that occurus when
+    // dropping plugin ops. I know that the plugin Rc<Library> value gets dropped
+    // early for some reason, but still not quite sure why.
+    drop(std::mem::take(&mut self.op_registry));
+  }
+}
+
 impl Drop for CoreIsolate {
   fn drop(&mut self) {
     if let Some(creator) = self.snapshot_creator.take() {
