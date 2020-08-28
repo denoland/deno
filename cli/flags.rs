@@ -198,7 +198,8 @@ static ENV_VARIABLES_HELP: &str = "ENVIRONMENT VARIABLES:
     HTTPS_PROXY          Proxy address for HTTPS requests
                          (module downloads, fetch)
     NO_PROXY             Comma-separated list of hosts which do not use a proxy
-                         (module downloads, fetch)";
+                         (module downloads, fetch)
+    RUST_LOG             Write Rust debug logs to stderr";
 
 static DENO_HELP: &str = "A secure JavaScript and TypeScript runtime
 
