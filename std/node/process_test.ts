@@ -128,6 +128,7 @@ Deno.test({
   name: "process.stdin",
   fn() {
     console.log(process.stdin);
+    console.log(Deno.stdin, Deno.isatty(Deno.stdin.rid));
     assertEquals(typeof process.stdin.rid, "number");
     assertEquals(process.stdin.rid, Deno.stdin.rid);
     assert(process.stdin.isTTY);
