@@ -991,13 +991,16 @@ export default class Context {
         if (!entry.path) {
           return ERRNO_INVAL;
         }
+        console.log("PATH_FILESTAT_GET", entry.path);
 
         const text = new TextDecoder();
         const data = new Uint8Array(this.memory.buffer, path_ptr, path_len);
         const path = resolve(entry.path, text.decode(data));
 
+
         const view = new DataView(this.memory.buffer);
 
+        console.log("DENO LSTAT PATH", path);
         const info = (flags & LOOKUPFLAGS_SYMLINK_FOLLOW) != 0
           ? Deno.statSync(path)
           : Deno.lstatSync(path);
