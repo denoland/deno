@@ -234,6 +234,7 @@ function syscall(target: Function): Function {
     try {
       return target(...args);
     } catch (err) {
+      console.log(err);
       switch (err.name) {
         case "NotFound":
           return ERRNO_NOENT;
