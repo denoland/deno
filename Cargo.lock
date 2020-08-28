@@ -341,6 +341,7 @@ dependencies = [
  "http",
  "idna",
  "indexmap",
+ "jsonc-parser",
  "lazy_static",
  "libc",
  "log 0.4.11",
@@ -1011,6 +1012,12 @@ dependencies = [
  "swc_atoms",
  "swc_common",
 ]
+
+[[package]]
+name = "jsonc-parser"
+version = "0.12.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "030c40aab885ff629ec30ac02b5a4fda3d4ed09992d7daf2f188ff931f6f301b"
 
 [[package]]
 name = "kernel32-sys"

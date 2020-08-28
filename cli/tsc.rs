@@ -1,4 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
+#![allow(unused)]
+
 use crate::colors;
 use crate::diagnostics::Diagnostic;
 use crate::diagnostics::DiagnosticItem;
@@ -56,6 +59,7 @@ use swc_common::Span;
 use swc_ecmascript::visit::Node;
 use swc_ecmascript::visit::Visit;
 use url::Url;
+use crate::tsc_config;
 
 pub const AVAILABLE_LIBS: &[&str] = &[
   "deno.ns",
@@ -241,7 +245,7 @@ pub enum TargetLib {
 #[derive(Clone)]
 pub struct CompilerConfig {
   pub path: Option<PathBuf>,
-  pub content: Option<Vec<u8>>,
+  pub content: Option<String>,
   pub hash: Vec<u8>,
   pub compile_js: bool,
 }
@@ -288,10 +292,16 @@ impl CompilerConfig {
       _ => b"".to_vec(),
     };
 
+    let content = if let Some(content) = config {
+      let str_ = String::from_utf8(content)?;
+      Some(str_)
+    } else {
+      None
+    };
+    
     // If `checkJs` is set to true in `compilerOptions` then we're gonna be compiling
     // JavaScript files as well
-    let compile_js = if let Some(config_content) = config.clone() {
-      let config_str = std::str::from_utf8(&config_content)?;
+    let compile_js = if let Some(config_str) = content.as_ref() {
       CHECK_JS_RE.is_match(config_str)
     } else {
       false
@@ -299,7 +309,7 @@ impl CompilerConfig {
 
     let ts_config = Self {
       path: config_path.unwrap_or_else(|| Ok(PathBuf::new())).ok(),
-      content: config,
+      content,
       hash: config_hash,
       compile_js,
     };
@@ -579,6 +589,47 @@ impl TsCompiler {
     let compiler_config = self.config.clone();
     let cwd = std::env::current_dir().unwrap();
 
+    let mut lib = if target == "main" {
+      vec!["lib.deno.window.d.ts"]
+    } else {
+      vec!["lib.deno.worker.d.ts"]
+    };
+
+    if unstable {
+      lib.push("lib.deno.unstable.d.ts");
+    }
+
+    let mut compiler_options = json!({
+      "allowJs": false,
+      "allowNonTsExtensions": true,
+      "checkJs": false,
+      "esModuleInterop": true,
+      "incremental": true,
+      "inlineSourceMap": true,
+      "jsx": "react",
+      "lib": lib,
+      "module": "esnext",
+      "outDir": "deno://",
+      "resolveJsonModule": true,
+      "sourceMap": false,
+      "strict": true,
+      "stripComments": true,
+      "target": "exnext",
+      "tsBuildInfoFile": "cache:///tsbuildinfo.json",
+    });
+
+    let _maybe_ignored_options =
+      if let Some(config_text) = compiler_config.content.as_ref() {
+        let (user_config, ignored_options) = tsc_config::parse_config(config_text)?;
+        tsc_config::json_merge(&mut compiler_options, &user_config);
+        ignored_options
+      } else {
+        None
+      };
+
+    // TODO(bartlomieju): print info about ignored options
+    // eprintln!("compiler_options {:#?}", compiler_options);
+
     let j = match (compiler_config.path, compiler_config.content) {
       (Some(config_path), Some(config_data)) => json!({
         "type": msg::CompilerRequestType::Compile,
@@ -588,7 +639,8 @@ impl TsCompiler {
         "unstable": unstable,
         "performance": performance,
         "configPath": config_path,
-        "config": str::from_utf8(&config_data).unwrap(),
+        "config": config_data.clone(),
+        "compilerOptions": compiler_options,
         "cwd": cwd,
         "sourceFileMap": module_graph_json,
         "buildInfo": if self.use_disk_cache { build_info } else { None },
@@ -601,6 +653,7 @@ impl TsCompiler {
         "unstable": unstable,
         "performance": performance,
         "cwd": cwd,
+        "compilerOptions": compiler_options,
         "sourceFileMap": module_graph_json,
         "buildInfo": if self.use_disk_cache { build_info } else { None },
       }),
@@ -688,7 +741,7 @@ impl TsCompiler {
 
     // TODO(bartlomieju): this is non-sense; CompilerConfig's `path` and `content` should
     // be optional
-    let j = match (compiler_config.path, compiler_config.content) {
+    let j = match (compiler_config.path, compiler_config.content.as_ref()) {
       (Some(config_path), Some(config_data)) => json!({
         "type": msg::CompilerRequestType::Bundle,
         "target": target,
@@ -696,7 +749,7 @@ impl TsCompiler {
         "unstable": self.flags.unstable,
         "performance": performance,
         "configPath": config_path,
-        "config": str::from_utf8(&config_data).unwrap(),
+        "config": config_data.to_string(),
         "cwd": cwd,
         "sourceFileMap": module_graph_json,
       }),
