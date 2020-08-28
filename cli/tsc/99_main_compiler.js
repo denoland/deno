@@ -595,23 +595,6 @@ delete Object.prototype.__proto__;
       return this.#options;
     }
 
-    configure(cwd, path, configurationText) {
-      log("compiler::host.configure", path);
-      const { options, ...result } = configure(
-        this.#options,
-        configurationText,
-        path,
-        cwd,
-      );
-      this.#options = options;
-      return result;
-    }
-
-    mergeOptions(...options) {
-      Object.assign(this.#options, ...options);
-      return Object.assign({}, this.#options);
-    }
-
     /* TypeScript CompilerHost APIs */
 
     fileExists(_fileName) {
@@ -1367,10 +1350,12 @@ delete Object.prototype.__proto__;
       rootNames,
       emitMap: {},
     };
-    const options = Object.assign(
+
+    let options = Object.assign(
       {},
       DEFAULT_COMPILE_OPTIONS,
       DEFAULT_INCREMENTAL_COMPILE_OPTIONS,
+      { allowJs },
     );
     if (unstable) {
       options.lib = [
@@ -1380,21 +1365,27 @@ delete Object.prototype.__proto__;
         "lib.deno.unstable.d.ts",
       ];
     }
+
+    let diagnostics = [];
+
+    // if there is a configuration supplied, we need to parse that
+    if (config && config.length && configPath) {
+      const { opts, ...configResult } = configure(
+        options,
+        config,
+        configPath,
+        cwd,
+      );
+      options = opts;
+      diagnostics = processConfigureResponse(configResult, configPath) || [];
+    }
+
     const host = new IncrementalCompileHost({
       options,
       target,
       writeFile: createCompileWriteFile(state),
       buildInfo,
     });
-    let diagnostics = [];
-
-    host.mergeOptions({ allowJs });
-
-    // if there is a configuration supplied, we need to parse that
-    if (config && config.length && configPath) {
-      const configResult = host.configure(cwd, configPath, config);
-      diagnostics = processConfigureResponse(configResult, configPath) || [];
-    }
 
     buildSourceFileCache(sourceFileMap);
     // if there was a configuration and no diagnostics with it, we will continue
@@ -1541,7 +1532,7 @@ delete Object.prototype.__proto__;
       rootNames,
       bundleOutput: undefined,
     };
-    const options = Object.assign(
+    let options = Object.assign(
       {},
       DEFAULT_COMPILE_OPTIONS,
       DEFAULT_BUNDLER_OPTIONS,
@@ -1554,19 +1545,27 @@ delete Object.prototype.__proto__;
         "lib.deno.unstable.d.ts",
       ];
     }
+
+    let diagnostics = [];
+
+    // if there is a configuration supplied, we need to parse that
+    if (config && config.length && configPath) {
+      const { opts, ...configResult } = configure(
+        options,
+        config,
+        configPath,
+        cwd,
+      );
+      options = opts;
+      diagnostics = processConfigureResponse(configResult, configPath) || [];
+    }
+
     const host = new Host({
       options,
       target,
       writeFile: createBundleWriteFile(state),
     });
     state.host = host;
-    let diagnostics = [];
-
-    // if there is a configuration supplied, we need to parse that
-    if (config && config.length && configPath) {
-      const configResult = host.configure(cwd, configPath, config);
-      diagnostics = processConfigureResponse(configResult, configPath) || [];
-    }
 
     buildSourceFileCache(sourceFileMap);
     // if there was a configuration and no diagnostics with it, we will continue
@@ -1642,29 +1641,33 @@ delete Object.prototype.__proto__;
 
     buildLocalSourceFileCache(sourceFileMap);
 
+    let libOptions = {};
+    if (unstable) {
+      libOptions = {
+        lib: [
+          "deno.unstable",
+          ...((convertedOptions && convertedOptions.lib) || ["deno.window"]),
+        ],
+      };
+    }
+
+    const opts = Object.assign(
+      {},
+      DEFAULT_COMPILE_OPTIONS,
+      DEFAULT_RUNTIME_COMPILE_OPTIONS,
+      convertedOptions,
+      libOptions,
+    );
+
     const state = {
       rootNames,
       emitMap: {},
     };
     const host = new Host({
-      options: Object.assign({}, DEFAULT_COMPILE_OPTIONS),
+      options: opts,
       target,
       writeFile: createRuntimeCompileWriteFile(state),
     });
-    const compilerOptions = [DEFAULT_RUNTIME_COMPILE_OPTIONS];
-    if (convertedOptions) {
-      compilerOptions.push(convertedOptions);
-    }
-    if (unstable) {
-      compilerOptions.push({
-        lib: [
-          "deno.unstable",
-          ...((convertedOptions && convertedOptions.lib) || ["deno.window"]),
-        ],
-      });
-    }
-
-    host.mergeOptions(...compilerOptions);
 
     const program = ts.createProgram({
       rootNames,
@@ -1704,7 +1707,7 @@ delete Object.prototype.__proto__;
 
     // if there are options, convert them into TypeScript compiler options,
     // and resolve any external file references
-    let convertedOptions;
+    let convertedOptions = {};
     if (options) {
       const result = convertCompilerOptions(options);
       convertedOptions = result.options;
@@ -1716,31 +1719,32 @@ delete Object.prototype.__proto__;
       rootNames,
       bundleOutput: undefined,
     };
-    const host = new Host({
-      options: Object.assign(
-        {},
-        DEFAULT_COMPILE_OPTIONS,
-        DEFAULT_BUNDLER_OPTIONS,
-      ),
-      target,
-      writeFile: createBundleWriteFile(state),
-    });
-    state.host = host;
 
-    const compilerOptions = [DEFAULT_RUNTIME_COMPILE_OPTIONS];
-    if (convertedOptions) {
-      compilerOptions.push(convertedOptions);
-    }
+    let libOptions = {};
     if (unstable) {
-      compilerOptions.push({
+      libOptions = {
         lib: [
           "deno.unstable",
           ...((convertedOptions && convertedOptions.lib) || ["deno.window"]),
         ],
-      });
+      };
     }
-    compilerOptions.push(DEFAULT_BUNDLER_OPTIONS);
-    host.mergeOptions(...compilerOptions);
+
+    const opts = Object.assign(
+      {},
+      DEFAULT_COMPILE_OPTIONS,
+      DEFAULT_RUNTIME_COMPILE_OPTIONS,
+      convertedOptions,
+      libOptions,
+      DEFAULT_BUNDLER_OPTIONS,
+    );
+
+    const host = new Host({
+      options: opts,
+      target,
+      writeFile: createBundleWriteFile(state),
+    });
+    state.host = host;
 
     const program = ts.createProgram({
       rootNames,
