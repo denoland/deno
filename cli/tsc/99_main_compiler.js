@@ -1374,7 +1374,7 @@ delete Object.prototype.__proto__;
 
     // if there is a configuration supplied, we need to parse that
     if (config && config.length && configPath) {
-      const { opts, ...configResult } = configure(
+      const { options: opts, ...configResult } = configure(
         options,
         config,
         configPath,
@@ -1554,7 +1554,7 @@ delete Object.prototype.__proto__;
 
     // if there is a configuration supplied, we need to parse that
     if (config && config.length && configPath) {
-      const { opts, ...configResult } = configure(
+      const { options: opts, ...configResult } = configure(
         options,
         config,
         configPath,
