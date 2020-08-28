@@ -376,6 +376,7 @@ delete Object.prototype.__proto__;
 
   const DEFAULT_INCREMENTAL_COMPILE_OPTIONS = {
     allowJs: false,
+    allowNonTsExtensions: true,
     checkJs: false,
     esModuleInterop: true,
     incremental: true,
@@ -393,6 +394,7 @@ delete Object.prototype.__proto__;
 
   const DEFAULT_COMPILE_OPTIONS = {
     allowJs: false,
+    allowNonTsExtensions: true,
     checkJs: false,
     esModuleInterop: true,
     jsx: ts.JsxEmit.React,
@@ -580,28 +582,13 @@ delete Object.prototype.__proto__;
     /* Deno specific APIs */
 
     constructor({
-      bundle = false,
-      incremental = false,
+      options,
       target,
-      unstable,
       writeFile,
     }) {
       this.#target = target;
       this.#writeFile = writeFile;
-      if (bundle) {
-        // options we need to change when we are generating a bundle
-        Object.assign(this.#options, DEFAULT_BUNDLER_OPTIONS);
-      } else if (incremental) {
-        Object.assign(this.#options, DEFAULT_INCREMENTAL_COMPILE_OPTIONS);
-      }
-      if (unstable) {
-        this.#options.lib = [
-          target === CompilerHostTarget.Worker
-            ? "lib.deno.worker.d.ts"
-            : "lib.deno.window.d.ts",
-          "lib.deno.unstable.d.ts",
-        ];
-      }
+      this.#options = options;
     }
 
     get options() {
@@ -769,6 +756,7 @@ delete Object.prototype.__proto__;
   // this is in fact a mock host created just to
   // load all type definitions and snapshot them.
   let SNAPSHOT_HOST = new Host({
+    options: DEFAULT_COMPILE_OPTIONS,
     target: CompilerHostTarget.Main,
     writeFile() {},
   });
@@ -1379,12 +1367,23 @@ delete Object.prototype.__proto__;
       rootNames,
       emitMap: {},
     };
+    const options = Object.assign(
+      {},
+      DEFAULT_COMPILE_OPTIONS,
+      DEFAULT_INCREMENTAL_COMPILE_OPTIONS,
+    );
+    if (unstable) {
+      options.lib = [
+        target === CompilerHostTarget.Worker
+          ? "lib.deno.worker.d.ts"
+          : "lib.deno.window.d.ts",
+        "lib.deno.unstable.d.ts",
+      ];
+    }
     const host = new IncrementalCompileHost({
-      bundle: false,
+      options,
       target,
-      unstable,
       writeFile: createCompileWriteFile(state),
-      rootNames,
       buildInfo,
     });
     let diagnostics = [];
@@ -1542,10 +1541,22 @@ delete Object.prototype.__proto__;
       rootNames,
       bundleOutput: undefined,
     };
+    const options = Object.assign(
+      {},
+      DEFAULT_COMPILE_OPTIONS,
+      DEFAULT_BUNDLER_OPTIONS,
+    );
+    if (unstable) {
+      options.lib = [
+        target === CompilerHostTarget.Worker
+          ? "lib.deno.worker.d.ts"
+          : "lib.deno.window.d.ts",
+        "lib.deno.unstable.d.ts",
+      ];
+    }
     const host = new Host({
-      bundle: true,
+      options,
       target,
-      unstable,
       writeFile: createBundleWriteFile(state),
     });
     state.host = host;
@@ -1636,7 +1647,7 @@ delete Object.prototype.__proto__;
       emitMap: {},
     };
     const host = new Host({
-      bundle: false,
+      options: Object.assign({}, DEFAULT_COMPILE_OPTIONS),
       target,
       writeFile: createRuntimeCompileWriteFile(state),
     });
@@ -1706,7 +1717,11 @@ delete Object.prototype.__proto__;
       bundleOutput: undefined,
     };
     const host = new Host({
-      bundle: true,
+      options: Object.assign(
+        {},
+        DEFAULT_COMPILE_OPTIONS,
+        DEFAULT_BUNDLER_OPTIONS,
+      ),
       target,
       writeFile: createBundleWriteFile(state),
     });
