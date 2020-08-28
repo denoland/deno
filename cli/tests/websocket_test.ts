@@ -223,24 +223,3 @@ Deno.test("echo arraybuffer with binaryType arraybuffer", async () => {
   };
   await promise;
 });
-
-Deno.test("send setinterval", async () => {
-  const promise = createResolvable();
-  const ws = new WebSocket("ws://localhost:4242");
-  ws.onerror = (): void => fail();
-  ws.onopen = (): void => {
-    let i = 0;
-    const interval = setInterval(() => {
-      ws.send("foo");
-      if (i == 9) {
-        clearInterval(interval);
-      }
-      i++;
-    }, 100);
-    ws.close();
-  };
-  ws.onclose = (): void => {
-    promise.resolve();
-  };
-  await promise;
-});
