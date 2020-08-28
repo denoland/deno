@@ -15,7 +15,9 @@ pub struct IgnoredCompilerOptions(pub Vec<String>);
 
 impl fmt::Display for IgnoredCompilerOptions {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    write!(f, "{}", self.0.join(", "))?;
+    let mut codes = self.0.clone();
+    codes.sort();
+    write!(f, "{}", codes.join(", "))?;
 
     Ok(())
   }
