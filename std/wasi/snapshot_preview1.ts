@@ -808,6 +808,7 @@ export default class Context {
 
         let bufused = 0;
 
+        console.log("FD_READDIR PATH: %s", entry.path);
         const entries = Array.from(Deno.readDirSync(entry.path));
         for (let i = Number(cookie); i < entries.length; i++) {
           const name_data = new TextEncoder().encode(entries[i].name);
