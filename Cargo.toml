@@ -10,8 +10,10 @@ exclude = [
   "std/hash/_wasm"
 ]
 
-
 [profile.release]
-codegen-units = 1
-lto = true
-opt-level = 'z' # Optimize for size
+opt-level = 2
+debug = 2
+
+[profile.bench]
+opt-level = 2
+debug = 2
