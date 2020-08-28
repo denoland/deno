@@ -490,6 +490,22 @@ delete Object.prototype.__proto__;
    */
   const RESOLVED_SPECIFIER_CACHE = new Map();
 
+  function newConfigure(defaultOptions, source, path, cwd) {
+    const { config, error } = ts.parseConfigFileTextToJson(path, source);
+    if (error) {
+      // Deno.core.print(`error newConfigure ${error}\n`, true);
+      return { diagnostics: [error], options: defaultOptions };
+    }
+    const { options, errors } = ts.convertCompilerOptionsFromJson(
+      config.compilerOptions,
+      cwd,
+    );
+    return {
+      options,
+      diagnostics: errors.length ? errors : undefined,
+    };
+  }
+
   function configure(defaultOptions, source, path, cwd) {
     const { config, error } = ts.parseConfigFileTextToJson(path, source);
     if (error) {
@@ -581,11 +597,11 @@ delete Object.prototype.__proto__;
     #writeFile = null;
     /* Deno specific APIs */
 
-    constructor({
+    constructor(
       options,
       target,
       writeFile,
-    }) {
+    ) {
       this.#target = target;
       this.#writeFile = writeFile;
       this.#options = options;
@@ -593,23 +609,6 @@ delete Object.prototype.__proto__;
 
     get options() {
       return this.#options;
-    }
-
-    configure(cwd, path, configurationText) {
-      log("compiler::host.configure", path);
-      const { options, ...result } = configure(
-        this.#options,
-        configurationText,
-        path,
-        cwd,
-      );
-      this.#options = options;
-      return result;
-    }
-
-    mergeOptions(...options) {
-      Object.assign(this.#options, ...options);
-      return Object.assign({}, this.#options);
     }
 
     /* TypeScript CompilerHost APIs */
@@ -736,9 +735,13 @@ delete Object.prototype.__proto__;
   class IncrementalCompileHost extends Host {
     #buildInfo = "";
 
-    constructor(options) {
-      super({ ...options, incremental: true });
-      const { buildInfo } = options;
+    constructor(
+      options,
+      target,
+      writeFile,
+      buildInfo,
+    ) {
+      super(options, target, writeFile);
       if (buildInfo) {
         this.#buildInfo = buildInfo;
       }
@@ -755,11 +758,11 @@ delete Object.prototype.__proto__;
   // NOTE: target doesn't really matter here,
   // this is in fact a mock host created just to
   // load all type definitions and snapshot them.
-  let SNAPSHOT_HOST = new Host({
-    options: DEFAULT_COMPILE_OPTIONS,
-    target: CompilerHostTarget.Main,
-    writeFile() {},
-  });
+  let SNAPSHOT_HOST = new Host(
+    DEFAULT_COMPILE_OPTIONS,
+    CompilerHostTarget.Main,
+    () => {},
+  );
   const SNAPSHOT_COMPILER_OPTIONS = SNAPSHOT_HOST.getCompilationSettings();
 
   // This is a hacky way of adding our libs to the libs available in TypeScript()
@@ -1075,7 +1078,7 @@ delete Object.prototype.__proto__;
     };
   }
 
-  const ignoredDiagnostics = [
+  const IGNORED_DIAGNOSTICS = [
     // TS2306: File 'file:///Users/rld/src/deno/cli/tests/subdir/amd_like.js' is
     // not a module.
     2306,
@@ -1344,8 +1347,9 @@ delete Object.prototype.__proto__;
   function compile({
     allowJs,
     buildInfo,
-    config,
+    // config,
     configPath,
+    compilerOptions,
     rootNames,
     target,
     unstable,
@@ -1367,10 +1371,12 @@ delete Object.prototype.__proto__;
       rootNames,
       emitMap: {},
     };
-    const options = Object.assign(
+
+    let options = Object.assign(
       {},
       DEFAULT_COMPILE_OPTIONS,
       DEFAULT_INCREMENTAL_COMPILE_OPTIONS,
+      { allowJs },
     );
     if (unstable) {
       options.lib = [
@@ -1380,21 +1386,45 @@ delete Object.prototype.__proto__;
         "lib.deno.unstable.d.ts",
       ];
     }
-    const host = new IncrementalCompileHost({
-      options,
-      target,
-      writeFile: createCompileWriteFile(state),
-      buildInfo,
-    });
+
     let diagnostics = [];
 
-    host.mergeOptions({ allowJs });
+    // // if there is a configuration supplied, we need to parse that
+    // if (config && config.length && configPath) {
+    //   const { options: opts, ...configResult } = configure(
+    //     options,
+    //     config,
+    //     configPath,
+    //     cwd,
+    //   );
+    //   options = opts;
+    //   diagnostics = processConfigureResponse(configResult, configPath) || [];
+    // }
 
-    // if there is a configuration supplied, we need to parse that
-    if (config && config.length && configPath) {
-      const configResult = host.configure(cwd, configPath, config);
-      diagnostics = processConfigureResponse(configResult, configPath) || [];
-    }
+    const { options: newopts, diagnostics: diags } = newConfigure(
+      {},
+      JSON.stringify({ compilerOptions }),
+      configPath,
+      cwd,
+    );
+
+    diagnostics = diags.filter(
+      ({ code }) => code != 5023 && !IGNORED_DIAGNOSTICS.includes(code),
+    );
+
+    // Deno.core.print(`new options: ${JSON.stringify(newopts, null, 2)}\n`, true);
+    // Deno.core.print(`new result: ${JSON.stringify(newConfigResult, null, 2)}\n`, true);
+
+    // Deno.core.print(`configured options: ${JSON.stringify(options, null, 2)}\n`, true);
+    // Deno.core.print(`configured diagnostics: ${JSON.stringify(diagnostics, null, 2)}\n`, true);
+    // Deno.core.print(`passed options: ${JSON.stringify(compilerOptions, null, 2)}\n`, true);
+
+    const host = new IncrementalCompileHost(
+      newopts,
+      target,
+      createCompileWriteFile(state),
+      buildInfo,
+    );
 
     buildSourceFileCache(sourceFileMap);
     // if there was a configuration and no diagnostics with it, we will continue
@@ -1416,7 +1446,7 @@ delete Object.prototype.__proto__;
         ...program.getSemanticDiagnostics(),
       ];
       diagnostics = diagnostics.filter(
-        ({ code }) => !ignoredDiagnostics.includes(code),
+        ({ code }) => !IGNORED_DIAGNOSTICS.includes(code),
       );
 
       // We will only proceed with the emit if there are no diagnostics.
@@ -1541,7 +1571,7 @@ delete Object.prototype.__proto__;
       rootNames,
       bundleOutput: undefined,
     };
-    const options = Object.assign(
+    let options = Object.assign(
       {},
       DEFAULT_COMPILE_OPTIONS,
       DEFAULT_BUNDLER_OPTIONS,
@@ -1554,19 +1584,27 @@ delete Object.prototype.__proto__;
         "lib.deno.unstable.d.ts",
       ];
     }
-    const host = new Host({
-      options,
-      target,
-      writeFile: createBundleWriteFile(state),
-    });
-    state.host = host;
+
     let diagnostics = [];
 
     // if there is a configuration supplied, we need to parse that
     if (config && config.length && configPath) {
-      const configResult = host.configure(cwd, configPath, config);
+      const { options: opts, ...configResult } = configure(
+        options,
+        config,
+        configPath,
+        cwd,
+      );
+      options = opts;
       diagnostics = processConfigureResponse(configResult, configPath) || [];
     }
+
+    const host = new Host(
+      options,
+      target,
+      createBundleWriteFile(state),
+    );
+    state.host = host;
 
     buildSourceFileCache(sourceFileMap);
     // if there was a configuration and no diagnostics with it, we will continue
@@ -1581,7 +1619,7 @@ delete Object.prototype.__proto__;
 
       diagnostics = ts
         .getPreEmitDiagnostics(program)
-        .filter(({ code }) => !ignoredDiagnostics.includes(code));
+        .filter(({ code }) => !IGNORED_DIAGNOSTICS.includes(code));
 
       // We will only proceed with the emit if there are no diagnostics.
       if (diagnostics.length === 0) {
@@ -1642,29 +1680,33 @@ delete Object.prototype.__proto__;
 
     buildLocalSourceFileCache(sourceFileMap);
 
-    const state = {
-      rootNames,
-      emitMap: {},
-    };
-    const host = new Host({
-      options: Object.assign({}, DEFAULT_COMPILE_OPTIONS),
-      target,
-      writeFile: createRuntimeCompileWriteFile(state),
-    });
-    const compilerOptions = [DEFAULT_RUNTIME_COMPILE_OPTIONS];
-    if (convertedOptions) {
-      compilerOptions.push(convertedOptions);
-    }
+    let libOptions = {};
     if (unstable) {
-      compilerOptions.push({
+      libOptions = {
         lib: [
           "deno.unstable",
           ...((convertedOptions && convertedOptions.lib) || ["deno.window"]),
         ],
-      });
+      };
     }
 
-    host.mergeOptions(...compilerOptions);
+    const opts = Object.assign(
+      {},
+      DEFAULT_COMPILE_OPTIONS,
+      DEFAULT_RUNTIME_COMPILE_OPTIONS,
+      convertedOptions,
+      libOptions,
+    );
+
+    const state = {
+      rootNames,
+      emitMap: {},
+    };
+    const host = new Host(
+      opts,
+      target,
+      createRuntimeCompileWriteFile(state),
+    );
 
     const program = ts.createProgram({
       rootNames,
@@ -1674,7 +1716,7 @@ delete Object.prototype.__proto__;
 
     const diagnostics = ts
       .getPreEmitDiagnostics(program)
-      .filter(({ code }) => !ignoredDiagnostics.includes(code));
+      .filter(({ code }) => !IGNORED_DIAGNOSTICS.includes(code));
 
     const emitResult = program.emit();
 
@@ -1704,7 +1746,7 @@ delete Object.prototype.__proto__;
 
     // if there are options, convert them into TypeScript compiler options,
     // and resolve any external file references
-    let convertedOptions;
+    let convertedOptions = {};
     if (options) {
       const result = convertCompilerOptions(options);
       convertedOptions = result.options;
@@ -1716,31 +1758,32 @@ delete Object.prototype.__proto__;
       rootNames,
       bundleOutput: undefined,
     };
-    const host = new Host({
-      options: Object.assign(
-        {},
-        DEFAULT_COMPILE_OPTIONS,
-        DEFAULT_BUNDLER_OPTIONS,
-      ),
-      target,
-      writeFile: createBundleWriteFile(state),
-    });
-    state.host = host;
 
-    const compilerOptions = [DEFAULT_RUNTIME_COMPILE_OPTIONS];
-    if (convertedOptions) {
-      compilerOptions.push(convertedOptions);
-    }
+    let libOptions = {};
     if (unstable) {
-      compilerOptions.push({
+      libOptions = {
         lib: [
           "deno.unstable",
           ...((convertedOptions && convertedOptions.lib) || ["deno.window"]),
         ],
-      });
+      };
     }
-    compilerOptions.push(DEFAULT_BUNDLER_OPTIONS);
-    host.mergeOptions(...compilerOptions);
+
+    const opts = Object.assign(
+      {},
+      DEFAULT_COMPILE_OPTIONS,
+      DEFAULT_RUNTIME_COMPILE_OPTIONS,
+      convertedOptions,
+      libOptions,
+      DEFAULT_BUNDLER_OPTIONS,
+    );
+
+    const host = new Host(
+      opts,
+      target,
+      createBundleWriteFile(state),
+    );
+    state.host = host;
 
     const program = ts.createProgram({
       rootNames,
@@ -1751,7 +1794,7 @@ delete Object.prototype.__proto__;
     setRootExports(program, rootNames[0]);
     const diagnostics = ts
       .getPreEmitDiagnostics(program)
-      .filter(({ code }) => !ignoredDiagnostics.includes(code));
+      .filter(({ code }) => !IGNORED_DIAGNOSTICS.includes(code));
 
     const emitResult = program.emit();
 

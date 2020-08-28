@@ -589,18 +589,21 @@ impl TsCompiler {
     let compiler_config = self.config.clone();
     let cwd = std::env::current_dir().unwrap();
 
+    // TODO(bartlomieju): lift this call up - TSC shouldn't print anything
+    info!("{} {}", colors::green("Check"), module_url.to_string());
+
     let mut lib = if target == "main" {
-      vec!["lib.deno.window.d.ts"]
+      vec!["deno.window"]
     } else {
-      vec!["lib.deno.worker.d.ts"]
+      vec!["deno.worker"]
     };
 
     if unstable {
-      lib.push("lib.deno.unstable.d.ts");
+      lib.push("deno.unstable");
     }
 
     let mut compiler_options = json!({
-      "allowJs": false,
+      "allowJs": allow_js,
       "allowNonTsExtensions": true,
       "checkJs": false,
       "esModuleInterop": true,
@@ -613,12 +616,12 @@ impl TsCompiler {
       "resolveJsonModule": true,
       "sourceMap": false,
       "strict": true,
-      "stripComments": true,
+      "removeComments": true,
       "target": "esnext",
       "tsBuildInfoFile": "cache:///tsbuildinfo.json",
     });
 
-    let _maybe_ignored_options =
+    let maybe_ignored_options =
       if let Some(config_text) = compiler_config.content.as_ref() {
         let (user_config, ignored_options) =
           tsc_config::parse_config(config_text)?;
@@ -628,8 +631,11 @@ impl TsCompiler {
         None
       };
 
-    // TODO(bartlomieju): print info about ignored options
-    // eprintln!("compiler_options {:#?}", compiler_options);
+    if let Some(ignored_options) = maybe_ignored_options {
+      let config_path = compiler_config.path.clone().unwrap();
+      let ignored_opts = ignored_options.to_string();
+      eprintln!("Unsupported compiler options in \"{}\"\n  The following options were ignored:\n    {}", config_path.to_string_lossy(), ignored_opts);
+    }
 
     let j = json!({
       "type": msg::CompilerRequestType::Compile,
@@ -638,7 +644,7 @@ impl TsCompiler {
       "rootNames": root_names,
       "unstable": unstable,
       "performance": performance,
-      "configPath": "tsconfig.json",
+      "configPath": compiler_config.path.unwrap_or_else(|| PathBuf::from("tsconfig.json")),
       "config": compiler_config.content.as_ref(),
       "compilerOptions": compiler_options,
       "cwd": cwd,
@@ -647,9 +653,6 @@ impl TsCompiler {
     });
 
     let req_msg = j.to_string();
-
-    // TODO(bartlomieju): lift this call up - TSC shouldn't print anything
-    info!("{} {}", colors::green("Check"), module_url.to_string());
 
     let json_str =
       execute_in_same_thread(global_state, permissions, req_msg).await?;
