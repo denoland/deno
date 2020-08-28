@@ -273,11 +273,6 @@ grault",
 }
 
 #[test]
-fn benchmark_test() {
-  util::run_python_script("tools/benchmark_test.py")
-}
-
-#[test]
 fn deno_dir_test() {
   use std::fs::remove_dir_all;
   let _g = util::http_server();

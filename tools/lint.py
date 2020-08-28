@@ -72,6 +72,7 @@ def eslint():
         ":!:cli/tests/encoding/**",
         ":!:cli/dts/**",
         ":!:cli/tsc/*typescript.js",
+        ":!:cli/bench/node*.js",
     ])
     if source_files:
         max_command_len = 30000
