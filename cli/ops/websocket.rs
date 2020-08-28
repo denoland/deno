@@ -7,12 +7,10 @@ use deno_core::ErrBox;
 use deno_core::ZeroCopyBuf;
 use deno_core::{CoreIsolate, CoreIsolateState};
 use futures::future::{poll_fn, FutureExt};
-use futures::ready;
-use futures::Sink;
+use futures::{ready, SinkExt};
 use futures::StreamExt;
 use http::{Method, Request, Uri};
 use std::borrow::Cow;
-use std::pin::Pin;
 use std::rc::Rc;
 use tokio::net::TcpStream;
 use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
@@ -116,23 +114,18 @@ pub fn op_ws_send(
 
   let future = poll_fn(move |cx| {
     let mut resource_table = resource_table.borrow_mut();
-    let mut stream = resource_table
+    let stream = resource_table
       .get_mut::<WsStream>(rid)
       .ok_or_else(ErrBox::bad_resource_id)?;
 
     // TODO(ry) Handle errors below instead of unwrap.
     // Need to map tungstenite::error::Error to ErrBox.
 
-    let stream_pin = Pin::new(&mut stream);
-    ready!(stream_pin.poll_ready(cx)).unwrap();
-
+    ready!(stream.poll_ready_unpin(cx)).unwrap();
     if let Some(msg) = maybe_msg.take() {
-      let stream_pin = Pin::new(&mut stream);
-      stream_pin.start_send(msg).unwrap();
+      stream.start_send_unpin(msg).unwrap();
     }
-
-    let stream_pin = Pin::new(&mut stream);
-    ready!(stream_pin.poll_flush(cx)).unwrap();
+    ready!(stream.poll_flush_unpin(cx)).unwrap();
 
     Poll::Ready(Ok(json!({})))
   });
@@ -166,26 +159,19 @@ pub fn op_ws_close(
 
   let future = poll_fn(move |cx| {
     let mut resource_table = resource_table.borrow_mut();
-    let mut stream = resource_table
+    let stream = resource_table
       .get_mut::<WsStream>(rid)
       .ok_or_else(ErrBox::bad_resource_id)?;
 
     // TODO(ry) Handle errors below instead of unwrap.
     // Need to map tungstenite::error::Error to ErrBox.
 
-    let stream_pin = Pin::new(&mut stream);
-    ready!(stream_pin.poll_ready(cx)).unwrap();
-
+    ready!(stream.poll_ready_unpin(cx)).unwrap();
     if let Some(msg) = maybe_msg.take() {
-      let stream_pin = Pin::new(&mut stream);
-      stream_pin.start_send(msg).unwrap();
+      stream.start_send_unpin(msg).unwrap();
     }
-
-    let stream_pin = Pin::new(&mut stream);
-    ready!(stream_pin.poll_flush(cx)).unwrap();
-
-    let stream_pin = Pin::new(&mut stream);
-    ready!(stream_pin.poll_close(cx)).unwrap();
+    ready!(stream.poll_flush_unpin(cx)).unwrap();
+    ready!(stream.poll_close_unpin(cx)).unwrap();
 
     Poll::Ready(Ok(json!({})))
   });
