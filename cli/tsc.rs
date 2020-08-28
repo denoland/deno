@@ -23,6 +23,7 @@ use crate::state::State;
 use crate::swc_util::AstParser;
 use crate::swc_util::Location;
 use crate::swc_util::SwcDiagnosticBuffer;
+use crate::tsc_config;
 use crate::version;
 use crate::worker::Worker;
 use core::task::Context;
@@ -59,7 +60,6 @@ use swc_common::Span;
 use swc_ecmascript::visit::Node;
 use swc_ecmascript::visit::Visit;
 use url::Url;
-use crate::tsc_config;
 
 pub const AVAILABLE_LIBS: &[&str] = &[
   "deno.ns",
@@ -298,7 +298,7 @@ impl CompilerConfig {
     } else {
       None
     };
-    
+
     // If `checkJs` is set to true in `compilerOptions` then we're gonna be compiling
     // JavaScript files as well
     let compile_js = if let Some(config_str) = content.as_ref() {
@@ -614,13 +614,14 @@ impl TsCompiler {
       "sourceMap": false,
       "strict": true,
       "stripComments": true,
-      "target": "exnext",
+      "target": "esnext",
       "tsBuildInfoFile": "cache:///tsbuildinfo.json",
     });
 
     let _maybe_ignored_options =
       if let Some(config_text) = compiler_config.content.as_ref() {
-        let (user_config, ignored_options) = tsc_config::parse_config(config_text)?;
+        let (user_config, ignored_options) =
+          tsc_config::parse_config(config_text)?;
         tsc_config::json_merge(&mut compiler_options, &user_config);
         ignored_options
       } else {
@@ -630,34 +631,20 @@ impl TsCompiler {
     // TODO(bartlomieju): print info about ignored options
     // eprintln!("compiler_options {:#?}", compiler_options);
 
-    let j = match (compiler_config.path, compiler_config.content) {
-      (Some(config_path), Some(config_data)) => json!({
-        "type": msg::CompilerRequestType::Compile,
-        "allowJs": allow_js,
-        "target": target,
-        "rootNames": root_names,
-        "unstable": unstable,
-        "performance": performance,
-        "configPath": config_path,
-        "config": config_data.clone(),
-        "compilerOptions": compiler_options,
-        "cwd": cwd,
-        "sourceFileMap": module_graph_json,
-        "buildInfo": if self.use_disk_cache { build_info } else { None },
-      }),
-      _ => json!({
-        "type": msg::CompilerRequestType::Compile,
-        "allowJs": allow_js,
-        "target": target,
-        "rootNames": root_names,
-        "unstable": unstable,
-        "performance": performance,
-        "cwd": cwd,
-        "compilerOptions": compiler_options,
-        "sourceFileMap": module_graph_json,
-        "buildInfo": if self.use_disk_cache { build_info } else { None },
-      }),
-    };
+    let j = json!({
+      "type": msg::CompilerRequestType::Compile,
+      "allowJs": allow_js,
+      "target": target,
+      "rootNames": root_names,
+      "unstable": unstable,
+      "performance": performance,
+      "configPath": "tsconfig.json",
+      "config": compiler_config.content.as_ref(),
+      "compilerOptions": compiler_options,
+      "cwd": cwd,
+      "sourceFileMap": module_graph_json,
+      "buildInfo": if self.use_disk_cache { build_info } else { None },
+    });
 
     let req_msg = j.to_string();
 

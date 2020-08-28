@@ -376,7 +376,6 @@ delete Object.prototype.__proto__;
 
   const DEFAULT_INCREMENTAL_COMPILE_OPTIONS = {
     allowJs: false,
-    allowNonTsExtensions: true,
     checkJs: false,
     esModuleInterop: true,
     incremental: true,
@@ -387,14 +386,13 @@ delete Object.prototype.__proto__;
     resolveJsonModule: true,
     sourceMap: false,
     strict: true,
-    stripComments: true,
+    removeComments: true,
     target: ts.ScriptTarget.ESNext,
     tsBuildInfoFile: TS_BUILD_INFO,
   };
 
   const DEFAULT_COMPILE_OPTIONS = {
     allowJs: false,
-    allowNonTsExtensions: true,
     checkJs: false,
     esModuleInterop: true,
     jsx: ts.JsxEmit.React,

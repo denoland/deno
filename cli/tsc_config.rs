@@ -2,13 +2,13 @@
 
 #![allow(unused)]
 
+use deno_core::ErrBox;
 use jsonc_parser::JsonValue;
 use serde::Deserialize;
 use serde_json::Value;
 use std::collections::HashMap;
-use std::str::FromStr;
 use std::fmt;
-use deno_core::ErrBox;
+use std::str::FromStr;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct IgnoredCompilerOptions(pub Vec<String>);
@@ -20,7 +20,6 @@ impl fmt::Display for IgnoredCompilerOptions {
     Ok(())
   }
 }
-
 
 /// A static slice of all the compiler options that should be ignored that
 /// either have no effect on the compilation or would cause the emit to not work
