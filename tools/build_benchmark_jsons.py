@@ -2,7 +2,17 @@
 # Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import os
 from util import build_path
-from benchmark import read_json, write_json
+
+
+def read_json(filename):
+    with open(filename) as json_file:
+        return json.load(json_file)
+
+
+def write_json(filename, data):
+    with open(filename, 'w') as outfile:
+        json.dump(data, outfile)
+
 
 current_data_file = os.path.join(build_path(), "bench.json")
 all_data_file = "gh-pages/data.json"  # Includes all benchmark data.
