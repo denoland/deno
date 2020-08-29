@@ -293,7 +293,7 @@ impl EsIsolate {
       });
 
     resolver.reject(scope, exception).unwrap();
-    scope.run_microtasks();
+    scope.perform_microtask_checkpoint();
     Ok(())
   }
 
@@ -333,7 +333,7 @@ impl EsIsolate {
 
     let module_namespace = module.get_module_namespace();
     resolver.resolve(scope, module_namespace).unwrap();
-    scope.run_microtasks();
+    scope.perform_microtask_checkpoint();
     Ok(())
   }
 
