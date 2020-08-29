@@ -12,8 +12,7 @@ import { getFileInfoType } from "./_util.ts";
  * @param dest the destination link path
  */
 export async function ensureSymlink(src: string, dest: string): Promise<void> {
-  const srcStatInfo = await Deno.lstat(src);
-  const srcFilePathType = getFileInfoType(srcStatInfo);
+  await Deno.lstat(src);
 
   if (await exists(dest)) {
     const destStatInfo = await Deno.lstat(dest);
@@ -27,14 +26,7 @@ export async function ensureSymlink(src: string, dest: string): Promise<void> {
   }
 
   await ensureDir(path.dirname(dest));
-
-  if (Deno.build.os === "windows") {
-    await Deno.symlink(src, dest, {
-      type: srcFilePathType === "dir" ? "dir" : "file",
-    });
-  } else {
-    await Deno.symlink(src, dest);
-  }
+  await Deno.symlink(src, dest);
 }
 
 /**
@@ -45,8 +37,7 @@ export async function ensureSymlink(src: string, dest: string): Promise<void> {
  * @param dest the destination link path
  */
 export function ensureSymlinkSync(src: string, dest: string): void {
-  const srcStatInfo = Deno.lstatSync(src);
-  const srcFilePathType = getFileInfoType(srcStatInfo);
+  Deno.lstatSync(src);
 
   if (existsSync(dest)) {
     const destStatInfo = Deno.lstatSync(dest);
@@ -60,11 +51,5 @@ export function ensureSymlinkSync(src: string, dest: string): void {
   }
 
   ensureDirSync(path.dirname(dest));
-  if (Deno.build.os === "windows") {
-    Deno.symlinkSync(src, dest, {
-      type: srcFilePathType === "dir" ? "dir" : "file",
-    });
-  } else {
-    Deno.symlinkSync(src, dest);
-  }
+  Deno.symlinkSync(src, dest);
 }

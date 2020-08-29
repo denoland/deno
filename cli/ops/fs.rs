@@ -827,15 +827,6 @@ struct SymlinkArgs {
   promise_id: Option<u64>,
   oldpath: String,
   newpath: String,
-  #[cfg(not(unix))]
-  options: Option<SymlinkOptions>,
-}
-
-#[cfg(not(unix))]
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct SymlinkOptions {
-  _type: String,
 }
 
 fn op_symlink(
@@ -862,30 +853,13 @@ fn op_symlink(
     #[cfg(not(unix))]
     {
       use std::os::windows::fs::{symlink_dir, symlink_file};
+      let metadata = std::fs::metadata(&oldpath)?;
+      if metadata.is_file() {
+        symlink_file(&oldpath, &newpath)?;
+      } else if metadata.is_dir() {
+        symlink_dir(&oldpath, &newpath)?;
+      }
 
-      match args.options {
-        Some(options) => match options._type.as_ref() {
-          "file" => symlink_file(&oldpath, &newpath)?,
-          "dir" => symlink_dir(&oldpath, &newpath)?,
-          _ => return Err(ErrBox::type_error("unsupported type")),
-        },
-        None => {
-          let old_meta = std::fs::metadata(&oldpath);
-          match old_meta {
-            Ok(metadata) => {
-              if metadata.is_file() {
-                symlink_file(&oldpath, &newpath)?
-              } else if metadata.is_dir() {
-                symlink_dir(&oldpath, &newpath)?
-              }
-            }
-            Err(_) => return Err(ErrBox::type_error(
-              "you must pass a `options` argument for non-existent target path in windows"
-                .to_string(),
-            )),
-          }
-        }
-      };
       Ok(json!({}))
     }
   })

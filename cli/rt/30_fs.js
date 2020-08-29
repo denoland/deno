@@ -296,17 +296,15 @@
   function symlinkSync(
     oldpath,
     newpath,
-    options,
   ) {
-    sendSync("op_symlink", { oldpath, newpath, options });
+    sendSync("op_symlink", { oldpath, newpath });
   }
 
   async function symlink(
     oldpath,
     newpath,
-    options,
   ) {
-    await sendAsync("op_symlink", { oldpath, newpath, options });
+    await sendAsync("op_symlink", { oldpath, newpath });
   }
 
   function fdatasyncSync(rid) {

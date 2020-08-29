@@ -72,7 +72,6 @@ delete Object.prototype.__proto__;
     "Signal",
     "SignalStream",
     "StartTlsOptions",
-    "SymlinkOptions",
     "TranspileOnlyResult",
     "UnixConnectOptions",
     "UnixListenOptions",

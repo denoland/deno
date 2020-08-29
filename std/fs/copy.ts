@@ -1,10 +1,8 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import * as path from "../path/mod.ts";
 import { ensureDir, ensureDirSync } from "./ensure_dir.ts";
-import { isSubdir, getFileInfoType } from "./_util.ts";
+import { isSubdir } from "./_util.ts";
 import { assert } from "../_util/assert.ts";
-
-const isWindows = Deno.build.os === "windows";
 
 export interface CopyOptions {
   /**
@@ -112,14 +110,8 @@ async function copySymLink(
 ): Promise<void> {
   await ensureValidCopy(src, dest, options);
   const originSrcFilePath = await Deno.readLink(src);
-  const type = getFileInfoType(await Deno.lstat(src));
-  if (isWindows) {
-    await Deno.symlink(originSrcFilePath, dest, {
-      type: type === "dir" ? "dir" : "file",
-    });
-  } else {
-    await Deno.symlink(originSrcFilePath, dest);
-  }
+  await Deno.symlink(originSrcFilePath, dest);
+
   if (options.preserveTimestamps) {
     const statInfo = await Deno.lstat(src);
     assert(statInfo.atime instanceof Date, `statInfo.atime is unavailable`);
@@ -136,14 +128,7 @@ function copySymlinkSync(
 ): void {
   ensureValidCopySync(src, dest, options);
   const originSrcFilePath = Deno.readLinkSync(src);
-  const type = getFileInfoType(Deno.lstatSync(src));
-  if (isWindows) {
-    Deno.symlinkSync(originSrcFilePath, dest, {
-      type: type === "dir" ? "dir" : "file",
-    });
-  } else {
-    Deno.symlinkSync(originSrcFilePath, dest);
-  }
+  Deno.symlinkSync(originSrcFilePath, dest);
 
   if (options.preserveTimestamps) {
     const statInfo = Deno.lstatSync(src);
