@@ -282,8 +282,12 @@ the message.
 logger.debug(() => `this is expensive: ${expensiveFn(5)}`);
 ```
 
-NOTE: When using lazy log evaluation, `undefined` will be returned if the
-resolver function is not called because the logger won't log it. E.g.
+> NOTE: When using lazy log evaluation, `undefined` will be returned if the
+> resolver function is not called because the logger won't log it. It is an
+> antipattern use lazy evaluation with inline logging because the return value
+> depends on the current log level.
+
+Example:
 
 ```ts
 await log.setup({

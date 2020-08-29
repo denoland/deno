@@ -154,7 +154,7 @@ jobs:
 
       - name: Run Benchmarks
         if: matrix.config.kind == 'bench'
-        run: python ./tools/benchmark.py --release
+        run: cargo bench
 
       - name: Post Benchmarks
         if: |

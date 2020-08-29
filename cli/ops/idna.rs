@@ -2,16 +2,21 @@
 
 //! https://url.spec.whatwg.org/#idna
 
-use super::dispatch_json::{Deserialize, JsonOp, Value};
+use super::dispatch_json::{Deserialize, Value};
 use crate::state::State;
 use deno_core::CoreIsolate;
 use deno_core::ErrBox;
+use deno_core::ResourceTable;
 use deno_core::ZeroCopyBuf;
 use idna::{domain_to_ascii, domain_to_ascii_strict};
 use std::rc::Rc;
 
 pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  i.register_op("op_domain_to_ascii", s.stateful_json_op(op_domain_to_ascii));
+  let t = &CoreIsolate::state(i).borrow().resource_table.clone();
+  i.register_op(
+    "op_domain_to_ascii",
+    s.stateful_json_op_sync(t, op_domain_to_ascii),
+  );
 }
 
 #[derive(Deserialize)]
@@ -22,10 +27,11 @@ struct DomainToAscii {
 }
 
 fn op_domain_to_ascii(
-  _state: &Rc<State>,
+  _state: &State,
+  _resource_table: &mut ResourceTable,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, ErrBox> {
+) -> Result<Value, ErrBox> {
   let args: DomainToAscii = serde_json::from_value(args)?;
   if args.be_strict {
     domain_to_ascii_strict(args.domain.as_str())
@@ -36,5 +42,5 @@ fn op_domain_to_ascii(
     let message = format!("Invalid IDNA encoded domain name: {:?}", err);
     ErrBox::new("URIError", message)
   })
-  .map(|domain| JsonOp::Sync(json!(domain)))
+  .map(|domain| json!(domain))
 }

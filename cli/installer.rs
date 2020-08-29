@@ -114,17 +114,16 @@ fn get_installer_root() -> Result<PathBuf, Error> {
 
 fn infer_name_from_url(url: &Url) -> Option<String> {
   let path = PathBuf::from(url.path());
-  let stem = match path.file_stem() {
+  let mut stem = match path.file_stem() {
     Some(stem) => stem.to_string_lossy().to_string(),
     None => return None,
   };
-  if let Some(parent_path) = path.parent() {
-    if stem == "main" || stem == "mod" || stem == "index" || stem == "cli" {
-      if let Some(parent_name) = parent_path.file_name() {
-        return Some(parent_name.to_string_lossy().to_string());
-      }
+  if stem == "main" || stem == "mod" || stem == "index" || stem == "cli" {
+    if let Some(parent_name) = path.parent().and_then(|p| p.file_name()) {
+      stem = parent_name.to_string_lossy().to_string();
     }
   }
+  let stem = stem.splitn(2, '@').next().unwrap().to_string();
   Some(stem)
 }
 
@@ -349,6 +348,24 @@ mod tests {
       Some("main".to_string())
     );
     assert_eq!(infer_name_from_url(&Url::parse("file:///").unwrap()), None);
+    assert_eq!(
+      infer_name_from_url(
+        &Url::parse("https://example.com/abc@0.1.0").unwrap()
+      ),
+      Some("abc".to_string())
+    );
+    assert_eq!(
+      infer_name_from_url(
+        &Url::parse("https://example.com/abc@0.1.0/main.ts").unwrap()
+      ),
+      Some("abc".to_string())
+    );
+    assert_eq!(
+      infer_name_from_url(
+        &Url::parse("https://example.com/abc@def@ghi").unwrap()
+      ),
+      Some("abc".to_string())
+    );
   }
 
   #[test]
