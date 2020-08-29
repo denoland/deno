@@ -18,5 +18,5 @@ const instance = new WebAssembly.Instance(module, {
 const memory = instance.exports.memory as WebAssembly.Memory;
 context.memory = memory;
 
-const start = instance.exports._start as Function;
+const start = instance.exports._start as CallableFunction;
 start();
