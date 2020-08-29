@@ -339,6 +339,7 @@
         }
         usedNonBase = true;
       } else {
+        parts.slashes = baseParts.slashes;
         parts.username = baseParts.username;
         parts.password = baseParts.password;
         parts.hostname = baseParts.hostname;

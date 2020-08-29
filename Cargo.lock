@@ -231,6 +231,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4785bdd1c96b2a846b2bd7cc02e86b6b3dbf14e7e53446c4f54c92a361040822"
 
 [[package]]
+name = "chrono"
+version = "0.4.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c74d84029116787153e02106bf53e66828452a4b325cc8652b788b5967c0a0b6"
+dependencies = [
+ "num-integer",
+ "num-traits",
+ "time",
+]
+
+[[package]]
 name = "clap"
 version = "2.33.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -321,12 +332,13 @@ dependencies = [
 
 [[package]]
 name = "deno"
-version = "1.3.1"
+version = "1.3.2"
 dependencies = [
  "atty",
  "base64 0.12.3",
  "byteorder",
  "bytes",
+ "chrono",
  "clap",
  "deno_core",
  "deno_doc",
@@ -380,7 +392,7 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.54.0"
+version = "0.55.0"
 dependencies = [
  "downcast-rs",
  "futures",
@@ -429,7 +441,7 @@ dependencies = [
 
 [[package]]
 name = "deno_web"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "deno_core",
  "futures",
@@ -1056,9 +1068,9 @@ dependencies = [
 
 [[package]]
 name = "libc"
-version = "0.2.74"
+version = "0.2.76"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a2f02823cf78b754822df5f7f268fb59822e7296276d3e069d8e8cb26a14bd10"
+checksum = "755456fae044e6fa1ebbbd1b3e902ae19e73097ed4ed87bb79934a867c007bc3"
 
 [[package]]
 name = "log"
@@ -1855,9 +1867,9 @@ dependencies = [
 
 [[package]]
 name = "rusty_v8"
-version = "0.8.1"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "30925153e17b35ca37a21f4bbf5f61277348ee3110d65360d89010993ce27079"
+checksum = "74794f26ec99d8baa7dc8499d520f122aad18fc022e79fc774e3c178040960f9"
 dependencies = [
  "bitflags",
  "cargo_gn",

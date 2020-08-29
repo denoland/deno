@@ -1,15 +1,16 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use super::dispatch_json::{Deserialize, JsonOp, Value};
+use super::dispatch_json::{Deserialize, Value};
 use super::io::{std_file_resource, StreamResource, StreamResourceHolder};
 use crate::signal::kill;
 use crate::state::State;
+use deno_core::BufVec;
 use deno_core::CoreIsolate;
-use deno_core::CoreIsolateState;
 use deno_core::ErrBox;
 use deno_core::ResourceTable;
 use deno_core::ZeroCopyBuf;
 use futures::future::poll_fn;
 use futures::future::FutureExt;
+use std::cell::RefCell;
 use std::rc::Rc;
 use tokio::process::Command;
 
@@ -17,9 +18,11 @@ use tokio::process::Command;
 use std::os::unix::process::ExitStatusExt;
 
 pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  i.register_op("op_run", s.stateful_json_op2(op_run));
-  i.register_op("op_run_status", s.stateful_json_op2(op_run_status));
-  i.register_op("op_kill", s.stateful_json_op(op_kill));
+  let t = &CoreIsolate::state(i).borrow().resource_table.clone();
+
+  i.register_op("op_run", s.stateful_json_op_sync(t, op_run));
+  i.register_op("op_run_status", s.stateful_json_op_async(t, op_run_status));
+  i.register_op("op_kill", s.stateful_json_op_sync(t, op_kill));
 }
 
 fn clone_file(
@@ -60,15 +63,14 @@ struct ChildResource {
 }
 
 fn op_run(
-  isolate_state: &mut CoreIsolateState,
-  state: &Rc<State>,
+  state: &State,
+  resource_table: &mut ResourceTable,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, ErrBox> {
+) -> Result<Value, ErrBox> {
   let run_args: RunArgs = serde_json::from_value(args)?;
 
   state.check_run()?;
-  let mut resource_table = isolate_state.resource_table.borrow_mut();
 
   let args = run_args.cmd;
   let env = run_args.env;
@@ -88,21 +90,21 @@ fn op_run(
   if run_args.stdin != "" {
     c.stdin(subprocess_stdio_map(run_args.stdin.as_ref())?);
   } else {
-    let file = clone_file(run_args.stdin_rid, &mut resource_table)?;
+    let file = clone_file(run_args.stdin_rid, resource_table)?;
     c.stdin(file);
   }
 
   if run_args.stdout != "" {
     c.stdout(subprocess_stdio_map(run_args.stdout.as_ref())?);
   } else {
-    let file = clone_file(run_args.stdout_rid, &mut resource_table)?;
+    let file = clone_file(run_args.stdout_rid, resource_table)?;
     c.stdout(file);
   }
 
   if run_args.stderr != "" {
     c.stderr(subprocess_stdio_map(run_args.stderr.as_ref())?);
   } else {
-    let file = clone_file(run_args.stderr_rid, &mut resource_table)?;
+    let file = clone_file(run_args.stderr_rid, resource_table)?;
     c.stderr(file);
   }
 
@@ -155,13 +157,13 @@ fn op_run(
   let child_resource = ChildResource { child };
   let child_rid = resource_table.add("child", Box::new(child_resource));
 
-  Ok(JsonOp::Sync(json!({
+  Ok(json!({
     "rid": child_rid,
     "pid": pid,
     "stdinRid": stdin_rid,
     "stdoutRid": stdout_rid,
     "stderrRid": stderr_rid,
-  })))
+  }))
 }
 
 #[derive(Deserialize)]
@@ -170,49 +172,44 @@ struct RunStatusArgs {
   rid: i32,
 }
 
-fn op_run_status(
-  isolate_state: &mut CoreIsolateState,
-  state: &Rc<State>,
+async fn op_run_status(
+  state: Rc<State>,
+  resource_table: Rc<RefCell<ResourceTable>>,
   args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, ErrBox> {
+  _zero_copy: BufVec,
+) -> Result<Value, ErrBox> {
   let args: RunStatusArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
 
   state.check_run()?;
-  let resource_table = isolate_state.resource_table.clone();
 
-  let future = async move {
-    let run_status = poll_fn(|cx| {
-      let mut resource_table = resource_table.borrow_mut();
-      let child_resource = resource_table
-        .get_mut::<ChildResource>(rid)
-        .ok_or_else(ErrBox::bad_resource_id)?;
-      let child = &mut child_resource.child;
-      child.poll_unpin(cx).map_err(ErrBox::from)
-    })
-    .await?;
+  let run_status = poll_fn(|cx| {
+    let mut resource_table = resource_table.borrow_mut();
+    let child_resource = resource_table
+      .get_mut::<ChildResource>(rid)
+      .ok_or_else(ErrBox::bad_resource_id)?;
+    let child = &mut child_resource.child;
+    child.poll_unpin(cx).map_err(ErrBox::from)
+  })
+  .await?;
 
-    let code = run_status.code();
+  let code = run_status.code();
 
-    #[cfg(unix)]
-    let signal = run_status.signal();
-    #[cfg(not(unix))]
-    let signal = None;
+  #[cfg(unix)]
+  let signal = run_status.signal();
+  #[cfg(not(unix))]
+  let signal = None;
 
-    code
-      .or(signal)
-      .expect("Should have either an exit code or a signal.");
-    let got_signal = signal.is_some();
+  code
+    .or(signal)
+    .expect("Should have either an exit code or a signal.");
+  let got_signal = signal.is_some();
 
-    Ok(json!({
-       "gotSignal": got_signal,
-       "exitCode": code.unwrap_or(-1),
-       "exitSignal": signal.unwrap_or(-1),
-    }))
-  };
-
-  Ok(JsonOp::Async(future.boxed_local()))
+  Ok(json!({
+     "gotSignal": got_signal,
+     "exitCode": code.unwrap_or(-1),
+     "exitSignal": signal.unwrap_or(-1),
+  }))
 }
 
 #[derive(Deserialize)]
@@ -222,14 +219,15 @@ struct KillArgs {
 }
 
 fn op_kill(
-  state: &Rc<State>,
+  state: &State,
+  _resource_table: &mut ResourceTable,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, ErrBox> {
+) -> Result<Value, ErrBox> {
   state.check_unstable("Deno.kill");
   state.check_run()?;
 
   let args: KillArgs = serde_json::from_value(args)?;
   kill(args.pid, args.signo)?;
-  Ok(JsonOp::Sync(json!({})))
+  Ok(json!({}))
 }

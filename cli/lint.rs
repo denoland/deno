@@ -95,64 +95,8 @@ pub async fn lint_files(
   Ok(())
 }
 
-/// List of lint rules used available in "deno lint" subcommand
-fn get_rules() -> Vec<Box<dyn LintRule>> {
-  vec![
-    rules::ban_ts_comment::BanTsComment::new(),
-    rules::ban_untagged_ignore::BanUntaggedIgnore::new(),
-    rules::constructor_super::ConstructorSuper::new(),
-    rules::for_direction::ForDirection::new(),
-    rules::getter_return::GetterReturn::new(),
-    rules::no_array_constructor::NoArrayConstructor::new(),
-    rules::no_async_promise_executor::NoAsyncPromiseExecutor::new(),
-    rules::no_case_declarations::NoCaseDeclarations::new(),
-    rules::no_class_assign::NoClassAssign::new(),
-    rules::no_compare_neg_zero::NoCompareNegZero::new(),
-    rules::no_cond_assign::NoCondAssign::new(),
-    rules::no_debugger::NoDebugger::new(),
-    rules::no_delete_var::NoDeleteVar::new(),
-    rules::no_dupe_args::NoDupeArgs::new(),
-    rules::no_dupe_class_members::NoDupeClassMembers::new(),
-    rules::no_dupe_else_if::NoDupeElseIf::new(),
-    rules::no_dupe_keys::NoDupeKeys::new(),
-    rules::no_duplicate_case::NoDuplicateCase::new(),
-    rules::no_empty_character_class::NoEmptyCharacterClass::new(),
-    rules::no_empty_interface::NoEmptyInterface::new(),
-    rules::no_empty_pattern::NoEmptyPattern::new(),
-    rules::no_empty::NoEmpty::new(),
-    rules::no_ex_assign::NoExAssign::new(),
-    rules::no_explicit_any::NoExplicitAny::new(),
-    rules::no_extra_boolean_cast::NoExtraBooleanCast::new(),
-    rules::no_extra_non_null_assertion::NoExtraNonNullAssertion::new(),
-    rules::no_extra_semi::NoExtraSemi::new(),
-    rules::no_func_assign::NoFuncAssign::new(),
-    rules::no_misused_new::NoMisusedNew::new(),
-    rules::no_namespace::NoNamespace::new(),
-    rules::no_new_symbol::NoNewSymbol::new(),
-    rules::no_obj_calls::NoObjCalls::new(),
-    rules::no_octal::NoOctal::new(),
-    rules::no_prototype_builtins::NoPrototypeBuiltins::new(),
-    rules::no_regex_spaces::NoRegexSpaces::new(),
-    rules::no_setter_return::NoSetterReturn::new(),
-    rules::no_this_alias::NoThisAlias::new(),
-    rules::no_this_before_super::NoThisBeforeSuper::new(),
-    rules::no_unsafe_finally::NoUnsafeFinally::new(),
-    rules::no_unsafe_negation::NoUnsafeNegation::new(),
-    rules::no_with::NoWith::new(),
-    rules::prefer_as_const::PreferAsConst::new(),
-    rules::prefer_namespace_keyword::PreferNamespaceKeyword::new(),
-    rules::require_yield::RequireYield::new(),
-    rules::triple_slash_reference::TripleSlashReference::new(),
-    rules::use_isnan::UseIsNaN::new(),
-    rules::valid_typeof::ValidTypeof::new(),
-    rules::no_inferrable_types::NoInferrableTypes::new(),
-    rules::no_unused_labels::NoUnusedLabels::new(),
-    rules::no_shadow_restricted_names::NoShadowRestrictedNames::new(),
-  ]
-}
-
 pub fn print_rules_list() {
-  let lint_rules = get_rules();
+  let lint_rules = rules::get_recommended_rules();
 
   println!("Available rules:");
   for rule in lint_rules {
@@ -181,7 +125,7 @@ fn lint_file(file_path: PathBuf) -> Result<Vec<LintDiagnostic>, ErrBox> {
   let media_type = map_file_extension(&file_path);
   let syntax = swc_util::get_syntax_for_media_type(media_type);
 
-  let lint_rules = get_rules();
+  let lint_rules = rules::get_recommended_rules();
   let mut linter = create_linter(syntax, lint_rules);
 
   let file_diagnostics = linter.lint(file_name, source_code)?;
