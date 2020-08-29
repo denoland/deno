@@ -50,6 +50,9 @@ Deno.test("testingEqual", function (): void {
       new Date(2019, 0, 3, 4, 20, 1, 20),
     ),
   );
+  assert(equal(new Date("Invalid"), new Date("Invalid")));
+  assert(!equal(new Date("Invalid"), new Date(2019, 0, 3)));
+  assert(!equal(new Date("Invalid"), new Date(2019, 0, 3, 4, 20, 1, 10)));
   assert(equal(new Set([1]), new Set([1])));
   assert(!equal(new Set([1]), new Set([2])));
   assert(equal(new Set([1, 2, 3]), new Set([3, 2, 1])));
@@ -139,6 +142,10 @@ Deno.test("testingNotEquals", function (): void {
   assertNotEquals("Denosaurus", "Tyrannosaurus");
   assertNotEquals(
     new Date(2019, 0, 3, 4, 20, 1, 10),
+    new Date(2019, 0, 3, 4, 20, 1, 20),
+  );
+  assertNotEquals(
+    new Date("invalid"),
     new Date(2019, 0, 3, 4, 20, 1, 20),
   );
   let didThrow;
@@ -340,6 +347,7 @@ Deno.test({
     assertEquals(10, 10);
     assertEquals("abc", "abc");
     assertEquals({ a: 10, b: { c: "1" } }, { a: 10, b: { c: "1" } });
+    assertEquals(new Date("invalid"), new Date("invalid"));
   },
 });
 
@@ -427,6 +435,21 @@ Deno.test({
         "Values are not equal:",
         ...createHeader(),
         removed(`-   ${new Date(2019, 0, 3, 4, 20, 1, 10).toISOString()}`),
+        added(`+   ${new Date(2019, 0, 3, 4, 20, 1, 20).toISOString()}`),
+        "",
+      ].join("\n"),
+    );
+    assertThrows(
+      (): void =>
+        assertEquals(
+          new Date("invalid"),
+          new Date(2019, 0, 3, 4, 20, 1, 20),
+        ),
+      AssertionError,
+      [
+        "Values are not equal:",
+        ...createHeader(),
+        removed(`-   ${new Date("invalid")}`),
         added(`+   ${new Date(2019, 0, 3, 4, 20, 1, 20).toISOString()}`),
         "",
       ].join("\n"),
