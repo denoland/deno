@@ -58,7 +58,7 @@
           this.#readyState = OPEN;
           const event = new Event("open");
           event.target = this;
-          this.onopen(event);
+          this.onopen?.(event);
           this.dispatchEvent(event);
 
           this.#eventLoop();
@@ -67,12 +67,12 @@
 
           const errEvent = new Event("error");
           errEvent.target = this;
-          this.onerror(errEvent);
+          this.onerror?.(errEvent);
           this.dispatchEvent(errEvent);
 
           const closeEvent = new CloseEvent("close");
           closeEvent.target = this;
-          this.onclose(closeEvent);
+          this.onclose?.(closeEvent);
           this.dispatchEvent(closeEvent);
         }
       });
@@ -205,14 +205,14 @@
             reason,
           });
           event.target = this;
-          this.onclose(event);
+          this.onclose?.(event);
           this.dispatchEvent(event);
           close(this.#rid);
         });
 
         const event = new Event("error");
         event.target = this;
-        this.onerror(event);
+        this.onerror?.(event);
         this.dispatchEvent(event);
       } else if (
         this.#readyState !== CLOSING && this.#readyState !== CLOSED
@@ -231,7 +231,7 @@
             reason,
           });
           event.target = this;
-          this.onclose(event);
+          this.onclose?.(event);
           this.dispatchEvent(event);
           close(this.#rid);
         });
@@ -240,9 +240,7 @@
 
     async #eventLoop() {
       if (this.#readyState === OPEN) {
-        console.log("before op_ws_next_event");
         const message = await sendAsync("op_ws_next_event", { rid: this.#rid });
-        console.log("after op_ws_next_event");
         if (message.type === "string" || message.type === "binary") {
           let data;
 
@@ -261,7 +259,7 @@
             origin: this.#url,
           });
           event.target = this;
-          this.onmessage(event);
+          this.onmessage?.(event);
           this.dispatchEvent(event);
 
           this.#eventLoop();
@@ -273,12 +271,12 @@
             reason: message.reason,
           });
           event.target = this;
-          this.onclose(event);
+          this.onclose?.(event);
           this.dispatchEvent(event);
         } else if (message.type === "error") {
           const event = new Event("error");
           event.target = this;
-          this.onerror(event);
+          this.onerror?.(event);
           this.dispatchEvent(event);
         }
       }
