@@ -127,8 +127,6 @@ Deno.test({
 Deno.test({
   name: "process.stdin",
   fn() {
-    console.log(process.stdin);
-    console.log(Deno.stdin, Deno.isatty(Deno.stdin.rid));
     assertEquals(typeof process.stdin.rid, "number");
     assertEquals(process.stdin.rid, Deno.stdin.rid);
     assert(process.stdin.isTTY);
@@ -138,7 +136,6 @@ Deno.test({
 Deno.test({
   name: "process.stdout",
   fn() {
-    console.log(process.stdout);
     assertEquals(typeof process.stdout.rid, "number");
     assertEquals(process.stdout.rid, Deno.stdout.rid);
     assert(process.stdout.isTTY);
@@ -148,7 +145,6 @@ Deno.test({
 Deno.test({
   name: "process.stderr",
   fn() {
-    console.log(process.stderr);
     assertEquals(typeof process.stderr.rid, "number");
     assertEquals(process.stderr.rid, Deno.stderr.rid);
     assert(process.stderr.isTTY);
