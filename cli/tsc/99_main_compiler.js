@@ -914,7 +914,6 @@ delete Object.prototype.__proto__;
   // Update carefully!
   const CompilerRequestType = {
     Compile: 0,
-    Transpile: 1,
     Bundle: 2,
     RuntimeCompile: 3,
     RuntimeBundle: 4,
@@ -1428,71 +1427,6 @@ delete Object.prototype.__proto__;
     };
   }
 
-  function transpile({
-    config: configText,
-    configPath,
-    cwd,
-    performance,
-    sourceFiles,
-  }) {
-    if (performance) {
-      performanceStart();
-    }
-    log(">>> transpile start");
-    let compilerOptions;
-    if (configText && configPath && cwd) {
-      const { options, ...response } = configure(
-        DEFAULT_TRANSPILE_OPTIONS,
-        configText,
-        configPath,
-        cwd,
-      );
-      const diagnostics = processConfigureResponse(response, configPath);
-      if (diagnostics && diagnostics.length) {
-        return {
-          diagnostics: fromTypeScriptDiagnostic(diagnostics),
-          emitMap: {},
-        };
-      }
-      compilerOptions = options;
-    } else {
-      compilerOptions = Object.assign({}, DEFAULT_TRANSPILE_OPTIONS);
-    }
-    const emitMap = {};
-    let diagnostics = [];
-    for (const { sourceCode, fileName } of sourceFiles) {
-      const {
-        outputText,
-        sourceMapText,
-        diagnostics: diags,
-      } = ts.transpileModule(sourceCode, {
-        fileName,
-        compilerOptions,
-        reportDiagnostics: true,
-      });
-      if (diags) {
-        diagnostics = diagnostics.concat(...diags);
-      }
-      emitMap[`${fileName}.js`] = { filename: fileName, contents: outputText };
-      // currently we inline source maps, but this is good logic to have if this
-      // ever changes
-      if (sourceMapText) {
-        emitMap[`${fileName}.map`] = {
-          filename: fileName,
-          contents: sourceMapText,
-        };
-      }
-    }
-    performanceProgram({ fileCount: sourceFiles.length });
-    const stats = performance ? performanceEnd() : undefined;
-    log("<<< transpile end");
-    return {
-      diagnostics: fromTypeScriptDiagnostic(diagnostics),
-      emitMap,
-      stats,
-    };
-  }
-
   function bundle({
     configPath,
     compilerOptions,
@@ -1783,11 +1717,6 @@ delete Object.prototype.__proto__;
     switch (request.type) {
       case CompilerRequestType.Compile: {
         const result = compile(request);
-        opCompilerRespond(result);
-        break;
-      }
-      case CompilerRequestType.Transpile: {
-        const result = transpile(request);
         opCompilerRespond(result);
         break;
       }

@@ -55,7 +55,6 @@ pub fn enum_name_media_type(mt: MediaType) -> &'static str {
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum CompilerRequestType {
   Compile = 0,
-  Transpile = 1,
   Bundle = 2,
   RuntimeCompile = 3,
   RuntimeBundle = 4,
@@ -69,7 +68,6 @@ impl Serialize for CompilerRequestType {
   {
     let value: i32 = match self {
       CompilerRequestType::Compile => 0 as i32,
-      CompilerRequestType::Transpile => 1 as i32,
       CompilerRequestType::Bundle => 2 as i32,
       CompilerRequestType::RuntimeCompile => 3 as i32,
       CompilerRequestType::RuntimeBundle => 4 as i32,
