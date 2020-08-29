@@ -1296,7 +1296,11 @@ async fn op_symlink_async(
   state.check_write(&newpath)?;
 
   tokio::task::spawn_blocking(move || {
-    debug!("op_symlink_async {} {}", oldpath.display(), newpath.display());
+    debug!(
+      "op_symlink_async {} {}",
+      oldpath.display(),
+      newpath.display()
+    );
     #[cfg(unix)]
     {
       use std::os::unix::fs::symlink;
