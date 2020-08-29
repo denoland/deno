@@ -374,24 +374,6 @@ delete Object.prototype.__proto__;
     sourceMap: false,
   };
 
-  const DEFAULT_INCREMENTAL_COMPILE_OPTIONS = {
-    allowJs: false,
-    allowNonTsExtensions: true,
-    checkJs: false,
-    esModuleInterop: true,
-    incremental: true,
-    inlineSourceMap: true,
-    jsx: ts.JsxEmit.React,
-    module: ts.ModuleKind.ESNext,
-    outDir: OUT_DIR,
-    resolveJsonModule: true,
-    sourceMap: false,
-    strict: true,
-    removeComments: true,
-    target: ts.ScriptTarget.ESNext,
-    tsBuildInfoFile: TS_BUILD_INFO,
-  };
-
   const DEFAULT_COMPILE_OPTIONS = {
     allowJs: false,
     allowNonTsExtensions: true,
@@ -1345,14 +1327,11 @@ delete Object.prototype.__proto__;
   }
 
   function compile({
-    allowJs,
     buildInfo,
-    // config,
     configPath,
     compilerOptions,
     rootNames,
     target,
-    unstable,
     cwd,
     sourceFileMap,
     type,
@@ -1372,36 +1351,9 @@ delete Object.prototype.__proto__;
       emitMap: {},
     };
 
-    let options = Object.assign(
-      {},
-      DEFAULT_COMPILE_OPTIONS,
-      DEFAULT_INCREMENTAL_COMPILE_OPTIONS,
-      { allowJs },
-    );
-    if (unstable) {
-      options.lib = [
-        target === CompilerHostTarget.Worker
-          ? "lib.deno.worker.d.ts"
-          : "lib.deno.window.d.ts",
-        "lib.deno.unstable.d.ts",
-      ];
-    }
-
     let diagnostics = [];
 
-    // // if there is a configuration supplied, we need to parse that
-    // if (config && config.length && configPath) {
-    //   const { options: opts, ...configResult } = configure(
-    //     options,
-    //     config,
-    //     configPath,
-    //     cwd,
-    //   );
-    //   options = opts;
-    //   diagnostics = processConfigureResponse(configResult, configPath) || [];
-    // }
-
-    const { options: newopts, diagnostics: diags } = newConfigure(
+    const { options, diagnostics: diags } = newConfigure(
       {},
       JSON.stringify({ compilerOptions }),
       configPath,
@@ -1414,18 +1366,10 @@ delete Object.prototype.__proto__;
 
     // TODO(bartlomieju): this options is excluded by `ts.convertCompilerOptionsFromJson`
     // however stuff breaks if it's not passed (type_directives_js_main.js)
-    newopts.allowNonTsExtensions = true;
-
-    // Deno.core.print(`allowJs: ${allowJs}\n`, true);
-    // Deno.core.print(`new options: ${JSON.stringify(newopts, null, 2)}\n`, true);
-    // Deno.core.print(`new result: ${JSON.stringify(diagnostics, null, 2)}\n`, true);
-
-    // Deno.core.print(`configured options: ${JSON.stringify(options, null, 2)}\n`, true);
-    // Deno.core.print(`configured diagnostics: ${JSON.stringify(diagnostics, null, 2)}\n`, true);
-    // Deno.core.print(`passed options: ${JSON.stringify(compilerOptions, null, 2)}\n`, true);
+    options.allowNonTsExtensions = true;
 
     const host = new IncrementalCompileHost(
-      newopts,
+      options,
       target,
       createCompileWriteFile(state),
       buildInfo,
@@ -1550,11 +1494,10 @@ delete Object.prototype.__proto__;
   }
 
   function bundle({
-    config,
     configPath,
+    compilerOptions,
     rootNames,
     target,
-    unstable,
     cwd,
     sourceFileMap,
     type,
@@ -1576,33 +1519,21 @@ delete Object.prototype.__proto__;
       rootNames,
       bundleOutput: undefined,
     };
-    let options = Object.assign(
+
+    const { options, diagnostics: diags } = newConfigure(
       {},
-      DEFAULT_COMPILE_OPTIONS,
-      DEFAULT_BUNDLER_OPTIONS,
+      JSON.stringify({ compilerOptions }),
+      configPath,
+      cwd,
     );
-    if (unstable) {
-      options.lib = [
-        target === CompilerHostTarget.Worker
-          ? "lib.deno.worker.d.ts"
-          : "lib.deno.window.d.ts",
-        "lib.deno.unstable.d.ts",
-      ];
-    }
 
-    let diagnostics = [];
+    diagnostics = diags.filter(
+      ({ code }) => code != 5023 && !IGNORED_DIAGNOSTICS.includes(code),
+    );
 
-    // if there is a configuration supplied, we need to parse that
-    if (config && config.length && configPath) {
-      const { options: opts, ...configResult } = configure(
-        options,
-        config,
-        configPath,
-        cwd,
-      );
-      options = opts;
-      diagnostics = processConfigureResponse(configResult, configPath) || [];
-    }
+    // TODO(bartlomieju): this options is excluded by `ts.convertCompilerOptionsFromJson`
+    // however stuff breaks if it's not passed (type_directives_js_main.js)
+    options.allowNonTsExtensions = true;
 
     const host = new Host(
       options,

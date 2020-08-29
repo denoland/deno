@@ -1,7 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-#![allow(unused)]
-
 use crate::colors;
 use crate::diagnostics::Diagnostic;
 use crate::diagnostics::DiagnosticItem;
@@ -47,6 +45,7 @@ use std::fs;
 use std::io;
 use std::ops::Deref;
 use std::ops::DerefMut;
+use std::path::Path;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -201,6 +200,16 @@ lazy_static! {
     Regex::new(r#"(\stypes\s*=\s*)('|")(.+?)('|")"#).unwrap();
   static ref LIB_REFERENCE_RE: Regex =
     Regex::new(r#"(\slib\s*=\s*)('|")(.+?)('|")"#).unwrap();
+}
+
+fn warn_ignored_options(
+  maybe_ignored_options: Option<tsc_config::IgnoredCompilerOptions>,
+  config_path: &Path,
+) {
+  if let Some(ignored_options) = maybe_ignored_options {
+    let ignored_opts = ignored_options.to_string();
+    eprintln!("Unsupported compiler options in \"{}\"\n  The following options were ignored:\n    {}", config_path.to_string_lossy(), ignored_opts);
+  }
 }
 
 /// Create a new worker with snapshot of TS compiler and setup compiler's
@@ -631,21 +640,17 @@ impl TsCompiler {
         None
       };
 
-    if let Some(ignored_options) = maybe_ignored_options {
-      let config_path = compiler_config.path.clone().unwrap();
-      let ignored_opts = ignored_options.to_string();
-      eprintln!("Unsupported compiler options in \"{}\"\n  The following options were ignored:\n    {}", config_path.to_string_lossy(), ignored_opts);
-    }
+    warn_ignored_options(
+      maybe_ignored_options,
+      compiler_config.path.as_ref().unwrap(),
+    );
 
     let j = json!({
       "type": msg::CompilerRequestType::Compile,
-      "allowJs": allow_js,
       "target": target,
       "rootNames": root_names,
-      "unstable": unstable,
       "performance": performance,
       "configPath": compiler_config.path.unwrap_or_else(|| PathBuf::from("tsconfig.json")),
-      "config": compiler_config.content.as_ref(),
       "compilerOptions": compiler_options,
       "cwd": cwd,
       "sourceFileMap": module_graph_json,
@@ -726,33 +731,62 @@ impl TsCompiler {
     let cwd = std::env::current_dir().unwrap();
     let performance =
       matches!(global_state.flags.log_level, Some(Level::Debug));
+    let unstable = self.flags.unstable;
+
+    let mut lib = if target == "main" {
+      vec!["deno.window"]
+    } else {
+      vec!["deno.worker"]
+    };
+
+    if unstable {
+      lib.push("deno.unstable");
+    }
+
+    let mut compiler_options = json!({
+      "allowJs": true,
+      "allowNonTsExtensions": true,
+      "checkJs": false,
+      "esModuleInterop": true,
+      "inlineSourceMap": false,
+      "jsx": "react",
+      "lib": lib,
+      "module": "system",
+      "outFile": "deno:///bundle.js",
+      // disabled until we have effective way to modify source maps
+      "sourceMap": false,
+      "strict": true,
+      "removeComments": true,
+      "target": "esnext",
+    });
 
     let compiler_config = self.config.clone();
 
-    // TODO(bartlomieju): this is non-sense; CompilerConfig's `path` and `content` should
-    // be optional
-    let j = match (compiler_config.path, compiler_config.content.as_ref()) {
-      (Some(config_path), Some(config_data)) => json!({
-        "type": msg::CompilerRequestType::Bundle,
-        "target": target,
-        "rootNames": root_names,
-        "unstable": self.flags.unstable,
-        "performance": performance,
-        "configPath": config_path,
-        "config": config_data.to_string(),
-        "cwd": cwd,
-        "sourceFileMap": module_graph_json,
-      }),
-      _ => json!({
-        "type": msg::CompilerRequestType::Bundle,
-        "target": target,
-        "rootNames": root_names,
-        "unstable": self.flags.unstable,
-        "performance": performance,
-        "cwd": cwd,
-        "sourceFileMap": module_graph_json,
-      }),
-    };
+    let maybe_ignored_options =
+      if let Some(config_text) = compiler_config.content.as_ref() {
+        let (user_config, ignored_options) =
+          tsc_config::parse_config(config_text)?;
+        tsc_config::json_merge(&mut compiler_options, &user_config);
+        ignored_options
+      } else {
+        None
+      };
+
+    warn_ignored_options(
+      maybe_ignored_options,
+      compiler_config.path.as_ref().unwrap(),
+    );
+
+    let j = json!({
+      "type": msg::CompilerRequestType::Bundle,
+      "target": target,
+      "rootNames": root_names,
+      "performance": performance,
+      "configPath": compiler_config.path.unwrap_or_else(|| PathBuf::from("tsconfig.json")),
+      "compilerOptions": compiler_options,
+      "cwd": cwd,
+      "sourceFileMap": module_graph_json,
+    });
 
     let req_msg = j.to_string();
 
