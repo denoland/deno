@@ -868,100 +868,6 @@ delete Object.prototype.__proto__;
     };
   }
 
-  function convertCompilerOptions(str) {
-    const options = JSON.parse(str);
-    const out = {};
-    const keys = Object.keys(options);
-    const files = [];
-    for (const key of keys) {
-      switch (key) {
-        case "jsx":
-          const value = options[key];
-          if (value === "preserve") {
-            out[key] = ts.JsxEmit.Preserve;
-          } else if (value === "react") {
-            out[key] = ts.JsxEmit.React;
-          } else {
-            out[key] = ts.JsxEmit.ReactNative;
-          }
-          break;
-        case "module":
-          switch (options[key]) {
-            case "amd":
-              out[key] = ts.ModuleKind.AMD;
-              break;
-            case "commonjs":
-              out[key] = ts.ModuleKind.CommonJS;
-              break;
-            case "es2015":
-            case "es6":
-              out[key] = ts.ModuleKind.ES2015;
-              break;
-            case "esnext":
-              out[key] = ts.ModuleKind.ESNext;
-              break;
-            case "none":
-              out[key] = ts.ModuleKind.None;
-              break;
-            case "system":
-              out[key] = ts.ModuleKind.System;
-              break;
-            case "umd":
-              out[key] = ts.ModuleKind.UMD;
-              break;
-            default:
-              throw new TypeError("Unexpected module type");
-          }
-          break;
-        case "target":
-          switch (options[key]) {
-            case "es3":
-              out[key] = ts.ScriptTarget.ES3;
-              break;
-            case "es5":
-              out[key] = ts.ScriptTarget.ES5;
-              break;
-            case "es6":
-            case "es2015":
-              out[key] = ts.ScriptTarget.ES2015;
-              break;
-            case "es2016":
-              out[key] = ts.ScriptTarget.ES2016;
-              break;
-            case "es2017":
-              out[key] = ts.ScriptTarget.ES2017;
-              break;
-            case "es2018":
-              out[key] = ts.ScriptTarget.ES2018;
-              break;
-            case "es2019":
-              out[key] = ts.ScriptTarget.ES2019;
-              break;
-            case "es2020":
-              out[key] = ts.ScriptTarget.ES2020;
-              break;
-            case "esnext":
-              out[key] = ts.ScriptTarget.ESNext;
-              break;
-            default:
-              throw new TypeError("Unexpected emit target.");
-          }
-          break;
-        case "types":
-          const types = options[key];
-          assert(types);
-          files.push(...types);
-          break;
-        default:
-          out[key] = options[key];
-      }
-    }
-    return {
-      options: out,
-      files: files.length ? files : undefined,
-    };
-  }
-
   const IGNORED_DIAGNOSTICS = [
     // TS2306: File 'file:///Users/rld/src/deno/cli/tests/subdir/amd_like.js' is
     // not a module.
@@ -1432,8 +1338,15 @@ delete Object.prototype.__proto__;
     // and resolve any external file references
     let convertedOptions;
     if (options) {
-      const result = convertCompilerOptions(options);
+      const result = parseCompilerOptions(
+        `{"compilerOptions":${options}}`,
+        "tsconfig.json",
+        "/",
+      );
       convertedOptions = result.options;
+      // TODO(bartlomieju): this is quirky; if not removed TypeScript will lookup file
+      // using `Host.fileExists`
+      delete convertedOptions.types;
     }
 
     buildLocalSourceFileCache(sourceFileMap);
@@ -1506,8 +1419,15 @@ delete Object.prototype.__proto__;
     // and resolve any external file references
     let convertedOptions = {};
     if (options) {
-      const result = convertCompilerOptions(options);
+      const result = parseCompilerOptions(
+        `{"compilerOptions":${options}}`,
+        "tsconfig.json",
+        "/",
+      );
       convertedOptions = result.options;
+      // TODO(bartlomieju): this is quirky; if not removed TypeScript will lookup file
+      // using `Host.fileExists`
+      delete convertedOptions.types;
     }
 
     buildLocalSourceFileCache(sourceFileMap);
@@ -1575,13 +1495,24 @@ delete Object.prototype.__proto__;
   function runtimeTranspile(request) {
     const result = {};
     const { sources, options } = request;
-    const compilerOptions = options
-      ? Object.assign(
-        {},
-        DEFAULT_RUNTIME_TRANSPILE_OPTIONS,
-        convertCompilerOptions(options).options,
-      )
-      : DEFAULT_RUNTIME_TRANSPILE_OPTIONS;
+
+    let convertedOptions = {};
+    if (options) {
+      const result = parseCompilerOptions(
+        `{"compilerOptions":${options}}`,
+        "tsconfig.json",
+        "/",
+      );
+      convertedOptions = result.options;
+      // TODO(bartlomieju): this is quirky; if not removed TypeScript will lookup file
+      // using `Host.fileExists`
+      delete convertedOptions.types;
+    }
+    const compilerOptions = Object.assign(
+      {},
+      DEFAULT_RUNTIME_TRANSPILE_OPTIONS,
+      convertedOptions,
+    );
 
     for (const [fileName, inputText] of Object.entries(sources)) {
       const { outputText: source, sourceMapText: map } = ts.transpileModule(
