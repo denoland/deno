@@ -47,7 +47,11 @@ export function format(date: Date, formatString: string): string {
  * @return Number of the day in year
  */
 export function dayOfYear(date: Date): number {
-  const yearStart = new Date(date.getFullYear(), 0, 0);
+  // Values from 0 to 99 map to the years 1900 to 1999. All other values are the actual year. (https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Date/Date)
+  // Using setFullYear as a workaround
+  const yearStart = new Date(date);
+  yearStart.setFullYear(date.getFullYear(), 0, 0);
+
   const diff = date.getTime() -
     yearStart.getTime() +
     (yearStart.getTimezoneOffset() - date.getTimezoneOffset()) * 60 * 1000;

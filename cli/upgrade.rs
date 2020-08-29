@@ -10,7 +10,6 @@ extern crate semver_parser;
 use crate::futures::FutureExt;
 use crate::http_util::fetch_once;
 use crate::http_util::FetchOnceResult;
-use crate::op_error::OpError;
 use crate::ErrBox;
 use regex::Regex;
 use reqwest::{redirect::Policy, Client};
@@ -166,7 +165,7 @@ fn compose_url_to_exec(version: &Version) -> Result<Url, ErrBox> {
     "https://github.com/denoland/deno/releases/download/v{}/{}",
     version, ARCHIVE_NAME
   );
-  Ok(Url::parse(&s)?)
+  Url::parse(&s).map_err(ErrBox::from)
 }
 
 fn find_version(text: &str) -> Result<String, ErrBox> {
@@ -175,10 +174,10 @@ fn find_version(text: &str) -> Result<String, ErrBox> {
     let mat = _mat.as_str();
     return Ok(mat[1..mat.len() - 1].to_string());
   }
-  Err(OpError::other("Cannot read latest tag version".to_string()).into())
+  Err(ErrBox::new("NotFound", "Cannot read latest tag version"))
 }
 
-fn unpack(archive_data: Vec<u8>) -> Result<PathBuf, ErrBox> {
+fn unpack(archive_data: Vec<u8>) -> Result<PathBuf, std::io::Error> {
   // We use into_path so that the tempdir is not automatically deleted. This is
   // useful for debugging upgrade, but also so this function can return a path
   // to the newly uncompressed file without fear of the tempdir being deleted.
@@ -244,7 +243,7 @@ fn unpack(archive_data: Vec<u8>) -> Result<PathBuf, ErrBox> {
   Ok(exe_path)
 }
 
-fn replace_exe(new: &Path, old: &Path) -> Result<(), ErrBox> {
+fn replace_exe(new: &Path, old: &Path) -> Result<(), std::io::Error> {
   if cfg!(windows) {
     // On windows you cannot replace the currently running executable.
     // so first we rename it to deno.old.exe

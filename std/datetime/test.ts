@@ -107,9 +107,74 @@ Deno.test({
 Deno.test({
   name: "[std/datetime] dayOfYear",
   fn: () => {
-    assertEquals(datetime.dayOfYear(new Date("2019-01-01T03:24:00")), 1);
-    assertEquals(datetime.dayOfYear(new Date("2019-03-11T03:24:00")), 70);
-    assertEquals(datetime.dayOfYear(new Date("2019-12-31T03:24:00")), 365);
+    // from https://golang.org/src/time/time_test.go
+    // Test YearDay in several different scenarios
+    // and corner cases
+    // Non-leap-year tests
+    assertEquals(datetime.dayOfYear(new Date("2007-01-01")), 1);
+    assertEquals(datetime.dayOfYear(new Date("2007-01-15")), 15);
+    assertEquals(datetime.dayOfYear(new Date("2007-02-01")), 32);
+    assertEquals(datetime.dayOfYear(new Date("2007-02-15")), 46);
+    assertEquals(datetime.dayOfYear(new Date("2007-03-01")), 60);
+    assertEquals(datetime.dayOfYear(new Date("2007-03-15")), 74);
+    assertEquals(datetime.dayOfYear(new Date("2007-04-01")), 91);
+    assertEquals(datetime.dayOfYear(new Date("2007-12-31")), 365);
+
+    // Leap-year tests
+    assertEquals(datetime.dayOfYear(new Date("2008-01-01")), 1);
+    assertEquals(datetime.dayOfYear(new Date("2008-01-15")), 15);
+    assertEquals(datetime.dayOfYear(new Date("2008-02-01")), 32);
+    assertEquals(datetime.dayOfYear(new Date("2008-02-15")), 46);
+    assertEquals(datetime.dayOfYear(new Date("2008-03-01")), 61);
+    assertEquals(datetime.dayOfYear(new Date("2008-03-15")), 75);
+    assertEquals(datetime.dayOfYear(new Date("2008-04-01")), 92);
+    assertEquals(datetime.dayOfYear(new Date("2008-12-31")), 366);
+
+    // Looks like leap-year (but isn't) tests
+    assertEquals(datetime.dayOfYear(new Date("1900-01-01")), 1);
+    assertEquals(datetime.dayOfYear(new Date("1900-01-15")), 15);
+    assertEquals(datetime.dayOfYear(new Date("1900-02-01")), 32);
+    assertEquals(datetime.dayOfYear(new Date("1900-02-15")), 46);
+    assertEquals(datetime.dayOfYear(new Date("1900-03-01")), 60);
+    assertEquals(datetime.dayOfYear(new Date("1900-03-15")), 74);
+    assertEquals(datetime.dayOfYear(new Date("1900-04-01")), 91);
+    assertEquals(datetime.dayOfYear(new Date("1900-12-31")), 365);
+
+    // Year one tests (non-leap)
+    assertEquals(datetime.dayOfYear(new Date("0001-01-01")), 1);
+    assertEquals(datetime.dayOfYear(new Date("0001-01-15")), 15);
+    assertEquals(datetime.dayOfYear(new Date("0001-02-01")), 32);
+    assertEquals(datetime.dayOfYear(new Date("0001-02-15")), 46);
+    assertEquals(datetime.dayOfYear(new Date("0001-03-01")), 60);
+    assertEquals(datetime.dayOfYear(new Date("0001-03-15")), 74);
+    assertEquals(datetime.dayOfYear(new Date("0001-04-01")), 91);
+    assertEquals(datetime.dayOfYear(new Date("0001-12-31")), 365);
+
+    // Year minus one tests (non-leap)
+    assertEquals(datetime.dayOfYear(new Date("-000001-01-01")), 1);
+    assertEquals(datetime.dayOfYear(new Date("-000001-01-15")), 15);
+    assertEquals(datetime.dayOfYear(new Date("-000001-02-01")), 32);
+    assertEquals(datetime.dayOfYear(new Date("-000001-02-15")), 46);
+    assertEquals(datetime.dayOfYear(new Date("-000001-03-01")), 60);
+    assertEquals(datetime.dayOfYear(new Date("-000001-03-15")), 74);
+    assertEquals(datetime.dayOfYear(new Date("-000001-04-01")), 91);
+    assertEquals(datetime.dayOfYear(new Date("-000001-12-31")), 365);
+
+    // // 400 BC tests (leap-year)
+    assertEquals(datetime.dayOfYear(new Date("-00400-01-01")), 1);
+    assertEquals(datetime.dayOfYear(new Date("-00400-01-15")), 15);
+    assertEquals(datetime.dayOfYear(new Date("-00400-02-01")), 32);
+    assertEquals(datetime.dayOfYear(new Date("-00400-02-15")), 46);
+    assertEquals(datetime.dayOfYear(new Date("-00400-03-01")), 61);
+    assertEquals(datetime.dayOfYear(new Date("-00400-03-15")), 75);
+    assertEquals(datetime.dayOfYear(new Date("-00400-04-01")), 92);
+    assertEquals(datetime.dayOfYear(new Date("-00400-12-31")), 366);
+
+    // Special Cases
+
+    // Gregorian calendar change (no effect)
+    assertEquals(datetime.dayOfYear(new Date("1582-10-04T03:24:00")), 277);
+    assertEquals(datetime.dayOfYear(new Date("1582-10-15T03:24:00")), 288);
   },
 });
 

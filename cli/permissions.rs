@@ -2,7 +2,7 @@
 use crate::colors;
 use crate::flags::Flags;
 use crate::fs::resolve_from_cwd;
-use crate::op_error::OpError;
+use deno_core::ErrBox;
 use serde::Deserialize;
 use std::collections::HashSet;
 use std::env::current_dir;
@@ -31,21 +31,21 @@ pub enum PermissionState {
 
 impl PermissionState {
   /// Check the permission state.
-  fn check(self, msg: &str, flag_name: &str) -> Result<(), OpError> {
+  fn check(self, msg: &str, flag_name: &str) -> Result<(), ErrBox> {
     if self == PermissionState::Granted {
       log_perm_access(msg);
       return Ok(());
     }
-    let m = format!("{}, run again with the {} flag", msg, flag_name);
-    Err(OpError::permission_denied(m))
+    let message = format!("{}, run again with the {} flag", msg, flag_name);
+    Err(ErrBox::new("PermissionDenied", message))
   }
 
   /// Check that the permissions represented by `other` don't escalate ours.
-  fn check_fork(self, other: &Self) -> Result<(), OpError> {
+  fn check_fork(self, other: &Self) -> Result<(), ErrBox> {
     if self == PermissionState::Denied && other != &PermissionState::Denied
       || self == PermissionState::Prompt && other == &PermissionState::Granted
     {
-      return Err(OpError::permission_escalation_error());
+      return Err(permission_escalation_error());
     }
     Ok(())
   }
@@ -97,13 +97,13 @@ pub struct UnaryPermission<T: Eq + Hash> {
 
 impl<T: Eq + Hash> UnaryPermission<T> {
   /// Check that the permissions represented by `other` don't escalate ours.
-  fn check_fork(&self, other: &Self) -> Result<(), OpError> {
+  fn check_fork(&self, other: &Self) -> Result<(), ErrBox> {
     self.global_state.check_fork(&other.global_state)?;
     if !self.granted_list.is_superset(&other.granted_list) {
-      return Err(OpError::permission_escalation_error());
+      return Err(permission_escalation_error());
     }
     if !self.denied_list.is_subset(&other.denied_list) {
-      return Err(OpError::permission_escalation_error());
+      return Err(permission_escalation_error());
     }
     Ok(())
   }
@@ -250,19 +250,19 @@ impl Permissions {
   pub fn query_net_url(
     &self,
     url: &Option<&str>,
-  ) -> Result<PermissionState, OpError> {
+  ) -> Result<PermissionState, ErrBox> {
     if url.is_none() {
       return Ok(self.net.global_state);
     }
     let url: &str = url.unwrap();
     // If url is invalid, then throw a TypeError.
-    let parsed = Url::parse(url).map_err(OpError::from)?;
+    let parsed = Url::parse(url)?;
     // The url may be parsed correctly but still lack a host, i.e. "localhost:235" or "mailto:someone@somewhere.com" or "file:/1.txt"
     // Note that host:port combos are parsed as scheme:path
     if parsed.host().is_none() {
-      return Err(OpError::uri_error(
-        "invalid url, expected format: <scheme>://<host>[:port][/subpath]"
-          .to_owned(),
+      return Err(ErrBox::new(
+        "URIError",
+        "invalid urlormat: <scheme>://<host>[:port][/subpath]",
       ));
     }
     Ok(self.query_net(
@@ -374,7 +374,7 @@ impl Permissions {
   pub fn request_net(
     &mut self,
     url: &Option<&str>,
-  ) -> Result<PermissionState, OpError> {
+  ) -> Result<PermissionState, ErrBox> {
     if let Some(url) = url {
       let state = self.query_net_url(&Some(url))?;
       if state == PermissionState::Prompt {
@@ -486,7 +486,7 @@ impl Permissions {
   pub fn revoke_net(
     &mut self,
     url: &Option<&str>,
-  ) -> Result<PermissionState, OpError> {
+  ) -> Result<PermissionState, ErrBox> {
     if let Some(url) = url {
       self.net.granted_list.remove(*url);
     } else {
@@ -526,7 +526,7 @@ impl Permissions {
     self.hrtime
   }
 
-  pub fn check_read(&self, path: &Path) -> Result<(), OpError> {
+  pub fn check_read(&self, path: &Path) -> Result<(), ErrBox> {
     let (resolved_path, display_path) = self.resolved_and_display_path(path);
     self.query_read(&Some(&resolved_path)).check(
       &format!("read access to \"{}\"", display_path.display()),
@@ -540,14 +540,14 @@ impl Permissions {
     &self,
     path: &Path,
     display: &str,
-  ) -> Result<(), OpError> {
+  ) -> Result<(), ErrBox> {
     let resolved_path = resolve_from_cwd(path).unwrap();
     self
       .query_read(&Some(&resolved_path))
       .check(&format!("read access to <{}>", display), "--allow-read")
   }
 
-  pub fn check_write(&self, path: &Path) -> Result<(), OpError> {
+  pub fn check_write(&self, path: &Path) -> Result<(), ErrBox> {
     let (resolved_path, display_path) = self.resolved_and_display_path(path);
     self.query_write(&Some(&resolved_path)).check(
       &format!("write access to \"{}\"", display_path.display()),
@@ -555,33 +555,33 @@ impl Permissions {
     )
   }
 
-  pub fn check_net(&self, hostname: &str, port: u16) -> Result<(), OpError> {
+  pub fn check_net(&self, hostname: &str, port: u16) -> Result<(), ErrBox> {
     self.query_net(hostname, Some(port)).check(
       &format!("network access to \"{}:{}\"", hostname, port),
       "--allow-net",
     )
   }
 
-  pub fn check_net_url(&self, url: &url::Url) -> Result<(), OpError> {
+  pub fn check_net_url(&self, url: &url::Url) -> Result<(), ErrBox> {
     let host = url
       .host_str()
-      .ok_or_else(|| OpError::uri_error("missing host".to_owned()))?;
+      .ok_or_else(|| ErrBox::new("URIError", "missing host"))?;
     self
       .query_net(host, url.port_or_known_default())
       .check(&format!("network access to \"{}\"", url), "--allow-net")
   }
 
-  pub fn check_env(&self) -> Result<(), OpError> {
+  pub fn check_env(&self) -> Result<(), ErrBox> {
     self
       .env
       .check("access to environment variables", "--allow-env")
   }
 
-  pub fn check_run(&self) -> Result<(), OpError> {
+  pub fn check_run(&self) -> Result<(), ErrBox> {
     self.run.check("access to run a subprocess", "--allow-run")
   }
 
-  pub fn check_plugin(&self, path: &Path) -> Result<(), OpError> {
+  pub fn check_plugin(&self, path: &Path) -> Result<(), ErrBox> {
     let (_, display_path) = self.resolved_and_display_path(path);
     self.plugin.check(
       &format!("access to open a plugin: {}", display_path.display()),
@@ -589,7 +589,7 @@ impl Permissions {
     )
   }
 
-  pub fn check_hrtime(&self) -> Result<(), OpError> {
+  pub fn check_hrtime(&self) -> Result<(), ErrBox> {
     self
       .hrtime
       .check("access to high precision time", "--allow-run")
@@ -605,7 +605,7 @@ impl Permissions {
     run: PermissionState,
     plugin: PermissionState,
     hrtime: PermissionState,
-  ) -> Result<Permissions, OpError> {
+  ) -> Result<Permissions, ErrBox> {
     self.read.check_fork(&read)?;
     self.write.check_fork(&write)?;
     self.net.check_fork(&net)?;
@@ -713,6 +713,10 @@ fn check_host_and_port_list(
   allowlist.contains(host)
     || (port.is_some()
       && allowlist.contains(&format!("{}:{}", host, port.unwrap())))
+}
+
+fn permission_escalation_error() -> ErrBox {
+  ErrBox::new("PermissionDenied", "Arguments escalate parent permissions")
 }
 
 #[cfg(test)]

@@ -44,12 +44,9 @@ pub fn create_http_client(ca_file: Option<&str>) -> Result<Client, ErrBox> {
     builder = builder.add_root_certificate(cert);
   }
 
-  builder.build().map_err(|_| {
-    ErrBox::from(io::Error::new(
-      io::ErrorKind::Other,
-      "Unable to build http client".to_string(),
-    ))
-  })
+  builder
+    .build()
+    .map_err(|_| ErrBox::error("Unable to build http client"))
 }
 /// Construct the next uri based on base uri and location header fragment
 /// See <https://tools.ietf.org/html/rfc3986#section-4.2>
