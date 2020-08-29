@@ -103,13 +103,7 @@ unitTest(
   async function removeDanglingSymlinkSuccess(): Promise<void> {
     for (const method of REMOVE_METHODS) {
       const danglingSymlinkPath = Deno.makeTempDirSync() + "/dangling_symlink";
-      if (Deno.build.os === "windows") {
-        Deno.symlinkSync("unexistent_file", danglingSymlinkPath, {
-          type: "file",
-        });
-      } else {
-        Deno.symlinkSync("unexistent_file", danglingSymlinkPath);
-      }
+      Deno.symlinkSync("unexistent_file", danglingSymlinkPath);
       const pathInfo = Deno.lstatSync(danglingSymlinkPath);
       assert(pathInfo.isSymlink);
       await Deno[method](danglingSymlinkPath);
@@ -130,11 +124,7 @@ unitTest(
       const filePath = tempDir + "/test.txt";
       const validSymlinkPath = tempDir + "/valid_symlink";
       Deno.writeFileSync(filePath, data, { mode: 0o666 });
-      if (Deno.build.os === "windows") {
-        Deno.symlinkSync(filePath, validSymlinkPath, { type: "file" });
-      } else {
-        Deno.symlinkSync(filePath, validSymlinkPath);
-      }
+      Deno.symlinkSync(filePath, validSymlinkPath);
       const symlinkPathInfo = Deno.statSync(validSymlinkPath);
       assert(symlinkPathInfo.isFile);
       await Deno[method](validSymlinkPath);
