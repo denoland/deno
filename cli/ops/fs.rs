@@ -1271,7 +1271,6 @@ fn op_symlink_sync(
   #[cfg(not(unix))]
   {
     use std::os::windows::fs::{symlink_dir, symlink_file};
-    use std::os::windows::fs::{symlink_dir, symlink_file};
     let metadata = std::fs::metadata(&oldpath)?;
     if metadata.is_file() {
       symlink_file(&oldpath, &newpath)?;
