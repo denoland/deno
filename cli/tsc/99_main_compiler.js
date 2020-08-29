@@ -303,67 +303,6 @@ delete Object.prototype.__proto__;
   // file are passed back to Rust and saved to $DENO_DIR.
   const TS_BUILD_INFO = "cache:///tsbuildinfo.json";
 
-  // TODO(Bartlomieju): this check should be done in Rust
-  const IGNORED_COMPILER_OPTIONS = [
-    "allowSyntheticDefaultImports",
-    "allowUmdGlobalAccess",
-    "assumeChangesOnlyAffectDirectDependencies",
-    "baseUrl",
-    "build",
-    "composite",
-    "declaration",
-    "declarationDir",
-    "declarationMap",
-    "diagnostics",
-    "downlevelIteration",
-    "emitBOM",
-    "emitDeclarationOnly",
-    "esModuleInterop",
-    "extendedDiagnostics",
-    "forceConsistentCasingInFileNames",
-    "generateCpuProfile",
-    "help",
-    "importHelpers",
-    "incremental",
-    "inlineSourceMap",
-    "inlineSources",
-    "init",
-    "listEmittedFiles",
-    "listFiles",
-    "mapRoot",
-    "maxNodeModuleJsDepth",
-    "module",
-    "moduleResolution",
-    "newLine",
-    "noEmit",
-    "noEmitHelpers",
-    "noEmitOnError",
-    "noLib",
-    "noResolve",
-    "out",
-    "outDir",
-    "outFile",
-    "paths",
-    "preserveSymlinks",
-    "preserveWatchOutput",
-    "pretty",
-    "rootDir",
-    "rootDirs",
-    "showConfig",
-    "skipDefaultLibCheck",
-    "skipLibCheck",
-    "sourceMap",
-    "sourceRoot",
-    "stripInternal",
-    "target",
-    "traceResolution",
-    "tsBuildInfoFile",
-    "types",
-    "typeRoots",
-    "version",
-    "watch",
-  ];
-
   const DEFAULT_BUNDLER_OPTIONS = {
     allowJs: true,
     inlineSourceMap: false,
@@ -384,15 +323,6 @@ delete Object.prototype.__proto__;
     outDir: OUT_DIR,
     sourceMap: true,
     strict: true,
-    removeComments: true,
-    target: ts.ScriptTarget.ESNext,
-  };
-
-  const DEFAULT_TRANSPILE_OPTIONS = {
-    esModuleInterop: true,
-    inlineSourceMap: true,
-    jsx: ts.JsxEmit.React,
-    module: ts.ModuleKind.ESNext,
     removeComments: true,
     target: ts.ScriptTarget.ESNext,
   };
@@ -472,11 +402,10 @@ delete Object.prototype.__proto__;
    */
   const RESOLVED_SPECIFIER_CACHE = new Map();
 
-  function newConfigure(defaultOptions, source, path, cwd) {
+  function parseCompilerOptions(source, path, cwd) {
     const { config, error } = ts.parseConfigFileTextToJson(path, source);
     if (error) {
-      // Deno.core.print(`error newConfigure ${error}\n`, true);
-      return { diagnostics: [error], options: defaultOptions };
+      return { diagnostics: [error], options: {} };
     }
     const { options, errors } = ts.convertCompilerOptionsFromJson(
       config.compilerOptions,
@@ -484,32 +413,6 @@ delete Object.prototype.__proto__;
     );
     return {
       options,
-      diagnostics: errors.length ? errors : undefined,
-    };
-  }
-
-  function configure(defaultOptions, source, path, cwd) {
-    const { config, error } = ts.parseConfigFileTextToJson(path, source);
-    if (error) {
-      return { diagnostics: [error], options: defaultOptions };
-    }
-    const { options, errors } = ts.convertCompilerOptionsFromJson(
-      config.compilerOptions,
-      cwd,
-    );
-    const ignoredOptions = [];
-    for (const key of Object.keys(options)) {
-      if (
-        IGNORED_COMPILER_OPTIONS.includes(key) &&
-        (!(key in defaultOptions) || options[key] !== defaultOptions[key])
-      ) {
-        ignoredOptions.push(key);
-        delete options[key];
-      }
-    }
-    return {
-      options: Object.assign({}, defaultOptions, options),
-      ignoredOptions: ignoredOptions.length ? ignoredOptions : undefined,
       diagnostics: errors.length ? errors : undefined,
     };
   }
@@ -1138,21 +1041,6 @@ delete Object.prototype.__proto__;
     return stats;
   }
 
-  // TODO(Bartlomieju): this check should be done in Rust; there should be no
-  function processConfigureResponse(configResult, configPath) {
-    const { ignoredOptions, diagnostics } = configResult;
-    if (ignoredOptions) {
-      const msg =
-        `Unsupported compiler options in "${configPath}"\n  The following options were ignored:\n    ${
-          ignoredOptions
-            .map((value) => value)
-            .join(", ")
-        }\n`;
-      core.print(msg, true);
-    }
-    return diagnostics;
-  }
-
   function normalizeString(path) {
     let res = "";
     let lastSegmentLength = 0;
@@ -1352,8 +1240,8 @@ delete Object.prototype.__proto__;
 
     let diagnostics = [];
 
-    const { options, diagnostics: diags } = newConfigure(
-      {},
+    // TODO(bartlomieju): shouldn't JSON.stringify
+    const { options, diagnostics: diags } = parseCompilerOptions(
       JSON.stringify({ compilerOptions }),
       configPath,
       cwd,
@@ -1454,8 +1342,8 @@ delete Object.prototype.__proto__;
       bundleOutput: undefined,
     };
 
-    const { options, diagnostics: diags } = newConfigure(
-      {},
+    // TODO(bartlomieju): shouldn't JSON.stringify
+    const { options, diagnostics: diags } = parseCompilerOptions(
       JSON.stringify({ compilerOptions }),
       configPath,
       cwd,
