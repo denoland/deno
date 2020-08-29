@@ -8,7 +8,6 @@ https://github.com/denoland/deno_install
 
 ### 1.3.2 / 2020.08.29
 
-- feat: update to TypeScript 4.0 (#6514)
 - fix(cli): revert "never type check deno info #6978" (#7199)
 - fix(console): handle escape sequences when logging objects (#7171)
 - fix(doc): stack overflow for .d.ts files (#7167)
@@ -21,6 +20,7 @@ https://github.com/denoland/deno_install
 - build: Move benchmarks to Rust (#7134)
 - upgrade: swc, dprint, deno_lint, deno_doc (#7162, #7194)
 - upgrade: rusty_v8 0.9.1 / V8 8.6.334 (#7243)
+- upgrade: TypeScript 4.0 (#6514)
 
 Changes in std version 0.67.0:
 
