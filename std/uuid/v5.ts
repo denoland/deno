@@ -7,7 +7,6 @@ import {
   uuidToBytes,
 } from "./_common.ts";
 import { Sha1 } from "../hash/sha1.ts";
-import { isString } from "../node/util.ts";
 import { assert } from "../_util/assert.ts";
 
 const UUID_RE =
@@ -30,8 +29,14 @@ export function generate(
   const i = (buf && offset) || 0;
 
   let { value, namespace } = options;
-  if (isString(value)) value = stringToBytes(value as string);
-  if (isString(namespace)) namespace = uuidToBytes(namespace as string);
+  if (typeof value == "string") {
+    value = stringToBytes(value as string);
+  }
+
+  if (typeof namespace == "string") {
+    namespace = uuidToBytes(namespace as string);
+  }
+
   assert(
     namespace.length === 16,
     "namespace must be uuid string or an Array of 16 byte values",
