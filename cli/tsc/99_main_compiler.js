@@ -402,14 +402,14 @@ delete Object.prototype.__proto__;
    */
   const RESOLVED_SPECIFIER_CACHE = new Map();
 
-  function parseCompilerOptions(source, path, cwd) {
-    const { config, error } = ts.parseConfigFileTextToJson(path, source);
-    if (error) {
-      return { diagnostics: [error], options: {} };
-    }
+  function parseCompilerOptions(compilerOptions) {
+    // TODO(bartlomieju): using `/` and `/tsconfig.json` because
+    // otherwise TSC complains that some paths are relative
+    // and some are absolute
     const { options, errors } = ts.convertCompilerOptionsFromJson(
-      config.compilerOptions,
-      cwd,
+      compilerOptions,
+      "/",
+      "/tsconfig.json",
     );
     return {
       options,
@@ -1121,11 +1121,9 @@ delete Object.prototype.__proto__;
 
   function compile({
     buildInfo,
-    configPath,
     compilerOptions,
     rootNames,
     target,
-    cwd,
     sourceFileMap,
     type,
     performance,
@@ -1146,11 +1144,8 @@ delete Object.prototype.__proto__;
 
     let diagnostics = [];
 
-    // TODO(bartlomieju): shouldn't JSON.stringify
     const { options, diagnostics: diags } = parseCompilerOptions(
-      JSON.stringify({ compilerOptions }),
-      configPath,
-      cwd,
+      compilerOptions,
     );
 
     diagnostics = diags.filter(
@@ -1222,11 +1217,9 @@ delete Object.prototype.__proto__;
   }
 
   function bundle({
-    configPath,
     compilerOptions,
     rootNames,
     target,
-    cwd,
     sourceFileMap,
     type,
     performance,
@@ -1248,11 +1241,8 @@ delete Object.prototype.__proto__;
       bundleOutput: undefined,
     };
 
-    // TODO(bartlomieju): shouldn't JSON.stringify
     const { options, diagnostics: diags } = parseCompilerOptions(
-      JSON.stringify({ compilerOptions }),
-      configPath,
-      cwd,
+      compilerOptions,
     );
 
     diagnostics = diags.filter(
@@ -1338,9 +1328,7 @@ delete Object.prototype.__proto__;
     // if there are options, convert them into TypeScript compiler options,
     // and resolve any external file references
     const result = parseCompilerOptions(
-      JSON.stringify({ compilerOptions }),
-      "tsconfig.json",
-      "/",
+      compilerOptions,
     );
     const convertedOptions = result.options;
 
@@ -1414,9 +1402,7 @@ delete Object.prototype.__proto__;
     // if there are options, convert them into TypeScript compiler options,
     // and resolve any external file references
     const result = parseCompilerOptions(
-      JSON.stringify({ compilerOptions }),
-      "tsconfig.json",
-      "/",
+      compilerOptions,
     );
     const convertedOptions = result.options;
 
@@ -1484,21 +1470,14 @@ delete Object.prototype.__proto__;
 
   function runtimeTranspile(request) {
     const result = {};
-    const { sources, options } = request;
+    const { sources, compilerOptions } = request;
 
-    let convertedOptions = {};
-    if (options) {
-      const result = parseCompilerOptions(
-        `{"compilerOptions":${options}}`,
-        "tsconfig.json",
-        "/",
-      );
-      convertedOptions = result.options;
-      // TODO(bartlomieju): this is quirky; if not removed TypeScript will lookup file
-      // using `Host.fileExists`
-      delete convertedOptions.types;
-    }
-    const compilerOptions = Object.assign(
+    const parseResult = parseCompilerOptions(
+      compilerOptions,
+    );
+    const convertedOptions = parseResult.options;
+
+    const options = Object.assign(
       {},
       DEFAULT_RUNTIME_TRANSPILE_OPTIONS,
       convertedOptions,
@@ -1509,7 +1488,7 @@ delete Object.prototype.__proto__;
         inputText,
         {
           fileName,
-          compilerOptions,
+          compilerOptions: options,
         },
       );
       result[fileName] = { source, map };

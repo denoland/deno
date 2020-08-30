@@ -582,7 +582,6 @@ impl TsCompiler {
     let unstable = self.flags.unstable;
     let performance = matches!(self.flags.log_level, Some(Level::Debug));
     let compiler_config = self.config.clone();
-    let cwd = std::env::current_dir().unwrap();
 
     // TODO(bartlomieju): lift this call up - TSC shouldn't print anything
     info!("{} {}", colors::green("Check"), module_url.to_string());
@@ -628,9 +627,7 @@ impl TsCompiler {
       "target": target,
       "rootNames": root_names,
       "performance": performance,
-      "configPath": compiler_config.path.unwrap_or_else(|| PathBuf::from("tsconfig.json")),
       "compilerOptions": compiler_options,
-      "cwd": cwd,
       "sourceFileMap": module_graph_json,
       "buildInfo": if self.use_disk_cache { build_info } else { None },
     });
@@ -706,7 +703,6 @@ impl TsCompiler {
 
     let root_names = vec![module_specifier.to_string()];
     let target = "main";
-    let cwd = std::env::current_dir().unwrap();
     let performance =
       matches!(global_state.flags.log_level, Some(Level::Debug));
     let unstable = self.flags.unstable;
@@ -752,9 +748,7 @@ impl TsCompiler {
       "target": target,
       "rootNames": root_names,
       "performance": performance,
-      "configPath": compiler_config.path.unwrap_or_else(|| PathBuf::from("tsconfig.json")),
       "compilerOptions": compiler_options,
-      "cwd": cwd,
       "sourceFileMap": module_graph_json,
     });
 
@@ -1292,12 +1286,18 @@ pub async fn runtime_transpile(
   global_state: &Arc<GlobalState>,
   permissions: Permissions,
   sources: &HashMap<String, String>,
-  options: &Option<String>,
+  maybe_options: &Option<String>,
 ) -> Result<Value, ErrBox> {
+  let compiler_options = if let Some(options) = maybe_options {
+    tsc_config::parse_raw_config(options)?
+  } else {
+    json!({})
+  };
+
   let req_msg = json!({
     "type": msg::CompilerRequestType::RuntimeTranspile,
     "sources": sources,
-    "options": options,
+    "compilerOptions": compiler_options,
   })
   .to_string();
 
