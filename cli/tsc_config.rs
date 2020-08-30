@@ -1,7 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-#![allow(unused)]
-
 use deno_core::ErrBox;
 use jsonc_parser::JsonValue;
 use serde::Deserialize;
