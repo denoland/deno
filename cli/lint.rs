@@ -39,52 +39,6 @@ fn create_reporter(kind: LintReporterKind) -> Box<dyn LintReporter + Send> {
   }
 }
 
-/// Lint stdin and write result to stdout.
-/// Treats input as TypeScript.
-/// Compatible with `--json` flag.
-fn lint_stdin(json: bool) -> Result<(), ErrBox> {
-  let mut source = String::new();
-  if stdin().read_to_string(&mut source).is_err() {
-    return Err(ErrBox::error("Failed to read from stdin"));
-  }
-
-  let reporter_kind = if json {
-    LintReporterKind::Json
-  } else {
-    LintReporterKind::Pretty
-  };
-  let mut reporter = create_reporter(reporter_kind);
-  let lint_rules = rules::get_recommended_rules();
-  // TODO(magurotuna): it'd be better to be able to deal with JavaScript
-  let syntax = swc_util::get_syntax_for_media_type(msg::MediaType::TypeScript);
-  let mut linter = create_linter(syntax, lint_rules);
-  let mut has_error = false;
-  let pseudo_file_name = "_stdin.ts";
-  match linter
-    .lint(pseudo_file_name.to_string(), source)
-    .map_err(|e| e.into())
-  {
-    Ok(diagnostics) => {
-      for d in diagnostics {
-        has_error = true;
-        reporter.visit(&d);
-      }
-    }
-    Err(err) => {
-      has_error = true;
-      reporter.visit_error(pseudo_file_name, &err);
-    }
-  }
-
-  reporter.close();
-
-  if has_error {
-    std::process::exit(1);
-  }
-
-  Ok(())
-}
-
 pub async fn lint_files(
   args: Vec<String>,
   ignore: Vec<String>,
@@ -182,6 +136,52 @@ fn lint_file(file_path: PathBuf) -> Result<Vec<LintDiagnostic>, ErrBox> {
   let file_diagnostics = linter.lint(file_name, source_code)?;
 
   Ok(file_diagnostics)
+}
+
+/// Lint stdin and write result to stdout.
+/// Treats input as TypeScript.
+/// Compatible with `--json` flag.
+fn lint_stdin(json: bool) -> Result<(), ErrBox> {
+  let mut source = String::new();
+  if stdin().read_to_string(&mut source).is_err() {
+    return Err(ErrBox::error("Failed to read from stdin"));
+  }
+
+  let reporter_kind = if json {
+    LintReporterKind::Json
+  } else {
+    LintReporterKind::Pretty
+  };
+  let mut reporter = create_reporter(reporter_kind);
+  let lint_rules = rules::get_recommended_rules();
+  // TODO(magurotuna): it'd be better to be able to deal with JavaScript
+  let syntax = swc_util::get_syntax_for_media_type(msg::MediaType::TypeScript);
+  let mut linter = create_linter(syntax, lint_rules);
+  let mut has_error = false;
+  let pseudo_file_name = "_stdin.ts";
+  match linter
+    .lint(pseudo_file_name.to_string(), source)
+    .map_err(|e| e.into())
+  {
+    Ok(diagnostics) => {
+      for d in diagnostics {
+        has_error = true;
+        reporter.visit(&d);
+      }
+    }
+    Err(err) => {
+      has_error = true;
+      reporter.visit_error(pseudo_file_name, &err);
+    }
+  }
+
+  reporter.close();
+
+  if has_error {
+    std::process::exit(1);
+  }
+
+  Ok(())
 }
 
 trait LintReporter {
