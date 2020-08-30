@@ -154,7 +154,6 @@ fn lint_stdin(json: bool) -> Result<(), ErrBox> {
   };
   let mut reporter = create_reporter(reporter_kind);
   let lint_rules = rules::get_recommended_rules();
-  // TODO(magurotuna): it'd be better to be able to deal with JavaScript
   let syntax = swc_util::get_syntax_for_media_type(msg::MediaType::TypeScript);
   let mut linter = create_linter(syntax, lint_rules);
   let mut has_error = false;
