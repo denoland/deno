@@ -9,7 +9,6 @@
 use crate::colors;
 use crate::file_fetcher::map_file_extension;
 use crate::fmt::collect_files;
-use crate::fmt::run_parallelized;
 use crate::fmt_errors;
 use crate::swc_util;
 use deno_core::ErrBox;
@@ -18,6 +17,7 @@ use deno_lint::linter::Linter;
 use deno_lint::linter::LinterBuilder;
 use deno_lint::rules;
 use deno_lint::rules::LintRule;
+use rayon::prelude::*;
 use serde::Serialize;
 use std::fs;
 use std::path::PathBuf;
@@ -37,7 +37,7 @@ fn create_reporter(kind: LintReporterKind) -> Box<dyn LintReporter + Send> {
   }
 }
 
-pub async fn lint_files(
+pub fn lint_files(
   args: Vec<String>,
   ignore: Vec<String>,
   json: bool,
@@ -60,29 +60,23 @@ pub async fn lint_files(
   };
   let reporter_lock = Arc::new(Mutex::new(create_reporter(reporter_kind)));
 
-  run_parallelized(target_files, {
-    let reporter_lock = reporter_lock.clone();
-    let has_error = has_error.clone();
-    move |file_path| {
-      let r = lint_file(file_path.clone());
-      let mut reporter = reporter_lock.lock().unwrap();
+  target_files.par_iter().for_each(|file_path| {
+    let r = lint_file(&file_path);
+    let mut reporter = reporter_lock.lock().unwrap();
 
-      match r {
-        Ok(file_diagnostics) => {
-          for d in file_diagnostics.iter() {
-            has_error.store(true, Ordering::Relaxed);
-            reporter.visit(&d);
-          }
-        }
-        Err(err) => {
+    match r {
+      Ok(file_diagnostics) => {
+        for d in file_diagnostics.iter() {
           has_error.store(true, Ordering::Relaxed);
-          reporter.visit_error(&file_path.to_string_lossy().to_string(), &err);
+          reporter.visit(&d);
         }
       }
-      Ok(())
+      Err(err) => {
+        has_error.store(true, Ordering::Relaxed);
+        reporter.visit_error(&file_path.to_string_lossy().to_string(), &err);
+      }
     }
-  })
-  .await?;
+  });
 
   let has_error = has_error.load(Ordering::Relaxed);
 
@@ -119,7 +113,7 @@ fn create_linter(syntax: Syntax, rules: Vec<Box<dyn LintRule>>) -> Linter {
     .build()
 }
 
-fn lint_file(file_path: PathBuf) -> Result<Vec<LintDiagnostic>, ErrBox> {
+fn lint_file(file_path: &PathBuf) -> Result<Vec<LintDiagnostic>, ErrBox> {
   let file_name = file_path.to_string_lossy().to_string();
   let source_code = fs::read_to_string(&file_path)?;
   let media_type = map_file_extension(&file_path);

@@ -345,7 +345,7 @@ async fn install_command(
     .map_err(ErrBox::from)
 }
 
-async fn lint_command(
+fn lint_command(
   flags: Flags,
   files: Vec<String>,
   list_rules: bool,
@@ -361,7 +361,7 @@ async fn lint_command(
     return Ok(());
   }
 
-  lint::lint_files(files, ignore, json).await
+  lint::lint_files(files, ignore, json)
 }
 
 async fn cache_command(flags: Flags, files: Vec<String>) -> Result<(), ErrBox> {
@@ -761,7 +761,7 @@ pub fn main() {
       check,
       files,
       ignore,
-    } => fmt::format(files, check, ignore).boxed_local(),
+    } => async move { fmt::format(files, check, ignore) }.boxed_local(),
     DenoSubcommand::Info { file, json } => {
       info_command(flags, file, json).boxed_local()
     }
@@ -779,7 +779,8 @@ pub fn main() {
       rules,
       ignore,
       json,
-    } => lint_command(flags, files, rules, ignore, json).boxed_local(),
+    } => async move { lint_command(flags, files, rules, ignore, json) }
+      .boxed_local(),
     DenoSubcommand::Repl => run_repl(flags).boxed_local(),
     DenoSubcommand::Run { script } => run_command(flags, script).boxed_local(),
     DenoSubcommand::Test {
