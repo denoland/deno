@@ -55,7 +55,7 @@ pub fn format(
 
 fn check_source_files(
   config: dprint::configuration::Configuration,
-  paths: &Vec<PathBuf>,
+  paths: &[PathBuf],
 ) -> Result<(), ErrBox> {
   let not_formatted_files_count = Arc::new(AtomicUsize::new(0));
   let has_error = Arc::new(AtomicBool::new(false));
@@ -130,7 +130,7 @@ fn check_file(
 
 fn format_source_files(
   config: dprint::configuration::Configuration,
-  paths: &Vec<PathBuf>,
+  paths: &[PathBuf],
 ) -> Result<(), ErrBox> {
   let formatted_files_count = Arc::new(AtomicUsize::new(0));
   let has_error = Arc::new(AtomicBool::new(false));
@@ -308,16 +308,14 @@ fn write_file_contents(
   Ok(fs::write(file_path, file_text)?)
 }
 
-pub fn run_parallelized<F>(
-  file_paths: &Vec<PathBuf>,
-  f: F,
-) where F: Fn(&PathBuf) + Sync + Send + std::panic::RefUnwindSafe {
+pub fn run_parallelized<F>(file_paths: &[PathBuf], f: F)
+where
+  F: Fn(&PathBuf) + Sync + Send + std::panic::RefUnwindSafe,
+{
   use rayon::prelude::*;
 
   file_paths.par_iter().for_each(|file_path| {
-    let result = std::panic::catch_unwind(|| {
-      f(file_path)
-    });
+    let result = std::panic::catch_unwind(|| f(file_path));
     if let Err(e) = result {
       panic!("Panic on {}: {:?}", file_path.display(), e);
     }
