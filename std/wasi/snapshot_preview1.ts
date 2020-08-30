@@ -636,10 +636,6 @@ export default class Context {
           return ERRNO_BADF;
         }
 
-        if (!entry.path) {
-          return ERRNO_INVAL;
-        }
-
         if ((fst_flags & FSTFLAGS_ATIM_NOW) == FSTFLAGS_ATIM_NOW) {
           atim = BigInt(Date.now() * 1e6);
         }
@@ -648,7 +644,7 @@ export default class Context {
           mtim = BigInt(Date.now() * 1e6);
         }
 
-        Deno.utimeSync(entry.path, Number(atim), Number(mtim));
+        Deno.futimeSync(entry.rid, Number(atim), Number(mtim));
 
         return ERRNO_SUCCESS;
       }),
