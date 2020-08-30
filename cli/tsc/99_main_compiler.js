@@ -303,16 +303,6 @@ delete Object.prototype.__proto__;
   // file are passed back to Rust and saved to $DENO_DIR.
   const TS_BUILD_INFO = "cache:///tsbuildinfo.json";
 
-  const DEFAULT_BUNDLER_OPTIONS = {
-    allowJs: true,
-    inlineSourceMap: false,
-    module: ts.ModuleKind.System,
-    outDir: undefined,
-    outFile: `${OUT_DIR}/bundle.js`,
-    // disabled until we have effective way to modify source maps
-    sourceMap: false,
-  };
-
   const DEFAULT_COMPILE_OPTIONS = {
     allowJs: false,
     allowNonTsExtensions: true,
@@ -324,18 +314,6 @@ delete Object.prototype.__proto__;
     sourceMap: true,
     strict: true,
     removeComments: true,
-    target: ts.ScriptTarget.ESNext,
-  };
-
-  const DEFAULT_RUNTIME_COMPILE_OPTIONS = {
-    outDir: undefined,
-  };
-
-  const DEFAULT_RUNTIME_TRANSPILE_OPTIONS = {
-    esModuleInterop: true,
-    module: ts.ModuleKind.ESNext,
-    sourceMap: true,
-    scriptComments: true,
     target: ts.ScriptTarget.ESNext,
   };
 
@@ -477,9 +455,9 @@ delete Object.prototype.__proto__;
   }
 
   class Host {
-    #options = DEFAULT_COMPILE_OPTIONS;
-    #target = "";
-    #writeFile = null;
+    #options;
+    #target;
+    #writeFile;
     /* Deno specific APIs */
 
     constructor(
@@ -1373,8 +1351,7 @@ delete Object.prototype.__proto__;
   }
 
   function runtimeBundle(request) {
-    const { compilerOptions, rootNames, target, unstable, sourceFileMap } =
-      request;
+    const { compilerOptions, rootNames, target, sourceFileMap } = request;
 
     log(">>> runtime bundle start", {
       rootNames,
@@ -1385,7 +1362,7 @@ delete Object.prototype.__proto__;
     const result = parseCompilerOptions(
       compilerOptions,
     );
-    const convertedOptions = result.options;
+    const options = result.options;
 
     buildLocalSourceFileCache(sourceFileMap);
 
@@ -1394,27 +1371,8 @@ delete Object.prototype.__proto__;
       bundleOutput: undefined,
     };
 
-    let libOptions = {};
-    if (unstable) {
-      libOptions = {
-        lib: [
-          "deno.unstable",
-          ...((convertedOptions && convertedOptions.lib) || ["deno.window"]),
-        ],
-      };
-    }
-
-    const opts = Object.assign(
-      {},
-      DEFAULT_COMPILE_OPTIONS,
-      DEFAULT_RUNTIME_COMPILE_OPTIONS,
-      convertedOptions,
-      libOptions,
-      DEFAULT_BUNDLER_OPTIONS,
-    );
-
     const host = new Host(
-      opts,
+      options,
       target,
       createBundleWriteFile(state),
     );
@@ -1456,13 +1414,7 @@ delete Object.prototype.__proto__;
     const parseResult = parseCompilerOptions(
       compilerOptions,
     );
-    const convertedOptions = parseResult.options;
-
-    const options = Object.assign(
-      {},
-      DEFAULT_RUNTIME_TRANSPILE_OPTIONS,
-      convertedOptions,
-    );
+    const options = parseResult.options;
 
     for (const [fileName, inputText] of Object.entries(sources)) {
       const { outputText: source, sourceMapText: map } = ts.transpileModule(
