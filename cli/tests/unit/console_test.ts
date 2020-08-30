@@ -722,7 +722,6 @@ unitTest(function consoleTestWithCustomInspectorError(): void {
   class A {
     [customInspect](): string {
       throw new Error("BOOM");
-      return "b";
     }
   }
 
