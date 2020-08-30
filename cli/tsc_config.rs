@@ -142,11 +142,9 @@ struct TSConfigJson {
 pub fn parse_raw_config<T: AsRef<str>>(
   config_text: T,
 ) -> Result<Value, ErrBox> {
-  Ok(jsonc_to_serde(
-    jsonc_parser::parse_to_value(config_text.as_ref())
-      .expect("cannot parse JSONC")
-      .unwrap(),
-  ))
+  assert!(!config_text.as_ref().is_empty());
+  let jsonc = jsonc_parser::parse_to_value(config_text.as_ref())?.unwrap();
+  Ok(jsonc_to_serde(jsonc))
 }
 
 /// Take a string of JSONC, parse it and return a serde `Value` of the text.
@@ -154,11 +152,9 @@ pub fn parse_raw_config<T: AsRef<str>>(
 pub fn parse_config<T: AsRef<str>>(
   config_text: T,
 ) -> Result<(Value, Option<IgnoredCompilerOptions>), ErrBox> {
-  let config: TSConfigJson = serde_json::from_value(jsonc_to_serde(
-    jsonc_parser::parse_to_value(config_text.as_ref())
-      .expect("cannot parse JSONC")
-      .unwrap(),
-  ))?;
+  assert!(!config_text.as_ref().is_empty());
+  let jsonc = jsonc_parser::parse_to_value(config_text.as_ref())?.unwrap();
+  let config: TSConfigJson = serde_json::from_value(jsonc_to_serde(jsonc))?;
   let mut compiler_options: HashMap<String, Value> = HashMap::new();
   let mut items: Vec<String> = Vec::new();
 

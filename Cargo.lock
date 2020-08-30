@@ -1027,9 +1027,9 @@ dependencies = [
 
 [[package]]
 name = "jsonc-parser"
-version = "0.12.2"
+version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "030c40aab885ff629ec30ac02b5a4fda3d4ed09992d7daf2f188ff931f6f301b"
+checksum = "7a432f20481aaa65216e5b89d2a2f607cdd7dc0262e5b644387aed1b8eac5e08"
 
 [[package]]
 name = "kernel32-sys"
