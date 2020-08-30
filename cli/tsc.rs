@@ -185,9 +185,6 @@ impl Future for CompilerWorker {
 }
 
 lazy_static! {
-  // TODO(bartlomieju): use JSONC parser from dprint instead of Regex
-  static ref CHECK_JS_RE: Regex =
-    Regex::new(r#""checkJs"\s*?:\s*?true"#).unwrap();
   static ref DENO_TYPES_RE: Regex =
     Regex::new(r"^\s*@deno-types\s?=\s?(\S+)\s*(.*)\s*$").unwrap();
   // These regexes were adapted from TypeScript
@@ -254,8 +251,9 @@ pub enum TargetLib {
 #[derive(Clone)]
 pub struct CompilerConfig {
   pub path: Option<PathBuf>,
-  pub content: Option<String>,
-  pub hash: Vec<u8>,
+  pub options: Value,
+  pub maybe_ignored_options: Option<tsc_config::IgnoredCompilerOptions>,
+  pub hash: String,
   pub compile_js: bool,
 }
 
@@ -297,8 +295,8 @@ impl CompilerConfig {
     };
 
     let config_hash = match &config {
-      Some(bytes) => bytes.clone(),
-      _ => b"".to_vec(),
+      Some(bytes) => crate::checksum::gen(&[bytes]),
+      _ => "".to_string(),
     };
 
     let content = if let Some(content) = config {
@@ -308,17 +306,21 @@ impl CompilerConfig {
       None
     };
 
+    let (options, maybe_ignored_options) =
+      if let Some(config_str) = content.as_ref() {
+        tsc_config::parse_config(config_str)?
+      } else {
+        (json!({}), None)
+      };
+
     // If `checkJs` is set to true in `compilerOptions` then we're gonna be compiling
     // JavaScript files as well
-    let compile_js = if let Some(config_str) = content.as_ref() {
-      CHECK_JS_RE.is_match(config_str)
-    } else {
-      false
-    };
+    let compile_js = options["checkJs"].as_bool().unwrap_or(false);
 
     let ts_config = Self {
       path: config_path.unwrap_or_else(|| Ok(PathBuf::new())).ok(),
-      content,
+      options,
+      maybe_ignored_options,
       hash: config_hash,
       compile_js,
     };
@@ -490,7 +492,7 @@ impl TsCompiler {
         let version_hash_to_validate = source_code_version_hash(
           &source_file.source_code.as_bytes(),
           version::DENO,
-          &self.config.hash,
+          &self.config.hash.as_bytes(),
         );
 
         if metadata.version_hash == version_hash_to_validate {
@@ -630,18 +632,10 @@ impl TsCompiler {
       "tsBuildInfoFile": "cache:///tsbuildinfo.json",
     });
 
-    let maybe_ignored_options =
-      if let Some(config_text) = compiler_config.content.as_ref() {
-        let (user_config, ignored_options) =
-          tsc_config::parse_config(config_text)?;
-        tsc_config::json_merge(&mut compiler_options, &user_config);
-        ignored_options
-      } else {
-        None
-      };
+    tsc_config::json_merge(&mut compiler_options, &compiler_config.options);
 
     warn_ignored_options(
-      maybe_ignored_options,
+      compiler_config.maybe_ignored_options,
       compiler_config.path.as_ref().unwrap(),
     );
 
@@ -762,18 +756,10 @@ impl TsCompiler {
 
     let compiler_config = self.config.clone();
 
-    let maybe_ignored_options =
-      if let Some(config_text) = compiler_config.content.as_ref() {
-        let (user_config, ignored_options) =
-          tsc_config::parse_config(config_text)?;
-        tsc_config::json_merge(&mut compiler_options, &user_config);
-        ignored_options
-      } else {
-        None
-      };
+    tsc_config::json_merge(&mut compiler_options, &compiler_config.options);
 
     warn_ignored_options(
-      maybe_ignored_options,
+      compiler_config.maybe_ignored_options,
       compiler_config.path.as_ref().unwrap(),
     );
 
@@ -977,7 +963,7 @@ impl TsCompiler {
     let version_hash = source_code_version_hash(
       &source_file.source_code.as_bytes(),
       version::DENO,
-      &self.config.hash,
+      &self.config.hash.as_bytes(),
     );
 
     let compiled_file_metadata = CompiledFileMetadata { version_hash };
