@@ -67,7 +67,7 @@ fn check_source_files(
     match r {
       Ok(changed) => {
         if changed {
-          not_formatted_files_count.fetch_add(1, Ordering::SeqCst);
+          not_formatted_files_count.fetch_add(1, Ordering::Relaxed);
         }
       }
       Err(e) => {
@@ -85,7 +85,7 @@ fn check_source_files(
   }
 
   let not_formatted_files_count =
-    not_formatted_files_count.load(Ordering::SeqCst);
+    not_formatted_files_count.load(Ordering::Relaxed);
   if not_formatted_files_count == 0 {
     Ok(())
   } else {
@@ -142,7 +142,7 @@ fn format_source_files(
     match r {
       Ok(was_formatted) => {
         if was_formatted {
-          formatted_files_count.fetch_add(1, Ordering::SeqCst);
+          formatted_files_count.fetch_add(1, Ordering::Relaxed);
           let _g = output_lock.lock().unwrap();
           println!("{}", file_path.to_string_lossy());
         }
@@ -161,7 +161,7 @@ fn format_source_files(
     std::process::exit(1);
   }
 
-  let formatted_files_count = formatted_files_count.load(Ordering::SeqCst);
+  let formatted_files_count = formatted_files_count.load(Ordering::Relaxed);
   debug!(
     "Formatted {} {}",
     formatted_files_count,
