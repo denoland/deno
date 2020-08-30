@@ -4,10 +4,10 @@ import {
   acceptWebSocket,
   isWebSocketCloseEvent,
   isWebSocketPingEvent,
-  WebSocket,
+  Server,
 } from "./mod.ts";
 
-async function handleWs(sock: WebSocket): Promise<void> {
+async function handleWs(sock: Server): Promise<void> {
   console.log("socket connected!");
   try {
     for await (const ev of sock) {
