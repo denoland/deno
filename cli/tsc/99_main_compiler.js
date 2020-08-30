@@ -1131,7 +1131,7 @@ delete Object.prototype.__proto__;
     );
 
     // TODO(bartlomieju): this options is excluded by `ts.convertCompilerOptionsFromJson`
-    // however stuff breaks if it's not passed (type_directives_js_main.js)
+    // however stuff breaks if it's not passed (type_directives_js_main.js, compiler_js_error.ts)
     options.allowNonTsExtensions = true;
 
     const host = new IncrementalCompileHost(
@@ -1308,6 +1308,9 @@ delete Object.prototype.__proto__;
       compilerOptions,
     );
     const options = result.options;
+    // TODO(bartlomieju): this options is excluded by `ts.convertCompilerOptionsFromJson`
+    // however stuff breaks if it's not passed (type_directives_js_main.js, compiler_js_error.ts)
+    options.allowNonTsExtensions = true;
 
     buildLocalSourceFileCache(sourceFileMap);
 
@@ -1332,7 +1335,6 @@ delete Object.prototype.__proto__;
       .filter(({ code }) => !IGNORED_DIAGNOSTICS.includes(code));
 
     const emitResult = program.emit();
-
     assert(emitResult.emitSkipped === false, "Unexpected skip of the emit.");
 
     log("<<< runtime compile finish", {
@@ -1363,6 +1365,9 @@ delete Object.prototype.__proto__;
       compilerOptions,
     );
     const options = result.options;
+    // TODO(bartlomieju): this options is excluded by `ts.convertCompilerOptionsFromJson`
+    // however stuff breaks if it's not passed (type_directives_js_main.js, compiler_js_error.ts)
+    options.allowNonTsExtensions = true;
 
     buildLocalSourceFileCache(sourceFileMap);
 
@@ -1415,6 +1420,9 @@ delete Object.prototype.__proto__;
       compilerOptions,
     );
     const options = parseResult.options;
+    // TODO(bartlomieju): this options is excluded by `ts.convertCompilerOptionsFromJson`
+    // however stuff breaks if it's not passed (type_directives_js_main.js, compiler_js_error.ts)
+    options.allowNonTsExtensions = true;
 
     for (const [fileName, inputText] of Object.entries(sources)) {
       const { outputText: source, sourceMapText: map } = ts.transpileModule(

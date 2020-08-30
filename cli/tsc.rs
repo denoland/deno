@@ -1209,7 +1209,6 @@ pub async fn runtime_compile(
     "esModuleInterop": true,
     "jsx": "react",
     "module": "esnext",
-    "outDir": null,
     "sourceMap": true,
     "strict": true,
     "removeComments": true,
