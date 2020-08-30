@@ -141,6 +141,16 @@ struct TSConfigJson {
   type_acquisition: Option<Value>,
 }
 
+pub fn parse_raw_config<T: AsRef<str>>(
+  config_text: T,
+) -> Result<Value, ErrBox> {
+  Ok(jsonc_to_serde(
+    jsonc_parser::parse_to_value(config_text.as_ref())
+      .expect("cannot parse JSONC")
+      .unwrap(),
+  ))
+}
+
 /// Take a string of JSONC, parse it and return a serde `Value` of the text.
 /// The result also contains any options that were ignored.
 pub fn parse_config<T: AsRef<str>>(

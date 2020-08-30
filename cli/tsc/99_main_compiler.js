@@ -1328,7 +1328,8 @@ delete Object.prototype.__proto__;
   }
 
   function runtimeCompile(request) {
-    const { options, rootNames, target, unstable, sourceFileMap } = request;
+    const { compilerOptions, rootNames, target, unstable, sourceFileMap } =
+      request;
 
     log(">>> runtime compile start", {
       rootNames,
@@ -1336,18 +1337,12 @@ delete Object.prototype.__proto__;
 
     // if there are options, convert them into TypeScript compiler options,
     // and resolve any external file references
-    let convertedOptions;
-    if (options) {
-      const result = parseCompilerOptions(
-        `{"compilerOptions":${options}}`,
-        "tsconfig.json",
-        "/",
-      );
-      convertedOptions = result.options;
-      // TODO(bartlomieju): this is quirky; if not removed TypeScript will lookup file
-      // using `Host.fileExists`
-      delete convertedOptions.types;
-    }
+    const result = parseCompilerOptions(
+      JSON.stringify({ compilerOptions }),
+      "tsconfig.json",
+      "/",
+    );
+    const convertedOptions = result.options;
 
     buildLocalSourceFileCache(sourceFileMap);
 
@@ -1409,7 +1404,8 @@ delete Object.prototype.__proto__;
   }
 
   function runtimeBundle(request) {
-    const { options, rootNames, target, unstable, sourceFileMap } = request;
+    const { compilerOptions, rootNames, target, unstable, sourceFileMap } =
+      request;
 
     log(">>> runtime bundle start", {
       rootNames,
@@ -1417,18 +1413,12 @@ delete Object.prototype.__proto__;
 
     // if there are options, convert them into TypeScript compiler options,
     // and resolve any external file references
-    let convertedOptions = {};
-    if (options) {
-      const result = parseCompilerOptions(
-        `{"compilerOptions":${options}}`,
-        "tsconfig.json",
-        "/",
-      );
-      convertedOptions = result.options;
-      // TODO(bartlomieju): this is quirky; if not removed TypeScript will lookup file
-      // using `Host.fileExists`
-      delete convertedOptions.types;
-    }
+    const result = parseCompilerOptions(
+      JSON.stringify({ compilerOptions }),
+      "tsconfig.json",
+      "/",
+    );
+    const convertedOptions = result.options;
 
     buildLocalSourceFileCache(sourceFileMap);
 

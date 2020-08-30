@@ -1116,7 +1116,7 @@ async fn create_runtime_module_graph(
   permissions: Permissions,
   root_name: &str,
   sources: &Option<HashMap<String, String>>,
-  maybe_options: &Option<String>,
+  type_files: Vec<String>,
 ) -> Result<(Vec<String>, ModuleGraph), ErrBox> {
   let mut root_names = vec![];
   let mut module_graph_loader = ModuleGraphLoader::new(
@@ -1140,23 +1140,12 @@ async fn create_runtime_module_graph(
   }
 
   // download all additional files from TSconfig and add them to root_names
-  if let Some(options) = maybe_options {
-    let options_json: serde_json::Value = serde_json::from_str(options)?;
-    if let Some(types_option) = options_json.get("types") {
-      let types_arr = types_option.as_array().expect("types is not an array");
-
-      for type_value in types_arr {
-        let type_str = type_value
-          .as_str()
-          .expect("type is not a string")
-          .to_string();
-        let type_specifier = ModuleSpecifier::resolve_url_or_path(&type_str)?;
-        module_graph_loader
-          .add_to_graph(&type_specifier, None)
-          .await?;
-        root_names.push(type_specifier.to_string())
-      }
-    }
+  for type_file in type_files {
+    let type_specifier = ModuleSpecifier::resolve_url_or_path(&type_file)?;
+    module_graph_loader
+      .add_to_graph(&type_specifier, None)
+      .await?;
+    root_names.push(type_specifier.to_string())
   }
 
   Ok((root_names, module_graph_loader.get_graph()))
@@ -1182,12 +1171,31 @@ pub async fn runtime_compile(
   sources: &Option<HashMap<String, String>>,
   maybe_options: &Option<String>,
 ) -> Result<Value, ErrBox> {
+  let mut compiler_options = if let Some(options) = maybe_options {
+    tsc_config::parse_raw_config(options)?
+  } else {
+    json!({})
+  };
+
+  // Intentionally calling "take()" to replace value with `null` - otherwise TSC will try to load that file
+  // using `fileExists` API
+  let type_files =
+    if let Some(types) = compiler_options["types"].take().as_array() {
+      types
+        .iter()
+        .map(|type_value| type_value.as_str().unwrap_or("").to_string())
+        .filter(|type_str| !type_str.is_empty())
+        .collect()
+    } else {
+      vec![]
+    };
+
   let (root_names, module_graph) = create_runtime_module_graph(
     &global_state,
     permissions.clone(),
     root_name,
     sources,
-    maybe_options,
+    type_files,
   )
   .await?;
   let module_graph_json =
@@ -1198,7 +1206,7 @@ pub async fn runtime_compile(
     "target": "runtime",
     "rootNames": root_names,
     "sourceFileMap": module_graph_json,
-    "options": maybe_options,
+    "compilerOptions": compiler_options,
     "unstable": global_state.flags.unstable,
   })
   .to_string();
@@ -1229,12 +1237,31 @@ pub async fn runtime_bundle(
   sources: &Option<HashMap<String, String>>,
   maybe_options: &Option<String>,
 ) -> Result<Value, ErrBox> {
+  let mut compiler_options = if let Some(options) = maybe_options {
+    tsc_config::parse_raw_config(options)?
+  } else {
+    json!({})
+  };
+
+  // Intentionally calling "take()" to replace value with `null` - otherwise TSC will try to load that file
+  // using `fileExists` API
+  let type_files =
+    if let Some(types) = compiler_options["types"].take().as_array() {
+      types
+        .iter()
+        .map(|type_value| type_value.as_str().unwrap_or("").to_string())
+        .filter(|type_str| !type_str.is_empty())
+        .collect()
+    } else {
+      vec![]
+    };
+
   let (root_names, module_graph) = create_runtime_module_graph(
     &global_state,
     permissions.clone(),
     root_name,
     sources,
-    maybe_options,
+    type_files,
   )
   .await?;
   let module_graph_json =
@@ -1245,7 +1272,7 @@ pub async fn runtime_bundle(
     "target": "runtime",
     "rootNames": root_names,
     "sourceFileMap": module_graph_json,
-    "options": maybe_options,
+    "compilerOptions": compiler_options,
     "unstable": global_state.flags.unstable,
   })
   .to_string();
@@ -1817,7 +1844,6 @@ mod tests {
     let path_str = path.to_str().unwrap().to_string();
 
     for (json_str, expected) in test_cases {
-      eprintln!("json str {}", json_str);
       deno_fs::write_file(&path, json_str.as_bytes(), 0o666).unwrap();
       let config = CompilerConfig::load(Some(path_str.clone())).unwrap();
       assert_eq!(config.compile_js, expected);
