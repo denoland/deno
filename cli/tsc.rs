@@ -1165,7 +1165,7 @@ pub async fn runtime_compile(
   sources: &Option<HashMap<String, String>>,
   maybe_options: &Option<String>,
 ) -> Result<Value, ErrBox> {
-  let mut compiler_options = if let Some(options) = maybe_options {
+  let mut user_options = if let Some(options) = maybe_options {
     tsc_config::parse_raw_config(options)?
   } else {
     json!({})
@@ -1173,16 +1173,51 @@ pub async fn runtime_compile(
 
   // Intentionally calling "take()" to replace value with `null` - otherwise TSC will try to load that file
   // using `fileExists` API
-  let type_files =
-    if let Some(types) = compiler_options["types"].take().as_array() {
-      types
-        .iter()
-        .map(|type_value| type_value.as_str().unwrap_or("").to_string())
-        .filter(|type_str| !type_str.is_empty())
-        .collect()
-    } else {
-      vec![]
-    };
+  let type_files = if let Some(types) = user_options["types"].take().as_array()
+  {
+    types
+      .iter()
+      .map(|type_value| type_value.as_str().unwrap_or("").to_string())
+      .filter(|type_str| !type_str.is_empty())
+      .collect()
+  } else {
+    vec![]
+  };
+
+  let unstable = global_state.flags.unstable;
+
+  let mut lib = vec![];
+  if let Some(user_libs) = user_options["lib"].take().as_array() {
+    let libs = user_libs
+      .iter()
+      .map(|type_value| type_value.as_str().unwrap_or("").to_string())
+      .filter(|type_str| !type_str.is_empty())
+      .collect::<Vec<String>>();
+    lib.extend(libs);
+  } else {
+    lib.push("deno.window".to_string());
+  }
+
+  if unstable {
+    lib.push("deno.unstable".to_string());
+  }
+
+  let mut compiler_options = json!({
+    "allowJs": false,
+    "allowNonTsExtensions": true,
+    "checkJs": false,
+    "esModuleInterop": true,
+    "jsx": "react",
+    "module": "esnext",
+    "outDir": null,
+    "sourceMap": true,
+    "strict": true,
+    "removeComments": true,
+    "target": "esnext",
+  });
+
+  tsc_config::json_merge(&mut compiler_options, &user_options);
+  tsc_config::json_merge(&mut compiler_options, &json!({ "lib": lib }));
 
   let (root_names, module_graph) = create_runtime_module_graph(
     &global_state,
@@ -1201,7 +1236,6 @@ pub async fn runtime_compile(
     "rootNames": root_names,
     "sourceFileMap": module_graph_json,
     "compilerOptions": compiler_options,
-    "unstable": global_state.flags.unstable,
   })
   .to_string();
 

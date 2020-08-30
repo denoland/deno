@@ -1318,8 +1318,7 @@ delete Object.prototype.__proto__;
   }
 
   function runtimeCompile(request) {
-    const { compilerOptions, rootNames, target, unstable, sourceFileMap } =
-      request;
+    const { compilerOptions, rootNames, target, sourceFileMap } = request;
 
     log(">>> runtime compile start", {
       rootNames,
@@ -1330,34 +1329,16 @@ delete Object.prototype.__proto__;
     const result = parseCompilerOptions(
       compilerOptions,
     );
-    const convertedOptions = result.options;
+    const options = result.options;
 
     buildLocalSourceFileCache(sourceFileMap);
-
-    let libOptions = {};
-    if (unstable) {
-      libOptions = {
-        lib: [
-          "deno.unstable",
-          ...((convertedOptions && convertedOptions.lib) || ["deno.window"]),
-        ],
-      };
-    }
-
-    const opts = Object.assign(
-      {},
-      DEFAULT_COMPILE_OPTIONS,
-      DEFAULT_RUNTIME_COMPILE_OPTIONS,
-      convertedOptions,
-      libOptions,
-    );
 
     const state = {
       rootNames,
       emitMap: {},
     };
     const host = new Host(
-      opts,
+      options,
       target,
       createRuntimeCompileWriteFile(state),
     );
