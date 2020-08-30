@@ -38,7 +38,9 @@ export function generate(
   );
 
   const content = (namespace as number[]).concat(value as number[]);
-  const bytes = new Uint8Array(createHash("sha1").update(createBuffer(content)).digest());
+  const bytes = new Uint8Array(
+    createHash("sha1").update(createBuffer(content)).digest(),
+  );
 
   bytes[6] = (bytes[6] & 0x0f) | 0x50;
   bytes[8] = (bytes[8] & 0x3f) | 0x80;
