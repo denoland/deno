@@ -259,73 +259,57 @@ pub struct CompilerConfig {
 
 impl CompilerConfig {
   /// Take the passed flag and resolve the file name relative to the cwd.
-  pub fn load(config_path: Option<String>) -> Result<Self, ErrBox> {
-    let config_file = match &config_path {
-      Some(config_file_name) => {
-        debug!("Compiler config file: {}", config_file_name);
-        let cwd = std::env::current_dir().unwrap();
-        Some(cwd.join(config_file_name))
-      }
-      _ => None,
-    };
+  pub fn load(maybe_config_path: Option<String>) -> Result<Self, ErrBox> {
+    if maybe_config_path.is_none() {
+      return Ok(Self {
+        path: Some(PathBuf::new()),
+        options: json!({}),
+        maybe_ignored_options: None,
+        hash: "".to_string(),
+        compile_js: false,
+      });
+    }
+
+    let raw_config_path = maybe_config_path.unwrap();
+    debug!("Compiler config file: {}", raw_config_path);
+    let cwd = std::env::current_dir().unwrap();
+    let config_file = cwd.join(raw_config_path);
 
     // Convert the PathBuf to a canonicalized string.  This is needed by the
     // compiler to properly deal with the configuration.
-    let config_path = match &config_file {
-      Some(config_file) => Some(config_file.canonicalize().map_err(|_| {
-        io::Error::new(
-          io::ErrorKind::InvalidInput,
-          format!(
-            "Could not find the config file: {}",
-            config_file.to_string_lossy()
-          ),
-        )
-      })),
-      _ => None,
-    };
+    let config_path = config_file.canonicalize().map_err(|_| {
+      io::Error::new(
+        io::ErrorKind::InvalidInput,
+        format!(
+          "Could not find the config file: {}",
+          config_file.to_string_lossy()
+        ),
+      )
+    })?;
 
     // Load the contents of the configuration file
-    let config = match &config_file {
-      Some(config_file) => {
-        debug!("Attempt to load config: {}", config_file.to_str().unwrap());
-        let config = fs::read(&config_file)?;
-        Some(config)
-      }
-      _ => None,
-    };
+    debug!("Attempt to load config: {}", config_path.to_str().unwrap());
+    let config_bytes = fs::read(&config_file)?;
+    let config_hash = crate::checksum::gen(&[&config_bytes]);
+    let config_str = String::from_utf8(config_bytes)?;
 
-    let config_hash = match &config {
-      Some(bytes) => crate::checksum::gen(&[bytes]),
-      _ => "".to_string(),
-    };
-
-    let content = if let Some(content) = config {
-      let str_ = String::from_utf8(content)?;
-      Some(str_)
+    let (options, maybe_ignored_options) = if config_str.is_empty() {
+      (json!({}), None)
     } else {
-      None
+      tsc_config::parse_config(&config_str)?
     };
-
-    let (options, maybe_ignored_options) =
-      if let Some(config_str) = content.as_ref() {
-        tsc_config::parse_config(config_str)?
-      } else {
-        (json!({}), None)
-      };
 
     // If `checkJs` is set to true in `compilerOptions` then we're gonna be compiling
     // JavaScript files as well
     let compile_js = options["checkJs"].as_bool().unwrap_or(false);
 
-    let ts_config = Self {
-      path: config_path.unwrap_or_else(|| Ok(PathBuf::new())).ok(),
+    Ok(Self {
+      path: Some(config_path),
       options,
       maybe_ignored_options,
       hash: config_hash,
       compile_js,
-    };
-
-    Ok(ts_config)
+    })
   }
 }
 
@@ -1817,11 +1801,14 @@ mod tests {
       (r#"{ "compilerOptions": { "checkJs": true } } "#, true),
       // JSON with comment
       (
-        r#"{ "compilerOptions": { // force .js file compilation by Deno "checkJs": true } } "#,
+        r#"{ 
+          "compilerOptions": { 
+            // force .js file compilation by Deno 
+            "checkJs": true 
+          } 
+        }"#,
         true,
       ),
-      // invalid JSON
-      (r#"{ "compilerOptions": { "checkJs": true },{ } "#, true),
       // without content
       ("", false),
     ];
@@ -1830,6 +1817,7 @@ mod tests {
     let path_str = path.to_str().unwrap().to_string();
 
     for (json_str, expected) in test_cases {
+      eprintln!("json str {}", json_str);
       deno_fs::write_file(&path, json_str.as_bytes(), 0o666).unwrap();
       let config = CompilerConfig::load(Some(path_str.clone())).unwrap();
       assert_eq!(config.compile_js, expected);
