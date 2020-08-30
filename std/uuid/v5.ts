@@ -6,7 +6,7 @@ import {
   stringToBytes,
   uuidToBytes,
 } from "./_common.ts";
-import { Sha1 } from "../hash/sha1.ts";
+import { createHash } from "../hash/mod.ts";
 import { isString } from "../node/util.ts";
 import { assert } from "../_util/assert.ts";
 
@@ -38,7 +38,7 @@ export function generate(
   );
 
   const content = (namespace as number[]).concat(value as number[]);
-  const bytes = new Sha1().update(createBuffer(content)).digest();
+  const bytes = new Uint8Array(createHash("sha1").update(createBuffer(content)).digest());
 
   bytes[6] = (bytes[6] & 0x0f) | 0x50;
   bytes[8] = (bytes[8] & 0x3f) | 0x80;
