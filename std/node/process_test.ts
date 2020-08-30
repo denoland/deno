@@ -127,8 +127,8 @@ Deno.test({
 Deno.test({
   name: "process.stdin",
   fn() {
-    assertEquals(typeof process.stdin.rid, "number");
-    assertEquals(process.stdin.rid, Deno.stdin.rid);
+    assertEquals(typeof process.stdin.fd, "number");
+    assertEquals(process.stdin.fd, Deno.stdin.rid);
     // TODO(jayhelton) Uncomment out this assertion once PTY is supported
     //assert(process.stdin.isTTY);
   },
@@ -137,8 +137,8 @@ Deno.test({
 Deno.test({
   name: "process.stdout",
   fn() {
-    assertEquals(typeof process.stdout.rid, "number");
-    assertEquals(process.stdout.rid, Deno.stdout.rid);
+    assertEquals(typeof process.stdout.fd, "number");
+    assertEquals(process.stdout.fd, Deno.stdout.rid);
     // TODO(jayhelton) Uncomment out this assertion once PTY is supported
     // assert(process.stdout.isTTY);
   },
@@ -147,8 +147,8 @@ Deno.test({
 Deno.test({
   name: "process.stderr",
   fn() {
-    assertEquals(typeof process.stderr.rid, "number");
-    assertEquals(process.stderr.rid, Deno.stderr.rid);
+    assertEquals(typeof process.stderr.fd, "number");
+    assertEquals(process.stderr.fd, Deno.stderr.rid);
     // TODO(jayhelton) Uncomment out this assertion once PTY is supported
     // assert(process.stderr.isTTY);
   },

@@ -40,25 +40,29 @@ export const process = {
   versions,
   get stderr() {
     return {
-      ...Deno.stderr,
+      fd: Deno.stdout.rid,
       get isTTY(): boolean {
-        return Deno.isatty(this.rid);
+        return Deno.isatty(this.fd);
       },
     };
   },
   get stdin() {
     return {
-      ...Deno.stdin,
+      fd: Deno.stdout.rid,
       get isTTY(): boolean {
-        return Deno.isatty(this.rid);
+        return Deno.isatty(this.fd);
+      },
+      on(_event: string, _callback: Function): void {
+        // TODO(JayHelton): to be implemented
+        notImplemented();
       },
     };
   },
   get stdout() {
     return {
-      ...Deno.stdout,
+      fd: Deno.stdout.rid,
       get isTTY(): boolean {
-        return Deno.isatty(this.rid);
+        return Deno.isatty(this.fd);
       },
     };
   },
