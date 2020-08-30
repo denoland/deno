@@ -52,6 +52,7 @@ export const process = {
       get isTTY(): boolean {
         return Deno.isatty(this.fd);
       },
+      // eslint-disable-next-line @typescript-eslint/ban-types
       on(_event: string, _callback: Function): void {
         // TODO(JayHelton): to be implemented
         notImplemented();
