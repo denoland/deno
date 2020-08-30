@@ -9,6 +9,7 @@
 use crate::colors;
 use crate::file_fetcher::map_file_extension;
 use crate::fmt::collect_files;
+use crate::fmt::run_parallelized;
 use crate::fmt_errors;
 use crate::swc_util;
 use deno_core::ErrBox;
@@ -17,7 +18,6 @@ use deno_lint::linter::Linter;
 use deno_lint::linter::LinterBuilder;
 use deno_lint::rules;
 use deno_lint::rules::LintRule;
-use rayon::prelude::*;
 use serde::Serialize;
 use std::fs;
 use std::path::PathBuf;
@@ -60,8 +60,8 @@ pub fn lint_files(
   };
   let reporter_lock = Arc::new(Mutex::new(create_reporter(reporter_kind)));
 
-  target_files.par_iter().for_each(|file_path| {
-    let r = lint_file(&file_path);
+  run_parallelized(&target_files, |file_path| {
+    let r = lint_file(file_path);
     let mut reporter = reporter_lock.lock().unwrap();
 
     match r {

@@ -13,7 +13,6 @@ use crate::fs::files_in_subtree;
 use crate::text_encoding;
 use deno_core::ErrBox;
 use dprint_plugin_typescript as dprint;
-use rayon::prelude::*;
 use std::fs;
 use std::io::stdin;
 use std::io::stdout;
@@ -48,22 +47,22 @@ pub fn format(
   }
   let config = get_config();
   if check {
-    check_source_files(config, target_files)
+    check_source_files(config, &target_files)
   } else {
-    format_source_files(config, target_files)
+    format_source_files(config, &target_files)
   }
 }
 
 fn check_source_files(
   config: dprint::configuration::Configuration,
-  paths: Vec<PathBuf>,
+  paths: &Vec<PathBuf>,
 ) -> Result<(), ErrBox> {
   let not_formatted_files_count = Arc::new(AtomicUsize::new(0));
   let has_error = Arc::new(AtomicBool::new(false));
   let output_lock = Arc::new(Mutex::new(())); // prevent threads outputting at the same time
   let formatter = dprint::Formatter::new(config);
 
-  paths.par_iter().for_each(|file_path| {
+  run_parallelized(paths, |file_path| {
     let r = check_file(&formatter, &file_path, output_lock.clone());
     match r {
       Ok(changed) => {
@@ -131,14 +130,14 @@ fn check_file(
 
 fn format_source_files(
   config: dprint::configuration::Configuration,
-  paths: Vec<PathBuf>,
+  paths: &Vec<PathBuf>,
 ) -> Result<(), ErrBox> {
   let formatted_files_count = Arc::new(AtomicUsize::new(0));
   let has_error = Arc::new(AtomicBool::new(false));
   let output_lock = Arc::new(Mutex::new(())); // prevent threads outputting at the same time
   let formatter = dprint::Formatter::new(config);
 
-  paths.par_iter().for_each(|file_path| {
+  run_parallelized(paths, |file_path| {
     let r = format_file(&formatter, &file_path);
     match r {
       Ok(was_formatted) => {
@@ -307,6 +306,22 @@ fn write_file_contents(
   };
 
   Ok(fs::write(file_path, file_text)?)
+}
+
+pub fn run_parallelized<F>(
+  file_paths: &Vec<PathBuf>,
+  f: F,
+) where F: Fn(&PathBuf) + Sync + Send + std::panic::RefUnwindSafe {
+  use rayon::prelude::*;
+
+  file_paths.par_iter().for_each(|file_path| {
+    let result = std::panic::catch_unwind(|| {
+      f(file_path)
+    });
+    if let Err(e) = result {
+      panic!("Panic on {}: {:?}", file_path.display(), e);
+    }
+  })
 }
 
 #[test]
