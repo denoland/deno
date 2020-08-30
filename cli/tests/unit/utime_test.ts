@@ -15,6 +15,50 @@ function assertFuzzyTimestampEquals(t1: Date | null, t2: Date): void {
 
 unitTest(
   { perms: { read: true, write: true } },
+  async function futimeSyncSuccess(): Promise<void> {
+    const testDir = await Deno.makeTempDir();
+    const filename = testDir + "/file.txt";
+    const file = await Deno.open(filename, {
+      create: true,
+      write: true,
+    });
+
+    const atime = 1000;
+    const mtime = 50000;
+    await Deno.futime(file.rid, atime, mtime);
+    await Deno.fdatasync(file.rid);
+
+    const fileInfo = Deno.statSync(filename);
+    assertFuzzyTimestampEquals(fileInfo.atime, new Date(atime * 1000));
+    assertFuzzyTimestampEquals(fileInfo.mtime, new Date(mtime * 1000));
+    file.close();
+  },
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  function futimeSyncSuccess(): void {
+    const testDir = Deno.makeTempDirSync();
+    const filename = testDir + "/file.txt";
+    const file = Deno.openSync(filename, {
+      create: true,
+      write: true,
+    });
+
+    const atime = 1000;
+    const mtime = 50000;
+    Deno.futimeSync(file.rid, atime, mtime);
+    Deno.fdatasyncSync(file.rid);
+
+    const fileInfo = Deno.statSync(filename);
+    assertFuzzyTimestampEquals(fileInfo.atime, new Date(atime * 1000));
+    assertFuzzyTimestampEquals(fileInfo.mtime, new Date(mtime * 1000));
+    file.close();
+  },
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
   function utimeSyncFileSuccess(): void {
     const testDir = Deno.makeTempDirSync();
     const filename = testDir + "/file.txt";
