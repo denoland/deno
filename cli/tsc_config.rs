@@ -139,21 +139,19 @@ struct TSConfigJson {
   type_acquisition: Option<Value>,
 }
 
-pub fn parse_raw_config<T: AsRef<str>>(
-  config_text: T,
-) -> Result<Value, ErrBox> {
-  assert!(!config_text.as_ref().is_empty());
-  let jsonc = jsonc_parser::parse_to_value(config_text.as_ref())?.unwrap();
+pub fn parse_raw_config(config_text: &str) -> Result<Value, ErrBox> {
+  assert!(!config_text.is_empty());
+  let jsonc = jsonc_parser::parse_to_value(config_text)?.unwrap();
   Ok(jsonc_to_serde(jsonc))
 }
 
 /// Take a string of JSONC, parse it and return a serde `Value` of the text.
 /// The result also contains any options that were ignored.
-pub fn parse_config<T: AsRef<str>>(
-  config_text: T,
+pub fn parse_config(
+  config_text: &str,
 ) -> Result<(Value, Option<IgnoredCompilerOptions>), ErrBox> {
-  assert!(!config_text.as_ref().is_empty());
-  let jsonc = jsonc_parser::parse_to_value(config_text.as_ref())?.unwrap();
+  assert!(!config_text.is_empty());
+  let jsonc = jsonc_parser::parse_to_value(config_text)?.unwrap();
   let config: TSConfigJson = serde_json::from_value(jsonc_to_serde(jsonc))?;
   let mut compiler_options: HashMap<String, Value> = HashMap::new();
   let mut items: Vec<String> = Vec::new();
