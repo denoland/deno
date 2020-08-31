@@ -66,7 +66,7 @@ pub fn op_ws_create(
     let port = &uri.port_u16().unwrap_or(match uri.scheme_str() {
       Some("wss") => 443,
       Some("ws") => 80,
-      _ => 0,
+      _ => unreachable!(),
     });
     let addr = format!("{}:{}", domain, port);
     let try_socket = TcpStream::connect(addr).await;
