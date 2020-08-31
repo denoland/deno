@@ -12,4 +12,5 @@ const wasmModule = new WebAssembly.Module(wasmCode);
 
 const wasmInstance = new WebAssembly.Instance(wasmModule);
 
-console.log(wasmInstance.exports.main().toString());
+const main = wasmInstance.exports.main as CallableFunction;
+console.log(main().toString());

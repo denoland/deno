@@ -1,8 +1,8 @@
 [arrays]
-data = [ ["gamma", "delta"], [1, 2] ]
+data = [ ["gamma", "delta"], [1, 2] ] # comment after an array caused issue #7072
 
 # Line breaks are OK when inside arrays
 hosts = [
   "alpha",
   "omega"
-]
+] # comment

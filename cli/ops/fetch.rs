@@ -1,26 +1,29 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use super::dispatch_json::{Deserialize, JsonOp, Value};
+use super::dispatch_json::{Deserialize, Value};
 use super::io::{StreamResource, StreamResourceHolder};
 use crate::http_util::{create_http_client, HttpBody};
 use crate::state::State;
+use deno_core::BufVec;
 use deno_core::CoreIsolate;
-use deno_core::CoreIsolateState;
 use deno_core::ErrBox;
+use deno_core::ResourceTable;
 use deno_core::ZeroCopyBuf;
-use futures::future::FutureExt;
 use http::header::HeaderName;
 use http::header::HeaderValue;
 use http::Method;
 use reqwest::Client;
+use std::cell::RefCell;
 use std::convert::From;
 use std::path::PathBuf;
 use std::rc::Rc;
 
 pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
-  i.register_op("op_fetch", s.stateful_json_op2(op_fetch));
+  let t = &CoreIsolate::state(i).borrow().resource_table.clone();
+
+  i.register_op("op_fetch", s.stateful_json_op_async(t, op_fetch));
   i.register_op(
     "op_create_http_client",
-    s.stateful_json_op2(op_create_http_client),
+    s.stateful_json_op_sync(t, op_create_http_client),
   );
 }
 
@@ -33,25 +36,25 @@ struct FetchArgs {
   client_rid: Option<u32>,
 }
 
-pub fn op_fetch(
-  isolate_state: &mut CoreIsolateState,
-  state: &Rc<State>,
+async fn op_fetch(
+  state: Rc<State>,
+  resource_table: Rc<RefCell<ResourceTable>>,
   args: Value,
-  data: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, ErrBox> {
+  data: BufVec,
+) -> Result<Value, ErrBox> {
   let args: FetchArgs = serde_json::from_value(args)?;
   let url = args.url;
-  let resource_table_ = isolate_state.resource_table.borrow();
+  let resource_table2 = resource_table.clone();
 
-  let mut client_ref_mut;
   let client = if let Some(rid) = args.client_rid {
+    let resource_table_ = resource_table.borrow();
     let r = resource_table_
       .get::<HttpClientResource>(rid)
       .ok_or_else(ErrBox::bad_resource_id)?;
-    &r.client
+    r.client.clone()
   } else {
-    client_ref_mut = state.http_client.borrow_mut();
-    &mut *client_ref_mut
+    let client_ref = state.http_client.borrow_mut();
+    client_ref.clone()
   };
 
   let method = match args.method {
@@ -87,36 +90,32 @@ pub fn op_fetch(
   }
   debug!("Before fetch {}", url);
 
-  let resource_table = isolate_state.resource_table.clone();
-  let future = async move {
-    let res = request.send().await?;
-    debug!("Fetch response {}", url);
-    let status = res.status();
-    let mut res_headers = Vec::new();
-    for (key, val) in res.headers().iter() {
-      res_headers.push((key.to_string(), val.to_str().unwrap().to_owned()));
-    }
+  let res = request.send().await?;
 
-    let body = HttpBody::from(res);
-    let mut resource_table = resource_table.borrow_mut();
-    let rid = resource_table.add(
-      "httpBody",
-      Box::new(StreamResourceHolder::new(StreamResource::HttpBody(
-        Box::new(body),
-      ))),
-    );
+  debug!("Fetch response {}", url);
+  let status = res.status();
+  let mut res_headers = Vec::new();
+  for (key, val) in res.headers().iter() {
+    res_headers.push((key.to_string(), val.to_str().unwrap().to_owned()));
+  }
 
-    let json_res = json!({
-      "bodyRid": rid,
-      "status": status.as_u16(),
-      "statusText": status.canonical_reason().unwrap_or(""),
-      "headers": res_headers
-    });
+  let body = HttpBody::from(res);
+  let mut resource_table = resource_table2.borrow_mut();
+  let rid = resource_table.add(
+    "httpBody",
+    Box::new(StreamResourceHolder::new(StreamResource::HttpBody(
+      Box::new(body),
+    ))),
+  );
 
-    Ok(json_res)
-  };
+  let json_res = json!({
+    "bodyRid": rid,
+    "status": status.as_u16(),
+    "statusText": status.canonical_reason().unwrap_or(""),
+    "headers": res_headers
+  });
 
-  Ok(JsonOp::Async(future.boxed_local()))
+  Ok(json_res)
 }
 
 struct HttpClientResource {
@@ -137,13 +136,12 @@ struct CreateHttpClientOptions {
 }
 
 fn op_create_http_client(
-  isolate_state: &mut CoreIsolateState,
-  state: &Rc<State>,
+  state: &State,
+  resource_table: &mut ResourceTable,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, ErrBox> {
+) -> Result<Value, ErrBox> {
   let args: CreateHttpClientOptions = serde_json::from_value(args)?;
-  let mut resource_table = isolate_state.resource_table.borrow_mut();
 
   if let Some(ca_file) = args.ca_file.clone() {
     state.check_read(&PathBuf::from(ca_file))?;
@@ -153,5 +151,5 @@ fn op_create_http_client(
 
   let rid =
     resource_table.add("httpClient", Box::new(HttpClientResource::new(client)));
-  Ok(JsonOp::Sync(json!(rid)))
+  Ok(json!(rid))
 }

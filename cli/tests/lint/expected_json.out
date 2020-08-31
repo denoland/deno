@@ -2,10 +2,10 @@
   "diagnostics": [
     {
       "location": {
-        "filename": "[WILDCARD]",
         "line": 1,
         "col": 0
       },
+      "filename": "[WILDCARD]",
       "message": "Ignore directive requires lint rule code",
       "code": "ban-untagged-ignore",
       "line_src": "// deno-lint-ignore",
@@ -13,10 +13,10 @@
     },
     {
       "location": {
-        "filename": "[WILDCARD]",
         "line": 2,
         "col": 14
       },
+      "filename": "[WILDCARD]",
       "message": "Empty block statement",
       "code": "no-empty",
       "line_src": "while (false) {}",
@@ -24,10 +24,10 @@
     },
     {
       "location": {
-        "filename": "[WILDCARD]",
         "line": 3,
         "col": 12
       },
+      "filename": "[WILDCARD]",
       "message": "Empty block statement",
       "code": "no-empty",
       "line_src": "} catch (e) {}",

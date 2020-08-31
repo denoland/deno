@@ -7,19 +7,20 @@
   // Using an object without a prototype because `Map` was causing GC problems.
   const promiseTableMin = Object.create(null);
 
+  const decoder = new TextDecoder();
+
   // Note it's important that promiseId starts at 1 instead of 0, because sync
   // messages are indicated with promiseId 0. If we ever add wrap around logic for
   // overflows, this should be taken into account.
   let _nextPromiseId = 1;
-
-  const decoder = new TextDecoder();
 
   function nextPromiseId() {
     return _nextPromiseId++;
   }
 
   function recordFromBufMinimal(ui8) {
-    const header = ui8.subarray(0, 12);
+    const headerLen = 12;
+    const header = ui8.subarray(0, headerLen);
     const buf32 = new Int32Array(
       header.buffer,
       header.byteOffset,
@@ -31,11 +32,10 @@
     let err;
 
     if (arg < 0) {
-      const classLen = result;
-      const classAndMessage = decoder.decode(ui8.subarray(12));
-      const errorClass = classAndMessage.slice(0, classLen);
-      const message = classAndMessage.slice(classLen);
-      err = { kind: errorClass, message };
+      err = {
+        className: decoder.decode(ui8.subarray(headerLen, headerLen + result)),
+        message: decoder.decode(ui8.subarray(headerLen + result)),
+      };
     } else if (ui8.length != 12) {
       throw new TypeError("Malformed response message");
     }
@@ -50,7 +50,7 @@
 
   function unwrapResponse(res) {
     if (res.err != null) {
-      throw new (core.getErrorClass(res.err.kind))(res.err.message);
+      throw new (core.getErrorClass(res.err.className))(res.err.message);
     }
     return res.result;
   }
