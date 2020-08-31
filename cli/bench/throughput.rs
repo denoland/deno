@@ -34,7 +34,7 @@ pub(crate) fn cat(deno_exe: &PathBuf, megs: usize) -> Result<Value> {
 pub(crate) fn tcp(deno_exe: &PathBuf, megs: usize) -> Result<Value> {
   let size = megs * MB;
 
-  // The GNU flavor of `nc` requires the `-n` flag to suppress name/port resolutions
+  // The GNU flavor of `nc` requires the `-N` flag to shutdown the network socket after EOF on stdin
   let nc_command = if cfg!(target_os = "linux") {
     "nc -N"
   } else {
