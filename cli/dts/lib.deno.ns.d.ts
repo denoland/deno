@@ -4,7 +4,7 @@
 /// <reference lib="esnext" />
 
 /** Deno provides extra properties on `import.meta`.  These are included here
- * to ensure that these are still available when using the Deno namepsace in
+ * to ensure that these are still available when using the Deno namespace in
  * conjunction with other type libs, like `dom`. */
 declare interface ImportMeta {
   /** A string representation of the fully qualified module URL. */
@@ -814,12 +814,12 @@ declare namespace Deno {
      * drained. Resolves to the number of bytes read. If the buffer has no
      * data to return, resolves to EOF (`null`).
      *
-     * NOTE: This methods reads bytes sychronously; it's provided for
+     * NOTE: This methods reads bytes synchronously; it's provided for
      * compatibility with `Reader` interfaces.
      */
     read(p: Uint8Array): Promise<number | null>;
     writeSync(p: Uint8Array): number;
-    /** NOTE: This methods writes bytes sychronously; it's provided for
+    /** NOTE: This methods writes bytes synchronously; it's provided for
      * compatibility with `Writer` interface. */
     write(p: Uint8Array): Promise<number>;
     /** Grows the buffer's capacity, if necessary, to guarantee space for
