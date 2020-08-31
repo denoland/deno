@@ -32,6 +32,11 @@ export interface Cookie {
 
 export type SameSite = "Strict" | "Lax" | "None";
 
+/**
+ * RegExp to match Same-Site cookie attribute value.
+ */
+const SAME_SITE_REGEXP = /^(?:lax|none|strict)$/i;
+
 function toString(cookie: Cookie): string {
   if (!cookie.name) {
     return "";
@@ -63,7 +68,7 @@ function toString(cookie: Cookie): string {
   if (cookie.domain) {
     out.push(`Domain=${cookie.domain}`);
   }
-  if (cookie.sameSite) {
+  if (cookie.sameSite && SAME_SITE_REGEXP.test(cookie.sameSite)) {
     out.push(`SameSite=${cookie.sameSite}`);
   }
   if (cookie.path) {
