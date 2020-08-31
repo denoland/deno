@@ -66,7 +66,7 @@ jobs:
       - name: Install rust
         uses: hecrj/setup-rust-action@v1
         with:
-          rust-version: 1.45.2
+          rust-version: 1.46.0
 
       - name: Install rust targets
         run: |
@@ -154,7 +154,7 @@ jobs:
 
       - name: Run Benchmarks
         if: matrix.config.kind == 'bench'
-        run: python ./tools/benchmark.py --release
+        run: cargo bench
 
       - name: Post Benchmarks
         if: |

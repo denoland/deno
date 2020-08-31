@@ -95,6 +95,13 @@ export function equal(c: unknown, d: unknown): boolean {
       return String(a) === String(b);
     }
     if (a instanceof Date && b instanceof Date) {
+      const aTime = a.getTime();
+      const bTime = b.getTime();
+      // Check for NaN equality manually since NaN is not
+      // equal to itself.
+      if (Number.isNaN(aTime) && Number.isNaN(bTime)) {
+        return true;
+      }
       return a.getTime() === b.getTime();
     }
     if (Object.is(a, b)) {

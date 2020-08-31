@@ -342,6 +342,8 @@ unitTest(function urlBase(): void {
   assertEquals(new URL("efgh:", "http://foo/a/b?c#d").href, "efgh:");
   assertEquals(new URL("efgh:", "file://foo/a/b?c#d").href, "efgh:");
   assertEquals(new URL("efgh:", "abcd://foo/a/b?c#d").href, "efgh:");
+
+  assertEquals(new URL("/foo", "abcd:/").href, "abcd:/foo");
 });
 
 unitTest(function urlDriveLetterBase() {
