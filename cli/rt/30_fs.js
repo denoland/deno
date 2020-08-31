@@ -268,6 +268,32 @@
     return v instanceof Date ? Math.trunc(v.valueOf() / 1000) : v;
   }
 
+  function futimeSync(
+    rid,
+    atime,
+    mtime,
+  ) {
+    sendSync("op_futime_sync", {
+      rid,
+      // TODO(caspervonb) split atime, mtime into [seconds, nanoseconds] tuple
+      atime: toSecondsFromEpoch(atime),
+      mtime: toSecondsFromEpoch(mtime),
+    });
+  }
+
+  async function futime(
+    rid,
+    atime,
+    mtime,
+  ) {
+    await sendAsync("op_futime_async", {
+      rid,
+      // TODO(caspervonb) split atime, mtime into [seconds, nanoseconds] tuple
+      atime: toSecondsFromEpoch(atime),
+      mtime: toSecondsFromEpoch(mtime),
+    });
+  }
+
   function utimeSync(
     path,
     atime,
@@ -364,6 +390,8 @@
     umask,
     link,
     linkSync,
+    futime,
+    futimeSync,
     utime,
     utimeSync,
     symlink,

@@ -86,6 +86,8 @@ delete Object.prototype.__proto__;
     "fdatasync",
     "fdatasyncSync",
     "formatDiagnostics",
+    "futime",
+    "futimeSync",
     "fstat",
     "fstatSync",
     "fsync",

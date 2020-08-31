@@ -174,6 +174,12 @@ pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
 
   i.register_op("op_cwd", s.stateful_json_op_sync(t, op_cwd));
 
+  i.register_op("op_futime_sync", s.stateful_json_op_sync(t, op_futime_sync));
+  i.register_op(
+    "op_futime_async",
+    s.stateful_json_op_async(t, op_futime_async),
+  );
+
   i.register_op("op_utime_sync", s.stateful_json_op_sync(t, op_utime_sync));
   i.register_op(
     "op_utime_async",
@@ -1671,6 +1677,65 @@ async fn op_make_temp_file_async(
   })
   .await
   .unwrap()
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FutimeArgs {
+  rid: i32,
+  atime: i64,
+  mtime: i64,
+}
+
+fn op_futime_sync(
+  state: &State,
+  resource_table: &mut ResourceTable,
+  args: Value,
+  _zero_copy: &mut [ZeroCopyBuf],
+) -> Result<Value, ErrBox> {
+  state.check_unstable("Deno.futimeSync");
+  let args: FutimeArgs = serde_json::from_value(args)?;
+  let rid = args.rid as u32;
+  let atime = filetime::FileTime::from_unix_time(args.atime, 0);
+  let mtime = filetime::FileTime::from_unix_time(args.mtime, 0);
+
+  std_file_resource(resource_table, rid, |r| match r {
+    Ok(std_file) => {
+      filetime::set_file_handle_times(std_file, Some(atime), Some(mtime))
+        .map_err(ErrBox::from)
+    }
+    Err(_) => Err(ErrBox::type_error(
+      "cannot futime on this type of resource".to_string(),
+    )),
+  })?;
+
+  Ok(json!({}))
+}
+
+async fn op_futime_async(
+  state: Rc<State>,
+  resource_table: Rc<RefCell<ResourceTable>>,
+  args: Value,
+  _zero_copy: BufVec,
+) -> Result<Value, ErrBox> {
+  state.check_unstable("Deno.futime");
+  let args: FutimeArgs = serde_json::from_value(args)?;
+  let rid = args.rid as u32;
+  let atime = filetime::FileTime::from_unix_time(args.atime, 0);
+  let mtime = filetime::FileTime::from_unix_time(args.mtime, 0);
+
+  let mut resource_table = resource_table.borrow_mut();
+  std_file_resource(&mut resource_table, rid, |r| match r {
+    Ok(std_file) => {
+      filetime::set_file_handle_times(std_file, Some(atime), Some(mtime))
+        .map_err(ErrBox::from)
+    }
+    Err(_) => Err(ErrBox::type_error(
+      "cannot futime on this type of resource".to_string(),
+    )),
+  })?;
+
+  Ok(json!({}))
 }
 
 #[derive(Deserialize)]
