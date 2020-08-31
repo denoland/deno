@@ -223,4 +223,16 @@ mod tests {
       Some(IgnoredCompilerOptions(vec!["build".to_string()])),
     );
   }
+
+  #[test]
+  fn test_parse_raw_config() {
+    let invalid_config_text = r#"{
+      "compilerOptions": {
+        // comments are allowed
+    }"#;
+    let errbox = parse_raw_config(invalid_config_text).unwrap_err();
+    assert!(errbox
+      .to_string()
+      .starts_with("Unterminated object on line 1"));
+  }
 }
