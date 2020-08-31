@@ -22,7 +22,7 @@ use serde::Serialize;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 use swc_ecmascript::parser::Syntax;
 
 pub enum LintReporterKind {
@@ -51,14 +51,14 @@ pub fn lint_files(
   }
   debug!("Found {} files", target_files.len());
 
-  let has_error = Arc::new(AtomicBool::new(false));
+  let has_error = AtomicBool::new(false);
 
   let reporter_kind = if json {
     LintReporterKind::Json
   } else {
     LintReporterKind::Pretty
   };
-  let reporter_lock = Arc::new(Mutex::new(create_reporter(reporter_kind)));
+  let reporter_lock = Mutex::new(create_reporter(reporter_kind));
 
   run_parallelized(&target_files, |file_path| {
     let r = lint_file(file_path);

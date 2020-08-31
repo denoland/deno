@@ -21,7 +21,7 @@ use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 
 const BOM_CHAR: char = '\u{FEFF}';
 
@@ -57,13 +57,13 @@ fn check_source_files(
   config: dprint::configuration::Configuration,
   paths: &[PathBuf],
 ) -> Result<(), ErrBox> {
-  let not_formatted_files_count = Arc::new(AtomicUsize::new(0));
-  let has_error = Arc::new(AtomicBool::new(false));
-  let output_lock = Arc::new(Mutex::new(())); // prevent threads outputting at the same time
+  let not_formatted_files_count = AtomicUsize::new(0);
+  let has_error = AtomicBool::new(false);
+  let output_lock = Mutex::new(()); // prevent threads outputting at the same time
   let formatter = dprint::Formatter::new(config);
 
   run_parallelized(paths, |file_path| {
-    let r = check_file(&formatter, &file_path, output_lock.clone());
+    let r = check_file(&formatter, &file_path, &output_lock);
     match r {
       Ok(changed) => {
         if changed {
@@ -100,7 +100,7 @@ fn check_source_files(
 fn check_file(
   formatter: &dprint::Formatter,
   file_path: &PathBuf,
-  output_lock: Arc<Mutex<()>>,
+  output_lock: &Mutex<()>,
 ) -> Result<bool, ErrBox> {
   let file_contents = read_file_contents(&file_path)?;
   let formatted_text =
@@ -132,9 +132,9 @@ fn format_source_files(
   config: dprint::configuration::Configuration,
   paths: &[PathBuf],
 ) -> Result<(), ErrBox> {
-  let formatted_files_count = Arc::new(AtomicUsize::new(0));
-  let has_error = Arc::new(AtomicBool::new(false));
-  let output_lock = Arc::new(Mutex::new(())); // prevent threads outputting at the same time
+  let formatted_files_count = AtomicUsize::new(0);
+  let has_error = AtomicBool::new(false);
+  let output_lock = Mutex::new(()); // prevent threads outputting at the same time
   let formatter = dprint::Formatter::new(config);
 
   run_parallelized(paths, |file_path| {
