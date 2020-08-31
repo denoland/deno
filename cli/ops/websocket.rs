@@ -70,13 +70,13 @@ pub fn op_ws_create(
     });
     let addr = format!("{}:{}", domain, port);
     let try_socket = TcpStream::connect(addr).await;
-    let tcp_stream = match try_socket.map_err(Error::Io) {
+    let tcp_socket = match try_socket.map_err(Error::Io) {
       Ok(socket) => socket,
       Err(_) => return Ok(json!({"success": false})),
     };
 
-    let stream: MaybeTlsStream = match uri.scheme_str() {
-      Some("ws") => StreamSwitcher::Plain(tcp_stream),
+    let socket: MaybeTlsStream = match uri.scheme_str() {
+      Some("ws") => StreamSwitcher::Plain(tcp_socket),
       Some("wss") => {
         let mut config = ClientConfig::new();
         config
@@ -92,14 +92,14 @@ pub fn op_ws_create(
         let tls_connector = TlsConnector::from(Arc::new(config));
         let dnsname =
           DNSNameRef::try_from_ascii_str(&domain).expect("Invalid DNS lookup");
-        let tls_stream = tls_connector.connect(dnsname, tcp_stream).await?;
-        StreamSwitcher::Tls(tls_stream)
+        let tls_socket = tls_connector.connect(dnsname, tcp_socket).await?;
+        StreamSwitcher::Tls(tls_socket)
       }
       _ => unreachable!(),
     };
 
     let (stream, response): (WsStream, Response) =
-      client_async(request, stream).await.unwrap();
+      client_async(request, socket).await.unwrap();
 
     let rid = {
       let mut resource_table = resource_table.borrow_mut();
