@@ -825,21 +825,22 @@ export default class Context {
           );
           entry_view.setUint32(16, name_data.byteLength, true);
 
+          let type: number;
           switch (true) {
             case entries[i].isFile:
-              var type = FILETYPE_REGULAR_FILE;
+              type = FILETYPE_REGULAR_FILE;
               break;
 
             case entries[i].isDirectory:
-              var type = FILETYPE_REGULAR_FILE;
+              type = FILETYPE_REGULAR_FILE;
               break;
 
             case entries[i].isSymlink:
-              var type = FILETYPE_SYMBOLIC_LINK;
+              type = FILETYPE_SYMBOLIC_LINK;
               break;
 
             default:
-              var type = FILETYPE_REGULAR_FILE;
+              type = FILETYPE_REGULAR_FILE;
               break;
           }
 
