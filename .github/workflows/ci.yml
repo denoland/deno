@@ -17,13 +17,13 @@ jobs:
             kind: test_release
           - os: windows-2019
             kind: test_release
-          - os: ubuntu-16.04
+          - os: ubuntu-18.04
             kind: test_release
-          - os: ubuntu-16.04
+          - os: ubuntu-18.04
             kind: test_debug
-          - os: ubuntu-16.04
+          - os: ubuntu-18.04
             kind: bench
-          - os: ubuntu-16.04
+          - os: ubuntu-18.04
             kind: lint
 
       # Always run master branch builds to completion. This allows the cache to
