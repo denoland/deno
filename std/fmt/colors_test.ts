@@ -87,6 +87,38 @@ Deno.test("testGray", function (): void {
   assertEquals(c.gray("foo bar"), "[90mfoo bar[39m");
 });
 
+Deno.test("testBrightBlack", function (): void {
+  assertEquals(c.brightBlack("foo bar"), "[90mfoo bar[39m");
+});
+
+Deno.test("testBrightRed", function (): void {
+  assertEquals(c.brightRed("foo bar"), "[91mfoo bar[39m");
+});
+
+Deno.test("testBrightGreen", function (): void {
+  assertEquals(c.brightGreen("foo bar"), "[92mfoo bar[39m");
+});
+
+Deno.test("testBrightYellow", function (): void {
+  assertEquals(c.brightYellow("foo bar"), "[93mfoo bar[39m");
+});
+
+Deno.test("testBrightBlue", function (): void {
+  assertEquals(c.brightBlue("foo bar"), "[94mfoo bar[39m");
+});
+
+Deno.test("testBrightMagenta", function (): void {
+  assertEquals(c.brightMagenta("foo bar"), "[95mfoo bar[39m");
+});
+
+Deno.test("testBrightCyan", function (): void {
+  assertEquals(c.brightCyan("foo bar"), "[96mfoo bar[39m");
+});
+
+Deno.test("testBrightWhite", function (): void {
+  assertEquals(c.brightWhite("foo bar"), "[97mfoo bar[39m");
+});
+
 Deno.test("testBgBlack", function (): void {
   assertEquals(c.bgBlack("foo bar"), "[40mfoo bar[49m");
 });
@@ -117,6 +149,38 @@ Deno.test("testBgCyan", function (): void {
 
 Deno.test("testBgWhite", function (): void {
   assertEquals(c.bgWhite("foo bar"), "[47mfoo bar[49m");
+});
+
+Deno.test("testBgBrightBlack", function (): void {
+  assertEquals(c.bgBrightBlack("foo bar"), "[100mfoo bar[49m");
+});
+
+Deno.test("testBgBrightRed", function (): void {
+  assertEquals(c.bgBrightRed("foo bar"), "[101mfoo bar[49m");
+});
+
+Deno.test("testBgBrightGreen", function (): void {
+  assertEquals(c.bgBrightGreen("foo bar"), "[102mfoo bar[49m");
+});
+
+Deno.test("testBgBrightYellow", function (): void {
+  assertEquals(c.bgBrightYellow("foo bar"), "[103mfoo bar[49m");
+});
+
+Deno.test("testBgBrightBlue", function (): void {
+  assertEquals(c.bgBrightBlue("foo bar"), "[104mfoo bar[49m");
+});
+
+Deno.test("testBgBrightMagenta", function (): void {
+  assertEquals(c.bgBrightMagenta("foo bar"), "[105mfoo bar[49m");
+});
+
+Deno.test("testBgBrightCyan", function (): void {
+  assertEquals(c.bgBrightCyan("foo bar"), "[106mfoo bar[49m");
+});
+
+Deno.test("testBgBrightWhite", function (): void {
+  assertEquals(c.bgBrightWhite("foo bar"), "[107mfoo bar[49m");
 });
 
 Deno.test("testClampUsingRgb8", function (): void {

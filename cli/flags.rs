@@ -476,7 +476,7 @@ fn info_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   ca_file_arg_parse(flags, matches);
   unstable_arg_parse(flags, matches);
   let json = matches.is_present("json");
-  flags.no_check = true;
+  no_check_arg_parse(flags, matches);
   flags.subcommand = DenoSubcommand::Info {
     file: matches.value_of("file").map(|f| f.to_string()),
     json,
@@ -757,6 +757,7 @@ The executable name is inferred by default:
   - If the file stem is something generic like 'main', 'mod', 'index' or 'cli',
     and the path has no parent, take the file name of the parent path. Otherwise
     settle with the generic name.
+  - If the resulting name has an '@...' suffix, strip it.
 
 To change the installation root, use --root:
   deno install --allow-net --allow-read --root /usr/local https://deno.land/std/http/file_server.ts
@@ -870,10 +871,7 @@ TypeScript compiler cache: Subdirectory containing TS compiler output.",
     .arg(Arg::with_name("file").takes_value(true).required(false))
     .arg(reload_arg().requires("file"))
     .arg(ca_file_arg())
-    // TODO(nayeemrmn): `--no-check` has been removed for `deno info`, but it
-    // shouldn't cause flag parsing to fail for backward-compatibility. Remove
-    // this line for v2.0.0.
-    .arg(no_check_arg().hidden(true))
+    .arg(no_check_arg())
     .arg(unstable_arg())
     .arg(
       Arg::with_name("json")
@@ -1907,7 +1905,6 @@ mod tests {
           json: false,
           file: Some("script.ts".to_string()),
         },
-        no_check: true,
         ..Flags::default()
       }
     );
@@ -1921,7 +1918,6 @@ mod tests {
           file: Some("script.ts".to_string()),
         },
         reload: true,
-        no_check: true,
         ..Flags::default()
       }
     );
@@ -1934,7 +1930,6 @@ mod tests {
           json: true,
           file: Some("script.ts".to_string()),
         },
-        no_check: true,
         ..Flags::default()
       }
     );
@@ -1947,7 +1942,6 @@ mod tests {
           json: false,
           file: None
         },
-        no_check: true,
         ..Flags::default()
       }
     );
@@ -1960,7 +1954,6 @@ mod tests {
           json: true,
           file: None
         },
-        no_check: true,
         ..Flags::default()
       }
     );
@@ -2610,23 +2603,26 @@ mod tests {
     }
   }
 
-  /* TODO(ry) Fix this test
   #[test]
-  fn test_flags_from_vec_33() {
-    let (flags, subcommand, argv) =
-      flags_from_vec_safe(svec!["deno", "script.ts", "--allow-read", "--allow-net"]);
+  fn run_with_args() {
+    let r = flags_from_vec_safe(svec![
+      "deno",
+      "run",
+      "script.ts",
+      "--allow-read",
+      "--allow-net"
+    ]);
     assert_eq!(
-      flags,
+      r.unwrap(),
       Flags {
-        allow_net: true,
-        allow_read: true,
+        subcommand: DenoSubcommand::Run {
+          script: "script.ts".to_string(),
+        },
+        argv: svec!["--allow-read", "--allow-net"],
         ..Flags::default()
       }
     );
-    assert_eq!(subcommand, DenoSubcommand::Run);
-    assert_eq!(argv, svec!["script.ts"]);
-
-    let (flags, subcommand, argv) = flags_from_vec_safe(svec![
+    let r = flags_from_vec_safe(svec![
       "deno",
       "run",
       "--allow-read",
@@ -2638,36 +2634,54 @@ mod tests {
       "bar"
     ]);
     assert_eq!(
-      flags,
+      r.unwrap(),
       Flags {
-        allow_net: true,
+        subcommand: DenoSubcommand::Run {
+          script: "script.ts".to_string(),
+        },
         allow_read: true,
-        reload: true,
+        argv: svec!["--allow-net", "-r", "--help", "--foo", "bar"],
         ..Flags::default()
       }
     );
-    assert_eq!(subcommand, DenoSubcommand::Run);
-    assert_eq!(argv, svec!["deno", "script.ts", "--help", "--foo", "bar"]);
 
-    let (flags, subcommand, argv) =
-      flags_from_vec_safe(svec!["deno""script.ts", "foo", "bar"]);
-    assert_eq!(flags, Flags::default());
-    assert_eq!(subcommand, DenoSubcommand::Run);
-  assert_eq!(argv, svec!["script.ts", "foo", "bar"]);
+    let r =
+      flags_from_vec_safe(svec!["deno", "run", "script.ts", "foo", "bar"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run {
+          script: "script.ts".to_string(),
+        },
+        argv: svec!["foo", "bar"],
+        ..Flags::default()
+      }
+    );
+    let r = flags_from_vec_safe(svec!["deno", "run", "script.ts", "-"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run {
+          script: "script.ts".to_string(),
+        },
+        argv: svec!["-"],
+        ..Flags::default()
+      }
+    );
 
-    let (flags, subcommand, argv) =
-      flags_from_vec_safe(svec!["deno""script.ts", "-"]);
-    assert_eq!(flags, Flags::default());
-    assert_eq!(subcommand, DenoSubcommand::Run);
-    assert_eq!(argv, svec!["script.ts", "-"]);
-
-    let (flags, subcommand, argv) =
-      flags_from_vec_safe(svec!["deno""script.ts", "-", "foo", "bar"]);
-    assert_eq!(flags, Flags::default());
-    assert_eq!(subcommand, DenoSubcommand::Run);
-    assert_eq!(argv, svec!["script.ts", "-", "foo", "bar"]);
+    let r =
+      flags_from_vec_safe(svec!["deno", "run", "script.ts", "-", "foo", "bar"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run {
+          script: "script.ts".to_string(),
+        },
+        argv: svec!["-", "foo", "bar"],
+        ..Flags::default()
+      }
+    );
   }
-  */
 
   #[test]
   fn no_check() {
@@ -2678,50 +2692,6 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Run {
           script: "script.ts".to_string(),
-        },
-        no_check: true,
-        ..Flags::default()
-      }
-    );
-    let r =
-      flags_from_vec_safe(svec!["deno", "test", "--no-check", "script.ts"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Test {
-          fail_fast: false,
-          filter: None,
-          allow_none: false,
-          quiet: false,
-          include: Some(svec!["script.ts"]),
-        },
-        no_check: true,
-        ..Flags::default()
-      }
-    );
-    let r =
-      flags_from_vec_safe(svec!["deno", "cache", "--no-check", "script.ts"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Cache {
-          files: svec!["script.ts"],
-        },
-        no_check: true,
-        ..Flags::default()
-      }
-    );
-    // TODO(nayeemrmn): `--no-check` has been removed for `deno info`, but it
-    // shouldn't cause flag parsing to fail for backward-compatibility. Remove
-    // this test for v2.0.0.
-    let r =
-      flags_from_vec_safe(svec!["deno", "info", "--no-check", "script.ts"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Info {
-          json: false,
-          file: Some("script.ts".to_string()),
         },
         no_check: true,
         ..Flags::default()
@@ -3066,7 +3036,6 @@ mod tests {
           file: Some("https://example.com".to_string()),
         },
         ca_file: Some("example.crt".to_owned()),
-        no_check: true,
         ..Flags::default()
       }
     );

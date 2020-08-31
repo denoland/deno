@@ -1,0 +1,7 @@
+Check [WILDCARD]info_type_import.ts
+local: [WILDCARD]info_type_import.ts
+type: TypeScript
+compiled: [WILDCARD]
+deps:
+[WILDCARD]info_type_import.ts
+  └── [WILDCARD]type_and_code.ts
