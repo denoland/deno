@@ -134,6 +134,21 @@ Deno.test("echo string", async () => {
   await promise;
 });
 
+Deno.test("echo string tls", async () => {
+  const promise = createResolvable();
+  const ws = new WebSocket("wss://localhost:4243");
+  ws.onerror = (): void => fail();
+  ws.onopen = (): void => ws.send("foo");
+  ws.onmessage = (e): void => {
+    assertEquals(e.data, "foo");
+    ws.close();
+  };
+  ws.onclose = (): void => {
+    promise.resolve();
+  };
+  await promise;
+});
+
 Deno.test("echo blob with binaryType blob", async () => {
   const promise = createResolvable();
   const ws = new WebSocket("ws://localhost:4242");
