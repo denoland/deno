@@ -52,6 +52,7 @@ pub fn op_ws_create(
 ) -> Result<JsonOp, ErrBox> {
   let ca_file = state.global_state.flags.ca_file.clone();
   let args: CreateArgs = serde_json::from_value(args)?;
+  state.check_net_url(&url::Url::parse(&args.url)?)?;
   let resource_table = isolate_state.resource_table.clone();
   let future = async move {
     let uri: Uri = args.url.parse().unwrap();
