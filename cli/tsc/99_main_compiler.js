@@ -795,10 +795,10 @@ delete Object.prototype.__proto__;
   // Update carefully!
   const CompilerRequestType = {
     Compile: 0,
-    Bundle: 2,
-    RuntimeCompile: 3,
-    RuntimeBundle: 4,
-    RuntimeTranspile: 5,
+    Bundle: 1,
+    RuntimeCompile: 2,
+    RuntimeBundle: 3,
+    RuntimeTranspile: 4,
   };
 
   function createBundleWriteFile(state) {
