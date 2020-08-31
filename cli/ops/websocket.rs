@@ -36,11 +36,12 @@ struct CreateArgs {
 
 pub fn op_ws_create(
   isolate_state: &mut CoreIsolateState,
-  _state: &Rc<State>,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
   let args: CreateArgs = serde_json::from_value(args)?;
+  state.check_net_url(&url::Url::parse(&args.url)?)?;
   let resource_table = isolate_state.resource_table.clone();
   let future = async move {
     let uri: Uri = args.url.parse().unwrap();
