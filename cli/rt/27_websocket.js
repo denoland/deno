@@ -55,13 +55,38 @@
           this.#rid = create.rid;
           this.#extensions = create.extensions;
           this.#protocol = create.protocol;
-          this.#readyState = OPEN;
-          const event = new Event("open");
-          event.target = this;
-          this.onopen?.(event);
-          this.dispatchEvent(event);
 
-          this.#eventLoop();
+          if (this.#readyState === CLOSING) {
+            sendAsync("op_ws_close", {
+              rid: this.#rid,
+            }).then(() => {
+              this.#readyState = CLOSED;
+
+              const errEvent = new Event("error");
+              errEvent.target = this;
+              this.onerror?.(errEvent);
+              this.dispatchEvent(errEvent);
+
+              const event = new CloseEvent("close");
+              event.target = this;
+              this.onclose?.(event);
+              this.dispatchEvent(event);
+              close(this.#rid);
+            });
+
+            const event = new Event("error");
+            event.target = this;
+            this.onerror?.(event);
+            this.dispatchEvent(event);
+          } else {
+            this.#readyState = OPEN;
+            const event = new Event("open");
+            event.target = this;
+            this.onopen?.(event);
+            this.dispatchEvent(event);
+
+            this.#eventLoop();
+          }
         } else {
           this.#readyState = CLOSED;
 
@@ -192,31 +217,7 @@
 
       if (this.#readyState === CONNECTING) {
         this.#readyState = CLOSING;
-
-        sendAsync("op_ws_close", {
-          rid: this.#rid,
-          code,
-          reason,
-        }).then(() => {
-          this.#readyState = CLOSED;
-          const event = new CloseEvent("close", {
-            wasClean: true,
-            code,
-            reason,
-          });
-          event.target = this;
-          this.onclose?.(event);
-          this.dispatchEvent(event);
-          close(this.#rid);
-        });
-
-        const event = new Event("error");
-        event.target = this;
-        this.onerror?.(event);
-        this.dispatchEvent(event);
-      } else if (
-        this.#readyState !== CLOSING && this.#readyState !== CLOSED
-      ) {
+      } else if (this.#readyState === OPEN) {
         this.#readyState = CLOSING;
 
         sendAsync("op_ws_close", {

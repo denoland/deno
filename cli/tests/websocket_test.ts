@@ -22,15 +22,15 @@ Deno.test("duplicate protocols", () => {
 Deno.test("invalid server", async () => {
   const promise = createResolvable();
   const ws = new WebSocket("ws://localhost:2121");
-  let i = 0;
+  let err = false;
   ws.onerror = (): void => {
-    i++;
+    err = true;
   };
   ws.onclose = (): void => {
-    if (i !== 1) {
-      fail();
-    } else {
+    if (err) {
       promise.resolve();
+    } else {
+      fail();
     }
   };
   ws.onopen = (): void => fail();
@@ -47,6 +47,25 @@ Deno.test("connect & close", async () => {
   ws.onclose = (): void => {
     promise.resolve();
   };
+  await promise;
+});
+
+Deno.test("connect & abort", async () => {
+  const promise = createResolvable();
+  const ws = new WebSocket("ws://localhost:4242");
+  ws.close();
+  let err = false;
+  ws.onerror = (): void => {
+    err = true;
+  };
+  ws.onclose = (): void => {
+    if (err) {
+      promise.resolve();
+    } else {
+      fail();
+    }
+  };
+  ws.onopen = (): void => fail();
   await promise;
 });
 
