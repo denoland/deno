@@ -6,173 +6,129 @@
 /// <reference lib="esnext" />
 /// <reference lib="deno.web" />
 
-// This follows the WebIDL at: https://webassembly.github.io/spec/js-api/
-// and: https://webassembly.github.io/spec/web-api/
 declare namespace WebAssembly {
-  interface WebAssemblyInstantiatedSource {
-    module: Module;
-    instance: Instance;
-  }
+    interface CompileError {
+    }
 
-  /** Compiles a `WebAssembly.Module` from WebAssembly binary code.  This
-   * function is useful if it is necessary to a compile a module before it can
-   * be instantiated (otherwise, the `WebAssembly.instantiate()` function
-   * should be used). */
-  function compile(bufferSource: BufferSource): Promise<Module>;
+    var CompileError: {
+        prototype: CompileError;
+        new(): CompileError;
+    };
 
-  /** Compiles a `WebAssembly.Module` directly from a streamed underlying
-   * source. This function is useful if it is necessary to a compile a module
-   * before it can be instantiated (otherwise, the
-   * `WebAssembly.instantiateStreaming()` function should be used). */
-  function compileStreaming(source: Promise<Response>): Promise<Module>;
+    interface Global {
+        value: any;
+        valueOf(): any;
+    }
 
-  /** Takes the WebAssembly binary code, in the form of a typed array or
-   * `ArrayBuffer`, and performs both compilation and instantiation in one step.
-   * The returned `Promise` resolves to both a compiled `WebAssembly.Module` and
-   * its first `WebAssembly.Instance`. */
-  function instantiate(
-    bufferSource: BufferSource,
-    importObject?: object,
-  ): Promise<WebAssemblyInstantiatedSource>;
+    var Global: {
+        prototype: Global;
+        new(descriptor: GlobalDescriptor, v?: any): Global;
+    };
 
-  /** Takes an already-compiled `WebAssembly.Module` and returns a `Promise`
-   * that resolves to an `Instance` of that `Module`. This overload is useful if
-   * the `Module` has already been compiled. */
-  function instantiate(
-    module: Module,
-    importObject?: object,
-  ): Promise<Instance>;
+    interface Instance {
+        readonly exports: Exports;
+    }
 
-  /** Compiles and instantiates a WebAssembly module directly from a streamed
-   * underlying source. This is the most efficient, optimized way to load wasm
-   * code. */
-  function instantiateStreaming(
-    source: Promise<Response>,
-    importObject?: object,
-  ): Promise<WebAssemblyInstantiatedSource>;
+    var Instance: {
+        prototype: Instance;
+        new(module: Module, importObject?: Imports): Instance;
+    };
 
-  /** Validates a given typed array of WebAssembly binary code, returning
-   * whether the bytes form a valid wasm module (`true`) or not (`false`). */
-  function validate(bufferSource: BufferSource): boolean;
+    interface LinkError {
+    }
 
-  type ImportExportKind = "function" | "table" | "memory" | "global";
+    var LinkError: {
+        prototype: LinkError;
+        new(): LinkError;
+    };
 
-  interface ModuleExportDescriptor {
-    name: string;
-    kind: ImportExportKind;
-  }
-  interface ModuleImportDescriptor {
-    module: string;
-    name: string;
-    kind: ImportExportKind;
-  }
+    interface Memory {
+        readonly buffer: ArrayBuffer;
+        grow(delta: number): number;
+    }
 
-  class Module {
-    constructor(bufferSource: BufferSource);
+    var Memory: {
+        prototype: Memory;
+        new(descriptor: MemoryDescriptor): Memory;
+    };
 
-    /** Given a `Module` and string, returns a copy of the contents of all
-     * custom sections in the module with the given string name. */
-    static customSections(
-      moduleObject: Module,
-      sectionName: string,
-    ): ArrayBuffer;
+    interface Module {
+    }
 
-    /** Given a `Module`, returns an array containing descriptions of all the
-     * declared exports. */
-    static exports(moduleObject: Module): ModuleExportDescriptor[];
+    var Module: {
+        prototype: Module;
+        new(bytes: BufferSource): Module;
+        customSections(moduleObject: Module, sectionName: string): ArrayBuffer[];
+        exports(moduleObject: Module): ModuleExportDescriptor[];
+        imports(moduleObject: Module): ModuleImportDescriptor[];
+    };
 
-    /** Given a `Module`, returns an array containing descriptions of all the
-     * declared imports. */
-    static imports(moduleObject: Module): ModuleImportDescriptor[];
-  }
+    interface RuntimeError {
+    }
 
-  class Instance<T extends object = { [key: string]: any }> {
-    constructor(module: Module, importObject?: object);
+    var RuntimeError: {
+        prototype: RuntimeError;
+        new(): RuntimeError;
+    };
 
-    /** An object containing as its members all the functions exported from the
-     * WebAssembly module instance, to allow them to be accessed and used by
-     * JavaScript. */
-    readonly exports: T;
-  }
+    interface Table {
+        readonly length: number;
+        get(index: number): Function | null;
+        grow(delta: number): number;
+        set(index: number, value: Function | null): void;
+    }
 
-  interface MemoryDescriptor {
-    initial: number;
-    maximum?: number;
-  }
+    var Table: {
+        prototype: Table;
+        new(descriptor: TableDescriptor): Table;
+    };
 
-  class Memory {
-    constructor(descriptor: MemoryDescriptor);
+    interface GlobalDescriptor {
+        mutable?: boolean;
+        value: ValueType;
+    }
 
-    /** An accessor property that returns the buffer contained in the memory. */
-    readonly buffer: ArrayBuffer;
+    interface MemoryDescriptor {
+        initial: number;
+        maximum?: number;
+    }
 
-    /** Increases the size of the memory instance by a specified number of
-     * WebAssembly pages (each one is 64KB in size). */
-    grow(delta: number): number;
-  }
+    interface ModuleExportDescriptor {
+        kind: ImportExportKind;
+        name: string;
+    }
 
-  type TableKind = "anyfunc";
+    interface ModuleImportDescriptor {
+        kind: ImportExportKind;
+        module: string;
+        name: string;
+    }
 
-  interface TableDescriptor {
-    element: TableKind;
-    initial: number;
-    maximum?: number;
-  }
+    interface TableDescriptor {
+        element: TableKind;
+        initial: number;
+        maximum?: number;
+    }
 
-  class Table {
-    constructor(descriptor: TableDescriptor);
+    interface WebAssemblyInstantiatedSource {
+        instance: Instance;
+        module: Module;
+    }
 
-    /** Returns the length of the table, i.e. the number of elements. */
-    readonly length: number;
-
-    /** Accessor function — gets the element stored at a given index. */
-    get(index: number): (...args: any[]) => any;
-
-    /** Increases the size of the Table instance by a specified number of
-     * elements. */
-    grow(delta: number): number;
-
-    /** Sets an element stored at a given index to a given value. */
-    set(index: number, value: (...args: any[]) => any): void;
-  }
-
-  type ValueType = "i32" | "i64" | "f32" | "f64";
-
-  interface GlobalDescriptor {
-    value: ValueType;
-    mutable?: boolean;
-  }
-
-  /** Represents a global variable instance, accessible from both JavaScript and
-   * importable/exportable across one or more `WebAssembly.Module` instances.
-   * This allows dynamic linking of multiple modules. */
-  class Global {
-    constructor(descriptor: GlobalDescriptor, value?: any);
-
-    /** Old-style method that returns the value contained inside the global
-     * variable. */
-    valueOf(): any;
-
-    /** The value contained inside the global variable — this can be used to
-     * directly set and get the global's value. */
-    value: any;
-  }
-
-  /** Indicates an error during WebAssembly decoding or validation */
-  class CompileError extends Error {
-    constructor(message: string, fileName?: string, lineNumber?: string);
-  }
-
-  /** Indicates an error during module instantiation (besides traps from the
-   * start function). */
-  class LinkError extends Error {
-    constructor(message: string, fileName?: string, lineNumber?: string);
-  }
-
-  /** Is thrown whenever WebAssembly specifies a trap. */
-  class RuntimeError extends Error {
-    constructor(message: string, fileName?: string, lineNumber?: string);
-  }
+    type ImportExportKind = "function" | "global" | "memory" | "table";
+    type TableKind = "anyfunc";
+    type ValueType = "f32" | "f64" | "i32" | "i64";
+    type ExportValue = Function | Global | Memory | Table;
+    type Exports = Record<string, ExportValue>;
+    type ImportValue = ExportValue | number;
+    type ModuleImports = Record<string, ImportValue>;
+    type Imports = Record<string, ModuleImports>;
+    function compile(bytes: BufferSource): Promise<Module>;
+    function compileStreaming(source: Response | Promise<Response>): Promise<Module>;
+    function instantiate(bytes: BufferSource, importObject?: Imports): Promise<WebAssemblyInstantiatedSource>;
+    function instantiate(moduleObject: Module, importObject?: Imports): Promise<Instance>;
+    function instantiateStreaming(response: Response | PromiseLike<Response>, importObject?: Imports): Promise<WebAssemblyInstantiatedSource>;
+    function validate(bytes: BufferSource): boolean;
 }
 
 /** Sets a timer which executes a function once after the timer expires. Returns
