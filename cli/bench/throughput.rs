@@ -34,7 +34,17 @@ pub(crate) fn cat(deno_exe: &PathBuf, megs: usize) -> Result<Value> {
 pub(crate) fn tcp(deno_exe: &PathBuf, megs: usize) -> Result<Value> {
   let size = megs * MB;
 
-  let shell_cmd = format!("head -c {} /dev/zero | nc {}", size, CLIENT_ADDR);
+  // The GNU flavor of `nc` requires the `-N` flag to shutdown the network socket after EOF on stdin
+  let nc_command = if cfg!(target_os = "linux") {
+    "nc -N"
+  } else {
+    "nc"
+  };
+
+  let shell_cmd = format!(
+    "head -c {} /dev/zero | {} {}",
+    size, nc_command, CLIENT_ADDR
+  );
   println!("{}", shell_cmd);
   let cmd = &["sh", "-c", &shell_cmd];
 

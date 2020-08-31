@@ -1015,6 +1015,10 @@ fn lint_subcommand<'a, 'b>() -> App<'a, 'b> {
 Print result as JSON:
   deno lint --unstable --json
 
+Read from stdin:
+  cat file.ts | deno lint --unstable -
+  cat file.ts | deno lint --unstable --json -
+
 List available rules:
   deno lint --unstable --rules
 
