@@ -2253,6 +2253,20 @@ itest!(deno_lint_glob {
   exit_code: 1,
 });
 
+itest!(deno_lint_from_stdin {
+  args: "lint --unstable -",
+  input: Some("let a: any;"),
+  output: "lint/expected_from_stdin.out",
+  exit_code: 1,
+});
+
+itest!(deno_lint_from_stdin_json {
+  args: "lint --unstable --json -",
+  input: Some("let a: any;"),
+  output: "lint/expected_from_stdin_json.out",
+  exit_code: 1,
+});
+
 itest!(deno_doc_builtin {
   args: "doc",
   output: "deno_doc_builtin.out",

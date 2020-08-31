@@ -11,6 +11,7 @@ use crate::file_fetcher::map_file_extension;
 use crate::fmt::collect_files;
 use crate::fmt::run_parallelized;
 use crate::fmt_errors;
+use crate::msg;
 use crate::swc_util;
 use deno_core::ErrBox;
 use deno_lint::diagnostic::LintDiagnostic;
@@ -20,6 +21,7 @@ use deno_lint::rules;
 use deno_lint::rules::LintRule;
 use serde::Serialize;
 use std::fs;
+use std::io::{stdin, Read};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -42,6 +44,9 @@ pub async fn lint_files(
   ignore: Vec<String>,
   json: bool,
 ) -> Result<(), ErrBox> {
+  if args.len() == 1 && args[0] == "-" {
+    return lint_stdin(json);
+  }
   let mut target_files = collect_files(args)?;
   if !ignore.is_empty() {
     // collect all files to be ignored
@@ -131,6 +136,51 @@ fn lint_file(file_path: PathBuf) -> Result<Vec<LintDiagnostic>, ErrBox> {
   let file_diagnostics = linter.lint(file_name, source_code)?;
 
   Ok(file_diagnostics)
+}
+
+/// Lint stdin and write result to stdout.
+/// Treats input as TypeScript.
+/// Compatible with `--json` flag.
+fn lint_stdin(json: bool) -> Result<(), ErrBox> {
+  let mut source = String::new();
+  if stdin().read_to_string(&mut source).is_err() {
+    return Err(ErrBox::error("Failed to read from stdin"));
+  }
+
+  let reporter_kind = if json {
+    LintReporterKind::Json
+  } else {
+    LintReporterKind::Pretty
+  };
+  let mut reporter = create_reporter(reporter_kind);
+  let lint_rules = rules::get_recommended_rules();
+  let syntax = swc_util::get_syntax_for_media_type(msg::MediaType::TypeScript);
+  let mut linter = create_linter(syntax, lint_rules);
+  let mut has_error = false;
+  let pseudo_file_name = "_stdin.ts";
+  match linter
+    .lint(pseudo_file_name.to_string(), source)
+    .map_err(|e| e.into())
+  {
+    Ok(diagnostics) => {
+      for d in diagnostics {
+        has_error = true;
+        reporter.visit(&d);
+      }
+    }
+    Err(err) => {
+      has_error = true;
+      reporter.visit_error(pseudo_file_name, &err);
+    }
+  }
+
+  reporter.close();
+
+  if has_error {
+    std::process::exit(1);
+  }
+
+  Ok(())
 }
 
 trait LintReporter {

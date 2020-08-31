@@ -10,7 +10,13 @@ flag**
 deno lint --unstable
 # lint specific files
 deno lint --unstable myfile1.ts myfile2.ts
+# print result as JSON
+deno lint --unstable --json
+# read from stdin
+cat file.ts | deno lint --unstable -
 ```
+
+For more detail, run `deno lint --help`.
 
 ### Available rules
 
