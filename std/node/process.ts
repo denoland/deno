@@ -40,7 +40,7 @@ export const process = {
   versions,
   get stderr() {
     return {
-      fd: Deno.stdout.rid,
+      fd: Deno.stderr.rid,
       get isTTY(): boolean {
         return Deno.isatty(this.fd);
       },
@@ -48,7 +48,7 @@ export const process = {
   },
   get stdin() {
     return {
-      fd: Deno.stdout.rid,
+      fd: Deno.stdin.rid,
       get isTTY(): boolean {
         return Deno.isatty(this.fd);
       },
