@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+
 use crate::colors;
 use crate::diagnostics::Diagnostic;
 use crate::diagnostics::DiagnosticItem;
@@ -20,6 +21,7 @@ use crate::state::State;
 use crate::swc_util::AstParser;
 use crate::swc_util::Location;
 use crate::swc_util::SwcDiagnosticBuffer;
+use crate::tsc_config;
 use crate::version;
 use crate::worker::Worker;
 use core::task::Context;
@@ -43,6 +45,7 @@ use std::fs;
 use std::io;
 use std::ops::Deref;
 use std::ops::DerefMut;
+use std::path::Path;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -182,9 +185,6 @@ impl Future for CompilerWorker {
 }
 
 lazy_static! {
-  // TODO(bartlomieju): use JSONC parser from dprint instead of Regex
-  static ref CHECK_JS_RE: Regex =
-    Regex::new(r#""checkJs"\s*?:\s*?true"#).unwrap();
   static ref DENO_TYPES_RE: Regex =
     Regex::new(r"^\s*@deno-types\s?=\s?(\S+)\s*(.*)\s*$").unwrap();
   // These regexes were adapted from TypeScript
@@ -197,6 +197,19 @@ lazy_static! {
     Regex::new(r#"(\stypes\s*=\s*)('|")(.+?)('|")"#).unwrap();
   static ref LIB_REFERENCE_RE: Regex =
     Regex::new(r#"(\slib\s*=\s*)('|")(.+?)('|")"#).unwrap();
+}
+
+fn warn_ignored_options(
+  maybe_ignored_options: Option<tsc_config::IgnoredCompilerOptions>,
+  config_path: &Path,
+) {
+  if let Some(ignored_options) = maybe_ignored_options {
+    eprintln!(
+      "Unsupported compiler options in \"{}\"\n  The following options were ignored:\n    {}",
+      config_path.to_string_lossy(),
+      ignored_options
+    );
+  }
 }
 
 /// Create a new worker with snapshot of TS compiler and setup compiler's
@@ -241,70 +254,65 @@ pub enum TargetLib {
 #[derive(Clone)]
 pub struct CompilerConfig {
   pub path: Option<PathBuf>,
-  pub content: Option<Vec<u8>>,
-  pub hash: Vec<u8>,
+  pub options: Value,
+  pub maybe_ignored_options: Option<tsc_config::IgnoredCompilerOptions>,
+  pub hash: String,
   pub compile_js: bool,
 }
 
 impl CompilerConfig {
   /// Take the passed flag and resolve the file name relative to the cwd.
-  pub fn load(config_path: Option<String>) -> Result<Self, ErrBox> {
-    let config_file = match &config_path {
-      Some(config_file_name) => {
-        debug!("Compiler config file: {}", config_file_name);
-        let cwd = std::env::current_dir().unwrap();
-        Some(cwd.join(config_file_name))
-      }
-      _ => None,
-    };
+  pub fn load(maybe_config_path: Option<String>) -> Result<Self, ErrBox> {
+    if maybe_config_path.is_none() {
+      return Ok(Self {
+        path: Some(PathBuf::new()),
+        options: json!({}),
+        maybe_ignored_options: None,
+        hash: "".to_string(),
+        compile_js: false,
+      });
+    }
+
+    let raw_config_path = maybe_config_path.unwrap();
+    debug!("Compiler config file: {}", raw_config_path);
+    let cwd = std::env::current_dir().unwrap();
+    let config_file = cwd.join(raw_config_path);
 
     // Convert the PathBuf to a canonicalized string.  This is needed by the
     // compiler to properly deal with the configuration.
-    let config_path = match &config_file {
-      Some(config_file) => Some(config_file.canonicalize().map_err(|_| {
-        io::Error::new(
-          io::ErrorKind::InvalidInput,
-          format!(
-            "Could not find the config file: {}",
-            config_file.to_string_lossy()
-          ),
-        )
-      })),
-      _ => None,
-    };
+    let config_path = config_file.canonicalize().map_err(|_| {
+      io::Error::new(
+        io::ErrorKind::InvalidInput,
+        format!(
+          "Could not find the config file: {}",
+          config_file.to_string_lossy()
+        ),
+      )
+    })?;
 
     // Load the contents of the configuration file
-    let config = match &config_file {
-      Some(config_file) => {
-        debug!("Attempt to load config: {}", config_file.to_str().unwrap());
-        let config = fs::read(&config_file)?;
-        Some(config)
-      }
-      _ => None,
-    };
+    debug!("Attempt to load config: {}", config_path.to_str().unwrap());
+    let config_bytes = fs::read(&config_file)?;
+    let config_hash = crate::checksum::gen(&[&config_bytes]);
+    let config_str = String::from_utf8(config_bytes)?;
 
-    let config_hash = match &config {
-      Some(bytes) => bytes.clone(),
-      _ => b"".to_vec(),
+    let (options, maybe_ignored_options) = if config_str.is_empty() {
+      (json!({}), None)
+    } else {
+      tsc_config::parse_config(&config_str)?
     };
 
     // If `checkJs` is set to true in `compilerOptions` then we're gonna be compiling
     // JavaScript files as well
-    let compile_js = if let Some(config_content) = config.clone() {
-      let config_str = std::str::from_utf8(&config_content)?;
-      CHECK_JS_RE.is_match(config_str)
-    } else {
-      false
-    };
+    let compile_js = options["checkJs"].as_bool().unwrap_or(false);
 
-    let ts_config = Self {
-      path: config_path.unwrap_or_else(|| Ok(PathBuf::new())).ok(),
-      content: config,
+    Ok(Self {
+      path: Some(config_path),
+      options,
+      maybe_ignored_options,
       hash: config_hash,
       compile_js,
-    };
-
-    Ok(ts_config)
+    })
   }
 }
 
@@ -471,7 +479,7 @@ impl TsCompiler {
         let version_hash_to_validate = source_code_version_hash(
           &source_file.source_code.as_bytes(),
           version::DENO,
-          &self.config.hash,
+          &self.config.hash.as_bytes(),
         );
 
         if metadata.version_hash == version_hash_to_validate {
@@ -577,39 +585,57 @@ impl TsCompiler {
     let unstable = self.flags.unstable;
     let performance = matches!(self.flags.log_level, Some(Level::Debug));
     let compiler_config = self.config.clone();
-    let cwd = std::env::current_dir().unwrap();
-
-    let j = match (compiler_config.path, compiler_config.content) {
-      (Some(config_path), Some(config_data)) => json!({
-        "type": msg::CompilerRequestType::Compile,
-        "allowJs": allow_js,
-        "target": target,
-        "rootNames": root_names,
-        "unstable": unstable,
-        "performance": performance,
-        "configPath": config_path,
-        "config": str::from_utf8(&config_data).unwrap(),
-        "cwd": cwd,
-        "sourceFileMap": module_graph_json,
-        "buildInfo": if self.use_disk_cache { build_info } else { None },
-      }),
-      _ => json!({
-        "type": msg::CompilerRequestType::Compile,
-        "allowJs": allow_js,
-        "target": target,
-        "rootNames": root_names,
-        "unstable": unstable,
-        "performance": performance,
-        "cwd": cwd,
-        "sourceFileMap": module_graph_json,
-        "buildInfo": if self.use_disk_cache { build_info } else { None },
-      }),
-    };
-
-    let req_msg = j.to_string();
 
     // TODO(bartlomieju): lift this call up - TSC shouldn't print anything
     info!("{} {}", colors::green("Check"), module_url.to_string());
+
+    let mut lib = if target == "main" {
+      vec!["deno.window"]
+    } else {
+      vec!["deno.worker"]
+    };
+
+    if unstable {
+      lib.push("deno.unstable");
+    }
+
+    let mut compiler_options = json!({
+      "allowJs": allow_js,
+      "allowNonTsExtensions": true,
+      "checkJs": false,
+      "esModuleInterop": true,
+      "incremental": true,
+      "inlineSourceMap": true,
+      "jsx": "react",
+      "lib": lib,
+      "module": "esnext",
+      "outDir": "deno://",
+      "resolveJsonModule": true,
+      "sourceMap": false,
+      "strict": true,
+      "removeComments": true,
+      "target": "esnext",
+      "tsBuildInfoFile": "cache:///tsbuildinfo.json",
+    });
+
+    tsc_config::json_merge(&mut compiler_options, &compiler_config.options);
+
+    warn_ignored_options(
+      compiler_config.maybe_ignored_options,
+      compiler_config.path.as_ref().unwrap(),
+    );
+
+    let j = json!({
+      "type": msg::CompilerRequestType::Compile,
+      "target": target,
+      "rootNames": root_names,
+      "performance": performance,
+      "compilerOptions": compiler_options,
+      "sourceFileMap": module_graph_json,
+      "buildInfo": if self.use_disk_cache { build_info } else { None },
+    });
+
+    let req_msg = j.to_string();
 
     let json_str =
       execute_in_same_thread(global_state, permissions, req_msg).await?;
@@ -680,36 +706,54 @@ impl TsCompiler {
 
     let root_names = vec![module_specifier.to_string()];
     let target = "main";
-    let cwd = std::env::current_dir().unwrap();
     let performance =
       matches!(global_state.flags.log_level, Some(Level::Debug));
+    let unstable = self.flags.unstable;
+
+    let mut lib = if target == "main" {
+      vec!["deno.window"]
+    } else {
+      vec!["deno.worker"]
+    };
+
+    if unstable {
+      lib.push("deno.unstable");
+    }
+
+    let mut compiler_options = json!({
+      "allowJs": true,
+      "allowNonTsExtensions": true,
+      "checkJs": false,
+      "esModuleInterop": true,
+      "inlineSourceMap": false,
+      "jsx": "react",
+      "lib": lib,
+      "module": "system",
+      "outFile": "deno:///bundle.js",
+      // disabled until we have effective way to modify source maps
+      "sourceMap": false,
+      "strict": true,
+      "removeComments": true,
+      "target": "esnext",
+    });
 
     let compiler_config = self.config.clone();
 
-    // TODO(bartlomieju): this is non-sense; CompilerConfig's `path` and `content` should
-    // be optional
-    let j = match (compiler_config.path, compiler_config.content) {
-      (Some(config_path), Some(config_data)) => json!({
-        "type": msg::CompilerRequestType::Bundle,
-        "target": target,
-        "rootNames": root_names,
-        "unstable": self.flags.unstable,
-        "performance": performance,
-        "configPath": config_path,
-        "config": str::from_utf8(&config_data).unwrap(),
-        "cwd": cwd,
-        "sourceFileMap": module_graph_json,
-      }),
-      _ => json!({
-        "type": msg::CompilerRequestType::Bundle,
-        "target": target,
-        "rootNames": root_names,
-        "unstable": self.flags.unstable,
-        "performance": performance,
-        "cwd": cwd,
-        "sourceFileMap": module_graph_json,
-      }),
-    };
+    tsc_config::json_merge(&mut compiler_options, &compiler_config.options);
+
+    warn_ignored_options(
+      compiler_config.maybe_ignored_options,
+      compiler_config.path.as_ref().unwrap(),
+    );
+
+    let j = json!({
+      "type": msg::CompilerRequestType::Bundle,
+      "target": target,
+      "rootNames": root_names,
+      "performance": performance,
+      "compilerOptions": compiler_options,
+      "sourceFileMap": module_graph_json,
+    });
 
     let req_msg = j.to_string();
 
@@ -900,7 +944,7 @@ impl TsCompiler {
     let version_hash = source_code_version_hash(
       &source_file.source_code.as_bytes(),
       version::DENO,
-      &self.config.hash,
+      &self.config.hash.as_bytes(),
     );
 
     let compiled_file_metadata = CompiledFileMetadata { version_hash };
@@ -1069,7 +1113,7 @@ async fn create_runtime_module_graph(
   permissions: Permissions,
   root_name: &str,
   sources: &Option<HashMap<String, String>>,
-  maybe_options: &Option<String>,
+  type_files: Vec<String>,
 ) -> Result<(Vec<String>, ModuleGraph), ErrBox> {
   let mut root_names = vec![];
   let mut module_graph_loader = ModuleGraphLoader::new(
@@ -1093,23 +1137,12 @@ async fn create_runtime_module_graph(
   }
 
   // download all additional files from TSconfig and add them to root_names
-  if let Some(options) = maybe_options {
-    let options_json: serde_json::Value = serde_json::from_str(options)?;
-    if let Some(types_option) = options_json.get("types") {
-      let types_arr = types_option.as_array().expect("types is not an array");
-
-      for type_value in types_arr {
-        let type_str = type_value
-          .as_str()
-          .expect("type is not a string")
-          .to_string();
-        let type_specifier = ModuleSpecifier::resolve_url_or_path(&type_str)?;
-        module_graph_loader
-          .add_to_graph(&type_specifier, None)
-          .await?;
-        root_names.push(type_specifier.to_string())
-      }
-    }
+  for type_file in type_files {
+    let type_specifier = ModuleSpecifier::resolve_url_or_path(&type_file)?;
+    module_graph_loader
+      .add_to_graph(&type_specifier, None)
+      .await?;
+    root_names.push(type_specifier.to_string())
   }
 
   Ok((root_names, module_graph_loader.get_graph()))
@@ -1135,12 +1168,65 @@ pub async fn runtime_compile(
   sources: &Option<HashMap<String, String>>,
   maybe_options: &Option<String>,
 ) -> Result<Value, ErrBox> {
+  let mut user_options = if let Some(options) = maybe_options {
+    tsc_config::parse_raw_config(options)?
+  } else {
+    json!({})
+  };
+
+  // Intentionally calling "take()" to replace value with `null` - otherwise TSC will try to load that file
+  // using `fileExists` API
+  let type_files = if let Some(types) = user_options["types"].take().as_array()
+  {
+    types
+      .iter()
+      .map(|type_value| type_value.as_str().unwrap_or("").to_string())
+      .filter(|type_str| !type_str.is_empty())
+      .collect()
+  } else {
+    vec![]
+  };
+
+  let unstable = global_state.flags.unstable;
+
+  let mut lib = vec![];
+  if let Some(user_libs) = user_options["lib"].take().as_array() {
+    let libs = user_libs
+      .iter()
+      .map(|type_value| type_value.as_str().unwrap_or("").to_string())
+      .filter(|type_str| !type_str.is_empty())
+      .collect::<Vec<String>>();
+    lib.extend(libs);
+  } else {
+    lib.push("deno.window".to_string());
+  }
+
+  if unstable {
+    lib.push("deno.unstable".to_string());
+  }
+
+  let mut compiler_options = json!({
+    "allowJs": false,
+    "allowNonTsExtensions": true,
+    "checkJs": false,
+    "esModuleInterop": true,
+    "jsx": "react",
+    "module": "esnext",
+    "sourceMap": true,
+    "strict": true,
+    "removeComments": true,
+    "target": "esnext",
+  });
+
+  tsc_config::json_merge(&mut compiler_options, &user_options);
+  tsc_config::json_merge(&mut compiler_options, &json!({ "lib": lib }));
+
   let (root_names, module_graph) = create_runtime_module_graph(
     &global_state,
     permissions.clone(),
     root_name,
     sources,
-    maybe_options,
+    type_files,
   )
   .await?;
   let module_graph_json =
@@ -1151,8 +1237,7 @@ pub async fn runtime_compile(
     "target": "runtime",
     "rootNames": root_names,
     "sourceFileMap": module_graph_json,
-    "options": maybe_options,
-    "unstable": global_state.flags.unstable,
+    "compilerOptions": compiler_options,
   })
   .to_string();
 
@@ -1182,24 +1267,88 @@ pub async fn runtime_bundle(
   sources: &Option<HashMap<String, String>>,
   maybe_options: &Option<String>,
 ) -> Result<Value, ErrBox> {
+  let mut user_options = if let Some(options) = maybe_options {
+    tsc_config::parse_raw_config(options)?
+  } else {
+    json!({})
+  };
+
+  // Intentionally calling "take()" to replace value with `null` - otherwise TSC will try to load that file
+  // using `fileExists` API
+  let type_files = if let Some(types) = user_options["types"].take().as_array()
+  {
+    types
+      .iter()
+      .map(|type_value| type_value.as_str().unwrap_or("").to_string())
+      .filter(|type_str| !type_str.is_empty())
+      .collect()
+  } else {
+    vec![]
+  };
+
   let (root_names, module_graph) = create_runtime_module_graph(
     &global_state,
     permissions.clone(),
     root_name,
     sources,
-    maybe_options,
+    type_files,
   )
   .await?;
   let module_graph_json =
     serde_json::to_value(module_graph).expect("Failed to serialize data");
+
+  let unstable = global_state.flags.unstable;
+
+  let mut lib = vec![];
+  if let Some(user_libs) = user_options["lib"].take().as_array() {
+    let libs = user_libs
+      .iter()
+      .map(|type_value| type_value.as_str().unwrap_or("").to_string())
+      .filter(|type_str| !type_str.is_empty())
+      .collect::<Vec<String>>();
+    lib.extend(libs);
+  } else {
+    lib.push("deno.window".to_string());
+  }
+
+  if unstable {
+    lib.push("deno.unstable".to_string());
+  }
+
+  let mut compiler_options = json!({
+    "allowJs": false,
+    "allowNonTsExtensions": true,
+    "checkJs": false,
+    "esModuleInterop": true,
+    "jsx": "react",
+    "module": "esnext",
+    "outDir": null,
+    "sourceMap": true,
+    "strict": true,
+    "removeComments": true,
+    "target": "esnext",
+  });
+
+  let bundler_options = json!({
+    "allowJs": true,
+    "inlineSourceMap": false,
+    "module": "system",
+    "outDir": null,
+    "outFile": "deno:///bundle.js",
+    // disabled until we have effective way to modify source maps
+    "sourceMap": false,
+  });
+
+  tsc_config::json_merge(&mut compiler_options, &user_options);
+  tsc_config::json_merge(&mut compiler_options, &json!({ "lib": lib }));
+  tsc_config::json_merge(&mut compiler_options, &bundler_options);
 
   let req_msg = json!({
     "type": msg::CompilerRequestType::RuntimeBundle,
     "target": "runtime",
     "rootNames": root_names,
     "sourceFileMap": module_graph_json,
-    "options": maybe_options,
-    "unstable": global_state.flags.unstable,
+    "compilerOptions": compiler_options,
   })
   .to_string();
 
@@ -1218,12 +1367,27 @@ pub async fn runtime_transpile(
   global_state: &Arc<GlobalState>,
   permissions: Permissions,
   sources: &HashMap<String, String>,
-  options: &Option<String>,
+  maybe_options: &Option<String>,
 ) -> Result<Value, ErrBox> {
+  let user_options = if let Some(options) = maybe_options {
+    tsc_config::parse_raw_config(options)?
+  } else {
+    json!({})
+  };
+
+  let mut compiler_options = json!({
+    "esModuleInterop": true,
+    "module": "esnext",
+    "sourceMap": true,
+    "scriptComments": true,
+    "target": "esnext",
+  });
+  tsc_config::json_merge(&mut compiler_options, &user_options);
+
   let req_msg = json!({
     "type": msg::CompilerRequestType::RuntimeTranspile,
     "sources": sources,
-    "options": options,
+    "compilerOptions": compiler_options,
   })
   .to_string();
 
@@ -1754,11 +1918,14 @@ mod tests {
       (r#"{ "compilerOptions": { "checkJs": true } } "#, true),
       // JSON with comment
       (
-        r#"{ "compilerOptions": { // force .js file compilation by Deno "checkJs": true } } "#,
+        r#"{ 
+          "compilerOptions": { 
+            // force .js file compilation by Deno 
+            "checkJs": true 
+          } 
+        }"#,
         true,
       ),
-      // invalid JSON
-      (r#"{ "compilerOptions": { "checkJs": true },{ } "#, true),
       // without content
       ("", false),
     ];
