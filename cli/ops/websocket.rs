@@ -11,12 +11,19 @@ use futures::StreamExt;
 use futures::{ready, SinkExt};
 use http::{Method, Request, Uri};
 use std::borrow::Cow;
+use std::fs::File;
+use std::io::BufReader;
 use std::rc::Rc;
+use std::sync::Arc;
 use tokio::net::TcpStream;
-use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
-use tokio_tungstenite::tungstenite::protocol::CloseFrame;
-use tokio_tungstenite::tungstenite::{Error, Message};
-use tokio_tungstenite::{client_async_tls, MaybeTlsStream, WebSocketStream};
+use tokio_rustls::{rustls::ClientConfig, TlsConnector};
+use tokio_tungstenite::stream::Stream as StreamSwitcher;
+use tokio_tungstenite::tungstenite::{
+  handshake::client::Response, protocol::frame::coding::CloseCode,
+  protocol::CloseFrame, Error, Message,
+};
+use tokio_tungstenite::{client_async, WebSocketStream};
+use webpki::DNSNameRef;
 
 pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
   i.register_op("op_ws_create", s.stateful_json_op2(op_ws_create));
@@ -25,7 +32,10 @@ pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
   i.register_op("op_ws_next_event", s.stateful_json_op2(op_ws_next_event));
 }
 
-type WsStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
+type MaybeTlsStream =
+  StreamSwitcher<TcpStream, tokio_rustls::client::TlsStream<TcpStream>>;
+
+type WsStream = WebSocketStream<MaybeTlsStream>;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -36,10 +46,11 @@ struct CreateArgs {
 
 pub fn op_ws_create(
   isolate_state: &mut CoreIsolateState,
-  _state: &Rc<State>,
+  state: &Rc<State>,
   args: Value,
   _zero_copy: &mut [ZeroCopyBuf],
 ) -> Result<JsonOp, ErrBox> {
+  let ca_file = state.global_state.flags.ca_file.clone();
   let args: CreateArgs = serde_json::from_value(args)?;
   let resource_table = isolate_state.resource_table.clone();
   let future = async move {
@@ -58,12 +69,36 @@ pub fn op_ws_create(
     });
     let addr = format!("{}:{}", domain, port);
     let try_socket = TcpStream::connect(addr).await;
-    let socket = match try_socket.map_err(Error::Io) {
+    let tcp_stream = match try_socket.map_err(Error::Io) {
       Ok(socket) => socket,
       Err(_) => return Ok(json!({"success": false})),
     };
 
-    let (stream, response) = client_async_tls(request, socket).await.unwrap();
+    let stream: MaybeTlsStream = match uri.scheme_str() {
+      Some("ws") => StreamSwitcher::Plain(tcp_stream),
+      Some("wss") => {
+        let mut config = ClientConfig::new();
+        config
+          .root_store
+          .add_server_trust_anchors(&webpki_roots::TLS_SERVER_ROOTS);
+
+        if let Some(path) = ca_file {
+          let key_file = File::open(path)?;
+          let reader = &mut BufReader::new(key_file);
+          config.root_store.add_pem_file(reader).unwrap();
+        }
+
+        let tls_connector = TlsConnector::from(Arc::new(config));
+        let dnsname =
+          DNSNameRef::try_from_ascii_str(&domain).expect("Invalid DNS lookup");
+        let tls_stream = tls_connector.connect(dnsname, tcp_stream).await?;
+        StreamSwitcher::Tls(tls_stream)
+      }
+      _ => unreachable!(),
+    };
+
+    let (stream, response): (WsStream, Response) =
+      client_async(request, stream).await.unwrap();
 
     let rid = {
       let mut resource_table = resource_table.borrow_mut();

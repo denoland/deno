@@ -61,7 +61,7 @@ termcolor = "1.1.0"
 tokio = { version = "0.2.22", features = ["full"] }
 tokio-rustls = "0.14.0"
 # Keep in-sync with warp.
-tokio-tungstenite = { version = "0.10.1", features = ["connect", "tls"] }
+tokio-tungstenite = { version = "0.10.1" }
 url = "2.1.1"
 utime = "0.3.1"
 webpki = "0.21.3"

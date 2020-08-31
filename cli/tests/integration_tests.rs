@@ -2919,9 +2919,7 @@ async fn inspector_pause() {
   /// Returns the next websocket message as a string ignoring
   /// Debugger.scriptParsed messages.
   async fn ws_read_msg(
-    socket: &mut tokio_tungstenite::WebSocketStream<
-      tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
-    >,
+    socket: &mut tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>,
   ) -> String {
     use futures::stream::StreamExt;
     while let Some(msg) = socket.next().await {
