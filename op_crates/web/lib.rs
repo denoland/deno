@@ -1,30 +1,31 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::js_check;
+use deno_core::CoreIsolate;
 use std::path::PathBuf;
 
-pub struct WebScripts {
-  pub abort_signal: String,
-  pub declaration: String,
-  pub dom_exception: String,
-  pub event: String,
-  pub text_encoding: String,
-}
-
-fn get_str_path(file_name: &str) -> String {
-  PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-    .join(file_name)
-    .to_string_lossy()
-    .to_string()
-}
-
-pub fn get_scripts() -> WebScripts {
-  WebScripts {
-    abort_signal: get_str_path("02_abort_signal.js"),
-    declaration: get_str_path("lib.deno_web.d.ts"),
-    dom_exception: get_str_path("00_dom_exception.js"),
-    event: get_str_path("01_event.js"),
-    text_encoding: get_str_path("08_text_encoding.js"),
+pub fn init(isolate: &mut CoreIsolate) {
+  let files = vec![
+    get_path("00_dom_exception.js"),
+    get_path("01_event.js"),
+    get_path("02_abort_signal.js"),
+    get_path("08_text_encoding.js"),
+  ];
+  for file in files {
+    println!("cargo:rerun-if-changed={}", file.display());
+    js_check(isolate.execute(
+      &file.to_string_lossy(),
+      &std::fs::read_to_string(&file).unwrap(),
+    ));
   }
+}
+
+pub fn get_declaration() -> PathBuf {
+  get_path("lib.deno_web.d.ts")
+}
+
+fn get_path(file_name: &str) -> PathBuf {
+  PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(file_name)
 }
 
 #[cfg(test)]
@@ -46,18 +47,7 @@ mod tests {
 
   fn setup() -> CoreIsolate {
     let mut isolate = CoreIsolate::new(StartupData::None, false);
-    js_check(
-      isolate
-        .execute("00_dom_exception.js", include_str!("00_dom_exception.js")),
-    );
-    js_check(isolate.execute("01_event.js", include_str!("01_event.js")));
-    js_check(
-      isolate.execute("02_abort_signal.js", include_str!("02_abort_signal.js")),
-    );
-    js_check(
-      isolate
-        .execute("08_text_encoding.js", include_str!("08_text_encoding.js")),
-    );
+    crate::init(&mut isolate);
     isolate
   }
 
