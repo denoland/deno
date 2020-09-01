@@ -4,7 +4,7 @@ use crate::global_state::GlobalState;
 use crate::human_size;
 use crate::module_graph::ModuleGraphFile;
 use crate::msg;
-use crate::MainWorker;
+use crate::tsc::TargetLib;
 use crate::ModuleGraph;
 use crate::ModuleGraphLoader;
 use crate::ModuleSpecifier;
@@ -12,9 +12,12 @@ use crate::Permissions;
 use deno_core::ErrBox;
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
+// TODO(bartlomieju): rename
 /// Struct containing a module's dependency information.
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ModuleDepInfo {
   local: String,
   file_type: String,
@@ -27,10 +30,21 @@ pub struct ModuleDepInfo {
 impl ModuleDepInfo {
   /// Creates a new `ModuleDepInfo` struct for the module with the provided `ModuleSpecifier`.
   pub async fn new(
-    worker: &MainWorker,
+    global_state: &Arc<GlobalState>,
     module_specifier: ModuleSpecifier,
   ) -> Result<ModuleDepInfo, ErrBox> {
-    let global_state = worker.state.global_state.clone();
+    // First load module as if it was to be executed by worker
+    global_state
+      .prepare_module_load(
+        module_specifier.clone(),
+        None,
+        TargetLib::Main,
+        Permissions::allow_all(),
+        false,
+        global_state.maybe_import_map.clone(),
+      )
+      .await?;
+
     let ts_compiler = &global_state.ts_compiler;
     let file_fetcher = &global_state.file_fetcher;
     let out = file_fetcher
@@ -143,6 +157,7 @@ impl FileInfoDepTree {
     Self::cstr_helper(&mut seen, &mut total_sizes, module_graph, root_specifier)
   }
 
+  // TODO(bartlomieju): rename
   fn cstr_helper(
     seen: &mut HashSet<String>,
     total_sizes: &mut HashMap<String, usize>,
@@ -314,7 +329,7 @@ async fn get_module_graph(
     global_state.maybe_import_map.clone(),
     Permissions::allow_all(),
     false,
-    true,
+    false,
   );
   module_graph_loader
     .add_to_graph(&module_specifier, None)

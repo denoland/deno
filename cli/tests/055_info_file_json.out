@@ -1,9 +1,9 @@
 {
   "local": "[WILDCARD]005_more_imports.ts",
-  "file_type": "TypeScript",
+  "fileType": "TypeScript",
   "compiled": "[WILDCARD].js",
   "map": null,
-  "dep_count": 3,
+  "depCount": 3,
   "deps": {
     "name": "file://[WILDCARD]/005_more_imports.ts",
     "size": 211,

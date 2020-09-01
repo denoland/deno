@@ -213,9 +213,8 @@ async fn info_command(
     print_cache_info(&global_state, json)
   } else {
     let main_module = ModuleSpecifier::resolve_url_or_path(&file.unwrap())?;
-    let mut worker = MainWorker::create(&global_state, main_module.clone())?;
-    worker.preload_module(&main_module).await?;
-    let info = info::ModuleDepInfo::new(&worker, main_module.clone()).await?;
+    let info =
+      info::ModuleDepInfo::new(&global_state, main_module.clone()).await?;
 
     if json {
       write_json_to_stdout(&json!(info))
