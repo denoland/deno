@@ -351,45 +351,12 @@ async fn bundle_command(
       "{} {:?} ({})",
       colors::green("Emit"),
       out_file_,
-      colors::gray(&human_size(output_len as f64))
+      colors::gray(&info::human_size(output_len as f64))
     );
   } else {
     println!("{}", output);
   }
   Ok(())
-}
-
-pub fn human_size(bytse: f64) -> String {
-  let negative = if bytse.is_sign_positive() { "" } else { "-" };
-  let bytse = bytse.abs();
-  let units = ["Bytes", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
-  if bytse < 1_f64 {
-    return format!("{}{} {}", negative, bytse, "Bytes");
-  }
-  let delimiter = 1024_f64;
-  let exponent = std::cmp::min(
-    (bytse.ln() / delimiter.ln()).floor() as i32,
-    (units.len() - 1) as i32,
-  );
-  let pretty_bytes = format!("{:.2}", bytse / delimiter.powi(exponent))
-    .parse::<f64>()
-    .unwrap()
-    * 1_f64;
-  let unit = units[exponent as usize];
-  format!("{}{} {}", negative, pretty_bytes, unit)
-}
-
-#[test]
-fn human_size_test() {
-  assert_eq!(human_size(16_f64), "16 Bytes");
-  assert_eq!(human_size((16 * 1024) as f64), "16 KB");
-  assert_eq!(human_size((16 * 1024 * 1024) as f64), "16 MB");
-  assert_eq!(human_size(16_f64 * 1024_f64.powf(3.0)), "16 GB");
-  assert_eq!(human_size(16_f64 * 1024_f64.powf(4.0)), "16 TB");
-  assert_eq!(human_size(16_f64 * 1024_f64.powf(5.0)), "16 PB");
-  assert_eq!(human_size(16_f64 * 1024_f64.powf(6.0)), "16 EB");
-  assert_eq!(human_size(16_f64 * 1024_f64.powf(7.0)), "16 ZB");
-  assert_eq!(human_size(16_f64 * 1024_f64.powf(8.0)), "16 YB");
 }
 
 async fn doc_command(

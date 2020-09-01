@@ -1,6 +1,5 @@
 use crate::colors;
 use crate::global_state::GlobalState;
-use crate::human_size;
 use crate::module_graph::ModuleGraphFile;
 use crate::msg;
 use crate::tsc::TargetLib;
@@ -136,6 +135,7 @@ impl std::fmt::Display for ModuleDepInfo {
 /// Constructed from a `ModuleGraph` and `ModuleSpecifier` that
 /// acts as the root of the tree.
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct FileInfoDepTree {
   name: String,
   size: usize,
@@ -323,12 +323,45 @@ fn get_new_prefix(prefix: &str, is_last: bool) -> String {
   prefix
 }
 
+pub fn human_size(bytse: f64) -> String {
+  let negative = if bytse.is_sign_positive() { "" } else { "-" };
+  let bytse = bytse.abs();
+  let units = ["Bytes", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
+  if bytse < 1_f64 {
+    return format!("{}{} {}", negative, bytse, "Bytes");
+  }
+  let delimiter = 1024_f64;
+  let exponent = std::cmp::min(
+    (bytse.ln() / delimiter.ln()).floor() as i32,
+    (units.len() - 1) as i32,
+  );
+  let pretty_bytes = format!("{:.2}", bytse / delimiter.powi(exponent))
+    .parse::<f64>()
+    .unwrap()
+    * 1_f64;
+  let unit = units[exponent as usize];
+  format!("{}{} {}", negative, pretty_bytes, unit)
+}
+
 #[cfg(test)]
 mod test {
   use super::*;
   use crate::module_graph::ImportDescriptor;
   use crate::swc_util::Location;
   use crate::MediaType;
+
+  #[test]
+  fn human_size_test() {
+    assert_eq!(human_size(16_f64), "16 Bytes");
+    assert_eq!(human_size((16 * 1024) as f64), "16 KB");
+    assert_eq!(human_size((16 * 1024 * 1024) as f64), "16 MB");
+    assert_eq!(human_size(16_f64 * 1024_f64.powf(3.0)), "16 GB");
+    assert_eq!(human_size(16_f64 * 1024_f64.powf(4.0)), "16 TB");
+    assert_eq!(human_size(16_f64 * 1024_f64.powf(5.0)), "16 PB");
+    assert_eq!(human_size(16_f64 * 1024_f64.powf(6.0)), "16 EB");
+    assert_eq!(human_size(16_f64 * 1024_f64.powf(7.0)), "16 ZB");
+    assert_eq!(human_size(16_f64 * 1024_f64.powf(8.0)), "16 YB");
+  }
 
   #[test]
   fn get_new_prefix_adds_spaces_if_is_last() {
