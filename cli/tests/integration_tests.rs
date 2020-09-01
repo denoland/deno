@@ -2234,9 +2234,23 @@ itest!(deno_lint {
   exit_code: 1,
 });
 
+itest!(deno_lint_verbose {
+  args: "lint --unstable -v lint/file1.js lint/file2.ts lint/ignored_file.ts",
+  output: "lint/expected_verbose.out",
+  exit_code: 1,
+});
+
 itest!(deno_lint_json {
   args:
     "lint --unstable --json lint/file1.js lint/file2.ts lint/ignored_file.ts lint/malformed.js",
+  output: "lint/expected_json.out",
+  exit_code: 1,
+});
+
+// Confirm that `--verbose` flag with `--json` does nothing.
+itest!(deno_lint_json_verbose {
+  args:
+    "lint --unstable --json --verbose lint/file1.js lint/file2.ts lint/ignored_file.ts lint/malformed.js",
   output: "lint/expected_json.out",
   exit_code: 1,
 });
