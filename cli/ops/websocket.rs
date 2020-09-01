@@ -235,18 +235,6 @@ pub fn op_ws_next_event(
       .get_mut::<WsStream>(args.rid)
       .ok_or_else(ErrBox::bad_resource_id)?;
 
-    /*
-    match stream.rx.try_recv() {
-      Ok(_) => todo!(),
-      Err(tokio::sync::oneshot::error::TryRecvError::Empty) => {}
-      Err(tokio::sync::oneshot::error::TryRecvError::Closed) => todo!(),
-    }
-
-    if Poll::Pending != stream.rx.poll_unpin(cx) {
-      todo!()
-    }
-    */
-
     stream.poll_next_unpin(cx).map(|val| {
       match val {
         Some(val) => {
