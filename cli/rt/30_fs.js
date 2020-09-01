@@ -264,20 +264,13 @@
     await sendAsync("op_link_async", { oldpath, newpath });
   }
 
-  function toUnixTimeFromEpoch(value) {
-    if (value instanceof Date) {
-      const time = value.valueOf();
-      const seconds = Math.trunc(time / 1e3);
-      const nanoseconds = Math.trunc(time - (seconds * 1e3)) * 1e6;
-
-      return [
-        seconds,
-        nanoseconds,
-      ];
+  function toUnixTimeFromEpoch(time) {
+    if (time instanceof Date) {
+      time = time.valueOf();
     }
 
-    const seconds = value;
-    const nanoseconds = 0;
+    const seconds = Math.trunc(time / 1e3);
+    const nanoseconds = Math.trunc(time - (seconds * 1e3)) * 1e6;
 
     return [
       seconds,

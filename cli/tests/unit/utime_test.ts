@@ -22,8 +22,8 @@ unitTest(
     await Deno.fdatasync(file.rid);
 
     const fileInfo = Deno.statSync(filename);
-    assertEquals(fileInfo.atime, new Date(atime * 1000));
-    assertEquals(fileInfo.mtime, new Date(mtime * 1000));
+    assertEquals(fileInfo.atime, new Date(atime));
+    assertEquals(fileInfo.mtime, new Date(mtime));
     file.close();
   },
 );
@@ -44,8 +44,8 @@ unitTest(
     Deno.fdatasyncSync(file.rid);
 
     const fileInfo = Deno.statSync(filename);
-    assertEquals(fileInfo.atime, new Date(atime * 1000));
-    assertEquals(fileInfo.mtime, new Date(mtime * 1000));
+    assertEquals(fileInfo.atime, new Date(atime));
+    assertEquals(fileInfo.mtime, new Date(mtime));
     file.close();
   },
 );
@@ -64,8 +64,8 @@ unitTest(
     Deno.utimeSync(filename, atime, mtime);
 
     const fileInfo = Deno.statSync(filename);
-    assertEquals(fileInfo.atime, new Date(atime * 1000));
-    assertEquals(fileInfo.mtime, new Date(mtime * 1000));
+    assertEquals(fileInfo.atime, new Date(atime));
+    assertEquals(fileInfo.mtime, new Date(mtime));
   },
 );
 
@@ -79,8 +79,8 @@ unitTest(
     Deno.utimeSync(testDir, atime, mtime);
 
     const dirInfo = Deno.statSync(testDir);
-    assertEquals(dirInfo.atime, new Date(atime * 1000));
-    assertEquals(dirInfo.mtime, new Date(mtime * 1000));
+    assertEquals(dirInfo.atime, new Date(atime));
+    assertEquals(dirInfo.mtime, new Date(mtime));
   },
 );
 
@@ -129,8 +129,8 @@ unitTest(
     Deno.utimeSync(testDir, atime, mtime);
 
     const dirInfo = Deno.statSync(testDir);
-    assertEquals(dirInfo.atime, new Date(atime * 1000));
-    assertEquals(dirInfo.mtime, new Date(mtime * 1000));
+    assertEquals(dirInfo.atime, new Date(atime));
+    assertEquals(dirInfo.mtime, new Date(mtime));
   },
 );
 
@@ -172,8 +172,8 @@ unitTest(
     await Deno.utime(filename, atime, mtime);
 
     const fileInfo = Deno.statSync(filename);
-    assertEquals(fileInfo.atime, new Date(atime * 1000));
-    assertEquals(fileInfo.mtime, new Date(mtime * 1000));
+    assertEquals(fileInfo.atime, new Date(atime));
+    assertEquals(fileInfo.mtime, new Date(mtime));
   },
 );
 
@@ -187,8 +187,8 @@ unitTest(
     await Deno.utime(testDir, atime, mtime);
 
     const dirInfo = Deno.statSync(testDir);
-    assertEquals(dirInfo.atime, new Date(atime * 1000));
-    assertEquals(dirInfo.mtime, new Date(mtime * 1000));
+    assertEquals(dirInfo.atime, new Date(atime));
+    assertEquals(dirInfo.mtime, new Date(mtime));
   },
 );
 

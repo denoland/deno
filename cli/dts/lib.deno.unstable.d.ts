@@ -767,7 +767,7 @@ declare namespace Deno {
    *
    * Synchronously changes the access (`atime`) and modification (`mtime`) times
    * of a file system object referenced by `path`. Given times are either in
-   * seconds (UNIX epoch time) or as `Date` objects.
+   * milliseconds (UNIX epoch time) or as `Date` objects.
    *
    * ```ts
    * Deno.utimeSync("myfile.txt", 1556495550, new Date());
@@ -783,7 +783,7 @@ declare namespace Deno {
   /** **UNSTABLE**: needs investigation into high precision time.
    *
    * Changes the access (`atime`) and modification (`mtime`) times of a file
-   * system object referenced by `path`. Given times are either in seconds
+   * system object referenced by `path`. Given times are either in milliseconds
    * (UNIX epoch time) or as `Date` objects.
    *
    * ```ts
@@ -1252,7 +1252,7 @@ declare namespace Deno {
    *
    * Synchronously changes the access (`atime`) and modification (`mtime`) times
    * of a file stream resource referenced by `rid`. Given times are either in
-   * seconds (UNIX epoch time) or as `Date` objects.
+   * milliseconds (UNIX epoch time) or as `Date` objects.
    *
    * ```ts
    * const file = Deno.openSync("file.txt", { create: true });
@@ -1268,7 +1268,7 @@ declare namespace Deno {
   /** **UNSTABLE**: needs investigation into high precision time.
    *
    * Changes the access (`atime`) and modification (`mtime`) times of a file
-   * stream resource referenced by `rid`. Given times are either in seconds
+   * stream resource referenced by `rid`. Given times are either in milliseconds
    * (UNIX epoch time) or as `Date` objects.
    *
    * ```ts
