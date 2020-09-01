@@ -353,17 +353,91 @@ pub fn transpile(
   Ok((src, map))
 }
 
-#[test]
-fn test_transpile() {
-  let result = transpile(
-    "test.ts",
-    MediaType::TypeScript,
-    "const a: number = 10;",
-    &EmitTranspileOptions::default(),
-  )
-  .unwrap();
-  let (src, _maybe_source_map) = result;
-  assert!(src.starts_with(
-    "const a = 10;\n//# sourceMappingURL=data:application/json;base64,"
-  ));
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_transpile() {
+    let source = r#"
+    enum D {
+      A,
+      B,
+      C,
+    }
+    export class A {
+      private b: string;
+      protected c: number = 1;
+      e: "foo";
+      constructor (public d = D.A) {
+        const e = "foo" as const;
+        this.e = e;
+      }
+    }
+    "#;
+    let result = transpile(
+      "test.ts",
+      MediaType::TypeScript,
+      source,
+      &EmitTranspileOptions::default(),
+    )
+    .unwrap();
+    let (code, maybe_map) = result;
+    assert!(code.starts_with("var D;\n(function(D) {\n"));
+    assert!(
+      code.contains("\n//# sourceMappingURL=data:application/json;base64,")
+    );
+    assert!(maybe_map.is_none());
+  }
+
+  #[test]
+  fn test_transpile_tsx() {
+    let source = r#"
+  export class A {
+    render() {
+      return <div><span></span></div>
+    }
+  }
+  "#;
+    let result = transpile(
+      "test.ts",
+      MediaType::TSX,
+      source,
+      &EmitTranspileOptions::default(),
+    )
+    .unwrap();
+    let (code, _maybe_source_map) = result;
+    assert!(code.contains("React.createElement(\"div\", null"));
+  }
+
+  #[test]
+  fn test_transpile_decorators() {
+    let source = r#"
+  function enumerable(value: boolean) {
+    return function (
+      _target: any,
+      _propertyKey: string,
+      descriptor: PropertyDescriptor,
+    ) {
+      descriptor.enumerable = value;
+    };
+  }
+  
+  export class A {
+    @enumerable(false)
+    a() {
+      Test.value;
+    }
+  }
+  "#;
+    let result = transpile(
+      "test.ts",
+      MediaType::TypeScript,
+      source,
+      &EmitTranspileOptions::default(),
+    )
+    .unwrap();
+    let (code, _maybe_source_map) = result;
+    assert!(code.contains("_applyDecoratedDescriptor("));
+  }
 }
