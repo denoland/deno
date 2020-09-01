@@ -59,6 +59,7 @@ pub enum DenoSubcommand {
     ignore: Vec<String>,
     rules: bool,
     json: bool,
+    verbose: bool,
   },
   Repl,
   Run {
@@ -641,11 +642,13 @@ fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   };
   let rules = matches.is_present("rules");
   let json = matches.is_present("json");
+  let verbose = matches.is_present("verbose");
   flags.subcommand = DenoSubcommand::Lint {
     files,
     rules,
     ignore,
     json,
+    verbose,
   };
 }
 
@@ -1063,6 +1066,13 @@ Ignore linting a file by adding an ignore comment at the top of the file:
         .takes_value(true)
         .multiple(true)
         .required(false),
+    )
+    .arg(
+      Arg::with_name("verbose")
+        .long("verbose")
+        .short("v")
+        .help("Output how many files have been checked.")
+        .takes_value(false),
     )
 }
 
@@ -1801,6 +1811,7 @@ mod tests {
           rules: false,
           json: false,
           ignore: svec!["script_1.ts", "script_2.ts"],
+          verbose: false,
         },
         unstable: true,
         ..Flags::default()
@@ -1816,6 +1827,7 @@ mod tests {
           rules: true,
           json: false,
           ignore: vec![],
+          verbose: false,
         },
         unstable: true,
         ..Flags::default()
@@ -1837,6 +1849,7 @@ mod tests {
           rules: false,
           json: true,
           ignore: vec![],
+          verbose: false,
         },
         unstable: true,
         ..Flags::default()

@@ -32,10 +32,13 @@ pub enum LintReporterKind {
   Json,
 }
 
-fn create_reporter(kind: LintReporterKind) -> Box<dyn LintReporter + Send> {
+fn create_reporter(
+  kind: LintReporterKind,
+  verbose: bool,
+) -> Box<dyn LintReporter + Send> {
   match kind {
-    LintReporterKind::Pretty => Box::new(PrettyLintReporter::new()),
-    LintReporterKind::Json => Box::new(JsonLintReporter::new()),
+    LintReporterKind::Pretty => Box::new(PrettyLintReporter::new(verbose)),
+    LintReporterKind::Json => Box::new(JsonLintReporter::new(verbose)),
   }
 }
 
@@ -43,6 +46,7 @@ pub async fn lint_files(
   args: Vec<String>,
   ignore: Vec<String>,
   json: bool,
+  verbose: bool,
 ) -> Result<(), ErrBox> {
   if args.len() == 1 && args[0] == "-" {
     return lint_stdin(json);
@@ -63,7 +67,8 @@ pub async fn lint_files(
   } else {
     LintReporterKind::Pretty
   };
-  let reporter_lock = Arc::new(Mutex::new(create_reporter(reporter_kind)));
+  let reporter_lock =
+    Arc::new(Mutex::new(create_reporter(reporter_kind, verbose)));
 
   run_parallelized(target_files, {
     let reporter_lock = reporter_lock.clone();
@@ -71,12 +76,13 @@ pub async fn lint_files(
     move |file_path| {
       let r = lint_file(file_path.clone());
       let mut reporter = reporter_lock.lock().unwrap();
+      reporter.visit_file();
 
       match r {
         Ok(file_diagnostics) => {
           for d in file_diagnostics.iter() {
             has_error.store(true, Ordering::Relaxed);
-            reporter.visit(&d);
+            reporter.visit_diagnostic(&d);
           }
         }
         Err(err) => {
@@ -152,7 +158,7 @@ fn lint_stdin(json: bool) -> Result<(), ErrBox> {
   } else {
     LintReporterKind::Pretty
   };
-  let mut reporter = create_reporter(reporter_kind);
+  let mut reporter = create_reporter(reporter_kind, false);
   let lint_rules = rules::get_recommended_rules();
   let syntax = swc_util::get_syntax_for_media_type(msg::MediaType::TypeScript);
   let mut linter = create_linter(syntax, lint_rules);
@@ -165,7 +171,7 @@ fn lint_stdin(json: bool) -> Result<(), ErrBox> {
     Ok(diagnostics) => {
       for d in diagnostics {
         has_error = true;
-        reporter.visit(&d);
+        reporter.visit_diagnostic(&d);
       }
     }
     Err(err) => {
@@ -184,9 +190,11 @@ fn lint_stdin(json: bool) -> Result<(), ErrBox> {
 }
 
 trait LintReporter {
-  fn visit(&mut self, d: &LintDiagnostic);
+  fn visit_file(&mut self);
+  fn visit_diagnostic(&mut self, d: &LintDiagnostic);
   fn visit_error(&mut self, file_path: &str, err: &ErrBox);
   fn close(&mut self);
+  fn should_report_verbosely(&self) -> bool;
 }
 
 #[derive(Serialize)]
@@ -197,16 +205,26 @@ struct LintError {
 
 struct PrettyLintReporter {
   lint_count: u32,
+  check_count: u32,
+  verbose: bool,
 }
 
 impl PrettyLintReporter {
-  fn new() -> PrettyLintReporter {
-    PrettyLintReporter { lint_count: 0 }
+  fn new(verbose: bool) -> PrettyLintReporter {
+    PrettyLintReporter {
+      lint_count: 0,
+      check_count: 0,
+      verbose,
+    }
   }
 }
 
 impl LintReporter for PrettyLintReporter {
-  fn visit(&mut self, d: &LintDiagnostic) {
+  fn visit_file(&mut self) {
+    self.check_count += 1;
+  }
+
+  fn visit_diagnostic(&mut self, d: &LintDiagnostic) {
     self.lint_count += 1;
 
     let pretty_message =
@@ -240,6 +258,18 @@ impl LintReporter for PrettyLintReporter {
       n if n > 1 => eprintln!("Found {} problems", self.lint_count),
       _ => (),
     }
+
+    if self.should_report_verbosely() {
+      match self.check_count {
+        1 => eprintln!("Checked 1 file"),
+        n if n > 1 => eprintln!("Checked {} files", self.check_count),
+        _ => (),
+      }
+    }
+  }
+
+  fn should_report_verbosely(&self) -> bool {
+    self.verbose
   }
 }
 
@@ -247,19 +277,27 @@ impl LintReporter for PrettyLintReporter {
 struct JsonLintReporter {
   diagnostics: Vec<LintDiagnostic>,
   errors: Vec<LintError>,
+  check_count: u32,
+  verbose: bool,
 }
 
 impl JsonLintReporter {
-  fn new() -> JsonLintReporter {
+  fn new(verbose: bool) -> JsonLintReporter {
     JsonLintReporter {
       diagnostics: Vec::new(),
       errors: Vec::new(),
+      check_count: 0,
+      verbose,
     }
   }
 }
 
 impl LintReporter for JsonLintReporter {
-  fn visit(&mut self, d: &LintDiagnostic) {
+  fn visit_file(&mut self) {
+    self.check_count += 1;
+  }
+
+  fn visit_diagnostic(&mut self, d: &LintDiagnostic) {
     self.diagnostics.push(d.clone());
   }
 
@@ -276,6 +314,18 @@ impl LintReporter for JsonLintReporter {
 
     let json = serde_json::to_string_pretty(&self);
     eprintln!("{}", json.unwrap());
+
+    if self.should_report_verbosely() {
+      match self.check_count {
+        1 => eprintln!("Checked 1 file"),
+        n if n > 1 => eprintln!("Checked {} files", self.check_count),
+        _ => (),
+      }
+    }
+  }
+
+  fn should_report_verbosely(&self) -> bool {
+    self.verbose
   }
 }
 
