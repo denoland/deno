@@ -38,7 +38,7 @@ fn create_reporter(
 ) -> Box<dyn LintReporter + Send> {
   match kind {
     LintReporterKind::Pretty => Box::new(PrettyLintReporter::new(verbose)),
-    LintReporterKind::Json => Box::new(JsonLintReporter::new(verbose)),
+    LintReporterKind::Json => Box::new(JsonLintReporter::new()),
   }
 }
 
@@ -277,25 +277,19 @@ impl LintReporter for PrettyLintReporter {
 struct JsonLintReporter {
   diagnostics: Vec<LintDiagnostic>,
   errors: Vec<LintError>,
-  check_count: u32,
-  verbose: bool,
 }
 
 impl JsonLintReporter {
-  fn new(verbose: bool) -> JsonLintReporter {
+  fn new() -> JsonLintReporter {
     JsonLintReporter {
       diagnostics: Vec::new(),
       errors: Vec::new(),
-      check_count: 0,
-      verbose,
     }
   }
 }
 
 impl LintReporter for JsonLintReporter {
-  fn visit_file(&mut self) {
-    self.check_count += 1;
-  }
+  fn visit_file(&mut self) {}
 
   fn visit_diagnostic(&mut self, d: &LintDiagnostic) {
     self.diagnostics.push(d.clone());
@@ -314,18 +308,10 @@ impl LintReporter for JsonLintReporter {
 
     let json = serde_json::to_string_pretty(&self);
     eprintln!("{}", json.unwrap());
-
-    if self.should_report_verbosely() {
-      match self.check_count {
-        1 => eprintln!("Checked 1 file"),
-        n if n > 1 => eprintln!("Checked {} files", self.check_count),
-        _ => (),
-      }
-    }
   }
 
   fn should_report_verbosely(&self) -> bool {
-    self.verbose
+    false
   }
 }
 
