@@ -1,12 +1,10 @@
 use crate::colors;
-use crate::file_fetcher::SourceFile;
 use crate::global_state::GlobalState;
 use crate::human_size;
 use crate::module_graph::ModuleGraphFile;
 use crate::msg;
 use crate::tsc::TargetLib;
 use crate::ModuleGraph;
-use crate::ModuleGraphLoader;
 use crate::ModuleSpecifier;
 use crate::Permissions;
 use deno_core::ErrBox;
@@ -34,7 +32,8 @@ impl ModuleDepInfo {
     module_specifier: ModuleSpecifier,
   ) -> Result<ModuleDepInfo, ErrBox> {
     // First load module as if it was to be executed by worker
-    global_state
+    // including compilation step
+    let module_graph = global_state
       .prepare_module_load(
         module_specifier.clone(),
         None,
@@ -48,28 +47,27 @@ impl ModuleDepInfo {
     let ts_compiler = &global_state.ts_compiler;
     let file_fetcher = &global_state.file_fetcher;
     let out = file_fetcher
-      .fetch_source_file(&module_specifier, None, Permissions::allow_all())
-      .await?;
-    let local = out.filename.to_str().unwrap().to_string();
-    let file_type = msg::enum_name_media_type(out.media_type).to_string();
-    let compiled: Option<String> = ts_compiler
+      .fetch_cached_source_file(&module_specifier, Permissions::allow_all())
+      .expect("Source file should already be cached");
+    let local_filename = out.filename.to_string_lossy().to_string();
+    let compiled_filename = ts_compiler
       .get_compiled_source_file(&out.url)
       .ok()
-      .and_then(get_source_filename);
-    let map: Option<String> = ts_compiler
+      .map(|file| file.filename.to_string_lossy().to_string());
+    let map_filename = ts_compiler
       .get_source_map_file(&module_specifier)
       .ok()
-      .and_then(get_source_filename);
-    let module_graph =
-      get_module_graph(&global_state, &module_specifier).await?;
+      .map(|file| file.filename.to_string_lossy().to_string());
+    let file_type = msg::enum_name_media_type(out.media_type).to_string();
+
     let deps = FileInfoDepTree::new(&module_graph, &module_specifier);
     let dep_count = get_unique_dep_count(&module_graph) - 1;
 
     let info = Self {
-      local,
+      local: local_filename,
       file_type,
-      compiled,
-      map,
+      compiled: compiled_filename,
+      map: map_filename,
       dep_count,
       deps,
     };
@@ -312,29 +310,6 @@ fn get_new_prefix(prefix: &str, is_last: bool) -> String {
 
   prefix.push(' ');
   prefix
-}
-
-/// Gets the full filename of a `SourceFile`.
-fn get_source_filename(file: SourceFile) -> Option<String> {
-  file.filename.to_str().map(|s| s.to_owned())
-}
-
-/// Constructs a ModuleGraph for the module with the provided name.
-async fn get_module_graph(
-  global_state: &GlobalState,
-  module_specifier: &ModuleSpecifier,
-) -> Result<ModuleGraph, ErrBox> {
-  let mut module_graph_loader = ModuleGraphLoader::new(
-    global_state.file_fetcher.clone(),
-    global_state.maybe_import_map.clone(),
-    Permissions::allow_all(),
-    false,
-    false,
-  );
-  module_graph_loader
-    .add_to_graph(&module_specifier, None)
-    .await?;
-  Ok(module_graph_loader.get_graph())
 }
 
 #[cfg(test)]

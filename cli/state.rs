@@ -416,7 +416,7 @@ impl ModuleLoader for State {
 
     // TODO(bartlomieju): `prepare_module_load` should take `load_id` param
     async move {
-      global_state
+      let _module_graph = global_state
         .prepare_module_load(
           module_specifier,
           maybe_referrer,
@@ -425,7 +425,8 @@ impl ModuleLoader for State {
           is_dyn_import,
           maybe_import_map,
         )
-        .await
+        .await?;
+      Ok(())
     }
     .boxed_local()
   }

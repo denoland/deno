@@ -76,7 +76,6 @@ use crate::file_fetcher::SourceFileFetcher;
 use crate::file_fetcher::TextDocument;
 use crate::fs as deno_fs;
 use crate::global_state::GlobalState;
-use crate::module_graph::ModuleGraphLoader;
 use crate::msg::MediaType;
 use crate::permissions::Permissions;
 use crate::worker::MainWorker;

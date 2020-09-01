@@ -5,6 +5,7 @@ use crate::flags;
 use crate::http_cache;
 use crate::import_map::ImportMap;
 use crate::lockfile::Lockfile;
+use crate::module_graph::ModuleGraph;
 use crate::module_graph::ModuleGraphFile;
 use crate::module_graph::ModuleGraphLoader;
 use crate::msg;
@@ -106,7 +107,7 @@ impl GlobalState {
     permissions: Permissions,
     is_dyn_import: bool,
     maybe_import_map: Option<ImportMap>,
-  ) -> Result<(), ErrBox> {
+  ) -> Result<ModuleGraph, ErrBox> {
     let module_specifier = module_specifier.clone();
 
     // TODO(ry) Try to lift compile_lock as high up in the call stack for
@@ -159,11 +160,11 @@ impl GlobalState {
 
     if should_compile {
       if self.flags.no_check {
-        self.ts_compiler.transpile(module_graph).await?;
+        self.ts_compiler.transpile(&module_graph).await?;
       } else {
         self
           .ts_compiler
-          .compile(self, &out, target_lib, permissions, module_graph, allow_js)
+          .compile(self, &out, target_lib, permissions, &module_graph, allow_js)
           .await?;
       }
     }
@@ -175,7 +176,7 @@ impl GlobalState {
 
     drop(compile_lock);
 
-    Ok(())
+    Ok(module_graph)
   }
 
   // TODO(bartlomieju): this method doesn't need to be async anymore
