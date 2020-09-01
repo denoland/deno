@@ -1,1 +1,5 @@
-const a: number = 42;
+function bar(): number {
+  return 42;
+}
+
+bar();
