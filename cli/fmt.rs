@@ -33,6 +33,7 @@ pub async fn format(
   args: Vec<String>,
   check: bool,
   exclude: Vec<String>,
+  verbose: bool,
 ) -> Result<(), ErrBox> {
   if args.len() == 1 && args[0] == "-" {
     return format_stdin(check);
@@ -47,17 +48,19 @@ pub async fn format(
   }
   let config = get_config();
   if check {
-    check_source_files(config, target_files).await
+    check_source_files(config, target_files, verbose).await
   } else {
-    format_source_files(config, target_files).await
+    format_source_files(config, target_files, verbose).await
   }
 }
 
 async fn check_source_files(
   config: dprint::configuration::Configuration,
   paths: Vec<PathBuf>,
+  verbose: bool,
 ) -> Result<(), ErrBox> {
   let not_formatted_files_count = Arc::new(AtomicUsize::new(0));
+  let checked_files_count = Arc::new(AtomicUsize::new(0));
   let formatter = Arc::new(dprint::Formatter::new(config));
 
   // prevent threads outputting at the same time
@@ -65,7 +68,9 @@ async fn check_source_files(
 
   run_parallelized(paths, {
     let not_formatted_files_count = not_formatted_files_count.clone();
+    let checked_files_count = checked_files_count.clone();
     move |file_path| {
+      checked_files_count.fetch_add(1, Ordering::SeqCst);
       let file_text = read_file_contents(&file_path)?.text;
       let r = formatter.format_text(&file_path, &file_text);
       match r {
@@ -106,13 +111,19 @@ async fn check_source_files(
 
   let not_formatted_files_count =
     not_formatted_files_count.load(Ordering::SeqCst);
+  let checked_files_count = checked_files_count.load(Ordering::SeqCst);
+  let checked_files_str =
+    format!("{} {}", checked_files_count, files_str(checked_files_count));
   if not_formatted_files_count == 0 {
+    if verbose {
+      eprintln!("Checked {}", checked_files_str);
+    }
     Ok(())
   } else {
+    let not_formatted_files_str = files_str(not_formatted_files_count);
     Err(ErrBox::error(format!(
-      "Found {} not formatted {}",
-      not_formatted_files_count,
-      files_str(not_formatted_files_count),
+      "Found {} not formatted {} in {}",
+      not_formatted_files_count, not_formatted_files_str, checked_files_str,
     )))
   }
 }
@@ -120,14 +131,18 @@ async fn check_source_files(
 async fn format_source_files(
   config: dprint::configuration::Configuration,
   paths: Vec<PathBuf>,
+  verbose: bool,
 ) -> Result<(), ErrBox> {
   let formatted_files_count = Arc::new(AtomicUsize::new(0));
+  let checked_files_count = Arc::new(AtomicUsize::new(0));
   let formatter = Arc::new(dprint::Formatter::new(config));
   let output_lock = Arc::new(Mutex::new(0)); // prevent threads outputting at the same time
 
   run_parallelized(paths, {
     let formatted_files_count = formatted_files_count.clone();
+    let checked_files_count = checked_files_count.clone();
     move |file_path| {
+      checked_files_count.fetch_add(1, Ordering::SeqCst);
       let file_contents = read_file_contents(&file_path)?;
       let r = formatter.format_text(&file_path, &file_contents.text);
       match r {
@@ -162,6 +177,15 @@ async fn format_source_files(
     formatted_files_count,
     files_str(formatted_files_count),
   );
+
+  if verbose {
+    let checked_files_count = checked_files_count.load(Ordering::SeqCst);
+    eprintln!(
+      "Checked {} {}",
+      checked_files_count,
+      files_str(checked_files_count)
+    );
+  }
   Ok(())
 }
 

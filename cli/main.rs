@@ -763,7 +763,8 @@ pub fn main() {
       check,
       files,
       ignore,
-    } => fmt::format(files, check, ignore).boxed_local(),
+      verbose,
+    } => fmt::format(files, check, ignore, verbose).boxed_local(),
     DenoSubcommand::Info { file, json } => {
       info_command(flags, file, json).boxed_local()
     }

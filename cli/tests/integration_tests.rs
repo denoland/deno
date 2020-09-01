@@ -1688,8 +1688,26 @@ itest!(bundle {
 
 itest!(fmt_check_tests_dir {
   args: "fmt --check ./",
-  output: "fmt_check_tests_dir.out",
+  output: "fmt/expected_fmt_check_tests_dir.out",
   exit_code: 1,
+});
+
+itest!(fmt_check_verbose_tests_dir {
+  args: "fmt --unstable --check --verbose ./",
+  output: "fmt/expected_fmt_check_verbose_tests_dir.out",
+  exit_code: 1,
+});
+
+itest!(fmt_check_formatted_files {
+  args: "fmt --check fmt/formatted1.js fmt/formatted2.ts",
+  output: "fmt/expected_fmt_check_formatted_files.out",
+  exit_code: 0,
+});
+
+itest!(fmt_check_verbose_formatted_files {
+  args: "fmt --unstable --check --verbose fmt/formatted1.js fmt/formatted2.ts",
+  output: "fmt/expected_fmt_check_verbose_formatted_files.out",
+  exit_code: 0,
 });
 
 itest!(fmt_stdin {

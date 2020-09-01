@@ -41,6 +41,7 @@ pub enum DenoSubcommand {
     check: bool,
     files: Vec<String>,
     ignore: Vec<String>,
+    verbose: bool,
   },
   Help,
   Info {
@@ -360,6 +361,7 @@ fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     check: matches.is_present("check"),
     files,
     ignore,
+    verbose: matches.is_present("verbose"),
   }
 }
 
@@ -703,6 +705,14 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         .takes_value(true)
         .multiple(true)
         .required(false),
+    )
+    .arg(
+      Arg::with_name("verbose")
+        .long("verbose")
+        .short("v")
+        .requires("unstable")
+        .help("Output how many files have been checked. Use with --unstable")
+        .takes_value(false),
     )
 }
 
@@ -1741,7 +1751,8 @@ mod tests {
         subcommand: DenoSubcommand::Fmt {
           ignore: vec![],
           check: false,
-          files: vec!["script_1.ts".to_string(), "script_2.ts".to_string()]
+          files: vec!["script_1.ts".to_string(), "script_2.ts".to_string()],
+          verbose: false,
         },
         ..Flags::default()
       }
@@ -1755,6 +1766,7 @@ mod tests {
           ignore: vec![],
           check: true,
           files: vec![],
+          verbose: false,
         },
         ..Flags::default()
       }
@@ -1768,6 +1780,7 @@ mod tests {
           ignore: vec![],
           check: false,
           files: vec![],
+          verbose: false,
         },
         ..Flags::default()
       }
@@ -1791,6 +1804,7 @@ mod tests {
           rules: false,
           json: false,
           ignore: vec![],
+          verbose: false,
         },
         unstable: true,
         ..Flags::default()
