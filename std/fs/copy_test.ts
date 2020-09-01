@@ -39,6 +39,8 @@ function testCopyIgnore(
   testCopy(name, cb, true);
 }
 
+testCopyIgnore("This should not exist", function() {});
+
 function testCopySync(name: string, cb: (tempDir: string) => void): void {
   Deno.test({
     name,
