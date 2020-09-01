@@ -112,12 +112,12 @@ impl std::fmt::Display for ModuleDepInfo {
     }
 
     f.write_fmt(format_args!(
-      "{} {} unique",
+      "{} {} unique\n",
       colors::bold("deps:"),
       self.dep_count
     ))?;
     f.write_fmt(format_args!(
-      "\n{} ({}, total = {})",
+      "{} ({}, total = {})\n",
       self.deps.name,
       human_size(self.deps.size as f64),
       human_size(self.deps.total_size.unwrap() as f64)
@@ -152,33 +152,46 @@ impl FileInfoDepTree {
     let mut seen = HashSet::new();
     let mut total_sizes = HashMap::new();
 
-    Self::cstr_helper(&mut seen, &mut total_sizes, module_graph, root_specifier)
+    Self::visit_module(
+      &mut seen,
+      &mut total_sizes,
+      module_graph,
+      root_specifier,
+    )
   }
 
-  // TODO(bartlomieju): rename
-  fn cstr_helper(
+  /// Visit modules recursively.
+  ///
+  /// If currently visited module has not yet been seen it will be annotated with dependencies
+  /// and cumulative size of those deps.
+  fn visit_module(
     seen: &mut HashSet<String>,
     total_sizes: &mut HashMap<String, usize>,
     graph: &ModuleGraph,
-    root: &ModuleSpecifier,
+    specifier: &ModuleSpecifier,
   ) -> Self {
-    let name = root.to_string();
+    let name = specifier.to_string();
     let never_seen = seen.insert(name.clone());
-    let file = get_resolved_file(&graph, &root);
+    let file = get_resolved_file(&graph, &specifier);
     let size = file.size();
-    let deps = if never_seen {
-      file
+    let mut deps = vec![];
+    let mut total_size = None;
+
+    if never_seen {
+      deps = file
         .imports
         .iter()
-        .map(|import| import.resolved_specifier.clone())
-        .map(|spec| Self::cstr_helper(seen, total_sizes, graph, &spec))
-        .collect::<Vec<_>>()
-    } else {
-      vec![]
-    };
+        .map(|import| {
+          Self::visit_module(
+            seen,
+            total_sizes,
+            graph,
+            &import.resolved_specifier,
+          )
+        })
+        .collect::<Vec<_>>();
 
-    let total_size = if never_seen {
-      if let Some(total_size) = total_sizes.get(&name) {
+      total_size = if let Some(total_size) = total_sizes.get(&name) {
         Some(total_size.to_owned())
       } else {
         let total: usize = deps
@@ -196,10 +209,8 @@ impl FileInfoDepTree {
         total_sizes.insert(name.clone(), total);
 
         Some(total)
-      }
-    } else {
-      None
-    };
+      };
+    }
 
     Self {
       name,
@@ -257,7 +268,7 @@ fn print_dep(
   let has_children = !info.deps.is_empty();
 
   formatter.write_fmt(format_args!(
-    "\n{}{}─{} {}{}",
+    "{}{}─{} {}{}\n",
     prefix,
     get_sibling_connector(is_last),
     get_child_connector(has_children),
