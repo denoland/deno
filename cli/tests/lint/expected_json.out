@@ -16,16 +16,16 @@
       "code": "ban-untagged-ignore",
     },
     {
-       "range": {
-         "start": {
-           "line": 2,
-           "col": 14
-         },
-         "end": {
-           "line": 2,
-           "col": 16
-         }
-       },
+      "range": {
+        "start": {
+          "line": 2,
+          "col": 14
+        },
+        "end": {
+          "line": 2,
+          "col": 16
+        }
+      },
       "filename": "[WILDCARD]",
       "message": "Empty block statement",
       "code": "no-empty",
