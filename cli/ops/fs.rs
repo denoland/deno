@@ -1756,10 +1756,12 @@ fn op_utime_sync(
 
   let args: UtimeArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
+  let atime = filetime::FileTime::from_unix_time(args.atime, 0);
+  let mtime = filetime::FileTime::from_unix_time(args.mtime, 0);
 
   state.check_write(&path)?;
   debug!("op_utime_sync {} {} {}", args.path, args.atime, args.mtime);
-  utime::set_file_times(args.path, args.atime, args.mtime)?;
+  filetime::set_file_times(path, atime, mtime)?;
   Ok(json!({}))
 }
 
@@ -1773,12 +1775,14 @@ async fn op_utime_async(
 
   let args: UtimeArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
+  let atime = filetime::FileTime::from_unix_time(args.atime, 0);
+  let mtime = filetime::FileTime::from_unix_time(args.mtime, 0);
 
   state.check_write(&path)?;
 
   tokio::task::spawn_blocking(move || {
     debug!("op_utime_async {} {} {}", args.path, args.atime, args.mtime);
-    utime::set_file_times(args.path, args.atime, args.mtime)?;
+    filetime::set_file_times(path, atime, mtime)?;
     Ok(json!({}))
   })
   .await

@@ -68,7 +68,6 @@ termcolor = "1.1.0"
 tokio = { version = "0.2.22", features = ["full"] }
 tokio-rustls = "0.14.0"
 url = "2.1.1"
-utime = "0.3.1"
 webpki = "0.21.3"
 webpki-roots = "0.19.0"
 walkdir = "2.3.1"
