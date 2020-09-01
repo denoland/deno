@@ -144,8 +144,7 @@ testCopy(
   },
 );
 
-// TODO(#6644) This case is ignored because of the issue #5065.
-testCopyIgnore(
+testCopy(
   "[fs] copy with preserve timestamps",
   async (tempDir: string): Promise<void> => {
     const srcFile = path.join(testdataDir, "copy_file.txt");
