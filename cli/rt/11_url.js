@@ -14,7 +14,7 @@
     return sendSync("op_domain_to_ascii", { domain, beStrict });
   }
 
-  function decodeQueryParam(p) {
+  function decodeSearchParam(p) {
     return decodeURIComponent(p.replace(/\+/g, " "));
   }
 
@@ -67,7 +67,7 @@
         const position = pair.indexOf("=");
         const name = pair.slice(0, position === -1 ? pair.length : position);
         const value = pair.slice(name.length + 1);
-        this.#append(decodeQueryParam(name), decodeQueryParam(value));
+        this.#append(decodeSearchParam(name), decodeSearchParam(value));
       }
     };
 
