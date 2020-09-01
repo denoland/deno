@@ -21,7 +21,7 @@ path = "./bench/main.rs"
 
 [build-dependencies]
 deno_core = { path = "../core", version = "0.55.0" }
-deno_web = { path = "../op_crates/web", version = "0.5.0" }
+deno_web = { path = "../op_crates/web", version = "0.6.0" }
 
 [target.'cfg(windows)'.build-dependencies]
 winres = "0.1.11"
