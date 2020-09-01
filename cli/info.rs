@@ -30,7 +30,7 @@ impl ModuleDepInfo {
     worker: &MainWorker,
     module_specifier: ModuleSpecifier,
   ) -> Result<ModuleDepInfo, ErrBox> {
-    let global_state = worker.state.borrow().global_state.clone();
+    let global_state = worker.state.global_state.clone();
     let ts_compiler = &global_state.ts_compiler;
     let file_fetcher = &global_state.file_fetcher;
     let out = file_fetcher
@@ -325,8 +325,8 @@ async fn get_module_graph(
 #[cfg(test)]
 mod test {
   use super::*;
-  use crate::doc::Location;
   use crate::module_graph::ImportDescriptor;
+  use crate::swc_util::Location;
   use crate::MediaType;
 
   #[test]
