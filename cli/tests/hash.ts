@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/camelcase, @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 const { args } = Deno;
 import { createHash, SupportedAlgorithm } from "../../std/hash/mod.ts";

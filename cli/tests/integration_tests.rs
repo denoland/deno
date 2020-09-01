@@ -1,8 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 #[cfg(unix)]
 extern crate nix;
-#[cfg(unix)]
-extern crate pty;
 extern crate tempfile;
 
 use test_util as util;
@@ -166,8 +164,8 @@ fn no_color() {
 #[test]
 #[ignore]
 pub fn test_raw_tty() {
-  use pty::fork::*;
   use std::io::{Read, Write};
+  use util::pty::fork::*;
 
   let fork = Fork::from_ptmx().unwrap();
 
@@ -272,11 +270,6 @@ grault",
     &multi_line_builder("garply", None),
     wildcard
   ));
-}
-
-#[test]
-fn benchmark_test() {
-  util::run_python_script("tools/benchmark_test.py")
 }
 
 #[test]
@@ -1448,9 +1441,8 @@ itest!(_030_eval_ts {
 });
 
 itest!(_031_info_no_check {
-  args: "info 031_info_no_check.ts",
+  args: "info --no-check 031_info_no_check.ts",
   output: "031_info_no_check.out",
-  http_server: true,
 });
 
 itest!(_033_import_map {
@@ -1546,10 +1538,7 @@ itest!(_048_media_types_jsx {
   http_server: true,
 });
 
-// TODO(nayeemrmn): This hits an SWC type-stripping bug:
-// `error: Unterminated regexp literal at http://localhost:4545/cli/tests/subdir/mt_video_vdn_tsx.t2.tsx:4:19`
-// Re-enable once fixed.
-itest_ignore!(_049_info_flag_script_jsx {
+itest!(_049_info_flag_script_jsx {
   args: "info http://127.0.0.1:4545/cli/tests/048_media_types_jsx.ts",
   output: "049_info_flag_script_jsx.out",
   http_server: true,
@@ -1581,12 +1570,6 @@ itest!(_056_make_temp_file_write_perm {
   output: "056_make_temp_file_write_perm.out",
 });
 
-// TODO(lucacasonato): remove --unstable when permissions goes stable
-itest!(_057_revoke_permissions {
-  args: "test -A --unstable 057_revoke_permissions.ts",
-  output: "057_revoke_permissions.out",
-});
-
 itest!(_058_tasks_microtasks_close {
   args: "run --quiet 058_tasks_microtasks_close.ts",
   output: "058_tasks_microtasks_close.ts.out",
@@ -1601,6 +1584,36 @@ itest!(_059_fs_relative_path_perm {
 itest!(_060_deno_doc_displays_all_overloads_in_details_view {
   args: "doc 060_deno_doc_displays_all_overloads_in_details_view.ts NS.test",
   output: "060_deno_doc_displays_all_overloads_in_details_view.ts.out",
+});
+
+#[cfg(unix)]
+#[test]
+fn _061_permissions_request() {
+  let args = "run --unstable 061_permissions_request.ts";
+  let output = "061_permissions_request.ts.out";
+  let input = b"g\nd\n";
+
+  util::test_pty(args, output, input);
+}
+
+#[cfg(unix)]
+#[test]
+fn _062_permissions_request_global() {
+  let args = "run --unstable 062_permissions_request_global.ts";
+  let output = "062_permissions_request_global.ts.out";
+  let input = b"g\n";
+
+  util::test_pty(args, output, input);
+}
+
+itest!(_063_permissions_revoke {
+  args: "run --unstable --allow-read=foo,bar 063_permissions_revoke.ts",
+  output: "063_permissions_revoke.ts.out",
+});
+
+itest!(_064_permissions_revoke_global {
+  args: "run --unstable --allow-read=foo,bar 064_permissions_revoke_global.ts",
+  output: "064_permissions_revoke_global.ts.out",
 });
 
 itest!(js_import_detect {
@@ -2240,6 +2253,30 @@ itest!(deno_lint_glob {
   exit_code: 1,
 });
 
+itest!(deno_lint_from_stdin {
+  args: "lint --unstable -",
+  input: Some("let a: any;"),
+  output: "lint/expected_from_stdin.out",
+  exit_code: 1,
+});
+
+itest!(deno_lint_from_stdin_json {
+  args: "lint --unstable --json -",
+  input: Some("let a: any;"),
+  output: "lint/expected_from_stdin_json.out",
+  exit_code: 1,
+});
+
+itest!(deno_doc_builtin {
+  args: "doc",
+  output: "deno_doc_builtin.out",
+});
+
+itest!(deno_doc {
+  args: "doc deno_doc.ts",
+  output: "deno_doc.out",
+});
+
 itest!(compiler_js_error {
   args: "run --unstable compiler_js_error.ts",
   output: "compiler_js_error.ts.out",
@@ -2256,6 +2293,11 @@ itest!(info_recursive_modules {
   args: "info --quiet info_recursive_imports_test.ts",
   output: "info_recursive_imports_test.out",
   exit_code: 0,
+});
+
+itest!(info_type_import {
+  args: "info info_type_import.ts",
+  output: "info_type_import.out",
 });
 
 #[test]
@@ -3209,6 +3251,8 @@ fn set_raw_should_not_panic_on_no_tty() {
 }
 
 #[cfg(windows)]
+// Clippy suggests to remove the `NoStd` prefix from all variants. I disagree.
+#[allow(clippy::enum_variant_names)]
 enum WinProcConstraints {
   NoStdIn,
   NoStdOut,

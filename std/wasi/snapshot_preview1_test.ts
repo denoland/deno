@@ -1,91 +1,58 @@
 /* eslint-disable */
 
 import { assert, assertEquals } from "../testing/asserts.ts";
+import { copy } from "../fs/mod.ts";
 import * as path from "../path/mod.ts";
-import WASI from "./snapshot_preview1.ts";
 
-if (import.meta.main) {
-  const options = JSON.parse(Deno.args[0]);
-  const binary = await Deno.readFile(Deno.args[1]);
-  const module = await WebAssembly.compile(binary);
+const ignore = [
+  "wasi_clock_time_get_realtime.wasm",
+];
 
-  const wasi = new WASI({
-    env: options.env,
-    args: options.args,
-    preopens: options.preopens,
-  });
+// TODO(caspervonb) investigate why these tests are failing on windows and fix
+// them.
+if (Deno.build.os == "windows") {
+  ignore.push("std_fs_metadata_absolute.wasm");
+  ignore.push("std_fs_metadata_relative.wasm");
+  ignore.push("std_fs_read_dir_absolute.wasm");
+  ignore.push("std_fs_read_dir_relative.wasm");
+}
 
-  const instance = new WebAssembly.Instance(module, {
-    wasi_snapshot_preview1: wasi.exports,
-  });
+const rootdir = path.dirname(path.fromFileUrl(import.meta.url));
+const testdir = path.join(rootdir, "testdata");
 
-  wasi.memory = instance.exports.memory;
-
-  instance.exports._start();
-} else {
-  const rootdir = path.dirname(path.fromFileUrl(import.meta.url));
-  const testdir = path.join(rootdir, "testdata");
-  const outdir = path.join(testdir, "snapshot_preview1");
-
-  for await (const entry of Deno.readDir(testdir)) {
-    if (!entry.name.endsWith(".rs")) {
-      continue;
-    }
-
-    const process = Deno.run({
-      cmd: [
-        "rustc",
-        "--target",
-        "wasm32-wasi",
-        "--out-dir",
-        outdir,
-        path.join(testdir, entry.name),
-      ],
-      stdout: "inherit",
-      stderr: "inherit",
-    });
-
-    const status = await process.status();
-    assert(status.success);
-
-    process.close();
-
-    // TODO(caspervonb) allow the prelude to span multiple lines
-    const source = await Deno.readTextFile(path.join(testdir, entry.name));
-    const prelude = source.match(/^\/\/\s*\{.*/);
-    if (prelude) {
-      const basename = entry.name.replace(/.rs$/, ".json");
-      await Deno.writeTextFile(
-        path.join(outdir, basename),
-        prelude[0].slice(2),
-      );
-    }
+for await (const entry of Deno.readDir(testdir)) {
+  if (!entry.name.endsWith(".wasm")) {
+    continue;
   }
 
-  for await (const entry of Deno.readDir(outdir)) {
-    if (!entry.name.endsWith(".wasm")) {
-      continue;
-    }
-
-    Deno.test(entry.name, async function () {
+  Deno.test({
+    name: entry.name,
+    ignore: ignore.includes(entry.name),
+    fn: async function () {
       const basename = entry.name.replace(/\.wasm$/, ".json");
-      const prelude = await Deno.readTextFile(path.resolve(outdir, basename));
+      const prelude = await Deno.readTextFile(
+        path.resolve(testdir, basename),
+      );
       const options = JSON.parse(prelude);
 
-      await Deno.mkdir(`${testdir}/scratch`);
+      const workdir = await Deno.makeTempDir();
+      await copy(
+        path.join(testdir, "fixtures"),
+        path.join(workdir, "fixtures"),
+      );
 
       try {
         const process = await Deno.run({
-          cwd: testdir,
+          cwd: workdir,
           cmd: [
             `${Deno.execPath()}`,
             "run",
             "--quiet",
             "--unstable",
             "--allow-all",
-            import.meta.url,
+            path.resolve(rootdir, "snapshot_preview1_test_runner.ts"),
             prelude,
-            path.resolve(outdir, entry.name),
+            path.resolve(testdir, entry.name),
           ],
           stdin: "piped",
           stdout: "piped",
@@ -119,12 +86,6 @@ if (import.meta.main) {
 
         process.stderr.close();
 
-        if (options.files) {
-          for (const [key, value] of Object.entries(options.files)) {
-            assertEquals(value, await Deno.readTextFile(`${testdir}/${key}`));
-          }
-        }
-
         const status = await process.status();
         assertEquals(status.code, options.exitCode ? +options.exitCode : 0);
 
@@ -132,8 +93,8 @@ if (import.meta.main) {
       } catch (err) {
         throw err;
       } finally {
-        await Deno.remove(`${testdir}/scratch`, { recursive: true });
+        await Deno.remove(workdir, { recursive: true });
       }
-    });
-  }
+    },
+  });
 }

@@ -339,6 +339,7 @@
         }
         usedNonBase = true;
       } else {
+        parts.slashes = baseParts.slashes;
         parts.username = baseParts.username;
         parts.password = baseParts.password;
         parts.hostname = baseParts.hostname;
@@ -370,7 +371,7 @@
     }
     if (usedNonBase || restUrl.startsWith("?")) {
       [parts.query, restUrl] = takePattern(restUrl, /^(\?[^#]*)/);
-      parts.query = encodeSearch(parts.query);
+      parts.query = encodeSearch(parts.query, isSpecial);
       usedNonBase = true;
     } else {
       parts.query = baseParts.query;
@@ -660,7 +661,8 @@
     set search(value) {
       value = String(value);
       const query = value == "" || value.charAt(0) == "?" ? value : `?${value}`;
-      parts.get(this).query = encodeSearch(query);
+      const isSpecial = specialSchemes.includes(parts.get(this).protocol);
+      parts.get(this).query = encodeSearch(query, isSpecial);
       this.#updateSearchParams();
     }
 
@@ -766,9 +768,9 @@
     return (c >= "\u0000" && c <= "\u001F") || c > "\u007E";
   }
 
-  function charInSearchSet(c) {
+  function charInSearchSet(c, isSpecial) {
     // deno-fmt-ignore
-    return charInC0ControlSet(c) || ["\u0020", "\u0022", "\u0023", "\u0027", "\u003C", "\u003E"].includes(c) || c > "\u007E";
+    return charInC0ControlSet(c) || ["\u0020", "\u0022", "\u0023", "\u003C", "\u003E"].includes(c) || isSpecial && c == "\u0027" || c > "\u007E";
   }
 
   function charInFragmentSet(c) {
@@ -871,8 +873,10 @@
     return [...s].map((c) => (charInPathSet(c) ? encodeChar(c) : c)).join("");
   }
 
-  function encodeSearch(s) {
-    return [...s].map((c) => (charInSearchSet(c) ? encodeChar(c) : c)).join("");
+  function encodeSearch(s, isSpecial) {
+    return [...s].map((
+      c,
+    ) => (charInSearchSet(c, isSpecial) ? encodeChar(c) : c)).join("");
   }
 
   function encodeHash(s) {
@@ -883,7 +887,7 @@
 
   function encodeSearchParam(s) {
     return [...s].map((c) => (charInFormUrlencodedSet(c) ? encodeChar(c) : c))
-      .join("").replace("%20", "+");
+      .join("").replace(/%20/g, "+");
   }
 
   window.__bootstrap.url = {

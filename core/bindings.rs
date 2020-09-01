@@ -381,7 +381,8 @@ fn send(
     Err(err) => {
       let msg = format!("invalid op id: {}", err);
       let msg = v8::String::new(scope, &msg).unwrap();
-      scope.throw_exception(msg.into());
+      let exc = v8::Exception::type_error(scope, msg);
+      scope.throw_exception(exc);
       return;
     }
   };

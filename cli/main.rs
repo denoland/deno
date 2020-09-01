@@ -29,7 +29,7 @@ pub mod deno_dir;
 pub mod diagnostics;
 mod diff;
 mod disk_cache;
-mod doc;
+pub mod errors;
 mod file_fetcher;
 pub mod flags;
 mod flags_allow_net;
@@ -50,7 +50,6 @@ mod lockfile;
 mod metrics;
 mod module_graph;
 pub mod msg;
-pub mod op_error;
 mod op_fetch_asset;
 pub mod ops;
 pub mod permissions;
@@ -65,12 +64,13 @@ mod test_runner;
 mod text_encoding;
 mod tokio_util;
 mod tsc;
+mod tsc_config;
 mod upgrade;
 pub mod version;
 mod web_worker;
 pub mod worker;
 
-use crate::doc::parser::DocFileLoader;
+use crate::file_fetcher::map_file_extension;
 use crate::file_fetcher::SourceFile;
 use crate::file_fetcher::SourceFileFetcher;
 use crate::file_fetcher::TextDocument;
@@ -78,12 +78,13 @@ use crate::fs as deno_fs;
 use crate::global_state::GlobalState;
 use crate::module_graph::ModuleGraphLoader;
 use crate::msg::MediaType;
-use crate::op_error::OpError;
 use crate::permissions::Permissions;
 use crate::worker::MainWorker;
 use deno_core::v8_set_flags;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
+use deno_doc as doc;
+use deno_doc::parser::DocFileLoader;
 use flags::DenoSubcommand;
 use flags::Flags;
 use futures::future::FutureExt;
@@ -99,6 +100,7 @@ use std::io::Write;
 use std::iter::once;
 use std::path::PathBuf;
 use std::pin::Pin;
+use std::sync::Arc;
 use upgrade::upgrade_command;
 use url::Url;
 
@@ -151,7 +153,10 @@ where
   serde_json::to_writer_pretty(writer, value).map_err(ErrBox::from)
 }
 
-fn print_cache_info(state: &GlobalState, json: bool) -> Result<(), ErrBox> {
+fn print_cache_info(
+  state: &Arc<GlobalState>,
+  json: bool,
+) -> Result<(), ErrBox> {
   let deno_dir = &state.dir.root;
   let modules_cache = &state.file_fetcher.http_cache.location;
   let typescript_cache = &state.dir.gen_cache.location;
@@ -208,7 +213,7 @@ async fn info_command(
     print_cache_info(&global_state, json)
   } else {
     let main_module = ModuleSpecifier::resolve_url_or_path(&file.unwrap())?;
-    let mut worker = MainWorker::create(global_state, main_module.clone())?;
+    let mut worker = MainWorker::create(&global_state, main_module.clone())?;
     worker.preload_module(&main_module).await?;
     let info = info::ModuleDepInfo::new(&worker, main_module.clone()).await?;
 
@@ -234,7 +239,7 @@ async fn install_command(
   fetch_flags.reload = true;
   let global_state = GlobalState::new(fetch_flags)?;
   let main_module = ModuleSpecifier::resolve_url_or_path(&module_url)?;
-  let mut worker = MainWorker::create(global_state, main_module.clone())?;
+  let mut worker = MainWorker::create(&global_state, main_module.clone())?;
   worker.preload_module(&main_module).await?;
   installer::install(flags, &module_url, args, name, root, force)
     .map_err(ErrBox::from)
@@ -263,8 +268,7 @@ async fn cache_command(flags: Flags, files: Vec<String>) -> Result<(), ErrBox> {
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./__$deno$fetch.ts").unwrap();
   let global_state = GlobalState::new(flags)?;
-  let mut worker =
-    MainWorker::create(global_state.clone(), main_module.clone())?;
+  let mut worker = MainWorker::create(&global_state, main_module.clone())?;
 
   for file in files {
     let specifier = ModuleSpecifier::resolve_url_or_path(&file)?;
@@ -284,8 +288,7 @@ async fn eval_command(
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./__$deno$eval.ts").unwrap();
   let global_state = GlobalState::new(flags)?;
-  let mut worker =
-    MainWorker::create(global_state.clone(), main_module.clone())?;
+  let mut worker = MainWorker::create(&global_state, main_module.clone())?;
   let main_module_url = main_module.as_url().to_owned();
   // Create a dummy source file.
   let source_code = if print {
@@ -337,7 +340,7 @@ async fn bundle_command(
 
   let output = global_state
     .ts_compiler
-    .bundle(global_state.clone(), module_specifier)
+    .bundle(&global_state, module_specifier)
     .await?;
 
   debug!(">>>>> bundle END");
@@ -402,19 +405,39 @@ async fn doc_command(
   let source_file = source_file.unwrap_or_else(|| "--builtin".to_string());
 
   impl DocFileLoader for SourceFileFetcher {
+    fn resolve(
+      &self,
+      specifier: &str,
+      referrer: &str,
+    ) -> Result<String, doc::DocError> {
+      ModuleSpecifier::resolve_import(specifier, referrer)
+        .map(|specifier| specifier.to_string())
+        .map_err(|e| doc::DocError::Resolve(e.to_string()))
+    }
+
     fn load_source_code(
       &self,
       specifier: &str,
-    ) -> Pin<Box<dyn Future<Output = Result<String, OpError>>>> {
+    ) -> Pin<Box<dyn Future<Output = Result<String, doc::DocError>>>> {
       let fetcher = self.clone();
-      let specifier = specifier.to_string();
+      let specifier = ModuleSpecifier::resolve_url_or_path(specifier)
+        .expect("Expected valid specifier");
       async move {
-        let specifier = ModuleSpecifier::resolve_url_or_path(&specifier)
-          .map_err(OpError::from)?;
         let source_file = fetcher
           .fetch_source_file(&specifier, None, Permissions::allow_all())
-          .await?;
-        source_file.source_code.to_string().map_err(OpError::from)
+          .await
+          .map_err(|e| {
+            doc::DocError::Io(std::io::Error::new(
+              std::io::ErrorKind::Other,
+              e.to_string(),
+            ))
+          })?;
+        source_file.source_code.to_string().map_err(|e| {
+          doc::DocError::Io(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            e.to_string(),
+          ))
+        })
       }
       .boxed_local()
     }
@@ -424,12 +447,24 @@ async fn doc_command(
   let doc_parser = doc::DocParser::new(loader, private);
 
   let parse_result = if source_file == "--builtin" {
-    doc_parser.parse_source("lib.deno.d.ts", get_types(flags.unstable).as_str())
+    let syntax = swc_util::get_syntax_for_dts();
+    doc_parser.parse_source(
+      "lib.deno.d.ts",
+      syntax,
+      get_types(flags.unstable).as_str(),
+    )
   } else {
+    let path = PathBuf::from(&source_file);
+    let syntax = if path.ends_with("d.ts") {
+      swc_util::get_syntax_for_dts()
+    } else {
+      let media_type = map_file_extension(&path);
+      swc_util::get_syntax_for_media_type(media_type)
+    };
     let module_specifier =
       ModuleSpecifier::resolve_url_or_path(&source_file).unwrap();
     doc_parser
-      .parse_with_reexports(&module_specifier.to_string())
+      .parse_with_reexports(&module_specifier.to_string(), syntax)
       .await
   };
 
@@ -452,9 +487,15 @@ async fn doc_command(
         eprintln!("Node {} was not found!", filter);
         std::process::exit(1);
       }
-      format!("{}", doc::DocPrinter::new(&nodes, private))
+      format!(
+        "{}",
+        doc::DocPrinter::new(&nodes, colors::use_color(), private)
+      )
     } else {
-      format!("{}", doc::DocPrinter::new(&doc_nodes, private))
+      format!(
+        "{}",
+        doc::DocPrinter::new(&doc_nodes, colors::use_color(), private)
+      )
     };
 
     write_to_stdout_ignore_sigpipe(details.as_bytes()).map_err(ErrBox::from)
@@ -465,7 +506,7 @@ async fn run_repl(flags: Flags) -> Result<(), ErrBox> {
   let main_module =
     ModuleSpecifier::resolve_url_or_path("./__$deno$repl.ts").unwrap();
   let global_state = GlobalState::new(flags)?;
-  let mut worker = MainWorker::create(global_state, main_module)?;
+  let mut worker = MainWorker::create(&global_state, main_module)?;
   loop {
     (&mut *worker).await?;
   }
@@ -479,7 +520,7 @@ async fn run_command(flags: Flags, script: String) -> Result<(), ErrBox> {
     ModuleSpecifier::resolve_url_or_path("./__$deno$stdin.ts").unwrap()
   };
   let mut worker =
-    MainWorker::create(global_state.clone(), main_module.clone())?;
+    MainWorker::create(&global_state.clone(), main_module.clone())?;
   if script == "-" {
     let mut source = Vec::new();
     std::io::stdin().read_to_end(&mut source)?;
@@ -535,8 +576,7 @@ async fn test_command(
     test_runner::render_test_file(test_modules, fail_fast, quiet, filter);
   let main_module =
     ModuleSpecifier::resolve_url(&test_file_url.to_string()).unwrap();
-  let mut worker =
-    MainWorker::create(global_state.clone(), main_module.clone())?;
+  let mut worker = MainWorker::create(&global_state, main_module.clone())?;
   // Create a dummy source file.
   let source_file = SourceFile {
     filename: test_file_url.to_file_path().unwrap(),

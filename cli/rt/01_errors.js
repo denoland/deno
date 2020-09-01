@@ -127,6 +127,13 @@
     }
   }
 
+  class NotSupported extends Error {
+    constructor(msg) {
+      super(msg);
+      this.name = "NotSupported";
+    }
+  }
+
   const errors = {
     NotFound,
     PermissionDenied,
@@ -146,6 +153,7 @@
     BadResource,
     Http,
     Busy,
+    NotSupported,
   };
 
   window.__bootstrap.errors = {

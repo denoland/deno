@@ -1,3 +1,4 @@
+/* eslint-disable */
 export function boo() {
   console.log("Boo!");
 }

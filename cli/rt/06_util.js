@@ -63,11 +63,13 @@
     });
   }
 
+  // Keep in sync with `fromFileUrl()` in `std/path/win32.ts`.
   function pathFromURLWin32(url) {
     let path = decodeURIComponent(
       url.pathname
         .replace(/^\/*([A-Za-z]:)(\/|$)/, "$1/")
-        .replace(/\//g, "\\"),
+        .replace(/\//g, "\\")
+        .replace(/%(?![0-9A-Fa-f]{2})/g, "%25"),
     );
     if (url.hostname != "") {
       // Note: The `URL` implementation guarantees that the drive letter and
@@ -78,12 +80,15 @@
     return path;
   }
 
+  // Keep in sync with `fromFileUrl()` in `std/path/posix.ts`.
   function pathFromURLPosix(url) {
     if (url.hostname !== "") {
       throw new TypeError(`Host must be empty.`);
     }
 
-    return decodeURIComponent(url.pathname);
+    return decodeURIComponent(
+      url.pathname.replace(/%(?![0-9A-Fa-f]{2})/g, "%25"),
+    );
   }
 
   function pathFromURL(pathOrUrl) {

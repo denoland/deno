@@ -1,8 +1,7 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-use super::dispatch_json::{Deserialize, JsonOp, Value};
+use super::dispatch_json::{Deserialize, Value};
 use crate::fmt_errors::JSError;
 use crate::global_state::GlobalState;
-use crate::op_error::OpError;
 use crate::ops::io::get_stdio;
 use crate::permissions::Permissions;
 use crate::startup_data;
@@ -11,34 +10,44 @@ use crate::tokio_util::create_basic_runtime;
 use crate::web_worker::WebWorker;
 use crate::web_worker::WebWorkerHandle;
 use crate::worker::WorkerEvent;
+use deno_core::BufVec;
 use deno_core::CoreIsolate;
 use deno_core::ErrBox;
 use deno_core::ModuleSpecifier;
+use deno_core::ResourceTable;
 use deno_core::ZeroCopyBuf;
 use futures::future::FutureExt;
+use std::cell::RefCell;
 use std::convert::From;
+use std::rc::Rc;
+use std::sync::Arc;
 use std::thread::JoinHandle;
 
-pub fn init(i: &mut CoreIsolate, s: &State) {
-  i.register_op("op_create_worker", s.stateful_json_op(op_create_worker));
+pub fn init(i: &mut CoreIsolate, s: &Rc<State>) {
+  let t = &CoreIsolate::state(i).borrow().resource_table.clone();
+
+  i.register_op(
+    "op_create_worker",
+    s.stateful_json_op_sync(t, op_create_worker),
+  );
   i.register_op(
     "op_host_terminate_worker",
-    s.stateful_json_op(op_host_terminate_worker),
+    s.stateful_json_op_sync(t, op_host_terminate_worker),
   );
   i.register_op(
     "op_host_post_message",
-    s.stateful_json_op(op_host_post_message),
+    s.stateful_json_op_sync(t, op_host_post_message),
   );
   i.register_op(
     "op_host_get_message",
-    s.stateful_json_op(op_host_get_message),
+    s.stateful_json_op_async(t, op_host_get_message),
   );
 }
 
 fn create_web_worker(
   worker_id: u32,
   name: String,
-  global_state: GlobalState,
+  global_state: &Arc<GlobalState>,
   permissions: Permissions,
   specifier: ModuleSpecifier,
   has_deno_namespace: bool,
@@ -49,7 +58,7 @@ fn create_web_worker(
   let mut worker = WebWorker::new(
     name.clone(),
     startup_data::deno_isolate_init(),
-    state,
+    &state,
     has_deno_namespace,
   );
 
@@ -84,12 +93,13 @@ fn create_web_worker(
 fn run_worker_thread(
   worker_id: u32,
   name: String,
-  global_state: GlobalState,
+  global_state: &Arc<GlobalState>,
   permissions: Permissions,
   specifier: ModuleSpecifier,
   has_deno_namespace: bool,
   maybe_source_code: Option<String>,
 ) -> Result<(JoinHandle<()>, WebWorkerHandle), ErrBox> {
+  let global_state = global_state.clone();
   let (handle_sender, handle_receiver) =
     std::sync::mpsc::sync_channel::<Result<WebWorkerHandle, ErrBox>>(1);
 
@@ -103,7 +113,7 @@ fn run_worker_thread(
     let result = create_web_worker(
       worker_id,
       name,
-      global_state,
+      &global_state,
       permissions,
       specifier.clone(),
       has_deno_namespace,
@@ -179,9 +189,10 @@ struct CreateWorkerArgs {
 /// Create worker as the host
 fn op_create_worker(
   state: &State,
+  _resource_table: &mut ResourceTable,
   args: Value,
   _data: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<Value, ErrBox> {
   let args: CreateWorkerArgs = serde_json::from_value(args)?;
 
   let specifier = args.specifier.clone();
@@ -195,13 +206,10 @@ fn op_create_worker(
   if use_deno_namespace {
     state.check_unstable("Worker.deno");
   }
-  let parent_state = state.clone();
-  let mut state = state.borrow_mut();
   let global_state = state.global_state.clone();
-  let permissions = state.permissions.clone();
-  let worker_id = state.next_worker_id;
-  state.next_worker_id += 1;
-  drop(state);
+  let permissions = state.permissions.borrow().clone();
+  let worker_id = state.next_worker_id.get();
+  state.next_worker_id.set(worker_id + 1);
 
   let module_specifier = ModuleSpecifier::resolve_url(&specifier)?;
   let worker_name = args_name.unwrap_or_else(|| "".to_string());
@@ -209,21 +217,20 @@ fn op_create_worker(
   let (join_handle, worker_handle) = run_worker_thread(
     worker_id,
     worker_name,
-    global_state,
+    &global_state,
     permissions,
     module_specifier,
     use_deno_namespace,
     maybe_source_code,
-  )
-  .map_err(|e| OpError::other(e.to_string()))?;
+  )?;
   // At this point all interactions with worker happen using thread
   // safe handler returned from previous function call
-  let mut parent_state = parent_state.borrow_mut();
-  parent_state
+  state
     .workers
+    .borrow_mut()
     .insert(worker_id, (join_handle, worker_handle));
 
-  Ok(JsonOp::Sync(json!({ "id": worker_id })))
+  Ok(json!({ "id": worker_id }))
 }
 
 #[derive(Deserialize)]
@@ -233,17 +240,20 @@ struct WorkerArgs {
 
 fn op_host_terminate_worker(
   state: &State,
+  _resource_table: &mut ResourceTable,
   args: Value,
   _data: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<Value, ErrBox> {
   let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
-  let mut state = state.borrow_mut();
-  let (join_handle, worker_handle) =
-    state.workers.remove(&id).expect("No worker handle found");
+  let (join_handle, worker_handle) = state
+    .workers
+    .borrow_mut()
+    .remove(&id)
+    .expect("No worker handle found");
   worker_handle.terminate();
   join_handle.join().expect("Panic in worker thread");
-  Ok(JsonOp::Sync(json!({})))
+  Ok(json!({}))
 }
 
 fn serialize_worker_event(event: WorkerEvent) -> Value {
@@ -297,71 +307,69 @@ fn serialize_worker_event(event: WorkerEvent) -> Value {
 }
 
 /// Get message from guest worker as host
-fn op_host_get_message(
-  state: &State,
+async fn op_host_get_message(
+  state: Rc<State>,
+  _resource_table: Rc<RefCell<ResourceTable>>,
   args: Value,
-  _data: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+  _zero_copy: BufVec,
+) -> Result<Value, ErrBox> {
   let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
-  let worker_handle = {
-    let state_ = state.borrow();
-    let (_join_handle, worker_handle) =
-      state_.workers.get(&id).expect("No worker handle found");
-    worker_handle.clone()
+  let state = state.clone();
+
+  let workers_table = state.workers.borrow();
+  let maybe_handle = workers_table.get(&id);
+  let worker_handle = if let Some(handle) = maybe_handle {
+    handle.1.clone()
+  } else {
+    // If handle was not found it means worker has already shutdown
+    return Ok(json!({ "type": "close" }));
   };
-  let state_ = state.clone();
-  let op = async move {
-    let response = match worker_handle.get_event().await? {
-      Some(event) => {
-        // Terminal error means that worker should be removed from worker table.
-        if let WorkerEvent::TerminalError(_) = &event {
-          let mut state_ = state_.borrow_mut();
-          if let Some((join_handle, mut worker_handle)) =
-            state_.workers.remove(&id)
-          {
-            worker_handle.sender.close_channel();
-            join_handle.join().expect("Worker thread panicked");
-          }
-        }
-        serialize_worker_event(event)
-      }
-      None => {
-        // Worker shuts down
-        let mut state_ = state_.borrow_mut();
-        // Try to remove worker from workers table - NOTE: `Worker.terminate()` might have been called
-        // already meaning that we won't find worker in table - in that case ignore.
+  drop(workers_table);
+
+  let response = match worker_handle.get_event().await? {
+    Some(event) => {
+      // Terminal error means that worker should be removed from worker table.
+      if let WorkerEvent::TerminalError(_) = &event {
         if let Some((join_handle, mut worker_handle)) =
-          state_.workers.remove(&id)
+          state.workers.borrow_mut().remove(&id)
         {
           worker_handle.sender.close_channel();
           join_handle.join().expect("Worker thread panicked");
         }
-        json!({ "type": "close" })
       }
-    };
-    Ok(response)
+      serialize_worker_event(event)
+    }
+    None => {
+      // Worker shuts down
+      let mut workers = state.workers.borrow_mut();
+      // Try to remove worker from workers table - NOTE: `Worker.terminate()` might have been called
+      // already meaning that we won't find worker in table - in that case ignore.
+      if let Some((join_handle, mut worker_handle)) = workers.remove(&id) {
+        worker_handle.sender.close_channel();
+        join_handle.join().expect("Worker thread panicked");
+      }
+      json!({ "type": "close" })
+    }
   };
-  Ok(JsonOp::Async(op.boxed_local()))
+  Ok(response)
 }
 
 /// Post message to guest worker as host
 fn op_host_post_message(
   state: &State,
+  _resource_table: &mut ResourceTable,
   args: Value,
   data: &mut [ZeroCopyBuf],
-) -> Result<JsonOp, OpError> {
+) -> Result<Value, ErrBox> {
   assert_eq!(data.len(), 1, "Invalid number of arguments");
   let args: WorkerArgs = serde_json::from_value(args)?;
   let id = args.id as u32;
   let msg = Vec::from(&*data[0]).into_boxed_slice();
 
   debug!("post message to worker {}", id);
-  let state = state.borrow();
-  let (_, worker_handle) =
-    state.workers.get(&id).expect("No worker handle found");
-  worker_handle
-    .post_message(msg)
-    .map_err(|e| OpError::other(e.to_string()))?;
-  Ok(JsonOp::Sync(json!({})))
+  let workers = state.workers.borrow();
+  let worker_handle = workers[&id].1.clone();
+  worker_handle.post_message(msg)?;
+  Ok(json!({}))
 }

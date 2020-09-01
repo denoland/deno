@@ -95,6 +95,13 @@ export function equal(c: unknown, d: unknown): boolean {
       return String(a) === String(b);
     }
     if (a instanceof Date && b instanceof Date) {
+      const aTime = a.getTime();
+      const bTime = b.getTime();
+      // Check for NaN equality manually since NaN is not
+      // equal to itself.
+      if (Number.isNaN(aTime) && Number.isNaN(bTime)) {
+        return true;
+      }
       return a.getTime() === b.getTime();
     }
     if (Object.is(a, b)) {
@@ -242,9 +249,19 @@ export function assertNotEquals(
  * assertStrictEquals(1, 2)
  * ```
  */
+export function assertStrictEquals(
+  actual: unknown,
+  expected: unknown,
+  msg?: string,
+): void;
 export function assertStrictEquals<T>(
   actual: T,
   expected: T,
+  msg?: string,
+): void;
+export function assertStrictEquals(
+  actual: unknown,
+  expected: unknown,
   msg?: string,
 ): void {
   if (actual === expected) {
@@ -283,6 +300,37 @@ export function assertStrictEquals<T>(
   }
 
   throw new AssertionError(message);
+}
+
+/**
+ * Make an assertion that `actual` and `expected` are not strictly equal.  
+ * If the values are strictly equal then throw.
+ * ```ts
+ * assertNotStrictEquals(1, 1)
+ * ```
+ */
+export function assertNotStrictEquals(
+  actual: unknown,
+  expected: unknown,
+  msg?: string,
+): void;
+export function assertNotStrictEquals<T>(
+  actual: T,
+  expected: T,
+  msg?: string,
+): void;
+export function assertNotStrictEquals(
+  actual: unknown,
+  expected: unknown,
+  msg?: string,
+): void {
+  if (actual !== expected) {
+    return;
+  }
+
+  throw new AssertionError(
+    msg ?? `Expected "actual" to be strictly unequal to: ${_format(actual)}\n`,
+  );
 }
 
 /**
@@ -363,6 +411,23 @@ export function assertMatch(
   if (!expected.test(actual)) {
     if (!msg) {
       msg = `actual: "${actual}" expected to match: "${expected}"`;
+    }
+    throw new AssertionError(msg);
+  }
+}
+
+/**
+ * Make an assertion that `actual` not match RegExp `expected`. If match
+ * then thrown
+ */
+export function assertNotMatch(
+  actual: string,
+  expected: RegExp,
+  msg?: string,
+): void {
+  if (expected.test(actual)) {
+    if (!msg) {
+      msg = `actual: "${actual}" expected to not match: "${expected}"`;
     }
     throw new AssertionError(msg);
   }
