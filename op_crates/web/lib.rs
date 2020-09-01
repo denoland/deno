@@ -1,9 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::crate_modules;
 use std::path::PathBuf;
-
-crate_modules!();
 
 pub struct WebScripts {
   pub abort_signal: String,
@@ -14,7 +11,7 @@ pub struct WebScripts {
 }
 
 fn get_str_path(file_name: &str) -> String {
-  PathBuf::from(DENO_CRATE_PATH)
+  PathBuf::from(env!("CARGO_MANIFEST_DIR"))
     .join(file_name)
     .to_string_lossy()
     .to_string()
