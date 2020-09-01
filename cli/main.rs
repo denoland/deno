@@ -23,6 +23,7 @@ extern crate serde_derive;
 extern crate tokio;
 extern crate url;
 
+mod bundler;
 mod checksum;
 pub mod colors;
 pub mod deno_dir;
