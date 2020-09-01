@@ -11,9 +11,9 @@
           "col": 19
         }
       },
-      "filename": "[WILDCARD]",
+      "filename": "[WILDCARD]file1.js",
       "message": "Ignore directive requires lint rule code",
-      "code": "ban-untagged-ignore",
+      "code": "ban-untagged-ignore"
     },
     {
       "range": {
@@ -26,9 +26,9 @@
           "col": 16
         }
       },
-      "filename": "[WILDCARD]",
+      "filename": "[WILDCARD]file1.js",
       "message": "Empty block statement",
-      "code": "no-empty",
+      "code": "no-empty"
     },
     {
       "range": {
@@ -41,9 +41,9 @@
           "col": 14
         }
       },
-      "filename": "[WILDCARD]",
+      "filename": "[WILDCARD]file2.ts",
       "message": "Empty block statement",
-      "code": "no-empty",
+      "code": "no-empty"
     }
   ],
   "errors": [
