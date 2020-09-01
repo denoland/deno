@@ -44,10 +44,11 @@ export const process = {
       get isTTY(): boolean {
         return Deno.isatty(this.fd);
       },
-      pipe(_destination: Deno.Writer, options: {end: boolean}): void {
-         // TODO(JayHelton): to be implemented
+      pipe(_destination: Deno.Writer, options: { end: boolean }): void {
+        // TODO(JayHelton): to be implemented
         notImplemented();
       },
+      // eslint-disable-next-line @typescript-eslint/ban-types
       write(_chunk: string | Uint8Array, _callback: Function): void {
         // TODO(JayHelton): to be implemented
         notImplemented();
@@ -57,7 +58,6 @@ export const process = {
         // TODO(JayHelton): to be implemented
         notImplemented();
       },
-
     };
   },
   get stdin() {
@@ -83,10 +83,11 @@ export const process = {
       get isTTY(): boolean {
         return Deno.isatty(this.fd);
       },
-      pipe(_destination: Deno.Writer, options: {end: boolean}): void {
-         // TODO(JayHelton): to be implemented
+      pipe(_destination: Deno.Writer, options: { end: boolean }): void {
+        // TODO(JayHelton): to be implemented
         notImplemented();
       },
+      // eslint-disable-next-line @typescript-eslint/ban-types
       write(_chunk: string | Uint8Array, _callback: Function): void {
         // TODO(JayHelton): to be implemented
         notImplemented();
@@ -96,7 +97,6 @@ export const process = {
         // TODO(JayHelton): to be implemented
         notImplemented();
       },
-
     };
   },
 
