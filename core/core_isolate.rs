@@ -22,10 +22,13 @@ use futures::task::AtomicWaker;
 use futures::Future;
 use serde_json::json;
 use serde_json::Value;
+use smallvec::SmallVec;
 use std::any::Any;
+use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::convert::From;
+use std::convert::TryFrom;
 use std::ffi::c_void;
 use std::mem::forget;
 use std::ops::Deref;
@@ -118,7 +121,7 @@ pub struct CoreIsolate {
 /// Internal state for CoreIsolate which is stored in one of v8::Isolate's
 /// embedder slots.
 pub struct CoreIsolateState {
-  pub resource_table: Rc<RefCell<ResourceTable>>,
+  //pub resource_table: Rc<RefCell<ResourceTable>>,
   pub global_context: Option<v8::Global<v8::Context>>,
   pub(crate) shared_ab: Option<v8::Global<v8::SharedArrayBuffer>>,
   pub(crate) js_recv_cb: Option<v8::Global<v8::Function>>,
@@ -129,7 +132,7 @@ pub struct CoreIsolateState {
   pub(crate) shared: SharedQueue,
   pending_ops: FuturesUnordered<PendingOpFuture>,
   pending_unref_ops: FuturesUnordered<PendingOpFuture>,
-  have_unpolled_ops: bool,
+  have_unpolled_ops: Cell<bool>,
   pub op_registry: OpRegistry,
   waker: AtomicWaker,
 }
@@ -302,9 +305,9 @@ impl CoreIsolate {
       (isolate, None)
     };
 
-    isolate.set_slot(Rc::new(RefCell::new(CoreIsolateState {
+    let state = Rc::new(CoreIsolateState {
       global_context: Some(global_context),
-      resource_table: Rc::new(RefCell::new(ResourceTable::default())),
+      //resource_table: Rc::new(RefCell::new(ResourceTable::default())),
       pending_promise_exceptions: HashMap::new(),
       shared_ab: None,
       js_recv_cb: None,
@@ -314,10 +317,12 @@ impl CoreIsolate {
       shared: SharedQueue::new(RECOMMENDED_SIZE),
       pending_ops: FuturesUnordered::new(),
       pending_unref_ops: FuturesUnordered::new(),
-      have_unpolled_ops: false,
+      have_unpolled_ops: Cell::new(false),
       op_registry: OpRegistry::default(),
       waker: AtomicWaker::new(),
-    })));
+    });
+
+    crate::bindings::set_op_manager(&mut isolate, state);
 
     Self {
       v8_isolate: Some(isolate),
@@ -335,10 +340,10 @@ impl CoreIsolate {
     isolate
   }
 
-  pub fn state(isolate: &v8::Isolate) -> Rc<RefCell<CoreIsolateState>> {
-    let s = isolate.get_slot::<Rc<RefCell<CoreIsolateState>>>().unwrap();
-    s.clone()
-  }
+  //pub fn state(isolate: &v8::Isolate) -> Rc<RefCell<CoreIsolateState>> {
+  //  let s = isolate.get_slot::<Rc<RefCell<CoreIsolateState>>>().unwrap();
+  //  s.clone()
+  //}
 
   /// Executes a bit of built-in JavaScript to provide Deno.sharedQueue.
   pub(crate) fn shared_init(&mut self) {
@@ -428,7 +433,7 @@ impl CoreIsolate {
   /// Requires runtime to explicitly ask for op ids before using any of the ops.
   pub fn register_op<F>(&mut self, name: &str, op: F) -> OpId
   where
-    F: Fn(&mut CoreIsolateState, &mut [ZeroCopyBuf]) -> Op + 'static,
+    F: Fn(&CoreIsolateState, &mut [ZeroCopyBuf]) -> Op + 'static,
   {
     let state_rc = Self::state(self);
     let mut state = state_rc.borrow_mut();
@@ -439,13 +444,13 @@ impl CoreIsolate {
   where
     F: 'static
       + Fn(
-        &mut CoreIsolateState,
+        &CoreIsolateState,
         serde_json::Value,
         &mut [ZeroCopyBuf],
       ) -> Result<serde_json::Value, ErrBox>,
   {
     let core_op =
-      move |state: &mut CoreIsolateState, bufs: &mut [ZeroCopyBuf]| -> Op {
+      move |state: &CoreIsolateState, bufs: &mut [ZeroCopyBuf]| -> Op {
         let value = serde_json::from_slice(&bufs[0]).unwrap();
         let result = op(state, value, &mut bufs[1..]);
         let buf = serialize_result(None, result, state.get_error_class_fn);
@@ -461,9 +466,9 @@ impl CoreIsolate {
   where
     Fut: 'static + Future<Output = Result<serde_json::Value, ErrBox>>,
     F: 'static
-      + Fn(&mut CoreIsolateState, serde_json::Value, &mut [ZeroCopyBuf]) -> Fut,
+      + Fn(&CoreIsolateState, serde_json::Value, &mut [ZeroCopyBuf]) -> Fut,
   {
-    let core_op = move |state: &mut CoreIsolateState,
+    let core_op = move |state: &CoreIsolateState,
                         bufs: &mut [ZeroCopyBuf]|
           -> Op {
       let get_error_class_fn = state.get_error_class_fn;
@@ -579,7 +584,7 @@ impl Future for CoreIsolate {
     loop {
       let mut state = state_rc.borrow_mut();
       // Now handle actual ops.
-      state.have_unpolled_ops = false;
+      state.have_unpolled_ops.set(false);
 
       let pending_r = state.pending_ops.poll_next_unpin(cx);
       match pending_r {
@@ -644,7 +649,7 @@ impl Future for CoreIsolate {
     if state.pending_ops.is_empty() {
       Poll::Ready(Ok(()))
     } else {
-      if state.have_unpolled_ops {
+      if state.have_unpolled_ops.get() {
         state.waker.wake();
       }
       Poll::Pending
@@ -660,7 +665,7 @@ impl CoreIsolateState {
   /// Requires runtime to explicitly ask for op ids before using any of the ops.
   pub fn register_op<F>(&mut self, name: &str, op: F) -> OpId
   where
-    F: Fn(&mut CoreIsolateState, &mut [ZeroCopyBuf]) -> Op + 'static,
+    F: Fn(&CoreIsolateState, &mut [ZeroCopyBuf]) -> Op + 'static,
   {
     self.op_registry.register(name, op)
   }
@@ -678,44 +683,70 @@ impl CoreIsolateState {
   pub fn set_get_error_class_fn(&mut self, f: GetErrorClassFn) {
     self.get_error_class_fn = f;
   }
+}
 
-  pub fn dispatch_op<'s>(
-    &mut self,
+impl OpManager for CoreIsolateState {
+  fn dispatch_op<'s>(
+    self: Rc<Self>,
     scope: &mut v8::HandleScope<'s>,
-    op_id: OpId,
-    zero_copy_bufs: &mut [ZeroCopyBuf],
-  ) -> Option<(OpId, Box<[u8]>)> {
-    let op = if let Some(dispatcher) = self.op_registry.get(op_id) {
-      dispatcher(self, zero_copy_bufs)
-    } else {
-      let message =
-        v8::String::new(scope, &format!("Unknown op id: {}", op_id)).unwrap();
-      let exception = v8::Exception::type_error(scope, message);
-      scope.throw_exception(exception);
-      return None;
+    args: &v8::FunctionCallbackArguments,
+  ) -> Result<v8::Local<'s, v8::Value>, v8::Local<'s, v8::Value>> {
+    let op_id = match v8::Local::<v8::Uint32>::try_from(args.get(0)) {
+      Ok(op_id) => op_id.value() as u32,
+      Err(err) => {
+        let msg = format!("invalid op id: {}", err);
+        let msg = v8::String::new(scope, &msg).unwrap();
+        let exception = v8::Exception::type_error(scope, msg);
+        return Err(exception);
+      }
     };
 
-    debug_assert_eq!(self.shared.size(), 0);
-    match op {
-      Op::Sync(buf) => {
-        // For sync messages, we always return the response via Deno.core.send's
-        // return value. Sync messages ignore the op_id.
-        let op_id = 0;
-        Some((op_id, buf))
+    let state_rc = CoreIsolate::state(scope);
+    let mut state = state_rc.borrow_mut();
+
+    let buf_iter = (1..args.length()).map(|idx| {
+      v8::Local::<v8::ArrayBufferView>::try_from(args.get(idx))
+        .map(|view| ZeroCopyBuf::new(scope, view))
+        .map_err(|err| {
+          let msg = format!("Invalid argument at position {}: {}", idx, err);
+          let msg = v8::String::new(scope, &msg).unwrap();
+          v8::Exception::type_error(scope, msg)
+        })
+    });
+
+    let mut bufs =
+      buf_iter.collect::<Result<SmallVec<[ZeroCopyBuf; 2]>, _>>()?;
+
+    let dispatcher = match self.op_registry.get(op_id) {
+      Some(d) => d,
+      None => {
+        let message =
+          v8::String::new(scope, &format!("Unknown op id: {}", op_id)).unwrap();
+        let exception = v8::Exception::type_error(scope, message);
+        return Err(exception);
       }
+    };
+
+    let op = dispatcher(&*self, &mut bufs);
+    assert_eq!(self.shared.size(), 0);
+    match op {
+      Op::Sync(buf) if !buf.is_empty() => {
+        return Ok(boxed_slice_to_uint8array(scope, buf).into());
+      }
+      Op::Sync(buf) => {}
       Op::Async(fut) => {
         let fut2 = fut.map(move |buf| (op_id, buf));
         self.pending_ops.push(fut2.boxed_local());
-        self.have_unpolled_ops = true;
-        None
+        self.have_unpolled_ops.set(true);
       }
       Op::AsyncUnref(fut) => {
         let fut2 = fut.map(move |buf| (op_id, buf));
         self.pending_unref_ops.push(fut2.boxed_local());
-        self.have_unpolled_ops = true;
-        None
+        self.have_unpolled_ops.set(true);
       }
     }
+
+    Ok(v8::undefined(scope).into())
   }
 }
 
@@ -739,7 +770,7 @@ fn async_op_response<'s>(
       let op_id: v8::Local<v8::Value> =
         v8::Integer::new(tc_scope, op_id as i32).into();
       let ui8: v8::Local<v8::Value> =
-        bindings::boxed_slice_to_uint8array(tc_scope, buf).into();
+        boxed_slice_to_uint8array(tc_scope, buf).into();
       js_recv_cb.call(tc_scope, global, &[op_id, ui8])
     }
     None => js_recv_cb.call(tc_scope, global, &[]),
@@ -848,6 +879,19 @@ pub fn js_check<T>(r: Result<T, ErrBox>) -> T {
   r.unwrap()
 }
 
+fn boxed_slice_to_uint8array<'sc>(
+  scope: &mut v8::HandleScope<'sc>,
+  buf: Box<[u8]>,
+) -> v8::Local<'sc, v8::Uint8Array> {
+  assert!(!buf.is_empty());
+  let buf_len = buf.len();
+  let backing_store = v8::ArrayBuffer::new_backing_store_from_boxed_slice(buf);
+  let backing_store_shared = backing_store.make_shared();
+  let ab = v8::ArrayBuffer::with_backing_store(scope, &backing_store_shared);
+  v8::Uint8Array::new(scope, ab, 0, buf_len)
+    .expect("Failed to create UintArray8")
+}
+
 #[cfg(test)]
 pub mod tests {
   use super::*;
@@ -896,73 +940,72 @@ pub mod tests {
 
     let mut isolate = CoreIsolate::new(StartupData::None, false);
 
-    let dispatcher = move |_state: &mut CoreIsolateState,
-                           zero_copy: &mut [ZeroCopyBuf]|
-          -> Op {
-      dispatch_count_.fetch_add(1, Ordering::Relaxed);
-      match mode {
-        Mode::Async => {
-          assert_eq!(zero_copy.len(), 1);
-          assert_eq!(zero_copy[0].len(), 1);
-          assert_eq!(zero_copy[0][0], 42);
-          let buf = vec![43u8].into_boxed_slice();
-          Op::Async(futures::future::ready(buf).boxed())
-        }
-        Mode::AsyncUnref => {
-          assert_eq!(zero_copy.len(), 1);
-          assert_eq!(zero_copy[0].len(), 1);
-          assert_eq!(zero_copy[0][0], 42);
-          let fut = async {
-            // This future never finish.
-            futures::future::pending::<()>().await;
-            vec![43u8].into_boxed_slice()
-          };
-          Op::AsyncUnref(fut.boxed())
-        }
-        Mode::AsyncZeroCopy(count) => {
-          assert_eq!(zero_copy.len(), count as usize);
-          zero_copy.iter().enumerate().for_each(|(idx, buf)| {
-            assert_eq!(buf.len(), 1);
-            assert_eq!(idx, buf[0] as usize);
-          });
+    let dispatcher =
+      move |_state: &CoreIsolateState, zero_copy: &mut [ZeroCopyBuf]| -> Op {
+        dispatch_count_.fetch_add(1, Ordering::Relaxed);
+        match mode {
+          Mode::Async => {
+            assert_eq!(zero_copy.len(), 1);
+            assert_eq!(zero_copy[0].len(), 1);
+            assert_eq!(zero_copy[0][0], 42);
+            let buf = vec![43u8].into_boxed_slice();
+            Op::Async(futures::future::ready(buf).boxed())
+          }
+          Mode::AsyncUnref => {
+            assert_eq!(zero_copy.len(), 1);
+            assert_eq!(zero_copy[0].len(), 1);
+            assert_eq!(zero_copy[0][0], 42);
+            let fut = async {
+              // This future never finish.
+              futures::future::pending::<()>().await;
+              vec![43u8].into_boxed_slice()
+            };
+            Op::AsyncUnref(fut.boxed())
+          }
+          Mode::AsyncZeroCopy(count) => {
+            assert_eq!(zero_copy.len(), count as usize);
+            zero_copy.iter().enumerate().for_each(|(idx, buf)| {
+              assert_eq!(buf.len(), 1);
+              assert_eq!(idx, buf[0] as usize);
+            });
 
-          let buf = vec![43u8].into_boxed_slice();
-          Op::Async(futures::future::ready(buf).boxed())
+            let buf = vec![43u8].into_boxed_slice();
+            Op::Async(futures::future::ready(buf).boxed())
+          }
+          Mode::OverflowReqSync => {
+            assert_eq!(zero_copy.len(), 1);
+            assert_eq!(zero_copy[0].len(), 100 * 1024 * 1024);
+            let buf = vec![43u8].into_boxed_slice();
+            Op::Sync(buf)
+          }
+          Mode::OverflowResSync => {
+            assert_eq!(zero_copy.len(), 1);
+            assert_eq!(zero_copy[0].len(), 1);
+            assert_eq!(zero_copy[0][0], 42);
+            let mut vec = Vec::<u8>::new();
+            vec.resize(100 * 1024 * 1024, 0);
+            vec[0] = 99;
+            let buf = vec.into_boxed_slice();
+            Op::Sync(buf)
+          }
+          Mode::OverflowReqAsync => {
+            assert_eq!(zero_copy.len(), 1);
+            assert_eq!(zero_copy[0].len(), 100 * 1024 * 1024);
+            let buf = vec![43u8].into_boxed_slice();
+            Op::Async(futures::future::ready(buf).boxed())
+          }
+          Mode::OverflowResAsync => {
+            assert_eq!(zero_copy.len(), 1);
+            assert_eq!(zero_copy[0].len(), 1);
+            assert_eq!(zero_copy[0][0], 42);
+            let mut vec = Vec::<u8>::new();
+            vec.resize(100 * 1024 * 1024, 0);
+            vec[0] = 4;
+            let buf = vec.into_boxed_slice();
+            Op::Async(futures::future::ready(buf).boxed())
+          }
         }
-        Mode::OverflowReqSync => {
-          assert_eq!(zero_copy.len(), 1);
-          assert_eq!(zero_copy[0].len(), 100 * 1024 * 1024);
-          let buf = vec![43u8].into_boxed_slice();
-          Op::Sync(buf)
-        }
-        Mode::OverflowResSync => {
-          assert_eq!(zero_copy.len(), 1);
-          assert_eq!(zero_copy[0].len(), 1);
-          assert_eq!(zero_copy[0][0], 42);
-          let mut vec = Vec::<u8>::new();
-          vec.resize(100 * 1024 * 1024, 0);
-          vec[0] = 99;
-          let buf = vec.into_boxed_slice();
-          Op::Sync(buf)
-        }
-        Mode::OverflowReqAsync => {
-          assert_eq!(zero_copy.len(), 1);
-          assert_eq!(zero_copy[0].len(), 100 * 1024 * 1024);
-          let buf = vec![43u8].into_boxed_slice();
-          Op::Async(futures::future::ready(buf).boxed())
-        }
-        Mode::OverflowResAsync => {
-          assert_eq!(zero_copy.len(), 1);
-          assert_eq!(zero_copy[0].len(), 1);
-          assert_eq!(zero_copy[0][0], 42);
-          let mut vec = Vec::<u8>::new();
-          vec.resize(100 * 1024 * 1024, 0);
-          vec[0] = 4;
-          let buf = vec.into_boxed_slice();
-          Op::Async(futures::future::ready(buf).boxed())
-        }
-      }
-    };
+      };
 
     isolate.register_op("test", dispatcher);
 

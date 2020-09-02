@@ -1,5 +1,6 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
+use crate::ops::OpManager;
 use crate::CoreIsolate;
 use crate::CoreIsolateState;
 use crate::EsIsolate;
@@ -13,6 +14,7 @@ use smallvec::SmallVec;
 use std::cell::Cell;
 use std::convert::TryFrom;
 use std::option::Option;
+use std::rc::Rc;
 use url::Url;
 
 lazy_static! {
@@ -197,19 +199,6 @@ pub fn initialize_context<'s>(
   scope.escape(context)
 }
 
-pub fn boxed_slice_to_uint8array<'sc>(
-  scope: &mut v8::HandleScope<'sc>,
-  buf: Box<[u8]>,
-) -> v8::Local<'sc, v8::Uint8Array> {
-  assert!(!buf.is_empty());
-  let buf_len = buf.len();
-  let backing_store = v8::ArrayBuffer::new_backing_store_from_boxed_slice(buf);
-  let backing_store_shared = backing_store.make_shared();
-  let ab = v8::ArrayBuffer::with_backing_store(scope, &backing_store_shared);
-  v8::Uint8Array::new(scope, ab, 0, buf_len)
-    .expect("Failed to create UintArray8")
-}
-
 pub extern "C" fn host_import_module_dynamically_callback(
   context: v8::Local<v8::Context>,
   referrer: v8::Local<v8::ScriptOrModule>,
@@ -376,50 +365,26 @@ fn send(
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
-  let op_id = match v8::Local::<v8::Uint32>::try_from(args.get(0)) {
-    Ok(op_id) => op_id.value() as u32,
-    Err(err) => {
-      let msg = format!("invalid op id: {}", err);
-      let msg = v8::String::new(scope, &msg).unwrap();
-      let exc = v8::Exception::type_error(scope, msg);
-      scope.throw_exception(exc);
-      return;
+  let op_manager = scope
+    .get_slot::<Rc<dyn OpManager>>()
+    .map(|m| (*m).clone())
+    .unwrap();
+  match op_manager.dispatch_op(scope, &args) {
+    Ok(value) => {
+      rv.set(value);
+    }
+    Err(exception) => {
+      scope.throw_exception(exception);
     }
   };
+}
 
-  let state_rc = CoreIsolate::state(scope);
-  let mut state = state_rc.borrow_mut();
-
-  let buf_iter = (1..args.length()).map(|idx| {
-    v8::Local::<v8::ArrayBufferView>::try_from(args.get(idx))
-      .map(|view| ZeroCopyBuf::new(scope, view))
-      .map_err(|err| {
-        let msg = format!("Invalid argument at position {}: {}", idx, err);
-        let msg = v8::String::new(scope, &msg).unwrap();
-        v8::Exception::type_error(scope, msg)
-      })
-  });
-
-  // If response is empty then it's either async op or exception was thrown.
-  let maybe_response =
-    match buf_iter.collect::<Result<SmallVec<[ZeroCopyBuf; 2]>, _>>() {
-      Ok(mut bufs) => state.dispatch_op(scope, op_id, &mut bufs),
-      Err(exc) => {
-        scope.throw_exception(exc);
-        return;
-      }
-    };
-
-  if let Some(response) = maybe_response {
-    // Synchronous response.
-    // Note op_id is not passed back in the case of synchronous response.
-    let (_op_id, buf) = response;
-
-    if !buf.is_empty() {
-      let ui8 = boxed_slice_to_uint8array(scope, buf);
-      rv.set(ui8.into());
-    }
-  }
+pub fn set_op_manager(
+  isolate: &mut v8::Isolate,
+  op_manager: Rc<dyn OpManager>,
+) {
+  let no_conflict = isolate.set_slot(op_manager);
+  assert!(no_conflict);
 }
 
 fn set_macrotask_callback(

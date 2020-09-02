@@ -687,16 +687,15 @@ pub mod tests {
 
     let mut isolate = EsIsolate::new(loader, StartupData::None, false);
 
-    let dispatcher = move |_state: &mut CoreIsolateState,
-                           zero_copy: &mut [ZeroCopyBuf]|
-          -> Op {
-      dispatch_count_.fetch_add(1, Ordering::Relaxed);
-      assert_eq!(zero_copy.len(), 1);
-      assert_eq!(zero_copy[0].len(), 1);
-      assert_eq!(zero_copy[0][0], 42);
-      let buf = vec![43u8, 0, 0, 0].into_boxed_slice();
-      Op::Async(futures::future::ready(buf).boxed())
-    };
+    let dispatcher =
+      move |_state: &CoreIsolateState, zero_copy: &mut [ZeroCopyBuf]| -> Op {
+        dispatch_count_.fetch_add(1, Ordering::Relaxed);
+        assert_eq!(zero_copy.len(), 1);
+        assert_eq!(zero_copy[0].len(), 1);
+        assert_eq!(zero_copy[0][0], 42);
+        let buf = vec![43u8, 0, 0, 0].into_boxed_slice();
+        Op::Async(futures::future::ready(buf).boxed())
+      };
 
     isolate.register_op("test", dispatcher);
 

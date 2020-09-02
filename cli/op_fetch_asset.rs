@@ -84,13 +84,11 @@ fn get_asset(name: &str) -> Option<&'static str> {
 /// CoreIsolate.
 pub fn op_fetch_asset<S: ::std::hash::BuildHasher>(
   custom_assets: HashMap<String, PathBuf, S>,
-) -> impl Fn(&mut deno_core::CoreIsolateState, &mut [ZeroCopyBuf]) -> Op {
+) -> impl Fn(&deno_core::CoreIsolateState, &mut [ZeroCopyBuf]) -> Op {
   for (_, path) in custom_assets.iter() {
     println!("cargo:rerun-if-changed={}", path.display());
   }
-  move |_state: &mut CoreIsolateState,
-        zero_copy_bufs: &mut [ZeroCopyBuf]|
-        -> Op {
+  move |_state: &CoreIsolateState, zero_copy_bufs: &mut [ZeroCopyBuf]| -> Op {
     assert_eq!(zero_copy_bufs.len(), 1, "Invalid number of arguments");
     let name = std::str::from_utf8(&zero_copy_bufs[0]).unwrap();
 

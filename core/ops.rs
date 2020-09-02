@@ -1,8 +1,12 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 use crate::core_isolate::CoreIsolateState;
+use crate::v8;
+use crate::BufVec;
+use crate::ErrBox;
 use crate::ZeroCopyBuf;
 use futures::Future;
 use std::collections::HashMap;
+use std::ops::Deref;
 use std::pin::Pin;
 use std::rc::Rc;
 
@@ -19,10 +23,18 @@ pub enum Op {
   /// exiting.
   AsyncUnref(OpAsyncFuture),
 }
+pub trait OpManager {
+  //fn dispatch_op(&self, op_id: OpId, bufs: BufVec) -> Result<ErrBox, Op>;
+  fn dispatch_op<'s>(
+    self: Rc<Self>,
+    scope: &mut v8::HandleScope<'s>,
+    args: &v8::FunctionCallbackArguments,
+  ) -> Result<v8::Local<'s, v8::Value>, v8::Local<'s, v8::Value>>;
+}
 
 /// Main type describing op
 pub type OpDispatcher =
-  dyn Fn(&mut CoreIsolateState, &mut [ZeroCopyBuf]) -> Op + 'static;
+  dyn Fn(&CoreIsolateState, &mut [ZeroCopyBuf]) -> Op + 'static;
 
 pub struct OpRegistry {
   dispatchers: Vec<Rc<OpDispatcher>>,
@@ -47,7 +59,7 @@ impl Default for OpRegistry {
 impl OpRegistry {
   pub fn register<F>(&mut self, name: &str, op: F) -> OpId
   where
-    F: Fn(&mut CoreIsolateState, &mut [ZeroCopyBuf]) -> Op + 'static,
+    F: Fn(&CoreIsolateState, &mut [ZeroCopyBuf]) -> Op + 'static,
   {
     let op_id = self.dispatchers.len() as u32;
 
