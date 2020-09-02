@@ -111,9 +111,13 @@ impl std::fmt::Display for ModuleDepInfo {
     }
 
     f.write_fmt(format_args!(
-      "{} {} unique\n",
+      "{} {} unique {}\n",
       colors::bold("deps:"),
-      self.dep_count
+      self.dep_count,
+      colors::gray(&format!(
+        "(total {})",
+        human_size(self.deps.total_size.unwrap_or(0) as f64),
+      ))
     ))?;
     f.write_fmt(format_args!(
       "{} {}\n",
