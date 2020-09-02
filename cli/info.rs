@@ -116,10 +116,9 @@ impl std::fmt::Display for ModuleDepInfo {
       self.dep_count
     ))?;
     f.write_fmt(format_args!(
-      "{} ({}, total = {})\n",
+      "{} {}\n",
       self.deps.name,
-      human_size(self.deps.size as f64),
-      human_size(self.deps.total_size.unwrap() as f64)
+      colors::gray(&format!("({})", human_size(self.deps.size as f64)))
     ))?;
 
     for (idx, dep) in self.deps.deps.iter().enumerate() {
@@ -268,10 +267,14 @@ fn print_dep(
   let has_children = !info.deps.is_empty();
 
   formatter.write_fmt(format_args!(
-    "{}{}─{} {}{}\n",
-    prefix,
-    get_sibling_connector(is_last),
-    get_child_connector(has_children),
+    "{} {}{}\n",
+    colors::gray(&format!(
+      "{}{}─{}",
+      prefix,
+      get_sibling_connector(is_last),
+      get_child_connector(has_children),
+    ))
+    .to_string(),
     info.name,
     get_formatted_totals(info)
   ))
@@ -281,12 +284,8 @@ fn print_dep(
 ///
 /// If the total size is reported as 0 then an empty string is returned.
 fn get_formatted_totals(info: &FileInfoDepTree) -> String {
-  if let Some(total_size) = info.total_size {
-    format!(
-      " ({}, total = {})",
-      human_size(info.size as f64),
-      human_size(total_size as f64)
-    )
+  if let Some(_total_size) = info.total_size {
+    colors::gray(&format!(" ({})", human_size(info.size as f64),)).to_string()
   } else {
     "".to_string()
   }
@@ -326,9 +325,9 @@ fn get_new_prefix(prefix: &str, is_last: bool) -> String {
 pub fn human_size(bytse: f64) -> String {
   let negative = if bytse.is_sign_positive() { "" } else { "-" };
   let bytse = bytse.abs();
-  let units = ["Bytes", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
+  let units = ["B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
   if bytse < 1_f64 {
-    return format!("{}{} {}", negative, bytse, "Bytes");
+    return format!("{}{}{}", negative, bytse, "B");
   }
   let delimiter = 1024_f64;
   let exponent = std::cmp::min(
@@ -340,7 +339,7 @@ pub fn human_size(bytse: f64) -> String {
     .unwrap()
     * 1_f64;
   let unit = units[exponent as usize];
-  format!("{}{} {}", negative, pretty_bytes, unit)
+  format!("{}{}{}", negative, pretty_bytes, unit)
 }
 
 #[cfg(test)]
@@ -352,15 +351,15 @@ mod test {
 
   #[test]
   fn human_size_test() {
-    assert_eq!(human_size(16_f64), "16 Bytes");
-    assert_eq!(human_size((16 * 1024) as f64), "16 KB");
-    assert_eq!(human_size((16 * 1024 * 1024) as f64), "16 MB");
-    assert_eq!(human_size(16_f64 * 1024_f64.powf(3.0)), "16 GB");
-    assert_eq!(human_size(16_f64 * 1024_f64.powf(4.0)), "16 TB");
-    assert_eq!(human_size(16_f64 * 1024_f64.powf(5.0)), "16 PB");
-    assert_eq!(human_size(16_f64 * 1024_f64.powf(6.0)), "16 EB");
-    assert_eq!(human_size(16_f64 * 1024_f64.powf(7.0)), "16 ZB");
-    assert_eq!(human_size(16_f64 * 1024_f64.powf(8.0)), "16 YB");
+    assert_eq!(human_size(16_f64), "16B");
+    assert_eq!(human_size((16 * 1024) as f64), "16KB");
+    assert_eq!(human_size((16 * 1024 * 1024) as f64), "16MB");
+    assert_eq!(human_size(16_f64 * 1024_f64.powf(3.0)), "16GB");
+    assert_eq!(human_size(16_f64 * 1024_f64.powf(4.0)), "16TB");
+    assert_eq!(human_size(16_f64 * 1024_f64.powf(5.0)), "16PB");
+    assert_eq!(human_size(16_f64 * 1024_f64.powf(6.0)), "16EB");
+    assert_eq!(human_size(16_f64 * 1024_f64.powf(7.0)), "16ZB");
+    assert_eq!(human_size(16_f64 * 1024_f64.powf(8.0)), "16YB");
   }
 
   #[test]

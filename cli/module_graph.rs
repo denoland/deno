@@ -196,7 +196,7 @@ const SUPPORTED_MEDIA_TYPES: [MediaType; 4] = [
 
 pub type ModuleGraph = HashMap<String, ModuleGraphFile>;
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportDescriptor {
   pub specifier: String,
