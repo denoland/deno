@@ -710,8 +710,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
       Arg::with_name("verbose")
         .long("verbose")
         .short("v")
-        .requires("unstable")
-        .help("Output how many files have been checked. Use with --unstable")
+        .help("Output how many files have been checked.")
         .takes_value(false),
     )
 }

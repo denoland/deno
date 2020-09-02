@@ -1693,7 +1693,7 @@ itest!(fmt_check_tests_dir {
 });
 
 itest!(fmt_check_verbose_tests_dir {
-  args: "fmt --unstable --check --verbose ./",
+  args: "fmt --check -v ./",
   output: "fmt/expected_fmt_check_verbose_tests_dir.out",
   exit_code: 1,
 });
@@ -1705,7 +1705,7 @@ itest!(fmt_check_formatted_files {
 });
 
 itest!(fmt_check_verbose_formatted_files {
-  args: "fmt --unstable --check --verbose fmt/formatted1.js fmt/formatted2.ts",
+  args: "fmt --check --verbose fmt/formatted1.js fmt/formatted2.ts",
   output: "fmt/expected_fmt_check_verbose_formatted_files.out",
   exit_code: 0,
 });
