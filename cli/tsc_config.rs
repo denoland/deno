@@ -24,7 +24,7 @@ impl fmt::Display for IgnoredCompilerOptions {
 /// A static slice of all the compiler options that should be ignored that
 /// either have no effect on the compilation or would cause the emit to not work
 /// in Deno.
-const IGNORED_COMPILER_OPTIONS: [&str; 62] = [
+const IGNORED_COMPILER_OPTIONS: [&str; 61] = [
   "allowSyntheticDefaultImports",
   "allowUmdGlobalAccess",
   "assumeChangesOnlyAffectDirectDependencies",
@@ -48,7 +48,6 @@ const IGNORED_COMPILER_OPTIONS: [&str; 62] = [
   "inlineSourceMap",
   "inlineSources",
   "init",
-  "isolatedModules",
   "listEmittedFiles",
   "listFiles",
   "mapRoot",
