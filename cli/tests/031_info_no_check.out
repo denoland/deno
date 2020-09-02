@@ -2,5 +2,5 @@
 local: [WILDCARD]031_info_no_check.ts
 type: TypeScript
 compiled: [WILDCARD].js
-deps: 0 unique
+deps: 0 unique (total [WILDCARD])
 [WILDCARD]031_info_no_check.ts ([WILDCARD])
