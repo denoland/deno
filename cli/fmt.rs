@@ -116,7 +116,7 @@ async fn check_source_files(
     format!("{} {}", checked_files_count, files_str(checked_files_count));
   if not_formatted_files_count == 0 {
     if verbose {
-      eprintln!("Checked {}", checked_files_str);
+      println!("Checked {}", checked_files_str);
     }
     Ok(())
   } else {
@@ -180,7 +180,7 @@ async fn format_source_files(
 
   if verbose {
     let checked_files_count = checked_files_count.load(Ordering::SeqCst);
-    eprintln!(
+    println!(
       "Checked {} {}",
       checked_files_count,
       files_str(checked_files_count)

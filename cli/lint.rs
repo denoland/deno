@@ -261,8 +261,8 @@ impl LintReporter for PrettyLintReporter {
 
     if self.should_report_verbosely() {
       match self.check_count {
-        1 => eprintln!("Checked 1 file"),
-        n if n > 1 => eprintln!("Checked {} files", self.check_count),
+        1 => println!("Checked 1 file"),
+        n if n > 1 => println!("Checked {} files", self.check_count),
         _ => (),
       }
     }
