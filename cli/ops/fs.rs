@@ -1683,8 +1683,8 @@ async fn op_make_temp_file_async(
 #[serde(rename_all = "camelCase")]
 struct FutimeArgs {
   rid: i32,
-  atime: i64,
-  mtime: i64,
+  atime: (i64, u32),
+  mtime: (i64, u32),
 }
 
 fn op_futime_sync(
@@ -1696,8 +1696,8 @@ fn op_futime_sync(
   state.check_unstable("Deno.futimeSync");
   let args: FutimeArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
-  let atime = filetime::FileTime::from_unix_time(args.atime, 0);
-  let mtime = filetime::FileTime::from_unix_time(args.mtime, 0);
+  let atime = filetime::FileTime::from_unix_time(args.atime.0, args.atime.1);
+  let mtime = filetime::FileTime::from_unix_time(args.mtime.0, args.mtime.1);
 
   std_file_resource(resource_table, rid, |r| match r {
     Ok(std_file) => {
@@ -1721,8 +1721,8 @@ async fn op_futime_async(
   state.check_unstable("Deno.futime");
   let args: FutimeArgs = serde_json::from_value(args)?;
   let rid = args.rid as u32;
-  let atime = filetime::FileTime::from_unix_time(args.atime, 0);
-  let mtime = filetime::FileTime::from_unix_time(args.mtime, 0);
+  let atime = filetime::FileTime::from_unix_time(args.atime.0, args.atime.1);
+  let mtime = filetime::FileTime::from_unix_time(args.mtime.0, args.mtime.1);
 
   let mut resource_table = resource_table.borrow_mut();
   std_file_resource(&mut resource_table, rid, |r| match r {
@@ -1742,8 +1742,8 @@ async fn op_futime_async(
 #[serde(rename_all = "camelCase")]
 struct UtimeArgs {
   path: String,
-  atime: i64,
-  mtime: i64,
+  atime: (i64, u32),
+  mtime: (i64, u32),
 }
 
 fn op_utime_sync(
@@ -1756,11 +1756,10 @@ fn op_utime_sync(
 
   let args: UtimeArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
-  let atime = filetime::FileTime::from_unix_time(args.atime, 0);
-  let mtime = filetime::FileTime::from_unix_time(args.mtime, 0);
+  let atime = filetime::FileTime::from_unix_time(args.atime.0, args.atime.1);
+  let mtime = filetime::FileTime::from_unix_time(args.mtime.0, args.mtime.1);
 
   state.check_write(&path)?;
-  debug!("op_utime_sync {} {} {}", args.path, args.atime, args.mtime);
   filetime::set_file_times(path, atime, mtime)?;
   Ok(json!({}))
 }
@@ -1775,13 +1774,12 @@ async fn op_utime_async(
 
   let args: UtimeArgs = serde_json::from_value(args)?;
   let path = PathBuf::from(&args.path);
-  let atime = filetime::FileTime::from_unix_time(args.atime, 0);
-  let mtime = filetime::FileTime::from_unix_time(args.mtime, 0);
+  let atime = filetime::FileTime::from_unix_time(args.atime.0, args.atime.1);
+  let mtime = filetime::FileTime::from_unix_time(args.mtime.0, args.mtime.1);
 
   state.check_write(&path)?;
 
   tokio::task::spawn_blocking(move || {
-    debug!("op_utime_async {} {} {}", args.path, args.atime, args.mtime);
     filetime::set_file_times(path, atime, mtime)?;
     Ok(json!({}))
   })

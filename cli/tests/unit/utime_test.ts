@@ -1,17 +1,10 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 import {
   unitTest,
-  assert,
+  assertEquals,
   assertThrows,
   assertThrowsAsync,
 } from "./test_util.ts";
-
-// Allow 10 second difference.
-// Note this might not be enough for FAT (but we are not testing on such fs).
-function assertFuzzyTimestampEquals(t1: Date | null, t2: Date): void {
-  assert(t1 instanceof Date);
-  assert(Math.abs(t1.valueOf() - t2.valueOf()) < 10_000);
-}
 
 unitTest(
   { perms: { read: true, write: true } },
@@ -29,8 +22,8 @@ unitTest(
     await Deno.fdatasync(file.rid);
 
     const fileInfo = Deno.statSync(filename);
-    assertFuzzyTimestampEquals(fileInfo.atime, new Date(atime * 1000));
-    assertFuzzyTimestampEquals(fileInfo.mtime, new Date(mtime * 1000));
+    assertEquals(fileInfo.atime, new Date(atime * 1000));
+    assertEquals(fileInfo.mtime, new Date(mtime * 1000));
     file.close();
   },
 );
@@ -51,8 +44,8 @@ unitTest(
     Deno.fdatasyncSync(file.rid);
 
     const fileInfo = Deno.statSync(filename);
-    assertFuzzyTimestampEquals(fileInfo.atime, new Date(atime * 1000));
-    assertFuzzyTimestampEquals(fileInfo.mtime, new Date(mtime * 1000));
+    assertEquals(fileInfo.atime, new Date(atime * 1000));
+    assertEquals(fileInfo.mtime, new Date(mtime * 1000));
     file.close();
   },
 );
@@ -71,8 +64,8 @@ unitTest(
     Deno.utimeSync(filename, atime, mtime);
 
     const fileInfo = Deno.statSync(filename);
-    assertFuzzyTimestampEquals(fileInfo.atime, new Date(atime * 1000));
-    assertFuzzyTimestampEquals(fileInfo.mtime, new Date(mtime * 1000));
+    assertEquals(fileInfo.atime, new Date(atime * 1000));
+    assertEquals(fileInfo.mtime, new Date(mtime * 1000));
   },
 );
 
@@ -86,8 +79,8 @@ unitTest(
     Deno.utimeSync(testDir, atime, mtime);
 
     const dirInfo = Deno.statSync(testDir);
-    assertFuzzyTimestampEquals(dirInfo.atime, new Date(atime * 1000));
-    assertFuzzyTimestampEquals(dirInfo.mtime, new Date(mtime * 1000));
+    assertEquals(dirInfo.atime, new Date(atime * 1000));
+    assertEquals(dirInfo.mtime, new Date(mtime * 1000));
   },
 );
 
@@ -101,8 +94,8 @@ unitTest(
     Deno.utimeSync(testDir, atime, mtime);
 
     const dirInfo = Deno.statSync(testDir);
-    assertFuzzyTimestampEquals(dirInfo.atime, atime);
-    assertFuzzyTimestampEquals(dirInfo.mtime, mtime);
+    assertEquals(dirInfo.atime, atime);
+    assertEquals(dirInfo.mtime, mtime);
   },
 );
 
@@ -119,8 +112,8 @@ unitTest(
     Deno.utimeSync(filename, atime, mtime);
 
     const fileInfo = Deno.statSync(filename);
-    assertFuzzyTimestampEquals(fileInfo.atime, atime);
-    assertFuzzyTimestampEquals(fileInfo.mtime, mtime);
+    assertEquals(fileInfo.atime, atime);
+    assertEquals(fileInfo.mtime, mtime);
   },
 );
 
@@ -136,8 +129,8 @@ unitTest(
     Deno.utimeSync(testDir, atime, mtime);
 
     const dirInfo = Deno.statSync(testDir);
-    assertFuzzyTimestampEquals(dirInfo.atime, new Date(atime * 1000));
-    assertFuzzyTimestampEquals(dirInfo.mtime, new Date(mtime * 1000));
+    assertEquals(dirInfo.atime, new Date(atime * 1000));
+    assertEquals(dirInfo.mtime, new Date(mtime * 1000));
   },
 );
 
@@ -179,8 +172,8 @@ unitTest(
     await Deno.utime(filename, atime, mtime);
 
     const fileInfo = Deno.statSync(filename);
-    assertFuzzyTimestampEquals(fileInfo.atime, new Date(atime * 1000));
-    assertFuzzyTimestampEquals(fileInfo.mtime, new Date(mtime * 1000));
+    assertEquals(fileInfo.atime, new Date(atime * 1000));
+    assertEquals(fileInfo.mtime, new Date(mtime * 1000));
   },
 );
 
@@ -194,8 +187,8 @@ unitTest(
     await Deno.utime(testDir, atime, mtime);
 
     const dirInfo = Deno.statSync(testDir);
-    assertFuzzyTimestampEquals(dirInfo.atime, new Date(atime * 1000));
-    assertFuzzyTimestampEquals(dirInfo.mtime, new Date(mtime * 1000));
+    assertEquals(dirInfo.atime, new Date(atime * 1000));
+    assertEquals(dirInfo.mtime, new Date(mtime * 1000));
   },
 );
 
@@ -209,8 +202,8 @@ unitTest(
     await Deno.utime(testDir, atime, mtime);
 
     const dirInfo = Deno.statSync(testDir);
-    assertFuzzyTimestampEquals(dirInfo.atime, atime);
-    assertFuzzyTimestampEquals(dirInfo.mtime, mtime);
+    assertEquals(dirInfo.atime, atime);
+    assertEquals(dirInfo.mtime, mtime);
   },
 );
 
@@ -228,8 +221,8 @@ unitTest(
     await Deno.utime(filename, atime, mtime);
 
     const fileInfo = Deno.statSync(filename);
-    assertFuzzyTimestampEquals(fileInfo.atime, atime);
-    assertFuzzyTimestampEquals(fileInfo.mtime, mtime);
+    assertEquals(fileInfo.atime, atime);
+    assertEquals(fileInfo.mtime, mtime);
   },
 );
 
