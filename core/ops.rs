@@ -24,15 +24,17 @@ pub enum Op {
 pub type OpDispatcher =
   dyn Fn(&mut CoreIsolateState, &mut [ZeroCopyBuf]) -> Op + 'static;
 
-#[derive(Default)]
 pub struct OpRegistry {
   dispatchers: Vec<Rc<OpDispatcher>>,
   name_to_id: HashMap<String, OpId>,
 }
 
-impl OpRegistry {
-  pub fn new() -> Self {
-    let mut registry = Self::default();
+impl Default for OpRegistry {
+  fn default() -> Self {
+    let mut registry = Self {
+      dispatchers: Vec::default(),
+      name_to_id: HashMap::default(),
+    };
     let op_id = registry.register("ops", |state, _| {
       let buf = state.op_registry.json_map();
       Op::Sync(buf)
@@ -40,7 +42,9 @@ impl OpRegistry {
     assert_eq!(op_id, 0);
     registry
   }
+}
 
+impl OpRegistry {
   pub fn register<F>(&mut self, name: &str, op: F) -> OpId
   where
     F: Fn(&mut CoreIsolateState, &mut [ZeroCopyBuf]) -> Op + 'static,
@@ -76,7 +80,7 @@ fn test_op_registry() {
   use crate::CoreIsolate;
   use std::sync::atomic;
   use std::sync::Arc;
-  let mut op_registry = OpRegistry::new();
+  let mut op_registry = OpRegistry::default();
 
   let c = Arc::new(atomic::AtomicUsize::new(0));
   let c_ = c.clone();
@@ -118,7 +122,7 @@ fn register_op_during_call() {
   use std::sync::atomic;
   use std::sync::Arc;
   use std::sync::Mutex;
-  let op_registry = Arc::new(Mutex::new(OpRegistry::new()));
+  let op_registry = Arc::new(Mutex::new(OpRegistry::default()));
 
   let c = Arc::new(atomic::AtomicUsize::new(0));
   let c_ = c.clone();

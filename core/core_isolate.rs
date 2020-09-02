@@ -315,7 +315,7 @@ impl CoreIsolate {
       pending_ops: FuturesUnordered::new(),
       pending_unref_ops: FuturesUnordered::new(),
       have_unpolled_ops: false,
-      op_registry: OpRegistry::new(),
+      op_registry: OpRegistry::default(),
       waker: AtomicWaker::new(),
     })));
 
