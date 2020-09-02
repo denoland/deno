@@ -1163,7 +1163,14 @@ delete Object.prototype.__proto__;
         ...program.getSemanticDiagnostics(),
       ];
       diagnostics = diagnostics.filter(
-        ({ code }) => !IGNORED_DIAGNOSTICS.includes(code),
+        ({ code, messageText }) => {
+          // Ignore TS1208 if the error is that the file is not a module.
+          const isNotModuleDiagnostic = messageText ==
+              "All files must be modules when the '--isolatedModules' flag is provided." &&
+            code == 1208;
+
+          return !IGNORED_DIAGNOSTICS.includes(code) && !isNotModuleDiagnostic;
+        },
       );
 
       // We will only proceed with the emit if there are no diagnostics.
@@ -1334,7 +1341,14 @@ delete Object.prototype.__proto__;
 
     const diagnostics = ts
       .getPreEmitDiagnostics(program)
-      .filter(({ code }) => !IGNORED_DIAGNOSTICS.includes(code));
+      .filter(({ code, messageText }) => {
+        // Ignore TS1208 if the error is that the file is not a module.
+        const isNotModuleDiagnostic = messageText ==
+            "All files must be modules when the '--isolatedModules' flag is provided." &&
+          code == 1208;
+
+        return !IGNORED_DIAGNOSTICS.includes(code) && !isNotModuleDiagnostic;
+      });
 
     const emitResult = program.emit();
     assert(emitResult.emitSkipped === false, "Unexpected skip of the emit.");
