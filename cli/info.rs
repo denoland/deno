@@ -177,16 +177,16 @@ impl FileInfoDepTree {
     let mut total_size = None;
 
     if never_seen {
+      let mut seen_deps = HashSet::new();
       deps = file
         .imports
         .iter()
-        .map(|import| {
-          Self::visit_module(
-            seen,
-            total_sizes,
-            graph,
-            &import.resolved_specifier,
-          )
+        .map(|import| &import.resolved_specifier)
+        .filter(|module_specifier| {
+          seen_deps.insert(module_specifier.as_str().to_string())
+        })
+        .map(|specifier| {
+          Self::visit_module(seen, total_sizes, graph, specifier)
         })
         .collect::<Vec<_>>();
 
