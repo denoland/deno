@@ -29,6 +29,10 @@ use swc_ecmascript::parser::StringInput;
 use swc_ecmascript::parser::Syntax;
 use swc_ecmascript::parser::TsConfig;
 use swc_ecmascript::transforms::fixer;
+use swc_ecmascript::transforms::helpers;
+use swc_ecmascript::transforms::pass::Optional;
+use swc_ecmascript::transforms::proposals::decorators;
+use swc_ecmascript::transforms::react;
 use swc_ecmascript::transforms::typescript;
 use swc_ecmascript::visit::FoldWith;
 
@@ -230,52 +234,6 @@ impl AstParser {
     })
   }
 
-  pub fn strip_types(
-    &self,
-    file_name: &str,
-    media_type: MediaType,
-    source_code: &str,
-  ) -> Result<String, ErrBox> {
-    let module = self.parse_module(file_name, media_type, source_code)?;
-    let program = Program::Module(module);
-    let mut compiler_pass =
-      chain!(typescript::strip(), fixer(Some(&self.comments)));
-    let program = program.fold_with(&mut compiler_pass);
-
-    let mut src_map_buf = vec![];
-    let mut buf = vec![];
-    {
-      let writer = Box::new(JsWriter::new(
-        self.source_map.clone(),
-        "\n",
-        &mut buf,
-        Some(&mut src_map_buf),
-      ));
-      let config = swc_ecmascript::codegen::Config { minify: false };
-      let mut emitter = swc_ecmascript::codegen::Emitter {
-        cfg: config,
-        comments: Some(&self.comments),
-        cm: self.source_map.clone(),
-        wr: writer,
-      };
-      program.emit_with(&mut emitter)?;
-    }
-    let mut src = String::from_utf8(buf)?;
-    {
-      let mut buf = vec![];
-      self
-        .source_map
-        .build_source_map_from(&mut src_map_buf, None)
-        .to_writer(&mut buf)?;
-      let map = String::from_utf8(buf)?;
-
-      src.push_str("//# sourceMappingURL=data:application/json;base64,");
-      let encoded_map = base64::encode(map.as_bytes());
-      src.push_str(&encoded_map);
-    }
-    Ok(src)
-  }
-
   pub fn get_span_location(&self, span: Span) -> swc_common::Loc {
     self.source_map.lookup_char_pos(span.lo())
   }
@@ -290,13 +248,196 @@ impl AstParser {
   }
 }
 
-#[test]
-fn test_strip_types() {
+#[derive(Debug, Clone)]
+pub struct EmitTranspileOptions {
+  /// When emitting a legacy decorator, also emit experimental decorator meta
+  /// data.  Defaults to `false`.
+  pub emit_metadata: bool,
+  /// Should the source map be inlined in the emitted code file, or provided
+  /// as a separate file.  Defaults to `true`.
+  pub inline_source_map: bool,
+  /// When transforming JSX, what value should be used for the JSX factory.
+  /// Defaults to `React.createElement`.
+  pub jsx_factory: String,
+  /// When transforming JSX, what value should be used for the JSX fragment
+  /// factory.  Defaults to `React.Fragment`.
+  pub jsx_fragment_factory: String,
+  /// Should JSX be transformed or preserved.  Defaults to `true`.
+  pub transform_jsx: bool,
+}
+
+impl Default for EmitTranspileOptions {
+  fn default() -> Self {
+    EmitTranspileOptions {
+      emit_metadata: false,
+      inline_source_map: true,
+      jsx_factory: "React.createElement".into(),
+      jsx_fragment_factory: "React.Fragment".into(),
+      transform_jsx: true,
+    }
+  }
+}
+
+pub fn transpile(
+  file_name: &str,
+  media_type: MediaType,
+  source_code: &str,
+  options: &EmitTranspileOptions,
+) -> Result<(String, Option<String>), ErrBox> {
   let ast_parser = AstParser::default();
-  let result = ast_parser
-    .strip_types("test.ts", MediaType::TypeScript, "const a: number = 10;")
+  let module = ast_parser.parse_module(file_name, media_type, source_code)?;
+  let program = Program::Module(module);
+
+  let jsx_pass = react::react(
+    ast_parser.source_map.clone(),
+    react::Options {
+      pragma: options.jsx_factory.clone(),
+      pragma_frag: options.jsx_fragment_factory.clone(),
+      // this will use `Object.assign()` instead of the `_extends` helper
+      // when spreading props.
+      use_builtins: true,
+      ..Default::default()
+    },
+  );
+  let mut passes = chain!(
+    Optional::new(jsx_pass, options.transform_jsx),
+    decorators::decorators(decorators::Config {
+      legacy: true,
+      emit_metadata: options.emit_metadata,
+    }),
+    typescript::strip(),
+    fixer(Some(&ast_parser.comments)),
+  );
+
+  let program = swc_common::GLOBALS.set(&Globals::new(), || {
+    helpers::HELPERS.set(&helpers::Helpers::new(false), || {
+      program.fold_with(&mut passes)
+    })
+  });
+
+  let mut src_map_buf = vec![];
+  let mut buf = vec![];
+  {
+    let writer = Box::new(JsWriter::new(
+      ast_parser.source_map.clone(),
+      "\n",
+      &mut buf,
+      Some(&mut src_map_buf),
+    ));
+    let config = swc_ecmascript::codegen::Config { minify: false };
+    let mut emitter = swc_ecmascript::codegen::Emitter {
+      cfg: config,
+      comments: Some(&ast_parser.comments),
+      cm: ast_parser.source_map.clone(),
+      wr: writer,
+    };
+    program.emit_with(&mut emitter)?;
+  }
+  let mut src = String::from_utf8(buf)?;
+  let mut map: Option<String> = None;
+  {
+    let mut buf = Vec::new();
+    ast_parser
+      .source_map
+      .build_source_map_from(&mut src_map_buf, None)
+      .to_writer(&mut buf)?;
+
+    if options.inline_source_map {
+      src.push_str("//# sourceMappingURL=data:application/json;base64,");
+      let encoded_map = base64::encode(buf);
+      src.push_str(&encoded_map);
+    } else {
+      map = Some(String::from_utf8(buf)?);
+    }
+  }
+  Ok((src, map))
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_transpile() {
+    let source = r#"
+    enum D {
+      A,
+      B,
+      C,
+    }
+    export class A {
+      private b: string;
+      protected c: number = 1;
+      e: "foo";
+      constructor (public d = D.A) {
+        const e = "foo" as const;
+        this.e = e;
+      }
+    }
+    "#;
+    let result = transpile(
+      "test.ts",
+      MediaType::TypeScript,
+      source,
+      &EmitTranspileOptions::default(),
+    )
     .unwrap();
-  assert!(result.starts_with(
-    "const a = 10;\n//# sourceMappingURL=data:application/json;base64,"
-  ));
+    let (code, maybe_map) = result;
+    assert!(code.starts_with("var D;\n(function(D) {\n"));
+    assert!(
+      code.contains("\n//# sourceMappingURL=data:application/json;base64,")
+    );
+    assert!(maybe_map.is_none());
+  }
+
+  #[test]
+  fn test_transpile_tsx() {
+    let source = r#"
+  export class A {
+    render() {
+      return <div><span></span></div>
+    }
+  }
+  "#;
+    let result = transpile(
+      "test.ts",
+      MediaType::TSX,
+      source,
+      &EmitTranspileOptions::default(),
+    )
+    .unwrap();
+    let (code, _maybe_source_map) = result;
+    assert!(code.contains("React.createElement(\"div\", null"));
+  }
+
+  #[test]
+  fn test_transpile_decorators() {
+    let source = r#"
+  function enumerable(value: boolean) {
+    return function (
+      _target: any,
+      _propertyKey: string,
+      descriptor: PropertyDescriptor,
+    ) {
+      descriptor.enumerable = value;
+    };
+  }
+  
+  export class A {
+    @enumerable(false)
+    a() {
+      Test.value;
+    }
+  }
+  "#;
+    let result = transpile(
+      "test.ts",
+      MediaType::TypeScript,
+      source,
+      &EmitTranspileOptions::default(),
+    )
+    .unwrap();
+    let (code, _maybe_source_map) = result;
+    assert!(code.contains("_applyDecoratedDescriptor("));
+  }
 }

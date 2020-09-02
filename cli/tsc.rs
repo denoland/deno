@@ -18,6 +18,7 @@ use crate::permissions::Permissions;
 use crate::source_maps::SourceMapGetter;
 use crate::startup_data;
 use crate::state::State;
+use crate::swc_util;
 use crate::swc_util::AstParser;
 use crate::swc_util::Location;
 use crate::swc_util::SwcDiagnosticBuffer;
@@ -418,6 +419,16 @@ struct CompileResponse {
   stats: Option<Vec<Stat>>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TranspileTsOptions {
+  check_js: bool,
+  emit_decorator_metadata: bool,
+  jsx: String,
+  jsx_factory: String,
+  jsx_fragment_factory: String,
+}
+
 // TODO(bartlomieju): possible deduplicate once TS refactor is stabilized
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -795,12 +806,39 @@ impl TsCompiler {
 
     let mut emit_map = HashMap::new();
 
+    let mut compiler_options = json!({
+      "checkJs": false,
+      "emitDecoratorMetadata": false,
+      "jsx": "react",
+      "jsxFactory": "React.createElement",
+      "jsxFragmentFactory": "React.Fragment",
+    });
+
+    let compiler_config = self.config.clone();
+
+    tsc_config::json_merge(&mut compiler_options, &compiler_config.options);
+
+    warn_ignored_options(
+      compiler_config.maybe_ignored_options,
+      compiler_config.path.as_ref().unwrap(),
+    );
+
+    let compiler_options: TranspileTsOptions =
+      serde_json::from_value(compiler_options)?;
+
+    let transpile_options = swc_util::EmitTranspileOptions {
+      emit_metadata: compiler_options.emit_decorator_metadata,
+      inline_source_map: true,
+      jsx_factory: compiler_options.jsx_factory,
+      jsx_fragment_factory: compiler_options.jsx_fragment_factory,
+      transform_jsx: compiler_options.jsx == "react",
+    };
     for source_file in source_files {
-      let parser = AstParser::default();
-      let stripped_source = parser.strip_types(
+      let (stripped_source, _maybe_source_map) = swc_util::transpile(
         &source_file.file_name,
         MediaType::TypeScript,
         &source_file.source_code,
+        &transpile_options,
       )?;
 
       // TODO(bartlomieju): this is superfluous, just to make caching function happy
