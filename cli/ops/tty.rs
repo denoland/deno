@@ -75,7 +75,7 @@ fn op_set_raw(
     use winapi::shared::minwindef::FALSE;
     use winapi::um::{consoleapi, handleapi};
 
-    let resource_table = state.resource_table.borrow_mut();
+    let mut resource_table = state.resource_table.borrow_mut();
     let resource_holder = resource_table.get_mut::<StreamResourceHolder>(rid);
     if resource_holder.is_none() {
       return Err(ErrBox::bad_resource_id());

@@ -239,7 +239,7 @@ pub fn op_read(
   state: Rc<State>,
   is_sync: bool,
   rid: i32,
-  zero_copy: BufVec,
+  mut zero_copy: BufVec,
 ) -> MinimalOp {
   debug!("read rid={}", rid);
   match zero_copy.len() {
@@ -433,10 +433,8 @@ where
     FnMut(Result<&mut std::fs::File, &mut StreamResource>) -> Result<T, ErrBox>,
 {
   // First we look up the rid in the resource table.
-  let mut r = state
-    .resource_table
-    .borrow_mut()
-    .get_mut::<StreamResourceHolder>(rid);
+  let mut resource_table = state.resource_table.borrow_mut();
+  let mut r = resource_table.get_mut::<StreamResourceHolder>(rid);
   if let Some(ref mut resource_holder) = r {
     // Sync write only works for FsFile. It doesn't make sense to do this
     // for non-blocking sockets. So we error out if not FsFile.

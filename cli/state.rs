@@ -70,13 +70,13 @@ impl State {
     self: &Rc<Self>,
     _: (),
     dispatcher: D,
-  ) -> impl Fn(&mut deno_core::CoreIsolateState, &mut [ZeroCopyBuf]) -> Op
+  ) -> impl Fn(Rc<Self>, BufVec) -> Op
   where
     D: Fn(&State, (), Value, &mut [ZeroCopyBuf]) -> Result<Value, ErrBox>,
   {
     let state = self.clone();
 
-    let f = move |state: Rc<State>, mut bufs: BufVec| {
+    let f = move |state: Rc<Self>, mut bufs: BufVec| {
       // The first buffer should contain JSON encoded op arguments; parse them.
       let args: Value = match serde_json::from_slice(&bufs[0]) {
         Ok(v) => v,
@@ -104,16 +104,14 @@ impl State {
     self: &Rc<Self>,
     _: (),
     dispatcher: D,
-  ) -> impl Fn(Rc<State>, BufVec) -> Op
+  ) -> impl Fn(Rc<Self>, BufVec) -> Op
   where
-    D: FnOnce(Rc<State>, (), Value, BufVec) -> F + Clone,
+    D: FnOnce(Rc<Self>, (), Value, BufVec) -> F + Clone,
     F: Future<Output = Result<Value, ErrBox>> + 'static,
   {
     let state = self.clone();
 
-    let f = move |state: Rc<State>, bufs: BufVec| {
-      let get_error_class_fn = isolate_state.get_error_class_fn;
-
+    let f = move |state: Rc<Self>, bufs: BufVec| {
       // The first buffer should contain JSON encoded op arguments; parse them.
       let args: Value = match serde_json::from_slice(&bufs[0]) {
         Ok(v) => v,
@@ -160,17 +158,12 @@ impl State {
   pub fn stateful_json_op2<D>(
     self: &Rc<Self>,
     dispatcher: D,
-  ) -> impl Fn(&mut deno_core::CoreIsolateState, &mut [ZeroCopyBuf]) -> Op
+  ) -> impl Fn(Rc<Self>, BufVec) -> Op
   where
-    D: Fn(
-      &mut deno_core::CoreIsolateState,
-      &Rc<State>,
-      Value,
-      &mut [ZeroCopyBuf],
-    ) -> Result<JsonOp, ErrBox>,
+    D: Fn(Rc<Self>, Value, BufVec) -> Result<JsonOp, ErrBox>,
   {
     use crate::ops::json_op;
-    self.core_op(json_op(self.stateful_op2(dispatcher)))
+    self.core_op(json_op(self.clone().stateful_op2(dispatcher)))
   }
 
   /// Wrap core `OpDispatcher` to collect metrics.
@@ -179,21 +172,19 @@ impl State {
   pub(crate) fn core_op<D>(
     self: &Rc<Self>,
     dispatcher: D,
-  ) -> impl Fn(&mut deno_core::CoreIsolateState, &mut [ZeroCopyBuf]) -> Op
+  ) -> impl Fn(Rc<Self>, BufVec) -> Op
   where
-    D: Fn(Rc<State>, BufVec) -> Op,
+    D: Fn(Rc<Self>, BufVec) -> Op,
   {
     let state = self.clone();
 
-    move |isolate_state: &mut deno_core::CoreIsolateState,
-          zero_copy: &mut [ZeroCopyBuf]|
-          -> Op {
+    move |state: Rc<Self>, zero_copy: BufVec| -> Op {
       let bytes_sent_control =
         zero_copy.get(0).map(|s| s.len()).unwrap_or(0) as u64;
       let bytes_sent_zero_copy =
         zero_copy[1..].iter().map(|b| b.len()).sum::<usize>() as u64;
 
-      let op = dispatcher(isolate_state, zero_copy);
+      let op = dispatcher(state.clone(), zero_copy);
 
       match op {
         Op::Sync(buf) => {
@@ -242,13 +233,13 @@ impl State {
   pub fn stateful_minimal_op2<D>(
     self: &Rc<Self>,
     dispatcher: D,
-  ) -> impl Fn(Rc<State>, BufVec) -> Op
+  ) -> impl Fn(Rc<Self>, BufVec) -> Op
   where
-    D: Fn(Rc<State>, bool, i32, BufVec) -> MinimalOp,
+    D: Fn(Rc<Self>, bool, i32, BufVec) -> MinimalOp,
   {
     //let state = self.clone();
     self.core_op(crate::ops::minimal_op(
-      move |state: Rc<State>,
+      move |state: Rc<Self>,
             is_sync: bool,
             rid: i32,
             zero_copy: BufVec|
@@ -264,44 +255,29 @@ impl State {
   pub fn stateful_op<D>(
     self: &Rc<Self>,
     dispatcher: D,
-  ) -> impl Fn(
-    &mut deno_core::CoreIsolateState,
-    Value,
-    &mut [ZeroCopyBuf],
-  ) -> Result<JsonOp, ErrBox>
+  ) -> impl Fn(Rc<Self>, Value, BufVec) -> Result<JsonOp, ErrBox>
   where
-    D: Fn(&Rc<State>, Value, &mut [ZeroCopyBuf]) -> Result<JsonOp, ErrBox>,
+    D: Fn(Rc<Self>, Value, BufVec) -> Result<JsonOp, ErrBox>,
   {
     let state = self.clone();
-    move |_isolate_state: &mut deno_core::CoreIsolateState,
+    move |state: Rc<Self>,
           args: Value,
-          zero_copy: &mut [ZeroCopyBuf]|
-          -> Result<JsonOp, ErrBox> { dispatcher(&state, args, zero_copy) }
+          zero_copy: BufVec|
+          -> Result<JsonOp, ErrBox> { dispatcher(state, args, zero_copy) }
   }
 
   pub fn stateful_op2<D>(
     self: &Rc<Self>,
     dispatcher: D,
-  ) -> impl Fn(
-    &mut deno_core::CoreIsolateState,
-    Value,
-    &mut [ZeroCopyBuf],
-  ) -> Result<JsonOp, ErrBox>
+  ) -> impl Fn(Rc<Self>, Value, BufVec) -> Result<JsonOp, ErrBox>
   where
-    D: Fn(
-      &mut deno_core::CoreIsolateState,
-      &Rc<State>,
-      Value,
-      &mut [ZeroCopyBuf],
-    ) -> Result<JsonOp, ErrBox>,
+    D: Fn(Rc<Self>, Value, BufVec) -> Result<JsonOp, ErrBox>,
   {
     let state = self.clone();
-    move |isolate_state: &mut deno_core::CoreIsolateState,
+    move |state: Rc<Self>,
           args: Value,
-          zero_copy: &mut [ZeroCopyBuf]|
-          -> Result<JsonOp, ErrBox> {
-      dispatcher(isolate_state, &state, args, zero_copy)
-    }
+          zero_copy: BufVec|
+          -> Result<JsonOp, ErrBox> { dispatcher(state, args, zero_copy) }
   }
 
   /// Quits the process if the --unstable flag was not provided.
@@ -563,7 +539,7 @@ impl State {
   }
 
   #[cfg(test)]
-  pub fn mock(main_module: &str) -> Rc<State> {
+  pub fn mock(main_module: &str) -> Rc<Self> {
     let module_specifier = ModuleSpecifier::resolve_url_or_path(main_module)
       .expect("Invalid entry module");
     State::new(

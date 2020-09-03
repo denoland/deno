@@ -31,10 +31,9 @@ struct OpenPluginArgs {
 }
 
 pub fn op_open_plugin(
-  isolate_state: &mut CoreIsolateState,
-  state: &Rc<State>,
+  state: Rc<State>,
   args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
+  _zero_copy: BufVec,
 ) -> Result<JsonOp, ErrBox> {
   state.check_unstable("Deno.openPlugin");
   let args: OpenPluginArgs = serde_json::from_value(args).unwrap();
@@ -61,7 +60,7 @@ pub fn op_open_plugin(
   .unwrap();
   drop(resource_table);
 
-  let mut interface = PluginInterface::new(state, &plugin_lib);
+  let mut interface = PluginInterface::new(&state, &plugin_lib);
   deno_plugin_init(&mut interface);
 
   Ok(JsonOp::Sync(json!(rid)))
@@ -113,6 +112,7 @@ impl<'a> plugin_api::Interface for PluginInterface<'a> {
           Op::AsyncUnref(fut) => {
             Op::AsyncUnref(PluginOpAsyncFuture::new(&plugin_lib, fut))
           }
+          _ => unreachable!(),
         }
       },
     )

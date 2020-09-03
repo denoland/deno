@@ -4,6 +4,7 @@ use crate::diagnostics::Diagnostic;
 use crate::source_maps::get_orig_position;
 use crate::source_maps::CachedMaps;
 use crate::state::State;
+use deno_core::BufVec;
 use deno_core::CoreIsolate;
 use deno_core::ErrBox;
 use deno_core::ResourceTable;

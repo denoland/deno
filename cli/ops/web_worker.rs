@@ -15,17 +15,13 @@ use std::rc::Rc;
 pub fn web_worker_op<D>(
   sender: mpsc::Sender<WorkerEvent>,
   dispatcher: D,
-) -> impl Fn(Rc<State>, BufVec) -> Result<JsonOp, ErrBox>
+) -> impl Fn(Rc<State>, Value, BufVec) -> Result<JsonOp, ErrBox>
 where
-  D: Fn(
-    &mpsc::Sender<WorkerEvent>,
-    Value,
-    &mut [ZeroCopyBuf],
-  ) -> Result<JsonOp, ErrBox>,
+  D: Fn(&mpsc::Sender<WorkerEvent>, Value, BufVec) -> Result<JsonOp, ErrBox>,
 {
-  move |_isolate_state: &mut CoreIsolateState,
+  move |_state: Rc<State>,
         args: Value,
-        zero_copy: &mut [ZeroCopyBuf]|
+        zero_copy: BufVec|
         -> Result<JsonOp, ErrBox> { dispatcher(&sender, args, zero_copy) }
 }
 
@@ -33,18 +29,18 @@ pub fn web_worker_op2<D>(
   handle: WebWorkerHandle,
   sender: mpsc::Sender<WorkerEvent>,
   dispatcher: D,
-) -> impl Fn(Rc<State>, BufVec) -> Result<JsonOp, ErrBox>
+) -> impl Fn(Rc<State>, Value, BufVec) -> Result<JsonOp, ErrBox>
 where
   D: Fn(
     WebWorkerHandle,
     &mpsc::Sender<WorkerEvent>,
     Value,
-    &mut [ZeroCopyBuf],
+    BufVec,
   ) -> Result<JsonOp, ErrBox>,
 {
-  move |_isolate_state: &mut CoreIsolateState,
+  move |_state: Rc<State>,
         args: Value,
-        zero_copy: &mut [ZeroCopyBuf]|
+        zero_copy: BufVec|
         -> Result<JsonOp, ErrBox> {
     dispatcher(handle.clone(), &sender, args, zero_copy)
   }
@@ -77,7 +73,7 @@ pub fn init(
 fn op_worker_post_message(
   sender: &mpsc::Sender<WorkerEvent>,
   _args: Value,
-  data: &mut [ZeroCopyBuf],
+  data: BufVec,
 ) -> Result<JsonOp, ErrBox> {
   assert_eq!(data.len(), 1, "Invalid number of arguments");
   let d = Vec::from(&*data[0]).into_boxed_slice();
@@ -93,7 +89,7 @@ fn op_worker_close(
   handle: WebWorkerHandle,
   sender: &mpsc::Sender<WorkerEvent>,
   _args: Value,
-  _data: &mut [ZeroCopyBuf],
+  _data: BufVec,
 ) -> Result<JsonOp, ErrBox> {
   let mut sender = sender.clone();
   // Notify parent that we're finished
