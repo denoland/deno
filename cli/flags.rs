@@ -365,6 +365,7 @@ fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 fn install_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   permission_args_parse(flags, matches);
   config_arg_parse(flags, matches);
+  importmap_arg_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
   no_check_arg_parse(flags, matches);
   unstable_arg_parse(flags, matches);
@@ -713,38 +714,38 @@ fn repl_subcommand<'a, 'b>() -> App<'a, 'b> {
 
 fn install_subcommand<'a, 'b>() -> App<'a, 'b> {
   permission_args(SubCommand::with_name("install"))
-        .setting(AppSettings::TrailingVarArg)
-        .arg(
-          Arg::with_name("cmd")
-            .required(true)
-            .multiple(true)
-            .allow_hyphen_values(true))
-        .arg(
-          Arg::with_name("name")
-          .long("name")
-          .short("n")
-          .help("Executable file name")
-          .takes_value(true)
-          .required(false))
-        .arg(
-          Arg::with_name("root")
-            .long("root")
-            .help("Installation root")
-            .takes_value(true)
-            .multiple(false))
-        .arg(
-          Arg::with_name("force")
-            .long("force")
-            .short("f")
-            .help("Forcefully overwrite existing installation")
-            .takes_value(false))
-        .arg(no_check_arg())
-        .arg(ca_file_arg())
-        .arg(unstable_arg())
-        .arg(config_arg())
-        .about("Install script as an executable")
-        .long_about(
-"Installs a script as an executable in the installation root's bin directory.
+    .setting(AppSettings::TrailingVarArg)
+    .arg(
+      Arg::with_name("cmd")
+        .required(true)
+        .multiple(true)
+        .allow_hyphen_values(true))
+    .arg(
+      Arg::with_name("name")
+        .long("name")
+        .short("n")
+        .help("Executable file name")
+        .takes_value(true)
+        .required(false))
+    .arg(
+      Arg::with_name("root")
+        .long("root")
+        .help("Installation root")
+        .takes_value(true)
+        .multiple(false))
+    .arg(
+      Arg::with_name("force")
+        .long("force")
+        .short("f")
+        .help("Forcefully overwrite existing installation")
+        .takes_value(false))
+    .arg(no_check_arg())
+    .arg(ca_file_arg())
+    .arg(unstable_arg())
+    .arg(config_arg())
+    .about("Install script as an executable")
+    .long_about(
+      "Installs a script as an executable in the installation root's bin directory.
   deno install --allow-net --allow-read https://deno.land/std/http/file_server.ts
   deno install https://deno.land/std/examples/colors.ts
 
@@ -1160,7 +1161,7 @@ fn run_subcommand<'a, 'b>() -> App<'a, 'b> {
     .arg(script_arg())
     .about("Run a program given a filename or url to the module. Use '-' as a filename to read from stdin.")
     .long_about(
-	  "Run a program given a filename or url to the module.
+      "Run a program given a filename or url to the module.
 
 By default all programs are run in sandbox without access to disk, network or
 ability to spawn subprocesses.
@@ -2354,6 +2355,31 @@ mod tests {
     );
   }
 
+
+
+  #[test]
+  fn install_importmap() {
+    let r = flags_from_vec_safe(svec![
+      "deno",
+      "install",
+      "--importmap=importmap.json",
+      "asd" ,
+      "asd.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Install {
+          name: None,
+          module_url: "https://deno.land/std/examples/colors.ts".to_string(),
+          args: vec![],
+          root: None,
+          force: false,
+        },
+        ..Flags::default()
+      }
+    );
+  }
   #[test]
   fn cache_importmap() {
     let r = flags_from_vec_safe(svec![
@@ -2474,6 +2500,35 @@ mod tests {
       }
     );
   }
+
+  #[test]
+  fn install_with_import_map() {
+    let r = flags_from_vec_safe(svec![
+      "deno",
+      "install",
+      "--importmap",
+      "import_map.json",
+      "asd",
+      "asd.ts"
+    ]);
+
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        unstable: true,
+        subcommand: DenoSubcommand::Install {
+          name: None,
+          module_url: "https://deno.land/std/examples/colors.ts".to_string(),
+          args: svec![],
+          root: None,
+          force: false,
+
+        },
+        ..Flags::default()
+      }
+    );
+  }
+
 
   #[test]
   fn install_with_args() {
