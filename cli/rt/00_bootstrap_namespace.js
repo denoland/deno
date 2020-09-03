@@ -6,4 +6,9 @@
 
 // This namespace is removed during runtime bootstrapping process.
 
-globalThis.__bootstrap = globalThis.__bootstrap || {};
+if (!Object.getOwnPropertyDescriptor(globalThis, "__bootstrap")) {
+  Object.defineProperty(globalThis, "__bootstrap", {
+    value: {},
+    configurable: true,
+  });
+}

@@ -393,7 +393,6 @@
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   function isEitherArrayBuffer(x) {
     return x instanceof SharedArrayBuffer || x instanceof ArrayBuffer ||
       typeof x === "undefined";
@@ -839,6 +838,11 @@
   window.TextDecoder = TextDecoder;
   window.atob = atob;
   window.btoa = btoa;
-  window.__bootstrap = (window.__bootstrap || {});
+  if (!Object.getOwnPropertyDescriptor(window, "__bootstrap")) {
+    Object.defineProperty(window, "__bootstrap", {
+      value: {},
+      configurable: true,
+    });
+  }
   window.__bootstrap.base64 = base64;
 })(this);

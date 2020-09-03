@@ -67,7 +67,12 @@
 
   window.AbortSignal = AbortSignal;
   window.AbortController = AbortController;
-  window.__bootstrap = window.__bootstrap || {};
+  if (!Object.getOwnPropertyDescriptor(window, "__bootstrap")) {
+    Object.defineProperty(window, "__bootstrap", {
+      value: {},
+      configurable: true,
+    });
+  }
   window.__bootstrap.abortSignal = {
     add,
     signalAbort,
