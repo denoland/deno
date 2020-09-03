@@ -430,7 +430,7 @@ fn send<'s>(
     Op::Sync(buf) if !buf.is_empty() => {
       rv.set(boxed_slice_to_uint8array(scope, buf).into());
     }
-    Op::Sync(buf) => {}
+    Op::Sync(_) => {}
     Op::Async(fut) => {
       let fut2 = fut.map(move |buf| (op_id, buf));
       state.pending_ops.push(fut2.boxed_local());

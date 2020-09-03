@@ -215,8 +215,7 @@ impl GlobalState {
           let msg = format!(
             "Failed to get compiled source code of \"{}\".\nReason: {}\n\
             If the source file provides only type exports, prefer to use \"import type\" or \"export type\" syntax instead.",
-            out.url,
-            e.to_string()
+            out.url, e.to_string()
           );
           info!("{} {}", crate::colors::yellow("Warning"), msg);
 
@@ -330,7 +329,7 @@ fn test_should_allow_js() {
       types_directives: vec![],
       type_headers: vec![],
       media_type: MediaType::TypeScript,
-      source_code: "function foo() {}".to_string()
+      source_code: "function foo() {}".to_string(),
     },
     &ModuleGraphFile {
       specifier: "file:///some/file1.js".to_string(),
@@ -349,15 +348,15 @@ fn test_should_allow_js() {
         location: Location {
           filename: "file:///some/file1.js".to_string(),
           line: 0,
-          col: 0
-        }
+          col: 0,
+        },
       }],
       referenced_files: vec![],
       lib_directives: vec![],
       types_directives: vec![],
       type_headers: vec![],
       media_type: MediaType::JavaScript,
-      source_code: "function foo() {}".to_string()
+      source_code: "function foo() {}".to_string(),
     },
   ],));
 
@@ -374,7 +373,7 @@ fn test_should_allow_js() {
       types_directives: vec![],
       type_headers: vec![],
       media_type: MediaType::JSX,
-      source_code: "function foo() {}".to_string()
+      source_code: "function foo() {}".to_string(),
     },
     &ModuleGraphFile {
       specifier: "file:///some/file.ts".to_string(),
@@ -393,15 +392,15 @@ fn test_should_allow_js() {
         location: Location {
           filename: "file:///some/file1.ts".to_string(),
           line: 0,
-          col: 0
-        }
+          col: 0,
+        },
       }],
       referenced_files: vec![],
       lib_directives: vec![],
       types_directives: vec![],
       type_headers: vec![],
       media_type: MediaType::TypeScript,
-      source_code: "function foo() {}".to_string()
+      source_code: "function foo() {}".to_string(),
     },
   ]));
 
@@ -418,7 +417,7 @@ fn test_should_allow_js() {
       version_hash: "1".to_string(),
       type_headers: vec![],
       media_type: MediaType::JavaScript,
-      source_code: "function foo() {}".to_string()
+      source_code: "function foo() {}".to_string(),
     },
     &ModuleGraphFile {
       specifier: "file:///some/file1.js".to_string(),
@@ -436,8 +435,8 @@ fn test_should_allow_js() {
         location: Location {
           filename: "file:///some/file.js".to_string(),
           line: 0,
-          col: 0
-        }
+          col: 0,
+        },
       }],
       referenced_files: vec![],
       lib_directives: vec![],
@@ -445,7 +444,7 @@ fn test_should_allow_js() {
       version_hash: "1".to_string(),
       type_headers: vec![],
       media_type: MediaType::JavaScript,
-      source_code: "function foo() {}".to_string()
+      source_code: "function foo() {}".to_string(),
     },
   ],));
 }
@@ -467,7 +466,7 @@ fn test_needs_compilation() {
       type_headers: vec![],
       version_hash: "1".to_string(),
       media_type: MediaType::JavaScript,
-      source_code: "function foo() {}".to_string()
+      source_code: "function foo() {}".to_string(),
     }],
   ));
 
@@ -492,7 +491,7 @@ fn test_needs_compilation() {
         type_headers: vec![],
         media_type: MediaType::TypeScript,
         version_hash: "1".to_string(),
-        source_code: "function foo() {}".to_string()
+        source_code: "function foo() {}".to_string(),
       },
       &ModuleGraphFile {
         specifier: "file:///some/file1.js".to_string(),
@@ -506,7 +505,7 @@ fn test_needs_compilation() {
         type_headers: vec![],
         version_hash: "1".to_string(),
         media_type: MediaType::JavaScript,
-        source_code: "function foo() {}".to_string()
+        source_code: "function foo() {}".to_string(),
       },
     ],
   ));

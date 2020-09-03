@@ -284,7 +284,10 @@ fn test_compose_url_to_exec() {
   #[cfg(windows)]
   assert_eq!(url.as_str(), "https://github.com/denoland/deno/releases/download/v0.0.1/deno-x86_64-pc-windows-msvc.zip");
   #[cfg(target_os = "macos")]
-  assert_eq!(url.as_str(), "https://github.com/denoland/deno/releases/download/v0.0.1/deno-x86_64-apple-darwin.zip");
+  assert_eq!(
+    url.as_str(),
+    "https://github.com/denoland/deno/releases/download/v0.0.1/deno-x86_64-apple-darwin.zip"
+  );
   #[cfg(target_os = "linux")]
   assert_eq!(url.as_str(), "https://github.com/denoland/deno/releases/download/v0.0.1/deno-x86_64-unknown-linux-gnu.zip");
 }

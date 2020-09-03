@@ -51,7 +51,9 @@ fn validate_no_downgrade(
   if let Some(referrer) = maybe_referrer.as_ref() {
     if let "https" = referrer.as_url().scheme() {
       if let "http" = module_specifier.as_url().scheme() {
-        let e = ErrBox::new("PermissionDenied", "Modules loaded over https:// are not allowed to import modules over http://");
+        let e = ErrBox::new("PermissionDenied",
+          "Modules loaded over https:// are not allowed to import modules over http://"
+        );
         return Err(err_with_location(e, maybe_location));
       };
     };
@@ -895,8 +897,8 @@ console.log(qat.qat);
         location: Location {
           filename: "some/file.ts".to_string(),
           line: 9,
-          col: 0
-        }
+          col: 0,
+        },
       },
       ImportDesc {
         specifier: "./type_definitions/fizz.js".to_string(),
@@ -904,8 +906,8 @@ console.log(qat.qat);
         location: Location {
           filename: "some/file.ts".to_string(),
           line: 11,
-          col: 0
-        }
+          col: 0,
+        },
       },
       ImportDesc {
         specifier: "./type_definitions/qat.ts".to_string(),
@@ -913,8 +915,8 @@ console.log(qat.qat);
         location: Location {
           filename: "some/file.ts".to_string(),
           line: 15,
-          col: 0
-        }
+          col: 0,
+        },
       },
     ]
   );
@@ -931,8 +933,8 @@ console.log(qat.qat);
         location: Location {
           filename: "some/file.ts".to_string(),
           line: 5,
-          col: 0
-        }
+          col: 0,
+        },
       },
       TsReferenceDesc {
         specifier: "./type_reference.d.ts".to_string(),
@@ -940,8 +942,8 @@ console.log(qat.qat);
         location: Location {
           filename: "some/file.ts".to_string(),
           line: 6,
-          col: 0
-        }
+          col: 0,
+        },
       },
       TsReferenceDesc {
         specifier: "./type_reference/dep.ts".to_string(),
@@ -949,8 +951,8 @@ console.log(qat.qat);
         location: Location {
           filename: "some/file.ts".to_string(),
           line: 7,
-          col: 0
-        }
+          col: 0,
+        },
       },
     ]
   );

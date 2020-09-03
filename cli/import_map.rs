@@ -287,22 +287,20 @@ impl ImportMap {
       let potential_specifier_map =
         potential_specifier_map.as_object().unwrap();
 
-      let scope_prefix_url = match Url::parse(base_url)
-        .unwrap()
-        .join(scope_prefix)
-      {
-        Ok(url) => {
-          if !SUPPORTED_FETCH_SCHEMES.contains(&url.scheme()) {
-            eprintln!(
+      let scope_prefix_url =
+        match Url::parse(base_url).unwrap().join(scope_prefix) {
+          Ok(url) => {
+            if !SUPPORTED_FETCH_SCHEMES.contains(&url.scheme()) {
+              eprintln!(
               "Invalid scope {:?}. Scope URLs must have a valid fetch scheme.",
               url.to_string()
             );
-            continue;
+              continue;
+            }
+            url.to_string()
           }
-          url.to_string()
-        }
-        _ => continue,
-      };
+          _ => continue,
+        };
 
       let norm_map =
         ImportMap::parse_specifier_map(potential_specifier_map, base_url);

@@ -36,7 +36,12 @@ impl DiskCache {
     if path.is_dir() {
       return Ok(());
     }
-    fs::create_dir_all(&path).map_err(|e| io::Error::new(e.kind(), format!("Could not create TypeScript compiler cache location: {:?}\nCheck the permission of the directory.", path)))
+    fs::create_dir_all(&path).map_err(|e| {
+      io::Error::new(e.kind(), format!(
+        "Could not create TypeScript compiler cache location: {:?}\nCheck the permission of the directory.",
+        path
+      ))
+    })
   }
 
   pub fn get_cache_filename(&self, url: &Url) -> PathBuf {
@@ -188,7 +193,21 @@ mod tests {
 
     let cache = DiskCache::new(&cache_location);
 
-    let mut test_cases = vec![("http://deno.land/std/http/file_server.ts", "http/deno.land/d8300752800fe3f0beda9505dc1c3b5388beb1ee45afd1f1e2c9fc0866df15cf"), ("http://localhost:8000/std/http/file_server.ts", "http/localhost_PORT8000/d8300752800fe3f0beda9505dc1c3b5388beb1ee45afd1f1e2c9fc0866df15cf"), ("https://deno.land/std/http/file_server.ts", "https/deno.land/d8300752800fe3f0beda9505dc1c3b5388beb1ee45afd1f1e2c9fc0866df15cf"), ("wasm://wasm/d1c677ea", "wasm/wasm/d1c677ea")];
+    let mut test_cases = vec![
+      (
+        "http://deno.land/std/http/file_server.ts",
+        "http/deno.land/d8300752800fe3f0beda9505dc1c3b5388beb1ee45afd1f1e2c9fc0866df15cf",
+      ),
+      (
+        "http://localhost:8000/std/http/file_server.ts",
+        "http/localhost_PORT8000/d8300752800fe3f0beda9505dc1c3b5388beb1ee45afd1f1e2c9fc0866df15cf",
+      ),
+      (
+        "https://deno.land/std/http/file_server.ts",
+        "https/deno.land/d8300752800fe3f0beda9505dc1c3b5388beb1ee45afd1f1e2c9fc0866df15cf",
+      ),
+      ("wasm://wasm/d1c677ea", "wasm/wasm/d1c677ea"),
+    ];
 
     if cfg!(target_os = "windows") {
       test_cases.push(("file:///D:/a/1/s/format.ts", "file/D/a/1/s/format.ts"));
@@ -230,7 +249,18 @@ mod tests {
     };
     let cache = DiskCache::new(&PathBuf::from(p));
 
-    let mut test_cases = vec![("http://deno.land/std/http/file_server.ts", "js", "http/deno.land/d8300752800fe3f0beda9505dc1c3b5388beb1ee45afd1f1e2c9fc0866df15cf.js"), ("http://deno.land/std/http/file_server.ts", "js.map", "http/deno.land/d8300752800fe3f0beda9505dc1c3b5388beb1ee45afd1f1e2c9fc0866df15cf.js.map")];
+    let mut test_cases = vec![
+      (
+        "http://deno.land/std/http/file_server.ts",
+        "js",
+        "http/deno.land/d8300752800fe3f0beda9505dc1c3b5388beb1ee45afd1f1e2c9fc0866df15cf.js",
+      ),
+      (
+        "http://deno.land/std/http/file_server.ts",
+        "js.map",
+        "http/deno.land/d8300752800fe3f0beda9505dc1c3b5388beb1ee45afd1f1e2c9fc0866df15cf.js.map",
+      ),
+    ];
 
     if cfg!(target_os = "windows") {
       test_cases.push((

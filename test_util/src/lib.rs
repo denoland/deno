@@ -289,63 +289,110 @@ pub async fn run_all_servers() {
     .map(|| {
       let mut res = Response::new(Body::from("export const foo = 'foo';"));
       let h = res.headers_mut();
-      h.insert("Content-type", HeaderValue::from_static("application/javascript"));
-      h.insert("X-TypeScript-Types", HeaderValue::from_static("./xTypeScriptTypes.d.ts"));
+      h.insert(
+        "Content-type",
+        HeaderValue::from_static("application/javascript"),
+      );
+      h.insert(
+        "X-TypeScript-Types",
+        HeaderValue::from_static("./xTypeScriptTypes.d.ts"),
+      );
       res
     })
     .or(warp::path!("xTypeScriptTypes.d.ts").map(|| {
       let mut res = Response::new(Body::from("export const foo: 'foo';"));
-      res.headers_mut().insert("Content-type", HeaderValue::from_static("application/typescript"));
+      res.headers_mut().insert(
+        "Content-type",
+        HeaderValue::from_static("application/typescript"),
+      );
       res
     }))
     .or(warp::path!("type_directives_redirect.js").map(|| {
       let mut res = Response::new(Body::from("export const foo = 'foo';"));
       let h = res.headers_mut();
-      h.insert("Content-type", HeaderValue::from_static("application/javascript"));
-      h.insert("X-TypeScript-Types", HeaderValue::from_static("http://localhost:4547/xTypeScriptTypesRedirect.d.ts"));
+      h.insert(
+        "Content-type",
+        HeaderValue::from_static("application/javascript"),
+      );
+      h.insert(
+        "X-TypeScript-Types",
+        HeaderValue::from_static(
+          "http://localhost:4547/xTypeScriptTypesRedirect.d.ts",
+        ),
+      );
       res
     }))
     .or(warp::path!("type_headers_deno_types.foo.js").map(|| {
       let mut res = Response::new(Body::from("export function foo(text) { console.log(text); }"));
       let h = res.headers_mut();
-      h.insert("Content-type", HeaderValue::from_static("application/javascript"));
-      h.insert("X-TypeScript-Types", HeaderValue::from_static("http://localhost:4545/type_headers_deno_types.d.ts"));
+      h.insert(
+        "Content-type",
+        HeaderValue::from_static("application/javascript"),
+      );
+      h.insert(
+        "X-TypeScript-Types",
+        HeaderValue::from_static(
+          "http://localhost:4545/type_headers_deno_types.d.ts",
+        ),
+      );
       res
     }))
     .or(warp::path!("type_headers_deno_types.d.ts").map(|| {
       let mut res = Response::new(Body::from("export function foo(text: number): void;"));
       let h = res.headers_mut();
-      h.insert("Content-type", HeaderValue::from_static("application/typescript"));
+      h.insert(
+        "Content-type",
+        HeaderValue::from_static("application/typescript"),
+      );
       res
     }))
     .or(warp::path!("type_headers_deno_types.foo.d.ts").map(|| {
       let mut res = Response::new(Body::from("export function foo(text: string): void;"));
       let h = res.headers_mut();
-      h.insert("Content-type", HeaderValue::from_static("application/typescript"));
+      h.insert(
+        "Content-type",
+        HeaderValue::from_static("application/typescript"),
+      );
       res
     }))
-    .or(warp::path!("cli" / "tests" / "subdir" / "xTypeScriptTypesRedirect.d.ts").map(|| {
-      let mut res = Response::new(Body::from("import './xTypeScriptTypesRedirected.d.ts';"));
+    .or(warp::path!("cli"/"tests"/"subdir"/"xTypeScriptTypesRedirect.d.ts").map(|| {
+      let mut res = Response::new(Body::from(
+        "import './xTypeScriptTypesRedirected.d.ts';",
+      ));
       let h = res.headers_mut();
-      h.insert("Content-type", HeaderValue::from_static("application/typescript"));
+      h.insert(
+        "Content-type",
+        HeaderValue::from_static("application/typescript"),
+      );
       res
     }))
-    .or(warp::path!("cli" / "tests" / "subdir" / "xTypeScriptTypesRedirected.d.ts").map(|| {
+    .or(warp::path!("cli"/"tests"/"subdir"/"xTypeScriptTypesRedirected.d.ts").map(|| {
       let mut res = Response::new(Body::from("export const foo: 'foo';"));
       let h = res.headers_mut();
-      h.insert("Content-type", HeaderValue::from_static("application/typescript"));
+      h.insert(
+        "Content-type",
+        HeaderValue::from_static("application/typescript"),
+      );
       res
     }))
     .or(warp::path!("referenceTypes.js").map(|| {
       let mut res = Response::new(Body::from("/// <reference types=\"./xTypeScriptTypes.d.ts\" />\r\nexport const foo = \"foo\";\r\n"));
       let h = res.headers_mut();
-      h.insert("Content-type", HeaderValue::from_static("application/javascript"));
+      h.insert(
+        "Content-type",
+        HeaderValue::from_static("application/javascript"),
+      );
       res
     }))
-    .or(warp::path!("cli" / "tests" / "subdir" / "file_with_:_in_name.ts").map(|| {
-      let mut res = Response::new(Body::from("console.log('Hello from file_with_:_in_name.ts');"));
+    .or(warp::path!("cli"/"tests"/"subdir"/"file_with_:_in_name.ts").map(|| {
+      let mut res = Response::new(Body::from(
+        "console.log('Hello from file_with_:_in_name.ts');",
+      ));
       let h = res.headers_mut();
-      h.insert("Content-type", HeaderValue::from_static("application/typescript"));
+      h.insert(
+        "Content-type",
+        HeaderValue::from_static("application/typescript"),
+      );
       res
     }));
 

@@ -172,7 +172,10 @@ pub fn install(
 
   let name = match name {
     Some(name) => name,
-    None => return Err(Error::new(ErrorKind::Other, "An executable name was not provided. One could not be inferred from the URL. Aborting.")),
+    None => return Err(Error::new(
+      ErrorKind::Other,
+      "An executable name was not provided. One could not be inferred from the URL. Aborting.",
+    )),
   };
 
   validate_name(name.as_str())?;

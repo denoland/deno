@@ -712,8 +712,39 @@ fn repl_subcommand<'a, 'b>() -> App<'a, 'b> {
 }
 
 fn install_subcommand<'a, 'b>() -> App<'a, 'b> {
-  permission_args(SubCommand::with_name("install")).setting(AppSettings::TrailingVarArg).arg(Arg::with_name("cmd").required(true).multiple(true).allow_hyphen_values(true)).arg(Arg::with_name("name").long("name").short("n").help("Executable file name").takes_value(true).required(false)).arg(Arg::with_name("root").long("root").help("Installation root").takes_value(true).multiple(false)).arg(Arg::with_name("force").long("force").short("f").help("Forcefully overwrite existing installation").takes_value(false)).arg(no_check_arg()).arg(ca_file_arg()).arg(unstable_arg()).arg(config_arg()).about("Install script as an executable").long_about(
-    "Installs a script as an executable in the installation root's bin directory.
+  permission_args(SubCommand::with_name("install"))
+        .setting(AppSettings::TrailingVarArg)
+        .arg(
+          Arg::with_name("cmd")
+            .required(true)
+            .multiple(true)
+            .allow_hyphen_values(true))
+        .arg(
+          Arg::with_name("name")
+          .long("name")
+          .short("n")
+          .help("Executable file name")
+          .takes_value(true)
+          .required(false))
+        .arg(
+          Arg::with_name("root")
+            .long("root")
+            .help("Installation root")
+            .takes_value(true)
+            .multiple(false))
+        .arg(
+          Arg::with_name("force")
+            .long("force")
+            .short("f")
+            .help("Forcefully overwrite existing installation")
+            .takes_value(false))
+        .arg(no_check_arg())
+        .arg(ca_file_arg())
+        .arg(unstable_arg())
+        .arg(config_arg())
+        .about("Install script as an executable")
+        .long_about(
+"Installs a script as an executable in the installation root's bin directory.
   deno install --allow-net --allow-read https://deno.land/std/http/file_server.ts
   deno install https://deno.land/std/examples/colors.ts
 
@@ -736,8 +767,7 @@ The installation root is determined, in order of precedence:
   - DENO_INSTALL_ROOT environment variable
   - $HOME/.deno
 
-These must be added to the path manually if required.",
-  )
+These must be added to the path manually if required.")
 }
 
 fn bundle_subcommand<'a, 'b>() -> App<'a, 'b> {
@@ -1125,8 +1155,12 @@ fn run_test_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
 }
 
 fn run_subcommand<'a, 'b>() -> App<'a, 'b> {
-  run_test_args(SubCommand::with_name("run")).setting(AppSettings::TrailingVarArg).arg(script_arg()).about("Run a program given a filename or url to the module. Use '-' as a filename to read from stdin.").long_about(
-    "Run a program given a filename or url to the module.
+  run_test_args(SubCommand::with_name("run"))
+    .setting(AppSettings::TrailingVarArg)
+    .arg(script_arg())
+    .about("Run a program given a filename or url to the module. Use '-' as a filename to read from stdin.")
+    .long_about(
+	  "Run a program given a filename or url to the module.
 
 By default all programs are run in sandbox without access to disk, network or
 ability to spawn subprocesses.
@@ -1143,7 +1177,7 @@ Grant permission to read allow-listed files from disk:
 
 Deno allows specifying the filename '-' to read the file from stdin.
   curl https://deno.land/std/examples/welcome.ts | target/debug/deno run -",
-  )
+    )
 }
 
 fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
@@ -1494,7 +1528,7 @@ mod tests {
           dry_run: true,
           version: None,
           output: None,
-          ca_file: None
+          ca_file: None,
         },
         ..Flags::default()
       }
@@ -1517,7 +1551,7 @@ mod tests {
       flags,
       Flags {
         subcommand: DenoSubcommand::Run {
-          script: "script.ts".to_string()
+          script: "script.ts".to_string(),
         },
         reload: true,
         ..Flags::default()
@@ -1539,7 +1573,7 @@ mod tests {
       Flags {
         reload: true,
         subcommand: DenoSubcommand::Run {
-          script: "script.ts".to_string()
+          script: "script.ts".to_string(),
         },
         allow_write: true,
         ..Flags::default()
@@ -1559,7 +1593,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Run {
-          script: "script.ts".to_string()
+          script: "script.ts".to_string(),
         },
         v8_flags: Some(svec!["--help"]),
         ..Flags::default()
@@ -1576,7 +1610,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Run {
-          script: "script.ts".to_string()
+          script: "script.ts".to_string(),
         },
         v8_flags: Some(svec!["--expose-gc", "--gc-stats=1"]),
         ..Flags::default()
@@ -1598,7 +1632,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Run {
-          script: "gist.ts".to_string()
+          script: "gist.ts".to_string(),
         },
         argv: svec!["--title", "X"],
         allow_net: true,
@@ -1614,7 +1648,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Run {
-          script: "gist.ts".to_string()
+          script: "gist.ts".to_string(),
         },
         allow_net: true,
         allow_env: true,
@@ -1636,7 +1670,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Run {
-          script: "gist.ts".to_string()
+          script: "gist.ts".to_string(),
         },
         allow_read: true,
         ..Flags::default()
@@ -1652,7 +1686,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Run {
-          script: "gist.ts".to_string()
+          script: "gist.ts".to_string(),
         },
         allow_hrtime: true,
         ..Flags::default()
@@ -1678,7 +1712,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Run {
-          script: "script.ts".to_string()
+          script: "script.ts".to_string(),
         },
         argv: svec!["--", "-D", "--allow-net"],
         allow_write: true,
@@ -1710,7 +1744,7 @@ mod tests {
         subcommand: DenoSubcommand::Fmt {
           ignore: vec![],
           check: true,
-          files: vec![]
+          files: vec![],
         },
         ..Flags::default()
       }
@@ -1723,7 +1757,7 @@ mod tests {
         subcommand: DenoSubcommand::Fmt {
           ignore: vec![],
           check: false,
-          files: vec![]
+          files: vec![],
         },
         ..Flags::default()
       }
@@ -1746,7 +1780,7 @@ mod tests {
           files: vec!["script_1.ts".to_string(), "script_2.ts".to_string()],
           rules: false,
           json: false,
-          ignore: vec![]
+          ignore: vec![],
         },
         unstable: true,
         ..Flags::default()
@@ -1766,7 +1800,7 @@ mod tests {
           files: vec![],
           rules: false,
           json: false,
-          ignore: svec!["script_1.ts", "script_2.ts"]
+          ignore: svec!["script_1.ts", "script_2.ts"],
         },
         unstable: true,
         ..Flags::default()
@@ -1781,7 +1815,7 @@ mod tests {
           files: vec![],
           rules: true,
           json: false,
-          ignore: vec![]
+          ignore: vec![],
         },
         unstable: true,
         ..Flags::default()
@@ -1802,7 +1836,7 @@ mod tests {
           files: vec!["script_1.ts".to_string()],
           rules: false,
           json: true,
-          ignore: vec![]
+          ignore: vec![],
         },
         unstable: true,
         ..Flags::default()
@@ -1842,7 +1876,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Cache {
-          files: svec!["script.ts"]
+          files: svec!["script.ts"],
         },
         ..Flags::default()
       }
@@ -1858,7 +1892,7 @@ mod tests {
       Flags {
         unstable: true,
         subcommand: DenoSubcommand::Cache {
-          files: svec!["script.ts"]
+          files: svec!["script.ts"],
         },
         ..Flags::default()
       }
@@ -1873,7 +1907,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Info {
           json: false,
-          file: Some("script.ts".to_string())
+          file: Some("script.ts".to_string()),
         },
         ..Flags::default()
       }
@@ -1885,7 +1919,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Info {
           json: false,
-          file: Some("script.ts".to_string())
+          file: Some("script.ts".to_string()),
         },
         reload: true,
         ..Flags::default()
@@ -1898,7 +1932,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Info {
           json: true,
-          file: Some("script.ts".to_string())
+          file: Some("script.ts".to_string()),
         },
         ..Flags::default()
       }
@@ -1942,7 +1976,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Run {
-          script: "script.ts".to_string()
+          script: "script.ts".to_string(),
         },
         config_path: Some("tsconfig.json".to_owned()),
         ..Flags::default()
@@ -1960,7 +1994,7 @@ mod tests {
         subcommand: DenoSubcommand::Eval {
           print: false,
           code: "'console.log(\"hello\")'".to_string(),
-          as_typescript: false
+          as_typescript: false,
         },
         allow_net: true,
         allow_env: true,
@@ -1983,7 +2017,7 @@ mod tests {
         subcommand: DenoSubcommand::Eval {
           print: true,
           code: "1+2".to_string(),
-          as_typescript: false
+          as_typescript: false,
         },
         allow_net: true,
         allow_env: true,
@@ -2012,7 +2046,7 @@ mod tests {
         subcommand: DenoSubcommand::Eval {
           print: false,
           code: "'console.log(\"hello\")'".to_string(),
-          as_typescript: false
+          as_typescript: false,
         },
         allow_net: true,
         allow_env: true,
@@ -2040,7 +2074,7 @@ mod tests {
         subcommand: DenoSubcommand::Eval {
           print: false,
           code: "'console.log(\"hello\")'".to_string(),
-          as_typescript: true
+          as_typescript: true,
         },
         allow_net: true,
         allow_env: true,
@@ -2064,7 +2098,7 @@ mod tests {
         subcommand: DenoSubcommand::Eval {
           print: false,
           code: "42".to_string(),
-          as_typescript: false
+          as_typescript: false,
         },
         v8_flags: Some(svec!["--help"]),
         allow_net: true,
@@ -2135,7 +2169,7 @@ mod tests {
         allow_read: false,
         read_allowlist: vec![PathBuf::from("."), temp_dir],
         subcommand: DenoSubcommand::Run {
-          script: "script.ts".to_string()
+          script: "script.ts".to_string(),
         },
         ..Flags::default()
       }
@@ -2159,7 +2193,7 @@ mod tests {
         allow_write: false,
         write_allowlist: vec![PathBuf::from("."), temp_dir],
         subcommand: DenoSubcommand::Run {
-          script: "script.ts".to_string()
+          script: "script.ts".to_string(),
         },
         ..Flags::default()
       }
@@ -2178,7 +2212,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Run {
-          script: "script.ts".to_string()
+          script: "script.ts".to_string(),
         },
         allow_net: false,
         net_allowlist: svec!["127.0.0.1"],
@@ -2195,7 +2229,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Bundle {
           source_file: "source.ts".to_string(),
-          out_file: None
+          out_file: None,
         },
         ..Flags::default()
       }
@@ -2212,7 +2246,7 @@ mod tests {
         unstable: true,
         subcommand: DenoSubcommand::Bundle {
           source_file: "source.ts".to_string(),
-          out_file: None
+          out_file: None,
         },
         ..Flags::default()
       }
@@ -2234,7 +2268,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Bundle {
           source_file: "source.ts".to_string(),
-          out_file: Some(PathBuf::from("bundle.js"))
+          out_file: Some(PathBuf::from("bundle.js")),
         },
         allow_write: true,
         config_path: Some("tsconfig.json".to_owned()),
@@ -2252,7 +2286,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Bundle {
           source_file: "source.ts".to_string(),
-          out_file: Some(PathBuf::from("bundle.js"))
+          out_file: Some(PathBuf::from("bundle.js")),
         },
         allow_write: true,
         ..Flags::default()
@@ -2274,7 +2308,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Bundle {
           source_file: "source.ts".to_string(),
-          out_file: None
+          out_file: None,
         },
         lock_write: true,
         lock: Some("lock.json".to_string()),
@@ -2293,7 +2327,7 @@ mod tests {
         reload: true,
         subcommand: DenoSubcommand::Bundle {
           source_file: "source.ts".to_string(),
-          out_file: None
+          out_file: None,
         },
         ..Flags::default()
       }
@@ -2312,7 +2346,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Run {
-          script: "script.ts".to_string()
+          script: "script.ts".to_string(),
         },
         import_map_path: Some("importmap.json".to_owned()),
         ..Flags::default()
@@ -2332,7 +2366,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Cache {
-          files: svec!["script.ts"]
+          files: svec!["script.ts"],
         },
         import_map_path: Some("importmap.json".to_owned()),
         ..Flags::default()
@@ -2348,7 +2382,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Cache {
-          files: svec!["script.ts", "script_two.ts"]
+          files: svec!["script.ts", "script_two.ts"],
         },
         ..Flags::default()
       }
@@ -2363,7 +2397,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Run {
-          script: "script.ts".to_string()
+          script: "script.ts".to_string(),
         },
         seed: Some(250 as u64),
         v8_flags: Some(svec!["--random-seed=250"]),
@@ -2386,7 +2420,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Run {
-          script: "script.ts".to_string()
+          script: "script.ts".to_string(),
         },
         seed: Some(250 as u64),
         v8_flags: Some(svec!["--expose-gc", "--random-seed=250"]),
@@ -2410,7 +2444,7 @@ mod tests {
           module_url: "https://deno.land/std/examples/colors.ts".to_string(),
           args: vec![],
           root: None,
-          force: false
+          force: false,
         },
         ..Flags::default()
       }
@@ -2434,7 +2468,7 @@ mod tests {
           module_url: "https://deno.land/std/examples/colors.ts".to_string(),
           args: svec![],
           root: None,
-          force: false
+          force: false,
         },
         ..Flags::default()
       }
@@ -2460,7 +2494,7 @@ mod tests {
           module_url: "https://deno.land/std/http/file_server.ts".to_string(),
           args: vec![],
           root: None,
-          force: false
+          force: false,
         },
         allow_net: true,
         allow_read: true,
@@ -2487,7 +2521,7 @@ mod tests {
           module_url: "https://deno.land/std/examples/colors.ts".to_string(),
           args: svec![],
           root: None,
-          force: false
+          force: false,
         },
         config_path: Some("tsconfig.json".to_owned()),
         ..Flags::default()
@@ -2519,7 +2553,7 @@ mod tests {
           module_url: "https://deno.land/std/http/file_server.ts".to_string(),
           args: svec!["arg1", "arg2"],
           root: Some(PathBuf::from("/usr/local")),
-          force: true
+          force: true,
         },
         allow_net: true,
         allow_read: true,
@@ -2540,7 +2574,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Run {
-          script: "script.ts".to_string()
+          script: "script.ts".to_string(),
         },
         log_level: Some(Level::Debug),
         ..Flags::default()
@@ -2555,7 +2589,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Run {
-          script: "script.ts".to_string()
+          script: "script.ts".to_string(),
         },
         log_level: Some(Level::Error),
         ..Flags::default()
@@ -2586,7 +2620,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Run {
-          script: "script.ts".to_string()
+          script: "script.ts".to_string(),
         },
         argv: svec!["--allow-read", "--allow-net"],
         ..Flags::default()
@@ -2607,7 +2641,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Run {
-          script: "script.ts".to_string()
+          script: "script.ts".to_string(),
         },
         allow_read: true,
         argv: svec!["--allow-net", "-r", "--help", "--foo", "bar"],
@@ -2621,7 +2655,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Run {
-          script: "script.ts".to_string()
+          script: "script.ts".to_string(),
         },
         argv: svec!["foo", "bar"],
         ..Flags::default()
@@ -2632,7 +2666,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Run {
-          script: "script.ts".to_string()
+          script: "script.ts".to_string(),
         },
         argv: svec!["-"],
         ..Flags::default()
@@ -2645,7 +2679,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Run {
-          script: "script.ts".to_string()
+          script: "script.ts".to_string(),
         },
         argv: svec!["-", "foo", "bar"],
         ..Flags::default()
@@ -2661,7 +2695,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Run {
-          script: "script.ts".to_string()
+          script: "script.ts".to_string(),
         },
         no_check: true,
         ..Flags::default()
@@ -2677,7 +2711,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Run {
-          script: "script.ts".to_string()
+          script: "script.ts".to_string(),
         },
         no_remote: true,
         ..Flags::default()
@@ -2693,7 +2727,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Run {
-          script: "script.ts".to_string()
+          script: "script.ts".to_string(),
         },
         cached_only: true,
         ..Flags::default()
@@ -2713,7 +2747,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Run {
-          script: "script.ts".to_string()
+          script: "script.ts".to_string(),
         },
         net_allowlist: svec![
           "deno.land",
@@ -2731,12 +2765,17 @@ mod tests {
 
   #[test]
   fn allow_net_allowlist_with_ipv6_address() {
-    let r = flags_from_vec_safe(svec!["deno", "run", "--allow-net=deno.land,deno.land:80,::,127.0.0.1,[::1],1.2.3.4:5678,:5678,[::1]:8080", "script.ts"]);
+    let r = flags_from_vec_safe(svec![
+      "deno",
+      "run",
+      "--allow-net=deno.land,deno.land:80,::,127.0.0.1,[::1],1.2.3.4:5678,:5678,[::1]:8080",
+      "script.ts"
+    ]);
     assert_eq!(
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Run {
-          script: "script.ts".to_string()
+          script: "script.ts".to_string(),
         },
         net_allowlist: svec![
           "deno.land",
@@ -2768,7 +2807,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Run {
-          script: "script.ts".to_string()
+          script: "script.ts".to_string(),
         },
         lock_write: true,
         lock: Some("lock.json".to_string()),
@@ -2795,7 +2834,7 @@ mod tests {
           filter: None,
           allow_none: true,
           quiet: false,
-          include: Some(svec!["dir1/", "dir2/"])
+          include: Some(svec!["dir1/", "dir2/"]),
         },
         allow_net: true,
         ..Flags::default()
@@ -2814,7 +2853,7 @@ mod tests {
           allow_none: false,
           quiet: false,
           filter: Some("foo".to_string()),
-          include: Some(svec!["dir1"])
+          include: Some(svec!["dir1"]),
         },
         ..Flags::default()
       }
@@ -2833,7 +2872,7 @@ mod tests {
           allow_none: false,
           quiet: false,
           filter: Some("- foo".to_string()),
-          include: Some(svec!["dir1"])
+          include: Some(svec!["dir1"]),
         },
         ..Flags::default()
       }
@@ -2853,7 +2892,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Run {
-          script: "script.ts".to_string()
+          script: "script.ts".to_string(),
         },
         ca_file: Some("example.crt".to_owned()),
         ..Flags::default()
@@ -2875,7 +2914,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Bundle {
           source_file: "source.ts".to_string(),
-          out_file: None
+          out_file: None,
         },
         ca_file: Some("example.crt".to_owned()),
         ..Flags::default()
@@ -2898,7 +2937,7 @@ mod tests {
         subcommand: DenoSubcommand::Eval {
           print: false,
           code: "console.log('hello world')".to_string(),
-          as_typescript: false
+          as_typescript: false,
         },
         ca_file: Some("example.crt".to_owned()),
         allow_net: true,
@@ -2925,7 +2964,7 @@ mod tests {
           dry_run: false,
           version: None,
           output: None,
-          ca_file: Some("example.crt".to_owned())
+          ca_file: Some("example.crt".to_owned()),
         },
         ca_file: Some("example.crt".to_owned()),
         ..Flags::default()
@@ -2947,7 +2986,7 @@ mod tests {
         subcommand: DenoSubcommand::Eval {
           print: false,
           code: "const foo = 'bar'".to_string(),
-          as_typescript: false
+          as_typescript: false,
         },
         inspect: Some("127.0.0.1:9229".parse().unwrap()),
         allow_net: true,
@@ -2976,7 +3015,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Cache {
-          files: svec!["script.ts", "script_two.ts"]
+          files: svec!["script.ts", "script_two.ts"],
         },
         ca_file: Some("example.crt".to_owned()),
         ..Flags::default()
@@ -2998,7 +3037,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Info {
           json: false,
-          file: Some("https://example.com".to_string())
+          file: Some("https://example.com".to_string()),
         },
         ca_file: Some("example.crt".to_owned()),
         ..Flags::default()
@@ -3025,7 +3064,7 @@ mod tests {
           module_url: "https://deno.land/std/examples/colors.ts".to_string(),
           args: vec![],
           root: None,
-          force: false
+          force: false,
         },
         ca_file: Some("example.crt".to_owned()),
         ..Flags::default()
@@ -3084,7 +3123,7 @@ mod tests {
           private: false,
           json: true,
           source_file: Some("path/to/module.ts".to_string()),
-          filter: None
+          filter: None,
         },
         ..Flags::default()
       }
@@ -3103,7 +3142,7 @@ mod tests {
           private: false,
           json: false,
           source_file: Some("path/to/module.ts".to_string()),
-          filter: Some("SomeClass.someField".to_string())
+          filter: Some("SomeClass.someField".to_string()),
         },
         ..Flags::default()
       }
@@ -3117,7 +3156,7 @@ mod tests {
           private: false,
           json: false,
           source_file: None,
-          filter: None
+          filter: None,
         },
         ..Flags::default()
       }
@@ -3132,7 +3171,7 @@ mod tests {
           private: false,
           json: false,
           source_file: Some("--builtin".to_string()),
-          filter: Some("Deno.Listener".to_string())
+          filter: Some("Deno.Listener".to_string()),
         },
         ..Flags::default()
       }
@@ -3151,7 +3190,7 @@ mod tests {
           private: true,
           json: false,
           source_file: Some("path/to/module.js".to_string()),
-          filter: None
+          filter: None,
         },
         ..Flags::default()
       }
@@ -3165,7 +3204,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Run {
-          script: "foo.js".to_string()
+          script: "foo.js".to_string(),
         },
         inspect: Some("127.0.0.1:9229".parse().unwrap()),
         ..Flags::default()

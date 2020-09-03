@@ -204,7 +204,11 @@ fn warn_ignored_options(
   config_path: &Path,
 ) {
   if let Some(ignored_options) = maybe_ignored_options {
-    eprintln!("Unsupported compiler options in \"{}\"\n  The following options were ignored:\n    {}", config_path.to_string_lossy(), ignored_options);
+    eprintln!(
+      "Unsupported compiler options in \"{}\"\n  The following options were ignored:\n    {}",
+      config_path.to_string_lossy(),
+      ignored_options
+    );
   }
 }
 

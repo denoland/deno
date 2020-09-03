@@ -268,20 +268,52 @@ mod tests {
 
   fn diagnostic1() -> Diagnostic {
     Diagnostic {
-      items: vec![DiagnosticItem {
-        message: "Type '(o: T) => { v: any; f: (x: B) => string; }[]' is not assignable to type '(r: B) => Value<B>[]'.".to_string(),
-        message_chain: Some(DiagnosticMessageChain { message: "Type '(o: T) => { v: any; f: (x: B) => string; }[]' is not assignable to type '(r: B) => Value<B>[]'.".to_string(), code: 2322, category: DiagnosticCategory::Error, next: Some(vec![DiagnosticMessageChain { message: "Types of parameters 'o' and 'r' are incompatible.".to_string(), code: 2328, category: DiagnosticCategory::Error, next: Some(vec![DiagnosticMessageChain { message: "Type 'B' is not assignable to type 'T'.".to_string(), code: 2322, category: DiagnosticCategory::Error, next: None }]) }]) }),
-        code: 2322,
-        category: DiagnosticCategory::Error,
-        start_position: Some(267),
-        end_position: Some(273),
-        source_line: Some("  values: o => [".to_string()),
-        line_number: Some(18),
-        script_resource_name: Some("deno/tests/complex_diagnostics.ts".to_string()),
-        start_column: Some(2),
-        end_column: Some(8),
-        related_information: Some(vec![DiagnosticItem { message: "The expected type comes from property 'values' which is declared here on type 'SettingsInterface<B>'".to_string(), message_chain: None, related_information: None, code: 6500, source_line: Some("  values?: (r: T) => Array<Value<T>>;".to_string()), script_resource_name: Some("deno/tests/complex_diagnostics.ts".to_string()), line_number: Some(6), start_position: Some(94), end_position: Some(100), category: DiagnosticCategory::Info, start_column: Some(2), end_column: Some(8) }]),
-      }],
+      items: vec![
+        DiagnosticItem {
+          message: "Type '(o: T) => { v: any; f: (x: B) => string; }[]' is not assignable to type '(r: B) => Value<B>[]'.".to_string(),
+          message_chain: Some(DiagnosticMessageChain {
+            message: "Type '(o: T) => { v: any; f: (x: B) => string; }[]' is not assignable to type '(r: B) => Value<B>[]'.".to_string(),
+            code: 2322,
+            category: DiagnosticCategory::Error,
+            next: Some(vec![DiagnosticMessageChain {
+              message: "Types of parameters 'o' and 'r' are incompatible.".to_string(),
+              code: 2328,
+              category: DiagnosticCategory::Error,
+              next: Some(vec![DiagnosticMessageChain {
+                message: "Type 'B' is not assignable to type 'T'.".to_string(),
+                code: 2322,
+                category: DiagnosticCategory::Error,
+                next: None,
+              }]),
+            }]),
+          }),
+          code: 2322,
+          category: DiagnosticCategory::Error,
+          start_position: Some(267),
+          end_position: Some(273),
+          source_line: Some("  values: o => [".to_string()),
+          line_number: Some(18),
+          script_resource_name: Some("deno/tests/complex_diagnostics.ts".to_string()),
+          start_column: Some(2),
+          end_column: Some(8),
+          related_information: Some(vec![
+            DiagnosticItem {
+              message: "The expected type comes from property 'values' which is declared here on type 'SettingsInterface<B>'".to_string(),
+              message_chain: None,
+              related_information: None,
+              code: 6500,
+              source_line: Some("  values?: (r: T) => Array<Value<T>>;".to_string()),
+              script_resource_name: Some("deno/tests/complex_diagnostics.ts".to_string()),
+              line_number: Some(6),
+              start_position: Some(94),
+              end_position: Some(100),
+              category: DiagnosticCategory::Info,
+              start_column: Some(2),
+              end_column: Some(8),
+            }
+          ])
+        }
+      ]
     }
   }
 
@@ -353,9 +385,40 @@ mod tests {
           }
         ]
       }"#,
-    )
-    .unwrap();
-    let expected = Diagnostic { items: vec![DiagnosticItem { message: "Type \'{ a(): { b: number; }; }\' is not assignable to type \'{ a(): { b: string; }; }\'.".to_string(), message_chain: Some(DiagnosticMessageChain { message: "Type \'{ a(): { b: number; }; }\' is not assignable to type \'{ a(): { b: string; }; }\'.".to_string(), code: 2322, category: DiagnosticCategory::Error, next: Some(vec![DiagnosticMessageChain { message: "Types of property \'a\' are incompatible.".to_string(), code: 2326, category: DiagnosticCategory::Error, next: None }]) }), related_information: None, source_line: Some("x = y;".to_string()), line_number: Some(29), script_resource_name: Some("/deno/tests/error_003_typescript.ts".to_string()), start_position: Some(352), end_position: Some(353), category: DiagnosticCategory::Error, code: 2322, start_column: Some(0), end_column: Some(1) }] };
+    ).unwrap();
+    let expected =
+      Diagnostic {
+        items: vec![
+          DiagnosticItem {
+            message: "Type \'{ a(): { b: number; }; }\' is not assignable to type \'{ a(): { b: string; }; }\'.".to_string(),
+            message_chain: Some(
+              DiagnosticMessageChain {
+                message: "Type \'{ a(): { b: number; }; }\' is not assignable to type \'{ a(): { b: string; }; }\'.".to_string(),
+                code: 2322,
+                category: DiagnosticCategory::Error,
+                next: Some(vec![
+                  DiagnosticMessageChain {
+                    message: "Types of property \'a\' are incompatible.".to_string(),
+                    code: 2326,
+                    category: DiagnosticCategory::Error,
+                    next: None,
+                  }
+                ])
+              }
+            ),
+            related_information: None,
+            source_line: Some("x = y;".to_string()),
+            line_number: Some(29),
+            script_resource_name: Some("/deno/tests/error_003_typescript.ts".to_string()),
+            start_position: Some(352),
+            end_position: Some(353),
+            category: DiagnosticCategory::Error,
+            code: 2322,
+            start_column: Some(0),
+            end_column: Some(1)
+          }
+        ]
+      };
     assert_eq!(expected, r);
   }
 

@@ -117,7 +117,15 @@ impl HttpCache {
     if path.is_dir() {
       return Ok(());
     }
-    fs::create_dir_all(&path).map_err(|e| io::Error::new(e.kind(), format!("Could not create remote modules cache location: {:?}\nCheck the permission of the directory.", path)))
+    fs::create_dir_all(&path).map_err(|e| {
+      io::Error::new(
+        e.kind(),
+        format!(
+          "Could not create remote modules cache location: {:?}\nCheck the permission of the directory.",
+          path
+        ),
+      )
+    })
   }
 
   pub(crate) fn get_cache_filename(&self, url: &Url) -> PathBuf {
@@ -234,12 +242,21 @@ mod tests {
   fn test_url_to_filename() {
     let test_cases = [
       ("https://deno.land/x/foo.ts", "https/deno.land/2c0a064891b9e3fbe386f5d4a833bce5076543f5404613656042107213a7bbc8"),
-      ("https://deno.land:8080/x/foo.ts", "https/deno.land_PORT8080/2c0a064891b9e3fbe386f5d4a833bce5076543f5404613656042107213a7bbc8"),
+      (
+        "https://deno.land:8080/x/foo.ts",
+        "https/deno.land_PORT8080/2c0a064891b9e3fbe386f5d4a833bce5076543f5404613656042107213a7bbc8",
+      ),
       ("https://deno.land/", "https/deno.land/8a5edab282632443219e051e4ade2d1d5bbc671c781051bf1437897cbdfea0f1"),
-      ("https://deno.land/?asdf=qwer", "https/deno.land/e4edd1f433165141015db6a823094e6bd8f24dd16fe33f2abd99d34a0a21a3c0"),
+      (
+        "https://deno.land/?asdf=qwer",
+        "https/deno.land/e4edd1f433165141015db6a823094e6bd8f24dd16fe33f2abd99d34a0a21a3c0",
+      ),
       // should be the same as case above, fragment (#qwer) is ignored
       // when hashing
-      ("https://deno.land/?asdf=qwer#qwer", "https/deno.land/e4edd1f433165141015db6a823094e6bd8f24dd16fe33f2abd99d34a0a21a3c0"),
+      (
+        "https://deno.land/?asdf=qwer#qwer",
+        "https/deno.land/e4edd1f433165141015db6a823094e6bd8f24dd16fe33f2abd99d34a0a21a3c0",
+      ),
     ];
 
     for (url, expected) in test_cases.iter() {

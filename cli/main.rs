@@ -1,6 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 #![allow(warnings)]
-#![allow(unused_imports)]
 
 extern crate dissimilar;
 #[macro_use]

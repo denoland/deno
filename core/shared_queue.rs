@@ -185,7 +185,14 @@ impl SharedQueue {
     assert_eq!(off % 4, 0);
     let end = off + record.len();
     let aligned_end = (end + 3) & !3;
-    debug!("rust:shared_queue:pre-push: op={}, off={}, end={}, len={}, aligned_end={}", op_id, off, end, record.len(), aligned_end,);
+    debug!(
+      "rust:shared_queue:pre-push: op={}, off={}, end={}, len={}, aligned_end={}",
+      op_id,
+      off,
+      end,
+      record.len(),
+      aligned_end,
+    );
     let index = self.num_records();
     if aligned_end > self.bytes().len() || index >= MAX_RECORDS {
       debug!("WARNING the sharedQueue overflowed");

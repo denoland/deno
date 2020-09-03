@@ -4,7 +4,6 @@
 pub use deno_core::v8_set_flags;
 use deno_core::BufVec;
 use deno_core::Op;
-use deno_core::ZeroCopyBuf;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
