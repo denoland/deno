@@ -32,7 +32,7 @@ pub enum Op {
   NoSuchOp,
 }
 pub trait OpRouter {
-  fn dispatch_op<'s>(self: Rc<Self>, op_id: OpId, bufs: BufVec) -> Op;
+  fn dispatch_op(self: Rc<Self>, op_id: OpId, bufs: BufVec) -> Op;
 }
 
 pub trait OpManager: OpRouter + 'static {
@@ -62,14 +62,13 @@ pub trait OpManager: OpRouter + 'static {
     R: Future<Output = Result<serde_json::Value, ErrBox>> + 'static,
   {
     let bin_op_fn = move |mgr: Rc<Self>, bufs: BufVec| -> Op {
-      let mgr_ = mgr.clone();
       let value: serde_json::Value = serde_json::from_slice(&bufs[0]).unwrap();
       let promise_id = value.get("promiseId").unwrap().as_u64().unwrap();
       let bufs = bufs[1..].into();
       let fut = op_fn(value, bufs);
       let fut2 = fut.map(move |result| {
         serialize_result(Some(promise_id), result, move |err| {
-          mgr_.get_error_class(err)
+          mgr.get_error_class(err)
         })
       });
       Op::Async(Box::pin(fut2))
