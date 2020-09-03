@@ -1,4 +1,5 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+#![allow(unused_imports)]
 
 #[macro_use]
 extern crate downcast_rs;
@@ -51,6 +52,9 @@ pub use crate::ops::Buf;
 pub use crate::ops::Op;
 pub use crate::ops::OpAsyncFuture;
 pub use crate::ops::OpId;
+pub use crate::ops::OpManager;
+pub use crate::ops::OpRegistry;
+pub use crate::ops::OpRouter;
 pub use crate::resources::ResourceTable;
 pub use crate::zero_copy_buf::BufVec;
 pub use crate::zero_copy_buf::ZeroCopyBuf;

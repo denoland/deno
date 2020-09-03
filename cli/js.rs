@@ -11,6 +11,7 @@ pub static SHARED_GLOBALS_LIB: &str =
 pub static WINDOW_LIB: &str = include_str!("dts/lib.deno.window.d.ts");
 pub static UNSTABLE_NS_LIB: &str = include_str!("dts/lib.deno.unstable.d.ts");
 
+#[cfg(test_off)]
 #[test]
 fn cli_snapshot() {
   let mut isolate = deno_core::CoreIsolate::new(
@@ -28,6 +29,7 @@ fn cli_snapshot() {
   ));
 }
 
+#[cfg(test_off)]
 #[test]
 fn compiler_snapshot() {
   let mut isolate = deno_core::CoreIsolate::new(

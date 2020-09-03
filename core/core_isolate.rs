@@ -130,10 +130,11 @@ pub struct CoreIsolateState {
   pub(crate) js_error_create_fn: Box<JSErrorCreateFn>,
   pub get_error_class_fn: GetErrorClassFn,
   pub(crate) shared: SharedQueue,
-  pending_ops: FuturesUnordered<PendingOpFuture>,
-  pending_unref_ops: FuturesUnordered<PendingOpFuture>,
-  have_unpolled_ops: Cell<bool>,
-  pub op_registry: OpRegistry,
+  pub(crate) pending_ops: FuturesUnordered<PendingOpFuture>,
+  pub(crate) pending_unref_ops: FuturesUnordered<PendingOpFuture>,
+  pub(crate) have_unpolled_ops: Cell<bool>,
+  // pub op_registry: OpRegistry,
+  pub op_manager: Rc<dyn OpRouter>,
   waker: AtomicWaker,
 }
 
@@ -208,21 +209,27 @@ pub struct HeapLimits {
 }
 
 pub(crate) struct IsolateOptions {
-  will_snapshot: bool,
+  op_manager: Rc<dyn OpRouter>,
   startup_script: Option<OwnedScript>,
   startup_snapshot: Option<Snapshot>,
+  will_snapshot: bool,
   heap_limits: Option<HeapLimits>,
 }
 
 impl CoreIsolate {
   /// startup_data defines the snapshot or script used at startup to initialize
   /// the isolate.
-  pub fn new(startup_data: StartupData, will_snapshot: bool) -> Self {
+  pub fn new(
+    op_manager: Rc<dyn OpRouter>,
+    startup_data: StartupData,
+    will_snapshot: bool,
+  ) -> Self {
     let (startup_script, startup_snapshot) = startup_data.into_options();
     let options = IsolateOptions {
-      will_snapshot,
+      op_manager,
       startup_script,
       startup_snapshot,
+      will_snapshot,
       heap_limits: None,
     };
 
@@ -236,14 +243,16 @@ impl CoreIsolate {
   /// Make sure to use [`add_near_heap_limit_callback`](#method.add_near_heap_limit_callback)
   /// to prevent v8 from crashing when reaching the upper limit.
   pub fn with_heap_limits(
+    op_manager: Rc<dyn OpRouter>,
     startup_data: StartupData,
     heap_limits: HeapLimits,
   ) -> Self {
     let (startup_script, startup_snapshot) = startup_data.into_options();
     let options = IsolateOptions {
-      will_snapshot: false,
+      op_manager,
       startup_script,
       startup_snapshot,
+      will_snapshot: false,
       heap_limits: Some(heap_limits),
     };
 
@@ -305,7 +314,7 @@ impl CoreIsolate {
       (isolate, None)
     };
 
-    let state = Rc::new(CoreIsolateState {
+    isolate.set_slot(Rc::new(RefCell::new(CoreIsolateState {
       global_context: Some(global_context),
       //resource_table: Rc::new(RefCell::new(ResourceTable::default())),
       pending_promise_exceptions: HashMap::new(),
@@ -318,11 +327,10 @@ impl CoreIsolate {
       pending_ops: FuturesUnordered::new(),
       pending_unref_ops: FuturesUnordered::new(),
       have_unpolled_ops: Cell::new(false),
-      op_registry: OpRegistry::default(),
+      // op_registry: OpRegistry::new(),
+      op_manager: options.op_manager,
       waker: AtomicWaker::new(),
-    });
-
-    crate::bindings::set_op_manager(&mut isolate, state);
+    })));
 
     Self {
       v8_isolate: Some(isolate),
@@ -340,10 +348,10 @@ impl CoreIsolate {
     isolate
   }
 
-  //pub fn state(isolate: &v8::Isolate) -> Rc<RefCell<CoreIsolateState>> {
-  //  let s = isolate.get_slot::<Rc<RefCell<CoreIsolateState>>>().unwrap();
-  //  s.clone()
-  //}
+  pub fn state(isolate: &v8::Isolate) -> Rc<RefCell<CoreIsolateState>> {
+    let s = isolate.get_slot::<Rc<RefCell<CoreIsolateState>>>().unwrap();
+    s.clone()
+  }
 
   /// Executes a bit of built-in JavaScript to provide Deno.sharedQueue.
   pub(crate) fn shared_init(&mut self) {
@@ -426,66 +434,6 @@ impl CoreIsolate {
     snapshot
   }
 
-  /// Defines the how Deno.core.dispatch() acts.
-  /// Called whenever Deno.core.dispatch() is called in JavaScript. zero_copy_buf
-  /// corresponds to the second argument of Deno.core.dispatch().
-  ///
-  /// Requires runtime to explicitly ask for op ids before using any of the ops.
-  pub fn register_op<F>(&mut self, name: &str, op: F) -> OpId
-  where
-    F: Fn(&CoreIsolateState, &mut [ZeroCopyBuf]) -> Op + 'static,
-  {
-    let state_rc = Self::state(self);
-    let mut state = state_rc.borrow_mut();
-    state.op_registry.register(name, op)
-  }
-
-  pub fn register_op_json_sync<F>(&mut self, name: &str, op: F) -> OpId
-  where
-    F: 'static
-      + Fn(
-        &CoreIsolateState,
-        serde_json::Value,
-        &mut [ZeroCopyBuf],
-      ) -> Result<serde_json::Value, ErrBox>,
-  {
-    let core_op =
-      move |state: &CoreIsolateState, bufs: &mut [ZeroCopyBuf]| -> Op {
-        let value = serde_json::from_slice(&bufs[0]).unwrap();
-        let result = op(state, value, &mut bufs[1..]);
-        let buf = serialize_result(None, result, state.get_error_class_fn);
-        Op::Sync(buf)
-      };
-
-    let state_rc = Self::state(self);
-    let mut state = state_rc.borrow_mut();
-    state.op_registry.register(name, core_op)
-  }
-
-  pub fn register_op_json_async<F, Fut>(&mut self, name: &str, op: F) -> OpId
-  where
-    Fut: 'static + Future<Output = Result<serde_json::Value, ErrBox>>,
-    F: 'static
-      + Fn(&CoreIsolateState, serde_json::Value, &mut [ZeroCopyBuf]) -> Fut,
-  {
-    let core_op = move |state: &CoreIsolateState,
-                        bufs: &mut [ZeroCopyBuf]|
-          -> Op {
-      let get_error_class_fn = state.get_error_class_fn;
-      let value: serde_json::Value = serde_json::from_slice(&bufs[0]).unwrap();
-      let promise_id = value.get("promiseId").unwrap().as_u64().unwrap();
-      let fut = op(state, value, &mut bufs[1..]);
-      let fut2 = fut.map(move |result| {
-        serialize_result(Some(promise_id), result, get_error_class_fn)
-      });
-      Op::Async(Box::pin(fut2))
-    };
-
-    let state_rc = Self::state(self);
-    let mut state = state_rc.borrow_mut();
-    state.op_registry.register(name, core_op)
-  }
-
   /// Registers a callback on the isolate when the memory limits are approached.
   /// Use this to prevent V8 from crashing the process when reaching the limit.
   ///
@@ -539,24 +487,6 @@ where
 {
   let callback = unsafe { &mut *(data as *mut F) };
   callback(current_heap_limit, initial_heap_limit)
-}
-
-fn serialize_result(
-  promise_id: Option<u64>,
-  result: Result<Value, ErrBox>,
-  get_error_class_fn: GetErrorClassFn,
-) -> Buf {
-  let value = match result {
-    Ok(v) => json!({ "ok": v, "promiseId": promise_id }),
-    Err(err) => json!({
-      "promiseId": promise_id ,
-      "err": {
-        "className": (get_error_class_fn)(&err),
-        "message": err.to_string(),
-      }
-    }),
-  };
-  serde_json::to_vec(&value).unwrap().into_boxed_slice()
 }
 
 impl Future for CoreIsolate {
@@ -658,18 +588,6 @@ impl Future for CoreIsolate {
 }
 
 impl CoreIsolateState {
-  /// Defines the how Deno.core.dispatch() acts.
-  /// Called whenever Deno.core.dispatch() is called in JavaScript. zero_copy_buf
-  /// corresponds to the second argument of Deno.core.dispatch().
-  ///
-  /// Requires runtime to explicitly ask for op ids before using any of the ops.
-  pub fn register_op<F>(&mut self, name: &str, op: F) -> OpId
-  where
-    F: Fn(&CoreIsolateState, &mut [ZeroCopyBuf]) -> Op + 'static,
-  {
-    self.op_registry.register(name, op)
-  }
-
   /// Allows a callback to be set whenever a V8 exception is made. This allows
   /// the caller to wrap the JSError into an error. By default this callback
   /// is set to JSError::create.
@@ -682,71 +600,6 @@ impl CoreIsolateState {
 
   pub fn set_get_error_class_fn(&mut self, f: GetErrorClassFn) {
     self.get_error_class_fn = f;
-  }
-}
-
-impl OpManager for CoreIsolateState {
-  fn dispatch_op<'s>(
-    self: Rc<Self>,
-    scope: &mut v8::HandleScope<'s>,
-    args: &v8::FunctionCallbackArguments,
-  ) -> Result<v8::Local<'s, v8::Value>, v8::Local<'s, v8::Value>> {
-    let op_id = match v8::Local::<v8::Uint32>::try_from(args.get(0)) {
-      Ok(op_id) => op_id.value() as u32,
-      Err(err) => {
-        let msg = format!("invalid op id: {}", err);
-        let msg = v8::String::new(scope, &msg).unwrap();
-        let exception = v8::Exception::type_error(scope, msg);
-        return Err(exception);
-      }
-    };
-
-    let state_rc = CoreIsolate::state(scope);
-    let mut state = state_rc.borrow_mut();
-
-    let buf_iter = (1..args.length()).map(|idx| {
-      v8::Local::<v8::ArrayBufferView>::try_from(args.get(idx))
-        .map(|view| ZeroCopyBuf::new(scope, view))
-        .map_err(|err| {
-          let msg = format!("Invalid argument at position {}: {}", idx, err);
-          let msg = v8::String::new(scope, &msg).unwrap();
-          v8::Exception::type_error(scope, msg)
-        })
-    });
-
-    let mut bufs =
-      buf_iter.collect::<Result<SmallVec<[ZeroCopyBuf; 2]>, _>>()?;
-
-    let dispatcher = match self.op_registry.get(op_id) {
-      Some(d) => d,
-      None => {
-        let message =
-          v8::String::new(scope, &format!("Unknown op id: {}", op_id)).unwrap();
-        let exception = v8::Exception::type_error(scope, message);
-        return Err(exception);
-      }
-    };
-
-    let op = dispatcher(&*self, &mut bufs);
-    assert_eq!(self.shared.size(), 0);
-    match op {
-      Op::Sync(buf) if !buf.is_empty() => {
-        return Ok(boxed_slice_to_uint8array(scope, buf).into());
-      }
-      Op::Sync(buf) => {}
-      Op::Async(fut) => {
-        let fut2 = fut.map(move |buf| (op_id, buf));
-        self.pending_ops.push(fut2.boxed_local());
-        self.have_unpolled_ops.set(true);
-      }
-      Op::AsyncUnref(fut) => {
-        let fut2 = fut.map(move |buf| (op_id, buf));
-        self.pending_unref_ops.push(fut2.boxed_local());
-        self.have_unpolled_ops.set(true);
-      }
-    }
-
-    Ok(v8::undefined(scope).into())
   }
 }
 
@@ -892,7 +745,7 @@ fn boxed_slice_to_uint8array<'sc>(
     .expect("Failed to create UintArray8")
 }
 
-#[cfg(test)]
+#[cfg(test_off)]
 pub mod tests {
   use super::*;
   use futures::future::lazy;

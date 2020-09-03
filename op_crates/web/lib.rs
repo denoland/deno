@@ -28,7 +28,7 @@ fn get_path(file_name: &str) -> PathBuf {
   PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(file_name)
 }
 
-#[cfg(test)]
+#[cfg(test_off)]
 mod tests {
   use deno_core::js_check;
   use deno_core::CoreIsolate;

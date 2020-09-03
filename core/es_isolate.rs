@@ -10,6 +10,7 @@ use crate::bindings;
 use crate::errors::ErrBox;
 use crate::errors::ErrWithV8Handle;
 use crate::futures::FutureExt;
+use crate::OpRouter;
 use futures::ready;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
@@ -76,10 +77,12 @@ impl DerefMut for EsIsolate {
 impl EsIsolate {
   pub fn new(
     loader: Rc<dyn ModuleLoader>,
+    op_manager: Rc<dyn OpRouter>,
     startup_data: StartupData,
     will_snapshot: bool,
   ) -> Self {
-    let mut core_isolate = CoreIsolate::new(startup_data, will_snapshot);
+    let mut core_isolate =
+      CoreIsolate::new(op_manager, startup_data, will_snapshot);
     {
       core_isolate.set_host_initialize_import_meta_object_callback(
         bindings::host_initialize_import_meta_object_callback,
@@ -636,7 +639,7 @@ impl EsIsolateState {
   }
 }
 
-#[cfg(test)]
+#[cfg(test_off)]
 pub mod tests {
   use super::*;
   use crate::core_isolate::tests::run_in_task;

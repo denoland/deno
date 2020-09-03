@@ -1,21 +1,23 @@
 // Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
 
-use crate::ops::OpManager;
+use crate::ops::OpRouter;
 use crate::CoreIsolate;
 use crate::CoreIsolateState;
 use crate::EsIsolate;
 use crate::JSError;
+use crate::Op;
 use crate::ZeroCopyBuf;
 
+use futures::future::FutureExt;
 use rusty_v8 as v8;
+use smallvec::SmallVec;
+use url::Url;
 use v8::MapFnTo;
 
-use smallvec::SmallVec;
 use std::cell::Cell;
 use std::convert::TryFrom;
 use std::option::Option;
 use std::rc::Rc;
-use url::Url;
 
 lazy_static! {
   pub static ref EXTERNAL_REFERENCES: v8::ExternalReferences =
@@ -199,6 +201,19 @@ pub fn initialize_context<'s>(
   scope.escape(context)
 }
 
+pub fn boxed_slice_to_uint8array<'sc>(
+  scope: &mut v8::HandleScope<'sc>,
+  buf: Box<[u8]>,
+) -> v8::Local<'sc, v8::Uint8Array> {
+  assert!(!buf.is_empty());
+  let buf_len = buf.len();
+  let backing_store = v8::ArrayBuffer::new_backing_store_from_boxed_slice(buf);
+  let backing_store_shared = backing_store.make_shared();
+  let ab = v8::ArrayBuffer::with_backing_store(scope, &backing_store_shared);
+  v8::Uint8Array::new(scope, ab, 0, buf_len)
+    .expect("Failed to create UintArray8")
+}
+
 pub extern "C" fn host_import_module_dynamically_callback(
   context: v8::Local<v8::Context>,
   referrer: v8::Local<v8::ScriptOrModule>,
@@ -360,31 +375,79 @@ fn recv(
   slot.replace(v8::Global::new(scope, cb));
 }
 
-fn send(
-  scope: &mut v8::HandleScope,
+fn send<'s>(
+  scope: &mut v8::HandleScope<'s>,
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
-  let op_manager = scope
-    .get_slot::<Rc<dyn OpManager>>()
-    .map(|m| (*m).clone())
-    .unwrap();
-  match op_manager.dispatch_op(scope, &args) {
-    Ok(value) => {
-      rv.set(value);
-    }
-    Err(exception) => {
-      scope.throw_exception(exception);
+  let state_rc = CoreIsolate::state(scope);
+  let state = state_rc.borrow_mut();
+
+  let op_id = match v8::Local::<v8::Uint32>::try_from(args.get(0)) {
+    Ok(op_id) => op_id.value() as u32,
+    Err(err) => {
+      let msg = format!("invalid op id: {}", err);
+      let msg = v8::String::new(scope, &msg).unwrap();
+      let exc = v8::Exception::type_error(scope, msg);
+      scope.throw_exception(exc);
+      return;
     }
   };
-}
 
-pub fn set_op_manager(
-  isolate: &mut v8::Isolate,
-  op_manager: Rc<dyn OpManager>,
-) {
-  let no_conflict = isolate.set_slot(op_manager);
-  assert!(no_conflict);
+  let buf_iter = (1..args.length()).map(|idx| {
+    v8::Local::<v8::ArrayBufferView>::try_from(args.get(idx))
+      .map(|view| ZeroCopyBuf::new(scope, view))
+      .map_err(|err| {
+        let msg = format!("Invalid argument at position {}: {}", idx, err);
+        let msg = v8::String::new(scope, &msg).unwrap();
+        v8::Exception::type_error(scope, msg)
+      })
+  });
+
+  let bufs = match buf_iter.collect::<Result<_, _>>() {
+    Ok(bufs) => bufs,
+    Err(exc) => {
+      scope.throw_exception(exc);
+      return;
+    }
+  };
+
+  let manager = state.op_manager.clone();
+
+  //let dispatcher = match self.op_registry.get(op_id) {
+  //  Some(d) => d,
+  //  None => {
+  //    let message =
+  //      v8::String::new(scope, &format!("Unknown op id: {}", op_id)).unwrap();
+  //    let exception = v8::Exception::type_error(scope, message);
+  //    return Err(exception);
+  //  }
+  //};
+
+  let op = manager.dispatch_op(op_id, bufs);
+  assert_eq!(state.shared.size(), 0);
+  match op {
+    Op::Sync(buf) if !buf.is_empty() => {
+      rv.set(boxed_slice_to_uint8array(scope, buf).into());
+    }
+    Op::Sync(buf) => {}
+    Op::Async(fut) => {
+      let fut2 = fut.map(move |buf| (op_id, buf));
+      state.pending_ops.push(fut2.boxed_local());
+      state.have_unpolled_ops.set(true);
+    }
+    Op::AsyncUnref(fut) => {
+      let fut2 = fut.map(move |buf| (op_id, buf));
+      state.pending_unref_ops.push(fut2.boxed_local());
+      state.have_unpolled_ops.set(true);
+    }
+    Op::NoSuchOp => {
+      let msg = format!("op id not found: {}", op_id);
+      let msg = v8::String::new(scope, &msg).unwrap();
+      let exc = v8::Exception::type_error(scope, msg);
+      scope.throw_exception(exc);
+    }
+  }
 }
 
 fn set_macrotask_callback(

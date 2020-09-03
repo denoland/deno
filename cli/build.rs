@@ -3,6 +3,8 @@ mod op_fetch_asset;
 
 use deno_core::js_check;
 use deno_core::CoreIsolate;
+use deno_core::OpManager;
+use deno_core::OpRegistry;
 use deno_core::StartupData;
 use std::collections::HashMap;
 use std::env;
@@ -28,7 +30,8 @@ fn create_snapshot(
 }
 
 fn create_runtime_snapshot(snapshot_path: &Path, files: Vec<String>) {
-  let runtime_isolate = CoreIsolate::new(StartupData::None, true);
+  let runtime_ops = OpRegistry::new();
+  let runtime_isolate = CoreIsolate::new(runtime_ops, StartupData::None, true);
   create_snapshot(runtime_isolate, snapshot_path, files);
 }
 
@@ -37,7 +40,6 @@ fn create_compiler_snapshot(
   files: Vec<String>,
   cwd: &Path,
 ) {
-  let mut runtime_isolate = CoreIsolate::new(StartupData::None, true);
   let mut custom_libs: HashMap<String, PathBuf> = HashMap::new();
   custom_libs
     .insert("lib.deno.web.d.ts".to_string(), deno_web::get_declaration());
@@ -61,11 +63,16 @@ fn create_compiler_snapshot(
     "lib.deno.unstable.d.ts".to_string(),
     cwd.join("dts/lib.deno.unstable.d.ts"),
   );
-  runtime_isolate.register_op(
+
+  let compiler_ops = OpRegistry::new();
+  compiler_ops.register_op(
     "op_fetch_asset",
     op_fetch_asset::op_fetch_asset(custom_libs),
   );
-  create_snapshot(runtime_isolate, snapshot_path, files);
+
+  let compiler_isolate =
+    CoreIsolate::new(compiler_ops, StartupData::None, true);
+  create_snapshot(compiler_isolate, snapshot_path, files);
 }
 
 fn ts_version() -> String {

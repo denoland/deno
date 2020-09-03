@@ -3,8 +3,13 @@ use crate::core_isolate::CoreIsolateState;
 use crate::v8;
 use crate::BufVec;
 use crate::ErrBox;
+use crate::GetErrorClassFn;
 use crate::ZeroCopyBuf;
 use futures::Future;
+use futures::FutureExt;
+use serde_json::json;
+use serde_json::Value;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ops::Deref;
 use std::pin::Pin;
@@ -22,71 +27,147 @@ pub enum Op {
   /// AsyncUnref is the variation of Async, which doesn't block the program
   /// exiting.
   AsyncUnref(OpAsyncFuture),
+  NoSuchOp,
 }
-pub trait OpManager {
-  //fn dispatch_op(&self, op_id: OpId, bufs: BufVec) -> Result<ErrBox, Op>;
-  fn dispatch_op<'s>(
-    self: Rc<Self>,
-    scope: &mut v8::HandleScope<'s>,
-    args: &v8::FunctionCallbackArguments,
-  ) -> Result<v8::Local<'s, v8::Value>, v8::Local<'s, v8::Value>>;
+pub trait OpRouter {
+  fn dispatch_op<'s>(self: Rc<Self>, op_id: OpId, bufs: BufVec) -> Op;
 }
 
-/// Main type describing op
-pub type OpDispatcher =
-  dyn Fn(&CoreIsolateState, &mut [ZeroCopyBuf]) -> Op + 'static;
+pub trait OpManager: OpRouter + 'static {
+  fn register_op<F>(&self, name: &str, op_fn: F) -> OpId
+  where
+    F: Fn(Rc<Self>, BufVec) -> Op + 'static;
 
-pub struct OpRegistry {
-  dispatchers: Vec<Rc<OpDispatcher>>,
+  fn register_op_json_sync<F>(self: &Rc<Self>, name: &str, op_fn: F) -> OpId
+  where
+    F: 'static
+      + Fn(serde_json::Value, BufVec) -> Result<serde_json::Value, ErrBox>,
+  {
+    let bin_op_fn = move |mgr: Rc<Self>, bufs: BufVec| -> Op {
+      let value = serde_json::from_slice(&bufs[0]).unwrap();
+      let bufs = bufs[1..].into();
+      let result = op_fn(value, bufs);
+      let buf = serialize_result(None, result, |err| mgr.get_error_class(err));
+      Op::Sync(buf)
+    };
+
+    self.register_op(name, bin_op_fn)
+  }
+
+  fn register_op_json_async<F, Fut>(
+    self: &Rc<Self>,
+    name: &str,
+    op_fn: F,
+  ) -> OpId
+  where
+    Fut: Future<Output = Result<serde_json::Value, ErrBox>> + 'static,
+    F: Fn(serde_json::Value, BufVec) -> Fut + 'static,
+  {
+    let bin_op_fn = move |mgr: Rc<Self>, bufs: BufVec| -> Op {
+      let mgr_ = mgr.clone();
+      let value: serde_json::Value = serde_json::from_slice(&bufs[0]).unwrap();
+      let promise_id = value.get("promiseId").unwrap().as_u64().unwrap();
+      let bufs = bufs[1..].into();
+      let fut = op_fn(value, bufs);
+      let fut2 = fut.map(move |result| {
+        serialize_result(Some(promise_id), result, move |err| {
+          mgr_.get_error_class(err)
+        })
+      });
+      Op::Async(Box::pin(fut2))
+    };
+
+    self.register_op(name, bin_op_fn)
+  }
+
+  fn get_error_class(&self, err: &ErrBox) -> &'static str {
+    "Error"
+  }
+}
+
+pub struct OpRegistry(RefCell<OpRegistryInner>)
+where
+  Self: OpManager;
+
+#[derive(Default)]
+pub struct OpRegistryInner {
+  dispatchers: Vec<Rc<dyn Fn(Rc<OpRegistry>, BufVec) -> Op + 'static>>,
   name_to_id: HashMap<String, OpId>,
 }
 
-impl Default for OpRegistry {
-  fn default() -> Self {
-    let mut registry = Self {
-      dispatchers: Vec::default(),
-      name_to_id: HashMap::default(),
-    };
-    let op_id = registry.register("ops", |state, _| {
-      let buf = state.op_registry.json_map();
-      Op::Sync(buf)
-    });
-    assert_eq!(op_id, 0);
-    registry
+impl Deref for OpRegistry {
+  type Target = RefCell<OpRegistryInner>;
+  fn deref(&self) -> &Self::Target {
+    &self.0
   }
 }
 
 impl OpRegistry {
-  pub fn register<F>(&mut self, name: &str, op: F) -> OpId
-  where
-    F: Fn(&CoreIsolateState, &mut [ZeroCopyBuf]) -> Op + 'static,
-  {
-    let op_id = self.dispatchers.len() as u32;
-
-    let existing = self.name_to_id.insert(name.to_string(), op_id);
-    assert!(
-      existing.is_none(),
-      format!("Op already registered: {}", name)
-    );
-    self.dispatchers.push(Rc::new(op));
-    op_id
-  }
-
-  fn json_map(&self) -> Buf {
-    let op_map_json = serde_json::to_string(&self.name_to_id).unwrap();
-    op_map_json.as_bytes().to_owned().into_boxed_slice()
-  }
-
-  pub fn get(&self, op_id: OpId) -> Option<Rc<OpDispatcher>> {
-    self.dispatchers.get(op_id as usize).map(Rc::clone)
-  }
-
-  pub fn unregister_op(&mut self, name: &str) {
-    let id = self.name_to_id.remove(name).unwrap();
-    drop(self.dispatchers.remove(id as usize));
+  pub fn new() -> Rc<Self> {
+    let self_rc = Rc::new(Self(Default::default()));
+    let op_id =
+      self_rc.register_op("ops", &|self_rc: Rc<Self>, _: BufVec| -> Op {
+        Op::Sync(
+          serde_json::to_string(&self_rc.borrow().name_to_id)
+            .unwrap()
+            .as_bytes()
+            .to_owned()
+            .into_boxed_slice(),
+        )
+      });
+    assert_eq!(op_id, 0);
+    self_rc
   }
 }
 
+impl OpRouter for OpRegistry {
+  fn dispatch_op<'s>(self: Rc<Self>, op_id: OpId, bufs: BufVec) -> Op {
+    let op_fn = self.borrow().dispatchers.get(op_id as usize).cloned();
+    match op_fn {
+      Some(op_fn) => (op_fn)(self, bufs),
+      None => Op::NoSuchOp,
+    }
+  }
+}
+
+impl OpManager for OpRegistry {
+  /// Defines the how Deno.core.dispatch() acts.
+  /// Called whenever Deno.core.dispatch() is called in JavaScript. zero_copy_buf
+  /// corresponds to the second argument of Deno.core.dispatch().
+  ///
+  /// Requires runtime to explicitly ask for op ids before using any of the ops.
+  fn register_op<F>(&self, name: &str, op_fn: F) -> OpId
+  where
+    F: Fn(Rc<Self>, BufVec) -> Op + 'static,
+  {
+    let mut inner = self.borrow_mut();
+    let op_id = inner.dispatchers.len() as u32;
+    let removed = inner.name_to_id.insert(name.to_string(), op_id);
+    assert!(removed.is_none(), "op already registered: {}", name);
+    inner.dispatchers.push(Rc::new(op_fn));
+    op_id
+  }
+}
+
+fn serialize_result(
+  promise_id: Option<u64>,
+  result: Result<Value, ErrBox>,
+  get_error_class_fn: impl FnOnce(&ErrBox) -> &'static str,
+) -> Buf {
+  let value = match result {
+    Ok(v) => json!({ "ok": v, "promiseId": promise_id }),
+    Err(err) => json!({
+      "promiseId": promise_id ,
+      "err": {
+        "className": (get_error_class_fn)(&err),
+        "message": err.to_string(),
+      }
+    }),
+  };
+  serde_json::to_vec(&value).unwrap().into_boxed_slice()
+}
+
+#[cfg(test_off)]
 #[test]
 fn test_op_registry() {
   use crate::CoreIsolate;
@@ -120,14 +201,9 @@ fn test_op_registry() {
     unreachable!();
   }
   assert_eq!(c.load(atomic::Ordering::SeqCst), 1);
-
-  assert!(op_registry.get(100).is_none());
-  op_registry.unregister_op("test");
-  expected.remove("test");
-  assert_eq!(op_registry.name_to_id, expected);
-  assert!(op_registry.get(1).is_none());
 }
 
+#[cfg(test_off)]
 #[test]
 fn register_op_during_call() {
   use crate::CoreIsolate;
